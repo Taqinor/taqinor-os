@@ -366,6 +366,14 @@ def anomalies_pleins(company, vehicule_id=None, saut_km_max=ANOMALIE_SAUT_KM_MAX
                 'prix_total', 'date_plein')
     )
 
+    # XFLT12 — Capacité réservoir (L) par véhicule, via le modèle catalogue
+    # (``ModeleVehicule``, si rattaché). Sert la détection « plein > réservoir ».
+    capacite_reservoir_par_vehicule = dict(
+        Vehicule.objects.filter(
+            company=company, modele_ref__capacite_reservoir_l__isnull=False,
+        ).values_list('id', 'modele_ref__capacite_reservoir_l')
+    )
+
     # Regroupe par véhicule pour comparer des pleins comparables.
     par_vehicule = {}
     for plein in pleins:
@@ -448,6 +456,19 @@ def anomalies_pleins(company, vehicule_id=None, saut_km_max=ANOMALIE_SAUT_KM_MAX
                     plein, 'plafond_depasse', 'moyenne',
                     f"Montant du plein ({float(plein['prix_total'] or 0):.2f} "
                     f"MAD) supérieur au plafond de la carte ({plafond:.2f} MAD).",
+                )
+
+            # 5) XFLT12 — Plein > capacité réservoir du modèle catalogue
+            # (litres uniquement — un plein électrique se mesure en kWh, sans
+            # rapport avec un réservoir carburant).
+            capacite = capacite_reservoir_par_vehicule.get(veh_id)
+            if capacite is not None and plein['unite'] == 'litre' \
+                    and float(plein['quantite'] or 0) > capacite:
+                _ajoute(
+                    plein, 'plein_superieur_reservoir', 'haute',
+                    f"Quantité du plein ({float(plein['quantite'] or 0):.1f} L) "
+                    f"supérieure à la capacité du réservoir ({capacite} L) — "
+                    "fraude probable.",
                 )
 
         # 3) Consommation aberrante vs la ligne de base du véhicule.

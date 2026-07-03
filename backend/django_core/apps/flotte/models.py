@@ -127,6 +127,18 @@ class Vehicule(models.Model):
     checklist_mise_en_service = models.JSONField(
         default=dict, blank=True,
         verbose_name='Checklist de mise en service')
+    # XFLT12 — Catalogue de modèles véhicule : lien optionnel vers un
+    # ``ModeleVehicule`` de référence. À la sélection, pré-remplissage des
+    # specs (voir ``services.prefill_depuis_modele``) SANS écraser une saisie
+    # déjà présente. null = véhicule créé sans modèle de référence (saisie
+    # libre historique, aucune régression).
+    modele_ref = models.ForeignKey(
+        'ModeleVehicule',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='vehicules',
+        verbose_name='Modèle de référence',
+    )
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -3344,3 +3356,73 @@ class ParametreAmortissementCGI(models.Model):
         if param is not None:
             return float(param.plafond_ttc)
         return float(cls.PLAFOND_DEFAUT)
+
+
+# ── XFLT12 — Catalogue de modèles véhicule ──────────────────────────────────────
+
+class ModeleVehicule(models.Model):
+    """Catalogue de modèles véhicule de référence (XFLT12).
+
+    Fiche modèle réutilisable (marque + modèle + specs standard) permettant de
+    pré-remplir un ``Vehicule`` à la création (``modele_ref``) sans écraser une
+    saisie existante. Le ``co2_g_km`` alimente l'éco-conduite (FLOTTE33) en
+    FALLBACK quand le véhicule n'a pas sa propre valeur mesurée ; la
+    ``capacite_reservoir_l`` renforce le détecteur d'anomalies FLOTTE14 (plein
+    > capacité réservoir = fraude probable).
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête).
+    """
+
+    class Categorie(models.TextChoices):
+        VOITURE = 'voiture', 'Voiture'
+        FOURGON = 'fourgon', 'Fourgon'
+        CAMION = 'camion', 'Camion'
+        REMORQUE = 'remorque', 'Remorque'
+        CHARIOT = 'chariot', 'Chariot'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_modeles_vehicule',
+        verbose_name='Société',
+    )
+    marque = models.CharField(max_length=80, verbose_name='Marque')
+    modele = models.CharField(max_length=80, verbose_name='Modèle')
+    categorie = models.CharField(
+        max_length=10, choices=Categorie.choices, default=Categorie.VOITURE,
+        verbose_name='Catégorie')
+    energie = models.CharField(
+        max_length=20, choices=Vehicule.Energie.choices,
+        default=Vehicule.Energie.DIESEL, verbose_name='Énergie')
+    co2_g_km = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='CO₂ (g/km)')
+    places = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name='Places')
+    puissance_fiscale = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name='Puissance fiscale (CV)')
+    puissance_kw = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name='Puissance (kW)')
+    valeur_catalogue = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Valeur catalogue (MAD)')
+    capacite_reservoir_l = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name='Capacité réservoir (L)',
+        help_text='Sert au détecteur de fraude FLOTTE14 : un plein '
+        'dépassant cette capacité est une anomalie.')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Modèle véhicule (catalogue)'
+        verbose_name_plural = 'Modèles véhicule (catalogue)'
+        ordering = ['marque', 'modele']
+        indexes = [
+            models.Index(
+                fields=['company', 'marque', 'modele'],
+                name='flotte_modveh_co_mm_idx',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.marque} {self.modele}'

@@ -18,6 +18,7 @@ from .views import (
     EtatDesLieuxViewSet,
     GarageViewSet,
     InfractionViewSet,
+    ModeleVehiculeViewSet,
     OrdreReparationViewSet,
     PieceFlotteViewSet,
     PlanEntretienViewSet,
@@ -37,6 +38,7 @@ from .views import (
 
 router = DefaultRouter()
 router.register(r'vehicules', VehiculeViewSet)
+router.register(r'modeles-vehicule', ModeleVehiculeViewSet)
 router.register(r'engins', EnginRoulantViewSet)
 router.register(r'referentiels', ReferentielFlotteViewSet)
 router.register(r'actifs', ActifFlotteViewSet)

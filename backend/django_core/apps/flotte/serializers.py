@@ -51,6 +51,8 @@ class VehiculeSerializer(serializers.ModelSerializer):
     emplacement_stock_label = serializers.SerializerMethodField()
     # XFLT4 — checklist de mise en service, exposée en lecture calculée.
     checklist_mise_en_service_ok = serializers.SerializerMethodField()
+    # XFLT12 — libellé du modèle de référence (catalogue), lecture seule.
+    modele_ref_label = serializers.SerializerMethodField()
 
     class Meta:
         model = Vehicule
@@ -61,9 +63,13 @@ class VehiculeSerializer(serializers.ModelSerializer):
             'emplacement_stock_id', 'emplacement_stock_label',
             'vin', 'annee', 'date_acquisition', 'type_fiscal',
             'type_fiscal_display', 'tags', 'checklist_mise_en_service',
-            'checklist_mise_en_service_ok', 'date_creation',
+            'checklist_mise_en_service_ok', 'modele_ref', 'modele_ref_label',
+            'date_creation',
         ]
         read_only_fields = ['date_creation']
+
+    def get_modele_ref_label(self, obj):
+        return str(obj.modele_ref) if obj.modele_ref_id else None
 
     def get_checklist_mise_en_service_ok(self, obj):
         return obj.checklist_mise_en_service_ok()
@@ -1878,3 +1884,28 @@ class SignalementVehiculeSerializer(serializers.ModelSerializer):
 
     def get_auteur_nom(self, obj):
         return obj.auteur.get_username() if obj.auteur_id else None
+
+
+# ── XFLT12 — Catalogue de modèles véhicule ──────────────────────────────────────
+
+class ModeleVehiculeSerializer(serializers.ModelSerializer):
+    """XFLT12 — Modèle véhicule de référence (catalogue).
+
+    ``company`` posée côté serveur (jamais lue du corps de requête).
+    """
+
+    categorie_display = serializers.CharField(
+        source='get_categorie_display', read_only=True)
+    energie_display = serializers.CharField(
+        source='get_energie_display', read_only=True)
+
+    class Meta:
+        from .models import ModeleVehicule
+        model = ModeleVehicule
+        fields = [
+            'id', 'marque', 'modele', 'categorie', 'categorie_display',
+            'energie', 'energie_display', 'co2_g_km', 'places',
+            'puissance_fiscale', 'puissance_kw', 'valeur_catalogue',
+            'capacite_reservoir_l', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']

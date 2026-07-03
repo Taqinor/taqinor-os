@@ -1034,3 +1034,35 @@ def conducteur_a_la_date(vehicule, dt):
     ).order_by('-date_debut', '-id')
     affectation = qs.first()
     return affectation.conducteur if affectation is not None else None
+
+
+# ── XFLT12 — Catalogue de modèles véhicule ──────────────────────────────────────
+
+# Champs du véhicule pré-remplis depuis le modèle sélectionné, et le champ
+# source correspondant sur ``ModeleVehicule``.
+PREFILL_DEPUIS_MODELE = {
+    'energie': 'energie',
+    'puissance_fiscale': 'puissance_fiscale',
+    'valeur': 'valeur_catalogue',
+}
+
+
+def prefill_depuis_modele(vehicule_data, modele):
+    """XFLT12 — Pré-remplit les champs vides de ``vehicule_data`` depuis
+    ``modele`` (``ModeleVehicule``), SANS écraser une valeur déjà présente.
+
+    ``vehicule_data`` est un dict (typiquement ``serializer.validated_data``
+    avant sauvegarde). Un champ est considéré « vide » s'il est absent du
+    dict, ``None``, ou chaîne vide. Retourne le dict modifié (mutation in
+    place ET retour, pour un usage direct). ``modele=None`` ne change rien.
+    """
+    if modele is None:
+        return vehicule_data
+    for champ_vehicule, champ_modele in PREFILL_DEPUIS_MODELE.items():
+        valeur_actuelle = vehicule_data.get(champ_vehicule)
+        if valeur_actuelle not in (None, ''):
+            continue
+        valeur_modele = getattr(modele, champ_modele, None)
+        if valeur_modele not in (None, ''):
+            vehicule_data[champ_vehicule] = valeur_modele
+    return vehicule_data

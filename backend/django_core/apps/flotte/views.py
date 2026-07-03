@@ -31,6 +31,7 @@ from .models import (
     Garage,
     Infraction,
     JournalStatutVehicule,
+    ModeleVehicule,
     OrdreReparation,
     PieceFlotte,
     PlanEntretien,
@@ -63,6 +64,7 @@ from .serializers import (
     GarageSerializer,
     InfractionSerializer,
     JournalStatutVehiculeSerializer,
+    ModeleVehiculeSerializer,
     OrdreReparationSerializer,
     PieceFlotteSerializer,
     PlanEntretienSerializer,
@@ -128,6 +130,16 @@ class VehiculeViewSet(_FlotteBaseViewSet):
         if energie:
             qs = qs.filter(energie=energie)
         return qs
+
+    def perform_create(self, serializer):
+        # XFLT12 — À la sélection d'un ``modele_ref``, pré-remplit les champs
+        # vides (energie/puissance_fiscale/valeur) SANS écraser une saisie
+        # déjà présente dans le body.
+        from .services import prefill_depuis_modele
+
+        modele = serializer.validated_data.get('modele_ref')
+        prefill_depuis_modele(serializer.validated_data, modele)
+        serializer.save(company=self.request.user.company)
 
     @action(detail=True, methods=['get'])
     def tsav(self, request, pk=None):
@@ -265,6 +277,27 @@ class VehiculeViewSet(_FlotteBaseViewSet):
         """
         from .selectors import tableau_bord_flotte
         return Response(tableau_bord_flotte(request.user.company))
+
+
+class ModeleVehiculeViewSet(_FlotteBaseViewSet):
+    """Catalogue de modèles véhicule de référence (XFLT12).
+
+    CRUD scopé société (écriture responsable/admin). Recherche par marque /
+    modèle. Sert au pré-remplissage à la création d'un ``Vehicule``
+    (``modele_ref``) et au fallback CO₂ de l'éco-conduite (FLOTTE33).
+    """
+    queryset = ModeleVehicule.objects.all()
+    serializer_class = ModeleVehiculeSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['marque', 'modele']
+    ordering_fields = ['marque', 'modele', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        categorie = self.request.query_params.get('categorie')
+        if categorie:
+            qs = qs.filter(categorie=categorie)
+        return qs
 
 
 class EnginRoulantViewSet(_FlotteBaseViewSet):
