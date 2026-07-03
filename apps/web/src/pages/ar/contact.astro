@@ -17,6 +17,15 @@ import { whatsappLink, regularizationWhatsappText } from '../../lib/whatsapp';
 // pre-filled text stays French (it reaches the French-speaking sales team).
 const waGeneral = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour une installation solaire.');
 const waRegul = whatsappLink(WHATSAPP_LEADS, regularizationWhatsappText());
+
+// W339 — باب SAV/الأعطال «هل أنت زبون بالفعل؟»، منفصل عن ويبهوك العملاء
+// المحتملين التجاري (DiagnosticForm أعلاه، دون تغيير). النص مُعبَّأ مسبقاً
+// يبقى بالفرنسية (نفس فريق البيع/الصيانة) لكنه يحدد صراحة بلاغ عطل على
+// تركيبة قائمة، ليُوجَّه بشكل مختلف عن طلب عرض ثمن.
+const waSav = whatsappLink(
+  WHATSAPP_LEADS,
+  'Bonjour, je suis déjà client Taqinor et je signale un problème sur mon installation existante (SAV). Merci de me recontacter.',
+);
 ---
 
 <Layout
@@ -69,6 +78,39 @@ const waRegul = whatsappLink(WHATSAPP_LEADS, regularizationWhatsappText());
             منطقة التدخل: محور الدار البيضاء–الرباط، و{NAP.serviceArea.slice(2, -1).join('، ')} على الطلب.
           </p>
           <p class="mt-1 text-xs text-encre-faint">زيارات ميدانية فقط — لا استقبال للعموم في وكالة.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- W339 — باب SAV/الأعطال «هل أنت زبون بالفعل؟»، منفصل بصرياً ووظيفياً
+         عن قسم الدراسة أعلاه. واتساب مُعبَّأ مسبقاً يُبلّغ عن عطل، مُوجَّه إلى
+         فريق الصيانة — أبداً ويبهوك العملاء المحتملين التجاري. -->
+    <section id="deja-client" class="border-t border-azur-900/10 bg-blanc px-4 py-16 text-encre">
+      <div class="mx-auto max-w-2xl">
+        <div class="v2-rise border-2 border-azur-600/40 bg-blanc-azur p-7 text-center sm:p-9">
+          <p class="tech-label text-azur-600">هل أنت زبون بالفعل؟</p>
+          <h2 class="display mt-2 text-2xl font-bold sm:text-3xl">مشكل في تركيبتك؟</h2>
+          <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+            ماذا تفعل إذا ظهر خطأ على شاشة العاكس (onduleur)؟ صوّر الشاشة وراسلنا عبر واتساب —
+            أسرع طريقة للوصول إلى فريق الصيانة (SAV)، الذي يعالج بلاغك بشكل منفصل عن أي طلب جديد
+            لعرض ثمن.
+          </p>
+          <div class="mt-6 flex flex-wrap items-center justify-center gap-3">
+            <a
+              href={waSav}
+              rel="noopener noreferrer"
+              class="inline-flex items-center gap-2 bg-brass-400 px-6 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300"
+            >
+              واتساب — الإبلاغ عن عطل (SAV)
+            </a>
+            <a
+              href={`tel:${NAP.phone}`}
+              dir="ltr"
+              class="inline-flex items-center gap-2 border border-azur-900/25 px-6 py-3 text-sm font-semibold text-encre transition-colors hover:border-azur-600"
+            >
+              {NAP.phoneDisplayIntl}
+            </a>
+          </div>
         </div>
       </div>
     </section>
