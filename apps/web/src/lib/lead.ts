@@ -48,6 +48,14 @@ export type ProjectTimingId = (typeof PROJECT_TIMINGS)[number];
 export const FINANCING_INTENTS = ['comptant', 'financement', 'indecis'] as const;
 export type FinancingIntentId = (typeof FINANCING_INTENTS)[number];
 
+// ——— WJ51 : préférence de contact explicite (facultative, pass-through webhook) ———
+// Remplace la promesse floue « pas d'appels commerciaux » par un choix nommé,
+// mappé sur le champ `canal` du CRM. Facultatif : une soumission sans ce champ
+// reste valide (repli implicite WhatsApp, cohérent avec whatsappOptIn coché
+// par défaut).
+export const CONTACT_PREFERENCES = ['whatsapp_only', 'phone_ok'] as const;
+export type ContactPreferenceId = (typeof CONTACT_PREFERENCES)[number];
+
 /**
  * Bornes GPS ≈ Maroc (Tanger ~35,9 N → Lagouira ~20,8 N ; Atlantique ~-17,2 O →
  * frontière est ~-1,0). Garde-fou anti-garbage : un repère hors bornes est
@@ -113,6 +121,13 @@ export interface ValidatedLead {
    *  d'endpoint d'upload aujourd'hui — cf. PLAN2 QK6 OCR). Signal booléen SEUL :
    *  aucune donnée binaire ne quitte le navigateur. */
   hasMeterPhoto?: boolean;
+  // — WJ51 : préférence de contact explicite (facultative — mappée sur `canal` CRM).
+  contactPreference?: ContactPreferenceId;
+  // — WJ52 : référence courte générée CÔTÉ CLIENT (aucune garantie d'unicité
+  //   globale — un simple artefact affiché au visiteur + échoé au webhook pour
+  //   corréler une conversation WhatsApp ; jamais utilisée comme clé d'unicité
+  //   serveur). Bornée en longueur/format pour rester un artefact honnête.
+  clientRef?: string;
 }
 
 export type ValidationResult =
@@ -268,6 +283,16 @@ function validateOptionalFields(b: Record<string, unknown>): Partial<ValidatedLe
 
   if (typeof b.hasMeterPhoto === 'boolean') opt.hasMeterPhoto = b.hasMeterPhoto;
 
+  // ——— WJ51 : préférence de contact explicite (facultative) ———
+  const contactPreference = cleanEnum(b.contactPreference, CONTACT_PREFERENCES);
+  if (contactPreference) opt.contactPreference = contactPreference;
+
+  // ——— WJ52 : référence courte générée côté client (facultative, jamais bloquante) ———
+  const clientRef = cleanStr(b.clientRef, 24);
+  // Anti-garbage minimal : lettres/chiffres/tirets seulement (le format généré
+  // par buildClientRef() plus bas) — une valeur malformée est simplement écartée.
+  if (clientRef && /^[A-Z0-9-]{4,24}$/i.test(clientRef)) opt.clientRef = clientRef;
+
   return opt;
 }
 
@@ -378,6 +403,24 @@ export function buildLeadRecord(
     band,
     page,
   };
+}
+
+/**
+ * WJ52 — référence client courte, générée CÔTÉ NAVIGATEUR juste avant l'envoi
+ * (aucun appel serveur, aucune garantie d'unicité globale — c'est un artefact
+ * pour combler le vide post-soumission, pas une clé d'unicité). Format
+ * `TQ-XXXX` (4 caractères alphanumériques majuscules, alphabet sans 0/O/1/I
+ * pour éviter toute confusion à l'oral/à l'écrit sur WhatsApp). Le préfixe
+ * `TQ-` (Taqinor) + le format sont bornés par le regex de validation côté
+ * `validateOptionalFields` ci-dessus (`^[A-Z0-9-]{4,24}$`).
+ */
+const CLIENT_REF_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+export function buildClientRef(rand: () => number = Math.random): string {
+  let code = '';
+  for (let i = 0; i < 4; i++) {
+    code += CLIENT_REF_ALPHABET[Math.floor(rand() * CLIENT_REF_ALPHABET.length)];
+  }
+  return `TQ-${code}`;
 }
 
 /**

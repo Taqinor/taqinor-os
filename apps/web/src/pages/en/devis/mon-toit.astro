@@ -125,6 +125,11 @@ const noscriptTelHref = `tel:${NAP.phone}`;
 
       <!-- ============ STEP 0/1 — YOUR ROOF (mode + map/pin) ============ -->
       <div id="mt-panel-0" class="mt-step-panel">
+        <!-- WJ88 — real h2 landmark per step (screen-reader navigation): visually
+             hidden (sr-only), the visible progress bar stays the same — but the
+             page now has a real heading outline instead of a single <h1> across
+             1,200 lines. -->
+        <h2 class="sr-only">{STEPS[0]}</h2>
         <!-- WJ6 — mode selector -->
         <fieldset class="mt-6">
           <legend class="text-sm text-lune-soft">Your project type</legend>
@@ -181,8 +186,14 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             </button>
           </form>
 
+          <!-- WJ88 — role="application" removed: this ARIA role puts the whole
+               subtree into "application" mode for a screen reader (native
+               arrow/tab navigation is disabled), making the map keyboard-inert
+               even though it exposes no keyboard interaction of its own here
+               (the pin/outline is mouse/touch-driven; the address search above
+               stays a real, accessible form). aria-label alone is enough to name it. -->
           <div id="rp9-map" class="mt-skeleton-shimmer mt-0 h-[44vh] min-h-[280px] w-full bg-nuit-700"
-            role="application" aria-label="Satellite map to locate your roof"></div>
+            aria-label="Satellite map to locate your roof"></div>
 
           <div class="flex flex-wrap items-center gap-3 border-t border-white/10 p-4">
             <button type="button" id="rp9-finish" disabled
@@ -209,13 +220,20 @@ const noscriptTelHref = `tel:${NAP.phone}`;
         <div class="mt-5 flex justify-end">
           <button type="button" id="mt-next-0"
             class="inline-flex items-center justify-center gap-2 bg-brass-400 px-6 py-3 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">
-            <span>Continue</span> →
+            <span>Continue</span>
+            <!-- WJ89 — SVG chevron (consistency with the FR/AR variants; this
+                 route never sets dir="rtl", but the markup stays aligned). -->
+            <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <polyline points="3,1 7,5 3,9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
           </button>
         </div>
       </div>
 
       <!-- ============ STEP 2 — YOUR BILL (+ energy profile) ============ -->
       <div id="mt-panel-1" class="mt-step-panel" hidden>
+        <!-- WJ88 — real h2 landmark (see step 0 note). -->
+        <h2 class="sr-only">{STEPS[1]}</h2>
         <p class="mt-6 text-lune-soft">
           Enter your bill to calculate your estimate. The exact amount gives the most
           accurate figure.
@@ -225,8 +243,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           <label class="block text-sm text-lune-soft">
             <span>Exact monthly bill (MAD)</span>
             <input id="mt-facture-hiver" name="factureHiver" type="number" step="any" inputmode="decimal"
-              placeholder="e.g. 1,200" class={`${inputClass} mt-1`} />
-            <span id="mt-facture-hiver-err" hidden class="mt-1 block text-xs text-alert-300"></span>
+              aria-describedby="mt-facture-hiver-err" placeholder="e.g. 1,200" class={`${inputClass} mt-1`} />
+            <span id="mt-facture-hiver-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
             <!-- WJ67 — "why we ask" micro-transparency: copy-only, collapsed by
                  default (native <details>, no JS required). -->
             <details class="mt-1.5">
@@ -241,22 +259,44 @@ const noscriptTelHref = `tel:${NAP.phone}`;
 
           <label class="block text-sm text-lune-soft">
             <span>…or choose a range</span>
-            <select id="mt-bill" name="billRange" class={`${inputClass} mt-1`}>
+            <select id="mt-bill" name="billRange" aria-describedby="mt-bill-err" class={`${inputClass} mt-1`}>
               <option value="">Choose…</option>
               {billRanges.map((b) => <option value={b.id}>{b.label}</option>)}
             </select>
-            <span id="mt-bill-err" hidden class="mt-1 block text-xs text-alert-300"></span>
+            <span id="mt-bill-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
           </label>
 
+          <!-- WJ48 — "Roof type" converted from a dropdown into tappable
+               image cards (Enpal/EnergySage's most-tested pattern for a
+               low-cardinality visual choice): distinct SVG icons per type (no
+               fabricated photo -- no photo assets provided). The native
+               <select> stays in the DOM (sr-only): unchanged source of truth
+               for val('mt-roof'), validation, WJ61 persistence, and error
+               focus -- only the VISUAL selection changes. -->
+          <fieldset>
+            <legend class="text-sm text-lune-soft">Roof type</legend>
+            <div class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {roofTypes.map((r) => (
+                <button type="button" class="mt-roof-card cine-card flex flex-col items-center gap-1.5 border border-white/15 p-3 text-center transition-colors"
+                  data-roof={r.id} aria-pressed="false">
+                  <svg aria-hidden="true" width="32" height="32" viewBox="0 0 32 32" fill="none" class="text-lune-soft">
+                    {r.id === 'villa' && <path d="M4 18 16 8l12 10M8 16v10h16V16" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" fill="none" />}
+                    {r.id === 'hangar' && <path d="M3 20 10 12h12l7 8M6 20v6h20v-6" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" fill="none" />}
+                    {r.id === 'toit_plat' && <path d="M5 12h22v3H5zM7 15v10h18V15" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" fill="none" />}
+                    {r.id === 'autre' && <path d="M16 5v22M5 16h22" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />}
+                  </svg>
+                  <span class="text-xs font-semibold text-white">{r.label}</span>
+                </button>
+              ))}
+            </div>
+            <span id="mt-roof-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
+            <select id="mt-roof" name="roofType" aria-describedby="mt-roof-err" class="sr-only">
+              <option value="">Choose…</option>
+              {roofTypes.map((r) => <option value={r.id}>{r.label}</option>)}
+            </select>
+          </fieldset>
+
           <div class="grid gap-4 sm:grid-cols-2">
-            <label class="block text-sm text-lune-soft">
-              <span>Roof type</span>
-              <select id="mt-roof" name="roofType" class={`${inputClass} mt-1`}>
-                <option value="">Choose…</option>
-                {roofTypes.map((r) => <option value={r.id}>{r.label}</option>)}
-              </select>
-              <span id="mt-roof-err" hidden class="mt-1 block text-xs text-alert-300"></span>
-            </label>
             <label class="block text-sm text-lune-soft">
               <span>Connection</span>
               <select id="mt-raccordement" name="raccordement" class={`${inputClass} mt-1`}>
@@ -280,10 +320,18 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           </label>
         </div>
 
-        <!-- ===== WJ31 — best-in-world questions, ALL optional, collapsed by default ===== -->
-        <details id="mt-more" class="cine-card mt-4 p-5 sm:p-6">
+        <!-- ===== WJ49 — restaged into 2-3 value-framed groups, ≤5 fields
+             visible per stage (instead of one 10-field <details>): form
+             research is unambiguous — one long panel gets ignored or kills
+             completion; staged asks don't. Every field stays OPTIONAL and is
+             forwarded EXACTLY as before (WJ30/WJ31 contract intact — same
+             id/name, only the layout changes). ===== -->
+        <p class="mt-4 text-sm font-semibold text-brass-300">Refine my estimate (optional, 1 minute)</p>
+
+        <!-- Group 1/3 — to refine the size (5 fields). -->
+        <details id="mt-more-size" class="cine-card mt-3 p-5 sm:p-6">
           <summary class="cursor-pointer select-none text-sm font-semibold text-brass-300">
-            Refine my estimate (optional, 1 minute)
+            To refine the size
           </summary>
 
           <div class="mt-4 grid gap-4 sm:grid-cols-2">
@@ -304,19 +352,6 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             </label>
           </div>
 
-          <!-- Meter/bill photo — captured LOCALLY, never uploaded (no endpoint today). -->
-          <div class="mt-4">
-            <label class="block text-sm text-lune-soft" for="mt-meter-photo">
-              Photo of your meter or bill
-            </label>
-            <input id="mt-meter-photo" type="file" accept="image/*" capture="environment"
-              class="mt-1 block w-full text-sm text-lune-soft file:mr-3 file:border-0 file:bg-white/10 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white" />
-            <p id="mt-meter-photo-note" class="mt-1 text-xs text-lune-faint">
-              Or send it to us directly on WhatsApp after submitting the form — it's often
-              faster.
-            </p>
-          </div>
-
           <fieldset class="mt-4">
             <legend class="text-sm text-lune-soft">Shading on the roof</legend>
             <div class="mt-2 grid grid-cols-3 gap-2">
@@ -332,6 +367,26 @@ const noscriptTelHref = `tel:${NAP.phone}`;
               placeholder="e.g. 10" class={`${inputClass} mt-1`} />
           </label>
 
+          <!-- Meter/bill photo — captured LOCALLY, never uploaded (no endpoint today). -->
+          <div class="mt-4">
+            <label class="block text-sm text-lune-soft" for="mt-meter-photo">
+              Photo of your meter or bill
+            </label>
+            <input id="mt-meter-photo" type="file" accept="image/*" capture="environment"
+              class="mt-1 block w-full text-sm text-lune-soft file:mr-3 file:border-0 file:bg-white/10 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white" />
+            <p id="mt-meter-photo-note" class="mt-1 text-xs text-lune-faint">
+              Or send it to us directly on WhatsApp after submitting the form — it's often
+              faster.
+            </p>
+          </div>
+        </details>
+
+        <!-- Group 2/3 — to anticipate your needs (2 fields). -->
+        <details id="mt-more-needs" class="cine-card mt-3 p-5 sm:p-6">
+          <summary class="cursor-pointer select-none text-sm font-semibold text-brass-300">
+            To anticipate your needs
+          </summary>
+
           <fieldset class="mt-4">
             <legend class="text-sm text-lune-soft">Future loads planned</legend>
             <div class="mt-2 flex flex-wrap gap-2">
@@ -345,6 +400,13 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             <input id="mt-battery-interest" name="batteryInterest" type="checkbox" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
             <span>Interested in a storage battery</span>
           </label>
+        </details>
+
+        <!-- Group 3/3 — for financing (3 fields). -->
+        <details id="mt-more-financing" class="cine-card mt-3 p-5 sm:p-6">
+          <summary class="cursor-pointer select-none text-sm font-semibold text-brass-300">
+            For financing
+          </summary>
 
           <div class="mt-4 grid gap-4 sm:grid-cols-2">
             <label class="block text-sm text-lune-soft">
@@ -381,20 +443,44 @@ const noscriptTelHref = `tel:${NAP.phone}`;
         <div class="mt-5 flex items-center justify-between gap-3">
           <button type="button" id="mt-back-1"
             class="inline-flex items-center gap-1 px-2 py-3 text-base font-semibold text-lune-soft transition-colors hover:text-white">
-            ← <span>Back</span>
+            <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <polyline points="7,1 3,5 7,9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <span>Back</span>
           </button>
           <button type="button" id="mt-estimate"
             class="inline-flex items-center justify-center gap-2 bg-brass-400 px-6 py-3 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">
-            <span>See my estimate</span> →
+            <span>See my estimate</span>
+            <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <polyline points="3,1 7,5 3,9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
           </button>
         </div>
       </div>
 
       <!-- ============ STEP 3 — YOUR ESTIMATE (WJ1) + CONTACT (WJ3) ============ -->
       <div id="mt-panel-2" class="mt-step-panel" hidden>
-        <!-- WJ1 — instant estimate BEFORE the contact gate -->
-        <div id="mt-estimate-card" class="cine-card mt-6 border border-brass-400/30 p-5 sm:p-6" aria-live="polite">
+        <!-- WJ88 — real h2 landmark (see step 0 note); distinct from the
+             visible title below (kept as a <p> to preserve the .tech-label style). -->
+        <h2 class="sr-only">{STEPS[2]}</h2>
+        <!-- WJ1 — instant estimate BEFORE the contact gate.
+             WJ88 — aria-live removed from THIS container: it wrapped both the
+             shimmer skeleton (an intermediate, meaningless mutation) AND the
+             real numbers, so a screen reader announced TWICE (skeleton then
+             result). A single dedicated region below (#mt-estimate-announce)
+             now announces the result ONCE, never during the skeleton phase. -->
+        <div id="mt-estimate-card" class="cine-card mt-6 border border-brass-400/30 p-5 sm:p-6">
           <p class="tech-label text-brass-300">Your instant estimate</p>
+          <!-- WJ48 — branded anticipation animation (1.5-2.5s) before the real
+               numbers appear -- never an instant flash (the calculation itself
+               is synchronous/instant in code, so without this perceived delay
+               the visitor never "sees" a calculation happen). reduced-motion
+               -> instant (no artificial delay). -->
+          <p id="mt-estimate-thinking" hidden class="mt-3 flex items-center gap-2 text-sm text-brass-300">
+            <span class="mt-thinking-dot h-2 w-2 flex-none rounded-full bg-brass-400"></span>
+            <span>Calculating your solar potential…</span>
+          </p>
+          <p id="mt-estimate-announce" class="sr-only" aria-live="polite"></p>
           <div id="mt-estimate-body" class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div>
               <p class="text-3xl font-bold text-white"><span id="mt-est-kwc">—</span> <span class="text-base font-normal text-lune-soft">kWc</span></p>
@@ -409,9 +495,20 @@ const noscriptTelHref = `tel:${NAP.phone}`;
               <p class="text-xs text-lune-faint">Payback</p>
             </div>
           </div>
+          <!-- WJ48 — short caveat, right next to the numbers (distinct from
+               the longer methodology note below). -->
+          <p class="mt-2 text-xs italic text-lune-faint">
+            Preliminary estimate, refined after a site visit.
+          </p>
           <p id="mt-estimate-note" class="mt-4 text-xs text-lune-faint">
             Preliminary range calculated from your bill (self-consumption, law 82-21). The
             exact figure is established after a technical site visit — with no obligation.
+          </p>
+          <!-- WJ48 — competitive positioning line: "instant estimate" is not a
+               plain callback request (masolaire.ma's own "devis" is
+               callback-only within 24h -- verified). -->
+          <p class="mt-2 flex items-center gap-1.5 text-xs font-semibold text-ok-400">
+            Instant estimate — not just a callback request within 24 h.
           </p>
           <!-- WJ1 — when the estimate is unavailable (bill missing/uncomputable) -->
           <p id="mt-estimate-unavailable" hidden class="mt-4 text-sm text-alert-300">
@@ -455,22 +552,23 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           <div class="grid gap-4 sm:grid-cols-2">
             <label class="block text-sm text-lune-soft">
               <span>Full name</span>
-              <input id="mt-name" name="fullName" type="text" autocomplete="name" required aria-required="true" class={`${inputClass} mt-1`} />
-              <span id="mt-name-err" hidden class="mt-1 block text-xs text-alert-300"></span>
+              <input id="mt-name" name="fullName" type="text" autocomplete="name" required aria-required="true"
+                aria-describedby="mt-name-err" class={`${inputClass} mt-1`} />
+              <span id="mt-name-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
             </label>
             <label class="block text-sm text-lune-soft">
               <span>Phone / WhatsApp</span>
               <input id="mt-phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" required aria-required="true"
-                placeholder="06 XX XX XX XX" class={`${inputClass} mt-1`} />
-              <span id="mt-phone-err" hidden class="mt-1 block text-xs text-alert-300"></span>
+                aria-describedby="mt-phone-err" placeholder="06 XX XX XX XX" class={`${inputClass} mt-1`} />
+              <span id="mt-phone-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
             </label>
           </div>
 
           <label class="block text-sm text-lune-soft">
             <span>Address / city</span>
             <input id="mt-city" name="city" type="text" autocomplete="address-level2" required aria-required="true"
-              placeholder="Read from the map — editable if needed" class={`${inputClass} mt-1`} />
-            <span id="mt-city-err" hidden class="mt-1 block text-xs text-alert-300"></span>
+              aria-describedby="mt-city-err" placeholder="Read from the map — editable if needed" class={`${inputClass} mt-1`} />
+            <span id="mt-city-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
           </label>
 
           <!-- WJ3 — e-mail (optional) + WhatsApp opt-in -->
@@ -480,18 +578,35 @@ const noscriptTelHref = `tel:${NAP.phone}`;
               placeholder="you@example.com" class={`${inputClass} mt-1`} />
           </label>
 
-          <label class="flex items-start gap-3 text-sm text-lune-soft">
-            <input id="mt-wa-optin" name="whatsappOptIn" type="checkbox" checked class="mt-1 h-5 w-5 flex-none accent-ok-600" />
-            <span>I prefer to be contacted on WhatsApp (faster reply)</span>
-          </label>
+          <!-- WJ51 — explicit contact preference (replaces the single "I prefer
+               WhatsApp" checkbox): a named choice, never a box checked by default
+               without the visitor seeing it. Forwarded as `contactPreference`
+               (optional) + derives `whatsappOptIn` to keep the webhook contract
+               unchanged. -->
+          <fieldset class="mt-1">
+            <legend class="text-sm text-lune-soft">How would you prefer we contact you back?</legend>
+            <div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <label class="mt-contact-pref cine-card flex cursor-pointer items-center gap-2 border border-white/15 p-3 text-sm text-white transition-colors has-[:checked]:border-ok-600">
+                <input id="mt-contact-whatsapp" name="contactPreference" type="radio" value="whatsapp_only" checked
+                  class="h-4 w-4 flex-none accent-ok-600" />
+                <span>WhatsApp only</span>
+              </label>
+              <label class="mt-contact-pref cine-card flex cursor-pointer items-center gap-2 border border-white/15 p-3 text-sm text-white transition-colors has-[:checked]:border-brass-400">
+                <input id="mt-contact-phone" name="contactPreference" type="radio" value="phone_ok"
+                  class="h-4 w-4 flex-none accent-brass-400" />
+                <span>An advisor may call me</span>
+              </label>
+            </div>
+          </fieldset>
 
           <label class="flex items-start gap-3 text-sm text-lune-soft">
-            <input id="mt-consent" name="consent" type="checkbox" required aria-required="true" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
+            <input id="mt-consent" name="consent" type="checkbox" required aria-required="true"
+              aria-describedby="mt-consent-err" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
             <span>
               I agree to be contacted back by Taqinor about my solar project.
             </span>
           </label>
-          <span id="mt-consent-err" hidden class="block text-xs text-alert-300"></span>
+          <span id="mt-consent-err" hidden role="alert" class="block text-xs text-alert-300"></span>
 
           <p id="mt-error" hidden class="text-sm text-alert-300" aria-live="polite"></p>
 
@@ -507,7 +622,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           <div class="flex items-center justify-between gap-3">
             <button type="button" id="mt-back-2"
               class="inline-flex items-center gap-1 px-2 py-2 text-sm font-semibold text-lune-soft transition-colors hover:text-white">
-              ← <span>Back</span>
+              <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10" fill="none">
+                <polyline points="7,1 3,5 7,9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+              <span>Back</span>
             </button>
           </div>
 
@@ -515,6 +633,14 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           <div id="mt-success" hidden class="border border-ok-600/40 bg-ok-600/10 p-4 text-sm text-white">
             <p class="font-semibold">Thank you! Your request has been recorded.</p>
             <p class="mt-1 text-lune-soft">Our team is preparing your study and will contact you back very soon — often on WhatsApp.</p>
+            <!-- WJ52 — short reference: fills the post-submission void (24–48 h
+                 wait) with a concrete artefact to mention on WhatsApp. -->
+            <p class="mt-2 text-lune-soft">
+              <span>Your reference:</span>
+              {' '}<strong id="mt-client-ref" class="font-mono text-white" dir="ltr">—</strong>
+              <br />
+              <span class="text-xs">Mention this code on WhatsApp to find your file faster.</span>
+            </p>
             <a id="mt-success-wa" href="#" target="_blank" rel="noopener"
               class="mt-3 inline-flex items-center gap-2 bg-ok-600 px-4 py-2.5 text-sm font-bold text-white transition-opacity hover:opacity-90">
               <span>Open WhatsApp now</span>
@@ -603,7 +729,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     <div class="cine-card w-full max-w-md border border-brass-400/40 p-5">
       <div class="flex items-start justify-between gap-3">
         <p id="mt-exit-title" class="display text-lg text-white">Receive your estimate on WhatsApp</p>
-        <button type="button" id="mt-exit-close" aria-label="Close" class="flex-none text-lune-faint hover:text-white">✕</button>
+        <!-- WJ88 — minimum ≥24×24 px touch target (WCAG 2.5.8). -->
+        <button type="button" id="mt-exit-close" aria-label="Close"
+          class="flex-none min-h-6 min-w-6 inline-flex items-center justify-center text-lune-faint hover:text-white">✕</button>
       </div>
       <p class="mt-2 text-sm text-lune-soft">
         Just leave your number — we'll send you your estimate and answer your questions.
@@ -667,13 +795,26 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     background: rgb(255 255 255 / 0.08);
     vertical-align: middle;
   }
+
+  /* WJ48 — branded "thinking" dot: a discreet pulse, never a generic
+     spinner. Gated reduced-motion (static otherwise), same discipline as
+     .mt-skeleton-shimmer. */
+  @media (prefers-reduced-motion: no-preference) {
+    .mt-thinking-dot {
+      animation: mt-thinking-pulse 1s ease-in-out infinite;
+    }
+  }
+  @keyframes mt-thinking-pulse {
+    0%, 100% { opacity: 0.35; transform: scale(0.85); }
+    50% { opacity: 1; transform: scale(1); }
+  }
 </style>
 
 <script>
   import { estimateFromBill, formatMadRange } from '../../../lib/billEstimate';
   import { captureWhatsappText, whatsappLink } from '../../../lib/whatsapp';
   import { WHATSAPP_LEADS } from '../../../lib/nap';
-  import { validateLead } from '../../../lib/lead';
+  import { buildClientRef, validateLead } from '../../../lib/lead';
   import { type CaptureStrings } from '../../../scripts/roofPro11/mapDraw';
 
   // WJ60/WJ63 fix — moved here from the frontmatter: a plain <script> tag in an
@@ -764,7 +905,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     'mt-occupant-type', 'mt-project-timing', 'mt-financing-intent', 'mt-fallback-address',
     'rp9-address',
   ];
-  const PERSISTED_CHECK_FIELDS = ['mt-ete-differente', 'mt-wa-optin', 'mt-consent', 'mt-battery-interest'];
+  const PERSISTED_CHECK_FIELDS = ['mt-ete-differente', 'mt-contact-whatsapp', 'mt-contact-phone', 'mt-consent', 'mt-battery-interest'];
   let restoring = false; // WJ61 — avoids re-saving WHILE rehydrating.
   function saveWizardState() {
     if (restoring) return;
@@ -837,6 +978,33 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     b.classList.toggle('border-brass-400', on);
     b.classList.toggle('border-white/15', !on);
   });
+
+  // ——— WJ48 : image cards "roof type" — sync the sr-only <select> (mt-roof)
+  // which stays the source of truth for val('mt-roof'), validation
+  // (setFieldError) and WJ61 persistence (already wired on 'mt-roof' via
+  // PERSISTED_TEXT_FIELDS). Single active choice at a time. ———
+  const roofSelect = $('mt-roof') as HTMLSelectElement | null;
+  function syncRoofCards() {
+    const current = roofSelect?.value || '';
+    document.querySelectorAll<HTMLButtonElement>('.mt-roof-card').forEach((b) => {
+      const on = b.dataset.roof === current;
+      b.setAttribute('aria-pressed', String(on));
+      b.classList.toggle('border-brass-400', on);
+      b.classList.toggle('border-white/15', !on);
+    });
+  }
+  document.querySelectorAll<HTMLButtonElement>('.mt-roof-card').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (roofSelect) {
+        roofSelect.value = btn.dataset.roof || '';
+        setFieldError('mt-roof', 'mt-roof-err', null);
+      }
+      syncRoofCards();
+      markDataEntered();
+      saveWizardState();
+    });
+  });
+  syncRoofCards(); // initial state (rehydrated or empty).
 
   // ——— WJ31 : puce à bascule unique (ombrage) — un seul choix actif à la fois ———
   let ombrage = savedWizard?.ombrage || '';
@@ -1091,6 +1259,14 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   let lastKwcLabel = '';
   let lastSavingsLabel = '';
   let lastKwc: number | null = null;
+  // WJ88 — single, clean announcement of the result (never during the
+  // skeleton phase): replaces the old aria-live set on the whole
+  // #mt-estimate-card, which caused a screen-reader double-fire (skeleton
+  // THEN result).
+  function announceEstimate(message: string) {
+    const el = $('mt-estimate-announce');
+    if (el) el.textContent = message;
+  }
   function computeEstimate() {
     const exact = num('mt-facture-hiver');
     const bill = resolveMonthlyBill();
@@ -1112,6 +1288,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       lastSavingsLabel = '';
       lastKwc = null;
       updatePanels3dVisibility();
+      announceEstimate('Estimate unavailable — please check the amount entered.');
       return;
     }
     setFieldError('mt-facture-hiver', 'mt-facture-hiver-err', null);
@@ -1127,6 +1304,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       lastSavingsLabel = '';
       lastKwc = null;
       updatePanels3dVisibility();
+      announceEstimate('Estimate unavailable: enter your monthly bill to calculate it.');
       return;
     }
     if (card) card.hidden = false;
@@ -1143,6 +1321,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     lastSavingsLabel = `${monthly}/mois`;
     lastKwc = est.kwc;
     updatePanels3dVisibility();
+    // WJ88 — single, clean final announcement (never during the skeleton phase).
+    announceEstimate(`Your estimate: ${est.kwc} kWc, estimated savings ${monthly}/month, payback ${est.paybackLabel}.`);
   }
   // WJ34 — squelette bref pendant le calcul (performance perçue) : les 3
   // chiffres passent en squelette shimmer AVANT le calcul, puis
@@ -1164,10 +1344,28 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     const payEl = $('mt-est-payback');
     if (payEl) payEl.innerHTML = '<span class="mt-est-skeleton mt-skeleton-shimmer"></span>';
   }
+  // WJ48 — branded anticipation (1.5-2.5 s, randomised within this window on
+  // each calculation): the real calculation (billEstimate) is synchronous and
+  // instant -- without this perceived delay the visitor never "sees" a
+  // calculation happen (Enpal/EnergySage's most-tested anticipation pattern).
+  // reduced-motion -> INSTANT (no artificial delay, no spinner to watch).
+  const THINKING_MIN_MS = 1500;
+  const THINKING_MAX_MS = 2500;
+  function thinkingDelayMs(): number {
+    if (reducedMotion) return 0;
+    return THINKING_MIN_MS + Math.random() * (THINKING_MAX_MS - THINKING_MIN_MS);
+  }
   $('mt-estimate')?.addEventListener('click', () => {
     showEstimateSkeleton();
+    const thinkingEl = $('mt-estimate-thinking');
+    if (thinkingEl) thinkingEl.hidden = false;
     goStep(2);
-    requestAnimationFrame(() => computeEstimate());
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        if (thinkingEl) thinkingEl.hidden = true;
+        computeEstimate();
+      }, thinkingDelayMs());
+    });
   });
   // recalcule à la volée si l'utilisateur revient corriger sa facture
   $('mt-facture-hiver')?.addEventListener('input', computeEstimate);
@@ -1238,11 +1436,27 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       err.hidden = !message;
     }
   }
+  // ——— WJ52 : short client reference, generated ONCE in the browser ———
+  // Stable across repeated submissions (e.g. a network failure then a retry):
+  // generated on the first attempt, reused as-is afterwards — never silently
+  // regenerated, never a server uniqueness key (see lib/lead.ts).
+  let clientRef = '';
+  function getOrCreateClientRef(): string {
+    if (!clientRef) clientRef = buildClientRef();
+    return clientRef;
+  }
+
   /** Construit le corps de lead + renvoie les erreurs client (miroir validateLead). */
   function buildBody(): { body: Record<string, unknown>; errors: Record<string, string> } {
     const eteDifferente = eteToggle?.checked === true;
     const consent = ($('mt-consent') as HTMLInputElement | null)?.checked === true;
-    const whatsappOptIn = ($('mt-wa-optin') as HTMLInputElement | null)?.checked === true;
+    // WJ51 — explicit contact preference ("WhatsApp only" vs "An advisor may
+    // call me"): `whatsappOptIn` stays derived so nothing breaks CRM/webhook
+    // side, `contactPreference` is forwarded in addition (maps to `canal`).
+    const contactPreference = (($('mt-contact-phone') as HTMLInputElement | null)?.checked === true)
+      ? 'phone_ok'
+      : 'whatsapp_only';
+    const whatsappOptIn = contactPreference === 'whatsapp_only';
     const adresse = (val('mt-city') || addressEl?.value.trim() || fallbackAddrEl?.value.trim() || '').trim();
     const body: Record<string, unknown> = {
       fullName: val('mt-name'),
@@ -1252,6 +1466,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       roofType: val('mt-roof'),
       consent,
       whatsappOptIn,
+      contactPreference,
       email: val('mt-email') || undefined,
       factureHiver: num('mt-facture-hiver'),
       factureEte: eteDifferente ? num('mt-facture-ete') : null,
@@ -1274,6 +1489,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       projectTiming: val('mt-project-timing') || undefined,
       financingIntent: val('mt-financing-intent') || undefined,
       hasMeterPhoto,
+      // WJ52 — short reference for the post-submission artefact (echoed as-is,
+      // never a server uniqueness key — see lib/lead.ts).
+      clientRef: getOrCreateClientRef(),
     };
     // WJ4 — repère FACULTATIF : on le joint s'il existe, on ne BLOQUE jamais sans lui.
     if (capturePin) {
@@ -1362,10 +1580,18 @@ const noscriptTelHref = `tel:${NAP.phone}`;
         errEl.textContent = 'Please check the highlighted fields above.';
         errEl.hidden = false;
       }
-      // amène l'utilisateur au premier champ en erreur
+      // amène l'utilisateur au premier champ en erreur.
+      // WJ48 — mt-roof est désormais sr-only (le choix visuel se fait via les
+      // cartes .mt-roof-card) : focaliser le <select> caché déplacerait le
+      // focus clavier sur un élément invisible pour un utilisateur voyant. On
+      // focalise plutôt la première carte visible dans ce cas.
       const firstId = ['mt-name', 'mt-phone', 'mt-city', 'mt-roof', 'mt-bill']
         .find((id) => $(id)?.getAttribute('aria-invalid') === 'true');
-      if (firstId) ($(firstId) as HTMLElement | null)?.focus();
+      if (firstId === 'mt-roof') {
+        document.querySelector<HTMLButtonElement>('.mt-roof-card')?.focus();
+      } else if (firstId) {
+        ($(firstId) as HTMLElement | null)?.focus();
+      }
       return;
     }
     showInlineErrors({});
@@ -1393,10 +1619,16 @@ const noscriptTelHref = `tel:${NAP.phone}`;
         // WJ5 — réponse HONNÊTE selon le seuil 1 000 MAD (qualified renvoyé par le serveur).
         if (data.qualified) {
           if (okEl) okEl.hidden = false;
+          // WJ52 — display the reference generated in buildBody() (already
+          // included in the sent body — re-read here via getOrCreateClientRef()
+          // to stay the SAME value, never regenerated).
+          const refEl = $('mt-client-ref');
+          if (refEl) refEl.textContent = getOrCreateClientRef();
           const waLink = $('mt-success-wa') as HTMLAnchorElement | null;
           if (waLink) waLink.href = waUrl;
-          // WJ3 — sur mobile, on propose WhatsApp tout de suite (l'opt-in est coché par défaut)
-          const wantsWa = ($('mt-wa-optin') as HTMLInputElement | null)?.checked === true;
+          // WJ3/WJ51 — on mobile, offer WhatsApp right away when the contact
+          // preference is "WhatsApp only" (the option checked by default).
+          const wantsWa = ($('mt-contact-phone') as HTMLInputElement | null)?.checked !== true;
           if (wantsWa && /Mobi|Android|iPhone/i.test(navigator.userAgent) && !reducedMotion) {
             setTimeout(() => { window.location.href = waUrl; }, 900);
           }
