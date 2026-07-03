@@ -26,6 +26,8 @@ from .models import (
     DocumentEmploye,
     DossierEmploye,
     DotationEpi,
+    ElementIntegration,
+    ElementIntegrationEmploye,
     ElementSortie,
     ElementsVariablesPaie,
     EmargementEpi,
@@ -37,6 +39,7 @@ from .models import (
     IncidentPresence,
     InscriptionFormation,
     LigneRisqueChantier,
+    ModeleIntegration,
     NoteDeFrais,
     ObjectifIndividuel,
     OrdreMission,
@@ -204,6 +207,53 @@ class ElementSortieSerializer(serializers.ModelSerializer):
             'recupere', 'date_recuperation', 'note', 'date_creation',
         ]
         read_only_fields = ['date_creation']
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+
+class ElementIntegrationSerializer(serializers.ModelSerializer):
+    """Ligne gabarit d'un modèle d'intégration (XRH4)."""
+
+    class Meta:
+        model = ElementIntegration
+        fields = ['id', 'modele', 'libelle', 'ordre', 'date_creation']
+        read_only_fields = ['date_creation']
+
+    def validate_modele(self, value):
+        return _meme_societe(self, value, "Modèle d'intégration")
+
+
+class ModeleIntegrationSerializer(serializers.ModelSerializer):
+    """Gabarit de checklist d'intégration (XRH4), avec ses lignes imbriquées
+    en lecture (``elements``)."""
+    elements = ElementIntegrationSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ModeleIntegration
+        fields = [
+            'id', 'nom', 'poste_ref', 'departement', 'actif', 'elements',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_poste_ref(self, value):
+        return _meme_societe(self, value, 'Poste')
+
+    def validate_departement(self, value):
+        return _meme_societe(self, value, 'Département')
+
+
+class ElementIntegrationEmployeSerializer(serializers.ModelSerializer):
+    """Ligne de checklist d'intégration d'un employé (XRH4)."""
+
+    class Meta:
+        model = ElementIntegrationEmploye
+        fields = [
+            'id', 'employe', 'libelle', 'ordre', 'fait', 'fait_par', 'date',
+            'date_creation',
+        ]
+        read_only_fields = ['fait_par', 'date', 'date_creation']
 
     def validate_employe(self, value):
         return _meme_societe(self, value, 'Employé')

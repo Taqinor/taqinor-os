@@ -22,6 +22,8 @@ from .views import (
     DossierEmployeViewSet,
     DotationEpiViewSet,
     EcheancesRhViewSet,
+    ElementIntegrationEmployeViewSet,
+    ElementIntegrationViewSet,
     ElementSortieViewSet,
     ElementsVariablesPaieViewSet,
     EpiCatalogueViewSet,
@@ -30,6 +32,7 @@ from .views import (
     HabilitationViewSet,
     HeuresSuppViewSet,
     IncidentPresenceViewSet,
+    ModeleIntegrationViewSet,
     NoteDeFraisViewSet,
     OrdreMissionViewSet,
     OuverturePosteViewSet,
@@ -57,6 +60,10 @@ router.register(r'employes', DossierEmployeViewSet)
 router.register(r'remunerations', RemunerationViewSet)
 router.register(r'documents', DocumentEmployeViewSet)
 router.register(r'elements-sortie', ElementSortieViewSet)
+router.register(r'modeles-integration', ModeleIntegrationViewSet)
+router.register(r'elements-integration', ElementIntegrationViewSet)
+router.register(
+    r'elements-integration-employe', ElementIntegrationEmployeViewSet)
 router.register(r'types-absence', TypeAbsenceViewSet)
 router.register(r'soldes-conge', SoldeCongeViewSet)
 router.register(r'demandes-conge', DemandeCongeViewSet)

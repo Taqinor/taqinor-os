@@ -536,7 +536,76 @@ def embaucher(candidature, matricule=None, **dossier_kwargs):
             ouverture.statut = OuverturePoste.Statut.POURVU
             ouverture.save(update_fields=['statut', 'date_modification'])
 
+    # XRH4 — instancie automatiquement la checklist d'intégration du modèle
+    # applicable (le plus spécifique au poste/département du dossier créé,
+    # sinon le modèle par défaut de la société s'il existe). Best-effort :
+    # l'absence de tout modèle ne bloque jamais l'embauche.
+    instancier_integration(dossier)
+
     return dossier
+
+
+def _modele_integration_applicable(dossier):
+    """Modèle d'intégration le plus spécifique pour ``dossier`` (XRH4).
+
+    Priorité : (poste_ref ET departement) > poste_ref seul > departement seul
+    > modèle par défaut (les deux vides). ``None`` si aucun modèle actif.
+    """
+    from .models import ModeleIntegration
+
+    base = ModeleIntegration.objects.filter(
+        company=dossier.company, actif=True)
+    if dossier.poste_ref_id and dossier.departement_id:
+        exact = base.filter(
+            poste_ref_id=dossier.poste_ref_id,
+            departement_id=dossier.departement_id).first()
+        if exact:
+            return exact
+    if dossier.poste_ref_id:
+        match = base.filter(
+            poste_ref_id=dossier.poste_ref_id, departement__isnull=True
+        ).first()
+        if match:
+            return match
+    if dossier.departement_id:
+        match = base.filter(
+            departement_id=dossier.departement_id, poste_ref__isnull=True
+        ).first()
+        if match:
+            return match
+    return base.filter(poste_ref__isnull=True, departement__isnull=True).first()
+
+
+@transaction.atomic
+def instancier_integration(dossier, modele=None):
+    """Crée les ``ElementIntegrationEmploye`` du modèle applicable (XRH4).
+
+    Si ``modele`` n'est pas fourni, résout le modèle le plus spécifique via
+    ``_modele_integration_applicable`` (poste+département > poste > département
+    > défaut). Aucun modèle applicable → ne crée rien (renvoie ``[]``), sans
+    lever d'erreur : l'onboarding sans checklist configurée reste valide.
+    N'instancie PAS deux fois pour le même dossier (idempotent : si des
+    lignes existent déjà, les renvoie telles quelles sans dupliquer).
+    """
+    from .models import ElementIntegrationEmploye
+
+    existantes = list(
+        ElementIntegrationEmploye.objects.filter(employe=dossier))
+    if existantes:
+        return existantes
+
+    if modele is None:
+        modele = _modele_integration_applicable(dossier)
+    if modele is None:
+        return []
+
+    lignes = [
+        ElementIntegrationEmploye(
+            company=dossier.company, employe=dossier,
+            libelle=element.libelle, ordre=element.ordre)
+        for element in modele.elements.all()
+    ]
+    return ElementIntegrationEmploye.objects.bulk_create(lignes)
 
 
 def controler_permis_affectation(company, employe_id, *, le=None):

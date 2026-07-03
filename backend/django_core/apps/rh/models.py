@@ -412,6 +412,131 @@ class ElementSortie(models.Model):
         return f'{self.employe.matricule} — {self.libelle}'
 
 
+class ModeleIntegration(models.Model):
+    """Gabarit de checklist d'intégration/onboarding (XRH4).
+
+    Symétrique de la checklist de SORTIE (``ElementSortie``, FG161) côté
+    ENTRÉE : une société définit un ou plusieurs modèles d'intégration
+    (contrat signé, CIN/RIB collectés, déclaration CNSS, dotation EPI,
+    création compte, formation sécurité…) ciblés optionnellement par
+    ``poste_ref``/``departement`` — le modèle le plus spécifique applicable
+    est choisi à l'embauche (``services.embaucher``), sinon un modèle par
+    défaut (``poste_ref`` et ``departement`` tous deux vides) si présent.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_modeles_integration',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=160, verbose_name='Nom')
+    poste_ref = models.ForeignKey(
+        'Poste',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='modeles_integration',
+        verbose_name='Poste (optionnel)',
+    )
+    departement = models.ForeignKey(
+        Departement,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='modeles_integration',
+        verbose_name='Département (optionnel)',
+    )
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Modèle d'intégration"
+        verbose_name_plural = "Modèles d'intégration"
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
+class ElementIntegration(models.Model):
+    """Ligne gabarit ordonnée d'un ``ModeleIntegration`` (XRH4).
+
+    Ex. « Contrat signé », « CIN/RIB collectés », « Déclaration CNSS »,
+    « Dotation EPI », « Création compte », « Formation sécurité »… L'ordre
+    d'affichage/exécution est porté par ``ordre`` (croissant).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_elements_integration',
+        verbose_name='Société',
+    )
+    modele = models.ForeignKey(
+        ModeleIntegration,
+        on_delete=models.CASCADE,
+        related_name='elements',
+        verbose_name="Modèle d'intégration",
+    )
+    libelle = models.CharField(max_length=160, verbose_name='Libellé')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Élément d'intégration (gabarit)"
+        verbose_name_plural = "Éléments d'intégration (gabarit)"
+        ordering = ['ordre', 'libelle']
+        indexes = [models.Index(fields=['company', 'modele'])]
+
+    def __str__(self):
+        return f'{self.modele.nom} — {self.libelle}'
+
+
+class ElementIntegrationEmploye(models.Model):
+    """Instance de checklist d'intégration pour UN employé (XRH4).
+
+    Créée automatiquement à l'embauche (``services.embaucher``, FG189) à
+    partir des lignes du ``ModeleIntegration`` applicable, ou manuellement via
+    ``employes/{id}/instancier-integration``. ``fait``/``fait_par``/``date``
+    tracent la coche (jamais lue du corps pour ``fait_par``/``date`` — posés
+    côté serveur à la coche).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_elements_integration_employe',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='elements_integration',
+        verbose_name='Employé',
+    )
+    libelle = models.CharField(max_length=160, verbose_name='Libellé')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    fait = models.BooleanField(default=False, verbose_name='Fait')
+    fait_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_elements_integration_coches',
+        verbose_name='Fait par',
+    )
+    date = models.DateTimeField(
+        null=True, blank=True, verbose_name='Date de réalisation')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Élément d'intégration (employé)"
+        verbose_name_plural = "Éléments d'intégration (employé)"
+        ordering = ['ordre', 'libelle']
+        indexes = [models.Index(fields=['company', 'employe'])]
+
+    def __str__(self):
+        return f'{self.employe.matricule} — {self.libelle}'
+
+
 class TypeAbsence(models.Model):
     """Typologie d'absences (FG164) — catégorie de congé/absence + règle de
     décompte.

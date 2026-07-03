@@ -44,6 +44,8 @@ from .models import (
     DocumentEmploye,
     DossierEmploye,
     DotationEpi,
+    ElementIntegration,
+    ElementIntegrationEmploye,
     ElementSortie,
     ElementsVariablesPaie,
     EpiCatalogue,
@@ -52,6 +54,7 @@ from .models import (
     Habilitation,
     HeuresSupp,
     IncidentPresence,
+    ModeleIntegration,
     NoteDeFrais,
     OrdreMission,
     OuverturePoste,
@@ -90,6 +93,8 @@ from .serializers import (
     DocumentEmployeSerializer,
     DossierEmployeSerializer,
     DotationEpiSerializer,
+    ElementIntegrationEmployeSerializer,
+    ElementIntegrationSerializer,
     ElementSortieSerializer,
     ElementsVariablesPaieSerializer,
     EmargementEpiSerializer,
@@ -101,6 +106,7 @@ from .serializers import (
     HeuresSuppSerializer,
     IncidentPresenceSerializer,
     MesInfosSerializer,
+    ModeleIntegrationSerializer,
     NoteDeFraisSerializer,
     OrdreMissionSerializer,
     OuverturePosteSerializer,
@@ -253,6 +259,52 @@ class DossierEmployeViewSet(_RhBaseViewSet):
         employe.essai_date_fin = None
         employe.save(update_fields=['essai_date_fin'])
         return Response(self.get_serializer(employe).data)
+
+    @action(detail=True, methods=['post'], url_path='instancier-integration')
+    def instancier_integration(self, request, pk=None):
+        """Instancie manuellement la checklist d'intégration (XRH4).
+
+        Corps optionnel : ``modele`` (id) pour forcer un modèle précis (validé
+        même société) ; sinon le modèle le plus spécifique au poste/
+        département de l'employé est résolu automatiquement. Idempotent : si
+        des lignes existent déjà pour l'employé, elles sont renvoyées sans
+        duplication.
+        """
+        employe = self.get_object()
+        modele = None
+        modele_id = request.data.get('modele')
+        if modele_id:
+            try:
+                modele = ModeleIntegration.objects.get(
+                    pk=modele_id, company=request.user.company)
+            except (ModeleIntegration.DoesNotExist, ValueError, TypeError):
+                return Response(
+                    {'modele': "Modèle d'intégration inconnu."},
+                    status=status.HTTP_400_BAD_REQUEST)
+        lignes = services.instancier_integration(employe, modele=modele)
+        return Response(
+            ElementIntegrationEmployeSerializer(lignes, many=True).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], url_path='integration')
+    def integration(self, request, pk=None):
+        """Checklist d'intégration de l'employé + progression % (XRH4).
+
+        Lecture seule ; renvoie ``{lignes, total, faits, progression_pct}``.
+        """
+        employe = self.get_object()
+        lignes = list(
+            ElementIntegrationEmploye.objects.filter(employe=employe))
+        total = len(lignes)
+        faits = sum(1 for ligne in lignes if ligne.fait)
+        pct = round((faits / total) * 100) if total else 0
+        return Response({
+            'lignes': ElementIntegrationEmployeSerializer(
+                lignes, many=True).data,
+            'total': total,
+            'faits': faits,
+            'progression_pct': pct,
+        })
 
 
 class RemunerationViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -411,6 +463,62 @@ class ElementSortieViewSet(_RhBaseViewSet):
         elif recupere in ('1', 'true', 'True'):
             qs = qs.filter(recupere=True)
         return qs
+
+
+class ModeleIntegrationViewSet(_RhBaseViewSet):
+    """Gabarits de checklist d'intégration (XRH4). Recherche par nom."""
+    queryset = ModeleIntegration.objects.select_related(
+        'poste_ref', 'departement').prefetch_related('elements').all()
+    serializer_class = ModeleIntegrationSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom']
+    ordering_fields = ['nom']
+
+
+class ElementIntegrationViewSet(_RhBaseViewSet):
+    """Lignes gabarit d'un modèle d'intégration (XRH4). ``?modele=<id>``."""
+    queryset = ElementIntegration.objects.select_related('modele').all()
+    serializer_class = ElementIntegrationSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['ordre', 'libelle']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        modele = self.request.query_params.get('modele')
+        if modele:
+            qs = qs.filter(modele_id=modele)
+        return qs
+
+
+class ElementIntegrationEmployeViewSet(_RhBaseViewSet):
+    """Checklist d'intégration d'un employé (XRH4). ``?employe=<id>``.
+
+    Cocher/décocher journalise ``fait_par``/``date`` côté serveur.
+    """
+    queryset = ElementIntegrationEmploye.objects.select_related(
+        'employe', 'fait_par').all()
+    serializer_class = ElementIntegrationEmployeSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['ordre', 'libelle']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        return qs
+
+    def perform_update(self, serializer):
+        # ``fait_par``/``date`` sont posés côté serveur à la coche/décoche —
+        # jamais lus du corps (une note manuelle ne peut pas falsifier l'auteur
+        # ou la date de réalisation).
+        fait = serializer.validated_data.get('fait')
+        if fait is True and not serializer.instance.fait:
+            serializer.save(fait_par=self.request.user, date=timezone.now())
+        elif fait is False:
+            serializer.save(fait_par=None, date=None)
+        else:
+            serializer.save()
 
 
 class TypeAbsenceViewSet(_RhBaseViewSet):
