@@ -2567,3 +2567,119 @@ def generer_bulletin_stc(profil, periode, *, motif='', mois_preavis=1,
                 ordre=ordre,
             )
         return bulletin
+
+
+# ── XPAI2 — Régularisation IR annuelle (12e bulletin / sortie) ─────────────
+
+def calculer_regularisation_ir(bulletin):
+    """Calcule la régularisation IR annuelle due sur un bulletin (XPAI2).
+
+    L'IR est aujourd'hui retenu MOIS PAR MOIS, sans vérifier que le cumul
+    annuel réel correspond à ce qui aurait dû être retenu (une variation de
+    salaire en cours d'année — augmentation, prime exceptionnelle, régime
+    CIMR modifié — peut faire diverger l'IR mensuel cumulé de l'IR dû sur le
+    revenu annuel réel).
+
+    DÉCISION (barème mensuel unique, pas de barème annuel séparé dans ce
+    système) : la régularisation recalcule, pour CHAQUE bulletin VALIDÉ de
+    l'année (hors celui-ci, qui n'est pas encore validé) PLUS ce bulletin,
+    l'IR dû sur le net imposable de ce mois-là selon le barème/paramètre EN
+    VIGUEUR à la date du bulletin de régularisation (barème le plus récent de
+    l'année) — reproduisant la logique légale de la retenue à la source
+    régularisée en fin d'année sur la base des mêmes règles. La différence
+    entre cet IR théorique cumulé et l'IR RÉELLEMENT retenu cumulé (tel que
+    déjà figé sur les bulletins validés + ce bulletin) est la régularisation :
+    positive = rappel dû (retenue complémentaire) ; négative = trop-perçu
+    (remboursement).
+
+    Lecture seule (aucun effet de bord). Renvoie
+    ``{'ir_du_annuel', 'ir_retenu_annuel', 'delta', 'nombre_bulletins'}`` —
+    tous ``Decimal`` sauf le compteur. ``delta > 0`` → rappel dû par le
+    salarié (retenue complémentaire) ; ``delta < 0`` → trop-perçu à
+    rembourser.
+    """
+    from .models import BulletinPaie
+
+    profil = bulletin.profil
+    annee = bulletin.periode.annee
+    le_jour = date(bulletin.periode.annee, bulletin.periode.mois, 1)
+    parametre = parametre_en_vigueur(profil.company, le_jour)
+    bareme = bareme_en_vigueur(profil.company, le_jour)
+
+    autres_bulletins = (
+        BulletinPaie.objects
+        .filter(company=profil.company, profil=profil,
+                periode__annee=annee, statut=BulletinPaie.STATUT_VALIDE)
+        .exclude(pk=bulletin.pk)
+    )
+
+    ir_du_annuel = Decimal('0')
+    ir_retenu_annuel = Decimal('0')
+    nombre = 0
+    for b in list(autres_bulletins) + [bulletin]:
+        nombre += 1
+        ir_retenu_annuel += Decimal(b.ir or 0)
+        if bareme and parametre:
+            ir_du_mois = compute_ir(
+                Decimal(b.net_imposable or 0), bareme, parametre,
+                b.personnes_a_charge)
+        else:
+            ir_du_mois = Decimal(b.ir or 0)
+        ir_du_annuel += _q(ir_du_mois)
+
+    ir_du_annuel = _q(ir_du_annuel)
+    ir_retenu_annuel = _q(ir_retenu_annuel)
+    delta = _q(ir_du_annuel - ir_retenu_annuel)
+    return {
+        'ir_du_annuel': ir_du_annuel,
+        'ir_retenu_annuel': ir_retenu_annuel,
+        'delta': delta,
+        'nombre_bulletins': nombre,
+    }
+
+
+def appliquer_regularisation_ir(bulletin):
+    """Applique la régularisation IR annuelle sur un bulletin BROUILLON (XPAI2).
+
+    Ajoute (ou remplace) une ligne ``IR-REGUL`` au bulletin : montant positif
+    = retenue complémentaire (rappel), négatif = restitution (trop-perçu).
+    Met à jour ``bulletin.ir`` et ``bulletin.net_a_payer`` en conséquence.
+    N'agit QUE sur un bulletin en BROUILLON (la garde d'immuabilité du modèle
+    empêche toute écriture sur un bulletin validé). No-op si le delta calculé
+    est nul. Renvoie le ``delta`` appliqué (``Decimal``, peut être 0).
+    """
+    from .models import BulletinPaie, LigneBulletin
+
+    if bulletin.statut == BulletinPaie.STATUT_VALIDE:
+        raise BulletinPaie.BulletinVerrouille(
+            'Bulletin validé : régularisation IR impossible (figé).')
+
+    resultat = calculer_regularisation_ir(bulletin)
+    delta = resultat['delta']
+
+    with transaction.atomic():
+        # Retire une éventuelle ligne de régularisation précédente (recalcul
+        # idempotent tant que le bulletin est en brouillon).
+        bulletin.lignes.filter(code='IR-REGUL').delete()
+        if delta != 0:
+            ordre_max = (
+                bulletin.lignes.order_by('-ordre').values_list(
+                    'ordre', flat=True).first() or 0
+            )
+            LigneBulletin.objects.create(
+                company=bulletin.company,
+                bulletin=bulletin,
+                code='IR-REGUL',
+                libelle=(
+                    "Régularisation IR annuelle (rappel)" if delta > 0
+                    else "Régularisation IR annuelle (trop-perçu)"),
+                type=(
+                    Rubrique.TYPE_RETENUE if delta > 0
+                    else Rubrique.TYPE_GAIN),
+                montant=abs(delta),
+                ordre=ordre_max + 1,
+            )
+            bulletin.ir = _q(Decimal(bulletin.ir or 0) + delta)
+            bulletin.net_a_payer = _q(Decimal(bulletin.net_a_payer or 0) - delta)
+            bulletin.save(update_fields=['ir', 'net_a_payer'])
+    return delta
