@@ -696,7 +696,8 @@ def echeances_rh(company, within_days=30, today=None):
     ``{
         'type': 'habilitation' | 'certification' | 'document'
                 | 'visite_medicale' | 'dotation_epi'
-                | 'epi_peremption' | 'epi_controle' | 'fin_essai',
+                | 'epi_peremption' | 'epi_controle' | 'fin_essai'
+                | 'declaration_entree',
         'employe_id': int,
         'employe': str,                 # « MATRICULE — Nom Prénom »
         'libelle': str,                 # libellé lisible du titre/document
@@ -708,6 +709,10 @@ def echeances_rh(company, within_days=30, today=None):
     (une période d'essai qui arrive à son terme doit être confirmée ou rompue
     à temps) ; confirmer l'essai (``employes/{id}/confirmer-essai``) efface la
     date et retire l'employé de cette famille.
+
+    XRH5 — la famille ``declaration_entree`` alerte tout embauché dont
+    ``declaration_entree_statut = a_faire`` (due dès ``date_embauche``, jamais
+    hors fenêtre) ; marquer déclaré retire l'employé de cette famille.
     """
     if company is None:
         return []
@@ -857,6 +862,29 @@ def echeances_rh(company, within_days=30, today=None):
             'libelle': "Fin de période d'essai",
             'date_validite': emp.essai_date_fin,
             'jours_restants': (emp.essai_date_fin - today).days,
+        })
+
+    # XRH5 — déclaration d'entrée CNSS/AMO non faite. Due dès l'embauche : la
+    # « date_validite » est ``date_embauche`` (à défaut aujourd'hui, si un
+    # embauché n'a pas de date renseignée — TOUJOURS due, jamais hors fenêtre).
+    a_declarer = (
+        DossierEmploye.objects
+        .filter(
+            company=company,
+            declaration_entree_statut=(
+                DossierEmploye.DeclarationEntreeStatut.A_FAIRE))
+    )
+    for emp in a_declarer:
+        echeance = emp.date_embauche or today
+        if echeance > limite:
+            continue
+        rows.append({
+            'type': 'declaration_entree',
+            'employe_id': emp.id,
+            'employe': _employe_label(emp),
+            'libelle': "Déclaration d'entrée CNSS/AMO",
+            'date_validite': echeance,
+            'jours_restants': (echeance - today).days,
         })
 
     rows.sort(key=lambda r: (r['date_validite'], r['type'], r['employe_id']))

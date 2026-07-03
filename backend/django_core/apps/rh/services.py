@@ -576,16 +576,24 @@ def _modele_integration_applicable(dossier):
     return base.filter(poste_ref__isnull=True, departement__isnull=True).first()
 
 
+# XRH5 — item BLOQUANT toujours présent dans une checklist d'intégration
+# instanciée : la déclaration d'entrée CNSS/AMO (suivi de conformité). Ajouté
+# systématiquement (en fin de liste) si aucune ligne du modèle ne le porte
+# déjà (comparaison insensible à la casse sur le libellé).
+_LIBELLE_DECLARATION_ENTREE = "Déclaration d'entrée CNSS/AMO"
+
+
 @transaction.atomic
 def instancier_integration(dossier, modele=None):
     """Crée les ``ElementIntegrationEmploye`` du modèle applicable (XRH4).
 
     Si ``modele`` n'est pas fourni, résout le modèle le plus spécifique via
     ``_modele_integration_applicable`` (poste+département > poste > département
-    > défaut). Aucun modèle applicable → ne crée rien (renvoie ``[]``), sans
-    lever d'erreur : l'onboarding sans checklist configurée reste valide.
-    N'instancie PAS deux fois pour le même dossier (idempotent : si des
-    lignes existent déjà, les renvoie telles quelles sans dupliquer).
+    > défaut). Aucun modèle applicable → crée uniquement l'item bloquant XRH5
+    (déclaration d'entrée), sans lever d'erreur : l'onboarding sans checklist
+    configurée reste valide. N'instancie PAS deux fois pour le même dossier
+    (idempotent : si des lignes existent déjà, les renvoie telles quelles
+    sans dupliquer).
     """
     from .models import ElementIntegrationEmploye
 
@@ -596,15 +604,27 @@ def instancier_integration(dossier, modele=None):
 
     if modele is None:
         modele = _modele_integration_applicable(dossier)
-    if modele is None:
-        return []
 
-    lignes = [
-        ElementIntegrationEmploye(
+    lignes = []
+    ordre = 0
+    if modele is not None:
+        for element in modele.elements.all():
+            lignes.append(ElementIntegrationEmploye(
+                company=dossier.company, employe=dossier,
+                libelle=element.libelle, ordre=element.ordre))
+            ordre = max(ordre, element.ordre)
+
+    # XRH5 — item bloquant toujours ajouté s'il n'y figure pas déjà.
+    deja_present = any(
+        ligne.libelle.strip().lower() == _LIBELLE_DECLARATION_ENTREE.lower()
+        for ligne in lignes)
+    if not deja_present:
+        lignes.append(ElementIntegrationEmploye(
             company=dossier.company, employe=dossier,
-            libelle=element.libelle, ordre=element.ordre)
-        for element in modele.elements.all()
-    ]
+            libelle=_LIBELLE_DECLARATION_ENTREE, ordre=ordre + 1))
+
+    if not lignes:
+        return []
     return ElementIntegrationEmploye.objects.bulk_create(lignes)
 
 

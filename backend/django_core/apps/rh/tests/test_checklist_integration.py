@@ -76,19 +76,24 @@ class InstancierIntegrationServiceTests(TestCase):
             departement=self.dep)
         make_elements(specifique, ['C1', 'C2', 'C3'])
         lignes = services.instancier_integration(self.emp)
-        self.assertEqual(len(lignes), 3)
-        self.assertEqual(
-            {ligne.libelle for ligne in lignes}, {'C1', 'C2', 'C3'})
+        # XRH5 : + 1 item bloquant (déclaration d'entrée CNSS/AMO), toujours
+        # ajouté quand aucune ligne du modèle ne le porte déjà.
+        self.assertEqual(len(lignes), 4)
+        libelles = {ligne.libelle for ligne in lignes}
+        self.assertTrue({'C1', 'C2', 'C3'}.issubset(libelles))
 
     def test_modele_par_defaut_si_aucun_specifique(self):
         defaut = make_modele(self.co, 'Défaut')
         make_elements(defaut, ['Contrat signé', 'CIN/RIB collectés'])
         lignes = services.instancier_integration(self.emp)
-        self.assertEqual(len(lignes), 2)
+        self.assertEqual(len(lignes), 3)
 
     def test_aucun_modele_ne_leve_pas_erreur(self):
+        # XRH5 : même sans modèle configuré, l'item bloquant (déclaration
+        # d'entrée CNSS/AMO) est toujours créé — jamais d'exception.
         lignes = services.instancier_integration(self.emp)
-        self.assertEqual(lignes, [])
+        self.assertEqual(len(lignes), 1)
+        self.assertIn('CNSS', lignes[0].libelle)
 
     def test_idempotent_ne_duplique_pas(self):
         modele = make_modele(self.co, 'Standard')
@@ -112,7 +117,8 @@ class InstancierIntegrationServiceTests(TestCase):
             company=self.co, ouverture=ouverture, nom='Karim Bennani')
         dossier = services.embaucher(cand)
         lignes = ElementIntegrationEmploye.objects.filter(employe=dossier)
-        self.assertEqual(lignes.count(), 3)
+        # XRH5 : + 1 item bloquant (déclaration d'entrée CNSS/AMO).
+        self.assertEqual(lignes.count(), 4)
 
 
 class IntegrationApiTests(TestCase):
@@ -130,7 +136,8 @@ class IntegrationApiTests(TestCase):
         resp = auth(self.user_a).post(
             f'{EMPLOYES}{self.emp.id}/instancier-integration/')
         self.assertEqual(resp.status_code, 201, resp.data)
-        self.assertEqual(len(resp.data), 3)
+        # XRH5 : + 1 item bloquant (déclaration d'entrée CNSS/AMO).
+        self.assertEqual(len(resp.data), 4)
 
     def test_progression_pct(self):
         for i in range(4):

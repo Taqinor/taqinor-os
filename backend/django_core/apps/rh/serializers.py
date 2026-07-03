@@ -105,9 +105,13 @@ class DossierEmployeSerializer(serializers.ModelSerializer):
             'groupe_sanguin',
             # XRH1 — période d'essai.
             'essai_date_fin', 'essai_renouvele',
+            # XRH5 — déclaration d'entrée CNSS/AMO (statut posé côté serveur
+            # via l'action ``marquer-declare`` ; en écriture directe reste
+            # possible pour ``non_requis`` par un admin, mais jamais la date).
+            'declaration_entree_statut', 'declaration_entree_date',
             'date_creation',
         ]
-        read_only_fields = ['date_creation']
+        read_only_fields = ['date_creation', 'declaration_entree_date']
 
     def validate_departement(self, value):
         return _meme_societe(self, value, 'Département')

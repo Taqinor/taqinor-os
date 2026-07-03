@@ -227,6 +227,22 @@ class DossierEmploye(models.Model):
         null=True, blank=True, verbose_name="Fin de période d'essai")
     essai_renouvele = models.BooleanField(
         default=False, verbose_name="Période d'essai renouvelée")
+
+    # XRH5 — suivi de conformité de la déclaration d'entrée CNSS/AMO. On ne
+    # TRANSMET rien à Damancom ici — action manuelle du fondateur, on TRACE
+    # seulement (statut + date). Défaut ``a_faire`` : tout nouvel embauché en
+    # a besoin par défaut.
+    class DeclarationEntreeStatut(models.TextChoices):
+        A_FAIRE = 'a_faire', 'À faire'
+        DECLAREE = 'declaree', 'Déclarée'
+        NON_REQUIS = 'non_requis', 'Non requis'
+
+    declaration_entree_statut = models.CharField(
+        max_length=12, choices=DeclarationEntreeStatut.choices,
+        default=DeclarationEntreeStatut.A_FAIRE,
+        verbose_name="Déclaration d'entrée CNSS/AMO")
+    declaration_entree_date = models.DateField(
+        null=True, blank=True, verbose_name="Date de déclaration d'entrée")
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 

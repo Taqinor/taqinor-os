@@ -193,6 +193,40 @@ class DossierEmployeViewSet(_RhBaseViewSet):
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
 
+    @action(detail=False, methods=['get'], url_path='a-declarer')
+    def a_declarer(self, request):
+        """Embauchés sans déclaration d'entrée CNSS/AMO (XRH5), scopés société.
+
+        Filtre sur ``declaration_entree_statut = a_faire``. Marquer déclaré
+        (``employes/{id}/marquer-declare``) retire l'employé de cette liste.
+        """
+        qs = self.get_queryset().filter(
+            declaration_entree_statut=(
+                DossierEmploye.DeclarationEntreeStatut.A_FAIRE)
+        ).order_by('date_embauche')
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], url_path='marquer-declare')
+    def marquer_declare(self, request, pk=None):
+        """Marque la déclaration d'entrée CNSS/AMO comme faite (XRH5).
+
+        ``declaration_entree_date`` est posée CÔTÉ SERVEUR (aujourd'hui) —
+        jamais lue du corps. On ne transmet RIEN à Damancom ici : action
+        manuelle du fondateur, ceci ne fait que TRACER la conformité.
+        """
+        employe = self.get_object()
+        employe.declaration_entree_statut = (
+            DossierEmploye.DeclarationEntreeStatut.DECLAREE)
+        employe.declaration_entree_date = timezone.localdate()
+        employe.save(update_fields=[
+            'declaration_entree_statut', 'declaration_entree_date'])
+        return Response(self.get_serializer(employe).data)
+
     @action(detail=True, methods=['get'], url_path='verifier-habilitation')
     def verifier_habilitation(self, request, pk=None):
         """Garde d'affectation par habilitation (FG176) — BLOCAGE DOUX.
