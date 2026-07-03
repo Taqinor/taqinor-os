@@ -1091,7 +1091,9 @@ class Paiement(models.Model):
         from decimal import Decimal
         if self.facture_id and not self.affectations.exists():
             return Decimal('0')
-        reste = self.montant - self.montant_affecte
+        montant = self.montant if isinstance(self.montant, Decimal) \
+            else Decimal(str(self.montant))
+        reste = montant - self.montant_affecte
         return reste if reste > 0 else Decimal('0')
 
 

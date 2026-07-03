@@ -115,8 +115,11 @@ class XFAC1AvancesTests(TestCase):
         self.assertEqual(f2.montant_du, Decimal('0'))
 
         avance.refresh_from_db()
-        self.assertEqual(avance.statut_affectation, 'affecte')
-        self.assertEqual(avance.montant_disponible, Decimal('0'))
+        # 5000 ventilés à 2000 + 2500 = 4500 : il reste 500 disponibles sur
+        # l'avance (les DEUX factures sont soldées, mais l'avance elle-même
+        # n'est pas totalement affectée).
+        self.assertEqual(avance.statut_affectation, 'partiellement_affecte')
+        self.assertEqual(avance.montant_disponible, Decimal('500'))
 
     # ── 3. Jamais de sur-affectation ──
     def test_ventiler_cannot_exceed_montant_disponible(self):

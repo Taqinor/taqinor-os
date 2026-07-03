@@ -2323,11 +2323,17 @@ def enregistrer_avance(*, company, client, montant, date_paiement, mode,
     commande, trop-perçu). Le paiement reste ``statut_affectation=non_affecte``
     tant qu'il n'a pas été ventilé sur une ou plusieurs factures ouvertes du
     même client (voir ``ventiler_avance``)."""
-    from decimal import Decimal
+    from decimal import Decimal, InvalidOperation
     from rest_framework.exceptions import ValidationError
     from .models import Paiement
 
-    if montant is None or Decimal(montant) <= 0:
+    if montant is None:
+        raise ValidationError({'montant': 'Le montant doit être positif.'})
+    try:
+        montant = Decimal(str(montant))
+    except InvalidOperation:
+        raise ValidationError({'montant': 'Montant invalide.'})
+    if montant <= 0:
         raise ValidationError({'montant': 'Le montant doit être positif.'})
     if client is None:
         raise ValidationError({'client': 'Client requis pour une avance.'})
