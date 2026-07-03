@@ -54,6 +54,8 @@ from .models import (
     OrdreAssemblageActivity,
     OrdreAssemblageLigne,
     SerieAssemblage,
+    OrdreDemontage,
+    OrdreDemontageLigne,
     Livraison,
     LivraisonLigne,
     PreuveLivraison,
@@ -2189,6 +2191,51 @@ class SerieAssemblageSerializer(serializers.ModelSerializer):
         value = (value or '').strip()
         if not value:
             raise serializers.ValidationError('Numéro de série requis.')
+        return value
+
+
+class OrdreDemontageLigneSerializer(serializers.ModelSerializer):
+    """XMFG12 - ligne de démontage : quantité attendue (BOM) vs récupérée
+    (éditable ligne à ligne avant clôture)."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+
+    class Meta:
+        model = OrdreDemontageLigne
+        fields = [
+            'id', 'ordre', 'produit', 'produit_nom', 'designation',
+            'quantite_attendue', 'quantite_recuperee',
+        ]
+        read_only_fields = ['quantite_attendue']
+
+
+class OrdreDemontageSerializer(serializers.ModelSerializer):
+    """XMFG12 - ordre de démontage (unbuild) : composite → composants.
+    Référence/société/`created_by` posés COTE SERVEUR."""
+    kit_nom = serializers.CharField(
+        source='kit.nom', read_only=True, default=None)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+    lignes = OrdreDemontageLigneSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = OrdreDemontage
+        fields = [
+            'id', 'reference', 'kit', 'kit_nom', 'quantite', 'statut',
+            'statut_display', 'note', 'date_terminaison',
+            'emplacement_source', 'emplacement_destination',
+            'stock_mouvemente', 'lignes',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'reference', 'statut', 'date_terminaison', 'stock_mouvemente',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+
+    def validate_quantite(self, value):
+        if value is None or value <= 0:
+            raise serializers.ValidationError(
+                'La quantite a demonter doit etre strictement positive.')
         return value
 
 

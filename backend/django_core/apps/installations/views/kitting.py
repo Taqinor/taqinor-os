@@ -24,17 +24,21 @@ from apps.ventes.utils.references import create_with_reference
 from apps.ventes.selectors import get_devis_by_pk
 
 from .. import activity_kitting as activity
-from ..models import Kit, KitComposant, OrdreAssemblage, OrdreAssemblageLigne
+from ..models import (
+    Kit, KitComposant, OrdreAssemblage, OrdreAssemblageLigne,
+    OrdreDemontage, OrdreDemontageLigne,
+)
 from ..serializers import (
     KitSerializer, KitComposantSerializer, OrdreAssemblageSerializer,
     OrdreAssemblageActivitySerializer, OrdreAssemblageLigneSerializer,
-    SerieAssemblageSerializer,
+    SerieAssemblageSerializer, OrdreDemontageSerializer,
+    OrdreDemontageLigneSerializer,
 )
 from ..services import (
     seed_reservations_assemblage, release_reservations_assemblage,
     disponibilite_par_ligne, alerter_penurie_assemblage,
     seed_lignes_assemblage, enregistrer_series_assemblage,
-    etiquette_items_assemblage,
+    etiquette_items_assemblage, seed_lignes_demontage,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -539,3 +543,128 @@ class OrdreAssemblageViewSet(TenantMixin, viewsets.ModelViewSet):
         symbology = request.query_params.get('symbology', 'qr')
         html = render_labels_html(items, symbology=symbology)
         return HR(html, content_type='text/html; charset=utf-8')
+
+
+class OrdreDemontageLigneViewSet(viewsets.ModelViewSet):
+    """XMFG12 — lignes de démontage (quantité récupérée éditable). Pas de
+    `company` propre : scope via l'ordre parent. Filtrable par `ordre`.
+    Éditable UNIQUEMENT tant que l'ordre est planifié."""
+    queryset = OrdreDemontageLigne.objects.select_related('ordre', 'produit').all()
+    serializer_class = OrdreDemontageLigneSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if user.company_id:
+            qs = qs.filter(ordre__company=user.company)
+        elif not user.is_superuser:
+            qs = qs.none()
+        ordre = self.request.query_params.get('ordre')
+        if ordre:
+            qs = qs.filter(ordre_id=ordre)
+        return qs
+
+    def _check_parent(self, serializer):
+        company = self.request.user.company
+        cid = getattr(company, 'id', None)
+        ordre = serializer.validated_data.get('ordre') or getattr(
+            serializer.instance, 'ordre', None)
+        if ordre is not None and getattr(ordre, 'company_id', None) != cid:
+            raise ValidationError(
+                {'ordre': 'Ordre inconnu pour cette société.'})
+        if ordre is not None and ordre.statut != OrdreDemontage.Statut.PLANIFIE:
+            raise ValidationError({
+                'ordre': "Lignes verrouillées : l'ordre n'est plus planifié."})
+
+    def perform_update(self, serializer):
+        self._check_parent(serializer)
+        serializer.save()
+
+
+class OrdreDemontageViewSet(TenantMixin, viewsets.ModelViewSet):
+    """XMFG12 — ordres de démontage (unbuild) : composite → composants.
+    Lecture tout rôle, écriture responsable/admin. Référence/société/
+    `created_by` posés serveur. Filtrable par `statut`, `kit`."""
+    queryset = OrdreDemontage.objects.select_related('kit', 'created_by').all()
+    serializer_class = OrdreDemontageSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        kit = params.get('kit')
+        if kit:
+            qs = qs.filter(kit_id=kit)
+        return qs
+
+    def _check_tenant(self, serializer):
+        company = self.request.user.company
+        cid = getattr(company, 'id', None)
+        kit = serializer.validated_data.get('kit')
+        if kit is not None and getattr(kit, 'company_id', None) != cid:
+            raise ValidationError(
+                {'kit': 'Kit inconnu pour cette société.'})
+
+    def perform_create(self, serializer):
+        company = self.request.user.company
+        self._check_tenant(serializer)
+
+        def _save(reference):
+            return serializer.save(
+                company=company, created_by=self.request.user,
+                reference=reference)
+
+        create_with_reference(OrdreDemontage, 'DSM', company, _save)
+        seed_lignes_demontage(serializer.instance)
+
+    def perform_update(self, serializer):
+        self._check_tenant(serializer)
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=True, methods=['post'])
+    def terminer(self, request, pk=None):
+        """XMFG12 — clôture l'ordre de démontage : sort le composite, restocke
+        les composants selon les quantités RÉCUPÉRÉES (éditées ligne à ligne).
+        Idempotent via `stock_mouvemente`."""
+        from django.db import transaction
+        from apps.stock.services import demonter_composite
+
+        ordre = self.get_object()
+        if ordre.kit.produit_compose_id is None:
+            raise ValidationError({
+                'kit': "Ce kit n'a pas d'article composite "
+                       "(produit_compose) : démontage impossible."})
+
+        with transaction.atomic():
+            ordre = OrdreDemontage.objects.select_for_update().get(pk=ordre.pk)
+            already_moved = ordre.stock_mouvemente
+            ordre.statut = OrdreDemontage.Statut.TERMINE
+            ordre.date_terminaison = timezone.now()
+            update_fields = [
+                'statut', 'date_terminaison', 'date_modification']
+            if not already_moved:
+                lignes = list(ordre.lignes.select_related('produit').all())
+                demonter_composite(
+                    company=ordre.company, kit=ordre.kit,
+                    quantite_demontee=ordre.quantite,
+                    lignes_recuperation=lignes,
+                    produit_compose=ordre.kit.produit_compose,
+                    reference=ordre.reference, user=request.user,
+                    emplacement_source=ordre.emplacement_source,
+                    emplacement_destination=ordre.emplacement_destination)
+                ordre.stock_mouvemente = True
+                update_fields.append('stock_mouvemente')
+            ordre.save(update_fields=update_fields)
+        return Response(self.get_serializer(ordre).data)

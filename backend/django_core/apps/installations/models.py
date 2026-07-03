@@ -168,6 +168,8 @@ from .models_kitting import (
     OrdreAssemblageActivity,
     OrdreAssemblageLigne,
     SerieAssemblage,
+    OrdreDemontage,
+    OrdreDemontageLigne,
 )
 from .models_livraison import (
     Livraison,
@@ -265,6 +267,8 @@ __all__ = [
     'OrdreAssemblageActivity',
     'OrdreAssemblageLigne',
     'SerieAssemblage',
+    'OrdreDemontage',
+    'OrdreDemontageLigne',
     'Livraison',
     'LivraisonLigne',
     'PreuveLivraison',

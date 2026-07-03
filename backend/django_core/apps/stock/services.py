@@ -1815,3 +1815,76 @@ def consommer_et_produire_assemblage(*, company, kit, composants, produit_compos
             se.save(update_fields=['quantite'])
 
     return mouvements
+
+
+# ── XMFG12 — Démontage (unbuild) : composite → composants ────────────────────
+# Chemin INVERSE de XMFG1 : `installations.OrdreDemontage.terminer` appelle CE
+# service pour un composite de retour (annulation, kit démo cannibalisé) —
+# SORTIE du composite + ENTREE de chaque composant selon les quantités
+# RÉCUPÉRÉES (éditables ligne à ligne, jamais la BOM brute).
+
+def demonter_composite(*, company, kit, quantite_demontee, lignes_recuperation,
+                       produit_compose, reference, user,
+                       emplacement_source=None, emplacement_destination=None):
+    """Sort le composite (`quantite_demontee` unités) et restocke chaque
+    composant selon ``lignes_recuperation`` — itérable d'objets avec
+    ``.produit`` et ``.quantite_recuperee`` (déjà le TOTAL récupéré, PAS par
+    unité). Les composants cassés (récupéré < attendu) ne sont PAS restockés
+    ici — l'appelant les déclare en rebut (XMFG11) séparément. Lève ValueError
+    si ``produit_compose`` est None."""
+    from django.db import transaction
+    from .models import Produit, StockEmplacement
+
+    if produit_compose is None:
+        raise ValueError(
+            "Le kit n'a pas de produit composite (produit_compose) : "
+            "démontage impossible.")
+
+    with transaction.atomic():
+        mouvements = []
+        composite = Produit.objects.select_for_update().get(id=produit_compose.id)
+        avant_c = composite.quantite_stock
+        qte_sortie = min(quantite_demontee, avant_c) if avant_c > 0 else 0
+        apres_c = avant_c - qte_sortie
+        mvt_sortie = record_stock_movement(
+            company=company, produit=composite,
+            type_mouvement=mouvement_type_sortie(),
+            quantite=qte_sortie, quantite_avant=avant_c, quantite_apres=apres_c,
+            reference=reference,
+            note=f'Démontage {reference} — composite kit {kit.id}',
+            created_by=user)
+        mouvements.append(mvt_sortie)
+        if emplacement_source is not None and not emplacement_source.is_principal:
+            se, _ = StockEmplacement.objects.select_for_update().get_or_create(
+                produit=composite, emplacement=emplacement_source,
+                defaults={'company': company, 'quantite': 0})
+            se.quantite = max(se.quantite - qte_sortie, 0)
+            se.save(update_fields=['quantite'])
+
+        for ligne in lignes_recuperation:
+            comp_produit = ligne.produit
+            if comp_produit is None:
+                continue
+            qte_recup = ligne.quantite_recuperee or 0
+            if qte_recup <= 0:
+                continue
+            p = Produit.objects.select_for_update().get(id=comp_produit.id)
+            avant = p.quantite_stock
+            apres = avant + qte_recup
+            mvt = record_stock_movement(
+                company=company, produit=p,
+                type_mouvement=mouvement_type_entree(),
+                quantite=qte_recup, quantite_avant=avant, quantite_apres=apres,
+                reference=reference,
+                note=f'Démontage {reference} — composant récupéré kit {kit.id}',
+                created_by=user)
+            mouvements.append(mvt)
+            if emplacement_destination is not None and \
+                    not emplacement_destination.is_principal:
+                se, _ = StockEmplacement.objects.select_for_update().get_or_create(
+                    produit=p, emplacement=emplacement_destination,
+                    defaults={'company': company, 'quantite': 0})
+                se.quantite += qte_recup
+                se.save(update_fields=['quantite'])
+
+    return mouvements

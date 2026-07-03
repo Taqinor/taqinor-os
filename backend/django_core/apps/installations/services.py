@@ -1560,3 +1560,24 @@ def etiquette_items_assemblage(ordre):
             'sous_titre': s.numero_serie,
         })
     return items
+
+
+# ── XMFG12 — Ordre de démontage (unbuild) ─────────────────────────────────────
+
+def seed_lignes_demontage(ordre_demontage):
+    """XMFG12 — copie la BOM du kit en lignes de démontage éditables (quantité
+    ATTENDUE = BOM × ordre.quantite ; RÉCUPÉRÉE par défaut = attendue, éditable
+    ligne à ligne avant la clôture). Idempotent."""
+    from .models import OrdreDemontageLigne
+    if ordre_demontage.lignes.exists():
+        return list(ordre_demontage.lignes.all())
+    lignes = [
+        OrdreDemontageLigne(
+            ordre=ordre_demontage, produit=c.produit, designation=c.designation,
+            quantite_attendue=(c.quantite or 0) * ordre_demontage.quantite,
+            quantite_recuperee=(c.quantite or 0) * ordre_demontage.quantite,
+        )
+        for c in ordre_demontage.kit.composants.all()
+    ]
+    OrdreDemontageLigne.objects.bulk_create(lignes)
+    return list(ordre_demontage.lignes.all())

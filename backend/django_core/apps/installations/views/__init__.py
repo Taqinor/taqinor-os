@@ -59,7 +59,8 @@ from .reappro import RegleReapproViewSet
 from .consignation import MaterielConsigneViewSet
 from .kitting import (
     KitViewSet, KitComposantViewSet, OrdreAssemblageViewSet,
-    OrdreAssemblageLigneViewSet,
+    OrdreAssemblageLigneViewSet, OrdreDemontageViewSet,
+    OrdreDemontageLigneViewSet,
 )
 from .livraison import LivraisonViewSet, LivraisonLigneViewSet
 from .pod import PreuveLivraisonViewSet
@@ -132,6 +133,8 @@ __all__ = [
     'KitComposantViewSet',
     'OrdreAssemblageViewSet',
     'OrdreAssemblageLigneViewSet',
+    'OrdreDemontageViewSet',
+    'OrdreDemontageLigneViewSet',
     'LivraisonViewSet',
     'LivraisonLigneViewSet',
     'PreuveLivraisonViewSet',

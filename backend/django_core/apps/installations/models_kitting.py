@@ -333,3 +333,88 @@ class SerieAssemblage(models.Model):
 
     def __str__(self):
         return f'{self.ordre_id} · {self.role} · {self.numero_serie}'
+
+
+class OrdreDemontage(models.Model):
+    """XMFG12 — ordre de DÉMONTAGE (unbuild) : chemin inverse de
+    l'assemblage, composite → composants. Référence ``DSM-YYYYMM-NNNN``
+    anti-collision (même pattern que ``OrdreAssemblage``). À la clôture :
+    SORTIE du composite + ENTREE de chaque composant selon la BOM, avec
+    quantités RÉCUPÉRÉES éditables ligne à ligne (les composants cassés non
+    restockés sont déclarés en rebut — XMFG11). Idempotent via
+    `stock_mouvemente`."""
+
+    class Statut(models.TextChoices):
+        PLANIFIE = 'planifie', 'Planifié'
+        TERMINE = 'termine', 'Terminé'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='installations_ordres_demontage')
+    reference = models.CharField(max_length=50)
+    kit = models.ForeignKey(
+        Kit, on_delete=models.PROTECT, related_name='ordres_demontage')
+    quantite = models.PositiveIntegerField(default=1)
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.PLANIFIE)
+    note = models.TextField(blank=True, null=True)
+    emplacement_source = models.ForeignKey(
+        'stock.EmplacementStock', on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='installations_ordres_demontage_source')
+    emplacement_destination = models.ForeignKey(
+        'stock.EmplacementStock', on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='installations_ordres_demontage_destination')
+    stock_mouvemente = models.BooleanField(default=False)
+    date_terminaison = models.DateTimeField(null=True, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='installations_ordres_demontage_crees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Ordre de démontage'
+        verbose_name_plural = 'Ordres de démontage'
+        ordering = ['-date_creation']
+        unique_together = [('company', 'reference')]
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='idx_dsm_co_statut'),
+            models.Index(fields=['company', 'kit'], name='idx_dsm_co_kit'),
+        ]
+
+    def __str__(self):
+        return f'{self.reference} ({self.statut})'
+
+
+class OrdreDemontageLigne(models.Model):
+    """XMFG12 — quantité RÉCUPÉRÉE éditable par composant, copiée depuis la
+    BOM du kit à la création de l'ordre. La différence entre la quantité BOM
+    attendue et la quantité récupérée (`quantite_recuperee < quantite_attendue`)
+    représente la perte — déclarable en rebut (XMFG11) par l'appelant."""
+
+    ordre = models.ForeignKey(
+        OrdreDemontage, on_delete=models.CASCADE, related_name='lignes')
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='installations_ordre_demontage_lignes')
+    designation = models.CharField(max_length=255, blank=True, null=True)
+    quantite_attendue = models.PositiveIntegerField(default=0)
+    quantite_recuperee = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        verbose_name = 'Ligne de démontage'
+        verbose_name_plural = 'Lignes de démontage'
+        ordering = ['ordre_id', 'id']
+        indexes = [
+            models.Index(fields=['ordre'], name='idx_dsmligne_ordre'),
+        ]
+
+    def __str__(self):
+        return (f'{self.ordre_id} · {self.designation or self.produit_id} '
+                f'récup {self.quantite_recuperee}/{self.quantite_attendue}')
