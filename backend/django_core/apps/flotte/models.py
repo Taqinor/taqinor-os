@@ -4081,3 +4081,78 @@ class RemiseAccessoire(models.Model):
     def __str__(self):
         return (f'{self.get_type_accessoire_display()} — '
                 f'{self.actif_flotte} → {self.conducteur}')
+
+
+# ── XFLT21 — Journal d'audit flotte ─────────────────────────────────────────────
+
+class ActiviteFlotte(models.Model):
+    """Historique immuable des changements sur véhicule/affectation/statut
+    (XFLT21).
+
+    Modèle maison sur le principe du chatter CRM (``crm.LeadActivity`` COMME
+    RÉFÉRENCE DE CONCEPTION — jamais importé, aucun couplage cross-app) :
+    une entrée par changement RÉEL (ancien→nouveau), alimentée dans
+    ``perform_update`` des viewsets concernés (``VehiculeViewSet``,
+    ``AffectationConducteurViewSet``) — utilisateur et société TOUJOURS
+    posés côté serveur. Immuable : aucune suppression/édition possible
+    (lecture + création seules, jamais d'update/delete depuis l'API).
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête).
+    """
+
+    class TypeObjet(models.TextChoices):
+        VEHICULE = 'vehicule', 'Véhicule'
+        AFFECTATION = 'affectation', 'Affectation conducteur'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_activites',
+        verbose_name='Société',
+    )
+    type_objet = models.CharField(
+        max_length=11, choices=TypeObjet.choices, verbose_name="Type d'objet")
+    objet_id = models.PositiveIntegerField(verbose_name="ID de l'objet")
+    # Rattachement direct au véhicule pour lister l'historique sur la fiche
+    # véhicule même quand type_objet='affectation' (l'affectation porte un
+    # véhicule) — évite un JOIN cross-modèle pour l'action ``historique/``.
+    vehicule = models.ForeignKey(
+        'Vehicule',
+        on_delete=models.CASCADE,
+        related_name='flotte_activites',
+        verbose_name='Véhicule',
+    )
+    champ = models.CharField(max_length=60, verbose_name='Champ modifié')
+    ancienne_valeur = models.CharField(
+        max_length=255, blank=True, verbose_name='Ancienne valeur')
+    nouvelle_valeur = models.CharField(
+        max_length=255, blank=True, verbose_name='Nouvelle valeur')
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='flotte_activites',
+        verbose_name='Utilisateur',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Activité flotte (journal d'audit)"
+        verbose_name_plural = "Activités flotte (journal d'audit)"
+        ordering = ['-date_creation', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'vehicule'],
+                name='flotte_act_co_veh_idx',
+            ),
+            models.Index(
+                fields=['company', 'type_objet', 'objet_id'],
+                name='flotte_act_co_type_obj_idx',
+            ),
+        ]
+
+    def __str__(self):
+        return (f'{self.get_type_objet_display()} #{self.objet_id} — '
+                f'{self.champ} : {self.ancienne_valeur} → {self.nouvelle_valeur}')

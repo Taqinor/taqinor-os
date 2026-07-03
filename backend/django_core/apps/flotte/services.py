@@ -1472,3 +1472,72 @@ def avertissement_accessoires_non_rendus(affectation):
     return (
         f"Accessoires non rendus par {affectation.conducteur} pour "
         f"{affectation.vehicule} : {libelles}.")
+
+
+# ── XFLT21 — Journal d'audit flotte ─────────────────────────────────────────────
+
+# Champs suivis sur Vehicule (diffs journalisés) — limité aux champs à
+# valeur métier (statut, affectation-adjacents) pour éviter le bruit
+# (dates de création, etc.).
+_CHAMPS_SUIVIS_VEHICULE = ('statut', 'kilometrage', 'type_fiscal', 'modele_ref_id')
+_CHAMPS_SUIVIS_AFFECTATION = ('conducteur_id', 'date_fin', 'actif')
+
+
+def journaliser_activite(*, company, vehicule, type_objet, objet_id, champ,
+                         ancienne_valeur, nouvelle_valeur, user=None):
+    """XFLT21 — Crée une entrée ``ActiviteFlotte`` (immuable, jamais mise à
+    jour ni supprimée). Les valeurs sont converties en ``str`` (tronquées à
+    255 caractères, borne du champ) — aucune validation métier ici, c'est un
+    simple journal."""
+    from .models import ActiviteFlotte
+
+    return ActiviteFlotte.objects.create(
+        company=company, vehicule=vehicule, type_objet=type_objet,
+        objet_id=objet_id, champ=champ,
+        ancienne_valeur=str(ancienne_valeur if ancienne_valeur is not None
+                            else '')[:255],
+        nouvelle_valeur=str(nouvelle_valeur if nouvelle_valeur is not None
+                            else '')[:255],
+        user=user,
+    )
+
+
+def journaliser_diff_vehicule(avant, apres, user=None):
+    """XFLT21 — Compare l'état AVANT/APRÈS d'un ``Vehicule`` (dicts de
+    valeurs des champs suivis) et journalise chaque changement RÉEL.
+    Retourne la liste des entrées créées (peut être vide)."""
+    from .models import ActiviteFlotte
+
+    crees = []
+    for champ in _CHAMPS_SUIVIS_VEHICULE:
+        ancienne = avant.get(champ)
+        nouvelle = apres.get(champ)
+        if ancienne == nouvelle:
+            continue
+        crees.append(journaliser_activite(
+            company=apres['company'], vehicule=apres['instance'],
+            type_objet=ActiviteFlotte.TypeObjet.VEHICULE,
+            objet_id=apres['instance'].id, champ=champ,
+            ancienne_valeur=ancienne, nouvelle_valeur=nouvelle, user=user))
+    return crees
+
+
+def journaliser_diff_affectation(avant, apres, user=None):
+    """XFLT21 — Compare l'état AVANT/APRÈS d'une ``AffectationConducteur``
+    (dicts de valeurs des champs suivis) et journalise chaque changement
+    RÉEL, rattaché au véhicule de l'affectation. Retourne la liste des
+    entrées créées (peut être vide)."""
+    from .models import ActiviteFlotte
+
+    crees = []
+    for champ in _CHAMPS_SUIVIS_AFFECTATION:
+        ancienne = avant.get(champ)
+        nouvelle = apres.get(champ)
+        if ancienne == nouvelle:
+            continue
+        crees.append(journaliser_activite(
+            company=apres['company'], vehicule=apres['vehicule'],
+            type_objet=ActiviteFlotte.TypeObjet.AFFECTATION,
+            objet_id=apres['instance'].id, champ=champ,
+            ancienne_valeur=ancienne, nouvelle_valeur=nouvelle, user=user))
+    return crees

@@ -58,6 +58,7 @@ from .models import (
 from .serializers import (
     AccuseCharteSerializer,
     ActifFlotteSerializer,
+    ActiviteFlotteSerializer,
     AffectationConducteurSerializer,
     AssuranceVehiculeSerializer,
     BaremeVignetteSerializer,
@@ -101,7 +102,8 @@ READ_ACTIONS = ['list', 'retrieve', 'consommation', 'anomalies', 'echeances',
                 'couts', 'synthese', 'expirantes', 'tsav', 'alertes_echeances',
                 'tco', 'eco_conduite', 'documents', 'tableau_bord', 'journal',
                 'amortissement', 'expirants', 'ledger', 'historique',
-                'synthese_tva', 'detenteurs_courants', 'taux_completion']
+                'synthese_tva', 'detenteurs_courants', 'taux_completion',
+                'activites']
 
 
 def _parse_date_param(value):
@@ -155,6 +157,32 @@ class VehiculeViewSet(_FlotteBaseViewSet):
         modele = serializer.validated_data.get('modele_ref')
         prefill_depuis_modele(serializer.validated_data, modele)
         serializer.save(company=self.request.user.company)
+
+    def perform_update(self, serializer):
+        # XFLT21 — Journal d'audit : journalise chaque changement RÉEL des
+        # champs suivis (statut, kilométrage, type fiscal, modèle de
+        # référence). Le statut passé par ``changer-statut/`` a déjà son
+        # propre journal dédié (``JournalStatutVehicule``, XFLT4) — un PATCH
+        # direct ici (hors cette action) est ce que ``ActiviteFlotte`` capture.
+        from .services import journaliser_diff_vehicule
+
+        instance = serializer.instance
+        avant = {
+            'statut': instance.statut,
+            'kilometrage': instance.kilometrage,
+            'type_fiscal': instance.type_fiscal,
+            'modele_ref_id': instance.modele_ref_id,
+        }
+        serializer.save(company=self.request.user.company)
+        apres = {
+            'company': self.request.user.company,
+            'instance': serializer.instance,
+            'statut': serializer.instance.statut,
+            'kilometrage': serializer.instance.kilometrage,
+            'type_fiscal': serializer.instance.type_fiscal,
+            'modele_ref_id': serializer.instance.modele_ref_id,
+        }
+        journaliser_diff_vehicule(avant, apres, user=self.request.user)
 
     @action(detail=True, methods=['get'])
     def tsav(self, request, pk=None):
@@ -279,6 +307,22 @@ class VehiculeViewSet(_FlotteBaseViewSet):
             company=request.user.company, vehicule=vehicule
         ).select_related('user')
         serializer = JournalStatutVehiculeSerializer(qs, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['get'])
+    def activites(self, request, pk=None):
+        """XFLT21 — Journal d'audit du véhicule (statut/affectation/etc.),
+        lecture tout rôle, du plus récent au plus ancien. Distinct de
+        ``historique/`` (XFLT4, dédié aux transitions de statut via l'action
+        ``changer-statut/``) — ``ActiviteFlotte`` capture aussi les
+        modifications directes et les changements d'affectation conducteur.
+        """
+        vehicule = self.get_object()
+        from .models import ActiviteFlotte
+        qs = ActiviteFlotte.objects.filter(
+            company=request.user.company, vehicule=vehicule
+        ).select_related('user')
+        serializer = ActiviteFlotteSerializer(qs, many=True)
         return Response(serializer.data)
 
     @action(detail=True, methods=['post'])

@@ -436,7 +436,32 @@ class AffectationConducteurSerializer(serializers.ModelSerializer):
         return self._attach_warning(instance)
 
     def update(self, instance, validated_data):
+        # XFLT21 — Journal d'audit : capture l'état AVANT modification pour
+        # journaliser chaque changement RÉEL (conducteur/date_fin/actif).
+        from .services import journaliser_diff_affectation
+
+        avant = {
+            'conducteur_id': instance.conducteur_id,
+            'date_fin': instance.date_fin,
+            'actif': instance.actif,
+        }
+        company = instance.company
+        vehicule = instance.vehicule
+
         instance = super().update(instance, validated_data)
+
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        apres = {
+            'company': company,
+            'vehicule': vehicule,
+            'instance': instance,
+            'conducteur_id': instance.conducteur_id,
+            'date_fin': instance.date_fin,
+            'actif': instance.actif,
+        }
+        journaliser_diff_affectation(avant, apres, user=user)
+
         # XFLT20 — Warning accessoires non rendus, calculé QUAND la mise à
         # jour clôture l'affectation (date_fin renseignée).
         from .services import avertissement_accessoires_non_rendus
@@ -2215,3 +2240,27 @@ class RemiseAccessoireSerializer(serializers.ModelSerializer):
                  "La date de retour ne peut pas précéder la remise."})
 
         return attrs
+
+
+# ── XFLT21 — Journal d'audit flotte ─────────────────────────────────────────────
+
+class ActiviteFlotteSerializer(serializers.ModelSerializer):
+    """XFLT21 — Entrée du journal d'audit flotte (lecture + création seules,
+    IMMUABLE — jamais d'update/delete depuis l'API)."""
+
+    type_objet_display = serializers.CharField(
+        source='get_type_objet_display', read_only=True)
+    user_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import ActiviteFlotte
+        model = ActiviteFlotte
+        fields = [
+            'id', 'vehicule', 'type_objet', 'type_objet_display', 'objet_id',
+            'champ', 'ancienne_valeur', 'nouvelle_valeur', 'user', 'user_nom',
+            'date_creation',
+        ]
+        read_only_fields = fields
+
+    def get_user_nom(self, obj):
+        return obj.user.get_username() if obj.user_id else None
