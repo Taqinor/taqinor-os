@@ -887,8 +887,13 @@ def resume_rapprochement(rapprochement):
             montant_non_pointe += ligne.montant or Decimal('0')
             toutes_concordantes = False
     ecart = solde_releve - solde_gl
-    rapproche = (
-        bool(lignes) and toutes_concordantes and ecart == Decimal('0'))
+    # Rapproché quand toutes les lignes de relevé (s'il y en a) sont
+    # concordantes ET que l'écart global est nul. Une période SANS ligne de
+    # relevé (aucun mouvement bancaire ce mois-ci) reste rapprochable si le
+    # solde relevé saisi égale déjà le solde GL — rien à pointer, mais pas
+    # un blocage dur (XACC10 : jamais de blocage dur sur une étape sans
+    # activité réelle).
+    rapproche = toutes_concordantes and ecart == Decimal('0')
     return {
         'solde_releve': solde_releve,
         'solde_gl': solde_gl,

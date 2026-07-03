@@ -267,9 +267,14 @@ class EcritureComptable(models.Model):
         constraints = [
             # Idempotence : un même document ne produit qu'une écriture par
             # société (NULL source_id non contraint → écritures manuelles OK).
+            # ``source_type='abonnement'`` (XACC8) est EXCLU : un même
+            # abonnement (source_id fixe) génère UNE écriture PAR ÉCHÉANCE —
+            # son idempotence propre est la ``reference`` (« AB{id}-{YYYY-MM}
+            # »), vérifiée dans ``services.generer_ecritures_recurrentes``.
             models.UniqueConstraint(
                 fields=['company', 'source_type', 'source_id'],
-                condition=models.Q(source_id__isnull=False),
+                condition=models.Q(source_id__isnull=False) & ~models.Q(
+                    source_type='abonnement'),
                 name='uniq_ecriture_par_source',
             ),
         ]
