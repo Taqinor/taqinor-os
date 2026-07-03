@@ -68,7 +68,6 @@ from .services import (
     generer_bulletin_stc,
     generer_ordre_virement,
     importer_elements_rh,
-    lancer_run_13e_mois,
     journal_de_paie,
     livre_de_paie,
     recalculer_cumul_annuel,
