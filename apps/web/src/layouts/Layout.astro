@@ -41,6 +41,12 @@ const alternates =
     ? pageLocales.map((l) => ({ l, href: new URL(localizePath(rootPath, l), Astro.site).href }))
     : [];
 
+// WJ94 — Cloudflare Web Analytics beacon : env-gated (PUBLIC_CF_ANALYTICS_TOKEN),
+// no-op tant que le token n'est pas posé (aucun script, aucune requête). Sans
+// cookie, sans ID persistant — la vérité de tunnel reste le flux d'événements
+// WJ55/WJ59 ; ceci ne sert qu'au bon sens trafic/CWV sitewide.
+const cfAnalyticsToken = (import.meta.env.PUBLIC_CF_ANALYTICS_TOKEN as string | undefined)?.trim();
+
 const canonical = new URL(Astro.url.pathname, Astro.site);
 // W185 — ogImageProp (URL absolue fournie par la page) prend le dessus sur le
 // slug générique ; fallback : /og/<slug>.png construit depuis Astro.site.
@@ -139,6 +145,13 @@ const jsonLd = {
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={ogImageUrl} />
     <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+    {cfAnalyticsToken && (
+      <script
+        defer
+        src="https://static.cloudflareinsights.com/beacon.min.js"
+        data-cf-beacon={JSON.stringify({ token: cfAnalyticsToken })}
+      />
+    )}
     <script is:inline>
       // Capture first-touch fbclid + UTM sur toute page d'atterrissage —
       // persistés en sessionStorage, repris par le formulaire (gate CAPI).
