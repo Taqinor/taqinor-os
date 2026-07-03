@@ -21,6 +21,16 @@
  * W257 — Monitoring presented by outcomes (3 honest phone mockups — no fake
  * Deye Cloud dashboard, just the 3 promises already published above staged
  * visually) + the WhatsApp-alert-on-anomaly reminder.
+ *
+ * W340 — "After your installation" + client-area door. A 4-step narrative
+ * section (commissioning → production tracking → open an after-sales
+ * ticket → warranties), anchored on the REAL capabilities already published
+ * below (nothing new invented here, only the storytelling changes):
+ * DEYE_CLOUD_URL points to the real public Deye Cloud portal
+ * (www.deyecloud.com/login — the personal access mentioned above), the
+ * after-sales ticket points to the real W339 door (/contact#deja-client),
+ * warranties to /garanties. Content-only: no custom client portal exists or
+ * is planned here — that would be backend work, out of scope.
  */
 import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -30,12 +40,38 @@ import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
-import { WHATSAPP_LEADS } from '../../lib/nap';
+import { DEYE_CLOUD_URL, WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink } from '../../lib/whatsapp';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 const devisHref = L('/devis/mon-toit');
+
+// W340 — the 4 after-installation steps, in the journey's real order. Each
+// step rests on a capability already published on this page (tracking) or
+// elsewhere on the site (warranties, W339 after-sales) — no new promise.
+const apresInstallation = [
+  {
+    k: '01',
+    title: 'Commissioning',
+    body: 'The installation is connected, tested, and the monitoring dongle registered on Deye Cloud. The complete technical file (diagrams, protections, procedure) is handed over that same day.',
+  },
+  {
+    k: '02',
+    title: 'Production tracking',
+    body: 'From the next day on, your personal Deye Cloud access shows real production, day after day. It is the same data that feeds our written warranties — nothing more, nothing less.',
+  },
+  {
+    k: '03',
+    title: 'Open an after-sales ticket',
+    body: 'An alert on your side or from Deye Cloud? A WhatsApp report opens a ticket in our after-sales module, tracked through to its close — the same door as "Already a customer?" on the contact page.',
+  },
+  {
+    k: '04',
+    title: 'Warranties',
+    body: 'Written warranties (hardware, workmanship) run in parallel, with measured production as the shared reference should any dispute arise.',
+  },
+];
 
 // W255 — 3 NAMED entretien tiers, no-op-safe scaffold: inclusions drawn from
 // what's already published (monitoring/after-sales/technical file); response
@@ -147,6 +183,62 @@ const jsonLd = {
           there, before the complaint — a dedicated module in our ERP tracks every intervention
           through to its close.
         </p>
+      </div>
+    </section>
+
+    {/* ── W340 — AFTER YOUR INSTALLATION + CLIENT AREA ──
+        4-step narrative of the real journey (commissioning → production
+        tracking → open an after-sales ticket → warranties), then the client
+        area door: the real Deye Cloud portal (personal access already
+        handed to every client) + the real after-sales ticket path
+        (/contact#deja-client, W339) + written warranties. Content-only, no
+        invented custom portal. */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="section px-4">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">What happens next</p>
+        <h2 class="display v2-section-title mt-5 text-white">After your installation</h2>
+        <p class="v2-lead mt-5 max-w-2xl text-lune-soft">
+          Installation isn't the end of the relationship, it's the start. Here is, in order, what
+          awaits you once the site is finished.
+        </p>
+        <ol class="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
+          {apresInstallation.map((s, i) => (
+            <li class="v2-rise cine-card flex flex-col p-6" style={`--v2-i:${i}`}>
+              <span class="fig lum text-2xl" aria-hidden="true">{s.k}</span>
+              <h3 class="display mt-3 text-lg text-white">{s.title}</h3>
+              <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+            </li>
+          ))}
+        </ol>
+
+        {/* Client-area door — one brass CTA (the real Deye Cloud portal), two
+            secondary links (real after-sales ticket, warranties). */}
+        <div class="v2-rise mt-12 border-t-2 border-white/15 bg-white/[0.03] p-7 sm:p-9" style="--v2-i:4">
+          <p class="tech-label text-lune">Client area</p>
+          <h3 class="display mt-2 text-xl text-white">Your personal Deye Cloud access</h3>
+          <p class="mt-3 max-w-xl text-sm leading-relaxed text-lune-soft">
+            Every client receives, at commissioning, their own Deye Cloud access — the same
+            platform described above, not a separate Taqinor portal. That's where you track your
+            production, day after day.
+          </p>
+          <div class="mt-6 flex flex-wrap gap-3">
+            <a
+              href={DEYE_CLOUD_URL}
+              rel="noopener noreferrer"
+              target="_blank"
+              class="glow inline-flex items-center gap-2 bg-brass-400 px-6 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300"
+            >
+              Open my client area (Deye Cloud) →
+            </a>
+            <a href={`${L('/contact')}#deja-client`} class="inline-flex items-center gap-2 border border-white/40 px-6 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
+              Open an after-sales ticket
+            </a>
+            <a href={L('/garanties')} class="inline-flex items-center gap-2 border border-white/40 px-6 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
+              See my warranties
+            </a>
+          </div>
+        </div>
       </div>
     </section>
 

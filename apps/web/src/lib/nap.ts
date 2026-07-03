@@ -46,3 +46,12 @@ export const SAME_AS: readonly string[] = [];
  * (Surchargable au déploiement via l'env WHATSAPP_NUMBER du Worker.)
  */
 export const WHATSAPP_LEADS = '212661850410';
+
+/**
+ * W340 — Espace client réel : le portail public Deye Cloud (login), la même
+ * plateforme de monitoring déjà nommée sur /maintenance-monitoring et
+ * /équipement (« accès Deye Cloud personnel »). Aucun portail client Taqinor
+ * maison n'existe : ceci EST l'accès réel remis à chaque client à la mise en
+ * service — pas un placeholder, pas une page fabriquée.
+ */
+export const DEYE_CLOUD_URL = 'https://www.deyecloud.com/login';

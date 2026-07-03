@@ -39,7 +39,7 @@ import LanguageSwitcher from './LanguageSwitcher.astro';
 import StarRating from './StarRating.astro';
 import Picture from './Picture.astro';
 import { hasRating } from '../lib/testimonials';
-import { NAP } from '../lib/nap';
+import { DEYE_CLOUD_URL, NAP } from '../lib/nap';
 import { REALISATIONS } from '../lib/realisations';
 import { getLocaleFromPath, stripLocale, useTranslations } from '../i18n/utils';
 import { localesForPath, localizeNavHref, QUOTE_JOURNEY_PATH } from '../i18n/pages';
@@ -141,6 +141,12 @@ const ressourcesGroupLabels: Record<'fr' | 'en' | 'ar', { offre: string; contenu
   ar: { offre: 'خدماتنا', contenu: 'أدلة وأخبار' },
 };
 const ressourcesGroups = ressourcesGroupLabels[locale] ?? ressourcesGroupLabels.fr;
+
+// W340 — « Espace client » : lien EXTERNE vers le vrai portail Deye Cloud
+// (DEYE_CLOUD_URL, source unique lib/nap.ts) — jamais passé par L() puisque
+// ce n'est pas une route interne. Même mécanisme de repli local que les
+// autres petites tables de ce fichier.
+const espaceClientLabel = locale === 'en' ? 'Client area' : locale === 'ar' ? 'الفضاء الخاص' : 'Espace client';
 
 // W251 — Pages longues (guides/blog) : la preuve sociale compacte accompagne
 // le CTA brass au lieu du bouton seul. `showProof` combine « bonne page » ET
@@ -346,6 +352,9 @@ const itemClass =
             {ressourcesOffre.map((r) => (
               <li role="none"><a href={L(r.href)} role="menuitem" class={itemClass}>{r.label}</a></li>
             ))}
+            {/* W340 — Espace client : lien externe (Deye Cloud), pas L() ;
+                nouvel onglet, aucun flux de données touché. */}
+            <li role="none"><a href={DEYE_CLOUD_URL} rel="noopener noreferrer" target="_blank" role="menuitem" class={itemClass}>{espaceClientLabel}</a></li>
             <li role="none" class="my-1.5 border-t border-white/10" aria-hidden="true"></li>
             <li role="none" class="tech-label px-3 pb-1 pt-1 text-lune-faint" aria-hidden="true">{ressourcesGroups.contenu}</li>
             {ressourcesContenu.map((r) => (
@@ -434,6 +443,8 @@ const itemClass =
             {ressources.map((r) => (
               <li><a href={L(r.href)} class="block text-base font-semibold text-white">{r.label}</a></li>
             ))}
+            {/* W340 — Espace client : lien externe (Deye Cloud), pas L(). */}
+            <li><a href={DEYE_CLOUD_URL} rel="noopener noreferrer" target="_blank" class="block text-base font-semibold text-white">{espaceClientLabel}</a></li>
           </ul>
         </div>
         <ul class="flex flex-col gap-3 border-t border-white/10 pt-4">

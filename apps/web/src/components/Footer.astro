@@ -23,9 +23,14 @@
  * de vraies URLs, il suffit de les ajouter ici (label + href + le glyphe SVG
  * correspondant) pour que la rangée s'allume automatiquement, sans autre
  * changement de structure.
+ *
+ * W340 — « Espace client » (colonne Contact) : lien vers le vrai portail
+ * Deye Cloud (DEYE_CLOUD_URL, source unique dans lib/nap.ts) — le même accès
+ * personnel déjà décrit sur /maintenance-monitoring. Pas de portail Taqinor
+ * séparé, jamais de lien mort.
  */
 import Logo from './Logo.astro';
-import { NAP, WHATSAPP_LEADS } from '../lib/nap';
+import { DEYE_CLOUD_URL, NAP, WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink } from '../lib/whatsapp';
 import { CITIES } from '../lib/realisations';
 import { getLocaleFromPath, stripLocale, useTranslations } from '../i18n/utils';
@@ -65,6 +70,9 @@ const parrainageLabel = locale === 'en' ? 'Referral' : locale === 'ar' ? 'الإ
 
 // W339 — libellé du lien SAV/urgence « Déjà client ? » (colonne Contact).
 const dejaClientLabel = locale === 'en' ? 'Already a customer?' : locale === 'ar' ? 'هل أنت زبون بالفعل؟' : 'Déjà client ?';
+// W340 — libellé du lien « Espace client » (colonne Contact), même mécanisme
+// de repli local que dejaClientLabel ci-dessus.
+const espaceClientLabel = locale === 'en' ? 'Client area' : locale === 'ar' ? 'الفضاء الخاص' : 'Espace client';
 const ressources = [
   { href: '/realisations', label: t('nav.realisations') },
   { href: '/guides', label: t('nav.guides') },
@@ -242,6 +250,11 @@ const SOCIAL_LINKS: SocialLink[] = [];
             ci-dessus ; ancre vers le bloc dédié de /contact (repli FR via L(),
             jamais de lien mort). */}
         <li><a href={`${L('/contact')}#deja-client`} class={linkClass}>{dejaClientLabel}</a></li>
+        {/* W340 — « Espace client » : le vrai portail Deye Cloud (accès
+            personnel remis à chaque client à la mise en service), pas un
+            portail Taqinor fabriqué. Nouvel onglet, pas de flux de données
+            touché. */}
+        <li><a href={DEYE_CLOUD_URL} rel="noopener noreferrer" target="_blank" class={linkClass}>{espaceClientLabel}</a></li>
         <li class="text-lune-soft">{t('footer.serviceArea')} : {NAP.serviceArea.slice(0, -1).join(', ')} — {t('footer.allMorocco')}</li>
       </ul>
     </div>

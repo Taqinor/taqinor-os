@@ -20,6 +20,15 @@
  * W257 — المراقبة مُقدَّمة بالنتائج (3 محاكاة هاتف صادقة — دون أي لقطة Deye
  * Cloud مُلفَّقة، فقط الوعود الثلاثة المنشورة أعلاه) + تذكير بتنبيه واتساب عند
  * أي خلل.
+ *
+ * W340 — «بعد تركيبكم» + باب الفضاء الخاص. قسم سردي في 4 خطوات (تشغيل ←
+ * متابعة الإنتاج ← فتح تذكرة خدمة ما بعد البيع ← الضمانات)، مؤسَّس على
+ * القدرات الحقيقية المنشورة أدناه فعلاً (لا شيء جديد يُختلَق هنا، فقط السرد
+ * يتغيّر): DEYE_CLOUD_URL يُحيل إلى بوابة Deye Cloud العمومية الحقيقية
+ * (www.deyecloud.com/login — الولوج الشخصي المذكور أعلاه)، تذكرة خدمة ما بعد
+ * البيع تُحيل إلى الباب الحقيقي W339 (/contact#deja-client)، والضمانات إلى
+ * /garanties. محتوى فقط: لا يوجد ولا يُخطَّط لأي فضاء خاص مُخصَّص هنا — سيكون
+ * ذلك عملاً خلفياً، خارج النطاق.
  */
 import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -29,12 +38,38 @@ import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
-import { WHATSAPP_LEADS } from '../../lib/nap';
+import { DEYE_CLOUD_URL, WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink } from '../../lib/whatsapp';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 const devisHref = L('/devis/mon-toit');
+
+// W340 — الخطوات الأربع لما بعد التركيب، بترتيب المسار الحقيقي. كل خطوة
+// تستند إلى قدرة منشورة فعلاً في هذه الصفحة (المتابعة) أو في مكان آخر من
+// الموقع (الضمانات، خدمة ما بعد البيع W339) — لا وعد جديد.
+const apresInstallation = [
+  {
+    k: '01',
+    title: 'التشغيل',
+    body: 'تُربَط التركيبة وتُختبَر، ويُسجَّل دونݣل المراقبة على Deye Cloud. يُسلَّم الملف التقني الكامل (مخططات، حمايات، مسطرة) في اليوم نفسه.',
+  },
+  {
+    k: '02',
+    title: 'متابعة الإنتاج',
+    body: 'ابتداءً من اليوم الموالي، يعرض ولوجكم الشخصي على Deye Cloud الإنتاج الحقيقي، يوماً بعد يوم. هو المعطى نفسه الذي تستند إليه ضماناتنا المكتوبة — لا أكثر ولا أقل.',
+  },
+  {
+    k: '03',
+    title: 'فتح تذكرة خدمة ما بعد البيع',
+    body: 'تنبيه من جهتكم أو من Deye Cloud؟ بلاغ عبر واتساب يفتح تذكرة في وحدة خدمة ما بعد البيع لدينا، تُتابَع حتى إغلاقها — نفس باب «هل أنتم زبون بالفعل؟» في صفحة الاتصال.',
+  },
+  {
+    k: '04',
+    title: 'الضمانات',
+    body: 'تسري الضمانات المكتوبة (المعدات، اليد العاملة) بالتوازي، مع الإنتاج المقيس كمرجع مشترك عند أي نزاع.',
+  },
+];
 
 // W255 — 3 مستويات عقد صيانة مُسمّاة، سقالة آمنة بدون أثر: المحتويات مأخوذة
 // مما هو منشور فعلاً (مراقبة/خدمة ما بعد البيع/ملف تقني)؛ مهلة الرد والأسعار
@@ -142,6 +177,59 @@ const jsonLd = {
           إنتاجك مقروء على هاتفك، وإنتاجنا مُراقب على كامل الأسطول. خلل يُطلق تنبيهاً؛ تنطلق خدمة ما
           بعد البيع من هناك، قبل الشكاية — وحدة مخصَّصة في نظامنا الداخلي تتبّع كل تدخّل حتى إغلاقه.
         </p>
+      </div>
+    </section>
+
+    {/* ── W340 — بعد تركيبكم + الفضاء الخاص ──
+        سرد في 4 خطوات للمسار الحقيقي (تشغيل ← متابعة الإنتاج ← فتح تذكرة
+        خدمة ما بعد البيع ← الضمانات)، ثم باب الفضاء الخاص: بوابة Deye Cloud
+        الحقيقية (ولوج شخصي مُسلَّم فعلاً لكل زبون) + مسار تذكرة خدمة ما بعد
+        البيع الحقيقي (/contact#deja-client، W339) + الضمانات المكتوبة. محتوى
+        فقط، دون أي فضاء خاص مُختلَق. */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="section px-4">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">ما يحدث بعد ذلك</p>
+        <h2 class="display v2-section-title mt-5 text-white">بعد تركيبكم</h2>
+        <p class="v2-lead mt-5 max-w-2xl text-lune-soft">
+          التركيب ليس نهاية العلاقة، بل بدايتها. إليكم، بالترتيب، ما ينتظركم بمجرّد انتهاء الورش.
+        </p>
+        <ol class="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
+          {apresInstallation.map((s, i) => (
+            <li class="v2-rise cine-card flex flex-col p-6" style={`--v2-i:${i}`}>
+              <span class="fig lum text-2xl" aria-hidden="true" dir="ltr">{s.k}</span>
+              <h3 class="display mt-3 text-lg text-white">{s.title}</h3>
+              <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+            </li>
+          ))}
+        </ol>
+
+        {/* باب الفضاء الخاص — زر نحاسي وحيد (بوابة Deye Cloud الحقيقية)،
+            رابطان ثانويان (تذكرة خدمة ما بعد البيع الحقيقية، الضمانات). */}
+        <div class="v2-rise mt-12 border-t-2 border-white/15 bg-white/[0.03] p-7 sm:p-9" style="--v2-i:4">
+          <p class="tech-label text-lune">الفضاء الخاص</p>
+          <h3 class="display mt-2 text-xl text-white">ولوجكم الشخصي إلى Deye Cloud</h3>
+          <p class="mt-3 max-w-xl text-sm leading-relaxed text-lune-soft">
+            يتلقّى كل زبون، عند التشغيل، ولوجه الخاص إلى Deye Cloud — نفس المنصّة الموصوفة أعلاه،
+            وليست فضاءً منفصلاً خاصاً بتاكينور. هناك تتابعون إنتاجكم، يوماً بعد يوم.
+          </p>
+          <div class="mt-6 flex flex-wrap gap-3">
+            <a
+              href={DEYE_CLOUD_URL}
+              rel="noopener noreferrer"
+              target="_blank"
+              class="glow inline-flex items-center gap-2 bg-brass-400 px-6 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300"
+            >
+              افتحوا فضائي الخاص (Deye Cloud) <span class="inline-block rtl:-scale-x-100">→</span>
+            </a>
+            <a href={`${L('/contact')}#deja-client`} class="inline-flex items-center gap-2 border border-white/40 px-6 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
+              افتحوا تذكرة خدمة ما بعد البيع
+            </a>
+            <a href={L('/garanties')} class="inline-flex items-center gap-2 border border-white/40 px-6 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
+              شاهدوا ضماناتي
+            </a>
+          </div>
+        </div>
       </div>
     </section>
 
