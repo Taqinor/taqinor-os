@@ -798,3 +798,132 @@ def mouvements_mrr(company, debut, fin):
         },
         'net': net,
     }
+
+
+# ---------------------------------------------------------------------------
+# XCTR8 — Cohortes de rétention contrats (logo + revenu, NRR/GRR)
+# ---------------------------------------------------------------------------
+
+
+def _mois_ecoules(debut, fin):
+    """Nombre de MOIS calendaires entiers écoulés entre ``debut`` et ``fin``.
+
+    ``0`` le même mois, ``1`` un mois plus tard, etc. Jamais négatif (borné à
+    0 si ``fin`` précède ``debut``).
+    """
+    delta = (fin.year - debut.year) * 12 + (fin.month - debut.month)
+    return max(0, delta)
+
+
+def cohortes_retention(company, today=None):
+    """Matrice de cohortes de rétention contrats (logo + revenu) — XCTR8.
+
+    Regroupe les contrats par MOIS DE SIGNATURE (``date_debut``, repli
+    ``date_creation`` si absent) — le « mois de cohorte ». Pour chaque cohorte,
+    calcule à chaque « mois d'ancienneté » ``k`` (0, 1, 2… jusqu'au mois
+    courant) :
+
+    - ``logo`` : % de contrats de la cohorte encore ACTIFS au mois ``k`` (non
+      résiliés/expirés à cette date, ou résiliés APRÈS avoir atteint ce mois
+      d'ancienneté) ;
+    - ``revenu`` (NRR — Net Revenue Retention) : % du MRR de cohorte initial
+      encore généré au mois ``k``, EXPANSION INCLUSE (le MRR courant du contrat
+      peut dépasser 100 % s'il a grossi via avenant) ;
+    - ``revenu_grr`` (GRR — Gross Revenue Retention) : identique à ``revenu``
+      mais PLAFONNÉ à 100 % par contrat (l'expansion n'y contribue jamais,
+      seule la perte compte).
+
+    Un contrat RÉSILIÉ AVANT d'atteindre le mois ``k`` sort du dénominateur ET
+    du numérateur à partir de ce mois (perte définitive) — jamais de division
+    par zéro : une cohorte/mois sans contrat éligible est simplement ABSENTE
+    de la matrice (pas d'entrée à 0/0).
+
+    Lecture seule, scopée société. ``today`` est injectable pour les tests.
+    Renvoie ``{'cohortes': {mois_cohorte_iso: {age_mois: {...}}}, 'mois_max'}``.
+    """
+    from collections import defaultdict
+    from decimal import Decimal
+
+    from .models import Contrat
+
+    if today is None:
+        today = timezone.localdate()
+
+    contrats = list(
+        Contrat.objects.filter(company=company)
+        .exclude(date_debut__isnull=True, date_creation__isnull=True))
+
+    # Regroupe par mois de cohorte (année-mois du premier jour du mois).
+    cohortes_contrats = defaultdict(list)
+    for contrat in contrats:
+        base = contrat.date_debut or contrat.date_creation.date()
+        cohorte_mois = base.replace(day=1)
+        cohortes_contrats[cohorte_mois].append(contrat)
+
+    resultat = {}
+    mois_max_global = 0
+
+    for cohorte_mois, membres in cohortes_contrats.items():
+        mois_max = _mois_ecoules(cohorte_mois, today)
+        mois_max_global = max(mois_max_global, mois_max)
+        matrice = {}
+
+        for k in range(0, mois_max + 1):
+            eligibles = []
+            for contrat in membres:
+                base = contrat.date_debut or contrat.date_creation.date()
+                # Le contrat doit avoir ATTEINT ce mois d'ancienneté à ce jour.
+                if _mois_ecoules(base, today) < k:
+                    continue
+                eligibles.append(contrat)
+            if not eligibles:
+                continue  # jamais de division par zéro — mois absent
+
+            mrr_initial_total = Decimal('0')
+            for contrat in eligibles:
+                mrr_initial_total += (contrat.montant or Decimal('0'))
+
+            actifs = 0
+            mrr_courant_total = Decimal('0')
+            mrr_courant_plafonne_total = Decimal('0')
+            for contrat in eligibles:
+                # Un contrat est PERDU pour la cohorte dès qu'il est dans un
+                # état terminal (résilié/expiré) — même vérification que
+                # ``contrats_en_risque``/CONTRAT33, sans dépendre de
+                # ``services`` (selectors reste en amont de services).
+                perdu = contrat.statut in (
+                    Contrat.Statut.RESILIE, Contrat.Statut.EXPIRE)
+                if not perdu:
+                    actifs += 1
+                mrr = Decimal('0') if perdu else mrr_contrat_actif(contrat)
+                mrr_courant_total += mrr
+                plafond = contrat.montant or Decimal('0')
+                mrr_courant_plafonne_total += min(mrr, plafond)
+
+            logo_pct = (
+                Decimal(actifs) / Decimal(len(eligibles)) * Decimal('100')
+            ).quantize(Decimal('0.01'))
+
+            if mrr_initial_total > 0:
+                revenu_pct = (
+                    mrr_courant_total / mrr_initial_total * Decimal('100')
+                ).quantize(Decimal('0.01'))
+                revenu_grr_pct = (
+                    mrr_courant_plafonne_total / mrr_initial_total
+                    * Decimal('100')
+                ).quantize(Decimal('0.01'))
+            else:
+                revenu_pct = Decimal('0.00')
+                revenu_grr_pct = Decimal('0.00')
+
+            matrice[k] = {
+                'nb_contrats': len(eligibles),
+                'nb_actifs': actifs,
+                'logo_pct': logo_pct,
+                'revenu_pct': revenu_pct,
+                'revenu_grr_pct': revenu_grr_pct,
+            }
+
+        resultat[cohorte_mois.isoformat()] = matrice
+
+    return {'cohortes': resultat, 'mois_max': mois_max_global}

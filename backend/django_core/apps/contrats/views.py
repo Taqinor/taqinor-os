@@ -308,6 +308,30 @@ class ContratViewSet(_ContratsBaseViewSet):
             'net': _money(data['net']),
         })
 
+    @action(detail=False, methods=['get'], url_path='cohortes-retention')
+    def cohortes_retention(self, request):
+        """Cohortes de rétention contrats (logo + revenu, NRR/GRR) — XCTR8.
+
+        Matrice par mois de signature × mois d'ancienneté : % contrats actifs
+        restants (``logo_pct``) et % MRR retenu (``revenu_pct`` = NRR, avenants
+        inclus ; ``revenu_grr_pct`` = GRR, plafonné à 100 % par contrat).
+        Lecture seule, scopée société. Ne change AUCUN statut.
+        """
+        data = selectors.cohortes_retention(request.user.company)
+        cohortes = {}
+        for mois, matrice in data['cohortes'].items():
+            cohortes[mois] = {
+                str(k): {
+                    'nb_contrats': v['nb_contrats'],
+                    'nb_actifs': v['nb_actifs'],
+                    'logo_pct': _money(v['logo_pct']),
+                    'revenu_pct': _money(v['revenu_pct']),
+                    'revenu_grr_pct': _money(v['revenu_grr_pct']),
+                }
+                for k, v in matrice.items()
+            }
+        return Response({'cohortes': cohortes, 'mois_max': data['mois_max']})
+
     @action(detail=False, methods=['get'])
     def reporting(self, request):
         """Reporting valeur contractuelle & taux de renouvellement (CONTRAT35).
