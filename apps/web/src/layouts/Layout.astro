@@ -165,5 +165,16 @@ const jsonLd = {
       <slot />
     </main>
     <Footer />
+    <!-- W357 — PWA installable + tolérante au hors-ligne : enregistrement du
+         service worker de mise en cache (coquille + dernière estimation du
+         visiteur). AUCUN push/notification — voir public/sw.js. Différé à
+         `load` pour ne jamais concurrencer le rendu critique (LCP). -->
+    <script is:inline>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function () {
+          navigator.serviceWorker.register('/sw.js').catch(function () {});
+        });
+      }
+    </script>
   </body>
 </html>

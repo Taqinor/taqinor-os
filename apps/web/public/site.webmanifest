@@ -4,11 +4,12 @@
   "description": "Installateur solaire au Maroc — étude, pose et suivi.",
   "lang": "fr",
   "start_url": "/",
-  "display": "browser",
+  "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#070b1d",
   "icons": [
     { "src": "/apple-touch-icon.png", "sizes": "256x256", "type": "image/png", "purpose": "any" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }
