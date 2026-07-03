@@ -48,6 +48,7 @@ from .models import (
     Departement,
     DeviceKiosque,
     EmployeDeviceMap,
+    GrilleSalariale,
     PeriodeFermeture,
     ReglageRH,
     DocumentEmploye,
@@ -105,6 +106,7 @@ from .serializers import (
     DepartementSerializer,
     DeviceKiosqueSerializer,
     EmployeDeviceMapSerializer,
+    GrilleSalarialeSerializer,
     PeriodeFermetureSerializer,
     ReglageRHSerializer,
     DocumentEmployeSerializer,
@@ -232,6 +234,26 @@ class DossierEmployeViewSet(_RhBaseViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(
             {'detail': 'PIN mis à jour.'}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='compa-ratio')
+    def compa_ratio(self, request, pk=None):
+        """XRH16 — compa-ratio de l'employé (salaire vs bande de son poste).
+
+        Donnée SENSIBLE (paie) : gatée EXPLICITEMENT ``salaires_voir`` en plus
+        du palier de base — un porteur sans cette permission reçoit 403.
+        """
+        if not HasPermission('salaires_voir')().has_permission(
+                request, self):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        employe = self.get_object()
+        resultat = selectors.compa_ratio(employe)
+        if resultat is None:
+            detail = (
+                'Compa-ratio indisponible (poste, bande ou '
+                'salaire manquant).')
+            return Response(
+                {'detail': detail}, status=status.HTTP_404_NOT_FOUND)
+        return Response(resultat)
 
     @action(detail=True, methods=['get'], url_path='ecart-competences')
     def ecart_competences(self, request, pk=None):
@@ -1662,6 +1684,28 @@ class CompetenceEmployeViewSet(_RhBaseViewSet):
         serializer.save(
             evalue_par=self.request.user,
             evalue_le=timezone.now())
+
+
+class GrilleSalarialeViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Grille salariale par poste (XRH16) — bandes min/max, paie SENSIBLE.
+
+    Lecture ET écriture réservées aux porteurs de ``salaires_voir`` (comme
+    ``RemunerationViewSet``) : sans cette permission tout accès est refusé
+    (403). Société scopée + posée côté serveur. Filtre ``?poste=<id>``.
+    """
+    permission_classes = [HasPermission('salaires_voir')]
+    queryset = GrilleSalariale.objects.select_related('poste').all()
+    serializer_class = GrilleSalarialeSerializer
+    filter_backends = [filters.OrderingFilter]
+    filterset_fields = ['poste']
+    ordering_fields = ['date_effet', 'poste']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        poste = self.request.query_params.get('poste')
+        if poste:
+            qs = qs.filter(poste_id=poste)
+        return qs
 
 
 class CompetenceRequiseViewSet(_RhBaseViewSet):

@@ -29,6 +29,7 @@ from .models import (
     DeviceKiosque,
     DocumentEmploye,
     EmployeDeviceMap,
+    GrilleSalariale,
     PeriodeFermeture,
     ReglageRH,
     DossierActivity,
@@ -2073,6 +2074,22 @@ class CorrectionPointageSerializer(serializers.ModelSerializer):
 
     def get_auteur_nom(self, obj):
         return getattr(obj.auteur, 'username', '') if obj.auteur_id else ''
+
+
+class GrilleSalarialeSerializer(serializers.ModelSerializer):
+    """Grille salariale par poste (XRH16) — donnée SENSIBLE (paie).
+    ``company`` posée côté serveur. Jamais exposée hors du palier
+    ``salaires_voir``."""
+    poste_intitule = serializers.CharField(
+        source='poste.intitule', read_only=True)
+
+    class Meta:
+        model = GrilleSalariale
+        fields = [
+            'id', 'poste', 'poste_intitule', 'echelon',
+            'salaire_min', 'salaire_max', 'date_effet', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
 
 
 class CompetenceRequiseSerializer(serializers.ModelSerializer):

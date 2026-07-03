@@ -4617,3 +4617,53 @@ class CompetenceRequise(models.Model):
 
     def __str__(self):
         return f'{self.poste} — {self.competence} (≥{self.niveau_requis})'
+
+
+class GrilleSalariale(models.Model):
+    """Grille salariale par poste (XRH16) — bandes min/max, compa-ratio.
+
+    Une bande (``salaire_min``/``salaire_max``, MAD) par (poste, échelon
+    optionnel), datée par ``date_effet``. Gatée LECTURE+ÉCRITURE par
+    ``salaires_voir`` (donnée paie sensible, jamais dans un PDF ni une sortie
+    client). ``selectors.compa_ratio`` compare le salaire actuel d'un employé
+    au milieu de la bande de son poste.
+
+    Multi-société : ``company`` posée côté serveur ; ``poste`` doit appartenir
+    à la société.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_grilles_salariales',
+        verbose_name='Société',
+    )
+    poste = models.ForeignKey(
+        Poste,
+        on_delete=models.CASCADE,
+        related_name='grilles_salariales',
+        verbose_name='Poste',
+    )
+    echelon = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='Échelon')
+    salaire_min = models.DecimalField(
+        max_digits=14, decimal_places=2, verbose_name='Salaire minimum (MAD)')
+    salaire_max = models.DecimalField(
+        max_digits=14, decimal_places=2, verbose_name='Salaire maximum (MAD)')
+    date_effet = models.DateField(verbose_name="Date d'effet")
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Grille salariale'
+        verbose_name_plural = 'Grilles salariales'
+        ordering = ['poste', 'echelon', '-date_effet']
+        indexes = [
+            models.Index(
+                fields=['company', 'poste'],
+                name='rh_grille_comp_poste_idx'),
+        ]
+
+    def __str__(self):
+        echelon = f' [{self.echelon}]' if self.echelon else ''
+        return (f'{self.poste}{echelon} — {self.salaire_min}–'
+                f'{self.salaire_max} MAD')

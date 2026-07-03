@@ -1727,3 +1727,58 @@ def candidats_internes(company, poste_id):
         })
     resultats.sort(key=lambda r: r['couverture_pct'], reverse=True)
     return resultats
+
+
+def compa_ratio(employe):
+    """XRH16 — compa-ratio de l'employé : salaire actuel vs milieu de bande
+    de son poste (``GrilleSalariale`` la plus récente, ``date_effet``).
+
+    Renvoie ``None`` si l'employé n'a pas de ``poste_ref``, pas de bande
+    salariale connue, ou pas de ``Remuneration`` (salaire actuel). Sinon un
+    dict ``{salaire_actuel, salaire_min, salaire_max, milieu_bande,
+    compa_ratio_pct, statut}`` où ``statut`` ∈ {sous_bande, dans_bande,
+    sur_bande}. Donnée SENSIBLE (paie) — gatée ``salaires_voir`` côté vue,
+    JAMAIS dans un PDF ni une sortie client.
+    """
+    from .models import GrilleSalariale, Remuneration
+
+    if not employe.poste_ref_id:
+        return None
+
+    grille = (
+        GrilleSalariale.objects
+        .filter(company=employe.company, poste=employe.poste_ref)
+        .order_by('-date_effet')
+        .first())
+    if grille is None:
+        return None
+
+    remuneration = (
+        Remuneration.objects
+        .filter(company=employe.company, employe=employe)
+        .order_by('-date_effet')
+        .first())
+    if remuneration is None:
+        return None
+
+    salaire_actuel = remuneration.montant
+    milieu_bande = (grille.salaire_min + grille.salaire_max) / 2
+    if milieu_bande == 0:
+        return None
+    ratio_pct = round(float(salaire_actuel / milieu_bande) * 100, 1)
+
+    if salaire_actuel < grille.salaire_min:
+        statut = 'sous_bande'
+    elif salaire_actuel > grille.salaire_max:
+        statut = 'sur_bande'
+    else:
+        statut = 'dans_bande'
+
+    return {
+        'salaire_actuel': salaire_actuel,
+        'salaire_min': grille.salaire_min,
+        'salaire_max': grille.salaire_max,
+        'milieu_bande': milieu_bande,
+        'compa_ratio_pct': ratio_pct,
+        'statut': statut,
+    }
