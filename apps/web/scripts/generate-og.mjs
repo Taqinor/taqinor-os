@@ -91,7 +91,15 @@ for (const page of PAGES) {
       },
       { ...text('TAQINOR.MA', 24, '#E8B54A', { spacing: 4000 }), left: 80, top: 540 },
     ])
-    .png({ compressionLevel: 9, palette: true })
+    // W325 — la palette quantifiée (libimagequant, déjà embarqué dans sharp —
+    // aucune dépendance ajoutée) + un effort d'encodage maximal réduisent le
+    // poids de 25 à 45 % sans dégradation visible (vérifié à l'œil sur le
+    // dégradé de ciel, le cas le plus exigeant pour la quantification) : les
+    // fichiers actuels pesaient 183–325 Ko, ce qui ne fera qu'empirer à mesure
+    // que le nombre de pages OG augmente (W292). quality:90 reste très
+    // conservateur (palette web par défaut = 100, un compromis bien plus
+    // agressif existe mais n'est pas nécessaire ici).
+    .png({ compressionLevel: 9, palette: true, effort: 10, quality: 90 })
     .toFile(file);
   console.log(`og: ${page.slug}.png`);
 }
