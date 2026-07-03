@@ -257,6 +257,36 @@ def _sweep_chantier_due(company):
         return 0
 
 
+# ── Annonce sweep (XKB5) ──────────────────────────────────────────────────────
+
+def _sweep_annonces_due(company):
+    """Publie les annonces programmées dont l'heure est atteinte (XKB5).
+
+    Idempotent : `publish_annonce` no-op si déjà publiée ; `Annonce.is_due`
+    exclut déjà les annonces publiées/non-programmées."""
+    try:
+        from django.utils import timezone
+        from .models import Annonce
+        from .services import publish_annonce
+        now = timezone.now()
+        qs = Annonce.objects.filter(
+            company=company, publiee=False,
+            date_publication__isnull=False, date_publication__lte=now)
+        count = 0
+        for annonce in qs:
+            try:
+                publish_annonce(annonce, now=now)
+                count += 1
+            except Exception:  # pragma: no cover
+                logger.warning('sweeps: annonce %s échouée', annonce.pk,
+                               exc_info=True)
+        return count
+    except Exception:  # pragma: no cover
+        logger.warning('sweeps: annonces_due société %s échouée',
+                       getattr(company, 'pk', None), exc_info=True)
+        return 0
+
+
 # ── Tâche Celery Beat ─────────────────────────────────────────────────────────
 
 @shared_task(name='notifications.sweep_daily')
@@ -264,7 +294,8 @@ def sweep_daily():
     """Balayage quotidien des EventTypes « morts » (FG1).
 
     Pour chaque société active : garanties expirantes, maintenances dues,
-    tickets SAV en rupture de délai, chantiers à venir.
+    tickets SAV en rupture de délai, chantiers à venir, annonces programmées
+    à publier (XKB5).
     Best-effort par société ; renvoie le total de notifications émises."""
     total = 0
     for company in _companies():
@@ -273,6 +304,7 @@ def sweep_daily():
             total += _sweep_maintenance_due(company)
             total += _sweep_sav_breaching(company)
             total += _sweep_chantier_due(company)
+            total += _sweep_annonces_due(company)
         except Exception:  # pragma: no cover
             logger.warning('sweeps: société %s échouée globalement',
                            getattr(company, 'pk', None), exc_info=True)

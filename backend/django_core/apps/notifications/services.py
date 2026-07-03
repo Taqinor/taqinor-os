@@ -496,3 +496,79 @@ def set_template_approval_status(template, statut, *, motif_rejet=''):
         motif_rejet or '') if statut == WhatsAppTemplate.StatutApprobation.REJETE else ''
     template.save(update_fields=['statut_approbation', 'motif_rejet', 'updated_at'])
     return template
+
+
+# =============================================================================
+# XKB5 — Annonces internes ciblées et programmées.
+# =============================================================================
+
+def _users_in_departement(company, departement_nom):
+    """Utilisateurs de `company` rattachés (via `rh.DossierEmploye`) à un
+    département dont le nom correspond (lecture seule, import function-local —
+    jamais un FK cross-app dur, cf. CLAUDE.md). Best-effort : liste vide si
+    l'app rh est indisponible ou si aucun match."""
+    if not departement_nom:
+        return []
+    try:
+        from apps.rh.models import DossierEmploye
+        dossiers = DossierEmploye.objects.filter(
+            company=company, departement__nom=departement_nom,
+            user__isnull=False, user__is_active=True,
+        ).select_related('user')
+        return [d.user for d in dossiers if d.user_id]
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.warning('_users_in_departement échoué : %s', exc)
+        return []
+
+
+def annonce_recipients(annonce):
+    """Résout les destinataires d'une annonce selon son ciblage (XKB5).
+
+    - TOUS : tous les utilisateurs actifs de la société.
+    - ROLE : utilisateurs actifs avec ce `role_legacy`.
+    - DEPARTEMENT : utilisateurs actifs rattachés (rh) à ce département.
+
+    Best-effort : renvoie toujours un QuerySet/liste (jamais d'exception)."""
+    from .models import Annonce
+    try:
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        base = User.objects.filter(company=annonce.company, is_active=True)
+        if annonce.cible_type == Annonce.Cible.ROLE:
+            if not annonce.cible_role:
+                return base.none()
+            return base.filter(role_legacy=annonce.cible_role)
+        if annonce.cible_type == Annonce.Cible.DEPARTEMENT:
+            return _users_in_departement(
+                annonce.company, annonce.cible_departement_nom)
+        return base
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.warning('annonce_recipients échoué (annonce %s) : %s',
+                       getattr(annonce, 'pk', None), exc)
+        from django.contrib.auth import get_user_model
+        return get_user_model().objects.none()
+
+
+def publish_annonce(annonce, *, now=None):
+    """Publie une annonce (idempotent) : notifie les destinataires ciblés,
+    marque `publiee=True` + `date_publication_effective`.
+
+    Sans effet si déjà publiée. Best-effort : notifier chaque destinataire est
+    isolé (une erreur n'empêche pas les suivants ni la publication elle-même)."""
+    if annonce.publiee:
+        return annonce
+    now = now or timezone.now()
+    recipients = annonce_recipients(annonce)
+    link = '/annonces/' + str(annonce.pk)
+    for user in recipients:
+        try:
+            notify(
+                user, EventType.ANNONCE_PUBLISHED, annonce.titre,
+                body=annonce.corps, link=link, company=annonce.company)
+        except Exception as exc:  # pragma: no cover - défensif
+            logger.warning('publish_annonce: notify échoué (user %s) : %s',
+                           getattr(user, 'pk', None), exc)
+    annonce.publiee = True
+    annonce.date_publication_effective = now
+    annonce.save(update_fields=['publiee', 'date_publication_effective'])
+    return annonce

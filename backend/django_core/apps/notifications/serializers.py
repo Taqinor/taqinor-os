@@ -1,8 +1,9 @@
 from rest_framework import serializers
 
 from .models import (
-    EventType, Holiday, Notification, NotificationPreference,
-    NotificationRoutingRule, WhatsAppTemplate, WorkingHoursConfig,
+    Annonce, AnnonceLecture, EventType, Holiday, Notification,
+    NotificationPreference, NotificationRoutingRule, WhatsAppTemplate,
+    WorkingHoursConfig,
 )
 
 
@@ -102,4 +103,54 @@ class WhatsAppTemplateSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id', 'statut_approbation', 'statut_approbation_label',
             'motif_rejet', 'categorie_label', 'created_at', 'updated_at',
+        ]
+
+
+class AnnonceSerializer(serializers.ModelSerializer):
+    """XKB5 — Annonces internes ciblées et programmées."""
+    cible_type_label = serializers.CharField(
+        source='get_cible_type_display', read_only=True)
+    auteur_username = serializers.CharField(
+        source='auteur.username', read_only=True, default='')
+    is_expiree = serializers.SerializerMethodField()
+    lus_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Annonce
+        # company + auteur posés côté serveur — jamais acceptés du corps.
+        fields = [
+            'id', 'titre', 'corps', 'auteur', 'auteur_username',
+            'cible_type', 'cible_type_label', 'cible_role',
+            'cible_departement_nom', 'date_publication', 'date_expiration',
+            'publiee', 'date_publication_effective', 'epinglee',
+            'lecture_obligatoire', 'is_expiree', 'lus_count',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'auteur', 'auteur_username', 'publiee',
+            'date_publication_effective', 'is_expiree', 'lus_count',
+            'created_at', 'updated_at',
+        ]
+
+    def get_is_expiree(self, obj):
+        return obj.is_expiree()
+
+    def get_lus_count(self, obj):
+        return obj.lectures.count()
+
+
+class AnnonceLectureSerializer(serializers.ModelSerializer):
+    """XKB6 — Accusé de lecture obligatoire."""
+    utilisateur_username = serializers.CharField(
+        source='utilisateur.username', read_only=True)
+
+    class Meta:
+        model = AnnonceLecture
+        fields = [
+            'id', 'annonce', 'utilisateur', 'utilisateur_username',
+            'date_lecture', 'relances_envoyees', 'derniere_relance_le',
+        ]
+        read_only_fields = [
+            'id', 'utilisateur', 'utilisateur_username', 'date_lecture',
+            'relances_envoyees', 'derniere_relance_le',
         ]

@@ -2,8 +2,9 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    HolidayViewSet, NotificationPreferenceViewSet, NotificationRoutingRuleViewSet,
-    NotificationViewSet, WhatsAppTemplateViewSet, WorkingHoursConfigViewSet,
+    AnnonceViewSet, HolidayViewSet, NotificationPreferenceViewSet,
+    NotificationRoutingRuleViewSet, NotificationViewSet, WhatsAppTemplateViewSet,
+    WorkingHoursConfigViewSet,
     calendar_check, push_subscribe, push_unsubscribe, vapid_public_key,
 )
 from .views_whatsapp_bsp import WhatsAppBspWebhookView
@@ -22,6 +23,8 @@ router.register(
 # XMKT25 — Registre des gabarits WhatsApp BSP + cycle d'approbation Meta.
 router.register(
     r'whatsapp-templates', WhatsAppTemplateViewSet, basename='notification-whatsapp-template')
+# XKB5 — Annonces internes ciblées et programmées.
+router.register(r'annonces', AnnonceViewSet, basename='notification-annonce')
 
 urlpatterns = [
     path('', include(router.urls)),

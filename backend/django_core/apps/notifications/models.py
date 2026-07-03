@@ -48,6 +48,8 @@ class EventType(models.TextChoices):
     CHAT_MESSAGE = 'chat_message', 'Nouveau message'
     CHAT_MENTION = 'chat_mention', 'Vous avez été mentionné'
     DIGEST = 'digest', 'Récapitulatif'
+    # XKB5 — annonce interne publiée (programmée ou immédiate).
+    ANNONCE_PUBLISHED = 'annonce_published', 'Nouvelle annonce interne'
 
 
 class Channel(models.TextChoices):
@@ -543,3 +545,136 @@ class WhatsAppMessageLog(models.Model):
 
     def __str__(self):
         return f'WA:{self.provider}:{self.status} → {self.recipient}'
+
+
+# =============================================================================
+# XKB5 — Annonces internes ciblées et programmées.
+# =============================================================================
+
+class Annonce(models.Model):
+    """Annonce interne, publiée à l'heure dite, ciblée département/rôle/tous.
+
+    ADDITIF : nouvelle app, nouveau modèle. Une annonce non publiée n'a AUCUN
+    effet (pas de notification, pas d'affichage dashboard). La publication est
+    déclenchée par `sweep_daily` (Celery beat existant) quand
+    `date_publication <= maintenant` et `publiee=False`. Elle expire seule (le
+    front n'affiche plus une annonce dont `date_expiration` est dépassée) —
+    aucun job de suppression n'est nécessaire.
+
+    MULTI-TENANT : `company` posée côté serveur, jamais depuis le corps.
+    """
+
+    class Cible(models.TextChoices):
+        TOUS = 'tous', 'Toute la société'
+        ROLE = 'role', 'Par rôle'
+        DEPARTEMENT = 'departement', 'Par département'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='annonces', verbose_name='Société')
+    titre = models.CharField(max_length=200, verbose_name='Titre')
+    corps = models.TextField(blank=True, default='', verbose_name='Corps')
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='annonces_creees',
+        verbose_name='Auteur')
+
+    cible_type = models.CharField(
+        max_length=15, choices=Cible.choices, default=Cible.TOUS,
+        verbose_name='Type de ciblage')
+    # Utilisé quand cible_type == ROLE (valeurs de CustomUser.role_legacy).
+    cible_role = models.CharField(
+        max_length=20, blank=True, default='', verbose_name='Rôle cible')
+    # Utilisé quand cible_type == DEPARTEMENT — nom du département
+    # (`rh.Departement.nom`), comparé en lecture seule via un import
+    # function-local (jamais un FK cross-app dur, cf. CLAUDE.md).
+    cible_departement_nom = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Département cible')
+
+    # Programmation : publiée automatiquement quand date_publication est
+    # atteinte (sweep quotidien). NULL = publication immédiate (dès création,
+    # gérée côté service/vue — le modèle ne décide rien seul).
+    date_publication = models.DateTimeField(
+        null=True, blank=True, verbose_name='Publier le')
+    date_expiration = models.DateTimeField(
+        null=True, blank=True, verbose_name='Expire le')
+    publiee = models.BooleanField(default=False, verbose_name='Publiée')
+    date_publication_effective = models.DateTimeField(
+        null=True, blank=True, verbose_name='Publiée le (effectif)')
+
+    # Épinglée en tête du dashboard jusqu'à expiration.
+    epinglee = models.BooleanField(default=False, verbose_name='Épinglée')
+
+    # XKB6 — accusé de lecture obligatoire.
+    lecture_obligatoire = models.BooleanField(
+        default=False, verbose_name='Lecture obligatoire')
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Annonce'
+        verbose_name_plural = 'Annonces'
+        ordering = ['-epinglee', '-date_publication_effective', '-created_at']
+        indexes = [
+            models.Index(fields=['company', 'publiee']),
+            models.Index(fields=['company', 'date_publication']),
+            models.Index(fields=['company', 'epinglee']),
+        ]
+
+    def __str__(self):
+        return self.titre
+
+    def is_expiree(self, now=None):
+        if not self.date_expiration:
+            return False
+        from django.utils import timezone as dj_timezone
+        now = now or dj_timezone.now()
+        return self.date_expiration <= now
+
+    def is_due(self, now=None):
+        """Prête à être publiée : programmée, pas déjà publiée, heure atteinte."""
+        if self.publiee or not self.date_publication:
+            return False
+        from django.utils import timezone as dj_timezone
+        now = now or dj_timezone.now()
+        return self.date_publication <= now
+
+
+class AnnonceLecture(models.Model):
+    """XKB6 — Accusé de lecture obligatoire d'une annonce, par destinataire.
+
+    Une ligne = un destinataire a cliqué « J'ai lu et compris » pour une
+    annonce donnée. ADDITIF : l'absence de ligne = non lu (pas de blocage
+    fonctionnel, seulement du reporting + relance)."""
+
+    annonce = models.ForeignKey(
+        Annonce, on_delete=models.CASCADE, related_name='lectures')
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='annonce_lectures')
+    utilisateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='annonce_lectures')
+    date_lecture = models.DateTimeField(auto_now_add=True)
+    # Nombre de relances déjà envoyées à ce destinataire pour cette annonce
+    # (idempotence du sweep de relance — un palier = une relance).
+    relances_envoyees = models.PositiveSmallIntegerField(default=0)
+    derniere_relance_le = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Accusé de lecture'
+        verbose_name_plural = 'Accusés de lecture'
+        ordering = ['-date_lecture']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['annonce', 'utilisateur'],
+                name='notif_annonce_lecture_uniq',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'annonce']),
+        ]
+
+    def __str__(self):
+        return f'{self.annonce_id}:{self.utilisateur_id}'

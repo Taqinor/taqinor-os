@@ -17,18 +17,18 @@ from authentication.mixins import TenantMixin
 from authentication.permissions import IsAdminRole, IsAnyRole
 
 from .models import (
-    EventType, Holiday, Notification, NotificationPreference,
+    Annonce, EventType, Holiday, Notification, NotificationPreference,
     NotificationRoutingRule, PushSubscription, WhatsAppTemplate,
     WorkingHoursConfig,
 )
 from .serializers import (
-    HolidaySerializer, NotificationPreferenceSerializer,
+    AnnonceSerializer, HolidaySerializer, NotificationPreferenceSerializer,
     NotificationRoutingRuleSerializer, NotificationSerializer,
     WhatsAppTemplateSerializer, WorkingHoursConfigSerializer,
 )
 from .services import (
-    merged_preferences, resolve_vapid_keys, set_template_approval_status,
-    submit_template_for_approval,
+    merged_preferences, publish_annonce, resolve_vapid_keys,
+    set_template_approval_status, submit_template_for_approval,
 )
 
 
@@ -284,6 +284,46 @@ class WhatsAppTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
             tpl, statut, motif_rejet=request.data.get('motif_rejet', ''))
         tpl.refresh_from_db()
         return Response(self.get_serializer(tpl).data)
+
+
+class AnnonceViewSet(TenantMixin, viewsets.ModelViewSet):
+    """XKB5 — Annonces internes ciblées et programmées.
+
+    Lecture : tout rôle (dashboard + écran annonces). Écriture (créer/publier/
+    modifier/supprimer) : admin seulement. company + auteur posés côté serveur.
+    `?active=1` restreint aux annonces publiées et non expirées (pour le
+    bandeau/carte du dashboard)."""
+    queryset = Annonce.objects.all()
+    serializer_class = AnnonceSerializer
+    READ_ACTIONS = ['list', 'retrieve']
+
+    def get_permissions(self):
+        if self.action in self.READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsAdminRole()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.request.query_params.get('active') in ('1', 'true', 'True'):
+            now = timezone.now()
+            from django.db.models import Q
+            qs = qs.filter(publiee=True).filter(
+                Q(date_expiration__isnull=True) | Q(date_expiration__gt=now))
+        epinglee = self.request.query_params.get('epinglee')
+        if epinglee in ('0', '1', 'true', 'false'):
+            qs = qs.filter(epinglee=epinglee in ('1', 'true'))
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company, auteur=self.request.user)
+
+    @action(detail=True, methods=['post'], url_path='publier')
+    def publier(self, request, pk=None):
+        """Publie immédiatement l'annonce (idempotent si déjà publiée)."""
+        annonce = self.get_object()
+        publish_annonce(annonce)
+        annonce.refresh_from_db()
+        return Response(self.get_serializer(annonce).data)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
