@@ -30,17 +30,23 @@ import ZelligeDivider from '../../components/ZelligeDivider.astro';
 import GarantiesTeaser from '../../components/GarantiesTeaser.astro';
 import Testimonials from '../../components/Testimonials.astro';
 import CertLogoRow from '../../components/CertLogoRow.astro';
+import Faq from '../../components/Faq.astro';
+import ServiceWarrantyTable from '../../components/ServiceWarrantyTable.astro';
 import { localEstimateBand } from '../../lib/billRange';
 import { formatMAD } from '../../lib/format';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
 import { WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink } from '../../lib/whatsapp';
+import { serviceFaqItems } from '../../lib/serviceFaq';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 
 const waDirect = whatsappLink(WHATSAPP_LEADS, 'Hello, I would like a study for a solar installation.');
+
+// W263 — shared FAQ + per-component warranty, EN.
+const faqItems = serviceFaqItems('professionnel', 'en');
 // W337 — "visit a real site" invitation, same mechanic as pourquoi-taqinor.astro
 const waVisite = whatsappLink(WHATSAPP_LEADS, 'Hello, I would like to visit a real business installation.');
 
@@ -448,6 +454,14 @@ const capexOpex = [
 
     <!-- Reassurance: the written warranties, in brief (links to /garanties) -->
     <GarantiesTeaser />
+
+    <!-- W263 — shared FAQ (maintenance/price/included-excluded/timelines/
+         warranties) + per-component warranty, BEFORE the final form.
+         schema={false}: /faq stays the only FAQPage JSON-LD (W19). -->
+    <Faq schema={false} heading="Frequently asked questions — business solar" items={faqItems} />
+    <section class="section-tight bg-blanc-azur px-4 text-encre">
+      <ServiceWarrantyTable />
+    </section>
 
     <!-- FINAL ACT — the clean room -->
     <DiagnosticForm heading="Assessment for your business site" />

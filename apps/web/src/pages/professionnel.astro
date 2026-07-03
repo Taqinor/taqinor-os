@@ -31,12 +31,18 @@ import ZelligeDivider from '../components/ZelligeDivider.astro';
 import GarantiesTeaser from '../components/GarantiesTeaser.astro';
 import Testimonials from '../components/Testimonials.astro';
 import CertLogoRow from '../components/CertLogoRow.astro';
+import Faq from '../components/Faq.astro';
+import ServiceWarrantyTable from '../components/ServiceWarrantyTable.astro';
 import { localEstimateBand } from '../lib/billRange';
 import { formatMAD } from '../lib/format';
 import { WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink } from '../lib/whatsapp';
+import { serviceFaqItems } from '../lib/serviceFaq';
 
 const waDirect = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour une installation solaire.');
+
+// W263 — FAQ partagée + garanties par composant, localisées FR.
+const faqItems = serviceFaqItems('professionnel', 'fr');
 // W337 — invitation « visiter un chantier », même mécanique que pourquoi-taqinor.astro
 const waVisite = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite visiter une installation professionnelle réelle.');
 
@@ -450,6 +456,14 @@ const capexOpex = [
 
     <!-- Réassurance : les garanties écrites, en bref (renvoi vers /garanties) -->
     <GarantiesTeaser />
+
+    <!-- W263 — FAQ partagée (entretien/prix/inclus-exclus/délais/garanties)
+         + garantie par composant, AVANT le formulaire final. schema={false} :
+         /faq reste l'unique page émettant le FAQPage JSON-LD (W19). -->
+    <Faq schema={false} heading="Questions fréquentes — solaire professionnel" items={faqItems} />
+    <section class="section-tight bg-blanc-azur px-4 text-encre">
+      <ServiceWarrantyTable />
+    </section>
 
     <!-- ACTE FINAL — la salle blanche -->
     <DiagnosticForm heading="Diagnostic pour votre site professionnel" />

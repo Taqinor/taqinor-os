@@ -28,17 +28,23 @@ import StickyCta from '../../components/StickyCta.astro';
 import ZelligeDivider from '../../components/ZelligeDivider.astro';
 import GarantiesTeaser from '../../components/GarantiesTeaser.astro';
 import Testimonials from '../../components/Testimonials.astro';
+import Faq from '../../components/Faq.astro';
+import ServiceWarrantyTable from '../../components/ServiceWarrantyTable.astro';
 import { BILL_RANGES, localEstimateBand } from '../../lib/billRange';
 import { formatMAD } from '../../lib/format';
 import { WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink } from '../../lib/whatsapp';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
+import { serviceFaqItems } from '../../lib/serviceFaq';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 
 const waDirect = whatsappLink(WHATSAPP_LEADS, 'مرحباً، أرغب في دراسة لتركيبة شمسية.');
+
+// W263 — بنك أسئلة شائعة مشترك + ضمان حسب المكوّن، بالعربية.
+const faqItems = serviceFaqItems('residentiel', 'ar');
 
 const PRIX_PAR_KWC = { bas: 10000, haut: 12500 };
 const arrondi5k = (v: number) => Math.round(v / 5000) * 5000;
@@ -237,6 +243,14 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
 
     <!-- طمأنة: الضمانات المكتوبة، باختصار (إحالة إلى /garanties) -->
     <GarantiesTeaser />
+
+    <!-- W263 — بنك أسئلة شائعة مشترك (صيانة/ثمن/مُدرَج-مُستثنى/آجال/ضمانات)
+         + ضمان حسب المكوّن، قبل الاستمارة النهائية. schema={false}:
+         /faq تبقى الصفحة الوحيدة التي تُصدر FAQPage JSON-LD (W19). -->
+    <Faq schema={false} heading="أسئلة شائعة — الطاقة الشمسية السكنية" items={faqItems} />
+    <section class="section-tight bg-blanc-azur px-4 text-encre">
+      <ServiceWarrantyTable />
+    </section>
 
     <!-- الفصل الأخير — الغرفة البيضاء -->
     <DiagnosticForm heading="تشخيصك في 60 ثانية" />

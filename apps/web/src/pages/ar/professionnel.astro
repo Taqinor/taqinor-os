@@ -26,17 +26,23 @@ import ZelligeDivider from '../../components/ZelligeDivider.astro';
 import GarantiesTeaser from '../../components/GarantiesTeaser.astro';
 import Testimonials from '../../components/Testimonials.astro';
 import CertLogoRow from '../../components/CertLogoRow.astro';
+import Faq from '../../components/Faq.astro';
+import ServiceWarrantyTable from '../../components/ServiceWarrantyTable.astro';
 import { localEstimateBand } from '../../lib/billRange';
 import { formatMAD } from '../../lib/format';
 import { WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink } from '../../lib/whatsapp';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
+import { serviceFaqItems } from '../../lib/serviceFaq';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 
 const waDirect = whatsappLink(WHATSAPP_LEADS, 'مرحباً، أرغب في دراسة لتركيبة شمسية.');
+
+// W263 — بنك أسئلة شائعة مشترك + ضمان حسب المكوّن، بالعربية.
+const faqItems = serviceFaqItems('professionnel', 'ar');
 // W337 — دعوة «زيارة ورش حقيقي»، نفس آلية pourquoi-taqinor.astro
 const waVisite = whatsappLink(WHATSAPP_LEADS, 'مرحباً، أرغب في زيارة تركيبة مهنية حقيقية.');
 
@@ -430,6 +436,14 @@ const capexOpex = [
 
     <!-- طمأنة: الضمانات المكتوبة، باختصار (إحالة إلى /garanties) -->
     <GarantiesTeaser />
+
+    <!-- W263 — بنك أسئلة شائعة مشترك (صيانة/ثمن/مُدرَج-مُستثنى/آجال/ضمانات)
+         + ضمان حسب المكوّن، قبل الاستمارة النهائية. schema={false}:
+         /faq تبقى الصفحة الوحيدة التي تُصدر FAQPage JSON-LD (W19). -->
+    <Faq schema={false} heading="أسئلة شائعة — الطاقة الشمسية المهنية" items={faqItems} />
+    <section class="section-tight bg-blanc-azur px-4 text-encre">
+      <ServiceWarrantyTable />
+    </section>
 
     <!-- الفصل الأخير — الغرفة البيضاء -->
     <DiagnosticForm heading="تشخيص لموقعك المهني" />
