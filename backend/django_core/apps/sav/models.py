@@ -344,6 +344,14 @@ class Ticket(models.Model):
         max_length=64, unique=True, null=True, blank=True, editable=False,
         help_text="Jeton public du lien client (FG86). Généré via ensure_share_token().")
 
+    # ── XSAV3 — Devis de réparation hors garantie créé depuis ce ticket ──────
+    # Référence par ID externe (jamais un FK vers apps.ventes.Devis — règle de
+    # modularité CLAUDE.md, cross-app write via ventes.services). Pattern
+    # identique à WarrantyClaim.fournisseur_id_ext. NULL = aucun devis créé.
+    devis_id_ext = models.IntegerField(
+        null=True, blank=True,
+        help_text='ID du Devis ventes créé depuis ce ticket (XSAV3).')
+
     class Meta:
         verbose_name = 'Ticket SAV'
         verbose_name_plural = 'Tickets SAV'

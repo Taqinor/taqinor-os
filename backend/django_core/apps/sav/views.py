@@ -269,7 +269,8 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['historique', 'rapport_pdf', 'lien_client']:
             return [HasPermissionOrLegacy('sav_voir')()]
-        elif self.action in WRITE_ACTIONS + ['noter', 'annuler', 'reactiver']:
+        elif self.action in WRITE_ACTIONS + [
+                'noter', 'annuler', 'reactiver', 'creer_devis']:
             return [HasPermissionOrLegacy('sav_gerer')()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
@@ -589,6 +590,63 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             item.note = request.data['note'] or ''
         item.save()
         return Response(TicketChecklistItemSerializer(item).data)
+
+    @action(detail=True, methods=['post'], url_path='creer-devis',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def creer_devis(self, request, pk=None):
+        """XSAV3 — Crée un devis de réparation hors garantie depuis le ticket.
+
+        Refusé si le ticket est sous garantie (constructeur/légale calculée)
+        ou couvert par un contrat de maintenance actif — le travail couvert
+        ne se facture pas. Pré-rempli depuis les PieceConsommee du ticket,
+        valorisées au prix de VENTE catalogue (jamais prix_achat). Écrit via
+        ``apps.ventes.services.create_devis_pour_ticket`` (cross-app write,
+        jamais d'import direct du modèle ventes)."""
+        ticket = self.get_object()
+        if ticket.sous_garantie_calcule == Ticket.SousGarantie.OUI:
+            return Response(
+                {'detail': 'Ticket sous garantie : aucun devis de '
+                           "réparation n'est nécessaire."},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        from apps.ventes.services import create_devis_pour_ticket
+
+        client_id = request.data.get('client_id') or ticket.client_id
+        if not client_id:
+            return Response({'detail': 'client_id requis.'}, status=400)
+
+        lignes = request.data.get('lignes')
+        if lignes is None:
+            # Pré-remplissage depuis les pièces consommées du ticket,
+            # valorisées au prix de VENTE catalogue (jamais prix_achat).
+            lignes = []
+            for piece in ticket.pieces.select_related('produit'):
+                produit = piece.produit
+                lignes.append({
+                    'produit_id': produit.id,
+                    'designation': produit.nom,
+                    'quantite': piece.quantite,
+                    'prix_unitaire': produit.prix_vente,
+                })
+
+        try:
+            devis = create_devis_pour_ticket(
+                company=ticket.company, user=request.user,
+                client_id=client_id, lignes=lignes,
+                note=f'Devis de réparation SAV — ticket {ticket.reference}')
+        except Exception:
+            return Response(
+                {'detail': 'Client introuvable pour votre société.'},
+                status=status.HTTP_404_NOT_FOUND)
+
+        ticket.devis_id_ext = devis.id
+        ticket.save(update_fields=['devis_id_ext'])
+        activity.log_note(
+            ticket, request.user,
+            f'Devis de réparation {devis.reference} créé (brouillon)')
+        return Response(
+            {'devis_id': devis.id, 'devis_reference': devis.reference},
+            status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['get'], url_path='lien-client',
             permission_classes=[HasPermissionOrLegacy('sav_voir')])
