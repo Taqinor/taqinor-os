@@ -34,11 +34,14 @@ const guideBodyText = `
 const readingMinutes = estimateReadingTime(guideBodyText);
 
 const url = new URL(Astro.url.pathname, Astro.site).href;
+// W291 — image OG (même URL que celle passée à ogSlug plus bas), pour l'éligibilité Article rich results.
+const schemaImageUrl = new URL('/og/equipement.png', Astro.site).href;
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Article',
   headline: "Batterie solaire : lithium LiFePO4 (LFP) vs GEL/plomb (et NMC)",
   description: "LFP ou GEL ? Cycles de vie, profondeur de décharge, rendement, tolérance à la chaleur au Maroc et sécurité face au NMC : tout ce qu'il faut savoir avant de choisir sa batterie solaire.",
+  image: schemaImageUrl,
   about: { '@type': 'Thing', name: 'Batterie de stockage solaire LFP' },
   author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
   publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },

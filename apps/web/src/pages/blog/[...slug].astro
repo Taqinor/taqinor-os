@@ -58,11 +58,17 @@ const readingMinutes = estimateReadingTime(body ?? '');
 const toc = extractTocFromMarkdown(body ?? '');
 const showToc = toc.length >= 3;
 
+// W291 — image OG déjà calculée par le Layout (ogSlug ?? 'accueil' → /og/<slug>.png) ;
+// on reproduit ici la même URL pour l'exposer au BlogPosting, Google recommandant
+// explicitement `image` pour l'éligibilité aux rich results Article.
+const schemaImageUrl = new URL(`/og/${data.ogSlug ?? 'accueil'}.png`, Astro.site).href;
+
 const blogPosting = {
   '@context': 'https://schema.org',
   '@type': 'BlogPosting',
   headline: data.title,
   description: data.description,
+  image: schemaImageUrl,
   datePublished: data.pubDate.toISOString(),
   ...(data.updatedDate ? { dateModified: data.updatedDate.toISOString() } : {}),
   ...(data.tags.length ? { keywords: data.tags.join(', ') } : {}),

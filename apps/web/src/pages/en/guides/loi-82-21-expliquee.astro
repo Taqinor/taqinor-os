@@ -20,11 +20,14 @@ const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 
 const url = new URL(Astro.url.pathname, Astro.site).href;
+// W291 — OG image (same URL passed to ogSlug below), for Article rich-result eligibility.
+const schemaImageUrl = new URL('/og/loi-82-21.png', Astro.site).href;
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Article',
   headline: 'Law 82-21 explained simply',
   description: 'The three regimes of electricity self-production in Morocco (declaration, connection agreement, authorisation) explained in plain language.',
+  image: schemaImageUrl,
   about: { '@type': 'Thing', name: 'Law 82-21 — self-production of electrical energy' },
   author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
   publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },

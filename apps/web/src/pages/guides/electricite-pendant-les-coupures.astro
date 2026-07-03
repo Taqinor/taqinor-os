@@ -35,11 +35,14 @@ const guideBodyText = `
 const readingMinutes = estimateReadingTime(guideBodyText);
 
 const url = new URL(Astro.url.pathname, Astro.site).href;
+// W291 — image OG (même URL que celle passée à ogSlug plus bas), pour l'éligibilité Article rich results.
+const schemaImageUrl = new URL('/og/equipement.png', Astro.site).href;
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Article',
   headline: 'Garder l\'électricité pendant les coupures : EPS, onduleur hybride et batterie',
   description: 'Coupure de courant et solaire : comment fonctionnent les sorties EPS d\'un onduleur hybride (Deye, Huawei), le mythe du "off-grid" expliqué, et pourquoi un on-grid standard s\'éteint toujours pendant une panne.',
+  image: schemaImageUrl,
   about: { '@type': 'Thing', name: 'Secours électrique solaire EPS onduleur hybride' },
   author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
   publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
