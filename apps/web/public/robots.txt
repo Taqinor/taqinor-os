@@ -1,5 +1,7 @@
 User-agent: *
 Allow: /
 Disallow: /preview/
+Disallow: /proposition/
+Disallow: /internal/
 
 Sitemap: https://taqinor.ma/sitemap.xml
