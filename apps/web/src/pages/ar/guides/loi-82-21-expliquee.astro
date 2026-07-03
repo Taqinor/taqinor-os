@@ -71,6 +71,35 @@ const regimes = [
         الثلاثة أدناه، سواء كانت تركيبتك جديدة أو قائمة بالفعل. إليك كيف تموضع نفسك، دون مصطلحات.
       </p>
 
+      <!-- W259 — «أين وصل القانون؟»: يميّز بين السّاري (MT/HT) والمنتظَر (BT سكني). -->
+      <div class="v2-rise mt-10 border-2 border-brass-400/50 bg-nuit-800/60 p-6 sm:p-8">
+        <p class="tech-label v2-kicker text-brass-300">أين وصل القانون؟ · تم التحقّق في 3 يوليوز 2026</p>
+        <div class="mt-4 grid gap-5 sm:grid-cols-2">
+          <div>
+            <p class="tech-label text-lune">ساري المفعول</p>
+            <p class="mt-2 text-sm leading-relaxed text-lune-soft">
+              المرسوم <strong class="text-white">2-25-100</strong> (الجريدة الرسمية بتاريخ 9 مارس 2026،
+              ساري منذ 9 يونيو 2026) وقرار ANRE رقم <strong class="text-white">04/26</strong>:
+              <strong class="text-white"> 0,18–0,21 درهم/kWh</strong> لشراء الفائض، لكن فقط لنظامَي
+              اتفاق الربط والترخيص، في <strong class="text-white">التوتر المتوسط والعالي
+              (MT/HT)</strong>.
+            </p>
+          </div>
+          <div>
+            <p class="tech-label text-lune">لم يُنشَر بعد</p>
+            <p class="mt-2 text-sm leading-relaxed text-lune-soft">
+              تعريفة الشراء لنظام <strong class="text-white">التصريح في التوتر المنخفض
+              (BT)</strong> — حالة أغلب الفيلات — لم تُنشَر بعد، مع أجل يُتداوَل في حدود
+              <strong class="text-white"> 2027</strong>، غير مؤكَّد إلى حدود اليوم.
+            </p>
+          </div>
+        </div>
+        <p class="mt-5 text-xs leading-relaxed text-lune-faint">
+          تركيبتك قائمة بالفعل؟ نافذة تسوية المادة 33 مفتوحة منذ اليوم، بصرف النظر عن هذه التعريفة —
+          <a href={L('/regularization-article-33')} class="border-b border-brass-300/60 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">سوِّ تركيبتك القائمة <span class="inline-block rtl:-scale-x-100">→</span></a>.
+        </p>
+      </div>
+
       <div class="mt-12 grid gap-6" data-stagger>
         {regimes.map((r, i) => (
           <div class="v2-rise cine-card grid gap-4 p-6 sm:grid-cols-[auto_1fr] sm:p-7" style={`--v2-i:${i}`}>

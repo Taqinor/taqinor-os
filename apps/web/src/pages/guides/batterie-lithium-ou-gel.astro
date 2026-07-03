@@ -11,6 +11,27 @@ import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { NAP } from '../../lib/nap';
 import RelatedLinks from '../../components/RelatedLinks.astro';
+import { estimateReadingTime } from '../../lib/readingTime';
+
+// W303 — date de vérification + auteur + temps de lecture.
+const verifiedDate = new Date('2026-07-03');
+const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+const guideBodyText = `
+  Pour un stockage solaire résidentiel sous le climat marocain, nous installons du lithium fer
+  phosphate (LFP, ou LiFePO4). Le plomb-acide gel coûte moins cher au moment de l'achat et le lithium
+  nickel-manganèse-cobalt (NMC) affiche de beaux chiffres de densité, mais aucun des deux ne tient la
+  comparaison une fois qu'on regarde la durée de vie, l'énergie réellement disponible et le
+  comportement à la chaleur. Un accumulateur plomb-acide gel tient typiquement entre 500 et 1 000
+  cycles complets, ce qui correspond à une durée de vie utile de 3 à 7 ans. Une batterie LFP atteint
+  quant à elle 3 000 à 6 000 cycles, soit une espérance de vie de l'ordre de 10 à 15 ans. Le plomb-acide
+  gel ne doit pas être déchargé au-delà de 50 % de sa capacité nominale. Le LFP autorise une profondeur
+  de décharge utile de 80 à 90 %. Le rendement aller-retour du plomb-acide gel se situe entre 80 et
+  85 % ; le LFP affiche un rendement de 92 à 98 %. La chaleur est l'ennemi numéro un des batteries, et
+  le LFP supporte mieux ces conditions que le plomb. Le NMC rivalise avec le LFP sur le rendement, mais
+  diffère radicalement sur la sécurité thermique : pour un stockage fixe logé dans un local technique
+  d'habitation, le LFP reste la chimie la plus sûre du résidentiel.
+`;
+const readingMinutes = estimateReadingTime(guideBodyText);
 
 const url = new URL(Astro.url.pathname, Astro.site).href;
 const jsonLd = {
@@ -40,6 +61,14 @@ const jsonLd = {
     <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
       <p class="tech-label v2-kicker rule-brass text-lune">Guide · Équipement</p>
       <h1 class="display v2-page-title mt-5 text-white">Batterie solaire : LFP vs GEL/plomb (et NMC)</h1>
+
+      <!-- W303 — date de vérification + auteur + temps de lecture -->
+      <p class="guide-byline mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-lune-faint">
+        <span>Vérifié le {dateFmt.format(verifiedDate)} · par Reda Kasri</span>
+        <span aria-hidden="true">·</span>
+        <span>{readingMinutes} min de lecture</span>
+      </p>
+
       <p class="v2-lead mt-6 text-lune-soft">
         Pour un stockage solaire résidentiel sous le climat marocain, nous installons du lithium
         fer phosphate (LFP, ou LiFePO4). C'est la conclusion, pas le suspense. Le plomb-acide gel

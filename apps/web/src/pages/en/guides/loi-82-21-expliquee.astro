@@ -73,6 +73,37 @@ const regimes = [
         jargon.
       </p>
 
+      <!-- W259 — « Where does the law stand? »: distinguishes LIVE (MV/HV) from PENDING (LV residential). -->
+      <div class="v2-rise mt-10 border-2 border-brass-400/50 bg-nuit-800/60 p-6 sm:p-8">
+        <p class="tech-label v2-kicker text-brass-300">Where does the law stand? · verified on 3 July 2026</p>
+        <div class="mt-4 grid gap-5 sm:grid-cols-2">
+          <div>
+            <p class="tech-label text-lune">In force</p>
+            <p class="mt-2 text-sm leading-relaxed text-lune-soft">
+              Decree <strong class="text-white">2-25-100</strong> (Bulletin Officiel of 9 March 2026,
+              in force since 9 June 2026) and ANRE decision <strong class="text-white">04/26</strong>:
+              <strong class="text-white">0.18–0.21 DH/kWh</strong> surplus buy-back, but only for the
+              connection-agreement and authorisation regimes, at
+              <strong class="text-white"> medium and high voltage (MV/HV)</strong>.
+            </p>
+          </div>
+          <div>
+            <p class="tech-label text-lune">Not yet published</p>
+            <p class="mt-2 text-sm leading-relaxed text-lune-soft">
+              The buy-back tariff for the <strong class="text-white">low-voltage (LV) declaration
+              regime</strong> — the one that covers almost every villa — is not published yet, with a
+              timeline mentioned around <strong class="text-white">2027</strong>, unconfirmed as of
+              today.
+            </p>
+          </div>
+        </div>
+        <p class="mt-5 text-xs leading-relaxed text-lune-faint">
+          Already have an installation in place? The Article 33 regularization window is open today,
+          regardless of this tariff —
+          <a href={L('/regularization-article-33')} class="border-b border-brass-300/60 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">regularize your existing installation →</a>.
+        </p>
+      </div>
+
       <div class="mt-12 grid gap-6" data-stagger>
         {regimes.map((r, i) => (
           <div class="v2-rise cine-card grid gap-4 p-6 sm:grid-cols-[auto_1fr] sm:p-7" style={`--v2-i:${i}`}>

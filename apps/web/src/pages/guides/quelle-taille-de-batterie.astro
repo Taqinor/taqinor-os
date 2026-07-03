@@ -11,6 +11,26 @@ import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { NAP } from '../../lib/nap';
 import RelatedLinks from '../../components/RelatedLinks.astro';
+import { estimateReadingTime } from '../../lib/readingTime';
+
+// W303 — date de vérification + auteur + temps de lecture.
+const verifiedDate = new Date('2026-07-03');
+const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+const guideBodyText = `
+  Le plus simple pour répondre, c'est de suivre une vraie maison. Prenons une villa à Casablanca de
+  quatre personnes. Tout part de ce que la maison consomme une fois le soleil couché. Selon le mode de
+  vie, ce besoin nocturne tombe le plus souvent entre 6 et 12 kWh sur une maison comme celle-ci. Pour
+  situer ce besoin face aux offres du marché, il aide de raisonner par paliers : secours seul environ 5
+  à 10 kWh utile, autoconsommation du soir environ 10 à 20 kWh utile, quasi-autonomie à partir de 20 kWh
+  utile. Le chiffre affiché sur une batterie est sa capacité nominale, pas ce que vous tirez au
+  quotidien. Pour les batteries lithium fer phosphate, le DoD atteint 80 à 95 %. Pour le plomb-acide, le
+  DoD usuel n'est que d'environ 50 %. Depuis le 9 juin 2026, la loi 82-21 autorise la vente du surplus,
+  mais dans un cadre qui rend l'export bien moins intéressant que le stockage : plafond d'injection de
+  20 % de la production annuelle, et un tarif de rachat qui reste inférieur au tarif d'achat. La
+  hiérarchie va du plus au moins rentable : consommer en journée, stocker pour le soir, exporter les
+  20 % restants.
+`;
+const readingMinutes = estimateReadingTime(guideBodyText);
 
 const url = new URL(Astro.url.pathname, Astro.site).href;
 const jsonLd = {
@@ -40,6 +60,14 @@ const jsonLd = {
     <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
       <p class="tech-label v2-kicker rule-brass text-lune">Guide · Équipement</p>
       <h1 class="display v2-page-title mt-5 text-white">Quelle taille de batterie pour ma maison ?</h1>
+
+      <!-- W303 — date de vérification + auteur + temps de lecture -->
+      <p class="guide-byline mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-lune-faint">
+        <span>Vérifié le {dateFmt.format(verifiedDate)} · par Reda Kasri</span>
+        <span aria-hidden="true">·</span>
+        <span>{readingMinutes} min de lecture</span>
+      </p>
+
       <p class="v2-lead mt-6 text-lune-soft">
         Le plus simple pour répondre, c'est de suivre une vraie maison. Prenons une villa à Casablanca
         de quatre personnes : climatisation deux à trois heures le soir, télévision, éclairage, frigo

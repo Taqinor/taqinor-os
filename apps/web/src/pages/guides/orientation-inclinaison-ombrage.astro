@@ -11,6 +11,25 @@ import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { NAP } from '../../lib/nap';
 import RelatedLinks from '../../components/RelatedLinks.astro';
+import { estimateReadingTime } from '../../lib/readingTime';
+
+// W303 — date de vérification + auteur + temps de lecture.
+const verifiedDate = new Date('2026-07-03');
+const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+const guideBodyText = `
+  Avant même de parler de marques ou de puissance, trois paramètres physiques décident d'une bonne part
+  de ce que votre toit produira pendant vingt-cinq ans : la direction vers laquelle les panneaux
+  regardent, l'angle auquel ils sont posés, et l'ombre qui passe sur eux au fil de la journée. Au Maroc,
+  le soleil décrit son arc au sud. Les panneaux orientés plein sud récoltent le maximum de rayonnement.
+  Une orientation est ou ouest n'est pas un obstacle rédhibitoire : on estime la perte à environ 10 à
+  15 % par rapport au plein sud. L'angle idéal d'inclinaison d'un panneau correspond grossièrement à la
+  latitude du site, entre 27° et 31° selon la ville. L'ombrage est le facteur le plus sous-estimé, et
+  souvent le plus coûteux : une installation standard câble ses panneaux en série, si un seul panneau
+  est à l'ombre, toute la chaîne est pénalisée. Les optimiseurs de puissance et les micro-onduleurs
+  permettent de limiter cet impact quand l'ombre est inévitable. Une étude de site sérieuse part
+  toujours de l'ombrage.
+`;
+const readingMinutes = estimateReadingTime(guideBodyText);
 
 const url = new URL(Astro.url.pathname, Astro.site).href;
 const jsonLd = {
@@ -40,6 +59,14 @@ const jsonLd = {
     <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
       <p class="tech-label v2-kicker rule-brass text-lune">Guide · Installation</p>
       <h1 class="display v2-page-title mt-5 text-white">Orientation, inclinaison et ombrage</h1>
+
+      <!-- W303 — date de vérification + auteur + temps de lecture -->
+      <p class="guide-byline mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-lune-faint">
+        <span>Vérifié le {dateFmt.format(verifiedDate)} · par Reda Kasri</span>
+        <span aria-hidden="true">·</span>
+        <span>{readingMinutes} min de lecture</span>
+      </p>
+
       <p class="v2-lead mt-6 text-lune-soft">
         Avant même de parler de marques ou de puissance, trois paramètres physiques décident d'une
         bonne part de ce que votre toit produira pendant vingt-cinq ans : la direction vers

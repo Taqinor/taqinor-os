@@ -12,6 +12,29 @@ import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { NAP } from '../../lib/nap';
 import RelatedLinks from '../../components/RelatedLinks.astro';
+import { estimateReadingTime } from '../../lib/readingTime';
+
+// W303 — date de vérification + auteur + temps de lecture.
+const verifiedDate = new Date('2026-07-03');
+const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+const guideBodyText = `
+  Une coupure ONEE arrive en plein après-midi. Trois maisons du même quartier ont des panneaux sur le
+  toit ; une seule garde le courant. La différence ne tient pas à la marque des panneaux ni à leur
+  nombre, mais à l'architecture choisie. Le système on-grid produit de l'électricité solaire et la
+  consomme en autoconsommation directe, le réseau ONEE jouant le rôle de batterie virtuelle. Lors
+  d'une coupure réseau, cet onduleur s'arrête immédiatement, même en plein soleil. La norme impose à
+  tout onduleur raccordé réseau une fonction dite anti-îlotage : dès que le réseau disparaît,
+  l'onduleur détecte l'absence de tension et s'isole en quelques millisecondes, pour protéger les
+  équipes d'intervention. Le système off-grid n'est pas raccordé au réseau du tout : il produit,
+  stocke dans des batteries et restitue l'énergie de manière totalement autonome, solution naturelle
+  pour les sites isolés. Le système hybride reste raccordé au réseau pour l'autoconsommation, mais lui
+  ajoute une batterie qui prend le relais sur des circuits prioritaires dès que le réseau tombe. Quand
+  la coupure survient, l'onduleur hybride bascule sur ses sorties de secours en quelques
+  millisecondes. C'est la seule des trois architectures qui assure l'autoconsommation au quotidien
+  tout en gardant le courant pendant une panne. Le bon repère n'est donc pas le budget de départ mais
+  une question simple : que se passe-t-il chez vous, concrètement, le jour où le courant s'arrête ?
+`;
+const readingMinutes = estimateReadingTime(guideBodyText);
 
 const url = new URL(Astro.url.pathname, Astro.site).href;
 const jsonLd = {
@@ -41,6 +64,14 @@ const jsonLd = {
     <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
       <p class="tech-label v2-kicker rule-brass text-lune">Guide · Architecture</p>
       <h1 class="display v2-page-title mt-5 text-white">On-grid, off-grid ou hybride ?</h1>
+
+      <!-- W303 — date de vérification + auteur + temps de lecture -->
+      <p class="guide-byline mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-lune-faint">
+        <span>Vérifié le {dateFmt.format(verifiedDate)} · par Reda Kasri</span>
+        <span aria-hidden="true">·</span>
+        <span>{readingMinutes} min de lecture</span>
+      </p>
+
       <p class="v2-lead mt-6 text-lune-soft">
         Une coupure ONEE arrive en plein après-midi. Trois maisons du même quartier ont des
         panneaux sur le toit ; une seule garde le courant. La différence ne tient pas à la
