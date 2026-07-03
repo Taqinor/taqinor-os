@@ -18,10 +18,11 @@ const MON_TOIT = read('../src/pages/devis/mon-toit.astro');
 const PROPOSITION = read('../src/pages/proposition/[token].astro');
 const GLOBAL_CSS = read('../src/styles/global.css');
 
-describe('WJ17 — proposition/[token].astro : le switcher FR/عربي est câblé (pas juste des boutons morts)', () => {
-  it('les boutons #prop-lang-fr / #prop-lang-ar existent avec la classe prop-lang-switch', () => {
+describe('WJ17/WJ43 — proposition/[token].astro : le switcher FR/EN/عربي est câblé (pas juste des boutons morts)', () => {
+  it('les boutons #prop-lang-fr / #prop-lang-en / #prop-lang-ar existent avec la classe prop-lang-switch', () => {
     expect(PROPOSITION).toContain('prop-lang-switch');
     expect(PROPOSITION).toContain('id="prop-lang-fr"');
+    expect(PROPOSITION).toContain('id="prop-lang-en"');
     expect(PROPOSITION).toContain('id="prop-lang-ar"');
   });
 
@@ -29,28 +30,32 @@ describe('WJ17 — proposition/[token].astro : le switcher FR/عربي est câbl
     expect(PROPOSITION).toContain('function prepareI18n');
     expect(PROPOSITION).toContain('function applyLang');
     expect(PROPOSITION).toContain("getElementById('prop-lang-fr')?.addEventListener('click', () => applyLang('fr'))");
+    expect(PROPOSITION).toContain("getElementById('prop-lang-en')?.addEventListener('click', () => applyLang('en'))");
     expect(PROPOSITION).toContain("getElementById('prop-lang-ar')?.addEventListener('click', () => applyLang('ar'))");
   });
 
-  it('le toggle utilise le mécanisme DUAL-NODE (jamais el.textContent = qui aplatirait un <strong> imbriqué)', () => {
+  it('le toggle utilise le mécanisme TRI-NODE FR/EN/AR (jamais el.textContent = qui aplatirait un <strong> imbriqué)', () => {
     const fn = PROPOSITION.slice(PROPOSITION.indexOf('function prepareI18n'), PROPOSITION.indexOf('function applyLang'));
     expect(fn).toContain('frSpan.innerHTML = el.innerHTML');
+    expect(fn).toContain('enSpan.textContent = enText');
     expect(fn).toContain('arSpan.textContent = arText');
-    expect(fn).toContain('el.append(frSpan, arSpan)');
+    expect(fn).toContain('el.append(frSpan, enSpan, arSpan)');
     const applyFn = PROPOSITION.slice(PROPOSITION.indexOf('function applyLang'), PROPOSITION.indexOf('prepareI18n();'));
-    expect(applyFn).toContain('fr.hidden = isAr');
+    expect(applyFn).toContain('fr.hidden = isAr || isEn');
+    expect(applyFn).toContain('en.hidden = !isEn');
     expect(applyFn).toContain('ar.hidden = !isAr');
     // La bascule ne doit PAS réécrire le innerHTML/textContent d'un élément
     // data-i18n à chaque clic (ce serait le bug WJ33 corrigé) — seul le
-    // hidden des paires change.
+    // hidden des triplets change.
     expect(applyFn).not.toContain('el.textContent =');
   });
 
-  it('applyLang pilote dir/lang au niveau DOCUMENT + aria-pressed sur les deux boutons', () => {
+  it('applyLang pilote dir/lang au niveau DOCUMENT + aria-pressed sur les trois boutons', () => {
     const applyFn = PROPOSITION.slice(PROPOSITION.indexOf('function applyLang'), PROPOSITION.indexOf('prepareI18n();'));
-    expect(applyFn).toContain("document.documentElement.lang = isAr ? 'ar' : 'fr'");
+    expect(applyFn).toContain("document.documentElement.lang = isAr ? 'ar' : isEn ? 'en' : 'fr'");
     expect(applyFn).toContain("document.documentElement.dir = isAr ? 'rtl' : 'ltr'");
     expect(applyFn).toContain("frBtn?.setAttribute('aria-pressed'");
+    expect(applyFn).toContain("enBtn?.setAttribute('aria-pressed'");
     expect(applyFn).toContain("arBtn?.setAttribute('aria-pressed'");
   });
 
@@ -83,8 +88,11 @@ describe('WJ17 — proposition/[token].astro : le switcher FR/عربي est câbl
 
   it('les valeurs numériques/références/dates restent dir="ltr" (jamais mirées en RTL)', () => {
     expect(PROPOSITION).toContain('dir="ltr"');
-    // Chaîne de prix (Sous-total/Total HT/TVA/Total TTC) : chaque <dd> figure numérique est LTR.
-    const priceChain = PROPOSITION.slice(PROPOSITION.indexOf('Chaîne de prix explicite'), PROPOSITION.indexOf('Chaîne de prix explicite') + 1800);
+    // Chaîne de prix (Sous-total/Remise/Total HT/TVA/Total TTC) : chaque <dd> figure numérique est LTR.
+    // Fenêtre bornée à la fermeture du <dl> — les data-en ajoutés en WJ43 ont rallongé chaque ligne,
+    // donc on slice jusqu'au </dl> réel plutôt qu'une fenêtre fixe de N caractères.
+    const priceStart = PROPOSITION.indexOf('Chaîne de prix explicite');
+    const priceChain = PROPOSITION.slice(priceStart, PROPOSITION.indexOf('</dl>', priceStart));
     expect((priceChain.match(/dir="ltr"/g) || []).length).toBeGreaterThanOrEqual(5);
   });
 });
