@@ -10,6 +10,7 @@ from .models import (
     KbArticleAcl,
     KbArticleLien,
     KbArticleVersion,
+    KbFavori,
     KbLecture,
     KbLectureObligatoire,
 )
@@ -218,3 +219,24 @@ class KbLectureObligatoireSerializer(serializers.ModelSerializer):
                 "Renseignez soit un utilisateur, soit un palier de rôle "
                 "(jamais les deux, jamais aucun).")
         return attrs
+
+
+class KbFavoriSerializer(serializers.ModelSerializer):
+    """XKB15 — Favori (article étoilé) : posé côté serveur (utilisateur +
+    société), strictement personnel — jamais visible d'un autre utilisateur
+    (filtré côté vue, pas ici)."""
+    article_titre = serializers.CharField(
+        source='article.titre', read_only=True)
+
+    class Meta:
+        model = KbFavori
+        fields = ['id', 'article', 'article_titre', 'utilisateur',
+                  'date_creation']
+        read_only_fields = ['utilisateur', 'date_creation']
+
+    def validate_article(self, article):
+        request = self.context.get('request')
+        if request is not None and article.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Cet article n'appartient pas à votre société.")
+        return article

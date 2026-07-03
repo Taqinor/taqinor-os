@@ -19,6 +19,7 @@ from .models import (
     KbArticleAcl,
     KbArticleLien,
     KbArticleVersion,
+    KbFavori,
     KbLectureObligatoire,
 )
 from .serializers import (
@@ -26,6 +27,7 @@ from .serializers import (
     KbArticleLienSerializer,
     KbArticleSerializer,
     KbArticleVersionSerializer,
+    KbFavoriSerializer,
     KbLectureObligatoireSerializer,
 )
 
@@ -219,6 +221,19 @@ class KbArticleViewSet(_KbBaseViewSet):
         return Response(
             selectors.rapport_peremption(request.user.company))
 
+    @action(detail=True, methods=['post'], url_path='toggler-favori')
+    def toggler_favori(self, request, pk=None):
+        """XKB15 — Favorise/défavorise cet article pour l'utilisateur courant."""
+        article = self.get_object()
+        actif, _favori = services.toggler_favori(
+            article, utilisateur=request.user)
+        return Response({'favori': actif})
+
+    @action(detail=False, methods=['get'], url_path='recents')
+    def recents(self, request):
+        """XKB15 — Articles récemment consultés par l'utilisateur courant."""
+        return Response(selectors.recents_pour_utilisateur(request.user))
+
     @action(detail=True, methods=['post'], url_path='deplacer')
     def deplacer(self, request, pk=None):
         """XKB8 — Déplace (re-parente) tout un sous-arbre + réordonne.
@@ -355,3 +370,21 @@ class KbLectureObligatoireViewSet(_KbBaseViewSet):
 
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)
+
+
+class KbFavoriViewSet(_KbBaseViewSet):
+    """XKB15 — « Mes favoris » : STRICTEMENT personnel — un utilisateur ne
+    voit jamais les favoris d'un autre, même dans la même société (le scoping
+    société du TenantMixin est encore affiné par l'utilisateur courant)."""
+    queryset = KbFavori.objects.select_related('article').all()
+    serializer_class = KbFavoriSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        return qs.filter(utilisateur=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, utilisateur=self.request.user)

@@ -484,3 +484,47 @@ class KbLectureObligatoire(models.Model):
     def __str__(self):
         cible = self.utilisateur_id or f'rôle:{self.role_cible}'
         return f'{self.article_id} → {cible}'
+
+
+class KbFavori(models.Model):
+    """XKB15 — Article ÉTOILÉ par un utilisateur (favori personnel).
+
+    Une ligne par (article, utilisateur) — togglable (créer/supprimer). La
+    société et l'utilisateur agissant sont posés côté serveur (jamais du
+    corps de requête). Les favoris d'un utilisateur ne sont jamais visibles
+    d'un autre (strictement personnel, contrairement au reste de la base qui
+    est partagée à l'échelle de la société).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='kb_app_favoris',
+        verbose_name='Société',
+    )
+    article = models.ForeignKey(
+        KbArticle,
+        on_delete=models.CASCADE,
+        related_name='favoris',
+        verbose_name='Article',
+    )
+    utilisateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='kb_app_favoris',
+        verbose_name='Utilisateur',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Ajouté le')
+
+    class Meta:
+        verbose_name = 'Favori'
+        verbose_name_plural = 'Favoris'
+        ordering = ['-date_creation', '-id']
+        unique_together = [('article', 'utilisateur')]
+        indexes = [
+            models.Index(
+                fields=['company', 'utilisateur'], name='kb_favori_co_user_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.utilisateur_id} ★ {self.article_id}'

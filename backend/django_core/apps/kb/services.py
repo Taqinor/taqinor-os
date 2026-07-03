@@ -9,7 +9,13 @@ import logging
 
 from django.db import transaction
 
-from .models import KbArticle, KbLecture, KbArticleVersion, KbArticleChunk
+from .models import (
+    KbArticle,
+    KbArticleChunk,
+    KbArticleVersion,
+    KbFavori,
+    KbLecture,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +90,25 @@ def creer_depuis_gabarit(gabarit, *, auteur, company):
         auteur=auteur,
         est_gabarit=False,
     )
+
+
+# ── XKB15 — Favoris (toggle) ─────────────────────────────────────────────────
+
+def toggler_favori(article, *, utilisateur):
+    """XKB15 — Favorise/défavorise ``article`` pour ``utilisateur`` (toggle).
+
+    Crée la ligne si absente, la supprime si présente. Société posée côté
+    serveur (celle de l'article). Renvoie ``(favori_actif, favori_ou_None)``.
+    """
+    with transaction.atomic():
+        favori = KbFavori.objects.filter(
+            article=article, utilisateur=utilisateur).first()
+        if favori is not None:
+            favori.delete()
+            return False, None
+        favori = KbFavori.objects.create(
+            company=article.company, article=article, utilisateur=utilisateur)
+        return True, favori
 
 
 # ── XKB14 — Vérification, péremption & verrou ───────────────────────────────

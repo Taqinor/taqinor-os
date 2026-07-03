@@ -132,6 +132,30 @@ def peut_editer(article, user):
     return qs.exists()
 
 
+# ── XKB15 — Favoris & récents ────────────────────────────────────────────────
+
+def recents_pour_utilisateur(user, limit=10):
+    """XKB15 — Articles récemment consultés par ``user`` (depuis
+    ``KbLecture.lu_le``), les plus récents en premier. Strictement personnel :
+    ne remonte QUE les lectures de l'utilisateur courant. Renvoie une liste de
+    dicts ``{id, titre, statut, lu_le}``."""
+    if user is None or not getattr(user, 'id', None):
+        return []
+    lectures = (KbLecture.objects
+                .filter(utilisateur=user)
+                .select_related('article')
+                .order_by('-lu_le', '-id')[:limit])
+    return [
+        {
+            'id': lecture.article.id,
+            'titre': lecture.article.titre,
+            'statut': lecture.article.statut,
+            'lu_le': lecture.lu_le,
+        }
+        for lecture in lectures
+    ]
+
+
 # ── XKB14 — Vérification, péremption & verrou ───────────────────────────────
 
 def rapport_peremption(company):
