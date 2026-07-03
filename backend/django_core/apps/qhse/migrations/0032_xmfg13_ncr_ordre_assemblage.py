@@ -5,7 +5,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('qhse', '0027_indicateuresg'),
+        ('qhse', '0031_xqhs4_code_defaut'),
         ('installations', '0060_xmfg12_ordredemontage'),
     ]
 
