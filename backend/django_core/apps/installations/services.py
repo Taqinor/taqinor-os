@@ -1627,12 +1627,19 @@ def enregistrer_controle_qualite(ordre, item_modele_id, *, resultat,
     est fournie SANS résultat explicite, le pass/fail est déduit automatiquement.
     Un item en échec ouvre une NCR liée (`qhse.services`, écriture cross-app
     fine) — best-effort, ne bloque jamais l'enregistrement."""
+    from decimal import Decimal, InvalidOperation
     from django.utils import timezone
     from .models import ControleQualiteOrdre
 
     controle = ControleQualiteOrdre.objects.select_related('item_modele').get(
         ordre=ordre, item_modele_id=item_modele_id)
     item = controle.item_modele
+
+    if valeur_mesuree is not None and not isinstance(valeur_mesuree, Decimal):
+        try:
+            valeur_mesuree = Decimal(str(valeur_mesuree))
+        except (InvalidOperation, ValueError, TypeError):
+            raise ValueError('valeur_mesuree invalide.')
 
     if resultat is None and valeur_mesuree is not None and (
             item.valeur_min is not None or item.valeur_max is not None):

@@ -376,6 +376,7 @@ class OrdreAssemblageViewSet(TenantMixin, viewsets.ModelViewSet):
             id__in=set(kit_map.values()), company=company)}
 
         ordres = []
+        any_created = False
         for ligne in devis.lignes.all():
             kit_id = kit_map.get(ligne.produit_id)
             if kit_id is None:
@@ -396,10 +397,11 @@ class OrdreAssemblageViewSet(TenantMixin, viewsets.ModelViewSet):
                     OrdreAssemblage, 'ASM', company, _save)
                 seed_lignes_assemblage(ordre)
                 seed_reservations_assemblage(ordre)
+                any_created = True
             ordres.append(ordre)
         return Response(
             OrdreAssemblageSerializer(ordres, many=True).data,
-            status=201 if ordres else 200)
+            status=201 if any_created else 200)
 
     @action(detail=True, methods=['get'])
     def disponibilite(self, request, pk=None):
