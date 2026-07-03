@@ -152,6 +152,12 @@ def warranty_registry(equipements_qs, *, expiring_soon_days=60, today=None):
             'statut_garantie': st,
             'statut_garantie_production': st_prod,
             'statut': eq.statut,
+            # XSAV13 — garantie légale de conformité (loi 31-08, biens
+            # meubles) : impérative, 12 mois à compter de la pose.
+            'date_fin_garantie_legale': (
+                eq.date_fin_garantie_legale.isoformat()
+                if eq.date_fin_garantie_legale else None),
+            'sous_garantie_legale_seule': eq.sous_garantie_legale_seule,
         }
         parc = parcs[inst_id]
         parc['items'].append(item)

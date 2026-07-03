@@ -2,6 +2,7 @@ from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.db import transaction, IntegrityError
+from django.db.models import Q
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import viewsets, filters, status
@@ -21,6 +22,7 @@ from .models import (
     SavSlaSettings, MaintenanceChecklistTemplate, TicketChecklistItem,
     WarrantyClaim, KbArticle, AlarmeOnduleur,
 )
+from .services import add_months
 from .pdf import rapport_intervention_pdf
 from .serializers import (
     EquipementSerializer, TicketSerializer, TicketActivitySerializer,
@@ -84,6 +86,18 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
                     date_fin_garantie__gte=today, date_fin_garantie__lte=soon)
             elif garantie == 'sous_garantie':
                 qs = qs.filter(date_fin_garantie__gt=soon)
+            elif garantie == 'legale_uniquement':
+                # XSAV13 — SEULE la garantie légale (loi 31-08, 12 mois à
+                # compter de la pose) couvre encore l'équipement : commerciale
+                # absente/expirée, mais date_pose < 12 mois (donc légale
+                # toujours active). Seuil calculé via le même helper de date
+                # (add_months, -12) que les autres horloges de garantie.
+                seuil_legal = add_months(today, -Equipement.GARANTIE_LEGALE_MOIS)
+                qs = qs.filter(
+                    date_pose__isnull=False, date_pose__gt=seuil_legal,
+                ).filter(
+                    Q(date_fin_garantie__isnull=True)
+                    | Q(date_fin_garantie__lt=today))
         return qs
 
     def get_permissions(self):

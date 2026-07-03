@@ -241,6 +241,47 @@ class Equipement(models.Model):
             if (self.date_pose and gpm) else None
         )
 
+    # ── XSAV13 — garantie légale de conformité (loi 31-08, biens meubles) ──
+    # Durée légale marocaine, impérative et non négociable : 12 mois à
+    # compter de la pose. CALCULÉE (comme les autres horloges), jamais
+    # stockée — recalculée à la lecture depuis `date_pose`, cohérente avec
+    # `recompute_garanties` pour la garantie commerciale.
+    GARANTIE_LEGALE_MOIS = 12
+
+    @property
+    def date_fin_garantie_legale(self):
+        """Fin de la garantie légale de conformité (loi 31-08) : date_pose +
+        12 mois. None si `date_pose` n'est pas renseignée."""
+        if not self.date_pose:
+            return None
+        return add_months(self.date_pose, self.GARANTIE_LEGALE_MOIS)
+
+    @property
+    def date_fin_garantie_effective(self):
+        """XSAV13 — Fin de garantie EFFECTIVE = le MAX entre la garantie
+        légale (loi 31-08) et la garantie commerciale constructeur — la plus
+        favorable au client s'applique. None si aucune des deux n'est
+        calculable (ni date_pose, ni durée constructeur renseignée)."""
+        candidates = [
+            d for d in (self.date_fin_garantie_legale, self.date_fin_garantie)
+            if d is not None
+        ]
+        return max(candidates) if candidates else None
+
+    @property
+    def sous_garantie_legale_seule(self):
+        """XSAV13 — True si SEULE la garantie légale (loi 31-08) couvre
+        encore l'équipement — la garantie commerciale est absente ou déjà
+        expirée. Sert à afficher la mention dédiée sur la fiche/PDF."""
+        legale = self.date_fin_garantie_legale
+        if legale is None:
+            return False
+        today = timezone.localdate()
+        legale_active = today < legale
+        commerciale_active = bool(
+            self.date_fin_garantie and today < self.date_fin_garantie)
+        return legale_active and not commerciale_active
+
     def set_token(self):
         """FG85 — pose le jeton EQUIP:<id> après la première sauvegarde."""
         token = f'EQUIP:{self.pk}'
@@ -413,11 +454,16 @@ class Ticket(models.Model):
         Si un équipement est lié et porte une date de fin de garantie, on
         compare à aujourd'hui ('oui'/'non'). Sinon, la valeur manuelle stockée
         ('oui'/'non'/'a_determiner') fait foi.
-        """
+
+        XSAV13 — la comparaison utilise ``date_fin_garantie_effective``
+        (MAX entre la garantie légale de conformité loi 31-08 et la garantie
+        commerciale constructeur) : un équipement de 8 mois sans garantie
+        constructeur reste sous garantie (légale, impérative)."""
         eq = self.equipement
-        if eq is not None and eq.date_fin_garantie:
+        if eq is not None and eq.date_fin_garantie_effective:
             today = timezone.localdate()
-            return (self.SousGarantie.OUI if today < eq.date_fin_garantie
+            return (self.SousGarantie.OUI
+                    if today < eq.date_fin_garantie_effective
                     else self.SousGarantie.NON)
         return self.sous_garantie
 

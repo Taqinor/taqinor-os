@@ -35,6 +35,10 @@ class EquipementSerializer(serializers.ModelSerializer):
     nb_tickets_ouverts = serializers.SerializerMethodField()
     # FG90 — nombre de tickets correctifs sur les 12 derniers mois (citron).
     nb_tickets_12m = serializers.SerializerMethodField()
+    # XSAV13 — garantie légale de conformité (loi 31-08), calculée.
+    date_fin_garantie_legale = serializers.DateField(read_only=True)
+    date_fin_garantie_effective = serializers.DateField(read_only=True)
+    sous_garantie_legale_seule = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = Equipement
