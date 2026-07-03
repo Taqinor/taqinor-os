@@ -1,8 +1,8 @@
 from rest_framework import serializers
 
 from .models import (
-    ApprovalRequest, ApprovalRequestType, AutomationApproval, AutomationRule,
-    AutomationRun,
+    ApprovalDelegation, ApprovalRequest, ApprovalRequestType,
+    AutomationApproval, AutomationRule, AutomationRun,
 )
 
 
@@ -82,6 +82,10 @@ class ApprovalRequestSerializer(serializers.ModelSerializer):
         source='demandeur.username', read_only=True, default=None)
     decided_by_nom = serializers.CharField(
         source='decided_by.username', read_only=True, default=None)
+    # XKB3 — présent uniquement quand la décision a été prise par un
+    # suppléant « au nom de » ce délégant (délégation active à l'instant T).
+    decided_on_behalf_of_nom = serializers.CharField(
+        source='decided_on_behalf_of.username', read_only=True, default=None)
 
     class Meta:
         model = ApprovalRequest
@@ -89,6 +93,7 @@ class ApprovalRequestSerializer(serializers.ModelSerializer):
             'id', 'request_type', 'request_type_nom', 'demandeur',
             'demandeur_nom', 'payload', 'status', 'status_display',
             'decided_by', 'decided_by_nom', 'decided_at', 'decision_note',
+            'decided_on_behalf_of', 'decided_on_behalf_of_nom',
             'date_creation',
         ]
         # `company` + `demandeur` posés côté serveur ; le statut/décision ne
@@ -97,5 +102,23 @@ class ApprovalRequestSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id', 'request_type_nom', 'demandeur', 'demandeur_nom', 'status',
             'status_display', 'decided_by', 'decided_by_nom', 'decided_at',
-            'decision_note', 'date_creation',
+            'decision_note', 'decided_on_behalf_of',
+            'decided_on_behalf_of_nom', 'date_creation',
         ]
+
+
+class ApprovalDelegationSerializer(serializers.ModelSerializer):
+    delegant_nom = serializers.CharField(
+        source='delegant.username', read_only=True, default=None)
+    suppleant_nom = serializers.CharField(
+        source='suppleant.username', read_only=True, default=None)
+
+    class Meta:
+        model = ApprovalDelegation
+        # `company` posée côté serveur ; `delegant` par défaut = l'appelant
+        # (posé côté vue), mais un admin peut déléguer pour un tiers.
+        fields = [
+            'id', 'delegant', 'delegant_nom', 'suppleant', 'suppleant_nom',
+            'date_debut', 'date_fin', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']

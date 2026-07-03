@@ -378,6 +378,12 @@ class ApprovalRequest(models.Model):
         null=True, blank=True, related_name='approval_requests_decidees')
     decided_at = models.DateTimeField(null=True, blank=True)
     decision_note = models.CharField(max_length=255, blank=True, default='')
+    # XKB3 — posé quand ``decided_by`` a décidé EN TANT QUE suppléant d'une
+    # délégation active (au nom du délégant). Vide = décision directe,
+    # comportement XKB2 inchangé.
+    decided_on_behalf_of = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='approval_requests_deleguees')
 
     date_creation = models.DateTimeField(auto_now_add=True)
 
@@ -391,3 +397,43 @@ class ApprovalRequest(models.Model):
 
     def __str__(self):
         return f'{self.request_type_id}:{self.status}'
+
+
+# ── XKB3 — Délégation d'approbation (suppléant) ──────────────────────────────
+
+class ApprovalDelegation(models.Model):
+    """Délégation d'absence : pendant [date_debut, date_fin], les demandes en
+    attente du délégant apparaissent aussi chez le suppléant (XKB1) et sa
+    décision porte la mention « au nom de ». Retour automatique à l'expiration
+    (aucun état à réinitialiser : la plage de dates fait foi à chaque lecture).
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='approval_delegations')
+    delegant = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='approval_delegations_donnees')
+    suppleant = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='approval_delegations_recues')
+    date_debut = models.DateTimeField()
+    date_fin = models.DateTimeField()
+
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Délégation d'approbation"
+        verbose_name_plural = "Délégations d'approbation"
+        ordering = ['-date_debut', '-id']
+        indexes = [
+            models.Index(fields=['company', 'delegant']),
+            models.Index(fields=['company', 'suppleant']),
+        ]
+
+    def __str__(self):
+        return f'{self.delegant_id} -> {self.suppleant_id}'
+
+    def is_active(self, at=None):
+        from django.utils import timezone
+        at = at or timezone.now()
+        return self.date_debut <= at <= self.date_fin

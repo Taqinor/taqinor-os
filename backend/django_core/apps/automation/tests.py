@@ -22,8 +22,9 @@ from apps.ventes.models import Devis, Facture
 
 from apps.automation import engine
 from apps.automation.models import (
-    ActionType, ApprovalRequest, ApprovalRequestType, AutomationApproval,
-    AutomationRule, AutomationRun, CanalMessage, ModeleMessage, TriggerType,
+    ActionType, ApprovalDelegation, ApprovalRequest, ApprovalRequestType,
+    AutomationApproval, AutomationRule, AutomationRun, CanalMessage,
+    ModeleMessage, TriggerType,
 )
 
 User = get_user_model()
@@ -909,3 +910,88 @@ class ApprovalRequestTests(TestCase):
             'payload': {'montant': '100'},
         }, format='json')
         self.assertEqual(resp.status_code, 400)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# XKB3 — Délégation d'approbation (suppléant).
+
+class ApprovalDelegationTests(TestCase):
+    def setUp(self):
+        self.co = make_company('xkb3-a', 'XKB3 A')
+        self.delegant = make_user(self.co, 'xkb3-delegant', 'admin')
+        self.suppleant = make_user(self.co, 'xkb3-suppleant', 'admin')
+        self.employe = make_user(self.co, 'xkb3-emp', 'normal')
+        self.req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Note de frais', enabled=True,
+            champs_requis=[])
+
+    def _pending_request(self, demandeur=None):
+        return ApprovalRequest.objects.create(
+            company=self.co, request_type=self.req_type,
+            demandeur=demandeur or self.employe, payload={})
+
+    def test_active_delegation_routes_request_to_substitute(self):
+        now = timezone.now()
+        ApprovalDelegation.objects.create(
+            company=self.co, delegant=self.delegant,
+            suppleant=self.suppleant,
+            date_debut=now - timedelta(days=1),
+            date_fin=now + timedelta(days=1))
+        # Une demande dont le demandeur EST le délégant (ex. cas d'usage :
+        # le délégant est lui-même approbateur habituel, remplacé pendant
+        # son absence) — le suppléant doit la voir dans sa boîte.
+        req = self._pending_request(demandeur=self.delegant)
+
+        api = auth(self.suppleant)
+        resp = api.get('/api/django/automation/approval-requests/')
+        ids = [r['id'] for r in rows(resp)]
+        self.assertIn(req.pk, ids)
+
+    def test_substitute_decision_marks_on_behalf_of(self):
+        now = timezone.now()
+        ApprovalDelegation.objects.create(
+            company=self.co, delegant=self.delegant,
+            suppleant=self.suppleant,
+            date_debut=now - timedelta(days=1),
+            date_fin=now + timedelta(days=1))
+        req = self._pending_request(demandeur=self.delegant)
+
+        api = auth(self.suppleant)
+        resp = api.post(
+            f'/api/django/automation/approval-requests/{req.pk}/approve/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        req.refresh_from_db()
+        self.assertEqual(req.status, ApprovalRequest.Status.APPROVED)
+        self.assertEqual(req.decided_by, self.suppleant)
+        self.assertEqual(req.decided_on_behalf_of, self.delegant)
+
+    def test_outside_range_nothing_changes(self):
+        """Hors plage de délégation, le suppléant ne voit rien de spécial et
+        une décision qu'il prendrait ne porte AUCUNE mention de délégation."""
+        past = timezone.now() - timedelta(days=30)
+        ApprovalDelegation.objects.create(
+            company=self.co, delegant=self.delegant,
+            suppleant=self.suppleant,
+            date_debut=past - timedelta(days=5), date_fin=past)
+        req = self._pending_request(demandeur=self.delegant)
+
+        # Le suppléant ne voit PAS la demande (délégation expirée).
+        api = auth(self.suppleant)
+        resp = api.get('/api/django/automation/approval-requests/')
+        ids = [r['id'] for r in rows(resp)]
+        self.assertNotIn(req.pk, ids)
+
+    def test_employee_can_only_delegate_self(self):
+        api = auth(self.employe)
+        now = timezone.now()
+        resp = api.post('/api/django/automation/approval-delegations/', {
+            'delegant': self.delegant.pk,  # tente d'usurper un tiers
+            'suppleant': self.suppleant.pk,
+            'date_debut': (now - timedelta(days=1)).isoformat(),
+            'date_fin': (now + timedelta(days=1)).isoformat(),
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        deleg = ApprovalDelegation.objects.get(pk=resp.data['id'])
+        # Le délégant est forcé côté serveur = l'employé lui-même.
+        self.assertEqual(deleg.delegant, self.employe)

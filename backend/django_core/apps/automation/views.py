@@ -22,13 +22,13 @@ from authentication.permissions import (
 
 from . import engine, services
 from .models import (
-    ApprovalRequest, ApprovalRequestType, AutomationApproval, AutomationRule,
-    AutomationRun,
+    ApprovalDelegation, ApprovalRequest, ApprovalRequestType,
+    AutomationApproval, AutomationRule, AutomationRun,
 )
 from .serializers import (
-    ApprovalRequestSerializer, ApprovalRequestTypeSerializer,
-    AutomationApprovalSerializer, AutomationRuleSerializer,
-    AutomationRunSerializer,
+    ApprovalDelegationSerializer, ApprovalRequestSerializer,
+    ApprovalRequestTypeSerializer, AutomationApprovalSerializer,
+    AutomationRuleSerializer, AutomationRunSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -239,8 +239,11 @@ class ApprovalRequestViewSet(TenantMixin, viewsets.ModelViewSet):
         elif getattr(
                 self.request.user, 'menu_tier', None) not in (
                     'admin', 'responsable'):
-            # Palier limité : ne voit QUE ses propres demandes soumises.
-            qs = qs.filter(demandeur=self.request.user)
+            # Palier limité : ne voit QUE ses propres demandes soumises, PLUS
+            # celles de tout délégant pour qui il est suppléant actif (XKB3).
+            qs = qs.filter(
+                demandeur_id__in=services.visible_demandeur_ids_for(
+                    self.request.user))
         return qs
 
     def create(self, request, *args, **kwargs):
@@ -280,28 +283,56 @@ class ApprovalRequestViewSet(TenantMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
         req = self.get_object()
-        if req.status != ApprovalRequest.Status.PENDING:
-            return Response({'detail': 'Décision déjà prise.'}, status=400)
-        req.status = ApprovalRequest.Status.APPROVED
-        req.decided_by = request.user
-        req.decided_at = timezone.now()
-        req.decision_note = request.data.get('note', '') or ''
-        req.save(update_fields=[
-            'status', 'decided_by', 'decided_at', 'decision_note'])
+        try:
+            services.decide_request(
+                req, decider=request.user, approve=True,
+                note=request.data.get('note', '') or '')
+        except services.ApprovalError as exc:
+            return Response({'detail': str(exc)}, status=400)
         return Response(self.get_serializer(req).data)
 
     @action(detail=True, methods=['post'])
     def reject(self, request, pk=None):
         req = self.get_object()
-        if req.status != ApprovalRequest.Status.PENDING:
-            return Response({'detail': 'Décision déjà prise.'}, status=400)
-        req.status = ApprovalRequest.Status.REJECTED
-        req.decided_by = request.user
-        req.decided_at = timezone.now()
-        req.decision_note = request.data.get('note', '') or ''
-        req.save(update_fields=[
-            'status', 'decided_by', 'decided_at', 'decision_note'])
+        try:
+            services.decide_request(
+                req, decider=request.user, approve=False,
+                note=request.data.get('note', '') or '')
+        except services.ApprovalError as exc:
+            return Response({'detail': str(exc)}, status=400)
         return Response(self.get_serializer(req).data)
+
+
+class ApprovalDelegationViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Délégations d'approbation (XKB3). Un employé gère ses propres
+    délégations (délégant = lui-même) ; un admin/responsable peut en créer
+    pour un tiers."""
+    queryset = ApprovalDelegation.objects.select_related(
+        'delegant', 'suppleant').all()
+    serializer_class = ApprovalDelegationSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_debut', 'date_fin']
+
+    def get_permissions(self):
+        return [IsAnyRole()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if getattr(user, 'menu_tier', None) not in ('admin', 'responsable'):
+            # Palier limité : ne gère que SES délégations (émises ou reçues).
+            from django.db.models import Q
+            qs = qs.filter(Q(delegant=user) | Q(suppleant=user))
+        return qs
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        # Un palier limité ne peut déléguer que POUR LUI-MÊME (jamais au nom
+        # d'un tiers) ; l'admin/responsable peut poser `delegant` librement.
+        if getattr(user, 'menu_tier', None) not in ('admin', 'responsable'):
+            serializer.save(company=user.company, delegant=user)
+        else:
+            serializer.save(company=user.company)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
