@@ -216,7 +216,7 @@ class TypeAbsenceSerializer(serializers.ModelSerializer):
         model = TypeAbsence
         fields = [
             'id', 'code', 'libelle', 'decompte_jours_ouvres', 'deduit_solde',
-            'remunere', 'actif', 'date_creation',
+            'remunere', 'actif', 'jours_legaux', 'date_creation',
         ]
         read_only_fields = ['date_creation']
 

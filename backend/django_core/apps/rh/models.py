@@ -443,6 +443,11 @@ class TypeAbsence(models.Model):
         default=True, verbose_name='Déduit du solde de congés')
     remunere = models.BooleanField(default=True, verbose_name='Rémunéré')
     actif = models.BooleanField(default=True, verbose_name='Actif')
+    # XRH2 — plafond légal informatif (ex. 14 semaines maternité, 3 j paternité).
+    # Purement informatif : la VALIDATION ne bloque rien dessus (nullable).
+    jours_legaux = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        verbose_name='Plafond légal (jours, informatif)')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
