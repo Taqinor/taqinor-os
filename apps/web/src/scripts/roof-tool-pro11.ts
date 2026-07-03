@@ -121,6 +121,7 @@ import { createProdWindow } from './roofPro11/prodWindow';
 import { createMatrix } from './roofPro11/matrix';
 import { createLayoutEditor } from './roofPro11/layoutEditor';
 import { createObstaclesUi } from './roofPro11/obstaclesUi';
+import { createShadingUi } from './roofPro11/shadingUi';
 import { createMapDraw } from './roofPro11/mapDraw';
 import { createScene3d } from './roofPro11/scene3d';
 import { createOptimizer } from './roofPro11/optimizer';
@@ -356,6 +357,12 @@ export function initRoofToolPro8(opts: InitOptions): void {
   // d'ombrage, où les rangées espacées par l'angle de design se dégagent visiblement.
   let sunHour = 12;
   let sunDay = WINTER_SOLSTICE_DAY;
+  // WJ19 — ombres tracées (obstructions déduites) + facteurs de dérate. Réfs/valeurs
+  // partagées via ctx : shadingUi les écrit, scene3d/optimizer/prodWindow les lisent.
+  const shadeObstructions: import('../lib/shadingEngine').ShadeObstruction[] = [];
+  let shadeFactors: number[][] | null = null;
+  let shadeAnnualFactor = 1;
+  let climateBandOn = false; // WJ22 — fourchette de pertes climatiques (opt-in, défaut OFF)
   let useRecommended = true;
   let sel: { family: ConfigFamily; tilt: TiltMode; orient: OrientMode; azimuth: AzimuthMode; margin: MarginMode } = {
     family: 'south',
@@ -770,6 +777,25 @@ export function initRoofToolPro8(opts: InitOptions): void {
     set sunDay(v) {
       sunDay = v;
     },
+    shadeObstructions,
+    get shadeFactors() {
+      return shadeFactors;
+    },
+    set shadeFactors(v) {
+      shadeFactors = v;
+    },
+    get shadeAnnualFactor() {
+      return shadeAnnualFactor;
+    },
+    set shadeAnnualFactor(v) {
+      shadeAnnualFactor = v;
+    },
+    get climateBandOn() {
+      return climateBandOn;
+    },
+    set climateBandOn(v) {
+      climateBandOn = v;
+    },
     get consMode() {
       return consMode;
     },
@@ -1096,6 +1122,18 @@ export function initRoofToolPro8(opts: InitOptions): void {
   const tryBeginVertexMove = obstaclesUi.tryBeginVertexMove;
   const doVertexMove = obstaclesUi.doVertexMove;
   const endVertexMove = obstaclesUi.endVertexMove;
+
+  // WJ19 — « Ombres voisines » (shadow-tracing → dérate honnête). Le module câble
+  // lui-même ses boutons/curseurs ; l'entrée route seulement le clic carte (plus bas)
+  // et le reset. `renderActive` est déclaré plus bas → wrapper paresseux.
+  const shadingUi = createShadingUi(ctx, {
+    map,
+    setStatus,
+    recalcDisplays: () => renderActive(),
+    // WJ21 — wrapper paresseux : scene3d est construit plus bas ; cette closure n'est
+    // appelée qu'après le boot (jamais pendant la TDZ du const scene3d).
+    applyHeatmap: (colorFor) => scene3d.setSolarAccessHeatmap(colorFor),
+  });
 
   // — Tracé du contour + recherche d'adresse (géocodage W75). Le module câble lui-même
   // le formulaire de recherche ; l'entrée garde la construction de la carte, le boot
@@ -1535,6 +1573,7 @@ export function initRoofToolPro8(opts: InitOptions): void {
     matrixResult = null;
     pitchedYieldCache.clear();
     pitchedPvgisPerKwc = null;
+    shadingUi.reset(); // WJ19 — les ombres tracées appartiennent au tracé effacé
     if (optimumCard) optimumCard.hidden = true;
     neededPanels = 0;
     neededAuto = true;
@@ -1848,6 +1887,8 @@ export function initRoofToolPro8(opts: InitOptions): void {
     }
     if (obstacleMode) return; // le glissé gère le dessin
     const lngLat: LngLat = [e.lngLat.lng, e.lngLat.lat];
+    // WJ19 — tracé d'ombre actif : le module consomme le clic (pied puis bout).
+    if (shadingUi.handleMapClick(lngLat)) return;
     if (closed) {
       // sélection/désélection d'un obstacle existant
       selectObstacle(obstacleAtPoint(e.point));
@@ -2301,6 +2342,7 @@ export function initRoofToolPro8(opts: InitOptions): void {
       ctx.sunHour = h;
       if (sunHourValueEl) sunHourValueEl.textContent = `${h} h`;
       renderActive();
+      shadingUi.refreshHeatmap(); // WJ21 — le re-rendu a recréé les panneaux : garde la heatmap
     });
   }
   // W87 — saison : hiver (solstice = pire cas d'ombrage, défaut) ou été (jour 172).
@@ -2311,7 +2353,17 @@ export function initRoofToolPro8(opts: InitOptions): void {
         o.setAttribute('aria-pressed', String(o === b)),
       );
       renderActive();
+      shadingUi.refreshHeatmap(); // WJ21 — garde la heatmap après le re-rendu saisonnier
     });
+  });
+  // WJ22 — bascule « Fourchette réaliste » : active/désactive la couche de pertes
+  // climatiques honnêtes (fourchette de confiance) puis re-rend la carte de résultat.
+  // Défaut OFF → chiffre unique inchangé.
+  const climateToggleEl = $<HTMLButtonElement>('rp9-climate-toggle');
+  climateToggleEl?.addEventListener('click', () => {
+    ctx.climateBandOn = !ctx.climateBandOn;
+    climateToggleEl.setAttribute('aria-pressed', String(ctx.climateBandOn));
+    renderActive();
   });
   // W46 — bouton « Recommandé » de l'inclinaison = AFFORDANCE PAR AXE : il LIBÈRE LE
   // SEUL axe inclinaison (retour AUTO) en TENANT tous les autres verrous accumulés, puis

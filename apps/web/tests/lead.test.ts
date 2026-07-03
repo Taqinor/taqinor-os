@@ -78,6 +78,226 @@ describe('validateLead', () => {
   });
 });
 
+// ——— WJ30 — validateLead ne JETTE plus les champs capturés : pass-through validé ———
+describe('WJ30 — validateLead élargi : les champs capturés passent, le garbage tombe', () => {
+  const widened = {
+    ...validBody,
+    email: 'karim@example.com',
+    factureHiver: 1450.5,
+    eteDifferente: true,
+    factureEte: 2600,
+    billKwh: 9000,
+    raccordement: 'triphase',
+    adresse: 'Maârif, Casablanca, Maroc',
+    mode: 'professionnel',
+    langue_preferee: 'ar',
+    roofPoint: { lat: 33.5731, lng: -7.6298 },
+    roofOutline: [
+      [33.5731, -7.6298],
+      [33.5732, -7.6298],
+      [33.5732, -7.6297],
+    ],
+  };
+
+  it('transmet e-mail, factures exactes, kWh, raccordement, adresse, mode, langue, GPS et contour', () => {
+    const r = validateLead(widened);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.lead.email).toBe('karim@example.com');
+    expect(r.lead.factureHiver).toBe(1450.5);
+    expect(r.lead.eteDifferente).toBe(true);
+    expect(r.lead.factureEte).toBe(2600);
+    expect(r.lead.billKwh).toBe(9000);
+    expect(r.lead.raccordement).toBe('triphase');
+    expect(r.lead.adresse).toBe('Maârif, Casablanca, Maroc');
+    expect(r.lead.mode).toBe('professionnel');
+    expect(r.lead.langue_preferee).toBe('ar');
+    expect(r.lead.roofPoint).toEqual({ lat: 33.5731, lng: -7.6298 });
+    // le repère validé alimente aussi gpsLat/gpsLng
+    expect(r.lead.gpsLat).toBe(33.5731);
+    expect(r.lead.gpsLng).toBe(-7.6298);
+    expect(r.lead.roofOutline).toHaveLength(3);
+  });
+
+  it('un lead SANS champ facultatif garde exactement la forme d\'hier (aucune clé ajoutée)', () => {
+    const r = validateLead(validBody);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    for (const k of ['email', 'factureHiver', 'factureEte', 'eteDifferente', 'billKwh',
+      'raccordement', 'adresse', 'mode', 'langue_preferee', 'roofPoint', 'gpsLat', 'gpsLng', 'roofOutline']) {
+      expect(r.lead).not.toHaveProperty(k);
+    }
+  });
+
+  it('un champ facultatif MALFORMÉ est écarté SANS faire échouer le lead', () => {
+    const r = validateLead({
+      ...validBody,
+      email: 'pas-un-email',
+      factureHiver: -50,
+      billKwh: 'abc',
+      raccordement: 'pentaphase',
+      mode: 'martien',
+      langue_preferee: 'en',
+      roofPoint: { lat: 'x', lng: null },
+      roofOutline: [[1]],
+    });
+    expect(r.ok).toBe(true); // JAMAIS bloquant
+    if (!r.ok) return;
+    for (const k of ['email', 'factureHiver', 'billKwh', 'raccordement', 'mode',
+      'langue_preferee', 'roofPoint', 'roofOutline']) {
+      expect(r.lead).not.toHaveProperty(k);
+    }
+  });
+
+  it('un GPS hors du Maroc est du garbage : écarté, lead intact', () => {
+    const r = validateLead({
+      ...validBody,
+      roofPoint: { lat: 48.85, lng: 2.35 }, // Paris — hors bornes
+      gpsLat: 0,
+      gpsLng: 90,
+      roofOutline: [
+        [0, 0],
+        [0, 0],
+        [0, 0],
+      ],
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.lead).not.toHaveProperty('roofPoint');
+    expect(r.lead).not.toHaveProperty('gpsLat');
+    expect(r.lead).not.toHaveProperty('gpsLng');
+    expect(r.lead).not.toHaveProperty('roofOutline');
+  });
+
+  it('été NON différent ⇒ factureEte null même si une valeur résiduelle est envoyée', () => {
+    const r = validateLead({ ...validBody, eteDifferente: false, factureEte: 9999 });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.lead.eteDifferente).toBe(false);
+    expect(r.lead.factureEte).toBeNull();
+  });
+
+  it('le contour est borné (200 sommets max) et exige 3 paires valides', () => {
+    const many = Array.from({ length: 500 }, (_, i) => [33.5 + i * 1e-6, -7.6]);
+    const r = validateLead({ ...validBody, roofOutline: many });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect((r.lead.roofOutline ?? []).length).toBeLessThanOrEqual(200);
+    const r2 = validateLead({ ...validBody, roofOutline: [[33.5, -7.6], [33.5, -7.6]] });
+    expect(r2.ok).toBe(true);
+    if (!r2.ok) return;
+    expect(r2.lead).not.toHaveProperty('roofOutline');
+  });
+
+  it('le record transmis au webhook porte les champs élargis (buildLeadRecord les conserve)', () => {
+    const v = validateLead(widened);
+    if (!v.ok) throw new Error('fixture invalide');
+    const record = buildLeadRecord(v.lead, { kwcMin: 5, kwcMax: 9, kwcLabel: '5 à 9 kWc', paybackLabel: '4 à 6 ans', source: 'local' }, new Date());
+    expect(record.email).toBe('karim@example.com');
+    expect(record.mode).toBe('professionnel');
+    expect(record.langue_preferee).toBe('ar');
+    expect(record.factureHiver).toBe(1450.5);
+    expect(record.roofPoint).toEqual({ lat: 33.5731, lng: -7.6298 });
+    // le contrat existant tient toujours
+    expect(record.qualified).toBe(true);
+    expect(record.fbclid).toBe('fb.1.123.abc');
+  });
+});
+
+// ——— WJ31 — validateLead élargi encore : questions best-in-world facultatives ———
+describe('WJ31 — validateLead élargi : distributeur, ombrage, âge toit, puces, qualificateurs', () => {
+  const widened31 = {
+    ...validBody,
+    distributeur: 'lydec',
+    roofAgeYears: 12,
+    ombrage: 'partiel',
+    futureLoads: ['clim', 've'],
+    batteryInterest: true,
+    occupantType: 'proprietaire',
+    projectTiming: '3mois',
+    financingIntent: 'financement',
+    hasMeterPhoto: true,
+  };
+
+  it('transmet distributeur, ombrage, âge du toit, charges futures, batterie, qualificateurs et financement', () => {
+    const r = validateLead(widened31);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.lead.distributeur).toBe('lydec');
+    expect(r.lead.roofAgeYears).toBe(12);
+    expect(r.lead.ombrage).toBe('partiel');
+    expect(r.lead.futureLoads).toEqual(['clim', 've']);
+    expect(r.lead.batteryInterest).toBe(true);
+    expect(r.lead.occupantType).toBe('proprietaire');
+    expect(r.lead.projectTiming).toBe('3mois');
+    expect(r.lead.financingIntent).toBe('financement');
+    expect(r.lead.hasMeterPhoto).toBe(true);
+  });
+
+  it('un lead SANS ces champs garde exactement la forme d\'hier (aucune clé ajoutée)', () => {
+    const r = validateLead(validBody);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    for (const k of ['distributeur', 'roofAgeYears', 'ombrage', 'futureLoads',
+      'batteryInterest', 'occupantType', 'projectTiming', 'financingIntent', 'hasMeterPhoto']) {
+      expect(r.lead).not.toHaveProperty(k);
+    }
+  });
+
+  it('un champ facultatif MALFORMÉ est écarté SANS faire échouer le lead', () => {
+    const r = validateLead({
+      ...validBody,
+      distributeur: 'iam', // pas un distributeur électrique connu
+      roofAgeYears: -5,
+      ombrage: 'beaucoup',
+      futureLoads: ['jacuzzi', 42, 'clim'], // seul 'clim' est valide
+      occupantType: 'invite',
+      projectTiming: 'un jour',
+      financingIntent: 'crypto',
+    });
+    expect(r.ok).toBe(true); // JAMAIS bloquant
+    if (!r.ok) return;
+    expect(r.lead).not.toHaveProperty('distributeur');
+    expect(r.lead).not.toHaveProperty('roofAgeYears');
+    expect(r.lead).not.toHaveProperty('ombrage');
+    expect(r.lead.futureLoads).toEqual(['clim']); // le garbage est filtré, le valide garde
+    expect(r.lead).not.toHaveProperty('occupantType');
+    expect(r.lead).not.toHaveProperty('projectTiming');
+    expect(r.lead).not.toHaveProperty('financingIntent');
+  });
+
+  it('roofAgeYears hors bornes (> 100 ans) est écarté', () => {
+    const r = validateLead({ ...validBody, roofAgeYears: 500 });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.lead).not.toHaveProperty('roofAgeYears');
+  });
+
+  it('futureLoads déduplique et ignore un tableau vide', () => {
+    const r = validateLead({ ...validBody, futureLoads: ['clim', 'clim', 'pompe'] });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.lead.futureLoads).toEqual(['clim', 'pompe']);
+
+    const r2 = validateLead({ ...validBody, futureLoads: [] });
+    expect(r2.ok).toBe(true);
+    if (!r2.ok) return;
+    expect(r2.lead).not.toHaveProperty('futureLoads');
+  });
+
+  it('le record transmis au webhook porte les champs WJ31 (buildLeadRecord les conserve)', () => {
+    const v = validateLead(widened31);
+    if (!v.ok) throw new Error('fixture invalide');
+    const record = buildLeadRecord(v.lead, { kwcMin: 5, kwcMax: 9, kwcLabel: '5 à 9 kWc', paybackLabel: '4 à 6 ans', source: 'local' }, new Date());
+    expect(record.distributeur).toBe('lydec');
+    expect(record.ombrage).toBe('partiel');
+    expect(record.futureLoads).toEqual(['clim', 've']);
+    expect(record.occupantType).toBe('proprietaire');
+    // le contrat existant tient toujours
+    expect(record.qualified).toBe(true);
+  });
+});
+
 describe('buildLeadRecord', () => {
   it('horodate le consentement et persiste fbclid + UTM', () => {
     const now = new Date('2026-06-11T10:00:00Z');

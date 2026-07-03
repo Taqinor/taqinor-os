@@ -29,8 +29,9 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.installations.models import (
-    OrdreSousTraitance, SousTraitant, Installation,
+    OrdreSousTraitance, Installation,
 )
+from apps.stock.services import create_sous_traitant
 
 User = get_user_model()
 _seq = itertools.count(1)
@@ -76,8 +77,8 @@ def make_chantier(company):
 
 
 def make_sous_traitant(company, raison='Terrasol SARL', metier='terrassement'):
-    return SousTraitant.objects.create(
-        company=company, raison_sociale=raison, metier=metier)
+    # DC34 — un sous-traitant est un stock.Fournisseur(type='service').
+    return create_sous_traitant(company=company, nom=raison, metier=metier)
 
 
 # ── Création via l'API ────────────────────────────────────────────────────────

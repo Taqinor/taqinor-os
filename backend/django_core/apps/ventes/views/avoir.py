@@ -100,6 +100,12 @@ class AvoirViewSet(viewsets.ReadOnlyModelViewSet):
             return Response({'detail': 'PDF indisponible.'},
                             status=status.HTTP_404_NOT_FOUND)
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        # QD2 — nom cohérent (société _ type _ client _ référence).
+        from ..utils.filenames import document_filename
+        filename = document_filename(
+            'Avoir', avoir.reference,
+            client=avoir.client if avoir.client_id else None,
+            company=avoir.company)
         response['Content-Disposition'] = (
-            f'inline; filename="{avoir.reference}.pdf"')
+            f'inline; filename="{filename}"')
         return response

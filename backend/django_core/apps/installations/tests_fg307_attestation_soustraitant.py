@@ -21,7 +21,8 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
-from apps.installations.models import AttestationSousTraitant, SousTraitant
+from apps.installations.models import AttestationSousTraitant
+from apps.stock.services import create_sous_traitant, update_sous_traitant
 
 User = get_user_model()
 _seq = itertools.count(1)
@@ -49,9 +50,9 @@ def make_user(company, role='responsable', username=None):
 
 
 def make_sous_traitant(company, raison='Elec Pro', actif=True):
-    return SousTraitant.objects.create(
-        company=company, raison_sociale=raison, metier='electricite',
-        actif=actif)
+    # DC34 — un sous-traitant est un stock.Fournisseur(type='service').
+    return create_sous_traitant(
+        company=company, nom=raison, metier='electricite', actif=actif)
 
 
 class TestAttestationCreation(TestCase):
@@ -147,8 +148,7 @@ class TestAffectabilite(TestCase):
         self.assertTrue(r.data['affectable'])
 
     def test_archived_blocks(self):
-        self.st.actif = False
-        self.st.save(update_fields=['actif'])
+        update_sous_traitant(fournisseur=self.st, actif=False)
         r = self.api.get(
             f'{BASE}/attestations-sous-traitant/affectabilite/',
             {'sous_traitant': self.st.id})

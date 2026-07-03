@@ -1,0 +1,1241 @@
+---
+/**
+ * EN — « Mon toit » CAPTURE CLIENT (WJ38). Faithful English translation of
+ * the FR capture journey (src/pages/devis/mon-toit.astro): SAME
+ * /api/capture-lead submission contract (validateLead, 1 000 MAD threshold,
+ * roofPoint/roofOutline/energy profile optional), SAME client logic
+ * (3-step wizard, instant estimate, WhatsApp-first, exit-intent recovery).
+ * No in-page language toggle here (the /en/ URL already declares the
+ * locale, consistent with every other /en/* page on this site) — the
+ * WhatsApp deep-link text stays French by design (same convention as
+ * en/contact.astro: it reaches the French-speaking sales team).
+ */
+import Layout from '../../../layouts/Layout.astro';
+import { BILL_RANGES } from '../../../lib/billRange';
+import { ROOF_TYPES } from '../../../lib/lead';
+import StarRating from '../../../components/StarRating.astro';
+import CertLogoRow from '../../../components/CertLogoRow.astro';
+import InstallCounter from '../../../components/InstallCounter.astro';
+import ZelligeSignature from '../../../components/ZelligeSignature.astro';
+
+const inputClass =
+  'w-full border border-white/15 bg-white/5 px-3 py-3 text-base text-white placeholder:text-lune-faint outline-none transition-colors focus:border-brass-400 focus:ring-2 focus:ring-brass-400/30 aria-[invalid=true]:border-alert-300 aria-[invalid=true]:ring-2 aria-[invalid=true]:ring-alert-300/30';
+// BILL_RANGES / ROOF_TYPES are shared (lead.ts contract UNCHANGED): the
+// `id` values stay identical across locales, only the displayed label is
+// translated here (lib/billRange.ts and lib/lead.ts are out of scope).
+const BILL_RANGE_LABEL_EN: Record<string, string> = {
+  lt800: 'Under 800 MAD',
+  '800-1000': '800 – 1,000 MAD',
+  '1000-1500': '1,000 – 1,500 MAD',
+  '1500-3000': '1,500 – 3,000 MAD',
+  '3000-5000': '3,000 – 5,000 MAD',
+  '5000-10000': '5,000 – 10,000 MAD',
+  gt10000: 'Over 10,000 MAD',
+};
+const ROOF_TYPE_LABEL_EN: Record<string, string> = {
+  villa: 'Villa',
+  hangar: 'Industrial shed',
+  toit_plat: 'Flat roof',
+  autre: 'Other',
+};
+const roofTypes = ROOF_TYPES.map((r) => ({ ...r, label: ROOF_TYPE_LABEL_EN[r.id] ?? r.label }));
+const billRanges = BILL_RANGES.map((b) => ({ ...b, label: BILL_RANGE_LABEL_EN[b.id] ?? b.label }));
+
+// WJ6 — assistant steps (English labels).
+const STEPS = ['Your roof', 'Your bill', 'Your estimate'];
+
+// WJ6 — project-type selector (residential / professional / agricultural).
+const MODES = [
+  { id: 'residentiel', label: 'Residential', desc: 'Villa, apartment' },
+  { id: 'professionnel', label: 'Professional', desc: 'Industry, business' },
+  { id: 'agricole', label: 'Agricultural', desc: 'Pumping, farm' },
+];
+
+// WJ8 — real service towns (NAP) for proximity proof.
+const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tangier', 'Agadir', 'Kénitra', 'Fès', 'Settat'];
+---
+
+<Layout
+  title="Get your solar estimate — My roof | Taqinor"
+  description="Address + bill: get an instant solar estimate (power, savings, payback), then your personalised study on WhatsApp."
+  noindex={true}
+>
+  <section class="bg-nuit px-4 py-8 sm:py-12">
+    <div class="mx-auto max-w-2xl">
+      <!-- Header (WJ6) — no in-page toggle: the /en/ URL already declares the locale. -->
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <p class="tech-label rule-brass text-brass-300">
+            Solar estimate · free · no obligation
+          </p>
+          <h1 class="display mt-4 text-2xl text-white sm:text-3xl">
+            Get your solar estimate
+          </h1>
+        </div>
+      </div>
+
+      <!-- WJ6 — "no pressure" microcopy -->
+      <p class="mt-3 text-sm text-lune-soft">
+        Reply within 24–48 h · we answer on WhatsApp, no sales calls.
+      </p>
+
+      <!-- WJ6 — labelled progress bar -->
+      <ol id="mt-progress" class="mt-6 grid grid-cols-3 gap-2" aria-label="Progress">
+        {STEPS.map((s, i) => (
+          <li class="mt-step flex flex-col gap-1.5" data-step={i}>
+            <span class="h-1.5 w-full rounded-full bg-white/10 mt-step-bar transition-colors"></span>
+            <span class="text-xs text-lune-faint mt-step-label">{s}</span>
+          </li>
+        ))}
+      </ol>
+
+      <!-- ============ STEP 0/1 — YOUR ROOF (mode + map/pin) ============ -->
+      <div id="mt-panel-0" class="mt-step-panel">
+        <!-- WJ6 — mode selector -->
+        <fieldset class="mt-6">
+          <legend class="text-sm text-lune-soft">Your project type</legend>
+          <div class="mt-3 grid grid-cols-3 gap-2">
+            {MODES.map((m, i) => (
+              <button type="button" class="mt-mode cine-card flex flex-col items-start gap-0.5 border p-3 text-left transition-colors"
+                data-mode={m.id} aria-pressed={i === 0 ? 'true' : 'false'}>
+                <span class="text-sm font-semibold text-white" data-i18n data-fr={m.fr} data-ar={m.ar}>{m.fr}</span>
+                <span class="text-xs text-lune-faint" data-i18n data-fr={m.desc_fr} data-ar={m.desc_ar}>{m.desc_fr}</span>
+              </button>
+            ))}
+          </div>
+        </fieldset>
+
+        <p class="mt-5 text-lune-soft" data-i18n
+          data-fr="Cherchez votre adresse et posez un repère sur votre toit. C'est facultatif — vous pouvez aussi continuer avec votre adresse seule."
+          data-ar="ابحث عن عنوانك وضع علامة على سطحك. هذا اختياري — يمكنك أيضاً المتابعة بعنوانك فقط.">
+          Cherchez votre adresse et posez un repère sur votre toit. C'est facultatif —
+          vous pouvez aussi continuer avec votre adresse seule.
+        </p>
+
+        <!-- Repli sans JavaScript / sans clé carte (WJ4) : on demande l'adresse en clair
+             et on AUTORISE la suite (plus de cul-de-sac sur le repère). -->
+        <div id="mt-fallback" hidden class="cine-card mt-5 border-l-4 border-alert-300 p-5">
+          <p class="font-semibold text-white" data-i18n data-fr="Carte momentanément indisponible" data-ar="الخريطة غير متوفرة مؤقتاً">Carte momentanément indisponible</p>
+          <p class="mt-2 text-sm text-lune-soft" data-i18n
+            data-fr="Pas de souci : indiquez votre adresse complète ci-dessous et continuez. Nous localiserons votre toit pour vous."
+            data-ar="لا مشكلة: أدخل عنوانك الكامل أدناه وتابع. سنحدد موقع سطحك من أجلك.">
+            Pas de souci : indiquez votre adresse complète ci-dessous et continuez. Nous
+            localiserons votre toit pour vous.
+          </p>
+          <label class="mt-3 block text-sm text-lune-soft">
+            <span data-i18n data-fr="Adresse complète" data-ar="العنوان الكامل">Adresse complète</span>
+            <input id="mt-fallback-address" type="text" autocomplete="street-address"
+              placeholder="Ex. Lot. Al Wifaq, Hay Riad, Rabat" class={`${inputClass} mt-1`} />
+          </label>
+        </div>
+
+        <!-- CARTE — recherche d'adresse + repère (ids rp9-* câblés par captureBoot). -->
+        <div id="mt-stage" class="cine-card mt-5 overflow-hidden">
+          <form id="rp9-search" class="flex flex-col gap-3 border-b border-white/10 p-4 sm:flex-row">
+            <label for="rp9-address" class="sr-only">Votre adresse</label>
+            <div class="relative flex-1">
+              <input id="rp9-address" name="address" type="text" autocomplete="off"
+                role="combobox" aria-autocomplete="list" aria-expanded="false"
+                aria-controls="rp9-suggestions" aria-haspopup="listbox"
+                placeholder="Adresse, quartier ou ville (ex. Casablanca, Maârif)" class={inputClass} />
+              <ul id="rp9-suggestions" role="listbox" aria-label="Suggestions d'adresses" hidden
+                class="absolute left-0 right-0 top-full z-20 mt-1 max-h-72 overflow-auto border border-white/15 bg-nuit-900 shadow-xl">
+              </ul>
+            </div>
+            <button type="submit"
+              class="flex-none bg-brass-400 px-6 py-3 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">
+              Localiser
+            </button>
+          </form>
+
+          <div id="rp9-map" class="mt-skeleton-shimmer mt-0 h-[44vh] min-h-[280px] w-full bg-nuit-700"
+            role="application" aria-label="Carte satellite pour repérer votre toit"></div>
+
+          <div class="flex flex-wrap items-center gap-3 border-t border-white/10 p-4">
+            <button type="button" id="rp9-finish" disabled
+              class="border border-white/25 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:border-brass-400 hover:text-brass-300 disabled:cursor-not-allowed disabled:opacity-40">
+              Terminer le tracé
+            </button>
+            <button type="button" id="rp9-undo-point" hidden
+              class="border border-white/25 px-4 py-2.5 text-sm font-semibold text-lune-soft transition-colors hover:border-brass-400 hover:text-brass-300">
+              Annuler le dernier point
+            </button>
+            <button type="button" id="rp9-clear"
+              class="border border-white/25 px-4 py-2.5 text-sm font-semibold text-lune-soft transition-colors hover:border-white/50 hover:text-white">
+              Effacer
+            </button>
+            <p class="ml-auto text-sm text-lune-faint">
+              <span>Repère&nbsp;: </span><span id="rp9-area-value" class="text-white">—</span>
+            </p>
+          </div>
+          <p id="rp9-status" class="border-t border-white/10 px-4 py-3 text-sm text-lune-faint" aria-live="polite">
+            Cherchez votre adresse, puis posez un repère sur votre toit (facultatif).
+          </p>
+        </div>
+
+        <div class="mt-5 flex justify-end">
+          <button type="button" id="mt-next-0"
+            class="inline-flex items-center justify-center gap-2 bg-brass-400 px-6 py-3 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">
+            <span data-i18n data-fr="Continuer" data-ar="متابعة">Continuer</span> →
+          </button>
+        </div>
+      </div>
+
+      <!-- ============ ÉTAPE 2 — VOTRE FACTURE (+ profil énergétique) ============ -->
+      <div id="mt-panel-1" class="mt-step-panel" hidden>
+        <p class="mt-6 text-lune-soft" data-i18n
+          data-fr="Indiquez votre facture pour calculer votre estimation. Le montant exact donne le chiffre le plus juste."
+          data-ar="أدخل فاتورتك لحساب تقديرك. المبلغ الدقيق يعطي الرقم الأصح.">
+          Indiquez votre facture pour calculer votre estimation. Le montant exact donne le
+          chiffre le plus juste.
+        </p>
+
+        <div class="cine-card mt-5 space-y-4 p-5 sm:p-6">
+          <label class="block text-sm text-lune-soft">
+            <span data-i18n data-fr="Facture mensuelle exacte (MAD)" data-ar="الفاتورة الشهرية الدقيقة (درهم)">Facture mensuelle exacte (MAD)</span>
+            <input id="mt-facture-hiver" name="factureHiver" type="number" step="any" inputmode="decimal"
+              placeholder="Ex. 1 200" class={`${inputClass} mt-1`} />
+            <span id="mt-facture-hiver-err" hidden class="mt-1 block text-xs text-alert-300"></span>
+          </label>
+
+          <label class="block text-sm text-lune-soft">
+            <span data-i18n data-fr="…ou choisissez une tranche" data-ar="…أو اختر شريحة">…ou choisissez une tranche</span>
+            <select id="mt-bill" name="billRange" class={`${inputClass} mt-1`}>
+              <option value="">Choisir…</option>
+              {billRanges.map((b) => <option value={b.id}>{b.label}</option>)}
+            </select>
+            <span id="mt-bill-err" hidden class="mt-1 block text-xs text-alert-300"></span>
+          </label>
+
+          <div class="grid gap-4 sm:grid-cols-2">
+            <label class="block text-sm text-lune-soft">
+              <span data-i18n data-fr="Type de toit" data-ar="نوع السطح">Type de toit</span>
+              <select id="mt-roof" name="roofType" class={`${inputClass} mt-1`}>
+                <option value="">Choisir…</option>
+                {roofTypes.map((r) => <option value={r.id}>{r.label}</option>)}
+              </select>
+              <span id="mt-roof-err" hidden class="mt-1 block text-xs text-alert-300"></span>
+            </label>
+            <label class="block text-sm text-lune-soft">
+              <span data-i18n data-fr="Raccordement" data-ar="نوع الربط">Raccordement</span>
+              <select id="mt-raccordement" name="raccordement" class={`${inputClass} mt-1`}>
+                <option value="">Choisir…</option>
+                <option value="monophase">Monophasé</option>
+                <option value="triphase">Triphasé</option>
+                <option value="inconnu">Je ne sais pas</option>
+              </select>
+            </label>
+          </div>
+
+          <label class="flex items-start gap-3 text-sm text-lune-soft">
+            <input id="mt-ete-differente" name="eteDifferente" type="checkbox" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
+            <span data-i18n data-fr="L'été est différent de l'hiver ? (climatisation, pompage…)" data-ar="الصيف مختلف عن الشتاء؟ (تكييف، ضخ…)">L'été est différent de l'hiver&nbsp;? (climatisation, pompage…)</span>
+          </label>
+
+          <label id="mt-facture-ete-wrap" hidden class="block text-sm text-lune-soft">
+            <span data-i18n data-fr="Facture été (MAD)" data-ar="فاتورة الصيف (درهم)">Facture été (MAD)</span>
+            <input id="mt-facture-ete" name="factureEte" type="number" step="any" inputmode="decimal"
+              placeholder="Ex. 2 500" class={`${inputClass} mt-1`} />
+          </label>
+        </div>
+
+        <!-- ===== WJ31 — questions best-in-world, TOUTES facultatives, repliées par défaut ===== -->
+        <details id="mt-more" class="cine-card mt-4 p-5 sm:p-6">
+          <summary class="cursor-pointer select-none text-sm font-semibold text-brass-300" data-i18n
+            data-fr="Affiner mon estimation (facultatif, 1 minute)" data-ar="تحسين تقديري (اختياري، دقيقة واحدة)">
+            Affiner mon estimation (facultatif, 1 minute)
+          </summary>
+
+          <div class="mt-4 grid gap-4 sm:grid-cols-2">
+            <label class="block text-sm text-lune-soft">
+              <span data-i18n data-fr="Distributeur d'électricité" data-ar="موزع الكهرباء">Distributeur d'électricité</span>
+              <select id="mt-distributeur" name="distributeur" class={`${inputClass} mt-1`}>
+                <option value="">Choisir…</option>
+                <option value="onee" data-i18n data-fr="ONEE" data-ar="المكتب الوطني">ONEE</option>
+                <option value="lydec" data-i18n data-fr="Lydec" data-ar="ليديك">Lydec</option>
+                <option value="redal" data-i18n data-fr="Redal" data-ar="ريضال">Redal</option>
+                <option value="inconnu" data-i18n data-fr="Je ne sais pas" data-ar="لا أعرف">Je ne sais pas</option>
+              </select>
+            </label>
+            <label class="block text-sm text-lune-soft">
+              <span data-i18n data-fr="Consommation (kWh/mois, si connue)" data-ar="الاستهلاك (كيلوواط ساعة/شهر، إن عُرف)">Consommation (kWh/mois, si connue)</span>
+              <input id="mt-bill-kwh" name="billKwh" type="number" step="any" inputmode="decimal"
+                placeholder="Ex. 850" class={`${inputClass} mt-1`} />
+            </label>
+          </div>
+
+          <!-- Photo compteur/facture — capturée EN LOCAL, jamais uploadée (pas d'endpoint aujourd'hui). -->
+          <div class="mt-4">
+            <label class="block text-sm text-lune-soft" for="mt-meter-photo" data-i18n
+              data-fr="Photo du compteur ou de la facture" data-ar="صورة العداد أو الفاتورة">
+              Photo du compteur ou de la facture
+            </label>
+            <input id="mt-meter-photo" type="file" accept="image/*" capture="environment"
+              class="mt-1 block w-full text-sm text-lune-soft file:mr-3 file:border-0 file:bg-white/10 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white" />
+            <p id="mt-meter-photo-note" class="mt-1 text-xs text-lune-faint" data-i18n
+              data-fr="Ou envoyez-la nous directement sur WhatsApp après l'envoi du formulaire — c'est souvent plus rapide."
+              data-ar="أو أرسلها لنا مباشرة على واتساب بعد إرسال النموذج — غالباً أسرع.">
+              Ou envoyez-la nous directement sur WhatsApp après l'envoi du formulaire — c'est
+              souvent plus rapide.
+            </p>
+          </div>
+
+          <fieldset class="mt-4">
+            <legend class="text-sm text-lune-soft" data-i18n data-fr="Ombrage sur le toit" data-ar="التظليل على السطح">Ombrage sur le toit</legend>
+            <div class="mt-2 grid grid-cols-3 gap-2">
+              <button type="button" class="mt-ombrage cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="aucun" aria-pressed="false" data-i18n data-fr="Aucun" data-ar="لا يوجد">Aucun</button>
+              <button type="button" class="mt-ombrage cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="partiel" aria-pressed="false" data-i18n data-fr="Partiel" data-ar="جزئي">Partiel</button>
+              <button type="button" class="mt-ombrage cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="important" aria-pressed="false" data-i18n data-fr="Important" data-ar="كبير">Important</button>
+            </div>
+          </fieldset>
+
+          <label class="mt-4 block text-sm text-lune-soft">
+            <span data-i18n data-fr="Âge approximatif du toit (années)" data-ar="عمر السطح التقريبي (سنوات)">Âge approximatif du toit (années)</span>
+            <input id="mt-roof-age" name="roofAgeYears" type="number" step="1" min="0" inputmode="numeric"
+              placeholder="Ex. 10" class={`${inputClass} mt-1`} />
+          </label>
+
+          <fieldset class="mt-4">
+            <legend class="text-sm text-lune-soft" data-i18n data-fr="Charges futures envisagées" data-ar="أحمال مستقبلية متوقعة">Charges futures envisagées</legend>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <button type="button" class="mt-future-load cine-card border px-3 py-2 text-sm text-white transition-colors" data-value="clim" aria-pressed="false" data-i18n data-fr="Climatisation" data-ar="تكييف">Climatisation</button>
+              <button type="button" class="mt-future-load cine-card border px-3 py-2 text-sm text-white transition-colors" data-value="ve" aria-pressed="false" data-i18n data-fr="Voiture électrique" data-ar="سيارة كهربائية">Voiture électrique</button>
+              <button type="button" class="mt-future-load cine-card border px-3 py-2 text-sm text-white transition-colors" data-value="pompe" aria-pressed="false" data-i18n data-fr="Pompage" data-ar="ضخ">Pompage</button>
+            </div>
+          </fieldset>
+
+          <label class="mt-4 flex items-start gap-3 text-sm text-lune-soft">
+            <input id="mt-battery-interest" name="batteryInterest" type="checkbox" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
+            <span data-i18n data-fr="Intéressé(e) par une batterie de stockage" data-ar="مهتم بتخزين البطارية">Intéressé(e) par une batterie de stockage</span>
+          </label>
+
+          <div class="mt-4 grid gap-4 sm:grid-cols-2">
+            <label class="block text-sm text-lune-soft">
+              <span data-i18n data-fr="Vous êtes…" data-ar="أنتم…">Vous êtes…</span>
+              <select id="mt-occupant-type" name="occupantType" class={`${inputClass} mt-1`}>
+                <option value="">Choisir…</option>
+                <option value="proprietaire" data-i18n data-fr="Propriétaire" data-ar="مالك">Propriétaire</option>
+                <option value="locataire" data-i18n data-fr="Locataire" data-ar="مستأجر">Locataire</option>
+                <option value="decideur" data-i18n data-fr="Décideur (entreprise)" data-ar="صاحب القرار (شركة)">Décideur (entreprise)</option>
+              </select>
+            </label>
+            <label class="block text-sm text-lune-soft">
+              <span data-i18n data-fr="Votre projet, c'est pour…" data-ar="مشروعكم من أجل…">Votre projet, c'est pour…</span>
+              <select id="mt-project-timing" name="projectTiming" class={`${inputClass} mt-1`}>
+                <option value="">Choisir…</option>
+                <option value="maintenant" data-i18n data-fr="Maintenant" data-ar="الآن">Maintenant</option>
+                <option value="3mois" data-i18n data-fr="Dans ~3 mois" data-ar="خلال ~3 أشهر">Dans ~3 mois</option>
+                <option value="renseignement" data-i18n data-fr="Juste un renseignement" data-ar="مجرد استعلام">Juste un renseignement</option>
+              </select>
+            </label>
+          </div>
+
+          <label class="mt-4 block text-sm text-lune-soft">
+            <span data-i18n data-fr="Mode de financement envisagé" data-ar="طريقة التمويل المتوقعة">Mode de financement envisagé</span>
+            <select id="mt-financing-intent" name="financingIntent" class={`${inputClass} mt-1`}>
+              <option value="">Choisir…</option>
+              <option value="comptant" data-i18n data-fr="Comptant" data-ar="نقداً">Comptant</option>
+              <option value="financement" data-i18n data-fr="Financement / crédit" data-ar="تمويل / قرض">Financement / crédit</option>
+              <option value="indecis" data-i18n data-fr="Pas encore décidé" data-ar="لم أقرر بعد">Pas encore décidé</option>
+            </select>
+          </label>
+        </details>
+
+        <div class="mt-5 flex items-center justify-between gap-3">
+          <button type="button" id="mt-back-1"
+            class="inline-flex items-center gap-1 px-2 py-3 text-base font-semibold text-lune-soft transition-colors hover:text-white">
+            ← <span data-i18n data-fr="Retour" data-ar="رجوع">Retour</span>
+          </button>
+          <button type="button" id="mt-estimate"
+            class="inline-flex items-center justify-center gap-2 bg-brass-400 px-6 py-3 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">
+            <span data-i18n data-fr="Voir mon estimation" data-ar="عرض تقديري">Voir mon estimation</span> →
+          </button>
+        </div>
+      </div>
+
+      <!-- ============ ÉTAPE 3 — VOTRE ESTIMATION (WJ1) + CONTACT (WJ3) ============ -->
+      <div id="mt-panel-2" class="mt-step-panel" hidden>
+        <!-- WJ1 — l'estimation instantanée AVANT la porte de contact -->
+        <div id="mt-estimate-card" class="cine-card mt-6 border border-brass-400/30 p-5 sm:p-6" aria-live="polite">
+          <p class="tech-label text-brass-300" data-i18n data-fr="Votre estimation instantanée" data-ar="تقديرك الفوري">Votre estimation instantanée</p>
+          <div id="mt-estimate-body" class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div>
+              <p class="text-3xl font-bold text-white"><span id="mt-est-kwc">—</span> <span class="text-base font-normal text-lune-soft">kWc</span></p>
+              <p class="text-xs text-lune-faint" data-i18n data-fr="Puissance recommandée" data-ar="القدرة الموصى بها">Puissance recommandée</p>
+            </div>
+            <div>
+              <p class="text-3xl font-bold text-ok-400"><span id="mt-est-savings">—</span></p>
+              <p class="text-xs text-lune-faint" data-i18n data-fr="Économies estimées / mois" data-ar="التوفير المقدّر / شهر">Économies estimées / mois</p>
+            </div>
+            <div>
+              <p class="text-3xl font-bold text-white" id="mt-est-payback">—</p>
+              <p class="text-xs text-lune-faint" data-i18n data-fr="Amortissement" data-ar="استرداد التكلفة">Amortissement</p>
+            </div>
+          </div>
+          <p id="mt-estimate-note" class="mt-4 text-xs text-lune-faint" data-i18n
+            data-fr="Fourchette préliminaire calculée à partir de votre facture (autoconsommation, loi 82-21). Le chiffrage exact est établi après visite technique — sans engagement."
+            data-ar="شريحة أولية محسوبة من فاتورتك (الاستهلاك الذاتي، القانون 82-21). يُحدَّد التقدير الدقيق بعد زيارة تقنية — بدون التزام.">
+            Fourchette préliminaire calculée à partir de votre facture (autoconsommation, loi
+            82-21). Le chiffrage exact est établi après visite technique — sans engagement.
+          </p>
+          <!-- WJ1 — quand l'estimation est indisponible (facture absente/non chiffrable) -->
+          <p id="mt-estimate-unavailable" hidden class="mt-4 text-sm text-alert-300" data-i18n
+            data-fr="Estimation indisponible : indiquez votre facture mensuelle pour la calculer. Nous l'affinons ensemble sur WhatsApp."
+            data-ar="التقدير غير متاح: أدخل فاتورتك الشهرية لحسابه. نحدّده معاً على واتساب.">
+            Estimation indisponible : indiquez votre facture mensuelle pour la calculer. Nous
+            l'affinons ensemble sur WhatsApp.
+          </p>
+
+          <!-- ===== WJ2 — « voir les panneaux sur votre toit » (facultatif, lazy) =====
+               Affiché UNIQUEMENT quand un contour (≥3 sommets) a été tracé à l'étape 1
+               ET qu'une estimation kWc est disponible. Bouton = geste explicite ; le
+               moteur 3D (Three.js + viewerOnly) n'est importé qu'au tap. Boîte à hauteur
+               RÉSERVÉE (zéro CLS) : le bouton occupe déjà la même zone que le canvas. -->
+          <div id="mt-panels3d" hidden class="mt-5 border-t border-white/10 pt-5">
+            <div id="mt-panels3d-stage" class="mt-panels3d-stage cine-card relative overflow-hidden rounded-lg">
+              <div id="mt-panels3d-overlay" class="absolute inset-0 flex flex-col items-center justify-center gap-2 px-4 text-center">
+                <button type="button" id="mt-panels3d-start"
+                  class="btn-pill inline-flex items-center justify-center gap-2"
+                  style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)">
+                  <span data-i18n data-fr="Voir les panneaux sur votre toit" data-ar="مشاهدة الألواح على سطحك">Voir les panneaux sur votre toit</span>
+                </button>
+                <p class="max-w-xs text-xs text-lune-faint" data-i18n
+                  data-fr="Aperçu illustratif — l'implantation exacte est confirmée après visite technique."
+                  data-ar="معاينة توضيحية — يُؤكَّد التوضع الدقيق بعد زيارة تقنية.">
+                  Aperçu illustratif — l'implantation exacte est confirmée après visite technique.
+                </p>
+              </div>
+            </div>
+            <p id="mt-panels3d-hint" hidden class="mt-2 text-xs text-lune-faint" data-i18n
+              data-fr="Faites glisser pour tourner · pincez ou molette pour zoomer."
+              data-ar="اسحب للتدوير · قرّب بإصبعين أو بعجلة الفأرة.">
+              Faites glisser pour tourner · pincez ou molette pour zoomer.
+            </p>
+          </div>
+        </div>
+
+        <!-- Formulaire de contact (la porte vient APRÈS l'estimation). -->
+        <form id="mt-form" novalidate class="cine-card mt-5 space-y-4 p-5 sm:p-6">
+          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Pour recevoir votre étude" data-ar="لاستلام دراستك">Pour recevoir votre étude</p>
+
+          <div class="grid gap-4 sm:grid-cols-2">
+            <label class="block text-sm text-lune-soft">
+              <span data-i18n data-fr="Nom complet" data-ar="الاسم الكامل">Nom complet</span>
+              <input id="mt-name" name="fullName" type="text" autocomplete="name" required aria-required="true" class={`${inputClass} mt-1`} />
+              <span id="mt-name-err" hidden class="mt-1 block text-xs text-alert-300"></span>
+            </label>
+            <label class="block text-sm text-lune-soft">
+              <span data-i18n data-fr="Téléphone / WhatsApp" data-ar="الهاتف / واتساب">Téléphone / WhatsApp</span>
+              <input id="mt-phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" required aria-required="true"
+                placeholder="06 XX XX XX XX" class={`${inputClass} mt-1`} />
+              <span id="mt-phone-err" hidden class="mt-1 block text-xs text-alert-300"></span>
+            </label>
+          </div>
+
+          <label class="block text-sm text-lune-soft">
+            <span data-i18n data-fr="Adresse / ville" data-ar="العنوان / المدينة">Adresse / ville</span>
+            <input id="mt-city" name="city" type="text" autocomplete="address-level2" required aria-required="true"
+              placeholder="Lue depuis la carte — modifiable si besoin" class={`${inputClass} mt-1`} />
+            <span id="mt-city-err" hidden class="mt-1 block text-xs text-alert-300"></span>
+          </label>
+
+          <!-- WJ3 — e-mail (facultatif) + opt-in WhatsApp -->
+          <label class="block text-sm text-lune-soft">
+            <span data-i18n data-fr="E-mail (facultatif)" data-ar="البريد الإلكتروني (اختياري)">E-mail (facultatif)</span>
+            <input id="mt-email" name="email" type="email" inputmode="email" autocomplete="email"
+              placeholder="vous@exemple.com" class={`${inputClass} mt-1`} />
+          </label>
+
+          <label class="flex items-start gap-3 text-sm text-lune-soft">
+            <input id="mt-wa-optin" name="whatsappOptIn" type="checkbox" checked class="mt-1 h-5 w-5 flex-none accent-ok-600" />
+            <span data-i18n data-fr="Je préfère être contacté(e) sur WhatsApp (réponse plus rapide)" data-ar="أفضّل التواصل عبر واتساب (رد أسرع)">Je préfère être contacté(e) sur WhatsApp (réponse plus rapide)</span>
+          </label>
+
+          <label class="flex items-start gap-3 text-sm text-lune-soft">
+            <input id="mt-consent" name="consent" type="checkbox" required aria-required="true" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
+            <span data-i18n data-fr="J'accepte d'être recontacté(e) par Taqinor au sujet de mon projet solaire." data-ar="أوافق على أن تتواصل معي تاكينور بخصوص مشروعي الشمسي.">
+              J'accepte d'être recontacté(e) par Taqinor au sujet de mon projet solaire.
+            </span>
+          </label>
+          <span id="mt-consent-err" hidden class="block text-xs text-alert-300"></span>
+
+          <p id="mt-error" hidden class="text-sm text-alert-300" aria-live="polite"></p>
+
+          <!-- WJ3 — CTA PRIMAIRE WhatsApp-first -->
+          <button type="submit" id="mt-submit"
+            class="inline-flex w-full items-center justify-center gap-2 bg-ok-600 px-6 py-4 text-base font-bold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true" class="flex-none"><path d="M.057 24l1.687-6.163a11.867 11.867 0 0 1-1.587-5.946C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 0 1 8.413 3.488 11.824 11.824 0 0 1 3.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 0 1-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884a9.86 9.86 0 0 0 1.512 5.26l-.999 3.648 3.736-.979z"/></svg>
+            <span data-i18n data-fr="Recevoir mon estimation sur WhatsApp" data-ar="استلام تقديري على واتساب">Recevoir mon estimation sur WhatsApp</span>
+          </button>
+
+          <div class="flex items-center justify-between gap-3">
+            <button type="button" id="mt-back-2"
+              class="inline-flex items-center gap-1 px-2 py-2 text-sm font-semibold text-lune-soft transition-colors hover:text-white">
+              ← <span data-i18n data-fr="Retour" data-ar="رجوع">Retour</span>
+            </button>
+          </div>
+
+          <!-- WJ5 — succès qualifié (≥ 1 000 MAD : la demande atteint le CRM) -->
+          <div id="mt-success" hidden class="border border-ok-600/40 bg-ok-600/10 p-4 text-sm text-white">
+            <p class="font-semibold" data-i18n data-fr="Merci ! Votre demande est enregistrée." data-ar="شكراً! تم تسجيل طلبك.">Merci ! Votre demande est enregistrée.</p>
+            <p class="mt-1 text-lune-soft" data-i18n data-fr="Notre équipe prépare votre étude et vous recontacte très vite — souvent sur WhatsApp." data-ar="فريقنا يُعدّ دراستك ويتواصل معك قريباً — غالباً عبر واتساب.">Notre équipe prépare votre étude et vous recontacte très vite — souvent sur WhatsApp.</p>
+            <a id="mt-success-wa" href="#" target="_blank" rel="noopener"
+              class="mt-3 inline-flex items-center gap-2 bg-ok-600 px-4 py-2.5 text-sm font-bold text-white transition-opacity hover:opacity-90">
+              <span data-i18n data-fr="Ouvrir WhatsApp maintenant" data-ar="افتح واتساب الآن">Ouvrir WhatsApp maintenant</span>
+            </a>
+          </div>
+
+          <!-- WJ5 — chemin HONNÊTE sous le seuil 1 000 MAD (jamais un faux « enregistré ») -->
+          <div id="mt-belowthreshold" hidden class="border border-brass-400/40 bg-brass-400/10 p-4 text-sm text-white">
+            <p class="font-semibold" data-i18n data-fr="Le solaire n'est pas encore rentable à votre échelle." data-ar="الطاقة الشمسية ليست بعدُ مربحة على نطاقك.">Le solaire n'est pas encore rentable à votre échelle.</p>
+            <p class="mt-1 text-lune-soft" data-i18n
+              data-fr="En dessous de ~1 000 MAD/mois, l'investissement met trop longtemps à se rentabiliser pour qu'on vous le recommande honnêtement. Gardons le contact : dès que votre facture augmente, ou pour des conseils gratuits d'efficacité énergétique, écrivez-nous sur WhatsApp."
+              data-ar="تحت ~1000 درهم/شهر، يستغرق الاستثمار وقتاً طويلاً ليصبح مربحاً بما يكفي لننصحك به بصدق. لنبقَ على تواصل: بمجرد ارتفاع فاتورتك، أو لنصائح مجانية حول كفاءة الطاقة، راسلنا على واتساب.">
+              En dessous de ~1 000 MAD/mois, l'investissement met trop longtemps à se rentabiliser
+              pour qu'on vous le recommande honnêtement. Gardons le contact : dès que votre facture
+              augmente, ou pour des conseils gratuits d'efficacité énergétique, écrivez-nous sur
+              WhatsApp.
+            </p>
+            <a id="mt-belowthreshold-wa" href="#" target="_blank" rel="noopener"
+              class="mt-3 inline-flex items-center gap-2 bg-ok-600 px-4 py-2.5 text-sm font-bold text-white transition-opacity hover:opacity-90">
+              <span data-i18n data-fr="Discuter sur WhatsApp" data-ar="الدردشة على واتساب">Discuter sur WhatsApp</span>
+            </a>
+          </div>
+        </form>
+      </div>
+
+      <!-- ============ WJ8/WJ35 — CONFIANCE AU POINT DE CAPTURE ============ -->
+      <aside class="mt-8 border-t border-white/10 pt-6">
+        <!-- pending real content from Reda : photos d'installations réelles.
+             On NE FABRIQUE PAS de chiffre ni d'avis : on affiche des faits vérifiables (loi
+             82-21, garanties constructeur standard, zone de service réelle) + un emplacement
+             scaffoldé pour les photos. Le compteur d'installations (4ᵉ tuile) est désormais
+             RÉEL — dérivé de src/lib/realisations.ts (WJ35, InstallCounter). -->
+        <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div class="cine-card p-3 text-center">
+            <p class="text-sm font-bold text-white" data-i18n data-fr="Conforme loi 82-21" data-ar="مطابق للقانون 82-21">Conforme loi 82-21</p>
+            <p class="text-xs text-lune-faint" data-i18n data-fr="Autoproduction déclarée" data-ar="إنتاج ذاتي مُصرَّح">Autoproduction déclarée</p>
+          </div>
+          <div class="cine-card p-3 text-center">
+            <p class="text-sm font-bold text-white" data-i18n data-fr="Garantie 25 ans" data-ar="ضمان 25 سنة">Garantie 25 ans</p>
+            <p class="text-xs text-lune-faint" data-i18n data-fr="Panneaux (constructeur)" data-ar="الألواح (المُصنّع)">Panneaux (constructeur)</p>
+          </div>
+          <div class="cine-card p-3 text-center">
+            <p class="text-sm font-bold text-white" data-i18n data-fr="Matériel certifié" data-ar="معدات معتمدة">Matériel certifié</p>
+            <p class="text-xs text-lune-faint">IEC 61215 / 61730</p>
+          </div>
+          <div class="cine-card p-3 text-center">
+            <p class="text-sm font-bold text-white" data-i18n data-fr="Partout au Maroc" data-ar="في كل المغرب">Partout au Maroc</p>
+            <p class="text-xs text-lune-faint" data-i18n data-fr="Étude locale" data-ar="دراسة محلية">Étude locale</p>
+          </div>
+        </div>
+
+        <!-- WJ8 — villes desservies (réelles) -->
+        <p class="mt-4 text-center text-xs text-lune-faint">
+          <span data-i18n data-fr="Installations et études à" data-ar="تركيبات ودراسات في">Installations et études à</span>
+          {' '}{TOWNS.join(' · ')}
+        </p>
+
+        <!-- WJ8 — emplacement photos d'installations RÉELLES (scaffold, non fabriqué) -->
+        <!-- pending real content from Reda : remplacer par 3 photos d'installations réelles
+             (chemin /images/installs/*.webp) + légende ville. Tant qu'absentes, on n'affiche
+             aucun visuel fabriqué — ce bloc reste masqué. -->
+        <div id="mt-install-photos" hidden class="mt-4 grid grid-cols-3 gap-2" aria-label="Installations réalisées"></div>
+
+        <!-- WJ35 — preuve sociale premium : compteur réel + note Google (scaffold tant
+             qu'absente) + certifications. Grade v3 discret (section-tight rythme). -->
+        <div class="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <InstallCounter />
+          <StarRating compact />
+        </div>
+        <div class="mt-5">
+          <CertLogoRow />
+        </div>
+      </aside>
+
+      <!-- WJ35 — signature zellige de clôture (empreinte v3, cohérente avec l'accueil élevé) -->
+      <ZelligeSignature
+        line="Chaque chiffre de cette page est mesuré, pas promis."
+        sub="Votre estimation d'abord. L'étude ensuite."
+      />
+    </div>
+  </section>
+
+  <!-- ============ WJ7 — RÉCUPÉRATION D'ABANDON (exit-intent / sortie mobile) ============
+       WJ34 — safe-area-inset-bottom : ancrée en bas sur mobile (items-end), la
+       modale ne doit jamais se coller sous la barre de geste / l'encoche. ==== -->
+  <div id="mt-exit" hidden class="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 sm:items-center"
+    style="padding-bottom: max(1rem, env(safe-area-inset-bottom));"
+    role="dialog" aria-modal="true" aria-labelledby="mt-exit-title">
+    <div class="cine-card w-full max-w-md border border-brass-400/40 p-5">
+      <div class="flex items-start justify-between gap-3">
+        <p id="mt-exit-title" class="display text-lg text-white" data-i18n data-fr="Recevez votre estimation sur WhatsApp" data-ar="استلم تقديرك على واتساب">Recevez votre estimation sur WhatsApp</p>
+        <button type="button" id="mt-exit-close" aria-label="Fermer" class="flex-none text-lune-faint hover:text-white">✕</button>
+      </div>
+      <p class="mt-2 text-sm text-lune-soft" data-i18n
+        data-fr="Laissez juste votre numéro — on vous envoie votre estimation et on répond à vos questions. Gratuit, sans engagement."
+        data-ar="اترك رقمك فقط — نرسل لك تقديرك ونجيب عن أسئلتك. مجاناً، بدون التزام.">
+        Laissez juste votre numéro — on vous envoie votre estimation et on répond à vos
+        questions. Gratuit, sans engagement.
+      </p>
+      <div class="mt-4 flex flex-col gap-2 sm:flex-row">
+        <input id="mt-exit-phone" type="tel" inputmode="tel" autocomplete="tel"
+          placeholder="06 XX XX XX XX" class={inputClass} />
+        <a id="mt-exit-wa" href="#" target="_blank" rel="noopener"
+          class="inline-flex flex-none items-center justify-center gap-2 bg-ok-600 px-5 py-3 text-base font-bold text-white transition-opacity hover:opacity-90">
+          <span data-i18n data-fr="Envoyer" data-ar="إرسال">Envoyer</span>
+        </a>
+      </div>
+      <p id="mt-exit-err" hidden class="mt-2 text-xs text-alert-300" aria-live="polite"></p>
+    </div>
+  </div>
+</Layout>
+
+<style>
+  /* WJ2 — boîte à hauteur RÉSERVÉE (zéro CLS) : le bouton « voir les panneaux »
+     et le canvas 3D qui le remplace ensuite occupent EXACTEMENT la même zone. */
+  .mt-panels3d-stage {
+    height: 320px;
+    background: linear-gradient(160deg, rgb(20 38 63 / 0.9), rgb(7 11 29 / 0.95));
+  }
+  @media (min-width: 640px) {
+    .mt-panels3d-stage {
+      height: 380px;
+    }
+  }
+
+  /* ===== WJ34 — squelettes de performance perçue (zéro CLS : la zone occupe
+     déjà sa hauteur finale — bg-nuit-700/min-h existants — on n'ajoute qu'un
+     effet de « chargement » par-dessus, retiré au premier rendu réel). ===== */
+  .mt-skeleton-shimmer {
+    background-image: linear-gradient(
+      100deg,
+      transparent 30%,
+      rgb(255 255 255 / 0.06) 50%,
+      transparent 70%
+    );
+    background-size: 200% 100%;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .mt-skeleton-shimmer {
+      animation: mt-shimmer 1.6s ease-in-out infinite;
+    }
+  }
+  @keyframes mt-shimmer {
+    from { background-position: 200% 0; }
+    to { background-position: -200% 0; }
+  }
+
+  /* Squelettes des 3 chiffres d'estimation — mêmes proportions que le texte
+     final (text-3xl), donc AUCUN CLS quand les vrais chiffres les remplacent. */
+  .mt-est-skeleton {
+    display: inline-block;
+    height: 2.25rem;
+    width: 4.5rem;
+    border-radius: 0.25rem;
+    background: rgb(255 255 255 / 0.08);
+    vertical-align: middle;
+  }
+</style>
+
+<script>
+  import { estimateFromBill, formatMadRange } from '../../../lib/billEstimate';
+  import { captureWhatsappText, whatsappLink } from '../../../lib/whatsapp';
+  import { WHATSAPP_LEADS } from '../../../lib/nap';
+  import { validateLead } from '../../../lib/lead';
+
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const $ = (id: string) => document.getElementById(id);
+  const fallback = $('mt-fallback');
+  const cityEl = $('mt-city') as HTMLInputElement | null;
+  const addressEl = $('rp9-address') as HTMLInputElement | null;
+  const fallbackAddrEl = $('mt-fallback-address') as HTMLInputElement | null;
+
+  // ——— état capture (repère / contour) tenu par onCaptureChange ———
+  let capturePin: { lat: number; lng: number } | null = null;
+  let captureOutline: Array<[number, number]> = [];
+  let cityTouched = false;
+  cityEl?.addEventListener('input', () => { cityTouched = true; });
+
+  // ——— WJ6/WJ33 : bascule de langue FR/AR (data-i18n) ———
+  // WJ30 — la langue active est transmise au webhook (langue_preferee).
+  //
+  // WJ33 — FIX : `el.textContent = v` APLATISSAIT toute balise imbriquée à
+  // l'intérieur d'un élément `data-i18n` (ex. un futur <strong>/<a> perdu au
+  // premier passage AR→FR→AR). On bascule désormais par PAIRE DE NŒUDS
+  // show/hide : au premier appel, chaque élément `data-i18n` est ENVELOPPÉ de
+  // deux <span> — un FR (markup ORIGINAL, capturé une fois via innerHTML avant
+  // toute mutation) et un AR (texte simple depuis data-ar, car les libellés AR
+  // du DOM sont aujourd'hui du texte brut) — puis on masque/affiche la bonne
+  // paire. Aucune balise n'est plus jamais perdue, quel que soit le nombre
+  // d'allers-retours FR↔AR.
+  let currentLang: 'fr' | 'ar' = 'fr';
+  const i18nPairs: Array<{ fr: HTMLElement; ar: HTMLElement }> = [];
+  function prepareI18n() {
+    document.querySelectorAll<HTMLElement>('[data-i18n]').forEach((el) => {
+      const arText = el.dataset.ar;
+      if (typeof arText !== 'string') return;
+      const frSpan = document.createElement('span');
+      // Le markup FR ORIGINAL (pouvant contenir des balises imbriquées) est
+      // préservé tel quel — capturé UNE SEULE fois, avant toute mutation.
+      frSpan.innerHTML = el.innerHTML;
+      const arSpan = document.createElement('span');
+      arSpan.textContent = arText;
+      arSpan.hidden = true;
+      el.textContent = '';
+      el.append(frSpan, arSpan);
+      i18nPairs.push({ fr: frSpan, ar: arSpan });
+    });
+  }
+  function applyLang(lang: 'fr' | 'ar') {
+    const isAr = lang === 'ar';
+    currentLang = lang;
+    i18nPairs.forEach(({ fr, ar }) => {
+      fr.hidden = isAr;
+      ar.hidden = !isAr;
+    });
+    // WJ33 — RTL/langue au niveau DOCUMENT (pas seulement un bloc local) :
+    // un lecteur d'écran ou le rendu natif du navigateur doivent voir la vraie
+    // langue de la page, pas seulement une classe locale.
+    document.documentElement.lang = isAr ? 'ar' : 'fr';
+    document.documentElement.dir = isAr ? 'rtl' : 'ltr';
+    const root = document.querySelector('section') as HTMLElement | null;
+    if (root) {
+      root.dir = isAr ? 'rtl' : 'ltr';
+      root.style.lineHeight = isAr ? '1.75' : '';
+    }
+    const frBtn = $('mt-lang-fr');
+    const arBtn = $('mt-lang-ar');
+    frBtn?.setAttribute('aria-pressed', String(!isAr));
+    arBtn?.setAttribute('aria-pressed', String(isAr));
+    for (const [btn, on] of [[frBtn, !isAr], [arBtn, isAr]] as const) {
+      if (!btn) continue;
+      btn.className = on
+        ? 'px-3 py-1.5 text-sm font-semibold text-azur-950 bg-brass-400 transition-colors'
+        : 'px-3 py-1.5 text-sm font-semibold text-lune-soft transition-colors hover:text-white';
+    }
+  }
+  prepareI18n();
+  $('mt-lang-fr')?.addEventListener('click', () => applyLang('fr'));
+  $('mt-lang-ar')?.addEventListener('click', () => applyLang('ar'));
+
+  // ——— WJ6 : sélecteur de mode ———
+  let mode = 'residentiel';
+  document.querySelectorAll<HTMLButtonElement>('.mt-mode').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      mode = btn.dataset.mode || 'residentiel';
+      document.querySelectorAll<HTMLButtonElement>('.mt-mode').forEach((b) => {
+        const on = b === btn;
+        b.setAttribute('aria-pressed', String(on));
+        b.classList.toggle('border-brass-400', on);
+        b.classList.toggle('border-white/15', !on);
+      });
+    });
+  });
+  // état initial : marquer le mode résidentiel sélectionné visuellement.
+  document.querySelector<HTMLButtonElement>('.mt-mode')?.classList.add('border-brass-400');
+
+  // ——— WJ31 : puce à bascule unique (ombrage) — un seul choix actif à la fois ———
+  let ombrage = '';
+  document.querySelectorAll<HTMLButtonElement>('.mt-ombrage').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const same = ombrage === btn.dataset.value;
+      ombrage = same ? '' : (btn.dataset.value || '');
+      document.querySelectorAll<HTMLButtonElement>('.mt-ombrage').forEach((b) => {
+        const on = !same && b === btn;
+        b.setAttribute('aria-pressed', String(on));
+        b.classList.toggle('border-brass-400', on);
+        b.classList.toggle('border-white/15', !on);
+      });
+    });
+  });
+
+  // ——— WJ31 : puces multi-sélection (charges futures) ———
+  const futureLoads = new Set<string>();
+  document.querySelectorAll<HTMLButtonElement>('.mt-future-load').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const v = btn.dataset.value || '';
+      const on = !futureLoads.has(v);
+      if (on) futureLoads.add(v); else futureLoads.delete(v);
+      btn.setAttribute('aria-pressed', String(on));
+      btn.classList.toggle('border-brass-400', on);
+      btn.classList.toggle('border-white/15', !on);
+    });
+  });
+
+  // ——— WJ31 : photo compteur/facture — capturée EN LOCAL, JAMAIS uploadée ———
+  // Pas d'endpoint d'upload aujourd'hui (cf. PLAN2 QK6 OCR) : on garde un simple
+  // signal booléen (hasMeterPhoto) et on encourage l'envoi direct sur WhatsApp.
+  let hasMeterPhoto = false;
+  const meterPhotoInput = $('mt-meter-photo') as HTMLInputElement | null;
+  meterPhotoInput?.addEventListener('change', () => {
+    hasMeterPhoto = !!(meterPhotoInput.files && meterPhotoInput.files.length > 0);
+  });
+
+  // ——— WJ6 : assistant multi-étapes + barre de progression ———
+  let step = 0;
+  const panels = [0, 1, 2].map((i) => $(`mt-panel-${i}`));
+  function renderStep() {
+    panels.forEach((p, i) => { if (p) p.hidden = i !== step; });
+    document.querySelectorAll<HTMLElement>('.mt-step').forEach((li, i) => {
+      const bar = li.querySelector<HTMLElement>('.mt-step-bar');
+      const label = li.querySelector<HTMLElement>('.mt-step-label');
+      const active = i <= step;
+      if (bar) bar.className = `h-1.5 w-full rounded-full mt-step-bar transition-colors ${active ? 'bg-brass-400' : 'bg-white/10'}`;
+      if (label) label.classList.toggle('text-white', i === step);
+    });
+    const root = document.querySelector('section');
+    root?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
+  }
+  function goStep(n: number) { step = Math.max(0, Math.min(2, n)); renderStep(); }
+  $('mt-next-0')?.addEventListener('click', () => goStep(1));
+  $('mt-back-1')?.addEventListener('click', () => goStep(0));
+  $('mt-back-2')?.addEventListener('click', () => goStep(1));
+  renderStep();
+
+  // ——— boot carte (captureOnly). Repli sans clé carte AUTORISE la suite (WJ4) ———
+  let started = false;
+  const mapEl = $('rp9-map');
+  // WJ34 — retire le squelette de chargement dès que la carte annonce son
+  // premier rendu (onReady) ou dès qu'on bascule sur le repli sans carte.
+  function clearMapSkeleton() { mapEl?.classList.remove('mt-skeleton-shimmer'); }
+  async function boot(key: string, mapboxToken: string) {
+    if (started) return;
+    started = true;
+    try {
+      const mod = await import('../../../scripts/roof-tool-pro11.ts');
+      mod.initRoofToolPro8({
+        maptilerKey: key,
+        mapboxToken: mapboxToken || undefined,
+        reducedMotion,
+        captureOnly: true,
+        onReady: clearMapSkeleton,
+        onCaptureChange: (s) => {
+          capturePin = s.pin;
+          captureOutline = s.outline;
+          if (cityEl && !cityTouched) {
+            const fromMap = (s.address && s.address.trim()) || addressEl?.value.trim() || '';
+            if (fromMap) cityEl.value = fromMap;
+          }
+          // WJ2 — le contour peut arriver/changer APRÈS le calcul d'estimation :
+          // on ré-évalue l'éligibilité du bouton « voir les panneaux » à chaque
+          // changement de tracé (fonction déclarée plus bas, hissée par `function`).
+          updatePanels3dVisibility();
+        },
+      });
+    } catch {
+      started = false;
+      showFallback();
+    }
+  }
+  // WJ4 — repli carte : on montre le champ d'adresse en clair ET on garde la suite ouverte.
+  function showFallback() { if (fallback) fallback.hidden = false; clearMapSkeleton(); }
+
+  (async () => {
+    try {
+      const res = await fetch('/api/roof-config');
+      const cfg = (await res.json()) as { available?: boolean; maptilerKey?: string; mapboxToken?: string };
+      if (!cfg.available || !cfg.maptilerKey) { showFallback(); return; }
+      void boot(cfg.maptilerKey, cfg.mapboxToken || '');
+    } catch {
+      showFallback();
+    }
+  })();
+
+  // ——— helpers de saisie ———
+  const val = (id: string) => (($(id) as HTMLInputElement | HTMLSelectElement | null)?.value ?? '');
+  const num = (id: string): number | null => {
+    const raw = val(id).trim();
+    if (raw === '') return null;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  // toggle été ≠ hiver
+  const eteToggle = $('mt-ete-differente') as HTMLInputElement | null;
+  const eteWrap = $('mt-facture-ete-wrap') as HTMLElement | null;
+  const eteInput = $('mt-facture-ete') as HTMLInputElement | null;
+  eteToggle?.addEventListener('change', () => {
+    const on = eteToggle.checked === true;
+    if (eteWrap) eteWrap.hidden = !on;
+    if (!on && eteInput) eteInput.value = '';
+  });
+
+  // ——— WJ1 : résoudre la facture mensuelle (montant exact prioritaire, sinon tranche) ———
+  /** Milieu indicatif d'une tranche (MAD) — uniquement pour ESTIMER quand le montant
+   *  exact est absent ; ne sert jamais au seuil (le seuil reste sur billRange/qualifies). */
+  const RANGE_MIDPOINT: Record<string, number> = {
+    'lt800': 600, '800-1000': 900, '1000-1500': 1250, '1500-3000': 2250,
+    '3000-5000': 4000, '5000-10000': 7500, 'gt10000': 12000,
+  };
+  function resolveMonthlyBill(): number | null {
+    const exact = num('mt-facture-hiver');
+    if (exact != null && exact > 0) return exact;
+    const range = val('mt-bill');
+    if (range && RANGE_MIDPOINT[range] != null) return RANGE_MIDPOINT[range];
+    return null;
+  }
+
+  // ——— WJ1 : calculer + afficher l'estimation instantanée ———
+  let lastKwcLabel = '';
+  let lastSavingsLabel = '';
+  let lastKwc: number | null = null;
+  function computeEstimate() {
+    const bill = resolveMonthlyBill();
+    const lat = capturePin?.lat;
+    const city = (val('mt-city') || addressEl?.value || '').trim() || undefined;
+    const est = bill != null ? estimateFromBill(bill, { lat, city }) : null;
+    const card = $('mt-estimate-body');
+    const note = $('mt-estimate-note');
+    const unavail = $('mt-estimate-unavailable');
+    if (!est) {
+      if (card) card.hidden = true;
+      if (note) note.hidden = true;
+      if (unavail) unavail.hidden = false;
+      lastKwcLabel = '';
+      lastSavingsLabel = '';
+      lastKwc = null;
+      updatePanels3dVisibility();
+      return;
+    }
+    if (card) card.hidden = false;
+    if (note) note.hidden = false;
+    if (unavail) unavail.hidden = true;
+    const kwcEl = $('mt-est-kwc');
+    const savEl = $('mt-est-savings');
+    const payEl = $('mt-est-payback');
+    if (kwcEl) kwcEl.textContent = String(est.kwc);
+    const monthly = formatMadRange(est.savingsMonthlyLow, est.savingsMonthlyHigh);
+    if (savEl) savEl.textContent = monthly;
+    if (payEl) payEl.textContent = est.paybackLabel;
+    lastKwcLabel = `${est.kwc} kWc`;
+    lastSavingsLabel = `${monthly}/mois`;
+    lastKwc = est.kwc;
+    updatePanels3dVisibility();
+  }
+  // WJ34 — squelette bref pendant le calcul (performance perçue) : les 3
+  // chiffres passent en squelette shimmer AVANT le calcul, puis
+  // requestAnimationFrame laisse peindre ce squelette une fois avant de
+  // révéler les vrais chiffres — sensation de « calcul », zéro CLS (mêmes
+  // dimensions text-3xl), et prêt à absorber un futur calcul plus lourd
+  // (PVGIS réseau) sans changement d'UX.
+  function showEstimateSkeleton() {
+    const card = $('mt-estimate-body');
+    const unavail = $('mt-estimate-unavailable');
+    if (unavail) unavail.hidden = true;
+    if (card) card.hidden = false;
+    for (const id of ['mt-est-kwc', 'mt-est-savings']) {
+      const el = $(id);
+      if (el) el.innerHTML = '<span class="mt-est-skeleton mt-skeleton-shimmer"></span>';
+    }
+    const payEl = $('mt-est-payback');
+    if (payEl) payEl.innerHTML = '<span class="mt-est-skeleton mt-skeleton-shimmer"></span>';
+  }
+  $('mt-estimate')?.addEventListener('click', () => {
+    showEstimateSkeleton();
+    goStep(2);
+    requestAnimationFrame(() => computeEstimate());
+  });
+  // recalcule à la volée si l'utilisateur revient corriger sa facture
+  $('mt-facture-hiver')?.addEventListener('input', computeEstimate);
+  $('mt-bill')?.addEventListener('change', computeEstimate);
+
+  // ——— WJ2 : « voir les panneaux sur votre toit » — facultatif, lazy, dégrade
+  // proprement (pas de WebGL / pas de contour tracé → le bloc reste masqué). ———
+  const panels3dBlock = $('mt-panels3d') as HTMLElement | null;
+  const panels3dStage = $('mt-panels3d-stage') as HTMLElement | null;
+  const panels3dOverlay = $('mt-panels3d-overlay') as HTMLElement | null;
+  const panels3dStart = $('mt-panels3d-start') as HTMLButtonElement | null;
+  const panels3dHint = $('mt-panels3d-hint') as HTMLElement | null;
+  let panels3dStarted = false;
+
+  /** Le bouton n'apparaît QUE si un contour (≥3 sommets) a été tracé ET qu'un
+   *  kWc est disponible — sinon rien de significatif à montrer (pas de faux
+   *  aperçu sur un simple repère). */
+  function updatePanels3dVisibility() {
+    if (!panels3dBlock) return;
+    const eligible = captureOutline.length >= 3 && lastKwc != null;
+    panels3dBlock.hidden = !eligible;
+  }
+
+  async function startPanels3d() {
+    if (panels3dStarted || !panels3dStage || lastKwc == null) return;
+    panels3dStarted = true;
+    try {
+      const [{ capturePreviewLayout, buildViewerModel }, { createRoofViewer }] = await Promise.all([
+        import('../../../lib/proposition'),
+        import('../../../scripts/roofPro11/viewerOnly'),
+      ]);
+      const layout = capturePreviewLayout(captureOutline, lastKwc);
+      const model = layout ? buildViewerModel(layout) : null;
+      if (!model) throw new Error('modèle indisponible');
+      const nav = navigator as Navigator & { deviceMemory?: number; connection?: { saveData?: boolean } };
+      const lowEnd = (nav.deviceMemory != null && nav.deviceMemory <= 4) || (navigator.hardwareConcurrency || 8) <= 4;
+      const handle = createRoofViewer(panels3dStage, model, {
+        reducedMotion,
+        lowEnd,
+        onReady: () => {
+          if (panels3dOverlay) panels3dOverlay.hidden = true;
+          if (panels3dHint) panels3dHint.hidden = false;
+        },
+        onFail: () => { panels3dStarted = false; },
+      });
+      if (!handle) throw new Error('WebGL indisponible');
+    } catch {
+      // Repli gracieux : le bouton reste, avec un message sobre — jamais de blocage.
+      panels3dStarted = false;
+      if (panels3dOverlay) {
+        const btn = panels3dStart;
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = currentLang === 'ar' ? 'المعاينة ثلاثية الأبعاد غير متوفرة' : 'Aperçu 3D indisponible sur cet appareil';
+        }
+      }
+    }
+  }
+  panels3dStart?.addEventListener('click', () => { void startPanels3d(); });
+
+  // ——— WJ4 : validation INLINE alignée sur validateLead (avant le round-trip) ———
+  function setFieldError(inputId: string, errId: string, message: string | null) {
+    const input = $(inputId) as HTMLInputElement | null;
+    const err = $(errId);
+    if (input) input.setAttribute('aria-invalid', message ? 'true' : 'false');
+    if (err) {
+      err.textContent = message || '';
+      err.hidden = !message;
+    }
+  }
+  /** Construit le corps de lead + renvoie les erreurs client (miroir validateLead). */
+  function buildBody(): { body: Record<string, unknown>; errors: Record<string, string> } {
+    const eteDifferente = eteToggle?.checked === true;
+    const consent = ($('mt-consent') as HTMLInputElement | null)?.checked === true;
+    const whatsappOptIn = ($('mt-wa-optin') as HTMLInputElement | null)?.checked === true;
+    const adresse = (val('mt-city') || addressEl?.value.trim() || fallbackAddrEl?.value.trim() || '').trim();
+    const body: Record<string, unknown> = {
+      fullName: val('mt-name'),
+      phone: val('mt-phone'),
+      city: adresse,
+      billRange: val('mt-bill'),
+      roofType: val('mt-roof'),
+      consent,
+      whatsappOptIn,
+      email: val('mt-email') || undefined,
+      factureHiver: num('mt-facture-hiver'),
+      factureEte: eteDifferente ? num('mt-facture-ete') : null,
+      eteDifferente,
+      raccordement: val('mt-raccordement'),
+      adresse,
+      // WJ30 — le type de projet et la langue active partent aussi au webhook.
+      mode,
+      langue_preferee: currentLang,
+      // WJ31 — questions de capture élargies, TOUTES facultatives (déjà validées
+      // une à une côté serveur : un champ vide/malformé est simplement écarté).
+      distributeur: val('mt-distributeur') || undefined,
+      billKwh: num('mt-bill-kwh'),
+      ombrage: ombrage || undefined,
+      roofAgeYears: num('mt-roof-age'),
+      futureLoads: futureLoads.size > 0 ? Array.from(futureLoads) : undefined,
+      batteryInterest: ($('mt-battery-interest') as HTMLInputElement | null)?.checked === true,
+      occupantType: val('mt-occupant-type') || undefined,
+      projectTiming: val('mt-project-timing') || undefined,
+      financingIntent: val('mt-financing-intent') || undefined,
+      hasMeterPhoto,
+    };
+    // WJ4 — repère FACULTATIF : on le joint s'il existe, on ne BLOQUE jamais sans lui.
+    if (capturePin) {
+      body.roofPoint = capturePin;
+      body.gpsLat = capturePin.lat;
+      body.gpsLng = capturePin.lng;
+    }
+    if (captureOutline.length >= 3) body.roofOutline = captureOutline;
+    const v = validateLead(body);
+    return { body, errors: v.ok ? {} : v.errors };
+  }
+
+  function showInlineErrors(errors: Record<string, string>) {
+    setFieldError('mt-name', 'mt-name-err', errors.fullName ?? null);
+    setFieldError('mt-phone', 'mt-phone-err', errors.phone ?? null);
+    setFieldError('mt-city', 'mt-city-err', errors.city ?? null);
+    setFieldError('mt-roof', 'mt-roof-err', errors.roofType ?? null);
+    setFieldError('mt-bill', 'mt-bill-err', errors.billRange ?? null);
+    const cErr = $('mt-consent-err');
+    if (cErr) { cErr.textContent = errors.consent ?? ''; cErr.hidden = !errors.consent; }
+  }
+
+  // ——— WJ3 : deeplink WhatsApp prérempli avec l'estimation ———
+  function buildWaUrl(): string {
+    const text = captureWhatsappText({
+      fullName: val('mt-name'),
+      city: (val('mt-city') || addressEl?.value || '').trim(),
+      kwcLabel: lastKwcLabel || undefined,
+      savingsLabel: lastSavingsLabel || undefined,
+    });
+    return whatsappLink(WHATSAPP_LEADS, text);
+  }
+
+  // ——— soumission → /api/capture-lead (contrat INCHANGÉ) ———
+  const form = $('mt-form') as HTMLFormElement | null;
+  const errEl = $('mt-error');
+  const okEl = $('mt-success');
+  const belowEl = $('mt-belowthreshold');
+  const submitBtn = $('mt-submit') as HTMLButtonElement | null;
+  let submitted = false;
+
+  form?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (errEl) errEl.hidden = true;
+    const { body, errors } = buildBody();
+    if (Object.keys(errors).length > 0) {
+      showInlineErrors(errors);
+      if (errEl) {
+        errEl.textContent = 'Vérifiez les champs surlignés ci-dessus.';
+        errEl.hidden = false;
+      }
+      // amène l'utilisateur au premier champ en erreur
+      const firstId = ['mt-name', 'mt-phone', 'mt-city', 'mt-roof', 'mt-bill']
+        .find((id) => $(id)?.getAttribute('aria-invalid') === 'true');
+      if (firstId) ($(firstId) as HTMLElement | null)?.focus();
+      return;
+    }
+    showInlineErrors({});
+
+    if (submitBtn) submitBtn.disabled = true;
+    try {
+      const res = await fetch('/api/capture-lead', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; qualified?: boolean; errors?: Record<string, string> };
+      if (res.ok && data.ok) {
+        submitted = true;
+        const waUrl = buildWaUrl();
+        // WJ5 — réponse HONNÊTE selon le seuil 1 000 MAD (qualified renvoyé par le serveur).
+        if (data.qualified) {
+          if (okEl) okEl.hidden = false;
+          const waLink = $('mt-success-wa') as HTMLAnchorElement | null;
+          if (waLink) waLink.href = waUrl;
+          // WJ3 — sur mobile, on propose WhatsApp tout de suite (l'opt-in est coché par défaut)
+          const wantsWa = ($('mt-wa-optin') as HTMLInputElement | null)?.checked === true;
+          if (wantsWa && /Mobi|Android|iPhone/i.test(navigator.userAgent) && !reducedMotion) {
+            setTimeout(() => { window.location.href = waUrl; }, 900);
+          }
+        } else {
+          // sous le seuil : PAS de faux « enregistré » — message adapté + WhatsApp.
+          if (belowEl) belowEl.hidden = false;
+          const belowWa = $('mt-belowthreshold-wa') as HTMLAnchorElement | null;
+          if (belowWa) belowWa.href = waUrl;
+        }
+        // désactive les champs après envoi (sauf les liens WhatsApp).
+        Array.from(form.elements).forEach((el) => ((el as HTMLInputElement).disabled = true));
+        return;
+      }
+      // erreurs serveur → réafficher inline si présentes
+      if (data.errors) showInlineErrors(data.errors);
+      const firstErr = data.errors ? Object.values(data.errors)[0] : null;
+      if (errEl) {
+        errEl.textContent = firstErr || 'Un champ est manquant ou invalide. Vérifiez vos informations.';
+        errEl.hidden = false;
+      }
+      if (submitBtn) submitBtn.disabled = false;
+    } catch {
+      if (errEl) {
+        errEl.textContent = 'Envoi impossible pour le moment. Réessayez dans un instant.';
+        errEl.hidden = false;
+      }
+      if (submitBtn) submitBtn.disabled = false;
+    }
+  });
+
+  // ——— WJ7/WJ33 : récupération d'abandon (exit-intent desktop + retour/onglet caché mobile) ———
+  const exitModal = $('mt-exit') as HTMLElement | null;
+  const exitPhoneInput = $('mt-exit-phone') as HTMLInputElement | null;
+  const exitWaLink = $('mt-exit-wa') as HTMLAnchorElement | null;
+  let exitShown = false;
+  let exitTriggerEl: HTMLElement | null = null; // WJ33 — pour restaurer le focus à la fermeture
+
+  /** WJ33 — construit (ou reconstruit) le lien WhatsApp d'abandon depuis l'état actuel. */
+  function buildExitWaHref(): string {
+    const phone = exitPhoneInput?.value.trim() || '';
+    const text = captureWhatsappText({
+      fullName: '',
+      city: (val('mt-city') || addressEl?.value || '').trim(),
+      kwcLabel: lastKwcLabel || undefined,
+      savingsLabel: lastSavingsLabel || undefined,
+    }) + (phone.length >= 6 ? ` Mon numéro : ${phone}.` : '');
+    return whatsappLink(WHATSAPP_LEADS, text);
+  }
+
+  function maybeShowExit(triggerEl: HTMLElement | null = null) {
+    if (exitShown || submitted) return;
+    // ne déranger que si l'utilisateur a au moins commencé (mode/facture ou step > 0)
+    const started2 = step > 0 || resolveMonthlyBill() != null || (capturePin != null);
+    if (!started2) return;
+    exitShown = true;
+    exitTriggerEl = triggerEl ?? (document.activeElement as HTMLElement | null);
+    if (exitWaLink) exitWaLink.href = buildExitWaHref();
+    if (exitModal) {
+      exitModal.hidden = false;
+      // WJ33 — focus initial DANS la modale (premier champ interactif).
+      exitPhoneInput?.focus();
+    }
+  }
+  function closeExit() {
+    if (!exitModal || exitModal.hidden) return;
+    exitModal.hidden = true;
+    // WJ33 — restauration du focus vers l'élément qui a déclenché l'ouverture
+    // (ou, à défaut, un point d'ancrage stable de la page).
+    (exitTriggerEl && document.contains(exitTriggerEl) ? exitTriggerEl : $('mt-lang-fr'))?.focus();
+    exitTriggerEl = null;
+  }
+  // desktop : la souris quitte par le haut
+  document.addEventListener('mouseout', (e) => {
+    if (!e.relatedTarget && (e as MouseEvent).clientY <= 0) maybeShowExit();
+  });
+  // mobile : l'onglet passe en arrière-plan
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') maybeShowExit();
+  });
+  $('mt-exit-close')?.addEventListener('click', () => closeExit());
+  exitModal?.addEventListener('click', (e) => { if (e.target === exitModal) closeExit(); });
+
+  // WJ33 — clavier : Esc ferme + focus trap (Tab/Shift+Tab restent DANS la modale).
+  exitModal?.addEventListener('keydown', (e) => {
+    const ke = e as KeyboardEvent;
+    if (ke.key === 'Escape') { closeExit(); return; }
+    if (ke.key !== 'Tab' || !exitModal) return;
+    const focusable = Array.from(
+      exitModal.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'),
+    ).filter((el) => el.offsetParent !== null || el === document.activeElement);
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = document.activeElement as HTMLElement | null;
+    if (ke.shiftKey && active === first) {
+      ke.preventDefault();
+      last.focus();
+    } else if (!ke.shiftKey && active === last) {
+      ke.preventDefault();
+      first.focus();
+    }
+  });
+
+  // WJ33 — le CTA WhatsApp d'abandon : le lien `href` est reconstruit à CHAQUE
+  // saisie (pas seulement au clic), pour rester correct si l'utilisateur
+  // ouvre WhatsApp via un clic droit / « copier le lien » avant de finir de taper.
+  exitPhoneInput?.addEventListener('input', () => {
+    const err = $('mt-exit-err');
+    if (err) err.hidden = true;
+    if (exitWaLink) exitWaLink.href = buildExitWaHref();
+  });
+  exitWaLink?.addEventListener('click', (e) => {
+    const phone = exitPhoneInput?.value.trim() || '';
+    const err = $('mt-exit-err');
+    if (phone.length < 6) {
+      e.preventDefault();
+      if (err) { err.textContent = 'Indiquez un numéro pour qu\'on vous réponde.'; err.hidden = false; }
+      return;
+    }
+    if (err) err.hidden = true;
+  });
+</script>

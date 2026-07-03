@@ -462,7 +462,12 @@ class FactureViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND,
             )
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
-        filename = f'{facture.reference}.pdf'
+        # QD2 — nom cohérent (société _ type _ client _ référence).
+        from ..utils.filenames import document_filename
+        filename = document_filename(
+            'Facture', facture.reference,
+            client=facture.client if facture.client_id else None,
+            company=facture.company)
         response['Content-Disposition'] = (
             f'inline; filename="{filename}"'
         )

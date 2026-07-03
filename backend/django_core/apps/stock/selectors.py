@@ -61,6 +61,112 @@ def get_fournisseur_by_id(company, fournisseur_id):
         id=fournisseur_id, company=company).first()
 
 
+def search_fournisseurs(company, q, *, limit=12):
+    """QC1 — Recherche floue de fournisseurs (nom) scopée société. Point d'accès
+    cross-app : l'autocomplete entreprise de CRM lit le référentiel fournisseur
+    à travers ce sélecteur, sans importer apps.stock.models. LECTURE SEULE ;
+    renvoie une liste de Fournisseur (au plus ``limit``)."""
+    from .models import Fournisseur
+    q = (q or '').strip()
+    if not q or company is None:
+        return []
+    return list(
+        Fournisseur.objects.filter(company=company, nom__icontains=q)
+        .order_by('nom')[:limit])
+
+
+# ── DC34 — Référentiel sous-traitant UNIFIÉ (Fournisseur type=service) ────────
+# Il n'existe plus de référentiel sous-traitant parallèle : un sous-traitant est
+# un Fournisseur(type='service') porteur d'un SousTraitantProfile. Les autres
+# apps (installations : ordres/attestations/évaluations, AP sous-traitant) lisent
+# le référentiel et les comptes à payer à travers ces sélecteurs, jamais en
+# important apps.stock.models directement. LECTURE SEULE.
+
+def get_sous_traitant(company, fournisseur_id):
+    """DC34 — Fournisseur de type « service » (sous-traitant) scopé société, ou
+    None. Filtre sur le type pour ne jamais confondre avec un fournisseur
+    matériel. Lecture seule."""
+    from .models import Fournisseur
+    return Fournisseur.objects.filter(
+        id=fournisseur_id, company=company,
+        type=Fournisseur.Type.SERVICE).first()
+
+
+def sous_traitants_qs(company, *, metier=None, actif=None):
+    """DC34 — queryset des sous-traitants (Fournisseur type=service) de la
+    société, filtrable par ``metier`` et ``actif`` (lus sur le profil satellite).
+    Trié par nom. Lecture seule."""
+    from .models import Fournisseur
+    qs = (Fournisseur.objects
+          .filter(company=company, type=Fournisseur.Type.SERVICE)
+          .select_related('profil_sous_traitant')
+          .order_by('nom'))
+    if metier:
+        qs = qs.filter(profil_sous_traitant__metier=metier)
+    if actif is not None:
+        qs = qs.filter(profil_sous_traitant__actif=actif)
+    return qs
+
+
+def sous_traitant_est_actif(fournisseur):
+    """DC34 — vrai si le sous-traitant est actif (drapeau du profil satellite,
+    True par défaut si le profil manque). Lecture seule."""
+    profil = getattr(fournisseur, 'profil_sous_traitant', None)
+    return getattr(profil, 'actif', True)
+
+
+def facture_fournisseur_scoped(company, facture_id):
+    """DC34/G5 — FactureFournisseur scopée société par id, ou None. Point
+    d'entrée cross-app pour l'AP sous-traitant (installations) : lire/agir sur
+    une facture fournisseur sans importer apps.stock.models. Lecture seule."""
+    from .models import FactureFournisseur
+    return (FactureFournisseur.objects
+            .select_related('fournisseur', 'created_by')
+            .filter(id=facture_id, company=company).first())
+
+
+def paiement_fournisseur_scoped(company, paiement_id):
+    """DC34/G5 — PaiementFournisseur scopé société par id, ou None. Lecture
+    seule (point d'entrée cross-app AP sous-traitant)."""
+    from .models import PaiementFournisseur
+    return (PaiementFournisseur.objects
+            .select_related('facture', 'created_by')
+            .filter(id=paiement_id, company=company).first())
+
+
+def factures_sous_traitant_qs(company, *, fournisseur_id=None, statut=None):
+    """DC34 — comptes à payer des sous-traitants : les FactureFournisseur dont le
+    fournisseur est de type « service », scopées société. Filtrable par
+    ``fournisseur_id`` et ``statut``. Montants INTERNES. Lecture seule."""
+    from .models import Fournisseur, FactureFournisseur
+    qs = (FactureFournisseur.objects
+          .filter(company=company,
+                  fournisseur__type=Fournisseur.Type.SERVICE)
+          .select_related('fournisseur', 'created_by')
+          .prefetch_related('paiements')
+          .order_by('-date_creation'))
+    if fournisseur_id:
+        qs = qs.filter(fournisseur_id=fournisseur_id)
+    if statut:
+        qs = qs.filter(statut=statut)
+    return qs
+
+
+def paiements_sous_traitant_qs(company, *, facture_id=None):
+    """DC34 — règlements imputés sur les factures sous-traitant (fournisseur
+    type=service), scopés société. Filtrable par ``facture_id``. Lecture
+    seule."""
+    from .models import Fournisseur, PaiementFournisseur
+    qs = (PaiementFournisseur.objects
+          .filter(company=company,
+                  facture__fournisseur__type=Fournisseur.Type.SERVICE)
+          .select_related('facture', 'created_by')
+          .order_by('-date_paiement', '-date_creation'))
+    if facture_id:
+        qs = qs.filter(facture_id=facture_id)
+    return qs
+
+
 # ── DC30 / DC31 — Identité tiers fournisseur DÉRIVÉE (jamais re-stockée) ──────
 # La Comptabilité (comptes auxiliaires tiers, DC30) et les Contrats (parties,
 # DC31) ne RECOPIENT JAMAIS nom/ICE/IF/RC/RIB d'un fournisseur sur leur propre
@@ -106,6 +212,34 @@ def get_bon_commande_fournisseur(company, bc_id):
     from .models import BonCommandeFournisseur
     return BonCommandeFournisseur.objects.filter(
         id=bc_id, company=company).first()
+
+
+def get_bcf_by_id(bc_id):
+    """QS3 — BCF par id, NON scopé (l'appelant a déjà authentifié via un jeton
+    ShareLink borné à ce BCF). Renvoie l'objet ou None. Lecture seule."""
+    from .models import BonCommandeFournisseur
+    return BonCommandeFournisseur.objects.filter(id=bc_id).first()
+
+
+def render_bcf_pdf_by_id(bc_id):
+    """QS3 — Rend à la volée le PDF FOURNISSEUR d'un BCF (bytes) + son nom de
+    fichier cohérent. Renvoie ``(pdf_bytes, filename)`` ou ``(None, None)``.
+
+    Point d'entrée cross-app : ``ventes`` (endpoint public tokenisé) appelle CE
+    sélecteur au lieu d'importer les modèles/utils de ``stock`` directement. Le
+    PDF montre légitimement les PRIX D'ACHAT au FOURNISSEUR (le jeton l'y
+    autorise) — il n'est jamais servi à un client final."""
+    bcf = get_bcf_by_id(bc_id)
+    if bcf is None:
+        return None, None
+    from .utils.pdf_fournisseur import generate_bcf_pdf
+    pdf_bytes = generate_bcf_pdf(bcf)
+    from apps.ventes.utils.filenames import document_filename
+    filename = document_filename(
+        'Bon-de-commande', bcf.reference,
+        client=bcf.fournisseur if bcf.fournisseur_id else None,
+        company=bcf.company)
+    return pdf_bytes, filename
 
 
 def montant_commande_bcf(bon_commande):

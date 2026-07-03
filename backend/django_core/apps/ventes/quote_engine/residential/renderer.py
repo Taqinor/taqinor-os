@@ -64,9 +64,13 @@ def _augment(data: dict) -> dict:
         "coverage_pct": coverage,
         "validity_days": d.get("validity_days", 30),
         "site_url": d.get("site_url", "taqinor.ma"),
+        # QK5 — « avis » pointe vers /realisations (page réelle : nos
+        # réalisations clients). Le chemin /avis n'existe pas sur taqinor.ma ;
+        # un lien 404 sur un PDF client est corrigé ici. On ne fabrique jamais
+        # d'avis : on renvoie vers les réalisations vérifiables.
         "links": d.get("links") or {
             "realisations": "taqinor.ma/realisations",
-            "avis": "taqinor.ma/avis",
+            "avis": "taqinor.ma/realisations",
             "produits": "taqinor.ma/produits",
             "garanties": "taqinor.ma/garanties",
             "signer": f"taqinor.ma/signer/{d.get('ref', '')}",

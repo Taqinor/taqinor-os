@@ -23,7 +23,7 @@ import { localizeNavHref } from '../../i18n/pages';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
-const contactSim = L('/contact') + '#simulateur';
+const devisHref = L('/devis/mon-toit');
 
 const etapes = [
   {
@@ -153,7 +153,7 @@ const jsonLd = {
         <p class="mx-auto mt-8 max-w-2xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
           With these four figures in hand, the system almost designs itself. Without them — when the
           flow rate or the head is missing — we'd be left guessing, and we don't size a pump on
-          guesswork. <a href={contactSim} class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Request an assessment →</a>
+          guesswork. <a href={devisHref} class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Request an assessment →</a>
         </p>
       </div>
     </section>
@@ -198,14 +198,14 @@ const jsonLd = {
           system is handed over with its full technical file.
         </p>
         <div class="mt-10 flex flex-wrap gap-3">
-          <a href={contactSim} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Request an assessment →</a>
+          <a href={devisHref} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Request an assessment →</a>
           <a href={L('/professionnel')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Business solar →</a>
           <a href={L('/équipement')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">See the equipment →</a>
         </div>
       </div>
     </section>
 
-    <CtaBand title="A solar pumping project? Start with the free study." href={contactSim} />
+    <CtaBand title="A solar pumping project? Start with the free study." href={devisHref} />
 
     <StickyCta />
   </div>

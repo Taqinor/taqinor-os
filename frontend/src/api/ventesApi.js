@@ -16,18 +16,32 @@ const ventesApi = {
   getProposalPdf: (id, params = {}) =>
     api.get(`/ventes/devis/${id}/proposal/`, { params, responseType: 'blob' }),
   convertirDevisEnBC: (id) => api.post(`/ventes/devis/${id}/convertir-bc/`),
+  // B2/WR2 — (re)mint le lien public de proposition sans passer par l'envoi
+  // email/WhatsApp (ex. pour le copier manuellement).
+  shareLinkDevis: (id) => api.post(`/ventes/devis/${id}/share-link/`),
   // Révision : crée une nouvelle version (v2, v3…) d'un devis.
   reviserDevis: (id) => api.post(`/ventes/devis/${id}/reviser/`),
   // QJ14 — Envoyer par email : PDF premium + lien tokenisé → client, consigne EmailLog, marque envoyé.
   envoyerEmailDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/envoyer-email/`, payload),
+  // QG8 — « Envoyer » = flux WhatsApp : lien wa.me + lien tokenisé, marque envoyé.
+  whatsappDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/whatsapp/`, payload),
+  // QJ28 — « Contacter mon supérieur » : notifie le supérieur du vendeur sur ce devis.
+  contacterSuperieur: (id, payload = {}) => api.post(`/ventes/devis/${id}/contacter-superieur/`, payload),
   // QJ15 — Variantes : créer 2–3 copies dimensionnées pour comparaison côte-à-côte.
   dupliquerVariante: (id, payload = {}) => api.post(`/ventes/devis/${id}/dupliquer-variante/`, payload),
   // QJ15 — Lister les variantes liées à ce devis (même version_parent).
   getVariantes: (id) => api.get(`/ventes/devis/${id}/variantes/`),
+  // QG9/QG10 — lit (GET) ou règle (PUT, Directeur/Commercial responsable) le
+  // pourcentage par défaut des variantes de devis.
+  getVarianteConfig: () => api.get('/ventes/devis/variante-config/'),
+  setVarianteConfig: (variante_pct) => api.put('/ventes/devis/variante-config/', { variante_pct }),
   // Approbation admin de la remise (T17) — débloque l'envoi.
   approuverRemise: (id) => api.post(`/ventes/devis/${id}/approuver-remise/`),
   // N25 — acceptation explicite (date + nom), déclencheur de chantier + chatter.
   accepterDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/accepter/`, payload),
+  // WR1 — FG44 : refus explicite (motif/date/chatter), fait avancer le funnel
+  // (devis_refused) — chemin canonique, à la place d'un PATCH statut direct.
+  refuserDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/refuser/`, payload),
   historiqueDevis: (id) => api.get(`/ventes/devis/${id}/historique/`),
   noterDevis: (id, body) => api.post(`/ventes/devis/${id}/noter/`, { body }),
   // Export comptable : journal des ventes + résumé TVA (.xlsx) sur une période.
@@ -74,6 +88,14 @@ const ventesApi = {
   // Paiements : enregistrement manuel + liste par facture.
   enregistrerPaiement: (id, data) => api.post(`/ventes/factures/${id}/enregistrer-paiement/`, data),
   getPaiementsFacture: (id) => api.get(`/ventes/factures/${id}/paiements/`),
+  // FG53/WR2 — lien « Payer en ligne » (fournisseur NoOp par défaut, gated).
+  lienPaiementFacture: (id, payload = {}) => api.post(`/ventes/factures/${id}/lien-paiement/`, payload),
+  // N105/WR2 — export + contrôle de conformité DGI (404 tant que le flag
+  // société `dgi_export_actif` est OFF — comportement invisible par défaut).
+  dgiExportFacture: (id) => api.get(`/ventes/factures/${id}/dgi-export/`, { responseType: 'blob' }),
+  dgiConformiteFacture: (id) => api.get(`/ventes/factures/${id}/dgi-conformite/`),
+  // FG43/WR2 — actions en masse (émettre/relancer/email/pdf) sur une sélection.
+  bulkFactures: (action, ids) => api.post('/ventes/factures/bulk/', { action, ids }),
   // Encaissements : liste lecture seule de TOUS les paiements de la société
   // (PaiementViewSet), bornée serveur. ?ordering= pour le tri.
   getPaiements: (params) => api.get('/ventes/paiements/', { params }),

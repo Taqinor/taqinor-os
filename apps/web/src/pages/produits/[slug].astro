@@ -74,17 +74,20 @@ const jsonLd = {
           </ul>
         </div>
 
+        {/* WJ36 — discipline laiton : le laiton est réservé au CTA devis
+            (parcours /devis/mon-toit, libellé principal verbatim) ; le
+            téléchargement PDF est rétrogradé en bouton contour. */}
         <div class="v2-rise mt-8 flex flex-wrap gap-3">
+          <a href="/devis/mon-toit" class="glow bg-brass-400 px-5 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">Obtenir mon étude gratuite &rarr;</a>
           <a
             href={downloadHref}
             target="_blank"
             rel="noopener"
-            class="glow inline-flex items-center gap-2 bg-brass-400 px-5 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300"
+            class="inline-flex items-center gap-2 border border-white/25 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10"
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Fiche technique officielle (PDF)
           </a>
-          <a href="/contact" class="border border-white/25 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300">Demander un devis &rarr;</a>
         </div>
 
         {/* W147 — aperçu intégré de la fiche auto-hébergée (skip si pas de PDF /fiches). */}

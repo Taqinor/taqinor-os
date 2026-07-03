@@ -13,6 +13,8 @@ import { downloadBlob } from '../../utils/downloadBlob'
 import importApi, { downloadXlsx } from '../../api/importApi'
 import installationsApi from '../../api/installationsApi'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
+import TicketSuiviClientPanel from './TicketSuiviClientPanel'
+import TicketChecklistPanel from './TicketChecklistPanel'
 import { INTERVENTION_TYPES } from '../../features/installations/statuses'
 import {
   EMPTY_TICKET_FILTERS,
@@ -609,6 +611,19 @@ function TicketDetail({ ticket, onClose, onSaved }) {
           <AttachmentsPanel model="sav.ticket" id={id} />
         </section>
 
+        {/* ── WR11/FG81+FG86 — SLA première réponse + lien de suivi client ── */}
+        <CollapsibleSection icon={Clock} title="Suivi client & SLA">
+          <TicketSuiviClientPanel
+            ticket={current}
+            onUpdated={(t) => { setCurrent(t); loadHistorique(); onSaved?.() }}
+          />
+        </CollapsibleSection>
+
+        {/* ── WR11/FG82 — checklist de visite de maintenance ── */}
+        <CollapsibleSection icon={ShieldCheck} title="Checklist de maintenance">
+          <TicketChecklistPanel ticketId={id} />
+        </CollapsibleSection>
+
         {/* ── Interventions (L313 — repliable) ── */}
         <CollapsibleSection icon={Wrench} title="Interventions">
           {interventions.length === 0 ? (
@@ -971,7 +986,9 @@ export default function TicketsPage() {
               {rows.length} ticket{rows.length > 1 ? 's' : ''}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          {/* MB5 — segmenté + bouton export : passe sur deux lignes sous 375px
+              au lieu de déborder horizontalement. */}
+          <div className="flex flex-wrap items-center gap-2">
             {/* L295 — bascule Table / Kanban. */}
             <Segmented
               size="sm"

@@ -16,7 +16,7 @@ import { localizeNavHref } from '../../i18n/pages';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
-const contactSim = L('/contact') + '#simulateur';
+const devisHref = L('/devis/mon-toit');
 
 const solutions = [
   {
@@ -116,11 +116,11 @@ const jsonLd = {
           diagnostic does the sorting: the solution that fits your case, and the Law 82-21 regime you
           fall under. No commitment.
         </p>
-        <a href={contactSim} class="mt-8 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">Start my free diagnostic</a>
+        <a href={devisHref} class="mt-8 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">Start my free diagnostic</a>
       </div>
     </section>
 
-    <CtaBand title="It's the diagnostic that points to the right solution. And it's free." href={contactSim} />
+    <CtaBand title="It's the diagnostic that points to the right solution. And it's free." href={devisHref} />
 
     <StickyCta />
   </div>

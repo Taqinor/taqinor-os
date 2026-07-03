@@ -1,0 +1,93 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+
+/* ============================================================================
+   WR4 — « facturer une réception » (FG56) + PDF facture fournisseur (FG55).
+   ========================================================================== */
+
+vi.mock('../../api/stockApi', () => ({
+  default: {
+    facturerReception: vi.fn(),
+    confirmerReceptionFournisseur: vi.fn(),
+    annulerReceptionFournisseur: vi.fn(),
+    factureFournisseurPdf: vi.fn(),
+    ajouterPaiementFournisseur: vi.fn(),
+  },
+}))
+
+import stockApi from '../../api/stockApi'
+import { ReceptionDetail } from './ReceptionsFournisseur.jsx'
+import { FactureDetail } from './FacturesFournisseur.jsx'
+
+function wrap(node) {
+  return render(<ThemeProvider>{node}</ThemeProvider>)
+}
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  URL.createObjectURL = vi.fn(() => 'blob:mock')
+  URL.revokeObjectURL = vi.fn()
+  window.open = vi.fn(() => ({}))
+})
+
+describe('WR4 — facturer une réception (FG56)', () => {
+  const reception = {
+    id: 7, reference: 'REC-2026-07-0007', statut: 'confirme',
+    bon_commande_reference: 'BCF-1', fournisseur_nom: 'JA Solar',
+    date_reception: '2026-07-01',
+    lignes: [{ id: 1, produit_nom: 'Panneau', quantite: 5 }],
+  }
+
+  it('affiche « Facturer cette réception » pour une réception confirmée', async () => {
+    stockApi.facturerReception.mockResolvedValue({
+      data: { id: 3, reference: 'FF-2026-07-0003', montant_ttc: '6000.00' },
+    })
+    wrap(<ReceptionDetail reception={reception} onClose={() => {}} onSaved={() => {}} />)
+    const btn = screen.getByRole('button', { name: /Facturer cette réception/ })
+    fireEvent.click(btn)
+    await waitFor(() => { expect(stockApi.facturerReception).toHaveBeenCalledWith(7) })
+    const status = await screen.findByRole('status')
+    expect(status.textContent).toContain('FF-2026-07-0003')
+  })
+
+  it('ne montre PAS le bouton facturer pour un brouillon', () => {
+    wrap(<ReceptionDetail reception={{ ...reception, statut: 'brouillon' }}
+                          onClose={() => {}} onSaved={() => {}} />)
+    expect(screen.queryByRole('button', { name: /Facturer cette réception/ })).toBeNull()
+  })
+})
+
+describe('WR4 — PDF facture fournisseur (FG55)', () => {
+  const facture = {
+    id: 11, reference: 'FF-2026-07-0011', statut: 'a_payer',
+    fournisseur_nom: 'JA Solar', montant_ttc: '6000', total_paye: '0',
+    solde_du: '6000', paiements: [],
+  }
+
+  it('ouvre le PDF de la facture dans un nouvel onglet', async () => {
+    stockApi.factureFournisseurPdf.mockResolvedValue({
+      data: new Blob(['%PDF-1.7'], { type: 'application/pdf' }),
+    })
+    wrap(<FactureDetail facture={facture} onClose={() => {}} onSaved={() => {}} />)
+    fireEvent.click(screen.getByRole('button', { name: /PDF \(interne\)/ }))
+    await waitFor(() => {
+      expect(stockApi.factureFournisseurPdf).toHaveBeenCalledWith(11)
+      expect(window.open).toHaveBeenCalled()
+    })
+  })
+
+  it('affiche l\'erreur serveur (lue depuis le blob) si le PDF échoue', async () => {
+    stockApi.factureFournisseurPdf.mockRejectedValue({
+      response: {
+        status: 403,
+        data: new Blob([JSON.stringify({ detail: 'Réservé aux responsables.' })],
+          { type: 'application/json' }),
+      },
+    })
+    wrap(<FactureDetail facture={facture} onClose={() => {}} onSaved={() => {}} />)
+    fireEvent.click(screen.getByRole('button', { name: /PDF \(interne\)/ }))
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toContain('Réservé aux responsables.')
+  })
+})

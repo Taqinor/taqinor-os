@@ -16,10 +16,7 @@ from .models import (
     Projet, ProjetTache, ProjetChantier, ProjetDevis, ProjetTicket,
     BudgetProjet, BudgetEngagement,
     IndisponibiliteRessource,
-    SousTraitant,
     OrdreSousTraitance,
-    FactureSousTraitant,
-    PaiementSousTraitant,
     AttestationSousTraitant,
     EvaluationSousTraitant,
     RetenueGarantieSousTraitant,
@@ -1055,29 +1052,62 @@ class IndisponibiliteRessourceSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class SousTraitantSerializer(serializers.ModelSerializer):
-    """FG304 — annuaire des sous-traitants chantier (main-d'œuvre sous-traitée),
-    DISTINCT des fournisseurs de matériel. La société et `created_by` sont posés
-    côté serveur (jamais lus du corps). `metier_display` expose le libellé
-    français du code de métier."""
-    metier_display = serializers.CharField(
-        source='get_metier_display', read_only=True, default=None)
-    # Un sous-traitant est ACTIF par défaut. Déclaré explicitement pour rester
-    # indépendant du type de contenu : en form-data, un BooleanField DRF absent
-    # est lu comme False (sémantique case à cocher), ce qui écraserait le
-    # défaut du modèle. `default=True` garantit « actif » à la création quel que
-    # soit le client ; l'archivage reste possible en envoyant `actif=false`.
-    actif = serializers.BooleanField(required=False, default=True)
+class SousTraitantSerializer(serializers.Serializer):
+    """DC34 — façade de l'annuaire des sous-traitants. Un sous-traitant N'EST
+    PLUS un modèle parallèle : c'est un ``stock.Fournisseur`` de type « service »
+    porteur d'un ``SousTraitantProfile``. Ce sérialiseur EXPOSE une vue à plat
+    (raison sociale + métier + identité + archivage) au-dessus du couple
+    Fournisseur/profil, et l'écriture passe par les services stock (société posée
+    serveur). Aucun import de ``apps.stock.models`` — la vue orchestre via les
+    sélecteurs/services stock.
 
-    class Meta:
-        model = SousTraitant
-        fields = [
-            'id', 'raison_sociale', 'metier', 'metier_display',
-            'contact_nom', 'telephone', 'email', 'ice', 'rib', 'adresse',
-            'actif', 'note',
-            'created_by', 'date_creation', 'date_modification',
-        ]
-        read_only_fields = ['created_by', 'date_creation', 'date_modification']
+    Le champ historique ``raison_sociale`` reste le libellé public (mappé sur
+    ``Fournisseur.nom``) et ``contact_nom`` sur ``Fournisseur.contact_personne``
+    pour préserver le contrat d'API FG304."""
+    id = serializers.IntegerField(read_only=True)
+    raison_sociale = serializers.CharField()
+    metier = serializers.ChoiceField(
+        choices=[  # miroir de stock.SousTraitantProfile.Metier
+            ('terrassement', 'Terrassement'),
+            ('genie_civil', 'Génie civil'),
+            ('electricite', 'Électricité'),
+            ('levage', 'Levage'),
+            ('transport', 'Transport'),
+            ('autre', 'Autre'),
+        ],
+        required=False, default='autre')
+    metier_display = serializers.SerializerMethodField()
+    contact_nom = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True)
+    telephone = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True)
+    email = serializers.EmailField(
+        required=False, allow_blank=True, allow_null=True)
+    ice = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True)
+    rib = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True)
+    adresse = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True)
+    # Un sous-traitant est ACTIF par défaut ; `default=True` garantit « actif » à
+    # la création quel que soit le type de contenu (un BooleanField absent en
+    # form-data serait sinon lu comme False et écraserait le défaut).
+    actif = serializers.BooleanField(required=False, default=True)
+    note = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True)
+    date_creation = serializers.DateTimeField(read_only=True)
+    date_modification = serializers.DateTimeField(read_only=True)
+
+    _METIER_LABELS = {
+        'terrassement': 'Terrassement', 'genie_civil': 'Génie civil',
+        'electricite': 'Électricité', 'levage': 'Levage',
+        'transport': 'Transport', 'autre': 'Autre',
+    }
+
+    def get_metier_display(self, obj):
+        profil = getattr(obj, 'profil_sous_traitant', None)
+        code = getattr(profil, 'metier', None)
+        return self._METIER_LABELS.get(code)
 
     def validate_raison_sociale(self, value):
         value = (value or '').strip()
@@ -1085,6 +1115,27 @@ class SousTraitantSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'La raison sociale est obligatoire.')
         return value
+
+    def to_representation(self, obj):
+        """`obj` est un stock.Fournisseur(type='service') ; on aplatit le couple
+        Fournisseur + profil vers le contrat d'API FG304."""
+        profil = getattr(obj, 'profil_sous_traitant', None)
+        return {
+            'id': obj.id,
+            'raison_sociale': obj.nom,
+            'metier': getattr(profil, 'metier', 'autre'),
+            'metier_display': self.get_metier_display(obj),
+            'contact_nom': obj.contact_personne,
+            'telephone': obj.telephone,
+            'email': obj.email,
+            'ice': obj.ice,
+            'rib': obj.rib,
+            'adresse': obj.adresse,
+            'actif': getattr(profil, 'actif', True),
+            'note': getattr(profil, 'note', None),
+            'date_creation': getattr(profil, 'date_creation', None),
+            'date_modification': getattr(profil, 'date_modification', None),
+        }
 
 
 class OrdreSousTraitanceSerializer(serializers.ModelSerializer):
@@ -1096,8 +1147,9 @@ class OrdreSousTraitanceSerializer(serializers.ModelSerializer):
     vie (`emettre`/`receptionner`/`cloturer`)."""
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True, default=None)
+    # DC34 — le sous-traitant est un stock.Fournisseur : son libellé est `nom`.
     sous_traitant_nom = serializers.CharField(
-        source='sous_traitant.raison_sociale', read_only=True, default=None)
+        source='sous_traitant.nom', read_only=True, default=None)
 
     class Meta:
         model = OrdreSousTraitance
@@ -1135,67 +1187,10 @@ class OrdreSousTraitanceSerializer(serializers.ModelSerializer):
         return value
 
 
-class PaiementSousTraitantSerializer(serializers.ModelSerializer):
-    """FG306 — règlement imputé sur une facture sous-traitant. La société et
-    `created_by` sont posés CÔTÉ SERVEUR (jamais lus du corps). Le montant est
-    INTERNE — jamais client-facing."""
-    mode_display = serializers.CharField(
-        source='get_mode_display', read_only=True, default=None)
-
-    class Meta:
-        model = PaiementSousTraitant
-        fields = [
-            'id', 'facture', 'montant', 'date_paiement',
-            'mode', 'mode_display', 'reference_paiement', 'note',
-            'created_by', 'date_creation',
-        ]
-        read_only_fields = ['created_by', 'date_creation']
-
-    def validate_montant(self, value):
-        if value is not None and value <= 0:
-            raise serializers.ValidationError(
-                'Le montant du paiement doit être strictement positif.')
-        return value
-
-
-class FactureSousTraitantSerializer(serializers.ModelSerializer):
-    """FG306 — facture entrante d'un sous-traitant chantier (compte à payer
-    main-d'œuvre). La société et `created_by` sont posés CÔTÉ SERVEUR. Le `statut`
-    n'est pas écrit librement : il avance via les actions de cycle de vie
-    (`a_payer`/`payer`/`annuler`) et le reflet automatique des paiements. Tous les
-    montants sont INTERNES — jamais client-facing."""
-    statut_display = serializers.CharField(
-        source='get_statut_display', read_only=True, default=None)
-    sous_traitant_nom = serializers.CharField(
-        source='sous_traitant.raison_sociale', read_only=True, default=None)
-    total_paye = serializers.DecimalField(
-        max_digits=12, decimal_places=2, read_only=True)
-    reste_a_payer = serializers.DecimalField(
-        max_digits=12, decimal_places=2, read_only=True)
-    paiements = PaiementSousTraitantSerializer(many=True, read_only=True)
-
-    class Meta:
-        model = FactureSousTraitant
-        fields = [
-            'id', 'numero', 'sous_traitant', 'sous_traitant_nom',
-            'ordre', 'chantier',
-            'montant_ht', 'montant_tva', 'montant_ttc',
-            'date_facture', 'date_echeance',
-            'statut', 'statut_display', 'note',
-            'total_paye', 'reste_a_payer', 'paiements',
-            'created_by', 'date_creation', 'date_modification',
-        ]
-        # Le statut avance via les actions de cycle de vie / le reflet des
-        # paiements — jamais écrit librement.
-        read_only_fields = [
-            'statut', 'created_by', 'date_creation', 'date_modification',
-        ]
-
-    def validate_montant_ttc(self, value):
-        if value is not None and value < 0:
-            raise serializers.ValidationError(
-                'Le montant TTC ne peut pas être négatif.')
-        return value
+# DC34 — les sérialiseurs FactureSousTraitant/PaiementSousTraitant sont
+# supprimés : l'AP sous-traitant passe par la chaîne standard stock
+# (FactureFournisseur/PaiementFournisseur), et les vues façade `factures-sous-
+# traitant`/`paiements-sous-traitant` sérialisent ces objets stock directement.
 
 
 class AttestationSousTraitantSerializer(serializers.ModelSerializer):
@@ -1206,7 +1201,7 @@ class AttestationSousTraitantSerializer(serializers.ModelSerializer):
     type_piece_display = serializers.CharField(
         source='get_type_piece_display', read_only=True, default=None)
     sous_traitant_nom = serializers.CharField(
-        source='sous_traitant.raison_sociale', read_only=True, default=None)
+        source='sous_traitant.nom', read_only=True, default=None)  # DC34 Fournisseur.nom
     est_valide = serializers.SerializerMethodField()
     obligatoire = serializers.BooleanField(required=False, default=True)
 
@@ -1230,7 +1225,7 @@ class EvaluationSousTraitantSerializer(serializers.ModelSerializer):
     1–5). La société et `evalue_par` sont posés CÔTÉ SERVEUR. `note_globale` est
     la moyenne dérivée des trois axes (lecture seule)."""
     sous_traitant_nom = serializers.CharField(
-        source='sous_traitant.raison_sociale', read_only=True, default=None)
+        source='sous_traitant.nom', read_only=True, default=None)  # DC34 Fournisseur.nom
     note_globale = serializers.DecimalField(
         max_digits=3, decimal_places=1, read_only=True)
 

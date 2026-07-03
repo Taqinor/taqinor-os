@@ -87,6 +87,49 @@ def roof_image_signed_url(key, expires=3600):
 
 # ── Image embedding ──────────────────────────────────────────────────────────
 
+def _trim_image_whitespace(raw_bytes):
+    """QD1 — Rogne les marges transparentes/blanches autour d'un logo.
+
+    Beaucoup de logos sont livrés dans un canevas quasi carré avec de larges
+    marges : la règle CSS ``max-height`` s'applique alors au canevas entier et
+    rapetisse le logo VISIBLE. On recadre donc au contenu réel (transparence
+    d'abord, sinon marges blanches) avant l'embarquement, pour que la hauteur
+    max s'applique au logo lui-même.
+
+    Renvoie ``(bytes, ext)`` — l'image rognée en PNG (ext='png') si un rognage a
+    eu lieu, sinon ``(raw_bytes, None)`` (image inchangée). Best-effort et
+    GARDÉ : sans Pillow, ou en cas d'erreur, on renvoie l'image inchangée
+    (dégradation propre, aucun crash, aucune distorsion du ratio)."""
+    try:
+        from io import BytesIO as _BytesIO
+        from PIL import Image, ImageChops
+        img = Image.open(_BytesIO(raw_bytes))
+        img.load()
+        has_alpha = img.mode in ('RGBA', 'LA') or (
+            img.mode == 'P' and 'transparency' in img.info)
+        if has_alpha:
+            work = img.convert('RGBA')
+            # Boîte englobante des pixels non totalement transparents.
+            bbox = work.getchannel('A').getbbox()
+        else:
+            work = img.convert('RGB')
+            # Différence avec un fond blanc → boîte du contenu non-blanc.
+            bg = Image.new('RGB', work.size, (255, 255, 255))
+            bbox = ImageChops.difference(work, bg).getbbox()
+        if not bbox:
+            return raw_bytes, None  # image vide / uniforme → ne touche à rien
+        # Rognage nul (le logo occupe déjà tout le canevas) → inchangé.
+        if bbox == (0, 0, work.width, work.height):
+            return raw_bytes, None
+        cropped = work.crop(bbox)
+        out = _BytesIO()
+        cropped.save(out, format='PNG')
+        return out.getvalue(), 'png'
+    except Exception as exc:  # noqa: BLE001 — best-effort, jamais de crash
+        logger.warning('Rognage du logo échoué (image inchangée) : %s', exc)
+        return raw_bytes, None
+
+
 def _to_data_uri(raw_bytes, key):
     """Convert raw image bytes to a base64 data-URI."""
     ext = key.rsplit('.', 1)[-1].lower() if '.' in key else 'png'
@@ -141,7 +184,11 @@ def _company_context(company=None):
     if profile.logo_key:
         raw = _download(settings.MINIO_BUCKET_UPLOADS, profile.logo_key)
         if raw:
-            ctx['logo_uri'] = _to_data_uri(raw, profile.logo_key)
+            # QD1 — rogne d'abord les marges pour que la hauteur max CSS
+            # s'applique au logo lui-même, pas à un canevas à larges marges.
+            trimmed, ext = _trim_image_whitespace(raw)
+            ctx['logo_uri'] = _to_data_uri(
+                trimmed, ext or profile.logo_key)
 
     if profile.signature_key:
         raw = _download(

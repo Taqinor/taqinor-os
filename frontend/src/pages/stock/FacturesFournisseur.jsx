@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ReceiptText, Plus } from 'lucide-react'
+import { ReceiptText, Plus, FileText } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import {
   Button, StatusPill, DataTable,
@@ -7,6 +7,7 @@ import {
   Input, Textarea,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+import { ouvrirPdfBlob, estBlobPdf, messageErreurBlob } from '../../utils/pdfBlob'
 
 // G5 — Factures fournisseur / comptes à payer (AP).
 // Le solde dû = TTC − Σ paiements ; le statut de règlement est recalculé à
@@ -197,7 +198,8 @@ function NouvelleFacture({ fournisseurs, bons, onClose, onSaved }) {
 }
 
 // ── Modal : détail d'une facture + saisie de paiements ──────────────────────
-function FactureDetail({ facture: factureProp, onClose, onSaved }) {
+// Export nommé : testé directement (WR4 — PDF facture fournisseur).
+export function FactureDetail({ facture: factureProp, onClose, onSaved }) {
   const [facture, setFacture] = useState(factureProp)
   const [montant, setMontant] = useState('')
   const [datePaiement, setDatePaiement] = useState('')
@@ -226,6 +228,24 @@ function FactureDetail({ facture: factureProp, onClose, onSaved }) {
     } catch (err) {
       setError(frError(err, "L'enregistrement du paiement a échoué."))
     } finally { setBusy(false) }
+  }
+
+  // WR4 / FG55 — PDF de la facture fournisseur (INTERNE) : ouvre dans un
+  // nouvel onglet (repli téléchargement), erreur serveur lue depuis le blob.
+  const telechargerPdf = async () => {
+    setError(null)
+    try {
+      const r = await stockApi.factureFournisseurPdf(facture.id)
+      if (!estBlobPdf(r.data)) {
+        setError('Le serveur n\'a pas renvoyé de PDF (réponse inattendue).')
+        return
+      }
+      ouvrirPdfBlob(r.data, `${facture.reference ?? 'facture-fournisseur'}.pdf`)
+    } catch (err) {
+      setError(await messageErreurBlob(err, {
+        fallback: 'La génération du PDF a échoué. Réessayez.',
+      }))
+    }
   }
 
   return (
@@ -323,7 +343,10 @@ function FactureDetail({ facture: factureProp, onClose, onSaved }) {
           </div>
         )}
 
-        <DialogFooter>
+        <DialogFooter className="flex-wrap">
+          <Button type="button" variant="outline" onClick={telechargerPdf}>
+            <FileText /> PDF (interne)
+          </Button>
           <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
         </DialogFooter>
       </DialogContent>

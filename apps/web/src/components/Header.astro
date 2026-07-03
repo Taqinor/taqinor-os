@@ -2,7 +2,8 @@
 /**
  * En-tête partagé — UNE seule nav sur TOUT le site, accueil compris (W28).
  * Navigation principale : Solutions (déroulant), Réalisations, Équipement,
- * Ressources (déroulant), À propos — + CTA « Diagnostic gratuit » et téléphone.
+ * Ressources (déroulant), À propos — + CTA « Obtenir mon étude gratuite »
+ * (WJ36 : pointe le parcours devis /devis/mon-toit) et téléphone.
  *
  * Les deux déclencheurs de menu déroulant SONT de vrais liens (Solutions →
  * /nos-solutions, Ressources → /guides) : sans JS, le menu reste atteignable
@@ -24,7 +25,7 @@ import Logo from './Logo.astro';
 import LanguageSwitcher from './LanguageSwitcher.astro';
 import { NAP } from '../lib/nap';
 import { getLocaleFromPath, stripLocale, useTranslations } from '../i18n/utils';
-import { localesForPath, localizeNavHref } from '../i18n/pages';
+import { localesForPath, localizeNavHref, QUOTE_JOURNEY_PATH } from '../i18n/pages';
 
 // Locale courante déduite de l'URL ; traductions via dictionnaire (repli FR).
 // Le rendu FR reste byte-identique : t() rend les libellés FR existants et
@@ -191,11 +192,13 @@ const itemClass =
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
         {NAP.phoneDisplayIntl}
       </a>
-      {/* W210 — .glow on primary CTA */}
+      {/* W210 — .glow on primary CTA. WJ36 — the ONE brass action: the quote
+          journey (/devis/mon-toit), primary label verbatim. The container
+          flexes with the string (no fixed width) — AR runs 25–35 % longer. */}
       <a
-        href={L('/contact')}
+        href={L(QUOTE_JOURNEY_PATH)}
         class="glow whitespace-nowrap bg-brass-400 px-3 py-2 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300 sm:px-4"
-      >{t('nav.diagnosticCta')}</a>
+      >{t('cta.primary')}</a>
       {/* W164 — Mobile menu toggle (hamburger icon) */}
       <button
         id="menu-toggle"
@@ -252,7 +255,8 @@ const itemClass =
               {NAP.phoneDisplayIntl}
             </a>
           </li>
-          <li><a href={L('/contact')} class="glow mt-1 inline-block bg-brass-400 px-4 py-2 text-sm font-bold text-azur-950">{t('nav.diagnosticCta')}</a></li>
+          {/* WJ36 — mobile nav primary CTA → quote journey, label verbatim */}
+          <li><a href={L(QUOTE_JOURNEY_PATH)} class="glow mt-1 inline-block bg-brass-400 px-4 py-2 text-sm font-bold text-azur-950">{t('cta.primary')}</a></li>
         </ul>
         {/* W164 — LanguageSwitcher inside the mobile menu */}
         <div class="border-t border-white/10 pt-3">

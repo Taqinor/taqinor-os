@@ -9,7 +9,7 @@ Référence sans collision via l'utilitaire commun (jamais count()+1).
 from apps.ventes.utils.references import create_with_reference
 from .models import (
     Installation, ChecklistTemplate, ChecklistEtapeModele,
-    ChantierChecklistItem, StockReservation,
+    ChantierChecklistItem, StageModele, StockReservation,
 )
 
 
@@ -615,6 +615,138 @@ def compute_chantier_cout(installation, tarif_jour=None):
     }
 
 
+# ── CH1 — Étapes/gates configurables du cycle de vie chantier ─────────────────
+# Le cycle de vie PV INTERNATIONAL est amorcé par société (idempotent, additif),
+# puis entièrement configurable par le Directeur (ajout/retrait/réordonnancement,
+# bloquant/consultatif, éléments requis). L'enum historique à 7 statuts
+# (`Installation.statut`) N'EST PAS supprimé : chaque étape porte le statut
+# hérité correspondant (`statut_legacy`), si bien que les effets de bord
+# existants (consommation du stock à « Installé », remise de garantie/parc à
+# « Réceptionné ») continuent de tirer, inchangés, sur les gates mappés.
+
+_S = Installation.Statut
+
+# (cle, libelle, statut_legacy, bloquant, exigences) — cycle de vie PV
+# international. Toutes « système » (protégées contre la suppression, mais
+# désactivables/réordonnables).
+DEFAULT_LIFECYCLE_GATES = [
+    ('etude_site', 'Visite technique (étude de site)', _S.SIGNE, False, {}),
+    ('conception', 'Conception & ingénierie', _S.SIGNE, False, {}),
+    ('autorisations', 'Autorisations & dossier 82-21', _S.SIGNE, True,
+     {'exige_dossier': True}),
+    ('approvisionnement', 'Approvisionnement matériel', _S.MATERIEL_COMMANDE,
+     True, {'exige_materiel': True}),
+    ('montage_mecanique', 'Montage mécanique (structure & panneaux)',
+     _S.EN_COURS, False, {}),
+    ('installation_electrique', 'Installation électrique', _S.EN_COURS,
+     False, {}),
+    ('mise_en_service', 'Mise en service & essais (IEC 62446-1)', _S.INSTALLE,
+     True, {'exige_tests': True}),
+    ('inspection_raccordement', 'Inspection & raccordement réseau (PTO)',
+     _S.INSTALLE, False, {}),
+    ('remise_client', 'Remise au client (handover)', _S.RECEPTIONNE, True,
+     {'exige_checklist': True, 'exige_series': True, 'exige_pack': True}),
+    ('exploitation_maintenance', 'Exploitation & maintenance (O&M)',
+     _S.CLOTURE, False, {}),
+]
+
+# Statut hérité CANONIQUE → clé de l'étape amorcée correspondante. Les statuts
+# hérités hors entonnoir (a_planifier, pose…) passent d'abord par
+# `Installation.canonical_statut`. Chaque statut historique mappe PROPREMENT
+# sur une étape — aucun chantier existant n'est orphelin.
+LEGACY_STATUT_TO_STAGE = {
+    _S.SIGNE: 'etude_site',
+    _S.MATERIEL_COMMANDE: 'approvisionnement',
+    _S.PLANIFIE: 'montage_mecanique',
+    _S.EN_COURS: 'montage_mecanique',
+    _S.INSTALLE: 'mise_en_service',
+    _S.RECEPTIONNE: 'remise_client',
+    _S.CLOTURE: 'exploitation_maintenance',
+}
+
+
+def seed_stages(company):
+    """CH1 — amorce le cycle de vie PV international de la société (idempotent,
+    additif : ne touche jamais une étape existante — libellés, ordre, drapeaux
+    et exigences édités par le Directeur sont préservés)."""
+    if company is None:
+        return []
+    created = []
+    for i, (cle, libelle, statut_legacy, bloquant, exiges) in enumerate(
+            DEFAULT_LIFECYCLE_GATES):
+        stage, was_created = StageModele.objects.get_or_create(
+            company=company, cle=cle,
+            defaults={
+                'libelle': libelle, 'ordre': i, 'bloquant': bloquant,
+                'statut_legacy': statut_legacy, 'protege': True,
+                'actif': True, **exiges,
+            })
+        if was_created:
+            created.append(stage)
+    return created
+
+
+def stages_actifs(company):
+    """Étapes ACTIVES de la société, ordonnées (amorce d'abord si vide)."""
+    if company is None:
+        return []
+    if not StageModele.objects.filter(company=company).exists():
+        seed_stages(company)
+    return list(StageModele.objects.filter(company=company, actif=True)
+                .order_by('ordre', 'id'))
+
+
+def stages_configures(company):
+    """True si la société a AU MOINS une étape définie — c'est l'interrupteur
+    de l'application des gates (CH2) : une société qui n'a jamais touché aux
+    étapes garde EXACTEMENT le comportement historique (aucun blocage)."""
+    if company is None:
+        return False
+    return StageModele.objects.filter(company=company, actif=True).exists()
+
+
+def stage_pour_statut(company, statut):
+    """Étape mappée pour un statut hérité (canonique ou non) — ou None.
+
+    Résolution : la clé du mapping LEGACY_STATUT_TO_STAGE si l'étape existe et
+    est active, sinon la PREMIÈRE étape active portant ce `statut_legacy`
+    (couvre les étapes renommées/personnalisées par le Directeur)."""
+    if company is None or not statut:
+        return None
+    canon = Installation.canonical_statut(statut)
+    cle = LEGACY_STATUT_TO_STAGE.get(canon)
+    if cle:
+        stage = StageModele.objects.filter(
+            company=company, cle=cle, actif=True).first()
+        if stage is not None:
+            return stage
+    return (StageModele.objects
+            .filter(company=company, statut_legacy=canon, actif=True)
+            .order_by('ordre', 'id').first())
+
+
+def etape_courante(installation):
+    """Étape courante d'un chantier : son pointeur `etape` s'il est posé (et
+    actif, même société), sinon l'étape DÉRIVÉE de son statut hérité — les
+    chantiers d'avant CH1 fonctionnent donc sans migration de données."""
+    stage = installation.etape
+    if (stage is not None and stage.actif
+            and stage.company_id == installation.company_id):
+        return stage
+    return stage_pour_statut(installation.company, installation.statut)
+
+
+def sync_etape_from_statut(installation):
+    """Aligne le pointeur `etape` sur le statut hérité après un changement de
+    statut par l'ancien flux (PATCH statut / mise-en-service) : les deux
+    couches ne divergent jamais. Sans étape configurée → no-op."""
+    stage = stage_pour_statut(installation.company, installation.statut)
+    if stage is not None and installation.etape_id != stage.id:
+        installation.etape = stage
+        installation.save(update_fields=['etape'])
+    return stage
+
+
 # ── FG77 — Contrôle de préparation avant pose (readiness) ─────────────────────
 # Avant de lancer la pose (passage à « En cours »), rien ne vérifie la
 # disponibilité matériel ni l'état du dossier loi 82-21. Ce sélecteur AVISE
@@ -726,6 +858,228 @@ def compute_chantier_readiness(installation):
     }
 
 
+# ── CH2 — Gates BLOQUANTS : application des exigences d'étape ────────────────
+# Le contrôle consultatif FG77 devient APPLIQUÉ : une étape marquée `bloquant`
+# ne peut pas être franchie tant que ses éléments requis (`exige_*`) ne sont
+# pas réunis ET que les points d'arrêt QHSE du chantier ne sont pas levés
+# (lus via `apps.qhse.selectors` — référence lâche par chantier_id, jamais
+# d'import de modèle). Les étapes non bloquantes restent PUREMENT
+# consultatives. INTERRUPTEUR : une société sans étape configurée
+# (`stages_configures` False) garde EXACTEMENT le comportement historique.
+
+def _gate_check_checklist(installation):
+    """Toutes les étapes de checklist du chantier sont faites."""
+    items = ensure_checklist_items(installation)
+    manquants = [it.libelle for it in items if not it.fait]
+    if manquants:
+        return ("Checklist incomplète : "
+                + ", ".join(manquants[:5])
+                + (" …" if len(manquants) > 5 else "") + ".")
+    return None
+
+
+def _gate_check_photos(installation):
+    """Les étapes de checklist à PHOTO OBLIGATOIRE (FG76) sont faites."""
+    items = ensure_checklist_items(installation)
+    manquants = [it.libelle for it in items
+                 if it.photo_obligatoire and not it.fait]
+    if manquants:
+        return ("Photos requises manquantes : " + ", ".join(manquants) + ".")
+    return None
+
+
+def _gate_check_series(installation):
+    """Au moins un n° de série / équipement relevé quand la checklist du
+    chantier comporte une étape de capture de série (N9)."""
+    items = ensure_checklist_items(installation)
+    if not any(it.capture_serie for it in items):
+        return None  # aucun relevé de série attendu sur ce chantier.
+    if installation.equipements.exists():
+        return None
+    from .models import ComponentSerial
+    if ComponentSerial.objects.filter(
+            intervention__installation=installation).exists():
+        return None
+    return ("Aucun n° de série relevé (panneaux/onduleur) alors que la "
+            "checklist du chantier en attend.")
+
+
+def _gate_check_tests(installation):
+    """CH3 — une fiche de recette IEC 62446-1 PASSÉE (conforme / conforme avec
+    réserves) est requise pour franchir le gate « Mise en service ».
+
+    Repli historique : si aucune fiche structurée n'a encore été ouverte mais
+    que les champs libres `mes_*` / la date de mise en service portent déjà des
+    valeurs (chantiers d'avant CH3), on considère l'essai enregistré — aucun
+    chantier existant n'est bloqué rétroactivement."""
+    record = getattr(installation, 'commissioning_record', None)
+    if record is not None:
+        if record.passe:
+            return None
+        return ("Fiche de recette IEC 62446-1 non conforme "
+                f"({record.get_resultat_display()}).")
+    # Aucune fiche structurée : repli sur la saisie historique.
+    if (installation.date_mise_en_service
+            or installation.mes_production_test is not None
+            or installation.mes_tension is not None):
+        return None
+    return "Fiche de recette IEC 62446-1 non enregistrée."
+
+
+def _gate_check_materiel(installation):
+    """Aucune pénurie sur le besoin matériel du chantier (FG77, appliqué)."""
+    from apps.stock.services import compute_besoin_materiel
+    besoins = compute_besoin_materiel(installation)
+    manques = [b['designation'] for b in besoins if b.get('manque', 0) > 0]
+    if manques:
+        return ("Matériel en pénurie : "
+                + ", ".join(manques[:5])
+                + (" …" if len(manques) > 5 else "") + ".")
+    return None
+
+
+def _gate_check_dossier(installation):
+    """Dossier réglementaire loi 82-21 approuvé quand il est requis."""
+    if installation.regime_8221 == Installation.Regime8221.NON_CONCERNE:
+        return None
+    if installation.dossier_statut in (
+            Installation.DossierStatut.APPROUVE,
+            Installation.DossierStatut.COMPTEUR_POSE):
+        return None
+    return ("Dossier loi 82-21 requis non approuvé "
+            f"({installation.get_dossier_statut_display()}).")
+
+
+def _gate_check_pack(installation):
+    """CH4 — le pack de remise client doit assembler ses pièces OBLIGATOIRES.
+
+    Assemble (à blanc, sans persister) l'état du pack et rejette tant qu'une
+    pièce obligatoire manque. Dégrade proprement : les pièces facultatives
+    absentes ne bloquent pas."""
+    resume = assemble_handover_pieces(installation)
+    manquantes = [p['libelle'] for p in resume['pieces']
+                  if p.get('obligatoire') and not p.get('present')]
+    if manquantes:
+        return ("Pack de remise incomplet : " + ", ".join(manquantes) + ".")
+    return None
+
+
+_GATE_CHECKS = [
+    ('exige_checklist', _gate_check_checklist),
+    ('exige_photos', _gate_check_photos),
+    ('exige_series', _gate_check_series),
+    ('exige_tests', _gate_check_tests),
+    ('exige_materiel', _gate_check_materiel),
+    ('exige_dossier', _gate_check_dossier),
+    ('exige_pack', _gate_check_pack),
+]
+
+
+def _gate_check_qhse(installation):
+    """Points d'arrêt QHSE du chantier levés (lecture via les selectors QHSE —
+    référence lâche par chantier_id, aucun import de modèle cross-app)."""
+    from apps.qhse.selectors import hold_points_bloquants_pour_chantier
+    points = hold_points_bloquants_pour_chantier(
+        installation.company, installation.id)
+    if points:
+        libelles = [p['intitule'] for p in points]
+        return ("Point(s) d'arrêt QHSE non levé(s) : "
+                + ", ".join(libelles[:5])
+                + (" …" if len(libelles) > 5 else "") + ".")
+    return None
+
+
+def stage_gate_status(installation, stage):
+    """État du gate d'une étape pour un chantier : exigences réunies ou non.
+
+    Renvoie {cle, libelle, ordre, bloquant, satisfait, raisons[]} — les
+    `raisons` sont des phrases FRANÇAISES prêtes à afficher. Les points
+    d'arrêt QHSE ne sont vérifiés que pour une étape BLOQUANTE (une étape
+    consultative n'interroge pas la porte QHSE)."""
+    raisons = []
+    for flag, check in _GATE_CHECKS:
+        if not getattr(stage, flag, False):
+            continue
+        raison = check(installation)
+        if raison:
+            raisons.append(raison)
+    if stage.bloquant:
+        raison = _gate_check_qhse(installation)
+        if raison:
+            raisons.append(raison)
+    return {
+        'cle': stage.cle,
+        'libelle': stage.libelle,
+        'ordre': stage.ordre,
+        'bloquant': stage.bloquant,
+        'satisfait': not raisons,
+        'raisons': raisons,
+    }
+
+
+def _gates_non_satisfaits(installation, stages, i, j):
+    """Raisons des gates BLOQUANTS non satisfaits parmi stages[i:j+1] — les
+    étapes franchies en avançant, DESTINATION COMPRISE : arriver à l'étape
+    `j` exige que sa propre porte soit satisfaite (une mise en service n'est
+    « atteinte » qu'une fois ses essais IEC 62446-1 passés, une remise client
+    qu'une fois son pack assemblé). Les étapes non bloquantes ne bloquent
+    jamais (consultatives)."""
+    raisons = []
+    for stage in stages[i:j + 1]:
+        if not stage.bloquant:
+            continue
+        status = stage_gate_status(installation, stage)
+        if not status['satisfait']:
+            raisons.extend(
+                f"Étape « {stage.libelle} » : {r}"
+                for r in status['raisons'])
+    return raisons
+
+
+def verifier_transition_statut(installation, nouveau_statut):
+    """CH2 — raisons FRANÇAISES qui bloquent le passage du chantier (dans son
+    état actuel) à `nouveau_statut`. Liste vide = transition autorisée.
+
+    Ne s'applique que si la société a configuré ses étapes ; un recul de
+    statut n'est jamais bloqué ; un statut non mappé n'est jamais bloqué."""
+    company = installation.company
+    if not stages_configures(company):
+        return []
+    canon_old = Installation.canonical_statut(installation.statut)
+    canon_new = Installation.canonical_statut(nouveau_statut)
+    if canon_old == canon_new:
+        return []
+    stages = stages_actifs(company)
+    index = {s.id: k for k, s in enumerate(stages)}
+    depuis = etape_courante(installation)
+    cible = stage_pour_statut(company, nouveau_statut)
+    if depuis is None or cible is None:
+        return []
+    i = index.get(depuis.id)
+    j = index.get(cible.id)
+    if i is None or j is None or j <= i:
+        return []
+    return _gates_non_satisfaits(installation, stages, i, j)
+
+
+def verifier_avancement_etape(installation, cible):
+    """CH2 — raisons qui bloquent l'avancement du chantier jusqu'à l'étape
+    `cible` (StageModele). Liste vide = avancement autorisé. Un déplacement
+    vers l'arrière n'est jamais bloqué."""
+    stages = stages_actifs(installation.company)
+    index = {s.id: k for k, s in enumerate(stages)}
+    j = index.get(cible.id)
+    if j is None:
+        return []
+    depuis = etape_courante(installation)
+    i = index.get(depuis.id) if depuis is not None else 0
+    if i is None:
+        i = 0
+    if j <= i:
+        return []
+    return _gates_non_satisfaits(installation, stages, i, j)
+
+
 def generer_picklist_pour_chantier(installation, company, created_by=None,
                                    reference=None):
     """FG321 - genere un bon de prelevement depuis les reservations actives non
@@ -798,3 +1152,158 @@ def appliquer_landed_cost_au_stock(dossier):
         'lignes_maj': lignes_maj,
         'lignes': detail,
     }
+
+
+# ── CH3 — Fiche de recette IEC 62446-1 (mise en service structurée) ──────────
+# La fiche remplace la saisie libre (mes_*) par un jeu d'essais discret. La
+# création est idempotente (un chantier ↔ une fiche). Un relevé I-V calcule
+# son écart de puissance mesuré vs attendu et lève un drapeau de défaut.
+
+# Tolérance d'écart de puissance (%) au-delà de laquelle un string est signalé
+# défectueux (dégradation/point chaud), valeur usuelle de terrain.
+IV_TOLERANCE_PMAX_PCT = 5
+
+
+def ensure_commissioning_record(installation, user=None):
+    """Retourne la fiche de recette du chantier, en la créant si besoin
+    (idempotent). La société est celle du chantier, jamais lue du corps."""
+    from .models import CommissioningRecord
+    record, _ = CommissioningRecord.objects.get_or_create(
+        installation=installation,
+        defaults={'company': installation.company, 'created_by': user})
+    return record
+
+
+def compute_iv_ecart(reading):
+    """Calcule l'écart relatif de Pmax (mesuré vs attendu) d'un relevé I-V et
+    positionne `defaut_detecte`. No-op silencieux si une valeur manque."""
+    from decimal import Decimal
+    mesure = reading.pmax_mesure_w
+    attendu = reading.pmax_attendu_w
+    if mesure is None or attendu in (None, 0):
+        reading.ecart_pmax_pct = None
+        reading.defaut_detecte = False
+        return reading
+    ecart = (Decimal(mesure) - Decimal(attendu)) / Decimal(attendu) * 100
+    reading.ecart_pmax_pct = ecart.quantize(Decimal('0.01'))
+    # Un écart NÉGATIF au-delà de la tolérance = sous-performance/défaut.
+    reading.defaut_detecte = ecart <= Decimal(-IV_TOLERANCE_PMAX_PCT)
+    return reading
+
+
+# ── CH4 — Pack de remise client (handover) ───────────────────────────────────
+# Le pack assemble les pièces du dossier remis au client + au vendeur en
+# RÉFÉRENÇANT l'état réel du chantier (jamais de binaire stocké). Chaque pièce
+# porte {type, libelle, reference, present, obligatoire}. Il DÉGRADE proprement
+# quand une pièce manque (present=False plutôt qu'un plantage). Les pièces
+# OBLIGATOIRES (as-built, certificat de recette, garanties, dossier 82-21 quand
+# requis) sont ce que le gate « Remise au client » exige (CH2).
+
+def assemble_handover_pieces(installation):
+    """Assemble (SANS persister) la liste des pièces du pack de remise d'un
+    chantier depuis son état réel. Renvoie {pieces: [...], complet: bool} —
+    `complet` est True quand toutes les pièces OBLIGATOIRES sont présentes."""
+    pieces = []
+
+    # ── As-built / schémas (DocumentProjet — même app) ──
+    docs = list(installation.inst_documents.all())
+    schema = next((d for d in docs
+                   if d.type_doc == 'schema_unifilaire'), None)
+    pieces.append({
+        'type': 'as_built',
+        'libelle': 'Dossier as-built / schéma unifilaire',
+        'reference': schema.titre if schema is not None else (
+            docs[0].titre if docs else None),
+        'present': bool(docs),
+        'obligatoire': True,
+    })
+
+    # ── Fiches techniques (datasheets) des équipements du parc (FG70) ──
+    equipements = [eq for eq in installation.equipements.all()
+                   if getattr(eq, 'statut', None) != 'remplace']
+    datasheets = [eq for eq in equipements
+                  if getattr(getattr(eq, 'produit', None), 'description', None)]
+    pieces.append({
+        'type': 'datasheets',
+        'libelle': 'Fiches techniques des équipements',
+        'reference': f'{len(datasheets)} fiche(s)' if datasheets else None,
+        'present': bool(datasheets),
+        'obligatoire': False,
+    })
+
+    # ── Garanties (issues du parc SAV — FG70) ──
+    garanties = [eq for eq in equipements
+                 if getattr(eq, 'date_fin_garantie', None) is not None]
+    pieces.append({
+        'type': 'garanties',
+        'libelle': 'Garanties matériel & production',
+        'reference': f'{len(garanties)} équipement(s) couvert(s)'
+        if garanties else None,
+        'present': bool(garanties),
+        'obligatoire': True,
+    })
+
+    # ── Certificat de recette IEC 62446-1 (CH3) ──
+    record = getattr(installation, 'commissioning_record', None)
+    recette_ok = record is not None and record.passe
+    pieces.append({
+        'type': 'commissioning',
+        'libelle': 'Certificat de recette IEC 62446-1',
+        'reference': (record.get_resultat_display()
+                      if record is not None else None),
+        'present': recette_ok,
+        'obligatoire': True,
+    })
+
+    # ── Dossier réglementaire loi 82-21 (obligatoire seulement si requis) ──
+    dossier_requis = (installation.regime_8221
+                      != Installation.Regime8221.NON_CONCERNE)
+    dossier_present = bool(installation.dossier_reference) or (
+        installation.dossier_statut in (
+            Installation.DossierStatut.APPROUVE,
+            Installation.DossierStatut.COMPTEUR_POSE))
+    pieces.append({
+        'type': 'dossier_8221',
+        'libelle': 'Dossier réglementaire loi 82-21',
+        'reference': installation.dossier_reference or (
+            installation.get_dossier_statut_display()
+            if dossier_requis else 'Non concerné'),
+        'present': (not dossier_requis) or dossier_present,
+        'obligatoire': dossier_requis,
+    })
+
+    # ── Accès monitoring / application ──
+    pack = getattr(installation, 'handover_pack', None)
+    monitoring = getattr(pack, 'monitoring_acces', None) if pack else None
+    pieces.append({
+        'type': 'monitoring',
+        'libelle': 'Accès monitoring / application',
+        'reference': monitoring,
+        'present': bool(monitoring),
+        'obligatoire': False,
+    })
+
+    complet = all(p['present'] for p in pieces if p['obligatoire'])
+    return {'pieces': pieces, 'complet': complet}
+
+
+def generer_handover_pack(installation, user=None):
+    """CH4 — assemble ET PERSISTE le pack de remise du chantier (idempotent :
+    un chantier ↔ un pack ; le ré-assemblage rafraîchit les pièces). Renvoie le
+    HandoverPack. Dégrade proprement : un pack incomplet est produit quand même
+    (complet=False), il ne plante jamais."""
+    from django.utils import timezone
+    from .models import HandoverPack
+    resume = assemble_handover_pieces(installation)
+    pack, _ = HandoverPack.objects.get_or_create(
+        installation=installation,
+        defaults={'company': installation.company, 'created_by': user})
+    pack.company = installation.company
+    pack.pieces = resume['pieces']
+    pack.complet = resume['complet']
+    pack.date_generation = timezone.now()
+    if not pack.titre:
+        pack.titre = f'Pack de remise — {installation.reference}'
+    pack.save(update_fields=[
+        'company', 'pieces', 'complet', 'date_generation', 'titre'])
+    return pack

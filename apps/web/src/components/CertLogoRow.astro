@@ -1,0 +1,65 @@
+---
+/**
+ * WJ35 — CertLogoRow : bandeau de certifications/normes RÉELLES et vérifiables.
+ *
+ * Pas de logos-images : nous n'avons AUCUN fichier de logo officiel (IEC,
+ * AMEE, IRESEN…) sous licence pour cet usage — en fabriquer un serait un faux
+ * badge. On affiche donc les mêmes FAITS techniques déjà publiés ailleurs sur
+ * le site (garanties.astro, la section « Pourquoi nous faire confiance » de
+ * la proposition) sous forme de bandeau typographique sobre, laiton réservé
+ * aux libellés clés — cohérent avec la discipline v3 (pas de zellige plein,
+ * pas d'icône fabriquée). pending real content from Reda : remplacer par les
+ * vrais logos une fois les autorisations d'usage obtenues.
+ */
+interface CertItem {
+  label: string;
+  labelAr: string;
+  detail: string;
+  detailAr: string;
+}
+
+const CERTS: CertItem[] = [
+  { label: 'IEC 61215 / 61730', labelAr: 'IEC 61215 / 61730', detail: 'Modules certifiés', detailAr: 'ألواح معتمدة' },
+  { label: 'Loi 82-21', labelAr: 'القانون 82-21', detail: 'Autoconsommation BT', detailAr: 'الاستهلاك الذاتي' },
+  { label: '25 ans', labelAr: '25 سنة', detail: 'Garantie performance panneaux', detailAr: 'ضمان أداء الألواح' },
+  { label: '10 ans', labelAr: '10 سنوات', detail: 'Garantie onduleur', detailAr: 'ضمان العاكس' },
+];
+---
+
+<div class="cert-row" role="list" aria-label="Certifications et garanties">
+  {CERTS.map((c) => (
+    <div class="cert-row__item" role="listitem">
+      <p class="cert-row__label">{c.label}</p>
+      <p class="cert-row__detail" data-i18n data-fr={c.detail} data-ar={c.detailAr}>{c.detail}</p>
+    </div>
+  ))}
+</div>
+
+<style>
+  .cert-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+  }
+  @media (min-width: 640px) {
+    .cert-row {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+  .cert-row__item {
+    border: 1px solid rgb(255 255 255 / 0.1);
+    border-top: 2px solid var(--color-brass-400, #e8b54a);
+    padding: 0.9rem 1rem;
+    text-align: center;
+  }
+  .cert-row__label {
+    font-weight: 700;
+    font-size: 0.9375rem;
+    color: white;
+  }
+  .cert-row__detail {
+    margin-top: 0.25rem;
+    font-size: 0.75rem;
+    color: var(--color-lune-faint, #8d96b4);
+  }
+</style>

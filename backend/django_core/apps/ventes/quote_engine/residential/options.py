@@ -157,6 +157,42 @@ def build(ctx) -> str:
 
     tva_note = d.get("tva_note", "")
 
+    # ── QJ30 — multi-propriétés (rendu ; dégrade à la mise en page à plat) ────
+    # (A) ×N villas identiques : ligne « × N propriétés identiques » + total mis
+    #     à l'échelle. (B) villas différentes : sous-totaux par villa + total
+    #     général. Vides → aucun rendu (page 2 inchangée au bit près).
+    multi_html = ""
+    _nprop = d.get("nombre_proprietes")
+    if _nprop and _nprop > 1:
+        _dtm = d.get("display_total_multi")
+        _tot_txt = (f' — total pour {_nprop} propriétés : {fmt(_dtm)} MAD'
+                    if _dtm else "")
+        multi_html += (
+            f'<div class="p2-multi-n">&times;&nbsp;{_nprop} propriétés '
+            f'identiques{_tot_txt}</div>')
+    _mv = d.get("multi_villa") or {}
+    if _mv.get("groupes"):
+        _vrows = ""
+        for g in _mv["groupes"]:
+            t = g.get("totaux") or {}
+            _vrows += (
+                f'<tr><td>{g.get("label", "")}</td>'
+                f'<td class="p2-r">{fmt(t.get("ht_net", 0))}</td>'
+                f'<td class="p2-r p2-tot">{fmt(t.get("ttc", 0))} MAD</td></tr>')
+        _gt = _mv.get("grand_total") or {}
+        _vrows += (
+            f'<tr class="p2-multi-gt"><td>Total général</td>'
+            f'<td class="p2-r">{fmt(_gt.get("ht_net", 0))}</td>'
+            f'<td class="p2-r">{fmt(_gt.get("ttc", 0))} MAD</td></tr>')
+        multi_html += (
+            '<div class="p2-multi-lbl">Détail par propriété</div>'
+            '<table class="p2-multi"><thead><tr>'
+            '<th>Propriété</th><th class="p2-r">Total HT</th>'
+            '<th class="p2-r">Total TTC</th></tr></thead>'
+            f'<tbody>{_vrows}</tbody></table>')
+    if multi_html:
+        multi_html = f'<div class="p2-multi-wrap">{multi_html}</div>'
+
     # ── Payback takeaway figures (read straight off the quote data) ───────────
     def _yrs(v):
         return f"{v:g}".replace(".", ",") if v else "—"
@@ -294,6 +330,22 @@ def build(ctx) -> str:
   .p2-fin-cap {{ font-size:7.3pt; color:{C['muted']}; text-align:center;
     margin-top:3mm; font-style:italic; }}
   .p2-fin-cap b {{ color:{C['navy']}; font-weight:700; font-style:normal; }}
+
+  /* QJ30 — multi-propriétés */
+  .p2-multi-wrap {{ margin-top:2.5mm; }}
+  .p2-multi-n {{ background:{C['wash']}; border:1px solid {C['gold']};
+    border-radius:8px; padding:1.6mm 4mm; font-size:8.4pt; color:{C['navy']};
+    font-weight:700; margin-bottom:2mm; }}
+  .p2-multi-lbl {{ font-size:8pt; letter-spacing:.12em; text-transform:uppercase;
+    color:{C['navy']}; font-weight:700; margin:1mm 0 1.2mm; }}
+  .p2-multi {{ width:100%; border-collapse:collapse; font-size:8.3pt; }}
+  .p2-multi th {{ font-size:7pt; letter-spacing:.06em; text-transform:uppercase;
+    color:{C['muted_2']}; font-weight:700; text-align:left;
+    padding:0 4mm 1mm 0; border-bottom:1px solid {C['line']}; }}
+  .p2-multi td {{ padding:1.1mm 4mm 1.1mm 0; border-bottom:1px solid {C['line_soft']};
+    color:{C['ink']}; }}
+  .p2-multi .p2-multi-gt td {{ font-weight:800; color:{C['navy']};
+    border-top:1.5px solid {C['navy']}; border-bottom:none; }}
 </style>
 """
 
@@ -347,6 +399,7 @@ def build(ctx) -> str:
     {totals_avec}
   </div>
   <div class="p2-tva-note">{tva_note}</div>
+  {multi_html}
 
   <div class="p2-fin">
     <div class="p2-fin-head">

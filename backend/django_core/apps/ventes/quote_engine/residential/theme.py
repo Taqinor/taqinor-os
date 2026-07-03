@@ -178,10 +178,14 @@ def fiche_slug(designation, marque="") -> str:
         return "onduleur-huawei-reseau"
     if "batterie" in blob or "battery" in blob:
         return "batterie-dyness"
+    # QF9 — le Smart Meter et la Clé Wifi (dongle) sont des accessoires Huawei :
+    # le builder retire déjà ces lignes d'un devis non-Huawei. Garde-fou : ne
+    # renvoyer leur fiche Huawei que si la ligne est bien Huawei, pour qu'une
+    # ligne obsolète glissée jusqu'ici ne pointe pas vers une fiche Huawei.
     if "smart meter" in blob or "compteur" in blob:
-        return "smart-meter-huawei"
+        return "smart-meter-huawei" if "huawei" in blob else ""
     if "dongle" in blob or "wifi" in blob:
-        return "wifi-dongle-huawei"
+        return "wifi-dongle-huawei" if "huawei" in blob else ""
     return ""
 
 

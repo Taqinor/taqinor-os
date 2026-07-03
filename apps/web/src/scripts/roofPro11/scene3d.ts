@@ -82,6 +82,10 @@ export interface Scene3d {
   /** W88 — surligne le panneau de la zone active correspondant à `cellIndex` (or = sélection),
    *  ou efface tout surlignage (cellIndex null). Pose les couleurs d'instance + repeint. */
   setPanelHighlight: (cellIndex: number | null) => void;
+  /** WJ21 — teinte CHAQUE panneau de la zone active par son accès solaire (0–1) via
+   *  `colorFor(cellIndex)` (rouge=faible → vert=plein soleil), ou remet tout à blanc si
+   *  `colorFor` est null (heatmap désactivée). Réutilise le buffer instanceColor. */
+  setSolarAccessHeatmap: (colorFor: ((cellIndex: number) => { r: number; g: number; b: number }) | null) => void;
   /** W115 — instantané PNG (data URL) de la 3D rendue, ou null si le renderer/canvas
    *  est indisponible. Le renderer partage le canvas MapLibre (map.getCanvas()). */
   snapshot: () => string | null;
@@ -1068,6 +1072,37 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       }
     }
 
+    // WJ19 — obstructions DÉDUITES des ombres tracées (arbres/immeubles voisins) :
+    // volume gris translucide à sa VRAIE hauteur estimée, posé AU SOL (l'ombre a été
+    // tracée au sol), qui PROJETTE une vraie ombre Three.js sur le bâtiment et les
+    // panneaux — la preuve visuelle du dérate horaire. Liste vide → rendu inchangé.
+    if (ctx.shadeObstructions.length) {
+      const cosLat = Math.cos(pack.origin[1] * DEG2RAD);
+      for (const o of ctx.shadeObstructions) {
+        const ox = (o.base[0] - pack.origin[0]) * DEG2M * cosLat;
+        const oy = (o.base[1] - pack.origin[1]) * DEG2M;
+        const h = Math.max(0.5, o.heightM);
+        const side = Math.max(0.6, o.halfWidthM * 2);
+        const geo = new THREE.BoxGeometry(side, side, h);
+        const mat = new THREE.MeshStandardMaterial({
+          color: 0x6b7280,
+          metalness: 0,
+          roughness: 0.9,
+          transparent: true,
+          opacity: 0.35,
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(ox, oy, h / 2); // posé au sol (z = 0), pas sur le toit
+        mesh.castShadow = true; // la vraie ombre portée Three.js
+        const edges = new THREE.LineSegments(
+          new THREE.EdgesGeometry(geo),
+          new THREE.LineBasicMaterial({ color: 0x8f9bb8, transparent: true, opacity: 0.8 }),
+        );
+        mesh.add(edges);
+        sceneRoot.add(mesh);
+      }
+    }
+
     // W-MULTI : mémorise le plan de re-rendu de la zone ACTIVE pour que les AUTRES
     // zones puissent être re-dessinées (subduées) à leur vraie position relative.
     const aRec = ctx.activeArea();
@@ -1157,6 +1192,28 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     col.needsUpdate = true;
     map3dRepaint();
   }
+
+  /** WJ21 — teinte les instances de panneaux de la zone active par leur accès solaire.
+   *  `colorFor(cellIndex)` renvoie une couleur RVB (0–1) par cellule de lattice ; null
+   *  remet toutes les instances à blanc (teinte d'origine, heatmap OFF). Réutilise le
+   *  buffer instanceColor (MeshStandardMaterial multiplie sa couleur par instanceColor). */
+  function setSolarAccessHeatmap(colorFor: ((cellIndex: number) => { r: number; g: number; b: number }) | null) {
+    const mesh = ctx.activePanelMesh;
+    if (!mesh || !mesh.instanceColor) return;
+    const col = mesh.instanceColor as THREE.InstancedBufferAttribute;
+    const idxMap = ctx.activePanelCellIndex;
+    for (let i = 0; i < idxMap.length; i++) {
+      if (colorFor) {
+        const c = colorFor(idxMap[i]);
+        col.setXYZ(i, c.r, c.g, c.b);
+      } else {
+        col.setXYZ(i, 1, 1, 1);
+      }
+    }
+    col.needsUpdate = true;
+    map3dRepaint();
+  }
+
   /** Repeint la scène 3D (déclenché après un changement de couleur d'instance). */
   function map3dRepaint() {
     map.triggerRepaint();
@@ -1177,5 +1234,5 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     }
   }
 
-  return { customLayer, disposeScene, setOrigin, appendOtherZones, renderScene, resetTextures, setPanelHighlight, snapshot };
+  return { customLayer, disposeScene, setOrigin, appendOtherZones, renderScene, resetTextures, setPanelHighlight, setSolarAccessHeatmap, snapshot };
 }

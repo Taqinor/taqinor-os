@@ -93,6 +93,17 @@ export default function LeadsSection({
                    name="referral_reward" value={form.referral_reward}
                    onChange={set} />
           </Field>
+          {/* WR12/FG28 — délai SLA de première prise de contact (heures). */}
+          <p className="mb-1 mt-3.5 text-[12.5px] text-muted-foreground">
+            Délai maximum avant la première prise de contact sur un nouveau
+            lead. Au-delà, le lead est signalé « non contacté » (badge kanban +
+            filtre SLA). 0 = SLA désactivé.
+          </p>
+          <Field label="Délai SLA de premier contact (heures)" htmlFor="pe-lead-sla-hours">
+            <Input id="pe-lead-sla-hours" type="number" min="0" step="1"
+                   name="lead_sla_hours" value={form.lead_sla_hours}
+                   onChange={set} />
+          </Field>
         </CardContent>
       </Card>
 

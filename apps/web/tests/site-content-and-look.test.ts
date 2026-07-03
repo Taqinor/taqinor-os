@@ -182,8 +182,13 @@ describe('inventaire des routes (sortie construite réelle)', () => {
     // proposition client tokenisée /proposition/) — tous noindex et hors
     // sitemap par conception.
     const PRIVATE_PREFIXES = ['/preview/', '/devis/', '/internal/', '/proposition/'];
-    for (const p of privatePaths)
-      expect(PRIVATE_PREFIXES.some((pre) => p.startsWith(pre)), `privée inattendue : ${p}`).toBe(true);
+    for (const p of privatePaths) {
+      // Retire un éventuel préfixe de locale (/en, /ar) : le tunnel devis est
+      // privé dans toutes les langues — WJ38 a localisé /devis/mon-toit en
+      // /en/devis/mon-toit et /ar/devis/mon-toit (noindex + hors sitemap comme le FR).
+      const rootP = p.replace(/^\/(en|ar)(?=\/)/, '');
+      expect(PRIVATE_PREFIXES.some((pre) => rootP.startsWith(pre)), `privée inattendue : ${p}`).toBe(true);
+    }
     // L'estimateur courant (pro-11) est bien une route privée.
     expect(privatePaths).toContain('/preview/toiture-3d-pro-11/');
   });

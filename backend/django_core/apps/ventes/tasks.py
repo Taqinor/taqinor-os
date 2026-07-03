@@ -54,12 +54,54 @@ def task_generate_devis_pdf(self, devis_id, pdf_options=None):
         raise self.retry(exc=exc, countdown=2 ** self.request.retries * 30)
 
 
+def _content_version(devis_id):
+    """QG2 — Empreinte du CONTENU d'un devis (lignes + totaux + méta).
+
+    Le cache d'idempotence du rendu était keyé sur (devis_id, pdf_options)
+    uniquement : après une édition « Éditer », les MÊMES options renvoyaient
+    l'ANCIEN PDF depuis MinIO (contenu périmé). On intègre donc une empreinte
+    du contenu à la signature de rendu : au moindre changement de lignes, de
+    remise/TVA globale, de version ou de statut, l'empreinte change → le cache
+    « rate » → le PDF est re-rendu ; à contenu identique, l'empreinte est
+    stable → le cache reste bénéfique (pas de re-rendu inutile).
+
+    Best-effort : toute erreur renvoie une empreinte vide, ce qui revient au
+    comportement historique (signature sur options seules)."""
+    import hashlib
+    import json
+    try:
+        from .models import Devis, LigneDevis
+        devis = (Devis.objects
+                 .filter(pk=devis_id)
+                 .values('remise_globale', 'taux_tva', 'version', 'statut',
+                         'mode_installation', 'etude_params', 'prix_cible_kwc')
+                 .first())
+        if devis is None:
+            return ''
+        lignes = list(
+            LigneDevis.objects.filter(devis_id=devis_id)
+            .order_by('id')
+            .values('id', 'produit_id', 'designation', 'quantite',
+                    'prix_unitaire', 'remise', 'taux_tva'))
+        payload = json.dumps(
+            {'devis': devis, 'lignes': lignes},
+            sort_keys=True, default=str)
+        return hashlib.sha256(payload.encode()).hexdigest()
+    except Exception:  # noqa: BLE001 — best-effort → repli historique
+        return ''
+
+
 def _render_signature(devis_id, pdf_options):
-    """Signature stable (devis + options de format) d'un rendu de PDF devis."""
+    """Signature stable (devis + CONTENU + options de format) d'un rendu.
+
+    QG2 — inclut désormais l'empreinte du contenu (`_content_version`) pour
+    qu'une édition invalide le cache de rendu tout en gardant le bénéfice du
+    cache à contenu inchangé."""
     import hashlib
     import json
     payload = json.dumps(
-        {'devis': devis_id, 'opts': pdf_options or {}},
+        {'devis': devis_id, 'content': _content_version(devis_id),
+         'opts': pdf_options or {}},
         sort_keys=True, default=str)
     return 'devis-pdf:' + hashlib.sha256(payload.encode()).hexdigest()
 

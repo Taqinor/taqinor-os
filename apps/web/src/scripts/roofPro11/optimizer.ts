@@ -34,6 +34,8 @@ import {
   BIFACIAL_GAIN_TILTED,
   ANNUAL_DEGRADATION,
   LIFETIME_YEARS,
+  climateDerateFactor,
+  productionConfidenceBand,
   type PackResult,
   type PanelGrid,
   type ConfigFamily,
@@ -200,6 +202,16 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     }
   }
 
+  // WJ19 — dérate d'ombrage tracé appliqué aux chiffres ANNUELS affichés (1 = aucun
+  // ombrage → identique à avant). Les économies sont recalculées depuis le kWh dératé,
+  // donc elles restent plafonnées à la facture. Le libellé de source l'affiche.
+  const shadeFactor = (): number =>
+    ctx.shadeAnnualFactor > 0 && ctx.shadeAnnualFactor < 1 ? ctx.shadeAnnualFactor : 1;
+  const shadeLabel = (): string => {
+    const f = shadeFactor();
+    return f < 1 ? ` · ombrage tracé −${Math.round((1 - f) * 100)} %` : '';
+  };
+
   /** Rendu UNIFIÉ : pose min(besoin, ce qui tient), recalcule kWc/kWh/économies
    *  depuis ce nombre POSÉ (jamais la capacité max de la config). */
   function renderConfig(o: RenderConfigOpts) {
@@ -210,7 +222,8 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     const aspect = aspectForLeg(o.family, o.azimuthDeg);
     const tableAnnual = productionKwh(ctx.centroidLat, o.family, o.tiltDeg, kwc, aspect);
     // Affinage PVGIS : rendement par kWc × kWc POSÉ (suit le plafond/contrainte).
-    const annualKwh = o.isReco && ctx.pvgisPerKwc != null ? ctx.pvgisPerKwc * kwc : tableAnnual;
+    // WJ19 — puis dérate d'ombrage tracé (1 = aucun → inchangé).
+    const annualKwh = (o.isReco && ctx.pvgisPerKwc != null ? ctx.pvgisPerKwc * kwc : tableAnnual) * shadeFactor();
     const target = ctx.rec ? ctx.rec.targetAnnualKwh : billToAnnualKwh(monthlyBill());
     const savings = annualSavingsMad(annualKwh, target); // plafonné à la conso
     renderScene(o.pack, o.grid, o.tiltDeg, o.family, placed);
@@ -470,6 +483,29 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
           `Économies toujours plafonnées à votre facture.`;
       } else {
         band.textContent = '';
+      }
+    }
+    // WJ22 — couche de pertes climatiques HONNÊTES (opt-in) : rend la production/les
+    // économies en FOURCHETTE (été côtier chaud/poussiéreux = borne basse ↔ chiffre nu =
+    // borne haute), au lieu d'un chiffre unique sur-estimé de ~15–20 % l'été. Les
+    // économies de la borne basse passent par annualSavingsMad → plafonnées à la facture
+    // (jamais au-dessus du coût évitable). Défaut OFF → élément vide, chiffre inchangé.
+    const climate = $('rp9-reco-climate');
+    if (climate) {
+      if (ctx.climateBandOn && d.annualKwh > 0) {
+        const derate = climateDerateFactor();
+        const pband = productionConfidenceBand(d.annualKwh, derate);
+        const target = d.target ?? ctx.prodTarget;
+        // Économies de la borne BASSE (production dératée) — plafonnées à la facture.
+        const savLowBand = target > 0 ? annualSavingsMad(pband.low, target) : { low: d.savingsLow * derate, high: d.savingsHigh * derate };
+        const lossPct = Math.round((1 - derate) * 100);
+        climate.textContent =
+          `Fourchette honnête (pertes réelles chaleur + poussière + brume, jusqu'à −${lossPct} % l'été côtier) : ` +
+          `production ~${fmt(Math.round(pband.low))} – ${fmt(Math.round(pband.high))} kWh/an ` +
+          `(milieu ~${fmt(Math.round(pband.point))}) · économies ~${fmtMad(savLowBand.high)} – ${fmtMad(d.savingsHigh)}/an. ` +
+          `Économies toujours plafonnées à votre facture.`;
+      } else {
+        climate.textContent = '';
       }
     }
     $('rp9-results')?.classList.add('rp9-results--ready');

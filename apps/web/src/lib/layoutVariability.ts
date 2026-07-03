@@ -235,6 +235,25 @@ export function resetToOptimal(state: LayoutState, optimalCount: number): void {
 }
 
 /**
+ * WJ20 — REMPLISSAGE AUTOMATIQUE : occupe TOUTES les cellules valides de la lattice
+ * (le toit entier, moins retraits de rive + zones d'obstacle, déjà exclus par
+ * construction). Un seul geste remplace le placement manuel panneau-par-panneau : la
+ * lattice EST exactement le pavage géométrique validé par l'optimiseur, donc « tout
+ * remplir » = poser un panneau sur chaque emplacement physiquement valide, sans jamais
+ * dépasser la surface utile (Σ empreintes ≤ surface utile, garanti par la lattice).
+ *
+ * Renvoie le comptage résultant (= cells.length). MUTE l'état. Aucun chiffre inventé :
+ * on ne fait qu'ajouter des cellules DÉJÀ validées par le packing. Le besoin (bill) ne
+ * borne PAS ce remplissage — c'est l'action « poser le maximum qui tient » ; l'appelant
+ * signale si cela dépasse le besoin (surproduction non rémunérée) via ses readouts.
+ */
+export function fillAll(state: LayoutState): { ok: boolean; count: number } {
+  const before = state.occupied.size;
+  for (const c of state.cells) state.occupied.add(c.index);
+  return { ok: state.occupied.size > before, count: state.occupied.size };
+}
+
+/**
  * INVARIANT de cohérence : tout index occupé est une cellule valide de la lattice, et le
  * comptage ne dépasse jamais la taille de la lattice (le plafond footprint/besoin tient
  * par construction puisque la lattice = le pavage capé). Utilisé par les tests + une
