@@ -3202,6 +3202,22 @@ class Candidature(models.Model):
     # XRH19 — opt-out des emails automatiques par étape (par défaut envoyés).
     emails_auto = models.BooleanField(
         default=True, verbose_name='Emails automatiques')
+    # XRH21 — vivier de candidats (talent pool) : candidats non retenus
+    # conservés pour un rattachement futur, taggés en recherche libre.
+    vivier = models.BooleanField(default=False, verbose_name='Au vivier')
+    tags_vivier = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Tags vivier (séparés par virgule)')
+    # XRH21 — origine du rattachement (candidature du vivier dont celle-ci a
+    # été clonée) — SET_NULL pour ne jamais perdre le lien si l'originale
+    # est supprimée.
+    vivier_origine = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rattachements',
+        verbose_name='Origine (vivier)',
+    )
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
     date_modification = models.DateTimeField(

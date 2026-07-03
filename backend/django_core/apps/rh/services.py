@@ -1223,3 +1223,37 @@ def signer_promesse_embauche(promesse, *, signataire_nom, ip_adresse='',
             f'Offre acceptée — signée électroniquement par {nom} '
             f'le {promesse.date_signature:%d/%m/%Y %H:%M}.'))
     return promesse
+
+
+# ── XRH21 — vivier de candidats (talent pool) ───────────────────────────────
+
+@transaction.atomic
+def rattacher_depuis_vivier(candidature_vivier, ouverture):
+    """XRH21 — clone une candidature du vivier vers une NOUVELLE
+    ``OuverturePoste`` (même société). Le CV et l'historique (chatter) sont
+    conservés ; la nouvelle candidature démarre à l'étape ``reçu`` avec un
+    lien ``vivier_origine`` vers l'originale. Renvoie la nouvelle candidature.
+    """
+    from .models import Candidature, CandidatureActivity
+
+    if ouverture.company_id != candidature_vivier.company_id:
+        raise ValueError('Ouverture et candidature doivent être de la même société.')
+
+    nouvelle = Candidature.objects.create(
+        company=candidature_vivier.company,
+        ouverture=ouverture,
+        nom=candidature_vivier.nom,
+        email=candidature_vivier.email,
+        telephone=candidature_vivier.telephone,
+        cv_fichier=candidature_vivier.cv_fichier,
+        source=candidature_vivier.source,
+        etape=Candidature.Etape.RECU,
+        vivier_origine=candidature_vivier,
+    )
+    CandidatureActivity.objects.create(
+        company=nouvelle.company, candidature=nouvelle,
+        type=CandidatureActivity.Kind.NOTE,
+        message=(
+            f'Rattaché depuis le vivier (candidature originale '
+            f'#{candidature_vivier.id}).'))
+    return nouvelle

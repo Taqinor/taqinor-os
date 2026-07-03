@@ -2930,6 +2930,60 @@ class CandidatureViewSet(_RhBaseViewSet):
             selectors.comparatif_candidats(
                 request.user.company, candidature.ouverture_id))
 
+    @action(detail=True, methods=['post'], url_path='mettre-au-vivier')
+    def mettre_au_vivier(self, request, pk=None):
+        """XRH21 — met la candidature au vivier (``vivier=True``). Corps
+        optionnel : ``tags_vivier`` (chaîne, remplace les tags existants si
+        fournie)."""
+        candidature = self.get_object()
+        candidature.vivier = True
+        update_fields = ['vivier', 'date_modification']
+        if 'tags_vivier' in request.data:
+            candidature.tags_vivier = request.data.get('tags_vivier', '')
+            update_fields.append('tags_vivier')
+        candidature.save(update_fields=update_fields)
+        return Response(self.get_serializer(candidature).data)
+
+    @action(detail=False, methods=['get'], url_path='vivier')
+    def vivier(self, request):
+        """XRH21 — recherche company-scopée dans le vivier (``?q=`` nom/
+        email/tags/note, ``?tag=`` filtre exact sur un tag)."""
+        qs = Candidature.objects.filter(
+            company=request.user.company, vivier=True)
+        q = request.query_params.get('q')
+        if q:
+            from django.db.models import Q
+            qs = qs.filter(
+                Q(nom__icontains=q) | Q(email__icontains=q)
+                | Q(tags_vivier__icontains=q) | Q(note__icontains=q))
+        tag = request.query_params.get('tag')
+        if tag:
+            qs = qs.filter(tags_vivier__icontains=tag)
+        return Response(self.get_serializer(qs, many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='rattacher')
+    def rattacher(self, request, pk=None):
+        """XRH21 — clone cette candidature du vivier vers une NOUVELLE
+        ``OuverturePoste`` (corps : ``ouverture``, id de la même société).
+        CV et historique conservés, lien vers l'originale."""
+        candidature = self.get_object()
+        ouverture = OuverturePoste.objects.filter(
+            company=request.user.company,
+            pk=request.data.get('ouverture')).first()
+        if ouverture is None:
+            return Response(
+                {'detail': 'Ouverture introuvable.'},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            nouvelle = services.rattacher_depuis_vivier(
+                candidature, ouverture)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(nouvelle).data,
+            status=status.HTTP_201_CREATED)
+
 
 class EntretienRecrutementViewSet(_RhBaseViewSet):
     """Entretiens de recrutement (XRH17) — planification + évaluation.

@@ -1514,12 +1514,13 @@ class CandidatureSerializer(serializers.ModelSerializer):
             'nom', 'email', 'telephone', 'cv_fichier', 'source', 'note',
             'etape', 'etape_display',
             'employe_cree', 'employe_cree_nom',
-            # XRH15 (talent pool), XRH19 (opt-out email auto).
-            'emails_auto',
+            # XRH19 (opt-out email auto), XRH21 (vivier / talent pool).
+            'emails_auto', 'vivier', 'tags_vivier', 'vivier_origine',
             'date_candidature', 'date_creation', 'date_modification',
         ]
         read_only_fields = [
-            'employe_cree', 'date_creation', 'date_modification']
+            'employe_cree', 'vivier_origine',
+            'date_creation', 'date_modification']
 
     def get_ouverture_intitule(self, obj):
         if not obj.ouverture_id:
