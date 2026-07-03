@@ -35,6 +35,7 @@ import {
   hasTwoOptions,
   recommendedOption,
   optionTtc,
+  hasRealPrice,
   optionItems,
   optionTotaux,
   optionLabel,
@@ -120,6 +121,9 @@ const twoOptions = ok ? hasTwoOptions(data!) : false;
 const reco: OptionKey | null = ok ? recommendedOption(data!) : null;
 const accepted = ok ? isAccepted(data!) : false;
 const preselect: OptionKey | null = ok ? defaultSelectedOption(data!) : null;
+// WJ83 — le CTA collant montre le prix de l'option phare (reco/sans_batterie) :
+// même garde-fou zéro-total que les cartes d'options plus bas.
+const heroHasRealPrice = ok ? hasRealPrice(data!, reco ?? 'sans_batterie') : false;
 
 // ── WJ82 — État explicite de l'offre (live/accepted/refused/expired/withdrawn).
 // Calculé UNE fois côté serveur à partir du même statut backend + de la même
@@ -581,13 +585,19 @@ const signConfig = ok
               )}
               <span class="text-lune-faint" data-i18n data-fr="kWh par mois" data-en="kWh per month" data-ar="كيلوواط ساعة شهرياً">kWh par mois</span>
             </div>
+            {/* WJ83 — `ecoHero` gardait le rôle d'un simple booléen dans ce
+                `||` (jamais affiché lui-même) : la légende ne parlait QUE de
+                production, jamais d'économie, alors même que le chiffre existe.
+                On le SURFACE désormais explicitement quand présent — sinon la
+                légende garde son texte production-only d'origine. */}
             {(prodKwh || ecoHero) && (
               <p class="v2-body mt-4 text-sm text-lune-soft" data-i18n
-                data-fr={`${prodKwh ? `Sur l’année, votre installation produit environ ${formatNumber(prodKwh)} kWh.` : ''}${chartHasConso ? ' Plus la production (laiton) couvre votre consommation (azur), plus vous économisez.' : ''}`}
-                data-en={`${prodKwh ? `Over the year, your installation produces around ${formatNumber(prodKwh)} kWh.` : ''}${chartHasConso ? ' The more production (brass) covers your consumption (blue), the more you save.' : ''}`}
-                data-ar={`${prodKwh ? `على مدار السنة، ينتج تركيبكم حوالي ${formatNumber(prodKwh)} kWh.` : ''}${chartHasConso ? ' كلما غطى الإنتاج (الذهبي) استهلاككم (الأزرق)، كلما وفّرتم أكثر.' : ''}`}>
+                data-fr={`${prodKwh ? `Sur l’année, votre installation produit environ ${formatNumber(prodKwh)} kWh.` : ''}${chartHasConso ? ' Plus la production (laiton) couvre votre consommation (azur), plus vous économisez.' : ''}${ecoHero ? ` Économie estimée : ${formatMAD(ecoHero)}/an.` : ''}`}
+                data-en={`${prodKwh ? `Over the year, your installation produces around ${formatNumber(prodKwh)} kWh.` : ''}${chartHasConso ? ' The more production (brass) covers your consumption (blue), the more you save.' : ''}${ecoHero ? ` Estimated savings: ${formatMAD(ecoHero)}/year.` : ''}`}
+                data-ar={`${prodKwh ? `على مدار السنة، ينتج تركيبكم حوالي ${formatNumber(prodKwh)} kWh.` : ''}${chartHasConso ? ' كلما غطى الإنتاج (الذهبي) استهلاككم (الأزرق)، كلما وفّرتم أكثر.' : ''}${ecoHero ? ` التوفير المقدّر: ${formatMAD(ecoHero)}/سنة.` : ''}`}>
                 {prodKwh ? <>Sur l’année, votre installation produit environ <strong class="text-lune">{formatNumber(prodKwh)} kWh</strong>.</> : null}
                 {chartHasConso ? ' Plus la production (laiton) couvre votre consommation (azur), plus vous économisez.' : ''}
+                {ecoHero ? <> Économie estimée : <span class="text-brass-300">{formatMAD(ecoHero)}/an</span>.</> : null}
               </p>
             )}
           </div>
@@ -643,6 +653,12 @@ const signConfig = ok
             const items = optionItems(data!, opt);
             const isReco = twoOptions && opt === reco;
             const eco = opt === 'avec_batterie' ? ecoAvec : ecoSans;
+            // WJ83 — un payload totaux-less retombe sur `optionTtc() === 0` (le
+            // `?? 0` défensif de la fonction) : sans ce garde-fou, "0 MAD TTC,
+            // clé en main" s'affichait comme un VRAI prix. `realPrice` distingue
+            // les deux cas ; sans prix réel on affiche un message honnête à la
+            // place — jamais un chiffre fabriqué.
+            const realPrice = hasRealPrice(data!, opt);
             return (
               <article
                 class="cine-card relative flex flex-col rounded-2xl p-6"
@@ -654,8 +670,19 @@ const signConfig = ok
                   </span>
                 )}
                 <h3 class="display text-xl text-lune" data-i18n data-fr={optionLabel(opt)} data-en={optionLabelEn(opt)} data-ar={optionLabelAr(opt)}>{optionLabel(opt)}</h3>
-                <p class="fig fig-md lum mt-3" dir="ltr">{formatMAD(optionTtc(data!, opt))}</p>
-                <p class="text-sm text-lune-faint" data-i18n data-fr="TTC, clé en main" data-en="incl. tax, turnkey" data-ar="شامل الضريبة، تسليم مفتاح في اليد">TTC, clé en main</p>
+                {realPrice ? (
+                  <>
+                    <p class="fig fig-md lum mt-3" dir="ltr">{formatMAD(optionTtc(data!, opt))}</p>
+                    <p class="text-sm text-lune-faint" data-i18n data-fr="TTC, clé en main" data-en="incl. tax, turnkey" data-ar="شامل الضريبة، تسليم مفتاح في اليد">TTC, clé en main</p>
+                  </>
+                ) : (
+                  <p class="v2-body mt-3 text-lune-soft" data-i18n
+                    data-fr="Prix communiqué par votre conseiller"
+                    data-en="Price provided by your advisor"
+                    data-ar="السعر يُبلَّغ من طرف مستشاركم">
+                    Prix communiqué par votre conseiller
+                  </p>
+                )}
                 {eco ? (
                   <p class="mt-2 text-sm text-lune-soft" data-i18n
                     data-fr={`Économies estimées : ${formatMAD(eco)}/an`}
@@ -1178,7 +1205,16 @@ const signConfig = ok
                       />
                       <span class="text-lune">
                         <span data-i18n data-fr={optionLabel(opt)} data-en={optionLabelEn(opt)} data-ar={optionLabelAr(opt)}>{optionLabel(opt)}</span>
-                        <span class="block text-lune-faint" dir="ltr">{formatMAD(optionTtc(data!, opt))} TTC</span>
+                        {hasRealPrice(data!, opt) ? (
+                          <span class="block text-lune-faint" dir="ltr">{formatMAD(optionTtc(data!, opt))} TTC</span>
+                        ) : (
+                          <span class="block text-lune-faint" data-i18n
+                            data-fr="Prix communiqué par votre conseiller"
+                            data-en="Price provided by your advisor"
+                            data-ar="السعر يُبلَّغ من طرف مستشاركم">
+                            Prix communiqué par votre conseiller
+                          </span>
+                        )}
                       </span>
                     </label>
                   ))}
@@ -1363,11 +1399,22 @@ const signConfig = ok
       >
         <div class="mx-auto flex max-w-4xl items-center justify-between gap-4">
           <div class="min-w-0">
-            <p class="truncate text-sm text-lune-soft">
-              <span data-i18n data-fr={twoOptions ? 'À partir de ' : ''} data-en={twoOptions ? 'From ' : ''} data-ar={twoOptions ? 'ابتداءً من ' : ''}>{twoOptions ? 'À partir de ' : ''}</span>
-              <span class="lum fig text-lg" dir="ltr">{formatMAD(optionTtc(data!, reco ?? 'sans_batterie'))}</span>
-              <span class="text-lune-faint" data-i18n data-fr=" TTC" data-en=" incl. tax" data-ar=" شامل الضريبة"> TTC</span>
-            </p>
+            {heroHasRealPrice ? (
+              <p class="truncate text-sm text-lune-soft">
+                <span data-i18n data-fr={twoOptions ? 'À partir de ' : ''} data-en={twoOptions ? 'From ' : ''} data-ar={twoOptions ? 'ابتداءً من ' : ''}>{twoOptions ? 'À partir de ' : ''}</span>
+                <span class="lum fig text-lg" dir="ltr">{formatMAD(optionTtc(data!, reco ?? 'sans_batterie'))}</span>
+                <span class="text-lune-faint" data-i18n data-fr=" TTC" data-en=" incl. tax" data-ar=" شامل الضريبة"> TTC</span>
+              </p>
+            ) : (
+              <!-- WJ83 — garde-fou zéro-total : jamais "0 MAD TTC" comme un
+                   vrai prix. -->
+              <p class="truncate text-sm text-lune-soft" data-i18n
+                data-fr="Prix communiqué par votre conseiller"
+                data-en="Price provided by your advisor"
+                data-ar="السعر يُبلَّغ من طرف مستشاركم">
+                Prix communiqué par votre conseiller
+              </p>
+            )}
             {validity.fromBackend && validity.label && !validity.expired && (
               <p class="truncate text-xs text-lune-faint">
                 <span data-i18n data-fr="Valable jusqu’au" data-en="Valid until" data-ar="صالح حتى">Valable jusqu’au</span> <span dir="ltr">{validity.label}</span>
@@ -1385,7 +1432,7 @@ const signConfig = ok
             >
               Demander un devis actualisé
             </a>
-          ) : (
+          ) : heroHasRealPrice ? (
             <a
               href="#signer"
               class="btn-pill shrink-0 whitespace-nowrap"
@@ -1393,6 +1440,20 @@ const signConfig = ok
               data-i18n data-fr="Signer en ligne" data-en="Sign online" data-ar="التوقيع إلكترونياً"
             >
               Signer en ligne
+            </a>
+          ) : (
+            <!-- WJ83 — sans prix réel, le CTA principal ne peut pas pointer vers
+                 une signature à 0 MAD : on renvoie vers le conseiller (WhatsApp),
+                 jamais vers un formulaire de signature sur un montant fabriqué. -->
+            <a
+              href={waLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="btn-pill shrink-0 whitespace-nowrap"
+              style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
+              data-i18n data-fr="Contacter mon conseiller" data-en="Contact my advisor" data-ar="التواصل مع مستشاري"
+            >
+              Contacter mon conseiller
             </a>
           )}
         </div>

@@ -266,6 +266,20 @@ export function optionTtc(p: ProposalResponse, opt: OptionKey): number {
   return opt === 'avec_batterie' ? p.option_totals?.avec_batterie ?? 0 : p.option_totals?.sans_batterie ?? 0;
 }
 
+/**
+ * WJ83 — Garde-fou « zéro chiffre inventé » appliqué au PRIX : `optionTtc`
+ * retombe sur `0` (via `?? 0`) quand aucun totaux n'est exploitable — un
+ * payload dégénéré (devis mal formé, option absente) affichait alors
+ * « 0 MAD TTC, clé en main » comme un VRAI prix. `hasRealPrice` distingue un
+ * prix réel (TTC backend strictement positif) d'un repli à 0 : la page doit
+ * alors masquer le prix + le CTA de signature et afficher un message
+ * honnête (« prix communiqué par votre conseiller ») plutôt qu'un chiffre.
+ */
+export function hasRealPrice(p: ProposalResponse, opt: OptionKey): boolean {
+  const ttc = optionTtc(p, opt);
+  return Number.isFinite(ttc) && ttc > 0;
+}
+
 /** Étiquette FR courte d'une option. */
 export function optionLabel(opt: OptionKey): string {
   return opt === 'avec_batterie' ? 'Avec batterie' : 'Sans batterie';

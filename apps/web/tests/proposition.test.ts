@@ -12,6 +12,7 @@ import {
   hasTwoOptions,
   recommendedOption,
   optionTtc,
+  hasRealPrice,
   optionLabel,
   optionItems,
   optionTotaux,
@@ -140,6 +141,22 @@ describe('comptage et choix d’options', () => {
     expect(optionTtc(p, 'avec_batterie')).toBe(86400);
     const noTotaux = makeProposal({ quote: { totaux_avec: undefined } });
     expect(optionTtc(noTotaux, 'avec_batterie')).toBe(86400); // repli option_totals
+  });
+
+  // WJ83 — un payload totaux-less retombe sur `optionTtc() === 0` (le `?? 0`
+  // défensif) ; `hasRealPrice` distingue ce repli d'un vrai prix pour que la
+  // page n'affiche jamais "0 MAD TTC, clé en main" comme un prix réel.
+  it('hasRealPrice — vrai avec un TTC positif, faux sur un payload totaux-less (0)', () => {
+    const p = makeProposal();
+    expect(hasRealPrice(p, 'sans_batterie')).toBe(true);
+    expect(hasRealPrice(p, 'avec_batterie')).toBe(true);
+
+    const degenerate = makeProposal({
+      quote: { totaux_sans: undefined, totaux_avec: undefined },
+      option_totals: { sans_batterie: 0, avec_batterie: 0, display_total: 0, nb_options: 1 },
+    });
+    expect(hasRealPrice(degenerate, 'sans_batterie')).toBe(false);
+    expect(hasRealPrice(degenerate, 'avec_batterie')).toBe(false);
   });
 
   it('optionLabel / optionItems / optionTotaux', () => {
