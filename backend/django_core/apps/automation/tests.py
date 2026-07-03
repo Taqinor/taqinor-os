@@ -968,8 +968,16 @@ class ApprovalDelegationTests(TestCase):
         self.assertEqual(req.decided_on_behalf_of, self.delegant)
 
     def test_outside_range_nothing_changes(self):
-        """Hors plage de délégation, le suppléant ne voit rien de spécial et
-        une décision qu'il prendrait ne porte AUCUNE mention de délégation."""
+        """Hors plage de délégation, une décision prise par l'ex-suppléant ne
+        porte AUCUNE mention de délégation (``decided_on_behalf_of`` reste
+        vide) — le comportement XKB2 (approbateur ordinaire) est identique.
+
+        NB : le suppléant/délégant ici sont palier admin, qui voit TOUJOURS
+        toutes les demandes en attente de sa société (cf.
+        ``test_employee_submits_request_seen_by_approver``) — la visibilité
+        « spéciale » par délégation (queryset filtré) ne s'observe que pour
+        le palier limité et est couverte par ``visible_demandeur_ids_for``
+        directement ; ce test-ci porte sur la marque de décision."""
         past = timezone.now() - timedelta(days=30)
         ApprovalDelegation.objects.create(
             company=self.co, delegant=self.delegant,
@@ -977,11 +985,47 @@ class ApprovalDelegationTests(TestCase):
             date_debut=past - timedelta(days=5), date_fin=past)
         req = self._pending_request(demandeur=self.delegant)
 
-        # Le suppléant ne voit PAS la demande (délégation expirée).
         api = auth(self.suppleant)
+        resp = api.post(
+            f'/api/django/automation/approval-requests/{req.pk}/approve/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        req.refresh_from_db()
+        self.assertEqual(req.status, ApprovalRequest.Status.APPROVED)
+        self.assertEqual(req.decided_by, self.suppleant)
+        self.assertIsNone(req.decided_on_behalf_of)
+
+    def test_limited_tier_queryset_respects_delegation_range(self):
+        """Le filtrage de visibilité par délégation (branche palier limité de
+        ``get_queryset``) s'applique bien dans la plage et pas hors plage —
+        exercé directement pour un demandeur/suppléant de palier NORMAL, où
+        cette branche a un effet observable (admin/responsable voient déjà
+        tout, indépendamment de la délégation)."""
+        normal_delegant = make_user(self.co, 'xkb3-delegant-normal', 'normal')
+        normal_suppleant = make_user(
+            self.co, 'xkb3-suppleant-normal', 'normal')
+        req = self._pending_request(demandeur=normal_delegant)
+
+        past = timezone.now() - timedelta(days=30)
+        ApprovalDelegation.objects.create(
+            company=self.co, delegant=normal_delegant,
+            suppleant=normal_suppleant,
+            date_debut=past - timedelta(days=5), date_fin=past)
+
+        api = auth(normal_suppleant)
         resp = api.get('/api/django/automation/approval-requests/')
         ids = [r['id'] for r in rows(resp)]
         self.assertNotIn(req.pk, ids)
+
+        ApprovalDelegation.objects.all().delete()
+        now = timezone.now()
+        ApprovalDelegation.objects.create(
+            company=self.co, delegant=normal_delegant,
+            suppleant=normal_suppleant,
+            date_debut=now - timedelta(days=1), date_fin=now + timedelta(days=1))
+        resp = api.get('/api/django/automation/approval-requests/')
+        ids = [r['id'] for r in rows(resp)]
+        self.assertIn(req.pk, ids)
 
     def test_employee_can_only_delegate_self(self):
         api = auth(self.employe)

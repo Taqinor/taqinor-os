@@ -179,7 +179,12 @@ def _trigger_date_echeance_champ(company):
             model = django_apps.get_model(app_label, model_name)
             if model is None:
                 continue
-            target_date = today + timedelta(days=offset)
+            # offset=-3 ("3 jours AVANT l'échéance") doit matcher une échéance
+            # qui tombe 3 jours DANS LE FUTUR (today - offset), pas dans le
+            # passé : `today + offset` donnait `today - 3`, l'inverse de
+            # l'intention documentée ci-dessus (et ne tirait jamais pour une
+            # échéance à venir).
+            target_date = today - timedelta(days=offset)
             filter_kwargs = {'company': company, f'{champ}': target_date}
             try:
                 qs = model.objects.filter(**filter_kwargs)

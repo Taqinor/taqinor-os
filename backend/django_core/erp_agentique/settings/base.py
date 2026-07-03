@@ -213,6 +213,8 @@ REST_FRAMEWORK = {
         'publicapi': '120/minute',
         # XGED7 — dépôt public par jeton (GED), par IP + jeton.
         'ged_public_depot': '30/minute',
+        # XPLT4 — webhook entrant automatisation, par jeton.
+        'automation_webhook': '60/minute',
     },
 }
 

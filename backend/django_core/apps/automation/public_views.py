@@ -24,8 +24,8 @@ logger = logging.getLogger(__name__)
 class _WebhookTokenThrottle(SimpleRateThrottle):
     """Débit limité PAR TOKEN (pas par IP) — évite qu'un token compromis
     inonde le moteur d'automatisation. Taux configurable (scope
-    ``automation_webhook`` dans DEFAULT_THROTTLE_RATES) ; à défaut de scope
-    configuré, DRF applique aucune limite (comportement additif)."""
+    ``automation_webhook`` dans DEFAULT_THROTTLE_RATES ; le scope DOIT y être
+    déclaré, DRF lève ``ImproperlyConfigured`` sinon)."""
     scope = 'automation_webhook'
 
     def __init__(self, token):
