@@ -1240,6 +1240,7 @@ def _residential_sample_data():
     shared = [
         _item("Installation", 1, 6000), _item("Transport", 1, 1000),
         _item("Smart Meter", 1, 1500, marque="Huawei"),
+        _item("Clé Wifi (dongle)", 1, 900, marque="Huawei"),
         _item("Structures acier", 16, 417),
         _item("Panneau Canadien Solar 710W", 16, 1272.73, 10, marque="Canadian Solar"),
     ]

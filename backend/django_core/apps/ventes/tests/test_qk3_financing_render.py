@@ -83,8 +83,17 @@ class TestFinancingOnPdf(TestCase):
     def _render(self, devis, pdf_options=None):
         from weasyprint import HTML
         from apps.ventes.quote_engine.builder import build_quote_data
-        from apps.ventes.quote_engine import generate_devis_premium as G
         data = build_quote_data(devis, pdf_options)
+        # ONE engine, deux renderers (cf. builder) : l'agricole plein format a
+        # son propre rendu 4 pages (economics_page porte le bloc financement
+        # QK3) ; le résidentiel/legacy passe par generate_premium_pdf.
+        from apps.ventes.quote_engine.agricole import (
+            renderer as agri_renderer, render as agri_render,
+        )
+        if agri_renderer.is_agricultural(devis, pdf_options):
+            html = agri_render.build_html(agri_renderer._augment(data))
+            return html, HTML(string=html).render()
+        from apps.ventes.quote_engine import generate_devis_premium as G
         cap = {}
         orig = G._render_pdf_weasyprint
         G._render_pdf_weasyprint = lambda html, out: cap.update(html=html)

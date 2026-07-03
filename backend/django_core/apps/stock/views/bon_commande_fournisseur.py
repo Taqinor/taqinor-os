@@ -146,7 +146,7 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
         Body optionnel : ``to_email`` (défaut : email du fournisseur),
         ``sujet``, ``corps``."""
         from apps.ventes.services import log_supplier_email
-        from .utils.pdf_fournisseur import generate_bcf_pdf
+        from ..utils.pdf_fournisseur import generate_bcf_pdf
 
         bc = self.get_object()
         to_email = ((request.data.get('to_email') or '').strip()
@@ -331,7 +331,7 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
     def generer_pdf(self, request, pk=None):
         """PDF fournisseur (INTERNE — montre les prix d'achat). Jamais un
         document client."""
-        from .utils.pdf_fournisseur import generate_bcf_pdf
+        from ..utils.pdf_fournisseur import generate_bcf_pdf
         bc = self.get_object()
         pdf_bytes = generate_bcf_pdf(bc)
         response = HttpResponse(pdf_bytes, content_type='application/pdf')

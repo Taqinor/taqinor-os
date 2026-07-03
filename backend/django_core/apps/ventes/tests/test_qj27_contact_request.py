@@ -143,17 +143,24 @@ class ContactRequestBehaviourTests(ContactRequestBase):
                 recipient=self.owner).count(),
             1)
 
+    def _contact_notif_count(self):
+        # Le endpoint 404 sur jeton invalide/expiré AVANT toute notification :
+        # on vérifie qu'aucune notification de demande-de-contact n'est créée
+        # (le setUp peut produire d'autres notifications CRM de fond).
+        return Notification.objects.filter(
+            event_type=EventType.CLIENT_CONTACT_REQUEST).count()
+
     def test_invalid_token_404(self):
         resp = self._post(token='pas-un-jeton-valide')
         self.assertEqual(resp.status_code, 404)
-        self.assertEqual(Notification.objects.count(), 0)
+        self.assertEqual(self._contact_notif_count(), 0)
 
     def test_expired_token_404(self):
         self.link.expires_at = timezone.now()
         self.link.save(update_fields=['expires_at'])
         resp = self._post()
         self.assertEqual(resp.status_code, 404)
-        self.assertEqual(Notification.objects.count(), 0)
+        self.assertEqual(self._contact_notif_count(), 0)
 
 
 class QJ2SupervisorExtensionTests(TestCase):
