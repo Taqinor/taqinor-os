@@ -6,6 +6,15 @@
  * PLACEHOLDER(MERYEM): les messages sont représentatifs — à ajuster si
  * Meryem préfère un échange type différent.
  *
+ * W270 — L'échange se « joue » au scroll : les bulles arrivent une à une
+ * (léger décalage) et un indicateur de frappe (trois points) précède chaque
+ * réponse Taqinor, pour DÉMONTRER « répond généralement en quelques minutes »
+ * plutôt que de l'énoncer à côté d'une maquette figée. Gated
+ * `prefers-reduced-motion` : sous reduced-motion, tout le fil est visible
+ * instantanément (aucun délai, aucun indicateur de frappe). Sans JS ou sans
+ * IntersectionObserver, même repli : le HTML rendu montre déjà le fil complet
+ * (progressive enhancement — jamais un contenu cassé sans script).
+ *
  * W67 — i18n : seuls les bulles AFFICHÉES + « WhatsApp direct » + le sous-titre
  * sont traduits (FR/EN/AR). Le lien WhatsApp pré-rempli reste EN FRANÇAIS (il
  * atteint l'équipe FR) — l'argument de `whatsappLink(...)` n'est jamais traduit.
@@ -95,9 +104,11 @@ const exchange = [
       <span class="rounded-full bg-[#c8b8a8]/50 px-2.5 py-0.5 text-[10px] font-semibold text-[#5c4d3c]">Aujourd'hui</span>
     </div>
 
-    <!-- Fil de conversation -->
-    <div class="flex flex-col gap-1.5 px-3 pb-4">
-      {exchange.map((m) => (
+    <!-- Fil de conversation — W270 : data-wa-thread pour le script de lecture
+         différée, chaque bulle porte data-wa-bubble + data-wa-from (déclenche
+         l'indicateur de frappe uniquement avant une réponse Taqinor). -->
+    <div class="flex flex-col gap-1.5 px-3 pb-4" data-wa-thread>
+      {exchange.map((m, i) => (
         <div
           class:list={[
             'wa-bubble relative max-w-[85%] px-3 pb-1.5 pt-2 text-[13px] leading-snug shadow-sm',
@@ -105,6 +116,9 @@ const exchange = [
               ? 'wa-bubble--out self-end rounded-[10px_10px_3px_10px] bg-[#d7f7c8] text-encre'
               : 'wa-bubble--in self-start rounded-[10px_10px_10px_3px] bg-blanc text-encre',
           ]}
+          data-wa-bubble
+          data-wa-from={m.from}
+          data-wa-index={i}
         >
           {/* Queue de bulle côté taqinor */}
           {m.from !== 'client' && (
@@ -141,6 +155,19 @@ const exchange = [
         </div>
       ))}
     </div>
+
+    {/* W270 — Gabarit de l'indicateur de frappe (trois points), cloné par le
+        script juste avant chaque bulle Taqinor lue. `hidden` par défaut :
+        invisible tant que le script ne l'anime pas ; en reduced-motion ou
+        sans script, il ne s'affiche jamais (repli = fil déjà complet). */}
+    <template data-wa-typing-template>
+      <div class="wa-bubble wa-typing self-start rounded-[10px_10px_10px_3px] bg-blanc px-3 py-2.5 shadow-sm" aria-hidden="true">
+        <span class="wa-tail-in" aria-hidden="true"></span>
+        <span class="wa-typing-dot"></span>
+        <span class="wa-typing-dot"></span>
+        <span class="wa-typing-dot"></span>
+      </div>
+    </template>
   </div>
   <a href={wa} rel="noopener" class="mt-5 flex items-center justify-center gap-2 bg-ok-600 px-5 py-3 text-sm font-bold text-white transition-opacity hover:opacity-90">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
@@ -186,4 +213,109 @@ const exchange = [
   /* Ticks de lecture */
   .wa-ticks { display: inline-flex; align-items: center; }
   .wa-ticks--read svg path { stroke: #53bdeb; }
+
+  /* W270 — Arrivée en scène des bulles : masquées puis révélées par le script
+     (classe .wa-bubble--in-view). Gated reduced-motion : le bloc entier est
+     neutralisé sous @media (le fallback `[data-wa-bubble]` reste visible par
+     défaut dans le flux normal, donc reduced-motion === rendu HTML brut). */
+  @media (prefers-reduced-motion: no-preference) {
+    [data-wa-thread] [data-wa-bubble] {
+      opacity: 0;
+      transform: translateY(6px);
+      transition: opacity 320ms ease, transform 320ms ease;
+    }
+    [data-wa-thread] [data-wa-bubble].wa-bubble--in-view {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* W270 — Indicateur de frappe : trois points qui pulsent, bulle « entrante »
+     identique aux réponses Taqinor. Toujours masqué au départ ; seul le
+     script le rend visible brièvement avant chaque réponse. */
+  .wa-typing {
+    display: none;
+    align-items: center;
+    gap: 3px;
+  }
+  .wa-typing.wa-typing--visible {
+    display: inline-flex;
+  }
+  .wa-typing-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 9999px;
+    background: var(--color-encre-faint, #9aa0b4);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .wa-typing-dot {
+      animation: wa-typing-bounce 1200ms ease-in-out infinite;
+    }
+    .wa-typing-dot:nth-child(3) { animation-delay: 120ms; }
+    .wa-typing-dot:nth-child(4) { animation-delay: 240ms; }
+  }
+  @keyframes wa-typing-bounce {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+    30% { transform: translateY(-3px); opacity: 1; }
+  }
 </style>
+
+<script>
+  // W270 — Lecture différée de l'échange au scroll : les bulles arrivent une
+  // à une (léger décalage) et un indicateur de frappe précède chaque réponse
+  // Taqinor. Gated `prefers-reduced-motion` + IntersectionObserver : sans
+  // l'un ou l'autre, le fil complet reste simplement affiché (déjà le cas
+  // dans le HTML rendu — aucune classe --in-view n'est requise pour être
+  // visible en dehors du bloc @media reduced-motion ci-dessus).
+  const motionOk = matchMedia('(prefers-reduced-motion: no-preference)').matches;
+
+  document.querySelectorAll<HTMLElement>('[data-wa-thread]').forEach((thread) => {
+    const bubbles = Array.from(thread.querySelectorAll<HTMLElement>('[data-wa-bubble]'));
+    if (bubbles.length === 0) return;
+
+    if (!motionOk || !('IntersectionObserver' in window)) {
+      // Repli : tout est déjà visible (pas de classe --in-view nécessaire,
+      // le CSS gated reduced-motion ne masque rien dans ce cas).
+      return;
+    }
+
+    const template =
+      thread.parentElement?.querySelector<HTMLTemplateElement>('[data-wa-typing-template]') ?? null;
+
+    const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    async function playThread() {
+      const STAGGER_MS = 550; // décalage entre deux bulles
+      const TYPING_MS = 700; // durée de l'indicateur de frappe avant une réponse Taqinor
+
+      for (const bubble of bubbles) {
+        if (bubble.dataset.waFrom !== 'client' && template) {
+          // Indicateur de frappe avant une réponse Taqinor.
+          const typing = template.content.firstElementChild?.cloneNode(true) as HTMLElement | undefined;
+          if (typing) {
+            typing.classList.add('wa-typing--visible');
+            bubble.before(typing);
+            await wait(TYPING_MS);
+            typing.remove();
+          }
+        }
+        bubble.classList.add('wa-bubble--in-view');
+        await wait(STAGGER_MS);
+      }
+    }
+
+    let played = false;
+    const io = new IntersectionObserver(
+      (entries, obs) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting || played) continue;
+          played = true;
+          playThread();
+          obs.disconnect();
+        }
+      },
+      { rootMargin: '0px 0px -10% 0px', threshold: 0.35 },
+    );
+    io.observe(thread);
+  });
+</script>
