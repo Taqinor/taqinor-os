@@ -108,8 +108,11 @@ class PrevisionFinProjetTests(TestCase):
         self.assertLess(ligne_mo['etc'], budget_restant)
 
     def test_cpi_inferieur_1_surconsommation(self):
-        # CPI < 1 : on dépense PLUS que prévu pour l'avancement atteint →
-        # ETC divisé par un nombre < 1 → ETC plus grand que le restant brut.
+        # CPI < 1 : on dépense PLUS que prévu pour l'avancement atteint. Ici
+        # le réel (8000) dépasse déjà le budget (5000) → budget_restant est
+        # NÉGATIF (-3000). Diviser un restant négatif par un CPI < 1
+        # l'amplifie (le rend PLUS négatif) : ETC = -3000 / 0.625 = -4800,
+        # un forecast de dépassement plus sévère que le restant brut.
         self._ajouter_cout_reel(Decimal('10'))  # 10j × 8h × 100 = 8000
         data = selectors.prevision_fin_projet(self.projet)
         self.assertLess(data['cpi'], Decimal('1'))
@@ -117,7 +120,7 @@ class PrevisionFinProjetTests(TestCase):
             ligne for ligne in data['par_categorie']
             if ligne['categorie'] == LigneBudgetProjet.Categorie.MAIN_OEUVRE)
         budget_restant = Decimal('5000') - ligne_mo['reel']
-        self.assertGreater(ligne_mo['etc'], budget_restant)
+        self.assertLess(ligne_mo['etc'], budget_restant)
 
     def test_endpoint_scope_societe(self):
         api = auth(self.user)

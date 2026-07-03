@@ -60,7 +60,10 @@ class ExporterTachesTests(TestCase):
         self.assertEqual(par_code['1.1']['parent_wbs'], '1')
         self.assertEqual(par_code['1.1']['dependances_fs'], '1')
         self.assertEqual(par_code['1']['parent_wbs'], '')
-        self.assertEqual(par_code['1']['charge_estimee'], '5')
+        # DecimalField(decimal_places=2) round-trips '5' -> '5.00' (la
+        # valeur numérique, pas le format d'affichage, est ce qui compte
+        # pour la reconstruction de l'arbre — voir round-trip ci-dessous).
+        self.assertEqual(par_code['1']['charge_estimee'], '5.00')
 
 
 class ImporterTachesRoundTripTests(TestCase):
@@ -93,7 +96,8 @@ class ImporterTachesRoundTripTests(TestCase):
         par_code = {ligne['code_wbs']: ligne for ligne in lignes_reexport}
         self.assertEqual(par_code['1.1']['parent_wbs'], '1')
         self.assertEqual(par_code['1.1']['dependances_fs'], '1')
-        self.assertEqual(par_code['1']['charge_estimee'], '5')
+        # DecimalField(decimal_places=2) round-trips '5' -> '5.00'.
+        self.assertEqual(par_code['1']['charge_estimee'], '5.00')
 
     def test_dry_run_defaut_ne_cree_rien(self):
         lignes = exporter_taches(self.projet_source)
