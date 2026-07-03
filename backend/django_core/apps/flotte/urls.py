@@ -2,12 +2,14 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    AccuseCharteViewSet,
     ActifFlotteViewSet,
     AffectationConducteurViewSet,
     AssuranceVehiculeViewSet,
     BaremeVignetteViewSet,
     CarteCarburantViewSet,
     CarteGriseVehiculeViewSet,
+    CharteVehiculeViewSet,
     ConducteurViewSet,
     ContratVehiculeViewSet,
     CoutVehiculeViewSet,
@@ -75,6 +77,8 @@ router.register(r'couts', CoutVehiculeViewSet)
 router.register(r'signalements', SignalementVehiculeViewSet)
 router.register(r'modeles-inspection', ModeleInspectionViewSet)
 router.register(r'inspections', InspectionVehiculeViewSet)
+router.register(r'chartes-vehicule', CharteVehiculeViewSet)
+router.register(r'accuses-charte', AccuseCharteViewSet)
 
 urlpatterns = [
     path('rapports/couts/', rapport_couts, name='flotte-rapport-couts'),

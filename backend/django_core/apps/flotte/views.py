@@ -8,18 +8,21 @@ import datetime
 
 from rest_framework import filters, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 
 from .models import (
+    AccuseCharte,
     ActifFlotte,
     AffectationConducteur,
     AssuranceVehicule,
     BaremeVignette,
     CarteCarburant,
     CarteGriseVehicule,
+    CharteVehicule,
     Conducteur,
     ContratVehicule,
     CoutVehicule,
@@ -51,12 +54,14 @@ from .models import (
     VisiteTechnique,
 )
 from .serializers import (
+    AccuseCharteSerializer,
     ActifFlotteSerializer,
     AffectationConducteurSerializer,
     AssuranceVehiculeSerializer,
     BaremeVignetteSerializer,
     CarteCarburantSerializer,
     CarteGriseVehiculeSerializer,
+    CharteVehiculeSerializer,
     ConducteurSerializer,
     ContratVehiculeSerializer,
     CoutVehiculeSerializer,
@@ -577,6 +582,90 @@ class EtatDesLieuxViewSet(_FlotteBaseViewSet):
                 pass
 
         return qs
+
+    @action(detail=True, methods=['post'])
+    def signer(self, request, pk=None):
+        """XFLT17 — Appose une e-signature sur l'état des lieux (écriture
+        responsable/admin ou le conducteur lui-même).
+
+        Body : ``role`` (``'conducteur'`` ou ``'responsable'``, obligatoire),
+        ``nom`` (obligatoire — nom saisi, e-signature loi 53-05). Horodatage
+        posé côté serveur. 400 si déjà signé pour ce rôle ou rôle invalide.
+        """
+        etat = self.get_object()
+        role = request.data.get('role')
+        nom = request.data.get('nom')
+        if not role or not nom:
+            return Response(
+                {'detail': "Les champs 'role' et 'nom' sont requis."},
+                status=400)
+
+        from .services import signer_etat_des_lieux
+        try:
+            etat = signer_etat_des_lieux(etat, role=role, nom=nom)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+
+        return Response(self.get_serializer(etat).data)
+
+
+class CharteVehiculeViewSet(_FlotteBaseViewSet):
+    """Charte véhicule versionnée de la société (XFLT17).
+
+    Lecture tout rôle, écriture (publication d'une nouvelle version)
+    responsable/admin. ``version`` est posée côté serveur (auto-incrémentée
+    par société) — jamais du body.
+    """
+    queryset = CharteVehicule.objects.all()
+    serializer_class = CharteVehiculeSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['version', 'date_publication']
+
+    def perform_create(self, serializer):
+        derniere = CharteVehicule.objects.filter(
+            company=self.request.user.company).order_by('-version').first()
+        prochaine_version = (derniere.version + 1) if derniere else 1
+        serializer.save(
+            company=self.request.user.company, version=prochaine_version)
+
+
+class AccuseCharteViewSet(_FlotteBaseViewSet):
+    """Accusés de lecture de la charte véhicule par les conducteurs (XFLT17).
+
+    Tout rôle peut créer un accusé (le conducteur accuse lui-même) —
+    ``company`` posée côté serveur, ``version`` toujours la version courante
+    au moment de l'accusé (jamais du body). Filtrable par ``?conducteur=``.
+    """
+    queryset = AccuseCharte.objects.select_related('conducteur')
+    serializer_class = AccuseCharteSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_accuse']
+
+    def get_permissions(self):
+        if self.action == 'create':
+            return [IsAnyRole()]
+        return super().get_permissions()
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        conducteur = self.request.query_params.get('conducteur')
+        if conducteur:
+            try:
+                qs = qs.filter(conducteur_id=int(conducteur))
+            except (ValueError, TypeError):
+                pass
+        return qs
+
+    def perform_create(self, serializer):
+        from .services import charte_courante
+
+        company = self.request.user.company
+        charte = charte_courante(company)
+        if charte is None:
+            raise DRFValidationError(
+                {'detail': "Aucune charte véhicule publiée pour cette "
+                           "société."})
+        serializer.save(company=company, version=charte.version)
 
 
 class PleinCarburantViewSet(_FlotteBaseViewSet):

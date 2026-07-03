@@ -315,6 +315,9 @@ class AffectationConducteurSerializer(serializers.ModelSerializer):
     force = serializers.BooleanField(write_only=True, required=False,
                                      default=False)
     permis_avertissement = serializers.SerializerMethodField()
+    # XFLT17 — avertissement non bloquant (charte véhicule non accusée),
+    # calculé à la CRÉATION uniquement (première affectation).
+    charte_avertissement = serializers.SerializerMethodField()
 
     class Meta:
         model = AffectationConducteur
@@ -330,6 +333,7 @@ class AffectationConducteurSerializer(serializers.ModelSerializer):
             "actif",
             "force",
             "permis_avertissement",
+            "charte_avertissement",
             "date_creation",
         ]
         read_only_fields = ["date_creation"]
@@ -338,6 +342,11 @@ class AffectationConducteurSerializer(serializers.ModelSerializer):
         """Avertissement de permis posé lors d'une affectation forcée
         (non-conformité acceptée volontairement)."""
         return getattr(obj, '_permis_avertissement', None)
+
+    def get_charte_avertissement(self, obj):
+        """XFLT17 — Message si la charte véhicule courante n'a pas été
+        accusée par le conducteur (posé à la création seulement)."""
+        return getattr(obj, '_charte_avertissement', None)
 
     def get_conducteur_nom(self, obj):
         return str(obj.conducteur) if obj.conducteur_id else None
@@ -396,10 +405,24 @@ class AffectationConducteurSerializer(serializers.ModelSerializer):
     def _attach_warning(self, instance):
         instance._permis_avertissement = getattr(
             self, '_permis_avertissement', None)
+        instance._charte_avertissement = getattr(
+            self, '_charte_avertissement', None)
         return instance
 
     def create(self, validated_data):
-        return self._attach_warning(super().create(validated_data))
+        instance = super().create(validated_data)
+        # XFLT17 — Avertissement charte véhicule, à la CRÉATION seulement
+        # (première affectation) — jamais recalculé à la mise à jour.
+        from .services import accuse_charte_manquant, charte_courante
+
+        self._charte_avertissement = None
+        if instance.conducteur_id is not None \
+                and accuse_charte_manquant(instance.conducteur):
+            charte = charte_courante(instance.company)
+            self._charte_avertissement = (
+                f"Charte véhicule non accusée par le conducteur "
+                f"(version courante : v{charte.version}).")
+        return self._attach_warning(instance)
 
     def update(self, instance, validated_data):
         return self._attach_warning(super().update(instance, validated_data))
@@ -519,9 +542,18 @@ class EtatDesLieuxSerializer(serializers.ModelSerializer):
             'id', 'vehicule', 'vehicule_label', 'reservation', 'conducteur',
             'moment', 'moment_display', 'date_constat', 'kilometrage',
             'niveau_carburant', 'etat_general', 'etat_general_display',
-            'points', 'photos', 'nb_photos', 'commentaire', 'date_creation',
+            'points', 'photos', 'nb_photos', 'accessoires',
+            'signature_conducteur', 'signature_conducteur_horodatage',
+            'signature_responsable', 'signature_responsable_horodatage',
+            'commentaire', 'date_creation',
         ]
-        read_only_fields = ['date_creation']
+        # XFLT17 — les signatures passent UNIQUEMENT par l'action ``signer/``
+        # (nom saisi + horodatage serveur, e-signature loi 53-05) — jamais un
+        # PATCH direct sur ces champs.
+        read_only_fields = [
+            'date_creation', 'signature_conducteur',
+            'signature_conducteur_horodatage', 'signature_responsable',
+            'signature_responsable_horodatage']
 
     def get_vehicule_label(self, obj):
         return str(obj.vehicule) if obj.vehicule_id else None
@@ -2012,3 +2044,36 @@ class GarantieFlotteSerializer(serializers.ModelSerializer):
         vehicule = getattr(obj.actif_flotte, 'vehicule', None)
         kilometrage = getattr(vehicule, 'kilometrage', None) if vehicule else None
         return obj.couvre(kilometrage=kilometrage)
+
+
+# ── XFLT17 — Charte véhicule + accusé de lecture ────────────────────────────────
+
+class CharteVehiculeSerializer(serializers.ModelSerializer):
+    """XFLT17 — Charte véhicule versionnée. ``company`` posée côté serveur ;
+    ``version`` est posée côté serveur (auto-incrémentée) — jamais du body."""
+
+    class Meta:
+        from .models import CharteVehicule
+        model = CharteVehicule
+        fields = ['id', 'version', 'document', 'date_publication']
+        read_only_fields = ['version', 'date_publication']
+
+
+class AccuseCharteSerializer(serializers.ModelSerializer):
+    """XFLT17 — Accusé de lecture de la charte véhicule par un conducteur.
+
+    ``company`` posée côté serveur. ``version`` est posée côté serveur
+    (toujours la version courante au moment de l'accusé) — jamais du body.
+    """
+
+    conducteur_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import AccuseCharte
+        model = AccuseCharte
+        fields = [
+            'id', 'conducteur', 'conducteur_nom', 'version', 'date_accuse']
+        read_only_fields = ['version', 'date_accuse']
+
+    def get_conducteur_nom(self, obj):
+        return obj.conducteur.nom if obj.conducteur_id else None

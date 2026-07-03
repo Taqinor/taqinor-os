@@ -653,6 +653,24 @@ class EtatDesLieux(models.Model):
     photos = models.JSONField(
         default=list, blank=True, verbose_name='Photos (clés)')
     commentaire = models.TextField(blank=True, verbose_name='Commentaire')
+    # XFLT17 — Signatures e-signature loi 53-05 (nom saisi + horodatage
+    # serveur, comme le flux devis existant — pas de signature graphique) et
+    # accessoires remis (gilet, triangle, cric, roue de secours…).
+    signature_conducteur = models.CharField(
+        max_length=150, blank=True,
+        verbose_name='Signature conducteur (nom saisi)')
+    signature_conducteur_horodatage = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name='Horodatage signature conducteur')
+    signature_responsable = models.CharField(
+        max_length=150, blank=True,
+        verbose_name='Signature responsable (nom saisi)')
+    signature_responsable_horodatage = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name='Horodatage signature responsable')
+    accessoires = models.JSONField(
+        default=list, blank=True, verbose_name='Accessoires',
+        help_text='[{"nom": "Gilet", "present": true}, …]')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -3748,3 +3766,89 @@ class ParametreRemplacementFlotte(models.Model):
             company=company, age_max_ans=cls.AGE_MAX_ANS_DEFAUT,
             km_max=cls.KM_MAX_DEFAUT,
             ratio_cout_reparation_max=cls.RATIO_COUT_REPARATION_DEFAUT)
+
+
+# ── XFLT17 — Charte véhicule + accusé de lecture ────────────────────────────────
+
+class CharteVehicule(models.Model):
+    """Charte véhicule versionnée d'une société (XFLT17).
+
+    Document (FileField) décrivant les règles d'usage du véhicule ; VERSIONNÉ
+    (``version`` entier croissant par société) — une nouvelle version
+    n'écrase jamais l'ancienne (historique conservé), elle rend juste les
+    accusés antérieurs obsolètes vs la version courante (voir
+    ``AccuseCharte`` et ``services.charte_courante``).
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête).
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_chartes_vehicule',
+        verbose_name='Société',
+    )
+    version = models.PositiveIntegerField(verbose_name='Version')
+    document = models.FileField(
+        upload_to='flotte/chartes_vehicule/%Y/%m/',
+        verbose_name='Document (charte véhicule)')
+    date_publication = models.DateTimeField(
+        auto_now_add=True, verbose_name='Date de publication')
+
+    class Meta:
+        verbose_name = 'Charte véhicule'
+        verbose_name_plural = 'Chartes véhicule'
+        unique_together = [('company', 'version')]
+        ordering = ['-version']
+
+    def __str__(self):
+        return f'Charte véhicule v{self.version} — {self.company}'
+
+
+class AccuseCharte(models.Model):
+    """Accusé de lecture de la charte véhicule par un conducteur (XFLT17).
+
+    Un conducteur accuse réception d'une VERSION précise de la charte
+    (``conducteur`` + ``version`` + horodatage serveur — nom saisi comme les
+    autres e-signatures flotte). À la première affectation d'un conducteur
+    (``AffectationConducteur``), un warning non bloquant liste la version
+    courante si aucun accusé ne la couvre (voir
+    ``services.accuse_charte_manquant``).
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête). Le conducteur lié doit appartenir à la MÊME société.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_accuses_charte',
+        verbose_name='Société',
+    )
+    conducteur = models.ForeignKey(
+        'Conducteur',
+        on_delete=models.CASCADE,
+        related_name='flotte_accuses_charte',
+        verbose_name='Conducteur',
+    )
+    version = models.PositiveIntegerField(
+        verbose_name='Version de la charte accusée')
+    date_accuse = models.DateTimeField(
+        auto_now_add=True, verbose_name="Date de l'accusé")
+
+    class Meta:
+        verbose_name = 'Accusé de charte véhicule'
+        verbose_name_plural = 'Accusés de charte véhicule'
+        unique_together = [('company', 'conducteur', 'version')]
+        ordering = ['-date_accuse']
+
+    def clean(self):
+        """Valide l'appartenance société du conducteur lié."""
+        if self.conducteur_id is not None \
+                and self.conducteur.company_id != self.company_id:
+            raise ValidationError(
+                "Le conducteur n'appartient pas à la même société.")
+
+    def __str__(self):
+        return f'Accusé charte v{self.version} — {self.conducteur}'

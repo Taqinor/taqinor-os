@@ -1244,3 +1244,60 @@ def ceder_vehicule(vehicule, *, date_cession, prix_cession, acheteur='',
         'resultat_cession': round(resultat_cession, 2),
         'source': source,
     }
+
+
+# ── XFLT17 — Charte véhicule + signatures sur l'état des lieux ─────────────────
+
+def signer_etat_des_lieux(etat_des_lieux, *, role, nom):
+    """XFLT17 — Appose une e-signature (nom saisi + horodatage serveur) sur
+    l'état des lieux, loi 53-05 (comme le flux devis existant — pas de
+    signature graphique).
+
+    ``role`` vaut ``'conducteur'`` ou ``'responsable'``. Idempotent par
+    rôle : une signature déjà posée pour ce rôle n'est jamais écrasée
+    silencieusement (lève ``ValueError`` si déjà signée). ``nom`` est
+    tronqué à 150 caractères (borne du champ). Retourne l'objet mis à jour.
+    """
+    from django.utils import timezone
+
+    champs_valides = {'conducteur', 'responsable'}
+    if role not in champs_valides:
+        raise ValueError("Rôle de signature invalide.")
+
+    champ_nom = f'signature_{role}'
+    champ_horodatage = f'signature_{role}_horodatage'
+
+    if getattr(etat_des_lieux, champ_nom):
+        raise ValueError(
+            f"L'état des lieux est déjà signé par le {role}.")
+
+    setattr(etat_des_lieux, champ_nom, str(nom or '')[:150])
+    setattr(etat_des_lieux, champ_horodatage, timezone.now())
+    etat_des_lieux.save(update_fields=[champ_nom, champ_horodatage])
+    return etat_des_lieux
+
+
+def charte_courante(company):
+    """XFLT17 — Version courante (la plus récente) de la charte véhicule de
+    la société, ou ``None`` si aucune n'est publiée. Lecture seule."""
+    from .models import CharteVehicule
+
+    return CharteVehicule.objects.filter(
+        company=company).order_by('-version').first()
+
+
+def accuse_charte_manquant(conducteur):
+    """XFLT17 — ``True`` si le conducteur n'a PAS accusé réception de la
+    version courante de la charte véhicule (aucune charte publiée = jamais
+    de warning). Lecture seule, sert à l'avertissement non bloquant à la
+    première affectation."""
+    from .models import AccuseCharte
+
+    charte = charte_courante(conducteur.company)
+    if charte is None:
+        return False
+
+    return not AccuseCharte.objects.filter(
+        company=conducteur.company, conducteur=conducteur,
+        version=charte.version,
+    ).exists()
