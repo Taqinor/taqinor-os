@@ -18,14 +18,19 @@ from apps.ventes.utils.references import create_with_reference
 from .models import (
     ActionCorrectivePreventive, AnalyseIncident, Audit,
     BilanCarbone, BordereauSuiviDechet, CauseIncident,
+    CodeDefaut,
     ConformiteEnvironnementale, ConsignationLoto, ContactUrgence,
-    CritereAudit, Dechet, DeclarationCnss, EvaluationRisque, GrilleAudit,
+    ControleReception,
+    CritereAudit, Dechet, DeclarationCnss, Derogation, EtapeDeclarationAt,
+    EvaluationRisque, GrilleAudit,
     Incident, IndicateurESG,
     InductionSecurite, InspectionSecurite,
     ItemNotation, LigneBilanCarbone,
     LigneEvaluationRisque, NonConformite, NotationFinChantier,
-    PermisTravail, PlanInspectionChantier, PlanInspectionModele, PlanUrgence,
-    PointControleModele, ProcedureQualite, QhseChatterEntry,
+    PermisTravail, PlanControleReception, PlanInspectionChantier,
+    PlanInspectionModele, PlanUrgence,
+    PointControleModele, PointControleReception, ProcedureQualite,
+    QhseChatterEntry,
     RecyclageModule, ReleveControle,
     ReleveCourbeIV, ReponseCritere, RetourClientQualite, Secouriste,
 )
@@ -33,9 +38,12 @@ from .serializers import (
     ActionCorrectivePreventiveSerializer, AnalyseIncidentSerializer,
     AuditSerializer, BilanCarboneSerializer, BordereauSuiviDechetSerializer,
     CauseIncidentSerializer,
+    CodeDefautSerializer,
     ConformiteEnvironnementaleSerializer,
     ConsignationLotoSerializer, ContactUrgenceSerializer,
+    ControleReceptionSerializer,
     CritereAuditSerializer, DechetSerializer, DeclarationCnssSerializer,
+    DerogationSerializer, EtapeDeclarationAtSerializer,
     EvaluationRisqueSerializer, GrilleAuditSerializer,
     IncidentSerializer,
     IndicateurESGSerializer,
@@ -44,9 +52,10 @@ from .serializers import (
     LigneBilanCarboneSerializer,
     LigneEvaluationRisqueSerializer,
     NonConformiteSerializer, NotationFinChantierSerializer,
-    PermisTravailSerializer, PlanInspectionChantierSerializer,
+    PermisTravailSerializer, PlanControleReceptionSerializer,
+    PlanInspectionChantierSerializer,
     PlanInspectionModeleSerializer, PlanUrgenceSerializer,
-    PointControleModeleSerializer,
+    PointControleModeleSerializer, PointControleReceptionSerializer,
     ProcedureQualiteSerializer, QhseChatterEntrySerializer,
     RecyclageModuleSerializer,
     ReleveControleSerializer, ReleveCourbeIVSerializer,
@@ -62,16 +71,20 @@ from .selectors import (
     export_esg,
     hold_points_status,
     heures_travaillees_chantiers,
-    iso9001_readiness, permis_travail_expirant, photos_controle_par_phase,
+    iso9001_readiness, pareto_defauts, permis_travail_expirant,
+    photos_controle_par_phase,
     procedure_qualite_courante, procedure_qualite_versions,
     procedures_qualite_courantes, satisfaction_moyenne, statistiques_tf_tg,
+    taux_conformite_premier_passage,
 )
 from .services import (
     activer_procedure, calculer_score_audit, calculer_score_notation,
     cloturer_ncr, creer_ncr_depuis_reserve, generer_capa_depuis_analyse,
     instancier_plan_chantier,
     lever_ncr_audit, lever_ncr_inspection, nouvelle_version_procedure,
+    poser_disposition,
     relancer_capa_en_retard, relancer_conformites,
+    statuer_controle_reception,
     verifier_efficacite_capa,
 )
 
@@ -199,6 +212,64 @@ class NonConformiteViewSet(_ChatterMixin, _QhseBaseViewSet):
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(ncr).data)
+
+    @action(detail=True, methods=['post'], url_path='poser-disposition')
+    def poser_disposition_action(self, request, pk=None):
+        """Pose la disposition d'une NCR (XQHS2).
+
+        Corps : ``disposition`` (requis, une des valeurs de
+        ``NonConformite.Disposition``), ``cout_disposition`` optionnel,
+        ``fournisseur`` (requis si ``retour_fournisseur``),
+        ``creer_capa_retouche`` (bool, si ``retouche``). ``disposition_par``
+        posé côté serveur (jamais lu du corps).
+        """
+        ncr = self.get_object()
+        disposition = request.data.get('disposition')
+        if not disposition:
+            return Response(
+                {'detail': 'disposition est requise.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        fournisseur = None
+        fournisseur_id = request.data.get('fournisseur')
+        if fournisseur_id not in (None, ''):
+            from apps.stock.selectors import get_fournisseur_by_id
+            fournisseur = get_fournisseur_by_id(
+                request.user.company, fournisseur_id)
+            if fournisseur is None:
+                return Response(
+                    {'detail': 'Fournisseur introuvable.'},
+                    status=status.HTTP_404_NOT_FOUND)
+        try:
+            poser_disposition(
+                ncr, disposition,
+                disposition_par=request.user,
+                cout_disposition=request.data.get('cout_disposition'),
+                fournisseur=fournisseur,
+                creer_capa_retouche=bool(
+                    request.data.get('creer_capa_retouche')),
+                capa_description=request.data.get('capa_description', ''),
+            )
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(ncr).data)
+
+
+class DerogationViewSet(_QhseBaseViewSet):
+    """Dérogations (acceptation en l'état bornée) liées à une NCR (XQHS2).
+
+    CRUD scopé société. Filtre optionnel ``?non_conformite=``.
+    """
+    queryset = Derogation.objects.select_related('non_conformite').all()
+    serializer_class = DerogationSerializer
+    ordering_fields = ['id', 'date_expiration', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        ncr = self.request.query_params.get('non_conformite')
+        if ncr not in (None, ''):
+            qs = qs.filter(non_conformite_id=ncr)
+        return qs
 
 
 class ActionCorrectivePreventiveViewSet(_ChatterMixin, _QhseBaseViewSet):
@@ -1367,6 +1438,60 @@ class DeclarationCnssViewSet(_QhseBaseViewSet):
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
 
+    def perform_create(self, serializer):
+        """Crée la déclaration puis instancie sa checklist d'étapes légales
+        (XQHS1) — best-effort, ne bloque jamais la création de la déclaration."""
+        declaration = serializer.save(company=self.request.user.company)
+        try:
+            from apps.qhse.services import instancier_etapes_at
+            instancier_etapes_at(declaration)
+        except Exception:  # pragma: no cover - défensif
+            pass
+        return declaration
+
+    @action(detail=True, methods=['post'], url_path='generer-etapes')
+    def generer_etapes(self, request, pk=None):
+        """(Ré)instancie la checklist des étapes légales AT/MP (XQHS1).
+
+        Idempotent — utile si la ``conciliation_statut`` a été activée après
+        coup (l'étape conciliation manque alors à l'appel initial).
+        """
+        from apps.qhse.services import instancier_etapes_at
+        declaration = self.get_object()
+        etapes = instancier_etapes_at(declaration)
+        serializer = EtapeDeclarationAtSerializer(etapes, many=True)
+        return Response(serializer.data)
+
+
+class EtapeDeclarationAtViewSet(_QhseBaseViewSet):
+    """Étapes légales datées de la chaîne AT/MP (loi 18-12, XQHS1).
+
+    CRUD scopé société (surtout utilisé en lecture — la création passe par
+    ``instancier_etapes_at``). Filtre optionnel ``?declaration=``.
+
+    Action ``POST …/<id>/marquer-fait/`` — marque l'étape réalisée
+    (``fait_le`` posé côté serveur, jamais lu du corps).
+    """
+    queryset = EtapeDeclarationAt.objects.select_related(
+        'declaration', 'declaration__accident_travail').all()
+    serializer_class = EtapeDeclarationAtSerializer
+    ordering_fields = ['id', 'echeance', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        declaration = self.request.query_params.get('declaration')
+        if declaration not in (None, ''):
+            qs = qs.filter(declaration_id=declaration)
+        return qs
+
+    @action(detail=True, methods=['post'], url_path='marquer-fait')
+    def marquer_fait(self, request, pk=None):
+        from apps.qhse.services import marquer_etape_faite
+        etape = self.get_object()
+        marquer_etape_faite(etape)
+        serializer = self.get_serializer(etape)
+        return Response(serializer.data)
+
 
 class AnalyseIncidentViewSet(_QhseBaseViewSet):
     """Analyses d'incident — arbre des causes → CAPA (QHSE31).
@@ -1873,3 +1998,144 @@ class IndicateurESGViewSet(_QhseBaseViewSet):
         """
         annee = request.query_params.get('annee') or None
         return Response(export_esg(request.user.company, annee=annee))
+
+
+# ── XQHS3 — Contrôle qualité à la réception fournisseur ─────────────────────
+
+class PlanControleReceptionViewSet(_QhseBaseViewSet):
+    """Plans de contrôle qualité à la réception fournisseur (XQHS3).
+
+    CRUD scopé société. ``company`` posée côté serveur. Filtres optionnels
+    ``?produit=`` / ``?categorie=`` / ``?actif=``.
+    """
+    queryset = PlanControleReception.objects.select_related(
+        'produit', 'categorie').prefetch_related('points').all()
+    serializer_class = PlanControleReceptionSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom']
+    ordering_fields = ['id', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        produit = self.request.query_params.get('produit')
+        if produit not in (None, ''):
+            qs = qs.filter(produit_id=produit)
+        categorie = self.request.query_params.get('categorie')
+        if categorie not in (None, ''):
+            qs = qs.filter(categorie_id=categorie)
+        actif = self.request.query_params.get('actif')
+        if actif not in (None, ''):
+            qs = qs.filter(actif=actif.lower() in ('1', 'true'))
+        return qs
+
+
+class PointControleReceptionViewSet(_QhseBaseViewSet):
+    """Points de contrôle d'un plan de contrôle réception (XQHS3)."""
+    queryset = PointControleReception.objects.select_related('plan').all()
+    serializer_class = PointControleReceptionSerializer
+    ordering_fields = ['id', 'ordre', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        plan = self.request.query_params.get('plan')
+        if plan not in (None, ''):
+            qs = qs.filter(plan_id=plan)
+        return qs
+
+
+class ControleReceptionViewSet(_QhseBaseViewSet):
+    """Contrôles qualité exécutés à la réception fournisseur (XQHS3).
+
+    CRUD scopé société (surtout en lecture — l'ouverture passe par
+    ``instancier_controles_reception``, déclenchée par l'événement de
+    confirmation de réception côté ``stock``). Filtres optionnels
+    ``?reception_id=`` / ``?verdict=``.
+
+    Action ``POST …/<id>/statuer/`` — pose le verdict (``accepte`` /
+    ``refuse`` / ``quarantaine``). Un verdict ``refuse`` lève automatiquement
+    une NCR pré-remplie (pont XQHS3→XQHS2).
+    """
+    queryset = ControleReception.objects.select_related(
+        'plan', 'controleur', 'non_conformite').all()
+    serializer_class = ControleReceptionSerializer
+    ordering_fields = ['id', 'date_controle', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        reception_id = self.request.query_params.get('reception_id')
+        if reception_id not in (None, ''):
+            qs = qs.filter(reception_id=reception_id)
+        verdict = self.request.query_params.get('verdict')
+        if verdict not in (None, ''):
+            qs = qs.filter(verdict=verdict)
+        return qs
+
+    @action(detail=True, methods=['post'])
+    def statuer(self, request, pk=None):
+        """Pose le verdict d'un contrôle réception (XQHS3).
+
+        Corps : ``verdict`` (requis), ``notes`` optionnelles. ``controleur``
+        posé côté serveur (jamais lu du corps).
+        """
+        controle = self.get_object()
+        verdict = request.data.get('verdict')
+        if not verdict:
+            return Response(
+                {'detail': 'verdict est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            statuer_controle_reception(
+                controle, verdict, controleur=request.user,
+                notes=request.data.get('notes', ''))
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(controle).data)
+
+
+# ── XQHS4 — Catalogue de codes de défauts + Pareto qualité ──────────────────
+
+class CodeDefautViewSet(_QhseBaseViewSet):
+    """Référentiel des codes de défaut (XQHS4). CRUD scopé société.
+
+    Filtres optionnels ``?famille=`` / ``?actif=``.
+    """
+    queryset = CodeDefaut.objects.all()
+    serializer_class = CodeDefautSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'libelle']
+    ordering_fields = ['id', 'famille', 'code']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        famille = self.request.query_params.get('famille')
+        if famille not in (None, ''):
+            qs = qs.filter(famille=famille)
+        actif = self.request.query_params.get('actif')
+        if actif not in (None, ''):
+            qs = qs.filter(actif=actif.lower() in ('1', 'true'))
+        return qs
+
+
+class ParetoDefautsViewSet(viewsets.ViewSet):
+    """Pareto qualité en lecture seule (XQHS4).
+
+    ``GET …/pareto-defauts/?periode=YYYY-MM&chantier=<id>&famille=<f>``
+    agrège les codes de défaut posés sur NCR / relevés en échec / incidents en
+    un Pareto (comptes + % cumulé) et expose le taux de conformité
+    premier-passage des relevés (mêmes filtres période/chantier). Agrégation
+    PURE — aucune mutation. Scopé société. Palier Responsable/Admin.
+    """
+    permission_classes = [IsResponsableOrAdmin]
+
+    def list(self, request):
+        periode = request.query_params.get('periode') or None
+        chantier = request.query_params.get('chantier') or None
+        famille = request.query_params.get('famille') or None
+        return Response({
+            'pareto': pareto_defauts(
+                request.user.company, periode=periode,
+                chantier_id=chantier, famille=famille),
+            'premier_passage': taux_conformite_premier_passage(
+                request.user.company, chantier_id=chantier),
+        })

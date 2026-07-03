@@ -516,6 +516,10 @@ class ReceptionFournisseurSerializer(serializers.ModelSerializer):
     created_by_username = serializers.CharField(
         source='created_by.username', read_only=True)
     total_recu = serializers.IntegerField(read_only=True)
+    # XQHS3 — badge ADVISORY « contrôle qualité en attente » (qhse). Best-effort
+    # : lu via apps.qhse.selectors (jamais un import de apps.qhse.models), ne
+    # bloque jamais l'affichage de la réception si qhse échoue/est absent.
+    controle_qhse_ouvert = serializers.SerializerMethodField()
 
     class Meta:
         model = ReceptionFournisseur
@@ -524,11 +528,20 @@ class ReceptionFournisseurSerializer(serializers.ModelSerializer):
             'fournisseur_nom', 'statut', 'statut_display', 'date_reception',
             'note', 'recu_par', 'recu_par_username', 'created_by',
             'created_by_username', 'date_creation', 'lignes', 'total_recu',
+            'controle_qhse_ouvert',
         ]
         # company + reference + statut + created_by sont posés côté serveur.
         read_only_fields = [
             'reference', 'statut', 'created_by', 'date_creation',
         ]
+
+    def get_controle_qhse_ouvert(self, obj):
+        """XQHS3 — badge advisory, jamais bloquant. ``False`` si qhse échoue."""
+        try:
+            from apps.qhse.selectors import reception_controle_ouvert
+            return reception_controle_ouvert(obj.id)
+        except Exception:  # pragma: no cover - défensif, best-effort
+            return False
 
     def validate_lignes(self, value):
         if not value:

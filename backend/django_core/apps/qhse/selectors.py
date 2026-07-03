@@ -24,7 +24,7 @@ from django.db.models import Avg
 
 from .models import (
     ActionCorrectivePreventive, Audit, ConformiteEnvironnementale,
-    DeclarationCnss, EvaluationRisque,
+    ControleReception, DeclarationCnss, EtapeDeclarationAt, EvaluationRisque,
     Incident, IndicateurESG, InspectionSecurite, NonConformite,
     NotationFinChantier,
     PermisTravail, PlanInspectionChantier,
@@ -1141,3 +1141,163 @@ def export_esg(company, annee=None):
         'piliers': piliers,
         'lignes': lignes,
     }
+
+
+# ── XQHS1 — Étapes légales AT/MP (checklist datée) ──────────────────────────
+
+def etapes_at_a_echeance(company, within_hours=48, now=None):
+    """Étapes AT/MP non réalisées à échéance imminente ou déjà hors délai.
+
+    Scopé société. Retient les étapes ``fait_le`` vide dont ``echeance`` tombe
+    au plus tard dans ``within_hours`` heures (y compris déjà dépassées) ; les
+    étapes sans échéance fixe (suivi ITT, certificat de guérison, conciliation)
+    sont exclues de cette fenêtre de rappel. Lecture seule, triée par échéance
+    la plus proche d'abord.
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    if company is None:
+        return EtapeDeclarationAt.objects.none()
+    try:
+        within_hours = int(within_hours)
+    except (TypeError, ValueError):
+        within_hours = 48
+    if within_hours < 0:
+        within_hours = 0
+    if now is None:
+        now = timezone.now()
+    limite = now + timedelta(hours=within_hours)
+    return (EtapeDeclarationAt.objects
+            .filter(company=company,
+                    fait_le__isnull=True,
+                    echeance__isnull=False,
+                    echeance__lte=limite)
+            .select_related('declaration', 'declaration__accident_travail')
+            .order_by('echeance'))
+
+
+def etapes_declaration(declaration):
+    """Étapes légales AT/MP d'une déclaration CNSS, triées par échéance."""
+    return declaration.etapes.all().order_by('echeance', 'id')
+
+
+# ── XQHS3 — Contrôle qualité à la réception fournisseur (advisory) ─────────
+
+def reception_controle_ouvert(reception_id):
+    """Un contrôle qualité de réception est-il encore OUVERT pour cette
+    réception fournisseur (XQHS3) ?
+
+    Point d'accès ADVISORY pour ``stock`` (badge « contrôle en attente ») —
+    lecture seule, ne bloque jamais le flux stock. Renvoie ``True`` si AU
+    MOINS UN ``ControleReception`` de cette réception a le verdict
+    ``en_attente``. Non scopé société explicitement (l'appelant, ``stock``,
+    fournit un id déjà résolu dans sa propre société) — mais reste sûr car
+    ``reception_id`` est une clé étrangère opaque, jamais un identifiant
+    global partagé entre sociétés.
+    """
+    return ControleReception.objects.filter(
+        reception_id=reception_id,
+        verdict=ControleReception.Verdict.EN_ATTENTE,
+    ).exists()
+
+
+def controles_reception_de(reception_id, company=None):
+    """Contrôles réception d'une réception fournisseur donnée (lecture seule)."""
+    qs = ControleReception.objects.filter(reception_id=reception_id)
+    if company is not None:
+        qs = qs.filter(company=company)
+    return qs.select_related('plan', 'controleur', 'non_conformite')
+
+
+# ── XQHS4 — Pareto qualité (codes de défauts) ───────────────────────────────
+
+def pareto_defauts(company, *, periode=None, chantier_id=None, famille=None):
+    """Top causes de défaut (comptes + % cumulé), agrégées sur NCR + relevés
+    en échec + incidents (XQHS4).
+
+    ``periode`` filtre sur ``date_creation`` au format ``YYYY-MM`` (mois),
+    ``chantier_id`` filtre les NCR/incidents rattachés à ce chantier,
+    ``famille`` restreint aux codes de cette famille. Renvoie une liste
+    ``[{'code', 'libelle', 'famille', 'nb', 'pct', 'pct_cumule'}, ...]`` triée
+    par nombre décroissant. Lecture seule, scopée société.
+    """
+    if company is None:
+        return []
+
+    def _filtre_periode(qs, champ):
+        if not periode:
+            return qs
+        try:
+            annee, mois = periode.split('-')
+            return qs.filter(**{
+                f'{champ}__year': int(annee), f'{champ}__month': int(mois)})
+        except (ValueError, AttributeError):
+            return qs
+
+    ncr_qs = NonConformite.objects.filter(
+        company=company, code_defaut__isnull=False)
+    ncr_qs = _filtre_periode(ncr_qs, 'date_creation')
+    if chantier_id is not None:
+        ncr_qs = ncr_qs.filter(chantier_id=chantier_id)
+
+    releve_qs = ReleveControle.objects.filter(
+        company=company, code_defaut__isnull=False, conforme=False)
+    releve_qs = _filtre_periode(releve_qs, 'date_creation')
+
+    incident_qs = Incident.objects.filter(
+        company=company, code_defaut__isnull=False)
+    incident_qs = _filtre_periode(incident_qs, 'date_creation')
+    if chantier_id is not None:
+        incident_qs = incident_qs.filter(chantier_id=chantier_id)
+
+    if famille not in (None, ''):
+        ncr_qs = ncr_qs.filter(code_defaut__famille=famille)
+        releve_qs = releve_qs.filter(code_defaut__famille=famille)
+        incident_qs = incident_qs.filter(code_defaut__famille=famille)
+
+    compteur = {}
+    for qs in (ncr_qs, releve_qs, incident_qs):
+        for code_id, code, libelle, famille_val in qs.values_list(
+                'code_defaut_id', 'code_defaut__code',
+                'code_defaut__libelle', 'code_defaut__famille'):
+            entry = compteur.setdefault(code_id, {
+                'code': code, 'libelle': libelle, 'famille': famille_val,
+                'nb': 0,
+            })
+            entry['nb'] += 1
+
+    lignes = sorted(compteur.values(), key=lambda e: (-e['nb'], e['code']))
+    total = sum(e['nb'] for e in lignes) or 1
+    cumul = 0
+    for ligne in lignes:
+        ligne['pct'] = round(ligne['nb'] / total * 100, 1)
+        cumul += ligne['nb']
+        ligne['pct_cumule'] = round(cumul / total * 100, 1)
+    return lignes
+
+
+def taux_conformite_premier_passage(
+        company, *, chantier_id=None, equipe_id=None):
+    """Taux de conformité premier-passage des relevés de contrôle (XQHS4).
+
+    Un relevé est « premier passage conforme » si ``conforme=True`` — le
+    dénominateur ne compte que les relevés déjà STATUÉS (``conforme`` non
+    nul). Scopé société ; ``chantier_id`` filtre via le plan chantier (référence
+    lâche ``installations.Chantier``). ``equipe_id`` réservé pour une future
+    ventilation par équipe (pas encore de modèle équipe côté qhse — no-op si
+    fourni, gardé pour compatibilité de signature).
+    """
+    if company is None:
+        return {'total_statues': 0, 'conformes': 0, 'taux': None}
+
+    qs = ReleveControle.objects.filter(
+        company=company, conforme__isnull=False)
+    if chantier_id is not None:
+        qs = qs.filter(plan_chantier__chantier_id=chantier_id)
+
+    total = qs.count()
+    conformes = qs.filter(conforme=True).count()
+    taux = round(conformes / total * 100, 1) if total else None
+    return {'total_statues': total, 'conformes': conformes, 'taux': taux}

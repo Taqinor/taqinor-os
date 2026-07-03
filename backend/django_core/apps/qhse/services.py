@@ -11,8 +11,10 @@ from decimal import Decimal
 from django.db import transaction
 
 from .models import (
-    ActionCorrectivePreventive, CauseIncident, NonConformite,
-    NotationFinChantier, PlanInspectionChantier, PointControleModele,
+    ActionCorrectivePreventive, CauseIncident, ControleReception,
+    DeclarationCnss, Derogation, EtapeDeclarationAt, NonConformite,
+    NotationFinChantier, PlanControleReception, PlanInspectionChantier,
+    PointControleModele,
     ProcedureQualite, ReponseCritere, ReleveControle,
 )
 
@@ -302,11 +304,13 @@ def ncr_capa_bloquantes(ncr):
 
 @transaction.atomic
 def cloturer_ncr(ncr):
-    """Clôture une non-conformité — conditionnée à l'efficacité des CAPA (QHSE13).
+    """Clôture une non-conformité — conditionnée à l'efficacité des CAPA (QHSE13)
+    ET à une disposition posée (XQHS2).
 
-    La clôture n'est autorisée que si toutes les CAPA de la NCR sont vérifiées
-    efficaces (cf. ``ncr_capa_bloquantes``). Lève ``ValueError`` avec la liste
-    des CAPA bloquantes sinon. Idempotent si déjà clôturée. Renvoie la NCR.
+    La clôture n'est autorisée que si (a) toutes les CAPA de la NCR sont
+    vérifiées efficaces (cf. ``ncr_capa_bloquantes``) ET (b) une disposition a
+    été posée (``disposition`` non vide). Lève ``ValueError`` sinon. Idempotent
+    si déjà clôturée. Renvoie la NCR.
     """
     if ncr.statut == NonConformite.Statut.CLOTUREE:
         return ncr
@@ -315,9 +319,116 @@ def cloturer_ncr(ncr):
         raise ValueError(
             "Clôture impossible : %d action(s) corrective(s) non vérifiée(s) "
             "efficace(s)." % len(bloquantes))
+    if not ncr.disposition:
+        raise ValueError(
+            "Clôture impossible : aucune disposition n'a été posée sur "
+            "cette non-conformité.")
     ncr.statut = NonConformite.Statut.CLOTUREE
     ncr.save(update_fields=['statut'])
     return ncr
+
+
+# ── XQHS2 — Disposition de la NCR + dérogations ─────────────────────────────
+
+@transaction.atomic
+def poser_disposition(
+        ncr, disposition, *, disposition_par=None, cout_disposition=None,
+        fournisseur=None, creer_capa_retouche=False, capa_description=''):
+    """Pose la disposition d'une non-conformité (XQHS2).
+
+    ``disposition_par``/``disposition_le`` sont posés CÔTÉ SERVEUR (jamais lus
+    du corps). Si ``disposition == RETOUCHE`` et ``creer_capa_retouche=True``,
+    pré-remplit une CAPA corrective liée (mêmes valeurs par défaut que le
+    linkage NCR→CAPA existant). Si ``disposition == RETOUR_FOURNISSEUR``, le
+    ``fournisseur`` (référence FK-chaîne ``stock.Fournisseur``) est requis et
+    posé. Renvoie la NCR mise à jour.
+    """
+    from django.utils import timezone
+
+    valeurs_valides = {c.value for c in NonConformite.Disposition}
+    if disposition not in valeurs_valides:
+        raise ValueError(f'Disposition invalide : {disposition!r}')
+
+    ncr.disposition = disposition
+    ncr.disposition_par = disposition_par
+    ncr.disposition_le = timezone.now()
+    if cout_disposition is not None:
+        ncr.cout_disposition = cout_disposition
+    if disposition == NonConformite.Disposition.RETOUR_FOURNISSEUR:
+        ncr.fournisseur = fournisseur
+    ncr.save(update_fields=[
+        'disposition', 'disposition_par', 'disposition_le',
+        'cout_disposition', 'fournisseur'])
+
+    if (disposition == NonConformite.Disposition.RETOUCHE
+            and creer_capa_retouche):
+        ActionCorrectivePreventive.objects.create(
+            company=ncr.company,
+            non_conformite=ncr,
+            type_action=ActionCorrectivePreventive.Type.CORRECTIVE,
+            description=capa_description or (
+                f'Retouche suite à disposition NCR « {ncr.titre} »'),
+        )
+    return ncr
+
+
+def derogations_a_relancer(company, today=None):
+    """Dérogations actives à échéance imminente ou déjà expirées (XQHS2).
+
+    Même logique de préalerte que ``ConformiteEnvironnementale`` (QHSE38) :
+    retient les dérogations non clôturées dont ``date_expiration`` tombe dans
+    la fenêtre ``prealerte_jours`` (ou déjà passée). Scopé société.
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    if today is None:
+        today = timezone.localdate()
+    qs = Derogation.objects.filter(
+        company=company, date_expiration__isnull=False
+    ).exclude(statut=Derogation.Statut.CLOTUREE)
+    return [
+        d for d in qs
+        if d.date_expiration <= today + timedelta(days=d.prealerte_jours or 0)
+    ]
+
+
+def relancer_derogations(company, today=None):
+    """Relance les dérogations à échéance imminente/dépassée (best-effort)."""
+    from django.utils import timezone
+
+    if today is None:
+        today = timezone.localdate()
+    derogs = derogations_a_relancer(company, today=today)
+    notifiees = 0
+    items = []
+    for derog in derogs:
+        titre = 'Dérogation à échéance'
+        corps = (
+            f'La dérogation liée à la non-conformité '
+            f'« {derog.non_conformite.titre} » expire le '
+            f'{derog.date_expiration.isoformat()}.')
+        if derog.approbateur_id is not None:
+            _notifier_derogation(derog.approbateur, titre, corps, company)
+            notifiees += 1
+        items.append({
+            'derogation_id': derog.id,
+            'non_conformite_id': derog.non_conformite_id,
+            'date_expiration': derog.date_expiration.isoformat(),
+        })
+    return {'total': len(derogs), 'notifiees': notifiees, 'items': items}
+
+
+def _notifier_derogation(user, titre, corps, company):
+    """Notifie l'approbateur d'une dérogation à échéance (best-effort)."""
+    try:
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+        notify(user, EventType.MAINTENANCE_DUE, titre, body=corps,
+               link='/qhse/non-conformites', company=company)
+    except Exception:  # pragma: no cover - défensif
+        pass
 
 
 # ── QHSE17 — Score de notation fin de chantier ──────────────────────────────
@@ -634,3 +745,240 @@ def _notifier_conformite(user, titre, corps, company):
                link='/qhse/conformites-environnementales', company=company)
     except Exception:  # pragma: no cover - défensif
         pass
+
+
+# ── XQHS1 — Chaîne d'étapes légales AT/MP (loi 18-12) ────────────────────────
+
+# Délai par type d'étape, exprimé en HEURES pour rester précis sur le délai de
+# 48 h (avis employeur). Les autres délais légaux (5 j) sont donnés en jours
+# convertis en heures. Les étapes sans délai légal fixe (suivi ITT, certificat
+# de guérison, conciliation) n'ont pas d'échéance calculée automatiquement
+# (``echeance=None``) — elles restent pilotables manuellement.
+DELAI_HEURES_PAR_ETAPE = {
+    EtapeDeclarationAt.TypeEtape.AVIS_EMPLOYEUR: 48,
+    EtapeDeclarationAt.TypeEtape.DOSSIER_ASSUREUR: 5 * 24,
+    EtapeDeclarationAt.TypeEtape.INFORMATION_INSPECTION: 5 * 24,
+    EtapeDeclarationAt.TypeEtape.CERTIFICAT_MEDICAL: 5 * 24,
+}
+
+# Étapes systématiquement instanciées à la création d'une déclaration.
+ETAPES_STANDARD = [
+    EtapeDeclarationAt.TypeEtape.AVIS_EMPLOYEUR,
+    EtapeDeclarationAt.TypeEtape.DOSSIER_ASSUREUR,
+    EtapeDeclarationAt.TypeEtape.INFORMATION_INSPECTION,
+    EtapeDeclarationAt.TypeEtape.CERTIFICAT_MEDICAL,
+    EtapeDeclarationAt.TypeEtape.SUIVI_ITT,
+    EtapeDeclarationAt.TypeEtape.CERTIFICAT_GUERISON,
+]
+
+
+@transaction.atomic
+def instancier_etapes_at(declaration):
+    """Instancie la checklist des étapes légales AT/MP d'une déclaration CNSS.
+
+    Idempotent : réutilise les étapes déjà créées pour cette déclaration (une
+    seule par ``type_etape``, contrainte d'unicité) et n'ajoute que celles
+    manquantes. L'échéance de chaque étape est calculée côté serveur à partir
+    de ``declaration.date_accident`` + son délai légal (cf.
+    ``DELAI_HEURES_PAR_ETAPE``) ; les étapes sans délai fixe restent sans
+    échéance. La ``conciliation`` n'est instanciée QUE si
+    ``conciliation_statut`` n'est pas ``non_requise`` (elle est facultative
+    selon le dossier).
+
+    Renvoie la liste des ``EtapeDeclarationAt`` de la déclaration (créées +
+    déjà existantes).
+    """
+    from datetime import datetime, time, timedelta
+
+    from django.utils import timezone
+
+    types_a_creer = list(ETAPES_STANDARD)
+    if (declaration.conciliation_statut !=
+            DeclarationCnss.ConciliationStatut.NON_REQUISE):
+        types_a_creer.append(EtapeDeclarationAt.TypeEtape.CONCILIATION)
+
+    existantes = {
+        e.type_etape: e
+        for e in declaration.etapes.all()
+    }
+
+    base_dt = None
+    if declaration.date_accident is not None:
+        base_dt = timezone.make_aware(
+            datetime.combine(declaration.date_accident, time.min))
+
+    for type_etape in types_a_creer:
+        if type_etape in existantes:
+            continue
+        delai_h = DELAI_HEURES_PAR_ETAPE.get(type_etape)
+        echeance = (
+            base_dt + timedelta(hours=delai_h)
+            if (base_dt is not None and delai_h is not None) else None)
+        etape = EtapeDeclarationAt.objects.create(
+            company=declaration.company,
+            declaration=declaration,
+            type_etape=type_etape,
+            echeance=echeance,
+        )
+        existantes[type_etape] = etape
+
+    return list(declaration.etapes.all())
+
+
+@transaction.atomic
+def marquer_etape_faite(etape, fait_le=None):
+    """Marque une étape AT/MP comme réalisée (``fait_le`` posé côté serveur)."""
+    from django.utils import timezone
+    etape.fait_le = fait_le or timezone.now()
+    etape.save(update_fields=['fait_le', 'statut'])
+    return etape
+
+
+def relancer_etapes_at_en_retard(company, now=None):
+    """Relance (notification) les étapes AT/MP à échéance imminente ou dépassée.
+
+    Réutilise le pattern ``relancer_capa_en_retard``/``relancer_conformites`` :
+    best-effort, ne mute aucune étape, renvoie un digest
+    ``{'total', 'notifiees', 'items'}``.
+    """
+    from django.utils import timezone
+
+    from apps.qhse.selectors import etapes_at_a_echeance
+
+    if now is None:
+        now = timezone.now()
+    etapes = list(etapes_at_a_echeance(company, now=now))
+
+    notifiees = 0
+    items = []
+    for etape in etapes:
+        titre = 'Étape AT/MP à échéance'
+        corps = (
+            f'« {etape.get_type_etape_display()} » de la déclaration CNSS '
+            f'accident#{etape.declaration.accident_travail_id} '
+            f'({etape.get_statut_display()}).')
+        responsable = getattr(
+            etape.declaration.accident_travail, 'employe', None)
+        cible = getattr(responsable, 'user', None)
+        if cible is not None:
+            _notifier_etape_at(cible, titre, corps, company)
+            notifiees += 1
+        items.append({
+            'etape_id': etape.id,
+            'type_etape': etape.type_etape,
+            'echeance': etape.echeance.isoformat() if etape.echeance else None,
+            'statut': etape.statut_calcule(now),
+            'declaration_id': etape.declaration_id,
+        })
+
+    return {'total': len(etapes), 'notifiees': notifiees, 'items': items}
+
+
+def _notifier_etape_at(user, titre, corps, company):
+    """Notifie un responsable d'une étape AT/MP à échéance (best-effort)."""
+    try:
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+        notify(user, EventType.MAINTENANCE_DUE, titre, body=corps,
+               link='/qhse/declarations-cnss', company=company)
+    except Exception:  # pragma: no cover - défensif
+        pass
+
+
+# ── XQHS3 — Contrôle qualité à la réception fournisseur ──────────────────────
+
+def plans_actifs_pour_produit(company, produit_id, categorie_id=None):
+    """Plans de contrôle réception ACTIFS couvrant ce produit (ou sa catégorie).
+
+    Un plan peut couvrir un produit précis OU une catégorie entière. Scopé
+    société. Lecture seule.
+    """
+    from django.db.models import Q
+    qs = PlanControleReception.objects.filter(company=company, actif=True)
+    filtre = Q(produit_id=produit_id)
+    if categorie_id is not None:
+        filtre |= Q(categorie_id=categorie_id)
+    return list(qs.filter(filtre))
+
+
+@transaction.atomic
+def instancier_controles_reception(reception, company):
+    """Instancie les ``ControleReception`` déclenchés par une réception
+    confirmée (XQHS3), abonné à ``core.events.reception_fournisseur_confirmee``.
+
+    Pour CHAQUE ligne de la réception, résout le produit (et sa catégorie) et
+    crée un ``ControleReception`` par plan actif qui le couvre — idempotent
+    (contrainte d'unicité société+réception+plan : un second appel pour la même
+    réception ne duplique rien).
+
+    ``reception`` est l'instance ``stock.ReceptionFournisseur`` (accédée en
+    lecture directe ici car on est dans le récepteur de l'événement qu'elle a
+    elle-même émis — pas un import de ``stock.models`` en dehors de ce
+    contexte réactif). Renvoie la liste des ``ControleReception`` créés.
+    """
+    crees = []
+    lignes = list(reception.lignes.select_related('produit').all())
+    for ligne in lignes:
+        produit = ligne.produit
+        if produit is None:
+            continue
+        categorie_id = getattr(produit, 'categorie_id', None)
+        plans = plans_actifs_pour_produit(company, produit.id, categorie_id)
+        for plan in plans:
+            controle, created = ControleReception.objects.get_or_create(
+                company=company, reception_id=reception.id, plan=plan,
+                defaults={'produit_id': produit.id},
+            )
+            if created:
+                crees.append(controle)
+    return crees
+
+
+@transaction.atomic
+def statuer_controle_reception(
+        controle, verdict, *, controleur=None, notes=''):
+    """Pose le verdict d'un contrôle réception (XQHS3).
+
+    ``controleur``/``date_controle`` posés côté serveur. Un verdict ``refuse``
+    crée automatiquement une NCR pré-remplie (pont XQHS3→XQHS2) via
+    ``lever_ncr_controle_reception`` — idempotent (ne recrée pas de NCR si une
+    est déjà liée). Renvoie le contrôle mis à jour.
+    """
+    from django.utils import timezone
+
+    valeurs_valides = {c.value for c in ControleReception.Verdict}
+    if verdict not in valeurs_valides:
+        raise ValueError(f'Verdict invalide : {verdict!r}')
+
+    controle.verdict = verdict
+    controle.controleur = controleur
+    controle.notes = notes or controle.notes
+    controle.date_controle = timezone.now()
+    controle.save(update_fields=[
+        'verdict', 'controleur', 'notes', 'date_controle'])
+
+    if verdict == ControleReception.Verdict.REFUSE:
+        lever_ncr_controle_reception(controle)
+    return controle
+
+
+def lever_ncr_controle_reception(controle):
+    """Lève une NCR pré-remplie depuis un contrôle réception refusé (XQHS3).
+
+    Idempotent : si ``controle.non_conformite`` est déjà posée, ne recrée rien.
+    """
+    if controle.non_conformite_id is not None:
+        return controle.non_conformite
+    ncr = NonConformite.objects.create(
+        company=controle.company,
+        titre=f'[Réception] Contrôle refusé — {controle.plan.nom}',
+        description=(
+            controle.notes or
+            f'Contrôle qualité à la réception #{controle.reception_id} '
+            f'refusé sur le plan « {controle.plan.nom} ».'),
+        origine=f'Contrôle réception — {controle.plan.nom}',
+        gravite=NonConformite.Gravite.MAJEURE,
+    )
+    controle.non_conformite = ncr
+    controle.save(update_fields=['non_conformite'])
+    return ncr

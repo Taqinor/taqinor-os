@@ -58,6 +58,26 @@ importe ``apps.audit``.
 
     * ``instance`` — l'objet ``Devis`` ou ``Facture`` concerné ;
     * ``kind`` — ``'devis'`` ou ``'facture'`` (sert au libellé d'audit).
+
+``reception_fournisseur_confirmee``
+    Émis à la CONFIRMATION d'une réception fournisseur (fin de
+    ``stock.services.confirm_reception_fournisseur``). Arguments du signal :
+
+    * ``reception`` — l'instance ``stock.ReceptionFournisseur`` confirmée ;
+    * ``company`` — la société (posée côté serveur) ;
+    * ``user`` — l'utilisateur qui confirme (peut être ``None``).
+
+    DEUX abonnés indépendants sont attendus sur ce même événement (documentés
+    ici pour éviter toute re-création accidentelle d'un événement jumeau) :
+
+    * ``qhse`` (XQHS3) — ouvre un ``ControleReception`` si un
+      ``PlanControleReception`` couvre le produit/catégorie reçu (contrôle
+      qualité à réception + quarantaine) ;
+    * ``installations`` (YPROC3, à construire séparément) — crée la provision
+      GR/IR (``ReceptionNonFacturee``).
+
+    ``stock`` n'importe ni ``qhse`` ni ``installations`` : chaque abonné se
+    câble dans son propre ``apps.py`` ``ready()``.
 """
 import django.dispatch
 
@@ -87,3 +107,8 @@ document_pdf_generated = django.dispatch.Signal()
 # Destiné à être abonné par l'app comptable pour matérialiser un ``Paiement``
 # et rapprocher la facture — core n'importe jamais l'app comptable lui-même.
 payment_captured = django.dispatch.Signal()
+
+# Émis à la CONFIRMATION d'une réception fournisseur (XQHS3 / YPROC3).
+# Arguments : reception (stock.ReceptionFournisseur), company, user.
+# cf. docstring du module ci-dessus pour la carte des deux abonnés attendus.
+reception_fournisseur_confirmee = django.dispatch.Signal()

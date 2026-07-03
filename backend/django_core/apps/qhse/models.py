@@ -40,6 +40,14 @@ class NonConformite(models.Model):
         RESOLUE = 'resolue', 'Résolue'
         CLOTUREE = 'cloturee', 'Clôturée'
 
+    # ── XQHS2 — Disposition (que devient le produit/travail non conforme ?) ──
+    class Disposition(models.TextChoices):
+        REBUT = 'rebut', 'Rebut'
+        RETOUCHE = 'retouche', 'Retouche'
+        RETOUR_FOURNISSEUR = 'retour_fournisseur', 'Retour fournisseur'
+        ACCEPTE_EN_ETAT = 'accepte_en_etat', "Accepté en l'état"
+        TRI_RECONTROLE = 'tri_recontrole', 'Tri / recontrôle'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -82,6 +90,42 @@ class NonConformite(models.Model):
     )
     date_detection = models.DateField(
         null=True, blank=True, verbose_name='Date de détection')
+    # ── XQHS2 — Disposition tracée (qui/quand) + coût interne ────────────────
+    disposition = models.CharField(
+        max_length=20, choices=Disposition.choices,
+        blank=True, default='', verbose_name='Disposition')
+    disposition_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_ncr_dispositions',
+        verbose_name='Disposition posée par',
+    )
+    disposition_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Disposition posée le')
+    # Coût interne de la disposition — JAMAIS client-facing (même règle que
+    # `stock.Produit.prix_achat`).
+    cout_disposition = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        null=True, blank=True, verbose_name='Coût de la disposition (interne)')
+    # Référence LÂCHE au fournisseur (stock.Fournisseur) — FK-chaîne, jamais un
+    # import cross-app de modèle. Posée quand disposition = retour_fournisseur.
+    fournisseur = models.ForeignKey(
+        'stock.Fournisseur',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_ncr_retours',
+        verbose_name='Fournisseur (retour)',
+    )
+    # XQHS4 — code de défaut normalisé (remplace/complète `origine` texte
+    # libre pour permettre le Pareto). Nullable/additif.
+    code_defaut = models.ForeignKey(
+        'CodeDefaut',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='non_conformites',
+        verbose_name='Code de défaut',
+    )
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -169,6 +213,104 @@ class ActionCorrectivePreventive(models.Model):
 
     def __str__(self):
         return f'{self.get_type_action_display()} — {self.description[:40]}'
+
+
+# ── XQHS2 — Dérogation (acceptation en l'état bornée) ───────────────────────
+
+class Derogation(models.Model):
+    """Acceptation en l'état bornée (dérogation) liée à une NCR (XQHS2).
+
+    Une disposition ``accepte_en_etat`` peut nécessiter une dérogation formelle
+    bornée dans le temps OU en quantité : justification, évaluation du risque,
+    approbateur, et une ``date_expiration`` avec relance à échéance (même
+    pattern que ``ConformiteEnvironnementale.prealerte_jours`` — QHSE38).
+
+    Le ``statut_calcule(today)`` dérive l'état réel : ``expiree`` si l'échéance
+    est dépassée, sinon le ``statut`` enregistré. Multi-société via ``company``
+    posée côté serveur. Entièrement additif.
+    """
+    class Statut(models.TextChoices):
+        ACTIVE = 'active', 'Active'
+        EXPIREE = 'expiree', 'Expirée'
+        CLOTUREE = 'cloturee', 'Clôturée'
+
+    PREALERTE_JOURS_DEFAUT = 15
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_derogations',
+        verbose_name='Société',
+    )
+    non_conformite = models.ForeignKey(
+        NonConformite,
+        on_delete=models.CASCADE,
+        related_name='derogations',
+        verbose_name='Non-conformité',
+    )
+    justification = models.TextField(
+        blank=True, default='', verbose_name='Justification')
+    evaluation_risque = models.TextField(
+        blank=True, default='', verbose_name='Évaluation du risque')
+    # Bornage : période ET/OU quantité (les deux facultatifs, au moins un
+    # attendu côté UI — non forcé côté modèle pour rester additif/souple).
+    quantite_max = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Quantité maximale couverte')
+    date_debut = models.DateField(
+        null=True, blank=True, verbose_name='Date de début')
+    date_expiration = models.DateField(
+        null=True, blank=True, verbose_name="Date d'expiration")
+    prealerte_jours = models.PositiveIntegerField(
+        default=PREALERTE_JOURS_DEFAUT, verbose_name='Préalerte (jours)')
+    approbateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_derogations_approuvees',
+        verbose_name='Approbateur',
+    )
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.ACTIVE, verbose_name='Statut')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Dérogation'
+        verbose_name_plural = 'Dérogations'
+        ordering = ['-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='qhse_derog_co_statut',
+            ),
+            models.Index(
+                fields=['company', 'date_expiration'],
+                name='qhse_derog_co_exp',
+            ),
+        ]
+
+    def statut_calcule(self, today=None):
+        """État réel : clôturée figée, sinon expirée si l'échéance est
+        dépassée, sinon le statut enregistré. Lecture seule."""
+        from django.utils import timezone
+        if self.statut == self.Statut.CLOTUREE:
+            return self.Statut.CLOTUREE
+        if today is None:
+            today = timezone.localdate()
+        if self.date_expiration is not None and self.date_expiration < today:
+            return self.Statut.EXPIREE
+        return self.statut
+
+    def save(self, *args, **kwargs):
+        # Le statut n'est auto-basculé sur EXPIREE que s'il n'a pas déjà été
+        # clôturé manuellement — la clôture reste une action explicite.
+        if self.statut != self.Statut.CLOTUREE:
+            self.statut = self.statut_calcule()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'Dérogation NCR#{self.non_conformite_id} — {self.get_statut_display()}'
 
 
 # ── QHSE2 — ITP (Inspection & Test Plan) ───────────────────────────────────
@@ -359,6 +501,15 @@ class ReleveControle(models.Model):
         null=True, blank=True,
         related_name='qhse_releves_effectues',
         verbose_name='Relevé par',
+    )
+    # XQHS4 — code de défaut normalisé posé sur un relevé en ÉCHEC
+    # (``conforme=False``). Nullable/additif.
+    code_defaut = models.ForeignKey(
+        'CodeDefaut',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='releves_controle',
+        verbose_name='Code de défaut',
     )
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
@@ -1786,6 +1937,14 @@ class Incident(models.Model):
         related_name='qhse_incidents_declares',
         verbose_name='Déclaré par',
     )
+    # XQHS4 — code de défaut normalisé posé sur un incident. Nullable/additif.
+    code_defaut = models.ForeignKey(
+        'CodeDefaut',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='incidents',
+        verbose_name='Code de défaut',
+    )
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -1900,6 +2059,41 @@ class DeclarationCnss(models.Model):
         default=Statut.A_DECLARER, verbose_name='Statut')
     notes = models.TextField(
         blank=True, default='', verbose_name='Notes')
+    # ── XQHS1 — jours d'ITT + certificat/consolidation/conciliation ─────────
+    # ``jours_itt`` est SAISI/COPIÉ à la création comme ``date_accident`` : la
+    # source RH vivante reste ``rh.AccidentTravail.nb_jours_arret`` (pas de
+    # double saisie synchronisée en continu, juste un instantané au moment de
+    # la déclaration QHSE).
+    jours_itt = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name="Jours d'incapacité temporaire de travail (ITT)")
+    date_certificat_initial = models.DateField(
+        null=True, blank=True,
+        verbose_name='Date du certificat médical initial')
+    date_consolidation = models.DateField(
+        null=True, blank=True,
+        verbose_name='Date de consolidation / guérison')
+
+    class ConciliationStatut(models.TextChoices):
+        NON_REQUISE = 'non_requise', 'Non requise'
+        A_FAIRE = 'a_faire', 'À faire'
+        EN_COURS = 'en_cours', 'En cours'
+        FAITE = 'faite', 'Faite'
+
+    conciliation_statut = models.CharField(
+        max_length=15, choices=ConciliationStatut.choices,
+        default=ConciliationStatut.NON_REQUISE,
+        verbose_name='Statut de la conciliation préalable')
+    # ── XQHS1 — volet maladie professionnelle (MP) ───────────────────────────
+    # Réutilise la même mécanique d'échéances ; ``est_maladie_professionnelle``
+    # gate l'affichage du volet MP côté UI sans dupliquer le modèle.
+    est_maladie_professionnelle = models.BooleanField(
+        default=False, verbose_name='Maladie professionnelle')
+    type_maladie_professionnelle = models.CharField(
+        max_length=120, blank=True, default='',
+        verbose_name='Type MP (tableau marocain)')
+    exposition_mp = models.TextField(
+        blank=True, default='', verbose_name="Exposition (agent, durée, poste)")
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
     date_modification = models.DateTimeField(
@@ -1964,6 +2158,121 @@ class DeclarationCnss(models.Model):
     def __str__(self):
         return (f'Décl. CNSS accident#{self.accident_travail_id} — '
                 f'{self.get_statut_display()}')
+
+
+# ── XQHS1 — Checklist des étapes légales AT/MP (loi 18-12) ──────────────────
+
+class EtapeDeclarationAt(models.Model):
+    """Étape légale datée de la chaîne de déclaration AT/MP (loi 18-12, XQHS1).
+
+    La loi 18-12 impose une CHAÎNE d'étapes (pas une échéance unique) :
+
+    * ``avis_employeur`` — avis à l'employeur/assureur sous 48 h ;
+    * ``dossier_assureur`` — dossier de déclaration à l'assureur AT sous 5 j ;
+    * ``information_inspection`` — information de l'inspection du travail dans
+      le même délai (5 j) ;
+    * ``certificat_medical`` — certificat médical initial (en 3 exemplaires) ;
+    * ``suivi_itt`` — suivi des jours d'ITT ;
+    * ``certificat_guerison`` — certificat de guérison / consolidation ;
+    * ``conciliation`` — étape de conciliation préalable obligatoire.
+
+    Chaque étape porte une ``echeance`` CALCULÉE côté serveur (jamais lue du
+    corps de requête) à partir de ``declaration.date_accident`` + un délai en
+    heures/jours propre au type d'étape (cf. ``services.instancier_etapes_at``),
+    un statut (``a_faire``/``fait``/``hors_delai``) et une date de réalisation.
+    Une pièce jointe peut être rattachée via ``records.Attachment`` (ContentType
+    générique, comme ``ReleveControle``/``NonConformite``).
+
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    class TypeEtape(models.TextChoices):
+        AVIS_EMPLOYEUR = 'avis_employeur', 'Avis à l\'employeur/assureur (48 h)'
+        DOSSIER_ASSUREUR = 'dossier_assureur', \
+            "Dossier de déclaration à l'assureur AT (5 j)"
+        INFORMATION_INSPECTION = 'information_inspection', \
+            "Information de l'inspection du travail (5 j)"
+        CERTIFICAT_MEDICAL = 'certificat_medical', \
+            'Certificat médical initial (3 exemplaires)'
+        SUIVI_ITT = 'suivi_itt', "Suivi des jours d'ITT"
+        CERTIFICAT_GUERISON = 'certificat_guerison', \
+            'Certificat de guérison / consolidation'
+        CONCILIATION = 'conciliation', 'Conciliation préalable obligatoire'
+
+    class Statut(models.TextChoices):
+        A_FAIRE = 'a_faire', 'À faire'
+        FAIT = 'fait', 'Fait'
+        HORS_DELAI = 'hors_delai', 'Hors délai'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_etapes_declaration_at',
+        verbose_name='Société',
+    )
+    declaration = models.ForeignKey(
+        DeclarationCnss,
+        on_delete=models.CASCADE,
+        related_name='etapes',
+        verbose_name='Déclaration CNSS',
+    )
+    type_etape = models.CharField(
+        max_length=25, choices=TypeEtape.choices, verbose_name="Type d'étape")
+    # Échéance calculée côté serveur (cf. services.instancier_etapes_at) —
+    # jamais lue du corps de requête.
+    echeance = models.DateTimeField(
+        null=True, blank=True, verbose_name='Échéance')
+    fait_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Fait le')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices,
+        default=Statut.A_FAIRE, verbose_name='Statut')
+    notes = models.TextField(blank=True, default='', verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Étape de déclaration AT/MP'
+        verbose_name_plural = 'Étapes de déclaration AT/MP'
+        ordering = ['declaration', 'echeance', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['declaration', 'type_etape'],
+                name='qhse_etapeat_decl_type_uniq',
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='qhse_etapeat_co_statut',
+            ),
+            models.Index(
+                fields=['company', 'echeance'],
+                name='qhse_etapeat_co_echeance',
+            ),
+        ]
+
+    def statut_calcule(self, now=None):
+        """État réel de l'étape : fait / hors délai / à faire.
+
+        ``fait`` si ``fait_le`` est renseigné (figé, indépendant de l'échéance) ;
+        sinon ``hors_delai`` si l'échéance est strictement dépassée ; sinon
+        ``a_faire``. Lecture seule.
+        """
+        from django.utils import timezone
+        if self.fait_le is not None:
+            return self.Statut.FAIT
+        if now is None:
+            now = timezone.now()
+        if self.echeance is not None and self.echeance < now:
+            return self.Statut.HORS_DELAI
+        return self.Statut.A_FAIRE
+
+    def save(self, *args, **kwargs):
+        self.statut = self.statut_calcule()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'{self.get_type_etape_display()} — {self.get_statut_display()}'
 
 
 # ── QHSE31 — Analyse d'incident (arbre des causes) → CAPA ───────────────────
@@ -2869,3 +3178,258 @@ class IndicateurESG(models.Model):
 
     def __str__(self):
         return f'{self.code or self.libelle} ({self.get_pilier_display()})'
+
+
+# ── XQHS3 — Contrôle qualité à la réception fournisseur + quarantaine ───────
+
+class PlanControleReception(models.Model):
+    """Plan de contrôle qualité à la réception fournisseur (XQHS3).
+
+    Défini par produit OU par catégorie (au moins l'un des deux — non forcé
+    côté modèle) : quand une ``stock.ReceptionFournisseur`` est confirmée
+    (événement ``core.events.reception_fournisseur_confirmee``), tout produit
+    couvert par un plan actif déclenche un ``ControleReception``. Le
+    ``taux_echantillonnage`` (%) indique la part à contrôler ; les points de
+    contrôle vivent dans ``PointControleReception`` (relation 1-N, réutilise le
+    pattern ``PointControleModele``).
+
+    Références FK-CHAÎNE vers ``stock`` (jamais un import de modèle).
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_plans_controle_reception',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=255, verbose_name='Nom')
+    # Référence LÂCHE au produit (stock.Produit) — FK-chaîne.
+    produit = models.ForeignKey(
+        'stock.Produit',
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='qhse_plans_controle_reception',
+        verbose_name='Produit',
+    )
+    # Référence LÂCHE à la catégorie (stock.Categorie) — FK-chaîne.
+    categorie = models.ForeignKey(
+        'stock.Categorie',
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='qhse_plans_controle_reception',
+        verbose_name='Catégorie',
+    )
+    taux_echantillonnage = models.PositiveSmallIntegerField(
+        default=100, verbose_name="Taux d'échantillonnage (%)")
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Plan de contrôle réception'
+        verbose_name_plural = 'Plans de contrôle réception'
+        ordering = ['-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'produit'],
+                name='qhse_plancr_co_produit',
+            ),
+            models.Index(
+                fields=['company', 'categorie'],
+                name='qhse_plancr_co_categ',
+            ),
+        ]
+
+    def __str__(self):
+        return self.nom
+
+
+class PointControleReception(models.Model):
+    """Point de contrôle d'un ``PlanControleReception`` (XQHS3).
+
+    Mirroir de ``PointControleModele`` (ITP) : décrit un point à vérifier à la
+    réception (visuel/mesure/document/essai), sans point d'arrêt (pas de
+    blocage bloquant côté modèle — l'advisory se fait au niveau du sélecteur).
+    """
+    class TypeReleve(models.TextChoices):
+        MESURE = 'mesure', 'Mesure'
+        VISUEL = 'visuel', 'Visuel'
+        DOCUMENT = 'document', 'Document'
+        ESSAI = 'essai', 'Essai'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_points_controle_reception',
+        verbose_name='Société',
+    )
+    plan = models.ForeignKey(
+        PlanControleReception,
+        on_delete=models.CASCADE,
+        related_name='points',
+        verbose_name='Plan de contrôle réception',
+    )
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    intitule = models.CharField(max_length=255, verbose_name='Intitulé')
+    type_releve = models.CharField(
+        max_length=10, choices=TypeReleve.choices,
+        default=TypeReleve.VISUEL, verbose_name='Type de relevé')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Point de contrôle réception'
+        verbose_name_plural = 'Points de contrôle réception'
+        ordering = ['plan', 'ordre', 'id']
+
+    def __str__(self):
+        return self.intitule
+
+
+class ControleReception(models.Model):
+    """Contrôle qualité exécuté à la réception d'un produit sous plan (XQHS3).
+
+    Une ``ControleReception`` matérialise l'exécution d'un
+    ``PlanControleReception`` pour UNE réception fournisseur donnée
+    (``reception_id`` — FK-CHAÎNE vers ``stock.ReceptionFournisseur``, jamais
+    un import de modèle). Le ``verdict`` (accepté / refusé / quarantaine) est
+    posé par le contrôleur ; un verdict ``refuse`` crée automatiquement une
+    ``NonConformite`` pré-remplie (disposition XQHS2) via
+    ``services.lever_ncr_controle_reception``.
+
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    class Verdict(models.TextChoices):
+        EN_ATTENTE = 'en_attente', 'En attente'
+        ACCEPTE = 'accepte', 'Accepté'
+        REFUSE = 'refuse', 'Refusé'
+        QUARANTAINE = 'quarantaine', 'Quarantaine'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_controles_reception',
+        verbose_name='Société',
+    )
+    plan = models.ForeignKey(
+        PlanControleReception,
+        on_delete=models.PROTECT,
+        related_name='controles',
+        verbose_name='Plan de contrôle réception',
+    )
+    # Référence LÂCHE à la réception fournisseur (stock.ReceptionFournisseur).
+    reception_id = models.PositiveIntegerField(
+        verbose_name='ID de la réception fournisseur')
+    # Référence LÂCHE au produit contrôlé (stock.Produit).
+    produit_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du produit')
+    verdict = models.CharField(
+        max_length=15, choices=Verdict.choices,
+        default=Verdict.EN_ATTENTE, verbose_name='Verdict')
+    controleur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_controles_reception',
+        verbose_name='Contrôleur',
+    )
+    notes = models.TextField(blank=True, default='', verbose_name='Notes')
+    # Pont vers la NCR créée automatiquement sur un verdict REFUSE (XQHS2).
+    non_conformite = models.ForeignKey(
+        NonConformite,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_controles_reception',
+        verbose_name='Non-conformité liée',
+    )
+    date_controle = models.DateTimeField(
+        null=True, blank=True, verbose_name='Contrôlé le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Contrôle réception'
+        verbose_name_plural = 'Contrôles réception'
+        ordering = ['-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reception_id', 'plan'],
+                name='qhse_ctrlrecep_co_recep_plan_uniq',
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'verdict'],
+                name='qhse_ctrlrecep_co_verdict',
+            ),
+            models.Index(
+                fields=['company', 'reception_id'],
+                name='qhse_ctrlrecep_co_recep',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Contrôle réception#{self.reception_id} — {self.get_verdict_display()}'
+
+    @property
+    def ouvert(self):
+        """Contrôle non encore statué (advisory pour ``stock``)."""
+        return self.verdict == self.Verdict.EN_ATTENTE
+
+
+# ── XQHS4 — Catalogue de codes de défauts + Pareto qualité ──────────────────
+
+class CodeDefaut(models.Model):
+    """Code de défaut normalisé (référentiel company-scoped, XQHS4).
+
+    Remplace le texte libre ``NonConformite.origine`` pour permettre
+    l'agrégation des causes (Pareto). Chaque code porte un ``code`` court, un
+    ``libelle`` et une ``famille`` (regroupement de haut niveau : produit / pose
+    DC / pose AC / structure / document / fournisseur…). Seedable via
+    ``manage.py seed_codes_defaut_solaire`` (idempotent).
+
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    class Famille(models.TextChoices):
+        PRODUIT = 'produit', 'Produit'
+        POSE_DC = 'pose_dc', 'Pose DC'
+        POSE_AC = 'pose_ac', 'Pose AC'
+        STRUCTURE = 'structure', 'Structure'
+        DOCUMENT = 'document', 'Document'
+        FOURNISSEUR = 'fournisseur', 'Fournisseur'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_codes_defaut',
+        verbose_name='Société',
+    )
+    code = models.CharField(max_length=30, verbose_name='Code')
+    libelle = models.CharField(max_length=255, verbose_name='Libellé')
+    famille = models.CharField(
+        max_length=15, choices=Famille.choices,
+        default=Famille.AUTRE, verbose_name='Famille')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Code de défaut'
+        verbose_name_plural = 'Codes de défaut'
+        ordering = ['famille', 'code']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code'],
+                name='qhse_codedefaut_co_code_uniq',
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'famille'],
+                name='qhse_codedefaut_co_famille',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.code} — {self.libelle}'

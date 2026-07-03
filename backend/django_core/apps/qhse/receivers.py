@@ -79,3 +79,33 @@ def _escalader_incident_critique(sender, incident, company, user, gravite,
         logger.warning(
             'QHSE32 : escalade incident critique échouée pour %s : %s',
             getattr(incident, 'pk', '?'), exc)
+
+
+# ── XQHS3 — Contrôle qualité à la réception fournisseur ─────────────────────
+#
+# ``reception_fournisseur_confirmee`` est un événement INTER-app véritable
+# (émetteur = ``stock``, abonné = ``qhse``) : il vit dans ``core.events`` (pas
+# ici). qhse s'y abonne pour ouvrir un ``ControleReception`` par plan actif
+# couvrant les produits reçus — sans jamais importer ``stock.models``.
+from core.events import reception_fournisseur_confirmee  # noqa: E402
+
+
+@receiver(
+    reception_fournisseur_confirmee,
+    dispatch_uid="qhse_open_controle_on_reception_confirmee")
+def _ouvrir_controles_reception(sender, reception, company, user, **kwargs):
+    """À la confirmation d'une réception fournisseur, ouvre les
+    ``ControleReception`` déclenchés par les plans actifs (XQHS3).
+
+    Best-effort et idempotent : une erreur ne casse JAMAIS la confirmation de
+    la réception (c'est ``stock`` qui émet, dans un bloc déjà best-effort, mais
+    on reste défensif ici aussi car un futur émetteur pourrait ne pas l'être).
+    """
+    from apps.qhse.services import instancier_controles_reception
+
+    try:
+        instancier_controles_reception(reception, company)
+    except Exception as exc:  # noqa: BLE001 — best-effort, ne casse jamais
+        logger.warning(
+            'XQHS3 : ouverture du contrôle réception échouée pour '
+            'réception#%s : %s', getattr(reception, 'pk', '?'), exc)
