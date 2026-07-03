@@ -205,6 +205,23 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
         create_with_reference(
             BonCommandeFournisseur, 'BCF', company, _save)
 
+    def create(self, request, *args, **kwargs):
+        # XPUR1 — WARNING (non bloquant) si le fournisseur a un document de
+        # conformité manquant/expiré ; ajouté à la réponse sans jamais
+        # empêcher la création du BCF.
+        response = super().create(request, *args, **kwargs)
+        if response.status_code == status.HTTP_201_CREATED:
+            try:
+                from ..services import bcf_warning_conformite
+                bc = BonCommandeFournisseur.objects.select_related(
+                    'fournisseur').get(pk=response.data['id'])
+                warning = bcf_warning_conformite(bc.fournisseur)
+                if warning:
+                    response.data['conformite_warning'] = warning
+            except Exception:  # noqa: BLE001 — le warning ne casse jamais
+                pass
+        return response
+
     @action(detail=True, methods=['post'], url_path='envoyer')
     def envoyer(self, request, pk=None):
         bc = self.get_object()

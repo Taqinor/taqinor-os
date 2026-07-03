@@ -21,6 +21,9 @@ from .paiement_fournisseur import PaiementFournisseurViewSet
 from .inventaire_session import InventaireSessionViewSet
 from .kit import KitProduitViewSet
 from .fiche_technique import FicheTechniqueViewSet
+from .conformite_fournisseur import (
+    DocumentConformiteFournisseurViewSet, AchatsParametresViewSet,
+)
 
 __all__ = [
     'ProduitViewSet',
@@ -40,4 +43,6 @@ __all__ = [
     'InventaireSessionViewSet',
     'KitProduitViewSet',
     'FicheTechniqueViewSet',
+    'DocumentConformiteFournisseurViewSet',
+    'AchatsParametresViewSet',
 ]

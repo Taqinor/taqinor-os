@@ -9,6 +9,7 @@ from .models import (
     InventaireSession, LigneInventaire,
     KitProduit, KitComposant,
     FicheTechnique,
+    DocumentConformiteFournisseur, AchatsParametres,
 )
 
 
@@ -856,3 +857,46 @@ class FicheTechniqueSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'Produit hors de votre entreprise.')
         return value
+
+
+# ── XPUR1 — conformité fournisseur & paramètres achats ──────────────────────
+
+class DocumentConformiteFournisseurSerializer(serializers.ModelSerializer):
+    type_document_display = serializers.CharField(
+        source='get_type_document_display', read_only=True)
+    fournisseur_nom = serializers.CharField(
+        source='fournisseur.nom', read_only=True)
+    est_valide = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DocumentConformiteFournisseur
+        fields = [
+            'id', 'fournisseur', 'fournisseur_nom', 'type_document',
+            'type_document_display', 'reference', 'date_emission',
+            'date_expiration', 'obligatoire', 'note', 'est_valide',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'created_by', 'date_creation', 'date_modification',
+        ]
+
+    def get_est_valide(self, obj):
+        return obj.est_valide()
+
+    def validate_fournisseur(self, value):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is not None and value.company_id != company.id:
+            raise serializers.ValidationError(
+                'Fournisseur hors de votre entreprise.')
+        return value
+
+
+class AchatsParametresSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AchatsParametres
+        fields = [
+            'id', 'bloquer_paiement_conformite_expiree',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']

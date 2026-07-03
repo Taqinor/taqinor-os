@@ -48,6 +48,12 @@ class EventType(models.TextChoices):
     CHAT_MESSAGE = 'chat_message', 'Nouveau message'
     CHAT_MENTION = 'chat_mention', 'Vous avez été mentionné'
     DIGEST = 'digest', 'Récapitulatif'
+    # XPUR1 — document de conformité fournisseur (ARF/CNSS/RC/assurance)
+    # expiré ou bientôt expiré.
+    SUPPLIER_DOC_EXPIRING = (
+        'supplier_doc_expiring', 'Document fournisseur bientôt expiré')
+    # XPUR7 — BCF envoyé en retard (prévue/confirmée dépassée, non reçu).
+    BCF_LATE = 'bcf_late', 'Bon de commande fournisseur en retard'
 
 
 class Channel(models.TextChoices):

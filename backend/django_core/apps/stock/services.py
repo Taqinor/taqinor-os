@@ -1658,3 +1658,90 @@ def exploser_kit_par_id(company, kit_id, quantite_kit=1):
     if kit is None:
         return None
     return exploser_kit(kit, quantite_kit)
+
+
+# ── XPUR1 — conformité fournisseur : warning BCF + gate paiement ───────────
+
+def fournisseur_conformite_manquante(fournisseur):
+    """XPUR1 — liste les documents de conformité OBLIGATOIRES manquants ou
+    expirés d'un fournisseur (liste de dicts ``{type_document, motif}``).
+    Vide = fournisseur en règle (ou sans document requis renseigné). Ne lève
+    jamais d'exception : appelé au fil de l'eau (warning + gate paiement)."""
+    problemes = []
+    docs = list(fournisseur.documents_conformite.filter(obligatoire=True))
+    for doc in docs:
+        if not doc.est_valide():
+            problemes.append({
+                'type_document': doc.type_document,
+                'type_document_display': doc.get_type_document_display(),
+                'motif': 'expiré' if doc.date_expiration else 'sans date',
+            })
+    return problemes
+
+
+def bcf_warning_conformite(fournisseur):
+    """XPUR1 — message WARNING (non bloquant) à afficher à la création d'un
+    BCF quand le fournisseur a un document de conformité manquant/expiré.
+    None si rien à signaler."""
+    problemes = fournisseur_conformite_manquante(fournisseur)
+    if not problemes:
+        return None
+    libelles = ', '.join(p['type_document_display'] for p in problemes)
+    return (f"Attention : {fournisseur.nom} a un ou plusieurs documents de "
+            f"conformité manquants/expirés ({libelles}).")
+
+
+def check_paiement_conformite_gate(company, fournisseur):
+    """XPUR1 — lève ValueError si le PARAMÈTRE société de blocage paiement
+    est actif ET que le fournisseur a un document de conformité obligatoire
+    manquant/expiré. No-op (comportement historique) si le paramètre est OFF
+    (défaut)."""
+    from .models import AchatsParametres
+    parametres = AchatsParametres.for_company(company)
+    if not parametres.bloquer_paiement_conformite_expiree:
+        return
+    problemes = fournisseur_conformite_manquante(fournisseur)
+    if problemes:
+        libelles = ', '.join(p['type_document_display'] for p in problemes)
+        raise ValueError(
+            f"Paiement bloqué : {fournisseur.nom} a un document de "
+            f"conformité manquant/expiré ({libelles}).")
+
+
+def notify_expiring_conformite_documents(company, jours=30):
+    """XPUR1 — notifie les responsables/admins des documents de conformité
+    fournisseur expirant sous ``jours`` jours (ou déjà expirés). Best-effort :
+    une erreur de notification n'interrompt jamais l'appelant. Renvoie le
+    nombre de documents notifiés."""
+    from datetime import timedelta
+    from django.utils import timezone
+    from .models import DocumentConformiteFournisseur
+    seuil = timezone.now().date() + timedelta(days=jours)
+    docs = DocumentConformiteFournisseur.objects.filter(
+        company=company, obligatoire=True,
+        date_expiration__isnull=False, date_expiration__lte=seuil,
+    ).select_related('fournisseur')
+    count = 0
+    for doc in docs:
+        try:
+            from apps.notifications.services import notify_many
+            from apps.notifications.models import EventType
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            recipients = User.objects.filter(
+                company=company, is_active=True,
+                role_legacy__in=['responsable', 'admin'])
+            titre = (f'Document fournisseur bientôt expiré '
+                     f'({doc.fournisseur.nom})')
+            corps = (f'{doc.get_type_document_display()} de '
+                     f'{doc.fournisseur.nom} expire le '
+                     f'{doc.date_expiration}.')
+            notify_many(
+                recipients, EventType.SUPPLIER_DOC_EXPIRING,
+                title=titre, body=corps, company=company)
+            count += 1
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning(
+                'notify_expiring_conformite_documents: échec pour doc %s',
+                doc.pk)
+    return count

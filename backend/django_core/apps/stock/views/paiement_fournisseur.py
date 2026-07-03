@@ -66,6 +66,27 @@ class PaiementFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
             qs = qs.filter(facture_id=facture_id)
         return qs
 
+    def create(self, request, *args, **kwargs):
+        # XPUR1 — gate paiement : refuse la création si la société a activé
+        # le blocage et que le fournisseur a un document de conformité
+        # obligatoire manquant/expiré. No-op (comportement historique) quand
+        # le paramètre est OFF (défaut).
+        facture_id = request.data.get('facture')
+        if facture_id:
+            try:
+                from ..services import check_paiement_conformite_gate
+                facture = FactureFournisseur.objects.select_related(
+                    'fournisseur').get(
+                    pk=facture_id, company=request.user.company)
+                check_paiement_conformite_gate(
+                    request.user.company, facture.fournisseur)
+            except FactureFournisseur.DoesNotExist:
+                pass
+            except ValueError as exc:
+                return Response(
+                    {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return super().create(request, *args, **kwargs)
+
     def perform_create(self, serializer):
         from ..services import recompute_facture_fournisseur_statut
         with transaction.atomic():

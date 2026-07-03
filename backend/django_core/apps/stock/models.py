@@ -168,6 +168,104 @@ class SousTraitantProfile(models.Model):
         return f'{self.fournisseur.nom} · {self.get_metier_display()}'
 
 
+class AchatsParametres(models.Model):
+    """XPUR1 — paramètres achats/fournisseurs PAR SOCIÉTÉ (un seul par
+    company, créé paresseusement via ``get_or_create``). Regroupe les
+    interrupteurs fins que les tâches XPUR ajoutent au fil de l'eau
+    (blocage paiement sur conformité expirée XPUR1, RAS-TVA XPUR2,
+    tolérances 3-voies XPUR10…) SANS toucher à ``apps.parametres`` (foundation
+    app hors périmètre de ce lot) ni dupliquer un référentiel par tâche.
+    Défauts = comportement actuel inchangé (tout OFF / tolérances à 0)."""
+
+    company = models.OneToOneField(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='achats_parametres')
+    # XPUR1 — quand actif, un PaiementFournisseur est refusé si le
+    # fournisseur a un document de conformité OBLIGATOIRE manquant/expiré.
+    bloquer_paiement_conformite_expiree = models.BooleanField(default=False)
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Paramètres achats'
+        verbose_name_plural = 'Paramètres achats'
+
+    def __str__(self):
+        return f'Paramètres achats · {self.company_id}'
+
+    @classmethod
+    def for_company(cls, company):
+        """Renvoie (en le créant si besoin) le réglage de la société. Défauts
+        = comportement historique inchangé."""
+        obj, _created = cls.objects.get_or_create(company=company)
+        return obj
+
+
+class DocumentConformiteFournisseur(models.Model):
+    """XPUR1 — pièce de conformité fiscale/administrative d'un FOURNISSEUR
+    (matériel ET service — DC34 a fondu les deux populations dans le même
+    ``Fournisseur``, donc ce modèle sert les deux sans dupliquer FG307).
+
+    Miroir de ``installations.AttestationSousTraitant`` (FG307) mais posé côté
+    ``apps.stock`` puisque ``Fournisseur`` y vit désormais. Une pièce expirée
+    (ou manquante quand ``obligatoire``) déclenche un WARNING à la création
+    d'un BCF et peut bloquer le ``PaiementFournisseur`` (paramétrable par
+    société via ``CompanyProfile.bloquer_paiement_conformite_expiree`` —
+    XPUR1). Additif, multi-tenant (company posée côté serveur)."""
+
+    class Type(models.TextChoices):
+        ARF = 'arf', 'Attestation de régularité fiscale (ARF)'
+        CNSS = 'cnss', 'Attestation CNSS'
+        RC = 'rc', 'Registre du commerce (RC)'
+        ASSURANCE = 'assurance', 'Assurance'
+        AUTRE = 'autre', 'Autre pièce'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='documents_conformite_fournisseur')
+    fournisseur = models.ForeignKey(
+        Fournisseur, on_delete=models.CASCADE,
+        related_name='documents_conformite')
+    type_document = models.CharField(
+        max_length=20, choices=Type.choices, default=Type.AUTRE)
+    reference = models.CharField(max_length=120, blank=True, null=True)
+    date_emission = models.DateField(null=True, blank=True)
+    date_expiration = models.DateField(null=True, blank=True)
+    obligatoire = models.BooleanField(default=True)
+    note = models.TextField(blank=True, null=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='documents_conformite_fournisseur_crees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Document de conformité fournisseur'
+        verbose_name_plural = 'Documents de conformité fournisseur'
+        ordering = ['fournisseur_id', 'type_document']
+        indexes = [
+            models.Index(fields=['company', 'fournisseur'],
+                         name='idx_docf_co_fourn'),
+            models.Index(fields=['company', 'date_expiration'],
+                         name='idx_docf_co_expir'),
+        ]
+
+    def __str__(self):
+        return f'{self.get_type_document_display()} · {self.fournisseur_id}'
+
+    def est_valide(self, a_la_date=None):
+        """Vrai si la pièce est encore valide à la date donnée (aujourd'hui
+        par défaut). Sans date d'expiration = considérée valide (pièce sans
+        échéance)."""
+        from django.utils import timezone
+        if self.date_expiration is None:
+            return True
+        ref = a_la_date or timezone.now().date()
+        return self.date_expiration >= ref
+
+
 class Marque(models.Model):
     """Marque produit gérée (Paramètres → Stock). `Produit.marque` reste un
     texte libre (compat ascendante) ; cette liste sert de référentiel + ajout
