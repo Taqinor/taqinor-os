@@ -2350,7 +2350,8 @@ def marquer_signe(demande, *, provider_ref=None, date_signature=None):
     if demande.statut in (SIGNATURE_ANNULE, SIGNATURE_REFUSE):
         return demande
     champs = []
-    if demande.statut != SIGNATURE_SIGNE:
+    etait_deja_signe = demande.statut == SIGNATURE_SIGNE
+    if not etait_deja_signe:
         demande.statut = SIGNATURE_SIGNE
         champs.append('statut')
     if demande.date_signature is None:
@@ -2361,6 +2362,18 @@ def marquer_signe(demande, *, provider_ref=None, date_signature=None):
         champs.append('provider_ref')
     if champs:
         demande.save(update_fields=champs)
+    # XGED4 — À la PREMIÈRE complétion (jamais en ré-appel idempotent) : génère
+    # le certificat + classe automatiquement, SANS action manuelle. Best-effort
+    # total (try/except large) — un souci de rendu/stockage ne doit JAMAIS
+    # empêcher la signature elle-même d'être enregistrée.
+    if not etait_deja_signe:
+        try:
+            classer_signature_completee(demande)
+        except Exception:  # pragma: no cover - défensif, jamais bloquant.
+            import logging
+            logging.getLogger(__name__).warning(
+                'XGED4: classement automatique après signature échoué '
+                'pour la demande %s', demande.pk, exc_info=True)
     return demande
 
 
@@ -2944,6 +2957,181 @@ def rendre_pdf_signe_avec_champs(demande):
     return _flatten_champs_pdf(
         data, champs, signature_texte=demande.signature_texte,
         signature_tracee=demande.signature_tracee)
+
+
+# ── XGED4 — Certificat de complétion + classement automatique ───────────────
+
+def _evenements_cerentonie(demande):
+    """XGED4 — Séquence horodatée des événements d'une demande de signature
+    (demande → notification(s) → signature/refus), triée chronologiquement.
+
+    Best-effort et purement descriptive : ne lève jamais, utilisée seulement
+    pour l'affichage du certificat."""
+    evenements = [('Demande créée', demande.date_demande)]
+    for signataire in demande.signataires.all():
+        if signataire.notifie_le:
+            evenements.append(
+                (f'{signataire.nom} notifié', signataire.notifie_le))
+        if signataire.date_action:
+            libelle = ('signé' if signataire.statut == 'signe' else 'refusé')
+            evenements.append(
+                (f'{signataire.nom} a {libelle}', signataire.date_action))
+    if demande.date_signature:
+        evenements.append(('Demande signée', demande.date_signature))
+    if demande.refuse_le:
+        evenements.append(('Demande refusée', demande.refuse_le))
+    return sorted(
+        (e for e in evenements if e[1] is not None), key=lambda e: e[1])
+
+
+def _certificat_html(demande):
+    """XGED4 — HTML du certificat de complétion (squelette imprimable minimal,
+    même esprit que `_modele_html_document` GED27 — jamais `/proposal`)."""
+    document = demande.document
+    signataires = list(demande.signataires.all())
+    lignes_signataires = ''.join(
+        f"<tr><td>{s.nom}</td><td>{s.email or '—'}</td>"
+        f"<td>{s.get_role_display()}</td><td>{s.get_statut_display()}</td></tr>"
+        for s in signataires
+    ) or (
+        f"<tr><td>{demande.signataire_nom}</td>"
+        f"<td>{demande.signataire_email}</td><td>Signataire</td>"
+        f"<td>{demande.get_statut_display()}</td></tr>"
+    )
+    evenements_html = ''.join(
+        f"<li>{libelle} — {quand:%Y-%m-%d %H:%M}</li>"
+        for libelle, quand in _evenements_cerentonie(demande)
+    )
+    geoloc = getattr(demande, 'geolocalisation', '') or 'Non transmise'
+    return (
+        "<!DOCTYPE html><html lang='fr'><head><meta charset='utf-8'>"
+        "<style>"
+        "body{font-family:sans-serif;font-size:10pt;color:#1a1a1a;"
+        "margin:2cm;line-height:1.5;}"
+        "h1{font-size:15pt;border-bottom:2px solid #2b5cab;padding-bottom:6px;}"
+        "table{width:100%;border-collapse:collapse;margin:10px 0;}"
+        "td,th{border:1px solid #ccc;padding:4px 8px;text-align:left;}"
+        "</style></head><body>"
+        "<h1>Certificat de complétion de signature électronique</h1>"
+        f"<p><strong>Document :</strong> {document.nom}</p>"
+        f"<p><strong>Statut final :</strong> {demande.get_statut_display()}</p>"
+        f"<p><strong>Adresse IP :</strong> {demande.adresse_ip or 'Non transmise'}</p>"
+        f"<p><strong>User-Agent :</strong> {demande.user_agent or 'Non transmis'}</p>"
+        f"<p><strong>Géolocalisation :</strong> {geoloc}</p>"
+        f"<p><strong>Méthode :</strong> "
+        f"{'Tracée' if demande.signature_tracee else 'Nom tapé'}</p>"
+        f"<p><strong>Hash du document signé (SHA-256) :</strong> "
+        f"{demande.hash_contenu or 'Non calculé'}</p>"
+        "<h2>Signataires</h2>"
+        f"<table><tr><th>Nom</th><th>Email</th><th>Rôle</th>"
+        f"<th>Statut</th></tr>{lignes_signataires}</table>"
+        "<h2>Séquence des événements</h2>"
+        f"<ul>{evenements_html}</ul>"
+        "</body></html>"
+    )
+
+
+def generer_certificat_completion(demande):
+    """XGED4 — Rend le certificat de complétion PDF (WeasyPrint, hors
+    `/proposal`) d'une demande de signature COMPLÉTÉE (signée).
+
+    Contenu : identités/emails des signataires, IP, user-agent, géolocalisation
+    (optionnelle — jamais requise, vide si non transmise par le navigateur),
+    méthode (tapée/tracée), séquence horodatée des événements, hash SHA-256.
+    Import de WeasyPrint FONCTION-LOCAL (même motif que `rendre_modele` GED27).
+
+    Renvoie les octets du PDF certificat."""
+    try:
+        import weasyprint
+    except Exception as exc:  # pragma: no cover - WeasyPrint est installé.
+        raise RuntimeError(
+            "WeasyPrint est requis pour générer le certificat de complétion "
+            f"mais n'a pas pu être chargé : {exc}")
+    return weasyprint.HTML(string=_certificat_html(demande)).write_pdf()
+
+
+def classer_signature_completee(demande, *, created_by=None):
+    """XGED4 — À la complétion d'une demande SIGNÉE : génère le certificat +
+    CLASSE AUTOMATIQUEMENT le document signé + son certificat dans un dossier
+    « Signés » (réutilise `deposit_document`, idempotent par source), et pose
+    un `DocumentLien` vers l'objet métier d'origine SI un lien existe déjà sur
+    le document (best-effort, jamais bloquant).
+
+    No-op silencieux si la demande n'est pas `signe` (rien à classer). Renvoie
+    un dict `{'document_signe', 'certificat', 'created'}` où `document_signe`
+    est le `Document` GED source, `certificat` le `Document` du certificat
+    déposé, et `created` un booléen (False = déjà classé, idempotent)."""
+    from .models import SIGNATURE_SIGNE
+
+    if demande.statut != SIGNATURE_SIGNE:
+        return None
+
+    company = demande.company
+    document_source = demande.document
+
+    # 1) Le document signé lui-même : dépose la VERSION COURANTE (déjà
+    #    signée/aplatie si XGED3 a produit un PDF final) dans « Signés ».
+    version = selectors_latest_version(document_source)
+    contenu = None
+    if version is not None:
+        try:
+            from apps.records.storage import fetch_attachment
+            data, err = fetch_attachment(version.file_key)
+            contenu = data if not err else None
+        except Exception:  # pragma: no cover - défensif.
+            contenu = None
+
+    document_signe, created_doc = deposit_document(
+        company=company,
+        nom=document_source.nom,
+        source_type='ged.demandesignaturedocument.document',
+        source_id=demande.pk,
+        contenu_bytes=contenu,
+        mime=(version.mime if version else 'application/pdf') or 'application/pdf',
+        description=f'Document signé — demande #{demande.pk}',
+        cabinet_nom='Signés', folder_nom='Signés',
+        created_by=created_by,
+    )
+
+    # 2) Le certificat de complétion — best-effort (WeasyPrint requis).
+    certificat_document = None
+    try:
+        certificat_bytes = generer_certificat_completion(demande)
+        certificat_document, _ = deposit_document(
+            company=company,
+            nom=f'Certificat de complétion — {document_source.nom}',
+            source_type='ged.demandesignaturedocument.certificat',
+            source_id=demande.pk,
+            contenu_bytes=certificat_bytes,
+            mime='application/pdf',
+            description=f'Certificat de complétion — demande #{demande.pk}',
+            cabinet_nom='Signés', folder_nom='Signés',
+            created_by=created_by,
+        )
+    except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        certificat_document = None
+
+    # 3) Lien vers l'objet métier d'origine, s'il existe déjà sur le document
+    #    source (best-effort — ne crée jamais de lien inventé).
+    try:
+        from .models import DocumentLien
+        liens_source = DocumentLien.objects.filter(document=document_source)
+        for lien in liens_source:
+            for cible in (document_signe, certificat_document):
+                if cible is None:
+                    continue
+                DocumentLien.objects.get_or_create(
+                    company=company, document=cible,
+                    content_type=lien.content_type, object_id=lien.object_id,
+                    defaults={'created_by': created_by})
+    except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        pass
+
+    return {
+        'document_signe': document_signe,
+        'certificat': certificat_document,
+        'created': created_doc,
+    }
 
 
 # ── GED35 — Journal d'audit d'accès aux documents (lectures) ─────────────────
