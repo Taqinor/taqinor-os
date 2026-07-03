@@ -895,6 +895,18 @@ class TacheViewSet(_GestionProjetBaseViewSet):
             qs = qs.filter(etiquettes__icontains=etiquette)
         return qs
 
+    @action(detail=False, methods=['get'], url_path='mes-taches')
+    def mes_taches(self, request):
+        """Tâches non terminées de l'utilisateur courant, tri par urgence.
+
+        Transverse à TOUS les projets de la société (XPRJ12) : tâches où
+        l'utilisateur est ``assigne`` (XPRJ10) ou affecté (directement ou via
+        une équipe, ``AffectationRessource``). Isolation garantie côté
+        sélecteur (toujours scopé à ``request.user.company``) — un utilisateur
+        ne voit jamais les tâches d'un autre.
+        """
+        return Response(selectors.mes_taches(request.user))
+
     @action(detail=True, methods=['get'], url_path='dependances')
     def dependances(self, request, pk=None):
         """Prédécesseurs & successeurs directs d'une tâche (lecture seule).

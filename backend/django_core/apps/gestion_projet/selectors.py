@@ -2323,3 +2323,105 @@ def portail_avancement_client(projet):
         'phases': phases,
         'jalons': jalons,
     }
+
+
+def _urgence_key(tache, aujourd_hui):
+    """Clé de tri d'urgence : retard > échéance proche > priorité > id.
+
+    Plus petite valeur = plus urgent. Une tâche sans ``date_fin_prevue`` est
+    considérée la MOINS urgente sur l'axe date (mais reste triée par
+    priorité). L'ordre de priorité est URGENTE < HAUTE < NORMALE < BASSE
+    (numériquement) pour un tri croissant naturel.
+    """
+    ordre_priorite = {
+        Tache.Priorite.URGENTE: 0,
+        Tache.Priorite.HAUTE: 1,
+        Tache.Priorite.NORMALE: 2,
+        Tache.Priorite.BASSE: 3,
+    }
+    if tache.date_fin_prevue is None:
+        retard_jours = 0
+        echeance_rank = 1  # après les tâches datées
+        echeance_ordre = 0
+    else:
+        delta = (tache.date_fin_prevue - aujourd_hui).days
+        retard_jours = min(delta, 0)  # négatif si en retard, 0 sinon
+        echeance_rank = 0
+        echeance_ordre = delta
+    return (
+        retard_jours,  # plus négatif (plus en retard) trie en premier
+        echeance_rank,
+        echeance_ordre,
+        ordre_priorite.get(tache.priorite, 2),
+        tache.id,
+    )
+
+
+def mes_taches(user, aujourd_hui=None):
+    """Tâches NON TERMINÉES de TOUS les projets d'un utilisateur (XPRJ12).
+
+    Un utilisateur voit UNIQUEMENT ses propres tâches : celles où il est
+    ``assigne`` directement (XPRJ10) sur la tâche, OU celles où sa
+    ``RessourceProfil`` liée (``user`` FK) est affectée via
+    ``AffectationRessource`` — soit directement (``ressource``), soit via une
+    ``Equipe`` dont il est membre. Isolation société garantie : les querysets
+    sont TOUJOURS scopés à ``user.company``.
+
+    Trie par urgence : retard d'abord, puis échéance proche, puis priorité.
+    Renvoie une liste de dicts (projet/échéance/retard_jours inclus) — jamais
+    d'objets ORM bruts, pour rester un sélecteur LECTURE SEULE stable.
+    """
+    if aujourd_hui is None:
+        aujourd_hui = _date.today()
+    company = user.company
+
+    ressource_ids = list(
+        RessourceProfil.objects.filter(
+            company=company, user=user).values_list('id', flat=True))
+
+    filtre = Q(assigne__user=user)
+    if ressource_ids:
+        equipe_ids = list(
+            Equipe.objects.filter(
+                company=company, membres__id__in=ressource_ids)
+            .values_list('id', flat=True))
+        affectation_filtre = Q(
+            affectations__ressource_id__in=ressource_ids)
+        if equipe_ids:
+            affectation_filtre |= Q(
+                affectations__equipe_id__in=equipe_ids)
+        filtre |= affectation_filtre
+
+    taches = (
+        Tache.objects.filter(company=company)
+        .exclude(statut=Tache.Statut.TERMINE)
+        .filter(filtre)
+        .select_related('projet', 'assigne')
+        .distinct()
+    )
+
+    resultats = []
+    for tache in taches:
+        retard_jours = 0
+        if tache.date_fin_prevue is not None:
+            delta = (aujourd_hui - tache.date_fin_prevue).days
+            retard_jours = max(delta, 0)
+        resultats.append({
+            'id': tache.id,
+            'libelle': tache.libelle,
+            'statut': tache.statut,
+            'priorite': tache.priorite,
+            'projet_id': tache.projet_id,
+            'projet_code': tache.projet.code,
+            'projet_nom': tache.projet.nom,
+            'date_fin_prevue': (
+                tache.date_fin_prevue.isoformat()
+                if tache.date_fin_prevue else None),
+            'retard_jours': retard_jours,
+            '_urgence': _urgence_key(tache, aujourd_hui),
+        })
+
+    resultats.sort(key=lambda r: r['_urgence'])
+    for r in resultats:
+        del r['_urgence']
+    return resultats
