@@ -211,6 +211,49 @@ def sortie_employe(company, employe_id):
         return None, None
 
 
+def pointages_par_user_jour(company, debut, fin):
+    """Durée POINTÉE (FG166) par UTILISATEUR et par JOUR sur [debut, fin] (XPRJ8).
+
+    Sélecteur cross-app fin (frontière CLAUDE.md) : les autres modules (ex.
+    ``gestion_projet`` — rapprochement pointages ↔ temps projet) appellent CE
+    sélecteur au lieu d'importer ``rh.models.Pointage`` directement. Ne
+    considère que les employés reliés à un compte utilisateur (``employe.
+    user_id``) — un pointage sans compte ERP n'a aucun homologue « temps
+    projet » à rapprocher. Une ligne ``Pointage`` compte pour
+    ``duree_minutes`` (arrivée + départ posés) ; une ligne incomplète
+    (arrivée seule, ``heure_depart`` absente) compte pour 0 minute (pas de durée
+    calculable).
+
+    Toujours scopé société. Renvoie un dict ``{(user_id, date): minutes}`` —
+    clé absente = aucun pointage ce jour-là pour cet utilisateur.
+    """
+    from datetime import date as _date
+
+    from .models import Pointage
+
+    if company is None or debut is None or fin is None:
+        return {}
+
+    pointages = Pointage.objects.filter(
+        company=company,
+        employe__user__isnull=False,
+        heure_arrivee__date__gte=debut,
+        heure_arrivee__date__lte=fin,
+    ).select_related('employe')
+
+    par_user_jour = {}
+    for p in pointages:
+        if p.heure_arrivee is None or p.heure_depart is None:
+            continue
+        user_id = p.employe.user_id
+        jour = p.heure_arrivee.date() if isinstance(
+            p.heure_arrivee, _date) else p.heure_arrivee.date()
+        cle = (user_id, jour)
+        par_user_jour[cle] = par_user_jour.get(cle, 0) + (
+            p.duree_minutes or 0)
+    return par_user_jour
+
+
 def labour_hours_for_installation(installation_id, company=None):
     """Heures de main-d'œuvre imputées à une installation (job-costing, FG167).
 

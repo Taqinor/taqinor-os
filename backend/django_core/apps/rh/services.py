@@ -323,6 +323,14 @@ def valider_demande(demande, decide_par=None):
     demande.motif_refus = ''
     demande.save(update_fields=[
         'statut', 'decide_par', 'date_decision', 'motif_refus'])
+
+    # XPRJ9 — signale la validation au bus d'événements (core.events) : les
+    # abonnés (gestion_projet) créent/étendent l'Indisponibilite planning de la
+    # RessourceProfil liée au même utilisateur, SANS que rh importe
+    # gestion_projet directement.
+    from core.events import conge_approuve
+    conge_approuve.send(
+        sender=DemandeConge, demande=demande, user=decide_par, annule=False)
     return demande
 
 
@@ -347,8 +355,8 @@ def annuler_demande(demande):
     """Annule une demande. Si elle était VALIDÉE et déduisait le solde, recrédite
     le compteur ``pris`` du ``SoldeConge`` correspondant (atomique)."""
     from .models import DemandeConge, SoldeConge
-    if demande.statut == DemandeConge.Statut.VALIDEE \
-            and demande.type_absence.deduit_solde and demande.jours:
+    etait_validee = demande.statut == DemandeConge.Statut.VALIDEE
+    if etait_validee and demande.type_absence.deduit_solde and demande.jours:
         annee = demande.date_debut.year
         try:
             solde = SoldeConge.objects.select_for_update().get(
@@ -360,6 +368,14 @@ def annuler_demande(demande):
             pass
     demande.statut = DemandeConge.Statut.ANNULEE
     demande.save(update_fields=['statut'])
+
+    # XPRJ9 — n'émet l'événement d'annulation QUE si la demande était VALIDÉE
+    # (une indisponibilité a pu être créée par le bus à ce moment-là) ; annuler
+    # une demande encore SOUMISE n'a jamais rien créé côté planning.
+    if etait_validee:
+        from core.events import conge_approuve
+        conge_approuve.send(
+            sender=DemandeConge, demande=demande, user=None, annule=True)
     return demande
 
 

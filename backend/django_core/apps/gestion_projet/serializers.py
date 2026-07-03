@@ -10,6 +10,7 @@ from .models import (
     ActionProjet,
     AffectationRessource,
     BaselinePlanning,
+    ChronoEnCours,
     ClotureProjet,
     CommentaireProjet,
     CompteRenduReunion,
@@ -25,6 +26,7 @@ from .models import (
     LigneBudgetProjet,
     ModeleProjet,
     ModeleTache,
+    PeriodeVerrouilleeTemps,
     PhaseProjet,
     PortailProjetToken,
     Projet,
@@ -33,6 +35,8 @@ from .models import (
     ProjetLien,
     RessourceProfil,
     Risque,
+    SituationTravaux,
+    LigneSituation,
     SousTraitant,
     LotSousTraitance,
     Tache,
@@ -194,6 +198,29 @@ class TacheSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'phase': 'La phase doit appartenir au même projet.'})
         return attrs
+
+
+class ChronoEnCoursSerializer(serializers.ModelSerializer):
+    """Chrono ACTIF (start/stop) d'un utilisateur sur une tâche (XPRJ5).
+
+    Lecture seule (le chrono se pilote UNIQUEMENT via les actions
+    ``demarrer-chrono``/``arreter-chrono`` de ``TacheViewSet``, jamais par
+    création/édition directe).
+    """
+    tache_libelle = serializers.CharField(
+        source='tache.libelle', read_only=True)
+    projet_id = serializers.IntegerField(
+        source='tache.projet_id', read_only=True)
+    projet_code = serializers.CharField(
+        source='tache.projet.code', read_only=True)
+
+    class Meta:
+        model = ChronoEnCours
+        fields = [
+            'id', 'tache', 'tache_libelle', 'projet_id', 'projet_code',
+            'demarre_a', 'date_creation',
+        ]
+        read_only_fields = fields
 
 
 class ProjetLienSerializer(serializers.ModelSerializer):
@@ -632,19 +659,39 @@ class TimesheetSerializer(serializers.ModelSerializer):
     une tâche / phase reçue doit en outre cibler le MÊME projet. ``cout`` est
     calculé côté serveur (``heures`` × ``cout_horaire`` interne de la ressource)
     et exposé en LECTURE seule — jamais lu du corps de requête.
+
+    ``statut`` (XPRJ1) est piloté UNIQUEMENT par les actions de transition
+    (``soumettre``/``approuver``/``rejeter``) — jamais écrit depuis le corps de
+    requête. ``saisi_par``/``approuve_par``/``date_approbation`` sont posés côté
+    serveur.
     """
     projet_code = serializers.CharField(source='projet.code', read_only=True)
     ressource_nom = serializers.CharField(
         source='ressource.nom', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    saisi_par_nom = serializers.CharField(
+        source='saisi_par.username', read_only=True, default='')
+    approuve_par_nom = serializers.CharField(
+        source='approuve_par.username', read_only=True, default='')
+    type_activite_display = serializers.CharField(
+        source='get_type_activite_display', read_only=True)
 
     class Meta:
         model = Timesheet
         fields = [
             'id', 'projet', 'projet_code', 'tache', 'phase', 'ressource',
             'ressource_nom', 'date', 'heures', 'cout', 'commentaire',
-            'date_creation',
+            'facturable', 'type_activite', 'type_activite_display',
+            'taux_facturation',
+            'statut', 'statut_display', 'saisi_par', 'saisi_par_nom',
+            'approuve_par', 'approuve_par_nom', 'date_approbation',
+            'motif_rejet', 'date_creation',
         ]
-        read_only_fields = ['cout', 'date_creation']
+        read_only_fields = [
+            'cout', 'statut', 'saisi_par', 'approuve_par', 'date_approbation',
+            'motif_rejet', 'date_creation',
+        ]
 
     def validate_projet(self, value):
         return _meme_societe(self, value, 'Projet')
@@ -678,6 +725,24 @@ class TimesheetSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'phase': 'La phase doit appartenir au même projet.'})
         return attrs
+
+
+class PeriodeVerrouilleeTempsSerializer(serializers.ModelSerializer):
+    """Verrou de période (mois) sur les feuilles de temps (XPRJ1).
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur.
+    ``verrouille_par`` est posé côté serveur (jamais lu du corps de requête).
+    """
+    verrouille_par_nom = serializers.CharField(
+        source='verrouille_par.username', read_only=True, default='')
+
+    class Meta:
+        model = PeriodeVerrouilleeTemps
+        fields = [
+            'id', 'mois', 'verrouille_par', 'verrouille_par_nom',
+            'date_creation',
+        ]
+        read_only_fields = ['verrouille_par', 'date_creation']
 
 
 class RisqueSerializer(serializers.ModelSerializer):
@@ -933,6 +998,67 @@ class PortailProjetTokenSerializer(serializers.ModelSerializer):
 
     def validate_projet(self, value):
         return _meme_societe(self, value, 'Projet')
+
+
+class SituationTravauxSerializer(serializers.ModelSerializer):
+    """Décompte progressif (situation de travaux) d'un projet (XPRJ4).
+
+    ``company``, ``numero``, ``statut``, ``facture_id`` et ``date_validation``
+    sont posés/pilotés CÔTÉ SERVEUR (jamais lus du corps de requête) : le
+    ``numero`` par ``services.creer_situation`` (jamais ``count()+1``), le
+    ``statut``/``facture_id`` par l'action ``valider`` (voir ``views.py``). Le
+    ``projet`` reçu est validé même-société.
+    """
+    projet_code = serializers.CharField(source='projet.code', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    montant_periode_total = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SituationTravaux
+        fields = [
+            'id', 'projet', 'projet_code', 'numero', 'periode', 'statut',
+            'statut_display', 'retenue_garantie_pct', 'contrat_id',
+            'facture_id', 'date_validation', 'montant_periode_total',
+            'date_creation',
+        ]
+        read_only_fields = [
+            'numero', 'statut', 'facture_id', 'date_validation',
+            'date_creation',
+        ]
+
+    def validate_projet(self, value):
+        return _meme_societe(self, value, 'Projet')
+
+    def get_montant_periode_total(self, obj):
+        total = sum(
+            (ligne.montant_periode or 0) for ligne in obj.lignes.all())
+        return str(total)
+
+
+class LigneSituationSerializer(serializers.ModelSerializer):
+    """Ligne (lot / ligne de budget) d'une situation de travaux (XPRJ4).
+
+    ``company`` n'est jamais exposée. ``montant_cumule_anterieur``,
+    ``montant_periode`` et ``montant_cumule`` sont CALCULÉS côté serveur (voir
+    ``services.ajouter_ligne_situation``) — jamais lus du corps de requête.
+    Créer/éditer une ligne passe de préférence par
+    ``situations/<id>/ajouter-ligne/`` pour déclencher ce calcul.
+    """
+    class Meta:
+        model = LigneSituation
+        fields = [
+            'id', 'situation', 'libelle', 'montant_marche_ht',
+            'avancement_cumule_pct', 'montant_cumule_anterieur',
+            'montant_periode', 'montant_cumule', 'date_creation',
+        ]
+        read_only_fields = [
+            'montant_cumule_anterieur', 'montant_periode', 'montant_cumule',
+            'date_creation',
+        ]
+
+    def validate_situation(self, value):
+        return _meme_societe(self, value, 'Situation')
 
 
 class SousTraitantSerializer(serializers.ModelSerializer):
