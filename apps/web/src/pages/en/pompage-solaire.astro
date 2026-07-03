@@ -11,6 +11,12 @@
  *  - Equipment link: border-azur-200/60 text-azur-200 (not brass);
  *  - .section-lg hero rhythm + .section / .seam-soft spacing tokens;
  *  - No photo hero → no cinematic hero, no .v3-grade, no ZelligeSignature.
+ *
+ * W261 — Sibling parity, without crossing the "zero invented proof" line
+ * above: mirrors the FR additions (capability stats band, 4-variable sizing
+ * SVG diagram, diesel/butane-vs-solar narrative framing with NO invented
+ * MAD/litre figure, and a WG11-gated financing/subsidy card labeled
+ * "to verify with your DPA" — never a confirmed number or partnership claim).
  */
 import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -108,6 +114,27 @@ const jsonLd = {
       </div>
     </section>
 
+    {/* W261 — Honest capability stats band: only facts already verified
+        elsewhere on this page — no invented production or project figure. */}
+    <section class="px-4 pb-4">
+      <div class="mx-auto max-w-6xl">
+        <dl class="cine-in grid max-w-3xl grid-cols-3 gap-3 border-t border-white/20 pt-6 sm:gap-6">
+          <div>
+            <dd class="fig lum text-base sm:text-3xl">4</dd>
+            <dt class="tech-label mt-2 text-lune">Measurements taken on site</dt>
+          </div>
+          <div>
+            <dd class="fig lum text-base sm:text-3xl">0%</dd>
+            <dt class="tech-label mt-2 text-lune">VAT on agricultural pumping</dt>
+          </div>
+          <div>
+            <dd class="fig lum text-base sm:text-3xl">Tier-1</dd>
+            <dt class="tech-label mt-2 text-lune">Array and drive, same as our roofs</dt>
+          </div>
+        </dl>
+      </div>
+    </section>
+
     <!-- How it works -->
     <section class="section px-4">
       <div class="mx-auto max-w-6xl">
@@ -155,6 +182,57 @@ const jsonLd = {
           flow rate or the head is missing — we'd be left guessing, and we don't size a pump on
           guesswork. <a href={devisHref} class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Request an assessment →</a>
         </p>
+
+        {/* W261 — Diagram of the 4 sizing variables converging on the system:
+            same content as the four cards above, staged visually. */}
+        <div class="mx-auto mt-14 max-w-3xl">
+          <svg viewBox="0 0 600 260" role="img" aria-label="Flow rate, total head, borehole depth and crop water needs converge on the pump, drive and photovoltaic array sizing" class="w-full">
+            <g font-size="11" class="fill-azur-700">
+              <g transform="translate(70,40)">
+                <circle r="26" fill="none" stroke="#0f1c54" stroke-width="2.5" />
+                <text text-anchor="middle" dy="4" font-weight="700">Flow</text>
+              </g>
+              <g transform="translate(70,110)">
+                <circle r="26" fill="none" stroke="#0f1c54" stroke-width="2.5" />
+                <text text-anchor="middle" dy="4" font-weight="700">Head</text>
+              </g>
+              <g transform="translate(70,180)">
+                <circle r="26" fill="none" stroke="#0f1c54" stroke-width="2.5" />
+                <text text-anchor="middle" dy="-2" font-weight="700">Borehole</text>
+              </g>
+              <g transform="translate(70,240)">
+                <circle r="26" fill="none" stroke="#0f1c54" stroke-width="2.5" />
+                <text text-anchor="middle" dy="-2" font-weight="700">Needs</text>
+              </g>
+            </g>
+            <g stroke="#0f1c54" stroke-width="2" fill="none" opacity="0.6" aria-hidden="true">
+              <path d="M96 40 L300 130" marker-end="url(#arrowP)" />
+              <path d="M96 110 L300 130" marker-end="url(#arrowP)" />
+              <path d="M96 180 L300 130" marker-end="url(#arrowP)" />
+              <path d="M96 240 L300 130" marker-end="url(#arrowP)" />
+            </g>
+            <defs>
+              <marker id="arrowP" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                <path d="M0 0 L6 3 L0 6 Z" fill="#0f1c54" />
+              </marker>
+            </defs>
+            <g transform="translate(300,130)">
+              <rect x="-70" y="-40" width="140" height="80" rx="4" fill="#0f1c54" />
+              <text text-anchor="middle" dy="-8" font-size="11" fill="white" font-weight="700">Pump +</text>
+              <text text-anchor="middle" dy="8" font-size="11" fill="white" font-weight="700">drive</text>
+              <text text-anchor="middle" dy="24" font-size="11" fill="white" font-weight="700">+ PV array</text>
+            </g>
+            <path d="M370 130 L520 130" stroke="#0f1c54" stroke-width="2" opacity="0.6" marker-end="url(#arrowP)" />
+            <g transform="translate(560,130)" class="fill-azur-700">
+              <circle r="26" fill="none" stroke="#e8b54a" stroke-width="2.5" />
+              <text text-anchor="middle" dy="4" font-size="18">💧</text>
+            </g>
+          </svg>
+          <p class="mx-auto mt-4 max-w-xl text-center text-xs leading-relaxed text-encre-faint">
+            The four measurements taken on site together determine one coherent system — not four
+            separate calculations.
+          </p>
+        </div>
       </div>
     </section>
 
@@ -182,6 +260,75 @@ const jsonLd = {
               and we will never promise to carry one across to the other.
             </p>
           </div>
+        </div>
+      </div>
+    </section>
+
+    {/* W261 — Diesel/butane vs solar framing: the SAME story as the agricole
+        quote engine (decompensated butane costs more than the sticker price
+        suggests, diesel is volatile, solar fixes the cost), with NO invented
+        MAD/litre figure — those values are volatile and "to confirm" on the
+        ERP engine side, never published as a fixed fact on the marketing
+        site. The real calculation happens at the study, with the day's price
+        and the pump's measured consumption. */}
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="section bg-blanc-azur px-4 text-encre">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-azur-600">The calculation that matters to you</p>
+        <h2 class="display v2-section-title mt-5">Against diesel, against butane</h2>
+        <p class="v2-lead mt-5 max-w-2xl text-encre-soft">
+          A farmer doesn't compare kWc, they compare tanks. Every hour of diesel or butane pumping
+          has a cost that moves with the day's price — and decompensated butane costs, in reality,
+          considerably more than the subsidized cylinder's sticker price suggests. Solar fixes that
+          cost at zero once the system is paid off: the sun doesn't send an invoice.
+        </p>
+        <div class="mt-10 grid gap-6 md:grid-cols-2">
+          <div class="v2-rise border-t-2 border-azur-900 bg-blanc p-6">
+            <h3 class="display text-lg text-azur-700">Diesel & butane</h3>
+            <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+              A recurring cost, indexed to a price that moves, tank after tank, season after season.
+              Decompensated butane weighs even heavier on the real bill than the subsidized
+              cylinder's sticker price suggests.
+            </p>
+          </div>
+          <div class="v2-rise border-t-2 border-brass-400 bg-blanc p-6">
+            <h3 class="display text-lg text-azur-700">Solar pumping</h3>
+            <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+              A one-time investment, VAT-exempt, then a running cost close to zero: the crossover
+              point with diesel or butane depends on your actual consumption — which is exactly
+              what the study calculates, figure by figure, for your plot.
+            </p>
+          </div>
+        </div>
+        <p class="mx-auto mt-8 max-w-2xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
+          The day's fuel price and your pump's actual running hours change the calculation from one
+          farm to the next: that's why the exact figure — and the number of years to payback —
+          comes out of the study, never a national average. <a href={devisHref} class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Request my study →</a>
+        </p>
+      </div>
+    </section>
+
+    {/* W261 — Financing/subsidy card, gated WG11: FDA 30% + Saquii are NOT
+        republished as a confirmed fact until the terms have been verified
+        with the primary sources (DPA/ORMVA/CAM) — see docs/WEB_PLAN.md WG11.
+        Shown here as a lead to verify, never as a Taqinor offer or
+        partnership. */}
+    <section class="section px-4">
+      <div class="mx-auto max-w-6xl">
+        <div class="v2-rise cine-card border-2 border-dashed border-white/25 p-7">
+          <p class="tech-label v2-kicker rule-brass text-lune">Financing lead — to verify</p>
+          <h2 class="display mt-3 text-xl text-white">Agricultural subsidy (FDA) and financing (Saquii)</h2>
+          <p class="mt-4 max-w-2xl text-sm leading-relaxed text-lune-soft">
+            The Moroccan state has historically offered an Agricultural Development Fund subsidy for
+            solar pumping, and Crédit Agricole du Maroc offers financing mechanisms dedicated to
+            agricultural solar. Current rates, caps and conditions change and depend on your DPA/
+            ORMVA — we publish no percentage or amount until it has been verified with the relevant
+            body.
+          </p>
+          <p class="mt-4 text-sm font-semibold text-lune-faint">
+            To verify with your DPA before any commitment — Taqinor is neither a lender nor a
+            subsidizing body and guarantees no eligibility.
+          </p>
         </div>
       </div>
     </section>
