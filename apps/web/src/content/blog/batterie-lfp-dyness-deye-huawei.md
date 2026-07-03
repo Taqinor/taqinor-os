@@ -103,4 +103,4 @@ Voici la grille de décision que j'utilise en rendez-vous :
 
 Pour connaître la taille d'installation adaptée à votre consommation, consultez notre guide [Lithium ou gel — quelle chimie choisir ?](/guides/batterie-lithium-ou-gel) et notre article [Stocker ou revendre : quel arbitrage avec la loi 82-21 ?](/blog/batterie-stocker-ou-revendre-maroc).
 
-Vous souhaitez un devis avec la configuration précise (batterie + onduleur + panneaux) ? Notre simulateur calcule la puissance recommandée à partir de votre facture ONEE.
+Vous souhaitez un devis avec la configuration précise (batterie + onduleur + panneaux) ? Notre simulateur calcule la puissance recommandée à partir de votre facture ONEE. → **[Obtenir un diagnostic personnalisé](/devis/mon-toit)**

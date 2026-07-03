@@ -89,4 +89,4 @@ Notre guide dédié vous explique la méthode complète : [Combien de panneaux p
 
 Servez-vous de ces fourchettes pour budgéter et pour repérer une offre anormalement basse ou anormalement chère. Mais ne leur demandez pas ce qu'elles ne peuvent pas donner : un prix ferme. La configuration de votre toiture, votre consommation, votre tranche ONEE et la distance entre les panneaux et le tableau électrique déplacent le total final, parfois de plusieurs milliers de dirhams.
 
-Le seul chiffre qui vaut pour votre maison sort d'une lecture de votre facture et d'une visite. C'est exactement ce que fait notre diagnostic, gratuitement et sans engagement.
+Le seul chiffre qui vaut pour votre maison sort d'une lecture de votre facture et d'une visite. C'est exactement ce que fait notre diagnostic, gratuitement et sans engagement. → **[Obtenir un diagnostic personnalisé](/devis/mon-toit)**
