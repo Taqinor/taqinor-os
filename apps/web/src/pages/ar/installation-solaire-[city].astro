@@ -21,6 +21,7 @@ import { caseStudyBySlug } from '../../lib/caseStudies';
 import { NAP } from '../../lib/nap';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
+import { YIELD_TABLE } from '../../lib/yieldTable';
 
 export function getStaticPaths() {
   return CITIES.map((c) => ({ params: { city: c.slug }, props: { c } }));
@@ -45,6 +46,18 @@ const featured = c.featuredRefs.map((ref) => realisationByRef(ref)).filter(Boole
 const inCity = featured.filter((r) => r!.ville === c.name);
 const nearby = featured.filter((r) => r!.ville !== c.name);
 const closest = c.hasLocalInstall ? [] : REALISATIONS.slice(0, 3);
+
+// WJ73 — فجوة التقدير مقابل الدليل، مشروحة بصدق (انظر الملف الفرنسي للتبرير
+// الكامل). مُشتقّة من REALISATIONS + YIELD_TABLE، غير منسوخة يدوياً.
+const shownInstalls = inCity.length > 0 ? inCity : closest;
+const yieldSamples = shownInstalls
+  .filter((r) => r!.productionNum && r!.kwcNum)
+  .map((r) => r!.productionNum! / r!.kwcNum!);
+const avgYieldPerKwc = yieldSamples.length
+  ? Math.round(yieldSamples.reduce((sum, y) => sum + y, 0) / yieldSamples.length)
+  : null;
+const cityYieldTable = YIELD_TABLE[c.slug];
+const southOptimalYield = cityYieldTable ? cityYieldTable.grid['0']['29'] : undefined;
 
 const cc = cityContentBySlug(c.slug, locale);
 const fillIntro = (s: string) => s.replaceAll('{intro}', intro);
@@ -158,6 +171,15 @@ const heroPhoto = inCity[0]?.photos[0] ?? neutralHero;
               </a>
             ))}
           </div>
+          {/* WJ73 — فجوة التقدير مقابل الدليل، مشروحة بصدق. */}
+          {avgYieldPerKwc && southOptimalYield && (
+            <p class="v2-rise mt-6 max-w-2xl text-xs leading-relaxed text-lune-faint">
+              للإشارة: هذه التركيبات تقيس في المتوسط ≈{avgYieldPerKwc.toLocaleString('fr-FR')} kWh/kWc/سنة، وهو
+              أقل من ≈{southOptimalYield.toLocaleString('fr-FR')} kWh/kWc/سنة التي يفترضها جدول الإنتاجية
+              المُنمذَج المُستخدَم للتقديرات — التركيبات الحقيقية ليست كلها متّجهة جنوباً بميل 29°، خلافاً
+              لافتراض النموذج. الدراسة تُدقّق هذا الرقم على سطحك الحقيقي.
+            </p>
+          )}
         </div>
       </section>
     )}

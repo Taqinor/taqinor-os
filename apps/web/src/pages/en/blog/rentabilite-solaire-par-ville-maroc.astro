@@ -1,0 +1,249 @@
+---
+/**
+ * EN — Blog post (W295): Solar profitability and ROI by Moroccan city.
+ * Faithful translation of
+ * src/content/blog/rentabilite-solaire-par-ville-maroc.md, every figure kept
+ * EXACT (PVOUT table by city, Marrakech 1,779 kWh/kWc/yr confirmed, ONEE
+ * tariff table, sélective billing mechanism, 5–7 year payback). Static page
+ * (not a content-collection entry) mirroring the guides pattern, since the
+ * blog collection has no locale field (out of this lane's scope — see
+ * content.config.ts). Internal links use localizeNavHref (EN/AR if
+ * available, else the existing FR page — never a dead link). FR untouched.
+ */
+import Layout from '../../../layouts/Layout.astro';
+import V2Enhance from '../../../components/V2Enhance.astro';
+import Article33Ribbon from '../../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../../components/Breadcrumb.astro';
+import CtaBand from '../../../components/CtaBand.astro';
+import StickyCta from '../../../components/StickyCta.astro';
+import RelatedLinks from '../../../components/RelatedLinks.astro';
+import { NAP } from '../../../lib/nap';
+import { estimateReadingTime } from '../../../lib/readingTime';
+import { getLocaleFromPath } from '../../../i18n/utils';
+import { localizeNavHref } from '../../../i18n/pages';
+import '../../../styles/prose.css';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+const pubDate = new Date('2026-06-21');
+const dateFmt = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+
+const bodyText = `
+PVOUT by city ranges 1500 to 1950 kWh per kWc per year, Marrakech confirmed at 1779. ONEE tariffs
+range 0.90 to 1.66 DH per kWh, selective billing above 150 kWh a month bills the whole month at the
+marginal bracket. Payback 5 to 7 years residential, consensus among installers. What influences
+payback: your current tariff bracket, installation cost 10000 to 14000 DH per kWc, self-consumption
+rate, and battery adding 1 to 3 years to payback.
+`;
+const readingMinutes = estimateReadingTime(bodyText);
+
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const schemaImageUrl = new URL('/og/residentiel.png', Astro.site).href;
+const blogPosting = {
+  '@context': 'https://schema.org',
+  '@type': 'BlogPosting',
+  headline: 'Solar profitability and return on investment by Moroccan city',
+  description: '5–7 year payback, production by city and ONEE tariffs: everything you need to know about solar profitability in Morocco.',
+  image: schemaImageUrl,
+  datePublished: pubDate.toISOString(),
+  keywords: 'profitability, ROI, production, cities',
+  author: { '@type': 'Person', name: 'Reda Kasri' },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: { '@type': 'WebPage', '@id': url },
+};
+
+const breadcrumbLd = {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'Home', item: new URL(L('/'), Astro.site).href },
+    { '@type': 'ListItem', position: 2, name: 'Blog', item: new URL(L('/blog'), Astro.site).href },
+    { '@type': 'ListItem', position: 3, name: 'Solar profitability and ROI by Moroccan city' },
+  ],
+};
+
+const pvout = [
+  { city: 'Tangier', value: '~1,550 – 1,650', tilt: '31°', confidence: 'estimated' },
+  { city: 'Casablanca', value: '~1,620 – 1,700', tilt: '29°', confidence: 'estimated' },
+  { city: 'Rabat-Salé', value: '~1,620 – 1,700', tilt: '29°', confidence: 'estimated' },
+  { city: 'Fez', value: '~1,650 – 1,750', tilt: '~32°', confidence: 'estimated' },
+  { city: 'Marrakech', value: '1,779 (confirmed point)', tilt: '28°', confidence: 'high' },
+  { city: 'Agadir', value: '~1,750 – 1,820', tilt: '27°', confidence: 'estimated' },
+  { city: 'Ouarzazate', value: '~1,850 – 1,950', tilt: '~28–30°', confidence: 'estimated' },
+];
+
+const tariffs = [
+  { range: '0 – 100 kWh', tariff: '0.90', mode: 'progressive' },
+  { range: '101 – 150 kWh', tariff: '1.07', mode: 'progressive' },
+  { range: '151 – 200 kWh', tariff: '1.18', mode: 'selective' },
+  { range: '201 – 300 kWh', tariff: '~1.18 → 1.45', mode: 'selective' },
+  { range: '301 – 500 kWh', tariff: '1.45', mode: 'selective' },
+  { range: '> 500 kWh', tariff: '1.66', mode: 'selective' },
+];
+---
+
+<Layout
+  title="Solar profitability and ROI by Moroccan city | Blog Taqinor"
+  description="5–7 year payback, production by city and ONEE tariffs: everything you need to know about solar profitability in Morocco."
+  ogSlug="residentiel"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(blogPosting)} />
+  <script type="application/ld+json" set:html={JSON.stringify(breadcrumbLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'Blog', href: L('/blog') }, { label: 'Solar profitability by city' }]} />
+
+    <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
+      <p class="tech-label v2-kicker rule-brass text-brass-300">
+        Blog · {dateFmt.format(pubDate)} · by Reda Kasri
+      </p>
+      <h1 class="display v2-page-title mt-5 text-white">Solar profitability and ROI by Moroccan city</h1>
+
+      <p class="article-meta mt-3 flex items-center gap-2 text-xs text-lune-faint">
+        {readingMinutes} min read
+      </p>
+
+      <p class="prose-lead mt-5">5–7 year payback, production by city and ONEE tariffs: everything you need to know about solar profitability in Morocco.</p>
+
+      <div class="prose mt-10">
+        <p>
+          When a client asks me whether "solar is profitable for them", my first question isn't the
+          price. It's: which city, and what's your ONEE tariff bracket? These two parameters often
+          weigh more than the panel brand. Here's how I reason about it, with the figures I have on
+          hand.
+        </p>
+
+        <h2>Solar production by city: how many kWh per kWc installed?</h2>
+        <p>
+          It all starts with <strong>site yield</strong>, i.e. the number of kWh produced per kWc
+          installed per year (called PVOUT). It depends on local sunshine, panel tilt, and system
+          losses: wiring, inverter, dust on the glass.
+        </p>
+        <p>
+          The table below gives <strong>estimated</strong> brackets, calculated from PVGIS, Global
+          Solar Atlas and Solargis data, with a system loss rate of about 14% and due-south
+          orientation. Only one value is precisely <strong>confirmed</strong>: Marrakech (MDPI
+          Resources 2024 study, measured GTI).
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>City</th>
+                <th>Estimated PVOUT (kWh/kWc/yr)</th>
+                <th>Optimal tilt (due south)</th>
+                <th>Confidence</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pvout.map((p) => (
+                <tr>
+                  <td>{p.city}</td>
+                  <td>{p.value}</td>
+                  <td>{p.tilt}</td>
+                  <td>{p.confidence}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p><em>Sources: PVGIS (European Commission); Global Solar Atlas (World Bank / Solargis); MDPI Resources 2024 13(10):140 (Marrakech). Other cities' brackets are estimates recalibrated on the Marrakech point — not a substitute for a PVGIS simulation at your exact address.</em></p>
+        <p>
+          <strong>National benchmark:</strong> Morocco's PVOUT band sits between
+          <strong> 1,600 and 1,900 kWh/kWc/yr</strong> (GSA). Installers often use the rule of thumb
+          <strong> 1,500–1,800 kWh/kWc/yr depending on region</strong>.
+        </p>
+
+        <h2>Why is solar profitable in Morocco? The ONEE tariff mechanism</h2>
+        <h3>The tariff grid (verified 2026-06)</h3>
+        <p>Current ONEE residential low-voltage tariffs are as follows (rounded, incl. VAT):</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Monthly consumption</th>
+                <th>Tariff (DH/kWh)</th>
+                <th>Billing mode</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tariffs.map((t) => (
+                <tr>
+                  <td>{t.range}</td>
+                  <td>{t.tariff}</td>
+                  <td>{t.mode}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p><em>Sources: kherba.com/tarifs; calculateur.ma (ONEE simulator); electrosolarplus.ma; bati.ma. Last known official revision: ~2015. An ANRE tariff reform is expected by March 2027. Distributors (Lydec/Casablanca, Redal/Rabat, Amendis/Tangier): same structure, similar tariffs — exact per-bracket decimals not verified (portals 403).</em></p>
+        <blockquote><p><strong>Freshness note:</strong> these tariffs have been stable for several years. Check <a href="https://calculateur.ma">calculateur.ma</a> or with your distributor if you're reading this article after 2026.</p></blockquote>
+
+        <h3>The "selective" mechanism: solar's leverage effect</h3>
+        <p>This is the key point many consumers miss:</p>
+        <ul>
+          <li>Below <strong>150 kWh/month</strong>, billing is <strong>progressive</strong>: each bracket is billed at its own rate.</li>
+          <li>Above <strong>150 kWh/month</strong>, billing becomes <strong>"selective"</strong>: <strong>the entire month's consumption</strong> is billed at the rate of the bracket reached.</li>
+        </ul>
+        <p>
+          <strong>Concrete example:</strong> a household consuming 250 kWh in July doesn't pay the
+          first 100 kWh at 0.90 DH then the rest at 1.07, 1.18… It pays the <em>entire</em> 250 kWh at
+          the 201–300 kWh bracket rate, about 1.45 DH/kWh (a 10 kWh tolerance per bracket softens
+          narrow overshoots).
+        </p>
+        <p>
+          What solar removes is precisely this high marginal rate applied to the whole bill. Take a
+          household in the 301–500 kWh bracket that pulls 200 kWh a month off the grid thanks to its
+          panels: it saves those 200 kWh at the <em>marginal</em> rate of 1.45 DH, not at the apparent
+          average rate of its old bill. That's the whole reason profitability climbs for heavy
+          consumers, and it's also what I check first on a bill before pricing anything.
+        </p>
+
+        <h2>Return on investment: 5 to 7 years (installer consensus)</h2>
+        <p>
+          The <strong>standard residential payback</strong> is <strong>5 to 7 years</strong> — a
+          figure consistent across all the installer sources consulted (solaropeak.com, ecovolt.ma,
+          electrosolarplus.ma, lechantier.ma).
+        </p>
+        <p><strong>What influences payback:</strong></p>
+        <ul>
+          <li><strong>Your current tariff bracket</strong>: the higher your bracket (≥ 1.45 DH/kWh), the greater the annual savings and the faster the payback.</li>
+          <li><strong>Installation cost</strong>: indicative 2026 bracket of ~10,000 to 14,000 DH/kWc (equipment + install, installer sources — unaudited). See <a href={L('/blog/prix-installation-solaire-maroc-2026')}>our pricing guide</a>.</li>
+          <li><strong>Your self-consumption rate</strong>: under <a href={L('/loi-82-21')}>Law 82-21</a>, surplus injected into the grid is bought back at only 0.18–0.21 DH/kWh for medium/high voltage — well below the retail rate (the low-voltage declaration-regime tariff, for homes under 11 kW, isn't published yet, but nothing suggests it changes this logic). Solar's real value is in immediate consumption, not export.</li>
+          <li><strong>The battery</strong>: adding storage stretches payback by <strong>1 to 3 years</strong> but increases the evening self-consumption rate.</li>
+        </ul>
+        <p>
+          <strong>Over 25 years</strong>, once the installation is paid off, every kWh produced is
+          nearly free. Modern panels lose about 0.5%/year of performance and the market standard
+          guarantees them at ~80–85% of initial capacity at 25 years — our warranty goes beyond the
+          standard: ≥ 84.8% at 25 years on the panels we install.
+        </p>
+
+        <h2>Simulate your installation</h2>
+        <p>
+          The figures above are market brackets. Your real profitability depends on your
+          consumption, your city, and your roof's surface and orientation.
+          <a href={L('/devis/mon-toit')}>Get a personalised quote</a> for a precise estimate.
+        </p>
+        <hr />
+        <p><em>ONEE tariffs verified 2026-06. Yields by city: PVGIS/Global Solar Atlas/Solargis estimates recalibrated on the Marrakech measurement of 1,779 kWh/kWc/yr (MDPI Resources 2024). Payback 5–7 years: consensus of 2026 Moroccan installer sources.</em></p>
+      </div>
+
+      <RelatedLinks
+        links={[
+          { href: L('/blog'), label: 'All the articles' },
+          { href: L('/guides'), label: 'The evergreen guides' },
+          { href: L('/financement'), label: 'Financing & returns' },
+        ]}
+      />
+    </article>
+
+    <CtaBand title="These are city averages. Your own payback comes from your own bill." href={L('/devis/mon-toit')} />
+
+    <StickyCta />
+  </div>
+</Layout>

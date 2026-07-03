@@ -1,0 +1,197 @@
+---
+/**
+ * EN — Guide (W294): What battery size? Faithful translation of
+ * /guides/quelle-taille-de-batterie, every figure kept EXACT (6–12 kWh
+ * nighttime need, DoD 80–95 % LFP / ~50 % lead-acid, loi 82-21 20 % export
+ * cap, 0.18–0.21 DH/kWh MT/HT, 0.90–1.66 DH/kWh purchase, BT tariff
+ * unpublished). Internal links use localizeNavHref (EN/AR if available, else
+ * the existing FR page — never a dead link). FR untouched.
+ */
+import Layout from '../../../layouts/Layout.astro';
+import V2Enhance from '../../../components/V2Enhance.astro';
+import Article33Ribbon from '../../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../../components/Breadcrumb.astro';
+import CtaBand from '../../../components/CtaBand.astro';
+import StickyCta from '../../../components/StickyCta.astro';
+import { NAP } from '../../../lib/nap';
+import RelatedLinks from '../../../components/RelatedLinks.astro';
+import { getLocaleFromPath } from '../../../i18n/utils';
+import { localizeNavHref } from '../../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const schemaImageUrl = new URL('/og/equipement.png', Astro.site).href;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: 'What battery size (kWh) for my house? Store or sell back?',
+  description: 'The sizing tiers, the difference between nominal and usable kWh (DoD), and why storing pays off far more than exporting in Morocco — explained simply.',
+  image: schemaImageUrl,
+  about: { '@type': 'Thing', name: 'Solar storage battery' },
+  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: url,
+};
+---
+
+<Layout
+  title="What battery size (kWh) for my house? Store or sell back? | Taqinor"
+  description="Sizing tiers (5–10 kWh backup, 10–20 kWh evening self-consumption, 20 kWh+ near-autonomy), the usable-kWh rule, and Morocco's economics: under Law 82-21, storing is worth far more than exporting."
+  ogSlug="guides"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'Guides', href: L('/guides') }, { label: 'What battery size?' }]} />
+
+    <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
+      <p class="tech-label v2-kicker rule-brass text-lune">Guide · Equipment</p>
+      <h1 class="display v2-page-title mt-5 text-white">What battery size for my house?</h1>
+
+      <p class="v2-lead mt-6 text-lune-soft">
+        The simplest way to answer is to follow a real house. Take a four-person villa in
+        Casablanca: two to three hours of evening air conditioning, TV, lighting, a fridge running
+        continuously, phone charging. The family mainly wants the house to stay liveable in the
+        evening on solar stored during the day, and to get through an outage without thinking about
+        it. Let's see what battery capacity that corresponds to, in usable kWh, and why.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Step 1 — how much energy in the evening and at night?</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Everything starts from what the house consumes once the sun sets, since that's exactly what
+        the battery will have to cover. For our Casablanca family, we roughly add up: evening living
+        room air conditioning, the fridge overnight, lighting and TV, plus small appliances.
+        Depending on lifestyle, this nighttime need most often falls between 6 and 12 kWh in a house
+        like this. Let's say 10 kWh to fix ideas.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        It's this figure — the energy actually drawn between sunset and sunrise — that sizes the
+        battery, not the day's total consumption. During the day, the house runs directly on the
+        panels.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Step 2 — from need to usable capacity</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Our family is therefore aiming for a battery that returns about 10 kWh every evening. This
+        is a <em>usable</em> capacity: what the battery really delivers, not the figure printed on
+        the label. To place this need against market offerings, it helps to think in tiers:
+      </p>
+      <ul class="v2-lead mt-5 list-disc space-y-3 pl-6 text-lune-soft">
+        <li>
+          <strong class="text-white">Backup only (~5–10 kWh usable).</strong> Keeping lighting, a
+          few outlets and the router running during an outage, without aiming for extended
+          autonomy. The most modest sizing and often the most profitable entry point.
+        </li>
+        <li>
+          <strong class="text-white">Evening self-consumption (~10–20 kWh usable).</strong> The
+          battery absorbs the day's surplus and returns it in the evening. This is where our
+          Casablanca villa falls, and the tier that makes the most sense for a home whose peaks
+          arrive after sunset.
+        </li>
+        <li>
+          <strong class="text-white">Near-autonomy (20 kWh usable and up).</strong> Covering almost
+          all nighttime needs, including in a low-sun winter. Relevant for demanding profiles or
+          areas with frequent, extended outages.
+        </li>
+      </ul>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Our family therefore lands on a battery of about 10 to 12 usable kWh. What remains is
+        translating that usable need into nominal capacity — the step many quotes skip.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Step 3 — nominal vs. usable: the margin not to forget</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        The figure shown on a battery is its <em>nominal</em> capacity. That's not what you draw
+        day to day. Depth of Discharge (DoD) indicates what fraction is usable without damaging the
+        battery.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        For lithium iron phosphate (LFP) batteries, the technology we recommend for Moroccan homes,
+        DoD reaches 80 to 95 %. A 10 kWh nominal battery at 90 % therefore delivers 9 usable kWh.
+        For lead-acid (AGM/GEL), usual DoD is only about 50 %: that same 10 nominal kWh gives only
+        5 usable kWh, and the battery lasts far less long under the Moroccan sun.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        For our family wanting 10 to 12 usable kWh, this means targeting about 12 to 14 nominal kWh
+        in LFP. With lead, you'd need more than double the nominal capacity for the same service —
+        hence the rule that holds for everyone: compare offers in usable kWh, never in nominal kWh.
+        A "10 kWh LFP" spec sheet and a "10 kWh AGM" one don't deliver the same service, not in real
+        capacity, not in lifespan, not against heat.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Storing rather than exporting: what Law 82-21 says</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Our family might wonder whether a bigger battery or selling the surplus to the grid is
+        better. Since 9 June 2026, Law 82-21 (Decree 2-25-100) authorises selling the surplus, but
+        within a framework that makes exporting far less attractive than storing:
+      </p>
+      <ul class="v2-lead mt-5 list-disc space-y-3 pl-6 text-lune-soft">
+        <li>
+          <strong class="text-white">Injection cap: 20 % of annual production.</strong> The share
+          resold to the grid is limited to one-fifth of what your panels produce over the year.
+        </li>
+        <li>
+          <strong class="text-white">Buy-back tariff: 0.18–0.21 DH/kWh — but for MT/HT.</strong>
+          The price at which ONEE buys back the surplus (tariff set by ANRE decision 04/26, off-peak
+          / peak hours) is published for medium and high voltage. <strong class="text-white">The
+          residential low-voltage tariff (&lt; 11 kW, declaration regime — our villa's case) is not
+          yet published.</strong> Meanwhile you <em>buy</em> grid electricity between 0.90 and
+          1.66 DH/kWh depending on your bracket — that figure, at least, is known.
+        </li>
+      </ul>
+      <p class="v2-lead mt-5 text-lune-soft">
+        As long as the LV tariff isn't published, we can't say exactly how much an exported kWh
+        will earn our villa — only that it will be a buy-back tariff well below the purchase price
+        (for reference, MT/HT sits at 0.18–0.21 DH). The same kWh stored and consumed in the
+        evening, by contrast, avoids buying a kWh at the marginal tariff — a known gain already
+        clearly higher than what exporting would bring. It's this ratio that justifies storing
+        rather than reselling, regardless of the upcoming LV figure.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">The value order to remember</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        With Law 82-21 as the framework, the hierarchy runs from most to least profitable:
+      </p>
+      <ol class="v2-lead mt-5 list-decimal space-y-3 pl-6 text-lune-soft">
+        <li>
+          <strong class="text-white">Consume during the day (direct).</strong> Electricity from the
+          panels feeds appliances directly, with no conversion loss or extra hardware. The most
+          advantageous scenario: shift the washing machine, water heater or air conditioning to
+          broad daylight when possible.
+        </li>
+        <li>
+          <strong class="text-white">Store for the evening.</strong> The day's surplus charges the
+          battery and feeds the house after sunset, at the value of your avoided tariff, well above
+          the grid buy-back rate.
+        </li>
+        <li>
+          <strong class="text-white">Export the remaining 20 %.</strong> What can neither be
+          consumed nor stored goes to the grid within the legal cap, at the buy-back tariff. A real
+          gain, but the weakest of the three.
+        </li>
+      </ol>
+      <p class="v2-lead mt-5 text-lune-soft">
+        The consequence for our family, as for most households: you don't oversize a battery to
+        export more, since the law caps exports and the buy-back is low. You size for real
+        nighttime consumption. A villa with a different profile — more people, a pool, a heat pump —
+        will shift these figures, and that's exactly what an hour-by-hour consumption reading lets
+        us calibrate precisely.
+      </p>
+
+      <RelatedLinks mt="mt-8" links={[
+        { href: L('/guides/batterie-lithium-ou-gel'), label: 'Lithium or gel: which to choose?' },
+        { href: L('/batteries-stockage'), label: 'Our battery range' },
+        { href: L('/guides/loi-82-21-expliquee'), label: 'Law 82-21 explained' },
+        { href: L('/guides'), label: 'All the guides' },
+      ]} />
+    </article>
+
+    <CtaBand title="Your house doesn't match the example? Send us your readings, we'll size the capacity on your real profile." href={L('/devis/mon-toit')} />
+
+    <StickyCta />
+  </div>
+</Layout>

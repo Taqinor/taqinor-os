@@ -11,13 +11,36 @@ import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { NAP } from '../../lib/nap';
 import RelatedLinks from '../../components/RelatedLinks.astro';
+import { estimateReadingTime } from '../../lib/readingTime';
+
+// W303 — date de vérification + auteur + temps de lecture.
+const verifiedDate = new Date('2026-07-03');
+const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+const guideBodyText = `
+  Le plus simple pour répondre, c'est de suivre une vraie maison. Prenons une villa à Casablanca de
+  quatre personnes. Tout part de ce que la maison consomme une fois le soleil couché. Selon le mode de
+  vie, ce besoin nocturne tombe le plus souvent entre 6 et 12 kWh sur une maison comme celle-ci. Pour
+  situer ce besoin face aux offres du marché, il aide de raisonner par paliers : secours seul environ 5
+  à 10 kWh utile, autoconsommation du soir environ 10 à 20 kWh utile, quasi-autonomie à partir de 20 kWh
+  utile. Le chiffre affiché sur une batterie est sa capacité nominale, pas ce que vous tirez au
+  quotidien. Pour les batteries lithium fer phosphate, le DoD atteint 80 à 95 %. Pour le plomb-acide, le
+  DoD usuel n'est que d'environ 50 %. Depuis le 9 juin 2026, la loi 82-21 autorise la vente du surplus,
+  mais dans un cadre qui rend l'export bien moins intéressant que le stockage : plafond d'injection de
+  20 % de la production annuelle, et un tarif de rachat qui reste inférieur au tarif d'achat. La
+  hiérarchie va du plus au moins rentable : consommer en journée, stocker pour le soir, exporter les
+  20 % restants.
+`;
+const readingMinutes = estimateReadingTime(guideBodyText);
 
 const url = new URL(Astro.url.pathname, Astro.site).href;
+// W291 — image OG (même URL que celle passée à ogSlug plus bas), pour l'éligibilité Article rich results.
+const schemaImageUrl = new URL('/og/equipement.png', Astro.site).href;
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Article',
   headline: "Quelle taille de batterie (kWh) pour ma maison ? Stocker ou revendre ?",
   description: "Les paliers de dimensionnement, la différence entre kWh nominal et kWh utile (DoD), et pourquoi au Maroc stocker rapporte bien plus qu'exporter — expliqués simplement.",
+  image: schemaImageUrl,
   about: { '@type': 'Thing', name: 'Batterie de stockage solaire' },
   author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
   publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
@@ -28,9 +51,11 @@ const jsonLd = {
 <Layout
   title="Quelle taille de batterie (kWh) pour ma maison ? Stocker ou revendre ? | Taqinor"
   description="Les paliers de dimensionnement (5–10 kWh secours, 10–20 kWh autoconsommation du soir, 20 kWh+ quasi-autonomie), la règle du kWh utile, et l'économie marocaine : avec la loi 82-21 stocker vaut bien plus qu'exporter."
-  ogSlug="equipement"
+  ogSlug="guides"
 >
   <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  {/* W376 — reading progress bar (see global.css .reading-bar) */}
+  <div class="reading-bar" aria-hidden="true"></div>
   <div class="v2">
     <V2Enhance />
     <Article33Ribbon />
@@ -40,6 +65,14 @@ const jsonLd = {
     <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
       <p class="tech-label v2-kicker rule-brass text-lune">Guide · Équipement</p>
       <h1 class="display v2-page-title mt-5 text-white">Quelle taille de batterie pour ma maison ?</h1>
+
+      <!-- W303 — date de vérification + auteur + temps de lecture -->
+      <p class="guide-byline mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-lune-faint">
+        <span>Vérifié le {dateFmt.format(verifiedDate)} · par Reda Kasri</span>
+        <span aria-hidden="true">·</span>
+        <span>{readingMinutes} min de lecture</span>
+      </p>
+
       <p class="v2-lead mt-6 text-lune-soft">
         Le plus simple pour répondre, c'est de suivre une vraie maison. Prenons une villa à Casablanca
         de quatre personnes : climatisation deux à trois heures le soir, télévision, éclairage, frigo
@@ -125,15 +158,21 @@ const jsonLd = {
           l'année.
         </li>
         <li>
-          <strong class="text-white">Tarif de rachat : 0,18–0,21 DH/kWh.</strong> Le prix auquel ONEE
-          rachète votre surplus (tarif fixé par l'ANRE, heures creuses/heures de pointe). En face,
-          vous <em>achetez</em> l'électricité du réseau entre 0,90 et 1,66 DH/kWh selon votre tranche.
+          <strong class="text-white">Tarif de rachat : 0,18–0,21 DH/kWh — mais pour le MT/HT.</strong> Le
+          prix auquel ONEE rachète le surplus (tarif fixé par la décision 04/26 de l'ANRE, heures
+          creuses/heures de pointe) est publié pour le moyen et le haut tension. <strong class="text-white">
+          Le tarif BT résidentiel (&lt; 11 kW, régime déclaration — le cas de notre villa) n'est, lui,
+          pas encore publié.</strong> En face, vous <em>achetez</em> l'électricité du réseau entre
+          0,90 et 1,66 DH/kWh selon votre tranche — ce chiffre-là, lui, est connu.
         </li>
       </ul>
       <p class="v2-lead mt-5 text-lune-soft">
-        Pour notre villa, un kWh exporté rapporte 0,18–0,21 DH. Le même kWh stocké et consommé le soir
-        évite d'acheter un kWh à la tranche marginale, soit quatre à neuf fois plus. C'est ce rapport
-        qui justifie de stocker plutôt que de revendre.
+        Tant que le tarif BT n'est pas publié, on ne peut pas dire combien exactement un kWh exporté
+        rapportera à notre villa — seulement que ce sera un tarif de rachat bien inférieur au prix
+        d'achat (à titre indicatif, le MT/HT se situe à 0,18–0,21 DH). Le même kWh stocké et consommé
+        le soir évite, lui, d'acheter un kWh à la tranche marginale — un gain connu et déjà nettement
+        supérieur à ce que rapporterait l'export. C'est ce rapport qui justifie de stocker plutôt que
+        de revendre, indépendamment du chiffre BT à venir.
       </p>
 
       <h2 class="display v2-section-title mt-12 text-white">L'ordre de valeur à retenir</h2>

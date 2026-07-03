@@ -21,6 +21,7 @@ import StickyCta from '../components/StickyCta.astro';
 const faq = [
   // — Prix & ordres de grandeur —
   {
+    cluster: 'Prix & ordres de grandeur',
     q: "Combien coûte une installation solaire résidentielle ?",
     a: "Il n’y a pas de prix au mètre carré : tout part de votre facture et de votre toit. Pour fixer les idées, une villa qui paie autour de 1 500 MAD par mois s’équipe le plus souvent en 4 à 6 kWc. Le diagnostic en ligne vous renvoie une fourchette en quelques secondes ; le vrai chiffre, lui, tombe après la visite technique.",
   },
@@ -32,8 +33,19 @@ const faq = [
     q: "À partir de quelle facture le solaire est-il intéressant ?",
     a: "Sous 1 000 MAD par mois environ, le retour sur investissement passe généralement la barre des 7 ans, et nous vous le dirons franchement plutôt que de vous équiper pour rien. Au-dessus de 10 000 MAD par mois, on quitte le forfait résidentiel : votre cas mérite une étude dédiée (voir la page Professionnel).",
   },
+  // — Financement (W297 : AEO/GEO — bloc Q&A autonome) —
+  {
+    cluster: 'Financement',
+    q: "Comment financer une installation solaire au Maroc ?",
+    a: "Trois façons concrètes, sans détour. La plupart de nos clients règlent au comptant, et l'installation se rembourse ensuite seule via l'électricité qu'ils cessent d'acheter au réseau. D'autres passent par un crédit à la consommation classique souscrit directement auprès de leur banque — Taqinor n'y intervient pas et n'y touche aucune commission. Pour les entreprises, des lignes de financement vert existent pour les énergies renouvelables, mais le montage relève de votre banque. Le détail est sur la page Financement & rentabilité.",
+  },
+  {
+    q: "Taqinor propose-t-il un crédit ou une subvention ?",
+    a: "Non, et mieux vaut le savoir avant de signer quoi que ce soit. Taqinor n'est pas un organisme de crédit : nous posons et garantissons le solaire, nous ne vendons aucun produit financier et n'accordons aucun financement. Aucune subvention résidentielle spéciale n'existe non plus pour une installation solaire de particulier au Maroc, ni d'exonération de TVA résidentielle — la TVA s'applique normalement à une installation clé en main. Méfiez-vous de toute promesse contraire.",
+  },
   // — Fonctionnement des panneaux —
   {
+    cluster: 'Fonctionnement des panneaux',
     q: "Les panneaux fonctionnent-ils la nuit ou par temps nuageux ?",
     a: "La nuit, non : sans lumière, pas de courant. Le temps couvert est une autre histoire — les panneaux produisent toujours, simplement moins, car la cellule photovoltaïque réagit aussi à la lumière diffuse, pas seulement au soleil direct. Au Maroc, avec plus de 300 jours de soleil par an et un ensoleillement parmi les meilleurs au monde, les journées vraiment «&nbsp;perdues&nbsp;» se comptent sur les doigts. C’est ce qui rend l’autoconsommation aussi rentable ici.",
   },
@@ -51,6 +63,7 @@ const faq = [
   },
   // — Loi 82-21 —
   {
+    cluster: 'Loi 82-21',
     q: "Que dit la loi 82-21 pour les particuliers ?",
     a: "Pour l’immense majorité des villas, c’est une bonne nouvelle : en basse tension et sous 11 kW, vous relevez du régime le plus léger, la déclaration. Une formalité à déposer avant la mise en service, pas une autorisation à décrocher. Et c’est nous qui la préparons et la déposons à votre place.",
   },
@@ -60,6 +73,7 @@ const faq = [
   },
   // — Article 33 —
   {
+    cluster: 'Article 33 (régularisation)',
     q: "Mon installation existante n’est pas déclarée. Que faire ?",
     a: "Ne pas attendre. L’Article 33 vous laisse une fenêtre de 18 mois, ouverte le 9 juin 2026, pour régulariser une installation déjà en place ; passé ce délai, elle se referme. Le plus sage est de lancer la démarche dès maintenant — la page Régularisation détaille la procédure en 5 étapes.",
   },
@@ -69,6 +83,7 @@ const faq = [
   },
   // — Batteries / autoconsommation —
   {
+    cluster: 'Batteries & autoconsommation',
     q: "Faut-il des batteries ?",
     a: "Souvent non, et c’est rarement la réponse attendue. Quand vous consommez surtout en journée, l’énergie file directement vers vos appareils, et cette autoconsommation directe rapporte plus que n’importe quel stockage. La batterie prend tout son sens pour le nocturne ou pour tenir pendant une coupure ; c’est votre courbe de consommation qui tranche, et nous la regardons de près dans l’étude.",
   },
@@ -78,6 +93,7 @@ const faq = [
   },
   // — Garanties —
   {
+    cluster: 'Garanties',
     q: "Quelles sont les garanties ?",
     a: "Composant par composant. Panneaux : 12 ans sur le produit et 25 ans sur la performance (au moins 84,8 % de la puissance initiale au bout de 25 ans). Onduleurs Deye et Huawei et batteries Dyness LFP : 10 ans. Structure en acier galvanisé : 20 ans. Pose et main-d’œuvre Taqinor : 2 ans. Le détail, avec ce que chaque garantie couvre, est sur la page Nos garanties.",
   },
@@ -87,6 +103,7 @@ const faq = [
   },
   // — Véhicule électrique —
   {
+    cluster: 'Véhicule électrique',
     q: "Puis-je recharger ma voiture électrique avec mes panneaux solaires ?",
     a: "Oui, et c’est l’une des combinaisons les plus rentables. Une voiture compacte consomme environ 15 kWh/100 km (une Dacia Spring tourne autour de 14 kWh, une BYD Dolphin 14,5 kWh). Pour un trajet quotidien de 30 à 40 km, il faut couvrir environ 5 kWh par jour — ce que 2 à 3 panneaux de 550 W produisent en moyenne au Maroc. Si vous rentrez le soir, un chargeur « solaire-aware » (comme le Zappi de myenergi ou le Wallbox en mode solar) redirige automatiquement le surplus de la journée vers la voiture pendant que vous êtes absent. Le coût marginal au kilomètre tombe alors près de zéro, là où une essence revient à ~93 MAD/100 km.",
   },
@@ -96,11 +113,13 @@ const faq = [
   },
   // — Délais & process —
   {
+    cluster: 'Délais & process',
     q: "Comment se passe une installation, étape par étape ?",
     a: "Trois temps, sans détour. D’abord un diagnostic de 60 secondes qui vous renvoie une première fourchette. Ensuite un échange WhatsApp direct avec un technicien, photos de toiture à l’appui. Enfin la visite technique, l’étude complète gratuite, et le devis. Vous parlez à la personne qui dimensionne, pas à un standard qui rappellera.",
   },
   // — Monitoring / SAV —
   {
+    cluster: 'Monitoring & SAV',
     q: "Comment suivez-vous la production après l’installation ?",
     a: "Un petit dongle WiFi/Ethernet relie votre installation à Deye Cloud : production en temps réel, alertes automatiques, historiques. Vous recevez votre accès personnel sur l’application mobile, et de notre côté nous surveillons l’ensemble du parc — l’idée étant de repérer un écart avant que vous n’ayez à le constater chez vous.",
   },

@@ -90,6 +90,20 @@
   --font-sans: 'Hanken Grotesk', 'Hanken Fallback', ui-sans-serif, system-ui, sans-serif;
   --font-display: 'Archivo', 'Archivo Fallback', 'Hanken Grotesk', 'Hanken Fallback', sans-serif;
 
+  /* W362 — Motion token system : une seule courbe accent (« cinéma ») pour les
+     révélations/entrées, une courbe distincte pour le shimmer horizontal, et
+     des durées canoniques réutilisées par tous les effets existants. Purement
+     un renommage/factorisation des valeurs déjà en place — comportement
+     inchangé (mêmes chiffres qu'avant, juste nommés une fois). */
+  --ease-cine: cubic-bezier(0.2, 0.65, 0.25, 1);
+  --ease-shimmer: cubic-bezier(0.4, 0, 0.6, 1);
+  --dur-fast: 0.15s;
+  --dur-hover: 0.2s;
+  --dur-card: 0.25s;
+  --dur-reveal: 0.5s;
+  --dur-in: 0.8s;
+  --dur-shimmer: 8s;
+
   /* Blanc architectural — l'acte final éclairé (« salle blanche ») */
   --color-blanc: #ffffff;
   --color-blanc-azur: #f3f6fc;
@@ -132,6 +146,27 @@
   --color-alert-300: #f4a18a;
 }
 
+/* ─── W363 — Grain sur les dégradés nuit ───────────────────────────────────
+   Un bruit SVG feTurbulence, tuilé, en data-URI inline (aucune requête
+   supplémentaire, aucun élément supplémentaire). Ajouté comme dernière couche
+   background-image de .hero-scrim / .seam-lumiere / .diag-lumiere /
+   .cine-card, à une opacité effective ~2,5 % (portée par le canal alpha de la
+   tuile elle-même via feColorMatrix) : casse le banding visible des larges
+   dégradés nuit — le tell le moins cher des thèmes sombres premium. Purement
+   additif : les dégradés existants de chaque cible sont conservés à
+   l'identique en dessous, ce calque vient juste se superposer par-dessus
+   (comportement inchangé hors du bruit). Tuile 180×180 en repeat.
+   .grain-overlay : utilitaire autonome pour ajouter le même calque sur un
+   élément qui ne fixe pas déjà son propre background par shorthand. */
+:root {
+  --grain-svg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.025 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.grain-overlay {
+  background-image: var(--grain-svg);
+  background-repeat: repeat;
+}
+
 /* ─── W216 — Lien d'évitement « Aller au contenu » ─────────────────────────
    Visuellement masqué jusqu'au focus clavier (clip-path hors-écran) ; au focus,
    il surgit en haut-gauche avec le traitement brass du site. ZÉRO CLS :
@@ -151,7 +186,7 @@
   border: 2px solid var(--color-brass-400);
   border-radius: 4px;
   text-decoration: none;
-  transition: top 0.15s ease;
+  transition: top var(--dur-fast) ease;
 }
 .skip-link:focus-visible {
   top: 1rem;
@@ -335,6 +370,8 @@ summary:focus-visible {
    .cine-card-link : modificateur pour carte cliquable (cursor pointer). */
 .cine-card {
   background:
+    /* W363 — grain très fin par-dessus le verre, casse le banding du glass */
+    var(--grain-svg),
     /* reflet subtil en filet en haut de carte */
     linear-gradient(
       to bottom,
@@ -343,11 +380,13 @@ summary:focus-visible {
       transparent 1px
     ),
     rgb(255 255 255 / 0.06);
+  background-repeat: repeat;
   border: 1px solid rgb(255 255 255 / 0.12);
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.10),
     0 24px 60px -30px rgb(0 0 0 / 0.8);
-  transition: box-shadow 0.25s ease, border-color 0.25s ease, transform 0.25s ease;
+  transition: box-shadow var(--dur-card) ease, border-color var(--dur-card) ease,
+    transform var(--dur-card) ease;
 }
 
 .cine-card-link {
@@ -375,10 +414,48 @@ summary:focus-visible {
 .seam-lumiere {
   height: 7rem;
   background:
+    /* W363 — grain très fin par-dessus la couture, casse le banding */
+    var(--grain-svg),
     radial-gradient(60% 130% at 50% 100%, rgb(232 181 74 / 0.16), transparent 70%),
     linear-gradient(to bottom, var(--color-nuit), var(--color-blanc-azur));
+  background-repeat: repeat;
   position: relative;
   overflow: hidden;
+}
+
+/* ─── W372 — Couture de sortie de la lumière (sens inverse) ─────────────────
+   .seam-lumiere-out : la salle claire se referme vers la nuit — même recette
+   que .seam-lumiere (halo laiton + grain + shimmer), gradient simplement
+   inversé. Avant W372, chaque bande blanc-azur se refermait sur un
+   .seam-soft (couture nuit→nuit, coupure sèche) : la couture de SORTIE de la
+   lumière n'existait pas, seule celle d'entrée avait été composée. */
+.seam-lumiere-out {
+  height: 7rem;
+  background:
+    var(--grain-svg),
+    radial-gradient(60% 130% at 50% 0%, rgb(232 181 74 / 0.16), transparent 70%),
+    linear-gradient(to bottom, var(--color-blanc-azur), var(--color-nuit));
+  background-repeat: repeat;
+  position: relative;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .seam-lumiere-out::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      105deg,
+      transparent 30%,
+      rgb(232 181 74 / 0.18) 48%,
+      rgb(255 255 255 / 0.10) 52%,
+      transparent 70%
+    );
+    animation: seamShimmer var(--dur-shimmer) var(--ease-shimmer) infinite;
+    pointer-events: none;
+    will-change: transform;
+  }
 }
 
 /* W208 — Slow shimmer on .seam-lumiere : un reflet qui glisse horizontalement
@@ -403,9 +480,101 @@ summary:focus-visible {
       rgb(255 255 255 / 0.10) 52%,
       transparent 70%
     );
-    animation: seamShimmer 8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    animation: seamShimmer var(--dur-shimmer) var(--ease-shimmer) infinite;
     pointer-events: none;
     will-change: transform;
+  }
+}
+
+/* ─── W365 — Signature moment : un seul balayage de lumière laiton sur le
+   titre héros ────────────────────────────────────────────────────────────
+   « La lumière vient des chantiers » est la thèse de marque : le titre héros
+   est le seul endroit où elle ne touche jamais le texte. Un seul passage
+   (jamais `infinite`, contrairement à .seam-lumiere) d'un reflet laiton,
+   masqué par le texte lui-même via `background-clip: text` — donc AUCUN
+   pseudo-élément, aucune boîte supplémentaire, zéro impact de layout/CLS.
+   Réutilise l'easing .seam (--ease-shimmer) pour une cohérence de "toucher".
+
+   Déclenchement : la classe .hero-sweep-armed n'est posée qu'après `load`
+   par un petit script (voir index.astro), donc CE calque ne peint JAMAIS
+   avant le premier rendu du LCP (l'affiche héros) — protection LCP intacte.
+
+   Sécurité anti-texte-invisible : le masquage (background-clip:text +
+   color:transparent) n'est appliqué QUE sur le sélecteur COMPOSÉ
+   `.hero-title-sweep.hero-sweep-armed`, jamais sur `.hero-title-sweep` seul.
+   Le markup pose seulement `.hero-title-sweep` (classe neutre, aucun style) ;
+   `.hero-sweep-armed` n'est ajoutée que par le script après `load`, donc :
+   sans JS, sans @supports, ou en reduced-motion → le titre reste blanc plein
+   à l'identique d'avant (aucune régression, jamais de risque de texte
+   transparent sans le fallback background-clip). */
+@supports (background-clip: text) or (-webkit-background-clip: text) {
+  @media (prefers-reduced-motion: no-preference) {
+    .hero-title-sweep.hero-sweep-armed {
+      background-image: linear-gradient(
+        100deg,
+        currentColor 0%,
+        currentColor 42%,
+        var(--color-brass-300) 50%,
+        currentColor 58%,
+        currentColor 100%
+      );
+      background-size: 260% 100%;
+      background-position: 150% 0;
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      animation: heroTitleSweep 1.4s var(--ease-shimmer) 1 both;
+    }
+    @keyframes heroTitleSweep {
+      from { background-position: 150% 0; }
+      to {
+        background-position: -50% 0;
+        color: transparent;
+      }
+    }
+  }
+}
+
+/* ─── W378 — L'axe de largeur Archivo comme interaction ───────────────────
+   Le site charge une fonte variable 62–125 % de largeur (font-stretch) mais
+   n'en rendait que 3 valeurs figées (.display 112 %, .fig 106 %, .display-tight
+   106 %) : l'axe existe déjà dans le poids de police téléchargé, l'animer ne
+   coûte donc RIEN de plus (aucune requête, aucune fonte supplémentaire) —
+   juste une interpolation `font-stretch` que le navigateur fait déjà pour le
+   texte statique. Hanken Grotesk (le texte courant/CTA) N'EST PAS une fonte
+   variable en largeur (seule Archivo l'est, cf. les @font-face plus haut) :
+   l'interaction reste donc scopée au titre héros lui-même, seul élément
+   Archivo du bloc héros.
+
+   1) Reveal : au chargement, le titre « respire » de 112 % vers 118 % puis
+      revient à 112 % (repos), un cran plus large l'instant de son
+      apparition — un chuchotement, jamais un à-coup.
+   2) Survol : re-déclenche le même chuchotement (112 → 118 % → 112) au survol
+      du titre — la zone la plus proche d'une navigation dans le héros (le
+      titre ancre tout le bloc de contenu, juste au-dessus du CTA/nav ghost).
+
+   LCP-safe : `.v2-hero-title` n'est ni le poster ni la vidéo héros (l'élément
+   LCP réel), donc cette interpolation typographique ne retarde ni ne mute
+   jamais l'élément mesuré pour le LCP. Gated reduced-motion : hors media
+   match, le titre reste figé à 112 % (valeur .display normale), aucune
+   régression. */
+@media (prefers-reduced-motion: no-preference) {
+  .v2-hero-title {
+    animation: heroStretchBreathe var(--dur-in) var(--ease-cine) both;
+    /* Décalé après le fondu cine-in-1 (120ms) pour ne jamais superposer deux
+       mutations de layout au même instant — l'effet démarre une fois le
+       titre déjà visible. */
+    animation-delay: 480ms;
+    transition: font-stretch var(--dur-hover) var(--ease-cine);
+  }
+  @keyframes heroStretchBreathe {
+    0% { font-stretch: 112%; }
+    45% { font-stretch: 118%; }
+    100% { font-stretch: 112%; }
+  }
+  .v2-hero-title:hover,
+  .v2-hero-title:focus-within {
+    font-stretch: 118%;
   }
 }
 
@@ -421,7 +590,7 @@ summary:focus-visible {
   .cine-in {
     opacity: 0;
     transform: translateY(22px);
-    animation: cineIn 0.8s cubic-bezier(0.2, 0.65, 0.25, 1) forwards;
+    animation: cineIn var(--dur-in) var(--ease-cine) forwards;
   }
   @keyframes cineIn {
     to {
@@ -470,7 +639,7 @@ summary:focus-visible {
   }
 
   .result-fade {
-    animation: cineIn 0.5s cubic-bezier(0.2, 0.65, 0.25, 1) both;
+    animation: cineIn var(--dur-reveal) var(--ease-cine) both;
   }
 }
 
@@ -519,13 +688,14 @@ summary:focus-visible {
   background: transparent;
   cursor: pointer;
   text-decoration: none;
-  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+  transition: background var(--dur-hover) ease, color var(--dur-hover) ease,
+    border-color var(--dur-hover) ease;
 }
 
 @media (prefers-reduced-motion: no-preference) {
   .btn-pill {
-    transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease,
-      box-shadow 0.2s ease;
+    transition: background var(--dur-hover) ease, color var(--dur-hover) ease,
+      border-color var(--dur-hover) ease, box-shadow var(--dur-hover) ease;
   }
 }
 
@@ -563,11 +733,14 @@ summary:focus-visible {
 }
 
 /* Corps de texte "version 2" : taille fluide, interligne aéré */
+/* W367 — text-wrap: pretty (voir prose.css) : mêmes garanties, support
+   progressif, aucun effet sur le rythme RTL. */
 .v2-body {
   font-family: var(--font-sans);
   font-size: clamp(1rem, 1.5vw + 0.25rem, 1.125rem);
   line-height: 1.7;
   color: var(--color-lune-soft);
+  text-wrap: pretty;
 }
 
 /* ─── W175 — Eyebrow canonique sur fond clair (« salle blanche ») ──────────
@@ -590,6 +763,8 @@ summary:focus-visible {
 
 .hero-scrim {
   background:
+    /* W363 — grain très fin par-dessus le scrim, casse le banding */
+    var(--grain-svg),
     /* Point chaud central radial — atténue l'éclat de la photo */
     radial-gradient(
       ellipse 80% 60% at 50% 40%,
@@ -611,6 +786,7 @@ summary:focus-visible {
       rgb(7 11 29 / calc(var(--hero-scrim-strength) - 0.15)) 70%,
       transparent 100%
     );
+  background-repeat: repeat;
 }
 
 /* ─── W149 — Halo doré renforcé sur le CTA héro ────────────────────────────
@@ -649,14 +825,14 @@ summary:focus-visible {
   );
 }
 
-/* ─── W161 — Chevron d'invitation au défilement ─────────────────────────────
-   .scroll-chevron : SVG animé (bounce vertical). Gated prefers-reduced-motion :
+/* ─── W161/W275 — Chevron d'invitation au défilement ────────────────────────
+   .scroll-chevron : libellé + SVG animé (bounce vertical, sur le groupe
+   entier — texte et flèche descendent ensemble). Gated prefers-reduced-motion :
    statique quand la motion est réduite. */
 .scroll-chevron {
-  display: flex;
   justify-content: center;
   align-items: center;
-  opacity: 0.55;
+  opacity: 0.75;
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -677,6 +853,8 @@ summary:focus-visible {
    d'un acte final éclairé sans compromettre les couleurs de texte existantes. */
 .diag-lumiere {
   background:
+    /* W363 — grain très fin par-dessus le dégradé, casse le banding */
+    var(--grain-svg),
     radial-gradient(ellipse 100% 55% at 50% 0%, rgb(232 181 74 / 0.12), transparent 70%),
     radial-gradient(ellipse 60% 40% at 30% 60%, rgb(35 66 181 / 0.08), transparent 70%),
     linear-gradient(
@@ -684,6 +862,7 @@ summary:focus-visible {
       var(--color-nuit-800) 0%,
       var(--color-nuit) 60%
     );
+  background-repeat: repeat;
 }
 
 /* ─── W214 — RTL Arabic layout corrections ──────────────────────────────────
@@ -771,7 +950,8 @@ summary:focus-visible {
 /* — seam-lumiere shimmer: the shimmer animates translateX from left to right.
    In RTL we reverse the direction so it reads naturally. */
 @media (prefers-reduced-motion: no-preference) {
-  [dir="rtl"] .seam-lumiere::after {
+  [dir="rtl"] .seam-lumiere::after,
+  [dir="rtl"] .seam-lumiere-out::after {
     animation-direction: reverse;
   }
 }
@@ -833,4 +1013,172 @@ summary:focus-visible {
 [dir="rtl"] .prop-lang-switch {
   right: auto;
   left: 0.75rem;
+}
+
+/* ─── W376 — Reading progress bar (blog + guides long-form templates) ──────
+   A 2px brass bar fixed to the very top of the viewport (above the sticky
+   header's z-50), filling left→right (right→left under RTL, via `inset-
+   inline-start` + the logical transform-origin below) as the reader scrolls
+   through the article. Markup: a single empty `<div class="reading-bar"
+   aria-hidden="true"></div>` placed once per long-article template (blog
+   [...slug].astro, each guides/*.astro article — NOT guides/index.astro,
+   which is a card grid, not an article).
+
+   ZERO CLS: `position: fixed` takes the element out of flow from the very
+   first paint — it never reserves box space, so it cannot shift anything
+   else on the page regardless of browser support.
+
+   Progressive enhancement, three tiers, no JS in any of them:
+     1. Modern engines (`@supports (animation-timeline: scroll())`): the bar
+        is driven natively by `animation-timeline: scroll(root)` — the
+        compositor reads scroll offset directly, no scroll listener, no
+        main-thread work.
+     2. Motion-safe engines without scroll-timeline support: the bar is
+        simply hidden (`display: none`) rather than shipping a JS polyfill —
+        this task is CSS-only per spec ("CSS scroll-timeline where
+        supported, no-op otherwise").
+     3. `prefers-reduced-motion: reduce`: same no-op — a bar that visibly
+        crawls with scroll position IS the motion, so reduced-motion removes
+        it entirely instead of freezing it at some arbitrary width. */
+.reading-bar {
+  position: fixed;
+  inset-block-start: 0;
+  inset-inline: 0;
+  z-index: 60;
+  height: 2px;
+  background: var(--color-brass-400, #e8b54a);
+  transform-origin: left center;
+  display: none;
+  pointer-events: none;
+}
+[dir="rtl"] .reading-bar {
+  transform-origin: right center;
+}
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: scroll()) {
+    .reading-bar {
+      display: block;
+      transform: scaleX(0);
+      animation: reading-bar-fill auto linear;
+      animation-timeline: scroll(root block);
+    }
+    [dir="rtl"] .reading-bar {
+      animation-timeline: scroll(root block);
+    }
+  }
+  @keyframes reading-bar-fill {
+    from { transform: scaleX(0); }
+    to { transform: scaleX(1); }
+  }
+}
+
+/* ─── W374 — Crafted link hovers: mask/clip-path underline ─────────────────
+   Replaces the plain width-tween underline (previously a `.group-hover:w-full`
+   Tailwind utility inline in Header.astro) with a drawn-in-from-the-leading-
+   edge reveal: a `::after` bar sits at full inline-size from the start, then
+   `clip-path: inset()` hides everything past the leading edge at rest and
+   retracts to nothing on hover/focus — reading as ink drawing itself in,
+   the "crafted" tier above a generic width tween.
+
+   RTL-aware via LOGICAL properties: the bar itself uses `inset-inline-start`
+   for its own position (so it never needs repositioning under `dir="rtl"`),
+   and only the *inset() clip-path* — which has no logical-side syntax in CSS
+   today — is flipped per direction with a `[dir="rtl"]` override, so the
+   reveal always animates from the start edge of the line (left under LTR,
+   right under `dir="rtl"`) rather than a fixed physical side.
+
+   Usage: add `.link-underline` next to the existing text-color hover classes
+   on nav/inline links; the element must be `position: relative` (nav links
+   already are, via `relative` in `linkBase`/`linkBaseActive`). No markup
+   change needed — the bar is a pseudo-element, not the old `<span>` (which
+   is removed from Header.astro in the same change).
+
+   ZERO CLS: `position: absolute`, taken out of flow — never reserves space.
+   Reduced-motion: the `clip-path` transition is removed entirely, so
+   hover/focus still reveals the bar but as an instant cut rather than a
+   drawn-in tween — the site's standing motion-reduce contract (see
+   `.dropdown-chevron`, header scroll, etc.) collapses the *animation*,
+   never the interaction itself. */
+.link-underline {
+  position: relative;
+}
+.link-underline::after {
+  content: '';
+  position: absolute;
+  inset-block-end: -0.25rem;
+  inset-inline-start: 0;
+  inline-size: 100%;
+  block-size: 2px;
+  background: var(--color-brass-400, #e8b54a);
+  clip-path: inset(0 100% 0 0);
+  transition: clip-path var(--dur-hover) var(--ease-cine);
+}
+[dir="rtl"] .link-underline::after {
+  clip-path: inset(0 0 0 100%);
+}
+.link-underline:hover::after,
+.link-underline:focus-visible::after {
+  clip-path: inset(0 0 0 0);
+}
+/* W151 — "active page" variant: always fully drawn, no hover needed. */
+.link-underline-active::after {
+  content: '';
+  position: absolute;
+  inset-block-end: -0.25rem;
+  inset-inline-start: 0;
+  inline-size: 100%;
+  block-size: 2px;
+  background: var(--color-brass-400, #e8b54a);
+}
+@media (prefers-reduced-motion: reduce) {
+  .link-underline::after {
+    transition: none;
+    /* Instant underline at rest, per spec — no draw-in animation, but the
+       hover state itself is preserved (still CSS-only, still zero-JS); it
+       simply snaps rather than tweening. */
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * W364 — Cross-document view-transition morphs (native, no JS router)
+ * ═══════════════════════════════════════════════════════════════════════
+ * `<meta name="view-transition" content="same-origin">` (Layout.astro) asks
+ * the browser to animate SAME-ORIGIN document navigations when it supports
+ * the API (Chrome/Edge 126+) — everywhere else (older browsers, and every
+ * browser when the meta tag is absent) navigation is a completely normal
+ * full-page load, unaffected. This is NOT astro:transitions' ClientRouter —
+ * no client-side routing, no link interception, no page script re-execution
+ * model change; every page keeps loading exactly as before.
+ *
+ * The morph itself comes from a MATCHING `view-transition-name` on the
+ * outgoing element (gallery card photo on / or /realisations) and the
+ * incoming element (case-study hero photo on /realisations/[slug]) — the
+ * browser cross-fades/morphs between the two automatically. Names are
+ * assigned inline per photo (`style="view-transition-name: vt-photo-<slug>"`)
+ * in the markup, not here — this file only holds the SHARED, STABLE names
+ * (logo, primary CTA) and the reduced-motion guard.
+ *
+ * Reduced motion : `::view-transition-group(*)` disables ALL view-transition
+ * animation outright — same gate already used for every other animation on
+ * this site (prefers-reduced-motion: reduce), so a visitor who has asked for
+ * less motion gets an ordinary instant navigation, exactly as they would
+ * without this feature at all.
+ */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
+/* Stable cross-page identities: the header wordmark and the single primary
+   CTA keep the SAME view-transition-name site-wide, so they never "jump" or
+   cross-fade against themselves when a navigation also carries a photo morph
+   — only the photo pair is meant to visibly morph. */
+.site-logo-vt {
+  view-transition-name: vt-logo;
+}
+.primary-cta-vt {
+  view-transition-name: vt-primary-cta;
 }

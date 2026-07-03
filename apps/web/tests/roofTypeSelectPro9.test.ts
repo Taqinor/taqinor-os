@@ -131,9 +131,13 @@ describe('roofTypeSelect — le bouton « Toit en pente » répond (régression 
   });
 });
 
+// W322 — pro-9 (qui a introduit ce câblage) est retiré du labo (founder-confirmed :
+// pro-11 est la version canonique, COPIE de pro-10 qui hérite du même câblage EAGER).
+// Le bloc ci-dessous est REPOINTÉ sur pro-11 pour garder la garde-fou anti-régression
+// (bouton « Toit en pente » mort) sur la page qui vit réellement.
 describe('roofTypeSelect — câblé EAGERLY dans la page (avant le boot de l’outil lourd)', () => {
-  const page = read('../src/pages/preview/toiture-3d-pro-9.astro');
-  const script = read('../src/scripts/roof-tool-pro9.ts');
+  const page = read('../src/pages/preview/toiture-3d-pro-11.astro');
+  const script = read('../src/scripts/roof-tool-pro11.ts');
 
   it('la page importe createRoofTypeSelect et le crée AVANT d’importer l’outil lourd', () => {
     expect(page).toContain("import { createRoofTypeSelect } from '../../lib/roofTypeSelect'");
@@ -141,7 +145,7 @@ describe('roofTypeSelect — câblé EAGERLY dans la page (avant le boot de l’
     // L'instanciation EAGER doit précéder l'import() paresseux de l'outil 3D : c'est ce
     // qui garantit que les puces répondent avant tout boot (la cause du bouton mort).
     expect(page.indexOf('createRoofTypeSelect(document)'))
-      .toBeLessThan(page.indexOf("import('../../scripts/roof-tool-pro9.ts')"));
+      .toBeLessThan(page.indexOf("import('../../scripts/roof-tool-pro11.ts')"));
     // Le contrôleur est transmis à l'outil pour qu'il s'y abonne.
     expect(page).toContain('roofType: roofTypeSelect');
   });

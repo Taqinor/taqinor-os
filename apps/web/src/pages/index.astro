@@ -8,34 +8,94 @@
  * eyebrows sont rétrogradés en lune), grade « heure dorée » (.v3-grade) sur la
  * photographie de contenu — JAMAIS le héros (protection LCP). Mouvements et
  * chiffres réutilisent les hooks de l'accueil (count-up héro, Ken Burns,
- * .cine-in / .v2-rise), tous gated `prefers-reduced-motion`. Le diagnostic et
- * son flux de données restent inchangés (composant partagé DiagnosticForm).
+ * .cine-in / .v2-rise), tous gated `prefers-reduced-motion`.
  * Voir apps/web/DESIGN_RATIONALE.md.
+ *
+ * W249 — Un seul entonnoir : l'ancien second formulaire DiagnosticForm en
+ * fin de page (qui dupliquait les deux InstantEstimator déjà présents sur
+ * cette même page) est retiré ; DiagnosticForm.astro + /api/simulate restent
+ * intacts dans le code comme repli documenté (montés ailleurs).
  */
 import Layout from '../layouts/Layout.astro';
 import V2Enhance from '../components/V2Enhance.astro';
 import Article33Ribbon from '../components/Article33Ribbon.astro';
-import DiagnosticForm from '../components/DiagnosticForm.astro';
 import Faq from '../components/Faq.astro';
 import Picture from '../components/Picture.astro';
 import VideoChantier from '../components/VideoChantier.astro';
+import VideoCompteur from '../components/VideoCompteur.astro';
 import StickyCta from '../components/StickyCta.astro';
 import WhatsAppMock from '../components/WhatsAppMock.astro';
 import GarantiesTeaser from '../components/GarantiesTeaser.astro';
+import InstantEstimator from '../components/InstantEstimator.astro';
 import Testimonials from '../components/Testimonials.astro';
 import BrandStrip from '../components/BrandStrip.astro';
 import ZelligeSignature from '../components/ZelligeSignature.astro';
+import FounderPortrait from '../components/FounderPortrait.astro';
 import { WHATSAPP_LEADS } from '../lib/nap';
-import { whatsappLink } from '../lib/whatsapp';
+import { whatsappLink, zeroFormWhatsappText } from '../lib/whatsapp';
+import { REGIE_MARGINAL_RATE_SECOND, REGIE_MARGINAL_RATE_HIGH } from '../lib/regieTariff';
+import { REALISATIONS, realisationBySlug } from '../lib/realisations';
+import { YIELD_TABLE } from '../lib/yieldTable';
 
 const waDirect = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour une installation solaire.');
+// W349 — porte sans formulaire : action secondaire du héros, pour le visiteur
+// qui ne veut/peut rien lire ni remplir — une photo de facture suffit.
+const waZeroForm = whatsappLink(WHATSAPP_LEADS, zeroFormWhatsappText());
+
+// W284 — Chiffres précis, jamais arrondis : dérivés de REALISATIONS (source
+// unique de vérité, apps/web/src/lib/realisations.ts), jamais recopiés en dur.
+// Si REALISATIONS change, ces valeurs suivent automatiquement — plus aucun
+// risque de chiffre qui devient silencieusement faux.
+const totalKwc = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
+const totalKwcLabel = totalKwc.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' kWc';
+// La plus grande installation résidentielle publiée (réf. 468, El Jadida) —
+// protagoniste du héros et de l'aside final. Dérivée par tri sur kwcNum,
+// jamais une référence recopiée à la main.
+const featured = [...REALISATIONS].sort((a, b) => b.kwcNum - a.kwcNum)[0];
+
+// WJ73 — L'écart estimation-vs-preuve, expliqué honnêtement. Le chantier
+// phare (réf. 468) mesure ≈1 256 kWh/kWc/an (21 406 kWh / 17,04 kWc) — un
+// visiteur qui divise ces deux chiffres déjà publiés sur cette page tombe sur
+// un nombre bien inférieur aux ≈1 650 kWh/kWc/an que la table de rendement
+// (yieldTable.ts, PVGIS) donne pour un plein sud à 29° à Casablanca, l'
+// hypothèse utilisée par le tableau modélisé de TOUTE estimation du site.
+// Plutôt que de laisser cet écart de 24 % sans explication (un « gotcha »
+// pour qui fait le calcul), on l'explique en une ligne, honnêtement : les
+// toits réels ne sont pas tous plein sud à l'inclinaison optimale — l'étude
+// affine. AUCUN chiffre inventé : les deux valeurs viennent de sources déjà
+// committées (REALISATIONS + YIELD_TABLE), jamais recopiées à la main.
+const featuredYieldPerKwc = featured.productionNum && featured.kwcNum
+  ? Math.round(featured.productionNum / featured.kwcNum)
+  : null;
+const casablancaSouthOptimalYield = YIELD_TABLE.casablanca.grid['0']['29'];
 
 // W205 — Le chiffre protagoniste de l’en-tête est séparé pour le count-up.
 // La largeur est réservée (tabular-nums + min-width verrouillée par JS) → zéro CLS.
-const heroFigure = "21 406";
-const heroTitleSuffix = " kWh par an, produits sur un toit d’El Jadida.";
+const heroFigure = (featured.productionNum ?? 0).toLocaleString('fr-FR');
+const heroTitleSuffix = ` kWh par an, produits sur un toit d’${featured.ville}.`;
 const heroSub =
-  'Installation réf. 468 — 17,04 kWc, dimensionnée, posée et mesurée par Taqinor. La vôtre commence par un diagnostic de 60 secondes.';
+  `Installation réf. ${featured.ref} — ${featured.kwc}, dimensionnée, posée et mesurée par Taqinor. La vôtre commence par un diagnostic de 60 secondes.`;
+
+// W267 — Sous-ligne monétaire du héros. AUCUN chiffre inventé : la
+// consommation réelle du foyer réf. 468 n'est publiée nulle part sur le site,
+// donc on ne peut PAS appeler `annualSavingsMad(production, consommation)`
+// sans inventer cette seconde variable. La seule dérivation honnête à partir
+// de la SEULE donnée publiée (21 406 kWh produits) est de valoriser cette
+// production aux deux tranches marginales hautes réelles du barème RÉGIE (via
+// le module public `regieTariff.ts` — la page publique NE doit PAS importer le
+// « cerveau » estimateur ; garde d'architecture), cohérent avec « notre plus
+// grande résidentielle de 2026 », donc un foyer situé sans ambiguïté dans le
+// haut de barème : c'est exactement la même fourchette « ≈ 1,38–1,60 MAD/kWh »
+// déjà publiée et documentée dans billRange.ts / recharge-voiture-electrique-solaire.astro.
+// Fourchette (jamais un chiffre unique) : reflète le fait que l'autoconsommation
+// réelle du foyer n'est pas connue — poser une seule valeur ponctuelle
+// inventerait une précision qu'on n'a pas.
+const heroProductionKwh = featured.productionNum ?? 0;
+const heroTariffLowRate = REGIE_MARGINAL_RATE_SECOND; // 1,3817 MAD/kWh
+const heroTariffHighRate = REGIE_MARGINAL_RATE_HIGH; // 1,5958 MAD/kWh
+const heroMoneyLow = Math.round((heroProductionKwh * heroTariffLowRate) / 100) * 100;
+const heroMoneyHigh = Math.round((heroProductionKwh * heroTariffHighRate) / 100) * 100;
+const heroMoneyLine = `≈ ${heroMoneyLow.toLocaleString('fr-FR')} à ${heroMoneyHigh.toLocaleString('fr-FR')} MAD effacés de la facture chaque année`;
 
 // W54 — L'ancien tableau de données (variable `cases`) a été retiré : les
 // mêmes installations vivaient en double (cartes photo + cartes données). La
@@ -52,16 +112,36 @@ const faq = [
   { q: 'Faut-il des batteries ?', a: 'Pas nécessairement. Si votre consommation est principalement diurne, l’autoconsommation directe est le meilleur investissement. Les batteries se justifient pour la consommation nocturne ou la continuité de service — nous le calculons dans l’étude.' },
 ];
 
-const gallery = [
-  { name: 'reflet-468', alt: 'Le soleil se reflète sur la rangée de panneaux pendant la pose, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, ville: 'El Jadida', kwc: '17,04 kWc', prod: '21 406 kWh/an', type: '24 × Canadian Solar 710 Wc · Deye 15 kW', slug: 'el-jadida-17-kwc' },
-  { name: 'equipe-trois', alt: 'Équipe Taqinor devant la longue rangée de panneaux en fin de chantier, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, ville: 'El Jadida', kwc: '17,04 kWc', prod: null, type: 'Fin de chantier · équipe Taqinor', slug: 'el-jadida-17-kwc' },
-  { name: 'hero-skyline', alt: 'Rangée de panneaux solaires devant la skyline de Casablanca et un minaret, lumière dorée', widths: [2000, 1280, 768, 480], ratio: 16 / 9, ville: 'Casablanca', kwc: '11,36 kWc', prod: '14 271 kWh/an', type: '16 × Canadian Solar 710 Wc · Deye 10 kW', slug: 'casablanca-11-kwc' },
-  { name: 'portrait-400', alt: "L'ingénieur devant le champ de panneaux, skyline de Casablanca", widths: [1600, 1024, 640], ratio: 4 / 3, ville: 'Casablanca', kwc: '11,36 kWc', prod: null, type: 'Production mesurée — Deye Cloud', slug: 'casablanca-11-kwc' },
-  { name: 'champ-villa', alt: 'Champ de huit panneaux sur toit plat de villa, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, ville: 'El Jadida', kwc: '5,68 kWc', prod: '7 135 kWh/an', type: '8 × Canadian Solar 710 Wc · Deye 5 kW', slug: 'el-jadida-6-kwc' },
-  { name: 'pose-134', alt: "L'équipe incline un panneau pendant la pose, Casablanca", widths: [1600, 1024, 640], ratio: 4 / 3, ville: 'Casablanca', kwc: '5,68 kWc', prod: '7 135 kWh/an', type: 'Pose en cours · 8 × Canadian Solar 710 Wc', slug: 'casablanca-6-kwc' },
-  { name: 'equipe-gilet-taqinor', alt: "Installateur en gilet Taqinor posant les rails d'une structure, Nouaceur", widths: [1600, 1024, 640], ratio: 1, ville: 'Nouaceur', kwc: '3,72 kWc', prod: null, type: 'Pose des rails · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
-  { name: 'entretien-jet', alt: "Nettoyage au jet d'eau du champ de panneaux, Nouaceur", widths: [1600, 1024, 640], ratio: 1, ville: 'Nouaceur', kwc: '3,72 kWc', prod: null, type: 'Entretien du champ · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
+// W284 — kwc/prod ne sont plus recopiés à la main : dérivés de REALISATIONS
+// via `slug` (source unique de vérité) pour ne jamais diverger silencieusement.
+// `prod` reste `null` quand la photo ne doit PAS afficher de production (ex.
+// la photo « fin de chantier » n'est pas la carte production de sa réf.) —
+// ce choix éditorial (quelle photo porte le chiffre) reste ici, seul le
+// CHIFFRE lui-même est dérivé.
+const galleryRaw = [
+  { name: 'reflet-468', alt: 'Le soleil se reflète sur la rangée de panneaux pendant la pose, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: true, type: '24 × Canadian Solar 710 Wc · Deye 15 kW', slug: 'el-jadida-17-kwc' },
+  { name: 'equipe-trois', alt: 'Équipe Taqinor devant la longue rangée de panneaux en fin de chantier, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: false, type: 'Fin de chantier · équipe Taqinor', slug: 'el-jadida-17-kwc' },
+  { name: 'hero-skyline', alt: 'Rangée de panneaux solaires devant la skyline de Casablanca et un minaret, lumière dorée', widths: [2000, 1280, 768, 480], ratio: 16 / 9, showProd: true, type: '16 × Canadian Solar 710 Wc · Deye 10 kW', slug: 'casablanca-11-kwc' },
+  { name: 'portrait-400', alt: "L'ingénieur devant le champ de panneaux, skyline de Casablanca", widths: [1600, 1024, 640], ratio: 4 / 3, showProd: false, type: 'Production mesurée — Deye Cloud', slug: 'casablanca-11-kwc' },
+  { name: 'champ-villa', alt: 'Champ de huit panneaux sur toit plat de villa, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: true, type: '8 × Canadian Solar 710 Wc · Deye 5 kW', slug: 'el-jadida-6-kwc' },
+  { name: 'pose-134', alt: "L'équipe incline un panneau pendant la pose, Casablanca", widths: [1600, 1024, 640], ratio: 4 / 3, showProd: true, type: 'Pose en cours · 8 × Canadian Solar 710 Wc', slug: 'casablanca-6-kwc' },
+  { name: 'equipe-gilet-taqinor', alt: "Installateur en gilet Taqinor posant les rails d'une structure, Nouaceur", widths: [1600, 1024, 640], ratio: 1, showProd: false, type: 'Pose des rails · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
+  { name: 'entretien-jet', alt: "Nettoyage au jet d'eau du champ de panneaux, Nouaceur", widths: [1600, 1024, 640], ratio: 1, showProd: false, type: 'Entretien du champ · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
 ];
+const gallery = galleryRaw.map((g) => {
+  const r = realisationBySlug(g.slug);
+  return {
+    ...g,
+    ville: r?.ville ?? '',
+    kwc: r?.kwc ?? '',
+    prod: g.showProd ? (r?.production ?? null) : null,
+  };
+});
+
+// W271 — Chips de filtre ville : « Toutes » + les villes réellement présentes
+// dans `gallery` ci-dessus (aucune ville inventée ; l'ordre suit le premier
+// passage de chaque ville dans le tableau — El Jadida, Casablanca, Nouaceur).
+const galleryCities = ['Toutes', ...Array.from(new Set(gallery.map((g) => g.ville)))];
 
 // Nos solutions (W31) — toutes les offres visibles dès l'accueil, pas seulement
 // dans le menu. Descriptions reprises du positionnement déjà publié, sans
@@ -91,6 +171,21 @@ const journey = [
   { n: '6', title: 'Monitoring Deye Cloud', body: 'Production relevée en continu, accès client inclus : vous lisez vos kWh à la source.' },
 ];
 
+// W252 — « Comment ça marche » : bande 4 étapes sous le héros, le device
+// standard 3-4 icônes qu'on retrouve chez tous les acteurs sérieux du secteur.
+// Ce sont les 4 MÊMES stades que la frise « Le parcours » plus bas (§ Comment
+// ça se passe) — juste condensés en 4 (au lieu de 6) pour répondre tout de
+// suite, sous le héros, à « que se passe-t-il après le formulaire ? ». Aucun
+// délai/SLA inventé ; les 4 stades sont ceux réellement livrés par le parcours
+// construit (diagnostic → étude signée → devis + signature en ligne → pose &
+// SAV, cf. /devis/mon-toit).
+const howItWorks = [
+  { n: '1', title: 'Estimation instantanée', body: 'Votre facture donne une fourchette kWc en 60 secondes, sans engagement.' },
+  { n: '2', title: 'Étude personnalisée signée', body: 'Visite technique, dimensionnement sur votre toiture réelle, validé et signé avant tout devis.' },
+  { n: '3', title: 'Devis + signature en ligne', body: 'Le chiffrage détaillé se signe électroniquement, où que vous soyez.' },
+  { n: '4', title: 'Installation & SAV', body: 'Pose par notre équipe, mise en service, puis monitoring Deye Cloud et SAV proactif.' },
+];
+
 // W58 — Iconographie sobre des cartes « Nos solutions » : un trait SVG par
 // carte, currentColor (teinte brass), dans le langage de marque. Indexée par
 // href pour rester stable même si l'ordre des cartes change.
@@ -107,20 +202,62 @@ const solutionIcons: Record<string, string> = {
 // déjà publiés. Décision fondateur 2026-06-22 : le slot « docteur-ingénieur »
 // est remplacé par la conformité loi 82-21 — un signal de confiance concret et
 // non personnel (le crédit fondateur vivra sur la page équipe). Les trois autres
-// valeurs (3 chantiers visitables, 43,48 kWc installés, Deye Cloud) sont
-// inchangées. L'or vit sur les chiffres .lum (discipline laiton). Aucun claim
+// valeurs (chantiers visitables, kWc installés, Deye Cloud) sont inchangées,
+// mais W284 les dérive désormais de REALISATIONS plutôt que de les recopier à
+// la main. L'or vit sur les chiffres .lum (discipline laiton). Aucun claim
 // inventé.
+const chantiersVisitablesCount = new Set(REALISATIONS.map((r) => r.ville)).size;
+// W375 — totalKwcLabel devient le pull-figure monumental de la bande (voir
+// plus bas dans le markup) ; le tableau `trust` ne porte donc plus que les
+// TROIS statistiques restantes (jamais un doublon de la même donnée).
 const trust = [
-  { fig: '3', tally: false, label: 'Chantiers visitables', body: 'Installations réelles à voir sur demande — Casablanca, El Jadida, Nouaceur' },
-  { fig: '43,48 kWc', tally: true, label: 'Installés', body: 'Casablanca, El Jadida, Nouaceur' },
+  { fig: String(chantiersVisitablesCount), tally: false, label: 'Chantiers visitables', body: 'Installations réelles à voir sur demande — Casablanca, El Jadida, Nouaceur' },
   { fig: 'Loi 82-21', tally: false, label: 'Conformité incluse', body: 'Déclaration préparée et déposée pour vous par Taqinor' },
   { fig: 'Deye Cloud', tally: false, label: 'Production mesurée', body: 'Monitoring sur chaque installation, accès client inclus' },
+];
+
+// W265 — L'histoire de l'investissement sur 25 ans : SEULE rupture tonale
+// claire de la page (fond blanc-azur, texte encre), en position 3-4 pour
+// aérer le dark→light→dark. Chiffres STRICTEMENT repris de /financement (déjà
+// publiés) — aucun nouveau nombre.
+const investment = [
+  { v: '3–7 ans', label: 'Retour sur investissement typique' },
+  { v: '25 ans', label: 'Garantie de performance des panneaux' },
+  { v: '60–90 %', label: 'De la facture couverte' },
+  { v: '0 MAD', label: 'L’étude et le diagnostic' },
+];
+
+// W276 — « Notre moteur, conçu au Maroc » : l'histoire vraie d'ingénierie
+// interne, racontée avec les TROIS outils réellement construits et déjà en
+// production sur le site (aucun logiciel tiers, aucun claim inventé) :
+//   1. L'estimateur piloté par la facture (moteur d'estimation maison —
+//      position solaire calculée maison, espacement inter-rangées dérivé
+//      d'une règle solstice d'hiver).
+//   2. Le moteur de toiture 3D (/devis/mon-toit — traçage de toiture,
+//      orientation/inclinaison réelles, pas un abaque générique).
+//   3. Le moteur de devis premium (apps/ventes/quote_engine, PDF signé en
+//      ligne, cf. CLAUDE.md règle #4) qui rend le devis final.
+// Aucun chiffre fabriqué ici : le lien mène directement vers le parcours réel
+// (/devis/mon-toit) pour que le visiteur le VÉRIFIE lui-même en 60 secondes.
+const engineeringPillars = [
+  {
+    title: 'L’estimateur piloté par la facture',
+    body: 'Votre facture d’électricité suffit : notre moteur calcule la position du soleil et l’espacement des rangées de panneaux selon une règle d’ombrage au solstice d’hiver — pas un abaque générique importé.',
+  },
+  {
+    title: 'Le moteur de toiture 3D',
+    body: 'Tracez votre toit, orientez-le, et le dimensionnement s’ajuste à la géométrie réelle de votre maison — la même technologie que vous testez dans le diagnostic ci-dessus.',
+  },
+  {
+    title: 'Le moteur de devis',
+    body: 'Le chiffrage qui en sort se signe électroniquement, en ligne — aucune ressaisie manuelle entre l’étude et le document que vous signez.',
+  },
 ];
 ---
 
 <Layout
   title="Taqinor — Installations solaires au Maroc, conformes loi 82-21"
-  description="Conception, installation et déclaration d'installations solaires pour villas, industries et hôtels au Maroc. Étude gratuite, dimensionnement par l'ingénierie, conformité loi 82-21."
+  description="21 406 kWh produits en un an sur un toit d'El Jadida, relevés sur Deye Cloud : installations solaires pour villas, industries et hôtels au Maroc, dimensionnées sur votre facture et déclarées loi 82-21."
   ogSlug="accueil"
   preloadHeroPoster
 >
@@ -155,10 +292,21 @@ const trust = [
         {/* Scrim canonique RELEVÉ (--hero-scrim-strength 0.52) : compense la
             chaleur du grade « heure dorée » et garde le headline ≥ AA. */}
         <div class="hero-scrim hero-scrim-v3 absolute inset-0"></div>
+        {/* W373 — Plan de profondeur : un voile de lumière laiton très
+            discret, purement décoratif (aucune image, aucune requête —
+            dégradés CSS seuls), qui parallaxe plus LENTEMENT que l'affiche
+            derrière lui (facteur JS distinct, voir V2Enhance). N'affecte
+            JAMAIS le LCP : posé APRÈS l'<img fetchpriority="high"> dans le
+            DOM, aucun poids réseau, transform/opacity seuls au scroll. */}
+        <div class="hero-depth-layer absolute inset-0" aria-hidden="true"></div>
       </div>
 
-      {/* W161 — Invitation au défilement : chevron animé, statique sous prefers-reduced-motion */}
-      <div class="absolute bottom-6 left-1/2 -translate-x-1/2 scroll-chevron" aria-hidden="true">
+      {/* W161/W275 — Invitation au défilement : chevron animé (statique sous
+          prefers-reduced-motion) + un court libellé, pour qu'un héros
+          photographique ~100svh ne repose plus sur un seul chevron discret
+          comme unique signal que le site continue. */}
+      <div class="absolute bottom-6 left-1/2 flex -translate-x-1/2 flex-col items-center gap-1.5 scroll-chevron" aria-hidden="true">
+        <span class="tech-label text-white/70">Voir nos réalisations mesurées</span>
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="6 9 12 15 18 9" />
         </svg>
@@ -166,27 +314,63 @@ const trust = [
 
       {/* Contenu ancré BAS — eyebrow rétrogradé en lune (discipline laiton).
           W205 — Chiffre protagoniste avec count-up (largeur réservée, zéro CLS).
-          data-hero-tally : hook JS ci-dessous, distinct de data-tally. */}
+          data-hero-tally : hook JS ci-dessous, distinct de data-tally.
+          W378 — .v2-hero-title porte aussi le chuchotement font-stretch
+          112→118 % (reveal + survol), pur CSS, voir global.css. */}
       <div class="mx-auto w-full max-w-6xl px-4 pb-24 pt-32 sm:pb-32">
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">L'étude d'abord, le chantier ensuite</p>
-        <h1 class="display v2-hero-title cine-in cine-in-1 mt-6 max-w-[15ch]">
+        <h1 id="hero-title" class="display v2-hero-title hero-title-sweep cine-in cine-in-1 mt-6 max-w-[15ch]">
           <span data-hero-tally class="font-variant-numeric tabular-nums">{heroFigure}</span>{heroTitleSuffix}
         </h1>
-        <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">{heroSub}</p>
+        {/* W267 — l'argent en tête, le kWh reste la crédibilité derrière.
+            Fourchette honnête (jamais un chiffre ponctuel) dérivée du tarif
+            marginal réel du barème RÉGIE — voir le commentaire de calcul plus haut. */}
+        <p class="cine-in cine-in-2 mt-4 max-w-xl text-lg font-bold text-brass-300 sm:text-xl">{heroMoneyLine}</p>
+        <p class="v2-lead cine-in cine-in-2 mt-4 max-w-xl text-white/85">{heroSub}</p>
         <div class="cine-in cine-in-3 mt-10 flex flex-wrap items-center gap-3">
           {/* UN seul CTA brass (discipline laiton) — l'or est ici autorisé.
               WJ36 — le héros pointe le parcours devis, libellé principal verbatim. */}
-          <a href="/devis/mon-toit" class="glow-hero bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
+          <a id="hero-cta-magnetic" href="/devis/mon-toit" class="glow-hero magnetic-cta bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
             Obtenir mon étude gratuite →
           </a>
-          {/* Ghost WhatsApp — contour blanc, aucun laiton */}
-          <a href={waDirect} rel="noopener" class="inline-flex items-center gap-2 border border-white/40 px-6 py-3.5 text-base font-semibold text-white backdrop-blur-sm transition-colors hover:border-white hover:bg-white/10">
+          {/* W349 — Ghost WhatsApp devient la porte sans formulaire : contour
+              blanc, aucun laiton. Ne demande rien à lire ni remplir — une
+              photo de facture suffit pour démarrer l'échange. */}
+          <a href={waZeroForm} rel="noopener" class="inline-flex items-center gap-2 border border-white/40 px-6 py-3.5 text-base font-semibold text-white backdrop-blur-sm transition-colors hover:border-white hover:bg-white/10">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
-            WhatsApp direct
+            Envoyer une photo sur WhatsApp
           </a>
         </div>
       </div>
     </section>
+
+    {/* ── COMMENT ÇA MARCHE — bande 4 étapes sous le héros (W252). Répond tout
+        de suite à « que se passe-t-il après le formulaire ? » : les 4 mêmes
+        stades que la frise détaillée plus bas, condensés. ── */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="px-4 py-14 sm:py-18">
+      <div class="mx-auto max-w-6xl">
+        <h2 class="tech-label v2-kicker rule-brass text-lune text-center sm:text-left">Comment ça marche</h2>
+        <ol class="mt-8 grid gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
+          {howItWorks.map((s, i) => (
+            <li class="v2-rise relative border-t-2 border-white/10 pt-5" style={`--v2-i:${i}`}>
+              <span class="absolute -top-px left-0 h-0.5 w-10 bg-brass-400" aria-hidden="true"></span>
+              <span class="fig lum text-2xl">{s.n}</span>
+              <h3 class="display mt-2 text-lg text-white">{s.title}</h3>
+              <p class="mt-2 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </section>
+
+    {/* W250 — Estimation instantanée HAUT DE PAGE : « l'estimateur EST le
+        tunnel ». Réutilise estimateFromBill (lib/billEstimate.ts) — aucune
+        logique dupliquée. Placé juste après « Comment ça marche » : le
+        visiteur peut chiffrer sa facture avant même d'atteindre le
+        diagnostic 3 étapes plus bas. ── */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <InstantEstimator variant="hero" />
 
     {/* Promesse de garantie en tête — engagement vrai et fort, repris de
         /garanties (25 ans de performance) et du monitoring Deye Cloud mesuré. */}
@@ -216,19 +400,75 @@ const trust = [
             rien d'ajouté, rien d'effacé.
           </p>
         </div>
-        <div class="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
+        {/* W271 — Chips de filtre par ville, léger client-side sur les données
+            que les cartes portent déjà (aucune nouvelle donnée). « Toutes »
+            actif par défaut ; aria-pressed reflète l'état pour les lecteurs
+            d'écran. Fonctionne sans JS : sans script, toutes les cartes
+            restent visibles (progressive enhancement). */}
+        <div class="v2-rise mt-8 flex flex-wrap gap-2" role="group" aria-label="Filtrer par ville" data-gallery-filter>
+          {galleryCities.map((c, i) => (
+            <button
+              type="button"
+              class={`gallery-filter-chip border px-4 py-2 text-xs font-bold uppercase tracking-wide transition-colors hover:border-white/50 hover:text-white ${i === 0 ? 'gallery-filter-chip-active border-brass-400 bg-brass-400/10 text-brass-300' : 'border-white/25 text-lune-soft'}`}
+              data-city={c}
+              aria-pressed={i === 0 ? 'true' : 'false'}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
+        <div class="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" data-stagger data-gallery-grid>
           {gallery.map((g, i) => (
-            <a href={`/realisations/${g.slug}`} class="v2-rise cine-card group relative block overflow-hidden" style={`--v2-i:${i % 3}`}>
-              {/* Grade « heure dorée » uniforme — .v3-grade sur la photo de contenu */}
+            <div class="v2-rise cine-card cine-card-link group relative overflow-hidden" style={`--v2-i:${i % 3}`} data-gallery-card data-city={g.ville}>
+              <a href={`/realisations/${g.slug}`} class="absolute inset-0 z-0" aria-label={`Voir la réalisation : ${g.ville}, ${g.kwc}`}></a>
+              {/* Grade « heure dorée » uniforme — .v3-grade sur la photo de contenu.
+                  W364 — view-transition-name par photo (g.name, PAS g.slug —
+                  certaines installations ont plusieurs cartes/photos, et un nom
+                  de transition doit rester unique par page) : morphe contre le
+                  héros de /realisations/[slug] SEULEMENT quand ce héros utilise
+                  la MÊME photo (photos[0].name) — sinon repli silencieux sur une
+                  transition de page normale, sans morph. */}
               <Picture name={g.name} alt={g.alt} widths={g.widths} ratio={4 / 3} sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
-                class="v3-grade aspect-[4/3] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
-              <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
+                class="v3-grade aspect-[4/3] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"
+                style={`view-transition-name: vt-photo-${g.name}`} />
+              {/* Bouton d'agrandissement (lightbox) — élément séparé du lien de
+                  carte (pas de bouton imbriqué dans un <a>, HTML invalide) ;
+                  z-index au-dessus du lien étiré. */}
+              <button
+                type="button"
+                class="gallery-zoom-btn absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-nuit/70 text-white backdrop-blur-sm transition-colors hover:bg-nuit/90"
+                aria-label={`Agrandir la photo : ${g.ville}, ${g.kwc}${g.prod ? `, ${g.prod}` : ''}`}
+                data-lightbox-open
+                data-name={g.name}
+                data-alt={g.alt}
+                data-widths={g.widths.join(',')}
+                data-caption={`${g.ville} · ${g.kwc}${g.prod ? ` · ${g.prod}` : ''}`}
+                data-type={g.type}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M8 3H5a2 2 0 0 0-2 2v3" /><path d="M21 8V5a2 2 0 0 0-2-2h-3" /><path d="M3 16v3a2 2 0 0 0 2 2h3" /><path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+                </svg>
+              </button>
+              <div class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
                 <span class="tech-label block text-lune">{g.ville} · {g.kwc}{g.prod ? ` · ${g.prod}` : ''}</span>
                 <span class="mt-0.5 block text-xs text-lune-soft">{g.type}</span>
               </div>
-            </a>
+            </div>
           ))}
         </div>
+        {/* WJ73 — écart estimation-vs-preuve, expliqué honnêtement. Un
+            visiteur qui divise les deux chiffres déjà affichés ci-dessus
+            (production mesurée / kWc) sur le chantier phare tombe sur un
+            rendement inférieur à celui du tableau modélisé des estimations —
+            plutôt que de laisser ce delta sans explication, on le nomme. */}
+        {featuredYieldPerKwc && (
+          <p class="v2-rise mt-6 max-w-2xl text-xs leading-relaxed text-lune-faint">
+            À noter : cette installation mesure ≈{featuredYieldPerKwc.toLocaleString('fr-FR')} kWh/kWc/an,
+            en dessous des ≈{casablancaSouthOptimalYield.toLocaleString('fr-FR')} kWh/kWc/an du tableau
+            modélisé utilisé pour les estimations — les installations réelles ne sont pas toutes plein
+            sud à 29°, contrairement à l'hypothèse du modèle. L'étude affine ce chiffre sur votre toit réel.
+          </p>
+        )}
         {/* Lien discret vers TOUTES les réalisations — pas un bouton plein */}
         <a href="/realisations" class="v2-rise group mt-10 inline-flex items-center gap-1 border-b-2 border-white/30 pb-0.5 text-sm font-bold text-white transition-colors hover:border-white">
           Voir toutes les réalisations <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span>
@@ -267,9 +507,50 @@ const trust = [
       </div>
     </section>
 
-    {/* ── POURQUOI TAQINOR / CONFIANCE — quatre chiffres monumentaux (l'or vit
-        sur les chiffres .lum, discipline laiton) — faits déjà publiés ── */}
-    <div class="seam-soft" aria-hidden="true"></div>
+    {/* ── RUPTURE TONALE CLAIRE (W265) — « L'investissement qui se rembourse »,
+        seule bande blanc-azur de la page, pour aérer le dark→light→dark.
+        Chiffres identiques à /financement (aucun nouveau nombre). ── */}
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="bg-blanc-azur px-4 py-20 text-encre sm:py-28">
+      <div class="mx-auto max-w-6xl">
+        <div class="v2-rise max-w-2xl">
+          <p class="tech-label v2-kicker rule-brass text-azur-600">L'investissement</p>
+          <h2 class="display v2-section-title mt-5 text-encre">Un investissement qui se rembourse, puis paie pour vous</h2>
+          <p class="v2-body mt-5 text-encre-soft">
+            Une installation se rembourse par l'électricité que vous cessez d'acheter au réseau —
+            puis il reste encore de nombreuses années sur les 25 ans de garantie de performance
+            pendant lesquelles elle continue de produire pour vous, à 0 MAD.
+          </p>
+        </div>
+        <dl class="mt-12 grid grid-cols-2 gap-x-8 gap-y-10 sm:grid-cols-4" data-stagger>
+          {investment.map((it, i) => (
+            <div class="v2-rise min-w-0" style={`--v2-i:${i}`}>
+              <dd class="fig fig-md whitespace-nowrap text-azur-600" data-tally>{it.v}</dd>
+              <dt class="tech-label mt-2 text-encre-soft">{it.label}</dt>
+            </div>
+          ))}
+        </dl>
+        <a href="/financement" class="v2-rise group mt-10 inline-flex items-center gap-1 border-b-2 border-azur-600 pb-0.5 text-sm font-bold text-azur-700 transition-colors hover:text-azur-600">
+          Voir le détail du financement <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span>
+        </a>
+      </div>
+    </section>
+
+    {/* W372 — Couture de SORTIE de la salle claire (light→dark), là où la page
+        ne posait jusqu'ici qu'un .seam-soft (couture nuit→nuit, coupure sèche
+        sur un fond qui venait pourtant de blanc-azur). Referme la bande
+        blanc-azur ouverte par .v2-seam plus haut — même recette inversée. */}
+    <div class="seam-lumiere-out" aria-hidden="true"></div>
+
+    {/* W347 — « Compteur à zéro » : ne rend RIEN tant que le fondateur n'a pas
+        fourni le vrai clip (src/lib/compteurVideo.ts, livré vide). Placé juste
+        après les chiffres d'investissement/économies — le contexte le plus
+        persuasif pour ce genre de clip. */}
+    <VideoCompteur />
+
+    {/* ── POURQUOI TAQINOR / CONFIANCE — un pull-figure monumental (W375) +
+        trois statistiques de support (l'or vit sur les chiffres .lum,
+        discipline laiton) — faits déjà publiés ── */}
     <section class="section px-4">
       <div class="mx-auto max-w-6xl">
         <div class="v2-rise max-w-2xl">
@@ -280,10 +561,27 @@ const trust = [
             main sur votre facture réelle. Le chiffre décide du matériel — jamais l'inverse.
           </p>
         </div>
-        <dl class="mt-12 grid gap-x-8 gap-y-12 sm:grid-cols-2 lg:grid-cols-2" data-stagger>
+        {/* W375 — UN moment typographique monumental : le total kWc installé
+            (déjà publié, dérivé de REALISATIONS — voir plus haut) devient un
+            pull-figure isolé, clamp ~8–10 rem, axe de largeur Archivo à son
+            maximum (.v2-fig-monument, v2.css). Le corps environnant reste
+            calme (tech-label + une ligne) pour que le contraste d'échelle
+            porte seul la déclaration. Largeur réservée par le clamp lui-même
+            (pas de count-up ici) → zéro CLS vérifié : cette figure ne change
+            jamais après le premier rendu. */}
+        <div class="v2-rise mt-14 border-t-2 border-brass-400/60 pt-6">
+          <p class="fig v2-fig-monument lum whitespace-nowrap" data-tally>{totalKwcLabel}</p>
+          <p class="tech-label mt-3 text-lune-faint">Installés à ce jour — Casablanca, El Jadida, Nouaceur</p>
+        </div>
+        {/* W268 — bande monumentale pleine largeur, chiffres .fig-lg + filet
+            laiton fin par colonne (même dispositif que la bande « Comment ça
+            marche » et GarantiesTeaser) : les TROIS statistiques restantes,
+            en support du pull-figure ci-dessus (jamais un doublon du total kWc). */}
+        <dl class="mt-12 grid grid-cols-1 gap-x-8 gap-y-12 sm:grid-cols-3" data-stagger>
           {trust.map((t, i) => (
-            <div class="v2-rise min-w-0" style={`--v2-i:${i}`}>
-              <dd class="fig fig-md lum break-words" data-tally={t.tally ? '' : undefined}>{t.fig}</dd>
+            <div class="v2-rise relative min-w-0 border-t-2 border-white/10 pt-5" style={`--v2-i:${i}`}>
+              <span class="absolute -top-px left-0 h-0.5 w-10 bg-brass-400" aria-hidden="true"></span>
+              <dd class="fig fig-lg lum break-words" data-tally={t.tally ? '' : undefined}>{t.fig}</dd>
               <dt class="tech-label mt-2 text-lune-faint">{t.label}</dt>
               <p class="mt-1 text-sm leading-snug text-lune-soft">{t.body}</p>
             </div>
@@ -292,38 +590,96 @@ const trust = [
       </div>
     </section>
 
+    {/* ── NOTRE MOTEUR, CONÇU AU MAROC (W276) — l'histoire d'ingénierie
+        interne : un installateur qui construit aussi ses propres outils
+        (estimateur piloté par la facture, moteur de toiture 3D, moteur de
+        devis). Vrai, rare dans le secteur, et vérifiable en un clic : le lien
+        mène vers le parcours réel (/devis/mon-toit) plutôt que de l'affirmer
+        dans le vide.
+        W372 — DEUXIÈME battement clair du rythme tonal (la première bande
+        blanc-azur était seule, W265) : même recette de couture qu'elle
+        (.seam-lumiere en entrée / .seam-lumiere-out en sortie), classes de
+        couleur recalées sur le jeu clair (text-encre/azur-600), typographie
+        et structure inchangées. ── */}
+    <div class="seam-lumiere" aria-hidden="true"></div>
+    <section class="section bg-blanc-azur px-4 text-encre">
+      <div class="mx-auto max-w-6xl">
+        <div class="v2-rise max-w-2xl">
+          <p class="tech-label v2-kicker rule-brass text-azur-600"><span class="mr-2 font-display text-xs text-azur-600/60" aria-hidden="true">03</span>Notre moteur, conçu au Maroc</p>
+          <h2 class="display v2-section-title mt-5 text-encre">Un installateur qui construit aussi ses outils</h2>
+          <p class="v2-body mt-5 text-encre-soft">
+            La plupart des installateurs solaires achètent un logiciel de devis générique. Taqinor a
+            construit le sien : l'estimateur qui lit votre facture, le moteur qui trace votre toiture
+            en 3D, et le moteur qui produit le devis signé électroniquement. Trois outils, une seule
+            équipe technique — testez-les vous-même ci-dessous.
+          </p>
+        </div>
+        <div class="mt-12 grid gap-6 sm:grid-cols-3" data-stagger>
+          {engineeringPillars.map((p, i) => (
+            <div class="v2-rise relative min-w-0 border-t-2 border-azur-900/15 pt-5" style={`--v2-i:${i}`}>
+              <span class="absolute -top-px left-0 h-0.5 w-10 bg-brass-400" aria-hidden="true"></span>
+              <h3 class="display mt-2 text-lg text-encre">{p.title}</h3>
+              <p class="mt-2 text-sm leading-relaxed text-encre-soft">{p.body}</p>
+            </div>
+          ))}
+        </div>
+        <a href="/devis/mon-toit" class="v2-rise group mt-10 inline-flex items-center gap-1 border-b-2 border-azur-600 pb-0.5 text-sm font-bold text-azur-700 transition-colors hover:text-azur-600">
+          Essayer le moteur sur mon toit <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span>
+        </a>
+      </div>
+    </section>
+    <div class="seam-lumiere-out" aria-hidden="true"></div>
+
+    {/* ── LE FONDATEUR — présence humaine (W266). Une intimité affirmée dans le
+        texte (« signé par le fondateur ») mais jamais montrée : le portrait
+        réel + une note signée à la première personne la rendent tangible.
+        Composant partagé avec /à-propos (mêmes faits, jamais de doublon). ── */}
+    <FounderPortrait />
+
     {/* ── LE PARCOURS (6 steps) + aperçu WhatsApp. W57 — la frise de bout en bout
         (diagnostic → monitoring) remplace le petit <ol> à 3 pas. Faits déjà
-        publiés sur le site, aucun délai inventé. ── */}
+        publiés sur le site, aucun délai inventé.
+        W371 — Scrollytelling épinglé (UNIQUE sur la page) : sur desktop et
+        sans prefers-reduced-motion, la colonne de gauche (intro + WhatsAppMock)
+        reste épinglée (`position: sticky`) pendant que les 6 étapes défilent
+        à droite ; l'étape qui croise le centre du viewport s'allume
+        (`data-journey-active`, IntersectionObserver — jamais de scroll-jack,
+        jamais de `preventDefault`). Sur mobile ET sous reduced-motion, la
+        section retombe intégralement sur la grille plate d'origine (aucun
+        sticky, aucune classe active, ordre de lecture inchangé) — progressive
+        enhancement pur : sans JS, tout le contenu reste lisible tel quel. ── */}
     <div class="seam-soft" aria-hidden="true"></div>
-    <section class="section px-4">
+    <section class="section px-4" data-journey-section>
       <div class="mx-auto max-w-6xl">
-        <div class="grid items-center gap-12 lg:grid-cols-[1.1fr_1fr]">
-          <div class="v2-rise">
-            <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">03</span>Comment ça se passe</p>
+        <div class="grid items-start gap-12 lg:grid-cols-[1.1fr_1fr]">
+          <div class="v2-rise journey-sticky-col" data-journey-sticky>
+            <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">04</span>Comment ça se passe</p>
             <h2 class="display v2-section-title mt-5 max-w-md text-white">La suite se passe sur WhatsApp</h2>
             <p class="v2-body mt-5 max-w-md">
               Pas de centre d'appels, pas de relances : votre diagnostic arrive sur WhatsApp,
               vous échangez directement avec l'équipe technique, photos de toiture à l'appui,
               jusqu'à la visite sur site. Échange type ci-contre — anonymisé.
             </p>
+            {/* Copie appariée à l'étape active — masquée par défaut ; le script
+                ne l'affiche que si le pinning est armé (desktop, motion ok). */}
+            <p class="v2-body mt-5 max-w-md journey-active-caption" data-journey-caption hidden></p>
+            <div class="mt-6">
+              <WhatsAppMock />
+            </div>
           </div>
-          <div class="v2-rise">
-            <WhatsAppMock />
-          </div>
+          {/* Frise du parcours réel — du diagnostic au monitoring */}
+          <ol class="journey-steps mt-14 grid gap-x-6 gap-y-8 sm:grid-cols-2 lg:mt-0 lg:grid-cols-1 lg:gap-y-16" data-stagger data-journey-steps>
+            {journey.map((s, i) => (
+              <li class="v2-rise journey-step relative border-t-2 border-white/10 pt-5" style={`--v2-i:${i % 3}`} data-journey-step data-journey-title={s.title} data-journey-body={s.body}>
+                <span class="absolute -top-px left-0 h-0.5 w-10 bg-brass-400 journey-step-rule" aria-hidden="true"></span>
+                {/* Numéro de step en .lum : l'or est ici un chiffre clé (discipline laiton) */}
+                <span class="fig lum text-2xl">{s.n}</span>
+                <h3 class="display mt-2 text-lg text-white">{s.title}</h3>
+                <p class="mt-2 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+              </li>
+            ))}
+          </ol>
         </div>
-        {/* Frise du parcours réel — du diagnostic au monitoring */}
-        <ol class="mt-14 grid gap-x-6 gap-y-8 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
-          {journey.map((s, i) => (
-            <li class="v2-rise relative border-t-2 border-white/10 pt-5" style={`--v2-i:${i % 3}`}>
-              <span class="absolute -top-px left-0 h-0.5 w-10 bg-brass-400" aria-hidden="true"></span>
-              {/* Numéro de step en .lum : l'or est ici un chiffre clé (discipline laiton) */}
-              <span class="fig lum text-2xl">{s.n}</span>
-              <h3 class="display mt-2 text-lg text-white">{s.title}</h3>
-              <p class="mt-2 text-sm leading-relaxed text-lune-soft">{s.body}</p>
-            </li>
-          ))}
-        </ol>
       </div>
     </section>
 
@@ -347,27 +703,74 @@ const trust = [
     {/* ── GARANTIES (teaser) — les garanties écrites, en bref (renvoi vers /garanties) ── */}
     <GarantiesTeaser />
 
-    {/* ── ACTE FINAL — le diagnostic respire, dans le système navy+or (W51) ── */}
-    <DiagnosticForm>
-      <aside slot="aside" class="cine-card border-t-4 border-t-brass-400 p-6">
-        <p class="tech-label text-lune-faint">Dernière installation livrée</p>
-        <p class="fig lum mt-3 text-4xl" data-tally>17,04 kWc</p>
-        <p class="tech-label mt-1 text-lune-faint">El Jadida · avril 2026</p>
-        <p class="mt-4 text-sm leading-relaxed text-lune-soft">
-          Production : <strong class="text-brass-300" data-tally>21 406 kWh/an</strong><br />
-          24 × Canadian Solar 710 Wc · Deye 15 kW · 15 kWh Dyness
-        </p>
-        <p class="mt-4 border-t border-white/10 pt-3 text-xs text-lune-faint">
-          Production mesurée — Deye Cloud. Visites de site possibles sur demande.
-        </p>
-      </aside>
-    </DiagnosticForm>
+    {/* W250 — Estimation instantanée PRÉ-PIED DE PAGE : version compacte du
+        même widget (variant="compact"), juste avant l'acte final du
+        diagnostic complet — un dernier rattrapage pour qui a fait défiler
+        toute la page sans encore chiffrer sa facture. ── */}
+    <InstantEstimator variant="compact" />
+
+    {/* ── ACTE FINAL — W249 : un seul entonnoir. L'ancien second formulaire
+        (DiagnosticForm, qui dupliquait les deux InstantEstimator déjà sur
+        cette page) est retiré ; à sa place, une carte CTA riche vers le
+        parcours devis réel (/devis/mon-toit), avec la même preuve sociale
+        (dernière installation livrée) qu'affichait l'aside du formulaire. ── */}
+    <section class="section px-4">
+      <div class="mx-auto grid max-w-6xl gap-8 sm:grid-cols-[1.1fr_1fr] sm:items-center">
+        <div class="v2-rise cine-card border-t-4 border-t-brass-400 p-7 sm:p-10">
+          <p class="tech-label v2-kicker rule-brass text-lune">Prêt à démarrer</p>
+          <h2 class="display v2-section-title mt-4 text-xl text-white sm:text-2xl">
+            Tracez votre toit, obtenez votre étude
+          </h2>
+          <p class="v2-body mt-4 max-w-md">
+            Le même moteur que ci-dessus, en version complète : dessinez votre toiture, affinez
+            l'orientation réelle, et recevez une étude signée par notre équipe technique.
+          </p>
+          <div class="mt-6 flex flex-wrap gap-3">
+            <a href="/devis/mon-toit" class="glow inline-flex items-center gap-2 bg-brass-400 px-6 py-3.5 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">
+              Obtenir mon étude gratuite →
+            </a>
+            <a href={waDirect} rel="noopener" class="inline-flex items-center gap-2 border border-white/40 px-6 py-3.5 text-sm font-semibold text-white transition-colors hover:border-white hover:bg-white/10">
+              WhatsApp direct
+            </a>
+          </div>
+        </div>
+        <aside class="v2-rise cine-card border-t-4 border-t-brass-400 p-6" style="--v2-i:1">
+          <p class="tech-label text-lune-faint">Dernière installation livrée</p>
+          <p class="fig lum mt-3 text-4xl" data-tally>{featured.kwc}</p>
+          <p class="tech-label mt-1 text-lune-faint">{featured.ville} · {featured.date}</p>
+          <p class="mt-4 text-sm leading-relaxed text-lune-soft">
+            Production : <strong class="text-brass-300" data-tally>{featured.production}</strong><br />
+            {[featured.panneaux, featured.onduleur, featured.batterie].filter(Boolean).join(' · ')}
+          </p>
+          <p class="mt-4 border-t border-white/10 pt-3 text-xs text-lune-faint">
+            Production mesurée — Deye Cloud. Visites de site possibles sur demande.
+          </p>
+        </aside>
+      </div>
+    </section>
 
     {/* FAQ courte de l'accueil : accordéon visuel SANS JSON-LD FAQPage —
         la page dédiée /faq est la seule à porter le FAQPage (hygiène W19). */}
     <Faq items={faq} schema={false} />
 
     <StickyCta />
+
+    {/* W271 — Lightbox de la galerie preuve-par-chantier. <dialog> natif :
+        Échap + focus trap gratuits, aucune dépendance. Contenu rempli par le
+        script ci-dessous à l'ouverture (image + légende ville · kWc ·
+        production). Reduced-motion : la transition CSS est gated ci-dessous. */}
+    <dialog id="gallery-lightbox" class="gallery-lightbox" aria-label="Photo agrandie">
+      <button type="button" class="gallery-lightbox-close" data-lightbox-close aria-label="Fermer">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M6 6l12 12M18 6 6 18" />
+        </svg>
+      </button>
+      <img data-lightbox-img src="" alt="" />
+      <figcaption>
+        <span data-lightbox-caption></span>
+        <span data-lightbox-type class="gallery-lightbox-type"></span>
+      </figcaption>
+    </dialog>
   </div>
 </Layout>
 
@@ -385,6 +788,150 @@ const trust = [
      garantit le contraste AA du headline blanc sur la photo. */
   .hero-scrim-v3 {
     --hero-scrim-strength: 0.52;
+  }
+
+  /* ── W373 — Plan de profondeur du héros ───────────────────────────────
+     Voile de lumière statique (dégradés radiaux seuls, aucune image) posé
+     au repos ; le script (V2Enhance) n'anime que sa `transform` au scroll,
+     à un facteur plus LENT que le sur-cadrage de l'affiche (couche plus
+     profonde = déplacement plus faible, illusion de profondeur classique).
+     `opacity` de base très faible pour rester un « souffle », jamais un
+     voile qui dégraderait la lisibilité du headline (le scrim reste
+     au-dessus en z-index via l'ordre du DOM + la même pile isolate). */
+  .hero-depth-layer {
+    background:
+      radial-gradient(38% 32% at 82% 22%, rgb(232 181 74 / 0.16), transparent 70%),
+      radial-gradient(30% 26% at 14% 78%, rgb(232 181 74 / 0.08), transparent 72%);
+    opacity: 0.9;
+    pointer-events: none;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    @media (min-width: 1024px) {
+      .hero-depth-layer {
+        will-change: transform;
+      }
+    }
+  }
+
+  /* ── W368 — CTA magnétique ───────────────────────────────────────────
+     Le script (ci-dessous) pose uniquement `transform: translate(x, y)`
+     (±8 px max) au pointermove ; cette règle ajoute juste le retour doux à
+     l'origine quand le pointeur quitte le bouton (pointerleave retire
+     l'inline style, la transition ci-dessous anime le retour). Transform
+     seul : jamais de reflow, jamais de CLS. Gated (pointer:fine) +
+     reduced-motion dans le script — cette transition CSS elle-même est
+     inoffensive sans mouvement (elle ne s'active que si `transform` change,
+     ce qui n'arrive que si le script l'anime). */
+  @media (prefers-reduced-motion: no-preference) and (pointer: fine) {
+    .magnetic-cta {
+      transition: transform var(--dur-hover) var(--ease-cine), background-color var(--dur-hover) ease;
+      will-change: transform;
+    }
+  }
+
+  /* ── W271 — Lightbox galerie ────────────────────────────────────────── */
+  .gallery-lightbox {
+    max-width: min(92vw, 1100px);
+    max-height: 90vh;
+    border: none;
+    background: var(--color-nuit);
+    padding: 0;
+    color: white;
+  }
+  .gallery-lightbox::backdrop {
+    background: rgb(6 10 30 / 0.86);
+  }
+  .gallery-lightbox img {
+    display: block;
+    width: 100%;
+    max-height: 72vh;
+    object-fit: contain;
+    background: black;
+  }
+  .gallery-lightbox figcaption {
+    padding: 0.9rem 1.25rem 1.1rem;
+    font-size: 0.9rem;
+  }
+  .gallery-lightbox figcaption span[data-lightbox-caption] {
+    display: block;
+    font-weight: 700;
+    color: var(--color-brass-300);
+  }
+  .gallery-lightbox-type {
+    display: block;
+    margin-top: 0.2rem;
+    color: var(--color-lune-soft);
+    font-size: 0.8rem;
+  }
+  .gallery-lightbox-close {
+    position: absolute;
+    top: 0.6rem;
+    right: 0.6rem;
+    z-index: 1;
+    display: flex;
+    height: 2.25rem;
+    width: 2.25rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    background: rgb(6 10 30 / 0.7);
+    color: white;
+  }
+  .gallery-lightbox-close:hover {
+    background: rgb(6 10 30 / 0.9);
+  }
+  /* Transition d'ouverture — gated reduced-motion : le dialogue apparaît
+     instantanément sans préférence de mouvement réduit. */
+  @media (prefers-reduced-motion: no-preference) {
+    .gallery-lightbox {
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+    .gallery-lightbox:not([open]) {
+      opacity: 0;
+      transform: scale(0.98);
+    }
+  }
+
+  /* ── W271 — Chips de filtre ville : masque les cartes hors filtre via une
+     classe posée par le script, jamais via [hidden] pour laisser data-stagger
+     rejouer proprement l'apparition au premier rendu. */
+  [data-gallery-card].gallery-card-hidden {
+    display: none;
+  }
+
+  /* ── W371 — Scrollytelling épinglé de « Comment ça se passe » ─────────────
+     Repos = la grille plate d'origine (aucune règle ci-dessous ne s'applique
+     tant que le script n'a pas posé `.journey-pinned` sur la section, ce qui
+     n'arrive que desktop + motion ok). Zéro CLS : le sticky ne change ni la
+     largeur ni la hauteur du flux, seule sa `position` change à l'ancrage. */
+  @media (min-width: 1024px) and (prefers-reduced-motion: no-preference) {
+    .journey-pinned .journey-sticky-col {
+      position: sticky;
+      top: 6rem;
+      align-self: start;
+    }
+
+    /* Le corps de chaque étape est présent au repos (progressive enhancement :
+       lisible sans JS/hors media match) ; une fois épinglé, seule l'étape
+       active « s'allume », les autres s'estompent doucement — jamais masquées
+       (aucun CLS, aucune perte de contenu pour un lecteur d'écran). */
+    .journey-pinned .journey-step {
+      opacity: 0.42;
+      transition: opacity 0.35s ease, border-color 0.35s ease;
+    }
+    .journey-pinned .journey-step[data-journey-active] {
+      opacity: 1;
+    }
+    .journey-pinned .journey-step[data-journey-active] .journey-step-rule {
+      background-color: var(--color-brass-300, #e8b54a);
+    }
+
+    /* Copie appariée dans la colonne épinglée : ne s'affiche que lorsque le
+       pinning est armé, jamais avant (repli intégral vers la description
+       statique existante quand JS/desktop/motion ne sont pas tous réunis). */
+    .journey-pinned .journey-active-caption {
+      display: block;
+    }
   }
 </style>
 
@@ -450,5 +997,192 @@ const trust = [
       if (document.readyState === 'complete') kick();
       else addEventListener('load', kick, { once: true });
     }
+  }
+</script>
+
+<script>
+  // W365 — Balayage de lumière laiton, une seule fois, sur le titre héros.
+  // Armé UNIQUEMENT après `load` (jamais avant : aucune peinture supplémentaire
+  // ne concurrence l'affiche héros pour le LCP). Le CSS (.hero-title-sweep,
+  // global.css) ne fait RIEN tant que .hero-sweep-armed n'est pas posée, donc
+  // ce script ne peut jamais retarder ni modifier la première peinture.
+  const heroTitle = document.getElementById('hero-title');
+  if (heroTitle) {
+    const arm = () => heroTitle.classList.add('hero-sweep-armed');
+    if (document.readyState === 'complete') requestAnimationFrame(arm);
+    else addEventListener('load', () => requestAnimationFrame(arm), { once: true });
+  }
+</script>
+
+<script>
+  // W368 — CTA magnétique : le bouton brass du héros suit très légèrement le
+  // pointeur (±8 px max), transform seul (aucun reflow). Gated souris/trackpad
+  // précis uniquement ((pointer:fine) — jamais sur tactile, où « pointermove »
+  // n'a pas de sens) et prefers-reduced-motion. Progressive enhancement pur :
+  // sans JS ou hors media match, le bouton reste un lien normal, taille et
+  // position inchangées.
+  const magnet = document.getElementById('hero-cta-magnetic');
+  const canMagnet =
+    matchMedia('(prefers-reduced-motion: no-preference)').matches && matchMedia('(pointer: fine)').matches;
+  if (magnet && canMagnet) {
+    const strength = 8; // px — déplacement maximal, discipline « chuchoté »
+    let raf = 0;
+    magnet.addEventListener('pointermove', (ev) => {
+      const rect = magnet.getBoundingClientRect();
+      const relX = (ev.clientX - rect.left) / rect.width - 0.5; // -0.5 … 0.5
+      const relY = (ev.clientY - rect.top) / rect.height - 0.5;
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        magnet.style.transform = `translate(${(relX * 2 * strength).toFixed(1)}px, ${(relY * 2 * strength).toFixed(1)}px)`;
+      });
+    });
+    magnet.addEventListener('pointerleave', () => {
+      if (raf) cancelAnimationFrame(raf);
+      magnet.style.transform = '';
+    });
+  }
+</script>
+
+<script>
+  // W271 — Filtre de galerie par ville + lightbox. Pur DOM, sans dépendance.
+  // Sans JS : toutes les cartes restent visibles et le bouton d'agrandissement
+  // reste un <button> normal sans handler (progressive enhancement — jamais
+  // un piège au clavier ou pour les lecteurs d'écran).
+
+  // — Filtre ville —
+  const filterGroup = document.querySelector<HTMLElement>('[data-gallery-filter]');
+  const cards = Array.from(document.querySelectorAll<HTMLElement>('[data-gallery-card]'));
+  if (filterGroup) {
+    filterGroup.addEventListener('click', (ev) => {
+      const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>('button[data-city]');
+      if (!btn) return;
+      const city = btn.dataset.city;
+      filterGroup.querySelectorAll<HTMLButtonElement>('button[data-city]').forEach((b) => {
+        const active = b === btn;
+        b.setAttribute('aria-pressed', active ? 'true' : 'false');
+        b.classList.toggle('gallery-filter-chip-active', active);
+        b.classList.toggle('border-brass-400', active);
+        b.classList.toggle('bg-brass-400/10', active);
+        b.classList.toggle('text-brass-300', active);
+        b.classList.toggle('border-white/25', !active);
+        b.classList.toggle('text-lune-soft', !active);
+      });
+      cards.forEach((card) => {
+        const show = city === 'Toutes' || card.dataset.city === city;
+        card.classList.toggle('gallery-card-hidden', !show);
+      });
+    });
+  }
+
+  // — Lightbox —
+  const dialog = document.getElementById('gallery-lightbox') as HTMLDialogElement | null;
+  if (dialog && typeof dialog.showModal === 'function') {
+    const img = dialog.querySelector<HTMLImageElement>('[data-lightbox-img]');
+    const captionEl = dialog.querySelector<HTMLElement>('[data-lightbox-caption]');
+    const typeEl = dialog.querySelector<HTMLElement>('[data-lightbox-type]');
+    const closeBtn = dialog.querySelector<HTMLButtonElement>('[data-lightbox-close]');
+
+    let lastTrigger: HTMLElement | null = null;
+
+    const openFromButton = (btn: HTMLElement) => {
+      const name = btn.dataset.name ?? '';
+      const widths = (btn.dataset.widths ?? '').split(',').map((w) => parseInt(w, 10)).filter((n) => !Number.isNaN(n));
+      const largest = widths.length ? Math.max(...widths) : 1600;
+      if (img) {
+        img.src = `/photos/${name}-${largest}.webp`;
+        img.alt = btn.dataset.alt ?? '';
+      }
+      if (captionEl) captionEl.textContent = btn.dataset.caption ?? '';
+      if (typeEl) typeEl.textContent = btn.dataset.type ?? '';
+      lastTrigger = btn;
+      dialog.showModal();
+    };
+
+    document.querySelectorAll<HTMLButtonElement>('[data-lightbox-open]').forEach((btn) => {
+      btn.addEventListener('click', () => openFromButton(btn));
+    });
+
+    const closeDialog = () => {
+      dialog.close();
+    };
+    closeBtn?.addEventListener('click', closeDialog);
+
+    // Clic sur le fond (backdrop) → fermeture. <dialog> natif gère déjà Échap.
+    dialog.addEventListener('click', (ev) => {
+      if (ev.target === dialog) closeDialog();
+    });
+
+    // Rendre le focus au déclencheur à la fermeture (accessibilité clavier).
+    dialog.addEventListener('close', () => {
+      lastTrigger?.focus();
+    });
+  }
+</script>
+
+<script>
+  // W371 — Scrollytelling épinglé, UNIQUE sur la page (« Comment ça se passe »).
+  // Progressive enhancement pur : sans JS, ou hors desktop, ou sous
+  // prefers-reduced-motion, la section reste la grille plate d'origine — ce
+  // script ne fait qu'AJOUTER une classe + un attribut, jamais de
+  // scroll-jack (aucun preventDefault, aucun scrollTo forcé).
+  const journeySection = document.querySelector<HTMLElement>('[data-journey-section]');
+  const steps = Array.from(document.querySelectorAll<HTMLElement>('[data-journey-step]'));
+  const caption = document.querySelector<HTMLElement>('[data-journey-caption]');
+
+  if (journeySection && steps.length && 'IntersectionObserver' in window) {
+    const desktopMotionOk = matchMedia('(min-width: 1024px) and (prefers-reduced-motion: no-preference)');
+
+    let io: IntersectionObserver | null = null;
+
+    const setActive = (step: HTMLElement) => {
+      for (const s of steps) s.removeAttribute('data-journey-active');
+      step.setAttribute('data-journey-active', '');
+      if (caption) {
+        const title = step.dataset.journeyTitle ?? '';
+        const body = step.dataset.journeyBody ?? '';
+        caption.textContent = title && body ? `${title} — ${body}` : '';
+      }
+    };
+
+    const teardown = () => {
+      io?.disconnect();
+      io = null;
+      journeySection.classList.remove('journey-pinned');
+      for (const s of steps) s.removeAttribute('data-journey-active');
+      if (caption) {
+        caption.hidden = true;
+        caption.textContent = '';
+      }
+    };
+
+    const setup = () => {
+      journeySection.classList.add('journey-pinned');
+      if (caption) caption.hidden = false;
+      // Le pas dont le centre est le plus proche du centre du viewport
+      // « s'allume » — une fenêtre resserrée autour de la ligne médiane,
+      // pas un simple seuil d'entrée, pour un couplage lecture/animation net.
+      io = new IntersectionObserver(
+        (entries) => {
+          const visible = entries.filter((e) => e.isIntersecting);
+          if (!visible.length) return;
+          const closest = visible.reduce((best, e) =>
+            Math.abs(e.boundingClientRect.top) < Math.abs(best.boundingClientRect.top) ? e : best
+          );
+          setActive(closest.target as HTMLElement);
+        },
+        { rootMargin: '-45% 0px -45% 0px', threshold: 0 }
+      );
+      for (const s of steps) io.observe(s);
+      // Premier pas actif par défaut, avant tout croisement de seuil.
+      setActive(steps[0]);
+    };
+
+    const sync = () => {
+      if (desktopMotionOk.matches) setup();
+      else teardown();
+    };
+
+    sync();
+    desktopMotionOk.addEventListener('change', sync);
   }
 </script>

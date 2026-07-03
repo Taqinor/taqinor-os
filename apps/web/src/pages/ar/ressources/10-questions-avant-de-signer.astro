@@ -1,0 +1,180 @@
+---
+/**
+ * AR — W348 lead magnet WhatsApp-first: «10 أسئلة قبل التوقيع». Faithful
+ * Arabic translation of /ressources/10-questions-avant-de-signer — same ten
+ * facts, no new figure. NO email gate: the only capture CTA is WhatsApp
+ * (wa.me pré-rempli via lib/whatsapp.ts), the free study staying the
+ * secondary CTA. Internal links use localizeNavHref (never a dead link). FR
+ * untouched.
+ */
+import Layout from '../../../layouts/Layout.astro';
+import V2Enhance from '../../../components/V2Enhance.astro';
+import Article33Ribbon from '../../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../../components/Breadcrumb.astro';
+import CtaBand from '../../../components/CtaBand.astro';
+import StickyCta from '../../../components/StickyCta.astro';
+import RelatedLinks from '../../../components/RelatedLinks.astro';
+import { NAP, WHATSAPP_LEADS } from '../../../lib/nap';
+import { whatsappLink } from '../../../lib/whatsapp';
+import { estimateReadingTime } from '../../../lib/readingTime';
+import { getLocaleFromPath } from '../../../i18n/utils';
+import { localizeNavHref } from '../../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+const verifiedDate = new Date('2026-07-03');
+const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+
+const waHref = whatsappLink(
+  WHATSAPP_LEADS,
+  'مرحباً، قرأت «10 أسئلة قبل التوقيع» على taqinor.ma وأودّ مناقشة مشروعي.'
+);
+
+const questions = [
+  {
+    n: '01',
+    q: 'على ماذا استندتم لتحديد مقاس تركيبتي؟',
+    a: 'الجواب الصحيح ينطلق من فاتورتك الحقيقية (kWh المُستهلكة، لا طقم قياسي) ومن سطحك — أبداً من معدّل وطني. إن تقدّم المُركِّب برقم عدد الألواح قبل رؤية فاتورتك، فهذه إشارة يجب رصدها.',
+  },
+  {
+    n: '02',
+    q: 'ما هي العلامات الدقيقة التي تُركّبونها — ألواح، عاكس، بطارية؟',
+    a: 'اطلب العلامات الدقيقة، لا «عتاد جيد». فيشاتنا التقنية تُسمّي علاماتنا من الصف الأول دون مواربة.',
+  },
+  {
+    n: '03',
+    q: 'ما ضمان المنتج وضمان الأداء للألواح؟',
+    a: 'يوجد ضمانان منفصلان على ألواح الصف الأول: ضمان منتج (لا تتعطّل اللوحة) وضمان أداء (تستمرّ في الإنتاج فوق عتبة معيّنة بعد سنوات). اطلب كتابتهما بمدّتيهما الدقيقتين.',
+  },
+  {
+    n: '04',
+    q: 'مَن يتكفّل بتصريح القانون 82-21، وابتداءً من أي عتبة؟',
+    a: 'تركيبة الإنتاج الذاتي تخضع للقانون 82-21؛ دون عتبة قدرة معيّنة، يكفي تصريح بسيط (وفوقها يتغيّر النظام). اسأل مَن يودِع الملف ومتى خلال الورش.',
+  },
+  {
+    n: '05',
+    q: 'ما طرق الأداء، خطوة بخطوة؟',
+    a: 'دفعة عند الانطلاق، وباقي عند التشغيل: اطلب تحديد كل مبلغ ولحظة استحقاقه كتابياً قبل التوقيع، بدل اكتشاف الجدول أثناء الورش.',
+  },
+  {
+    n: '06',
+    q: 'هل أستلم ملفاً تقنياً كاملاً عند التسليم؟',
+    a: 'مخططات، مراجع دقيقة للعتاد المُركَّب، تواريخ: هذا الملف هو ما يسمح بتفعيل ضمان بعد سنوات، أو بيع الممتلك بشفافية كاملة. دونه، تبقى عاجزاً يوم تظهر مشكلة.',
+  },
+  {
+    n: '07',
+    q: 'في حال عطل، خلال أي أجل تردّون؟',
+    a: 'التزام مُقاس أفضل من «سنهتمّ بالأمر». على سبيل المرجع، التزامنا بالرد هو أقل من ساعة، 7 أيام على 7 — إشعار استلام بشري يُطلق معالجة الملف.',
+  },
+  {
+    n: '08',
+    q: 'هل يمكنني تتبّع إنتاج تركيبتي بنفسي؟',
+    a: 'ولوج شخصي لمنصّة مراقبة (مثل Deye Cloud) يتيح لك التحقّق بنفسك من أن تركيبتك تُنتج ما كان متوقّعاً، دون الاعتماد على تقرير سنوي من المُركِّب.',
+  },
+  {
+    n: '09',
+    q: 'هل أحتاج فعلاً بطارية، أم تُضاف افتراضياً؟',
+    a: 'لا تُبرَّر البطارية إلا إن كانت ذروة استهلاككم بعد غروب الشمس، أو لاستمرارية الخدمة أثناء انقطاع. إن كنتم تستهلكون أساساً نهاراً، فتركيبة دون تخزين غالباً أربح — احذر من عرض يضيفها دون طرح السؤال.',
+  },
+  {
+    n: '10',
+    q: 'هل تتدخّلون فعلاً في مدينتي، أم أنه ورش معزول؟',
+    a: 'اسأل عن أوراش المُركِّب المُنجَزة فعلاً. منطقة خدمة صادقة تقتصر على محور حقيقي (بالنسبة لنا، الدار البيضاء–الرباط، وأبعد على الطلب) — أبداً «في كل المغرب» غامضة.',
+  },
+];
+
+const readingText = questions.map((it) => `${it.q} ${it.a}`).join(' ');
+const readingMinutes = estimateReadingTime(readingText);
+
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const schemaImageUrl = new URL('/og/equipement.png', Astro.site).href;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: '10 أسئلة قبل توقيع عرض ثمن شمسي',
+  description: 'اللائحة التي تُطرح على أي مُركِّب شمسي بالمغرب قبل التوقيع: تحديد المقاس، العتاد، الضمانات، القانون 82-21، الأداء، خدمة ما بعد البيع ومنطقة الخدمة الحقيقية.',
+  image: schemaImageUrl,
+  about: { '@type': 'Thing', name: 'عرض ثمن شمسي' },
+  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: url,
+};
+---
+
+<Layout
+  title="10 أسئلة قبل توقيع عرض ثمن شمسي | Taqinor"
+  description="اللائحة المجانية التي تُطرح على أي مُركِّب شمسي بالمغرب قبل التوقيع: تحديد المقاس، العتاد، الضمانات، القانون 82-21، الأداء، خدمة ما بعد البيع ومنطقة الخدمة الحقيقية. أرسل أجوبتك عبر واتساب، دون استمارة ولا بريد إلكتروني."
+  ogSlug="equipement"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="reading-bar" aria-hidden="true"></div>
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: 'موارد', href: L('/guides') }, { label: '10 أسئلة قبل التوقيع' }]} />
+
+    <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
+      <p class="tech-label v2-kicker rule-brass text-lune">مورد · لائحة تحقّق</p>
+      <h1 class="display v2-page-title mt-5 text-white">10 أسئلة قبل توقيع عرض ثمن شمسي</h1>
+
+      <p class="guide-byline mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-lune-faint">
+        <span>رُوجعت في {dateFmt.format(verifiedDate)} · بقلم Reda Kasri</span>
+        <span aria-hidden="true">·</span>
+        <span>{readingMinutes} دقائق قراءة</span>
+      </p>
+
+      <p class="v2-lead mt-6 text-lune-soft">
+        نادراً ما يُقرأ عرض الثمن الشمسي بنظرة واحدة: الثمن المعروض يُخفي فروقاً في العتاد والضمان
+        وخدمة ما بعد البيع لا تظهر إلا بهذه الأسئلة العشرة. اطرحها على أي مُركِّب — نحن أيضاً — وقارن
+        الأجوبة قبل توقيع أي شيء.
+      </p>
+
+      <div class="mt-10 space-y-8" data-stagger>
+        {questions.map((it, i) => (
+          <div class="v2-rise border-t-2 border-brass-400/60 pt-5" style={`--v2-i:${i}`}>
+            <p class="flex items-start gap-3">
+              <span class="fig lum shrink-0 text-2xl" dir="ltr">{it.n}</span>
+              <span class="display mt-0.5 text-xl text-white">{it.q}</span>
+            </p>
+            <p class="mt-3 text-sm leading-relaxed text-lune-soft">{it.a}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Ungated WhatsApp CTA — the primary conversion path, no email/form gate. */}
+      <div class="v2-rise cine-card mt-14 p-7 text-center">
+        <p class="tech-label v2-kicker rule-brass text-lune">دون استمارة، دون بريد إلكتروني</p>
+        <h2 class="display mt-3 text-2xl text-white">أرسل لنا أجوبتك عبر واتساب</h2>
+        <p class="v2-lead mt-4 text-lune-soft">
+          لديك عرض ثمن بالفعل؟ شاركه معنا عبر واتساب مع أجوبتك على هذه الأسئلة العشرة — نُخبرك
+          بصدق بما يبدو متيناً وما ينقص.
+        </p>
+        <a
+          href={waHref}
+          target="_blank"
+          rel="noopener"
+          class="glow mt-7 inline-flex items-center gap-2 bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300"
+        >
+          تحدّث عبر واتساب <span class="inline-block rtl:-scale-x-100">→</span>
+        </a>
+        <p class="mt-5 text-sm text-lune-faint">
+          تفضّل البدء بدراستنا الخاصة؟ إنها
+          <a href={L('/devis/mon-toit')} class="text-white underline underline-offset-2 hover:text-lune">مجانية ودون التزام</a>.
+        </p>
+      </div>
+
+      <RelatedLinks links={[
+        { href: L('/garanties'), label: 'شاهد ضماناتنا' },
+        { href: L('/équipement'), label: 'شاهد المعدات' },
+        { href: L('/guides/loi-82-21-expliquee'), label: 'القانون 82-21 مشروحاً ببساطة' },
+        { href: L('/guides'), label: 'كل الأدلّة' },
+      ]} />
+    </article>
+
+    <CtaBand title="تفضّل أن نجيب عن هذه الأسئلة العشرة لحالتك بالضبط؟" href={L('/devis/mon-toit')} />
+
+    <StickyCta />
+  </div>
+</Layout>

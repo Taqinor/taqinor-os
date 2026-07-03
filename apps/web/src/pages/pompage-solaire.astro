@@ -6,6 +6,31 @@
  * variables de dimensionnement et le SEUL avantage fiscal vérifié (exonération
  * de TVA du pompage agricole — strictement le pompage agricole, jamais le
  * photovoltaïque résidentiel en toiture).
+ *
+ * W261 — Parité avec les pages sœurs, sans jamais franchir la ligne « zéro
+ * preuve inventée » ci-dessus :
+ *  - Pas de photo héros : aucun asset agricole n'existe dans public/ (le
+ *    moteur de devis premium ERP en génère à la volée, il n'y a rien à
+ *    réutiliser côté site vitrine) — on garde le héros éditorial existant.
+ *  - Bande de capacité honnête (4 mesures relevées, exonération TVA vérifiée,
+ *    matériel tier-1 partagé avec les toitures) — aucun chiffre de production
+ *    inventé.
+ *  - Diagramme SVG des 4 variables de dimensionnement (débit/HMT/forage/
+ *    besoins) convergeant vers le système — même contenu que la section
+ *    texte, mise en scène visuelle en plus.
+ *  - Cadrage gasoil/butane vs solaire narratif (aucun chiffre MAD/litre
+ *    inventé : le calcul réel se fait à l'étude, avec le prix du jour et la
+ *    consommation mesurée de la pompe — voir le moteur de devis agricole).
+ *  - Carte financement/subvention FDA 30 % + Saquii — gatée WG11 : reste
+ *    masquée tant que les termes ne sont pas vérifiés auprès des sources
+ *    primaires (DPA/ORMVA/CAM), jamais un chiffre non confirmé.
+ *
+ * W349 — « La porte sans formulaire » : un CTA WhatsApp direct qui ne demande
+ * de RIEN lire ni remplir — juste une photo de facture (ou de compteur),
+ * éventuellement suivie d'un vocal. Placé juste sous le héros, en évidence,
+ * pour le visiteur à faible littératie numérique (persona confirmé côté
+ * agricole) qui n'arrive à compléter aucun assistant à étapes — même pas la
+ * fiche imprimable W348 ci-dessous, qui suppose de lire/écrire des mesures.
  */
 import Layout from '../layouts/Layout.astro';
 import V2Enhance from '../components/V2Enhance.astro';
@@ -13,6 +38,30 @@ import Article33Ribbon from '../components/Article33Ribbon.astro';
 import Breadcrumb from '../components/Breadcrumb.astro';
 import CtaBand from '../components/CtaBand.astro';
 import StickyCta from '../components/StickyCta.astro';
+import Faq from '../components/Faq.astro';
+import ServiceWarrantyTable from '../components/ServiceWarrantyTable.astro';
+import RelatedLinks from '../components/RelatedLinks.astro';
+import { serviceFaqItems } from '../lib/serviceFaq';
+import { WHATSAPP_LEADS } from '../lib/nap';
+import { whatsappLink, zeroFormWhatsappText } from '../lib/whatsapp';
+
+// W349 — porte sans formulaire : aucun champ, aucune fiche à remplir.
+const zeroFormWaHref = whatsappLink(WHATSAPP_LEADS, zeroFormWhatsappText());
+
+// W348 — fiche de dimensionnement imprimable (HMT/débit/heures/culture), à
+// remplir sur place puis renvoyer en photo sur WhatsApp : reprend UNIQUEMENT
+// les 4 variables déjà décrites plus haut sur cette page (aucun nouveau
+// chiffre). @media print masque tout le chrome du site (voir <style> plus
+// bas) pour n'imprimer que la fiche.
+const worksheetWaHref = whatsappLink(
+  WHATSAPP_LEADS,
+  'Bonjour, voici ma fiche de dimensionnement pompage solaire remplie (HMT, débit, heures de pompage, culture) — photo en pièce jointe.'
+);
+
+// W263 — FAQ partagée + garanties par composant, FR. Le pompage solaire ne
+// pose NI onduleur NI batterie (repo fact) — includeOnduleur/includeBatterie
+// à false pour ne jamais afficher une garantie sur un composant absent.
+const faqItems = serviceFaqItems('pompage-solaire', 'fr');
 
 const etapes = [
   {
@@ -71,7 +120,7 @@ const jsonLd = {
 <Layout
   title="Pompage solaire agricole au Maroc : débit, HMT, forage | Taqinor"
   description="Pompage solaire pour l’irrigation : la pompe tourne au fil du soleil, l’eau attend dans le bassin plutôt que dans des batteries, et le champ se calcule sur le débit, la HMT et le niveau du forage. Le pompage agricole solaire est exonéré de TVA au Maroc — un avantage propre à l’agriculture, pas au PV résidentiel."
-  ogSlug="accueil"
+  ogSlug="pompage-solaire"
 >
   <div class="v2">
     <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
@@ -95,14 +144,59 @@ const jsonLd = {
           la profondeur du forage et de l’eau dont la culture a besoin. On relève ces quatre
           mesures avant de proposer quoi que ce soit.
         </p>
+        {/* W349 — porte sans formulaire, en évidence sous le héros : aucune
+            lecture, aucune saisie — une photo de facture (ou de compteur)
+            suffit pour démarrer l'échange. */}
+        <div class="cine-in cine-in-3 mt-8 border-2 border-brass-400/60 bg-white/5 p-5 sm:p-6">
+          <p class="text-base font-bold text-white sm:text-lg">
+            Pas le temps de lire cette page ? Envoyez une photo de votre facture sur WhatsApp —
+            on s’occupe de tout.
+          </p>
+          <a
+            href={zeroFormWaHref}
+            target="_blank"
+            rel="noopener"
+            class="glow mt-4 inline-flex items-center gap-2 bg-brass-400 px-6 py-3.5 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
+            Envoyer ma photo sur WhatsApp →
+          </a>
+        </div>
+      </div>
+    </section>
+
+    {/* W261 — Bande de capacité honnête : reprend UNIQUEMENT des faits déjà
+        vérifiés ailleurs sur la page (4 mesures, TVA, matériel tier-1) —
+        aucun chiffre de production ou de chantier inventé. */}
+    <section class="px-4 pb-4">
+      <div class="mx-auto max-w-6xl">
+        <dl class="cine-in grid max-w-3xl grid-cols-3 gap-3 border-t border-white/20 pt-6 sm:gap-6">
+          <div>
+            <dd class="fig lum text-base sm:text-3xl">4</dd>
+            <dt class="tech-label mt-2 text-lune">Mesures relevées sur site</dt>
+          </div>
+          <div>
+            <dd class="fig lum text-base sm:text-3xl">0 %</dd>
+            <dt class="tech-label mt-2 text-lune">TVA sur le pompage agricole</dt>
+          </div>
+          <div>
+            <dd class="fig lum text-base sm:text-3xl">Tier-1</dd>
+            <dt class="tech-label mt-2 text-lune">Champ et variateur, comme nos toitures</dt>
+          </div>
+        </dl>
       </div>
     </section>
 
     <!-- Comment ça marche -->
     <section class="section px-4">
       <div class="mx-auto max-w-6xl">
-        {/* Eyebrow rétrogradé en lune (discipline laiton #2) */}
-        <p class="tech-label v2-kicker rule-brass text-lune">Comment ça marche</p>
+        {/* Eyebrow rétrogradé en lune (discipline laiton #2) —
+            W274 : système de numérotation par chapitre (01/02…), même
+            dispositif que l'accueil (index.astro), étendu ici pour que le
+            procédé éditorial soit cohérent sur tout le site. Les eyebrows
+            sur fond clair (text-azur-600, ex. « Quatre mesures ») restent
+            SANS numéro : même exclusion que la rupture tonale de l'accueil. */}
+        <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">01</span>Comment ça marche</p>
         <h2 class="display v2-section-title mt-5 text-white">Du soleil au champ, en quatre temps</h2>
         <div class="mt-12 grid gap-6 md:grid-cols-2" data-stagger>
           {etapes.map((e, i) => (
@@ -145,6 +239,121 @@ const jsonLd = {
           quand le débit ou la HMT manquent — on en serait réduit à supposer, et nous ne dimensionnons
           pas une pompe sur des suppositions. <a href="/devis/mon-toit" class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Demander un diagnostic →</a>
         </p>
+
+        {/* W261 — Diagramme des 4 variables convergeant vers le système :
+            même contenu que les quatre cartes ci-dessus, mis en scène. */}
+        <div class="mx-auto mt-14 max-w-3xl">
+          <svg viewBox="0 0 600 260" role="img" aria-label="Débit, HMT, profondeur du forage et besoins en eau de la culture convergent vers le dimensionnement pompe + variateur + champ photovoltaïque" class="w-full">
+            <g font-size="11" class="fill-azur-700">
+              <g transform="translate(70,40)">
+                <circle r="26" fill="none" stroke="#0f1c54" stroke-width="2.5" />
+                <text text-anchor="middle" dy="4" font-weight="700">Débit</text>
+              </g>
+              <g transform="translate(70,110)">
+                <circle r="26" fill="none" stroke="#0f1c54" stroke-width="2.5" />
+                <text text-anchor="middle" dy="4" font-weight="700">HMT</text>
+              </g>
+              <g transform="translate(70,180)">
+                <circle r="26" fill="none" stroke="#0f1c54" stroke-width="2.5" />
+                <text text-anchor="middle" dy="-2" font-weight="700">Forage</text>
+              </g>
+              <g transform="translate(70,240)">
+                <circle r="26" fill="none" stroke="#0f1c54" stroke-width="2.5" />
+                <text text-anchor="middle" dy="-2" font-weight="700">Besoins</text>
+              </g>
+            </g>
+            <g stroke="#0f1c54" stroke-width="2" fill="none" opacity="0.6" aria-hidden="true">
+              <path d="M96 40 L300 130" marker-end="url(#arrowP)" />
+              <path d="M96 110 L300 130" marker-end="url(#arrowP)" />
+              <path d="M96 180 L300 130" marker-end="url(#arrowP)" />
+              <path d="M96 240 L300 130" marker-end="url(#arrowP)" />
+            </g>
+            <defs>
+              <marker id="arrowP" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                <path d="M0 0 L6 3 L0 6 Z" fill="#0f1c54" />
+              </marker>
+            </defs>
+            <g transform="translate(300,130)">
+              <rect x="-70" y="-40" width="140" height="80" rx="4" fill="#0f1c54" />
+              <text text-anchor="middle" dy="-8" font-size="11" fill="white" font-weight="700">Pompe +</text>
+              <text text-anchor="middle" dy="8" font-size="11" fill="white" font-weight="700">variateur</text>
+              <text text-anchor="middle" dy="24" font-size="11" fill="white" font-weight="700">+ champ PV</text>
+            </g>
+            <path d="M370 130 L520 130" stroke="#0f1c54" stroke-width="2" opacity="0.6" marker-end="url(#arrowP)" />
+            <g transform="translate(560,130)" class="fill-azur-700">
+              <circle r="26" fill="none" stroke="#e8b54a" stroke-width="2.5" />
+              <text text-anchor="middle" dy="4" font-size="18">💧</text>
+            </g>
+          </svg>
+          <p class="mx-auto mt-4 max-w-xl text-center text-xs leading-relaxed text-encre-faint">
+            Les quatre mesures relevées sur place déterminent ensemble un seul système cohérent — pas
+            quatre calculs séparés.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    {/* W348 — fiche de dimensionnement imprimable : reprend les 4 mêmes
+        variables que la section ci-dessus, en version « à remplir sur le
+        terrain ». Bouton d'impression + invitation à renvoyer la photo sur
+        WhatsApp, sans aucune porte email. */}
+    <section class="section px-4" id="fiche-dimensionnement">
+      <div class="mx-auto max-w-4xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">Outil imprimable</p>
+        <h2 class="display v2-section-title mt-5 text-white">La fiche de dimensionnement, à remplir sur place</h2>
+        <p class="v2-lead mt-5 max-w-2xl text-lune-soft">
+          Imprimez cette fiche, remplissez-la au forage ou au bassin avec vos propres mesures, puis
+          renvoyez-nous-en une photo sur WhatsApp — c’est souvent suffisant pour préparer votre étude
+          avant même notre premier échange.
+        </p>
+
+        <div id="fiche-dimensionnement-print" class="v2-rise cine-card mt-8 p-7 sm:p-9">
+          <div class="grid gap-6 sm:grid-cols-2">
+            <label class="block">
+              <span class="tech-label text-lune">Débit souhaité</span>
+              <span class="mt-2 block border-b-2 border-white/30 pb-2 text-sm text-lune-faint">______________ m³/h ou m³/jour</span>
+            </label>
+            <label class="block">
+              <span class="tech-label text-lune">HMT (hauteur manométrique totale)</span>
+              <span class="mt-2 block border-b-2 border-white/30 pb-2 text-sm text-lune-faint">______________ mètres</span>
+            </label>
+            <label class="block">
+              <span class="tech-label text-lune">Heures de pompage visées / jour</span>
+              <span class="mt-2 block border-b-2 border-white/30 pb-2 text-sm text-lune-faint">______________ heures</span>
+            </label>
+            <label class="block">
+              <span class="tech-label text-lune">Culture / usage de l’eau</span>
+              <span class="mt-2 block border-b-2 border-white/30 pb-2 text-sm text-lune-faint">______________________________</span>
+            </label>
+            <label class="block sm:col-span-2">
+              <span class="tech-label text-lune">Profondeur du forage / niveau dynamique (si connu)</span>
+              <span class="mt-2 block border-b-2 border-white/30 pb-2 text-sm text-lune-faint">______________ mètres</span>
+            </label>
+          </div>
+          <p class="mt-6 text-xs leading-relaxed text-lune-faint">
+            Ces quatre mesures sont celles décrites plus haut sur cette page — aucune n’est
+            obligatoire pour démarrer l’échange, mais plus vous en renseignez, plus notre premier
+            retour sera précis.
+          </p>
+        </div>
+
+        <div class="mt-8 flex flex-wrap items-center gap-4 print:hidden">
+          <button
+            type="button"
+            id="fiche-print-btn"
+            class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10"
+          >
+            Imprimer la fiche →
+          </button>
+          <a
+            href={worksheetWaHref}
+            target="_blank"
+            rel="noopener"
+            class="glow inline-flex items-center gap-2 bg-brass-400 px-5 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300"
+          >
+            Renvoyer la photo sur WhatsApp →
+          </a>
+        </div>
       </div>
     </section>
 
@@ -153,8 +362,8 @@ const jsonLd = {
       <div class="mx-auto max-w-6xl">
         <div class="grid gap-10 lg:grid-cols-[1.1fr_1fr] lg:items-center">
           <div class="v2-rise">
-            {/* Eyebrow rétrogradé en lune (discipline laiton #2) */}
-            <p class="tech-label v2-kicker rule-brass text-lune">Avantage fiscal vérifié</p>
+            {/* Eyebrow rétrogradé en lune (discipline laiton #2) — W274 chapitre 02 */}
+            <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">02</span>Avantage fiscal vérifié</p>
             <h2 class="display v2-section-title mt-5 text-white">Le pompage agricole exonéré de TVA</h2>
             <p class="v2-lead mt-5 text-lune-soft">
               Au Maroc, les systèmes de pompage de l’eau à l’énergie solaire sont exonérés de TVA —
@@ -177,23 +386,106 @@ const jsonLd = {
       </div>
     </section>
 
+    {/* W261 — Cadrage gasoil/butane vs solaire : le MÊME récit que le moteur
+        de devis agricole (butane décompensé plus cher qu'il n'y paraît,
+        gasoil volatil, solaire fixe le coût), SANS aucun chiffre MAD/litre —
+        ces valeurs sont volatiles et « à confirmer » côté moteur ERP, jamais
+        publiées comme un fait figé sur le site vitrine. Le calcul réel se
+        fait à l'étude, avec le prix du jour et la consommation mesurée. */}
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="section bg-blanc-azur px-4 text-encre">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-azur-600">Le calcul qui compte pour vous</p>
+        <h2 class="display v2-section-title mt-5">Face au gasoil, face au butane</h2>
+        <p class="v2-lead mt-5 max-w-2xl text-encre-soft">
+          Un agriculteur ne compare pas des kWc, il compare des pleins. Chaque heure de pompage au
+          gasoil ou au butane a un coût qui varie avec le prix du jour — et le butane décompensé
+          coûte, en réalité, bien plus cher que le prix de la bonbonne subventionnée ne le laisse
+          penser. Le solaire, lui, fixe ce coût à zéro une fois le système amorti : le soleil ne
+          se facture pas.
+        </p>
+        <div class="mt-10 grid gap-6 md:grid-cols-2">
+          <div class="v2-rise border-t-2 border-azur-900 bg-blanc p-6">
+            <h3 class="display text-lg text-azur-700">Gasoil & butane</h3>
+            <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+              Coût récurrent, indexé sur un prix qui bouge, plein après plein, saison après saison.
+              Le butane décompensé alourdit encore la facture réelle par rapport au prix affiché de
+              la bonbonne subventionnée.
+            </p>
+          </div>
+          <div class="v2-rise border-t-2 border-brass-400 bg-blanc p-6">
+            <h3 class="display text-lg text-azur-700">Pompage solaire</h3>
+            <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+              Investissement unique, exonéré de TVA, puis un coût de fonctionnement proche de zéro :
+              le point de croisement avec le gasoil ou le butane dépend de votre consommation
+              réelle — c’est justement ce que l’étude calcule, chiffre par chiffre, pour votre
+              parcelle.
+            </p>
+          </div>
+        </div>
+        <p class="mx-auto mt-8 max-w-2xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
+          Le prix du carburant du jour et les heures de pompage réelles de votre pompe changent le
+          calcul d’une exploitation à l’autre : c’est pourquoi le chiffre exact — et le nombre
+          d’années de retour — sort de l’étude, jamais d’une moyenne nationale. <a href="/devis/mon-toit" class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Demander mon étude →</a>
+        </p>
+      </div>
+    </section>
+
+    {/* W261 — Carte financement/subvention, gatée WG11 : FDA 30 % + Saquii ne
+        sont PAS republiés comme un fait confirmé tant que les termes n'ont
+        pas été vérifiés auprès des sources primaires (DPA/ORMVA/CAM) — voir
+        docs/WEB_PLAN.md WG11. Affiché ici comme piste à vérifier, jamais
+        comme une offre ou un partenariat Taqinor. */}
+    <section class="section px-4">
+      <div class="mx-auto max-w-6xl">
+        <div class="v2-rise cine-card border-2 border-dashed border-white/25 p-7">
+          {/* W274 chapitre 03 */}
+          <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">03</span>Piste de financement — à vérifier</p>
+          <h2 class="display mt-3 text-xl text-white">Subvention agricole (FDA) et financement (Saquii)</h2>
+          <p class="mt-4 max-w-2xl text-sm leading-relaxed text-lune-soft">
+            L’État marocain propose historiquement une subvention du Fonds de Développement Agricole
+            pour le pompage solaire, et le Crédit Agricole du Maroc propose des mécanismes de
+            financement dédiés au solaire agricole. Les taux, plafonds et conditions actuels
+            évoluent et dépendent de votre DPA/ORMVA — nous ne publions aucun pourcentage ni
+            montant tant qu’il n’a pas été vérifié auprès de l’organisme concerné.
+          </p>
+          <p class="mt-4 text-sm font-semibold text-lune-faint">
+            À vérifier auprès de votre DPA avant tout engagement — Taqinor n’est ni prêteur ni
+            organisme subventionneur et ne garantit aucune éligibilité.
+          </p>
+        </div>
+      </div>
+    </section>
+
     <!-- Bloc liens / segment professionnel -->
     <section class="section border-t border-white/10 px-4">
       <div class="mx-auto max-w-6xl">
-        {/* Eyebrow rétrogradé en lune (discipline laiton #2) */}
-        <p class="tech-label v2-kicker rule-brass text-lune">Pour aller plus loin</p>
+        {/* Eyebrow rétrogradé en lune (discipline laiton #2) — W274 chapitre 04 */}
+        <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">04</span>Pour aller plus loin</p>
         <h2 class="display v2-section-title mt-5 text-white">L’agriculture, un segment professionnel</h2>
         <p class="v2-lead mt-5 max-w-2xl text-lune-soft">
           Le pompage solaire relève de l’exploitation agricole, pas du kit grand public qu’on
           branche soi-même. Après le relevé du forage et le calcul de dimensionnement, on pose du
           matériel tier-1 et l’installation repart avec son dossier technique complet.
         </p>
-        <div class="mt-10 flex flex-wrap gap-3">
-          <a href="/devis/mon-toit" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Demander un diagnostic →</a>
-          <a href="/professionnel" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Solaire professionnel →</a>
-          <a href="/équipement" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Voir l’équipement →</a>
-        </div>
+        <RelatedLinks links={[
+          { href: '/devis/mon-toit', label: 'Demander un diagnostic' },
+          { href: '/professionnel', label: 'Solaire professionnel' },
+          { href: '/équipement', label: 'Voir l’équipement' },
+          { href: '/financement', label: 'Financement & rentabilité' },
+          { href: '/garanties', label: 'Nos garanties' },
+          { href: '/nos-solutions', label: 'Toutes nos solutions' },
+        ]} />
       </div>
+    </section>
+
+    <!-- W263 — FAQ partagée (entretien/prix/inclus-exclus/délais/garanties)
+         + garantie par composant, AVANT le CTA final. schema={false} :
+         /faq reste l'unique page émettant le FAQPage JSON-LD (W19).
+         Pompage solaire : ni onduleur ni batterie posés (repo fact). -->
+    <Faq schema={false} heading="Questions fréquentes — pompage solaire" items={faqItems} />
+    <section class="section-tight bg-blanc-azur px-4 text-encre">
+      <ServiceWarrantyTable includeOnduleur={false} includeBatterie={false} />
     </section>
 
     <CtaBand title="Un projet de pompage solaire ? Commencez par l’étude gratuite." href="/devis/mon-toit" />
@@ -201,3 +493,39 @@ const jsonLd = {
     <StickyCta />
   </div>
 </Layout>
+
+<script>
+  // W348 — bouton d'impression de la fiche de dimensionnement : window.print()
+  // déclenche les règles @media print ci-dessous (fond clair, chrome masqué).
+  document.getElementById('fiche-print-btn')?.addEventListener('click', () => {
+    window.print();
+  });
+</script>
+
+<style is:global>
+  /* W348 — impression : n'affiche QUE la fiche de dimensionnement, fond clair
+     et texte sombre (le thème nuit/laiton par défaut imprimerait dark-on-dark
+     — même correctif que sur /proposition/[token]). is:global : Header/Footer
+     sont rendus par Layout.astro, un composant distinct, donc un style scopé
+     à CETTE page ne les atteindrait jamais. */
+  @media print {
+    header,
+    footer,
+    #sticky-cta,
+    .reading-bar,
+    .v2 > *:not(#fiche-dimensionnement) {
+      display: none !important;
+    }
+    #fiche-dimensionnement {
+      padding: 0 !important;
+    }
+    #fiche-dimensionnement,
+    #fiche-dimensionnement * {
+      background: #fff !important;
+      color: #111 !important;
+      box-shadow: none !important;
+      text-shadow: none !important;
+      border-color: #999 !important;
+    }
+  }
+</style>

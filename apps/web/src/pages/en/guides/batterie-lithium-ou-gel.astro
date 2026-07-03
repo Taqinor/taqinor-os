@@ -1,0 +1,202 @@
+---
+/**
+ * EN — Guide (W294): Solar battery — LFP vs GEL/lead-acid (and NMC). Faithful
+ * translation of /guides/batterie-lithium-ou-gel, every figure kept EXACT
+ * (500–1000 vs 3000–6000 cycles, 3–7 vs 10–15 years, 50 % vs 80–90 % DoD,
+ * 80–85 % vs 92–98 % round-trip, NMC 92–96 %/80–90 % DoD/150–210 °C
+ * decomposition). Internal links use localizeNavHref (EN/AR if available,
+ * else the existing FR page — never a dead link). FR untouched.
+ */
+import Layout from '../../../layouts/Layout.astro';
+import V2Enhance from '../../../components/V2Enhance.astro';
+import Article33Ribbon from '../../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../../components/Breadcrumb.astro';
+import CtaBand from '../../../components/CtaBand.astro';
+import StickyCta from '../../../components/StickyCta.astro';
+import { NAP } from '../../../lib/nap';
+import RelatedLinks from '../../../components/RelatedLinks.astro';
+import { getLocaleFromPath } from '../../../i18n/utils';
+import { localizeNavHref } from '../../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const schemaImageUrl = new URL('/og/equipement.png', Astro.site).href;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: 'Solar battery: lithium LiFePO4 (LFP) vs GEL/lead-acid (and NMC)',
+  description: 'LFP or GEL? Cycle life, depth of discharge, efficiency, heat tolerance in Morocco, and safety versus NMC: everything you need to know before choosing a solar battery.',
+  image: schemaImageUrl,
+  about: { '@type': 'Thing', name: 'LFP solar storage battery' },
+  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: url,
+};
+---
+
+<Layout
+  title="Solar battery: LFP vs GEL/lead-acid (and NMC) | Taqinor"
+  description="LFP or GEL? Cycle life, depth of discharge, efficiency, heat tolerance in Morocco, and safety versus NMC: everything you need to know before choosing a solar battery."
+  ogSlug="guides"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'Guides', href: L('/guides') }, { label: 'LFP vs GEL/lead-acid battery' }]} />
+
+    <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
+      <p class="tech-label v2-kicker rule-brass text-lune">Guide · Equipment</p>
+      <h1 class="display v2-page-title mt-5 text-white">Solar battery: LFP vs GEL/lead-acid (and NMC)</h1>
+
+      <p class="v2-lead mt-6 text-lune-soft">
+        For residential solar storage under the Moroccan climate, we install lithium iron phosphate
+        (LFP, or LiFePO4). That's the conclusion, not the suspense. Lead-acid gel costs less to buy
+        and lithium nickel-manganese-cobalt (NMC) shows nice density figures, but neither holds up
+        once you look at lifespan, actually available energy, and heat behaviour. The rest of this
+        guide shows why, chemistry by chemistry.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">The three chemistries side by side</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Before the detail, the table below sums up what separates the three technologies on the
+        criteria that really matter in a house. The figures are market ranges; the Dyness values
+        are those of the LFP batteries we install.
+      </p>
+      <div class="mt-6 overflow-x-auto">
+        <table class="v2-lead w-full border-collapse text-left text-sm text-lune-soft">
+          <thead>
+            <tr class="border-b border-white/20 text-white">
+              <th class="py-3 pr-4 font-bold"></th>
+              <th class="py-3 pr-4 font-bold">Lead / GEL</th>
+              <th class="py-3 pr-4 font-bold">LFP (LiFePO4)</th>
+              <th class="py-3 font-bold">NMC</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="border-b border-white/10">
+              <td class="py-3 pr-4 font-bold text-white">Cycles</td>
+              <td class="py-3 pr-4">500 to 1,000</td>
+              <td class="py-3 pr-4">3,000 to 6,000</td>
+              <td class="py-3">2,000 to 4,000</td>
+            </tr>
+            <tr class="border-b border-white/10">
+              <td class="py-3 pr-4 font-bold text-white">Lifespan</td>
+              <td class="py-3 pr-4">3 to 7 years</td>
+              <td class="py-3 pr-4">10 to 15 years</td>
+              <td class="py-3">8 to 12 years</td>
+            </tr>
+            <tr class="border-b border-white/10">
+              <td class="py-3 pr-4 font-bold text-white">Usable discharge</td>
+              <td class="py-3 pr-4">50 %</td>
+              <td class="py-3 pr-4">80 to 90 %</td>
+              <td class="py-3">80 to 90 %</td>
+            </tr>
+            <tr class="border-b border-white/10">
+              <td class="py-3 pr-4 font-bold text-white">Efficiency</td>
+              <td class="py-3 pr-4">80 to 85 %</td>
+              <td class="py-3 pr-4">92 to 98 %</td>
+              <td class="py-3">92 to 96 %</td>
+            </tr>
+            <tr>
+              <td class="py-3 pr-4 font-bold text-white">Thermal safety</td>
+              <td class="py-3 pr-4">Good</td>
+              <td class="py-3 pr-4">Excellent</td>
+              <td class="py-3">Sensitive to thermal runaway</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 class="display v2-section-title mt-12 text-white">How many years before replacement</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        A lead-acid gel battery typically holds <strong class="text-white">500 to 1,000 full
+        cycles</strong>, which corresponds to a useful lifespan of <strong class="text-white">3 to
+        7 years</strong> in real solar use. An LFP battery, meanwhile, reaches
+        <strong class="text-white">3,000 to 6,000 cycles</strong> under common household use
+        conditions, or a life expectancy on the order of <strong class="text-white">10 to
+        15 years</strong>. The Dyness LFP batteries we install carry a 10-year warranty at 70 % of
+        initial capacity, with a manufacturer claim of a minimum of 6,000 cycles across the range.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        For typical use of one cycle a day, the LFP cycle budget exceeds 10 years of calendar life.
+        It's often ageing linked to time and heat that ends up limiting the battery before the
+        cycle count runs out.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">The energy you really get back</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Lead-acid gel shouldn't be discharged beyond <strong class="text-white">50 %</strong> of its
+        nominal capacity without significantly shortening its lifespan. In practice, a 10 kWh gel
+        battery offers only 5 kWh of actually usable energy. LFP allows a usable depth of discharge
+        of <strong class="text-white">80 to 90 %</strong>: that same 10 kWh battery in LFP delivers
+        8 to 9 kWh. At identical nominal capacity, LFP is therefore almost twice as usable. That's
+        why an honest price comparison is always made on usable capacity, never on the nominal
+        figure printed on the label.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Losses on charge and discharge</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Lead-acid gel's round-trip efficiency sits between <strong class="text-white">80 and
+        85 %</strong>: out of 100 kWh of solar sent into the battery, 15 to 20 kWh dissipate as
+        heat during charge then discharge. LFP shows an efficiency of <strong class="text-white">92
+        to 98 %</strong>, cutting those losses to 2 to 8 kWh. Over an installation cycling 5 kWh a
+        day for ten years, that's thousands of kilowatt-hours recovered rather than lost.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Why heat changes everything in Morocco</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Heat is battery enemy number one. The generally accepted rule is that a 10 °C rise roughly
+        doubles ageing, and lead handles this particularly badly. An unair-conditioned technical
+        room easily climbs to 40 or 50 °C in summer in Marrakech, Agadir or Meknes, which cuts
+        lead's lifespan in half, sometimes more.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        LFP handles these conditions better: the discharge range of the Dyness batteries we install
+        goes up to 55 °C for models suited to hot environments. The recommendation remains to
+        install the battery in a ventilated space sheltered from direct sunlight, but LFP's thermal
+        margin is markedly higher. It's one of the reasons this chemistry has become the reference
+        for residential storage in hot countries.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">LFP versus NMC: the safety question</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        NMC (nickel-manganese-cobalt) rivals LFP on efficiency (92 to 96 %) and depth of discharge
+        (80 to 90 %), but differs radically on thermal safety. It all comes down to cathode
+        chemistry. In an NMC cell, the layered metal oxide decomposes starting around 150 to
+        210 °C and releases oxygen, which can fuel thermal runaway. In an LFP cell, the
+        phosphorus-oxygen bonds of the olivine structure resist decomposition: the cathode doesn't
+        release oxygen, and the thermal-runaway threshold is pushed much further out.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        In practice, battery incidents involving fire overwhelmingly concern NMC or NCA chemistries.
+        For fixed storage housed in a home's technical room, LFP remains the safest chemistry for
+        residential use. That's not a marketing slogan: it's what independent studies on each
+        chemistry's failure mechanisms conclude.
+      </p>
+
+      <p class="v2-lead mt-10 text-lune-soft">
+        NMC keeps its place in electric vehicles and portable systems, where energy density trumps
+        everything else. For a fixed battery mounted on the wall of a house or technical room, the
+        calculation tips toward LFP: it lives longer, delivers more energy per kWh bought,
+        withstands Moroccan heat, and carries longer manufacturer warranties. Gel remains an
+        entry-level option, but as soon as you bring its price back to the kWh actually delivered
+        over its whole life, the gap closes fast.
+      </p>
+
+      <RelatedLinks links={[
+        { href: L('/guides/quelle-taille-de-batterie'), label: 'What battery size?' },
+        { href: L('/guides/faut-il-des-batteries'), label: 'Do you need batteries?' },
+        { href: L('/batteries-stockage'), label: 'Batteries & storage' },
+        { href: L('/guides'), label: 'All the guides' },
+      ]} />
+    </article>
+
+    <CtaBand title="Unsure about the chemistry or the capacity? We size the storage for your real situation, free of charge." href={L('/devis/mon-toit')} />
+
+    <StickyCta />
+  </div>
+</Layout>

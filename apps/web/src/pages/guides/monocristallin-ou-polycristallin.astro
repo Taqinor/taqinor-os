@@ -12,13 +12,35 @@ import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { NAP } from '../../lib/nap';
 import RelatedLinks from '../../components/RelatedLinks.astro';
+import { estimateReadingTime } from '../../lib/readingTime';
+
+// W303 — date de vérification + auteur + temps de lecture.
+const verifiedDate = new Date('2026-07-03');
+const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+const guideBodyText = `
+  Ces deux questions reviennent dès qu'on compare des devis, mais pour la plupart des maisons
+  marocaines l'une d'elles est déjà tranchée. Le monocristallin a gagné. Un panneau monocristallin est
+  taillé dans un seul cristal de silicium, ce qui donne à ses cellules une structure homogène et un
+  rendement de 19 à 22 % sur les modèles courants. Il encaisse aussi mieux la chaleur. Le
+  polycristallin, lui, était la norme jusqu'au milieu des années 2010 : rendement de 15 à 17 % et
+  sensibilité à la chaleur plus marquée. Nous installons des onduleurs string, et seulement ceux-là :
+  Deye et Huawei. L'architecture string câble plusieurs panneaux en série pour former une chaîne qui
+  alimente un onduleur centralisé. Son point faible est connu : si un panneau passe partiellement à
+  l'ombre, il tire toute la chaîne vers le bas. Un micro-onduleur est un petit convertisseur monté
+  derrière chaque panneau : chaque module travaille indépendamment. Sur la grande majorité des toitures
+  marocaines, le bon couple reste le monocristallin haute densité sur onduleur string.
+`;
+const readingMinutes = estimateReadingTime(guideBodyText);
 
 const url = new URL(Astro.url.pathname, Astro.site).href;
+// W291 — image OG (même URL que celle passée à ogSlug plus bas), pour l'éligibilité Article rich results.
+const schemaImageUrl = new URL('/og/equipement.png', Astro.site).href;
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Article',
   headline: 'Monocristallin ou polycristallin ? String ou micro-onduleurs ?',
   description: 'Rendement, comportement sous la chaleur, ombre portée : comment choisir entre panneau monocristallin et polycristallin, et entre onduleur string et micro-onduleurs.',
+  image: schemaImageUrl,
   about: { '@type': 'Thing', name: 'Panneaux photovoltaïques et onduleurs solaires' },
   author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
   publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
@@ -29,9 +51,11 @@ const jsonLd = {
 <Layout
   title="Monocristallin ou polycristallin ? String ou micro-onduleurs ? | Taqinor"
   description="Rendement ~19–22 % pour le mono, comportement à l'ombre très différent selon l'onduleur : ce guide explique comment choisir ses panneaux et son onduleur en fonction de sa toiture, sans jargon."
-  ogSlug="equipement"
+  ogSlug="guides"
 >
   <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  {/* W376 — reading progress bar (see global.css .reading-bar) */}
+  <div class="reading-bar" aria-hidden="true"></div>
   <div class="v2">
     <V2Enhance />
     <Article33Ribbon />
@@ -41,6 +65,14 @@ const jsonLd = {
     <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
       <p class="tech-label v2-kicker rule-brass text-lune">Guide · Équipement</p>
       <h1 class="display v2-page-title mt-5 text-white">Monocristallin ou polycristallin ? String ou micro-onduleurs ?</h1>
+
+      <!-- W303 — date de vérification + auteur + temps de lecture -->
+      <p class="guide-byline mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-lune-faint">
+        <span>Vérifié le {dateFmt.format(verifiedDate)} · par Reda Kasri</span>
+        <span aria-hidden="true">·</span>
+        <span>{readingMinutes} min de lecture</span>
+      </p>
+
       <p class="v2-lead mt-6 text-lune-soft">
         Ces deux questions reviennent dès qu'on compare des devis, mais pour la plupart des maisons
         marocaines l'une d'elles est déjà tranchée. Voici à quel point chacune mérite vraiment de vous

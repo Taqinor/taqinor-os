@@ -1,0 +1,214 @@
+---
+/**
+ * AR — Pillar (W293, RTL): Solar panel prices in Morocco. Faithful Arabic
+ * translation of /prix-panneaux-solaires-maroc — every figure kept in Latin
+ * digits, mirrored 1:1 from the FR (same source: the dated blog post
+ * prix-installation-solaire-maroc-2026). Internal links use localizeNavHref
+ * (EN/AR if available, else the existing FR page — never a dead link). FR
+ * untouched.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import RelatedLinks from '../../components/RelatedLinks.astro';
+import Faq from '../../components/Faq.astro';
+import { NAP } from '../../lib/nap';
+import { getLocaleFromPath } from '../../i18n/utils';
+import { localizeNavHref } from '../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+const verifiedDate = new Date('2026-07-03');
+const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+
+const fourchettes = [
+  { kwc: '3 kWc', prix: '28 000 – 42 000 درهم' },
+  { kwc: '5 kWc', prix: '45 000 – 65 000 درهم' },
+  { kwc: '10 kWc', prix: '85 000 – 120 000 درهم' },
+];
+
+// W297 — تمريرة AEO/GEO: أسئلة وأجوبة مستقلّة تُعيد استعمال الهوامش المنشورة
+// أعلاه، كي تتمكّن مساعدات الذكاء الاصطناعي من الاستشهاد بجواب كامل حول الثمن.
+// schema={false}: تبقى /faq الصفحة الوحيدة الحاملة لـFAQPage في الموقع.
+const faq = [
+  {
+    q: 'كم تكلّف تركيبة شمسية جاهزة بالمغرب؟',
+    a: 'هوامش استرشادية حسب القدرة: 3 kWc بين 28 000 و42 000 درهم، 5 kWc بين 45 000 و65 000 درهم، 10 kWc بين 85 000 و120 000 درهم — أي حوالي 10 000 إلى 14 000 درهم لكل kWc في المتوسط، شاملاً العتاد والتركيب.',
+  },
+  {
+    q: 'لماذا يكون ثمن «4 700 درهم/kWc» مشبوهاً؟',
+    a: 'يقابل هذا الرقم كلفة عتاد التركيبة وحده (ألواح + عاكس)، دون التركيب، الأسلاك، البنية أو الربط — ليس تركيبة جاهزة ومنجَزة. لا تقارنوا هذا الرقم أبداً بالهوامش الجاهزة.',
+  },
+  {
+    q: 'ما العائد على الاستثمار لتركيبة شمسية بالمغرب؟',
+    a: 'من 5 إلى 7 سنوات في السكني القياسي دون بطارية؛ إضافة بطارية تُطيل هذا الأجل بـ1 إلى 3 سنوات. يعتمد الحساب بشدّة على استهلاككم الفعلي وشطركم التعريفي لدى ONEE.',
+  },
+];
+
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const schemaImageUrl = new URL('/og/residentiel.png', Astro.site).href;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: 'أثمنة الألواح الشمسية بالمغرب: هوامش استرشادية حسب القدرة',
+  description: 'كم تكلّف تركيبة شمسية جاهزة بالمغرب، حسب القدرة (kWc)، مع تكاليف السقف والبطارية والضريبة على القيمة المضافة — هوامش استرشادية، تُراجَع كل سنة.',
+  image: schemaImageUrl,
+  about: { '@type': 'Thing', name: 'ثمن التركيبة الشمسية بالمغرب' },
+  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: url,
+};
+---
+
+<Layout
+  title="أثمنة الألواح الشمسية بالمغرب: هوامش حسب القدرة (kWc) | Taqinor"
+  description="كم تكلّف تركيبة شمسية جاهزة بالمغرب؟ هوامش استرشادية حسب القدرة (3، 5، 10 kWc)، تكاليف السقف والبطارية، الضريبة على القيمة المضافة، ولماذا الرقم الحقيقي يأتي دائماً من زيارة تقنية."
+  ogSlug="residentiel"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: 'أثمنة الألواح الشمسية بالمغرب' }]} />
+
+    <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
+      <p class="tech-label v2-kicker rule-brass text-lune">الأثمنة والهوامش</p>
+      <h1 class="display v2-page-title mt-5 text-white">أثمنة الألواح الشمسية بالمغرب</h1>
+
+      <p class="guide-byline mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-lune-faint">
+        <span>هوامش رُوجعت في {dateFmt.format(verifiedDate)} · بقلم Reda Kasri</span>
+      </p>
+
+      <p class="v2-lead mt-6 text-lune-soft">
+        «كم تكلّف حقاً؟» هو السؤال الأول في جلّ لقاءاتنا. تجمع هذه الصفحة أوامر حجم من السوق المغربية،
+        بمصادرها وحدودها — ليس ثمناً نهائياً، بل ما يكفي للتخطيط المالي ولرصد عرض منخفض أو مرتفع بشكل
+        غير طبيعي قبل عرض أسعاركم.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">الهوامش الجاهزة حسب القدرة</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        تشمل هذه الأثمنة توريد العتاد <strong class="text-white">و</strong> التركيب الكامل (العاكس،
+        الأسلاك، البنية، التشغيل). مُستخرَجة من منشورات مُركِّبين مغاربة وأدلة أثمنة على الإنترنت —
+        <strong class="text-white"> هوامش استرشادية</strong>، لا تعريفات رسمية.
+      </p>
+      <div class="mt-6 overflow-x-auto">
+        <table class="v2-lead w-full border-collapse text-left text-sm text-lune-soft">
+          <thead>
+            <tr class="border-b border-white/20 text-white">
+              <th class="py-3 pr-4 font-bold">القدرة المُركَّبة</th>
+              <th class="py-3 font-bold">الهامش الاسترشادي (درهم شامل الضريبة)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {fourchettes.map((f) => (
+              <tr class="border-b border-white/10">
+                <td class="py-3 pr-4 font-bold text-white">{f.kwc}</td>
+                <td class="py-3">{f.prix}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p class="v2-lead mt-5 text-lune-soft">
+        <strong class="text-white">الكلفة المتوسطة جاهزة: حوالي 10 000 – 14 000 درهم/kWc</strong>
+        (عتاد + يد عاملة — مصادر: solaropeak.com، ecovolt.ma، electrosolarplus.ma، lechantier.ma).
+        التشتّت يعكس نوع السقف، المسافة إلى اللوحات الكهربائية، ماركة العاكس، وهوامش ربح متفاوتة حسب
+        المُركِّب. عرض أسعار ميداني يبقى ضرورياً.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">احذروا من أثمنة «4 700 درهم/kWc»</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        كثيراً ما يتردّد ثمن حوالي <strong class="text-white">4 700 درهم/kWc</strong> أو أقل. هذا الرقم
+        يقابل <strong class="text-white">كلفة عتاد التركيبة وحده</strong> (ألواح + عاكس، دون التركيب،
+        دون الأسلاك، دون البنية، دون الربط) — منخفض بشكل غير معقول لتركيبة جاهزة ومنجَزة. لا تقارنوا هذا
+        الرقم بالهوامش أعلاه: إنهما واقعان مختلفان.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">تكاليف إضافية حسب تهيئة السقف</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        لا تتشابه كل الأسقف. بعض التهيئات تضيف تكاليف معتبرة إلى الهامش الأساسي:
+      </p>
+      <ul class="v2-lead mt-5 list-disc space-y-3 pr-6 text-lune-soft">
+        <li><strong class="text-white">سقف من القرميد أو الصفيح المموّج</strong> (تركيب أكثر تقنية): +6 000 – 12 000 درهم</li>
+        <li><strong class="text-white">ميلان قوي (أكثر من 30°)</strong>: +4 000 – 8 000 درهم لأجهزة السلامة وتعقيد التركيب</li>
+      </ul>
+      <p class="v2-lead mt-5 text-lune-soft">
+        السطح الخرساني سهل الولوج يبقى التهيئة الأقل كلفة. إن كان سقفكم منحدراً أو من مواد هشّة،
+        توقّعوا هذه التكلفة الإضافية في ميزانيتكم — انظروا أيضاً دليلنا
+        <a href={L('/guides/mon-toit-peut-il-supporter-des-panneaux')} class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">هل يتحمّل سقفي الألواح؟</a>
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">حالة البطارية: مفيدة، لكن ليست محايدة على الكلفة</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        تبقى التركيبة <strong class="text-white">دون بطارية</strong> (مربوطة بالشبكة) الحل الأكثر شيوعاً
+        والأكثر ربحاً لغالبية البيوت الحضرية. إن رغبتم في تخزين الطاقة للمساء أو الاحتماء من الانقطاعات،
+        تضيف بطارية LFP كلفة معتبرة:
+      </p>
+      <ul class="v2-lead mt-5 list-disc space-y-3 pr-6 text-lune-soft">
+        <li><strong class="text-white">بطارية LFP بسعة 5 – 15 kWh: +22 000 – 60 000 درهم</strong> حسب السعة والماركة</li>
+        <li>تُطيل فترة استرجاع الكلفة بـ <strong class="text-white">1 إلى 3 سنوات</strong> مع البطارية</li>
+      </ul>
+      <p class="v2-lead mt-5 text-lune-soft">
+        دليلنا <a href={L('/guides/quelle-taille-de-batterie')} class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">أي حجم بطارية؟</a> يفصّل مراحل التحجيم ولماذا التخزين، بالمغرب، يربح أكثر من التصدير.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">الضريبة على القيمة المضافة والرسوم الجمركية</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        النظام الضريبي غير موحّد: الألواح العارية مُعفاة من الضريبة على القيمة المضافة (دون حق خصم)،
+        والتركيبة الجاهزة (توريد + تركيب) خاضعة <strong class="text-white"> لضريبة 20 %</strong> —
+        الهوامش في هذه الصفحة مُحتَسَبة شاملة الضريبة للأفراد. الرسوم الجمركية على العاكسات المستوردة
+        انخفضت من 17,5 % إلى 2,5 %، ما ساهم في خفض كلفتها في السوق.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">العائد على الاستثمار: 5 إلى 7 سنوات في السكني</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        فترة الاسترجاع الأكثر ذكراً من طرف المُركِّبين المغاربة لتركيبة سكنية قياسية (دون بطارية) هي
+        <strong class="text-white"> 5 إلى 7 سنوات</strong>. مع بطارية، أضيفوا 1 إلى 3 سنوات. يعتمد هذا
+        الحساب بشدة على استهلاككم الفعلي وشطركم التعريفي لدى ONEE — انظروا صفحتنا
+        <a href={L('/financement')} class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">التمويل والربحية</a>
+        للتفصيل، ومقالنا
+        <a href={L('/blog/rentabilite-solaire-par-ville-maroc')} class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">الربحية حسب المدينة</a>
+        للأرقام الجهوية.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">كم لوحاً تحتاجون؟</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        قبل مقارنة الأثمنة، يجب معرفة القدرة المناسبة لبيتكم. أسرة تستهلك بين 4 000 و6 000 kWh/سنة
+        تحتاج عموماً 3 إلى 5 kWc؛ بين 6 000 و10 000 kWh/سنة، بالأحرى 5 إلى 8 kWc. دليلنا المخصّص يفصّل
+        المنهجية الكاملة:
+        <a href={L('/guides/combien-de-panneaux-pour-ma-maison')} class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">كم لوحاً لبيتي؟</a>
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">كلمة أخيرة قبل توقيع أي شيء</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        استعملوا هذه الهوامش للتخطيط المالي ولرصد عرض منخفض أو مرتفع بشكل غير طبيعي. لكن لا تطلبوا منها
+        ما لا يمكنها تقديمه: ثمناً نهائياً. تهيئة سقفكم، استهلاككم، شطركم لدى ONEE، والمسافة بين الألواح
+        واللوحة الكهربائية تُحرِّك المجموع النهائي، أحياناً بآلاف الدراهم. الرقم الوحيد الصالح لبيتكم
+        يخرج من قراءة فاتورتكم وزيارة — مجانية ودون التزام.
+      </p>
+      <p class="v2-lead mt-3 text-xs text-lune-faint">
+        لتحديث الأثمنة الكامل لسنة 2026 (توزيع العتاد/التركيب، أمثلة محسوبة)، انظروا مقالنا
+        <a href={L('/blog/prix-installation-solaire-maroc-2026')} class="border-b border-white/40 pb-0.5 font-semibold text-white transition-colors hover:border-white">كم تكلّف تركيبة شمسية بالمغرب سنة 2026؟</a>
+      </p>
+
+      <RelatedLinks links={[
+        { href: L('/résidentiel'), label: 'حلولنا السكنية' },
+        { href: L('/nos-solutions'), label: 'كل حلولنا' },
+        { href: L('/guides'), label: 'كل الأدلّة' },
+        { href: L('/blog'), label: 'المدوّنة' },
+      ]} />
+    </article>
+
+    <!-- W297 — FAQ مرئية: schema={false}، تبقى /faq الصفحة الوحيدة الحاملة لـFAQPage -->
+    <Faq items={faq} heading="أثمنة الألواح الشمسية — أسئلة متكرّرة" schema={false} />
+
+    <CtaBand title="الرقم الوحيد المهم هو رقمكم. أطلِقوا الدراسة المجانية." href={L('/devis/mon-toit')} />
+
+    <StickyCta />
+  </div>
+</Layout>

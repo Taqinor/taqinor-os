@@ -6,6 +6,7 @@ tags: ["batterie", "LFP", "Dyness", "Deye", "Huawei"]
 author: "Reda Kasri"
 ogSlug: "equipement"
 draft: false
+theme: "Batteries"
 ---
 
 Sur le terrain, le choix d'une batterie se joue rarement sur la capacité affichée. Il se joue sur deux détails qu'on oublie en showroom : comment la chimie vieillit sous la chaleur marocaine, et ce qui se passe exactement à l'instant où l'ONEE coupe le courant. Je passe sur ces deux points avec la gamme que j'installe le plus, Dyness, puis je tranche le débat onduleur entre Deye et Huawei.
@@ -103,4 +104,4 @@ Voici la grille de décision que j'utilise en rendez-vous :
 
 Pour connaître la taille d'installation adaptée à votre consommation, consultez notre guide [Lithium ou gel — quelle chimie choisir ?](/guides/batterie-lithium-ou-gel) et notre article [Stocker ou revendre : quel arbitrage avec la loi 82-21 ?](/blog/batterie-stocker-ou-revendre-maroc).
 
-Vous souhaitez un devis avec la configuration précise (batterie + onduleur + panneaux) ? Notre simulateur calcule la puissance recommandée à partir de votre facture ONEE.
+Vous souhaitez un devis avec la configuration précise (batterie + onduleur + panneaux) ? Notre simulateur calcule la puissance recommandée à partir de votre facture ONEE. → **[Obtenir un diagnostic personnalisé](/devis/mon-toit)**

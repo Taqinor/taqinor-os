@@ -10,6 +10,16 @@
  */
 import { defineCollection, z } from 'astro:content';
 import { glob } from 'astro/loaders';
+import { BLOG_THEMES } from './lib/blogThemes';
+
+// W329 — thèmes du blog, VOLONTAIREMENT alignés sur les groupes déjà affichés
+// sur /guides (groups[].theme dans src/pages/guides/index.astro : Solaire,
+// Batteries, Voiture électrique, Prix) : un même vocabulaire des deux côtés
+// est ce qui permet le lien croisé « guide associé » (posts et guides
+// partageant un thème se lient entre eux sans mapping séparé à maintenir).
+// La constante vit dans src/lib/blogThemes.ts (module léger sans astro:content)
+// pour que /blog/index.astro l'importe SANS tirer node:fs — cf. blogThemes.ts.
+export { BLOG_THEMES };
 
 const blog = defineCollection({
   loader: glob({ pattern: '**/*.md', base: './src/content/blog' }),
@@ -25,6 +35,11 @@ const blog = defineCollection({
     /** Image de couverture (W198) — chemin /public relatif ou URL. Optionnel :
      *  les articles sans cover restent valides et s'affichent sans image. */
     cover: z.string().optional(),
+    /** W329 — thème éditorial optionnel, pour les puces de filtre de
+     *  /blog et le lien « guide associé ». Optionnel : les articles sans
+     *  thème (actus, méta) restent valides et sortent simplement de tout
+     *  filtre de thème (jamais de build cassé par un frontmatter manquant). */
+    theme: z.enum(BLOG_THEMES).optional(),
   }),
 });
 

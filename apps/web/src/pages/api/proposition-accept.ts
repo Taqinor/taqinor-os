@@ -10,6 +10,11 @@
  * https://api.taqinor.ma. Le backend est idempotent (un second envoi sur un devis
  * déjà accepté → 409) : on se contente de refléter sa réponse, ce qui rend le
  * double-clic sûr. Aucune donnée de lead, aucun prix d'achat n'est manipulé ici.
+ *
+ * W316 — bucket de rate-limit DÉDIÉ (distinct de proposition-contact/track) :
+ * c'est le chemin d'e-signature, le plus sensible des cinq endpoints protégés
+ * ici. Généreux malgré tout (un double-clic, ou un couple qui corrige son nom
+ * juste avant de signer, ne doivent jamais être bloqués).
  */
 export const prerender = false;
 
@@ -22,11 +27,13 @@ import {
   type OptionKey,
   type SignFormState,
 } from '../../lib/proposition';
+import { crossSiteRejection, isSameOriginRequest } from '../../lib/lead';
+import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 
-function json(data: unknown, status = 200): Response {
+function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+    headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...headers },
   });
 }
 
@@ -38,6 +45,18 @@ function resolveApiBase(): string {
 }
 
 export const POST: APIRoute = async ({ request }) => {
+  // W317 — Origin/Sec-Fetch-Site : le chemin d'e-signature est le plus
+  // sensible des endpoints proxifiés ici — refuse un POST cross-site forgé
+  // avant tout traitement.
+  if (!isSameOriginRequest(request)) return crossSiteRejection();
+
+  const rl = rateLimit(`proposition-accept:${clientIpFromRequest(request)}`, { limit: 10, windowMs: 60_000 });
+  if (!rl.allowed) {
+    return json({ ok: false, detail: 'Trop de tentatives, réessayez dans un instant.' }, 429, {
+      'retry-after': String(rl.retryAfterSec),
+    });
+  }
+
   let body: Record<string, unknown>;
   try {
     body = (await request.json()) as Record<string, unknown>;

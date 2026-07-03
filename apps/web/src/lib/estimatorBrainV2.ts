@@ -456,9 +456,28 @@ export const LFP_ANNUAL_CAPACITY_FADE = 0.02;
 /** Tailles de pack LFP RÉELLES du marché (kWh nominal). L'appelant choisit la plus proche
  *  du besoin de stockage. */
 export const LFP_PACK_SIZES_KWH = [5, 10, 15, 20] as const;
-/** Coût INDICATIF (MAD/kWh nominal) d'un pack LFP posé — « à confirmer » (fourchette
- *  marché 2026, jamais un devis). Sert au cashflow indicatif, flaggé. */
-export const LFP_INDICATIVE_COST_MAD_PER_KWH = 4500;
+/**
+ * WJ69 — SOURCE UNIQUE du coût batterie indicatif (MAD/kWh nominal, posé) — «
+ * à confirmer », jamais un devis. Avant WJ69, ce module portait un point
+ * unique (4 500) tandis qu'`applianceConsumption.ts` (le calcul RÉELLEMENT
+ * rendu au client, W96) portait sa PROPRE fourchette indépendante
+ * (3 500–6 000) : deux estimations du même marché choisies séparément,
+ * vouées à diverger avec le temps. Cette fourchette basse/haute est
+ * désormais la SEULE saisie ; `applianceConsumption.ts` importe ces deux
+ * constantes directement au lieu de les redéfinir (voir
+ * BATTERY_COST_PER_KWH_MAD_LOW/_HIGH ci-après dans ce fichier même —
+ * ré-exportées), et le point indicatif utilisé par `batteryCashflow`
+ * ci-dessous est leur MOYENNE (dérivée, jamais un second nombre choisi à la
+ * main). Fourchette marché 2026 (lithium LFP, pose comprise) — ESTIMATION À
+ * CONFIRMER, APPLIANCES_NOTES.md.
+ */
+export const LFP_INDICATIVE_COST_MAD_PER_KWH_LOW = 3500;
+export const LFP_INDICATIVE_COST_MAD_PER_KWH_HIGH = 6000;
+/** Point indicatif (MAD/kWh) = moyenne de la fourchette ci-dessus — DÉRIVÉ, pas un
+ *  second chiffre choisi indépendamment. Sert au cashflow batterie (un seul
+ *  point, pas une fourchette, cf. batteryCashflow ci-dessous). */
+export const LFP_INDICATIVE_COST_MAD_PER_KWH =
+  (LFP_INDICATIVE_COST_MAD_PER_KWH_LOW + LFP_INDICATIVE_COST_MAD_PER_KWH_HIGH) / 2;
 
 /** Choisit la plus petite taille de pack ≥ besoin (ou la plus grande si le besoin dépasse
  *  le catalogue). Besoin ≤ 0 → 0 (pas de batterie). PUR. */

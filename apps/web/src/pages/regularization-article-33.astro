@@ -27,7 +27,8 @@ import Article33Ribbon from '../components/Article33Ribbon.astro';
 import Breadcrumb from '../components/Breadcrumb.astro';
 import StickyCta from '../components/StickyCta.astro';
 import ZelligeDivider from '../components/ZelligeDivider.astro';
-import { WHATSAPP_LEADS } from '../lib/nap';
+import RelatedLinks from '../components/RelatedLinks.astro';
+import { WHATSAPP_LEADS, NAP } from '../lib/nap';
 import { whatsappLink, regularizationWhatsappText } from '../lib/whatsapp';
 
 const waFallback = whatsappLink(WHATSAPP_LEADS, regularizationWhatsappText());
@@ -47,6 +48,32 @@ const sanctions = [
   { title: 'Mise en demeure et arrêt — article 25', body: 'Risque de mise en demeure puis d’arrêt ordonné de l’installation.' },
   { title: 'Déconnexion du réseau — article 32', body: 'Le gestionnaire de réseau peut déconnecter une installation non conforme.' },
 ];
+
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: 'Régularisation Article 33 — installations solaires existantes',
+  description: 'La loi 82-21 est en vigueur depuis le 9 juin 2026. L’Article 33 ouvre une fenêtre de 18 mois pour régulariser les installations solaires existantes.',
+  about: { '@type': 'Thing', name: 'Régularisation loi 82-21 — Article 33' },
+  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: url,
+};
+
+// W290 — HowTo schema, en plus de l'Article ci-dessus : les 5 étapes déjà publiées dans `steps`.
+const howToLd = {
+  '@context': 'https://schema.org',
+  '@type': 'HowTo',
+  name: 'La régularisation en 5 étapes — Article 33 de la loi 82-21',
+  description: 'La procédure pas à pas pour régulariser une installation solaire existante au titre de l’Article 33 de la loi 82-21.',
+  step: steps.map((s, i) => ({
+    '@type': 'HowToStep',
+    position: i + 1,
+    name: s.title,
+    text: s.body,
+  })),
+};
 ---
 
 <Layout
@@ -54,6 +81,8 @@ const sanctions = [
   description="La loi 82-21 est en vigueur depuis le 9 juin 2026. L'Article 33 ouvre une fenêtre de 18 mois pour régulariser les installations solaires existantes : procédure en 5 étapes, sanctions encourues, prise en charge complète du dossier."
   ogSlug="article-33"
 >
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <script type="application/ld+json" set:html={JSON.stringify(howToLd)} />
   <div class="v2">
     <V2Enhance />
     <Article33Ribbon />
@@ -66,14 +95,44 @@ const sanctions = [
         <h1 class="display v2-page-title cine-in cine-in-1 mt-5 max-w-3xl">Votre installation solaire existe déjà ? Régularisez-la maintenant.</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
           Le décret 2-25-100, publié au Bulletin Officiel le 9 mars 2026, est entré en vigueur le
-          9 juin 2026, et la décision de l'ANRE fixe le tarif de rachat du surplus ; depuis ce jour
+          9 juin 2026, et la décision 04/26 de l'ANRE fixe le tarif de rachat du surplus pour le
+          moyen et le haut tension (le tarif du régime déclaration en basse tension, celui de la
+          quasi-totalité des installations résidentielles, n'est pas encore publié) ; depuis ce jour
           le régime de la loi 82-21 vaut pour toutes les installations
           d'autoproduction, jusqu'à celles montées bien avant le texte.
         </p>
       </div>
     </section>
 
+    <!-- W259 — « Où en est la loi ? » : distingue LIVE (MT/HT) de PENDING (BT résidentiel). -->
     <div class="seam-soft" aria-hidden="true"></div>
+    <section class="section mx-auto max-w-3xl px-4">
+      <div class="v2-rise border-2 border-brass-400/50 bg-nuit-800/60 p-6 sm:p-8">
+        <p class="tech-label v2-kicker text-brass-300">Où en est la loi ? · vérifié le 3 juillet 2026</p>
+        <div class="mt-4 grid gap-5 sm:grid-cols-2">
+          <div>
+            <p class="tech-label text-lune">En vigueur</p>
+            <p class="mt-2 text-sm leading-relaxed text-lune-soft">
+              Décret <strong class="text-white">2-25-100</strong> (BO du 9 mars 2026, en vigueur depuis
+              le 9 juin 2026) et décision ANRE <strong class="text-white">04/26</strong> :
+              <strong class="text-white">0,18–0,21 DH/kWh</strong> de rachat du surplus pour le
+              <strong class="text-white"> moyen et le haut tension (MT/HT)</strong> uniquement.
+            </p>
+          </div>
+          <div>
+            <p class="tech-label text-lune">Pas encore publié</p>
+            <p class="mt-2 text-sm leading-relaxed text-lune-soft">
+              Le tarif de rachat en <strong class="text-white">basse tension (BT)</strong> — le régime
+              déclaration de la quasi-totalité des installations résidentielles — reste non publié,
+              avec une échéance évoquée autour de <strong class="text-white">2027</strong>, non
+              confirmée. La fenêtre de régularisation de l'Article 33, elle, est ouverte dès
+              aujourd'hui, indépendamment de ce tarif.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section class="section mx-auto max-w-3xl px-4">
       <div class="v2-rise">
         <p class="tech-label v2-kicker rule-brass text-lune">Le texte</p>
@@ -120,10 +179,12 @@ const sanctions = [
         ))}
       </div>
 
-      <div class="mt-8 flex flex-wrap gap-3">
-        <a href="/loi-82-21" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Les 3 régimes de la loi 82-21 →</a>
-        <a href="/professionnel" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Régularisation d'un site professionnel →</a>
-      </div>
+      <RelatedLinks mt="mt-8" links={[
+        { href: '/loi-82-21', label: 'Les 3 régimes de la loi 82-21' },
+        { href: '/guides/loi-82-21-expliquee', label: 'Loi 82-21 expliquée simplement' },
+        { href: '/résidentiel', label: "Régularisation d'une villa ou d'un appartement" },
+        { href: '/professionnel', label: "Régularisation d'un site professionnel" },
+      ]} />
     </section>
 
     <!-- ACTE FINAL — le dossier se confie en pleine lumière -->

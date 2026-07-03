@@ -14,10 +14,15 @@
  * est déjà posé au niveau <html> par Layout.astro via Astro.currentLocale ;
  * on applique en plus le même mécanisme RTL-natif (line-height, mirroring)
  * que le reste du parcours.
+ *
+ * W245 — retrait du noindex (CTA principal du site, pas un tunnel privé) ;
+ * vraie SEO de page d'atterrissage (meta description, OG, hreflang).
  */
 import Layout from '../../../layouts/Layout.astro';
 import { BILL_RANGES } from '../../../lib/billRange';
 import { ROOF_TYPES } from '../../../lib/lead';
+import { NAP, WHATSAPP_LEADS } from '../../../lib/nap';
+import { whatsappLink } from '../../../lib/whatsapp';
 import StarRating from '../../../components/StarRating.astro';
 import CertLogoRow from '../../../components/CertLogoRow.astro';
 import InstallCounter from '../../../components/InstallCounter.astro';
@@ -62,15 +67,73 @@ const MODES = [
 
 // WJ8 — villes desservies (réelles, NAP) pour la preuve de proximité.
 const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra', 'Fès', 'Settat'];
+
+// WJ65 — sortie honnête sans JavaScript : ce formulaire dépend entièrement du
+// script (calcul d'estimation, soumission fetch) — sans JS, rien ne fonctionne.
+// Plutôt qu'une page muette, un lien wa.me + tel: statique (aucun JS requis).
+const noscriptWaHref = whatsappLink(
+  WHATSAPP_LEADS,
+  'مرحباً، أرغب في استلام تقديري الشمسي من taqinor.ma (متصفحي لا يفعّل جافاسكريبت).',
+);
+const noscriptTelHref = `tel:${NAP.phone}`;
 ---
 
 <Layout
-  title="استلموا تقديركم الشمسي — سطحكم | Taqinor"
-  description="العنوان + الفاتورة: استلموا فوراً تقديراً شمسياً (القدرة، التوفير، استرداد التكلفة)، ثم دراستكم الشخصية على واتساب."
-  noindex={true}
+  title="تقدير شمسي فوري — سطحكم | Taqinor"
+  description="تقدير فوري + تصميم ثلاثي الأبعاد لسطحكم + توقيع إلكتروني: أدخلوا العنوان والفاتورة، واستلموا القدرة والتوفير ومدة الاسترداد في ثوانٍ، مجاناً."
+  ogSlug="accueil"
+  locales={['fr', 'en', 'ar']}
 >
+  <!-- W320 — préconnexion à l'origine carte (style JSON MapTiler + hôte de
+       tuiles raster Mapbox/Maxar quand configuré) : le moment le plus
+       interactif de cette page payait jusqu'ici une poignée de main
+       DNS+TLS série (~100–300 ms sur connexion froide). Layout.astro
+       n'expose pas de slot <head> (hors périmètre ici) : ces hints sont
+       honorés dès qu'ils sont analysés, où qu'ils apparaissent dans le
+       document. Coût nul si la carte n'est jamais bootée. -->
+  <link rel="preconnect" href="https://api.maptiler.com" crossorigin />
+  <link rel="preconnect" href="https://api.mapbox.com" crossorigin />
   <section class="bg-nuit px-4 py-8 sm:py-12">
     <div class="mx-auto max-w-2xl">
+      <!-- WJ65 — سطر خروج صادق بدون جافاسكريبت: هذه الصفحة مدفوعة بالكامل
+           بالسكربت (الخريطة، الحساب، الإرسال) — بدونه ستبقى صامتة. نوفر هنا
+           مخرجاً لا يحتاج أي جافاسكريبت على الإطلاق. -->
+      <noscript>
+        <div class="cine-card mb-6 border border-brass-400/40 p-5 text-sm text-white">
+          <p class="font-semibold">تحتاج هذه الصفحة إلى جافاسكريبت لحساب تقديركم.</p>
+          <p class="mt-1 text-lune-soft">
+            لا مشكلة: تواصلوا معنا مباشرة، مجاناً وبدون التزام.
+          </p>
+          <div class="mt-4 flex flex-col gap-2 sm:flex-row">
+            <a href={noscriptWaHref} target="_blank" rel="noopener"
+              class="inline-flex flex-1 items-center justify-center gap-2 bg-ok-600 px-5 py-3 text-base font-bold text-white transition-opacity hover:opacity-90">
+              الكتابة على واتساب
+            </a>
+            <a href={noscriptTelHref}
+              class="inline-flex flex-1 items-center justify-center gap-2 border border-white/25 px-5 py-3 text-base font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300">
+              الاتصال بـ {NAP.phoneDisplayIntl}
+            </a>
+          </div>
+        </div>
+      </noscript>
+
+      <!-- WJ45 — bandeau hors-ligne (navigator.onLine + écouteurs online/offline) :
+           les réseaux mobiles marocains coupent souvent en cours de parcours ;
+           plutôt qu'un échec silencieux après un délai d'attente, on prévient
+           explicitement ET on rassure que rien n'est perdu (le formulaire reste
+           rempli, l'instantané sessionStorage WJ61 persiste). -->
+      <div id="mt-offline-banner" hidden role="status" aria-live="polite"
+        class="mb-4 flex items-start gap-2 border border-brass-400/40 bg-brass-400/10 p-3 text-sm text-white">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="mt-0.5 flex-none text-brass-300">
+          <line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.58 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/>
+        </svg>
+        <span data-i18n
+          data-fr="Pas de connexion — vos réponses sont conservées, on réessaie dès le retour du réseau."
+          data-ar="لا يوجد اتصال — إجاباتكم محفوظة، سنعيد المحاولة فور عودة الشبكة.">
+          Pas de connexion — vos réponses sont conservées, on réessaie dès le retour du réseau.
+        </span>
+      </div>
+
       <!-- En-tête + bascule de langue FR/AR (WJ6) -->
       <div class="flex items-start justify-between gap-3">
         <div>
@@ -89,11 +152,12 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
         </div>
       </div>
 
-      <!-- WJ6 — microcopie « pas de pression » -->
+      <!-- WJ6/WJ58 — microcopie « pas de pression » + promesse de délai honnête
+           (WG9 résolu par le fondateur, 2026-07-03 : « sous 1 h, 7j/7 »). -->
       <p class="mt-3 text-sm text-lune-soft" data-i18n
-        data-fr="Réponse sous 24–48 h · on vous répond sur WhatsApp, pas d'appels commerciaux."
-        data-ar="رد خلال 24–48 ساعة · نجيبك على واتساب، بدون مكالمات تجارية.">
-        Réponse sous 24–48 h · on vous répond sur WhatsApp, pas d'appels commerciaux.
+        data-fr="Réponse WhatsApp sous 1 h, 7j/7 · pas d'appels commerciaux."
+        data-ar="رد واتساب خلال ساعة واحدة، 7 أيام على 7 · بدون مكالمات تجارية.">
+        Réponse WhatsApp sous 1 h, 7j/7 · pas d'appels commerciaux.
       </p>
 
       <!-- WJ6 — barre de progression étiquetée -->
@@ -108,10 +172,18 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
 
       <!-- ============ ÉTAPE 0/1 — VOTRE TOIT (mode + carte/repère) ============ -->
       <div id="mt-panel-0" class="mt-step-panel">
+        <!-- WJ88 — landmark h2 réel par étape (repère de navigation pour lecteur
+             d'écran) : visuellement masqué (sr-only), la barre de progression
+             visible reste la même — mais la page a désormais un vrai plan de
+             titres au lieu d'un unique <h1> sur 1 200 lignes. -->
+        <h2 class="sr-only" data-i18n data-fr={STEPS[0].fr} data-ar={STEPS[0].ar}>{STEPS[0].fr}</h2>
         <!-- WJ6 — sélecteur de mode -->
         <fieldset class="mt-6">
           <legend class="text-sm text-lune-soft" data-i18n data-fr="Votre type de projet" data-ar="نوع مشروعك">Votre type de projet</legend>
-          <div class="mt-3 grid grid-cols-3 gap-2">
+          <!-- WJ65 — sur les tout petits écrans (≲360 px), 3 colonnes serrent trop
+               le texte (troncature/chevauchement) : on empile en 1 colonne, puis
+               3 dès `sm:` (640 px), cohérent avec le reste de la page. -->
+          <div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
             {MODES.map((m, i) => (
               <button type="button" class="mt-mode cine-card flex flex-col items-start gap-0.5 border p-3 text-left transition-colors"
                 data-mode={m.id} aria-pressed={i === 0 ? 'true' : 'false'}>
@@ -121,6 +193,42 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
             ))}
           </div>
         </fieldset>
+
+        <!-- WJ68 — mode PROFESSIONNEL : signaux C&I FACULTATIFS, additifs. -->
+        <div id="mt-pro-fields" hidden class="cine-card mt-4 space-y-4 p-5 sm:p-6">
+          <p class="text-sm font-semibold text-brass-300" data-i18n
+            data-fr="Votre entreprise (facultatif)" data-ar="شركتكم (اختياري)">
+            Votre entreprise (facultatif)
+          </p>
+          <label class="block text-sm text-lune-soft">
+            <span data-i18n data-fr="Raison sociale" data-ar="التسمية الاجتماعية">Raison sociale</span>
+            <input id="mt-raison-sociale" name="raisonSociale" type="text" autocomplete="organization"
+              placeholder="مثال: Riad Solaire SARL" class={`${inputClass} mt-1`} />
+          </label>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <label class="block text-sm text-lune-soft">
+              <span data-i18n data-fr="Type de site" data-ar="نوع الموقع">Type de site</span>
+              <select id="mt-facility-type" name="facilityType" class={`${inputClass} mt-1`}>
+                <option value="">اختر…</option>
+                <option value="bureau">مكتب</option>
+                <option value="entrepot">مستودع</option>
+                <option value="usine">مصنع</option>
+                <option value="commerce">تجارة / فندقة</option>
+                <option value="agricole">فلاحي</option>
+                <option value="autre">أخرى</option>
+              </select>
+            </label>
+            <label class="block text-sm text-lune-soft">
+              <span data-i18n data-fr="Combien de sites ?" data-ar="كم عدد المواقع؟">Combien de sites&nbsp;?</span>
+              <select id="mt-site-count" name="siteCount" class={`${inputClass} mt-1`}>
+                <option value="">اختر…</option>
+                <option value="1">1</option>
+                <option value="2-5">2–5</option>
+                <option value="6+">+6</option>
+              </select>
+            </label>
+          </div>
+        </div>
 
         <p class="mt-5 text-lune-soft" data-i18n
           data-fr="Cherchez votre adresse et posez un repère sur votre toit. C'est facultatif — vous pouvez aussi continuer avec votre adresse seule."
@@ -165,8 +273,15 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
             </button>
           </form>
 
+          <!-- WJ88 — role="application" retiré : ce rôle ARIA place tout le
+               sous-arbre en mode « application » pour un lecteur d'écran (les
+               flèches/tab natifs sont désactivés), ce qui rend la carte
+               clavier-inerte alors qu'elle n'expose ici aucune interaction
+               clavier propre (le pin/tracé est à la souris/au tactile ; la
+               recherche d'adresse au-dessus reste un vrai formulaire
+               accessible). aria-label seul suffit à la nommer. -->
           <div id="rp9-map" class="mt-skeleton-shimmer mt-0 h-[44vh] min-h-[280px] w-full bg-nuit-700"
-            role="application" aria-label="خريطة الأقمار الصناعية لتحديد سطحكم"></div>
+            aria-label="خريطة الأقمار الصناعية لتحديد سطحكم"></div>
 
           <div class="flex flex-wrap items-center gap-3 border-t border-white/10 p-4">
             <button type="button" id="rp9-finish" disabled
@@ -193,13 +308,21 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
         <div class="mt-5 flex justify-end">
           <button type="button" id="mt-next-0"
             class="inline-flex items-center justify-center gap-2 bg-brass-400 px-6 py-3 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">
-            <span data-i18n data-fr="Continuer" data-ar="متابعة">Continuer</span> →
+            <span data-i18n data-fr="Continuer" data-ar="متابعة">Continuer</span>
+            <!-- WJ89 — chevron SVG auto-retourné en RTL (règle globale.css
+                 `[dir="rtl"] button svg[aria-hidden="true"]`), plus jamais un
+                 glyphe « → » littéral figé dans le sens LTR (illisible en RTL). -->
+            <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <polyline points="3,1 7,5 3,9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
           </button>
         </div>
       </div>
 
       <!-- ============ ÉTAPE 2 — VOTRE FACTURE (+ profil énergétique) ============ -->
       <div id="mt-panel-1" class="mt-step-panel" hidden>
+        <!-- WJ88 — landmark h2 réel (voir note étape 0). -->
+        <h2 class="sr-only" data-i18n data-fr={STEPS[1].fr} data-ar={STEPS[1].ar}>{STEPS[1].fr}</h2>
         <p class="mt-6 text-lune-soft" data-i18n
           data-fr="Indiquez votre facture pour calculer votre estimation. Le montant exact donne le chiffre le plus juste."
           data-ar="أدخل فاتورتك لحساب تقديرك. المبلغ الدقيق يعطي الرقم الأصح.">
@@ -211,28 +334,63 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
           <label class="block text-sm text-lune-soft">
             <span data-i18n data-fr="Facture mensuelle exacte (MAD)" data-ar="الفاتورة الشهرية الدقيقة (درهم)">Facture mensuelle exacte (MAD)</span>
             <input id="mt-facture-hiver" name="factureHiver" type="number" step="any" inputmode="decimal"
-              placeholder="مثال: 1 200" class={`${inputClass} mt-1`} />
-            <span id="mt-facture-hiver-err" hidden class="mt-1 block text-xs text-alert-300"></span>
+              aria-describedby="mt-facture-hiver-err" placeholder="مثال: 1 200" dir="ltr" class={`${inputClass} mt-1`} />
+            <span id="mt-facture-hiver-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
+            <!-- WJ67 — micro-transparence « pourquoi on vous demande ça » : copie
+                 seule, repliée par défaut (native <details>, aucun JS requis). -->
+            <details class="mt-1.5">
+              <summary class="cursor-pointer select-none text-xs text-lune-faint hover:text-lune-soft" data-i18n
+                data-fr="Pourquoi on vous demande ça ?" data-ar="لماذا نطلب منكم هذا؟">
+                Pourquoi on vous demande ça&nbsp;?
+              </summary>
+              <p class="mt-1 text-xs text-lune-faint" data-i18n
+                data-fr="Le montant exact permet un calcul juste — jamais partagé."
+                data-ar="المبلغ الدقيق يتيح حساباً صحيحاً — لا يُشارَك أبداً.">
+                Le montant exact permet un calcul juste — jamais partagé.
+              </p>
+            </details>
           </label>
 
           <label class="block text-sm text-lune-soft">
             <span data-i18n data-fr="…ou choisissez une tranche" data-ar="…أو اختر شريحة">…ou choisissez une tranche</span>
-            <select id="mt-bill" name="billRange" class={`${inputClass} mt-1`}>
+            <select id="mt-bill" name="billRange" aria-describedby="mt-bill-err" class={`${inputClass} mt-1`}>
               <option value="">اختر…</option>
               {billRanges.map((b) => <option value={b.id}>{b.label}</option>)}
             </select>
-            <span id="mt-bill-err" hidden class="mt-1 block text-xs text-alert-300"></span>
+            <span id="mt-bill-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
           </label>
 
+          <!-- WJ48 — « Type de toit » converti d'une liste déroulante en cartes
+               image tappables (motif Enpal/EnergySage le plus testé pour un
+               choix visuel à faible cardinalité) : icônes SVG distinctes par
+               type (aucune photo fabriquée — pas d'assets photo fournis).
+               Le <select> natif reste dans le DOM (sr-only) : source de vérité
+               inchangée pour val('mt-roof'), la validation, la persistance
+               WJ61 et le focus d'erreur — seule la sélection VISUELLE change. -->
+          <fieldset>
+            <legend class="text-sm text-lune-soft" data-i18n data-fr="Type de toit" data-ar="نوع السطح">Type de toit</legend>
+            <div class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {ROOF_TYPES.map((r) => (
+                <button type="button" class="mt-roof-card cine-card flex flex-col items-center gap-1.5 border border-white/15 p-3 text-center transition-colors"
+                  data-roof={r.id} aria-pressed="false">
+                  <svg aria-hidden="true" width="32" height="32" viewBox="0 0 32 32" fill="none" class="text-lune-soft">
+                    {r.id === 'villa' && <path d="M4 18 16 8l12 10M8 16v10h16V16" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" fill="none" />}
+                    {r.id === 'hangar' && <path d="M3 20 10 12h12l7 8M6 20v6h20v-6" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" fill="none" />}
+                    {r.id === 'toit_plat' && <path d="M5 12h22v3H5zM7 15v10h18V15" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" fill="none" />}
+                    {r.id === 'autre' && <path d="M16 5v22M5 16h22" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />}
+                  </svg>
+                  <span class="text-xs font-semibold text-white" data-i18n data-fr={r.label} data-ar={ROOF_TYPE_LABEL_AR[r.id] ?? r.label}>{r.label}</span>
+                </button>
+              ))}
+            </div>
+            <span id="mt-roof-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
+            <select id="mt-roof" name="roofType" aria-describedby="mt-roof-err" class="sr-only">
+              <option value="">اختر…</option>
+              {roofTypes.map((r) => <option value={r.id}>{r.label}</option>)}
+            </select>
+          </fieldset>
+
           <div class="grid gap-4 sm:grid-cols-2">
-            <label class="block text-sm text-lune-soft">
-              <span data-i18n data-fr="Type de toit" data-ar="نوع السطح">Type de toit</span>
-              <select id="mt-roof" name="roofType" class={`${inputClass} mt-1`}>
-                <option value="">اختر…</option>
-                {roofTypes.map((r) => <option value={r.id}>{r.label}</option>)}
-              </select>
-              <span id="mt-roof-err" hidden class="mt-1 block text-xs text-alert-300"></span>
-            </label>
             <label class="block text-sm text-lune-soft">
               <span data-i18n data-fr="Raccordement" data-ar="نوع الربط">Raccordement</span>
               <select id="mt-raccordement" name="raccordement" class={`${inputClass} mt-1`}>
@@ -252,15 +410,26 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
           <label id="mt-facture-ete-wrap" hidden class="block text-sm text-lune-soft">
             <span data-i18n data-fr="Facture été (MAD)" data-ar="فاتورة الصيف (درهم)">Facture été (MAD)</span>
             <input id="mt-facture-ete" name="factureEte" type="number" step="any" inputmode="decimal"
-              placeholder="مثال: 2 500" class={`${inputClass} mt-1`} />
+              placeholder="مثال: 2 500" dir="ltr" class={`${inputClass} mt-1`} />
           </label>
         </div>
 
-        <!-- ===== WJ31 — questions best-in-world, TOUTES facultatives, repliées par défaut ===== -->
-        <details id="mt-more" class="cine-card mt-4 p-5 sm:p-6">
+        <!-- ===== WJ49 — restagé en 2-3 groupes cadrés par la valeur, ≤5 champs
+             visibles par étage (au lieu d'un seul <details> à 10 champs) : la
+             recherche est unanime, un long panneau unique est ignoré ou tue le
+             taux de complétion ; des demandes étagées non. Chaque champ reste
+             FACULTATIF et forwardé EXACTEMENT comme avant (contrat WJ30/WJ31
+             intact — mêmes id/name, seule la mise en page change). ===== -->
+        <p class="mt-4 text-sm font-semibold text-brass-300" data-i18n
+          data-fr="Affiner mon estimation (facultatif, 1 minute)" data-ar="تحسين تقديري (اختياري، دقيقة واحدة)">
+          Affiner mon estimation (facultatif, 1 minute)
+        </p>
+
+        <!-- Groupe 1/3 — pour affiner la taille (5 champs). -->
+        <details id="mt-more-size" class="cine-card mt-3 p-5 sm:p-6">
           <summary class="cursor-pointer select-none text-sm font-semibold text-brass-300" data-i18n
-            data-fr="Affiner mon estimation (facultatif, 1 minute)" data-ar="تحسين تقديري (اختياري، دقيقة واحدة)">
-            Affiner mon estimation (facultatif, 1 minute)
+            data-fr="Pour affiner la taille" data-ar="لتحسين الحجم">
+            Pour affiner la taille
           </summary>
 
           <div class="mt-4 grid gap-4 sm:grid-cols-2">
@@ -273,28 +442,20 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
                 <option value="redal">ريضال (Redal)</option>
                 <option value="inconnu">لا أعرف</option>
               </select>
+              <!-- WJ70 — هذا الاختيار لا يغيّر أي رقم معروض اليوم (ليديك/ريضال
+                   لا تزالان مساويتين لتعريفة المكتب الوطني المتحفظة). -->
+              <p class="mt-1 text-xs text-lune-faint" data-i18n
+                data-fr="Estimation basée sur le barème ONEE (conservateur) pour tous les distributeurs, en attendant les grilles réelles par distributeur."
+                data-ar="التقدير يعتمد على تعريفة المكتب الوطني (ONEE) المتحفظة لجميع الموزعين، إلى حين توفر شبكات أسعار حقيقية لكل موزع.">
+                التقدير يعتمد على تعريفة المكتب الوطني (ONEE) المتحفظة لجميع الموزعين، إلى حين
+                توفر شبكات أسعار حقيقية لكل موزع.
+              </p>
             </label>
             <label class="block text-sm text-lune-soft">
               <span data-i18n data-fr="Consommation (kWh/mois, si connue)" data-ar="الاستهلاك (كيلوواط ساعة/شهر، إن عُرف)">Consommation (kWh/mois, si connue)</span>
               <input id="mt-bill-kwh" name="billKwh" type="number" step="any" inputmode="decimal"
-                placeholder="مثال: 850" class={`${inputClass} mt-1`} />
+                placeholder="مثال: 850" dir="ltr" class={`${inputClass} mt-1`} />
             </label>
-          </div>
-
-          <!-- Photo compteur/facture — capturée EN LOCAL, jamais uploadée (pas d'endpoint aujourd'hui). -->
-          <div class="mt-4">
-            <label class="block text-sm text-lune-soft" for="mt-meter-photo" data-i18n
-              data-fr="Photo du compteur ou de la facture" data-ar="صورة العداد أو الفاتورة">
-              Photo du compteur ou de la facture
-            </label>
-            <input id="mt-meter-photo" type="file" accept="image/*" capture="environment"
-              class="mt-1 block w-full text-sm text-lune-soft file:mr-3 file:border-0 file:bg-white/10 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white" />
-            <p id="mt-meter-photo-note" class="mt-1 text-xs text-lune-faint" data-i18n
-              data-fr="Ou envoyez-la nous directement sur WhatsApp après l'envoi du formulaire — c'est souvent plus rapide."
-              data-ar="أو أرسلها لنا مباشرة على واتساب بعد إرسال النموذج — غالباً أسرع.">
-              Ou envoyez-la nous directement sur WhatsApp après l'envoi du formulaire — c'est
-              souvent plus rapide.
-            </p>
           </div>
 
           <fieldset class="mt-4">
@@ -309,8 +470,33 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
           <label class="mt-4 block text-sm text-lune-soft">
             <span data-i18n data-fr="Âge approximatif du toit (années)" data-ar="عمر السطح التقريبي (سنوات)">Âge approximatif du toit (années)</span>
             <input id="mt-roof-age" name="roofAgeYears" type="number" step="1" min="0" inputmode="numeric"
-              placeholder="مثال: 10" class={`${inputClass} mt-1`} />
+              placeholder="مثال: 10" dir="ltr" class={`${inputClass} mt-1`} />
           </label>
+
+          <!-- Photo compteur/facture — capturée EN LOCAL, jamais uploadée (pas d'endpoint aujourd'hui). -->
+          <div class="mt-4">
+            <label class="block text-sm text-lune-soft" for="mt-meter-photo" data-i18n
+              data-fr="Photo du compteur ou de la facture" data-ar="صورة العداد أو الفاتورة">
+              Photo du compteur ou de la facture
+            </label>
+            <input id="mt-meter-photo" type="file" accept="image/*" capture="environment"
+              class="mt-1 block w-full text-sm text-lune-soft file:mr-3 file:border-0 file:bg-white/10 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white" />
+            <p id="mt-meter-photo-note" class="mt-1 text-xs text-lune-faint" data-i18n
+              data-fr="Ou envoyez-la nous directement sur WhatsApp après l'envoi du formulaire — c'est souvent plus rapide. Vous pouvez aussi envoyer un vocal avec une photo de votre facture."
+              data-ar="أو أرسلها لنا مباشرة على واتساب بعد إرسال النموذج — غالباً أسرع. يمكنكم أيضاً إرسال رسالة صوتية مع صورة فاتورتكم.">
+              Ou envoyez-la nous directement sur WhatsApp après l'envoi du formulaire — c'est
+              souvent plus rapide. Vous pouvez aussi envoyer un vocal avec une photo de votre
+              facture.
+            </p>
+          </div>
+        </details>
+
+        <!-- Groupe 2/3 — pour anticiper vos besoins (2 champs). -->
+        <details id="mt-more-needs" class="cine-card mt-3 p-5 sm:p-6">
+          <summary class="cursor-pointer select-none text-sm font-semibold text-brass-300" data-i18n
+            data-fr="Pour anticiper vos besoins" data-ar="لتوقع احتياجاتكم">
+            Pour anticiper vos besoins
+          </summary>
 
           <fieldset class="mt-4">
             <legend class="text-sm text-lune-soft" data-i18n data-fr="Charges futures envisagées" data-ar="أحمال مستقبلية متوقعة">Charges futures envisagées</legend>
@@ -325,6 +511,14 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
             <input id="mt-battery-interest" name="batteryInterest" type="checkbox" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
             <span data-i18n data-fr="Intéressé(e) par une batterie de stockage" data-ar="مهتم بتخزين البطارية">Intéressé(e) par une batterie de stockage</span>
           </label>
+        </details>
+
+        <!-- Groupe 3/3 — pour le financement (3 champs). -->
+        <details id="mt-more-financing" class="cine-card mt-3 p-5 sm:p-6">
+          <summary class="cursor-pointer select-none text-sm font-semibold text-brass-300" data-i18n
+            data-fr="Pour le financement" data-ar="للتمويل">
+            Pour le financement
+          </summary>
 
           <div class="mt-4 grid gap-4 sm:grid-cols-2">
             <label class="block text-sm text-lune-soft">
@@ -361,46 +555,155 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
         <div class="mt-5 flex items-center justify-between gap-3">
           <button type="button" id="mt-back-1"
             class="inline-flex items-center gap-1 px-2 py-3 text-base font-semibold text-lune-soft transition-colors hover:text-white">
-            ← <span data-i18n data-fr="Retour" data-ar="رجوع">Retour</span>
+            <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <polyline points="7,1 3,5 7,9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <span data-i18n data-fr="Retour" data-ar="رجوع">Retour</span>
           </button>
           <button type="button" id="mt-estimate"
             class="inline-flex items-center justify-center gap-2 bg-brass-400 px-6 py-3 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">
-            <span data-i18n data-fr="Voir mon estimation" data-ar="عرض تقديري">Voir mon estimation</span> →
+            <span data-i18n data-fr="Voir mon estimation" data-ar="عرض تقديري">Voir mon estimation</span>
+            <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <polyline points="3,1 7,5 3,9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
           </button>
         </div>
       </div>
 
       <!-- ============ ÉTAPE 3 — VOTRE ESTIMATION (WJ1) + CONTACT (WJ3) ============ -->
       <div id="mt-panel-2" class="mt-step-panel" hidden>
-        <!-- WJ1 — l'estimation instantanée AVANT la porte de contact -->
-        <div id="mt-estimate-card" class="cine-card mt-6 border border-brass-400/30 p-5 sm:p-6" aria-live="polite">
+        <!-- WJ88 — landmark h2 réel (voir note étape 0) : masqué visuellement,
+             DISTINCT du titre visible ci-dessous (celui-ci reste un <p> pour ne
+             pas changer le style .tech-label existant). -->
+        <h2 class="sr-only" data-i18n data-fr={STEPS[2].fr} data-ar={STEPS[2].ar}>{STEPS[2].fr}</h2>
+        <!-- WJ1 — l'estimation instantanée AVANT la porte de contact.
+             WJ88 — aria-live retiré de CE conteneur : il enveloppait aussi le
+             squelette shimmer (mutation intermédiaire, sans texte utile) ET les
+             vrais chiffres, donc un lecteur d'écran annonçait DEUX fois (le
+             squelette puis le résultat). Une seule région dédiée plus bas
+             (#mt-estimate-announce) annonce désormais le résultat UNE SEULE
+             FOIS, jamais pendant la phase squelette. -->
+        <div id="mt-estimate-card" class="cine-card mt-6 border border-brass-400/30 p-5 sm:p-6">
           <p class="tech-label text-brass-300" data-i18n data-fr="Votre estimation instantanée" data-ar="تقديرك الفوري">Votre estimation instantanée</p>
+          <!-- WJ48 — anticipation animation ANTIME BRANDÉE (1.5–2.5 s) avant que
+               les vrais chiffres n'apparaissent — jamais un flash instantané
+               (le calcul lui-même est synchrone/instantané côté code, donc sans
+               ce délai perçu l'utilisateur ne « voit » jamais de calcul se
+               produire). reduced-motion → instant (aucun délai artificiel). -->
+          <p id="mt-estimate-thinking" hidden class="mt-3 flex items-center gap-2 text-sm text-brass-300">
+            <span class="mt-thinking-dot h-2 w-2 flex-none rounded-full bg-brass-400"></span>
+            <span data-i18n data-fr="Calcul de votre potentiel solaire…" data-ar="جارٍ حساب إمكاناتكم الشمسية…">Calcul de votre potentiel solaire…</span>
+          </p>
+          <p id="mt-estimate-announce" class="sr-only" aria-live="polite"></p>
           <div id="mt-estimate-body" class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div>
-              <p class="text-3xl font-bold text-white"><span id="mt-est-kwc">—</span> <span class="text-base font-normal text-lune-soft">kWc</span></p>
+              <!-- WJ72 — <bdi> isole le chiffre latin du texte AR environnant
+                   (unicode-bidi: isolate) SANS forcer toute la ligne en LTR —
+                   contrairement au dir="ltr" employé ailleurs sur cette page,
+                   qui bascule aussi la ponctuation/l'espacement voisins. -->
+              <p class="text-3xl font-bold text-white"><bdi id="mt-est-kwc">—</bdi> <span class="text-base font-normal text-lune-soft">kWc</span></p>
               <p class="text-xs text-lune-faint" data-i18n data-fr="Puissance recommandée" data-ar="القدرة الموصى بها">Puissance recommandée</p>
             </div>
             <div>
-              <p class="text-3xl font-bold text-ok-400"><span id="mt-est-savings">—</span></p>
+              <p class="text-3xl font-bold text-ok-400"><bdi id="mt-est-savings">—</bdi></p>
               <p class="text-xs text-lune-faint" data-i18n data-fr="Économies estimées / mois" data-ar="التوفير المقدّر / شهر">Économies estimées / mois</p>
             </div>
             <div>
-              <p class="text-3xl font-bold text-white" id="mt-est-payback">—</p>
+              <bdi class="block text-3xl font-bold text-white" id="mt-est-payback">—</bdi>
               <p class="text-xs text-lune-faint" data-i18n data-fr="Amortissement" data-ar="استرداد التكلفة">Amortissement</p>
             </div>
           </div>
+          <!-- WJ48 — caveat COURT, juste à côté des chiffres (distinct de la
+               note méthodologique plus longue ci-dessous). -->
+          <p class="mt-2 text-xs italic text-lune-faint" data-i18n
+            data-fr="Estimation préliminaire, affinée après visite." data-ar="تقدير أولي، يُحسَّن بعد الزيارة.">
+            Estimation préliminaire, affinée après visite.
+          </p>
           <p id="mt-estimate-note" class="mt-4 text-xs text-lune-faint" data-i18n
             data-fr="Fourchette préliminaire calculée à partir de votre facture (autoconsommation, loi 82-21). Le chiffrage exact est établi après visite technique — sans engagement."
             data-ar="شريحة أولية محسوبة من فاتورتك (الاستهلاك الذاتي، القانون 82-21). يُحدَّد التقدير الدقيق بعد زيارة تقنية — بدون التزام.">
             Fourchette préliminaire calculée à partir de votre facture (autoconsommation, loi
             82-21). Le chiffrage exact est établi après visite technique — sans engagement.
           </p>
+          <!-- W359 — lien vers la page de transparence méthodologique
+               (source PVGIS, pertes système, autoconsommation d'abord, tarif
+               BT ANRE non publié). -->
+          <p class="mt-1 text-xs">
+            <a href="/ar/methodologie-estimation" class="text-brass-300 underline-offset-2 hover:underline" data-i18n
+              data-fr="Voir comment nous calculons cette estimation" data-ar="مشاهدة كيف نحسب هذا التقدير">
+              Voir comment nous calculons cette estimation
+            </a>
+          </p>
+          <!-- W342 — « L'installation la plus proche de chez vous » : calculée
+               côté client (haversine sur REALISATIONS, lib/realisations.ts) à
+               partir du repère GPS posé sur la carte. Masquée par défaut —
+               n'apparaît QUE si un vrai chantier Taqinor est à proximité
+               honnête (≤ 80 km) ; jamais une ville inventée. -->
+          <div id="mt-nearest-install" hidden class="mt-4 border border-brass-400/25 bg-white/5 p-3 text-sm text-white">
+            <p class="tech-label text-brass-300" data-i18n data-fr="L'installation la plus proche de chez vous" data-ar="أقرب تركيب من منزلكم">L'installation la plus proche de chez vous</p>
+            <p class="mt-1"><bdi id="mt-nearest-install-text">—</bdi></p>
+            <a id="mt-nearest-install-link" href="/ar/realisations" class="mt-1 inline-block text-xs text-brass-300 underline-offset-2 hover:underline" data-i18n data-fr="Voir cette réalisation" data-ar="مشاهدة هذا الإنجاز">Voir cette réalisation</a>
+          </div>
+          <!-- WJ71 — bande de confiance CLIMATIQUE, surfacée par défaut. -->
+          <p id="mt-climate-band" hidden class="mt-1.5 text-xs text-lune-faint" data-i18n
+            data-fr="Été côtier chaud/poussiéreux : la production peut descendre jusqu'à ≈"
+            data-ar="صيف ساحلي حار/مغبر: قد يهبط الإنتاج إلى حدود ≈">
+            Été côtier chaud/poussiéreux&nbsp;: la production peut descendre jusqu'à ≈
+            {' '}<strong id="mt-climate-band-value" class="text-white">—</strong>.
+          </p>
+          <!-- WJ48 — ligne de positionnement concurrentiel : « estimation
+               immédiate » n'est pas une simple demande de rappel (masolaire.ma
+               ne renvoie qu'un callback sous 24 h — vérifié). -->
+          <p class="mt-2 flex items-center gap-1.5 text-xs font-semibold text-ok-400" data-i18n
+            data-fr="Estimation immédiate — pas une simple demande de rappel sous 24 h."
+            data-ar="تقدير فوري — وليس مجرد طلب اتصال خلال 24 ساعة.">
+            Estimation immédiate — pas une simple demande de rappel sous 24 h.
+          </p>
+
+          <!-- W360 — le coût honnête de l'attente : DÉRIVÉ de la même fourchette
+               d'économies déjà calculée (savingsMonthlyLow), jamais un chiffre
+               inventé ni un compte à rebours. Masqué tant qu'aucune estimation
+               réelle n'est affichée (mêmes gardes que le reste de la carte). -->
+          <p id="mt-cost-of-waiting" hidden class="mt-2 text-xs text-lune-soft">
+            <span data-i18n
+              data-fr="Chaque mois d'attente ≈"
+              data-ar="كل شهر انتظار ≈">Chaque mois d'attente ≈</span>
+            {' '}<strong id="mt-cost-of-waiting-value" class="text-white">—</strong>
+            {' '}<span data-i18n
+              data-fr="non économisés."
+              data-ar="غير موفَّرة.">non économisés.</span>
+          </p>
+
+          <!-- W356 — takeaway : « Enregistrer mon estimation » génère un
+               one-pager LÉGER, 100 % côté client (canvas → PNG), jamais un
+               appel serveur. Contenu : kWc + fourchette + caveat + lien wa.me —
+               rien de plus que ce qui est déjà affiché à l'écran. -->
+          <button type="button" id="mt-save-estimate"
+            class="mt-3 inline-flex items-center gap-2 border border-white/25 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:border-brass-400 hover:text-brass-300">
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <span data-i18n data-fr="Enregistrer mon estimation" data-ar="حفظ تقديري">Enregistrer mon estimation</span>
+          </button>
+          <p id="mt-save-estimate-note" hidden class="mt-1.5 text-xs text-lune-faint" data-i18n
+            data-fr="Image enregistrée — retrouvez-la dans vos téléchargements."
+            data-ar="تم حفظ الصورة — ستجدونها في التنزيلات.">
+            Image enregistrée — retrouvez-la dans vos téléchargements.
+          </p>
+
           <!-- WJ1 — quand l'estimation est indisponible (facture absente/non chiffrable) -->
           <p id="mt-estimate-unavailable" hidden class="mt-4 text-sm text-alert-300" data-i18n
             data-fr="Estimation indisponible : indiquez votre facture mensuelle pour la calculer. Nous l'affinons ensemble sur WhatsApp."
             data-ar="التقدير غير متاح: أدخل فاتورتك الشهرية لحسابه. نحدّده معاً على واتساب.">
             Estimation indisponible : indiquez votre facture mensuelle pour la calculer. Nous
             l'affinons ensemble sur WhatsApp.
+          </p>
+          <!-- WJ65 — plafond de bon sens (MAX_BILL) : un montant absurde (faute de
+               frappe, ex. un zéro en trop) ne doit jamais produire un chiffre
+               chiffré avec assurance — on demande de vérifier plutôt. -->
+          <p id="mt-estimate-toolarge" hidden class="mt-4 text-sm text-alert-300" data-i18n
+            data-fr="Estimation indisponible — vérifiez le montant saisi." data-ar="التقدير غير متاح — تحقّقوا من المبلغ المُدخل.">
+            Estimation indisponible — vérifiez le montant saisi.
           </p>
 
           <!-- ===== WJ2 — « voir les panneaux sur votre toit » (facultatif, lazy) =====
@@ -433,62 +736,136 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
 
         <!-- Formulaire de contact (la porte vient APRÈS l'estimation). -->
         <form id="mt-form" novalidate class="cine-card mt-5 space-y-4 p-5 sm:p-6">
+          <!-- W317 — honeypot anti-bot : champ jamais rempli par un humain
+               (masqué hors écran, jamais display:none — plus robuste contre
+               les bots qui ignorent les champs invisibles), tabindex -1 +
+               autocomplete off pour ne jamais gêner un vrai visiteur au
+               clavier. Rejeté côté serveur (lib/lead.ts isHoneypotTripped) —
+               contrat webhook inchangé, ce champ n'est jamais transmis au CRM. -->
+          <div aria-hidden="true" style="position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden;">
+            <label>Ne pas remplir<input id="mt-hp" name="website_url" type="text" tabindex="-1" autocomplete="off" /></label>
+          </div>
+
           <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Pour recevoir votre étude" data-ar="لاستلام دراستك">Pour recevoir votre étude</p>
 
           <div class="grid gap-4 sm:grid-cols-2">
             <label class="block text-sm text-lune-soft">
               <span data-i18n data-fr="Nom complet" data-ar="الاسم الكامل">Nom complet</span>
-              <input id="mt-name" name="fullName" type="text" autocomplete="name" required aria-required="true" class={`${inputClass} mt-1`} />
-              <span id="mt-name-err" hidden class="mt-1 block text-xs text-alert-300"></span>
+              <input id="mt-name" name="fullName" type="text" autocomplete="name" required aria-required="true"
+                aria-describedby="mt-name-err" class={`${inputClass} mt-1`} />
+              <span id="mt-name-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
             </label>
             <label class="block text-sm text-lune-soft">
               <span data-i18n data-fr="Téléphone / WhatsApp" data-ar="الهاتف / واتساب">Téléphone / WhatsApp</span>
               <input id="mt-phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" required aria-required="true"
-                placeholder="06 XX XX XX XX" dir="ltr" class={`${inputClass} mt-1`} />
-              <span id="mt-phone-err" hidden class="mt-1 block text-xs text-alert-300"></span>
+                aria-describedby="mt-phone-err" placeholder="06 XX XX XX XX" dir="ltr" class={`${inputClass} mt-1`} />
+              <span id="mt-phone-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
             </label>
           </div>
 
           <label class="block text-sm text-lune-soft">
             <span data-i18n data-fr="Adresse / ville" data-ar="العنوان / المدينة">Adresse / ville</span>
             <input id="mt-city" name="city" type="text" autocomplete="address-level2" required aria-required="true"
-              placeholder="تُقرأ من الخريطة — قابلة للتعديل عند الحاجة" class={`${inputClass} mt-1`} />
-            <span id="mt-city-err" hidden class="mt-1 block text-xs text-alert-300"></span>
+              aria-describedby="mt-city-err" placeholder="تُقرأ من الخريطة — قابلة للتعديل عند الحاجة" class={`${inputClass} mt-1`} />
+            <span id="mt-city-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
           </label>
 
           <!-- WJ3 — e-mail (facultatif) + opt-in WhatsApp -->
           <label class="block text-sm text-lune-soft">
             <span data-i18n data-fr="E-mail (facultatif)" data-ar="البريد الإلكتروني (اختياري)">E-mail (facultatif)</span>
             <input id="mt-email" name="email" type="email" inputmode="email" autocomplete="email"
-              placeholder="vous@exemple.com" dir="ltr" class={`${inputClass} mt-1`} />
+              placeholder="you@example.com" dir="ltr" class={`${inputClass} mt-1`} />
           </label>
 
-          <label class="flex items-start gap-3 text-sm text-lune-soft">
-            <input id="mt-wa-optin" name="whatsappOptIn" type="checkbox" checked class="mt-1 h-5 w-5 flex-none accent-ok-600" />
-            <span data-i18n data-fr="Je préfère être contacté(e) sur WhatsApp (réponse plus rapide)" data-ar="أفضّل التواصل عبر واتساب (رد أسرع)">Je préfère être contacté(e) sur WhatsApp (réponse plus rapide)</span>
-          </label>
+          <!-- WJ51 — préférence de contact EXPLICITE (remplace la case unique
+               « je préfère WhatsApp ») : un choix nommé, jamais une case cochée
+               par défaut sans qu'on la voie. Forwardé en `contactPreference`
+               (facultatif) + dérive `whatsappOptIn` pour garder le contrat webhook
+               inchangé. -->
+          <fieldset class="mt-1">
+            <legend class="text-sm text-lune-soft" data-i18n data-fr="Comment préférez-vous qu'on vous recontacte ?" data-ar="كيف تفضّلون أن نتواصل معكم؟">Comment préférez-vous qu'on vous recontacte&nbsp;?</legend>
+            <div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <label class="mt-contact-pref cine-card flex cursor-pointer items-center gap-2 border border-white/15 p-3 text-sm text-white transition-colors has-[:checked]:border-ok-600">
+                <input id="mt-contact-whatsapp" name="contactPreference" type="radio" value="whatsapp_only" checked
+                  class="h-4 w-4 flex-none accent-ok-600" />
+                <span data-i18n data-fr="Uniquement sur WhatsApp" data-ar="فقط عبر واتساب">Uniquement sur WhatsApp</span>
+              </label>
+              <label class="mt-contact-pref cine-card flex cursor-pointer items-center gap-2 border border-white/15 p-3 text-sm text-white transition-colors has-[:checked]:border-brass-400">
+                <input id="mt-contact-phone" name="contactPreference" type="radio" value="phone_ok"
+                  class="h-4 w-4 flex-none accent-brass-400" />
+                <span data-i18n data-fr="Un conseiller peut m'appeler" data-ar="يمكن لمستشار الاتصال بي">Un conseiller peut m'appeler</span>
+              </label>
+            </div>
+          </fieldset>
+
+          <!-- W353 — « Réserver un créneau de visite technique » v1 : préférence
+               STATIQUE et FACULTATIVE (moment + semaine), forwardée telle quelle au
+               webhook — jamais une réservation confirmée, aucune dépendance
+               calendrier, aucun paiement/dépôt (la question du dépôt en ligne reste
+               une décision fondateur WG13, non construite ici). Un humain confirme
+               le créneau réel après contact. -->
+          <fieldset class="mt-1">
+            <legend class="text-sm text-lune-soft" data-i18n
+              data-fr="Créneau de visite technique préféré (facultatif)"
+              data-ar="الوقت المفضل للزيارة التقنية (اختياري)">
+              Créneau de visite technique préféré (facultatif)
+            </legend>
+            <p class="mt-1 text-xs text-lune-faint" data-i18n
+              data-fr="Une préférence, pas une réservation — nous confirmons le créneau exact avec vous."
+              data-ar="تفضيل وليس حجزاً — سنؤكد الموعد الدقيق معكم.">
+              Une préférence, pas une réservation — nous confirmons le créneau exact avec vous.
+            </p>
+            <div class="mt-2 grid grid-cols-2 gap-2">
+              <button type="button" class="mt-visit-part cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="matin" aria-pressed="false" data-i18n data-fr="Matin" data-ar="صباحاً">Matin</button>
+              <button type="button" class="mt-visit-part cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="apres_midi" aria-pressed="false" data-i18n data-fr="Après-midi" data-ar="بعد الظهر">Après-midi</button>
+            </div>
+            <div class="mt-2 grid grid-cols-2 gap-2">
+              <button type="button" class="mt-visit-week cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="cette_semaine" aria-pressed="false" data-i18n data-fr="Cette semaine" data-ar="هذا الأسبوع">Cette semaine</button>
+              <button type="button" class="mt-visit-week cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="semaine_prochaine" aria-pressed="false" data-i18n data-fr="La semaine prochaine" data-ar="الأسبوع المقبل">La semaine prochaine</button>
+            </div>
+          </fieldset>
 
           <label class="flex items-start gap-3 text-sm text-lune-soft">
-            <input id="mt-consent" name="consent" type="checkbox" required aria-required="true" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
+            <input id="mt-consent" name="consent" type="checkbox" required aria-required="true"
+              aria-describedby="mt-consent-err" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
             <span data-i18n data-fr="J'accepte d'être recontacté(e) par Taqinor au sujet de mon projet solaire." data-ar="أوافق على أن تتواصل معي تاكينور بخصوص مشروعي الشمسي.">
               J'accepte d'être recontacté(e) par Taqinor au sujet de mon projet solaire.
             </span>
           </label>
-          <span id="mt-consent-err" hidden class="block text-xs text-alert-300"></span>
+          <span id="mt-consent-err" hidden role="alert" class="block text-xs text-alert-300"></span>
 
           <p id="mt-error" hidden class="text-sm text-alert-300" aria-live="polite"></p>
 
-          <!-- WJ3 — CTA PRIMAIRE WhatsApp-first -->
+          <!-- WJ3 — CTA PRIMAIRE WhatsApp-first. WJ60 — libellé « Envoi en cours… »
+               pendant l'attente réseau (bascule via #mt-submit-label/#mt-submit-pending,
+               même mécanisme dual-node data-i18n que le reste de la page). -->
           <button type="submit" id="mt-submit"
             class="inline-flex w-full items-center justify-center gap-2 bg-ok-600 px-6 py-4 text-base font-bold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true" class="flex-none"><path d="M.057 24l1.687-6.163a11.867 11.867 0 0 1-1.587-5.946C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 0 1 8.413 3.488 11.824 11.824 0 0 1 3.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 0 1-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884a9.86 9.86 0 0 0 1.512 5.26l-.999 3.648 3.736-.979z"/></svg>
-            <span data-i18n data-fr="Recevoir mon estimation sur WhatsApp" data-ar="استلام تقديري على واتساب">Recevoir mon estimation sur WhatsApp</span>
+            <span id="mt-submit-label" data-i18n data-fr="Recevoir mon estimation sur WhatsApp" data-ar="استلام تقديري على واتساب">Recevoir mon estimation sur WhatsApp</span>
+            <span id="mt-submit-pending" hidden data-i18n data-fr="Envoi en cours…" data-ar="جارٍ الإرسال…">Envoi en cours…</span>
           </button>
+
+          <!-- WJ58 — promesse de délai honnête near la CTA de capture (WG9
+               résolu, 2026-07-03 : « sous 1 h, 7j/7 »). Badge statique, jamais
+               un compte à rebours. L'icône reste HORS du nœud data-i18n (le
+               mécanisme dual-node WJ33 ne préserve le markup imbriqué que côté
+               FR — un data-ar est du texte brut ; l'icône disparaîtrait en AR
+               si elle était à l'intérieur). -->
+          <p class="mt-2 flex items-center justify-center gap-1.5 text-center text-xs text-lune-faint">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="flex-none text-ok-600">
+              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+            </svg>
+            <span data-i18n data-fr="Réponse WhatsApp sous 1 h, 7j/7" data-ar="رد واتساب خلال ساعة واحدة، 7 أيام على 7">Réponse WhatsApp sous 1 h, 7j/7</span>
+          </p>
 
           <div class="flex items-center justify-between gap-3">
             <button type="button" id="mt-back-2"
               class="inline-flex items-center gap-1 px-2 py-2 text-sm font-semibold text-lune-soft transition-colors hover:text-white">
-              ← <span data-i18n data-fr="Retour" data-ar="رجوع">Retour</span>
+              <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10" fill="none">
+                <polyline points="7,1 3,5 7,9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+              <span data-i18n data-fr="Retour" data-ar="رجوع">Retour</span>
             </button>
           </div>
 
@@ -496,6 +873,18 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
           <div id="mt-success" hidden class="border border-ok-600/40 bg-ok-600/10 p-4 text-sm text-white">
             <p class="font-semibold" data-i18n data-fr="Merci ! Votre demande est enregistrée." data-ar="شكراً! تم تسجيل طلبك.">Merci ! Votre demande est enregistrée.</p>
             <p class="mt-1 text-lune-soft" data-i18n data-fr="Notre équipe prépare votre étude et vous recontacte très vite — souvent sur WhatsApp." data-ar="فريقنا يُعدّ دراستك ويتواصل معك قريباً — غالباً عبر واتساب.">Notre équipe prépare votre étude et vous recontacte très vite — souvent sur WhatsApp.</p>
+            <!-- WJ52 — référence courte : comble le vide post-soumission (24–48 h
+                 d'attente) par un artefact concret à mentionner sur WhatsApp. -->
+            <p class="mt-2 text-lune-soft">
+              <span data-i18n data-fr="Votre référence :" data-ar="مرجعكم:">Votre référence&nbsp;:</span>
+              {' '}<strong id="mt-client-ref" class="font-mono text-white" dir="ltr">—</strong>
+              <br />
+              <span class="text-xs" data-i18n
+                data-fr="Mentionnez ce code sur WhatsApp pour retrouver votre dossier plus vite."
+                data-ar="اذكروا هذا الرمز على واتساب لإيجاد ملفكم بسرعة أكبر.">
+                Mentionnez ce code sur WhatsApp pour retrouver votre dossier plus vite.
+              </span>
+            </p>
             <a id="mt-success-wa" href="#" target="_blank" rel="noopener"
               class="mt-3 inline-flex items-center gap-2 bg-ok-600 px-4 py-2.5 text-sm font-bold text-white transition-opacity hover:opacity-90">
               <span data-i18n data-fr="Ouvrir WhatsApp maintenant" data-ar="افتح واتساب الآن">Ouvrir WhatsApp maintenant</span>
@@ -587,7 +976,9 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     <div class="cine-card w-full max-w-md border border-brass-400/40 p-5">
       <div class="flex items-start justify-between gap-3">
         <p id="mt-exit-title" class="display text-lg text-white" data-i18n data-fr="Recevez votre estimation sur WhatsApp" data-ar="استلم تقديرك على واتساب">Recevez votre estimation sur WhatsApp</p>
-        <button type="button" id="mt-exit-close" aria-label="إغلاق" class="flex-none text-lune-faint hover:text-white">✕</button>
+        <!-- WJ88 — cible tactile ≥24×24 px (WCAG 2.5.8). -->
+        <button type="button" id="mt-exit-close" aria-label="إغلاق"
+          class="flex-none min-h-6 min-w-6 inline-flex items-center justify-center text-lune-faint hover:text-white">✕</button>
       </div>
       <p class="mt-2 text-sm text-lune-soft" data-i18n
         data-fr="Laissez juste votre numéro — on vous envoie votre estimation et on répond à vos questions. Gratuit, sans engagement."
@@ -653,13 +1044,54 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     background: rgb(255 255 255 / 0.08);
     vertical-align: middle;
   }
+
+  /* WJ48 — puce « en cours » de l'anticipation branded : un pouls discret,
+     jamais une roue de chargement générique. Gated reduced-motion (statique
+     sinon), même discipline que .mt-skeleton-shimmer. */
+  @media (prefers-reduced-motion: no-preference) {
+    .mt-thinking-dot {
+      animation: mt-thinking-pulse 1s ease-in-out infinite;
+    }
+  }
+  @keyframes mt-thinking-pulse {
+    0%, 100% { opacity: 0.35; transform: scale(0.85); }
+    50% { opacity: 1; transform: scale(1); }
+  }
 </style>
 
 <script>
-  import { estimateFromBill, formatMadRange } from '../../../lib/billEstimate';
+  import { estimateFromBill, formatMad, formatMadRange } from '../../../lib/billEstimate';
   import { captureWhatsappText, whatsappLink } from '../../../lib/whatsapp';
   import { WHATSAPP_LEADS } from '../../../lib/nap';
-  import { validateLead } from '../../../lib/lead';
+  import { buildClientRef, validateLead } from '../../../lib/lead';
+  // WJ72 — style de nombre kWc UNIQUE, partagé avec la proposition
+  // (src/lib/proposition.ts) : virgule décimale, zéros de fin retirés — plus
+  // jamais le point brut de `String(est.kwc)`.
+  import { formatKwc } from '../../../lib/proposition';
+  // W342 — « installation la plus proche » : haversine client-side sur le
+  // repère GPS posé (aucun appel réseau).
+  import { nearestRealisation } from '../../../lib/realisations';
+  import { type CaptureStrings } from '../../../scripts/roofPro11/mapDraw';
+
+  // WJ41 — رسائل نظام الخريطة/محدد المواقع (roofPro11/mapDraw.ts + captureBoot.ts
+  // تكون افتراضياً بالفرنسية) — هذه الصفحة تمرر نصوصاً عربية حتى لا تتحدث اللحظة
+  // الأكثر تفاعلاً في المسار بالفرنسية مع الزوار الناطقين بالعربية.
+  const ROOF_TOOL_STRINGS_AR: CaptureStrings = {
+    searchAddressThenPin: 'ابحثوا عن عنوانكم، ثم ضعوا علامة على سطحكم.',
+    pinPlaced: 'تم وضع العلامة. يمكنكم تعديلها، أو رسم محيط السطح (اختياري)، ثم ملء بياناتكم.',
+    outlineTraced: 'تم رسم المحيط. املؤوا بياناتكم أدناه، ثم أرسلوا.',
+    traceOutline: 'ارسموا محيط سطحكم. انقروا نقراً مزدوجاً للإغلاق (اختياري).',
+    outlineCrosses: 'رسمكم يتقاطع مع نفسه — صححوه (« مسح ») قبل الإغلاق.',
+    pointWouldCross: 'هذه النقطة ستقاطع رسمكم — ضعوها في مكان آخر للحفاظ على محيط بسيط.',
+    doubleClickToClose: 'انقروا نقراً مزدوجاً (أو « إنهاء ») لإغلاق السطح وبدء الحساب.',
+    cornerPlaced: (n) => `تم وضع الزاوية ${n} — واصلوا رسم المحيط.`,
+    lastPointUndone: (n) => `تم التراجع عن آخر نقطة — ${n} زاوية (زوايا) متبقية. واصلوا الرسم.`,
+    clickCornersToClose: 'انقروا زوايا سطحكم. انقروا نقراً مزدوجاً للإغلاق وبدء الحساب.',
+    searchingAddress: 'جارٍ البحث عن العنوان…',
+    addressNotFound: 'العنوان غير موجود. حددوا المدينة أو حرّكوا الخريطة يدوياً.',
+    chooseFromList: 'اختاروا عنوانكم من القائمة، ثم انقروا زوايا سطحكم.',
+    searchUnavailable: 'البحث غير متوفر. حرّكوا الخريطة يدوياً للعثور على سطحكم.',
+  };
 
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const $ = (id: string) => document.getElementById(id);
@@ -667,6 +1099,47 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   const cityEl = $('mt-city') as HTMLInputElement | null;
   const addressEl = $('rp9-address') as HTMLInputElement | null;
   const fallbackAddrEl = $('mt-fallback-address') as HTMLInputElement | null;
+
+  // ——— WJ59 : beacon de funnel étape par étape (privacy-light, aucune PII) ———
+  // Jeton anonyme PAR ONGLET (sessionStorage, jamais un identifiant
+  // d'appareil/utilisateur) : sert uniquement à dédupliquer/corréler les
+  // événements « atteint »/« abandonné » d'UNE MÊME visite, jamais à
+  // identifier un visiteur. Voir src/lib/funnelBeacon.ts pour le contrat
+  // complet (allowlist stricte de 4 champs, jamais nom/téléphone/e-mail/
+  // adresse/GPS/contour).
+  const FUNNEL_TOKEN_KEY = 'mt-funnel-token-v1';
+  function getFunnelToken(): string {
+    try {
+      let t = sessionStorage.getItem(FUNNEL_TOKEN_KEY);
+      if (!t) {
+        t = Math.random().toString(36).slice(2) + Date.now().toString(36);
+        sessionStorage.setItem(FUNNEL_TOKEN_KEY, t);
+      }
+      return t;
+    } catch {
+      return Math.random().toString(36).slice(2);
+    }
+  }
+  const funnelToken = getFunnelToken();
+  const funnelStepReached = new Set<string>();
+  function sendFunnelBeacon(step: 'toit' | 'facture' | 'estimation' | 'contact', action: 'reached' | 'abandoned') {
+    if (action === 'reached') {
+      const key = `${step}:${action}`;
+      if (funnelStepReached.has(key)) return;
+      funnelStepReached.add(key);
+    }
+    try {
+      const payload = JSON.stringify({ step, action, sessionToken: funnelToken, path: location.pathname });
+      if (navigator.sendBeacon) {
+        const blob = new Blob([payload], { type: 'application/json' });
+        navigator.sendBeacon('/api/funnel-beacon', blob);
+      } else {
+        void fetch('/api/funnel-beacon', { method: 'POST', headers: { 'content-type': 'application/json' }, body: payload, keepalive: true }).catch(() => {});
+      }
+    } catch {
+      // Mesure best-effort seulement — ne doit jamais perturber le parcours.
+    }
+  }
 
   // ——— état capture (repère / contour) tenu par onCaptureChange ———
   let capturePin: { lat: number; lng: number } | null = null;
@@ -740,8 +1213,104 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   $('mt-lang-fr')?.addEventListener('click', () => applyLang('fr'));
   $('mt-lang-ar')?.addEventListener('click', () => applyLang('ar'));
 
+  // ——— WJ45 : bandeau hors-ligne (navigator.onLine + online/offline) ———
+  // Une coupure réseau mobile ne doit jamais ressembler à un échec muet : le
+  // bandeau apparaît/disparaît en direct, indépendamment de toute soumission.
+  const offlineBanner = $('mt-offline-banner');
+  function syncOfflineBanner() {
+    if (offlineBanner) offlineBanner.hidden = navigator.onLine;
+  }
+  syncOfflineBanner();
+  window.addEventListener('online', syncOfflineBanner);
+  window.addEventListener('offline', syncOfflineBanner);
+
+  // ——— WJ61 : l'état de l'assistant survit à un rafraîchissement/retour ———
+  // Un appel téléphonique ou un balayage arrière accidentel détruisait TOUT ce
+  // qui avait été tapé, en silence — l'échec UX le plus coûteux du tunnel. On
+  // persiste un instantané minimal (étape/mode/facture/repère-contour/réponses
+  // facultatives) dans sessionStorage (par onglet, jamais partagé entre
+  // visiteurs) : réhydraté au chargement, effacé au succès. Ne bloque JAMAIS la
+  // soumission si sessionStorage est indisponible (navigation privée stricte…).
+  const WIZARD_STORAGE_KEY = 'mt-wizard-v1';
+  interface WizardSnapshot {
+    step?: number;
+    mode?: string;
+    ombrage?: string;
+    visitWindowPart?: string;
+    visitWindowWeek?: string;
+    futureLoads?: string[];
+    capturePin?: { lat: number; lng: number } | null;
+    captureOutline?: Array<[number, number]>;
+    fields?: Record<string, string>;
+    checks?: Record<string, boolean>;
+  }
+  const PERSISTED_TEXT_FIELDS = [
+    'mt-name', 'mt-phone', 'mt-city', 'mt-email', 'mt-facture-hiver', 'mt-facture-ete',
+    'mt-bill', 'mt-roof', 'mt-raccordement', 'mt-distributeur', 'mt-bill-kwh', 'mt-roof-age',
+    'mt-occupant-type', 'mt-project-timing', 'mt-financing-intent', 'mt-fallback-address',
+    'rp9-address',
+    // WJ68 — mode professionnel (facultatif, additif).
+    'mt-raison-sociale', 'mt-facility-type', 'mt-site-count',
+  ];
+  const PERSISTED_CHECK_FIELDS = ['mt-ete-differente', 'mt-contact-whatsapp', 'mt-contact-phone', 'mt-consent', 'mt-battery-interest'];
+  let restoring = false; // WJ61 — évite de ré-enregistrer PENDANT la réhydratation elle-même.
+  function saveWizardState() {
+    if (restoring) return;
+    try {
+      const fields: Record<string, string> = {};
+      for (const id of PERSISTED_TEXT_FIELDS) {
+        const v = val(id);
+        if (v) fields[id] = v;
+      }
+      const checks: Record<string, boolean> = {};
+      for (const id of PERSISTED_CHECK_FIELDS) {
+        const el = $(id) as HTMLInputElement | null;
+        if (el) checks[id] = el.checked;
+      }
+      const snapshot: WizardSnapshot = {
+        step, mode, ombrage,
+        visitWindowPart, visitWindowWeek,
+        futureLoads: Array.from(futureLoads),
+        capturePin, captureOutline,
+        fields, checks,
+      };
+      sessionStorage.setItem(WIZARD_STORAGE_KEY, JSON.stringify(snapshot));
+    } catch {
+      // sessionStorage indisponible (navigation privée stricte, quota…) : la
+      // persistance est un CONFORT, jamais un blocage de la saisie/l'envoi.
+    }
+  }
+  function loadWizardState(): WizardSnapshot | null {
+    try {
+      const raw = sessionStorage.getItem(WIZARD_STORAGE_KEY);
+      return raw ? (JSON.parse(raw) as WizardSnapshot) : null;
+    } catch {
+      return null;
+    }
+  }
+  function clearWizardState() {
+    try { sessionStorage.removeItem(WIZARD_STORAGE_KEY); } catch { /* confort seulement */ }
+  }
+  // WJ61 — garde-fou de sortie : une fois que le visiteur a commencé à saisir
+  // quelque chose, un rafraîchissement/fermeture ACCIDENTEL affiche l'invite de
+  // confirmation native du navigateur (texte non personnalisable par spec).
+  let hasEnteredData = false;
+  function markDataEntered() { hasEnteredData = true; }
+  window.addEventListener('beforeunload', (e) => {
+    if (!hasEnteredData || submitted) return;
+    e.preventDefault();
+    e.returnValue = '';
+  });
+
+  const savedWizard = loadWizardState();
+
   // ——— WJ6 : sélecteur de mode ———
-  let mode = 'residentiel';
+  let mode = savedWizard?.mode || 'residentiel';
+  // WJ68 — champs PROFESSIONNEL, visibles uniquement pour ce mode.
+  function syncProFieldsVisibility() {
+    const proFields = $('mt-pro-fields');
+    if (proFields) proFields.hidden = mode !== 'professionnel';
+  }
   document.querySelectorAll<HTMLButtonElement>('.mt-mode').forEach((btn) => {
     btn.addEventListener('click', () => {
       mode = btn.dataset.mode || 'residentiel';
@@ -751,13 +1320,49 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
         b.classList.toggle('border-brass-400', on);
         b.classList.toggle('border-white/15', !on);
       });
+      syncProFieldsVisibility();
+      markDataEntered();
+      saveWizardState();
     });
   });
-  // état initial : marquer le mode résidentiel sélectionné visuellement.
-  document.querySelector<HTMLButtonElement>('.mt-mode')?.classList.add('border-brass-400');
+  // état initial : marquer le mode sélectionné (réhydraté ou résidentiel par défaut).
+  document.querySelectorAll<HTMLButtonElement>('.mt-mode').forEach((b) => {
+    const on = (b.dataset.mode || 'residentiel') === mode;
+    b.setAttribute('aria-pressed', String(on));
+    b.classList.toggle('border-brass-400', on);
+    b.classList.toggle('border-white/15', !on);
+  });
+  syncProFieldsVisibility();
+
+  // ——— WJ48 : cartes image « type de toit » — synchronisent le <select>
+  // sr-only (mt-roof) qui reste la source de vérité pour val('mt-roof'), la
+  // validation (setFieldError) et la persistance WJ61 (déjà câblée sur
+  // 'mt-roof' via PERSISTED_TEXT_FIELDS). Un seul choix actif à la fois. ———
+  const roofSelect = $('mt-roof') as HTMLSelectElement | null;
+  function syncRoofCards() {
+    const current = roofSelect?.value || '';
+    document.querySelectorAll<HTMLButtonElement>('.mt-roof-card').forEach((b) => {
+      const on = b.dataset.roof === current;
+      b.setAttribute('aria-pressed', String(on));
+      b.classList.toggle('border-brass-400', on);
+      b.classList.toggle('border-white/15', !on);
+    });
+  }
+  document.querySelectorAll<HTMLButtonElement>('.mt-roof-card').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (roofSelect) {
+        roofSelect.value = btn.dataset.roof || '';
+        setFieldError('mt-roof', 'mt-roof-err', null);
+      }
+      syncRoofCards();
+      markDataEntered();
+      saveWizardState();
+    });
+  });
+  syncRoofCards(); // état initial (réhydraté ou vide).
 
   // ——— WJ31 : puce à bascule unique (ombrage) — un seul choix actif à la fois ———
-  let ombrage = '';
+  let ombrage = savedWizard?.ombrage || '';
   document.querySelectorAll<HTMLButtonElement>('.mt-ombrage').forEach((btn) => {
     btn.addEventListener('click', () => {
       const same = ombrage === btn.dataset.value;
@@ -768,12 +1373,62 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
         b.classList.toggle('border-brass-400', on);
         b.classList.toggle('border-white/15', !on);
       });
+      markDataEntered();
+      saveWizardState();
     });
   });
+  if (ombrage) {
+    document.querySelectorAll<HTMLButtonElement>('.mt-ombrage').forEach((b) => {
+      const on = b.dataset.value === ombrage;
+      b.setAttribute('aria-pressed', String(on));
+      b.classList.toggle('border-brass-400', on);
+      b.classList.toggle('border-white/15', !on);
+    });
+  }
+
+  // ——— W353 : créneau de visite technique — deux puces à bascule unique
+  // INDÉPENDANTES (moment + semaine), même patron que .mt-ombrage ci-dessus.
+  // Préférence STATIQUE et FACULTATIVE : aucun calendrier, aucune réservation
+  // confirmée — un humain valide le créneau réel après contact. ———
+  let visitWindowPart = savedWizard?.visitWindowPart || '';
+  let visitWindowWeek = savedWizard?.visitWindowWeek || '';
+  function wireVisitToggle(selector: string, getCurrent: () => string, setCurrent: (v: string) => void) {
+    document.querySelectorAll<HTMLButtonElement>(selector).forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const same = getCurrent() === btn.dataset.value;
+        setCurrent(same ? '' : (btn.dataset.value || ''));
+        document.querySelectorAll<HTMLButtonElement>(selector).forEach((b) => {
+          const on = !same && b === btn;
+          b.setAttribute('aria-pressed', String(on));
+          b.classList.toggle('border-brass-400', on);
+          b.classList.toggle('border-white/15', !on);
+        });
+        markDataEntered();
+        saveWizardState();
+      });
+    });
+    const current = getCurrent();
+    if (current) {
+      document.querySelectorAll<HTMLButtonElement>(selector).forEach((b) => {
+        const on = b.dataset.value === current;
+        b.setAttribute('aria-pressed', String(on));
+        b.classList.toggle('border-brass-400', on);
+        b.classList.toggle('border-white/15', !on);
+      });
+    }
+  }
+  wireVisitToggle('.mt-visit-part', () => visitWindowPart, (v) => { visitWindowPart = v; });
+  wireVisitToggle('.mt-visit-week', () => visitWindowWeek, (v) => { visitWindowWeek = v; });
 
   // ——— WJ31 : puces multi-sélection (charges futures) ———
-  const futureLoads = new Set<string>();
+  const futureLoads = new Set<string>(savedWizard?.futureLoads ?? []);
   document.querySelectorAll<HTMLButtonElement>('.mt-future-load').forEach((btn) => {
+    const preOn = futureLoads.has(btn.dataset.value || '');
+    if (preOn) {
+      btn.setAttribute('aria-pressed', 'true');
+      btn.classList.add('border-brass-400');
+      btn.classList.remove('border-white/15');
+    }
     btn.addEventListener('click', () => {
       const v = btn.dataset.value || '';
       const on = !futureLoads.has(v);
@@ -781,38 +1436,21 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       btn.setAttribute('aria-pressed', String(on));
       btn.classList.toggle('border-brass-400', on);
       btn.classList.toggle('border-white/15', !on);
+      markDataEntered();
+      saveWizardState();
     });
   });
 
   // ——— WJ31 : photo compteur/facture — capturée EN LOCAL, JAMAIS uploadée ———
   // Pas d'endpoint d'upload aujourd'hui (cf. PLAN2 QK6 OCR) : on garde un simple
   // signal booléen (hasMeterPhoto) et on encourage l'envoi direct sur WhatsApp.
+  // WJ61 — non persisté : un fichier local ne survit pas à sessionStorage (ni ne
+  // le devrait — aucune donnée binaire n'est sérialisée ici).
   let hasMeterPhoto = false;
   const meterPhotoInput = $('mt-meter-photo') as HTMLInputElement | null;
   meterPhotoInput?.addEventListener('change', () => {
     hasMeterPhoto = !!(meterPhotoInput.files && meterPhotoInput.files.length > 0);
   });
-
-  // ——— WJ6 : assistant multi-étapes + barre de progression ———
-  let step = 0;
-  const panels = [0, 1, 2].map((i) => $(`mt-panel-${i}`));
-  function renderStep() {
-    panels.forEach((p, i) => { if (p) p.hidden = i !== step; });
-    document.querySelectorAll<HTMLElement>('.mt-step').forEach((li, i) => {
-      const bar = li.querySelector<HTMLElement>('.mt-step-bar');
-      const label = li.querySelector<HTMLElement>('.mt-step-label');
-      const active = i <= step;
-      if (bar) bar.className = `h-1.5 w-full rounded-full mt-step-bar transition-colors ${active ? 'bg-brass-400' : 'bg-white/10'}`;
-      if (label) label.classList.toggle('text-white', i === step);
-    });
-    const root = document.querySelector('section');
-    root?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
-  }
-  function goStep(n: number) { step = Math.max(0, Math.min(2, n)); renderStep(); }
-  $('mt-next-0')?.addEventListener('click', () => goStep(1));
-  $('mt-back-1')?.addEventListener('click', () => goStep(0));
-  $('mt-back-2')?.addEventListener('click', () => goStep(1));
-  renderStep();
 
   // ——— boot carte (captureOnly). Repli sans clé carte AUTORISE la suite (WJ4) ———
   let started = false;
@@ -824,13 +1462,31 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     if (started) return;
     started = true;
     try {
-      const mod = await import('../../../scripts/roof-tool-pro11.ts');
-      mod.initRoofToolPro8({
+      // WJ47 — يستورد roofPro11/captureBoot مباشرة (وليس كل roof-tool-pro11.ts):
+      // الإقلاع الكامل يجرّ scene3d/optimizer/matrix (Three.js + محرك التوضيب)،
+      // وهو كود داخلي للأداة لا تُشغّله هذه الصفحة العامة للالتقاط أبداً. هذا
+      // الجزء الكسول يحمّل الآن فقط MapLibre + محدد المواقع + العلامة/المحيط.
+      const { bootCaptureOnly } = await import('../../../scripts/roofPro11/captureBoot');
+      bootCaptureOnly({
         maptilerKey: key,
         mapboxToken: mapboxToken || undefined,
         reducedMotion,
-        captureOnly: true,
+        // WJ41 — رسائل الخريطة/محدد المواقع بالعربية (الافتراضي بالفرنسية). هذا
+        // المسار يعرض العربية افتراضياً (applyLang('ar') عند التحميل).
+        strings: ROOF_TOOL_STRINGS_AR,
+        // WJ62 — هذا المسار يعرض العربية (RTL) افتراضياً: أدوات التحكم بالخريطة
+        // (تكبير، تحديد الموقع) تنتقل إلى أعلى اليسار بدل تداخلها مع اتجاه
+        // القراءة/أزرار اللغة في تلك الزاوية.
+        dir: 'rtl',
+        geolocateErrorMsg: 'تم رفض تحديد الموقع — ابحثوا عن عنوانكم أو ضعوا العلامة يدوياً.',
         onReady: clearMapSkeleton,
+        // WJ61 — إعادة زرع علامة/محيط مستعادين من sessionStorage (تحديث الصفحة
+        // أو زر الرجوع في المتصفح أثناء المسار) مباشرة عند إقلاع الخريطة، بنفس
+        // آلية التغذية من عرض موجود مسبقاً (W113): لا يحتاج الزائر لإعادة وضع
+        // العلامة.
+        hydrate: capturePin
+          ? { lead: { roof_point: capturePin, roof_outline: captureOutline.length >= 3 ? captureOutline : null } }
+          : undefined,
         onCaptureChange: (s) => {
           capturePin = s.pin;
           captureOutline = s.outline;
@@ -852,16 +1508,84 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   // WJ4 — repli carte : on montre le champ d'adresse en clair ET on garde la suite ouverte.
   function showFallback() { if (fallback) fallback.hidden = false; clearMapSkeleton(); }
 
-  (async () => {
-    try {
-      const res = await fetch('/api/roof-config');
-      const cfg = (await res.json()) as { available?: boolean; maptilerKey?: string; mapboxToken?: string };
-      if (!cfg.available || !cfg.maptilerKey) { showFallback(); return; }
-      void boot(cfg.maptilerKey, cfg.mapboxToken || '');
-    } catch {
-      showFallback();
+  // WJ60 — sur 3G lente, un fetch sans délai peut rester en attente indéfiniment
+  // (l'UI restait bloquée sur le squelette de la carte). 10 s laisse largement le
+  // temps à une connexion lente de répondre tout en bornant l'attente ; l'échec
+  // (timeout inclus) tombe dans le repli adresse existant (WJ4), jamais un blocage.
+  const FETCH_TIMEOUT_MS = 10_000;
+  // W324 — n'engage le fetch /api/roof-config (→ import maplibre-gl, ~200 KB+)
+  // QUE lorsque l'étape 0 (carte) est réellement l'étape ACTIVE — jamais au
+  // simple chargement de page. Un visiteur qui reprend son parcours à l'étape
+  // 1/2 (WJ61 : instantané sessionStorage restauré, ou bouton précédent) ne
+  // paie plus jamais ce poids pour une carte qu'il ne verra pas. `mapFetchDone`
+  // garde l'appel idempotent (un seul fetch par visite).
+  let mapFetchDone = false;
+  function ensureMapBooted() {
+    if (mapFetchDone) return;
+    mapFetchDone = true;
+    (async () => {
+      try {
+        const res = await fetch('/api/roof-config', { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+        const cfg = (await res.json()) as { available?: boolean; maptilerKey?: string; mapboxToken?: string };
+        if (!cfg.available || !cfg.maptilerKey) { showFallback(); return; }
+        void boot(cfg.maptilerKey, cfg.mapboxToken || '');
+      } catch {
+        showFallback();
+      }
+    })();
+  }
+
+  // ——— WJ6 : assistant multi-étapes + barre de progression ———
+  // WJ61 — l'étape initiale reprend l'instantané sessionStorage s'il existe
+  // (rafraîchissement/retour en cours de parcours), sinon 0 comme avant.
+  let step = savedWizard?.step != null ? Math.max(0, Math.min(2, savedWizard.step)) : 0;
+  const panels = [0, 1, 2].map((i) => $(`mt-panel-${i}`));
+  let firstRender = true;
+  function renderStep() {
+    panels.forEach((p, i) => { if (p) p.hidden = i !== step; });
+    document.querySelectorAll<HTMLElement>('.mt-step').forEach((li, i) => {
+      const bar = li.querySelector<HTMLElement>('.mt-step-bar');
+      const label = li.querySelector<HTMLElement>('.mt-step-label');
+      const active = i <= step;
+      if (bar) bar.className = `h-1.5 w-full rounded-full mt-step-bar transition-colors ${active ? 'bg-brass-400' : 'bg-white/10'}`;
+      if (label) label.classList.toggle('text-white', i === step);
+    });
+    // W324 — l'étape carte est ACTIVE : c'est ICI (jamais au simple chargement
+    // de page) qu'on engage le fetch de config + l'import lazy de maplibre-gl.
+    if (step === 0) ensureMapBooted();
+    // WJ59 — « étape atteinte », dédupliquée par sendFunnelBeacon (une seule
+    // fois par étape et par visite, y compris après un aller-retour Retour/Continuer).
+    sendFunnelBeacon(step === 0 ? 'toit' : step === 1 ? 'facture' : 'estimation', 'reached');
+    // WJ61 — au tout premier rendu (chargement/réhydratation), ne pas imposer de
+    // défilement : le visiteur vient d'arriver/de revenir, la page n'a pas
+    // encore bougé sous lui. Le défilement reste pour chaque étape SUIVANTE.
+    if (firstRender) { firstRender = false; return; }
+    const root = document.querySelector('section');
+    root?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
+  }
+  // WJ61 — pushState PAR ÉTAPE : le bouton précédent du navigateur recule d'une
+  // étape de l'assistant au lieu de quitter carrément la page (l'échec le plus
+  // fréquent d'un « retour » accidentel). `fromPopstate` évite de repousser un
+  // état pendant qu'on réagit déjà à un `popstate`.
+  function goStep(n: number, fromPopstate = false) {
+    step = Math.max(0, Math.min(2, n));
+    renderStep();
+    saveWizardState();
+    if (!fromPopstate) {
+      history.pushState({ mtStep: step }, '', location.href);
     }
-  })();
+  }
+  window.addEventListener('popstate', (e) => {
+    const st = (e.state as { mtStep?: number } | null)?.mtStep;
+    goStep(st != null ? st : Math.max(0, step - 1), true);
+  });
+  $('mt-next-0')?.addEventListener('click', () => goStep(1));
+  $('mt-back-1')?.addEventListener('click', () => goStep(0));
+  $('mt-back-2')?.addEventListener('click', () => goStep(1));
+  // WJ61 — pose une première entrée d'historique dès le chargement pour que le
+  // tout premier « retour » ait un état `mtStep` à consulter.
+  history.replaceState({ mtStep: step }, '', location.href);
+  renderStep();
 
   // ——— helpers de saisie ———
   const val = (id: string) => (($(id) as HTMLInputElement | HTMLSelectElement | null)?.value ?? '');
@@ -882,6 +1606,42 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     if (!on && eteInput) eteInput.value = '';
   });
 
+  // WJ61 — réhydratation des champs de saisie + du repère/contour de carte à
+  // partir de l'instantané (AVANT le boot de la carte : `hydrate` plus bas sème
+  // le pin/contour directement dans captureBoot, sans attendre un premier
+  // clic). `restoring` empêche saveWizardState() de s'auto-déclencher pendant
+  // qu'on peuple les champs (les événements `input`/`change` natifs se
+  // déclenchent en JS lors d'une affectation `.value`/`.checked`).
+  if (savedWizard) {
+    restoring = true;
+    for (const [id, v] of Object.entries(savedWizard.fields ?? {})) {
+      const el = $(id) as HTMLInputElement | HTMLSelectElement | null;
+      if (el) el.value = v;
+    }
+    for (const [id, v] of Object.entries(savedWizard.checks ?? {})) {
+      const el = $(id) as HTMLInputElement | null;
+      if (el) el.checked = v;
+    }
+    // WJ61 — une ville restaurée compte comme « déjà touchée » : affecter
+    // `.value` par script ne déclenche pas l'événement `input` natif qui pose
+    // normalement `cityTouched`, et sans ce garde-fou le prochain repère posé
+    // sur la carte écraserait silencieusement la ville qu'on vient de restaurer.
+    if (savedWizard.fields?.['mt-city']) cityTouched = true;
+    if (eteToggle?.checked && eteWrap) eteWrap.hidden = false;
+    if (savedWizard.capturePin) capturePin = savedWizard.capturePin;
+    if (savedWizard.captureOutline?.length) captureOutline = savedWizard.captureOutline;
+    if (Object.keys(savedWizard.fields ?? {}).length > 0 || savedWizard.capturePin) markDataEntered();
+    restoring = false;
+  }
+  // WJ61 — persiste sur toute frappe/changement des champs texte/select/case à
+  // cocher restants (au-delà des puces déjà câblées plus haut).
+  const PERSIST_ON_INPUT_IDS = [...PERSISTED_TEXT_FIELDS, ...PERSISTED_CHECK_FIELDS];
+  for (const id of PERSIST_ON_INPUT_IDS) {
+    const el = $(id);
+    el?.addEventListener('input', () => { markDataEntered(); saveWizardState(); });
+    el?.addEventListener('change', () => { markDataEntered(); saveWizardState(); });
+  }
+
   // ——— WJ1 : résoudre la facture mensuelle (montant exact prioritaire, sinon tranche) ———
   /** Milieu indicatif d'une tranche (MAD) — uniquement pour ESTIMER quand le montant
    *  exact est absent ; ne sert jamais au seuil (le seuil reste sur billRange/qualifies). */
@@ -889,6 +1649,12 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     'lt800': 600, '800-1000': 900, '1000-1500': 1250, '1500-3000': 2250,
     '3000-5000': 4000, '5000-10000': 7500, 'gt10000': 12000,
   };
+  // WJ65 — plafond de bon sens sur la facture EXACTE saisie : au-delà, une faute
+  // de frappe (ex. un zéro en trop) produirait un chiffre estimé avec la même
+  // assurance qu'un vrai gros compte pro — on préfère demander de vérifier.
+  // 200 000 MAD/mois est déjà bien au-delà des plus gros clients industriels
+  // réels de Taqinor ; ne s'applique qu'au montant EXACT, jamais aux tranches.
+  const MAX_BILL = 200_000;
   function resolveMonthlyBill(): number | null {
     const exact = num('mt-facture-hiver');
     if (exact != null && exact > 0) return exact;
@@ -901,14 +1667,54 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   let lastKwcLabel = '';
   let lastSavingsLabel = '';
   let lastKwc: number | null = null;
+  // W356/W360 — instantané complet de la dernière estimation RÉELLE affichée
+  // (jamais fabriqué : identique aux chiffres déjà à l'écran) — sert au
+  // one-pager d'emport (W356) et à la ligne « coût de l'attente » (W360).
+  let lastEstFull: { kwc: number; monthlyLabel: string; paybackLabel: string; savingsMonthlyLow: number } | null = null;
+  // WJ88 — annonce UNIQUE du résultat (jamais pendant la phase squelette) :
+  // remplace l'ancien aria-live posé sur tout #mt-estimate-card, qui
+  // déclenchait un double-fire lecteur d'écran (squelette PUIS résultat).
+  function announceEstimate(message: string) {
+    const el = $('mt-estimate-announce');
+    if (el) el.textContent = message;
+  }
   function computeEstimate() {
+    const exact = num('mt-facture-hiver');
     const bill = resolveMonthlyBill();
-    const lat = capturePin?.lat;
-    const city = (val('mt-city') || addressEl?.value || '').trim() || undefined;
-    const est = bill != null ? estimateFromBill(bill, { lat, city }) : null;
     const card = $('mt-estimate-body');
     const note = $('mt-estimate-note');
     const unavail = $('mt-estimate-unavailable');
+    const toolarge = $('mt-estimate-toolarge');
+    const cowEl = $('mt-cost-of-waiting');
+    const climateBandEl = $('mt-climate-band');
+    const saveBtn = $('mt-save-estimate');
+    // WJ65 — montant exact au-delà du plafond : message honnête dédié (jamais un
+    // chiffre confiant sur une saisie probablement erronée) + erreur inline sur
+    // le champ concerné, sans jamais BLOQUER l'étape (le visiteur peut corriger
+    // ou repartir sur une tranche).
+    if (exact != null && exact > MAX_BILL) {
+      if (card) card.hidden = true;
+      if (note) note.hidden = true;
+      if (unavail) unavail.hidden = true;
+      if (toolarge) toolarge.hidden = false;
+      setFieldError('mt-facture-hiver', 'mt-facture-hiver-err', currentLang === 'ar' ? 'تحقّقوا من المبلغ المُدخل.' : 'Vérifiez le montant saisi.');
+      lastKwcLabel = '';
+      lastSavingsLabel = '';
+      lastKwc = null;
+      lastEstFull = null;
+      if (cowEl) cowEl.hidden = true;
+      if (climateBandEl) climateBandEl.hidden = true;
+      { const nearestElTL = $('mt-nearest-install'); if (nearestElTL) nearestElTL.hidden = true; }
+      if (saveBtn) saveBtn.hidden = true;
+      updatePanels3dVisibility();
+      announceEstimate(currentLang === 'ar' ? 'التقدير غير متاح — تحقّقوا من المبلغ المُدخل.' : 'Estimation indisponible — vérifiez le montant saisi.');
+      return;
+    }
+    setFieldError('mt-facture-hiver', 'mt-facture-hiver-err', null);
+    if (toolarge) toolarge.hidden = true;
+    const lat = capturePin?.lat;
+    const city = (val('mt-city') || addressEl?.value || '').trim() || undefined;
+    const est = bill != null ? estimateFromBill(bill, { lat, city }) : null;
     if (!est) {
       if (card) card.hidden = true;
       if (note) note.hidden = true;
@@ -916,7 +1722,15 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       lastKwcLabel = '';
       lastSavingsLabel = '';
       lastKwc = null;
+      lastEstFull = null;
+      if (cowEl) cowEl.hidden = true;
+      if (climateBandEl) climateBandEl.hidden = true;
+      { const nearestElNa = $('mt-nearest-install'); if (nearestElNa) nearestElNa.hidden = true; }
+      if (saveBtn) saveBtn.hidden = true;
       updatePanels3dVisibility();
+      announceEstimate(currentLang === 'ar'
+        ? 'التقدير غير متاح: أدخل فاتورتك الشهرية لحسابه.'
+        : 'Estimation indisponible : indiquez votre facture mensuelle pour la calculer.');
       return;
     }
     if (card) card.hidden = false;
@@ -925,14 +1739,70 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     const kwcEl = $('mt-est-kwc');
     const savEl = $('mt-est-savings');
     const payEl = $('mt-est-payback');
-    if (kwcEl) kwcEl.textContent = String(est.kwc);
+    if (kwcEl) kwcEl.textContent = formatKwc(est.kwc);
     const monthly = formatMadRange(est.savingsMonthlyLow, est.savingsMonthlyHigh);
     if (savEl) savEl.textContent = monthly;
     if (payEl) payEl.textContent = est.paybackLabel;
-    lastKwcLabel = `${est.kwc} kWc`;
+    lastKwcLabel = `${formatKwc(est.kwc)} kWc`;
     lastSavingsLabel = `${monthly}/mois`;
     lastKwc = est.kwc;
+    // WJ71 — bande de confiance climatique, affichée seulement quand elle dit
+    // vraiment quelque chose de plus que le chiffre déjà affiché.
+    if (climateBandEl) {
+      const climateBandValueEl = $('mt-climate-band-value');
+      const showBand = est.savingsLowBand < est.savingsHigh;
+      climateBandEl.hidden = !showBand;
+      if (showBand && climateBandValueEl) {
+        climateBandValueEl.textContent = formatMadRange(est.savingsLowBand, est.savingsLowBand);
+      }
+    }
+    lastEstFull = {
+      kwc: est.kwc,
+      monthlyLabel: monthly,
+      paybackLabel: est.paybackLabel,
+      savingsMonthlyLow: est.savingsMonthlyLow,
+    };
+    // W342 — « installation la plus proche de chez vous » : UNIQUEMENT si un
+    // repère GPS a été posé (capturePin) et qu'un vrai chantier Taqinor est à
+    // proximité honnête (≤ 80 km, cf. nearestRealisation). Sans repère, la
+    // carte reste masquée — jamais une ville devinée depuis le texte libre.
+    const nearestEl = $('mt-nearest-install');
+    if (nearestEl && capturePin) {
+      const near = nearestRealisation(capturePin.lat, capturePin.lng);
+      if (near) {
+        const { realisation: r, distanceKm } = near;
+        const textEl = $('mt-nearest-install-text');
+        const linkEl = $('mt-nearest-install-link') as HTMLAnchorElement | null;
+        const km = Math.round(distanceKm);
+        if (textEl) {
+          textEl.textContent = currentLang === 'ar'
+            ? `${r.ville} — ${r.kwc} — على بعد ${km} كم تقريباً`
+            : `${r.ville} — ${r.kwc} — à environ ${km} km de vous`;
+        }
+        if (linkEl) linkEl.href = `/ar/realisations/${r.slug}`;
+        nearestEl.hidden = false;
+      } else {
+        nearestEl.hidden = true;
+      }
+    } else if (nearestEl) {
+      nearestEl.hidden = true;
+    }
+    // W360 — coût de l'attente DÉRIVÉ de la même borne basse déjà affichée
+    // (jamais un chiffre séparé/inventé, jamais un compte à rebours).
+    if (cowEl) {
+      const costEl = $('mt-cost-of-waiting-value');
+      if (costEl) costEl.textContent = `${formatMad(est.savingsMonthlyLow)} MAD`;
+      cowEl.hidden = est.savingsMonthlyLow <= 0;
+    }
+    if (saveBtn) saveBtn.hidden = false;
     updatePanels3dVisibility();
+    // WJ59 — l'estimation réelle est le moment où le formulaire de contact
+    // devient l'action pertinente : « étape contact atteinte ».
+    sendFunnelBeacon('contact', 'reached');
+    // WJ88 — annonce UNIQUE et propre du résultat final (jamais pendant le squelette).
+    announceEstimate(currentLang === 'ar'
+      ? `تقديرك: ${formatKwc(est.kwc)} كيلوواط، توفير مقدّر ${monthly}/شهر، استرداد التكلفة ${est.paybackLabel}.`
+      : `Votre estimation : ${formatKwc(est.kwc)} kWc, économies estimées ${monthly}/mois, amortissement ${est.paybackLabel}.`);
   }
   // WJ34 — squelette bref pendant le calcul (performance perçue) : les 3
   // chiffres passent en squelette shimmer AVANT le calcul, puis
@@ -943,7 +1813,9 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   function showEstimateSkeleton() {
     const card = $('mt-estimate-body');
     const unavail = $('mt-estimate-unavailable');
+    const toolarge = $('mt-estimate-toolarge');
     if (unavail) unavail.hidden = true;
+    if (toolarge) toolarge.hidden = true;
     if (card) card.hidden = false;
     for (const id of ['mt-est-kwc', 'mt-est-savings']) {
       const el = $(id);
@@ -952,10 +1824,29 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     const payEl = $('mt-est-payback');
     if (payEl) payEl.innerHTML = '<span class="mt-est-skeleton mt-skeleton-shimmer"></span>';
   }
+  // WJ48 — anticipation BRANDÉE (1.5–2.5 s, tirage aléatoire dans cette
+  // fenêtre à chaque calcul) : le calcul réel (billEstimate) est synchrone et
+  // instantané — sans ce délai perçu, l'utilisateur ne « voit » jamais de
+  // calcul se produire (Enpal/EnergySage : le motif d'anticipation le plus
+  // testé du secteur). reduced-motion → INSTANTANÉ (aucun délai artificiel,
+  // aucune roue de chargement à observer).
+  const THINKING_MIN_MS = 1500;
+  const THINKING_MAX_MS = 2500;
+  function thinkingDelayMs(): number {
+    if (reducedMotion) return 0;
+    return THINKING_MIN_MS + Math.random() * (THINKING_MAX_MS - THINKING_MIN_MS);
+  }
   $('mt-estimate')?.addEventListener('click', () => {
     showEstimateSkeleton();
+    const thinkingEl = $('mt-estimate-thinking');
+    if (thinkingEl) thinkingEl.hidden = false;
     goStep(2);
-    requestAnimationFrame(() => computeEstimate());
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        if (thinkingEl) thinkingEl.hidden = true;
+        computeEstimate();
+      }, thinkingDelayMs());
+    });
   });
   // recalcule à la volée si l'utilisateur revient corriger sa facture
   $('mt-facture-hiver')?.addEventListener('input', computeEstimate);
@@ -1016,6 +1907,103 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   }
   panels3dStart?.addEventListener('click', () => { void startPanels3d(); });
 
+  // ——— W356 : takeaway « Enregistrer mon estimation » — one-pager LÉGER généré
+  // 100 % côté client (canvas → PNG), AUCUN appel serveur, AUCUNE dépendance
+  // nouvelle. Contenu strictement identique à ce qui est déjà affiché : kWc,
+  // fourchette d'économies, caveat, lien wa.me — rien d'inventé ici. ———
+  function drawWrappedText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, lineHeight: number): number {
+    const words = text.split(' ');
+    let line = '';
+    let cy = y;
+    for (const word of words) {
+      const test = line ? `${line} ${word}` : word;
+      if (ctx.measureText(test).width > maxWidth && line) {
+        ctx.fillText(line, x, cy);
+        line = word;
+        cy += lineHeight;
+      } else {
+        line = test;
+      }
+    }
+    if (line) { ctx.fillText(line, x, cy); cy += lineHeight; }
+    return cy;
+  }
+  function buildEstimatePng(): string | null {
+    if (!lastEstFull) return null;
+    const W = 640;
+    const H = 380;
+    const canvas = document.createElement('canvas');
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    // fond (nuit) — mêmes teintes que le reste de la page.
+    ctx.fillStyle = '#0a0e1f';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#caa15a'; // brass-400 approx
+    ctx.font = '600 14px system-ui, sans-serif';
+    ctx.fillText(currentLang === 'ar' ? 'تقدير تاكينور الشمسي' : 'Taqinor — estimation solaire', 32, 44);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '700 40px system-ui, sans-serif';
+    ctx.fillText(`${formatKwc(lastEstFull.kwc)} kWc`, 32, 104);
+    ctx.font = '600 22px system-ui, sans-serif';
+    ctx.fillStyle = '#4ade80'; // ok-400 approx
+    ctx.fillText(
+      currentLang === 'ar' ? `توفير مقدّر: ${lastEstFull.monthlyLabel}/شهر` : `Économies estimées : ${lastEstFull.monthlyLabel}/mois`,
+      32, 144,
+    );
+    ctx.fillStyle = '#e5e7eb';
+    ctx.font = '500 18px system-ui, sans-serif';
+    ctx.fillText(
+      currentLang === 'ar' ? `استرداد التكلفة: ${lastEstFull.paybackLabel}` : `Amortissement : ${lastEstFull.paybackLabel}`,
+      32, 178,
+    );
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = 'italic 400 14px system-ui, sans-serif';
+    let cy = drawWrappedText(
+      ctx,
+      currentLang === 'ar'
+        ? 'تقدير أولي، يُحسَّن بعد زيارة تقنية. غير تعاقدي.'
+        : 'Estimation préliminaire, affinée après visite technique. Non contractuel.',
+      32, 216, W - 64, 20,
+    );
+    cy += 12;
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.beginPath();
+    ctx.moveTo(32, cy);
+    ctx.lineTo(W - 32, cy);
+    ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '600 15px system-ui, sans-serif';
+    ctx.fillText(
+      currentLang === 'ar' ? 'واتساب: wa.me/212661850410' : 'WhatsApp : wa.me/212661850410',
+      32, cy + 34,
+    );
+    ctx.fillStyle = '#6b7280';
+    ctx.font = '400 12px system-ui, sans-serif';
+    ctx.fillText('taqinor.ma', 32, H - 20);
+    return canvas.toDataURL('image/png');
+  }
+  $('mt-save-estimate')?.addEventListener('click', () => {
+    const dataUrl = buildEstimatePng();
+    const note = $('mt-save-estimate-note');
+    if (!dataUrl) return;
+    try {
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = 'taqinor-estimation-solaire.png';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      if (note) note.hidden = false;
+    } catch {
+      // Repli honnête : l'image reste visible à l'écran même si le
+      // téléchargement échoue (ex. navigateur qui bloque les data: URLs) —
+      // jamais un blocage silencieux de l'action.
+      if (note) note.hidden = true;
+    }
+  });
+
   // ——— WJ4 : validation INLINE alignée sur validateLead (avant le round-trip) ———
   function setFieldError(inputId: string, errId: string, message: string | null) {
     const input = $(inputId) as HTMLInputElement | null;
@@ -1026,11 +2014,28 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       err.hidden = !message;
     }
   }
+  // ——— WJ52 : référence client courte, générée UNE FOIS côté navigateur ———
+  // Stable sur des soumissions répétées (ex. échec réseau puis nouvel essai) :
+  // générée à la première tentative, réutilisée telle quelle ensuite — jamais
+  // régénérée en silence, jamais une clé d'unicité serveur (cf. lib/lead.ts).
+  let clientRef = '';
+  function getOrCreateClientRef(): string {
+    if (!clientRef) clientRef = buildClientRef();
+    return clientRef;
+  }
+
   /** Construit le corps de lead + renvoie les erreurs client (miroir validateLead). */
   function buildBody(): { body: Record<string, unknown>; errors: Record<string, string> } {
     const eteDifferente = eteToggle?.checked === true;
     const consent = ($('mt-consent') as HTMLInputElement | null)?.checked === true;
-    const whatsappOptIn = ($('mt-wa-optin') as HTMLInputElement | null)?.checked === true;
+    // WJ51 — préférence de contact EXPLICITE (radio « Uniquement WhatsApp » vs
+    // « Un conseiller peut m'appeler ») : `whatsappOptIn` reste dérivé pour ne
+    // rien casser côté CRM/webhook, `contactPreference` part en plus (mappé
+    // sur le champ `canal`).
+    const contactPreference = (($('mt-contact-phone') as HTMLInputElement | null)?.checked === true)
+      ? 'phone_ok'
+      : 'whatsapp_only';
+    const whatsappOptIn = contactPreference === 'whatsapp_only';
     const adresse = (val('mt-city') || addressEl?.value.trim() || fallbackAddrEl?.value.trim() || '').trim();
     const body: Record<string, unknown> = {
       fullName: val('mt-name'),
@@ -1040,6 +2045,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       roofType: val('mt-roof'),
       consent,
       whatsappOptIn,
+      contactPreference,
       email: val('mt-email') || undefined,
       factureHiver: num('mt-facture-hiver'),
       factureEte: eteDifferente ? num('mt-facture-ete') : null,
@@ -1061,6 +2067,19 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       projectTiming: val('mt-project-timing') || undefined,
       financingIntent: val('mt-financing-intent') || undefined,
       hasMeterPhoto,
+      // WJ52 — référence courte pour l'artefact post-soumission (échoée telle
+      // quelle, jamais une clé d'unicité serveur — cf. lib/lead.ts).
+      clientRef: getOrCreateClientRef(),
+      // W353 — préférence de créneau de visite technique (facultative, STATIQUE).
+      visitWindowPart: visitWindowPart || undefined,
+      visitWindowWeek: visitWindowWeek || undefined,
+      // WJ68 — mode professionnel : facultatif, additif, jamais bloquant.
+      raisonSociale: val('mt-raison-sociale') || undefined,
+      facilityType: val('mt-facility-type') || undefined,
+      siteCount: val('mt-site-count') || undefined,
+      // W317 — honeypot : vide pour tout visiteur humain (champ masqué hors
+      // écran, jamais rempli sciemment) ; rejeté côté serveur si non vide.
+      website_url: val('mt-hp'),
     };
     // WJ4 — repère FACULTATIF : on le joint s'il existe, on ne BLOQUE jamais sans lui.
     if (capturePin) {
@@ -1070,7 +2089,15 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     }
     if (captureOutline.length >= 3) body.roofOutline = captureOutline;
     const v = validateLead(body);
-    return { body, errors: v.ok ? {} : v.errors };
+    const errors: Record<string, string> = v.ok ? {} : { ...v.errors };
+    // WJ65 — validateLead (lib/lead.ts, hors périmètre de cette page) n'exige
+    // qu'une longueur ≥ 2 : un nom fait uniquement d'emojis/symboles (ex. « 😀😀 »)
+    // passait donc silencieusement. On exige ICI au moins UNE lettre (tout
+    // alphabet — \p{L} couvre le latin ET l'arabe) avant l'envoi.
+    if (!errors.fullName && !/\p{L}/u.test(val('mt-name'))) {
+      errors.fullName = currentLang === 'ar' ? 'الاسم الكامل مطلوب' : 'Nom complet requis';
+    }
+    return { body, errors };
   }
 
   function showInlineErrors(errors: Record<string, string>) {
@@ -1100,7 +2127,45 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   const okEl = $('mt-success');
   const belowEl = $('mt-belowthreshold');
   const submitBtn = $('mt-submit') as HTMLButtonElement | null;
+  const submitLabelEl = $('mt-submit-label');
+  const submitPendingEl = $('mt-submit-pending');
   let submitted = false;
+
+  // WJ60 — bascule le CTA sur « Envoi en cours… » pendant l'attente réseau (jamais
+  // de bouton muet sur 3G lente) ; restaurée à la fin quel que soit le résultat
+  // (sauf succès, où le formulaire entier se désactive juste après).
+  function setSubmitPending(pending: boolean) {
+    if (submitBtn) submitBtn.disabled = pending;
+    if (submitLabelEl) submitLabelEl.hidden = pending;
+    if (submitPendingEl) submitPendingEl.hidden = !pending;
+  }
+
+  // WJ63 — cette page bascule FR/عربي en direct (data-i18n) : les messages
+  // d'erreur suivent désormais `currentLang` plutôt qu'un texte figé en arabe —
+  // sinon un visiteur qui a basculé en FR verrait soudain de l'arabe à l'échec.
+  function serverErrorMsg(): string {
+    return currentLang === 'ar'
+      ? 'مشكلة تقنية من جانبنا — يرجى إعادة المحاولة.'
+      : 'Un problème technique de notre côté — réessayez.';
+  }
+  // WJ45 — message DISTINCT quand la coupure vient du réseau du visiteur (pas
+  // de notre côté) : rassure que rien n'est perdu plutôt que la formule
+  // générique « problème technique de notre côté ».
+  function offlineMsg(): string {
+    return currentLang === 'ar'
+      ? 'لا يوجد اتصال — إجاباتكم محفوظة، سنعيد المحاولة فور عودة الشبكة.'
+      : "Pas de connexion — vos réponses sont conservées, on réessaie dès le retour du réseau.";
+  }
+  function fieldsHighlightedMsg(): string {
+    return currentLang === 'ar' ? 'يرجى مراجعة الحقول المُبرزة أعلاه.' : 'Vérifiez les champs surlignés ci-dessus.';
+  }
+  function missingFieldMsg(): string {
+    return currentLang === 'ar' ? 'حقل ناقص أو غير صالح. يرجى مراجعة معلوماتكم.' : 'Un champ est manquant ou invalide. Vérifiez vos informations.';
+  }
+  // WJ60 — 15 s laisse le temps à une connexion lente de répondre, sans
+  // laisser le CTA « Envoi en cours… » indéfiniment (l'échec, timeout inclus,
+  // retombe dans le message honnête ci-dessus — jamais un blocage silencieux).
+  const SUBMIT_TIMEOUT_MS = 15_000;
 
   form?.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -1109,35 +2174,58 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     if (Object.keys(errors).length > 0) {
       showInlineErrors(errors);
       if (errEl) {
-        errEl.textContent = 'يرجى مراجعة الحقول المُبرزة أعلاه.';
+        errEl.textContent = fieldsHighlightedMsg();
         errEl.hidden = false;
       }
-      // amène l'utilisateur au premier champ en erreur
+      // amène l'utilisateur au premier champ en erreur.
+      // WJ48 — mt-roof est désormais sr-only (le choix visuel se fait via les
+      // cartes .mt-roof-card) : focaliser le <select> caché déplacerait le
+      // focus clavier sur un élément invisible pour un utilisateur voyant. On
+      // focalise plutôt la première carte visible dans ce cas.
       const firstId = ['mt-name', 'mt-phone', 'mt-city', 'mt-roof', 'mt-bill']
         .find((id) => $(id)?.getAttribute('aria-invalid') === 'true');
-      if (firstId) ($(firstId) as HTMLElement | null)?.focus();
+      if (firstId === 'mt-roof') {
+        document.querySelector<HTMLButtonElement>('.mt-roof-card')?.focus();
+      } else if (firstId) {
+        ($(firstId) as HTMLElement | null)?.focus();
+      }
       return;
     }
     showInlineErrors({});
 
-    if (submitBtn) submitBtn.disabled = true;
+    setSubmitPending(true);
     try {
       const res = await fetch('/api/capture-lead', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(SUBMIT_TIMEOUT_MS),
       });
-      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; qualified?: boolean; errors?: Record<string, string> };
-      if (res.ok && data.ok) {
+      // WJ60/WJ63 — une réponse JSON malformée (corps vide/illisible) est traitée
+      // comme une panne serveur, jamais silencieusement comme « aucune erreur ».
+      let malformed = false;
+      const data = (await res.json().catch(() => {
+        malformed = true;
+        return {};
+      })) as { ok?: boolean; qualified?: boolean; errors?: Record<string, string> };
+      if (res.ok && !malformed && data.ok) {
         submitted = true;
+        hasEnteredData = false; // WJ61 — succès : plus besoin du garde-fou beforeunload.
+        clearWizardState(); // WJ61 — la demande a abouti : l'instantané n'a plus lieu d'être.
         const waUrl = buildWaUrl();
         // WJ5 — réponse HONNÊTE selon le seuil 1 000 MAD (qualified renvoyé par le serveur).
         if (data.qualified) {
           if (okEl) okEl.hidden = false;
+          // WJ52 — affiche la référence générée dans buildBody() (déjà incluse
+          // dans le body envoyé — on la relit ici via getOrCreateClientRef()
+          // pour rester la MÊME valeur, jamais régénérée).
+          const refEl = $('mt-client-ref');
+          if (refEl) refEl.textContent = getOrCreateClientRef();
           const waLink = $('mt-success-wa') as HTMLAnchorElement | null;
           if (waLink) waLink.href = waUrl;
-          // WJ3 — sur mobile, on propose WhatsApp tout de suite (l'opt-in est coché par défaut)
-          const wantsWa = ($('mt-wa-optin') as HTMLInputElement | null)?.checked === true;
+          // WJ3/WJ51 — sur mobile, on propose WhatsApp tout de suite quand la
+          // préférence de contact est « Uniquement sur WhatsApp » (option cochée par défaut).
+          const wantsWa = ($('mt-contact-phone') as HTMLInputElement | null)?.checked !== true;
           if (wantsWa && /Mobi|Android|iPhone/i.test(navigator.userAgent) && !reducedMotion) {
             setTimeout(() => { window.location.href = waUrl; }, 900);
           }
@@ -1151,20 +2239,31 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
         Array.from(form.elements).forEach((el) => ((el as HTMLInputElement).disabled = true));
         return;
       }
-      // erreurs serveur → réafficher inline si présentes
-      if (data.errors) showInlineErrors(data.errors);
-      const firstErr = data.errors ? Object.values(data.errors)[0] : null;
+      // WJ60/WJ63 — ≥500 ou JSON malformé : panne CÔTÉ SERVEUR, jamais un message
+      // qui blâme les champs. Sous 500 avec des erreurs de champ exploitables
+      // (4xx de validation), on les réaffiche inline comme avant — mais jamais un
+      // texte serveur brut (ex. le 429 rate-limit) n'écrase notre copie honnête.
+      const isServerError = malformed || res.status >= 500 || (!!data.errors && 'rate' in data.errors);
+      if (!isServerError && data.errors) showInlineErrors(data.errors);
+      const firstFieldErr = !isServerError && data.errors ? Object.values(data.errors)[0] : null;
       if (errEl) {
-        errEl.textContent = firstErr || 'حقل ناقص أو غير صالح. يرجى مراجعة معلوماتكم.';
+        errEl.textContent = isServerError ? serverErrorMsg() : (firstFieldErr || missingFieldMsg());
         errEl.hidden = false;
       }
-      if (submitBtn) submitBtn.disabled = false;
+      setSubmitPending(false);
     } catch {
+      // WJ60 — englobe le timeout (AbortSignal.timeout) et toute coupure réseau.
+      // WJ45 — si le navigateur se sait hors-ligne, on l'affirme explicitement
+      // (bandeau + message dédié) plutôt que la formule générique « panne de
+      // notre côté » — qui blâmerait à tort notre infrastructure. Le formulaire
+      // reste rempli et l'instantané sessionStorage (WJ61) persiste : rien n'est
+      // perdu, il suffit de renvoyer une fois le réseau revenu.
+      syncOfflineBanner();
       if (errEl) {
-        errEl.textContent = 'تعذّر الإرسال حالياً. يرجى إعادة المحاولة بعد لحظات.';
+        errEl.textContent = navigator.onLine ? serverErrorMsg() : offlineMsg();
         errEl.hidden = false;
       }
-      if (submitBtn) submitBtn.disabled = false;
+      setSubmitPending(false);
     }
   });
 
@@ -1187,11 +2286,20 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     return whatsappLink(WHATSAPP_LEADS, text);
   }
 
+  // WJ59 — « étape abandonnée » : dédupliquée séparément de l'offre WhatsApp
+  // (celle-ci ne s'affiche qu'une fois par visite via `exitShown`, mais le
+  // signal de mesure reste utile même si l'offre a déjà été vue une fois).
+  let funnelAbandonSent = false;
   function maybeShowExit(triggerEl: HTMLElement | null = null) {
     if (exitShown || submitted) return;
     // ne déranger que si l'utilisateur a au moins commencé (mode/facture ou step > 0)
     const started2 = step > 0 || resolveMonthlyBill() != null || (capturePin != null);
     if (!started2) return;
+    if (!funnelAbandonSent) {
+      funnelAbandonSent = true;
+      const currentStep = step === 0 ? 'toit' : step === 1 ? 'facture' : (lastKwc != null ? 'contact' : 'estimation');
+      sendFunnelBeacon(currentStep, 'abandoned');
+    }
     exitShown = true;
     exitTriggerEl = triggerEl ?? (document.activeElement as HTMLElement | null);
     if (exitWaLink) exitWaLink.href = buildExitWaHref();
@@ -1254,7 +2362,12 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     const err = $('mt-exit-err');
     if (phone.length < 6) {
       e.preventDefault();
-      if (err) { err.textContent = 'يرجى إدخال رقم للرد عليكم.'; err.hidden = false; }
+      // WJ63 — suit `currentLang` (bascule FR/عربي en direct) plutôt qu'un
+      // texte figé en arabe.
+      if (err) {
+        err.textContent = currentLang === 'ar' ? 'يرجى إدخال رقم للرد عليكم.' : 'Indiquez un numéro pour qu\'on vous réponde.';
+        err.hidden = false;
+      }
       return;
     }
     if (err) err.hidden = true;

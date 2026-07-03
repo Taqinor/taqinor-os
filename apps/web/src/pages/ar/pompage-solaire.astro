@@ -11,6 +11,17 @@
  *  2. .section-lg + .section tokens for rhythm;
  *  3. seam-soft seams;
  *  4. RTL-logical border-s-4 already present, preserved.
+ *
+ * W261 — نفس إضافات النسخة الفرنسية: بند قدرات صادق، مخطط SVG للمتغيرات
+ * الأربعة، سرد الديزل/البوطان مقابل الشمسي دون أي رقم مُختلَق، وبطاقة تمويل
+ * مُغلَقة WG11 موسومة "للتحقق مع مديرية الفلاحة الإقليمية" — أبداً رقم مؤكَّد
+ * أو ادّعاء شراكة. المخطط التقني يبقى LTR داخل الصفحة RTL (اصطلاح المخططات).
+ *
+ * W349 — «الباب بدون نموذج»: زر واتساب مباشر لا يطلب أي قراءة أو تعبئة — فقط
+ * صورة فاتورة (أو عداد)، وربما رسالة صوتية بعدها. يُوضع مباشرة تحت الهيرو،
+ * بشكل بارز، للزائر ذي المحو الرقمي المنخفض (شريحة مؤكدة، خصوصاً فلاحية) الذي
+ * لا يستطيع إتمام أي مُساعِد بخطوات — ولا حتى الفيشة القابلة للطباعة (W348)
+ * أدناه، التي تفترض قراءة/كتابة قياسات.
  */
 import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -18,12 +29,33 @@ import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
+import Faq from '../../components/Faq.astro';
+import ServiceWarrantyTable from '../../components/ServiceWarrantyTable.astro';
+import RelatedLinks from '../../components/RelatedLinks.astro';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
+import { serviceFaqItems } from '../../lib/serviceFaq';
+import { WHATSAPP_LEADS } from '../../lib/nap';
+import { whatsappLink, zeroFormWhatsappText } from '../../lib/whatsapp';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 const devisHref = L('/devis/mon-toit');
+
+// W349 — باب بدون نموذج: لا حقل، لا فيشة للتعبئة. سطر دارجة مُضاف داخل الدالة.
+const zeroFormWaHref = whatsappLink(WHATSAPP_LEADS, zeroFormWhatsappText('ar'));
+
+// W348 — فيشة تحديد مقاس قابلة للطباعة (HMT/الصبيب/الساعات/المحصول)، تُملأ
+// ميدانياً ثم تُرسل صورتها عبر واتساب: تُعيد استعمال المتغيرات الأربعة
+// الموصوفة أعلاه فقط (لا رقم جديد).
+const worksheetWaHref = whatsappLink(
+  WHATSAPP_LEADS,
+  'مرحباً، هذه فيشة تحديد مقاس الضخ الشمسي مملوءة (HMT، الصبيب، ساعات الضخ، المحصول) — الصورة مرفقة.'
+);
+
+// W263 — بنك أسئلة شائعة مشترك + ضمان حسب المكوّن، بالعربية. الضخ الشمسي
+// لا يشمل عاكساً ولا بطارية (حقيقة المستودع) — includeOnduleur/includeBatterie بـ false.
+const faqItems = serviceFaqItems('pompage-solaire', 'ar');
 
 const etapes = [
   {
@@ -82,7 +114,7 @@ const jsonLd = {
 <Layout
   title="الضخ الشمسي الفلاحي بالمغرب: الصبيب، HMT، الثقب | Taqinor"
   description="ضخ شمسي للسقي: تدور المضخّة على إيقاع الشمس، ينتظر الماء في الحوض عوض البطاريات، ويُحسب الحقل على الصبيب والـ HMT ومستوى الثقب. الضخ الشمسي الفلاحي مُعفى من الضريبة على القيمة المضافة بالمغرب — امتياز خاص بالفلاحة، لا بالكهروضوئي السكني."
-  ogSlug="accueil"
+  ogSlug="pompage-solaire"
 >
   <div class="v2">
     <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
@@ -102,14 +134,55 @@ const jsonLd = {
           يخرج من كاطالوݣ — بل يُستنتج من أربع قياسات تُؤخذ على قطعتك: الصبيب المستهدف، الارتفاع الواجب
           تجاوزه، مستوى الثقب، والماء الذي يطلبه المحصول.
         </p>
+        {/* W349 — باب بدون نموذج، بارز تحت الهيرو: لا قراءة، لا تعبئة — صورة
+            الفاتورة (أو العداد) كافية للبدء. */}
+        <div class="cine-in cine-in-3 mt-8 border-2 border-brass-400/60 bg-white/5 p-5 sm:p-6">
+          <p class="text-base font-bold text-white sm:text-lg">
+            ماعندكش الوقت باش تقرا هاد الصفحة؟ صيفط صورة الفاتورة ديالك عبر واتساب — احنا نتكلفو
+            بكلشي.
+          </p>
+          <a
+            href={zeroFormWaHref}
+            target="_blank"
+            rel="noopener"
+            class="glow mt-4 inline-flex items-center gap-2 bg-brass-400 px-6 py-3.5 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
+            أرسل صورتي عبر واتساب <span class="inline-block rtl:-scale-x-100" aria-hidden="true">→</span>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    {/* W261 — بند قدرات صادق: فقط حقائق مُؤكَّدة فعلاً في الصفحة — لا رقم
+        إنتاج أو ورش مُختلَق. */}
+    <section class="px-4 pb-4">
+      <div class="mx-auto max-w-6xl">
+        <dl class="cine-in grid max-w-3xl grid-cols-3 gap-3 border-t border-white/20 pt-6 sm:gap-6" dir="ltr">
+          <div class="text-center">
+            <dd class="fig lum text-base sm:text-3xl">4</dd>
+            <dt class="tech-label mt-2 text-lune" dir="rtl">قياسات مأخوذة ميدانياً</dt>
+          </div>
+          <div class="text-center">
+            <dd class="fig lum text-base sm:text-3xl">0%</dd>
+            <dt class="tech-label mt-2 text-lune" dir="rtl">ضريبة على الضخ الفلاحي</dt>
+          </div>
+          <div class="text-center">
+            <dd class="fig lum text-base sm:text-3xl">Tier-1</dd>
+            <dt class="tech-label mt-2 text-lune" dir="rtl">الحقل والمغيّر، كأسطحنا</dt>
+          </div>
+        </dl>
       </div>
     </section>
 
     <!-- كيف يعمل -->
     <section class="section px-4">
       <div class="mx-auto max-w-6xl">
-        {/* eyebrow مُخفَّض إلى lune */}
-        <p class="tech-label v2-kicker rule-brass text-lune">كيف يعمل</p>
+        {/* eyebrow مُخفَّض إلى lune — W274: نظام ترقيم الفصول (01/02…)، نفس آلية
+            index.astro/ar، ممتد هنا لاتّساق الموقع كله. الـeyebrows على خلفية
+            فاتحة (text-azur-600، مثل "أربع قياسات") تبقى دون رقم — نفس استثناء
+            القسم الانتقالي اللوني في الصفحة الرئيسية. */}
+        <p class="tech-label v2-kicker rule-brass text-lune"><span class="ms-2 font-display text-xs text-azur-200/80" aria-hidden="true">01</span>كيف يعمل</p>
         <h2 class="display v2-section-title mt-5 text-white">من الشمس إلى الحقل، في أربع مراحل</h2>
         <div class="mt-12 grid gap-6 md:grid-cols-2" data-stagger>
           {etapes.map((e, i) => (
@@ -149,6 +222,117 @@ const jsonLd = {
           أعطنا هذه الأرقام الأربعة وينرسم النظام من تلقاء نفسه؛ ينقص الصبيب أو الـ HMT، ويبقى كل شيء
           تخميناً. نفضّل القياس. <a href={devisHref} class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">اطلب تشخيصاً <span class="inline-block rtl:-scale-x-100">→</span></a>
         </p>
+
+        {/* W261 — مخطط المتغيرات الأربعة يتقارب نحو النظام: نفس محتوى البطاقات
+            الأربع أعلاه، مُصوَّراً. المخطط يبقى LTR (اصطلاح المخططات التقنية). */}
+        <div class="mx-auto mt-14 max-w-3xl" dir="ltr">
+          <svg viewBox="0 0 600 260" role="img" aria-label="الصبيب والارتفاع المانومتري وعمق الثقب وحاجات المحصول من الماء تتقارب نحو تحديد مقاس المضخة والمغيّر والحقل الكهروضوئي" class="w-full">
+            <g font-size="11" class="fill-azur-700">
+              <g transform="translate(70,40)">
+                <circle r="26" fill="none" stroke="#0f1c54" stroke-width="2.5" />
+                <text text-anchor="middle" dy="4" font-weight="700">الصبيب</text>
+              </g>
+              <g transform="translate(70,110)">
+                <circle r="26" fill="none" stroke="#0f1c54" stroke-width="2.5" />
+                <text text-anchor="middle" dy="4" font-weight="700">HMT</text>
+              </g>
+              <g transform="translate(70,180)">
+                <circle r="26" fill="none" stroke="#0f1c54" stroke-width="2.5" />
+                <text text-anchor="middle" dy="-2" font-weight="700">الثقب</text>
+              </g>
+              <g transform="translate(70,240)">
+                <circle r="26" fill="none" stroke="#0f1c54" stroke-width="2.5" />
+                <text text-anchor="middle" dy="-2" font-weight="700">الحاجات</text>
+              </g>
+            </g>
+            <g stroke="#0f1c54" stroke-width="2" fill="none" opacity="0.6" aria-hidden="true">
+              <path d="M96 40 L300 130" marker-end="url(#arrowP)" />
+              <path d="M96 110 L300 130" marker-end="url(#arrowP)" />
+              <path d="M96 180 L300 130" marker-end="url(#arrowP)" />
+              <path d="M96 240 L300 130" marker-end="url(#arrowP)" />
+            </g>
+            <defs>
+              <marker id="arrowP" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                <path d="M0 0 L6 3 L0 6 Z" fill="#0f1c54" />
+              </marker>
+            </defs>
+            <g transform="translate(300,130)">
+              <rect x="-70" y="-40" width="140" height="80" rx="4" fill="#0f1c54" />
+              <text text-anchor="middle" dy="-8" font-size="11" fill="white" font-weight="700">مضخّة +</text>
+              <text text-anchor="middle" dy="8" font-size="11" fill="white" font-weight="700">مغيّر</text>
+              <text text-anchor="middle" dy="24" font-size="11" fill="white" font-weight="700">+ حقل PV</text>
+            </g>
+            <path d="M370 130 L520 130" stroke="#0f1c54" stroke-width="2" opacity="0.6" marker-end="url(#arrowP)" />
+            <g transform="translate(560,130)" class="fill-azur-700">
+              <circle r="26" fill="none" stroke="#e8b54a" stroke-width="2.5" />
+              <text text-anchor="middle" dy="4" font-size="18">💧</text>
+            </g>
+          </svg>
+        </div>
+        <p class="mx-auto mt-4 max-w-xl text-center text-xs leading-relaxed text-encre-faint">
+          القياسات الأربعة المأخوذة ميدانياً تحدّد معاً نظاماً واحداً متماسكاً — لا أربعة حسابات منفصلة.
+        </p>
+      </div>
+    </section>
+
+    {/* W348 — فيشة تحديد مقاس قابلة للطباعة: نفس المتغيرات الأربعة أعلاه، في
+        نسخة «تُملأ ميدانياً». زر طباعة + دعوة لإرسال الصورة عبر واتساب، دون
+        أي بوابة بريد إلكتروني. */}
+    <section class="section px-4" id="fiche-dimensionnement">
+      <div class="mx-auto max-w-4xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">أداة قابلة للطباعة</p>
+        <h2 class="display v2-section-title mt-5 text-white">فيشة تحديد المقاس، تُملأ ميدانياً</h2>
+        <p class="v2-lead mt-5 max-w-2xl text-lune-soft">
+          اطبع هذه الفيشة، املأها عند الثقب أو الحوض بقياساتك الخاصة، ثم أرسل لنا صورتها عبر
+          واتساب — غالباً ما يكفي ذلك لتحضير دراستك حتى قبل أول تواصل بيننا.
+        </p>
+
+        <div id="fiche-dimensionnement-print" class="v2-rise cine-card mt-8 p-7 sm:p-9">
+          <div class="grid gap-6 sm:grid-cols-2">
+            <label class="block">
+              <span class="tech-label text-lune">الصبيب المستهدف</span>
+              <span class="mt-2 block border-b-2 border-white/30 pb-2 text-sm text-lune-faint">______________ m³/h أو m³/يوم</span>
+            </label>
+            <label class="block">
+              <span class="tech-label text-lune">الارتفاع المانومتري الكلي (HMT)</span>
+              <span class="mt-2 block border-b-2 border-white/30 pb-2 text-sm text-lune-faint">______________ أمتار</span>
+            </label>
+            <label class="block">
+              <span class="tech-label text-lune">ساعات الضخ المستهدفة / اليوم</span>
+              <span class="mt-2 block border-b-2 border-white/30 pb-2 text-sm text-lune-faint">______________ ساعات</span>
+            </label>
+            <label class="block">
+              <span class="tech-label text-lune">المحصول / استعمال الماء</span>
+              <span class="mt-2 block border-b-2 border-white/30 pb-2 text-sm text-lune-faint">______________________________</span>
+            </label>
+            <label class="block sm:col-span-2">
+              <span class="tech-label text-lune">عمق الثقب / المستوى الديناميكي (إن كان معروفاً)</span>
+              <span class="mt-2 block border-b-2 border-white/30 pb-2 text-sm text-lune-faint">______________ أمتار</span>
+            </label>
+          </div>
+          <p class="mt-6 text-xs leading-relaxed text-lune-faint">
+            هذه القياسات الأربعة هي نفسها الموصوفة أعلاه على هذه الصفحة — لا شيء منها إلزامي لبدء
+            التواصل، لكن كلما زادت المعطيات، كان ردّنا الأول أدقّ.
+          </p>
+        </div>
+
+        <div class="mt-8 flex flex-wrap items-center gap-4 print:hidden">
+          <button
+            type="button"
+            id="fiche-print-btn"
+            class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10"
+          >
+            اطبع الفيشة <span class="inline-block rtl:-scale-x-100">→</span>
+          </button>
+          <a
+            href={worksheetWaHref}
+            target="_blank"
+            rel="noopener"
+            class="glow inline-flex items-center gap-2 bg-brass-400 px-5 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300"
+          >
+            أرسل الصورة عبر واتساب <span class="inline-block rtl:-scale-x-100">→</span>
+          </a>
+        </div>
       </div>
     </section>
 
@@ -157,8 +341,8 @@ const jsonLd = {
       <div class="mx-auto max-w-6xl">
         <div class="grid gap-10 lg:grid-cols-[1.1fr_1fr] lg:items-center">
           <div class="v2-rise">
-            {/* eyebrow مُخفَّض إلى lune */}
-            <p class="tech-label v2-kicker rule-brass text-lune">امتياز ضريبي مؤكَّد</p>
+            {/* eyebrow مُخفَّض إلى lune — W274 الفصل 02 */}
+            <p class="tech-label v2-kicker rule-brass text-lune"><span class="ms-2 font-display text-xs text-azur-200/80" aria-hidden="true">02</span>امتياز ضريبي مؤكَّد</p>
             <h2 class="display v2-section-title mt-5 text-white">الضخ الفلاحي مُعفى من الضريبة على القيمة المضافة</h2>
             <p class="v2-lead mt-5 text-lune-soft">
               بالمغرب، أنظمة ضخ الماء بالطاقة الشمسية مُعفاة من الضريبة على القيمة المضافة — ويغطّي
@@ -179,22 +363,97 @@ const jsonLd = {
       </div>
     </section>
 
+    {/* W261 — سرد الديزل/البوطان مقابل الشمسي: نفس سرد محرّك عروض الفلاحة (بوطان
+        غير مُعوَّض أغلى مما يوحي به سعره الظاهر، الديزل متقلّب، الشمسي يُثبّت
+        الكلفة)، دون أي رقم درهم/لتر مُختلَق — هذه القيم متقلّبة و"في انتظار
+        التأكيد" في محرّك الـERP، لا تُنشر كحقيقة ثابتة على الموقع التسويقي.
+        الحساب الحقيقي يتم في الدراسة، بسعر اليوم واستهلاك المضخّة المقيس. */}
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="section bg-blanc-azur px-4 text-encre">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-azur-600">الحساب الذي يهمّك</p>
+        <h2 class="display v2-section-title mt-5">أمام الڭازوال، أمام البوطان</h2>
+        <p class="v2-lead mt-5 max-w-2xl text-encre-soft">
+          الفلاح لا يقارن كيلوواط، بل يقارن ملء الخزان. كل ساعة ضخ بالڭازوال أو البوطان لها كلفة تتغيّر
+          مع سعر اليوم — والبوطان غير المُعوَّض يكلّف، في الواقع، أكثر بكثير مما يوحي به سعر البوتة
+          المدعومة. الشمسي، من جهته، يُثبّت هذه الكلفة عند الصفر بمجرد استرداد النظام لكلفته: الشمس لا
+          تُرسل فاتورة.
+        </p>
+        <div class="mt-10 grid gap-6 md:grid-cols-2">
+          <div class="v2-rise border-t-2 border-azur-900 bg-blanc p-6">
+            <h3 class="display text-lg text-azur-700">الڭازوال والبوطان</h3>
+            <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+              كلفة متكرّرة، مرتبطة بسعر يتحرّك، ملء تلو ملء، موسم تلو موسم. البوطان غير المُعوَّض يُثقل
+              الفاتورة الحقيقية أكثر مما يوحي به السعر المعروض للبوتة المدعومة.
+            </p>
+          </div>
+          <div class="v2-rise border-t-2 border-brass-400 bg-blanc p-6">
+            <h3 class="display text-lg text-azur-700">الضخ الشمسي</h3>
+            <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+              استثمار واحد، مُعفى من الضريبة، ثم كلفة تشغيل قريبة من الصفر: نقطة التقاطع مع الڭازوال أو
+              البوطان تتوقّف على استهلاكك الفعلي — وهذا بالضبط ما تحسبه الدراسة، رقماً برقم، لقطعتك.
+            </p>
+          </div>
+        </div>
+        <p class="mx-auto mt-8 max-w-2xl border-s-4 border-azur-600 ps-4 text-sm leading-relaxed text-encre-soft">
+          سعر الوقود في اليوم وساعات الضخ الفعلية لمضخّتك يغيّران الحساب من استغلالية إلى أخرى: لهذا
+          يخرج الرقم الدقيق — وعدد سنوات الاسترداد — من الدراسة، لا من معدّل وطني. <a href={devisHref} class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">اطلب دراستي <span class="inline-block rtl:-scale-x-100">→</span></a>
+        </p>
+      </div>
+    </section>
+
+    {/* W261 — بطاقة تمويل/دعم، مُغلَقة WG11: FDA 30% + Saquii لا تُنشر كحقيقة
+        مؤكَّدة إلى أن يتم التحقق من الشروط لدى المصادر الأساسية (مديرية
+        الفلاحة الإقليمية/المكتب الجهوي/القرض الفلاحي) — انظر docs/WEB_PLAN.md
+        WG11. تُعرض هنا كخيط للتحقق، أبداً كعرض أو شراكة تاكينور. */}
+    <section class="section px-4">
+      <div class="mx-auto max-w-6xl">
+        <div class="v2-rise cine-card border-2 border-dashed border-white/25 p-7">
+          {/* W274 الفصل 03 */}
+          <p class="tech-label v2-kicker rule-brass text-lune"><span class="ms-2 font-display text-xs text-azur-200/80" aria-hidden="true">03</span>خيط تمويل — للتحقق</p>
+          <h2 class="display mt-3 text-xl text-white">دعم فلاحي (FDA) وتمويل (Saquii)</h2>
+          <p class="mt-4 max-w-2xl text-sm leading-relaxed text-lune-soft">
+            تُقدّم الدولة المغربية تاريخياً دعماً من صندوق التنمية الفلاحية للضخ الشمسي، ويُقدّم القرض
+            الفلاحي للمغرب آليات تمويل مخصَّصة للطاقة الشمسية الفلاحية. النسب والسقوف والشروط الحالية
+            تتطوّر وتتوقّف على مديرية الفلاحة الإقليمية لديك — لا نَنشر أي نسبة أو مبلغ قبل التحقق منه
+            لدى الجهة المعنية.
+          </p>
+          <p class="mt-4 text-sm font-semibold text-lune-faint">
+            للتحقق مع مديرية الفلاحة الإقليمية لديك قبل أي التزام — تاكينور ليست مُقرِضاً ولا جهة
+            داعمة ولا تضمن أي أهلية.
+          </p>
+        </div>
+      </div>
+    </section>
+
     <!-- كتلة روابط / القطاع المهني -->
     <section class="section border-t border-white/10 px-4">
       <div class="mx-auto max-w-6xl">
-        {/* eyebrow مُخفَّض إلى lune */}
-        <p class="tech-label v2-kicker rule-brass text-lune">للمزيد</p>
+        {/* eyebrow مُخفَّض إلى lune — W274 الفصل 04 */}
+        <p class="tech-label v2-kicker rule-brass text-lune"><span class="ms-2 font-display text-xs text-azur-200/80" aria-hidden="true">04</span>للمزيد</p>
         <h2 class="display v2-section-title mt-5 text-white">الفلاحة، قطاع مهني</h2>
         <p class="v2-lead mt-5 max-w-2xl text-lune-soft">
           الضخ الشمسي شأن مستغلّين ومهنيين، لا أطقم عامة الجمهور. نقيس الثقب، نحسب، نركّب معدات الصف
           الأول، وتغادر التركيبة بملفها التقني الكامل.
         </p>
-        <div class="mt-10 flex flex-wrap gap-3">
-          <a href={devisHref} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">اطلب تشخيصاً <span class="inline-block rtl:-scale-x-100">→</span></a>
-          <a href={L('/professionnel')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">الطاقة الشمسية المهنية <span class="inline-block rtl:-scale-x-100">→</span></a>
-          <a href={L('/équipement')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">انظر المعدات <span class="inline-block rtl:-scale-x-100">→</span></a>
-        </div>
+        <RelatedLinks links={[
+          { href: devisHref, label: 'اطلب تشخيصاً' },
+          { href: L('/professionnel'), label: 'الطاقة الشمسية المهنية' },
+          { href: L('/équipement'), label: 'انظر المعدات' },
+          { href: L('/financement'), label: 'التمويل والمردودية' },
+          { href: L('/garanties'), label: 'ضماناتنا' },
+          { href: L('/nos-solutions'), label: 'كل حلولنا' },
+        ]} />
       </div>
+    </section>
+
+    <!-- W263 — بنك أسئلة شائعة مشترك (صيانة/ثمن/مُدرَج-مُستثنى/آجال/ضمانات)
+         + ضمان حسب المكوّن، قبل الاستدعاء النهائي. schema={false}:
+         /faq تبقى الصفحة الوحيدة التي تُصدر FAQPage JSON-LD (W19).
+         الضخ الشمسي: لا عاكس ولا بطارية مُركَّبان (حقيقة المستودع). -->
+    <Faq schema={false} heading="أسئلة شائعة — الضخ الشمسي" items={faqItems} />
+    <section class="section-tight bg-blanc-azur px-4 text-encre">
+      <ServiceWarrantyTable includeOnduleur={false} includeBatterie={false} />
     </section>
 
     <CtaBand title="مشروع ضخ شمسي؟ ابدأ بالدراسة المجانية." href={devisHref} />
@@ -202,3 +461,38 @@ const jsonLd = {
     <StickyCta />
   </div>
 </Layout>
+
+<script>
+  // W348 — زر طباعة فيشة تحديد المقاس: window.print() يُفعّل قواعد
+  // @media print أدناه (فون فاتحة، إخفاء واجهة الموقع).
+  document.getElementById('fiche-print-btn')?.addEventListener('click', () => {
+    window.print();
+  });
+</script>
+
+<style is:global>
+  /* W348 — الطباعة: عرض فيشة تحديد المقاس فقط، فون فاتحة ونص داكن (السمة
+     الليلية/النحاسية الافتراضية تطبع داكناً على داكن — نفس تصحيح
+     /proposition/[token]). is:global: يُقدَّم الرأس/التذييل عبر Layout.astro،
+     مكوّن منفصل، فأسلوب مُقيَّد لهذه الصفحة لن يبلغهما أبداً. */
+  @media print {
+    header,
+    footer,
+    #sticky-cta,
+    .reading-bar,
+    .v2 > *:not(#fiche-dimensionnement) {
+      display: none !important;
+    }
+    #fiche-dimensionnement {
+      padding: 0 !important;
+    }
+    #fiche-dimensionnement,
+    #fiche-dimensionnement * {
+      background: #fff !important;
+      color: #111 !important;
+      box-shadow: none !important;
+      text-shadow: none !important;
+      border-color: #999 !important;
+    }
+  }
+</style>

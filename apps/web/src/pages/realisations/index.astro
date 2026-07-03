@@ -7,6 +7,15 @@
  * W178 — lightbox accessible (vanilla JS, ESC/flèches, focus-trap, aria)
  * W179 — hover-zoom standardisé à 1.04 sur toutes les cartes (reduced-motion safe)
  * W181 — object-position lu depuis realisations.ts (objectPosition optionnel)
+ * W281 — VideoChantier (film de chantier réel) monté sous la galerie : le hub
+ *        de preuve dédié avait des photos mais pas la vidéo, alors que l'asset
+ *        est prêt en production et n'était monté que sur l'accueil.
+ * W289 — « Installations visitables, production mesurée » élevé en pilier
+ *        indexable : section d'intro cadrée SEO + JSON-LD ItemList reliant
+ *        chaque étude de cas (aucun concurrent marocain surveillé ne publie
+ *        de production mesurée ni de chantiers visitables — blanc concurrentiel
+ *        vérifié, à faire ressortir pour les requêtes du type « installation
+ *        panneaux solaires casablanca avis »).
  */
 import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -14,15 +23,20 @@ import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
 import Picture from '../../components/Picture.astro';
 import PhotoCaption from '../../components/PhotoCaption.astro';
+import VideoChantier from '../../components/VideoChantier.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
-import { REALISATIONS } from '../../lib/realisations';
+import CertLogoRow from '../../components/CertLogoRow.astro';
+import BrandStrip from '../../components/BrandStrip.astro';
+import { REALISATIONS, standardCaption } from '../../lib/realisations';
+import { NAP } from '../../lib/nap';
 
 const total = REALISATIONS.reduce((s, r) => s + r.kwcNum, 0);
 const totalLabel = total.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' kWc';
 // On met en avant des dimensions substantielles (puissance, villes, chantiers
 // visitables) plutôt qu'un total fixe de projets (cadrage W14, « récence »).
 const villesCount = new Set(REALISATIONS.map((r) => r.ville)).size;
+const mesureesCount = REALISATIONS.filter((r) => r.production).length;
 
 // Préparer les données lightbox pour chaque carte
 const galleryItems = REALISATIONS.map((r) => ({
@@ -30,6 +44,24 @@ const galleryItems = REALISATIONS.map((r) => ({
   photo: r.photos[0],
   label: `${r.ville} · ${r.kwc} · ${r.date}`,
 }));
+
+// W289 — ItemList reliant chaque étude de cas mesurée : renforce le pilier
+// « installations visitables, production mesurée » pour les moteurs de
+// recherche (chaque item = une page /realisations/<slug> réelle et indexée).
+const itemListJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'ItemList',
+  name: 'Installations solaires Taqinor — visitables, production mesurée',
+  description:
+    'Installations solaires réellement posées par Taqinor, visitables sur demande, avec production suivie sur Deye Cloud quand elle est mesurée.',
+  itemListElement: REALISATIONS.map((r, i) => ({
+    '@type': 'ListItem',
+    position: i + 1,
+    url: new URL(`/realisations/${r.slug}`, Astro.site).href,
+    name: `Installation solaire ${r.kwc} à ${r.ville} — réf. ${r.ref}`,
+  })),
+  provider: { '@type': 'LocalBusiness', name: NAP.name, url: NAP.url },
+};
 ---
 
 <Layout
@@ -37,6 +69,7 @@ const galleryItems = REALISATIONS.map((r) => ({
   description="Les installations solaires réellement posées et mesurées par Taqinor : villas de Casablanca, El Jadida et Nouaceur, puissance, production suivie sur Deye Cloud et matériel posé. Études de cas détaillées."
   ogSlug="accueil"
 >
+  <script type="application/ld+json" set:html={JSON.stringify(itemListJsonLd)} />
   <div class="v2">
     <V2Enhance />
     <Article33Ribbon />
@@ -69,6 +102,25 @@ const galleryItems = REALISATIONS.map((r) => ({
       </div>
     </section>
 
+    <!-- W289 — pilier indexable : « installations visitables, production mesurée » -->
+    <section class="border-y border-white/10 px-4 py-14 sm:py-16">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">Ce qui distingue nos réalisations</p>
+        <h2 class="display v2-section-title mt-5 text-white">Installations visitables, production mesurée</h2>
+        <p class="v2-lead mt-5 text-lune-soft">
+          Avant un devis, une visite s'organise : voir une installation Taqinor en fonctionnement,
+          poser des questions à un client existant, comparer une toiture à la vôtre. {mesureesCount} des{' '}
+          {REALISATIONS.length} chantiers présentés ci-dessous affichent une production mesurée en continu
+          sur Deye Cloud — pas une estimation commerciale, le compteur lui-même.
+        </p>
+        <p class="mt-4 text-lune-soft">
+          C'est la différence entre une promesse et une preuve : la puissance posée, le matériel
+          installé et, quand elle est suivie, la production réelle sont publiés chantier par
+          chantier, sans arrondi ni chiffre absent transformé en estimation.
+        </p>
+      </div>
+    </section>
+
     <!-- W178 : galerie avec lightbox — data-lightbox-gallery désigne le groupe -->
     <section class="px-4 pb-24 sm:pb-32">
       <div class="mx-auto grid max-w-6xl gap-6 md:grid-cols-2 lg:grid-cols-3" data-stagger data-lightbox-gallery>
@@ -88,18 +140,25 @@ const galleryItems = REALISATIONS.map((r) => ({
                   proviennent de ratio variés (16/9, 4/3, 1:1) mais sont toutes
                   recadrées en 3/2 par le CSS. Le ratio déclaré doit correspondre
                   pour que width/height attrs réservent la bonne hauteur (anti-CLS). */}
+              {/* W364 — view-transition-name matching /realisations/[slug]'s
+                  hero photo (photos[0].name), which this card also uses — so
+                  the morph is guaranteed to match, not merely possible. */}
               <Picture
                 name={r.photos[0].name}
                 alt={r.photos[0].alt}
                 widths={r.photos[0].widths}
                 ratio={3 / 2}
                 sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
-                style={(r.photos[0] as any).objectPosition ? `object-position:${(r.photos[0] as any).objectPosition}` : undefined}
+                style={[
+                  (r.photos[0] as any).objectPosition ? `object-position:${(r.photos[0] as any).objectPosition}` : '',
+                  `view-transition-name: vt-photo-${r.photos[0].name}`,
+                ].filter(Boolean).join(';')}
                 class="photo-card-img aspect-[3/2] w-full object-cover"
               />
+              {/* W283 — légende standard : « [Ville] — X kWc — installé en Y — Z kWh mesurés »
+                  (seulement les champs réels ; la production est omise quand non mesurée). */}
               <PhotoCaption
-                caption={`${r.ville} · ${r.date}`}
-                sub={r.kwc + (r.production ? ` · ${r.production}` : '')}
+                caption={standardCaption(r)}
                 detail={r.panneaux}
               />
             </button>
@@ -114,6 +173,18 @@ const galleryItems = REALISATIONS.map((r) => ({
         ))}
       </div>
     </section>
+
+    {/* W281 — film de chantier réel, sous la galerie du hub de preuve dédié */}
+    <VideoChantier />
+
+    {/* W280 — CertLogoRow + BrandStrip : normes déjà publiées + marques
+        tier-1, no-op-safe (aucun logo/chiffre fabriqué). */}
+    <section class="border-t border-white/10 px-4 py-14 sm:py-16">
+      <div class="mx-auto max-w-6xl">
+        <CertLogoRow />
+      </div>
+    </section>
+    <BrandStrip />
 
     <CtaBand title="La prochaine étude de cas, c'est peut-être votre toiture." href="/devis/mon-toit" />
 

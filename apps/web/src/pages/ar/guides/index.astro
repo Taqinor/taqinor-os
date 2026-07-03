@@ -19,9 +19,44 @@ const L = (href: string) => localizeNavHref(href, locale);
 
 const guides = [
   {
+    href: '/guides/combien-de-panneaux-pour-ma-maison',
+    title: 'كم لوحاً وأي قدرة (kWc)؟',
+    summary: 'المنهجية للانتقال من فاتورتكم إلى عدد الألواح: kWh سنوية، kWc، مساحة السقف. ما يكفي لفهم التحجيم قبل الدراسة.',
+  },
+  {
+    href: '/guides/on-grid-off-grid-ou-hybride',
+    title: 'مربوط بالشبكة، مستقل أم هجين؟',
+    summary: 'أي نوع نظام لأي حاجة — ولماذا ينقطع نظام مربوط بالشبكة أثناء عطب (منع الجزيرة الكهربائية)، إلا بالتحوّل إلى هجين ببطارية.',
+  },
+  {
+    href: '/guides/orientation-inclinaison-ombrage',
+    title: 'الاتجاه، الميلان والتظليل',
+    summary: 'جنوب تام، شرق-غرب، زاوية الميلان وأثر الظلّ غير المتناسب على سقف مغربي: كيف تجنون أقصى قدر من الإنتاج.',
+  },
+  {
+    href: '/guides/entretien-et-duree-de-vie-des-panneaux',
+    title: 'صيانة وعمر الألواح',
+    summary: 'الغبار والرمل بالمغرب، التنظيف، الحرارة، التدهور: كم تدوم الألواح فعلاً وكيف تحافظون على إنتاجها.',
+  },
+  {
+    href: '/guides/monocristallin-ou-polycristallin',
+    title: 'أحادي أم متعدّد البلورة؟ String أم ميكرو-عاكسات؟',
+    summary: 'اختيار العتاد دون مصطلحات: نوع اللوح ونوع العاكس، وما يُغيّره كل منهما فعلياً على سقف.',
+  },
+  {
     href: '/guides/loi-82-21-expliquee',
     title: 'القانون 82-21 ببساطة',
     summary: 'تصريح، اتفاق ربط أو ترخيص: الأنظمة الثلاثة للإنتاج الذاتي مفكوكة، مع عتبة 11 kW التي تضع كل الفيلات تقريباً في الجهة الصحيحة.',
+  },
+  {
+    href: '/guides/onduleur-hybride-ou-reseau',
+    title: 'عاكس هجين أم عاكس شبكة؟',
+    summary: 'Deye هجين أم Huawei SUN2000 شبكة: كل الاختيار يُختزل في سؤال واحد — هل تخزّن الطاقة، نعم أم لا؟',
+  },
+  {
+    href: '/guides/mon-toit-peut-il-supporter-des-panneaux',
+    title: 'هل يتحمّل سقفي الألواح؟',
+    summary: 'الوزن الفعلي للوح شمسي لكل م²، سقفاً بسقف (دالة خرسانية، قرميد، صفيح مموّج، سقف مسطّح)، ومتى يلزم فحص هيكلي.',
   },
   {
     href: '/guides/faut-il-des-batteries',
@@ -29,9 +64,25 @@ const guides = [
     summary: 'غالباً لا. كل شيء يتوقّف على الساعة التي تستهلك فيها: نُريك متى يُربِح التخزين، ومتى لا يفعل سوى إثقال الفاتورة.',
   },
   {
-    href: '/guides/onduleur-hybride-ou-reseau',
-    title: 'عاكس هجين أم عاكس شبكة؟',
-    summary: 'Deye هجين أم Huawei SUN2000 شبكة: كل الاختيار يُختزل في سؤال واحد — هل تخزّن الطاقة، نعم أم لا؟',
+    href: '/guides/batterie-lithium-ou-gel',
+    title: 'ليثيوم LiFePO4 (LFP) أم GEL/رصاص (وNMC)',
+    summary: 'لماذا يفرض LFP نفسه بالمغرب: العمر، عمق التفريغ، المردودية، تحمّل الحرارة والسلامة أمام NMC.',
+  },
+  {
+    href: '/guides/quelle-taille-de-batterie',
+    title: 'أي حجم بطارية (kWh)؟ تخزين أم بيع؟',
+    summary: 'مراحل التحجيم، kWh الفعلية مقابل الاسمية، ولماذا التخزين للمساء يربح أكثر بكثير من تصدير فائضكم بالمغرب.',
+  },
+  {
+    href: '/guides/electricite-pendant-les-coupures',
+    title: 'الحفاظ على الكهرباء أثناء الانقطاعات',
+    summary: 'النجدة ≠ off-grid: مخارج EPS، عاكس هجين وبطارية، ولماذا يتوقّف نظام شبكة قياسي أثناء عطب.',
+  },
+  {
+    // W293 — pillar الأثمنة الدائم، مختلف عن دليل منهجية التحجيم أعلاه.
+    href: '/prix-panneaux-solaires-maroc',
+    title: 'أثمنة الألواح الشمسية بالمغرب',
+    summary: 'هوامش استرشادية حسب القدرة (kWc)، تكاليف السقف والبطارية، الضريبة — تُراجَع كل سنة، دون وعد بثمن نهائي أبداً.',
   },
 ];
 
@@ -46,7 +97,7 @@ const jsonLd = {
 <Layout
   title="أدلّة شمسية بالمغرب — القانون 82-21، البطاريات، العاكسات | Taqinor"
   description="ثلاثة أسئلة تتكرّر قبل التوقيع، مُعالَجة دون مصطلحات: أي نظام للقانون 82-21 يعنيك، هل يبرّر ملفّك بطاريات، وما يفصل عاكساً هجيناً عن عاكس شبكة. ما يكفي للقرار عن بيّنة."
-  ogSlug="accueil"
+  ogSlug="guides"
 >
   <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
   <div class="v2">

@@ -9,10 +9,12 @@
  * professionnel) ; `seam` ajoute une bordure haute si la section précédente est
  * elle aussi sombre.
  *
- * W67 — i18n : prose/labels traduits (FR/EN/AR), CHIFFRES identiques dans
- * toutes les langues (12 ans / 25 ans / 84,8 % / Deye Cloud restent à
- * l'identique). Le rendu FR reste byte-identique (branche `fr` = strings
- * actuels mot pour mot ; `localizeNavHref('/garanties','fr') === '/garanties'`).
+ * W67 — i18n : prose/labels traduits (FR/EN/AR), CHIFFRES (les nombres, les
+ * pourcentages) identiques dans toutes les langues (12 / 25 / 84,8 % / Deye
+ * Cloud restent à l'identique) — seul le MOT d'unité localise (« ans » →
+ * « years » / « سنة »/« سنوات »/« سنتان »), même règle que /garanties. Le
+ * rendu FR reste byte-identique (branche `fr` = strings actuels mot pour mot ;
+ * `localizeNavHref('/garanties','fr') === '/garanties'`).
  */
 import { getLocaleFromPath } from '../i18n/utils';
 import { localizeNavHref } from '../i18n/pages';
@@ -66,7 +68,7 @@ const STR: Record<
     cta: 'See all our warranties →',
     labels: [
       'Panel product',
-      'Performance ≥ 84,8 %',
+      'Performance ≥ 84.8 %',
       'Inverter & battery',
       'Steel structure',
       'Taqinor labour',
@@ -80,7 +82,7 @@ const STR: Record<
     cta: 'اطّلع على جميع ضماناتنا →',
     labels: [
       'منتج الألواح',
-      'الأداء ≥ 84,8 %',
+      'الأداء ≥ 84.8 %',
       'العاكس والبطارية',
       'الهيكل الفولاذي',
       'يد عاملة Taqinor',
@@ -89,8 +91,14 @@ const STR: Record<
 };
 const s = STR[locale] ?? STR.fr;
 
-// Les CHIFFRES (years) sont identiques dans toutes les locales : seul le label change.
-const years = ['12 ans', '25 ans', '10 ans', '20 ans', '2 ans'];
+// Les NOMBRES sont identiques dans toutes les locales : seul le mot d'unité
+// localise (même règle que /garanties : « ans » → « years » / AR).
+const YEARS_BY_LOCALE: Record<Locale, string[]> = {
+  fr: ['12 ans', '25 ans', '10 ans', '20 ans', '2 ans'],
+  en: ['12 years', '25 years', '10 years', '20 years', '2 years'],
+  ar: ['12 سنة', '25 سنة', '10 سنوات', '20 سنة', 'سنتان'],
+};
+const years = YEARS_BY_LOCALE[locale] ?? YEARS_BY_LOCALE.fr;
 const items = years.map((yrs, i) => ({ years: yrs, label: s.labels[i] }));
 ---
 

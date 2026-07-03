@@ -20,6 +20,14 @@ export type LngLat = [number, number];
 // — Hypothèses panneau (standard du marché, modifiables ici uniquement) —
 export const PANEL_LENGTH_M = 1.7; // grand côté (paysage : le long de l'axe est-ouest)
 export const PANEL_WIDTH_M = 1.0; // petit côté
+// WJ69 — DÉPRÉCIÉ, LABO SEULEMENT (2026-07). Ce panneau générique 550 Wc n'est
+// PLUS l'hypothèse du parcours public : le moteur d'estimation client
+// (billEstimate.ts → estimatorBrainV2.ts) pave avec le VRAI panneau catalogue
+// (Canadian Solar TOPBiHiKu7, 720 W — PANEL2_WATT de roofPro2.ts, réexporté
+// par estimatorBrainV2.ts). `PANEL_WATT`/`layoutPanels` (ci-dessous) ne sont
+// consommés QUE par les scripts de labo `roof-tool.ts`/`roof-tool-3d.ts`
+// (aucun call-site public) — laissés intacts pour ce labo, ne pas leur ajouter
+// de nouveau call-site public.
 export const PANEL_WATT = 550; // Wc par panneau
 export const SETBACK_M = 0.4; // retrait de rive (sécurité incendie / maintenance)
 export const PANEL_GAP_M = 0.02; // jeu entre panneaux

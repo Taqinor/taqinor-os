@@ -14,13 +14,35 @@ import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { NAP } from '../../lib/nap';
 import RelatedLinks from '../../components/RelatedLinks.astro';
+import { estimateReadingTime } from '../../lib/readingTime';
+
+// W303 — date de vérification + auteur + temps de lecture.
+const verifiedDate = new Date('2026-07-03');
+const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+const guideBodyText = `
+  Ailleurs, un panneau solaire ne demande presque rien. Au Maroc, ce presque a un nom : la poussière.
+  C'est elle, et le sable que le vent dépose après un coup de chergui, qui rognent la production bien
+  avant le moindre défaut technique. Un panneau sale produit moins, point. Près d'une route non
+  goudronnée, en bordure de champ labouré ou à proximité du Sahara, la couche revient vite et un
+  nettoyage toutes les quatre à six semaines en été n'a rien d'excessif. Le verre d'un panneau moderne
+  est légèrement anti-reflets et accroche peu la poussière sèche. Les cellules en silicium cristallin
+  perdent du rendement dès que leur température dépasse 25 °C, de l'ordre de 0,3 à 0,5 % par degré
+  supplémentaire. Les panneaux solaires durent : la garantie produit standard du marché s'étend
+  aujourd'hui sur 25 ans et garantit qu'à cette échéance le panneau produit encore au moins environ
+  84,8 % de sa puissance initiale. L'onduleur, lui, vit moins longtemps : il tient typiquement 10 à 15
+  ans. Votre meilleur outil de maintenance n'est pas une éponge, c'est la courbe de production.
+`;
+const readingMinutes = estimateReadingTime(guideBodyText);
 
 const url = new URL(Astro.url.pathname, Astro.site).href;
+// W291 — image OG (même URL que celle passée à ogSlug plus bas), pour l'éligibilité Article rich results.
+const schemaImageUrl = new URL('/og/accueil.png', Astro.site).href;
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Article',
   headline: 'Entretien, nettoyage et durée de vie des panneaux solaires au Maroc',
   description: 'Cadence de nettoyage adaptée au contexte marocain (poussière, sable, pluie), effet de la chaleur sur la production, durée de vie réelle et garantie à 25 ans : tout ce qu\'il faut savoir pour préserver ses panneaux.',
+  image: schemaImageUrl,
   about: { '@type': 'Thing', name: 'Entretien panneaux solaires Maroc' },
   author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
   publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
@@ -31,9 +53,11 @@ const jsonLd = {
 <Layout
   title="Entretien et durée de vie des panneaux solaires au Maroc | Taqinor"
   description="Quelle cadence de nettoyage au Maroc ? Comment la chaleur affecte-t-elle la production ? Quelle durée de vie réelle ? Réponses claires, adaptées au contexte marocain."
-  ogSlug="accueil"
+  ogSlug="guides"
 >
   <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  {/* W376 — reading progress bar (see global.css .reading-bar) */}
+  <div class="reading-bar" aria-hidden="true"></div>
   <div class="v2">
     <V2Enhance />
     <Article33Ribbon />
@@ -43,6 +67,14 @@ const jsonLd = {
     <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
       <p class="tech-label v2-kicker rule-brass text-lune">Guide · Entretien</p>
       <h1 class="display v2-page-title mt-5 text-white">Entretien et durée de vie des panneaux au Maroc</h1>
+
+      <!-- W303 — date de vérification + auteur + temps de lecture -->
+      <p class="guide-byline mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-lune-faint">
+        <span>Vérifié le {dateFmt.format(verifiedDate)} · par Reda Kasri</span>
+        <span aria-hidden="true">·</span>
+        <span>{readingMinutes} min de lecture</span>
+      </p>
+
       <p class="v2-lead mt-6 text-lune-soft">
         Ailleurs, un panneau solaire ne demande presque rien. Au Maroc, ce « presque » a un nom : la
         poussière. C'est elle, et le sable que le vent dépose après un coup de chergui, qui rognent la

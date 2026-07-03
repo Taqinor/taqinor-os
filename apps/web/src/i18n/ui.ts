@@ -16,6 +16,7 @@ export const ui = {
     'nav.pumping': 'Pompage solaire',
     'nav.batteries': 'Batteries & stockage',
     'nav.maintenance': 'Maintenance & monitoring',
+    'nav.evCharging': 'Recharge voiture électrique',
     'nav.regularization': 'Régularisation Loi 82-21',
     'nav.realisations': 'Réalisations',
     'nav.equipment': 'Équipement',
@@ -27,7 +28,6 @@ export const ui = {
     'nav.financing': 'Financement & rentabilité',
     'nav.mre': 'Marocains du monde',
     'nav.about': 'À propos',
-    'nav.diagnosticCta': 'Diagnostic gratuit',
     'nav.openMenu': 'Ouvrir le menu',
     'nav.primary': 'Navigation principale',
     'nav.mobile': 'Navigation mobile',
@@ -44,12 +44,14 @@ export const ui = {
     'footer.serviceArea': "Zone d'intervention",
     'footer.allMorocco': 'tout le Maroc',
     'footer.legalLine': 'TAQINOR Solutions SARLAU — RC 691213 (Casablanca) — ICE 003799642000067',
+    // W246/W369 — bande de clôture du pied de page (dernier cadre art-directé)
+    'footer.closingLine': "Chaque installation Taqinor est dimensionnée par l'ingénierie, pas par l'à-peu-près.",
+    'footer.journeyCta': 'Estimer mon toit',
+    'footer.whatsappRecapture': 'Une question avant de vous décider ? Écrivez-nous sur WhatsApp.',
     // Sélecteur de langue
     'lang.label': 'Choisir la langue',
     // Communs
     'common.whatsapp': 'WhatsApp',
-    'common.diagnosticCta': 'Diagnostic gratuit',
-    'common.whatsappDirect': 'WhatsApp direct',
     // Formulaire « Diagnostic solaire » — libellés VISIBLES uniquement. La
     // charge utile, les noms de champs, le seuil 1 000 MAD, l'endpoint
     // /api/simulate et le deeplink WhatsApp restent identiques dans toutes les
@@ -106,8 +108,6 @@ export const ui = {
     // Bande CTA finale + CTA collant + fil d'Ariane
     'cta.eyebrow': 'Étude gratuite',
     'cta.title': 'Une étude technique gratuite, sans engagement.',
-    'cta.button': 'Recevez votre étude sur WhatsApp',
-    'cta.stickyDiag': 'Diagnostic gratuit',
     // WJ36 — LE libellé du CTA principal, répété verbatim sur toutes les
     // surfaces laiton (en-tête / héros / mi-page / CTA collant).
     'cta.primary': 'Obtenir mon étude gratuite',
@@ -116,6 +116,25 @@ export const ui = {
     'breadcrumb.label': "Fil d'Ariane",
     'breadcrumb.home': 'Accueil',
     'faq.heading': 'Questions fréquentes',
+    // W250 — widget d'estimation instantanée (facture → kWc + fourchette MAD),
+    // réutilisant estimateFromBill (src/lib/billEstimate.ts). Libellés
+    // VISIBLES uniquement ; aucun chiffre n'est traduit ni recalculé ici.
+    'estimator.eyebrow': 'Estimation instantanée',
+    'estimator.heading': 'Votre facture suffit pour une première estimation',
+    'estimator.headingCompact': 'Encore une facture à estimer ?',
+    'estimator.body': 'Entrez votre facture d’électricité mensuelle : puissance recommandée et fourchette d’économies calculées immédiatement, avant même de renseigner vos coordonnées.',
+    'estimator.bill.label': "Facture d'électricité mensuelle (MAD)",
+    'estimator.bill.placeholder': 'ex. 1200',
+    'estimator.submit': 'Estimer maintenant',
+    'estimator.err.bill': 'Entrez un montant de facture valide.',
+    'estimator.unavailable': 'Estimation indisponible — vérifiez le montant saisi.',
+    'estimator.result.kwc': 'Puissance recommandée',
+    'estimator.result.production': 'Production/an',
+    'estimator.result.savings': 'Économies estimées',
+    'estimator.result.perMonth': '/mois',
+    'estimator.result.perYear': '/an',
+    'estimator.note': 'Estimation indicative (facture seule, sud optimal) — le chiffrage précis est établi après visite technique.',
+    'estimator.cta': 'Continuer mon étude gratuite →',
   },
   en: {
     'nav.solutions': 'Solutions',
@@ -125,6 +144,7 @@ export const ui = {
     'nav.pumping': 'Solar pumping',
     'nav.batteries': 'Batteries & storage',
     'nav.maintenance': 'Maintenance & monitoring',
+    'nav.evCharging': 'EV charging',
     'nav.regularization': 'Law 82-21 regularization',
     'nav.realisations': 'Projects',
     'nav.equipment': 'Equipment',
@@ -136,7 +156,6 @@ export const ui = {
     'nav.financing': 'Financing & returns',
     'nav.mre': 'Moroccans abroad',
     'nav.about': 'About',
-    'nav.diagnosticCta': 'Free assessment',
     'nav.openMenu': 'Open menu',
     'nav.primary': 'Main navigation',
     'nav.mobile': 'Mobile navigation',
@@ -152,10 +171,11 @@ export const ui = {
     'footer.serviceArea': 'Service area',
     'footer.allMorocco': 'all of Morocco',
     'footer.legalLine': 'TAQINOR Solutions SARLAU — RC 691213 (Casablanca) — ICE 003799642000067',
+    'footer.closingLine': 'Every Taqinor installation is engineered to size — never guessed.',
+    'footer.journeyCta': 'Estimate my roof',
+    'footer.whatsappRecapture': 'One question before you decide? Message us on WhatsApp.',
     'lang.label': 'Choose language',
     'common.whatsapp': 'WhatsApp',
-    'common.diagnosticCta': 'Free assessment',
-    'common.whatsappDirect': 'WhatsApp direct',
     'form.eyebrow': 'Assessment · no commitment · no data sold',
     'form.heading': 'Solar assessment — 60 seconds',
     'form.progress': 'Step {step} of 3',
@@ -204,8 +224,6 @@ export const ui = {
     'ribbon.text': 'In force since 9 June 2026 — existing installations: regularize now →',
     'cta.eyebrow': 'Free study',
     'cta.title': 'A free technical study, no commitment.',
-    'cta.button': 'Get your study on WhatsApp',
-    'cta.stickyDiag': 'Free assessment',
     // WJ36 — THE primary CTA label, repeated verbatim on every brass surface.
     'cta.primary': 'Get my free study',
     // WJ37 — reassurance strip under the primary CTA (verbatim founder).
@@ -213,6 +231,25 @@ export const ui = {
     'breadcrumb.label': 'Breadcrumb',
     'breadcrumb.home': 'Home',
     'faq.heading': 'Frequently asked questions',
+    // W250 — instant-estimate widget (bill → kWc + MAD range), reusing
+    // estimateFromBill (src/lib/billEstimate.ts). Labels only — no figure is
+    // translated or recomputed here.
+    'estimator.eyebrow': 'Instant estimate',
+    'estimator.heading': 'Your bill is enough for a first estimate',
+    'estimator.headingCompact': 'One more bill to estimate?',
+    'estimator.body': 'Enter your monthly electricity bill: recommended power and savings range calculated instantly, before you even share your contact details.',
+    'estimator.bill.label': 'Monthly electricity bill (MAD)',
+    'estimator.bill.placeholder': 'e.g. 1200',
+    'estimator.submit': 'Estimate now',
+    'estimator.err.bill': 'Enter a valid bill amount.',
+    'estimator.unavailable': 'Estimate unavailable — check the amount entered.',
+    'estimator.result.kwc': 'Recommended power',
+    'estimator.result.production': 'Production/year',
+    'estimator.result.savings': 'Estimated savings',
+    'estimator.result.perMonth': '/month',
+    'estimator.result.perYear': '/year',
+    'estimator.note': 'Indicative estimate (bill only, optimal south orientation) — the precise quote is set after a technical site visit.',
+    'estimator.cta': 'Continue my free study →',
   },
   ar: {
     'nav.solutions': 'الحلول',
@@ -222,6 +259,7 @@ export const ui = {
     'nav.pumping': 'الضخ الشمسي',
     'nav.batteries': 'البطاريات والتخزين',
     'nav.maintenance': 'الصيانة والمراقبة',
+    'nav.evCharging': 'شحن السيارة الكهربائية',
     'nav.regularization': 'تسوية القانون 82-21',
     'nav.realisations': 'إنجازاتنا',
     'nav.equipment': 'المعدات',
@@ -233,7 +271,6 @@ export const ui = {
     'nav.financing': 'التمويل والمردودية',
     'nav.mre': 'مغاربة العالم',
     'nav.about': 'من نحن',
-    'nav.diagnosticCta': 'تشخيص مجاني',
     'nav.openMenu': 'فتح القائمة',
     'nav.primary': 'التنقل الرئيسي',
     'nav.mobile': 'تنقل الجوال',
@@ -249,10 +286,11 @@ export const ui = {
     'footer.serviceArea': 'منطقة التدخل',
     'footer.allMorocco': 'كامل المغرب',
     'footer.legalLine': 'TAQINOR Solutions SARLAU — RC 691213 (Casablanca) — ICE 003799642000067',
+    'footer.closingLine': 'كل تركيب لدى تاكينور مُصمَّم هندسياً حسب الحجم — لا شيء يُترك للتخمين.',
+    'footer.journeyCta': 'قيّم سطحي',
+    'footer.whatsappRecapture': 'سؤال قبل أن تقرر؟ راسلنا على واتساب.',
     'lang.label': 'اختر اللغة',
     'common.whatsapp': 'واتساب',
-    'common.diagnosticCta': 'تشخيص مجاني',
-    'common.whatsappDirect': 'واتساب مباشر',
     'form.eyebrow': 'تشخيص · بدون التزام · لا تُباع أي بيانات',
     'form.heading': 'تشخيص شمسي — 60 ثانية',
     'form.progress': 'الخطوة {step} من 3',
@@ -301,8 +339,6 @@ export const ui = {
     'ribbon.text': 'سارٍ منذ 9 يونيو 2026 — التركيبات القائمة: سوِّ وضعك الآن →',
     'cta.eyebrow': 'دراسة مجانية',
     'cta.title': 'دراسة تقنية مجانية، بدون أي التزام.',
-    'cta.button': 'استلم دراستك على واتساب',
-    'cta.stickyDiag': 'تشخيص مجاني',
     // WJ36 — libellé du CTA principal (verbatim sur toutes les surfaces laiton).
     'cta.primary': 'احصل على دراستي المجانية',
     // WJ37 — bandeau de réassurance sous le CTA principal (verbatim founder).
@@ -310,5 +346,24 @@ export const ui = {
     'breadcrumb.label': 'مسار التصفّح',
     'breadcrumb.home': 'الرئيسية',
     'faq.heading': 'الأسئلة المتكررة',
+    // W250 — أداة التقدير الفوري (فاتورة ← كيلوواط ذروة + مجال بالدرهم)،
+    // تعيد استخدام estimateFromBill (src/lib/billEstimate.ts). نصوص العرض
+    // فقط — لا يُترجم أو يُعاد حساب أي رقم هنا.
+    'estimator.eyebrow': 'تقدير فوري',
+    'estimator.heading': 'فاتورتك كافية لتقدير أولي',
+    'estimator.headingCompact': 'فاتورة أخرى تريد تقديرها؟',
+    'estimator.body': 'أدخل فاتورة الكهرباء الشهرية: القدرة الموصى بها ومجال التوفير يُحسبان فوراً، حتى قبل إدخال بياناتك الشخصية.',
+    'estimator.bill.label': 'فاتورة الكهرباء الشهرية (درهم)',
+    'estimator.bill.placeholder': 'مثال: 1200',
+    'estimator.submit': 'قدّر الآن',
+    'estimator.err.bill': 'أدخل مبلغ فاتورة صالحاً.',
+    'estimator.unavailable': 'التقدير غير متوفر — تحقق من المبلغ المدخل.',
+    'estimator.result.kwc': 'القدرة الموصى بها',
+    'estimator.result.production': 'الإنتاج/السنة',
+    'estimator.result.savings': 'التوفير المقدّر',
+    'estimator.result.perMonth': '/شهر',
+    'estimator.result.perYear': '/سنة',
+    'estimator.note': 'تقدير إرشادي (اعتماداً على الفاتورة فقط، توجيه جنوبي أمثل) — يُحدَّد التقدير الدقيق بعد زيارة تقنية.',
+    'estimator.cta': 'متابعة دراستي المجانية ←',
   },
 } as const;

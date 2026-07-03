@@ -3,6 +3,18 @@
  * /preview/toiture-3d-pro-3). Module PUR, testé (tests/estimatorBrain.test.ts) :
  * aucun DOM, aucune carte, aucune dépendance.
  *
+ * WJ69 — DÉPRÉCIÉ, LABO SEULEMENT (2026-07). Ce module (« V1 ») n'est plus le
+ * moteur du parcours PUBLIC : `billEstimate.ts` (le calcul qui alimente
+ * /devis/mon-toit, donc CHAQUE estimation client) pointe désormais vers
+ * `estimatorBrainV2.ts`, qui est une copie versionnée à parité PROUVÉE de V1
+ * (mêmes fonctions/mêmes corps, cf. tests/estimatorBrainV2.test.ts) PLUS les
+ * améliorations honnêtes non rétro-portées ici (tarifs par régie WJ23, bande
+ * de confiance climatique WJ22, modèle batterie approfondi WJ24, plafond
+ * DC:AC, dégradation annuelle…). Ce fichier reste vivant UNIQUEMENT pour le
+ * preview privé /preview/toiture-3d-pro-3 (roof-tool-pro3.ts) — NE PAS lui
+ * ajouter de nouveau call-site public ; tout nouveau besoin PUBLIC doit
+ * consommer estimatorBrainV2.ts. Ne pas supprimer (le lab en dépend encore).
+ *
  * Entrées : tracé du toit (lng/lat), latitude du toit, facture mensuelle (MAD).
  * Sorties : configurations classées (Sud optimal, Sud basse inclinaison,
  * Est-Ouest) avec compte de panneaux, kWc, production annuelle, % de la facture

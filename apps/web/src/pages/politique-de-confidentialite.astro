@@ -4,16 +4,27 @@ import V2Enhance from '../components/V2Enhance.astro';
 import { NAP } from '../lib/nap';
 
 // Politique de confidentialité — ton factuel, descriptions honnêtes de ce
-// que le site fait réellement (diagnostic + capture fbclid/UTM). Référence
-// loi 09-08 (protection des données à caractère personnel, Maroc).
+// que le site fait réellement. Référence loi 09-08 (protection des données à
+// caractère personnel, Maroc).
+//
+// W318 — le champ réel collecté par le parcours (diagnostic /devis/mon-toit
+// + proposition de signature) dépasse largement les 5 champs décrits ici
+// jusqu'alors (nom/téléphone/ville/toiture/tranche de facture) : la carte
+// (repère GPS + contour de toiture facultatif), l'adresse complète, l'email,
+// le profil énergétique complet (factures été/hiver, kWh, tranche), l'intention
+// de financement, et — au moment de la signature électronique de la
+// proposition — l'image de la signature manuscrite dessinée à l'écran. Chaque
+// ligne ci-dessous correspond à un champ RÉELLEMENT envoyé par le code
+// (src/pages/devis/mon-toit.astro, src/pages/proposition/[token].astro) —
+// rien n'est ajouté par prudence, rien n'est omis par confort.
 const sections = [
   {
     t: 'Ce que nous collectons',
-    p: 'Lorsque vous remplissez le diagnostic solaire, nous collectons : votre nom complet, votre numéro de téléphone, votre ville ou commune, votre type de toiture et votre tranche de facture d’électricité. Vous choisissez aussi si vous préférez être contacté(e) par WhatsApp.',
+    p: 'Lorsque vous remplissez le diagnostic solaire (/devis/mon-toit), nous collectons : votre nom complet, votre numéro de téléphone, votre email (facultatif), votre ville ou commune et votre adresse complète, le repère GPS que vous posez sur votre toit et, si vous le tracez, le contour de votre toiture (les deux facultatifs — vous pouvez continuer avec l’adresse seule), votre type de toiture, votre profil énergétique (tranche de facture, montants de factures été/hiver le cas échéant, consommation en kWh), et — si vous l’indiquez — votre mode de financement envisagé (comptant, crédit, autre). Vous choisissez aussi si vous préférez être contacté(e) par WhatsApp. Si votre étude aboutit à une proposition que vous signez en ligne, l’image de votre signature manuscrite (dessinée à l’écran) ainsi que la date et l’heure de signature sont également enregistrées avec votre accord.',
   },
   {
     t: 'Pourquoi nous les collectons',
-    p: 'Pour établir votre étude solaire préliminaire et vous l’envoyer, puis vous recontacter — par WhatsApp et par email — uniquement si vous avez coché la case de consentement. Aucune autre utilisation.',
+    p: 'Pour établir votre étude solaire préliminaire et vous l’envoyer, puis vous recontacter — par WhatsApp et par email — uniquement si vous avez coché la case de consentement. Le repère GPS et le contour de toiture servent uniquement au dimensionnement (orientation, surface utile, ombrage). Le mode de financement envisagé sert à orienter notre conseil, jamais à le communiquer à un tiers sans votre accord. Aucune autre utilisation.',
   },
   {
     t: 'Mesure publicitaire (fbclid et UTM)',
@@ -36,6 +47,15 @@ const sections = [
     p: 'La case à cocher du diagnostic constitue votre consentement explicite à être recontacté(e). Sa date et son heure sont enregistrées avec votre demande. Retirer votre consentement est aussi simple que l’accorder : un message suffit.',
   },
 ];
+
+// W318 — addendum RGPD pour le segment MRE (Marocains résidant à l’étranger,
+// dont une partie réside dans l’UE/EEE) : base légale, droits d’accès/
+// suppression, contact. Ne remplace pas la section loi 09-08 ci-dessus — les
+// deux cadres cohabitent, chacun décrit tel qu’il s’applique réellement.
+const gdprSection = {
+  t: 'Résidents de l’Union européenne (RGPD)',
+  p: `Si vous résidez dans l’Union européenne ou l’Espace économique européen — notamment nos clients MRE (Marocains résidant à l’étranger) —, le Règlement général sur la protection des données (RGPD) s’applique en complément de la loi marocaine 09-08 ci-dessus. Base légale du traitement : votre consentement explicite (case cochée au diagnostic ou à la signature) et, une fois un contrat en cours, l’exécution de ce contrat. Vous disposez des mêmes droits qu’un résident marocain — accès, rectification, suppression — ainsi que du droit à la limitation du traitement et du droit d’introduire une réclamation auprès de l’autorité de contrôle de votre pays de résidence. Pour exercer l’un de ces droits, écrivez à ${NAP.email} en précisant votre demande ; nous répondons sous un délai raisonnable et dans tous les cas sous un mois.`,
+};
 ---
 
 <Layout
@@ -69,8 +89,16 @@ const sections = [
           <p class="mt-3 pl-10 text-sm leading-relaxed text-encre-soft">{s.p}</p>
         </div>
       ))}
+      <!-- W318 — addendum RGPD (segment MRE résidant dans l'UE/EEE) -->
+      <div class="border-b border-azur-900/15 py-7">
+        <h2 class="display flex items-baseline gap-4 text-xl">
+          <span class="fig text-lg text-azur-600">{String(sections.length + 1).padStart(2, '0')}</span>
+          {gdprSection.t}
+        </h2>
+        <p class="mt-3 pl-10 text-sm leading-relaxed text-encre-soft">{gdprSection.p}</p>
+      </div>
       <p class="mt-7 text-xs text-encre-faint">
-        Dernière mise à jour : juin 2026 — TAQINOR Solutions SARLAU, RC 691213 (Casablanca).
+        Dernière mise à jour : juillet 2026 — TAQINOR Solutions SARLAU, RC 691213 (Casablanca).
         Voir aussi les <a href="/mentions-legales" class="underline decoration-azur-600 underline-offset-2">mentions légales</a>.
       </p>
       </div>

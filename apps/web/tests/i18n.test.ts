@@ -101,7 +101,7 @@ describe('parité & fidélité du dictionnaire', () => {
   });
 
   it('le FR reprend EXACTEMENT les libellés déjà en ligne', () => {
-    expect(ui.fr['nav.diagnosticCta']).toBe('Diagnostic gratuit');
+    expect(ui.fr['cta.primary']).toBe('Obtenir mon étude gratuite');
     expect(ui.fr['nav.solutions']).toBe('Solutions');
     expect(ui.fr['footer.legal']).toBe('Mentions légales');
     expect(ui.fr['footer.tagline']).toBe(
@@ -196,8 +196,13 @@ describe("registre de disponibilité & alternates (anti-lien-mort)", () => {
       });
     };
     for (const root of TRANSLATED_PATHS) {
-      expect(srcExists(root, 'en'), `source EN manquante pour ${root}`).toBe(true);
-      expect(srcExists(root, 'ar'), `source AR manquante pour ${root}`).toBe(true);
+      // Chaque page n'affirme QUE les locales qu'elle déclare (W348 :
+      // PARTIAL_TRANSLATED permet une page FR+AR sans EN — ne jamais exiger
+      // un mirror EN qu'elle n'annonce pas, sinon lien mort/incohérence).
+      for (const loc of localesForPath(root)) {
+        if (loc === 'fr') continue; // FR = la page source elle-même
+        expect(srcExists(root, loc), `source ${loc.toUpperCase()} manquante pour ${root}`).toBe(true);
+      }
     }
   });
 });

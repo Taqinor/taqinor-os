@@ -1,0 +1,117 @@
+---
+/**
+ * AR — Guide (W294, RTL): Monocrystalline or polycrystalline? String or
+ * micro-inverters? Faithful Arabic translation of
+ * /guides/monocristallin-ou-polycristallin, every figure kept in Latin digits
+ * (19–22 % vs 15–17 % efficiency). Internal links use localizeNavHref (EN/AR
+ * if available, else the existing FR page — never a dead link). FR untouched.
+ */
+import Layout from '../../../layouts/Layout.astro';
+import V2Enhance from '../../../components/V2Enhance.astro';
+import Article33Ribbon from '../../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../../components/Breadcrumb.astro';
+import CtaBand from '../../../components/CtaBand.astro';
+import StickyCta from '../../../components/StickyCta.astro';
+import { NAP } from '../../../lib/nap';
+import RelatedLinks from '../../../components/RelatedLinks.astro';
+import { getLocaleFromPath } from '../../../i18n/utils';
+import { localizeNavHref } from '../../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const schemaImageUrl = new URL('/og/equipement.png', Astro.site).href;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: 'أحادي البلورة أم متعدّد البلورة؟ String أم ميكرو-عاكسات؟',
+  description: 'المردودية، السلوك تحت الحرارة، الظلال المُسقَطة: كيف تختارون بين لوح أحادي البلورة ومتعدّد البلورة، وبين عاكس string وميكرو-عاكسات.',
+  image: schemaImageUrl,
+  about: { '@type': 'Thing', name: 'الألواح الكهروضوئية والعاكسات الشمسية' },
+  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: url,
+};
+---
+
+<Layout
+  title="أحادي البلورة أم متعدّد البلورة؟ String أم ميكرو-عاكسات؟ | Taqinor"
+  description="مردودية ~19–22 % للأحادي، سلوك مختلف جداً في الظل حسب العاكس: يشرح هذا الدليل كيف تختارون ألواحكم وعاكسكم حسب سقفكم، دون مصطلحات معقّدة."
+  ogSlug="guides"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: 'الأدلّة', href: L('/guides') }, { label: 'أحادي أم متعدّد البلورة؟' }]} />
+
+    <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
+      <p class="tech-label v2-kicker rule-brass text-lune">دليل · العتاد</p>
+      <h1 class="display v2-page-title mt-5 text-white">أحادي البلورة أم متعدّد البلورة؟ String أم ميكرو-عاكسات؟</h1>
+
+      <p class="v2-lead mt-6 text-lune-soft">
+        يتكرّر هذان السؤالان بمجرّد مقارنة عروض الأسعار، لكن بالنسبة لغالبية البيوت المغربية أحدهما
+        محسوم أصلاً. إليكم إلى أي حدّ يستحقّ كلّ منهما فعلاً أن يشغلكم، ولماذا.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">اللوح: مسألة شبه مُسوّاة</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        بصراحة، يجب ألا يشغلكم الاختيار بين الأحادي والمتعدّد طويلاً. فاز الأحادي البلورة. يُقطَع لوح
+        أحادي البلورة من بلورة سيليكون واحدة، ما يمنح خلاياه بنية متجانسة ومردودية من 19 إلى 22 % في
+        الطُّرز الشائعة: ينتج كل متر مربع أكثر من متعدّد بنفس المساحة. على سقف ضيّق أو غير منتظم الشكل،
+        يُترجَم هذا مباشرة إلى كيلوواط-ذروة مكتسَبة دون توسيع التركيبة.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        يتحمّل الحرارة أفضل أيضاً. تفقد كل الألواح قليلاً من القدرة حين ترتفع الحرارة، إنها فيزياء
+        أشباه الموصّلات، لكن الأحادي البلورة يقاوم هذا التدهور الحراري أفضل. بمراكش أو أكادير في عزّ
+        الصيف، يهمّ هذا في أشدّ الساعات حرارة.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        أما متعدّد البلورة، فكان المعيار حتى منتصف العقد الثاني من الألفية: خلايا من عدّة بلورات
+        مُذابة، مظهر مُزرَقّ، مردودية من 15 إلى 17 % وحساسية أكبر للحرارة. مع تقارب الأثمنة، لم يعد
+        الخيار الافتراضي. يبقى متوفّراً، لكن عملياً نُركّب أحادي البلورة — وهذا ما سترونه على جلّ عروض
+        الأسعار الجادّة اليوم. باختصار، على هذه النقطة، يكمن عملكم الحقيقي في القرار في مكان آخر.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">العاكس: هنا يستحقّ اهتمامكم</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        نُركّب عاكسات <strong class="text-white">string</strong>، وهي فقط: Deye وHuawei. تُوصِّل بنية
+        string عدّة ألواح على التسلسل لتشكيل «سلسلة» تُغذّي عاكساً مركزياً. إنها بسيطة، مُختبَرة وأقلّ
+        كلفة للتركيب. نقطة ضعفها معروفة: إن مرّ لوح جزئياً في الظلّ — هوائي، جدار مشترك، مدخنة — يسحب
+        السلسلة كلّها إلى الأسفل، كالحلقة الأضعف في حبل.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        لهذا بالضبط يَثقُل شكل سقفكم أكثر من الميزانية في هذا الاختيار. تُدمج بعض عاكسات string، ومنها
+        سلسلة Huawei SUN2000 التي نُركّبها، تحسيناً حسب السلسلة يُخفّف جزئياً أثر ظلّ ما. على سقف
+        خالٍ، جيّد الاتجاه ودون ظلّ متكرّر — الحالة الأكثر شيوعاً بالمغرب — يكفي string تماماً ويبقى
+        الاختيار الأكثر عقلانية.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">وماذا عن الميكرو-عاكسات؟ ما يجب معرفته</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        ستصادفون بالتأكيد مصطلحي «ميكرو-عاكسات» و«مُحسِّنات» في قراءاتكم، ومن المفيد معرفة إلى ماذا
+        تخدم — حتى لو لم يكن ما نُركّبه. الميكرو-عاكس مُحوِّل صغير مُركَّب خلف كل لوح: يعمل كل وحدة
+        باستقلالية، ولا يعود ظلّ على واحد يؤثّر على الأخرى. المُحسِّن هو نسخة أخرى: مُركَّب أيضاً لوحاً
+        بلوح، لكن مربوط بعاكس string مركزي. يسمح كلاهما بتتبّع فردي ومراقبة دقيقة، لوحاً بلوح.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        تتركّز فائدتهما على الأسقف الصعبة حقاً: مُقطَّعة، مُتّجهة في عدّة اتجاهات، أو محكومة بظلال جزئية
+        جزءاً كبيراً من اليوم. المقابل هو كلفة أعلى ومكوّنات أكثر على السقف، إذن قطع أكثر عرضة للشيخوخة.
+        للتهيئات التي تفرض فيها هذه الحلول نفسها، الأفضل التوجّه نحو مُركِّب جعل منها تخصّصه. على
+        الغالبية العظمى من الأسقف المغربية، يبقى الثنائي الصحيح أحادي البلورة عالي الكثافة على عاكس
+        string.
+      </p>
+      <RelatedLinks links={[
+        { href: L('/guides/orientation-inclinaison-ombrage'), label: 'الاتجاه، الميلان، التظليل' },
+        { href: L('/équipement'), label: 'شاهد العتاد' },
+        { href: L('/guides'), label: 'كل الأدلّة' },
+      ]} />
+    </article>
+
+    <CtaBand title="سقف خالٍ أم مليء بالظلال؟ نتحقّق من التظليل ونُخبركم بأي عاكس يصمد." href={L('/devis/mon-toit')} />
+
+    <StickyCta />
+  </div>
+</Layout>

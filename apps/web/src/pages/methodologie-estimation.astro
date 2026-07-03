@@ -1,0 +1,193 @@
+---
+/**
+ * Méthodologie d'estimation (W359) — page publique INDEXÉE de transparence.
+ *
+ * Publie le modèle honnête que l'estimateur instantané (/devis/mon-toit) et le
+ * moteur de devis appliquent réellement, sans rien enjoliver :
+ *  - source PVGIS (Commission européenne, Joint Research Centre) — même donnée
+ *    que celle publiée telle quelle sur /ensoleillement-maroc ;
+ *  - pertes système (14 %, cf. estimatorBrainV2.ts) + bande de confiance
+ *    climatique été côtier (climateDerateFactor/productionConfidenceBand) ;
+ *  - économies AUTOCONSOMMATION D'ABORD : la loi 82-21 valorise le kWh que le
+ *    foyer consomme lui-même ; le tarif BT (basse tension résidentielle) de
+ *    rachat du surplus par l'ANRE n'est PAS PUBLIÉ à ce jour (voir W300 —
+ *    seule la décision MT/HT 04/26 est publiée, jamais étendue par erreur au
+ *    résidentiel BT sur ce site) — donc aucune ligne d'injection n'est
+ *    valorisée dans l'estimation instantanée ;
+ *  - « préliminaire, affiné après visite » : la fourchette naît d'une facture
+ *    seule (± un repère GPS facultatif), jamais un chiffrage définitif.
+ *
+ * INTÉGRITÉ (règle du WEB_PLAN) : chaque affirmation ici est vérifiable dans
+ * le code cité (lib/billEstimate.ts, lib/estimatorBrainV2.ts) — cette page ne
+ * recalcule rien, elle explique la méthode déjà en production.
+ *
+ * NOTE (hors périmètre de cette tâche) : cette page n'est PAS encore
+ * enregistrée dans `src/i18n/pages.ts` (STATIC_TRANSLATED) — hors périmètre
+ * autorisé ici (src/i18n/pages.ts n'est pas dans la liste des fichiers
+ * éditables de cette tâche). Elle est liée depuis mon-toit.astro (FR/EN/AR) et
+ * la proposition, comme demandé.
+ */
+import Layout from '../layouts/Layout.astro';
+import V2Enhance from '../components/V2Enhance.astro';
+import Article33Ribbon from '../components/Article33Ribbon.astro';
+import Breadcrumb from '../components/Breadcrumb.astro';
+import KeyFigure from '../components/KeyFigure.astro';
+import Callout from '../components/Callout.astro';
+import RelatedLinks from '../components/RelatedLinks.astro';
+import CtaBand from '../components/CtaBand.astro';
+import StickyCta from '../components/StickyCta.astro';
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: "Méthodologie de l'estimation solaire instantanée",
+  description:
+    "Le modèle honnête derrière l'estimation instantanée Taqinor : source PVGIS, pertes système, bande de confiance climatique, économies autoconsommation d'abord (loi 82-21), et pourquoi aucune ligne de revente de surplus n'est valorisée.",
+  author: { '@type': 'Organization', name: 'Taqinor', url: 'https://taqinor.ma' },
+};
+---
+
+<Layout
+  title="Méthodologie de l'estimation solaire — comment nous calculons | Taqinor"
+  description="Le modèle honnête derrière l'estimation instantanée : source PVGIS, pertes système (14 %), bande de confiance climatique, économies autoconsommation d'abord (tarif de rachat BT ANRE non publié) — préliminaire, affiné après visite."
+  ogSlug="equipement"
+>
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+
+    <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: "Méthodologie d'estimation" }]} />
+
+    <section class="section-lg px-4 pb-10 text-white">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">Transparence de méthode</p>
+        <h1 class="display v2-page-title cine-in cine-in-1 mt-6">Comment nous calculons votre estimation</h1>
+        <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
+          L'estimation instantanée de <a href="/devis/mon-toit" class="border-b border-brass-300 pb-0.5 font-semibold text-brass-300">« Mon toit »</a> et
+          la proposition qui suit s'appuient sur un modèle publié ici sans filtre : la même donnée,
+          les mêmes hypothèses, la même prudence — pour que vous puissiez vérifier chaque chiffre
+          plutôt que devoir nous croire sur parole.
+        </p>
+      </div>
+    </section>
+
+    <!-- 1. Source de production : PVGIS -->
+    <section class="section px-4">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">1. La production solaire</p>
+        <h2 class="display v2-section-title mt-5 text-white">Une donnée publique, pas un chiffre maison</h2>
+        <p class="v2-body mt-5 text-white/85">
+          Le productible (combien de kWh chaque kWc installé produit par an) vient de PVGIS
+          (Commission européenne, Joint Research Centre) — la référence publique la plus citée pour
+          l'irradiation solaire en Afrique du Nord. Nous ne l'estimons pas nous-mêmes : la table
+          complète, ville par ville, inclinaison par inclinaison, est publiée telle quelle sur notre
+          page <a href="/ensoleillement-maroc" class="border-b border-brass-300 pb-0.5 font-semibold text-brass-300">Ensoleillement au Maroc</a>.
+          Sans repère GPS posé sur la carte, l'estimation instantanée part d'une latitude par défaut
+          (Casablanca, la plus centrale de notre zone de service) et d'une orientation plein sud —
+          l'optimum théorique — puis s'affine dès qu'un repère réel est posé.
+        </p>
+        <div class="mt-8 grid gap-6 sm:grid-cols-3" data-stagger>
+          <KeyFigure value="PVGIS" label="Source">
+            Commission européenne, Joint Research Centre.
+          </KeyFigure>
+          <KeyFigure value="14" unit="%" label="Pertes système">
+            Câblage, onduleur, échauffement, salissure — génériques PVGIS.
+          </KeyFigure>
+          <KeyFigure value="Sud" label="Orientation par défaut">
+            Affinée dès qu'un repère GPS réel est posé sur votre toit.
+          </KeyFigure>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. Bande de confiance climatique -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="section bg-blanc-azur px-4 text-encre">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-azur-600">2. La fourchette, pas un chiffre unique</p>
+        <h2 class="display v2-section-title mt-5">Pourquoi une borne basse et une borne haute</h2>
+        <p class="v2-body mt-5 text-encre-soft">
+          La production annoncée par PVGIS est déjà nette des pertes système génériques (14 %). Nous
+          appliquons EN PLUS une bande de confiance climatique : la borne haute est le chiffre PVGIS
+          brut ; la borne basse le réduit d'un facteur qui combine la dérate thermique d'un été
+          côtier (les panneaux perdent du rendement quand ils chauffent), la salissure et la brume —
+          des pertes réelles, documentées, jamais un chiffre pessimiste inventé pour se couvrir.
+          Cette fourchette (jamais un seul nombre confiant) est la même logique que la bande de
+          confiance affichée en direct sur l'estimateur.
+        </p>
+        <Callout type="info" title="Ce que cette fourchette ne remplace pas">
+          <p>
+            Elle reste calculée à distance, à partir d'une facture et d'un repère GPS facultatif —
+            jamais un relevé d'ombrage réel, ni le matériel finalement retenu. La visite technique
+            gratuite affine ensuite ce chiffre avec les contraintes réelles de votre toiture.
+          </p>
+        </Callout>
+      </div>
+    </section>
+
+    <!-- 3. Autoconsommation d'abord — le point d'honnêteté central -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="section px-4 text-white">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">3. Les économies : autoconsommation d'abord</p>
+        <h2 class="display v2-section-title mt-5 text-white">Nous ne valorisons QUE ce que vous consommez vous-même</h2>
+        <p class="v2-body mt-5 text-white/85">
+          La loi 82-21 organise l'autoproduction basse tension au Maroc : votre installation produit
+          de l'électricité, une partie est consommée directement chez vous (l'autoconsommation), le
+          reste part sur le réseau. Notre estimation ne valorise QUE la part autoconsommée — au
+          tarif régie de votre tranche de facture, la même grille que vous payez déjà.
+        </p>
+        <p class="v2-body mt-4 text-white/85">
+          Nous n'ajoutons AUCUNE ligne de revente du surplus au réseau. Ce n'est pas une omission :
+          l'ANRE a publié une décision de tarif de rachat pour les installations moyenne/haute
+          tension (MT/HT), mais aucun tarif équivalent pour le résidentiel basse tension (BT) n'est
+          publié à ce jour. Tant que ce tarif BT n'existe pas noir sur blanc, chiffrer un revenu de
+          revente serait inventer un nombre — exactement ce que nous refusons de faire.
+        </p>
+        <Callout type="warning" title="Si le surplus n'est pas valorisé, où va-t-il ?">
+          <p>
+            Concrètement, le kWh que vous ne consommez pas au moment où il est produit part sur le
+            réseau ONEE/régie — aujourd'hui sans compensation chiffrée pour un foyer résidentiel.
+            C'est pourquoi le dimensionnement recommandé par notre estimateur cible votre besoin
+            réel, pas une installation surdimensionnée qui produirait un surplus non valorisé.
+          </p>
+        </Callout>
+      </div>
+    </section>
+
+    <!-- 4. Préliminaire, affiné après visite -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="section bg-blanc-azur px-4 text-encre">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-azur-600">4. Préliminaire, affiné après visite</p>
+        <h2 class="display v2-section-title mt-5">Un point de départ, jamais un chiffrage définitif</h2>
+        <p class="v2-body mt-5 text-encre-soft">
+          L'estimation instantanée se calcule en quelques secondes à partir de votre facture (et,
+          si vous le posez, un repère GPS sur votre toit). Elle ne voit ni l'ombrage réel de votre
+          quartier, ni l'état de votre toiture, ni le matériel finalement disponible. C'est
+          pourquoi chaque estimation porte la mention « préliminaire, affinée après visite » : le
+          chiffrage définitif — celui de votre proposition signée — vient toujours après une visite
+          technique gratuite et sans engagement.
+        </p>
+      </div>
+    </section>
+
+    <section class="section-tight px-4 pb-20 sm:pb-24">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">Pour aller plus loin</p>
+        <RelatedLinks links={[
+          { href: '/devis/mon-toit', label: "Lancer l'estimation instantanée" },
+          { href: '/ensoleillement-maroc', label: 'Productible solaire par ville (PVGIS)' },
+          { href: '/production-mesuree', label: 'Production mesurée (nos chantiers réels)' },
+          { href: '/loi-82-21', label: 'La loi 82-21 expliquée' },
+        ]} />
+      </div>
+    </section>
+
+    <CtaBand title="Voyez votre propre fourchette, calculée selon cette même méthode." href="/devis/mon-toit" />
+
+    <StickyCta />
+  </div>
+</Layout>
