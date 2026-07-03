@@ -1,16 +1,31 @@
 from rest_framework import serializers
-from .models import CustomFieldDef
+from .models import CustomFieldDef, CustomObjectDef, CustomRecord
 
 # XPLT15 — clés reconnues du JSON `conditions` (visible/requis/lecture seule).
 CONDITION_KEYS = ('visible_si', 'requis_si', 'lecture_seule_si')
 
 
 class CustomFieldDefSerializer(serializers.ModelSerializer):
+    # XPLT16 — `module` reste un CharField explicite (pas un ChoiceField
+    # auto-dérivé des choices du modèle) : un objet personnalisé pose ses
+    # définitions sous ``custom:<code>`` (préfixe validé dans `validate`, la
+    # liste fixe `Module.choices` reste par ailleurs le catalogue des modules
+    # natifs — voir `validate` pour la double vérification).
+    module = serializers.CharField(max_length=20)
+
     class Meta:
         model = CustomFieldDef
         fields = ['id', 'module', 'code', 'libelle', 'type', 'options',
                   'obligatoire', 'visible_liste', 'ordre', 'actif',
                   'relation_module', 'conditions']
+
+    def validate_module(self, value):
+        from .models import CustomFieldDef as _CFD
+        if value.startswith('custom:'):
+            return value
+        if value not in _CFD.Module.values:
+            raise serializers.ValidationError('Module inconnu.')
+        return value
 
     def validate_options(self, value):
         # Normalise les options en liste de chaînes non vides (tolère un dict
@@ -92,6 +107,17 @@ def _code_has_data(instance):
     module = instance.module
     company = instance.company
     code = instance.code
+    # XPLT16 — un objet personnalisé n'a pas de custom_data par modèle : ses
+    # données vivent une ligne par enregistrement dans CustomRecord.data.
+    if module.startswith('custom:'):
+        from .models import CustomRecord
+        object_code = module.split(':', 1)[1]
+        qs = CustomRecord.objects.filter(
+            company=company, objet__code=object_code, data__has_key=code)
+        for row in qs.values_list('data', flat=True).iterator():
+            if row and row.get(code) not in (None, ''):
+                return True
+        return False
     model = _module_model(module)
     if model is None:
         return False
@@ -259,3 +285,32 @@ def _validate_fichier_value(field_def, val):
             raise ValidationError({field_def.code: error})
         return stored
     raise ValidationError({field_def.code: 'Fichier attendu.'})
+
+
+# --- XPLT16 — objets personnalisés no-code ----------------------------------
+
+class CustomObjectDefSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CustomObjectDef
+        fields = ['id', 'code', 'libelle', 'icone', 'actif', 'date_creation']
+        read_only_fields = ['date_creation']
+
+
+class CustomRecordSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CustomRecord
+        fields = ['id', 'objet', 'data', 'created_by',
+                  'date_creation', 'date_modification']
+        read_only_fields = ['objet', 'created_by',
+                            'date_creation', 'date_modification']
+
+    def validate_data(self, value):
+        # Valide/nettoie `data` contre les CustomFieldDef de l'objet (même
+        # chemin que custom_data sur les modules natifs) — le module cible est
+        # posé par la vue (objet résolu par l'URL), pas par le corps.
+        objet = self.context.get('objet')
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if objet is None or company is None:
+            return value
+        return validate_custom_data(objet.field_module, company, value)

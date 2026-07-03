@@ -1,11 +1,15 @@
+from django.shortcuts import get_object_or_404
 from rest_framework import viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsAdminRole
 from apps.parametres.models import SettingsAuditLog
-from .models import CustomFieldDef
-from .serializers import CustomFieldDefSerializer
+from .models import CustomFieldDef, CustomObjectDef, CustomRecord
+from .serializers import (
+    CustomFieldDefSerializer, CustomObjectDefSerializer, CustomRecordSerializer,
+)
 
 
 class CustomFieldDefViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -66,3 +70,74 @@ class CustomFieldDefViewSet(TenantMixin, viewsets.ModelViewSet):
                 d.ordre = position
                 d.save(update_fields=['ordre'])
         return Response({'ok': True, 'count': len(defs)})
+
+
+def _object_permission_code(object_code, action_kind):
+    """XPLT16 — code de permission dynamique par objet, branché sur la grille
+    roles existante (``Role.permissions`` reste un JSON de codes ; aucune
+    migration côté ``apps.roles`` n'est nécessaire — un admin ajoute le code
+    au rôle voulu). ``action_kind`` ∈ 'voir' | 'gerer'."""
+    return f'custom_object.{object_code}.{action_kind}'
+
+
+class CustomObjectDefViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Objets personnalisés no-code (Paramètres). Lecture tout rôle, écriture
+    admin — comme les définitions de champs dont ils réutilisent le
+    mécanisme."""
+    queryset = CustomObjectDef.objects.all()
+    serializer_class = CustomObjectDefSerializer
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [IsAnyRole()]
+        return [IsAdminRole()]
+
+
+class CustomRecordViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Enregistrements d'un objet personnalisé — CRUD dynamique scopé par
+    ``object_code`` (segment d'URL), jamais par le corps. Un rôle sans la
+    permission ``custom_object.<code>.voir``/``gerer`` ne voit/n'écrit rien
+    (compat : un compte hérité sans rôle fin — ``role`` NULL — passe comme les
+    autres écrans de l'ERP, cf. ``IsAnyRole``/``IsAdminRole`` ; la permission
+    par objet est un raffinement OPT-IN posé par l'admin sur les rôles fins)."""
+    serializer_class = CustomRecordSerializer
+
+    def _objet(self):
+        company = self.request.user.company
+        return get_object_or_404(
+            CustomObjectDef, company=company,
+            code=self.kwargs['object_code'], actif=True)
+
+    def _check_object_permission(self, action_kind):
+        user = self.request.user
+        role = getattr(user, 'role', None)
+        if user.is_superuser or role is None:
+            return  # compat : superuser ou compte hérité sans rôle fin.
+        code = _object_permission_code(self.kwargs['object_code'], action_kind)
+        if not user.has_erp_permission(code):
+            raise PermissionDenied(
+                "Vous n'avez pas accès à cet objet personnalisé.")
+
+    def get_queryset(self):
+        objet = self._objet()
+        self._check_object_permission('voir')
+        return CustomRecord.objects.filter(
+            company=self.request.user.company, objet=objet)
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        ctx['objet'] = self._objet()
+        return ctx
+
+    def perform_create(self, serializer):
+        self._check_object_permission('gerer')
+        serializer.save(company=self.request.user.company,
+                        objet=self._objet(), created_by=self.request.user)
+
+    def perform_update(self, serializer):
+        self._check_object_permission('gerer')
+        serializer.save(company=self.request.user.company)
+
+    def perform_destroy(self, instance):
+        self._check_object_permission('gerer')
+        instance.delete()
