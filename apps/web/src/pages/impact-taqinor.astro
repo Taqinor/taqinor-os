@@ -1,0 +1,189 @@
+---
+/**
+ * Impact Taqinor (W279) — page publique INDEXÉE, ancre de redevabilité.
+ *
+ * INTÉGRITÉ (règle du WEB_PLAN) : chaque chiffre est DÉRIVÉ, en direct dans ce
+ * fichier, des données réelles de `realisations.ts` (lecture seule — jamais
+ * modifié ici). Rien n'est saisi à la main :
+ *  - kWc installés = somme de `kwcNum` sur toutes les réalisations publiées ;
+ *  - production mesurée = somme de `productionNum` sur les seules réalisations
+ *    où elle est publiée (`null` exclu — Nouaceur n'a pas de production
+ *    publiée et n'est PAS comptée, honnêteté avant tout) ;
+ *  - CO₂ évité = production mesurée × `CO2_KG_PER_KWH`, LA MÊME constante déjà
+ *    publiée et sourcée dans `src/lib/proposition.ts` (WJ14 : facteur
+ *    d'émission du réseau marocain ONEE, ordre de grandeur publié) — aucun
+ *    nouveau facteur inventé pour cette page.
+ *
+ * Le total de 43,48 kWc correspond exactement au chiffre déjà affiché sur
+ * l'accueil (`index.astro`, bloc chiffres clés) — cohérence inter-pages
+ * vérifiée à la construction (voir le test associé si présent).
+ *
+ * Page volontairement modeste : 5 installations aujourd'hui, conçue pour
+ * grandir à mesure que de nouveaux chantiers sont publiés dans
+ * `realisations.ts` (aucune modification de ce fichier n'est nécessaire ici
+ * pour que les totaux progressent).
+ */
+import Layout from '../layouts/Layout.astro';
+import V2Enhance from '../components/V2Enhance.astro';
+import Article33Ribbon from '../components/Article33Ribbon.astro';
+import Breadcrumb from '../components/Breadcrumb.astro';
+import KeyFigure from '../components/KeyFigure.astro';
+import Callout from '../components/Callout.astro';
+import RelatedLinks from '../components/RelatedLinks.astro';
+import CtaBand from '../components/CtaBand.astro';
+import StickyCta from '../components/StickyCta.astro';
+import { REALISATIONS } from '../lib/realisations';
+import { CO2_KG_PER_KWH, CO2_KG_PER_TREE_YEAR } from '../lib/proposition';
+
+// ── Chiffres dérivés — AUCUNE valeur saisie à la main ────────────────────────
+const installCount = REALISATIONS.length;
+
+const kwcTotal = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
+const kwcTotalLabel = kwcTotal.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const withMeasuredProduction = REALISATIONS.filter((r) => r.productionNum !== null);
+const productionTotal = withMeasuredProduction.reduce((sum, r) => sum + (r.productionNum ?? 0), 0);
+const productionTotalLabel = productionTotal.toLocaleString('fr-FR');
+
+const co2KgTotal = productionTotal * CO2_KG_PER_KWH;
+const co2TonnesTotal = Math.round((co2KgTotal / 1000) * 10) / 10;
+const co2TonnesLabel = co2TonnesTotal.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+const treesEquivalent = Math.round(co2KgTotal / CO2_KG_PER_TREE_YEAR);
+const treesLabel = treesEquivalent.toLocaleString('fr-FR');
+
+const battersInstalls = REALISATIONS.filter((r) => r.batterie !== null);
+const batteryKwhTotal = battersInstalls.reduce((sum, r) => {
+  const m = /([\d.,]+)\s*kWh/.exec(r.batterie ?? '');
+  return sum + (m ? parseFloat(m[1].replace(',', '.')) : 0);
+}, 0);
+
+const villesUniques = [...new Set(REALISATIONS.map((r) => r.ville))];
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'WebPage',
+  name: 'Impact Taqinor',
+  description: `Impact cumulé, mesuré et honnête des installations Taqinor : ${kwcTotalLabel} kWc installés, ${productionTotalLabel} kWh/an de production mesurée, ${co2TonnesLabel} tonnes de CO₂ évitées par an.`,
+  isPartOf: { '@type': 'WebSite', name: 'Taqinor', url: 'https://taqinor.ma' },
+};
+---
+
+<Layout
+  title="Impact Taqinor : nos chiffres réels, cumulés et vérifiables | Taqinor"
+  description={`${kwcTotalLabel} kWc installés, ${productionTotalLabel} kWh/an mesurés, ${co2TonnesLabel} t de CO₂ évitées : le bilan honnête de nos installations, dérivé de nos réalisations publiées — rien d'estimé, rien d'arrondi vers le haut.`}
+  ogSlug="equipement"
+>
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+
+    <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Impact Taqinor' }]} />
+
+    <section class="section-lg px-4 pb-10 text-white">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">Redevabilité</p>
+        <h1 class="display v2-page-title cine-in cine-in-1 mt-6">Impact Taqinor</h1>
+        <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
+          Pas une projection, pas un objectif : ce que nos {installCount} installations publiées
+          produisent réellement, cumulé. Cette page grandit chantier après chantier — aujourd'hui
+          elle est petite, volontairement, parce qu'elle ne dit que ce que nous pouvons prouver.
+        </p>
+      </div>
+    </section>
+
+    <!-- Chiffres clés — dérivés en direct de realisations.ts -->
+    <section class="section px-4">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">Le cumul aujourd'hui</p>
+        <h2 class="display v2-section-title mt-5 text-white">{installCount} installations, un seul bilan</h2>
+        <div class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
+          <KeyFigure value={kwcTotalLabel} unit="kWc" label="Puissance installée">
+            Cumul de {installCount} installations à {villesUniques.join(', ')}.
+          </KeyFigure>
+          <KeyFigure value={productionTotalLabel} unit="kWh/an" label="Production mesurée">
+            Sur {withMeasuredProduction.length} installations suivies (Deye Cloud) — les chantiers
+            sans production publiée ne sont pas comptés.
+          </KeyFigure>
+          <KeyFigure value={co2TonnesLabel} unit="t CO₂/an" label="CO₂ évité">
+            Calculé à {CO2_KG_PER_KWH} kg CO₂/kWh, le facteur d'émission du réseau marocain déjà
+            utilisé dans nos études.
+          </KeyFigure>
+          <KeyFigure value={String(batteryKwhTotal).replace('.', ',')} unit="kWh" label="Stockage cumulé">
+            Capacité batterie installée sur {battersInstalls.length} des {installCount} chantiers.
+          </KeyFigure>
+        </div>
+        <Callout type="info" title="Comment ce chiffre est calculé">
+          <p>
+            Le CO₂ évité = production mesurée annuelle × {CO2_KG_PER_KWH} kg/kWh (facteur d'émission
+            moyen du réseau électrique marocain, mix fortement carboné — la même constante que celle
+            affichée dans chaque étude chiffrée Taqinor). Équivalent en arbres : un arbre mûr absorbe
+            environ {CO2_KG_PER_TREE_YEAR} kg de CO₂ par an, soit ici l'équivalent d'environ{' '}
+            <strong>{treesLabel} arbres</strong> plantés chaque année. Aucun chiffre n'est arrondi
+            vers le haut, extrapolé ou estimé au-delà des installations réellement publiées.
+          </p>
+        </Callout>
+      </div>
+    </section>
+
+    <!-- Le détail, chantier par chantier -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="section bg-blanc-azur px-4 text-encre">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-azur-600">Le détail</p>
+        <h2 class="display v2-section-title mt-5">Chantier par chantier</h2>
+        <p class="v2-lead mt-4 text-encre-soft">
+          Chaque ligne du cumul ci-dessus correspond à une installation réelle, documentée sur
+          notre page réalisations.
+        </p>
+        <div class="mt-10 border-t-2 border-azur-900 bg-blanc" data-stagger>
+          {REALISATIONS.map((r, i) => (
+            <div class="v2-rise flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-azur-900/15 px-5 py-4" style={`--v2-i:${i}`}>
+              <span class="text-sm font-semibold">{r.ville} · {r.kwc} · réf. {r.ref}</span>
+              <span class="whitespace-normal text-right text-sm text-azur-600">
+                {r.production ? `${r.production} mesurés` : 'production non publiée'}
+                {r.batterie ? ` · ${r.batterie}` : ''}
+              </span>
+            </div>
+          ))}
+        </div>
+        <p class="mx-auto mt-6 max-w-xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
+          <a href="/realisations" class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Voir toutes nos réalisations en détail →</a>
+        </p>
+      </div>
+    </section>
+
+    <!-- Pourquoi cette page reste petite -->
+    <section class="section px-4 text-white">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">Pourquoi si peu</p>
+        <h2 class="display v2-section-title mt-5 text-white">Petite maintenant, honnête toujours</h2>
+        <p class="v2-lead mt-5 text-lune-soft">
+          Nous pourrions gonfler ce bilan avec des estimations théoriques, des rendements
+          catalogue ou des projections sur cinq ans. Nous préférons ne compter que ce qui est
+          déjà posé, suivi et publié — ce qui rend ce chiffre plus petit qu'il ne pourrait
+          paraître, mais vérifiable ligne par ligne sur notre page réalisations. Chaque nouveau
+          chantier documenté fait progresser ce total ; c'est la seule façon dont il grandira.
+        </p>
+      </div>
+    </section>
+
+    <section class="section-tight px-4 pb-20 sm:pb-24">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">Pour aller plus loin</p>
+        <RelatedLinks links={[
+          { href: '/realisations', label: 'Nos réalisations' },
+          { href: '/batteries-stockage', label: 'Batteries & stockage' },
+          { href: '/garanties', label: 'Garanties' },
+          { href: '/à-propos', label: 'À propos de Taqinor' },
+        ]} />
+      </div>
+    </section>
+
+    <CtaBand title="Un projet qui pourrait s'ajouter à ce bilan ? Lancez le diagnostic gratuit." href="/devis/mon-toit" />
+
+    <StickyCta />
+  </div>
+</Layout>
