@@ -544,7 +544,9 @@ def tableau_de_bord_contrats(company, within_days=30, today=None):
     - ``en_risque`` : nombre de contrats à risque (``contrats_en_risque``) ;
     - ``valeur_active`` : somme des ``montant`` des contrats ``actif`` ;
     - ``valeur_totale`` : somme des ``montant`` de tous les contrats ;
-    - ``mrr`` : revenu mensuel récurrent (``mrr_contrats``).
+    - ``mrr`` : revenu mensuel récurrent (``mrr_contrats``) ;
+    - ``mrr_par_responsable`` : ventilation du MRR par responsable (XCTR10,
+      clé ``id`` du responsable, ``'sans_responsable'`` si non renseigné).
     """
     from decimal import Decimal
 
@@ -576,7 +578,34 @@ def tableau_de_bord_contrats(company, within_days=30, today=None):
         'valeur_totale': valeur_totale,
         'mrr': mrr_contrats(company),
         'exceptions_facturation': exceptions_facturation_count(company),
+        'mrr_par_responsable': mrr_par_responsable(company),
     }
+
+
+def mrr_par_responsable(company):
+    """Ventilation du MRR par responsable (owner) — XCTR10.
+
+    Lecture seule, scopée société. Somme le MRR de chaque contrat (via
+    ``mrr_contrat_actif``) ventilé par ``responsable_id`` — clé ``'sans_
+    responsable'`` (string) pour les contrats sans responsable renseigné
+    (comportement inchangé : ils existaient déjà, ils sont juste regroupés).
+    Renvoie un dict ``{responsable_id_ou_'sans_responsable': Decimal}``.
+    """
+    from decimal import Decimal
+
+    ventilation = {}
+    qs = (
+        Contrat.objects.filter(company=company)
+        .exclude(statut__in=[Contrat.Statut.RESILIE, Contrat.Statut.EXPIRE])
+        .prefetch_related('echeanciers')
+    )
+    for contrat in qs:
+        mrr = mrr_contrat_actif(contrat)
+        if mrr <= 0:
+            continue
+        cle = contrat.responsable_id or 'sans_responsable'
+        ventilation[cle] = ventilation.get(cle, Decimal('0')) + mrr
+    return {k: v.quantize(Decimal('0.01')) for k, v in ventilation.items()}
 
 
 def exceptions_facturation_count(company):
@@ -720,7 +749,9 @@ def mouvements_mrr(company, debut, fin):
       étant déjà négatifs, ``net`` est une simple somme algébrique — la garde
       ``somme new+expansion−contraction−churn = variation du MRR`` du Done= se
       lit avec contraction/churn déjà signés négatifs, donc ``net`` EST la
-      variation).
+      variation) ;
+    - ``net_par_responsable`` : même cascade ``net``, ventilée par
+      ``Contrat.responsable`` (XCTR10 ; clé ``'sans_responsable'`` si absent).
 
     Lecture seule, scopée société. Tous les montants sont des ``Decimal``
     arrondis 2 décimales.
@@ -729,11 +760,19 @@ def mouvements_mrr(company, debut, fin):
 
     from .models import Avenant, Contrat, Resiliation
 
+    def _cle_resp(contrat):
+        return contrat.responsable_id or 'sans_responsable'
+
     new = Decimal('0')
+    net_par_resp = {}
     for contrat in Contrat.objects.filter(
             company=company, date_creation__date__gte=debut,
             date_creation__date__lte=fin):
-        new += mrr_contrat_actif(contrat)
+        montant = mrr_contrat_actif(contrat)
+        new += montant
+        if montant:
+            cle = _cle_resp(contrat)
+            net_par_resp[cle] = net_par_resp.get(cle, Decimal('0')) + montant
 
     expansion = Decimal('0')
     contraction = Decimal('0')
@@ -764,6 +803,9 @@ def mouvements_mrr(company, debut, fin):
             expansion += equiv
         elif equiv < 0:
             contraction += equiv
+        if equiv:
+            cle = _cle_resp(avenant.contrat)
+            net_par_resp[cle] = net_par_resp.get(cle, Decimal('0')) + equiv
 
     churn = Decimal('0')
     churn_par_motif = {}
@@ -783,6 +825,8 @@ def mouvements_mrr(company, debut, fin):
         churn -= perte
         churn_par_motif[motif] = churn_par_motif.get(
             motif, Decimal('0')) - perte
+        cle = _cle_resp(resiliation.contrat)
+        net_par_resp[cle] = net_par_resp.get(cle, Decimal('0')) - perte
 
     net = (new + expansion + contraction + churn).quantize(Decimal('0.01'))
 
@@ -797,6 +841,9 @@ def mouvements_mrr(company, debut, fin):
             k: v.quantize(Decimal('0.01')) for k, v in churn_par_motif.items()
         },
         'net': net,
+        'net_par_responsable': {
+            k: v.quantize(Decimal('0.01')) for k, v in net_par_resp.items()
+        },
     }
 
 

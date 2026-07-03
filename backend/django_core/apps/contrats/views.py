@@ -143,11 +143,11 @@ class ContratViewSet(_ContratsBaseViewSet):
     ordering_fields = ['date_debut', 'date_fin', 'montant', 'id', 'confidentialite']
 
     def get_queryset(self):
-        """Queryset scopé société + filtre confidentialité.
+        """Queryset scopé société + filtre confidentialité/responsable.
 
         Les contrats ``CONFIDENTIEL`` sont exclus pour les non-Administrateurs.
-        Un filtre optionnel ``?confidentialite=<valeur>`` restreint
-        supplémentairement la liste.
+        Filtres optionnels : ``?confidentialite=<valeur>``,
+        ``?responsable=<id>`` (XCTR10).
         """
         qs = super().get_queryset()
         user = self.request.user
@@ -162,6 +162,10 @@ class ContratViewSet(_ContratsBaseViewSet):
         niveau = self.request.query_params.get('confidentialite')
         if niveau:
             qs = qs.filter(confidentialite=niveau)
+        # XCTR10 — filtre optionnel par responsable (owner).
+        responsable_id = self.request.query_params.get('responsable')
+        if responsable_id:
+            qs = qs.filter(responsable_id=responsable_id)
         return qs
 
     def perform_create(self, serializer):
@@ -265,6 +269,9 @@ class ContratViewSet(_ContratsBaseViewSet):
             'valeur_totale': _money(data['valeur_totale']),
             'mrr': _money(data['mrr']),
             'exceptions_facturation': data['exceptions_facturation'],
+            'mrr_par_responsable': {
+                str(k): _money(v)
+                for k, v in data['mrr_par_responsable'].items()},
         })
 
     @action(detail=False, methods=['get'], url_path='mrr-mouvements')
@@ -306,6 +313,9 @@ class ContratViewSet(_ContratsBaseViewSet):
             'churn_par_motif': {
                 k: _money(v) for k, v in data['churn_par_motif'].items()},
             'net': _money(data['net']),
+            'net_par_responsable': {
+                str(k): _money(v)
+                for k, v in data['net_par_responsable'].items()},
         })
 
     @action(detail=False, methods=['get'], url_path='cohortes-retention')

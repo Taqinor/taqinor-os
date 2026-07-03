@@ -110,12 +110,18 @@ class ContratSerializer(serializers.ModelSerializer):
             'jours_avant_echeance',
             'montant', 'devise',
             'confidentialite', 'confidentialite_display',
+            'responsable', 'responsable_nom',
             'created_by', 'date_creation',
         ]
         read_only_fields = [
             'created_by', 'date_creation',
             'date_dernier_renouvellement', 'nb_renouvellements',
         ]
+
+    responsable_nom = serializers.SerializerMethodField()
+
+    def get_responsable_nom(self, obj):
+        return getattr(obj.responsable, 'username', None)
 
     def get_echeance_preavis(self, obj):
         echeance = obj.echeance_preavis()
@@ -136,6 +142,17 @@ class ContratSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Ce modèle n'appartient pas à votre société.")
         return modele
+
+    def validate_responsable(self, responsable):
+        """Le responsable (optionnel) doit appartenir à la société — XCTR10."""
+        if responsable is None:
+            return responsable
+        request = self.context.get('request')
+        if request is not None and \
+                responsable.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Ce responsable n'appartient pas à votre société.")
+        return responsable
 
 
 class PartieContratSerializer(serializers.ModelSerializer):

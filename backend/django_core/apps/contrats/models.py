@@ -167,6 +167,17 @@ class Contrat(models.Model):
         related_name='contrats_crees',
         verbose_name='Créé par',
     )
+    # XCTR10 — propriétaire (owner) du contrat, pour attribuer MRR/churn par
+    # commercial (commissions, redevabilité). NULLABLE (aucun changement de
+    # comportement tant qu'il n'est pas renseigné) ; validé MÊME SOCIÉTÉ au
+    # sérialiseur (jamais un utilisateur d'une autre société).
+    responsable = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='contrats_responsable',
+        verbose_name='Responsable',
+    )
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
