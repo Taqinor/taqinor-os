@@ -99,6 +99,60 @@ def avancer_stage_new_vers_contacted(lead, user) -> bool:
     return True
 
 
+# ── YLEAD11 — Réactivation d'un lead perdu/COLD sur nouvelle touche entrante ──
+
+def reactivate_lead_on_new_touch(lead, *, source='site web') -> bool:
+    """YLEAD11 — Réactive ``lead`` s'il est actuellement PERDU ou COLD.
+
+    Une nouvelle touche entrante (re-POST site web, nouveau message WhatsApp)
+    sur un lead perdu/froid rouvre le cycle d'achat : lève ``perdu``,
+    repositionne le funnel (AVANCE-SEULEMENT, jamais en arrière — donc un
+    lead déjà ≥ CONTACTED et non perdu ne bouge pas) vers CONTACTED s'il
+    avait déjà été contacté (``first_contacted_at`` posé), sinon NEW, et
+    journalise une activité de réactivation. N'écrase JAMAIS l'attribution
+    first-touch d'origine (ce service ne touche à aucun champ UTM/fbclid).
+    Idempotent : un lead ni perdu ni COLD → no-op (False). Company-scopée par
+    construction (opère sur l'instance ``lead`` déjà résolue dans SA société).
+    """
+    if lead is None:
+        return False
+    etait_perdu = bool(lead.perdu)
+    etait_cold = lead.stage == stages.COLD
+    if not etait_perdu and not etait_cold:
+        return False
+
+    update_fields = []
+    if etait_perdu:
+        lead.perdu = False
+        update_fields.append('perdu')
+
+    cible = _STAGE_CONTACTED if lead.first_contacted_at else stages.NEW
+    if _rang_funnel(lead.stage) < _rang_funnel(cible):
+        ancien_stage = lead.stage
+        lead.stage = cible
+        update_fields.append('stage')
+    else:
+        ancien_stage = None  # étape déjà ≥ cible — pas de changement d'étape.
+
+    if update_fields:
+        lead.save(update_fields=update_fields)
+
+    body = f'auto — réactivation : nouvelle demande {source}'
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE, body=body)
+    if ancien_stage is not None:
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.MODIFICATION,
+            field='stage', field_label='Étape',
+            old_value=stages.STAGE_LABELS[ancien_stage],
+            new_value=stages.STAGE_LABELS[cible],
+            body=f'auto — réactivation ({source})',
+        )
+    return True
+
+
 def avancer_stage_pour_devis(devis, ancien_statut, nouveau_statut, user):
     """Avance l'étape du lead quand le STATUT d'un devis change.
 
@@ -788,16 +842,22 @@ def resolve_or_create_lead_from_whatsapp(company, telephone, nom='',
     « Ouvert » = non perdu (``Lead.perdu`` False) et non archivé
     (``archived_at`` NULL). Parmi les leads ouverts partageant ce téléphone,
     prend le plus récent ; journalise le message inbound dans SON chatter.
+
+    YLEAD11 — si aucun lead OUVERT n'existe mais qu'un lead PERDU/COLD (non
+    archivé) partage ce téléphone, il est RÉACTIVÉ (même règle que le
+    webhook site : lève ``perdu``, repositionne NEW/CONTACTED avance-seul)
+    plutôt que de créer un doublon — une nouvelle touche WhatsApp rouvre
+    aussi le cycle d'achat.
+
     N'appelle ``create_draft_lead_from_ocr`` qu'en DERNIER RECOURS (aucun
-    lead ouvert trouvé pour ce numéro) — c'est ce service qui doit être
-    appelé par ``compta.services.capturer_message_whatsapp``, jamais l'inverse.
-    Company-scopé ; gated en amont par l'appelant (NO-OP si WhatsApp OFF).
+    lead — ouvert ou réactivable — trouvé pour ce numéro) — c'est ce service
+    qui doit être appelé par ``compta.services.capturer_message_whatsapp``,
+    jamais l'inverse. Company-scopé ; gated en amont par l'appelant (NO-OP si
+    WhatsApp OFF).
     """
     candidates = find_duplicates_by_contact(company, phone=telephone)
-    ouverts = [
-        lead_ for lead_ in candidates
-        if not lead_.perdu and lead_.archived_at is None
-    ]
+    non_archives = [c for c in candidates if c.archived_at is None]
+    ouverts = [lead_ for lead_ in non_archives if not lead_.perdu]
     if ouverts:
         lead = sorted(ouverts, key=lambda d: d.date_creation, reverse=True)[0]
         body = 'Nouveau message WhatsApp reçu'
@@ -806,6 +866,15 @@ def resolve_or_create_lead_from_whatsapp(company, telephone, nom='',
         LeadActivity.objects.create(
             company=lead.company, lead=lead, user=user,
             kind=LeadActivity.Kind.NOTE, body=body)
+        return lead
+
+    # YLEAD11 — aucun lead ouvert : un lead perdu/COLD non archivé est
+    # réactivé plutôt que dupliqué.
+    reactivables = [lead_ for lead_ in non_archives if lead_.perdu]
+    if reactivables:
+        lead = sorted(
+            reactivables, key=lambda d: d.date_creation, reverse=True)[0]
+        reactivate_lead_on_new_touch(lead, source='WhatsApp')
         return lead
 
     lead = create_draft_lead_from_ocr(

@@ -392,6 +392,15 @@ def website_lead_webhook(request):
                 kind=LeadActivity.Kind.NOTE,
                 body=chatter_body,
             )
+            # YLEAD11 — une nouvelle touche sur un lead PERDU/COLD le
+            # réactive (lève perdu, repositionne NEW/CONTACTED avance-seul).
+            try:
+                from .services import reactivate_lead_on_new_touch
+                reactivate_lead_on_new_touch(lead, source='site web')
+            except Exception as _exc:  # noqa: BLE001 — best-effort
+                logger.warning(
+                    'website_lead_webhook: réactivation échouée (lead #%s) : %s',
+                    lead.pk, _exc)
         else:
             # Responsable par défaut de la société (Paramètres) si configuré.
             from .services import default_responsable_for

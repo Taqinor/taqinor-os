@@ -48,10 +48,9 @@ class ResolveOrCreateFromWhatsappTests(TestCase):
         self.assertTrue(
             any('WhatsApp' in (n.body or '') for n in notes))
 
-    def test_lost_lead_is_not_reused_new_lead_created(self):
-        """Un lead PERDU n'est pas considéré 'ouvert' — un nouveau lead est
-        créé (la réactivation d'un lead perdu est le périmètre de YLEAD11,
-        géré séparément côté webhook site)."""
+    def test_lost_lead_is_reactivated_not_duplicated(self):
+        """Un lead PERDU n'est pas 'ouvert', mais une nouvelle touche
+        WhatsApp le RÉACTIVE (YLEAD11) au lieu de créer un doublon."""
         lost = resolve_or_create_lead_from_whatsapp(
             self.company, '+212661112244', nom='Karim')
         lost.perdu = True
@@ -59,9 +58,11 @@ class ResolveOrCreateFromWhatsappTests(TestCase):
 
         second = resolve_or_create_lead_from_whatsapp(
             self.company, '+212661112244', nom='Karim')
-        self.assertNotEqual(lost.pk, second.pk)
+        self.assertEqual(lost.pk, second.pk)
         self.assertEqual(
-            Lead.objects.filter(company=self.company).count(), 2)
+            Lead.objects.filter(company=self.company).count(), 1)
+        second.refresh_from_db()
+        self.assertFalse(second.perdu)
 
     def test_archived_lead_is_not_reused(self):
         archived = resolve_or_create_lead_from_whatsapp(
