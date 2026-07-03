@@ -15,6 +15,7 @@ import RegimeSelector from '../../components/RegimeSelector.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import ZelligeDivider from '../../components/ZelligeDivider.astro';
+import RelatedLinks from '../../components/RelatedLinks.astro';
 import { regimesFor } from '../../lib/regime';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
@@ -110,10 +111,12 @@ const REGIMES = regimesFor(locale);
           </div>
         ))}
       </div>
-      <div class="mt-8 flex flex-wrap gap-3">
-        <a href={L('/professionnel')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Regimes for a business site →</a>
-        <a href={L('/guides/loi-82-21-expliquee')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Law 82-21 explained simply →</a>
-      </div>
+      <RelatedLinks mt="mt-8" links={[
+        { href: L('/résidentiel'), label: 'Regimes for a home' },
+        { href: L('/professionnel'), label: 'Regimes for a business site' },
+        { href: L('/guides/loi-82-21-expliquee'), label: 'Law 82-21 explained simply' },
+        { href: L('/financement'), label: 'Financing & returns' },
+      ]} />
     </section>
 
     <!-- FINAL ACT — regularization is handled in full daylight -->

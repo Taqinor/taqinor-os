@@ -19,6 +19,7 @@ import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
+import RelatedLinks from '../../components/RelatedLinks.astro';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
 
@@ -336,13 +337,17 @@ const mecanismes = [
       </div>
     </section>
 
-    <!-- Contextual links -->
+    {/* Contextual links — price/residential + pumping cluster (W299) */}
     <section class="border-t border-white/10 px-4 py-16">
-      <div class="mx-auto flex max-w-6xl flex-wrap gap-3">
-        <a href={L('/résidentiel')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Residential returns →</a>
-        <a href={L('/professionnel')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Business returns →</a>
-        <a href={L('/garanties')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Our warranties (25 years) →</a>
-        <a href={devisHref} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Start my assessment →</a>
+      <div class="mx-auto max-w-6xl">
+        <RelatedLinks mt="mt-0" links={[
+          { href: L('/résidentiel'), label: 'Residential returns' },
+          { href: L('/professionnel'), label: 'Business returns' },
+          { href: L('/pompage-solaire'), label: 'Agricultural solar pumping' },
+          { href: L('/prix-panneaux-solaires-maroc'), label: 'Solar panel prices in Morocco' },
+          { href: L('/garanties'), label: 'Our warranties (25 years)' },
+          { href: devisHref, label: 'Start my assessment' },
+        ]} />
       </div>
     </section>
 

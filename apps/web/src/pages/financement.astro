@@ -23,6 +23,7 @@ import Article33Ribbon from '../components/Article33Ribbon.astro';
 import Breadcrumb from '../components/Breadcrumb.astro';
 import CtaBand from '../components/CtaBand.astro';
 import StickyCta from '../components/StickyCta.astro';
+import RelatedLinks from '../components/RelatedLinks.astro';
 
 const chiffres = [
   { v: '3–7 ans', label: 'Retour sur investissement typique' },
@@ -340,13 +341,17 @@ const mecanismes = [
       </div>
     </section>
 
-    <!-- Liens contextuels -->
+    {/* Liens contextuels — cluster prix/résidentiel + pompage (W299) */}
     <section class="border-t border-white/10 px-4 py-16">
-      <div class="mx-auto flex max-w-6xl flex-wrap gap-3">
-        <a href="/résidentiel" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Rentabilité résidentielle →</a>
-        <a href="/professionnel" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Rentabilité professionnelle →</a>
-        <a href="/garanties" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Nos garanties (25 ans) →</a>
-        <a href="/devis/mon-toit" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Lancer mon diagnostic →</a>
+      <div class="mx-auto max-w-6xl">
+        <RelatedLinks mt="mt-0" links={[
+          { href: '/résidentiel', label: 'Rentabilité résidentielle' },
+          { href: '/professionnel', label: 'Rentabilité professionnelle' },
+          { href: '/pompage-solaire', label: 'Pompage solaire agricole' },
+          { href: '/prix-panneaux-solaires-maroc', label: 'Prix des panneaux solaires au Maroc' },
+          { href: '/garanties', label: 'Nos garanties (25 ans)' },
+          { href: '/devis/mon-toit', label: 'Lancer mon diagnostic' },
+        ]} />
       </div>
     </section>
 

@@ -40,6 +40,7 @@ import CtaBand from '../components/CtaBand.astro';
 import StickyCta from '../components/StickyCta.astro';
 import Faq from '../components/Faq.astro';
 import ServiceWarrantyTable from '../components/ServiceWarrantyTable.astro';
+import RelatedLinks from '../components/RelatedLinks.astro';
 import { serviceFaqItems } from '../lib/serviceFaq';
 import { WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink, zeroFormWhatsappText } from '../lib/whatsapp';
@@ -467,11 +468,14 @@ const jsonLd = {
           branche soi-même. Après le relevé du forage et le calcul de dimensionnement, on pose du
           matériel tier-1 et l’installation repart avec son dossier technique complet.
         </p>
-        <div class="mt-10 flex flex-wrap gap-3">
-          <a href="/devis/mon-toit" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Demander un diagnostic →</a>
-          <a href="/professionnel" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Solaire professionnel →</a>
-          <a href="/équipement" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Voir l’équipement →</a>
-        </div>
+        <RelatedLinks links={[
+          { href: '/devis/mon-toit', label: 'Demander un diagnostic' },
+          { href: '/professionnel', label: 'Solaire professionnel' },
+          { href: '/équipement', label: 'Voir l’équipement' },
+          { href: '/financement', label: 'Financement & rentabilité' },
+          { href: '/garanties', label: 'Nos garanties' },
+          { href: '/nos-solutions', label: 'Toutes nos solutions' },
+        ]} />
       </div>
     </section>
 

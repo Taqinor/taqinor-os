@@ -27,6 +27,7 @@ import Article33Ribbon from '../components/Article33Ribbon.astro';
 import Breadcrumb from '../components/Breadcrumb.astro';
 import StickyCta from '../components/StickyCta.astro';
 import ZelligeDivider from '../components/ZelligeDivider.astro';
+import RelatedLinks from '../components/RelatedLinks.astro';
 import { WHATSAPP_LEADS, NAP } from '../lib/nap';
 import { whatsappLink, regularizationWhatsappText } from '../lib/whatsapp';
 
@@ -178,10 +179,12 @@ const howToLd = {
         ))}
       </div>
 
-      <div class="mt-8 flex flex-wrap gap-3">
-        <a href="/loi-82-21" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Les 3 régimes de la loi 82-21 →</a>
-        <a href="/professionnel" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Régularisation d'un site professionnel →</a>
-      </div>
+      <RelatedLinks mt="mt-8" links={[
+        { href: '/loi-82-21', label: 'Les 3 régimes de la loi 82-21' },
+        { href: '/guides/loi-82-21-expliquee', label: 'Loi 82-21 expliquée simplement' },
+        { href: '/résidentiel', label: "Régularisation d'une villa ou d'un appartement" },
+        { href: '/professionnel', label: "Régularisation d'un site professionnel" },
+      ]} />
     </section>
 
     <!-- ACTE FINAL — le dossier se confie en pleine lumière -->

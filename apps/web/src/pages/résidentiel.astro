@@ -40,6 +40,7 @@ import GarantiesTeaser from '../components/GarantiesTeaser.astro';
 import Testimonials from '../components/Testimonials.astro';
 import Faq from '../components/Faq.astro';
 import ServiceWarrantyTable from '../components/ServiceWarrantyTable.astro';
+import RelatedLinks from '../components/RelatedLinks.astro';
 import { BILL_RANGES, localEstimateBand } from '../lib/billRange';
 import { formatMAD } from '../lib/format';
 import { WHATSAPP_LEADS } from '../lib/nap';
@@ -237,16 +238,20 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
       </div>
     </section>
 
-    {/* Liens contextuels */}
+    {/* Liens contextuels — cluster prix/résidentiel (W299) */}
     <div class="seam-soft" aria-hidden="true"></div>
     <section class="section-tight px-4">
-      <div class="mx-auto flex max-w-6xl flex-wrap gap-3">
-        <a href="/realisations" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Nos réalisations résidentielles →</a>
-        <a href="/équipement" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">L'équipement posé →</a>
-        <a href="/garanties" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Nos garanties →</a>
-        <a href="/batteries-stockage" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Batteries &amp; stockage →</a>
-        <a href="/financement" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Financement &amp; rentabilité →</a>
-        <a href="/pourquoi-taqinor" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Pourquoi Taqinor →</a>
+      <div class="mx-auto max-w-6xl">
+        <RelatedLinks mt="mt-0" links={[
+          { href: '/realisations', label: 'Nos réalisations résidentielles' },
+          { href: '/prix-panneaux-solaires-maroc', label: 'Prix des panneaux solaires au Maroc' },
+          { href: '/guides/combien-de-panneaux-pour-ma-maison', label: 'Combien de panneaux pour ma maison ?' },
+          { href: '/équipement', label: "L'équipement posé" },
+          { href: '/garanties', label: 'Nos garanties' },
+          { href: '/batteries-stockage', label: 'Batteries & stockage' },
+          { href: '/financement', label: 'Financement & rentabilité' },
+          { href: '/pourquoi-taqinor', label: 'Pourquoi Taqinor' },
+        ]} />
       </div>
     </section>
 

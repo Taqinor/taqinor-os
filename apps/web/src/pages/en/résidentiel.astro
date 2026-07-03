@@ -36,6 +36,7 @@ import GarantiesTeaser from '../../components/GarantiesTeaser.astro';
 import Testimonials from '../../components/Testimonials.astro';
 import Faq from '../../components/Faq.astro';
 import ServiceWarrantyTable from '../../components/ServiceWarrantyTable.astro';
+import RelatedLinks from '../../components/RelatedLinks.astro';
 import { BILL_RANGES, localEstimateBand } from '../../lib/billRange';
 import { formatMAD } from '../../lib/format';
 import { getLocaleFromPath } from '../../i18n/utils';
@@ -236,16 +237,20 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
       </div>
     </section>
 
-    {/* Contextual links */}
+    {/* Contextual links — price/residential cluster (W299) */}
     <div class="seam-soft" aria-hidden="true"></div>
     <section class="section-tight px-4">
-      <div class="mx-auto flex max-w-6xl flex-wrap gap-3">
-        <a href={L('/realisations')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Our residential projects →</a>
-        <a href={L('/équipement')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">The equipment we install →</a>
-        <a href={L('/garanties')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Our warranties →</a>
-        <a href={L('/batteries-stockage')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Batteries &amp; storage →</a>
-        <a href={L('/financement')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Financing &amp; returns →</a>
-        <a href={L('/pourquoi-taqinor')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Why Taqinor →</a>
+      <div class="mx-auto max-w-6xl">
+        <RelatedLinks mt="mt-0" links={[
+          { href: L('/realisations'), label: 'Our residential projects' },
+          { href: L('/prix-panneaux-solaires-maroc'), label: 'Solar panel prices in Morocco' },
+          { href: L('/guides/combien-de-panneaux-pour-ma-maison'), label: 'How many panels for my house?' },
+          { href: L('/équipement'), label: 'The equipment we install' },
+          { href: L('/garanties'), label: 'Our warranties' },
+          { href: L('/batteries-stockage'), label: 'Batteries & storage' },
+          { href: L('/financement'), label: 'Financing & returns' },
+          { href: L('/pourquoi-taqinor'), label: 'Why Taqinor' },
+        ]} />
       </div>
     </section>
 

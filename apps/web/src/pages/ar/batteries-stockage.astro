@@ -24,6 +24,7 @@ import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import Faq from '../../components/Faq.astro';
 import ServiceWarrantyTable from '../../components/ServiceWarrantyTable.astro';
+import RelatedLinks from '../../components/RelatedLinks.astro';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
 import { serviceFaqItems } from '../../lib/serviceFaq';
@@ -386,12 +387,15 @@ const jsonLd = {
       <div class="mx-auto max-w-6xl">
         {/* eyebrow مُخفَّض إلى lune */}
         <p class="tech-label v2-kicker rule-brass text-lune">التخزين في مشروعك</p>
-        <div class="mt-6 flex flex-wrap gap-3">
-          <a href={L('/équipement')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">كل المعدات <span class="inline-block rtl:-scale-x-100">→</span></a>
-          <a href={L('/résidentiel')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">الطاقة الشمسية السكنية <span class="inline-block rtl:-scale-x-100">→</span></a>
-          <a href={L('/guides/faut-il-des-batteries')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">دليل: هل تلزم البطاريات؟ <span class="inline-block rtl:-scale-x-100">→</span></a>
-          <a href={L('/realisations')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">إنجازاتنا <span class="inline-block rtl:-scale-x-100">→</span></a>
-        </div>
+        <RelatedLinks mt="mt-6" links={[
+          { href: L('/équipement'), label: 'كل المعدات' },
+          { href: L('/résidentiel'), label: 'الطاقة الشمسية السكنية' },
+          { href: L('/guides/faut-il-des-batteries'), label: 'دليل: هل تلزم البطاريات؟' },
+          { href: L('/guides/quelle-taille-de-batterie'), label: 'أي حجم بطارية؟' },
+          { href: L('/guides/electricite-pendant-les-coupures'), label: 'الكهرباء أثناء الانقطاعات' },
+          { href: L('/garanties'), label: 'ضماناتنا' },
+          { href: L('/realisations'), label: 'إنجازاتنا' },
+        ]} />
       </div>
     </section>
 

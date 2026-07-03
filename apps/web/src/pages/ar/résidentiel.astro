@@ -35,6 +35,7 @@ import GarantiesTeaser from '../../components/GarantiesTeaser.astro';
 import Testimonials from '../../components/Testimonials.astro';
 import Faq from '../../components/Faq.astro';
 import ServiceWarrantyTable from '../../components/ServiceWarrantyTable.astro';
+import RelatedLinks from '../../components/RelatedLinks.astro';
 import { BILL_RANGES, localEstimateBand } from '../../lib/billRange';
 import { formatMAD } from '../../lib/format';
 import { WHATSAPP_LEADS } from '../../lib/nap';
@@ -230,16 +231,20 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
       </div>
     </section>
 
-    {/* روابط سياقية */}
+    {/* روابط سياقية — عنقود السعر/السكني (W299) */}
     <div class="seam-soft" aria-hidden="true"></div>
     <section class="section-tight px-4">
-      <div class="mx-auto flex max-w-6xl flex-wrap gap-3">
-        <a href={L('/realisations')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">إنجازاتنا السكنية <span class="inline-block rtl:-scale-x-100">→</span></a>
-        <a href={L('/équipement')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">المعدات المركّبة <span class="inline-block rtl:-scale-x-100">→</span></a>
-        <a href={L('/garanties')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">ضماناتنا <span class="inline-block rtl:-scale-x-100">→</span></a>
-        <a href={L('/batteries-stockage')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">البطاريات والتخزين <span class="inline-block rtl:-scale-x-100">→</span></a>
-        <a href={L('/financement')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">التمويل والمردودية <span class="inline-block rtl:-scale-x-100">→</span></a>
-        <a href={L('/pourquoi-taqinor')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">لماذا تاكينور <span class="inline-block rtl:-scale-x-100">→</span></a>
+      <div class="mx-auto max-w-6xl">
+        <RelatedLinks mt="mt-0" links={[
+          { href: L('/realisations'), label: 'إنجازاتنا السكنية' },
+          { href: L('/prix-panneaux-solaires-maroc'), label: 'أسعار الألواح الشمسية بالمغرب' },
+          { href: L('/guides/combien-de-panneaux-pour-ma-maison'), label: 'كم لوحاً يلزم لمنزلي؟' },
+          { href: L('/équipement'), label: 'المعدات المركّبة' },
+          { href: L('/garanties'), label: 'ضماناتنا' },
+          { href: L('/batteries-stockage'), label: 'البطاريات والتخزين' },
+          { href: L('/financement'), label: 'التمويل والمردودية' },
+          { href: L('/pourquoi-taqinor'), label: 'لماذا تاكينور' },
+        ]} />
       </div>
     </section>
 

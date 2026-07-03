@@ -16,6 +16,7 @@ import CtaBand from '../components/CtaBand.astro';
 import StickyCta from '../components/StickyCta.astro';
 import Faq from '../components/Faq.astro';
 import ServiceWarrantyTable from '../components/ServiceWarrantyTable.astro';
+import RelatedLinks from '../components/RelatedLinks.astro';
 import { serviceFaqItems } from '../lib/serviceFaq';
 
 // Faits matériel — identiques à la page Équipement (réf. BAT), source publiée.
@@ -389,13 +390,15 @@ const jsonLd = {
       <div class="mx-auto max-w-6xl">
         {/* Eyebrow rétrogradé en lune (discipline laiton #2) */}
         <p class="tech-label v2-kicker rule-brass text-lune">Le stockage dans votre projet</p>
-        <div class="mt-6 flex flex-wrap gap-3">
-          <a href="/équipement" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Tout l'équipement →</a>
-          <a href="/résidentiel" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Solaire résidentiel →</a>
-          <a href="/guides/faut-il-des-batteries" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Guide : faut-il des batteries ? →</a>
-          <a href="/garanties" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Garanties →</a>
-          <a href="/realisations" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Nos réalisations →</a>
-        </div>
+        <RelatedLinks mt="mt-6" links={[
+          { href: '/équipement', label: "Tout l'équipement" },
+          { href: '/résidentiel', label: 'Solaire résidentiel' },
+          { href: '/guides/faut-il-des-batteries', label: 'Guide : faut-il des batteries ?' },
+          { href: '/guides/quelle-taille-de-batterie', label: 'Quelle taille de batterie ?' },
+          { href: '/guides/electricite-pendant-les-coupures', label: 'Électricité pendant les coupures' },
+          { href: '/garanties', label: 'Garanties' },
+          { href: '/realisations', label: 'Nos réalisations' },
+        ]} />
       </div>
     </section>
 

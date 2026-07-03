@@ -15,6 +15,7 @@ import RegimeSelector from '../../components/RegimeSelector.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import ZelligeDivider from '../../components/ZelligeDivider.astro';
+import RelatedLinks from '../../components/RelatedLinks.astro';
 import { regimesFor } from '../../lib/regime';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
@@ -107,10 +108,12 @@ const REGIMES = regimesFor(locale);
           </div>
         ))}
       </div>
-      <div class="mt-8 flex flex-wrap gap-3">
-        <a href={L('/professionnel')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">الأنظمة لموقع مهني <span class="inline-block rtl:-scale-x-100">→</span></a>
-        <a href={L('/guides/loi-82-21-expliquee')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">القانون 82-21 مشروحاً ببساطة <span class="inline-block rtl:-scale-x-100">→</span></a>
-      </div>
+      <RelatedLinks mt="mt-8" links={[
+        { href: L('/résidentiel'), label: 'الأنظمة لمنزل سكني' },
+        { href: L('/professionnel'), label: 'الأنظمة لموقع مهني' },
+        { href: L('/guides/loi-82-21-expliquee'), label: 'القانون 82-21 مشروحاً ببساطة' },
+        { href: L('/financement'), label: 'التمويل والمردودية' },
+      ]} />
     </section>
 
     <!-- الفصل الأخير — التسوية تُعالَج في وضح النهار -->

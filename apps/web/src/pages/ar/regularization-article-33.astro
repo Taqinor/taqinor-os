@@ -21,6 +21,7 @@ import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import ZelligeDivider from '../../components/ZelligeDivider.astro';
+import RelatedLinks from '../../components/RelatedLinks.astro';
 import { WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink, regularizationWhatsappText } from '../../lib/whatsapp';
 import { getLocaleFromPath } from '../../i18n/utils';
@@ -146,10 +147,12 @@ const sanctions = [
         ))}
       </div>
 
-      <div class="mt-8 flex flex-wrap gap-3">
-        <a href={L('/loi-82-21')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">الأنظمة الثلاثة للقانون 82-21 <span class="inline-block rtl:-scale-x-100">→</span></a>
-        <a href={L('/professionnel')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">تسوية موقع مهني <span class="inline-block rtl:-scale-x-100">→</span></a>
-      </div>
+      <RelatedLinks mt="mt-8" links={[
+        { href: L('/loi-82-21'), label: 'الأنظمة الثلاثة للقانون 82-21' },
+        { href: L('/guides/loi-82-21-expliquee'), label: 'القانون 82-21 مشروحاً ببساطة' },
+        { href: L('/résidentiel'), label: 'تسوية منزل سكني' },
+        { href: L('/professionnel'), label: 'تسوية موقع مهني' },
+      ]} />
     </section>
 
     <!-- ACTE FINAL — le dossier se confie en pleine lumière -->

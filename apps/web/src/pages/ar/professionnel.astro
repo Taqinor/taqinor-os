@@ -32,6 +32,7 @@ import Testimonials from '../../components/Testimonials.astro';
 import CertLogoRow from '../../components/CertLogoRow.astro';
 import Faq from '../../components/Faq.astro';
 import ServiceWarrantyTable from '../../components/ServiceWarrantyTable.astro';
+import RelatedLinks from '../../components/RelatedLinks.astro';
 import { localEstimateBand } from '../../lib/billRange';
 import { formatMAD } from '../../lib/format';
 import { WHATSAPP_LEADS } from '../../lib/nap';
@@ -421,17 +422,20 @@ const capexOpex = [
       </div>
     </section>
 
-    {/* روابط سياقية */}
+    {/* روابط سياقية — عنقود الضخ الفلاحي + الأسعار (W299) */}
     <div class="seam-soft" aria-hidden="true"></div>
     <section class="section-tight px-4">
-      <div class="mx-auto flex max-w-6xl flex-wrap gap-3">
-        <a href={L('/realisations')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">إنجازاتنا <span class="inline-block rtl:-scale-x-100">→</span></a>
-        <a href={L('/équipement')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">المعدات المركّبة <span class="inline-block rtl:-scale-x-100">→</span></a>
-        <a href={L('/pompage-solaire')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">الضخ الشمسي <span class="inline-block rtl:-scale-x-100">→</span></a>
-        <a href={L('/financement')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">التمويل والمردودية <span class="inline-block rtl:-scale-x-100">→</span></a>
-        <a href={L('/pourquoi-taqinor')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">لماذا تاكينور <span class="inline-block rtl:-scale-x-100">→</span></a>
+      <div class="mx-auto max-w-6xl">
+        <RelatedLinks mt="mt-0" links={[
+          { href: L('/realisations'), label: 'إنجازاتنا' },
+          { href: L('/équipement'), label: 'المعدات المركّبة' },
+          { href: L('/pompage-solaire'), label: 'الضخ الشمسي' },
+          { href: L('/prix-panneaux-solaires-maroc'), label: 'أسعار الألواح الشمسية بالمغرب' },
+          { href: L('/financement'), label: 'التمويل والمردودية' },
+          { href: L('/pourquoi-taqinor'), label: 'لماذا تاكينور' },
+        ]} />
         {/* W337 — دعوة «زيارة ورش حقيقي»، نفس آلية pourquoi-taqinor.astro */}
-        <a href={waVisite} rel="noopener" class="border border-brass-400/60 px-5 py-3 text-sm font-bold text-brass-300 transition-colors hover:border-brass-400 hover:bg-white/10">زيارة تركيبة حقيقية <span class="inline-block rtl:-scale-x-100">→</span></a>
+        <a href={waVisite} rel="noopener" class="mt-3 inline-block border border-brass-400/60 px-5 py-3 text-sm font-bold text-brass-300 transition-colors hover:border-brass-400 hover:bg-white/10">زيارة تركيبة حقيقية <span class="inline-block rtl:-scale-x-100">→</span></a>
       </div>
     </section>
 

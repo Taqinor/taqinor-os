@@ -15,6 +15,7 @@ import RegimeSelector from '../components/RegimeSelector.astro';
 import CtaBand from '../components/CtaBand.astro';
 import StickyCta from '../components/StickyCta.astro';
 import ZelligeDivider from '../components/ZelligeDivider.astro';
+import RelatedLinks from '../components/RelatedLinks.astro';
 import { REGIMES } from '../lib/regime';
 ---
 
@@ -104,10 +105,12 @@ import { REGIMES } from '../lib/regime';
           </div>
         ))}
       </div>
-      <div class="mt-8 flex flex-wrap gap-3">
-        <a href="/professionnel" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Régimes pour un site professionnel →</a>
-        <a href="/guides/loi-82-21-expliquee" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Loi 82-21 expliquée simplement →</a>
-      </div>
+      <RelatedLinks mt="mt-8" links={[
+        { href: '/résidentiel', label: 'Régimes pour une villa ou un appartement' },
+        { href: '/professionnel', label: 'Régimes pour un site professionnel' },
+        { href: '/guides/loi-82-21-expliquee', label: 'Loi 82-21 expliquée simplement' },
+        { href: '/financement', label: 'Financement & rentabilité' },
+      ]} />
     </section>
 
     <!-- ACTE FINAL — la régularisation se traite en pleine lumière -->
