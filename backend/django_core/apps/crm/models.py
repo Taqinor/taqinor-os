@@ -446,6 +446,17 @@ class Lead(models.Model):
         help_text='Score 0–100 calculé automatiquement (voir scoring.py).',
     )
 
+    # XMKT21 — horodatage de l'assignation automatique MQL (franchissement du
+    # seuil de score société). NULL tant que le lead n'a jamais franchi le
+    # seuil : marqueur d'idempotence (une seule assignation+notification par
+    # lead), jamais réinitialisé si le score redescend puis remonte.
+    mql_assigned_at = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name='Assigné MQL le',
+        help_text='Horodatage de la première assignation automatique '
+                  'déclenchée par le franchissement du seuil MQL (XMKT21).',
+    )
+
     class Meta:
         verbose_name = 'Lead'
         verbose_name_plural = 'Leads'

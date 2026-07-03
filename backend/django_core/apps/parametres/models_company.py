@@ -260,6 +260,17 @@ class CompanyProfile(models.Model):
         default=0,
         help_text="Rétention du journal d'audit en jours (0 = illimité).")
 
+    # ── XMKT21 — seuil de score MQL (Marketing Qualified Lead) ──
+    # NULL/0 = désactivé (défaut) : aucune assignation automatique tant que la
+    # société ne fixe pas de seuil — comportement actuel strictement inchangé.
+    # Quand le score d'un lead (QJ6/FG27) franchit ce seuil, il est assigné
+    # automatiquement (round-robin) + le responsable est notifié (XMKT21).
+    seuil_mql = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        verbose_name='Seuil de score MQL',
+        help_text='Score (0–100) au-delà duquel un lead est automatiquement '
+                  'assigné et le commercial notifié. Vide/0 = désactivé.')
+
     class Meta:
         verbose_name = 'Profil entreprise'
 

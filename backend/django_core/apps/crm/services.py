@@ -565,9 +565,117 @@ def recompute_lead_score(lead) -> int:
         score = compute_score(lead)
         lead.score = score
         lead.save(update_fields=['score'])
+        maybe_assign_mql(lead)
         return score
     except Exception:
         return 0
+
+
+# ── XMKT21 — Passage MQL automatique sur seuil de score ──────────────────────
+
+def _seuil_mql_for(company) -> int:
+    """Seuil de score MQL configuré pour la société. 0 = désactivé (défaut)."""
+    if company is None:
+        return 0
+    try:
+        from apps.parametres.models import CompanyProfile
+        profile = CompanyProfile.objects.filter(company=company).first()
+        if profile is not None and profile.seuil_mql:
+            return int(profile.seuil_mql)
+    except Exception:
+        pass
+    return 0
+
+
+def _next_round_robin_commercial(company):
+    """Choisit le prochain commercial actif par round-robin.
+
+    Round-robin simple et sans état dédié : parmi les commerciaux actifs de
+    la société (rôle « Commercial »), on prend celui qui a le MOINS de leads
+    MQL déjà assignés (``mql_assigned_at`` renseigné) — départage par id pour
+    rester déterministe. Renvoie None si aucun commercial actif.
+    """
+    from django.contrib.auth import get_user_model
+    from django.db.models import Count, Q
+
+    User = get_user_model()
+    candidats = list(
+        User.objects.filter(
+            company=company, is_active=True, role__nom='Commercial',
+        ).annotate(
+            nb_mql=Count(
+                'leads_assignes',
+                filter=Q(leads_assignes__mql_assigned_at__isnull=False)),
+        ).order_by('nb_mql', 'id')
+    )
+    return candidats[0] if candidats else None
+
+
+def maybe_assign_mql(lead) -> bool:
+    """XMKT21 — Assigne+notifie automatiquement un lead franchissant le seuil MQL.
+
+    Idempotent (``mql_assigned_at`` posé une seule fois) : seuil non configuré
+    (0/NULL) → no-op, lead déjà passé MQL → no-op, score sous le seuil → no-op.
+    Assigne le lead (round-robin parmi les commerciaux actifs de la société,
+    ou via le territoire FG236 si un jour câblé — hors périmètre ici), notifie
+    l'assigné et journalise le contexte marketing dans le chatter.
+    Best-effort : n'échoue jamais l'appelant.
+    """
+    try:
+        if lead is None or lead.mql_assigned_at is not None:
+            return False
+        seuil = _seuil_mql_for(getattr(lead, 'company', None))
+        if not seuil:
+            return False
+        if (lead.score or 0) < seuil:
+            return False
+
+        assignee = None
+        if not lead.owner_id:
+            assignee = _next_round_robin_commercial(lead.company)
+            if assignee is not None:
+                lead.owner = assignee
+
+        lead.mql_assigned_at = timezone.now()
+        update_fields = ['mql_assigned_at']
+        if assignee is not None:
+            update_fields.append('owner')
+        lead.save(update_fields=update_fields)
+
+        contexte = []
+        if getattr(lead, 'utm_source', None):
+            contexte.append(f"source={lead.utm_source}")
+        if getattr(lead, 'utm_campaign', None):
+            contexte.append(f"campagne={lead.utm_campaign}")
+        if getattr(lead, 'canal', None):
+            contexte.append(f"canal={lead.get_canal_display()}")
+        contexte_txt = ', '.join(contexte) if contexte else 'aucun'
+        body = (f"auto — MQL : score {lead.score} ≥ seuil {seuil}"
+                f"{' — assigné à ' + str(assignee) if assignee else ''}. "
+                f"Contexte marketing : {contexte_txt}.")
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE, body=body)
+
+        try:
+            from apps.notifications.services import notify
+            cible = assignee or getattr(lead, 'owner', None)
+            if cible is not None:
+                nom = (getattr(lead, 'nom', '') or '').strip() or 'Nouveau prospect'
+                # Réutilise EventType.LEAD_ASSIGNED (pas de nouveau type dédié
+                # « lead_mql » — le corps du message précise le déclencheur MQL).
+                notify(
+                    cible, 'lead_assigned',
+                    f'Lead MQL : {nom}',
+                    body=f'{nom} a franchi le seuil MQL (score {lead.score}).',
+                    link=f'/crm/leads?lead={lead.pk}',
+                    company=lead.company,
+                )
+        except Exception:
+            pass
+        return True
+    except Exception:
+        return False
 
 
 def resolve_client_for_lead(lead: Lead) -> Client:
