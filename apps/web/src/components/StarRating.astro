@@ -1,0 +1,92 @@
+---
+/**
+ * WJ35 — StarRating : note Google RÉELLE uniquement (src/lib/testimonials.ts
+ * GOOGLE_RATING). Composant « vide-mais-premium » : tant que le fondateur n'a
+ * pas renseigné une vraie note, on affiche un scaffold sobre flagué « pending
+ * real content from Reda » — JAMAIS une note ou un compte d'avis fabriqués.
+ *
+ * FR + AR (dual-node data-i18n, cohérent avec le mécanisme fixé en WJ33 —
+ * pas de textContent qui aplatirait des balises imbriquées).
+ */
+import { GOOGLE_RATING, hasRating } from '../lib/testimonials';
+
+interface Props {
+  /** Contexte compact (mon-toit.astro sidebar) vs. large (proposition). */
+  compact?: boolean;
+}
+const { compact = false } = Astro.props;
+const rating = hasRating() ? GOOGLE_RATING! : null;
+---
+
+<div class={`star-rating ${compact ? 'star-rating--compact' : ''}`} aria-label={rating ? `Note ${rating.value} sur 5` : undefined}>
+  {rating ? (
+    <>
+      <span class="star-rating__stars" aria-hidden="true">
+        {[0, 1, 2, 3, 4].map((i) => (
+          <svg class="star-rating__star" viewBox="0 0 20 20" fill="currentColor" xmlns="http://www.w3.org/2000/svg"
+            style={i < Math.round(rating!.value) ? undefined : 'opacity:.28'}>
+            <path d="M10 1.5l2.47 5.27 5.78.62-4.32 3.9 1.2 5.71L10 14.98l-5.13 2.92 1.2-5.71-4.32-3.9 5.78-.62L10 1.5z" />
+          </svg>
+        ))}
+      </span>
+      {rating.url ? (
+        <a href={rating.url} target="_blank" rel="noopener noreferrer" class="star-rating__figure">
+          <span class="font-bold text-white">{rating.value}</span>/5 · {rating.count}{' '}
+          <span data-i18n data-fr="avis Google" data-ar="مراجعة على Google">avis Google</span>
+        </a>
+      ) : (
+        <p class="star-rating__figure">
+          <span class="font-bold text-white">{rating.value}</span>/5 · {rating.count}{' '}
+          <span data-i18n data-fr="avis Google" data-ar="مراجعة على Google">avis Google</span>
+        </p>
+      )}
+    </>
+  ) : (
+    <!-- pending real content from Reda : note Google réelle + lien avis. Aucune
+         étoile ni chiffre n'est affiché tant que ces données ne sont pas fournies. -->
+    <p class="star-rating__pending" data-i18n
+      data-fr="Avis clients — bientôt disponibles" data-ar="آراء العملاء — قريباً">
+      Avis clients — bientôt disponibles
+    </p>
+  )}
+</div>
+
+<style>
+  .star-rating {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: var(--color-brass-300, #f3cc66);
+  }
+  .star-rating--compact {
+    gap: 0.5rem;
+  }
+  .star-rating__stars {
+    display: flex;
+    flex: none;
+  }
+  .star-rating__star {
+    width: 1.1rem;
+    height: 1.1rem;
+  }
+  .star-rating--compact .star-rating__star {
+    width: 0.9rem;
+    height: 0.9rem;
+  }
+  .star-rating__figure {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-lune-soft, #adb5cd);
+  }
+  a.star-rating__figure {
+    transition: color 0.15s ease;
+  }
+  a.star-rating__figure:hover {
+    color: var(--color-brass-200, #f7dd94);
+  }
+  .star-rating__pending {
+    font-size: 0.8125rem;
+    color: var(--color-lune-faint, #8d96b4);
+    font-style: italic;
+  }
+</style>

@@ -144,6 +144,127 @@ export function tariffForCity(city?: string): TariffGrid {
   return REGIE_TARIFF;
 }
 
+// ═══════════ WJ23 — FIDÉLITÉ TARIFAIRE PAR RÉGIE (ONEE / Lydec / Redal) + honnêteté 82-21 ═══════════
+// Miroir de l'approche du moteur ERP (backend parametres/tariff.py, QJ13 — JAMAIS importé) :
+// des barèmes de tranches ÉDITABLES par régie, une économie « autoconsommation d'abord »
+// qui compense les tranches LES PLUS CHÈRES en premier, et une ligne d'injection de surplus
+// qui reste À ZÉRO tant que le tarif BT de l'ANRE (loi 82-21) n'est pas confirmé par le
+// fondateur. Aucun chiffre inventé : Lydec/Redal sont pour l'instant égalées au barème ONEE
+// (posture sûre — voir TARIFF_BY_CITY), et l'utilisateur peut fournir une vraie grille.
+
+/** Régie identifiée. ONEE = barème national ; Lydec (Casablanca) / Redal (Rabat) =
+ *  délégataires. Défaut ONEE (le plus conservateur). */
+export type Utility = 'ONEE' | 'Lydec' | 'Redal';
+
+/** Barèmes ÉDITABLES par régie. Lydec/Redal SONT pour l'instant égalées au barème ONEE
+ *  (= REGIE_TARIFF) — SOUS-estime légèrement les économies des ex-délégataires (jamais
+ *  l'inverse). Les vraies grilles délégataires attendent une facture récente ; ce record
+ *  est la surface éditable (remplacer une entrée = fournir la grille exacte). */
+export const TARIFF_BY_UTILITY: Record<Utility, TariffGrid> = {
+  ONEE: REGIE_TARIFF,
+  Lydec: REGIE_TARIFF,
+  Redal: REGIE_TARIFF,
+};
+
+/** Grille d'une régie (défaut ONEE si inconnue). */
+export function tariffForUtility(utility?: Utility | string): TariffGrid {
+  if (utility && Object.prototype.hasOwnProperty.call(TARIFF_BY_UTILITY, utility)) {
+    return TARIFF_BY_UTILITY[utility as Utility];
+  }
+  return REGIE_TARIFF;
+}
+
+/**
+ * Fabrique une grille tarifaire ÉDITABLE à partir de tranches saisies par l'utilisateur.
+ * `progressive`/`selective` sont des paires (borne kWh, tarif) ; on garantit la dernière
+ * tranche sélective ouverte (Infinity). Sert à laisser un utilisateur coller sa VRAIE
+ * grille (facture) sans toucher les barèmes par défaut. PUR.
+ */
+export function makeEditableTariff(
+  progressive: TariffTranche[],
+  selective: TariffTranche[],
+  selectiveThresholdKwh = 150,
+  boundaryToleranceKwh = 10,
+): TariffGrid {
+  const sel = selective.slice();
+  if (sel.length && sel[sel.length - 1].upToKwh !== Infinity) {
+    sel[sel.length - 1] = { ...sel[sel.length - 1], upToKwh: Infinity };
+  }
+  return { progressive: progressive.slice(), selective: sel, selectiveThresholdKwh, boundaryToleranceKwh };
+}
+
+/**
+ * Économie « AUTOCONSOMMATION D'ABORD » : l'énergie solaire autoconsommée efface les kWh
+ * du HAUT de la facture (tranches les plus chères) en premier. On le prouve en retirant
+ * l'autoconsommation du sommet de la conso : billMAD(conso) − billMAD(conso − auto) — la
+ * différence capte forcément le tarif marginal (le plus cher) d'abord, car billMAD est
+ * monotone croissante par tranche. Renvoie l'économie mensuelle (MAD) + le tarif marginal
+ * effacé (MAD/kWh) pour l'affichage. L'économie ne dépasse JAMAIS billMAD(conso) (coût
+ * évitable). PUR.
+ */
+export interface SelfConsumptionSaving {
+  /** Économie mensuelle (MAD) = réduction de facture par l'autoconsommation. */
+  monthlyMad: number;
+  /** Tarif marginal (MAD/kWh) réellement effacé (haut de grille). */
+  marginalRate: number;
+  /** kWh autoconsommés effectivement pris en compte (borné à la conso). */
+  offsetKwh: number;
+}
+export function selfConsumptionFirstSavings(
+  monthlyConsumptionKwh: number,
+  monthlySelfConsumedKwh: number,
+  grid: TariffGrid = REGIE_TARIFF,
+): SelfConsumptionSaving {
+  const cons = Math.max(0, monthlyConsumptionKwh);
+  const offset = Math.max(0, Math.min(cons, monthlySelfConsumedKwh));
+  const billBefore = billMAD(cons, grid);
+  const billAfter = billMAD(cons - offset, grid);
+  const monthlyMad = Math.max(0, billBefore - billAfter);
+  const marginalRate = offset > 0 ? monthlyMad / offset : 0;
+  return { monthlyMad, marginalRate, offsetKwh: offset };
+}
+
+/** Statut du tarif d'injection de surplus BT (loi 82-21). OFF par défaut : le tarif de
+ *  l'ANRE n'est pas publié → aucune valeur inventée. Le fondateur bascule `ANRE_TARIFF_CONFIRMED`
+ *  et renseigne le prix quand l'ANRE publie. */
+export const ANRE_TARIFF_CONFIRMED = false;
+/** Prix d'injection BT (MAD/kWh) — 0 tant que non confirmé par l'ANRE. */
+export const ANRE_INJECTION_RATE_MAD_PER_KWH = 0;
+
+/**
+ * Ligne « surplus injecté au réseau » (loi 82-21). Tant que l'ANRE n'a pas publié le tarif
+ * BT (`ANRE_TARIFF_CONFIRMED = false`), elle reste DÉSACTIVÉE et VALORISÉE À ZÉRO, avec un
+ * libellé clair « en attente du tarif ANRE » — aucun chiffre inventé. Quand le fondateur
+ * confirme, elle valorise le surplus au tarif renseigné. PUR.
+ */
+export interface SurplusInjectionLine {
+  enabled: boolean;
+  surplusKwh: number;
+  valueMad: number;
+  label: string;
+}
+export function surplusInjectionLine(
+  annualSurplusKwh: number,
+  confirmed = ANRE_TARIFF_CONFIRMED,
+  rateMadPerKwh = ANRE_INJECTION_RATE_MAD_PER_KWH,
+): SurplusInjectionLine {
+  const surplus = Math.max(0, annualSurplusKwh);
+  if (!confirmed || !(rateMadPerKwh > 0)) {
+    return {
+      enabled: false,
+      surplusKwh: surplus,
+      valueMad: 0,
+      label: 'Injection du surplus (loi 82-21) — en attente du tarif ANRE : non comptée.',
+    };
+  }
+  return {
+    enabled: true,
+    surplusKwh: surplus,
+    valueMad: surplus * rateMadPerKwh,
+    label: `Injection du surplus (loi 82-21) au tarif ANRE ${rateMadPerKwh.toLocaleString('fr-FR')} MAD/kWh.`,
+  };
+}
+
 /** Part autoconsommée réellement alignée dans le temps (borne basse de la fourchette). */
 const SELF_CONSUMPTION_TIMING_LOW = 0.75;
 
@@ -245,6 +366,171 @@ export function clipDcAcKwh(rawAnnualKwh: number, dcAcRatio: number): number {
   const excess = Math.max(0, (Number.isFinite(dcAcRatio) ? dcAcRatio : 0) - DC_AC_RATIO);
   const loss = Math.min(0.3, excess * DC_AC_CLIP_LOSS_PER_RATIO);
   return rawAnnualKwh * (1 - loss);
+}
+
+// ═══════════ WJ22 — COUCHE DE PERTES CLIMATIQUES HONNÊTES (opt-in, défaut OFF) ═══════════
+// PVGIS PVcalc renvoie déjà une production nette de pertes système « génériques » (14 %
+// par défaut). Mais sur la côte marocaine en ÉTÉ, la production réelle est SUR-estimée de
+// ~15–20 % parce que trois pertes dépassent le défaut PVGIS : la dérate THERMIQUE (module
+// chaud → tension basse), la SALISSURE (poussière/sable, faibles pluies estivales) et la
+// part DIFFUSE/brume (voile côtier). Cette couche applique des dérates DOCUMENTÉS en plus,
+// et rend le résultat en FOURCHETTE (borne basse ↔ point), jamais un chiffre unique.
+//
+// TOUT est opt-in : ces fonctions ne sont appelées par AUCUN chemin existant (recommend/
+// productionKwh restent byte-identiques). Constantes + sources : ESTIMATOR_WJ20_24_NOTES.md.
+
+/** Coefficient de température PUISSANCE du module c-Si (%/°C, NÉGATIF). Fiche du panneau
+ *  réel (Canadian Solar TOPBiHiKu7, roofPro2) ≈ −0,29 %/°C ; on prend −0,34 %/°C, la
+ *  valeur conservatrice STANDARD du c-Si (médiane fiches Tier-1) → on ne SOUS-estime
+ *  jamais la perte thermique. */
+export const TEMP_COEFF_PMAX_PER_C = -0.0034;
+/** Écart typique entre la température de CELLULE (au pic d'ensoleillement estival côtier)
+ *  et les 25 °C STC : ~30 °C (cellule ~55 °C sous 800–1000 W/m², vent modéré — cohérent
+ *  avec un NOCT ~45 °C et le modèle NOCT usuel). Borne prudente pour l'été côtier marocain. */
+export const SUMMER_CELL_DELTA_T_C = 30;
+/** Perte de SALISSURE annuelle supplémentaire (fraction) au-delà du défaut PVGIS : la
+ *  poussière/le sable + les faibles pluies estivales salissent les modules. ~3 % est
+ *  l'ordre de grandeur documenté (études soiling MENA : 2–5 %/an sans nettoyage
+ *  fréquent) — prudent, borne basse. */
+export const EXTRA_SOILING_LOSS = 0.03;
+/** Perte DIFFUSE/brume côtière supplémentaire (fraction) : le voile marin réduit
+ *  l'irradiance directe utile. ~1,5 %, borne basse documentée (voiles côtiers légers). */
+export const HAZE_LOSS = 0.015;
+
+/**
+ * Facteur de dérate climatique estival (0–1] appliqué EN PLUS des pertes PVGIS : combine
+ * la dérate thermique (coeff × ΔT plafonné à 0), la salissure et la brume. Multiplicatif
+ * (les pertes se composent). Renvoie ≤ 1 (jamais un gain). Été le plus pénalisant ; on
+ * l'utilise comme borne BASSE honnête de la fourchette. PUR.
+ */
+export function climateDerateFactor(
+  tempCoeffPerC = TEMP_COEFF_PMAX_PER_C,
+  deltaT = SUMMER_CELL_DELTA_T_C,
+  soiling = EXTRA_SOILING_LOSS,
+  haze = HAZE_LOSS,
+): number {
+  const thermal = Math.min(1, Math.max(0, 1 + tempCoeffPerC * Math.max(0, deltaT)));
+  const soil = Math.min(1, Math.max(0, 1 - Math.max(0, soiling)));
+  const hz = Math.min(1, Math.max(0, 1 - Math.max(0, haze)));
+  return thermal * soil * hz;
+}
+
+/**
+ * Fourchette de production annuelle HONNÊTE (kWh) autour d'un chiffre PVGIS/estimé :
+ *  - `high` = le chiffre nu (PVGIS, hiver/moyenne — le meilleur cas déjà net des pertes
+ *    génériques PVGIS) ;
+ *  - `low`  = ce même chiffre × climateDerateFactor (été côtier, pertes réelles en plus) ;
+ *  - `point` = moyenne géométrique des deux (le milieu honnête présenté par défaut).
+ * `low ≤ point ≤ high` par construction. Chiffre ≤ 0 → fourchette nulle. PUR.
+ */
+export interface ProductionBand {
+  low: number;
+  point: number;
+  high: number;
+}
+export function productionConfidenceBand(annualKwh: number, derate = climateDerateFactor()): ProductionBand {
+  if (!Number.isFinite(annualKwh) || annualKwh <= 0) return { low: 0, point: 0, high: 0 };
+  const d = Number.isFinite(derate) ? Math.max(0, Math.min(1, derate)) : 1;
+  const high = annualKwh;
+  const low = annualKwh * d;
+  const point = Math.sqrt(high * low); // moyenne géométrique : entre low et high
+  return { low, point, high };
+}
+
+// ═══════════ WJ24 — MODÈLE DE BATTERIE APPROFONDI (LFP) + CASHFLOW 25 ANS (opt-in) ═══════════
+// Modèle PUR d'un pack LFP réaliste : profondeur de décharge (DoD), rendement aller-retour
+// (round-trip), dégradation de capacité, et TAILLES DE PACK RÉELLES. Le coût est INDICATIF,
+// explicitement « à confirmer » (pas un devis). Aucun chemin existant ne l'appelle
+// (opt-in) → recommend()/annualSavingsMad byte-identiques. Constantes + sources :
+// ESTIMATOR_WJ20_24_NOTES.md.
+
+/** Profondeur de décharge utile d'un pack LFP : 90 % (les LFP tolèrent une DoD élevée ;
+ *  on garde 10 % de réserve pour la longévité). Fiche LFP résidentiel standard. */
+export const LFP_DOD = 0.9;
+/** Rendement ALLER-RETOUR (charge→décharge, onduleur inclus) d'un système LFP : 90 %
+ *  (cellules ~95–98 %, l'onduleur/BMS enlève le reste). Prudent. */
+export const LFP_ROUND_TRIP_EFFICIENCY = 0.9;
+/** Dégradation de capacité annuelle d'un LFP : ~2 %/an (garanties usuelles ~70 % à 10 ans
+ *  → ~3 %/an ; 2 %/an médiane observée LFP moderne). Conservateur pour le cashflow. */
+export const LFP_ANNUAL_CAPACITY_FADE = 0.02;
+/** Tailles de pack LFP RÉELLES du marché (kWh nominal). L'appelant choisit la plus proche
+ *  du besoin de stockage. */
+export const LFP_PACK_SIZES_KWH = [5, 10, 15, 20] as const;
+/** Coût INDICATIF (MAD/kWh nominal) d'un pack LFP posé — « à confirmer » (fourchette
+ *  marché 2026, jamais un devis). Sert au cashflow indicatif, flaggé. */
+export const LFP_INDICATIVE_COST_MAD_PER_KWH = 4500;
+
+/** Choisit la plus petite taille de pack ≥ besoin (ou la plus grande si le besoin dépasse
+ *  le catalogue). Besoin ≤ 0 → 0 (pas de batterie). PUR. */
+export function chooseLfpPackKwh(neededUsableKwh: number, sizes: readonly number[] = LFP_PACK_SIZES_KWH): number {
+  if (!(neededUsableKwh > 0)) return 0;
+  // Le besoin est en énergie UTILE ; on remonte au nominal via la DoD pour dimensionner.
+  const neededNominal = neededUsableKwh / LFP_DOD;
+  for (const s of sizes) if (s >= neededNominal) return s;
+  return sizes.length ? sizes[sizes.length - 1] : 0;
+}
+
+/** Énergie UTILE (kWh) réellement restituée par un pack à l'année `year` (1-based) :
+ *  nominal × DoD × rendement aller-retour × (1 − fade)^(year−1). PUR. */
+export function batteryUsableKwh(
+  nominalKwh: number,
+  year = 1,
+  dod = LFP_DOD,
+  roundTrip = LFP_ROUND_TRIP_EFFICIENCY,
+  fade = LFP_ANNUAL_CAPACITY_FADE,
+): number {
+  if (!(nominalKwh > 0)) return 0;
+  const y = Math.max(1, Math.floor(year));
+  const retained = Math.pow(Math.max(0, 1 - fade), y - 1);
+  return Math.max(0, nominalKwh * Math.max(0, Math.min(1, dod)) * Math.max(0, Math.min(1, roundTrip)) * retained);
+}
+
+/** Une année du cashflow indicatif batterie. */
+export interface BatteryCashflowYear {
+  year: number;
+  usableKwh: number;
+  /** Économie annuelle indicative (MAD) de l'énergie décalée soir/nuit (autoconsommée). */
+  savingsMad: number;
+  /** Cumul net (MAD) : Σ économies − coût initial (négatif tant que non amorti). */
+  cumulativeNetMad: number;
+}
+export interface BatteryCashflow {
+  nominalKwh: number;
+  /** Coût initial INDICATIF (MAD) — « à confirmer », jamais un devis. */
+  indicativeCostMad: number;
+  years: BatteryCashflowYear[];
+  /** Année d'amortissement (cumul net ≥ 0), ou null si non amorti sur l'horizon. */
+  paybackYear: number | null;
+}
+
+/**
+ * Cashflow INDICATIF sur `horizonYears` (défaut 25) d'un pack batterie : chaque année,
+ * l'énergie utile (dégradée) est valorisée au tarif marginal évité (`marginalRateMadPerKwh`,
+ * MAD/kWh — issu de selfConsumptionFirstSavings côté appelant), cyclée `cyclesPerYear`
+ * (défaut 300 cycles utiles/an ≈ usage quotidien réaliste). Le coût est indicatif (flaggé
+ * « à confirmer »). PUR — aucun chiffre inventé au-delà des constantes documentées. */
+export function batteryCashflow(
+  nominalKwh: number,
+  marginalRateMadPerKwh: number,
+  horizonYears = LIFETIME_YEARS,
+  cyclesPerYear = 300,
+  costPerKwh = LFP_INDICATIVE_COST_MAD_PER_KWH,
+): BatteryCashflow {
+  const nominal = Math.max(0, nominalKwh);
+  const rate = Math.max(0, marginalRateMadPerKwh);
+  const cycles = Math.max(0, cyclesPerYear);
+  const indicativeCostMad = nominal * Math.max(0, costPerKwh);
+  const years: BatteryCashflowYear[] = [];
+  let cumulative = -indicativeCostMad;
+  let paybackYear: number | null = null;
+  for (let y = 1; y <= Math.max(1, Math.floor(horizonYears)); y++) {
+    const usable = batteryUsableKwh(nominal, y);
+    const savings = usable * cycles * rate;
+    cumulative += savings;
+    if (paybackYear == null && cumulative >= 0) paybackYear = y;
+    years.push({ year: y, usableKwh: usable, savingsMad: savings, cumulativeNetMad: cumulative });
+  }
+  return { nominalKwh: nominal, indicativeCostMad, years, paybackYear };
 }
 
 // — Dimensionnement de la recommandation —

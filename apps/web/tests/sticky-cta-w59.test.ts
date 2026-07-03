@@ -1,7 +1,8 @@
 // Garde-fou W59 — raffinement du CTA collant (StickyCta.astro), lecture SOURCE
 // en texte (convention de content.test.ts / homepage-craft-w51-w58.test.ts),
 // sans navigateur ni build. On affirme :
-//   FROZEN  — le lien WhatsApp, le lien Diagnostic #simulateur et la logique
+//   FROZEN  — le lien WhatsApp, le lien du CTA principal vers le parcours devis
+//             (WJ36 : quoteJourneyHref → /devis/mon-toit) et la logique
 //             d'affichage pastHero/formVisible restent intacts ;
 //   W59     — la pilule desktop est plus compacte + marge de sécurité au bord,
 //             et un repli au défilement (translate-y) est posé par-dessus.
@@ -21,14 +22,15 @@ describe('StickyCta — invariants gelés (les liens et la logique d’affichage
     expect(cta).toContain('href={wa}');
   });
 
-  it('garde le lien Diagnostic gratuit vers #simulateur', () => {
-    // W67 — libellé et lien localisés (FR inchangé : t('cta.stickyDiag') =
-    // « Diagnostic gratuit », lien vers /contact#simulateur en FR).
-    expect(cta).toContain("t('cta.stickyDiag')");
+  it('WJ36 — le CTA principal pointe le parcours devis (quoteJourneyHref)', () => {
+    // Libellé principal verbatim (t('cta.primary') = « Obtenir mon étude
+    // gratuite » en FR) et lien vers /devis/mon-toit via le point de bascule
+    // unique quoteJourneyHref (WJ38 localisera EN/AR dans i18n/pages.ts).
+    expect(cta).toContain("t('cta.primary')");
     expect(cta).toContain('id="sticky-diag"');
-    expect(cta).toContain("localizeNavHref('/contact', locale) + '#simulateur'");
-    // Le script bascule vers l’ancre locale quand le formulaire est sur la page.
-    expect(cta).toContain("href = '#simulateur'");
+    expect(cta).toContain('quoteJourneyHref(locale)');
+    // Plus AUCUNE bascule du href vers l'ancre #simulateur.
+    expect(cta).not.toContain("href = '#simulateur'");
   });
 
   it('garde la logique d’affichage pastHero / formVisible', () => {

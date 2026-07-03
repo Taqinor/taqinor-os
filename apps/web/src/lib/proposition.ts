@@ -21,6 +21,17 @@ export interface ProposalItem {
   prix_unit_ttc: number;
   remise: number;
   marque: string;
+  /**
+   * WJ32 — texte de description du produit (fiche commerciale). Backend
+   * `_line_to_item` l'expose déjà (`description`) ; optionnel — un produit
+   * historique sans fiche renvoie une chaîne vide, jamais inventée.
+   */
+  description?: string;
+  /**
+   * WJ32 — texte de garantie constructeur/performance du produit. Backend
+   * `_line_to_item` l'expose déjà (`garantie`) ; vide quand non renseigné.
+   */
+  garantie?: string;
   taux_tva: number;
 }
 
@@ -117,6 +128,59 @@ export interface ProposalResponse {
    * Le champ peut aussi voyager dans `quote.date_validite`.
    */
   date_validite?: string | null;
+  /**
+   * WJ25 — layout de toiture OPTIONNEL (backend PLAN2 QJ26, pas encore exposé
+   * aujourd'hui : le champ est absent → la page garde le héros statique). Quand
+   * il arrive, sa forme est celle de `serializeLayout` du builder
+   * (roofPro11/prefill.ts) : { version, pin, outline, billKwh, zones[],
+   * activeAreaId }. On le lit défensivement via `parseRoofLayout` — jamais
+   * directement.
+   */
+  roof_layout?: unknown;
+  /**
+   * WJ32 — bloc de financement backend (QJ12, `compute_financing_block`),
+   * DIFFÉRENT du calcul générique `financingComparison` ci-dessus : porte un
+   * programme réel (Tatwir Croissance Verte / ISTIDAMA…) et une comparaison
+   * ONEE déjà rédigée côté serveur. Absent quand `display_total` est
+   * indisponible — le bloc financement se masque alors (jamais un calcul de
+   * repli qui divergerait du backend).
+   */
+  financing?: ProposalFinancingBlock | null;
+  /**
+   * WJ32 — résumés « autres tailles » des variantes actives du même devis
+   * (QJ15, `_variant_summaries`). Tableau vide quand le devis est isolé
+   * (aucun frère/sœur actif) — la strip « autres tailles » se masque alors.
+   */
+  variants?: ProposalVariantSummary[];
+}
+
+/** WJ32 — bloc `financing` backend (QJ12), structure de `compute_financing_block`. */
+export interface ProposalFinancingBlock {
+  indicatif: true;
+  cash: { montant_ttc: number; label: string };
+  credit: {
+    mensualite: number;
+    duree_mois: number;
+    taux_annuel_pct: number;
+    programme_nom: string;
+    programme_label: string | null;
+  };
+  onee_comparison: {
+    show: boolean;
+    message: string;
+    eco_mensuelle_sans: number;
+    eco_mensuelle_avec: number;
+  };
+  guidance_text: string | null;
+}
+
+/** WJ32 — un résumé de variante (QJ15 `_variant_summaries`), pour la strip « autres tailles ». */
+export interface ProposalVariantSummary {
+  id: number;
+  reference: string;
+  version: number;
+  note: string;
+  total_ttc: number;
 }
 
 export type OptionKey = 'sans_batterie' | 'avec_batterie';
@@ -301,6 +365,78 @@ export function proposalEndpoint(apiBase: string, token: string): string {
 export function proposalPdfEndpoint(apiBase: string, token: string): string {
   const base = (apiBase || 'https://api.taqinor.ma').replace(/\/+$/, '');
   return `${base}/api/django/ventes/proposal/${encodeURIComponent(token)}/pdf/`;
+}
+
+// ── WJ29 · « Être contacté » / « Demander un rappel » — notification équipe ──
+//
+// Aujourd'hui, rappel/WhatsApp sont des liens wa.me / tel: purs côté client :
+// rien ne notifie le commercial en interne. Le backend n'expose PAS encore de
+// route de contact (PLAN2 QJ27, pas construite) — cette fonction construit
+// l'URL du chemin ATTENDU, symétrique de acceptEndpoint ; le proxy
+// /api/proposition-contact dégrade proprement (message FR clair) sur 404/5xx/
+// panne réseau, en gardant le lien wa.me instantané disponible en parallèle.
+
+/** Construit l'URL backend de la demande de contact (même convention que /accept/). */
+export function contactEndpoint(apiBase: string, token: string): string {
+  const base = (apiBase || 'https://api.taqinor.ma').replace(/\/+$/, '');
+  return `${base}/api/django/ventes/proposal/${encodeURIComponent(token)}/contact/`;
+}
+
+/** Canal choisi par le client pour la demande de contact. */
+export type ContactChannel = 'rappel' | 'whatsapp' | 'question';
+
+export interface ContactRequestState {
+  channel: ContactChannel;
+  /** Message libre optionnel (ex. depuis « Poser une question »). */
+  message?: string;
+}
+
+export interface ContactRequestBody {
+  channel: ContactChannel;
+  message: string;
+}
+
+/**
+ * WJ29 — Met en forme le corps envoyé au proxy /api/proposition-contact. Le
+ * canal est normalisé (repli 'rappel' si invalide) ; le message est tronqué à
+ * une longueur raisonnable pour ne jamais inonder l'upstream.
+ */
+export function buildContactBody(state: ContactRequestState): ContactRequestBody {
+  const channel: ContactChannel =
+    state.channel === 'whatsapp' || state.channel === 'question' ? state.channel : 'rappel';
+  const message = (state.message ?? '').trim().slice(0, 2000);
+  return { channel, message };
+}
+
+export interface ContactResult {
+  /** Vrai quand la notification a probablement atteint l'équipe (best-effort). */
+  ok: boolean;
+  /** Message FR à confirmer au client, TOUJOURS rassurant même en dégradé. */
+  detail: string;
+  /**
+   * Vrai quand le backend n'a pas (encore) de route de contact ou est
+   * injoignable : le client garde alors le lien wa.me instantané en avant,
+   * jamais un message d'échec brut.
+   */
+  degraded: boolean;
+}
+
+/**
+ * WJ29 — Normalise le résultat du proxy de contact EN DÉGRADANT TOUJOURS
+ * PROPREMENT : le backend ne porte pas encore cette route (404) ou peut être
+ * injoignable (5xx / erreur réseau) — dans les deux cas, le client voit un
+ * message honnête qui le renvoie vers WhatsApp, jamais une erreur technique.
+ * Un succès (2xx) confirme l'envoi au client.
+ */
+export function normalizeContactResponse(status: number, networkError: boolean = false): ContactResult {
+  if (!networkError && status >= 200 && status < 300) {
+    return { ok: true, detail: 'Merci — nous vous rappelons très vite.', degraded: false };
+  }
+  return {
+    ok: false,
+    degraded: true,
+    detail: 'Service momentanément indisponible — contactez-nous sur WhatsApp, nous répondons vite.',
+  };
 }
 
 /**
@@ -700,4 +836,679 @@ export function buildAcceptBodyRich(
     body.signed_at_client = meta.signed_at_client;
   }
   return body;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// WJ25 — VISIONNEUSE 3D EN LECTURE SEULE du toit du client sur la proposition.
+//
+// Toute la logique PURE vit ici (parse défensif du `roof_layout` backend,
+// conversion lng/lat → ENU mètres, calepinage ILLUSTRATIF des panneaux) — la
+// visionneuse Three.js (roofPro11/viewerOnly.ts) ne fait QUE dessiner ce
+// modèle. Aucun chiffre affiché au client ne dérive de ce module : c'est de la
+// géométrie de rendu (le nombre de panneaux vient du layout serveur, les kWc /
+// production / économies viennent du payload quote).
+// ════════════════════════════════════════════════════════════════════════════
+
+/** Un obstacle du layout (zone d'exclusion, rectangle axe-aligné N/E). */
+export interface RoofLayoutObstacle {
+  centerLng: number;
+  centerLat: number;
+  lengthM: number;
+  widthM: number;
+}
+
+/** Une zone (pan de toit) du layout backend, déjà validée. */
+export interface RoofLayoutZone {
+  id: string;
+  label: string;
+  /** Contour [[lng,lat],…] (≥ 3 sommets valides — garanti par le parse). */
+  vertices: Array<[number, number]>;
+  obstacles: RoofLayoutObstacle[];
+  roofType: 'flat' | 'pitched';
+  /** Pente (°) — 0 pour un toit plat ; bornée [0, 60]. */
+  pitchDeg: number;
+  /** Azimut de FACE des panneaux (0–360, 180 = plein sud). */
+  facingAzimuthDeg: number;
+  /** Nombre de panneaux dimensionné par l'étude (0 = « tout ce qui tient »). */
+  neededPanels: number;
+}
+
+/** Layout de toiture validé (miroir défensif de `serializeLayout` du builder). */
+export interface RoofLayout {
+  version: number;
+  zones: RoofLayoutZone[];
+}
+
+function isFiniteNum(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v);
+}
+
+/**
+ * WJ25 — Parse DÉFENSIF du champ backend `roof_layout` (PLAN2 QJ26, optionnel).
+ * Renvoie `null` pour tout ce qui n'est pas un layout exploitable (absent,
+ * malformé, aucune zone d'au moins 3 sommets valides) — la page garde alors le
+ * héros statique, comportement d'aujourd'hui. Ne jette jamais.
+ */
+export function parseRoofLayout(raw: unknown): RoofLayout | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const obj = raw as Record<string, unknown>;
+  const zonesRaw = obj.zones;
+  if (!Array.isArray(zonesRaw)) return null;
+  const zones: RoofLayoutZone[] = [];
+  for (const z of zonesRaw) {
+    if (!z || typeof z !== 'object') continue;
+    const zo = z as Record<string, unknown>;
+    const vertsRaw = Array.isArray(zo.vertices) ? zo.vertices : [];
+    const vertices: Array<[number, number]> = [];
+    for (const v of vertsRaw) {
+      if (!Array.isArray(v) || v.length < 2) continue;
+      const lng = v[0];
+      const lat = v[1];
+      if (!isFiniteNum(lng) || !isFiniteNum(lat)) continue;
+      if (lng < -180 || lng > 180 || lat < -90 || lat > 90) continue;
+      vertices.push([lng, lat]);
+    }
+    if (vertices.length < 3) continue;
+    const obstacles: RoofLayoutObstacle[] = [];
+    const obsRaw = Array.isArray(zo.obstacles) ? zo.obstacles : [];
+    for (const o of obsRaw) {
+      if (!o || typeof o !== 'object') continue;
+      const oo = o as Record<string, unknown>;
+      if (
+        isFiniteNum(oo.centerLng) && isFiniteNum(oo.centerLat) &&
+        isFiniteNum(oo.lengthM) && oo.lengthM > 0 &&
+        isFiniteNum(oo.widthM) && oo.widthM > 0
+      ) {
+        obstacles.push({
+          centerLng: oo.centerLng,
+          centerLat: oo.centerLat,
+          lengthM: oo.lengthM,
+          widthM: oo.widthM,
+        });
+      }
+    }
+    const roofType: 'flat' | 'pitched' = zo.roofType === 'pitched' ? 'pitched' : 'flat';
+    const pitchRaw = isFiniteNum(zo.pitchDeg) ? zo.pitchDeg : 0;
+    const pitchDeg = roofType === 'pitched' ? Math.min(60, Math.max(0, pitchRaw)) : 0;
+    const azRaw = isFiniteNum(zo.facingAzimuthDeg) ? zo.facingAzimuthDeg : 180;
+    const facingAzimuthDeg = ((azRaw % 360) + 360) % 360;
+    const needed = isFiniteNum(zo.neededPanels) && zo.neededPanels > 0
+      ? Math.floor(zo.neededPanels)
+      : 0;
+    zones.push({
+      id: typeof zo.id === 'string' ? zo.id : `zone-${zones.length + 1}`,
+      label: typeof zo.label === 'string' && zo.label.trim() ? zo.label.trim() : `Pan ${zones.length + 1}`,
+      vertices,
+      obstacles,
+      roofType,
+      pitchDeg,
+      facingAzimuthDeg,
+      neededPanels: needed,
+    });
+  }
+  if (zones.length === 0) return null;
+  return { version: isFiniteNum(obj.version) ? obj.version : 1, zones };
+}
+
+// ── Constantes de géométrie (dupliquées de roofPro2/roofPro11 — la visionneuse
+//    reste autonome ; PURE représentation, aucun chiffre client n'en dérive) ──
+/** Grand côté du panneau (m) — même valeur que lib/roofPro2 PANEL2_LONG_M. */
+export const VIEWER_PANEL_LONG_M = 2.384;
+/** Petit côté du panneau (m) — même valeur que lib/roofPro2 PANEL2_SHORT_M. */
+export const VIEWER_PANEL_SHORT_M = 1.303;
+/** Retrait de rive (m) — même valeur que lib/roofPro2 PERIMETER_SETBACK_M. */
+export const VIEWER_SETBACK_M = 0.5;
+/** Inclinaison VISUELLE des châssis sur toit plat (°) — représentation 3D
+ *  uniquement (aucune valeur affichée n'en dérive). */
+export const VIEWER_FLAT_TILT_DEG = 15;
+/** Plafond dur d'instances panneau (garde-fou perf bas de gamme). */
+export const VIEWER_MAX_PANELS = 600;
+
+const VIEWER_DEG2RAD = Math.PI / 180;
+const VIEWER_DEG2M = 111_320; // mètres par degré de latitude (WGS84 approx.)
+
+/** Point-dans-polygone (ray casting) en coordonnées planes. */
+export function viewerPointInRing(pt: [number, number], ring: Array<[number, number]>): boolean {
+  let inside = false;
+  const [px, py] = pt;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    const intersects = yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi;
+    if (intersects) inside = !inside;
+  }
+  return inside;
+}
+
+/** Un panneau posé (centre ENU mètres, dans la frame du modèle). */
+export interface ViewerPanel {
+  x: number;
+  y: number;
+}
+
+/** Une zone prête à dessiner (tout en mètres ENU, origine = centroïde global). */
+export interface ViewerZone {
+  ringENU: Array<[number, number]>;
+  obstaclesENU: Array<{ x: number; y: number; widthM: number; lengthM: number }>;
+  roofType: 'flat' | 'pitched';
+  /** Inclinaison des PANNEAUX (° — pente du pan si pitched, châssis visuel sinon). */
+  tiltDeg: number;
+  azimuthDeg: number;
+  panels: ViewerPanel[];
+  /** Empreinte du panneau : le long de la rangée / dans la pente (m). */
+  panelAlongM: number;
+  panelDepthM: number;
+}
+
+/** Modèle complet consommé par roofPro11/viewerOnly.ts. JSON pur. */
+export interface ViewerModel {
+  zones: ViewerZone[];
+  /** Rayon englobant (m) — cadre la caméra sans calcul côté client. */
+  radiusM: number;
+  totalPanels: number;
+}
+
+/**
+ * WJ25 — Calepinage ILLUSTRATIF d'une zone : grille orientée par l'azimut de
+ * face, cellules entièrement DANS le contour (retrait de rive) et HORS des
+ * obstacles, plafonnée à `neededPanels` (quand > 0). Même esprit que le builder
+ * (les N premières cellules), sans en dupliquer l'optimiseur. Pur.
+ */
+export function packZonePanels(
+  ringENU: Array<[number, number]>,
+  azimuthDeg: number,
+  tiltDeg: number,
+  roofType: 'flat' | 'pitched',
+  neededPanels: number,
+  obstaclesENU: Array<{ x: number; y: number; widthM: number; lengthM: number }> = [],
+): { panels: ViewerPanel[]; alongM: number; depthM: number } {
+  // Portrait sur pan incliné (pose affleurante courante), paysage sur toit plat.
+  const alongM = roofType === 'pitched' ? VIEWER_PANEL_SHORT_M : VIEWER_PANEL_LONG_M;
+  const slopeM = roofType === 'pitched' ? VIEWER_PANEL_LONG_M : VIEWER_PANEL_SHORT_M;
+  const tilt = tiltDeg * VIEWER_DEG2RAD;
+  const depthM = slopeM * Math.cos(tilt); // empreinte au sol dans le sens de la pente
+  // Pas de rangée : affleurant → quasi bord à bord ; châssis plat → espace anti-ombrage.
+  const rowPitch = roofType === 'pitched' ? depthM + 0.05 : depthM + 1.2;
+  const colPitch = alongM + 0.05;
+
+  const az = azimuthDeg * VIEWER_DEG2RAD;
+  const f: [number, number] = [Math.sin(az), Math.cos(az)]; // direction de face (aval)
+  const u: [number, number] = [-f[1], f[0]]; // direction de rangée
+
+  let aMin = Infinity, aMax = -Infinity, bMin = Infinity, bMax = -Infinity;
+  for (const [x, y] of ringENU) {
+    const a = x * u[0] + y * u[1];
+    const b = x * f[0] + y * f[1];
+    if (a < aMin) aMin = a;
+    if (a > aMax) aMax = a;
+    if (b < bMin) bMin = b;
+    if (b > bMax) bMax = b;
+  }
+  if (!Number.isFinite(aMin) || aMax - aMin < alongM || bMax - bMin < depthM) {
+    return { panels: [], alongM, depthM };
+  }
+
+  const inObstacle = (x: number, y: number): boolean => {
+    for (const o of obstaclesENU) {
+      if (Math.abs(x - o.x) <= o.widthM / 2 + 0.1 && Math.abs(y - o.y) <= o.lengthM / 2 + 0.1) return true;
+    }
+    return false;
+  };
+
+  const cap = neededPanels > 0 ? Math.min(neededPanels, VIEWER_MAX_PANELS) : VIEWER_MAX_PANELS;
+  const panels: ViewerPanel[] = [];
+  const halfA = alongM / 2;
+  const halfD = depthM / 2;
+  // Parcours des rangées de l'AVAL vers l'AMONT (le sud d'abord pour une face sud),
+  // même esprit que « les N premières cellules » du builder.
+  for (let b = bMax - VIEWER_SETBACK_M - halfD; b >= bMin + VIEWER_SETBACK_M + halfD; b -= rowPitch) {
+    for (let a = aMin + VIEWER_SETBACK_M + halfA; a <= aMax - VIEWER_SETBACK_M - halfA; a += colPitch) {
+      const cx = a * u[0] + b * f[0];
+      const cy = a * u[1] + b * f[1];
+      // Centre + 4 coins dans le polygone, et centre/coins hors obstacles.
+      const corners: Array<[number, number]> = [
+        [cx + halfA * u[0] + halfD * f[0], cy + halfA * u[1] + halfD * f[1]],
+        [cx - halfA * u[0] + halfD * f[0], cy - halfA * u[1] + halfD * f[1]],
+        [cx + halfA * u[0] - halfD * f[0], cy + halfA * u[1] - halfD * f[1]],
+        [cx - halfA * u[0] - halfD * f[0], cy - halfA * u[1] - halfD * f[1]],
+      ];
+      if (!viewerPointInRing([cx, cy], ringENU)) continue;
+      if (!corners.every((c) => viewerPointInRing(c, ringENU))) continue;
+      if (inObstacle(cx, cy) || corners.some(([x, y]) => inObstacle(x, y))) continue;
+      panels.push({ x: cx, y: cy });
+      if (panels.length >= cap) return { panels, alongM, depthM };
+    }
+  }
+  return { panels, alongM, depthM };
+}
+
+/**
+ * WJ25 — Construit le modèle 3D complet à partir d'un layout validé : centroïde
+ * global comme origine ENU, une ViewerZone par zone (contour + obstacles +
+ * calepinage), rayon englobant pour cadrer la caméra. Renvoie `null` quand rien
+ * n'est dessinable. Pur, JSON-sûr (calculé côté serveur, sérialisé au client).
+ */
+export function buildViewerModel(layout: RoofLayout | null): ViewerModel | null {
+  if (!layout || layout.zones.length === 0) return null;
+  // Centroïde global (tous sommets confondus) = origine de la scène.
+  let lng0 = 0, lat0 = 0, n = 0;
+  for (const z of layout.zones) {
+    for (const [lng, lat] of z.vertices) {
+      lng0 += lng;
+      lat0 += lat;
+      n++;
+    }
+  }
+  if (n === 0) return null;
+  lng0 /= n;
+  lat0 /= n;
+  const cosLat = Math.cos(lat0 * VIEWER_DEG2RAD);
+  const toENU = ([lng, lat]: [number, number]): [number, number] => [
+    (lng - lng0) * VIEWER_DEG2M * cosLat,
+    (lat - lat0) * VIEWER_DEG2M,
+  ];
+
+  const zones: ViewerZone[] = [];
+  let radiusM = 0;
+  let totalPanels = 0;
+  let budget = VIEWER_MAX_PANELS;
+  for (const z of layout.zones) {
+    const ringENU = z.vertices.map(toENU);
+    for (const [x, y] of ringENU) radiusM = Math.max(radiusM, Math.hypot(x, y));
+    const obstaclesENU = z.obstacles.map((o) => {
+      const [x, y] = toENU([o.centerLng, o.centerLat]);
+      return { x, y, widthM: o.widthM, lengthM: o.lengthM };
+    });
+    const tiltDeg = z.roofType === 'pitched' ? z.pitchDeg : VIEWER_FLAT_TILT_DEG;
+    const packed = packZonePanels(ringENU, z.facingAzimuthDeg, tiltDeg, z.roofType, z.neededPanels, obstaclesENU);
+    const panels = packed.panels.slice(0, Math.max(0, budget));
+    budget -= panels.length;
+    totalPanels += panels.length;
+    zones.push({
+      ringENU,
+      obstaclesENU,
+      roofType: z.roofType,
+      tiltDeg,
+      azimuthDeg: z.facingAzimuthDeg,
+      panels,
+      panelAlongM: packed.alongM,
+      panelDepthM: packed.depthM,
+    });
+  }
+  if (zones.length === 0) return null;
+  return { zones, radiusM: Math.max(radiusM, 6), totalPanels };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// WJ2 — « Voir les panneaux sur votre toit » à la CAPTURE (mon-toit.astro).
+// Construit un RoofLayout ILLUSTRATIF à un seul pan à partir du contour posé
+// par le visiteur (captureBoot.ts onCaptureChange) + le kWc de l'estimation
+// instantanée WJ1 (billEstimate). AUCUNE donnée backend ici (page publique,
+// avant tout devis) : le nombre de panneaux dérive du MÊME calcul
+// PANEL2_WATT que le reste du site (estimatorBrain), jamais un chiffre
+// inventé. Toit supposé plat orienté plein sud (176°) — représentation
+// illustrative « votre toit, vos panneaux », pas une étude technique.
+// ════════════════════════════════════════════════════════════════════════════
+
+/** Watt-crête d'un panneau — même constante que le reste du site (roofPro2). */
+export const CAPTURE_PANEL_WATT = 720;
+
+/**
+ * WJ2 — Construit un RoofLayout à un seul pan (plat, plein sud illustratif)
+ * depuis un contour de toit `[[lat,lng],…]` (≥ 3 sommets, tel que renvoyé par
+ * `onCaptureChange`) et un kWc cible (estimation WJ1). Renvoie `null` si le
+ * contour n'a pas assez de sommets ou si le kWc n'est pas un nombre positif —
+ * la page dégrade alors proprement (pas de bouton « voir les panneaux »).
+ */
+export function capturePreviewLayout(
+  outlineLatLng: Array<[number, number]>,
+  kwc: number | null,
+): RoofLayout | null {
+  if (!Array.isArray(outlineLatLng) || outlineLatLng.length < 3) return null;
+  if (!Number.isFinite(kwc) || (kwc as number) <= 0) return null;
+  const vertices: Array<[number, number]> = [];
+  for (const pt of outlineLatLng) {
+    if (!Array.isArray(pt) || pt.length < 2) continue;
+    const [lat, lng] = pt;
+    if (!isFiniteNum(lat) || !isFiniteNum(lng)) continue;
+    vertices.push([lng, lat]); // RoofLayoutZone attend [lng,lat]
+  }
+  if (vertices.length < 3) return null;
+  const neededPanels = Math.max(1, Math.ceil(((kwc as number) * 1000) / CAPTURE_PANEL_WATT));
+  return {
+    version: 1,
+    zones: [
+      {
+        id: 'capture-preview',
+        label: 'Votre toit',
+        vertices,
+        obstacles: [],
+        roofType: 'flat',
+        pitchDeg: 0,
+        facingAzimuthDeg: 176, // plein sud illustratif — aucune boussole réelle à cette étape
+        neededPanels,
+      },
+    ],
+  };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// WJ26 — « Tout est expliqué » : légende + annotations + visite guidée autour
+// de la 3D. Discipline inchangée : CHAQUE chiffre vient du layout serveur ou du
+// payload quote ; quand une valeur manque, on renvoie null et la page affiche
+// « estimation indisponible » — jamais une valeur fabriquée.
+// ════════════════════════════════════════════════════════════════════════════
+
+/** Libellé FR d'orientation (8 directions) depuis un azimut de face 0–360. */
+export function orientationLabelFr(azimuthDeg: number): string {
+  const az = ((azimuthDeg % 360) + 360) % 360;
+  const labels = ['Nord', 'Nord-Est', 'Est', 'Sud-Est', 'Sud', 'Sud-Ouest', 'Ouest', 'Nord-Ouest'];
+  return labels[Math.round(az / 45) % 8];
+}
+
+/** Annotation client-lisible d'une zone (pan) du layout. */
+export interface ZoneAnnotation {
+  label: string;
+  /** Nombre de panneaux dimensionné pour ce pan (null si non dimensionné). */
+  panels: number | null;
+  /** Orientation lisible (« Sud », « Sud-Est »…). */
+  orientation: string;
+  /** Pente (°) du pan — null pour un toit plat (châssis standard). */
+  tiltDeg: number | null;
+  roofTypeLabel: string;
+  /** kWc du pan = panneaux × Wc/panneau (payload) ; null si l'un manque. */
+  kwc: number | null;
+}
+
+/**
+ * WJ26 — Annotations par pan, à afficher en légende autour de la 3D. Le nombre
+ * de panneaux vient du layout SERVEUR (`neededPanels`), la puissance par
+ * panneau du payload quote (`watt_par_panneau`) — le kWc n'est calculé que si
+ * les deux sont présents (produit de deux valeurs serveur, pas une invention).
+ */
+export function zoneAnnotations(
+  layout: RoofLayout,
+  wattParPanneau?: number | null,
+): ZoneAnnotation[] {
+  const watt = isFiniteNum(wattParPanneau) && wattParPanneau > 0 ? wattParPanneau : null;
+  return layout.zones.map((z) => {
+    const panels = z.neededPanels > 0 ? z.neededPanels : null;
+    return {
+      label: z.label,
+      panels,
+      orientation: orientationLabelFr(z.facingAzimuthDeg),
+      tiltDeg: z.roofType === 'pitched' && z.pitchDeg > 0 ? Math.round(z.pitchDeg) : null,
+      roofTypeLabel: z.roofType === 'pitched' ? 'Toit en pente' : 'Toit plat',
+      kwc: panels !== null && watt !== null ? Math.round(((panels * watt) / 1000) * 100) / 100 : null,
+    };
+  });
+}
+
+/** Texte de repli honnête quand un chiffre ne peut pas être calculé. */
+export const FIGURE_UNAVAILABLE = 'estimation indisponible';
+
+/** Une étape de la visite guidée (FR + gloss arabe court). */
+export interface WalkStep {
+  id: string;
+  title: string;
+  titleAr: string;
+  /** Phrase FR en langage simple — chiffres serveur ou repli libellé. */
+  body: string;
+}
+
+/**
+ * WJ26 — Visite guidée en 4 étapes : « voici votre toit → voici vos panneaux →
+ * voici ce qu'ils produisent → voici votre économie ». Chaque chiffre est lu du
+ * payload backend (nb_panneaux / puissance_kwc / prod_kwh / eco_*_ann) ; toute
+ * valeur absente devient « estimation indisponible » — jamais un nombre
+ * fabriqué. Pure (testable sans DOM).
+ */
+export function walkthroughSteps(p: ProposalResponse): WalkStep[] {
+  const q = p.quote;
+  const nb = isFiniteNum(q?.nb_panneaux) && q!.nb_panneaux! > 0 ? q!.nb_panneaux! : null;
+  const kwc = isFiniteNum(q?.puissance_kwc) && q!.puissance_kwc! > 0 ? q!.puissance_kwc! : null;
+  const prod = isFiniteNum(q?.prod_kwh) && q!.prod_kwh! > 0 ? q!.prod_kwh! : null;
+  const head = savingsHeadline(p, recommendedOption(p));
+
+  const panneauxBody =
+    nb !== null
+      ? `${formatNumber(nb)} panneaux${kwc !== null ? `, soit ${formatNumber(kwc, 2)} kWc` : ''}, positionnés selon l’étude de votre toiture.`
+      : `Vos panneaux sont positionnés selon l’étude de votre toiture (nombre : ${FIGURE_UNAVAILABLE}).`;
+  const prodBody =
+    prod !== null
+      ? `Environ ${formatNumber(prod)} kWh produits par an — de l’électricité que vous n’achetez plus au réseau.`
+      : `Production annuelle : ${FIGURE_UNAVAILABLE}.`;
+  const ecoBody =
+    head.annual !== null
+      ? `Environ ${formatMAD(head.annual)} d’économies par an${head.monthly !== null ? ` (≈ ${formatMAD(head.monthly)}/mois)` : ''}, en autoconsommation (loi 82-21).`
+      : `Économie annuelle : ${FIGURE_UNAVAILABLE}.`;
+
+  return [
+    {
+      id: 'toit',
+      title: 'Voici votre toit',
+      titleAr: 'هذا سطح منزلكم',
+      body: 'Le contour et les pans que vous voyez sont ceux de VOTRE toiture, telle que tracée lors de l’étude. Faites glisser pour tourner autour.',
+    },
+    {
+      id: 'panneaux',
+      title: 'Voici vos panneaux',
+      titleAr: 'هذه ألواحكم الشمسية',
+      body: panneauxBody,
+    },
+    {
+      id: 'production',
+      title: 'Voici ce qu’ils produisent',
+      titleAr: 'هذا ما تنتجه',
+      body: prodBody,
+    },
+    {
+      id: 'economie',
+      title: 'Voici votre économie',
+      titleAr: 'هذا ما توفرونه',
+      body: ecoBody,
+    },
+  ];
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// WJ32 — Complétude du contenu de la proposition : financement backend réel,
+// fiche produit enrichie (marque/garantie/fiche technique), « Et après ? »,
+// « Nos hypothèses », accompagnement post-installation, FAQ objections,
+// variantes côte-à-côte. Même discipline « zéro chiffre inventé » : chaque
+// fonction ne lit QUE des champs backend présents, et dégrade proprement
+// (tableau vide / null) quand une donnée manque — jamais un repli fabriqué.
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * WJ32 — Lecture défensive du bloc `financing` BACKEND (QJ12). Différent de
+ * `financingComparison` (calcul générique ci-dessus, gardé pour compat) : ce
+ * bloc porte le VRAI programme (Tatwir/ISTIDAMA) choisi par le backend selon
+ * `inst_type`. Renvoie `null` quand absent/malformé — la page masque alors
+ * le bloc financement (jamais de mélange entre les deux sources).
+ */
+export function backendFinancing(p: Pick<ProposalResponse, 'financing'>): ProposalFinancingBlock | null {
+  const f = p.financing;
+  if (!f || typeof f !== 'object') return null;
+  if (!f.cash || !f.credit || typeof f.cash.montant_ttc !== 'number') return null;
+  return f;
+}
+
+/** WJ32 — Variantes actives « autres tailles » (tableau vide si le devis est isolé). */
+export function proposalVariants(p: Pick<ProposalResponse, 'variants'>): ProposalVariantSummary[] {
+  return Array.isArray(p.variants) ? p.variants : [];
+}
+
+// ── WJ32 · « Et après ? » — timeline des prochaines étapes ───────────────────
+
+export interface NextStep {
+  id: string;
+  title: string;
+  titleAr: string;
+  body: string;
+  bodyAr: string;
+}
+
+/**
+ * WJ32 — Les 4 étapes après signature. Les DÉLAIS (48–72 h visite, 7–14 j
+ * installation) sont des repères opérationnels standard TAQINOR — libellés
+ * comme des fourchettes indicatives, jamais un engagement contractuel daté.
+ * Toujours affichée (pas de dépendance à un champ backend) : c'est un
+ * processus, pas un chiffre client — rien à masquer.
+ */
+export function nextSteps(): NextStep[] {
+  return [
+    {
+      id: 'signature',
+      title: 'Signature',
+      titleAr: 'التوقيع',
+      body: 'Vous signez en ligne ci-dessous. Votre conseiller Taqinor confirme la réception dans la journée.',
+      bodyAr: 'توقعون إلكترونياً أدناه، ويؤكد مستشاركم الاستلام خلال اليوم نفسه.',
+    },
+    {
+      id: 'visite',
+      title: 'Visite technique',
+      titleAr: 'الزيارة التقنية',
+      body: 'Un technicien confirme les mesures sur site sous 48–72 h (délai indicatif).',
+      bodyAr: 'يتحقق فني من القياسات في الموقع خلال 48 إلى 72 ساعة (أجل تقريبي).',
+    },
+    {
+      id: 'installation',
+      title: 'Installation',
+      titleAr: 'التركيب',
+      body: 'Pose de votre installation par notre équipe, généralement sous 7–14 jours (délai indicatif) selon la disponibilité matériel.',
+      bodyAr: 'تركيب منظومتكم بواسطة فريقنا، عادة خلال 7 إلى 14 يوماً (أجل تقريبي) حسب توفر المعدات.',
+    },
+    {
+      id: 'mise-en-service',
+      title: 'Mise en service',
+      titleAr: 'التشغيل',
+      body: 'Vérification finale, mise en service et remise des documents (garanties, attestations).',
+      bodyAr: 'فحص نهائي، تشغيل المنظومة وتسليم الوثائق (الضمانات والشهادات).',
+    },
+  ];
+}
+
+// ── WJ32 · « Nos hypothèses » — disclosure sourcée, jamais de valeur inventée ─
+
+export interface AssumptionItem {
+  label: string;
+  labelAr: string;
+  value: string;
+}
+
+/**
+ * WJ32 — Hypothèses RÉELLES qui sous-tendent les chiffres de la page, sourcées
+ * UNIQUEMENT depuis des champs backend/constantes déjà affichées ailleurs sur
+ * la page (jamais une nouvelle valeur inventée ici) :
+ *  - tarif : loi 82-21 autoconsommation, dérive 0 % (BILL_INFLATION_RATE) ;
+ *  - horizon : SAVINGS_HORIZON_YEARS (25 ans, garantie panneau) ;
+ *  - type d'installation : `quote.inst_type` (résidentiel/industriel/agricole) ;
+ *  - financement : programme backend s'il est présent (Tatwir/ISTIDAMA…).
+ * Toujours au moins 2 lignes (tarif + horizon sont des constantes du module,
+ * jamais absentes) — le bloc n'est donc jamais vide.
+ */
+export function proposalAssumptions(p: ProposalResponse): AssumptionItem[] {
+  const items: AssumptionItem[] = [
+    {
+      label: 'Cadre tarifaire',
+      labelAr: 'الإطار التعريفي',
+      value: 'Autoconsommation basse tension (loi 82-21), tarif ONEE supposé constant (0 % de dérive) — toute hausse réelle ne ferait qu\'augmenter l\'économie.',
+    },
+    {
+      label: 'Horizon d\'analyse',
+      labelAr: 'أفق التحليل',
+      value: `${SAVINGS_HORIZON_YEARS} ans — durée de garantie de performance standard d'un panneau photovoltaïque.`,
+    },
+  ];
+  const instType = p.quote?.inst_type;
+  if (instType) {
+    const label =
+      instType === 'agricole'
+        ? 'Pompage solaire (dimensionné HMT + débit souhaité)'
+        : instType === 'industriel' || instType === 'commercial'
+          ? 'Autoconsommation industrielle/commerciale (étude taux de couverture)'
+          : 'Résidentiel (simulateur)';
+    items.push({ label: 'Type d\'installation', labelAr: 'نوع التركيب', value: label });
+  }
+  const fin = backendFinancing(p);
+  if (fin?.credit?.programme_label) {
+    items.push({
+      label: 'Programme de financement indicatif',
+      labelAr: 'برنامج التمويل الإرشادي',
+      value: `${fin.credit.programme_label} — taux ${formatNumber(fin.credit.taux_annuel_pct, 2)} %/an, ${Math.round(fin.credit.duree_mois / 12)} ans (à confirmer avec votre banque).`,
+    });
+  }
+  return items;
+}
+
+// ── WJ32 · Accompagnement post-installation ───────────────────────────────────
+
+export interface MonitoringPoint {
+  label: string;
+  labelAr: string;
+}
+
+/**
+ * WJ32 — Points d'accompagnement post-installation : FAITS opérationnels
+ * (garanties déjà affichées ailleurs sur la page, SAV Taqinor) — pas de
+ * chiffre nouveau, aucune dépendance backend (toujours affiché).
+ */
+export function monitoringPoints(): MonitoringPoint[] {
+  return [
+    { label: 'Suivi de production disponible via l\'application de votre onduleur', labelAr: 'تتبع الإنتاج متاح عبر تطبيق العاكس' },
+    { label: 'SAV Taqinor joignable sur WhatsApp pour toute question après installation', labelAr: 'خدمة ما بعد البيع لتاقينور متاحة عبر واتساب لأي سؤال بعد التركيب' },
+    { label: 'Garanties constructeur actives dès la mise en service (voir « Pourquoi nous faire confiance »)', labelAr: 'ضمانات الصانع سارية فور التشغيل' },
+  ];
+}
+
+// ── WJ32 · FAQ objections (contenu éditorial fixe, pas de dépendance backend) ─
+
+export interface FaqItem {
+  id: string;
+  question: string;
+  questionAr: string;
+  answer: string;
+  answerAr: string;
+}
+
+/** WJ32 — 5 objections fréquentes avant signature, réponses factuelles courtes. */
+export function objectionFaq(): FaqItem[] {
+  return [
+    {
+      id: 'panne-reseau',
+      question: 'Que se passe-t-il en cas de coupure du réseau électrique ?',
+      questionAr: 'ماذا يحدث في حال انقطاع التيار الكهربائي؟',
+      answer: 'Une installation sans batterie s\'arrête par sécurité (norme anti-îlotage) ; une installation avec batterie peut continuer à alimenter les circuits prioritaires.',
+      answerAr: 'التركيب بدون بطارية يتوقف لأسباب أمنية؛ أما مع البطارية فيمكن أن يستمر تزويد الدارات ذات الأولوية.',
+    },
+    {
+      id: 'entretien',
+      question: 'Quel entretien est nécessaire ?',
+      questionAr: 'ما هي الصيانة المطلوبة؟',
+      answer: 'Un nettoyage occasionnel des panneaux (poussière) et une vérification visuelle annuelle suffisent dans la majorité des cas.',
+      answerAr: 'تنظيف الألواح بين الحين والآخر وفحص بصري سنوي يكفيان في أغلب الحالات.',
+    },
+    {
+      id: 'demenagement',
+      question: 'Puis-je emporter mon installation si je déménage ?',
+      questionAr: 'هل يمكنني نقل التركيب إذا انتقلت للسكن في مكان آخر؟',
+      answer: 'L\'installation est fixée au bâtiment ; elle valorise généralement le bien lors d\'une revente plutôt que d\'être démontée.',
+      answerAr: 'التركيب مثبت بالمبنى؛ وعادة ما يرفع من قيمة العقار عند البيع بدل تفكيكه.',
+    },
+    {
+      id: 'toit-abime',
+      question: 'Est-ce que l\'installation abîme la toiture ?',
+      questionAr: 'هل يضر التركيب بالسطح؟',
+      answer: 'La fixation est étudiée pour respecter l\'étanchéité de votre toiture ; l\'étude technique en amont vérifie la structure porteuse.',
+      answerAr: 'يُدرس التثبيت لاحترام عزل السطح؛ وتتحقق الدراسة التقنية المسبقة من متانة البنية الحاملة.',
+    },
+    {
+      id: 'garanties',
+      question: 'Que couvrent exactement les garanties ?',
+      questionAr: 'ماذا تغطي الضمانات بالضبط؟',
+      answer: 'Les garanties constructeur (panneaux/onduleur) couvrent le matériel selon les durées indiquées dans « Pourquoi nous faire confiance » ci-dessous ; la main d\'œuvre Taqinor est couverte séparément selon votre contrat.',
+      answerAr: 'تغطي ضمانات الصانع (الألواح والعاكس) المعدات حسب المدد المذكورة أدناه؛ أما اليد العاملة لتاقينور فمشمولة بضمان منفصل حسب عقدكم.',
+    },
+  ];
 }

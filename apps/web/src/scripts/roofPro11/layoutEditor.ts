@@ -20,6 +20,7 @@ import {
   removeLast,
   removePanel,
   resetToOptimal,
+  fillAll,
 } from '../../lib/layoutVariability';
 import { PANEL2_LONG_M } from '../../lib/roofPro2';
 import { PANEL_KWC } from '../../lib/productionEngine';
@@ -108,6 +109,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   const layoutMinusEl = $<HTMLButtonElement>('rp9-layout-minus');
   const layoutPlusEl = $<HTMLButtonElement>('rp9-layout-plus');
   const layoutResetEl = $<HTMLButtonElement>('rp9-layout-reset');
+  const layoutFillEl = $<HTMLButtonElement>('rp9-layout-fill');
   const layoutGridEl = $('rp9-layout-grid');
   const layoutNoteEl = $('rp9-layout-note');
 
@@ -181,6 +183,8 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     if (layoutCoverEl) layoutCoverEl.textContent = ctx.neededPanels > 0 ? `${cover} %` : '—';
     if (layoutMinusEl) layoutMinusEl.disabled = count <= 0;
     if (layoutPlusEl) layoutPlusEl.disabled = free <= 0 || count >= layoutCap();
+    // WJ20 — « Remplir » n'a de sens que s'il reste des cellules libres.
+    if (layoutFillEl) layoutFillEl.disabled = free <= 0;
 
     // Mini-plan des cellules : occupées (bleu) / libres (gris→vert au survol).
     if (layoutGridEl) {
@@ -289,6 +293,23 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       renderCustomLayout();
       renderLayoutPanel();
     }
+  });
+  // WJ20 — « Remplir automatiquement » : un seul geste pose un panneau sur CHAQUE
+  // emplacement valide de la lattice (toit entier, retraits + obstacles déjà exclus).
+  // Remplace le placement manuel panneau-par-panneau. La couverture peut dépasser le
+  // besoin : la note l'indique honnêtement (surproduction non rémunérée).
+  layoutFillEl?.addEventListener('click', () => {
+    if (!ctx.layoutMode || !ctx.layoutState) return;
+    const r = fillAll(ctx.layoutState);
+    ctx.layoutSel = null;
+    if (layoutNoteEl) {
+      const overNeed = ctx.neededPanels > 0 && r.count > ctx.neededPanels;
+      layoutNoteEl.textContent = overNeed
+        ? `Toit rempli automatiquement — ${fmt(r.count)} panneaux (le maximum qui tient). C’est plus que votre besoin (${fmt(ctx.neededPanels)}) : le surplus produit n’est pas rémunéré. Retirez-en avec « − » pour coller au besoin.`
+        : `Toit rempli automatiquement — ${fmt(r.count)} panneaux (le maximum qui tient sur ce toit).`;
+    }
+    renderCustomLayout();
+    renderLayoutPanel();
   });
   // Réinitialiser la disposition optimale.
   layoutResetEl?.addEventListener('click', () => {

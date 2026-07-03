@@ -1,0 +1,113 @@
+---
+/**
+ * WJ35 — InstallCounter : compteur d'installations animé, chiffres RÉELS
+ * uniquement — dérivés de src/lib/realisations.ts (source unique de vérité,
+ * déjà publiée sur l'accueil : « 43,48 kWc installés »). Aucun nombre n'est
+ * fabriqué ici ; si REALISATIONS devient vide un jour, ce composant ne rend
+ * rien (même discipline que <Testimonials/> / <StarRating/>).
+ *
+ * Reduced-motion : le compte-up (0 → valeur finale) est gated
+ * `prefers-reduced-motion: no-preference` — sous reduced-motion la valeur
+ * finale s'affiche directement (voir script). Zéro CLS : la largeur finale
+ * est réservée avant toute animation (src/lib/countup.ts reserveWidth).
+ */
+import { REALISATIONS } from '../lib/realisations';
+
+const count = REALISATIONS.length;
+const totalKwc = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
+const totalKwcLabel = totalKwc.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace('.', ',');
+const hasData = count > 0 && totalKwc > 0;
+---
+
+{hasData && (
+  <div class="install-counter" data-install-counter>
+    <div class="install-counter__item">
+      <p class="install-counter__value fig lum" data-tally data-final={String(count)} aria-hidden="true">{count}</p>
+      <p class="install-counter__label tech-label" data-i18n data-fr="Installations documentées" data-ar="تركيبات موثقة">
+        Installations documentées
+      </p>
+    </div>
+    <div class="install-counter__item">
+      <p class="install-counter__value fig lum" data-tally data-final={totalKwcLabel} aria-hidden="true">{totalKwcLabel}</p>
+      <p class="install-counter__label tech-label" data-i18n data-fr="kWc installés" data-ar="كيلوواط ذروة مركّبة">
+        kWc installés
+      </p>
+    </div>
+    <p class="sr-only">
+      {count} installations documentées, {totalKwcLabel} kWc installés — chiffres issus des dossiers techniques publiés.
+    </p>
+  </div>
+)}
+
+<style>
+  .install-counter {
+    display: flex;
+    gap: 2rem;
+    flex-wrap: wrap;
+  }
+  .install-counter__value {
+    font-size: clamp(1.75rem, 4vw, 2.5rem);
+    font-variant-numeric: tabular-nums;
+  }
+  .install-counter__label {
+    margin-top: 0.25rem;
+    color: var(--color-lune-faint, #8d96b4);
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+</style>
+
+<script>
+  import { formatFrame, shouldDigitRoll, reserveWidth } from '../lib/countup';
+
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function countUp(el: HTMLElement) {
+    const finalText = el.dataset.final ?? el.textContent ?? '';
+    if (!finalText) return;
+    reserveWidth(el);
+    if (reduce || !shouldDigitRoll(finalText)) {
+      el.textContent = finalText;
+      return;
+    }
+    const dur = 1100;
+    let start: number | null = null;
+    function frame(t: number) {
+      if (start === null) start = t;
+      const p = Math.min(1, (t - start) / dur);
+      const e = 1 - Math.pow(1 - p, 3);
+      el.textContent = formatFrame(finalText, e);
+      if (p < 1) requestAnimationFrame(frame);
+      else el.textContent = finalText;
+    }
+    requestAnimationFrame(frame);
+  }
+
+  const nodes = document.querySelectorAll<HTMLElement>('[data-install-counter] [data-tally]');
+  if (nodes.length === 0) {
+    // rien à faire
+  } else if (reduce || !('IntersectionObserver' in window)) {
+    nodes.forEach((el) => { el.textContent = el.dataset.final ?? el.textContent; });
+  } else {
+    const io = new IntersectionObserver(
+      (entries, obs) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          countUp(entry.target as HTMLElement);
+          obs.unobserve(entry.target);
+        }
+      },
+      { rootMargin: '0px 0px -10% 0px', threshold: 0.2 },
+    );
+    nodes.forEach((el) => io.observe(el));
+  }
+</script>
