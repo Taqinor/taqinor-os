@@ -77,6 +77,7 @@ class PaiementFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
                 from ..services import (
                     check_paiement_conformite_gate,
                     check_fournisseur_statut_paiement,
+                    check_facture_exception_gate,
                 )
                 facture = FactureFournisseur.objects.select_related(
                     'fournisseur').get(
@@ -85,6 +86,10 @@ class PaiementFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
                 check_fournisseur_statut_paiement(facture.fournisseur)
                 check_paiement_conformite_gate(
                     request.user.company, facture.fournisseur)
+                # XPUR10 — facture en exception de rapprochement 3 voies
+                # (écart hors tolérance société), non encore résolue.
+                check_facture_exception_gate(
+                    request.user.company, facture)
             except FactureFournisseur.DoesNotExist:
                 pass
             except ValueError as exc:

@@ -719,6 +719,11 @@ class FactureFournisseurSerializer(serializers.ModelSerializer):
     # XPUR9 — avoirs fournisseur imputés sur cette facture (0 par défaut).
     total_avoirs_imputes = serializers.DecimalField(
         max_digits=14, decimal_places=2, read_only=True)
+    # XPUR10 — file d'exceptions du rapprochement 3 voies.
+    statut_controle_display = serializers.CharField(
+        source='get_statut_controle_display', read_only=True)
+    resolu_par_username = serializers.CharField(
+        source='resolu_par.username', read_only=True)
 
     class Meta:
         model = FactureFournisseur
@@ -730,13 +735,19 @@ class FactureFournisseurSerializer(serializers.ModelSerializer):
             'type_achat', 'statut', 'statut_display', 'note', 'created_by',
             'created_by_username', 'date_creation', 'date_mise_a_jour',
             'total_acomptes_imputes', 'total_avoirs_imputes',
+            'statut_controle', 'statut_controle_display', 'motif_ecart',
+            'resolu_par', 'resolu_par_username', 'resolu_le',
             'lignes', 'paiements', 'echeances', 'total_paye', 'solde_du',
         ]
         # company + reference + statut + created_by sont posés côté serveur.
         # Le statut découle des paiements (recompute_facture_fournisseur_statut).
+        # statut_controle/motif_ecart/resolu_par/resolu_le sont posés
+        # UNIQUEMENT par evaluate_facture_exception / resoudre_exception_facture
+        # (XPUR10) — jamais en écriture libre sur le document.
         read_only_fields = [
             'reference', 'statut', 'created_by', 'date_creation',
-            'date_mise_a_jour',
+            'date_mise_a_jour', 'statut_controle', 'motif_ecart',
+            'resolu_par', 'resolu_le',
         ]
 
     def validate_fournisseur(self, value):

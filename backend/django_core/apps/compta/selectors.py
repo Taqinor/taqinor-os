@@ -1032,6 +1032,21 @@ def rapprochements_en_ecart(company):
         .order_by('-date_evaluation', '-id'))
 
 
+def rapprochement_ecart_pct(company, bon_commande_id):
+    """XPUR10 — écart en % (facturé vs reçu) du rapprochement 3 voies d'un
+    BCF, pour que ``apps.stock`` puisse comparer aux tolérances société sans
+    jamais importer ``apps.compta.models``. Renvoie ``None`` si aucun
+    rapprochement n'existe encore pour ce BCF (pas encore évalué — no-op,
+    comportement historique). Lecture seule, scopée société."""
+    rapp = Rapprochement.objects.filter(
+        company=company, bon_commande_id=bon_commande_id).first()
+    if rapp is None:
+        return None
+    if not rapp.montant_recu:
+        return None
+    return abs(rapp.ecart) / rapp.montant_recu * Decimal('100')
+
+
 # ── FG132 — Échéancier & relevé fournisseur (balance âgée AP + relevé) ──────
 # Miroir fournisseur de la balance âgée clients (apps.ventes.recouvrement). Tout
 # se déduit du grand livre de la compta elle-même (lignes du compte 4411

@@ -2246,3 +2246,86 @@ def imputer_avoir_fournisseur(avoir, facture, montant=None, *, user=None):
                     else AvoirFournisseur.Statut.VALIDE)
     avoir.save(update_fields=['montant_impute', 'statut'])
     return imputation
+
+
+# ── XPUR10 — tolérances 3 voies & file d'exceptions ─────────────────────────
+
+def evaluate_facture_exception(company, facture):
+    """XPUR10 — compare l'écart du rapprochement 3 voies (FG131, lu via
+    ``apps.compta.selectors`` — jamais d'import de modèles compta) du BCF
+    d'origine de ``facture`` aux tolérances par défaut de la société
+    (``AchatsParametres.tolerance_prix_pct``/``tolerance_prix_absolu_mad``).
+
+    Hors tolérance → statut_controle=exception + motif_ecart(persistés).
+    Dans la tolérance (ou pas de BCF/rapprochement encore évalué) → no-op,
+    la facture reste 'normale' (comportement historique). Renvoie
+    ``(en_exception: bool, ecart_pct: Decimal|None)``."""
+    from .models import AchatsParametres, FactureFournisseur
+    if not facture.bon_commande_id:
+        return False, None
+    try:
+        from apps.compta.selectors import rapprochement_ecart_pct
+    except Exception:  # pragma: no cover - défensif (compta indisponible)
+        return False, None
+    ecart_pct = rapprochement_ecart_pct(company, facture.bon_commande_id)
+    if ecart_pct is None:
+        return False, None
+    parametres = AchatsParametres.for_company(company)
+    tolerance = parametres.tolerance_prix_pct or Decimal('0')
+    hors_tolerance = ecart_pct > tolerance
+    if hors_tolerance:
+        facture.statut_controle = FactureFournisseur.StatutControle.EXCEPTION
+        facture.motif_ecart = (
+            f'Écart de {ecart_pct:.2f} % (tolérance société : '
+            f'{tolerance:.2f} %) sur le rapprochement 3 voies.')
+        facture.save(update_fields=['statut_controle', 'motif_ecart'])
+    return hors_tolerance, ecart_pct
+
+
+def check_facture_exception_gate(company, facture):
+    """XPUR10 — (ré)évalue l'écart de rapprochement 3 voies de la facture
+    contre les tolérances société PUIS lève ValueError si elle est (ou
+    devient) EXCEPTION non résolue — bloque la CRÉATION d'un
+    PaiementFournisseur. No-op si la facture reste 'normale' (pas de BCF,
+    pas encore de rapprochement évalué, ou dans la tolérance) ou a déjà été
+    résolue (statut 'resolue' n'est jamais re-basculé en exception ici —
+    la résolution est un acte explicite du responsable)."""
+    from .models import FactureFournisseur
+    if facture.statut_controle == FactureFournisseur.StatutControle.RESOLUE:
+        return
+    evaluate_facture_exception(company, facture)
+    if facture.statut_controle == FactureFournisseur.StatutControle.EXCEPTION:
+        raise ValueError(
+            f'Paiement bloqué : facture {facture.reference} en exception '
+            f'de rapprochement 3 voies '
+            f'({facture.motif_ecart or "écart hors tolérance"}). '
+            'Résolution requise avant paiement.')
+
+
+def resoudre_exception_facture(facture, *, user, commentaire=''):
+    """XPUR10 — résout (Responsable/Admin) une facture en exception : passe
+    `statut_controle` à 'resolue', trace l'acteur/l'horodatage, débloque le
+    paiement. Lève ValueError si la facture n'est pas en exception."""
+    from django.utils import timezone
+    from .models import FactureFournisseur
+    if facture.statut_controle != FactureFournisseur.StatutControle.EXCEPTION:
+        raise ValueError("Cette facture n'est pas en exception.")
+    facture.statut_controle = FactureFournisseur.StatutControle.RESOLUE
+    facture.resolu_par = user
+    facture.resolu_le = timezone.now()
+    if commentaire:
+        facture.motif_ecart = (
+            (facture.motif_ecart or '') + f'\nRésolution : {commentaire}')
+    facture.save(update_fields=[
+        'statut_controle', 'resolu_par', 'resolu_le', 'motif_ecart'])
+    return facture
+
+
+def factures_en_exception(company):
+    """XPUR10 — file « Factures en exception » (statut_controle=exception),
+    triée de la plus récente à la plus ancienne. LECTURE SEULE."""
+    from .models import FactureFournisseur
+    return list(FactureFournisseur.objects.filter(
+        company=company,
+        statut_controle=FactureFournisseur.StatutControle.EXCEPTION,
+    ).select_related('fournisseur', 'bon_commande').order_by('-date_creation'))

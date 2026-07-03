@@ -65,9 +65,11 @@ class FactureFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
     ordering = ['-date_creation']
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['comptes_a_payer']:
+        if self.action in READ_ACTIONS + ['comptes_a_payer', 'en_exception']:
             return [IsAnyRole()]
-        elif self.action in WRITE_ACTIONS + ['paiements', 'echeancier']:
+        elif self.action in WRITE_ACTIONS + [
+            'paiements', 'echeancier', 'resoudre_exception',
+        ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
@@ -127,19 +129,63 @@ class FactureFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
             qs = facture.paiements.select_related('created_by').all()
             return Response(
                 PaiementFournisseurSerializer(qs, many=True).data)
+        # XPUR1/XPUR4/XPUR10 — mêmes gates que PaiementFournisseurViewSet.
+        # create (fournisseur bloqué, conformité expirée, exception 3 voies).
+        from ..services import (
+            check_paiement_conformite_gate, check_fournisseur_statut_paiement,
+            check_facture_exception_gate,
+        )
+        try:
+            check_fournisseur_statut_paiement(facture.fournisseur)
+            check_paiement_conformite_gate(
+                request.user.company, facture.fournisseur)
+            check_facture_exception_gate(request.user.company, facture)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         # POST — enregistre un paiement, company posée serveur.
         serializer = PaiementFournisseurSerializer(
             data={**request.data, 'facture': facture.id},
             context={'request': request})
         serializer.is_valid(raise_exception=True)
         with transaction.atomic():
+            from ..services import (
+                recompute_facture_fournisseur_statut, compute_ras_tva,
+            )
+            montant = serializer.validated_data['montant']
+            taux, montant_ras = compute_ras_tva(
+                request.user.company, facture, montant)
             serializer.save(
-                company=request.user.company, created_by=request.user)
-            from ..services import recompute_facture_fournisseur_statut
+                company=request.user.company, created_by=request.user,
+                taux_ras=taux, montant_ras_tva=montant_ras)
             facture.refresh_from_db()
             recompute_facture_fournisseur_statut(facture)
         return Response(self.get_serializer(facture).data,
                         status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='resoudre-exception')
+    def resoudre_exception(self, request, pk=None):
+        """XPUR10 — résout (Responsable/Admin) une facture en exception de
+        rapprochement 3 voies, débloquant le paiement. Corps optionnel :
+        ``{"commentaire": "..."}``."""
+        from ..services import resoudre_exception_facture
+        facture = self.get_object()
+        try:
+            resoudre_exception_facture(
+                facture, user=request.user,
+                commentaire=request.data.get('commentaire', ''))
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(facture).data)
+
+    @action(detail=False, methods=['get'], url_path='en-exception')
+    def en_exception(self, request):
+        """XPUR10 — file « Factures en exception » (rapprochement 3 voies
+        hors tolérance, non résolu). LECTURE SEULE."""
+        from ..services import factures_en_exception
+        qs = factures_en_exception(request.user.company)
+        return Response(self.get_serializer(qs, many=True).data)
 
     @action(detail=True, methods=['get', 'post'], url_path='echeancier')
     def echeancier(self, request, pk=None):

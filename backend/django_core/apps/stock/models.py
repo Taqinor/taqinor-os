@@ -270,6 +270,16 @@ class AchatsParametres(models.Model):
     # chaque PaiementFournisseur. OFF par défaut = comportement historique
     # (paiement intégral, aucune retenue).
     ras_tva_actif = models.BooleanField(default=False)
+    # ── XPUR10 — tolérances par défaut du rapprochement 3 voies (FG131) ────
+    # Pré-remplissent `creer_rapprochement_3voies` (compta) : écart prix % +
+    # absolu MAD, écart quantité %. 0 = comportement historique inchangé
+    # (tolérance nulle, déjà le défaut actuel de FG131).
+    tolerance_prix_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0)
+    tolerance_prix_absolu_mad = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0)
+    tolerance_quantite_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0)
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
 
@@ -1052,6 +1062,25 @@ class FactureFournisseur(models.Model):
         max_digits=14, decimal_places=2, default=0)
     statut = models.CharField(
         max_length=24, choices=Statut.choices, default=Statut.A_PAYER)
+
+    # ── XPUR10 — file d'exceptions du rapprochement 3 voies (FG131) ────────
+    # Une facture HORS tolérance société (XPUR10) passe en `exception` : la
+    # CRÉATION d'un PaiementFournisseur est refusée tant qu'elle n'est pas
+    # résolue par un responsable/admin. Défaut 'normale' = comportement
+    # historique inchangé (jamais bloquée).
+    class StatutControle(models.TextChoices):
+        NORMALE = 'normale', 'Normale'
+        EXCEPTION = 'exception', 'En exception'
+        RESOLUE = 'resolue', 'Résolue'
+
+    statut_controle = models.CharField(
+        max_length=12, choices=StatutControle.choices,
+        default=StatutControle.NORMALE)
+    motif_ecart = models.TextField(blank=True, null=True)
+    resolu_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='factures_fournisseur_resolues')
+    resolu_le = models.DateTimeField(null=True, blank=True)
     note = models.TextField(blank=True, null=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
