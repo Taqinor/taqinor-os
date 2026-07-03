@@ -14,6 +14,7 @@ from .models import (
     CarteCarburant,
     CarteGriseVehicule,
     Conducteur,
+    ContratVehicule,
     DemandeVehicule,
     EcheanceEntretien,
     EcheanceReglementaire,
@@ -1697,4 +1698,57 @@ class DemandeVehiculeSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'date_fin_souhaitee':
                  "La fin souhaitée ne peut pas précéder le début souhaité."})
+        return attrs
+
+
+class ContratVehiculeSerializer(serializers.ModelSerializer):
+    """XFLT1 — Contrat véhicule (leasing/LLD/location/entretien).
+
+    ``company`` est posée côté serveur (jamais lue du corps de requête). Le
+    véhicule et le garage liés doivent appartenir à la société courante. La
+    fin de contrat doit être >= au début (quand renseignée).
+
+    Champs lecture seule :
+    - ``vehicule_label``     : désignation du véhicule.
+    - ``type_contrat_display`` / ``periodicite_display`` / ``statut_display``.
+    - ``statut_calcule``     : état RÉEL vs la date du jour
+      (``actif`` | ``expire``), calculé côté modèle.
+    """
+
+    vehicule_label = serializers.SerializerMethodField()
+    type_contrat_display = serializers.CharField(
+        source='get_type_contrat_display', read_only=True)
+    periodicite_display = serializers.CharField(
+        source='get_periodicite_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    statut_calcule = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ContratVehicule
+        fields = [
+            'id', 'vehicule', 'vehicule_label', 'type_contrat',
+            'type_contrat_display', 'fournisseur', 'garage', 'date_debut',
+            'date_fin', 'montant_recurrent', 'periodicite',
+            'periodicite_display', 'services_inclus', 'km_contractuel_an',
+            'statut', 'statut_display', 'statut_calcule', 'notes',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_vehicule_label(self, obj):
+        return str(obj.vehicule) if obj.vehicule_id else None
+
+    def get_statut_calcule(self, obj):
+        return obj.statut_calcule()
+
+    def validate(self, attrs):
+        debut = attrs.get(
+            'date_debut', getattr(self.instance, 'date_debut', None))
+        fin = attrs.get(
+            'date_fin', getattr(self.instance, 'date_fin', None))
+        if debut is not None and fin is not None and fin < debut:
+            raise serializers.ValidationError(
+                {'date_fin':
+                 "La fin du contrat ne peut pas précéder le début."})
         return attrs

@@ -21,6 +21,7 @@ from .models import (
     CarteCarburant,
     CarteGriseVehicule,
     Conducteur,
+    ContratVehicule,
     DemandeVehicule,
     EcheanceEntretien,
     EcheanceReglementaire,
@@ -50,6 +51,7 @@ from .serializers import (
     CarteCarburantSerializer,
     CarteGriseVehiculeSerializer,
     ConducteurSerializer,
+    ContratVehiculeSerializer,
     EcheanceEntretienSerializer,
     EcheanceReglementaireSerializer,
     EnginRoulantSerializer,
@@ -75,7 +77,7 @@ from .serializers import (
 READ_ACTIONS = ['list', 'retrieve', 'consommation', 'anomalies', 'echeances',
                 'couts', 'synthese', 'expirantes', 'tsav', 'alertes_echeances',
                 'tco', 'eco_conduite', 'documents', 'tableau_bord', 'journal',
-                'amortissement']
+                'amortissement', 'expirants']
 
 
 class _FlotteBaseViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -1665,3 +1667,69 @@ class DemandeVehiculeViewSet(_FlotteBaseViewSet):
             return Response({'detail': str(exc)}, status=400)
 
         return Response(self.get_serializer(demande).data)
+
+
+class ContratVehiculeViewSet(_FlotteBaseViewSet):
+    """Contrats véhicule (leasing/LLD/location/entretien) (XFLT1).
+
+    CRUD scopé société (écriture responsable/admin) : type de contrat,
+    fournisseur/bailleur, dates début/fin, montant récurrent + périodicité,
+    services inclus, km contractuel/an. Distinct de ``AssuranceVehicule``
+    (FLOTTE21) — jamais de doublon. Filtrable par
+    ``?statut=<actif|expire>`` et ``?vehicule=<id>``. Recherche par
+    fournisseur/notes. ``statut_calcule`` (état réel vs la date du jour) est
+    exposé en lecture. Le véhicule et le garage liés doivent appartenir à la
+    société (validé au sérialiseur).
+
+    Action ``GET /contrats-vehicule/expirants/?within=N`` (lecture tout
+    rôle) — contrats déjà expirés ou dus dans les ``N`` prochains jours
+    (défaut 30), de la plus urgente à la moins urgente. Ces mêmes contrats
+    remontent aussi dans ``alertes-echeances`` (FLOTTE24, source
+    ``contrat_vehicule``).
+    """
+    queryset = ContratVehicule.objects.select_related('vehicule', 'garage')
+    serializer_class = ContratVehiculeSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['fournisseur', 'notes']
+    ordering_fields = ['date_debut', 'date_fin', 'montant_recurrent',
+                       'statut', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+
+        vehicule = params.get('vehicule')
+        if vehicule:
+            try:
+                qs = qs.filter(vehicule_id=int(vehicule))
+            except (ValueError, TypeError):
+                pass
+
+        return qs
+
+    @action(detail=False, methods=['get'])
+    def expirants(self, request):
+        """XFLT1 — Contrats expirés ou dus sous ``?within=N`` jours.
+
+        Lecture (tout rôle), scopée société. ``within`` défaut = 30 jours ;
+        une valeur invalide retombe sur 30. Renvoie la liste sérialisée, de
+        la plus urgente (déjà expirée) à la moins urgente.
+        """
+        company = request.user.company
+
+        within_param = request.query_params.get('within')
+        within = 30
+        if within_param:
+            try:
+                within = int(within_param)
+            except (ValueError, TypeError):
+                within = 30
+
+        from .selectors import contrats_vehicule_expirants
+        qs = contrats_vehicule_expirants(company, within=within)
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)

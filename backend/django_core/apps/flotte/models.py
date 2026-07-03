@@ -2746,3 +2746,140 @@ class DemandeVehicule(models.Model):
     def __str__(self):
         return (f'Demande {self.get_statut_display()} — '
                 f'{self.besoin} ({self.date_debut_souhaitee})')
+
+
+# ── XFLT1 — Contrats véhicule (leasing/LLD/location/entretien) ────────────────
+
+class ContratVehicule(models.Model):
+    """Contrat véhicule (leasing/LLD/location/entretien) rattaché à un
+    ``Vehicule`` de la société (XFLT1).
+
+    Distinct de ``AssuranceVehicule`` (FLOTTE21, contrat d'ASSURANCE
+    uniquement) : ce modèle couvre les contrats de FINANCEMENT / prestation
+    (leasing, location longue durée, location courte, contrat d'entretien,
+    garantie constructeur) qui portent un MONTANT RÉCURRENT (loyer mensuel/
+    trimestriel/annuel) plutôt qu'une prime d'assurance. Jamais de doublon
+    entre les deux familles.
+
+    ``statut_calcule(today)`` retourne l'état RÉEL du contrat vs une date
+    (``expire`` si ``date_fin`` est dépassée, ``actif`` sinon) — lecture
+    seule, date injectable, ne modifie rien en base.
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête). Le véhicule et le garage (bailleur/fournisseur interne)
+    rattachés doivent appartenir à la MÊME société (validé dans ``clean``).
+    """
+
+    class TypeContrat(models.TextChoices):
+        LEASING = 'leasing', 'Leasing'
+        LLD = 'lld', 'Location longue durée (LLD)'
+        LOCATION = 'location', 'Location'
+        CONTRAT_ENTRETIEN = 'contrat_entretien', "Contrat d'entretien"
+        GARANTIE_CONSTRUCTEUR = 'garantie_constructeur', \
+            'Garantie constructeur'
+
+    class Periodicite(models.TextChoices):
+        MENSUEL = 'mensuel', 'Mensuel'
+        TRIMESTRIEL = 'trimestriel', 'Trimestriel'
+        ANNUEL = 'annuel', 'Annuel'
+
+    class Statut(models.TextChoices):
+        ACTIF = 'actif', 'Actif'
+        EXPIRE = 'expire', 'Expiré'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_contrats_vehicule',
+        verbose_name='Société',
+    )
+    vehicule = models.ForeignKey(
+        'Vehicule',
+        on_delete=models.CASCADE,
+        related_name='contrats_vehicule',
+        verbose_name='Véhicule',
+    )
+    type_contrat = models.CharField(
+        max_length=25, choices=TypeContrat.choices,
+        default=TypeContrat.LOCATION, verbose_name='Type de contrat')
+    fournisseur = models.CharField(
+        max_length=150, blank=True,
+        verbose_name='Fournisseur / bailleur')
+    garage = models.ForeignKey(
+        'Garage',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='contrats_vehicule',
+        verbose_name='Garage / atelier (si prestataire référencé)',
+    )
+    date_debut = models.DateField(verbose_name='Début du contrat')
+    date_fin = models.DateField(
+        null=True, blank=True, verbose_name='Fin du contrat')
+    montant_recurrent = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name='Montant récurrent (MAD)')
+    periodicite = models.CharField(
+        max_length=12, choices=Periodicite.choices,
+        default=Periodicite.MENSUEL, verbose_name='Périodicité')
+    services_inclus = models.JSONField(
+        default=list, blank=True, verbose_name='Services inclus')
+    km_contractuel_an = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Km contractuel / an')
+    statut = models.CharField(
+        max_length=7, choices=Statut.choices, default=Statut.ACTIF,
+        verbose_name='Statut')
+    notes = models.TextField(blank=True, verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Contrat véhicule'
+        verbose_name_plural = 'Contrats véhicule'
+        ordering = ['date_fin', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='flotte_ctrv_co_stat_idx',
+            ),
+            models.Index(
+                fields=['company', 'vehicule'],
+                name='flotte_ctrv_co_veh_idx',
+            ),
+            models.Index(
+                fields=['company', 'date_fin'],
+                name='flotte_ctrv_co_fin_idx',
+            ),
+        ]
+
+    def clean(self):
+        """Valide l'appartenance société du véhicule/garage et la cohérence
+        des dates (fin ≥ début)."""
+        if self.vehicule_id is not None \
+                and self.vehicule.company_id != self.company_id:
+            raise ValidationError(
+                "Le véhicule n'appartient pas à la même société.")
+        if self.garage_id is not None \
+                and self.garage.company_id != self.company_id:
+            raise ValidationError(
+                "Le garage n'appartient pas à la même société.")
+        if self.date_fin is not None and self.date_debut is not None \
+                and self.date_fin < self.date_debut:
+            raise ValidationError(
+                "La fin du contrat ne peut pas précéder le début.")
+
+    def statut_calcule(self, today=None):
+        """État RÉEL du contrat vs ``today`` (lecture seule, date injectable).
+
+        Retourne ``'expire'`` si ``date_fin`` est renseignée et déjà passée,
+        ``'actif'`` sinon (y compris contrat sans date de fin — durée
+        indéterminée). ``today`` défaut = date du jour.
+        """
+        if today is None:
+            today = datetime.date.today()
+        if self.date_fin is not None and self.date_fin < today:
+            return self.Statut.EXPIRE
+        return self.Statut.ACTIF
+
+    def __str__(self):
+        return (f'{self.get_type_contrat_display()} — {self.vehicule} '
+                f'({self.montant_recurrent} MAD/{self.periodicite})')

@@ -16,6 +16,7 @@ from .models import (
     CarteCarburant,
     CarteGriseVehicule,
     Conducteur,
+    ContratVehicule,
     DemandeVehicule,
     EcheanceEntretien,
     EcheanceReglementaire,
@@ -1242,6 +1243,41 @@ def cartes_grises_expirantes(company, within=30, today=None):
     ).order_by('autorisation_date_validite', 'id')
 
 
+# ── XFLT1 — Contrats véhicule (leasing/LLD/location/entretien) ────────────────
+
+def contrats_vehicule_de_la_societe(company, statut=None, vehicule_id=None):
+    """XFLT1 — Contrats véhicule d'une société (queryset scopé).
+
+    Filtres facultatifs : ``statut`` (STOCKÉ, pas le statut calculé) et
+    ``vehicule_id`` (un véhicule précis). Lecture seule, scopée société.
+    """
+    qs = ContratVehicule.objects.filter(company=company).select_related(
+        'vehicule', 'garage')
+    if statut is not None:
+        qs = qs.filter(statut=statut)
+    if vehicule_id is not None:
+        qs = qs.filter(vehicule_id=vehicule_id)
+    return qs
+
+
+def contrats_vehicule_expirants(company, within=30, today=None):
+    """XFLT1 — Contrats véhicule DUS/EXPIRÉS sous ``within`` jours.
+
+    Retourne les ``ContratVehicule`` de la société dont ``date_fin`` est déjà
+    passée OU tombe dans les ``within`` prochains jours (inclusif), du plus
+    urgent au moins urgent. Les contrats sans ``date_fin`` (durée
+    indéterminée) ne remontent jamais. ``today`` est INJECTABLE (date du jour
+    par défaut). Lecture seule, scopée société.
+    """
+    if today is None:
+        today = datetime.date.today()
+    horizon = today + datetime.timedelta(days=within)
+    return contrats_vehicule_de_la_societe(company).filter(
+        date_fin__isnull=False,
+        date_fin__lte=horizon,
+    ).order_by('date_fin', 'id')
+
+
 # ── FLOTTE24 — Moteur d'alertes d'échéances réglementaires (J-30/15/7/échu) ────
 
 # Fenêtre maximale de l'alerteur : on ne remonte que les échéances déjà
@@ -1298,7 +1334,11 @@ def alertes_echeances_reglementaires(company, today=None):
     * ``carte_grise`` — ``CarteGriseVehicule.autorisation_date_validite``
       (FLOTTE23, via ``cartes_grises_expirantes``) ;
     * ``entretien`` — ``EcheanceEntretien.due_le`` des échéances OUVERTES
-      (FLOTTE16) — l'échéance de MAINTENANCE datée encore à traiter.
+      (FLOTTE16) — l'échéance de MAINTENANCE datée encore à traiter ;
+    * ``contrat_vehicule`` — ``ContratVehicule.date_fin`` (XFLT1, via
+      ``contrats_vehicule_expirants``) — contrat de leasing/LLD/location/
+      entretien arrivant à échéance. Distinct de ``assurance`` (jamais de
+      doublon : le contrat d'assurance reste sur ``AssuranceVehicule`` seul).
 
     ``today`` est INJECTABLE (date du jour par défaut). Tout est scopé société.
 
@@ -1404,6 +1444,20 @@ def alertes_echeances_reglementaires(company, today=None):
             ee.type_entretien,
             f'Entretien : {ee.type_entretien}'.strip(),
             ee.due_le)
+
+    # 6) Contrats véhicule (leasing/LLD/location/entretien) — XFLT1. Rattachés
+    # au véhicule directement (pas d'ActifFlotte sur ce modèle) : on résout
+    # l'actif_flotte_id via la reverse-relation si elle existe.
+    for ctr in contrats_vehicule_expirants(company, within=horizon,
+                                           today=today):
+        actif = getattr(ctr.vehicule, 'actif_flotte', None)
+        _ajoute(
+            'contrat_vehicule', ctr.id, actif.id if actif else None,
+            str(ctr.vehicule),
+            ctr.type_contrat,
+            f'Contrat {ctr.get_type_contrat_display()} — '
+            f'{ctr.fournisseur}'.strip(' —'),
+            ctr.date_fin)
 
     # Tri du plus urgent au moins urgent : par date d'échéance croissante (les
     # échéances déjà passées, donc les plus anciennes, remontent naturellement
