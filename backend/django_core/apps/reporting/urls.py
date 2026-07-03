@@ -22,6 +22,7 @@ from .sav_sla import sav_sla_insight
 from .approbations import (
     approbations_en_attente, decider_approbation, decider_en_masse,
 )
+from .kpi_alertes import KpiAlerteViewSet
 
 # N79 — CRUD des rapports sauvegardés (router DRF, ajouté en additif).
 # FG96 — CRUD + effective/ pour la config tableau de bord.
@@ -29,6 +30,8 @@ router = DefaultRouter()
 router.register(r'saved-reports', SavedReportViewSet, basename='saved-report')
 router.register(r'dashboard-config', DashboardConfigViewSet,
                 basename='dashboard-config')
+# XPLT6 — CRUD des alertes de seuil sur KPI agrégés.
+router.register(r'kpi-alertes', KpiAlerteViewSet, basename='kpi-alerte')
 
 urlpatterns = [
     path('', include(router.urls)),
