@@ -7,7 +7,7 @@ from .views import (
     CalendrierQhseViewSet,
     CauseIncidentViewSet, ConformiteEnvironnementaleViewSet,
     ConsignationLotoViewSet,
-    ContactUrgenceViewSet, DechetViewSet,
+    ContactUrgenceViewSet, ControleReceptionViewSet, DechetViewSet,
     CritereAuditViewSet, DeclarationCnssViewSet, DerogationViewSet,
     EtapeDeclarationAtViewSet,
     EvaluationRisqueViewSet, GrilleAuditViewSet, IncidentViewSet,
@@ -16,10 +16,12 @@ from .views import (
     Iso9001ReadinessViewSet,
     ItemNotationViewSet, LigneEvaluationRisqueViewSet,
     NonConformiteViewSet, NotationFinChantierViewSet, PermisTravailViewSet,
-    PlanInspectionChantierViewSet, PlanInspectionModeleViewSet,
+    PlanControleReceptionViewSet, PlanInspectionChantierViewSet,
+    PlanInspectionModeleViewSet,
     PlanUrgenceViewSet,
     LigneBilanCarboneViewSet,
-    PointControleModeleViewSet, ProcedureQualiteViewSet,
+    PointControleModeleViewSet, PointControleReceptionViewSet,
+    ProcedureQualiteViewSet,
     QhseChatterEntryViewSet, RecyclageModuleViewSet,
     ReleveControleViewSet, ReleveCourbeIVViewSet, ReponseCritereViewSet,
     RetourClientQualiteViewSet, SecouristeViewSet,
@@ -70,6 +72,11 @@ router.register(
     basename='iso9001-readiness')
 router.register(
     r'calendrier', CalendrierQhseViewSet, basename='calendrier')
+router.register(
+    r'plans-controle-reception', PlanControleReceptionViewSet)
+router.register(
+    r'points-controle-reception', PointControleReceptionViewSet)
+router.register(r'controles-reception', ControleReceptionViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

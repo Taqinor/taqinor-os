@@ -8,7 +8,7 @@ from rest_framework import serializers
 
 from .models import (
     ActionCorrectivePreventive, AnalyseIncident, Audit, CauseIncident,
-    ConsignationLoto, ContactUrgence,
+    ConsignationLoto, ContactUrgence, ControleReception,
     BilanCarbone, BordereauSuiviDechet, ConformiteEnvironnementale,
     CritereAudit, Dechet, DeclarationCnss, Derogation, EtapeDeclarationAt,
     EvaluationRisque, GrilleAudit,
@@ -16,8 +16,10 @@ from .models import (
     LigneBilanCarbone,
     Incident, InspectionSecurite,
     ItemNotation, LigneEvaluationRisque, NonConformite, NotationFinChantier,
-    PermisTravail, PlanInspectionChantier, PlanInspectionModele, PlanUrgence,
-    PointControleModele, ProcedureQualite, QhseChatterEntry,
+    PermisTravail, PlanControleReception, PlanInspectionChantier,
+    PlanInspectionModele, PlanUrgence,
+    PointControleModele, PointControleReception, ProcedureQualite,
+    QhseChatterEntry,
     RecyclageModule, ReleveControle,
     ReleveCourbeIV, ReponseCritere, RetourClientQualite, Secouriste,
 )
@@ -1060,3 +1062,71 @@ class IndicateurESGSerializer(serializers.ModelSerializer):
 
     def validate_bilan_carbone(self, value):
         return _meme_societe(self, value, 'Bilan carbone')
+
+
+# ── XQHS3 — Contrôle qualité à la réception fournisseur ─────────────────────
+
+class PointControleReceptionSerializer(serializers.ModelSerializer):
+    type_releve_display = serializers.CharField(
+        source='get_type_releve_display', read_only=True)
+
+    class Meta:
+        model = PointControleReception
+        fields = [
+            'id', 'plan', 'ordre', 'intitule', 'type_releve',
+            'type_releve_display', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_plan(self, value):
+        return _meme_societe(self, value, 'Plan de contrôle réception')
+
+
+class PlanControleReceptionSerializer(serializers.ModelSerializer):
+    """Plan de contrôle qualité à la réception fournisseur (XQHS3).
+
+    ``company`` posée côté serveur. Les FK ``produit``/``categorie`` pointent
+    vers ``stock`` (FK-chaîne) : validés même-société par le sérialiseur.
+    """
+    points = PointControleReceptionSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = PlanControleReception
+        fields = [
+            'id', 'nom', 'produit', 'categorie', 'taux_echantillonnage',
+            'actif', 'points', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_produit(self, value):
+        return _meme_societe(self, value, 'Produit')
+
+    def validate_categorie(self, value):
+        return _meme_societe(self, value, 'Catégorie')
+
+
+class ControleReceptionSerializer(serializers.ModelSerializer):
+    """Exécution d'un contrôle qualité à la réception fournisseur (XQHS3).
+
+    ``company``/``controleur``/``date_controle`` posés côté serveur. Le
+    ``verdict`` se pose via l'action ``statuer`` du viewset (jamais un PATCH
+    direct), pour garder centralisée la levée automatique de NCR sur refus.
+    """
+    verdict_display = serializers.CharField(
+        source='get_verdict_display', read_only=True)
+    plan_nom = serializers.CharField(source='plan.nom', read_only=True)
+
+    class Meta:
+        model = ControleReception
+        fields = [
+            'id', 'plan', 'plan_nom', 'reception_id', 'produit_id', 'verdict',
+            'verdict_display', 'controleur', 'notes', 'non_conformite',
+            'date_controle', 'date_creation',
+        ]
+        read_only_fields = [
+            'verdict', 'controleur', 'non_conformite', 'date_controle',
+            'date_creation',
+        ]
+
+    def validate_plan(self, value):
+        return _meme_societe(self, value, 'Plan de contrôle réception')

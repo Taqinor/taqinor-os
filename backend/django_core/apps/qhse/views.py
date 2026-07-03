@@ -19,14 +19,17 @@ from .models import (
     ActionCorrectivePreventive, AnalyseIncident, Audit,
     BilanCarbone, BordereauSuiviDechet, CauseIncident,
     ConformiteEnvironnementale, ConsignationLoto, ContactUrgence,
+    ControleReception,
     CritereAudit, Dechet, DeclarationCnss, Derogation, EtapeDeclarationAt,
     EvaluationRisque, GrilleAudit,
     Incident, IndicateurESG,
     InductionSecurite, InspectionSecurite,
     ItemNotation, LigneBilanCarbone,
     LigneEvaluationRisque, NonConformite, NotationFinChantier,
-    PermisTravail, PlanInspectionChantier, PlanInspectionModele, PlanUrgence,
-    PointControleModele, ProcedureQualite, QhseChatterEntry,
+    PermisTravail, PlanControleReception, PlanInspectionChantier,
+    PlanInspectionModele, PlanUrgence,
+    PointControleModele, PointControleReception, ProcedureQualite,
+    QhseChatterEntry,
     RecyclageModule, ReleveControle,
     ReleveCourbeIV, ReponseCritere, RetourClientQualite, Secouriste,
 )
@@ -36,6 +39,7 @@ from .serializers import (
     CauseIncidentSerializer,
     ConformiteEnvironnementaleSerializer,
     ConsignationLotoSerializer, ContactUrgenceSerializer,
+    ControleReceptionSerializer,
     CritereAuditSerializer, DechetSerializer, DeclarationCnssSerializer,
     DerogationSerializer, EtapeDeclarationAtSerializer,
     EvaluationRisqueSerializer, GrilleAuditSerializer,
@@ -46,9 +50,10 @@ from .serializers import (
     LigneBilanCarboneSerializer,
     LigneEvaluationRisqueSerializer,
     NonConformiteSerializer, NotationFinChantierSerializer,
-    PermisTravailSerializer, PlanInspectionChantierSerializer,
+    PermisTravailSerializer, PlanControleReceptionSerializer,
+    PlanInspectionChantierSerializer,
     PlanInspectionModeleSerializer, PlanUrgenceSerializer,
-    PointControleModeleSerializer,
+    PointControleModeleSerializer, PointControleReceptionSerializer,
     ProcedureQualiteSerializer, QhseChatterEntrySerializer,
     RecyclageModuleSerializer,
     ReleveControleSerializer, ReleveCourbeIVSerializer,
@@ -75,6 +80,7 @@ from .services import (
     lever_ncr_audit, lever_ncr_inspection, nouvelle_version_procedure,
     poser_disposition,
     relancer_capa_en_retard, relancer_conformites,
+    statuer_controle_reception,
     verifier_efficacite_capa,
 )
 
@@ -1988,3 +1994,96 @@ class IndicateurESGViewSet(_QhseBaseViewSet):
         """
         annee = request.query_params.get('annee') or None
         return Response(export_esg(request.user.company, annee=annee))
+
+
+# ── XQHS3 — Contrôle qualité à la réception fournisseur ─────────────────────
+
+class PlanControleReceptionViewSet(_QhseBaseViewSet):
+    """Plans de contrôle qualité à la réception fournisseur (XQHS3).
+
+    CRUD scopé société. ``company`` posée côté serveur. Filtres optionnels
+    ``?produit=`` / ``?categorie=`` / ``?actif=``.
+    """
+    queryset = PlanControleReception.objects.select_related(
+        'produit', 'categorie').prefetch_related('points').all()
+    serializer_class = PlanControleReceptionSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom']
+    ordering_fields = ['id', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        produit = self.request.query_params.get('produit')
+        if produit not in (None, ''):
+            qs = qs.filter(produit_id=produit)
+        categorie = self.request.query_params.get('categorie')
+        if categorie not in (None, ''):
+            qs = qs.filter(categorie_id=categorie)
+        actif = self.request.query_params.get('actif')
+        if actif not in (None, ''):
+            qs = qs.filter(actif=actif.lower() in ('1', 'true'))
+        return qs
+
+
+class PointControleReceptionViewSet(_QhseBaseViewSet):
+    """Points de contrôle d'un plan de contrôle réception (XQHS3)."""
+    queryset = PointControleReception.objects.select_related('plan').all()
+    serializer_class = PointControleReceptionSerializer
+    ordering_fields = ['id', 'ordre', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        plan = self.request.query_params.get('plan')
+        if plan not in (None, ''):
+            qs = qs.filter(plan_id=plan)
+        return qs
+
+
+class ControleReceptionViewSet(_QhseBaseViewSet):
+    """Contrôles qualité exécutés à la réception fournisseur (XQHS3).
+
+    CRUD scopé société (surtout en lecture — l'ouverture passe par
+    ``instancier_controles_reception``, déclenchée par l'événement de
+    confirmation de réception côté ``stock``). Filtres optionnels
+    ``?reception_id=`` / ``?verdict=``.
+
+    Action ``POST …/<id>/statuer/`` — pose le verdict (``accepte`` /
+    ``refuse`` / ``quarantaine``). Un verdict ``refuse`` lève automatiquement
+    une NCR pré-remplie (pont XQHS3→XQHS2).
+    """
+    queryset = ControleReception.objects.select_related(
+        'plan', 'controleur', 'non_conformite').all()
+    serializer_class = ControleReceptionSerializer
+    ordering_fields = ['id', 'date_controle', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        reception_id = self.request.query_params.get('reception_id')
+        if reception_id not in (None, ''):
+            qs = qs.filter(reception_id=reception_id)
+        verdict = self.request.query_params.get('verdict')
+        if verdict not in (None, ''):
+            qs = qs.filter(verdict=verdict)
+        return qs
+
+    @action(detail=True, methods=['post'])
+    def statuer(self, request, pk=None):
+        """Pose le verdict d'un contrôle réception (XQHS3).
+
+        Corps : ``verdict`` (requis), ``notes`` optionnelles. ``controleur``
+        posé côté serveur (jamais lu du corps).
+        """
+        controle = self.get_object()
+        verdict = request.data.get('verdict')
+        if not verdict:
+            return Response(
+                {'detail': 'verdict est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            statuer_controle_reception(
+                controle, verdict, controleur=request.user,
+                notes=request.data.get('notes', ''))
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(controle).data)

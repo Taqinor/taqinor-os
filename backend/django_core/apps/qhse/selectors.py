@@ -24,7 +24,7 @@ from django.db.models import Avg
 
 from .models import (
     ActionCorrectivePreventive, Audit, ConformiteEnvironnementale,
-    DeclarationCnss, EtapeDeclarationAt, EvaluationRisque,
+    ControleReception, DeclarationCnss, EtapeDeclarationAt, EvaluationRisque,
     Incident, IndicateurESG, InspectionSecurite, NonConformite,
     NotationFinChantier,
     PermisTravail, PlanInspectionChantier,
@@ -1181,3 +1181,31 @@ def etapes_at_a_echeance(company, within_hours=48, now=None):
 def etapes_declaration(declaration):
     """Étapes légales AT/MP d'une déclaration CNSS, triées par échéance."""
     return declaration.etapes.all().order_by('echeance', 'id')
+
+
+# ── XQHS3 — Contrôle qualité à la réception fournisseur (advisory) ─────────
+
+def reception_controle_ouvert(reception_id):
+    """Un contrôle qualité de réception est-il encore OUVERT pour cette
+    réception fournisseur (XQHS3) ?
+
+    Point d'accès ADVISORY pour ``stock`` (badge « contrôle en attente ») —
+    lecture seule, ne bloque jamais le flux stock. Renvoie ``True`` si AU
+    MOINS UN ``ControleReception`` de cette réception a le verdict
+    ``en_attente``. Non scopé société explicitement (l'appelant, ``stock``,
+    fournit un id déjà résolu dans sa propre société) — mais reste sûr car
+    ``reception_id`` est une clé étrangère opaque, jamais un identifiant
+    global partagé entre sociétés.
+    """
+    return ControleReception.objects.filter(
+        reception_id=reception_id,
+        verdict=ControleReception.Verdict.EN_ATTENTE,
+    ).exists()
+
+
+def controles_reception_de(reception_id, company=None):
+    """Contrôles réception d'une réception fournisseur donnée (lecture seule)."""
+    qs = ControleReception.objects.filter(reception_id=reception_id)
+    if company is not None:
+        qs = qs.filter(company=company)
+    return qs.select_related('plan', 'controleur', 'non_conformite')

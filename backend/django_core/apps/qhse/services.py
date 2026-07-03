@@ -11,9 +11,10 @@ from decimal import Decimal
 from django.db import transaction
 
 from .models import (
-    ActionCorrectivePreventive, CauseIncident, DeclarationCnss,
-    Derogation, EtapeDeclarationAt, NonConformite,
-    NotationFinChantier, PlanInspectionChantier, PointControleModele,
+    ActionCorrectivePreventive, CauseIncident, ControleReception,
+    DeclarationCnss, Derogation, EtapeDeclarationAt, NonConformite,
+    NotationFinChantier, PlanControleReception, PlanInspectionChantier,
+    PointControleModele,
     ProcedureQualite, ReponseCritere, ReleveControle,
 )
 
@@ -882,3 +883,102 @@ def _notifier_etape_at(user, titre, corps, company):
                link='/qhse/declarations-cnss', company=company)
     except Exception:  # pragma: no cover - défensif
         pass
+
+
+# ── XQHS3 — Contrôle qualité à la réception fournisseur ──────────────────────
+
+def plans_actifs_pour_produit(company, produit_id, categorie_id=None):
+    """Plans de contrôle réception ACTIFS couvrant ce produit (ou sa catégorie).
+
+    Un plan peut couvrir un produit précis OU une catégorie entière. Scopé
+    société. Lecture seule.
+    """
+    from django.db.models import Q
+    qs = PlanControleReception.objects.filter(company=company, actif=True)
+    filtre = Q(produit_id=produit_id)
+    if categorie_id is not None:
+        filtre |= Q(categorie_id=categorie_id)
+    return list(qs.filter(filtre))
+
+
+@transaction.atomic
+def instancier_controles_reception(reception, company):
+    """Instancie les ``ControleReception`` déclenchés par une réception
+    confirmée (XQHS3), abonné à ``core.events.reception_fournisseur_confirmee``.
+
+    Pour CHAQUE ligne de la réception, résout le produit (et sa catégorie) et
+    crée un ``ControleReception`` par plan actif qui le couvre — idempotent
+    (contrainte d'unicité société+réception+plan : un second appel pour la même
+    réception ne duplique rien).
+
+    ``reception`` est l'instance ``stock.ReceptionFournisseur`` (accédée en
+    lecture directe ici car on est dans le récepteur de l'événement qu'elle a
+    elle-même émis — pas un import de ``stock.models`` en dehors de ce
+    contexte réactif). Renvoie la liste des ``ControleReception`` créés.
+    """
+    crees = []
+    lignes = list(reception.lignes.select_related('produit').all())
+    for ligne in lignes:
+        produit = ligne.produit
+        if produit is None:
+            continue
+        categorie_id = getattr(produit, 'categorie_id', None)
+        plans = plans_actifs_pour_produit(company, produit.id, categorie_id)
+        for plan in plans:
+            controle, created = ControleReception.objects.get_or_create(
+                company=company, reception_id=reception.id, plan=plan,
+                defaults={'produit_id': produit.id},
+            )
+            if created:
+                crees.append(controle)
+    return crees
+
+
+@transaction.atomic
+def statuer_controle_reception(
+        controle, verdict, *, controleur=None, notes=''):
+    """Pose le verdict d'un contrôle réception (XQHS3).
+
+    ``controleur``/``date_controle`` posés côté serveur. Un verdict ``refuse``
+    crée automatiquement une NCR pré-remplie (pont XQHS3→XQHS2) via
+    ``lever_ncr_controle_reception`` — idempotent (ne recrée pas de NCR si une
+    est déjà liée). Renvoie le contrôle mis à jour.
+    """
+    from django.utils import timezone
+
+    valeurs_valides = {c.value for c in ControleReception.Verdict}
+    if verdict not in valeurs_valides:
+        raise ValueError(f'Verdict invalide : {verdict!r}')
+
+    controle.verdict = verdict
+    controle.controleur = controleur
+    controle.notes = notes or controle.notes
+    controle.date_controle = timezone.now()
+    controle.save(update_fields=[
+        'verdict', 'controleur', 'notes', 'date_controle'])
+
+    if verdict == ControleReception.Verdict.REFUSE:
+        lever_ncr_controle_reception(controle)
+    return controle
+
+
+def lever_ncr_controle_reception(controle):
+    """Lève une NCR pré-remplie depuis un contrôle réception refusé (XQHS3).
+
+    Idempotent : si ``controle.non_conformite`` est déjà posée, ne recrée rien.
+    """
+    if controle.non_conformite_id is not None:
+        return controle.non_conformite
+    ncr = NonConformite.objects.create(
+        company=controle.company,
+        titre=f'[Réception] Contrôle refusé — {controle.plan.nom}',
+        description=(
+            controle.notes or
+            f'Contrôle qualité à la réception #{controle.reception_id} '
+            f'refusé sur le plan « {controle.plan.nom} ».'),
+        origine=f'Contrôle réception — {controle.plan.nom}',
+        gravite=NonConformite.Gravite.MAJEURE,
+    )
+    controle.non_conformite = ncr
+    controle.save(update_fields=['non_conformite'])
+    return ncr

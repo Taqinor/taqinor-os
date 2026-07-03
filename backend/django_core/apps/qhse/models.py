@@ -3152,3 +3152,200 @@ class IndicateurESG(models.Model):
 
     def __str__(self):
         return f'{self.code or self.libelle} ({self.get_pilier_display()})'
+
+
+# ── XQHS3 — Contrôle qualité à la réception fournisseur + quarantaine ───────
+
+class PlanControleReception(models.Model):
+    """Plan de contrôle qualité à la réception fournisseur (XQHS3).
+
+    Défini par produit OU par catégorie (au moins l'un des deux — non forcé
+    côté modèle) : quand une ``stock.ReceptionFournisseur`` est confirmée
+    (événement ``core.events.reception_fournisseur_confirmee``), tout produit
+    couvert par un plan actif déclenche un ``ControleReception``. Le
+    ``taux_echantillonnage`` (%) indique la part à contrôler ; les points de
+    contrôle vivent dans ``PointControleReception`` (relation 1-N, réutilise le
+    pattern ``PointControleModele``).
+
+    Références FK-CHAÎNE vers ``stock`` (jamais un import de modèle).
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_plans_controle_reception',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=255, verbose_name='Nom')
+    # Référence LÂCHE au produit (stock.Produit) — FK-chaîne.
+    produit = models.ForeignKey(
+        'stock.Produit',
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='qhse_plans_controle_reception',
+        verbose_name='Produit',
+    )
+    # Référence LÂCHE à la catégorie (stock.Categorie) — FK-chaîne.
+    categorie = models.ForeignKey(
+        'stock.Categorie',
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='qhse_plans_controle_reception',
+        verbose_name='Catégorie',
+    )
+    taux_echantillonnage = models.PositiveSmallIntegerField(
+        default=100, verbose_name="Taux d'échantillonnage (%)")
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Plan de contrôle réception'
+        verbose_name_plural = 'Plans de contrôle réception'
+        ordering = ['-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'produit'],
+                name='qhse_plancr_co_produit',
+            ),
+            models.Index(
+                fields=['company', 'categorie'],
+                name='qhse_plancr_co_categ',
+            ),
+        ]
+
+    def __str__(self):
+        return self.nom
+
+
+class PointControleReception(models.Model):
+    """Point de contrôle d'un ``PlanControleReception`` (XQHS3).
+
+    Mirroir de ``PointControleModele`` (ITP) : décrit un point à vérifier à la
+    réception (visuel/mesure/document/essai), sans point d'arrêt (pas de
+    blocage bloquant côté modèle — l'advisory se fait au niveau du sélecteur).
+    """
+    class TypeReleve(models.TextChoices):
+        MESURE = 'mesure', 'Mesure'
+        VISUEL = 'visuel', 'Visuel'
+        DOCUMENT = 'document', 'Document'
+        ESSAI = 'essai', 'Essai'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_points_controle_reception',
+        verbose_name='Société',
+    )
+    plan = models.ForeignKey(
+        PlanControleReception,
+        on_delete=models.CASCADE,
+        related_name='points',
+        verbose_name='Plan de contrôle réception',
+    )
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    intitule = models.CharField(max_length=255, verbose_name='Intitulé')
+    type_releve = models.CharField(
+        max_length=10, choices=TypeReleve.choices,
+        default=TypeReleve.VISUEL, verbose_name='Type de relevé')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Point de contrôle réception'
+        verbose_name_plural = 'Points de contrôle réception'
+        ordering = ['plan', 'ordre', 'id']
+
+    def __str__(self):
+        return self.intitule
+
+
+class ControleReception(models.Model):
+    """Contrôle qualité exécuté à la réception d'un produit sous plan (XQHS3).
+
+    Une ``ControleReception`` matérialise l'exécution d'un
+    ``PlanControleReception`` pour UNE réception fournisseur donnée
+    (``reception_id`` — FK-CHAÎNE vers ``stock.ReceptionFournisseur``, jamais
+    un import de modèle). Le ``verdict`` (accepté / refusé / quarantaine) est
+    posé par le contrôleur ; un verdict ``refuse`` crée automatiquement une
+    ``NonConformite`` pré-remplie (disposition XQHS2) via
+    ``services.lever_ncr_controle_reception``.
+
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    class Verdict(models.TextChoices):
+        EN_ATTENTE = 'en_attente', 'En attente'
+        ACCEPTE = 'accepte', 'Accepté'
+        REFUSE = 'refuse', 'Refusé'
+        QUARANTAINE = 'quarantaine', 'Quarantaine'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_controles_reception',
+        verbose_name='Société',
+    )
+    plan = models.ForeignKey(
+        PlanControleReception,
+        on_delete=models.PROTECT,
+        related_name='controles',
+        verbose_name='Plan de contrôle réception',
+    )
+    # Référence LÂCHE à la réception fournisseur (stock.ReceptionFournisseur).
+    reception_id = models.PositiveIntegerField(
+        verbose_name='ID de la réception fournisseur')
+    # Référence LÂCHE au produit contrôlé (stock.Produit).
+    produit_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du produit')
+    verdict = models.CharField(
+        max_length=15, choices=Verdict.choices,
+        default=Verdict.EN_ATTENTE, verbose_name='Verdict')
+    controleur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_controles_reception',
+        verbose_name='Contrôleur',
+    )
+    notes = models.TextField(blank=True, default='', verbose_name='Notes')
+    # Pont vers la NCR créée automatiquement sur un verdict REFUSE (XQHS2).
+    non_conformite = models.ForeignKey(
+        NonConformite,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_controles_reception',
+        verbose_name='Non-conformité liée',
+    )
+    date_controle = models.DateTimeField(
+        null=True, blank=True, verbose_name='Contrôlé le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Contrôle réception'
+        verbose_name_plural = 'Contrôles réception'
+        ordering = ['-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reception_id', 'plan'],
+                name='qhse_ctrlrecep_co_recep_plan_uniq',
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'verdict'],
+                name='qhse_ctrlrecep_co_verdict',
+            ),
+            models.Index(
+                fields=['company', 'reception_id'],
+                name='qhse_ctrlrecep_co_recep',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Contrôle réception#{self.reception_id} — {self.get_verdict_display()}'
+
+    @property
+    def ouvert(self):
+        """Contrôle non encore statué (advisory pour ``stock``)."""
+        return self.verdict == self.Verdict.EN_ATTENTE

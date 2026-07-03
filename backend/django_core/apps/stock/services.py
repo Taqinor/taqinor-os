@@ -684,6 +684,18 @@ def confirm_reception_fournisseur(reception, user):
                     # passer à « envoyé » (commande engagée, partiellement reçue).
                     bc.statut = BonCommandeFournisseur.Statut.ENVOYE
                 bc.save(update_fields=['statut'])
+    # XQHS3 / YPROC3 — émet l'événement de confirmation sur le bus (core.events)
+    # APRÈS le commit de la transaction (best-effort, ne casse jamais la
+    # confirmation) : qhse peut ouvrir un contrôle qualité de réception,
+    # installations peut créer sa provision GR/IR. stock n'importe ni l'un ni
+    # l'autre — les deux s'abonnent dans leur propre apps.py ready().
+    try:
+        from core.events import reception_fournisseur_confirmee
+        reception_fournisseur_confirmee.send(
+            sender=ReceptionFournisseur, reception=reception,
+            company=reception.company, user=user)
+    except Exception:  # pragma: no cover - défensif, best-effort
+        pass
     return reception
 
 
