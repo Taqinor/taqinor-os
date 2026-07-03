@@ -1888,3 +1888,33 @@ def apply_devise_facture(montant_ttc_devise, devise, taux_change):
     if montant_ttc_devise is None or not devise or devise == DeviseAchat.MAD:
         return None
     return contre_valeur_mad(montant_ttc_devise, taux_change)
+
+
+# ── XPUR4 — statut fournisseur : gate commande / paiement ──────────────────
+
+def check_fournisseur_statut_commande(fournisseur):
+    """XPUR4 — lève ValueError si le fournisseur est bloqué pour les
+    COMMANDES (bloque_commandes ou bloque_total). No-op pour 'actif' et
+    'bloque_paiements' (comportement historique préservé)."""
+    from .models import Fournisseur
+    if fournisseur.statut in (
+        Fournisseur.Statut.BLOQUE_COMMANDES, Fournisseur.Statut.BLOQUE_TOTAL,
+    ):
+        raise ValueError(
+            f"Impossible de créer un bon de commande : {fournisseur.nom} est "
+            f"{fournisseur.get_statut_display().lower()}"
+            f"{' (' + fournisseur.motif_blocage + ')' if fournisseur.motif_blocage else ''}.")
+
+
+def check_fournisseur_statut_paiement(fournisseur):
+    """XPUR4 — lève ValueError si le fournisseur est bloqué pour les
+    PAIEMENTS (bloque_paiements ou bloque_total). No-op pour 'actif' et
+    'bloque_commandes' (comportement historique préservé)."""
+    from .models import Fournisseur
+    if fournisseur.statut in (
+        Fournisseur.Statut.BLOQUE_PAIEMENTS, Fournisseur.Statut.BLOQUE_TOTAL,
+    ):
+        raise ValueError(
+            f"Impossible d'enregistrer un paiement : {fournisseur.nom} est "
+            f"{fournisseur.get_statut_display().lower()}"
+            f"{' (' + fournisseur.motif_blocage + ')' if fournisseur.motif_blocage else ''}.")

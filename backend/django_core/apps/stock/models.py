@@ -63,6 +63,15 @@ class Fournisseur(models.Model):
         SERVICE = 'service', 'Service / sous-traitance'
         MIXTE = 'mixte', 'Mixte (matériel + service)'
 
+    # XPUR4 — statut fournisseur (défaut actif = comportement historique
+    # inchangé). Enforcé à la CRÉATION d'un BCF (bloque_commandes/total) et
+    # d'un PaiementFournisseur (bloque_paiements/total).
+    class Statut(models.TextChoices):
+        ACTIF = 'actif', 'Actif'
+        BLOQUE_COMMANDES = 'bloque_commandes', 'Bloqué (commandes)'
+        BLOQUE_PAIEMENTS = 'bloque_paiements', 'Bloqué (paiements)'
+        BLOQUE_TOTAL = 'bloque_total', 'Bloqué (total)'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -102,6 +111,12 @@ class Fournisseur(models.Model):
     rib = models.CharField(
         max_length=50, blank=True, null=True,
         help_text='RIB / IBAN du fournisseur (règlements AP).')
+
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.ACTIF,
+        help_text='Statut fournisseur : actif, bloqué commandes, bloqué '
+                  'paiements ou bloqué total.')
+    motif_blocage = models.TextField(blank=True, null=True)
 
     class Meta:
         verbose_name = "Fournisseur"

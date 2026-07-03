@@ -74,10 +74,15 @@ class PaiementFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
         facture_id = request.data.get('facture')
         if facture_id:
             try:
-                from ..services import check_paiement_conformite_gate
+                from ..services import (
+                    check_paiement_conformite_gate,
+                    check_fournisseur_statut_paiement,
+                )
                 facture = FactureFournisseur.objects.select_related(
                     'fournisseur').get(
                     pk=facture_id, company=request.user.company)
+                # XPUR4 — fournisseur bloqué paiements (ou total).
+                check_fournisseur_statut_paiement(facture.fournisseur)
                 check_paiement_conformite_gate(
                     request.user.company, facture.fournisseur)
             except FactureFournisseur.DoesNotExist:

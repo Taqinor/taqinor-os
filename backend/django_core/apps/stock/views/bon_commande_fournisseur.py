@@ -206,6 +206,21 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
             BonCommandeFournisseur, 'BCF', company, _save)
 
     def create(self, request, *args, **kwargs):
+        # XPUR4 — refuse la création si le fournisseur est bloqué commandes
+        # (ou total). No-op pour un fournisseur actif (comportement
+        # historique).
+        fournisseur_id = request.data.get('fournisseur')
+        if fournisseur_id:
+            try:
+                from ..services import check_fournisseur_statut_commande
+                fournisseur = Fournisseur.objects.get(
+                    pk=fournisseur_id, company=request.user.company)
+                check_fournisseur_statut_commande(fournisseur)
+            except Fournisseur.DoesNotExist:
+                pass
+            except ValueError as exc:
+                return Response(
+                    {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         # XPUR1 — WARNING (non bloquant) si le fournisseur a un document de
         # conformité manquant/expiré ; ajouté à la réponse sans jamais
         # empêcher la création du BCF.
