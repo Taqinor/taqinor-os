@@ -1,0 +1,135 @@
+---
+/**
+ * Guide (W306) — Mon toit peut-il supporter des panneaux ? Poids au m²,
+ * types de toitures marocaines et quand une vérification structurelle est
+ * nécessaire. Poids panneau/structure = fiches techniques constructeur
+ * publiques (Canadian Solar TOPBiHiKu 705–720 Wc, ~35 kg/panneau,
+ * ~1,7–1,9 m² par panneau → ≈ 18–21 kg/m² module seul ; structure de
+ * fixation ajoutée ci-dessous, sourcée séparément). AUCUN prix inventé —
+ * les surcharges structurelles déjà publiées dans CONTENT_SEO_NOTES.md §5
+ * (tuile/ondulé +6 000–12 000 DH, pente >30° +4 000–8 000 DH) ne sont PAS
+ * répétées ici (guide de méthode, pas de prix).
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import { NAP } from '../../lib/nap';
+import RelatedLinks from '../../components/RelatedLinks.astro';
+
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: 'Mon toit peut-il supporter des panneaux solaires ?',
+  description: 'Poids au m² d’une installation solaire, toitures marocaines (dalle béton, tuile, tôle ondulée, terrasse) et quand une vérification structurelle est nécessaire avant de poser des panneaux.',
+  about: { '@type': 'Thing', name: 'Charge structurelle toiture solaire' },
+  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: url,
+};
+
+const toitures = [
+  {
+    title: 'Dalle béton pleine (terrasse marocaine classique)',
+    body: 'La très grande majorité des toitures résidentielles marocaines sont des dalles béton pleines, conçues pour porter bien plus qu’un poids de circulation piétonne. C’est le cas le plus favorable : le poids d’une installation solaire (panneaux + structure de fixation lestée ou chevillée) reste très en dessous de sa capacité portante d’origine. Une vérification visuelle de l’état de la dalle (fissures, infiltrations, ferraillage apparent) reste de mise avant toute pose, mais un calcul de structure complet est rarement nécessaire sur une dalle saine.',
+  },
+  {
+    title: 'Toiture en tuile',
+    body: 'Les tuiles ne portent pas elles-mêmes le poids des panneaux : la fixation se fait sur la charpente, via des crochets qui traversent la couverture et s’ancrent sur les chevrons ou pannes. La question n’est donc pas « la tuile tient-elle ? » mais « la charpente sous la tuile tient-elle ? ». Une charpente bois ancienne ou déjà chargée (chauffe-eau solaire, ancienne surcharge) mérite un avis d’un charpentier ou d’un bureau d’études avant la pose.',
+  },
+  {
+    title: 'Tôle ondulée ou bac acier',
+    body: 'Fréquente sur les hangars agricoles et les bâtiments industriels légers. La tôle seule ne supporte pas le poids d’un panneau : la fixation passe par la panne métallique ou bois sous-jacente, dimensionnée à l’origine pour le vent et parfois pour un entretien ponctuel, pas pour une charge permanente répartie. Sur ce type de toiture, un avis structurel est la règle plutôt que l’exception, surtout sur les grandes portées.',
+  },
+  {
+    title: 'Toit plat étanché (bitume, membrane)',
+    body: 'Les installations lestées (sans perçage, panneaux posés sur des bacs lestés par des blocs béton) évitent de percer l’étanchéité, mais ajoutent un poids concentré sur des zones précises plutôt que réparti uniformément. Sur un toit plat, on vérifie surtout la capacité portante de la dalle sous l’étanchéité et la répartition des points de charge — pas uniquement le poids total.',
+  },
+];
+---
+
+<Layout
+  title="Mon toit peut-il supporter des panneaux solaires ? Poids au m² | Taqinor"
+  description="Poids réel d'une installation solaire au m², comportement des toitures marocaines (dalle béton, tuile, tôle ondulée, toit plat) et quand une vérification structurelle s'impose avant de poser des panneaux."
+  ogSlug="equipement"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Guides', href: '/guides' }, { label: 'Mon toit peut-il supporter des panneaux ?' }]} />
+
+    <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
+      <p class="tech-label v2-kicker rule-brass text-lune">Guide · Structure</p>
+      <h1 class="display v2-page-title mt-5 text-white">Mon toit peut-il supporter des panneaux ?</h1>
+      <p class="v2-lead mt-6 text-lune-soft">
+        C’est l’objection qui revient juste après le prix : « et si mon toit ne tient pas le poids ? ».
+        La bonne nouvelle, c’est qu’un panneau solaire est nettement plus léger qu’on ne l’imagine — le
+        vrai sujet n’est pas le poids en lui-même, mais la nature de votre toiture et l’état de sa
+        structure porteuse. Voici comment s’y retrouver, toiture par toiture.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Le poids réel d’un panneau solaire</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Un panneau photovoltaïque haute puissance actuel (les modules Canadian Solar bifaciaux
+        705–720 Wc que nous posons, par exemple) pèse d’après sa fiche technique constructeur environ
+        <strong class="text-white"> 35 kg</strong> pour une surface d’environ
+        <strong class="text-white"> 1,7 à 1,9 m²</strong>, soit un ordre de grandeur d’environ
+        <strong class="text-white"> 18 à 21 kg/m²</strong> pour le module seul, avant d’ajouter la
+        structure de fixation (rails aluminium, crochets ou lest béton selon la toiture). Structure
+        comprise, une installation en surimposition sur charpente ou dalle béton reste en général de
+        l’ordre de <strong class="text-white">20 à 25 kg/m²</strong> répartis sur l’ensemble de la
+        surface couverte — un poids comparable à une couche de gravier ou à quelques centimètres d’eau
+        stagnante, très loin des charges qu’une toiture est conçue pour encaisser (vent, entretien,
+        parfois neige selon la région).
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Ce chiffre est un ordre de grandeur utile pour se rassurer sur le principe, pas une validation
+        structurelle : la question qui compte vraiment est de savoir si <em>votre</em> toiture précise,
+        dans son état actuel, est prévue pour porter une charge répartie permanente — et c’est
+        strictement une question de type de toiture et de structure porteuse, pas de nombre de
+        panneaux.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Toiture par toiture : ce qui change</h2>
+      <div class="mt-8 grid gap-6" data-stagger>
+        {toitures.map((t, i) => (
+          <div class="v2-rise cine-card p-6 sm:p-7" style={`--v2-i:${i}`}>
+            <h3 class="display text-lg text-white">{t.title}</h3>
+            <p class="mt-2 text-sm leading-relaxed text-lune-soft">{t.body}</p>
+          </div>
+        ))}
+      </div>
+
+      <h2 class="display v2-section-title mt-12 text-white">Quand faut-il une vérification structurelle ?</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Certains signaux appellent un avis d’un professionnel (charpentier, bureau d’études structure)
+        avant toute pose, quel que soit le type de toiture : fissures visibles sur la dalle ou les
+        murs porteurs, affaissement ou flèche visible de la charpente, toiture déjà ancienne
+        (au-delà de 30–40 ans sans rénovation connue), présence d’une surcharge existante non prévue à
+        l’origine (chauffe-eau solaire, réservoir, végétalisation), ou toiture en tôle/bac acier sur
+        une grande portée. En dehors de ces cas, sur une dalle béton résidentielle standard en bon
+        état, le poids d’une installation solaire ne constitue pas un facteur de risque en soi.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        C’est pour cette raison que notre étude commence toujours par une visite ou des photos du toit
+        avant tout chiffrage : on regarde l’état réel de votre toiture avant de parler de kWc.
+      </p>
+
+      <RelatedLinks links={[
+        { href: '/guides/combien-de-panneaux-pour-ma-maison', label: 'Combien de panneaux pour ma maison ?' },
+        { href: '/guides/orientation-inclinaison-ombrage', label: 'Orientation, inclinaison, ombrage' },
+        { href: '/garanties', label: 'Nos garanties' },
+        { href: '/guides', label: 'Tous les guides' },
+      ]} />
+    </article>
+
+    <CtaBand title="Un doute sur votre toiture ? On vérifie sur place, dans l’étude gratuite." href="/devis/mon-toit" />
+
+    <StickyCta />
+  </div>
+</Layout>

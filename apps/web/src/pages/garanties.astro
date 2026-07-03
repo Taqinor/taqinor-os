@@ -3,6 +3,12 @@
  * Nos garanties / engagements (W8). Reprend EXACTEMENT le tableau de garanties
  * déjà publié sur la page Équipement + l'engagement monitoring/SAV existant.
  * AUCUN délai de réponse (SLA) ni politique de sous-performance inventés.
+ *
+ * W306 — FAQ assurance habitation ajoutée : contenu générique (déclaration à
+ * l'assureur, garanties typiquement concernées), explicitement non un conseil
+ * juridique/contractuel — chaque contrat d'assurance étant différent, on
+ * renvoie systématiquement à l'assureur du client. schema={false} sur <Faq> :
+ * la seule page qui émet le FAQPage JSON-LD du site est /faq (W19).
  */
 import Layout from '../layouts/Layout.astro';
 import V2Enhance from '../components/V2Enhance.astro';
@@ -10,6 +16,26 @@ import Article33Ribbon from '../components/Article33Ribbon.astro';
 import Breadcrumb from '../components/Breadcrumb.astro';
 import CtaBand from '../components/CtaBand.astro';
 import StickyCta from '../components/StickyCta.astro';
+import Faq from '../components/Faq.astro';
+
+const insuranceFaq = [
+  {
+    q: 'Dois-je déclarer mon installation solaire à mon assureur habitation ?',
+    a: 'En général, oui : une installation solaire modifie la construction et sa valeur assurée, ce qui justifie une déclaration à votre assureur habitation (multirisque habitation). Chaque contrat étant différent, la démarche exacte et les conséquences sur votre prime dépendent de votre assureur — ceci n’est pas un conseil juridique, contactez le vôtre pour connaître la procédure et les clauses qui s’appliquent à votre contrat.',
+  },
+  {
+    q: 'Qu’est-ce qu’une assurance habitation couvre habituellement sur une installation solaire ?',
+    a: 'Les contrats multirisque habitation couvrent typiquement l’incendie, la foudre, les dégâts des eaux et parfois les événements climatiques (grêle, vent) sur les biens immobiliers, panneaux inclus une fois déclarés. La casse accidentelle, le vol de matériel ou la sous-performance ne sont pas systématiquement couverts par une multirisque habitation standard — vérifiez les clauses exactes et les exclusions avec votre assureur, elles varient d’un contrat à l’autre.',
+  },
+  {
+    q: 'La garantie Taqinor remplace-t-elle mon assurance habitation ?',
+    a: 'Non, ce sont deux choses différentes et complémentaires. Notre garantie (voir le tableau ci-dessus) couvre un défaut de matériel ou de pose sur la durée contractuelle. Votre assurance habitation couvre des sinistres extérieurs à l’installation elle-même — incendie, dégât des eaux, événement climatique. Les deux se déclenchent dans des situations différentes ; ni l’une ni l’autre ne remplace la déclaration à votre assureur.',
+  },
+  {
+    q: 'Une installation solaire peut-elle faire baisser ma prime d’assurance ?',
+    a: 'Cela dépend entièrement de votre assureur et de votre contrat — nous n’avons pas d’accord commercial avec un assureur en particulier et ne pouvons pas l’affirmer de manière générale. C’est une question à poser directement à votre assureur au moment de la déclaration.',
+  },
+];
 
 // Identique au tableau de la page Équipement (source de vérité publiée).
 const warranties = [
@@ -104,6 +130,13 @@ const engagements = [
         </div>
       </div>
     </section>
+
+    <!-- W306 — FAQ assurance habitation : contenu générique, non un conseil juridique. -->
+    <Faq
+      heading="Assurance habitation et installation solaire"
+      items={insuranceFaq}
+      schema={false}
+    />
 
     <CtaBand title="Une garantie de 25 ans se mérite par une étude sérieuse. La nôtre est gratuite." href="/devis/mon-toit" />
 
