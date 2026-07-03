@@ -30,17 +30,17 @@ from apps.records.serializers import resolve_target
 
 from . import selectors, services
 from .models import (
-    ArchivageLegal, ArchivageLegalError, Cabinet, Coffre, DemandeApprobation,
-    DemandeSignatureDocument, Document, DocumentLien, DocumentTag,
-    DocumentTagAssignment, DocumentVersion, Folder, JournalAcces, LegalHold,
-    LegalHoldError, ModeleDocument, PartageGed, PolitiqueRetention,
-    QuotaDepasseError, QuotaStockage, SignataireDemande,
+    ArchivageLegal, ArchivageLegalError, Cabinet, ChampSignature, Coffre,
+    DemandeApprobation, DemandeSignatureDocument, Document, DocumentLien,
+    DocumentTag, DocumentTagAssignment, DocumentVersion, Folder,
+    JournalAcces, LegalHold, LegalHoldError, ModeleDocument, PartageGed,
+    PolitiqueRetention, QuotaDepasseError, QuotaStockage, SignataireDemande,
 )
 from .serializers import (
-    ArchivageLegalSerializer, CabinetSerializer, CoffreSerializer,
-    DemandeApprobationSerializer, DemandeSignatureDocumentSerializer,
-    DocumentLienSerializer, DocumentSerializer,
-    DocumentTagAssignmentSerializer, DocumentTagSerializer,
+    ArchivageLegalSerializer, CabinetSerializer, ChampSignatureSerializer,
+    CoffreSerializer, DemandeApprobationSerializer,
+    DemandeSignatureDocumentSerializer, DocumentLienSerializer,
+    DocumentSerializer, DocumentTagAssignmentSerializer, DocumentTagSerializer,
     DocumentVersionSerializer, FolderSerializer, JournalAccesSerializer,
     LegalHoldSerializer, ModeleDocumentSerializer, PartageGedSerializer,
     PolitiqueRetentionSerializer, QuotaStockageSerializer,
@@ -2020,6 +2020,37 @@ class SignataireDemandeViewSet(TenantMixin, mixins.ListModelMixin,
         return qs
 
 
+class ChampSignatureViewSet(TenantMixin, viewsets.ModelViewSet):
+    """XGED3 — Zones de champs positionnées (placement de modèle de signature).
+
+    `company` posée CÔTÉ SERVEUR (`TenantMixin.perform_create`) — jamais lue
+    du corps. Lecture : tout rôle authentifié. Écriture (placement/édition/
+    suppression) : responsable/admin. La page publique de cérémonie
+    (XGED1/XGED3 `public_signature`) expose ces champs en LECTURE via son
+    propre payload — jamais par cette route authentifiée."""
+    queryset = ChampSignature.objects.select_related('demande', 'modele').all()
+    serializer_class = ChampSignatureSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['page', 'y', 'x', 'id']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = ChampSignature.objects.filter(
+            company=self.request.user.company).select_related(
+                'demande', 'modele')
+        demande = self.request.query_params.get('demande')
+        if demande:
+            qs = qs.filter(demande_id=demande)
+        modele = self.request.query_params.get('modele')
+        if modele:
+            qs = qs.filter(modele_id=modele)
+        return qs
+
+
 class JournalAccesViewSet(TenantMixin, mixins.ListModelMixin,
                           mixins.RetrieveModelMixin, viewsets.GenericViewSet):
     """GED35 — Journal d'audit d'accès aux documents (LECTURE SEULE).
@@ -2252,9 +2283,11 @@ class PublicSignatureRateThrottle(SimpleRateThrottle):
 
 
 def _signature_publique_payload(demande):
-    """XGED1 — Représentation JSON publique d'une demande (jamais de données
-    d'une autre société ; aucun prix d'achat/marge — cette demande ne porte
-    aucune donnée commerciale de toute façon)."""
+    """XGED1/XGED3 — Représentation JSON publique d'une demande (jamais de
+    données d'une autre société ; aucun prix d'achat/marge — cette demande ne
+    porte aucune donnée commerciale de toute façon). Inclut les champs
+    positionnés (XGED3) — liste vide pour une demande sans champ (mono-champ
+    rétrocompatible XGED1)."""
     document = demande.document
     return {
         'document_nom': document.nom,
@@ -2262,6 +2295,7 @@ def _signature_publique_payload(demande):
         'signataire_nom': demande.signataire_nom,
         'statut': demande.statut,
         'expires_at': demande.expires_at,
+        'champs': ChampSignatureSerializer(demande.champs.all(), many=True).data,
     }
 
 
@@ -2327,12 +2361,17 @@ def public_signature(request, token):
 
     if action_demandee == 'signer':
         try:
-            demande = services.signer_demande_publique(
+            # XGED3 — la variante champs-aware exige les champs `requis`
+            # remplis puis délègue à `signer_demande_publique` (preuves
+            # inchangées) ; comportement STRICTEMENT identique à XGED1 pour
+            # une demande sans aucun `ChampSignature` (rétrocompatible).
+            demande = services.signer_demande_publique_avec_champs(
                 demande,
                 consentement=bool(request.data.get('consentement')),
                 signature_texte=request.data.get('signature_texte', ''),
                 signature_tracee=request.data.get('signature_tracee', ''),
-                adresse_ip=ip, user_agent=ua)
+                adresse_ip=ip, user_agent=ua,
+                valeurs_champs=request.data.get('valeurs_champs'))
         except ValueError as exc:
             return _ged_noindex(Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST))

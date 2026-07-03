@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from .models import (
-    ArchivageLegal, Cabinet, Coffre, DemandeApprobation,
+    ArchivageLegal, Cabinet, ChampSignature, Coffre, DemandeApprobation,
     DemandeSignatureDocument, Document, DocumentLien, DocumentTag,
     DocumentTagAssignment, DocumentVersion, Folder, JournalAcces, LegalHold,
     ModeleDocument, PartageGed, PolitiqueRetention, QuotaStockage,
@@ -617,6 +617,39 @@ class DemandeSignatureDocumentSerializer(serializers.ModelSerializer):
     def get_signataires(self, obj):
         return SignataireDemandeSerializer(
             obj.signataires.all(), many=True).data
+
+
+class ChampSignatureSerializer(serializers.ModelSerializer):
+    """XGED3 — Champ positionné sur le PDF à signer (demande OU modèle,
+    exactement l'un des deux). `company` posée CÔTÉ SERVEUR (jamais lue du
+    corps). `valeur` reste modifiable par cette API de GESTION (édition d'un
+    placement) — le remplissage PUBLIC passe par `services.
+    enregistrer_valeurs_champs`, jamais par cette route authentifiée."""
+    class Meta:
+        model = ChampSignature
+        fields = [
+            'id', 'demande', 'modele', 'type_champ', 'page',
+            'x', 'y', 'largeur', 'hauteur', 'role', 'requis', 'valeur',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def validate(self, attrs):
+        demande = attrs.get('demande', getattr(self.instance, 'demande', None))
+        modele = attrs.get('modele', getattr(self.instance, 'modele', None))
+        if bool(demande) == bool(modele):
+            raise serializers.ValidationError(
+                "Un champ cible exactement une demande OU un modèle de document.")
+        request = self.context.get('request')
+        if request is not None:
+            company = request.user.company
+            if demande is not None and demande.company_id != company.id:
+                raise serializers.ValidationError(
+                    {'demande': 'Demande inconnue.'})
+            if modele is not None and modele.company_id != company.id:
+                raise serializers.ValidationError(
+                    {'modele': 'Modèle inconnu.'})
+        return attrs
 
 
 class SignataireDemandeSerializer(serializers.ModelSerializer):

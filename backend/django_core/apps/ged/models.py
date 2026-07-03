@@ -1717,6 +1717,107 @@ class SignataireDemande(models.Model):
         return f'{self.nom} (#{self.ordre}) → {self.demande_id} ({self.statut})'
 
 
+# XGED3 — Zones de champs positionnées sur le PDF à signer.
+CHAMP_TYPE_SIGNATURE = 'signature'
+CHAMP_TYPE_INITIALES = 'initiales'
+CHAMP_TYPE_DATE = 'date'
+CHAMP_TYPE_TEXTE = 'texte'
+CHAMP_TYPE_CASE = 'case'
+
+CHAMP_TYPE_CHOICES = [
+    (CHAMP_TYPE_SIGNATURE, 'Signature'),
+    (CHAMP_TYPE_INITIALES, 'Initiales'),
+    (CHAMP_TYPE_DATE, 'Date'),
+    (CHAMP_TYPE_TEXTE, 'Texte'),
+    (CHAMP_TYPE_CASE, 'Case à cocher'),
+]
+
+
+class ChampSignature(models.Model):
+    """XGED3 — Zone de champ positionnée sur le PDF à signer.
+
+    Rattaché À EXACTEMENT UNE des deux cibles (jamais les deux, jamais aucune
+    — garde `clean()` + contrainte base) : une `demande` de signature EN COURS
+    (positionnement ad-hoc pour cette cérémonie) OU un `ModeleDocument`
+    (GED27, positionnement RÉUTILISABLE — le champ se recopie à chaque demande
+    générée depuis ce modèle).
+
+    Position en POURCENTAGE de la page (`x`/`y`/`largeur`/`hauteur`, 0-100) —
+    indépendant de la résolution/taille du PDF rendu, ce qui permet un rendu
+    identique sur l'aperçu web (mobile-first) et le PDF final aplati. `page`
+    est l'index 0-based de la page portant le champ. `role` cible le
+    destinataire concerné (nom libre — aligné sur `SignataireDemande.nom` ou
+    `SignataireDemande.role` selon l'usage ; laissé libre pour rester
+    utilisable sur un `ModeleDocument` qui n'a pas encore de destinataires
+    concrets). `requis` bloque la complétion tant que non rempli ; un champ
+    optionnel peut être laissé vide.
+
+    Multi-tenant : `company` posée CÔTÉ SERVEUR (cohérente avec la cible) —
+    jamais lue du corps de requête.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_champs_signature')
+    demande = models.ForeignKey(
+        DemandeSignatureDocument, on_delete=models.CASCADE,
+        null=True, blank=True, related_name='champs')
+    modele = models.ForeignKey(
+        'ModeleDocument', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='champs_signature')
+    type_champ = models.CharField(
+        max_length=12, choices=CHAMP_TYPE_CHOICES,
+        default=CHAMP_TYPE_SIGNATURE, verbose_name='type de champ')
+    page = models.PositiveIntegerField(default=0, verbose_name='page (0-based)')
+    # Position/taille en POURCENTAGE de la page (0-100) — résolution-indépendant.
+    x = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    y = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    largeur = models.DecimalField(max_digits=5, decimal_places=2, default=20)
+    hauteur = models.DecimalField(max_digits=5, decimal_places=2, default=5)
+    # Destinataire concerné — nom/role libre (aligné XGED2 `SignataireDemande`
+    # sans FK dure : un champ sur un `ModeleDocument` n'a pas encore de
+    # destinataire concret tant qu'aucune demande n'en est générée).
+    role = models.CharField(max_length=100, blank=True, default='')
+    requis = models.BooleanField(default=True, verbose_name='requis')
+    # Valeur remplie par le signataire (texte/case/date) — vide pour les
+    # champs `signature`/`initiales` (qui utilisent la signature de la
+    # cérémonie elle-même, tapée/tracée, jamais stockée deux fois ici).
+    valeur = models.CharField(max_length=500, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['page', 'y', 'x', 'id']
+        verbose_name = 'Champ de signature'
+        verbose_name_plural = 'Champs de signature'
+        indexes = [
+            models.Index(fields=['company', 'demande'],
+                         name='ged_champ_co_demande_idx'),
+            models.Index(fields=['company', 'modele'],
+                         name='ged_champ_co_modele_idx'),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(demande__isnull=False, modele__isnull=True)
+                    | models.Q(demande__isnull=True, modele__isnull=False)
+                ),
+                name='ged_champ_exactly_one_target',
+            ),
+        ]
+
+    def clean(self):
+        """Garantit cible exactement-une (demande XOR modèle)."""
+        from django.core.exceptions import ValidationError
+        if bool(self.demande_id) == bool(self.modele_id):
+            raise ValidationError(
+                "Un champ de signature cible exactement une demande OU un "
+                "modèle de document.")
+
+    def __str__(self):
+        cible = self.demande_id or self.modele_id
+        return f'Champ {self.type_champ} p{self.page} → {cible}'
+
+
 class ModeleDocument(models.Model):
     """GED27 — Modèle de document avec fusion/mailing (corps → PDF WeasyPrint).
 

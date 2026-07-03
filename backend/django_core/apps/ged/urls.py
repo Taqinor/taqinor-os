@@ -2,8 +2,8 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    ArchivageLegalViewSet, CabinetViewSet, CoffreViewSet,
-    DemandeApprobationViewSet, DemandeSignatureDocumentViewSet,
+    ArchivageLegalViewSet, CabinetViewSet, ChampSignatureViewSet,
+    CoffreViewSet, DemandeApprobationViewSet, DemandeSignatureDocumentViewSet,
     DocumentLienViewSet, DocumentTagAssignmentViewSet, DocumentTagViewSet,
     DocumentVersionViewSet, DocumentViewSet, FolderViewSet, JournalAccesViewSet,
     LegalHoldViewSet, ModeleDocumentViewSet, PartageGedViewSet,
@@ -28,6 +28,7 @@ router.register(r'legal-holds', LegalHoldViewSet)
 router.register(r'modeles-document', ModeleDocumentViewSet)
 router.register(r'demandes-signature', DemandeSignatureDocumentViewSet)
 router.register(r'signataires-demande', SignataireDemandeViewSet)
+router.register(r'champs-signature', ChampSignatureViewSet)
 router.register(r'journal-acces', JournalAccesViewSet)
 router.register(r'quotas-stockage', QuotaStockageViewSet)
 

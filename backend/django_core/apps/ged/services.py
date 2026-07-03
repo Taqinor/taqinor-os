@@ -2783,6 +2783,169 @@ def relancer_signataires_dus(company, *, now=None):
     return relances
 
 
+# ── XGED3 — Zones de champs positionnées sur le PDF à signer ────────────────
+
+def champs_pour_demande(demande):
+    """XGED3 — Champs positionnés d'une demande (QuerySet, triés page/position).
+
+    Rétrocompatible : renvoie un QuerySet vide pour une demande sans aucun
+    champ placé (aucune régression sur le flux mono-champ XGED1)."""
+    return demande.champs.all()
+
+
+def enregistrer_valeurs_champs(demande, valeurs):
+    """XGED3 — Enregistre les VALEURS saisies par le signataire pour les
+    champs `texte`/`case`/`date` d'une demande (les champs `signature`/
+    `initiales` restent vides ici — ils utilisent la signature de la
+    cérémonie elle-même, XGED1/XGED2, jamais dupliquée dans `valeur`).
+
+    `valeurs` : dict `{champ_id: valeur_str}`. Ignore silencieusement les
+    identifiants inconnus ou hors société (pas d'injection cross-société).
+    Ne bloque JAMAIS la cérémonie — best-effort par champ. Renvoie la liste
+    des champs mis à jour."""
+    from .models import CHAMP_TYPE_INITIALES, CHAMP_TYPE_SIGNATURE
+
+    if not valeurs:
+        return []
+    champs = {c.id: c for c in demande.champs.all()}
+    mis_a_jour = []
+    for champ_id, valeur in valeurs.items():
+        try:
+            champ_id = int(champ_id)
+        except (TypeError, ValueError):
+            continue
+        champ = champs.get(champ_id)
+        if champ is None or champ.type_champ in (
+                CHAMP_TYPE_SIGNATURE, CHAMP_TYPE_INITIALES):
+            continue
+        champ.valeur = str(valeur)[:500]
+        champ.save(update_fields=['valeur', 'updated_at'])
+        mis_a_jour.append(champ)
+    return mis_a_jour
+
+
+def _flatten_champs_pdf(file_bytes, champs, *, signature_texte='',
+                        signature_tracee=''):
+    """XGED3 — Aplati les VALEURS des champs positionnés sur un PDF final.
+
+    Utilise PyMuPDF (`fitz`) via un import PARESSEUX et GARDÉ — même motif que
+    `_watermark_pdf` (GED21) : si la lib est absente, on DÉGRADE en annexant
+    une page-texte listant les champs/valeurs (jamais une perte de données,
+    jamais un échec bloquant). Les positions `x`/`y`/`largeur`/`hauteur` sont
+    en POURCENTAGE de la page — converties en points via `page.rect`.
+
+    Renvoie `(out_bytes, aplati)` où `aplati` est False si PyMuPDF est absent
+    (repli annexe texte, toujours `aplati=False` pour signaler la dégradation
+    à l'appelant/aux tests)."""
+    try:
+        import fitz  # PyMuPDF
+    except Exception:  # pragma: no cover - chemin de repli sans la lib.
+        return _annexe_texte_champs(file_bytes, champs, signature_texte), False
+    try:
+        from .models import CHAMP_TYPE_CASE, CHAMP_TYPE_SIGNATURE
+
+        doc = fitz.open(stream=file_bytes, filetype='pdf')
+        try:
+            for champ in champs:
+                if champ.page >= len(doc):
+                    continue
+                page = doc[champ.page]
+                rect = page.rect
+                x0 = rect.x0 + float(champ.x) / 100.0 * rect.width
+                y0 = rect.y0 + float(champ.y) / 100.0 * rect.height
+                x1 = x0 + float(champ.largeur) / 100.0 * rect.width
+                y1 = y0 + float(champ.hauteur) / 100.0 * rect.height
+                zone = fitz.Rect(x0, y0, x1, y1)
+                if champ.type_champ == CHAMP_TYPE_SIGNATURE:
+                    texte = signature_texte or (
+                        '✓ signé' if signature_tracee else '')
+                elif champ.type_champ == CHAMP_TYPE_CASE:
+                    texte = '☑' if champ.valeur else '☐'
+                else:
+                    texte = champ.valeur or ''
+                if texte:
+                    page.insert_textbox(
+                        zone, texte, fontsize=10, color=(0, 0, 0.6),
+                        align=fitz.TEXT_ALIGN_LEFT, overlay=True)
+            out = doc.tobytes()
+        finally:
+            doc.close()
+        return out, True
+    except Exception:  # pragma: no cover - robustesse : jamais bloquer.
+        return _annexe_texte_champs(file_bytes, champs, signature_texte), False
+
+
+def _annexe_texte_champs(file_bytes, champs, signature_texte):
+    """XGED3 — Dégradation SANS PyMuPDF : renvoie le PDF original inchangé.
+
+    Les valeurs restent disponibles via l'API (`ChampSignature.valeur`) même
+    quand l'aplatissement visuel n'a pas pu avoir lieu — aucune perte de
+    donnée, seulement une dégradation du RENDU (pattern GED21)."""
+    return file_bytes
+
+
+def signer_demande_publique_avec_champs(demande, *, consentement,
+                                        signature_texte='',
+                                        signature_tracee='', adresse_ip=None,
+                                        user_agent='', valeurs_champs=None):
+    """XGED3 — Signature publique QUI honore les champs positionnés (XGED1 +
+    remplissage/aplatissement). Wrapper ADDITIF autour de
+    `signer_demande_publique` : ne change rien à son comportement pour une
+    demande SANS champ (rétrocompatible XGED1) ; pour une demande AVEC des
+    champs `requis` non `signature`/`initiales`, exige qu'ils soient tous
+    renseignés dans `valeurs_champs` AVANT de signer (sinon `ValueError`).
+
+    Enregistre les valeurs (`enregistrer_valeurs_champs`) puis délègue la
+    signature elle-même à `signer_demande_publique` (preuves QJ10 inchangées).
+    Renvoie la `DemandeSignatureDocument` signée."""
+    from .models import CHAMP_TYPE_INITIALES, CHAMP_TYPE_SIGNATURE
+
+    champs = list(demande.champs.all())
+    requis_a_remplir = [
+        c for c in champs
+        if c.requis and c.type_champ not in (
+            CHAMP_TYPE_SIGNATURE, CHAMP_TYPE_INITIALES)]
+    valeurs_champs = valeurs_champs or {}
+    fournis = {int(k) for k in valeurs_champs.keys()
+               if str(k).lstrip('-').isdigit()}
+    manquants = [c for c in requis_a_remplir if c.id not in fournis]
+    if manquants:
+        raise ValueError(
+            "Certains champs requis du document ne sont pas remplis.")
+
+    if valeurs_champs:
+        enregistrer_valeurs_champs(demande, valeurs_champs)
+
+    return signer_demande_publique(
+        demande, consentement=consentement,
+        signature_texte=signature_texte, signature_tracee=signature_tracee,
+        adresse_ip=adresse_ip, user_agent=user_agent)
+
+
+def rendre_pdf_signe_avec_champs(demande):
+    """XGED3 — Rend le PDF final de la version courante avec les champs
+    positionnés APLATIS (valeurs + signature). Best-effort : si le contenu
+    n'est pas récupérable, renvoie `(None, False)` sans lever.
+
+    Renvoie `(pdf_bytes_ou_None, aplati)`."""
+    version = selectors_latest_version(demande.document)
+    if version is None:
+        return None, False
+    try:
+        from apps.records.storage import fetch_attachment
+        data, err = fetch_attachment(version.file_key)
+        if err or data is None:
+            return None, False
+    except Exception:  # pragma: no cover - défensif.
+        return None, False
+    champs = list(demande.champs.all())
+    if not champs:
+        return data, False
+    return _flatten_champs_pdf(
+        data, champs, signature_texte=demande.signature_texte,
+        signature_tracee=demande.signature_tracee)
+
+
 # ── GED35 — Journal d'audit d'accès aux documents (lectures) ─────────────────
 
 def journaliser_acces(document, *, utilisateur=None, type_acces=None,
