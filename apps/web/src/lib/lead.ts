@@ -56,6 +56,18 @@ export type FinancingIntentId = (typeof FINANCING_INTENTS)[number];
 export const CONTACT_PREFERENCES = ['whatsapp_only', 'phone_ok'] as const;
 export type ContactPreferenceId = (typeof CONTACT_PREFERENCES)[number];
 
+// ——— W353 : créneau de visite technique v1 (facultatif, STATIQUE — pas de
+// dépendance calendrier, pas de paiement/dépôt en ligne — cette question reste
+// une décision fondateur WG13). Un choix de MOMENT (matin/après-midi) + un
+// choix de SEMAINE (cette semaine / la semaine prochaine) : une préférence
+// forwardée telle quelle, jamais un vrai créneau réservé/confirmé — la visite
+// reste planifiée par un humain après contact.
+export const VISIT_WINDOW_PARTS = ['matin', 'apres_midi'] as const;
+export type VisitWindowPartId = (typeof VISIT_WINDOW_PARTS)[number];
+
+export const VISIT_WINDOW_WEEKS = ['cette_semaine', 'semaine_prochaine'] as const;
+export type VisitWindowWeekId = (typeof VISIT_WINDOW_WEEKS)[number];
+
 /**
  * Bornes GPS ≈ Maroc (Tanger ~35,9 N → Lagouira ~20,8 N ; Atlantique ~-17,2 O →
  * frontière est ~-1,0). Garde-fou anti-garbage : un repère hors bornes est
@@ -123,6 +135,11 @@ export interface ValidatedLead {
   hasMeterPhoto?: boolean;
   // — WJ51 : préférence de contact explicite (facultative — mappée sur `canal` CRM).
   contactPreference?: ContactPreferenceId;
+  // — W353 : préférence de créneau de visite technique (facultative, STATIQUE —
+  //   jamais une réservation confirmée). Les deux moitiés sont indépendantes :
+  //   l'une peut être présente sans l'autre.
+  visitWindowPart?: VisitWindowPartId;
+  visitWindowWeek?: VisitWindowWeekId;
   // — WJ52 : référence courte générée CÔTÉ CLIENT (aucune garantie d'unicité
   //   globale — un simple artefact affiché au visiteur + échoé au webhook pour
   //   corréler une conversation WhatsApp ; jamais utilisée comme clé d'unicité
@@ -286,6 +303,13 @@ function validateOptionalFields(b: Record<string, unknown>): Partial<ValidatedLe
   // ——— WJ51 : préférence de contact explicite (facultative) ———
   const contactPreference = cleanEnum(b.contactPreference, CONTACT_PREFERENCES);
   if (contactPreference) opt.contactPreference = contactPreference;
+
+  // ——— W353 : créneau de visite technique (facultatif, STATIQUE) ———
+  const visitWindowPart = cleanEnum(b.visitWindowPart, VISIT_WINDOW_PARTS);
+  if (visitWindowPart) opt.visitWindowPart = visitWindowPart;
+
+  const visitWindowWeek = cleanEnum(b.visitWindowWeek, VISIT_WINDOW_WEEKS);
+  if (visitWindowWeek) opt.visitWindowWeek = visitWindowWeek;
 
   // ——— WJ52 : référence courte générée côté client (facultative, jamais bloquante) ———
   const clientRef = cleanStr(b.clientRef, 24);
