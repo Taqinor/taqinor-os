@@ -390,6 +390,33 @@ class ProformaDocument(models.Model):
         return self.reference
 
 
+class FactureSource(models.Model):
+    """XFAC11 — table de liaison « facture consolidée ↔ document source ».
+
+    Une facture consolidée (`POST factures/consolider/`) regroupe PLUSIEURS
+    devis/BC déjà acceptés d'un même client en UNE facture ; ``Facture.devis``
+    reste nullable/unique (chaîne historique inchangée) alors que CETTE table
+    trace CHAQUE document source consolidé (traçabilité multi-source), avec le
+    sous-total HT de ce document dans la facture regroupée (sert au sous-titre
+    « Devis DV-… » sur le PDF)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='facture_sources')
+    facture = models.ForeignKey(
+        'Facture', on_delete=models.CASCADE, related_name='sources')
+    devis = models.ForeignKey(
+        'Devis', on_delete=models.PROTECT, related_name='factures_sources')
+    sous_total_ht = models.DecimalField(max_digits=12, decimal_places=2)
+
+    class Meta:
+        verbose_name = 'Source de facture consolidée'
+        verbose_name_plural = 'Sources de facture consolidée'
+        unique_together = [('facture', 'devis')]
+
+    def __str__(self):
+        return f'{self.facture_id} ← {self.devis.reference}'
+
+
 class BonCommande(models.Model):
     class Statut(models.TextChoices):
         EN_ATTENTE = 'en_attente', 'En attente'
@@ -876,6 +903,12 @@ class LigneFacture(models.Model):
     taux_tva = models.DecimalField(
         max_digits=5, decimal_places=2, null=True, blank=True,
         help_text='Taux TVA de la ligne (%). Vide = taux global de la facture.')
+    # XFAC11 — facture CONSOLIDÉE : document source de cette ligne (pour le
+    # sous-titre « Devis DV-… » groupant les lignes par document d'origine).
+    # NULL = ligne classique (facture simple, comportement inchangé).
+    source_devis = models.ForeignKey(
+        Devis, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='lignes_facture_consolidee')
 
     class Meta:
         verbose_name = 'Ligne de Facture'

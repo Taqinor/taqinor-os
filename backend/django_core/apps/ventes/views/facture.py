@@ -3,6 +3,7 @@ from django.http import HttpResponse  # noqa: F401
 from django.utils import timezone  # noqa: F401
 from rest_framework import viewsets, status, filters  # noqa: F401
 from rest_framework.decorators import action, api_view, permission_classes  # noqa: F401
+from rest_framework.exceptions import ValidationError  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
 from apps.stock.services import (  # noqa: F401
     mouvement_type_sortie, record_stock_movement,
@@ -83,6 +84,7 @@ class FactureViewSet(viewsets.ModelViewSet):
             'generer_pdf', 'telecharger_pdf', 'envoyer_email',
             'relancer', 'exclure_relance', 'whatsapp', 'ubl',
             'dgi_export', 'dgi_conformite', 'bulk', 'lien_paiement',
+            'facturer_penalites', 'consolider',
         ]:
             return [IsResponsableOrAdmin()]
         # Annuler une facture = réservé à l'admin/propriétaire (geste comptable).
@@ -902,6 +904,29 @@ class FactureViewSet(viewsets.ModelViewSet):
         return Response(
             FactureActivitySerializer(
                 facture.activites.all(), many=True).data)
+
+    @action(detail=False, methods=['post'], url_path='consolider',
+            permission_classes=[IsResponsableOrAdmin])
+    def consolider(self, request):
+        """XFAC11 — crée UNE facture consolidée à partir de plusieurs devis
+        acceptés du MÊME client. Body : ``{devis_ids: [...]}``."""
+        from ..services import consolider_factures
+
+        devis_ids = request.data.get('devis_ids') or []
+        try:
+            devis_ids = [int(x) for x in devis_ids]
+        except (TypeError, ValueError):
+            return Response({'detail': 'devis_ids invalide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            facture = consolider_factures(
+                company=request.user.company, devis_ids=devis_ids,
+                user=request.user, created_by=request.user,
+            )
+        except ValidationError as exc:
+            return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            FactureSerializer(facture).data, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['post'], url_path='bulk',
             permission_classes=[IsResponsableOrAdmin])

@@ -2284,3 +2284,87 @@ def enregistrer_paiement_avec_retenue(
             reset_relance_escalation(locked)
 
     return paiement, retenue
+
+
+# ── XFAC11 — Facture consolidée multi-devis/BC d'un même client ────────────
+
+def consolider_factures(*, company, devis_ids, user, created_by=None):
+    """Crée UNE Facture unique regroupant PLUSIEURS devis acceptés du MÊME
+    client (ex. projet multi-sites : ferme à N forages, tranches). Chaque
+    document source garde ses lignes (recopiées, groupées par ``source_devis``
+    pour le sous-titre « Devis DV-… » sur le PDF) et une ``FactureSource``
+    trace le sous-total HT de son document d'origine.
+
+    Contrôles :
+      - au moins 2 devis, tous acceptés, tous de la MÊME société ET du MÊME
+        client (clients différents → rejeté) ;
+      - un devis déjà facturé (une Facture non annulée référence ce devis,
+        directement ou via une FactureSource antérieure) est refusé.
+
+    La chaîne Sous-total → Remise → HT → TVA → TTC reste calculée par les
+    propriétés existantes de ``Facture`` (aucune formule dupliquée) : les
+    lignes recopiées portent leur ``taux_tva`` d'origine, donc la ventilation
+    TVA par taux (10 %/20 %) reste correcte pour le mélange.
+    """
+    from django.db import transaction
+    from rest_framework.exceptions import ValidationError
+    from .models import Devis, Facture, FactureSource, LigneFacture
+    from .utils.company_settings import create_numbered
+
+    if not devis_ids or len(devis_ids) < 2:
+        raise ValidationError(
+            {'devis_ids': 'Au moins 2 devis sont requis pour consolider.'})
+
+    devis_qs = list(Devis.objects.select_related('client').filter(
+        id__in=devis_ids, company=company).prefetch_related('lignes'))
+    if len(devis_qs) != len(set(devis_ids)):
+        raise ValidationError({'devis_ids': 'Un ou plusieurs devis introuvables.'})
+
+    client_ids = {d.client_id for d in devis_qs}
+    if len(client_ids) > 1:
+        raise ValidationError(
+            {'devis_ids': 'Tous les devis doivent appartenir au même client.'})
+
+    for d in devis_qs:
+        if d.statut != Devis.Statut.ACCEPTE:
+            raise ValidationError({
+                'devis_ids': (
+                    f'Le devis {d.reference} doit être accepté pour être '
+                    f'consolidé.'),
+            })
+        deja_facture = Facture.objects.filter(
+            devis=d).exclude(statut=Facture.Statut.ANNULEE).exists() or \
+            FactureSource.objects.filter(devis=d).exists()
+        if deja_facture:
+            raise ValidationError({
+                'devis_ids': f'Le devis {d.reference} est déjà facturé.',
+            })
+
+    client = devis_qs[0].client
+
+    with transaction.atomic():
+        def _create(ref):
+            return Facture.objects.create(
+                reference=ref, company=company, client=client,
+                statut=Facture.Statut.EMISE, created_by=created_by,
+            )
+
+        facture = create_numbered(Facture, company, 'facture', _create)
+
+        for d in devis_qs:
+            sous_total = Decimal('0')
+            for ligne in d.lignes.all():
+                LigneFacture.objects.create(
+                    facture=facture, produit=ligne.produit,
+                    designation=f'{d.reference} — {ligne.designation}',
+                    quantite=ligne.quantite, prix_unitaire=ligne.prix_unitaire,
+                    remise=ligne.remise, taux_tva=ligne.taux_tva,
+                    source_devis=d,
+                )
+                sous_total += ligne.total_ht
+            FactureSource.objects.create(
+                company=company, facture=facture, devis=d,
+                sous_total_ht=sous_total,
+            )
+
+    return facture
