@@ -423,6 +423,41 @@ summary:focus-visible {
   overflow: hidden;
 }
 
+/* ─── W372 — Couture de sortie de la lumière (sens inverse) ─────────────────
+   .seam-lumiere-out : la salle claire se referme vers la nuit — même recette
+   que .seam-lumiere (halo laiton + grain + shimmer), gradient simplement
+   inversé. Avant W372, chaque bande blanc-azur se refermait sur un
+   .seam-soft (couture nuit→nuit, coupure sèche) : la couture de SORTIE de la
+   lumière n'existait pas, seule celle d'entrée avait été composée. */
+.seam-lumiere-out {
+  height: 7rem;
+  background:
+    var(--grain-svg),
+    radial-gradient(60% 130% at 50% 0%, rgb(232 181 74 / 0.16), transparent 70%),
+    linear-gradient(to bottom, var(--color-blanc-azur), var(--color-nuit));
+  background-repeat: repeat;
+  position: relative;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .seam-lumiere-out::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      105deg,
+      transparent 30%,
+      rgb(232 181 74 / 0.18) 48%,
+      rgb(255 255 255 / 0.10) 52%,
+      transparent 70%
+    );
+    animation: seamShimmer var(--dur-shimmer) var(--ease-shimmer) infinite;
+    pointer-events: none;
+    will-change: transform;
+  }
+}
+
 /* W208 — Slow shimmer on .seam-lumiere : un reflet qui glisse horizontalement
    sur la couture, très lent (8 s), gate prefers-reduced-motion.
    Implémenté en pseudo-élément pour ne pas perturber le background gradient
@@ -915,7 +950,8 @@ summary:focus-visible {
 /* — seam-lumiere shimmer: the shimmer animates translateX from left to right.
    In RTL we reverse the direction so it reads naturally. */
 @media (prefers-reduced-motion: no-preference) {
-  [dir="rtl"] .seam-lumiere::after {
+  [dir="rtl"] .seam-lumiere::after,
+  [dir="rtl"] .seam-lumiere-out::after {
     animation-direction: reverse;
   }
 }

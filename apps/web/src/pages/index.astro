@@ -527,6 +527,12 @@ const engineeringPillars = [
       </div>
     </section>
 
+    {/* W372 — Couture de SORTIE de la salle claire (light→dark), là où la page
+        ne posait jusqu'ici qu'un .seam-soft (couture nuit→nuit, coupure sèche
+        sur un fond qui venait pourtant de blanc-azur). Referme la bande
+        blanc-azur ouverte par .v2-seam plus haut — même recette inversée. */}
+    <div class="seam-lumiere-out" aria-hidden="true"></div>
+
     {/* W347 — « Compteur à zéro » : ne rend RIEN tant que le fondateur n'a pas
         fourni le vrai clip (src/lib/compteurVideo.ts, livré vide). Placé juste
         après les chiffres d'investissement/économies — le contexte le plus
@@ -535,7 +541,6 @@ const engineeringPillars = [
 
     {/* ── POURQUOI TAQINOR / CONFIANCE — quatre chiffres monumentaux (l'or vit
         sur les chiffres .lum, discipline laiton) — faits déjà publiés ── */}
-    <div class="seam-soft" aria-hidden="true"></div>
     <section class="section px-4">
       <div class="mx-auto max-w-6xl">
         <div class="v2-rise max-w-2xl">
@@ -569,14 +574,19 @@ const engineeringPillars = [
         (estimateur piloté par la facture, moteur de toiture 3D, moteur de
         devis). Vrai, rare dans le secteur, et vérifiable en un clic : le lien
         mène vers le parcours réel (/devis/mon-toit) plutôt que de l'affirmer
-        dans le vide. ── */}
-    <div class="seam-soft" aria-hidden="true"></div>
-    <section class="section px-4">
+        dans le vide.
+        W372 — DEUXIÈME battement clair du rythme tonal (la première bande
+        blanc-azur était seule, W265) : même recette de couture qu'elle
+        (.seam-lumiere en entrée / .seam-lumiere-out en sortie), classes de
+        couleur recalées sur le jeu clair (text-encre/azur-600), typographie
+        et structure inchangées. ── */}
+    <div class="seam-lumiere" aria-hidden="true"></div>
+    <section class="section bg-blanc-azur px-4 text-encre">
       <div class="mx-auto max-w-6xl">
         <div class="v2-rise max-w-2xl">
-          <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">03</span>Notre moteur, conçu au Maroc</p>
-          <h2 class="display v2-section-title mt-5 text-white">Un installateur qui construit aussi ses outils</h2>
-          <p class="v2-body mt-5">
+          <p class="tech-label v2-kicker rule-brass text-azur-600"><span class="mr-2 font-display text-xs text-azur-600/60" aria-hidden="true">03</span>Notre moteur, conçu au Maroc</p>
+          <h2 class="display v2-section-title mt-5 text-encre">Un installateur qui construit aussi ses outils</h2>
+          <p class="v2-body mt-5 text-encre-soft">
             La plupart des installateurs solaires achètent un logiciel de devis générique. Taqinor a
             construit le sien : l'estimateur qui lit votre facture, le moteur qui trace votre toiture
             en 3D, et le moteur qui produit le devis signé électroniquement. Trois outils, une seule
@@ -585,18 +595,19 @@ const engineeringPillars = [
         </div>
         <div class="mt-12 grid gap-6 sm:grid-cols-3" data-stagger>
           {engineeringPillars.map((p, i) => (
-            <div class="v2-rise relative min-w-0 border-t-2 border-white/10 pt-5" style={`--v2-i:${i}`}>
+            <div class="v2-rise relative min-w-0 border-t-2 border-azur-900/15 pt-5" style={`--v2-i:${i}`}>
               <span class="absolute -top-px left-0 h-0.5 w-10 bg-brass-400" aria-hidden="true"></span>
-              <h3 class="display mt-2 text-lg text-white">{p.title}</h3>
-              <p class="mt-2 text-sm leading-relaxed text-lune-soft">{p.body}</p>
+              <h3 class="display mt-2 text-lg text-encre">{p.title}</h3>
+              <p class="mt-2 text-sm leading-relaxed text-encre-soft">{p.body}</p>
             </div>
           ))}
         </div>
-        <a href="/devis/mon-toit" class="v2-rise group mt-10 inline-flex items-center gap-1 border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-brass-300 transition-colors hover:text-brass-200">
+        <a href="/devis/mon-toit" class="v2-rise group mt-10 inline-flex items-center gap-1 border-b-2 border-azur-600 pb-0.5 text-sm font-bold text-azur-700 transition-colors hover:text-azur-600">
           Essayer le moteur sur mon toit <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span>
         </a>
       </div>
     </section>
+    <div class="seam-lumiere-out" aria-hidden="true"></div>
 
     {/* ── LE FONDATEUR — présence humaine (W266). Une intimité affirmée dans le
         texte (« signé par le fondateur ») mais jamais montrée : le portrait
