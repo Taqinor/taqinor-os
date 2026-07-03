@@ -12,6 +12,8 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
+from apps.compta import services as compta_services
+from apps.compta.models import CompteTresorerie
 from apps.crm.models import Client
 from apps.parametres.models import CompanyProfile
 from apps.pos import services
@@ -29,6 +31,22 @@ def make_company(slug, nom):
 def make_user(company, username, role='responsable'):
     return User.objects.create_user(
         username=username, password='x', company=company, role_legacy=role)
+
+
+def make_session_caisse(company, user):
+    """Ouvre une session de caisse (XPOS4) — requise pour tout règlement
+    espèces (cf. services.valider_vente)."""
+    compta_services.seed_plan_comptable(company)
+    compta_services.seed_journaux(company)
+    compte_caisse = CompteTresorerie.objects.create(
+        company=company, type_compte=CompteTresorerie.Type.CAISSE,
+        libelle='Caisse comptoir',
+        compte_comptable=compta_services.get_compte(company, '5161'))
+    caisse_comptable = compta_services.creer_caisse(
+        company, compte_caisse, libelle='Caisse POS', solde_initial=Decimal('0'))
+    return services.ouvrir_session(
+        company=company, caisse_comptable=caisse_comptable,
+        caissier=user, fond_ouverture=Decimal('0'), user=user)
 
 
 def auth(user):
@@ -69,6 +87,9 @@ class ValiderVenteServiceTests(TestCase):
 
     def test_valider_vente_creates_facture_paiement_stock_timbre(self):
         vente = self._vente()
+        session = make_session_caisse(self.co, self.user)
+        vente.session_caisse = session
+        vente.save(update_fields=['session_caisse'])
         paiements = [{'mode': 'especes', 'montant': '240'}]
         services.valider_vente(vente=vente, paiements=paiements, user=self.user)
 

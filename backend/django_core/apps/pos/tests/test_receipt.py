@@ -12,6 +12,8 @@ from django.test import TestCase
 from django.utils import timezone
 
 from authentication.models import Company
+from apps.compta import services as compta_services
+from apps.compta.models import CompteTresorerie
 from apps.crm.models import Client
 from apps.parametres.models import CompanyProfile
 from apps.pos import receipt, services
@@ -31,6 +33,22 @@ def make_user(company, username, role='responsable'):
         username=username, password='x', company=company, role_legacy=role)
 
 
+def make_session_caisse(company, user):
+    """Ouvre une session de caisse (XPOS4) — requise pour tout règlement
+    espèces (cf. services.valider_vente)."""
+    compta_services.seed_plan_comptable(company)
+    compta_services.seed_journaux(company)
+    compte_caisse = CompteTresorerie.objects.create(
+        company=company, type_compte=CompteTresorerie.Type.CAISSE,
+        libelle='Caisse comptoir',
+        compte_comptable=compta_services.get_compte(company, '5161'))
+    caisse_comptable = compta_services.creer_caisse(
+        company, compte_caisse, libelle='Caisse POS', solde_initial=Decimal('0'))
+    return services.ouvrir_session(
+        company=company, caisse_comptable=caisse_comptable,
+        caissier=user, fond_ouverture=Decimal('0'), user=user)
+
+
 class ReceiptHtmlTests(TestCase):
     def setUp(self):
         self.co = make_company('xpos3', 'XPOS3 Co')
@@ -48,9 +66,10 @@ class ReceiptHtmlTests(TestCase):
         self.produit = Produit.objects.create(
             company=self.co, nom='Batterie', prix_vente=Decimal('500'),
             prix_achat=Decimal('300'), quantite_stock=10, categorie=categorie)
+        session = make_session_caisse(self.co, self.user)
         self.vente = VenteComptoir.objects.create(
             company=self.co, reference='VC-XPOS3-1', client=self.client_obj,
-            created_by=self.user)
+            created_by=self.user, session_caisse=session)
         LigneVenteComptoir.objects.create(
             vente=self.vente, produit=self.produit, designation='Batterie',
             quantite=1, prix_unitaire_ttc=Decimal('500'))
