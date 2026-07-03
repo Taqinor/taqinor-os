@@ -252,6 +252,20 @@ const signConfig = ok
     </section>
   ) : (
     <div class="proposition pb-28" data-sign-config={signConfig}>
+      <!-- WJ84 — imprimable proprement : invisible à l'écran (print:block only),
+           rappelle qu'un Ctrl-P sur cette page « UI » n'est pas le document
+           officiel — le PDF premium (même token) est le document contractuel.
+           Le reste du chrome (bascule langue, CTA collant, overlay 3D) est
+           masqué en impression par les règles @media print ci-dessous. -->
+      <p class="print-hint hidden">
+        <span data-i18n
+          data-fr="Pour un PDF officiel, utilisez « Télécharger le devis (PDF) » — cette page imprimée est une vue d'écran, pas le document contractuel."
+          data-en="For an official PDF, use “Download the quote (PDF)” — this printed page is a screen view, not the contractual document."
+          data-ar="للحصول على PDF رسمي، استخدموا «تحميل العرض (PDF)» — هذه الصفحة المطبوعة عرض شاشة، وليست الوثيقة التعاقدية.">
+          Pour un PDF officiel, utilisez « Télécharger le devis (PDF) » — cette page imprimée est une vue d'écran, pas le document contractuel.
+        </span>
+      </p>
+
       <!-- WJ17/WJ43 — bascule de langue FR/EN/عربي, flottante (ne perturbe aucun
            rythme existant, zéro CLS). Même mécanisme tri-node (dual-node élargi)
            que WJ33 (mon-toit.astro) : voir le <script> de fin de page. Le contenu
@@ -2205,5 +2219,58 @@ const signConfig = ok
   }
   @keyframes seal-check-draw {
     to { stroke-dashoffset: 0; opacity: 1; }
+  }
+
+  /* WJ84 — page imprimable propre. Ctrl-P est un réflexe naturel sur une
+     proposition ; sans ces règles, le chrome flottant (bascule langue, CTA
+     collant) et le fond sombre produisaient du "dark-on-dark" par-dessus le
+     contenu imprimé. `.print-hint` est masqué à l'écran (classe utilitaire
+     `hidden`) et réapparaît UNIQUEMENT en impression. */
+  .print-hint {
+    display: none;
+  }
+  @media print {
+    .print-hint {
+      display: block;
+      margin: 0 0 1rem;
+      padding: 0.5rem 0.75rem;
+      border: 1px solid #999;
+      font-size: 11px;
+      color: #111;
+      background: #fff;
+    }
+    /* Chrome flottant / interactif qui n'a aucun sens sur une feuille imprimée. */
+    .prop-lang-switch,
+    #sticky-cta,
+    #roof3d-overlay,
+    #contact-confirm,
+    #sign-form,
+    #pdf-download,
+    .btn-pill {
+      display: none !important;
+    }
+    /* Fond clair + texte sombre : le thème nuit/laiton par défaut du site
+       imprimerait en dark-on-dark (fond quasi noir, texte clair illisible sur
+       papier/PDF navigateur). */
+    html,
+    body,
+    .proposition {
+      background: #fff !important;
+      color: #111 !important;
+    }
+    .proposition :global(*) {
+      color: inherit;
+      text-shadow: none !important;
+      box-shadow: none !important;
+    }
+    .cine-card {
+      border: 1px solid #ccc !important;
+      background: #fff !important;
+    }
+    /* La scène 3D (canvas WebGL) ne s'imprime pas de façon fiable — masquée,
+       le poster/héros photo reste visible via <img> normal. */
+    .roof3d-stage :global(canvas) {
+      display: none !important;
+    }
   }
 </style>
