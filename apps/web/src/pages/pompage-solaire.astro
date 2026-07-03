@@ -6,6 +6,24 @@
  * variables de dimensionnement et le SEUL avantage fiscal vérifié (exonération
  * de TVA du pompage agricole — strictement le pompage agricole, jamais le
  * photovoltaïque résidentiel en toiture).
+ *
+ * W261 — Parité avec les pages sœurs, sans jamais franchir la ligne « zéro
+ * preuve inventée » ci-dessus :
+ *  - Pas de photo héros : aucun asset agricole n'existe dans public/ (le
+ *    moteur de devis premium ERP en génère à la volée, il n'y a rien à
+ *    réutiliser côté site vitrine) — on garde le héros éditorial existant.
+ *  - Bande de capacité honnête (4 mesures relevées, exonération TVA vérifiée,
+ *    matériel tier-1 partagé avec les toitures) — aucun chiffre de production
+ *    inventé.
+ *  - Diagramme SVG des 4 variables de dimensionnement (débit/HMT/forage/
+ *    besoins) convergeant vers le système — même contenu que la section
+ *    texte, mise en scène visuelle en plus.
+ *  - Cadrage gasoil/butane vs solaire narratif (aucun chiffre MAD/litre
+ *    inventé : le calcul réel se fait à l'étude, avec le prix du jour et la
+ *    consommation mesurée de la pompe — voir le moteur de devis agricole).
+ *  - Carte financement/subvention FDA 30 % + Saquii — gatée WG11 : reste
+ *    masquée tant que les termes ne sont pas vérifiés auprès des sources
+ *    primaires (DPA/ORMVA/CAM), jamais un chiffre non confirmé.
  */
 import Layout from '../layouts/Layout.astro';
 import V2Enhance from '../components/V2Enhance.astro';
@@ -98,6 +116,28 @@ const jsonLd = {
       </div>
     </section>
 
+    {/* W261 — Bande de capacité honnête : reprend UNIQUEMENT des faits déjà
+        vérifiés ailleurs sur la page (4 mesures, TVA, matériel tier-1) —
+        aucun chiffre de production ou de chantier inventé. */}
+    <section class="px-4 pb-4">
+      <div class="mx-auto max-w-6xl">
+        <dl class="cine-in grid max-w-3xl grid-cols-3 gap-3 border-t border-white/20 pt-6 sm:gap-6">
+          <div>
+            <dd class="fig lum text-base sm:text-3xl">4</dd>
+            <dt class="tech-label mt-2 text-lune">Mesures relevées sur site</dt>
+          </div>
+          <div>
+            <dd class="fig lum text-base sm:text-3xl">0 %</dd>
+            <dt class="tech-label mt-2 text-lune">TVA sur le pompage agricole</dt>
+          </div>
+          <div>
+            <dd class="fig lum text-base sm:text-3xl">Tier-1</dd>
+            <dt class="tech-label mt-2 text-lune">Champ et variateur, comme nos toitures</dt>
+          </div>
+        </dl>
+      </div>
+    </section>
+
     <!-- Comment ça marche -->
     <section class="section px-4">
       <div class="mx-auto max-w-6xl">
@@ -145,6 +185,57 @@ const jsonLd = {
           quand le débit ou la HMT manquent — on en serait réduit à supposer, et nous ne dimensionnons
           pas une pompe sur des suppositions. <a href="/devis/mon-toit" class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Demander un diagnostic →</a>
         </p>
+
+        {/* W261 — Diagramme des 4 variables convergeant vers le système :
+            même contenu que les quatre cartes ci-dessus, mis en scène. */}
+        <div class="mx-auto mt-14 max-w-3xl">
+          <svg viewBox="0 0 600 260" role="img" aria-label="Débit, HMT, profondeur du forage et besoins en eau de la culture convergent vers le dimensionnement pompe + variateur + champ photovoltaïque" class="w-full">
+            <g font-size="11" class="fill-azur-700">
+              <g transform="translate(70,40)">
+                <circle r="26" fill="none" stroke="#0f1c54" stroke-width="2.5" />
+                <text text-anchor="middle" dy="4" font-weight="700">Débit</text>
+              </g>
+              <g transform="translate(70,110)">
+                <circle r="26" fill="none" stroke="#0f1c54" stroke-width="2.5" />
+                <text text-anchor="middle" dy="4" font-weight="700">HMT</text>
+              </g>
+              <g transform="translate(70,180)">
+                <circle r="26" fill="none" stroke="#0f1c54" stroke-width="2.5" />
+                <text text-anchor="middle" dy="-2" font-weight="700">Forage</text>
+              </g>
+              <g transform="translate(70,240)">
+                <circle r="26" fill="none" stroke="#0f1c54" stroke-width="2.5" />
+                <text text-anchor="middle" dy="-2" font-weight="700">Besoins</text>
+              </g>
+            </g>
+            <g stroke="#0f1c54" stroke-width="2" fill="none" opacity="0.6" aria-hidden="true">
+              <path d="M96 40 L300 130" marker-end="url(#arrowP)" />
+              <path d="M96 110 L300 130" marker-end="url(#arrowP)" />
+              <path d="M96 180 L300 130" marker-end="url(#arrowP)" />
+              <path d="M96 240 L300 130" marker-end="url(#arrowP)" />
+            </g>
+            <defs>
+              <marker id="arrowP" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                <path d="M0 0 L6 3 L0 6 Z" fill="#0f1c54" />
+              </marker>
+            </defs>
+            <g transform="translate(300,130)">
+              <rect x="-70" y="-40" width="140" height="80" rx="4" fill="#0f1c54" />
+              <text text-anchor="middle" dy="-8" font-size="11" fill="white" font-weight="700">Pompe +</text>
+              <text text-anchor="middle" dy="8" font-size="11" fill="white" font-weight="700">variateur</text>
+              <text text-anchor="middle" dy="24" font-size="11" fill="white" font-weight="700">+ champ PV</text>
+            </g>
+            <path d="M370 130 L520 130" stroke="#0f1c54" stroke-width="2" opacity="0.6" marker-end="url(#arrowP)" />
+            <g transform="translate(560,130)" class="fill-azur-700">
+              <circle r="26" fill="none" stroke="#e8b54a" stroke-width="2.5" />
+              <text text-anchor="middle" dy="4" font-size="18">💧</text>
+            </g>
+          </svg>
+          <p class="mx-auto mt-4 max-w-xl text-center text-xs leading-relaxed text-encre-faint">
+            Les quatre mesures relevées sur place déterminent ensemble un seul système cohérent — pas
+            quatre calculs séparés.
+          </p>
+        </div>
       </div>
     </section>
 
@@ -173,6 +264,76 @@ const jsonLd = {
               l’autre.
             </p>
           </div>
+        </div>
+      </div>
+    </section>
+
+    {/* W261 — Cadrage gasoil/butane vs solaire : le MÊME récit que le moteur
+        de devis agricole (butane décompensé plus cher qu'il n'y paraît,
+        gasoil volatil, solaire fixe le coût), SANS aucun chiffre MAD/litre —
+        ces valeurs sont volatiles et « à confirmer » côté moteur ERP, jamais
+        publiées comme un fait figé sur le site vitrine. Le calcul réel se
+        fait à l'étude, avec le prix du jour et la consommation mesurée. */}
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="section bg-blanc-azur px-4 text-encre">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-azur-600">Le calcul qui compte pour vous</p>
+        <h2 class="display v2-section-title mt-5">Face au gasoil, face au butane</h2>
+        <p class="v2-lead mt-5 max-w-2xl text-encre-soft">
+          Un agriculteur ne compare pas des kWc, il compare des pleins. Chaque heure de pompage au
+          gasoil ou au butane a un coût qui varie avec le prix du jour — et le butane décompensé
+          coûte, en réalité, bien plus cher que le prix de la bonbonne subventionnée ne le laisse
+          penser. Le solaire, lui, fixe ce coût à zéro une fois le système amorti : le soleil ne
+          se facture pas.
+        </p>
+        <div class="mt-10 grid gap-6 md:grid-cols-2">
+          <div class="v2-rise border-t-2 border-azur-900 bg-blanc p-6">
+            <h3 class="display text-lg text-azur-700">Gasoil & butane</h3>
+            <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+              Coût récurrent, indexé sur un prix qui bouge, plein après plein, saison après saison.
+              Le butane décompensé alourdit encore la facture réelle par rapport au prix affiché de
+              la bonbonne subventionnée.
+            </p>
+          </div>
+          <div class="v2-rise border-t-2 border-brass-400 bg-blanc p-6">
+            <h3 class="display text-lg text-azur-700">Pompage solaire</h3>
+            <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+              Investissement unique, exonéré de TVA, puis un coût de fonctionnement proche de zéro :
+              le point de croisement avec le gasoil ou le butane dépend de votre consommation
+              réelle — c’est justement ce que l’étude calcule, chiffre par chiffre, pour votre
+              parcelle.
+            </p>
+          </div>
+        </div>
+        <p class="mx-auto mt-8 max-w-2xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
+          Le prix du carburant du jour et les heures de pompage réelles de votre pompe changent le
+          calcul d’une exploitation à l’autre : c’est pourquoi le chiffre exact — et le nombre
+          d’années de retour — sort de l’étude, jamais d’une moyenne nationale. <a href="/devis/mon-toit" class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Demander mon étude →</a>
+        </p>
+      </div>
+    </section>
+
+    {/* W261 — Carte financement/subvention, gatée WG11 : FDA 30 % + Saquii ne
+        sont PAS republiés comme un fait confirmé tant que les termes n'ont
+        pas été vérifiés auprès des sources primaires (DPA/ORMVA/CAM) — voir
+        docs/WEB_PLAN.md WG11. Affiché ici comme piste à vérifier, jamais
+        comme une offre ou un partenariat Taqinor. */}
+    <section class="section px-4">
+      <div class="mx-auto max-w-6xl">
+        <div class="v2-rise cine-card border-2 border-dashed border-white/25 p-7">
+          <p class="tech-label v2-kicker rule-brass text-lune">Piste de financement — à vérifier</p>
+          <h2 class="display mt-3 text-xl text-white">Subvention agricole (FDA) et financement (Saquii)</h2>
+          <p class="mt-4 max-w-2xl text-sm leading-relaxed text-lune-soft">
+            L’État marocain propose historiquement une subvention du Fonds de Développement Agricole
+            pour le pompage solaire, et le Crédit Agricole du Maroc propose des mécanismes de
+            financement dédiés au solaire agricole. Les taux, plafonds et conditions actuels
+            évoluent et dépendent de votre DPA/ORMVA — nous ne publions aucun pourcentage ni
+            montant tant qu’il n’a pas été vérifié auprès de l’organisme concerné.
+          </p>
+          <p class="mt-4 text-sm font-semibold text-lune-faint">
+            À vérifier auprès de votre DPA avant tout engagement — Taqinor n’est ni prêteur ni
+            organisme subventionneur et ne garantit aucune éligibilité.
+          </p>
         </div>
       </div>
     </section>
