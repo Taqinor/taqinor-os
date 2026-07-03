@@ -2099,10 +2099,13 @@ class OrdreAssemblageSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'reference', 'kit', 'kit_nom', 'quantite', 'statut',
             'statut_display', 'note', 'date_terminaison',
+            'emplacement_source', 'emplacement_destination',
+            'quantite_produite', 'stock_mouvemente',
             'created_by', 'date_creation', 'date_modification',
         ]
         read_only_fields = [
             'reference', 'statut', 'date_terminaison', 'created_by',
+            'stock_mouvemente',
             'date_creation', 'date_modification',
         ]
 

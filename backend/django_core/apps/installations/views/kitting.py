@@ -171,10 +171,60 @@ class OrdreAssemblageViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def terminer(self, request, pk=None):
-        """FG328 — clôture l'ordre (→ terminé, horodate)."""
+        """FG328/XMFG1 — clôture l'ordre (→ terminé, horodate) et backflush le
+        stock : consomme les composants du kit, produit le composite. Refuse si
+        le kit n'a pas de `produit_compose`. `quantite_produite` (défaut =
+        `quantite`) et les emplacements sont éditables au moment de la clôture.
+        Idempotent : `stock_mouvemente` empêche une re-clôture de re-mouvementer."""
+        from django.db import transaction
+
+        from apps.stock.services import consommer_et_produire_assemblage
+
         ordre = self.get_object()
-        ordre.statut = OrdreAssemblage.Statut.TERMINE
-        ordre.date_terminaison = timezone.now()
-        ordre.save(update_fields=[
-            'statut', 'date_terminaison', 'date_modification'])
+        if ordre.kit.produit_compose_id is None:
+            raise ValidationError({
+                'kit': "Ce kit n'a pas d'article composite "
+                       "(produit_compose) : clôture impossible."})
+
+        quantite_produite = request.data.get('quantite_produite')
+        try:
+            quantite_produite = (
+                int(quantite_produite) if quantite_produite not in (None, '')
+                else ordre.quantite_produite or ordre.quantite)
+        except (TypeError, ValueError):
+            raise ValidationError({
+                'quantite_produite': 'Quantité produite invalide.'})
+        if quantite_produite <= 0:
+            raise ValidationError({
+                'quantite_produite': 'La quantité produite doit être positive.'})
+
+        emplacement_source_id = request.data.get('emplacement_source')
+        emplacement_destination_id = request.data.get('emplacement_destination')
+
+        with transaction.atomic():
+            ordre = OrdreAssemblage.objects.select_for_update().get(pk=ordre.pk)
+            ordre.quantite_produite = quantite_produite
+            if emplacement_source_id:
+                ordre.emplacement_source_id = emplacement_source_id
+            if emplacement_destination_id:
+                ordre.emplacement_destination_id = emplacement_destination_id
+            already_moved = ordre.stock_mouvemente
+            ordre.statut = OrdreAssemblage.Statut.TERMINE
+            ordre.date_terminaison = timezone.now()
+            update_fields = [
+                'statut', 'date_terminaison', 'date_modification',
+                'quantite_produite', 'emplacement_source',
+                'emplacement_destination']
+            if not already_moved:
+                consommer_et_produire_assemblage(
+                    company=ordre.company, kit=ordre.kit,
+                    composants=ordre.kit.composants.select_related('produit').all(),
+                    produit_compose=ordre.kit.produit_compose,
+                    quantite_produite=quantite_produite,
+                    reference=ordre.reference, user=request.user,
+                    emplacement_source=ordre.emplacement_source,
+                    emplacement_destination=ordre.emplacement_destination)
+                ordre.stock_mouvemente = True
+                update_fields.append('stock_mouvemente')
+            ordre.save(update_fields=update_fields)
         return Response(self.get_serializer(ordre).data)

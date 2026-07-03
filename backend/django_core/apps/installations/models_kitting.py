@@ -103,6 +103,22 @@ class OrdreAssemblage(models.Model):
         max_length=20, choices=Statut.choices, default=Statut.PLANIFIE)
     note = models.TextField(blank=True, null=True)
     date_terminaison = models.DateTimeField(null=True, blank=True)
+
+    # XMFG1 — backflush : emplacements optionnels (string-FK stock, N15) +
+    # quantité RÉELLEMENT produite (défaut = quantite, éditable à la clôture —
+    # tolérance sur/sous-production). `stock_mouvemente` verrouille
+    # l'idempotence : une re-clôture n'émet jamais de second mouvement.
+    emplacement_source = models.ForeignKey(
+        'stock.EmplacementStock', on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='installations_ordres_assemblage_source')
+    emplacement_destination = models.ForeignKey(
+        'stock.EmplacementStock', on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='installations_ordres_assemblage_destination')
+    quantite_produite = models.PositiveIntegerField(null=True, blank=True)
+    stock_mouvemente = models.BooleanField(default=False)
+
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True,

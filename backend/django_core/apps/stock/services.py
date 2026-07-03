@@ -1658,3 +1658,77 @@ def exploser_kit_par_id(company, kit_id, quantite_kit=1):
     if kit is None:
         return None
     return exploser_kit(kit, quantite_kit)
+
+
+# ── XMFG1 — Backflush : clôture d'un ordre d'assemblage (installations) ──────
+# `installations.OrdreAssemblage.terminer` appelle CE service (jamais de
+# MouvementStock créé côté installations) : une SORTIE par composant (quantité
+# BOM × quantite_produite) + une ENTREE du composite. Idempotent via le drapeau
+# `stock_mouvemente` posé par l'appelant dans la MÊME transaction atomique.
+
+def consommer_et_produire_assemblage(*, company, kit, composants, produit_compose,
+                                     quantite_produite, reference, user,
+                                     emplacement_source=None,
+                                     emplacement_destination=None):
+    """Consomme les composants d'un kit (SORTIE, qté BOM × ``quantite_produite``)
+    et produit le composite (ENTREE, qté ``quantite_produite``). ``composants``
+    est un itérable d'objets avec ``.produit`` et ``.quantite`` (la BOM, ou les
+    lignes d'ordre — XMFG6). Ventile sur les emplacements fournis (StockEmplacement,
+    N15) en plus du total canonique. Lève ValueError si ``produit_compose`` est
+    None (kit non finalisable) — l'appelant refuse `terminer` dans ce cas."""
+    from django.db import transaction
+    from .models import Produit, StockEmplacement
+
+    if produit_compose is None:
+        raise ValueError(
+            "Le kit n'a pas de produit composite (produit_compose) : "
+            "impossible de clôturer l'ordre.")
+
+    with transaction.atomic():
+        mouvements = []
+        for ligne in composants:
+            comp_produit = ligne.produit
+            if comp_produit is None:
+                continue
+            qte_conso = (ligne.quantite or 0) * quantite_produite
+            if qte_conso <= 0:
+                continue
+            p = Produit.objects.select_for_update().get(id=comp_produit.id)
+            avant = p.quantite_stock
+            apres = avant - qte_conso
+            mvt = record_stock_movement(
+                company=company, produit=p,
+                type_mouvement=mouvement_type_sortie(),
+                quantite=qte_conso, quantite_avant=avant,
+                quantite_apres=apres, reference=reference,
+                note=f'Assemblage {reference} — composant kit {kit.id}',
+                created_by=user)
+            mouvements.append(mvt)
+            if emplacement_source is not None and \
+                    not emplacement_source.is_principal:
+                se, _ = StockEmplacement.objects.select_for_update().get_or_create(
+                    produit=p, emplacement=emplacement_source,
+                    defaults={'company': company, 'quantite': 0})
+                se.quantite = max(se.quantite - qte_conso, 0)
+                se.save(update_fields=['quantite'])
+
+        composite = Produit.objects.select_for_update().get(id=produit_compose.id)
+        avant_c = composite.quantite_stock
+        apres_c = avant_c + quantite_produite
+        mvt_entree = record_stock_movement(
+            company=company, produit=composite,
+            type_mouvement=mouvement_type_entree(),
+            quantite=quantite_produite, quantite_avant=avant_c,
+            quantite_apres=apres_c, reference=reference,
+            note=f'Assemblage {reference} — composite kit {kit.id}',
+            created_by=user)
+        mouvements.append(mvt_entree)
+        if emplacement_destination is not None and \
+                not emplacement_destination.is_principal:
+            se, _ = StockEmplacement.objects.select_for_update().get_or_create(
+                produit=composite, emplacement=emplacement_destination,
+                defaults={'company': company, 'quantite': 0})
+            se.quantite += quantite_produite
+            se.save(update_fields=['quantite'])
+
+    return mouvements
