@@ -21,6 +21,7 @@ const devisHref = L('/devis/mon-toit');
 const faq = [
   // — Price & orders of magnitude —
   {
+    cluster: 'Price & orders of magnitude',
     q: 'How much does a residential solar installation cost?',
     a: "There's no price per square metre: it all starts from your bill and your roof. To set ideas, a villa paying around 1 500 MAD a month is most often equipped with 4 to 6 kWc. The online assessment returns a range in a few seconds; the real figure comes after the technical visit.",
   },
@@ -34,6 +35,7 @@ const faq = [
   },
   // — Financing (W297: AEO/GEO — self-contained Q&A block) —
   {
+    cluster: 'Financing',
     q: 'How can I finance a solar installation in Morocco?',
     a: "Three concrete ways, no detours. Most of our clients pay in cash, and the installation then pays for itself through the electricity they stop buying from the grid. Others go through a standard consumer credit taken out directly with their bank — Taqinor is not involved and takes no commission. For businesses, green financing lines exist for renewable-energy projects, but the arrangement is between you and your bank. The detail is on the Financing & Returns page.",
   },
@@ -43,6 +45,7 @@ const faq = [
   },
   // — How panels work —
   {
+    cluster: 'How panels work',
     q: 'Do panels work at night or in cloudy weather?',
     a: "At night, no: no light, no current. Overcast weather is another story — the panels still produce, simply less, because the photovoltaic cell also responds to diffuse light, not just direct sun. In Morocco, with more than 300 days of sun a year and some of the best irradiation in the world, the days that are truly “lost” can be counted on one hand. That is what makes self-consumption so worthwhile here.",
   },
@@ -60,6 +63,7 @@ const faq = [
   },
   // — Law 82-21 —
   {
+    cluster: 'Law 82-21',
     q: 'What does Law 82-21 say for individuals?',
     a: 'For the vast majority of villas, it is good news: in low voltage and under 11 kW, you fall under the lightest regime, the declaration. A formality to file before commissioning, not an authorization to obtain. And we are the ones who prepare and file it for you.',
   },
@@ -69,6 +73,7 @@ const faq = [
   },
   // — Article 33 —
   {
+    cluster: 'Article 33 (regularization)',
     q: 'My existing installation is not declared. What should I do?',
     a: "Don't wait. Article 33 gives you an 18-month window, opened on 9 June 2026, to regularize an installation already in place — after that deadline it closes. The wisest move is to start the process now; the Regularization page details the 5-step procedure.",
   },
@@ -78,6 +83,7 @@ const faq = [
   },
   // — Batteries / self-consumption —
   {
+    cluster: 'Batteries & self-consumption',
     q: 'Do I need batteries?',
     a: "Often no, and that is rarely the expected answer. When you consume mostly during the day, the energy flows straight to your appliances, and that direct self-consumption pays more than any storage. A battery comes into its own for night-time use or to ride out an outage; your consumption curve is what decides, and we look at it closely in the study.",
   },
@@ -87,6 +93,7 @@ const faq = [
   },
   // — Warranties —
   {
+    cluster: 'Warranties',
     q: 'What are the warranties?',
     a: 'Component by component. Panels: 12 years on the product and 25 years on performance (at least 84.8 % of the initial power after 25 years). Deye and Huawei inverters and Dyness LFP batteries: 10 years. Galvanised steel structure: 20 years. Taqinor installation and workmanship: 2 years. The detail, with what each warranty covers, is on the Our Warranties page.',
   },
@@ -96,6 +103,7 @@ const faq = [
   },
   // — Electric vehicle —
   {
+    cluster: 'Electric vehicle',
     q: 'Can I charge my electric car with my solar panels?',
     a: "Yes, and it's one of the most cost-effective combinations. A compact car uses about 15 kWh/100 km (a Dacia Spring runs around 14 kWh, a BYD Dolphin 14.5 kWh). For a daily trip of 30 to 40 km, you need to cover about 5 kWh a day — what 2 to 3 panels of 550 W produce on average in Morocco. If you come home in the evening, a 'solar-aware' charger (such as the myenergi Zappi or the Wallbox in solar mode) automatically redirects the day's surplus to the car while you're away. The marginal cost per kilometre then falls close to zero, where petrol works out at about 93 MAD/100 km.",
   },
@@ -105,11 +113,13 @@ const faq = [
   },
   // — Timeline & process —
   {
+    cluster: 'Timeline & process',
     q: 'How does an installation work, step by step?',
     a: 'Three stages, no detours. First a 60-second assessment that returns a first range. Then a direct WhatsApp exchange with a technician, with roof photos. Finally the technical visit, the complete free study, and the quote. You talk to the person who sizes the system, not a switchboard that will call back.',
   },
   // — Monitoring / after-sales —
   {
+    cluster: 'Monitoring & after-sales',
     q: 'How do you track production after installation?',
     a: 'A small WiFi/Ethernet dongle links your installation to Deye Cloud: real-time production, automatic alerts, history. You receive your personal access on the mobile app, and on our side we monitor the whole fleet — the idea being to spot a deviation before you have to notice it at home.',
   },
