@@ -77,8 +77,12 @@ const exchange = [
 ];
 ---
 
-<div class="mx-auto w-full max-w-[340px]">
-  <div class="overflow-hidden rounded-[2rem] border-[6px] border-azur-950 bg-[#e7ddd3] shadow-[0_30px_70px_-30px_rgb(10_18_56/0.55)]">
+<div class="mx-auto w-full max-w-[340px]" data-choreo>
+  {/* W377 — outer choreography (phone frame, then CTA) : intentionally
+      separate from W270's internal bubble-by-bubble script above, which
+      keeps choreographing the conversation itself. --i orders the two
+      direct children (frame first, CTA link second). */}
+  <div style="--i:0" class="overflow-hidden rounded-[2rem] border-[6px] border-azur-950 bg-[#e7ddd3] shadow-[0_30px_70px_-30px_rgb(10_18_56/0.55)]">
     <!-- Barre du contact — avec point « en ligne » -->
     <div class="flex items-center gap-3 bg-azur-950 px-4 pb-3 pt-5">
       <!-- Avatar + pastille « en ligne » -->
@@ -173,7 +177,7 @@ const exchange = [
       </div>
     </template>
   </div>
-  <a href={wa} rel="noopener" class="mt-5 flex items-center justify-center gap-2 bg-ok-600 px-5 py-3 text-sm font-bold text-white transition-opacity hover:opacity-90">
+  <a href={wa} rel="noopener" style="--i:1" class="mt-5 flex items-center justify-center gap-2 bg-ok-600 px-5 py-3 text-sm font-bold text-white transition-opacity hover:opacity-90">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
     {s.cta}
   </a>

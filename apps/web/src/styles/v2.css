@@ -147,3 +147,58 @@
     radial-gradient(70% 140% at 50% 100%, rgb(232 181 74 / 0.14), transparent 72%),
     linear-gradient(to bottom, var(--color-nuit), var(--color-blanc-azur));
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * W377 — [data-choreo] entrance choreography primitive
+ * ═══════════════════════════════════════════════════════════════════════
+ * Extends W270's one-off WhatsAppMock stagger into a reusable system: any
+ * container marked `data-choreo` reveals its direct children one after the
+ * other as it scrolls into view, each child offset by its own `--i` index
+ * (`style="--i:0"`, `--i:1`, …) — the same authored entrance language,
+ * applied consistently instead of re-invented per component.
+ *
+ * UNLIKE the rest of this file, this block is DELIBERATELY NOT scoped to
+ * `.v2`/`.v2-js`: WhatsAppMock, Testimonials and CertLogoRow render on pages
+ * that don't all carry the `.v2` wrapper (e.g. devis/mon-toit,
+ * proposition/[token]), so the primitive has to work everywhere those
+ * components are reused, not just inside `.v2` routes.
+ *
+ * Progressive enhancement, pure CSS, no JS required:
+ *   1. `@supports (animation-timeline: view())`: each child animates in on
+ *      its own view-timeline, native to the compositor — no scroll
+ *      listener, no IntersectionObserver, no main-thread cost. `--i` drives
+ *      a small `animation-delay` so siblings settle in a soft cascade
+ *      instead of all at once.
+ *   2. No support: children are simply visible immediately (no hidden
+ *      state exists outside the @supports block below) — same zero-JS,
+ *      zero-CLS floor as the rest of the site's progressive-enhancement
+ *      rule; never a broken/invisible fallback.
+ *   3. `prefers-reduced-motion: reduce`: identical to (2) — instant,
+ *      un-animated, fully visible from first paint.
+ *
+ * ZERO CLS: the animated properties are opacity/transform only; the
+ * `animation-range` entry point is chosen so the element is already laid
+ * out (occupying its final box) before the fade starts, so nothing shifts.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    [data-choreo] > * {
+      opacity: 0;
+      transform: translateY(18px);
+      animation: choreo-rise linear both;
+      animation-timeline: view();
+      animation-range: entry 0% cover 30%;
+      animation-delay: calc(var(--i, 0) * 90ms);
+    }
+  }
+  @keyframes choreo-rise {
+    from {
+      opacity: 0;
+      transform: translateY(18px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+}

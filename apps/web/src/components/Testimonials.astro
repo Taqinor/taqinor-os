@@ -136,9 +136,12 @@ const jsonLd =
       )}
 
       {hasTestimonials() && (
-        <div class="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
+        // W377 — data-choreo replaces the ad-hoc data-stagger/v2-rise combo
+        // with the shared choreography primitive (v2.css); same visual
+        // cascade, now systemic rather than bespoke to this component.
+        <div class="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3" data-choreo>
           {TESTIMONIALS.map((t, i) => (
-            <figure class="cine-card v2-rise flex flex-col p-7" style={`--v2-i:${i % 3}`}>
+            <figure class="cine-card flex flex-col p-7" style={`--i:${i % 3}`}>
               {t.videoMp4 && (
                 // W282 — slot vidéo témoignage (scaffold). Ratio fixe (aspect-video)
                 // pour zéro CLS ; pas d'autoplay (immobile au repos, respecte
