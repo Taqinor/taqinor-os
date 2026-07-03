@@ -2356,6 +2356,128 @@ def fichier_damancom_cnss(periode):
     }
 
 
+# ── XPAI10 — Télédéclaration CIMR (fichier préétabli) ───────────────────────
+
+def _periode_precedente(periode):
+    """``PeriodePaie`` MENSUELLE précédente (même société), ou ``None``."""
+    from .models import PeriodePaie
+
+    annee, mois = periode.annee, periode.mois
+    if mois == 1:
+        annee, mois = annee - 1, 12
+    else:
+        mois -= 1
+    return PeriodePaie.objects.filter(
+        company=periode.company, annee=annee, mois=mois,
+        type_run=PeriodePaie.TYPE_RUN_MENSUEL).first()
+
+
+def declaration_cimr(periode):
+    """Déclaration CIMR de la période (XPAI10) — fichier préétabli e-CIMR.
+
+    Agrège, pour les bulletins VALIDÉS de la ``periode``, les affiliés CIMR
+    (``ProfilPaie.affilie_cimr``) : catégorie d'adhésion (taux salarial),
+    base (brut), parts salariale/patronale (CIMR patronale = même taux côté
+    salarial faute de taux patronal distinct dans ce référentiel — noté).
+    Détecte les NOUVEAUX AFFILIÉS (pas de bulletin CIMR le mois précédent) et
+    les CHANGEMENTS DE SALAIRE (brut différent du mois précédent). Format
+    exact du portail e-CIMR à confirmer par le fondateur → structure +
+    export CSV documenté par défaut (``fichier_cimr``). Lecture seule.
+    Renvoie ``{'annee', 'mois', 'lignes': [...], 'total_base',
+    'total_cimr_salariale', 'nombre_affilies'}``.
+    """
+    from .models import BulletinPaie
+
+    bulletins = (
+        BulletinPaie.objects
+        .filter(company=periode.company, periode=periode,
+                statut=BulletinPaie.STATUT_VALIDE, profil__affilie_cimr=True)
+        .select_related('profil', 'profil__employe')
+    )
+    precedente = _periode_precedente(periode)
+    brut_precedent = {}
+    profils_precedents = set()
+    if precedente is not None:
+        prec_bulletins = (
+            BulletinPaie.objects
+            .filter(company=periode.company, periode=precedente,
+                    statut=BulletinPaie.STATUT_VALIDE,
+                    profil__affilie_cimr=True)
+            .values('profil_id', 'brut')
+        )
+        for row in prec_bulletins:
+            profils_precedents.add(row['profil_id'])
+            brut_precedent[row['profil_id']] = Decimal(row['brut'] or 0)
+
+    lignes = []
+    total_base = Decimal('0')
+    total_cimr = Decimal('0')
+    for bulletin in bulletins:
+        profil = bulletin.profil
+        employe = profil.employe
+        nom = f'{employe.nom} {employe.prenom}'.strip() if employe else ''
+        brut = Decimal(bulletin.brut or 0)
+        cimr_sal = Decimal(bulletin.cimr_salariale or 0)
+        nouvel_affilie = profil.id not in profils_precedents
+        changement_salaire = (
+            not nouvel_affilie
+            and brut_precedent.get(profil.id) != brut
+        )
+        lignes.append({
+            'profil_id': profil.id,
+            'numero_cimr': profil.numero_cimr or '',
+            'nom': nom,
+            'categorie_taux': _q(Decimal(profil.taux_cimr_salarial or 0)),
+            'base': _q(brut),
+            'cimr_salariale': _q(cimr_sal),
+            'nouvel_affilie': nouvel_affilie,
+            'changement_salaire': changement_salaire,
+        })
+        total_base += brut
+        total_cimr += cimr_sal
+
+    return {
+        'annee': periode.annee,
+        'mois': periode.mois,
+        'lignes': lignes,
+        'total_base': _q(total_base),
+        'total_cimr_salariale': _q(total_cimr),
+        'nombre_affilies': len(lignes),
+    }
+
+
+def fichier_cimr(periode):
+    """Fichier de télédéclaration CIMR — format CSV documenté (XPAI10).
+
+    Format PAR DÉFAUT : le layout exact du fichier préétabli e-CIMR reste à
+    confirmer par le fondateur auprès de la CIMR — ce format CSV
+    (séparateur ``;``) documente la structure attendue (numéro CIMR, nom,
+    taux, base, cotisation, drapeaux nouvel affilié/changement de salaire)
+    en attendant la confirmation. Renvoie ``{'lignes': [str, …],
+    'nombre_affilies', 'total_base', 'total_cimr_salariale'}``. Lecture
+    seule.
+    """
+    decl = declaration_cimr(periode)
+    lignes_txt = [
+        f'E;{periode.annee};{periode.mois:02d};{decl["nombre_affilies"]};'
+        f'{decl["total_base"]};{decl["total_cimr_salariale"]}'
+    ]
+    for ligne in decl['lignes']:
+        lignes_txt.append(
+            f'S;{ligne["numero_cimr"]};{ligne["nom"]};'
+            f'{ligne["categorie_taux"]};{ligne["base"]};'
+            f'{ligne["cimr_salariale"]};'
+            f'{"N" if ligne["nouvel_affilie"] else ""};'
+            f'{"C" if ligne["changement_salaire"] else ""}'
+        )
+    return {
+        'lignes': lignes_txt,
+        'nombre_affilies': decl['nombre_affilies'],
+        'total_base': decl['total_base'],
+        'total_cimr_salariale': decl['total_cimr_salariale'],
+    }
+
+
 # ── PAIE32 — État IR 9421 + retenues à la source ───────────────────────────
 
 def etat_ir_9421(periode):

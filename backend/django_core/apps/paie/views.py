@@ -62,6 +62,7 @@ from .services import (
     changer_statut,
     cloturer_periode_paie,
     creer_bulletin_rectificatif,
+    declaration_cimr,
     declaration_cnss,
     emettre_ordre_virement,
     ensure_defaults,
@@ -70,6 +71,7 @@ from .services import (
     etat_des_charges,
     etat_ir_9421,
     etat_ir_9421_annuel,
+    fichier_cimr,
     fichier_damancom_cnss,
     fichier_virement_paie,
     fichier_virement_paie_simt,
@@ -460,6 +462,18 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
         """Bordereau de déclaration des salaires CNSS (BDS) de la période (PAIE31)."""
         periode = self.get_object()
         return Response(declaration_cnss(periode), status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='declaration-cimr')
+    def declaration_cimr(self, request, pk=None):
+        """Déclaration CIMR de la période — fichier préétabli e-CIMR (XPAI10)."""
+        periode = self.get_object()
+        return Response(declaration_cimr(periode), status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='fichier-cimr')
+    def fichier_cimr(self, request, pk=None):
+        """Fichier de télédéclaration CIMR — CSV documenté (XPAI10)."""
+        periode = self.get_object()
+        return Response(fichier_cimr(periode), status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'], url_path='fichier-damancom')
     def fichier_damancom(self, request, pk=None):
