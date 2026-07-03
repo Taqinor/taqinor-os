@@ -14,6 +14,7 @@ import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
+import Faq from '../../components/Faq.astro';
 import { NAP } from '../../lib/nap';
 import RelatedLinks from '../../components/RelatedLinks.astro';
 import { estimateReadingTime } from '../../lib/readingTime';
@@ -36,17 +37,37 @@ const guideBodyText = `
 const readingMinutes = estimateReadingTime(guideBodyText);
 
 const url = new URL(Astro.url.pathname, Astro.site).href;
+// W291 — image OG (même URL que celle passée à ogSlug plus bas), pour l'éligibilité Article rich results.
+const schemaImageUrl = new URL('/og/loi-82-21.png', Astro.site).href;
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Article',
   headline: 'Loi 82-21 expliquée simplement',
   description: 'Les trois régimes de l’autoproduction d’électricité au Maroc (déclaration, accord de raccordement, autorisation) expliqués en langage clair.',
+  image: schemaImageUrl,
   about: { '@type': 'Thing', name: 'Loi 82-21 — autoproduction d’énergie électrique' },
   author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
   publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
   mainEntityOfPage: url,
 };
 
+// W297 — AEO/GEO : Q&A autonome reprenant les faits déjà énoncés ci-dessus, pour
+// que les assistants IA (Google AI Overviews / ChatGPT) puissent citer directement
+// une réponse complète. schema={false} : /faq garde le seul FAQPage du site.
+const faq = [
+  {
+    q: 'Quel régime de la loi 82-21 pour une villa au Maroc ?',
+    a: 'Sous 11 kW en basse tension, une simple déclaration préalable suffit — c’est le cas de la quasi-totalité des villas. Au-dessus de ce seuil et jusqu’à 5 MW, il faut un accord de raccordement ; à partir de 5 MW, une autorisation.',
+  },
+  {
+    q: 'Depuis quand la loi 82-21 est-elle en vigueur ?',
+    a: 'Le décret d’application 2-25-100 s’applique depuis le 9 juin 2026.',
+  },
+  {
+    q: 'Que faire si mon installation solaire existante n’est pas déclarée ?',
+    a: 'L’Article 33 ouvre, depuis le 9 juin 2026, une fenêtre de 18 mois pour la régulariser. Passé ce délai, elle reste en situation irrégulière au regard de la loi, avec les sanctions que cela suppose.',
+  },
+];
 const regimes = [
   {
     n: '01',
@@ -156,6 +177,9 @@ const regimes = [
         { href: '/guides', label: 'Tous les guides' },
       ]} />
     </article>
+
+    <!-- W297 — FAQ visuelle : schema={false}, /faq garde le seul FAQPage du site -->
+    <Faq items={faq} heading="Loi 82-21 — questions fréquentes" schema={false} />
 
     <CtaBand title="Un doute sur votre régime ? Nous vérifions gratuitement." buttonLabel="Faire vérifier mon dossier" href="/devis/mon-toit" />
 

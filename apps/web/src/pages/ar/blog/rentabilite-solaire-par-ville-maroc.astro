@@ -1,0 +1,243 @@
+---
+/**
+ * AR — Blog post (W295, RTL): Solar profitability and ROI by Moroccan city.
+ * Faithful Arabic translation of
+ * src/content/blog/rentabilite-solaire-par-ville-maroc.md, every figure kept
+ * in Latin digits (PVOUT table by city, Marrakech 1 779 kWh/kWc/yr confirmed,
+ * ONEE tariff table, sélective billing mechanism, 5–7 year payback). Static
+ * page mirroring the guides pattern (blog collection has no locale field —
+ * out of this lane's scope). Internal links use localizeNavHref (EN/AR if
+ * available, else the existing FR page — never a dead link). FR untouched.
+ */
+import Layout from '../../../layouts/Layout.astro';
+import V2Enhance from '../../../components/V2Enhance.astro';
+import Article33Ribbon from '../../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../../components/Breadcrumb.astro';
+import CtaBand from '../../../components/CtaBand.astro';
+import StickyCta from '../../../components/StickyCta.astro';
+import RelatedLinks from '../../../components/RelatedLinks.astro';
+import { NAP } from '../../../lib/nap';
+import { estimateReadingTime } from '../../../lib/readingTime';
+import { getLocaleFromPath } from '../../../i18n/utils';
+import { localizeNavHref } from '../../../i18n/pages';
+import '../../../styles/prose.css';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+const pubDate = new Date('2026-06-21');
+const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+
+const bodyText = `
+PVOUT حسب المدينة يتراوح من 1500 إلى 1950 kWh لكل kWc سنوياً، مراكش مؤكّدة عند 1779. تعريفات ONEE من
+0,90 إلى 1,66 درهم لكل kWh، الفوترة الانتقائية فوق 150 kWh شهرياً تُفوتِر الشهر كلّه بالشطر الهامشي.
+الاسترجاع 5 إلى 7 سنوات في السكني، إجماع بين المُركِّبين. ما يؤثّر على الاسترجاع: شطركم التعريفي
+الحالي، كلفة التركيبة 10000 إلى 14000 درهم لكل kWc، معدّل الاستهلاك الذاتي، والبطارية تُضيف 1 إلى 3
+سنوات للاسترجاع.
+`;
+const readingMinutes = estimateReadingTime(bodyText);
+
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const schemaImageUrl = new URL('/og/residentiel.png', Astro.site).href;
+const blogPosting = {
+  '@context': 'https://schema.org',
+  '@type': 'BlogPosting',
+  headline: 'الربحية الشمسية والعائد على الاستثمار حسب المدينة المغربية',
+  description: 'استرجاع 5–7 سنوات، الإنتاج حسب المدينة وتعريفات ONEE: كل ما يجب معرفته حول ربحية الطاقة الشمسية بالمغرب.',
+  image: schemaImageUrl,
+  datePublished: pubDate.toISOString(),
+  keywords: 'ربحية, عائد استثمار, إنتاج, مدن',
+  author: { '@type': 'Person', name: 'Reda Kasri' },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: { '@type': 'WebPage', '@id': url },
+};
+
+const breadcrumbLd = {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'الرئيسية', item: new URL(L('/'), Astro.site).href },
+    { '@type': 'ListItem', position: 2, name: 'المدوّنة', item: new URL(L('/blog'), Astro.site).href },
+    { '@type': 'ListItem', position: 3, name: 'الربحية الشمسية حسب المدينة المغربية' },
+  ],
+};
+
+const pvout = [
+  { city: 'طنجة', value: '~1 550 – 1 650', tilt: '31°', confidence: 'مُقدَّرة' },
+  { city: 'الدار البيضاء', value: '~1 620 – 1 700', tilt: '29°', confidence: 'مُقدَّرة' },
+  { city: 'الرباط-سلا', value: '~1 620 – 1 700', tilt: '29°', confidence: 'مُقدَّرة' },
+  { city: 'فاس', value: '~1 650 – 1 750', tilt: '~32°', confidence: 'مُقدَّرة' },
+  { city: 'مراكش', value: '1 779 (نقطة مؤكَّدة)', tilt: '28°', confidence: 'عالية' },
+  { city: 'أكادير', value: '~1 750 – 1 820', tilt: '27°', confidence: 'مُقدَّرة' },
+  { city: 'ورزازات', value: '~1 850 – 1 950', tilt: '~28–30°', confidence: 'مُقدَّرة' },
+];
+
+const tariffs = [
+  { range: '0 – 100 kWh', tariff: '0,90', mode: 'تصاعدي' },
+  { range: '101 – 150 kWh', tariff: '1,07', mode: 'تصاعدي' },
+  { range: '151 – 200 kWh', tariff: '1,18', mode: 'انتقائي' },
+  { range: '201 – 300 kWh', tariff: '~1,18 → 1,45', mode: 'انتقائي' },
+  { range: '301 – 500 kWh', tariff: '1,45', mode: 'انتقائي' },
+  { range: '> 500 kWh', tariff: '1,66', mode: 'انتقائي' },
+];
+---
+
+<Layout
+  title="الربحية الشمسية والعائد على الاستثمار حسب المدينة المغربية | مدوّنة Taqinor"
+  description="استرجاع 5–7 سنوات، الإنتاج حسب المدينة وتعريفات ONEE: كل ما يجب معرفته حول ربحية الطاقة الشمسية بالمغرب."
+  ogSlug="residentiel"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(blogPosting)} />
+  <script type="application/ld+json" set:html={JSON.stringify(breadcrumbLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: 'المدوّنة', href: L('/blog') }, { label: 'الربحية حسب المدينة' }]} />
+
+    <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
+      <p class="tech-label v2-kicker rule-brass text-brass-300">
+        المدوّنة · {dateFmt.format(pubDate)} · بقلم Reda Kasri
+      </p>
+      <h1 class="display v2-page-title mt-5 text-white">الربحية الشمسية والعائد على الاستثمار حسب المدينة المغربية</h1>
+
+      <p class="article-meta mt-3 flex items-center gap-2 text-xs text-lune-faint">
+        {readingMinutes} دقائق قراءة
+      </p>
+
+      <p class="prose-lead mt-5">استرجاع 5–7 سنوات، الإنتاج حسب المدينة وتعريفات ONEE: كل ما يجب معرفته حول ربحية الطاقة الشمسية بالمغرب.</p>
+
+      <div class="prose mt-10">
+        <p>
+          حين يسألني زبون هل «الطاقة الشمسية مربحة عنده»، سؤالي الأول ليس الثمن. إنه: في أي مدينة، وما
+          شطركم التعريفي لدى ONEE؟ هذان المعياران يزنان غالباً أكثر من ماركة الألواح. إليكم كيف أفكّر
+          في الأمر، بالأرقام التي بحوزتي.
+        </p>
+
+        <h2>الإنتاج الشمسي حسب المدينة: كم kWh لكل kWc مُركَّبة؟</h2>
+        <p>
+          كل شيء ينطلق من <strong>مردودية الموقع</strong>، أي عدد الـkWh المُنتَجة لكل kWc مُركَّبة في
+          السنة (يُسمّى PVOUT). يعتمد على الإشعاع الشمسي المحلي، ميلان الألواح، وخسائر النظام: الأسلاك،
+          العاكس، الغبار على الزجاج.
+        </p>
+        <p>
+          يُعطي الجدول أدناه هوامش <strong>مُقدَّرة</strong>، محسوبة من بيانات PVGIS وGlobal Solar
+          Atlas وSolargis، بمعدّل خسارة نظام حوالي 14% واتجاه جنوبي تام. قيمة واحدة فقط
+          <strong> مؤكَّدة</strong> بدقّة: مراكش (دراسة MDPI Resources 2024، GTI مقاسة).
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>المدينة</th>
+                <th>PVOUT مُقدَّر (kWh/kWc/سنة)</th>
+                <th>الميلان الأمثل (جنوب تام)</th>
+                <th>الموثوقية</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pvout.map((p) => (
+                <tr>
+                  <td>{p.city}</td>
+                  <td>{p.value}</td>
+                  <td>{p.tilt}</td>
+                  <td>{p.confidence}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p><em>المصادر: PVGIS (المفوضية الأوروبية)؛ Global Solar Atlas (البنك الدولي / Solargis)؛ MDPI Resources 2024 13(10):140 (مراكش). هوامش المدن الأخرى تقديرات مُعايَرة على نقطة مراكش — لا تُغني عن محاكاة PVGIS على عنوانكم الدقيق.</em></p>
+        <p>
+          <strong>المرجع الوطني:</strong> يقع نطاق PVOUT بالمغرب بين <strong> 1 600 و1 900
+          kWh/kWc/سنة</strong> (GSA). يستعمل المُركِّبون غالباً القاعدة التجريبية <strong> 1 500–1 800
+          kWh/kWc/سنة حسب الجهة</strong>.
+        </p>
+
+        <h2>لماذا الطاقة الشمسية مربحة بالمغرب؟ آلية تعريفات ONEE</h2>
+        <h3>الشبكة التعريفية (مُراجَعة 2026-06)</h3>
+        <p>تعريفات ONEE السكنية للتوتر المنخفض السارية هي كالتالي (مُقرَّبة، شاملة الضريبة):</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>الاستهلاك الشهري</th>
+                <th>التعريفة (درهم/kWh)</th>
+                <th>نمط الفوترة</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tariffs.map((t) => (
+                <tr>
+                  <td>{t.range}</td>
+                  <td>{t.tariff}</td>
+                  <td>{t.mode}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p><em>المصادر: kherba.com/tarifs؛ calculateur.ma (محاكي ONEE)؛ electrosolarplus.ma؛ bati.ma. آخر مراجعة رسمية معروفة: ~2015. يُتوقّع إصلاح تعريفي من ANRE بحلول مارس 2027. المُوزِّعون (Lydec/الدار البيضاء، Redal/الرباط، Amendis/طنجة): نفس البنية، تعريفات قريبة — الأرقام العشرية الدقيقة لكل شطر غير مُتحقَّق منها (البوابات 403).</em></p>
+        <blockquote><p><strong>ملاحظة الحداثة:</strong> هذه التعريفات مستقرّة منذ عدّة سنوات. تحقّقوا على <a href="https://calculateur.ma">calculateur.ma</a> أو لدى مُوزِّعكم إن كنتم تقرؤون هذا المقال بعد 2026.</p></blockquote>
+
+        <h3>الآلية «الانتقائية»: أثر الرافعة للطاقة الشمسية</h3>
+        <p>إنها النقطة الأساسية التي يجهلها كثير من المستهلكين:</p>
+        <ul>
+          <li>تحت <strong>150 kWh/شهر</strong>، الفوترة <strong>تصاعدية</strong>: كل شطر يُفوتَر بتعريفته الخاصة.</li>
+          <li>فوق <strong>150 kWh/شهر</strong>، تصبح الفوترة <strong>«انتقائية»</strong>: <strong>كل استهلاك الشهر</strong> يُفوتَر بتعريفة الشطر المُبلَغ.</li>
+        </ul>
+        <p>
+          <strong>مثال ملموس:</strong> أسرة تستهلك 250 kWh في يوليوز لا تدفع الـ100 kWh الأولى بـ0,90
+          درهم ثم الباقي بـ1,07، 1,18… بل تدفع الـ250 kWh <em>كاملة</em> بتعريفة شطر 201–300 kWh، أي
+          حوالي 1,45 درهم/kWh (تسامح 10 kWh لكل شطر يُخفّف التجاوزات الطفيفة).
+        </p>
+        <p>
+          ما تُزيله الطاقة الشمسية هو بالضبط هذه التعريفة الهامشية المرتفعة المُطبَّقة على كامل
+          الفاتورة. لنأخذ أسرة في شطر 301–500 kWh تسحب 200 kWh شهرياً من الشبكة بفضل ألواحها: توفّر
+          هذه الـ200 kWh بالتعريفة <em>الهامشية</em> البالغة 1,45 درهم، لا بالمعدّل الظاهري لفاتورتها
+          القديمة. هذا كل السبب في ارتفاع الربحية لدى كبار المستهلكين، وهو أيضاً ما أتحقّق منه أولاً
+          على فاتورة قبل تسعير أي شيء.
+        </p>
+
+        <h2>العائد على الاستثمار: 5 إلى 7 سنوات (إجماع المُركِّبين)</h2>
+        <p>
+          <strong>الاسترجاع السكني القياسي</strong> هو <strong>5 إلى 7 سنوات</strong> — رقم مُنسجم عبر
+          كل مصادر المُركِّبين المُستشارة (solaropeak.com، ecovolt.ma، electrosolarplus.ma،
+          lechantier.ma).
+        </p>
+        <p><strong>ما يؤثّر على الاسترجاع:</strong></p>
+        <ul>
+          <li><strong>شطركم التعريفي الحالي</strong>: كلّما كنتم في شطر أعلى (≥ 1,45 درهم/kWh)، كلّما كانت التوفيرات السنوية أكبر والاسترجاع أسرع.</li>
+          <li><strong>كلفة التركيبة</strong>: هامش استرشادي 2026 من ~10 000 إلى 14 000 درهم/kWc (عتاد + تركيب، مصادر مُركِّبين — غير مُدقَّق). انظروا <a href={L('/blog/prix-installation-solaire-maroc-2026')}>دليلنا للأثمنة</a>.</li>
+          <li><strong>معدّل استهلاككم الذاتي</strong>: مع <a href={L('/loi-82-21')}>القانون 82-21</a>، يُعاد شراء الفائض المحقون في الشبكة بـ0,18–0,21 درهم/kWh فقط للتوتر المتوسط/العالي — أدنى بكثير من تعريفة البيع (تعريفة نظام التصريح للتوتر المنخفض، للبيوت أقل من 11 kW، لم تُنشَر بعد، لكن لا شيء يُشير إلى أنها تُغيّر هذا المنطق). القيمة الفعلية للطاقة الشمسية في الاستهلاك الفوري، لا في التصدير.</li>
+          <li><strong>البطارية</strong>: إضافة تخزين تُطيل الاسترجاع بـ<strong>1 إلى 3 سنوات</strong> لكنها تزيد معدّل الاستهلاك الذاتي المسائي.</li>
+        </ul>
+        <p>
+          <strong>على مدى 25 سنة</strong>، بمجرّد استرجاع كلفة التركيبة، يصبح كل kWh مُنتَج شبه مجاني.
+          تفقد الألواح الحديثة حوالي 0,5%/سنة من الأداء ويضمن معيار السوق ~80–85% من السعة الأولية عند
+          25 سنة — يتجاوز ضماننا المعيار: ≥ 84,8% عند 25 سنة على الألواح التي نُركّبها.
+        </p>
+
+        <h2>حاكوا تركيبتكم</h2>
+        <p>
+          الأرقام أعلاه هوامش سوق. تعتمد ربحيتكم الفعلية على استهلاككم، مدينتكم، ومساحة سقفكم واتجاهه.
+          <a href={L('/devis/mon-toit')}>احصلوا على عرض أسعار مخصَّص</a> لتقدير دقيق.
+        </p>
+        <hr />
+        <p><em>تعريفات ONEE مُتحقَّق منها 2026-06. المردوديات حسب المدينة: تقديرات PVGIS/Global Solar Atlas/Solargis مُعايَرة على قياس مراكش البالغ 1 779 kWh/kWc/سنة (MDPI Resources 2024). الاسترجاع 5–7 سنوات: إجماع مصادر مُركِّبين مغاربة 2026.</em></p>
+      </div>
+
+      <RelatedLinks
+        links={[
+          { href: L('/blog'), label: 'كل المقالات' },
+          { href: L('/guides'), label: 'الأدلّة الدائمة' },
+          { href: L('/financement'), label: 'التمويل والربحية' },
+        ]}
+      />
+    </article>
+
+    <CtaBand title="مشروع في بالكم؟ أطلِقوا الدراسة المجانية." href={L('/devis/mon-toit')} />
+
+    <StickyCta />
+  </div>
+</Layout>

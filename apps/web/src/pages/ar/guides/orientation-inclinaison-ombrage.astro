@@ -1,0 +1,161 @@
+---
+/**
+ * AR — Guide (W294, RTL): Orientation, tilt and shading: maximising production
+ * on a Moroccan roof. Faithful Arabic translation of
+ * /guides/orientation-inclinaison-ombrage, every figure kept in Latin digits
+ * (10–15 % east/west loss, 27–31° tilt by city). Internal links use
+ * localizeNavHref (EN/AR if available, else the existing FR page — never a
+ * dead link). FR untouched.
+ */
+import Layout from '../../../layouts/Layout.astro';
+import V2Enhance from '../../../components/V2Enhance.astro';
+import Article33Ribbon from '../../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../../components/Breadcrumb.astro';
+import CtaBand from '../../../components/CtaBand.astro';
+import StickyCta from '../../../components/StickyCta.astro';
+import { NAP } from '../../../lib/nap';
+import RelatedLinks from '../../../components/RelatedLinks.astro';
+import { getLocaleFromPath } from '../../../i18n/utils';
+import { localizeNavHref } from '../../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const schemaImageUrl = new URL('/og/accueil.png', Astro.site).href;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: 'الاتجاه، الميلان والتظليل: تعظيم الإنتاج على سقف مغربي',
+  description: 'الجنوب التام، ميلان قريب من خط العرض، وصفر ظلّ: القواعد الثلاث التي تُحدِث الفارق حقاً على سقف مغربي، مشروحة دون مصطلحات معقّدة.',
+  image: schemaImageUrl,
+  about: { '@type': 'Thing', name: 'التركيبة الشمسية الكهروضوئية' },
+  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: url,
+};
+---
+
+<Layout
+  title="الاتجاه، الميلان والتظليل: تعظيم الإنتاج على سقف مغربي | Taqinor"
+  description="جنوب تام أمثل، شرق/غرب مقبول (−10 إلى 15 %)، ميلان ≈ خط العرض (27–31° حسب المدينة): القواعد الثلاث التي تُحدِث الفارق حقاً — ولماذا يمكن لمدخنة واحدة أن تُعاقب تركيبتكم بأكملها."
+  ogSlug="accueil"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: 'الأدلّة', href: L('/guides') }, { label: 'الاتجاه، الميلان والتظليل' }]} />
+
+    <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
+      <p class="tech-label v2-kicker rule-brass text-lune">دليل · التركيب</p>
+      <h1 class="display v2-page-title mt-5 text-white">الاتجاه، الميلان والتظليل</h1>
+
+      <p class="v2-lead mt-6 text-lune-soft">
+        قبل حتى الحديث عن الماركات أو القدرة، تُحدِّد ثلاثة معايير فيزيائية جزءاً كبيراً مما سيُنتجه
+        سقفكم طيلة خمس وعشرين سنة: الاتجاه الذي تنظر إليه الألواح، الزاوية التي تُركَّب بها، والظلّ
+        الذي يمرّ عليها طيلة اليوم. مضبوطة جيداً، لا تكلّف هذه الروافع الثلاث شيئاً يُذكر وتُجني سنوات
+        من الإنتاج. لنتفحّصها واحدة تلو الأخرى، بالترتيب الذي تهمّ فيه.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">الاتجاه: جنوب تام، ولا شيء آخر؟</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        بالمغرب، ترسم الشمس قوسها في الجنوب. تجمع الألواح المُتّجهة جنوباً تاماً أقصى إشعاع على مدار
+        اليوم بأكمله: إنها التهيئة المرجعية، تلك التي تُعطي أعلى إنتاج لمساحة وقدرة معطاتين.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        اتجاه <strong class="text-white">شرقي أو غربي</strong> ليس عائقاً حاسماً. تُقدَّر الخسارة
+        بحوالي <strong class="text-white">10 إلى 15 %</strong> مقارنة بالجنوب التام، وهو ما يبقى
+        مربحاً تماماً إن كان سقفكم لا يترك خياراً آخر. قد يتماشى اتجاه شرقي حتى أفضل مع ملفّ استهلاك
+        صباحي؛ أما اتجاه غربي، فمع أسرة تعود إلى البيت في آخر بعد الظهر. المهمّ ألا تجدوا أنفسكم مُديرين
+        ظهركم للشمس: يُستبعَد اتجاه شمالي.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">الميلان: لا مسطّحاً، ولا شديد الانحدار</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        تُقارب الزاوية المثلى لميلان لوح خط عرض الموقع تقريباً، ثم تُخفَّض قليلاً لصالح الإنتاج السنوي.
+        يقع الجزء الأكبر من المغرب المأهول بين حوالي 28° و36° خط عرض شمالي (أكادير عند حوالي 30,4°
+        شمالاً)، ما يُعطي المراجع التالية للمدن الرئيسية:
+      </p>
+      <ul class="v2-lead mt-5 list-inside list-disc space-y-2 text-lune-soft">
+        <li><strong class="text-white">أكادير</strong> — حوالي <strong class="text-white">27°</strong></li>
+        <li><strong class="text-white">مراكش</strong> — حوالي <strong class="text-white">28°</strong></li>
+        <li><strong class="text-white">الدار البيضاء والرباط</strong> — حوالي <strong class="text-white">29°</strong></li>
+        <li><strong class="text-white">طنجة</strong> — حوالي <strong class="text-white">31°</strong></li>
+      </ul>
+      <p class="v2-lead mt-5 text-lune-soft">
+        تأتي هذه القيم من بيانات إشعاع بالأقمار الاصطناعية (PVGIS / Global Solar Atlas) ومُحسَّنة
+        للإنتاج السنوي الإجمالي، لا لشهر واحد. عملياً، غالباً ما تُملي الهندسة القائمة ميلان سقفكم،
+        وفارق بضع درجات عن الأمثل له أثر متواضع على الإنتاج السنوي — أقلّ بكثير من التظليل، كما سنرى.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        تركيبة <strong class="text-white">مسطّحة</strong> (0°) ليست مثالية: يهبط الإنتاج، ويُوسِّخ
+        الماء الراكد الألواح أسرع. في المقابل، يبقى ميلان بين 15° و35° في مجال مقبول جداً على كامل
+        التراب الوطني.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">التظليل: المعيار الأكثر إضراراً</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        إنه العامل الأكثر التقليل من شأنه، وغالباً الأكثر كلفة. تُوصِّل تركيبة قياسية ألواحها على
+        <strong class="text-white">التسلسل</strong>: يمرّ التيار من واحد إلى آخر كحلقات سلسلة. إن كانت
+        حلقة واحدة فقط في الظلّ، تُعاقَب السلسلة كلّها. لا يهبط الإنتاج بـ10 % لأن لوحاً في نصف ظلّ؛
+        يمكن أن ينهار أكثر بكثير، لأن اللوح الأضعف هو من يفرض إيقاعه على الباقي.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        غالباً ما تكون مصادر الظلّ التي يجب مراقبتها موجودة منذ الأزل، لكن لا تُرى فعلاً إلا بتفحّص
+        ساعات اليوم والفصول:
+      </p>
+      <ul class="v2-lead mt-5 list-inside list-disc space-y-2 text-lune-soft">
+        <li><strong class="text-white">مدخنة أو قناة تهوية</strong> تُسقط ظلاً متحرّكاً مع مسار الشمس</li>
+        <li><strong class="text-white">جدار مشترك أو حاجز سطح</strong> يقطع الشمس باكراً صباحاً أو متأخّراً بعد الظهر</li>
+        <li><strong class="text-white">نخلة، شجرة أو هوائي</strong> قد لا يُزعج الآن لكنه سيصبح كذلك بعد بضع سنوات</li>
+        <li><strong class="text-white">صفوف ألواح تُظلّل بعضها البعض</strong> إن كانت المسافة بين الصفوف محسوبة بشكل سيّئ</li>
+      </ul>
+      <p class="v2-lead mt-5 text-lune-soft">
+        قبل أي مشروع، تحليل تظليل ميداني — من الأفضل في ساعات مختلفة ومع مراعاة الانقلاب الشتوي، حين
+        تكون الشمس في أدنى نقطة — ضروري. في تلك اللحظة تُرصَد العوائق التي لا تبدو مؤذية إلا صيفاً.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">حين يكون الظلّ حتمياً: الحلول</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        إن كان سقفكم يُظهر مناطق ظلّ جزئية وحتمية، تسمح تقنيتان بالحدّ من أثرها:
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        تُركَّب <strong class="text-white">مُحسِّنات القدرة</strong> لوحاً بلوح وتسمح لكلّ منها بالعمل
+        عند نقطة قدرته القصوى الخاصة، باستقلالية عن جيرانه. لا يعود لوح مُظلَّل يسحب الباقي إلى الأسفل؛
+        يُعطي ببساطة ما يستطيع.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        تذهب <strong class="text-white">الميكرو-عاكسات</strong> أبعد: يملك كل لوح ميكرو-عاكسه الخاص
+        الذي يُحوِّل التيار المستمرّ إلى متردّد مباشرة على مستوى اللوح. هنا أيضاً، كلّ لوح مستقلّ تماماً.
+        هذا النوع من التركيبات أغلى لكنه يجلب أيضاً مراقبة دقيقة جداً لوحاً بلوح، مفيدة لرصد مشكلة
+        بسرعة.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        هذان الحلاّن وجيهان بمجرّد أن يكون الظلّ منتظماً ويمسّ جزءاً معتبراً من التركيبة. إن كان سقفكم
+        خالياً تماماً والظلّ عرضياً، يكفي عاكس كلاسيكي بصمّامات bypass: لا داعي للمبالغة في الدفع.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">ما يجب التحقّق منه على سقفكم</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        بالنسبة للاتجاه، استهدفوا الجنوب التام حين يكون ذلك ممكناً؛ يكلّف وجه شرقي أو غربي حوالي 10 إلى
+        15 % من الإنتاج ويبقى مربحاً، ويُستبعَد وجه شمالي. بالنسبة للميلان، تناسب زاوية من 27 إلى 31°
+        حسب مدينتكم، وتقع معظم الأسقف المغربية أصلاً في مجال مقبول، فلا داعي للإطالة فيه. الموضوع
+        الحقيقي، الذي يستحقّ الصعود إلى السقف في عدّة ساعات من اليوم، هو الظلّ: مدخنة أو جدار أو شجرة
+        سيّئة الموضع تُعاقب سلسلة كاملة من الألواح، أكثر بكثير من اتجاه مائل قليلاً. تنطلق دراسة ميدانية
+        جادّة دائماً من هناك.
+      </p>
+
+      <RelatedLinks links={[
+        { href: L('/guides/monocristallin-ou-polycristallin'), label: 'أحادي أم متعدّد البلورة؟' },
+        { href: L('/guides/combien-de-panneaux-pour-ma-maison'), label: 'كم لوحاً لبيتي؟' },
+        { href: L('/guides'), label: 'كل الأدلّة' },
+      ]} />
+    </article>
+
+    <CtaBand title="لسقفكم قيوده الخاصة. لندرسها معاً." href={L('/devis/mon-toit')} />
+
+    <StickyCta />
+  </div>
+</Layout>

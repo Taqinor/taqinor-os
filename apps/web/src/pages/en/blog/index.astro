@@ -1,0 +1,107 @@
+---
+/**
+ * EN — Blog hub (W295). Lists the two translated posts (the two "money"
+ * articles: pricing + profitability). Faithful translation of /blog's shell;
+ * NOT collection-driven (static list of the translated posts only — other FR
+ * posts stay FR-only until translated in a future pass). Internal links use
+ * localizeNavHref (EN/AR if available, else the existing FR page — never a
+ * dead link). FR untouched.
+ */
+import Layout from '../../../layouts/Layout.astro';
+import V2Enhance from '../../../components/V2Enhance.astro';
+import Article33Ribbon from '../../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../../components/Breadcrumb.astro';
+import CtaBand from '../../../components/CtaBand.astro';
+import StickyCta from '../../../components/StickyCta.astro';
+import { getLocaleFromPath } from '../../../i18n/utils';
+import { localizeNavHref } from '../../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+const dateFmt = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+
+const posts = [
+  {
+    slug: 'prix-installation-solaire-maroc-2026',
+    title: 'How much does a solar installation cost in Morocco in 2026?',
+    description: "Indicative 2026 brackets by power, roof, battery and VAT surcharges — to know what to expect before your quote.",
+    pubDate: new Date('2026-06-21'),
+  },
+  {
+    slug: 'rentabilite-solaire-par-ville-maroc',
+    title: 'Solar profitability and return on investment by Moroccan city',
+    description: '5–7 year payback, production by city and ONEE tariffs: everything you need to know about solar profitability in Morocco.',
+    pubDate: new Date('2026-06-21'),
+  },
+];
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'CollectionPage',
+  name: 'Blog Taqinor — news & field reports',
+  url: new URL(L('/blog'), Astro.site).href,
+  hasPart: posts.map((p) => ({
+    '@type': 'BlogPosting',
+    headline: p.title,
+    datePublished: p.pubDate.toISOString(),
+    url: new URL(L(`/blog/${p.slug}`), Astro.site).href,
+  })),
+};
+---
+
+<Layout
+  title="Taqinor blog — solar news, field reports & updates | Taqinor"
+  description="The Taqinor blog: solar news in Morocco, reports from our sites, equipment updates and behind-the-scenes from the installer. Distinct from the evergreen guides — here, what's changing."
+  ogSlug="accueil"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'Blog' }]} />
+
+    <section class="px-4 pb-10 pt-16 text-white sm:pt-20">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Blog</p>
+        <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">What's moving at Taqinor</h1>
+        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+          The guides explain what doesn't change; the blog tells you what's happening. Site reports,
+          equipment updates, changes to Morocco's self-production framework — enough to follow the
+          field with no jargon.
+        </p>
+      </div>
+    </section>
+
+    <section class="px-4 pb-24 sm:pb-32">
+      <div class="mx-auto grid max-w-6xl gap-6 md:grid-cols-3" data-stagger>
+        {posts.map((p, i) => (
+          <a href={L(`/blog/${p.slug}`)} class="v2-rise cine-card blog-card flex flex-col p-7" style={`--v2-i:${i}`}>
+            <p class="tech-label text-brass-300">{dateFmt.format(p.pubDate)}</p>
+            <h2 class="display mt-2 text-xl text-white">{p.title}</h2>
+            <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{p.description}</p>
+            <span class="mt-5 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white">Read the article →</span>
+          </a>
+        ))}
+      </div>
+    </section>
+
+    <CtaBand title="A project in mind? Launch the free study." href={L('/devis/mon-toit')} />
+
+    <StickyCta />
+  </div>
+</Layout>
+
+<style>
+  /* W198 — hover: subtle elevation (respects prefers-reduced-motion) */
+  @media (prefers-reduced-motion: no-preference) {
+    .blog-card {
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .blog-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 28px 64px -28px rgb(0 0 0 / 0.85);
+    }
+  }
+</style>

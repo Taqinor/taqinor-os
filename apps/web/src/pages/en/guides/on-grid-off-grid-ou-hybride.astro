@@ -1,0 +1,133 @@
+---
+/**
+ * EN — Guide (W294): On-grid, off-grid or hybrid? Faithful translation of
+ * /guides/on-grid-off-grid-ou-hybride, every figure kept EXACT (4–10 ms
+ * switchover, 5–10 kWh battery). Internal links use localizeNavHref (EN/AR if
+ * available, else the existing FR page — never a dead link). FR untouched.
+ */
+import Layout from '../../../layouts/Layout.astro';
+import V2Enhance from '../../../components/V2Enhance.astro';
+import Article33Ribbon from '../../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../../components/Breadcrumb.astro';
+import CtaBand from '../../../components/CtaBand.astro';
+import StickyCta from '../../../components/StickyCta.astro';
+import { NAP } from '../../../lib/nap';
+import RelatedLinks from '../../../components/RelatedLinks.astro';
+import { getLocaleFromPath } from '../../../i18n/utils';
+import { localizeNavHref } from '../../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const schemaImageUrl = new URL('/og/accueil.png', Astro.site).href;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: 'On-grid, off-grid or hybrid: what happens during an outage?',
+  description: 'On-grid, off-grid or hybrid: why a grid-connected system cuts out automatically during an outage, and what it takes to keep the power on.',
+  image: schemaImageUrl,
+  about: { '@type': 'Thing', name: 'Solar architecture and service continuity' },
+  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: url,
+};
+---
+
+<Layout
+  title="On-grid, off-grid or hybrid: what happens during an outage? | Taqinor"
+  description="A grid-connected solar system disconnects automatically during an outage — it's the anti-islanding law. To keep the power on, you need a hybrid inverter with a battery. Clear explanations."
+  ogSlug="accueil"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'Guides', href: L('/guides') }, { label: 'On-grid, off-grid or hybrid?' }]} />
+
+    <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
+      <p class="tech-label v2-kicker rule-brass text-lune">Guide · Architecture</p>
+      <h1 class="display v2-page-title mt-5 text-white">On-grid, off-grid or hybrid?</h1>
+
+      <p class="v2-lead mt-6 text-lune-soft">
+        An ONEE outage hits in the middle of the afternoon. Three houses in the same neighbourhood
+        have panels on the roof; only one keeps the power on. The difference isn't the panel brand
+        or how many there are, it's the architecture chosen. Here's how each of the three behaves
+        when the grid goes down — and why anti-islanding explains most of it.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">The on-grid system (grid-connected)</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        An <strong class="text-lune">on-grid</strong> system — also called grid-tied — produces
+        solar electricity and consumes it in direct self-consumption, with the ONEE grid acting as
+        a "virtual battery": the surplus goes to the grid, the shortfall is made up by it. It's the
+        most profitable architecture for urban households and businesses connected to ONEE, since
+        there's no physical storage to pay off.
+      </p>
+      <p class="v2-lead mt-4 text-lune-soft">
+        However, during a grid outage, this inverter shuts down <em>immediately</em> — even in full
+        sunshine. That's not a defect: it's a mandatory protection.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Why the inverter cuts out: anti-islanding</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        The standard requires every grid-connected inverter to have a so-called
+        <strong class="text-lune">anti-islanding</strong> function: as soon as the grid disappears,
+        the inverter detects the absence of voltage and isolates itself within milliseconds. The
+        reason: if the inverter kept injecting current onto a line that ONEE technicians believe is
+        de-energised, it would pose a deadly risk to intervention crews. The automatic shutdown
+        protects people — not the inverter.
+      </p>
+      <p class="v2-lead mt-4 text-lune-soft">
+        Practical consequence: <strong class="text-lune">having solar panels doesn't guarantee
+        having electricity during an outage</strong> if the system is purely on-grid.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">The off-grid system (autonomous)</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        An <strong class="text-lune">off-grid</strong> system isn't connected to the grid at all.
+        It produces, stores in batteries, and returns energy completely autonomously. It's the
+        natural solution for isolated sites — remote farms, telecom relays, unserved rural areas —
+        where there's no grid to join. In an urban setting connected to ONEE, a pure off-grid system
+        is rarely justified economically: sizing storage to cover nights and cloudy days represents
+        a significant investment, without the flexibility the grid provides for free.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">The hybrid system: grid + battery + backup</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        A <strong class="text-lune">hybrid</strong> system stays connected to the grid for
+        self-consumption and day/night balance, but adds a battery that takes over on priority
+        circuits — lighting, fridge, chargers, internet box — as soon as the grid goes down. A
+        battery of 5 to 10 kWh is generally enough to keep these essential uses running for several
+        hours.
+      </p>
+      <p class="v2-lead mt-4 text-lune-soft">
+        When the outage happens, the hybrid inverter switches to its backup outputs within
+        milliseconds (on the order of 4 to 10 ms on UPS-mode models, up to one or two seconds on
+        others). It isolates these circuits from the grid, which respects anti-islanding, and keeps
+        feeding them. It's the only one of the three architectures that ensures daily
+        self-consumption while keeping the power on during an outage.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Which one for the three houses in the neighbourhood?</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Back to the outage from the start. The house connected to ONEE, for which outages remain an
+        occasional nuisance, lives very well with an on-grid system: it's the one that pays for
+        itself fastest. A country house without a power line has no choice, it's off-grid. The
+        third — a medical practice, a shop that can't stop, a remote-work office — pays for its
+        hybrid battery through the continuity it buys. The right benchmark, then, isn't the starting
+        budget but a simple question: what actually happens at your place the day the power stops?
+      </p>
+      <RelatedLinks links={[
+        { href: L('/guides/onduleur-hybride-ou-reseau'), label: 'Hybrid or grid-tied inverter?' },
+        { href: L('/guides/electricite-pendant-les-coupures'), label: 'Electricity during outages' },
+        { href: L('/guides'), label: 'All the guides' },
+      ]} />
+    </article>
+
+    <CtaBand title="We'll settle the architecture that suits you in the free study." href={L('/devis/mon-toit')} />
+
+    <StickyCta />
+  </div>
+</Layout>

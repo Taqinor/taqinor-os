@@ -1,0 +1,131 @@
+---
+/**
+ * AR — Guide (W294, RTL): Can my roof support solar panels? Faithful Arabic
+ * translation of /guides/mon-toit-peut-il-supporter-des-panneaux, every figure
+ * kept in Latin digits (~35 kg / 1.7–1.9 m² panel, 18–21 kg/m² module alone,
+ * 20–25 kg/m² with structure). Internal links use localizeNavHref (EN/AR if
+ * available, else the existing FR page — never a dead link). FR untouched.
+ */
+import Layout from '../../../layouts/Layout.astro';
+import V2Enhance from '../../../components/V2Enhance.astro';
+import Article33Ribbon from '../../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../../components/Breadcrumb.astro';
+import CtaBand from '../../../components/CtaBand.astro';
+import StickyCta from '../../../components/StickyCta.astro';
+import { NAP } from '../../../lib/nap';
+import RelatedLinks from '../../../components/RelatedLinks.astro';
+import { getLocaleFromPath } from '../../../i18n/utils';
+import { localizeNavHref } from '../../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const schemaImageUrl = new URL('/og/equipement.png', Astro.site).href;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: 'هل يتحمّل سقفي الألواح الشمسية؟',
+  description: 'الوزن الفعلي لتركيبة شمسية لكل م²، أنواع الأسقف المغربية (دالة خرسانية، قرميد، صفيح مموّج، سطح مسطّح)، ومتى يلزم فحص هيكلي قبل تركيب الألواح.',
+  image: schemaImageUrl,
+  about: { '@type': 'Thing', name: 'الحمل الهيكلي لسقف شمسي' },
+  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: url,
+};
+
+const toitures = [
+  {
+    title: 'دالة خرسانية مصمتة (سطح مغربي كلاسيكي)',
+    body: 'الغالبية العظمى من الأسقف السكنية المغربية دالات خرسانية مصمتة، مصمَّمة لتحمّل أكثر بكثير من وزن مرور المشاة. إنها الحالة الأكثر مؤاتاة: يبقى وزن تركيبة شمسية (ألواح + بنية تثبيت مثقَّلة أو مُبرغَمة) أقلّ بكثير من قدرتها الحمّالة الأصلية. يبقى فحص بصري لحالة الدالة (شقوق، تسرّبات، حديد ظاهر) ضرورياً قبل أي تركيب، لكن نادراً ما يلزم حساب هيكلي كامل على دالة سليمة.',
+  },
+  {
+    title: 'سقف من القرميد',
+    body: 'لا يحمل القرميد بنفسه وزن الألواح: يتمّ التثبيت على الهيكل الخشبي، عبر خطّافات تخترق الغطاء وترتكز على الجسور أو العوارض. السؤال إذن ليس «هل يتحمّل القرميد؟» بل «هل يتحمّل الهيكل تحت القرميد؟». هيكل خشبي قديم أو مُحمَّل أصلاً (سخّان ماء شمسي، حمل زائد سابق) يستحق رأي نجّار أو مكتب دراسات قبل التركيب.',
+  },
+  {
+    title: 'صفيح مموّج أو سطح فولاذي',
+    body: 'شائع في الحظائر الفلاحية والمباني الصناعية الخفيفة. لا يتحمّل الصفيح وحده وزن لوح: يمرّ التثبيت عبر العارضة المعدنية أو الخشبية تحته، المُصمَّمة أصلاً للرياح وأحياناً لصيانة نقطية، لا لحمل دائم موزَّع. على هذا النوع من الأسقف، يكون الرأي الهيكلي القاعدة لا الاستثناء، خصوصاً على المسافات الكبيرة.',
+  },
+  {
+    title: 'سقف مسطّح مُعزَّل (بيتومين، غشاء)',
+    body: 'تتجنّب التركيبات المُثقَّلة (دون ثقب، ألواح مُركَّبة على صواني مُثقَّلة بكتل خرسانية) ثقب العزل، لكنها تضيف وزناً مُركَّزاً على مناطق محدَّدة بدل توزيعه بانتظام. على سقف مسطّح، نتحقّق أساساً من القدرة الحمّالة للدالة تحت العزل وتوزيع نقاط الحمل — لا الوزن الإجمالي فقط.',
+  },
+];
+---
+
+<Layout
+  title="هل يتحمّل سقفي الألواح الشمسية؟ الوزن لكل م² | Taqinor"
+  description="الوزن الفعلي لتركيبة شمسية لكل م²، سلوك الأسقف المغربية (دالة خرسانية، قرميد، صفيح مموّج، سقف مسطّح) ومتى يفرض نفسه فحص هيكلي قبل تركيب الألواح."
+  ogSlug="equipement"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: 'الأدلّة', href: L('/guides') }, { label: 'هل يتحمّل سقفي الألواح؟' }]} />
+
+    <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
+      <p class="tech-label v2-kicker rule-brass text-lune">دليل · الهيكل</p>
+      <h1 class="display v2-page-title mt-5 text-white">هل يتحمّل سقفي الألواح؟</h1>
+
+      <p class="v2-lead mt-6 text-lune-soft">
+        إنه الاعتراض الذي يتكرّر مباشرة بعد الثمن: «وإذا لم يتحمّل سقفي الوزن؟». الخبر الجيّد هو أن
+        اللوح الشمسي أخفّ بكثير مما نتخيّل — الموضوع الحقيقي ليس الوزن بحدّ ذاته، بل طبيعة سقفكم وحالة
+        هيكله الحامل. إليكم كيف تجدون طريقكم، سقفاً بسقف.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">الوزن الفعلي للوح شمسي</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        لوح كهروضوئي عالي القدرة حالي (وحدات Canadian Solar ثنائية الوجه بـ705–720 Wc التي نُركّبها،
+        مثلاً) يزن حسب ورقته التقنية للمصنِّع حوالي <strong class="text-white"> 35 كلغ</strong> لمساحة
+        حوالي <strong class="text-white"> 1,7 إلى 1,9 م²</strong>، أي أمر حجم حوالي
+        <strong class="text-white"> 18 إلى 21 كلغ/م²</strong> للوحدة وحدها، قبل إضافة بنية التثبيت
+        (سكك ألمنيوم، خطّافات أو تثقيل خرساني حسب السقف). شاملاً البنية، تبقى تركيبة مُركَّبة فوق هيكل
+        أو دالة خرسانية عموماً في حدود <strong class="text-white">20 إلى 25 كلغ/م²</strong> موزَّعة
+        على كامل المساحة المُغطّاة — وزن يُقارن بطبقة حصى أو ببضعة سنتيمترات من ماء راكد، بعيد جداً عن
+        الأحمال التي يُصمَّم السقف لتحمّلها (رياح، صيانة، أحياناً ثلج حسب المنطقة).
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        هذا الرقم أمر حجم مفيد للاطمئنان على المبدأ، لا تصديقاً هيكلياً: السؤال المهمّ فعلاً هو معرفة
+        هل سقفكم الدقيق، في حالته الراهنة، مُصمَّم لتحمّل حمل موزَّع دائم — وهذا مسألة نوع سقف وهيكل
+        حامل بحتة، لا عدد ألواح.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">سقفاً بسقف: ما يتغيّر</h2>
+      <div class="mt-8 grid gap-6" data-stagger>
+        {toitures.map((t, i) => (
+          <div class="v2-rise cine-card p-6 sm:p-7" style={`--v2-i:${i}`}>
+            <h3 class="display text-lg text-white">{t.title}</h3>
+            <p class="mt-2 text-sm leading-relaxed text-lune-soft">{t.body}</p>
+          </div>
+        ))}
+      </div>
+
+      <h2 class="display v2-section-title mt-12 text-white">متى يلزم فحص هيكلي؟</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        بعض الإشارات تستدعي رأي مهني (نجّار، مكتب دراسات هيكلي) قبل أي تركيب، مهما كان نوع السقف:
+        شقوق ظاهرة على الدالة أو الجدران الحاملة، هبوط أو انحناء ظاهر للهيكل، سقف قديم أصلاً (أكثر من
+        30–40 سنة دون ترميم معروف)، وجود حمل زائد قائم غير متوقَّع أصلاً (سخّان ماء شمسي، خزّان، تشجير)،
+        أو سقف من الصفيح/الفولاذ على مسافة كبيرة. خارج هذه الحالات، على دالة خرسانية سكنية قياسية بحالة
+        جيدة، لا يُشكّل وزن تركيبة شمسية عامل خطر بحدّ ذاته.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        لهذا السبب تبدأ دراستنا دائماً بزيارة أو صور للسقف قبل أي تسعير: ننظر في الحالة الفعلية لسقفكم
+        قبل الحديث عن kWc.
+      </p>
+
+      <RelatedLinks links={[
+        { href: L('/guides/combien-de-panneaux-pour-ma-maison'), label: 'كم لوحاً لبيتي؟' },
+        { href: L('/guides/orientation-inclinaison-ombrage'), label: 'الاتجاه، الميلان، التظليل' },
+        { href: L('/garanties'), label: 'ضماناتنا' },
+        { href: L('/guides'), label: 'كل الأدلّة' },
+      ]} />
+    </article>
+
+    <CtaBand title="مترددون بشأن سقفكم؟ نتحقّق ميدانياً، في الدراسة المجانية." href={L('/devis/mon-toit')} />
+
+    <StickyCta />
+  </div>
+</Layout>

@@ -37,11 +37,14 @@ const guideBodyText = `
 const readingMinutes = estimateReadingTime(guideBodyText);
 
 const url = new URL(Astro.url.pathname, Astro.site).href;
+// W291 — image OG (même URL que celle passée à ogSlug plus bas), pour l'éligibilité Article rich results.
+const schemaImageUrl = new URL('/og/accueil.png', Astro.site).href;
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Article',
   headline: "On-grid, off-grid ou hybride : que se passe-t-il pendant une coupure ?",
   description: "On-grid, off-grid ou hybride : pourquoi un système raccordé réseau se coupe automatiquement lors d'une panne, et ce qu'il faut pour garder le courant.",
+  image: schemaImageUrl,
   about: { '@type': 'Thing', name: 'Architecture solaire et continuité de service' },
   author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
   publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },

@@ -1,0 +1,106 @@
+---
+/**
+ * AR — Blog hub (W295, RTL). Lists the two translated posts (the two "money"
+ * articles: pricing + profitability). Faithful Arabic translation of /blog's
+ * shell; NOT collection-driven (static list of the translated posts only —
+ * other FR posts stay FR-only until translated in a future pass). Internal
+ * links use localizeNavHref (EN/AR if available, else the existing FR page —
+ * never a dead link). FR untouched.
+ */
+import Layout from '../../../layouts/Layout.astro';
+import V2Enhance from '../../../components/V2Enhance.astro';
+import Article33Ribbon from '../../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../../components/Breadcrumb.astro';
+import CtaBand from '../../../components/CtaBand.astro';
+import StickyCta from '../../../components/StickyCta.astro';
+import { getLocaleFromPath } from '../../../i18n/utils';
+import { localizeNavHref } from '../../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+
+const posts = [
+  {
+    slug: 'prix-installation-solaire-maroc-2026',
+    title: 'كم تكلّف تركيبة شمسية بالمغرب سنة 2026؟',
+    description: 'هوامش استرشادية 2026 حسب القدرة، تكاليف السقف والبطارية والضريبة — لمعرفة ما تتوقّعونه قبل عرض أسعاركم.',
+    pubDate: new Date('2026-06-21'),
+  },
+  {
+    slug: 'rentabilite-solaire-par-ville-maroc',
+    title: 'الربحية الشمسية والعائد على الاستثمار حسب المدينة المغربية',
+    description: 'استرجاع 5–7 سنوات، الإنتاج حسب المدينة وتعريفات ONEE: كل ما يجب معرفته حول ربحية الطاقة الشمسية بالمغرب.',
+    pubDate: new Date('2026-06-21'),
+  },
+];
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'CollectionPage',
+  name: 'مدوّنة Taqinor — أخبار وتقارير ميدانية',
+  url: new URL(L('/blog'), Astro.site).href,
+  hasPart: posts.map((p) => ({
+    '@type': 'BlogPosting',
+    headline: p.title,
+    datePublished: p.pubDate.toISOString(),
+    url: new URL(L(`/blog/${p.slug}`), Astro.site).href,
+  })),
+};
+---
+
+<Layout
+  title="مدوّنة Taqinor — أخبار شمسية، تقارير ميدانية ومستجدّات | Taqinor"
+  description="مدوّنة Taqinor: أخبار الطاقة الشمسية بالمغرب، تقارير من ورشاتنا، مستجدّات العتاد وكواليس المُركِّب. مختلفة عن الأدلّة الدائمة — هنا، ما يتحرّك."
+  ogSlug="accueil"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: 'المدوّنة' }]} />
+
+    <section class="px-4 pb-10 pt-16 text-white sm:pt-20">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">المدوّنة</p>
+        <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">ما يتحرّك عند Taqinor</h1>
+        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+          تشرح الأدلّة ما لا يتغيّر؛ تروي المدوّنة ما يحدث. تقارير الورشات، مستجدّات العتاد، تطوّرات
+          الإطار المغربي للإنتاج الذاتي — ما يكفي لمتابعة الميدان دون مصطلحات معقّدة.
+        </p>
+      </div>
+    </section>
+
+    <section class="px-4 pb-24 sm:pb-32">
+      <div class="mx-auto grid max-w-6xl gap-6 md:grid-cols-3" data-stagger>
+        {posts.map((p, i) => (
+          <a href={L(`/blog/${p.slug}`)} class="v2-rise cine-card blog-card flex flex-col p-7" style={`--v2-i:${i}`}>
+            <p class="tech-label text-brass-300">{dateFmt.format(p.pubDate)}</p>
+            <h2 class="display mt-2 text-xl text-white">{p.title}</h2>
+            <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{p.description}</p>
+            <span class="mt-5 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white">اقرأ المقال <span class="inline-block rtl:-scale-x-100">→</span></span>
+          </a>
+        ))}
+      </div>
+    </section>
+
+    <CtaBand title="مشروع في بالكم؟ أطلِقوا الدراسة المجانية." href={L('/devis/mon-toit')} />
+
+    <StickyCta />
+  </div>
+</Layout>
+
+<style>
+  /* W198 — hover: elevation subtile (respecte prefers-reduced-motion) */
+  @media (prefers-reduced-motion: no-preference) {
+    .blog-card {
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .blog-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 28px 64px -28px rgb(0 0 0 / 0.85);
+    }
+  }
+</style>

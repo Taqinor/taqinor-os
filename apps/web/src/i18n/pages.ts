@@ -60,9 +60,25 @@ const STATIC_TRANSLATED: readonly string[] = [
   '/guides/faut-il-des-batteries',
   '/guides/loi-82-21-expliquee',
   '/guides/onduleur-hybride-ou-reseau',
+  // W294 — fermeture de l'écart EN/AR des guides (routes EN/AR livrées ci-dessous).
+  '/guides/quelle-taille-de-batterie',
+  '/guides/combien-de-panneaux-pour-ma-maison',
+  '/guides/on-grid-off-grid-ou-hybride',
+  '/guides/batterie-lithium-ou-gel',
+  '/guides/electricite-pendant-les-coupures',
+  '/guides/entretien-et-duree-de-vie-des-panneaux',
+  '/guides/mon-toit-peut-il-supporter-des-panneaux',
+  '/guides/monocristallin-ou-polycristallin',
+  '/guides/orientation-inclinaison-ombrage',
+  // W295 — blog EN/AR pour les deux articles "argent" (routes EN/AR livrées ci-dessous).
+  '/blog',
+  '/blog/prix-installation-solaire-maroc-2026',
+  '/blog/rentabilite-solaire-par-ville-maroc',
   // WJ38 — parcours devis « Mon toit » localisé (routes EN/AR livrées) : les CTA
   // devis/étude basculent d'eux-mêmes vers /en/... et /ar/... via quoteJourneyHref.
   '/devis/mon-toit',
+  // W293 — pilier évergreen « Prix panneaux solaires Maroc » (routes EN/AR livrées).
+  '/prix-panneaux-solaires-maroc',
 ];
 
 /**

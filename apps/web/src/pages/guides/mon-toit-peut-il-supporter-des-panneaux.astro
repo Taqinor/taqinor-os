@@ -39,11 +39,14 @@ const guideBodyText = `
 const readingMinutes = estimateReadingTime(guideBodyText);
 
 const url = new URL(Astro.url.pathname, Astro.site).href;
+// W291 — image OG (même URL que celle passée à ogSlug plus bas), pour l'éligibilité Article rich results.
+const schemaImageUrl = new URL('/og/equipement.png', Astro.site).href;
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Article',
   headline: 'Mon toit peut-il supporter des panneaux solaires ?',
   description: 'Poids au m² d’une installation solaire, toitures marocaines (dalle béton, tuile, tôle ondulée, terrasse) et quand une vérification structurelle est nécessaire avant de poser des panneaux.',
+  image: schemaImageUrl,
   about: { '@type': 'Thing', name: 'Charge structurelle toiture solaire' },
   author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
   publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },

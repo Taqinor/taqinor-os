@@ -1,0 +1,168 @@
+---
+/**
+ * AR — Guide (W294, RTL): Keeping the power on during outages: EPS, hybrid
+ * inverter and battery. Faithful Arabic translation of
+ * /guides/electricite-pendant-les-coupures, every figure kept in Latin digits
+ * (Deye SG series 4–10 ms, Huawei Backup Box, 5–10 kWh battery). Internal
+ * links use localizeNavHref (EN/AR if available, else the existing FR page —
+ * never a dead link). FR untouched.
+ */
+import Layout from '../../../layouts/Layout.astro';
+import V2Enhance from '../../../components/V2Enhance.astro';
+import Article33Ribbon from '../../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../../components/Breadcrumb.astro';
+import CtaBand from '../../../components/CtaBand.astro';
+import StickyCta from '../../../components/StickyCta.astro';
+import Faq from '../../../components/Faq.astro';
+import { NAP } from '../../../lib/nap';
+import RelatedLinks from '../../../components/RelatedLinks.astro';
+import { getLocaleFromPath } from '../../../i18n/utils';
+import { localizeNavHref } from '../../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+// W297 — تمريرة AEO/GEO: أسئلة وأجوبة مستقلّة تُعيد استعمال الحقائق المذكورة في
+// الدليل أدناه. schema={false}: تبقى /faq الصفحة الوحيدة الحاملة لـFAQPage.
+const faq = [
+  {
+    q: 'لماذا لا تعمل ألواحي الشمسية أثناء انقطاع ONEE؟',
+    a: 'يتوقّف عاكس on-grid قياسي تلقائياً بمجرّد اختفاء الشبكة — إنه منع الجزيرة الكهربائية، وهو إلزامية أمنية تحمي التقنيين المتدخّلين على الشبكة. لذا تتوقّف ألواحكم مع الشبكة، حتى في عزّ الشمس.',
+  },
+  {
+    q: 'كيف أحافظ على الكهرباء أثناء انقطاع بواسطة الطاقة الشمسية؟',
+    a: 'يلزم عاكس هجين بمخارج EPS (Emergency Power Supply) وبطارية. أثناء انقطاع، يتحوّل العاكس في غضون ميلي ثوانٍ إلى مخارج النجدة هذه، التي تُغذّي فقط الدارات ذات الأولوية المُوصَّلة بها.',
+  },
+  {
+    q: 'كم تدوم بطارية النجدة أثناء انقطاع؟',
+    a: 'للاستخدامات الأساسية (إضاءة، ثلاجة، صندوق إنترنت)، يمكن لبطارية بـ5 إلى 10 kWh تغطية عدّة ساعات إلى ليلة كاملة حسب الاستهلاك الفعلي للدارات المُوصَّلة. إن أنتجت الألواح أثناء الانقطاع، يمكن للعاكس شحن البطارية في الوقت الفعلي وإطالة النجدة.',
+  },
+];
+
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const schemaImageUrl = new URL('/og/equipement.png', Astro.site).href;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: 'الحفاظ على الكهرباء أثناء الانقطاعات: EPS، عاكس هجين وبطارية',
+  description: 'انقطاع الكهرباء والطاقة الشمسية: كيف تعمل مخارج EPS لعاكس هجين (Deye، Huawei)، أسطورة «off-grid» موضّحة، ولماذا يتوقّف نظام on-grid قياسي دائماً أثناء عطب.',
+  image: schemaImageUrl,
+  about: { '@type': 'Thing', name: 'نجدة كهربائية شمسية EPS عاكس هجين' },
+  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: url,
+};
+---
+
+<Layout
+  title="الحفاظ على الكهرباء أثناء الانقطاعات: EPS، عاكس هجين وبطارية | Taqinor"
+  description="انقطاع الكهرباء والطاقة الشمسية: كيف تعمل مخارج EPS لعاكس هجين (Deye، Huawei)، لماذا النجدة ليست off-grid، ولماذا يتوقّف نظام on-grid قياسي دائماً أثناء عطب."
+  ogSlug="equipement"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: 'الأدلّة', href: L('/guides') }, { label: 'الكهرباء أثناء الانقطاعات' }]} />
+
+    <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
+      <p class="tech-label v2-kicker rule-brass text-lune">دليل · العتاد</p>
+      <h1 class="display v2-page-title mt-5 text-white">الحفاظ على الكهرباء أثناء الانقطاعات</h1>
+
+      <p class="v2-lead mt-6 text-lune-soft">
+        المشهد مألوف: ينقطع تيار ONEE في عزّ النهار، والشمس تسطع على السقف، ومع ذلك ينطفئ كل شيء
+        عندكم كما عند الجيران. يكتشف كثير من الملاّك في تلك اللحظة أن ألواحهم لا تفيد شيئاً أثناء
+        العطب. يشرح هذا الدليل لماذا، وما يجب إضافته — عاكس هجين، بطارية، مخارج <strong>EPS</strong> —
+        حتى لا يتركك الانقطاع القادم في الظلام.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">شمس فوق السقف، بيت مطفأ: ماذا يحدث؟</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        عاكس on-grid كلاسيكي مصمَّم لحقن الكهرباء <em>على نفس طور</em> الشبكة. بمجرّد اختفاء الشبكة،
+        يتوقّف تلقائياً. تُسمّى هذه الإلزامية القانونية والأمنية <strong>منع الجزيرة الكهربائية</strong>:
+        يجب ألا يواصل العاكس الإنتاج على خط أُعلن أنه بلا توتر، تحت طائلة تعريض تقنيي التدخّل للخطر.
+        لهذا تتوقّف ألواحكم مع الشبكة، حتى في عزّ الشمس. للحفاظ على التيار أثناء انقطاع، يلزم عاكس
+        هجين بمخرج نجدة مخصّص.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">الحفاظ على التيار ليس أن تصبحوا مستقلّين</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        يعتقد كثيرون أن «الصمود أثناء انقطاع» يعني الاستغناء كلياً عن الشبكة، كنظام off-grid يُغذّي
+        البيت بأكمله إلى ما لا نهاية. ليس هذا ما يفعله وضع النجدة لعاكس هجين. إنه يخلق
+        <strong>جزيرة كهربائية محدودة</strong>: فقط الدارات المُوصَّلة بـ<em>مخارج EPS</em>
+        (Emergency Power Supply) تبقى مُغذّاة، وفقط طالما تحتوي البطارية طاقة. الهدف ليس استبدال
+        الشبكة، بل إبقاء الثلاجة، الإضاءة الأساسية أو موجّه الإنترنت حيّة طيلة الانقطاع. هذه الفارقة
+        تُغيّر كل شيء عند تحجيم التركيبة.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">مخارج EPS: دارات نجدة العاكس الهجين</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        يملك عاكس هجين نوعين من المخارج: مخارج <em>الشبكة</em> العادية، ومخارج <strong>EPS</strong>
+        مخصّصة للنجدة. أثناء التركيب، يُوصِّل كهربائي على مخارج EPS هذه فقط الدارات ذات الأولوية —
+        إضاءة النجدة، الثلاجة، صندوق الإنترنت، وربما مضخة أو سخّان ماء حسب سعة البطارية. باقي البيت
+        يتبع الشبكة وينطفئ عادياً أثناء الانقطاع. هذا الفصل مقصود: يحمي العاكس من التحميل الزائد ويسمح
+        للبطارية بالصمود أطول على الاستخدامات الأساسية حقاً.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Deye SG-series: تحوّل شبه فوري دون علبة إضافية</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        تدمج عاكسات Deye من سلسلة SG (أحادي الطور SG03LP1، ثلاثي الطور SG04LP3) وضع النجدة أصلياً، دون
+        علبة خارجية. عندما تسقط الشبكة، يكون التحوّل نحو مخارج EPS <strong>شبه فوري (~4–10 ملي ثانية،
+        نوع UPS)</strong>. هذا التأخير قصير لدرجة أن معظم الأجهزة الإلكترونية الحسّاسة لا تلاحظه، شريطة
+        أن تكون مُوصَّلة بدارات EPS. البطارية المستعملة هي 48 فولط LFP منخفضة التوتر، ويقترح العاكس ست
+        نوافذ TOU (Time of Use) قابلة للتهيئة لشحن البطارية في ساعات الخصاص وتعظيم الاستقلالية المتاحة
+        ليلاً أو أثناء انقطاع طويل.
+      </p>
+      <p class="v2-lead mt-4 text-lune-soft">
+        هذا العمل بوضع UPS (عاكس دون انقطاع) هو أحد أهم مزايا هذه السلسلة في السياق المغربي، حيث يمكن
+        للانقطاعات الصغيرة والتقنين أن تُتلف العتاد الإلكتروني أو تُوقف عمليات حساسة.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Huawei SUN2000 + Backup Box: علبة منفصلة يجب توقّعها</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        تُقدّم سلسلة Huawei SUN2000 (L1 أحادي الطور، M1 ثلاثي الطور) المقترنة ببطاريات LUNA2000 تكاملاً
+        ممتازاً ومراقبة متقدّمة. لوظيفة النجدة، يتطلّب Huawei عتاداً منفصلاً: <strong>Backup Box</strong>.
+        بمجرّد تركيبها، تتولّى دارات النجدة بتحوّل <strong>سريع جداً</strong>، كافٍ لغالبية الاستخدامات
+        المنزلية (إضاءة، أجهزة في وضع الاستعداد، ثلاجة). الفرق الحقيقي مع Deye ليس السرعة بل ضرورة
+        علبة إضافية.
+      </p>
+      <p class="v2-lead mt-4 text-lune-soft">
+        نقطة يجب التحقّق منها عند الاختيار: حسب الطراز والبرنامج الثابت، قد لا يقترح
+        <strong>SUN2000 M0 ثلاثي الطور وظيفة نجدة</strong>. إن كانت استمرارية التغذية مهمّة لكم، تأكّدوا
+        من توافق النجدة للمرجع الدقيق، أو توجّهوا نحو M1 أو سلسلة أخرى.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">هجين دون بطارية: «battery-ready»</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        من الممكن تماماً تركيب عاكس هجين دون بطارية في مرحلة أولى. يُسمّى هذا تهيئة
+        <em>battery-ready</em>. يعمل العاكس حينها كنظام on-grid كلاسيكي: يُنتج، يستهلك ذاتياً، وإن
+        سمح القانون 82-21، يحقن فائضاً على الشبكة. الفرق أنه مُحجَّم لاستقبال بطاريات لاحقاً، دون إعادة
+        كل الأسلاك. في المقابل، دون بطارية، لا نجدة EPS ممكنة: مخارج النجدة ليس لها طاقة لتوزيعها إن
+        سقطت الشبكة. لا تصبح النجدة عاملة إلا لحظة توصيل بطارية.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">ما يُحدّد مدّة النجدة: البطارية</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        لا يدوم تحوّل EPS إلا بقدر ما تسمح به البطارية. للاستخدامات الأساسية (إضاءة LED، ثلاجة، صندوق
+        إنترنت)، يمكن لبطارية بـ5 إلى 10 kWh تغطية عدّة ساعات إلى ليلة كاملة حسب الاستهلاك الفعلي
+        للدارات المُوصَّلة. إن أنتجت الألواح أثناء الانقطاع (انقطاع نهاري)، يمكن للعاكس الهجين شحن
+        البطارية في الوقت الفعلي وإطالة النجدة إلى ما يقرب من اللانهاية طالما الشمس مشرقة. هنا يُظهر
+        النظام الهجين كل قيمته مقارنة بمولّد كهربائي بسيط.
+      </p>
+
+      <RelatedLinks links={[
+        { href: L('/guides/on-grid-off-grid-ou-hybride'), label: 'مربوط بالشبكة، مستقل أم هجين؟' },
+        { href: L('/guides/faut-il-des-batteries'), label: 'هل تحتاج بطاريات؟' },
+        { href: L('/guides'), label: 'كل الأدلّة' },
+      ]} />
+    </article>
+
+    <!-- W297 — FAQ مرئية: schema={false}، تبقى /faq الصفحة الوحيدة الحاملة لـFAQPage -->
+    <Faq items={faq} heading="الكهرباء أثناء الانقطاعات — أسئلة متكرّرة" schema={false} />
+
+    <CtaBand title="تركيبتكم يجب أن تصمد أثناء الانقطاعات؟ أطلِقوا الدراسة المجانية." href={L('/devis/mon-toit')} />
+
+    <StickyCta />
+  </div>
+</Layout>

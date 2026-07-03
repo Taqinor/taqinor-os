@@ -21,11 +21,14 @@ const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 
 const url = new URL(Astro.url.pathname, Astro.site).href;
+// W291 — OG image (same URL passed to ogSlug below), for Article rich-result eligibility.
+const schemaImageUrl = new URL('/og/equipement.png', Astro.site).href;
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Article',
   headline: 'Hybrid inverter or grid-tied inverter?',
   description: 'Deye hybrid inverter or Huawei grid-tied inverter: the difference comes down to one simple question — do you store the energy, yes or no?',
+  image: schemaImageUrl,
   about: { '@type': 'Thing', name: 'Solar inverters' },
   author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
   publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },

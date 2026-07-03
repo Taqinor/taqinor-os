@@ -1,0 +1,169 @@
+---
+/**
+ * EN — Guide (W294): Orientation, tilt and shading: maximising production on a
+ * Moroccan roof. Faithful translation of /guides/orientation-inclinaison-ombrage,
+ * every figure kept EXACT (10–15 % east/west loss, 27–31° tilt by city).
+ * Internal links use localizeNavHref (EN/AR if available, else the existing FR
+ * page — never a dead link). FR untouched.
+ */
+import Layout from '../../../layouts/Layout.astro';
+import V2Enhance from '../../../components/V2Enhance.astro';
+import Article33Ribbon from '../../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../../components/Breadcrumb.astro';
+import CtaBand from '../../../components/CtaBand.astro';
+import StickyCta from '../../../components/StickyCta.astro';
+import { NAP } from '../../../lib/nap';
+import RelatedLinks from '../../../components/RelatedLinks.astro';
+import { getLocaleFromPath } from '../../../i18n/utils';
+import { localizeNavHref } from '../../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const schemaImageUrl = new URL('/og/accueil.png', Astro.site).href;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: 'Orientation, tilt and shading: maximising production on a Moroccan roof',
+  description: 'Due south, tilt close to latitude, and zero shade: the three rules that really make the difference on a Moroccan roof, explained with no jargon.',
+  image: schemaImageUrl,
+  about: { '@type': 'Thing', name: 'Photovoltaic solar installation' },
+  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: url,
+};
+---
+
+<Layout
+  title="Orientation, tilt and shading: maximising production on a Moroccan roof | Taqinor"
+  description="Optimal due-south facing, acceptable east/west (−10 to 15 %), tilt ≈ latitude (27–31° depending on city): the three rules that really make the difference — and why a single chimney can penalise your whole installation."
+  ogSlug="accueil"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'Guides', href: L('/guides') }, { label: 'Orientation, tilt and shading' }]} />
+
+    <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
+      <p class="tech-label v2-kicker rule-brass text-lune">Guide · Installation</p>
+      <h1 class="display v2-page-title mt-5 text-white">Orientation, tilt and shading</h1>
+
+      <p class="v2-lead mt-6 text-lune-soft">
+        Before even talking about brands or power, three physical parameters decide a good part of
+        what your roof will produce over twenty-five years: the direction the panels face, the
+        angle they're mounted at, and the shade that passes over them through the day. Well
+        adjusted, these three levers cost almost nothing and pay back years of production. Let's
+        look at them one by one, in the order they matter.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Orientation: due south, and nothing else?</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        In Morocco, the sun traces its arc to the south. Panels facing due south collect the maximum
+        radiation over the whole day: it's the reference configuration, the one that gives the
+        highest production for a given surface and power.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        An <strong class="text-white">east or west</strong> orientation isn't a deal-breaker. The
+        loss is estimated at about <strong class="text-white">10 to 15 %</strong> compared to due
+        south, which remains entirely profitable if your roof leaves no other choice. An east
+        orientation may even suit a morning consumption profile better; a west one, a household that
+        comes home in the late afternoon. What matters is not ending up with your back to the sun: a
+        north-facing wall is to be ruled out.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Tilt: neither flat, nor too steep</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        The ideal tilt angle for a panel roughly matches the site's latitude, then is lowered
+        slightly to favour annual production. Most of inhabited Morocco sits between roughly 28°
+        and 36° north latitude (Agadir is at about 30.4°N), giving the following benchmarks for the
+        main cities:
+      </p>
+      <ul class="v2-lead mt-5 list-inside list-disc space-y-2 text-lune-soft">
+        <li><strong class="text-white">Agadir</strong> — about <strong class="text-white">27°</strong></li>
+        <li><strong class="text-white">Marrakech</strong> — about <strong class="text-white">28°</strong></li>
+        <li><strong class="text-white">Casablanca &amp; Rabat</strong> — about <strong class="text-white">29°</strong></li>
+        <li><strong class="text-white">Tangier</strong> — about <strong class="text-white">31°</strong></li>
+      </ul>
+      <p class="v2-lead mt-5 text-lune-soft">
+        These values come from satellite irradiation data (PVGIS / Global Solar Atlas) and are
+        optimised for total annual production, not a single month. In practice, your roof's slope is
+        often dictated by the existing architecture, and a few degrees' gap from the optimum has a
+        modest effect on annual production — much less than shading, as we'll see next.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        A completely <strong class="text-white">flat</strong> installation (0°) isn't ideal:
+        production drops, and standing water dirties panels faster. A slope between 15° and 35°,
+        however, remains in a very acceptable range across the whole country.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Shading: the parameter that penalises most</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        This is the most underrated factor, and often the costliest. A standard installation wires
+        its panels in <strong class="text-white">series</strong>: current passes from one to the
+        next like links in a chain. If a single link is shaded, the whole chain is penalised.
+        Production doesn't drop by 10 % because one panel is half-shaded; it can collapse much more,
+        because it's the weakest panel that sets the pace for the others.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Shade sources to watch out for have often been there all along, but you only really spot
+        them by checking the hours of the day and the seasons:
+      </p>
+      <ul class="v2-lead mt-5 list-inside list-disc space-y-2 text-lune-soft">
+        <li>A <strong class="text-white">chimney or ventilation duct</strong> casting a moving shadow as the sun moves</li>
+        <li>A <strong class="text-white">shared wall or parapet</strong> that cuts off the sun early in the morning or late in the afternoon</li>
+        <li>A <strong class="text-white">palm tree, tree or antenna</strong> that may not be a problem now but will become one in a few years</li>
+        <li><strong class="text-white">Rows of panels shading each other</strong> if the row spacing is poorly calculated</li>
+      </ul>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Before any project, an on-site shading analysis — ideally at different hours and accounting
+        for the winter solstice, when the sun is lowest — is essential. That's when you spot the
+        obstacles that only look harmless in summer.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">When shade is unavoidable: the solutions</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        If your roof has partial, unavoidable shaded zones, two technologies can limit the impact:
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        <strong class="text-white">Power optimisers</strong> are installed panel by panel and let
+        each one operate at its own maximum power point, independently of its neighbours. A shaded
+        panel no longer drags the others down; it simply gives what it can.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        <strong class="text-white">Micro-inverters</strong> go even further: each panel has its own
+        micro-inverter that converts DC to AC right at the panel level. Again, each panel is
+        completely independent. This type of installation is more expensive but also brings very
+        fine, panel-by-panel monitoring, useful for spotting a problem quickly.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        These two solutions are relevant as soon as shading is regular and affects a significant
+        part of the installation. If your roof is perfectly clear and shade is anecdotal, a
+        classic inverter with bypass diodes is enough: no need to overpay.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">What to check on your roof</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        For orientation, aim for due south when possible; an east or west face costs about 10 to
+        15 % of production and remains profitable, a north face is to be avoided. For tilt, an angle
+        of 27 to 31° depending on your city works, and most Moroccan roofs already fall into an
+        acceptable range, so there's no need to dwell on it. The real subject, the one worth climbing
+        onto the roof at several times of day for, is shade: a poorly placed chimney, wall or tree
+        penalises a whole chain of panels, far more than a slightly off orientation. A serious
+        on-site study always starts there.
+      </p>
+
+      <RelatedLinks links={[
+        { href: L('/guides/monocristallin-ou-polycristallin'), label: 'Monocrystalline or polycrystalline?' },
+        { href: L('/guides/combien-de-panneaux-pour-ma-maison'), label: 'How many panels for my house?' },
+        { href: L('/guides'), label: 'All the guides' },
+      ]} />
+    </article>
+
+    <CtaBand title="Your roof has its own constraints. Let's study them together." href={L('/devis/mon-toit')} />
+
+    <StickyCta />
+  </div>
+</Layout>

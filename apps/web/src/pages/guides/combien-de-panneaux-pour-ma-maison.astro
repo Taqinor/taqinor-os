@@ -43,11 +43,14 @@ const guideBodyText = `
 const readingMinutes = estimateReadingTime(guideBodyText);
 
 const url = new URL(Astro.url.pathname, Astro.site).href;
+// W291 — image OG (même URL que celle passée à ogSlug plus bas), pour l'éligibilité Article rich results.
+const schemaImageUrl = new URL('/og/residentiel.png', Astro.site).href;
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Article',
   headline: 'Combien de panneaux solaires et quelle puissance (kWc) pour ma maison ?',
   description: 'La méthode pas à pas pour dimensionner son installation solaire au Maroc : lire sa facture ONEE/Lydec, convertir en kWh annuels, choisir la puissance en kWc, et estimer le nombre de panneaux.',
+  image: schemaImageUrl,
   about: { '@type': 'Thing', name: 'Dimensionnement installation solaire' },
   author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
   publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
