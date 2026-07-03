@@ -3777,3 +3777,89 @@ class ElementRappel(models.Model):
 
     def __str__(self):
         return f'{self.numero_serie or self.equipement_id} ({self.get_statut_display()})'
+
+
+# ── XQHS6 — SCAR : demande d'action corrective fournisseur ─────────────────
+
+class DemandeActionFournisseur(models.Model):
+    """SCAR — demande d'action corrective adressée à un fournisseur.
+
+    Se crée depuis une NCR d'origine fournisseur (réception refusée / NCR
+    fournisseur) : le ``fournisseur`` est référencé en FK-CHAÎNE
+    (``'stock.Fournisseur'`` — jamais un import cross-app de modèle). Le cycle
+    de vie (``emise`` → ``repondue`` → ``verifiee`` → ``close``) trace la
+    réponse fournisseur (cause racine / action / preuve en pièces jointes
+    ``records.Attachment``, saisies EN INTERNE) et sa vérification d'efficacité
+    (pattern QHSE13).
+
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    class Statut(models.TextChoices):
+        EMISE = 'emise', 'Émise'
+        REPONDUE = 'repondue', 'Répondue'
+        VERIFIEE = 'verifiee', 'Vérifiée'
+        CLOSE = 'close', 'Close'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_scar',
+        verbose_name='Société',
+    )
+    # FK-chaîne — jamais un import cross-app de `apps.stock.models`.
+    fournisseur = models.ForeignKey(
+        'stock.Fournisseur',
+        on_delete=models.CASCADE,
+        related_name='qhse_scar',
+        verbose_name='Fournisseur',
+    )
+    ncr_source = models.ForeignKey(
+        NonConformite,
+        on_delete=models.CASCADE,
+        related_name='scar',
+        verbose_name='NCR source',
+    )
+    description_defaut = models.TextField(
+        blank=True, default='', verbose_name='Description du défaut')
+    echeance_reponse = models.DateField(
+        null=True, blank=True, verbose_name='Échéance de réponse')
+    cause_racine_fournisseur = models.TextField(
+        blank=True, default='', verbose_name='Cause racine (fournisseur)')
+    action_fournisseur = models.TextField(
+        blank=True, default='', verbose_name='Action corrective (fournisseur)')
+    # Références LÂCHES aux preuves (records.Attachment), saisies EN INTERNE
+    # (jamais un import cross-app de modèle).
+    preuve_attachment_ids = models.JSONField(
+        default=list, blank=True, verbose_name='IDs pièces jointes preuve')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.EMISE, verbose_name='Statut')
+    date_reponse = models.DateTimeField(
+        null=True, blank=True, verbose_name='Répondue le')
+    efficace = models.BooleanField(
+        null=True, blank=True, verbose_name='Efficace (vérification)')
+    date_verification = models.DateTimeField(
+        null=True, blank=True, verbose_name='Vérifiée le')
+    verifiee_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_scar_verifiees',
+        verbose_name='Vérifiée par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Demande d'action corrective fournisseur (SCAR)"
+        verbose_name_plural = "Demandes d'action corrective fournisseur (SCAR)"
+        ordering = ['-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'fournisseur', 'statut'],
+                name='qhse_scar_co_fourn_statut',
+            ),
+        ]
+
+    def __str__(self):
+        return f'SCAR #{self.pk} — {self.fournisseur_id} ({self.get_statut_display()})'

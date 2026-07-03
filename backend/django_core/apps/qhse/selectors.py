@@ -24,7 +24,8 @@ from django.db.models import Avg
 
 from .models import (
     ActionCorrectivePreventive, Audit, ConformiteEnvironnementale,
-    ControleReception, DeclarationCnss, EtapeDeclarationAt, EvaluationRisque,
+    ControleReception, DeclarationCnss, DemandeActionFournisseur,
+    EtapeDeclarationAt, EvaluationRisque,
     Incident, IndicateurESG, InspectionSecurite, NonConformite,
     NotationFinChantier,
     PermisTravail, PlanInspectionChantier,
@@ -1301,3 +1302,21 @@ def taux_conformite_premier_passage(
     conformes = qs.filter(conforme=True).count()
     taux = round(conformes / total * 100, 1) if total else None
     return {'total_statues': total, 'conformes': conformes, 'taux': taux}
+
+
+# ── XQHS6 — SCAR par fournisseur (advisory, exposé au scorecard stock) ──────
+
+def scar_count_par_fournisseur(company, fournisseur_id):
+    """Compte SCAR ouvertes/répétées d'un fournisseur (XQHS6).
+
+    Point d'entrée destiné à être lu par ``apps.stock`` (le scorecard
+    fournisseur l'affiche en ADVISORY, jamais un import de modèle qhse côté
+    stock). Renvoie ``{'total': int, 'ouvertes': int}`` — ``ouvertes`` exclut
+    les SCAR ``close``.
+    """
+    qs = DemandeActionFournisseur.objects.filter(
+        company=company, fournisseur_id=fournisseur_id)
+    total = qs.count()
+    ouvertes = qs.exclude(
+        statut=DemandeActionFournisseur.Statut.CLOSE).count()
+    return {'total': total, 'ouvertes': ouvertes}

@@ -13,8 +13,8 @@ from django.db import transaction
 from .models import (
     ActionCorrectivePreventive, CampagneRappel, CauseIncident,
     CheckinSecurite, ControleReception,
-    DeclarationCnss, Derogation, ElementRappel, EtapeDeclarationAt,
-    NonConformite,
+    DeclarationCnss, DemandeActionFournisseur, Derogation, ElementRappel,
+    EtapeDeclarationAt, NonConformite,
     NotationFinChantier, PlanControleReception, PlanInspectionChantier,
     PointControleModele,
     ProcedureQualite, ReleveThermographie, ReponseCritere, ReleveControle,
@@ -1263,3 +1263,63 @@ def cloturer_campagne_rappel(campagne, date_verification_efficacite):
         statut=ElementRappel.Statut.REMPLACE
     ).update(statut=ElementRappel.Statut.CLOS)
     return campagne
+
+
+# ── XQHS6 — SCAR : demande d'action corrective fournisseur ─────────────────
+
+@transaction.atomic
+def creer_scar_depuis_ncr(
+        ncr, *, echeance_reponse=None, description_defaut=''):
+    """Crée une SCAR depuis une NCR d'origine fournisseur (XQHS6).
+
+    Exige que la NCR porte un ``fournisseur`` (disposition retour fournisseur
+    ou origine fournisseur) — sinon lève ``ValueError``.
+    """
+    if ncr.fournisseur_id is None:
+        raise ValueError(
+            'La NCR ne porte pas de fournisseur — impossible de créer une SCAR.')
+    return DemandeActionFournisseur.objects.create(
+        company=ncr.company, fournisseur=ncr.fournisseur, ncr_source=ncr,
+        description_defaut=description_defaut or ncr.description,
+        echeance_reponse=echeance_reponse,
+    )
+
+
+@transaction.atomic
+def repondre_scar(scar, *, cause_racine, action, preuve_attachment_ids=None):
+    """Enregistre la réponse fournisseur à une SCAR (XQHS6)."""
+    from django.utils import timezone
+
+    scar.cause_racine_fournisseur = cause_racine
+    scar.action_fournisseur = action
+    if preuve_attachment_ids is not None:
+        scar.preuve_attachment_ids = list(preuve_attachment_ids)
+    scar.statut = DemandeActionFournisseur.Statut.REPONDUE
+    scar.date_reponse = timezone.now()
+    scar.save(update_fields=[
+        'cause_racine_fournisseur', 'action_fournisseur',
+        'preuve_attachment_ids', 'statut', 'date_reponse'])
+    return scar
+
+
+@transaction.atomic
+def verifier_efficacite_scar(scar, efficace, verifiee_par=None):
+    """Vérifie l'efficacité d'une SCAR répondue (XQHS6, pattern QHSE13).
+
+    Une SCAR non encore répondue ne peut être vérifiée — lève ``ValueError``.
+    ``efficace=True`` clôt la SCAR ; ``efficace=False`` la laisse ``verifiee``
+    (réponse jugée insuffisante, à relancer côté appelant).
+    """
+    from django.utils import timezone
+
+    if scar.statut == DemandeActionFournisseur.Statut.EMISE:
+        raise ValueError('SCAR pas encore répondue — vérification impossible.')
+    scar.efficace = efficace
+    scar.verifiee_par = verifiee_par
+    scar.date_verification = timezone.now()
+    scar.statut = (
+        DemandeActionFournisseur.Statut.CLOSE if efficace
+        else DemandeActionFournisseur.Statut.VERIFIEE)
+    scar.save(update_fields=[
+        'efficace', 'verifiee_par', 'date_verification', 'statut'])
+    return scar
