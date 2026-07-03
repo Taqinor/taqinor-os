@@ -23,6 +23,7 @@ from .approbations import (
     approbations_en_attente, decider_approbation, decider_en_masse,
 )
 from .kpi_alertes import KpiAlerteViewSet
+from .classeur import ClasseurViewSet
 
 # N79 — CRUD des rapports sauvegardés (router DRF, ajouté en additif).
 # FG96 — CRUD + effective/ pour la config tableau de bord.
@@ -32,6 +33,8 @@ router.register(r'dashboard-config', DashboardConfigViewSet,
                 basename='dashboard-config')
 # XPLT6 — CRUD des alertes de seuil sur KPI agrégés.
 router.register(r'kpi-alertes', KpiAlerteViewSet, basename='kpi-alerte')
+# XPLT22 — classeur léger embarqué avec données live (mini-spreadsheet BI).
+router.register(r'classeurs', ClasseurViewSet, basename='classeur')
 
 urlpatterns = [
     path('', include(router.urls)),

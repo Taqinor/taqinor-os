@@ -254,3 +254,92 @@ class KpiAlerte(models.Model):
         if self.operateur == self.Operateur.INF:
             return valeur < self.seuil
         return valeur <= self.seuil
+
+
+# ── XPLT22 — classeur léger embarqué avec données live (mini-spreadsheet BI) ─
+
+class Classeur(models.Model):
+    """XPLT22 — feuille de calcul légère dont des plages référencent des
+    datasets LIVE (différenciateur Odoo : aucun tableur in-app aujourd'hui).
+
+    ``cellules`` (JSON) : ``{ "A1": {"formule": "=SOMME(B1:B3)"} | {"valeur":
+    42}, …}`` — les formules sont évaluées par l'évaluateur AST-sûr de
+    ``core.formula`` (jamais eval JS libre), exposé via un endpoint dédié.
+    ``liens`` (JSON) : ``{ "B1:B3": {"saved_query_id": 7} }`` — une plage LIÉE
+    à une ``core.SavedQuery`` (requête sauvegardée re-exécutée au CHARGEMENT).
+    Les droits d'accès du LECTEUR sont respectés : une plage liée à une
+    requête que le lecteur ne peut pas voir (visibilité perso/partagé de
+    ``SavedQuery``, comme ``Dashboard``) reste VIDE, jamais une fuite.
+
+    Le partage interne réutilise le pattern XPLT10
+    (``core.DashboardPartageInterne``, mais scopé Classeur ici — voir
+    ``ClasseurPartageInterne`` plus bas)."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='reporting_classeurs')
+    proprietaire = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        null=True, blank=True, related_name='reporting_classeurs',
+        help_text='Vide = classeur de société (non personnel).')
+    titre = models.CharField(max_length=160, default='Classeur sans titre')
+    # {cell_ref: {'formule': str} | {'valeur': scalar}} — opaque pour reporting
+    # au niveau stockage ; interprété à l'évaluation (formule.py).
+    cellules = models.JSONField(default=dict, blank=True)
+    # {range_ref: {'saved_query_id': int}} — plages liées à des SavedQuery.
+    liens = models.JSONField(default=dict, blank=True)
+    # Partagé société-entière (même sémantique que Dashboard.partage) — le
+    # partage FIN (utilisateur/rôle) vit dans ClasseurPartageInterne.
+    partage = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Classeur'
+        verbose_name_plural = 'Classeurs'
+        ordering = ['titre', 'id']
+
+    def __str__(self):
+        return self.titre
+
+
+class ClasseurPartageInterne(models.Model):
+    """XPLT22 — partage interne fin d'un classeur (réutilise le pattern
+    XPLT10 ``core.DashboardPartageInterne``, scopé Classeur)."""
+
+    class Niveau(models.TextChoices):
+        LECTURE = 'lecture', 'Lecture'
+        EDITION = 'edition', 'Édition'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='reporting_classeur_partages_internes')
+    classeur = models.ForeignKey(
+        Classeur, on_delete=models.CASCADE, related_name='partages_internes')
+    utilisateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='reporting_classeur_partages_recus')
+    role = models.CharField(max_length=20, blank=True, default='')
+    niveau = models.CharField(
+        max_length=10, choices=Niveau.choices, default=Niveau.LECTURE)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Partage interne de classeur'
+        verbose_name_plural = 'Partages internes de classeur'
+        ordering = ['-created_at', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['classeur', 'utilisateur'],
+                condition=models.Q(utilisateur__isnull=False),
+                name='rpt_classeur_partage_user_uniq'),
+            models.UniqueConstraint(
+                fields=['classeur', 'role'],
+                condition=~models.Q(role=''),
+                name='rpt_classeur_partage_role_uniq'),
+        ]
+
+    def __str__(self):
+        cible = self.utilisateur_id or self.role or '—'
+        return f'Classeur {self.classeur_id} → {cible} ({self.niveau})'
