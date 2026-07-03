@@ -29,15 +29,27 @@ import FounderPortrait from '../components/FounderPortrait.astro';
 import { WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink } from '../lib/whatsapp';
 import { REGIE_MARGINAL_RATE_SECOND, REGIE_MARGINAL_RATE_HIGH } from '../lib/regieTariff';
+import { REALISATIONS, realisationBySlug } from '../lib/realisations';
 
 const waDirect = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour une installation solaire.');
 
+// W284 — Chiffres précis, jamais arrondis : dérivés de REALISATIONS (source
+// unique de vérité, apps/web/src/lib/realisations.ts), jamais recopiés en dur.
+// Si REALISATIONS change, ces valeurs suivent automatiquement — plus aucun
+// risque de chiffre qui devient silencieusement faux.
+const totalKwc = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
+const totalKwcLabel = totalKwc.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' kWc';
+// La plus grande installation résidentielle publiée (réf. 468, El Jadida) —
+// protagoniste du héros et de l'aside final. Dérivée par tri sur kwcNum,
+// jamais une référence recopiée à la main.
+const featured = [...REALISATIONS].sort((a, b) => b.kwcNum - a.kwcNum)[0];
+
 // W205 — Le chiffre protagoniste de l’en-tête est séparé pour le count-up.
 // La largeur est réservée (tabular-nums + min-width verrouillée par JS) → zéro CLS.
-const heroFigure = "21 406";
-const heroTitleSuffix = " kWh par an, produits sur un toit d’El Jadida.";
+const heroFigure = (featured.productionNum ?? 0).toLocaleString('fr-FR');
+const heroTitleSuffix = ` kWh par an, produits sur un toit d’${featured.ville}.`;
 const heroSub =
-  'Installation réf. 468 — 17,04 kWc, dimensionnée, posée et mesurée par Taqinor. La vôtre commence par un diagnostic de 60 secondes.';
+  `Installation réf. ${featured.ref} — ${featured.kwc}, dimensionnée, posée et mesurée par Taqinor. La vôtre commence par un diagnostic de 60 secondes.`;
 
 // W267 — Sous-ligne monétaire du héros. AUCUN chiffre inventé : la
 // consommation réelle du foyer réf. 468 n'est publiée nulle part sur le site,
@@ -53,7 +65,7 @@ const heroSub =
 // Fourchette (jamais un chiffre unique) : reflète le fait que l'autoconsommation
 // réelle du foyer n'est pas connue — poser une seule valeur ponctuelle
 // inventerait une précision qu'on n'a pas.
-const heroProductionKwh = 21406;
+const heroProductionKwh = featured.productionNum ?? 0;
 const heroTariffLowRate = REGIE_MARGINAL_RATE_SECOND; // 1,3817 MAD/kWh
 const heroTariffHighRate = REGIE_MARGINAL_RATE_HIGH; // 1,5958 MAD/kWh
 const heroMoneyLow = Math.round((heroProductionKwh * heroTariffLowRate) / 100) * 100;
@@ -75,16 +87,31 @@ const faq = [
   { q: 'Faut-il des batteries ?', a: 'Pas nécessairement. Si votre consommation est principalement diurne, l’autoconsommation directe est le meilleur investissement. Les batteries se justifient pour la consommation nocturne ou la continuité de service — nous le calculons dans l’étude.' },
 ];
 
-const gallery = [
-  { name: 'reflet-468', alt: 'Le soleil se reflète sur la rangée de panneaux pendant la pose, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, ville: 'El Jadida', kwc: '17,04 kWc', prod: '21 406 kWh/an', type: '24 × Canadian Solar 710 Wc · Deye 15 kW', slug: 'el-jadida-17-kwc' },
-  { name: 'equipe-trois', alt: 'Équipe Taqinor devant la longue rangée de panneaux en fin de chantier, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, ville: 'El Jadida', kwc: '17,04 kWc', prod: null, type: 'Fin de chantier · équipe Taqinor', slug: 'el-jadida-17-kwc' },
-  { name: 'hero-skyline', alt: 'Rangée de panneaux solaires devant la skyline de Casablanca et un minaret, lumière dorée', widths: [2000, 1280, 768, 480], ratio: 16 / 9, ville: 'Casablanca', kwc: '11,36 kWc', prod: '14 271 kWh/an', type: '16 × Canadian Solar 710 Wc · Deye 10 kW', slug: 'casablanca-11-kwc' },
-  { name: 'portrait-400', alt: "L'ingénieur devant le champ de panneaux, skyline de Casablanca", widths: [1600, 1024, 640], ratio: 4 / 3, ville: 'Casablanca', kwc: '11,36 kWc', prod: null, type: 'Production mesurée — Deye Cloud', slug: 'casablanca-11-kwc' },
-  { name: 'champ-villa', alt: 'Champ de huit panneaux sur toit plat de villa, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, ville: 'El Jadida', kwc: '5,68 kWc', prod: '7 135 kWh/an', type: '8 × Canadian Solar 710 Wc · Deye 5 kW', slug: 'el-jadida-6-kwc' },
-  { name: 'pose-134', alt: "L'équipe incline un panneau pendant la pose, Casablanca", widths: [1600, 1024, 640], ratio: 4 / 3, ville: 'Casablanca', kwc: '5,68 kWc', prod: '7 135 kWh/an', type: 'Pose en cours · 8 × Canadian Solar 710 Wc', slug: 'casablanca-6-kwc' },
-  { name: 'equipe-gilet-taqinor', alt: "Installateur en gilet Taqinor posant les rails d'une structure, Nouaceur", widths: [1600, 1024, 640], ratio: 1, ville: 'Nouaceur', kwc: '3,72 kWc', prod: null, type: 'Pose des rails · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
-  { name: 'entretien-jet', alt: "Nettoyage au jet d'eau du champ de panneaux, Nouaceur", widths: [1600, 1024, 640], ratio: 1, ville: 'Nouaceur', kwc: '3,72 kWc', prod: null, type: 'Entretien du champ · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
+// W284 — kwc/prod ne sont plus recopiés à la main : dérivés de REALISATIONS
+// via `slug` (source unique de vérité) pour ne jamais diverger silencieusement.
+// `prod` reste `null` quand la photo ne doit PAS afficher de production (ex.
+// la photo « fin de chantier » n'est pas la carte production de sa réf.) —
+// ce choix éditorial (quelle photo porte le chiffre) reste ici, seul le
+// CHIFFRE lui-même est dérivé.
+const galleryRaw = [
+  { name: 'reflet-468', alt: 'Le soleil se reflète sur la rangée de panneaux pendant la pose, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: true, type: '24 × Canadian Solar 710 Wc · Deye 15 kW', slug: 'el-jadida-17-kwc' },
+  { name: 'equipe-trois', alt: 'Équipe Taqinor devant la longue rangée de panneaux en fin de chantier, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: false, type: 'Fin de chantier · équipe Taqinor', slug: 'el-jadida-17-kwc' },
+  { name: 'hero-skyline', alt: 'Rangée de panneaux solaires devant la skyline de Casablanca et un minaret, lumière dorée', widths: [2000, 1280, 768, 480], ratio: 16 / 9, showProd: true, type: '16 × Canadian Solar 710 Wc · Deye 10 kW', slug: 'casablanca-11-kwc' },
+  { name: 'portrait-400', alt: "L'ingénieur devant le champ de panneaux, skyline de Casablanca", widths: [1600, 1024, 640], ratio: 4 / 3, showProd: false, type: 'Production mesurée — Deye Cloud', slug: 'casablanca-11-kwc' },
+  { name: 'champ-villa', alt: 'Champ de huit panneaux sur toit plat de villa, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: true, type: '8 × Canadian Solar 710 Wc · Deye 5 kW', slug: 'el-jadida-6-kwc' },
+  { name: 'pose-134', alt: "L'équipe incline un panneau pendant la pose, Casablanca", widths: [1600, 1024, 640], ratio: 4 / 3, showProd: true, type: 'Pose en cours · 8 × Canadian Solar 710 Wc', slug: 'casablanca-6-kwc' },
+  { name: 'equipe-gilet-taqinor', alt: "Installateur en gilet Taqinor posant les rails d'une structure, Nouaceur", widths: [1600, 1024, 640], ratio: 1, showProd: false, type: 'Pose des rails · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
+  { name: 'entretien-jet', alt: "Nettoyage au jet d'eau du champ de panneaux, Nouaceur", widths: [1600, 1024, 640], ratio: 1, showProd: false, type: 'Entretien du champ · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
 ];
+const gallery = galleryRaw.map((g) => {
+  const r = realisationBySlug(g.slug);
+  return {
+    ...g,
+    ville: r?.ville ?? '',
+    kwc: r?.kwc ?? '',
+    prod: g.showProd ? (r?.production ?? null) : null,
+  };
+});
 
 // W271 — Chips de filtre ville : « Toutes » + les villes réellement présentes
 // dans `gallery` ci-dessus (aucune ville inventée ; l'ordre suit le premier
@@ -150,12 +177,14 @@ const solutionIcons: Record<string, string> = {
 // déjà publiés. Décision fondateur 2026-06-22 : le slot « docteur-ingénieur »
 // est remplacé par la conformité loi 82-21 — un signal de confiance concret et
 // non personnel (le crédit fondateur vivra sur la page équipe). Les trois autres
-// valeurs (3 chantiers visitables, 43,48 kWc installés, Deye Cloud) sont
-// inchangées. L'or vit sur les chiffres .lum (discipline laiton). Aucun claim
+// valeurs (chantiers visitables, kWc installés, Deye Cloud) sont inchangées,
+// mais W284 les dérive désormais de REALISATIONS plutôt que de les recopier à
+// la main. L'or vit sur les chiffres .lum (discipline laiton). Aucun claim
 // inventé.
+const chantiersVisitablesCount = new Set(REALISATIONS.map((r) => r.ville)).size;
 const trust = [
-  { fig: '3', tally: false, label: 'Chantiers visitables', body: 'Installations réelles à voir sur demande — Casablanca, El Jadida, Nouaceur' },
-  { fig: '43,48 kWc', tally: true, label: 'Installés', body: 'Casablanca, El Jadida, Nouaceur' },
+  { fig: String(chantiersVisitablesCount), tally: false, label: 'Chantiers visitables', body: 'Installations réelles à voir sur demande — Casablanca, El Jadida, Nouaceur' },
+  { fig: totalKwcLabel, tally: true, label: 'Installés', body: 'Casablanca, El Jadida, Nouaceur' },
   { fig: 'Loi 82-21', tally: false, label: 'Conformité incluse', body: 'Déclaration préparée et déposée pour vous par Taqinor' },
   { fig: 'Deye Cloud', tally: false, label: 'Production mesurée', body: 'Monitoring sur chaque installation, accès client inclus' },
 ];
@@ -567,11 +596,11 @@ const engineeringPillars = [
     <DiagnosticForm>
       <aside slot="aside" class="cine-card border-t-4 border-t-brass-400 p-6">
         <p class="tech-label text-lune-faint">Dernière installation livrée</p>
-        <p class="fig lum mt-3 text-4xl" data-tally>17,04 kWc</p>
-        <p class="tech-label mt-1 text-lune-faint">El Jadida · avril 2026</p>
+        <p class="fig lum mt-3 text-4xl" data-tally>{featured.kwc}</p>
+        <p class="tech-label mt-1 text-lune-faint">{featured.ville} · {featured.date}</p>
         <p class="mt-4 text-sm leading-relaxed text-lune-soft">
-          Production : <strong class="text-brass-300" data-tally>21 406 kWh/an</strong><br />
-          24 × Canadian Solar 710 Wc · Deye 15 kW · 15 kWh Dyness
+          Production : <strong class="text-brass-300" data-tally>{featured.production}</strong><br />
+          {[featured.panneaux, featured.onduleur, featured.batterie].filter(Boolean).join(' · ')}
         </p>
         <p class="mt-4 border-t border-white/10 pt-3 text-xs text-lune-faint">
           Production mesurée — Deye Cloud. Visites de site possibles sur demande.

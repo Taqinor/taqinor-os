@@ -35,18 +35,32 @@ import { whatsappLink } from '../../lib/whatsapp';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
 import { REGIE_MARGINAL_RATE_SECOND, REGIE_MARGINAL_RATE_HIGH } from '../../lib/regieTariff';
+import { REALISATIONS, realisationBySlug } from '../../lib/realisations';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 
 const waDirect = whatsappLink(WHATSAPP_LEADS, 'مرحبًا، أرغب في دراسة لتركيب نظام للطاقة الشمسية.');
 
+// W284 — أرقام دقيقة، لا تُقرَّب أبدًا: مُشتقّة من REALISATIONS (مصدر الحقيقة
+// الوحيد، apps/web/src/lib/realisations.ts) بدل نسخها يدويًا، لذا لا يمكن أن
+// تصبح خاطئة بصمت. الأرقام اللاتينية تبقى كما في FR (toLocaleString('fr-FR')).
+const totalKwc = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
+const totalKwcLabel = totalKwc.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' kWc';
+// أكبر تركيبة سكنية منشورة (المرجع 468، الجديدة) — بطلة البطل والملاحظة
+// الختامية. مُشتقّة بالفرز على kwcNum، وليست مرجعًا منسوخًا يدويًا.
+const featured = [...REALISATIONS].sort((a, b) => b.kwcNum - a.kwcNum)[0];
+// اسم المدينة بالعربية للعرض فقط (الأرقام تبقى اللاتينية من REALISATIONS) —
+// نفس أسماء المدن المستخدمة أسفله في `gallery`.
+const CITY_AR: Record<string, string> = { 'El Jadida': 'الجديدة', 'Casablanca': 'الدار البيضاء', 'Nouaceur': 'النواصر' };
+const featuredVilleAr = CITY_AR[featured.ville] ?? featured.ville;
+
 // W205 — The protagonist figure of the headline is separated for the count-up.
 // Its width is reserved (tabular-nums + JS-locked min-width) → zero CLS.
-const heroFigure = '21 406';
-const heroTitleSuffix = ' kWh في السنة، منتَجة على سطح في الجديدة.';
+const heroFigure = (featured.productionNum ?? 0).toLocaleString('fr-FR');
+const heroTitleSuffix = ` kWh في السنة، منتَجة على سطح في ${featuredVilleAr}.`;
 const heroSub =
-  'تركيب رقم 468 — 17,04 kWc، مُحجَّم ومُركَّب ومُقاس من طرف Taqinor. تركيبكم يبدأ بتشخيص في 60 ثانية.';
+  `تركيب رقم ${featured.ref} — ${featured.kwc}، مُحجَّم ومُركَّب ومُقاس من طرف Taqinor. تركيبكم يبدأ بتشخيص في 60 ثانية.`;
 
 // W267 — السطر المالي تحت البطل. بلا أي رقم مخترَع: الاستهلاك الحقيقي لأسرة
 // المرجع 468 غير منشور في أي مكان بالموقع، لذا لا يمكن استدعاء
@@ -58,7 +72,7 @@ const heroSub =
 // «≈ 1,38–1,60 MAD/kWh» المنشور والموثَّق سلفاً في billRange.ts /
 // recharge-voiture-electrique-solaire.astro. مجال (لا رقم واحد أبداً): لأن
 // الاستهلاك الذاتي الحقيقي للأسرة غير معروف، فرقم واحد سيخترع دقّة لا نملكها.
-const heroProductionKwh = 21406;
+const heroProductionKwh = featured.productionNum ?? 0;
 const heroTariffLowRate = REGIE_MARGINAL_RATE_SECOND; // 1,3817 MAD/kWh
 const heroTariffHighRate = REGIE_MARGINAL_RATE_HIGH; // 1,5958 MAD/kWh
 const heroMoneyLow = Math.round((heroProductionKwh * heroTariffLowRate) / 100) * 100;
@@ -74,16 +88,30 @@ const faq = [
   { q: 'هل تلزم البطاريات؟', a: 'ليس بالضرورة. إذا كان استهلاككم نهاريًا في الغالب، فإن الاستهلاك الذاتي المباشر هو أفضل استثمار. تُبرَّر البطاريات للاستهلاك الليلي أو لاستمرارية الخدمة — نحسب ذلك في الدراسة.' },
 ];
 
-const gallery = [
-  { name: 'reflet-468', alt: 'انعكاس الشمس على صف الألواح أثناء التركيب، الجديدة', widths: [1600, 1024, 640], ratio: 3 / 2, ville: 'الجديدة', kwc: '17,04 kWc', prod: '21 406 kWh/سنة', type: '24 × Canadian Solar 710 Wc · Deye 15 kW', slug: 'el-jadida-17-kwc' },
-  { name: 'equipe-trois', alt: 'فريق Taqinor أمام الصف الطويل من الألواح في نهاية الورش، الجديدة', widths: [1600, 1024, 640], ratio: 3 / 2, ville: 'الجديدة', kwc: '17,04 kWc', prod: null, type: 'نهاية الورش · فريق Taqinor', slug: 'el-jadida-17-kwc' },
-  { name: 'hero-skyline', alt: 'صف من الألواح الشمسية أمام أفق الدار البيضاء ومئذنة، ضوء ذهبي', widths: [2000, 1280, 768, 480], ratio: 16 / 9, ville: 'الدار البيضاء', kwc: '11,36 kWc', prod: '14 271 kWh/سنة', type: '16 × Canadian Solar 710 Wc · Deye 10 kW', slug: 'casablanca-11-kwc' },
-  { name: 'portrait-400', alt: 'المهندس أمام حقل الألواح، أفق الدار البيضاء', widths: [1600, 1024, 640], ratio: 4 / 3, ville: 'الدار البيضاء', kwc: '11,36 kWc', prod: null, type: 'إنتاج مقاس — Deye Cloud', slug: 'casablanca-11-kwc' },
-  { name: 'champ-villa', alt: 'حقل من ثمانية ألواح على سطح فيلا مسطّح، الجديدة', widths: [1600, 1024, 640], ratio: 3 / 2, ville: 'الجديدة', kwc: '5,68 kWc', prod: '7 135 kWh/سنة', type: '8 × Canadian Solar 710 Wc · Deye 5 kW', slug: 'el-jadida-6-kwc' },
-  { name: 'pose-134', alt: 'الفريق يميل لوحًا أثناء التركيب، الدار البيضاء', widths: [1600, 1024, 640], ratio: 4 / 3, ville: 'الدار البيضاء', kwc: '5,68 kWc', prod: '7 135 kWh/سنة', type: 'تركيب جارٍ · 8 × Canadian Solar 710 Wc', slug: 'casablanca-6-kwc' },
-  { name: 'equipe-gilet-taqinor', alt: 'مركّب بسترة Taqinor يضع قضبان هيكل، النواصر', widths: [1600, 1024, 640], ratio: 1, ville: 'النواصر', kwc: '3,72 kWc', prod: null, type: 'وضع القضبان · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
-  { name: 'entretien-jet', alt: 'تنظيف حقل الألواح بنفث الماء، النواصر', widths: [1600, 1024, 640], ratio: 1, ville: 'النواصر', kwc: '3,72 kWc', prod: null, type: 'صيانة الحقل · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
+// W284 — kwc/prod لم تعد منسوخة يدويًا: مُشتقّة من REALISATIONS عبر `slug`
+// (مصدر الحقيقة الوحيد) لتجنّب أي انحراف صامت. `ville` تبقى بالعربية للعرض
+// (خريطة CITY_AR)، و`prod` تبقى `null` عندما لا يجب أن تُظهر الصورة رقم
+// إنتاج (مثلاً صورة «نهاية الورش» ليست بطاقة الإنتاج لمرجعها) — هذا الخيار
+// التحريري (أي صورة تحمل الرقم) يبقى هنا؛ فقط الرقم نفسه مُشتقّ.
+const galleryRaw = [
+  { name: 'reflet-468', alt: 'انعكاس الشمس على صف الألواح أثناء التركيب، الجديدة', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: true, type: '24 × Canadian Solar 710 Wc · Deye 15 kW', slug: 'el-jadida-17-kwc' },
+  { name: 'equipe-trois', alt: 'فريق Taqinor أمام الصف الطويل من الألواح في نهاية الورش، الجديدة', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: false, type: 'نهاية الورش · فريق Taqinor', slug: 'el-jadida-17-kwc' },
+  { name: 'hero-skyline', alt: 'صف من الألواح الشمسية أمام أفق الدار البيضاء ومئذنة، ضوء ذهبي', widths: [2000, 1280, 768, 480], ratio: 16 / 9, showProd: true, type: '16 × Canadian Solar 710 Wc · Deye 10 kW', slug: 'casablanca-11-kwc' },
+  { name: 'portrait-400', alt: 'المهندس أمام حقل الألواح، أفق الدار البيضاء', widths: [1600, 1024, 640], ratio: 4 / 3, showProd: false, type: 'إنتاج مقاس — Deye Cloud', slug: 'casablanca-11-kwc' },
+  { name: 'champ-villa', alt: 'حقل من ثمانية ألواح على سطح فيلا مسطّح، الجديدة', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: true, type: '8 × Canadian Solar 710 Wc · Deye 5 kW', slug: 'el-jadida-6-kwc' },
+  { name: 'pose-134', alt: 'الفريق يميل لوحًا أثناء التركيب، الدار البيضاء', widths: [1600, 1024, 640], ratio: 4 / 3, showProd: true, type: 'تركيب جارٍ · 8 × Canadian Solar 710 Wc', slug: 'casablanca-6-kwc' },
+  { name: 'equipe-gilet-taqinor', alt: 'مركّب بسترة Taqinor يضع قضبان هيكل، النواصر', widths: [1600, 1024, 640], ratio: 1, showProd: false, type: 'وضع القضبان · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
+  { name: 'entretien-jet', alt: 'تنظيف حقل الألواح بنفث الماء، النواصر', widths: [1600, 1024, 640], ratio: 1, showProd: false, type: 'صيانة الحقل · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
 ];
+const gallery = galleryRaw.map((g) => {
+  const r = realisationBySlug(g.slug);
+  return {
+    ...g,
+    ville: CITY_AR[r?.ville ?? ''] ?? r?.ville ?? '',
+    kwc: r?.kwc ?? '',
+    prod: g.showProd ? (r?.production?.replace('/an', '/سنة') ?? null) : null,
+  };
+});
 
 // W271 — شقائق فلترة المدينة: «الكل» + المدن الموجودة فعلاً في `gallery`
 // أعلاه (بلا أي مدينة مخترَعة؛ الترتيب يتبع ظهور كل مدينة أول مرة في
@@ -141,11 +169,13 @@ const solutionIcons: Record<string, string> = {
 // لماذا تاكينور / الثقة — أربعة أرقام ضخمة، وقائع منشورة سلفًا. قرار المؤسس
 // 2026-06-22: خانة «دكتور-مهندس» تُستبدَل بمطابقة القانون 82-21 — إشارة ثقة
 // ملموسة وغير شخصية (يعيش رصيد المؤسس على صفحة الفريق). القيم الثلاث الأخرى
-// (3 أوراش قابلة للزيارة، 43,48 kWc مُركَّبة، Deye Cloud) بلا تغيير. الذهب يعيش
-// على أرقام .lum (انضباط النحاس). بلا أي ادعاء مخترَع.
+// (أوراش قابلة للزيارة، kWc مُركَّبة، Deye Cloud) بلا تغيير، لكن W284 تشتقّها
+// الآن من REALISATIONS بدل نسخها يدويًا. الذهب يعيش على أرقام .lum (انضباط
+// النحاس). بلا أي ادعاء مخترَع.
+const chantiersVisitablesCount = new Set(REALISATIONS.map((r) => r.ville)).size;
 const trust = [
-  { fig: '3', tally: false, label: 'أوراش قابلة للزيارة', body: 'تركيبات حقيقية للمعاينة عند الطلب — الدار البيضاء، الجديدة، النواصر' },
-  { fig: '43,48 kWc', tally: true, label: 'مُركَّبة', body: 'الدار البيضاء، الجديدة، النواصر' },
+  { fig: String(chantiersVisitablesCount), tally: false, label: 'أوراش قابلة للزيارة', body: 'تركيبات حقيقية للمعاينة عند الطلب — الدار البيضاء، الجديدة، النواصر' },
+  { fig: totalKwcLabel, tally: true, label: 'مُركَّبة', body: 'الدار البيضاء، الجديدة، النواصر' },
   { fig: 'القانون 82-21', tally: false, label: 'مطابقة مُدرَجة', body: 'تصريح تُعِدّه وتُودِعه عنكم Taqinor' },
   { fig: 'Deye Cloud', tally: false, label: 'إنتاج مُقاس', body: 'مراقبة على كل تركيب، مع ولوج للزبون' },
 ];
@@ -544,11 +574,11 @@ const engineeringPillars = [
     <DiagnosticForm>
       <aside slot="aside" class="cine-card border-t-4 border-t-brass-400 p-6">
         <p class="tech-label text-lune-faint">آخر تركيب مُسلَّم</p>
-        <p class="fig lum mt-3 text-4xl" data-tally>17,04 kWc</p>
-        <p class="tech-label mt-1 text-lune-faint">الجديدة · أبريل 2026</p>
+        <p class="fig lum mt-3 text-4xl" data-tally>{featured.kwc}</p>
+        <p class="tech-label mt-1 text-lune-faint">{featuredVilleAr} · {featured.date}</p>
         <p class="mt-4 text-sm leading-relaxed text-lune-soft">
-          الإنتاج: <strong class="text-brass-300" data-tally>21 406 kWh/سنة</strong><br />
-          24 × Canadian Solar 710 Wc · Deye 15 kW · 15 kWh Dyness
+          الإنتاج: <strong class="text-brass-300" data-tally>{featured.production?.replace('/an', '/سنة')}</strong><br />
+          {[featured.panneaux, featured.onduleur, featured.batterie].filter(Boolean).join(' · ')}
         </p>
         <p class="mt-4 border-t border-white/10 pt-3 text-xs text-lune-faint">
           إنتاج مُقاس — Deye Cloud. زيارات الموقع ممكنة عند الطلب.

@@ -34,18 +34,31 @@ import { whatsappLink } from '../../lib/whatsapp';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
 import { REGIE_MARGINAL_RATE_SECOND, REGIE_MARGINAL_RATE_HIGH } from '../../lib/regieTariff';
+import { REALISATIONS, realisationBySlug } from '../../lib/realisations';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 
 const waDirect = whatsappLink(WHATSAPP_LEADS, 'Hello, I would like a study for a solar installation.');
 
+// W284 — Precise figures, never rounded: derived from REALISATIONS (single
+// source of truth, apps/web/src/lib/realisations.ts) instead of copied by
+// hand, so they can never silently go stale. Western/Latin digits keep the
+// FR grouping (toLocaleString('fr-FR')) exactly as on the FR home — only the
+// unit word around them is translated.
+const totalKwc = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
+const totalKwcLabel = totalKwc.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' kWc';
+// The largest published residential installation (ref. 468, El Jadida) —
+// protagonist of the hero and closing aside. Derived by sorting on kwcNum,
+// never a hand-copied reference.
+const featured = [...REALISATIONS].sort((a, b) => b.kwcNum - a.kwcNum)[0];
+
 // W205 — The protagonist figure of the headline is separated for the count-up.
 // Its width is reserved (tabular-nums + JS-locked min-width) → zero CLS.
-const heroFigure = '21 406';
-const heroTitleSuffix = ' kWh a year, produced on a rooftop in El Jadida.';
+const heroFigure = (featured.productionNum ?? 0).toLocaleString('fr-FR');
+const heroTitleSuffix = ` kWh a year, produced on a rooftop in ${featured.ville}.`;
 const heroSub =
-  'Installation ref. 468 — 17,04 kWc, sized, installed and measured by Taqinor. Yours starts with a 60-second diagnostic.';
+  `Installation ref. ${featured.ref} — ${featured.kwc}, sized, installed and measured by Taqinor. Yours starts with a 60-second diagnostic.`;
 
 // W267 — Hero money sub-line. NO invented figure: the real consumption of
 // the ref. 468 household is not published anywhere on the site, so we
@@ -59,7 +72,7 @@ const heroSub =
 // billRange.ts / recharge-voiture-electrique-solaire.astro. A range (never a
 // single figure): the household's real self-consumption isn't known, so a
 // single point value would invent a precision we don't have.
-const heroProductionKwh = 21406;
+const heroProductionKwh = featured.productionNum ?? 0;
 const heroTariffLowRate = REGIE_MARGINAL_RATE_SECOND; // 1.3817 MAD/kWh
 const heroTariffHighRate = REGIE_MARGINAL_RATE_HIGH; // 1.5958 MAD/kWh
 const heroMoneyLow = Math.round((heroProductionKwh * heroTariffLowRate) / 100) * 100;
@@ -75,16 +88,31 @@ const faq = [
   { q: 'Do I need batteries?', a: 'Not necessarily. If your consumption is mostly during the day, direct self-consumption is the best investment. Batteries are justified for night-time consumption or service continuity — we calculate it in the study.' },
 ];
 
-const gallery = [
-  { name: 'reflet-468', alt: 'The sun reflects off the row of panels during the install, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, ville: 'El Jadida', kwc: '17,04 kWc', prod: '21 406 kWh/yr', type: '24 × Canadian Solar 710 Wc · Deye 15 kW', slug: 'el-jadida-17-kwc' },
-  { name: 'equipe-trois', alt: 'Taqinor team in front of the long row of panels at the end of the job, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, ville: 'El Jadida', kwc: '17,04 kWc', prod: null, type: 'Job complete · Taqinor team', slug: 'el-jadida-17-kwc' },
-  { name: 'hero-skyline', alt: 'Row of solar panels in front of the Casablanca skyline and a minaret, golden light', widths: [2000, 1280, 768, 480], ratio: 16 / 9, ville: 'Casablanca', kwc: '11,36 kWc', prod: '14 271 kWh/yr', type: '16 × Canadian Solar 710 Wc · Deye 10 kW', slug: 'casablanca-11-kwc' },
-  { name: 'portrait-400', alt: 'The engineer in front of the panel array, Casablanca skyline', widths: [1600, 1024, 640], ratio: 4 / 3, ville: 'Casablanca', kwc: '11,36 kWc', prod: null, type: 'Measured production — Deye Cloud', slug: 'casablanca-11-kwc' },
-  { name: 'champ-villa', alt: 'Array of eight panels on a flat villa roof, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, ville: 'El Jadida', kwc: '5,68 kWc', prod: '7 135 kWh/yr', type: '8 × Canadian Solar 710 Wc · Deye 5 kW', slug: 'el-jadida-6-kwc' },
-  { name: 'pose-134', alt: 'The team tilts a panel during the install, Casablanca', widths: [1600, 1024, 640], ratio: 4 / 3, ville: 'Casablanca', kwc: '5,68 kWc', prod: '7 135 kWh/yr', type: 'Install in progress · 8 × Canadian Solar 710 Wc', slug: 'casablanca-6-kwc' },
-  { name: 'equipe-gilet-taqinor', alt: 'Installer in a Taqinor vest fitting the rails of a structure, Nouaceur', widths: [1600, 1024, 640], ratio: 1, ville: 'Nouaceur', kwc: '3,72 kWc', prod: null, type: 'Fitting the rails · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
-  { name: 'entretien-jet', alt: 'Jet-wash cleaning of the panel array, Nouaceur', widths: [1600, 1024, 640], ratio: 1, ville: 'Nouaceur', kwc: '3,72 kWc', prod: null, type: 'Array maintenance · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
+// W284 — kwc/prod are no longer hand-copied: derived from REALISATIONS via
+// `slug` (single source of truth) so they can never silently drift. `prod`
+// stays `null` when the photo should NOT show a production figure (e.g. the
+// "job complete" photo isn't its ref's production card) — that editorial
+// choice (which photo carries the figure) stays here; only the FIGURE itself
+// is derived. Unit suffix translated /an → /yr after deriving the number.
+const galleryRaw = [
+  { name: 'reflet-468', alt: 'The sun reflects off the row of panels during the install, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: true, type: '24 × Canadian Solar 710 Wc · Deye 15 kW', slug: 'el-jadida-17-kwc' },
+  { name: 'equipe-trois', alt: 'Taqinor team in front of the long row of panels at the end of the job, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: false, type: 'Job complete · Taqinor team', slug: 'el-jadida-17-kwc' },
+  { name: 'hero-skyline', alt: 'Row of solar panels in front of the Casablanca skyline and a minaret, golden light', widths: [2000, 1280, 768, 480], ratio: 16 / 9, showProd: true, type: '16 × Canadian Solar 710 Wc · Deye 10 kW', slug: 'casablanca-11-kwc' },
+  { name: 'portrait-400', alt: 'The engineer in front of the panel array, Casablanca skyline', widths: [1600, 1024, 640], ratio: 4 / 3, showProd: false, type: 'Measured production — Deye Cloud', slug: 'casablanca-11-kwc' },
+  { name: 'champ-villa', alt: 'Array of eight panels on a flat villa roof, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: true, type: '8 × Canadian Solar 710 Wc · Deye 5 kW', slug: 'el-jadida-6-kwc' },
+  { name: 'pose-134', alt: 'The team tilts a panel during the install, Casablanca', widths: [1600, 1024, 640], ratio: 4 / 3, showProd: true, type: 'Install in progress · 8 × Canadian Solar 710 Wc', slug: 'casablanca-6-kwc' },
+  { name: 'equipe-gilet-taqinor', alt: 'Installer in a Taqinor vest fitting the rails of a structure, Nouaceur', widths: [1600, 1024, 640], ratio: 1, showProd: false, type: 'Fitting the rails · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
+  { name: 'entretien-jet', alt: 'Jet-wash cleaning of the panel array, Nouaceur', widths: [1600, 1024, 640], ratio: 1, showProd: false, type: 'Array maintenance · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
 ];
+const gallery = galleryRaw.map((g) => {
+  const r = realisationBySlug(g.slug);
+  return {
+    ...g,
+    ville: r?.ville ?? '',
+    kwc: r?.kwc ?? '',
+    prod: g.showProd ? (r?.production?.replace('/an', '/yr') ?? null) : null,
+  };
+});
 
 // W271 — City filter chips: "All" + the cities actually present in `gallery`
 // above (no invented city; order follows each city's first appearance in the
@@ -144,12 +172,14 @@ const solutionIcons: Record<string, string> = {
 // Why Taqinor / trust — four monumental figures, already-published facts. Founder
 // decision 2026-06-22: the "doctor-engineer" slot is replaced by Law 82-21
 // compliance — a concrete, non-personal trust signal (the founder credit lives on
-// the team page). The three other values (3 visitable worksites, 43,48 kWc
-// installed, Deye Cloud) are unchanged. Gold lives on the .lum figures (brass
+// the team page). The three other values (visitable worksites, kWc installed,
+// Deye Cloud) are unchanged, but W284 now derives them from REALISATIONS
+// instead of copying them by hand. Gold lives on the .lum figures (brass
 // discipline). No invented claim.
+const visitableSitesCount = new Set(REALISATIONS.map((r) => r.ville)).size;
 const trust = [
-  { fig: '3', tally: false, label: 'Worksites you can visit', body: 'Real installations to see on request — Casablanca, El Jadida, Nouaceur' },
-  { fig: '43,48 kWc', tally: true, label: 'Installed', body: 'Casablanca, El Jadida, Nouaceur' },
+  { fig: String(visitableSitesCount), tally: false, label: 'Worksites you can visit', body: 'Real installations to see on request — Casablanca, El Jadida, Nouaceur' },
+  { fig: totalKwcLabel, tally: true, label: 'Installed', body: 'Casablanca, El Jadida, Nouaceur' },
   { fig: 'Law 82-21', tally: false, label: 'Compliance included', body: 'Declaration prepared and filed for you by Taqinor' },
   { fig: 'Deye Cloud', tally: false, label: 'Measured production', body: 'Monitoring on every installation, client access included' },
 ];
@@ -551,11 +581,11 @@ const engineeringPillars = [
     <DiagnosticForm>
       <aside slot="aside" class="cine-card border-t-4 border-t-brass-400 p-6">
         <p class="tech-label text-lune-faint">Latest installation delivered</p>
-        <p class="fig lum mt-3 text-4xl" data-tally>17,04 kWc</p>
-        <p class="tech-label mt-1 text-lune-faint">El Jadida · April 2026</p>
+        <p class="fig lum mt-3 text-4xl" data-tally>{featured.kwc}</p>
+        <p class="tech-label mt-1 text-lune-faint">{featured.ville} · {featured.date}</p>
         <p class="mt-4 text-sm leading-relaxed text-lune-soft">
-          Production: <strong class="text-brass-300" data-tally>21 406 kWh/yr</strong><br />
-          24 × Canadian Solar 710 Wc · Deye 15 kW · 15 kWh Dyness
+          Production: <strong class="text-brass-300" data-tally>{featured.production?.replace('/an', '/yr')}</strong><br />
+          {[featured.panneaux, featured.onduleur, featured.batterie].filter(Boolean).join(' · ')}
         </p>
         <p class="mt-4 border-t border-white/10 pt-3 text-xs text-lune-faint">
           Production measured — Deye Cloud. Site visits possible on request.
