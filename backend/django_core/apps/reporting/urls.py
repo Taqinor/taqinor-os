@@ -24,6 +24,7 @@ from .approbations import (
 )
 from .kpi_alertes import KpiAlerteViewSet
 from .classeur import ClasseurViewSet
+from .integrity_views import integrite_insight
 
 # N79 — CRUD des rapports sauvegardés (router DRF, ajouté en additif).
 # FG96 — CRUD + effective/ pour la config tableau de bord.
@@ -95,4 +96,6 @@ urlpatterns = [
          name='reporting-approbations-decider'),
     path('approbations-en-attente/decider-en-masse/', decider_en_masse,
          name='reporting-approbations-decider-masse'),
+    # YSERV13 — contrôle d'intégrité inter-documents (états orphelins).
+    path('insights/integrite/', integrite_insight, name='insights-integrite'),
 ]
