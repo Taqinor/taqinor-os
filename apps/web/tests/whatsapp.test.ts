@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { leadWhatsappText, regularizationWhatsappText, whatsappLink } from '../src/lib/whatsapp';
+import { caseStudyWhatsappText, leadWhatsappText, regularizationWhatsappText, whatsappLink } from '../src/lib/whatsapp';
 
 describe('whatsappLink', () => {
   it('construit un lien wa.me avec texte encodé', () => {
@@ -48,5 +48,20 @@ describe('messages pré-remplis', () => {
     expect(msg).not.toContain('Ville :');
     expect(msg).not.toContain('undefined');
     expect(msg).not.toContain('___');
+  });
+});
+
+describe('caseStudyWhatsappText (W350 — bouton WhatsApp propre à une étude de cas)', () => {
+  it('cite la ville, la puissance et la référence EXACTES de l’étude', () => {
+    const msg = caseStudyWhatsappText({ ville: 'El Jadida', kwc: '17,04 kWc', ref: '468' });
+    expect(msg).toContain('El Jadida');
+    expect(msg).toContain('17,04 kWc');
+    expect(msg).toContain('réf. 468');
+  });
+
+  it('reste un message complet, jamais de blanc « ___ » à éditer', () => {
+    const msg = caseStudyWhatsappText({ ville: 'Casablanca', kwc: '11,36 kWc', ref: '400' });
+    expect(msg).not.toContain('___');
+    expect(msg).not.toContain('undefined');
   });
 });

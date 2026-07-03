@@ -23,7 +23,8 @@ import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { REALISATIONS, CITIES } from '../../lib/realisations';
 import { caseStudyBySlug } from '../../lib/caseStudies';
-import { NAP } from '../../lib/nap';
+import { NAP, WHATSAPP_LEADS } from '../../lib/nap';
+import { whatsappLink, caseStudyWhatsappText } from '../../lib/whatsapp';
 
 export function getStaticPaths() {
   return REALISATIONS.map((r) => ({ params: { slug: r.slug }, props: { r } }));
@@ -93,6 +94,13 @@ const galleryPhotos = rest;
 const nearestCase = REALISATIONS
   .filter((other) => other.slug !== r.slug)
   .sort((a, b) => Math.abs(a.kwcNum - r.kwcNum) - Math.abs(b.kwcNum - r.kwcNum))[0];
+
+// W350 — bouton WhatsApp PROPRE À CETTE étude (bio-link social → réalisation
+// → WhatsApp déjà contextualisé). Distinct du bouton générique de StickyCta.
+const waCaseStudy = whatsappLink(
+  WHATSAPP_LEADS,
+  caseStudyWhatsappText({ ville: r.ville, kwc: r.kwc, ref: r.ref }),
+);
 ---
 
 <Layout
@@ -353,6 +361,24 @@ const nearestCase = REALISATIONS
     </section>
 
     <CtaBand title={`Une étude comme celle de ${r.ville}, pour votre toiture.`} href="/devis/mon-toit" />
+
+    <!-- W350 — WhatsApp PROPRE À CETTE étude : le message cite déjà la ville,
+         la puissance et la référence exactes (bio-link réseaux sociaux →
+         réalisation → WhatsApp déjà contextualisé, sans rien à retaper). -->
+    <section class="border-t border-white/10 bg-blanc-azur px-4 py-10 text-center text-encre">
+      <p class="mx-auto max-w-xl text-sm text-encre-soft">
+        Une question sur cette installation de {r.kwc} à {r.ville} ?
+      </p>
+      <a
+        href={waCaseStudy}
+        rel="noopener noreferrer"
+        target="_blank"
+        class="mt-4 inline-flex items-center gap-2 border border-azur-600 px-5 py-2.5 text-sm font-bold text-azur-600 transition-colors hover:bg-azur-600 hover:text-white"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
+        Discuter de cette installation sur WhatsApp
+      </a>
+    </section>
 
     <StickyCta />
   </div>

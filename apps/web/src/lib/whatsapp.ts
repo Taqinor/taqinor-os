@@ -47,6 +47,21 @@ export function captureWhatsappText(p: {
 }
 
 /**
+ * W350 — message pré-rempli PAR INSTALLATION pour le bouton WhatsApp d'une
+ * étude de cas (/realisations/[slug]) : cite la ville + la puissance + la
+ * référence EXACTES de l'étude que le visiteur est en train de lire, pour
+ * qu'un partage réseaux sociaux (bio Instagram/TikTok → réalisation →
+ * WhatsApp) arrive déjà contextualisé côté équipe. Aucun chiffre inventé :
+ * les trois champs viennent tels quels de `Realisation` (lib/realisations.ts).
+ */
+export function caseStudyWhatsappText(p: { ville: string; kwc: string; ref: string }): string {
+  return (
+    `Bonjour, j'ai vu l'installation de ${p.kwc} à ${p.ville} (réf. ${p.ref}) sur taqinor.ma ` +
+    `et je souhaite une étude similaire pour mon propre projet.`
+  );
+}
+
+/**
  * Message pré-rempli pour la régularisation Article 33 — TOUJOURS complet,
  * jamais de blancs « ___ » à éditer par le client. Les champs viennent du
  * mini-formulaire de la page Régularisation ; sans eux, le message reste
