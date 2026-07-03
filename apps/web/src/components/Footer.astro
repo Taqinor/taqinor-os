@@ -8,13 +8,20 @@
  *
  * W152 : bloc marque renforcé (logo + tagline), boutons CTA téléphone/WhatsApp,
  * liseré doré en haut, hiérarchie de colonnes améliorée.
+ *
+ * W246 — bande de clôture chaude, AU-DESSUS de la grille de liens (grille
+ * intacte) : glyphe zellige + ligne de marque, lien de parcours devis
+ * (/devis/mon-toit, localisé) bien visible, et une reprise WhatsApp unique à
+ * faible friction — le footer ne finit plus froid sur une ligne légale.
+ * Reduced-motion-safe (glyphe SVG statique, aucune propriété de reflow
+ * animée) et CLS zéro (aucune dimension asynchrone).
  */
 import Logo from './Logo.astro';
 import { NAP, WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink } from '../lib/whatsapp';
 import { CITIES } from '../lib/realisations';
 import { getLocaleFromPath, stripLocale, useTranslations } from '../i18n/utils';
-import { localizeNavHref } from '../i18n/pages';
+import { localizeNavHref, quoteJourneyHref } from '../i18n/pages';
 
 // Locale courante déduite de l'URL ; libellés via dictionnaire (repli FR).
 // Le rendu FR reste byte-identique : t() rend les libellés FR existants et
@@ -24,6 +31,9 @@ const t = useTranslations(locale);
 const L = (href: string) => localizeNavHref(href, locale);
 
 const wa = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite des informations sur une installation solaire.');
+// W246 — lien de parcours devis localisé (même point de bascule unique que
+// l'en-tête / CtaBand / StickyCta : quoteJourneyHref, jamais un href codé en dur).
+const journeyHref = quoteJourneyHref(locale);
 
 // Colonne Solutions — VRAIS liens vers chaque service (W29).
 const solutions = [
@@ -57,6 +67,31 @@ const linkClass = 'transition-colors hover:text-white';
 <footer class="footer-root bg-nuit text-lune">
   {/* Liseré brass gradient en haut — 2 px, pas d'animation, CLS zéro */}
   <div class="footer-seam" aria-hidden="true"></div>
+
+  {/* ── W246 : bande de clôture chaude — glyphe zellige + ligne de marque +
+      CTA parcours devis + reprise WhatsApp. Le footer ne finit plus froid
+      sur une ligne légale. ── */}
+  <div class="footer-frame border-b border-white/10 px-4 pb-10 pt-10 text-center">
+    <div class="mx-auto flex max-w-3xl flex-col items-center gap-5">
+      <span class="footer-frame-mark" aria-hidden="true">
+        <svg width="26" height="26" viewBox="0 0 34 34" fill="none" class="footer-frame-glyph" aria-hidden="true">
+          <rect x="7.5" y="7.5" width="19" height="19" stroke="currentColor" stroke-width="1.25" />
+          <rect x="7.5" y="7.5" width="19" height="19" stroke="currentColor" stroke-width="1.25" transform="rotate(45 17 17)" />
+          <circle cx="17" cy="17" r="2.1" fill="currentColor" />
+        </svg>
+      </span>
+
+      <p class="display text-balance text-lg text-white sm:text-xl">{t('footer.closingLine')}</p>
+
+      <a href={journeyHref} class="glow footer-journey-cta inline-flex items-center gap-2 bg-brass-400 px-6 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">
+        {t('footer.journeyCta')}
+      </a>
+
+      <a href={wa} rel="noopener noreferrer" class="footer-wa-recapture text-sm text-lune-soft transition-colors hover:text-white">
+        {t('footer.whatsappRecapture')}
+      </a>
+    </div>
+  </div>
 
   {/* ── Bloc principal ── */}
   <div class="mx-auto grid max-w-6xl gap-10 px-4 py-14 md:grid-cols-4">
@@ -195,12 +230,34 @@ const linkClass = 'transition-colors hover:text-white';
     background: var(--color-brass-300);
   }
 
+  /* W246 — cadre de clôture : glyphe zellige statique (aucune propriété de
+     reflow animée, aucune dimension asynchrone → CLS zéro). */
+  .footer-frame-mark {
+    display: inline-flex;
+    color: var(--color-brass-400);
+  }
+  .footer-frame-glyph {
+    color: var(--color-brass-300);
+    filter: drop-shadow(0 0 12px rgb(232 181 74 / 0.3));
+  }
+
+  .footer-journey-cta {
+    border-radius: 0;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  .footer-wa-recapture {
+    transition: color 0.2s ease;
+  }
+
   /* Réduire les animations si prefers-reduced-motion : les transitions CSS
      sont déjà déclarées inline sur les hover ci-dessus, mais on les désactive
      pour les utilisateurs qui préfèrent moins de mouvement. */
   @media (prefers-reduced-motion: reduce) {
     .footer-cta-btn,
-    .footer-seam {
+    .footer-seam,
+    .footer-journey-cta,
+    .footer-wa-recapture {
       transition: none;
     }
   }
