@@ -27,6 +27,15 @@ export const NAP = {
 } as const;
 
 /**
+ * W288 — URLs d'entité (`sameAs`) pour le JSON-LD LocalBusiness : fiche Google
+ * Business Profile + profils sociaux actifs. LIVRÉ VIDE (même règle
+ * d'intégrité que testimonials.ts) — tant que WG5 (GBP) / WG8 (réseaux
+ * sociaux) ne fournissent pas de vraies URLs, `Layout.astro` n'émet aucun
+ * `sameAs`. Ne jamais fabriquer de placeholder ici.
+ */
+export const SAME_AS: readonly string[] = [];
+
+/**
  * Cible des deeplinks wa.me et de la remise d'étude du diagnostic —
  * DISTINCTE du téléphone NAP : aujourd'hui le même numéro, demain la
  * ligne de Meryem. Chiffres uniquement, avec indicatif pays.
