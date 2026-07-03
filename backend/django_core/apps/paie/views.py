@@ -64,6 +64,8 @@ from .services import (
     creer_bulletin_rectificatif,
     declaration_cimr,
     declaration_cnss,
+    deposer_bds_complementaire,
+    deposer_bds_principal,
     emettre_ordre_virement,
     ensure_defaults,
     ensure_rubriques_defaut,
@@ -73,6 +75,7 @@ from .services import (
     etat_ir_9421_annuel,
     fichier_cimr,
     fichier_damancom_cnss,
+    fichier_damancom_strict,
     fichier_virement_paie,
     fichier_virement_paie_simt,
     generer_bulletin,
@@ -502,6 +505,45 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
         periode = self.get_object()
         return Response(
             fichier_damancom_cnss(periode), status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='fichier-damancom-strict')
+    def fichier_damancom_strict_action(self, request, pk=None):
+        """Fichier DAMANCOM au format eBDS STRICT — longueurs fixes (XPAI12)."""
+        periode = self.get_object()
+        return Response(
+            fichier_damancom_strict(periode), status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='deposer-bds')
+    def deposer_bds(self, request, pk=None):
+        """Enregistre le dépôt PRINCIPAL de la BDS de la période (XPAI12)."""
+        periode = self.get_object()
+        depot = deposer_bds_principal(periode)
+        return Response({
+            'id': depot.id, 'type_depot': depot.type_depot,
+            'profils_couverts': depot.profils_couverts,
+            'date_depot': depot.date_depot,
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='deposer-bds-complementaire')
+    def deposer_bds_complementaire_action(self, request, pk=None):
+        """Enregistre un dépôt BDS COMPLÉMENTAIRE — delta uniquement (XPAI12).
+
+        Corps : ``profils_delta`` (liste des numéros CNSS/ids omis ou
+        corrigés) requis.
+        """
+        periode = self.get_object()
+        profils_delta = request.data.get('profils_delta') or []
+        try:
+            depot = deposer_bds_complementaire(periode, profils_delta)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'id': depot.id, 'type_depot': depot.type_depot,
+            'depot_principal': depot.depot_principal_id,
+            'profils_couverts': depot.profils_couverts,
+            'date_depot': depot.date_depot,
+        }, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['get'], url_path='etat-ir')
     def etat_ir(self, request, pk=None):

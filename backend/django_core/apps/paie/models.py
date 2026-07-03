@@ -1605,3 +1605,63 @@ class EcheanceDeclarative(models.Model):
         if self.statut in (self.STATUT_DEPOSEE, self.STATUT_PAYEE):
             return False
         return timezone.localdate() > self.date_limite
+
+
+# ── XPAI12 — BDS complémentaire/rectificative + trace des dépôts DAMANCOM ───
+
+class DepotBDS(models.Model):
+    """Trace un DÉPÔT de BDS (CNSS) pour une période (XPAI12).
+
+    Un dépôt PRINCIPAL couvre l'ensemble des salariés déclarés au format
+    DAMANCOM (``fichier_damancom_cnss``, PAIE31). Un dépôt COMPLÉMENTAIRE
+    corrige un dépôt principal déjà déposé — salariés omis/corrections — et
+    référence son dépôt principal via ``depot_principal`` : son contenu ne
+    contient QUE le delta (jamais l'ensemble des salariés à nouveau). Une
+    période ne peut avoir qu'UN dépôt principal, mais PLUSIEURS
+    complémentaires (corrections successives).
+
+    Multi-société : ``company`` posée côté serveur.
+    """
+    TYPE_PRINCIPAL = 'principal'
+    TYPE_COMPLEMENTAIRE = 'complementaire'
+    TYPE_CHOICES = [
+        (TYPE_PRINCIPAL, 'Principal'),
+        (TYPE_COMPLEMENTAIRE, 'Complémentaire'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paie_depots_bds',
+        verbose_name='Société',
+    )
+    periode = models.ForeignKey(
+        PeriodePaie,
+        on_delete=models.CASCADE,
+        related_name='depots_bds',
+        verbose_name='Période',
+    )
+    type_depot = models.CharField(
+        max_length=14, choices=TYPE_CHOICES, default=TYPE_PRINCIPAL,
+        verbose_name='Type de dépôt')
+    depot_principal = models.ForeignKey(
+        'self',
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='complements',
+        verbose_name='Dépôt principal référencé',
+    )
+    # Salariés couverts par CE dépôt (liste d'ids de ProfilPaie) — pour un
+    # complémentaire, uniquement le delta (omis/corrigés).
+    profils_couverts = models.JSONField(
+        default=list, blank=True, verbose_name='Profils couverts')
+    date_depot = models.DateTimeField(
+        auto_now_add=True, verbose_name='Déposé le')
+
+    class Meta:
+        verbose_name = 'Dépôt BDS'
+        verbose_name_plural = 'Dépôts BDS'
+        ordering = ['-date_depot']
+
+    def __str__(self):
+        return f'Dépôt BDS {self.get_type_depot_display()} — {self.periode}'

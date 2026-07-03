@@ -2592,6 +2592,118 @@ def mouvements_cnss_periode(periode):
     return {'entrees': entrees, 'sorties': sorties}
 
 
+# ── XPAI12 — BDS complémentaire/rectificative + format DAMANCOM strict ─────
+
+def deposer_bds_principal(periode):
+    """Enregistre le dépôt PRINCIPAL de la BDS d'une période (XPAI12).
+
+    Un seul dépôt principal par période : rejoue (idempotent) le dépôt déjà
+    enregistré s'il existe. Couvre TOUS les salariés affiliés CNSS de la
+    déclaration (``declaration_cnss``). Renvoie le ``DepotBDS`` (créé ou
+    existant).
+    """
+    from .models import DepotBDS
+
+    existant = DepotBDS.objects.filter(
+        company=periode.company, periode=periode,
+        type_depot=DepotBDS.TYPE_PRINCIPAL).first()
+    if existant is not None:
+        return existant
+
+    decl = declaration_cnss(periode)
+    profils = [ligne.get('numero_cnss') for ligne in decl['lignes']]
+    return DepotBDS.objects.create(
+        company=periode.company, periode=periode,
+        type_depot=DepotBDS.TYPE_PRINCIPAL, profils_couverts=profils)
+
+
+def deposer_bds_complementaire(periode, profils_delta, *, depot_principal=None):
+    """Enregistre un dépôt BDS COMPLÉMENTAIRE — DELTA uniquement (XPAI12).
+
+    ``profils_delta`` est la liste des identifiants (numéros CNSS ou ids
+    ``ProfilPaie``) des salariés OMIS/CORRIGÉS — jamais l'ensemble des
+    salariés à nouveau. Référence le dépôt principal de la période
+    (``depot_principal`` fourni, sinon le dépôt principal existant — lève
+    ``ValueError`` si aucun dépôt principal n'a encore été déposé : une
+    correction suppose une déclaration principale déjà déposée). Renvoie le
+    nouveau ``DepotBDS`` complémentaire.
+    """
+    from .models import DepotBDS
+
+    principal = depot_principal or DepotBDS.objects.filter(
+        company=periode.company, periode=periode,
+        type_depot=DepotBDS.TYPE_PRINCIPAL).first()
+    if principal is None:
+        raise ValueError(
+            'Aucun dépôt BDS principal pour cette période : la BDS '
+            'complémentaire suppose une déclaration principale déjà déposée.')
+    return DepotBDS.objects.create(
+        company=periode.company, periode=periode,
+        type_depot=DepotBDS.TYPE_COMPLEMENTAIRE,
+        depot_principal=principal,
+        profils_couverts=list(profils_delta or []))
+
+
+# DÉCISION — gabarit eBDS STRICT (longueurs fixes, cahier des charges
+# DAMANCOM). Spécimen à valider fondateur/CNSS avant tout dépôt réel ; ce
+# gabarit livre le MÉCANISME + une structure standard couramment citée.
+GABARIT_EBDS_ENTETE = [
+    ('type_enregistrement', 1, 'L'),   # 'E' = en-tête
+    ('affiliation_cnss', 9, 'R'),      # n° d'affiliation employeur
+    ('periode', 6, 'L'),               # AAAAMM
+    ('nombre_salaries', 6, 'R'),
+]
+GABARIT_EBDS_LIGNE = [
+    ('type_enregistrement', 1, 'L'),   # 'S' = salarié
+    ('numero_cnss', 9, 'R'),
+    ('nom', 30, 'L'),
+    ('jours_declares', 2, 'R'),
+    ('salaire_plafonne_centimes', 12, 'R'),
+]
+
+
+def fichier_damancom_strict(periode, *, depot=None):
+    """Fichier DAMANCOM au format eBDS STRICT — longueurs fixes (XPAI12).
+
+    Reprend ``declaration_cnss`` et formate chaque enregistrement au gabarit
+    eBDS (``GABARIT_EBDS_ENTETE``/``GABARIT_EBDS_LIGNE``). Si ``depot`` est un
+    ``DepotBDS`` COMPLÉMENTAIRE, ne formate QUE les salariés de
+    ``depot.profils_couverts`` (delta) — sinon (dépôt principal / aucun
+    dépôt) formate l'ensemble de la déclaration. Le layout exact est À
+    VALIDER auprès de la CNSS avant tout dépôt réel. Renvoie ``{'lignes':
+    [str, …] (longueur fixe), 'nombre_salaries'}``.
+    """
+    from .models import DepotBDS
+
+    decl = declaration_cnss(periode)
+    lignes_decl = decl['lignes']
+    if depot is not None and depot.type_depot == DepotBDS.TYPE_COMPLEMENTAIRE:
+        delta = set(depot.profils_couverts or [])
+        lignes_decl = [
+            ligne for ligne in lignes_decl
+            if ligne.get('numero_cnss') in delta]
+
+    entete = _formater_enregistrement_simt({
+        'type_enregistrement': 'E',
+        'affiliation_cnss': periode.company_id,
+        'periode': f'{periode.annee}{periode.mois:02d}',
+        'nombre_salaries': len(lignes_decl),
+    }, GABARIT_EBDS_ENTETE)
+
+    lignes_txt = [entete]
+    for ligne in lignes_decl:
+        salaire_centimes = int(_q(ligne['plafonne']) * 100)
+        lignes_txt.append(_formater_enregistrement_simt({
+            'type_enregistrement': 'S',
+            'numero_cnss': ligne.get('numero_cnss', ''),
+            'nom': ligne.get('nom', ''),
+            'jours_declares': ligne.get('jours_declares', 26),
+            'salaire_plafonne_centimes': salaire_centimes,
+        }, GABARIT_EBDS_LIGNE))
+
+    return {'lignes': lignes_txt, 'nombre_salaries': len(lignes_decl)}
+
+
 # ── PAIE32 — État IR 9421 + retenues à la source ───────────────────────────
 
 def etat_ir_9421(periode):
