@@ -370,10 +370,15 @@ const investment = [
             الحقيقية. الرقم يقرّر العتاد — لا العكس أبدًا.
           </p>
         </div>
-        <dl class="mt-12 grid gap-x-8 gap-y-12 sm:grid-cols-2 lg:grid-cols-2" data-stagger>
+        {/* W268 — شريط ضخم بعرض كامل من 4 أعمدة، أرقام .fig-lg + خط نحاسي رفيع
+            لكل عمود (نفس أداة شريط «كيف يجري الأمر» و GarantiesTeaser).
+            «الإثبات قبل الوعد» هي أطروحة العلامة: تستحق بياناً، لا جدول
+            مواصفات. ── */}
+        <dl class="mt-12 grid grid-cols-2 gap-x-8 gap-y-12 lg:grid-cols-4" data-stagger>
           {trust.map((t, i) => (
-            <div class="v2-rise min-w-0" style={`--v2-i:${i}`}>
-              <dd class="fig fig-md lum break-words" data-tally={t.tally ? '' : undefined}>{t.fig}</dd>
+            <div class="v2-rise relative min-w-0 border-t-2 border-white/10 pt-5" style={`--v2-i:${i}`}>
+              <span class="absolute -top-px start-0 h-0.5 w-10 bg-brass-400" aria-hidden="true"></span>
+              <dd class="fig fig-lg lum break-words" data-tally={t.tally ? '' : undefined}>{t.fig}</dd>
               <dt class="tech-label mt-2 text-lune-faint">{t.label}</dt>
               <p class="mt-1 text-sm leading-snug text-lune-soft">{t.body}</p>
             </div>
