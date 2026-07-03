@@ -11,10 +11,11 @@ from decimal import Decimal
 from django.db import transaction
 
 from .models import (
-    ActionCorrectivePreventive, AnalyseNcr, Audit, AuditPlanifie,
+    AccuseLecture, ActionCorrectivePreventive, AnalyseNcr, Audit,
+    AuditPlanifie,
     CampagneRappel, CauseIncident,
     CheckinSecurite, ControleReception,
-    DeclarationCnss, DemandeActionFournisseur, Derogation,
+    DeclarationCnss, DemandeActionFournisseur, Derogation, DiffusionProcedure,
     ElementRappel,
     EtapeDeclarationAt, NonConformite,
     NotationFinChantier, PlanControleReception, PlanInspectionChantier,
@@ -1673,3 +1674,110 @@ def risques_opportunites_revue_due(company, today=None):
         if today >= limite:
             dus.append(ro)
     return dus
+
+
+# ── XQHS15 — Diffusion & accusé de lecture des procédures qualité ──────────
+
+@transaction.atomic
+def diffuser_procedure(procedure, users):
+    """Diffuse une version de procédure à une population d'utilisateurs
+    (XQHS15). Crée la ``DiffusionProcedure`` et un ``AccuseLecture`` par
+    utilisateur cible (idempotent : re-diffuser à un utilisateur déjà ciblé ne
+    duplique pas son accusé, via la contrainte unique).
+
+    ``users`` — itérable d'utilisateurs (objets, pas des ids) ; leurs ids sont
+    stockés dans ``population_cible`` pour la traçabilité de la cible visée.
+    """
+    users = list(users)
+    diffusion = DiffusionProcedure.objects.create(
+        company=procedure.company, procedure=procedure,
+        population_cible={'user_ids': [u.id for u in users]},
+    )
+    for user in users:
+        AccuseLecture.objects.get_or_create(
+            company=procedure.company, diffusion=diffusion, user=user)
+    return diffusion
+
+
+@transaction.atomic
+def accuser_lecture(diffusion, user):
+    """Enregistre l'accusé de lecture d'un utilisateur (XQHS15).
+
+    ``lu_le`` est une confirmation datée CÔTÉ SERVEUR (jamais une date reçue
+    du client). Idempotent : ré-appelé pour le même (diffusion, user), ne fait
+    que confirmer la lecture (ne change pas ``lu_le`` une fois posé — la
+    première lecture fait foi).
+    """
+    from django.utils import timezone
+
+    accuse, _ = AccuseLecture.objects.get_or_create(
+        company=diffusion.company, diffusion=diffusion, user=user)
+    if accuse.lu_le is None:
+        accuse.lu_le = timezone.now()
+        accuse.save(update_fields=['lu_le'])
+    return accuse
+
+
+def lectures_en_attente(user):
+    """Diffusions non lues d'un utilisateur (XQHS15, endpoint « mes lectures
+    en attente »). Renvoie un queryset d'``AccuseLecture`` avec ``lu_le`` nul.
+    """
+    return AccuseLecture.objects.filter(
+        user=user, lu_le__isnull=True).select_related(
+            'diffusion', 'diffusion__procedure')
+
+
+def _notifier_retardataire_lecture(accuse):
+    """Notifie un utilisateur en retard de lecture (best-effort)."""
+    try:
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+
+        procedure = accuse.diffusion.procedure
+        notify(accuse.user, EventType.MAINTENANCE_DUE,
+               'Lecture de procédure en attente',
+               body=f'Procédure « {procedure.titre} » (v{procedure.version}) '
+                    f'à lire et accuser réception.',
+               link='/qhse/procedures', company=accuse.company)
+    except Exception:  # pragma: no cover - défensif
+        pass
+
+
+def relancer_retardataires_lecture(company=None):
+    """Relance TOUS les accusés de lecture en attente (XQHS15, pattern
+    QHSE12). Renvoie la liste des ``AccuseLecture`` relancés dans cet appel
+    (ne mute rien — la relance est une notification, pas un changement
+    d'état).
+    """
+    qs = AccuseLecture.objects.filter(lu_le__isnull=True)
+    if company is not None:
+        qs = qs.filter(company=company)
+
+    relances = []
+    for accuse in qs.select_related('diffusion__procedure'):
+        _notifier_retardataire_lecture(accuse)
+        relances.append(accuse)
+    return relances
+
+
+@transaction.atomic
+def rediffuser_nouvelle_version(procedure_precedente, procedure_nouvelle):
+    """Re-déclenche la diffusion sur la population de la version précédente
+    quand une nouvelle version entre en vigueur (XQHS15).
+
+    Reprend les utilisateurs de la dernière ``DiffusionProcedure`` de la
+    version précédente et diffuse la nouvelle version aux mêmes utilisateurs
+    (nouveaux ``AccuseLecture`` à zéro — la lecture de l'ancienne version ne
+    vaut pas pour la nouvelle).
+    """
+    from django.contrib.auth import get_user_model
+
+    User = get_user_model()
+    derniere = procedure_precedente.diffusions.order_by('-id').first()
+    if derniere is None:
+        return None
+    user_ids = (derniere.population_cible or {}).get('user_ids', [])
+    users = list(User.objects.filter(id__in=user_ids))
+    if not users:
+        return None
+    return diffuser_procedure(procedure_nouvelle, users)

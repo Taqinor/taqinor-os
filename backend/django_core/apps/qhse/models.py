@@ -4719,3 +4719,88 @@ class ContexteOrganisation(models.Model):
 
     def __str__(self):
         return f'Contexte — {self.company_id}'
+
+
+# ── XQHS15 — Diffusion & accusé de lecture des procédures qualité ──────────
+
+class DiffusionProcedure(models.Model):
+    """Diffusion d'une version de ``ProcedureQualite`` à une population cible.
+
+    ``population_cible`` — JSON, soit une liste d'ids utilisateur, soit un
+    rôle (ex. ``{'role': 'technicien'}``) — reste texte/JSON libre pour rester
+    additif sans dépendre d'un modèle de rôle particulier. Chaque diffusion
+    matérialise ses ``AccuseLecture`` via le service
+    ``diffuser_procedure``/``ajouter_lecteurs``.
+
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_diffusions_procedure',
+        verbose_name='Société',
+    )
+    procedure = models.ForeignKey(
+        ProcedureQualite,
+        on_delete=models.CASCADE,
+        related_name='diffusions',
+        verbose_name='Procédure (version)',
+    )
+    population_cible = models.JSONField(
+        default=dict, blank=True, verbose_name='Population cible')
+    date_diffusion = models.DateTimeField(
+        auto_now_add=True, verbose_name='Diffusée le')
+
+    class Meta:
+        verbose_name = 'Diffusion de procédure'
+        verbose_name_plural = 'Diffusions de procédure'
+        ordering = ['-id']
+
+    def __str__(self):
+        return f'Diffusion {self.procedure} — {self.date_diffusion}'
+
+
+class AccuseLecture(models.Model):
+    """Accusé de lecture d'un utilisateur pour une ``DiffusionProcedure``.
+
+    ``lu_le`` = « signature » : confirmation datée SERVEUR (jamais une date
+    saisie par le client). Unique ``(diffusion, user)`` — un utilisateur ne
+    peut accuser lecture qu'une fois par diffusion (idempotent).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_accuses_lecture',
+        verbose_name='Société',
+    )
+    diffusion = models.ForeignKey(
+        DiffusionProcedure,
+        on_delete=models.CASCADE,
+        related_name='accuses_lecture',
+        verbose_name='Diffusion',
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='qhse_accuses_lecture',
+        verbose_name='Utilisateur',
+    )
+    lu_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Lu le (signature serveur)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Accusé de lecture'
+        verbose_name_plural = 'Accusés de lecture'
+        ordering = ['-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['diffusion', 'user'],
+                name='qhse_accuselecture_diffusion_user_uniq',
+            ),
+        ]
+
+    def __str__(self):
+        statut = 'lu' if self.lu_le else 'en attente'
+        return f'{self.user_id} — {statut}'

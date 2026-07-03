@@ -25,7 +25,7 @@ from django.db.models import Avg
 from .models import (
     ActionCorrectivePreventive, Audit, ClauseNorme, ConformiteEnvironnementale,
     ControleReception, CritereAudit, DeclarationCnss,
-    DemandeActionFournisseur,
+    DemandeActionFournisseur, DiffusionProcedure,
     EtapeDeclarationAt, EvaluationRisque,
     Incident, IndicateurESG, InspectionSecurite, NonConformite,
     NotationFinChantier, ObjectifQhse,
@@ -1447,3 +1447,24 @@ def objectifs_revue_due(company, today=None):
         if today >= derniere.date_revue + timedelta(days=delai):
             dus.append(objectif)
     return dus
+
+
+# ── XQHS15 — % conformité de lecture par procédure (cockpit) ───────────────
+
+def conformite_lecture_procedure(company, reference):
+    """% de conformité de lecture pour une référence de procédure (XQHS15).
+
+    Agrège TOUTES les diffusions de TOUTES les versions de la ``reference``
+    (une référence versionnée reste UNE procédure du point de vue du cockpit).
+    Renvoie ``{'total': int, 'lus': int, 'pct': float|None}``.
+    """
+    diffusions = DiffusionProcedure.objects.filter(
+        company=company, procedure__reference=reference)
+    total = 0
+    lus = 0
+    for diffusion in diffusions:
+        accuses = diffusion.accuses_lecture.all()
+        total += accuses.count()
+        lus += accuses.filter(lu_le__isnull=False).count()
+    pct = round(lus / total * 100, 1) if total else None
+    return {'total': total, 'lus': lus, 'pct': pct}
