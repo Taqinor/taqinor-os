@@ -3081,6 +3081,11 @@ def classer_signature_completee(demande, *, created_by=None):
         except Exception:  # pragma: no cover - défensif.
             contenu = None
 
+    # XGED5 — Scellement cryptographique best-effort AVANT dépôt (no-op sans
+    # pyHanko — contenu byte-identique dans ce cas, flux XGED4 intact).
+    if contenu is not None and (contenu[:4] == b'%PDF'):
+        contenu, _scelle = sceller_pdf(contenu, company=company)
+
     document_signe, created_doc = deposit_document(
         company=company,
         nom=document_source.nom,
@@ -3132,6 +3137,110 @@ def classer_signature_completee(demande, *, created_by=None):
         'certificat': certificat_document,
         'created': created_doc,
     }
+
+
+# ── XGED5 — Scellement cryptographique (PAdES) + horodatage qualifié (gated) ─
+
+def _pades_signer_disponible():
+    """XGED5 — True si pyHanko est installé (import paresseux, GARDÉ).
+
+    pyHanko est une dépendance OUVERTE/gratuite (requirements.txt) mais reste
+    importée fonction-locale : si elle venait à manquer en prod (image non
+    reconstruite, etc.), le scellement dégrade proprement en no-op plutôt que
+    de lever au chargement du module."""
+    try:
+        import pyhanko  # noqa: F401
+        return True
+    except Exception:  # pragma: no cover - chemin de repli sans la lib.
+        return False
+
+
+def tsa_url_configuree():
+    """XGED5 — URL de la TSA (RFC 3161) configurée, ou '' (no-op).
+
+    KEY-GATED (mirroir `esign_active`/`embedding_enabled`) : sans
+    `settings.GED_TSA_URL`, l'horodatage qualifié est un no-op — le sceau
+    PAdES reste posé (si pyHanko est disponible) mais SANS horodatage TSA."""
+    from django.conf import settings
+    return (getattr(settings, 'GED_TSA_URL', '') or '').strip()
+
+
+def _certificat_societe_pour_scellement(company):
+    """XGED5 — Résout le SIGNATAIRE pyHanko (certificat + clé) à utiliser pour
+    sceller les PDF signés d'une société (PAdES).
+
+    POINT D'INTÉGRATION — squelette isolé, JAMAIS exécuté tant qu'aucune
+    source de certificat concrète n'est câblée : par défaut aucun certificat
+    par société n'est provisionné automatiquement (une clé privée persistée
+    en base sans HSM/coffre dédié serait une régression de sécurité qu'on ne
+    prend pas ici sans l'accord du founder). Une intégration future posera un
+    `settings.GED_PADES_CERT_PATH`/`GED_PADES_KEY_PATH` par société (ou un
+    provider HSM) et cette fonction chargera `signers.SimpleSigner.load(...)`
+    depuis cette source — l'appelant (`sceller_pdf`) n'aura pas à changer.
+
+    Renvoie un objet signataire pyHanko, ou None (dégrade en no-op, comme
+    `esign_active()`/`_default_partage_token` sans provider câblé)."""
+    from django.conf import settings
+
+    if not _pades_signer_disponible():
+        return None
+    cert_path = getattr(settings, 'GED_PADES_CERT_PATH', '')
+    key_path = getattr(settings, 'GED_PADES_KEY_PATH', '')
+    if not cert_path or not key_path:
+        return None
+    try:  # pragma: no cover - dépend d'un certificat réel non provisionné.
+        from pyhanko.sign import signers
+        return signers.SimpleSigner.load(
+            key_file=key_path, cert_file=cert_path, ca_chain_files=())
+    except Exception:  # pragma: no cover - défensif.
+        return None
+
+
+def sceller_pdf(pdf_bytes, *, company=None):
+    """XGED5 — Scelle CRYPTOGRAPHIQUEMENT un PDF signé (PAdES, via pyHanko).
+
+    Import PARESSEUX et GARDÉ (même motif que `_watermark_pdf` GED21) : sans
+    pyHanko installé, dégrade proprement en renvoyant le PDF INCHANGÉ (le flux
+    XGED4 reste intact — aucune régression, aucun blocage). Avec pyHanko
+    disponible ET un certificat de société exploitable, appose une signature
+    numérique PAdES vérifiable dans n'importe quel lecteur PDF conforme ; toute
+    modification ultérieure du fichier invalide le sceau.
+
+    Si `tsa_url_configuree()` renvoie une URL, un horodatage RFC 3161 est
+    demandé à cette TSA et inclus dans la signature (prépare l'« horodatage »
+    loi 43-20) — sinon le sceau est posé SANS horodatage TSA (no-op sur ce
+    volet uniquement, jamais bloquant).
+
+    Renvoie `(out_bytes, scelle)` où `scelle` est False si la lib est absente,
+    si aucun certificat n'est exploitable, ou si le scellement a échoué pour
+    toute autre raison (best-effort total — ne lève JAMAIS)."""
+    if not _pades_signer_disponible():
+        return pdf_bytes, False
+    try:
+        signataire = _certificat_societe_pour_scellement(company)
+        if signataire is None:
+            return pdf_bytes, False
+        from io import BytesIO
+
+        from pyhanko.pdf_utils.incremental_writer import IncrementalPdfFileWriter
+        from pyhanko.sign import PdfSignatureMetadata, signers as pyhanko_signers
+
+        timestamper = None
+        tsa_url = tsa_url_configuree()
+        if tsa_url:
+            from pyhanko.sign.timestamps import HTTPTimeStamper
+            timestamper = HTTPTimeStamper(tsa_url)
+
+        writer = IncrementalPdfFileWriter(BytesIO(pdf_bytes))
+        out = pyhanko_signers.sign_pdf(
+            writer,
+            PdfSignatureMetadata(field_name='TaqinorSeal'),
+            signer=signataire,
+            timestamper=timestamper,
+        )
+        return out.getvalue(), True
+    except Exception:  # pragma: no cover - robustesse : jamais bloquer XGED4.
+        return pdf_bytes, False
 
 
 # ── GED35 — Journal d'audit d'accès aux documents (lectures) ─────────────────

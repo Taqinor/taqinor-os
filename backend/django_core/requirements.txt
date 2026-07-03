@@ -69,3 +69,10 @@ pyotp==2.10.0
 # backend/django_core/.importlinter via the `lint-imports` CI step (no cycles
 # between core domain models; the `core` app stays a base foundation layer).
 import-linter==2.11
+
+# XGED5 — PAdES cryptographic sealing of signed GED PDFs (open-source, free).
+# Imported function-locally + guarded in apps/ged/services.py: without the
+# lib installed the sealing step degrades cleanly to a no-op (XGED4's flow
+# stays intact). RFC 3161 timestamp support (pyhanko also ships the TSA
+# client) is key-gated via settings.GED_TSA_URL — no-op without it.
+pyHanko==0.28.0
