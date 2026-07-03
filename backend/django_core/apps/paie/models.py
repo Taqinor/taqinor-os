@@ -812,6 +812,25 @@ class ElementVariable(models.Model):
     # solde reste géré par RH). Ignoré hors absence.
     deduit_solde = models.BooleanField(
         default=False, verbose_name='Déduit du solde de congés')
+    # XPAI14 — Catégorie d'un arrêt CNSS (utilisée uniquement quand
+    # ``type == TYPE_ABSENCE``). ``aucune`` (défaut) = absence ordinaire
+    # (comportement historique inchangé). ``maladie``/``maternite`` marquent
+    # un arrêt indemnisé par la CNSS : les jours sont neutralisés côté
+    # salaire ET cotisations (comme toute absence ``remunere=False`` déduite
+    # du salaire proraté), et déclenchent l'attestation de salaire CNSS
+    # (dossier IJ, ``builders.render_attestation_ij_cnss_pdf``).
+    ABSENCE_AUCUNE = 'aucune'
+    ABSENCE_MALADIE_CNSS = 'maladie'
+    ABSENCE_MATERNITE_CNSS = 'maternite'
+    CATEGORIE_ABSENCE_CHOICES = [
+        (ABSENCE_AUCUNE, 'Absence ordinaire'),
+        (ABSENCE_MALADIE_CNSS, 'Arrêt CNSS — maladie'),
+        (ABSENCE_MATERNITE_CNSS, 'Arrêt CNSS — maternité'),
+    ]
+    categorie_absence = models.CharField(
+        max_length=10, choices=CATEGORIE_ABSENCE_CHOICES,
+        default=ABSENCE_AUCUNE, blank=True,
+        verbose_name='Catégorie d\'absence')
     source = models.CharField(
         max_length=10, choices=SOURCE_CHOICES, default=SOURCE_MANUEL,
         verbose_name='Source')

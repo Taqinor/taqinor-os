@@ -554,6 +554,58 @@ def calculer_salaire_base_periode(profil, periode, elements=None):
     return _q(salaire_base)
 
 
+# ── XPAI14 — Indemnités journalières CNSS (maladie/maternité) ──────────────
+
+LIBELLES_ARRET_CNSS = {
+    'maladie': 'arrêt maladie',
+    'maternite': 'arrêt maternité',
+}
+
+
+def arrets_cnss_periode(profil, periode, *, elements=None):
+    """Éléments d'arrêt CNSS (maladie/maternité) d'un profil/période (XPAI14).
+
+    Filtre les ``ElementVariable`` ``TYPE_ABSENCE`` dont
+    ``categorie_absence`` est ``maladie``/``maternite``. Lecture seule.
+    Renvoie une liste de dicts ``{'categorie', 'jours', 'remunere'}`` (un par
+    élément — plusieurs arrêts possibles dans le mois).
+    """
+    from .models import ElementVariable
+
+    if elements is None:
+        elements = list(
+            ElementVariable.objects.filter(periode=periode, profil=profil))
+    return [
+        {
+            'categorie': el.categorie_absence,
+            'jours': Decimal(el.quantite or 0),
+            'remunere': bool(el.remunere),
+        }
+        for el in elements
+        if el.type == ElementVariable.TYPE_ABSENCE
+        and el.categorie_absence in LIBELLES_ARRET_CNSS
+    ]
+
+
+def attestation_salaire_ij_cnss(profil, periode):
+    """Prépare le contexte de l'attestation de salaire IJ CNSS (XPAI14).
+
+    Agrège les arrêts CNSS de la période (total jours, catégorie dominante)
+    et le brut de RÉFÉRENCE (salaire de base du profil, non proraté — base
+    du calcul IJ CNSS). Lecture seule. Renvoie ``{'jours_arret',
+    'type_arret_libelle', 'brut_reference'}`` — ``jours_arret=0`` si aucun
+    arrêt CNSS sur la période.
+    """
+    arrets = arrets_cnss_periode(profil, periode)
+    total_jours = sum((a['jours'] for a in arrets), Decimal('0'))
+    categorie = arrets[0]['categorie'] if arrets else 'maladie'
+    return {
+        'jours_arret': total_jours,
+        'type_arret_libelle': LIBELLES_ARRET_CNSS.get(categorie, 'maladie'),
+        'brut_reference': _q(Decimal(profil.salaire_base or 0)),
+    }
+
+
 # ── PAIE15 — Prime d'ancienneté ───────────────────────────────────────────
 
 def taux_anciennete(parametre, annees):

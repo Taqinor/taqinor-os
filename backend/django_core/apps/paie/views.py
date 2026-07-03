@@ -58,6 +58,7 @@ from .serializers import (
 )
 from .services import (
     TransitionPeriodeInterdite,
+    attestation_salaire_ij_cnss,
     calculer_bulletin,
     changer_statut,
     cloturer_periode_paie,
@@ -211,11 +212,13 @@ class ProfilPaieViewSet(_PaieBaseViewSet):
 
     @action(detail=True, methods=['get'], url_path='attestation')
     def attestation(self, request, pk=None):
-        """Attestation salaire/travail/domiciliation au format PDF (PAIE34).
+        """Attestation salaire/travail/domiciliation/IJ CNSS PDF (PAIE34).
 
-        Paramètre de requête ``type`` ∈ {salaire, travail, domiciliation}
-        (défaut ``travail``). L'attestation de salaire s'appuie sur le dernier
-        bulletin VALIDÉ du profil.
+        Paramètre de requête ``type`` ∈ {salaire, travail, domiciliation,
+        attestation_ij_cnss} (défaut ``travail``). L'attestation de salaire
+        s'appuie sur le dernier bulletin VALIDÉ du profil. XPAI14 —
+        ``attestation_ij_cnss`` exige le paramètre ``periode`` (id) : agrège
+        les arrêts CNSS de cette période.
         """
         profil = self.get_object()
         type_att = request.query_params.get('type', builders.TYPE_TRAVAIL)
@@ -226,9 +229,25 @@ class ProfilPaieViewSet(_PaieBaseViewSet):
             .order_by('-periode__annee', '-periode__mois')
             .first()
         )
+        arret_cnss = None
+        if type_att == builders.TYPE_ATTESTATION_IJ_CNSS:
+            periode_id = request.query_params.get('periode')
+            if not periode_id:
+                return Response(
+                    {'detail': 'Paramètre "periode" requis pour '
+                     'attestation_ij_cnss.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            try:
+                periode = PeriodePaie.objects.get(
+                    pk=periode_id, company=request.user.company)
+            except (PeriodePaie.DoesNotExist, ValueError):
+                return Response(
+                    {'detail': 'Période inconnue.'},
+                    status=status.HTTP_404_NOT_FOUND)
+            arret_cnss = attestation_salaire_ij_cnss(profil, periode)
         try:
             pdf = builders.render_attestation_pdf(
-                type_att, profil, bulletin=bulletin)
+                type_att, profil, bulletin=bulletin, arret_cnss=arret_cnss)
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)

@@ -306,6 +306,9 @@ class ElementVariableSerializer(serializers.ModelSerializer):
             'quantite', 'categorie_hs', 'montant',
             # PAIE26 — drapeaux d'absence (rémunérée / décompte du solde).
             'remunere', 'deduit_solde',
+            # XPAI14 — catégorie d'absence : aucune/maladie/maternite (arrêt
+            # CNSS, ignoré hors absence).
+            'categorie_absence',
             'source', 'date_creation',
         ]
         read_only_fields = ['date_creation']
