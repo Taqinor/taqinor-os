@@ -31,8 +31,24 @@ export { CAPTURE_STRINGS_FR };
 
 /** `initRoofToolPro8`/`bootCaptureOnly` acceptent un `opts.strings` optionnel sans
  *  modifier `types.ts` (hors périmètre WJ41) : on élargit le type localement par
- *  intersection. Absent → CAPTURE_STRINGS_FR (rendu FR inchangé). */
-export type CaptureOptions = InitOptions & { strings?: CaptureStrings };
+ *  intersection. Absent → CAPTURE_STRINGS_FR (rendu FR inchangé).
+ *
+ * WJ62 — `opts.dir` (optionnel, absent → 'ltr', comportement inchangé) : la page
+ * AR le passe 'rtl' pour déplacer les contrôles carte (géolocalisation, zoom) en
+ * haut-à-gauche — en RTL le haut-DROIT est déjà occupé visuellement par le sens
+ * de lecture/les boutons de langue, et MapLibre ne fait pas ce choix seul.
+ * `opts.onMapError` (optionnel) : notifie la page d'une panne carte SURVENUE EN
+ * COURS DE SESSION (tuiles/style — après un premier rendu réussi), pour révéler
+ * le panneau de repli adresse existant au lieu d'un simple `console.warn` muet. */
+export type CaptureOptions = InitOptions & {
+  strings?: CaptureStrings;
+  dir?: 'ltr' | 'rtl';
+  onMapError?: () => void;
+  /** WJ62 — message affiché dans le bandeau de statut quand la géolocalisation
+   *  est refusée/indisponible (`GeolocationPositionError`). Localisé par la page
+   *  (pas dans `CaptureStrings`, hors périmètre mapDraw.ts) ; absent → replis FR. */
+  geolocateErrorMsg?: string;
+};
 
 /**
  * Démarre le mode capture client. Construit la carte + le géocodeur + le pin/tracé,
@@ -98,23 +114,46 @@ export function bootCaptureOnly(opts: CaptureOptions): void {
   });
   opts.onReady?.();
 
+  // WJ62 — une panne carte SURVENUE EN COURS DE SESSION (tuiles/style, après un
+  // premier rendu réussi) laissait le visiteur bloqué sur une carte figée sans
+  // aucun signal ; on la rend VISIBLE en révélant le panneau de repli adresse
+  // déjà présent sur la page (même mécanisme que l'échec de clé au boot), au
+  // lieu d'un simple `console.warn` muet. `hasRenderedOnce` distingue une
+  // première erreur transitoire (avant le tout premier rendu, où `load` suivra
+  // souvent quand même) d'une VRAIE panne en session.
+  let hasRenderedOnce = false;
+  map.once('load', () => {
+    hasRenderedOnce = true;
+  });
   map.on('error', (e: unknown) => {
     const msg = (e as { error?: { message?: string } } | undefined)?.error?.message ?? e;
-    console.warn('[capture-toit] erreur carte (non bloquante) :', msg);
+    console.warn('[capture-toit] erreur carte :', msg);
+    if (hasRenderedOnce) opts.onMapError?.();
   });
-  map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), 'top-right');
+  // WJ62 — sous RTL, les contrôles (zoom, géolocalisation) passent en haut-à-
+  // gauche : en haut-à-droite ils chevauchent visuellement le sens de lecture
+  // RTL et les boutons de langue déjà présents dans cet angle sur la page AR.
+  const controlCorner = opts.dir === 'rtl' ? 'top-left' : 'top-right';
+  map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), controlCorner);
   const geolocate = new maplibregl.GeolocateControl({
     positionOptions: { enableHighAccuracy: true },
     trackUserLocation: false,
     showUserLocation: true,
   });
-  map.addControl(geolocate, 'top-right');
+  map.addControl(geolocate, controlCorner);
   geolocate.on('geolocate', (e: { coords?: { longitude: number; latitude: number } }) => {
     const c = e?.coords;
     if (!c) return;
     const target = { center: [c.longitude, c.latitude] as LngLat, zoom: 19, pitch: 0 } as const;
     if (opts.reducedMotion) map.jumpTo(target);
     else map.flyTo({ ...target, essential: true });
+  });
+  // WJ62 — un refus/échec de géolocalisation (permission refusée, indisponible,
+  // délai dépassé) était un silence total : le bandeau de statut annonce
+  // maintenant clairement l'échec + invite à chercher l'adresse ou poser le
+  // repère à la main (le reste du parcours reste inchangé et non bloqué).
+  geolocate.on('error', () => {
+    setStatus(opts.geolocateErrorMsg ?? 'Localisation refusée — cherchez votre adresse ou posez le repère à la main.');
   });
   map.doubleClickZoom.disable();
 
