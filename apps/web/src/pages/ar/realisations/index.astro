@@ -6,18 +6,25 @@
  * (untouched, Latin digits); translated card summaries + alts from
  * `caseStudyBySlug`. Layout auto-sets lang=ar + dir=rtl. Internal links via
  * localizeNavHref. FR untouched.
+ *
+ * W308 — ported the lightbox (W178) + hover-zoom (W179) + case-study nudge
+ * (W204) that the FR index already has. W289 — SEO-framed intro + ItemList
+ * schema for the measured/visitable pillar, ported from FR.
  */
 import Layout from '../../../layouts/Layout.astro';
 import V2Enhance from '../../../components/V2Enhance.astro';
 import Article33Ribbon from '../../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../../components/Breadcrumb.astro';
 import Picture from '../../../components/Picture.astro';
+import PhotoCaption from '../../../components/PhotoCaption.astro';
+import VideoChantier from '../../../components/VideoChantier.astro';
 import CtaBand from '../../../components/CtaBand.astro';
 import StickyCta from '../../../components/StickyCta.astro';
-import { REALISATIONS } from '../../../lib/realisations';
+import { REALISATIONS, standardCaption } from '../../../lib/realisations';
 import { caseStudyBySlug } from '../../../lib/caseStudies';
 import { getLocaleFromPath } from '../../../i18n/utils';
 import { localizeNavHref } from '../../../i18n/pages';
+import { NAP } from '../../../lib/nap';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
@@ -26,8 +33,25 @@ const total = REALISATIONS.reduce((s, r) => s + r.kwcNum, 0);
 // Chiffres en latin partout (intégrité W67) : on garde le format en-US.
 const totalLabel = total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' kWc';
 const villesCount = new Set(REALISATIONS.map((r) => r.ville)).size;
+const mesureesCount = REALISATIONS.filter((r) => r.production).length;
 
 const altOf = (r: typeof REALISATIONS[number]) => caseStudyBySlug(r.slug, locale).alts[r.photos[0].name] ?? r.photos[0].alt;
+
+// W289 — ItemList schema, same shape as FR, Arabic name/description.
+const itemListJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'ItemList',
+  name: 'تركيبات تاكينور الشمسية — قابلة للزيارة، إنتاج مقيس',
+  description:
+    'التركيبات الشمسية التي ركّبتها تاكينور فعلاً، قابلة للزيارة عند الطلب، مع إنتاج مُتابَع على Deye Cloud حين يكون مقيساً.',
+  itemListElement: REALISATIONS.map((r, i) => ({
+    '@type': 'ListItem',
+    position: i + 1,
+    url: new URL(L(`/realisations/${r.slug}`), Astro.site).href,
+    name: `تركيب شمسي ${r.kwc} في ${r.ville} — المرجع ${r.ref}`,
+  })),
+  provider: { '@type': 'LocalBusiness', name: NAP.name, url: NAP.url },
+};
 ---
 
 <Layout
@@ -35,6 +59,7 @@ const altOf = (r: typeof REALISATIONS[number]) => caseStudyBySlug(r.slug, locale
   description="التركيبات الشمسية التي ركّبتها تاكينور وقاستها فعلاً: فيلات بالدار البيضاء والجديدة والنواصر، القدرة، الإنتاج المُتابَع على Deye Cloud والعتاد فوق السطح. دراسات حالة مفصّلة."
   ogSlug="accueil"
 >
+  <script type="application/ld+json" set:html={JSON.stringify(itemListJsonLd)} />
   <div class="v2">
     <V2Enhance />
     <Article33Ribbon />
@@ -67,26 +92,291 @@ const altOf = (r: typeof REALISATIONS[number]) => caseStudyBySlug(r.slug, locale
       </div>
     </section>
 
+    <!-- W289 — ركيزة قابلة للفهرسة: تركيبات قابلة للزيارة، إنتاج مقيس -->
+    <section class="border-y border-white/10 px-4 py-14 sm:py-16">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">ما يميّز إنجازاتنا</p>
+        <h2 class="display v2-section-title mt-5 text-white">تركيبات قابلة للزيارة، إنتاج مقيس</h2>
+        <p class="v2-lead mt-5 text-lune-soft">
+          قبل أي عرض ثمن، يمكن تنظيم زيارة: مشاهدة تركيبة تاكينور وهي تعمل، وطرح أسئلة على زبون حالي،
+          ومقارنة سطح بسطحك. {mesureesCount} من أصل {REALISATIONS.length} أوراش معروضة أدناه تحمل إنتاجاً
+          مُتابَعاً باستمرار على Deye Cloud — ليس تقديراً تجارياً، بل العدّاد نفسه.
+        </p>
+        <p class="mt-4 text-lune-soft">
+          هذا هو الفرق بين وعد وإثبات: القدرة المُركَّبة والعتاد المُثبَّت، وحين يُتابَع، الإنتاج
+          الحقيقي، تُنشَر ورشاً بورش، دون تقريب ودون رقم غائب يُحوَّل إلى تقدير.
+        </p>
+      </div>
+    </section>
+
+    <!-- W308 : معرض بمكبّر صور — data-lightbox-gallery يحدّد المجموعة -->
     <section class="px-4 pb-24 sm:pb-32">
-      <div class="mx-auto grid max-w-6xl gap-6 md:grid-cols-2 lg:grid-cols-3" data-stagger>
+      <div class="mx-auto grid max-w-6xl gap-6 md:grid-cols-2 lg:grid-cols-3" data-stagger data-lightbox-gallery>
         {REALISATIONS.map((r, i) => (
-          <a href={L(`/realisations/${r.slug}`)} class="v2-rise cine-card group relative block overflow-hidden" style={`--v2-i:${i}`}>
-            <Picture name={r.photos[0].name} alt={altOf(r)} widths={r.photos[0].widths} ratio={r.photos[0].ratio}
-              sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
-              class="aspect-[3/2] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
-            <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-5 pb-4 pt-16">
-              <span class="tech-label block text-lune">{r.ville} · {r.date}</span>
-              <span class="fig mt-1 block text-2xl text-white">{r.kwc}{r.production ? ` · ${r.production}` : ''}</span>
-              <span class="mt-1 block text-xs text-lune">{r.panneaux}</span>
-              <span class="mt-2 inline-block border-b-2 border-azur-200/60 pb-0.5 text-sm font-bold text-white">شاهد دراسة الحالة <span class="inline-block rtl:-scale-x-100">→</span></span>
-            </div>
-          </a>
+          <div class="v2-rise relative" style={`--v2-i:${i}`}>
+            <button
+              type="button"
+              class="photo-card-btn cine-card group relative block w-full overflow-hidden text-left"
+              data-lightbox-trigger
+              data-lightbox-src={`/photos/${r.photos[0].name}-${Math.max(...r.photos[0].widths)}.webp`}
+              data-lightbox-alt={altOf(r)}
+              data-lightbox-label={`${r.ville} · ${r.kwc} · ${r.date}`}
+              aria-label={`تكبير الصورة: ${altOf(r)}`}
+            >
+              <Picture
+                name={r.photos[0].name}
+                alt={altOf(r)}
+                widths={r.photos[0].widths}
+                ratio={3 / 2}
+                sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
+                style={(r.photos[0] as any).objectPosition ? `object-position:${(r.photos[0] as any).objectPosition}` : undefined}
+                class="photo-card-img aspect-[3/2] w-full object-cover"
+              />
+              <PhotoCaption
+                caption={standardCaption(r, 'ar')}
+                detail={r.panneaux}
+              />
+            </button>
+            <a
+              href={L(`/realisations/${r.slug}`)}
+              class="group mt-2 inline-flex items-center gap-1 border-b-2 border-azur-200/60 pb-0.5 text-sm font-bold text-white transition-colors hover:text-azur-200"
+            >
+              شاهد دراسة الحالة <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:-translate-x-1 inline-block rtl:-scale-x-100" aria-hidden="true">→</span>
+            </a>
+          </div>
         ))}
       </div>
     </section>
+
+    <!-- W281 — فيلم ورشة حقيقي، أسفل معرض ركيزة الإثبات المخصصة -->
+    <VideoChantier />
 
     <CtaBand title="دراسة الحالة المقبلة قد تكون سطحك." href={L('/devis/mon-toit')} />
 
     <StickyCta />
   </div>
+
+  <!-- W308 : مكبّر صور مع دعم الوصول (JS خالص، ESC/أسهم، فخ تركيز، aria) -->
+  <div
+    id="tq-lightbox"
+    role="dialog"
+    aria-modal="true"
+    aria-label="صورة مكبّرة"
+    class="lightbox-overlay"
+    hidden
+  >
+    <button type="button" id="tq-lb-close" class="lightbox-close" aria-label="إغلاق (Échap)">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+        <path d="M18 6 6 18M6 6l12 12"/>
+      </svg>
+    </button>
+    <button type="button" id="tq-lb-prev" class="lightbox-arrow lightbox-arrow--prev" aria-label="الصورة السابقة (←)">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+        <path d="m15 18-6-6 6-6"/>
+      </svg>
+    </button>
+    <div class="lightbox-img-wrap">
+      <img id="tq-lb-img" src="" alt="" class="lightbox-img" />
+      <p id="tq-lb-label" class="lightbox-label"></p>
+    </div>
+    <button type="button" id="tq-lb-next" class="lightbox-arrow lightbox-arrow--next" aria-label="الصورة التالية (→)">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+        <path d="m9 18 6-6-6-6"/>
+      </svg>
+    </button>
+  </div>
 </Layout>
+
+<style>
+  /* W308 — تكبير عند التحويم موحّد 1.04، آمن مع تفضيل تقليل الحركة */
+  @media (prefers-reduced-motion: no-preference) {
+    .photo-card-img {
+      transition: transform 700ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    }
+    .photo-card-btn:hover .photo-card-img,
+    .photo-card-btn:focus-visible .photo-card-img {
+      transform: scale(1.04);
+    }
+  }
+
+  /* W308 — مكبّر الصور */
+  .lightbox-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgb(7 11 29 / 0.94);
+    padding: 1rem;
+  }
+  .lightbox-overlay[hidden] {
+    display: none;
+  }
+  .lightbox-img-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    max-width: min(90vw, 1200px);
+    gap: 0.75rem;
+  }
+  .lightbox-img {
+    display: block;
+    max-width: 100%;
+    max-height: 80vh;
+    object-fit: contain;
+    border: 1px solid rgb(255 255 255 / 0.12);
+    box-shadow: 0 32px 80px -20px rgb(0 0 0 / 0.8);
+  }
+  .lightbox-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--color-lune-soft);
+    text-align: center;
+  }
+  .lightbox-close {
+    position: fixed;
+    top: 1.25rem;
+    right: 1.25rem;
+    z-index: 9001;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    color: var(--color-lune);
+    border: 1px solid rgb(255 255 255 / 0.2);
+    background: rgb(7 11 29 / 0.7);
+    cursor: pointer;
+    transition: color 200ms, border-color 200ms;
+  }
+  .lightbox-close:hover,
+  .lightbox-close:focus-visible {
+    color: var(--color-brass-300);
+    border-color: var(--color-brass-400);
+    outline: none;
+  }
+  .lightbox-arrow {
+    position: fixed;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 9001;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    color: var(--color-lune);
+    border: 1px solid rgb(255 255 255 / 0.2);
+    background: rgb(7 11 29 / 0.7);
+    cursor: pointer;
+    transition: color 200ms, border-color 200ms;
+  }
+  .lightbox-arrow--prev { left: 1rem; }
+  .lightbox-arrow--next { right: 1rem; }
+  .lightbox-arrow:hover,
+  .lightbox-arrow:focus-visible {
+    color: var(--color-brass-300);
+    border-color: var(--color-brass-400);
+    outline: none;
+  }
+</style>
+
+<script>
+  // W308 — مكبّر صور مع دعم الوصول، JS خالص، فخ تركيز، لوحة مفاتيح ESC/أسهم
+  interface LbItem {
+    src: string;
+    alt: string;
+    label: string;
+  }
+
+  const overlay = document.getElementById('tq-lightbox') as HTMLElement | null;
+  const imgEl = document.getElementById('tq-lb-img') as HTMLImageElement | null;
+  const labelEl = document.getElementById('tq-lb-label') as HTMLElement | null;
+  const closeBtn = document.getElementById('tq-lb-close') as HTMLButtonElement | null;
+  const prevBtn = document.getElementById('tq-lb-prev') as HTMLButtonElement | null;
+  const nextBtn = document.getElementById('tq-lb-next') as HTMLButtonElement | null;
+
+  if (!overlay || !imgEl || !labelEl || !closeBtn || !prevBtn || !nextBtn) {
+    // Graceful: lightbox elements not found
+  } else {
+    let items: LbItem[] = [];
+    let current = 0;
+    let lastFocus: HTMLElement | null = null;
+
+    function show(idx: number) {
+      if (!items.length) return;
+      current = ((idx % items.length) + items.length) % items.length;
+      imgEl!.src = items[current].src;
+      imgEl!.alt = items[current].alt;
+      labelEl!.textContent = items[current].label;
+      overlay!.hidden = false;
+      overlay!.removeAttribute('hidden');
+      const multi = items.length > 1;
+      prevBtn!.style.display = multi ? '' : 'none';
+      nextBtn!.style.display = multi ? '' : 'none';
+      closeBtn!.focus();
+      document.body.style.overflow = 'hidden';
+    }
+
+    function close() {
+      overlay!.hidden = true;
+      document.body.style.overflow = '';
+      lastFocus?.focus();
+    }
+
+    function initTriggers() {
+      const triggers = document.querySelectorAll<HTMLElement>('[data-lightbox-trigger]');
+      items = Array.from(triggers).map((t) => ({
+        src: t.dataset.lightboxSrc ?? '',
+        alt: t.dataset.lightboxAlt ?? '',
+        label: t.dataset.lightboxLabel ?? '',
+      }));
+
+      triggers.forEach((t, idx) => {
+        t.addEventListener('click', (e) => {
+          e.preventDefault();
+          lastFocus = t;
+          show(idx);
+        });
+      });
+    }
+
+    closeBtn.addEventListener('click', close);
+    prevBtn.addEventListener('click', () => show(current - 1));
+    nextBtn.addEventListener('click', () => show(current + 1));
+
+    overlay.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Escape') close();
+      if (e.key === 'ArrowLeft') show(current - 1);
+      if (e.key === 'ArrowRight') show(current + 1);
+      if (e.key === 'Tab') {
+        const focusable = Array.from(
+          overlay!.querySelectorAll<HTMLElement>('button, [href], input, [tabindex]:not([tabindex="-1"])')
+        ).filter((el) => !el.hidden && el.offsetParent !== null);
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey) {
+          if (document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else {
+          if (document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
+      }
+    });
+
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) close();
+    });
+
+    initTriggers();
+  }
+</script>

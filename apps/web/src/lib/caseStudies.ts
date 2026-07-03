@@ -80,6 +80,15 @@ export interface CaseStudyContent {
    * lit directement l'alt de `realisations.ts` (rendu inchangé).
    */
   alts: Record<string, string>;
+  /**
+   * W327 — citation client optionnelle (voix du client, pas de l'installateur).
+   * NO-OP tant que WG6 n'a pas fourni de vraie citation : ce champ reste
+   * `undefined` pour les cinq études actuelles et le template n'affiche RIEN
+   * dans ce cas (ni guillemets vides, ni placeholder « bientôt »). Quand WG6
+   * livre un vrai avis, il est saisi ici, texte + prénom uniquement (jamais de
+   * nom de famille ni de coordonnées), par slug et par locale.
+   */
+  clientQuote?: { text: string; author: string };
 }
 
 /** Une entrée étude = la même structure traduite dans les trois locales. */

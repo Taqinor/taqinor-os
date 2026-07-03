@@ -6,12 +6,18 @@
  * production card is OMITTED when measured production is not published (e.g.
  * Nouaceur). Prose from `caseStudyBySlug(slug, 'ar')`. Layout auto-sets lang=ar
  * + dir=rtl. Internal links via localizeNavHref. FR untouched.
+ *
+ * W309 — ported the phased Avant/Pendant/Après (before/during/after) gallery
+ * (W184) + the accessible lightbox (W178) that the FR case study already has;
+ * the phase data already lives in realisations.ts, this page just never
+ * rendered it.
  */
 import Layout from '../../../layouts/Layout.astro';
 import V2Enhance from '../../../components/V2Enhance.astro';
 import Article33Ribbon from '../../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../../components/Breadcrumb.astro';
 import Picture from '../../../components/Picture.astro';
+import PhotoCaption from '../../../components/PhotoCaption.astro';
 import CtaBand from '../../../components/CtaBand.astro';
 import StickyCta from '../../../components/StickyCta.astro';
 import { REALISATIONS, CITIES } from '../../../lib/realisations';
@@ -75,6 +81,18 @@ const articleJsonLd = {
   publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
   mainEntityOfPage: new URL(Astro.url.pathname, Astro.site).href,
 };
+
+// W309 — ثنائية قبل/أثناء/بعد: الصور التي تحمل `phase` محدَّدة
+const phasedPhotos = r.photos.filter((p) => p.phase);
+const phaseLabels: Record<string, string> = {
+  before: 'قبل',
+  during: 'أثناء',
+  after: 'بعد',
+};
+const hasDiptych = phasedPhotos.length >= 2;
+
+// W309 — مكبّر الصور: كل صور المعرض (rest)، الفهرس يبدأ من 0
+const galleryPhotos = rest;
 ---
 
 <Layout title={title} description={description} ogSlug={ogSlug}>
@@ -141,6 +159,47 @@ const articleJsonLd = {
       <p class="v2-lead mt-4 text-lune-soft">{cs.result}</p>
     </section>
 
+    <!-- W309 — ثنائية قبل/أثناء/بعد (حين تتوفر البيانات) -->
+    {hasDiptych && (
+      <section class="border-t border-white/10 px-4 py-20 sm:py-24">
+        <div class="mx-auto max-w-6xl">
+          <p class="tech-label v2-kicker rule-brass text-lune">الورش على مراحل</p>
+          <h2 class="display v2-section-title mt-5 text-white">قبل · أثناء · بعد</h2>
+          <div class="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
+            {phasedPhotos.map((p, i) => (
+              <figure
+                class="v2-rise phase-card cine-card group relative overflow-hidden"
+                style={`--v2-i:${i}`}
+                data-phase={p.phase}
+              >
+                <button
+                  type="button"
+                  class="phase-btn block w-full overflow-hidden text-left"
+                  data-lightbox-trigger-slug
+                  data-lightbox-src={`/photos/${p.name}-${Math.max(...p.widths)}.webp`}
+                  data-lightbox-alt={cs.alts[p.name] ?? p.alt}
+                  data-lightbox-label={`${phaseLabels[p.phase!] ?? p.phase} — ${cs.alts[p.name] ?? p.alt}`}
+                  aria-label={`تكبير: ${cs.alts[p.name] ?? p.alt}`}
+                >
+                  <Picture
+                    name={p.name}
+                    alt={cs.alts[p.name] ?? p.alt}
+                    widths={p.widths}
+                    ratio={p.ratio}
+                    sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+                    style={p.objectPosition ? `object-position:${p.objectPosition}` : undefined}
+                    class="slug-photo-img w-full object-cover"
+                  />
+                  <PhotoCaption caption={phaseLabels[p.phase!] ?? p.phase} />
+                </button>
+                <figcaption class="sr-only">{cs.alts[p.name] ?? p.alt}</figcaption>
+              </figure>
+            ))}
+          </div>
+        </div>
+      </section>
+    )}
+
     <!-- العتاد المُركَّب -->
     <section class="border-t border-white/10 px-4 py-20 sm:py-24">
       <div class="mx-auto max-w-3xl">
@@ -162,17 +221,38 @@ const articleJsonLd = {
       </div>
     </section>
 
-    <!-- معرض الورش -->
-    {rest.length > 0 && (
+    <!-- W309 — معرض الورش: مكبّر صور + PhotoCaption + تكبير موحّد عند التحويم -->
+    {galleryPhotos.length > 0 && (
       <section class="px-4 py-20 sm:py-24">
         <div class="mx-auto max-w-6xl">
           <p class="tech-label v2-kicker rule-brass text-lune">من الملف</p>
           <h2 class="display v2-section-title mt-5 text-white">الورش، كما هو</h2>
-          <div class="mt-10 grid gap-5 sm:grid-cols-2" data-stagger>
-            {rest.map((p, i) => (
-              <figure class="v2-rise cine-card group relative overflow-hidden" style={`--v2-i:${i}`}>
-                <Picture name={p.name} alt={cs.alts[p.name] ?? p.alt} widths={p.widths} ratio={p.ratio} sizes="(min-width: 640px) 50vw, 100vw"
-                  class="w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
+          <div class="mt-10 grid gap-5 sm:grid-cols-2" data-stagger data-lightbox-gallery-slug>
+            {galleryPhotos.map((p, i) => (
+              <figure
+                class="v2-rise cine-card group relative overflow-hidden"
+                style={`--v2-i:${i}`}
+              >
+                <button
+                  type="button"
+                  class="slug-gallery-btn block w-full overflow-hidden text-left"
+                  data-lightbox-trigger-slug
+                  data-lightbox-src={`/photos/${p.name}-${Math.max(...p.widths)}.webp`}
+                  data-lightbox-alt={cs.alts[p.name] ?? p.alt}
+                  data-lightbox-label={cs.alts[p.name] ?? p.alt}
+                  aria-label={`تكبير: ${cs.alts[p.name] ?? p.alt}`}
+                >
+                  <Picture
+                    name={p.name}
+                    alt={cs.alts[p.name] ?? p.alt}
+                    widths={p.widths}
+                    ratio={p.ratio}
+                    sizes="(min-width: 640px) 50vw, 100vw"
+                    style={p.objectPosition ? `object-position:${p.objectPosition}` : undefined}
+                    class="slug-photo-img w-full object-cover"
+                  />
+                </button>
+                <figcaption class="sr-only">{cs.alts[p.name] ?? p.alt}</figcaption>
               </figure>
             ))}
           </div>
@@ -201,4 +281,224 @@ const articleJsonLd = {
 
     <StickyCta />
   </div>
+
+  <!-- W309 — مكبّر صور مع دعم الوصول لصور المعرض والثنائية -->
+  <div
+    id="tq-lightbox-slug"
+    role="dialog"
+    aria-modal="true"
+    aria-label="صورة مكبّرة"
+    class="slug-lightbox-overlay"
+    hidden
+  >
+    <button type="button" id="tq-lb-slug-close" class="slug-lightbox-close" aria-label="إغلاق (Échap)">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+        <path d="M18 6 6 18M6 6l12 12"/>
+      </svg>
+    </button>
+    <button type="button" id="tq-lb-slug-prev" class="slug-lightbox-arrow slug-lightbox-arrow--prev" aria-label="الصورة السابقة (←)">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+        <path d="m15 18-6-6 6-6"/>
+      </svg>
+    </button>
+    <div class="slug-lightbox-img-wrap">
+      <img id="tq-lb-slug-img" src="" alt="" class="slug-lightbox-img" />
+      <p id="tq-lb-slug-label" class="slug-lightbox-label"></p>
+    </div>
+    <button type="button" id="tq-lb-slug-next" class="slug-lightbox-arrow slug-lightbox-arrow--next" aria-label="الصورة التالية (→)">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+        <path d="m9 18 6-6-6-6"/>
+      </svg>
+    </button>
+  </div>
 </Layout>
+
+<style>
+  /* W309 — تكبير عند التحويم موحّد 1.04، آمن مع تفضيل تقليل الحركة */
+  @media (prefers-reduced-motion: no-preference) {
+    .slug-photo-img {
+      transition: transform 700ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    }
+    .slug-gallery-btn:hover .slug-photo-img,
+    .slug-gallery-btn:focus-visible .slug-photo-img,
+    .phase-btn:hover .slug-photo-img,
+    .phase-btn:focus-visible .slug-photo-img {
+      transform: scale(1.04);
+    }
+  }
+
+  /* W309 — مكبّر الصور */
+  .slug-lightbox-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgb(7 11 29 / 0.94);
+    padding: 1rem;
+  }
+  .slug-lightbox-overlay[hidden] {
+    display: none;
+  }
+  .slug-lightbox-img-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    max-width: min(90vw, 1200px);
+    gap: 0.75rem;
+  }
+  .slug-lightbox-img {
+    display: block;
+    max-width: 100%;
+    max-height: 80vh;
+    object-fit: contain;
+    border: 1px solid rgb(255 255 255 / 0.12);
+    box-shadow: 0 32px 80px -20px rgb(0 0 0 / 0.8);
+  }
+  .slug-lightbox-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--color-lune-soft);
+    text-align: center;
+  }
+  .slug-lightbox-close {
+    position: fixed;
+    top: 1.25rem;
+    right: 1.25rem;
+    z-index: 9001;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    color: var(--color-lune);
+    border: 1px solid rgb(255 255 255 / 0.2);
+    background: rgb(7 11 29 / 0.7);
+    cursor: pointer;
+    transition: color 200ms, border-color 200ms;
+  }
+  .slug-lightbox-close:hover,
+  .slug-lightbox-close:focus-visible {
+    color: var(--color-brass-300);
+    border-color: var(--color-brass-400);
+    outline: none;
+  }
+  .slug-lightbox-arrow {
+    position: fixed;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 9001;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    color: var(--color-lune);
+    border: 1px solid rgb(255 255 255 / 0.2);
+    background: rgb(7 11 29 / 0.7);
+    cursor: pointer;
+    transition: color 200ms, border-color 200ms;
+  }
+  .slug-lightbox-arrow--prev { left: 1rem; }
+  .slug-lightbox-arrow--next { right: 1rem; }
+  .slug-lightbox-arrow:hover,
+  .slug-lightbox-arrow:focus-visible {
+    color: var(--color-brass-300);
+    border-color: var(--color-brass-400);
+    outline: none;
+  }
+</style>
+
+<script>
+  // W309 — مكبّر [slug].astro: المعرض + الثنائية، JS خالص، فخ تركيز
+  interface LbItem {
+    src: string;
+    alt: string;
+    label: string;
+  }
+
+  const overlay = document.getElementById('tq-lightbox-slug') as HTMLElement | null;
+  const imgEl = document.getElementById('tq-lb-slug-img') as HTMLImageElement | null;
+  const labelEl = document.getElementById('tq-lb-slug-label') as HTMLElement | null;
+  const closeBtn = document.getElementById('tq-lb-slug-close') as HTMLButtonElement | null;
+  const prevBtn = document.getElementById('tq-lb-slug-prev') as HTMLButtonElement | null;
+  const nextBtn = document.getElementById('tq-lb-slug-next') as HTMLButtonElement | null;
+
+  if (overlay && imgEl && labelEl && closeBtn && prevBtn && nextBtn) {
+    let items: LbItem[] = [];
+    let current = 0;
+    let lastFocus: HTMLElement | null = null;
+
+    function show(idx: number) {
+      if (!items.length) return;
+      current = ((idx % items.length) + items.length) % items.length;
+      imgEl!.src = items[current].src;
+      imgEl!.alt = items[current].alt;
+      labelEl!.textContent = items[current].label;
+      overlay!.hidden = false;
+      overlay!.removeAttribute('hidden');
+      const multi = items.length > 1;
+      prevBtn!.style.display = multi ? '' : 'none';
+      nextBtn!.style.display = multi ? '' : 'none';
+      closeBtn!.focus();
+      document.body.style.overflow = 'hidden';
+    }
+
+    function close() {
+      overlay!.hidden = true;
+      document.body.style.overflow = '';
+      lastFocus?.focus();
+    }
+
+    // Collect all triggers (gallery + diptych phases combined)
+    const triggers = document.querySelectorAll<HTMLElement>('[data-lightbox-trigger-slug]');
+    items = Array.from(triggers).map((t) => ({
+      src: t.dataset.lightboxSrc ?? '',
+      alt: t.dataset.lightboxAlt ?? '',
+      label: t.dataset.lightboxLabel ?? '',
+    }));
+
+    triggers.forEach((t, idx) => {
+      t.addEventListener('click', () => {
+        lastFocus = t;
+        show(idx);
+      });
+    });
+
+    closeBtn.addEventListener('click', close);
+    prevBtn.addEventListener('click', () => show(current - 1));
+    nextBtn.addEventListener('click', () => show(current + 1));
+
+    overlay.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Escape') close();
+      if (e.key === 'ArrowLeft') show(current - 1);
+      if (e.key === 'ArrowRight') show(current + 1);
+      if (e.key === 'Tab') {
+        const focusable = Array.from(
+          overlay!.querySelectorAll<HTMLElement>('button, [href], [tabindex]:not([tabindex="-1"])')
+        ).filter((el) => !el.hidden && el.offsetParent !== null);
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey) {
+          if (document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else {
+          if (document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
+      }
+    });
+
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) close();
+    });
+  }
+</script>

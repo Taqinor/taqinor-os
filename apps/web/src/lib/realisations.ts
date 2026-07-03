@@ -166,6 +166,35 @@ export const realisationBySlug = (slug: string): Realisation | undefined =>
 export const realisationByRef = (ref: string): Realisation | undefined =>
   REALISATIONS.find((r) => r.ref === ref);
 
+/**
+ * W283 — Standard de légende par étude de cas : « [Ville] — X kWc — installé
+ * en [mois année] — Z kWh mesurés ». Construit UNIQUEMENT à partir de champs
+ * réels de `Realisation` :
+ *   - ville + kwc : toujours présents, toujours affichés.
+ *   - date : le seul repère temporel réellement publié est le mois/année
+ *     d'installation (`r.date`, ex. « avril 2026 ») — aucune durée de
+ *     chantier en jours n'est mesurée nulle part sur le site, donc ce
+ *     segment lit « installé en <mois année> » plutôt qu'un décompte de
+ *     jours inventé.
+ *   - production : uniquement quand `r.production` est renseignée (non
+ *     `null`) ; sinon ce segment est omis intégralement plutôt que réduit à
+ *     un tiret ou un zéro.
+ * Locale-aware (FR par défaut) : seuls les connecteurs sont traduits, aucun
+ * chiffre n'est reformulé (mêmes chiffres latins dans les trois locales).
+ */
+const CAPTION_STR: Record<'fr' | 'en' | 'ar', { installed: string; measured: string }> = {
+  fr: { installed: 'installé en', measured: 'kWh mesurés' },
+  en: { installed: 'installed in', measured: 'kWh measured' },
+  ar: { installed: 'رُكِّبت في', measured: 'kWh مقيسة' },
+};
+
+export const standardCaption = (r: Realisation, locale: 'fr' | 'en' | 'ar' = 'fr'): string => {
+  const s = CAPTION_STR[locale] ?? CAPTION_STR.fr;
+  const parts = [r.ville, r.kwc, `${s.installed} ${r.date}`];
+  if (r.production) parts.push(`${r.production.replace(/\/an$/, '')} ${s.measured}`);
+  return parts.join(' — ');
+};
+
 export interface City {
   slug: string;
   /** Nom de la ville. */
