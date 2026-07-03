@@ -17,6 +17,15 @@ import { whatsappLink, regularizationWhatsappText } from '../../lib/whatsapp';
 // pre-filled text stays French (it reaches the French-speaking sales team).
 const waGeneral = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour une installation solaire.');
 const waRegul = whatsappLink(WHATSAPP_LEADS, regularizationWhatsappText());
+
+// W339 — "Already a customer?" SAV/urgent door, SEPARATE from the commercial
+// lead webhook (DiagnosticForm above, unchanged). Pre-filled text stays
+// French (same sales/SAV team) but explicitly flags an existing-installation
+// fault report so it's routed differently from a quote request.
+const waSav = whatsappLink(
+  WHATSAPP_LEADS,
+  'Bonjour, je suis déjà client Taqinor et je signale un problème sur mon installation existante (SAV). Merci de me recontacter.',
+);
 ---
 
 <Layout
@@ -70,6 +79,40 @@ const waRegul = whatsappLink(WHATSAPP_LEADS, regularizationWhatsappText());
             Service area: Casablanca–Rabat axis, and {NAP.serviceArea.slice(2, -1).join(', ')} on request.
           </p>
           <p class="mt-1 text-xs text-encre-faint">On-site visits only — no public reception at an office.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- W339 — "Already a customer?" SAV/urgent door, visually and
+         functionally separate from the quote block above. Pre-filled
+         WhatsApp flags a fault report, routed to the SAV team — never the
+         commercial lead webhook. -->
+    <section id="deja-client" class="border-t border-azur-900/10 bg-blanc px-4 py-16 text-encre">
+      <div class="mx-auto max-w-2xl">
+        <div class="v2-rise border-2 border-azur-600/40 bg-blanc-azur p-7 text-center sm:p-9">
+          <p class="tech-label text-azur-600">Already a customer?</p>
+          <h2 class="display mt-2 text-2xl font-bold sm:text-3xl">A problem with your installation?</h2>
+          <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+            What should you do if your inverter shows an error? Photograph the screen and message
+            us on WhatsApp — the fastest way to reach the SAV (after-sales) team, who handle your
+            report separately from a new quote request.
+          </p>
+          <div class="mt-6 flex flex-wrap items-center justify-center gap-3">
+            <a
+              href={waSav}
+              rel="noopener noreferrer"
+              class="inline-flex items-center gap-2 bg-brass-400 px-6 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300"
+            >
+              WhatsApp — report a fault (SAV)
+            </a>
+            <a
+              href={`tel:${NAP.phone}`}
+              dir="ltr"
+              class="inline-flex items-center gap-2 border border-azur-900/25 px-6 py-3 text-sm font-semibold text-encre transition-colors hover:border-azur-600"
+            >
+              {NAP.phoneDisplayIntl}
+            </a>
+          </div>
         </div>
       </div>
     </section>

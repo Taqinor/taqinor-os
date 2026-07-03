@@ -14,10 +14,21 @@ import StickyCta from '../../components/StickyCta.astro';
 import FounderPortrait from '../../components/FounderPortrait.astro';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
+import { REALISATIONS } from '../../lib/realisations';
+import { NAP } from '../../lib/nap';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 const devisHref = L('/devis/mon-toit');
+
+/**
+ * W345 — Press & partnership factsheet, DERIVED (no hand-typed figures). See
+ * the FR page (src/pages/à-propos.astro) for the full rationale: install
+ * count + earliest documented project come from realisations.ts; no company
+ * founding date is published anywhere on the site, so none is invented here.
+ */
+const installCount = REALISATIONS.length;
+const earliestRealisation = REALISATIONS[REALISATIONS.length - 1];
 
 const etapes = [
   {
@@ -166,6 +177,67 @@ const etapes = [
             <dt class="tech-label mt-2 text-lune-faint">Declaration and regularisation, end to end</dt>
           </div>
         </dl>
+      </div>
+    </section>
+
+    <!-- W345 — Press & partnerships: dedicated door, separate from the sales form -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="border-y border-white/10 bg-blanc-azur px-4 py-16 text-encre sm:py-20">
+      <div class="mx-auto max-w-5xl">
+        <p class="tech-label v2-kicker rule-brass text-azur-600">Press & partnerships</p>
+        <h2 class="display v2-section-title mt-5">Do you represent a media outlet, a bank, or a partner?</h2>
+        <p class="v2-lead mt-5 max-w-2xl text-encre-soft">
+          A journalist, a bank, or a potential partner verifying our identity doesn't need a
+          quote — here's what you need for due diligence, and a dedicated channel to go further.
+        </p>
+
+        <div class="mt-10 grid gap-8 lg:grid-cols-[1.1fr_1fr]">
+          {/* Factsheet — every figure is derived, none hand-typed */}
+          <dl class="grid grid-cols-2 gap-x-6 gap-y-8 border-t-2 border-azur-900 pt-6">
+            <div>
+              <dd class="font-display text-2xl font-bold">{NAP.name}</dd>
+              <dt class="tech-label mt-2 text-encre-faint">Legal name</dt>
+            </div>
+            <div>
+              <dd class="font-display text-2xl font-bold">Casablanca</dd>
+              <dt class="tech-label mt-2 text-encre-faint">Trade register (RC 691213)</dt>
+            </div>
+            <div>
+              <dd class="font-display text-2xl font-bold">{installCount} installations</dd>
+              <dt class="tech-label mt-2 text-encre-faint">Publicly documented projects</dt>
+            </div>
+            <div>
+              <dd class="font-display text-2xl font-bold">{earliestRealisation.date}</dd>
+              <dt class="tech-label mt-2 text-encre-faint">Earliest documented project ({earliestRealisation.ville})</dt>
+            </div>
+          </dl>
+
+          {/* Dedicated press channel + downloadable logo */}
+          <div class="border-2 border-azur-600/30 bg-blanc p-7 text-center sm:p-8">
+            <p class="tech-label text-azur-600">Press & partnerships contact</p>
+            <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+              Write to us directly — mention it's a press or partnership request so it gets
+              routed appropriately, separate from our quote requests.
+            </p>
+            <p class="mt-5">
+              <a href={`mailto:${NAP.email}`} dir="ltr" class="font-semibold underline decoration-azur-600 decoration-2 underline-offset-4">{NAP.email}</a>
+            </p>
+            <p class="mt-2">
+              <a href={`tel:${NAP.phone}`} dir="ltr" class="text-sm underline decoration-azur-600 decoration-2 underline-offset-4">{NAP.phoneDisplayIntl}</a>
+            </p>
+            <a
+              href="/logo.png"
+              download
+              class="mt-6 inline-flex items-center gap-2 border border-azur-900/25 px-5 py-2.5 text-sm font-semibold text-encre transition-colors hover:border-azur-600"
+            >
+              Download logo (PNG) ↓
+            </a>
+          </div>
+        </div>
+
+        <p class="mx-auto mt-10 max-w-2xl border-s-4 border-azur-600 ps-4 text-xs leading-relaxed text-encre-faint">
+          Full legal identity (trade register, tax ID) on the <a href={L('/mentions-legales')} class="underline decoration-azur-600 decoration-2 underline-offset-4">Legal notice</a> page.
+        </p>
       </div>
     </section>
 

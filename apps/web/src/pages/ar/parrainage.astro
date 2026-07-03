@@ -1,0 +1,207 @@
+---
+/**
+ * AR — /parrainage (W338, RTL). Faithful Arabic translation; FR untouched.
+ * Not registered in i18n/pages.ts STATIC_TRANSLATED per the task's explicit
+ * instruction (hreflang skipped for this new page). Latin brand name, URL
+ * and phone/email stay LTR via dir="ltr" spans inside the RTL page, same
+ * convention as ar/contact.astro.
+ *
+ * Same referral mechanic as FR/EN: personal link rides the EXISTING
+ * utm_campaign passthrough (zero backend change). WG14 (reward amount +
+ * trigger milestone) stays gated — no invented figure.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import Callout from '../../components/Callout.astro';
+import RelatedLinks from '../../components/RelatedLinks.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import { NAP, WHATSAPP_LEADS } from '../../lib/nap';
+import { whatsappLink } from '../../lib/whatsapp';
+
+// GATE WG14 — لم يُحسم بعد من طرف المؤسّس: لا نخترع أي رقم أبداً. عند حسم
+// WG14، يكفي ملء هذين الثابتين بالقيمة الحقيقية ليظهر الرقم تلقائياً في كل
+// مكان يُستعمَل فيه.
+const REWARD_AMOUNT_LABEL: string | null = null;
+const REWARD_MILESTONE_LABEL: string | null = null;
+
+// النص مُعبَّأ مسبقاً بالفرنسية (يصل إلى فريق البيع الناطق بالفرنسية) — نفس
+// اتفاقية باقي روابط واتساب في صفحات EN/AR.
+const waParrainage = whatsappLink(
+  WHATSAPP_LEADS,
+  'Bonjour, je souhaite parrainer un proche pour une installation solaire Taqinor.',
+);
+
+const steps = [
+  {
+    n: '01',
+    title: 'شارك رابطك',
+    body: 'رابط واحد فقط ترسله عبر واتساب أو رسالة نصية أو أي قناة تستعملها بالفعل: يضغط عليه قريبك فيصل مباشرة إلى مسار التشخيص المجاني لدينا، ونعرف أنه أتى منك.',
+  },
+  {
+    n: '02',
+    title: 'قريبك يُجري تشخيصه',
+    body: 'يجيب على نفس الأسئلة التي يجيب عنها أي زائر (الفاتورة، السطح، المدينة) ويحصل على شريحته الفورية — المسار لا يتغيّر قيد أنملة لأنه أتى منك.',
+  },
+  {
+    n: '03',
+    title: 'ندرس ملفه',
+    body: 'المؤسّس يصادق على الدراسة كما يفعل مع كل زبون. لا شيء يُسرَّع ولا يُنقَص لأن الملف أتى عبر إحالة.',
+  },
+  {
+    n: '04',
+    title: 'المكافأة، في الوقت المناسب',
+    body: REWARD_MILESTONE_LABEL
+      ? `تُدفع مكافأتك ${REWARD_MILESTONE_LABEL}.`
+      : 'المبلغ الدقيق للمكافأة ولحظة استحقاقها قيد التحديد النهائي — سيتم تحديث هذه الصفحة فور تحديدهما. أما المبدأ فلن يتغيّر: لا تُستحق المكافأة إلا عند بلوغ جالون حقيقي، أبداً بمجرد نقرة.',
+  },
+];
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'WebPage',
+  name: 'برنامج الإحالة لدى Taqinor',
+  description:
+    'أحِل صديقاً لتركيب شمسي مع Taqinor: شارك رابطك الشخصي، يُجري تشخيصه المجاني، وتُكافأ عندما يتحقّق مشروعه فعلياً.',
+  isPartOf: { '@type': 'WebSite', name: 'Taqinor', url: 'https://taqinor.ma' },
+};
+---
+
+<Layout
+  title="برنامج الإحالة لدى Taqinor — أحِل صديقاً وكافأ نفسك | Taqinor"
+  description="شارك رابطك الشخصي، يُجري صديقك تشخيصه الشمسي المجاني، وتُكافأ عندما يتحقّق مشروعه فعلياً. لا تسويق منزلي: كل شيء يمرّ عبر رابط تشاركه بنفسك."
+  ogSlug="parrainage"
+>
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+
+    <Breadcrumb items={[{ label: 'الرئيسية', href: '/ar' }, { label: 'الإحالة' }]} />
+
+    <section class="section-lg px-4 pb-10 text-white">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">الإحالة</p>
+        <h1 class="display v2-page-title cine-in cine-in-1 mt-6">الطاقة الشمسية تنتقل من جار إلى جار</h1>
+        <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
+          هل أنت زبون بالفعل، أم مقتنع فقط بمنهجنا؟ شارك رابطك الشخصي مع أحد أقاربك: إذا أصبح
+          زبوناً، تُكافأ أنت — ببساطة، دون أي شيء تديره من جانبك.
+        </p>
+      </div>
+    </section>
+
+    <!-- الآلية، بوضوح -->
+    <section class="section px-4">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">كيف يعمل الأمر</p>
+        <h2 class="display v2-section-title mt-5 text-white">أربع خطوات، ولا واحدة مبالَغ فيها</h2>
+        <div class="mt-10 grid gap-6 md:grid-cols-2" data-stagger>
+          {steps.map((s, i) => (
+            <div class="v2-rise cine-card flex flex-col p-7" style={`--v2-i:${i}`}>
+              <p class="fig lum text-3xl" dir="ltr">{s.n}</p>
+              <h3 class="display mt-2 text-2xl text-white">{s.title}</h3>
+              <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+            </div>
+          ))}
+        </div>
+
+        <Callout type="info" title="رابطك الشخصي">
+          <p>
+            لا حساب لإنشائه، ولا تطبيق لتثبيته: رابطك الشخصي هو ببساطة مسار التشخيص المعتاد لدينا،
+            مع رمز تختاره بنفسك حتى نعرف أنه أتى منك — مثلاً اسمك الأول أو رقم ملفك كزبون:
+          </p>
+          <p class="mt-3 break-all rounded-none border border-white/15 bg-black/20 px-4 py-3 font-mono text-xs text-lune" dir="ltr">
+            taqinor.ma/devis/mon-toit?utm_source=parrainage&utm_campaign=<strong class="text-brass-300">your-code</strong>
+          </p>
+          <p class="mt-3">
+            أرسله عبر واتساب أو رسالة نصية أو أي قناة أخرى — هذا كل ما عليك فعله من جانبك.
+          </p>
+        </Callout>
+      </div>
+    </section>
+
+    <!-- المكافأة — مرهونة بالبيانات (WG14) -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="section bg-blanc-azur px-4 text-encre">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-azur-600">المكافأة</p>
+        {REWARD_AMOUNT_LABEL ? (
+          <>
+            <h2 class="display v2-section-title mt-5">{REWARD_AMOUNT_LABEL}</h2>
+            <p class="v2-lead mt-5 text-encre-soft">
+              تُدفع {REWARD_MILESTONE_LABEL}. لا حدّ لعدد الأقارب الذين يمكنك إحالتهم.
+            </p>
+          </>
+        ) : (
+          <>
+            <h2 class="display v2-section-title mt-5">المبلغ قيد التحديد النهائي</h2>
+            <p class="v2-lead mt-5 text-encre-soft">
+              نفضّل عدم الإعلان عن شيء إلى حين تحديد المبلغ والجالون الدقيقين — سيتم تحديث هذه
+              الصفحة فور ذلك، دون أن يتغيّر رابطك الشخصي. يبقى المبدأ بسيطاً: مكافأتك لا تُستحق إلا
+              عند بلوغ جالون حقيقي من طرف من أحلته، أبداً بمجرد نقرة.
+            </p>
+          </>
+        )}
+      </div>
+    </section>
+
+    <!-- القواعد، بوضوح -->
+    <section class="section px-4 text-white">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">قواعد اللعبة</p>
+        <h2 class="display v2-section-title mt-5 text-white">بسيطة وصادقة، بدون منطقة رمادية</h2>
+        <ul class="mt-8 space-y-5 text-sm leading-relaxed text-lune-soft" data-stagger>
+          <li class="v2-rise flex gap-3" style="--v2-i:0">
+            <span class="fig lum shrink-0 text-lg">·</span>
+            <span><strong class="text-white">لا إحالة ذاتية.</strong> لا يمكنك إحالة ملفك الخاص، ولا ملف نعرفه مسبقاً بشكل آخر.</span>
+          </li>
+          <li class="v2-rise flex gap-3" style="--v2-i:1">
+            <span class="fig lum shrink-0 text-lg">·</span>
+            <span><strong class="text-white">تُدفع المكافأة عند بلوغ جالون حقيقي</strong> من طرف من أحلته (توقيع أو أداء — انظر أعلاه فور تحديد الجالون الدقيق)، أبداً بمجرد مشاركة الرابط.</span>
+          </li>
+          <li class="v2-rise flex gap-3" style="--v2-i:2">
+            <span class="fig lum shrink-0 text-lg">·</span>
+            <span><strong class="text-white">عبر رابط مشارك فقط، أبداً بالتسويق المنزلي.</strong> لا تعتمد Taqinor التسويق من باب إلى باب، والإحالة تخضع لنفس القاعدة: تشارك رابطاً مع من تريد، ونحن لا نتّصل بأحد باسمك.</span>
+          </li>
+          <li class="v2-rise flex gap-3" style="--v2-i:3">
+            <span class="fig lum shrink-0 text-lg">·</span>
+            <span><strong class="text-white">دراستك تبقى مطابقة.</strong> الملف المُحال يتبع بالضبط نفس مسار الدراسة والمصادقة مثل أي ملف آخر — لا شيء يُسرَّع ولا يُنقَص.</span>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- دعوة ختامية — واتساب مباشر لبدء إحالة -->
+    <section class="section-tight px-4 pb-20 sm:pb-24">
+      <div class="mx-auto max-w-3xl border-2 border-azur-600 bg-blanc-azur px-6 py-10 text-center text-encre sm:px-10">
+        <p class="tech-label text-azur-600">سؤال حول الإحالة؟</p>
+        <h2 class="display v2-section-title mx-auto mt-3 max-w-2xl text-3xl sm:text-4xl">راسلنا مباشرة عبر واتساب</h2>
+        <a
+          href={waParrainage}
+          rel="noopener noreferrer"
+          class="glow mt-6 inline-flex items-center gap-2 bg-brass-400 px-6 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300"
+        >
+          واتساب — الإحالة
+        </a>
+        <p class="mt-4 text-xs text-encre-faint">
+          أو عبر الهاتف: <a href={`tel:${NAP.phone}`} dir="ltr" class="underline decoration-azur-600 decoration-2 underline-offset-4">{NAP.phoneDisplayIntl}</a>
+        </p>
+      </div>
+    </section>
+
+    <section class="section-tight px-4 pb-20 sm:pb-24">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">لمزيد من المعلومات</p>
+        <RelatedLinks links={[
+          { href: '/ar/devis/mon-toit', label: 'ابدأ تشخيصاً' },
+          { href: '/ar/realisations', label: 'إنجازاتنا' },
+          { href: '/ar/à-propos', label: 'من نحن' },
+        ]} />
+      </div>
+    </section>
+
+    <StickyCta />
+  </div>
+</Layout>
