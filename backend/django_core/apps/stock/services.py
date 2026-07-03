@@ -1065,6 +1065,72 @@ def mouvement_type_entree():
     return MouvementStock.TypeMouvement.ENTREE
 
 
+def mouvement_type_rebut():
+    """XMFG11 — valeur enum REBUT (sans importer le modèle côté appelant)."""
+    from .models import MouvementStock
+    return MouvementStock.TypeMouvement.REBUT
+
+
+def declarer_rebut(*, company, produit, quantite, motif, reference, note,
+                   user):
+    """XMFG11 — déclare un rebut de production : SORTIE typée REBUT, motivée,
+    rattachée à un document source (``reference``, ex. un ordre d'assemblage).
+    ``motif`` doit être une valeur de ``MouvementStock.MotifRebut``. Lève
+    ValueError si la quantité est invalide."""
+    from django.db import transaction
+    from .models import MouvementStock, Produit
+
+    if quantite is None or quantite <= 0:
+        raise ValueError('La quantité de rebut doit être positive.')
+    valeurs_motif = {c for c, _ in MouvementStock.MotifRebut.choices}
+    if motif not in valeurs_motif:
+        raise ValueError('Motif de rebut invalide.')
+
+    with transaction.atomic():
+        p = Produit.objects.select_for_update().get(id=produit.id)
+        avant = p.quantite_stock
+        qte_sortie = min(quantite, avant) if avant > 0 else 0
+        apres = avant - qte_sortie
+        mouvement = MouvementStock.objects.create(
+            company=company, produit=p,
+            type_mouvement=MouvementStock.TypeMouvement.REBUT,
+            quantite=qte_sortie, quantite_avant=avant, quantite_apres=apres,
+            reference=reference, note=note, motif_rebut=motif,
+            created_by=user)
+        p.quantite_stock = apres
+        p.save(update_fields=['quantite_stock'])
+    return mouvement
+
+
+def rapport_rebuts(company, *, date_debut=None, date_fin=None):
+    """XMFG11 — mini-rapport rebuts agrégé par produit sur une période
+    (bornes optionnelles). Renvoie une liste de dicts {produit_id, produit_nom,
+    quantite_totale, motifs: {motif: quantite}}, triée par quantité totale
+    décroissante. INTERNE."""
+    from .models import MouvementStock
+
+    qs = MouvementStock.objects.filter(
+        company=company, type_mouvement=MouvementStock.TypeMouvement.REBUT)
+    if date_debut is not None:
+        qs = qs.filter(date__gte=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(date__lte=date_fin)
+
+    par_produit = {}
+    for mvt in qs.select_related('produit'):
+        entry = par_produit.setdefault(mvt.produit_id, {
+            'produit_id': mvt.produit_id,
+            'produit_nom': mvt.produit.nom,
+            'quantite_totale': 0,
+            'motifs': {},
+        })
+        entry['quantite_totale'] += mvt.quantite
+        motif = mvt.motif_rebut or 'autre'
+        entry['motifs'][motif] = entry['motifs'].get(motif, 0) + mvt.quantite
+    return sorted(
+        par_produit.values(), key=lambda e: -e['quantite_totale'])
+
+
 def sortie_exists_for_reference(company, reference):
     """True si un mouvement SORTIE référence déjà ``reference`` pour la société.
 
@@ -1090,9 +1156,14 @@ def produits_a_reapprovisionner(company):
     fournisseur le moins cher (PrixFournisseur). INTERNE.
 
     Chaque item : {produit_id, nom, quantite_stock, seuil_alerte,
-    quantite_suggere, fournisseur_id, fournisseur_nom, prix_achat}.
+    quantite_suggere, fournisseur_id, fournisseur_nom, prix_achat,
+    action, kit_id}. ``action`` = 'assembler' (kit_id renseigné) quand le
+    produit sous seuil est le ``produit_compose`` d'un kit ACTIF
+    (`installations.Kit`, XMFG3) — la suggestion devient « assembler N »
+    plutôt qu'un bon de commande fournisseur ; sinon 'acheter'.
     """
     from .models import Produit, PrixFournisseur
+    from apps.installations.selectors import kit_map_for_produits_composes
 
     qs = (Produit.objects
           .filter(company=company, is_archived=False)
@@ -1100,8 +1171,12 @@ def produits_a_reapprovisionner(company):
           .filter(quantite_stock__lte=models.F('seuil_alerte'))
           .prefetch_related('prix_fournisseurs__fournisseur'))
 
+    produits = list(qs)
+    kit_map = kit_map_for_produits_composes(
+        company, [p.id for p in produits])
+
     result = []
-    for p in qs:
+    for p in produits:
         # Fournisseur le moins cher parmi les prix enregistrés.
         best = (PrixFournisseur.objects
                 .filter(company=company, produit=p)
@@ -1109,6 +1184,7 @@ def produits_a_reapprovisionner(company):
                 .order_by('prix_achat')
                 .first())
         qte_suggere = p.quantite_reappro_cible if p.quantite_reappro_cible else (p.seuil_alerte * 2)
+        kit_id = kit_map.get(p.id)
         result.append({
             'produit_id': p.id,
             'nom': p.nom,
@@ -1119,6 +1195,8 @@ def produits_a_reapprovisionner(company):
             'fournisseur_id': best.fournisseur_id if best else None,
             'fournisseur_nom': best.fournisseur.nom if best else None,
             'prix_achat': str(best.prix_achat) if best else None,
+            'action': 'assembler' if kit_id else 'acheter',
+            'kit_id': kit_id,
         })
     return result
 
@@ -1670,3 +1748,155 @@ def exploser_kit_par_id(company, kit_id, quantite_kit=1):
     if kit is None:
         return None
     return exploser_kit(kit, quantite_kit)
+
+
+# ── XMFG1 — Backflush : clôture d'un ordre d'assemblage (installations) ──────
+# `installations.OrdreAssemblage.terminer` appelle CE service (jamais de
+# MouvementStock créé côté installations) : une SORTIE par composant (quantité
+# BOM × quantite_produite) + une ENTREE du composite. Idempotent via le drapeau
+# `stock_mouvemente` posé par l'appelant dans la MÊME transaction atomique.
+
+def consommer_et_produire_assemblage(*, company, kit, composants, produit_compose,
+                                     quantite_produite, reference, user,
+                                     emplacement_source=None,
+                                     emplacement_destination=None,
+                                     per_unit=True):
+    """Consomme les composants d'un kit et produit le composite (ENTREE, qté
+    ``quantite_produite``). ``composants`` est un itérable d'objets avec
+    ``.produit`` et ``.quantite``. Si ``per_unit`` (défaut, la BOM du kit),
+    ``.quantite`` est PAR UNITÉ et la sortie = ``.quantite`` × ``quantite_produite``
+    (tolérance sur/sous-production XMFG1). Si ``per_unit=False`` (lignes d'ordre
+    personnalisées — XMFG6), ``.quantite`` est déjà le TOTAL à consommer, utilisé
+    tel quel. Ventile sur les emplacements fournis (StockEmplacement, N15) en
+    plus du total canonique. Lève ValueError si ``produit_compose`` est None
+    (kit non finalisable) — l'appelant refuse `terminer` dans ce cas."""
+    from django.db import transaction
+    from .models import Produit, StockEmplacement
+
+    if produit_compose is None:
+        raise ValueError(
+            "Le kit n'a pas de produit composite (produit_compose) : "
+            "impossible de clôturer l'ordre.")
+
+    with transaction.atomic():
+        mouvements = []
+        for ligne in composants:
+            comp_produit = ligne.produit
+            if comp_produit is None:
+                continue
+            qte_conso = ((ligne.quantite or 0) * quantite_produite if per_unit
+                         else (ligne.quantite or 0))
+            if qte_conso <= 0:
+                continue
+            p = Produit.objects.select_for_update().get(id=comp_produit.id)
+            avant = p.quantite_stock
+            apres = avant - qte_conso
+            mvt = record_stock_movement(
+                company=company, produit=p,
+                type_mouvement=mouvement_type_sortie(),
+                quantite=qte_conso, quantite_avant=avant,
+                quantite_apres=apres, reference=reference,
+                note=f'Assemblage {reference} — composant kit {kit.id}',
+                created_by=user)
+            mouvements.append(mvt)
+            if emplacement_source is not None and \
+                    not emplacement_source.is_principal:
+                se, _ = StockEmplacement.objects.select_for_update().get_or_create(
+                    produit=p, emplacement=emplacement_source,
+                    defaults={'company': company, 'quantite': 0})
+                se.quantite = max(se.quantite - qte_conso, 0)
+                se.save(update_fields=['quantite'])
+
+        composite = Produit.objects.select_for_update().get(id=produit_compose.id)
+        avant_c = composite.quantite_stock
+        apres_c = avant_c + quantite_produite
+        mvt_entree = record_stock_movement(
+            company=company, produit=composite,
+            type_mouvement=mouvement_type_entree(),
+            quantite=quantite_produite, quantite_avant=avant_c,
+            quantite_apres=apres_c, reference=reference,
+            note=f'Assemblage {reference} — composite kit {kit.id}',
+            created_by=user)
+        mouvements.append(mvt_entree)
+        if emplacement_destination is not None and \
+                not emplacement_destination.is_principal:
+            se, _ = StockEmplacement.objects.select_for_update().get_or_create(
+                produit=composite, emplacement=emplacement_destination,
+                defaults={'company': company, 'quantite': 0})
+            se.quantite += quantite_produite
+            se.save(update_fields=['quantite'])
+
+    return mouvements
+
+
+# ── XMFG12 — Démontage (unbuild) : composite → composants ────────────────────
+# Chemin INVERSE de XMFG1 : `installations.OrdreDemontage.terminer` appelle CE
+# service pour un composite de retour (annulation, kit démo cannibalisé) —
+# SORTIE du composite + ENTREE de chaque composant selon les quantités
+# RÉCUPÉRÉES (éditables ligne à ligne, jamais la BOM brute).
+
+def demonter_composite(*, company, kit, quantite_demontee, lignes_recuperation,
+                       produit_compose, reference, user,
+                       emplacement_source=None, emplacement_destination=None):
+    """Sort le composite (`quantite_demontee` unités) et restocke chaque
+    composant selon ``lignes_recuperation`` — itérable d'objets avec
+    ``.produit`` et ``.quantite_recuperee`` (déjà le TOTAL récupéré, PAS par
+    unité). Les composants cassés (récupéré < attendu) ne sont PAS restockés
+    ici — l'appelant les déclare en rebut (XMFG11) séparément. Lève ValueError
+    si ``produit_compose`` est None."""
+    from django.db import transaction
+    from .models import Produit, StockEmplacement
+
+    if produit_compose is None:
+        raise ValueError(
+            "Le kit n'a pas de produit composite (produit_compose) : "
+            "démontage impossible.")
+
+    with transaction.atomic():
+        mouvements = []
+        composite = Produit.objects.select_for_update().get(id=produit_compose.id)
+        avant_c = composite.quantite_stock
+        qte_sortie = min(quantite_demontee, avant_c) if avant_c > 0 else 0
+        apres_c = avant_c - qte_sortie
+        mvt_sortie = record_stock_movement(
+            company=company, produit=composite,
+            type_mouvement=mouvement_type_sortie(),
+            quantite=qte_sortie, quantite_avant=avant_c, quantite_apres=apres_c,
+            reference=reference,
+            note=f'Démontage {reference} — composite kit {kit.id}',
+            created_by=user)
+        mouvements.append(mvt_sortie)
+        if emplacement_source is not None and not emplacement_source.is_principal:
+            se, _ = StockEmplacement.objects.select_for_update().get_or_create(
+                produit=composite, emplacement=emplacement_source,
+                defaults={'company': company, 'quantite': 0})
+            se.quantite = max(se.quantite - qte_sortie, 0)
+            se.save(update_fields=['quantite'])
+
+        for ligne in lignes_recuperation:
+            comp_produit = ligne.produit
+            if comp_produit is None:
+                continue
+            qte_recup = ligne.quantite_recuperee or 0
+            if qte_recup <= 0:
+                continue
+            p = Produit.objects.select_for_update().get(id=comp_produit.id)
+            avant = p.quantite_stock
+            apres = avant + qte_recup
+            mvt = record_stock_movement(
+                company=company, produit=p,
+                type_mouvement=mouvement_type_entree(),
+                quantite=qte_recup, quantite_avant=avant, quantite_apres=apres,
+                reference=reference,
+                note=f'Démontage {reference} — composant récupéré kit {kit.id}',
+                created_by=user)
+            mouvements.append(mvt)
+            if emplacement_destination is not None and \
+                    not emplacement_destination.is_principal:
+                se, _ = StockEmplacement.objects.select_for_update().get_or_create(
+                    produit=p, emplacement=emplacement_destination,
+                    defaults={'company': company, 'quantite': 0})
+                se.quantite += qte_recup
+                se.save(update_fields=['quantite'])
+
+    return mouvements

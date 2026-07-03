@@ -1307,3 +1307,427 @@ def generer_handover_pack(installation, user=None):
     pack.save(update_fields=[
         'company', 'pieces', 'complet', 'date_generation', 'titre'])
     return pack
+
+
+# ── XMFG2 — Réservation & disponibilité des composants d'un ordre ────────────
+# Même patron que StockReservation (N14, chantiers) : ENGAGE le stock sans le
+# décrémenter. Seed depuis la BOM du kit à la création/confirmation de l'ordre
+# (ou les lignes d'ordre XMFG6, repli BOM si absentes). Consommation marquée
+# par XMFG1 (verrou d'idempotence côté backflush) ; libération à l'annulation.
+
+def _besoin_avec_perte(quantite, taux_perte_pct):
+    """XMFG11 — gonfle une quantité planifiée par le taux de perte attendu (%).
+    Arrondi au SUPÉRIEUR (on ne sous-réserve jamais). Défaut 0 = inchangé."""
+    from decimal import Decimal, ROUND_CEILING
+    if not taux_perte_pct:
+        return quantite
+    facteur = Decimal('1') + Decimal(str(taux_perte_pct)) / Decimal('100')
+    return int((Decimal(str(quantite)) * facteur).to_integral_value(
+        rounding=ROUND_CEILING))
+
+
+def _ordre_besoin_composants(ordre):
+    """{produit_id: quantite} pour CET ordre : lignes XMFG6 si présentes
+    (repli BOM du kit sinon, multipliées par `ordre.quantite` et gonflées du
+    taux de perte attendu — XMFG11)."""
+    lignes = list(getattr(ordre, 'lignes', None).all()) if hasattr(
+        ordre, 'lignes') else []
+    besoins = {}
+    if lignes:
+        for ligne in lignes:
+            if ligne.produit_id is None:
+                continue
+            besoins[ligne.produit_id] = besoins.get(
+                ligne.produit_id, 0) + (ligne.quantite or 0)
+        return besoins
+    for c in ordre.kit.composants.all():
+        if c.produit_id is None:
+            continue
+        qte = _besoin_avec_perte(
+            (c.quantite or 0) * ordre.quantite, c.taux_perte_pct)
+        besoins[c.produit_id] = besoins.get(c.produit_id, 0) + qte
+    return besoins
+
+
+def seed_reservations_assemblage(ordre):
+    """XMFG2 — réserve les composants du kit pour cet ordre. Idempotent : une
+    réservation par (ordre, produit), réalignée à la quantité courante tant
+    qu'elle n'est pas consommée. Renvoie la liste des réservations actives."""
+    from .models import ReservationAssemblage
+    company = ordre.company
+    besoins = _ordre_besoin_composants(ordre)
+    for produit_id, qte in besoins.items():
+        resa, created = ReservationAssemblage.objects.get_or_create(
+            ordre=ordre, produit_id=produit_id,
+            defaults={'company': company, 'quantite': qte})
+        if not created and not resa.consomme:
+            changed = []
+            if resa.quantite != qte:
+                resa.quantite = qte
+                changed.append('quantite')
+            if not resa.active:
+                resa.active = True
+                changed.append('active')
+            if changed:
+                resa.save(update_fields=changed)
+    return list(ordre.reservations.filter(active=True))
+
+
+def release_reservations_assemblage(ordre):
+    """XMFG2 — libère les réservations NON consommées de l'ordre (annulation).
+    Une réservation déjà consommée n'est jamais touchée. Renvoie le nombre de
+    réservations libérées."""
+    from .models import ReservationAssemblage
+    return (ReservationAssemblage.objects
+            .filter(ordre=ordre, active=True, consomme=False)
+            .update(active=False))
+
+
+def disponibilite_par_ligne(ordre):
+    """XMFG2 — disponibilité par composant pour l'écran ordre : liste de dicts
+    {produit_id, designation, requis, disponible, statut}, `statut` ∈
+    {'disponible','partiel','manquant'}. `disponible` = stock total − réservé
+    (engagé non consommé, TOUTES réservations confondues, y compris celles de
+    CET ordre puisqu'elles sont déjà comptées dans le besoin affiché)."""
+    from apps.stock.services import reserved_quantity, available_quantity
+    besoins = _ordre_besoin_composants(ordre)
+    out = []
+    produits = {p.id: p for p in
+                _produits_for_ids(ordre.company, list(besoins))}
+    for produit_id, requis in besoins.items():
+        produit = produits.get(produit_id)
+        if produit is None:
+            continue
+        disponible = available_quantity(produit, reserved_quantity(produit))
+        if disponible >= requis:
+            statut = 'disponible'
+        elif disponible > 0:
+            statut = 'partiel'
+        else:
+            statut = 'manquant'
+        out.append({
+            'produit_id': produit_id,
+            'designation': produit.nom,
+            'requis': requis,
+            'disponible': disponible,
+            'statut': statut,
+        })
+    out.sort(key=lambda x: x['designation'])
+    return out
+
+
+def _produits_for_ids(company, ids):
+    from apps.stock.models import Produit
+    if not ids:
+        return Produit.objects.none()
+    return Produit.objects.filter(company=company, id__in=ids)
+
+
+def alerter_penurie_assemblage(ordre):
+    """XMFG2 — alerte non bloquante (`apps.notifications`, import
+    function-local) pour un ordre PLANIFIÉ dont un composant passe sous le
+    besoin. Best-effort : ne lève jamais."""
+    try:
+        from apps.notifications.services import notify_many, resolve_recipients
+        from apps.notifications.models import EventType
+    except Exception:  # pragma: no cover - défensif
+        return
+    manquants = [d for d in disponibilite_par_ligne(ordre)
+                 if d['statut'] != 'disponible']
+    if not manquants:
+        return
+    try:
+        recipients = resolve_recipients(ordre.company, EventType.STOCK_LOW)
+        titre = f'Composants manquants — ordre {ordre.reference}'
+        corps = ', '.join(
+            f"{m['designation']} (besoin {m['requis']}, dispo {m['disponible']})"
+            for m in manquants)
+        notify_many(recipients, EventType.STOCK_LOW, titre, body=corps,
+                    company=ordre.company)
+    except Exception:  # pragma: no cover - défensif
+        pass
+
+
+# ── XMFG6 — Composants personnalisables par ordre (kit sur-mesure) ───────────
+# Les lignes (`OrdreAssemblageLigne`) sont copiées depuis la BOM du kit à la
+# CRÉATION de l'ordre, puis éditables tant que l'ordre est planifié. XMFG1 et
+# XMFG2 lisent ces lignes en priorité (repli BOM si absentes — voir
+# `_ordre_besoin_composants` ci-dessus, déjà écrit pour ce repli).
+
+def seed_lignes_assemblage(ordre):
+    """XMFG6 — copie la BOM du kit en lignes d'ordre éditables, UNE fois (à la
+    création), quantités gonflées du taux de perte attendu (XMFG11). Idempotent :
+    n'écrase jamais des lignes déjà présentes (même partiellement personnalisées)."""
+    from .models import OrdreAssemblageLigne
+    if ordre.lignes.exists():
+        return list(ordre.lignes.all())
+    lignes = [
+        OrdreAssemblageLigne(
+            ordre=ordre, produit=c.produit, designation=c.designation,
+            quantite=_besoin_avec_perte(
+                (c.quantite or 0) * ordre.quantite, c.taux_perte_pct),
+            origine=OrdreAssemblageLigne.Origine.KIT)
+        for c in ordre.kit.composants.all()
+    ]
+    OrdreAssemblageLigne.objects.bulk_create(lignes)
+    return list(ordre.lignes.all())
+
+
+def cout_prevu_assemblage(ordre):
+    """XMFG6 — coût prévu de l'ordre : somme(lignes.quantite × produit.prix_achat)
+    si des lignes existent, sinon somme(BOM du kit × ordre.quantite ×
+    prix_achat) — repli BOM. Décimal, jamais négatif."""
+    from decimal import Decimal
+    total = Decimal('0')
+    lignes = list(getattr(ordre, 'lignes', None).all()) if hasattr(
+        ordre, 'lignes') else []
+    if lignes:
+        for ligne in lignes:
+            if ligne.produit_id is None:
+                continue
+            prix = getattr(ligne.produit, 'prix_achat', None) or Decimal('0')
+            total += Decimal(str(ligne.quantite or 0)) * Decimal(str(prix))
+        return total
+    for c in ordre.kit.composants.select_related('produit').all():
+        if c.produit_id is None:
+            continue
+        prix = getattr(c.produit, 'prix_achat', None) or Decimal('0')
+        qte = (c.quantite or 0) * ordre.quantite
+        total += Decimal(str(qte)) * Decimal(str(prix))
+    return total
+
+
+# ── XMFG7 — Capture des numéros de série à l'assemblage + étiquette ──────────
+# Comble le trou noir entre la réception (FG61) et la pose (`ComponentSerial`) :
+# à la clôture, on relève les séries du composite produit (une par unité) et,
+# en option, celles des composants sérialisés consommés (liées au composite).
+
+def enregistrer_series_assemblage(ordre, *, series_composite, series_composants,
+                                  user):
+    """XMFG7 — enregistre les séries relevées à la clôture. `series_composite` =
+    liste de numéros (une entrée par unité produite, dans l'ordre) ;
+    `series_composants` = liste optionnelle de dicts
+    {produit_id, numero_serie, composite_index} (`composite_index` = index
+    dans `series_composite` pour lier le composant à son unité). Renvoie la
+    liste des `SerieAssemblage` créées."""
+    from .models import SerieAssemblage
+    created = []
+    composite_objs = []
+    for numero in series_composite:
+        numero = (numero or '').strip()
+        if not numero:
+            continue
+        obj = SerieAssemblage.objects.create(
+            company=ordre.company, ordre=ordre, produit=ordre.kit.produit_compose,
+            numero_serie=numero, role=SerieAssemblage.Role.COMPOSITE,
+            created_by=user)
+        composite_objs.append(obj)
+        created.append(obj)
+    for entry in (series_composants or []):
+        numero = (entry.get('numero_serie') or '').strip()
+        if not numero:
+            continue
+        idx = entry.get('composite_index')
+        composite_ref = None
+        if isinstance(idx, int) and 0 <= idx < len(composite_objs):
+            composite_ref = composite_objs[idx]
+        from apps.stock.models import Produit
+        produit = None
+        produit_id = entry.get('produit_id')
+        if produit_id:
+            produit = Produit.objects.filter(
+                id=produit_id, company=ordre.company).first()
+        obj = SerieAssemblage.objects.create(
+            company=ordre.company, ordre=ordre, produit=produit,
+            numero_serie=numero, role=SerieAssemblage.Role.COMPOSANT,
+            composite_ref=composite_ref, created_by=user)
+        created.append(obj)
+    return created
+
+
+def etiquette_items_assemblage(ordre):
+    """XMFG7 — items d'étiquette (jeton QR + titre + sous-titre, SANS AUCUN
+    PRIX) pour chaque unité composite avec série enregistrée sur cet ordre.
+    Format attendu par `apps.stock.labels.render_labels_html`."""
+    from .models import SerieAssemblage
+    series = ordre.series.filter(role=SerieAssemblage.Role.COMPOSITE)
+    kit_nom = ordre.kit.nom
+    items = []
+    for s in series:
+        items.append({
+            'token': f'ASMSER:{s.id}',
+            'titre': kit_nom,
+            'sous_titre': s.numero_serie,
+        })
+    return items
+
+
+# ── XMFG12 — Ordre de démontage (unbuild) ─────────────────────────────────────
+
+def seed_lignes_demontage(ordre_demontage):
+    """XMFG12 — copie la BOM du kit en lignes de démontage éditables (quantité
+    ATTENDUE = BOM × ordre.quantite ; RÉCUPÉRÉE par défaut = attendue, éditable
+    ligne à ligne avant la clôture). Idempotent."""
+    from .models import OrdreDemontageLigne
+    if ordre_demontage.lignes.exists():
+        return list(ordre_demontage.lignes.all())
+    lignes = [
+        OrdreDemontageLigne(
+            ordre=ordre_demontage, produit=c.produit, designation=c.designation,
+            quantite_attendue=(c.quantite or 0) * ordre_demontage.quantite,
+            quantite_recuperee=(c.quantite or 0) * ordre_demontage.quantite,
+        )
+        for c in ordre_demontage.kit.composants.all()
+    ]
+    OrdreDemontageLigne.objects.bulk_create(lignes)
+    return list(ordre_demontage.lignes.all())
+
+
+# ── XMFG13 — Contrôle qualité de fin d'assemblage (gate avant clôture) ───────
+
+def instancier_controle_qualite(ordre):
+    """XMFG13 — instancie la checklist QC du kit sur cet ordre (une fois),
+    depuis `ControleQualiteItemModele`. Kit sans modèle (ou modèle inactif) →
+    ne crée rien (comportement actuel inchangé). Idempotent."""
+    from .models import ControleQualiteOrdre
+    modele = getattr(ordre.kit, 'controle_qualite_modele', None)
+    if modele is None or not modele.active:
+        return []
+    existants = set(
+        ordre.controles_qualite.values_list('item_modele_id', flat=True))
+    items = modele.items.all()
+    a_creer = [
+        ControleQualiteOrdre(ordre=ordre, item_modele=item)
+        for item in items if item.id not in existants
+    ]
+    if a_creer:
+        ControleQualiteOrdre.objects.bulk_create(a_creer)
+    return list(ordre.controles_qualite.select_related('item_modele').all())
+
+
+def controle_qualite_bloque_cloture(ordre):
+    """XMFG13 — True si l'ordre a un modèle QC actif et que la checklist n'est
+    PAS entièrement passée (tout item doit être `pass` ; un `fail` ou
+    `en_attente` bloque). Kit sans modèle → jamais bloquant (False)."""
+    modele = getattr(ordre.kit, 'controle_qualite_modele', None)
+    if modele is None or not modele.active:
+        return False
+    from .models import ControleQualiteOrdre
+    controles = instancier_controle_qualite(ordre)
+    if not controles:
+        return False
+    return any(
+        c.resultat != ControleQualiteOrdre.Resultat.PASS_ for c in controles)
+
+
+def enregistrer_controle_qualite(ordre, item_modele_id, *, resultat,
+                                 valeur_mesuree=None, photo=None, user):
+    """XMFG13 — enregistre le résultat d'un item QC pour cet ordre. Si une
+    tolérance (valeur_min/max) est définie sur l'item ET qu'une valeur mesurée
+    est fournie SANS résultat explicite, le pass/fail est déduit automatiquement.
+    Un item en échec ouvre une NCR liée (`qhse.services`, écriture cross-app
+    fine) — best-effort, ne bloque jamais l'enregistrement."""
+    from django.utils import timezone
+    from .models import ControleQualiteOrdre
+
+    controle = ControleQualiteOrdre.objects.select_related('item_modele').get(
+        ordre=ordre, item_modele_id=item_modele_id)
+    item = controle.item_modele
+
+    if resultat is None and valeur_mesuree is not None and (
+            item.valeur_min is not None or item.valeur_max is not None):
+        ok = True
+        if item.valeur_min is not None and valeur_mesuree < item.valeur_min:
+            ok = False
+        if item.valeur_max is not None and valeur_mesuree > item.valeur_max:
+            ok = False
+        resultat = (ControleQualiteOrdre.Resultat.PASS_ if ok
+                    else ControleQualiteOrdre.Resultat.FAIL)
+
+    controle.resultat = resultat or ControleQualiteOrdre.Resultat.EN_ATTENTE
+    controle.valeur_mesuree = valeur_mesuree
+    if photo is not None:
+        controle.photo = photo
+    controle.controle_par = user
+    controle.date_controle = timezone.now()
+    controle.save(update_fields=[
+        'resultat', 'valeur_mesuree', 'photo', 'controle_par', 'date_controle'])
+
+    if controle.resultat == ControleQualiteOrdre.Resultat.FAIL:
+        try:
+            from apps.qhse.services import creer_ncr_depuis_controle_assemblage
+            creer_ncr_depuis_controle_assemblage(
+                company=ordre.company, ordre_id=ordre.id,
+                titre=f'QC échec — {ordre.reference} · {item.libelle}',
+                description=(
+                    f'Item « {item.libelle} » en échec sur l\'ordre '
+                    f'{ordre.reference} (kit {ordre.kit.nom}).'),
+                signale_par=user)
+        except Exception:  # pragma: no cover - défensif
+            pass
+    return controle
+
+
+# ── XMFG14 — Gamme légère : étapes d'assemblage ──────────────────────────────
+
+def instancier_etapes_ordre(ordre):
+    """XMFG14 — instancie la checklist d'exécution du kit sur cet ordre (une
+    fois), depuis `EtapeAssemblage`. Kit sans étape → ne crée rien (mode
+    opératoire absent = comportement actuel inchangé). Idempotent."""
+    from .models import EtapeOrdre
+    etapes_modele = ordre.kit.etapes_assemblage.all()
+    if not etapes_modele:
+        return []
+    existants = set(
+        ordre.etapes.values_list('etape_modele_id', flat=True))
+    a_creer = [
+        EtapeOrdre(ordre=ordre, etape_modele=etape)
+        for etape in etapes_modele if etape.id not in existants
+    ]
+    if a_creer:
+        EtapeOrdre.objects.bulk_create(a_creer)
+    return list(ordre.etapes.select_related('etape_modele').all())
+
+
+def cocher_etape_ordre(ordre, etape_modele_id, *, fait, duree_reelle_min, user):
+    """XMFG14 — coche (ou décoche) une étape d'exécution avec la durée réelle
+    saisie. `fait_par`/`fait_le` posés côté serveur quand `fait=True`."""
+    from django.utils import timezone
+    from .models import EtapeOrdre
+
+    etape_ordre = EtapeOrdre.objects.get(
+        ordre=ordre, etape_modele_id=etape_modele_id)
+    etape_ordre.fait = bool(fait)
+    etape_ordre.duree_reelle_min = duree_reelle_min
+    if etape_ordre.fait:
+        etape_ordre.fait_par = user
+        etape_ordre.fait_le = timezone.now()
+    else:
+        etape_ordre.fait_par = None
+        etape_ordre.fait_le = None
+    etape_ordre.save(update_fields=[
+        'fait', 'duree_reelle_min', 'fait_par', 'fait_le'])
+    return etape_ordre
+
+
+def totaux_temps_ordre(ordre):
+    """XMFG14 — totaux prévu/réel (minutes) sur les étapes de cet ordre.
+    Renvoie {'prevu': int|None, 'reel': int, 'complet': bool}. `prevu` est None
+    si aucune étape n'a de durée attendue renseignée."""
+    etapes = instancier_etapes_ordre(ordre)
+    if not etapes:
+        return {'prevu': None, 'reel': 0, 'complet': True}
+    prevu = 0
+    a_une_duree = False
+    reel = 0
+    for e in etapes:
+        if e.etape_modele.duree_attendue_min is not None:
+            prevu += e.etape_modele.duree_attendue_min
+            a_une_duree = True
+        if e.duree_reelle_min is not None:
+            reel += e.duree_reelle_min
+    return {
+        'prevu': prevu if a_une_duree else None,
+        'reel': reel,
+        'complet': all(e.fait for e in etapes),
+    }

@@ -81,6 +81,17 @@ class NonConformite(models.Model):
         related_name='qhse_ncr',
         verbose_name="Réserve d'origine",
     )
+    # XMFG13 — pont Contrôle qualité d'assemblage (installations.OrdreAssemblage)
+    # → NCR. Lien optionnel via FK chaîne de caractères (jamais un import
+    # cross-app de modèle) : un item de checklist QC en échec peut ouvrir une
+    # non-conformité liée à l'ordre.
+    ordre_assemblage = models.ForeignKey(
+        'installations.OrdreAssemblage',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_ncr',
+        verbose_name="Ordre d'assemblage d'origine",
+    )
     signale_par = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
