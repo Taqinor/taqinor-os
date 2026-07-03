@@ -11,11 +11,14 @@
  */
 import { regimesFor } from '../lib/regime';
 import { getLocaleFromPath } from '../i18n/utils';
-import { localizeNavHref } from '../i18n/pages';
+import { quoteJourneyHref } from '../i18n/pages';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const regimes = regimesFor(locale);
-const contactHref = localizeNavHref('/contact', locale);
+// W247 — aligné sur son jumeau (guides/loi-82-21-expliquee.astro CtaBand) :
+// le CTA régulatoire à forte intention doit rester DANS le parcours devis,
+// jamais fuir vers /contact. Point de bascule unique : quoteJourneyHref.
+const journeyHref = quoteJourneyHref(locale);
 
 // Libellés visibles, par locale. Le FR est strictement identique à l'original.
 const T = {
@@ -104,7 +107,7 @@ const inputClass =
     <h3 id="rg-title" class="display mt-2 text-xl"></h3>
     <p id="rg-summary" class="mt-2 text-sm leading-relaxed text-encre-soft"></p>
     <ul id="rg-obligations" class="mt-4 space-y-2 text-sm"></ul>
-    <a href={contactHref} class="mt-5 inline-block bg-brass-400 px-6 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">
+    <a href={journeyHref} class="mt-5 inline-block bg-brass-400 px-6 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">
       {T.cta}
     </a>
   </div>
