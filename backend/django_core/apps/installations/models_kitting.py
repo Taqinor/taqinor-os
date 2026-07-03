@@ -512,3 +512,65 @@ class ControleQualiteOrdre(models.Model):
 
     def __str__(self):
         return f'{self.ordre_id} · {self.item_modele_id} · {self.resultat}'
+
+
+class EtapeAssemblage(models.Model):
+    """XMFG14 — étape de la gamme (mode opératoire) d'un ``Kit`` : instructions
+    texte, durée attendue, pièce jointe optionnelle (schéma câblage, photo).
+    Un kit SANS étape garde le comportement actuel inchangé (pas de mode
+    opératoire affiché). Instanciée en checklist d'exécution (`EtapeOrdre`)
+    sur chaque ordre."""
+
+    kit = models.ForeignKey(
+        Kit, on_delete=models.CASCADE, related_name='etapes_assemblage')
+    ordre = models.PositiveIntegerField(default=0)
+    libelle = models.CharField(max_length=255)
+    instructions = models.TextField(blank=True, default='')
+    duree_attendue_min = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='Durée attendue de cette étape, en minutes.')
+    piece_jointe = models.ForeignKey(
+        'records.Attachment', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+        help_text='Schéma de câblage, photo de référence…')
+
+    class Meta:
+        verbose_name = "Étape d'assemblage"
+        verbose_name_plural = "Étapes d'assemblage"
+        ordering = ['kit_id', 'ordre', 'id']
+        indexes = [
+            models.Index(fields=['kit'], name='idx_etapeasm_kit'),
+        ]
+
+    def __str__(self):
+        return f'{self.kit_id} · {self.libelle}'
+
+
+class EtapeOrdre(models.Model):
+    """XMFG14 — état d'exécution d'une étape POUR un ordre d'assemblage
+    donné : fait/par qui/quand + durée réelle saisie. Instanciée depuis
+    `EtapeAssemblage` à la première consultation de l'ordre. La somme des
+    durées réelles vs attendues alimente XMFG15 (tableau de bord atelier)."""
+
+    ordre = models.ForeignKey(
+        OrdreAssemblage, on_delete=models.CASCADE, related_name='etapes')
+    etape_modele = models.ForeignKey(
+        EtapeAssemblage, on_delete=models.CASCADE, related_name='executions')
+    fait = models.BooleanField(default=False)
+    fait_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+')
+    fait_le = models.DateTimeField(null=True, blank=True)
+    duree_reelle_min = models.PositiveIntegerField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Étape d'ordre"
+        verbose_name_plural = "Étapes d'ordre"
+        ordering = ['ordre_id', 'etape_modele__ordre', 'id']
+        unique_together = [('ordre', 'etape_modele')]
+        indexes = [
+            models.Index(fields=['ordre', 'fait'], name='idx_etapeord_ordre_fait'),
+        ]
+
+    def __str__(self):
+        return f'{self.ordre_id} · {self.etape_modele_id} · {"fait" if self.fait else "à faire"}'

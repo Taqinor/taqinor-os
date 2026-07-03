@@ -173,6 +173,8 @@ from .models_kitting import (
     ControleQualiteModele,
     ControleQualiteItemModele,
     ControleQualiteOrdre,
+    EtapeAssemblage,
+    EtapeOrdre,
 )
 from .models_livraison import (
     Livraison,
@@ -275,6 +277,8 @@ __all__ = [
     'ControleQualiteModele',
     'ControleQualiteItemModele',
     'ControleQualiteOrdre',
+    'EtapeAssemblage',
+    'EtapeOrdre',
     'Livraison',
     'LivraisonLigne',
     'PreuveLivraison',

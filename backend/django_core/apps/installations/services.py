@@ -1666,3 +1666,68 @@ def enregistrer_controle_qualite(ordre, item_modele_id, *, resultat,
         except Exception:  # pragma: no cover - défensif
             pass
     return controle
+
+
+# ── XMFG14 — Gamme légère : étapes d'assemblage ──────────────────────────────
+
+def instancier_etapes_ordre(ordre):
+    """XMFG14 — instancie la checklist d'exécution du kit sur cet ordre (une
+    fois), depuis `EtapeAssemblage`. Kit sans étape → ne crée rien (mode
+    opératoire absent = comportement actuel inchangé). Idempotent."""
+    from .models import EtapeOrdre
+    etapes_modele = ordre.kit.etapes_assemblage.all()
+    if not etapes_modele:
+        return []
+    existants = set(
+        ordre.etapes.values_list('etape_modele_id', flat=True))
+    a_creer = [
+        EtapeOrdre(ordre=ordre, etape_modele=etape)
+        for etape in etapes_modele if etape.id not in existants
+    ]
+    if a_creer:
+        EtapeOrdre.objects.bulk_create(a_creer)
+    return list(ordre.etapes.select_related('etape_modele').all())
+
+
+def cocher_etape_ordre(ordre, etape_modele_id, *, fait, duree_reelle_min, user):
+    """XMFG14 — coche (ou décoche) une étape d'exécution avec la durée réelle
+    saisie. `fait_par`/`fait_le` posés côté serveur quand `fait=True`."""
+    from django.utils import timezone
+    from .models import EtapeOrdre
+
+    etape_ordre = EtapeOrdre.objects.get(
+        ordre=ordre, etape_modele_id=etape_modele_id)
+    etape_ordre.fait = bool(fait)
+    etape_ordre.duree_reelle_min = duree_reelle_min
+    if etape_ordre.fait:
+        etape_ordre.fait_par = user
+        etape_ordre.fait_le = timezone.now()
+    else:
+        etape_ordre.fait_par = None
+        etape_ordre.fait_le = None
+    etape_ordre.save(update_fields=[
+        'fait', 'duree_reelle_min', 'fait_par', 'fait_le'])
+    return etape_ordre
+
+
+def totaux_temps_ordre(ordre):
+    """XMFG14 — totaux prévu/réel (minutes) sur les étapes de cet ordre.
+    Renvoie {'prevu': int|None, 'reel': int, 'complet': bool}. `prevu` est None
+    si aucune étape n'a de durée attendue renseignée."""
+    etapes = instancier_etapes_ordre(ordre)
+    if not etapes:
+        return {'prevu': None, 'reel': 0, 'complet': True}
+    prevu = 0
+    a_une_duree = False
+    reel = 0
+    for e in etapes:
+        if e.etape_modele.duree_attendue_min is not None:
+            prevu += e.etape_modele.duree_attendue_min
+            a_une_duree = True
+        if e.duree_reelle_min is not None:
+            reel += e.duree_reelle_min
+    return {
+        'prevu': prevu if a_une_duree else None,
+        'reel': reel,
+        'complet': all(e.fait for e in etapes),
+    }

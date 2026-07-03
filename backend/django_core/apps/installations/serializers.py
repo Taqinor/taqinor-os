@@ -59,6 +59,8 @@ from .models import (
     ControleQualiteModele,
     ControleQualiteItemModele,
     ControleQualiteOrdre,
+    EtapeAssemblage,
+    EtapeOrdre,
     Livraison,
     LivraisonLigne,
     PreuveLivraison,
@@ -2132,6 +2134,8 @@ class OrdreAssemblageSerializer(serializers.ModelSerializer):
         source='responsable.username', read_only=True, default=None)
     lignes = OrdreAssemblageLigneSerializer(many=True, read_only=True)
     cout_prevu = serializers.SerializerMethodField()
+    temps_prevu_min = serializers.SerializerMethodField()
+    temps_reel_min = serializers.SerializerMethodField()
 
     class Meta:
         model = OrdreAssemblage
@@ -2143,6 +2147,7 @@ class OrdreAssemblageSerializer(serializers.ModelSerializer):
             'devis', 'chantier',
             'date_prevue', 'responsable', 'responsable_nom',
             'motif_annulation', 'lignes', 'cout_prevu',
+            'temps_prevu_min', 'temps_reel_min',
             'created_by', 'date_creation', 'date_modification',
         ]
         read_only_fields = [
@@ -2160,6 +2165,14 @@ class OrdreAssemblageSerializer(serializers.ModelSerializer):
     def get_cout_prevu(self, obj):
         from .services import cout_prevu_assemblage
         return str(cout_prevu_assemblage(obj))
+
+    def get_temps_prevu_min(self, obj):
+        from .services import totaux_temps_ordre
+        return totaux_temps_ordre(obj)['prevu']
+
+    def get_temps_reel_min(self, obj):
+        from .services import totaux_temps_ordre
+        return totaux_temps_ordre(obj)['reel']
 
 
 class OrdreAssemblageActivitySerializer(serializers.ModelSerializer):
@@ -2283,6 +2296,46 @@ class OrdreDemontageSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'La quantite a demonter doit etre strictement positive.')
         return value
+
+
+class EtapeAssemblageSerializer(serializers.ModelSerializer):
+    """XMFG14 - étape de la gamme (mode opératoire) d'un kit."""
+
+    class Meta:
+        model = EtapeAssemblage
+        fields = [
+            'id', 'kit', 'ordre', 'libelle', 'instructions',
+            'duree_attendue_min', 'piece_jointe',
+        ]
+
+    def validate_libelle(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError("Le libellé de l'étape est requis.")
+        return value
+
+
+class EtapeOrdreSerializer(serializers.ModelSerializer):
+    """XMFG14 - étape d'exécution pour un ordre d'assemblage donné."""
+    libelle = serializers.CharField(
+        source='etape_modele.libelle', read_only=True, default=None)
+    instructions = serializers.CharField(
+        source='etape_modele.instructions', read_only=True, default=None)
+    duree_attendue_min = serializers.IntegerField(
+        source='etape_modele.duree_attendue_min', read_only=True, default=None)
+    piece_jointe = serializers.PrimaryKeyRelatedField(
+        source='etape_modele.piece_jointe', read_only=True, default=None)
+    fait_par_nom = serializers.CharField(
+        source='fait_par.username', read_only=True, default=None)
+
+    class Meta:
+        model = EtapeOrdre
+        fields = [
+            'id', 'ordre', 'etape_modele', 'libelle', 'instructions',
+            'duree_attendue_min', 'piece_jointe', 'fait', 'fait_par',
+            'fait_par_nom', 'fait_le', 'duree_reelle_min',
+        ]
+        read_only_fields = ['fait_par', 'fait_le']
 
 
 class LivraisonLigneSerializer(serializers.ModelSerializer):

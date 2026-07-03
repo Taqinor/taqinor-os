@@ -61,6 +61,7 @@ from .kitting import (
     KitViewSet, KitComposantViewSet, OrdreAssemblageViewSet,
     OrdreAssemblageLigneViewSet, OrdreDemontageViewSet,
     OrdreDemontageLigneViewSet, ControleQualiteModeleViewSet,
+    EtapeAssemblageViewSet,
 )
 from .livraison import LivraisonViewSet, LivraisonLigneViewSet
 from .pod import PreuveLivraisonViewSet
@@ -136,6 +137,7 @@ __all__ = [
     'OrdreDemontageViewSet',
     'OrdreDemontageLigneViewSet',
     'ControleQualiteModeleViewSet',
+    'EtapeAssemblageViewSet',
     'LivraisonViewSet',
     'LivraisonLigneViewSet',
     'PreuveLivraisonViewSet',

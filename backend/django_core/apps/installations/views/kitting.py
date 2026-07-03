@@ -27,13 +27,15 @@ from .. import activity_kitting as activity
 from ..models import (
     Kit, KitComposant, OrdreAssemblage, OrdreAssemblageLigne,
     OrdreDemontage, OrdreDemontageLigne, ControleQualiteModele,
+    EtapeAssemblage,
 )
 from ..serializers import (
     KitSerializer, KitComposantSerializer, OrdreAssemblageSerializer,
     OrdreAssemblageActivitySerializer, OrdreAssemblageLigneSerializer,
     SerieAssemblageSerializer, OrdreDemontageSerializer,
     OrdreDemontageLigneSerializer, ControleQualiteModeleSerializer,
-    ControleQualiteOrdreSerializer,
+    ControleQualiteOrdreSerializer, EtapeAssemblageSerializer,
+    EtapeOrdreSerializer,
 )
 from ..services import (
     seed_reservations_assemblage, release_reservations_assemblage,
@@ -41,7 +43,8 @@ from ..services import (
     seed_lignes_assemblage, enregistrer_series_assemblage,
     etiquette_items_assemblage, seed_lignes_demontage,
     instancier_controle_qualite, controle_qualite_bloque_cloture,
-    enregistrer_controle_qualite,
+    enregistrer_controle_qualite, instancier_etapes_ordre,
+    cocher_etape_ordre,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -176,6 +179,46 @@ class ControleQualiteModeleViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         self._check_tenant(serializer)
         serializer.save(company=self.request.user.company)
+
+
+class EtapeAssemblageViewSet(viewsets.ModelViewSet):
+    """XMFG14 — gamme légère : étapes d'assemblage d'un kit (mode opératoire).
+    Pas de `company` propre : scope via le kit parent. Filtrable par `kit`."""
+    queryset = EtapeAssemblage.objects.select_related('kit', 'piece_jointe').all()
+    serializer_class = EtapeAssemblageSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if user.company_id:
+            qs = qs.filter(kit__company=user.company)
+        elif not user.is_superuser:
+            qs = qs.none()
+        kit = self.request.query_params.get('kit')
+        if kit:
+            qs = qs.filter(kit_id=kit)
+        return qs
+
+    def _check_parent(self, serializer):
+        company = self.request.user.company
+        cid = getattr(company, 'id', None)
+        kit = serializer.validated_data.get('kit')
+        if kit is not None and getattr(kit, 'company_id', None) != cid:
+            raise ValidationError(
+                {'kit': 'Kit inconnu pour cette société.'})
+
+    def perform_create(self, serializer):
+        self._check_parent(serializer)
+        serializer.save()
+
+    def perform_update(self, serializer):
+        self._check_parent(serializer)
+        serializer.save()
 
 
 class OrdreAssemblageLigneViewSet(viewsets.ModelViewSet):
@@ -491,6 +534,38 @@ class OrdreAssemblageViewSet(TenantMixin, viewsets.ModelViewSet):
         except Exception as exc:
             raise ValidationError({'detail': str(exc)})
         return Response(ControleQualiteOrdreSerializer(controle).data)
+
+    @action(detail=True, methods=['get'])
+    def etapes(self, request, pk=None):
+        """XMFG14 — gamme d'exécution de l'ordre (instanciée à la volée
+        depuis les étapes du kit ; liste vide si le kit n'a pas d'étape)."""
+        ordre = self.get_object()
+        etapes = instancier_etapes_ordre(ordre)
+        return Response(EtapeOrdreSerializer(etapes, many=True).data)
+
+    @action(detail=True, methods=['post'],
+            url_path='etapes/(?P<etape_modele_id>[^/.]+)/cocher')
+    def cocher_etape(self, request, pk=None, etape_modele_id=None):
+        """XMFG14 — coche/décoche une étape d'exécution avec sa durée réelle."""
+        ordre = self.get_object()
+        instancier_etapes_ordre(ordre)
+        fait = str(request.data.get('fait', 'true')).lower() in (
+            '1', 'true', 'yes')
+        duree_reelle_min = request.data.get('duree_reelle_min')
+        try:
+            duree_reelle_min = (
+                int(duree_reelle_min) if duree_reelle_min not in (None, '')
+                else None)
+        except (TypeError, ValueError):
+            raise ValidationError({
+                'duree_reelle_min': 'Durée réelle invalide.'})
+        try:
+            etape_ordre = cocher_etape_ordre(
+                ordre, etape_modele_id, fait=fait,
+                duree_reelle_min=duree_reelle_min, user=request.user)
+        except Exception as exc:
+            raise ValidationError({'detail': str(exc)})
+        return Response(EtapeOrdreSerializer(etape_ordre).data)
 
     @action(detail=True, methods=['post'])
     def terminer(self, request, pk=None):

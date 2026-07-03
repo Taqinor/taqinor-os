@@ -56,6 +56,7 @@ from .views import (
     OrdreDemontageViewSet,
     OrdreDemontageLigneViewSet,
     ControleQualiteModeleViewSet,
+    EtapeAssemblageViewSet,
     LivraisonViewSet,
     LivraisonLigneViewSet,
     PreuveLivraisonViewSet,
@@ -135,6 +136,7 @@ router.register(r'ordre-assemblage-lignes', OrdreAssemblageLigneViewSet)
 router.register(r'ordres-demontage', OrdreDemontageViewSet)
 router.register(r'ordre-demontage-lignes', OrdreDemontageLigneViewSet)
 router.register(r'controle-qualite-modeles', ControleQualiteModeleViewSet)
+router.register(r'etapes-assemblage', EtapeAssemblageViewSet)
 router.register(r'livraisons', LivraisonViewSet)
 router.register(r'livraison-lignes', LivraisonLigneViewSet)
 router.register(r'preuves-livraison', PreuveLivraisonViewSet)
