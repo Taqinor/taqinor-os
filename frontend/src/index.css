@@ -1711,10 +1711,19 @@ textarea.form-control {
 .pp-placeholder { color: #94a3b8; }
 .pp-pop {
   position: absolute;
-  z-index: 300;
+  /* MB3 — barème de tokens : le picker produit est un POPOVER. À 300 (en dur)
+     il passait SOUS les modales (--z-modal 1300) → ouvert dans une modale, la
+     liste se cachait derrière. --z-popover (1400) le place au-dessus des
+     modales, aligné sur les popovers /src/ui (Combobox/Select/ProduitPicker).
+     La sticky `.pp-cat` (z-index:1) plus bas reste locale : elle vit dans le
+     contexte d'empilement propre de .pp-pop, sans lien avec le barème global. */
+  z-index: var(--z-popover, 1400);
   top: calc(100% + 4px);
   left: 0;
-  width: max(100%, 380px);
+  /* MB2 — min(), jamais max() : max(100%, 380px) imposait 380px de large sur
+     un téléphone de 375px (débordement horizontal garanti). min() épouse le
+     déclencheur et plafonne à 380px partout. */
+  width: min(100%, 380px);
   background: #fff;
   border: 1px solid #cbd5e1;
   border-top: 2px solid var(--cat-gold);
@@ -1803,7 +1812,10 @@ textarea.form-control {
   left: 0;
   right: 0;
   height: 3px;
-  z-index: 50;
+  /* MB3 — barre collante au sommet de la zone de contenu : palier --z-sticky
+     (au-dessus du contenu qui défile en dessous). Elle vit DANS .layout-content,
+     donc reste sous l'en-tête réel de l'app quel que soit le barème. */
+  z-index: var(--z-sticky, 1100);
   margin: -2rem -2rem 0;   /* annule le padding de .layout-content en haut */
   overflow: hidden;
   background: rgba(29, 78, 216, 0.12);
@@ -1859,7 +1871,9 @@ textarea.form-control {
     position: absolute;
     left: 8px; right: 8px; top: 50%;
     transform: translateY(-50%);
-    z-index: 1400;
+    /* MB3 — champ de recherche déplié en overlay dans l'en-tête : --z-popover,
+       au-dessus des autres éléments de l'en-tête pendant la saisie. */
+    z-index: var(--z-popover, 1400);
     flex: 1 1 auto;
     background: #fff;
   }
@@ -1940,7 +1954,13 @@ textarea.form-control {
     display: flex;
     position: sticky;
     bottom: 0;
-    z-index: 1300;
+    /* MB3 — barème de tokens : la nav basse est du CHROME collant, pas une
+       modale. À 1300 (== --z-modal) elle entrait en collision avec les
+       modales/feuilles → une feuille inférieure ne la recouvrait pas. On la
+       ramène à --z-sticky (1100) : au-dessus du contenu qui défile, mais SOUS
+       les overlays (--z-overlay 1200) / modales (--z-modal 1300), donc une
+       bottom-sheet la recouvre proprement. */
+    z-index: var(--z-sticky, 1100);
     background: #ffffff;
     border-top: 1px solid #e2e8f0;
     box-shadow: 0 -2px 12px rgba(15, 23, 42, 0.06);
@@ -1987,7 +2007,11 @@ textarea.form-control {
     top: 0;
     left: 0;
     bottom: 0;
-    z-index: 1500;
+    /* MB3 — tiroir de navigation = couche au-dessus de tout (barème de tokens).
+       Le panneau du tiroir passe au palier --z-popover et son voile juste en
+       dessous (--z-modal) : tous deux au-dessus de la nav basse (--z-sticky) et
+       d'une modale de page ordinaire. */
+    z-index: var(--z-popover, 1400);
     width: 264px;
     min-height: 100dvh;
     transform: translateX(-105%);
@@ -2005,15 +2029,27 @@ textarea.form-control {
     display: block;
     position: fixed;
     inset: 0;
-    z-index: 1400;
+    /* MB3 — voile du tiroir : --z-modal, juste SOUS le panneau (--z-popover). */
+    z-index: var(--z-modal, 1300);
     background: rgba(15, 23, 42, 0.5);
   }
   .sidebar--collapsed { width: 264px; }
   .sidebar-toggle { display: none; }
   .layout-content {
     padding: 0.9rem;
-    /* Rien sous l'indicateur d'accueil ni les coins arrondis (PWA iOS). */
-    padding-bottom: max(0.9rem, env(safe-area-inset-bottom));
+    /* MB1 — Dégagement des barres de la coquille (le chevauchement mobile).
+       HAUT : l'en-tête est un frère EN FLUX de .layout-content dans la colonne
+       flex .layout-main (52 px + env(safe-area-inset-top) réservés par son
+       min-height) et le scrolleur commence SOUS lui — vérifié au pixel sur un
+       viewport 375×812 (contenu ⊂ [bas de l'en-tête, haut de la tabbar]).
+       Ne PAS ajouter ici un padding-top de 52 px « pour dégager l'en-tête » :
+       il ne recouvre pas le contenu, et ce padding créerait un trou mort de
+       ~66 px en haut de chaque page mobile (régression mesurée).
+       BAS : on réserve en plus les 52 px de la tabbar + l'indicateur d'accueil
+       pour que la dernière ligne puisse toujours défiler AU-DESSUS des éléments
+       ancrés au viewport (FAB copilote, invites PWA, barre d'actions groupées,
+       toasts) et rester lisible même quand un moteur dégrade 100dvh en 100vh. */
+    padding-bottom: calc(52px + max(0.9rem, env(safe-area-inset-bottom)));
     padding-left: max(0.9rem, env(safe-area-inset-left));
     padding-right: max(0.9rem, env(safe-area-inset-right));
   }
@@ -2116,13 +2152,17 @@ textarea.form-control {
   .lines-table td .form-control-sm,
   .lines-table td .form-select-sm { max-width: 60%; }
   .lines-table td:not([data-label]) .form-control-sm { max-width: 100%; width: 100%; }
-  .pp-pop { width: min(92vw, 380px); }
+  /* MB2 — l'ancien garde-fou mobile `width: min(92vw, 380px)` est retiré :
+     92vw (≈345px) débordait encore de la carte-ligne (~326px). La règle de
+     base `min(100%, 380px)` épouse désormais exactement le déclencheur. */
 
   /* ── Boutons d'action du générateur : footer collant ── */
   .gen-actions-sticky {
     position: sticky;
     bottom: 0;
-    z-index: 60;
+    /* MB3 — footer d'actions collant = palier --z-sticky (au-dessus du contenu
+       du générateur qui défile en dessous). Vit dans .layout-content. */
+    z-index: var(--z-sticky, 1100);
     background: #fff;
     border-top: 1px solid #e2e8f0;
     /* Boutons d'action au-dessus de l'indicateur d'accueil iOS. */
@@ -2145,6 +2185,21 @@ textarea.form-control {
 
   /* Catalogue : actions tactiles */
   .cat-row-actions .btn-sm { min-height: 44px; }
+
+  /* MB2 — Catalogue : la grille `1fr auto` du palier 920px garde une colonne
+     `auto` dimensionnée par son contenu (prix/actions) qui peut pousser la
+     rangée au-delà de 375px. Sous 768px : UNE seule colonne, tout à gauche. */
+  .cat-row { grid-template-columns: 1fr; }
+  .cat-row-spec, .cat-row-stock, .cat-row-prix, .cat-row-actions { grid-column: 1; }
+  .cat-row-prix { text-align: left; }
+  .cat-row-actions { justify-content: flex-start; }
+
+  /* MB2 — Largeurs fixes héritées sans garde mobile (audit index.css) : on les
+     assouplit sous 768px pour qu'aucun écran ne déborde horizontalement. */
+  .gen-page { max-width: 100%; }
+  .lead-bill-input { width: auto; flex: 1 1 110px; min-width: 0; max-width: 200px; }
+  .devis-totals { min-width: 0; width: 100%; }
+  .nb-panel { width: min(320px, calc(100vw - 16px)); }
 }
 
 /* ── Utility ──────────────────────────────────────────── */
@@ -2827,7 +2882,11 @@ textarea.form-control {
 
 /* ===== migrated from src/components/layout/globalsearch.css (P67) ===== */
 /* Recherche globale (barre du haut). */
-.gs-wrap { position: relative; flex: 1; max-width: 460px; }
+/* MB3 — la recherche globale vit dans l'en-tête collant (--z-sticky 1100) :
+   on lui donne le même palier pour que son unité (input + panneau déroulant)
+   forme un contexte d'empilement au niveau de l'en-tête, jamais sous lui. Le
+   panneau (.gs-panel) reste un DROPDOWN (--z-dropdown) DANS ce contexte. */
+.gs-wrap { position: relative; z-index: var(--z-sticky, 1100); flex: 1; max-width: 460px; }
 .gs-input {
   width: 100%;
   padding: 7px 12px;
@@ -2847,7 +2906,8 @@ textarea.form-control {
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.18);
   max-height: 70vh;
   overflow-y: auto;
-  z-index: 200;
+  /* MB3 — panneau de résultats = DROPDOWN. */
+  z-index: var(--z-dropdown, 1000);
   padding: 6px;
 }
 .gs-empty { padding: 12px; color: #64748b; font-size: 0.85rem; }
@@ -2891,7 +2951,10 @@ textarea.form-control {
 
 /* ===== migrated from src/components/layout/notificationbell.css (P67) ===== */
 /* Cloche de notifications in-app. */
-.nb-wrap { position: relative; }
+/* MB3 — même logique que .gs-wrap : la cloche vit dans l'en-tête collant, on
+   ancre son contexte d'empilement au palier --z-sticky, le panneau reste un
+   dropdown DANS ce contexte. */
+.nb-wrap { position: relative; z-index: var(--z-sticky, 1100); }
 .nb-btn {
   position: relative;
   display: flex; align-items: center; justify-content: center;
@@ -2914,7 +2977,7 @@ textarea.form-control {
   width: 320px; max-height: 70vh; overflow-y: auto;
   background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.18);
-  z-index: 200; padding: 6px;
+  z-index: var(--z-dropdown, 1000); padding: 6px;
 }
 .nb-header {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
@@ -3072,7 +3135,10 @@ textarea.form-control {
 .lead-devis-menu-wrap { position: relative; display: inline-block; }
 .lead-devis-menu {
   position: absolute;
-  z-index: 60;
+  /* MB3 — menu déroulant d'actions devis = DROPDOWN (barème de tokens). Rendu
+     dans la fiche lead (.ldp-panel, --z-modal) : le palier joue dans ce
+     contexte, au-dessus du contenu de la fiche. */
+  z-index: var(--z-dropdown, 1000);
   top: calc(100% + 4px);
   right: 0;
   min-width: 200px;
@@ -3210,7 +3276,8 @@ textarea.form-control {
   inset: 0;
   background: color-mix(in srgb, var(--nuit, #0f172a) 55%, transparent);
   backdrop-filter: blur(2px);
-  z-index: var(--z-modal, 1200);
+  /* MB3 — repli aligné sur la vraie valeur de --z-modal (1300), pas 1200. */
+  z-index: var(--z-modal, 1300);
   display: flex;
   justify-content: center;
   align-items: flex-start;

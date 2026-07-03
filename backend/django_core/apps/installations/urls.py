@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     InstallationViewSet, InterventionViewSet, TypeInterventionViewSet,
+    CommissioningRecordViewSet, StageModeleViewSet,
     ChecklistTemplateViewSet, ChecklistEtapeModeleViewSet, ShotListSlotViewSet,
     SafetyChecklistSlotViewSet,
     JalonProjetViewSet, ModeleProjetViewSet, ReunionChantierViewSet,
@@ -62,6 +63,8 @@ router = DefaultRouter()
 router.register(r'chantiers', InstallationViewSet)
 router.register(r'interventions', InterventionViewSet)
 router.register(r'types-intervention', TypeInterventionViewSet)
+router.register(r'recettes-commissioning', CommissioningRecordViewSet)
+router.register(r'etapes-chantier', StageModeleViewSet)
 router.register(r'checklist-templates', ChecklistTemplateViewSet)
 router.register(r'checklist-etapes', ChecklistEtapeModeleViewSet)
 router.register(r'shotlist-slots', ShotListSlotViewSet)
@@ -80,10 +83,16 @@ router.register(r'programme-budgets', BudgetProjetViewSet)
 router.register(r'programme-engagements', BudgetEngagementViewSet)
 router.register(r'indisponibilites-ressource', IndisponibiliteRessourceViewSet)
 router.register(r'equipes', EquipeViewSet)
-router.register(r'sous-traitants', SousTraitantViewSet)
+# DC34 — sous-traitants / AP sous-traitant sont des ViewSet façade au-dessus de
+# stock (Fournisseur type=service + chaîne FactureFournisseur/PaiementFournisseur)
+# sans queryset propre → basename explicite requis par le routeur.
+router.register(r'sous-traitants', SousTraitantViewSet,
+                basename='soustraitant')
 router.register(r'ordres-sous-traitance', OrdreSousTraitanceViewSet)
-router.register(r'factures-sous-traitant', FactureSousTraitantViewSet)
-router.register(r'paiements-sous-traitant', PaiementSousTraitantViewSet)
+router.register(r'factures-sous-traitant', FactureSousTraitantViewSet,
+                basename='facturesoustraitant')
+router.register(r'paiements-sous-traitant', PaiementSousTraitantViewSet,
+                basename='paiementsoustraitant')
 router.register(r'attestations-sous-traitant', AttestationSousTraitantViewSet)
 router.register(r'evaluations-sous-traitant', EvaluationSousTraitantViewSet)
 router.register(r'retenues-garantie-sous-traitant', RetenueGarantieSousTraitantViewSet)

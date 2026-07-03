@@ -686,6 +686,62 @@ def noter_devis_ouvert(devis_reference: str, lead) -> None:
 
 # ── QJ2 — Speed-to-lead : notifications vendeur avec lien wa.me ──────────────
 
+def _company_fallback_managers(company):
+    """QJ27 — Managers de repli d'une société : utilisateurs actifs portant le
+    rôle fin « Commercial responsable » ou « Directeur ».
+
+    Sert quand un lead n'a pas de responsable, ou quand le responsable n'a pas
+    de supérieur direct (``supervisor``). Liste éventuellement vide — jamais
+    d'exception. La société est toujours résolue côté serveur."""
+    if company is None:
+        return []
+    try:
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        return list(User.objects.filter(
+            company=company, is_active=True,
+            role__nom__in=('Commercial responsable', 'Directeur'),
+        ).order_by('id'))
+    except Exception:  # noqa: BLE001 — best-effort
+        return []
+
+
+def user_and_superior_recipients(user, company):
+    """QJ27 — Destinataires « handler + supérieur » pour une notification.
+
+    Renvoie une liste dédupliquée (ordre préservé) :
+      - le handler (``user``) s'il est renseigné ;
+      - son ``supervisor`` direct s'il existe, SINON les managers de repli de
+        la société (« Commercial responsable » / « Directeur ») ;
+      - handler absent → uniquement les managers de repli.
+
+    Peut renvoyer une liste vide (aucun destinataire résolvable)."""
+    recipients = []
+    if user is not None:
+        recipients.append(user)
+        superior = getattr(user, 'supervisor', None)
+        if superior is not None and getattr(superior, 'is_active', True):
+            recipients.append(superior)
+        else:
+            recipients.extend(_company_fallback_managers(company))
+    else:
+        recipients.extend(_company_fallback_managers(company))
+    seen, out = set(), []
+    for u in recipients:
+        pk = getattr(u, 'pk', None)
+        if pk is not None and pk not in seen:
+            seen.add(pk)
+            out.append(u)
+    return out
+
+
+def lead_notification_recipients(lead):
+    """QJ27 — Destinataires des notifications d'un lead : owner + supérieur
+    (repli managers société quand l'un des deux manque)."""
+    return user_and_superior_recipients(
+        getattr(lead, 'owner', None), getattr(lead, 'company', None))
+
+
 def _build_lead_wa_reply_url(lead):
     """Construit un lien wa.me « répondre maintenant » vers le prospect du lead.
 
@@ -730,22 +786,25 @@ def notify_new_lead(lead) -> None:
     de création.
 
     Multi-tenant : le owner est résolu depuis le lead (server-side, jamais du
-    corps de requête). Rien à notifier si le lead n'a pas de responsable.
+    corps de requête). QJ27 : le supérieur du owner (``supervisor``) est aussi
+    notifié — repli sur les managers société (« Commercial responsable » /
+    « Directeur ») quand le owner ou son supérieur manque. Aucun destinataire
+    résolvable → no-op.
     """
     try:
-        owner = getattr(lead, 'owner', None)
-        if owner is None:
+        recipients = lead_notification_recipients(lead)
+        if not recipients:
             return
-        from apps.notifications.services import notify
+        from apps.notifications.services import notify_many
         nom = (getattr(lead, 'nom', '') or '').strip() or 'Nouveau prospect'
         wa_url = _build_lead_wa_reply_url(lead)
         body_parts = [f'Un nouveau lead vient d\'arriver : {nom}.']
         if wa_url:
             body_parts.append(f'Répondre maintenant : {wa_url}')
-        notify(
-            user=owner,
-            event_type='lead_new',
-            title=f'Nouveau lead : {nom}',
+        notify_many(
+            recipients,
+            'lead_new',
+            f'Nouveau lead : {nom}',
             body='\n'.join(body_parts),
             link=f'/crm/leads?lead={lead.pk}',
             company=lead.company,
@@ -762,23 +821,24 @@ def notify_devis_opened(devis_reference: str, lead) -> None:
 
     Complémente noter_devis_ouvert (QJ1) : en plus de la note chatter, envoie
     une notification in-app + Web Push au owner du lead, avec un lien wa.me
-    « répondre maintenant » vers le prospect. Best-effort — jamais d'exception
-    propagée.
+    « répondre maintenant » vers le prospect. QJ27 : le supérieur du owner est
+    aussi notifié (repli managers société quand owner/supervisor manque).
+    Best-effort — jamais d'exception propagée.
     """
     try:
-        owner = getattr(lead, 'owner', None)
-        if owner is None:
+        recipients = lead_notification_recipients(lead)
+        if not recipients:
             return
-        from apps.notifications.services import notify
+        from apps.notifications.services import notify_many
         nom = (getattr(lead, 'nom', '') or '').strip() or 'Votre client'
         wa_url = _build_lead_wa_reply_url(lead)
         body_parts = [f'{nom} vient d\'ouvrir le devis {devis_reference}.']
         if wa_url:
             body_parts.append(f'Répondre maintenant : {wa_url}')
-        notify(
-            user=owner,
-            event_type='devis_opened',
-            title=f'Devis {devis_reference} ouvert par le client',
+        notify_many(
+            recipients,
+            'devis_opened',
+            f'Devis {devis_reference} ouvert par le client',
             body='\n'.join(body_parts),
             link=f'/crm/leads?lead={lead.pk}',
             company=lead.company,
@@ -788,6 +848,60 @@ def notify_devis_opened(devis_reference: str, lead) -> None:
         logging.getLogger(__name__).warning(
             'QJ2: notify_devis_opened échoué pour lead #%s devis %s : %s',
             getattr(lead, 'pk', '?'), devis_reference, exc)
+
+
+def notify_client_contact_request(devis_reference: str, lead,
+                                  canal='', message='') -> None:
+    """QJ27 — Le CLIENT demande à être contacté (depuis la proposition publique).
+
+    Consigne la demande dans le chatter du lead (note SYSTÈME, user=None — ne
+    fait donc jamais avancer le funnel QJ7) ET notifie le responsable du lead
+    ET son supérieur (repli managers société quand l'un des deux manque), avec
+    un lien wa.me « répondre maintenant ». Best-effort — jamais d'exception
+    propagée. La société vient TOUJOURS du lead (jamais d'un corps de requête).
+    """
+    try:
+        canal_label = {
+            'whatsapp': 'par WhatsApp',
+            'rappel': 'par téléphone (rappel)',
+        }.get((canal or '').strip(), '')
+        nom = (getattr(lead, 'nom', '') or '').strip() or 'Le client'
+        # Note chatter (toujours, même sans destinataire notifiable).
+        note = f'Le client demande à être contacté ({devis_reference})'
+        if canal_label:
+            note += f' — {canal_label}'
+        if message:
+            note += f' : « {message[:500]} »'
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE, body=note)
+
+        recipients = lead_notification_recipients(lead)
+        if not recipients:
+            return
+        from apps.notifications.services import notify_many
+        wa_url = _build_lead_wa_reply_url(lead)
+        body_parts = [
+            f'{nom} demande à être contacté au sujet du devis '
+            f'{devis_reference}'
+            + (f' ({canal_label})' if canal_label else '') + '.']
+        if message:
+            body_parts.append(f'Message : « {message[:500]} »')
+        if wa_url:
+            body_parts.append(f'Répondre maintenant : {wa_url}')
+        notify_many(
+            recipients,
+            'client_contact_request',
+            f'Le client demande à être contacté — {devis_reference}',
+            body='\n'.join(body_parts),
+            link=f'/crm/leads?lead={lead.pk}',
+            company=lead.company,
+        )
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        import logging
+        logging.getLogger(__name__).warning(
+            'QJ27: notify_client_contact_request échoué pour lead #%s '
+            'devis %s : %s', getattr(lead, 'pk', '?'), devis_reference, exc)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

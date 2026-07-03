@@ -2,7 +2,7 @@
 // no horizontal overflow on key pages, and the full nav menu is reachable
 // (verifies the C1 cut-off-menu fix).
 import { test, expect } from '@playwright/test'
-import { uniq } from './helpers'
+import { uniq, uiLogin, ADMIN, gotoLeads, createLead } from './helpers'
 
 const PAGES = ['/dashboard', '/crm/leads', '/ventes/factures', '/parametres']
 
@@ -86,4 +86,137 @@ test('E16+: an edit modal fits the iPhone viewport (no off-screen crop)', async 
   const pwd = modal.getByText('Nouveau mot de passe', { exact: true })
   await pwd.scrollIntoViewIfNeeded()
   await expect(pwd).toBeVisible()
+})
+
+// ── MB6 — Mobile visual/e2e regression gate ─────────────────────────────────
+// Broader iPhone-viewport pass over the KEY journeys (login → leads → devis
+// list → devis generator → chantiers → paramètres): no horizontal overflow on
+// any of them, and no actionable content sits hidden behind the sticky header
+// or the sticky bottom tab-bar (MB1/MB3 keep both IN-FLOW, but a future
+// regression could re-introduce `position: fixed` overlap — this is the net).
+// Reuses the same auth/seed fixtures as the rest of the suite (storageState
+// from auth.setup.js; login itself is exercised cold, mirroring login.spec.js).
+
+function assertNoHorizontalOverflow(page, path) {
+  return page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+    .then((overflow) => expect(overflow, `horizontal overflow on ${path}`).toBeLessThanOrEqual(1))
+}
+
+// True viewport overlap check: sample the DOM element actually PAINTED at the
+// corners + center of the target's bounding box and confirm each point either
+// hits the target itself (or one of its descendants/ancestors) — not the
+// sticky header / bottom tab-bar drawn on top of it. This catches real
+// paint-order collisions that a pure Y-coordinate comparison would miss (e.g.
+// a `position: fixed` regression re-introduced over an in-flow element), and
+// is backed up by the same Y-coordinate bounds as a belt-and-braces check.
+async function assertNotObscured(page, locator, label) {
+  await locator.scrollIntoViewIfNeeded()
+  await expect(locator, `${label} is visible`).toBeVisible()
+  const box = await locator.boundingBox()
+  expect(box, `${label} has a bounding box`).toBeTruthy()
+  const handle = await locator.elementHandle()
+  const inset = 2
+  const points = [
+    [box.x + inset, box.y + inset],
+    [box.x + box.width - inset, box.y + inset],
+    [box.x + box.width / 2, box.y + box.height / 2],
+    [box.x + inset, box.y + box.height - inset],
+    [box.x + box.width - inset, box.y + box.height - inset],
+  ]
+  for (const [x, y] of points) {
+    const hitsTarget = await page.evaluate(
+      ([px, py, node]) => {
+        const top = document.elementFromPoint(px, py)
+        return !!top && (top === node || node.contains(top) || top.contains(node))
+      },
+      [x, y, handle],
+    )
+    expect(hitsTarget, `${label}: point (${Math.round(x)},${Math.round(y)}) is painted by the target, not fixed chrome on top of it`).toBeTruthy()
+  }
+  // Belt-and-braces: the element's box must not be covered by the sticky
+  // bottom tab-bar or sit underneath the sticky header.
+  const tabbar = page.locator('.bottom-tabbar')
+  if (await tabbar.count()) {
+    const tabBox = await tabbar.boundingBox()
+    if (tabBox) {
+      expect(
+        box.y + box.height,
+        `${label}: bottom edge stays above the bottom tab-bar`,
+      ).toBeLessThanOrEqual(tabBox.y + 1)
+    }
+  }
+  const header = page.locator('.header').first()
+  if (await header.count()) {
+    const headerBox = await header.boundingBox()
+    if (headerBox) {
+      expect(
+        box.y,
+        `${label}: top edge stays below the sticky header`,
+      ).toBeGreaterThanOrEqual(headerBox.y + headerBox.height - 1)
+    }
+  }
+}
+
+test.describe('MB6: login (cold, no shared auth state)', () => {
+  test.use({ storageState: { cookies: [], origins: [] } })
+
+  test('login screen has no horizontal overflow on iPhone', async ({ page }) => {
+    await page.goto('/login')
+    await expect(page.getByPlaceholder('Entrez votre identifiant')).toBeVisible()
+    await assertNoHorizontalOverflow(page, '/login')
+    await uiLogin(page, ADMIN)
+    await expect(page).toHaveURL(/\/dashboard/)
+  })
+})
+
+test('MB6: key flows have no horizontal overflow and no content hidden behind the fixed chrome', async ({ page }) => {
+  // 1) Leads — list/kanban entry point.
+  await gotoLeads(page)
+  await assertNoHorizontalOverflow(page, '/crm/leads')
+  await assertNotObscured(
+    page,
+    page.getByRole('button', { name: '+ Nouveau lead' }),
+    'leads: "+ Nouveau lead" action',
+  )
+
+  // 2) Devis list.
+  await page.goto('/ventes/devis')
+  await expect(page.getByRole('heading', { name: 'Devis' })).toBeVisible()
+  await assertNoHorizontalOverflow(page, '/ventes/devis')
+
+  // 3) Devis generator — the sticky footer action bar (`.gen-actions-sticky`)
+  //    is the exact element MB3 pinned at --z-sticky; it must stay reachable
+  //    above the bottom tab-bar, not swallowed by it.
+  await page.goto('/ventes/devis/nouveau')
+  await expect(page.getByRole('heading', { name: 'Générateur de Devis Solaire' })).toBeVisible()
+  await assertNoHorizontalOverflow(page, '/ventes/devis/nouveau')
+  const submitBtn = page.getByRole('button', { name: /Créer le devis|Enregistrer les modifications/ })
+  await assertNotObscured(page, submitBtn, 'devis generator: submit action')
+
+  // 4) Chantiers (installations).
+  await page.goto('/chantiers')
+  await expect(page.getByRole('heading', { name: 'Chantiers' })).toBeVisible()
+  await assertNoHorizontalOverflow(page, '/chantiers')
+
+  // 5) Paramètres.
+  await page.goto('/parametres')
+  await expect(page.getByRole('button', { name: 'Enregistrer' })).toBeVisible({ timeout: 20_000 })
+  await assertNoHorizontalOverflow(page, '/parametres')
+  await assertNotObscured(
+    page,
+    page.getByRole('button', { name: 'Enregistrer' }),
+    'paramètres: "Enregistrer" action',
+  )
+})
+
+test('MB6: a freshly-created lead card is reachable and unobscured on iPhone', async ({ page }) => {
+  // End-to-end sanity on top of the static overflow/overlap checks: a real
+  // mutating flow (create a lead) must leave its result visible and tappable,
+  // not hidden under the bottom tab-bar after the list re-renders.
+  await gotoLeads(page)
+  const name = await createLead(page, { nom: uniq('MB6 Lead') })
+  const card = page.locator('article.kb-card', { hasText: name }).first()
+  const row = page.locator('tr.lv-row', { hasText: name }).first()
+  const target = (await card.isVisible().catch(() => false)) ? card : row
+  await assertNotObscured(page, target, 'leads: newly-created lead card/row')
 })

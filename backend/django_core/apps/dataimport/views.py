@@ -6,10 +6,20 @@ from rest_framework.decorators import api_view, permission_classes, parser_class
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
 
-from authentication.permissions import IsResponsableOrAdmin
+from authentication.permissions import (
+    IsResponsableOrAdmin, HasPermissionAndRole,
+)
 from . import services
 
 logger = logging.getLogger(__name__)
+
+# QG4 — la CRÉATION de produits est restreinte partout (REST, import de
+# données, OCR) aux rôles Directeur et Commercial responsable. Le commit
+# d'import `products` porte donc la même garde que ProduitViewSet.create ;
+# les autres cibles (leads, clients, fournisseurs, équipements…) gardent la
+# règle historique (responsable/admin).
+PRODUIT_CREATE_PERMISSION = HasPermissionAndRole(
+    'stock_creer', 'Directeur', 'Commercial responsable')
 
 # ERR53 — Bornes anti-DoS : un upload trop gros (en octets) ou un fichier de
 # trop de lignes est rejeté AVANT toute lecture/parsing intégral en mémoire,
@@ -66,6 +76,14 @@ def commit(request):
     f, target, err = _read(request)
     if err:
         return err
+    # QG4 — l'import de PRODUITS crée des produits : même restriction que le
+    # create REST (Directeur + Commercial responsable uniquement).
+    if target == 'products' and not PRODUIT_CREATE_PERMISSION().has_permission(
+            request, None):
+        return Response(
+            {'detail': 'La création de produits est réservée aux rôles '
+                       'Directeur et Commercial responsable.'},
+            status=403)
     try:
         result = services.commit(
             f.read(), f.name, target, request.user.company, request.user)

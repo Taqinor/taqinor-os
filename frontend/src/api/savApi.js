@@ -8,6 +8,9 @@ const savApi = {
   createEquipement: (data) => api.post('/sav/equipements/', data),
   updateEquipement: (id, data) => api.patch(`/sav/equipements/${id}/`, data),
   deleteEquipement: (id) => api.delete(`/sav/equipements/${id}/`),
+  // FG290 — registre des garanties par parc (échéancier de fin de garantie).
+  getRegistreGaranties: (params) =>
+    api.get('/sav/equipements/registre-garanties/', { params }),
 
   // ── Tickets SAV ──
   getTickets: (params) => api.get('/sav/tickets/', { params }),
@@ -26,6 +29,19 @@ const savApi = {
   addTicketPiece: (id, body) => api.post(`/sav/tickets/${id}/pieces/`, body),
   removeTicketPiece: (id, pieceId) =>
     api.delete(`/sav/tickets/${id}/pieces/${pieceId}/`),
+
+  // FG81 — première réponse (horloge SLA) : idempotent, date optionnelle.
+  premierReponseTicket: (id, at) =>
+    api.post(`/sav/tickets/${id}/premier-reponse/`, at ? { at } : {}),
+  // FG86 — lien de suivi client tokenisé (créé à la première demande).
+  lienClientTicket: (id) => api.get(`/sav/tickets/${id}/lien-client/`),
+  // FG82 — checklist de maintenance du ticket (init depuis template + items).
+  getTicketChecklist: (id) => api.get(`/sav/tickets/${id}/checklist/`),
+  initTicketChecklist: (id, templateId) =>
+    api.post(`/sav/tickets/${id}/checklist/`, { template_id: templateId }),
+  patchTicketChecklistItem: (id, payload) =>
+    api.patch(`/sav/tickets/${id}/checklist/`, payload),
+  getChecklistTemplates: () => api.get('/sav/checklist-templates/'),
 
   // T16 — contrats de maintenance.
   getContrats: (params) => api.get('/sav/contrats-maintenance/', { params }),

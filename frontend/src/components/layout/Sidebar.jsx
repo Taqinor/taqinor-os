@@ -139,6 +139,7 @@ const NAV_SECTIONS = [
       { to: '/ma-journee',           label: 'Ma journée',       k: 'nav.ma_journee', icon: I.agenda,       roles: ['normal','responsable','admin'] },
       { to: '/chantiers',            label: 'Chantiers',        k: 'nav.chantiers',  icon: I.chantiers,    roles: ['normal','responsable','admin'] },
       { to: '/interventions',        label: 'Interventions',    k: 'nav.interventions', icon: I.outillage, roles: ['normal','responsable','admin'] },
+      { to: '/planification',        label: 'Planification',    k: 'nav.planification', icon: I.agenda,    roles: ['normal','responsable','admin'] },
       { to: '/parc',                 label: 'Parc installé',    k: 'nav.parc',       icon: I.equipements,  roles: ['normal','responsable','admin'] },
       { to: '/production',           label: 'Production',       k: 'nav.production', icon: I.production,   roles: ['normal','responsable','admin'] },
       { to: '/outillage',            label: 'Outillage',        k: 'nav.outillage',  icon: I.outillage,    roles: ['normal','responsable','admin'] },

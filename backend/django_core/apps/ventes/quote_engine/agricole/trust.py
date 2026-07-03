@@ -41,7 +41,8 @@ def build(ctx) -> str:
     date_acc = (d.get("date_acceptation", "") or "").strip()
 
     l_real = links.get("realisations", site_url + "/realisations")
-    l_avis = links.get("avis", site_url + "/avis")
+    # QK5 — /avis n'existe pas : repli sur /realisations (page réelle).
+    l_avis = links.get("avis", site_url + "/realisations")
     l_gar = links.get("garanties", site_url + "/garanties")
     l_sign = links.get("signer", site_url + "/signer")
 

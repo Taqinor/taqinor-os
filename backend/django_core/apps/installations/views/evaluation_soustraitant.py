@@ -14,7 +14,9 @@ from rest_framework.response import Response
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 
-from ..models import EvaluationSousTraitant, SousTraitant
+from apps.stock import selectors as stock_selectors
+
+from ..models import EvaluationSousTraitant
 from ..serializers import EvaluationSousTraitantSerializer
 from .. import selectors
 
@@ -26,6 +28,12 @@ def _check_tenant(serializer, company, field):
     obj = serializer.validated_data.get(field)
     if obj is not None and getattr(obj, 'company_id', None) != cid:
         raise ValidationError({field: 'Objet inconnu pour cette société.'})
+    # DC34 — le sous-traitant est un stock.Fournisseur de type « service ».
+    if (field == 'sous_traitant' and obj is not None
+            and getattr(obj, 'type', None) != 'service'):
+        raise ValidationError(
+            {field: 'Ce fournisseur n\'est pas un sous-traitant (type '
+                    'service).'})
 
 
 class EvaluationSousTraitantViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -75,8 +83,9 @@ class EvaluationSousTraitantViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response(
                 {'detail': 'Paramètre `sous_traitant` requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
-        st = SousTraitant.objects.filter(
-            id=st_id, company=request.user.company).first()
+        # DC34 — le sous-traitant est un stock.Fournisseur(type='service') lu via
+        # le sélecteur stock (jamais d'import de apps.stock.models).
+        st = stock_selectors.get_sous_traitant(request.user.company, st_id)
         if st is None:
             return Response(
                 {'detail': 'Sous-traitant inconnu pour cette société.'},

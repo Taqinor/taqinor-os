@@ -17,11 +17,16 @@ import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
 import parametresApi from '../../api/parametresApi'
 import ProduitPicker from '../../components/ProduitPicker'
+import ClientQuickCreateModal from './ClientQuickCreateModal'
+import { Combobox } from '../../ui/Combobox'
+import { searchCompanies } from '../../features/crm/companyLookup'
 import {
   Button, IconButton, Card, CardContent,
   Input, Textarea, Label, Segmented,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '../../ui'
+import { useCanCreateProduit } from '../../hooks/useHasPermission'
 import {
   MONTHS_FR, CHART_MONTHS, DEFAULT_MONTHLY_BILLS, DAY_USAGE_DEFAULTS,
   formatMoney, estimerMois, estimerPanneaux, computeROI, ttcFromHt, htFromTtc,
@@ -33,6 +38,8 @@ import {
   computeBuyCost, avecBatterieAvailability, KWH_PRICE, EFFICIENCY,
   panneauxPourKwc, expectedTvaForDesignation,
   TVA_STANDARD_DEFAUT, TVA_PANNEAUX_DEFAUT,
+  classifyProduct,
+  kwhFromBill, buildEtudeParamsChoice, multiPropertyPreviewTTC,
 } from '../../features/ventes/solar'
 
 const MODE_OPTIONS = [
@@ -51,6 +58,10 @@ const withKeys = (rows) => rows.map(r => ({
   quantite: String(r.quantite),
   prix_unit_ttc: String(r.prix_unit_ttc),
   taux_tva: String(r.taux_tva ?? 20),
+  // QJ31 — groupe multi-villa (mode B) : null = ligne mono-système (défaut,
+  // comportement historique inchangé). 0 = équipement commun, 1..N = villa N.
+  groupeIndex: r.groupeIndex ?? null,
+  groupeLabel: r.groupeLabel ?? '',
 }))
 
 // Nouvelle ligne vide — quantité 0 comme addProductLine() du simulateur
@@ -61,6 +72,8 @@ const emptyLine = () => ({
   quantite: '0',
   prix_unit_ttc: '0',
   taux_tva: '20',
+  groupeIndex: null,
+  groupeLabel: '',
 })
 
 const fmtNum = (v) => (v !== null && v !== undefined) ? v.toLocaleString('fr-MA') : 'N/A'
@@ -114,6 +127,17 @@ export default function DevisGenerator({
   const dispatch = useDispatch()
   const navigate = useNavigate()
 
+  // QP2 — renommer la désignation d'une ligne est réservé à Directeur +
+  // Commercial responsable (même gate que la création produit, QG4/QG5) ;
+  // pour tout autre rôle la désignation est en lecture seule (verrouillée au
+  // nom du produit lié). Le backend reste la seule garde qui compte.
+  const canRenameLine = useCanCreateProduit()
+  // Dialogue « renommer ici seulement » vs « créer un nouveau produit ».
+  // { key, ancienNom, nouveauNom, produitId } quand ouvert, sinon null.
+  const [renameDialog, setRenameDialog] = useState(null)
+  const [renameBusy, setRenameBusy] = useState(false)
+  const [renameError, setRenameError] = useState(null)
+
   const [clients, setClients] = useState([])
   const [leads, setLeads] = useState([])
   const [produits, setProduits] = useState([])
@@ -155,6 +179,30 @@ export default function DevisGenerator({
   const [editDevis, setEditDevis] = useState(null)
   const editLoaded = useRef(false)
 
+  // QJ28 — « Contacter mon supérieur » pendant la génération : notifie le
+  // supérieur du vendeur avec un lien vers le devis. Manuel (un bouton), et
+  // seulement sur un devis déjà enregistré (édition).
+  const [superieurBusy, setSuperieurBusy] = useState(false)
+  const [superieurMsg, setSuperieurMsg] = useState(null)
+  const contacterSuperieur = async () => {
+    if (!editDevis?.id) return
+    setSuperieurBusy(true)
+    setSuperieurMsg(null)
+    try {
+      await ventesApi.contacterSuperieur(editDevis.id)
+      setSuperieurMsg({ ok: true, text: 'Votre supérieur a été notifié.' })
+    } catch (err) {
+      const detail = err?.response?.data?.detail
+      setSuperieurMsg({
+        ok: false,
+        text: typeof detail === 'string'
+          ? detail : 'Notification du supérieur impossible.',
+      })
+    } finally {
+      setSuperieurBusy(false)
+    }
+  }
+
   // ── Document ──
   const [leadId, setLeadId] = useState('')
   // Pré-sélection d'un client passé en query (?client=<id>) depuis « Nouveau
@@ -165,6 +213,8 @@ export default function DevisGenerator({
       ? String(searchParams.get('client'))
       : '',
   )
+  // QG3 — création rapide de client sans quitter le devis (chemin sans lead).
+  const [clientQuickCreateOpen, setClientQuickCreateOpen] = useState(false)
   const [dateValidite, setDateValidite] = useState('')
   const [instType, setInstType] = useState('Résidentielle')
   const [scenario, setScenario] = useState('Les deux (Sans + Avec)')
@@ -175,6 +225,15 @@ export default function DevisGenerator({
   const [fHiver, setFHiver] = useState('')
   const [fEte, setFEte] = useState('')
   const [monthly, setMonthly] = useState(DEFAULT_MONTHLY_BILLS)
+  // QF4 — distributeur réel + facture/consommation réelle du client, pour que
+  // le calcul « deux factures » par tranche (backend QF2) utilise ses vrais
+  // chiffres au lieu des défauts. Stockés dans etude_params à l'enregistrement
+  // (distributeur, conso_annuelle) — jamais utilisés pour écraser les factures
+  // mensuelles affichées ci-dessus (qui restent l'estimation hiver/été).
+  const [distributeur, setDistributeur] = useState('onee')
+  const [realBillMode, setRealBillMode] = useState('mad') // 'mad' | 'kwh'
+  const [realBillMad, setRealBillMad] = useState('')
+  const [realBillKwh, setRealBillKwh] = useState('')
 
   // ── Paramètres techniques ──
   const [nbPanneaux, setNbPanneaux] = useState('')
@@ -191,6 +250,18 @@ export default function DevisGenerator({
   const [tauxTva, setTauxTva] = useState('20.00')
   const [discountPct, setDiscountPct] = useState('0')
   const linesInitialized = useRef(false)
+
+  // ── QJ31 — Multi-propriétés (un seul devis, jamais scindé) ──
+  // 'none' = mono-système (défaut, comportement historique inchangé) ;
+  // 'multiplier' = ×N villas identiques (etude_params.nombre_proprietes) ;
+  // 'villas' = groupes de lignes par villa (groupe_index/groupe_label, QJ29).
+  const [multiMode, setMultiMode] = useState('none')
+  const [nombreProprietes, setNombreProprietes] = useState('2')
+  // Groupes villas (mode B) : [{ index, label }]. index 0 = équipement commun.
+  const [villaGroups, setVillaGroups] = useState([
+    { index: 0, label: 'Équipement commun' },
+    { index: 1, label: 'Villa 1' },
+  ])
 
   // ── Multi-marchés ──
   const [modeInstallation, setModeInstallation] = useState('residentiel')
@@ -267,6 +338,16 @@ export default function DevisGenerator({
     [lines, discountPct],
   )
 
+  // QJ31 — aperçu multi-propriétés (miroir écran du backend QJ29). Null quand
+  // aucun mode multi n'est actif (aperçu mono-système inchangé).
+  const multiPreview = useMemo(
+    () => multiPropertyPreviewTTC(lines, {
+      nombreProprietes: multiMode === 'multiplier' ? nombreProprietes : null,
+      discountPct,
+    }),
+    [lines, multiMode, nombreProprietes, discountPct],
+  )
+
   // Simulation/graphique en VALEURS DIFFÉRÉES : la frappe et les bascules
   // restent instantanées (les champs gardent leurs valeurs exactes — rien
   // n'est perdu ni arrondi), le recalcul lourd + recharts suit d'un souffle.
@@ -275,6 +356,21 @@ export default function DevisGenerator({
   const dTotals = useDeferredValue(totals)
   const dKwp = useDeferredValue(kwp)
   const dDayUsage = useDeferredValue(dayUsage)
+
+  // QF4/QF5 — consommation annuelle RÉELLE dérivée de la facture/kWh du
+  // client (barème par tranche du distributeur choisi). Alimente à la fois
+  // etude_params (à l'enregistrement) et l'aperçu écran (roi ci-dessous) —
+  // UNE seule dérivation, jamais deux chiffres qui pourraient diverger.
+  const consoAnnuelleReelle = (() => {
+    if (realBillMode === 'kwh') {
+      const kwh = parseFloat(realBillKwh) || 0
+      return kwh > 0 ? Math.round(kwh * 12) : null
+    }
+    const mad = parseFloat(realBillMad) || 0
+    if (mad <= 0) return null
+    const { kwhMensuel } = kwhFromBill(mad, distributeur)
+    return kwhMensuel > 0 ? Math.round(kwhMensuel * 12) : null
+  })()
 
   const roi = useMemo(() => {
     if (dKwp <= 0 || !dMonthly.some(v => v > 0)) return null
@@ -287,8 +383,12 @@ export default function DevisGenerator({
       batteryKwh: batteryKwhFromLines(dLines),
       kwhPrice: quoteLogic.kwhPrice,
       efficiency: quoteLogic.efficiency,
+      // QF5 — bascule sur le modèle « deux factures » par tranche (parité
+      // PDF) dès qu'une consommation réelle + un distributeur sont connus.
+      consoAnnuelleKwh: consoAnnuelleReelle,
+      utility: distributeur,
     })
-  }, [dKwp, dMonthly, dDayUsage, dTotals, dLines, quoteLogic])
+  }, [dKwp, dMonthly, dDayUsage, dTotals, dLines, quoteLogic, consoAnnuelleReelle, distributeur])
 
   const chartData = useMemo(() => {
     if (!roi) return []
@@ -477,6 +577,14 @@ export default function DevisGenerator({
       if (e.debit_souhaite_m3h) setPompeDebit(String(e.debit_souhaite_m3h))
       if (e.heures_pompage) setPompeHeures(String(e.heures_pompage))
       if (e.conso_annuelle) setConsoMensuelle(String(Math.round(e.conso_annuelle / 12)))
+      // QF4 — round-trip du distributeur + de la consommation annuelle réelle
+      // (ré-affichée en kWh/mois : le mode « MAD » ne peut pas se reconstruire
+      // sans le tarif exact du moment, donc on revient toujours en kWh).
+      if (e.distributeur) setDistributeur(String(e.distributeur))
+      if (e.conso_annuelle) {
+        setRealBillMode('kwh')
+        setRealBillKwh(String(Math.round(e.conso_annuelle / 12)))
+      }
       // Round-trip des données d'exploitation guidées (toutes optionnelles).
       if (e.region) setFarmRegion(String(e.region))
       if (e.crop) setFarmCrop(String(e.crop))
@@ -607,8 +715,102 @@ export default function DevisGenerator({
     ))
   }
 
+  // QP2 — au blur d'une désignation modifiée (par un rôle autorisé) qui diffère
+  // du nom du produit lié, propose les deux options : « renommer ici seulement »
+  // (on garde le texte divergent, rien d'autre) ou « créer un nouveau produit
+  // dans le stock » (clone serveur via /dupliquer/, puis on relie la ligne au
+  // clone). Non bloquant : ne s'ouvre que sur une vraie divergence.
+  const onDesignationBlur = (key) => {
+    if (!canRenameLine) return
+    const l = lines.find(x => x._key === key)
+    if (!l || !l.produit) return
+    const prod = produits.find(p => String(p.id) === String(l.produit))
+    if (!prod) return
+    const nouveauNom = (l.designation || '').trim()
+    if (!nouveauNom || nouveauNom === (prod.nom || '').trim()) return
+    setRenameError(null)
+    setRenameDialog({ key, ancienNom: prod.nom, nouveauNom, produitId: l.produit })
+  }
+
+  // Option (a) — « Renommer sur ce devis seulement » : on garde la désignation
+  // divergente telle quelle, aucun produit créé. Juste fermer le dialogue.
+  const renameHereOnly = () => setRenameDialog(null)
+
+  // Option (b) — « Créer un nouveau produit dans le stock » : clone SERVEUR du
+  // produit de base sous le nouveau nom (prix d'achat copié côté serveur,
+  // jamais transmis par le client — QP2/QG4), puis relie la ligne au clone.
+  const renameAsNewProduct = async () => {
+    if (!renameDialog) return
+    setRenameBusy(true)
+    setRenameError(null)
+    try {
+      const res = await stockApi.dupliquerProduit(renameDialog.produitId, renameDialog.nouveauNom)
+      const clone = res.data
+      setProduits(ps => [...ps, clone])
+      setLines(ls => ls.map(l =>
+        l._key === renameDialog.key
+          ? {
+              ...l,
+              produit: String(clone.id),
+              designation: clone.nom,
+              prix_unit_ttc: String(ttcFromHt(clone.prix_vente, tauxTvaOf(clone))),
+              taux_tva: String(tauxTvaOf(clone)),
+            }
+          : l))
+      setRenameDialog(null)
+    } catch (err) {
+      const detail = err?.response?.data?.detail
+      setRenameError(typeof detail === 'string'
+        ? detail : 'La création du nouveau produit a échoué.')
+    } finally {
+      setRenameBusy(false)
+    }
+  }
+
   const addLine = () => setLines(ls => [...ls, emptyLine()])
   const removeLine = (key) => setLines(ls => ls.filter(l => l._key !== key))
+
+  // ── QJ31 — Multi-propriétés ──────────────────────────────────────────────
+  // Bascule de mode. En passant en « villas », chaque ligne sans groupe est
+  // rattachée à l'équipement commun (index 0) par défaut ; en repassant en
+  // « none »/« multiplier », on efface les groupes (mono-système / ×N).
+  const onMultiModeChange = (m) => {
+    setMultiMode(m)
+    if (m === 'villas') {
+      setLines(ls => ls.map(l =>
+        l.groupeIndex == null ? { ...l, groupeIndex: 0, groupeLabel: 'Équipement commun' } : l))
+    } else {
+      setLines(ls => ls.map(l => ({ ...l, groupeIndex: null, groupeLabel: '' })))
+    }
+  }
+
+  // Assigne une ligne à un groupe villa (met à jour l'index + le libellé).
+  const setLineGroupe = (key, idx) => {
+    const grp = villaGroups.find(g => g.index === idx)
+    setLines(ls => ls.map(l =>
+      l._key === key ? { ...l, groupeIndex: idx, groupeLabel: grp?.label ?? '' } : l))
+  }
+
+  const addVillaGroup = () => {
+    setVillaGroups(gs => {
+      const nextIndex = gs.reduce((m, g) => Math.max(m, g.index), 0) + 1
+      return [...gs, { index: nextIndex, label: `Villa ${nextIndex}` }]
+    })
+  }
+
+  const renameVillaGroup = (idx, label) => {
+    setVillaGroups(gs => gs.map(g => (g.index === idx ? { ...g, label } : g)))
+    // Répercute le nouveau libellé sur les lignes déjà rattachées à ce groupe.
+    setLines(ls => ls.map(l => (l.groupeIndex === idx ? { ...l, groupeLabel: label } : l)))
+  }
+
+  const removeVillaGroup = (idx) => {
+    if (idx === 0) return // l'équipement commun n'est pas supprimable
+    setVillaGroups(gs => gs.filter(g => g.index !== idx))
+    // Les lignes du groupe supprimé retombent sur l'équipement commun.
+    setLines(ls => ls.map(l =>
+      l.groupeIndex === idx ? { ...l, groupeIndex: 0, groupeLabel: 'Équipement commun' } : l))
+  }
 
   const handleAutoFill = () => {
     // Mode agricole : équipement pompage (pompe + variateur + champ PV)
@@ -730,21 +932,24 @@ export default function DevisGenerator({
           hmt_drawdown: parseFloat(farmHmtDrawdown) || null,
         }
       }
-      // Persiste le scénario + l'option recommandée affichés à l'écran pour que
-      // le PDF mette en avant EXACTEMENT la même option (option recommandée
-      // résolue : « Auto » → l'option du scénario).
-      // Garde-fou (T14) : en mode industriel SANS étude (conso = 0), on ne crée
-      // PAS d'étude dégénérée — etude_params reste null (la consommation manque,
-      // ce que errors.conso bloque déjà en amont). Ailleurs, on annote.
-      const choiceParams = {
-        scenario,
-        recommended_choice: recommendedChoice,
-        recommended_option: recommended,
-      }
-      if (etudeParams) {
-        etudeParams = { ...etudeParams, ...choiceParams }
-      } else if (modeInstallation !== 'industriel') {
-        etudeParams = choiceParams
+      // QF7 — persiste le scénario + l'option recommandée affichés à l'écran
+      // pour TOUS les modes (résidentiel/industriel/agricole), pas seulement
+      // quand une étude existe déjà : sans cette garantie un devis industriel
+      // sans étude dégénérée (kwp=0, ex. lignes ajoutées à la main) perdait
+      // silencieusement le choix sans/avec fait à l'écran. Le PDF (QF6) doit
+      // pouvoir mettre en avant EXACTEMENT la même option (« Auto » résolu →
+      // l'option du scénario) quel que soit le mode. QF4 — le distributeur +
+      // la consommation annuelle RÉELLE (facture/kWh du client) sont fusionnés
+      // dans le même appel (jamais deux logiques de fusion divergentes).
+      etudeParams = buildEtudeParamsChoice(etudeParams, {
+        scenario, recommendedChoice, recommendedOption: recommended,
+        distributeur, consoAnnuelleReelle,
+      })
+      // QJ31 (mode A) — ×N villas identiques : multiplicateur stocké dans
+      // etude_params (lu par le backend QJ29). N=1/absent = mono-système.
+      if (multiMode === 'multiplier') {
+        const n = parseInt(nombreProprietes, 10)
+        if (Number.isFinite(n) && n > 1) etudeParams = { ...etudeParams, nombre_proprietes: n }
       }
       const payload = {
         statut: 'brouillon',
@@ -784,6 +989,10 @@ export default function DevisGenerator({
           prix_unitaire: htFromTtc(l.prix_unit_ttc, l.taux_tva ?? 20),
           remise: '0',
           taux_tva: String(l.taux_tva ?? 20),
+          // QJ31 (mode B) — groupe villa par ligne (QJ29). Envoyé UNIQUEMENT en
+          // mode « villas » ; sinon null/'' → chemin mono-système inchangé.
+          groupe_index: multiMode === 'villas' ? l.groupeIndex : null,
+          groupe_label: multiMode === 'villas' ? (l.groupeLabel || '') : '',
         })).unwrap()
       ))
 
@@ -814,6 +1023,23 @@ export default function DevisGenerator({
   }
 
   const selectedClient = clients.find(c => String(c.id) === String(clientId))
+
+  // QC1 — recherche client sur les données propres (endpoint /search/). On ne
+  // retient QUE les correspondances de source « client » : le devis a besoin
+  // d'un id client réel (un fournisseur/lead n'est pas sélectionnable ici). Le
+  // client choisi est ajouté à la liste locale s'il n'y figure pas déjà.
+  const onSearchClient = async (query) => {
+    const hits = await searchCompanies(query, { searcher: crmApi.searchClients })
+    const clientHits = hits.filter(h => h.source === 'client')
+    setClients((cs) => {
+      const known = new Set(cs.map(c => String(c.id)))
+      const news = clientHits
+        .filter(h => !known.has(String(h.id)))
+        .map(h => ({ id: h.id, nom: h.nom, adresse: h.adresse, telephone: h.telephone }))
+      return news.length ? [...cs, ...news] : cs
+    })
+    return clientHits.map(h => ({ value: String(h.id), label: h.nom }))
+  }
 
   // ── KPI multi-marchés : étude industrielle, pompage, prix/kWc, marge ──
   const kpiTotal = avecRec && showAvec ? totals.totalAvec : totals.totalSans
@@ -1035,18 +1261,31 @@ export default function DevisGenerator({
               <div className="mt-3 grid gap-4 sm:grid-cols-2">
                 <div className="grid gap-1.5">
                   <Label htmlFor="gen-client">…ou choisir un client directement (sans lead)</Label>
-                  <Select value={clientId ? String(clientId) : undefined} onValueChange={setClientId}>
-                    <SelectTrigger id="gen-client">
-                      <SelectValue placeholder="— Sélectionner un client —" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {clients.map(c => (
-                        <SelectItem key={c.id} value={String(c.id)}>
-                          {c.nom}{c.prenom ? ` ${c.prenom}` : ''}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="flex gap-2">
+                    <div className="flex-1">
+                      {/* QC1 — sélecteur client en Combobox recherché sur les
+                          données propres (endpoint /search/, filtré aux clients
+                          — un devis a besoin d'un id client réel). Les options
+                          déjà chargées servent de repli/affichage immédiat. */}
+                      <Combobox
+                        id="gen-client"
+                        options={clients.map(c => ({
+                          value: String(c.id),
+                          label: `${c.nom}${c.prenom ? ` ${c.prenom}` : ''}`,
+                        }))}
+                        value={clientId ? String(clientId) : null}
+                        onSearch={onSearchClient}
+                        onChange={(v) => setClientId(v ? String(v) : '')}
+                        placeholder="— Sélectionner un client —"
+                        searchPlaceholder="Nom ou ICE…"
+                        emptyText="Aucun client dans vos données"
+                      />
+                    </div>
+                    {/* QG3 — création rapide, sans quitter le devis */}
+                    <Button type="button" variant="outline" onClick={() => setClientQuickCreateOpen(true)}>
+                      <Plus /> Nouveau client
+                    </Button>
+                  </div>
                 </div>
                 <div className="grid gap-1.5">
                   <Label htmlFor="gen-adresse">Adresse</Label>
@@ -1094,6 +1333,61 @@ export default function DevisGenerator({
                 </div>
               ))}
             </div>
+
+            {/* QF4 — distributeur réel + facture/consommation réelle : nourrit
+                le calcul « deux factures » par tranche (backend QF2) avec les
+                vrais chiffres du client au lieu des défauts. */}
+            <div className="mt-4 rounded-lg border border-info/30 bg-info/5 p-3 sm:p-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <Zap className="size-4 text-info" aria-hidden="true" />
+                <span className="font-display text-sm font-semibold tracking-tight">
+                  Facture réelle du client (recommandé)
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  affine les économies avec le barème par tranche du distributeur
+                </span>
+              </div>
+              <div className="mt-3 grid gap-4 sm:grid-cols-3">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="gen-distributeur">Distributeur</Label>
+                  <Select value={distributeur} onValueChange={setDistributeur}>
+                    <SelectTrigger id="gen-distributeur"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="onee">ONEE</SelectItem>
+                      <SelectItem value="lydec">Lydec (Casablanca)</SelectItem>
+                      <SelectItem value="redal">Redal (Rabat-Salé-Kénitra)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="gen-realbill">
+                    {realBillMode === 'mad' ? 'Facture réelle (MAD/mois)' : 'Consommation réelle (kWh/mois)'}
+                  </Label>
+                  <div className="flex gap-2">
+                    <Input id="gen-realbill" type="number" min="0" step="any" className="flex-1"
+                           placeholder={realBillMode === 'mad' ? 'ex: 850' : 'ex: 650'}
+                           value={realBillMode === 'mad' ? realBillMad : realBillKwh}
+                           onChange={e => (realBillMode === 'mad'
+                             ? setRealBillMad(e.target.value)
+                             : setRealBillKwh(e.target.value))} />
+                    <Select value={realBillMode} onValueChange={setRealBillMode}>
+                      <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="mad">MAD</SelectItem>
+                        <SelectItem value="kwh">kWh</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label>Consommation annuelle dérivée</Label>
+                  <div className="gen-kwp">
+                    {consoAnnuelleReelle != null ? `${fmtNum(consoAnnuelleReelle)} kWh/an` : '—'}
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {modeInstallation === 'industriel' && (
               <div className="mt-3.5 grid gap-4 sm:grid-cols-2">
                 <div className="grid gap-1.5">
@@ -1444,6 +1738,25 @@ export default function DevisGenerator({
               </p>
             ) : (
               <>
+                {/* QF5 — quand une facture/consommation réelle est capturée
+                    (QF4), l'écran affiche le MÊME calcul « deux factures » par
+                    tranche que le PDF (facture sans vs avec solaire) au lieu
+                    d'une estimation moyenne. */}
+                {roi.savings_model === 'factures' ? (
+                  <div className="mb-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
+                    Facture réelle {distributeur.toUpperCase()} ≈ <strong>{fmtNum(roi.facture_sans)} MAD/an</strong>
+                    {' '}sans solaire → avec solaire ≈{' '}
+                    <strong>
+                      {fmtNum(sansRec || !showAvec ? roi.facture_avec_sans : roi.facture_avec_avec)} MAD/an
+                    </strong>
+                    {' '}— économie calculée par tranche (barème {distributeur.toUpperCase()}), pas une estimation.
+                  </div>
+                ) : (
+                  <div className="mb-3 rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info">
+                    Estimation (production × autoconsommation × tarif moyen) — renseignez la
+                    facture réelle du client ci-dessus pour un calcul par tranche exact.
+                  </div>
+                )}
                 <div className="gen-metrics-grid">
                   <MetricCard label="Production annuelle"
                               value={fmtNum(Math.round(roi.production_annuelle_kwh))}
@@ -1519,6 +1832,84 @@ export default function DevisGenerator({
             </Button>
           </GenCardHeader>
           <CardContent className="px-0 pt-0">
+            {/* ── QJ31 — Multi-propriétés (un seul devis) ── */}
+            <div className="mx-4 mt-4 rounded-lg border border-border bg-muted/30 p-3 sm:mx-5 sm:p-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="font-display text-sm font-semibold tracking-tight">
+                  Plusieurs propriétés ?
+                </span>
+                <Segmented
+                  className="flex-wrap"
+                  options={[
+                    { value: 'none', label: 'Une seule' },
+                    { value: 'multiplier', label: '× N identiques' },
+                    { value: 'villas', label: '+ Villas différentes' },
+                  ]}
+                  value={multiMode}
+                  onChange={onMultiModeChange}
+                />
+              </div>
+
+              {multiMode === 'multiplier' && (
+                <div className="mt-3 flex flex-wrap items-end gap-3">
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="gen-nbprop">Nombre de propriétés identiques</Label>
+                    <Input id="gen-nbprop" type="number" min="1" step="any" className="w-40"
+                           value={nombreProprietes}
+                           onChange={e => setNombreProprietes(e.target.value)} />
+                  </div>
+                  {multiPreview?.mode === 'multiplicateur' && (
+                    <div className="text-sm text-muted-foreground">
+                      {multiPreview.nombreProprietes} × {formatMoney(multiPreview.totalUnitaireSans)}
+                      {' = '}
+                      <strong className="text-foreground">{formatMoney(multiPreview.totalMultiSans)}</strong>
+                      {' '}(total pour {multiPreview.nombreProprietes} propriétés)
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {multiMode === 'villas' && (
+                <div className="mt-3 flex flex-col gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {villaGroups.map(g => (
+                      <div key={g.index} className="flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1">
+                        <Input
+                          className="h-7 w-32 border-0 bg-transparent px-1 text-sm shadow-none focus-visible:ring-0"
+                          value={g.label}
+                          onChange={e => renameVillaGroup(g.index, e.target.value)}
+                          aria-label={`Nom du groupe ${g.index}`} />
+                        {g.index !== 0 && (
+                          <IconButton type="button" label="Supprimer la villa" size="sm"
+                                      className="size-6 text-destructive hover:bg-destructive/10"
+                                      onClick={() => removeVillaGroup(g.index)}>
+                            <Trash2 />
+                          </IconButton>
+                        )}
+                      </div>
+                    ))}
+                    <Button type="button" size="sm" variant="outline" onClick={addVillaGroup}>
+                      <Plus /> Ajouter une villa
+                    </Button>
+                  </div>
+                  {multiPreview?.mode === 'villas' && (
+                    <div className="rounded-md border border-info/30 bg-info/5 p-2 text-sm">
+                      {multiPreview.groupes.map(g => (
+                        <div key={g.index} className="flex justify-between gap-4">
+                          <span>{g.label}</span>
+                          <span className="tabular-nums">{formatMoney(g.totalTtc)}</span>
+                        </div>
+                      ))}
+                      <div className="mt-1 flex justify-between gap-4 border-t border-info/30 pt-1 font-semibold">
+                        <span>Total général</span>
+                        <span className="tabular-nums">{formatMoney(multiPreview.grandTotalTtc)}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             {errors.lines && <div className="px-4 py-2 text-xs text-destructive">{errors.lines}</div>}
             <div className="lines-table-wrap">
               <table className="lines-table">
@@ -1526,6 +1917,7 @@ export default function DevisGenerator({
                   <tr>
                     <th style={{ minWidth: 160 }}>Désignation</th>
                     <th style={{ minWidth: 170 }}>Produit (stock)</th>
+                    {multiMode === 'villas' && <th style={{ minWidth: 130 }}>Villa</th>}
                     <th className="col-num">Qté</th>
                     <th className="col-num">Prix Unit. TTC</th>
                     <th className="col-num" style={{ width: 64 }} title="Taux TVA de la ligne (réforme : 10 % panneaux PV, 20 % le reste)">TVA %</th>
@@ -1549,8 +1941,20 @@ export default function DevisGenerator({
                     return (
                       <tr key={l._key}>
                         <td data-label="Désignation">
+                          {/* QP2 — désignation en LECTURE SEULE sauf pour
+                              Directeur + Commercial responsable. Un rôle non
+                              autorisé ne peut pas renommer une ligne (verrouillée
+                              au nom du produit) ; un rôle autorisé qui diverge du
+                              nom du produit reçoit au blur le choix « renommer
+                              ici » vs « créer un nouveau produit ». */}
                           <input className="form-control form-control-sm" value={l.designation}
+                                 readOnly={!canRenameLine}
+                                 disabled={!canRenameLine}
+                                 title={!canRenameLine
+                                   ? 'Renommer une ligne est réservé au Directeur et au Commercial responsable'
+                                   : undefined}
                                  onChange={e => setLine(l._key, 'designation', e.target.value)}
+                                 onBlur={() => onDesignationBlur(l._key)}
                                  placeholder="Désignation" />
                           {designationDivergente && (
                             <div className="mt-0.5 text-xs text-warning"
@@ -1564,8 +1968,24 @@ export default function DevisGenerator({
                             produits={produits}
                             value={l.produit}
                             onChange={id => onProduitChange(l._key, id)}
+                            typeFilter={classifyProduct(l.designation) || undefined}
+                            onProduitCreated={(p) => setProduits(ps => [...ps, p])}
                           />
                         </td>
+                        {multiMode === 'villas' && (
+                          <td data-label="Villa">
+                            <Select
+                              value={l.groupeIndex != null ? String(l.groupeIndex) : '0'}
+                              onValueChange={(v) => setLineGroupe(l._key, parseInt(v, 10))}>
+                              <SelectTrigger className="h-[var(--control-h-sm)]"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                {villaGroups.map(g => (
+                                  <SelectItem key={g.index} value={String(g.index)}>{g.label}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </td>
+                        )}
                         <td data-label="Qté">
                           <input type="number" min="0" step="any"
                                  className="form-control form-control-sm ta-right" value={l.quantite}
@@ -1766,7 +2186,22 @@ export default function DevisGenerator({
                 que leur prix n'est pas saisi dans Stock.
               </div>
             )}
+            {superieurMsg && (
+              <div className={`mt-3 rounded-lg border p-3 text-sm ${superieurMsg.ok
+                ? 'border-success/30 bg-success/10 text-success'
+                : 'border-destructive/30 bg-destructive/10 text-destructive'}`}>
+                {superieurMsg.text}
+              </div>
+            )}
             <div className="gen-actions-sticky mt-3 flex flex-wrap items-center justify-end gap-3">
+              {/* QJ28 — notification manuelle au supérieur (devis déjà enregistré) */}
+              {editDevis && (
+                <Button type="button" variant="outline" loading={superieurBusy}
+                        onClick={contacterSuperieur}
+                        title="Envoyer une notification à mon supérieur avec le lien de ce devis">
+                  Contacter mon supérieur
+                </Button>
+              )}
               {!embedded && (
                 <Button type="button" variant="outline" onClick={handleReset}>
                   <RotateCcw /> Réinitialiser
@@ -1784,6 +2219,46 @@ export default function DevisGenerator({
           </CardContent>
         </Card>
       </form>
+      <ClientQuickCreateModal
+        open={clientQuickCreateOpen}
+        onClose={() => setClientQuickCreateOpen(false)}
+        onCreated={(c) => {
+          setClients(cs => [...cs, c])
+          setClientId(String(c.id))
+          setClientQuickCreateOpen(false)
+        }}
+      />
+
+      {/* QP2 — dialogue de renommage : deux choix explicites lorsqu'une ligne
+          est renommée à l'écart du nom du produit lié (rôle autorisé). */}
+      <Dialog open={!!renameDialog} onOpenChange={(o) => { if (!o) setRenameDialog(null) }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Désignation modifiée</DialogTitle>
+            <DialogDescription>
+              Vous avez renommé cette ligne
+              {renameDialog ? ` « ${renameDialog.nouveauNom} »` : ''} — elle diffère du
+              produit du stock{renameDialog ? ` « ${renameDialog.ancienNom} »` : ''}.
+              Que souhaitez-vous faire ?
+            </DialogDescription>
+          </DialogHeader>
+          {renameError && (
+            <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {renameError}
+            </div>
+          )}
+          <DialogFooter className="flex-col gap-2 sm:flex-col sm:items-stretch">
+            <Button type="button" variant="outline" onClick={renameHereOnly} disabled={renameBusy}>
+              Renommer sur ce devis seulement
+            </Button>
+            <Button type="button" onClick={renameAsNewProduct} loading={renameBusy}>
+              {renameBusy
+                ? 'Création…'
+                : `Créer un nouveau produit « ${renameDialog?.nouveauNom ?? ''} » dans le stock`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

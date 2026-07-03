@@ -40,14 +40,23 @@ const LeadsPage = lazy(() => import('../pages/crm/leads/LeadsPage'))
 const DevisList = lazy(() => import('../pages/ventes/DevisList'))
 const DevisGenerator = lazy(() => import('../pages/ventes/DevisGenerator'))
 const ToitureDesign = lazy(() => import('../pages/ventes/ToitureDesign'))
+const RoofViewerPage = lazy(() => import('../pages/ventes/RoofViewerPage'))
 const FactureList = lazy(() => import('../pages/ventes/FactureList'))
 const VentesKanban = lazy(() => import('../pages/ventes/VentesKanban'))
 const InstallationsPage = lazy(() => import('../pages/installations/InstallationsPage'))
 const InterventionsPage = lazy(() => import('../pages/interventions/InterventionsPage'))
 const MaJourneePage = lazy(() => import('../pages/interventions/MaJourneePage'))
 const ParcInstallePage = lazy(() => import('../pages/installations/ParcInstallePage'))
+const PlanificationPage = lazy(() => import('../pages/installations/PlanificationPage'))
 const OutillagePage = lazy(() => import('../pages/outillage/OutillagePage'))
 const ProductionPage = lazy(() => import('../pages/monitoring/ProductionPage'))
+const FleetPage = lazy(() => import('../pages/monitoring/FleetPage'))
+const OmAnalyticsPage = lazy(() => import('../pages/monitoring/OmAnalyticsPage'))
+const WarrantiesPage = lazy(() => import('../pages/monitoring/WarrantiesPage'))
+const Co2Page = lazy(() => import('../pages/monitoring/Co2Page'))
+const CleaningsPage = lazy(() => import('../pages/monitoring/CleaningsPage'))
+const OmReportPage = lazy(() => import('../pages/monitoring/OmReportPage'))
+const ClientPortalPage = lazy(() => import('../pages/monitoring/ClientPortalPage'))
 const EquipementsPage = lazy(() => import('../pages/sav/EquipementsPage'))
 const TicketsPage = lazy(() => import('../pages/sav/TicketsPage'))
 const AgentChat = lazy(() => import('../pages/ia/AgentChat'))
@@ -70,6 +79,9 @@ const BalanceAgeePage = lazy(() => import('../pages/reporting/BalanceAgeePage'))
 const ArchiveClientPage = lazy(() => import('../pages/reporting/ArchiveClientPage'))
 const ArchiveChantierPage = lazy(() => import('../pages/reporting/ArchiveChantierPage'))
 const CommercialDashboard = lazy(() => import('../pages/reporting/CommercialDashboard'))
+const CohortsPage = lazy(() => import('../pages/reporting/CohortsPage'))
+const DashboardConfigPage = lazy(() => import('../pages/reporting/DashboardConfigPage'))
+const AgentActions = lazy(() => import('../pages/ia/AgentActions'))
 // Vitrine interne du système UI (refonte, P68) — référence vivante des primitifs.
 const UIShowcase = lazy(() => import('../pages/ui/UIShowcase'))
 const ChatPage = lazy(() => import('../pages/messaging/ChatPage'))
@@ -183,6 +195,8 @@ const router = createBrowserRouter([
   // Ventes
   { path: '/ventes/devis', loader: authLoader, element: <WithLayout><DevisList /></WithLayout> },
   { path: '/ventes/devis/nouveau', loader: authLoader, element: <WithLayout><DevisGenerator /></WithLayout> },
+  // QG12 — Design 3D d'un devis en LECTURE SEULE, plein écran, ouvrable dans une fenêtre.
+  { path: '/ventes/devis/:id/3d', loader: authLoader, errorElement: <RouteErrorBoundary />, element: <WithLayout><RoofViewerPage /></WithLayout> },
   // Conception 3D de la toiture (héberge le builder roofPro11 du site, en ERP).
   { path: '/devis-design/:id', loader: authLoader, errorElement: <RouteErrorBoundary />, element: <WithLayout><ToitureDesign /></WithLayout> },
   { path: '/ventes/bons-commande', loader: authLoader, element: <WithLayout><VentesKanban /></WithLayout> },
@@ -194,9 +208,17 @@ const router = createBrowserRouter([
   // Chantiers / Installations
   { path: '/chantiers', loader: authLoader, element: <WithLayout><InstallationsPage /></WithLayout> },
   { path: '/interventions', loader: authLoader, element: <WithLayout><InterventionsPage /></WithLayout> },
+  { path: '/planification', loader: authLoader, element: <WithLayout><PlanificationPage /></WithLayout> },
   { path: '/ma-journee', loader: authLoader, element: <WithLayout><MaJourneePage /></WithLayout> },
   { path: '/parc', loader: authLoader, element: <WithLayout><ParcInstallePage /></WithLayout> },
   { path: '/production', loader: authLoader, element: <WithLayout><ProductionPage /></WithLayout> },
+  { path: '/production/parc', loader: authLoader, element: <WithLayout><FleetPage /></WithLayout> },
+  { path: '/production/analytique', loader: authLoader, element: <WithLayout><OmAnalyticsPage /></WithLayout> },
+  { path: '/production/garanties', loader: authLoader, element: <WithLayout><WarrantiesPage /></WithLayout> },
+  { path: '/production/co2', loader: authLoader, element: <WithLayout><Co2Page /></WithLayout> },
+  { path: '/production/nettoyages', loader: authLoader, element: <WithLayout><CleaningsPage /></WithLayout> },
+  { path: '/production/rapports', loader: authLoader, element: <WithLayout><OmReportPage /></WithLayout> },
+  { path: '/production/portail-client', loader: authLoader, element: <WithLayout><ClientPortalPage /></WithLayout> },
   { path: '/outillage', loader: authLoader, element: <WithLayout><OutillagePage /></WithLayout> },
 
   // GED — gestion documentaire (navigateur arborescent)
@@ -209,6 +231,7 @@ const router = createBrowserRouter([
 
   // IA
   { path: '/ia/agent', loader: authLoader, element: <WithLayout><AgentChat /></WithLayout> },
+  { path: '/ia/actions', loader: authLoader, element: <WithLayout><AgentActions /></WithLayout> },
   { path: '/ia/ocr', loader: authLoader, element: <WithLayout><OcrUpload /></WithLayout> },
 
   // Reporting
@@ -216,6 +239,8 @@ const router = createBrowserRouter([
   { path: '/rapports', loader: authLoader, element: <WithLayout><Rapports /></WithLayout> },
   { path: '/reporting/balance-agee', loader: authLoader, element: <WithLayout><BalanceAgeePage /></WithLayout> },
   { path: '/reporting/commercial', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><CommercialDashboard /></WithLayout> },
+  { path: '/reporting/cohortes', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><CohortsPage /></WithLayout> },
+  { path: '/reporting/dashboards', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><DashboardConfigPage /></WithLayout> },
   { path: '/reporting/archive/client/:id', loader: authLoader, element: <WithLayout><ArchiveClientPage /></WithLayout> },
   { path: '/reporting/archive/chantier/:id', loader: authLoader, element: <WithLayout><ArchiveChantierPage /></WithLayout> },
 

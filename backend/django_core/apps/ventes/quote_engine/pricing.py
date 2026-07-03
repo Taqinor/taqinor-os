@@ -77,6 +77,127 @@ _DEFAULT_PRODUCTIBLE = 1240
 # Label affiché quand on dégrade en estimation (pas de données tarifaires)
 ESTIMATION_LABEL = "estimation"
 
+# Tables de distributeurs privés ESTIMÉES (à confirmer) — tout calcul qui les
+# utilise porte le drapeau « approximatif ». ONEE reste le barème public officiel.
+APPROX_UTILITIES = {"lydec", "redal"}
+
+
+def _resolve_tranches(utility=None, tranches_override=None):
+    """Résout la table de tranches applicable.
+
+    Returns:
+        (table | None, approximatif: bool)
+        ``table`` est None quand AUCUNE donnée tarifaire n'existe (l'appelant
+        dégrade alors en estimation honnête). ``approximatif`` est True quand la
+        table vient d'un distributeur privé estimé (Lydec/Redal, à confirmer).
+    """
+    if tranches_override:
+        return list(tranches_override), False
+    if utility and str(utility).lower() in UTILITY_TABLES:
+        key = str(utility).lower()
+        return UTILITY_TABLES[key], key in APPROX_UTILITIES
+    return None, False
+
+
+def _monthly_bill_from_kwh(kwh_mensuel: float, tranches: list) -> float:
+    """Facture mensuelle TTC (MAD) d'une consommation, valorisée PAR TRANCHE
+    (barème progressif). 0 kWh → 0 MAD."""
+    if kwh_mensuel is None or kwh_mensuel <= 0:
+        return 0.0
+    return _weighted_kwh_price(kwh_mensuel, tranches) * kwh_mensuel
+
+
+def kwh_from_bill(bill_mad, utility=None, tranches_override=None) -> dict:
+    """QF1 — Inverse du barème progressif : facture mensuelle (MAD TTC) → kWh/mois.
+
+    Parcourt les tranches en accumulant leur coût jusqu'à retrouver la facture,
+    puis interpole linéairement DANS la tranche atteinte (l'inversion exacte du
+    modèle progressif de ``_weighted_kwh_price``). Fonction pure, sans I/O.
+
+    Returns dict:
+        kwh_mensuel   float — consommation mensuelle estimée (kWh).
+        approximatif  bool  — True quand la table utilisée est estimée
+                              (Lydec/Redal, à confirmer).
+        estimation    bool  — True quand AUCUNE table n'est disponible ou que la
+                              facture est vide : le chiffre est une estimation
+                              (prix plat de repli), jamais présenté comme précis.
+        label         str   — ESTIMATION_LABEL quand ``estimation`` est True,
+                              « approximatif » quand seule la table est estimée,
+                              '' sinon.
+    """
+    try:
+        bill = float(bill_mad or 0)
+    except (TypeError, ValueError):
+        bill = 0.0
+    if bill <= 0:
+        # Facture vide/négative → estimation étiquetée, jamais un chiffre précis.
+        return {"kwh_mensuel": 0.0, "approximatif": False,
+                "estimation": True, "label": ESTIMATION_LABEL}
+
+    table, approx = _resolve_tranches(utility, tranches_override)
+    if table is None:
+        # Aucune donnée tarifaire → repli plat, étiqueté « estimation ».
+        return {"kwh_mensuel": round(bill / _FALLBACK_KWH_PRICE, 1),
+                "approximatif": True, "estimation": True,
+                "label": ESTIMATION_LABEL}
+
+    prev_ceiling = 0.0
+    cost_so_far = 0.0
+    kwh = None
+    for ceiling, price in table:
+        if ceiling is None:
+            kwh = prev_ceiling + (bill - cost_so_far) / price
+            break
+        tranche_cost = (ceiling - prev_ceiling) * price
+        if cost_so_far + tranche_cost >= bill:
+            kwh = prev_ceiling + (bill - cost_so_far) / price
+            break
+        cost_so_far += tranche_cost
+        prev_ceiling = ceiling
+    if kwh is None:
+        # Table sans tranche ouverte (dernier plafond fini) : extrapole au
+        # dernier prix connu — comportement cohérent avec _weighted_kwh_price.
+        kwh = prev_ceiling + (bill - cost_so_far) / table[-1][1]
+    return {"kwh_mensuel": round(kwh, 1), "approximatif": approx,
+            "estimation": False, "label": "approximatif" if approx else ""}
+
+
+def annual_bill_from_kwh(monthly_kwh, utility=None, tranches_override=None) -> dict:
+    """QF1 — Facture annuelle TTC (MAD) d'une consommation mensuelle, valorisée
+    PAR TRANCHE (barème progressif ONEE/Lydec/Redal). Fonction pure.
+
+    Returns dict:
+        bill_mensuel  float — facture mensuelle TTC (MAD).
+        bill_annuel   float — facture annuelle TTC (MAD) = mensuelle × 12.
+        approximatif  bool  — table estimée (Lydec/Redal, à confirmer).
+        estimation    bool  — True quand aucune table n'est disponible (repli
+                              plat) ou consommation vide : chiffre étiqueté
+                              « estimation », jamais présenté comme précis.
+        label         str   — même convention que ``kwh_from_bill``.
+    """
+    try:
+        kwh = float(monthly_kwh or 0)
+    except (TypeError, ValueError):
+        kwh = 0.0
+    if kwh <= 0:
+        return {"bill_mensuel": 0.0, "bill_annuel": 0.0,
+                "approximatif": False, "estimation": True,
+                "label": ESTIMATION_LABEL}
+
+    table, approx = _resolve_tranches(utility, tranches_override)
+    if table is None:
+        mensuel = kwh * _FALLBACK_KWH_PRICE
+        return {"bill_mensuel": round(mensuel, 2),
+                "bill_annuel": round(mensuel * 12, 2),
+                "approximatif": True, "estimation": True,
+                "label": ESTIMATION_LABEL}
+
+    mensuel = _monthly_bill_from_kwh(kwh, table)
+    return {"bill_mensuel": round(mensuel, 2),
+            "bill_annuel": round(mensuel * 12, 2),
+            "approximatif": approx, "estimation": False,
+            "label": "approximatif" if approx else ""}
+
 
 def _weighted_kwh_price(kwh_mensuel: float, tranches: list) -> float:
     """Compute a weighted average TTC kWh price given monthly consumption and a
@@ -148,6 +269,61 @@ def _avg_kwh_price_from_tranches(
     return prix, False
 
 
+def two_bills_savings(
+    production_kwh,
+    conso_annuelle_kwh,
+    autoconso_ratio,
+    utility=None,
+    tranches_override=None,
+) -> dict | None:
+    """QF2 — Modèle « deux factures » (économies RÉELLES, par tranche).
+
+    facture annuelle SANS solaire  = consommation valorisée par tranche ;
+    facture annuelle AVEC solaire = consommation résiduelle (après les kWh
+    autoconsommés) valorisée par tranche ;
+    économie = facture_sans − facture_avec.
+
+    Self-consumption-first (loi 82-21) : seuls les kWh autoconsommés réduisent
+    la facture — le surplus injecté ne vaut rien (tarif ANRE BT non publié).
+
+    Retourne ``None`` quand il manque une VRAIE donnée (pas de table tarifaire,
+    pas de consommation, pas de production) : l'appelant dégrade alors vers
+    l'ancienne estimation, étiquetée comme telle. Fonction pure.
+
+    Returns dict:
+        facture_sans   int  — facture annuelle TTC sans solaire (MAD).
+        facture_avec   int  — facture annuelle TTC avec solaire (MAD).
+        economie       int  — facture_sans − facture_avec (≥ 0).
+        autoconso_kwh  int  — kWh autoconsommés retenus (plafonnés à la conso).
+        approximatif   bool — table distributeur estimée (Lydec/Redal).
+    """
+    table, approx = _resolve_tranches(utility, tranches_override)
+    if table is None:
+        return None
+    try:
+        conso = float(conso_annuelle_kwh or 0)
+        prod = float(production_kwh or 0)
+        ratio = float(autoconso_ratio or 0)
+    except (TypeError, ValueError):
+        return None
+    if conso <= 0 or prod <= 0 or ratio <= 0:
+        return None
+
+    facture_sans = round(_monthly_bill_from_kwh(conso / 12, table) * 12)
+    autoconso_kwh = min(prod * ratio, conso)
+    residuel = max(0.0, conso - autoconso_kwh)
+    facture_avec = round(_monthly_bill_from_kwh(residuel / 12, table) * 12)
+    # Économie dérivée des factures ARRONDIES : la chaîne affichée
+    # facture_sans − facture_avec = économie est exacte au dirham.
+    return {
+        "facture_sans": facture_sans,
+        "facture_avec": facture_avec,
+        "economie": max(0, facture_sans - facture_avec),
+        "autoconso_kwh": round(autoconso_kwh),
+        "approximatif": approx,
+    }
+
+
 def calculate_savings_roi(
     puissance_kwc: float,
     total_sans: float,
@@ -215,6 +391,31 @@ def calculate_savings_roi(
     economie_opt1 = round(production_annuelle * autoconso_sans * prix_kwh)
     economie_opt2 = round(production_annuelle * autoconso_avec * prix_kwh)
 
+    # QF2 — modèle « deux factures » (réel, par tranche) : quand une VRAIE
+    # consommation ET une table tarifaire existent (et qu'aucun prix plat
+    # vendeur ne force l'ancien modèle), l'économie devient
+    # facture_sans − facture_avec, les deux factures valorisées PAR TRANCHE.
+    # Sinon : ancienne approximation production × autoconso × prix, étiquetée
+    # « estimation » — aucun chiffre inventé.
+    savings_model = "estimation"
+    facture_sans = facture_avec_s = facture_avec_a = None
+    factures_approximatif = False
+    if not (tarif_kwh_override is not None and tarif_kwh_override > 0):
+        _tb_s = two_bills_savings(
+            production_annuelle, conso_annuelle_kwh, autoconso_sans,
+            utility=utility, tranches_override=tranches_override)
+        _tb_a = two_bills_savings(
+            production_annuelle, conso_annuelle_kwh, autoconso_avec,
+            utility=utility, tranches_override=tranches_override)
+        if _tb_s and _tb_a:
+            savings_model = "factures"
+            economie_opt1 = _tb_s["economie"]
+            economie_opt2 = _tb_a["economie"]
+            facture_sans = _tb_s["facture_sans"]
+            facture_avec_s = _tb_s["facture_avec"]
+            facture_avec_a = _tb_a["facture_avec"]
+            factures_approximatif = _tb_s["approximatif"]
+
     # Retour sur investissement (années)
     roi_opt1 = round(total_sans / economie_opt1, 1) if economie_opt1 > 0 else 0.0
     roi_opt2 = round(total_avec / economie_opt2, 1) if economie_opt2 > 0 else 0.0
@@ -240,4 +441,13 @@ def calculate_savings_roi(
         "autoconso_avec":   autoconso_avec,
         "tarif_kwh":        prix_kwh,
         "utility":          utility,
+        # QF2 — modèle « deux factures » : 'factures' quand l'économie vient de
+        # facture_sans − facture_avec (par tranche), 'estimation' sinon.
+        "savings_model":    savings_model,
+        "facture_sans":     facture_sans,
+        "facture_avec_s":   facture_avec_s,
+        "facture_avec_a":   facture_avec_a,
+        "factures_approximatif": factures_approximatif,
+        # QK4 — productible réellement utilisé (kWh/kWc/an), pour transparence.
+        "productible":      prod_factor,
     }

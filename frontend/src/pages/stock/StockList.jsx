@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   Plus, Upload, Download, Truck, Calculator, Wallet, AlertTriangle,
   Archive, PackageOpen, Pencil, Trash2, RotateCcw, Package, QrCode, ScanLine,
-  History,
+  History, LineChart,
 } from 'lucide-react'
 import {
   fetchProduits,
@@ -17,6 +17,7 @@ import {
 } from '../../features/stock/store/stockSlice'
 import ProduitForm from './ProduitForm'
 import { CatalogueTable } from './CatalogueTable'
+import PilotageStock from './PilotageStock'
 import BulkProductBar from './BulkProductBar'
 import ExcelImport from '../../components/ExcelImport'
 import stockApi from '../../api/stockApi'
@@ -29,6 +30,7 @@ import { validateTransfert, totalVentile, quantiteEmplacement, produitDansEmplac
 import { normalizeCode, isValidCode, resolveTarget } from '../../features/stock/labels'
 import BarcodeScanner from '../../features/pwa/BarcodeScanner'
 import { toastError, toastSuccess } from '../../lib/toast'
+import { useCanCreateProduit } from '../../hooks/useHasPermission'
 import {
   Button, IconButton, Badge, Checkbox, Input, Spinner, Skeleton,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -272,6 +274,8 @@ function TransfertModal({ produits, isAdmin, onClose, onDone }) {
   const [newEmp, setNewEmp] = useState('')
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
+  // WR4 / FG62 — suggestions de réappro par emplacement (admin).
+  const [suggestions, setSuggestions] = useState([])
   const rows = (produits ?? []).filter((p) => !p.is_archived)
 
   // setState arrive dans les callbacks .then (jamais synchrone dans l'effet).
@@ -280,7 +284,13 @@ function TransfertModal({ produits, isAdmin, onClose, onDone }) {
   const loadTransferts = () => stockApi.getTransferts({ ordering: '-date' })
     .then((r) => setTransferts((r.data?.results ?? r.data ?? []).slice(0, 8)))
     .catch(() => {})
-  useEffect(() => { loadEmplacements(); loadTransferts() }, [])
+  const loadSuggestions = () => {
+    if (!isAdmin) return
+    stockApi.suggestionsReapproEmplacement()
+      .then((r) => setSuggestions(r.data ?? [])).catch(() => {})
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { loadEmplacements(); loadTransferts(); loadSuggestions() }, [])
 
   const loadBreakdown = (pid) => {
     if (!pid) { setBreakdown([]); return Promise.resolve() }
@@ -425,6 +435,29 @@ function TransfertModal({ produits, isAdmin, onClose, onDone }) {
           </Button>
         </div>
 
+        {isAdmin && suggestions.length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            <h4 className="text-sm font-semibold">Réapprovisionnement par emplacement</h4>
+            <p className="text-xs text-muted-foreground">
+              Emplacements sous leur seuil minimal — transfert suggéré depuis le dépôt principal.
+            </p>
+            <div className="max-h-48 overflow-auto">
+              <MiniTable head={['Produit', 'Emplacement', 'Qté', 'Seuil min', 'À transférer', 'Depuis']}>
+                {suggestions.map((s, i) => (
+                  <tr key={`${s.produit_id}-${s.emplacement_id}-${i}`} className="border-t border-border">
+                    <td className="px-3 py-2">{s.produit_nom}</td>
+                    <td className="px-3 py-2">{s.emplacement_nom}</td>
+                    <td className="px-3 py-2 tabular-nums">{s.quantite_actuelle}</td>
+                    <td className="px-3 py-2 tabular-nums">{s.seuil_min}</td>
+                    <td className="px-3 py-2 font-semibold tabular-nums">{s.qte_suggere_transfert}</td>
+                    <td className="px-3 py-2">{s.source_nom ?? <span className="text-muted-foreground">—</span>}</td>
+                  </tr>
+                ))}
+              </MiniTable>
+            </div>
+          </div>
+        )}
+
         {transferts.length > 0 && (
           <div className="flex flex-col gap-1.5">
             <h4 className="text-sm font-semibold">Derniers transferts</h4>
@@ -542,6 +575,10 @@ export default function StockList() {
     ? permissions.includes('stock_modifier')
     : (role === 'responsable' || role === 'admin')
   const canDelete = role === 'admin'
+  // QG5 — la CRÉATION de produit est restreinte à Directeur + Commercial
+  // responsable (UX miroir de la garde backend QG4) ; canWrite reste pour la
+  // modification/l'import, séparés de la création.
+  const canCreateProduit = useCanCreateProduit()
 
   const [search, setSearch]           = useState('')
   const [showForm, setShowForm]       = useState(false)
@@ -583,6 +620,8 @@ export default function StockList() {
   const [invMsg, setInvMsg] = useState(null)
   const [showTransfert, setShowTransfert] = useState(false)
   const [showValorisation, setShowValorisation] = useState(false)
+  // WR3 — panneau « Pilotage stock » (analytics + auto-BCF), replié par défaut.
+  const [showPilotage, setShowPilotage] = useState(false)
   // N20 — étiquettes QR/code-barres + champ de scan (résolution serveur).
   const [labelsBusy, setLabelsBusy]   = useState(false)
   const [scanOpen, setScanOpen]       = useState(false)
@@ -862,6 +901,11 @@ export default function StockList() {
           )}
           {/* Actions secondaires : inline sur écran large, repliées en menu « … » sur mobile. */}
           <div className="hidden flex-wrap items-center gap-2 sm:flex">
+            <Button variant={showPilotage ? 'secondary' : 'outline'} size="sm"
+                    onClick={() => setShowPilotage(v => !v)}
+                    title="Pilotage stock : réapprovisionnement, prévisions, rotation, péremptions">
+              <LineChart /> Pilotage
+            </Button>
             {role === 'admin' && (
               <Button variant={showArchived ? 'secondary' : 'outline'} size="sm"
                       onClick={() => setShowArchived(v => !v)}>
@@ -909,6 +953,9 @@ export default function StockList() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => setShowPilotage(v => !v)}>
+                  <LineChart /> Pilotage
+                </DropdownMenuItem>
                 {role === 'admin' && (
                   <DropdownMenuItem onSelect={() => setShowArchived(v => !v)}>
                     <Archive /> {showArchived ? 'Masquer archivés' : 'Archivés'}
@@ -944,7 +991,7 @@ export default function StockList() {
             </DropdownMenu>
           </div>
 
-          {canWrite && (
+          {canCreateProduit && (
             <Button onClick={openNew}>
               <Plus /> Nouveau produit
             </Button>
@@ -1006,6 +1053,10 @@ export default function StockList() {
         <div className="rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-sm text-success">
           {invMsg}
         </div>
+      )}
+
+      {showPilotage && (
+        <PilotageStock onBcfGenere={() => dispatch(fetchProduits())} />
       )}
 
       {showTransfert && (
@@ -1181,7 +1232,7 @@ export default function StockList() {
                 icon={PackageOpen}
                 title="Aucun produit"
                 description="Créez votre premier produit pour démarrer le catalogue."
-                action={canWrite
+                action={canCreateProduit
                   ? <Button size="sm" onClick={openNew}><Plus /> Nouveau produit</Button>
                   : undefined}
               />

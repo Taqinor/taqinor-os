@@ -26,6 +26,7 @@ import {
   fetchMouvements,
 } from '../../features/stock/store/stockSlice'
 import stockApi from '../../api/stockApi'
+import { useCanCreateProduit } from '../../hooks/useHasPermission'
 
 const DOC_LABELS = {
   bon_livraison: 'Bon de livraison',
@@ -120,6 +121,11 @@ export default function OcrStockImport() {
   const resolvedFournisseurRef = useRef(null)
 
   const role = useSelector((s) => s.auth.role)
+  // QG5 — la création de produit (ligne « Créer ») est réservée à Directeur +
+  // Commercial responsable (miroir UX de la garde backend QG4) ; les autres
+  // rôles autorisés à voir cet écran (responsable/admin) ne peuvent que
+  // rapprocher un produit existant ou ignorer la ligne.
+  const canCreateProduit = useCanCreateProduit()
   const { stockOcrResult, stockOcrDocType, stockOcrLoading, stockOcrError } = useSelector((s) => s.ia)
   const { produits, fournisseurs, categories } = useSelector((s) => s.stock)
   const categoriesRef = useRef([])
@@ -230,7 +236,10 @@ const cp = produitsRef.current
         id: i, ref_ocr: item.reference || '', nom_ocr: item.nom || '',
         quantite: Math.max(1, parseInt(item.quantite) || 1),
         prix_unitaire: item.prix_unitaire_ht > 0 ? String(item.prix_unitaire_ht) : '',
-        action: matched ? 'match' : 'create',
+        // QG5 — un rôle non autorisé à créer un produit ne doit jamais démarrer
+        // sur l'action « create » par défaut (produit non trouvé) : on retombe
+        // sur « skip » plutôt que de proposer une action qu'il ne peut pas voir.
+        action: matched ? 'match' : (canCreateProduit ? 'create' : 'skip'),
         produit_id: matched ? String(matched.id) : '',
         tva: item.tva ?? null,
         update_tva: false,
@@ -564,6 +573,7 @@ const cp = produitsRef.current
             lignes={lignes} updateLigne={updateLigne}
             onReset={handleReset} onApply={handleApply} applying={applying}
             docType={docType} creerBcf={creerBcf} setCreerBcf={setCreerBcf}
+            canCreateProduit={canCreateProduit}
           />
         )}
         {step === 4 && (
@@ -706,7 +716,7 @@ function Step2Validate({
   fournisseurMode, setFournisseurMode, fournisseurId, setFournisseurId,
   nouveauFournisseurNom, setNouveauFournisseurNom,
   lignes, updateLigne, onReset, onApply, applying,
-  docType, creerBcf, setCreerBcf,
+  docType, creerBcf, setCreerBcf, canCreateProduit,
 }) {
   const showFournisseur = docType !== 'bon_sortie'
   const isPurchaseDoc = docType === 'facture_achat' || docType === 'bon_livraison'
@@ -841,7 +851,7 @@ function Step2Validate({
         ) : (
           <div className="flex flex-col gap-2.5">
             {lignes.map((ligne, idx) => (
-              <LigneCard key={ligne.id} ligne={ligne} produits={produits} categories={categories} onChange={u => updateLigne(idx, u)} docType={docType} />
+              <LigneCard key={ligne.id} ligne={ligne} produits={produits} categories={categories} onChange={u => updateLigne(idx, u)} docType={docType} canCreateProduit={canCreateProduit} />
             ))}
           </div>
         )}
@@ -874,7 +884,7 @@ function Step2Validate({
 }
 
 // ── Carte ligne produit ───────────────────────────────────────────────────────
-function LigneCard({ ligne, produits, categories, onChange, docType }) {
+function LigneCard({ ligne, produits, categories, onChange, docType, canCreateProduit = true }) {
   const isPurchase = docType === 'facture_achat' || docType === 'bon_livraison'
   const hasMatchError  = ligne.action === 'match' && !ligne.produit_id
   const hasCreateError = ligne.action === 'create' && (
@@ -890,9 +900,11 @@ function LigneCard({ ligne, produits, categories, onChange, docType }) {
   const ocrTva = (ligne.tva !== null && ligne.tva !== undefined) ? Number(ligne.tva) : null
   const tvaDivergence = matchedProduit && ocrTva !== null && produitTva !== ocrTva
 
+  // QG5 — l'option « Créer » (nouveau produit) n'apparaît que pour les rôles
+  // autorisés à créer un produit ; les autres ne voient que Associer/Ignorer.
   const ACTION_OPTS = [
     { value: 'match',  label: 'Associer' },
-    { value: 'create', label: 'Créer' },
+    ...(canCreateProduit ? [{ value: 'create', label: 'Créer' }] : []),
     { value: 'skip',   label: 'Ignorer' },
   ]
   const CAT_OPTS = [
