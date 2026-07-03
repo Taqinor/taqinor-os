@@ -859,15 +859,17 @@ class TacheViewSet(_GestionProjetBaseViewSet):
     ``phase``, ``parent``) sont validés même-société par le sérialiseur (cible
     d'une autre société → 400). Filtres optionnels : ``?projet=<id>``,
     ``?parent=<id>`` (sous-tâches directes), ``?racines=1`` (tâches sans
-    parent), ``?statut=<statut>``. Recherche par libellé / code WBS ; tri par
-    défaut ``ordre`` puis ``id``. L'arborescence complète est servie par
-    ``projets/<id>/taches/``.
+    parent), ``?statut=<statut>``, ``?assigne=<id>``, ``?priorite=<priorite>``,
+    ``?etiquette=<tag>`` (XPRJ10 — correspondance CSV, insensible à la casse).
+    Recherche par libellé / code WBS ; tri par défaut ``ordre`` puis ``id``.
+    L'arborescence complète est servie par ``projets/<id>/taches/``.
     """
-    queryset = Tache.objects.select_related('projet', 'phase', 'parent').all()
+    queryset = Tache.objects.select_related(
+        'projet', 'phase', 'parent', 'assigne').all()
     serializer_class = TacheSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['libelle', 'code_wbs']
-    ordering_fields = ['ordre', 'code_wbs', 'statut', 'id']
+    ordering_fields = ['ordre', 'code_wbs', 'statut', 'priorite', 'id']
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -882,6 +884,15 @@ class TacheViewSet(_GestionProjetBaseViewSet):
         statut = self.request.query_params.get('statut')
         if statut:
             qs = qs.filter(statut=statut)
+        assigne = self.request.query_params.get('assigne')
+        if assigne:
+            qs = qs.filter(assigne_id=assigne)
+        priorite = self.request.query_params.get('priorite')
+        if priorite:
+            qs = qs.filter(priorite=priorite)
+        etiquette = self.request.query_params.get('etiquette')
+        if etiquette:
+            qs = qs.filter(etiquettes__icontains=etiquette)
         return qs
 
     @action(detail=True, methods=['get'], url_path='dependances')

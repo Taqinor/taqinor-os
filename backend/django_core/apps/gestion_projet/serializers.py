@@ -150,6 +150,10 @@ class TacheSerializer(serializers.ModelSerializer):
     projet_code = serializers.CharField(source='projet.code', read_only=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
+    priorite_display = serializers.CharField(
+        source='get_priorite_display', read_only=True)
+    assigne_nom = serializers.CharField(
+        source='assigne.nom', read_only=True, default='')
     # Nombre de sous-tâches directes (lecture seule, pratique pour l'UI).
     nb_sous_taches = serializers.IntegerField(
         source='sous_taches.count', read_only=True)
@@ -159,8 +163,10 @@ class TacheSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'projet', 'projet_code', 'phase', 'parent', 'code_wbs',
             'libelle', 'description', 'ordre', 'statut', 'statut_display',
-            'avancement_pct', 'charge_estimee', 'date_debut_prevue',
-            'date_fin_prevue', 'nb_sous_taches', 'date_creation',
+            'assigne', 'assigne_nom', 'priorite', 'priorite_display',
+            'etiquettes', 'avancement_pct', 'charge_estimee',
+            'date_debut_prevue', 'date_fin_prevue', 'nb_sous_taches',
+            'date_creation',
         ]
         read_only_fields = ['date_creation']
 
@@ -172,6 +178,9 @@ class TacheSerializer(serializers.ModelSerializer):
 
     def validate_parent(self, value):
         return _meme_societe(self, value, 'Tâche parente')
+
+    def validate_assigne(self, value):
+        return _meme_societe(self, value, 'Assigné')
 
     def validate_avancement_pct(self, value):
         if value is not None and not (0 <= value <= 100):

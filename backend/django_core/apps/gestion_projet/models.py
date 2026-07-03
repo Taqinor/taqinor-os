@@ -268,6 +268,12 @@ class Tache(models.Model):
         TERMINE = 'termine', 'Terminée'
         BLOQUE = 'bloque', 'Bloquée'
 
+    class Priorite(models.TextChoices):
+        BASSE = 'basse', 'Basse'
+        NORMALE = 'normale', 'Normale'
+        HAUTE = 'haute', 'Haute'
+        URGENTE = 'urgente', 'Urgente'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -288,6 +294,22 @@ class Tache(models.Model):
         related_name='taches',
         verbose_name='Phase',
     )
+    # Assigné (XPRJ10) : une ressource UNIQUE porteuse de la tâche — distinct
+    # de ``AffectationRessource`` qui gère l'affectation fine multi-ressources
+    # (charge, période). ``assigne`` est le raccourci "qui fait cette tâche".
+    assigne = models.ForeignKey(
+        'RessourceProfil',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='taches_assignees',
+        verbose_name='Assigné',
+    )
+    priorite = models.CharField(
+        max_length=10, choices=Priorite.choices,
+        default=Priorite.NORMALE, verbose_name='Priorité')
+    # Tags légers en CSV (ex. "toiture,urgent") — filtrables via ?etiquette=.
+    etiquettes = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Étiquettes')
     # FK auto-référent : porte les SOUS-TÂCHES (arborescence WBS, profondeur
     # arbitraire). Supprimer une tâche supprime ses descendants (CASCADE).
     parent = models.ForeignKey(
