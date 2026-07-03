@@ -34,6 +34,18 @@ import StickyCta from '../components/StickyCta.astro';
 import Faq from '../components/Faq.astro';
 import ServiceWarrantyTable from '../components/ServiceWarrantyTable.astro';
 import { serviceFaqItems } from '../lib/serviceFaq';
+import { WHATSAPP_LEADS } from '../lib/nap';
+import { whatsappLink } from '../lib/whatsapp';
+
+// W348 — fiche de dimensionnement imprimable (HMT/débit/heures/culture), à
+// remplir sur place puis renvoyer en photo sur WhatsApp : reprend UNIQUEMENT
+// les 4 variables déjà décrites plus haut sur cette page (aucun nouveau
+// chiffre). @media print masque tout le chrome du site (voir <style> plus
+// bas) pour n'imprimer que la fiche.
+const worksheetWaHref = whatsappLink(
+  WHATSAPP_LEADS,
+  'Bonjour, voici ma fiche de dimensionnement pompage solaire remplie (HMT, débit, heures de pompage, culture) — photo en pièce jointe.'
+);
 
 // W263 — FAQ partagée + garanties par composant, FR. Le pompage solaire ne
 // pose NI onduleur NI batterie (repo fact) — includeOnduleur/includeBatterie
@@ -252,6 +264,70 @@ const jsonLd = {
       </div>
     </section>
 
+    {/* W348 — fiche de dimensionnement imprimable : reprend les 4 mêmes
+        variables que la section ci-dessus, en version « à remplir sur le
+        terrain ». Bouton d'impression + invitation à renvoyer la photo sur
+        WhatsApp, sans aucune porte email. */}
+    <section class="section px-4" id="fiche-dimensionnement">
+      <div class="mx-auto max-w-4xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">Outil imprimable</p>
+        <h2 class="display v2-section-title mt-5 text-white">La fiche de dimensionnement, à remplir sur place</h2>
+        <p class="v2-lead mt-5 max-w-2xl text-lune-soft">
+          Imprimez cette fiche, remplissez-la au forage ou au bassin avec vos propres mesures, puis
+          renvoyez-nous-en une photo sur WhatsApp — c’est souvent suffisant pour préparer votre étude
+          avant même notre premier échange.
+        </p>
+
+        <div id="fiche-dimensionnement-print" class="v2-rise cine-card mt-8 p-7 sm:p-9">
+          <div class="grid gap-6 sm:grid-cols-2">
+            <label class="block">
+              <span class="tech-label text-lune">Débit souhaité</span>
+              <span class="mt-2 block border-b-2 border-white/30 pb-2 text-sm text-lune-faint">______________ m³/h ou m³/jour</span>
+            </label>
+            <label class="block">
+              <span class="tech-label text-lune">HMT (hauteur manométrique totale)</span>
+              <span class="mt-2 block border-b-2 border-white/30 pb-2 text-sm text-lune-faint">______________ mètres</span>
+            </label>
+            <label class="block">
+              <span class="tech-label text-lune">Heures de pompage visées / jour</span>
+              <span class="mt-2 block border-b-2 border-white/30 pb-2 text-sm text-lune-faint">______________ heures</span>
+            </label>
+            <label class="block">
+              <span class="tech-label text-lune">Culture / usage de l’eau</span>
+              <span class="mt-2 block border-b-2 border-white/30 pb-2 text-sm text-lune-faint">______________________________</span>
+            </label>
+            <label class="block sm:col-span-2">
+              <span class="tech-label text-lune">Profondeur du forage / niveau dynamique (si connu)</span>
+              <span class="mt-2 block border-b-2 border-white/30 pb-2 text-sm text-lune-faint">______________ mètres</span>
+            </label>
+          </div>
+          <p class="mt-6 text-xs leading-relaxed text-lune-faint">
+            Ces quatre mesures sont celles décrites plus haut sur cette page — aucune n’est
+            obligatoire pour démarrer l’échange, mais plus vous en renseignez, plus notre premier
+            retour sera précis.
+          </p>
+        </div>
+
+        <div class="mt-8 flex flex-wrap items-center gap-4 print:hidden">
+          <button
+            type="button"
+            id="fiche-print-btn"
+            class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10"
+          >
+            Imprimer la fiche →
+          </button>
+          <a
+            href={worksheetWaHref}
+            target="_blank"
+            rel="noopener"
+            class="glow inline-flex items-center gap-2 bg-brass-400 px-5 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300"
+          >
+            Renvoyer la photo sur WhatsApp →
+          </a>
+        </div>
+      </div>
+    </section>
+
     <!-- Avantage fiscal : exonération de TVA (pompage agricole uniquement) -->
     <section class="section px-4">
       <div class="mx-auto max-w-6xl">
@@ -385,3 +461,39 @@ const jsonLd = {
     <StickyCta />
   </div>
 </Layout>
+
+<script>
+  // W348 — bouton d'impression de la fiche de dimensionnement : window.print()
+  // déclenche les règles @media print ci-dessous (fond clair, chrome masqué).
+  document.getElementById('fiche-print-btn')?.addEventListener('click', () => {
+    window.print();
+  });
+</script>
+
+<style is:global>
+  /* W348 — impression : n'affiche QUE la fiche de dimensionnement, fond clair
+     et texte sombre (le thème nuit/laiton par défaut imprimerait dark-on-dark
+     — même correctif que sur /proposition/[token]). is:global : Header/Footer
+     sont rendus par Layout.astro, un composant distinct, donc un style scopé
+     à CETTE page ne les atteindrait jamais. */
+  @media print {
+    header,
+    footer,
+    #sticky-cta,
+    .reading-bar,
+    .v2 > *:not(#fiche-dimensionnement) {
+      display: none !important;
+    }
+    #fiche-dimensionnement {
+      padding: 0 !important;
+    }
+    #fiche-dimensionnement,
+    #fiche-dimensionnement * {
+      background: #fff !important;
+      color: #111 !important;
+      box-shadow: none !important;
+      text-shadow: none !important;
+      border-color: #999 !important;
+    }
+  }
+</style>

@@ -29,10 +29,20 @@ import ServiceWarrantyTable from '../../components/ServiceWarrantyTable.astro';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
 import { serviceFaqItems } from '../../lib/serviceFaq';
+import { WHATSAPP_LEADS } from '../../lib/nap';
+import { whatsappLink } from '../../lib/whatsapp';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 const devisHref = L('/devis/mon-toit');
+
+// W348 — printable sizing worksheet (HMT/flow rate/hours/crop), to fill on
+// site then send back as a photo on WhatsApp: reuses ONLY the 4 variables
+// already described above on this page (no new figure).
+const worksheetWaHref = whatsappLink(
+  WHATSAPP_LEADS,
+  'Hello, here is my filled-in solar pumping sizing worksheet (total head, flow rate, pumping hours, crop) — photo attached.'
+);
 
 // W263 — shared FAQ + per-component warranty, EN. Solar pumping fits neither
 // an inverter nor a battery (repo fact) — includeOnduleur/includeBatterie false.
@@ -247,6 +257,69 @@ const jsonLd = {
       </div>
     </section>
 
+    {/* W348 — printable sizing worksheet: the same 4 variables as the section
+        above, in a "fill on site" form. Print button + WhatsApp photo
+        invitation, with no email gate at all. */}
+    <section class="section px-4" id="fiche-dimensionnement">
+      <div class="mx-auto max-w-4xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">Printable tool</p>
+        <h2 class="display v2-section-title mt-5 text-white">The sizing worksheet, filled in on site</h2>
+        <p class="v2-lead mt-5 max-w-2xl text-lune-soft">
+          Print this sheet, fill it in at the borehole or the tank with your own measurements, then
+          send us a photo of it on WhatsApp — that is often enough to prepare your study before we
+          even speak for the first time.
+        </p>
+
+        <div id="fiche-dimensionnement-print" class="v2-rise cine-card mt-8 p-7 sm:p-9">
+          <div class="grid gap-6 sm:grid-cols-2">
+            <label class="block">
+              <span class="tech-label text-lune">Target flow rate</span>
+              <span class="mt-2 block border-b-2 border-white/30 pb-2 text-sm text-lune-faint">______________ m³/h or m³/day</span>
+            </label>
+            <label class="block">
+              <span class="tech-label text-lune">Total head (HMT)</span>
+              <span class="mt-2 block border-b-2 border-white/30 pb-2 text-sm text-lune-faint">______________ metres</span>
+            </label>
+            <label class="block">
+              <span class="tech-label text-lune">Target pumping hours / day</span>
+              <span class="mt-2 block border-b-2 border-white/30 pb-2 text-sm text-lune-faint">______________ hours</span>
+            </label>
+            <label class="block">
+              <span class="tech-label text-lune">Crop / water use</span>
+              <span class="mt-2 block border-b-2 border-white/30 pb-2 text-sm text-lune-faint">______________________________</span>
+            </label>
+            <label class="block sm:col-span-2">
+              <span class="tech-label text-lune">Borehole depth / dynamic level (if known)</span>
+              <span class="mt-2 block border-b-2 border-white/30 pb-2 text-sm text-lune-faint">______________ metres</span>
+            </label>
+          </div>
+          <p class="mt-6 text-xs leading-relaxed text-lune-faint">
+            These four measurements are the same ones described above on this page — none is
+            required to start the conversation, but the more you fill in, the more precise our
+            first reply will be.
+          </p>
+        </div>
+
+        <div class="mt-8 flex flex-wrap items-center gap-4 print:hidden">
+          <button
+            type="button"
+            id="fiche-print-btn"
+            class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10"
+          >
+            Print the worksheet →
+          </button>
+          <a
+            href={worksheetWaHref}
+            target="_blank"
+            rel="noopener"
+            class="glow inline-flex items-center gap-2 bg-brass-400 px-5 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300"
+          >
+            Send the photo on WhatsApp →
+          </a>
+        </div>
+      </div>
+    </section>
+
     <!-- Tax advantage: VAT exemption (agricultural pumping only) -->
     <section class="section px-4">
       <div class="mx-auto max-w-6xl">
@@ -378,3 +451,39 @@ const jsonLd = {
     <StickyCta />
   </div>
 </Layout>
+
+<script>
+  // W348 — print button for the sizing worksheet: window.print() triggers
+  // the @media print rules below (light background, chrome hidden).
+  document.getElementById('fiche-print-btn')?.addEventListener('click', () => {
+    window.print();
+  });
+</script>
+
+<style is:global>
+  /* W348 — print: show ONLY the sizing worksheet, light background and dark
+     text (the default night/brass theme would print dark-on-dark — same fix
+     as on /proposition/[token]). is:global: Header/Footer are rendered by
+     Layout.astro, a separate component, so a style scoped to THIS page would
+     never reach them. */
+  @media print {
+    header,
+    footer,
+    #sticky-cta,
+    .reading-bar,
+    .v2 > *:not(#fiche-dimensionnement) {
+      display: none !important;
+    }
+    #fiche-dimensionnement {
+      padding: 0 !important;
+    }
+    #fiche-dimensionnement,
+    #fiche-dimensionnement * {
+      background: #fff !important;
+      color: #111 !important;
+      box-shadow: none !important;
+      text-shadow: none !important;
+      border-color: #999 !important;
+    }
+  }
+</style>

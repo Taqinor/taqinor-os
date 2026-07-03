@@ -28,10 +28,20 @@ import ServiceWarrantyTable from '../../components/ServiceWarrantyTable.astro';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
 import { serviceFaqItems } from '../../lib/serviceFaq';
+import { WHATSAPP_LEADS } from '../../lib/nap';
+import { whatsappLink } from '../../lib/whatsapp';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 const devisHref = L('/devis/mon-toit');
+
+// W348 — فيشة تحديد مقاس قابلة للطباعة (HMT/الصبيب/الساعات/المحصول)، تُملأ
+// ميدانياً ثم تُرسل صورتها عبر واتساب: تُعيد استعمال المتغيرات الأربعة
+// الموصوفة أعلاه فقط (لا رقم جديد).
+const worksheetWaHref = whatsappLink(
+  WHATSAPP_LEADS,
+  'مرحباً، هذه فيشة تحديد مقاس الضخ الشمسي مملوءة (HMT، الصبيب، ساعات الضخ، المحصول) — الصورة مرفقة.'
+);
 
 // W263 — بنك أسئلة شائعة مشترك + ضمان حسب المكوّن، بالعربية. الضخ الشمسي
 // لا يشمل عاكساً ولا بطارية (حقيقة المستودع) — includeOnduleur/includeBatterie بـ false.
@@ -238,6 +248,67 @@ const jsonLd = {
       </div>
     </section>
 
+    {/* W348 — فيشة تحديد مقاس قابلة للطباعة: نفس المتغيرات الأربعة أعلاه، في
+        نسخة «تُملأ ميدانياً». زر طباعة + دعوة لإرسال الصورة عبر واتساب، دون
+        أي بوابة بريد إلكتروني. */}
+    <section class="section px-4" id="fiche-dimensionnement">
+      <div class="mx-auto max-w-4xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">أداة قابلة للطباعة</p>
+        <h2 class="display v2-section-title mt-5 text-white">فيشة تحديد المقاس، تُملأ ميدانياً</h2>
+        <p class="v2-lead mt-5 max-w-2xl text-lune-soft">
+          اطبع هذه الفيشة، املأها عند الثقب أو الحوض بقياساتك الخاصة، ثم أرسل لنا صورتها عبر
+          واتساب — غالباً ما يكفي ذلك لتحضير دراستك حتى قبل أول تواصل بيننا.
+        </p>
+
+        <div id="fiche-dimensionnement-print" class="v2-rise cine-card mt-8 p-7 sm:p-9">
+          <div class="grid gap-6 sm:grid-cols-2">
+            <label class="block">
+              <span class="tech-label text-lune">الصبيب المستهدف</span>
+              <span class="mt-2 block border-b-2 border-white/30 pb-2 text-sm text-lune-faint">______________ m³/h أو m³/يوم</span>
+            </label>
+            <label class="block">
+              <span class="tech-label text-lune">الارتفاع المانومتري الكلي (HMT)</span>
+              <span class="mt-2 block border-b-2 border-white/30 pb-2 text-sm text-lune-faint">______________ أمتار</span>
+            </label>
+            <label class="block">
+              <span class="tech-label text-lune">ساعات الضخ المستهدفة / اليوم</span>
+              <span class="mt-2 block border-b-2 border-white/30 pb-2 text-sm text-lune-faint">______________ ساعات</span>
+            </label>
+            <label class="block">
+              <span class="tech-label text-lune">المحصول / استعمال الماء</span>
+              <span class="mt-2 block border-b-2 border-white/30 pb-2 text-sm text-lune-faint">______________________________</span>
+            </label>
+            <label class="block sm:col-span-2">
+              <span class="tech-label text-lune">عمق الثقب / المستوى الديناميكي (إن كان معروفاً)</span>
+              <span class="mt-2 block border-b-2 border-white/30 pb-2 text-sm text-lune-faint">______________ أمتار</span>
+            </label>
+          </div>
+          <p class="mt-6 text-xs leading-relaxed text-lune-faint">
+            هذه القياسات الأربعة هي نفسها الموصوفة أعلاه على هذه الصفحة — لا شيء منها إلزامي لبدء
+            التواصل، لكن كلما زادت المعطيات، كان ردّنا الأول أدقّ.
+          </p>
+        </div>
+
+        <div class="mt-8 flex flex-wrap items-center gap-4 print:hidden">
+          <button
+            type="button"
+            id="fiche-print-btn"
+            class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10"
+          >
+            اطبع الفيشة <span class="inline-block rtl:-scale-x-100">→</span>
+          </button>
+          <a
+            href={worksheetWaHref}
+            target="_blank"
+            rel="noopener"
+            class="glow inline-flex items-center gap-2 bg-brass-400 px-5 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300"
+          >
+            أرسل الصورة عبر واتساب <span class="inline-block rtl:-scale-x-100">→</span>
+          </a>
+        </div>
+      </div>
+    </section>
+
     <!-- امتياز ضريبي: إعفاء من الضريبة (الضخ الفلاحي فقط) -->
     <section class="section px-4">
       <div class="mx-auto max-w-6xl">
@@ -360,3 +431,38 @@ const jsonLd = {
     <StickyCta />
   </div>
 </Layout>
+
+<script>
+  // W348 — زر طباعة فيشة تحديد المقاس: window.print() يُفعّل قواعد
+  // @media print أدناه (فون فاتحة، إخفاء واجهة الموقع).
+  document.getElementById('fiche-print-btn')?.addEventListener('click', () => {
+    window.print();
+  });
+</script>
+
+<style is:global>
+  /* W348 — الطباعة: عرض فيشة تحديد المقاس فقط، فون فاتحة ونص داكن (السمة
+     الليلية/النحاسية الافتراضية تطبع داكناً على داكن — نفس تصحيح
+     /proposition/[token]). is:global: يُقدَّم الرأس/التذييل عبر Layout.astro،
+     مكوّن منفصل، فأسلوب مُقيَّد لهذه الصفحة لن يبلغهما أبداً. */
+  @media print {
+    header,
+    footer,
+    #sticky-cta,
+    .reading-bar,
+    .v2 > *:not(#fiche-dimensionnement) {
+      display: none !important;
+    }
+    #fiche-dimensionnement {
+      padding: 0 !important;
+    }
+    #fiche-dimensionnement,
+    #fiche-dimensionnement * {
+      background: #fff !important;
+      color: #111 !important;
+      box-shadow: none !important;
+      text-shadow: none !important;
+      border-color: #999 !important;
+    }
+  }
+</style>
