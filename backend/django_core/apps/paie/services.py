@@ -1842,7 +1842,7 @@ def generer_ordre_virement(periode, *, date_execution=None, rib_emetteur='',
     texte reste un repli quand aucun compte n'est câblé.
     """
     from .models import (
-        BulletinPaie, LigneVirement, OrdreVirement,
+        BulletinPaie, LigneVirement, OrdreVirement, ProfilPaie,
     )
 
     compte = _resoudre_compte_emetteur(periode.company, compte_emetteur)
@@ -1897,6 +1897,11 @@ def generer_ordre_virement(periode, *, date_execution=None, rib_emetteur='',
             if net <= 0:
                 continue
             profil = bulletin.profil
+            # XPAI9 — Seuls les profils PAYÉS PAR VIREMENT entrent dans
+            # l'ordre. Espèces/chèque sont réglés hors virement (listés à
+            # part par ``profils_hors_virement``).
+            if profil.mode_paiement != ProfilPaie.MODE_PAIEMENT_VIREMENT:
+                continue
             employe = profil.employe
             beneficiaire = f'{employe.nom} {employe.prenom}'.strip() \
                 if employe else f'Profil #{profil.id}'
@@ -2101,6 +2106,136 @@ def fichier_virement_paie_simt(ordre):
         'total': base['total'],
         'nb_lignes': base['nb_lignes'],
     }
+
+
+# ── XPAI9 — Modes de paiement & suivi des rejets de virement ───────────────
+
+def profils_hors_virement(periode):
+    """Profils réglés HORS virement (espèces/chèque) d'une période (XPAI9).
+
+    Liste, pour les bulletins VALIDÉS de la ``periode``, les profils dont
+    ``mode_paiement`` n'est pas ``virement`` — exclus de l'ordre de virement
+    (``generer_ordre_virement``), à régler/décompter séparément. Pour le mode
+    ESPÈCES, esquisse un décompte de coupures usuel (billets/pièces MAD) sur
+    le net à payer (informatif, arrondi au multiple le plus proche — n'importe
+    pas de contrainte comptable). Lecture seule. Renvoie une liste de dicts
+    ``{'profil_id', 'nom', 'mode_paiement', 'net_a_payer', 'decompte_especes'}``.
+    """
+    from .models import BulletinPaie, ProfilPaie
+
+    bulletins = (
+        BulletinPaie.objects
+        .filter(company=periode.company, periode=periode,
+                statut=BulletinPaie.STATUT_VALIDE)
+        .exclude(profil__mode_paiement=ProfilPaie.MODE_PAIEMENT_VIREMENT)
+        .select_related('profil', 'profil__employe')
+    )
+    resultat = []
+    for bulletin in bulletins:
+        profil = bulletin.profil
+        employe = profil.employe
+        nom = f'{employe.nom} {employe.prenom}'.strip() if employe else ''
+        net = Decimal(bulletin.net_a_payer or 0)
+        item = {
+            'profil_id': profil.id,
+            'nom': nom,
+            'mode_paiement': profil.mode_paiement,
+            'net_a_payer': _q(net),
+        }
+        if profil.mode_paiement == ProfilPaie.MODE_PAIEMENT_ESPECES:
+            item['decompte_especes'] = decompte_coupures(net)
+        resultat.append(item)
+    return resultat
+
+
+# Coupures MAD usuelles (billets puis pièces), du plus grand au plus petit.
+COUPURES_MAD = [200, 100, 50, 20, 10, 5, 1]
+
+
+def decompte_coupures(montant):
+    """Décompte de coupures MAD pour un montant (XPAI9, espèces).
+
+    Glouton sur ``COUPURES_MAD`` : nombre de billets/pièces de chaque valeur
+    pour composer ``montant`` (arrondi à l'entier — les centimes ne sont pas
+    décomptés en espèces). Renvoie ``{coupure: quantite, …}`` (coupures à 0
+    omises) — purement informatif, aucun effet de bord.
+    """
+    reste = int(Decimal(montant or 0).to_integral_value())
+    decompte = {}
+    for coupure in COUPURES_MAD:
+        if reste <= 0:
+            break
+        qte, reste = divmod(reste, coupure)
+        if qte > 0:
+            decompte[coupure] = qte
+    return decompte
+
+
+def marquer_bulletin_paye(bulletin, *, date_paiement=None):
+    """Marque un bulletin comme PAYÉ (décompte espèces/chèque, XPAI9).
+
+    Horodate le paiement (``paye=True``, ``date_paiement``). Idempotent :
+    un bulletin déjà payé n'est pas re-horodaté (date d'origine conservée).
+    Renvoie le bulletin.
+    """
+    if bulletin.paye:
+        return bulletin
+    bulletin.paye = True
+    bulletin.date_paiement = date_paiement or timezone.now()
+    bulletin.save(update_fields=['paye', 'date_paiement'])
+    return bulletin
+
+
+def rejeter_ligne_virement(ligne, *, motif=''):
+    """Marque une ``LigneVirement`` comme REJETÉE (RIB invalide, XPAI9).
+
+    Ne supprime JAMAIS la ligne (trace d'audit) : pose ``rejetee=True``,
+    ``motif_rejet``, ``date_rejet``. Une ligne déjà rejetée n'est pas
+    re-rejetée (idempotent). Renvoie la ligne.
+    """
+    if ligne.rejetee:
+        return ligne
+    ligne.rejetee = True
+    ligne.motif_rejet = motif or 'RIB invalide'
+    ligne.date_rejet = timezone.now()
+    ligne.save(update_fields=['rejetee', 'motif_rejet', 'date_rejet'])
+    return ligne
+
+
+def reemettre_ligne_virement(ligne_rejetee, *, nouveau_rib):
+    """Réémet une ligne de virement REJETÉE avec un RIB corrigé (XPAI9).
+
+    Crée une NOUVELLE ``LigneVirement`` (même ordre/bulletin/bénéficiaire/
+    montant/référence, RIB corrigé) et la relie à l'originale via
+    ``ligne_correction`` — la ligne rejetée reste inchangée (jamais
+    supprimée/modifiée). Lève ``ValueError`` si la ligne n'est pas rejetée,
+    ou si l'ordre parent est déjà ÉMIS (figé — la correction se rejoue sur
+    un NOUVEL ordre). Renvoie la nouvelle ``LigneVirement``.
+    """
+    from .models import LigneVirement, OrdreVirement
+
+    if not ligne_rejetee.rejetee:
+        raise ValueError('Seule une ligne rejetée peut être réémise.')
+    if ligne_rejetee.ordre.statut == OrdreVirement.STATUT_EMIS:
+        raise ValueError(
+            "L'ordre est déjà émis : la correction doit passer par un "
+            "nouvel ordre de virement.")
+    if not nouveau_rib:
+        raise ValueError('Le nouveau RIB est requis pour la réémission.')
+
+    with transaction.atomic():
+        nouvelle = LigneVirement.objects.create(
+            company=ligne_rejetee.company,
+            ordre=ligne_rejetee.ordre,
+            bulletin=ligne_rejetee.bulletin,
+            beneficiaire=ligne_rejetee.beneficiaire,
+            rib=nouveau_rib,
+            montant=ligne_rejetee.montant,
+            reference=ligne_rejetee.reference,
+        )
+        ligne_rejetee.ligne_correction = nouvelle
+        ligne_rejetee.save(update_fields=['ligne_correction'])
+        return nouvelle
 
 
 # ── PAIE31 — Déclaration CNSS (BDS / format DAMANCOM) ──────────────────────

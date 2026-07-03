@@ -433,6 +433,21 @@ class ProfilPaie(models.Model):
         max_length=40, blank=True, default='', verbose_name='RIB')
     banque = models.CharField(
         max_length=120, blank=True, default='', verbose_name='Banque')
+    # XPAI9 — Mode de paiement du salarié. ``virement`` (défaut, comportement
+    # historique — seul mode couvert jusqu'ici) entre dans l'ordre de
+    # virement (PAIE30) ; ``cheque``/``especes`` en sont EXCLUS (listés à
+    # part) — un profil espèces/chèque est réglé hors virement.
+    MODE_PAIEMENT_VIREMENT = 'virement'
+    MODE_PAIEMENT_CHEQUE = 'cheque'
+    MODE_PAIEMENT_ESPECES = 'especes'
+    MODE_PAIEMENT_CHOICES = [
+        (MODE_PAIEMENT_VIREMENT, 'Virement'),
+        (MODE_PAIEMENT_CHEQUE, 'Chèque'),
+        (MODE_PAIEMENT_ESPECES, 'Espèces'),
+    ]
+    mode_paiement = models.CharField(
+        max_length=10, choices=MODE_PAIEMENT_CHOICES,
+        default=MODE_PAIEMENT_VIREMENT, verbose_name='Mode de paiement')
     actif = models.BooleanField(default=True, verbose_name='Actif')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
@@ -975,6 +990,13 @@ class BulletinPaie(models.Model):
         verbose_name='Net à payer')
     date_validation = models.DateTimeField(
         null=True, blank=True, verbose_name='Validé le')
+    # XPAI9 — Statut de décompte du paiement, horodaté. Distinct de
+    # ``statut`` (brouillon/valide — le CALCUL) : ``paye`` trace que le
+    # salarié a EFFECTIVEMENT reçu son net (virement exécuté, chèque remis,
+    # espèces décomptées) — jamais posé automatiquement par le calcul.
+    paye = models.BooleanField(default=False, verbose_name='Payé')
+    date_paiement = models.DateTimeField(
+        null=True, blank=True, verbose_name='Payé le')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -1479,6 +1501,22 @@ class LigneVirement(models.Model):
         verbose_name='Montant')
     reference = models.CharField(
         max_length=80, blank=True, default='', verbose_name='Référence')
+    # XPAI9 — Suivi des rejets de virement (RIB invalide). Une ligne rejetée
+    # n'est JAMAIS supprimée (trace comptable/audit) ; ``ligne_correction``
+    # référence la ligne RÉÉMISE avec le RIB corrigé (nouvelle ligne, même
+    # bulletin) — chaîne d'audit complète.
+    rejetee = models.BooleanField(default=False, verbose_name='Rejetée')
+    motif_rejet = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Motif du rejet')
+    date_rejet = models.DateTimeField(
+        null=True, blank=True, verbose_name='Rejetée le')
+    ligne_correction = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='corrige',
+        verbose_name='Ligne de correction (réémission)',
+    )
 
     class Meta:
         verbose_name = 'Ligne de virement'

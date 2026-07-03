@@ -151,7 +151,7 @@ class ProfilPaieSerializer(serializers.ModelSerializer):
             'jours_travail_mensuel', 'heures_travail_mensuel',
             'affilie_cnss', 'affilie_amo', 'affilie_cimr', 'taux_cimr_salarial',
             'numero_cnss', 'numero_amo', 'numero_cimr', 'rib', 'banque',
-            'actif', 'date_creation',
+            'mode_paiement', 'actif', 'date_creation',
         ]
         read_only_fields = ['date_creation']
 
@@ -351,6 +351,7 @@ class BulletinPaieSerializer(serializers.ModelSerializer):
             'prime_anciennete', 'charges_patronales', 'net_a_payer',
             'provision_conges',
             'date_validation', 'date_creation', 'lignes',
+            'paye', 'date_paiement',
         ]
         read_only_fields = fields
 
@@ -388,6 +389,7 @@ class LigneVirementSerializer(serializers.ModelSerializer):
         model = LigneVirement
         fields = [
             'id', 'bulletin', 'beneficiaire', 'rib', 'montant', 'reference',
+            'rejetee', 'motif_rejet', 'date_rejet', 'ligne_correction',
         ]
         read_only_fields = fields
 

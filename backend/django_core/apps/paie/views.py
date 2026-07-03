@@ -28,6 +28,7 @@ from .models import (
     CumulAnnuel,
     EcheanceDeclarative,
     ElementVariable,
+    LigneVirement,
     OrdreVirement,
     ParametrePaie,
     PeriodePaie,
@@ -45,6 +46,7 @@ from .serializers import (
     CumulAnnuelSerializer,
     EcheanceDeclarativeSerializer,
     ElementVariableSerializer,
+    LigneVirementSerializer,
     ParametrePaieSerializer,
     PeriodePaieSerializer,
     OrdreVirementSerializer,
@@ -79,9 +81,13 @@ from .services import (
     importer_elements_rh,
     journal_de_paie,
     livre_de_paie,
+    marquer_bulletin_paye,
     notifier_echeances_en_retard,
+    profils_hors_virement,
     rapprochement_paie_gl,
     recalculer_cumul_annuel,
+    reemettre_ligne_virement,
+    rejeter_ligne_virement,
     valider_bulletin,
 )
 
@@ -512,6 +518,13 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
         periode = self.get_object()
         return Response(livre_de_paie(periode), status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['get'], url_path='hors-virement')
+    def hors_virement(self, request, pk=None):
+        """Profils réglés hors virement (espèces/chèque) de la période (XPAI9)."""
+        periode = self.get_object()
+        return Response(
+            profils_hors_virement(periode), status=status.HTTP_200_OK)
+
     @action(detail=True, methods=['post'], url_path='journal-de-paie')
     def journal_de_paie(self, request, pk=None):
         """Passe l'écriture comptable du journal de paie (PAIE33).
@@ -618,6 +631,14 @@ class BulletinPaieViewSet(_PaieVoirOuGerer, TenantMixin,
         """Valide le bulletin → fige le snapshot (immuable, PAIE17)."""
         bulletin = self.get_object()
         valider_bulletin(bulletin)
+        return Response(
+            self.get_serializer(bulletin).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='marquer-paye')
+    def marquer_paye(self, request, pk=None):
+        """Marque le bulletin comme payé (décompte espèces/chèque, XPAI9)."""
+        bulletin = self.get_object()
+        marquer_bulletin_paye(bulletin)
         return Response(
             self.get_serializer(bulletin).data, status=status.HTTP_200_OK)
 
@@ -799,6 +820,40 @@ class OrdreVirementViewSet(_PaieVoirOuGerer, TenantMixin,
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(fichier, status=status.HTTP_200_OK)
+
+
+class LigneVirementViewSet(_PaieVoirOuGerer, TenantMixin,
+                           viewsets.ReadOnlyModelViewSet):
+    """Lignes d'ordre de virement (PAIE30) — suivi des rejets (XPAI9).
+
+    Lecture seule + actions ``rejeter`` (marque un RIB invalide, jamais de
+    suppression) et ``reemettre`` (crée une ligne corrigée liée via
+    ``ligne_correction``). ``paie_voir``/``paie_gerer``.
+    """
+    queryset = LigneVirement.objects.select_related('ordre', 'bulletin').all()
+    serializer_class = LigneVirementSerializer
+
+    @action(detail=True, methods=['post'], url_path='rejeter')
+    def rejeter(self, request, pk=None):
+        """Marque la ligne comme rejetée (RIB invalide, XPAI9)."""
+        ligne = self.get_object()
+        rejeter_ligne_virement(ligne, motif=request.data.get('motif', ''))
+        return Response(
+            self.get_serializer(ligne).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='reemettre')
+    def reemettre(self, request, pk=None):
+        """Réémet une ligne rejetée avec un RIB corrigé (XPAI9)."""
+        ligne = self.get_object()
+        nouveau_rib = request.data.get('rib')
+        try:
+            nouvelle = reemettre_ligne_virement(
+                ligne, nouveau_rib=nouveau_rib)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(nouvelle).data, status=status.HTTP_201_CREATED)
 
 
 class SaisieArretViewSet(_PaieBaseViewSet):

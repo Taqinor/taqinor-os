@@ -10,6 +10,7 @@ from .views import (
     CumulAnnuelViewSet,
     EcheanceDeclarativeViewSet,
     ElementVariableViewSet,
+    LigneVirementViewSet,
     OrdreVirementViewSet,
     ParametrePaieViewSet,
     PeriodePaieViewSet,
@@ -35,6 +36,7 @@ router.register(r'cumuls-annuels', CumulAnnuelViewSet)
 router.register(r'avances', AvanceSalarieViewSet)
 router.register(r'saisies', SaisieArretViewSet)
 router.register(r'ordres-virement', OrdreVirementViewSet)
+router.register(r'lignes-virement', LigneVirementViewSet)
 router.register(r'echeances-declaratives', EcheanceDeclarativeViewSet)
 router.register(r'mes-bulletins', CoffreFortBulletinViewSet,
                 basename='coffrefort-bulletin')
