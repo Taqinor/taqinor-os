@@ -480,10 +480,26 @@ const noscriptTelHref = `tel:${NAP.phone}`;
               placeholder="you@example.com" class={`${inputClass} mt-1`} />
           </label>
 
-          <label class="flex items-start gap-3 text-sm text-lune-soft">
-            <input id="mt-wa-optin" name="whatsappOptIn" type="checkbox" checked class="mt-1 h-5 w-5 flex-none accent-ok-600" />
-            <span>I prefer to be contacted on WhatsApp (faster reply)</span>
-          </label>
+          <!-- WJ51 — explicit contact preference (replaces the single "I prefer
+               WhatsApp" checkbox): a named choice, never a box checked by default
+               without the visitor seeing it. Forwarded as `contactPreference`
+               (optional) + derives `whatsappOptIn` to keep the webhook contract
+               unchanged. -->
+          <fieldset class="mt-1">
+            <legend class="text-sm text-lune-soft">How would you prefer we contact you back?</legend>
+            <div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <label class="mt-contact-pref cine-card flex cursor-pointer items-center gap-2 border border-white/15 p-3 text-sm text-white transition-colors has-[:checked]:border-ok-600">
+                <input id="mt-contact-whatsapp" name="contactPreference" type="radio" value="whatsapp_only" checked
+                  class="h-4 w-4 flex-none accent-ok-600" />
+                <span>WhatsApp only</span>
+              </label>
+              <label class="mt-contact-pref cine-card flex cursor-pointer items-center gap-2 border border-white/15 p-3 text-sm text-white transition-colors has-[:checked]:border-brass-400">
+                <input id="mt-contact-phone" name="contactPreference" type="radio" value="phone_ok"
+                  class="h-4 w-4 flex-none accent-brass-400" />
+                <span>An advisor may call me</span>
+              </label>
+            </div>
+          </fieldset>
 
           <label class="flex items-start gap-3 text-sm text-lune-soft">
             <input id="mt-consent" name="consent" type="checkbox" required aria-required="true" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
@@ -515,6 +531,14 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           <div id="mt-success" hidden class="border border-ok-600/40 bg-ok-600/10 p-4 text-sm text-white">
             <p class="font-semibold">Thank you! Your request has been recorded.</p>
             <p class="mt-1 text-lune-soft">Our team is preparing your study and will contact you back very soon — often on WhatsApp.</p>
+            <!-- WJ52 — short reference: fills the post-submission void (24–48 h
+                 wait) with a concrete artefact to mention on WhatsApp. -->
+            <p class="mt-2 text-lune-soft">
+              <span>Your reference:</span>
+              {' '}<strong id="mt-client-ref" class="font-mono text-white" dir="ltr">—</strong>
+              <br />
+              <span class="text-xs">Mention this code on WhatsApp to find your file faster.</span>
+            </p>
             <a id="mt-success-wa" href="#" target="_blank" rel="noopener"
               class="mt-3 inline-flex items-center gap-2 bg-ok-600 px-4 py-2.5 text-sm font-bold text-white transition-opacity hover:opacity-90">
               <span>Open WhatsApp now</span>
@@ -673,7 +697,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   import { estimateFromBill, formatMadRange } from '../../../lib/billEstimate';
   import { captureWhatsappText, whatsappLink } from '../../../lib/whatsapp';
   import { WHATSAPP_LEADS } from '../../../lib/nap';
-  import { validateLead } from '../../../lib/lead';
+  import { buildClientRef, validateLead } from '../../../lib/lead';
   import { type CaptureStrings } from '../../../scripts/roofPro11/mapDraw';
 
   // WJ60/WJ63 fix — moved here from the frontmatter: a plain <script> tag in an
@@ -764,7 +788,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     'mt-occupant-type', 'mt-project-timing', 'mt-financing-intent', 'mt-fallback-address',
     'rp9-address',
   ];
-  const PERSISTED_CHECK_FIELDS = ['mt-ete-differente', 'mt-wa-optin', 'mt-consent', 'mt-battery-interest'];
+  const PERSISTED_CHECK_FIELDS = ['mt-ete-differente', 'mt-contact-whatsapp', 'mt-contact-phone', 'mt-consent', 'mt-battery-interest'];
   let restoring = false; // WJ61 — avoids re-saving WHILE rehydrating.
   function saveWizardState() {
     if (restoring) return;
@@ -1238,11 +1262,27 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       err.hidden = !message;
     }
   }
+  // ——— WJ52 : short client reference, generated ONCE in the browser ———
+  // Stable across repeated submissions (e.g. a network failure then a retry):
+  // generated on the first attempt, reused as-is afterwards — never silently
+  // regenerated, never a server uniqueness key (see lib/lead.ts).
+  let clientRef = '';
+  function getOrCreateClientRef(): string {
+    if (!clientRef) clientRef = buildClientRef();
+    return clientRef;
+  }
+
   /** Construit le corps de lead + renvoie les erreurs client (miroir validateLead). */
   function buildBody(): { body: Record<string, unknown>; errors: Record<string, string> } {
     const eteDifferente = eteToggle?.checked === true;
     const consent = ($('mt-consent') as HTMLInputElement | null)?.checked === true;
-    const whatsappOptIn = ($('mt-wa-optin') as HTMLInputElement | null)?.checked === true;
+    // WJ51 — explicit contact preference ("WhatsApp only" vs "An advisor may
+    // call me"): `whatsappOptIn` stays derived so nothing breaks CRM/webhook
+    // side, `contactPreference` is forwarded in addition (maps to `canal`).
+    const contactPreference = (($('mt-contact-phone') as HTMLInputElement | null)?.checked === true)
+      ? 'phone_ok'
+      : 'whatsapp_only';
+    const whatsappOptIn = contactPreference === 'whatsapp_only';
     const adresse = (val('mt-city') || addressEl?.value.trim() || fallbackAddrEl?.value.trim() || '').trim();
     const body: Record<string, unknown> = {
       fullName: val('mt-name'),
@@ -1252,6 +1292,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       roofType: val('mt-roof'),
       consent,
       whatsappOptIn,
+      contactPreference,
       email: val('mt-email') || undefined,
       factureHiver: num('mt-facture-hiver'),
       factureEte: eteDifferente ? num('mt-facture-ete') : null,
@@ -1274,6 +1315,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       projectTiming: val('mt-project-timing') || undefined,
       financingIntent: val('mt-financing-intent') || undefined,
       hasMeterPhoto,
+      // WJ52 — short reference for the post-submission artefact (echoed as-is,
+      // never a server uniqueness key — see lib/lead.ts).
+      clientRef: getOrCreateClientRef(),
     };
     // WJ4 — repère FACULTATIF : on le joint s'il existe, on ne BLOQUE jamais sans lui.
     if (capturePin) {
@@ -1393,10 +1437,16 @@ const noscriptTelHref = `tel:${NAP.phone}`;
         // WJ5 — réponse HONNÊTE selon le seuil 1 000 MAD (qualified renvoyé par le serveur).
         if (data.qualified) {
           if (okEl) okEl.hidden = false;
+          // WJ52 — display the reference generated in buildBody() (already
+          // included in the sent body — re-read here via getOrCreateClientRef()
+          // to stay the SAME value, never regenerated).
+          const refEl = $('mt-client-ref');
+          if (refEl) refEl.textContent = getOrCreateClientRef();
           const waLink = $('mt-success-wa') as HTMLAnchorElement | null;
           if (waLink) waLink.href = waUrl;
-          // WJ3 — sur mobile, on propose WhatsApp tout de suite (l'opt-in est coché par défaut)
-          const wantsWa = ($('mt-wa-optin') as HTMLInputElement | null)?.checked === true;
+          // WJ3/WJ51 — on mobile, offer WhatsApp right away when the contact
+          // preference is "WhatsApp only" (the option checked by default).
+          const wantsWa = ($('mt-contact-phone') as HTMLInputElement | null)?.checked !== true;
           if (wantsWa && /Mobi|Android|iPhone/i.test(navigator.userAgent) && !reducedMotion) {
             setTimeout(() => { window.location.href = waUrl; }, 900);
           }

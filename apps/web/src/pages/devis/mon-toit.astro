@@ -502,10 +502,26 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
               placeholder="vous@exemple.com" class={`${inputClass} mt-1`} />
           </label>
 
-          <label class="flex items-start gap-3 text-sm text-lune-soft">
-            <input id="mt-wa-optin" name="whatsappOptIn" type="checkbox" checked class="mt-1 h-5 w-5 flex-none accent-ok-600" />
-            <span data-i18n data-fr="Je préfère être contacté(e) sur WhatsApp (réponse plus rapide)" data-ar="أفضّل التواصل عبر واتساب (رد أسرع)">Je préfère être contacté(e) sur WhatsApp (réponse plus rapide)</span>
-          </label>
+          <!-- WJ51 — préférence de contact EXPLICITE (remplace la case unique
+               « je préfère WhatsApp ») : un choix nommé, jamais une case cochée
+               par défaut sans qu'on la voie. Forwardé en `contactPreference`
+               (facultatif) + dérive `whatsappOptIn` pour garder le contrat webhook
+               inchangé. -->
+          <fieldset class="mt-1">
+            <legend class="text-sm text-lune-soft" data-i18n data-fr="Comment préférez-vous qu'on vous recontacte ?" data-ar="كيف تفضّلون أن نتواصل معكم؟">Comment préférez-vous qu'on vous recontacte&nbsp;?</legend>
+            <div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <label class="mt-contact-pref cine-card flex cursor-pointer items-center gap-2 border border-white/15 p-3 text-sm text-white transition-colors has-[:checked]:border-ok-600">
+                <input id="mt-contact-whatsapp" name="contactPreference" type="radio" value="whatsapp_only" checked
+                  class="h-4 w-4 flex-none accent-ok-600" />
+                <span data-i18n data-fr="Uniquement sur WhatsApp" data-ar="فقط عبر واتساب">Uniquement sur WhatsApp</span>
+              </label>
+              <label class="mt-contact-pref cine-card flex cursor-pointer items-center gap-2 border border-white/15 p-3 text-sm text-white transition-colors has-[:checked]:border-brass-400">
+                <input id="mt-contact-phone" name="contactPreference" type="radio" value="phone_ok"
+                  class="h-4 w-4 flex-none accent-brass-400" />
+                <span data-i18n data-fr="Un conseiller peut m'appeler" data-ar="يمكن لمستشار الاتصال بي">Un conseiller peut m'appeler</span>
+              </label>
+            </div>
+          </fieldset>
 
           <label class="flex items-start gap-3 text-sm text-lune-soft">
             <input id="mt-consent" name="consent" type="checkbox" required aria-required="true" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
@@ -538,6 +554,18 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
           <div id="mt-success" hidden class="border border-ok-600/40 bg-ok-600/10 p-4 text-sm text-white">
             <p class="font-semibold" data-i18n data-fr="Merci ! Votre demande est enregistrée." data-ar="شكراً! تم تسجيل طلبك.">Merci ! Votre demande est enregistrée.</p>
             <p class="mt-1 text-lune-soft" data-i18n data-fr="Notre équipe prépare votre étude et vous recontacte très vite — souvent sur WhatsApp." data-ar="فريقنا يُعدّ دراستك ويتواصل معك قريباً — غالباً عبر واتساب.">Notre équipe prépare votre étude et vous recontacte très vite — souvent sur WhatsApp.</p>
+            <!-- WJ52 — référence courte : comble le vide post-soumission (24–48 h
+                 d'attente) par un artefact concret à mentionner sur WhatsApp. -->
+            <p class="mt-2 text-lune-soft">
+              <span data-i18n data-fr="Votre référence :" data-ar="مرجعكم:">Votre référence&nbsp;:</span>
+              {' '}<strong id="mt-client-ref" class="font-mono text-white" dir="ltr">—</strong>
+              <br />
+              <span class="text-xs" data-i18n
+                data-fr="Mentionnez ce code sur WhatsApp pour retrouver votre dossier plus vite."
+                data-ar="اذكروا هذا الرمز على واتساب لإيجاد ملفكم بسرعة أكبر.">
+                Mentionnez ce code sur WhatsApp pour retrouver votre dossier plus vite.
+              </span>
+            </p>
             <a id="mt-success-wa" href="#" target="_blank" rel="noopener"
               class="mt-3 inline-flex items-center gap-2 bg-ok-600 px-4 py-2.5 text-sm font-bold text-white transition-opacity hover:opacity-90">
               <span data-i18n data-fr="Ouvrir WhatsApp maintenant" data-ar="افتح واتساب الآن">Ouvrir WhatsApp maintenant</span>
@@ -701,7 +729,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   import { estimateFromBill, formatMadRange } from '../../lib/billEstimate';
   import { captureWhatsappText, whatsappLink } from '../../lib/whatsapp';
   import { WHATSAPP_LEADS } from '../../lib/nap';
-  import { validateLead } from '../../lib/lead';
+  import { buildClientRef, validateLead } from '../../lib/lead';
 
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const $ = (id: string) => document.getElementById(id);
@@ -802,7 +830,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     'mt-occupant-type', 'mt-project-timing', 'mt-financing-intent', 'mt-fallback-address',
     'rp9-address',
   ];
-  const PERSISTED_CHECK_FIELDS = ['mt-ete-differente', 'mt-wa-optin', 'mt-consent', 'mt-battery-interest'];
+  const PERSISTED_CHECK_FIELDS = ['mt-ete-differente', 'mt-contact-whatsapp', 'mt-contact-phone', 'mt-consent', 'mt-battery-interest'];
   let restoring = false; // WJ61 — évite de ré-enregistrer PENDANT la réhydratation elle-même.
   function saveWizardState() {
     if (restoring) return;
@@ -1319,11 +1347,28 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       err.hidden = !message;
     }
   }
+  // ——— WJ52 : référence client courte, générée UNE FOIS côté navigateur ———
+  // Stable sur des soumissions répétées (ex. échec réseau puis nouvel essai) :
+  // générée à la première tentative, réutilisée telle quelle ensuite — jamais
+  // régénérée en silence, jamais une clé d'unicité serveur (cf. lib/lead.ts).
+  let clientRef = '';
+  function getOrCreateClientRef(): string {
+    if (!clientRef) clientRef = buildClientRef();
+    return clientRef;
+  }
+
   /** Construit le corps de lead + renvoie les erreurs client (miroir validateLead). */
   function buildBody(): { body: Record<string, unknown>; errors: Record<string, string> } {
     const eteDifferente = eteToggle?.checked === true;
     const consent = ($('mt-consent') as HTMLInputElement | null)?.checked === true;
-    const whatsappOptIn = ($('mt-wa-optin') as HTMLInputElement | null)?.checked === true;
+    // WJ51 — préférence de contact EXPLICITE (radio « Uniquement WhatsApp » vs
+    // « Un conseiller peut m'appeler ») : `whatsappOptIn` reste dérivé pour ne
+    // rien casser côté CRM/webhook, `contactPreference` part en plus (mappé
+    // sur le champ `canal`).
+    const contactPreference = (($('mt-contact-phone') as HTMLInputElement | null)?.checked === true)
+      ? 'phone_ok'
+      : 'whatsapp_only';
+    const whatsappOptIn = contactPreference === 'whatsapp_only';
     const adresse = (val('mt-city') || addressEl?.value.trim() || fallbackAddrEl?.value.trim() || '').trim();
     const body: Record<string, unknown> = {
       fullName: val('mt-name'),
@@ -1333,6 +1378,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       roofType: val('mt-roof'),
       consent,
       whatsappOptIn,
+      contactPreference,
       email: val('mt-email') || undefined,
       factureHiver: num('mt-facture-hiver'),
       factureEte: eteDifferente ? num('mt-facture-ete') : null,
@@ -1354,6 +1400,9 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       projectTiming: val('mt-project-timing') || undefined,
       financingIntent: val('mt-financing-intent') || undefined,
       hasMeterPhoto,
+      // WJ52 — référence courte pour l'artefact post-soumission (échoée telle
+      // quelle, jamais une clé d'unicité serveur — cf. lib/lead.ts).
+      clientRef: getOrCreateClientRef(),
     };
     // WJ4 — repère FACULTATIF : on le joint s'il existe, on ne BLOQUE jamais sans lui.
     if (capturePin) {
@@ -1479,10 +1528,16 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
         // WJ5 — réponse HONNÊTE selon le seuil 1 000 MAD (qualified renvoyé par le serveur).
         if (data.qualified) {
           if (okEl) okEl.hidden = false;
+          // WJ52 — affiche la référence générée dans buildBody() (déjà incluse
+          // dans le body envoyé — on la relit ici via getOrCreateClientRef()
+          // pour rester la MÊME valeur, jamais régénérée).
+          const refEl = $('mt-client-ref');
+          if (refEl) refEl.textContent = getOrCreateClientRef();
           const waLink = $('mt-success-wa') as HTMLAnchorElement | null;
           if (waLink) waLink.href = waUrl;
-          // WJ3 — sur mobile, on propose WhatsApp tout de suite (l'opt-in est coché par défaut)
-          const wantsWa = ($('mt-wa-optin') as HTMLInputElement | null)?.checked === true;
+          // WJ3/WJ51 — sur mobile, on propose WhatsApp tout de suite quand la
+          // préférence de contact est « Uniquement sur WhatsApp » (option cochée par défaut).
+          const wantsWa = ($('mt-contact-phone') as HTMLInputElement | null)?.checked !== true;
           if (wantsWa && /Mobi|Android|iPhone/i.test(navigator.userAgent) && !reducedMotion) {
             setTimeout(() => { window.location.href = waUrl; }, 900);
           }
