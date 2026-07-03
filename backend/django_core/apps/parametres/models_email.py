@@ -58,6 +58,31 @@ EMAIL_TEMPLATE_DEFAULTS = {
             'Vous avez une nouvelle notification concernant {reference}.\n\n'
             'Cordialement,\nL\'équipe Taqinor',
     },
+    # XSAV4 — transitions de ticket SAV (client). {lien} = lien-client FG86.
+    'ticket_recu': {
+        'sujet': 'Votre ticket SAV {reference} a été reçu',
+        'corps':
+            'Bonjour {civilite} {nom},\n\n'
+            'Votre ticket SAV ({reference}) a bien été reçu par notre '
+            'équipe. Suivi : {lien}\n\n'
+            'Cordialement,\nL\'équipe Taqinor',
+    },
+    'ticket_planifie': {
+        'sujet': 'Votre intervention {reference} est planifiée',
+        'corps':
+            'Bonjour {civilite} {nom},\n\n'
+            'Votre intervention ({reference}) est planifiée. '
+            'Suivi : {lien}\n\n'
+            'Cordialement,\nL\'équipe Taqinor',
+    },
+    'ticket_resolu': {
+        'sujet': 'Votre ticket SAV {reference} a été résolu',
+        'corps':
+            'Bonjour {civilite} {nom},\n\n'
+            'Votre ticket SAV ({reference}) a été résolu. '
+            'Suivi : {lien}\n\n'
+            'Cordialement,\nL\'équipe Taqinor',
+    },
 }
 
 
@@ -68,6 +93,9 @@ EMAIL_TEMPLATE_PLACEHOLDERS = {
     'facture': ['{civilite}', '{nom}', '{reference}', '{lien}'],
     'relance': ['{civilite}', '{nom}', '{reference}', '{lien}'],
     'notification': ['{civilite}', '{nom}', '{reference}', '{lien}', '{n}'],
+    'ticket_recu': ['{civilite}', '{nom}', '{reference}', '{lien}'],
+    'ticket_planifie': ['{civilite}', '{nom}', '{reference}', '{lien}'],
+    'ticket_resolu': ['{civilite}', '{nom}', '{reference}', '{lien}'],
 }
 
 
@@ -85,6 +113,10 @@ class EmailTemplate(models.Model):
         FACTURE = 'facture', 'Facture'
         RELANCE = 'relance', 'Rappel de paiement'
         NOTIFICATION = 'notification', 'Notification'
+        # XSAV4 — notifications client aux transitions du ticket SAV.
+        TICKET_RECU = 'ticket_recu', 'Ticket SAV reçu'
+        TICKET_PLANIFIE = 'ticket_planifie', 'Ticket SAV planifié'
+        TICKET_RESOLU = 'ticket_resolu', 'Ticket SAV résolu'
 
     company = models.ForeignKey(
         'authentication.Company',

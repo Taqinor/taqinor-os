@@ -23,6 +23,16 @@ MESSAGE_TEMPLATE_DEFAULTS = {
     'relance':
         'Bonjour {civilite} {nom}, petit rappel concernant votre facture '
         'Taqinor ({reference}) : {lien}',
+    # XSAV4 — transitions de ticket SAV (client). {lien} = lien-client FG86.
+    'ticket_recu':
+        'Bonjour {civilite} {nom}, votre ticket SAV {reference} a bien été '
+        'reçu par notre équipe. Suivi : {lien}',
+    'ticket_planifie':
+        'Bonjour {civilite} {nom}, votre intervention {reference} est '
+        'planifiée. Suivi : {lien}',
+    'ticket_resolu':
+        'Bonjour {civilite} {nom}, votre ticket SAV {reference} a été '
+        'résolu. Suivi : {lien}',
 }
 
 
@@ -38,6 +48,10 @@ class MessageTemplate(models.Model):
         DEVIS_MULTI_LIGNE = 'devis_multi_ligne', 'Devis (plusieurs) — ligne'
         FACTURE = 'facture', 'Facture'
         RELANCE = 'relance', 'Rappel de paiement'
+        # XSAV4 — notifications client aux transitions du ticket SAV.
+        TICKET_RECU = 'ticket_recu', 'Ticket SAV reçu'
+        TICKET_PLANIFIE = 'ticket_planifie', 'Ticket SAV planifié'
+        TICKET_RESOLU = 'ticket_resolu', 'Ticket SAV résolu'
 
     company = models.ForeignKey(
         'authentication.Company',

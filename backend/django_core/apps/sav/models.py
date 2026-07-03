@@ -58,6 +58,28 @@ class SavSlaSettings(models.Model):
     sla_resolution_days = models.PositiveIntegerField(default=7)
     sla_par_priorite = models.JSONField(null=True, blank=True)
     sla_breach_enabled = models.BooleanField(default=False)
+    # XSAV4 — notifications client aux transitions du ticket (reçu / planifié /
+    # résolu). Défaut OFF : comportement actuel inchangé tant que la société ne
+    # l'active pas explicitement.
+    notifications_client_sav = models.BooleanField(default=False)
+    # XSAV5 — échéance SLA calculée en JOURS OUVRÉS (via core/calendar.py :
+    # jours ouvrés + fériés marocains) plutôt qu'en jours calendaires. Défaut
+    # OFF : comportement actuel (calendaire) inchangé tant que la société ne
+    # l'active pas explicitement.
+    sla_jours_ouvres = models.BooleanField(default=False)
+    # ── XSAV6 — pré-alerte SLA (J-x) + escalade à la violation ──────────────
+    # Nombre de jours AVANT sla_due_at où une pré-alerte est émise au
+    # technicien assigné. 0 = pré-alerte désactivée (défaut : comportement
+    # actuel inchangé, aucune pré-alerte n'a jamais existé).
+    sla_warning_days = models.PositiveIntegerField(default=0)
+    # Escalade au tier responsable/direction à la violation (en plus de la
+    # notification technicien existante — FG81/scan_sla_breaches). OFF par
+    # défaut : comportement actuel inchangé.
+    escalade_activee = models.BooleanField(default=False)
+    # XSAV9 — affectation automatique des tickets à la création (round-robin /
+    # équilibrage de charge). Défaut OFF : comportement actuel inchangé (tout
+    # ticket reste affecté à la main tant que la société ne l'active pas).
+    affectation_auto_sav = models.BooleanField(default=False)
     date_modification = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -219,6 +241,47 @@ class Equipement(models.Model):
             if (self.date_pose and gpm) else None
         )
 
+    # ── XSAV13 — garantie légale de conformité (loi 31-08, biens meubles) ──
+    # Durée légale marocaine, impérative et non négociable : 12 mois à
+    # compter de la pose. CALCULÉE (comme les autres horloges), jamais
+    # stockée — recalculée à la lecture depuis `date_pose`, cohérente avec
+    # `recompute_garanties` pour la garantie commerciale.
+    GARANTIE_LEGALE_MOIS = 12
+
+    @property
+    def date_fin_garantie_legale(self):
+        """Fin de la garantie légale de conformité (loi 31-08) : date_pose +
+        12 mois. None si `date_pose` n'est pas renseignée."""
+        if not self.date_pose:
+            return None
+        return add_months(self.date_pose, self.GARANTIE_LEGALE_MOIS)
+
+    @property
+    def date_fin_garantie_effective(self):
+        """XSAV13 — Fin de garantie EFFECTIVE = le MAX entre la garantie
+        légale (loi 31-08) et la garantie commerciale constructeur — la plus
+        favorable au client s'applique. None si aucune des deux n'est
+        calculable (ni date_pose, ni durée constructeur renseignée)."""
+        candidates = [
+            d for d in (self.date_fin_garantie_legale, self.date_fin_garantie)
+            if d is not None
+        ]
+        return max(candidates) if candidates else None
+
+    @property
+    def sous_garantie_legale_seule(self):
+        """XSAV13 — True si SEULE la garantie légale (loi 31-08) couvre
+        encore l'équipement — la garantie commerciale est absente ou déjà
+        expirée. Sert à afficher la mention dédiée sur la fiche/PDF."""
+        legale = self.date_fin_garantie_legale
+        if legale is None:
+            return False
+        today = timezone.localdate()
+        legale_active = today < legale
+        commerciale_active = bool(
+            self.date_fin_garantie and today < self.date_fin_garantie)
+        return legale_active and not commerciale_active
+
     def set_token(self):
         """FG85 — pose le jeton EQUIP:<id> après la première sauvegarde."""
         token = f'EQUIP:{self.pk}'
@@ -327,6 +390,25 @@ class Ticket(models.Model):
     # Mis à jour par le scan journalier + à chaque changement de statut.
     sla_breach = models.BooleanField(default=False)
 
+    # ── XSAV5 — pause « en attente client » (l'horloge SLA ignore ce temps) ──
+    en_attente_client = models.BooleanField(default=False)
+    attente_depuis = models.DateField(null=True, blank=True)
+    # Cumul de jours déjà passés en pause (mis à jour à la REPRISE, pas en
+    # continu) — sert à décaler l'échéance affichée sans perdre l'historique
+    # des pauses précédentes.
+    jours_pause = models.PositiveIntegerField(default=0)
+
+    # ── XSAV6 — idempotence pré-alerte / escalade (un niveau notifié une
+    # seule fois, jamais chaque jour au re-passage du sweep). Remis à False
+    # quand sla_due_at est recalculée (nouvelle échéance = nouveau cycle).
+    sla_pre_alert_notifiee = models.BooleanField(default=False)
+    sla_escalade_notifiee = models.BooleanField(default=False)
+
+    # ── XSAV11 — suivi des réouvertures ──────────────────────────────────────
+    # Incrémenté CÔTÉ SERVEUR à chaque transition résolu/clôturé → statut
+    # ouvert (jamais décrémenté). 0 = jamais réouvert (comportement actuel).
+    reopen_count = models.PositiveIntegerField(default=0)
+
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, related_name='tickets_crees',
@@ -343,6 +425,14 @@ class Ticket(models.Model):
     share_token = models.CharField(
         max_length=64, unique=True, null=True, blank=True, editable=False,
         help_text="Jeton public du lien client (FG86). Généré via ensure_share_token().")
+
+    # ── XSAV3 — Devis de réparation hors garantie créé depuis ce ticket ──────
+    # Référence par ID externe (jamais un FK vers apps.ventes.Devis — règle de
+    # modularité CLAUDE.md, cross-app write via ventes.services). Pattern
+    # identique à WarrantyClaim.fournisseur_id_ext. NULL = aucun devis créé.
+    devis_id_ext = models.IntegerField(
+        null=True, blank=True,
+        help_text='ID du Devis ventes créé depuis ce ticket (XSAV3).')
 
     class Meta:
         verbose_name = 'Ticket SAV'
@@ -364,23 +454,76 @@ class Ticket(models.Model):
         Si un équipement est lié et porte une date de fin de garantie, on
         compare à aujourd'hui ('oui'/'non'). Sinon, la valeur manuelle stockée
         ('oui'/'non'/'a_determiner') fait foi.
-        """
+
+        XSAV13 — la comparaison utilise ``date_fin_garantie_effective``
+        (MAX entre la garantie légale de conformité loi 31-08 et la garantie
+        commerciale constructeur) : un équipement de 8 mois sans garantie
+        constructeur reste sous garantie (légale, impérative)."""
         eq = self.equipement
-        if eq is not None and eq.date_fin_garantie:
+        if eq is not None and eq.date_fin_garantie_effective:
             today = timezone.localdate()
-            return (self.SousGarantie.OUI if today < eq.date_fin_garantie
+            return (self.SousGarantie.OUI
+                    if today < eq.date_fin_garantie_effective
                     else self.SousGarantie.NON)
         return self.sous_garantie
 
     def recompute_sla_breach(self):
-        """Recalcule sla_breach : True si sla_due_at dépassé + ticket ouvert."""
+        """Recalcule sla_breach : True si sla_due_at dépassé + ticket ouvert.
+
+        XSAV5 — l'échéance affichée (donc le calcul de dépassement) ignore le
+        temps déjà passé en pause « en attente client » : on décale la
+        comparaison de ``jours_pause`` jours (+ la pause EN COURS, si active,
+        comptée jusqu'à aujourd'hui). Un ticket qui n'a jamais été mis en
+        pause (jours_pause=0, en_attente_client=False) est comparé tel quel —
+        byte-identique au comportement d'avant XSAV5.
+        """
         if not self.sla_due_at:
             self.sla_breach = False
             return
         if self.statut not in self.OPEN_STATUTS or self.annule:
             self.sla_breach = False
             return
-        self.sla_breach = timezone.localdate() > self.sla_due_at
+        today = timezone.localdate()
+        due = self.sla_due_at_effectif(today=today)
+        self.sla_breach = today > due
+
+    def _pause_en_cours_jours(self, today=None):
+        """XSAV5 — jours déjà écoulés dans la pause EN COURS (0 si aucune)."""
+        if not self.en_attente_client or not self.attente_depuis:
+            return 0
+        today = today or timezone.localdate()
+        return max(0, (today - self.attente_depuis).days)
+
+    def sla_due_at_effectif(self, today=None):
+        """XSAV5 — échéance SLA décalée du temps déjà passé en pause.
+
+        ``sla_due_at`` reste la valeur brute posée à la création (jamais
+        réécrite) ; cette méthode ajoute ``jours_pause`` (pauses déjà closes)
+        + la pause en cours (si active) pour obtenir l'échéance EFFECTIVE.
+        Sans jamais avoir été mis en pause, renvoie ``sla_due_at`` inchangé.
+        """
+        if not self.sla_due_at:
+            return self.sla_due_at
+        total_pause = self.jours_pause + self._pause_en_cours_jours(today=today)
+        if total_pause <= 0:
+            return self.sla_due_at
+        return self.sla_due_at + timezone.timedelta(days=total_pause)
+
+    def mettre_en_attente_client(self, today=None):
+        """XSAV5 — démarre la pause « en attente client » (idempotent)."""
+        if self.en_attente_client:
+            return
+        self.en_attente_client = True
+        self.attente_depuis = today or timezone.localdate()
+
+    def reprendre_apres_attente(self, today=None):
+        """XSAV5 — clôt la pause en cours et cumule sa durée dans
+        ``jours_pause`` (idempotent : sans pause active, ne fait rien)."""
+        if not self.en_attente_client:
+            return
+        self.jours_pause += self._pause_en_cours_jours(today=today)
+        self.en_attente_client = False
+        self.attente_depuis = None
 
     def ensure_share_token(self):
         """FG86 — Génère (lazily) et renvoie le jeton de partage public.
@@ -640,6 +783,23 @@ class ContratMaintenance(models.Model):
         verbose_name='Dernière facturation',
         help_text='Date du dernier cycle de facturation émis. Null = jamais facturé.',
     )
+    # ── XSAV7 — SLA différencié par contrat (override optionnel) ────────────
+    # NULL = pas d'override : le ticket retombe sur sla_par_priorite puis les
+    # défauts société (comportement actuel inchangé). Un contrat premium peut
+    # poser des délais plus stricts que le SLA société standard. On NE crée
+    # PAS un second référentiel parallèle à `contrats.EngagementSLA` (qui
+    # exprime un taux cible %, pas des délais en jours) — ce sont des overrides
+    # simples, au même format que `SavSlaSettings`.
+    sla_response_days = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='SLA — délai de première réponse (jours, override)',
+        help_text='Vide = pas de override contrat (SLA société standard).',
+    )
+    sla_resolution_days = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='SLA — délai de résolution (jours, override)',
+        help_text='Vide = pas de override contrat (SLA société standard).',
+    )
     date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -649,6 +809,23 @@ class ContratMaintenance(models.Model):
 
     def __str__(self):
         return f'Contrat #{self.pk} — {self.client_id}'
+
+    @classmethod
+    def actif_pour_client(cls, client):
+        """XSAV7 — Contrat de maintenance ACTIF du client portant un override
+        SLA, s'il en existe un. Renvoie None sinon (comportement actuel).
+
+        Premier match gagne : le contrat le plus RÉCEMMENT créé parmi les
+        actifs qui posent au moins un override (``sla_response_days`` ou
+        ``sla_resolution_days`` non NULL)."""
+        if client is None:
+            return None
+        return (cls.objects
+                .filter(client=client, actif=True)
+                .exclude(sla_response_days__isnull=True,
+                         sla_resolution_days__isnull=True)
+                .order_by('-date_creation')
+                .first())
 
     def prochaine_visite(self):
         """Date de la prochaine visite (dernière visite ou début + période).
@@ -784,6 +961,42 @@ class AlarmeOnduleur(models.Model):
 
     def __str__(self):
         return f'{self.code} ({self.gravite}) — {self.statut}'
+
+
+class TicketSatisfaction(models.Model):
+    """XSAV10 — Enquête de satisfaction (CSAT) à la clôture du ticket SAV.
+
+    Saisie sur la page publique du lien client (share_token, FG86) une fois le
+    ticket résolu/clôturé. UNE seule réponse par ticket (OneToOne) — un second
+    POST public est refusé. Aucune donnée interne (cout, chatter) n'est jamais
+    exposée sur la page publique ; seule la note + le commentaire libre sont
+    collectés côté client.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ticket_satisfactions')
+    ticket = models.OneToOneField(
+        Ticket, on_delete=models.CASCADE, related_name='satisfaction')
+    note = models.PositiveSmallIntegerField(
+        help_text='Note de satisfaction 1 (très insatisfait) à 5 (très satisfait).')
+    commentaire = models.TextField(blank=True, default='')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Satisfaction ticket SAV (CSAT)'
+        verbose_name_plural = 'Satisfactions ticket SAV (CSAT)'
+        ordering = ['-date_creation']
+        indexes = [
+            models.Index(fields=['company', 'date_creation']),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(note__gte=1) & models.Q(note__lte=5),
+                name='sav_ticketsatisfaction_note_1_5'),
+        ]
+
+    def __str__(self):
+        return f'CSAT ticket {self.ticket_id} = {self.note}/5'
 
 
 class PieceConsommee(models.Model):

@@ -2255,3 +2255,47 @@ def _advance_lead_on_expiry(lead, today):
         return False, moved_cold
 
     return False, False
+
+
+# ── XSAV3 — Devis de réparation hors garantie depuis un ticket SAV ───────────
+
+def create_devis_pour_ticket(*, company, user, client_id, lignes, note=None):
+    """XSAV3 — Crée un Devis BROUILLON pour un travail SAV non couvert.
+
+    Point d'entrée cross-app (sav → ventes) : ``apps.sav`` appelle CETTE
+    fonction plutôt que d'importer ``apps.ventes.models`` directement (règle
+    de modularité CLAUDE.md). ``lignes`` est une liste de dicts
+    ``{'produit_id': int, 'designation': str, 'quantite': Decimal,
+    'prix_unitaire': Decimal}`` — le prix unitaire attendu ici est TOUJOURS le
+    prix de VENTE catalogue (``Produit.prix_vente``), jamais ``prix_achat``.
+
+    Référence générée via ``apps.ventes.utils.references`` (jamais count()+1).
+    Renvoie le ``Devis`` créé (brouillon, sans lien lead — un ticket SAV n'a
+    pas de lead d'origine).
+    """
+    from .models import Devis, LigneDevis
+    from .utils.references import create_with_reference
+    from apps.crm.models import Client
+
+    client = Client.objects.get(pk=client_id, company=company)
+
+    def _create(ref):
+        return Devis.objects.create(
+            company=company, reference=ref, client=client,
+            statut=Devis.Statut.BROUILLON, created_by=user,
+            note=note or '',
+        )
+    devis = create_with_reference(Devis, 'DEV', company, _create)
+
+    for ligne in (lignes or []):
+        produit_id = ligne.get('produit_id')
+        if not produit_id:
+            continue
+        LigneDevis.objects.create(
+            devis=devis,
+            produit_id=produit_id,
+            designation=ligne.get('designation') or '',
+            quantite=Decimal(str(ligne.get('quantite') or 1)),
+            prix_unitaire=Decimal(str(ligne.get('prix_unitaire') or 0)),
+        )
+    return devis

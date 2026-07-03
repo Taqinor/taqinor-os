@@ -20,6 +20,8 @@ class ContratMaintenanceSerializer(serializers.ModelSerializer):
                   # FG40
                   'facturation_active', 'derniere_facturation',
                   'prochaine_facturation', 'facturation_due',
+                  # XSAV7 — overrides SLA optionnels du contrat.
+                  'sla_response_days', 'sla_resolution_days',
                   'date_creation']
         read_only_fields = ['derniere_visite', 'derniere_facturation', 'date_creation']
 

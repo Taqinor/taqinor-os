@@ -54,6 +54,11 @@ def rapport_intervention_pdf(ticket):
     """Génère le PDF du rapport d'intervention (N45). Renvoie des octets PDF."""
     context = _company_context(company=ticket.company)
     client = ticket.client
+    equipement = ticket.equipement
+    # XSAV13 — mention « Garantie légale de conformité — loi 31-08 » quand
+    # SEULE la garantie légale (impérative, 12 mois) couvre encore l'appareil.
+    garantie_legale_seule = bool(
+        equipement and equipement.sous_garantie_legale_seule)
     context.update({
         'ticket': ticket,
         'client_nom': (f"{client.nom} {client.prenom or ''}".strip()
@@ -61,7 +66,8 @@ def rapport_intervention_pdf(ticket):
         'client': client,
         'installation_reference': (ticket.installation.reference
                                    if ticket.installation else ''),
-        'equipement': ticket.equipement,
+        'equipement': equipement,
+        'garantie_legale_seule': garantie_legale_seule,
         'interventions': _interventions_payload(ticket),
         'pieces': _pieces_payload(ticket),
     })
