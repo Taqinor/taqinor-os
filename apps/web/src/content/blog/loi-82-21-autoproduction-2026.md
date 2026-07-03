@@ -1,7 +1,8 @@
 ---
 title: "Loi 82-21 : ce qui change depuis le 9 juin 2026"
-description: "Autoproduction au Maroc : 3 régimes, plafond surplus 20 %, net-billing (rachat 0,18–0,21 DH/kWh) — la valeur est dans l'autoconsommation."
+description: "Autoproduction au Maroc : 3 régimes, plafond surplus 20 %, net-billing (rachat 0,18–0,21 DH/kWh en MT/HT ; tarif BT résidentiel non encore publié) — la valeur est dans l'autoconsommation."
 pubDate: 2026-06-21
+updatedDate: 2026-07-03
 tags: ["loi 82-21", "réglementation", "autoproduction", "2026"]
 author: "Reda Kasri"
 ogSlug: "accueil"
@@ -74,18 +75,30 @@ Le Maroc a choisi le **net-billing**, pas le net-metering. La distinction est fo
 - **Net-billing** (système marocain) : le surplus injecté est **racheté à un tarif
   réglementé**, fixé par l'ANRE, nettement inférieur au prix de détail.
 
-Le tarif de rachat fixé par l'ANRE est :
+Le tarif de rachat fixé par la décision 04/26 de l'ANRE est :
 - **0,21 DH/kWh** en heure de pointe
 - **0,18 DH/kWh** en heure creuse
 
+> **Important — ce tarif couvre le moyen et le haut tension (MT/HT), pas le résidentiel.**
+> La décision 04/26 fixe ces chiffres pour les régimes accord de raccordement et
+> autorisation. Pour le régime **déclaration** (< 11 kW en basse tension, BT) — celui de
+> la quasi-totalité des villas et logements — **le tarif de rachat du surplus n'est, à ce
+> jour, pas encore publié.** Nous mettrons cette page à jour dès sa publication ; en
+> attendant, ne considérez pas 0,18–0,21 DH/kWh comme le tarif de *votre* installation
+> résidentielle.
+
 À titre de comparaison, un foyer qui consomme plus de 301 kWh/mois paye son électricité
-à 1,45 DH/kWh (tranche sélective ONEE) — soit **six à huit fois le tarif de rachat**.
+à 1,45 DH/kWh (tranche sélective ONEE) — soit six à huit fois le tarif de rachat MT/HT connu ;
+le rapport exact pour un foyer BT dépendra du tarif encore à publier, mais rien n'indique
+qu'il sera plus favorable.
 
 Pour le dimensionnement, ça change tout. La valeur économique d'une installation solaire
 se joue sur l'autoconsommation. Chaque kWh produit et consommé immédiatement sur place
 évite l'achat d'un kWh au prix de détail (0,90 à 1,66 DH selon la tranche), alors qu'un
-kWh injecté sur le réseau ne rapporte que 0,18 à 0,21 DH. Ce n'est pas une mauvaise
-nouvelle : c'est simplement la règle que j'intègre dans chaque étude sérieuse.
+kWh injecté sur le réseau ne rapporte, au mieux, que le tarif de rachat MT/HT connu
+(0,18 à 0,21 DH) — et potentiellement moins, ou selon des règles différentes, une fois le
+tarif BT publié. Ce n'est pas une mauvaise nouvelle : c'est simplement la règle que
+j'intègre dans chaque étude sérieuse.
 
 ---
 
@@ -131,13 +144,15 @@ allège les démarches des petites installations (simple déclaration sous 11 kW
 enfin la porte à la revente d'une partie du surplus. Rien de tout cela n'est anodin
 après des années de flou.
 
-Reste que le tarif de rachat (0,18 à 0,21 DH/kWh) demeure très bas face aux tranches
-de détail ONEE (0,90 à 1,66 DH/kWh), et que le plafond de 20 % limite de toute façon le
+Reste que le tarif de rachat connu à ce jour (0,18 à 0,21 DH/kWh, **MT/HT uniquement — le
+tarif BT résidentiel n'est pas encore publié**) demeure très bas face aux tranches de
+détail ONEE (0,90 à 1,66 DH/kWh), et que le plafond de 20 % limite de toute façon le
 volume exportable. Pour la grande majorité des foyers marocains, l'équation n'a donc pas
 bougé : une installation solaire se rentabilise sur l'énergie que vous consommez
 vous-même, en journée ou via un stockage. L'export reste un appoint, jamais le moteur
-du retour sur investissement. C'est pour cette raison que je commence toujours par vos
-habitudes de consommation réelles, et non par un objectif d'injection maximale.
+du retour sur investissement — quel que soit le tarif BT qui sera publié. C'est pour
+cette raison que je commence toujours par vos habitudes de consommation réelles, et non
+par un objectif d'injection maximale.
 
 ---
 
