@@ -52,6 +52,8 @@ import {
   savingsHeadline,
   environmentalImpact,
   financingComparison,
+  installmentSplit,
+  INSTALLMENT_MONTH_OPTIONS,
   whatsappLink,
   whatsappLinkForIntent,
   parseRoofLayout,
@@ -194,6 +196,15 @@ const enviro = ok ? environmentalImpact(prodKwh) : null;
 
 // ── WJ10 — Comparatif de financement (cash backend + éco-prêt indicatif) ─────
 const financing = ok ? financingComparison(data!, reco ?? 'sans_batterie') : null;
+
+// ── WJ53 — Toggle « payer comptant / paiement échelonné » interactif ─────────
+// Le TTC de départ vient de l'option retenue (reco, ou sans_batterie par
+// défaut) ; le recalcul en direct (mois → mensualité) se fait CÔTÉ CLIENT via
+// installmentSplit (script de fin de page) — ce bloc ne rend RIEN sans prix
+// réel (même garde-fou zéro-total que le reste de la page).
+const installmentTtc = ok ? optionTtc(data!, reco ?? 'sans_batterie') : 0;
+const showInstallmentToggle = ok && Number.isFinite(installmentTtc) && installmentTtc > 0;
+const defaultInstallment = showInstallmentToggle ? installmentSplit(installmentTtc, 12) : null;
 
 // ── WJ12 — Contact intégré : deep-link WhatsApp prérempli avec la réf devis ──
 // « Demander un rappel » = appeler le numéro TAQINOR (NAP), jamais le numéro du
@@ -787,6 +798,80 @@ const signConfig = ok
           })}
         </div>
       </section>
+
+      <!-- ── WJ53 · TOGGLE « PAYER COMPTANT / PAIEMENT ÉCHELONNÉ » ────────────
+           Recalcul EN DIRECT (côté client) d'une mensualité indicative en
+           divisant simplement le TTC de l'option retenue par le nombre de mois
+           choisi — AUCUN taux inventé, distinct de l'éco-prêt bancaire WJ10/
+           WJ32 juste en dessous. Rendu UNIQUEMENT si un prix réel existe. -->
+      {showInstallmentToggle && defaultInstallment && (
+        <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8" data-installment-ttc={installmentTtc}>
+          <p class="tech-label rule-brass text-brass-300" data-i18n
+            data-fr="Comptant ou échelonné ?" data-en="Cash or in installments?" data-ar="نقداً أم بالتقسيط؟">
+            Comptant ou échelonné ?
+          </p>
+          <div class="cine-card mt-5 rounded-2xl p-6 sm:p-7">
+            <div class="flex flex-wrap items-center gap-2" role="group" aria-label="Payer comptant ou en plusieurs fois">
+              <button
+                type="button"
+                id="installment-cash-btn"
+                class="btn-pill px-4 py-2 text-sm"
+                data-installment-mode="cash"
+                aria-pressed="true"
+                style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
+              >
+                <span data-i18n data-fr="Payer comptant" data-en="Pay cash" data-ar="الدفع نقداً">Payer comptant</span>
+              </button>
+              <button
+                type="button"
+                id="installment-split-btn"
+                class="btn-pill px-4 py-2 text-sm"
+                data-installment-mode="split"
+                aria-pressed="false"
+              >
+                <span data-i18n data-fr="Paiement échelonné" data-en="Pay in installments" data-ar="الدفع بالتقسيط">Paiement échelonné</span>
+              </button>
+            </div>
+
+            <!-- État « comptant » -->
+            <div id="installment-cash-view" class="mt-5">
+              <p class="fig fig-md lum" dir="ltr">{formatMAD(installmentTtc)}</p>
+              <p class="mt-1 text-sm text-lune-soft" data-i18n data-fr="TTC, en une fois." data-en="Incl. tax, in one payment." data-ar="شامل الضريبة، دفعة واحدة.">TTC, en une fois.</p>
+            </div>
+
+            <!-- État « échelonné » (masqué par défaut, JS bascule l'affichage) -->
+            <div id="installment-split-view" class="mt-5" hidden>
+              <label for="installment-months" class="tech-label text-lune-faint" data-i18n data-fr="Nombre de mois" data-en="Number of months" data-ar="عدد الأشهر">Nombre de mois</label>
+              <select
+                id="installment-months"
+                class="mt-2 rounded-xl border border-white/15 bg-nuit-800 px-4 py-2 text-lune"
+                dir="ltr"
+              >
+                {INSTALLMENT_MONTH_OPTIONS.map((m) => (
+                  <option value={m} selected={m === 12}>{m} {m === 1 ? 'mois' : 'mois'}</option>
+                ))}
+              </select>
+              <p class="mt-4">
+                <span class="fig fig-md text-lune" dir="ltr" id="installment-monthly-value">{formatMAD(defaultInstallment.monthly)}</span>
+                <span class="text-lg text-lune-soft" data-i18n data-fr="/mois" data-en="/month" data-ar="/شهرياً">/mois</span>
+              </p>
+              <p class="mt-2 text-sm text-brass-300" data-i18n
+                data-fr="à confirmer — hors offre bancaire ferme"
+                data-en="to confirm — not a firm bank offer"
+                data-ar="للتأكيد — ليس عرضاً بنكياً نهائياً">
+                à confirmer — hors offre bancaire ferme
+              </p>
+              <p class="mt-2 text-xs text-lune-faint" data-i18n
+                data-fr="Simple division du prix TTC par le nombre de mois choisi — aucun taux ni frais ajouté ici. Les modalités exactes (calendrier, garantie) sont à convenir avec votre conseiller Taqinor."
+                data-en="Simple division of the incl.-tax price by the number of months chosen — no rate or fee added here. Exact terms (schedule, guarantee) are to be agreed with your Taqinor advisor."
+                data-ar="تقسيم بسيط للثمن شامل الضريبة على عدد الأشهر المختار — دون أي معدل أو رسوم مضافة هنا. تُحدَّد الشروط الدقيقة (الجدول، الضمان) مع مستشاركم في تاقينور.">
+                Simple division du prix TTC par le nombre de mois choisi — aucun taux ni frais ajouté ici.
+                Les modalités exactes (calendrier, garantie) sont à convenir avec votre conseiller Taqinor.
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
 
       <!-- ── WJ10/WJ32 · COMPARATIF DE FINANCEMENT ───────────────────────────
            Priorité au bloc BACKEND réel (QJ12, programme Tatwir/ISTIDAMA +
@@ -2113,6 +2198,60 @@ const signConfig = ok
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') setPdfLoading(false);
     });
+  }
+</script>
+
+<script>
+  // ── WJ53 — Toggle « payer comptant / paiement échelonné », recalcul en
+  // direct (aucun appel réseau : simple division du TTC déjà connu côté
+  // client via data-installment-ttc). Utilise installmentSplit (même fonction
+  // PURE que testée sous vitest) pour garantir zéro divergence de calcul.
+  import { installmentSplit, formatMAD, type InstallmentMonths } from '../../lib/proposition';
+
+  const installmentSection = document.querySelector<HTMLElement>('[data-installment-ttc]');
+  if (installmentSection) {
+    const ttc = Number(installmentSection.dataset.installmentTtc || '0');
+    const cashBtn = document.getElementById('installment-cash-btn');
+    const splitBtn = document.getElementById('installment-split-btn');
+    const cashView = document.getElementById('installment-cash-view');
+    const splitView = document.getElementById('installment-split-view');
+    const monthsSelect = document.getElementById('installment-months') as HTMLSelectElement | null;
+    const monthlyValueEl = document.getElementById('installment-monthly-value');
+
+    function setMode(mode: 'cash' | 'split'): void {
+      const isCash = mode === 'cash';
+      if (cashView) cashView.hidden = !isCash;
+      if (splitView) splitView.hidden = isCash;
+      cashBtn?.setAttribute('aria-pressed', String(isCash));
+      splitBtn?.setAttribute('aria-pressed', String(!isCash));
+      if (cashBtn) {
+        cashBtn.setAttribute(
+          'style',
+          isCash
+            ? 'background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)'
+            : '',
+        );
+      }
+      if (splitBtn) {
+        splitBtn.setAttribute(
+          'style',
+          !isCash
+            ? 'background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)'
+            : '',
+        );
+      }
+    }
+    cashBtn?.addEventListener('click', () => setMode('cash'));
+    splitBtn?.addEventListener('click', () => setMode('split'));
+
+    function recompute(): void {
+      if (!monthsSelect || !monthlyValueEl) return;
+      const months = (Number(monthsSelect.value) || 12) as InstallmentMonths;
+      const split = installmentSplit(ttc, months);
+      if (split) monthlyValueEl.textContent = formatMAD(split.monthly);
+    }
+    monthsSelect?.addEventListener('change', recompute);
+    recompute();
   }
 </script>
 

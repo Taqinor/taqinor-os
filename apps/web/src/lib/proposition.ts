@@ -890,6 +890,46 @@ export function financingComparison(
   };
 }
 
+// ── WJ53 · « Payer comptant / paiement échelonné » — toggle interactif ───────
+
+/**
+ * WJ53 — Choix de durées (mois) proposés par le toggle « paiement échelonné ».
+ * Volontairement COURT (pas de simulation de crédit bancaire, voir WJ10/WJ32
+ * pour l'éco-prêt) : c'est une simple division indicative du TTC, pour un
+ * client qui négocie un paiement en plusieurs fois DIRECTEMENT avec Taqinor —
+ * jamais présentée comme une offre bancaire.
+ */
+export const INSTALLMENT_MONTH_OPTIONS = [3, 6, 12, 24] as const;
+export type InstallmentMonths = (typeof INSTALLMENT_MONTH_OPTIONS)[number];
+
+export interface InstallmentSplit {
+  /** Prix comptant TTC (backend, inchangé). */
+  cashTtc: number;
+  /** Nombre de mois choisi. */
+  months: InstallmentMonths;
+  /** TTC ÷ mois, arrondi au MAD — AUCUN taux/intérêt ajouté (simple division). */
+  monthly: number;
+}
+
+/**
+ * WJ53 — Calcule la mensualité INDICATIVE d'un paiement échelonné sur `months`
+ * mois, par simple division du TTC (aucun taux inventé, aucun frais). Renvoie
+ * `null` quand le TTC n'est pas un prix réel positif (même garde-fou zéro-total
+ * que `hasRealPrice`) — jamais un chiffre calculé sur un montant fabriqué.
+ */
+export function installmentSplit(
+  cashTtc: number,
+  months: InstallmentMonths = 12,
+): InstallmentSplit | null {
+  if (!Number.isFinite(cashTtc) || cashTtc <= 0) return null;
+  const safeMonths = INSTALLMENT_MONTH_OPTIONS.includes(months) ? months : 12;
+  return {
+    cashTtc,
+    months: safeMonths,
+    monthly: Math.round(cashTtc / safeMonths),
+  };
+}
+
 // ── WJ12 · Contact intégré (WhatsApp prérempli avec la réf devis) ────────────
 
 /**
