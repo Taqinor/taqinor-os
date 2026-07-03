@@ -762,12 +762,16 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tangier', 'Agadir', 'Kénitr
     if (started) return;
     started = true;
     try {
-      const mod = await import('../../../scripts/roof-tool-pro11.ts');
-      mod.initRoofToolPro8({
+      // WJ47 — imports roofPro11/captureBoot DIRECTLY (not all of
+      // roof-tool-pro11.ts): the full boot drags in scene3d/optimizer/matrix
+      // (Three.js + the packing engine), internal tool code this public
+      // capture page never runs. This lazy chunk now only loads MapLibre +
+      // the geocoder + the pin/outline.
+      const { bootCaptureOnly } = await import('../../../scripts/roofPro11/captureBoot');
+      bootCaptureOnly({
         maptilerKey: key,
         mapboxToken: mapboxToken || undefined,
         reducedMotion,
-        captureOnly: true,
         // WJ41 — English map/geocoder system messages (default is French).
         strings: ROOF_TOOL_STRINGS_EN,
         onReady: clearMapSkeleton,

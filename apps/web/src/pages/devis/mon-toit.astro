@@ -835,12 +835,16 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     if (started) return;
     started = true;
     try {
-      const mod = await import('../../scripts/roof-tool-pro11.ts');
-      mod.initRoofToolPro8({
+      // WJ47 — importe roofPro11/captureBoot DIRECTEMENT (pas tout
+      // roof-tool-pro11.ts) : le boot complet entraîne scene3d/optimizer/matrix
+      // (Three.js + le moteur de calepinage), du code interne à l'outil que
+      // cette page publique de capture n'exécute jamais. Ce chunk lazy ne
+      // charge plus que MapLibre + le géocodeur + le pin/tracé.
+      const { bootCaptureOnly } = await import('../../scripts/roofPro11/captureBoot');
+      bootCaptureOnly({
         maptilerKey: key,
         mapboxToken: mapboxToken || undefined,
         reducedMotion,
-        captureOnly: true,
         onReady: clearMapSkeleton,
         onCaptureChange: (s) => {
           capturePin = s.pin;

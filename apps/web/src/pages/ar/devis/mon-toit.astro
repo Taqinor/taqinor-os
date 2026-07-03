@@ -845,12 +845,15 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     if (started) return;
     started = true;
     try {
-      const mod = await import('../../../scripts/roof-tool-pro11.ts');
-      mod.initRoofToolPro8({
+      // WJ47 — يستورد roofPro11/captureBoot مباشرة (وليس كل roof-tool-pro11.ts):
+      // الإقلاع الكامل يجرّ scene3d/optimizer/matrix (Three.js + محرك التوضيب)،
+      // وهو كود داخلي للأداة لا تُشغّله هذه الصفحة العامة للالتقاط أبداً. هذا
+      // الجزء الكسول يحمّل الآن فقط MapLibre + محدد المواقع + العلامة/المحيط.
+      const { bootCaptureOnly } = await import('../../../scripts/roofPro11/captureBoot');
+      bootCaptureOnly({
         maptilerKey: key,
         mapboxToken: mapboxToken || undefined,
         reducedMotion,
-        captureOnly: true,
         // WJ41 — رسائل الخريطة/محدد المواقع بالعربية (الافتراضي بالفرنسية). هذا
         // المسار يعرض العربية افتراضياً (applyLang('ar') عند التحميل).
         strings: ROOF_TOOL_STRINGS_AR,

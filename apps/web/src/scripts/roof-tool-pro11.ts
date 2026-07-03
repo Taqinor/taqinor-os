@@ -141,6 +141,13 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // dessous reste octet pour octet identique quand le drapeau est absent/false.
   // WJ41 — `opts` peut porter `strings` (localisation des messages carte/géocodeur),
   // lu par `bootCaptureOnly`/`createMapDraw` ; ignoré du boot complet ci-dessous.
+  // WJ47 — les 3 pages mon-toit.astro n'importent plus DU TOUT ce module : elles
+  // appellent `roofPro11/captureBoot`.`bootCaptureOnly` directement (import
+  // dynamique séparé), pour ne jamais charger scene3d/optimizer/matrix/three
+  // dans le chunk public. Cette branche `captureOnly` reste ici pour les
+  // appelants qui importent encore `initRoofToolPro8` au complet (aucun
+  // aujourd'hui) et pour la doc historique — le code est inchangé, jamais
+  // exécuté depuis mon-toit.astro.
   if (opts.captureOnly) {
     bootCaptureOnly(opts as CaptureOptions);
     return;
