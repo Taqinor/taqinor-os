@@ -114,6 +114,8 @@ INSTALLED_APPS = [
     'apps.qhse',
     'apps.kb',
     'apps.litiges',
+    # XPOS1 — Vente comptoir (point of sale, accessoires).
+    'apps.pos',
 ]
 
 MIDDLEWARE = [

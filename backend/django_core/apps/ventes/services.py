@@ -1480,6 +1480,83 @@ def creer_facture_contrat(*, contrat, user, company):
     return facture
 
 
+# ── XPOS1/XPOS6 — Thin services exposés pour apps.pos (vente comptoir) ─────
+# apps.pos ne peut PAS importer apps.ventes.models directement (règle de
+# modularité CLAUDE.md) : ces fonctions sont son unique porte d'entrée pour
+# créer une facture classique et enregistrer/lire des paiements.
+
+def creer_facture_classique(*, company, client, user, taux_tva, montant_ht,
+                            montant_tva, montant_ttc, libelle=''):
+    """Crée une ``Facture`` classique (sans devis/BC), montants figés.
+
+    Utilisé par ``apps.pos.services.valider_vente`` pour la facture légale
+    d'une vente comptoir. ``company``/``client`` doivent déjà être validés par
+    l'appelant (scoping multi-tenant). Numérotation collision-proof (jamais
+    count()+1)."""
+    from apps.ventes.models import Facture
+    from apps.ventes.utils.references import create_with_reference
+
+    def _create(ref):
+        return Facture.objects.create(
+            reference=ref,
+            company=company,
+            client=client,
+            statut=Facture.Statut.EMISE,
+            type_facture=Facture.TypeFacture.COMPLETE,
+            taux_tva=taux_tva,
+            montant_ht=montant_ht,
+            montant_tva=montant_tva,
+            montant_ttc=montant_ttc,
+            libelle=libelle,
+            created_by=user,
+        )
+
+    return create_with_reference(Facture, 'FAC', company, _create)
+
+
+def enregistrer_paiement(*, facture, montant, mode, date_paiement, user,
+                         reference='', note=''):
+    """Enregistre un ``Paiement`` MANUEL sur une facture EXISTANTE.
+
+    Thin service exposé pour apps.pos (encaissement comptoir XPOS1/XPOS6) —
+    même modèle/table que le paiement enregistré depuis l'écran facture,
+    aucune duplication de logique."""
+    from apps.ventes.models import Paiement
+    return Paiement.objects.create(
+        company=facture.company,
+        facture=facture,
+        montant=montant,
+        date_paiement=date_paiement,
+        mode=mode,
+        reference=reference or '',
+        note=note or '',
+        created_by=user,
+    )
+
+
+def facture_montant_du(facture):
+    """Solde restant dû d'une facture (lecture, thin service pour apps.pos)."""
+    return facture.montant_du
+
+
+def get_facture_or_none(*, company, facture_id):
+    """Facture scopée société, ou None (thin service pour apps.pos XPOS6)."""
+    from apps.ventes.models import Facture
+    return Facture.objects.filter(company=company, id=facture_id).first()
+
+
+def facturables_pour_devis(*, company, query=''):
+    """Factures émises/en retard avec solde restant dû, scopées société (thin
+    selector pour apps.pos XPOS6 — recherche comptoir par référence)."""
+    from apps.ventes.models import Facture
+    qs = Facture.objects.filter(
+        company=company,
+        statut__in=(Facture.Statut.EMISE, Facture.Statut.EN_RETARD))
+    if query:
+        qs = qs.filter(reference__icontains=query)
+    return [f for f in qs.select_related('client', 'devis') if f.montant_du > 0]
+
+
 # ── FG53 — Liens de paiement « Payer en ligne » ──────────────────────────────
 
 def create_payment_link(*, facture, provider=None):

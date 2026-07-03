@@ -29,6 +29,19 @@ def is_devis_accepte(devis):
     return devis.statut == Devis.Statut.ACCEPTE
 
 
+def paiements_totaux_par_mode(facture_ids):
+    """Totaux + nombre de ``Paiement`` groupés par mode, pour un ensemble de
+    factures (thin selector pour apps.pos — rapport Z de session XPOS4)."""
+    from django.db.models import Count, Sum
+    from .models import Paiement
+    if not facture_ids:
+        return []
+    return list(
+        Paiement.objects.filter(facture_id__in=facture_ids)
+        .values('mode')
+        .annotate(total=Sum('montant'), nb=Count('id')))
+
+
 def devis_card(devis_id, company):
     """S8 — fiche-carte LECTURE SEULE d'un devis pour le partage dans la
     messagerie. Scopée société : None si le devis n'appartient pas à la société.
