@@ -683,3 +683,86 @@ def journal_acces_for_company(company, *, document=None, utilisateur=None,
     if type_acces:
         qs = qs.filter(type_acces=type_acces)
     return qs
+
+
+# ── XGED17 — Comparaison de versions ────────────────────────────────
+
+def comparer_versions(v1, v2):
+    """XGED17 — Diff de métadonnées (toujours) + diff textuel unifié (si les
+    deux versions ont un texte plein-texte/OCR). `v1`/`v2` sont des
+    `DocumentVersion` du MÊME document (validé par l'appelant)."""
+    import difflib
+
+    meta_fields = ['filename', 'size', 'mime', 'checksum']
+    diff_meta = {}
+    for f in meta_fields:
+        a, b = getattr(v1, f, None), getattr(v2, f, None)
+        if a != b:
+            diff_meta[f] = {'v1': a, 'v2': b}
+    uploaded_by_1 = getattr(v1.uploaded_by, 'username', None)
+    uploaded_by_2 = getattr(v2.uploaded_by, 'username', None)
+    if uploaded_by_1 != uploaded_by_2:
+        diff_meta['uploaded_by'] = {'v1': uploaded_by_1, 'v2': uploaded_by_2}
+    custom_1 = (v1.document.custom_data or {}) if v1.document_id else {}
+    custom_2 = (v2.document.custom_data or {}) if v2.document_id else {}
+    for key in set(custom_1) | set(custom_2):
+        a, b = custom_1.get(key), custom_2.get(key)
+        if a != b:
+            diff_meta.setdefault('custom_data', {})[key] = {'v1': a, 'v2': b}
+
+    texte_1 = (v1.document.texte_ocr or '') if v1.document_id else ''
+    texte_2 = (v2.document.texte_ocr or '') if v2.document_id else ''
+    if texte_1 and texte_2:
+        diff_lines = list(difflib.unified_diff(
+            texte_1.splitlines(), texte_2.splitlines(),
+            fromfile=f'v{v1.version}', tofile=f'v{v2.version}', lineterm=''))
+        return {
+            'metadonnees': diff_meta,
+            'texte_disponible': True,
+            'diff_texte': diff_lines,
+        }
+    return {
+        'metadonnees': diff_meta,
+        'texte_disponible': False,
+        'message': 'Comparaison binaire indisponible '
+                   '(texte plein-texte/OCR absent sur une des versions).',
+    }
+
+
+# ── XGED15 — Timeline documentaire (journal auto + chatter FG7) ─────
+
+def timeline_document(document):
+    """XGED15 — Timeline mêlant le journal automatique (`DocumentActivity`) et
+    les notes/@mentions génériques (`records.Comment`), triée chronologiquement
+    (plus récent d'abord). Réutilise le chatter FG7 déjà branché sur
+    `ged.document` via `ALLOWED_TARGETS` — pas de système parallèle."""
+    from django.contrib.contenttypes.models import ContentType
+
+    from .models import DocumentActivity
+
+    entries = []
+    for act in DocumentActivity.objects.filter(document=document).select_related(
+            'utilisateur'):
+        entries.append({
+            'type': 'activite',
+            'evenement': act.type_evenement,
+            'message': act.message,
+            'utilisateur': getattr(act.utilisateur, 'username', None),
+            'created_at': act.created_at,
+        })
+    try:
+        from apps.records.models import Comment
+        ct = ContentType.objects.get(app_label='ged', model='document')
+        for com in Comment.objects.filter(
+                content_type=ct, object_id=document.pk).select_related('author'):
+            entries.append({
+                'type': 'note',
+                'evenement': 'note',
+                'message': com.body,
+                'utilisateur': getattr(com.author, 'username', None),
+                'created_at': com.created_at,
+            })
+    except Exception:  # pragma: no cover - défensif (ContentType absent en test).
+        pass
+    entries.sort(key=lambda e: e['created_at'], reverse=True)
+    return entries

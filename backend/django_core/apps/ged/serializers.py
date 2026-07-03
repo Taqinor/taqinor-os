@@ -1,11 +1,13 @@
 from rest_framework import serializers
 
 from .models import (
-    ArchivageLegal, Cabinet, ChampSignature, Coffre, DemandeApprobation,
-    DemandeSignatureDocument, Document, DocumentLien, DocumentTag,
-    DocumentTagAssignment, DocumentVersion, Folder, JournalAcces, LegalHold,
-    ModeleDocument, PartageGed, PolitiqueRetention, QuotaStockage,
-    SignataireDemande,
+    AnnotationDocument, ArchivageLegal, Cabinet, ChampSignature, Coffre,
+    DemandeApprobation, DemandeDocument, DemandeSignatureDocument, DepotPublic,
+    Document, DocumentLien, DocumentTag, DocumentTagAssignment, DocumentVersion,
+    ExigenceDossier, Folder, JournalAcces, LegalHold, ModeleDocument,
+    PartageGed, PlanificationDocument, PolitiqueRetention,
+    RegleApprobationGed, RegleDossier, QuotaStockage, SignataireDemande,
+    ValidationOcrDocument,
 )
 from . import services
 
@@ -217,6 +219,10 @@ class DocumentSerializer(serializers.ModelSerializer):
     supprime_par_nom = serializers.CharField(
         source='supprime_par.username', read_only=True, default=None)
     est_dans_corbeille = serializers.BooleanField(read_only=True)
+    # XGED18 — document-lien (URL externe) : `est_document_lien` en lecture
+    # seule (dérivé de `url_externe`) pour que le frontend adapte l'aperçu et
+    # désactive les actions fichier sans devoir réimplémenter la règle.
+    est_document_lien = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = Document
@@ -232,6 +238,8 @@ class DocumentSerializer(serializers.ModelSerializer):
             # GED26 — corbeille (soft-delete).
             'supprime_le', 'supprime_par', 'supprime_par_nom',
             'est_dans_corbeille',
+            # XGED18 — document-lien.
+            'url_externe', 'est_document_lien',
             'created_at', 'updated_at',
         ]
         read_only_fields = [
@@ -239,6 +247,7 @@ class DocumentSerializer(serializers.ModelSerializer):
             'locked_by', 'locked_at', 'is_locked',
             'statut', 'transitions_autorisees',
             'supprime_le', 'supprime_par', 'est_dans_corbeille',
+            'est_document_lien',
         ]
 
     def get_version_count(self, obj):
@@ -730,3 +739,137 @@ class QuotaStockageSerializer(serializers.ModelSerializer):
 
     def get_depasse(self, obj):
         return services.quota_depasse(obj.company)
+
+
+class DepotPublicSerializer(serializers.ModelSerializer):
+    """XGED7 — Gestion (côté propriétaire) d'un lien de dépôt public.
+
+    `company`/`created_by`/`token` posés côté serveur. `url_publique` expose le
+    chemin de dépôt (le frontend préfixe l'origine)."""
+    folder_nom = serializers.CharField(source='folder.nom', read_only=True)
+    created_by_nom = serializers.CharField(
+        source='created_by.username', read_only=True, default=None)
+    is_expired = serializers.BooleanField(read_only=True)
+    is_accessible = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = DepotPublic
+        fields = [
+            'id', 'folder', 'folder_nom', 'token', 'message', 'expires_at',
+            'quota_fichiers', 'quota_octets', 'depots_effectues',
+            'octets_deposes', 'actif', 'is_expired', 'is_accessible',
+            'created_by', 'created_by_nom', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'token', 'depots_effectues', 'octets_deposes', 'created_by',
+            'is_expired', 'is_accessible', 'created_at', 'updated_at',
+        ]
+
+
+class ExigenceDossierSerializer(serializers.ModelSerializer):
+    """XGED8 — Modèle de checklist de pièces requises."""
+    class Meta:
+        model = ExigenceDossier
+        fields = [
+            'id', 'cabinet', 'folder', 'libelle', 'description',
+            'obligatoire', 'created_by', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_by', 'created_at', 'updated_at']
+
+
+class DemandeDocumentSerializer(serializers.ModelSerializer):
+    """XGED8 — Demande d'une pièce nommée (interne ou contact externe)."""
+    folder_nom = serializers.CharField(source='folder.nom', read_only=True)
+    utilisateur_nom = serializers.CharField(
+        source='utilisateur.username', read_only=True, default=None)
+
+    class Meta:
+        model = DemandeDocument
+        fields = [
+            'id', 'folder', 'folder_nom', 'exigence', 'libelle',
+            'utilisateur', 'utilisateur_nom', 'destinataire_nom',
+            'destinataire_email', 'echeance', 'statut', 'document',
+            'derniere_relance_le', 'nombre_relances',
+            'created_by', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'statut', 'document', 'derniere_relance_le', 'nombre_relances',
+            'created_by', 'created_at', 'updated_at',
+        ]
+
+
+class ValidationOcrDocumentSerializer(serializers.ModelSerializer):
+    """XGED13 — File de validation d'extraction OCR (score de confiance)."""
+    document_nom = serializers.CharField(source='document.nom', read_only=True)
+    valide_par_nom = serializers.CharField(
+        source='valide_par.username', read_only=True, default=None)
+
+    class Meta:
+        model = ValidationOcrDocument
+        fields = [
+            'id', 'document', 'document_nom', 'score_confiance',
+            'champs_extraits', 'valide', 'valide_par', 'valide_par_nom',
+            'valide_le', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'document', 'score_confiance', 'valide', 'valide_par',
+            'valide_le', 'created_at', 'updated_at',
+        ]
+
+
+class AnnotationDocumentSerializer(serializers.ModelSerializer):
+    """XGED16 — Annotation/tampon posé sur l'image d'une version (couche
+    séparée — n'affecte jamais le fichier original)."""
+    auteur_nom = serializers.CharField(
+        source='auteur.username', read_only=True, default=None)
+
+    class Meta:
+        model = AnnotationDocument
+        fields = [
+            'id', 'version', 'type_annotation', 'page', 'x', 'y', 'contenu',
+            'auteur', 'auteur_nom', 'created_at',
+        ]
+        read_only_fields = ['auteur', 'created_at']
+
+
+class RegleDossierSerializer(serializers.ModelSerializer):
+    """XGED19 — Règle d'action automatique à l'upload dans un dossier.
+
+    `condition_group` doit être un groupe `core.rules` valide — validé côté
+    vue via `core.rules.validate_condition_group` avant persistance."""
+    folder_nom = serializers.CharField(source='folder.nom', read_only=True)
+
+    class Meta:
+        model = RegleDossier
+        fields = [
+            'id', 'folder', 'folder_nom', 'nom', 'condition_group', 'actions',
+            'actif', 'ordre', 'created_by', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_by', 'created_at', 'updated_at']
+
+
+class RegleApprobationGedSerializer(serializers.ModelSerializer):
+    """XGED20 — Routage conditionnel des approbations par métadonnées."""
+    class Meta:
+        model = RegleApprobationGed
+        fields = [
+            'id', 'libelle', 'condition_group', 'approbateurs', 'priorite',
+            'actif', 'created_by', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_by', 'created_at', 'updated_at']
+
+
+class PlanificationDocumentSerializer(serializers.ModelSerializer):
+    """XGED15 — Activité planifiée sur un document (« relancer le J+7 »)."""
+    document_nom = serializers.CharField(source='document.nom', read_only=True)
+    assigne_a_nom = serializers.CharField(
+        source='assigne_a.username', read_only=True, default=None)
+
+    class Meta:
+        model = PlanificationDocument
+        fields = [
+            'id', 'document', 'document_nom', 'libelle', 'echeance',
+            'assigne_a', 'assigne_a_nom', 'faite', 'notifiee',
+            'created_by', 'created_at',
+        ]
+        read_only_fields = ['notifiee', 'created_by', 'created_at']

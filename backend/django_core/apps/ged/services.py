@@ -6,9 +6,10 @@ jamais lue d'un corps de requête. Réutilise les conventions de stockage de
 `records.storage` (clé MinIO `file_key`) sans réimplémenter le stockage.
 """
 import hashlib
+import re
 
 from django.contrib.postgres.search import SearchVector
-from django.db import transaction
+from django.db import models, transaction
 from django.db.models import Value
 
 from .models import Cabinet, Document, DocumentVersion, Folder
@@ -233,6 +234,127 @@ def ocr_piece_vers_metadonnees(document, *, file_bytes=None, mime='',
         Document.objects.filter(pk=document.pk).update(custom_data=data)
         document.custom_data = data
     return meta
+
+
+# ── XGED13 — File de validation d'extraction OCR (confiance + tableaux) ──
+
+# Sous ce seuil (0-1), le document entre dans la file de validation manuelle.
+OCR_CONFIANCE_SEUIL_DEFAUT = 0.6
+
+_LIGNE_TABLEAU_RE = re.compile(
+    r'^(?P<designation>.{3,80}?)\s{2,}(?P<qte>\d+(?:[.,]\d+)?)\s+'
+    r'(?P<pu>\d[\d\s.,]*)\s*$')
+
+
+def score_confiance_extraction(texte, meta):
+    """XGED13 — Score de confiance heuristique (0-1) d'une extraction OCR.
+
+    Sans provider de score natif (le chemin Zhipu peut en fournir un directement
+    — à brancher ICI si le provider l'expose), on retombe sur une heuristique de
+    COMPLÉTUDE : proportion de champs attendus pour le `type_piece` détecté
+    effectivement trouvés, pondérée par la longueur du texte source (un texte
+    très court est toujours suspect)."""
+    if not texte or not meta:
+        return 0.0
+    attendus = {
+        PIECE_CIN: ['numero_cin'],
+        PIECE_FACTURE: ['numero_facture', 'montant_ttc', 'date'],
+        PIECE_BL: ['numero_bl', 'date'],
+    }.get(meta.get('type_piece'), [])
+    if not attendus:
+        return 0.3 if meta else 0.0
+    trouves = sum(1 for k in attendus if meta.get(k))
+    completude = trouves / len(attendus)
+    longueur_ok = 1.0 if len(texte) >= 40 else len(texte) / 40
+    return round(min(1.0, completude * 0.8 + longueur_ok * 0.2), 2)
+
+
+def extraire_lignes_tableau(texte):
+    """XGED13 — Extrait des lignes de tableau (désignation/qté/PU) d'un texte
+    de facture/BL — heuristique locale (une ligne = 1 désignation suivie de 2
+    nombres séparés par ≥2 espaces, motif typique d'un OCR de tableau tabulé).
+    AUCUNE invention : renvoie [] si rien ne matche."""
+    lignes = []
+    for raw_line in (texte or '').splitlines():
+        m = _LIGNE_TABLEAU_RE.match(raw_line.strip())
+        if not m:
+            continue
+        lignes.append({
+            'designation': m.group('designation').strip(),
+            'qte': m.group('qte').replace(',', '.'),
+            'pu': m.group('pu').strip().rstrip('.,'),
+        })
+    return lignes
+
+
+def ocr_extraction_avec_validation(document, *, file_bytes=None, mime='',
+                                   type_piece=None, seuil=None):
+    """XGED13 — Étend `ocr_piece_vers_metadonnees` : calcule un score de
+    confiance et, sous le seuil configuré, met le document EN FILE DE
+    VALIDATION (`ValidationOcrDocument`, statut « a_valider ») au lieu
+    d'appliquer directement les métadonnées. Au-dessus du seuil, les
+    métadonnées sont fusionnées normalement (comportement GED33 inchangé) et
+    aucune entrée de validation n'est créée. Ajoute aussi
+    `custom_data['lignes']` (lignes de tableau extraites) quand présentes.
+
+    Renvoie `(meta, en_validation: bool)`."""
+    from .models import ValidationOcrDocument
+
+    seuil = OCR_CONFIANCE_SEUIL_DEFAUT if seuil is None else seuil
+    texte = ''
+    if file_bytes:
+        texte = ocr_index_document(document, file_bytes=file_bytes, mime=mime)
+    if not texte:
+        document.refresh_from_db(fields=['texte_ocr'])
+        texte = document.texte_ocr or ''
+    meta = extraire_metadonnees_piece(texte, type_piece=type_piece)
+    lignes = extraire_lignes_tableau(texte)
+    if lignes:
+        meta = dict(meta)
+        meta['lignes'] = lignes
+    score = score_confiance_extraction(texte, meta)
+
+    if score < seuil and meta:
+        ValidationOcrDocument.objects.update_or_create(
+            document=document,
+            defaults={
+                'company': document.company,
+                'score_confiance': score,
+                'champs_extraits': meta,
+                'valide': False,
+                'valide_par': None,
+                'valide_le': None,
+            })
+        return meta, True
+
+    # Confiance suffisante : fusion directe (comportement GED33 inchangé).
+    if meta:
+        data = dict(document.custom_data or {})
+        for k, v in meta.items():
+            if k == 'lignes' or not data.get(k):
+                data[k] = v
+        Document.objects.filter(pk=document.pk).update(custom_data=data)
+        document.custom_data = data
+    return meta, False
+
+
+def valider_extraction_ocr(validation, *, champs_corriges, user):
+    """XGED13 — Valide (avec corrections) une extraction en file d'attente :
+    applique `champs_corriges` à `document.custom_data` (additif, jamais
+    d'écrasement d'une clé non listée) puis solde la validation."""
+    document = validation.document
+    data = dict(document.custom_data or {})
+    data.update(champs_corriges or {})
+    Document.objects.filter(pk=document.pk).update(custom_data=data)
+    document.custom_data = data
+    from django.utils import timezone as _tz
+    validation.valide = True
+    validation.champs_extraits = champs_corriges or validation.champs_extraits
+    validation.valide_par = user
+    validation.valide_le = _tz.now()
+    validation.save(update_fields=[
+        'valide', 'champs_extraits', 'valide_par', 'valide_le', 'updated_at'])
+    return validation
 
 
 # ── GED34 — Classification automatique (IA gated + heuristique locale) ───────
@@ -620,7 +742,7 @@ def add_version(document, *, file_key, company, filename='', size=0, mime='',
                 .order_by('-version')
                 .first())
         next_version = (last.version + 1) if last else 1
-        return DocumentVersion.objects.create(
+        version = DocumentVersion.objects.create(
             company=company,
             document=document,
             version=next_version,
@@ -632,6 +754,11 @@ def add_version(document, *, file_key, company, filename='', size=0, mime='',
             uploaded_by=uploaded_by,
             restored_from=restored_from,
         )
+    # XGED15 — journal automatique : nouvelle version (best-effort).
+    journaliser_evenement(
+        document, type_evenement='nouvelle_version',
+        message=f'Version {next_version} ajoutée.', utilisateur=uploaded_by)
+    return version
 
 
 def restore_version(document, source_version, *, uploaded_by=None):
@@ -1180,6 +1307,10 @@ def change_lifecycle_status(document, target_status, *, user):
         doc.statut = target_status
         doc.save(update_fields=['statut', 'updated_at'])
     document.statut = doc.statut
+    # XGED15 — journal automatique : changement de cycle de vie (best-effort).
+    journaliser_evenement(
+        doc, type_evenement='changement_statut',
+        message=f'Statut → {target_status}.', utilisateur=user)
     return doc
 
 
@@ -1339,6 +1470,10 @@ def create_partage(*, document, company, created_by=None, expires_at=None,
     )
     partage.set_password(password)
     partage.save()
+    # XGED15 — journal automatique : partage créé (best-effort).
+    journaliser_evenement(
+        document, type_evenement='partage_cree',
+        message='Lien de partage public créé.', utilisateur=created_by)
     return partage
 
 
@@ -2374,6 +2509,10 @@ def marquer_signe(demande, *, provider_ref=None, date_signature=None):
             logging.getLogger(__name__).warning(
                 'XGED4: classement automatique après signature échoué '
                 'pour la demande %s', demande.pk, exc_info=True)
+        # XGED15 — journal automatique : signature complétée (best-effort).
+        journaliser_evenement(
+            demande.document, type_evenement='signature_completee',
+            message=f'Signé par {demande.signataire_nom}.'.strip())
     return demande
 
 
@@ -3455,3 +3594,1050 @@ def assert_quota_disponible(company, *, octets_supplementaires=0):
     from .models import QuotaDepasseError, QUOTA_DEPASSE_MESSAGE
     if quota_depasse(company, octets_supplementaires=octets_supplementaires):
         raise QuotaDepasseError(QUOTA_DEPASSE_MESSAGE)
+
+
+# ── XGED7 — Lien public de DÉPÔT (upload-request) ────────────────────
+
+DEPOT_INTROUVABLE = 'introuvable'
+DEPOT_EXPIRE = 'expire'
+DEPOT_OK = 'ok'
+
+
+def create_depot_public(*, folder, company, created_by=None, message='',
+                        expires_at=None, quota_fichiers=None,
+                        quota_octets=None):
+    """XGED7 — Crée un lien de dépôt public sur `folder` (société posée côté
+    serveur, jamais lue du corps)."""
+    from .models import DepotPublic
+    if folder.company_id != getattr(company, 'id', company):
+        raise ValueError("Le dossier doit appartenir à la même société.")
+    return DepotPublic.objects.create(
+        company=company, folder=folder, created_by=created_by,
+        message=message or '', expires_at=expires_at,
+        quota_fichiers=quota_fichiers, quota_octets=quota_octets)
+
+
+def revoke_depot_public(depot):
+    """XGED7 — Révoque (kill-switch) un lien de dépôt public."""
+    depot.actif = False
+    depot.save(update_fields=['actif', 'updated_at'])
+    return depot
+
+
+def resolve_depot_public(token):
+    """XGED7 — Résout un jeton de dépôt public. Renvoie (statut, depot|None).
+
+    Statuts : DEPOT_INTROUVABLE (jeton inconnu/révoqué), DEPOT_EXPIRE (expiré
+    OU quota épuisé), DEPOT_OK (accepte encore des dépôts). Ne fait JAMAIS
+    confiance à une société/identité venue de la requête — tout est résolu
+    DEPUIS le jeton (le jeton ne référence qu'un seul dossier d'une seule
+    société)."""
+    from .models import DepotPublic
+    depot = DepotPublic.objects.filter(token=token).select_related(
+        'folder', 'company').first()
+    if depot is None or not depot.actif:
+        return DEPOT_INTROUVABLE, None
+    if depot.is_expired or depot.quota_fichiers_exhausted or depot.quota_octets_exhausted:
+        return DEPOT_EXPIRE, None
+    return DEPOT_OK, depot
+
+
+def deposer_via_lien_public(depot, *, file_key, filename='', size=0, mime='',
+                            uploader_nom='', uploader_email=''):
+    """XGED7 — Crée un Document (+ version 1) depuis un dépôt public anonyme.
+
+    L'uploader anonyme est tracé par nom/email saisis dans `custom_data`
+    (jamais un `created_by` — pas d'utilisateur authentifié). Incrémente
+    atomiquement les compteurs de quota du lien. Ne fait AUCUNE lecture du
+    contenu existant du dossier (isolation : le tiers ne voit jamais autre
+    chose que le formulaire de dépôt)."""
+    from django.db import transaction as _tx
+
+    from .models import DepotPublic
+    with _tx.atomic():
+        d = DepotPublic.objects.select_for_update().get(pk=depot.pk)
+        if not d.is_accessible:
+            raise ValueError("Ce lien de dépôt n'accepte plus de fichiers.")
+        nom = (filename or 'Document déposé').strip()
+        document = Document.objects.create(
+            company=d.company, folder=d.folder, nom=nom,
+            custom_data={
+                'depot_public_id': d.pk,
+                'uploader_nom': uploader_nom or '',
+                'uploader_email': uploader_email or '',
+            })
+        add_version(
+            document, file_key=file_key, company=d.company,
+            filename=filename, size=size, mime=mime, uploaded_by=None)
+        d.depots_effectues += 1
+        d.octets_deposes += max(0, int(size or 0))
+        d.save(update_fields=['depots_effectues', 'octets_deposes', 'updated_at'])
+    update_search_vector(document)
+    # XGED8 — un dépôt sur ce dossier peut solder une demande de document
+    # correspondante (matching best-effort, jamais bloquant).
+    try:
+        matcher_depot_demandes(document)
+    except Exception:  # pragma: no cover - défensif, ne bloque jamais le dépôt.
+        pass
+    return document
+
+
+# ── XGED8 — Checklist de pièces requises + demandes de documents ────
+
+def matcher_depot_demandes(document):
+    """XGED8 — Solde automatiquement une `DemandeDocument` en attente sur le
+    même dossier quand un document y est déposé (matching best-effort par
+    dossier ; le premier « en_attente » du dossier est soldé — un
+    rapprochement plus fin par libellé reste possible côté appelant)."""
+    from .models import DEMANDE_DOC_EN_ATTENTE, DEMANDE_DOC_SOLDEE, DemandeDocument
+    demande = (DemandeDocument.objects
+               .filter(company=document.company, folder=document.folder,
+                       statut=DEMANDE_DOC_EN_ATTENTE)
+               .order_by('created_at', 'id')
+               .first())
+    if demande is None:
+        return None
+    demande.statut = DEMANDE_DOC_SOLDEE
+    demande.document = document
+    demande.save(update_fields=['statut', 'document', 'updated_at'])
+    return demande
+
+
+def creer_demande_document(*, folder, company, libelle, created_by=None,
+                           exigence=None, utilisateur=None,
+                           destinataire_nom='', destinataire_email='',
+                           echeance=None):
+    """XGED8 — Crée une demande de pièce (placeholder visible dans le dossier)."""
+    from .models import DemandeDocument
+    if folder.company_id != getattr(company, 'id', company):
+        raise ValueError("Le dossier doit appartenir à la même société.")
+    return DemandeDocument.objects.create(
+        company=company, folder=folder, libelle=libelle,
+        exigence=exigence, utilisateur=utilisateur,
+        destinataire_nom=destinataire_nom or '',
+        destinataire_email=destinataire_email or '',
+        echeance=echeance, created_by=created_by)
+
+
+def relancer_demande_document(demande, *, now=None):
+    """XGED8 — Relance une demande encore en attente (best-effort, notifie
+    l'utilisateur interne si connu ; incrémente le compteur de relances)."""
+    from django.utils import timezone as _tz
+    from .models import DEMANDE_DOC_EN_ATTENTE
+    if demande.statut != DEMANDE_DOC_EN_ATTENTE:
+        return demande
+    if demande.utilisateur_id:
+        try:
+            from apps.notifications.models import EventType as ET
+            from apps.notifications.services import notify
+            notify(
+                demande.utilisateur, ET.APPROVAL_REMINDER,
+                f'Pièce manquante : {demande.libelle}',
+                body=f'Merci de déposer « {demande.libelle} » dans le dossier '
+                     f'« {demande.folder.nom} ».',
+                company=demande.company)
+        except Exception:  # pragma: no cover - défensif.
+            pass
+    demande.nombre_relances += 1
+    demande.derniere_relance_le = now or _tz.now()
+    demande.save(update_fields=[
+        'nombre_relances', 'derniere_relance_le', 'updated_at'])
+    return demande
+
+
+def relancer_demandes_document_dues(company, *, now=None):
+    """XGED8 — Relance toutes les demandes en attente d'une société (à planifier
+    en tâche périodique). Renvoie la liste des demandes relancées."""
+    from django.utils import timezone as _tz
+    from .models import DEMANDE_DOC_EN_ATTENTE, DemandeDocument
+    now = now or _tz.now()
+    demandes = DemandeDocument.objects.filter(
+        company=company, statut=DEMANDE_DOC_EN_ATTENTE)
+    return [relancer_demande_document(d, now=now) for d in demandes]
+
+
+def checklist_dossier(folder):
+    """XGED8 — État requis/présent/manquant d'un dossier : combine les
+    `ExigenceDossier` applicables (dossier précis OU génériques du cabinet) et
+    les `DemandeDocument` en cours. Renvoie une liste de dicts."""
+    from .models import DEMANDE_DOC_EN_ATTENTE, DemandeDocument, ExigenceDossier
+    exigences = (ExigenceDossier.objects
+                 .filter(company=folder.company)
+                 .filter(models.Q(folder=folder)
+                         | models.Q(cabinet=folder.cabinet, folder__isnull=True)))
+    demandes_par_exigence = {
+        d.exigence_id: d
+        for d in DemandeDocument.objects.filter(
+            company=folder.company, folder=folder,
+            statut=DEMANDE_DOC_EN_ATTENTE, exigence__isnull=False)
+    }
+    resultat = []
+    for exigence in exigences:
+        demande = demandes_par_exigence.get(exigence.pk)
+        resultat.append({
+            'exigence': exigence,
+            'statut': 'manquant' if demande else 'present',
+            'demande': demande,
+        })
+    return resultat
+
+
+# ── XGED9 — Ingestion par email → GED (alias par cabinet/dossier) ───────────
+#
+# KEY-GATED (`settings.GED_MAIL_INTAKE_ENABLED`) : sans le flag, `poll_mail_intake`
+# est un no-op propre. Réutilise la résolution de config IMAP de
+# `core.email_intake` (foundation) mais fait sa PROPRE lecture des messages —
+# avec pièces jointes, ce que le parseur générique FG373 n'extrait pas. GED ne
+# s'abonne pas au registre de handlers générique (celui-ci route vers
+# leads/tickets, pas vers des documents).
+
+import re as _re_mod  # noqa: E402 — regroupé ici, section XGED9 auto-contenue.
+
+# Clé réservée dans `Document.custom_data` traçant le Message-ID source d'un
+# import email — ancre d'idempotence (un même message retraité ne duplique pas).
+MAIL_INTAKE_MESSAGE_ID_KEY = 'ged_mail_intake_message_id'
+
+_ALIAS_PLUS_RE = _re_mod.compile(r'\+([\w\-]+)@')
+_ALIAS_SUBJECT_RE = _re_mod.compile(r'\[([\w\-]+)\]')
+
+
+def mail_intake_enabled():
+    """XGED9 — True si l'ingestion email→GED est activée (flag posé)."""
+    from django.conf import settings
+    return bool(getattr(settings, 'GED_MAIL_INTAKE_ENABLED', False))
+
+
+def extraire_alias_email(*, to_addr='', subject=''):
+    """XGED9 — Extrait l'alias cible d'une adresse plus-adressée OU d'un objet
+    `[alias]`. `to_addr` prioritaire (ex. « ged+compta@… » → « compta ») ; à
+    défaut, le premier `[alias]` de l'objet. Renvoie '' si aucun match."""
+    if to_addr:
+        m = _ALIAS_PLUS_RE.search(to_addr)
+        if m:
+            return m.group(1).lower()
+    if subject:
+        m = _ALIAS_SUBJECT_RE.search(subject)
+        if m:
+            return m.group(1).lower()
+    return ''
+
+
+def resoudre_dossier_alias(company, alias):
+    """XGED9 — Résout le `Folder` cible pour un alias (borné à la société), ou
+    None si aucun dossier ne porte cet alias."""
+    if not alias:
+        return None
+    return Folder.objects.filter(company=company, alias_email=alias).first()
+
+
+def _mail_deja_importe(company, message_id):
+    """XGED9 — True si ce Message-ID a déjà produit un document (idempotence)."""
+    if not message_id:
+        return False
+    return Document.objects.filter(
+        company=company,
+        custom_data__contains={MAIL_INTAKE_MESSAGE_ID_KEY: message_id},
+    ).exists()
+
+
+def _extraire_pieces_jointes_email(raw_bytes):
+    """XGED9 — Extrait les pièces jointes d'un message brut (stdlib `email`).
+
+    Renvoie une liste de dicts `{filename, mime, data}`."""
+    import email as _email
+    msg = _email.message_from_bytes(raw_bytes)
+    pieces = []
+    for part in msg.walk():
+        disposition = str(part.get('Content-Disposition') or '')
+        filename = part.get_filename()
+        if not filename or 'attachment' not in disposition.lower():
+            continue
+        payload = part.get_payload(decode=True)
+        if not payload:
+            continue
+        pieces.append({
+            'filename': filename,
+            'mime': part.get_content_type() or 'application/octet-stream',
+            'data': payload,
+        })
+    return pieces
+
+
+def _appliquer_tag_expediteur(document, *, company, from_email, alias):
+    """XGED9 — Tagging simple par expéditeur/alias (best-effort, jamais bloquant)."""
+    from .models import DocumentTag
+    try:
+        label = alias or (from_email.split('@')[0] if from_email else '')
+        if not label:
+            return
+        slug = _re_mod.sub(r'[^a-z0-9\-]+', '-', label.lower()).strip('-') or 'mail'
+        tag, _created = DocumentTag.objects.get_or_create(
+            company=company, slug=slug, defaults={'nom': label})
+        assign_tag(document, tag)
+    except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        pass
+
+
+def importer_message_email(raw_bytes, *, company):
+    """XGED9 — Importe UN message brut (déjà récupéré) vers la GED.
+
+    Route chaque pièce jointe vers le dossier de l'alias résolu depuis le
+    destinataire (`To`) ou l'objet. Sans alias résolu (dossier inconnu), le
+    message est ignoré (rien n'est déposé « au hasard »). Idempotent par
+    Message-ID. Renvoie la liste des `Document` créés (vide si rien à
+    importer)."""
+    import email as _email
+
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    from apps.records.storage import store_attachment
+
+    msg = _email.message_from_bytes(raw_bytes)
+    message_id = (msg.get('Message-ID', '') or '').strip('<> ')
+    if message_id and _mail_deja_importe(company, message_id):
+        return []
+    to_addr = msg.get('To', '') or ''
+    subject = msg.get('Subject', '') or ''
+    from email.utils import parseaddr as _parseaddr
+    _, from_email = _parseaddr(msg.get('From', '') or '')
+    alias = extraire_alias_email(to_addr=to_addr, subject=subject)
+    folder = resoudre_dossier_alias(company, alias)
+    if folder is None:
+        return []
+    pieces = _extraire_pieces_jointes_email(raw_bytes)
+    created = []
+    for piece in pieces:
+        upload = SimpleUploadedFile(
+            piece['filename'], piece['data'], content_type=piece['mime'])
+        meta, err = store_attachment(upload)
+        if err:
+            continue  # format non supporté — ignoré, ne bloque pas le reste.
+        document = Document.objects.create(
+            company=company, folder=folder, nom=meta['filename'],
+            custom_data={MAIL_INTAKE_MESSAGE_ID_KEY: message_id} if message_id else {},
+        )
+        add_version(
+            document, file_key=meta['file_key'], company=company,
+            filename=meta['filename'], size=meta['size'], mime=meta['mime'],
+            uploaded_by=None)
+        update_search_vector(document)
+        _appliquer_tag_expediteur(
+            document, company=company, from_email=from_email, alias=alias)
+        created.append(document)
+    return created
+
+
+def poll_mail_intake(company):
+    """XGED9 — Relève la boîte IMAP configurée (FG373) et route les pièces
+    jointes vers la GED. No-op propre si le flag est désactivé OU si aucune
+    config IMAP active n'existe pour la société. Renvoie
+    `{"fetched": int, "imported": int}` (jamais d'exception remontée)."""
+    if not mail_intake_enabled():
+        return {'fetched': 0, 'imported': 0}
+    from core.email_intake import _active_imap_config
+    from core.integrations import resolve_secret
+    cfg = _active_imap_config(company)
+    if cfg is None:
+        return {'fetched': 0, 'imported': 0}
+    settings_dict = cfg.settings or {}
+    host = settings_dict.get('host')
+    user = settings_dict.get('user')
+    password = resolve_secret(getattr(cfg, 'secret_ref', '') or None)
+    if not host or not user or not password:
+        return {'fetched': 0, 'imported': 0}
+    folder_name = settings_dict.get('folder', 'INBOX')
+    try:
+        import imaplib
+    except Exception:  # pragma: no cover - stdlib toujours présente en prod.
+        return {'fetched': 0, 'imported': 0}
+    fetched = 0
+    imported = 0
+    try:
+        conn = imaplib.IMAP4_SSL(host)
+        conn.login(user, password)
+        conn.select(folder_name)
+        typ, data = conn.search(None, 'UNSEEN')
+        if typ == 'OK':
+            for num in data[0].split():
+                t, msg_data = conn.fetch(num, '(RFC822)')
+                if t == 'OK' and msg_data and msg_data[0]:
+                    fetched += 1
+                    created = importer_message_email(msg_data[0][1], company=company)
+                    imported += len(created)
+        conn.logout()
+    except Exception:  # pragma: no cover - réseau/auth : dégrade proprement.
+        return {'fetched': fetched, 'imported': imported}
+    return {'fetched': fetched, 'imported': imported}
+
+
+# ── XGED10 — Outils PDF : scission et fusion ─────────────────────────
+
+def _pdf_lib_indisponible_message():
+    return ("Traitement PDF indisponible (bibliothèque PyMuPDF non installée "
+            "sur ce serveur).")
+
+
+def scinder_pdf(version, points_de_coupe):
+    """XGED10 — Scinde un PDF en segments (chaque segment devient un nouveau
+    `Document`, métadonnées héritées). `points_de_coupe` est une liste
+    d'entiers (numéros de PAGE 1-based OÙ COMMENCE chaque nouveau segment,
+    ex. `[1, 3]` sur un PDF de 6 pages donne [1-2] et [3-6]).
+
+    L'original n'est JAMAIS muté. Lève `ValueError` si PyMuPDF est absent
+    (dégradation explicite 400, jamais un split silencieusement faux) ou si
+    les points de coupe sont invalides. Renvoie la liste des `Document` créés,
+    dans l'ordre des segments."""
+    document = version.document
+    assert_not_archive_legalement(document)
+    assert_not_legal_hold(document)
+    try:
+        import fitz  # PyMuPDF
+    except Exception:
+        raise ValueError(_pdf_lib_indisponible_message())
+    data, err = _fetch_version_bytes(version)
+    if err:
+        raise ValueError(err)
+    src = fitz.open(stream=data, filetype='pdf')
+    try:
+        n_pages = src.page_count
+        coupes = sorted(set(int(p) for p in (points_de_coupe or [])))
+        if not coupes or coupes[0] != 1:
+            coupes = [1] + [c for c in coupes if c != 1]
+        coupes = [c for c in coupes if 1 <= c <= n_pages]
+        if not coupes:
+            raise ValueError("Points de coupe invalides.")
+        bornes = coupes + [n_pages + 1]
+        created = []
+        for i in range(len(bornes) - 1):
+            debut, fin = bornes[i], bornes[i + 1]
+            if debut >= fin:
+                continue
+            seg = fitz.open()
+            seg.insert_pdf(src, from_page=debut - 1, to_page=fin - 2)
+            seg_bytes = seg.tobytes()
+            seg.close()
+            nom = f'{document.nom} ({debut}-{fin - 1})'
+            new_doc = create_document(
+                company=document.company, folder=document.folder, nom=nom,
+                description=document.description,
+                custom_data=dict(document.custom_data or {}))
+            key, _meta = _store_bytes(seg_bytes, mime='application/pdf')
+            add_version(
+                new_doc, file_key=key, company=document.company,
+                filename=f'{nom}.pdf', size=len(seg_bytes),
+                mime='application/pdf')
+            update_search_vector(new_doc)
+            created.append(new_doc)
+        return created
+    finally:
+        src.close()
+
+
+def fusionner_pdf(documents_ordonnes, *, cible=None, company=None,
+                  nom='', created_by=None):
+    """XGED10 — Fusionne N PDF (documents ordonnés) en un seul flux paginé.
+
+    Sans `cible`, crée un NOUVEAU document dans le dossier du premier document
+    de la liste. Avec `cible` (un `Document` existant), ajoute une NOUVELLE
+    VERSION à ce document au lieu d'en créer un nouveau. L'original de chaque
+    source n'est JAMAIS muté. Lève `ValueError` si PyMuPDF est absent ou si la
+    liste est vide/contient un document sans version PDF."""
+    if not documents_ordonnes:
+        raise ValueError("Aucun document à fusionner.")
+    try:
+        import fitz  # PyMuPDF
+    except Exception:
+        raise ValueError(_pdf_lib_indisponible_message())
+    out = fitz.open()
+    try:
+        for doc in documents_ordonnes:
+            version = selectors_latest_version(doc)
+            if version is None:
+                raise ValueError(f"« {doc.nom} » n'a aucune version.")
+            data, err = _fetch_version_bytes(version)
+            if err:
+                raise ValueError(err)
+            seg = fitz.open(stream=data, filetype='pdf')
+            out.insert_pdf(seg)
+            seg.close()
+        out_bytes = out.tobytes()
+    finally:
+        out.close()
+
+    premier = documents_ordonnes[0]
+    company = company or premier.company
+    key, _meta = _store_bytes(out_bytes, mime='application/pdf')
+    if cible is not None:
+        assert_not_archive_legalement(cible)
+        assert_not_legal_hold(cible)
+        add_version(
+            cible, file_key=key, company=company,
+            filename=f'{cible.nom}.pdf', size=len(out_bytes),
+            mime='application/pdf', uploaded_by=created_by)
+        update_search_vector(cible)
+        return cible
+    nom = nom or f'{premier.nom} (fusionné)'
+    nouveau = create_document(
+        company=company, folder=premier.folder, nom=nom,
+        created_by=created_by)
+    add_version(
+        nouveau, file_key=key, company=company, filename=f'{nom}.pdf',
+        size=len(out_bytes), mime='application/pdf', uploaded_by=created_by)
+    update_search_vector(nouveau)
+    return nouveau
+
+
+def _fetch_version_bytes(version):
+    """XGED10 — Récupère les octets d'une version (helper interne, mêmes
+    codes d'erreur que le proxy de téléchargement)."""
+    from apps.records.storage import fetch_attachment
+    return fetch_attachment(version.file_key)
+
+
+# ── XGED11 — Séparation automatique des lots scannés + code-barres/QR ────
+
+# Ratio de pixels quasi-blancs au-delà duquel une page est considérée séparatrice.
+_PAGE_BLANCHE_RATIO = 0.995
+
+
+def _page_est_blanche(image, *, seuil=_PAGE_BLANCHE_RATIO):
+    """XGED11 — True si `image` (objet Pillow) est quasi entièrement blanche.
+
+    Convertit en niveaux de gris et compte la proportion de pixels clairs
+    (> 250/255) — une page séparatrice scannée est presque toujours vierge."""
+    try:
+        gray = image.convert('L')
+        pixels = list(gray.getdata())
+        if not pixels:
+            return False
+        clairs = sum(1 for p in pixels if p > 250)
+        return (clairs / len(pixels)) >= seuil
+    except Exception:  # pragma: no cover - défensif.
+        return False
+
+
+def _decoder_barcode(image):
+    """XGED11 — Décode un code-barres/QR sur une image (import PARESSEUX et
+    GARDÉ : `pyzbar` n'est PAS une dépendance dure). Renvoie la valeur
+    décodée (str) ou '' si absent/aucun code trouvé."""
+    try:
+        from pyzbar.pyzbar import decode as _zbar_decode
+    except Exception:  # pragma: no cover - chemin de repli sans la lib.
+        return ''
+    try:
+        results = _zbar_decode(image)
+        if results:
+            return results[0].data.decode('utf-8', 'replace')
+    except Exception:  # pragma: no cover - robustesse : jamais bloquer.
+        return ''
+    return ''
+
+
+def barcode_lib_disponible():
+    """XGED11 — True si `pyzbar` est installé (dégrade proprement sinon)."""
+    try:
+        import pyzbar.pyzbar  # noqa: F401
+    except Exception:
+        return False
+    return True
+
+
+def separer_lot_scans_images(images):
+    """XGED11 — Découpe un lot de pages scannées (images Pillow, dans l'ordre)
+    en sous-lots individuels, sur pages BLANCHES séparatrices ET pages
+    porteuses d'un code-barres/QR séparateur.
+
+    Une page blanche ou porteuse d'un code-barres est un SÉPARATEUR : elle
+    n'est PAS incluse dans le sous-lot suivant. Renvoie une liste de dicts
+    `{pages: [image, ...], barcode: str}` — `barcode` porte la valeur décodée
+    sur la page séparatrice qui a ouvert ce sous-lot (vide si ouvert par une
+    page blanche ou si `pyzbar` est absent). Sans AUCUNE page séparatrice, le
+    lot entier forme un seul sous-lot (comportement inchangé)."""
+    sous_lots = []
+    courant = []
+    prochain_barcode = ''
+    for image in images:
+        if _page_est_blanche(image):
+            if courant:
+                sous_lots.append({'pages': courant, 'barcode': prochain_barcode})
+                courant = []
+                prochain_barcode = ''
+            continue
+        code = _decoder_barcode(image)
+        if code:
+            if courant:
+                sous_lots.append({'pages': courant, 'barcode': prochain_barcode})
+                courant = []
+            prochain_barcode = code
+            continue  # la page séparatrice code-barres n'est pas une page de contenu.
+        courant.append(image)
+    if courant:
+        sous_lots.append({'pages': courant, 'barcode': prochain_barcode})
+    return sous_lots
+
+
+def deposer_lot_scans_separe(*, company, folder, images, created_by=None,
+                             nom_base='Scan'):
+    """XGED11 — Sépare un lot d'images scannées puis dépose chaque sous-lot
+    comme un `Document` distinct (assemblage PDF multi-pages via Pillow, déjà
+    pinné — aucune nouvelle dépendance dure). Le code-barres décodé (le cas
+    échéant) est stocké dans `custom_data['barcode']` — matching optionnel
+    vers une référence ERP laissé à l'appelant (selectors cross-app). Renvoie
+    la liste des `Document` créés, dans l'ordre des sous-lots."""
+    import io
+
+    sous_lots = separer_lot_scans_images(images)
+    created = []
+    for idx, lot in enumerate(sous_lots, start=1):
+        pages = lot['pages']
+        if not pages:
+            continue
+        buf = io.BytesIO()
+        first, *rest = [p.convert('RGB') for p in pages]
+        first.save(buf, format='PDF', save_all=True, append_images=rest)
+        pdf_bytes = buf.getvalue()
+        nom = f'{nom_base} {idx}'
+        custom_data = {}
+        if lot['barcode']:
+            custom_data['barcode'] = lot['barcode']
+        document = create_document(
+            company=company, folder=folder, nom=nom, created_by=created_by,
+            custom_data=custom_data)
+        key, _meta = _store_bytes(pdf_bytes, mime='application/pdf')
+        add_version(
+            document, file_key=key, company=company, filename=f'{nom}.pdf',
+            size=len(pdf_bytes), mime='application/pdf',
+            uploaded_by=created_by)
+        update_search_vector(document)
+        created.append(document)
+    return created
+
+
+# ── XGED14 — Opérations par LOT (multi-sélection) ────────────────────
+
+def zipper_documents(documents):
+    """XGED14 — Empaquette la version courante de chaque document en un ZIP
+    (stream en mémoire — le volume GED reste modeste). Un document bloqué
+    (aucune version) est ignoré (rapporté dans `erreurs`), jamais bloquant.
+
+    Renvoie `(zip_bytes, erreurs)`."""
+    import io
+    import zipfile
+
+    from apps.records.storage import fetch_attachment
+
+    erreurs = []
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        used_names = set()
+        for document in documents:
+            version = selectors_latest_version(document)
+            if version is None:
+                erreurs.append({'document': document.pk, 'erreur': 'Aucune version.'})
+                continue
+            data, err = fetch_attachment(version.file_key)
+            if err:
+                erreurs.append({'document': document.pk, 'erreur': err})
+                continue
+            name = version.filename or f'{document.nom}'
+            base_name = name
+            i = 1
+            while name in used_names:
+                stem, _, ext = base_name.rpartition('.')
+                name = f'{stem or base_name}-{i}.{ext}' if ext else f'{base_name}-{i}'
+                i += 1
+            used_names.add(name)
+            zf.writestr(name, data)
+    return buf.getvalue(), erreurs
+
+
+def operation_lot(documents, *, operation, params, user):
+    """XGED14 — Applique `operation` à chaque document d'un lot, un par un.
+
+    Chaque item est validé INDIVIDUELLEMENT — un item bloqué (archivé/hold, ou
+    toute autre erreur métier) est rapporté dans `erreurs` SANS jamais faire
+    échouer le reste du lot (jamais tout-ou-rien silencieux). Renvoie
+    `(resultats, erreurs)`, listes parallèles indexées par document.pk."""
+    from .models import ArchivageLegalError, DocumentTag, Folder, LegalHoldError
+
+    resultats = []
+    erreurs = []
+    for document in documents:
+        try:
+            if operation == 'tagger':
+                tag = DocumentTag.objects.filter(
+                    company=user.company, pk=params.get('tag')).first()
+                if tag is None:
+                    raise ValueError('Tag inconnu.')
+                assign_tag(document, tag, created_by=user)
+                resultats.append({'document': document.pk, 'ok': True})
+            elif operation == 'detaguer':
+                from .models import DocumentTagAssignment
+                DocumentTagAssignment.objects.filter(
+                    document=document, tag_id=params.get('tag')).delete()
+                resultats.append({'document': document.pk, 'ok': True})
+            elif operation == 'deplacer':
+                folder = Folder.objects.filter(
+                    company=user.company, pk=params.get('folder')).first()
+                if folder is None:
+                    raise ValueError('Dossier cible inconnu.')
+                move_document(document, folder)
+                resultats.append({'document': document.pk, 'ok': True})
+            elif operation == 'corbeille':
+                mettre_en_corbeille(document, user)
+                resultats.append({'document': document.pk, 'ok': True})
+            elif operation == 'partager':
+                partage = create_partage(
+                    document=document, company=user.company, created_by=user)
+                resultats.append({'document': document.pk, 'ok': True,
+                                  'token': partage.token})
+            elif operation == 'demander_signature':
+                demande = demander_signature(
+                    document,
+                    signataire_nom=params.get('signataire_nom', ''),
+                    signataire_email=params.get('signataire_email', ''),
+                    company=user.company, created_by=user)
+                resultats.append({'document': document.pk, 'ok': True,
+                                  'demande': demande.pk})
+            elif operation == 'demander_revue':
+                demande = request_review(document, user=user)
+                resultats.append({'document': document.pk, 'ok': True,
+                                  'demande': demande.pk})
+            else:
+                raise ValueError(f'Opération inconnue : {operation}')
+        except (ArchivageLegalError, LegalHoldError, ValueError,
+                PermissionError) as exc:
+            erreurs.append({'document': document.pk, 'erreur': str(exc)})
+    return resultats, erreurs
+
+
+# ── XGED15 — Chatter documentaire : journal + activités planifiées ──
+
+def journaliser_evenement(document, *, type_evenement, message='', utilisateur=None):
+    """XGED15 — Journalise un événement majeur du cycle de vie GED (pattern
+    `crm.LeadActivity`). Best-effort : n'interrompt jamais l'appelant."""
+    from .models import DocumentActivity
+    try:
+        return DocumentActivity.objects.create(
+            company=document.company, document=document,
+            type_evenement=type_evenement, message=message or '',
+            utilisateur=utilisateur)
+    except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        return None
+
+
+def planifier_document(document, *, libelle, echeance, assigne_a=None,
+                       created_by=None):
+    """XGED15 — Planifie une activité sur un document (« relancer le J+7 »)."""
+    from .models import PlanificationDocument
+    return PlanificationDocument.objects.create(
+        company=document.company, document=document, libelle=libelle,
+        echeance=echeance, assigne_a=assigne_a, created_by=created_by)
+
+
+def notifier_planifications_echues(company, *, today=None):
+    """XGED15 — Notifie les assignés des planifications échues non encore
+    notifiées (best-effort, à planifier en tâche périodique). Renvoie la liste
+    des `PlanificationDocument` notifiées."""
+    from django.utils import timezone as _tz
+    from .models import PlanificationDocument
+    today = today or _tz.now().date()
+    qs = PlanificationDocument.objects.filter(
+        company=company, faite=False, notifiee=False, echeance__lte=today)
+    notifiees = []
+    for planif in qs:
+        if planif.assigne_a_id:
+            try:
+                from apps.notifications.models import EventType as ET
+                from apps.notifications.services import notify
+                notify(
+                    planif.assigne_a, ET.APPROVAL_REMINDER,
+                    f'Relance planifiée : {planif.libelle}',
+                    body=f'Document « {planif.document.nom} ».',
+                    company=company)
+            except Exception:  # pragma: no cover - défensif.
+                pass
+        planif.notifiee = True
+        planif.save(update_fields=['notifiee'])
+        notifiees.append(planif)
+    return notifiees
+
+
+# ── XGED16 — Annotations et tampons (couche séparée, jamais l'original) ──
+
+def creer_annotation(version, *, type_annotation, page=0, x=0.0, y=0.0,
+                     contenu='', auteur=None):
+    """XGED16 — Pose une annotation/tampon sur l'image d'une version.
+
+    Vit en base UNIQUEMENT (couche séparée) — le fichier original de la
+    version n'est JAMAIS modifié par cette fonction. `x`/`y` en POURCENTAGE
+    (0-100)."""
+    from .models import AnnotationDocument
+    return AnnotationDocument.objects.create(
+        company=version.company, version=version,
+        type_annotation=type_annotation, page=page, x=x, y=y,
+        contenu=contenu, auteur=auteur)
+
+
+def tampons_disponibles(company):
+    """XGED16 — Tampons prédéfinis pour une société : les 3 tampons système
+    + les tampons propres à la société."""
+    from .models import TAMPONS_SYSTEME, TamponSociete
+    propres = list(TamponSociete.objects.filter(company=company)
+                   .values_list('libelle', flat=True))
+    return list(TAMPONS_SYSTEME) + propres
+
+
+def exporter_pdf_annote(version):
+    """XGED16 — Exporte un PDF « annoté » APLATI (nouveau fichier séparé —
+    l'original reste intact) : superpose les annotations/tampons via PyMuPDF
+    (import paresseux et gardé — dégrade en `ValueError` explicite sans la
+    lib, jamais un export silencieusement faux)."""
+    try:
+        import fitz  # PyMuPDF
+    except Exception:
+        raise ValueError(_pdf_lib_indisponible_message())
+    data, err = _fetch_version_bytes(version)
+    if err:
+        raise ValueError(err)
+    doc = fitz.open(stream=data, filetype='pdf')
+    try:
+        for annot in version.annotations.all():
+            if annot.page >= doc.page_count:
+                continue
+            page = doc[annot.page]
+            rect = page.rect
+            px = rect.x0 + (annot.x / 100.0) * rect.width
+            py = rect.y0 + (annot.y / 100.0) * rect.height
+            texte = annot.contenu or (
+                'TAMPON' if annot.type_annotation == 'tampon' else '')
+            page.insert_textbox(
+                fitz.Rect(px, py, px + 200, py + 40), texte,
+                fontsize=12, color=(0.8, 0, 0), overlay=True)
+        out_bytes = doc.tobytes()
+    finally:
+        doc.close()
+    return out_bytes
+
+
+# ── XGED18 — Documents-liens (URL externes comme entrées GED) ───────
+
+def creer_document_lien(*, company, folder, nom, url_externe, description='',
+                        created_by=None):
+    """XGED18 — Crée un document-LIEN (référence une URL externe, sans
+    stockage). Entrée GED de première classe : tags/ACL/liaison métier/cycle
+    de vie/chatter fonctionnent comme sur un document fichier ordinaire — SEULES
+    les actions fichier (version/OCR/signature) le refusent explicitement."""
+    if not url_externe:
+        raise ValueError("L'URL externe est requise pour un document-lien.")
+    if folder.company_id != getattr(company, 'id', company):
+        raise ValueError("Le dossier doit appartenir à la même société.")
+    return Document.objects.create(
+        company=company, folder=folder, nom=nom, description=description,
+        url_externe=url_externe, created_by=created_by)
+
+
+def assert_not_document_lien(document, *, action=''):
+    """XGED18 — Garde : refuse une action FICHIER (version/OCR/signature) sur un
+    document-lien. Lève `ValueError` (→ 400 explicite côté vue, jamais un
+    comportement silencieusement faux)."""
+    if document.est_document_lien:
+        raise ValueError(
+            f"Action « {action or 'fichier'} » impossible : ce document est "
+            "un document-lien (URL externe, sans fichier stocké).")
+
+
+# ── XGED19 — Actions automatiques par dossier (règles à l'upload) ───
+
+def _document_contexte_regle(document):
+    """XGED19 — Construit le `context` plat (dict) pour `core.rules` à partir
+    des métadonnées d'un document nouvellement créé."""
+    contexte = {
+        'nom': document.nom,
+        'description': document.description or '',
+        'texte_ocr': document.texte_ocr or '',
+    }
+    for k, v in (document.custom_data or {}).items():
+        contexte[f'custom_data.{k}'] = v
+    tags = list(document.tag_assignments.values_list('tag__slug', flat=True))
+    contexte['tags'] = tags
+    return contexte
+
+
+def _executer_action_regle(document, action_descriptor, *, user=None):
+    """XGED19 — Exécute UNE action de `RegleDossier` (dispatch par `type`).
+
+    Actions supportées : `tag` (params.tag = slug), `deplacer`
+    (params.folder = id), `proprietaire` (params.user = id — posé dans
+    `custom_data.proprietaire_id`, pas de champ dédié dans `Document`),
+    `demander_approbation`, `demander_signature` (params.signataire_nom/email).
+    Une action inconnue lève `ValueError` (rapportée, jamais silencieuse)."""
+    from .models import DocumentTag, Folder
+
+    type_action = (action_descriptor or {}).get('type')
+    params = (action_descriptor or {}).get('params') or {}
+    if type_action == 'tag':
+        tag = DocumentTag.objects.filter(
+            company=document.company, slug=params.get('tag')).first()
+        if tag is None:
+            raise ValueError(f"Tag inconnu : {params.get('tag')}")
+        assign_tag(document, tag)
+        return {'type': type_action, 'ok': True}
+    if type_action == 'deplacer':
+        folder = Folder.objects.filter(
+            company=document.company, pk=params.get('folder')).first()
+        if folder is None:
+            raise ValueError(f"Dossier inconnu : {params.get('folder')}")
+        move_document(document, folder)
+        return {'type': type_action, 'ok': True}
+    if type_action == 'proprietaire':
+        data = dict(document.custom_data or {})
+        data['proprietaire_id'] = params.get('user')
+        Document.objects.filter(pk=document.pk).update(custom_data=data)
+        document.custom_data = data
+        return {'type': type_action, 'ok': True}
+    if type_action == 'demander_approbation':
+        request_review(document, user=user or document.created_by)
+        return {'type': type_action, 'ok': True}
+    if type_action == 'demander_signature':
+        demander_signature(
+            document,
+            signataire_nom=params.get('signataire_nom', ''),
+            signataire_email=params.get('signataire_email', ''),
+            company=document.company, created_by=user)
+        return {'type': type_action, 'ok': True}
+    raise ValueError(f"Type d'action inconnu : {type_action}")
+
+
+def appliquer_regles_dossier(document, *, user=None):
+    """XGED19 — Applique les `RegleDossier` actives du dossier d'un document
+    nouvellement créé. BEST-EFFORT total : une règle/action en échec est
+    JOURNALISÉE (`ExecutionRegleDossier`) sans JAMAIS faire échouer l'upload
+    lui-même. Renvoie la liste des `ExecutionRegleDossier` créées."""
+    from core.rules import evaluate_condition_group
+
+    from .models import ExecutionRegleDossier, RegleDossier
+
+    contexte = _document_contexte_regle(document)
+    executions = []
+    for regle in (RegleDossier.objects
+                  .filter(company=document.company, folder=document.folder,
+                          actif=True)
+                  .order_by('ordre', 'id')):
+        try:
+            declenchee = evaluate_condition_group(regle.condition_group, contexte)
+        except Exception:  # pragma: no cover - défensif, jamais bloquant.
+            declenchee = False
+        resultats = []
+        if declenchee:
+            for step in (regle.actions or []):
+                try:
+                    resultats.append(
+                        _executer_action_regle(document, step, user=user))
+                except Exception as exc:  # noqa: BLE001 — best-effort, journalisé.
+                    resultats.append({
+                        'type': (step or {}).get('type'),
+                        'ok': False, 'erreur': str(exc),
+                    })
+        execution = ExecutionRegleDossier.objects.create(
+            company=document.company, regle=regle, document=document,
+            declenchee=declenchee, resultats=resultats)
+        executions.append(execution)
+    return executions
+
+
+# ── XGED20 — Routage conditionnel des approbations par métadonnées ──
+
+def resoudre_regle_approbation_ged(document):
+    """XGED20 — Résout la `RegleApprobationGed` la plus SPÉCIFIQUE applicable
+    à un document (plus haute `priorite`, puis id le plus récent), ou None si
+    aucune règle active ne matche (RÉTROCOMPATIBLE : comportement GED18
+    inchangé sans règle)."""
+    from core.rules import evaluate_condition_group
+
+    from .models import RegleApprobationGed
+
+    contexte = _document_contexte_regle(document)
+    for regle in (RegleApprobationGed.objects
+                  .filter(company=document.company, actif=True)
+                  .order_by('-priorite', '-id')):
+        try:
+            if evaluate_condition_group(regle.condition_group, contexte):
+                return regle
+        except Exception:  # pragma: no cover - défensif.
+            continue
+    return None
+
+
+def request_review_avec_routage(document, *, user, commentaire=''):
+    """XGED20 — Comme `request_review`, mais consulte D'ABORD
+    `resoudre_regle_approbation_ged` : si une règle matche, instancie une
+    CHAÎNE séquentielle d'approbateurs (`ChaineApprobationGed`) au lieu d'un
+    approbateur unique fixe. Sans règle applicable, comportement GED18
+    STRICTEMENT inchangé (délègue à `request_review`)."""
+    from django.contrib.auth import get_user_model
+
+    from .models import ChaineApprobationGed
+
+    regle = resoudre_regle_approbation_ged(document)
+    if regle is None or not regle.approbateurs:
+        return request_review(document, user=user, commentaire=commentaire)
+
+    User = get_user_model()
+    premier_id = regle.approbateurs[0]
+    premier = User.objects.filter(
+        company=document.company, pk=premier_id).first()
+    demande = request_review(
+        document, user=user, approbateur=premier, commentaire=commentaire)
+    etapes = [
+        {'approbateur_id': uid, 'statut': 'en_attente', 'decision_le': None}
+        for uid in regle.approbateurs
+    ]
+    if etapes:
+        etapes[0]['statut'] = 'en_cours'
+    ChaineApprobationGed.objects.create(
+        company=document.company, demande=demande, regle=regle,
+        etapes=etapes, etape_courante=0)
+    return demande
+
+
+def avancer_chaine_approbation_ged(demande, *, user, commentaire=''):
+    """XGED20 — Avance la chaîne séquentielle d'une demande (si une
+    `ChaineApprobationGed` existe) : l'étape courante est marquée approuvée,
+    puis soit l'étape SUIVANTE devient l'approbateur actif (demande reste
+    `en_attente`, `approbateur` réassigné), soit — dernière étape — la demande
+    est approuvée définitivement via `approve_demande` (GED18, jamais
+    dupliqué). SANS chaîne (règle non applicable), délègue directement à
+    `approve_demande`."""
+    from django.contrib.auth import get_user_model
+    from django.utils import timezone as _tz
+
+    try:
+        chaine = demande.chaine_approbation
+    except Exception:
+        chaine = None
+    if chaine is None:
+        return approve_demande(demande, user=user, commentaire=commentaire)
+
+    etapes = list(chaine.etapes or [])
+    idx = chaine.etape_courante
+    if idx < len(etapes):
+        etapes[idx]['statut'] = 'approuve'
+        etapes[idx]['decision_le'] = _tz.now().isoformat()
+    if idx + 1 < len(etapes):
+        # Étape suivante : réassigne l'approbateur actif, la demande reste
+        # « en_attente » (décision globale pas encore prise).
+        etapes[idx + 1]['statut'] = 'en_cours'
+        User = get_user_model()
+        suivant = User.objects.filter(
+            company=demande.company, pk=etapes[idx + 1]['approbateur_id']).first()
+        demande.approbateur = suivant
+        demande.save(update_fields=['approbateur', 'updated_at'])
+        chaine.etapes = etapes
+        chaine.etape_courante = idx + 1
+        chaine.save(update_fields=['etapes', 'etape_courante', 'updated_at'])
+        return demande
+    # Dernière étape : décision définitive (réutilise GED18, jamais dupliqué).
+    chaine.etapes = etapes
+    chaine.save(update_fields=['etapes', 'updated_at'])
+    return approve_demande(demande, user=user, commentaire=commentaire)

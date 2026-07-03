@@ -374,6 +374,13 @@ CRM_CAPTURE_OCR_ENABLED = (
 # valeur PAR DÉFAUT quand une société n'a pas de quota explicite (`QuotaStockage`).
 GED_QUOTA_DEFAUT_OCTETS = int(os.environ.get('GED_QUOTA_DEFAUT_OCTETS', '0'))
 
+# XGED9 — Ingestion par email → GED (alias par cabinet/dossier). KEY-GATED :
+# OFF par défaut → no-op (aucune connexion IMAP tentée par ce chemin). Réutilise
+# la même config IMAP que FG373 (`core.email_intake`, IntegrationConfig
+# `email_in`) — ce flag n'active QUE le routage des pièces jointes vers la GED
+# (le founder l'active une fois les réglages IMAP posés).
+GED_MAIL_INTAKE_ENABLED = os.environ.get('GED_MAIL_INTAKE_ENABLED', '0') == '1'
+
 # XGED5 — Horodatage qualifié RFC 3161 (TSA) du scellement PAdES des PDF
 # signés. KEY-GATED : vide par défaut → no-op (le sceau PAdES, s'il est posé
 # via pyHanko, l'est SANS horodatage TSA). Le founder configurera l'URL d'une
