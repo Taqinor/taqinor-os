@@ -1033,14 +1033,25 @@ class BulletinPaie(models.Model):
         """Vrai quand le bulletin est figé (validé)."""
         return self.statut == self.STATUT_VALIDE
 
+    # Champs dont l'écriture reste autorisée sur un bulletin déjà VALIDÉ
+    # (PAIE17) : la transition de validation elle-même (statut/
+    # date_validation) et le suivi de paiement (XPAI9 — un bulletin est
+    # toujours validé AVANT d'être payé, donc ``paye``/``date_paiement``
+    # se posent forcément APRÈS le gel). Les montants/lignes de paie
+    # restent, eux, strictement figés.
+    _CHAMPS_AUTORISES_APRES_VALIDATION = frozenset(
+        {'statut', 'date_validation', 'paye', 'date_paiement'})
+
     def save(self, *args, **kwargs):
         """Garde d'immuabilité (PAIE17).
 
-        Un bulletin déjà ``valide`` en base est FIGÉ : seule reste autorisée la
-        transition de validation elle-même (``brouillon → valide``, qui pose
-        ``date_validation``). Toute autre écriture sur un bulletin validé lève
-        ``BulletinVerrouille``. Tant que le bulletin est brouillon, ``save`` est
-        libre (recalcul/régénération).
+        Un bulletin déjà ``valide`` en base est FIGÉ pour ses montants/lignes :
+        seules restent autorisées la transition de validation elle-même
+        (``brouillon → valide``, qui pose ``date_validation``) et le suivi de
+        paiement (``paye``/``date_paiement``, posés après coup par
+        ``marquer_bulletin_paye``). Toute autre écriture sur un bulletin
+        validé lève ``BulletinVerrouille``. Tant que le bulletin est
+        brouillon, ``save`` est libre (recalcul/régénération).
         """
         if self.pk:
             ancien = (
@@ -1050,11 +1061,13 @@ class BulletinPaie(models.Model):
                 .first()
             )
             if ancien and ancien['statut'] == self.STATUT_VALIDE:
-                # Déjà validé en base → immuable.
+                # Déjà validé en base → figé (hors statut/date_validation/
+                # paiement).
                 update_fields = kwargs.get('update_fields')
                 autorise = (
                     update_fields is not None
-                    and set(update_fields) <= {'statut', 'date_validation'}
+                    and set(update_fields)
+                    <= self._CHAMPS_AUTORISES_APRES_VALIDATION
                     and self.statut == self.STATUT_VALIDE
                 )
                 if not autorise:
