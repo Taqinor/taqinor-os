@@ -252,6 +252,31 @@ const galleryPhotos = rest;
       </section>
     )}
 
+    <!-- W344 — Soft referral nudge to /parrainage : the site's strongest
+         proof point (a real case study) shouldn't dead-end. Discreet,
+         non-transactional tone — no amount/reward shown here (see
+         /parrainage for terms, WG14-gated). L('/parrainage') falls back to
+         the FR page (never a dead link) since /parrainage is not yet in the
+         i18n TRANSLATED registry despite the en/ar routes existing. -->
+    <section class="border-t border-white/10 px-4 py-16">
+      <div class="mx-auto max-w-6xl">
+        <a
+          href={L('/parrainage')}
+          class="group flex flex-wrap items-center justify-between gap-4 border border-white/20 px-6 py-5 transition-colors hover:border-brass-400/60 hover:bg-white/[0.03]"
+        >
+          <span>
+            <span class="tech-label block text-lune-faint">Word of mouth matters</span>
+            <span class="mt-1 block font-display text-lg font-bold text-white">
+              Know someone with a similar profile? Refer Taqinor
+            </span>
+          </span>
+          <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1 text-sm font-bold text-azur-200" aria-hidden="true">
+            Discover the referral programme →
+          </span>
+        </a>
+      </div>
+    </section>
+
     <!-- Contextual links -->
     <section class="border-t border-white/10 px-4 py-16">
       <div class="mx-auto flex max-w-6xl flex-wrap gap-3">
