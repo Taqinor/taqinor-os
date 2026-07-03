@@ -1,6 +1,24 @@
+from django.urls import include, path
 from rest_framework.routers import DefaultRouter
-from .views import CustomFieldDefViewSet
+from .views import CustomFieldDefViewSet, CustomObjectDefViewSet, CustomRecordViewSet
 
 router = DefaultRouter()
 router.register(r'definitions', CustomFieldDefViewSet)
-urlpatterns = router.urls
+router.register(r'objects', CustomObjectDefViewSet, basename='customobjectdef')
+
+# XPLT16 — CRUD dynamique des enregistrements d'un objet personnalisé.
+# object_code est un SlugField : le convertisseur <slug:...> le contraint
+# suffisamment (lettres/chiffres/tirets) sans validation supplémentaire.
+records_list = CustomRecordViewSet.as_view(
+    {'get': 'list', 'post': 'create'})
+records_detail = CustomRecordViewSet.as_view(
+    {'get': 'retrieve', 'put': 'update', 'patch': 'partial_update',
+     'delete': 'destroy'})
+
+urlpatterns = [
+    path('custom-objects/<slug:object_code>/records/',
+         records_list, name='customrecord-list'),
+    path('custom-objects/<slug:object_code>/records/<int:pk>/',
+         records_detail, name='customrecord-detail'),
+    path('', include(router.urls)),
+]

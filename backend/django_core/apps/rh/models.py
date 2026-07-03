@@ -316,6 +316,8 @@ class DossierEmploye(models.Model):
         null=True, blank=True, verbose_name="Date de déclaration d'entrée")
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
+    # XPLT14 — champs personnalisés (apps.customfields, module='employe').
+    custom_data = models.JSONField(null=True, blank=True)
 
     class Meta:
         verbose_name = 'Dossier employé'
