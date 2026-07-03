@@ -31,6 +31,7 @@ from .models import (
     DocumentEmploye,
     EmployeDeviceMap,
     EntretienRecrutement,
+    GabaritEmailRecrutement,
     GrilleSalariale,
     NoteEntretien,
     PeriodeFermeture,
@@ -1512,6 +1513,8 @@ class CandidatureSerializer(serializers.ModelSerializer):
             'nom', 'email', 'telephone', 'cv_fichier', 'source', 'note',
             'etape', 'etape_display',
             'employe_cree', 'employe_cree_nom',
+            # XRH15 (talent pool), XRH19 (opt-out email auto).
+            'emails_auto',
             'date_candidature', 'date_creation', 'date_modification',
         ]
         read_only_fields = [
@@ -2077,6 +2080,21 @@ class CorrectionPointageSerializer(serializers.ModelSerializer):
 
     def get_auteur_nom(self, obj):
         return getattr(obj.auteur, 'username', '') if obj.auteur_id else ''
+
+
+class GabaritEmailRecrutementSerializer(serializers.ModelSerializer):
+    """Gabarit d'email automatique par étape (XRH19). ``company`` posée côté
+    serveur."""
+    etape_display = serializers.CharField(
+        source='get_etape_display', read_only=True)
+
+    class Meta:
+        model = GabaritEmailRecrutement
+        fields = [
+            'id', 'etape', 'etape_display', 'objet', 'corps', 'actif',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
 
 
 class CandidatureActivitySerializer(serializers.ModelSerializer):

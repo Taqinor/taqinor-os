@@ -1123,3 +1123,58 @@ def fusionner_candidatures(cible, source, *, auteur=None):
         company=cible.company, candidature=cible, type='note', auteur=auteur,
         message=f'Fusion : candidature #{source.id} absorbée.')
     return cible
+
+
+# ── XRH19 — emails candidats automatiques par étape ─────────────────────────
+
+def envoyer_email_transition(candidature, *, date_entretien=None):
+    """XRH19 — envoie (ou console-logue) l'email du gabarit ACTIF pour la
+    nouvelle étape de la candidature, si elle en a un ET que
+    ``candidature.emails_auto`` n'a pas été désactivé. Substitue les
+    placeholders sûrs ``{nom}``/``{poste}``/``{date_entretien}``. Journalise
+    dans le chatter (XRH18). JAMAIS d'exception si la clé/infra email
+    manque — best-effort, silencieux (comme les autres envois de l'ERP).
+    Renvoie ``True`` si un email a été envoyé (ou console-loggué), ``False``
+    sinon (pas de gabarit / opt-out / email candidat manquant).
+    """
+    from .models import CandidatureActivity, GabaritEmailRecrutement
+
+    if not candidature.emails_auto or not candidature.email:
+        return False
+
+    gabarit = (
+        GabaritEmailRecrutement.objects
+        .filter(company=candidature.company, etape=candidature.etape,
+                actif=True)
+        .first())
+    if gabarit is None:
+        return False
+
+    poste = (
+        candidature.ouverture.intitule if candidature.ouverture_id else '')
+    placeholders = {
+        'nom': candidature.nom,
+        'poste': poste,
+        'date_entretien': str(date_entretien) if date_entretien else '',
+    }
+    objet = gabarit.objet.format(**placeholders)
+    corps = gabarit.corps.format(**placeholders)
+
+    try:
+        from django.conf import settings
+        from django.core.mail import send_mail
+
+        from_email = getattr(
+            settings, 'DEFAULT_FROM_EMAIL', 'noreply@erp.local')
+        send_mail(
+            objet, corps, from_email, [candidature.email],
+            fail_silently=True)
+    except Exception:  # noqa: BLE001 — best-effort, jamais d'exception.
+        return False
+
+    CandidatureActivity.objects.create(
+        company=candidature.company, candidature=candidature,
+        type=CandidatureActivity.Kind.NOTE,
+        message=f'Email automatique envoyé ({gabarit.get_etape_display()}) : '
+                f'{objet}')
+    return True

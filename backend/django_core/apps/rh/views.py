@@ -50,6 +50,7 @@ from .models import (
     DeviceKiosque,
     EmployeDeviceMap,
     EntretienRecrutement,
+    GabaritEmailRecrutement,
     GrilleSalariale,
     NoteEntretien,
     PeriodeFermeture,
@@ -111,6 +112,7 @@ from .serializers import (
     DeviceKiosqueSerializer,
     EmployeDeviceMapSerializer,
     EntretienRecrutementSerializer,
+    GabaritEmailRecrutementSerializer,
     GrilleSalarialeSerializer,
     NoteEntretienSerializer,
     PeriodeFermetureSerializer,
@@ -2824,7 +2826,9 @@ class CandidatureViewSet(_RhBaseViewSet):
         return qs
 
     def perform_update(self, serializer):
-        """XRH18 — journalise automatiquement une transition d'étape."""
+        """XRH18 — journalise automatiquement une transition d'étape.
+        XRH19 — envoie l'email automatique du gabarit actif de la nouvelle
+        étape (best-effort, jamais bloquant)."""
         old_etape = serializer.instance.etape
         candidature = serializer.save()
         if old_etape != candidature.etape:
@@ -2833,6 +2837,7 @@ class CandidatureViewSet(_RhBaseViewSet):
                 auteur=self.request.user,
                 type=CandidatureActivity.Kind.LOG, field='etape',
                 old_value=old_etape, new_value=candidature.etape)
+            services.envoyer_email_transition(candidature)
 
     @action(detail=True, methods=['get'], url_path='historique')
     def historique(self, request, pk=None):
@@ -2959,6 +2964,25 @@ class EntretienRecrutementViewSet(_RhBaseViewSet):
             })
         return Response(
             NoteEntretienSerializer(note).data, status=status.HTTP_201_CREATED)
+
+
+class GabaritEmailRecrutementViewSet(_RhBaseViewSet):
+    """Gabarits d'email automatique par étape du pipeline (XRH19).
+
+    Société scopée + Administrateur/Responsable. ``company`` posée CÔTÉ
+    SERVEUR. Filtre ``?etape=``.
+    """
+    queryset = GabaritEmailRecrutement.objects.all()
+    serializer_class = GabaritEmailRecrutementSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['etape', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        etape = self.request.query_params.get('etape')
+        if etape:
+            qs = qs.filter(etape=etape)
+        return qs
 
 
 class CampagneEvaluationViewSet(_RhBaseViewSet):

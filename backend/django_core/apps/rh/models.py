@@ -3199,6 +3199,9 @@ class Candidature(models.Model):
     )
     date_candidature = models.DateField(
         null=True, blank=True, verbose_name='Date de candidature')
+    # XRH19 — opt-out des emails automatiques par étape (par défaut envoyés).
+    emails_auto = models.BooleanField(
+        default=True, verbose_name='Emails automatiques')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
     date_modification = models.DateTimeField(
@@ -4858,3 +4861,45 @@ class CandidatureActivity(models.Model):
 
     def __str__(self):
         return f'{self.candidature_id} {self.type}'.strip()
+
+
+class GabaritEmailRecrutement(models.Model):
+    """Gabarit d'email automatique par étape du pipeline (XRH19).
+
+    À la transition d'une ``Candidature`` vers ``etape`` (un gabarit ACTIF
+    existe pour cette étape), un email est envoyé via l'infra existante
+    (``SENDGRID_API_KEY`` key-gated, backend console sinon — no-op propre
+    sans clé) avec ``objet``/``corps`` substitués par des placeholders sûrs
+    ``{nom}``/``{poste}``/``{date_entretien}``. Journalisé dans le chatter
+    (``CandidatureActivity``). Opt-out par candidature
+    (``Candidature.emails_auto``).
+
+    Multi-société : ``company`` posée côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_gabarits_email_recrutement',
+        verbose_name='Société',
+    )
+    etape = models.CharField(
+        max_length=20, choices=Candidature.Etape.choices,
+        verbose_name='Étape')
+    objet = models.CharField(max_length=255, verbose_name='Objet')
+    corps = models.TextField(verbose_name='Corps')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Gabarit email recrutement'
+        verbose_name_plural = 'Gabarits email recrutement'
+        ordering = ['etape']
+        indexes = [
+            models.Index(
+                fields=['company', 'etape', 'actif'],
+                name='rh_gabarit_email_etape_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.get_etape_display()} — {self.objet}'
