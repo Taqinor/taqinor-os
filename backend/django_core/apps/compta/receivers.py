@@ -26,4 +26,8 @@ from .services import (  # noqa: F401  (ré-export du point d'intégration)
     ecriture_pour_facture_fournisseur,
     ecriture_pour_paiement,
     ecriture_pour_paiement_fournisseur,
+    # XACC1 — transfert TVA attente→définitif (régime encaissement). Même
+    # point d'ancrage : appel de service explicite depuis ``ventes`` tant
+    # qu'aucun événement dédié « paiement enregistré » n'existe sur le bus.
+    transferer_tva_encaissement,
 )

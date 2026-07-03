@@ -81,12 +81,23 @@ _COMPTES_CGNC = [
     ('3134', 'Travaux en cours', False, False, 'actif'),
     ('3455', 'État - TVA récupérable', False, False, 'actif'),
     ('34552', 'État - TVA récupérable sur charges', False, False, 'actif'),
+    # XACC1 — TVA récupérable EN ATTENTE (régime encaissement) : la TVA d'un
+    # achat non encore réglé au fournisseur transite ici avant de basculer sur
+    # 3455 au règlement (transfert au prorata via
+    # ``transferer_tva_encaissement``).
+    ('34551', 'État - TVA récupérable en attente (encaissement)', False,
+     False, 'actif'),
     ('3942', 'Provisions pour dépréciation des clients', False, False,
      'actif'),
     # Classe 4 — Passif circulant
     ('4411', 'Fournisseurs', True, True, 'passif'),
     ('4415', 'Fournisseurs - effets à payer', True, True, 'passif'),
     ('4455', 'État - TVA facturée', False, False, 'passif'),
+    # XACC1 — TVA facturée EN ATTENTE (régime encaissement) : la TVA d'une
+    # vente non encore encaissée transite ici avant de basculer sur 4455 au
+    # règlement client (transfert au prorata du paiement, acomptes inclus).
+    ('44551', 'État - TVA facturée en attente (encaissement)', False, False,
+     'passif'),
     ('44552', 'État - TVA due', False, False, 'passif'),
     ('4491', "Produits constatés d'avance", False, False, 'passif'),
     ('4486', 'Fournisseurs - factures non parvenues', True, True, 'passif'),
@@ -405,6 +416,112 @@ def ecriture_pour_paiement(paiement, *, force=False, user=None):
         company, journal, paiement.date_paiement,
         f'Encaissement facture {ref}', lignes,
         reference=ref, source_type='paiement', source_id=paiement.id,
+        created_by=user, statut=EcritureComptable.Statut.VALIDEE,
+    )
+
+
+# ── XACC1 — TVA sur encaissement : transfert du compte d'attente ───────────
+# En régime « débit » (défaut), la TVA est constatée directement sur les
+# comptes définitifs (4455/3455) à la facturation — RIEN ne change ici, c'est
+# le comportement historique de ``ecriture_pour_facture``/
+# ``ecriture_pour_facture_fournisseur``. En régime « encaissement »
+# (``PlanComptable.regime_tva``), la TVA facturée/récupérable doit transiter
+# par un compte d'attente (44551/34551) jusqu'au règlement effectif : c'est ce
+# que fait ``transferer_tva_encaissement``, destinée à être appelée à
+# l'enregistrement d'un paiement. Le bus ``core.events`` (M6) n'émet à ce jour
+# AUCUN événement portant un ``ventes.Paiement`` (``payment_captured`` porte
+# une ``core.PaymentTransaction`` — capture carte en ligne, en amont du
+# ``Paiement`` métier) : suivant le même point d'ancrage documenté dans
+# ``receivers.py``, cette fonction reste donc déclenchée par APPEL DE SERVICE
+# EXPLICITE depuis ``ventes`` (à la manière de ``ecriture_pour_paiement``) tant
+# que ``ventes``/``stock`` n'émettent pas cet événement dédié — l'ajouter là-bas
+# est hors périmètre additif ici (modifierait ``ventes``).
+
+def regime_tva_societe(company):
+    """Régime de TVA effectif de la société (``debit`` par défaut).
+
+    Lecture seule. Sème le plan comptable au besoin (idempotent) pour que le
+    réglage soit toujours lisible, même sur une société jamais semée.
+    """
+    plan = PlanComptable.objects.filter(company=company).first()
+    if plan is None:
+        plan = seed_plan_comptable(company)
+    return plan.regime_tva
+
+
+def _compte_tva_attente_facturee(company):
+    return _assurer_compte(company, '44551')
+
+
+def _compte_tva_attente_recuperable(company):
+    return _assurer_compte(company, '34551')
+
+
+@transaction.atomic
+def transferer_tva_encaissement(paiement, *, montant=None, user=None,
+                                force=False):
+    """Transfère la TVA du compte d'attente vers le compte définitif (XACC1).
+
+    ``paiement`` est une instance ``ventes.Paiement`` (lue par valeur — aucun
+    import du modèle). Ne fait RIEN (renvoie ``None``) si :
+
+    * la société n'est pas en régime ``encaissement`` (régime ``debit`` =
+      comportement inchangé) ;
+    * la facture liée ne porte pas de TVA ;
+    * une écriture de transfert existe déjà pour ce paiement (idempotence).
+
+    Le transfert est calculé AU PRORATA du montant réellement encaissé par
+    rapport au TTC de la facture (acomptes inclus : un paiement partiel ne
+    transfère que sa quote-part de TVA). Débite 4455 (TVA facturée) et crédite
+    44551 (attente) à hauteur de la quote-part de TVA — l'écriture est de fait
+    un virement de compte à compte, toujours équilibrée. Respecte le verrou de
+    période (``creer_ecriture_od`` refuse une période clôturée). Renvoie
+    l'écriture de transfert, ou ``None`` si non applicable.
+    """
+    company = getattr(paiement, 'company', None)
+    if company is None:
+        facture = getattr(paiement, 'facture', None)
+        company = getattr(facture, 'company', None)
+    if company is None:
+        return None
+    if not force and regime_tva_societe(company) != PlanComptable.RegimeTVA.ENCAISSEMENT:
+        return None
+    facture = paiement.facture
+    ttc = Decimal(getattr(facture, 'total_ttc', 0) or 0)
+    tva_facture = Decimal(getattr(facture, 'total_tva', 0) or 0)
+    if ttc <= 0 or tva_facture <= 0:
+        return None
+    existante = _ecriture_existante(company, 'tva_encaissement', paiement.id)
+    if existante:
+        return existante
+    montant_regle = Decimal(montant) if montant is not None \
+        else Decimal(paiement.montant)
+    if montant_regle <= 0:
+        return None
+    # Quote-part de TVA proportionnelle au montant réellement encaissé,
+    # plafonnée à la TVA totale de la facture (un paiement > solde ne
+    # transfère jamais plus que la TVA due).
+    quote_part_tva = (tva_facture * montant_regle / ttc).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+    quote_part_tva = min(quote_part_tva, tva_facture)
+    if quote_part_tva <= 0:
+        return None
+    compte_attente = _compte_tva_attente_facturee(company)
+    compte_definitif = _assurer_compte(company, '4455')
+    ref = getattr(facture, 'reference', '')
+    journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+    lignes = [
+        {'compte': compte_attente, 'debit': quote_part_tva,
+         'credit': Decimal('0'),
+         'libelle': f'Transfert TVA encaissement {ref}'},
+        {'compte': compte_definitif, 'debit': Decimal('0'),
+         'credit': quote_part_tva,
+         'libelle': f'TVA due sur encaissement {ref}'},
+    ]
+    return creer_ecriture(
+        company, journal, paiement.date_paiement,
+        f'Transfert TVA encaissement {ref}', lignes,
+        reference=ref, source_type='tva_encaissement', source_id=paiement.id,
         created_by=user, statut=EcritureComptable.Statut.VALIDEE,
     )
 

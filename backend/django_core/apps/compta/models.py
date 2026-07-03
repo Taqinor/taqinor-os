@@ -32,8 +32,17 @@ class PlanComptable(models.Model):
     """Plan de comptes d'une société (un par société en pratique).
 
     Conteneur paramétrable : il regroupe les ``CompteComptable``. Le code par
-    défaut « CGNC » correspond au plan normalisé marocain.
+    défaut « CGNC » correspond au plan normalisé marocain. Porte aussi
+    ``regime_tva`` (XACC1) — le réglage société du régime de TVA (débit ou
+    encaissement) qui pilote si la TVA facturée/récupérable est constatée
+    directement en compte définitif (débit, comportement historique) ou
+    transite par un compte d'attente jusqu'au règlement effectif
+    (encaissement, cf. ``services.transferer_tva_encaissement``).
     """
+    class RegimeTVA(models.TextChoices):
+        DEBIT = 'debit', 'Débit (fait générateur = facturation)'
+        ENCAISSEMENT = 'encaissement', 'Encaissement (fait générateur = règlement)'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -46,6 +55,11 @@ class PlanComptable(models.Model):
         max_length=120, default='Plan comptable CGNC',
         verbose_name='Libellé')
     actif = models.BooleanField(default=True, verbose_name='Actif')
+    # XACC1 — défaut « débit » = comportement actuel inchangé pour toute
+    # société existante (aucune migration de données requise).
+    regime_tva = models.CharField(
+        max_length=12, choices=RegimeTVA.choices,
+        default=RegimeTVA.DEBIT, verbose_name='Régime de TVA')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
