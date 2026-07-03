@@ -71,9 +71,11 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
             # légacy responsable/admin pour les comptes sans rôle fin).
             return [HasPermissionOrLegacy('stock_modifier')()]
         elif self.action in WRITE_ACTIONS + [
-            'envoyer', 'recevoir', 'annuler',
+            'envoyer', 'recevoir', 'annuler', 'confirmer',
         ]:
             return [IsResponsableOrAdmin()]
+        elif self.action == 'en_retard':
+            return [IsAnyRole()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
         return [IsAdminRole()]
@@ -260,6 +262,34 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
         bc.statut = BonCommandeFournisseur.Statut.ANNULE
         bc.save(update_fields=['statut'])
         return Response(self.get_serializer(bc).data)
+
+    @action(detail=True, methods=['post'], url_path='confirmer')
+    def confirmer(self, request, pk=None):
+        """XPUR7 — accusé de commande fournisseur : date confirmée + numéro
+        de confirmation. La date DEMANDÉE d'origine (`date_livraison_prevue`)
+        n'est jamais écrasée (préserve l'OTD promis-vs-reçu). Corps :
+        ``{"date_confirmee_fournisseur": "YYYY-MM-DD",
+        "numero_confirmation_fournisseur": "..."}``."""
+        bc = self.get_object()
+        date_confirmee = request.data.get('date_confirmee_fournisseur')
+        if not date_confirmee:
+            return Response(
+                {'detail': 'date_confirmee_fournisseur est requise.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        bc.date_confirmee_fournisseur = date_confirmee
+        bc.numero_confirmation_fournisseur = (
+            request.data.get('numero_confirmation_fournisseur') or '')
+        bc.save(update_fields=[
+            'date_confirmee_fournisseur', 'numero_confirmation_fournisseur'])
+        return Response(self.get_serializer(bc).data)
+
+    @action(detail=False, methods=['get'], url_path='en-retard')
+    def en_retard(self, request):
+        """XPUR7 — liste des BCF ENVOYE en retard (prévue/confirmée dépassée
+        sans réception complète). LECTURE SEULE."""
+        from ..services import bcf_en_retard_list
+        en_retard = bcf_en_retard_list(request.user.company)
+        return Response(self.get_serializer(en_retard, many=True).data)
 
     @action(detail=True, methods=['post'], url_path='recevoir')
     def recevoir(self, request, pk=None):

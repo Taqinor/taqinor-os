@@ -704,6 +704,10 @@ class PrixFournisseur(models.Model):
     # Prix d'ACHAT — donnée INTERNE, jamais sur un document client.
     prix_achat = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     date_dernier_achat = models.DateField(null=True, blank=True)
+    # XPUR7 — délai de livraison (jours) constaté/annoncé pour ce couple
+    # produit×fournisseur. Alimente la suggestion `date_livraison_prevue`
+    # d'un BCF. Null = pas de délai connu (comportement historique).
+    delai_livraison_jours = models.PositiveIntegerField(null=True, blank=True)
 
     class Meta:
         verbose_name = "Prix fournisseur"
@@ -775,6 +779,17 @@ class BonCommandeFournisseur(models.Model):
         max_digits=12, decimal_places=6, default=1,
         help_text='Taux de change devise → MAD à la date du document '
                   '(saisie manuelle, aucun appel externe).')
+    # ── XPUR7 — dates de livraison prévues, accusé fournisseur, OTD réel ────
+    # Pré-calculée (date_commande + délai de PrixFournisseur) à la création,
+    # reste modifiable ensuite. Null = pas de date prévue (comportement
+    # historique, aucun délai connu).
+    date_livraison_prevue = models.DateField(null=True, blank=True)
+    # Accusé de commande du fournisseur : date qu'IL confirme (distincte de
+    # la date demandée ci-dessus, jamais écrasée — préserve l'OTD promis-vs-
+    # reçu) + son numéro de confirmation.
+    date_confirmee_fournisseur = models.DateField(null=True, blank=True)
+    numero_confirmation_fournisseur = models.CharField(
+        max_length=100, blank=True, default='')
     note = models.TextField(blank=True, null=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,

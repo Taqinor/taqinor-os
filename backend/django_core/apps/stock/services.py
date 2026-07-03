@@ -1420,6 +1420,11 @@ def supplier_performance(company, fournisseur):
         company=company, fournisseur=fournisseur,
         statut='valide').count()
 
+    # XPUR7 — OTD promis-vs-reçu ajouté au scorecard existant (champs
+    # additifs ; None quand aucune date confirmée/prévue n'existe —
+    # comportement historique inchangé pour les BCF sans XPUR7 renseigné).
+    otd = otd_stats(company, fournisseur)
+
     return {
         'fournisseur_id': fournisseur.id,
         'fournisseur_nom': fournisseur.nom,
@@ -1429,6 +1434,8 @@ def supplier_performance(company, fournisseur):
         'nb_retours': nb_retours,
         'return_rate_pct': round(nb_retours / nb_bons * 100, 1) if nb_bons else None,
         'total_achats_ht': str(total_achats),
+        'otd_ecart_moyen_jours': otd['otd_ecart_moyen_jours'],
+        'otd_a_lheure_pct': otd['otd_a_lheure_pct'],
     }
 
 
@@ -1996,3 +2003,120 @@ def creer_echeancier_facture_fournisseur(company, facture, tranches):
             montant=montant or Decimal('0'),
             date_echeance=t['date_echeance']))
     return created
+
+
+# ── XPUR7 — dates de livraison prévues, accusé fournisseur & OTD réel ──────
+
+def compute_date_livraison_prevue(company, fournisseur, date_commande,
+                                  lignes_data):
+    """XPUR7 — pré-calcule ``date_livraison_prevue`` = date_commande + le
+    plus grand ``delai_livraison_jours`` connu parmi les produits de la
+    commande (le pire cas — la commande n'est complète qu'une fois tout
+    arrivé). None si aucun délai connu OU pas de date de commande
+    (comportement historique : reste éditable à la main)."""
+    from .models import PrixFournisseur
+    if not date_commande or not fournisseur or not lignes_data:
+        return None
+    produit_ids = [
+        ligne.get('produit').id if hasattr(ligne.get('produit'), 'id')
+        else ligne.get('produit')
+        for ligne in lignes_data if ligne.get('produit')
+    ]
+    if not produit_ids:
+        return None
+    delais = PrixFournisseur.objects.filter(
+        fournisseur=fournisseur, produit_id__in=produit_ids,
+        delai_livraison_jours__isnull=False,
+    ).values_list('delai_livraison_jours', flat=True)
+    delais = [d for d in delais if d is not None]
+    if not delais:
+        return None
+    from datetime import timedelta
+    return date_commande + timedelta(days=max(delais))
+
+
+def bcf_en_retard(bon_commande, *, a_la_date=None):
+    """XPUR7 — vrai si un BCF ENVOYE est en retard : la date prévue/confirmée
+    est dépassée SANS réception complète. Jamais vrai pour un BROUILLON/
+    ANNULE/RECU (comportement historique préservé)."""
+    from django.utils import timezone
+    from .models import BonCommandeFournisseur
+    if bon_commande.statut != BonCommandeFournisseur.Statut.ENVOYE:
+        return False
+    ref_date = (bon_commande.date_confirmee_fournisseur
+                or bon_commande.date_livraison_prevue)
+    if not ref_date:
+        return False
+    today = a_la_date or timezone.now().date()
+    return today > ref_date and not bon_commande.est_entierement_recu
+
+
+def bcf_en_retard_list(company, *, a_la_date=None):
+    """XPUR7 — liste des BCF ENVOYE en retard de la société (filtrable liste
+    « BCF en retard »). LECTURE SEULE."""
+    from .models import BonCommandeFournisseur
+    qs = BonCommandeFournisseur.objects.filter(
+        company=company,
+        statut=BonCommandeFournisseur.Statut.ENVOYE,
+    ).select_related('fournisseur').prefetch_related('lignes')
+    return [bc for bc in qs if bcf_en_retard(bc, a_la_date=a_la_date)]
+
+
+def notify_bcf_en_retard(company):
+    """XPUR7 — notifie les responsables/admins des BCF ENVOYE en retard.
+    Best-effort : une erreur de notification n'interrompt jamais l'appelant.
+    Renvoie le nombre de BCF notifiés."""
+    en_retard = bcf_en_retard_list(company)
+    count = 0
+    for bc in en_retard:
+        try:
+            from apps.notifications.services import notify_many
+            from apps.notifications.models import EventType
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            recipients = User.objects.filter(
+                company=company, is_active=True,
+                role_legacy__in=['responsable', 'admin'])
+            notify_many(
+                recipients, EventType.BCF_LATE,
+                title=f'BCF en retard ({bc.reference})',
+                body=(f'{bc.reference} chez {bc.fournisseur.nom} est en '
+                      f'retard de livraison.'),
+                company=company)
+            count += 1
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning('notify_bcf_en_retard: échec pour BCF %s', bc.pk)
+    return count
+
+
+def otd_stats(company, fournisseur):
+    """XPUR7 — OTD (On-Time Delivery) promis-vs-reçu pour un fournisseur :
+    écart moyen en jours (positif = en retard) + % de BCF à l'heure. Compare
+    la date CONFIRMÉE (ou prévue si pas de confirmation) à la date de la
+    première réception CONFIRMÉE du BCF. INTERNE, LECTURE SEULE."""
+    from .models import BonCommandeFournisseur
+    bons = (BonCommandeFournisseur.objects
+            .filter(company=company, fournisseur=fournisseur)
+            .exclude(statut=BonCommandeFournisseur.Statut.ANNULE)
+            .prefetch_related('receptions'))
+    ecarts = []
+    for bc in bons:
+        ref_date = bc.date_confirmee_fournisseur or bc.date_livraison_prevue
+        if not ref_date:
+            continue
+        premiere_reception = None
+        for rec in bc.receptions.filter(statut='confirme').order_by(
+                'date_reception'):
+            if rec.date_reception:
+                premiere_reception = rec.date_reception
+                break
+        if premiere_reception is None:
+            continue
+        ecarts.append((premiere_reception - ref_date).days)
+    if not ecarts:
+        return {'otd_ecart_moyen_jours': None, 'otd_a_lheure_pct': None}
+    a_lheure = sum(1 for e in ecarts if e <= 0)
+    return {
+        'otd_ecart_moyen_jours': round(sum(ecarts) / len(ecarts), 1),
+        'otd_a_lheure_pct': round(a_lheure / len(ecarts) * 100, 1),
+    }

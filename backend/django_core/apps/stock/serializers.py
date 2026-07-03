@@ -410,7 +410,7 @@ class PrixFournisseurSerializer(serializers.ModelSerializer):
         model = PrixFournisseur
         fields = [
             'id', 'produit', 'produit_nom', 'fournisseur', 'fournisseur_nom',
-            'prix_achat', 'date_dernier_achat',
+            'prix_achat', 'date_dernier_achat', 'delai_livraison_jours',
         ]
         # company posé côté serveur.
 
@@ -457,13 +457,18 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'reference', 'fournisseur', 'fournisseur_nom', 'statut',
             'statut_display', 'date_commande', 'note', 'devise',
-            'taux_change', 'created_by',
+            'taux_change', 'date_livraison_prevue',
+            'date_confirmee_fournisseur', 'numero_confirmation_fournisseur',
+            'created_by',
             'created_by_username', 'date_creation', 'date_mise_a_jour',
             'lignes', 'total_achat', 'est_entierement_recu',
         ]
-        # company + reference + created_by sont posés côté serveur.
+        # company + reference + created_by sont posés côté serveur. La date
+        # confirmée/numéro d'accusé n'est modifiable QUE via l'action
+        # `confirmer` (XPUR7) — jamais en écriture libre sur le document.
         read_only_fields = [
             'reference', 'created_by', 'date_creation', 'date_mise_a_jour',
+            'date_confirmee_fournisseur', 'numero_confirmation_fournisseur',
         ]
 
     def validate_lignes(self, value):
@@ -491,11 +496,22 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
                     {'lignes': 'Produit hors de votre entreprise.'})
 
     def create(self, validated_data):
-        from .services import apply_devise_ligne_bcf
+        from .services import apply_devise_ligne_bcf, compute_date_livraison_prevue
         lignes_data = validated_data.pop('lignes')
         self._validate_company_produits(lignes_data)
         devise = validated_data.get('devise')
         taux = validated_data.get('taux_change')
+        # XPUR7 — pré-calcule date_livraison_prevue QUAND elle n'est pas
+        # explicitement fournie et qu'un délai est connu (reste modifiable
+        # ensuite). No-op sinon (comportement historique).
+        if not validated_data.get('date_livraison_prevue'):
+            request = self.context.get('request')
+            company = getattr(getattr(request, 'user', None), 'company', None)
+            derived = compute_date_livraison_prevue(
+                company, validated_data.get('fournisseur'),
+                validated_data.get('date_commande'), lignes_data)
+            if derived:
+                validated_data['date_livraison_prevue'] = derived
         bon = BonCommandeFournisseur.objects.create(**validated_data)
         for ligne in lignes_data:
             apply_devise_ligne_bcf(ligne, devise, taux)
