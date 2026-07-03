@@ -123,6 +123,19 @@ class FactureViewSet(viewsets.ModelViewSet):
                 getattr(CompanyProfile.get(company=company), 'devise_defaut', '')
                 or 'MAD')
 
+        # XFAC12 — escompte : si le corps n'en fournit pas, proposer les
+        # défauts société (surchargeables — un devis explicite dans le corps
+        # reste prioritaire). NULL/absent des deux côtés = comportement actuel
+        # inchangé (aucun escompte).
+        from apps.parametres.models import CompanyProfile
+        profile = CompanyProfile.get(company=company)
+        if 'escompte_pct' not in serializer.validated_data and \
+                getattr(profile, 'escompte_pct_defaut', None) is not None:
+            save_kwargs['escompte_pct'] = profile.escompte_pct_defaut
+        if 'escompte_jours' not in serializer.validated_data and \
+                getattr(profile, 'escompte_jours_defaut', None) is not None:
+            save_kwargs['escompte_jours'] = profile.escompte_jours_defaut
+
         create_numbered(
             Facture, company, 'facture',
             lambda ref: serializer.save(reference=ref, **save_kwargs),
@@ -393,6 +406,20 @@ class FactureViewSet(viewsets.ModelViewSet):
             # à payer (TTC − déjà payé − avoirs). Tolérance d'un centime pour
             # les arrondis ; un montant égal au reste passe (solde la facture).
             reste = locked.montant_du
+            # XFAC12 — escompte pour règlement anticipé : si la fenêtre est
+            # atteinte (date_paiement <= émission + escompte_jours) ET que le
+            # montant réglé correspond au NET après escompte (reste − escompte,
+            # tolérance 1 centime), l'escompte se calcule automatiquement et
+            # SOLDE la facture avec le règlement — jamais hors fenêtre (plein
+            # tarif reste dû, comportement actuel inchangé).
+            date_paiement = serializer.validated_data.get('date_paiement')
+            escompte_montant = Decimal('0')
+            if locked.escompte_applicable(date_paiement):
+                escompte_potentiel = locked.calcul_escompte(reste, date_paiement)
+                net_attendu = reste - escompte_potentiel
+                if abs(montant - net_attendu) <= Decimal('0.01'):
+                    escompte_montant = escompte_potentiel
+                    reste = net_attendu
             if montant - reste > Decimal('0.01'):
                 return Response(
                     {'detail': (
@@ -405,6 +432,7 @@ class FactureViewSet(viewsets.ModelViewSet):
                 facture=locked,
                 company=locked.company,
                 created_by=request.user,
+                escompte_montant=escompte_montant,
             )
             # Chatter facture : trace l'encaissement (acteur côté serveur,
             # jamais lu du corps de la requête).

@@ -401,7 +401,10 @@ class PaiementSerializer(serializers.ModelSerializer):
         model = Paiement
         fields = '__all__'
         # company/created_by forcés côté serveur — jamais depuis le corps.
-        read_only_fields = ['company', 'created_by', 'date_creation', 'facture']
+        # escompte_montant (XFAC12) est calculé côté serveur (fenêtre + net
+        # réglé), jamais accepté du corps de requête.
+        read_only_fields = ['company', 'created_by', 'date_creation', 'facture',
+                            'escompte_montant']
 
 
 class AffectationPaiementSerializer(serializers.ModelSerializer):

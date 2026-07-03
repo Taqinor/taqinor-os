@@ -269,6 +269,18 @@ class CompanyProfile(models.Model):
         help_text="Jours avant échéance pour le rappel de courtoisie "
                   "(0 = désactivé).")
 
+    # ── XFAC12 — escompte pour règlement anticipé (ex. 2/10 net 30) ──
+    # Défauts PROPOSÉS à la création d'une facture (surchargeables par
+    # facture) ; NULL = pas de proposition automatique (comportement actuel
+    # inchangé — la société doit les activer explicitement).
+    escompte_pct_defaut = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text="Taux d'escompte (%) proposé par défaut sur les "
+                  "nouvelles factures.")
+    escompte_jours_defaut = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Délai (jours) proposé par défaut pour l'escompte.")
+
     class Meta:
         verbose_name = 'Profil entreprise'
 

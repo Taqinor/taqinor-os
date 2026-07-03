@@ -373,6 +373,11 @@ def ecriture_pour_paiement(paiement, *, force=False, user=None):
 
     Débit trésorerie (banque/caisse selon le mode), crédit 3421 Clients.
     Idempotent. Renvoie l'écriture, ou None si désactivé/non applicable.
+
+    XFAC12 — quand ``paiement.escompte_montant`` est renseigné (règlement
+    anticipé dans la fenêtre d'escompte), le différentiel part en écriture
+    d'escompte accordé (compte 6386) qui solde le CLIENT au même titre que le
+    règlement — le débit trésorerie reste le montant NET réellement encaissé.
     """
     if not force and not auto_ecritures_actif():
         return None
@@ -391,16 +396,23 @@ def ecriture_pour_paiement(paiement, *, force=False, user=None):
         compte_treso = comptes['banque']
         journal = _journal(company, Journal.Type.BANQUE)
     montant = Decimal(paiement.montant)
+    escompte = Decimal(getattr(paiement, 'escompte_montant', None) or 0)
     facture = paiement.facture
     client_id = getattr(facture, 'client_id', None)
     ref = getattr(facture, 'reference', '')
+    total_credit_client = montant + escompte
     lignes = [
         {'compte': compte_treso, 'debit': montant, 'credit': Decimal('0'),
          'libelle': f'Encaissement {ref}'},
-        {'compte': comptes['clients'], 'debit': Decimal('0'), 'credit': montant,
-         'libelle': f'Règlement {ref}',
+        {'compte': comptes['clients'], 'debit': Decimal('0'),
+         'credit': total_credit_client, 'libelle': f'Règlement {ref}',
          'tiers_type': 'client', 'tiers_id': client_id},
     ]
+    if escompte:
+        compte_escompte = _assurer_compte(company, '6386')
+        lignes.append({
+            'compte': compte_escompte, 'debit': escompte, 'credit': Decimal('0'),
+            'libelle': f'Escompte accordé {ref}'})
     return creer_ecriture(
         company, journal, paiement.date_paiement,
         f'Encaissement facture {ref}', lignes,

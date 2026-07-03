@@ -627,6 +627,19 @@ class Facture(models.Model):
     # pose aussi cette date automatiquement (voir PromessePaiement).
     exclu_relances_jusquau = models.DateField(null=True, blank=True)
 
+    # XFAC12 — escompte pour règlement anticipé (ex. 2/10 net 30). Les deux
+    # champs sont nullable : NULL/absent = comportement actuel inchangé
+    # (aucun escompte). Proposés depuis un réglage société (surchargeables
+    # par facture) à la création côté serializer/vue — le modèle reste
+    # purement additif ici.
+    escompte_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text="Taux d'escompte (%) si réglé sous escompte_jours.")
+    escompte_jours = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Nombre de jours depuis l'émission pour bénéficier de "
+                  "l'escompte.")
+
     # ── Statut de télédéclaration DGI (N39) — purement INFORMATIF, posé à la
     # main. Prépare le modèle de données pour un futur flux DGI sans aucun
     # appel externe aujourd'hui. Défaut « Non soumise » = comportement actuel.
@@ -747,12 +760,20 @@ class Facture(models.Model):
         reçues par cette facture : une avance non affectée (``facture`` vide)
         n'entre dans ``montant_paye`` d'aucune facture tant qu'elle n'est pas
         ventilée. Comportement historique inchangé pour un paiement classique
-        (posé directement sur ``facture``, jamais ventilé)."""
+        (posé directement sur ``facture``, jamais ventilé).
+
+        XFAC12 — inclut aussi les escomptes automatiquement appliqués
+        (``Paiement.escompte_montant``) : le règlement net + l'escompte
+        SOLDENT ensemble la facture, exactement comme montant + retenue
+        (XFAC4). Sans escompte (0/NULL) → comportement inchangé."""
         from decimal import Decimal
         direct = sum((p.montant for p in self.paiements.all()), Decimal('0'))
+        escomptes = sum(
+            (p.escompte_montant or Decimal('0') for p in self.paiements.all()),
+            Decimal('0'))
         via_affectation = sum(
             (a.montant for a in self.affectations_paiement.all()), Decimal('0'))
-        return direct + via_affectation
+        return direct + escomptes + via_affectation
 
     @property
     def avoirs_total(self):
@@ -878,6 +899,44 @@ class Facture(models.Model):
 
         return manquantes
 
+    @property
+    def escompte_mention(self):
+        """XFAC12 — mention imprimable de l'escompte (« Escompte X % si
+        règlement sous N jours, soit Y MAD »), ou ``None`` si non configuré."""
+        if not self.escompte_pct or not self.escompte_jours:
+            return None
+        from decimal import Decimal
+        montant = (
+            self.total_ttc * Decimal(self.escompte_pct) / Decimal('100')
+        ).quantize(Decimal('0.01'))
+        return {
+            'pct': self.escompte_pct, 'jours': self.escompte_jours,
+            'montant': montant,
+        }
+
+    def escompte_applicable(self, date_paiement):
+        """XFAC12 — True si ``date_paiement`` tombe dans la fenêtre d'escompte
+        (émission + escompte_jours inclus). Sans escompte configuré ou sans
+        date d'émission/paiement → False (comportement actuel inchangé)."""
+        if not self.escompte_pct or not self.escompte_jours:
+            return False
+        if not self.date_emission or not date_paiement:
+            return False
+        from datetime import timedelta
+        limite = self.date_emission + timedelta(days=self.escompte_jours)
+        return date_paiement <= limite
+
+    def calcul_escompte(self, montant, date_paiement):
+        """XFAC12 — montant de l'escompte applicable à un règlement de
+        ``montant`` fait le ``date_paiement``, dans la fenêtre. Hors fenêtre
+        (ou non configuré) → 0 (comportement actuel inchangé)."""
+        from decimal import Decimal
+        if not self.escompte_applicable(date_paiement):
+            return Decimal('0.00')
+        return (
+            Decimal(montant) * Decimal(self.escompte_pct) / Decimal('100')
+        ).quantize(Decimal('0.01'))
+
 
 class LigneFacture(models.Model):
     facture = models.ForeignKey(
@@ -990,6 +1049,11 @@ class Paiement(models.Model):
     )
     reference = models.CharField(max_length=120, blank=True, null=True)
     note = models.TextField(blank=True, null=True)
+    # XFAC12 — escompte AUTOMATIQUEMENT appliqué à ce règlement (fenêtre
+    # atteinte). 0/NULL = comportement actuel inchangé (aucun escompte, ou
+    # règlement hors fenêtre).
+    escompte_montant = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True, default=0)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
