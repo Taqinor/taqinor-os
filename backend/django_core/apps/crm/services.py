@@ -1023,11 +1023,47 @@ def noter_devis_ouvert(devis_reference: str, lead) -> None:
     public. Best-effort : les appelants catchent toute exception.
     ``lead`` doit être un objet Lead avec company_id ; ``devis_reference`` est
     la référence textuelle du devis (pas d'import ventes ici).
+
+    YLEAD10 — après la note, avance aussi l'étape du lead vers FOLLOW_UP
+    (fast-lane comportemental : une forte intention — l'ouverture de la
+    proposition — sort le lead du parking). Distinct de QJ5 (re-stage sur
+    staleness TEMPORELLE) : ici le déclencheur est un COMPORTEMENT observé.
     """
     LeadActivity.objects.create(
         company=lead.company, lead=lead, user=None,
         kind=LeadActivity.Kind.NOTE,
         body=f"Le client a ouvert le devis {devis_reference}")
+    avancer_stage_sur_ouverture_devis(lead)
+
+
+# ── YLEAD10 — Fast-lane comportemental : FOLLOW_UP à l'ouverture du devis ────
+
+def avancer_stage_sur_ouverture_devis(lead) -> bool:
+    """YLEAD10 — Avance le lead à FOLLOW_UP (STAGES.py) quand le client ouvre
+    sa proposition, comme les autres avances de funnel automatiques
+    (``avancer_stage_pour_devis``) : ne recule jamais, ignore les leads
+    perdus et ceux déjà ≥ FOLLOW_UP (donc un lead déjà SIGNED/COLD-au-delà
+    ne bouge pas). Idempotent : une seconde ouverture ne réécrit rien de
+    plus (le rang est déjà atteint). Renvoie True si l'avance a eu lieu.
+    """
+    if lead is None or lead.perdu:
+        return False
+    cible = stages.FOLLOW_UP
+    if _rang_funnel(lead.stage) >= _rang_funnel(cible):
+        return False  # déjà à FOLLOW_UP ou plus avancé (jamais en arrière).
+
+    ancien_stage = lead.stage
+    lead.stage = cible
+    lead.save(update_fields=['stage'])
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.MODIFICATION,
+        field='stage', field_label='Étape',
+        old_value=stages.STAGE_LABELS[ancien_stage],
+        new_value=stages.STAGE_LABELS[cible],
+        body='auto — devis ouvert par le client',
+    )
+    return True
 
 
 # ── QJ2 — Speed-to-lead : notifications vendeur avec lien wa.me ──────────────
