@@ -1,4 +1,5 @@
-"""Services XKB2/XKB3 — demandes d'approbation ad-hoc + délégation.
+"""Services XKB2/XKB3/ZCTR7 — demandes d'approbation ad-hoc + délégation +
+options de catégorie (min approbations / PJ obligatoire / champs).
 
 Toute la logique de validation/soumission des ``ApprovalRequest`` vit ici
 pour que les vues restent minces. Reste à l'intérieur de ``apps.automation`` ;
@@ -8,7 +9,7 @@ cross-app) directement pour les pièces jointes génériques.
 from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
 
-from .models import ApprovalDelegation, ApprovalRequest
+from .models import ApprovalDecision, ApprovalDelegation, ApprovalRequest
 
 
 class ApprovalError(Exception):
@@ -45,14 +46,25 @@ def attach_file(request_obj, file, *, user, company):
     )
 
 
-def submit_request(*, request_type, demandeur, company, payload):
+def submit_request(
+        *, request_type, demandeur, company, payload, has_attachment=False):
     """Valide (champs requis du type) puis crée une ``ApprovalRequest``.
 
-    Lève ``ApprovalError`` (message FR) si un champ requis manque.
+    ZCTR7 — quand ``request_type.piece_jointe_obligatoire`` est vrai, la
+    soumission est refusée si ``has_attachment`` est faux (l'appelant
+    signale ainsi qu'un fichier a été fourni dans la MÊME requête multipart).
+    Rétrocompat : ``piece_jointe_obligatoire=False`` (défaut XKB2) ne change
+    rien.
+
+    Lève ``ApprovalError`` (message FR) si un champ requis manque ou si la
+    PJ obligatoire est absente.
     """
     errors = request_type.validate_payload(payload)
     if errors:
         raise ApprovalError(' '.join(errors))
+    if request_type.piece_jointe_obligatoire and not has_attachment:
+        raise ApprovalError(
+            'Une pièce jointe est requise pour ce type de demande.')
     return ApprovalRequest.objects.create(
         company=company,
         request_type=request_type,
@@ -86,14 +98,28 @@ def visible_demandeur_ids_for(user, *, at=None):
     return ids
 
 
+def _distinct_favorable_approvers(req):
+    return (
+        req.decisions
+        .filter(decision=ApprovalDecision.Decision.APPROVE)
+        .values('decided_by_id').distinct().count()
+    )
+
+
 def decide_request(req, *, decider, approve, note=''):
-    """Approuve/rejette une demande XKB2, en posant automatiquement la
-    mention « au nom de » (XKB3) si ``decider`` agit comme suppléant actif
-    du demandeur au moment de la décision. Hors plage de délégation, rien
-    ne change (comportement XKB2 identique).
+    """Enregistre UNE décision d'approbateur (ZCTR7 : ``ApprovalDecision``),
+    en posant automatiquement la mention « au nom de » (XKB3) si ``decider``
+    agit comme suppléant actif du demandeur au moment de la décision. Hors
+    plage de délégation, rien ne change (comportement XKB2 identique).
+
+    ZCTR7 — la demande ne passe APPROVED qu'après ``min_approbations``
+    décisions FAVORABLES d'approbateurs DISTINCTS (rétrocompat : min=1 = un
+    seul « approve » suffit, comportement XKB2 identique). Un REJECT clôt
+    immédiatement la demande (une décision défavorable suffit).
 
     YEVNT11 — SOD : le demandeur ne peut jamais approuver sa propre demande
-    (override admin audité, journalisé par ``engine``)."""
+    (override admin audité, journalisé par ``engine``). La garde SOD
+    s'applique à CHAQUE décision (y compris la 2e/3e d'un seuil > 1)."""
     if req.status != ApprovalRequest.Status.PENDING:
         raise ApprovalError('Décision déjà prise.')
 
@@ -104,6 +130,10 @@ def decide_request(req, *, decider, approve, note=''):
         requester=req.demandeur, approver=decider, company=req.company,
         label=f'approval_request#{req.pk}')
 
+    already_decided = req.decisions.filter(decided_by=decider).exists()
+    if already_decided:
+        raise ApprovalError('Vous avez déjà décidé pour cette demande.')
+
     on_behalf_of = None
     demandeur = req.demandeur
     if demandeur is not None and decider.pk != demandeur.pk:
@@ -111,14 +141,35 @@ def decide_request(req, *, decider, approve, note=''):
         if deleg is not None and deleg.suppleant_id == decider.pk:
             on_behalf_of = demandeur
 
-    req.status = (
-        ApprovalRequest.Status.APPROVED if approve
-        else ApprovalRequest.Status.REJECTED)
-    req.decided_by = decider
-    req.decided_at = timezone.now()
-    req.decision_note = note or ''
-    req.decided_on_behalf_of = on_behalf_of
-    req.save(update_fields=[
-        'status', 'decided_by', 'decided_at', 'decision_note',
-        'decided_on_behalf_of'])
+    ApprovalDecision.objects.create(
+        request=req, decided_by=decider,
+        decision=(ApprovalDecision.Decision.APPROVE if approve
+                  else ApprovalDecision.Decision.REJECT),
+        note=note or '', on_behalf_of=on_behalf_of,
+    )
+
+    if not approve:
+        req.status = ApprovalRequest.Status.REJECTED
+        req.decided_by = decider
+        req.decided_at = timezone.now()
+        req.decision_note = note or ''
+        req.decided_on_behalf_of = on_behalf_of
+        req.save(update_fields=[
+            'status', 'decided_by', 'decided_at', 'decision_note',
+            'decided_on_behalf_of'])
+        return req
+
+    min_needed = max(1, req.request_type.min_approbations or 1)
+    if _distinct_favorable_approvers(req) >= min_needed:
+        req.status = ApprovalRequest.Status.APPROVED
+        req.decided_by = decider
+        req.decided_at = timezone.now()
+        req.decision_note = note or ''
+        req.decided_on_behalf_of = on_behalf_of
+        req.save(update_fields=[
+            'status', 'decided_by', 'decided_at', 'decision_note',
+            'decided_on_behalf_of'])
+    # Sinon : décision favorable enregistrée mais le seuil n'est pas encore
+    # atteint — la demande reste PENDING (visible pour les autres
+    # approbateurs), sans lever d'erreur (l'appelant voit sa décision prise).
     return req

@@ -270,15 +270,16 @@ class ApprovalRequestViewSet(TenantMixin, viewsets.ModelViewSet):
         payload = request.data.get('payload') or {}
         if hasattr(payload, 'dict'):  # QueryDict (multipart) -> dict
             payload = payload.dict()
+        file = request.FILES.get('file')
         try:
             req = services.submit_request(
                 request_type=req_type, demandeur=request.user,
-                company=company, payload=payload)
+                company=company, payload=payload,
+                has_attachment=bool(file))
         except services.ApprovalError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
-        file = request.FILES.get('file')
         if file:
             try:
                 services.attach_file(

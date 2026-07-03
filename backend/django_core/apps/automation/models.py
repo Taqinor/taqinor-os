@@ -334,6 +334,18 @@ class ApprovalRequestType(models.Model):
         max_length=20, choices=ApproverTier.choices,
         default=ApproverTier.ADMIN)
 
+    # ZCTR7 — nombre minimum d'approbations FAVORABLES distinctes avant que la
+    # demande passe APPROVED. Rétrocompat : 1 = comportement XKB2 inchangé
+    # (une seule décision suffit).
+    min_approbations = models.PositiveIntegerField(default=1)
+    # ZCTR7 — la soumission est refusée (400 FR) tant qu'aucune pièce jointe
+    # n'est rattachée. Rétrocompat : False = comportement XKB2 inchangé.
+    piece_jointe_obligatoire = models.BooleanField(default=False)
+    # ZCTR7 — config granulaire par champ : {'montant': 'requis'|'optionnel'|
+    # 'masque', ...}. Vide = comportement XKB2 inchangé (seuls champs_requis/
+    # champs_optionnels comptent).
+    champs_config = models.JSONField(default=dict, blank=True)
+
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
 
@@ -348,20 +360,33 @@ class ApprovalRequestType(models.Model):
     def __str__(self):
         return self.nom
 
+    def _label_for(self, champ):
+        return ApprovalFieldKey(champ).label \
+            if champ in ApprovalFieldKey.values else champ
+
+    def required_fields(self):
+        """Union de ``champs_requis`` (XKB2) et des champs marqués « requis »
+        dans ``champs_config`` (ZCTR7) — les deux mécanismes coexistent."""
+        requis = set(self.champs_requis or [])
+        for champ, mode in (self.champs_config or {}).items():
+            if mode == 'requis':
+                requis.add(champ)
+        return requis
+
     def validate_payload(self, payload):
         """Renvoie une liste d'erreurs FR (vide = payload valide).
 
-        Un champ listé dans ``champs_requis`` doit être présent et non vide
-        dans ``payload`` (dict soumis par le demandeur).
+        Un champ listé dans ``champs_requis`` OU marqué « requis » dans
+        ``champs_config`` (ZCTR7) doit être présent et non vide dans
+        ``payload`` (dict soumis par le demandeur).
         """
         errors = []
         payload = payload or {}
-        for champ in (self.champs_requis or []):
+        for champ in self.required_fields():
             value = payload.get(champ)
             if value in (None, '', [], {}):
-                label = ApprovalFieldKey(champ).label \
-                    if champ in ApprovalFieldKey.values else champ
-                errors.append(f'Le champ « {label} » est requis.')
+                errors.append(
+                    f'Le champ « {self._label_for(champ)} » est requis.')
         return errors
 
 
@@ -417,6 +442,45 @@ class ApprovalRequest(models.Model):
 
     def __str__(self):
         return f'{self.request_type_id}:{self.status}'
+
+
+class ApprovalDecision(models.Model):
+    """UNE décision d'approbateur sur une ``ApprovalRequest`` (ZCTR7).
+
+    Distinct de ``ApprovalRequest.decided_by`` (qui reste le DERNIER
+    décideur / celui qui a clos la demande, pour compat XKB2) : ici on
+    trace CHAQUE décision favorable/défavorable, ce qui permet le seuil
+    ``min_approbations`` (N approbateurs DISTINCTS avant clôture).
+    """
+
+    class Decision(models.TextChoices):
+        APPROVE = 'approve', 'Favorable'
+        REJECT = 'reject', 'Défavorable'
+
+    request = models.ForeignKey(
+        ApprovalRequest, on_delete=models.CASCADE, related_name='decisions')
+    decided_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='approval_decisions')
+    decision = models.CharField(max_length=10, choices=Decision.choices)
+    note = models.CharField(max_length=255, blank=True, default='')
+    # XKB3 — décision prise « au nom de » ce délégant (délégation active).
+    on_behalf_of = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='approval_decisions_deleguees')
+
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Décision d'approbation"
+        verbose_name_plural = "Décisions d'approbation"
+        ordering = ['-date_creation', '-id']
+        indexes = [
+            models.Index(fields=['request', 'decision']),
+        ]
+
+    def __str__(self):
+        return f'{self.request_id}:{self.decided_by_id}:{self.decision}'
 
 
 # ── XKB3 — Délégation d'approbation (suppléant) ──────────────────────────────

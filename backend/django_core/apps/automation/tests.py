@@ -23,9 +23,9 @@ from apps.ventes.models import Devis, Facture
 
 from apps.automation import engine
 from apps.automation.models import (
-    ActionType, ApprovalDelegation, ApprovalRequest, ApprovalRequestType,
-    AutomationApproval, AutomationRule, AutomationRun, CanalMessage,
-    IncomingWebhookTrigger, ModeleMessage, TriggerType,
+    ActionType, ApprovalDecision, ApprovalDelegation, ApprovalRequest,
+    ApprovalRequestType, AutomationApproval, AutomationRule, AutomationRun,
+    CanalMessage, IncomingWebhookTrigger, ModeleMessage, TriggerType,
 )
 
 User = get_user_model()
@@ -1308,3 +1308,125 @@ class SodGuardTests(TestCase):
         self.assertTrue(AuditLog.objects.filter(
             company=self.co, action=AuditLog.Action.SECURITY_ALERT,
             detail__icontains='SOD').exists())
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ZCTR7 — Options de catégorie d'approbation (min approbations / PJ
+# obligatoire / champs requis granulaires).
+
+class ZCtr7CategoryOptionsTests(TestCase):
+    def setUp(self):
+        self.co = make_company('zctr7-a', 'ZCTR7 A')
+        self.employe = make_user(self.co, 'zctr7-emp', 'normal')
+        self.admin1 = make_user(self.co, 'zctr7-admin1', 'admin')
+        self.admin2 = make_user(self.co, 'zctr7-admin2', 'admin')
+
+    def test_default_behaviour_unchanged_min_1_no_pj(self):
+        """Rétrocompat : min=1, PJ non obligatoire, config vide = XKB2."""
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Note de frais', enabled=True)
+        self.assertEqual(req_type.min_approbations, 1)
+        self.assertFalse(req_type.piece_jointe_obligatoire)
+        self.assertEqual(req_type.champs_config, {})
+
+        req = ApprovalRequest.objects.create(
+            company=self.co, request_type=req_type,
+            demandeur=self.employe, payload={})
+        api = auth(self.admin1)
+        resp = api.post(
+            f'/api/django/automation/approval-requests/{req.pk}/approve/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        req.refresh_from_db()
+        self.assertEqual(req.status, ApprovalRequest.Status.APPROVED)
+
+    def test_min_2_requires_two_distinct_approvers(self):
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Achat > 5000 MAD', enabled=True,
+            min_approbations=2)
+        req = ApprovalRequest.objects.create(
+            company=self.co, request_type=req_type,
+            demandeur=self.employe, payload={})
+
+        api1 = auth(self.admin1)
+        resp1 = api1.post(
+            f'/api/django/automation/approval-requests/{req.pk}/approve/',
+            {}, format='json')
+        self.assertEqual(resp1.status_code, 200, resp1.data)
+        req.refresh_from_db()
+        # Une seule approbation favorable : toujours PENDING (seuil non atteint).
+        self.assertEqual(req.status, ApprovalRequest.Status.PENDING)
+        self.assertEqual(
+            ApprovalDecision.objects.filter(
+                request=req,
+                decision=ApprovalDecision.Decision.APPROVE).count(), 1)
+
+        api2 = auth(self.admin2)
+        resp2 = api2.post(
+            f'/api/django/automation/approval-requests/{req.pk}/approve/',
+            {}, format='json')
+        self.assertEqual(resp2.status_code, 200, resp2.data)
+        req.refresh_from_db()
+        self.assertEqual(req.status, ApprovalRequest.Status.APPROVED)
+
+    def test_same_approver_cannot_decide_twice(self):
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Achat', enabled=True, min_approbations=2)
+        req = ApprovalRequest.objects.create(
+            company=self.co, request_type=req_type,
+            demandeur=self.employe, payload={})
+        api1 = auth(self.admin1)
+        api1.post(
+            f'/api/django/automation/approval-requests/{req.pk}/approve/',
+            {}, format='json')
+        resp_again = api1.post(
+            f'/api/django/automation/approval-requests/{req.pk}/approve/',
+            {}, format='json')
+        self.assertEqual(resp_again.status_code, 400)
+
+    def test_mandatory_attachment_blocks_submission_without_file(self):
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Note de frais avec justif', enabled=True,
+            piece_jointe_obligatoire=True)
+        api = auth(self.employe)
+        resp = api.post('/api/django/automation/approval-requests/', {
+            'request_type': req_type.pk, 'payload': {},
+        }, format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(ApprovalRequest.objects.count(), 0)
+
+    def test_mandatory_attachment_allows_submission_with_file(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Note de frais avec justif', enabled=True,
+            piece_jointe_obligatoire=True)
+        pdf_bytes = b'%PDF-1.4\n%mock pdf content\n'
+        upload = SimpleUploadedFile(
+            'justif.pdf', pdf_bytes, content_type='application/pdf')
+        api = auth(self.employe)
+        resp = api.post('/api/django/automation/approval-requests/', {
+            'request_type': req_type.pk, 'file': upload,
+        }, format='multipart')
+        self.assertEqual(resp.status_code, 201, resp.data)
+
+    def test_champs_config_required_field_rejected_when_empty(self):
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Déplacement', enabled=True,
+            champs_config={'montant': 'requis', 'reference': 'optionnel'})
+        api = auth(self.employe)
+        resp = api.post('/api/django/automation/approval-requests/', {
+            'request_type': req_type.pk,
+            'payload': {'reference': 'REF-1'},
+        }, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_champs_config_required_field_accepted_when_filled(self):
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Déplacement', enabled=True,
+            champs_config={'montant': 'requis'})
+        api = auth(self.employe)
+        resp = api.post('/api/django/automation/approval-requests/', {
+            'request_type': req_type.pk,
+            'payload': {'montant': '250'},
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)

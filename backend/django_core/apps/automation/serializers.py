@@ -69,6 +69,8 @@ class ApprovalRequestTypeSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'nom', 'description', 'enabled',
             'champs_requis', 'champs_optionnels', 'palier_approbateur',
+            # ZCTR7 — min approbations / PJ obligatoire / config par champ.
+            'min_approbations', 'piece_jointe_obligatoire', 'champs_config',
             'date_creation', 'date_modification',
         ]
         read_only_fields = ['date_creation', 'date_modification']
@@ -87,6 +89,11 @@ class ApprovalRequestSerializer(serializers.ModelSerializer):
     # suppléant « au nom de » ce délégant (délégation active à l'instant T).
     decided_on_behalf_of_nom = serializers.CharField(
         source='decided_on_behalf_of.username', read_only=True, default=None)
+    # ZCTR7 — nombre de décisions favorables DISTINCTES déjà enregistrées,
+    # et seuil requis (pour afficher « 1/2 approbations » côté frontend).
+    approvals_count = serializers.SerializerMethodField()
+    min_approbations = serializers.IntegerField(
+        source='request_type.min_approbations', read_only=True, default=1)
 
     class Meta:
         model = ApprovalRequest
@@ -95,6 +102,7 @@ class ApprovalRequestSerializer(serializers.ModelSerializer):
             'demandeur_nom', 'payload', 'status', 'status_display',
             'decided_by', 'decided_by_nom', 'decided_at', 'decision_note',
             'decided_on_behalf_of', 'decided_on_behalf_of_nom',
+            'approvals_count', 'min_approbations',
             'date_creation',
         ]
         # `company` + `demandeur` posés côté serveur ; le statut/décision ne
@@ -104,8 +112,15 @@ class ApprovalRequestSerializer(serializers.ModelSerializer):
             'id', 'request_type_nom', 'demandeur', 'demandeur_nom', 'status',
             'status_display', 'decided_by', 'decided_by_nom', 'decided_at',
             'decision_note', 'decided_on_behalf_of',
-            'decided_on_behalf_of_nom', 'date_creation',
+            'decided_on_behalf_of_nom', 'approvals_count', 'min_approbations',
+            'date_creation',
         ]
+
+    def get_approvals_count(self, obj):
+        from .models import ApprovalDecision
+        return obj.decisions.filter(
+            decision=ApprovalDecision.Decision.APPROVE,
+        ).values('decided_by_id').distinct().count()
 
 
 class ApprovalDelegationSerializer(serializers.ModelSerializer):
