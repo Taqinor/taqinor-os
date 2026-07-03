@@ -12,6 +12,8 @@ import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import FounderPortrait from '../../components/FounderPortrait.astro';
+import InstallCounter from '../../components/InstallCounter.astro';
+import CertLogoRow from '../../components/CertLogoRow.astro';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
 import { REALISATIONS } from '../../lib/realisations';
@@ -82,6 +84,14 @@ const etapes = [
         الصفحة الرئيسية (يحلّ محلّ بطاقة <figure> القديمة المكرَّرة في هذا
         الهيرو؛ نفس الوقائع، مصدر واحد). */}
     <FounderPortrait />
+
+    {/* W280 — InstallCounter: أرقام إنجازات حقيقية، مُشتقة من realisations.ts
+        (لا رقم مُختلَق). آمن بدون بيانات: لا يعرض شيئاً إن كانت REALISATIONS فارغة. */}
+    <section class="px-4 pb-4 sm:pb-6">
+      <div class="mx-auto max-w-3xl">
+        <InstallCounter />
+      </div>
+    </section>
 
     <!-- المؤسّس — معاييره، لا سيرة ذاتية -->
     <div class="v2-seam" aria-hidden="true"></div>
@@ -170,6 +180,14 @@ const etapes = [
             <dt class="tech-label mt-2 text-lune-faint">تصريح وتسوية، من البداية إلى النهاية</dt>
           </div>
         </dl>
+      </div>
+    </section>
+
+    {/* W280 — CertLogoRow: معايير/ضمانات منشورة أصلاً في مكان آخر
+        (garanties.astro)، آمن بدون بيانات (لا شعار مُختلَق). */}
+    <section class="border-y border-white/10 px-4 py-14 sm:py-16">
+      <div class="mx-auto max-w-6xl">
+        <CertLogoRow />
       </div>
     </section>
 

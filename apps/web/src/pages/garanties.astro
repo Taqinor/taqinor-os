@@ -26,6 +26,8 @@ import CtaBand from '../components/CtaBand.astro';
 import StickyCta from '../components/StickyCta.astro';
 import Faq from '../components/Faq.astro';
 import ZelligeDivider from '../components/ZelligeDivider.astro';
+import InstallCounter from '../components/InstallCounter.astro';
+import CertLogoRow from '../components/CertLogoRow.astro';
 import { WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink } from '../lib/whatsapp';
 
@@ -137,6 +139,14 @@ const claimSteps = [
       </div>
     </section>
 
+    {/* W280 — InstallCounter : chiffres réels d'installations, dérivés de
+        realisations.ts (aucun nombre fabriqué). No-op-safe. */}
+    <section class="px-4 pb-4 sm:pb-6">
+      <div class="mx-auto max-w-3xl">
+        <InstallCounter />
+      </div>
+    </section>
+
     <!-- Le tableau des garanties -->
     <div class="v2-seam" aria-hidden="true"></div>
     <section class="bg-blanc-azur px-4 pb-20 pt-10 text-encre sm:pb-24">
@@ -156,6 +166,12 @@ const claimSteps = [
           officiels au Maroc. Une garantie ne vaut que si on peut la faire jouer sans rapatrier un
           panneau à l’autre bout du monde — celles-ci s’activent sur place. <a href="/équipement" class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Voir le matériel posé →</a>
         </p>
+
+        {/* W280 — CertLogoRow : normes/garanties déjà publiées ci-dessus,
+            no-op-safe (aucun logo fabriqué). */}
+        <div class="mx-auto mt-10 max-w-xl">
+          <CertLogoRow />
+        </div>
 
         <!-- W331 — « ce qui n'est pas couvert » : lire les exclusions rend une
              garantie PLUS crédible, pas moins. Générique secteur, WG16-pending. -->

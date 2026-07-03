@@ -18,6 +18,8 @@ import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import ZelligeDivider from '../../components/ZelligeDivider.astro';
+import InstallCounter from '../../components/InstallCounter.astro';
+import CertLogoRow from '../../components/CertLogoRow.astro';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
 import { WHATSAPP_LEADS } from '../../lib/nap';
@@ -114,6 +116,14 @@ const claimSteps = [
       </div>
     </section>
 
+    {/* W280 — InstallCounter: real install figures, derived from
+        realisations.ts (no invented number). No-op-safe. */}
+    <section class="px-4 pb-4 sm:pb-6">
+      <div class="mx-auto max-w-3xl">
+        <InstallCounter />
+      </div>
+    </section>
+
     <!-- The warranties table -->
     <div class="v2-seam" aria-hidden="true"></div>
     <section class="bg-blanc-azur px-4 pb-20 pt-10 text-encre sm:pb-24">
@@ -133,6 +143,12 @@ const claimSteps = [
           distributors in Morocco. A warranty is only worth something if you can enforce it without
           shipping a panel to the other side of the world — these activate locally. <a href={L('/équipement')} class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">See the equipment installed →</a>
         </p>
+
+        {/* W280 — CertLogoRow: standards/warranties already published above,
+            no-op-safe (no fabricated logo). */}
+        <div class="mx-auto mt-10 max-w-xl">
+          <CertLogoRow />
+        </div>
 
         <!-- W331 — "what isn't covered": stating exclusions makes a warranty
              MORE credible, not less. Industry-generic, WG16-pending. -->

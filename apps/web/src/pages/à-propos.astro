@@ -16,6 +16,8 @@ import Breadcrumb from '../components/Breadcrumb.astro';
 import CtaBand from '../components/CtaBand.astro';
 import StickyCta from '../components/StickyCta.astro';
 import FounderPortrait from '../components/FounderPortrait.astro';
+import InstallCounter from '../components/InstallCounter.astro';
+import CertLogoRow from '../components/CertLogoRow.astro';
 import { REALISATIONS } from '../lib/realisations';
 import { NAP } from '../lib/nap';
 
@@ -90,6 +92,15 @@ const etapes = [
         partagé avec l'accueil (remplace l'ancien bloc <figure> en doublon
         dans ce héros ; mêmes faits, une seule source). */}
     <FounderPortrait />
+
+    {/* W280 — InstallCounter : chiffres réels d'installations, dérivés de
+        realisations.ts (aucun nombre fabriqué). No-op-safe : ne rend rien si
+        REALISATIONS est vide. */}
+    <section class="px-4 pb-4 sm:pb-6">
+      <div class="mx-auto max-w-3xl">
+        <InstallCounter />
+      </div>
+    </section>
 
     <!-- Le fondateur — ses standards, pas une biographie -->
     <div class="v2-seam" aria-hidden="true"></div>
@@ -186,6 +197,14 @@ const etapes = [
             <dt class="tech-label mt-2 text-lune-faint">Déclaration et régularisation, de bout en bout</dt>
           </div>
         </dl>
+      </div>
+    </section>
+
+    {/* W280 — CertLogoRow : normes/garanties déjà publiées ailleurs (garanties.astro),
+        no-op-safe (aucun logo fabriqué). */}
+    <section class="border-y border-white/10 px-4 py-14 sm:py-16">
+      <div class="mx-auto max-w-6xl">
+        <CertLogoRow />
       </div>
     </section>
 

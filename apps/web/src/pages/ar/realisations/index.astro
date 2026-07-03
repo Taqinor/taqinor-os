@@ -20,6 +20,8 @@ import PhotoCaption from '../../../components/PhotoCaption.astro';
 import VideoChantier from '../../../components/VideoChantier.astro';
 import CtaBand from '../../../components/CtaBand.astro';
 import StickyCta from '../../../components/StickyCta.astro';
+import CertLogoRow from '../../../components/CertLogoRow.astro';
+import BrandStrip from '../../../components/BrandStrip.astro';
 import { REALISATIONS, standardCaption } from '../../../lib/realisations';
 import { caseStudyBySlug } from '../../../lib/caseStudies';
 import { getLocaleFromPath } from '../../../i18n/utils';
@@ -150,6 +152,15 @@ const itemListJsonLd = {
 
     <!-- W281 — فيلم ورشة حقيقي، أسفل معرض ركيزة الإثبات المخصصة -->
     <VideoChantier />
+
+    {/* W280 — CertLogoRow + BrandStrip: معايير منشورة أصلاً في مكان آخر +
+        علامات الصف الأول، آمن بدون بيانات (لا شعار/رقم مُختلَق). */}
+    <section class="border-t border-white/10 px-4 py-14 sm:py-16">
+      <div class="mx-auto max-w-6xl">
+        <CertLogoRow />
+      </div>
+    </section>
+    <BrandStrip />
 
     <CtaBand title="دراسة الحالة المقبلة قد تكون سطحك." href={L('/devis/mon-toit')} />
 
