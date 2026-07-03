@@ -196,8 +196,13 @@ describe("registre de disponibilité & alternates (anti-lien-mort)", () => {
       });
     };
     for (const root of TRANSLATED_PATHS) {
-      expect(srcExists(root, 'en'), `source EN manquante pour ${root}`).toBe(true);
-      expect(srcExists(root, 'ar'), `source AR manquante pour ${root}`).toBe(true);
+      // Chaque page n'affirme QUE les locales qu'elle déclare (W348 :
+      // PARTIAL_TRANSLATED permet une page FR+AR sans EN — ne jamais exiger
+      // un mirror EN qu'elle n'annonce pas, sinon lien mort/incohérence).
+      for (const loc of localesForPath(root)) {
+        if (loc === 'fr') continue; // FR = la page source elle-même
+        expect(srcExists(root, loc), `source ${loc.toUpperCase()} manquante pour ${root}`).toBe(true);
+      }
     }
   });
 });

@@ -171,11 +171,15 @@ describe('W51 — DiagnosticForm + Faq dans le système sombre', () => {
     expect(faq).toContain('application/ld+json');
   });
 
-  it('la carte latérale « dernière installation » est recolorée en navy/or', () => {
-    // Plus de bg-blanc / azur-600 dans l'aside ; surface cine-card + accents brass.
+  it('W249 — l’accueil ne monte plus DiagnosticForm ; la carte « dernière installation » survit hors aside, la capture passe par InstantEstimator', () => {
+    // W249 (entonnoir unique) a retiré le second DiagnosticForm de fin d’accueil
+    // (il doublonnait les deux widgets InstantEstimator déjà présents) ; la
+    // carte navy/or « Dernière installation » reste, mais n’est plus le slot=aside
+    // d’un formulaire. La capture se fait désormais via InstantEstimator (W250).
+    expect(index).not.toMatch(/<DiagnosticForm\b/); // plus monté sur l’accueil
+    expect(index).toContain('InstantEstimator');
     expect(index).toContain('border-t-4 border-t-brass-400');
     expect(index).toContain('Dernière installation livrée');
-    expect(index).toMatch(/slot="aside"[^>]*cine-card/);
   });
 });
 
