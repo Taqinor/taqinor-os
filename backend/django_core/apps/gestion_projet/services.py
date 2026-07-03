@@ -7,7 +7,7 @@ cross-app (on reste dans ``gestion_projet``).
 from datetime import timedelta
 from decimal import Decimal
 
-from django.db import transaction
+from django.db import models, transaction
 
 from .models import (
     BaselinePlanning,
@@ -599,6 +599,172 @@ def reprogrammer_tache(tache, nouvelle_date_debut, nouvelle_date_fin=None):
         t.save(update_fields=['date_debut_prevue', 'date_fin_prevue'])
 
     return [taches[i] for i in ordre_modifies]
+
+
+# ── Situations de travaux — décomptes progressifs BTP (XPRJ4) ───────────────
+class SituationTravauxError(Exception):
+    """Erreur métier sur une situation de travaux."""
+
+
+def prochain_numero_situation(projet):
+    """Numéro de situation SUIVANT pour ce projet (jamais ``count()+1``).
+
+    Verrouille la ligne ``Projet`` (``select_for_update``) le temps du calcul
+    pour sérialiser des créations concurrentes de situations sur le MÊME
+    projet, puis prend le plus haut ``numero`` déjà UTILISÉ + 1 (les trous —
+    situation supprimée — ne créent jamais de collision). Doit être appelé
+    dans une transaction atomique par l'appelant (``creer_situation``).
+    """
+    from .models import Projet, SituationTravaux
+
+    Projet.objects.select_for_update().get(pk=projet.pk)
+    plus_haut = SituationTravaux.objects.filter(
+        projet=projet).aggregate(
+            models.Max('numero'))['numero__max'] or 0
+    return plus_haut + 1
+
+
+@transaction.atomic
+def creer_situation(projet, *, periode, retenue_garantie_pct=None,
+                    contrat_id=None):
+    """Crée une nouvelle ``SituationTravaux`` BROUILLON pour ``projet``.
+
+    Le ``numero`` est posé côté serveur (savepoint + verrou de ligne, jamais
+    ``count()+1`` — voir ``prochain_numero_situation``). ``company`` est
+    TOUJOURS celle du ``projet``. Renvoie la ``SituationTravaux`` créée (sans
+    lignes — ``LigneSituation`` sont ajoutées séparément, voir
+    ``ajouter_ligne_situation``).
+    """
+    from .models import SituationTravaux
+
+    numero = prochain_numero_situation(projet)
+    return SituationTravaux.objects.create(
+        company=projet.company,
+        projet=projet,
+        numero=numero,
+        periode=periode,
+        retenue_garantie_pct=retenue_garantie_pct,
+        contrat_id=contrat_id,
+    )
+
+
+def _situation_precedente_montant_cumule(situation, libelle):
+    """``montant_cumule`` de la ligne de MÊME libellé à la situation N-1.
+
+    0 si ``situation`` est la n°1 du projet, ou si aucune ligne de ce libellé
+    n'existe encore à la situation précédente (nouveau lot introduit en cours
+    de chantier).
+    """
+    from .models import LigneSituation, SituationTravaux
+
+    precedente = SituationTravaux.objects.filter(
+        projet_id=situation.projet_id, numero__lt=situation.numero,
+    ).order_by('-numero').first()
+    if precedente is None:
+        return Decimal('0')
+    ligne_prec = LigneSituation.objects.filter(
+        situation=precedente, libelle=libelle).first()
+    if ligne_prec is None:
+        return Decimal('0')
+    return ligne_prec.montant_cumule or Decimal('0')
+
+
+@transaction.atomic
+def ajouter_ligne_situation(situation, *, libelle, montant_marche_ht,
+                            avancement_cumule_pct):
+    """Ajoute (ou remplace) une ``LigneSituation`` avec montants CALCULÉS.
+
+    ``montant_cumule`` = ``montant_marche_ht`` × ``avancement_cumule_pct`` / 100
+    (arrondi 2 décimales) ; ``montant_cumule_anterieur`` = le ``montant_cumule``
+    de la MÊME ligne (même libellé) à la situation N-1 du projet (0 si absente
+    ou n°1) ; ``montant_periode`` = cumulé − antérieur. Une ``SituationTravaux``
+    déjà VALIDÉE/FACTURÉE ne peut plus recevoir de nouvelle ligne (lève
+    ``SituationTravauxError``).
+    """
+    from .models import LigneSituation, SituationTravaux
+
+    if situation.statut != SituationTravaux.Statut.BROUILLON:
+        raise SituationTravauxError(
+            "Seule une situation en brouillon peut recevoir des lignes.")
+
+    montant_marche_ht = Decimal(montant_marche_ht)
+    avancement_cumule_pct = Decimal(avancement_cumule_pct)
+    montant_cumule = (
+        montant_marche_ht * avancement_cumule_pct / Decimal('100')
+    ).quantize(Decimal('0.01'))
+    montant_cumule_anterieur = _situation_precedente_montant_cumule(
+        situation, libelle)
+    montant_periode = montant_cumule - montant_cumule_anterieur
+
+    return LigneSituation.objects.create(
+        company=situation.company,
+        situation=situation,
+        libelle=libelle,
+        montant_marche_ht=montant_marche_ht,
+        avancement_cumule_pct=avancement_cumule_pct,
+        montant_cumule_anterieur=montant_cumule_anterieur,
+        montant_periode=montant_periode,
+        montant_cumule=montant_cumule,
+    )
+
+
+@transaction.atomic
+def valider_situation(situation, *, user):
+    """Valide une ``SituationTravaux`` BROUILLON et génère la facture d'acompte.
+
+    Passe la situation à VALIDÉE puis FACTURÉE (une seule facture générée —
+    idempotent : un second appel sur une situation déjà VALIDÉE/FACTURÉE lève
+    ``SituationTravauxError``, jamais de double facturation). Le montant
+    facturé est la SOMME des ``montant_periode`` des lignes (± retenue de
+    garantie déduite, tracée sur ``retenue_garantie_pct``). Le CLIENT est
+    résolu depuis ``projet.client_id`` via ``crm.selectors`` (frontière
+    cross-app, import fonction-local). L'écriture de la ``Facture`` passe
+    EXCLUSIVEMENT par ``ventes.services.creer_facture_acompte_situation``.
+    Renvoie la ``SituationTravaux`` mise à jour.
+    """
+    from django.utils import timezone
+
+    from .models import SituationTravaux
+
+    if situation.statut != SituationTravaux.Statut.BROUILLON:
+        raise SituationTravauxError(
+            "Seule une situation en brouillon peut être validée.")
+
+    lignes = list(situation.lignes.all())
+    if not lignes:
+        raise SituationTravauxError(
+            "La situation ne porte aucune ligne — rien à facturer.")
+
+    montant_periode_total = sum(
+        (ligne.montant_periode or Decimal('0')) for ligne in lignes)
+
+    projet = situation.projet
+    from apps.crm import selectors as crm_selectors
+    client = None
+    if projet.client_id:
+        client = crm_selectors.get_company_client(
+            projet.company, projet.client_id)
+    if client is None:
+        raise SituationTravauxError(
+            "Impossible de résoudre le client du projet — validation "
+            "impossible.")
+
+    libelle = (
+        f'Situation n°{situation.numero} — projet {projet.code} '
+        f'[{situation.periode:%m/%Y}]')[:255]
+
+    from apps.ventes import services as ventes_services
+    facture = ventes_services.creer_facture_acompte_situation(
+        company=projet.company, client=client, user=user, libelle=libelle,
+        montant_periode_ht=montant_periode_total,
+        retenue_garantie_pct=situation.retenue_garantie_pct)
+
+    situation.statut = SituationTravaux.Statut.FACTUREE
+    situation.facture_id = facture.id
+    situation.date_validation = timezone.now()
+    situation.save(update_fields=[
+        'statut', 'facture_id', 'date_validation'])
+    return situation
 
 
 # ── Baseline de planning (PROJ13) ────────────────────────────────────────────

@@ -42,6 +42,8 @@ from .models import (
     ProjetLien,
     RessourceProfil,
     Risque,
+    SituationTravaux,
+    LigneSituation,
     SousTraitant,
     LotSousTraitance,
     Tache,
@@ -56,7 +58,9 @@ from .serializers import (
     CommentaireProjetSerializer,
     CompteRenduReunionSerializer,
     DocumentProjetSerializer,
+    LigneSituationSerializer,
     LotSousTraitanceSerializer,
+    SituationTravauxSerializer,
     SousTraitantSerializer,
     VersionDocumentSerializer,
     BudgetProjetSerializer,
@@ -2016,4 +2020,100 @@ class ClotureProjetViewSet(_GestionProjetBaseViewSet):
         projet = self.request.query_params.get('projet')
         if projet:
             qs = qs.filter(projet_id=projet)
+        return qs
+
+
+class SituationTravauxViewSet(_GestionProjetBaseViewSet):
+    """Situations de travaux (décomptes progressifs BTP) — CRUD scopé (XPRJ4).
+
+    ``company`` est posée côté serveur (TenantMixin) ; le ``projet`` reçu est
+    validé même-société. Le ``numero`` est posé côté serveur à la CRÉATION
+    (jamais lu du corps — voir ``perform_create`` → ``services.creer_
+    situation``, incrémental par projet, jamais ``count()+1``). Le ``statut``
+    et ``facture_id`` sont pilotés par l'action ``valider``. Filtre optionnel
+    ``?projet=<id>``.
+    """
+    queryset = SituationTravaux.objects.select_related('projet').all()
+    serializer_class = SituationTravauxSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['numero', 'periode', 'id']
+
+    def perform_create(self, serializer):
+        projet = serializer.validated_data['projet']
+        numero = services.prochain_numero_situation(projet)
+        serializer.save(company=self.request.user.company, numero=numero)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(projet_id=projet)
+        return qs
+
+    @action(detail=True, methods=['post'], url_path='ajouter-ligne')
+    def ajouter_ligne(self, request, pk=None):
+        """Ajoute une ligne à la situation, montants CALCULÉS côté serveur.
+
+        Corps : ``libelle``, ``montant_marche_ht``, ``avancement_cumule_pct``.
+        La société est garantie par ``get_object`` : une situation d'une autre
+        société → 404. Refuse (400) sur une situation déjà VALIDÉE/FACTURÉE.
+        """
+        situation = self.get_object()
+        libelle = request.data.get('libelle')
+        montant_marche_ht = request.data.get('montant_marche_ht')
+        avancement_cumule_pct = request.data.get('avancement_cumule_pct')
+        if not libelle or montant_marche_ht is None \
+                or avancement_cumule_pct is None:
+            return Response(
+                {'detail': 'libelle, montant_marche_ht et '
+                           'avancement_cumule_pct sont obligatoires.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            ligne = services.ajouter_ligne_situation(
+                situation, libelle=libelle,
+                montant_marche_ht=montant_marche_ht,
+                avancement_cumule_pct=avancement_cumule_pct)
+        except services.SituationTravauxError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            LigneSituationSerializer(ligne).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='valider')
+    def valider(self, request, pk=None):
+        """Valide la situation et génère la facture d'acompte (une seule fois).
+
+        La société est garantie par ``get_object`` : une situation d'une autre
+        société → 404. Refuse (400) une situation déjà VALIDÉE/FACTURÉE ou sans
+        ligne, ou si le client du projet ne peut être résolu.
+        """
+        situation = self.get_object()
+        try:
+            services.valider_situation(situation, user=request.user)
+        except services.SituationTravauxError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(SituationTravauxSerializer(situation).data)
+
+
+class LigneSituationViewSet(_GestionProjetBaseViewSet):
+    """Lignes de situations de travaux (XPRJ4) — lecture/édition scopée.
+
+    ``company`` est posée côté serveur ; la ``situation`` reçue est validée
+    même-société. Créer une ligne via ce viewset direct n'exécute PAS le calcul
+    serveur (``montant_cumule``/``montant_periode`` restent à leur défaut 0) —
+    préférer ``situations/<id>/ajouter-ligne/`` qui délègue à
+    ``services.ajouter_ligne_situation``. Filtre optionnel ``?situation=<id>``.
+    """
+    queryset = LigneSituation.objects.select_related('situation').all()
+    serializer_class = LigneSituationSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        situation = self.request.query_params.get('situation')
+        if situation:
+            qs = qs.filter(situation_id=situation)
         return qs

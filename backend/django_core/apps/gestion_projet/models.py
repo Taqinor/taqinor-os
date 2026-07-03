@@ -2100,3 +2100,157 @@ class ClotureProjet(models.Model):
 
     def __str__(self):
         return f'clôture {self.projet_id} ({self.date_cloture})'
+
+
+class SituationTravaux(models.Model):
+    """Un DÉCOMPTE PROGRESSIF (situation de travaux) d'un ``Projet`` (XPRJ4).
+
+    Pratique BTP marocaine : une situation facture l'avancement RÉEL des
+    travaux depuis la dernière situation (cumul antérieur → cumul période),
+    plutôt qu'un jalon fixe (complète PROJ27, facturation au %, qui ne porte
+    pas de cumul antérieur/période). Le ``numero`` est INCRÉMENTAL PAR PROJET
+    (jamais ``count()+1`` — voir ``services.prochain_numero_situation``, verrou
+    de ligne + retry sur le ``Projet``) ; ``periode`` est le mois/la période
+    couverte par le décompte.
+
+    Le ``statut`` est une machine d'état PROPRE à la situation
+    (brouillon/validee/facturee) — il ne réutilise NI n'importe AUCUNE
+    clé/étiquette de ``STAGES.py`` (règle #2), et n'altère JAMAIS le statut du
+    devis/BC/facture (couche séparée, règle #4). ``retenue_garantie_pct`` est
+    optionnelle : le POURCENTAGE déduit de la facture d'acompte générée (le
+    SUIVI de sa LIBÉRATION vit déjà dans ``contrats`` CONTRAT28 — référence
+    LÂCHE ``contrat_id``, aucun import de ``contrats``).
+
+    ``facture_id`` référence LÂCHEMENT la ``ventes.Facture`` d'acompte générée
+    à la validation (posé côté serveur, jamais lu du corps de requête) —
+    empêche une double-génération (une situation VALIDÉE/FACTURÉE ne régénère
+    jamais).
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Modèle entièrement additif.
+    """
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        VALIDEE = 'validee', 'Validée'
+        FACTUREE = 'facturee', 'Facturée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_situations',
+        verbose_name='Société',
+    )
+    projet = models.ForeignKey(
+        Projet,
+        on_delete=models.CASCADE,
+        related_name='situations',
+        verbose_name='Projet',
+    )
+    # Incrémental PAR PROJET (jamais count()+1) — posé côté serveur.
+    numero = models.PositiveIntegerField(verbose_name='N° de situation')
+    periode = models.DateField(
+        verbose_name='Période (1er jour du mois couvert)')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.BROUILLON, verbose_name='Statut')
+    # % de retenue de garantie DÉDUIT de la facture générée (optionnel).
+    retenue_garantie_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        validators=[MinValueValidator(Decimal('0')),
+                    MaxValueValidator(Decimal('100'))],
+        verbose_name='Retenue de garantie (%)')
+    # Référence LÂCHE optionnelle vers contrats.Contrat (CONTRAT28 — libération
+    # de la RG) — aucun FK dur, aucun import de ``contrats``.
+    contrat_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du contrat (RG)')
+    # Référence LÂCHE vers la ventes.Facture d'acompte générée à la validation.
+    facture_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="ID de la facture d'acompte")
+    date_validation = models.DateTimeField(
+        null=True, blank=True, verbose_name='Date de validation')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Situation de travaux'
+        verbose_name_plural = 'Situations de travaux'
+        ordering = ['projet', 'numero']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['projet', 'numero'],
+                name='gp_situation_projet_numero_uniq'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['projet', 'numero'],
+                name='gp_situation_proj_num_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.projet.code} — situation n°{self.numero}'
+
+
+class LigneSituation(models.Model):
+    """Une ligne (lot / ligne de budget) d'une ``SituationTravaux`` (XPRJ4).
+
+    ``montant_marche_ht`` est le montant HT total du marché pour ce lot ;
+    ``avancement_cumule_pct`` est le % d'avancement CUMULÉ (0–100) déclaré à
+    cette situation. Les montants sont CALCULÉS côté serveur (jamais lus du
+    corps de requête) par ``services.calculer_montants_situation`` :
+
+        montant_cumule       = montant_marche_ht × avancement_cumule_pct / 100
+        montant_cumule_anterieur = montant_cumule de la MÊME ligne (même
+                                    libellé) à la situation n°N-1 du projet
+                                    (0 si n°1 ou ligne absente avant)
+        montant_periode       = montant_cumule − montant_cumule_anterieur
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. La ``situation`` doit appartenir à la MÊME société.
+    Modèle entièrement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_lignes_situation',
+        verbose_name='Société',
+    )
+    situation = models.ForeignKey(
+        SituationTravaux,
+        on_delete=models.CASCADE,
+        related_name='lignes',
+        verbose_name='Situation',
+    )
+    libelle = models.CharField(
+        max_length=200, verbose_name='Libellé (lot / ligne de budget)')
+    montant_marche_ht = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant marché HT')
+    avancement_cumule_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('0'),
+        validators=[MinValueValidator(Decimal('0')),
+                    MaxValueValidator(Decimal('100'))],
+        verbose_name='Avancement cumulé (%)')
+    # ── Calculés côté serveur (jamais lus du corps de requête) ───────────────
+    montant_cumule_anterieur = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant cumulé antérieur')
+    montant_periode = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant de la période')
+    montant_cumule = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant cumulé')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Ligne de situation'
+        verbose_name_plural = 'Lignes de situation'
+        ordering = ['situation', 'id']
+        indexes = [
+            models.Index(
+                fields=['situation'], name='gp_lignesit_situation_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.situation_id} — {self.libelle}'

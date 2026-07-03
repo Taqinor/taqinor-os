@@ -1529,6 +1529,61 @@ def creer_facture_regie(*, company, client, user, libelle, montant_ht,
     return facture
 
 
+# ── XPRJ4 — Facture d'acompte pour une situation de travaux (décompte BTP) ───
+
+def creer_facture_acompte_situation(*, company, client, user, libelle,
+                                    montant_periode_ht,
+                                    retenue_garantie_pct=None,
+                                    taux_tva=Decimal('20')):
+    """XPRJ4 — Crée une Facture BROUILLON d'ACOMPTE pour une situation de
+    travaux (décompte progressif BTP).
+
+    Fonction FINE sanctionnée pour ``gestion_projet.services`` (frontière
+    cross-app, CLAUDE.md) : reçoit le montant HT DÉJÀ calculé de la PÉRIODE
+    (cumulé − antérieur, agrégé côté appelant sur toutes les lignes de la
+    situation) et une retenue de garantie optionnelle DÉDUITE du montant
+    facturé (le taux, pas le suivi de sa libération — qui vit dans
+    ``contrats``, jamais importé ici). Statut BROUILLON + ``type_facture``
+    ACOMPTE (chaîne standard devis→factures, réutilisée ici sans devis source).
+    Numérotation via ``apps/ventes/utils/references.py`` (jamais
+    ``count()+1``). Renvoie la ``Facture`` créée.
+    """
+    from apps.ventes.models import Facture
+    from apps.ventes.utils.references import create_with_reference
+
+    montant_periode_ht = Decimal(montant_periode_ht).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+    rg_pct = Decimal(retenue_garantie_pct or 0)
+    montant_rg = (montant_periode_ht * rg_pct / 100).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+    montant_ht_net = montant_periode_ht - montant_rg
+    montant_tva = (montant_ht_net * taux_tva / 100).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+    montant_ttc = montant_ht_net + montant_tva
+
+    def _create(ref):
+        return Facture.objects.create(
+            reference=ref,
+            company=company,
+            client=client,
+            statut=Facture.Statut.BROUILLON,
+            type_facture=Facture.TypeFacture.ACOMPTE,
+            taux_tva=taux_tva,
+            montant_ht=montant_ht_net,
+            montant_tva=montant_tva,
+            montant_ttc=montant_ttc,
+            libelle=libelle,
+            created_by=user,
+        )
+
+    facture = create_with_reference(Facture, 'FAC', company, _create)
+    logger.info(
+        'XPRJ4: facture acompte situation %s créée (company %s, montant HT '
+        'net %s, RG %s%%)',
+        facture.reference, company.id, montant_ht_net, rg_pct)
+    return facture
+
+
 # ── FG53 — Liens de paiement « Payer en ligne » ──────────────────────────────
 
 def create_payment_link(*, facture, provider=None):

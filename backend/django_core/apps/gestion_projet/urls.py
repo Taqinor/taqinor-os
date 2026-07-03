@@ -10,7 +10,9 @@ from .views import (
     CommentaireProjetViewSet,
     CompteRenduReunionViewSet,
     DocumentProjetViewSet,
+    LigneSituationViewSet,
     LotSousTraitanceViewSet,
+    SituationTravauxViewSet,
     BudgetProjetViewSet,
     CalendrierProjetViewSet,
     DependanceTacheViewSet,
@@ -64,6 +66,8 @@ router.register(r'portail-tokens', PortailProjetTokenViewSet)
 router.register(r'sous-traitants', SousTraitantViewSet)
 router.register(r'lots-sous-traitance', LotSousTraitanceViewSet)
 router.register(r'clotures', ClotureProjetViewSet)
+router.register(r'situations', SituationTravauxViewSet)
+router.register(r'lignes-situation', LigneSituationViewSet)
 
 urlpatterns = [
     # Portail PUBLIC (non authentifié) — placé AVANT le routeur pour éviter

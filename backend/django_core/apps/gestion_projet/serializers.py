@@ -34,6 +34,8 @@ from .models import (
     ProjetLien,
     RessourceProfil,
     Risque,
+    SituationTravaux,
+    LigneSituation,
     SousTraitant,
     LotSousTraitance,
     Tache,
@@ -972,6 +974,67 @@ class PortailProjetTokenSerializer(serializers.ModelSerializer):
 
     def validate_projet(self, value):
         return _meme_societe(self, value, 'Projet')
+
+
+class SituationTravauxSerializer(serializers.ModelSerializer):
+    """Décompte progressif (situation de travaux) d'un projet (XPRJ4).
+
+    ``company``, ``numero``, ``statut``, ``facture_id`` et ``date_validation``
+    sont posés/pilotés CÔTÉ SERVEUR (jamais lus du corps de requête) : le
+    ``numero`` par ``services.creer_situation`` (jamais ``count()+1``), le
+    ``statut``/``facture_id`` par l'action ``valider`` (voir ``views.py``). Le
+    ``projet`` reçu est validé même-société.
+    """
+    projet_code = serializers.CharField(source='projet.code', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    montant_periode_total = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SituationTravaux
+        fields = [
+            'id', 'projet', 'projet_code', 'numero', 'periode', 'statut',
+            'statut_display', 'retenue_garantie_pct', 'contrat_id',
+            'facture_id', 'date_validation', 'montant_periode_total',
+            'date_creation',
+        ]
+        read_only_fields = [
+            'numero', 'statut', 'facture_id', 'date_validation',
+            'date_creation',
+        ]
+
+    def validate_projet(self, value):
+        return _meme_societe(self, value, 'Projet')
+
+    def get_montant_periode_total(self, obj):
+        total = sum(
+            (ligne.montant_periode or 0) for ligne in obj.lignes.all())
+        return str(total)
+
+
+class LigneSituationSerializer(serializers.ModelSerializer):
+    """Ligne (lot / ligne de budget) d'une situation de travaux (XPRJ4).
+
+    ``company`` n'est jamais exposée. ``montant_cumule_anterieur``,
+    ``montant_periode`` et ``montant_cumule`` sont CALCULÉS côté serveur (voir
+    ``services.ajouter_ligne_situation``) — jamais lus du corps de requête.
+    Créer/éditer une ligne passe de préférence par
+    ``situations/<id>/ajouter-ligne/`` pour déclencher ce calcul.
+    """
+    class Meta:
+        model = LigneSituation
+        fields = [
+            'id', 'situation', 'libelle', 'montant_marche_ht',
+            'avancement_cumule_pct', 'montant_cumule_anterieur',
+            'montant_periode', 'montant_cumule', 'date_creation',
+        ]
+        read_only_fields = [
+            'montant_cumule_anterieur', 'montant_periode', 'montant_cumule',
+            'date_creation',
+        ]
+
+    def validate_situation(self, value):
+        return _meme_societe(self, value, 'Situation')
 
 
 class SousTraitantSerializer(serializers.ModelSerializer):
