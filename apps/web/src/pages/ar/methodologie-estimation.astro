@@ -1,0 +1,174 @@
+---
+/**
+ * AR — منهجية التقدير (W359, RTL). ترجمة أمينة لـ /methodologie-estimation:
+ * نفس النموذج الصادق الذي يطبّقه فعلياً المُقدِّر الفوري (/devis/mon-toit)
+ * ومحرك العروض، منشور دون تجميل. الروابط الداخلية عبر localizeNavHref (AR
+ * إن وُجدت، وإلا صفحة FR — أبداً رابط ميّت). FR دون تغيير.
+ *
+ * ملاحظة: هذا المسار العربي غير مسجَّل بعد في src/i18n/pages.ts
+ * (STATIC_TRANSLATED) — خارج نطاق هذه المهمة (src/i18n/pages.ts ليس ضمن قائمة
+ * الملفات القابلة للتعديل في هذه المهمة). المسار نفسه يعمل بشكل صحيح وهو صفحة
+ * حقيقية قابلة للفهرسة، مرتبطة من mon-toit.astro والعرض.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import KeyFigure from '../../components/KeyFigure.astro';
+import Callout from '../../components/Callout.astro';
+import RelatedLinks from '../../components/RelatedLinks.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import { getLocaleFromPath } from '../../i18n/utils';
+import { localizeNavHref } from '../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+const devisHref = L('/devis/mon-toit');
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: 'منهجية التقدير الشمسي الفوري',
+  description:
+    'النموذج الصادق وراء التقدير الفوري لتاقينور: مصدر PVGIS، خسائر النظام، هامش الثقة المناخي، التوفير القائم على الاستهلاك الذاتي أولاً (القانون 82-21)، ولماذا لا يُحتسب أي سطر لبيع الفائض.',
+  author: { '@type': 'Organization', name: 'Taqinor', url: 'https://taqinor.ma' },
+};
+---
+
+<Layout
+  title="منهجية التقدير الشمسي — كيف نحسب | Taqinor"
+  description="النموذج الصادق وراء التقدير الفوري: مصدر PVGIS، خسائر النظام (14%)، هامش الثقة المناخي، التوفير القائم على الاستهلاك الذاتي أولاً (تعريفة بيع الفائض للتوتر المنخفض لم تُنشر بعد من طرف ANRE) — تقدير أولي، يُحسَّن بعد الزيارة."
+  ogSlug="equipement"
+>
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+
+    <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: 'منهجية التقدير' }]} />
+
+    <section class="section-lg px-4 pb-10 text-white">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">شفافية المنهج</p>
+        <h1 class="display v2-page-title cine-in cine-in-1 mt-6">كيف نحسب تقديركم</h1>
+        <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
+          يعتمد التقدير الفوري في <a href={devisHref} class="border-b border-brass-300 pb-0.5 font-semibold text-brass-300">«سطحكم»</a> والعرض
+          الذي يليه على نموذج منشور هنا دون حجب: نفس البيانات، نفس الفرضيات، نفس الحذر — لتتمكّنوا
+          من التحقّق من كل رقم بدلاً من الاضطرار لتصديقنا فقط.
+        </p>
+      </div>
+    </section>
+
+    <!-- 1. مصدر الإنتاج: PVGIS -->
+    <section class="section px-4">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">1. الإنتاج الشمسي</p>
+        <h2 class="display v2-section-title mt-5 text-white">بيانات عمومية، لا رقم داخلي</h2>
+        <p class="v2-body mt-5 text-white/85">
+          المردودية (كم كيلوواط/ساعة ينتجه كل كيلوواط ذروة مركَّب سنوياً) تأتي من PVGIS (المفوضية
+          الأوروبية، المركز المشترك للأبحاث) — المرجع العمومي الأكثر استشهاداً للإشعاع الشمسي في
+          شمال أفريقيا. لا نُقدِّرها بأنفسنا: الجدول الكامل، مدينةً بمدينة وميلاً بميل، منشور كما هو
+          في صفحتنا <a href={L('/ensoleillement-maroc')} class="border-b border-brass-300 pb-0.5 font-semibold text-brass-300">الإشعاع الشمسي بالمغرب</a>.
+          بدون تثبيت دبوس GPS على الخريطة، ينطلق التقدير الفوري من خط عرض افتراضي (الدار البيضاء،
+          الأكثر مركزية في منطقة خدمتنا) واتجاه جنوبي مباشر — الأمثل النظري — ثم يُحسَّن فور تثبيت
+          دبوس حقيقي.
+        </p>
+        <div class="mt-8 grid gap-6 sm:grid-cols-3" data-stagger>
+          <KeyFigure value="PVGIS" label="المصدر">
+            المفوضية الأوروبية، المركز المشترك للأبحاث.
+          </KeyFigure>
+          <KeyFigure value="14" unit="%" label="خسائر النظام">
+            الأسلاك، العاكس، الاحترار، الاتساخ — رقم PVGIS العام.
+          </KeyFigure>
+          <KeyFigure value="جنوب" label="الاتجاه الافتراضي">
+            يُحسَّن فور تثبيت دبوس GPS حقيقي على سطحكم.
+          </KeyFigure>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. هامش الثقة المناخي -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="section bg-blanc-azur px-4 text-encre">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-azur-600">2. شريحة، لا رقم واحد</p>
+        <h2 class="display v2-section-title mt-5">لماذا حد أدنى وحد أقصى</h2>
+        <p class="v2-body mt-5 text-encre-soft">
+          الإنتاج الذي يُبلغ عنه PVGIS هو أصلاً بعد خصم خسائر النظام العامة (14%). نُطبّق فوق ذلك
+          هامش ثقة مناخي إضافي: الحد الأقصى هو رقم PVGIS الخام؛ الحد الأدنى يُخفِّضه بمعامل يجمع بين
+          التراجع الحراري لصيف ساحلي حار (تفقد الألواح كفاءتها عند ارتفاع حرارتها)، والاتساخ والضباب
+          — خسائر حقيقية وموثّقة، وليست رقماً تشاؤمياً مُختلَقاً للتحوّط فقط. هذه الشريحة (وليست
+          رقماً واحداً واثقاً) هي نفس منطق هامش الثقة المعروض مباشرة في المُقدِّر.
+        </p>
+        <Callout type="info" title="ما لا تُغني عنه هذه الشريحة">
+          <p>
+            تبقى مُحتسبة عن بُعد، انطلاقاً من فاتورة ودبوس GPS اختياري — وليست مسحاً فعلياً للتظليل،
+            ولا المعدات المُختارة نهائياً. الزيارة التقنية المجانية تُحسِّن بعد ذلك هذا الرقم وفق
+            القيود الحقيقية لسطحكم.
+          </p>
+        </Callout>
+      </div>
+    </section>
+
+    <!-- 3. الاستهلاك الذاتي أولاً — نقطة الصدق المركزية -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="section px-4 text-white">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">3. التوفير: الاستهلاك الذاتي أولاً</p>
+        <h2 class="display v2-section-title mt-5 text-white">لا نُحتسب إلا ما تستهلكونه أنتم فعلاً</h2>
+        <p class="v2-body mt-5 text-white/85">
+          ينظّم القانون 82-21 الإنتاج الذاتي للتوتر المنخفض في المغرب: ينتج نظامكم كهرباء، جزء منها
+          يُستهلك مباشرة في منزلكم (الاستهلاك الذاتي)، والباقي يذهب إلى الشبكة. يحتسب تقديرنا فقط
+          الحصة المُستهلكة ذاتياً — بتعريفة الوكالة الخاصة بشريحة فاتورتكم، نفس الشبكة التي تدفعون
+          فيها بالفعل.
+        </p>
+        <p class="v2-body mt-4 text-white/85">
+          لا نُضيف أي سطر لبيع الفائض إلى الشبكة. هذا ليس سهواً: نشرت ANRE قراراً لتعريفة إعادة
+          الشراء لمنشآت التوتر المتوسط/العالي (MT/HT)، لكن لم تُنشر أي تعريفة مماثلة للتوتر المنخفض
+          السكني (BT) إلى حد اليوم. طالما لم توجد هذه التعريفة مكتوبةً رسمياً، فإن احتساب دخل من
+          إعادة البيع يعني اختلاق رقم — وهو بالضبط ما نرفض القيام به.
+        </p>
+        <Callout type="warning" title="إذا لم يُحتسب الفائض، فأين يذهب؟">
+          <p>
+            عملياً، الكيلوواط/ساعة الذي لا تستهلكونه لحظة إنتاجه يذهب إلى شبكة المكتب الوطني/الوكالة
+            — دون تعويض محتسب اليوم لأسرة سكنية. لهذا يستهدف الحجم الموصى به من مُقدِّرنا حاجتكم
+            الفعلية، لا نظاماً مبالغاً في حجمه ينتج فائضاً غير مُحتسب.
+          </p>
+        </Callout>
+      </div>
+    </section>
+
+    <!-- 4. تقدير أولي، يُحسَّن بعد الزيارة -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="section bg-blanc-azur px-4 text-encre">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-azur-600">4. تقدير أولي، يُحسَّن بعد الزيارة</p>
+        <h2 class="display v2-section-title mt-5">نقطة انطلاق، وليست تسعيرة نهائية</h2>
+        <p class="v2-body mt-5 text-encre-soft">
+          يُحتسب التقدير الفوري في ثوانٍ انطلاقاً من فاتورتكم (ودبوس GPS إن ثبّتموه). لا يرى لا
+          التظليل الفعلي لحيّكم، ولا حالة سطحكم، ولا المعدات المتوفرة نهائياً. لهذا يحمل كل تقدير
+          عبارة «تقدير أولي، يُحسَّن بعد الزيارة»: الرقم النهائي — الذي في عرضكم الموقَّع — يأتي
+          دائماً بعد زيارة تقنية مجانية وبدون التزام.
+        </p>
+      </div>
+    </section>
+
+    <section class="section-tight px-4 pb-20 sm:pb-24">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">لمزيد من المعلومات</p>
+        <RelatedLinks links={[
+          { href: devisHref, label: 'ابدأوا التقدير الفوري' },
+          { href: L('/ensoleillement-maroc'), label: 'المردودية الشمسية حسب المدينة (PVGIS)' },
+          { href: L('/production-mesuree'), label: 'الإنتاج المقيس (مشاريعنا الحقيقية)' },
+          { href: L('/loi-82-21'), label: 'القانون 82-21 موضّحاً' },
+        ]} />
+      </div>
+    </section>
+
+    <CtaBand title="شاهدوا شريحتكم الخاصة، محسوبة بنفس هذه المنهجية." href={devisHref} />
+
+    <StickyCta />
+  </div>
+</Layout>

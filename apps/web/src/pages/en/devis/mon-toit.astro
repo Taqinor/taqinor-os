@@ -574,6 +574,12 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             Preliminary range calculated from your bill (self-consumption, law 82-21). The
             exact figure is established after a technical site visit — with no obligation.
           </p>
+          <!-- W359 — link to the methodology transparency page (PVGIS
+               source, system losses, self-consumption first, unpublished BT
+               ANRE tariff). -->
+          <p class="mt-1 text-xs">
+            <a href="/en/methodologie-estimation" class="text-brass-300 underline-offset-2 hover:underline">See how we calculate this estimate</a>
+          </p>
           <!-- W342 — "the installation closest to you": computed client-side
                (haversine over REALISATIONS, lib/realisations.ts) from the GPS
                pin dropped on the map. Hidden by default -- only appears when a

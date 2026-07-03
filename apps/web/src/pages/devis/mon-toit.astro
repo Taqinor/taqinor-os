@@ -625,6 +625,16 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
             Fourchette préliminaire calculée à partir de votre facture (autoconsommation, loi
             82-21). Le chiffrage exact est établi après visite technique — sans engagement.
           </p>
+          <!-- W359 — lien vers la page de transparence méthodologique
+               (source PVGIS, pertes système, autoconsommation d'abord, tarif
+               BT ANRE non publié). Ligne séparée (pas imbriqué dans le
+               data-i18n ci-dessus) pour ne jamais compliquer le nœud dual FR/AR. -->
+          <p class="mt-1 text-xs">
+            <a href="/methodologie-estimation" class="text-brass-300 underline-offset-2 hover:underline" data-i18n
+              data-fr="Voir comment nous calculons cette estimation" data-ar="مشاهدة كيف نحسب هذا التقدير">
+              Voir comment nous calculons cette estimation
+            </a>
+          </p>
           <!-- W342 — « L'installation la plus proche de chez vous » : calculée
                côté client (haversine sur REALISATIONS, lib/realisations.ts) à
                partir du repère GPS posé sur la carte. Masquée par défaut —
