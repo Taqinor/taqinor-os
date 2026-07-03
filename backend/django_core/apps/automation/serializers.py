@@ -3,6 +3,7 @@ from rest_framework import serializers
 from .models import (
     ApprovalDelegation, ApprovalRequest, ApprovalRequestType,
     AutomationApproval, AutomationRule, AutomationRun,
+    IncomingWebhookTrigger,
 )
 
 
@@ -122,3 +123,22 @@ class ApprovalDelegationSerializer(serializers.ModelSerializer):
             'date_debut', 'date_fin', 'date_creation',
         ]
         read_only_fields = ['date_creation']
+
+
+class IncomingWebhookTriggerSerializer(serializers.ModelSerializer):
+    rule_nom = serializers.CharField(source='rule.nom', read_only=True)
+    url_path = serializers.SerializerMethodField()
+
+    class Meta:
+        model = IncomingWebhookTrigger
+        # `company` posée côté serveur ; `token` généré côté serveur (jamais
+        # lu du corps) — seule la rotation explicite (action dédiée) change.
+        fields = [
+            'id', 'rule', 'rule_nom', 'token', 'url_path', 'hmac_secret',
+            'enabled', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['id', 'rule_nom', 'token', 'url_path',
+                            'date_creation', 'date_modification']
+
+    def get_url_path(self, obj):
+        return f'/api/django/public/hooks/{obj.token}/'

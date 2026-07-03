@@ -50,6 +50,8 @@ urlpatterns = [
     path('api/django/public/', include('apps.ventes.public_urls')),
     # FG86 — Suivi client ticket SAV — sans login.
     path('api/django/public/sav/', include('apps.sav.public_urls')),
+    # XPLT4 — Webhook entrant générique (token dans l'URL) — sans login.
+    path('api/django/public/', include('apps.automation.public_urls')),
     # N89 — API publique REST par clé d'API (données read-only).
     path('api/public/', include('apps.publicapi.public_urls')),
     # N89 — gestion des clés API & webhooks (session admin, Paramètres).

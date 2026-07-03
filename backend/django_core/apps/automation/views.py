@@ -24,11 +24,13 @@ from . import engine, services
 from .models import (
     ApprovalDelegation, ApprovalRequest, ApprovalRequestType,
     AutomationApproval, AutomationRule, AutomationRun,
+    IncomingWebhookTrigger,
 )
 from .serializers import (
     ApprovalDelegationSerializer, ApprovalRequestSerializer,
     ApprovalRequestTypeSerializer, AutomationApprovalSerializer,
     AutomationRuleSerializer, AutomationRunSerializer,
+    IncomingWebhookTriggerSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -333,6 +335,43 @@ class ApprovalDelegationViewSet(TenantMixin, viewsets.ModelViewSet):
             serializer.save(company=user.company, delegant=user)
         else:
             serializer.save(company=user.company)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# XPLT4 — Webhook entrant générique par règle (gestion admin : créer,
+# rotation, activer/désactiver). Le POST externe lui-même est traité par
+# ``public_views.incoming_webhook`` (aucune session).
+
+class IncomingWebhookTriggerViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Gestion (admin) des webhooks entrants tokenisés (XPLT4)."""
+    queryset = IncomingWebhookTrigger.objects.select_related('rule').all()
+    serializer_class = IncomingWebhookTriggerSerializer
+    permission_classes = [IsAdminRole]
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation']
+
+    def create(self, request, *args, **kwargs):
+        company = request.user.company
+        rule_id = request.data.get('rule')
+        rule = AutomationRule.objects.filter(
+            pk=rule_id, company=company).first()
+        if rule is None:
+            return Response(
+                {'detail': 'Règle introuvable.'}, status=400)
+        trigger, _ = IncomingWebhookTrigger.objects.get_or_create(
+            rule=rule, defaults={
+                'company': company,
+                'hmac_secret': request.data.get('hmac_secret', '') or '',
+            })
+        return Response(
+            self.get_serializer(trigger).data, status=201)
+
+    @action(detail=True, methods=['post'])
+    def rotate(self, request, pk=None):
+        """Régénère le token : l'ancien devient immédiatement invalide."""
+        trigger = self.get_object()
+        trigger.rotate_token()
+        return Response(self.get_serializer(trigger).data)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -34,6 +34,9 @@ class TriggerType(models.TextChoices):
     # objet au choix (whitelist fermée, voir DATE_TRIGGER_TARGETS). Distinct
     # des 3 déclencheurs FIXES ci-dessus (horizons codés en dur).
     DATE_ECHEANCE_CHAMP = 'date_echeance_champ', 'Échéance de champ (± N jours)'
+    # XPLT4 — webhook entrant générique : le POST externe reçu sur l'URL
+    # tokenisée de la règle devient le contexte des conditions/actions.
+    WEBHOOK_INBOUND = 'webhook_inbound', 'Webhook entrant'
 
 
 # XPLT3 — whitelist FERMÉE (app_label, model) -> {champ date autorisé: label}
@@ -454,3 +457,60 @@ class ApprovalDelegation(models.Model):
         from django.utils import timezone
         at = at or timezone.now()
         return self.date_debut <= at <= self.date_fin
+
+
+# ── XPLT4 — Webhook ENTRANT générique alimentant une règle ──────────────────
+
+def _generate_webhook_token():
+    import secrets
+    return secrets.token_urlsafe(32)
+
+
+def _generate_webhook_secret():
+    import secrets
+    return secrets.token_urlsafe(32)
+
+
+class IncomingWebhookTrigger(models.Model):
+    """URL tokenisée d'entrée pour UNE règle ``AutomationRule`` de type
+    ``WEBHOOK_INBOUND`` (XPLT4). Un POST externe valide sur
+    ``/api/public/hooks/<token>/`` alimente le JSON reçu comme contexte des
+    conditions/actions de la règle.
+
+    La société est résolue UNIQUEMENT par le token (jamais par le payload) —
+    même discipline que les autres webhooks entrants du repo (crm site-lead).
+    ``hmac_secret`` est optionnel : quand posé, l'appelant doit signer le
+    corps en HMAC-SHA256 (en-tête ``X-Signature``) — sinon l'endpoint reste
+    ouvert au token seul (compromis simplicité/sécurité laissé à l'admin).
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='incoming_webhook_triggers')
+    rule = models.OneToOneField(
+        AutomationRule, on_delete=models.CASCADE,
+        related_name='incoming_webhook')
+
+    token = models.CharField(
+        max_length=64, unique=True, default=_generate_webhook_token)
+    hmac_secret = models.CharField(max_length=128, blank=True, default='')
+    enabled = models.BooleanField(default=True)
+
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Webhook entrant (automatisation)'
+        verbose_name_plural = 'Webhooks entrants (automatisation)'
+        ordering = ['-date_creation', '-id']
+        indexes = [
+            models.Index(fields=['token']),
+        ]
+
+    def __str__(self):
+        return f'{self.rule_id}:{self.token[:8]}…'
+
+    def rotate_token(self):
+        """Régénère le token : l'ancien devient immédiatement invalide (404)."""
+        self.token = _generate_webhook_token()
+        self.save(update_fields=['token', 'date_modification'])
+        return self.token

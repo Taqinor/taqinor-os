@@ -5,6 +5,7 @@ CHAQUE exécution, gating par approbation (N73) avec relance à l'approbation,
 caractère best-effort des signaux (jamais casser le save d'origine), isolation
 par société, et la sécurité des écritures (champ protégé refusé).
 """
+import json
 from datetime import date, timedelta
 from unittest import mock
 
@@ -24,7 +25,7 @@ from apps.automation import engine
 from apps.automation.models import (
     ActionType, ApprovalDelegation, ApprovalRequest, ApprovalRequestType,
     AutomationApproval, AutomationRule, AutomationRun, CanalMessage,
-    ModeleMessage, TriggerType,
+    IncomingWebhookTrigger, ModeleMessage, TriggerType,
 )
 
 User = get_user_model()
@@ -1102,3 +1103,95 @@ class DateEcheanceChampTriggerTests(TestCase):
 
         count = _trigger_date_echeance_champ(self.co)
         self.assertEqual(count, 0)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# XPLT4 — Webhook ENTRANT générique alimentant une règle d'automatisation.
+
+class IncomingWebhookTriggerTests(TestCase):
+    def setUp(self):
+        self.co = make_company('xplt4-a', 'XPLT4 A')
+        self.admin = make_user(self.co, 'xplt4-admin', 'admin')
+        self.rule = AutomationRule.objects.create(
+            company=self.co, nom='Webhook -> activité',
+            trigger_type=TriggerType.WEBHOOK_INBOUND, trigger_config={},
+            action_type=ActionType.CREATE_ACTIVITY,
+            action_config={'body': 'Webhook reçu'}, enabled=True)
+        self.trigger = IncomingWebhookTrigger.objects.create(
+            company=self.co, rule=self.rule)
+
+    def _url(self, token):
+        return f'/api/django/public/hooks/{token}/'
+
+    def test_post_creates_run_scoped_to_company(self):
+        resp = self.client.post(
+            self._url(self.trigger.token),
+            data=json.dumps({'foo': 'bar'}),
+            content_type='application/json')
+        self.assertEqual(resp.status_code, 202)
+        run = AutomationRun.objects.filter(
+            company=self.co, rule=self.rule,
+            rule__trigger_type=TriggerType.WEBHOOK_INBOUND).first()
+        self.assertIsNotNone(run)
+
+    def test_invalid_token_is_404(self):
+        resp = self.client.post(
+            self._url('does-not-exist-token'),
+            data=json.dumps({}), content_type='application/json')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_rotation_invalidates_old_token(self):
+        old_token = self.trigger.token
+        api = auth(self.admin)
+        resp = api.post(
+            f'/api/django/automation/incoming-webhooks/{self.trigger.pk}/rotate/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        new_token = resp.data['token']
+        self.assertNotEqual(old_token, new_token)
+
+        # L'ancien token répond 404.
+        resp_old = self.client.post(
+            self._url(old_token),
+            data=json.dumps({}), content_type='application/json')
+        self.assertEqual(resp_old.status_code, 404)
+
+        # Le nouveau token fonctionne.
+        resp_new = self.client.post(
+            self._url(new_token),
+            data=json.dumps({}), content_type='application/json')
+        self.assertEqual(resp_new.status_code, 202)
+
+    def test_disabled_trigger_is_404(self):
+        self.trigger.enabled = False
+        self.trigger.save(update_fields=['enabled'])
+        resp = self.client.post(
+            self._url(self.trigger.token),
+            data=json.dumps({}), content_type='application/json')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_hmac_signature_required_when_configured(self):
+        self.trigger.hmac_secret = 'super-secret'
+        self.trigger.save(update_fields=['hmac_secret'])
+        resp = self.client.post(
+            self._url(self.trigger.token),
+            data=json.dumps({'x': 1}), content_type='application/json')
+        self.assertEqual(resp.status_code, 401)
+
+        import hmac as hmac_mod
+        body = json.dumps({'x': 1}).encode('utf-8')
+        sig = hmac_mod.new(
+            b'super-secret', body, 'sha256').hexdigest()
+        resp_ok = self.client.post(
+            self._url(self.trigger.token), data=body,
+            content_type='application/json',
+            HTTP_X_SIGNATURE=sig)
+        self.assertEqual(resp_ok.status_code, 202)
+
+    def test_run_is_logged_in_automationrun(self):
+        before = AutomationRun.objects.filter(company=self.co).count()
+        self.client.post(
+            self._url(self.trigger.token),
+            data=json.dumps({'lead_id': 42}), content_type='application/json')
+        after = AutomationRun.objects.filter(company=self.co).count()
+        self.assertGreater(after, before)
