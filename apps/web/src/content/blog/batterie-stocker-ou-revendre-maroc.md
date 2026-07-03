@@ -82,6 +82,9 @@ Le bon point de départ : dimensionner d'abord pour couvrir vos usages diurnes, 
 
 ## Approfondissez
 
+Pour savoir si une batterie se justifie du tout dans votre cas (souvent non si vous consommez surtout en journée) :
+[Faut-il des batteries pour son installation solaire ?](/guides/faut-il-des-batteries)
+
 Pour choisir la bonne capacité de batterie selon votre situation réelle, consultez notre guide :
 [Quelle taille de batterie solaire pour votre maison ?](/guides/quelle-taille-de-batterie)
 
