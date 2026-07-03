@@ -325,11 +325,22 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           </label>
         </div>
 
-        <!-- ===== WJ31 — questions best-in-world, TOUTES facultatives, repliées par défaut ===== -->
-        <details id="mt-more" class="cine-card mt-4 p-5 sm:p-6">
+        <!-- ===== WJ49 — restagé en 2-3 groupes cadrés par la valeur, ≤5 champs
+             visibles par étage (au lieu d'un seul <details> à 10 champs) : la
+             recherche est unanime, un long panneau unique est ignoré ou tue le
+             taux de complétion ; des demandes étagées non. Chaque champ reste
+             FACULTATIF et forwardé EXACTEMENT comme avant (contrat WJ30/WJ31
+             intact — mêmes id/name, seule la mise en page change). ===== -->
+        <p class="mt-4 text-sm font-semibold text-brass-300" data-i18n
+          data-fr="Affiner mon estimation (facultatif, 1 minute)" data-ar="تحسين تقديري (اختياري، دقيقة واحدة)">
+          Affiner mon estimation (facultatif, 1 minute)
+        </p>
+
+        <!-- Groupe 1/3 — pour affiner la taille (5 champs). -->
+        <details id="mt-more-size" class="cine-card mt-3 p-5 sm:p-6">
           <summary class="cursor-pointer select-none text-sm font-semibold text-brass-300" data-i18n
-            data-fr="Affiner mon estimation (facultatif, 1 minute)" data-ar="تحسين تقديري (اختياري، دقيقة واحدة)">
-            Affiner mon estimation (facultatif, 1 minute)
+            data-fr="Pour affiner la taille" data-ar="لتحسين الحجم">
+            Pour affiner la taille
           </summary>
 
           <div class="mt-4 grid gap-4 sm:grid-cols-2">
@@ -350,22 +361,6 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             </label>
           </div>
 
-          <!-- Photo compteur/facture — capturée EN LOCAL, jamais uploadée (pas d'endpoint aujourd'hui). -->
-          <div class="mt-4">
-            <label class="block text-sm text-lune-soft" for="mt-meter-photo" data-i18n
-              data-fr="Photo du compteur ou de la facture" data-ar="صورة العداد أو الفاتورة">
-              Photo du compteur ou de la facture
-            </label>
-            <input id="mt-meter-photo" type="file" accept="image/*" capture="environment"
-              class="mt-1 block w-full text-sm text-lune-soft file:mr-3 file:border-0 file:bg-white/10 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white" />
-            <p id="mt-meter-photo-note" class="mt-1 text-xs text-lune-faint" data-i18n
-              data-fr="Ou envoyez-la nous directement sur WhatsApp après l'envoi du formulaire — c'est souvent plus rapide."
-              data-ar="أو أرسلها لنا مباشرة على واتساب بعد إرسال النموذج — غالباً أسرع.">
-              Ou envoyez-la nous directement sur WhatsApp après l'envoi du formulaire — c'est
-              souvent plus rapide.
-            </p>
-          </div>
-
           <fieldset class="mt-4">
             <legend class="text-sm text-lune-soft" data-i18n data-fr="Ombrage sur le toit" data-ar="التظليل على السطح">Ombrage sur le toit</legend>
             <div class="mt-2 grid grid-cols-3 gap-2">
@@ -381,6 +376,30 @@ const noscriptTelHref = `tel:${NAP.phone}`;
               placeholder="مثال: 10" dir="ltr" class={`${inputClass} mt-1`} />
           </label>
 
+          <!-- Photo compteur/facture — capturée EN LOCAL, jamais uploadée (pas d'endpoint aujourd'hui). -->
+          <div class="mt-4">
+            <label class="block text-sm text-lune-soft" for="mt-meter-photo" data-i18n
+              data-fr="Photo du compteur ou de la facture" data-ar="صورة العداد أو الفاتورة">
+              Photo du compteur ou de la facture
+            </label>
+            <input id="mt-meter-photo" type="file" accept="image/*" capture="environment"
+              class="mt-1 block w-full text-sm text-lune-soft file:mr-3 file:border-0 file:bg-white/10 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white" />
+            <p id="mt-meter-photo-note" class="mt-1 text-xs text-lune-faint" data-i18n
+              data-fr="Ou envoyez-la nous directement sur WhatsApp après l'envoi du formulaire — c'est souvent plus rapide."
+              data-ar="أو أرسلها لنا مباشرة على واتساب بعد إرسال النموذج — غالباً أسرع.">
+              Ou envoyez-la nous directement sur WhatsApp après l'envoi du formulaire — c'est
+              souvent plus rapide.
+            </p>
+          </div>
+        </details>
+
+        <!-- Groupe 2/3 — pour anticiper vos besoins (2 champs). -->
+        <details id="mt-more-needs" class="cine-card mt-3 p-5 sm:p-6">
+          <summary class="cursor-pointer select-none text-sm font-semibold text-brass-300" data-i18n
+            data-fr="Pour anticiper vos besoins" data-ar="لتوقع احتياجاتكم">
+            Pour anticiper vos besoins
+          </summary>
+
           <fieldset class="mt-4">
             <legend class="text-sm text-lune-soft" data-i18n data-fr="Charges futures envisagées" data-ar="أحمال مستقبلية متوقعة">Charges futures envisagées</legend>
             <div class="mt-2 flex flex-wrap gap-2">
@@ -394,6 +413,14 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             <input id="mt-battery-interest" name="batteryInterest" type="checkbox" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
             <span data-i18n data-fr="Intéressé(e) par une batterie de stockage" data-ar="مهتم بتخزين البطارية">Intéressé(e) par une batterie de stockage</span>
           </label>
+        </details>
+
+        <!-- Groupe 3/3 — pour le financement (3 champs). -->
+        <details id="mt-more-financing" class="cine-card mt-3 p-5 sm:p-6">
+          <summary class="cursor-pointer select-none text-sm font-semibold text-brass-300" data-i18n
+            data-fr="Pour le financement" data-ar="للتمويل">
+            Pour le financement
+          </summary>
 
           <div class="mt-4 grid gap-4 sm:grid-cols-2">
             <label class="block text-sm text-lune-soft">
