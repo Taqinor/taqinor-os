@@ -4209,3 +4209,100 @@ class NoteDeFrais(models.Model):
 
     def __str__(self):
         return f'{self.libelle} — {self.montant} ({self.employe})'
+
+
+class DemandeRH(models.Model):
+    """Guichet de demandes RH self-service (XRH9) — attestations à la demande.
+
+    Les PDF d'attestations (travail / salaire / domiciliation) sont DÉJÀ
+    générés par ``apps.paie.builders.render_attestation_pdf`` (PAIE34). Ce qui
+    manquait était le GUICHET : un employé ne pouvait rien demander ni
+    télécharger lui-même. ``DemandeRH`` matérialise cette demande : le
+    ``type`` d'attestation souhaité, un ``statut`` (soumise → traitée /
+    refusée), et — au traitement — le PDF généré est stocké via
+    ``apps.records.storage`` (même mécanisme d'attachement que le reste de
+    l'ERP) et lié par ``attachment``.
+
+    Le PDF est PRODUIT en RÉUTILISANT le renderer paie existant via un thin
+    wrapper cross-app (``apps.paie.services.generer_attestation_pdf_pour_dossier``)
+    — AUCUN nouveau code PDF n'est dupliqué dans ``rh``.
+
+    Téléchargeable UNIQUEMENT par l'employé concerné (``employe.user`` ==
+    l'appelant) ou un porteur ``salaires_voir``/``IsResponsableOrAdmin`` côté
+    traitement. L'attestation de salaire est refusée au traitement si le
+    traitant ne porte pas ``salaires_voir``.
+
+    Multi-société : ``company`` posée côté serveur (jamais lue du corps).
+    ``employe`` et ``traite_par`` appartiennent à la même société.
+    """
+
+    class TypeAttestation(models.TextChoices):
+        ATTESTATION_TRAVAIL = 'attestation_travail', 'Attestation de travail'
+        ATTESTATION_SALAIRE = 'attestation_salaire', 'Attestation de salaire'
+        ATTESTATION_DOMICILIATION = (
+            'attestation_domiciliation', 'Attestation de domiciliation')
+        AUTRE = 'autre', 'Autre'
+
+    class Statut(models.TextChoices):
+        SOUMISE = 'soumise', 'Soumise'
+        TRAITEE = 'traitee', 'Traitée'
+        REFUSEE = 'refusee', 'Refusée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_demandes',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='demandes_rh',
+        verbose_name='Employé',
+    )
+    type = models.CharField(
+        max_length=30, choices=TypeAttestation.choices,
+        default=TypeAttestation.ATTESTATION_TRAVAIL, verbose_name='Type')
+    message = models.TextField(
+        blank=True, default='', verbose_name='Message (précision « autre »)')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.SOUMISE, verbose_name='Statut')
+    motif_refus = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Motif de refus')
+    attachment = models.ForeignKey(
+        'records.Attachment',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_demandes',
+        verbose_name='Pièce jointe (PDF)',
+    )
+    traite_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_demandes_traitees',
+        verbose_name='Traité par',
+    )
+    traite_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Traité le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Demande RH'
+        verbose_name_plural = 'Demandes RH'
+        ordering = ['-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'employe'],
+                name='rh_demande_comp_emp_idx'),
+            models.Index(
+                fields=['company', 'statut'],
+                name='rh_demande_comp_stat_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.get_type_display()} — {self.employe} ({self.statut})'

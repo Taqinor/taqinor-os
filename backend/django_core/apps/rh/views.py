@@ -40,6 +40,7 @@ from .models import (
     Competence,
     CompetenceEmploye,
     DemandeConge,
+    DemandeRH,
     Departement,
     DocumentEmploye,
     DossierEmploye,
@@ -90,6 +91,7 @@ from .serializers import (
     CompetenceEmployeSerializer,
     CompetenceSerializer,
     DemandeCongeSerializer,
+    DemandeRHSerializer,
     DepartementSerializer,
     DocumentEmployeSerializer,
     DossierActivitySerializer,
@@ -3317,6 +3319,71 @@ class NoteDeFraisViewSet(_RhBaseViewSet):
         return self._set_statut(request, pk, NoteDeFrais.Statut.REMBOURSEE)
 
 
+class DemandeRHViewSet(_RhBaseViewSet):
+    """Demandes RH (XRH9) — administration du guichet self-service.
+
+    Société scopée + Administrateur/Responsable. Liste/traite TOUTES les
+    demandes de la société ; la SAISIE par le collaborateur passe par le
+    portail self-service (``portail/demander-attestation``). ``company`` est
+    posée CÔTÉ SERVEUR.
+
+    Filtres : ``?employe=<id>``, ``?statut=soumise|traitee|refusee``,
+    ``?type=...``.
+
+    Actions :
+    * ``POST .../{id}/traiter/`` — génère le PDF (réutilise le renderer paie
+      existant) et le lie à la demande ; refuse 403 si l'attestation de
+      salaire est demandée sans ``salaires_voir``.
+    * ``POST .../{id}/refuser/`` — refuse la demande (``motif_refus``
+      optionnel dans le corps).
+    """
+    queryset = DemandeRH.objects.select_related(
+        'employe', 'attachment', 'traite_par').all()
+    serializer_class = DemandeRHSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['employe__matricule', 'employe__nom']
+    ordering_fields = ['date_creation', 'statut']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        type_ = self.request.query_params.get('type')
+        if type_:
+            qs = qs.filter(type=type_)
+        return qs
+
+    @action(detail=True, methods=['post'], url_path='traiter')
+    def traiter(self, request, pk=None):
+        """Traite la demande : génère + lie le PDF d'attestation."""
+        demande = self.get_object()
+        peut_voir_salaires = HasPermission('salaires_voir')().has_permission(
+            request, self)
+        try:
+            services.traiter_demande_rh(
+                demande, traitant=request.user,
+                peut_voir_salaires=peut_voir_salaires)
+        except services.DemandeRHError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        return Response(
+            self.get_serializer(demande).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='refuser')
+    def refuser(self, request, pk=None):
+        """Refuse la demande RH (motif optionnel)."""
+        demande = self.get_object()
+        motif = request.data.get('motif_refus', '')
+        services.refuser_demande_rh(
+            demande, traitant=request.user, motif_refus=motif)
+        return Response(
+            self.get_serializer(demande).data, status=status.HTTP_200_OK)
+
+
 class PortailSelfServiceViewSet(viewsets.ViewSet):
     """Portail self-service employé (FG199) — accès du collaborateur connecté.
 
@@ -3463,6 +3530,64 @@ class PortailSelfServiceViewSet(viewsets.ViewSet):
             company=request.user.company, employe=dossier).select_related(
             'attachment')
         return Response(BulletinPaieSerializer(qs, many=True).data)
+
+    @action(detail=False, methods=['get'], url_path='mes-demandes')
+    def mes_demandes(self, request):
+        """XRH9 — demandes RH (attestations…) du collaborateur connecté."""
+        dossier = self._dossier(request)
+        if dossier is None:
+            return Response([])
+        qs = DemandeRH.objects.filter(
+            company=request.user.company, employe=dossier).select_related(
+            'attachment')
+        return Response(DemandeRHSerializer(qs, many=True).data)
+
+    @action(detail=False, methods=['post'], url_path='demander-attestation')
+    def demander_attestation(self, request):
+        """XRH9 — soumet une demande d'attestation pour le collaborateur.
+
+        ``employe``, ``company`` et ``statut`` sont posés CÔTÉ SERVEUR.
+        """
+        dossier = self._dossier(request)
+        if dossier is None:
+            return Response(
+                {'detail': 'Aucun dossier employé lié à ce compte.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        ser = DemandeRHSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        ser.save(company=request.user.company, employe=dossier)
+        return Response(ser.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], url_path='mes-demandes-telecharger')
+    def mes_demandes_telecharger(self, request, pk=None):
+        """XRH9 — télécharge le PDF d'UNE demande, réservé à SON auteur.
+
+        Une demande d'un autre employé (même société) renvoie 404 — le
+        téléchargement est strictement personnel. Une demande non encore
+        traitée (pas de PDF) renvoie 404.
+        """
+        from django.http import HttpResponse
+
+        from apps.records.storage import fetch_attachment
+
+        dossier = self._dossier(request)
+        if dossier is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        demande = DemandeRH.objects.filter(
+            company=request.user.company, employe=dossier, pk=pk).first()
+        if demande is None or demande.attachment_id is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        data, err = fetch_attachment(demande.attachment.file_key)
+        if err:
+            return Response(
+                {'detail': err}, status=status.HTTP_404_NOT_FOUND)
+        resp = HttpResponse(
+            data, content_type=demande.attachment.mime or 'application/pdf')
+        safe_name = (demande.attachment.filename or 'attestation.pdf') \
+            .replace('"', '')
+        resp['Content-Disposition'] = f'inline; filename="{safe_name}"'
+        resp['X-Content-Type-Options'] = 'nosniff'
+        return resp
 
 
 class CockpitRhViewSet(viewsets.ViewSet):

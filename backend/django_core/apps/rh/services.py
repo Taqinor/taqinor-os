@@ -668,3 +668,91 @@ def controler_permis_affectation(company, employe_id, *, le=None):
     from . import selectors
 
     return selectors.peut_conduire(company, employe_id, le=le)
+
+
+# ── XRH9 — guichet de demandes RH self-service ──────────────────────────────
+
+# Mappe le type stocké sur ``DemandeRH`` vers le type attendu par le renderer
+# PAIE34 (``apps.paie.builders.ATTESTATION_TYPES``).
+_TYPE_ATTESTATION_PAIE = {
+    'attestation_travail': 'travail',
+    'attestation_salaire': 'salaire',
+    'attestation_domiciliation': 'domiciliation',
+}
+
+
+class DemandeRHError(Exception):
+    """Erreur métier lors du traitement d'une ``DemandeRH``."""
+
+
+def traiter_demande_rh(demande, *, traitant, peut_voir_salaires):
+    """Traite une ``DemandeRH`` : génère le PDF et le lie à la demande.
+
+    ``traitant`` est l'utilisateur qui traite (posé côté serveur).
+    ``peut_voir_salaires`` (bool, résolu côté vue via ``salaires_voir``) — une
+    attestation de SALAIRE ne peut être délivrée par un traitant qui ne porte
+    pas cette permission : lève ``DemandeRHError``. Le PDF est produit en
+    RÉUTILISANT le renderer paie existant via le thin wrapper
+    ``apps.paie.services.generer_attestation_pdf_pour_dossier`` — aucun code
+    PDF n'est dupliqué ici. Le PDF généré est stocké comme ``records.
+    Attachment`` rattaché à la demande. Idempotent au sens où un second appel
+    régénère et remplace simplement le PDF (la demande reste ``traitee``).
+    """
+    from django.contrib.contenttypes.models import ContentType
+    from django.core.files.base import ContentFile
+
+    from apps.paie import services as paie_services
+    from apps.records.models import Attachment
+    from apps.records.storage import store_attachment
+
+    if demande.type == 'attestation_salaire' and not peut_voir_salaires:
+        raise DemandeRHError(
+            "Attestation de salaire refusée : permission "
+            "'salaires_voir' requise.")
+
+    type_paie = _TYPE_ATTESTATION_PAIE.get(demande.type)
+    if type_paie is None:
+        raise DemandeRHError(
+            f"Type de demande {demande.type!r} non pris en charge pour "
+            "une génération automatique.")
+
+    pdf_bytes = paie_services.generer_attestation_pdf_pour_dossier(
+        demande.employe, type_paie)
+
+    filename = f'{demande.type}_{demande.employe_id}.pdf'
+    upload = ContentFile(pdf_bytes, name=filename)
+    upload.size = len(pdf_bytes)
+    meta, err = store_attachment(upload)
+    if err:
+        raise DemandeRHError(err)
+
+    attachment = Attachment.objects.create(
+        company=demande.company,
+        content_type=ContentType.objects.get_for_model(demande),
+        object_id=demande.id,
+        file_key=meta['file_key'],
+        filename=meta['filename'],
+        size=meta['size'],
+        mime=meta['mime'],
+        uploaded_by=traitant,
+    )
+    demande.attachment = attachment
+    demande.statut = 'traitee'
+    demande.traite_par = traitant
+    demande.traite_le = timezone.now()
+    demande.save(update_fields=[
+        'attachment', 'statut', 'traite_par', 'traite_le',
+        'date_modification'])
+    return demande
+
+
+def refuser_demande_rh(demande, *, traitant, motif_refus=''):
+    """Refuse une ``DemandeRH`` (motif optionnel, traitant posé serveur)."""
+    demande.statut = 'refusee'
+    demande.motif_refus = motif_refus
+    demande.traite_par = traitant
+    demande.traite_le = timezone.now()
+    demande.save(update_fields=[
+        'statut', 'motif_refus', 'traite_par', 'traite_le',
+        'date_modification'])
+    return demande

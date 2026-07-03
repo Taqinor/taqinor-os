@@ -2743,3 +2743,40 @@ def appliquer_regularisation_ir(bulletin):
             bulletin.net_a_payer = _q(Decimal(bulletin.net_a_payer or 0) - delta)
             bulletin.save(update_fields=['ir', 'net_a_payer'])
     return delta
+
+
+# ── XRH9 — thin wrapper cross-app pour le guichet de demandes RH ───────────
+# ``apps.rh`` ne doit JAMAIS dupliquer de code PDF : il appelle CE wrapper
+# (cross-app par services uniquement) qui réutilise le renderer PAIE34
+# existant (``builders.render_attestation_pdf``).
+
+def generer_attestation_pdf_pour_dossier(dossier_employe, attestation_type):
+    """Génère le PDF d'attestation (PAIE34) pour un ``rh.DossierEmploye``.
+
+    Résout le ``ProfilPaie`` lié au dossier (``OneToOne``) — lève
+    ``ValueError`` si le dossier n'a pas encore de profil de paie. Pour
+    l'attestation de salaire, s'appuie sur le dernier ``BulletinPaie`` VALIDÉ
+    du profil (peut être ``None`` — le renderer affiche alors des tirets).
+    Retourne les octets PDF. Propage ``ValueError``/``RuntimeError`` du
+    renderer sous-jacent (type inconnu / moteur PDF indisponible).
+    """
+    from .builders import render_attestation_pdf
+    from .models import BulletinPaie, ProfilPaie
+
+    try:
+        profil = ProfilPaie.objects.get(employe=dossier_employe)
+    except ProfilPaie.DoesNotExist:
+        raise ValueError(
+            "Aucun profil de paie pour cet employé — "
+            "impossible de générer l'attestation.")
+
+    bulletin = None
+    if attestation_type == 'salaire':
+        bulletin = (
+            BulletinPaie.objects
+            .filter(company=dossier_employe.company, profil=profil,
+                    statut=BulletinPaie.STATUT_VALIDE)
+            .order_by('-periode__annee', '-periode__mois')
+            .first())
+    return render_attestation_pdf(
+        attestation_type, profil, bulletin=bulletin)

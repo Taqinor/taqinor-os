@@ -22,6 +22,7 @@ from .models import (
     Competence,
     CompetenceEmploye,
     DemandeConge,
+    DemandeRH,
     Departement,
     DocumentEmploye,
     DossierActivity,
@@ -2003,6 +2004,41 @@ class NoteDeFraisSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'employe', 'employe_nom', 'statut',
+            'date_creation', 'date_modification']
+
+    def get_employe_nom(self, obj):
+        if not obj.employe_id:
+            return ''
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+
+class DemandeRHSerializer(serializers.ModelSerializer):
+    """Demande RH self-service (XRH9) — guichet d'attestations à la demande.
+
+    ``employe``, ``company`` et ``statut`` sont posés CÔTÉ SERVEUR par la vue
+    self-service. ``attachment_url`` expose le lien de téléchargement du PDF
+    une fois la demande traitée (vide sinon).
+    """
+    employe_nom = serializers.SerializerMethodField()
+    type_display = serializers.CharField(
+        source='get_type_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    attachment_id = serializers.IntegerField(
+        source='attachment.id', read_only=True, default=None)
+
+    class Meta:
+        model = DemandeRH
+        fields = [
+            'id', 'employe', 'employe_nom',
+            'type', 'type_display', 'message',
+            'statut', 'statut_display', 'motif_refus',
+            'attachment_id', 'traite_par', 'traite_le',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'employe', 'employe_nom', 'statut', 'motif_refus',
+            'attachment_id', 'traite_par', 'traite_le',
             'date_creation', 'date_modification']
 
     def get_employe_nom(self, obj):

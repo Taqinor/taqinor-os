@@ -17,6 +17,7 @@ from .views import (
     CompetenceEmployeViewSet,
     CompetenceViewSet,
     DemandeCongeViewSet,
+    DemandeRHViewSet,
     DepartementViewSet,
     DocumentEmployeViewSet,
     DossierEmployeViewSet,
@@ -105,6 +106,7 @@ router.register(r'bulletins-paie', BulletinPaieViewSet)
 router.register(r'permis-conduire', PermisConduireViewSet)
 router.register(r'affectations-vehicule', AffectationVehiculeViewSet)
 router.register(r'notes-frais', NoteDeFraisViewSet)
+router.register(r'demandes-rh', DemandeRHViewSet)
 router.register(
     r'portail', PortailSelfServiceViewSet, basename='rh-portail')
 router.register(r'cockpit', CockpitRhViewSet, basename='rh-cockpit')
