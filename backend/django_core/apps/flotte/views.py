@@ -46,6 +46,7 @@ from .models import (
     PleinCarburant,
     ReferentielFlotte,
     ReleveTelematique,
+    RemiseAccessoire,
     ReservationVehicule,
     SignalementVehicule,
     Sinistre,
@@ -86,6 +87,7 @@ from .serializers import (
     DemandeVehiculeSerializer,
     ReferentielFlotteSerializer,
     ReleveTelematiqueSerializer,
+    RemiseAccessoireSerializer,
     ReservationVehiculeSerializer,
     SignalementVehiculeSerializer,
     SinistreSerializer,
@@ -99,7 +101,7 @@ READ_ACTIONS = ['list', 'retrieve', 'consommation', 'anomalies', 'echeances',
                 'couts', 'synthese', 'expirantes', 'tsav', 'alertes_echeances',
                 'tco', 'eco_conduite', 'documents', 'tableau_bord', 'journal',
                 'amortissement', 'expirants', 'ledger', 'historique',
-                'synthese_tva']
+                'synthese_tva', 'detenteurs_courants', 'taux_completion']
 
 
 def _parse_date_param(value):
@@ -473,6 +475,14 @@ class ActifFlotteViewSet(_FlotteBaseViewSet):
         ]
         return Response(data)
 
+    @action(detail=True, methods=['get'], url_path='detenteurs-courants')
+    def detenteurs_courants(self, request, pk=None):
+        """XFLT20 — Détenteur courant de chaque accessoire de l'actif
+        (lecture tout rôle) — répond à « qui a les clés ? »."""
+        actif = self.get_object()
+        from .selectors import detenteurs_courants
+        return Response(detenteurs_courants(request.user.company, actif.id))
+
 
 class AffectationConducteurViewSet(_FlotteBaseViewSet):
     """Affectations datées conducteur ↔ véhicule (FLOTTE8).
@@ -689,6 +699,40 @@ class BudgetFlotteViewSet(_FlotteBaseViewSet):
                 qs = qs.filter(annee=int(annee))
             except (ValueError, TypeError):
                 pass
+        return qs
+
+
+class RemiseAccessoireViewSet(_FlotteBaseViewSet):
+    """Registre de remise clés / carte / badge / tag Jawaz (XFLT20).
+
+    CRUD scopé société (écriture responsable/admin). Filtrable par
+    ``?actif_flotte=<id>`` et ``?conducteur=<id>``.
+    """
+    queryset = RemiseAccessoire.objects.select_related(
+        'actif_flotte', 'actif_flotte__vehicule', 'actif_flotte__engin',
+        'conducteur')
+    serializer_class = RemiseAccessoireSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_remise', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        actif_flotte = params.get('actif_flotte')
+        if actif_flotte:
+            try:
+                qs = qs.filter(actif_flotte_id=int(actif_flotte))
+            except (ValueError, TypeError):
+                pass
+
+        conducteur = params.get('conducteur')
+        if conducteur:
+            try:
+                qs = qs.filter(conducteur_id=int(conducteur))
+            except (ValueError, TypeError):
+                pass
+
         return qs
 
 

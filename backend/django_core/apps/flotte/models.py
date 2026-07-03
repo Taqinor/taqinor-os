@@ -3994,3 +3994,90 @@ class ParametreApprobationOR(models.Model):
             company=company,
             seuil_approbation=cls.SEUIL_APPROBATION_DEFAUT,
             ecart_alerte_pct=cls.ECART_ALERTE_PCT_DEFAUT)
+
+
+# ── XFLT20 — Registre de remise clés / carte / badge / tag Jawaz ───────────────
+
+class RemiseAccessoire(models.Model):
+    """Journal de custody des accessoires d'un actif (XFLT20).
+
+    Répond à « qui a les clés du L-4523 ? » : trace chaque remise d'un
+    accessoire (clé, double de clé, carte carburant, tag Jawaz, badge) à un
+    conducteur, avec date de remise et — une fois restitué — date de retour.
+    Le détenteur COURANT d'un accessoire est celui dont la ligne la plus
+    récente n'a pas de ``date_retour`` (voir ``services.detenteurs_courants``).
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête). L'actif et le conducteur liés doivent appartenir à la MÊME
+    société (validé dans ``clean``).
+    """
+
+    class Type(models.TextChoices):
+        CLE = 'cle', 'Clé'
+        DOUBLE_CLE = 'double_cle', 'Double de clé'
+        CARTE_CARBURANT = 'carte_carburant', 'Carte carburant'
+        TAG_JAWAZ = 'tag_jawaz', 'Tag Jawaz'
+        BADGE = 'badge', 'Badge'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_remises_accessoire',
+        verbose_name='Société',
+    )
+    actif_flotte = models.ForeignKey(
+        'ActifFlotte',
+        on_delete=models.CASCADE,
+        related_name='flotte_remises_accessoire',
+        verbose_name='Actif (véhicule ou engin)',
+    )
+    # 'carte_carburant' (15) est le plus long code de type.
+    type_accessoire = models.CharField(
+        max_length=16, choices=Type.choices, verbose_name='Type')
+    conducteur = models.ForeignKey(
+        'Conducteur',
+        on_delete=models.CASCADE,
+        related_name='flotte_remises_accessoire',
+        verbose_name='Détenteur',
+    )
+    date_remise = models.DateField(verbose_name='Date de remise')
+    date_retour = models.DateField(
+        null=True, blank=True, verbose_name='Date de retour')
+    commentaire = models.TextField(blank=True, verbose_name='Commentaire')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Remise d'accessoire"
+        verbose_name_plural = "Remises d'accessoire"
+        ordering = ['-date_remise', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'actif_flotte'],
+                name='flotte_rem_co_actif_idx',
+            ),
+            models.Index(
+                fields=['company', 'conducteur'],
+                name='flotte_rem_co_cond_idx',
+            ),
+        ]
+
+    def clean(self):
+        """Valide l'appartenance société de l'actif et du conducteur liés,
+        et la cohérence des dates."""
+        if self.actif_flotte_id is not None \
+                and self.actif_flotte.company_id != self.company_id:
+            raise ValidationError(
+                "L'actif n'appartient pas à la même société.")
+        if self.conducteur_id is not None \
+                and self.conducteur.company_id != self.company_id:
+            raise ValidationError(
+                "Le conducteur n'appartient pas à la même société.")
+        if self.date_remise is not None and self.date_retour is not None \
+                and self.date_retour < self.date_remise:
+            raise ValidationError(
+                "La date de retour ne peut pas précéder la remise.")
+
+    def __str__(self):
+        return (f'{self.get_type_accessoire_display()} — '
+                f'{self.actif_flotte} → {self.conducteur}')

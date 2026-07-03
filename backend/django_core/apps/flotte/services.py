@@ -1442,3 +1442,33 @@ def verifier_depassements_budget(company, annee):
         notifiees.append(ligne['categorie'])
 
     return notifiees
+
+
+# ── XFLT20 — Registre de remise clés / carte / badge / tag Jawaz ───────────────
+
+def avertissement_accessoires_non_rendus(affectation):
+    """XFLT20 — Message d'avertissement si le conducteur d'une affectation
+    qui se termine (``date_fin`` renseignée) détient encore des accessoires
+    non rendus sur LE VÉHICULE de l'affectation. Lecture seule, non
+    bloquant. Retourne ``None`` si rien à signaler."""
+    from .selectors import accessoires_non_rendus
+
+    if affectation.date_fin is None:
+        return None
+
+    actif = getattr(affectation.vehicule, 'actif_flotte', None)
+    if actif is None:
+        return None
+
+    non_rendus = [
+        a for a in accessoires_non_rendus(
+            affectation.company, affectation.conducteur_id)
+        if a['actif_flotte_id'] == actif.id
+    ]
+    if not non_rendus:
+        return None
+
+    libelles = ', '.join(a['type_display'] for a in non_rendus)
+    return (
+        f"Accessoires non rendus par {affectation.conducteur} pour "
+        f"{affectation.vehicule} : {libelles}.")

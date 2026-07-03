@@ -34,6 +34,7 @@ from .models import (
     Pneumatique,
     PleinCarburant,
     ReleveTelematique,
+    RemiseAccessoire,
     ReservationVehicule,
     Sinistre,
     TrajetChantier,
@@ -2681,3 +2682,71 @@ def variance_budget_flotte(company, annee):
         'total_budgete': round(total_budgete, 2),
         'total_realise': round(total_realise, 2),
     }
+
+
+# ── XFLT20 — Registre de remise clés / carte / badge / tag Jawaz ───────────────
+
+def detenteurs_courants(company, actif_flotte_id):
+    """XFLT20 — Détenteur COURANT de chaque type d'accessoire d'un actif.
+
+    Pour un actif de la société, la ligne la plus récente (par
+    ``date_remise``) SANS ``date_retour`` pour chaque ``type_accessoire`` est
+    considérée « en cours de détention ». Retourne une liste ``[{'type',
+    'type_display', 'conducteur_id', 'conducteur_nom', 'date_remise'}, …]``
+    (un accessoire restitué — dernière ligne avec ``date_retour`` — n'est
+    PAS listé). Lecture seule.
+    """
+    remises = (
+        RemiseAccessoire.objects
+        .filter(company=company, actif_flotte_id=actif_flotte_id)
+        .select_related('conducteur')
+        .order_by('type_accessoire', '-date_remise', '-id')
+    )
+
+    detenteurs = {}
+    for remise in remises:
+        # La première ligne rencontrée par type (tri décroissant) est la
+        # plus récente : si elle n'a pas de retour, l'accessoire est détenu.
+        if remise.type_accessoire in detenteurs:
+            continue
+        if remise.date_retour is not None:
+            detenteurs[remise.type_accessoire] = None  # restitué, rien.
+            continue
+        detenteurs[remise.type_accessoire] = {
+            'type': remise.type_accessoire,
+            'type_display': remise.get_type_accessoire_display(),
+            'conducteur_id': remise.conducteur_id,
+            'conducteur_nom': remise.conducteur.nom,
+            'date_remise': remise.date_remise,
+        }
+
+    return [v for v in detenteurs.values() if v is not None]
+
+
+def accessoires_non_rendus(company, conducteur_id):
+    """XFLT20 — Accessoires actuellement détenus par un conducteur (aucune
+    ``date_retour``), tous actifs confondus. Lecture seule, sert au warning
+    de fin d'affectation (``services.avertissement_accessoires_non_rendus``).
+    """
+    remises_ouvertes = (
+        RemiseAccessoire.objects
+        .filter(company=company, conducteur_id=conducteur_id)
+        .order_by('actif_flotte_id', 'type_accessoire', '-date_remise', '-id')
+    )
+
+    vus = set()
+    resultat = []
+    for remise in remises_ouvertes:
+        cle = (remise.actif_flotte_id, remise.type_accessoire)
+        if cle in vus:
+            continue
+        vus.add(cle)
+        if remise.date_retour is None:
+            resultat.append({
+                'actif_flotte_id': remise.actif_flotte_id,
+                'type': remise.type_accessoire,
+                'type_display': remise.get_type_accessoire_display(),
+                'date_remise': remise.date_remise,
+            })
+
+    return resultat
