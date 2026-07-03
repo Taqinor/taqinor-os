@@ -87,6 +87,9 @@
 .v2 .v2-lead {
   font-size: clamp(1.05rem, 1.5vw, 1.3rem);
   line-height: 1.7;
+  /* W367 — pretty wrapping on lead copy (see prose.css); progressive
+     enhancement, no RTL impact. */
+  text-wrap: pretty;
 }
 
 /* Couture de lumière plus longue et plus douce (transitions de sections) */

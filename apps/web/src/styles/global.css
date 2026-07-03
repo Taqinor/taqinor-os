@@ -606,11 +606,14 @@ summary:focus-visible {
 }
 
 /* Corps de texte "version 2" : taille fluide, interligne aéré */
+/* W367 — text-wrap: pretty (voir prose.css) : mêmes garanties, support
+   progressif, aucun effet sur le rythme RTL. */
 .v2-body {
   font-family: var(--font-sans);
   font-size: clamp(1rem, 1.5vw + 0.25rem, 1.125rem);
   line-height: 1.7;
   color: var(--color-lune-soft);
+  text-wrap: pretty;
 }
 
 /* ─── W175 — Eyebrow canonique sur fond clair (« salle blanche ») ──────────
