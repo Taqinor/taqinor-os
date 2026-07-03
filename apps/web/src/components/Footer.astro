@@ -31,7 +31,7 @@
  */
 import Logo from './Logo.astro';
 import { DEYE_CLOUD_URL, NAP, WHATSAPP_LEADS } from '../lib/nap';
-import { whatsappLink } from '../lib/whatsapp';
+import { pageContextWhatsappText, whatsappLink } from '../lib/whatsapp';
 import { CITIES } from '../lib/realisations';
 import { getLocaleFromPath, stripLocale, useTranslations } from '../i18n/utils';
 import { localizeNavHref, quoteJourneyHref } from '../i18n/pages';
@@ -43,7 +43,10 @@ const locale = getLocaleFromPath(Astro.url.pathname);
 const t = useTranslations(locale);
 const L = (href: string) => localizeNavHref(href, locale);
 
-const wa = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite des informations sur une installation solaire.');
+// WJ50 — préremplissage contextualisé PAR PAGE (chemin racine, sans préfixe de
+// locale) : même helper que StickyCta, pour que la reprise WhatsApp du pied
+// de page ouvre elle aussi un chat déjà informé et distinguable dans le CRM.
+const wa = whatsappLink(WHATSAPP_LEADS, pageContextWhatsappText(stripLocale(Astro.url.pathname)));
 // W246 — lien de parcours devis localisé (même point de bascule unique que
 // l'en-tête / CtaBand / StickyCta : quoteJourneyHref, jamais un href codé en dur).
 const journeyHref = quoteJourneyHref(locale);

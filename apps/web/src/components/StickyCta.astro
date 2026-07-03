@@ -14,8 +14,8 @@
  * W210 — .glow on the diagnostic CTA button.
  */
 import { WHATSAPP_LEADS } from '../lib/nap';
-import { whatsappLink } from '../lib/whatsapp';
-import { getLocaleFromPath, useTranslations } from '../i18n/utils';
+import { pageContextWhatsappText, whatsappLink } from '../lib/whatsapp';
+import { getLocaleFromPath, stripLocale, useTranslations } from '../i18n/utils';
 import { quoteJourneyHref } from '../i18n/pages';
 
 // Le texte WhatsApp pré-rempli reste FR (il atteint l'équipe FR). Seuls le
@@ -25,7 +25,10 @@ import { quoteJourneyHref } from '../i18n/pages';
 const locale = getLocaleFromPath(Astro.url.pathname);
 const t = useTranslations(locale);
 const diagHref = quoteJourneyHref(locale);
-const wa = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour une installation solaire.');
+// WJ50 — préremplissage contextualisé PAR PAGE (chemin racine, sans préfixe de
+// locale) : l'équipe ouvre le chat en sachant déjà d'où le client écrit, et
+// chaque point d'entrée reste distinguable dans le CRM.
+const wa = whatsappLink(WHATSAPP_LEADS, pageContextWhatsappText(stripLocale(Astro.url.pathname)));
 ---
 
 <div
