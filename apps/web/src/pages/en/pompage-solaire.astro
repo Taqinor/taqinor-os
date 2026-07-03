@@ -138,8 +138,12 @@ const jsonLd = {
     <!-- How it works -->
     <section class="section px-4">
       <div class="mx-auto max-w-6xl">
-        {/* Eyebrow demoted to lune (brass discipline #2) */}
-        <p class="tech-label v2-kicker rule-brass text-lune">How it works</p>
+        {/* Eyebrow demoted to lune (brass discipline #2) — W274: chapter-
+            numbering system (01/02…), same device as index.astro, extended
+            here for site-wide consistency. Light-background eyebrows
+            (text-azur-600, e.g. "Four measurements") stay unnumbered — same
+            exclusion as the homepage's tonal-break section. */}
+        <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">01</span>How it works</p>
         <h2 class="display v2-section-title mt-5 text-white">From sun to field, in four stages</h2>
         <div class="mt-12 grid gap-6 md:grid-cols-2" data-stagger>
           {etapes.map((e, i) => (
@@ -241,8 +245,8 @@ const jsonLd = {
       <div class="mx-auto max-w-6xl">
         <div class="grid gap-10 lg:grid-cols-[1.1fr_1fr] lg:items-center">
           <div class="v2-rise">
-            {/* Eyebrow demoted to lune (brass discipline #2) */}
-            <p class="tech-label v2-kicker rule-brass text-lune">Verified tax advantage</p>
+            {/* Eyebrow demoted to lune (brass discipline #2) — W274 chapter 02 */}
+            <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">02</span>Verified tax advantage</p>
             <h2 class="display v2-section-title mt-5 text-white">Agricultural pumping, VAT-exempt</h2>
             <p class="v2-lead mt-5 text-lune-soft">
               In Morocco, solar water-pumping systems are exempt from VAT — and the exemption covers
@@ -316,7 +320,8 @@ const jsonLd = {
     <section class="section px-4">
       <div class="mx-auto max-w-6xl">
         <div class="v2-rise cine-card border-2 border-dashed border-white/25 p-7">
-          <p class="tech-label v2-kicker rule-brass text-lune">Financing lead — to verify</p>
+          {/* W274 chapter 03 */}
+          <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">03</span>Financing lead — to verify</p>
           <h2 class="display mt-3 text-xl text-white">Agricultural subsidy (FDA) and financing (Saquii)</h2>
           <p class="mt-4 max-w-2xl text-sm leading-relaxed text-lune-soft">
             The Moroccan state has historically offered an Agricultural Development Fund subsidy for
@@ -336,8 +341,8 @@ const jsonLd = {
     <!-- Links block / business segment -->
     <section class="section border-t border-white/10 px-4">
       <div class="mx-auto max-w-6xl">
-        {/* Eyebrow demoted to lune (brass discipline #2) */}
-        <p class="tech-label v2-kicker rule-brass text-lune">To go further</p>
+        {/* Eyebrow demoted to lune (brass discipline #2) — W274 chapter 04 */}
+        <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">04</span>To go further</p>
         <h2 class="display v2-section-title mt-5 text-white">Agriculture, a business segment</h2>
         <p class="v2-lead mt-5 max-w-2xl text-lune-soft">
           Solar pumping belongs to the working farm, not to the plug-in kit you wire up yourself.

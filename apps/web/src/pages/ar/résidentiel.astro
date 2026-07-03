@@ -128,9 +128,12 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
       </aside>
     </section>
 
-    {/* شفافية الأسعار — eyebrow مُخفَّض إلى lune */}
+    {/* شفافية الأسعار — eyebrow مُخفَّض إلى lune —
+        W274: نظام ترقيم الفصول (01/02…)، نفس آلية الصفحة الرئيسية
+        (index.astro/ar)، ممتد هنا لاتّساق العملية التحريرية على الموقع كله.
+        ms-2 (منطقي) مثل ar/index.astro — لا mr-2 فيزيائي. */}
     <section class="section mx-auto max-w-4xl px-4">
-      <p class="tech-label v2-kicker rule-brass text-lune">شفافية الأسعار</p>
+      <p class="tech-label v2-kicker rule-brass text-lune"><span class="ms-2 font-display text-xs text-azur-200/80" aria-hidden="true">01</span>شفافية الأسعار</p>
       <h2 class="display v2-section-title mt-5 text-white">فاتورتك تضعك أصلاً ضمن مجال</h2>
       <p class="v2-lead mt-4 max-w-2xl text-lune-soft">
         إليك أوامر المقدار المسجَّلة على أوراشنا السكنية — <strong class="text-lune">لا تكون أبداً
@@ -167,7 +170,8 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
     <section class="section px-4">
       <div class="mx-auto grid max-w-6xl gap-12 lg:grid-cols-[1.1fr_1fr] lg:items-center">
         <div class="v2-rise">
-          <p class="tech-label v2-kicker rule-brass text-lune">أفق الاستثمار</p>
+          {/* W274 — الفصل 02 */}
+          <p class="tech-label v2-kicker rule-brass text-lune"><span class="ms-2 font-display text-xs text-azur-200/80" aria-hidden="true">02</span>أفق الاستثمار</p>
           <h2 class="display v2-section-title mt-5 text-white">ما تعطيه الـ25 سنة، عاماً بعد عام</h2>
           <p class="v2-lead mt-5 text-lune-soft">
             يضمن الصانع أداء الألواح على مدى 25 سنة. خذ فيلا بفاتورة

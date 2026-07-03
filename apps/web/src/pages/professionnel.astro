@@ -214,7 +214,12 @@ const capexOpex = [
     {/* W260 — Quatre cartes d'auto-identification par type de site */}
     <div class="seam-soft" aria-hidden="true"></div>
     <section class="section mx-auto max-w-6xl px-4">
-      <p class="tech-label v2-kicker rule-brass text-lune">Vous vous reconnaissez où ?</p>
+      {/* W274 — Système de numérotation par chapitre (01/02…), même dispositif
+          que l'accueil (index.astro) : étendu ici pour que le procédé éditorial
+          soit cohérent sur tout le site plutôt qu'exclusif à l'accueil.
+          Seuls les eyebrows qui ouvrent une section majeure (pas les
+          sous-titres à l'intérieur d'une même section) portent un numéro. */}
+      <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">01</span>Vous vous reconnaissez où ?</p>
       <h2 class="display v2-section-title mt-5 text-white">Quatre types de site, une même logique de charge</h2>
       <div class="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
         {segments.map((s, i) => (
@@ -244,7 +249,11 @@ const capexOpex = [
     <div class="seam-soft" aria-hidden="true"></div>
     <section class="section px-4">
       <div class="mx-auto max-w-4xl">
-        <p class="tech-label v2-kicker rule-brass text-lune">Transparence des prix</p>
+        {/* W274 — Chapitre 02, même dispositif. Les eyebrows "Deux montages
+            possibles" et "Ce que vérifie votre service achats" plus bas
+            restent SANS numéro : ce sont des sous-titres à l'intérieur de
+            cette même section, pas de nouvelles sections majeures. */}
+        <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">02</span>Transparence des prix</p>
         <h2 class="display v2-section-title mt-5 text-white">À quel budget s'attendre pour un site professionnel</h2>
         <p class="v2-lead mt-4 max-w-2xl text-lune-soft">
           Fourchettes indicatives en toiture professionnelle — <strong class="text-lune">jamais un devis</strong>.
@@ -347,7 +356,10 @@ const capexOpex = [
     <section class="section px-4">
       <div class="mx-auto max-w-3xl">
         <div class="v2-rise">
-          <p class="tech-label v2-kicker rule-brass text-lune">Loi 82-21 · moyenne tension</p>
+          {/* W274 — Chapitre 03, même dispositif. L'eyebrow "Les deux leviers
+              fiscaux…" plus bas reste SANS numéro : sous-titre à l'intérieur
+              de cette même section. */}
+          <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">03</span>Loi 82-21 · moyenne tension</p>
           <h2 class="display v2-section-title mt-5 text-white">Faire payer chaque kilowattheure exporté</h2>
           <p class="v2-lead mt-5 text-lune-soft">
             La loi 82-21 fixe le cadre de l'autoproduction et de l'excédent renvoyé au réseau. En

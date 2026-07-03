@@ -134,7 +134,10 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
     {/* Transparence des prix — le grand livre, chiffres qui s'égrènent.
         Eyebrow rétrogradé en lune (discipline laiton). */}
     <section class="section mx-auto max-w-4xl px-4">
-      <p class="tech-label v2-kicker rule-brass text-lune">Transparence des prix</p>
+      {/* W274 — Système de numérotation par chapitre (01/02…), même dispositif
+          que l'accueil (index.astro) : étendu ici pour que le procédé éditorial
+          soit cohérent sur tout le site plutôt qu'exclusif à l'accueil. */}
+      <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">01</span>Transparence des prix</p>
       <h2 class="display v2-section-title mt-5 text-white">Votre facture vous place déjà dans une fourchette</h2>
       <p class="v2-lead mt-4 max-w-2xl text-lune-soft">
         Voici les ordres de grandeur relevés sur nos chantiers résidentiels — <strong class="text-lune">jamais un
@@ -171,7 +174,8 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
     <section class="section px-4">
       <div class="mx-auto grid max-w-6xl gap-12 lg:grid-cols-[1.1fr_1fr] lg:items-center">
         <div class="v2-rise">
-          <p class="tech-label v2-kicker rule-brass text-lune">L'horizon d'investissement</p>
+          {/* W274 — Chapitre 02, même dispositif que ci-dessus. */}
+          <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">02</span>L'horizon d'investissement</p>
           <h2 class="display v2-section-title mt-5 text-white">Ce que les 25 ans donnent, année par année</h2>
           <p class="v2-lead mt-5 text-lune-soft">
             Le constructeur garantit la performance des panneaux sur 25 ans. Prenez une villa à
