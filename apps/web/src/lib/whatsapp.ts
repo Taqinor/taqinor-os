@@ -1,3 +1,5 @@
+import type { Locale } from '../i18n/config';
+
 /**
  * Liens WhatsApp pré-remplis (wa.me). `number` : chiffres uniquement,
  * avec indicatif pays (ex. 2126XXXXXXXX).
@@ -25,6 +27,36 @@ export function leadWhatsappText(p: { fullName: string; city: string; kwcLabel: 
  */
 export const VOICE_NOTE_INVITE =
   'Vous pouvez aussi m’envoyer un vocal avec une photo de ma facture.';
+
+/**
+ * W349 — « La porte sans formulaire » : un message pré-rempli qui ne demande
+ * RIEN à lire ni à remplir — juste une photo de facture (ou de compteur) et/ou
+ * un vocal. Cible le visiteur WhatsApp-only à faible littératie numérique
+ * (persona confirmé, notamment agricole) qui n'arrive à compléter AUCUN
+ * assistant à étapes. Distinct de `captureWhatsappText` (qui suppose un
+ * parcours déjà entamé avec nom/ville/estimation) : ici il n'y a AUCUN champ
+ * préalable — le lien s'ouvre directement depuis un CTA de page, pas depuis
+ * un formulaire soumis.
+ *
+ * `locale === 'ar'` ajoute UNE ligne courte en darija (arabe marocain parlé)
+ * après la ligne en arabe standard (fus'ha) : le persona ciblé par cette
+ * porte (agricole, faible littératie) communique naturellement en darija à
+ * l'oral, même quand l'UI de la page reste en fus'ha (registre écrit
+ * standard, cohérent avec le reste du site). Les autres locales ne changent
+ * pas de comportement (repli FR identique à avant).
+ */
+export function zeroFormWhatsappText(locale?: Locale): string {
+  if (locale === 'ar') {
+    return (
+      'مرحبا، هادي صورة فاتورة الكهرباء ديالي (ولا نصيفط ليكم صوت مباشرة من بعد). ' +
+      'عافاك تكلفو بكلشي.'
+    );
+  }
+  return (
+    'Bonjour, voici une photo de ma facture d’électricité (ou je vous envoie un vocal juste après). ' +
+    'Merci de vous occuper de tout.'
+  );
+}
 
 /**
  * WJ3 — message pré-rempli pour la CAPTURE WhatsApp-first (/devis/mon-toit).

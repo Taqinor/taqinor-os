@@ -24,6 +24,13 @@
  *  - Carte financement/subvention FDA 30 % + Saquii — gatée WG11 : reste
  *    masquée tant que les termes ne sont pas vérifiés auprès des sources
  *    primaires (DPA/ORMVA/CAM), jamais un chiffre non confirmé.
+ *
+ * W349 — « La porte sans formulaire » : un CTA WhatsApp direct qui ne demande
+ * de RIEN lire ni remplir — juste une photo de facture (ou de compteur),
+ * éventuellement suivie d'un vocal. Placé juste sous le héros, en évidence,
+ * pour le visiteur à faible littératie numérique (persona confirmé côté
+ * agricole) qui n'arrive à compléter aucun assistant à étapes — même pas la
+ * fiche imprimable W348 ci-dessous, qui suppose de lire/écrire des mesures.
  */
 import Layout from '../layouts/Layout.astro';
 import V2Enhance from '../components/V2Enhance.astro';
@@ -35,7 +42,10 @@ import Faq from '../components/Faq.astro';
 import ServiceWarrantyTable from '../components/ServiceWarrantyTable.astro';
 import { serviceFaqItems } from '../lib/serviceFaq';
 import { WHATSAPP_LEADS } from '../lib/nap';
-import { whatsappLink } from '../lib/whatsapp';
+import { whatsappLink, zeroFormWhatsappText } from '../lib/whatsapp';
+
+// W349 — porte sans formulaire : aucun champ, aucune fiche à remplir.
+const zeroFormWaHref = whatsappLink(WHATSAPP_LEADS, zeroFormWhatsappText());
 
 // W348 — fiche de dimensionnement imprimable (HMT/débit/heures/culture), à
 // remplir sur place puis renvoyer en photo sur WhatsApp : reprend UNIQUEMENT
@@ -133,6 +143,24 @@ const jsonLd = {
           la profondeur du forage et de l’eau dont la culture a besoin. On relève ces quatre
           mesures avant de proposer quoi que ce soit.
         </p>
+        {/* W349 — porte sans formulaire, en évidence sous le héros : aucune
+            lecture, aucune saisie — une photo de facture (ou de compteur)
+            suffit pour démarrer l'échange. */}
+        <div class="cine-in cine-in-3 mt-8 border-2 border-brass-400/60 bg-white/5 p-5 sm:p-6">
+          <p class="text-base font-bold text-white sm:text-lg">
+            Pas le temps de lire cette page ? Envoyez une photo de votre facture sur WhatsApp —
+            on s’occupe de tout.
+          </p>
+          <a
+            href={zeroFormWaHref}
+            target="_blank"
+            rel="noopener"
+            class="glow mt-4 inline-flex items-center gap-2 bg-brass-400 px-6 py-3.5 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
+            Envoyer ma photo sur WhatsApp →
+          </a>
+        </div>
       </div>
     </section>
 

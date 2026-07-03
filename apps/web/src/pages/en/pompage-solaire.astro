@@ -17,6 +17,13 @@
  * SVG diagram, diesel/butane-vs-solar narrative framing with NO invented
  * MAD/litre figure, and a WG11-gated financing/subsidy card labeled
  * "to verify with your DPA" — never a confirmed number or partnership claim).
+ *
+ * W349 — "The form-bypass door": a direct WhatsApp CTA that asks for NOTHING
+ * to read or fill — just a bill (or meter) photo, possibly followed by a
+ * voice note. Placed right under the hero, prominently, for the
+ * low-digital-literacy visitor (confirmed persona, notably agricultural) who
+ * can't complete any step-by-step wizard — not even the printable worksheet
+ * (W348) below, which assumes reading/writing measurements.
  */
 import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -30,11 +37,14 @@ import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
 import { serviceFaqItems } from '../../lib/serviceFaq';
 import { WHATSAPP_LEADS } from '../../lib/nap';
-import { whatsappLink } from '../../lib/whatsapp';
+import { whatsappLink, zeroFormWhatsappText } from '../../lib/whatsapp';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 const devisHref = L('/devis/mon-toit');
+
+// W349 — form-bypass door: no field, no worksheet to fill.
+const zeroFormWaHref = whatsappLink(WHATSAPP_LEADS, zeroFormWhatsappText());
 
 // W348 — printable sizing worksheet (HMT/flow rate/hours/crop), to fill on
 // site then send back as a photo on WhatsApp: reuses ONLY the 4 variables
@@ -128,6 +138,23 @@ const jsonLd = {
           are after, the head the pump must overcome, the depth of the borehole and the water the
           crop needs. We take those four measurements before we propose anything at all.
         </p>
+        {/* W349 — form-bypass door, prominent under the hero: no reading, no
+            filling in — a bill (or meter) photo is enough to start. */}
+        <div class="cine-in cine-in-3 mt-8 border-2 border-brass-400/60 bg-white/5 p-5 sm:p-6">
+          <p class="text-base font-bold text-white sm:text-lg">
+            No time to read this page? Send a photo of your bill on WhatsApp — we'll take care of
+            everything.
+          </p>
+          <a
+            href={zeroFormWaHref}
+            target="_blank"
+            rel="noopener"
+            class="glow mt-4 inline-flex items-center gap-2 bg-brass-400 px-6 py-3.5 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
+            Send my photo on WhatsApp →
+          </a>
+        </div>
       </div>
     </section>
 
