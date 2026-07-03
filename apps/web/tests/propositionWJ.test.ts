@@ -13,6 +13,7 @@ import {
   financingComparison,
   loanMonthlyPayment,
   whatsappLink,
+  whatsappLinkForIntent,
   buildAcceptBodyRich,
   buildAcceptBody,
   CO2_KG_PER_KWH,
@@ -205,6 +206,39 @@ describe('WJ12 — deep-link WhatsApp porte la référence du devis', () => {
   it('sans référence → message générique valide', () => {
     const url = whatsappLink('');
     expect(url).toContain('wa.me/');
+    expect(decodeURIComponent(url)).toContain('Taqinor');
+  });
+});
+
+// ── WJ85 · Prérempli DISTINCT par intention (discuss/question/voice) ────────
+
+describe('WJ85 — whatsappLinkForIntent : un message différent par intention, jamais le même lien', () => {
+  it('discuss / question / voice produisent trois messages distincts', () => {
+    const discuss = whatsappLinkForIntent('DEV-2026-042', 'discuss');
+    const question = whatsappLinkForIntent('DEV-2026-042', 'question');
+    const voice = whatsappLinkForIntent('DEV-2026-042', 'voice');
+    expect(discuss).not.toBe(question);
+    expect(discuss).not.toBe(voice);
+    expect(question).not.toBe(voice);
+    expect(decodeURIComponent(discuss)).toMatch(/discuter/i);
+    expect(decodeURIComponent(question)).toMatch(/question précise/i);
+    expect(decodeURIComponent(voice)).toMatch(/note vocale/i);
+  });
+
+  it('cite toujours la référence quand présente, pour les trois intentions', () => {
+    for (const intent of ['discuss', 'question', 'voice'] as const) {
+      const url = whatsappLinkForIntent('DEV-2026-042', intent);
+      expect(decodeURIComponent(url)).toContain('DEV-2026-042');
+    }
+  });
+
+  it('numéro par défaut = numéro réel TAQINOR (même garantie que whatsappLink)', () => {
+    expect(whatsappLinkForIntent('DEV-1', 'question')).toContain(`wa.me/${TAQINOR_WHATSAPP}`);
+  });
+
+  it('sans référence → message générique valide (pas de "(réf. )" vide)', () => {
+    const url = whatsappLinkForIntent('', 'discuss');
+    expect(decodeURIComponent(url)).not.toContain('(réf.');
     expect(decodeURIComponent(url)).toContain('Taqinor');
   });
 });
