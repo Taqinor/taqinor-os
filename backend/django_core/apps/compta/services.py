@@ -82,6 +82,8 @@ _COMPTES_CGNC = [
     ('3427', 'Clients - factures à établir', True, True, 'actif'),
     ('3424', 'Clients douteux ou litigieux', True, True, 'actif'),
     ('3134', 'Travaux en cours', False, False, 'actif'),
+    # XACC6 — Stock de marchandises (inventaire permanent).
+    ('3111', 'Stock de marchandises', False, False, 'actif'),
     ('3455', 'État - TVA récupérable', False, False, 'actif'),
     ('34552', 'État - TVA récupérable sur charges', False, False, 'actif'),
     # XACC1 — TVA récupérable EN ATTENTE (régime encaissement) : la TVA d'un
@@ -119,6 +121,10 @@ _COMPTES_CGNC = [
      'charge'),
     # Classe 6 — Charges
     ('6111', 'Achats de marchandises', False, False, 'charge'),
+    # XACC6 — Variation de stock de marchandises (inventaire permanent) : une
+    # SORTIE valorisée débite cette charge (le CGNC compte la variation de
+    # stock en charge, contrepartie du crédit 3111).
+    ('6114', 'Variation de stocks de marchandises', False, False, 'charge'),
     ('6171', 'Rémunérations du personnel', False, False, 'charge'),
     ('6174', 'Charges sociales (cotisations patronales)', False, False,
      'charge'),
@@ -1783,6 +1789,90 @@ def appliquer_modele_rapprochement(ligne_releve, modele=None):
     ligne_gl_banque = ecriture.lignes.get(compte=compte_banque)
     pointer_ligne_releve(ligne_releve, [ligne_gl_banque.id])
     return ecriture
+
+
+# ── XACC6 — Écritures de stock automatiques (inventaire permanent) ─────────
+# Les auto-écritures couvrent factures/paiements/avoirs/FF (FG109), mais aucun
+# mouvement de stock ne poste au GL. ``poster_mouvement_stock`` comble ce
+# manque, derrière le toggle société ``PlanComptable.inventaire_permanent``
+# (défaut OFF = comportement actuel intact, zéro écriture). La valeur
+# unitaire est lue via ``apps.stock.selectors`` (jamais un import du modèle
+# ``Produit``) — en l'absence d'un CUMP glissant dans ``apps.stock`` à ce
+# jour, on retient ``Produit.prix_achat`` comme valorisation (usage 100 %
+# interne/GL, jamais exposé dans un PDF ou un document client, conforme à la
+# règle CLAUDE.md sur ce champ).
+
+def inventaire_permanent_actif(company):
+    """Vrai si l'inventaire permanent est activé pour la société (XACC6).
+
+    Sème le plan comptable au besoin (idempotent) pour que le réglage soit
+    toujours lisible, même sur une société jamais semée.
+    """
+    plan = PlanComptable.objects.filter(company=company).first()
+    if plan is None:
+        plan = seed_plan_comptable(company)
+    return bool(plan.inventaire_permanent)
+
+
+@transaction.atomic
+def poster_mouvement_stock(company, *, mouvement_ref, produit_id, sens,
+                           quantite, valeur_unitaire=None, date_mouvement=None,
+                           user=None, force=False):
+    """Poste l'écriture GL d'un mouvement de stock valorisé (XACC6).
+
+    ``sens`` ∈ {'entree', 'sortie'} : une ENTRÉE valorisée débite 3111 (stock)
+    et crédite 6114 (variation de stock) ; une SORTIE fait l'inverse (débite
+    6114, crédite 3111) — reflet CGNC de la variation. Ne fait RIEN (renvoie
+    ``None``) si le toggle ``inventaire_permanent`` est OFF (sauf ``force``),
+    ou si la valeur totale du mouvement est nulle. IDEMPOTENT PAR MOUVEMENT :
+    ``mouvement_ref`` doit être unique par société (ex. l'id du
+    ``MouvementStock`` d'origine) — rejouer le même mouvement renvoie
+    l'écriture déjà postée sans dupliquer. ``valeur_unitaire`` : si omise, est
+    résolue via ``apps.stock.selectors.get_produit_scoped(company,
+    produit_id).prix_achat`` (jamais un import du modèle ``Produit``).
+    """
+    if sens not in ('entree', 'sortie'):
+        raise ValidationError("Sens de mouvement invalide (entree/sortie).")
+    if not force and not inventaire_permanent_actif(company):
+        return None
+    existante = _ecriture_existante(company, 'mouvement_stock', mouvement_ref)
+    if existante:
+        return existante
+    if valeur_unitaire is None:
+        from apps.stock import selectors as stock_selectors
+        produit = stock_selectors.get_produit_scoped(company, produit_id)
+        if produit is None:
+            raise ValidationError(
+                "Produit introuvable dans cette société pour ce mouvement.")
+        valeur_unitaire = produit.prix_achat
+    valeur_totale = (Decimal(valeur_unitaire or 0)
+                     * Decimal(quantite or 0)).copy_abs()
+    if valeur_totale <= 0:
+        return None
+    compte_stock = _assurer_compte(company, '3111')
+    compte_variation = _assurer_compte(company, '6114')
+    if sens == 'entree':
+        lignes = [
+            {'compte': compte_stock, 'debit': valeur_totale, 'credit': Decimal('0'),
+             'libelle': f'Entrée stock {mouvement_ref}'},
+            {'compte': compte_variation, 'debit': Decimal('0'), 'credit': valeur_totale,
+             'libelle': f'Entrée stock {mouvement_ref}'},
+        ]
+    else:
+        lignes = [
+            {'compte': compte_variation, 'debit': valeur_totale, 'credit': Decimal('0'),
+             'libelle': f'Sortie stock {mouvement_ref}'},
+            {'compte': compte_stock, 'debit': Decimal('0'), 'credit': valeur_totale,
+             'libelle': f'Sortie stock {mouvement_ref}'},
+        ]
+    journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+    return creer_ecriture(
+        company, journal, date_mouvement or timezone.localdate(),
+        f'Mouvement de stock {mouvement_ref}', lignes,
+        reference=str(mouvement_ref), source_type='mouvement_stock',
+        source_id=mouvement_ref, created_by=user,
+        statut=EcritureComptable.Statut.VALIDEE,
+    )
 
 
 # ── FG124 — Caisse / petty cash (journal d'espèces) ────────────────────────

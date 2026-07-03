@@ -37,7 +37,10 @@ class PlanComptable(models.Model):
     encaissement) qui pilote si la TVA facturée/récupérable est constatée
     directement en compte définitif (débit, comportement historique) ou
     transite par un compte d'attente jusqu'au règlement effectif
-    (encaissement, cf. ``services.transferer_tva_encaissement``).
+    (encaissement, cf. ``services.transferer_tva_encaissement``) — et
+    ``inventaire_permanent`` (XACC6) — le toggle société qui active le
+    postage automatique des mouvements de stock au GL (défaut OFF = aucune
+    écriture, comportement actuel inchangé).
     """
     class RegimeTVA(models.TextChoices):
         DEBIT = 'debit', 'Débit (fait générateur = facturation)'
@@ -60,6 +63,10 @@ class PlanComptable(models.Model):
     regime_tva = models.CharField(
         max_length=12, choices=RegimeTVA.choices,
         default=RegimeTVA.DEBIT, verbose_name='Régime de TVA')
+    # XACC6 — défaut OFF : zéro écriture tant que le founder n'active pas
+    # l'inventaire permanent pour la société.
+    inventaire_permanent = models.BooleanField(
+        default=False, verbose_name='Inventaire permanent (stock → GL)')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 

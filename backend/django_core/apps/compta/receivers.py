@@ -30,4 +30,10 @@ from .services import (  # noqa: F401  (ré-export du point d'intégration)
     # point d'ancrage : appel de service explicite depuis ``ventes`` tant
     # qu'aucun événement dédié « paiement enregistré » n'existe sur le bus.
     transferer_tva_encaissement,
+    # XACC6 — écriture de stock automatique (inventaire permanent, toggle OFF
+    # par défaut). Même point d'ancrage : appel de service explicite depuis
+    # ``stock`` tant qu'aucun événement dédié « mouvement de stock » n'existe
+    # sur ``core.events`` (l'ajouter modifierait ``apps.stock``, hors
+    # périmètre additif ici).
+    poster_mouvement_stock,
 )
