@@ -75,10 +75,11 @@ describe('prévisualisations supprimées', () => {
     // nos-solutions) + 1 (recharge-voiture-electrique-solaire, pilier EV W120)
     // + 1 (impact-taqinor, page transparence W279)
     // + 4 du lot drain 2026-07-03 (production-mesuree W354, ensoleillement-maroc W355,
-    //   prix-panneaux-solaires-maroc W293, parrainage W338).
+    //   prix-panneaux-solaires-maroc W293, parrainage W338)
+    // + 2 (methodologie-estimation W359, liens W350).
     // Les études de cas, guides et articles de blog vivent en sous-dossier
     // (realisations/, guides/, blog/) et ne comptent pas ici.
-    expect(slugs.length).toBe(26);
+    expect(slugs.length).toBe(28);
   });
 
   it('le filtre sitemap ne référence plus /v2 ni /v3', () => {
