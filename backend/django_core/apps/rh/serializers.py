@@ -24,8 +24,11 @@ from .models import (
     DemandeConge,
     Departement,
     DocumentEmploye,
+    DossierActivity,
     DossierEmploye,
     DotationEpi,
+    ElementIntegration,
+    ElementIntegrationEmploye,
     ElementSortie,
     ElementsVariablesPaie,
     EmargementEpi,
@@ -34,9 +37,11 @@ from .models import (
     FeuilleTemps,
     Habilitation,
     HeuresSupp,
+    HoraireTravail,
     IncidentPresence,
     InscriptionFormation,
     LigneRisqueChantier,
+    ModeleIntegration,
     NoteDeFrais,
     ObjectifIndividuel,
     OrdreMission,
@@ -100,15 +105,57 @@ class DossierEmployeSerializer(serializers.ModelSerializer):
             'adresse_perso', 'telephone_perso', 'email_perso',
             'urgence_nom', 'urgence_lien', 'urgence_telephone',
             'groupe_sanguin',
+            # XRH1 — période d'essai.
+            'essai_date_fin', 'essai_renouvele',
+            # XRH5 — déclaration d'entrée CNSS/AMO (statut posé côté serveur
+            # via l'action ``marquer-declare`` ; en écriture directe reste
+            # possible pour ``non_requis`` par un admin, mais jamais la date).
+            'declaration_entree_statut', 'declaration_entree_date',
+            # XRH8 — horaire de travail assigné.
+            'horaire',
             'date_creation',
         ]
-        read_only_fields = ['date_creation']
+        read_only_fields = ['date_creation', 'declaration_entree_date']
+
+    def validate_horaire(self, value):
+        return _meme_societe(self, value, 'Horaire de travail')
 
     def validate_departement(self, value):
         return _meme_societe(self, value, 'Département')
 
     def validate_poste_ref(self, value):
         return _meme_societe(self, value, 'Poste')
+
+
+class HoraireTravailSerializer(serializers.ModelSerializer):
+    """Gabarit d'horaire de travail (XRH8) — 44 h standard, Ramadan,
+    saisonnier. ``date_debut``/``date_fin`` vides = permanent."""
+    type_horaire_display = serializers.CharField(
+        source='get_type_horaire_display', read_only=True)
+
+    class Meta:
+        model = HoraireTravail
+        fields = [
+            'id', 'nom', 'heures_semaine', 'heures_jour_defaut',
+            'type_horaire', 'type_horaire_display',
+            'date_debut', 'date_fin', 'actif', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class DossierActivitySerializer(serializers.ModelSerializer):
+    """Entrée de chatter d'un dossier employé (XRH6) — lecture seule (écrite
+    uniquement côté serveur par la vue)."""
+    auteur_username = serializers.CharField(
+        source='auteur.username', read_only=True, default='')
+
+    class Meta:
+        model = DossierActivity
+        fields = [
+            'id', 'employe', 'type', 'field', 'old_value', 'new_value',
+            'message', 'auteur', 'auteur_username', 'date_creation',
+        ]
+        read_only_fields = fields
 
 
 class RemunerationSerializer(serializers.ModelSerializer):
@@ -207,6 +254,53 @@ class ElementSortieSerializer(serializers.ModelSerializer):
         return _meme_societe(self, value, 'Employé')
 
 
+class ElementIntegrationSerializer(serializers.ModelSerializer):
+    """Ligne gabarit d'un modèle d'intégration (XRH4)."""
+
+    class Meta:
+        model = ElementIntegration
+        fields = ['id', 'modele', 'libelle', 'ordre', 'date_creation']
+        read_only_fields = ['date_creation']
+
+    def validate_modele(self, value):
+        return _meme_societe(self, value, "Modèle d'intégration")
+
+
+class ModeleIntegrationSerializer(serializers.ModelSerializer):
+    """Gabarit de checklist d'intégration (XRH4), avec ses lignes imbriquées
+    en lecture (``elements``)."""
+    elements = ElementIntegrationSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ModeleIntegration
+        fields = [
+            'id', 'nom', 'poste_ref', 'departement', 'actif', 'elements',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_poste_ref(self, value):
+        return _meme_societe(self, value, 'Poste')
+
+    def validate_departement(self, value):
+        return _meme_societe(self, value, 'Département')
+
+
+class ElementIntegrationEmployeSerializer(serializers.ModelSerializer):
+    """Ligne de checklist d'intégration d'un employé (XRH4)."""
+
+    class Meta:
+        model = ElementIntegrationEmploye
+        fields = [
+            'id', 'employe', 'libelle', 'ordre', 'fait', 'fait_par', 'date',
+            'date_creation',
+        ]
+        read_only_fields = ['fait_par', 'date', 'date_creation']
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+
 class TypeAbsenceSerializer(serializers.ModelSerializer):
     """Typologie d'absence (FG164) — règle de décompte par catégorie."""
 
@@ -214,7 +308,8 @@ class TypeAbsenceSerializer(serializers.ModelSerializer):
         model = TypeAbsence
         fields = [
             'id', 'code', 'libelle', 'decompte_jours_ouvres', 'deduit_solde',
-            'remunere', 'actif', 'date_creation',
+            'remunere', 'actif', 'jours_legaux',
+            'jours_max_sans_justificatif', 'date_creation',
         ]
         read_only_fields = ['date_creation']
 
@@ -249,7 +344,9 @@ class DemandeCongeSerializer(serializers.ModelSerializer):
         model = DemandeConge
         fields = [
             'id', 'employe', 'type_absence', 'type_absence_code',
-            'date_debut', 'date_fin', 'jours', 'motif',
+            'date_debut', 'date_fin', 'jours',
+            'demi_journee_debut', 'demi_journee_fin', 'justificatif',
+            'motif',
             'statut', 'statut_display',
             'decide_par', 'date_decision', 'motif_refus', 'date_creation',
         ]

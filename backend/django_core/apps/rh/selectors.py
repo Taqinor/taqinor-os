@@ -20,6 +20,7 @@ from .models import (
     FeuilleTemps,
     Habilitation,
     HeuresSupp,
+    HoraireTravail,
     IncidentPresence,
     InscriptionFormation,
     PermisConduire,
@@ -44,6 +45,47 @@ def dossier_appartient_societe(company, dossier_id):
         return False
     return DossierEmploye.objects.filter(
         company=company, pk=dossier_id).exists()
+
+
+def horaire_actif(employe, le=None):
+    """Horaire de travail effectif d'un employé à une date (XRH8).
+
+    Résout l'horaire APPLICABLE à ``le`` (par défaut aujourd'hui) :
+
+    * si ``employe.horaire`` est un horaire TEMPORAIRE (``date_debut``/
+      ``date_fin`` renseignées) et que ``le`` tombe dans sa fenêtre de
+      validité (bornes incluses) → cet horaire s'applique (ex. Ramadan) ;
+    * sinon, si ``employe.horaire`` est PERMANENT (``date_debut`` ET
+      ``date_fin`` tous deux vides) → il s'applique toujours ;
+    * sinon (horaire temporaire hors fenêtre, ou aucun horaire assigné,
+      ou horaire inactif) → ``None`` : l'appelant retombe sur le seuil par
+      défaut (8 h/j, ``services.SEUIL_JOURNALIER_DEFAUT``) — RETOUR
+      AUTOMATIQUE au standard une fois la fenêtre Ramadan/saisonnière passée.
+
+    Sélecteur PUR : ``le`` est un paramètre (déterministe, testable), jamais
+    lu de ``timezone.now()`` en dur.
+    """
+    if employe is None or employe.horaire_id is None:
+        return None
+    horaire = employe.horaire
+    if not horaire.actif:
+        return None
+    if le is None:
+        le = timezone.localdate()
+    if horaire.date_debut is None and horaire.date_fin is None:
+        return horaire
+    debut_ok = horaire.date_debut is None or le >= horaire.date_debut
+    fin_ok = horaire.date_fin is None or le <= horaire.date_fin
+    if debut_ok and fin_ok:
+        return horaire
+    return None
+
+
+def horaires_actifs_societe(company):
+    """Horaires de travail actifs de la société (référentiel, XRH8)."""
+    if company is None:
+        return HoraireTravail.objects.none()
+    return HoraireTravail.objects.filter(company=company, actif=True)
 
 
 def dossiers_actifs(company):
@@ -714,13 +756,23 @@ def echeances_rh(company, within_days=30, today=None):
     ``{
         'type': 'habilitation' | 'certification' | 'document'
                 | 'visite_medicale' | 'dotation_epi'
-                | 'epi_peremption' | 'epi_controle',
+                | 'epi_peremption' | 'epi_controle' | 'fin_essai'
+                | 'declaration_entree',
         'employe_id': int,
         'employe': str,                 # « MATRICULE — Nom Prénom »
         'libelle': str,                 # libellé lisible du titre/document
         'date_validite': date,          # échéance
         'jours_restants': int,          # négatif si déjà expiré
     }``
+
+    XRH1 — la famille ``fin_essai`` alerte AVANT ``DossierEmploye.essai_date_fin``
+    (une période d'essai qui arrive à son terme doit être confirmée ou rompue
+    à temps) ; confirmer l'essai (``employes/{id}/confirmer-essai``) efface la
+    date et retire l'employé de cette famille.
+
+    XRH5 — la famille ``declaration_entree`` alerte tout embauché dont
+    ``declaration_entree_statut = a_faire`` (due dès ``date_embauche``, jamais
+    hors fenêtre) ; marquer déclaré retire l'employé de cette famille.
     """
     if company is None:
         return []
@@ -854,6 +906,45 @@ def echeances_rh(company, within_days=30, today=None):
             'libelle': f'EPI à recontrôler ({dot.epi.designation})',
             'date_validite': dot.date_prochain_controle,
             'jours_restants': (dot.date_prochain_controle - today).days,
+        })
+
+    # XRH1 — période d'essai en cours dont la fin approche (ou est dépassée).
+    essais = (
+        DossierEmploye.objects
+        .filter(company=company,
+                essai_date_fin__isnull=False, essai_date_fin__lte=limite)
+    )
+    for emp in essais:
+        rows.append({
+            'type': 'fin_essai',
+            'employe_id': emp.id,
+            'employe': _employe_label(emp),
+            'libelle': "Fin de période d'essai",
+            'date_validite': emp.essai_date_fin,
+            'jours_restants': (emp.essai_date_fin - today).days,
+        })
+
+    # XRH5 — déclaration d'entrée CNSS/AMO non faite. Due dès l'embauche : la
+    # « date_validite » est ``date_embauche`` (à défaut aujourd'hui, si un
+    # embauché n'a pas de date renseignée — TOUJOURS due, jamais hors fenêtre).
+    a_declarer = (
+        DossierEmploye.objects
+        .filter(
+            company=company,
+            declaration_entree_statut=(
+                DossierEmploye.DeclarationEntreeStatut.A_FAIRE))
+    )
+    for emp in a_declarer:
+        echeance = emp.date_embauche or today
+        if echeance > limite:
+            continue
+        rows.append({
+            'type': 'declaration_entree',
+            'employe_id': emp.id,
+            'employe': _employe_label(emp),
+            'libelle': "Déclaration d'entrée CNSS/AMO",
+            'date_validite': echeance,
+            'jours_restants': (echeance - today).days,
         })
 
     rows.sort(key=lambda r: (r['date_validite'], r['type'], r['employe_id']))

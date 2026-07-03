@@ -23,7 +23,7 @@ from authentication.permissions import (
     IsResponsableOrAdmin,
 )
 
-from . import selectors, services
+from . import activity, selectors, services
 from .models import (
     AccidentTravail,
     AffectationRoster,
@@ -44,6 +44,8 @@ from .models import (
     DocumentEmploye,
     DossierEmploye,
     DotationEpi,
+    ElementIntegration,
+    ElementIntegrationEmploye,
     ElementSortie,
     ElementsVariablesPaie,
     EpiCatalogue,
@@ -51,7 +53,9 @@ from .models import (
     FeuilleTemps,
     Habilitation,
     HeuresSupp,
+    HoraireTravail,
     IncidentPresence,
+    ModeleIntegration,
     NoteDeFrais,
     OrdreMission,
     OuverturePoste,
@@ -88,8 +92,11 @@ from .serializers import (
     DemandeCongeSerializer,
     DepartementSerializer,
     DocumentEmployeSerializer,
+    DossierActivitySerializer,
     DossierEmployeSerializer,
     DotationEpiSerializer,
+    ElementIntegrationEmployeSerializer,
+    ElementIntegrationSerializer,
     ElementSortieSerializer,
     ElementsVariablesPaieSerializer,
     EmargementEpiSerializer,
@@ -99,8 +106,10 @@ from .serializers import (
     FeuilleTempsSerializer,
     HabilitationSerializer,
     HeuresSuppSerializer,
+    HoraireTravailSerializer,
     IncidentPresenceSerializer,
     MesInfosSerializer,
+    ModeleIntegrationSerializer,
     NoteDeFraisSerializer,
     OrdreMissionSerializer,
     OuverturePosteSerializer,
@@ -157,6 +166,35 @@ class DossierEmployeViewSet(_RhBaseViewSet):
     search_fields = ['matricule', 'nom', 'prenom', 'cin', 'email']
     ordering_fields = ['nom', 'prenom', 'matricule', 'date_embauche']
 
+    def perform_update(self, serializer):
+        # XRH6 — journalise automatiquement les champs suivis (chatter) en
+        # comparant l'instance AVANT à celle APRÈS sauvegarde.
+        import copy
+        old = copy.copy(serializer.instance)
+        new_dossier = serializer.save()
+        activity.log_changes(old, new_dossier, self.request.user)
+
+    @action(detail=True, methods=['get'], url_path='historique')
+    def historique(self, request, pk=None):
+        """Timeline chatter du dossier (auto + notes), récent d'abord (XRH6)."""
+        employe = self.get_object()
+        return Response(
+            DossierActivitySerializer(
+                employe.activites.all(), many=True).data)
+
+    @action(detail=True, methods=['post'])
+    def noter(self, request, pk=None):
+        """Note manuelle sur le chatter du dossier — auteur pris de la
+        requête (XRH6)."""
+        employe = self.get_object()
+        message = (request.data.get('message') or '').strip()
+        if not message:
+            return Response({'message': 'Note vide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        act = activity.log_note(employe, request.user, message)
+        return Response(DossierActivitySerializer(act).data,
+                        status=status.HTTP_201_CREATED)
+
     @action(detail=False, methods=['get'], url_path='cdd-a-echeance')
     def cdd_a_echeance(self, request):
         """Alerte fin de CDD : dossiers en CDD dont la fin de contrat tombe
@@ -186,6 +224,40 @@ class DossierEmployeViewSet(_RhBaseViewSet):
             return self.get_paginated_response(serializer.data)
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='a-declarer')
+    def a_declarer(self, request):
+        """Embauchés sans déclaration d'entrée CNSS/AMO (XRH5), scopés société.
+
+        Filtre sur ``declaration_entree_statut = a_faire``. Marquer déclaré
+        (``employes/{id}/marquer-declare``) retire l'employé de cette liste.
+        """
+        qs = self.get_queryset().filter(
+            declaration_entree_statut=(
+                DossierEmploye.DeclarationEntreeStatut.A_FAIRE)
+        ).order_by('date_embauche')
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], url_path='marquer-declare')
+    def marquer_declare(self, request, pk=None):
+        """Marque la déclaration d'entrée CNSS/AMO comme faite (XRH5).
+
+        ``declaration_entree_date`` est posée CÔTÉ SERVEUR (aujourd'hui) —
+        jamais lue du corps. On ne transmet RIEN à Damancom ici : action
+        manuelle du fondateur, ceci ne fait que TRACER la conformité.
+        """
+        employe = self.get_object()
+        employe.declaration_entree_statut = (
+            DossierEmploye.DeclarationEntreeStatut.DECLAREE)
+        employe.declaration_entree_date = timezone.localdate()
+        employe.save(update_fields=[
+            'declaration_entree_statut', 'declaration_entree_date'])
+        return Response(self.get_serializer(employe).data)
 
     @action(detail=True, methods=['get'], url_path='verifier-habilitation')
     def verifier_habilitation(self, request, pk=None):
@@ -235,6 +307,70 @@ class DossierEmployeViewSet(_RhBaseViewSet):
         registre = selectors.registre_formation_employe(
             request.user.company, employe.pk)
         return Response(registre)
+
+    @action(detail=True, methods=['post'], url_path='confirmer-essai')
+    def confirmer_essai(self, request, pk=None):
+        """Confirme la période d'essai (XRH1) — retire l'alerte d'échéance.
+
+        Efface ``essai_date_fin`` (plus d'échéance à surveiller). L'employé est
+        résolu via ``get_object`` (scopé société par TenantMixin) — un employé
+        d'une autre société renvoie 404. Journalisée si XRH6 (chatter) est
+        disponible, best-effort sinon.
+        """
+        employe = self.get_object()
+        if employe.essai_date_fin is None:
+            return Response(
+                {'detail': "Aucune période d'essai en cours pour ce dossier."},
+                status=status.HTTP_400_BAD_REQUEST)
+        employe.essai_date_fin = None
+        employe.save(update_fields=['essai_date_fin'])
+        return Response(self.get_serializer(employe).data)
+
+    @action(detail=True, methods=['post'], url_path='instancier-integration')
+    def instancier_integration(self, request, pk=None):
+        """Instancie manuellement la checklist d'intégration (XRH4).
+
+        Corps optionnel : ``modele`` (id) pour forcer un modèle précis (validé
+        même société) ; sinon le modèle le plus spécifique au poste/
+        département de l'employé est résolu automatiquement. Idempotent : si
+        des lignes existent déjà pour l'employé, elles sont renvoyées sans
+        duplication.
+        """
+        employe = self.get_object()
+        modele = None
+        modele_id = request.data.get('modele')
+        if modele_id:
+            try:
+                modele = ModeleIntegration.objects.get(
+                    pk=modele_id, company=request.user.company)
+            except (ModeleIntegration.DoesNotExist, ValueError, TypeError):
+                return Response(
+                    {'modele': "Modèle d'intégration inconnu."},
+                    status=status.HTTP_400_BAD_REQUEST)
+        lignes = services.instancier_integration(employe, modele=modele)
+        return Response(
+            ElementIntegrationEmployeSerializer(lignes, many=True).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], url_path='integration')
+    def integration(self, request, pk=None):
+        """Checklist d'intégration de l'employé + progression % (XRH4).
+
+        Lecture seule ; renvoie ``{lignes, total, faits, progression_pct}``.
+        """
+        employe = self.get_object()
+        lignes = list(
+            ElementIntegrationEmploye.objects.filter(employe=employe))
+        total = len(lignes)
+        faits = sum(1 for ligne in lignes if ligne.fait)
+        pct = round((faits / total) * 100) if total else 0
+        return Response({
+            'lignes': ElementIntegrationEmployeSerializer(
+                lignes, many=True).data,
+            'total': total,
+            'faits': faits,
+            'progression_pct': pct,
+        })
 
 
 class RemunerationViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -371,6 +507,25 @@ class PosteViewSet(_RhBaseViewSet):
         return qs
 
 
+class HoraireTravailViewSet(_RhBaseViewSet):
+    """Gabarits d'horaire de travail (XRH8) — 44 h standard, Ramadan,
+    saisonnier. Recherche par nom ; ``?actif=1`` filtre les actifs."""
+    queryset = HoraireTravail.objects.all()
+    serializer_class = HoraireTravailSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom']
+    ordering_fields = ['nom', 'date_debut']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        actif = self.request.query_params.get('actif')
+        if actif in ('1', 'true', 'True'):
+            qs = qs.filter(actif=True)
+        elif actif in ('0', 'false', 'False'):
+            qs = qs.filter(actif=False)
+        return qs
+
+
 class ElementSortieViewSet(_RhBaseViewSet):
     """Checklist d'offboarding (FG161) — éléments à récupérer au départ.
 
@@ -393,6 +548,62 @@ class ElementSortieViewSet(_RhBaseViewSet):
         elif recupere in ('1', 'true', 'True'):
             qs = qs.filter(recupere=True)
         return qs
+
+
+class ModeleIntegrationViewSet(_RhBaseViewSet):
+    """Gabarits de checklist d'intégration (XRH4). Recherche par nom."""
+    queryset = ModeleIntegration.objects.select_related(
+        'poste_ref', 'departement').prefetch_related('elements').all()
+    serializer_class = ModeleIntegrationSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom']
+    ordering_fields = ['nom']
+
+
+class ElementIntegrationViewSet(_RhBaseViewSet):
+    """Lignes gabarit d'un modèle d'intégration (XRH4). ``?modele=<id>``."""
+    queryset = ElementIntegration.objects.select_related('modele').all()
+    serializer_class = ElementIntegrationSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['ordre', 'libelle']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        modele = self.request.query_params.get('modele')
+        if modele:
+            qs = qs.filter(modele_id=modele)
+        return qs
+
+
+class ElementIntegrationEmployeViewSet(_RhBaseViewSet):
+    """Checklist d'intégration d'un employé (XRH4). ``?employe=<id>``.
+
+    Cocher/décocher journalise ``fait_par``/``date`` côté serveur.
+    """
+    queryset = ElementIntegrationEmploye.objects.select_related(
+        'employe', 'fait_par').all()
+    serializer_class = ElementIntegrationEmployeSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['ordre', 'libelle']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        return qs
+
+    def perform_update(self, serializer):
+        # ``fait_par``/``date`` sont posés côté serveur à la coche/décoche —
+        # jamais lus du corps (une note manuelle ne peut pas falsifier l'auteur
+        # ou la date de réalisation).
+        fait = serializer.validated_data.get('fait')
+        if fait is True and not serializer.instance.fait:
+            serializer.save(fait_par=self.request.user, date=timezone.now())
+        elif fait is False:
+            serializer.save(fait_par=None, date=None)
+        else:
+            serializer.save()
 
 
 class TypeAbsenceViewSet(_RhBaseViewSet):
@@ -434,6 +645,7 @@ class DemandeCongeViewSet(_RhBaseViewSet):
     queryset = DemandeConge.objects.select_related(
         'employe', 'type_absence', 'decide_par').all()
     serializer_class = DemandeCongeSerializer
+    parser_classes = [MultiPartParser, JSONParser]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_debut', 'date_fin', 'date_creation', 'statut']
 
@@ -448,17 +660,26 @@ class DemandeCongeViewSet(_RhBaseViewSet):
         return qs
 
     def perform_create(self, serializer):
-        # ``jours`` calculé côté serveur selon la règle de décompte du type.
+        # ``jours`` calculé côté serveur selon la règle de décompte du type
+        # (XRH3 : les drapeaux demi-journée retranchent chacun 0,5 j).
         type_absence = serializer.validated_data['type_absence']
         jours = services.calculer_jours_demande(
             type_absence,
             serializer.validated_data['date_debut'],
-            serializer.validated_data['date_fin'])
+            serializer.validated_data['date_fin'],
+            demi_journee_debut=serializer.validated_data.get(
+                'demi_journee_debut', False),
+            demi_journee_fin=serializer.validated_data.get(
+                'demi_journee_fin', False))
         serializer.save(company=self.request.user.company, jours=jours)
 
     @action(detail=True, methods=['post'])
     def valider(self, request, pk=None):
-        """Valide une demande soumise et déduit le solde si le type le requiert."""
+        """Valide une demande soumise et déduit le solde si le type le requiert.
+
+        XRH3 : refusée (400, message explicite) si le type exige un
+        justificatif au-delà de son seuil et qu'aucun n'est joint.
+        """
         demande = self.get_object()
         try:
             services.valider_demande(demande, decide_par=request.user)
@@ -603,15 +824,24 @@ class HeuresSuppViewSet(_RhBaseViewSet):
             return None
 
     def perform_create(self, serializer):
-        """Company posée côté serveur ; majoration calculée côté serveur."""
+        """Company posée côté serveur ; majoration calculée côté serveur.
+
+        XRH8 — si le corps ne fournit PAS explicitement ``seuil_journalier``,
+        le seuil est dérivé de l'horaire actif de l'employé à la date de
+        l'entrée (Ramadan/saisonnier abaisse le seuil sur sa fenêtre).
+        """
+        derive = 'seuil_journalier' not in self.request.data
         instance = serializer.save(company=self.request.user.company)
-        services.appliquer_majoration(instance)
+        services.appliquer_majoration(
+            instance, derive_seuil_from_horaire=derive)
         instance.save()
 
     def perform_update(self, serializer):
-        """Recalcule la majoration à chaque mise à jour."""
+        """Recalcule la majoration à chaque mise à jour (même règle XRH8)."""
+        derive = 'seuil_journalier' not in self.request.data
         instance = serializer.save()
-        services.appliquer_majoration(instance)
+        services.appliquer_majoration(
+            instance, derive_seuil_from_horaire=derive)
         instance.save()
 
     @action(detail=False, methods=['get'], url_path='export-paie')
@@ -3168,11 +3398,16 @@ class PortailSelfServiceViewSet(viewsets.ViewSet):
         ser = DemandeCongeSerializer(
             data=data, context={'request': request})
         ser.is_valid(raise_exception=True)
-        # ``jours`` calculé côté serveur selon la règle de décompte du type.
+        # ``jours`` calculé côté serveur selon la règle de décompte du type
+        # (XRH3 : les drapeaux demi-journée retranchent chacun 0,5 j).
         jours = services.calculer_jours_demande(
             ser.validated_data['type_absence'],
             ser.validated_data['date_debut'],
-            ser.validated_data['date_fin'])
+            ser.validated_data['date_fin'],
+            demi_journee_debut=ser.validated_data.get(
+                'demi_journee_debut', False),
+            demi_journee_fin=ser.validated_data.get(
+                'demi_journee_fin', False))
         ser.save(company=request.user.company, jours=jours)
         return Response(ser.data, status=status.HTTP_201_CREATED)
 

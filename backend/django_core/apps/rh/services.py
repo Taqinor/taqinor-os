@@ -66,19 +66,33 @@ def droit_annuel(annees_service=0):
 
 
 def calculer_jours_demande(type_absence, date_debut, date_fin,
-                           extra_holidays=None):
+                           extra_holidays=None,
+                           demi_journee_debut=False, demi_journee_fin=False):
     """Durée décomptée d'une demande de congé (FG163).
 
     Si ``type_absence.decompte_jours_ouvres`` est vrai, ne compte que les jours
     ouvrés (hors week-end et fériés, cf. ``holidays.working_days`` / FG5) ;
     sinon, compte les jours calendaires. Renvoie un ``Decimal`` (0 si la plage
     est invalide).
+
+    XRH3 — ``demi_journee_debut``/``demi_journee_fin`` retranchent chacune
+    0,5 j du total (une demande d'1 jour avec les deux drapeaux reste bornée
+    à 0 minimum — jamais négative). Un flag sur une plage de 0 jour (date
+    invalide) n'a aucun effet.
     """
     if type_absence is not None and type_absence.decompte_jours_ouvres:
         n = holidays.working_days(date_debut, date_fin, extra_holidays)
     else:
         n = holidays.calendar_days(date_debut, date_fin)
-    return Decimal(n)
+    jours = Decimal(n)
+    if n > 0:
+        if demi_journee_debut:
+            jours -= Decimal('0.5')
+        if demi_journee_fin:
+            jours -= Decimal('0.5')
+        if jours < 0:
+            jours = Decimal('0')
+    return jours
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -185,14 +199,26 @@ def calculer_majoration(heures_travaillees, heures_nuit=0,
     }
 
 
-def appliquer_majoration(heures_supp):
+def appliquer_majoration(heures_supp, derive_seuil_from_horaire=False):
     """Calcule et POSE les décomptes majorés sur une instance ``HeuresSupp``.
 
     Utilise ``calculer_majoration`` avec le ``taux_horaire`` de l'entrée (ou, à
     défaut, le ``cout_horaire`` interne du dossier employé). Renseigne
     ``heures_normales``, ``hs_25``, ``hs_50``, ``hs_100``, ``taux_horaire`` et
     ``montant_majore`` sur l'objet (non sauvegardé — l'appelant ``save()``).
+
+    XRH8 — si ``derive_seuil_from_horaire`` est vrai (l'appelant n'a PAS fourni
+    explicitement ``seuil_journalier`` dans la requête), le seuil journalier
+    est dérivé de l'horaire ACTIF de l'employé à la date de l'entrée
+    (``selectors.horaire_actif``) : un horaire Ramadan à 6 h/j abaisse le
+    seuil sur sa fenêtre de validité ; hors fenêtre (ou sans horaire assigné),
+    le seuil par défaut du modèle (8 h) reste inchangé — retour automatique.
     """
+    if derive_seuil_from_horaire and heures_supp.employe_id:
+        from . import selectors
+        horaire = selectors.horaire_actif(heures_supp.employe, heures_supp.date)
+        if horaire is not None:
+            heures_supp.seuil_journalier = horaire.heures_jour_defaut
     taux = heures_supp.taux_horaire
     if taux is None and heures_supp.employe_id:
         taux = heures_supp.employe.cout_horaire
@@ -267,11 +293,23 @@ def valider_demande(demande, decide_par=None):
 
     Idempotent vis-à-vis d'une demande déjà validée : ne re-déduit pas. Lève
     ``ValueError`` si la demande n'est pas dans un état décidable.
+
+    XRH3 — si ``type_absence.jours_max_sans_justificatif`` est renseigné et
+    que ``demande.jours`` le DÉPASSE, un ``justificatif`` est OBLIGATOIRE :
+    sans lui la validation est refusée (``ValueError`` — 400 explicite côté
+    vue). ``None`` (pas de plafond configuré) ne bloque jamais.
     """
     from .models import DemandeConge, SoldeConge
     if demande.statut != DemandeConge.Statut.SOUMISE:
         raise ValueError(
             "Seule une demande soumise peut être validée.")
+    plafond = demande.type_absence.jours_max_sans_justificatif
+    if (plafond is not None and demande.jours is not None
+            and demande.jours > plafond and not demande.justificatif):
+        raise ValueError(
+            "Justificatif obligatoire : cette absence de "
+            f"{demande.jours} j dépasse le seuil de {plafond} j sans "
+            "justificatif.")
     # Verrou pessimiste sur le solde pour éviter une double déduction concurrente.
     if demande.type_absence.deduit_solde and demande.jours:
         annee = demande.date_debut.year
@@ -510,7 +548,96 @@ def embaucher(candidature, matricule=None, **dossier_kwargs):
             ouverture.statut = OuverturePoste.Statut.POURVU
             ouverture.save(update_fields=['statut', 'date_modification'])
 
+    # XRH4 — instancie automatiquement la checklist d'intégration du modèle
+    # applicable (le plus spécifique au poste/département du dossier créé,
+    # sinon le modèle par défaut de la société s'il existe). Best-effort :
+    # l'absence de tout modèle ne bloque jamais l'embauche.
+    instancier_integration(dossier)
+
     return dossier
+
+
+def _modele_integration_applicable(dossier):
+    """Modèle d'intégration le plus spécifique pour ``dossier`` (XRH4).
+
+    Priorité : (poste_ref ET departement) > poste_ref seul > departement seul
+    > modèle par défaut (les deux vides). ``None`` si aucun modèle actif.
+    """
+    from .models import ModeleIntegration
+
+    base = ModeleIntegration.objects.filter(
+        company=dossier.company, actif=True)
+    if dossier.poste_ref_id and dossier.departement_id:
+        exact = base.filter(
+            poste_ref_id=dossier.poste_ref_id,
+            departement_id=dossier.departement_id).first()
+        if exact:
+            return exact
+    if dossier.poste_ref_id:
+        match = base.filter(
+            poste_ref_id=dossier.poste_ref_id, departement__isnull=True
+        ).first()
+        if match:
+            return match
+    if dossier.departement_id:
+        match = base.filter(
+            departement_id=dossier.departement_id, poste_ref__isnull=True
+        ).first()
+        if match:
+            return match
+    return base.filter(poste_ref__isnull=True, departement__isnull=True).first()
+
+
+# XRH5 — item BLOQUANT toujours présent dans une checklist d'intégration
+# instanciée : la déclaration d'entrée CNSS/AMO (suivi de conformité). Ajouté
+# systématiquement (en fin de liste) si aucune ligne du modèle ne le porte
+# déjà (comparaison insensible à la casse sur le libellé).
+_LIBELLE_DECLARATION_ENTREE = "Déclaration d'entrée CNSS/AMO"
+
+
+@transaction.atomic
+def instancier_integration(dossier, modele=None):
+    """Crée les ``ElementIntegrationEmploye`` du modèle applicable (XRH4).
+
+    Si ``modele`` n'est pas fourni, résout le modèle le plus spécifique via
+    ``_modele_integration_applicable`` (poste+département > poste > département
+    > défaut). Aucun modèle applicable → crée uniquement l'item bloquant XRH5
+    (déclaration d'entrée), sans lever d'erreur : l'onboarding sans checklist
+    configurée reste valide. N'instancie PAS deux fois pour le même dossier
+    (idempotent : si des lignes existent déjà, les renvoie telles quelles
+    sans dupliquer).
+    """
+    from .models import ElementIntegrationEmploye
+
+    existantes = list(
+        ElementIntegrationEmploye.objects.filter(employe=dossier))
+    if existantes:
+        return existantes
+
+    if modele is None:
+        modele = _modele_integration_applicable(dossier)
+
+    lignes = []
+    ordre = 0
+    if modele is not None:
+        for element in modele.elements.all():
+            lignes.append(ElementIntegrationEmploye(
+                company=dossier.company, employe=dossier,
+                libelle=element.libelle, ordre=element.ordre))
+            ordre = max(ordre, element.ordre)
+
+    # XRH5 — item bloquant toujours ajouté s'il n'y figure pas déjà.
+    deja_present = any(
+        ligne.libelle.strip().lower() == _LIBELLE_DECLARATION_ENTREE.lower()
+        for ligne in lignes)
+    if not deja_present:
+        lignes.append(ElementIntegrationEmploye(
+            company=dossier.company, employe=dossier,
+            libelle=_LIBELLE_DECLARATION_ENTREE, ordre=ordre + 1))
+
+    if not lignes:
+        return []
+    return ElementIntegrationEmploye.objects.bulk_create(lignes)
 
 
 def controler_permis_affectation(company, employe_id, *, le=None):
