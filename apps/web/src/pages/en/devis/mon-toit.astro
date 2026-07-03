@@ -13,6 +13,8 @@
 import Layout from '../../../layouts/Layout.astro';
 import { BILL_RANGES } from '../../../lib/billRange';
 import { ROOF_TYPES } from '../../../lib/lead';
+import { NAP, WHATSAPP_LEADS } from '../../../lib/nap';
+import { whatsappLink } from '../../../lib/whatsapp';
 import StarRating from '../../../components/StarRating.astro';
 import CertLogoRow from '../../../components/CertLogoRow.astro';
 import InstallCounter from '../../../components/InstallCounter.astro';
@@ -51,24 +53,18 @@ const MODES = [
   { id: 'agricole', label: 'Agricultural', desc: 'Pumping, farm' },
 ];
 
-// WJ39 — known client-side validateLead()/normalizeMoroccanPhone() error
-// strings (src/lib/lead.ts, src/lib/phone.ts — shared FR source, out of this
-// page's file scope) translated to English so inline field errors never show
-// French on this route. Falls back to the raw (French) message only if the
-// shared validator ever returns something outside this known set.
-const VALIDATION_ERROR_EN: Record<string, string> = {
-  'Nom complet requis': 'Full name required',
-  'Numéro invalide': 'Invalid number',
-  'Numéro invalide — format attendu : 06 XX XX XX XX ou +212 6 XX XX XX XX':
-    'Invalid number — expected format: 06 XX XX XX XX or +212 6 XX XX XX XX',
-  'Ville / commune requise': 'City / town required',
-  'Type de toiture requis': 'Roof type required',
-  'Tranche de facture requise': 'Bill range required',
-  'Le consentement est requis pour être recontacté': 'Consent is required so we can contact you back',
-};
 
 // WJ8 — real service towns (NAP) for proximity proof.
 const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tangier', 'Agadir', 'Kénitra', 'Fès', 'Settat'];
+
+// WJ65 — honest no-JavaScript exit: this form is entirely script-driven
+// (estimate calculation, fetch submission) — without JS, nothing works.
+// Instead of a mute page, a static wa.me + tel: link (no JS required).
+const noscriptWaHref = whatsappLink(
+  WHATSAPP_LEADS,
+  "Hello, I would like to receive my solar estimate from taqinor.ma (my browser has JavaScript disabled).",
+);
+const noscriptTelHref = `tel:${NAP.phone}`;
 ---
 
 <Layout
@@ -78,6 +74,28 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tangier', 'Agadir', 'Kénitr
 >
   <section class="bg-nuit px-4 py-8 sm:py-12">
     <div class="mx-auto max-w-2xl">
+      <!-- WJ65 — honest exit WITHOUT JavaScript: this page is entirely
+           script-driven (map, calculation, submission) — without JS it would
+           stay mute. Offer an exit here that needs NO JS at all. -->
+      <noscript>
+        <div class="cine-card mb-6 border border-brass-400/40 p-5 text-sm text-white">
+          <p class="font-semibold">This page needs JavaScript to calculate your estimate.</p>
+          <p class="mt-1 text-lune-soft">
+            No worries: contact us directly, free and with no obligation.
+          </p>
+          <div class="mt-4 flex flex-col gap-2 sm:flex-row">
+            <a href={noscriptWaHref} target="_blank" rel="noopener"
+              class="inline-flex flex-1 items-center justify-center gap-2 bg-ok-600 px-5 py-3 text-base font-bold text-white transition-opacity hover:opacity-90">
+              Message us on WhatsApp
+            </a>
+            <a href={noscriptTelHref}
+              class="inline-flex flex-1 items-center justify-center gap-2 border border-white/25 px-5 py-3 text-base font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300">
+              Call {NAP.phoneDisplayIntl}
+            </a>
+          </div>
+        </div>
+      </noscript>
+
       <!-- Header (WJ6) — no in-page toggle: the /en/ URL already declares the locale. -->
       <div class="flex items-start justify-between gap-3">
         <div>
@@ -110,7 +128,10 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tangier', 'Agadir', 'Kénitr
         <!-- WJ6 — mode selector -->
         <fieldset class="mt-6">
           <legend class="text-sm text-lune-soft">Your project type</legend>
-          <div class="mt-3 grid grid-cols-3 gap-2">
+          <!-- WJ65 — on very small screens (≲360 px), 3 columns crowd the text
+               (truncation/overlap): stack in 1 column, then 3 from `sm:` (640 px),
+               consistent with the rest of the page. -->
+          <div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
             {MODES.map((m, i) => (
               <button type="button" class="mt-mode cine-card flex flex-col items-start gap-0.5 border p-3 text-left transition-colors"
                 data-mode={m.id} aria-pressed={i === 0 ? 'true' : 'false'}>
@@ -206,6 +227,16 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tangier', 'Agadir', 'Kénitr
             <input id="mt-facture-hiver" name="factureHiver" type="number" step="any" inputmode="decimal"
               placeholder="e.g. 1,200" class={`${inputClass} mt-1`} />
             <span id="mt-facture-hiver-err" hidden class="mt-1 block text-xs text-alert-300"></span>
+            <!-- WJ67 — "why we ask" micro-transparency: copy-only, collapsed by
+                 default (native <details>, no JS required). -->
+            <details class="mt-1.5">
+              <summary class="cursor-pointer select-none text-xs text-lune-faint hover:text-lune-soft">
+                Why do we ask this?
+              </summary>
+              <p class="mt-1 text-xs text-lune-faint">
+                The exact amount gives an accurate calculation — never shared.
+              </p>
+            </details>
           </label>
 
           <label class="block text-sm text-lune-soft">
@@ -387,6 +418,11 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tangier', 'Agadir', 'Kénitr
             Estimate unavailable: enter your monthly bill to calculate it. We'll refine it
             together on WhatsApp.
           </p>
+          <!-- WJ65 — sanity cap (MAX_BILL): an absurd amount (typo, e.g. an
+               extra zero) should never produce a confidently computed figure. -->
+          <p id="mt-estimate-toolarge" hidden class="mt-4 text-sm text-alert-300">
+            Estimate unavailable — please check the amount entered.
+          </p>
 
           <!-- ===== WJ2 — "see the panels on your roof" (optional, lazy) =====
                Shown ONLY when an outline (≥3 vertices) was traced in step 1 AND a kWc
@@ -459,11 +495,13 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tangier', 'Agadir', 'Kénitr
 
           <p id="mt-error" hidden class="text-sm text-alert-300" aria-live="polite"></p>
 
-          <!-- WJ3 — PRIMARY WhatsApp-first CTA -->
+          <!-- WJ3 — PRIMARY WhatsApp-first CTA. WJ60 — "Sending…" label while the
+               network request is pending (toggled via #mt-submit-label/#mt-submit-pending). -->
           <button type="submit" id="mt-submit"
             class="inline-flex w-full items-center justify-center gap-2 bg-ok-600 px-6 py-4 text-base font-bold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true" class="flex-none"><path d="M.057 24l1.687-6.163a11.867 11.867 0 0 1-1.587-5.946C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 0 1 8.413 3.488 11.824 11.824 0 0 1 3.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 0 1-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884a9.86 9.86 0 0 0 1.512 5.26l-.999 3.648 3.736-.979z"/></svg>
-            <span>Receive my estimate on WhatsApp</span>
+            <span id="mt-submit-label">Receive my estimate on WhatsApp</span>
+            <span id="mt-submit-pending" hidden>Sending…</span>
           </button>
 
           <div class="flex items-center justify-between gap-3">
@@ -638,6 +676,30 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tangier', 'Agadir', 'Kénitr
   import { validateLead } from '../../../lib/lead';
   import { type CaptureStrings } from '../../../scripts/roofPro11/mapDraw';
 
+  // WJ60/WJ63 fix — moved here from the frontmatter: a plain <script> tag in an
+  // .astro file compiles to a SEPARATE client module with NO access to
+  // frontmatter bindings (only `define:vars` bridges that gap, and it would force
+  // this script to become `is:inline` — breaking the `import`s above). The
+  // frontmatter copy was a silent dead reference (ReferenceError at runtime on
+  // every field-validation failure) since WJ39 first introduced it — verified via
+  // `astro build`, the compiled client chunk never defined this identifier.
+  //
+  // WJ39 — known client-side validateLead()/normalizeMoroccanPhone() error
+  // strings (src/lib/lead.ts, src/lib/phone.ts — shared FR source, out of this
+  // page's file scope) translated to English so inline field errors never show
+  // French on this route. Falls back to the raw (French) message only if the
+  // shared validator ever returns something outside this known set.
+  const VALIDATION_ERROR_EN: Record<string, string> = {
+    'Nom complet requis': 'Full name required',
+    'Numéro invalide': 'Invalid number',
+    'Numéro invalide — format attendu : 06 XX XX XX XX ou +212 6 XX XX XX XX':
+      'Invalid number — expected format: 06 XX XX XX XX or +212 6 XX XX XX XX',
+    'Ville / commune requise': 'City / town required',
+    'Type de toiture requis': 'Roof type required',
+    'Tranche de facture requise': 'Bill range required',
+    'Le consentement est requis pour être recontacté': 'Consent is required so we can contact you back',
+  };
+
   // WJ41 — map/geocoder system messages (roofPro11/mapDraw.ts + captureBoot.ts
   // default to French); this page passes English strings so the single most
   // interactive moment of the funnel never speaks French to EN visitors.
@@ -678,8 +740,83 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tangier', 'Agadir', 'Kénitr
   // omitted from the submitted body below — the webhook contract stays
   // unchanged (the field is optional).
 
+  // ——— WJ61 : the wizard's state survives a refresh/back navigation ———
+  // A phone call or an accidental back-swipe used to silently destroy
+  // everything typed — the costliest UX failure in the funnel. We persist a
+  // minimal snapshot (step/mode/bill/pin-outline/optional answers) to
+  // sessionStorage (per tab, never shared between visitors): rehydrated on
+  // load, cleared on success. Never blocks submission if sessionStorage is
+  // unavailable (strict private browsing…).
+  const WIZARD_STORAGE_KEY = 'mt-wizard-v1';
+  interface WizardSnapshot {
+    step?: number;
+    mode?: string;
+    ombrage?: string;
+    futureLoads?: string[];
+    capturePin?: { lat: number; lng: number } | null;
+    captureOutline?: Array<[number, number]>;
+    fields?: Record<string, string>;
+    checks?: Record<string, boolean>;
+  }
+  const PERSISTED_TEXT_FIELDS = [
+    'mt-name', 'mt-phone', 'mt-city', 'mt-email', 'mt-facture-hiver', 'mt-facture-ete',
+    'mt-bill', 'mt-roof', 'mt-raccordement', 'mt-distributeur', 'mt-bill-kwh', 'mt-roof-age',
+    'mt-occupant-type', 'mt-project-timing', 'mt-financing-intent', 'mt-fallback-address',
+    'rp9-address',
+  ];
+  const PERSISTED_CHECK_FIELDS = ['mt-ete-differente', 'mt-wa-optin', 'mt-consent', 'mt-battery-interest'];
+  let restoring = false; // WJ61 — avoids re-saving WHILE rehydrating.
+  function saveWizardState() {
+    if (restoring) return;
+    try {
+      const fields: Record<string, string> = {};
+      for (const id of PERSISTED_TEXT_FIELDS) {
+        const v = val(id);
+        if (v) fields[id] = v;
+      }
+      const checks: Record<string, boolean> = {};
+      for (const id of PERSISTED_CHECK_FIELDS) {
+        const el = $(id) as HTMLInputElement | null;
+        if (el) checks[id] = el.checked;
+      }
+      const snapshot: WizardSnapshot = {
+        step, mode, ombrage,
+        futureLoads: Array.from(futureLoads),
+        capturePin, captureOutline,
+        fields, checks,
+      };
+      sessionStorage.setItem(WIZARD_STORAGE_KEY, JSON.stringify(snapshot));
+    } catch {
+      // sessionStorage unavailable (strict private browsing, quota…): the
+      // persistence is a CONVENIENCE, never a blocker for typing/submitting.
+    }
+  }
+  function loadWizardState(): WizardSnapshot | null {
+    try {
+      const raw = sessionStorage.getItem(WIZARD_STORAGE_KEY);
+      return raw ? (JSON.parse(raw) as WizardSnapshot) : null;
+    } catch {
+      return null;
+    }
+  }
+  function clearWizardState() {
+    try { sessionStorage.removeItem(WIZARD_STORAGE_KEY); } catch { /* convenience only */ }
+  }
+  // WJ61 — exit guard: once the visitor has started entering something, an
+  // ACCIDENTAL refresh/close shows the browser's native confirmation prompt
+  // (text not customisable by spec).
+  let hasEnteredData = false;
+  function markDataEntered() { hasEnteredData = true; }
+  window.addEventListener('beforeunload', (e) => {
+    if (!hasEnteredData || submitted) return;
+    e.preventDefault();
+    e.returnValue = '';
+  });
+
+  const savedWizard = loadWizardState();
+
   // ——— WJ6 : sélecteur de mode ———
-  let mode = 'residentiel';
+  let mode = savedWizard?.mode || 'residentiel';
   document.querySelectorAll<HTMLButtonElement>('.mt-mode').forEach((btn) => {
     btn.addEventListener('click', () => {
       mode = btn.dataset.mode || 'residentiel';
@@ -689,13 +826,20 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tangier', 'Agadir', 'Kénitr
         b.classList.toggle('border-brass-400', on);
         b.classList.toggle('border-white/15', !on);
       });
+      markDataEntered();
+      saveWizardState();
     });
   });
-  // état initial : marquer le mode résidentiel sélectionné visuellement.
-  document.querySelector<HTMLButtonElement>('.mt-mode')?.classList.add('border-brass-400');
+  // état initial : marquer le mode sélectionné (réhydraté ou résidentiel par défaut).
+  document.querySelectorAll<HTMLButtonElement>('.mt-mode').forEach((b) => {
+    const on = (b.dataset.mode || 'residentiel') === mode;
+    b.setAttribute('aria-pressed', String(on));
+    b.classList.toggle('border-brass-400', on);
+    b.classList.toggle('border-white/15', !on);
+  });
 
   // ——— WJ31 : puce à bascule unique (ombrage) — un seul choix actif à la fois ———
-  let ombrage = '';
+  let ombrage = savedWizard?.ombrage || '';
   document.querySelectorAll<HTMLButtonElement>('.mt-ombrage').forEach((btn) => {
     btn.addEventListener('click', () => {
       const same = ombrage === btn.dataset.value;
@@ -706,12 +850,28 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tangier', 'Agadir', 'Kénitr
         b.classList.toggle('border-brass-400', on);
         b.classList.toggle('border-white/15', !on);
       });
+      markDataEntered();
+      saveWizardState();
     });
   });
+  if (ombrage) {
+    document.querySelectorAll<HTMLButtonElement>('.mt-ombrage').forEach((b) => {
+      const on = b.dataset.value === ombrage;
+      b.setAttribute('aria-pressed', String(on));
+      b.classList.toggle('border-brass-400', on);
+      b.classList.toggle('border-white/15', !on);
+    });
+  }
 
   // ——— WJ31 : puces multi-sélection (charges futures) ———
-  const futureLoads = new Set<string>();
+  const futureLoads = new Set<string>(savedWizard?.futureLoads ?? []);
   document.querySelectorAll<HTMLButtonElement>('.mt-future-load').forEach((btn) => {
+    const preOn = futureLoads.has(btn.dataset.value || '');
+    if (preOn) {
+      btn.setAttribute('aria-pressed', 'true');
+      btn.classList.add('border-brass-400');
+      btn.classList.remove('border-white/15');
+    }
     btn.addEventListener('click', () => {
       const v = btn.dataset.value || '';
       const on = !futureLoads.has(v);
@@ -719,12 +879,16 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tangier', 'Agadir', 'Kénitr
       btn.setAttribute('aria-pressed', String(on));
       btn.classList.toggle('border-brass-400', on);
       btn.classList.toggle('border-white/15', !on);
+      markDataEntered();
+      saveWizardState();
     });
   });
 
   // ——— WJ31 : photo compteur/facture — capturée EN LOCAL, JAMAIS uploadée ———
   // Pas d'endpoint d'upload aujourd'hui (cf. PLAN2 QK6 OCR) : on garde un simple
   // signal booléen (hasMeterPhoto) et on encourage l'envoi direct sur WhatsApp.
+  // WJ61 — not persisted: a local file does not survive sessionStorage (nor
+  // should it — no binary data is serialised here).
   let hasMeterPhoto = false;
   const meterPhotoInput = $('mt-meter-photo') as HTMLInputElement | null;
   meterPhotoInput?.addEventListener('change', () => {
@@ -732,8 +896,11 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tangier', 'Agadir', 'Kénitr
   });
 
   // ——— WJ6 : assistant multi-étapes + barre de progression ———
-  let step = 0;
+  // WJ61 — the initial step reprises the sessionStorage snapshot if present
+  // (refresh/back mid-journey), otherwise 0 as before.
+  let step = savedWizard?.step != null ? Math.max(0, Math.min(2, savedWizard.step)) : 0;
   const panels = [0, 1, 2].map((i) => $(`mt-panel-${i}`));
+  let firstRender = true;
   function renderStep() {
     panels.forEach((p, i) => { if (p) p.hidden = i !== step; });
     document.querySelectorAll<HTMLElement>('.mt-step').forEach((li, i) => {
@@ -743,13 +910,35 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tangier', 'Agadir', 'Kénitr
       if (bar) bar.className = `h-1.5 w-full rounded-full mt-step-bar transition-colors ${active ? 'bg-brass-400' : 'bg-white/10'}`;
       if (label) label.classList.toggle('text-white', i === step);
     });
+    // WJ61 — on the very first render (load/rehydration), don't force a
+    // scroll: the visitor just arrived/came back, the page hasn't moved under
+    // them yet. Scrolling stays for every SUBSEQUENT step.
+    if (firstRender) { firstRender = false; return; }
     const root = document.querySelector('section');
     root?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
   }
-  function goStep(n: number) { step = Math.max(0, Math.min(2, n)); renderStep(); }
+  // WJ61 — pushState PER STEP: the browser's back button steps back one
+  // wizard step instead of leaving the page outright (the most frequent
+  // failure of an accidental "back"). `fromPopstate` avoids re-pushing a
+  // state while already reacting to a `popstate`.
+  function goStep(n: number, fromPopstate = false) {
+    step = Math.max(0, Math.min(2, n));
+    renderStep();
+    saveWizardState();
+    if (!fromPopstate) {
+      history.pushState({ mtStep: step }, '', location.href);
+    }
+  }
+  window.addEventListener('popstate', (e) => {
+    const st = (e.state as { mtStep?: number } | null)?.mtStep;
+    goStep(st != null ? st : Math.max(0, step - 1), true);
+  });
   $('mt-next-0')?.addEventListener('click', () => goStep(1));
   $('mt-back-1')?.addEventListener('click', () => goStep(0));
   $('mt-back-2')?.addEventListener('click', () => goStep(1));
+  // WJ61 — push a first history entry on load so the very first "back" has an
+  // `mtStep` state to consult.
+  history.replaceState({ mtStep: step }, '', location.href);
   renderStep();
 
   // ——— boot carte (captureOnly). Repli sans clé carte AUTORISE la suite (WJ4) ———
@@ -774,7 +963,17 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tangier', 'Agadir', 'Kénitr
         reducedMotion,
         // WJ41 — English map/geocoder system messages (default is French).
         strings: ROOF_TOOL_STRINGS_EN,
+        // WJ62 — geolocation refused/unavailable is now announced, not a
+        // silent failure.
+        geolocateErrorMsg: 'Location denied — search for your address or drop the pin by hand.',
         onReady: clearMapSkeleton,
+        // WJ61 — a pin/outline restored from sessionStorage (refresh or
+        // browser back mid-journey) is seeded straight into the map at boot,
+        // via the same mechanism as hydrating from an existing lead (W113):
+        // the visitor doesn't have to re-drop their pin.
+        hydrate: capturePin
+          ? { lead: { roof_point: capturePin, roof_outline: captureOutline.length >= 3 ? captureOutline : null } }
+          : undefined,
         onCaptureChange: (s) => {
           capturePin = s.pin;
           captureOutline = s.outline;
@@ -796,9 +995,14 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tangier', 'Agadir', 'Kénitr
   // WJ4 — repli carte : on montre le champ d'adresse en clair ET on garde la suite ouverte.
   function showFallback() { if (fallback) fallback.hidden = false; clearMapSkeleton(); }
 
+  // WJ60 — on slow 3G, a fetch with no timeout could hang indefinitely (the UI
+  // stayed stuck on the map's loading skeleton). 10 s gives a slow connection
+  // ample time to respond while still bounding the wait; the failure (timeout
+  // included) falls into the existing address fallback (WJ4), never a block.
+  const FETCH_TIMEOUT_MS = 10_000;
   (async () => {
     try {
-      const res = await fetch('/api/roof-config');
+      const res = await fetch('/api/roof-config', { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
       const cfg = (await res.json()) as { available?: boolean; maptilerKey?: string; mapboxToken?: string };
       if (!cfg.available || !cfg.maptilerKey) { showFallback(); return; }
       void boot(cfg.maptilerKey, cfg.mapboxToken || '');
@@ -826,6 +1030,42 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tangier', 'Agadir', 'Kénitr
     if (!on && eteInput) eteInput.value = '';
   });
 
+  // WJ61 — rehydrate input fields + map pin/outline from the snapshot (BEFORE
+  // the map boot: `hydrate` below seeds the pin/outline directly into
+  // captureBoot, without waiting for a first click). `restoring` prevents
+  // saveWizardState() from firing WHILE we populate fields (native
+  // `input`/`change` events don't fire on a scripted `.value`/`.checked`
+  // assignment, but we still guard for clarity/consistency with saveWizardState()).
+  if (savedWizard) {
+    restoring = true;
+    for (const [id, v] of Object.entries(savedWizard.fields ?? {})) {
+      const el = $(id) as HTMLInputElement | HTMLSelectElement | null;
+      if (el) el.value = v;
+    }
+    for (const [id, v] of Object.entries(savedWizard.checks ?? {})) {
+      const el = $(id) as HTMLInputElement | null;
+      if (el) el.checked = v;
+    }
+    // WJ61 — a restored city counts as "already touched": assigning `.value`
+    // via script doesn't fire the native `input` event that normally sets
+    // `cityTouched`, and without this guard the next pin dropped on the map
+    // would silently overwrite the city we just restored.
+    if (savedWizard.fields?.['mt-city']) cityTouched = true;
+    if (eteToggle?.checked && eteWrap) eteWrap.hidden = false;
+    if (savedWizard.capturePin) capturePin = savedWizard.capturePin;
+    if (savedWizard.captureOutline?.length) captureOutline = savedWizard.captureOutline;
+    if (Object.keys(savedWizard.fields ?? {}).length > 0 || savedWizard.capturePin) markDataEntered();
+    restoring = false;
+  }
+  // WJ61 — persist on any typing/change of the remaining text/select/checkbox
+  // fields (beyond the chip groups already wired above).
+  const PERSIST_ON_INPUT_IDS = [...PERSISTED_TEXT_FIELDS, ...PERSISTED_CHECK_FIELDS];
+  for (const id of PERSIST_ON_INPUT_IDS) {
+    const el = $(id);
+    el?.addEventListener('input', () => { markDataEntered(); saveWizardState(); });
+    el?.addEventListener('change', () => { markDataEntered(); saveWizardState(); });
+  }
+
   // ——— WJ1 : résoudre la facture mensuelle (montant exact prioritaire, sinon tranche) ———
   /** Milieu indicatif d'une tranche (MAD) — uniquement pour ESTIMER quand le montant
    *  exact est absent ; ne sert jamais au seuil (le seuil reste sur billRange/qualifies). */
@@ -833,6 +1073,12 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tangier', 'Agadir', 'Kénitr
     'lt800': 600, '800-1000': 900, '1000-1500': 1250, '1500-3000': 2250,
     '3000-5000': 4000, '5000-10000': 7500, 'gt10000': 12000,
   };
+  // WJ65 — sanity cap on the EXACT bill entered: beyond it, a typo (e.g. an
+  // extra zero) would produce an estimated figure with the same confidence as
+  // a genuinely large commercial account — better to ask the visitor to check.
+  // 200,000 MAD/month is already well beyond Taqinor's largest real
+  // industrial clients; applies only to the EXACT amount, never to ranges.
+  const MAX_BILL = 200_000;
   function resolveMonthlyBill(): number | null {
     const exact = num('mt-facture-hiver');
     if (exact != null && exact > 0) return exact;
@@ -846,13 +1092,33 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tangier', 'Agadir', 'Kénitr
   let lastSavingsLabel = '';
   let lastKwc: number | null = null;
   function computeEstimate() {
+    const exact = num('mt-facture-hiver');
     const bill = resolveMonthlyBill();
-    const lat = capturePin?.lat;
-    const city = (val('mt-city') || addressEl?.value || '').trim() || undefined;
-    const est = bill != null ? estimateFromBill(bill, { lat, city }) : null;
     const card = $('mt-estimate-body');
     const note = $('mt-estimate-note');
     const unavail = $('mt-estimate-unavailable');
+    const toolarge = $('mt-estimate-toolarge');
+    // WJ65 — exact amount beyond the cap: dedicated honest message (never a
+    // confidently computed figure on a likely-mistaken entry) + inline error
+    // on the field itself, without ever BLOCKING the step (the visitor can
+    // correct it or fall back to a range).
+    if (exact != null && exact > MAX_BILL) {
+      if (card) card.hidden = true;
+      if (note) note.hidden = true;
+      if (unavail) unavail.hidden = true;
+      if (toolarge) toolarge.hidden = false;
+      setFieldError('mt-facture-hiver', 'mt-facture-hiver-err', 'Please check the amount entered.');
+      lastKwcLabel = '';
+      lastSavingsLabel = '';
+      lastKwc = null;
+      updatePanels3dVisibility();
+      return;
+    }
+    setFieldError('mt-facture-hiver', 'mt-facture-hiver-err', null);
+    if (toolarge) toolarge.hidden = true;
+    const lat = capturePin?.lat;
+    const city = (val('mt-city') || addressEl?.value || '').trim() || undefined;
+    const est = bill != null ? estimateFromBill(bill, { lat, city }) : null;
     if (!est) {
       if (card) card.hidden = true;
       if (note) note.hidden = true;
@@ -887,7 +1153,9 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tangier', 'Agadir', 'Kénitr
   function showEstimateSkeleton() {
     const card = $('mt-estimate-body');
     const unavail = $('mt-estimate-unavailable');
+    const toolarge = $('mt-estimate-toolarge');
     if (unavail) unavail.hidden = true;
+    if (toolarge) toolarge.hidden = true;
     if (card) card.hidden = false;
     for (const id of ['mt-est-kwc', 'mt-est-savings']) {
       const el = $(id);
@@ -1015,7 +1283,15 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tangier', 'Agadir', 'Kénitr
     }
     if (captureOutline.length >= 3) body.roofOutline = captureOutline;
     const v = validateLead(body);
-    return { body, errors: v.ok ? {} : v.errors };
+    const errors: Record<string, string> = v.ok ? {} : { ...v.errors };
+    // WJ65 — validateLead (lib/lead.ts, out of this page's file scope) only
+    // requires a length ≥ 2: a name made only of emoji/symbols (e.g. "😀😀")
+    // used to pass silently. We require at least ONE letter (any alphabet —
+    // \p{L} covers Latin) before submitting.
+    if (!errors.fullName && !/\p{L}/u.test(val('mt-name'))) {
+      errors.fullName = 'Nom complet requis'; // enMsg() below translates this known key.
+    }
+    return { body, errors };
   }
 
   // WJ39 — the shared validateLead() (src/lib/lead.ts, out of this page's file
@@ -1051,7 +1327,30 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tangier', 'Agadir', 'Kénitr
   const okEl = $('mt-success');
   const belowEl = $('mt-belowthreshold');
   const submitBtn = $('mt-submit') as HTMLButtonElement | null;
+  const submitLabelEl = $('mt-submit-label');
+  const submitPendingEl = $('mt-submit-pending');
   let submitted = false;
+
+  // WJ60 — toggle the CTA to "Sending…" while the network request is pending
+  // (never a mute button on slow 3G); restored at the end regardless of
+  // outcome (except success, where the whole form disables right after).
+  function setSubmitPending(pending: boolean) {
+    if (submitBtn) submitBtn.disabled = pending;
+    if (submitLabelEl) submitLabelEl.hidden = pending;
+    if (submitPendingEl) submitPendingEl.hidden = !pending;
+  }
+
+  // WJ60 — HONEST message for a SERVER-SIDE failure (≥500, malformed JSON,
+  // timeout, network cut): never blames the visitor's fields for a failure
+  // that isn't theirs. WJ63 — the client ALWAYS prefers its own localised copy
+  // over server-sent text (e.g. the rate-limit's 429 message, in French on
+  // the API side): `data.errors` is only shown as-is for REAL field errors
+  // (4xx validation), never for a generic server failure.
+  const SERVER_ERROR_MSG = 'A technical problem on our side — please try again.';
+  // WJ60 — 15 s gives a slow connection time to respond, without leaving the
+  // "Sending…" CTA hanging indefinitely (the failure, timeout included, falls
+  // into the honest message above — never a silent block).
+  const SUBMIT_TIMEOUT_MS = 15_000;
 
   form?.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -1071,16 +1370,25 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tangier', 'Agadir', 'Kénitr
     }
     showInlineErrors({});
 
-    if (submitBtn) submitBtn.disabled = true;
+    setSubmitPending(true);
     try {
       const res = await fetch('/api/capture-lead', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(SUBMIT_TIMEOUT_MS),
       });
-      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; qualified?: boolean; errors?: Record<string, string> };
-      if (res.ok && data.ok) {
+      // WJ60/WJ63 — a malformed JSON response (empty/unreadable body) is
+      // treated as a server failure, never silently as "no error".
+      let malformed = false;
+      const data = (await res.json().catch(() => {
+        malformed = true;
+        return {};
+      })) as { ok?: boolean; qualified?: boolean; errors?: Record<string, string> };
+      if (res.ok && !malformed && data.ok) {
         submitted = true;
+        hasEnteredData = false; // WJ61 — success: no longer need the beforeunload guard.
+        clearWizardState(); // WJ61 — the request went through: the snapshot no longer applies.
         const waUrl = buildWaUrl();
         // WJ5 — réponse HONNÊTE selon le seuil 1 000 MAD (qualified renvoyé par le serveur).
         if (data.qualified) {
@@ -1102,20 +1410,31 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tangier', 'Agadir', 'Kénitr
         Array.from(form.elements).forEach((el) => ((el as HTMLInputElement).disabled = true));
         return;
       }
-      // erreurs serveur → réafficher inline si présentes
-      if (data.errors) showInlineErrors(data.errors);
-      const firstErr = data.errors ? Object.values(data.errors)[0] : null;
+      // WJ60/WJ63 — ≥500 or malformed JSON: SERVER-SIDE failure, never a
+      // message that blames the fields. Below 500 with usable field errors
+      // (4xx validation, e.g. `errors.fullName`), we still show them inline
+      // as before — but a server text that is NOT a known field error (e.g.
+      // `errors.rate`, the rate-limit's 429, in French on the API side) never
+      // overwrites our honest copy: only the `errors.rate` field falls back
+      // to the same generic server message.
+      const isServerError = malformed || res.status >= 500 || (!!data.errors && 'rate' in data.errors);
+      if (!isServerError && data.errors) showInlineErrors(data.errors);
+      const firstFieldErr = !isServerError && data.errors ? Object.values(data.errors)[0] : null;
       if (errEl) {
-        errEl.textContent = (firstErr && (VALIDATION_ERROR_EN[firstErr] ?? firstErr)) || 'A field is missing or invalid. Please check your information.';
+        errEl.textContent = isServerError
+          ? SERVER_ERROR_MSG
+          : ((firstFieldErr && (VALIDATION_ERROR_EN[firstFieldErr] ?? firstFieldErr)) || 'A field is missing or invalid. Please check your information.');
         errEl.hidden = false;
       }
-      if (submitBtn) submitBtn.disabled = false;
+      setSubmitPending(false);
     } catch {
+      // WJ60 — covers the timeout (AbortSignal.timeout) and any network
+      // outage: same honest message, never a silent block of the CTA.
       if (errEl) {
-        errEl.textContent = 'Unable to send right now. Please try again in a moment.';
+        errEl.textContent = SERVER_ERROR_MSG;
         errEl.hidden = false;
       }
-      if (submitBtn) submitBtn.disabled = false;
+      setSubmitPending(false);
     }
   });
 
