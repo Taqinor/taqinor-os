@@ -21,6 +21,7 @@ import {
   forwardLead,
   redactLeadForLog,
   runSimulation,
+  trackForwardLeadOutcome,
   validateLead,
   type LeadEnv,
 } from '../../lib/lead';
@@ -79,6 +80,18 @@ export const POST: APIRoute = async ({ request }) => {
       console.log(
         `[capture-lead] non transmis au CRM (${fw.reason}) — lead qualifié:`,
         JSON.stringify(redactLeadForLog(baseRecord)),
+      );
+    }
+    // WJ66 — visibilité de panne de livraison : au-delà du seuil d'échecs
+    // CONSÉCUTIFS (webhook configuré, lead qualifié, mais la livraison échoue
+    // à répétition), une ligne d'ALERTE distincte et grep-able (`[capture-lead][ALERT]`)
+    // signale une panne CRM probable — jusqu'ici un tel silence pouvait durer
+    // des jours sans que personne ne soit notifié. Best-effort, en mémoire par
+    // isolat (cf. trackForwardLeadOutcome) : jamais bloquant pour le visiteur.
+    const { shouldAlert, streak } = trackForwardLeadOutcome(fw.delivered, fw.reason);
+    if (shouldAlert) {
+      console.error(
+        `[capture-lead][ALERT] ${streak} échecs de livraison CRM consécutifs (dernier motif: ${fw.reason}) — vérifier LEAD_WEBHOOK_URL / le récepteur taqinor-os.`,
       );
     }
   })();

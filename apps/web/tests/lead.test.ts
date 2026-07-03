@@ -1,13 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  buildIdempotencyKey,
   buildLeadRecord,
   fireCapi,
   forwardLead,
   hashCityForCapi,
+  hashEmailForCapi,
   hashPhoneForCapi,
   leadLogId,
   redactLeadForLog,
+  resetForwardLeadFailureStreak,
   runSimulation,
+  trackForwardLeadOutcome,
   validateLead,
   type LeadEnv,
   type ValidatedLead,
@@ -63,10 +67,13 @@ describe('validateLead', () => {
     expect(r.ok).toBe(false);
   });
 
-  it('rejette un téléphone non marocain', () => {
-    const r = validateLead({ ...validBody, phone: '+33612345678' });
+  it('rejette un téléphone garbage (non marocain ET non E.164 valide)', () => {
+    const r = validateLead({ ...validBody, phone: 'abc' });
     expect(r.ok).toBe(false);
   });
+
+  // WJ64 — un E.164 étranger valide (+33…) est désormais ACCEPTÉ, voir le
+  // describe dédié « WJ64 — validateLead accepte un E.164 étranger » plus bas.
 
   it('tolère fbclid et UTM absents', () => {
     const { fbclid, utm_source, utm_medium, utm_campaign, utm_content, utm_term, ...rest } = validBody;
@@ -529,5 +536,156 @@ describe('fireCapi — fire-and-forget', () => {
     const r = await fireCapi(record, env, fetchFn);
     expect(r.sent).toBe(false);
     expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  // ——— WJ92 — CAPI match quality : em haché + event_id ———
+  it('joint em (haché) quand un e-mail est capturé, et event_id (client puis dérivé)', async () => {
+    let sentBody = '';
+    const fetchFn = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      sentBody = String(init?.body);
+      return new Response('ok');
+    }) as unknown as typeof fetch;
+
+    // Sans e-mail ni eventId côté client : em absent, event_id dérivé et présent.
+    const recordNoEmail = buildLeadRecord(makeLead(), band, new Date());
+    await fireCapi(recordNoEmail, env, fetchFn);
+    const payloadNoEmail = JSON.parse(sentBody);
+    expect(payloadNoEmail).not.toHaveProperty('em');
+    expect(typeof payloadNoEmail.event_id).toBe('string');
+    expect(payloadNoEmail.event_id.length).toBeGreaterThan(0);
+
+    // Avec e-mail + eventId client : em présent (haché, jamais en clair), event_id = celui du client.
+    const recordWithEmail = buildLeadRecord(
+      makeLead({ email: 'karim@example.com', eventId: 'clientside-evt-12345' }),
+      band,
+      new Date(),
+    );
+    await fireCapi(recordWithEmail, env, fetchFn);
+    const payloadWithEmail = JSON.parse(sentBody);
+    expect(payloadWithEmail.em).toBe(await hashEmailForCapi('karim@example.com'));
+    expect(payloadWithEmail.em).toMatch(/^[0-9a-f]{64}$/);
+    expect(sentBody).not.toContain('karim@example.com');
+    expect(payloadWithEmail.event_id).toBe('clientside-evt-12345');
+  });
+});
+
+// ——— WJ64 — diaspora : numéro E.164 étranger accepté, additif ———
+describe('WJ64 — validateLead accepte un E.164 étranger, flaggé phoneIsForeign', () => {
+  it('un numéro français valide passe, phoneIsForeign=true, 1 000 MAD inchangé', () => {
+    const r = validateLead({ ...validBody, phone: '+33612345678' });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.lead.phoneE164).toBe('+33612345678');
+    expect(r.lead.phoneIsForeign).toBe(true);
+    // La logique de seuil (billRange) est totalement indépendante de ce champ.
+    const record = buildLeadRecord(r.lead, { kwcMin: 5, kwcMax: 9, kwcLabel: '5 à 9 kWc', paybackLabel: '4 à 6 ans', source: 'local' }, new Date());
+    expect(record.qualified).toBe(true);
+  });
+
+  it('un numéro marocain garde phoneIsForeign ABSENT (contrat historique intact)', () => {
+    const r = validateLead(validBody);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.lead).not.toHaveProperty('phoneIsForeign');
+  });
+
+  it('un garbage reste rejeté (pas de régression du chemin marocain)', () => {
+    const r = validateLead({ ...validBody, phone: 'abc' });
+    expect(r.ok).toBe(false);
+  });
+});
+
+// ——— WJ66 — idempotencyKey (additif) + alerting de panne de livraison ———
+describe('WJ66 — idempotencyKey pass-through', () => {
+  it('un idempotencyKey bien formé passe au lead puis au record', () => {
+    const key = buildIdempotencyKey();
+    expect(key).toHaveLength(32);
+    const r = validateLead({ ...validBody, idempotencyKey: key });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.lead.idempotencyKey).toBe(key);
+    const record = buildLeadRecord(r.lead, { kwcMin: 5, kwcMax: 9, kwcLabel: '5 à 9 kWc', paybackLabel: '4 à 6 ans', source: 'local' }, new Date());
+    expect(record.idempotencyKey).toBe(key);
+  });
+
+  it('un idempotencyKey malformé (trop court) est écarté sans bloquer', () => {
+    const r = validateLead({ ...validBody, idempotencyKey: 'short' });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.lead).not.toHaveProperty('idempotencyKey');
+  });
+
+  it('absence d\'idempotencyKey garde la forme d\'hier', () => {
+    const r = validateLead(validBody);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.lead).not.toHaveProperty('idempotencyKey');
+  });
+});
+
+describe('WJ66 — trackForwardLeadOutcome : alerte sur pannes CRM consécutives', () => {
+  it('un succès réinitialise le compteur, jamais d\'alerte', () => {
+    resetForwardLeadFailureStreak();
+    trackForwardLeadOutcome(false, 'webhook-status-500');
+    trackForwardLeadOutcome(false, 'webhook-status-500');
+    const afterSuccess = trackForwardLeadOutcome(true);
+    expect(afterSuccess.shouldAlert).toBe(false);
+    expect(afterSuccess.streak).toBe(0);
+  });
+
+  it('les états normaux (seuil, webhook non configuré) ne comptent jamais comme panne', () => {
+    resetForwardLeadFailureStreak();
+    const r1 = trackForwardLeadOutcome(false, 'below-threshold');
+    const r2 = trackForwardLeadOutcome(false, 'no-webhook-configured');
+    expect(r1.shouldAlert).toBe(false);
+    expect(r1.streak).toBe(0);
+    expect(r2.shouldAlert).toBe(false);
+    expect(r2.streak).toBe(0);
+  });
+
+  it('déclenche shouldAlert exactement au seuil (3 échecs consécutifs)', () => {
+    resetForwardLeadFailureStreak();
+    const r1 = trackForwardLeadOutcome(false, 'webhook-error-AbortError');
+    const r2 = trackForwardLeadOutcome(false, 'webhook-error-AbortError');
+    const r3 = trackForwardLeadOutcome(false, 'webhook-error-AbortError');
+    expect(r1.shouldAlert).toBe(false);
+    expect(r2.shouldAlert).toBe(false);
+    expect(r3.shouldAlert).toBe(true);
+    expect(r3.streak).toBe(3);
+  });
+});
+
+// ——— WJ68 — mode professionnel : raison sociale, type de site, nb de sites ———
+describe('WJ68 — validateLead élargi : mode professionnel facultatif', () => {
+  it('transmet raisonSociale, facilityType, siteCount quand fournis', () => {
+    const r = validateLead({
+      ...validBody,
+      mode: 'professionnel',
+      raisonSociale: 'Riad Solaire SARL',
+      facilityType: 'entrepot',
+      siteCount: '2-5',
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.lead.raisonSociale).toBe('Riad Solaire SARL');
+    expect(r.lead.facilityType).toBe('entrepot');
+    expect(r.lead.siteCount).toBe('2-5');
+  });
+
+  it('un champ mal formé est écarté sans bloquer', () => {
+    const r = validateLead({ ...validBody, facilityType: 'chateau', siteCount: '100' });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.lead).not.toHaveProperty('facilityType');
+    expect(r.lead).not.toHaveProperty('siteCount');
+  });
+
+  it('un lead résidentiel sans ces champs garde la forme d\'hier', () => {
+    const r = validateLead(validBody);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.lead).not.toHaveProperty('raisonSociale');
+    expect(r.lead).not.toHaveProperty('facilityType');
+    expect(r.lead).not.toHaveProperty('siteCount');
   });
 });
