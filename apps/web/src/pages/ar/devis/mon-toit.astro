@@ -229,7 +229,13 @@ const noscriptTelHref = `tel:${NAP.phone}`;
         <div class="mt-5 flex justify-end">
           <button type="button" id="mt-next-0"
             class="inline-flex items-center justify-center gap-2 bg-brass-400 px-6 py-3 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">
-            <span data-i18n data-fr="Continuer" data-ar="متابعة">Continuer</span> →
+            <span data-i18n data-fr="Continuer" data-ar="متابعة">Continuer</span>
+            <!-- WJ89 — chevron SVG auto-retourné en RTL (règle globale.css
+                 `[dir="rtl"] button svg[aria-hidden="true"]`), plus jamais un
+                 glyphe « → » littéral figé dans le sens LTR (illisible en RTL). -->
+            <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <polyline points="3,1 7,5 3,9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
           </button>
         </div>
       </div>
@@ -247,7 +253,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           <label class="block text-sm text-lune-soft">
             <span data-i18n data-fr="Facture mensuelle exacte (MAD)" data-ar="الفاتورة الشهرية الدقيقة (درهم)">Facture mensuelle exacte (MAD)</span>
             <input id="mt-facture-hiver" name="factureHiver" type="number" step="any" inputmode="decimal"
-              placeholder="مثال: 1 200" class={`${inputClass} mt-1`} />
+              placeholder="مثال: 1 200" dir="ltr" class={`${inputClass} mt-1`} />
             <span id="mt-facture-hiver-err" hidden class="mt-1 block text-xs text-alert-300"></span>
             <!-- WJ67 — micro-transparence « pourquoi on vous demande ça » : copie
                  seule, repliée par défaut (native <details>, aucun JS requis). -->
@@ -301,7 +307,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           <label id="mt-facture-ete-wrap" hidden class="block text-sm text-lune-soft">
             <span data-i18n data-fr="Facture été (MAD)" data-ar="فاتورة الصيف (درهم)">Facture été (MAD)</span>
             <input id="mt-facture-ete" name="factureEte" type="number" step="any" inputmode="decimal"
-              placeholder="مثال: 2 500" class={`${inputClass} mt-1`} />
+              placeholder="مثال: 2 500" dir="ltr" class={`${inputClass} mt-1`} />
           </label>
         </div>
 
@@ -326,7 +332,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             <label class="block text-sm text-lune-soft">
               <span data-i18n data-fr="Consommation (kWh/mois, si connue)" data-ar="الاستهلاك (كيلوواط ساعة/شهر، إن عُرف)">Consommation (kWh/mois, si connue)</span>
               <input id="mt-bill-kwh" name="billKwh" type="number" step="any" inputmode="decimal"
-                placeholder="مثال: 850" class={`${inputClass} mt-1`} />
+                placeholder="مثال: 850" dir="ltr" class={`${inputClass} mt-1`} />
             </label>
           </div>
 
@@ -358,7 +364,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           <label class="mt-4 block text-sm text-lune-soft">
             <span data-i18n data-fr="Âge approximatif du toit (années)" data-ar="عمر السطح التقريبي (سنوات)">Âge approximatif du toit (années)</span>
             <input id="mt-roof-age" name="roofAgeYears" type="number" step="1" min="0" inputmode="numeric"
-              placeholder="مثال: 10" class={`${inputClass} mt-1`} />
+              placeholder="مثال: 10" dir="ltr" class={`${inputClass} mt-1`} />
           </label>
 
           <fieldset class="mt-4">
@@ -410,11 +416,17 @@ const noscriptTelHref = `tel:${NAP.phone}`;
         <div class="mt-5 flex items-center justify-between gap-3">
           <button type="button" id="mt-back-1"
             class="inline-flex items-center gap-1 px-2 py-3 text-base font-semibold text-lune-soft transition-colors hover:text-white">
-            ← <span data-i18n data-fr="Retour" data-ar="رجوع">Retour</span>
+            <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <polyline points="7,1 3,5 7,9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <span data-i18n data-fr="Retour" data-ar="رجوع">Retour</span>
           </button>
           <button type="button" id="mt-estimate"
             class="inline-flex items-center justify-center gap-2 bg-brass-400 px-6 py-3 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">
-            <span data-i18n data-fr="Voir mon estimation" data-ar="عرض تقديري">Voir mon estimation</span> →
+            <span data-i18n data-fr="Voir mon estimation" data-ar="عرض تقديري">Voir mon estimation</span>
+            <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <polyline points="3,1 7,5 3,9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
           </button>
         </div>
       </div>
@@ -563,7 +575,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           <div class="flex items-center justify-between gap-3">
             <button type="button" id="mt-back-2"
               class="inline-flex items-center gap-1 px-2 py-2 text-sm font-semibold text-lune-soft transition-colors hover:text-white">
-              ← <span data-i18n data-fr="Retour" data-ar="رجوع">Retour</span>
+              <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10" fill="none">
+                <polyline points="7,1 3,5 7,9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+              <span data-i18n data-fr="Retour" data-ar="رجوع">Retour</span>
             </button>
           </div>
 
