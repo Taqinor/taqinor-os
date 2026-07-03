@@ -79,6 +79,13 @@ const STATIC_TRANSLATED: readonly string[] = [
   '/devis/mon-toit',
   // W293 — pilier évergreen « Prix panneaux solaires Maroc » (routes EN/AR livrées).
   '/prix-panneaux-solaires-maroc',
+  // i18n-registration — 4 pages autonomes livrées avec leurs routes EN/AR
+  // (W279 impact, W354 production, W355 ensoleillement, W338 parrainage) mais
+  // jamais enregistrées ici : hreflang manquants jusqu'à ce correctif.
+  '/impact-taqinor',
+  '/production-mesuree',
+  '/ensoleillement-maroc',
+  '/parrainage',
 ];
 
 /**
