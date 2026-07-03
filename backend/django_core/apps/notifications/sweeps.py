@@ -362,6 +362,20 @@ def _sweep_annonce_reminders(company):
         return 0
 
 
+# ── Relance/escalade des approbations en attente (YEVNT9) ──────────────────────
+
+def _sweep_approval_reminders(company):
+    """Relance/escalade les approbations en attente au-delà des seuils
+    (YEVNT9), pour les deux moteurs (automation + compta)."""
+    try:
+        from .services import sweep_approval_reminders
+        return sweep_approval_reminders(company)
+    except Exception:  # pragma: no cover
+        logger.warning('sweeps: approval_reminders société %s échouée',
+                       getattr(company, 'pk', None), exc_info=True)
+        return 0
+
+
 # ── Tâche Celery Beat ─────────────────────────────────────────────────────────
 
 @shared_task(name='notifications.sweep_daily')
@@ -371,7 +385,8 @@ def sweep_daily():
     Pour chaque société active : garanties expirantes, maintenances dues,
     tickets SAV en rupture de délai, chantiers à venir, factures en retard
     (YEVNT3), annonces programmées à publier (XKB5), relances de lecture
-    obligatoire en retard (XKB6).
+    obligatoire en retard (XKB6), relances/escalades d'approbations en
+    attente (YEVNT9).
     Best-effort par société ; renvoie le total de notifications émises."""
     total = 0
     for company in _companies():
@@ -383,6 +398,7 @@ def sweep_daily():
             total += _sweep_facture_overdue(company)
             total += _sweep_annonces_due(company)
             total += _sweep_annonce_reminders(company)
+            total += _sweep_approval_reminders(company)
         except Exception:  # pragma: no cover
             logger.warning('sweeps: société %s échouée globalement',
                            getattr(company, 'pk', None), exc_info=True)

@@ -738,3 +738,144 @@ def sweep_annonce_reminders(company, *, delay_days=None, today=None):
             logger.warning('sweep_annonce_reminders: annonce %s échouée',
                            getattr(annonce, 'pk', None), exc_info=True)
     return count
+
+
+# =============================================================================
+# YEVNT9 — Relance/escalade des approbations en attente (les DEUX moteurs :
+# automation.AutomationApproval + compta.DemandeApprobationConfig).
+# =============================================================================
+
+def approval_reminder_thresholds(company):
+    """Seuils effectifs (relance_days, escalade_days) pour une société
+    (config stockée, sinon défauts de classe). Best-effort."""
+    from .models import ApprovalReminderConfig
+    try:
+        cfg = ApprovalReminderConfig.objects.filter(company=company).first()
+        if cfg is not None:
+            return (cfg.relance_days, cfg.escalade_days)
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.warning('approval_reminder_thresholds échoué : %s', exc)
+    return (
+        ApprovalReminderConfig.DEFAULT_RELANCE_DAYS,
+        ApprovalReminderConfig.DEFAULT_ESCALADE_DAYS,
+    )
+
+
+def _approval_reminder_state(company, instance):
+    """État de relance (créé si besoin) pour UNE approbation en attente,
+    générique via content-type."""
+    from django.contrib.contenttypes.models import ContentType
+
+    from .models import ApprovalReminderState
+    ct = ContentType.objects.get_for_model(instance.__class__)
+    state, _created = ApprovalReminderState.objects.get_or_create(
+        content_type=ct, object_id=instance.pk,
+        defaults={'company': company})
+    return state
+
+
+def _sweep_one_pending_approval(company, instance, *, approver, requester,
+                                link, description, relance_days,
+                                escalade_days, today):
+    """Traite UNE approbation en attente : relance au palier 1, escalade au
+    palier 2 — jamais deux fois pour le même palier (état persisté).
+
+    Renvoie 1 si une notification a été émise, 0 sinon."""
+    from .calendar_utils import ajouter_jours_ouvres
+
+    date_creation = getattr(instance, 'date_creation', None)
+    if date_creation is None:
+        return 0
+    base_date = (
+        date_creation.date() if hasattr(date_creation, 'date')
+        else date_creation)
+    relance_due = ajouter_jours_ouvres(base_date, relance_days, company)
+    escalade_due = ajouter_jours_ouvres(base_date, escalade_days, company)
+
+    state = _approval_reminder_state(company, instance)
+
+    if state.palier < 2 and today >= escalade_due:
+        from .sweeps import _managers
+        title = "Approbation escaladée"
+        body = f'{description} reste en attente depuis {escalade_days}+ jours ouvrés.'
+        for admin in _managers(company):
+            notify(admin, EventType.APPROVAL_ESCALATED, title, body=body,
+                   link=link, company=company)
+        state.palier = 2
+        state.derniere_action_le = timezone.now()
+        state.save(update_fields=['palier', 'derniere_action_le'])
+        return 1
+
+    if state.palier < 1 and today >= relance_due:
+        if approver is not None:
+            title = "Relance d'approbation"
+            body = f'{description} attend toujours votre validation.'
+            notify(approver, EventType.APPROVAL_REMINDER, title, body=body,
+                   link=link, company=company)
+        state.palier = 1
+        state.derniere_action_le = timezone.now()
+        state.save(update_fields=['palier', 'derniere_action_le'])
+        return 1
+
+    return 0
+
+
+def sweep_approval_reminders(company, *, today=None):
+    """Relance/escalade les approbations en attente au-delà des seuils
+    (YEVNT9), pour les DEUX moteurs. Idempotent (un palier n'est jamais
+    re-signalé) ; best-effort par approbation."""
+    today = today or timezone.now().date()
+    relance_days, escalade_days = approval_reminder_thresholds(company)
+    count = 0
+
+    try:
+        from apps.automation.models import AutomationApproval
+        pending = AutomationApproval.objects.filter(
+            company=company, status=AutomationApproval.Status.PENDING
+        ).select_related('rule', 'requested_by')
+        for approval in pending:
+            try:
+                from .sweeps import _managers
+                approvers = _managers(company)
+                approver = approvers[0] if approvers else None
+                count += _sweep_one_pending_approval(
+                    company, approval, approver=approver,
+                    requester=approval.requested_by,
+                    link=f'/automation/approvals/{approval.pk}',
+                    description=approval.description or 'Une action',
+                    relance_days=relance_days, escalade_days=escalade_days,
+                    today=today)
+            except Exception:  # pragma: no cover - défensif
+                logger.warning(
+                    'sweep_approval_reminders: automation approval %s échouée',
+                    approval.pk, exc_info=True)
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.warning('sweep_approval_reminders: automation échoué : %s', exc)
+
+    try:
+        from apps.compta.models import DemandeApprobationConfig
+        pending = DemandeApprobationConfig.objects.filter(
+            company=company,
+            statut=DemandeApprobationConfig.Statut.EN_ATTENTE,
+        ).select_related('demandeur')
+        for demande in pending:
+            try:
+                from .sweeps import _managers
+                approvers = _managers(company)
+                approver = approvers[0] if approvers else None
+                label = demande.devis_reference or demande.devis_id or ''
+                count += _sweep_one_pending_approval(
+                    company, demande, approver=approver,
+                    requester=demande.demandeur,
+                    link=f'/compta/approbations/{demande.pk}',
+                    description=f'La demande {label}',
+                    relance_days=relance_days, escalade_days=escalade_days,
+                    today=today)
+            except Exception:  # pragma: no cover - défensif
+                logger.warning(
+                    'sweep_approval_reminders: demande approbation %s échouée',
+                    demande.pk, exc_info=True)
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.warning('sweep_approval_reminders: compta échoué : %s', exc)
+
+    return count

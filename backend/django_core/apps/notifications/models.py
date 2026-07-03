@@ -56,6 +56,9 @@ class EventType(models.TextChoices):
     # YEVNT8 — demandes d'approbation (automation N73 + compta FG213).
     APPROVAL_REQUESTED = 'approval_requested', "Approbation demandée"
     APPROVAL_DECIDED = 'approval_decided', "Approbation décidée"
+    # YEVNT9 — relance/escalade d'une approbation restée en attente.
+    APPROVAL_REMINDER = 'approval_reminder', "Relance d'approbation"
+    APPROVAL_ESCALATED = 'approval_escalated', "Approbation escaladée"
 
 
 class Channel(models.TextChoices):
@@ -717,3 +720,74 @@ class AnnonceRelance(models.Model):
 
     def __str__(self):
         return f'relance {self.annonce_id}:{self.utilisateur_id}'
+
+
+# =============================================================================
+# YEVNT9 — Relance/escalade des approbations en attente.
+# =============================================================================
+
+class ApprovalReminderConfig(models.Model):
+    """YEVNT9 — Seuils (en jours ouvrés) de relance/escalade des approbations
+    en attente, par société. Singleton par société.
+
+    ADDITIF : sans ligne, les helpers du sweep retombent sur les défauts de
+    classe (2 jours ouvrés pour la relance, 4 pour l'escalade admin)."""
+
+    DEFAULT_RELANCE_DAYS = 2
+    DEFAULT_ESCALADE_DAYS = 4
+
+    company = models.OneToOneField(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='approval_reminder_config', verbose_name='Société')
+    relance_days = models.PositiveSmallIntegerField(
+        default=DEFAULT_RELANCE_DAYS,
+        verbose_name='Seuil relance (jours ouvrés)')
+    escalade_days = models.PositiveSmallIntegerField(
+        default=DEFAULT_ESCALADE_DAYS,
+        verbose_name='Seuil escalade admin (jours ouvrés)')
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Configuration relance approbations'
+        verbose_name_plural = 'Configurations relance approbations'
+
+    def __str__(self):
+        return f'ApprovalReminderConfig[{self.company_id}]'
+
+
+class ApprovalReminderState(models.Model):
+    """YEVNT9 — État de relance/escalade PAR approbation en attente (générique,
+    couvre `automation.AutomationApproval` ET `compta.DemandeApprobationConfig`
+    via content-type — mêmes deux moteurs que YEVNT8, jamais un FK dur vers
+    l'une ou l'autre app).
+
+    `palier` : 0 = jamais relancé, 1 = relance envoyée à l'approbateur,
+    2 = escaladé à l'admin/owner-tier. Une ligne par approbation en attente ;
+    supprimée/ignorée une fois la décision prise (le sweep ne la retrouve
+    plus dans la requête « en attente » de son moteur)."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='approval_reminder_states')
+    content_type = models.ForeignKey(
+        'contenttypes.ContentType', on_delete=models.CASCADE)
+    object_id = models.PositiveIntegerField()
+    palier = models.PositiveSmallIntegerField(default=0)
+    derniere_action_le = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'État de relance approbation'
+        verbose_name_plural = 'États de relance approbation'
+        ordering = ['-derniere_action_le']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['content_type', 'object_id'],
+                name='notif_approval_reminder_state_uniq',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'content_type']),
+        ]
+
+    def __str__(self):
+        return f'relance approbation {self.content_type_id}:{self.object_id} (palier {self.palier})'
