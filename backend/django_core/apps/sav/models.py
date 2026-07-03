@@ -912,6 +912,42 @@ class AlarmeOnduleur(models.Model):
         return f'{self.code} ({self.gravite}) — {self.statut}'
 
 
+class TicketSatisfaction(models.Model):
+    """XSAV10 — Enquête de satisfaction (CSAT) à la clôture du ticket SAV.
+
+    Saisie sur la page publique du lien client (share_token, FG86) une fois le
+    ticket résolu/clôturé. UNE seule réponse par ticket (OneToOne) — un second
+    POST public est refusé. Aucune donnée interne (cout, chatter) n'est jamais
+    exposée sur la page publique ; seule la note + le commentaire libre sont
+    collectés côté client.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ticket_satisfactions')
+    ticket = models.OneToOneField(
+        Ticket, on_delete=models.CASCADE, related_name='satisfaction')
+    note = models.PositiveSmallIntegerField(
+        help_text='Note de satisfaction 1 (très insatisfait) à 5 (très satisfait).')
+    commentaire = models.TextField(blank=True, default='')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Satisfaction ticket SAV (CSAT)'
+        verbose_name_plural = 'Satisfactions ticket SAV (CSAT)'
+        ordering = ['-date_creation']
+        indexes = [
+            models.Index(fields=['company', 'date_creation']),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(note__gte=1) & models.Q(note__lte=5),
+                name='sav_ticketsatisfaction_note_1_5'),
+        ]
+
+    def __str__(self):
+        return f'CSAT ticket {self.ticket_id} = {self.note}/5'
+
+
 class PieceConsommee(models.Model):
     """N46 — pièce consommée sur un ticket SAV.
 

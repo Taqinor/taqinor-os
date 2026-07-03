@@ -1,5 +1,10 @@
 """Sélecteurs de lecture SAV (point d'entrée cross-app).
 
+XSAV10 — ``csat_par_technicien`` agrège les réponses ``TicketSatisfaction``
+par technicien/mois. Point d'entrée pour le rapport service (apps.reporting) :
+plutôt que d'importer ``apps.sav.models`` directement, l'app appelante lit ce
+sélecteur (règle de modularité CLAUDE.md).
+
 DC37 — Réconciliation des numéros de série capturés à la réception
 (`stock.LigneReceptionFournisseur.numeros_serie`, posés par FG61) avec le parc
 installé (`sav.Equipement`). La réconciliation se fait PAR PRODUIT + numéro de
@@ -11,7 +16,7 @@ le stock passe l'``id`` de produit et la liste de séries reçues en arguments
 bruts ; ce module lit uniquement `sav.Equipement` (règle de modularité
 CLAUDE.md — les lectures cross-app passent par les selectors de l'app cible).
 """
-from .models import Equipement
+from .models import Equipement, TicketSatisfaction
 
 
 def reconcile_serials_to_equipements(company, produit_id, serials):
@@ -177,3 +182,45 @@ def warranty_registry(equipements_qs, *, expiring_soon_days=60, today=None):
         'parcs': parcs_list,
         'totaux': totaux,
     }
+
+
+def csat_par_technicien(company, *, date_debut=None, date_fin=None):
+    """XSAV10 — Agrégat CSAT (note moyenne, n réponses) par technicien/mois.
+
+    Regroupe les ``TicketSatisfaction`` de la société sur la plage
+    ``[date_debut, date_fin]`` (inclusive, sur ``date_creation`` — bornes
+    optionnelles) par (technicien du ticket, mois AAAA-MM). Un ticket sans
+    technicien assigné entre dans le seau ``technicien=None`` (« non assigné »).
+
+    Renvoie une liste de dicts triée par mois puis technicien :
+      [{'mois': 'YYYY-MM', 'technicien_id': int|None,
+        'technicien_nom': str, 'nb_reponses': int, 'note_moyenne': float}, …]
+    """
+    from django.db.models import Avg, Count
+    from django.db.models.functions import TruncMonth
+
+    qs = TicketSatisfaction.objects.filter(company=company)
+    if date_debut is not None:
+        qs = qs.filter(date_creation__date__gte=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(date_creation__date__lte=date_fin)
+
+    rows = (qs
+            .annotate(mois=TruncMonth('date_creation'))
+            .values('mois', 'ticket__technicien_responsable_id',
+                    'ticket__technicien_responsable__username')
+            .annotate(nb_reponses=Count('id'), note_moyenne=Avg('note'))
+            .order_by('mois', 'ticket__technicien_responsable_id'))
+
+    out = []
+    for row in rows:
+        out.append({
+            'mois': row['mois'].strftime('%Y-%m') if row['mois'] else None,
+            'technicien_id': row['ticket__technicien_responsable_id'],
+            'technicien_nom': (
+                row['ticket__technicien_responsable__username'] or 'Non assigné'),
+            'nb_reponses': row['nb_reponses'],
+            'note_moyenne': round(float(row['note_moyenne']), 2)
+            if row['note_moyenne'] is not None else None,
+        })
+    return out

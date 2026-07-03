@@ -7,6 +7,7 @@ from .models import (
     Equipement, Ticket, TicketActivity, PieceConsommee,
     SavSlaSettings, MaintenanceChecklistTemplate, MaintenanceChecklistItem,
     TicketChecklistItem, WarrantyClaim, KbArticle, AlarmeOnduleur,
+    TicketSatisfaction,
 )
 
 # Fenêtre « garantie expirant bientôt » (jours).
@@ -322,6 +323,15 @@ class KbArticleSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'company', 'created_by', 'date_creation', 'date_modification',
         ]
+
+
+# ── XSAV10 — Satisfaction (CSAT) ──────────────────────────────────────────────
+
+class TicketSatisfactionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TicketSatisfaction
+        fields = ['id', 'ticket', 'note', 'commentaire', 'date_creation']
+        read_only_fields = ['id', 'ticket', 'date_creation']
 
 
 # ── FG280 — Alarmes / défauts onduleur ────────────────────────────────────────
