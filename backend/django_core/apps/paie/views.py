@@ -7,6 +7,7 @@ société côté serveur.
 """
 import csv
 import io
+from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -60,6 +61,8 @@ from .serializers import (
 from .services import (
     TransitionPeriodeInterdite,
     attestation_salaire_ij_cnss,
+    bareme_en_vigueur,
+    brut_pour_net_cible,
     calculer_bulletin,
     changer_statut,
     cloturer_periode_paie,
@@ -93,12 +96,14 @@ from .services import (
     marquer_bulletin_paye,
     mouvements_cnss_periode,
     notifier_echeances_en_retard,
+    parametre_en_vigueur,
     profils_hors_virement,
     rapprochement_paie_gl,
     rapprocher_affebds,
     recalculer_cumul_annuel,
     reemettre_ligne_virement,
     rejeter_ligne_virement,
+    simuler_bulletin,
     valider_bulletin,
 )
 
@@ -328,6 +333,43 @@ class ProfilPaieViewSet(_PaieBaseViewSet):
                 {'detail': str(exc)},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE)
         return _pdf_response(pdf, f'stc_{profil.id}.pdf')
+
+    @action(detail=True, methods=['get'], url_path='simulation')
+    def simulation(self, request, pk=None):
+        """Simule un bulletin what-if SANS PERSISTANCE (XPAI16).
+
+        Paramètres de requête : ``periode`` (id, requis — fixe les
+        paramètres légaux en vigueur), ``salaire`` (facultatif, défaut le
+        salaire réel du profil), ``prime`` (facultatif), ``personnes_a_charge``
+        (facultatif). Ne crée aucun ``BulletinPaie``.
+        """
+        profil = self.get_object()
+        periode_id = request.query_params.get('periode')
+        if not periode_id:
+            return Response(
+                {'detail': 'Paramètre "periode" requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            periode = PeriodePaie.objects.get(
+                pk=periode_id, company=request.user.company)
+        except (PeriodePaie.DoesNotExist, ValueError):
+            return Response(
+                {'detail': 'Période inconnue.'},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            salaire = request.query_params.get('salaire')
+            salaire = Decimal(salaire) if salaire is not None else None
+            prime = Decimal(request.query_params.get('prime', '0') or '0')
+            pac = int(request.query_params.get('personnes_a_charge', 0) or 0)
+        except (InvalidOperation, ValueError, TypeError):
+            return Response(
+                {'detail': 'Paramètre "salaire"/"prime"/'
+                 '"personnes_a_charge" invalide.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        resultat = simuler_bulletin(
+            profil, periode, salaire=salaire, prime=prime,
+            personnes_a_charge=pac)
+        return Response(resultat, status=status.HTTP_200_OK)
 
 
 class RubriqueEmployeViewSet(_PaieBaseViewSet):
@@ -623,6 +665,48 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
         periode = self.get_object()
         return Response(
             profils_hors_virement(periode), status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='brut-pour-net')
+    def brut_pour_net(self, request, pk=None):
+        """Calcul inverse « brut pour net cible » (XPAI16, lettres d'offre).
+
+        Paramètres de requête : ``net_cible`` (requis), ``personnes_a_charge``
+        (facultatif), ``affilie_cnss``/``affilie_amo``/``affilie_cimr``
+        (booléens, défauts vrai/vrai/faux), ``taux_cimr`` (facultatif).
+        Converge au centime — aucune persistance.
+        """
+        periode = self.get_object()
+        le_jour = date(periode.annee, periode.mois, 1)
+        parametre = parametre_en_vigueur(periode.company, le_jour)
+        bareme = bareme_en_vigueur(periode.company, le_jour)
+        try:
+            net_cible = Decimal(request.query_params.get('net_cible'))
+            pac = int(request.query_params.get('personnes_a_charge', 0) or 0)
+            taux_cimr = Decimal(
+                request.query_params.get('taux_cimr', '0') or '0')
+        except (InvalidOperation, ValueError, TypeError):
+            return Response(
+                {'detail': 'Paramètre "net_cible" requis (et valide).'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        def _bool_param(name, defaut):
+            valeur = request.query_params.get(name)
+            if valeur is None:
+                return defaut
+            return valeur.lower() in ('1', 'true', 'vrai')
+
+        try:
+            resultat = brut_pour_net_cible(
+                net_cible, parametre=parametre, bareme=bareme,
+                personnes_a_charge=pac,
+                affilie_cnss=_bool_param('affilie_cnss', True),
+                affilie_amo=_bool_param('affilie_amo', True),
+                affilie_cimr=_bool_param('affilie_cimr', False),
+                taux_cimr=taux_cimr)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(resultat, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'], url_path='controle-ecarts')
     def controle_ecarts_action(self, request, pk=None):

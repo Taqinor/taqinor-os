@@ -1566,6 +1566,148 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
     }
 
 
+# ── XPAI16 — Simulateur de bulletin + calcul net→brut ──────────────────────
+
+def _simuler_montant_net(brut, *, parametre, bareme, personnes_a_charge=0,
+                         affilie_cnss=True, affilie_amo=True,
+                         affilie_cimr=False, taux_cimr=Decimal('0')):
+    """Calcul PUR brut → net (XPAI16) : le cœur du simulateur, sans DB.
+
+    Réplique les étapes CNSS/AMO/CIMR/frais pro/IR de ``calculer_bulletin``
+    sur un ``brut`` DONNÉ (pas de proration, pas d'éléments variables — un
+    what-if simple). Renvoie un dict ``{'brut', 'cnss_salariale',
+    'amo_salariale', 'cimr_salariale', 'frais_professionnels',
+    'net_imposable', 'ir', 'net_a_payer'}``.
+    """
+    brut = _q(Decimal(brut or 0))
+    cnss = cnss_salariale(parametre, brut, affilie_cnss) if parametre \
+        else Decimal('0.00')
+    amo = amo_salariale(parametre, brut, affilie_amo) if parametre \
+        else Decimal('0.00')
+    cimr = cimr_salariale(brut, affilie_cimr, taux_cimr)
+
+    frais_pro = Decimal('0')
+    if parametre:
+        if brut <= Decimal(parametre.seuil_frais_pro or 0):
+            frais_pro = brut * Decimal(parametre.taux_frais_pro_bas) / Decimal('100')
+            plafond = Decimal(parametre.plafond_frais_pro_bas or 0)
+        else:
+            frais_pro = brut * Decimal(parametre.taux_frais_pro_haut) / Decimal('100')
+            plafond = Decimal(parametre.plafond_frais_pro_haut or 0)
+        if plafond and frais_pro > plafond:
+            frais_pro = plafond
+    frais_pro = _q(frais_pro)
+
+    net_imposable = brut - cnss - amo - cimr - frais_pro
+    if net_imposable < 0:
+        net_imposable = Decimal('0')
+    net_imposable = _q(net_imposable)
+
+    ir = Decimal('0')
+    if bareme and parametre:
+        ir = compute_ir(net_imposable, bareme, parametre, personnes_a_charge)
+    ir = _q(ir)
+
+    net_a_payer = _q(brut - cnss - amo - cimr - ir)
+    return {
+        'brut': brut, 'cnss_salariale': cnss, 'amo_salariale': amo,
+        'cimr_salariale': cimr, 'frais_professionnels': frais_pro,
+        'net_imposable': net_imposable, 'ir': ir, 'net_a_payer': net_a_payer,
+    }
+
+
+def simuler_bulletin(profil, periode, *, salaire=None, prime=Decimal('0'),
+                     personnes_a_charge=0):
+    """Simule un bulletin SANS PERSISTANCE (what-if, XPAI16).
+
+    Rejoue le calcul en mémoire pour un ``salaire`` hypothétique (défaut :
+    ``profil.salaire_base`` réel) + une ``prime`` ponctuelle (imposable et
+    soumise CNSS/AMO comme un gain standard) et des ``personnes_a_charge``
+    modifiées — sans jamais créer de ``BulletinPaie`` ni lire/écrire
+    d'``ElementVariable``. Le taux/affiliation CIMR et les affiliations
+    CNSS/AMO restent ceux RÉELS du profil (le what-if porte sur le montant,
+    pas le régime social). Lecture des paramètres légaux réels (barème/
+    constantes en vigueur à la date de la période). Renvoie le dict de
+    ``_simuler_montant_net`` complété de ``{'salaire_simule', 'prime'}``.
+    """
+    le_jour = date(periode.annee, periode.mois, 1)
+    parametre = parametre_en_vigueur(profil.company, le_jour)
+    bareme = bareme_en_vigueur(profil.company, le_jour)
+
+    salaire_simule = Decimal(salaire) if salaire is not None \
+        else Decimal(profil.salaire_base or 0)
+    brut = _q(salaire_simule + Decimal(prime or 0))
+
+    resultat = _simuler_montant_net(
+        brut, parametre=parametre, bareme=bareme,
+        personnes_a_charge=personnes_a_charge,
+        affilie_cnss=profil.affilie_cnss, affilie_amo=profil.affilie_amo,
+        affilie_cimr=profil.affilie_cimr,
+        taux_cimr=profil.taux_cimr_salarial)
+    resultat['salaire_simule'] = _q(salaire_simule)
+    resultat['prime'] = _q(Decimal(prime or 0))
+    return resultat
+
+
+def brut_pour_net_cible(net_cible, *, parametre, bareme,
+                        personnes_a_charge=0, affilie_cnss=True,
+                        affilie_amo=True, affilie_cimr=False,
+                        taux_cimr=Decimal('0'), tolerance=Decimal('0.01'),
+                        max_iterations=100):
+    """Calcul INVERSE « brut pour net cible » (XPAI16, lettres d'offre).
+
+    Recherche ITÉRATIVE (bissection) sur ``_simuler_montant_net`` : converge
+    au CENTIME près vers le ``brut`` dont le net à payer égale ``net_cible``.
+    Le net étant une fonction CROISSANTE et continue par morceaux du brut
+    (cotisations/IR croissants), la bissection converge de façon fiable.
+    Renvoie ``{'brut', 'net_obtenu', 'iterations', ...}`` (mêmes clés que
+    ``_simuler_montant_net`` + ``iterations``). Lève ``ValueError`` si
+    ``net_cible <= 0``.
+    """
+    net_cible = Decimal(net_cible or 0)
+    if net_cible <= 0:
+        raise ValueError('net_cible doit être strictement positif.')
+
+    # Borne haute généreuse : un brut ne dépasse jamais ~3x le net cible en
+    # pratique (cotisations + IR marocain plafonnent la ponction). Si le
+    # premier essai à cette borne ne suffit toujours pas (ecart < 0), on la
+    # DOUBLE avant même d'entrer en bissection — garde de robustesse pour un
+    # net cible extrême, sans jamais casser la monotonie lo < hi ensuite.
+    borne_basse = Decimal('0')
+    borne_haute = net_cible * Decimal('3')
+    for _ in range(10):
+        essai = _simuler_montant_net(
+            borne_haute, parametre=parametre, bareme=bareme,
+            personnes_a_charge=personnes_a_charge,
+            affilie_cnss=affilie_cnss, affilie_amo=affilie_amo,
+            affilie_cimr=affilie_cimr, taux_cimr=taux_cimr)
+        if essai['net_a_payer'] >= net_cible:
+            break
+        borne_haute *= 2
+
+    resultat = None
+    for iteration in range(1, max_iterations + 1):
+        milieu = _q((borne_basse + borne_haute) / 2)
+        resultat = _simuler_montant_net(
+            milieu, parametre=parametre, bareme=bareme,
+            personnes_a_charge=personnes_a_charge,
+            affilie_cnss=affilie_cnss, affilie_amo=affilie_amo,
+            affilie_cimr=affilie_cimr, taux_cimr=taux_cimr)
+        ecart = resultat['net_a_payer'] - net_cible
+        if abs(ecart) <= tolerance:
+            resultat['iterations'] = iteration
+            resultat['net_obtenu'] = resultat['net_a_payer']
+            return resultat
+        if ecart < 0:
+            borne_basse = milieu
+        else:
+            borne_haute = milieu
+
+    resultat['iterations'] = max_iterations
+    resultat['net_obtenu'] = resultat['net_a_payer']
+    return resultat
+
+
 # ── PAIE17 — Bulletin de paie matérialisé (snapshot immuable une fois validé) ─
 
 def generer_bulletin(profil, periode, personnes_a_charge=0):
