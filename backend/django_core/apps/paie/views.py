@@ -26,6 +26,7 @@ from .models import (
     BaremeIR,
     BulletinPaie,
     CumulAnnuel,
+    EcheanceDeclarative,
     ElementVariable,
     OrdreVirement,
     ParametrePaie,
@@ -42,6 +43,7 @@ from .serializers import (
     BaremeIRSerializer,
     BulletinPaieSerializer,
     CumulAnnuelSerializer,
+    EcheanceDeclarativeSerializer,
     ElementVariableSerializer,
     ParametrePaieSerializer,
     PeriodePaieSerializer,
@@ -63,19 +65,21 @@ from .services import (
     ensure_defaults,
     ensure_rubriques_defaut,
     ensure_rubriques_standard,
+    etat_des_charges,
     etat_ir_9421,
     etat_ir_9421_annuel,
-    etat_des_charges,
     fichier_damancom_cnss,
     fichier_virement_paie,
     generer_bulletin,
     generer_bulletin_stc,
+    generer_echeances_periode,
     generer_ordre_virement,
     generer_run_gratification,
-    rapprochement_paie_gl,
     importer_elements_rh,
     journal_de_paie,
     livre_de_paie,
+    notifier_echeances_en_retard,
+    rapprochement_paie_gl,
     recalculer_cumul_annuel,
     valider_bulletin,
 )
@@ -303,6 +307,27 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
     serializer_class = PeriodePaieSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['annee', 'mois', 'date_creation', 'id']
+
+    def perform_create(self, serializer):
+        """Pose ``company`` puis génère (XPAI6) l'échéancier déclaratif."""
+        periode = serializer.save(company=self.request.user.company)
+        generer_echeances_periode(periode)
+
+    @action(detail=True, methods=['get'], url_path='echeances')
+    def echeances(self, request, pk=None):
+        """Liste les échéances déclaratives de la période (XPAI6)."""
+        periode = self.get_object()
+        qs = periode.echeances_declaratives.all().order_by('date_limite')
+        return Response(
+            EcheanceDeclarativeSerializer(qs, many=True).data,
+            status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='notifier-echeances-retard')
+    def notifier_echeances_retard(self, request):
+        """Notifie (best-effort) les échéances déclaratives en retard (XPAI6)."""
+        notifiees = notifier_echeances_en_retard(request.user.company)
+        return Response(
+            {'notifiees': len(notifiees)}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='changer-statut')
     def changer_statut(self, request, pk=None):
@@ -791,3 +816,20 @@ class CumulAnnuelViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         cumul = recalculer_cumul_annuel(profil, annee)
         return Response(
             self.get_serializer(cumul).data, status=status.HTTP_200_OK)
+
+
+class EcheanceDeclarativeViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Échéances déclaratives paie (XPAI6) — générées automatiquement.
+
+    Lecture + modification du ``statut`` uniquement (progression manuelle du
+    traitement réel d'une déclaration : générée → déposée → payée). Les
+    champs ``periode``/``type_echeance``/``date_limite`` sont posés par le
+    générateur (``services.generer_echeances_periode``) et restent en
+    lecture seule côté API.
+    """
+    permission_classes = [IsResponsableOrAdmin]
+    queryset = EcheanceDeclarative.objects.select_related('periode').all()
+    serializer_class = EcheanceDeclarativeSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_limite', 'periode', 'id']
+    http_method_names = ['get', 'patch', 'head', 'options']

@@ -1609,6 +1609,9 @@ def cloturer_periode_paie(periode, *, valider_brouillons=True):
             for bulletin in brouillons:
                 valider_bulletin(bulletin)
         changer_statut(periode, PeriodePaie.STATUT_CLOTUREE)
+        # XPAI6 — la clôture avance les échéances déclaratives encore « à
+        # générer » (les états/déclarations sont désormais calculables).
+        avancer_echeances_cloture(periode)
     return periode
 
 
@@ -1689,6 +1692,129 @@ def valider_bulletin(bulletin):
     appliquer_saisies(bulletin.profil, bulletin.periode,
                       resultat['net_avant_saisie'])
     return bulletin
+
+
+# ── XPAI6 — Échéancier déclaratif paie ──────────────────────────────────────
+
+def _mois_suivant(annee, mois):
+    """``(annee, mois)`` du mois suivant."""
+    if mois == 12:
+        return annee + 1, 1
+    return annee, mois + 1
+
+
+def echeances_attendues(periode):
+    """Types d'échéances + dates limites attendues pour une ``periode`` (XPAI6).
+
+    * BDS — avant le 10 du mois suivant (déclaration CNSS mensuelle) ;
+    * IR mensuel — versement de la retenue à la source, avant le 20 du mois
+      suivant (Code général des impôts marocain) ;
+    * CIMR — avant le 10 du mois suivant (versement de la cotisation) ;
+    * État 9421 — annuel, fin février de l'année SUIVANTE, généré une seule
+      fois par le RUN DE DÉCEMBRE (mois == 12) pour éviter 12 doublons.
+
+    Lecture pure (aucun effet de bord). Renvoie une liste de
+    ``(type_echeance, date_limite)``.
+    """
+    from .models import EcheanceDeclarative
+
+    annee_suivante, mois_suivant = _mois_suivant(periode.annee, periode.mois)
+    echeances = [
+        (EcheanceDeclarative.TYPE_BDS, date(annee_suivante, mois_suivant, 10)),
+        (EcheanceDeclarative.TYPE_IR_MENSUEL,
+         date(annee_suivante, mois_suivant, 20)),
+        (EcheanceDeclarative.TYPE_CIMR, date(annee_suivante, mois_suivant, 10)),
+    ]
+    if periode.mois == 12:
+        echeances.append(
+            (EcheanceDeclarative.TYPE_9421, date(periode.annee + 1, 2, 28)))
+    return echeances
+
+
+def generer_echeances_periode(periode):
+    """Génère (idempotent) les échéances déclaratives d'une période (XPAI6).
+
+    Crée une ``EcheanceDeclarative`` par type attendu
+    (``echeances_attendues``) si elle n'existe pas déjà (clé stable
+    ``(periode, type_echeance)``) — ne touche jamais une échéance déjà créée
+    (son ``statut`` progressé n'est jamais écrasé). Appelé automatiquement à
+    la création d'une ``PeriodePaie`` (vue) ; peut aussi être rejoué sans
+    effet sur les échéances existantes. Renvoie la liste des échéances
+    créées (nouvelles uniquement).
+    """
+    from .models import EcheanceDeclarative
+
+    creees = []
+    for type_echeance, date_limite in echeances_attendues(periode):
+        _obj, created = EcheanceDeclarative.objects.get_or_create(
+            company=periode.company, periode=periode,
+            type_echeance=type_echeance,
+            defaults={'date_limite': date_limite})
+        if created:
+            creees.append(_obj)
+    return creees
+
+
+def avancer_echeances_cloture(periode):
+    """Avance les échéances à ``generee`` à la clôture d'une période (XPAI6).
+
+    Une échéance encore ``a_generer`` passe à ``generee`` quand la période
+    est clôturée (les états/déclarations sont désormais calculables depuis
+    les bulletins figés). Une échéance déjà ``generee``/``deposee``/``payee``
+    n'est jamais rétrogradée. Best-effort, jamais bloquant pour la clôture.
+    """
+    from .models import EcheanceDeclarative
+
+    (EcheanceDeclarative.objects
+     .filter(company=periode.company, periode=periode,
+             statut=EcheanceDeclarative.STATUT_A_GENERER)
+     .update(statut=EcheanceDeclarative.STATUT_GENEREE))
+
+
+def notifier_echeances_en_retard(company):
+    """Notifie (best-effort) les échéances déclaratives EN RETARD (XPAI6).
+
+    Une échéance dont la ``date_limite`` est dépassée et qui n'est pas encore
+    ``deposee``/``payee`` déclenche une notification vers le rôle
+    ``paie_gerer`` (repli : Responsable/Admin, via
+    ``apps.notifications.resolve_recipients``) — UNE SEULE FOIS
+    (``date_notification`` posée après envoi ; un re-run ne renotifie pas la
+    même échéance). Jamais bloquant : toute erreur de notification est
+    avalée. Renvoie la liste des échéances notifiées.
+    """
+    from django.utils import timezone as dj_timezone
+
+    from .models import EcheanceDeclarative
+
+    today = dj_timezone.localdate()
+    en_retard = (
+        EcheanceDeclarative.objects
+        .filter(company=company, date_limite__lt=today,
+                date_notification__isnull=True)
+        .exclude(statut__in=[
+            EcheanceDeclarative.STATUT_DEPOSEE, EcheanceDeclarative.STATUT_PAYEE])
+        .select_related('periode')
+    )
+    notifiees = []
+    for echeance in en_retard:
+        try:
+            from apps.notifications import services as notif_services
+
+            recipients = notif_services.resolve_recipients(
+                company, 'paie_echeance_retard')
+            notif_services.notify_many(
+                recipients, 'paie_echeance_retard',
+                title=f'Échéance paie en retard : {echeance.get_type_echeance_display()}',
+                body=(
+                    f'Période {echeance.periode.mois:02d}/{echeance.periode.annee} — '
+                    f'date limite {echeance.date_limite}, non déposée.'),
+                company=company)
+        except Exception:  # pragma: no cover - défensif, best-effort
+            pass
+        echeance.date_notification = dj_timezone.now()
+        echeance.save(update_fields=['date_notification'])
+        notifiees.append(echeance)
+    return notifiees
 
 
 # ── PAIE30 — Ordre de virement + fichier de virement banque ────────────────

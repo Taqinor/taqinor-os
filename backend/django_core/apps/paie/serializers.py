@@ -12,6 +12,7 @@ from .models import (
     BaremeIR,
     BulletinPaie,
     CumulAnnuel,
+    EcheanceDeclarative,
     ElementVariable,
     LigneBulletin,
     LigneVirement,
@@ -269,6 +270,26 @@ class PeriodePaieSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     'Une période existe déjà pour cette année, ce mois et ce type de run.')
         return attrs
+
+
+class EcheanceDeclarativeSerializer(serializers.ModelSerializer):
+    """Échéance déclarative (XPAI6) — générée automatiquement, lecture
+
+    principale ; ``statut`` reste modifiable (progression manuelle du
+    traitement réel de la déclaration).
+    """
+    en_retard = serializers.ReadOnlyField()
+
+    class Meta:
+        model = EcheanceDeclarative
+        fields = [
+            'id', 'periode', 'type_echeance', 'date_limite', 'statut',
+            'date_notification', 'date_creation', 'en_retard',
+        ]
+        read_only_fields = [
+            'periode', 'type_echeance', 'date_limite', 'date_notification',
+            'date_creation',
+        ]
 
 
 class ElementVariableSerializer(serializers.ModelSerializer):

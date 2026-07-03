@@ -1487,3 +1487,83 @@ class LigneVirement(models.Model):
 
     def __str__(self):
         return f'{self.beneficiaire} {self.montant} (ordre #{self.ordre_id})'
+
+
+# ── XPAI6 — Échéancier déclaratif paie ──────────────────────────────────────
+
+class EcheanceDeclarative(models.Model):
+    """Échéance de conformité déclarative d'une période de paie (XPAI6).
+
+    Calendrier des déclarations dues par organisme : BDS mensuelle (CNSS,
+    avant le 10 du mois suivant), IR mensuel (retenue à la source, versée à
+    l'État), 9421 (état annuel des traitements & salaires, fin février de
+    l'année suivante), CIMR (cotisation retraite). Générée AUTOMATIQUEMENT à
+    la création d'une ``PeriodePaie`` (``services.generer_echeances_periode``,
+    idempotent) — jamais saisie à la main. ``statut`` progresse
+    manuellement (à_générer → générée → déposée → payée) au fil du traitement
+    réel de la déclaration.
+
+    Multi-société : ``company`` posée côté serveur.
+    """
+    TYPE_BDS = 'bds'
+    TYPE_IR_MENSUEL = 'ir_mensuel'
+    TYPE_9421 = 'etat_9421'
+    TYPE_CIMR = 'cimr'
+    TYPE_CHOICES = [
+        (TYPE_BDS, 'BDS (CNSS)'),
+        (TYPE_IR_MENSUEL, 'IR mensuel'),
+        (TYPE_9421, 'État 9421 (annuel)'),
+        (TYPE_CIMR, 'CIMR'),
+    ]
+
+    STATUT_A_GENERER = 'a_generer'
+    STATUT_GENEREE = 'generee'
+    STATUT_DEPOSEE = 'deposee'
+    STATUT_PAYEE = 'payee'
+    STATUT_CHOICES = [
+        (STATUT_A_GENERER, 'À générer'),
+        (STATUT_GENEREE, 'Générée'),
+        (STATUT_DEPOSEE, 'Déposée'),
+        (STATUT_PAYEE, 'Payée'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paie_echeances_declaratives',
+        verbose_name='Société',
+    )
+    periode = models.ForeignKey(
+        PeriodePaie,
+        on_delete=models.CASCADE,
+        related_name='echeances_declaratives',
+        verbose_name='Période',
+    )
+    type_echeance = models.CharField(
+        max_length=12, choices=TYPE_CHOICES, verbose_name='Type')
+    date_limite = models.DateField(verbose_name='Date limite')
+    statut = models.CharField(
+        max_length=10, choices=STATUT_CHOICES, default=STATUT_A_GENERER,
+        verbose_name='Statut')
+    date_notification = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name='Rappel envoyé le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Échéance déclarative'
+        verbose_name_plural = 'Échéances déclaratives'
+        ordering = ['date_limite', 'type_echeance']
+        unique_together = [('periode', 'type_echeance')]
+
+    def __str__(self):
+        return f'{self.get_type_echeance_display()} — {self.date_limite} ({self.statut})'
+
+    @property
+    def en_retard(self):
+        """Vrai si la date limite est dépassée sans dépôt (déposée/payée)."""
+        from django.utils import timezone
+        if self.statut in (self.STATUT_DEPOSEE, self.STATUT_PAYEE):
+            return False
+        return timezone.localdate() > self.date_limite
