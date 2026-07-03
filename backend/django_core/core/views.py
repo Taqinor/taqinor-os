@@ -290,13 +290,16 @@ class SavedQueryViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(data_explorer.list_datasets())
 
     def _execute(self, dataset, spec):
+        from .formula import FormulaError
         try:
             rows = data_explorer.run_query(
                 dataset, self.request.user.company, self.request.user, spec)
         except data_explorer.DatasetInconnu as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_404_NOT_FOUND)
-        except data_explorer.ChampNonAutorise as exc:
+        except (data_explorer.ChampNonAutorise, FormulaError) as exc:
+            # XPLT11 — une mesure formule illégale (nœud interdit/variable
+            # inconnue) renvoie 400, comme un champ hors liste blanche.
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
         return Response({'rows': rows})

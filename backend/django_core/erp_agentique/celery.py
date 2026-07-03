@@ -107,4 +107,15 @@ app.conf.beat_schedule = {
         'task': 'crm.recycler_leads_non_travailles',
         'schedule': crontab(minute=0),  # every hour
     },
+    # XPLT6 — évalue les alertes de seuil sur KPI agrégés (dédup interne).
+    'reporting-evaluate-kpi-alertes': {
+        'task': 'reporting.evaluate_kpi_alertes',
+        'schedule': crontab(hour=6, minute=30),
+    },
+    # YSERV13 — contrôle d'intégrité inter-documents hebdomadaire (états
+    # orphelins entre apps) ; notifie seulement si ≥1 anomalie détectée.
+    'reporting-controle-integrite-hebdo': {
+        'task': 'reporting.controle_integrite',
+        'schedule': crontab(hour=3, minute=0, day_of_week=1),
+    },
 }

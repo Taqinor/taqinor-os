@@ -173,3 +173,173 @@ class DashboardConfig(models.Model):
         if self.user_id:
             return f"DashboardConfig user={self.user_id} co={self.company_id}"
         return f"DashboardConfig tier={self.menu_tier} co={self.company_id}"
+
+
+# ── XPLT6 — alertes de seuil sur KPI agrégés ──────────────────────────────────
+
+class KpiAlerte(models.Model):
+    """XPLT6 — seuil configurable sur un KPI AGRÉGÉ (pas un objet unique).
+
+    Distinct des alertes par OBJET (`STOCK_BELOW_THRESHOLD`/`FACTURE_OVERDUE`
+    dans `automation`) : ici le seuil porte sur un agrégat calculé (ex.
+    « DSO > 60 j »), évalué par un job Beat quotidien
+    (``apps.reporting.kpi_alertes.evaluate_all_kpi_alertes``).
+
+    ``kpi`` est un catalogue FERMÉ (``Kpi.choices``), chaque valeur branchée
+    sur un selector reporting/compta/stock EXISTANT — jamais d'expression
+    libre. Dédup : ``deja_notifie`` empêche de re-notifier tant que le seuil
+    reste franchi ; il repasse à False dès que l'agrégat repasse sous (ou
+    au-dessus, selon l'opérateur) le seuil, permettant une RE-notification au
+    prochain re-franchissement."""
+
+    class Kpi(models.TextChoices):
+        DSO = 'dso', 'DSO (délai moyen de recouvrement, jours)'
+        ENCOURS_ECHU_TOTAL = 'encours_echu_total', 'Encours client échu total (MAD)'
+        VALEUR_STOCK_TOTALE = 'valeur_stock_totale', 'Valeur de stock totale (MAD)'
+
+    class Operateur(models.TextChoices):
+        SUP = 'sup', '>'
+        SUP_EGAL = 'sup_egal', '>='
+        INF = 'inf', '<'
+        INF_EGAL = 'inf_egal', '<='
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='reporting_kpi_alertes')
+    nom = models.CharField(max_length=120, blank=True, default='')
+    kpi = models.CharField(max_length=30, choices=Kpi.choices)
+    operateur = models.CharField(
+        max_length=10, choices=Operateur.choices, default=Operateur.SUP)
+    seuil = models.DecimalField(max_digits=14, decimal_places=2)
+    # Destinataires : rôle (legacy) OU utilisateurs précis (au moins un des
+    # deux, validé côté service/serializer — jamais les deux vides en usage
+    # normal, mais aucune contrainte DB pour rester additif).
+    destinataire_role = models.CharField(max_length=20, blank=True, default='')
+    destinataires_utilisateurs = models.ManyToManyField(
+        settings.AUTH_USER_MODEL, blank=True,
+        related_name='reporting_kpi_alertes_destinataire')
+    actif = models.BooleanField(default=True)
+    # Dédup : vrai tant que le seuil reste franchi SANS repasser sous (état de
+    # la dernière évaluation). Remis à False dès que l'agrégat repasse du bon
+    # côté du seuil, ce qui autorise une nouvelle notification au prochain
+    # re-franchissement.
+    deja_notifie = models.BooleanField(default=False)
+    derniere_valeur = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True)
+    derniere_evaluation_le = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Alerte KPI'
+        verbose_name_plural = 'Alertes KPI'
+        ordering = ['-created_at', '-id']
+        # Pas d'index composite déclaré ici : l'index implicite Django sur la
+        # FK `company` suffit au volume attendu (peu d'alertes par société) et
+        # évite un nom d'index hashé à répliquer à la main dans la migration
+        # (précédent : divergence silencieuse de nom d'index, voir mémoire
+        # "Migration index-name divergence").
+
+    def __str__(self):
+        return self.nom or f'{self.get_kpi_display()} {self.operateur} {self.seuil}'
+
+    def est_franchi(self, valeur):
+        """True si ``valeur`` franchit le seuil selon l'opérateur configuré."""
+        if valeur is None:
+            return False
+        if self.operateur == self.Operateur.SUP:
+            return valeur > self.seuil
+        if self.operateur == self.Operateur.SUP_EGAL:
+            return valeur >= self.seuil
+        if self.operateur == self.Operateur.INF:
+            return valeur < self.seuil
+        return valeur <= self.seuil
+
+
+# ── XPLT22 — classeur léger embarqué avec données live (mini-spreadsheet BI) ─
+
+class Classeur(models.Model):
+    """XPLT22 — feuille de calcul légère dont des plages référencent des
+    datasets LIVE (différenciateur Odoo : aucun tableur in-app aujourd'hui).
+
+    ``cellules`` (JSON) : ``{ "A1": {"formule": "=SOMME(B1:B3)"} | {"valeur":
+    42}, …}`` — les formules sont évaluées par l'évaluateur AST-sûr de
+    ``core.formula`` (jamais eval JS libre), exposé via un endpoint dédié.
+    ``liens`` (JSON) : ``{ "B1:B3": {"saved_query_id": 7} }`` — une plage LIÉE
+    à une ``core.SavedQuery`` (requête sauvegardée re-exécutée au CHARGEMENT).
+    Les droits d'accès du LECTEUR sont respectés : une plage liée à une
+    requête que le lecteur ne peut pas voir (visibilité perso/partagé de
+    ``SavedQuery``, comme ``Dashboard``) reste VIDE, jamais une fuite.
+
+    Le partage interne réutilise le pattern XPLT10
+    (``core.DashboardPartageInterne``, mais scopé Classeur ici — voir
+    ``ClasseurPartageInterne`` plus bas)."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='reporting_classeurs')
+    proprietaire = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        null=True, blank=True, related_name='reporting_classeurs',
+        help_text='Vide = classeur de société (non personnel).')
+    titre = models.CharField(max_length=160, default='Classeur sans titre')
+    # {cell_ref: {'formule': str} | {'valeur': scalar}} — opaque pour reporting
+    # au niveau stockage ; interprété à l'évaluation (formule.py).
+    cellules = models.JSONField(default=dict, blank=True)
+    # {range_ref: {'saved_query_id': int}} — plages liées à des SavedQuery.
+    liens = models.JSONField(default=dict, blank=True)
+    # Partagé société-entière (même sémantique que Dashboard.partage) — le
+    # partage FIN (utilisateur/rôle) vit dans ClasseurPartageInterne.
+    partage = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Classeur'
+        verbose_name_plural = 'Classeurs'
+        ordering = ['titre', 'id']
+
+    def __str__(self):
+        return self.titre
+
+
+class ClasseurPartageInterne(models.Model):
+    """XPLT22 — partage interne fin d'un classeur (réutilise le pattern
+    XPLT10 ``core.DashboardPartageInterne``, scopé Classeur)."""
+
+    class Niveau(models.TextChoices):
+        LECTURE = 'lecture', 'Lecture'
+        EDITION = 'edition', 'Édition'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='reporting_classeur_partages_internes')
+    classeur = models.ForeignKey(
+        Classeur, on_delete=models.CASCADE, related_name='partages_internes')
+    utilisateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='reporting_classeur_partages_recus')
+    role = models.CharField(max_length=20, blank=True, default='')
+    niveau = models.CharField(
+        max_length=10, choices=Niveau.choices, default=Niveau.LECTURE)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Partage interne de classeur'
+        verbose_name_plural = 'Partages internes de classeur'
+        ordering = ['-created_at', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['classeur', 'utilisateur'],
+                condition=models.Q(utilisateur__isnull=False),
+                name='rpt_classeur_partage_user_uniq'),
+            models.UniqueConstraint(
+                fields=['classeur', 'role'],
+                condition=~models.Q(role=''),
+                name='rpt_classeur_partage_role_uniq'),
+        ]
+
+    def __str__(self):
+        cible = self.utilisateur_id or self.role or '—'
+        return f'Classeur {self.classeur_id} → {cible} ({self.niveau})'
