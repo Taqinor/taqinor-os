@@ -101,7 +101,7 @@ describe('parité & fidélité du dictionnaire', () => {
   });
 
   it('le FR reprend EXACTEMENT les libellés déjà en ligne', () => {
-    expect(ui.fr['nav.diagnosticCta']).toBe('Diagnostic gratuit');
+    expect(ui.fr['cta.primary']).toBe('Obtenir mon étude gratuite');
     expect(ui.fr['nav.solutions']).toBe('Solutions');
     expect(ui.fr['footer.legal']).toBe('Mentions légales');
     expect(ui.fr['footer.tagline']).toBe(

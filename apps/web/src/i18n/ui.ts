@@ -27,7 +27,6 @@ export const ui = {
     'nav.financing': 'Financement & rentabilité',
     'nav.mre': 'Marocains du monde',
     'nav.about': 'À propos',
-    'nav.diagnosticCta': 'Diagnostic gratuit',
     'nav.openMenu': 'Ouvrir le menu',
     'nav.primary': 'Navigation principale',
     'nav.mobile': 'Navigation mobile',
@@ -52,8 +51,6 @@ export const ui = {
     'lang.label': 'Choisir la langue',
     // Communs
     'common.whatsapp': 'WhatsApp',
-    'common.diagnosticCta': 'Diagnostic gratuit',
-    'common.whatsappDirect': 'WhatsApp direct',
     // Formulaire « Diagnostic solaire » — libellés VISIBLES uniquement. La
     // charge utile, les noms de champs, le seuil 1 000 MAD, l'endpoint
     // /api/simulate et le deeplink WhatsApp restent identiques dans toutes les
@@ -110,8 +107,6 @@ export const ui = {
     // Bande CTA finale + CTA collant + fil d'Ariane
     'cta.eyebrow': 'Étude gratuite',
     'cta.title': 'Une étude technique gratuite, sans engagement.',
-    'cta.button': 'Recevez votre étude sur WhatsApp',
-    'cta.stickyDiag': 'Diagnostic gratuit',
     // WJ36 — LE libellé du CTA principal, répété verbatim sur toutes les
     // surfaces laiton (en-tête / héros / mi-page / CTA collant).
     'cta.primary': 'Obtenir mon étude gratuite',
@@ -140,7 +135,6 @@ export const ui = {
     'nav.financing': 'Financing & returns',
     'nav.mre': 'Moroccans abroad',
     'nav.about': 'About',
-    'nav.diagnosticCta': 'Free assessment',
     'nav.openMenu': 'Open menu',
     'nav.primary': 'Main navigation',
     'nav.mobile': 'Mobile navigation',
@@ -161,8 +155,6 @@ export const ui = {
     'footer.whatsappRecapture': 'One question before you decide? Message us on WhatsApp.',
     'lang.label': 'Choose language',
     'common.whatsapp': 'WhatsApp',
-    'common.diagnosticCta': 'Free assessment',
-    'common.whatsappDirect': 'WhatsApp direct',
     'form.eyebrow': 'Assessment · no commitment · no data sold',
     'form.heading': 'Solar assessment — 60 seconds',
     'form.progress': 'Step {step} of 3',
@@ -211,8 +203,6 @@ export const ui = {
     'ribbon.text': 'In force since 9 June 2026 — existing installations: regularize now →',
     'cta.eyebrow': 'Free study',
     'cta.title': 'A free technical study, no commitment.',
-    'cta.button': 'Get your study on WhatsApp',
-    'cta.stickyDiag': 'Free assessment',
     // WJ36 — THE primary CTA label, repeated verbatim on every brass surface.
     'cta.primary': 'Get my free study',
     // WJ37 — reassurance strip under the primary CTA (verbatim founder).
@@ -240,7 +230,6 @@ export const ui = {
     'nav.financing': 'التمويل والمردودية',
     'nav.mre': 'مغاربة العالم',
     'nav.about': 'من نحن',
-    'nav.diagnosticCta': 'تشخيص مجاني',
     'nav.openMenu': 'فتح القائمة',
     'nav.primary': 'التنقل الرئيسي',
     'nav.mobile': 'تنقل الجوال',
@@ -261,8 +250,6 @@ export const ui = {
     'footer.whatsappRecapture': 'سؤال قبل أن تقرر؟ راسلنا على واتساب.',
     'lang.label': 'اختر اللغة',
     'common.whatsapp': 'واتساب',
-    'common.diagnosticCta': 'تشخيص مجاني',
-    'common.whatsappDirect': 'واتساب مباشر',
     'form.eyebrow': 'تشخيص · بدون التزام · لا تُباع أي بيانات',
     'form.heading': 'تشخيص شمسي — 60 ثانية',
     'form.progress': 'الخطوة {step} من 3',
@@ -311,8 +298,6 @@ export const ui = {
     'ribbon.text': 'سارٍ منذ 9 يونيو 2026 — التركيبات القائمة: سوِّ وضعك الآن →',
     'cta.eyebrow': 'دراسة مجانية',
     'cta.title': 'دراسة تقنية مجانية، بدون أي التزام.',
-    'cta.button': 'استلم دراستك على واتساب',
-    'cta.stickyDiag': 'تشخيص مجاني',
     // WJ36 — libellé du CTA principal (verbatim sur toutes les surfaces laiton).
     'cta.primary': 'احصل على دراستي المجانية',
     // WJ37 — bandeau de réassurance sous le CTA principal (verbatim founder).

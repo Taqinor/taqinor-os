@@ -7,7 +7,15 @@
  *
  * W166 — séparateur chevron directionnel : se retourne en RTL via
  * `[dir=rtl]` (rotate 180°), invisible aux lecteurs d'écran (aria-hidden).
+ *
+ * W312 — le libellé « Accueil »/« Home »/« الرئيسية » du premier maillon est
+ * repris depuis le dictionnaire i18n (`breadcrumb.home`), jamais depuis la
+ * chaîne codée en dur que chaque appelant passe encore : dès que ce premier
+ * item pointe vers la racine d'une locale (`/`, `/en`, `/ar`, avec ou sans
+ * barre finale), son `label` est remplacé ici. Aucun des ~100 appels
+ * `<Breadcrumb items={...} />` n'a besoin d'être modifié.
  */
+import { LOCALES } from '../i18n/config';
 import { getLocaleFromPath, useTranslations } from '../i18n/utils';
 
 interface Crumb {
@@ -19,8 +27,16 @@ interface Props {
   /** Ton clair pour fond sombre (défaut) ou foncé pour fond clair. */
   tone?: 'light' | 'dark';
 }
-const { items, tone = 'light' } = Astro.props;
+const { items: rawItems, tone = 'light' } = Astro.props;
 const t = useTranslations(getLocaleFromPath(Astro.url.pathname));
+
+/** Racines de locale reconnues comme « accueil » : /, /en, /ar (barre finale optionnelle). */
+const localeRoots = new Set<string>(['/', ...LOCALES.flatMap((l) => [`/${l}`, `/${l}/`])]);
+const isHomeHref = (href?: string) => !!href && localeRoots.has(href);
+
+const items = rawItems.map((item, i) =>
+  i === 0 && isHomeHref(item.href) ? { ...item, label: t('breadcrumb.home') } : item,
+);
 
 const abs = (href?: string) => (href ? new URL(href, Astro.site).href : undefined);
 
