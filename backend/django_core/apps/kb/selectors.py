@@ -11,6 +11,7 @@ rien importer.
 from django.db.models import Exists, OuterRef, Q
 
 from .models import (
+    KbArticle,
     KbArticleAcl,
     KbArticleLien,
     KbLecture,
@@ -18,36 +19,66 @@ from .models import (
 )
 
 
-# ── Droits d'accès par rôle (KB7) ──────────────────────────────────────────
+# ── Droits d'accès par rôle (KB7) + sections XKB9 ───────────────────────────
 
 def visible_articles_qs(queryset, user):
     """Restreint un queryset d'articles aux articles VISIBLES pour ``user``.
 
-    Règle RÉTRO-COMPATIBLE : un article SANS aucune ligne ACL reste visible de
-    tous (comportement historique préservé — KB2/KB3 inchangés). Dès qu'au moins
-    une ligne ACL de LECTURE existe pour un article, seuls les paliers listés
-    peuvent le lire. Le palier ``admin`` (accesseur de rôle faisant autorité
-    ``CustomUser.menu_tier``) passe TOUJOURS : un administrateur voit tout.
+    RÉTRO-COMPATIBLE (KB7, ``visibilite='workspace'``) : un article SANS
+    aucune ligne ACL de rôle reste visible de tous (comportement historique
+    préservé — KB2/KB3 inchangés). Dès qu'au moins une ligne ACL de LECTURE
+    par-RÔLE existe pour un article ``workspace``, seuls les paliers listés
+    peuvent le lire.
 
-    Implémentée en une seule requête (pas de N+1) : un article passe s'il
-    *n'a aucune* ACL de lecture, OU s'il a une ACL de lecture pour le palier de
-    l'utilisateur. ``user`` peut être ``None`` (palier inconnu) : seuls les
-    articles sans ACL restent alors visibles.
+    XKB9 — sections additionnelles, évaluées AVANT la règle KB7 ci-dessus
+    (qui ne s'applique qu'aux articles ``workspace``) :
+      * ``prive`` — visible du SEUL auteur (notes personnelles) ;
+      * ``partage`` — visible des membres listés en ACL nominative
+        (``utilisateur``) + l'auteur.
+
+    Le palier ``admin`` (``CustomUser.menu_tier``) passe TOUJOURS, quelle que
+    soit la section : un administrateur voit tout. Implémentée sans N+1
+    (annotations ``Exists``/``Q`` composées en une seule requête). ``user``
+    peut être ``None`` (palier inconnu) : seuls les articles ``workspace``
+    sans ACL restent alors visibles (aucun privé/partagé, aucun user-id).
     """
     tier = getattr(user, 'menu_tier', None) if user is not None else None
     if tier == 'admin':
         return queryset
-    # Article restreint en LECTURE = il porte au moins une ligne ACL de lecture.
-    a_restriction = KbArticleAcl.objects.filter(
-        article=OuterRef('pk'), niveau=KbArticleAcl.Niveau.LECTURE)
-    qs = queryset.annotate(_kb_acl_restreint=Exists(a_restriction))
-    if not tier:
-        # Palier inconnu : seuls les articles sans restriction restent visibles.
-        return qs.filter(_kb_acl_restreint=False)
-    # Article autorisé pour CE palier = il porte une ligne ACL de lecture pour lui.
-    autorise = a_restriction.filter(role=tier)
-    return qs.annotate(_kb_acl_autorise=Exists(autorise)).filter(
-        Q(_kb_acl_restreint=False) | Q(_kb_acl_autorise=True))
+    user_id = getattr(user, 'id', None) if user is not None else None
+
+    # Article restreint en LECTURE (workspace) = il porte au moins une ligne
+    # ACL de lecture PAR-RÔLE.
+    a_restriction_role = KbArticleAcl.objects.filter(
+        article=OuterRef('pk'), niveau=KbArticleAcl.Niveau.LECTURE,
+        role__gt='')
+    a_acl_utilisateur = KbArticleAcl.objects.filter(
+        article=OuterRef('pk'), niveau=KbArticleAcl.Niveau.LECTURE,
+        utilisateur_id=user_id)
+    qs = queryset.annotate(
+        _kb_acl_restreint=Exists(a_restriction_role),
+        _kb_membre_partage=Exists(a_acl_utilisateur))
+
+    workspace_visible = Q(visibilite=KbArticle.Visibilite.WORKSPACE)
+    if tier:
+        autorise = a_restriction_role.filter(role=tier)
+        qs = qs.annotate(_kb_acl_autorise=Exists(autorise))
+        workspace_visible &= (
+            Q(_kb_acl_restreint=False) | Q(_kb_acl_autorise=True))
+    else:
+        workspace_visible &= Q(_kb_acl_restreint=False)
+
+    prive_visible = Q(visibilite=KbArticle.Visibilite.PRIVE)
+    partage_visible = Q(visibilite=KbArticle.Visibilite.PARTAGE)
+    if user_id:
+        prive_visible &= Q(auteur_id=user_id)
+        partage_visible &= (Q(auteur_id=user_id) | Q(_kb_membre_partage=True))
+    else:
+        # Utilisateur inconnu : ni privé ni partagé n'est visible.
+        prive_visible &= Q(pk__isnull=True)
+        partage_visible &= Q(pk__isnull=True)
+
+    return qs.filter(workspace_visible | prive_visible | partage_visible)
 
 
 def acls_for_article(article):

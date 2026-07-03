@@ -26,7 +26,7 @@ class KbArticleSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'titre', 'corps', 'categorie', 'tags', 'statut',
             'statut_display', 'auteur', 'auteur_nom', 'parent', 'ordre',
-            'date_creation', 'date_modification',
+            'visibilite', 'date_creation', 'date_modification',
         ]
         read_only_fields = [
             'auteur', 'date_creation', 'date_modification']
@@ -104,22 +104,25 @@ class KbArticleLienSerializer(serializers.ModelSerializer):
 
 
 class KbArticleAclSerializer(serializers.ModelSerializer):
-    """Droit d'accès par rôle sur un article (KB7).
+    """Droit d'accès sur un article : par-RÔLE (KB7) OU par-UTILISATEUR (XKB9).
 
     ``company`` n'est jamais exposée : elle est posée côté serveur. L'``article``
     reçu est validé comme appartenant à la société de l'utilisateur. Le ``role``
-    est le palier canonique faisant autorité (``menu_tier``).
+    est le palier canonique faisant autorité (``menu_tier``). Exactement un de
+    ``role``/``utilisateur`` doit être renseigné.
     """
     role_display = serializers.CharField(
         source='get_role_display', read_only=True)
     niveau_display = serializers.CharField(
         source='get_niveau_display', read_only=True)
+    utilisateur_nom = serializers.CharField(
+        source='utilisateur.get_full_name', read_only=True)
 
     class Meta:
         model = KbArticleAcl
         fields = [
-            'id', 'article', 'role', 'role_display', 'niveau',
-            'niveau_display', 'date_creation',
+            'id', 'article', 'role', 'role_display', 'utilisateur',
+            'utilisateur_nom', 'niveau', 'niveau_display', 'date_creation',
         ]
         read_only_fields = ['date_creation']
 
@@ -130,6 +133,16 @@ class KbArticleAclSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Cet article n'appartient pas à votre société.")
         return article
+
+    def validate(self, attrs):
+        role = attrs.get('role', getattr(self.instance, 'role', ''))
+        utilisateur = attrs.get(
+            'utilisateur', getattr(self.instance, 'utilisateur', None))
+        if bool(role) == bool(utilisateur):
+            raise serializers.ValidationError(
+                "Renseignez soit un rôle, soit un utilisateur "
+                "(jamais les deux, jamais aucun).")
+        return attrs
 
 
 class KbLectureSerializer(serializers.ModelSerializer):

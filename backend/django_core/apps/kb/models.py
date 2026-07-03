@@ -23,6 +23,14 @@ class KbArticle(models.Model):
         PUBLIE = 'publie', 'Publié'
         OBSOLETE = 'obsolete', 'Obsolète'
 
+    class Visibilite(models.TextChoices):
+        """XKB9 — section de l'article. RÉTRO-COMPATIBLE : ``workspace`` est
+        la valeur par défaut, comportement historique inchangé (visible de
+        tous les paliers autorisés, sous réserve des ACL KB7)."""
+        WORKSPACE = 'workspace', 'Espace de travail'
+        PRIVE = 'prive', 'Privé'
+        PARTAGE = 'partage', 'Partagé'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -38,6 +46,10 @@ class KbArticle(models.Model):
     statut = models.CharField(
         max_length=15, choices=Statut.choices,
         default=Statut.BROUILLON, verbose_name='Statut')
+    # XKB9 — section. Défaut ``workspace`` = comportement historique inchangé.
+    visibilite = models.CharField(
+        max_length=10, choices=Visibilite.choices,
+        default=Visibilite.WORKSPACE, verbose_name='Visibilité')
     auteur = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -222,9 +234,21 @@ class KbArticleAcl(models.Model):
         related_name='acls',
         verbose_name='Article',
     )
+    # ``role`` XOR ``utilisateur`` (validé côté serializer) : une ligne ACL
+    # par-RÔLE (comportement historique KB7, ``role`` seul) OU par-UTILISATEUR
+    # (XKB9 — partage nominatif d'un article ``partage``, ``utilisateur``
+    # seul). ``role`` reste blank pour les lignes par-utilisateur.
     role = models.CharField(
-        max_length=20, choices=ROLE_CHOICES,
+        max_length=20, choices=ROLE_CHOICES, blank=True, default='',
         verbose_name='Palier de rôle autorisé')
+    # XKB9 — ACL nominative : membre explicite d'un article ``partage``.
+    utilisateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='kb_app_acls',
+        verbose_name='Utilisateur autorisé',
+    )
     niveau = models.CharField(
         max_length=10, choices=Niveau.choices,
         default=Niveau.LECTURE, verbose_name='Niveau')
@@ -235,7 +259,10 @@ class KbArticleAcl(models.Model):
         verbose_name = "Droit d'accès de l'article"
         verbose_name_plural = "Droits d'accès de l'article"
         ordering = ['id']
-        unique_together = [('article', 'role', 'niveau')]
+        unique_together = [
+            ('article', 'role', 'niveau'),
+            ('article', 'utilisateur', 'niveau'),
+        ]
         indexes = [
             # Nom EXPLICITE (≤30 car.) pour éviter toute divergence entre le
             # nom haché déterministe de Django et celui de la migration.
@@ -244,7 +271,8 @@ class KbArticleAcl(models.Model):
         ]
 
     def __str__(self):
-        return f'{self.article_id} · {self.role} ({self.niveau})'
+        cible = self.role or f'user:{self.utilisateur_id}'
+        return f'{self.article_id} · {cible} ({self.niveau})'
 
 
 class KbLecture(models.Model):

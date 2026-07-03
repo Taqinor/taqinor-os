@@ -12,9 +12,9 @@ from .models import (
 
 @admin.register(KbArticle)
 class KbArticleAdmin(admin.ModelAdmin):
-    list_display = ('id', 'titre', 'categorie', 'statut', 'auteur', 'company',
-                    'date_modification')
-    list_filter = ('statut', 'categorie')
+    list_display = ('id', 'titre', 'categorie', 'statut', 'visibilite',
+                    'parent', 'auteur', 'company', 'date_modification')
+    list_filter = ('statut', 'categorie', 'visibilite')
     search_fields = ('titre', 'corps', 'categorie', 'tags')
 
 
@@ -36,8 +36,8 @@ class KbArticleLienAdmin(admin.ModelAdmin):
 
 @admin.register(KbArticleAcl)
 class KbArticleAclAdmin(admin.ModelAdmin):
-    list_display = ('id', 'article', 'role', 'niveau', 'company',
-                    'date_creation')
+    list_display = ('id', 'article', 'role', 'utilisateur', 'niveau',
+                    'company', 'date_creation')
     list_filter = ('role', 'niveau', 'company')
 
 
