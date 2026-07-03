@@ -2399,3 +2399,56 @@ class RecurrenceTache(models.Model):
 
     def __str__(self):
         return f'{self.libelle} ({self.get_regle_display()})'
+
+
+class ItemChecklistTache(models.Model):
+    """Item de checklist d'une ``Tache`` (XPRJ14).
+
+    ``fait`` bascule côté serveur via l'action ``toggle`` du viewset : quand il
+    passe à ``True``, ``fait_par``/``fait_le`` sont posés côté serveur (jamais
+    lus du corps de requête) ; quand il repasse à ``False``, ils sont
+    réinitialisés. Le % d'items cochés d'une tâche est une SUGGESTION affichée
+    à l'``avancement_pct`` — jamais un écrasement silencieux d'un avancement
+    saisi manuellement (voir sérialiseur ``Tache``).
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Modèle entièrement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gp_items_checklist',
+        verbose_name='Société',
+    )
+    tache = models.ForeignKey(
+        Tache,
+        on_delete=models.CASCADE,
+        related_name='items_checklist',
+        verbose_name='Tâche',
+    )
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    fait = models.BooleanField(default=False, verbose_name='Fait')
+    fait_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='+',
+        verbose_name='Fait par',
+    )
+    fait_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Fait le')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Item de checklist'
+        verbose_name_plural = 'Items de checklist'
+        ordering = ['tache', 'ordre', 'id']
+        indexes = [
+            models.Index(
+                fields=['tache'], name='gp_item_checklist_tache_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.tache_id} — {self.libelle}'

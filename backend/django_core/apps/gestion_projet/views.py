@@ -29,6 +29,7 @@ from .models import (
     DependanceTache,
     Equipe,
     Indisponibilite,
+    ItemChecklistTache,
     Jalon,
     JourFerie,
     LigneBudgetProjet,
@@ -71,6 +72,7 @@ from .serializers import (
     DependanceTacheSerializer,
     EquipeSerializer,
     IndisponibiliteSerializer,
+    ItemChecklistTacheSerializer,
     JalonSerializer,
     JourFerieSerializer,
     LigneBudgetProjetSerializer,
@@ -2299,3 +2301,46 @@ class RecurrenceTacheViewSet(_GestionProjetBaseViewSet):
         if projet:
             qs = qs.filter(projet_id=projet)
         return qs
+
+
+class ItemChecklistTacheViewSet(_GestionProjetBaseViewSet):
+    """Items de checklist d'une tâche (XPRJ14) — CRUD scopé société.
+
+    ``company`` posée côté serveur ; la ``tache`` reçue est validée
+    même-société. Filtre optionnel ``?tache=<id>``. Le bascule ``fait``
+    passe de préférence par l'action ``toggle`` (pose ``fait_par``/``fait_le``
+    côté serveur).
+    """
+    queryset = ItemChecklistTache.objects.select_related(
+        'tache', 'fait_par').all()
+    serializer_class = ItemChecklistTacheSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['ordre', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        tache = self.request.query_params.get('tache')
+        if tache:
+            qs = qs.filter(tache_id=tache)
+        return qs
+
+    @action(detail=True, methods=['post'], url_path='toggle')
+    def toggle(self, request, pk=None):
+        """Inverse ``fait`` et pose ``fait_par``/``fait_le`` côté serveur.
+
+        La société est garantie par ``get_object`` (queryset scopé société) :
+        un item d'une autre société → 404. Repasser à ``False`` réinitialise
+        ``fait_par``/``fait_le``.
+        """
+        from django.utils import timezone
+
+        item = self.get_object()
+        item.fait = not item.fait
+        if item.fait:
+            item.fait_par = request.user
+            item.fait_le = timezone.now()
+        else:
+            item.fait_par = None
+            item.fait_le = None
+        item.save(update_fields=['fait', 'fait_par', 'fait_le'])
+        return Response(ItemChecklistTacheSerializer(item).data)

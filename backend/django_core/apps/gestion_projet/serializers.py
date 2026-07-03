@@ -32,6 +32,7 @@ from .models import (
     Projet,
     ProjetActivity,
     ProjetChantier,
+    ItemChecklistTache,
     ProjetLien,
     RecurrenceTache,
     RessourceProfil,
@@ -158,6 +159,9 @@ class TacheSerializer(serializers.ModelSerializer):
     # Nombre de sous-tâches directes (lecture seule, pratique pour l'UI).
     nb_sous_taches = serializers.IntegerField(
         source='sous_taches.count', read_only=True)
+    # % d'items de checklist cochés (XPRJ14) — SUGGESTION affichée, jamais un
+    # écrasement de ``avancement_pct`` (qui reste saisi manuellement).
+    pct_checklist_fait = serializers.SerializerMethodField()
 
     class Meta:
         model = Tache
@@ -165,11 +169,18 @@ class TacheSerializer(serializers.ModelSerializer):
             'id', 'projet', 'projet_code', 'phase', 'parent', 'code_wbs',
             'libelle', 'description', 'ordre', 'statut', 'statut_display',
             'assigne', 'assigne_nom', 'priorite', 'priorite_display',
-            'etiquettes', 'avancement_pct', 'charge_estimee',
-            'date_debut_prevue', 'date_fin_prevue', 'nb_sous_taches',
-            'date_creation',
+            'etiquettes', 'avancement_pct', 'pct_checklist_fait',
+            'charge_estimee', 'date_debut_prevue', 'date_fin_prevue',
+            'nb_sous_taches', 'date_creation',
         ]
         read_only_fields = ['date_creation']
+
+    def get_pct_checklist_fait(self, obj):
+        items = list(obj.items_checklist.all())
+        if not items:
+            return None
+        faits = sum(1 for i in items if i.fait)
+        return round(faits * 100 / len(items))
 
     def validate_projet(self, value):
         return _meme_societe(self, value, 'Projet')
@@ -1174,3 +1185,27 @@ class RecurrenceTacheSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "L'intervalle doit être d'au moins 1.")
         return value
+
+
+class ItemChecklistTacheSerializer(serializers.ModelSerializer):
+    """Item de checklist d'une tâche (XPRJ14).
+
+    ``company``, ``fait_par`` et ``fait_le`` sont posés côté serveur — jamais
+    lus du corps de requête. ``fait`` se bascule de préférence via l'action
+    ``items-checklist/<id>/toggle/`` (qui pose ``fait_par``/``fait_le``) ;
+    modifier ``fait`` par PATCH direct reste possible mais ne pose PAS ces
+    deux champs (lecture seule ici).
+    """
+    fait_par_nom = serializers.CharField(
+        source='fait_par.username', read_only=True, default='')
+
+    class Meta:
+        model = ItemChecklistTache
+        fields = [
+            'id', 'tache', 'libelle', 'fait', 'fait_par', 'fait_par_nom',
+            'fait_le', 'ordre', 'date_creation',
+        ]
+        read_only_fields = ['fait_par', 'fait_le', 'date_creation']
+
+    def validate_tache(self, value):
+        return _meme_societe(self, value, 'Tâche')
