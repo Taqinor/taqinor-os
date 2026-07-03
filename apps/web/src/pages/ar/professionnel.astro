@@ -39,28 +39,91 @@ const waDirect = whatsappLink(WHATSAPP_LEADS, 'مرحباً، أرغب في در
 
 // W260 — بطاقات تعريف ذاتي حسب نوع المبنى، بدل كتلة واحدة عامة: المشتري
 // المهني يتعرّف أولاً على نوع موقعه قبل أن يفكّر بالـ kWc. دليل واحد ملموس لكل بطاقة.
+// W335 — كل بطاقة قطاع تحمل الآن سطرين: سطر مالي (حجة المدير المالي) وسطر
+// تقني/تشغيلي (حجة الميدان) — لا رقم جديد، فقط نفس الدليل المنشور مقسّماً
+// إلى زاويتي قراءة.
 const segments = [
-  { n: '01', title: 'مستودع / مصنع', body: "كل kWh يدخل في سعر تكلفة قطعة مُنتَجة. سطح عريض ومستوٍ يُسدّد نفسه في 3 إلى 5 سنوات وينتج بالضبط في الساعات التي تشتغل فيها الآلات — يأتي الإنتاج حين يكون الطلب حاضراً.", proof: 'دليل: الجديدة، 17,04 kWc، 21 406 kWh في السنة' },
-  { n: '02', title: 'حظيرة فلاحية-صناعية', body: "تجفيف، تبريد، تحويل: الحظيرة الفلاحية تستهلك في وضح النهار، بالضبط حين تعطي الشمس. السطح، الموجود أصلاً، لا يكلّف شيئاً إضافياً — يحمل الألواح دون أن يأكل متراً مربعاً من الأرض.", proof: 'دليل: هيكل فولاذي مُجلفن بضمان 20 سنة، مُركَّب على السطح القائم' },
-  { n: '03', title: 'تجارة / فندقة', body: "تكييف بعد الظهر، مغسلة في الصباح، مضخّات مسبح بلا انقطاع: منحنى المتجر أو الفندق يعانق منحنى الشمس، ساعة بساعة. تأتي الطاقة الشمسية لتسقّف بنداً يتسلّق كل موسم.", proof: 'دليل: تسديد في 3 إلى 5 سنوات، نفس منطق الحمولة الصناعي' },
-  { n: '04', title: 'مرافق جماعية', body: "مبنى عمومي أو عيادة لا يتحمّل الانقطاع. عاكسات هجينة مع بطاريات تُبقي المعدات الحرجة قائمة خلال هبوط الشبكة، وفي النهار تنخفض الفاتورة على باقي البناية.", proof: 'دليل: عاكسات هجينة Deye/Huawei، ضمان 10 سنوات' },
+  {
+    n: '01', title: 'مستودع / مصنع',
+    body: "كل kWh يدخل في سعر تكلفة قطعة مُنتَجة. سطح عريض ومستوٍ يُسدّد نفسه في 3 إلى 5 سنوات وينتج بالضبط في الساعات التي تشتغل فيها الآلات — يأتي الإنتاج حين يكون الطلب حاضراً.",
+    proof: 'دليل: الجديدة، 17,04 kWc، 21 406 kWh في السنة',
+    financier: 'عبء تشغيلي يتحوّل إلى أصل مُسدَّد في 3 إلى 5 سنوات',
+    technique: 'سطح عريض ومستوٍ · تركيب دون توقيف الإنتاج',
+  },
+  {
+    n: '02', title: 'حظيرة فلاحية-صناعية',
+    body: "تجفيف، تبريد، تحويل: الحظيرة الفلاحية تستهلك في وضح النهار، بالضبط حين تعطي الشمس. السطح، الموجود أصلاً، لا يكلّف شيئاً إضافياً — يحمل الألواح دون أن يأكل متراً مربعاً من الأرض.",
+    proof: 'دليل: هيكل فولاذي مُجلفن بضمان 20 سنة، مُركَّب على السطح القائم',
+    financier: 'صفر عقار إضافي مُجمَّد — السطح القائم يموّل الهيكل',
+    technique: 'هيكل فولاذي مُجلفن بضمان 20 سنة · لا خسارة لمساحة أرضية',
+  },
+  {
+    n: '03', title: 'تجارة / فندقة',
+    body: "تكييف بعد الظهر، مغسلة في الصباح، مضخّات مسبح بلا انقطاع: منحنى المتجر أو الفندق يعانق منحنى الشمس، ساعة بساعة. تأتي الطاقة الشمسية لتسقّف بنداً يتسلّق كل موسم.",
+    proof: 'دليل: تسديد في 3 إلى 5 سنوات، نفس منطق الحمولة الصناعي',
+    financier: 'يُسقّف بند تكاليف يتصاعد كل موسم سياحي',
+    technique: 'منحنى استهلاك مُطابق لسطوع الشمس، ساعة بساعة',
+  },
+  {
+    n: '04', title: 'مرافق جماعية',
+    body: "مبنى عمومي أو عيادة لا يتحمّل الانقطاع. عاكسات هجينة مع بطاريات تُبقي المعدات الحرجة قائمة خلال هبوط الشبكة، وفي النهار تنخفض الفاتورة على باقي البناية.",
+    proof: 'دليل: عاكسات هجينة Deye/Huawei، ضمان 10 سنوات',
+    financier: 'يخفّض فاتورة المبنى مع تأمين استمرارية الخدمة',
+    technique: 'عاكسات هجينة + بطاريات · استمرارية على المعدات الحرجة',
+  },
 ];
 
 const PRIX_PAR_KWC = { bas: 8500, haut: 11000 };
 const arrondi10k = (v: number) => Math.round(v / 10000) * 10000;
+// W335 — «الاقتصاد التراكمي على 20 سنة»: مُشتقّ من الثوابت المنشورة أصلاً
+// (استثمار لكل kWc + مجال التسديد)، لا رقم جديد. المنطق: بعد بلوغ التسديد،
+// تستمر التركيبة في الإنتاج حتى ضمان الأداء لـ25 سنة؛ نُسقط على أفق 20 سنة
+// (نفس أفق الهيكل والإهلاك المحاسبي المذكور أدناه) مضاعف الاستثمار ×
+// (20 سنة / مدة التسديد) — مجرد ترتيب حجم، وليس رقم دراسة.
+const HORIZON_ANS = 20;
+const economieCumulee = (investMin: number, investMax: number, paybackMinAns: number, paybackMaxAns: number) => {
+  const bas = arrondi10k((investMin * HORIZON_ANS) / paybackMaxAns);
+  const haut = arrondi10k((investMax * HORIZON_ANS) / paybackMinAns);
+  return `${formatMAD(bas)} – ${formatMAD(haut)}`;
+};
+
 const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
   const band = localEstimateBand(id);
+  const investMin = arrondi10k(band.kwcMin * PRIX_PAR_KWC.bas);
+  const investMax = arrondi10k(band.kwcMax * PRIX_PAR_KWC.haut);
   return {
     bill: id === '5000-10000' ? '5 000 – 10 000 MAD / شهر' : 'أكثر من 10 000 MAD / شهر',
     kwc: band.kwcLabel,
     invest:
       id === 'gt10000'
-        ? `ابتداءً من ${formatMAD(arrondi10k(band.kwcMin * PRIX_PAR_KWC.bas))} — دراسة مخصّصة`
-        : `${formatMAD(arrondi10k(band.kwcMin * PRIX_PAR_KWC.bas))} – ${formatMAD(arrondi10k(band.kwcMax * PRIX_PAR_KWC.haut))}`,
+        ? `ابتداءً من ${formatMAD(investMin)} — دراسة مخصّصة`
+        : `${formatMAD(investMin)} – ${formatMAD(investMax)}`,
     payback: band.paybackLabel,
+    economie20ans: economieCumulee(investMin, investMax, 3, 5),
     exemple: id === '5000-10000' ? 'مثال حقيقي: مرجع 468 — 17,04 kWc، الجديدة، أبريل 2026' : null,
   };
 });
+
+// W335 — مقارنة هيكلية شراء (CAPEX) / ليزينغ (OPEX): من يملك، من يُهلك، أثر
+// اليوم الأول على الخزينة. لا سعر فائدة ولا بنك مُسمّى هنا — الخانات المُسمّاة
+// (CAM، Maghrebail…) موجودة في صفحة /financement (W258/WG11).
+const capexOpex = [
+  {
+    critere: 'من يملك التركيبة',
+    achat: 'شركتكم، ابتداءً من التشغيل',
+    leasing: 'المؤجِّر خلال مدة العقد؛ خيار الشراء في نهاية العقد حسب الصيغة',
+  },
+  {
+    critere: 'من يُسجّل الإهلاك',
+    achat: 'شركتكم، كأصل ثابت في ميزانيتها (انظر الجباية أدناه)',
+    leasing: 'المؤجِّر؛ تُسجّلون الكراء كعبء تشغيلي',
+  },
+  {
+    critere: 'أثر اليوم الأول على الخزينة',
+    achat: 'خروج فوري للخزينة (أو عند صرف القرض إن كان مموَّلاً)',
+    leasing: 'لا خروج مسبق للخزينة — كراء دوري يحل محل الفاتورة المُتجنَّبة',
+  },
+];
 ---
 
 <Layout
@@ -141,7 +204,18 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
             <p class="fig lum text-2xl">{s.n}</p>
             <h2 class="display mt-2 text-xl text-white">{s.title}</h2>
             <p class="mt-3 text-sm leading-relaxed text-lune-soft">{s.body}</p>
-            <p class="tech-label mt-3 text-brass-300">{s.proof}</p>
+            {/* W335 — سطرا قراءة: مالي (المدير المالي) ثم تقني/تشغيلي */}
+            <dl class="mt-4 space-y-2 border-t border-white/10 pt-3">
+              <div>
+                <dt class="tech-label text-brass-300">السطر المالي</dt>
+                <dd class="mt-0.5 text-xs leading-relaxed text-lune-soft">{s.financier}</dd>
+              </div>
+              <div>
+                <dt class="tech-label text-lune">السطر التقني</dt>
+                <dd class="mt-0.5 text-xs leading-relaxed text-lune-soft">{s.technique}</dd>
+              </div>
+            </dl>
+            <p class="tech-label mt-3 text-lune-faint">{s.proof}</p>
           </div>
         ))}
       </div>
@@ -169,9 +243,43 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
                 <span class="fig text-lg text-lune sm:text-xl">{b.invest}</span>
                 <span class="fig text-xl text-brass-300 sm:text-2xl" data-tally>{b.payback}</span>
               </div>
-              {b.exemple && <p class="tech-label mt-2.5 text-lune-faint">{b.exemple}</p>}
+              {/* W335 — اقتصاد تراكمي على 20 سنة، مُشتقّ من الأعمدة أعلاه (لا رقم جديد) */}
+              <p class="tech-label mt-2.5 text-lune-faint">
+                اقتصاد تراكمي على 20 سنة (تقديري): <span class="text-brass-300">{b.economie20ans}</span>
+              </p>
+              {b.exemple && <p class="tech-label mt-1 text-lune-faint">{b.exemple}</p>}
             </div>
           ))}
+        </div>
+
+        {/* W335 — مقارنة هيكلية شراء (CAPEX) / ليزينغ (OPEX) — لا سعر فائدة ولا بنك مُسمّى هنا */}
+        <div class="mt-14">
+          <p class="tech-label v2-kicker rule-brass text-lune">صيغتان ممكنتان</p>
+          <h3 class="display mt-3 text-xl text-white">شراء (CAPEX) أو ليزينغ (OPEX): ما يتغيّر هيكلياً</h3>
+          <p class="v2-lead mt-3 max-w-2xl text-sm text-lune-soft">
+            الخانات المُسمّاة (بنوك، أسعار فائدة، عقود) موجودة في صفحة <a href={L('/financement')} class="border-b border-white/40 pb-0.5 font-semibold text-white transition-colors hover:border-white">التمويل والمردودية</a> بمجرد
+            التحقق منها. هنا، فقط الآلية — من يملك، من يُهلك، وأثرها على خزينتكم في اليوم الأول.
+          </p>
+          <div class="mt-6 overflow-x-auto">
+            <table class="w-full min-w-[560px] border-collapse text-sm">
+              <thead>
+                <tr class="border-b-2 border-brass-400/60 text-start">
+                  <th class="py-3 pe-4 font-display font-bold text-white">المعيار</th>
+                  <th class="py-3 pe-4 font-display font-bold text-white">شراء (CAPEX)</th>
+                  <th class="py-3 font-display font-bold text-white">ليزينغ (OPEX)</th>
+                </tr>
+              </thead>
+              <tbody data-stagger>
+                {capexOpex.map((c, i) => (
+                  <tr class="v2-rise border-b border-white/10" style={`--v2-i:${i}`}>
+                    <td class="py-3 pe-4 font-semibold text-lune">{c.critere}</td>
+                    <td class="py-3 pe-4 text-lune-soft">{c.achat}</td>
+                    <td class="py-3 text-lune-soft">{c.leasing}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </section>

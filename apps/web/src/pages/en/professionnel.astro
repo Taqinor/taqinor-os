@@ -44,28 +44,94 @@ const waDirect = whatsappLink(WHATSAPP_LEADS, 'Hello, I would like a study for a
 // W260 — self-identification sub-cards by building type (instead of one
 // generic block): a C&I buyer recognises their site type before thinking in
 // kWc. One concrete proof point per card.
+// W335 — each segment card now carries TWO lines: a financial line (the CFO
+// argument) and a technical/operational line (the on-site argument) — no new
+// figure, just the same already-published proof split into two reading angles.
 const segments = [
-  { n: '01', title: 'Warehouse / plant', body: "Every kWh enters the cost price of a manufactured part. A wide, flat roof pays for itself in 3 to 5 years and produces exactly when the machines are running — production lands when demand is there.", proof: 'Proof: El Jadida, 17,04 kWc, 21 406 kWh/year' },
-  { n: '02', title: 'Agro-industrial shed', body: "Drying, cold storage, processing: an agricultural shed consumes in broad daylight, exactly when the sun gives. The roof, already there, costs nothing extra to use — it carries the panels without eating a square metre of ground.", proof: 'Proof: galvanised steel structure, 20-year warranty, mounted on the existing roof' },
-  { n: '03', title: 'Retail / hospitality', body: "Air conditioning in the afternoon, laundry in the morning, pool pumps running non-stop: a shop or hotel's curve hugs the sun's, hour for hour. Solar comes to cap a cost item that climbs every season.", proof: 'Proof: 3-to-5-year payback, the same load logic as industry' },
-  { n: '04', title: 'Public sites', body: "A public building or clinic tolerates no outage. Hybrid inverters plus batteries hold the critical equipment through grid dips, and by day the bill drops on the rest of the building.", proof: 'Proof: Deye/Huawei hybrid inverters, 10-year warranty' },
+  {
+    n: '01', title: 'Warehouse / plant',
+    body: "Every kWh enters the cost price of a manufactured part. A wide, flat roof pays for itself in 3 to 5 years and produces exactly when the machines are running — production lands when demand is there.",
+    proof: 'Proof: El Jadida, 17,04 kWc, 21 406 kWh/year',
+    financial: 'An operating cost that becomes an asset paid off in 3 to 5 years',
+    technical: 'Wide, flat roof · install with no production stoppage',
+  },
+  {
+    n: '02', title: 'Agro-industrial shed',
+    body: "Drying, cold storage, processing: an agricultural shed consumes in broad daylight, exactly when the sun gives. The roof, already there, costs nothing extra to use — it carries the panels without eating a square metre of ground.",
+    proof: 'Proof: galvanised steel structure, 20-year warranty, mounted on the existing roof',
+    financial: 'Zero extra land tied up — the existing roof funds the structure',
+    technical: 'Galvanised steel structure, 20-year warranty · no ground surface lost',
+  },
+  {
+    n: '03', title: 'Retail / hospitality',
+    body: "Air conditioning in the afternoon, laundry in the morning, pool pumps running non-stop: a shop or hotel's curve hugs the sun's, hour for hour. Solar comes to cap a cost item that climbs every season.",
+    proof: 'Proof: 3-to-5-year payback, the same load logic as industry',
+    financial: 'Caps a cost line that climbs every tourist season',
+    technical: 'Consumption curve tracks sunshine, hour for hour',
+  },
+  {
+    n: '04', title: 'Public sites',
+    body: "A public building or clinic tolerates no outage. Hybrid inverters plus batteries hold the critical equipment through grid dips, and by day the bill drops on the rest of the building.",
+    proof: 'Proof: Deye/Huawei hybrid inverters, 10-year warranty',
+    financial: 'Lowers the building bill while securing continuity of service',
+    technical: 'Hybrid inverters + batteries · continuity on critical equipment',
+  },
 ];
 
 const PRIX_PAR_KWC = { bas: 8500, haut: 11000 };
 const arrondi10k = (v: number) => Math.round(v / 10000) * 10000;
+// W335 — "cumulative saving over 20 years": derived from already-published
+// CONSTANTS (investment per kWc + payback range), no new figure. Logic:
+// once payback is reached, the installation keeps producing up to the
+// 25-year performance guarantee; we project over a 20-year horizon (the same
+// horizon as the structure and the accounting depreciation cited below) the
+// multiple investment × (20 years / payback duration) — an order of
+// magnitude, never a study figure.
+const HORIZON_YEARS = 20;
+const cumulativeSaving = (investMin: number, investMax: number, paybackMinYrs: number, paybackMaxYrs: number) => {
+  const low = arrondi10k((investMin * HORIZON_YEARS) / paybackMaxYrs);
+  const high = arrondi10k((investMax * HORIZON_YEARS) / paybackMinYrs);
+  return `${formatMAD(low)} – ${formatMAD(high)}`;
+};
+
 const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
   const band = localEstimateBand(id);
+  const investMin = arrondi10k(band.kwcMin * PRIX_PAR_KWC.bas);
+  const investMax = arrondi10k(band.kwcMax * PRIX_PAR_KWC.haut);
   return {
     bill: id === '5000-10000' ? '5 000 – 10 000 MAD / month' : 'Over 10 000 MAD / month',
     kwc: band.kwcLabel,
     invest:
       id === 'gt10000'
-        ? `from ${formatMAD(arrondi10k(band.kwcMin * PRIX_PAR_KWC.bas))} — dedicated study`
-        : `${formatMAD(arrondi10k(band.kwcMin * PRIX_PAR_KWC.bas))} – ${formatMAD(arrondi10k(band.kwcMax * PRIX_PAR_KWC.haut))}`,
+        ? `from ${formatMAD(investMin)} — dedicated study`
+        : `${formatMAD(investMin)} – ${formatMAD(investMax)}`,
     payback: band.paybackLabel,
+    // "3 to 5 years" / "3 to 7 years" → numeric bounds for the 20-year projection.
+    saving20yrs: cumulativeSaving(investMin, investMax, 3, 5),
     exemple: id === '5000-10000' ? 'Real example: ref. 468 — 17,04 kWc, El Jadida, April 2026' : null,
   };
 });
+
+// W335 — structural Purchase (CAPEX) / Leasing (OPEX) comparator: who owns,
+// who books depreciation, day-one cash impact. NO named rate or bank — the
+// named boxes (CAM, Maghrebail…) live on /financement (W258/WG11).
+const capexOpex = [
+  {
+    criterion: 'Who owns the installation',
+    purchase: 'Your company, from commissioning',
+    leasing: 'The lessor for the contract term; end-of-contract buyout option depending on the structure',
+  },
+  {
+    criterion: 'Who books the depreciation',
+    purchase: 'Your company, as a fixed asset on its balance sheet (see the tax section below)',
+    leasing: 'The lessor; you book the rent as an operating expense',
+  },
+  {
+    criterion: 'Day-one cash impact',
+    purchase: 'Immediate cash outflow (or on loan drawdown if financed)',
+    leasing: 'No upfront cash outflow — a periodic rent replaces the avoided bill',
+  },
+];
 ---
 
 <Layout
@@ -148,7 +214,18 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
             <p class="fig lum text-2xl">{s.n}</p>
             <h2 class="display mt-2 text-xl text-white">{s.title}</h2>
             <p class="mt-3 text-sm leading-relaxed text-lune-soft">{s.body}</p>
-            <p class="tech-label mt-3 text-brass-300">{s.proof}</p>
+            {/* W335 — two reading lines: financial (CFO) then technical/operational */}
+            <dl class="mt-4 space-y-2 border-t border-white/10 pt-3">
+              <div>
+                <dt class="tech-label text-brass-300">Financial line</dt>
+                <dd class="mt-0.5 text-xs leading-relaxed text-lune-soft">{s.financial}</dd>
+              </div>
+              <div>
+                <dt class="tech-label text-lune">Technical line</dt>
+                <dd class="mt-0.5 text-xs leading-relaxed text-lune-soft">{s.technical}</dd>
+              </div>
+            </dl>
+            <p class="tech-label mt-3 text-lune-faint">{s.proof}</p>
           </div>
         ))}
       </div>
@@ -177,9 +254,43 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
                 <span class="fig text-lg text-lune sm:text-xl">{b.invest}</span>
                 <span class="fig text-xl text-brass-300 sm:text-2xl" data-tally>{b.payback}</span>
               </div>
-              {b.exemple && <p class="tech-label mt-2.5 text-lune-faint">{b.exemple}</p>}
+              {/* W335 — cumulative saving over 20 years, derived from the columns above (no new figure) */}
+              <p class="tech-label mt-2.5 text-lune-faint">
+                Cumulative saving over 20 years (estimated): <span class="text-brass-300">{b.saving20yrs}</span>
+              </p>
+              {b.exemple && <p class="tech-label mt-1 text-lune-faint">{b.exemple}</p>}
             </div>
           ))}
+        </div>
+
+        {/* W335 — structural Purchase (CAPEX) / Leasing (OPEX) comparator — no named rate or bank here */}
+        <div class="mt-14">
+          <p class="tech-label v2-kicker rule-brass text-lune">Two possible structures</p>
+          <h3 class="display mt-3 text-xl text-white">Purchase (CAPEX) or leasing (OPEX): what changes structurally</h3>
+          <p class="v2-lead mt-3 max-w-2xl text-sm text-lune-soft">
+            The named boxes (banks, rates, contracts) live on the <a href={L('/financement')} class="border-b border-white/40 pb-0.5 font-semibold text-white transition-colors hover:border-white">Financing &amp; returns</a> page
+            once verified. Here, just the mechanics — who owns, who books depreciation, what it does to your day-one cash.
+          </p>
+          <div class="mt-6 overflow-x-auto">
+            <table class="w-full min-w-[560px] border-collapse text-sm">
+              <thead>
+                <tr class="border-b-2 border-brass-400/60 text-left">
+                  <th class="py-3 pr-4 font-display font-bold text-white">Criterion</th>
+                  <th class="py-3 pr-4 font-display font-bold text-white">Purchase (CAPEX)</th>
+                  <th class="py-3 font-display font-bold text-white">Leasing (OPEX)</th>
+                </tr>
+              </thead>
+              <tbody data-stagger>
+                {capexOpex.map((c, i) => (
+                  <tr class="v2-rise border-b border-white/10" style={`--v2-i:${i}`}>
+                    <td class="py-3 pr-4 font-semibold text-lune">{c.criterion}</td>
+                    <td class="py-3 pr-4 text-lune-soft">{c.purchase}</td>
+                    <td class="py-3 text-lune-soft">{c.leasing}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </section>
