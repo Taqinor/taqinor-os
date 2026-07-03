@@ -266,6 +266,20 @@ export function optionTtc(p: ProposalResponse, opt: OptionKey): number {
   return opt === 'avec_batterie' ? p.option_totals?.avec_batterie ?? 0 : p.option_totals?.sans_batterie ?? 0;
 }
 
+/**
+ * WJ83 — Garde-fou « zéro chiffre inventé » appliqué au PRIX : `optionTtc`
+ * retombe sur `0` (via `?? 0`) quand aucun totaux n'est exploitable — un
+ * payload dégénéré (devis mal formé, option absente) affichait alors
+ * « 0 MAD TTC, clé en main » comme un VRAI prix. `hasRealPrice` distingue un
+ * prix réel (TTC backend strictement positif) d'un repli à 0 : la page doit
+ * alors masquer le prix + le CTA de signature et afficher un message
+ * honnête (« prix communiqué par votre conseiller ») plutôt qu'un chiffre.
+ */
+export function hasRealPrice(p: ProposalResponse, opt: OptionKey): boolean {
+  const ttc = optionTtc(p, opt);
+  return Number.isFinite(ttc) && ttc > 0;
+}
+
 /** Étiquette FR courte d'une option. */
 export function optionLabel(opt: OptionKey): string {
   return opt === 'avec_batterie' ? 'Avec batterie' : 'Sans batterie';
@@ -429,8 +443,11 @@ export function contactEndpoint(apiBase: string, token: string): string {
   return `${base}/api/django/ventes/proposal/${encodeURIComponent(token)}/contact/`;
 }
 
-/** Canal choisi par le client pour la demande de contact. */
-export type ContactChannel = 'rappel' | 'whatsapp' | 'question';
+/** Canal choisi par le client pour la demande de contact. WJ85 — `voice`
+ *  couvre l'invitation à la note vocale WhatsApp (canal distinct de `whatsapp`
+ *  générique, pour que l'équipe voie que le client a été orienté vers un
+ *  message vocal plutôt qu'un texte). */
+export type ContactChannel = 'rappel' | 'whatsapp' | 'question' | 'voice';
 
 export interface ContactRequestState {
   channel: ContactChannel;
@@ -444,13 +461,15 @@ export interface ContactRequestBody {
 }
 
 /**
- * WJ29 — Met en forme le corps envoyé au proxy /api/proposition-contact. Le
- * canal est normalisé (repli 'rappel' si invalide) ; le message est tronqué à
- * une longueur raisonnable pour ne jamais inonder l'upstream.
+ * WJ29/WJ85 — Met en forme le corps envoyé au proxy /api/proposition-contact.
+ * Le canal est normalisé (repli 'rappel' si invalide) ; le message est
+ * tronqué à une longueur raisonnable pour ne jamais inonder l'upstream.
  */
 export function buildContactBody(state: ContactRequestState): ContactRequestBody {
   const channel: ContactChannel =
-    state.channel === 'whatsapp' || state.channel === 'question' ? state.channel : 'rappel';
+    state.channel === 'whatsapp' || state.channel === 'question' || state.channel === 'voice'
+      ? state.channel
+      : 'rappel';
   const message = (state.message ?? '').trim().slice(0, 2000);
   return { channel, message };
 }
@@ -890,6 +909,38 @@ export function whatsappLink(reference: string, phone: string = TAQINOR_WHATSAPP
   const msg = ref
     ? `Bonjour, j'ai une question sur ma proposition Taqinor (réf. ${ref}).`
     : 'Bonjour, j\'ai une question sur ma proposition Taqinor.';
+  return `https://wa.me/${digits}?text=${encodeURIComponent(msg)}`;
+}
+
+/**
+ * WJ85 — Intention du point de contact « au moindre doute » (avant signature).
+ * `discuss` (« Discuter sur WhatsApp ») et `question` (« Poser une question »)
+ * pointaient auparavant vers le MÊME `whatsappLink(reference)`, un seul message
+ * générique — deux boutons qui font la même chose lisent comme du remplissage.
+ * `voice` couvre l'invitation à une note vocale (canal WhatsApp natif, plus
+ * rapide à envoyer qu'un texte pour beaucoup de clients).
+ */
+export type WhatsappIntent = 'discuss' | 'question' | 'voice';
+
+/**
+ * WJ85 — Construit un deep-link wa.me avec un PRÉREMPLISSAGE distinct par
+ * intention (toujours citant la référence quand présente, même discipline que
+ * `whatsappLink`). `phone` peut surcharger le numéro par défaut.
+ */
+export function whatsappLinkForIntent(
+  reference: string,
+  intent: WhatsappIntent,
+  phone: string = TAQINOR_WHATSAPP,
+): string {
+  const digits = (phone || TAQINOR_WHATSAPP).replace(/[^\d]/g, '') || TAQINOR_WHATSAPP;
+  const ref = (reference || '').trim();
+  const refSuffix = ref ? ` (réf. ${ref})` : '';
+  const messages: Record<WhatsappIntent, string> = {
+    discuss: `Bonjour, je voudrais discuter de ma proposition Taqinor${refSuffix} avant de signer.`,
+    question: `Bonjour, j'ai une question précise sur ma proposition Taqinor${refSuffix}.`,
+    voice: `Bonjour, je vous envoie une note vocale au sujet de ma proposition Taqinor${refSuffix}.`,
+  };
+  const msg = messages[intent] ?? messages.question;
   return `https://wa.me/${digits}?text=${encodeURIComponent(msg)}`;
 }
 
