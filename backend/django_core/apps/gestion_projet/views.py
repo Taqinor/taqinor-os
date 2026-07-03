@@ -1230,6 +1230,34 @@ class CalendrierProjetViewSet(_GestionProjetBaseViewSet):
             qs = qs.filter(projet_id=projet)
         return qs
 
+    @action(detail=True, methods=['post'], url_path='seed-feries')
+    def seed_feries(self, request, pk=None):
+        """Pré-remplit les jours fériés marocains depuis ``core/calendar.py``.
+
+        Corps/query ``?annee=`` (obligatoire). IDEMPOTENT : jamais de doublon
+        (``unique (calendrier, date)``). Renvoie les dates créées + le nombre
+        déjà présentes. Si l'année n'a pas de jeu de fêtes MOBILES codé, le
+        champ ``fetes_mobiles_manquantes`` signale qu'elles restent à saisir
+        manuellement (Aïd, 1 Moharram, Mawlid). La société est garantie par
+        ``get_object`` : un calendrier d'une autre société → 404.
+        """
+        calendrier = self.get_object()
+        annee_raw = (
+            request.query_params.get('annee') or request.data.get('annee'))
+        try:
+            annee = int(annee_raw)
+        except (TypeError, ValueError):
+            return Response(
+                {'annee': 'Le paramètre « annee » (entier) est obligatoire.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        resultat = services.seeder_feries_calendrier(calendrier, annee)
+        return Response({
+            'crees': [d.isoformat() for d in resultat['crees']],
+            'nb_crees': len(resultat['crees']),
+            'nb_deja_presents': resultat['nb_deja_presents'],
+            'fetes_mobiles_manquantes': resultat['fetes_mobiles_manquantes'],
+        })
+
 
 class JourFerieViewSet(_GestionProjetBaseViewSet):
     """Jours fériés (chômés) d'un calendrier de projet — CRUD scopé société.

@@ -13,6 +13,7 @@ from .models import (
     BaselinePlanning,
     BaselineTache,
     DependanceTache,
+    JourFerie,
     PhaseProjet,
     Projet,
     RecurrenceTache,
@@ -1100,3 +1101,56 @@ def generer_taches_recurrentes(company, *, aujourd_hui=None):
             rec.save(update_fields=[
                 'nb_generees', 'prochaine_echeance', 'actif'])
     return crees
+
+
+# ── Jours fériés marocains pré-remplis (XPRJ20) ──────────────────────────────
+def seeder_feries_calendrier(calendrier, annee):
+    """Pré-remplit ``JourFerie`` depuis le référentiel UNIQUE ``core.calendar``.
+
+    Source EXCLUSIVE : ``core.calendar.MOROCCAN_FIXED_HOLIDAYS`` (fixes) +
+    ``MOROCCAN_MOVABLE_HOLIDAYS`` (mobiles, hégiriens) de l'année demandée —
+    JAMAIS une nouvelle liste de dates codée en dur ici (règle DC26/FG5).
+    IDEMPOTENT : ``unique (calendrier, date)`` respecté (``get_or_create``,
+    aucun doublon même en re-run). Pour une année SANS jeu de fêtes mobiles
+    codé (``MOROCCAN_MOVABLE_HOLIDAYS`` n'a pas cette année), les fêtes
+    mobiles (Aïd al-Fitr, Aïd al-Adha, Nouvel An hégirien, Aïd al-Mawlid)
+    restent à saisir MANUELLEMENT — signalé dans le résultat.
+
+    Renvoie ``{'crees': [...], 'nb_deja_presents': N, 'fetes_mobiles_manquantes': bool}``.
+    """
+    from core.calendar import MOROCCAN_MOVABLE_HOLIDAYS, moroccan_holidays
+
+    company = calendrier.company
+    dates_feriees = moroccan_holidays(annee)
+
+    # Libellés : fixes via un mapping mois/jour → libellé, mobiles via le
+    # dict de l'année (déjà date → libellé).
+    from core.calendar import MOROCCAN_FIXED_HOLIDAYS
+    libelles_fixes = {
+        _date_du_mois_jour(annee, mois, jour): libelle
+        for (mois, jour), libelle in MOROCCAN_FIXED_HOLIDAYS.items()
+    }
+    libelles_mobiles = MOROCCAN_MOVABLE_HOLIDAYS.get(annee, {})
+
+    crees = []
+    nb_deja = 0
+    for d in sorted(dates_feriees):
+        libelle = libelles_fixes.get(d) or libelles_mobiles.get(d, '')
+        _, created = JourFerie.objects.get_or_create(
+            company=company, calendrier=calendrier, date=d,
+            defaults={'libelle': libelle})
+        if created:
+            crees.append(d)
+        else:
+            nb_deja += 1
+
+    return {
+        'crees': crees,
+        'nb_deja_presents': nb_deja,
+        'fetes_mobiles_manquantes': annee not in MOROCCAN_MOVABLE_HOLIDAYS,
+    }
+
+
+def _date_du_mois_jour(annee, mois, jour):
+    from datetime import date as _date
+    return _date(annee, mois, jour)
