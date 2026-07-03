@@ -31,6 +31,14 @@ class KbArticle(models.Model):
         PRIVE = 'prive', 'Privé'
         PARTAGE = 'partage', 'Partagé'
 
+    class CorpsFormat(models.TextChoices):
+        """XKB10 — format de rendu du champ ``corps``. RÉTRO-COMPATIBLE :
+        ``texte`` (défaut) reproduit le rendu brut historique ; ``markdown``
+        active le rendu Markdown sanitizé côté frontend (aucune conséquence
+        backend au-delà du champ — le rendu/sanitizing vit côté client)."""
+        TEXTE = 'texte', 'Texte brut'
+        MARKDOWN = 'markdown', 'Markdown'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -50,6 +58,11 @@ class KbArticle(models.Model):
     visibilite = models.CharField(
         max_length=10, choices=Visibilite.choices,
         default=Visibilite.WORKSPACE, verbose_name='Visibilité')
+    # XKB10 — format du corps. Défaut ``texte`` = comportement historique
+    # inchangé (aucun rendu Markdown des articles existants).
+    corps_format = models.CharField(
+        max_length=10, choices=CorpsFormat.choices,
+        default=CorpsFormat.TEXTE, verbose_name='Format du contenu')
     auteur = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

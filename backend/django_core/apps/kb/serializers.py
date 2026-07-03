@@ -24,9 +24,9 @@ class KbArticleSerializer(serializers.ModelSerializer):
     class Meta:
         model = KbArticle
         fields = [
-            'id', 'titre', 'corps', 'categorie', 'tags', 'statut',
-            'statut_display', 'auteur', 'auteur_nom', 'parent', 'ordre',
-            'visibilite', 'date_creation', 'date_modification',
+            'id', 'titre', 'corps', 'corps_format', 'categorie', 'tags',
+            'statut', 'statut_display', 'auteur', 'auteur_nom', 'parent',
+            'ordre', 'visibilite', 'date_creation', 'date_modification',
         ]
         read_only_fields = [
             'auteur', 'date_creation', 'date_modification']

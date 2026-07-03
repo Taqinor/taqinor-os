@@ -8,6 +8,8 @@ cycles. Quand une app cible n'a pas de sélecteur exploitable, on DÉGRADE
 proprement : on renvoie le ``libelle`` mis en cache et les ids stockés, sans
 rien importer.
 """
+import re
+
 from django.db.models import Exists, OuterRef, Q
 
 from .models import (
@@ -107,6 +109,34 @@ def resume_lecture(article):
             'lu_le': lecture.lu_le,
         })
     return {'nombre': len(lecteurs), 'lecteurs': lecteurs}
+
+
+# ── XKB10 — Éditeur Markdown : sommaire auto ────────────────────────────────
+
+_ATX_HEADING_RE = re.compile(r'^(#{1,6})\s+(.+?)\s*#*\s*$')
+
+
+def sommaire_article(article):
+    """XKB10 — Sommaire auto : liste des titres Markdown (ATX ``#``…``######``)
+    du corps de l'article, dans l'ordre d'apparition.
+
+    Renvoie ``[{niveau, texte}, ...]``. Pas de dépendance markdown côté
+    serveur (pas de nouvelle dépendance payante) : un simple parseur de ligne
+    suffit pour l'extraction de titres ATX, qui est le seul besoin du
+    sommaire. Ne s'applique qu'aux articles ``corps_format == 'markdown'`` —
+    un article texte brut renvoie un sommaire vide (aucun titre structuré).
+    """
+    if article.corps_format != KbArticle.CorpsFormat.MARKDOWN:
+        return []
+    sommaire = []
+    for ligne in (article.corps or '').splitlines():
+        m = _ATX_HEADING_RE.match(ligne.strip())
+        if m:
+            sommaire.append({
+                'niveau': len(m.group(1)),
+                'texte': m.group(2).strip(),
+            })
+    return sommaire
 
 
 # ── XKB8 — Arborescence d'articles (pages imbriquées) ──────────────────────

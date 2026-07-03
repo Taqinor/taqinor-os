@@ -40,6 +40,11 @@ ALLOWED_TARGETS = {
     # de contrôle ITP, et pièces jointes d'une non-conformité (NCR).
     ('qhse', 'relevecontrole'),
     ('qhse', 'nonconformite'),
+    # XKB10 — pièces jointes/images d'un article de la base de connaissances
+    # (éditeur Markdown : insertion d'image dans le corps). XKB13 réutilise la
+    # MÊME entrée pour les commentaires génériques (records.Comment) sur les
+    # articles KB.
+    ('kb', 'kbarticle'),
 }
 
 

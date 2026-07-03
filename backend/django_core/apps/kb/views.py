@@ -134,6 +134,12 @@ class KbArticleViewSet(_KbBaseViewSet):
         """XKB8 — Arbre des articles visibles (racines → enfants imbriqués)."""
         return Response(selectors.arbre_articles(self.get_queryset()))
 
+    @action(detail=True, methods=['get'], url_path='sommaire')
+    def sommaire(self, request, pk=None):
+        """XKB10 — Sommaire auto (titres Markdown) d'un article."""
+        article = self.get_object()
+        return Response(selectors.sommaire_article(article))
+
     @action(detail=True, methods=['post'], url_path='deplacer')
     def deplacer(self, request, pk=None):
         """XKB8 — Déplace (re-parente) tout un sous-arbre + réordonne.
