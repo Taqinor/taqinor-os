@@ -83,7 +83,7 @@ export default defineConfig({
       // Le tunnel devis↔toiture-3D est privé de bout en bout : capture client
       // (/devis/), atelier interne Meriem (/internal/) et proposition client
       // tokenisée (/proposition/) restent hors sitemap et noindex.
-      filter: (page) => !/type-test|media-test|variants-test|craft-|\/preview\/|\/devis\/|\/internal\/|\/proposition\//.test(page)
+      filter: (page) => !/type-test|media-test|variants-test|craft-|\/preview\/|\/devis\/|\/internal\/|\/proposition\/|\/embed\//.test(page)
     }),
     workersDevRedirect()
   ]

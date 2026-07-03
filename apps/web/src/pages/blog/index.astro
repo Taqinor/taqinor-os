@@ -20,7 +20,7 @@ import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
-import { BLOG_THEMES } from '../../content.config';
+import { BLOG_THEMES } from '../../lib/blogThemes';
 
 const posts = (
   await getCollection('blog', ({ data }) => (import.meta.env.PROD ? !data.draft && data.pubDate.getTime() <= Date.now() : true))

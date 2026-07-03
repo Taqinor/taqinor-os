@@ -179,9 +179,10 @@ describe('inventaire des routes (sortie construite réelle)', () => {
     expect(privatePaths.length).toBeGreaterThan(0);
     // Préfixes privés connus : la zone de revue /preview/* + le tunnel devis↔
     // toiture-3D (capture client /devis/, atelier interne Meriem /internal/,
-    // proposition client tokenisée /proposition/) — tous noindex et hors
-    // sitemap par conception.
-    const PRIVATE_PREFIXES = ['/preview/', '/devis/', '/internal/', '/proposition/'];
+    // proposition client tokenisée /proposition/) + le widget partenaire
+    // chrome-less /embed/* (W358, iframe-safe, noindex, hors sitemap) — tous
+    // noindex et hors sitemap par conception.
+    const PRIVATE_PREFIXES = ['/preview/', '/devis/', '/internal/', '/proposition/', '/embed/'];
     for (const p of privatePaths) {
       // Retire un éventuel préfixe de locale (/en, /ar) : le tunnel devis est
       // privé dans toutes les langues — WJ38 a localisé /devis/mon-toit en
