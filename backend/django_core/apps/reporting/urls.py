@@ -19,6 +19,9 @@ from .saved_reports_api import SavedReportViewSet
 from .commercial import commercial_dashboard, win_loss_by_source
 from .dashboard_config_api import DashboardConfigViewSet
 from .sav_sla import sav_sla_insight
+from .approbations import (
+    approbations_en_attente, decider_approbation, decider_en_masse,
+)
 
 # N79 — CRUD des rapports sauvegardés (router DRF, ajouté en additif).
 # FG96 — CRUD + effective/ pour la config tableau de bord.
@@ -79,4 +82,11 @@ urlpatterns = [
     # XSAV8 — conformité SLA + KPI SAV avancés (backlog vieilli, préventif vs
     # correctif, ponctualité des visites, réouvertures si disponibles).
     path('insights/sav-sla/', sav_sla_insight, name='insights-sav-sla'),
+    # XKB1 — boîte d'approbations centralisée cross-app.
+    path('approbations-en-attente/', approbations_en_attente,
+         name='reporting-approbations-en-attente'),
+    path('approbations-en-attente/decider/', decider_approbation,
+         name='reporting-approbations-decider'),
+    path('approbations-en-attente/decider-en-masse/', decider_en_masse,
+         name='reporting-approbations-decider-masse'),
 ]

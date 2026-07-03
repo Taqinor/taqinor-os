@@ -1307,3 +1307,38 @@ def generer_handover_pack(installation, user=None):
     pack.save(update_fields=[
         'company', 'pieces', 'complet', 'date_generation', 'titre'])
     return pack
+
+
+# ── XKB1 — boîte d'approbations centralisée (écriture cross-app) ─────────────
+
+class DecisionError(Exception):
+    """Décision invalide sur une réquisition d'achat (statut non éligible)."""
+
+
+def decider_demande_achat(demande_achat, *, approuver, user, motif_refus=''):
+    """XKB1 — approuve/refuse une réquisition d'achat (FG310) depuis
+    l'agrégateur d'approbations cross-app (``apps/reporting``).
+
+    Réutilise EXACTEMENT les règles de ``DemandeAchatViewSet.approuver`` /
+    ``.refuser`` (seule une demande ``SOUMISE`` est décidable ; l'approbateur
+    et la date de décision sont posés côté serveur). Lève ``DecisionError`` si
+    la demande n'est pas au statut attendu."""
+    from django.utils import timezone
+    from .models import DemandeAchat
+
+    if demande_achat.statut != DemandeAchat.Statut.SOUMISE:
+        raise DecisionError(
+            "Seule une demande soumise peut être décidée.")
+
+    demande_achat.approuvee_par = user
+    demande_achat.date_decision = timezone.now()
+    if approuver:
+        demande_achat.statut = DemandeAchat.Statut.APPROUVEE
+        demande_achat.motif_refus = None
+    else:
+        demande_achat.statut = DemandeAchat.Statut.REFUSEE
+        demande_achat.motif_refus = (motif_refus or '').strip() or None
+    demande_achat.save(update_fields=[
+        'statut', 'approuvee_par', 'date_decision', 'motif_refus',
+        'date_modification'])
+    return demande_achat

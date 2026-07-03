@@ -293,6 +293,17 @@ def pending_demande_for_document(document):
             .first())
 
 
+def demandes_approbation_en_attente(company):
+    """XKB1 — Demandes d'approbation/revue EN ATTENTE d'une société
+    (QuerySet). Sélecteur company-wide utilisé par l'agrégateur d'approbations
+    cross-app (``apps/reporting``). Lecture seule, scopée société."""
+    from .models import APPROBATION_EN_ATTENTE
+    return (DemandeApprobation.objects
+            .filter(company=company, statut=APPROBATION_EN_ATTENTE)
+            .select_related('document', 'demandeur')
+            .order_by('created_at', 'id'))
+
+
 # ── GED19 — ACL par dossier/document (héritage + override) ──────────────
 
 def _folder_chain_ids(folder):

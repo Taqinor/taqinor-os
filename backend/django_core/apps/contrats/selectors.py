@@ -291,6 +291,18 @@ def etapes_approbation(contrat):
         contrat=contrat, company=contrat.company).order_by('niveau', 'id')
 
 
+def etapes_approbation_en_attente(company):
+    """XKB1 — étapes d'approbation EN ATTENTE de toute la société (QuerySet).
+
+    Sélecteur company-wide (distinct de ``etapes_approbation(contrat)``, borné
+    à un seul contrat) utilisé par l'agrégateur d'approbations cross-app
+    (``apps/reporting``). Lecture seule, scopée société."""
+    return (EtapeApprobation.objects
+            .filter(company=company, statut=EtapeApprobation.Statut.EN_ATTENTE)
+            .select_related('contrat', 'approbateur')
+            .order_by('niveau', 'id'))
+
+
 def regles_approbation(company):
     """Règles d'approbation ACTIVES d'une société (QuerySet ordonné).
 

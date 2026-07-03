@@ -1647,3 +1647,19 @@ def emplacement_a_decrementer_livraison(livraison):
     if livraison.mode_acheminement == Livraison.ModeAcheminement.DIRECT_SITE:
         return None
     return livraison.depot
+
+
+# ── XKB1 — boîte d'approbations centralisée (lecture cross-app) ──────────────
+
+def demandes_achat_en_attente(company):
+    """XKB1 — réquisitions d'achat (FG310) SOUMISES d'une société (QuerySet).
+
+    Sélecteur company-wide LECTURE SEULE utilisé par l'agrégateur
+    d'approbations cross-app (``apps/reporting``). « En attente » = statut
+    ``SOUMISE`` (seul statut approuvable, cf. ``DemandeAchatViewSet.approuver``).
+    """
+    from .models import DemandeAchat
+    return (DemandeAchat.objects
+            .filter(company=company, statut=DemandeAchat.Statut.SOUMISE)
+            .select_related('chantier', 'programme')
+            .order_by('date_besoin', 'id'))
