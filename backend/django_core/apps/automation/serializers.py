@@ -71,6 +71,8 @@ class ApprovalRequestTypeSerializer(serializers.ModelSerializer):
             'champs_requis', 'champs_optionnels', 'palier_approbateur',
             # ZCTR7 — min approbations / PJ obligatoire / config par champ.
             'min_approbations', 'piece_jointe_obligatoire', 'champs_config',
+            # ZCTR8 — ordre des approbateurs (séquentiel/parallèle).
+            'sequence_approbateurs',
             'date_creation', 'date_modification',
         ]
         read_only_fields = ['date_creation', 'date_modification']

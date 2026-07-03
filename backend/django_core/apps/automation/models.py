@@ -320,6 +320,11 @@ class ApprovalRequestType(models.Model):
         RESPONSABLE = 'responsable', 'Responsable (ou plus)'
         ADMIN = 'admin', 'Administrateur uniquement'
 
+    class SequenceApprobateurs(models.TextChoices):
+        # ZCTR8 — ordre des approbateurs quand min_approbations > 1.
+        PARALLELE = 'parallele', 'Parallèle (tous notifiés d’emblée)'
+        SEQUENTIEL = 'sequentiel', 'Séquentiel (rang par rang)'
+
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         related_name='approval_request_types')
@@ -333,6 +338,13 @@ class ApprovalRequestType(models.Model):
     palier_approbateur = models.CharField(
         max_length=20, choices=ApproverTier.choices,
         default=ApproverTier.ADMIN)
+
+    # ZCTR8 — mode d'ordonnancement des approbateurs. Rétrocompat : PARALLELE
+    # (défaut) = comportement XKB1/XKB2 inchangé (tous les approbateurs du
+    # palier voient la demande dès la soumission).
+    sequence_approbateurs = models.CharField(
+        max_length=12, choices=SequenceApprobateurs.choices,
+        default=SequenceApprobateurs.PARALLELE)
 
     # ZCTR7 — nombre minimum d'approbations FAVORABLES distinctes avant que la
     # demande passe APPROVED. Rétrocompat : 1 = comportement XKB2 inchangé
@@ -402,6 +414,12 @@ class ApprovalRequest(models.Model):
         PENDING = 'pending', 'En attente'
         APPROVED = 'approved', 'Approuvé'
         REJECTED = 'rejected', 'Rejeté'
+        # ZCTR8 — renvoyée à l'émetteur pour complément ; NI approuvée NI
+        # rejetée. Le demandeur peut re-soumettre (ré-éditer puis re-passer
+        # PENDING) — la ré-édition reste hors du périmètre serveur ici (le
+        # frontend rouvre un nouveau cycle en mettant à jour `payload` puis
+        # en appelant l'action dédiée `resoumettre`, voir services.py).
+        INFO_REQUESTED = 'info_requested', "Complément d'information demandé"
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
@@ -416,7 +434,7 @@ class ApprovalRequest(models.Model):
     payload = models.JSONField(default=dict, blank=True)
 
     status = models.CharField(
-        max_length=12, choices=Status.choices, default=Status.PENDING)
+        max_length=20, choices=Status.choices, default=Status.PENDING)
 
     decided_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,

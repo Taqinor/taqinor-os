@@ -1,15 +1,38 @@
-"""Services XKB2/XKB3/ZCTR7 — demandes d'approbation ad-hoc + délégation +
-options de catégorie (min approbations / PJ obligatoire / champs).
+"""Services XKB2/XKB3/ZCTR7/ZCTR8 — demandes d'approbation ad-hoc + délégation
++ options de catégorie + demande d'info + ordre séquentiel/parallèle.
 
 Toute la logique de validation/soumission des ``ApprovalRequest`` vit ici
 pour que les vues restent minces. Reste à l'intérieur de ``apps.automation`` ;
 utilise ``apps.records`` (app fondation, exemptée de la règle de frontière
-cross-app) directement pour les pièces jointes génériques.
+cross-app) directement pour les pièces jointes génériques. La notification du
+demandeur (ZCTR8) passe par ``apps.notifications.services.notify`` — best-
+effort : si l'événement n'est pas (encore) enregistré côté ``notifications``,
+l'appel no-op proprement (aucune exception), donc rien ne casse ici.
 """
+import logging
+
 from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
 
 from .models import ApprovalDecision, ApprovalDelegation, ApprovalRequest
+
+logger = logging.getLogger(__name__)
+
+# Clé d'événement notifications (ZCTR8). Voir la note de module : no-op sûr
+# tant que `notifications.EventType` ne la porte pas encore.
+NOTIFY_EVENT_INFO_REQUESTED = 'approval_info_requested'
+
+
+def _notify_best_effort(user, event_type, title, body='', company=None):
+    """Notifie ``user`` best-effort ; n'élève JAMAIS (voir docstring module)."""
+    if user is None:
+        return
+    try:
+        from apps.notifications.services import notify
+        notify(user, event_type, title, body=body, company=company)
+    except Exception:  # pragma: no cover - best-effort
+        logger.debug('automation: notification best-effort échouée',
+                     exc_info=True)
 
 
 class ApprovalError(Exception):
@@ -106,6 +129,13 @@ def _distinct_favorable_approvers(req):
     )
 
 
+def rank_of_next_approver(req):
+    """Rang (1-based) du PROCHAIN approbateur attendu — nombre de décisions
+    favorables déjà enregistrées + 1. Utilisé en mode SEQUENTIEL (ZCTR8) pour
+    déterminer qui notifier ensuite."""
+    return _distinct_favorable_approvers(req) + 1
+
+
 def decide_request(req, *, decider, approve, note=''):
     """Enregistre UNE décision d'approbateur (ZCTR7 : ``ApprovalDecision``),
     en posant automatiquement la mention « au nom de » (XKB3) si ``decider``
@@ -116,6 +146,12 @@ def decide_request(req, *, decider, approve, note=''):
     décisions FAVORABLES d'approbateurs DISTINCTS (rétrocompat : min=1 = un
     seul « approve » suffit, comportement XKB2 identique). Un REJECT clôt
     immédiatement la demande (une décision défavorable suffit).
+
+    ZCTR8 — en mode ``SEQUENTIEL``, chaque décision favorable fait AVANCER le
+    rang attendu : le prochain rang n'est notifié (best-effort) qu'APRÈS
+    cette décision. En mode ``PARALLELE`` (défaut), rien ne change
+    (comportement XKB1/XKB2 inchangé : tous notifiés dès la soumission par
+    l'appelant existant, hors du périmètre de cette fonction).
 
     YEVNT11 — SOD : le demandeur ne peut jamais approuver sa propre demande
     (override admin audité, journalisé par ``engine``). La garde SOD
@@ -172,4 +208,88 @@ def decide_request(req, *, decider, approve, note=''):
     # Sinon : décision favorable enregistrée mais le seuil n'est pas encore
     # atteint — la demande reste PENDING (visible pour les autres
     # approbateurs), sans lever d'erreur (l'appelant voit sa décision prise).
+    # ZCTR8 — mode séquentiel : le rang suivant vient de devenir éligible ;
+    # notifie best-effort (no-op sûr sans EventType enregistré) le prochain
+    # rang. En mode PARALLELE, rien de plus à faire ici (déjà notifiés).
+    is_sequential = (
+        req.request_type.sequence_approbateurs
+        == req.request_type.SequenceApprobateurs.SEQUENTIEL)
+    if req.status == ApprovalRequest.Status.PENDING and is_sequential:
+        notify_next_rank(req)
+    return req
+
+
+def notify_next_rank(req):
+    """ZCTR8 — notifie best-effort le PROCHAIN rang d'approbateurs (mode
+    séquentiel) : appelé après chaque décision favorable qui ne clôt pas
+    encore la demande. Sans destinataire nommé (le palier n'est pas une
+    liste d'utilisateurs identifiés dans XKB2), on notifie best-effort le
+    demandeur d'avancement — laisse la place à un futur ciblage nommé par
+    rang sans changer la signature."""
+    rank = rank_of_next_approver(req)
+    _notify_best_effort(
+        req.demandeur, NOTIFY_EVENT_INFO_REQUESTED,
+        title=f'Approbation « {req.request_type.nom} » — rang {rank}',
+        body='Une décision favorable vient de faire avancer votre demande '
+             'au rang suivant.',
+        company=req.company)
+
+
+# ── ZCTR8 — Demander un complément d'information ────────────────────────────
+
+def request_more_info(req, *, user, motif):
+    """Renvoie la demande à son émetteur SANS la rejeter (statut dédié
+    ``INFO_REQUESTED``) — motif obligatoire, journalisé (``decision_note``)
+    et notifié best-effort au demandeur.
+
+    ``user`` doit être un approbateur du palier (vérifié côté vue via
+    ``IsAdminOrResponsableTier``, comme approve/reject)."""
+    if req.status != ApprovalRequest.Status.PENDING:
+        raise ApprovalError('Décision déjà prise.')
+    motif = (motif or '').strip()
+    if not motif:
+        raise ApprovalError('Un motif est requis.')
+
+    req.status = ApprovalRequest.Status.INFO_REQUESTED
+    req.decided_by = user
+    req.decided_at = timezone.now()
+    req.decision_note = motif
+    req.save(update_fields=[
+        'status', 'decided_by', 'decided_at', 'decision_note'])
+
+    _notify_best_effort(
+        req.demandeur, NOTIFY_EVENT_INFO_REQUESTED,
+        title=f'Complément demandé — « {req.request_type.nom} »',
+        body=motif, company=req.company)
+    return req
+
+
+def resoumettre(req, *, demandeur, payload=None):
+    """Le demandeur ré-ouvre un cycle d'approbation après un
+    ``INFO_REQUESTED`` : met à jour ``payload`` (si fourni), revalide les
+    champs requis du type, repasse en PENDING, efface les anciennes
+    décisions (nouveau cycle — sinon un ancien « approve » compterait encore
+    pour un nouveau seuil ``min_approbations``)."""
+    if req.status != ApprovalRequest.Status.INFO_REQUESTED:
+        raise ApprovalError(
+            'Seule une demande « complément demandé » peut être resoumise.')
+    if req.demandeur_id != getattr(demandeur, 'pk', None):
+        raise ApprovalError(
+            'Seul le demandeur original peut resoumettre cette demande.')
+
+    if payload is not None:
+        req.payload = payload
+    errors = req.request_type.validate_payload(req.payload)
+    if errors:
+        raise ApprovalError(' '.join(errors))
+
+    req.decisions.all().delete()
+    req.status = ApprovalRequest.Status.PENDING
+    req.decided_by = None
+    req.decided_at = None
+    req.decision_note = ''
+    req.decided_on_behalf_of = None
+    req.save(update_fields=[
+        'payload', 'status', 'decided_by', 'decided_at', 'decision_note',
+        'decided_on_behalf_of'])
     return req

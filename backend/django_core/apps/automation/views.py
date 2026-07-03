@@ -233,7 +233,7 @@ class ApprovalRequestViewSet(TenantMixin, viewsets.ModelViewSet):
     ordering_fields = ['date_creation', 'status']
 
     def get_permissions(self):
-        if self.action in ('approve', 'reject'):
+        if self.action in ('approve', 'reject', 'demande_info'):
             return [IsAdminOrResponsableTier()]
         return [IsAnyRole()]
 
@@ -313,6 +313,32 @@ class ApprovalRequestViewSet(TenantMixin, viewsets.ModelViewSet):
                 note=request.data.get('note', '') or '')
         except engine.SodViolation as exc:
             return Response({'detail': str(exc)}, status=403)
+        except services.ApprovalError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(self.get_serializer(req).data)
+
+    @action(detail=True, methods=['post'], url_path='demande-info')
+    def demande_info(self, request, pk=None):
+        """ZCTR8 — demande un complément d'information (motif obligatoire) :
+        renvoie la demande à son émetteur SANS la rejeter."""
+        req = self.get_object()
+        try:
+            services.request_more_info(
+                req, user=request.user,
+                motif=request.data.get('motif', '') or '')
+        except services.ApprovalError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(self.get_serializer(req).data)
+
+    @action(detail=True, methods=['post'])
+    def resoumettre(self, request, pk=None):
+        """ZCTR8 — le demandeur ré-ouvre un cycle après un complément
+        d'information demandé (met à jour le payload le cas échéant)."""
+        req = self.get_object()
+        try:
+            services.resoumettre(
+                req, demandeur=request.user,
+                payload=request.data.get('payload'))
         except services.ApprovalError as exc:
             return Response({'detail': str(exc)}, status=400)
         return Response(self.get_serializer(req).data)

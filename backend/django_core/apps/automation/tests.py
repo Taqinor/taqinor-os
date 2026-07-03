@@ -1430,3 +1430,133 @@ class ZCtr7CategoryOptionsTests(TestCase):
             'payload': {'montant': '250'},
         }, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ZCTR8 — Demander un complément d'information + approbateurs
+# séquentiels/parallèles.
+
+class ZCtr8InfoRequestedTests(TestCase):
+    def setUp(self):
+        self.co = make_company('zctr8-a', 'ZCTR8 A')
+        self.employe = make_user(self.co, 'zctr8-emp', 'normal')
+        self.admin = make_user(self.co, 'zctr8-admin', 'admin')
+
+    def test_demande_info_returns_to_submitter_not_rejected(self):
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Note de frais', enabled=True)
+        req = ApprovalRequest.objects.create(
+            company=self.co, request_type=req_type,
+            demandeur=self.employe, payload={})
+        api = auth(self.admin)
+        resp = api.post(
+            f'/api/django/automation/approval-requests/{req.pk}/demande-info/',
+            {'motif': 'Merci de préciser le montant exact.'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        req.refresh_from_db()
+        self.assertEqual(req.status, ApprovalRequest.Status.INFO_REQUESTED)
+        self.assertIn('montant exact', req.decision_note)
+
+    def test_demande_info_requires_motif(self):
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Note de frais', enabled=True)
+        req = ApprovalRequest.objects.create(
+            company=self.co, request_type=req_type,
+            demandeur=self.employe, payload={})
+        api = auth(self.admin)
+        resp = api.post(
+            f'/api/django/automation/approval-requests/{req.pk}/demande-info/',
+            {'motif': '   '}, format='json')
+        self.assertEqual(resp.status_code, 400)
+        req.refresh_from_db()
+        self.assertEqual(req.status, ApprovalRequest.Status.PENDING)
+
+    def test_employee_cannot_request_info(self):
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Note de frais', enabled=True)
+        req = ApprovalRequest.objects.create(
+            company=self.co, request_type=req_type,
+            demandeur=self.employe, payload={})
+        other_employee = make_user(self.co, 'zctr8-emp2', 'normal')
+        api = auth(other_employee)
+        resp = api.post(
+            f'/api/django/automation/approval-requests/{req.pk}/demande-info/',
+            {'motif': 'x'}, format='json')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_resubmit_reopens_cycle(self):
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Note de frais', enabled=True,
+            champs_requis=['montant'])
+        req = ApprovalRequest.objects.create(
+            company=self.co, request_type=req_type,
+            demandeur=self.employe, payload={'montant': '100'},
+            status=ApprovalRequest.Status.INFO_REQUESTED,
+            decision_note='Précisez le montant.')
+        api = auth(self.employe)
+        resp = api.post(
+            f'/api/django/automation/approval-requests/{req.pk}/resoumettre/',
+            {'payload': {'montant': '500'}}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        req.refresh_from_db()
+        self.assertEqual(req.status, ApprovalRequest.Status.PENDING)
+        self.assertEqual(req.payload['montant'], '500')
+
+    def test_resubmit_by_someone_else_denied(self):
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Note de frais', enabled=True)
+        req = ApprovalRequest.objects.create(
+            company=self.co, request_type=req_type,
+            demandeur=self.employe, payload={},
+            status=ApprovalRequest.Status.INFO_REQUESTED)
+        api = auth(self.admin)
+        resp = api.post(
+            f'/api/django/automation/approval-requests/{req.pk}/resoumettre/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_sequential_mode_default_is_parallele(self):
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Achat', enabled=True)
+        self.assertEqual(
+            req_type.sequence_approbateurs,
+            ApprovalRequestType.SequenceApprobateurs.PARALLELE)
+
+    def test_sequential_mode_does_not_change_parallel_behaviour(self):
+        """Rétrocompat : mode parallèle (défaut) = comportement XKB1/XKB2 :
+        une décision suffit pour clore (min_approbations=1 par défaut)."""
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Achat', enabled=True,
+            sequence_approbateurs=(
+                ApprovalRequestType.SequenceApprobateurs.PARALLELE))
+        req = ApprovalRequest.objects.create(
+            company=self.co, request_type=req_type,
+            demandeur=self.employe, payload={})
+        api = auth(self.admin)
+        resp = api.post(
+            f'/api/django/automation/approval-requests/{req.pk}/approve/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        req.refresh_from_db()
+        self.assertEqual(req.status, ApprovalRequest.Status.APPROVED)
+
+    def test_sequential_mode_notifies_next_rank_after_favorable_decision(self):
+        from apps.automation import services
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Achat', enabled=True, min_approbations=2,
+            sequence_approbateurs=(
+                ApprovalRequestType.SequenceApprobateurs.SEQUENTIEL))
+        req = ApprovalRequest.objects.create(
+            company=self.co, request_type=req_type,
+            demandeur=self.employe, payload={})
+        self.assertEqual(services.rank_of_next_approver(req), 1)
+        api = auth(self.admin)
+        resp = api.post(
+            f'/api/django/automation/approval-requests/{req.pk}/approve/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        req.refresh_from_db()
+        # Une seule décision favorable sur seuil=2 : toujours PENDING, le
+        # rang suivant (2) est désormais celui attendu.
+        self.assertEqual(req.status, ApprovalRequest.Status.PENDING)
+        self.assertEqual(services.rank_of_next_approver(req), 2)
