@@ -119,6 +119,20 @@ class OrdreAssemblage(models.Model):
     quantite_produite = models.PositiveIntegerField(null=True, blank=True)
     stock_mouvemente = models.BooleanField(default=False)
 
+    # XMFG3 — assembler-à-la-commande : liens optionnels vers le devis source
+    # (string-FK `ventes.Devis`) et le chantier (same-app `Installation`).
+    # `devis` sert à l'idempotence de la création (get_or_create par
+    # devis+kit) ; `chantier` permet au coût du chantier lié de VOIR l'ordre
+    # (lecture seule).
+    devis = models.ForeignKey(
+        'ventes.Devis', on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='installations_ordres_assemblage')
+    chantier = models.ForeignKey(
+        'Installation', on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='ordres_assemblage')
+
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True,
@@ -136,6 +150,7 @@ class OrdreAssemblage(models.Model):
                          name='idx_asm_co_statut'),
             models.Index(fields=['company', 'kit'],
                          name='idx_asm_co_kit'),
+            models.Index(fields=['devis', 'kit'], name='idx_asm_devis_kit'),
         ]
 
     def __str__(self):

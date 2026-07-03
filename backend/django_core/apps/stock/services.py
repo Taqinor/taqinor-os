@@ -1078,9 +1078,14 @@ def produits_a_reapprovisionner(company):
     fournisseur le moins cher (PrixFournisseur). INTERNE.
 
     Chaque item : {produit_id, nom, quantite_stock, seuil_alerte,
-    quantite_suggere, fournisseur_id, fournisseur_nom, prix_achat}.
+    quantite_suggere, fournisseur_id, fournisseur_nom, prix_achat,
+    action, kit_id}. ``action`` = 'assembler' (kit_id renseigné) quand le
+    produit sous seuil est le ``produit_compose`` d'un kit ACTIF
+    (`installations.Kit`, XMFG3) — la suggestion devient « assembler N »
+    plutôt qu'un bon de commande fournisseur ; sinon 'acheter'.
     """
     from .models import Produit, PrixFournisseur
+    from apps.installations.selectors import kit_map_for_produits_composes
 
     qs = (Produit.objects
           .filter(company=company, is_archived=False)
@@ -1088,8 +1093,12 @@ def produits_a_reapprovisionner(company):
           .filter(quantite_stock__lte=models.F('seuil_alerte'))
           .prefetch_related('prix_fournisseurs__fournisseur'))
 
+    produits = list(qs)
+    kit_map = kit_map_for_produits_composes(
+        company, [p.id for p in produits])
+
     result = []
-    for p in qs:
+    for p in produits:
         # Fournisseur le moins cher parmi les prix enregistrés.
         best = (PrixFournisseur.objects
                 .filter(company=company, produit=p)
@@ -1097,6 +1106,7 @@ def produits_a_reapprovisionner(company):
                 .order_by('prix_achat')
                 .first())
         qte_suggere = p.quantite_reappro_cible if p.quantite_reappro_cible else (p.seuil_alerte * 2)
+        kit_id = kit_map.get(p.id)
         result.append({
             'produit_id': p.id,
             'nom': p.nom,
@@ -1107,6 +1117,8 @@ def produits_a_reapprovisionner(company):
             'fournisseur_id': best.fournisseur_id if best else None,
             'fournisseur_nom': best.fournisseur.nom if best else None,
             'prix_achat': str(best.prix_achat) if best else None,
+            'action': 'assembler' if kit_id else 'acheter',
+            'kit_id': kit_id,
         })
     return result
 

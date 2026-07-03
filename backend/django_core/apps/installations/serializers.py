@@ -2101,6 +2101,7 @@ class OrdreAssemblageSerializer(serializers.ModelSerializer):
             'statut_display', 'note', 'date_terminaison',
             'emplacement_source', 'emplacement_destination',
             'quantite_produite', 'stock_mouvemente',
+            'devis', 'chantier',
             'created_by', 'date_creation', 'date_modification',
         ]
         read_only_fields = [

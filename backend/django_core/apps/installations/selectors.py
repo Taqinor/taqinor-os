@@ -119,6 +119,23 @@ def update_installation_lead(absorbed_lead, survivor_lead):
         lead=survivor_lead)
 
 
+# ── XMFG3 — Assembler-à-la-commande : kit actif par produit composite ────────
+
+def kit_map_for_produits_composes(company, produit_ids):
+    """XMFG3 — map {produit_id: kit_id} pour les produits qui sont l'article
+    composite (`produit_compose`) d'un KIT ACTIF de cette société. Point
+    d'entrée cross-app pour `stock` (réappro FG54/FG364 : distinguer
+    « acheter » de « assembler N »). Lecture seule."""
+    from .models import Kit
+    if not produit_ids:
+        return {}
+    rows = (Kit.objects
+            .filter(company=company, active=True,
+                    produit_compose_id__in=produit_ids)
+            .values_list('produit_compose_id', 'id'))
+    return {pid: kid for pid, kid in rows}
+
+
 def _active_reservations():
     from .models import StockReservation
     return StockReservation.objects.filter(active=True, consomme=False)

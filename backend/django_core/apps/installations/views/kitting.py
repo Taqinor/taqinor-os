@@ -18,6 +18,7 @@ from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 
 from apps.ventes.utils.references import create_with_reference
+from apps.ventes.selectors import get_devis_by_pk
 
 from ..models import Kit, KitComposant, OrdreAssemblage
 from ..serializers import (
@@ -167,6 +168,57 @@ class OrdreAssemblageViewSet(TenantMixin, viewsets.ModelViewSet):
     def perform_update(self, serializer):
         self._check_tenant(serializer)
         serializer.save(company=self.request.user.company)
+
+    @action(detail=False, methods=['post'], url_path='depuis-devis')
+    def depuis_devis(self, request):
+        """XMFG3 — assembler-à-la-commande : pour un devis donné, détecte les
+        lignes dont le produit est le `produit_compose` d'un kit actif et crée
+        (idempotent, get_or_create par devis+kit) les ordres dimensionnés aux
+        quantités des lignes. Renvoie la liste des ordres (créés ou déjà
+        existants)."""
+        company = self.request.user.company
+        devis_id = request.data.get('devis')
+        if not devis_id:
+            raise ValidationError({'devis': 'Devis requis.'})
+        devis = get_devis_by_pk(devis_id)
+        if devis is None or devis.company_id != getattr(company, 'id', None):
+            raise ValidationError({'devis': 'Devis inconnu pour cette société.'})
+
+        produit_ids = [
+            ligne.produit_id for ligne in devis.lignes.all()
+            if ligne.produit_id is not None]
+        from ..selectors import kit_map_for_produits_composes
+        kit_map = kit_map_for_produits_composes(company, produit_ids)
+        if not kit_map:
+            return Response([])
+
+        kits_by_id = {k.id: k for k in Kit.objects.filter(
+            id__in=set(kit_map.values()), company=company)}
+
+        ordres = []
+        for ligne in devis.lignes.all():
+            kit_id = kit_map.get(ligne.produit_id)
+            if kit_id is None:
+                continue
+            kit = kits_by_id.get(kit_id)
+            if kit is None:
+                continue
+            quantite = int(ligne.quantite) if ligne.quantite else 1
+            ordre = OrdreAssemblage.objects.filter(
+                company=company, devis=devis, kit=kit).first()
+            if ordre is None:
+                def _save(reference, kit=kit, quantite=quantite):
+                    return OrdreAssemblage.objects.create(
+                        company=company, kit=kit, quantite=quantite,
+                        devis=devis, created_by=request.user,
+                        reference=reference)
+                ordre = create_with_reference(
+                    OrdreAssemblage, 'ASM', company, _save)
+                seed_reservations_assemblage(ordre)
+            ordres.append(ordre)
+        return Response(
+            OrdreAssemblageSerializer(ordres, many=True).data,
+            status=201 if ordres else 200)
 
     @action(detail=True, methods=['get'])
     def disponibilite(self, request, pk=None):
