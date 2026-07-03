@@ -132,6 +132,98 @@ def _trigger_facture_overdue(company):
         return 0
 
 
+# ── DATE_ECHEANCE_CHAMP (XPLT3) ───────────────────────────────────────────────
+
+def _trigger_date_echeance_champ(company):
+    """Évalue le déclencheur générique « champ date ± N jours » (XPLT3) pour
+    chaque règle DATE_ECHEANCE_CHAMP activée de la société.
+
+    ``trigger_config`` attendu : {'model': 'ventes.devis',
+    'champ': 'date_validite', 'offset_jours': -3}. Un ``offset_jours``
+    négatif signifie « N jours AVANT l'échéance » (le cas le plus courant :
+    relancer avant l'expiration) ; positif = après.
+
+    IDEMPOTENCE : un marqueur ``AutomationRun`` (message préfixé par la date
+    d'échéance exacte) est vérifié avant d'évaluer — re-lancer la tâche le
+    même jour pour la même règle+objet+échéance ne tire jamais deux fois.
+    """
+    try:
+        from django.apps import apps as django_apps
+        from django.utils import timezone
+        from apps.automation.engine import evaluate
+        from apps.automation.models import (
+            AutomationRule, AutomationRun, DATE_TRIGGER_TARGETS, TriggerType,
+        )
+
+        today = timezone.localdate()
+        count = 0
+        rules = AutomationRule.objects.filter(
+            company=company, enabled=True,
+            trigger_type=TriggerType.DATE_ECHEANCE_CHAMP)
+        for rule in rules:
+            cfg = rule.trigger_config or {}
+            model_label = cfg.get('model', '')
+            champ = cfg.get('champ')
+            try:
+                offset = int(cfg.get('offset_jours', 0))
+            except (TypeError, ValueError):
+                continue
+            try:
+                app_label, model_name = str(model_label).split('.', 1)
+            except ValueError:
+                continue
+            allowed_fields = DATE_TRIGGER_TARGETS.get(
+                (app_label, model_name))
+            if not allowed_fields or champ not in allowed_fields:
+                continue  # whitelist fermée : modèle/champ non autorisé
+            model = django_apps.get_model(app_label, model_name)
+            if model is None:
+                continue
+            target_date = today + timedelta(days=offset)
+            filter_kwargs = {'company': company, f'{champ}': target_date}
+            try:
+                qs = model.objects.filter(**filter_kwargs)
+            except Exception:  # pragma: no cover - champ FK-incompatible
+                continue
+            for obj in qs:
+                marker = (
+                    f'XPLT3:{rule.pk}:{model_label}:{obj.pk}:'
+                    f'{target_date.isoformat()}')
+                already = AutomationRun.objects.filter(
+                    company=company, rule=rule,
+                    message__startswith=marker).exists()
+                if already:
+                    continue
+                try:
+                    evaluate(
+                        TriggerType.DATE_ECHEANCE_CHAMP, obj, company,
+                        context={
+                            'model': model_label, 'champ': champ,
+                            'offset_jours': offset,
+                            'echeance': target_date.isoformat(),
+                        })
+                    # Journalise le marqueur d'idempotence (même si
+                    # `evaluate` a déjà journalisé un run pour cette règle —
+                    # on ajoute une entrée dédiée pour ne jamais confondre le
+                    # marqueur avec un run ordinaire d'une autre exécution).
+                    AutomationRun.objects.create(
+                        company=company, rule=rule,
+                        target_model=model_label, target_id=obj.pk,
+                        status=AutomationRun.Status.NOOP,
+                        message=f'{marker} — marqueur idempotence XPLT3.')
+                    count += 1
+                except Exception:  # pragma: no cover
+                    logger.warning(
+                        'automation.beat: date_echeance_champ %s/%s échoué',
+                        rule.pk, obj.pk, exc_info=True)
+        return count
+    except Exception:  # pragma: no cover
+        logger.warning(
+            'automation.beat: date_echeance_champ société %s échouée',
+            getattr(company, 'pk', None), exc_info=True)
+        return 0
+
+
 # ── Tâche Celery Beat ─────────────────────────────────────────────────────────
 
 @shared_task(name='automation.time_triggers_daily')
@@ -148,6 +240,7 @@ def time_triggers_daily():
             total += _trigger_warranty_expiring(company)
             total += _trigger_maintenance_due(company)
             total += _trigger_facture_overdue(company)
+            total += _trigger_date_echeance_champ(company)
         except Exception:  # pragma: no cover
             logger.warning('automation.beat: société %s échouée',
                            getattr(company, 'pk', None), exc_info=True)

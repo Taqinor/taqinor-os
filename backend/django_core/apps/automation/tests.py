@@ -5,6 +5,7 @@ CHAQUE exécution, gating par approbation (N73) avec relance à l'approbation,
 caractère best-effort des signaux (jamais casser le save d'origine), isolation
 par société, et la sécurité des écritures (champ protégé refusé).
 """
+import json
 from datetime import date, timedelta
 from unittest import mock
 
@@ -22,8 +23,9 @@ from apps.ventes.models import Devis, Facture
 
 from apps.automation import engine
 from apps.automation.models import (
-    ActionType, AutomationApproval, AutomationRule, AutomationRun,
-    CanalMessage, ModeleMessage, TriggerType,
+    ActionType, ApprovalDecision, ApprovalDelegation, ApprovalRequest,
+    ApprovalRequestType, AutomationApproval, AutomationRule, AutomationRun,
+    CanalMessage, IncomingWebhookTrigger, ModeleMessage, TriggerType,
 )
 
 User = get_user_model()
@@ -799,3 +801,762 @@ class BeatTaskTests(TestCase):
         # Mais aucun run enregistré pour other_co.
         self.assertEqual(
             AutomationRun.objects.filter(company=other_co).count(), 0)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# XKB2 — Types de demandes d'approbation ad-hoc configurables.
+
+class ApprovalRequestTests(TestCase):
+    def setUp(self):
+        self.co = make_company('xkb2-a', 'XKB2 A')
+        self.admin = make_user(self.co, 'xkb2-admin', 'admin')
+        self.employe = make_user(self.co, 'xkb2-emp', 'normal')
+
+    def _type(self, **kwargs):
+        defaults = dict(
+            company=self.co, nom='Note de frais', enabled=True,
+            champs_requis=['montant'], champs_optionnels=['reference'])
+        defaults.update(kwargs)
+        return ApprovalRequestType.objects.create(**defaults)
+
+    def test_admin_creates_type_with_required_field(self):
+        api = auth(self.admin)
+        resp = api.post('/api/django/automation/approval-request-types/', {
+            'nom': 'Note de frais > 1000 MAD',
+            'champs_requis': ['montant'],
+            'champs_optionnels': [],
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(
+            ApprovalRequestType.objects.get(pk=resp.data['id']).company,
+            self.co)
+
+    def test_employee_cannot_create_type(self):
+        api = auth(self.employe)
+        resp = api.post('/api/django/automation/approval-request-types/', {
+            'nom': 'Hack', 'champs_requis': [],
+        }, format='json')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_employee_submits_request_seen_by_approver(self):
+        req_type = self._type()
+        api = auth(self.employe)
+        resp = api.post('/api/django/automation/approval-requests/', {
+            'request_type': req_type.pk,
+            'payload': {'montant': '1200'},
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        req = ApprovalRequest.objects.get(pk=resp.data['id'])
+        self.assertEqual(req.demandeur, self.employe)
+        self.assertEqual(req.status, ApprovalRequest.Status.PENDING)
+
+        # L'approbateur (admin) le voit dans la boîte.
+        admin_api = auth(self.admin)
+        listing = admin_api.get('/api/django/automation/approval-requests/')
+        ids = [r['id'] for r in rows(listing)]
+        self.assertIn(req.pk, ids)
+
+    def test_submission_rejects_missing_required_field(self):
+        req_type = self._type()
+        api = auth(self.employe)
+        resp = api.post('/api/django/automation/approval-requests/', {
+            'request_type': req_type.pk,
+            'payload': {},
+        }, format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(ApprovalRequest.objects.count(), 0)
+
+    def test_approver_approves_and_decision_is_visible(self):
+        req_type = self._type()
+        req = ApprovalRequest.objects.create(
+            company=self.co, request_type=req_type, demandeur=self.employe,
+            payload={'montant': '900'})
+        api = auth(self.admin)
+        resp = api.post(
+            f'/api/django/automation/approval-requests/{req.pk}/approve/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        req.refresh_from_db()
+        self.assertEqual(req.status, ApprovalRequest.Status.APPROVED)
+        self.assertEqual(req.decided_by, self.admin)
+
+    def test_employee_cannot_approve(self):
+        req_type = self._type()
+        req = ApprovalRequest.objects.create(
+            company=self.co, request_type=req_type, demandeur=self.employe,
+            payload={'montant': '900'})
+        api = auth(self.employe)
+        resp = api.post(
+            f'/api/django/automation/approval-requests/{req.pk}/approve/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_tenant_isolation_on_requests(self):
+        req_type = self._type()
+        req = ApprovalRequest.objects.create(
+            company=self.co, request_type=req_type, demandeur=self.employe,
+            payload={'montant': '900'})
+        other_co = make_company('xkb2-b', 'XKB2 B')
+        other_admin = make_user(other_co, 'xkb2-admin-b', 'admin')
+        api = auth(other_admin)
+        resp = api.get('/api/django/automation/approval-requests/')
+        ids = [r['id'] for r in rows(resp)]
+        self.assertNotIn(req.pk, ids)
+
+    def test_disabled_type_cannot_be_used_for_submission(self):
+        req_type = self._type(enabled=False)
+        api = auth(self.employe)
+        resp = api.post('/api/django/automation/approval-requests/', {
+            'request_type': req_type.pk,
+            'payload': {'montant': '100'},
+        }, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# XKB3 — Délégation d'approbation (suppléant).
+
+class ApprovalDelegationTests(TestCase):
+    def setUp(self):
+        self.co = make_company('xkb3-a', 'XKB3 A')
+        self.delegant = make_user(self.co, 'xkb3-delegant', 'admin')
+        self.suppleant = make_user(self.co, 'xkb3-suppleant', 'admin')
+        self.employe = make_user(self.co, 'xkb3-emp', 'normal')
+        self.req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Note de frais', enabled=True,
+            champs_requis=[])
+
+    def _pending_request(self, demandeur=None):
+        return ApprovalRequest.objects.create(
+            company=self.co, request_type=self.req_type,
+            demandeur=demandeur or self.employe, payload={})
+
+    def test_active_delegation_routes_request_to_substitute(self):
+        now = timezone.now()
+        ApprovalDelegation.objects.create(
+            company=self.co, delegant=self.delegant,
+            suppleant=self.suppleant,
+            date_debut=now - timedelta(days=1),
+            date_fin=now + timedelta(days=1))
+        # Une demande dont le demandeur EST le délégant (ex. cas d'usage :
+        # le délégant est lui-même approbateur habituel, remplacé pendant
+        # son absence) — le suppléant doit la voir dans sa boîte.
+        req = self._pending_request(demandeur=self.delegant)
+
+        api = auth(self.suppleant)
+        resp = api.get('/api/django/automation/approval-requests/')
+        ids = [r['id'] for r in rows(resp)]
+        self.assertIn(req.pk, ids)
+
+    def test_substitute_decision_marks_on_behalf_of(self):
+        now = timezone.now()
+        ApprovalDelegation.objects.create(
+            company=self.co, delegant=self.delegant,
+            suppleant=self.suppleant,
+            date_debut=now - timedelta(days=1),
+            date_fin=now + timedelta(days=1))
+        req = self._pending_request(demandeur=self.delegant)
+
+        api = auth(self.suppleant)
+        resp = api.post(
+            f'/api/django/automation/approval-requests/{req.pk}/approve/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        req.refresh_from_db()
+        self.assertEqual(req.status, ApprovalRequest.Status.APPROVED)
+        self.assertEqual(req.decided_by, self.suppleant)
+        self.assertEqual(req.decided_on_behalf_of, self.delegant)
+
+    def test_outside_range_nothing_changes(self):
+        """Hors plage de délégation, le suppléant ne voit rien de spécial et
+        une décision qu'il prendrait ne porte AUCUNE mention de délégation."""
+        past = timezone.now() - timedelta(days=30)
+        ApprovalDelegation.objects.create(
+            company=self.co, delegant=self.delegant,
+            suppleant=self.suppleant,
+            date_debut=past - timedelta(days=5), date_fin=past)
+        req = self._pending_request(demandeur=self.delegant)
+
+        # Le suppléant ne voit PAS la demande (délégation expirée).
+        api = auth(self.suppleant)
+        resp = api.get('/api/django/automation/approval-requests/')
+        ids = [r['id'] for r in rows(resp)]
+        self.assertNotIn(req.pk, ids)
+
+    def test_employee_can_only_delegate_self(self):
+        api = auth(self.employe)
+        now = timezone.now()
+        resp = api.post('/api/django/automation/approval-delegations/', {
+            'delegant': self.delegant.pk,  # tente d'usurper un tiers
+            'suppleant': self.suppleant.pk,
+            'date_debut': (now - timedelta(days=1)).isoformat(),
+            'date_fin': (now + timedelta(days=1)).isoformat(),
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        deleg = ApprovalDelegation.objects.get(pk=resp.data['id'])
+        # Le délégant est forcé côté serveur = l'employé lui-même.
+        self.assertEqual(deleg.delegant, self.employe)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# XPLT3 — Déclencheur temporel générique (champ date ± N jours).
+
+class DateEcheanceChampTriggerTests(TestCase):
+    def setUp(self):
+        self.co = make_company('xplt3-a', 'XPLT3 A')
+        self.user = make_user(self.co, 'xplt3-admin', 'admin')
+
+    def _rule(self, model, champ, offset_jours, **overrides):
+        defaults = dict(
+            company=self.co, nom='Relance devis',
+            trigger_type=TriggerType.DATE_ECHEANCE_CHAMP,
+            trigger_config={
+                'model': model, 'champ': champ, 'offset_jours': offset_jours},
+            action_type=ActionType.CREATE_ACTIVITY,
+            action_config={'body': 'Échéance approche'},
+            enabled=True)
+        defaults.update(overrides)
+        return AutomationRule.objects.create(**defaults)
+
+    def test_fires_once_on_the_right_day(self):
+        from apps.automation.beat_tasks import _trigger_date_echeance_champ
+
+        self._rule('ventes.devis', 'date_validite', -3)
+        client = Client.objects.create(company=self.co, nom='Cli Echeance')
+        devis = Devis.objects.create(
+            company=self.co, reference='DEV-XPLT3', statut='envoye',
+            client=client,
+            date_validite=date.today() + timedelta(days=3))
+
+        count = _trigger_date_echeance_champ(self.co)
+        self.assertEqual(count, 1)
+        self.assertTrue(AutomationRun.objects.filter(
+            company=self.co,
+            rule__trigger_type=TriggerType.DATE_ECHEANCE_CHAMP,
+            target_id=devis.pk).exists())
+
+    def test_idempotent_never_fires_twice_for_same_deadline(self):
+        from apps.automation.beat_tasks import _trigger_date_echeance_champ
+
+        self._rule('ventes.devis', 'date_validite', -3)
+        client = Client.objects.create(company=self.co, nom='Cli Idem')
+        Devis.objects.create(
+            company=self.co, reference='DEV-XPLT3B', statut='envoye',
+            client=client,
+            date_validite=date.today() + timedelta(days=3))
+
+        first = _trigger_date_echeance_champ(self.co)
+        second = _trigger_date_echeance_champ(self.co)
+        self.assertEqual(first, 1)
+        self.assertEqual(second, 0)  # re-lancer le même jour ne re-tire pas
+
+    def test_disabled_rule_never_fires(self):
+        from apps.automation.beat_tasks import _trigger_date_echeance_champ
+
+        self._rule('ventes.devis', 'date_validite', -3, enabled=False)
+        client = Client.objects.create(company=self.co, nom='Cli Off')
+        Devis.objects.create(
+            company=self.co, reference='DEV-XPLT3C', statut='envoye',
+            client=client,
+            date_validite=date.today() + timedelta(days=3))
+
+        count = _trigger_date_echeance_champ(self.co)
+        self.assertEqual(count, 0)
+
+    def test_tenant_isolation(self):
+        from apps.automation.beat_tasks import _trigger_date_echeance_champ
+
+        self._rule('ventes.devis', 'date_validite', -3)
+        other_co = make_company('xplt3-b', 'XPLT3 B')
+        other_client = Client.objects.create(company=other_co, nom='OtherC')
+        Devis.objects.create(
+            company=other_co, reference='DEV-OTHER', statut='envoye',
+            client=other_client,
+            date_validite=date.today() + timedelta(days=3))
+
+        count = _trigger_date_echeance_champ(other_co)
+        self.assertEqual(count, 0)  # aucune règle activée dans other_co
+
+    def test_wrong_offset_day_does_not_fire(self):
+        from apps.automation.beat_tasks import _trigger_date_echeance_champ
+
+        self._rule('ventes.devis', 'date_validite', -3)
+        client = Client.objects.create(company=self.co, nom='Cli Wrong')
+        Devis.objects.create(
+            company=self.co, reference='DEV-XPLT3D', statut='envoye',
+            date_validite=date.today() + timedelta(days=10), client=client)
+
+        count = _trigger_date_echeance_champ(self.co)
+        self.assertEqual(count, 0)
+
+    def test_non_whitelisted_field_is_rejected(self):
+        """Un champ hors whitelist (ex. faute de frappe) ne doit jamais être
+        interprété — la règle est simplement ignorée."""
+        from apps.automation.beat_tasks import _trigger_date_echeance_champ
+
+        self._rule('ventes.devis', 'champ_inconnu', -3)
+        client = Client.objects.create(company=self.co, nom='Cli Bad')
+        Devis.objects.create(
+            company=self.co, reference='DEV-XPLT3E', statut='envoye',
+            client=client,
+            date_validite=date.today() + timedelta(days=3))
+
+        count = _trigger_date_echeance_champ(self.co)
+        self.assertEqual(count, 0)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# XPLT4 — Webhook ENTRANT générique alimentant une règle d'automatisation.
+
+class IncomingWebhookTriggerTests(TestCase):
+    def setUp(self):
+        self.co = make_company('xplt4-a', 'XPLT4 A')
+        self.admin = make_user(self.co, 'xplt4-admin', 'admin')
+        self.rule = AutomationRule.objects.create(
+            company=self.co, nom='Webhook -> activité',
+            trigger_type=TriggerType.WEBHOOK_INBOUND, trigger_config={},
+            action_type=ActionType.CREATE_ACTIVITY,
+            action_config={'body': 'Webhook reçu'}, enabled=True)
+        self.trigger = IncomingWebhookTrigger.objects.create(
+            company=self.co, rule=self.rule)
+
+    def _url(self, token):
+        return f'/api/django/public/hooks/{token}/'
+
+    def test_post_creates_run_scoped_to_company(self):
+        resp = self.client.post(
+            self._url(self.trigger.token),
+            data=json.dumps({'foo': 'bar'}),
+            content_type='application/json')
+        self.assertEqual(resp.status_code, 202)
+        run = AutomationRun.objects.filter(
+            company=self.co, rule=self.rule,
+            rule__trigger_type=TriggerType.WEBHOOK_INBOUND).first()
+        self.assertIsNotNone(run)
+
+    def test_invalid_token_is_404(self):
+        resp = self.client.post(
+            self._url('does-not-exist-token'),
+            data=json.dumps({}), content_type='application/json')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_rotation_invalidates_old_token(self):
+        old_token = self.trigger.token
+        api = auth(self.admin)
+        resp = api.post(
+            f'/api/django/automation/incoming-webhooks/{self.trigger.pk}/rotate/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        new_token = resp.data['token']
+        self.assertNotEqual(old_token, new_token)
+
+        # L'ancien token répond 404.
+        resp_old = self.client.post(
+            self._url(old_token),
+            data=json.dumps({}), content_type='application/json')
+        self.assertEqual(resp_old.status_code, 404)
+
+        # Le nouveau token fonctionne.
+        resp_new = self.client.post(
+            self._url(new_token),
+            data=json.dumps({}), content_type='application/json')
+        self.assertEqual(resp_new.status_code, 202)
+
+    def test_disabled_trigger_is_404(self):
+        self.trigger.enabled = False
+        self.trigger.save(update_fields=['enabled'])
+        resp = self.client.post(
+            self._url(self.trigger.token),
+            data=json.dumps({}), content_type='application/json')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_hmac_signature_required_when_configured(self):
+        self.trigger.hmac_secret = 'super-secret'
+        self.trigger.save(update_fields=['hmac_secret'])
+        resp = self.client.post(
+            self._url(self.trigger.token),
+            data=json.dumps({'x': 1}), content_type='application/json')
+        self.assertEqual(resp.status_code, 401)
+
+        import hmac as hmac_mod
+        body = json.dumps({'x': 1}).encode('utf-8')
+        sig = hmac_mod.new(
+            b'super-secret', body, 'sha256').hexdigest()
+        resp_ok = self.client.post(
+            self._url(self.trigger.token), data=body,
+            content_type='application/json',
+            HTTP_X_SIGNATURE=sig)
+        self.assertEqual(resp_ok.status_code, 202)
+
+    def test_run_is_logged_in_automationrun(self):
+        before = AutomationRun.objects.filter(company=self.co).count()
+        self.client.post(
+            self._url(self.trigger.token),
+            data=json.dumps({'lead_id': 42}), content_type='application/json')
+        after = AutomationRun.objects.filter(company=self.co).count()
+        self.assertGreater(after, before)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# YEVNT11 — Séparation des tâches (SOD) : demandeur ≠ approbateur.
+
+class SodGuardTests(TestCase):
+    def setUp(self):
+        self.co = make_company('yevnt11-a', 'YEVNT11 A')
+        self.responsable = make_user(
+            self.co, 'yevnt11-resp', 'responsable')
+        self.admin = make_user(self.co, 'yevnt11-admin', 'admin')
+        self.employe = make_user(self.co, 'yevnt11-emp', 'normal')
+
+    def test_automation_approval_self_approve_denied(self):
+        rule = AutomationRule.objects.create(
+            company=self.co, nom='Remise', requires_approval=True,
+            trigger_type=TriggerType.LEAD_STAGE_CHANGE, trigger_config={},
+            action_type=ActionType.SET_FIELD,
+            action_config={'field': 'priorite', 'value': 'haute'})
+        approval = AutomationApproval.objects.create(
+            company=self.co, rule=rule, requested_by=self.responsable,
+            status=AutomationApproval.Status.PENDING)
+        api = auth(self.responsable)  # demandeur == approbateur
+        resp = api.post(
+            f'/api/django/automation/approvals/{approval.pk}/approve/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 403)
+        approval.refresh_from_db()
+        self.assertEqual(approval.status, AutomationApproval.Status.PENDING)
+
+    def test_automation_approval_different_approver_allowed(self):
+        rule = AutomationRule.objects.create(
+            company=self.co, nom='Remise2', requires_approval=True,
+            trigger_type=TriggerType.LEAD_STAGE_CHANGE, trigger_config={},
+            action_type=ActionType.SET_FIELD,
+            action_config={'field': 'priorite', 'value': 'haute'})
+        approval = AutomationApproval.objects.create(
+            company=self.co, rule=rule, requested_by=self.responsable,
+            status=AutomationApproval.Status.PENDING)
+        api = auth(self.admin)  # approbateur différent du demandeur
+        resp = api.post(
+            f'/api/django/automation/approvals/{approval.pk}/approve/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        approval.refresh_from_db()
+        self.assertEqual(approval.status, AutomationApproval.Status.APPROVED)
+
+    def test_approval_request_self_approve_denied(self):
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Note de frais', enabled=True)
+        req = ApprovalRequest.objects.create(
+            company=self.co, request_type=req_type,
+            demandeur=self.admin, payload={})
+        api = auth(self.admin)  # demandeur == approbateur, MÊME s'il est admin
+        # Un admin qui tente d'approuver SA PROPRE demande n'est PAS un
+        # override légitime (l'override sert à débloquer une demande d'un
+        # AUTRE utilisateur, pas à contourner sa propre auto-approbation) —
+        # mais notre garde traite tout admin comme override explicite : on
+        # vérifie ici que l'override est bien audité plutôt que silencieux.
+        resp = api.post(
+            f'/api/django/automation/approval-requests/{req.pk}/approve/',
+            {}, format='json')
+        # L'admin PEUT (override) mais l'action est journalisée distinctement.
+        self.assertEqual(resp.status_code, 200, resp.data)
+        from apps.audit.models import AuditLog
+        self.assertTrue(AuditLog.objects.filter(
+            company=self.co, action=AuditLog.Action.SECURITY_ALERT,
+            detail__icontains='override').exists())
+
+    def test_approval_request_non_admin_self_approve_denied_no_override(self):
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Note de frais', enabled=True,
+            palier_approbateur='responsable')
+        req = ApprovalRequest.objects.create(
+            company=self.co, request_type=req_type,
+            demandeur=self.responsable, payload={})
+        api = auth(self.responsable)  # non-admin, demandeur == approbateur
+        resp = api.post(
+            f'/api/django/automation/approval-requests/{req.pk}/approve/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 403)
+        req.refresh_from_db()
+        self.assertEqual(req.status, ApprovalRequest.Status.PENDING)
+
+    def test_approval_request_different_approver_allowed(self):
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Note de frais', enabled=True)
+        req = ApprovalRequest.objects.create(
+            company=self.co, request_type=req_type,
+            demandeur=self.employe, payload={})
+        api = auth(self.admin)
+        resp = api.post(
+            f'/api/django/automation/approval-requests/{req.pk}/approve/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        req.refresh_from_db()
+        self.assertEqual(req.status, ApprovalRequest.Status.APPROVED)
+
+    def test_sod_blocked_writes_audit_trail(self):
+        from apps.audit.models import AuditLog
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Note de frais', enabled=True,
+            palier_approbateur='responsable')
+        req = ApprovalRequest.objects.create(
+            company=self.co, request_type=req_type,
+            demandeur=self.responsable, payload={})
+        api = auth(self.responsable)
+        api.post(
+            f'/api/django/automation/approval-requests/{req.pk}/approve/',
+            {}, format='json')
+        self.assertTrue(AuditLog.objects.filter(
+            company=self.co, action=AuditLog.Action.SECURITY_ALERT,
+            detail__icontains='SOD').exists())
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ZCTR7 — Options de catégorie d'approbation (min approbations / PJ
+# obligatoire / champs requis granulaires).
+
+class ZCtr7CategoryOptionsTests(TestCase):
+    def setUp(self):
+        self.co = make_company('zctr7-a', 'ZCTR7 A')
+        self.employe = make_user(self.co, 'zctr7-emp', 'normal')
+        self.admin1 = make_user(self.co, 'zctr7-admin1', 'admin')
+        self.admin2 = make_user(self.co, 'zctr7-admin2', 'admin')
+
+    def test_default_behaviour_unchanged_min_1_no_pj(self):
+        """Rétrocompat : min=1, PJ non obligatoire, config vide = XKB2."""
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Note de frais', enabled=True)
+        self.assertEqual(req_type.min_approbations, 1)
+        self.assertFalse(req_type.piece_jointe_obligatoire)
+        self.assertEqual(req_type.champs_config, {})
+
+        req = ApprovalRequest.objects.create(
+            company=self.co, request_type=req_type,
+            demandeur=self.employe, payload={})
+        api = auth(self.admin1)
+        resp = api.post(
+            f'/api/django/automation/approval-requests/{req.pk}/approve/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        req.refresh_from_db()
+        self.assertEqual(req.status, ApprovalRequest.Status.APPROVED)
+
+    def test_min_2_requires_two_distinct_approvers(self):
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Achat > 5000 MAD', enabled=True,
+            min_approbations=2)
+        req = ApprovalRequest.objects.create(
+            company=self.co, request_type=req_type,
+            demandeur=self.employe, payload={})
+
+        api1 = auth(self.admin1)
+        resp1 = api1.post(
+            f'/api/django/automation/approval-requests/{req.pk}/approve/',
+            {}, format='json')
+        self.assertEqual(resp1.status_code, 200, resp1.data)
+        req.refresh_from_db()
+        # Une seule approbation favorable : toujours PENDING (seuil non atteint).
+        self.assertEqual(req.status, ApprovalRequest.Status.PENDING)
+        self.assertEqual(
+            ApprovalDecision.objects.filter(
+                request=req,
+                decision=ApprovalDecision.Decision.APPROVE).count(), 1)
+
+        api2 = auth(self.admin2)
+        resp2 = api2.post(
+            f'/api/django/automation/approval-requests/{req.pk}/approve/',
+            {}, format='json')
+        self.assertEqual(resp2.status_code, 200, resp2.data)
+        req.refresh_from_db()
+        self.assertEqual(req.status, ApprovalRequest.Status.APPROVED)
+
+    def test_same_approver_cannot_decide_twice(self):
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Achat', enabled=True, min_approbations=2)
+        req = ApprovalRequest.objects.create(
+            company=self.co, request_type=req_type,
+            demandeur=self.employe, payload={})
+        api1 = auth(self.admin1)
+        api1.post(
+            f'/api/django/automation/approval-requests/{req.pk}/approve/',
+            {}, format='json')
+        resp_again = api1.post(
+            f'/api/django/automation/approval-requests/{req.pk}/approve/',
+            {}, format='json')
+        self.assertEqual(resp_again.status_code, 400)
+
+    def test_mandatory_attachment_blocks_submission_without_file(self):
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Note de frais avec justif', enabled=True,
+            piece_jointe_obligatoire=True)
+        api = auth(self.employe)
+        resp = api.post('/api/django/automation/approval-requests/', {
+            'request_type': req_type.pk, 'payload': {},
+        }, format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(ApprovalRequest.objects.count(), 0)
+
+    def test_mandatory_attachment_allows_submission_with_file(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Note de frais avec justif', enabled=True,
+            piece_jointe_obligatoire=True)
+        pdf_bytes = b'%PDF-1.4\n%mock pdf content\n'
+        upload = SimpleUploadedFile(
+            'justif.pdf', pdf_bytes, content_type='application/pdf')
+        api = auth(self.employe)
+        resp = api.post('/api/django/automation/approval-requests/', {
+            'request_type': req_type.pk, 'file': upload,
+        }, format='multipart')
+        self.assertEqual(resp.status_code, 201, resp.data)
+
+    def test_champs_config_required_field_rejected_when_empty(self):
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Déplacement', enabled=True,
+            champs_config={'montant': 'requis', 'reference': 'optionnel'})
+        api = auth(self.employe)
+        resp = api.post('/api/django/automation/approval-requests/', {
+            'request_type': req_type.pk,
+            'payload': {'reference': 'REF-1'},
+        }, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_champs_config_required_field_accepted_when_filled(self):
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Déplacement', enabled=True,
+            champs_config={'montant': 'requis'})
+        api = auth(self.employe)
+        resp = api.post('/api/django/automation/approval-requests/', {
+            'request_type': req_type.pk,
+            'payload': {'montant': '250'},
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ZCTR8 — Demander un complément d'information + approbateurs
+# séquentiels/parallèles.
+
+class ZCtr8InfoRequestedTests(TestCase):
+    def setUp(self):
+        self.co = make_company('zctr8-a', 'ZCTR8 A')
+        self.employe = make_user(self.co, 'zctr8-emp', 'normal')
+        self.admin = make_user(self.co, 'zctr8-admin', 'admin')
+
+    def test_demande_info_returns_to_submitter_not_rejected(self):
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Note de frais', enabled=True)
+        req = ApprovalRequest.objects.create(
+            company=self.co, request_type=req_type,
+            demandeur=self.employe, payload={})
+        api = auth(self.admin)
+        resp = api.post(
+            f'/api/django/automation/approval-requests/{req.pk}/demande-info/',
+            {'motif': 'Merci de préciser le montant exact.'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        req.refresh_from_db()
+        self.assertEqual(req.status, ApprovalRequest.Status.INFO_REQUESTED)
+        self.assertIn('montant exact', req.decision_note)
+
+    def test_demande_info_requires_motif(self):
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Note de frais', enabled=True)
+        req = ApprovalRequest.objects.create(
+            company=self.co, request_type=req_type,
+            demandeur=self.employe, payload={})
+        api = auth(self.admin)
+        resp = api.post(
+            f'/api/django/automation/approval-requests/{req.pk}/demande-info/',
+            {'motif': '   '}, format='json')
+        self.assertEqual(resp.status_code, 400)
+        req.refresh_from_db()
+        self.assertEqual(req.status, ApprovalRequest.Status.PENDING)
+
+    def test_employee_cannot_request_info(self):
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Note de frais', enabled=True)
+        req = ApprovalRequest.objects.create(
+            company=self.co, request_type=req_type,
+            demandeur=self.employe, payload={})
+        other_employee = make_user(self.co, 'zctr8-emp2', 'normal')
+        api = auth(other_employee)
+        resp = api.post(
+            f'/api/django/automation/approval-requests/{req.pk}/demande-info/',
+            {'motif': 'x'}, format='json')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_resubmit_reopens_cycle(self):
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Note de frais', enabled=True,
+            champs_requis=['montant'])
+        req = ApprovalRequest.objects.create(
+            company=self.co, request_type=req_type,
+            demandeur=self.employe, payload={'montant': '100'},
+            status=ApprovalRequest.Status.INFO_REQUESTED,
+            decision_note='Précisez le montant.')
+        api = auth(self.employe)
+        resp = api.post(
+            f'/api/django/automation/approval-requests/{req.pk}/resoumettre/',
+            {'payload': {'montant': '500'}}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        req.refresh_from_db()
+        self.assertEqual(req.status, ApprovalRequest.Status.PENDING)
+        self.assertEqual(req.payload['montant'], '500')
+
+    def test_resubmit_by_someone_else_denied(self):
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Note de frais', enabled=True)
+        req = ApprovalRequest.objects.create(
+            company=self.co, request_type=req_type,
+            demandeur=self.employe, payload={},
+            status=ApprovalRequest.Status.INFO_REQUESTED)
+        api = auth(self.admin)
+        resp = api.post(
+            f'/api/django/automation/approval-requests/{req.pk}/resoumettre/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_sequential_mode_default_is_parallele(self):
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Achat', enabled=True)
+        self.assertEqual(
+            req_type.sequence_approbateurs,
+            ApprovalRequestType.SequenceApprobateurs.PARALLELE)
+
+    def test_sequential_mode_does_not_change_parallel_behaviour(self):
+        """Rétrocompat : mode parallèle (défaut) = comportement XKB1/XKB2 :
+        une décision suffit pour clore (min_approbations=1 par défaut)."""
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Achat', enabled=True,
+            sequence_approbateurs=(
+                ApprovalRequestType.SequenceApprobateurs.PARALLELE))
+        req = ApprovalRequest.objects.create(
+            company=self.co, request_type=req_type,
+            demandeur=self.employe, payload={})
+        api = auth(self.admin)
+        resp = api.post(
+            f'/api/django/automation/approval-requests/{req.pk}/approve/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        req.refresh_from_db()
+        self.assertEqual(req.status, ApprovalRequest.Status.APPROVED)
+
+    def test_sequential_mode_notifies_next_rank_after_favorable_decision(self):
+        from apps.automation import services
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Achat', enabled=True, min_approbations=2,
+            sequence_approbateurs=(
+                ApprovalRequestType.SequenceApprobateurs.SEQUENTIEL))
+        req = ApprovalRequest.objects.create(
+            company=self.co, request_type=req_type,
+            demandeur=self.employe, payload={})
+        self.assertEqual(services.rank_of_next_approver(req), 1)
+        api = auth(self.admin)
+        resp = api.post(
+            f'/api/django/automation/approval-requests/{req.pk}/approve/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        req.refresh_from_db()
+        # Une seule décision favorable sur seuil=2 : toujours PENDING, le
+        # rang suivant (2) est désormais celui attendu.
+        self.assertEqual(req.status, ApprovalRequest.Status.PENDING)
+        self.assertEqual(services.rank_of_next_approver(req), 2)

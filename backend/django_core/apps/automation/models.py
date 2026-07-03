@@ -30,6 +30,26 @@ class TriggerType(models.TextChoices):
     WARRANTY_EXPIRING = 'warranty_expiring', 'Garantie proche expiration'
     MAINTENANCE_DUE = 'maintenance_due', 'Visite de maintenance due'
     STOCK_BELOW_THRESHOLD = 'stock_below_threshold', 'Stock sous le seuil'
+    # XPLT3 — déclencheur temporel GÉNÉRIQUE : « champ date ± N jours » sur un
+    # objet au choix (whitelist fermée, voir DATE_TRIGGER_TARGETS). Distinct
+    # des 3 déclencheurs FIXES ci-dessus (horizons codés en dur).
+    DATE_ECHEANCE_CHAMP = 'date_echeance_champ', 'Échéance de champ (± N jours)'
+    # XPLT4 — webhook entrant générique : le POST externe reçu sur l'URL
+    # tokenisée de la règle devient le contexte des conditions/actions.
+    WEBHOOK_INBOUND = 'webhook_inbound', 'Webhook entrant'
+
+
+# XPLT3 — whitelist FERMÉE (app_label, model) -> {champ date autorisé: label}
+# pour le déclencheur DATE_ECHEANCE_CHAMP. On ne laisse jamais une règle
+# pointer un modèle/champ arbitraire : seuls ces couples sont évaluables.
+DATE_TRIGGER_TARGETS = {
+    ('ventes', 'devis'): {
+        'date_validite': 'Date de validité du devis',
+    },
+    ('crm', 'lead'): {
+        'relance_date': 'Date de relance du lead',
+    },
+}
 
 
 class ActionType(models.TextChoices):
@@ -263,3 +283,316 @@ class AutomationApproval(models.Model):
 
     def __str__(self):
         return f'{self.rule_id}:{self.status}'
+
+
+# ── XKB2 — Types de demandes d'approbation ad-hoc configurables ─────────────
+#
+# Distinct de `parametres.ApprovalPolicy` (FG25 — politiques déclaratives
+# seuil+palier sur des types d'action EXISTANTS, consultées par les chemins
+# d'écriture) : ici c'est la couche demande/soumission ad-hoc générique
+# (note de frais, déplacement, achat hors catalogue…) qu'un admin définit
+# librement, alimentant la boîte d'approbations XKB1
+# (``AutomationApprovalViewSet`` / futur agrégateur ``reporting``).
+
+class ApprovalFieldKey(models.TextChoices):
+    """Champs optionnels qu'un type de demande peut exiger/afficher."""
+    MONTANT = 'montant', 'Montant'
+    TIERS = 'tiers', 'Tiers'
+    DATE_DEBUT = 'date_debut', 'Date de début'
+    DATE_FIN = 'date_fin', 'Date de fin'
+    QUANTITE = 'quantite', 'Quantité'
+    REFERENCE = 'reference', 'Référence'
+
+
+class ApprovalRequestType(models.Model):
+    """Type de demande d'approbation ad-hoc, défini par un admin (XKB2).
+
+    ``champs_requis`` / ``champs_optionnels`` listent des clés parmi
+    ``ApprovalFieldKey`` : un champ requis doit être renseigné dans
+    ``ApprovalRequest.payload`` à la soumission, sinon rejet (400 FR).
+
+    ``palier_approbateur`` réutilise les mêmes paliers que
+    ``parametres.ApprovalPolicy.ApproverTier`` (chaîne libre ici pour éviter
+    tout couplage cross-app — validée par les mêmes valeurs côté serializer).
+    """
+
+    class ApproverTier(models.TextChoices):
+        RESPONSABLE = 'responsable', 'Responsable (ou plus)'
+        ADMIN = 'admin', 'Administrateur uniquement'
+
+    class SequenceApprobateurs(models.TextChoices):
+        # ZCTR8 — ordre des approbateurs quand min_approbations > 1.
+        PARALLELE = 'parallele', 'Parallèle (tous notifiés d’emblée)'
+        SEQUENTIEL = 'sequentiel', 'Séquentiel (rang par rang)'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='approval_request_types')
+    nom = models.CharField(max_length=120)
+    description = models.CharField(max_length=255, blank=True, default='')
+    enabled = models.BooleanField(default=True)
+
+    champs_requis = models.JSONField(default=list, blank=True)
+    champs_optionnels = models.JSONField(default=list, blank=True)
+
+    palier_approbateur = models.CharField(
+        max_length=20, choices=ApproverTier.choices,
+        default=ApproverTier.ADMIN)
+
+    # ZCTR8 — mode d'ordonnancement des approbateurs. Rétrocompat : PARALLELE
+    # (défaut) = comportement XKB1/XKB2 inchangé (tous les approbateurs du
+    # palier voient la demande dès la soumission).
+    sequence_approbateurs = models.CharField(
+        max_length=12, choices=SequenceApprobateurs.choices,
+        default=SequenceApprobateurs.PARALLELE)
+
+    # ZCTR7 — nombre minimum d'approbations FAVORABLES distinctes avant que la
+    # demande passe APPROVED. Rétrocompat : 1 = comportement XKB2 inchangé
+    # (une seule décision suffit).
+    min_approbations = models.PositiveIntegerField(default=1)
+    # ZCTR7 — la soumission est refusée (400 FR) tant qu'aucune pièce jointe
+    # n'est rattachée. Rétrocompat : False = comportement XKB2 inchangé.
+    piece_jointe_obligatoire = models.BooleanField(default=False)
+    # ZCTR7 — config granulaire par champ : {'montant': 'requis'|'optionnel'|
+    # 'masque', ...}. Vide = comportement XKB2 inchangé (seuls champs_requis/
+    # champs_optionnels comptent).
+    champs_config = models.JSONField(default=dict, blank=True)
+
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Type de demande d'approbation"
+        verbose_name_plural = "Types de demande d'approbation"
+        ordering = ['nom', 'id']
+        indexes = [
+            models.Index(fields=['company', 'enabled']),
+        ]
+
+    def __str__(self):
+        return self.nom
+
+    def _label_for(self, champ):
+        return ApprovalFieldKey(champ).label \
+            if champ in ApprovalFieldKey.values else champ
+
+    def required_fields(self):
+        """Union de ``champs_requis`` (XKB2) et des champs marqués « requis »
+        dans ``champs_config`` (ZCTR7) — les deux mécanismes coexistent."""
+        requis = set(self.champs_requis or [])
+        for champ, mode in (self.champs_config or {}).items():
+            if mode == 'requis':
+                requis.add(champ)
+        return requis
+
+    def validate_payload(self, payload):
+        """Renvoie une liste d'erreurs FR (vide = payload valide).
+
+        Un champ listé dans ``champs_requis`` OU marqué « requis » dans
+        ``champs_config`` (ZCTR7) doit être présent et non vide dans
+        ``payload`` (dict soumis par le demandeur).
+        """
+        errors = []
+        payload = payload or {}
+        for champ in self.required_fields():
+            value = payload.get(champ)
+            if value in (None, '', [], {}):
+                errors.append(
+                    f'Le champ « {self._label_for(champ)} » est requis.')
+        return errors
+
+
+class ApprovalRequest(models.Model):
+    """Demande d'approbation ad-hoc soumise par un employé (XKB2).
+
+    Alimente la boîte d'approbations XKB1 au même titre qu'``AutomationApproval``
+    (déclenchées, elles, par le moteur de règles) — deux origines, une seule
+    boîte de décision côté propriétaire.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'En attente'
+        APPROVED = 'approved', 'Approuvé'
+        REJECTED = 'rejected', 'Rejeté'
+        # ZCTR8 — renvoyée à l'émetteur pour complément ; NI approuvée NI
+        # rejetée. Le demandeur peut re-soumettre (ré-éditer puis re-passer
+        # PENDING) — la ré-édition reste hors du périmètre serveur ici (le
+        # frontend rouvre un nouveau cycle en mettant à jour `payload` puis
+        # en appelant l'action dédiée `resoumettre`, voir services.py).
+        INFO_REQUESTED = 'info_requested', "Complément d'information demandé"
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='approval_requests')
+    request_type = models.ForeignKey(
+        ApprovalRequestType, on_delete=models.PROTECT,
+        related_name='requests')
+
+    demandeur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='approval_requests_soumises')
+    payload = models.JSONField(default=dict, blank=True)
+
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.PENDING)
+
+    decided_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='approval_requests_decidees')
+    decided_at = models.DateTimeField(null=True, blank=True)
+    decision_note = models.CharField(max_length=255, blank=True, default='')
+    # XKB3 — posé quand ``decided_by`` a décidé EN TANT QUE suppléant d'une
+    # délégation active (au nom du délégant). Vide = décision directe,
+    # comportement XKB2 inchangé.
+    decided_on_behalf_of = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='approval_requests_deleguees')
+
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Demande d'approbation"
+        verbose_name_plural = "Demandes d'approbation"
+        ordering = ['-date_creation', '-id']
+        indexes = [
+            models.Index(fields=['company', 'status']),
+        ]
+
+    def __str__(self):
+        return f'{self.request_type_id}:{self.status}'
+
+
+class ApprovalDecision(models.Model):
+    """UNE décision d'approbateur sur une ``ApprovalRequest`` (ZCTR7).
+
+    Distinct de ``ApprovalRequest.decided_by`` (qui reste le DERNIER
+    décideur / celui qui a clos la demande, pour compat XKB2) : ici on
+    trace CHAQUE décision favorable/défavorable, ce qui permet le seuil
+    ``min_approbations`` (N approbateurs DISTINCTS avant clôture).
+    """
+
+    class Decision(models.TextChoices):
+        APPROVE = 'approve', 'Favorable'
+        REJECT = 'reject', 'Défavorable'
+
+    request = models.ForeignKey(
+        ApprovalRequest, on_delete=models.CASCADE, related_name='decisions')
+    decided_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='approval_decisions')
+    decision = models.CharField(max_length=10, choices=Decision.choices)
+    note = models.CharField(max_length=255, blank=True, default='')
+    # XKB3 — décision prise « au nom de » ce délégant (délégation active).
+    on_behalf_of = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='approval_decisions_deleguees')
+
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Décision d'approbation"
+        verbose_name_plural = "Décisions d'approbation"
+        ordering = ['-date_creation', '-id']
+        indexes = [
+            models.Index(fields=['request', 'decision']),
+        ]
+
+    def __str__(self):
+        return f'{self.request_id}:{self.decided_by_id}:{self.decision}'
+
+
+# ── XKB3 — Délégation d'approbation (suppléant) ──────────────────────────────
+
+class ApprovalDelegation(models.Model):
+    """Délégation d'absence : pendant [date_debut, date_fin], les demandes en
+    attente du délégant apparaissent aussi chez le suppléant (XKB1) et sa
+    décision porte la mention « au nom de ». Retour automatique à l'expiration
+    (aucun état à réinitialiser : la plage de dates fait foi à chaque lecture).
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='approval_delegations')
+    delegant = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='approval_delegations_donnees')
+    suppleant = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='approval_delegations_recues')
+    date_debut = models.DateTimeField()
+    date_fin = models.DateTimeField()
+
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Délégation d'approbation"
+        verbose_name_plural = "Délégations d'approbation"
+        ordering = ['-date_debut', '-id']
+        indexes = [
+            models.Index(fields=['company', 'delegant']),
+            models.Index(fields=['company', 'suppleant']),
+        ]
+
+    def __str__(self):
+        return f'{self.delegant_id} -> {self.suppleant_id}'
+
+    def is_active(self, at=None):
+        from django.utils import timezone
+        at = at or timezone.now()
+        return self.date_debut <= at <= self.date_fin
+
+
+# ── XPLT4 — Webhook ENTRANT générique alimentant une règle ──────────────────
+
+def _generate_webhook_token():
+    import secrets
+    return secrets.token_urlsafe(32)
+
+
+def _generate_webhook_secret():
+    import secrets
+    return secrets.token_urlsafe(32)
+
+
+class IncomingWebhookTrigger(models.Model):
+    """URL tokenisée d'entrée pour UNE règle ``AutomationRule`` de type
+    ``WEBHOOK_INBOUND`` (XPLT4). Un POST externe valide sur
+    ``/api/public/hooks/<token>/`` alimente le JSON reçu comme contexte des
+    conditions/actions de la règle.
+
+    La société est résolue UNIQUEMENT par le token (jamais par le payload) —
+    même discipline que les autres webhooks entrants du repo (crm site-lead).
+    ``hmac_secret`` est optionnel : quand posé, l'appelant doit signer le
+    corps en HMAC-SHA256 (en-tête ``X-Signature``) — sinon l'endpoint reste
+    ouvert au token seul (compromis simplicité/sécurité laissé à l'admin).
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='incoming_webhook_triggers')
+    rule = models.OneToOneField(
+        AutomationRule, on_delete=models.CASCADE,
+        related_name='incoming_webhook')
+
+    token = models.CharField(
+        max_length=64, unique=True, default=_generate_webhook_token)
+    hmac_secret = models.CharField(max_length=128, blank=True, default='')
+    enabled = models.BooleanField(default=True)
+
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Webhook entrant (automatisation)'
+        verbose_name_plural = 'Webhooks entrants (automatisation)'
+        ordering = ['-date_creation', '-id']
+        indexes = [
+            models.Index(fields=['token']),
+        ]
+
+    def __str__(self):
+        return f'{self.rule_id}:{self.token[:8]}…'
+
+    def rotate_token(self):
+        """Régénère le token : l'ancien devient immédiatement invalide (404)."""
+        self.token = _generate_webhook_token()
+        self.save(update_fields=['token', 'date_modification'])
+        return self.token
