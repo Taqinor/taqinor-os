@@ -40,6 +40,7 @@ from .models import (
     PisteAuditComptable,
     ModeleRapprochement,
     ObligationFiscale,
+    FamilleTvaNonDeductible,
 )
 
 
@@ -207,7 +208,8 @@ class ExerciceComptableSerializer(serializers.ModelSerializer):
         model = ExerciceComptable
         fields = [
             'id', 'libelle', 'date_debut', 'date_fin', 'statut',
-            'statut_display', 'an_reporte', 'date_cloture', 'date_creation',
+            'statut_display', 'an_reporte', 'date_cloture',
+            'coefficient_prorata_tva', 'date_creation',
         ]
         read_only_fields = [
             'statut', 'an_reporte', 'date_cloture', 'date_creation']
@@ -929,6 +931,16 @@ class ObligationFiscaleSerializer(serializers.ModelSerializer):
             'date_creation',
         ]
         read_only_fields = fields
+
+
+class FamilleTvaNonDeductibleSerializer(serializers.ModelSerializer):
+    """Famille de charge à TVA non déductible (XACC11, véhicules de
+    tourisme…)."""
+
+    class Meta:
+        model = FamilleTvaNonDeductible
+        fields = ['id', 'famille', 'libelle', 'actif', 'date_creation']
+        read_only_fields = ['date_creation']
 
 
 class RetenueSourceSerializer(serializers.ModelSerializer):

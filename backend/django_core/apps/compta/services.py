@@ -56,6 +56,7 @@ from .models import (
     ModeleRapprochement,
     AbonnementEcriture,
     ObligationFiscale,
+    FamilleTvaNonDeductible,
 )
 
 
@@ -588,6 +589,37 @@ def ecriture_pour_avoir(avoir, *, force=False, user=None):
 # le toggle ``COMPTA_AUTO_ECRITURES`` (OFF par défaut). Le compte de charge peut
 # être surchargé via le mapping DC22 (``type_clef='famille'``).
 
+# ── XACC11 — Prorata de déduction TVA & TVA non déductible ─────────────────
+
+def est_famille_non_deductible(company, famille):
+    """Vrai si ``famille`` (clef DC22) est dans le référentiel non-déductible.
+
+    Lecture seule. ``famille`` vide/None → toujours False (comportement
+    historique inchangé quand aucune famille n'est renseignée).
+    """
+    if not famille:
+        return False
+    return FamilleTvaNonDeductible.objects.filter(
+        company=company, famille=famille, actif=True).exists()
+
+
+def coefficient_prorata_tva(company, une_date):
+    """Coefficient de prorata TVA (%) de l'exercice couvrant ``une_date``.
+
+    Défaut 100 % (déduction intégrale, comportement historique) si aucun
+    exercice ne couvre la date ou si le champ n'a jamais été paramétré.
+    Lecture seule.
+    """
+    if une_date is None:
+        return Decimal('100')
+    exercice = ExerciceComptable.objects.filter(
+        company=company, date_debut__lte=une_date,
+        date_fin__gte=une_date).first()
+    if exercice is None:
+        return Decimal('100')
+    return exercice.coefficient_prorata_tva or Decimal('100')
+
+
 @transaction.atomic
 def ecriture_pour_facture_fournisseur(facture, *, force=False, user=None,
                                       famille_charge=None):
@@ -598,6 +630,15 @@ def ecriture_pour_facture_fournisseur(facture, *, force=False, user=None,
     passée. Renvoie l'écriture (existante ou nouvelle), ou None si désactivé/non
     applicable. ``famille_charge`` (optionnel) consulte le mapping DC22 pour
     router vers un compte de charge précis (défaut : 6111 Achats).
+
+    XACC11 — TVA non déductible / prorata : si ``famille_charge`` est dans le
+    référentiel ``FamilleTvaNonDeductible`` (véhicule de tourisme…), AUCUNE
+    ligne 3455 n'est postée — la TVA entière reste dans la charge (débit 61xx
+    majoré). Sinon, le coefficient de prorata de l'exercice
+    (``ExerciceComptable.coefficient_prorata_tva``, défaut 100 %) réduit la
+    fraction déductible ; le reliquat non déductible rejoint lui aussi la
+    charge. À 100 % (défaut), le comportement est STRICTEMENT identique à
+    avant (aucune régression).
     """
     if not force and not auto_ecritures_actif():
         return None
@@ -614,25 +655,43 @@ def ecriture_pour_facture_fournisseur(facture, *, force=False, user=None,
     ttc = Decimal(getattr(facture, 'montant_ttc', 0) or 0)
     fournisseur_id = getattr(facture, 'fournisseur_id', None)
     reference = getattr(facture, 'reference', '') or ''
+    date_facture = getattr(facture, 'date_facture', None)
     # DC22 : famille de charge → compte 6x (défaut 6111 si non mappé).
     compte_charge = compte_pour_clef(
         company, MappingCompte.TypeClef.FAMILLE, famille_charge,
         defaut=comptes['achats']) if famille_charge else comptes['achats']
+
+    # XACC11 — répartit la TVA entre déductible (3455) et non déductible
+    # (folded dans la charge), selon la famille et le coefficient de prorata.
+    non_deductible_totale = est_famille_non_deductible(company, famille_charge)
+    prorata = Decimal('100')
+    if non_deductible_totale:
+        tva_deductible = Decimal('0')
+    else:
+        prorata = coefficient_prorata_tva(company, date_facture)
+        tva_deductible = (tva * prorata / Decimal('100')).quantize(
+            Decimal('0.01')) if tva else Decimal('0')
+    tva_non_deductible = tva - tva_deductible
+    charge_totale = ht + tva_non_deductible
+
     lignes = [
-        {'compte': compte_charge, 'debit': ht, 'credit': Decimal('0'),
+        {'compte': compte_charge, 'debit': charge_totale, 'credit': Decimal('0'),
          'libelle': f'Achat {reference}'},
     ]
-    if tva:
+    if tva_deductible:
+        # XACC11 — marque la ligne « prorata » (visible tel quel dans le
+        # relevé FG138, dérivé du libellé GL — jamais un champ à part).
+        suffixe_prorata = f' (prorata {prorata}%)' if prorata != 100 else ''
         lignes.append({
-            'compte': comptes['tva_recuperable'], 'debit': tva,
+            'compte': comptes['tva_recuperable'], 'debit': tva_deductible,
             'credit': Decimal('0'),
-            'libelle': f'TVA récupérable {reference}'})
+            'libelle': f'TVA récupérable {reference}{suffixe_prorata}'})
     lignes.append({
         'compte': comptes['fournisseurs'], 'debit': Decimal('0'), 'credit': ttc,
         'libelle': f'Facture fournisseur {reference}',
         'tiers_type': 'fournisseur', 'tiers_id': fournisseur_id})
     return creer_ecriture(
-        company, journal, getattr(facture, 'date_facture', None),
+        company, journal, date_facture,
         f'Facture fournisseur {reference}', lignes,
         reference=reference, source_type='facture_fournisseur',
         source_id=facture.id, created_by=user,

@@ -45,6 +45,7 @@ from .views import (
     ModeleRapprochementViewSet,
     ProvisionsPeriodeViewSet,
     ObligationFiscaleViewSet,
+    FamilleTvaNonDeductibleViewSet,
 )
 
 router = DefaultRouter()
@@ -90,6 +91,7 @@ router.register(r'balance-ouverture', BalanceOuvertureViewSet,
 router.register(r'provisions-periode', ProvisionsPeriodeViewSet,
                 basename='provisions-periode')
 router.register(r'obligations-fiscales', ObligationFiscaleViewSet)
+router.register(r'familles-tva-non-deductibles', FamilleTvaNonDeductibleViewSet)
 # ── Croissance commerciale / marketing / CPQ (FG201–FG214) ──────────────────
 router.register(r'campagnes', CampagneViewSet)
 router.register(r'sequences-relance', SequenceRelanceViewSet)

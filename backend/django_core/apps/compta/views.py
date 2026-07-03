@@ -52,6 +52,7 @@ from .models import (
     PisteAuditComptable,
     ModeleRapprochement,
     ObligationFiscale,
+    FamilleTvaNonDeductible,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -101,6 +102,7 @@ from .serializers import (
     PisteAuditComptableSerializer,
     ModeleRapprochementSerializer,
     ObligationFiscaleSerializer,
+    FamilleTvaNonDeductibleSerializer,
 )
 
 
@@ -443,17 +445,18 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
         writer.writerow([])
         writer.writerow(
             ['Date', 'Référence', 'Journal', 'Libellé', 'Tiers',
-             'Base HT', 'TVA', 'Taux %'])
+             'Base HT', 'TVA', 'Taux %', 'Prorata'])
         for ligne in data['lignes']:
             taux = ligne['taux']
             writer.writerow([
                 ligne['date'], ligne['reference'], ligne['journal'],
                 ligne['libelle'], ligne['tiers'], ligne['base_ht'],
-                ligne['tva'], '' if taux is None else taux])
+                ligne['tva'], '' if taux is None else taux,
+                'Oui' if ligne.get('prorata_applique') else ''])
         writer.writerow([])
         writer.writerow(
             ['Totaux', '', '', '', '', data['totaux']['base_ht'],
-             data['totaux']['tva'], ''])
+             data['totaux']['tva'], '', ''])
         resp = HttpResponse(
             buffer.getvalue(), content_type='text/csv; charset=utf-8')
         resp['Content-Disposition'] = (
@@ -4455,3 +4458,14 @@ class ObligationFiscaleViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         notifiees = services.envoyer_rappels_j7(request.user.company)
         return Response(
             ObligationFiscaleSerializer(notifiees, many=True).data)
+
+
+# ── XACC11 — Référentiel des familles de charge à TVA non déductible ───────
+
+class FamilleTvaNonDeductibleViewSet(_ComptaBaseViewSet):
+    """CRUD du référentiel des familles à TVA non déductible (XACC11,
+    véhicules de tourisme, missions/réceptions…). Company-scopé."""
+    queryset = FamilleTvaNonDeductible.objects.all()
+    serializer_class = FamilleTvaNonDeductibleSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['famille']

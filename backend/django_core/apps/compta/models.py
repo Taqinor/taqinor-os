@@ -669,6 +669,12 @@ class ExerciceComptable(models.Model):
         default=False, verbose_name='À-nouveaux reportés')
     date_cloture = models.DateTimeField(
         null=True, blank=True, verbose_name='Clôturé le')
+    # XACC11 — coefficient de prorata annuel de déduction de TVA (activité
+    # mixte, article 104 CGI). 100 % = comportement actuel intact (déduction
+    # intégrale, aucune régression pour un exercice non paramétré).
+    coefficient_prorata_tva = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('100'),
+        verbose_name='Coefficient de prorata TVA (%)')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -686,10 +692,49 @@ class ExerciceComptable(models.Model):
         if self.date_debut and self.date_fin and self.date_fin < self.date_debut:
             raise ValidationError(
                 "La date de fin doit être postérieure à la date de début.")
+        if self.coefficient_prorata_tva is not None and not (
+                0 <= self.coefficient_prorata_tva <= 100):
+            raise ValidationError(
+                "Le coefficient de prorata TVA doit être entre 0 et 100 %.")
 
     @property
     def est_cloture(self):
         return self.statut == self.Statut.CLOTURE
+
+
+# ── XACC11 — Référentiel des familles de charge à TVA NON déductible ───────
+
+class FamilleTvaNonDeductible(models.Model):
+    """Famille de charge dont la TVA n'est JAMAIS récupérable (XACC11).
+
+    CGI marocain, art. 106 : certaines dépenses (véhicules de tourisme,
+    missions/réceptions…) n'ouvrent aucun droit à déduction de TVA — la TVA
+    reste dans la charge (aucune écriture 3455). ``famille`` réutilise la même
+    clef que le mapping DC22 (``MappingCompte.TypeClef.FAMILLE``) pour router
+    la même famille de produit/charge des deux côtés.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='familles_tva_non_deductibles',
+        verbose_name='Société',
+    )
+    famille = models.CharField(
+        max_length=60, verbose_name='Famille (clef DC22)')
+    libelle = models.CharField(
+        max_length=150, blank=True, default='', verbose_name='Libellé')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Famille TVA non déductible'
+        verbose_name_plural = 'Familles TVA non déductibles'
+        ordering = ['famille']
+        unique_together = [('company', 'famille')]
+
+    def __str__(self):
+        return self.libelle or self.famille
 
 
 # ── FG115 — Période comptable verrouillable (clôture & immutabilité) ────────

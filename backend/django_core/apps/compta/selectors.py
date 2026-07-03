@@ -1499,10 +1499,17 @@ def releve_deductions_tva(company, *, date_debut, date_fin,
             tva_par_ecriture[eid] = {
                 'ecriture': ligne.ecriture,
                 'tva': Decimal('0'),
+                # XACC11 — la ligne 3455 porte « (prorata NN%) » dans son
+                # PROPRE libellé quand un coefficient < 100 % a été appliqué
+                # à la source (cf. ``services.ecriture_pour_facture_
+                # fournisseur``) — jamais un champ séparé, dérivé du GL.
+                'prorata_applique': False,
             }
             ordre_ecritures.append(eid)
         tva_par_ecriture[eid]['tva'] += (
             (ligne.debit or Decimal('0')) - (ligne.credit or Decimal('0')))
+        if '(prorata ' in (ligne.libelle or ''):
+            tva_par_ecriture[eid]['prorata_applique'] = True
 
     if not ordre_ecritures:
         return {
@@ -1557,6 +1564,7 @@ def releve_deductions_tva(company, *, date_debut, date_fin,
             'tiers': tiers_nom,
             'base_ht': base_ht,
             'tva': tva,
+            'prorata_applique': tva_par_ecriture[eid]['prorata_applique'],
             'taux': _taux_tva(base_ht, tva),
         })
 
