@@ -771,3 +771,138 @@ def changer_statut_vehicule(vehicule, nouveau_statut, user=None):
     )
 
     return vehicule
+
+
+# ── XFLT6 — Import relevé carte carburant / Jawaz (CSV) + rapprochement ────────
+
+def _parse_montant_csv(valeur):
+    """XFLT6 — Parse un montant CSV (accepte virgule ou point décimal)."""
+    if valeur in (None, ''):
+        return None
+    try:
+        return float(str(valeur).strip().replace(',', '.'))
+    except (ValueError, TypeError):
+        return None
+
+
+def _parse_date_csv(valeur):
+    """XFLT6 — Parse une date CSV au format ISO 'YYYY-MM-DD'."""
+    if not valeur:
+        return None
+    try:
+        return datetime.date.fromisoformat(str(valeur).strip())
+    except ValueError:
+        return None
+
+
+def importer_releve_carte(carte, contenu_csv):
+    """XFLT6 — Importe un relevé de carte carburant / Jawaz (CSV) et
+    rapproche les lignes.
+
+    ``contenu_csv`` est le TEXTE du fichier CSV (colonnes attendues, avec
+    en-tête, insensible à la casse : ``date``, ``montant``, ``litres``,
+    ``station`` ou ``gare``). Aucun appel réseau — import fichier uniquement.
+
+    Pour chaque ligne :
+
+    * une ligne avec ``litres`` renseigné (> 0) crée un ``PleinCarburant``
+      (carte carburant, FLOTTE12) rattaché au véhicule de la carte ;
+    * une ligne SANS ``litres`` (péage/Jawaz) crée un ``CoutVehicule``
+      (XFLT3) catégorie ``peage``, avec ``reference_piece`` taggée
+      ``'Jawaz'`` — nécessite un ``actif_flotte`` résolu depuis le véhicule
+      de la carte (une carte sans véhicule attribué → ligne « non
+      rapprochée », rien n'est créé) ;
+    * une ligne DÉJÀ présente (même date + montant ± centime, pour le MÊME
+      véhicule) est marquée DOUBLON et ignorée — l'import est donc
+      IDEMPOTENT (un ré-import ne crée jamais de doublon) ;
+    * une ligne sans véhicule résolu (carte sans ``vehicule``) est comptée
+      « non rapprochée » et rien n'est créé.
+
+    Retourne un dict rapport ::
+
+        {'nb_lignes': N, 'crees': N, 'doublons': N, 'non_rapprochees': N,
+         'erreurs': [{'ligne': i, 'motif': str}, …]}
+
+    Multi-tenant : la société est celle de ``carte`` (jamais du corps de
+    requête).
+    """
+    import csv
+    import io
+
+    from .models import CoutVehicule, PleinCarburant
+
+    company = carte.company
+    vehicule = carte.vehicule
+
+    reader = csv.DictReader(io.StringIO(contenu_csv))
+    # Normalise les en-têtes (insensible à la casse/espaces).
+    if reader.fieldnames:
+        reader.fieldnames = [
+            (name or '').strip().lower() for name in reader.fieldnames]
+
+    crees = 0
+    doublons = 0
+    non_rapprochees = 0
+    erreurs = []
+
+    for i, row in enumerate(reader, start=1):
+        date_ = _parse_date_csv(row.get('date'))
+        montant = _parse_montant_csv(row.get('montant'))
+        litres = _parse_montant_csv(row.get('litres'))
+        station = (row.get('station') or row.get('gare') or '').strip()
+
+        if date_ is None or montant is None:
+            erreurs.append({
+                'ligne': i,
+                'motif': "Date ou montant invalide/manquant.",
+            })
+            continue
+
+        if vehicule is None:
+            non_rapprochees += 1
+            continue
+
+        if litres and litres > 0:
+            # Rapprochement : plein déjà présent (même véhicule/date/montant
+            # ± 0.01) → doublon ignoré.
+            deja_present = PleinCarburant.objects.filter(
+                company=company, vehicule=vehicule, date_plein=date_,
+                prix_total__gte=montant - 0.01,
+                prix_total__lte=montant + 0.01,
+            ).exists()
+            if deja_present:
+                doublons += 1
+                continue
+            PleinCarburant.objects.create(
+                company=company, vehicule=vehicule, date_plein=date_,
+                kilometrage=vehicule.kilometrage, quantite=litres,
+                prix_total=montant, station=station,
+            )
+            crees += 1
+        else:
+            actif = getattr(vehicule, 'actif_flotte', None)
+            if actif is None:
+                non_rapprochees += 1
+                continue
+            deja_present = CoutVehicule.objects.filter(
+                company=company, actif_flotte=actif, categorie='peage',
+                date=date_, montant__gte=montant - 0.01,
+                montant__lte=montant + 0.01,
+            ).exists()
+            if deja_present:
+                doublons += 1
+                continue
+            CoutVehicule.objects.create(
+                company=company, actif_flotte=actif, categorie='peage',
+                date=date_, montant=montant, fournisseur=station,
+                reference_piece='Jawaz',
+            )
+            crees += 1
+
+    return {
+        'nb_lignes': crees + doublons + non_rapprochees + len(erreurs),
+        'crees': crees,
+        'doublons': doublons,
+        'non_rapprochees': non_rapprochees,
+        'erreurs': erreurs,
+    }

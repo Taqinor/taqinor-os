@@ -609,6 +609,37 @@ class CarteCarburantViewSet(_FlotteBaseViewSet):
         from .selectors import anomalies_pleins
         return Response(anomalies_pleins(company, vehicule_id))
 
+    @action(detail=True, methods=['post'], url_path='importer-releve')
+    def importer_releve(self, request, pk=None):
+        """XFLT6 — Importe un relevé CSV (carte carburant / Jawaz) et
+        rapproche les lignes (écriture responsable/admin).
+
+        Fichier CSV attendu au champ ``fichier`` (colonnes : date, montant,
+        litres, station/gare). Une ligne AVEC litres crée un
+        ``PleinCarburant`` ; une ligne SANS litres (péage) crée un
+        ``CoutVehicule`` catégorie péage (tag Jawaz). Import fichier
+        uniquement — aucun appel réseau. Rapproche les doublons (même
+        véhicule/date/montant) et signale les lignes non rapprochées (carte
+        sans véhicule attribué).
+        """
+        carte = self.get_object()
+        fichier = request.FILES.get('fichier')
+        if fichier is None:
+            return Response(
+                {'detail': "Le champ 'fichier' (CSV) est requis."},
+                status=400)
+
+        try:
+            contenu = fichier.read().decode('utf-8-sig')
+        except UnicodeDecodeError:
+            return Response(
+                {'detail': "Fichier CSV illisible (encodage invalide)."},
+                status=400)
+
+        from .services import importer_releve_carte
+        rapport = importer_releve_carte(carte, contenu)
+        return Response(rapport)
+
 
 class PlanEntretienViewSet(_FlotteBaseViewSet):
     """Plans d'entretien préventif km/date/heures (FLOTTE15).
