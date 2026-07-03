@@ -32,8 +32,20 @@ class PlanComptable(models.Model):
     """Plan de comptes d'une société (un par société en pratique).
 
     Conteneur paramétrable : il regroupe les ``CompteComptable``. Le code par
-    défaut « CGNC » correspond au plan normalisé marocain.
+    défaut « CGNC » correspond au plan normalisé marocain. Porte aussi
+    ``regime_tva`` (XACC1) — le réglage société du régime de TVA (débit ou
+    encaissement) qui pilote si la TVA facturée/récupérable est constatée
+    directement en compte définitif (débit, comportement historique) ou
+    transite par un compte d'attente jusqu'au règlement effectif
+    (encaissement, cf. ``services.transferer_tva_encaissement``) — et
+    ``inventaire_permanent`` (XACC6) — le toggle société qui active le
+    postage automatique des mouvements de stock au GL (défaut OFF = aucune
+    écriture, comportement actuel inchangé).
     """
+    class RegimeTVA(models.TextChoices):
+        DEBIT = 'debit', 'Débit (fait générateur = facturation)'
+        ENCAISSEMENT = 'encaissement', 'Encaissement (fait générateur = règlement)'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -46,6 +58,15 @@ class PlanComptable(models.Model):
         max_length=120, default='Plan comptable CGNC',
         verbose_name='Libellé')
     actif = models.BooleanField(default=True, verbose_name='Actif')
+    # XACC1 — défaut « débit » = comportement actuel inchangé pour toute
+    # société existante (aucune migration de données requise).
+    regime_tva = models.CharField(
+        max_length=12, choices=RegimeTVA.choices,
+        default=RegimeTVA.DEBIT, verbose_name='Régime de TVA')
+    # XACC6 — défaut OFF : zéro écriture tant que le founder n'active pas
+    # l'inventaire permanent pour la société.
+    inventaire_permanent = models.BooleanField(
+        default=False, verbose_name='Inventaire permanent (stock → GL)')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -412,6 +433,155 @@ class LigneEcriture(models.Model):
         return super().delete(*args, **kwargs)
 
 
+# ── XACC8 — Modèles d'écriture & écritures récurrentes ──────────────────────
+
+class ModeleEcriture(models.Model):
+    """Modèle d'écriture réutilisable (lignes pré-codées, montants paramétrables).
+
+    La saisie d'OD existe (COMPTA8) mais sans réutilisation : un modèle fige
+    la STRUCTURE (compte/sens/libellé) d'une écriture récurrente (loyer,
+    abonnement…) ; le MONTANT de chaque ligne est renseigné à la génération
+    (``AbonnementEcriture``) ou repris du modèle si posé ici comme défaut.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='modeles_ecriture',
+        verbose_name='Société',
+    )
+    libelle = models.CharField(max_length=150, verbose_name='Libellé')
+    journal = models.ForeignKey(
+        'compta.Journal',
+        on_delete=models.PROTECT,
+        related_name='modeles_ecriture',
+        verbose_name='Journal',
+    )
+    # XACC8 — extourne automatique (contre-passation au 1er jour de la
+    # période suivante) — réutilise COMPTA11 (``services.extourner_ecriture``).
+    extourne_auto = models.BooleanField(
+        default=False, verbose_name='Extourne automatique')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Modèle d'écriture"
+        verbose_name_plural = "Modèles d'écriture"
+        ordering = ['libelle']
+
+    def __str__(self):
+        return self.libelle
+
+
+class LigneModeleEcriture(models.Model):
+    """Ligne pré-codée d'un ``ModeleEcriture`` (compte/sens/libellé/montant défaut)."""
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='lignes_modele_ecriture',
+        verbose_name='Société',
+    )
+    modele = models.ForeignKey(
+        ModeleEcriture,
+        on_delete=models.CASCADE,
+        related_name='lignes',
+        verbose_name='Modèle',
+    )
+    compte = models.ForeignKey(
+        CompteComptable,
+        on_delete=models.PROTECT,
+        related_name='lignes_modele_ecriture',
+        verbose_name='Compte',
+    )
+    libelle = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Libellé')
+    sens = models.CharField(
+        max_length=6,
+        choices=[('debit', 'Débit'), ('credit', 'Crédit')],
+        verbose_name='Sens')
+    # Montant par défaut (paramétrable à la génération). NULL = doit être
+    # fourni explicitement à chaque génération (pas de défaut).
+    montant_defaut = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Montant par défaut')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+
+    class Meta:
+        verbose_name = "Ligne de modèle d'écriture"
+        verbose_name_plural = "Lignes de modèle d'écriture"
+        ordering = ['modele', 'ordre', 'id']
+
+    def __str__(self):
+        return f'{self.compte.numero} {self.sens} ({self.modele_id})'
+
+
+class AbonnementEcriture(models.Model):
+    """Écriture récurrente : régénère un ``ModeleEcriture`` à échéance (XACC8).
+
+    ``frequence`` mensuelle ou trimestrielle ; ``prochaine_echeance`` avance
+    d'elle-même après chaque génération (``services.generer_ecritures_
+    recurrentes``). ``date_fin`` optionnelle arrête la récurrence. Chaque
+    génération pose l'écriture en BROUILLON (relecture humaine avant
+    validation), idempotente PAR PÉRIODE (une seule écriture par
+    ``(abonnement, période)`` — pas de doublon si la commande est rejouée).
+    """
+    class Frequence(models.TextChoices):
+        MENSUELLE = 'mensuelle', 'Mensuelle'
+        TRIMESTRIELLE = 'trimestrielle', 'Trimestrielle'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='abonnements_ecriture',
+        verbose_name='Société',
+    )
+    modele = models.ForeignKey(
+        ModeleEcriture,
+        on_delete=models.CASCADE,
+        related_name='abonnements',
+        verbose_name='Modèle',
+    )
+    libelle = models.CharField(
+        max_length=150, blank=True, default='', verbose_name='Libellé')
+    frequence = models.CharField(
+        max_length=15, choices=Frequence.choices,
+        default=Frequence.MENSUELLE, verbose_name='Fréquence')
+    prochaine_echeance = models.DateField(verbose_name='Prochaine échéance')
+    date_fin = models.DateField(
+        null=True, blank=True, verbose_name='Date de fin')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    derniere_generation = models.DateField(
+        null=True, blank=True, verbose_name='Dernière génération')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Abonnement d\'écriture'
+        verbose_name_plural = 'Abonnements d\'écriture'
+        ordering = ['prochaine_echeance']
+
+    def __str__(self):
+        return self.libelle or f'Abonnement {self.modele_id}'
+
+    def echeance_suivante(self, depuis):
+        """Prochaine échéance après ``depuis`` selon la fréquence.
+
+        Ajoute 1 mois (mensuelle) ou 3 mois (trimestrielle) SANS dépendance
+        externe (stdlib pure) : calcule le mois/année cible puis clampe le
+        jour au dernier jour du mois cible (ex. 31 janvier + 1 mois → 28/29
+        février, jamais une ``ValueError``).
+        """
+        import calendar
+
+        pas = 1 if self.frequence == self.Frequence.MENSUELLE else 3
+        mois_total = depuis.month - 1 + pas
+        annee = depuis.year + mois_total // 12
+        mois = mois_total % 12 + 1
+        dernier_jour = calendar.monthrange(annee, mois)[1]
+        jour = min(depuis.day, dernier_jour)
+        return depuis.replace(year=annee, month=mois, day=jour)
+
+
 # ── FG121 / COMPTA23 — Référentiel comptes bancaires & caisses ─────────────
 
 class CompteTresorerie(models.Model):
@@ -499,6 +669,12 @@ class ExerciceComptable(models.Model):
         default=False, verbose_name='À-nouveaux reportés')
     date_cloture = models.DateTimeField(
         null=True, blank=True, verbose_name='Clôturé le')
+    # XACC11 — coefficient de prorata annuel de déduction de TVA (activité
+    # mixte, article 104 CGI). 100 % = comportement actuel intact (déduction
+    # intégrale, aucune régression pour un exercice non paramétré).
+    coefficient_prorata_tva = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('100'),
+        verbose_name='Coefficient de prorata TVA (%)')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -516,10 +692,49 @@ class ExerciceComptable(models.Model):
         if self.date_debut and self.date_fin and self.date_fin < self.date_debut:
             raise ValidationError(
                 "La date de fin doit être postérieure à la date de début.")
+        if self.coefficient_prorata_tva is not None and not (
+                0 <= self.coefficient_prorata_tva <= 100):
+            raise ValidationError(
+                "Le coefficient de prorata TVA doit être entre 0 et 100 %.")
 
     @property
     def est_cloture(self):
         return self.statut == self.Statut.CLOTURE
+
+
+# ── XACC11 — Référentiel des familles de charge à TVA NON déductible ───────
+
+class FamilleTvaNonDeductible(models.Model):
+    """Famille de charge dont la TVA n'est JAMAIS récupérable (XACC11).
+
+    CGI marocain, art. 106 : certaines dépenses (véhicules de tourisme,
+    missions/réceptions…) n'ouvrent aucun droit à déduction de TVA — la TVA
+    reste dans la charge (aucune écriture 3455). ``famille`` réutilise la même
+    clef que le mapping DC22 (``MappingCompte.TypeClef.FAMILLE``) pour router
+    la même famille de produit/charge des deux côtés.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='familles_tva_non_deductibles',
+        verbose_name='Société',
+    )
+    famille = models.CharField(
+        max_length=60, verbose_name='Famille (clef DC22)')
+    libelle = models.CharField(
+        max_length=150, blank=True, default='', verbose_name='Libellé')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Famille TVA non déductible'
+        verbose_name_plural = 'Familles TVA non déductibles'
+        ordering = ['famille']
+        unique_together = [('company', 'famille')]
+
+    def __str__(self):
+        return self.libelle or self.famille
 
 
 # ── FG115 — Période comptable verrouillable (clôture & immutabilité) ────────
@@ -1142,6 +1357,81 @@ class PointageReleve(models.Model):
 
     def __str__(self):
         return f'Pointage relevé {self.ligne_releve_id} ↔ GL {self.ligne_gl_id}'
+
+
+# ── XACC4 — Modèles de rapprochement (règles de contrepartie automatique) ──
+
+class ModeleRapprochement(models.Model):
+    """Règle de contrepartie automatique pour une ligne de relevé (XACC4).
+
+    Rien ne comptabilise automatiquement les agios/frais/virements récurrents
+    du relevé : une règle dit « toute ligne dont le libellé contient
+    ``motif`` va au compte ``compte_contrepartie`` ». Appliquée en bouton
+    un-clic (``services.appliquer_modele_rapprochement``) — ou automatiquement
+    si ``auto=True`` — elle crée l'écriture équilibrée banque↔contrepartie et
+    pointe la ligne de relevé. Le montant de l'écriture est celui de la ligne
+    de relevé (signé), sauf si ``montant_fixe`` est posé (montant imposé par la
+    règle, ex. un forfait de frais bancaires connu).
+    """
+    class TypeMotif(models.TextChoices):
+        CONTIENT = 'contient', 'Le libellé contient'
+        REGEX = 'regex', 'Expression régulière'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='modeles_rapprochement',
+        verbose_name='Société',
+    )
+    libelle = models.CharField(max_length=120, verbose_name='Libellé')
+    type_motif = models.CharField(
+        max_length=10, choices=TypeMotif.choices,
+        default=TypeMotif.CONTIENT, verbose_name='Type de motif')
+    motif = models.CharField(
+        max_length=200, verbose_name='Motif (libellé relevé)')
+    compte_contrepartie = models.ForeignKey(
+        CompteComptable,
+        on_delete=models.PROTECT,
+        related_name='modeles_rapprochement',
+        verbose_name='Compte de contrepartie',
+    )
+    # TVA optionnelle sur le montant de la contrepartie (ex. frais bancaires
+    # soumis à TVA) — taux en % (0-100). NULL = pas de ventilation TVA.
+    taux_tva = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        verbose_name='Taux de TVA (%)')
+    # Montant imposé par la règle (sinon : montant de la ligne de relevé).
+    montant_fixe = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Montant fixe')
+    # Application automatique (sans clic) — OFF par défaut : le founder décide
+    # au cas par cas tant que la règle n'est pas jugée fiable.
+    auto = models.BooleanField(default=False, verbose_name='Application automatique')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    priorite = models.PositiveIntegerField(
+        default=100, verbose_name='Priorité (plus petit = prioritaire)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Modèle de rapprochement'
+        verbose_name_plural = 'Modèles de rapprochement'
+        ordering = ['priorite', 'libelle']
+
+    def __str__(self):
+        return f'{self.libelle} ({self.motif!r} → {self.compte_contrepartie})'
+
+    def correspond(self, texte_libelle):
+        """Vrai si ``texte_libelle`` (libellé d'une ligne de relevé) matche."""
+        import re
+
+        texte = (texte_libelle or '')
+        if self.type_motif == self.TypeMotif.REGEX:
+            try:
+                return bool(re.search(self.motif, texte, re.IGNORECASE))
+            except re.error:
+                return False
+        return self.motif.strip().lower() in texte.lower()
 
 
 # ── FG124 — Caisse / petty cash (journal d'espèces) ────────────────────────
@@ -2525,6 +2815,84 @@ class DeclarationTVA(models.Model):
             self.tva_a_declarer = Decimal('0')
             self.credit_reportable = -net
         return self
+
+
+# ── XACC9 — Calendrier des obligations fiscales ─────────────────────────────
+
+class ObligationFiscale(models.Model):
+    """Échéance fiscale de l'exercice (TVA/IS/RAS…), vue unifiée (XACC9).
+
+    Les briques existantes (TVA FG137, acomptes IS FG140, RAS FG139, timbre
+    FG144, état 9421 FG143, liasse FG142) n'avaient aucune vue calendaire
+    commune. Un ``ObligationFiscale`` par échéance de l'exercice, avec sa
+    ``date_limite`` calculée selon le régime (mensuel/trimestriel) et un lien
+    optionnel vers la déclaration source une fois déposée
+    (``source_type``/``source_id`` — string-ref, jamais un import de modèle
+    autre que ceux déjà internes à ``compta``).
+    """
+    class Type(models.TextChoices):
+        TVA = 'tva', 'TVA'
+        IS_ACOMPTE = 'is_acompte', 'Acompte IS'
+        RAS = 'ras', 'Retenue à la source'
+        TIMBRE = 'timbre', 'Droit de timbre'
+        ETAT_9421 = 'etat_9421', 'État 9421'
+        LIASSE_FISCALE = 'liasse_fiscale', 'Liasse fiscale'
+
+    class Statut(models.TextChoices):
+        A_PREPARER = 'a_preparer', 'À préparer'
+        DEPOSEE = 'deposee', 'Déposée'
+        PAYEE = 'payee', 'Payée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='obligations_fiscales',
+        verbose_name='Société',
+    )
+    type_obligation = models.CharField(
+        max_length=20, choices=Type.choices, verbose_name='Type')
+    periode_debut = models.DateField(verbose_name='Début de période')
+    periode_fin = models.DateField(verbose_name='Fin de période')
+    date_limite = models.DateField(verbose_name='Date limite')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices,
+        default=Statut.A_PREPARER, verbose_name='Statut')
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    # Lien vers la déclaration source une fois déposée (ex. DeclarationTVA) —
+    # string-ref interne à compta, jamais un import cross-app de modèle.
+    source_type = models.CharField(
+        max_length=30, blank=True, default='',
+        verbose_name='Type de déclaration source')
+    source_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID de la déclaration source')
+    # J-7 : horodatage du rappel déjà envoyé (idempotence de la notification).
+    rappel_envoye_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Rappel envoyé le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Obligation fiscale'
+        verbose_name_plural = 'Obligations fiscales'
+        ordering = ['date_limite', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'type_obligation', 'periode_debut',
+                        'periode_fin'],
+                name='uniq_obligation_fiscale_periode',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.get_type_obligation_display()} — {self.date_limite}'
+
+    def clean(self):
+        super().clean()
+        if (self.periode_debut and self.periode_fin
+                and self.periode_fin < self.periode_debut):
+            raise ValidationError(
+                "La fin de période doit être postérieure au début.")
 
 
 # ── FG139 — Retenue à la source (RAS) sur honoraires/prestations ────────────

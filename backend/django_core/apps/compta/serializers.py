@@ -38,6 +38,9 @@ from .models import (
     AbonnementMonitoring,
     MappingCompte, CompteAuxiliaire, PieceJustificative,
     PisteAuditComptable,
+    ModeleRapprochement,
+    ObligationFiscale,
+    FamilleTvaNonDeductible,
 )
 
 
@@ -205,7 +208,8 @@ class ExerciceComptableSerializer(serializers.ModelSerializer):
         model = ExerciceComptable
         fields = [
             'id', 'libelle', 'date_debut', 'date_fin', 'statut',
-            'statut_display', 'an_reporte', 'date_cloture', 'date_creation',
+            'statut_display', 'an_reporte', 'date_cloture',
+            'coefficient_prorata_tva', 'date_creation',
         ]
         read_only_fields = [
             'statut', 'an_reporte', 'date_cloture', 'date_creation']
@@ -908,6 +912,35 @@ class DeclarationTVASerializer(serializers.ModelSerializer):
             'reference', 'tva_collectee', 'tva_deductible', 'tva_a_declarer',
             'credit_reportable', 'statut', 'created_by', 'date_creation',
         ]
+
+
+class ObligationFiscaleSerializer(serializers.ModelSerializer):
+    """Échéance du calendrier fiscal (XACC9) — LECTURE SEULE (générée par le
+    service, jamais créée à la main via l'API)."""
+    type_display = serializers.CharField(
+        source='get_type_obligation_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = ObligationFiscale
+        fields = [
+            'id', 'type_obligation', 'type_display', 'periode_debut',
+            'periode_fin', 'date_limite', 'statut', 'statut_display',
+            'libelle', 'source_type', 'source_id', 'rappel_envoye_le',
+            'date_creation',
+        ]
+        read_only_fields = fields
+
+
+class FamilleTvaNonDeductibleSerializer(serializers.ModelSerializer):
+    """Famille de charge à TVA non déductible (XACC11, véhicules de
+    tourisme…)."""
+
+    class Meta:
+        model = FamilleTvaNonDeductible
+        fields = ['id', 'famille', 'libelle', 'actif', 'date_creation']
+        read_only_fields = ['date_creation']
 
 
 class RetenueSourceSerializer(serializers.ModelSerializer):
@@ -1973,6 +2006,24 @@ class MappingCompteSerializer(serializers.ModelSerializer):
 
     def validate_compte(self, value):
         return _meme_societe(self, value, 'Compte')
+
+
+class ModeleRapprochementSerializer(serializers.ModelSerializer):
+    """Règle de contrepartie automatique (XACC4)."""
+    compte_contrepartie_numero = serializers.CharField(
+        source='compte_contrepartie.numero', read_only=True)
+
+    class Meta:
+        model = ModeleRapprochement
+        fields = [
+            'id', 'libelle', 'type_motif', 'motif', 'compte_contrepartie',
+            'compte_contrepartie_numero', 'taux_tva', 'montant_fixe', 'auto',
+            'actif', 'priorite', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_compte_contrepartie(self, value):
+        return _meme_societe(self, value, 'Compte de contrepartie')
 
 
 # ── COMPTA3 — Comptes auxiliaires tiers ────────────────────────────────────

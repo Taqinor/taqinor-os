@@ -20,7 +20,9 @@ Trois blocs :
 * ``creer_exercice`` / ``reporter_a_nouveaux`` (FG117) — ouverture d'exercice et
   report des soldes de bilan dans le nouvel exercice (à-nouveaux).
 """
+import csv
 import hashlib
+import io
 from decimal import ROUND_HALF_UP, Decimal
 from math import asin, cos, radians, sin, sqrt
 
@@ -51,6 +53,10 @@ from .models import (
     PaiementFacturePortail,
     MappingCompte, CompteAuxiliaire,
     PisteAuditComptable,
+    ModeleRapprochement,
+    AbonnementEcriture,
+    ObligationFiscale,
+    FamilleTvaNonDeductible,
 )
 
 
@@ -79,14 +85,27 @@ _COMPTES_CGNC = [
     ('3427', 'Clients - factures à établir', True, True, 'actif'),
     ('3424', 'Clients douteux ou litigieux', True, True, 'actif'),
     ('3134', 'Travaux en cours', False, False, 'actif'),
+    # XACC6 — Stock de marchandises (inventaire permanent).
+    ('3111', 'Stock de marchandises', False, False, 'actif'),
     ('3455', 'État - TVA récupérable', False, False, 'actif'),
     ('34552', 'État - TVA récupérable sur charges', False, False, 'actif'),
+    # XACC1 — TVA récupérable EN ATTENTE (régime encaissement) : la TVA d'un
+    # achat non encore réglé au fournisseur transite ici avant de basculer sur
+    # 3455 au règlement (transfert au prorata via
+    # ``transferer_tva_encaissement``).
+    ('34551', 'État - TVA récupérable en attente (encaissement)', False,
+     False, 'actif'),
     ('3942', 'Provisions pour dépréciation des clients', False, False,
      'actif'),
     # Classe 4 — Passif circulant
     ('4411', 'Fournisseurs', True, True, 'passif'),
     ('4415', 'Fournisseurs - effets à payer', True, True, 'passif'),
     ('4455', 'État - TVA facturée', False, False, 'passif'),
+    # XACC1 — TVA facturée EN ATTENTE (régime encaissement) : la TVA d'une
+    # vente non encore encaissée transite ici avant de basculer sur 4455 au
+    # règlement client (transfert au prorata du paiement, acomptes inclus).
+    ('44551', 'État - TVA facturée en attente (encaissement)', False, False,
+     'passif'),
     ('44552', 'État - TVA due', False, False, 'passif'),
     ('4491', "Produits constatés d'avance", False, False, 'passif'),
     ('4486', 'Fournisseurs - factures non parvenues', True, True, 'passif'),
@@ -105,6 +124,10 @@ _COMPTES_CGNC = [
      'charge'),
     # Classe 6 — Charges
     ('6111', 'Achats de marchandises', False, False, 'charge'),
+    # XACC6 — Variation de stock de marchandises (inventaire permanent) : une
+    # SORTIE valorisée débite cette charge (le CGNC compte la variation de
+    # stock en charge, contrepartie du crédit 3111).
+    ('6114', 'Variation de stocks de marchandises', False, False, 'charge'),
     ('6171', 'Rémunérations du personnel', False, False, 'charge'),
     ('6174', 'Charges sociales (cotisations patronales)', False, False,
      'charge'),
@@ -421,6 +444,112 @@ def ecriture_pour_paiement(paiement, *, force=False, user=None):
     )
 
 
+# ── XACC1 — TVA sur encaissement : transfert du compte d'attente ───────────
+# En régime « débit » (défaut), la TVA est constatée directement sur les
+# comptes définitifs (4455/3455) à la facturation — RIEN ne change ici, c'est
+# le comportement historique de ``ecriture_pour_facture``/
+# ``ecriture_pour_facture_fournisseur``. En régime « encaissement »
+# (``PlanComptable.regime_tva``), la TVA facturée/récupérable doit transiter
+# par un compte d'attente (44551/34551) jusqu'au règlement effectif : c'est ce
+# que fait ``transferer_tva_encaissement``, destinée à être appelée à
+# l'enregistrement d'un paiement. Le bus ``core.events`` (M6) n'émet à ce jour
+# AUCUN événement portant un ``ventes.Paiement`` (``payment_captured`` porte
+# une ``core.PaymentTransaction`` — capture carte en ligne, en amont du
+# ``Paiement`` métier) : suivant le même point d'ancrage documenté dans
+# ``receivers.py``, cette fonction reste donc déclenchée par APPEL DE SERVICE
+# EXPLICITE depuis ``ventes`` (à la manière de ``ecriture_pour_paiement``) tant
+# que ``ventes``/``stock`` n'émettent pas cet événement dédié — l'ajouter là-bas
+# est hors périmètre additif ici (modifierait ``ventes``).
+
+def regime_tva_societe(company):
+    """Régime de TVA effectif de la société (``debit`` par défaut).
+
+    Lecture seule. Sème le plan comptable au besoin (idempotent) pour que le
+    réglage soit toujours lisible, même sur une société jamais semée.
+    """
+    plan = PlanComptable.objects.filter(company=company).first()
+    if plan is None:
+        plan = seed_plan_comptable(company)
+    return plan.regime_tva
+
+
+def _compte_tva_attente_facturee(company):
+    return _assurer_compte(company, '44551')
+
+
+def _compte_tva_attente_recuperable(company):
+    return _assurer_compte(company, '34551')
+
+
+@transaction.atomic
+def transferer_tva_encaissement(paiement, *, montant=None, user=None,
+                                force=False):
+    """Transfère la TVA du compte d'attente vers le compte définitif (XACC1).
+
+    ``paiement`` est une instance ``ventes.Paiement`` (lue par valeur — aucun
+    import du modèle). Ne fait RIEN (renvoie ``None``) si :
+
+    * la société n'est pas en régime ``encaissement`` (régime ``debit`` =
+      comportement inchangé) ;
+    * la facture liée ne porte pas de TVA ;
+    * une écriture de transfert existe déjà pour ce paiement (idempotence).
+
+    Le transfert est calculé AU PRORATA du montant réellement encaissé par
+    rapport au TTC de la facture (acomptes inclus : un paiement partiel ne
+    transfère que sa quote-part de TVA). Débite 4455 (TVA facturée) et crédite
+    44551 (attente) à hauteur de la quote-part de TVA — l'écriture est de fait
+    un virement de compte à compte, toujours équilibrée. Respecte le verrou de
+    période (``creer_ecriture_od`` refuse une période clôturée). Renvoie
+    l'écriture de transfert, ou ``None`` si non applicable.
+    """
+    company = getattr(paiement, 'company', None)
+    if company is None:
+        facture = getattr(paiement, 'facture', None)
+        company = getattr(facture, 'company', None)
+    if company is None:
+        return None
+    if not force and regime_tva_societe(company) != PlanComptable.RegimeTVA.ENCAISSEMENT:
+        return None
+    facture = paiement.facture
+    ttc = Decimal(getattr(facture, 'total_ttc', 0) or 0)
+    tva_facture = Decimal(getattr(facture, 'total_tva', 0) or 0)
+    if ttc <= 0 or tva_facture <= 0:
+        return None
+    existante = _ecriture_existante(company, 'tva_encaissement', paiement.id)
+    if existante:
+        return existante
+    montant_regle = Decimal(montant) if montant is not None \
+        else Decimal(paiement.montant)
+    if montant_regle <= 0:
+        return None
+    # Quote-part de TVA proportionnelle au montant réellement encaissé,
+    # plafonnée à la TVA totale de la facture (un paiement > solde ne
+    # transfère jamais plus que la TVA due).
+    quote_part_tva = (tva_facture * montant_regle / ttc).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+    quote_part_tva = min(quote_part_tva, tva_facture)
+    if quote_part_tva <= 0:
+        return None
+    compte_attente = _compte_tva_attente_facturee(company)
+    compte_definitif = _assurer_compte(company, '4455')
+    ref = getattr(facture, 'reference', '')
+    journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+    lignes = [
+        {'compte': compte_attente, 'debit': quote_part_tva,
+         'credit': Decimal('0'),
+         'libelle': f'Transfert TVA encaissement {ref}'},
+        {'compte': compte_definitif, 'debit': Decimal('0'),
+         'credit': quote_part_tva,
+         'libelle': f'TVA due sur encaissement {ref}'},
+    ]
+    return creer_ecriture(
+        company, journal, paiement.date_paiement,
+        f'Transfert TVA encaissement {ref}', lignes,
+        reference=ref, source_type='tva_encaissement', source_id=paiement.id,
+        created_by=user, statut=EcritureComptable.Statut.VALIDEE,
+    )
+
+
 @transaction.atomic
 def ecriture_pour_avoir(avoir, *, force=False, user=None):
     """Génère l'écriture d'un avoir client (contre-passation de la vente).
@@ -472,6 +601,37 @@ def ecriture_pour_avoir(avoir, *, force=False, user=None):
 # le toggle ``COMPTA_AUTO_ECRITURES`` (OFF par défaut). Le compte de charge peut
 # être surchargé via le mapping DC22 (``type_clef='famille'``).
 
+# ── XACC11 — Prorata de déduction TVA & TVA non déductible ─────────────────
+
+def est_famille_non_deductible(company, famille):
+    """Vrai si ``famille`` (clef DC22) est dans le référentiel non-déductible.
+
+    Lecture seule. ``famille`` vide/None → toujours False (comportement
+    historique inchangé quand aucune famille n'est renseignée).
+    """
+    if not famille:
+        return False
+    return FamilleTvaNonDeductible.objects.filter(
+        company=company, famille=famille, actif=True).exists()
+
+
+def coefficient_prorata_tva(company, une_date):
+    """Coefficient de prorata TVA (%) de l'exercice couvrant ``une_date``.
+
+    Défaut 100 % (déduction intégrale, comportement historique) si aucun
+    exercice ne couvre la date ou si le champ n'a jamais été paramétré.
+    Lecture seule.
+    """
+    if une_date is None:
+        return Decimal('100')
+    exercice = ExerciceComptable.objects.filter(
+        company=company, date_debut__lte=une_date,
+        date_fin__gte=une_date).first()
+    if exercice is None:
+        return Decimal('100')
+    return exercice.coefficient_prorata_tva or Decimal('100')
+
+
 @transaction.atomic
 def ecriture_pour_facture_fournisseur(facture, *, force=False, user=None,
                                       famille_charge=None):
@@ -482,6 +642,15 @@ def ecriture_pour_facture_fournisseur(facture, *, force=False, user=None,
     passée. Renvoie l'écriture (existante ou nouvelle), ou None si désactivé/non
     applicable. ``famille_charge`` (optionnel) consulte le mapping DC22 pour
     router vers un compte de charge précis (défaut : 6111 Achats).
+
+    XACC11 — TVA non déductible / prorata : si ``famille_charge`` est dans le
+    référentiel ``FamilleTvaNonDeductible`` (véhicule de tourisme…), AUCUNE
+    ligne 3455 n'est postée — la TVA entière reste dans la charge (débit 61xx
+    majoré). Sinon, le coefficient de prorata de l'exercice
+    (``ExerciceComptable.coefficient_prorata_tva``, défaut 100 %) réduit la
+    fraction déductible ; le reliquat non déductible rejoint lui aussi la
+    charge. À 100 % (défaut), le comportement est STRICTEMENT identique à
+    avant (aucune régression).
     """
     if not force and not auto_ecritures_actif():
         return None
@@ -498,25 +667,43 @@ def ecriture_pour_facture_fournisseur(facture, *, force=False, user=None,
     ttc = Decimal(getattr(facture, 'montant_ttc', 0) or 0)
     fournisseur_id = getattr(facture, 'fournisseur_id', None)
     reference = getattr(facture, 'reference', '') or ''
+    date_facture = getattr(facture, 'date_facture', None)
     # DC22 : famille de charge → compte 6x (défaut 6111 si non mappé).
     compte_charge = compte_pour_clef(
         company, MappingCompte.TypeClef.FAMILLE, famille_charge,
         defaut=comptes['achats']) if famille_charge else comptes['achats']
+
+    # XACC11 — répartit la TVA entre déductible (3455) et non déductible
+    # (folded dans la charge), selon la famille et le coefficient de prorata.
+    non_deductible_totale = est_famille_non_deductible(company, famille_charge)
+    prorata = Decimal('100')
+    if non_deductible_totale:
+        tva_deductible = Decimal('0')
+    else:
+        prorata = coefficient_prorata_tva(company, date_facture)
+        tva_deductible = (tva * prorata / Decimal('100')).quantize(
+            Decimal('0.01')) if tva else Decimal('0')
+    tva_non_deductible = tva - tva_deductible
+    charge_totale = ht + tva_non_deductible
+
     lignes = [
-        {'compte': compte_charge, 'debit': ht, 'credit': Decimal('0'),
+        {'compte': compte_charge, 'debit': charge_totale, 'credit': Decimal('0'),
          'libelle': f'Achat {reference}'},
     ]
-    if tva:
+    if tva_deductible:
+        # XACC11 — marque la ligne « prorata » (visible tel quel dans le
+        # relevé FG138, dérivé du libellé GL — jamais un champ à part).
+        suffixe_prorata = f' (prorata {prorata}%)' if prorata != 100 else ''
         lignes.append({
-            'compte': comptes['tva_recuperable'], 'debit': tva,
+            'compte': comptes['tva_recuperable'], 'debit': tva_deductible,
             'credit': Decimal('0'),
-            'libelle': f'TVA récupérable {reference}'})
+            'libelle': f'TVA récupérable {reference}{suffixe_prorata}'})
     lignes.append({
         'compte': comptes['fournisseurs'], 'debit': Decimal('0'), 'credit': ttc,
         'libelle': f'Facture fournisseur {reference}',
         'tiers_type': 'fournisseur', 'tiers_id': fournisseur_id})
     return creer_ecriture(
-        company, journal, getattr(facture, 'date_facture', None),
+        company, journal, date_facture,
         f'Facture fournisseur {reference}', lignes,
         reference=reference, source_type='facture_fournisseur',
         source_id=facture.id, created_by=user,
@@ -659,6 +846,276 @@ def creer_periode(company, date_debut, date_fin, *, type_periode=None,
     return periode
 
 
+# ── XACC7 — Provisions FNP / FAE de fin de période ──────────────────────────
+# Aucun accrual « factures non parvenues / à établir » n'existait. Les
+# réceptions/avancements NON facturés vivent dans ``apps.stock``/``apps.ventes``
+# (rapprochement 3 voies FG131, avancement FG146…) : compta les reçoit ICI par
+# VALEUR — une liste de dicts déjà résolus par l'appelant via LEURS sélecteurs
+# (``stock.selectors.three_way_amounts`` pour les réceptions, les sélecteurs de
+# ``ventes`` pour l'avancement non facturé) — jamais un import de leurs
+# ``models``. Chaque item ``{'reference', 'montant_ht', 'tiers_id'?,
+# 'tiers_nom'?}`` devient UNE ligne de la provision ; ``source_id`` (entier)
+# identifie le document source pour l'idempotence (ex. l'id du BCF/chantier).
+
+def _ligne_provision(compte, montant, libelle, tiers_id=None, tiers_type=''):
+    return {'compte': compte, 'debit': montant, 'credit': Decimal('0'),
+            'libelle': libelle, 'tiers_type': tiers_type, 'tiers_id': tiers_id}
+
+
+@transaction.atomic
+def generer_provisions_fnp(company, *, date_periode, items, date_extourne=None,
+                           compte_charge=None, user=None):
+    """Provisionne les FACTURES NON PARVENUES (réceptions non facturées).
+
+    ``items`` : liste de ``{'source_id': int, 'reference': str, 'montant_ht':
+    Decimal, 'tiers_id'?: int}`` (une réception fournisseur non encore
+    facturée = un item). Pour chaque item, poste une écriture OD (débit
+    ``compte_charge`` [défaut 6111], crédit 4486 « Fournisseurs — factures non
+    parvenues ») datée ``date_periode``, PUIS son extourne automatique
+    (``extourner_ecriture``) datée du premier jour de la période suivante
+    (``date_extourne``, obligatoire — calculé côté appelant). IDEMPOTENT par
+    item (``source_type='fnp'``, ``source_id``). Renvoie la liste des
+    ``{'source_id', 'ecriture_id', 'extourne_id', 'montant'}`` postés.
+    """
+    if date_extourne is None:
+        raise ValidationError(
+            "La date d'extourne (1er jour de la période suivante) est "
+            "obligatoire.")
+    comptes = _comptes_requis(company)
+    compte_fnp = _assurer_compte(company, '4486')
+    compte_ch = compte_charge or comptes['achats']
+    journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+    resultats = []
+    for item in items or []:
+        source_id = item['source_id']
+        montant = Decimal(item.get('montant_ht') or 0)
+        if montant <= 0:
+            continue
+        existante = _ecriture_existante(company, 'fnp', source_id)
+        if existante:
+            ecriture = existante
+        else:
+            ref = item.get('reference', '') or ''
+            tiers_id = item.get('tiers_id')
+            lignes = [
+                _ligne_provision(
+                    compte_ch, montant, f'FNP {ref}', tiers_id, 'fournisseur'),
+                {'compte': compte_fnp, 'debit': Decimal('0'), 'credit': montant,
+                 'libelle': f'FNP {ref}', 'tiers_type': 'fournisseur',
+                 'tiers_id': tiers_id},
+            ]
+            ecriture = creer_ecriture(
+                company, journal, date_periode, f'Provision FNP {ref}', lignes,
+                reference=ref, source_type='fnp', source_id=source_id,
+                created_by=user, statut=EcritureComptable.Statut.VALIDEE,
+            )
+        extourne = extourner_ecriture(
+            ecriture, date_extourne=date_extourne, user=user,
+            libelle=f'Extourne FNP {ecriture.reference}')
+        resultats.append({
+            'source_id': source_id, 'ecriture_id': ecriture.id,
+            'extourne_id': extourne.id, 'montant': montant,
+        })
+    return resultats
+
+
+@transaction.atomic
+def generer_provisions_fae(company, *, date_periode, items, date_extourne=None,
+                           compte_produit=None, user=None):
+    """Provisionne les FACTURES À ÉTABLIR (livraisons/avancements non facturés).
+
+    Miroir client de ``generer_provisions_fnp``. ``items`` : liste de
+    ``{'source_id': int, 'reference': str, 'montant_ht': Decimal, 'tiers_id'?:
+    int}`` (une livraison/un avancement non encore facturé = un item). Poste
+    une écriture OD (débit 3427 « Clients — factures à établir », crédit
+    ``compte_produit`` [défaut 7121]) datée ``date_periode``, PUIS son extourne
+    automatique datée du premier jour de la période suivante. IDEMPOTENT par
+    item (``source_type='fae'``, ``source_id``). Renvoie la liste des
+    ``{'source_id', 'ecriture_id', 'extourne_id', 'montant'}`` postés.
+    """
+    if date_extourne is None:
+        raise ValidationError(
+            "La date d'extourne (1er jour de la période suivante) est "
+            "obligatoire.")
+    comptes = _comptes_requis(company)
+    compte_fae = _assurer_compte(company, '3427')
+    compte_pr = compte_produit or comptes['ventes']
+    journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+    resultats = []
+    for item in items or []:
+        source_id = item['source_id']
+        montant = Decimal(item.get('montant_ht') or 0)
+        if montant <= 0:
+            continue
+        existante = _ecriture_existante(company, 'fae', source_id)
+        if existante:
+            ecriture = existante
+        else:
+            ref = item.get('reference', '') or ''
+            tiers_id = item.get('tiers_id')
+            lignes = [
+                {'compte': compte_fae, 'debit': montant, 'credit': Decimal('0'),
+                 'libelle': f'FAE {ref}', 'tiers_type': 'client',
+                 'tiers_id': tiers_id},
+                {'compte': compte_pr, 'debit': Decimal('0'), 'credit': montant,
+                 'libelle': f'FAE {ref}', 'tiers_type': 'client',
+                 'tiers_id': tiers_id},
+            ]
+            ecriture = creer_ecriture(
+                company, journal, date_periode, f'Provision FAE {ref}', lignes,
+                reference=ref, source_type='fae', source_id=source_id,
+                created_by=user, statut=EcritureComptable.Statut.VALIDEE,
+            )
+        extourne = extourner_ecriture(
+            ecriture, date_extourne=date_extourne, user=user,
+            libelle=f'Extourne FAE {ecriture.reference}')
+        resultats.append({
+            'source_id': source_id, 'ecriture_id': ecriture.id,
+            'extourne_id': extourne.id, 'montant': montant,
+        })
+    return resultats
+
+
+def rapport_provisions_periode(company, *, date_debut, date_fin,
+                               type_provision=None):
+    """Rapport de contrôle des provisions FNP/FAE postées sur une période.
+
+    Liste chaque écriture ``source_type in ('fnp', 'fae')`` dont
+    ``date_ecriture`` tombe dans ``[date_debut ; date_fin]``, avec sa pièce
+    source (``reference``, ``source_id``) et le montant. Lecture seule, prête
+    pour l'export CSV (``services.export_provisions_periode_csv``).
+    """
+    types = [type_provision] if type_provision else ['fnp', 'fae']
+    qs = EcritureComptable.objects.filter(
+        company=company, source_type__in=types,
+        date_ecriture__gte=date_debut, date_ecriture__lte=date_fin,
+    ).order_by('source_type', 'date_ecriture', 'id')
+    lignes = []
+    for ecr in qs:
+        lignes.append({
+            'type': ecr.source_type,
+            'source_id': ecr.source_id,
+            'reference': ecr.reference,
+            'date': ecr.date_ecriture,
+            'libelle': ecr.libelle,
+            'montant': ecr.total_debit,
+        })
+    return lignes
+
+
+def export_provisions_periode_csv(company, *, date_debut, date_fin,
+                                  type_provision=None):
+    """Export CSV du rapport de contrôle des provisions FNP/FAE (XACC7)."""
+    lignes = rapport_provisions_periode(
+        company, date_debut=date_debut, date_fin=date_fin,
+        type_provision=type_provision)
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, delimiter=';')
+    writer.writerow(['Type', 'Référence', 'Date', 'Libellé', 'Montant HT'])
+    for lig in lignes:
+        writer.writerow([
+            lig['type'].upper(), lig['reference'], lig['date'], lig['libelle'],
+            lig['montant']])
+    return buffer.getvalue().encode('utf-8-sig')
+
+
+# ── XACC8 — Modèles d'écriture, écritures récurrentes & extourne auto ──────
+
+@transaction.atomic
+def generer_ecriture_depuis_modele(modele, *, date_ecriture, montants=None,
+                                   libelle=None, source_type='', source_id=None,
+                                   user=None, statut=None):
+    """Génère UNE écriture à partir d'un ``ModeleEcriture`` (lignes pré-codées).
+
+    ``montants`` (optionnel) : dict ``{ligne_modele_id: Decimal}`` qui
+    surcharge le ``montant_defaut`` de la ligne — obligatoire pour toute ligne
+    dont ``montant_defaut`` est ``None``, sinon ``ValidationError``. Renvoie
+    l'écriture (naît en BROUILLON par défaut — relecture humaine avant
+    validation, sauf ``statut`` explicite).
+    """
+    montants = montants or {}
+    lignes = []
+    for lig_modele in modele.lignes.order_by('ordre', 'id'):
+        montant = montants.get(lig_modele.id, lig_modele.montant_defaut)
+        if montant is None:
+            raise ValidationError(
+                f"Montant manquant pour la ligne {lig_modele.compte.numero} "
+                "du modèle (pas de montant par défaut).")
+        montant = Decimal(montant)
+        lignes.append({
+            'compte': lig_modele.compte,
+            'debit': montant if lig_modele.sens == 'debit' else Decimal('0'),
+            'credit': montant if lig_modele.sens == 'credit' else Decimal('0'),
+            'libelle': lig_modele.libelle or modele.libelle,
+        })
+    return creer_ecriture(
+        modele.company, modele.journal, date_ecriture,
+        libelle or modele.libelle, lignes,
+        source_type=source_type, source_id=source_id, created_by=user,
+        statut=statut or EcritureComptable.Statut.BROUILLON,
+    )
+
+
+@transaction.atomic
+def generer_ecritures_recurrentes(company, *, jusqua=None, user=None):
+    """Génère les écritures dues de tous les abonnements actifs (XACC8).
+
+    Pour chaque ``AbonnementEcriture`` actif dont ``prochaine_echeance`` est
+    ≤ ``jusqua`` (défaut : aujourd'hui) ET ``date_fin`` non dépassée, génère
+    l'écriture du modèle (montants par défaut des lignes — un abonnement sans
+    montant par défaut sur une ligne est SKIP avec le détail), puis avance
+    ``prochaine_echeance`` d'un cran. IDEMPOTENT PAR PÉRIODE :
+    ``source_type='abonnement'`` + ``source_id=abonnement.id`` ne suffit pas à
+    distinguer deux échéances du même abonnement — la référence de l'écriture
+    porte la période (``AB{id}-{YYYY-MM}``) et sert de clef d'idempotence
+    explicite en plus du couple source. Si ``modele.extourne_auto`` est posé,
+    l'extourne est postée au 1er jour du mois suivant (COMPTA11). Renvoie
+    ``{'generees': [...], 'ignorees': [...]}``.
+    """
+    ref_date = jusqua or timezone.localdate()
+    generees, ignorees = [], []
+    abonnements = AbonnementEcriture.objects.filter(
+        company=company, actif=True,
+        prochaine_echeance__lte=ref_date).select_related('modele')
+    for ab in abonnements:
+        if ab.date_fin and ab.prochaine_echeance > ab.date_fin:
+            continue
+        periode_key = ab.prochaine_echeance.strftime('%Y-%m')
+        ref = f'AB{ab.id}-{periode_key}'
+        deja = EcritureComptable.objects.filter(
+            company=company, source_type='abonnement', reference=ref).first()
+        if deja:
+            ignorees.append({'abonnement_id': ab.id, 'periode': periode_key,
+                             'raison': 'déjà générée'})
+        else:
+            try:
+                ecriture = generer_ecriture_depuis_modele(
+                    ab.modele, date_ecriture=ab.prochaine_echeance,
+                    libelle=ab.libelle or ab.modele.libelle,
+                    source_type='abonnement', source_id=ab.id, user=user)
+            except ValidationError as exc:
+                ignorees.append({
+                    'abonnement_id': ab.id, 'periode': periode_key,
+                    'raison': exc.messages[0] if exc.messages else str(exc)})
+                continue
+            ecriture.reference = ref
+            ecriture.save(update_fields=['reference'])
+            extourne_id = None
+            if ab.modele.extourne_auto:
+                prochain_mois = ab.echeance_suivante(ab.prochaine_echeance)
+                date_extourne = prochain_mois.replace(day=1)
+                extourne = extourner_ecriture(
+                    ecriture, date_extourne=date_extourne, user=user)
+                extourne_id = extourne.id
+            generees.append({
+                'abonnement_id': ab.id, 'ecriture_id': ecriture.id,
+                'extourne_id': extourne_id, 'periode': periode_key})
+        ab.prochaine_echeance = ab.echeance_suivante(ab.prochaine_echeance)
+        ab.derniere_generation = ref_date
+        ab.save(update_fields=['prochaine_echeance', 'derniere_generation'])
+    return {'generees': generees, 'ignorees': ignorees}
+
+
 # ── FG116 — Écritures de régularisation / OD manuelles ─────────────────────
 
 @transaction.atomic
@@ -796,6 +1253,148 @@ def _ecriture_an_existante(company, exercice):
     return EcritureComptable.objects.filter(
         company=company, source_type='a_nouveaux',
         source_id=exercice.id).first()
+
+
+# ── XACC2 — Import de la balance d'ouverture (reprise des existants) ────────
+# Aucun outil de reprise n'existait pour démarrer la compta d'une société sur
+# TAQINOR OS : import CSV guidé de la balance d'ouverture par compte (avec, en
+# option, les items ouverts par tiers pour la balance âgée/lettrage dès le
+# jour 1). Une seule écriture d'ouverture équilibrée est postée au journal AN,
+# idempotente par exercice (rejouable sans doublon).
+
+BALANCE_OUVERTURE_COLONNES = [
+    'compte', 'libelle', 'debit', 'credit', 'tiers_type', 'tiers_id',
+]
+
+
+def gabarit_import_balance_ouverture():
+    """Fichier modèle (CSV) téléchargeable pour l'import de balance d'ouverture.
+
+    Colonnes : ``compte`` (numéro CGNC existant), ``libelle`` (optionnel),
+    ``debit``/``credit`` (l'un des deux, jamais les deux), ``tiers_type``/
+    ``tiers_id`` (optionnels — poser sur un compte tiers 3421/4411 rattache la
+    ligne à un item ouvert par tiers, cf. ``CompteAuxiliaire``). Renvoie les
+    octets du CSV.
+    """
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, delimiter=';')
+    writer.writerow(BALANCE_OUVERTURE_COLONNES)
+    writer.writerow(['3421', 'Client Dupont — solde ouverture', '12000', '',
+                     'client', '1'])
+    writer.writerow(['4411', 'Fournisseur Atlas — solde ouverture', '', '5000',
+                     'fournisseur', '3'])
+    writer.writerow(['1111', 'Capital social', '', '50000', '', ''])
+    return buffer.getvalue().encode('utf-8-sig')
+
+
+def _valider_ligne_balance_ouverture(company, index, row):
+    """Valide UNE ligne du fichier de balance d'ouverture.
+
+    Renvoie ``(ligne_ecriture_dict_ou_None, erreur_ou_None)``. N'écrit rien :
+    validation pure, ligne par ligne, pour le rapport d'erreurs (COMPTA3).
+    """
+    numero = (row.get('compte') or '').strip()
+    if not numero:
+        return None, {'ligne': index, 'raison': 'numéro de compte manquant'}
+    compte = get_compte(company, numero)
+    if compte is None:
+        return None, {
+            'ligne': index, 'raison': f'compte inconnu : {numero!r}'}
+    raw_debit = (row.get('debit') or '').strip()
+    raw_credit = (row.get('credit') or '').strip()
+    try:
+        debit = Decimal(raw_debit.replace(',', '.')) if raw_debit else Decimal('0')
+        credit = Decimal(raw_credit.replace(',', '.')) if raw_credit else Decimal('0')
+    except Exception:
+        return None, {
+            'ligne': index, 'raison': 'débit/crédit non numérique'}
+    if debit and credit:
+        return None, {
+            'ligne': index,
+            'raison': 'une ligne ne peut porter à la fois débit et crédit'}
+    if not debit and not credit:
+        return None, {'ligne': index, 'raison': 'débit et crédit tous deux nuls'}
+    if debit < 0 or credit < 0:
+        return None, {'ligne': index, 'raison': 'montant négatif refusé'}
+    tiers_type = (row.get('tiers_type') or '').strip().lower()
+    tiers_id_raw = (row.get('tiers_id') or '').strip()
+    tiers_id = None
+    if tiers_type and tiers_id_raw:
+        try:
+            tiers_id = int(tiers_id_raw)
+        except ValueError:
+            return None, {
+                'ligne': index, 'raison': f'tiers_id non numérique : {tiers_id_raw!r}'}
+    return {
+        'compte': compte,
+        'debit': debit,
+        'credit': credit,
+        'libelle': (row.get('libelle') or '').strip() or "Balance d'ouverture",
+        'tiers_type': tiers_type,
+        'tiers_id': tiers_id,
+    }, None
+
+
+def valider_balance_ouverture(company, rows):
+    """Valide TOUTES les lignes d'un import de balance d'ouverture.
+
+    ``rows`` est une liste de dicts (une ligne de fichier = un dict de
+    colonnes). Renvoie ``{'lignes': [...valides...], 'erreurs': [...]}``. Une
+    ligne totalement vide est ignorée silencieusement (pas une erreur).
+    """
+    lignes, erreurs = [], []
+    for i, row in enumerate(rows, start=1):
+        if not any((v or '').strip() for v in row.values() if isinstance(v, str)):
+            continue
+        ligne, erreur = _valider_ligne_balance_ouverture(company, i, row)
+        if erreur:
+            erreurs.append(erreur)
+        else:
+            lignes.append(ligne)
+    return {'lignes': lignes, 'erreurs': erreurs}
+
+
+@transaction.atomic
+def importer_balance_ouverture(company, rows, *, exercice, date_ecriture=None,
+                               user=None):
+    """Importe la balance d'ouverture : UNE écriture AN équilibrée + items ouverts.
+
+    Valide d'abord TOUTES les lignes (``valider_balance_ouverture``) — si la
+    moindre erreur est trouvée, RIEN n'est écrit et le rapport d'erreurs par
+    ligne est renvoyé (``{'ok': False, 'erreurs': [...]}``). Sinon, poste une
+    écriture unique au journal AN dont la somme des débits doit égaler la somme
+    des crédits (sinon ``ValidationError`` — fichier de balance déséquilibré).
+    Les lignes portant un ``tiers_type``/``tiers_id`` deviennent des items
+    ouverts (non lettrés) rattachés à l'auxiliaire correspondant, prêts pour la
+    balance âgée et le lettrage dès le jour 1 (COMPTA3). IDEMPOTENT par
+    exercice : rejouer le même exercice renvoie l'écriture déjà postée sans
+    dupliquer (``source_type='balance_ouverture'``, ``source_id=exercice.id``).
+    """
+    existante = _ecriture_existante(company, 'balance_ouverture', exercice.id)
+    if existante:
+        return {'ok': True, 'ecriture': existante, 'erreurs': [],
+                'deja_importee': True}
+    verif = valider_balance_ouverture(company, rows)
+    if verif['erreurs']:
+        return {'ok': False, 'ecriture': None, 'erreurs': verif['erreurs']}
+    if not verif['lignes']:
+        return {'ok': False, 'ecriture': None,
+                'erreurs': [{'ligne': 0, 'raison': 'fichier vide'}]}
+    journal = _journal(company, Journal.Type.A_NOUVEAUX)
+    if journal is None:
+        journal, _ = Journal.objects.get_or_create(
+            company=company, code='AN',
+            defaults={'libelle': 'À-nouveaux',
+                      'type_journal': Journal.Type.A_NOUVEAUX})
+    date_piece = date_ecriture or exercice.date_debut
+    ecriture = creer_ecriture(
+        company, journal, date_piece, "Balance d'ouverture", verif['lignes'],
+        reference=f'AN-OUV-{exercice.id}', source_type='balance_ouverture',
+        source_id=exercice.id, created_by=user,
+        statut=EcritureComptable.Statut.VALIDEE,
+    )
+    return {'ok': True, 'ecriture': ecriture, 'erreurs': [],
+            'deja_importee': False}
 
 
 # ── FG119 — Plan d'amortissement & dotations postées au grand livre ─────────
@@ -1405,6 +2004,218 @@ def cloturer_rapprochement(rapprochement):
         rapprochement.date_rapprochement = timezone.now()
         rapprochement.save(update_fields=['statut', 'date_rapprochement'])
     return rapprochement
+
+
+# ── XACC3 — Auto-suggestion de rapprochement bancaire ───────────────────────
+
+@transaction.atomic
+def accepter_suggestions_rapprochement(rapprochement):
+    """Pointe en un clic les suggestions NON ambiguës (XACC3).
+
+    Relit ``selectors.suggestions_rapprochement`` et, pour chaque ligne de
+    relevé suggérée, pointe AUTOMATIQUEMENT la meilleure candidate SEULEMENT
+    si : il y a au moins un candidat, la suggestion n'est PAS ``ambigue``
+    (deux candidats à égalité de score ne sont JAMAIS auto-acceptés — l'humain
+    tranche), et le score du meilleur candidat est strictement positif. JAMAIS
+    de pointage silencieux : chaque ligne effectivement pointée est listée dans
+    le retour. Renvoie ``{'pointees': [...ligne_releve_id...], 'ignorees':
+    [{'ligne_releve_id', 'raison'}, ...]}``.
+    """
+    from . import selectors
+
+    suggestions = selectors.suggestions_rapprochement(rapprochement)
+    pointees, ignorees = [], []
+    for sugg in suggestions:
+        if sugg['ambigue']:
+            ignorees.append({
+                'ligne_releve_id': sugg['ligne_releve_id'],
+                'raison': 'ambiguë : plusieurs candidats au même score'})
+            continue
+        if not sugg['candidats']:
+            ignorees.append({
+                'ligne_releve_id': sugg['ligne_releve_id'],
+                'raison': 'aucun candidat'})
+            continue
+        meilleur = sugg['candidats'][0]
+        ligne_releve = LigneReleve.objects.get(
+            company=rapprochement.company, id=sugg['ligne_releve_id'])
+        pointer_ligne_releve(ligne_releve, [meilleur['ligne_gl_id']])
+        pointees.append(sugg['ligne_releve_id'])
+    return {'pointees': pointees, 'ignorees': ignorees}
+
+
+# ── XACC4 — Modèles de rapprochement (règles de contrepartie automatique) ──
+
+def modele_correspondant(company, libelle_releve):
+    """Premier ``ModeleRapprochement`` actif dont le motif matche (ou None).
+
+    Trié par ``priorite`` croissante (plus petit = prioritaire). Lecture seule.
+    """
+    for modele in ModeleRapprochement.objects.filter(
+            company=company, actif=True).order_by('priorite', 'id'):
+        if modele.correspond(libelle_releve):
+            return modele
+    return None
+
+
+@transaction.atomic
+def appliquer_modele_rapprochement(ligne_releve, modele=None):
+    """Applique une règle de contrepartie à une ligne de relevé (XACC4).
+
+    Sans ``modele`` explicite, résout la première règle active dont le motif
+    matche le libellé (``modele_correspondant``) — lève ``ValidationError`` si
+    aucune ne correspond. Crée une écriture ÉQUILIBRÉE banque↔contrepartie
+    (débit/crédit selon le signe du montant : une sortie d'argent débite la
+    contrepartie et crédite la banque, une entrée l'inverse), ventile la TVA si
+    ``modele.taux_tva`` est posé, puis POINTE la ligne de relevé sur la ligne
+    banque de l'écriture créée. Respecte le verrou de période (``creer_
+    ecriture``). Idempotent : rejouer sur la même ligne de relevé déjà pointée
+    ne recrée rien (renvoie l'écriture existante liée à son pointage).
+    """
+    company = ligne_releve.company
+    rapprochement = ligne_releve.rapprochement
+    if ligne_releve.statut == LigneReleve.Statut.RAPPROCHEE:
+        pointage = PointageReleve.objects.filter(
+            ligne_releve=ligne_releve).select_related(
+            'ligne_gl__ecriture').first()
+        if pointage:
+            return pointage.ligne_gl.ecriture
+    if modele is None:
+        modele = modele_correspondant(company, ligne_releve.libelle)
+    if modele is None:
+        raise ValidationError(
+            "Aucun modèle de rapprochement ne correspond à cette ligne.")
+    if modele.company_id != company.id:
+        raise ValidationError("Modèle de rapprochement inconnu.")
+    montant = (Decimal(modele.montant_fixe)
+               if modele.montant_fixe is not None
+               else abs(Decimal(ligne_releve.montant or 0)))
+    if montant <= 0:
+        raise ValidationError(
+            "Le montant à comptabiliser doit être strictement positif.")
+    compte_banque = rapprochement.compte_tresorerie.compte_comptable
+    entree = (ligne_releve.montant or Decimal('0')) >= 0
+    lignes = []
+    if modele.taux_tva:
+        taux = Decimal(modele.taux_tva) / Decimal('100')
+        tva = (montant * taux / (1 + taux)).quantize(Decimal('0.01'))
+        ht = montant - tva
+        compte_tva = _assurer_compte(company, '34552')
+    else:
+        tva = Decimal('0')
+        ht = montant
+        compte_tva = None
+    if entree:
+        lignes.append({'compte': compte_banque, 'debit': montant,
+                       'credit': Decimal('0'), 'libelle': modele.libelle})
+        lignes.append({'compte': modele.compte_contrepartie, 'debit': Decimal('0'),
+                       'credit': ht, 'libelle': modele.libelle})
+        if tva:
+            lignes.append({'compte': compte_tva, 'debit': Decimal('0'),
+                           'credit': tva, 'libelle': f'TVA {modele.libelle}'})
+    else:
+        lignes.append({'compte': modele.compte_contrepartie, 'debit': ht,
+                       'credit': Decimal('0'), 'libelle': modele.libelle})
+        if tva:
+            lignes.append({'compte': compte_tva, 'debit': tva,
+                           'credit': Decimal('0'), 'libelle': f'TVA {modele.libelle}'})
+        lignes.append({'compte': compte_banque, 'debit': Decimal('0'),
+                       'credit': montant, 'libelle': modele.libelle})
+    journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+    ecriture = creer_ecriture(
+        company, journal, ligne_releve.date_operation,
+        f'{modele.libelle} — {ligne_releve.libelle}', lignes,
+        reference=ligne_releve.reference,
+        source_type='modele_rapprochement', source_id=ligne_releve.id,
+        statut=EcritureComptable.Statut.VALIDEE,
+    )
+    ligne_gl_banque = ecriture.lignes.get(compte=compte_banque)
+    pointer_ligne_releve(ligne_releve, [ligne_gl_banque.id])
+    return ecriture
+
+
+# ── XACC6 — Écritures de stock automatiques (inventaire permanent) ─────────
+# Les auto-écritures couvrent factures/paiements/avoirs/FF (FG109), mais aucun
+# mouvement de stock ne poste au GL. ``poster_mouvement_stock`` comble ce
+# manque, derrière le toggle société ``PlanComptable.inventaire_permanent``
+# (défaut OFF = comportement actuel intact, zéro écriture). La valeur
+# unitaire est lue via ``apps.stock.selectors`` (jamais un import du modèle
+# ``Produit``) — en l'absence d'un CUMP glissant dans ``apps.stock`` à ce
+# jour, on retient ``Produit.prix_achat`` comme valorisation (usage 100 %
+# interne/GL, jamais exposé dans un PDF ou un document client, conforme à la
+# règle CLAUDE.md sur ce champ).
+
+def inventaire_permanent_actif(company):
+    """Vrai si l'inventaire permanent est activé pour la société (XACC6).
+
+    Sème le plan comptable au besoin (idempotent) pour que le réglage soit
+    toujours lisible, même sur une société jamais semée.
+    """
+    plan = PlanComptable.objects.filter(company=company).first()
+    if plan is None:
+        plan = seed_plan_comptable(company)
+    return bool(plan.inventaire_permanent)
+
+
+@transaction.atomic
+def poster_mouvement_stock(company, *, mouvement_ref, produit_id, sens,
+                           quantite, valeur_unitaire=None, date_mouvement=None,
+                           user=None, force=False):
+    """Poste l'écriture GL d'un mouvement de stock valorisé (XACC6).
+
+    ``sens`` ∈ {'entree', 'sortie'} : une ENTRÉE valorisée débite 3111 (stock)
+    et crédite 6114 (variation de stock) ; une SORTIE fait l'inverse (débite
+    6114, crédite 3111) — reflet CGNC de la variation. Ne fait RIEN (renvoie
+    ``None``) si le toggle ``inventaire_permanent`` est OFF (sauf ``force``),
+    ou si la valeur totale du mouvement est nulle. IDEMPOTENT PAR MOUVEMENT :
+    ``mouvement_ref`` doit être unique par société (ex. l'id du
+    ``MouvementStock`` d'origine) — rejouer le même mouvement renvoie
+    l'écriture déjà postée sans dupliquer. ``valeur_unitaire`` : si omise, est
+    résolue via ``apps.stock.selectors.get_produit_scoped(company,
+    produit_id).prix_achat`` (jamais un import du modèle ``Produit``).
+    """
+    if sens not in ('entree', 'sortie'):
+        raise ValidationError("Sens de mouvement invalide (entree/sortie).")
+    if not force and not inventaire_permanent_actif(company):
+        return None
+    existante = _ecriture_existante(company, 'mouvement_stock', mouvement_ref)
+    if existante:
+        return existante
+    if valeur_unitaire is None:
+        from apps.stock import selectors as stock_selectors
+        produit = stock_selectors.get_produit_scoped(company, produit_id)
+        if produit is None:
+            raise ValidationError(
+                "Produit introuvable dans cette société pour ce mouvement.")
+        valeur_unitaire = produit.prix_achat
+    valeur_totale = (Decimal(valeur_unitaire or 0)
+                     * Decimal(quantite or 0)).copy_abs()
+    if valeur_totale <= 0:
+        return None
+    compte_stock = _assurer_compte(company, '3111')
+    compte_variation = _assurer_compte(company, '6114')
+    if sens == 'entree':
+        lignes = [
+            {'compte': compte_stock, 'debit': valeur_totale, 'credit': Decimal('0'),
+             'libelle': f'Entrée stock {mouvement_ref}'},
+            {'compte': compte_variation, 'debit': Decimal('0'), 'credit': valeur_totale,
+             'libelle': f'Entrée stock {mouvement_ref}'},
+        ]
+    else:
+        lignes = [
+            {'compte': compte_variation, 'debit': valeur_totale, 'credit': Decimal('0'),
+             'libelle': f'Sortie stock {mouvement_ref}'},
+            {'compte': compte_stock, 'debit': Decimal('0'), 'credit': valeur_totale,
+             'libelle': f'Sortie stock {mouvement_ref}'},
+        ]
+    journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+    return creer_ecriture(
+        company, journal, date_mouvement or timezone.localdate(),
+        f'Mouvement de stock {mouvement_ref}', lignes,
+        reference=str(mouvement_ref), source_type='mouvement_stock',
+        source_id=mouvement_ref, created_by=user,
+        statut=EcritureComptable.Statut.VALIDEE,
+    )
 
 
 # ── FG124 — Caisse / petty cash (journal d'espèces) ────────────────────────
@@ -2908,6 +3719,280 @@ def preparer_declaration_tva(company, *, date_debut, date_fin,
 
     # Savepoint + retry race-safe (highest-used+1, jamais count()+1).
     return create_with_reference(DeclarationTVA, 'TVA', company, _save)
+
+
+# ── XACC9 — Calendrier des obligations fiscales ─────────────────────────────
+# Les briques existent (TVA FG137, acomptes IS FG140, RAS FG139, timbre FG144,
+# état 9421 FG143, liasse FG142) mais aucune vue calendaire unifiée. On
+# GÉNÈRE ici toutes les échéances de l'exercice avec leur date limite
+# marocaine (délais CGI standards, arrondis au jour ouvré n'est PAS géré ici —
+# le fiduciaire humain ajuste en cas de jour férié), idempotent (une
+# obligation par (company, type, période) — la contrainte d'unicité du modèle
+# empêche tout doublon même en cas de rejeu).
+
+def _dernier_jour_mois(annee, mois):
+    import calendar
+    return calendar.monthrange(annee, mois)[1]
+
+
+# NB : l'ajout de mois avec clamp de fin de mois est DÉJÀ fourni par
+# ``_ajouter_mois(d, mois)`` (FG244, plus bas dans ce fichier) — on le
+# réutilise ici (même signature ``(date, n_mois)``) plutôt que de dupliquer.
+
+
+def _echeances_tva(exercice, regime_tva):
+    """Périodes + dates limites TVA de l'exercice (mensuel ou trimestriel).
+
+    Délai CGI marocain : dépôt/paiement au 20 du mois suivant la fin de la
+    période (mensuelle ou trimestrielle).
+    """
+    from datetime import date as _date
+
+    echeances = []
+    if regime_tva == DeclarationTVA.Regime.TRIMESTRIEL:
+        for q in range(4):
+            mois_debut = 1 + q * 3
+            debut = _date(exercice.date_debut.year, mois_debut, 1)
+            if debut > exercice.date_fin:
+                break
+            fin_mois = min(mois_debut + 2, 12)
+            fin = _date(debut.year, fin_mois,
+                        _dernier_jour_mois(debut.year, fin_mois))
+            fin = min(fin, exercice.date_fin)
+            limite = _ajouter_mois(fin.replace(day=1), 1).replace(day=20)
+            echeances.append((debut, fin, limite))
+    else:
+        mois = exercice.date_debut.replace(day=1)
+        while mois <= exercice.date_fin:
+            fin = mois.replace(day=_dernier_jour_mois(mois.year, mois.month))
+            fin = min(fin, exercice.date_fin)
+            limite = _ajouter_mois(mois, 1).replace(day=20)
+            echeances.append((mois, fin, limite))
+            mois = _ajouter_mois(mois, 1)
+    return echeances
+
+
+@transaction.atomic
+def generer_calendrier_fiscal(company, exercice, *, regime_tva=None,
+                              regime_ras=None):
+    """Génère le calendrier fiscal COMPLET de l'exercice (XACC9).
+
+    Régime TVA (mensuel/trimestriel, défaut mensuel) pilote la cadence TVA ET
+    RAS (même échéance CGI, 20 du mois suivant). Ajoute aussi : 4 acomptes IS
+    (31 mars/juin/sept/déc — CGI), 1 droit de timbre annuel (aligné sur la
+    dernière échéance TVA de l'exercice), 1 état 9421 et 1 liasse fiscale (31
+    mars N+1 — 3 mois après la clôture, hypothèse exercice civil). IDEMPOTENT :
+    ``get_or_create`` par ``(company, type, periode_debut, periode_fin)``, ne
+    duplique jamais un exercice déjà généré. Renvoie la liste des
+    ``ObligationFiscale`` (créées ou déjà existantes) triée par date limite.
+    """
+    from datetime import date as _date
+
+    regime_tva = regime_tva or DeclarationTVA.Regime.MENSUEL
+    obligations = []
+
+    for debut, fin, limite in _echeances_tva(exercice, regime_tva):
+        obl, _ = ObligationFiscale.objects.get_or_create(
+            company=company, type_obligation=ObligationFiscale.Type.TVA,
+            periode_debut=debut, periode_fin=fin,
+            defaults={'date_limite': limite,
+                      'libelle': f'TVA {debut.strftime("%m/%Y")}'})
+        obligations.append(obl)
+        obl_ras, _ = ObligationFiscale.objects.get_or_create(
+            company=company, type_obligation=ObligationFiscale.Type.RAS,
+            periode_debut=debut, periode_fin=fin,
+            defaults={'date_limite': limite,
+                      'libelle': f'RAS {debut.strftime("%m/%Y")}'})
+        obligations.append(obl_ras)
+
+    for mois in (3, 6, 9, 12):
+        if _date(exercice.date_debut.year, mois, 1) > exercice.date_fin:
+            continue
+        limite = _date(exercice.date_debut.year, mois,
+                       _dernier_jour_mois(exercice.date_debut.year, mois))
+        obl, _ = ObligationFiscale.objects.get_or_create(
+            company=company, type_obligation=ObligationFiscale.Type.IS_ACOMPTE,
+            periode_debut=exercice.date_debut, periode_fin=limite,
+            defaults={
+                'date_limite': limite,
+                'libelle': f'Acompte IS {mois:02d}/{exercice.date_debut.year}',
+            })
+        obligations.append(obl)
+
+    if obligations:
+        derniere_tva = max(
+            (o.date_limite for o in obligations
+             if o.type_obligation == ObligationFiscale.Type.TVA),
+            default=None)
+        if derniere_tva:
+            obl, _ = ObligationFiscale.objects.get_or_create(
+                company=company, type_obligation=ObligationFiscale.Type.TIMBRE,
+                periode_debut=exercice.date_debut, periode_fin=exercice.date_fin,
+                defaults={'date_limite': derniere_tva,
+                          'libelle': 'Droit de timbre'})
+            obligations.append(obl)
+
+    limite_liasse = _ajouter_mois(
+        exercice.date_fin.replace(day=1), 3).replace(day=31)
+    try:
+        limite_liasse = limite_liasse.replace(day=31)
+    except ValueError:
+        limite_liasse = limite_liasse.replace(
+            day=_dernier_jour_mois(limite_liasse.year, limite_liasse.month))
+    obl, _ = ObligationFiscale.objects.get_or_create(
+        company=company, type_obligation=ObligationFiscale.Type.LIASSE_FISCALE,
+        periode_debut=exercice.date_debut, periode_fin=exercice.date_fin,
+        defaults={'date_limite': limite_liasse, 'libelle': 'Liasse fiscale'})
+    obligations.append(obl)
+    obl_9421, _ = ObligationFiscale.objects.get_or_create(
+        company=company, type_obligation=ObligationFiscale.Type.ETAT_9421,
+        periode_debut=exercice.date_debut, periode_fin=exercice.date_fin,
+        defaults={'date_limite': limite_liasse, 'libelle': 'État 9421'})
+    obligations.append(obl_9421)
+
+    return sorted(obligations, key=lambda o: (o.date_limite, o.id))
+
+
+def marquer_obligation_deposee(obligation, *, source_type='', source_id=None):
+    """Passe une obligation en « déposée », liée à sa déclaration source (XACC9).
+
+    Appelé au dépôt d'une ``DeclarationTVA`` (ou toute autre déclaration
+    source interne à compta) : ``source_type``/``source_id`` tracent la pièce
+    déposée. Idempotent (repasser la même obligation à « déposée » ne change
+    rien d'autre). Renvoie l'obligation.
+    """
+    if obligation.statut == ObligationFiscale.Statut.A_PREPARER:
+        obligation.statut = ObligationFiscale.Statut.DEPOSEE
+    if source_type:
+        obligation.source_type = source_type
+    if source_id is not None:
+        obligation.source_id = source_id
+    obligation.save(update_fields=['statut', 'source_type', 'source_id'])
+    return obligation
+
+
+def envoyer_rappels_j7(company, *, aujourdhui=None):
+    """Notifie J-7 chaque obligation « à préparer » dont l'échéance approche.
+
+    Diffuse via ``notifications.services.notify_many`` (satellite — jamais
+    importé au niveau module, cf. carte des couches M4) vers les comptes
+    Admin/Responsable de la société. IDEMPOTENT : ``rappel_envoye_le`` marque
+    l'obligation notifiée, un second appel le même jour (ou plus tard) ne
+    renotifie pas. Renvoie la liste des obligations notifiées.
+    """
+    from datetime import timedelta
+
+    ref = aujourdhui or timezone.localdate()
+    seuil = ref + timedelta(days=7)
+    dues = ObligationFiscale.objects.filter(
+        company=company, statut=ObligationFiscale.Statut.A_PREPARER,
+        date_limite__lte=seuil, date_limite__gte=ref,
+        rappel_envoye_le__isnull=True)
+    notifiees = []
+    if not dues.exists():
+        return notifiees
+    from authentication.models import CustomUser
+    destinataires = CustomUser.objects.filter(
+        company=company, is_active=True,
+        role_legacy__in=[CustomUser.ROLE_ADMIN, CustomUser.ROLE_RESPONSABLE])
+    if not destinataires.exists():
+        return notifiees
+    from apps.notifications.services import notify_many
+    from apps.notifications.models import EventType
+    for obligation in dues:
+        libelle_defaut = obligation.get_type_obligation_display()
+        notify_many(
+            list(destinataires), EventType.DIGEST,
+            f'Échéance fiscale J-7 : {libelle_defaut}',
+            body=(f'{obligation.libelle or libelle_defaut} — date limite '
+                  f'{obligation.date_limite}.'),
+            company=company,
+        )
+        obligation.rappel_envoye_le = timezone.now()
+        obligation.save(update_fields=['rappel_envoye_le'])
+        notifiees.append(obligation)
+    return notifiees
+
+
+def deposer_declaration_tva(declaration):
+    """Dépose une ``DeclarationTVA`` PRÉPARÉE : passe DEPOSEE + son obligation.
+
+    Idempotent (redéposer une déclaration déjà déposée ne change rien
+    d'autre). Cherche l'``ObligationFiscale`` TVA de la société dont la
+    période COUVRE ``declaration`` (``periode_debut`` ≤ date_debut ET
+    ``periode_fin`` ≥ date_fin) et la fait passer « déposée » via
+    ``marquer_obligation_deposee`` — no-op silencieux si aucun calendrier
+    fiscal n'a été généré pour cette période (XACC9 est additif : ne bloque
+    jamais le dépôt d'une déclaration). Renvoie la déclaration.
+    """
+    if declaration.statut != DeclarationTVA.Statut.DEPOSEE:
+        declaration.statut = DeclarationTVA.Statut.DEPOSEE
+        declaration.save(update_fields=['statut'])
+    obligation = ObligationFiscale.objects.filter(
+        company=declaration.company,
+        type_obligation=ObligationFiscale.Type.TVA,
+        periode_debut__lte=declaration.date_debut,
+        periode_fin__gte=declaration.date_fin,
+    ).first()
+    if obligation is not None:
+        marquer_obligation_deposee(
+            obligation, source_type='declaration_tva', source_id=declaration.id)
+    return declaration
+
+
+# ── XACC10 — Solde TVA de la période (clôture) ──────────────────────────────
+
+@transaction.atomic
+def solder_tva_periode(periode, *, user=None):
+    """Poste l'écriture de solde TVA d'une période (XACC10, checklist de clôture).
+
+    Recalcule la TVA à déclarer EXACTEMENT comme ``preparer_declaration_tva``
+    (même agrégation GL, cohérente avec FG137 — aucune divergence possible)
+    et poste, si le montant net dû est positif, l'écriture de solde :
+    débit 4455 (TVA facturée, on solde) + débit 3455 (TVA récupérable, on
+    solde) → crédit 44552 (« État TVA due »). Si le net est négatif (crédit de
+    TVA), ne poste rien (rien à devoir — le crédit se reporte via FG137).
+    IDEMPOTENT par période (``source_type='solde_tva'``,
+    ``source_id=periode.id``). Renvoie l'écriture, ou None si rien à solder.
+    """
+    from . import selectors
+
+    company = periode.company
+    existante = _ecriture_existante(company, 'solde_tva', periode.id)
+    if existante:
+        return existante
+    calc = selectors.preparer_declaration_tva(
+        company, date_debut=periode.date_debut, date_fin=periode.date_fin)
+    collectee = calc['tva_collectee']
+    deductible = calc['tva_deductible']
+    net = calc['tva_a_declarer']
+    if net <= 0:
+        return None
+    comptes = _comptes_requis(company)
+    compte_due = _assurer_compte(company, '44552')
+    # Mécanique CGNC : 4455 (TVA facturée) porte un solde CRÉDITEUR, 3455 (TVA
+    # récupérable) un solde DÉBITEUR. Pour les solder tous les deux, on
+    # DÉBITE 4455 (annule son crédit) et on CRÉDITE 3455 (annule son débit) ;
+    # le NET (collectée − déductible = 44552) équilibre l'écriture.
+    lignes = []
+    if collectee > 0:
+        lignes.append({
+            'compte': comptes['tva_facturee'], 'debit': collectee,
+            'credit': Decimal('0'), 'libelle': 'Solde TVA facturée'})
+    if deductible > 0:
+        lignes.append({
+            'compte': comptes['tva_recuperable'], 'debit': Decimal('0'),
+            'credit': deductible, 'libelle': 'Solde TVA récupérable'})
+    lignes.append({
+        'compte': compte_due, 'debit': Decimal('0'), 'credit': net,
+        'libelle': 'État TVA due'})
+    journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+    return creer_ecriture(
+        company, journal, periode.date_fin, 'Solde TVA de la période', lignes,
+        reference=f'SOLDE-TVA-{periode.id}', source_type='solde_tva',
+        source_id=periode.id, created_by=user,
+        statut=EcritureComptable.Statut.VALIDEE,
+    )
 
 
 # ── FG139 — Retenue à la source (RAS) sur honoraires/prestations ───────────
