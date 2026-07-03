@@ -44,6 +44,18 @@ export interface ViewerHandle {
   dispose: () => void;
 }
 
+/**
+ * WJ90 — Pas de rotation au clavier (radians par pression de flèche). ≈ 6°,
+ * un cran de lecture confortable (ni trop lent à explorer, ni un saut brutal).
+ */
+export const KEY_ROTATE_RAD = (6 * Math.PI) / 180;
+
+/**
+ * WJ90 — Facteur de zoom au clavier (+/-), même échelle qu'un cran de molette
+ * standard (`dollyIn`/`dollyOut` attendent un facteur multiplicatif > 1).
+ */
+export const KEY_ZOOM_SCALE = 1.12;
+
 /** Cap DPR : net sur mobile sans surcharger le GPU (WJ27). Exporté pour test. */
 export function viewerDprCap(devicePixelRatio: number, lowEnd: boolean): number {
   const dpr = Number.isFinite(devicePixelRatio) && devicePixelRatio > 0 ? devicePixelRatio : 1;
@@ -273,8 +285,15 @@ export function createRoofViewer(
   canvas.style.inset = '0';
   canvas.style.width = '100%';
   canvas.style.height = '100%';
-  canvas.setAttribute('aria-label', 'Vue 3D interactive de votre toiture — faites glisser pour tourner, pincez ou molette pour zoomer');
+  // WJ90 — le canvas est désormais FOCUSABLE (tabindex) : un visiteur clavier
+  // (Tab jusqu'ici) peut tourner/zoomer sans souris ni tactile (voir le
+  // gestionnaire keydown ci-dessous). aria-label documente les DEUX modes.
+  canvas.setAttribute(
+    'aria-label',
+    'Vue 3D interactive de votre toiture — faites glisser pour tourner, pincez ou molette pour zoomer ; flèches pour tourner, + ou − pour zoomer au clavier',
+  );
   canvas.setAttribute('role', 'img');
+  canvas.tabIndex = 0;
   container.appendChild(canvas);
 
   let renderer: THREE.WebGLRenderer | null = null;
@@ -383,6 +402,44 @@ export function createRoofViewer(
   canvas.addEventListener('webglcontextlost', onContextLost, false);
   canvas.addEventListener('webglcontextrestored', onContextRestored, false);
 
+  // ── WJ90 — clavier : flèches tournent la caméra, +/- (ou =/_) zooment.
+  // Le canvas est focusable (tabindex, ci-dessus) ; on n'utilise PAS le
+  // key-handling intégré d'OrbitControls (pan par défaut sur les flèches,
+  // sans zoom clavier) mais les méthodes publiques rotateLeft/rotateUp/
+  // dollyIn/dollyOut, qui appellent déjà controls.update() en interne.
+  function onKeyDown(e: KeyboardEvent): void {
+    let handled = true;
+    switch (e.key) {
+      case 'ArrowLeft':
+        controls.rotateLeft(-KEY_ROTATE_RAD);
+        break;
+      case 'ArrowRight':
+        controls.rotateLeft(KEY_ROTATE_RAD);
+        break;
+      case 'ArrowUp':
+        controls.rotateUp(KEY_ROTATE_RAD);
+        break;
+      case 'ArrowDown':
+        controls.rotateUp(-KEY_ROTATE_RAD);
+        break;
+      case '+':
+      case '=':
+        controls.dollyIn(KEY_ZOOM_SCALE);
+        break;
+      case '-':
+      case '_':
+        controls.dollyOut(KEY_ZOOM_SCALE);
+        break;
+      default:
+        handled = false;
+    }
+    if (handled) {
+      e.preventDefault(); // empêche le défilement de page sur les flèches
+      scheduleRender();
+    }
+  }
+  canvas.addEventListener('keydown', onKeyDown);
+
   if (!buildRenderer()) {
     canvas.remove();
     controls.dispose();
@@ -399,6 +456,7 @@ export function createRoofViewer(
     ro?.disconnect();
     canvas.removeEventListener('webglcontextlost', onContextLost, false);
     canvas.removeEventListener('webglcontextrestored', onContextRestored, false);
+    canvas.removeEventListener('keydown', onKeyDown);
     controls.dispose();
     for (const d of disposables) d.dispose();
     renderer?.dispose();
