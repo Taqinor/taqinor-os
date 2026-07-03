@@ -2263,6 +2263,68 @@ def prevision_fin_projet(projet, date_reference=None):
     }
 
 
+# ── Burndown du projet (XPRJ17) ──────────────────────────────────────────────
+def burndown(projet, debut, fin):
+    """Série HEBDOMADAIRE de charge restante vs ligne idéale (XPRJ17).
+
+    Pour chaque semaine (date de fin de semaine, pas de 7 jours depuis
+    ``debut``) jusqu'à ``fin`` inclus : la charge restante = somme des
+    ``charge_estimee`` des tâches NON TERMINÉES À CETTE DATE, reconstituée
+    depuis ``date_fin_reelle`` (une tâche est "restante" tant qu'elle n'a pas
+    encore de ``date_fin_reelle`` à la date considérée, ou que sa
+    ``date_fin_reelle`` est postérieure). La ligne IDÉALE décroît linéairement
+    de la charge totale à 0 entre ``debut`` et ``fin``. Les heures loguées
+    CUMULÉES (timesheets) sont ajoutées par semaine pour comparaison.
+
+    Un projet SANS AUCUNE charge estimée (toutes tâches à ``charge_estimee``
+    None ou pas de tâche) renvoie une réponse vide propre (``points`` = []).
+    Tout est scopé société via le projet. Lecture seule.
+    """
+    taches = list(Tache.objects.filter(
+        projet=projet, company=projet.company,
+        charge_estimee__isnull=False))
+    charge_totale = sum((t.charge_estimee for t in taches), Decimal('0'))
+    if not taches or charge_totale <= 0:
+        return {'points': [], 'charge_totale': Decimal('0')}
+
+    timesheets = list(Timesheet.objects.filter(
+        projet=projet, company=projet.company,
+        date__gte=debut, date__lte=fin).order_by('date'))
+
+    duree_totale_jours = max((fin - debut).days, 1)
+    points = []
+    courant = debut
+    heures_cumulees = Decimal('0')
+    while courant <= fin:
+        # Charge restante : somme des tâches pas encore terminées à cette
+        # date (date_fin_reelle absente OU postérieure à ``courant``).
+        restant = sum(
+            (t.charge_estimee for t in taches
+             if t.date_fin_reelle is None or t.date_fin_reelle > courant),
+            Decimal('0'))
+
+        ecoule_jours = (courant - debut).days
+        fraction = min(
+            Decimal(ecoule_jours) / Decimal(duree_totale_jours),
+            Decimal('1'))
+        ideal = (charge_totale * (Decimal('1') - fraction)).quantize(
+            Decimal('0.01'))
+
+        heures_cumulees += sum(
+            (ts.heures for ts in timesheets if ts.date == courant),
+            Decimal('0'))
+
+        points.append({
+            'date': courant.isoformat(),
+            'charge_restante': restant,
+            'charge_ideale': ideal,
+            'heures_loguees_cumulees': heures_cumulees,
+        })
+        courant = courant + timedelta(weeks=1)
+
+    return {'points': points, 'charge_totale': charge_totale}
+
+
 # ── Tableau de bord portefeuille (PROJ36) ────────────────────────────────────
 def tableau_portefeuille(company, statut=None, seuil_jours=None):
     """Tableau de bord PORTEFEUILLE de la société (PROJ36) — interne/admin.

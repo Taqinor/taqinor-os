@@ -805,6 +805,39 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
             ],
         })
 
+    @action(detail=True, methods=['get'], url_path='burndown')
+    def burndown(self, request, pk=None):
+        """Burndown du projet — charge restante vs ligne idéale (XPRJ17).
+
+        Corps : ``?debut=&fin=`` (YYYY-MM-DD, obligatoires). Série HEBDOMADAIRE
+        de charge restante (reconstituée depuis ``date_fin_reelle``) vs ligne
+        idéale + heures loguées cumulées. Un projet sans charge estimée →
+        réponse vide propre (``points`` = []). La société est garantie par
+        ``get_object`` : un projet d'une autre société → 404.
+        """
+        projet = self.get_object()
+        debut = _parse_date_param(request.query_params.get('debut'))
+        fin = _parse_date_param(request.query_params.get('fin'))
+        if debut is None or fin is None or fin < debut:
+            return Response(
+                {'detail': 'debut et fin (YYYY-MM-DD, fin >= debut) sont '
+                           'obligatoires.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        data = selectors.burndown(projet, debut, fin)
+        return Response({
+            'charge_totale': str(data['charge_totale']),
+            'points': [
+                {
+                    'date': p['date'],
+                    'charge_restante': str(p['charge_restante']),
+                    'charge_ideale': str(p['charge_ideale']),
+                    'heures_loguees_cumulees': str(
+                        p['heures_loguees_cumulees']),
+                }
+                for p in data['points']
+            ],
+        })
+
     @action(detail=True, methods=['post'], url_path='cloturer')
     def cloturer(self, request, pk=None):
         """Clôture le projet + enregistre le RETOUR D'EXPÉRIENCE (PROJ38).
@@ -942,6 +975,26 @@ class TacheViewSet(_GestionProjetBaseViewSet):
         if etiquette:
             qs = qs.filter(etiquettes__icontains=etiquette)
         return qs
+
+    def perform_update(self, serializer):
+        """Pose ``date_fin_reelle`` côté serveur au passage à TERMINE (XPRJ17).
+
+        Réinitialisée si le statut repasse à un état non-terminé (correction
+        d'une clôture erronée). Base du burndown (charge restante reconstituée
+        à chaque date).
+        """
+        instance = serializer.instance
+        nouveau_statut = serializer.validated_data.get(
+            'statut', instance.statut)
+        if nouveau_statut == Tache.Statut.TERMINE \
+                and instance.statut != Tache.Statut.TERMINE:
+            from datetime import date as _date
+            serializer.save(date_fin_reelle=_date.today())
+        elif nouveau_statut != Tache.Statut.TERMINE \
+                and instance.date_fin_reelle is not None:
+            serializer.save(date_fin_reelle=None)
+        else:
+            serializer.save()
 
     @action(detail=False, methods=['get'], url_path='mes-taches')
     def mes_taches(self, request):

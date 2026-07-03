@@ -339,6 +339,12 @@ class Tache(models.Model):
         null=True, blank=True, verbose_name='Date de début prévue')
     date_fin_prevue = models.DateField(
         null=True, blank=True, verbose_name='Date de fin prévue')
+    # Date de complétion RÉELLE (XPRJ17) — posée côté serveur quand ``statut``
+    # passe à TERMINE (jamais lue du corps de requête), réinitialisée si le
+    # statut repasse à un état non-terminé. Base du burndown (charge restante
+    # reconstituée à chaque date).
+    date_fin_reelle = models.DateField(
+        null=True, blank=True, verbose_name='Date de fin réelle')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
