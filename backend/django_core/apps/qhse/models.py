@@ -3640,3 +3640,140 @@ class CheckinSecurite(models.Model):
 
     def __str__(self):
         return f'Check-in {self.technicien} — {self.site_ref or "site"}'
+
+
+# ── XQHS5 — Campagne de rappel / containment par produit-lot-série ─────────
+
+class CampagneRappel(models.Model):
+    """Campagne de rappel/containment sur un défaut fournisseur (produit-lot).
+
+    Le ``produit`` est référencé en FK-CHAÎNE (``'stock.Produit'`` — jamais un
+    import de modèle) ; la plage de séries/lot borne le peuplement des
+    ``ElementRappel`` (lu depuis le parc réel via ``sav.selectors``, jamais un
+    import de ``apps.sav.models``). Multi-société via ``company`` posée côté
+    serveur. Entièrement additif.
+    """
+    class Gravite(models.TextChoices):
+        MINEURE = 'mineure', 'Mineure'
+        MAJEURE = 'majeure', 'Majeure'
+        CRITIQUE = 'critique', 'Critique'
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        EN_COURS = 'en_cours', 'En cours'
+        CLOTUREE = 'cloturee', 'Clôturée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_campagnes_rappel',
+        verbose_name='Société',
+    )
+    titre = models.CharField(max_length=255, verbose_name='Titre')
+    # FK-chaîne — jamais un import cross-app de `apps.stock.models`.
+    produit = models.ForeignKey(
+        'stock.Produit',
+        on_delete=models.PROTECT,
+        related_name='qhse_campagnes_rappel',
+        verbose_name='Produit concerné',
+    )
+    serie_debut = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Série début')
+    serie_fin = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Série fin')
+    lot = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Lot')
+    motif = models.TextField(blank=True, default='', verbose_name='Motif')
+    gravite = models.CharField(
+        max_length=10, choices=Gravite.choices,
+        default=Gravite.MAJEURE, verbose_name='Gravité')
+    statut = models.CharField(
+        max_length=15, choices=Statut.choices,
+        default=Statut.BROUILLON, verbose_name='Statut')
+    date_verification_efficacite = models.DateField(
+        null=True, blank=True, verbose_name="Vérification d'efficacité")
+    responsable = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_campagnes_rappel',
+        verbose_name='Responsable',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Campagne de rappel'
+        verbose_name_plural = 'Campagnes de rappel'
+        ordering = ['-id']
+
+    def __str__(self):
+        return self.titre
+
+
+class ElementRappel(models.Model):
+    """Équipement concerné par une ``CampagneRappel`` — cycle de traitement.
+
+    Rattachement au parc/chantier/client par références LÂCHES
+    (``equipement_id``, ``installation_id``, ``client_id`` — jamais un import
+    cross-app de modèle) : peuplées depuis ``sav.selectors`` uniquement.
+    """
+    class Statut(models.TextChoices):
+        A_NOTIFIER = 'a_notifier', 'À notifier'
+        NOTIFIE = 'notifie', 'Notifié'
+        PLANIFIE = 'planifie', 'Planifié'
+        REMPLACE = 'remplace', 'Remplacé'
+        CLOS = 'clos', 'Clos'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_elements_rappel',
+        verbose_name='Société',
+    )
+    campagne = models.ForeignKey(
+        CampagneRappel,
+        on_delete=models.CASCADE,
+        related_name='elements',
+        verbose_name='Campagne',
+    )
+    # Référence LÂCHE au parc (sav.Equipement) — jamais un import de modèle.
+    equipement_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID équipement (parc)')
+    numero_serie = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Numéro de série')
+    # Référence LÂCHE au chantier (installations.Installation) par id.
+    installation_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="ID de l'installation")
+    statut = models.CharField(
+        max_length=15, choices=Statut.choices,
+        default=Statut.A_NOTIFIER, verbose_name='Statut')
+    # Ticket SAV créé pour le remplacement (référence LÂCHE — jamais un import
+    # de `apps.sav.models`).
+    ticket_sav_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID ticket SAV (remplacement)')
+    notifie_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Notifié le')
+    note = models.TextField(blank=True, default='', verbose_name='Note')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Élément de rappel'
+        verbose_name_plural = 'Éléments de rappel'
+        ordering = ['-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['campagne', 'equipement_id'],
+                name='qhse_elemrappel_campagne_equip_uniq',
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='qhse_elemrappel_co_statut',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.numero_serie or self.equipement_id} ({self.get_statut_display()})'

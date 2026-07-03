@@ -11,9 +11,10 @@ from decimal import Decimal
 from django.db import transaction
 
 from .models import (
-    ActionCorrectivePreventive, CauseIncident, CheckinSecurite,
-    ControleReception,
-    DeclarationCnss, Derogation, EtapeDeclarationAt, NonConformite,
+    ActionCorrectivePreventive, CampagneRappel, CauseIncident,
+    CheckinSecurite, ControleReception,
+    DeclarationCnss, Derogation, ElementRappel, EtapeDeclarationAt,
+    NonConformite,
     NotationFinChantier, PlanControleReception, PlanInspectionChantier,
     PointControleModele,
     ProcedureQualite, ReleveThermographie, ReponseCritere, ReleveControle,
@@ -1136,3 +1137,129 @@ def escalader_checkins_en_retard(company=None, now=None):
             _notifier_escalade_checkin(checkin)
             escalades.append(checkin)
     return escalades
+
+
+# ── XQHS5 — Campagne de rappel / containment par produit-lot-série ─────────
+
+@transaction.atomic
+def peupler_campagne_rappel(campagne):
+    """Peuple les ``ElementRappel`` d'une campagne depuis le parc réel.
+
+    Lit le parc UNIQUEMENT via ``sav.selectors.equipements_par_produit``
+    (jamais un import de ``apps.sav.models``). Idempotent : ré-appelée, elle
+    n'ajoute que les équipements pas encore présents dans la campagne
+    (contrainte unique ``(campagne, equipement_id)``).
+
+    Renvoie la liste des ``ElementRappel`` créés dans cet appel.
+    """
+    from apps.sav.selectors import equipements_par_produit
+
+    equipements = equipements_par_produit(
+        campagne.company, campagne.produit_id,
+        serie_debut=campagne.serie_debut or None,
+        serie_fin=campagne.serie_fin or None,
+    )
+    existants = set(
+        ElementRappel.objects.filter(campagne=campagne)
+        .values_list('equipement_id', flat=True)
+    )
+    crees = []
+    for eq in equipements:
+        if eq['id'] in existants:
+            continue
+        element = ElementRappel.objects.create(
+            company=campagne.company, campagne=campagne,
+            equipement_id=eq['id'], numero_serie=eq.get('numero_serie') or '',
+            installation_id=eq.get('installation_id'),
+        )
+        crees.append(element)
+    return crees
+
+
+def _notifier_element_rappel(element, responsable):
+    """Notifie le responsable d'un élément de rappel à traiter (best-effort)."""
+    try:
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+
+        corps = (
+            f'Campagne « {element.campagne.titre} » — équipement '
+            f'{element.numero_serie or element.equipement_id} à traiter.')
+        notify(responsable, EventType.MAINTENANCE_DUE,
+               'Élément de campagne de rappel', body=corps,
+               link='/qhse/campagnes-rappel', company=element.company)
+    except Exception:  # pragma: no cover - défensif
+        pass
+
+
+@transaction.atomic
+def notifier_elements_rappel(campagne):
+    """Notifie le responsable de campagne pour chaque élément ``à_notifier``
+    et fait avancer son statut à ``notifie`` (XQHS5).
+
+    Renvoie la liste des ``ElementRappel`` notifiés dans cet appel.
+    """
+    from django.utils import timezone
+
+    if campagne.responsable_id is None:
+        return []
+    a_notifier = list(
+        campagne.elements.filter(statut=ElementRappel.Statut.A_NOTIFIER))
+    now = timezone.now()
+    for element in a_notifier:
+        _notifier_element_rappel(element, campagne.responsable)
+        element.statut = ElementRappel.Statut.NOTIFIE
+        element.notifie_le = now
+        element.save(update_fields=['statut', 'notifie_le'])
+    return a_notifier
+
+
+@transaction.atomic
+def planifier_remplacement_element_rappel(element, *, client, created_by):
+    """Crée l'intervention SAV de remplacement pour un élément (XQHS5).
+
+    Passe par ``sav.services.create_corrective_ticket`` (jamais un import de
+    modèle SAV). Fait avancer l'élément à ``planifie`` et enregistre
+    ``ticket_sav_id`` (référence LÂCHE).
+    """
+    from apps.sav.services import create_corrective_ticket
+
+    installation = None
+    if element.installation_id:
+        from apps.installations.models import Installation
+        installation = Installation.objects.filter(
+            pk=element.installation_id).first()
+
+    ticket = create_corrective_ticket(
+        company=element.company, client=client, installation=installation,
+        description=(
+            f'Remplacement — campagne de rappel « {element.campagne.titre} » '
+            f'({element.numero_serie or element.equipement_id}).'),
+        created_by=created_by,
+    )
+    element.ticket_sav_id = ticket.id
+    element.statut = ElementRappel.Statut.PLANIFIE
+    element.save(update_fields=['ticket_sav_id', 'statut'])
+    return element
+
+
+@transaction.atomic
+def cloturer_campagne_rappel(campagne, date_verification_efficacite):
+    """Clôture une campagne après vérification d'efficacité (XQHS5).
+
+    N'autorise la clôture que si tous les éléments sont ``remplace`` ou
+    ``clos`` (traitement terminé) — sinon lève ``ValueError``.
+    """
+    en_cours = campagne.elements.exclude(
+        statut__in=[ElementRappel.Statut.REMPLACE, ElementRappel.Statut.CLOS]
+    ).count()
+    if en_cours:
+        raise ValueError(
+            f'{en_cours} élément(s) non traités — clôture impossible.')
+    campagne.statut = CampagneRappel.Statut.CLOTUREE
+    campagne.date_verification_efficacite = date_verification_efficacite
+    campagne.save(update_fields=['statut', 'date_verification_efficacite'])
+    campagne.elements.filter(
+        statut=ElementRappel.Statut.REMPLACE
+    ).update(statut=ElementRappel.Statut.CLOS)
+    return campagne
