@@ -4271,3 +4271,132 @@ class ClauseNorme(models.Model):
 
     def __str__(self):
         return f'{self.referentiel}:{self.numero} — {self.intitule}'
+
+
+# ── XQHS12 — Revue de direction + comité de sécurité et d'hygiène ──────────
+
+class ReunionQhse(models.Model):
+    """Réunion QHSE structurée : revue de direction / CSH / réunion HSE.
+
+    ``participants`` — liste JSON de références LÂCHES aux employés (ids
+    ``rh.DossierEmploye``, jamais un import cross-app de modèle) OU des noms
+    texte libres. ``checklist_revue_direction`` — pour ``revue_direction``
+    uniquement : entrées obligatoires ISO 9.3 (booléens « couvert »), exigées
+    avant de pouvoir clore (cf. ``services.cloturer_reunion_qhse``).
+
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    class TypeReunion(models.TextChoices):
+        REVUE_DIRECTION = 'revue_direction', 'Revue de direction'
+        COMITE_HYGIENE_SECURITE = (
+            'comite_hygiene_securite', "Comité d'hygiène et de sécurité")
+        REUNION_HSE = 'reunion_hse', 'Réunion HSE'
+
+    class Statut(models.TextChoices):
+        PLANIFIEE = 'planifiee', 'Planifiée'
+        TENUE = 'tenue', 'Tenue'
+        CLOTUREE = 'cloturee', 'Clôturée'
+
+    # Checklist des entrées obligatoires ISO 9.3 pour une revue de direction.
+    CHECKLIST_REVUE_DIRECTION_CLES = [
+        'resultats_audits', 'kpi', 'retours_clients', 'statut_capa',
+        'ressources',
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_reunions',
+        verbose_name='Société',
+    )
+    type_reunion = models.CharField(
+        max_length=25, choices=TypeReunion.choices,
+        default=TypeReunion.REUNION_HSE, verbose_name='Type')
+    date_reunion = models.DateField(
+        null=True, blank=True, verbose_name='Date')
+    participants = models.JSONField(
+        default=list, blank=True, verbose_name='Participants')
+    ordre_du_jour = models.TextField(
+        blank=True, default='', verbose_name='Ordre du jour')
+    pv = models.TextField(blank=True, default='', verbose_name='PV / minutes')
+    # Références LÂCHES aux pièces jointes (records.Attachment).
+    attachment_ids = models.JSONField(
+        default=list, blank=True, verbose_name='IDs pièces jointes')
+    # ISO 9.3 — checklist des entrées obligatoires (revue_direction only).
+    # dict {cle: bool} — clés = CHECKLIST_REVUE_DIRECTION_CLES.
+    checklist_revue_direction = models.JSONField(
+        default=dict, blank=True, verbose_name='Checklist ISO 9.3')
+    # CSH — rapport annuel (obligations Code du travail ≥50 salariés).
+    rapport_annuel = models.TextField(
+        blank=True, default='', verbose_name='Rapport annuel (CSH)')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.PLANIFIEE, verbose_name='Statut')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Réunion QHSE'
+        verbose_name_plural = 'Réunions QHSE'
+        ordering = ['-date_reunion', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'type_reunion'],
+                name='qhse_reunion_co_type',
+            ),
+        ]
+
+    def checklist_9_3_complete(self):
+        """True si toutes les entrées obligatoires ISO 9.3 sont cochées
+        « couvert ». N'a de sens que pour ``revue_direction``."""
+        checklist = self.checklist_revue_direction or {}
+        return all(
+            checklist.get(cle) is True
+            for cle in self.CHECKLIST_REVUE_DIRECTION_CLES)
+
+    def __str__(self):
+        return f'{self.get_type_reunion_display()} — {self.date_reunion or "sans date"}'
+
+
+class DecisionReunion(models.Model):
+    """Décision prise lors d'une ``ReunionQhse``.
+
+    Une décision peut « spawner » une CAPA liée via le service existant
+    (``creer_capa_depuis_decision`` — réutilise ``ActionCorrectivePreventive``,
+    rattachée à une NCR de convenance créée à cet effet OU laissée sans CAPA
+    si l'appelant ne le demande pas).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_decisions_reunion',
+        verbose_name='Société',
+    )
+    reunion = models.ForeignKey(
+        ReunionQhse,
+        on_delete=models.CASCADE,
+        related_name='decisions',
+        verbose_name='Réunion',
+    )
+    texte = models.TextField(verbose_name='Décision')
+    responsable = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_decisions_reunion',
+        verbose_name='Responsable',
+    )
+    # Lien lâche vers la CAPA créée depuis cette décision (même app,
+    # IntegerField pour couplage minimal — pattern ReponseCritere.ncr_id).
+    capa_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID de la CAPA créée')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Décision de réunion'
+        verbose_name_plural = 'Décisions de réunion'
+        ordering = ['-id']
+
+    def __str__(self):
+        return self.texte[:80]

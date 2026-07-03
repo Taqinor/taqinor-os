@@ -14,11 +14,13 @@ from .models import (
     ActionCorrectivePreventive, AnalyseNcr, Audit, AuditPlanifie,
     CampagneRappel, CauseIncident,
     CheckinSecurite, ControleReception,
-    DeclarationCnss, DemandeActionFournisseur, Derogation, ElementRappel,
+    DeclarationCnss, DemandeActionFournisseur, Derogation,
+    ElementRappel,
     EtapeDeclarationAt, NonConformite,
     NotationFinChantier, PlanControleReception, PlanInspectionChantier,
     PointControleModele,
     ProcedureQualite, ReleveThermographie, ReponseCritere, ReleveControle,
+    ReunionQhse,
 )
 
 
@@ -1521,3 +1523,96 @@ def relancer_audits_planifies_en_retard(company=None, today=None):
         _notifier_audit_planifie_retard(audit_planifie)
         relances.append(audit_planifie)
     return relances
+
+
+# ── XQHS12 — Revue de direction + comité de sécurité et d'hygiène ──────────
+
+@transaction.atomic
+def creer_capa_depuis_decision(
+        decision, *, description=None, responsable=None, echeance=None):
+    """Crée une CAPA liée depuis une ``DecisionReunion`` (XQHS12).
+
+    La CAPA a besoin d'une NCR porteuse (contrainte existante) : crée une NCR
+    de convenance « Décision de réunion » d'origine ``ReunionQhse`` — pattern
+    déjà utilisé par les autres ponts de l'app (ex. inspection → NCR → CAPA).
+    Idempotent : si ``decision.capa_id`` est déjà posé, renvoie la CAPA
+    existante sans en recréer une.
+    """
+    if decision.capa_id is not None:
+        return ActionCorrectivePreventive.objects.filter(
+            pk=decision.capa_id).first()
+
+    ncr = NonConformite.objects.create(
+        company=decision.company,
+        titre=f'[Réunion QHSE] {decision.reunion.get_type_reunion_display()}',
+        description=decision.texte,
+        origine='Décision de réunion QHSE',
+        gravite=NonConformite.Gravite.MINEURE,
+    )
+    capa = ActionCorrectivePreventive.objects.create(
+        company=decision.company, non_conformite=ncr,
+        description=description or decision.texte,
+        responsable=responsable or decision.responsable,
+        echeance=echeance,
+    )
+    decision.capa_id = capa.id
+    decision.save(update_fields=['capa_id'])
+    return capa
+
+
+@transaction.atomic
+def cloturer_reunion_qhse(reunion):
+    """Clôture une ``ReunionQhse`` (XQHS12).
+
+    Pour une ``revue_direction`` : exige la checklist ISO 9.3 complète
+    (``checklist_9_3_complete()``) — sinon lève ``ValueError``. Les autres
+    types de réunion clôturent sans condition supplémentaire.
+    """
+    if reunion.type_reunion == ReunionQhse.TypeReunion.REVUE_DIRECTION \
+            and not reunion.checklist_9_3_complete():
+        raise ValueError(
+            'Checklist ISO 9.3 incomplète — clôture de la revue de '
+            'direction impossible.')
+    reunion.statut = ReunionQhse.Statut.CLOTUREE
+    reunion.save(update_fields=['statut'])
+    return reunion
+
+
+def _notifier_csh_relance(company, membres):
+    """Notifie les membres du CSH de la prochaine réunion due (best-effort)."""
+    try:
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+
+        for membre in membres:
+            notify(membre, EventType.MAINTENANCE_DUE,
+                   'CSH — réunion trimestrielle due',
+                   body='Le comité de sécurité et d\'hygiène doit se réunir '
+                        '(cadence trimestrielle Code du travail).',
+                   link='/qhse/reunions', company=company)
+    except Exception:  # pragma: no cover - défensif
+        pass
+
+
+def csh_relance_due(company, cadence_jours=90, today=None):
+    """True si la cadence trimestrielle CSH est dépassée depuis la dernière
+    réunion tenue (XQHS12, obligation Code du travail).
+
+    Sans aucune réunion CSH antérieure, considère la relance due (première
+    réunion à planifier). Ne mute rien — pur, lu par l'appelant (tâche
+    périodique/cockpit) pour décider s'il notifie.
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    if today is None:
+        today = timezone.localdate()
+    derniere = ReunionQhse.objects.filter(
+        company=company,
+        type_reunion=ReunionQhse.TypeReunion.COMITE_HYGIENE_SECURITE,
+        statut__in=[ReunionQhse.Statut.TENUE, ReunionQhse.Statut.CLOTUREE],
+    ).order_by('-date_reunion').first()
+    if derniere is None or derniere.date_reunion is None:
+        return True
+    return today >= derniere.date_reunion + timedelta(days=cadence_jours)
