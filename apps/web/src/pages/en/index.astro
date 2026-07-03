@@ -28,10 +28,12 @@ import GarantiesTeaser from '../../components/GarantiesTeaser.astro';
 import Testimonials from '../../components/Testimonials.astro';
 import BrandStrip from '../../components/BrandStrip.astro';
 import ZelligeSignature from '../../components/ZelligeSignature.astro';
+import FounderPortrait from '../../components/FounderPortrait.astro';
 import { WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink } from '../../lib/whatsapp';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
+import { REGIE_TARIFF } from '../../lib/estimatorBrainV2';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
@@ -44,6 +46,25 @@ const heroFigure = '21 406';
 const heroTitleSuffix = ' kWh a year, produced on a rooftop in El Jadida.';
 const heroSub =
   'Installation ref. 468 — 17,04 kWc, sized, installed and measured by Taqinor. Yours starts with a 60-second diagnostic.';
+
+// W267 — Hero money sub-line. NO invented figure: the real consumption of
+// the ref. 468 household is not published anywhere on the site, so we
+// cannot call `annualSavingsMad(production, consumption)` without inventing
+// that second variable. The only honest derivation from the SOLE published
+// data point (21 406 kWh produced) is to value that production at the real
+// MARGINAL rate of the REGIE tariff grid (REGIE_TARIFF.selective, the two
+// top tranches — consistent with "our largest residential of 2026", i.e. a
+// household unambiguously in the top bracket): this is exactly the same
+// "≈ 1.38–1.60 MAD/kWh" range already published and documented in
+// billRange.ts / recharge-voiture-electrique-solaire.astro. A range (never a
+// single figure): the household's real self-consumption isn't known, so a
+// single point value would invent a precision we don't have.
+const heroProductionKwh = 21406;
+const heroTariffLowRate = REGIE_TARIFF.selective[REGIE_TARIFF.selective.length - 2].rate; // 1.3817 MAD/kWh
+const heroTariffHighRate = REGIE_TARIFF.selective[REGIE_TARIFF.selective.length - 1].rate; // 1.5958 MAD/kWh
+const heroMoneyLow = Math.round((heroProductionKwh * heroTariffLowRate) / 100) * 100;
+const heroMoneyHigh = Math.round((heroProductionKwh * heroTariffHighRate) / 100) * 100;
+const heroMoneyLine = `≈ ${heroMoneyLow.toLocaleString('en-US')} to ${heroMoneyHigh.toLocaleString('en-US')} MAD wiped off the bill every year`;
 
 // PLACEHOLDER(MERYEM): provisional FAQ.
 const faq = [
@@ -64,6 +85,11 @@ const gallery = [
   { name: 'equipe-gilet-taqinor', alt: 'Installer in a Taqinor vest fitting the rails of a structure, Nouaceur', widths: [1600, 1024, 640], ratio: 1, ville: 'Nouaceur', kwc: '3,72 kWc', prod: null, type: 'Fitting the rails · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
   { name: 'entretien-jet', alt: 'Jet-wash cleaning of the panel array, Nouaceur', widths: [1600, 1024, 640], ratio: 1, ville: 'Nouaceur', kwc: '3,72 kWc', prod: null, type: 'Array maintenance · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
 ];
+
+// W271 — City filter chips: "All" + the cities actually present in `gallery`
+// above (no invented city; order follows each city's first appearance in the
+// array — El Jadida, Casablanca, Nouaceur).
+const galleryCities = ['All', ...Array.from(new Set(gallery.map((g) => g.ville)))];
 
 // Our solutions — every offering visible from the homepage, not only in the
 // menu. Descriptions from the already-published positioning, no new claim or
@@ -89,6 +115,20 @@ const journey = [
   { n: '6', title: 'Deye Cloud monitoring', body: 'Production read continuously, client access included: you read your kWh at the source.' },
 ];
 
+// W252 — "How it works": 4-step band under the hero, the near-universal
+// 3-4-icon device used by every serious player in the sector. These are the
+// SAME 4 stages as the fuller "The journey" timeline further down — just
+// condensed to 4 (instead of 6) to answer, right under the hero, "what
+// happens after the form?". No invented delay/SLA; the 4 stages are the ones
+// actually delivered by the built journey (diagnostic → signed study → quote
+// + e-signature → install & after-sales, see /devis/mon-toit).
+const howItWorks = [
+  { n: '1', title: 'Instant estimate', body: 'Your bill gives a kWc range in 60 seconds, with no commitment.' },
+  { n: '2', title: 'Personalised, signed study', body: 'Technical visit, sizing on your actual roof, validated and signed before any quote.' },
+  { n: '3', title: 'Quote + e-signature', body: 'The detailed quote is signed electronically, wherever you are.' },
+  { n: '4', title: 'Installation & after-sales', body: 'Installed by our team, commissioned, then Deye Cloud monitoring and proactive after-sales.' },
+];
+
 // Sober iconography for the "Our solutions" cards: one SVG line per card,
 // currentColor (brass tint), in the brand language. Keyed by href so it stays
 // stable even if the card order changes.
@@ -112,6 +152,17 @@ const trust = [
   { fig: '43,48 kWc', tally: true, label: 'Installed', body: 'Casablanca, El Jadida, Nouaceur' },
   { fig: 'Law 82-21', tally: false, label: 'Compliance included', body: 'Declaration prepared and filed for you by Taqinor' },
   { fig: 'Deye Cloud', tally: false, label: 'Measured production', body: 'Monitoring on every installation, client access included' },
+];
+
+// W265 — The 25-year investment story: the page's ONE clear tonal break
+// (blanc-azur background, encre text), placed at position 3-4 to let the
+// dark→light→dark narrative breathe. Figures STRICTLY reused from
+// /financement (already published) — no new number.
+const investment = [
+  { v: '3–7 years', label: 'Typical return on investment' },
+  { v: '25 years', label: 'Panel performance warranty' },
+  { v: '60–90 %', label: 'Of the bill covered' },
+  { v: '0 MAD', label: 'The study and the assessment' },
 ];
 ---
 
@@ -168,7 +219,11 @@ const trust = [
         <h1 class="display v2-hero-title cine-in cine-in-1 mt-6 max-w-[15ch]">
           <span data-hero-tally class="font-variant-numeric tabular-nums">{heroFigure}</span>{heroTitleSuffix}
         </h1>
-        <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">{heroSub}</p>
+        {/* W267 — money leads, kWh stays the credibility behind it. Honest
+            range (never a point figure) derived from the real REGIE marginal
+            tariff — see the calculation comment above. */}
+        <p class="cine-in cine-in-2 mt-4 max-w-xl text-lg font-bold text-brass-300 sm:text-xl">{heroMoneyLine}</p>
+        <p class="v2-lead cine-in cine-in-2 mt-4 max-w-xl text-white/85">{heroSub}</p>
         <div class="cine-in cine-in-3 mt-10 flex flex-wrap items-center gap-3">
           {/* The single brass CTA (brass discipline) — gold is allowed here */}
           <a href={L('/devis/mon-toit')} class="glow-hero bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
@@ -180,6 +235,26 @@ const trust = [
             WhatsApp direct
           </a>
         </div>
+      </div>
+    </section>
+
+    {/* ── HOW IT WORKS — 4-step band under the hero (W252). Answers "what
+        happens after the form?" right away: the same 4 stages as the fuller
+        timeline further down, condensed. ── */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="px-4 py-14 sm:py-18">
+      <div class="mx-auto max-w-6xl">
+        <h2 class="tech-label v2-kicker rule-brass text-lune text-center sm:text-left">How it works</h2>
+        <ol class="mt-8 grid gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
+          {howItWorks.map((s, i) => (
+            <li class="v2-rise relative border-t-2 border-white/10 pt-5" style={`--v2-i:${i}`}>
+              <span class="absolute -top-px left-0 h-0.5 w-10 bg-brass-400" aria-hidden="true"></span>
+              <span class="fig lum text-2xl">{s.n}</span>
+              <h3 class="display mt-2 text-lg text-white">{s.title}</h3>
+              <p class="mt-2 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+            </li>
+          ))}
+        </ol>
       </div>
     </section>
 
@@ -211,17 +286,53 @@ const trust = [
             nothing added, nothing erased.
           </p>
         </div>
-        <div class="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
+        {/* W271 — City filter chips, light client-side over the data the
+            cards already carry (no new data). "All" active by default;
+            aria-pressed reflects state for screen readers. Works without
+            JS: without the script, every card stays visible (progressive
+            enhancement). */}
+        <div class="v2-rise mt-8 flex flex-wrap gap-2" role="group" aria-label="Filter by city" data-gallery-filter>
+          {galleryCities.map((c, i) => (
+            <button
+              type="button"
+              class={`gallery-filter-chip border px-4 py-2 text-xs font-bold uppercase tracking-wide transition-colors hover:border-white/50 hover:text-white ${i === 0 ? 'gallery-filter-chip-active border-brass-400 bg-brass-400/10 text-brass-300' : 'border-white/25 text-lune-soft'}`}
+              data-city={c}
+              aria-pressed={i === 0 ? 'true' : 'false'}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
+        <div class="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" data-stagger data-gallery-grid>
           {gallery.map((g, i) => (
-            <a href={L(`/realisations/${g.slug}`)} class="v2-rise cine-card group relative block overflow-hidden" style={`--v2-i:${i % 3}`}>
+            <div class="v2-rise cine-card cine-card-link group relative overflow-hidden" style={`--v2-i:${i % 3}`} data-gallery-card data-city={g.ville}>
+              <a href={L(`/realisations/${g.slug}`)} class="absolute inset-0 z-0" aria-label={`View the installation: ${g.ville}, ${g.kwc}`}></a>
               {/* Uniform "golden hour" grade — .v3-grade on the content photo */}
               <Picture name={g.name} alt={g.alt} widths={g.widths} ratio={4 / 3} sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
                 class="v3-grade aspect-[4/3] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
-              <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
+              {/* Enlarge (lightbox) button — kept separate from the card link
+                  (no button nested in an <a>, invalid HTML); z-index above
+                  the stretched link. */}
+              <button
+                type="button"
+                class="gallery-zoom-btn absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-nuit/70 text-white backdrop-blur-sm transition-colors hover:bg-nuit/90"
+                aria-label={`Enlarge photo: ${g.ville}, ${g.kwc}${g.prod ? `, ${g.prod}` : ''}`}
+                data-lightbox-open
+                data-name={g.name}
+                data-alt={g.alt}
+                data-widths={g.widths.join(',')}
+                data-caption={`${g.ville} · ${g.kwc}${g.prod ? ` · ${g.prod}` : ''}`}
+                data-type={g.type}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M8 3H5a2 2 0 0 0-2 2v3" /><path d="M21 8V5a2 2 0 0 0-2-2h-3" /><path d="M3 16v3a2 2 0 0 0 2 2h3" /><path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+                </svg>
+              </button>
+              <div class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
                 <span class="tech-label block text-lune">{g.ville} · {g.kwc}{g.prod ? ` · ${g.prod}` : ''}</span>
                 <span class="mt-0.5 block text-xs text-lune-soft">{g.type}</span>
               </div>
-            </a>
+            </div>
           ))}
         </div>
         {/* Quiet link to ALL installations — not a solid button */}
@@ -262,6 +373,35 @@ const trust = [
       </div>
     </section>
 
+    {/* ── CLEAR TONAL BREAK (W265) — "An investment that pays you back", the
+        page's ONE blanc-azur band, to let the dark→light→dark breathe.
+        Figures identical to /financement (no new number). ── */}
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="bg-blanc-azur px-4 py-20 text-encre sm:py-28">
+      <div class="mx-auto max-w-6xl">
+        <div class="v2-rise max-w-2xl">
+          <p class="tech-label v2-kicker rule-brass text-azur-600">The investment</p>
+          <h2 class="display v2-section-title mt-5 text-encre">An investment that pays you back, then pays for you</h2>
+          <p class="v2-body mt-5 text-encre-soft">
+            An installation pays for itself through the electricity you stop buying from the
+            grid — and there are still many years left on the 25-year performance warranty
+            during which it keeps producing for you, at 0 MAD.
+          </p>
+        </div>
+        <dl class="mt-12 grid grid-cols-2 gap-x-8 gap-y-10 sm:grid-cols-4" data-stagger>
+          {investment.map((it, i) => (
+            <div class="v2-rise min-w-0" style={`--v2-i:${i}`}>
+              <dd class="fig fig-md whitespace-nowrap text-azur-600" data-tally>{it.v}</dd>
+              <dt class="tech-label mt-2 text-encre-soft">{it.label}</dt>
+            </div>
+          ))}
+        </dl>
+        <a href={L('/financement')} class="v2-rise group mt-10 inline-flex items-center gap-1 border-b-2 border-azur-600 pb-0.5 text-sm font-bold text-azur-700 transition-colors hover:text-azur-600">
+          See the financing details <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span>
+        </a>
+      </div>
+    </section>
+
     {/* ── WHY TAQINOR / TRUST — four monumental figures (gold lives on the .lum
         figures, brass discipline) — already-published facts ── */}
     <div class="seam-soft" aria-hidden="true"></div>
@@ -275,10 +415,15 @@ const trust = [
             real bill. The figure decides the equipment — never the other way around.
           </p>
         </div>
-        <dl class="mt-12 grid gap-x-8 gap-y-12 sm:grid-cols-2 lg:grid-cols-2" data-stagger>
+        {/* W268 — full-width, 4-column monumental band, .fig-lg numerals +
+            thin brass rule per column (same device as the "How it works"
+            band and GarantiesTeaser). "Proof before the promise" is the
+            brand thesis: it deserves a statement, not a spec table. */}
+        <dl class="mt-12 grid grid-cols-2 gap-x-8 gap-y-12 lg:grid-cols-4" data-stagger>
           {trust.map((t, i) => (
-            <div class="v2-rise min-w-0" style={`--v2-i:${i}`}>
-              <dd class="fig fig-md lum break-words" data-tally={t.tally ? '' : undefined}>{t.fig}</dd>
+            <div class="v2-rise relative min-w-0 border-t-2 border-white/10 pt-5" style={`--v2-i:${i}`}>
+              <span class="absolute -top-px left-0 h-0.5 w-10 bg-brass-400" aria-hidden="true"></span>
+              <dd class="fig fig-lg lum break-words" data-tally={t.tally ? '' : undefined}>{t.fig}</dd>
               <dt class="tech-label mt-2 text-lune-faint">{t.label}</dt>
               <p class="mt-1 text-sm leading-snug text-lune-soft">{t.body}</p>
             </div>
@@ -286,6 +431,12 @@ const trust = [
         </dl>
       </div>
     </section>
+
+    {/* ── THE FOUNDER — human presence (W266). The copy asserts intimacy
+        ("founder-signed") but never shows it: the real portrait + a
+        first-person signed note make it tangible. Shared component with
+        /à-propos (same facts, never duplicated). ── */}
+    <FounderPortrait />
 
     {/* ── THE JOURNEY (6 steps) + WhatsApp preview. The end-to-end timeline
         (diagnostic → monitoring) replaces the small 3-step list. Facts already
@@ -357,6 +508,23 @@ const trust = [
     <Faq items={faq} schema={false} />
 
     <StickyCta />
+
+    {/* W271 — Proof-gallery lightbox. Native <dialog>: Escape + focus trap
+        for free, no dependency. Content filled by the script below on open
+        (image + city · kWc · production caption). Reduced-motion: the CSS
+        transition is gated below. */}
+    <dialog id="gallery-lightbox" class="gallery-lightbox" aria-label="Enlarged photo">
+      <button type="button" class="gallery-lightbox-close" data-lightbox-close aria-label="Close">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M6 6l12 12M18 6 6 18" />
+        </svg>
+      </button>
+      <img data-lightbox-img src="" alt="" />
+      <figcaption>
+        <span data-lightbox-caption></span>
+        <span data-lightbox-type class="gallery-lightbox-type"></span>
+      </figcaption>
+    </dialog>
   </div>
 </Layout>
 
@@ -374,6 +542,76 @@ const trust = [
      guarantees the white headline's AA contrast over the photo. */
   .hero-scrim-v3 {
     --hero-scrim-strength: 0.52;
+  }
+
+  /* ── W271 — Gallery lightbox ─────────────────────────────────────────── */
+  .gallery-lightbox {
+    max-width: min(92vw, 1100px);
+    max-height: 90vh;
+    border: none;
+    background: var(--color-nuit);
+    padding: 0;
+    color: white;
+  }
+  .gallery-lightbox::backdrop {
+    background: rgb(6 10 30 / 0.86);
+  }
+  .gallery-lightbox img {
+    display: block;
+    width: 100%;
+    max-height: 72vh;
+    object-fit: contain;
+    background: black;
+  }
+  .gallery-lightbox figcaption {
+    padding: 0.9rem 1.25rem 1.1rem;
+    font-size: 0.9rem;
+  }
+  .gallery-lightbox figcaption span[data-lightbox-caption] {
+    display: block;
+    font-weight: 700;
+    color: var(--color-brass-300);
+  }
+  .gallery-lightbox-type {
+    display: block;
+    margin-top: 0.2rem;
+    color: var(--color-lune-soft);
+    font-size: 0.8rem;
+  }
+  .gallery-lightbox-close {
+    position: absolute;
+    top: 0.6rem;
+    right: 0.6rem;
+    z-index: 1;
+    display: flex;
+    height: 2.25rem;
+    width: 2.25rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    background: rgb(6 10 30 / 0.7);
+    color: white;
+  }
+  .gallery-lightbox-close:hover {
+    background: rgb(6 10 30 / 0.9);
+  }
+  /* Opening transition — gated reduced-motion: the dialog appears instantly
+     with no motion preference. */
+  @media (prefers-reduced-motion: no-preference) {
+    .gallery-lightbox {
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+    .gallery-lightbox:not([open]) {
+      opacity: 0;
+      transform: scale(0.98);
+    }
+  }
+
+  /* ── W271 — City filter chips: hides out-of-filter cards via a class set
+     by the script, never via [hidden], so data-stagger can still replay the
+     first-render reveal cleanly. */
+  [data-gallery-card].gallery-card-hidden {
+    display: none;
   }
 </style>
 
@@ -439,5 +677,81 @@ const trust = [
       if (document.readyState === 'complete') kick();
       else addEventListener('load', kick, { once: true });
     }
+  }
+</script>
+
+<script>
+  // W271 — City filter + lightbox for the proof gallery. Pure DOM, no
+  // dependency. Without JS: every card stays visible and the enlarge button
+  // stays a plain <button> with no handler (progressive enhancement — never
+  // a keyboard or screen-reader trap).
+
+  // — City filter —
+  const filterGroup = document.querySelector<HTMLElement>('[data-gallery-filter]');
+  const cards = Array.from(document.querySelectorAll<HTMLElement>('[data-gallery-card]'));
+  if (filterGroup) {
+    filterGroup.addEventListener('click', (ev) => {
+      const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>('button[data-city]');
+      if (!btn) return;
+      const city = btn.dataset.city;
+      filterGroup.querySelectorAll<HTMLButtonElement>('button[data-city]').forEach((b) => {
+        const active = b === btn;
+        b.setAttribute('aria-pressed', active ? 'true' : 'false');
+        b.classList.toggle('gallery-filter-chip-active', active);
+        b.classList.toggle('border-brass-400', active);
+        b.classList.toggle('bg-brass-400/10', active);
+        b.classList.toggle('text-brass-300', active);
+        b.classList.toggle('border-white/25', !active);
+        b.classList.toggle('text-lune-soft', !active);
+      });
+      cards.forEach((card) => {
+        const show = city === 'All' || card.dataset.city === city;
+        card.classList.toggle('gallery-card-hidden', !show);
+      });
+    });
+  }
+
+  // — Lightbox —
+  const dialog = document.getElementById('gallery-lightbox') as HTMLDialogElement | null;
+  if (dialog && typeof dialog.showModal === 'function') {
+    const img = dialog.querySelector<HTMLImageElement>('[data-lightbox-img]');
+    const captionEl = dialog.querySelector<HTMLElement>('[data-lightbox-caption]');
+    const typeEl = dialog.querySelector<HTMLElement>('[data-lightbox-type]');
+    const closeBtn = dialog.querySelector<HTMLButtonElement>('[data-lightbox-close]');
+
+    let lastTrigger: HTMLElement | null = null;
+
+    const openFromButton = (btn: HTMLElement) => {
+      const name = btn.dataset.name ?? '';
+      const widths = (btn.dataset.widths ?? '').split(',').map((w) => parseInt(w, 10)).filter((n) => !Number.isNaN(n));
+      const largest = widths.length ? Math.max(...widths) : 1600;
+      if (img) {
+        img.src = `/photos/${name}-${largest}.webp`;
+        img.alt = btn.dataset.alt ?? '';
+      }
+      if (captionEl) captionEl.textContent = btn.dataset.caption ?? '';
+      if (typeEl) typeEl.textContent = btn.dataset.type ?? '';
+      lastTrigger = btn;
+      dialog.showModal();
+    };
+
+    document.querySelectorAll<HTMLButtonElement>('[data-lightbox-open]').forEach((btn) => {
+      btn.addEventListener('click', () => openFromButton(btn));
+    });
+
+    const closeDialog = () => {
+      dialog.close();
+    };
+    closeBtn?.addEventListener('click', closeDialog);
+
+    // Click on the backdrop → close. Native <dialog> already handles Escape.
+    dialog.addEventListener('click', (ev) => {
+      if (ev.target === dialog) closeDialog();
+    });
+
+    // Return focus to the trigger on close (keyboard accessibility).
+    dialog.addEventListener('close', () => {
+      lastTrigger?.focus();
+    });
   }
 </script>

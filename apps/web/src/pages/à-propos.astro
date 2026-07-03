@@ -13,9 +13,9 @@ import Layout from '../layouts/Layout.astro';
 import V2Enhance from '../components/V2Enhance.astro';
 import Article33Ribbon from '../components/Article33Ribbon.astro';
 import Breadcrumb from '../components/Breadcrumb.astro';
-import Picture from '../components/Picture.astro';
 import CtaBand from '../components/CtaBand.astro';
 import StickyCta from '../components/StickyCta.astro';
+import FounderPortrait from '../components/FounderPortrait.astro';
 
 // La méthode « l'étude d'abord, le chantier ensuite » — déroulé déjà décrit sur
 // l'accueil et la page Pourquoi : diagnostic → échange technique → étude → pose
@@ -56,8 +56,7 @@ const etapes = [
     <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'À propos' }]} />
 
     <section class="px-4 pb-10 pt-16 text-white sm:pt-20">
-      <div class="mx-auto grid max-w-5xl items-start gap-10 lg:grid-cols-[1.5fr_auto] lg:items-center">
-        <div>
+      <div class="mx-auto max-w-3xl">
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">Le fondateur</p>
         <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">Un docteur-ingénieur valide chaque étude, à la main</h1>
         <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
@@ -66,20 +65,13 @@ const etapes = [
           monde pour le solaire parce qu’il y a vu, partout, le même réflexe : vendre un kit avant
           d’avoir fait le calcul. Ici, l’ordre est inversé — et c’est lui qui signe le calcul.
         </p>
-        </div>
-        <figure class="cine-in mx-auto w-full max-w-[240px] [animation-delay:200ms] lg:mx-0">
-          <Picture
-            name="fondateur-portrait"
-            alt="Reda Kasri, fondateur et docteur-ingénieur de Taqinor"
-            widths={[480, 640]}
-            ratio={4 / 5}
-            sizes="(min-width:1024px) 240px, 55vw"
-            class="w-full object-cover shadow-premium"
-          />
-          <figcaption class="tech-label mt-3 text-lune-faint">Reda Kasri · fondateur, docteur-ingénieur</figcaption>
-        </figure>
       </div>
     </section>
+
+    {/* W266 — portrait réel + note signée à la première personne, composant
+        partagé avec l'accueil (remplace l'ancien bloc <figure> en doublon
+        dans ce héros ; mêmes faits, une seule source). */}
+    <FounderPortrait />
 
     <!-- Le fondateur — ses standards, pas une biographie -->
     <div class="v2-seam" aria-hidden="true"></div>
