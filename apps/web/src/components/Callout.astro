@@ -7,6 +7,10 @@
  *
  * Usage Astro MDX ou inline dans un template :
  *   <Callout type="tip" title="Le bon réflexe">Texte...</Callout>
+ *
+ * W311 — accent border en propriété logique (border-inline-start, pas
+ * border-left) : sous dir="rtl" (locale ar), l'accent doit basculer côté
+ * droit, jamais rester figé à gauche.
  */
 interface Props {
   type?: 'info' | 'tip' | 'warning';
@@ -31,8 +35,8 @@ const { type = 'info', title } = Astro.props;
   .callout {
     margin-top: 1.75rem;
     padding: 1rem 1.25rem;
-    border-left-width: 3px;
-    border-left-style: solid;
+    border-inline-start-width: 3px;
+    border-inline-start-style: solid;
     background: rgb(255 255 255 / 0.04);
   }
 

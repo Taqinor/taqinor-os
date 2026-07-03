@@ -142,11 +142,14 @@ const linkBase =
 // W151 — variante active : texte blanc + indicateur brass visible au repos.
 const linkBaseActive =
   'group/link relative text-sm font-medium text-white';
+// W311 — inset-inline-start-0 (logique) au lieu de left-0 : le soulignement
+// grandit depuis le bon côté (début de ligne) sous dir="rtl" au lieu de
+// rester ancré à gauche physique.
 const underline =
-  'absolute -bottom-1 left-0 h-0.5 w-0 bg-brass-400 transition-all duration-200 group-hover/link:w-full';
+  'absolute -bottom-1 inset-inline-start-0 h-0.5 w-0 bg-brass-400 transition-all duration-200 group-hover/link:w-full';
 // W151 — underline actif : toujours pleine largeur, couleur brass.
 const underlineActive =
-  'absolute -bottom-1 left-0 h-0.5 w-full bg-brass-400';
+  'absolute -bottom-1 inset-inline-start-0 h-0.5 w-full bg-brass-400';
 // Classes de révélation du panneau : survol, focus clavier OU classe .is-open (JS).
 const menuReveal =
   'invisible translate-y-1 opacity-0 transition-all duration-150 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:opacity-100 group-[.is-open]:visible group-[.is-open]:translate-y-0 group-[.is-open]:opacity-100';

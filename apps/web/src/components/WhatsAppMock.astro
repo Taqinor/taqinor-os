@@ -111,10 +111,14 @@ const exchange = [
       {exchange.map((m, i) => (
         <div
           class:list={[
+            /* W311 — coins logiques (rounded-ss/se/es/ee) au lieu de coins
+               physiques (tl/tr/br/bl) : le coin « coupé » de la bulle suit le
+               bon angle (fin de bulle) sous dir="rtl" au lieu de rester
+               figé en bas-gauche/bas-droite physique. */
             'wa-bubble relative max-w-[85%] px-3 pb-1.5 pt-2 text-[13px] leading-snug shadow-sm',
             m.from === 'client'
-              ? 'wa-bubble--out self-end rounded-[10px_10px_3px_10px] bg-[#d7f7c8] text-encre'
-              : 'wa-bubble--in self-start rounded-[10px_10px_10px_3px] bg-blanc text-encre',
+              ? 'wa-bubble--out self-end rounded-ss-[10px] rounded-se-[10px] rounded-ee-[3px] rounded-es-[10px] bg-[#d7f7c8] text-encre'
+              : 'wa-bubble--in self-start rounded-ss-[10px] rounded-se-[10px] rounded-ee-[10px] rounded-es-[3px] bg-blanc text-encre',
           ]}
           data-wa-bubble
           data-wa-from={m.from}
@@ -161,7 +165,7 @@ const exchange = [
         invisible tant que le script ne l'anime pas ; en reduced-motion ou
         sans script, il ne s'affiche jamais (repli = fil déjà complet). */}
     <template data-wa-typing-template>
-      <div class="wa-bubble wa-typing self-start rounded-[10px_10px_10px_3px] bg-blanc px-3 py-2.5 shadow-sm" aria-hidden="true">
+      <div class="wa-bubble wa-typing self-start rounded-ss-[10px] rounded-se-[10px] rounded-ee-[10px] rounded-es-[3px] bg-blanc px-3 py-2.5 shadow-sm" aria-hidden="true">
         <span class="wa-tail-in" aria-hidden="true"></span>
         <span class="wa-typing-dot"></span>
         <span class="wa-typing-dot"></span>
@@ -177,28 +181,31 @@ const exchange = [
 
 <style>
   /* W193 — Queues de bulle WhatsApp */
+  /* W311 — offsets logiques (inset-inline-start/end) : sous dir="rtl" les
+     bulles entrante/sortante restent alignées sur le bon côté au lieu de
+     rester figées gauche/droite physiques. */
   .wa-bubble { position: relative; }
 
-  /* Queue côté entrant (gauche) */
+  /* Queue côté entrant (début — gauche en LTR, droite en RTL) */
   .wa-tail-in {
     position: absolute;
     top: 0;
-    left: -7px;
+    inset-inline-start: -7px;
     width: 0;
     height: 0;
     border-top: 8px solid #ffffff;
-    border-left: 7px solid transparent;
+    border-inline-start: 7px solid transparent;
   }
 
-  /* Queue côté sortant (droite) */
+  /* Queue côté sortant (fin — droite en LTR, gauche en RTL) */
   .wa-tail-out {
     position: absolute;
     top: 0;
-    right: -7px;
+    inset-inline-end: -7px;
     width: 0;
     height: 0;
     border-top: 8px solid #d7f7c8;
-    border-right: 7px solid transparent;
+    border-inline-end: 7px solid transparent;
   }
 
   /* Heure + ticks alignés */
