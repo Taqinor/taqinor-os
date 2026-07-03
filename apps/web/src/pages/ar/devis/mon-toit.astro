@@ -293,15 +293,37 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             <span id="mt-bill-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
           </label>
 
+          <!-- WJ48 — « Type de toit » converti d'une liste déroulante en cartes
+               image tappables (motif Enpal/EnergySage le plus testé pour un
+               choix visuel à faible cardinalité) : icônes SVG distinctes par
+               type (aucune photo fabriquée — pas d'assets photo fournis).
+               Le <select> natif reste dans le DOM (sr-only) : source de vérité
+               inchangée pour val('mt-roof'), la validation, la persistance
+               WJ61 et le focus d'erreur — seule la sélection VISUELLE change. -->
+          <fieldset>
+            <legend class="text-sm text-lune-soft" data-i18n data-fr="Type de toit" data-ar="نوع السطح">Type de toit</legend>
+            <div class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {ROOF_TYPES.map((r) => (
+                <button type="button" class="mt-roof-card cine-card flex flex-col items-center gap-1.5 border border-white/15 p-3 text-center transition-colors"
+                  data-roof={r.id} aria-pressed="false">
+                  <svg aria-hidden="true" width="32" height="32" viewBox="0 0 32 32" fill="none" class="text-lune-soft">
+                    {r.id === 'villa' && <path d="M4 18 16 8l12 10M8 16v10h16V16" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" fill="none" />}
+                    {r.id === 'hangar' && <path d="M3 20 10 12h12l7 8M6 20v6h20v-6" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" fill="none" />}
+                    {r.id === 'toit_plat' && <path d="M5 12h22v3H5zM7 15v10h18V15" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" fill="none" />}
+                    {r.id === 'autre' && <path d="M16 5v22M5 16h22" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />}
+                  </svg>
+                  <span class="text-xs font-semibold text-white" data-i18n data-fr={r.label} data-ar={ROOF_TYPE_LABEL_AR[r.id] ?? r.label}>{r.label}</span>
+                </button>
+              ))}
+            </div>
+            <span id="mt-roof-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
+            <select id="mt-roof" name="roofType" aria-describedby="mt-roof-err" class="sr-only">
+              <option value="">اختر…</option>
+              {roofTypes.map((r) => <option value={r.id}>{r.label}</option>)}
+            </select>
+          </fieldset>
+
           <div class="grid gap-4 sm:grid-cols-2">
-            <label class="block text-sm text-lune-soft">
-              <span data-i18n data-fr="Type de toit" data-ar="نوع السطح">Type de toit</span>
-              <select id="mt-roof" name="roofType" aria-describedby="mt-roof-err" class={`${inputClass} mt-1`}>
-                <option value="">اختر…</option>
-                {roofTypes.map((r) => <option value={r.id}>{r.label}</option>)}
-              </select>
-              <span id="mt-roof-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
-            </label>
             <label class="block text-sm text-lune-soft">
               <span data-i18n data-fr="Raccordement" data-ar="نوع الربط">Raccordement</span>
               <select id="mt-raccordement" name="raccordement" class={`${inputClass} mt-1`}>
@@ -487,6 +509,15 @@ const noscriptTelHref = `tel:${NAP.phone}`;
              FOIS, jamais pendant la phase squelette. -->
         <div id="mt-estimate-card" class="cine-card mt-6 border border-brass-400/30 p-5 sm:p-6">
           <p class="tech-label text-brass-300" data-i18n data-fr="Votre estimation instantanée" data-ar="تقديرك الفوري">Votre estimation instantanée</p>
+          <!-- WJ48 — anticipation animation ANTIME BRANDÉE (1.5–2.5 s) avant que
+               les vrais chiffres n'apparaissent — jamais un flash instantané
+               (le calcul lui-même est synchrone/instantané côté code, donc sans
+               ce délai perçu l'utilisateur ne « voit » jamais de calcul se
+               produire). reduced-motion → instant (aucun délai artificiel). -->
+          <p id="mt-estimate-thinking" hidden class="mt-3 flex items-center gap-2 text-sm text-brass-300">
+            <span class="mt-thinking-dot h-2 w-2 flex-none rounded-full bg-brass-400"></span>
+            <span data-i18n data-fr="Calcul de votre potentiel solaire…" data-ar="جارٍ حساب إمكاناتكم الشمسية…">Calcul de votre potentiel solaire…</span>
+          </p>
           <p id="mt-estimate-announce" class="sr-only" aria-live="polite"></p>
           <div id="mt-estimate-body" class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div>
@@ -502,11 +533,25 @@ const noscriptTelHref = `tel:${NAP.phone}`;
               <p class="text-xs text-lune-faint" data-i18n data-fr="Amortissement" data-ar="استرداد التكلفة">Amortissement</p>
             </div>
           </div>
+          <!-- WJ48 — caveat COURT, juste à côté des chiffres (distinct de la
+               note méthodologique plus longue ci-dessous). -->
+          <p class="mt-2 text-xs italic text-lune-faint" data-i18n
+            data-fr="Estimation préliminaire, affinée après visite." data-ar="تقدير أولي، يُحسَّن بعد الزيارة.">
+            Estimation préliminaire, affinée après visite.
+          </p>
           <p id="mt-estimate-note" class="mt-4 text-xs text-lune-faint" data-i18n
             data-fr="Fourchette préliminaire calculée à partir de votre facture (autoconsommation, loi 82-21). Le chiffrage exact est établi après visite technique — sans engagement."
             data-ar="شريحة أولية محسوبة من فاتورتك (الاستهلاك الذاتي، القانون 82-21). يُحدَّد التقدير الدقيق بعد زيارة تقنية — بدون التزام.">
             Fourchette préliminaire calculée à partir de votre facture (autoconsommation, loi
             82-21). Le chiffrage exact est établi après visite technique — sans engagement.
+          </p>
+          <!-- WJ48 — ligne de positionnement concurrentiel : « estimation
+               immédiate » n'est pas une simple demande de rappel (masolaire.ma
+               ne renvoie qu'un callback sous 24 h — vérifié). -->
+          <p class="mt-2 flex items-center gap-1.5 text-xs font-semibold text-ok-400" data-i18n
+            data-fr="Estimation immédiate — pas une simple demande de rappel sous 24 h."
+            data-ar="تقدير فوري — وليس مجرد طلب اتصال خلال 24 ساعة.">
+            Estimation immédiate — pas une simple demande de rappel sous 24 h.
           </p>
           <!-- WJ1 — quand l'estimation est indisponible (facture absente/non chiffrable) -->
           <p id="mt-estimate-unavailable" hidden class="mt-4 text-sm text-alert-300" data-i18n
@@ -811,6 +856,19 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     background: rgb(255 255 255 / 0.08);
     vertical-align: middle;
   }
+
+  /* WJ48 — puce « en cours » de l'anticipation branded : un pouls discret,
+     jamais une roue de chargement générique. Gated reduced-motion (statique
+     sinon), même discipline que .mt-skeleton-shimmer. */
+  @media (prefers-reduced-motion: no-preference) {
+    .mt-thinking-dot {
+      animation: mt-thinking-pulse 1s ease-in-out infinite;
+    }
+  }
+  @keyframes mt-thinking-pulse {
+    0%, 100% { opacity: 0.35; transform: scale(0.85); }
+    50% { opacity: 1; transform: scale(1); }
+  }
 </style>
 
 <script>
@@ -1016,6 +1074,33 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     b.classList.toggle('border-brass-400', on);
     b.classList.toggle('border-white/15', !on);
   });
+
+  // ——— WJ48 : cartes image « type de toit » — synchronisent le <select>
+  // sr-only (mt-roof) qui reste la source de vérité pour val('mt-roof'), la
+  // validation (setFieldError) et la persistance WJ61 (déjà câblée sur
+  // 'mt-roof' via PERSISTED_TEXT_FIELDS). Un seul choix actif à la fois. ———
+  const roofSelect = $('mt-roof') as HTMLSelectElement | null;
+  function syncRoofCards() {
+    const current = roofSelect?.value || '';
+    document.querySelectorAll<HTMLButtonElement>('.mt-roof-card').forEach((b) => {
+      const on = b.dataset.roof === current;
+      b.setAttribute('aria-pressed', String(on));
+      b.classList.toggle('border-brass-400', on);
+      b.classList.toggle('border-white/15', !on);
+    });
+  }
+  document.querySelectorAll<HTMLButtonElement>('.mt-roof-card').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (roofSelect) {
+        roofSelect.value = btn.dataset.roof || '';
+        setFieldError('mt-roof', 'mt-roof-err', null);
+      }
+      syncRoofCards();
+      markDataEntered();
+      saveWizardState();
+    });
+  });
+  syncRoofCards(); // état initial (réhydraté ou vide).
 
   // ——— WJ31 : puce à bascule unique (ombrage) — un seul choix actif à la fois ———
   let ombrage = savedWizard?.ombrage || '';
@@ -1360,10 +1445,29 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     const payEl = $('mt-est-payback');
     if (payEl) payEl.innerHTML = '<span class="mt-est-skeleton mt-skeleton-shimmer"></span>';
   }
+  // WJ48 — anticipation BRANDÉE (1.5–2.5 s, tirage aléatoire dans cette
+  // fenêtre à chaque calcul) : le calcul réel (billEstimate) est synchrone et
+  // instantané — sans ce délai perçu, l'utilisateur ne « voit » jamais de
+  // calcul se produire (Enpal/EnergySage : le motif d'anticipation le plus
+  // testé du secteur). reduced-motion → INSTANTANÉ (aucun délai artificiel,
+  // aucune roue de chargement à observer).
+  const THINKING_MIN_MS = 1500;
+  const THINKING_MAX_MS = 2500;
+  function thinkingDelayMs(): number {
+    if (reducedMotion) return 0;
+    return THINKING_MIN_MS + Math.random() * (THINKING_MAX_MS - THINKING_MIN_MS);
+  }
   $('mt-estimate')?.addEventListener('click', () => {
     showEstimateSkeleton();
+    const thinkingEl = $('mt-estimate-thinking');
+    if (thinkingEl) thinkingEl.hidden = false;
     goStep(2);
-    requestAnimationFrame(() => computeEstimate());
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        if (thinkingEl) thinkingEl.hidden = true;
+        computeEstimate();
+      }, thinkingDelayMs());
+    });
   });
   // recalcule à la volée si l'utilisateur revient corriger sa facture
   $('mt-facture-hiver')?.addEventListener('input', computeEstimate);
@@ -1579,10 +1683,18 @@ const noscriptTelHref = `tel:${NAP.phone}`;
         errEl.textContent = fieldsHighlightedMsg();
         errEl.hidden = false;
       }
-      // amène l'utilisateur au premier champ en erreur
+      // amène l'utilisateur au premier champ en erreur.
+      // WJ48 — mt-roof est désormais sr-only (le choix visuel se fait via les
+      // cartes .mt-roof-card) : focaliser le <select> caché déplacerait le
+      // focus clavier sur un élément invisible pour un utilisateur voyant. On
+      // focalise plutôt la première carte visible dans ce cas.
       const firstId = ['mt-name', 'mt-phone', 'mt-city', 'mt-roof', 'mt-bill']
         .find((id) => $(id)?.getAttribute('aria-invalid') === 'true');
-      if (firstId) ($(firstId) as HTMLElement | null)?.focus();
+      if (firstId === 'mt-roof') {
+        document.querySelector<HTMLButtonElement>('.mt-roof-card')?.focus();
+      } else if (firstId) {
+        ($(firstId) as HTMLElement | null)?.focus();
+      }
       return;
     }
     showInlineErrors({});
