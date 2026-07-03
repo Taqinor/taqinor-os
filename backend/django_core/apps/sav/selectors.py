@@ -177,3 +177,39 @@ def warranty_registry(equipements_qs, *, expiring_soon_days=60, today=None):
         'parcs': parcs_list,
         'totaux': totaux,
     }
+
+
+def contrat_maintenance_existe(pk, company):
+    """``True`` si un ``ContratMaintenance`` existe pour ``pk`` DANS ``company`` — XCTR13.
+
+    Point d'entrée cross-app en LECTURE SEULE pour la validation à l'écriture
+    de ``Contrat.sav_contrat_maintenance_id`` (``apps.contrats``) — jamais un
+    import de ``sav.models`` depuis ``contrats`` : l'app appelante passe
+    l'``id`` et la société, ce module répond par un simple booléen scopé
+    société (aucun objet ``ContratMaintenance`` n'est exposé hors de l'app).
+    """
+    from .models import ContratMaintenance
+
+    if not pk:
+        return False
+    return ContratMaintenance.objects.filter(pk=pk, company=company).exists()
+
+
+def contrats_maintenance_facturables(company):
+    """``ContratMaintenance`` actifs à ``facturation_active=True`` — XCTR13.
+
+    Lecture seule, scopée société. Alimente le MRR combiné du tableau de bord
+    contrats (``apps.contrats.selectors.tableau_de_bord_contrats``) SANS
+    exposer le modèle lui-même — l'appelant ne reçoit que les champs
+    nécessaires au calcul MRR (id, prix, periodicite).
+    """
+    from .models import ContratMaintenance
+
+    qs = ContratMaintenance.objects.filter(
+        company=company, actif=True, facturation_active=True,
+        prix__isnull=False,
+    ).only('id', 'prix', 'periodicite')
+    return [
+        {'id': cm.id, 'prix': cm.prix, 'periodicite': cm.periodicite}
+        for cm in qs
+    ]
