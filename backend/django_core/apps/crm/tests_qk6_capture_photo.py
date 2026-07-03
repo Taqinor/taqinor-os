@@ -67,7 +67,7 @@ class WebhookCapturePhotoTests(TestCase):
             content_type='application/json',
             HTTP_X_WEBHOOK_SECRET=SECRET)
 
-    @mock.patch('apps.crm.intake_photo.store_attachment',
+    @mock.patch('apps.records.storage.store_attachment',
                 return_value=(dict(FAKE_META), None))
     def test_photo_devient_piece_jointe_du_lead(self, mock_store):
         res = self.post(payload_site(
@@ -93,7 +93,7 @@ class WebhookCapturePhotoTests(TestCase):
             body__contains='Photo').exists())
 
     @mock.patch('apps.crm.intake_photo._run_capture_ocr')
-    @mock.patch('apps.crm.intake_photo.store_attachment',
+    @mock.patch('apps.records.storage.store_attachment',
                 return_value=(dict(FAKE_META), None))
     def test_sans_cle_ocr_degrade_en_simple_piece_jointe(
             self, mock_store, mock_ocr):
@@ -109,7 +109,7 @@ class WebhookCapturePhotoTests(TestCase):
         self.assertIsNone(lead.conso_mensuelle_kwh)
         self.assertIsNone(lead.tranche_onee)
 
-    @mock.patch('apps.crm.intake_photo.store_attachment')
+    @mock.patch('apps.records.storage.store_attachment')
     def test_data_url_acceptee(self, mock_store):
         mock_store.return_value = (dict(FAKE_META), None)
         res = self.post(payload_site(
@@ -135,7 +135,7 @@ class WebhookCapturePhotoTests(TestCase):
         from apps.records.models import Attachment
         self.assertEqual(Attachment.objects.count(), 0)
 
-    @mock.patch('apps.crm.intake_photo.store_attachment',
+    @mock.patch('apps.records.storage.store_attachment',
                 side_effect=RuntimeError('MinIO en panne'))
     def test_stockage_en_panne_le_lead_survit(self, mock_store):
         res = self.post(payload_site(photo=FAKE_JPEG_B64))
@@ -171,7 +171,7 @@ class CaptureOcrTests(TestCase):
         return resp
 
     @override_settings(CRM_CAPTURE_OCR_ENABLED=True)
-    @mock.patch('apps.crm.intake_photo.store_attachment',
+    @mock.patch('apps.records.storage.store_attachment',
                 return_value=(dict(FAKE_META), None))
     def test_ocr_configure_extrait_tranche_et_conso(self, mock_store):
         with mock.patch('requests.post', return_value=self._fake_ocr_response({
@@ -192,7 +192,7 @@ class CaptureOcrTests(TestCase):
             lead=self.lead, body__contains='OCR').exists())
 
     @override_settings(CRM_CAPTURE_OCR_ENABLED=True)
-    @mock.patch('apps.crm.intake_photo.store_attachment',
+    @mock.patch('apps.records.storage.store_attachment',
                 return_value=(dict(FAKE_META), None))
     def test_ocr_necrase_jamais_une_valeur_existante(self, mock_store):
         self.lead.conso_mensuelle_kwh = 500
@@ -208,7 +208,7 @@ class CaptureOcrTests(TestCase):
         self.assertEqual(self.lead.tranche_onee, 'Tranche 5')
 
     @override_settings(CRM_CAPTURE_OCR_ENABLED=True)
-    @mock.patch('apps.crm.intake_photo.store_attachment',
+    @mock.patch('apps.records.storage.store_attachment',
                 return_value=(dict(FAKE_META), None))
     def test_ocr_sans_owner_saute_mais_attache(self, mock_store):
         """Pas d'utilisateur pour le jeton → OCR sauté, photo quand même jointe."""
@@ -219,7 +219,7 @@ class CaptureOcrTests(TestCase):
         mock_post.assert_not_called()
 
     @override_settings(CRM_CAPTURE_OCR_ENABLED=True)
-    @mock.patch('apps.crm.intake_photo.store_attachment',
+    @mock.patch('apps.records.storage.store_attachment',
                 return_value=(dict(FAKE_META), None))
     def test_ocr_en_panne_la_photo_reste_jointe(self, mock_store):
         with mock.patch('requests.post',
@@ -230,7 +230,7 @@ class CaptureOcrTests(TestCase):
         self.assertIsNone(self.lead.conso_mensuelle_kwh)
 
     @override_settings(CRM_CAPTURE_OCR_ENABLED=True)
-    @mock.patch('apps.crm.intake_photo.store_attachment',
+    @mock.patch('apps.records.storage.store_attachment',
                 return_value=(dict(FAKE_META), None))
     def test_donnees_structurees_prioritaires(self, mock_store):
         with mock.patch('requests.post', return_value=self._fake_ocr_response({
