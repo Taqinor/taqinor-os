@@ -650,6 +650,16 @@ const noscriptTelHref = `tel:${NAP.phone}`;
 
         <!-- Contact form (the gate comes AFTER the estimate). -->
         <form id="mt-form" novalidate class="cine-card mt-5 space-y-4 p-5 sm:p-6">
+          <!-- W317 — honeypot anti-bot : hidden off-screen (never
+               display:none — more robust against bots that skip invisible
+               fields), tabindex -1 + autocomplete off so it never interferes
+               with a real keyboard user. Rejected server-side (lib/lead.ts
+               isHoneypotTripped) — the webhook contract is unchanged, this
+               field is never forwarded to the CRM. -->
+          <div aria-hidden="true" style="position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden;">
+            <label>Do not fill<input id="mt-hp" name="website_url" type="text" tabindex="-1" autocomplete="off" /></label>
+          </div>
+
           <p class="tech-label rule-brass text-brass-300">To receive your study</p>
 
           <div class="grid gap-4 sm:grid-cols-2">
@@ -1869,6 +1879,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       raisonSociale: val('mt-raison-sociale') || undefined,
       facilityType: val('mt-facility-type') || undefined,
       siteCount: val('mt-site-count') || undefined,
+      // W317 — honeypot: empty for any human visitor (hidden off-screen
+      // field, never knowingly filled); rejected server-side if not empty.
+      website_url: val('mt-hp'),
     };
     // WJ4 — repère FACULTATIF : on le joint s'il existe, on ne BLOQUE jamais sans lui.
     if (capturePin) {

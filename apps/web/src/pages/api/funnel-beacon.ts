@@ -15,6 +15,7 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import * as cf from 'cloudflare:workers';
 import { forwardBeacon, redactBeaconForLog, validateBeaconEvent, type FunnelEnv } from '../../lib/funnelBeacon';
+import { crossSiteRejection, isSameOriginRequest } from '../../lib/lead';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 
 function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
@@ -25,6 +26,10 @@ function json(data: unknown, status = 200, headers: Record<string, string> = {})
 }
 
 export const POST: APIRoute = async ({ request }) => {
+  // W317 — Origin/Sec-Fetch-Site : refuse un POST cross-site forgé avant tout
+  // traitement (même garde-fou que les autres proxies same-origin).
+  if (!isSameOriginRequest(request)) return crossSiteRejection();
+
   // Bucket distinct + limite plus généreuse : un parcours normal envoie
   // plusieurs événements (un par étape), jamais une seule requête.
   const rl = rateLimit(`funnel-beacon:${clientIpFromRequest(request)}`, { limit: 40, windowMs: 60_000 });

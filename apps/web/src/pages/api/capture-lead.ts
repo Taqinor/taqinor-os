@@ -18,7 +18,10 @@ import type { APIRoute } from 'astro';
 import * as cf from 'cloudflare:workers';
 import {
   buildLeadRecord,
+  crossSiteRejection,
   forwardLead,
+  isHoneypotTripped,
+  isSameOriginRequest,
   redactLeadForLog,
   runSimulation,
   trackForwardLeadOutcome,
@@ -35,6 +38,12 @@ function json(data: unknown, status = 200, headers: Record<string, string> = {})
 }
 
 export const POST: APIRoute = async ({ request }) => {
+  // W317 — Origin/Sec-Fetch-Site : « proxy same-origin » n'était jusqu'ici que
+  // de la documentation, jamais vérifiée (le rate-limit par IP est best-effort
+  // par isolate, pas un blocage). Un POST cross-site forgé est refusé (403)
+  // avant même le rate-limit.
+  if (!isSameOriginRequest(request)) return crossSiteRejection();
+
   // Même garde-fou anti-spam que /api/preview-lead (bucket distinct par endpoint).
   const rl = rateLimit(`capture-lead:${clientIpFromRequest(request)}`);
   if (!rl.allowed) {
@@ -49,6 +58,12 @@ export const POST: APIRoute = async ({ request }) => {
   } catch {
     return json({ ok: false, errors: { body: 'JSON invalide' } }, 400);
   }
+
+  // W317 — honeypot : un champ caché que seul un bot remplit. Rejeté en
+  // silence côté serveur avec une réponse de succès factice (jamais un signal
+  // que révélerait au bot QUEL champ l'a trahi) — le contrat webhook existant
+  // reste inchangé, ce lead n'est simplement jamais transmis.
+  if (isHoneypotTripped(body)) return json({ ok: true, qualified: false });
 
   const validation = validateLead(body);
   if (!validation.ok) return json({ ok: false, errors: validation.errors }, 400);

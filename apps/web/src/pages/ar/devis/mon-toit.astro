@@ -712,6 +712,16 @@ const noscriptTelHref = `tel:${NAP.phone}`;
 
         <!-- Formulaire de contact (la porte vient APRÈS l'estimation). -->
         <form id="mt-form" novalidate class="cine-card mt-5 space-y-4 p-5 sm:p-6">
+          <!-- W317 — honeypot anti-bot : champ jamais rempli par un humain
+               (masqué hors écran, jamais display:none — plus robuste contre
+               les bots qui ignorent les champs invisibles), tabindex -1 +
+               autocomplete off pour ne jamais gêner un vrai visiteur au
+               clavier. Rejeté côté serveur (lib/lead.ts isHoneypotTripped) —
+               contrat webhook inchangé, ce champ n'est jamais transmis au CRM. -->
+          <div aria-hidden="true" style="position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden;">
+            <label>Ne pas remplir<input id="mt-hp" name="website_url" type="text" tabindex="-1" autocomplete="off" /></label>
+          </div>
+
           <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Pour recevoir votre étude" data-ar="لاستلام دراستك">Pour recevoir votre étude</p>
 
           <div class="grid gap-4 sm:grid-cols-2">
@@ -2009,6 +2019,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       raisonSociale: val('mt-raison-sociale') || undefined,
       facilityType: val('mt-facility-type') || undefined,
       siteCount: val('mt-site-count') || undefined,
+      // W317 — honeypot : vide pour tout visiteur humain (champ masqué hors
+      // écran, jamais rempli sciemment) ; rejeté côté serveur si non vide.
+      website_url: val('mt-hp'),
     };
     // WJ4 — repère FACULTATIF : on le joint s'il existe, on ne BLOQUE jamais sans lui.
     if (capturePin) {

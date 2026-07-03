@@ -35,6 +35,7 @@ import {
   normalizeContactResponse,
   type ContactChannel,
 } from '../../lib/proposition';
+import { crossSiteRejection, isSameOriginRequest } from '../../lib/lead';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 
 function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
@@ -52,6 +53,10 @@ function resolveApiBase(): string {
 }
 
 export const POST: APIRoute = async ({ request }) => {
+  // W317 — Origin/Sec-Fetch-Site : refuse un POST cross-site forgé avant tout
+  // traitement (même garde-fou que les autres proxies same-origin).
+  if (!isSameOriginRequest(request)) return crossSiteRejection();
+
   const rl = rateLimit(`proposition-contact:${clientIpFromRequest(request)}`, { limit: 10, windowMs: 60_000 });
   if (!rl.allowed) {
     return json({ ok: false, degraded: true, detail: 'Trop de tentatives, réessayez dans un instant.' }, 429, {

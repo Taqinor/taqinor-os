@@ -22,11 +22,34 @@ function json(data: unknown, status = 200, headers: Record<string, string> = {})
   });
 }
 
+// W317 — Origin/Sec-Fetch-Site : garde-fou LOCAL (jamais importé de lib/lead —
+// cette route reste volontairement découplée de toute plomberie de lead/CRM,
+// garanti par un test dédié). Voir lib/lead.ts pour la version jumelle utilisée
+// par les endpoints lead/proposition.
+function isSameOriginRequest(request: Request): boolean {
+  const secFetchSite = request.headers.get('sec-fetch-site');
+  if (secFetchSite) return secFetchSite !== 'cross-site';
+  const origin = request.headers.get('origin');
+  if (!origin) return true;
+  try {
+    return new URL(origin).origin === new URL(request.url).origin;
+  } catch {
+    return false;
+  }
+}
+function crossSiteRejection(): Response {
+  return json({ ok: false, error: 'Requête refusée.' }, 403);
+}
+
 function num(v: unknown): number {
   return typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(',', '.'));
 }
 
 export const POST: APIRoute = async ({ request }) => {
+  // W317 — Origin/Sec-Fetch-Site : refuse un POST cross-site forgé avant tout
+  // traitement (même garde-fou que les autres proxies same-origin).
+  if (!isSameOriginRequest(request)) return crossSiteRejection();
+
   // W316 — rate-limit GÉNÉREUX et DÉDIÉ (même esprit que roof-yield/roof-production) :
   // appelé à chaque ajustement live du formulaire, plusieurs appels/minute sont
   // un usage normal.

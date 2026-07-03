@@ -27,6 +27,7 @@ import {
   type OptionKey,
   type SignFormState,
 } from '../../lib/proposition';
+import { crossSiteRejection, isSameOriginRequest } from '../../lib/lead';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 
 function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
@@ -44,6 +45,11 @@ function resolveApiBase(): string {
 }
 
 export const POST: APIRoute = async ({ request }) => {
+  // W317 — Origin/Sec-Fetch-Site : le chemin d'e-signature est le plus
+  // sensible des endpoints proxifiés ici — refuse un POST cross-site forgé
+  // avant tout traitement.
+  if (!isSameOriginRequest(request)) return crossSiteRejection();
+
   const rl = rateLimit(`proposition-accept:${clientIpFromRequest(request)}`, { limit: 10, windowMs: 60_000 });
   if (!rl.allowed) {
     return json({ ok: false, detail: 'Trop de tentatives, réessayez dans un instant.' }, 429, {

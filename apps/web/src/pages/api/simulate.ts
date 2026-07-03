@@ -9,8 +9,10 @@ import type { APIRoute } from 'astro';
 import * as cf from 'cloudflare:workers';
 import {
   buildLeadRecord,
+  crossSiteRejection,
   fireCapi,
   forwardLead,
+  isSameOriginRequest,
   redactLeadForLog,
   runSimulation,
   validateLead,
@@ -28,6 +30,10 @@ function json(data: unknown, status = 200, headers: Record<string, string> = {})
 }
 
 export const POST: APIRoute = async ({ request }) => {
+  // W317 — Origin/Sec-Fetch-Site : refuse un POST cross-site forgé avant tout
+  // traitement (même garde-fou que les autres proxies same-origin).
+  if (!isSameOriginRequest(request)) return crossSiteRejection();
+
   // ERR112 — garde-fou anti-spam (best-effort, sans dépendance ni secret).
   // Limite les POST par IP : un humain ne soumet pas 8 fois par minute, un
   // script de spam si. Voir src/lib/rateLimit.ts pour la limitation assumée.

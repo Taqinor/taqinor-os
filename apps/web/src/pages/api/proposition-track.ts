@@ -19,6 +19,7 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import * as cf from 'cloudflare:workers';
 import { buildProposalTrackPayload, type ProposalEngagementEvent } from '../../lib/proposition';
+import { crossSiteRejection, isSameOriginRequest } from '../../lib/lead';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 
 interface TrackEnv {
@@ -36,6 +37,10 @@ function json(data: unknown, status = 200, headers: Record<string, string> = {})
 const VALID_EVENTS: ProposalEngagementEvent[] = ['proposal_first_view', 'proposal_scrolled_financing'];
 
 export const POST: APIRoute = async ({ request }) => {
+  // W317 — Origin/Sec-Fetch-Site : refuse un POST cross-site forgé avant tout
+  // traitement (même garde-fou que les autres proxies same-origin).
+  if (!isSameOriginRequest(request)) return crossSiteRejection();
+
   // W316 — bucket dédié, généreux : deux événements par vue de page suffisent,
   // mais un onglet laissé ouvert / un double-montage ne doit jamais bloquer.
   const rl = rateLimit(`proposition-track:${clientIpFromRequest(request)}`, { limit: 20, windowMs: 60_000 });

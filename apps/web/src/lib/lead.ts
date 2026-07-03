@@ -8,6 +8,67 @@
 import { isBillRangeId, localEstimateBand, qualifiesForCrm, type BillRangeId, type EstimateBand } from './billRange';
 import { normalizeMoroccanPhone } from './phone';
 
+// ─────────────────────────────────────────────────────────────────────────
+// W317 — same-origin enforcement + honeypot, partagés par TOUS les proxies
+// POST same-origin (src/pages/api/*.ts). Additif : le contrat webhook/CRM
+// existant (validateLead, buildLeadRecord, forwardLead…) est INCHANGÉ ; ceci
+// ajoute une vérification EN AMONT, avant tout traitement de body.
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * `Origin`/`Sec-Fetch-Site` étaient jusqu'ici de la documentation
+ * (« proxy same-origin ») jamais vérifiée en pratique : le rate-limit par IP
+ * (lib/rateLimit.ts) reste best-effort par isolate et ne bloque pas un
+ * cross-site direct. `Sec-Fetch-Site` (émis par tous les navigateurs
+ * modernes) est le signal le plus fiable — `same-origin`/`same-site`/`none`
+ * (navigation directe, ex. curl/Postman) passent ; `cross-site` est rejeté.
+ * Quand `Sec-Fetch-Site` est absent (vieux navigateur, certains clients HTTP
+ * hors-navigateur), on retombe sur `Origin` comparé à `request.url` — un
+ * mismatch EXPLICITE est rejeté, mais l'absence totale des deux en-têtes
+ * (navigation directe sans fetch, tests, outils serveur-à-serveur légitimes)
+ * n'est PAS bloquée : ce garde-fou cible le cross-site FORGÉ, pas les clients
+ * qui n'envoient simplement pas ces en-têtes.
+ */
+export function isSameOriginRequest(request: Request): boolean {
+  const secFetchSite = request.headers.get('sec-fetch-site');
+  if (secFetchSite) return secFetchSite !== 'cross-site';
+
+  const origin = request.headers.get('origin');
+  if (!origin) return true; // aucun signal exploitable → laissé passer (voir note ci-dessus)
+  try {
+    return new URL(origin).origin === new URL(request.url).origin;
+  } catch {
+    return false; // Origin illisible : on ne peut pas prouver l'égalité → rejeté
+  }
+}
+
+/**
+ * Réponse 403 uniforme pour un POST cross-site détecté. Porte à la fois
+ * `errors.origin` (forme des endpoints capture-lead/simulate/preview-lead/
+ * roof-*) ET `detail` (forme des endpoints proposition-*) — chaque handler
+ * lit déjà l'un ou l'autre selon son propre contrat, jamais les deux à la
+ * fois, donc les deux clés cohabitent sans ambiguïté pour l'appelant.
+ */
+export function crossSiteRejection(): Response {
+  return new Response(
+    JSON.stringify({ ok: false, detail: 'Requête refusée.', errors: { origin: 'Requête refusée.' } }),
+    { status: 403, headers: { 'content-type': 'application/json' } },
+  );
+}
+
+/**
+ * Honeypot anti-bot : un champ caché (jamais rempli par un humain, CSS-masqué
+ * côté formulaire) que seul un bot remplissant tous les champs remplit. Additif
+ * — n'existe pas encore côté payload actuel, donc absent/vide est le cas
+ * NORMAL pour un visiteur réel ; seule une valeur non vide est suspecte.
+ */
+export const HONEYPOT_FIELD = 'website_url';
+
+export function isHoneypotTripped(body: unknown): boolean {
+  const v = (body as Record<string, unknown> | null | undefined)?.[HONEYPOT_FIELD];
+  return typeof v === 'string' && v.trim().length > 0;
+}
+
 export const ROOF_TYPES = [
   { id: 'villa', label: 'Villa' },
   { id: 'hangar', label: 'Hangar industriel' },
