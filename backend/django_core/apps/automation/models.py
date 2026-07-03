@@ -30,6 +30,23 @@ class TriggerType(models.TextChoices):
     WARRANTY_EXPIRING = 'warranty_expiring', 'Garantie proche expiration'
     MAINTENANCE_DUE = 'maintenance_due', 'Visite de maintenance due'
     STOCK_BELOW_THRESHOLD = 'stock_below_threshold', 'Stock sous le seuil'
+    # XPLT3 — déclencheur temporel GÉNÉRIQUE : « champ date ± N jours » sur un
+    # objet au choix (whitelist fermée, voir DATE_TRIGGER_TARGETS). Distinct
+    # des 3 déclencheurs FIXES ci-dessus (horizons codés en dur).
+    DATE_ECHEANCE_CHAMP = 'date_echeance_champ', 'Échéance de champ (± N jours)'
+
+
+# XPLT3 — whitelist FERMÉE (app_label, model) -> {champ date autorisé: label}
+# pour le déclencheur DATE_ECHEANCE_CHAMP. On ne laisse jamais une règle
+# pointer un modèle/champ arbitraire : seuls ces couples sont évaluables.
+DATE_TRIGGER_TARGETS = {
+    ('ventes', 'devis'): {
+        'date_validite': 'Date de validité du devis',
+    },
+    ('crm', 'lead'): {
+        'relance_date': 'Date de relance du lead',
+    },
+}
 
 
 class ActionType(models.TextChoices):

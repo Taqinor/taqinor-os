@@ -995,3 +995,110 @@ class ApprovalDelegationTests(TestCase):
         deleg = ApprovalDelegation.objects.get(pk=resp.data['id'])
         # Le délégant est forcé côté serveur = l'employé lui-même.
         self.assertEqual(deleg.delegant, self.employe)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# XPLT3 — Déclencheur temporel générique (champ date ± N jours).
+
+class DateEcheanceChampTriggerTests(TestCase):
+    def setUp(self):
+        self.co = make_company('xplt3-a', 'XPLT3 A')
+        self.user = make_user(self.co, 'xplt3-admin', 'admin')
+
+    def _rule(self, model, champ, offset_jours, **overrides):
+        defaults = dict(
+            company=self.co, nom='Relance devis',
+            trigger_type=TriggerType.DATE_ECHEANCE_CHAMP,
+            trigger_config={
+                'model': model, 'champ': champ, 'offset_jours': offset_jours},
+            action_type=ActionType.CREATE_ACTIVITY,
+            action_config={'body': 'Échéance approche'},
+            enabled=True)
+        defaults.update(overrides)
+        return AutomationRule.objects.create(**defaults)
+
+    def test_fires_once_on_the_right_day(self):
+        from apps.automation.beat_tasks import _trigger_date_echeance_champ
+
+        self._rule('ventes.devis', 'date_validite', -3)
+        client = Client.objects.create(company=self.co, nom='Cli Echeance')
+        devis = Devis.objects.create(
+            company=self.co, reference='DEV-XPLT3', statut='envoye',
+            client=client,
+            date_validite=date.today() + timedelta(days=3))
+
+        count = _trigger_date_echeance_champ(self.co)
+        self.assertEqual(count, 1)
+        self.assertTrue(AutomationRun.objects.filter(
+            company=self.co,
+            rule__trigger_type=TriggerType.DATE_ECHEANCE_CHAMP,
+            target_id=devis.pk).exists())
+
+    def test_idempotent_never_fires_twice_for_same_deadline(self):
+        from apps.automation.beat_tasks import _trigger_date_echeance_champ
+
+        self._rule('ventes.devis', 'date_validite', -3)
+        client = Client.objects.create(company=self.co, nom='Cli Idem')
+        Devis.objects.create(
+            company=self.co, reference='DEV-XPLT3B', statut='envoye',
+            client=client,
+            date_validite=date.today() + timedelta(days=3))
+
+        first = _trigger_date_echeance_champ(self.co)
+        second = _trigger_date_echeance_champ(self.co)
+        self.assertEqual(first, 1)
+        self.assertEqual(second, 0)  # re-lancer le même jour ne re-tire pas
+
+    def test_disabled_rule_never_fires(self):
+        from apps.automation.beat_tasks import _trigger_date_echeance_champ
+
+        self._rule('ventes.devis', 'date_validite', -3, enabled=False)
+        client = Client.objects.create(company=self.co, nom='Cli Off')
+        Devis.objects.create(
+            company=self.co, reference='DEV-XPLT3C', statut='envoye',
+            client=client,
+            date_validite=date.today() + timedelta(days=3))
+
+        count = _trigger_date_echeance_champ(self.co)
+        self.assertEqual(count, 0)
+
+    def test_tenant_isolation(self):
+        from apps.automation.beat_tasks import _trigger_date_echeance_champ
+
+        self._rule('ventes.devis', 'date_validite', -3)
+        other_co = make_company('xplt3-b', 'XPLT3 B')
+        other_client = Client.objects.create(company=other_co, nom='OtherC')
+        Devis.objects.create(
+            company=other_co, reference='DEV-OTHER', statut='envoye',
+            client=other_client,
+            date_validite=date.today() + timedelta(days=3))
+
+        count = _trigger_date_echeance_champ(other_co)
+        self.assertEqual(count, 0)  # aucune règle activée dans other_co
+
+    def test_wrong_offset_day_does_not_fire(self):
+        from apps.automation.beat_tasks import _trigger_date_echeance_champ
+
+        self._rule('ventes.devis', 'date_validite', -3)
+        client = Client.objects.create(company=self.co, nom='Cli Wrong')
+        Devis.objects.create(
+            company=self.co, reference='DEV-XPLT3D', statut='envoye',
+            date_validite=date.today() + timedelta(days=10), client=client)
+
+        count = _trigger_date_echeance_champ(self.co)
+        self.assertEqual(count, 0)
+
+    def test_non_whitelisted_field_is_rejected(self):
+        """Un champ hors whitelist (ex. faute de frappe) ne doit jamais être
+        interprété — la règle est simplement ignorée."""
+        from apps.automation.beat_tasks import _trigger_date_echeance_champ
+
+        self._rule('ventes.devis', 'champ_inconnu', -3)
+        client = Client.objects.create(company=self.co, nom='Cli Bad')
+        Devis.objects.create(
+            company=self.co, reference='DEV-XPLT3E', statut='envoye',
+            client=client,
+            date_validite=date.today() + timedelta(days=3))
+
+        count = _trigger_date_echeance_champ(self.co)
+        self.assertEqual(count, 0)
