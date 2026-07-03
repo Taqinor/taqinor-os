@@ -1,0 +1,205 @@
+---
+/**
+ * W293 — Pillar évergreen « Prix panneaux solaires Maroc ». Page NON datée,
+ * pensée pour un rafraîchissement annuel (verifiedDate ci-dessous), qui reprend
+ * les fourchettes déjà publiées et sourcées dans l'article daté
+ * src/content/blog/prix-installation-solaire-maroc-2026.md — AUCUN chiffre
+ * nouveau, uniquement une présentation pérenne (canonique) pointée par le
+ * terme de recherche à plus fort intent commercial du site. L'article daté
+ * reste la référence "actualité 2026" et renvoie ici comme contexte canonique ;
+ * ce pilier renvoie vers résidentiel/nos-solutions/guides/blog pour le
+ * dimensionnement et le détail méthode. Toutes les fourchettes portent leur
+ * fenêtre de validité (indicatif <année>) — jamais un prix ferme.
+ */
+import Layout from '../layouts/Layout.astro';
+import V2Enhance from '../components/V2Enhance.astro';
+import Article33Ribbon from '../components/Article33Ribbon.astro';
+import Breadcrumb from '../components/Breadcrumb.astro';
+import CtaBand from '../components/CtaBand.astro';
+import StickyCta from '../components/StickyCta.astro';
+import RelatedLinks from '../components/RelatedLinks.astro';
+import { NAP } from '../lib/nap';
+
+// Rafraîchie à chaque révision annuelle des fourchettes ci-dessous (voir
+// CONTENT_SEO_NOTES.md §5/§6 pour les sources). Pas de contenu "collection" —
+// page évergreen simple, comme les guides.
+const verifiedDate = new Date('2026-07-03');
+const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+
+const fourchettes = [
+  { kwc: '3 kWc', prix: '28 000 – 42 000 DH' },
+  { kwc: '5 kWc', prix: '45 000 – 65 000 DH' },
+  { kwc: '10 kWc', prix: '85 000 – 120 000 DH' },
+];
+
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const schemaImageUrl = new URL('/og/residentiel.png', Astro.site).href;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: 'Prix des panneaux solaires au Maroc : fourchettes indicatives par puissance',
+  description: 'Combien coûte une installation solaire clé-en-main au Maroc, par puissance (kWc), avec les surcoûts de toiture, batterie et TVA — fourchettes indicatives, revues chaque année.',
+  image: schemaImageUrl,
+  about: { '@type': 'Thing', name: 'Prix installation solaire Maroc' },
+  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: url,
+};
+---
+
+<Layout
+  title="Prix des panneaux solaires au Maroc : fourchettes par puissance (kWc) | Taqinor"
+  description="Combien coûte une installation solaire clé-en-main au Maroc ? Fourchettes indicatives par puissance (3, 5, 10 kWc), surcoûts toiture et batterie, TVA, et pourquoi le vrai chiffre vient toujours d'une visite technique."
+  ogSlug="residentiel"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Prix des panneaux solaires au Maroc' }]} />
+
+    <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
+      <p class="tech-label v2-kicker rule-brass text-lune">Prix & fourchettes</p>
+      <h1 class="display v2-page-title mt-5 text-white">Prix des panneaux solaires au Maroc</h1>
+
+      <p class="guide-byline mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-lune-faint">
+        <span>Fourchettes revues le {dateFmt.format(verifiedDate)} · par Reda Kasri</span>
+      </p>
+
+      <p class="v2-lead mt-6 text-lune-soft">
+        « Combien ça coûte, vraiment ? » C'est la première question de presque tous nos rendez-vous.
+        Cette page réunit les ordres de grandeur du marché marocain, avec leurs sources et leurs
+        limites — pas un prix ferme, mais de quoi budgéter et repérer une offre anormalement basse ou
+        anormalement chère avant votre devis.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Les fourchettes clé-en-main par puissance</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Ces prix couvrent la fourniture du matériel <strong class="text-white">et</strong> la pose
+        complète (onduleur, câblage, structure, mise en service). Ils sont extraits de publications
+        d'installateurs marocains et de guides de prix en ligne — des <strong class="text-white">
+        fourchettes indicatives</strong>, pas des tarifs officiels.
+      </p>
+      <div class="mt-6 overflow-x-auto">
+        <table class="v2-lead w-full border-collapse text-left text-sm text-lune-soft">
+          <thead>
+            <tr class="border-b border-white/20 text-white">
+              <th class="py-3 pr-4 font-bold">Puissance installée</th>
+              <th class="py-3 font-bold">Fourchette indicative (MAD TTC)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {fourchettes.map((f) => (
+              <tr class="border-b border-white/10">
+                <td class="py-3 pr-4 font-bold text-white">{f.kwc}</td>
+                <td class="py-3">{f.prix}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p class="v2-lead mt-5 text-lune-soft">
+        <strong class="text-white">Coût moyen clé-en-main : environ 10 000 – 14 000 DH/kWc</strong>
+        (matériel + main-d'œuvre — sources : solaropeak.com, ecovolt.ma, electrosolarplus.ma,
+        lechantier.ma). La dispersion reflète le type de toiture, la distance aux tableaux
+        électriques, la marque de l'onduleur et les marges variables selon les installateurs. Un
+        devis sur site reste indispensable.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Attention aux prix « à 4 700 DH/kWc »</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        On voit souvent circuler un prix autour de <strong class="text-white">4 700 DH/kWc</strong> ou
+        même moins. Ce chiffre correspond au <strong class="text-white">coût du kit équipement seul
+        </strong> (panneaux + onduleur, hors pose, hors câblage, hors structure, hors raccordement) —
+        implausiblement bas pour une installation clé-en-main terminée. Ne comparez pas ce chiffre aux
+        fourchettes ci-dessus : ce sont deux réalités différentes.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Surcoûts selon la configuration de toiture</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Toutes les toitures ne se ressemblent pas. Certaines configurations ajoutent des coûts
+        significatifs à la fourchette de base :
+      </p>
+      <ul class="v2-lead mt-5 list-disc space-y-3 pl-6 text-lune-soft">
+        <li><strong class="text-white">Toiture en tuiles ou tôle</strong> (pose plus technique) : +6 000 – 12 000 DH</li>
+        <li><strong class="text-white">Forte pente (&gt; 30°)</strong> : +4 000 – 8 000 DH pour les dispositifs de sécurité et la complexité de pose</li>
+      </ul>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Une terrasse en béton avec accès facile reste la configuration la moins onéreuse. Si votre
+        toiture est pentue ou en matériaux fragiles, anticipez ce surcoût dans votre budget — voir
+        aussi notre guide
+        <a href="/guides/mon-toit-peut-il-supporter-des-panneaux" class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">mon toit peut-il supporter des panneaux ?</a>
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Le cas de la batterie : utile, mais pas neutre sur le coût</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Une installation <strong class="text-white">sans batterie</strong> (raccordée au réseau) reste
+        la solution la plus courante et la plus rentable pour la majorité des maisons urbaines. Si
+        vous souhaitez stocker l'énergie pour la soirée ou vous protéger des coupures, une batterie
+        LFP ajoute un coût significatif :
+      </p>
+      <ul class="v2-lead mt-5 list-disc space-y-3 pl-6 text-lune-soft">
+        <li><strong class="text-white">Batterie LFP 5 – 15 kWh : +22 000 – 60 000 MAD</strong> selon la capacité et la marque</li>
+        <li>Le retour sur investissement s'allonge de <strong class="text-white">1 à 3 ans</strong> avec une batterie</li>
+      </ul>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Notre guide <a href="/guides/quelle-taille-de-batterie" class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">quelle taille de batterie ?</a> détaille les paliers de dimensionnement et pourquoi, au Maroc, stocker rapporte plus qu'exporter.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">TVA et droits de douane</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Le régime fiscal n'est pas uniforme : les panneaux nus sont exonérés de TVA (sans droit à
+        déduction), l'installation clé-en-main (fourniture + pose) est soumise à la
+        <strong class="text-white"> TVA à 20 %</strong> — les fourchettes de cette page s'entendent
+        TTC pour les particuliers. Les droits de douane sur les onduleurs importés sont passés de
+        17,5 % à 2,5 %, ce qui a contribué à faire baisser leur coût marché.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Retour sur investissement : 5 à 7 ans en résidentiel</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Le payback le plus souvent cité par les installateurs marocains pour une installation
+        résidentielle standard (sans batterie) est de <strong class="text-white">5 à 7 ans</strong>.
+        Avec une batterie, comptez 1 à 3 ans de plus. Ce calcul dépend fortement de votre consommation
+        réelle et de votre tranche tarifaire ONEE — voir notre page
+        <a href="/financement" class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">financement & rentabilité</a>
+        pour le détail, et l'article
+        <a href="/blog/rentabilite-solaire-par-ville-maroc" class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">rentabilité par ville</a>
+        pour les chiffres par région.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">De combien de panneaux avez-vous besoin ?</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Avant de comparer les prix, il faut connaître la bonne puissance pour votre foyer. Un ménage
+        consommant entre 4 000 et 6 000 kWh/an nécessite généralement 3 à 5 kWc ; entre 6 000 et
+        10 000 kWh/an, plutôt 5 à 8 kWc. Notre guide dédié détaille la méthode complète :
+        <a href="/guides/combien-de-panneaux-pour-ma-maison" class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">combien de panneaux pour ma maison ?</a>
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Un dernier mot avant de signer quoi que ce soit</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Servez-vous de ces fourchettes pour budgéter et pour repérer une offre anormalement basse ou
+        anormalement chère. Mais ne leur demandez pas ce qu'elles ne peuvent pas donner : un prix
+        ferme. La configuration de votre toiture, votre consommation, votre tranche ONEE et la
+        distance entre les panneaux et le tableau électrique déplacent le total final, parfois de
+        plusieurs milliers de dirhams. Le seul chiffre qui vaut pour votre maison sort d'une lecture
+        de votre facture et d'une visite — gratuite et sans engagement.
+      </p>
+      <p class="v2-lead mt-3 text-xs text-lune-faint">
+        Pour l'actualité complète des prix 2026 (répartition matériel/pose, exemples chiffrés), voir
+        notre article <a href="/blog/prix-installation-solaire-maroc-2026" class="border-b border-white/40 pb-0.5 font-semibold text-white transition-colors hover:border-white">Combien coûte une installation solaire au Maroc en 2026 ?</a>
+      </p>
+
+      <RelatedLinks links={[
+        { href: '/résidentiel', label: 'Nos solutions résidentielles' },
+        { href: '/nos-solutions', label: 'Toutes nos solutions' },
+        { href: '/guides', label: 'Tous les guides' },
+        { href: '/blog', label: 'Le blog' },
+      ]} />
+    </article>
+
+    <CtaBand title="Le seul chiffre qui compte est le vôtre. Lancez l'étude gratuite." href="/devis/mon-toit" />
+
+    <StickyCta />
+  </div>
+</Layout>

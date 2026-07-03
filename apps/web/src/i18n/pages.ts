@@ -63,6 +63,8 @@ const STATIC_TRANSLATED: readonly string[] = [
   // WJ38 — parcours devis « Mon toit » localisé (routes EN/AR livrées) : les CTA
   // devis/étude basculent d'eux-mêmes vers /en/... et /ar/... via quoteJourneyHref.
   '/devis/mon-toit',
+  // W293 — pilier évergreen « Prix panneaux solaires Maroc » (routes EN/AR livrées).
+  '/prix-panneaux-solaires-maroc',
 ];
 
 /**

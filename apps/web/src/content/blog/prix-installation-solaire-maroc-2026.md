@@ -10,6 +10,8 @@ draft: false
 
 « Combien ça coûte, vraiment ? » C'est la première phrase de presque tous mes rendez-vous. Et la raison pour laquelle les chiffres qu'on trouve en ligne vont du simple au triple est facile à expliquer : le prix d'un panneau posé sur une étagère n'a rien à voir avec celui d'une installation clé-en-main, montée sur votre toit et raccordée. Je préfère donc poser les fourchettes du marché marocain 2026 telles qu'elles sont, avec leurs sources et, surtout, leurs limites.
 
+*(W293 — pour la version pérenne de ces fourchettes, revue chaque année indépendamment de l'actualité 2026, voir notre page [Prix des panneaux solaires au Maroc](/prix-panneaux-solaires-maroc).)*
+
 ## Les fourchettes clé-en-main par puissance (indicatif 2026)
 
 Ces prix couvrent la fourniture du matériel **et** la pose complète (onduleur, câblage, structure, mise en service). Ils sont extraits de publications d'installateurs marocains et de guides de prix en ligne — ce sont des **fourchettes indicatives 2026**, pas des tarifs officiels.

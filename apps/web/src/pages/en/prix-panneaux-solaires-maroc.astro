@@ -1,0 +1,198 @@
+---
+/**
+ * EN — Pillar (W293): Solar panel prices in Morocco. Faithful translation of
+ * /prix-panneaux-solaires-maroc — evergreen, every figure mirrors the FR 1:1
+ * (same source: the dated blog post prix-installation-solaire-maroc-2026).
+ * Internal links use localizeNavHref (EN/AR if available, else the existing
+ * FR page — never a dead link). FR untouched.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import RelatedLinks from '../../components/RelatedLinks.astro';
+import { NAP } from '../../lib/nap';
+import { getLocaleFromPath } from '../../i18n/utils';
+import { localizeNavHref } from '../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+const verifiedDate = new Date('2026-07-03');
+const dateFmt = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+
+const fourchettes = [
+  { kwc: '3 kWc', prix: '28,000 – 42,000 DH' },
+  { kwc: '5 kWc', prix: '45,000 – 65,000 DH' },
+  { kwc: '10 kWc', prix: '85,000 – 120,000 DH' },
+];
+
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const schemaImageUrl = new URL('/og/residentiel.png', Astro.site).href;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: 'Solar panel prices in Morocco: indicative brackets by power',
+  description: 'How much does a turnkey solar installation cost in Morocco, by power (kWc), with roof, battery and VAT surcharges — indicative brackets, reviewed every year.',
+  image: schemaImageUrl,
+  about: { '@type': 'Thing', name: 'Solar installation price Morocco' },
+  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: url,
+};
+---
+
+<Layout
+  title="Solar panel prices in Morocco: brackets by power (kWc) | Taqinor"
+  description="How much does a turnkey solar installation cost in Morocco? Indicative brackets by power (3, 5, 10 kWc), roof and battery surcharges, VAT, and why the real figure always comes from a technical visit."
+  ogSlug="residentiel"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'Solar panel prices in Morocco' }]} />
+
+    <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
+      <p class="tech-label v2-kicker rule-brass text-lune">Prices & brackets</p>
+      <h1 class="display v2-page-title mt-5 text-white">Solar panel prices in Morocco</h1>
+
+      <p class="guide-byline mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-lune-faint">
+        <span>Brackets reviewed {dateFmt.format(verifiedDate)} · by Reda Kasri</span>
+      </p>
+
+      <p class="v2-lead mt-6 text-lune-soft">
+        "How much does it really cost?" is the first question in almost every one of our meetings.
+        This page gathers Moroccan-market order-of-magnitude figures, with their sources and their
+        limits — not a firm price, but enough to budget with and to spot an offer that's abnormally
+        low or abnormally expensive before your quote.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Turnkey brackets by power</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        These prices cover both the equipment supply <strong class="text-white">and</strong> the
+        full installation (inverter, wiring, structure, commissioning). They are drawn from Moroccan
+        installer publications and online price guides — <strong class="text-white">indicative
+        brackets</strong>, not official rates.
+      </p>
+      <div class="mt-6 overflow-x-auto">
+        <table class="v2-lead w-full border-collapse text-left text-sm text-lune-soft">
+          <thead>
+            <tr class="border-b border-white/20 text-white">
+              <th class="py-3 pr-4 font-bold">Installed power</th>
+              <th class="py-3 font-bold">Indicative bracket (MAD incl. VAT)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {fourchettes.map((f) => (
+              <tr class="border-b border-white/10">
+                <td class="py-3 pr-4 font-bold text-white">{f.kwc}</td>
+                <td class="py-3">{f.prix}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p class="v2-lead mt-5 text-lune-soft">
+        <strong class="text-white">Average turnkey cost: about 10,000 – 14,000 DH/kWc</strong>
+        (equipment + labour — sources: solaropeak.com, ecovolt.ma, electrosolarplus.ma,
+        lechantier.ma). The spread reflects roof type, distance to the electrical panels, inverter
+        brand and installer margins. An on-site quote remains essential.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Beware of "4,700 DH/kWc" prices</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        You'll often see a price around <strong class="text-white">4,700 DH/kWc</strong> or even
+        lower circulating. That figure corresponds to the <strong class="text-white">equipment kit
+        cost alone</strong> (panels + inverter, excluding installation, wiring, structure,
+        connection) — implausibly low for a finished turnkey installation. Don't compare that figure
+        to the brackets above: they are two different realities.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Surcharges depending on roof configuration</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Not all roofs are alike. Some configurations add significant costs to the base bracket:
+      </p>
+      <ul class="v2-lead mt-5 list-disc space-y-3 pl-6 text-lune-soft">
+        <li><strong class="text-white">Tile or corrugated-sheet roofs</strong> (more technical installation): +6,000 – 12,000 DH</li>
+        <li><strong class="text-white">Steep slope (&gt; 30°)</strong>: +4,000 – 8,000 DH for safety equipment and installation complexity</li>
+      </ul>
+      <p class="v2-lead mt-5 text-lune-soft">
+        A concrete terrace with easy access remains the least costly configuration. If your roof is
+        steep or made of fragile materials, budget for this surcharge — see also our guide
+        <a href={L('/guides/mon-toit-peut-il-supporter-des-panneaux')} class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">can my roof support panels?</a>
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">The battery question: useful, but not cost-neutral</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        A <strong class="text-white">battery-less</strong> installation (grid-connected) remains the
+        most common and most profitable solution for most urban homes. If you want to store energy
+        for the evening or protect against outages, an LFP battery adds a significant cost:
+      </p>
+      <ul class="v2-lead mt-5 list-disc space-y-3 pl-6 text-lune-soft">
+        <li><strong class="text-white">LFP battery 5 – 15 kWh: +22,000 – 60,000 MAD</strong> depending on capacity and brand</li>
+        <li>The payback period stretches by <strong class="text-white">1 to 3 years</strong> with a battery</li>
+      </ul>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Our guide <a href={L('/guides/quelle-taille-de-batterie')} class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">what battery size?</a> details the sizing tiers and why, in Morocco, storing pays off more than exporting.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">VAT and customs duties</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        The tax regime is not uniform: bare panels are exempt from VAT (with no input-VAT
+        deduction), a turnkey installation (supply + install) is subject to
+        <strong class="text-white"> 20 % VAT</strong> — the brackets on this page are stated
+        including VAT for individuals. Customs duties on imported inverters dropped from 17.5 % to
+        2.5 %, which has helped push their market cost down.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Return on investment: 5 to 7 years residential</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        The payback period most often cited by Moroccan installers for a standard residential
+        installation (without battery) is <strong class="text-white">5 to 7 years</strong>. With a
+        battery, add 1 to 3 more years. This calculation depends heavily on your actual consumption
+        and your ONEE tariff bracket — see our
+        <a href={L('/financement')} class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">financing & returns</a>
+        page for detail, and the article
+        <a href={L('/blog/rentabilite-solaire-par-ville-maroc')} class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">profitability by city</a>
+        for regional figures.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">How many panels do you need?</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Before comparing prices, you need to know the right power for your household. A household
+        consuming between 4,000 and 6,000 kWh/year generally needs 3 to 5 kWc; between 6,000 and
+        10,000 kWh/year, more like 5 to 8 kWc. Our dedicated guide covers the full method:
+        <a href={L('/guides/combien-de-panneaux-pour-ma-maison')} class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">how many panels for my house?</a>
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">A last word before signing anything</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Use these brackets to budget and to spot an offer that's abnormally low or abnormally
+        expensive. But don't ask them for what they can't give: a firm price. Your roof
+        configuration, your consumption, your ONEE bracket and the distance between the panels and
+        the electrical panel move the final total, sometimes by several thousand dirhams. The only
+        figure that counts for your house comes from reading your bill and a visit — free and with
+        no obligation.
+      </p>
+      <p class="v2-lead mt-3 text-xs text-lune-faint">
+        For the full 2026 pricing update (equipment/labour split, worked examples), see our article
+        <a href={L('/blog/prix-installation-solaire-maroc-2026')} class="border-b border-white/40 pb-0.5 font-semibold text-white transition-colors hover:border-white">How much does a solar installation cost in Morocco in 2026?</a>
+      </p>
+
+      <RelatedLinks links={[
+        { href: L('/résidentiel'), label: 'Our residential solutions' },
+        { href: L('/nos-solutions'), label: 'All our solutions' },
+        { href: L('/guides'), label: 'All the guides' },
+        { href: L('/blog'), label: 'The blog' },
+      ]} />
+    </article>
+
+    <CtaBand title="The only figure that matters is yours. Launch the free study." href={L('/devis/mon-toit')} />
+
+    <StickyCta />
+  </div>
+</Layout>

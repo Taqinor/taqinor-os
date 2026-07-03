@@ -114,6 +114,19 @@ const groups = [
       },
     ],
   },
+  {
+    // W293 — pilier évergreen des fourchettes de prix, distinct du guide de
+    // méthode (celui-ci raisonne facture → kWc → panneaux, sans chiffre).
+    theme: 'Prix',
+    guides: [
+      {
+        href: '/prix-panneaux-solaires-maroc',
+        title: 'Prix des panneaux solaires au Maroc',
+        summary: 'Les fourchettes indicatives par puissance (kWc), les surcoûts de toiture et de batterie, la TVA — revues chaque année, sans jamais promettre un prix ferme.',
+        verified: true,
+      },
+    ],
+  },
 ];
 
 const allGuides = groups.flatMap((g) => g.guides);
