@@ -8,6 +8,7 @@ from .models import (
     KbFavori,
     KbLecture,
     KbLectureObligatoire,
+    KbRechercheVide,
 )
 
 
@@ -59,3 +60,10 @@ class KbLectureObligatoireAdmin(admin.ModelAdmin):
 class KbFavoriAdmin(admin.ModelAdmin):
     list_display = ('id', 'article', 'utilisateur', 'company', 'date_creation')
     list_filter = ('company',)
+
+
+@admin.register(KbRechercheVide)
+class KbRechercheVideAdmin(admin.ModelAdmin):
+    list_display = ('id', 'terme', 'utilisateur', 'company', 'date_creation')
+    list_filter = ('company',)
+    search_fields = ('terme',)

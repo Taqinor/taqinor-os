@@ -110,6 +110,11 @@ class KbArticle(models.Model):
     # tout PATCH sur un article verrouillé pour les autres.
     est_verrouille = models.BooleanField(
         default=False, verbose_name='Verrouillé')
+    # XKB16 — compteur de VUES par article, DISTINCT de KbLecture (KB7) :
+    # incrémenté à CHAQUE consultation (même relecture par la même personne),
+    # alors que KbLecture est un « lu/pas lu » idempotent par utilisateur.
+    # Posé côté serveur (jamais du corps de requête) via l'action de détail.
+    vues = models.PositiveIntegerField(default=0, verbose_name='Vues')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
     date_modification = models.DateTimeField(
@@ -528,3 +533,41 @@ class KbFavori(models.Model):
 
     def __str__(self):
         return f'{self.utilisateur_id} ★ {self.article_id}'
+
+
+class KbRechercheVide(models.Model):
+    """XKB16 — Journal des recherches KB SANS RÉSULTAT (terme, qui, quand).
+
+    Alimente le rapport « lacunes de connaissance » : les termes cherchés
+    jamais servis, pour prioriser la rédaction. Écrit par l'action de liste
+    des articles quand une recherche ``?search=`` ne renvoie aucun résultat.
+    Société et utilisateur posés côté serveur (jamais du corps de requête).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='kb_app_recherches_vides',
+        verbose_name='Société',
+    )
+    terme = models.CharField(max_length=255, verbose_name='Terme recherché')
+    utilisateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='kb_app_recherches_vides',
+        verbose_name='Utilisateur',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Recherché le')
+
+    class Meta:
+        verbose_name = 'Recherche sans résultat'
+        verbose_name_plural = 'Recherches sans résultat'
+        ordering = ['-date_creation', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'terme'], name='kb_rech_vide_co_terme_idx'),
+        ]
+
+    def __str__(self):
+        return f'« {self.terme} » (0 résultat)'

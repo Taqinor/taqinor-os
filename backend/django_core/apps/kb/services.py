@@ -15,6 +15,7 @@ from .models import (
     KbArticleVersion,
     KbFavori,
     KbLecture,
+    KbRechercheVide,
 )
 
 logger = logging.getLogger(__name__)
@@ -90,6 +91,38 @@ def creer_depuis_gabarit(gabarit, *, auteur, company):
         auteur=auteur,
         est_gabarit=False,
     )
+
+
+# ── XKB16 — Statistiques KB & recherches infructueuses ──────────────────────
+
+def incrementer_vues(article):
+    """XKB16 — Incrémente le compteur de vues (DISTINCT de KbLecture — chaque
+    consultation compte, même une relecture par la même personne).
+
+    Utilise une expression F() pour éviter une race condition en écriture
+    concurrente (pas de read-modify-write applicatif).
+    """
+    from django.db.models import F
+    KbArticle.objects.filter(id=article.id).update(vues=F('vues') + 1)
+    article.refresh_from_db(fields=['vues'])
+    return article.vues
+
+
+def journaliser_recherche_vide(company, terme, *, utilisateur=None):
+    """XKB16 — Journalise une recherche ``?search=`` SANS RÉSULTAT.
+
+    Société posée côté serveur ; ``terme`` tronqué au ``max_length`` du champ
+    pour ne jamais lever sur une entrée trop longue. Jamais bloquant.
+    """
+    terme = (terme or '').strip()
+    if not terme:
+        return None
+    try:
+        return KbRechercheVide.objects.create(
+            company=company, terme=terme[:255], utilisateur=utilisateur)
+    except Exception:  # pragma: no cover - défensif : jamais bloquer la recherche.
+        logger.warning('journaliser_recherche_vide: échec', exc_info=True)
+        return None
 
 
 # ── XKB15 — Favoris (toggle) ─────────────────────────────────────────────────

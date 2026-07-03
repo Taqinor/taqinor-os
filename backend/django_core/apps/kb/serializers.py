@@ -13,6 +13,7 @@ from .models import (
     KbFavori,
     KbLecture,
     KbLectureObligatoire,
+    KbRechercheVide,
 )
 
 
@@ -31,12 +32,12 @@ class KbArticleSerializer(serializers.ModelSerializer):
             'id', 'titre', 'corps', 'corps_format', 'categorie', 'tags',
             'statut', 'statut_display', 'auteur', 'auteur_nom', 'parent',
             'ordre', 'visibilite', 'est_gabarit', 'verifie_par',
-            'verifie_par_nom', 'verifie_jusqua', 'est_verrouille',
+            'verifie_par_nom', 'verifie_jusqua', 'est_verrouille', 'vues',
             'date_creation', 'date_modification',
         ]
         read_only_fields = [
             'auteur', 'verifie_par', 'verifie_jusqua', 'est_verrouille',
-            'date_creation', 'date_modification']
+            'vues', 'date_creation', 'date_modification']
 
     def validate_parent(self, parent):
         """XKB8 — le parent doit être même-société et ne jamais créer de cycle.
@@ -219,6 +220,15 @@ class KbLectureObligatoireSerializer(serializers.ModelSerializer):
                 "Renseignez soit un utilisateur, soit un palier de rôle "
                 "(jamais les deux, jamais aucun).")
         return attrs
+
+
+class KbRechercheVideSerializer(serializers.ModelSerializer):
+    """XKB16 — Recherche sans résultat (lecture seule : posée côté serveur
+    par la liste des articles quand ``?search=`` ne renvoie rien)."""
+    class Meta:
+        model = KbRechercheVide
+        fields = ['id', 'terme', 'utilisateur', 'date_creation']
+        read_only_fields = fields
 
 
 class KbFavoriSerializer(serializers.ModelSerializer):

@@ -78,6 +78,30 @@ class KbArticleViewSet(_KbBaseViewSet):
             qs = qs.filter(statut=statut)
         return qs
 
+    def list(self, request, *args, **kwargs):
+        # XKB16 — journalise une recherche ?search= SANS RÉSULTAT (best-effort,
+        # ne bloque jamais la réponse même en cas d'échec d'écriture).
+        response = super().list(request, *args, **kwargs)
+        terme = request.query_params.get('search')
+        if terme:
+            data = response.data
+            results = data.get('results', data) if isinstance(
+                data, dict) else data
+            if not results:
+                services.journaliser_recherche_vide(
+                    request.user.company, terme, utilisateur=request.user)
+        return response
+
+    def retrieve(self, request, *args, **kwargs):
+        # XKB16 — incrémente le compteur de vues à CHAQUE consultation
+        # (distinct de KbLecture, qui est un lu/pas-lu idempotent).
+        response = super().retrieve(request, *args, **kwargs)
+        article = self.get_object()
+        vues = services.incrementer_vues(article)
+        if isinstance(response.data, dict):
+            response.data['vues'] = vues
+        return response
+
     def perform_create(self, serializer):
         serializer.save(
             company=self.request.user.company, auteur=self.request.user)
@@ -233,6 +257,24 @@ class KbArticleViewSet(_KbBaseViewSet):
     def recents(self, request):
         """XKB15 — Articles récemment consultés par l'utilisateur courant."""
         return Response(selectors.recents_pour_utilisateur(request.user))
+
+    @action(detail=False, methods=['get'], url_path='rapport-top-consultes')
+    def rapport_top_consultes(self, request):
+        """XKB16 — Articles les plus consultés de la société."""
+        return Response(
+            selectors.rapport_top_consultes(request.user.company))
+
+    @action(detail=False, methods=['get'], url_path='rapport-moins-consultes')
+    def rapport_moins_consultes(self, request):
+        """XKB16 — Articles les moins consultés de la société."""
+        return Response(
+            selectors.rapport_moins_consultes(request.user.company))
+
+    @action(detail=False, methods=['get'], url_path='rapport-lacunes-connaissance')
+    def rapport_lacunes_connaissance(self, request):
+        """XKB16 — Termes cherchés jamais servis (rapport de lacunes)."""
+        return Response(
+            selectors.rapport_lacunes_connaissance(request.user.company))
 
     @action(detail=True, methods=['post'], url_path='deplacer')
     def deplacer(self, request, pk=None):

@@ -18,6 +18,7 @@ from .models import (
     KbArticleLien,
     KbLecture,
     KbLectureObligatoire,
+    KbRechercheVide,
 )
 
 
@@ -130,6 +131,50 @@ def peut_editer(article, user):
     else:
         qs = qs.filter(utilisateur_id=user_id) if user_id else qs.none()
     return qs.exists()
+
+
+# ── XKB16 — Statistiques KB & recherches infructueuses ──────────────────────
+
+def rapport_top_consultes(company, limit=10):
+    """XKB16 — Articles les PLUS consultés d'une société (``vues`` décroissant).
+
+    Renvoie ``[{id, titre, vues}, ...]``. Scopé société, lecture seule.
+    """
+    qs = (KbArticle.objects.filter(company=company)
+          .order_by('-vues', '-id')[:limit])
+    return [{'id': a.id, 'titre': a.titre, 'vues': a.vues} for a in qs]
+
+
+def rapport_moins_consultes(company, limit=10):
+    """XKB16 — Articles les MOINS consultés d'une société (``vues`` croissant).
+
+    Renvoie ``[{id, titre, vues}, ...]``. Scopé société, lecture seule.
+    """
+    qs = (KbArticle.objects.filter(company=company)
+          .order_by('vues', 'id')[:limit])
+    return [{'id': a.id, 'titre': a.titre, 'vues': a.vues} for a in qs]
+
+
+def rapport_lacunes_connaissance(company, limit=50):
+    """XKB16 — « Lacunes de connaissance » : termes cherchés jamais servis.
+
+    Regroupe ``KbRechercheVide`` par ``terme`` (insensible à la casse),
+    compte les occurrences, trie par fréquence décroissante — les termes les
+    plus demandés en premier (priorité de rédaction). Scopé société.
+    """
+    from django.db.models import Count
+    from django.db.models.functions import Lower
+
+    qs = (KbRechercheVide.objects
+          .filter(company=company)
+          .annotate(terme_norm=Lower('terme'))
+          .values('terme_norm')
+          .annotate(occurrences=Count('id'))
+          .order_by('-occurrences', 'terme_norm')[:limit])
+    return [
+        {'terme': row['terme_norm'], 'occurrences': row['occurrences']}
+        for row in qs
+    ]
 
 
 # ── XKB15 — Favoris & récents ────────────────────────────────────────────────
