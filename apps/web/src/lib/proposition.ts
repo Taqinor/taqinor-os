@@ -668,6 +668,19 @@ export const SAVINGS_HORIZON_YEARS = 25;
  * Hypothèse PRUDENTE et libellée : 0 % par défaut (économies à tarif constant).
  * Le calcul de cumul reste honnête même sans inflation tarifaire. Toute hausse
  * réelle ne ferait qu'augmenter l'économie — on ne la promet donc pas.
+ *
+ * WJ75 — CONFIRMÉ ALIGNÉ avec le backend (lu dans le moteur de devis vendorisé,
+ * `apps/ventes/quote_engine/`) : `pricing.py calculate_savings_roi` fixe
+ * `eco_a_cumul = economie_opt2` (l'économie ANNUELLE, malgré son nom) SANS
+ * aucune dérive tarifaire, et `generate_devis_premium.py` l'utilise comme un
+ * TAUX PAR AN pour bâtir sa courbe cumulative sur 26 points (0 à 25 ans) :
+ * `CUMUL_A = [-TOTAL_AVEC + eco_a_cumul * y for y in YEARS]` — une simple
+ * multiplication linéaire, aucun terme `(1+i)^y`. Le PDF premium et cette page
+ * web utilisent donc EXACTEMENT la même hypothèse (0 % d'escalade tarifaire) ;
+ * aucun décalage à corriger entre les deux documents. Le nom du champ backend
+ * (« cumul ») est trompeur — c'est un TAUX ANNUEL, pas un total déjà cumulé
+ * (voir savingsHeadline ci-dessous, qui le multiplie désormais par `years`
+ * au lieu de l'afficher tel quel comme un cumul déjà calculé).
  */
 export const BILL_INFLATION_RATE = 0;
 
@@ -805,7 +818,7 @@ export function signStampLabel(reference: string, d: Date, lang: PropLang): stri
 export interface SavingsHeadline {
   /** Économie annuelle (MAD/an) — backend `eco_*_ann`. */
   annual: number | null;
-  /** Économie cumulée sur l'horizon (MAD) — backend `eco_a_cumul` sinon calcul. */
+  /** Économie cumulée sur l'horizon (MAD) — dérivée du TAUX annuel `eco_a_cumul` (× years) ou du calcul local. */
   cumulative: number | null;
   /** Horizon retenu (ans). */
   years: number;
@@ -813,16 +826,32 @@ export interface SavingsHeadline {
   monthly: number | null;
   /** Retour sur investissement (déjà formaté). */
   payback: string | null;
-  /** Vrai si le cumul vient directement du backend (sinon calculé). */
+  /** Vrai si le TAUX vient directement du backend (`eco_a_cumul`) plutôt que du fallback `annual`. */
   cumulativeFromBackend: boolean;
 }
 
 /**
- * WJ9 — Construit le bandeau « money over time » de l'option recommandée.
- *  - `annual` : économie annuelle backend.
- *  - `cumulative` : `eco_a_cumul` backend s'il existe ; sinon calculé à partir de
- *    l'annuel × horizon (avec dérive `BILL_INFLATION_RATE`, 0 % par défaut). On
- *    NE calcule jamais sans annuel présent.
+ * WJ9/WJ75 — Construit le bandeau « money over time » de l'option recommandée.
+ *
+ *  - `annual` : économie annuelle backend (`eco_*_ann`).
+ *  - `cumulative` : sur l'horizon (`years`, 25 ans par défaut).
+ *
+ * WJ75 — CORRECTIF : malgré son nom, le champ backend `eco_a_cumul`
+ * (`apps/ventes/quote_engine/pricing.py calculate_savings_roi`) n'est PAS déjà
+ * un total cumulé — c'est le même chiffre que l'économie ANNUELLE
+ * (`eco_a_cumul == eco_a_ann` côté backend), utilisé par le moteur PDF comme un
+ * TAUX PAR AN : `generate_devis_premium.py` construit sa courbe cumulative par
+ * `CUMUL_A = [-total + eco_a_cumul * y for y in YEARS]` (multiplication
+ * linéaire, AUCUNE dérive tarifaire — 0 % d'escalade, comme `BILL_INFLATION_RATE`
+ * ci-dessus). Avant ce correctif, cette fonction affichait `eco_a_cumul`
+ * DIRECTEMENT comme si le backend avait déjà fait `× 25` — ce qui montrait la
+ * valeur d'UNE SEULE ANNÉE sous le libellé « cumul sur 25 ans » (sous-estimation
+ * ≈25× du chiffre le plus visible de la page). Le calcul respecte maintenant la
+ * MÊME hypothèse que le PDF (taux annuel backend × horizon, 0 % d'escalade) —
+ * les deux documents sont désormais alignés, jamais un cumul sur 25 ans qui
+ * n'est en réalité qu'un an. Le repli local (sans backend) applique la même
+ * discipline (`BILL_INFLATION_RATE`, 0 % par défaut) à `annual`. On NE calcule
+ * jamais sans un taux/annuel positif présent.
  *  - `monthly` : annuel / 12 (simple cadrage de lecture, pas un nouveau chiffre).
  */
 export function savingsHeadline(
@@ -835,18 +864,21 @@ export function savingsHeadline(
     ? annualRaw : null;
   const paybackRaw = opt === 'avec_batterie' ? p.quote?.roi_a : p.quote?.roi_s;
 
-  const backendCumul = p.quote?.eco_a_cumul;
+  // WJ75 — `eco_a_cumul` est un TAUX ANNUEL (voir la note ci-dessus), jamais un
+  // total déjà cumulé : on le multiplie par `years`, exactement comme le fait
+  // le moteur PDF (`eco_a_cumul * y`), au lieu de l'afficher tel quel.
+  const backendRate = p.quote?.eco_a_cumul;
+  const hasBackendRate = typeof backendRate === 'number' && Number.isFinite(backendRate) && backendRate > 0;
+  const rate = hasBackendRate ? backendRate : annual;
   let cumulative: number | null = null;
-  let cumulativeFromBackend = false;
-  if (typeof backendCumul === 'number' && Number.isFinite(backendCumul) && backendCumul > 0) {
-    cumulative = backendCumul;
-    cumulativeFromBackend = true;
-  } else if (annual !== null && years > 0) {
-    // Série géométrique honnête : Σ annuel·(1+i)^k, k=0..years-1.
+  const cumulativeFromBackend = hasBackendRate;
+  if (rate !== null && years > 0) {
+    // Série honnête : taux constant (0 % d'escalade, comme le PDF) sauf si
+    // BILL_INFLATION_RATE est un jour changé — alors Σ taux·(1+i)^k, k=0..years-1.
     const i = BILL_INFLATION_RATE;
     cumulative = i === 0
-      ? annual * years
-      : Math.round((annual * (Math.pow(1 + i, years) - 1)) / i);
+      ? rate * years
+      : Math.round((rate * (Math.pow(1 + i, years) - 1)) / i);
   }
 
   return {

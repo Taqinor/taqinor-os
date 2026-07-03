@@ -687,13 +687,23 @@ const signConfig = ok
                 Sans le solaire, votre facture continue de courir. Avec, vous économisez sur {headline.years} ans
               </p>
               <p class="fig lum mt-3 text-4xl sm:text-5xl" dir="ltr">{formatMAD(headline.cumulative)}</p>
+              <!-- WJ75 — la mention « tarif constant » s'affiche désormais TOUJOURS,
+                   que le taux vienne du backend ou du repli local : les deux
+                   partagent la MÊME hypothèse 0 % d'escalade tarifaire (voir
+                   savingsHeadline/BILL_INFLATION_RATE dans lib/proposition.ts —
+                   vérifié dans le moteur PDF vendorisé, generate_devis_premium.py,
+                   qui construit sa propre courbe cumulative par une simple
+                   multiplication linéaire, sans terme de dérive). Avant ce
+                   correctif, la mention disparaissait quand le taux venait du
+                   backend, laissant croire — à tort — que ce chiffre intégrait
+                   une hausse tarifaire que ni lui ni le PDF ne modélisent. -->
               <p class="v2-body mt-2 text-sm text-lune-soft" data-i18n
-                data-fr={`Économies cumulées estimées sur ${headline.years} ans${headline.monthly ? ` — soit ≈ ${formatMAD(headline.monthly)}/mois qui restent dans votre poche` : ''}.${!headline.cumulativeFromBackend ? ' Estimation à tarif constant (loi 82-21, autoconsommation).' : ''}`}
-                data-en={`Estimated cumulative savings over ${headline.years} years${headline.monthly ? ` — that's ≈ ${formatMAD(headline.monthly)}/month staying in your pocket` : ''}.${!headline.cumulativeFromBackend ? ' Estimate at constant tariff (law 82-21, self-consumption).' : ''}`}
-                data-ar={`توفير تراكمي مقدّر على مدى ${headline.years} سنة${headline.monthly ? ` — أي ما يعادل ≈ ${formatMAD(headline.monthly)}/شهر تبقى في جيبكم` : ''}.${!headline.cumulativeFromBackend ? ' تقدير بتعريفة ثابتة (القانون 82-21، الاستهلاك الذاتي).' : ''}`}>
+                data-fr={`Économies cumulées estimées sur ${headline.years} ans${headline.monthly ? ` — soit ≈ ${formatMAD(headline.monthly)}/mois qui restent dans votre poche` : ''}. Estimation à tarif constant (loi 82-21, autoconsommation) — même hypothèse que votre devis PDF.`}
+                data-en={`Estimated cumulative savings over ${headline.years} years${headline.monthly ? ` — that's ≈ ${formatMAD(headline.monthly)}/month staying in your pocket` : ''}. Estimate at constant tariff (law 82-21, self-consumption) — the same assumption as your PDF quote.`}
+                data-ar={`توفير تراكمي مقدّر على مدى ${headline.years} سنة${headline.monthly ? ` — أي ما يعادل ≈ ${formatMAD(headline.monthly)}/شهر تبقى في جيبكم` : ''}. تقدير بتعريفة ثابتة (القانون 82-21، الاستهلاك الذاتي) — نفس الافتراض المعتمد في عرض PDF الخاص بكم.`}>
                 Économies cumulées estimées sur {headline.years} ans
                 {headline.monthly ? <> — soit <span class="text-brass-300">≈ {formatMAD(headline.monthly)}/mois</span> qui restent dans votre poche</> : null}.
-                {!headline.cumulativeFromBackend ? <span class="text-lune-faint"> Estimation à tarif constant (loi 82-21, autoconsommation).</span> : null}
+                <span class="text-lune-faint"> Estimation à tarif constant (loi 82-21, autoconsommation) — même hypothèse que votre devis PDF.</span>
               </p>
             </div>
           ) : null}
