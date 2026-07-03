@@ -28,7 +28,7 @@ import ZelligeSignature from '../components/ZelligeSignature.astro';
 import FounderPortrait from '../components/FounderPortrait.astro';
 import { WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink } from '../lib/whatsapp';
-import { REGIE_TARIFF } from '../lib/estimatorBrainV2';
+import { REGIE_MARGINAL_RATE_SECOND, REGIE_MARGINAL_RATE_HIGH } from '../lib/regieTariff';
 
 const waDirect = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour une installation solaire.');
 
@@ -44,17 +44,18 @@ const heroSub =
 // donc on ne peut PAS appeler `annualSavingsMad(production, consommation)`
 // sans inventer cette seconde variable. La seule dérivation honnête à partir
 // de la SEULE donnée publiée (21 406 kWh produits) est de valoriser cette
-// production au tarif MARGINAL réel du barème RÉGIE (REGIE_TARIFF.selective,
-// les deux tranches hautes — cohérent avec « notre plus grande résidentielle
-// de 2026 », donc un foyer situé sans ambiguïté dans le haut de barème) :
-// c'est exactement la même fourchette « ≈ 1,38–1,60 MAD/kWh » déjà publiée et
-// documentée dans billRange.ts / recharge-voiture-electrique-solaire.astro.
+// production aux deux tranches marginales hautes réelles du barème RÉGIE (via
+// le module public `regieTariff.ts` — la page publique NE doit PAS importer le
+// « cerveau » estimateur ; garde d'architecture), cohérent avec « notre plus
+// grande résidentielle de 2026 », donc un foyer situé sans ambiguïté dans le
+// haut de barème : c'est exactement la même fourchette « ≈ 1,38–1,60 MAD/kWh »
+// déjà publiée et documentée dans billRange.ts / recharge-voiture-electrique-solaire.astro.
 // Fourchette (jamais un chiffre unique) : reflète le fait que l'autoconsommation
 // réelle du foyer n'est pas connue — poser une seule valeur ponctuelle
 // inventerait une précision qu'on n'a pas.
 const heroProductionKwh = 21406;
-const heroTariffLowRate = REGIE_TARIFF.selective[REGIE_TARIFF.selective.length - 2].rate; // 1,3817 MAD/kWh
-const heroTariffHighRate = REGIE_TARIFF.selective[REGIE_TARIFF.selective.length - 1].rate; // 1,5958 MAD/kWh
+const heroTariffLowRate = REGIE_MARGINAL_RATE_SECOND; // 1,3817 MAD/kWh
+const heroTariffHighRate = REGIE_MARGINAL_RATE_HIGH; // 1,5958 MAD/kWh
 const heroMoneyLow = Math.round((heroProductionKwh * heroTariffLowRate) / 100) * 100;
 const heroMoneyHigh = Math.round((heroProductionKwh * heroTariffHighRate) / 100) * 100;
 const heroMoneyLine = `≈ ${heroMoneyLow.toLocaleString('fr-FR')} à ${heroMoneyHigh.toLocaleString('fr-FR')} MAD effacés de la facture chaque année`;

@@ -34,7 +34,7 @@ import { WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink } from '../../lib/whatsapp';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
-import { REGIE_TARIFF } from '../../lib/estimatorBrainV2';
+import { REGIE_MARGINAL_RATE_SECOND, REGIE_MARGINAL_RATE_HIGH } from '../../lib/regieTariff';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
@@ -59,8 +59,8 @@ const heroSub =
 // recharge-voiture-electrique-solaire.astro. مجال (لا رقم واحد أبداً): لأن
 // الاستهلاك الذاتي الحقيقي للأسرة غير معروف، فرقم واحد سيخترع دقّة لا نملكها.
 const heroProductionKwh = 21406;
-const heroTariffLowRate = REGIE_TARIFF.selective[REGIE_TARIFF.selective.length - 2].rate; // 1,3817 MAD/kWh
-const heroTariffHighRate = REGIE_TARIFF.selective[REGIE_TARIFF.selective.length - 1].rate; // 1,5958 MAD/kWh
+const heroTariffLowRate = REGIE_MARGINAL_RATE_SECOND; // 1,3817 MAD/kWh
+const heroTariffHighRate = REGIE_MARGINAL_RATE_HIGH; // 1,5958 MAD/kWh
 const heroMoneyLow = Math.round((heroProductionKwh * heroTariffLowRate) / 100) * 100;
 const heroMoneyHigh = Math.round((heroProductionKwh * heroTariffHighRate) / 100) * 100;
 const heroMoneyLine = `≈ ${heroMoneyLow.toLocaleString('fr-FR')} إلى ${heroMoneyHigh.toLocaleString('fr-FR')} MAD تُمحى من الفاتورة كل سنة`;
