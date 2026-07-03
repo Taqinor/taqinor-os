@@ -7,7 +7,7 @@ from .views import (
     MessageTemplateViewSet, ObjectifCommercialViewSet, PointContactViewSet,
     SiteProfileViewSet,
 )
-from .webhooks import website_lead_webhook
+from .webhooks import website_lead_webhook, meta_lead_ads_webhook
 from .roof_views import lead_roof_footprint
 
 router = DefaultRouter()
@@ -27,6 +27,8 @@ router.register(r'site-profiles', SiteProfileViewSet)  # DC12
 urlpatterns = [
     # Récepteur des leads du site public (secret statique, voir webhooks.py)
     path('webhooks/website-leads/', website_lead_webhook, name='website-lead-webhook'),
+    # XMKT32 — Sync Meta Lead Ads (gated, no-op sans jeton — voir webhooks.py)
+    path('webhooks/meta-lead-ads/', meta_lead_ads_webhook, name='meta-lead-ads-webhook'),
     # Employés assignables (sélecteur de responsable) — ouvert à la Commerciale.
     path('assignable-users/', assignable_users, name='assignable-users'),
     # QJ25 — Contour OSM du bâtiment épinglé (free, sans clé API)

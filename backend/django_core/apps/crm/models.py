@@ -108,6 +108,9 @@ class Lead(models.Model):
         OS_NATIVE = 'os_native', 'Créé dans TAQINOR'
         ODOO_IMPORT_TEST = 'odoo_import_test', 'Import test Odoo'
         SITE_WEB = 'site_web', 'Site web'
+        # XMKT32 — lead créé depuis un formulaire Meta Lead Ads (Facebook/
+        # Instagram), via l'API officielle (jamais de scraping).
+        META_LEAD_ADS = 'meta_lead_ads', 'Meta Lead Ads'
 
     # Tranches de facture du diagnostic du site public — les CLÉS sont
     # strictement identiques aux ids émis par taqinor.ma (billRange.ts).

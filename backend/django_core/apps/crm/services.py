@@ -778,6 +778,136 @@ def create_draft_lead_from_ocr(*, company, user, fields) -> Lead:
     return lead
 
 
+# ── XMKT32 — Sync Meta Lead Ads → leads CRM (gated) ───────────────────────────
+
+_META_LEAD_ADS_SYSTEM = 'meta_lead_ads'
+
+
+def create_lead_from_meta_lead_ads(
+        *, company, leadgen_id, field_data,
+        campaign_name='', adset_name='') -> Lead:
+    """XMKT32 — Crée (ou dédupe sur) un lead depuis un formulaire Meta Lead Ads.
+
+    Point d'entrée cross-app sanctionné (services.py), appelé par
+    ``webhooks.meta_lead_ads_webhook`` une fois le lead récupéré via l'API
+    officielle (jamais de scraping). ``field_data`` est la liste
+    ``[{'name': ..., 'values': [...]}, ...]`` renvoyée par le Graph API pour
+    ce ``leadgen_id`` — seuls des champs connus (nom/email/téléphone/ville)
+    sont lus.
+
+    Dédup (QJ8) — DEUX couches, dans l'ordre :
+      1. même ``leadgen_id`` déjà traité (idempotence webhook — retries Meta)
+         → renvoie le lead existant sans le modifier ;
+      2. sinon, téléphone/email connu dans la société (visiteur/prospect déjà
+         en base, ex. venu par un autre canal) → absorbe la nouvelle touche
+         dans le lead existant (complète sans écraser), comme le webhook site.
+
+    Attribution : ``canal=META_ADS``, ``utm_source='facebook'``,
+    ``utm_campaign``/``utm_content`` portent le nom de campagne/adset quand
+    fournis par l'appelant.
+
+    Best-effort côté séquence de bienvenue : XMKT1 (moteur d'exécution des
+    séquences) n'est pas encore construit — aucune inscription automatique
+    tant qu'il n'existe pas ; ce service reste le point d'accroche futur.
+    """
+    # ── Couche 1 : idempotence sur le leadgen_id (retries webhook Meta) ──────
+    existing = Lead.objects.filter(
+        company=company, external_system=_META_LEAD_ADS_SYSTEM,
+        external_id=str(leadgen_id)).first()
+    if existing is not None:
+        return existing
+
+    fields = {}
+    for entry in (field_data or []):
+        name = str(entry.get('name', '')).strip().lower()
+        values = entry.get('values') or []
+        value = (values[0] if values else '') or ''
+        if name in ('full_name', 'nom', 'name'):
+            fields['nom'] = str(value)[:255]
+        elif name == 'first_name':
+            fields.setdefault('nom', str(value)[:255])
+        elif name in ('email',):
+            fields['email'] = str(value)[:254]
+        elif name in ('phone_number', 'telephone'):
+            fields['telephone'] = str(value)[:20]
+        elif name in ('city', 'ville'):
+            fields['ville'] = str(value)[:120]
+
+    nom = (fields.get('nom') or '').strip() or 'Lead Meta Ads'
+    telephone = fields.get('telephone') or ''
+    email = fields.get('email') or ''
+
+    # ── Couche 2 (QJ8) : dédup société par téléphone/email ──────────────────
+    absorbed = None
+    if telephone or email:
+        dupes = find_duplicates_by_contact(
+            company, phone=telephone or None, email=email or None)
+        if dupes:
+            absorbed = sorted(
+                dupes, key=lambda d: d.date_creation, reverse=True)[0]
+
+    utm_source = 'facebook'
+    utm_campaign = (campaign_name or '')[:300] or None
+    utm_content = (adset_name or '')[:300] or None
+
+    if absorbed is not None:
+        lead = absorbed
+        for field_name, value in (
+            ('email', email), ('telephone', telephone),
+            ('ville', fields.get('ville')),
+        ):
+            if value and not getattr(lead, field_name, None):
+                setattr(lead, field_name, value)
+        # first-touch UTM/attribution préservée si déjà posée.
+        if not lead.utm_source:
+            lead.utm_source = utm_source
+        if not lead.utm_campaign:
+            lead.utm_campaign = utm_campaign
+        if not lead.utm_content:
+            lead.utm_content = utm_content
+        if not lead.external_system:
+            lead.external_system = _META_LEAD_ADS_SYSTEM
+            lead.external_id = str(leadgen_id)
+        lead.save()
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE,
+            body=(f'Nouvelle touche Meta Lead Ads (leadgen_id={leadgen_id}) '
+                  f'absorbée dans ce lead existant.'))
+    else:
+        extra = {}
+        default = default_responsable_for(company)
+        if default is not None:
+            extra['owner'] = default
+        lead = Lead.objects.create(
+            company=company,
+            nom=nom,
+            email=email or None,
+            telephone=telephone or None,
+            ville=fields.get('ville') or None,
+            source=Lead.Source.META_LEAD_ADS,
+            canal=Lead.Canal.META_ADS,
+            utm_source=utm_source,
+            utm_campaign=utm_campaign,
+            utm_content=utm_content,
+            external_system=_META_LEAD_ADS_SYSTEM,
+            external_id=str(leadgen_id),
+            **extra,
+        )
+        activity.log_creation(lead, None)
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE,
+            body='Lead créé depuis Meta Lead Ads (formulaire Facebook/Instagram).')
+        try:
+            notify_new_lead(lead)
+        except Exception:  # noqa: BLE001 — best-effort
+            pass
+
+    recompute_lead_score(lead)
+    return lead
+
+
 def noter_devis_ouvert(devis_reference: str, lead) -> None:
     """QJ1 — Consigne « Le client a ouvert le devis » dans le chatter du lead.
 
