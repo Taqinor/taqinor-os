@@ -326,8 +326,20 @@ const pageTitle = ok ? `Proposition ${reference} — ${clientName} | Taqinor` : 
 const waLinkFallback = whatsappLink(reference || '');
 
 // Données passées au script de signature (sérialisées en JSON dans un data-attr).
+// WJ55 — `clientPhone` est AJOUTÉ ici (jamais un nouvel attribut DOM) pour que
+// le script de télémétrie de vue/engagement puisse construire un événement
+// corrélable côté CRM (voir buildProposalTrackPayload) sans jamais fabriquer
+// de lead fantôme quand le devis n'a pas de téléphone client.
 const signConfig = ok
-  ? JSON.stringify({ token, twoOptions, preselect, accepted, acceptedName: data?.accepte_par_nom ?? '', reference })
+  ? JSON.stringify({
+      token,
+      twoOptions,
+      preselect,
+      accepted,
+      acceptedName: data?.accepte_par_nom ?? '',
+      reference,
+      clientPhone: q?.client_phone ?? '',
+    })
   : null;
 ---
 
@@ -642,8 +654,9 @@ const signConfig = ok
       )}
 
       <!-- ── WJ9 · ARGENT DANS LE TEMPS (cumul 25 ans + payback + /mois) ───── -->
+      <!-- id="financing-headline" — ancre WJ55 (télémétrie « scrolled to financing »). -->
       {headline && (headline.cumulative || headline.annual || paybackHero || prodKwh) && (
-        <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8 sm:pt-16">
+        <section id="financing-headline" class="mx-auto max-w-4xl px-5 pt-12 sm:px-8 sm:pt-16">
           {/* Accroche « coût de ne rien faire » : le cumul phare. */}
           {headline.cumulative ? (
             <div class="cine-card cine-in rounded-2xl p-6 shadow-premium sm:p-8" style="border-color: rgb(232 181 74 / 0.35)">
@@ -1892,6 +1905,8 @@ const signConfig = ok
     accepted: boolean;
     acceptedName: string;
     reference: string;
+    /** WJ55 — présent uniquement quand le devis porte un téléphone client. */
+    clientPhone?: string;
   }
 
   // ── WJ17/WJ43 · bascule de langue FR/EN/عربي — MÊME mécanisme dual-node que
@@ -1997,6 +2012,48 @@ const signConfig = ok
   const raw = root?.dataset.signConfig;
   if (root && raw) {
     const cfg = JSON.parse(raw) as SignConfig;
+
+    // ── WJ55 · Télémétrie de vue/engagement — proxy same-origin vers le fil
+    // lead existant (voir lib/proposition.ts buildProposalTrackPayload pour le
+    // garde-fou anti-pollution CRM : sans téléphone client, rien n'est posté).
+    // Best-effort strict, `keepalive` pour survivre à une navigation immédiate.
+    const sentTrackEvents = new Set<string>();
+    function trackProposalEvent(event: 'proposal_first_view' | 'proposal_scrolled_financing'): void {
+      if (sentTrackEvents.has(event)) return; // une fois par événement/session de page
+      sentTrackEvents.add(event);
+      fetch('/api/proposition-track', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        keepalive: true,
+        body: JSON.stringify({
+          token: cfg.token,
+          reference: cfg.reference,
+          clientPhone: cfg.clientPhone ?? '',
+          event,
+        }),
+      }).catch(() => {
+        // Jamais bloquant : une panne réseau ne doit rien changer côté client.
+      });
+    }
+    trackProposalEvent('proposal_first_view');
+    // Défilement jusqu'au bloc financement (« Argent dans le temps » — WJ9,
+    // id="financing-headline") : le moment où le client regarde vraiment les
+    // chiffres. Observé une seule fois (IntersectionObserver déconnecté après
+    // le premier passage). Absent quand le backend ne fournit aucun chiffre
+    // d'économie (headline vide) — rien à observer alors.
+    const financingSection = document.getElementById('financing-headline');
+    if (financingSection && 'IntersectionObserver' in window) {
+      const financingIo = new IntersectionObserver(
+        (entries) => {
+          if (entries.some((e) => e.isIntersecting)) {
+            financingIo.disconnect();
+            trackProposalEvent('proposal_scrolled_financing');
+          }
+        },
+        { threshold: 0.4 },
+      );
+      financingIo.observe(financingSection);
+    }
 
     const form = document.getElementById('sign-form') as HTMLFormElement | null;
     const success = document.getElementById('sign-success');
