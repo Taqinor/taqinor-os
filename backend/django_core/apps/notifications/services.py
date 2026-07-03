@@ -352,18 +352,30 @@ def notify(user, event_type, title, body='', link=None, company=None):
         except Exception as exc:  # pragma: no cover - défensif
             logger.warning('Création notification in-app échouée : %s', exc)
             created = None
+        else:
+            _audit_notify(
+                user, company, event_type, channel='in_app', ok=True,
+                instance=created)
 
     # Diffusions hors-app : best-effort, chacune isolée.
     if prefs.get('email'):
+        email_ok = False
         try:
-            _dispatch_email(user, str(title), str(body or ''))
+            email_ok = _dispatch_email(user, str(title), str(body or ''))
         except Exception as exc:  # pragma: no cover - défensif
             logger.warning('Dispatch email notification échoué : %s', exc)
+        _audit_notify(
+            user, company, event_type, channel='email', ok=email_ok,
+            instance=created)
     if prefs.get('whatsapp'):
+        wa_ok = False
         try:
-            _dispatch_whatsapp(user, str(title), str(body or ''))
+            wa_ok = _dispatch_whatsapp(user, str(title), str(body or ''))
         except Exception as exc:  # pragma: no cover - défensif
             logger.warning('Dispatch WhatsApp notification échoué : %s', exc)
+        _audit_notify(
+            user, company, event_type, channel='whatsapp', ok=wa_ok,
+            instance=created)
 
     # Web push (N92) : best-effort, opt-in par APPAREIL (pas un toggle
     # d'événement). NO-OP total sans clés VAPID ni abonnement — donc aucun
@@ -374,6 +386,41 @@ def notify(user, event_type, title, body='', link=None, company=None):
         logger.warning('Dispatch web push notification échoué : %s', exc)
 
     return created
+
+
+# YEVNT5 — mapping canal → Action d'audit. 'in_app' n'a pas de valeur EMAIL/
+# WHATSAPP dédiée dans AuditLog.Action → NOTIFY générique (ajoutée pour ce
+# ticket). email/whatsapp réutilisent les actions EMAIL/WHATSAPP existantes,
+# déjà utilisées ailleurs (PDF/génération de devis) pour rester cohérent.
+_AUDIT_CHANNEL_ACTION = {
+    'in_app': 'notify',
+    'email': 'email',
+    'whatsapp': 'whatsapp',
+}
+
+
+def _audit_notify(user, company, event_type, *, channel, ok, instance=None):
+    """Écrit une ligne d'audit best-effort pour UN canal d'un envoi `notify()`.
+
+    Ne bloque JAMAIS l'envoi : toute erreur d'écriture d'audit est absorbée
+    par `audit.recorder.record` lui-même (best-effort), et on l'entoure ici
+    d'une couche supplémentaire par prudence."""
+    try:
+        from apps.audit import recorder
+        action = _AUDIT_CHANNEL_ACTION.get(channel, 'notify')
+        statut = 'envoyé' if ok else 'échoué'
+        detail = (
+            f'Notification {event_type} → {channel} ({statut}) '
+            f'destinataire={getattr(user, "username", user)}'
+        )
+        recorder.record(
+            action, instance=instance, company=company,
+            user=None,  # action système : le déclencheur n'est pas l'acteur HTTP.
+            object_repr=str(instance) if instance is not None else str(event_type),
+            detail=detail,
+        )
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.debug('audit_notify (canal %s) échoué : %s', channel, exc)
 
 
 def merged_preferences(user):
