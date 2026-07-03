@@ -2883,3 +2883,68 @@ class ContratVehicule(models.Model):
     def __str__(self):
         return (f'{self.get_type_contrat_display()} — {self.vehicule} '
                 f'({self.montant_recurrent} MAD/{self.periodicite})')
+
+
+# ── XFLT2 — Génération des coûts récurrents de contrat ─────────────────────────
+
+class EcheanceContrat(models.Model):
+    """Ligne de coût datée matérialisant l'échéance d'un ``ContratVehicule``
+    (XFLT2).
+
+    Générée par ``services.generer_couts_contrat`` : une ligne PAR contrat ET
+    PAR période (``unique_together`` — garantit l'IDEMPOTENCE de la
+    génération, deux exécutions sur la même période ne créent qu'une seule
+    ligne). ``period`` est une chaîne ``'YYYY-MM'`` (mensuel — la seule
+    granularité de génération, indépendamment de la ``periodicite`` du
+    contrat qui reste informative sur le montant facturé).
+
+    Modèle transitoire : si ``CoutVehicule`` (XFLT3) existe sur cette
+    branche, la génération y écrit à la place (voir docstring du service) —
+    ce modèle reste le repli tant que XFLT3 n'est pas construit.
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête). Le contrat lié doit appartenir à la MÊME société.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_echeances_contrat',
+        verbose_name='Société',
+    )
+    contrat = models.ForeignKey(
+        'ContratVehicule',
+        on_delete=models.CASCADE,
+        related_name='echeances',
+        verbose_name='Contrat véhicule',
+    )
+    period = models.CharField(
+        max_length=7, verbose_name='Période (YYYY-MM)')
+    date_echeance = models.DateField(verbose_name="Date de l'échéance")
+    montant = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name='Montant (MAD)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Échéance de contrat'
+        verbose_name_plural = 'Échéances de contrat'
+        ordering = ['-date_echeance', '-id']
+        unique_together = [('contrat', 'period')]
+        indexes = [
+            models.Index(
+                fields=['company', 'period'],
+                name='flotte_ecc_co_period_idx',
+            ),
+        ]
+
+    def clean(self):
+        """Valide l'appartenance société du contrat lié."""
+        if self.contrat_id is not None \
+                and self.contrat.company_id != self.company_id:
+            raise ValidationError(
+                "Le contrat n'appartient pas à la même société.")
+
+    def __str__(self):
+        return f'Échéance {self.period} — {self.contrat} ({self.montant} MAD)'

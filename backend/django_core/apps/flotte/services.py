@@ -616,3 +616,106 @@ def decider_demande_vehicule(demande, *, statut, decide_par=None,
         raise ValueError(str(exc))
     demande.save()
     return demande
+
+
+# ── XFLT2 — Génération des coûts récurrents de contrat ─────────────────────────
+
+def _contrat_actif_sur_periode(contrat, annee, mois):
+    """XFLT2 — Vrai si le ``ContratVehicule`` couvre le mois ``annee-mois``.
+
+    ``date_debut`` doit être <= à la fin du mois cible, et ``date_fin`` (si
+    renseignée) doit être >= au début du mois cible. Un contrat sans
+    ``date_fin`` (durée indéterminée) reste actif indéfiniment.
+    """
+    import calendar
+
+    debut_mois = datetime.date(annee, mois, 1)
+    dernier_jour = calendar.monthrange(annee, mois)[1]
+    fin_mois = datetime.date(annee, mois, dernier_jour)
+
+    if contrat.date_debut is not None and contrat.date_debut > fin_mois:
+        return False
+    if contrat.date_fin is not None and contrat.date_fin < debut_mois:
+        return False
+    return True
+
+
+def generer_couts_contrat(company, period):
+    """XFLT2 — Matérialise l'échéance récurrente des contrats véhicule DUS
+    pour ``period``.
+
+    ``period`` est une chaîne ``'YYYY-MM'``. Pour chaque ``ContratVehicule``
+    (XFLT1) de la société qui COUVRE ce mois (``date_debut``/``date_fin``),
+    crée UNE ``EcheanceContrat`` (XFLT2) portant le ``montant_recurrent`` du
+    contrat — sauf si une échéance existe déjà pour ce couple
+    ``(contrat, period)`` (contrainte ``unique_together`` + vérification
+    applicative avant écriture) : la génération est donc IDEMPOTENTE, deux
+    exécutions sur la même période ne créent jamais de doublon.
+
+    NOTE (repli XFLT3) : tant que ``CoutVehicule`` (grand livre unifié,
+    XFLT3) n'existe pas sur cette branche, la matérialisation utilise le
+    modèle propre ``EcheanceContrat``. Le jour où ``CoutVehicule`` existe,
+    ce service devra y écrire à la place (catégorie ``contrat``) — voir
+    XFLT3 pour le branchement.
+
+    Multi-tenant : ``company`` est toujours posée côté serveur. Retourne un
+    dict scopé société ::
+
+        {'company_id', 'period', 'nb_contrats_actifs', 'nb_creees',
+         'nb_existantes', 'echeances': [<EcheanceContrat>, …]}  # nouvelles uniquement
+
+    Aucune écriture hors ``EcheanceContrat`` ; l'opération est sûre à relancer.
+    """
+    from django.db import IntegrityError, transaction
+
+    from .models import ContratVehicule, EcheanceContrat
+
+    try:
+        annee, mois = (int(part) for part in period.split('-'))
+    except (ValueError, AttributeError):
+        raise ValueError(
+            "Période invalide : format attendu 'YYYY-MM'.")
+
+    contrats = ContratVehicule.objects.filter(company=company)
+    contrats_actifs = [
+        c for c in contrats if _contrat_actif_sur_periode(c, annee, mois)
+    ]
+
+    deja_generes = set(
+        EcheanceContrat.objects
+        .filter(company=company, period=period,
+                contrat__in=[c.id for c in contrats_actifs])
+        .values_list('contrat_id', flat=True)
+    )
+
+    date_echeance = datetime.date(annee, mois, 1)
+    creees = []
+    nb_existantes = 0
+    for contrat in contrats_actifs:
+        if contrat.id in deja_generes:
+            nb_existantes += 1
+            continue
+        try:
+            with transaction.atomic():
+                echeance = EcheanceContrat.objects.create(
+                    company=company,
+                    contrat=contrat,
+                    period=period,
+                    date_echeance=date_echeance,
+                    montant=contrat.montant_recurrent,
+                )
+        except IntegrityError:
+            # Course concurrente sur le même (contrat, period) : une autre
+            # exécution a déjà créé la ligne — comportement idempotent.
+            nb_existantes += 1
+            continue
+        creees.append(echeance)
+
+    return {
+        'company_id': company.id,
+        'period': period,
+        'nb_contrats_actifs': len(contrats_actifs),
+        'nb_creees': len(creees),
+        'nb_existantes': nb_existantes,
+        'echeances': creees,
+    }
