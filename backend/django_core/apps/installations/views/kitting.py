@@ -7,9 +7,11 @@ consommation/production de stock reste pilotée par le module stock). Lecture
 tout rôle, écriture responsable/admin. Multi-tenant via ``TenantMixin`` ;
 produit/kit validés tenant. Cross-app : ``stock`` en string-FK.
 """
+import copy
+
 from django.utils import timezone
 
-from rest_framework import viewsets
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
@@ -20,13 +22,15 @@ from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from apps.ventes.utils.references import create_with_reference
 from apps.ventes.selectors import get_devis_by_pk
 
+from .. import activity_kitting as activity
 from ..models import Kit, KitComposant, OrdreAssemblage
 from ..serializers import (
     KitSerializer, KitComposantSerializer, OrdreAssemblageSerializer,
+    OrdreAssemblageActivitySerializer,
 )
 from ..services import (
-    seed_reservations_assemblage, disponibilite_par_ligne,
-    alerter_penurie_assemblage,
+    seed_reservations_assemblage, release_reservations_assemblage,
+    disponibilite_par_ligne, alerter_penurie_assemblage,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -141,6 +145,12 @@ class OrdreAssemblageViewSet(TenantMixin, viewsets.ModelViewSet):
         kit = params.get('kit')
         if kit:
             qs = qs.filter(kit_id=kit)
+        responsable = params.get('responsable')
+        if responsable:
+            qs = qs.filter(responsable_id=responsable)
+        date_prevue = params.get('date_prevue')
+        if date_prevue:
+            qs = qs.filter(date_prevue=date_prevue)
         return qs
 
     def _check_tenant(self, serializer):
@@ -150,6 +160,11 @@ class OrdreAssemblageViewSet(TenantMixin, viewsets.ModelViewSet):
         if kit is not None and getattr(kit, 'company_id', None) != cid:
             raise ValidationError(
                 {'kit': 'Kit inconnu pour cette société.'})
+        responsable = serializer.validated_data.get('responsable')
+        if responsable is not None and getattr(
+                responsable, 'company_id', None) != cid:
+            raise ValidationError(
+                {'responsable': 'Utilisateur inconnu pour cette société.'})
 
     def perform_create(self, serializer):
         company = self.request.user.company
@@ -164,10 +179,14 @@ class OrdreAssemblageViewSet(TenantMixin, viewsets.ModelViewSet):
         # XMFG2 — sème les réservations composant depuis la BOM du kit dès la
         # création de l'ordre.
         seed_reservations_assemblage(serializer.instance)
+        # XMFG4 — chatter : entrée de création.
+        activity.log_creation(serializer.instance, self.request.user)
 
     def perform_update(self, serializer):
         self._check_tenant(serializer)
+        old = copy.copy(serializer.instance)
         serializer.save(company=self.request.user.company)
+        activity.log_changes(old, serializer.instance, self.request.user)
 
     @action(detail=False, methods=['post'], url_path='depuis-devis')
     def depuis_devis(self, request):
@@ -232,10 +251,57 @@ class OrdreAssemblageViewSet(TenantMixin, viewsets.ModelViewSet):
         """FG328/XMFG2 — passe l'ordre en cours. Avertit (non bloquant) si des
         composants manquent."""
         ordre = self.get_object()
+        old = copy.copy(ordre)
         ordre.statut = OrdreAssemblage.Statut.EN_COURS
         ordre.save(update_fields=['statut', 'date_modification'])
+        activity.log_changes(old, ordre, request.user)
         alerter_penurie_assemblage(ordre)
         return Response(self.get_serializer(ordre).data)
+
+    @action(detail=True, methods=['post'])
+    def annuler(self, request, pk=None):
+        """XMFG4 — annule l'ordre (motivé). Interdite si le stock a déjà été
+        mouvementé (XMFG1) — la traçabilité stock ne peut pas être défaite par
+        une simple annulation. Libère les réservations non consommées."""
+        ordre = self.get_object()
+        if ordre.stock_mouvemente:
+            raise ValidationError({
+                'statut': "Ordre déjà mouvementé en stock : annulation "
+                          "impossible."})
+        motif = (request.data.get('motif_annulation') or '').strip()
+        if not motif:
+            raise ValidationError({
+                'motif_annulation': "Le motif d'annulation est requis."})
+        old = copy.copy(ordre)
+        ordre.statut = OrdreAssemblage.Statut.ANNULE
+        ordre.motif_annulation = motif
+        ordre.save(update_fields=[
+            'statut', 'motif_annulation', 'date_modification'])
+        activity.log_changes(old, ordre, request.user)
+        release_reservations_assemblage(ordre)
+        return Response(self.get_serializer(ordre).data)
+
+    @action(detail=True, methods=['get'], url_path='historique',
+            permission_classes=[IsAnyRole])
+    def historique(self, request, pk=None):
+        """XMFG4 — chatter complet de l'ordre."""
+        ordre = self.get_object()
+        return Response(
+            OrdreAssemblageActivitySerializer(
+                ordre.activites.all(), many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='noter',
+            permission_classes=[IsResponsableOrAdmin])
+    def noter(self, request, pk=None):
+        """XMFG4 — note manuelle sur le chatter de l'ordre."""
+        ordre = self.get_object()
+        body = (request.data.get('body') or '').strip()
+        if not body:
+            return Response({'body': 'Note vide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        act = activity.log_note(ordre, request.user, body)
+        return Response(OrdreAssemblageActivitySerializer(act).data,
+                        status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'])
     def terminer(self, request, pk=None):
@@ -271,6 +337,7 @@ class OrdreAssemblageViewSet(TenantMixin, viewsets.ModelViewSet):
 
         with transaction.atomic():
             ordre = OrdreAssemblage.objects.select_for_update().get(pk=ordre.pk)
+            old = copy.copy(ordre)
             ordre.quantite_produite = quantite_produite
             if emplacement_source_id:
                 ordre.emplacement_source_id = emplacement_source_id
@@ -299,4 +366,5 @@ class OrdreAssemblageViewSet(TenantMixin, viewsets.ModelViewSet):
                 ordre.reservations.filter(
                     active=True, consomme=False).update(consomme=True)
             ordre.save(update_fields=update_fields)
+            activity.log_changes(old, ordre, request.user)
         return Response(self.get_serializer(ordre).data)

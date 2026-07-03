@@ -51,6 +51,7 @@ from .models import (
     Kit,
     KitComposant,
     OrdreAssemblage,
+    OrdreAssemblageActivity,
     Livraison,
     LivraisonLigne,
     PreuveLivraison,
@@ -2088,11 +2089,13 @@ class KitSerializer(serializers.ModelSerializer):
 
 class OrdreAssemblageSerializer(serializers.ModelSerializer):
     """FG328 - ordre d'assemblage de N kits. Reference/societe/`created_by`
-    poses COTE SERVEUR ; le statut avance via `demarrer`/`terminer`."""
+    poses COTE SERVEUR ; le statut avance via `demarrer`/`terminer`/`annuler`."""
     kit_nom = serializers.CharField(
         source='kit.nom', read_only=True, default=None)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True, default=None)
+    responsable_nom = serializers.CharField(
+        source='responsable.username', read_only=True, default=None)
 
     class Meta:
         model = OrdreAssemblage
@@ -2102,11 +2105,13 @@ class OrdreAssemblageSerializer(serializers.ModelSerializer):
             'emplacement_source', 'emplacement_destination',
             'quantite_produite', 'stock_mouvemente',
             'devis', 'chantier',
+            'date_prevue', 'responsable', 'responsable_nom',
+            'motif_annulation',
             'created_by', 'date_creation', 'date_modification',
         ]
         read_only_fields = [
             'reference', 'statut', 'date_terminaison', 'created_by',
-            'stock_mouvemente',
+            'stock_mouvemente', 'motif_annulation',
             'date_creation', 'date_modification',
         ]
 
@@ -2115,6 +2120,21 @@ class OrdreAssemblageSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'La quantite a assembler doit etre strictement positive.')
         return value
+
+
+class OrdreAssemblageActivitySerializer(serializers.ModelSerializer):
+    """XMFG4 - chatter de l'ordre d'assemblage."""
+    user_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = OrdreAssemblageActivity
+        fields = [
+            'id', 'kind', 'field', 'field_label', 'old_value', 'new_value',
+            'body', 'user_nom', 'created_at',
+        ]
+
+    def get_user_nom(self, obj):
+        return getattr(obj.user, 'username', None)
 
 
 class LivraisonLigneSerializer(serializers.ModelSerializer):

@@ -90,6 +90,7 @@ class OrdreAssemblage(models.Model):
         PLANIFIE = 'planifie', 'Planifié'
         EN_COURS = 'en_cours', 'En cours'
         TERMINE = 'termine', 'Terminé'
+        ANNULE = 'annule', 'Annulé'
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
@@ -132,6 +133,15 @@ class OrdreAssemblage(models.Model):
         'Installation', on_delete=models.SET_NULL,
         null=True, blank=True,
         related_name='ordres_assemblage')
+
+    # XMFG4 — cycle de vie : planification/pilotage + annulation motivée
+    # (interdite si le stock a déjà été mouvementé — XMFG1).
+    date_prevue = models.DateField(null=True, blank=True)
+    responsable = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='installations_ordres_assemblage_responsable')
+    motif_annulation = models.TextField(blank=True, null=True)
 
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
@@ -192,3 +202,43 @@ class ReservationAssemblage(models.Model):
 
     def __str__(self):
         return f'{self.ordre_id} · {self.produit_id} × {self.quantite}'
+
+
+class OrdreAssemblageActivity(models.Model):
+    """XMFG4 — chatter de l'ordre d'assemblage, même patron que
+    ``InstallationActivity`` : log auto ancien→nouveau des champs suivis +
+    notes manuelles via `historique`/`noter`. Utilisateur et société toujours
+    posés côté serveur."""
+
+    class Kind(models.TextChoices):
+        CREATION = 'creation', 'Création'
+        MODIFICATION = 'modification', 'Modification'
+        NOTE = 'note', 'Note'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='installations_ordre_assemblage_activities')
+    ordre = models.ForeignKey(
+        OrdreAssemblage, on_delete=models.CASCADE, related_name='activites')
+    kind = models.CharField(max_length=15, choices=Kind.choices)
+    field = models.CharField(max_length=100, blank=True, null=True)
+    field_label = models.CharField(max_length=150, blank=True, null=True)
+    old_value = models.TextField(blank=True, null=True)
+    new_value = models.TextField(blank=True, null=True)
+    body = models.TextField(blank=True, null=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='installations_ordre_assemblage_activities')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Activité d'ordre d'assemblage"
+        verbose_name_plural = "Activités d'ordre d'assemblage"
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['ordre', '-created_at'],
+                                name='idx_asmact_ordre_created')]
+
+    def __str__(self):
+        return f"{self.ordre_id} {self.kind} {self.field or ''}".strip()
