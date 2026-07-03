@@ -59,27 +59,26 @@ const jsonLd = {
       <p class="v2-lead mt-5 text-lune-soft">
         أجِب «نعم» للتخزين، وأنت على هجين. عاكسات Deye (أحادية وثلاثية الطور، من 5 إلى 30 kW) تقود
         في الوقت نفسه الألواح وبطارية، بحوار رقمي مباشر مع نظام إدارة البطارية (BMS) يضبط الشحن
-        باستمرار. لها معنى حين تريد ادّخار طاقة النهار لاستهلاكها مساءً، أو إبقاء التيار أثناء انقطاع.
+        باستمرار. لها معنى حين تريد ادّخار طاقة النهار لاستهلاكها مساءً، أو إبقاء التيار أثناء انقطاع —
+        ما لا يفعله عاكس الشبكة أبداً (السبب بالتفصيل أسفله).
       </p>
 
       <h2 class="display v2-section-title mt-12 text-white">عاكس الشبكة (Huawei SUN2000)</h2>
       <p class="v2-lead mt-5 text-lune-soft">
         أجِب «لا»، وعاكس الشبكة يكفي. عاكسات Huawei SUN2000 (من نوع string) مُفصّلة للاستهلاك الذاتي
         دون بطارية، من السكني إلى أسطح القطاع الثالث. إنه الخيار حين يكون استهلاكك أساساً نهارياً:
-        لا تخزين تؤدّي ثمنه لطاقة تستعملها أصلاً على إيقاع الشمس.
+        لا تخزين تؤدّي ثمنه لطاقة تستعملها أصلاً على إيقاع الشمس. العيب معروف — لا كهرباء أثناء
+        الانقطاع (السبب الدقيق موجود في دليلنا
+        <a href={L('/guides/on-grid-off-grid-ou-hybride')} class="border-b border-azur-200/60 pb-0.5 font-semibold text-lune transition-colors hover:text-white">شبكي أم منعزل أم هجين</a>).
       </p>
 
-      <h2 class="display v2-section-title mt-12 text-white">أين يدخل القانون 82-21</h2>
       <p class="v2-lead mt-5 text-lune-soft">
-        قد يُظَنّ أن عاكس الشبكة «يُعوّض» ببيع كل الفائض. القانون 82-21 يقول العكس. فالحقن في الشبكة
-        مسقوف عند 20 % من إنتاجك السنوي، وهذا الفائض لا يُشترى إلا بتعريفة تحدّدها ANRE (قرار 04/26) —
-        <strong class="text-lune"> 0,18 إلى 0,21 درهم/kWh للتوتر المتوسط/العالي؛ أمّا تعريفة نظام
-        التصريح للتوتر المنخفض (أقلّ من 11 kW، وهي حالة أغلب البيوت) فلم تُنشَر بعد</strong>. الأكيد
-        هو أنك تشتري نفس الـ kWh من الشبكة بين 0,90 و1,66 درهم/kWh، وهو سعر أعلى بكثير من أي تعريفة
-        شراء أُعلنت حتى الآن. أي أن الطاقة التي لا تستهلكها في عين المكان قيمتها ضئيلة، أياً كان الرقم
-        النهائي للتوتر المنخفض. وهنا يتّضح دور كلّ عاكس: إن كان استهلاكك نهارياً، يكفيك عاكس الشبكة،
-        إذ يلتقط جلّ هذه القيمة عبر الاستهلاك الذاتي المباشر؛ وإن كان مسائياً، يأتي دور العاكس الهجين،
-        الذي يخزّن فائض النهار ويردّه إلى ساعات ذروتك بدل تصديره بثمن بخس.
+        فائض الحقن في الشبكة قيمته ضئيلة مقارنة بتعريفة التجزئة على أي حال — تفاصيل الأرقام (سقف
+        20 %، تعريفة الشراء ANRE) محدَّثة في دليلنا
+        <a href={L('/guides/loi-82-21-expliquee')} class="border-b border-azur-200/60 pb-0.5 font-semibold text-lune transition-colors hover:text-white">القانون 82-21 ببساطة</a>.
+        وهنا يتّضح دور كلّ عاكس: إن كان استهلاكك نهارياً، يكفيك عاكس الشبكة، إذ يلتقط جلّ هذه القيمة
+        عبر الاستهلاك الذاتي المباشر؛ وإن كان مسائياً، يأتي دور العاكس الهجين، الذي يخزّن فائض النهار
+        ويردّه إلى ساعات ذروتك بدل تصديره بثمن بخس.
       </p>
 
       <h2 class="display v2-section-title mt-12 text-white">كيف نختار</h2>
@@ -89,6 +88,8 @@ const jsonLd = {
         العتاد بعدها — بدل الانطلاق من طراز مُقرَّر سلفاً.
       </p>
       <div class="mt-10 flex flex-wrap gap-3">
+        <a href={L('/guides/on-grid-off-grid-ou-hybride')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">شبكي أم منعزل أم هجين؟ <span class="inline-block rtl:-scale-x-100">→</span></a>
+        <a href={L('/guides/electricite-pendant-les-coupures')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">الكهرباء أثناء الانقطاعات <span class="inline-block rtl:-scale-x-100">→</span></a>
         <a href={L('/guides/faut-il-des-batteries')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">هل تحتاج بطاريات؟ <span class="inline-block rtl:-scale-x-100">→</span></a>
         <a href={L('/équipement')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">شاهد العتاد <span class="inline-block rtl:-scale-x-100">→</span></a>
         <a href={L('/guides')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">كل الأدلّة <span class="inline-block rtl:-scale-x-100">→</span></a>

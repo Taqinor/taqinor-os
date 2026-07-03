@@ -61,9 +61,8 @@ const jsonLd = {
         The hybrid is the inverter that knows how to manage a battery. The Deye units (single-phase
         and three-phase, from 5 to 30 kW) drive the panels and the storage at once, with built-in
         CAN BMS management. Their appeal is twofold: shifting energy from the day to the evening, and
-        switching to standalone mode within a few milliseconds during an outage — something a
-        grid-tied inverter never does (for safety, it disconnects automatically the moment the grid
-        drops). That versatility has a cost — you have to add the battery itself — and a storage
+        keeping the power on during an outage — something a grid-tied inverter never does (see just
+        below why). That versatility has a cost — you have to add the battery itself — and a storage
         inverter converts energy with one more step than a plain grid-coupling inverter.
       </p>
 
@@ -74,19 +73,18 @@ const jsonLd = {
         are built for this direct self-consumption, from homes to commercial rooftops. Less hardware,
         fewer conversions, fewer things that can fail: it's the simplest, most efficient solution as
         long as your consumption follows the sun. The downside is well known — no back-up during an
-        outage, and nothing to offer in the evening beyond what the panels produce in that instant.
+        outage (the exact reason why is in our
+        <a href={L('/guides/on-grid-off-grid-ou-hybride')} class="border-b border-azur-200/60 pb-0.5 font-semibold text-lune transition-colors hover:text-white">on-grid, off-grid or hybrid</a> guide),
+        and nothing to offer in the evening beyond what the panels produce in that instant.
       </p>
 
-      <h2 class="display v2-section-title mt-12 text-white">Why Law 82-21 tips the balance</h2>
       <p class="v2-lead mt-5 text-lune-soft">
-        You might think a grid-tied inverter "makes up for it" by selling back all its surplus. Law
-        82-21 says the opposite. Injection is capped at 20% of your annual production, and that
-        surplus is bought back at only 0.18 to 0.21 DH/kWh — whereas you buy that same kWh from the
-        grid at between 0.90 and 1.66 DH/kWh. In other words, the energy you do not consume on site
-        is worth little. That reinforces the logic of both inverters: on a daytime profile, the
-        grid-tied unit already captures most of that value through direct self-consumption; on an
-        evening profile, it's the hybrid that recovers what exporting would barely pay for, by
-        shifting it into your peak hours.
+        The surplus you inject into the grid is worth little next to the retail tariff anyway — the
+        current figures (20% cap, ANRE buy-back tariff) are kept up to date in our
+        <a href={L('/guides/loi-82-21-expliquee')} class="border-b border-azur-200/60 pb-0.5 font-semibold text-lune transition-colors hover:text-white">Law 82-21 explained simply</a> guide.
+        That reinforces the logic of both inverters: on a daytime profile, the grid-tied unit already
+        captures most of that value through direct self-consumption; on an evening profile, it's the
+        hybrid that recovers what exporting would barely pay for, by shifting it into your peak hours.
       </p>
 
       <h2 class="display v2-section-title mt-12 text-white">How we choose</h2>
@@ -97,6 +95,8 @@ const jsonLd = {
         hours first, the hardware after — instead of starting from a model decided in advance.
       </p>
       <div class="mt-10 flex flex-wrap gap-3">
+        <a href={L('/guides/on-grid-off-grid-ou-hybride')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">On-grid, off-grid or hybrid? →</a>
+        <a href={L('/guides/electricite-pendant-les-coupures')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Power during outages →</a>
         <a href={L('/guides/faut-il-des-batteries')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Do you need batteries? →</a>
         <a href={L('/équipement')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">See the equipment →</a>
         <a href={L('/guides')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">All the guides →</a>
