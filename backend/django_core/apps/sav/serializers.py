@@ -250,7 +250,8 @@ class SavSlaSettingsSerializer(serializers.ModelSerializer):
         model = SavSlaSettings
         fields = [
             'id', 'sla_response_days', 'sla_resolution_days',
-            'sla_par_priorite', 'sla_breach_enabled', 'date_modification',
+            'sla_par_priorite', 'sla_breach_enabled',
+            'notifications_client_sav', 'date_modification',
         ]
         read_only_fields = ['date_modification']
 

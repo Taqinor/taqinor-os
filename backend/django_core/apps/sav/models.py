@@ -58,6 +58,10 @@ class SavSlaSettings(models.Model):
     sla_resolution_days = models.PositiveIntegerField(default=7)
     sla_par_priorite = models.JSONField(null=True, blank=True)
     sla_breach_enabled = models.BooleanField(default=False)
+    # XSAV4 — notifications client aux transitions du ticket (reçu / planifié /
+    # résolu). Défaut OFF : comportement actuel inchangé tant que la société ne
+    # l'active pas explicitement.
+    notifications_client_sav = models.BooleanField(default=False)
     date_modification = models.DateTimeField(auto_now=True)
 
     class Meta:

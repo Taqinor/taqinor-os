@@ -342,6 +342,11 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         inst.recompute_sla_breach()
         inst.save(update_fields=['sla_breach'])
         activity.log_changes(old, inst, self.request.user)
+        # XSAV4 — notification client best-effort sur transition de statut
+        # (reçu/planifié/résolu). Toggle OFF par défaut = aucun effet.
+        if old.statut != inst.statut:
+            from .notifications_client import notify_ticket_transition
+            notify_ticket_transition(inst, inst.statut, request=self.request)
 
     @action(detail=True, methods=['get'], url_path='historique',
             permission_classes=[HasPermissionOrLegacy('sav_voir')])

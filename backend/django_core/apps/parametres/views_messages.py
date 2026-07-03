@@ -24,6 +24,10 @@ _MESSAGE_PLACEHOLDERS = {
     'devis_multi_ligne': ['{reference}', '{lien}'],
     'facture': ['{civilite}', '{nom}', '{reference}', '{lien}'],
     'relance': ['{civilite}', '{nom}', '{reference}', '{lien}'],
+    # XSAV4 — notifications client aux transitions du ticket SAV.
+    'ticket_recu': ['{civilite}', '{nom}', '{reference}', '{lien}'],
+    'ticket_planifie': ['{civilite}', '{nom}', '{reference}', '{lien}'],
+    'ticket_resolu': ['{civilite}', '{nom}', '{reference}', '{lien}'],
 }
 
 # Repère tout token de la forme {foo} dans un corps de message.
