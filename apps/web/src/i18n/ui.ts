@@ -44,6 +44,10 @@ export const ui = {
     'footer.serviceArea': "Zone d'intervention",
     'footer.allMorocco': 'tout le Maroc',
     'footer.legalLine': 'TAQINOR Solutions SARLAU — RC 691213 (Casablanca) — ICE 003799642000067',
+    // W246/W369 — bande de clôture du pied de page (dernier cadre art-directé)
+    'footer.closingLine': "Chaque installation Taqinor est dimensionnée par l'ingénierie, pas par l'à-peu-près.",
+    'footer.journeyCta': 'Estimer mon toit',
+    'footer.whatsappRecapture': 'Une question avant de vous décider ? Écrivez-nous sur WhatsApp.',
     // Sélecteur de langue
     'lang.label': 'Choisir la langue',
     // Communs
@@ -152,6 +156,9 @@ export const ui = {
     'footer.serviceArea': 'Service area',
     'footer.allMorocco': 'all of Morocco',
     'footer.legalLine': 'TAQINOR Solutions SARLAU — RC 691213 (Casablanca) — ICE 003799642000067',
+    'footer.closingLine': 'Every Taqinor installation is engineered to size — never guessed.',
+    'footer.journeyCta': 'Estimate my roof',
+    'footer.whatsappRecapture': 'One question before you decide? Message us on WhatsApp.',
     'lang.label': 'Choose language',
     'common.whatsapp': 'WhatsApp',
     'common.diagnosticCta': 'Free assessment',
@@ -249,6 +256,9 @@ export const ui = {
     'footer.serviceArea': 'منطقة التدخل',
     'footer.allMorocco': 'كامل المغرب',
     'footer.legalLine': 'TAQINOR Solutions SARLAU — RC 691213 (Casablanca) — ICE 003799642000067',
+    'footer.closingLine': 'كل تركيب لدى تاكينور مُصمَّم هندسياً حسب الحجم — لا شيء يُترك للتخمين.',
+    'footer.journeyCta': 'قيّم سطحي',
+    'footer.whatsappRecapture': 'سؤال قبل أن تقرر؟ راسلنا على واتساب.',
     'lang.label': 'اختر اللغة',
     'common.whatsapp': 'واتساب',
     'common.diagnosticCta': 'تشخيص مجاني',
