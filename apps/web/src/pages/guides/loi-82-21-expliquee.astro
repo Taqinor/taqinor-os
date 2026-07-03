@@ -71,6 +71,37 @@ const regimes = [
         situer, sans jargon.
       </p>
 
+      <!-- W259 — « Où en est la loi ? » : distingue LIVE (MT/HT) de PENDING (BT résidentiel). -->
+      <div class="v2-rise mt-10 border-2 border-brass-400/50 bg-nuit-800/60 p-6 sm:p-8">
+        <p class="tech-label v2-kicker text-brass-300">Où en est la loi ? · vérifié le 3 juillet 2026</p>
+        <div class="mt-4 grid gap-5 sm:grid-cols-2">
+          <div>
+            <p class="tech-label text-lune">En vigueur</p>
+            <p class="mt-2 text-sm leading-relaxed text-lune-soft">
+              Décret <strong class="text-white">2-25-100</strong> (BO du 9 mars 2026, en vigueur depuis
+              le 9 juin 2026) et décision ANRE <strong class="text-white">04/26</strong> :
+              <strong class="text-white">0,18–0,21 DH/kWh</strong> de rachat du surplus, mais seulement
+              pour les régimes accord de raccordement et autorisation, en
+              <strong class="text-white"> moyenne et haute tension (MT/HT)</strong>.
+            </p>
+          </div>
+          <div>
+            <p class="tech-label text-lune">Pas encore publié</p>
+            <p class="mt-2 text-sm leading-relaxed text-lune-soft">
+              Le tarif de rachat du régime <strong class="text-white">déclaration en basse tension
+              (BT)</strong> — celui de la quasi-totalité des villas — n'est pas encore publié, avec une
+              échéance évoquée autour de <strong class="text-white">2027</strong>, non confirmée à ce
+              jour.
+            </p>
+          </div>
+        </div>
+        <p class="mt-5 text-xs leading-relaxed text-lune-faint">
+          Une installation déjà posée ? La fenêtre de régularisation de l'Article 33 est ouverte dès
+          aujourd'hui, indépendamment de ce tarif —
+          <a href="/regularization-article-33" class="border-b border-brass-300/60 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">faites régulariser votre installation existante →</a>.
+        </p>
+      </div>
+
       <div class="mt-12 grid gap-6" data-stagger>
         {regimes.map((r, i) => (
           <div class="v2-rise cine-card grid gap-4 p-6 sm:grid-cols-[auto_1fr] sm:p-7" style={`--v2-i:${i}`}>
