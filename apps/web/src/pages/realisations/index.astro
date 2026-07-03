@@ -16,7 +16,7 @@ import Picture from '../../components/Picture.astro';
 import PhotoCaption from '../../components/PhotoCaption.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
-import { REALISATIONS } from '../../lib/realisations';
+import { REALISATIONS, standardCaption } from '../../lib/realisations';
 
 const total = REALISATIONS.reduce((s, r) => s + r.kwcNum, 0);
 const totalLabel = total.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' kWc';
@@ -97,9 +97,10 @@ const galleryItems = REALISATIONS.map((r) => ({
                 style={(r.photos[0] as any).objectPosition ? `object-position:${(r.photos[0] as any).objectPosition}` : undefined}
                 class="photo-card-img aspect-[3/2] w-full object-cover"
               />
+              {/* W283 — légende standard : « [Ville] — X kWc — installé en Y — Z kWh mesurés »
+                  (seulement les champs réels ; la production est omise quand non mesurée). */}
               <PhotoCaption
-                caption={`${r.ville} · ${r.date}`}
-                sub={r.kwc + (r.production ? ` · ${r.production}` : '')}
+                caption={standardCaption(r)}
                 detail={r.panneaux}
               />
             </button>
