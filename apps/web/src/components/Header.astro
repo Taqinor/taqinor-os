@@ -37,8 +37,10 @@
 import Logo from './Logo.astro';
 import LanguageSwitcher from './LanguageSwitcher.astro';
 import StarRating from './StarRating.astro';
+import Picture from './Picture.astro';
 import { hasRating } from '../lib/testimonials';
 import { NAP } from '../lib/nap';
+import { REALISATIONS } from '../lib/realisations';
 import { getLocaleFromPath, stripLocale, useTranslations } from '../i18n/utils';
 import { localesForPath, localizeNavHref, QUOTE_JOURNEY_PATH } from '../i18n/pages';
 
@@ -75,6 +77,42 @@ const solutionIcons: Record<string, string> = {
   '/maintenance-monitoring': '<path d="M4 18 9 12l3 3 4-6 4 5" /><path d="M4 21h16" /><circle cx="9" cy="12" r="0.6" /><circle cx="16" cy="9" r="0.6" />',
   '/regularization-article-33': '<path d="M7 4h7l4 4v12H7z" /><path d="M14 4v4h4" /><path d="M9.5 14l1.5 1.5 3-3.5" />',
 };
+
+// W370 — Panneau Solutions à deux colonnes : la carte à droite reprend une
+// vraie réalisation Taqinor (photo + chiffre mesuré, src/lib/realisations.ts)
+// et bascule au survol/focus de chaque lien. DATA-GATED : seuls les hrefs
+// listés ci-dessous ont une réalisation réelle à montrer (les 5 chantiers
+// publiés sont TOUS `segment: 'residentiel'` aujourd'hui — la plus grande,
+// El Jadida 17,04 kWc, sert aussi de preuve C&I sur /professionnel, verbatim
+// la même donnée). Les hrefs absents de cette table (pompage, batteries,
+// maintenance, régularisation) n'ont ENCORE aucune photo Taqinor publiée pour
+// ce type de chantier : la carte ne rend rien pour eux plutôt que d'inventer
+// ou de réutiliser une photo hors-sujet — jamais de placeholder.
+const bestRealisation = [...REALISATIONS].sort((a, b) => b.kwcNum - a.kwcNum)[0];
+const solutionPreview: Record<string, { photo: string; alt: string; ville: string; kwc: string; production: string | null }> = {
+  '/résidentiel': {
+    photo: bestRealisation.photos[0].name,
+    alt: bestRealisation.photos[0].alt,
+    ville: bestRealisation.ville,
+    kwc: bestRealisation.kwc,
+    production: bestRealisation.production,
+  },
+  '/professionnel': {
+    photo: bestRealisation.photos[0].name,
+    alt: bestRealisation.photos[0].alt,
+    ville: bestRealisation.ville,
+    kwc: bestRealisation.kwc,
+    production: bestRealisation.production,
+  },
+};
+// W370 — Libellés de la carte, mécanisme de repli identique au reste du
+// fichier (petite table locale, FR verbatim inchangé).
+const previewStr: Record<'fr' | 'en' | 'ar', { measured: string; discover: string }> = {
+  fr: { measured: 'kWh/an mesurés', discover: 'Voir cette installation' },
+  en: { measured: 'kWh/year measured', discover: 'See this installation' },
+  ar: { measured: 'kWh/سنة مقيسة', discover: 'اكتشفوا هذا التركيب' },
+};
+const previewT = previewStr[locale] ?? previewStr.fr;
 
 // Ressources — le déclencheur pointe vers /guides (repli sans-JS).
 // W264 — Split honnête : les items adjacents à un service (financement,
@@ -189,10 +227,17 @@ const itemClass =
           <span class={solutionsActive ? underlineActive : underline}></span>
         </a>
         {/* W163 — polished panel: rounded, layered shadow, brass top accent.
-            W264 — widened (w-72) to fit leading glyphs + featured subtitles. */}
-        <div class={`absolute start-0 top-full z-50 pt-3 ${menuReveal}`}>
+            W264 — widened (w-72) to fit leading glyphs + featured subtitles.
+            W370 — Mega-panel: a second column (preview card, w-64) joins the
+            link list once ≥1 real realisation exists to show (solutionPreview).
+            CSS-only swap: each link carries data-preview-trigger, each card
+            carries data-preview-card + a matching key; :hover/:focus-within on
+            an [data-preview-trigger] reveals ONLY the sibling card sharing its
+            key (see <style> below) — no JS, keyboard-safe (focus works exactly
+            like hover), degrades to "no card" if solutionPreview lacks a href. */}
+        <div class={`absolute start-0 top-full z-50 flex items-start pt-3 ${menuReveal}`}>
           <ul
-            class="w-72 overflow-hidden rounded-lg border border-white/10 bg-nuit/95 p-2 shadow-[0_4px_6px_-2px_rgb(0_0_0/0.4),0_12px_40px_-8px_rgb(0_0_0/0.6)] backdrop-blur before:absolute before:inset-x-0 before:top-0 before:h-[2px] before:bg-brass-400/60 relative"
+            class="menu-links w-72 overflow-hidden rounded-lg border border-white/10 bg-nuit/95 p-2 shadow-[0_4px_6px_-2px_rgb(0_0_0/0.4),0_12px_40px_-8px_rgb(0_0_0/0.6)] backdrop-blur before:absolute before:inset-x-0 before:top-0 before:h-[2px] before:bg-brass-400/60 relative"
             role="menu" aria-label={t('nav.solutions')}
           >
             <li role="none"><a href={L('/nos-solutions')} role="menuitem" class={`${itemClass} font-semibold text-white`}>{t('nav.allSolutions')}</a></li>
@@ -202,6 +247,7 @@ const itemClass =
                   href={L(s.href)}
                   role="menuitem"
                   class={`${itemClass} flex items-center gap-3 ${s.featured ? 'py-2.5' : ''}`}
+                  {...(solutionPreview[s.href] ? { 'data-preview-trigger': s.href } : {})}
                 >
                   <svg
                     width={s.featured ? 20 : 16} height={s.featured ? 20 : 16}
@@ -216,6 +262,39 @@ const itemClass =
               </li>
             ))}
           </ul>
+          {/* W370 — Colonne de preview : une carte par href avec donnée réelle,
+              masquée par défaut, révélée par [data-preview-trigger] survolé/
+              focus via CSS pur (voir <style>). La première carte (résidentiel)
+              reste visible tant qu'aucun lien n'est survolé/focalisé — état de
+              repos cohérent avec le lien "featured" mis en avant en premier. */}
+          {Object.keys(solutionPreview).length > 0 && (
+            <div class="menu-preview ms-2 hidden w-64 overflow-hidden rounded-lg border border-white/10 bg-nuit shadow-[0_4px_6px_-2px_rgb(0_0_0/0.4),0_12px_40px_-8px_rgb(0_0_0/0.6)] lg:block">
+              {Object.entries(solutionPreview).map(([href, p], i) => (
+                <a
+                  href={L(href)}
+                  data-preview-card={href}
+                  class:list={['preview-card group/preview', i === 0 ? 'preview-card--default' : '']}
+                  tabindex="-1"
+                  aria-hidden="true"
+                >
+                  <div class="relative aspect-[4/3] overflow-hidden">
+                    <Picture
+                      name={p.photo} alt={p.alt} widths={[1600, 1024, 640]} ratio={4 / 3}
+                      sizes="256px" class="h-full w-full object-cover transition-transform duration-500 group-hover/preview:scale-105"
+                    />
+                    <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-3 pb-2 pt-8">
+                      <span class="fig lum text-lg">{p.kwc}</span>
+                    </div>
+                  </div>
+                  <div class="p-3">
+                    <p class="tech-label text-brass-300">{p.ville}</p>
+                    {p.production && <p class="mt-1 text-xs text-lune-soft">{p.production.replace(/\/an$/, '')} {previewT.measured}</p>}
+                    <p class="mt-2 text-xs font-semibold text-white">{previewT.discover} →</p>
+                  </div>
+                </a>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -374,6 +453,35 @@ const itemClass =
     </div>
   </nav>
 </header>
+
+<style>
+  /* W370 — Mega-panel preview card, CSS-only swap.
+     Rest state: only the FIRST card (.preview-card--default, résidentiel)
+     shows — matches the first "featured" link in the list. Hovering/
+     focusing a [data-preview-trigger] link reveals ITS matching
+     [data-preview-card] and hides every other card, including the default.
+     Pure sibling-combinator CSS: no JS, and it degrades safely — with no
+     hover/focus the default card simply stays put. */
+  .menu-preview .preview-card {
+    display: none;
+  }
+  .menu-preview .preview-card--default {
+    display: block;
+  }
+  /* Any trigger hovered/focused inside the link list first hides EVERY card
+     (including the default), then the more specific href-matched rule below
+     re-shows only the one whose data-preview-card matches the hovered href. */
+  .menu-links:has([data-preview-trigger]:hover) ~ .menu-preview .preview-card,
+  .menu-links:has([data-preview-trigger]:focus-visible) ~ .menu-preview .preview-card {
+    display: none;
+  }
+  .menu-links:has([data-preview-trigger="/résidentiel"]:hover) ~ .menu-preview [data-preview-card="/résidentiel"],
+  .menu-links:has([data-preview-trigger="/résidentiel"]:focus-visible) ~ .menu-preview [data-preview-card="/résidentiel"],
+  .menu-links:has([data-preview-trigger="/professionnel"]:hover) ~ .menu-preview [data-preview-card="/professionnel"],
+  .menu-links:has([data-preview-trigger="/professionnel"]:focus-visible) ~ .menu-preview [data-preview-card="/professionnel"] {
+    display: block;
+  }
+</style>
 
 <script>
   // ── W150 — Scroll-reactive header ──────────────────────────────────────────
