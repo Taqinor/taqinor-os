@@ -2478,6 +2478,120 @@ def fichier_cimr(periode):
     }
 
 
+# ── XPAI11 — AFFEBDS + déclarations de mouvement CNSS ───────────────────────
+
+def parser_affebds(contenu):
+    """Parse un fichier AFFEBDS (CSV/texte) importé de la CNSS (XPAI11).
+
+    Format d'entrée SIMPLIFIÉ (documenté, séparateur ``;``) : une ligne par
+    salarié affilié, ``numero_cnss;nom``. Lignes vides/commentaires (``#``)
+    ignorées. Lecture pure. Renvoie une liste de dicts
+    ``{'numero_cnss', 'nom'}``.
+    """
+    lignes = []
+    for ligne in (contenu or '').splitlines():
+        ligne = ligne.strip()
+        if not ligne or ligne.startswith('#'):
+            continue
+        parts = ligne.split(';')
+        numero_cnss = parts[0].strip() if len(parts) > 0 else ''
+        nom = parts[1].strip() if len(parts) > 1 else ''
+        if not numero_cnss:
+            continue
+        lignes.append({'numero_cnss': numero_cnss, 'nom': nom})
+    return lignes
+
+
+def rapprocher_affebds(company, contenu):
+    """Rapproche un fichier AFFEBDS contre les ``ProfilPaie`` (XPAI11).
+
+    Compare les numéros CNSS du fichier importé aux ``ProfilPaie`` actifs
+    affiliés CNSS de la société : ``rapproches`` (numéro présent des deux
+    côtés), ``manquants`` (dans le fichier CNSS, absent des profils paie —
+    salarié CNSS non enregistré côté paie), ``en_trop`` (profil paie affilié
+    CNSS avec un numéro qui n'apparaît pas dans le fichier — potentiel écart
+    à investiguer). Lecture seule, AUCUN écrit sur les profils. Renvoie
+    ``{'rapproches': [...], 'manquants': [...], 'en_trop': [...]}``.
+    """
+    from .models import ProfilPaie
+
+    entrees_fichier = {
+        ligne['numero_cnss']: ligne for ligne in parser_affebds(contenu)
+    }
+    profils = (
+        ProfilPaie.objects
+        .filter(company=company, actif=True, affilie_cnss=True)
+        .exclude(numero_cnss='')
+        .select_related('employe')
+    )
+    numeros_profils = {}
+    for profil in profils:
+        numeros_profils[profil.numero_cnss] = profil
+
+    rapproches = []
+    manquants = []
+    for numero, ligne in entrees_fichier.items():
+        profil = numeros_profils.get(numero)
+        if profil is not None:
+            rapproches.append({
+                'numero_cnss': numero, 'nom_fichier': ligne['nom'],
+                'profil_id': profil.id,
+            })
+        else:
+            manquants.append(ligne)
+
+    en_trop = [
+        {'numero_cnss': numero, 'profil_id': profil.id}
+        for numero, profil in numeros_profils.items()
+        if numero not in entrees_fichier
+    ]
+    return {
+        'rapproches': rapproches,
+        'manquants': manquants,
+        'en_trop': en_trop,
+    }
+
+
+def mouvements_cnss_periode(periode):
+    """Entrées/sorties CNSS de la période (XPAI11) — alignée sur la BDS.
+
+    ENTRÉES : profils actifs de la société SANS numéro CNSS (embauchés à
+    déclarer, dossier d'immatriculation à ouvrir). SORTIES : profils dont le
+    dossier RH a une ``date_sortie`` tombant dans le mois de la ``periode``
+    (lue via ``rh.selectors.sortie_employe`` — jamais ``rh.models`` direct).
+    Lecture seule, aucun écrit sur rh. Renvoie ``{'entrees': [...],
+    'sorties': [...]}``.
+    """
+    from apps.rh import selectors as rh_selectors  # import paresseux cross-app
+
+    from .models import ProfilPaie
+
+    profils = (
+        ProfilPaie.objects
+        .filter(company=periode.company, affilie_cnss=True)
+        .select_related('employe')
+    )
+    entrees = []
+    sorties = []
+    for profil in profils:
+        if not profil.numero_cnss and profil.actif:
+            employe = profil.employe
+            nom = f'{employe.nom} {employe.prenom}'.strip() if employe else ''
+            entrees.append({'profil_id': profil.id, 'nom': nom})
+
+        date_sortie, motif_sortie = rh_selectors.sortie_employe(
+            periode.company, profil.employe_id)
+        if date_sortie and date_sortie.year == periode.annee \
+                and date_sortie.month == periode.mois:
+            employe = profil.employe
+            nom = f'{employe.nom} {employe.prenom}'.strip() if employe else ''
+            sorties.append({
+                'profil_id': profil.id, 'nom': nom,
+                'date_sortie': date_sortie, 'motif_sortie': motif_sortie or '',
+            })
+    return {'entrees': entrees, 'sorties': sorties}
+
+
 # ── PAIE32 — État IR 9421 + retenues à la source ───────────────────────────
 
 def etat_ir_9421(periode):

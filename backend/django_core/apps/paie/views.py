@@ -84,9 +84,11 @@ from .services import (
     journal_de_paie,
     livre_de_paie,
     marquer_bulletin_paye,
+    mouvements_cnss_periode,
     notifier_echeances_en_retard,
     profils_hors_virement,
     rapprochement_paie_gl,
+    rapprocher_affebds,
     recalculer_cumul_annuel,
     reemettre_ligne_virement,
     rejeter_ligne_virement,
@@ -474,6 +476,25 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
         """Fichier de télédéclaration CIMR — CSV documenté (XPAI10)."""
         periode = self.get_object()
         return Response(fichier_cimr(periode), status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='mouvements-cnss')
+    def mouvements_cnss(self, request, pk=None):
+        """Entrées/sorties CNSS de la période — alignée BDS (XPAI11)."""
+        periode = self.get_object()
+        return Response(
+            mouvements_cnss_periode(periode), status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='affebds-rapprochement')
+    def affebds_rapprochement(self, request):
+        """Rapproche un fichier AFFEBDS importé contre les profils paie (XPAI11).
+
+        Corps : ``contenu`` (texte du fichier AFFEBDS, CSV ``;`` — un numéro
+        CNSS + nom par ligne). Aucun écrit sur les profils : pur rapport
+        rapprochés/manquants/en trop.
+        """
+        contenu = request.data.get('contenu', '')
+        rapport = rapprocher_affebds(request.user.company, contenu)
+        return Response(rapport, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'], url_path='fichier-damancom')
     def fichier_damancom(self, request, pk=None):
