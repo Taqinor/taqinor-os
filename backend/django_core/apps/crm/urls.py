@@ -9,6 +9,9 @@ from .views import (
 )
 from .webhooks import website_lead_webhook, meta_lead_ads_webhook
 from .roof_views import lead_roof_footprint
+from .public_chat_views import (
+    open_chat_session, post_chat_message, get_chat_session,
+)
 
 router = DefaultRouter()
 router.register(r'clients', ClientViewSet)
@@ -33,5 +36,11 @@ urlpatterns = [
     path('assignable-users/', assignable_users, name='assignable-users'),
     # QJ25 — Contour OSM du bâtiment épinglé (free, sans clé API)
     path('leads/<int:lead_id>/roof-footprint/', lead_roof_footprint, name='lead-roof-footprint'),
+    # XMKT37 — Livechat public tokenisé (voir public_chat_views.py)
+    path('public/chat/sessions/', open_chat_session, name='public-chat-open'),
+    path('public/chat/sessions/<str:token>/messages/', post_chat_message,
+         name='public-chat-post'),
+    path('public/chat/sessions/<str:token>/', get_chat_session,
+         name='public-chat-get'),
     path('', include(router.urls)),
 ]

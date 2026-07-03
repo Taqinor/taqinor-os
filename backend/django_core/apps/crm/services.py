@@ -908,6 +908,69 @@ def create_lead_from_meta_lead_ads(
     return lead
 
 
+# ── XMKT37 — Livechat / assistant IA de qualification (ERP-side) ─────────────
+
+def create_lead_from_livechat(*, company, nom, telephone='', email='',
+                              transcript_text='') -> Lead:
+    """XMKT37 — Crée (ou dédupe sur) un lead dès que nom + contact sont captés
+    par une session de livechat public.
+
+    Point d'entrée cross-app sanctionné (services.py), appelé par
+    ``apps.crm.public_chat_views``. Dédup (QJ8) par téléphone/email dans la
+    société avant de créer (comme le webhook site) ; canal ``livechat``,
+    stage NEW (STAGES.py, jamais hardcodé — ``Lead.stage`` a NEW pour
+    défaut). Le transcript complet est collé en note chatter (``LeadActivity``).
+    """
+    nom = (nom or '').strip()[:255] or 'Prospect livechat'
+    telephone = (telephone or '').strip()[:20]
+    email = (email or '').strip()[:254]
+
+    lead = None
+    if telephone or email:
+        dupes = find_duplicates_by_contact(
+            company, phone=telephone or None, email=email or None)
+        if dupes:
+            lead = sorted(dupes, key=lambda d: d.date_creation, reverse=True)[0]
+
+    if lead is None:
+        extra = {}
+        default = default_responsable_for(company)
+        if default is not None:
+            extra['owner'] = default
+        lead = Lead.objects.create(
+            company=company,
+            nom=nom,
+            telephone=telephone or None,
+            email=email or None,
+            canal=Lead.Canal.AUTRE,
+            **extra,
+        )
+        activity.log_creation(lead, None)
+        try:
+            notify_new_lead(lead)
+        except Exception:  # noqa: BLE001 — best-effort
+            pass
+    else:
+        changed = False
+        if telephone and not lead.telephone:
+            lead.telephone = telephone
+            changed = True
+        if email and not lead.email:
+            lead.email = email
+            changed = True
+        if changed:
+            lead.save()
+
+    if transcript_text:
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE,
+            body=f'Transcript livechat :\n{transcript_text}')
+
+    recompute_lead_score(lead)
+    return lead
+
+
 def noter_devis_ouvert(devis_reference: str, lead) -> None:
     """QJ1 — Consigne « Le client a ouvert le devis » dans le chatter du lead.
 

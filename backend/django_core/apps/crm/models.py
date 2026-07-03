@@ -1226,3 +1226,51 @@ class SiteProfile(models.Model):
 
     def __str__(self):
         return f'Profil site (client {self.client_id})'
+
+
+def _default_chat_token():
+    return uuid.uuid4().hex
+
+
+class ChatSessionPublique(models.Model):
+    """XMKT37 — Session de livechat d'un VISITEUR anonyme du site public.
+
+    Même modèle de confiance que le webhook ``webhooks/website-leads/`` :
+    la ``company`` est résolue CÔTÉ SERVEUR (le token identifie la SESSION,
+    jamais la société — la société est posée à la création, jamais reçue du
+    corps de requête). Le transcript est un JSON horodaté ; aucune donnée
+    interne (prix_achat/marges) n'y transite jamais — la réponse IA passe
+    par ``core.ai`` dont le prompt XMKT37 exclut ce type de donnée par
+    construction (aucun accès aux modèles métier).
+    """
+
+    class Statut(models.TextChoices):
+        ACTIVE = 'active', 'Active'
+        QUALIFIEE = 'qualifiee', 'Qualifiée'
+        FERMEE = 'fermee', 'Fermée'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='chat_sessions_publiques')
+    token = models.CharField(
+        max_length=64, unique=True, default=_default_chat_token,
+        editable=False)
+    # Transcript horodaté : liste de {auteur: 'visiteur'|'assistant'|'system',
+    # texte: str, date: iso8601}. Jamais de champ interne (prix_achat/marge).
+    transcript = models.JSONField(default=list, blank=True)
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.ACTIVE)
+    # Lead créé dès que nom + téléphone/email sont capturés (XMKT37).
+    lead = models.ForeignKey(
+        Lead, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='chat_sessions_publiques')
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_message_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Session livechat publique'
+        verbose_name_plural = 'Sessions livechat publiques'
+        ordering = ['-last_message_at']
+
+    def __str__(self):
+        return f'Session livechat #{self.pk} ({self.statut})'
