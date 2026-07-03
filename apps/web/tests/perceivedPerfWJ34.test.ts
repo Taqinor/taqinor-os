@@ -79,7 +79,15 @@ describe('WJ34 — [token].astro : poster blur-up, PDF affordance, safe-area', (
     const linkBlock = PROPOSITION.slice(PROPOSITION.indexOf('id="pdf-download"') - 100, PROPOSITION.indexOf('id="pdf-download"') + 300);
     expect(linkBlock).toContain('target="_blank"');
     const scriptStart = PROPOSITION.indexOf('WJ34 — affordance');
-    const scriptEnd = PROPOSITION.indexOf('</script>', scriptStart);
+    // WJ53/WJ56/WJ80 folded more logic into this SAME <script> tag AFTER the
+    // PDF affordance (to keep the page at exactly 3 <script> blocks — see the
+    // scriptTagCount test below) ; WJ56's Web Share handler legitimately calls
+    // preventDefault() on a DIFFERENT element (#prop-share-whatsapp), so the
+    // slice must stop at the PDF affordance's own closing brace
+    // (`if (pdfLink && pdfLabel) { … }`), not at the end of the whole script tag.
+    const pdfIfStart = PROPOSITION.indexOf('if (pdfLink && pdfLabel)', scriptStart);
+    const closeMatch = /\r?\n {2}\}\r?\n/.exec(PROPOSITION.slice(pdfIfStart));
+    const scriptEnd = closeMatch ? pdfIfStart + closeMatch.index : PROPOSITION.indexOf('</script>', scriptStart);
     const codeLines = PROPOSITION.slice(scriptStart, scriptEnd)
       .split('\n')
       .filter((line) => !line.trim().startsWith('//'));

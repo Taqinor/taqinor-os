@@ -180,16 +180,32 @@ const instLabel =
 // ── P2 — Graphe production estimée vs consommation (depuis les tableaux Q6) ──
 // On ne dessine QUE les chiffres backend ; tableaux vides/absents → bloc masqué.
 const chartSeries = ok ? resolveSeries(data?.monthly_production, data?.monthly_consumption) : { mode: 'none' as const, production: null, consumption: null };
-const chartSvg = ok && chartSeries.mode !== 'none'
-  ? renderProposalChart(data?.monthly_production, data?.monthly_consumption)
+// WJ80 — les DEUX graphes les plus persuasifs de la page restaient français-
+// only (mois FR figés dans le SVG) même en mode EN/AR actif. Plutôt que de
+// réimporter toute la chaîne de rendu SVG côté client (bundle supplémentaire),
+// on PRÉ-RENDU les trois variantes langue côté serveur — même discipline
+// tri-node que le texte (`data-i18n`/`prepareI18n`) : FR visible par défaut,
+// EN/AR posés `hidden`, le script de bascule de langue montre la bonne.
+const chartSvgFr = ok && chartSeries.mode !== 'none'
+  ? renderProposalChart(data?.monthly_production, data?.monthly_consumption, undefined, 'fr')
   : '';
-const showChart = ok && hasProductionSeries(data!) && chartSvg.length > 0;
+const chartSvgEn = ok && chartSeries.mode !== 'none'
+  ? renderProposalChart(data?.monthly_production, data?.monthly_consumption, undefined, 'en')
+  : '';
+const chartSvgAr = ok && chartSeries.mode !== 'none'
+  ? renderProposalChart(data?.monthly_production, data?.monthly_consumption, undefined, 'ar')
+  : '';
+const showChart = ok && hasProductionSeries(data!) && chartSvgFr.length > 0;
 const chartHasConso = chartSeries.mode === 'comparison';
 
 // ── WJ16 — Courbe journalière production vs consommation (lever → coucher) ────
 // Calée sur la production annuelle RÉELLE backend si présente, sinon « année
 // type » clairement libellée. Le visuel le plus persuasif ne disparaît jamais.
-const dailyCurve = ok ? renderYearCurve(prodKwh) : { svg: '', hasRealScale: false };
+// WJ80 — même pré-rendu tri-langue que le graphe ci-dessus.
+const dailyCurveFr = ok ? renderYearCurve(prodKwh, undefined, 'fr') : { svg: '', hasRealScale: false };
+const dailyCurveEn = ok ? renderYearCurve(prodKwh, undefined, 'en') : { svg: '', hasRealScale: false };
+const dailyCurveAr = ok ? renderYearCurve(prodKwh, undefined, 'ar') : { svg: '', hasRealScale: false };
+const dailyCurve = dailyCurveFr;
 
 // ── WJ15 — Fenêtre de validité honnête (date backend réelle, jamais inventée) ─
 const validity = ok ? resolveValidity(data!) : { label: null, fromBackend: false, expired: false };
@@ -667,7 +683,18 @@ const signConfig = ok
             {chartHasConso ? 'Production estimée vs votre consommation' : 'Production estimée'}
           </p>
           <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6">
-            <div class="chart-svg" set:html={chartSvg}></div>
+            <!-- WJ80 — trois variantes langue pré-rendues (FR visible par
+                 défaut) : le script de bascule de langue affiche la bonne au
+                 lieu de réimporter la chaîne de rendu SVG côté client. -->
+            <div class="chart-svg" data-chart-lang="fr" set:html={chartSvgFr}></div>
+            <div class="chart-svg" data-chart-lang="en" hidden set:html={chartSvgEn}></div>
+            <div class="chart-svg" data-chart-lang="ar" hidden set:html={chartSvgAr}></div>
+            <!-- WJ80 — tap-to-reveal : le `<title>` SVG (survol souris) est
+                 invisible au tactile — l'essentiel du trafic de cette page.
+                 Un tap/clic sur une barre affiche ici son mois + sa valeur ;
+                 câblé par le script de fin de page (délégation d'événement,
+                 aucune dépendance au SVG choisi). -->
+            <p id="chart-tap-caption" class="mt-2 min-h-[1.25rem] text-sm text-brass-300" aria-live="polite"></p>
             <div class="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
               <span class="inline-flex items-center gap-2 text-lune-soft">
                 <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-brass-400)" aria-hidden="true"></span>
@@ -708,7 +735,14 @@ const signConfig = ok
         <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
           <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Votre journée solaire" data-en="Your solar day" data-ar="يومكم الشمسي">Votre journée solaire</p>
           <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6">
-            <div class="daily-curve-wrap" set:html={dailyCurve.svg}></div>
+            <!-- WJ80 — mêmes trois variantes langue pré-rendues que le graphe
+                 ci-dessus (FR visible par défaut). -->
+            <div class="daily-curve-wrap" data-curve-lang="fr" set:html={dailyCurveFr.svg}></div>
+            <div class="daily-curve-wrap" data-curve-lang="en" hidden set:html={dailyCurveEn.svg}></div>
+            <div class="daily-curve-wrap" data-curve-lang="ar" hidden set:html={dailyCurveAr.svg}></div>
+            <!-- WJ80 — tap-to-reveal du repère pic/moyenne (même discipline que
+                 le graphe ci-dessus — le survol est invisible au tactile). -->
+            <p id="curve-tap-caption" class="mt-2 min-h-[1.25rem] text-sm text-brass-300" aria-live="polite"></p>
             <div class="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
               <span class="inline-flex items-center gap-2 text-lune-soft">
                 <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-brass-400)" aria-hidden="true"></span>
@@ -1783,6 +1817,16 @@ const signConfig = ok
     // le premier rendu) : on les retraduit ici, à chaque bascule ET après
     // chaque changement d'état, via un petit registre partagé.
     propI18nBusyLabels.forEach((fn) => fn(currentLang));
+    // WJ80 — bascule des TROIS variantes langue pré-rendues du graphe
+    // production-vs-consommation et de la courbe journalière (chacune posée
+    // dans le DOM au premier rendu serveur, voir data-chart-lang/data-curve-lang) :
+    // même logique show/hide que les triplets data-i18n ci-dessus.
+    document.querySelectorAll<HTMLElement>('[data-chart-lang]').forEach((el) => {
+      el.hidden = el.dataset.chartLang !== currentLang;
+    });
+    document.querySelectorAll<HTMLElement>('[data-curve-lang]').forEach((el) => {
+      el.hidden = el.dataset.curveLang !== currentLang;
+    });
   }
   prepareI18n();
   document.getElementById('prop-lang-fr')?.addEventListener('click', () => applyLang('fr'));
@@ -2286,17 +2330,17 @@ const signConfig = ok
       if (document.visibilityState === 'visible') setPdfLoading(false);
     });
   }
-</script>
 
-<script>
   // ── WJ53 — Toggle « payer comptant / paiement échelonné », recalcul en
   // direct (aucun appel réseau : simple division du TTC déjà connu côté
   // client via data-installment-ttc). Utilise installmentSplit (même fonction
   // PURE que testée sous vitest) pour garantir zéro divergence de calcul.
-  import { installmentSplit, formatMAD, type InstallmentMonths } from '../../lib/proposition';
-
-  const installmentSection = document.querySelector<HTMLElement>('[data-installment-ttc]');
-  if (installmentSection) {
+  // Regroupé dans CE script (voir la note WJ34 ci-dessus sur le 4ᵉ <script>
+  // sans import ES qui perdait son chunk client) — un <script> supplémentaire
+  // isolé sur cette route reste un risque connu, pas seulement historique.
+  (function setupInstallmentToggle(): void {
+    const installmentSection = document.querySelector<HTMLElement>('[data-installment-ttc]');
+    if (!installmentSection) return;
     const ttc = Number(installmentSection.dataset.installmentTtc || '0');
     const cashBtn = document.getElementById('installment-cash-btn');
     const splitBtn = document.getElementById('installment-split-btn');
@@ -2339,10 +2383,8 @@ const signConfig = ok
     }
     monthsSelect?.addEventListener('change', recompute);
     recompute();
-  }
-</script>
+  })();
 
-<script>
   // ── WJ56 — « Partager sur WhatsApp » : Web Share API native quand disponible
   // (feuille de partage système — la meilleure expérience sur mobile/tablette,
   // laisse le client choisir WhatsApp OU tout autre canal), repli sur le lien
@@ -2350,8 +2392,9 @@ const signConfig = ok
   // bloque JAMAIS le clic : navigator.share() réussi → preventDefault (évite
   // une double feuille de partage) ; échec/absence → le lien wa.me s'ouvre
   // normalement.
-  const shareBtn = document.getElementById('prop-share-whatsapp') as HTMLAnchorElement | null;
-  if (shareBtn && typeof navigator.share === 'function') {
+  (function setupShareWhatsapp(): void {
+    const shareBtn = document.getElementById('prop-share-whatsapp') as HTMLAnchorElement | null;
+    if (!shareBtn || typeof navigator.share !== 'function') return;
     shareBtn.addEventListener('click', (e) => {
       const url = shareBtn.dataset.shareUrl || shareBtn.href;
       const ref = shareBtn.dataset.shareRef || '';
@@ -2368,7 +2411,54 @@ const signConfig = ok
           window.open(shareBtn.href, '_blank', 'noopener,noreferrer');
         });
     });
-  }
+  })();
+
+  // ── WJ80 — Tap-to-reveal des valeurs du graphe + de la courbe journalière.
+  // Le `<title>` SVG (survol souris) est INVISIBLE au tactile — l'essentiel du
+  // trafic de cette page. Délégation d'événement sur le conteneur visible
+  // (peu importe la langue active) : un tap/clic/Entrée sur une barre ou le
+  // repère pic/moyenne affiche son libellé déjà formaté (data-month/
+  // data-value ou data-peak/data-avg, posés côté serveur — aucun recalcul).
+  (function setupChartTapReveal(): void {
+    function nearestTarget(el: EventTarget | null): HTMLElement | null {
+      if (!(el instanceof Element)) return null;
+      return el.closest<HTMLElement>('[data-chart-bar], [data-curve-scale]');
+    }
+
+    function reveal(target: HTMLElement): void {
+      if (target.matches('[data-chart-bar]')) {
+        const caption = document.getElementById('chart-tap-caption');
+        if (!caption) return;
+        const month = target.dataset.month ?? '';
+        const value = target.dataset.value ?? '';
+        caption.textContent = `${month} · ${value}`;
+      } else if (target.matches('[data-curve-scale]')) {
+        const caption = document.getElementById('curve-tap-caption');
+        if (!caption) return;
+        const peak = target.dataset.peak ?? '';
+        const avg = target.dataset.avg ?? '';
+        caption.textContent = [peak, avg].filter(Boolean).join(' · ');
+      }
+    }
+
+    function wireTapReveal(container: HTMLElement | null): void {
+      if (!container) return;
+      container.addEventListener('click', (e) => {
+        const target = nearestTarget(e.target);
+        if (target) reveal(target);
+      });
+      container.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        const target = nearestTarget(e.target);
+        if (target) {
+          e.preventDefault();
+          reveal(target);
+        }
+      });
+    }
+
+    document.querySelectorAll<HTMLElement>('.chart-svg, .daily-curve-wrap').forEach(wireTapReveal);
+  })();
 </script>
 
 <style>
@@ -2384,6 +2474,16 @@ const signConfig = ok
     width: 100%;
     height: 100%;
   }
+  /* WJ80 — affordance tap-to-reveal : curseur main sur les barres (souris) ;
+     le tactile n'a pas besoin de curseur mais bénéficie du focus-visible
+     ci-dessous (navigation clavier — les barres portent tabindex="0"). */
+  .chart-svg :global([data-chart-bar]) {
+    cursor: pointer;
+  }
+  .chart-svg :global([data-chart-bar]:focus-visible) {
+    outline: 2px solid var(--color-brass-300, #f3cc66);
+    outline-offset: 1px;
+  }
 
   /* WJ16 — courbe journalière : ratio réservé AVANT rendu (viewBox 360×170)
      → zéro CLS. Le SVG enfant occupe 100 % de la largeur. */
@@ -2395,6 +2495,14 @@ const signConfig = ok
     display: block;
     width: 100%;
     height: 100%;
+  }
+  /* WJ80 — même affordance tap-to-reveal sur le repère pic/moyenne. */
+  .daily-curve-wrap :global([data-curve-scale]) {
+    cursor: pointer;
+  }
+  .daily-curve-wrap :global([data-curve-scale]:focus-visible) {
+    outline: 2px solid var(--color-brass-300, #f3cc66);
+    outline-offset: 1px;
   }
 
   /* WJ11 — pad de signature : hauteur fixe (zéro CLS) ; pas de débordement.
