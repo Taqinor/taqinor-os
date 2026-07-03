@@ -26,6 +26,7 @@ from .models import (
     Garage,
     Infraction,
     OrdreReparation,
+    ParametreAmortissementCGI,
     PieceFlotte,
     PlanEntretien,
     Pneumatique,
@@ -2039,6 +2040,67 @@ def amortissement_vehicule(company, vehicule_id):
         'valeur_nette_comptable': round(vnc, 2),
         'derniere_annee': derniere_annee,
         'amortissable': True,
+    }
+
+
+# ── XFLT9 — Plafond CGI d'amortissement des véhicules de tourisme ──────────────
+
+def part_non_deductible_amortissement(company, vehicule_id):
+    """XFLT9 — Part d'amortissement NON déductible fiscalement (plafond CGI)
+    (lecture seule).
+
+    Pour un véhicule ``type_fiscal='tourisme'`` (XFLT4) rattaché à une
+    ``compta.Immobilisation`` (FLOTTE30, via ``amortissement_vehicule``) :
+    quand la valeur d'acquisition TTC dépasse le plafond CGI de la société
+    (``ParametreAmortissementCGI``, défaut 400 000 DH TTC, LF 2025), la part
+    de l'amortissement CUMULÉ correspondant à l'excédent n'est pas déductible
+    fiscalement — ``part_non_deductible = cumul_amortissements ×
+    (valeur_origine − plafond) / valeur_origine``.
+
+    Les véhicules ``type_fiscal='utilitaire'`` (ou sans type fiscal renseigné)
+    sont EXONÉRÉS du plafond → ``part_non_deductible = 0``. Un véhicule sans
+    immobilisation liée (``amortissable=False``) renvoie aussi 0. La flotte
+    LIT compta par sélecteurs (``amortissement_vehicule``) — elle n'écrit
+    JAMAIS le module comptable.
+
+    Retourne un dict LECTURE SEULE ::
+
+        {
+          'vehicule_id', 'type_fiscal', 'plafond_ttc',
+          'valeur_origine', 'cumul_amortissements', 'part_non_deductible',
+          'assujetti',   # True si le plafond s'applique (tourisme + amortissable)
+        }
+
+    Aucune écriture, aucun effet de bord.
+    """
+    vehicule = Vehicule.objects.filter(
+        company=company, id=vehicule_id).first()
+    type_fiscal = getattr(vehicule, 'type_fiscal', '') or ''
+    plafond = ParametreAmortissementCGI.plafond_pour(company)
+
+    amort = amortissement_vehicule(company, vehicule_id)
+    valeur_origine = amort.get('valeur_origine') or 0.0
+    cumul = amort.get('cumul_amortissements') or 0.0
+
+    assujetti = (
+        vehicule is not None
+        and type_fiscal == Vehicule.TypeFiscal.TOURISME
+        and amort.get('amortissable')
+    )
+
+    part_non_deductible = 0.0
+    if assujetti and valeur_origine > plafond and valeur_origine > 0:
+        part_non_deductible = round(
+            cumul * (valeur_origine - plafond) / valeur_origine, 2)
+
+    return {
+        'vehicule_id': vehicule_id,
+        'type_fiscal': type_fiscal,
+        'plafond_ttc': plafond,
+        'valeur_origine': valeur_origine,
+        'cumul_amortissements': cumul,
+        'part_non_deductible': part_non_deductible,
+        'assujetti': bool(assujetti),
     }
 
 

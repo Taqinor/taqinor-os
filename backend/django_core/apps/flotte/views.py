@@ -184,11 +184,25 @@ class VehiculeViewSet(_FlotteBaseViewSet):
         Lit l'amortissement comptable lié au véhicule (FLOTTE30) via
         ``selectors.amortissement_vehicule`` (lecture cross-app du module compta,
         jamais d'écriture). Lecture seule, scopée société.
+
+        XFLT9 — Ajoute ``part_non_deductible`` : la part de l'amortissement
+        NON déductible fiscalement quand un véhicule ``type_fiscal=tourisme``
+        dépasse le plafond CGI de la société (voir
+        ``selectors.part_non_deductible_amortissement``) — 0 pour un
+        utilitaire ou un véhicule sous le plafond.
         """
         vehicule = self.get_object()
-        from .selectors import amortissement_vehicule
-        return Response(
-            amortissement_vehicule(request.user.company, vehicule.id))
+        from .selectors import (
+            amortissement_vehicule,
+            part_non_deductible_amortissement,
+        )
+        data = amortissement_vehicule(request.user.company, vehicule.id)
+        plafond = part_non_deductible_amortissement(
+            request.user.company, vehicule.id)
+        data['part_non_deductible'] = plafond['part_non_deductible']
+        data['plafond_ttc'] = plafond['plafond_ttc']
+        data['assujetti_plafond_cgi'] = plafond['assujetti']
+        return Response(data)
 
     @action(detail=True, methods=['get'])
     def ledger(self, request, pk=None):

@@ -3281,3 +3281,51 @@ class SignalementVehicule(models.Model):
     def __str__(self):
         return (f'Signalement {self.get_gravite_display()} — '
                 f'{self.actif_flotte} [{self.get_statut_display()}]')
+
+
+# ── XFLT9 — Plafond CGI d'amortissement des véhicules de tourisme ──────────────
+
+class ParametreAmortissementCGI(models.Model):
+    """Paramètre société du plafond CGI d'amortissement des véhicules de
+    tourisme (XFLT9).
+
+    Un seul enregistrement par société (``OneToOne``-like via
+    ``unique=True``) : la valeur d'acquisition TTC des véhicules
+    ``type_fiscal='tourisme'`` au-delà de ``plafond_ttc`` génère une part
+    d'amortissement NON déductible fiscalement (article CGI, LF 2025 :
+    plafond par défaut 400 000 DH TTC). Les véhicules utilitaires sont
+    EXONÉRÉS du plafond (jamais de part non déductible).
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête).
+    """
+
+    PLAFOND_DEFAUT = 400000
+
+    company = models.OneToOneField(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_parametre_amortissement_cgi',
+        verbose_name='Société',
+    )
+    plafond_ttc = models.DecimalField(
+        max_digits=12, decimal_places=2, default=PLAFOND_DEFAUT,
+        verbose_name='Plafond CGI (DH TTC)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Paramètre d'amortissement CGI"
+        verbose_name_plural = "Paramètres d'amortissement CGI"
+
+    def __str__(self):
+        return f'Plafond CGI {self.company} : {self.plafond_ttc} DH TTC'
+
+    @classmethod
+    def plafond_pour(cls, company):
+        """XFLT9 — Plafond CGI (DH TTC) de la société, ou la valeur par
+        défaut si non paramétré. Lecture seule."""
+        param = cls.objects.filter(company=company).first()
+        if param is not None:
+            return float(param.plafond_ttc)
+        return float(cls.PLAFOND_DEFAUT)
