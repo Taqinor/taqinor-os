@@ -41,6 +41,7 @@ from .views import (
     NoteDeFraisViewSet,
     OrdreMissionViewSet,
     OuverturePosteViewSet,
+    PeriodeFermetureViewSet,
     PermisConduireViewSet,
     PointageViewSet,
     PortailSelfServiceViewSet,
@@ -74,6 +75,7 @@ router.register(
 router.register(r'types-absence', TypeAbsenceViewSet)
 router.register(r'soldes-conge', SoldeCongeViewSet)
 router.register(r'demandes-conge', DemandeCongeViewSet)
+router.register(r'periodes-fermeture', PeriodeFermetureViewSet)
 router.register(r'pointages', PointageViewSet)
 router.register(r'devices-kiosque', DeviceKiosqueViewSet)
 router.register(r'devices-employe-map', EmployeDeviceMapViewSet)

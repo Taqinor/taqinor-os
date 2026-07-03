@@ -4520,3 +4520,53 @@ class EmployeDeviceMap(models.Model):
 
     def __str__(self):
         return f'{self.device_user_id} → {self.employe.matricule}'
+
+
+class PeriodeFermeture(models.Model):
+    """Fermeture collective / congé imposé (XRH14) — pont, fermeture annuelle.
+
+    À la VALIDATION (action ``appliquer``), génère une ``DemandeConge``
+    VALIDÉE par employé concerné (décompte via les règles existantes de
+    ``services.calculer_jours_demande`` + ``services.valider_demande``),
+    IDEMPOTENT (ré-appliquer ne duplique pas). ``departements`` (M2M
+    optionnel) restreint la fermeture : vide = TOUTE la société.
+
+    Multi-société : ``company`` posée côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_periodes_fermeture',
+        verbose_name='Société',
+    )
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    date_debut = models.DateField(verbose_name='Du')
+    date_fin = models.DateField(verbose_name='Au')
+    type_absence = models.ForeignKey(
+        TypeAbsence,
+        on_delete=models.PROTECT,
+        related_name='periodes_fermeture',
+        verbose_name="Type d'absence",
+    )
+    # Vide = toute la société (comportement par défaut).
+    departements = models.ManyToManyField(
+        Departement, blank=True, related_name='periodes_fermeture',
+        verbose_name='Départements')
+    appliquee = models.BooleanField(default=False, verbose_name='Appliquée')
+    appliquee_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Appliquée le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Fermeture collective'
+        verbose_name_plural = 'Fermetures collectives'
+        ordering = ['-date_debut']
+        indexes = [
+            models.Index(
+                fields=['company', 'date_debut', 'date_fin'],
+                name='rh_fermeture_comp_dates_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.libelle} ({self.date_debut}→{self.date_fin})'

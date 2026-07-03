@@ -1619,3 +1619,36 @@ def cockpit_rh(company, *, inclure_masse_salariale=False):
         result['masse_salariale_mensuelle'] = _masse_salariale_mensuelle(
             company)
     return result
+
+
+def jours_fermeture_exclus(company, employe, date_debut, date_fin):
+    """XRH14 — jours de ``date_debut``→``date_fin`` déjà couverts par une
+    fermeture collective (chevauchant le département de l'employé, ou toute
+    la société si la fermeture n'a pas de département). Renvoie l'ensemble
+    des dates (``set`` de ``date``) à EXCLURE du décompte d'une nouvelle
+    demande de congé qui chevauche cette période — évite le double-décompte.
+    Lecture seule, société scopée.
+    """
+    from datetime import timedelta
+
+    from .models import PeriodeFermeture
+
+    fermetures = (
+        PeriodeFermeture.objects
+        .filter(company=company, date_debut__lte=date_fin,
+                date_fin__gte=date_debut)
+        .prefetch_related('departements'))
+
+    exclues = set()
+    for fermeture in fermetures:
+        departements = list(fermeture.departements.all())
+        if departements and employe.departement_id not in [
+                d.id for d in departements]:
+            continue
+        debut = max(fermeture.date_debut, date_debut)
+        fin = min(fermeture.date_fin, date_fin)
+        jour = debut
+        while jour <= fin:
+            exclues.add(jour)
+            jour += timedelta(days=1)
+    return exclues

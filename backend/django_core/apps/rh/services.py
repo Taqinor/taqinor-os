@@ -988,3 +988,57 @@ def importer_pointages_csv(company, rows):
         crees.append({'ligne': i, 'device_user_id': device_user_id})
 
     return {'crees': crees, 'doublons': doublons, 'erreurs': erreurs}
+
+
+# ── XRH14 — fermetures collectives / congés imposés ─────────────────────────
+
+def _motif_fermeture(fermeture):
+    return f'[Fermeture collective #{fermeture.id}] {fermeture.libelle}'
+
+
+@transaction.atomic
+def appliquer_fermeture(fermeture):
+    """Applique une ``PeriodeFermeture`` : génère une ``DemandeConge`` VALIDÉE
+    par employé concerné (IDEMPOTENT — ré-appliquer ne duplique pas).
+
+    ``departements`` (M2M) restreint aux employés de ces départements ; vide =
+    toute la société. Un employé qui a DÉJÀ une demande générée par CETTE
+    fermeture (marquée via ``motif``) est sauté. Renvoie la liste des
+    ``DemandeConge`` créées (nouvelles seulement).
+    """
+    from .models import DemandeConge, DossierEmploye
+
+    employes_qs = DossierEmploye.objects.filter(
+        company=fermeture.company, statut=DossierEmploye.Statut.ACTIF)
+    departements = list(fermeture.departements.all())
+    if departements:
+        employes_qs = employes_qs.filter(departement__in=departements)
+
+    motif = _motif_fermeture(fermeture)
+    deja_generes = set(
+        DemandeConge.objects.filter(
+            company=fermeture.company, motif=motif)
+        .values_list('employe_id', flat=True))
+
+    creees = []
+    for employe in employes_qs:
+        if employe.id in deja_generes:
+            continue
+        jours = calculer_jours_demande(
+            fermeture.type_absence, fermeture.date_debut, fermeture.date_fin)
+        demande = DemandeConge.objects.create(
+            company=fermeture.company,
+            employe=employe,
+            type_absence=fermeture.type_absence,
+            date_debut=fermeture.date_debut,
+            date_fin=fermeture.date_fin,
+            jours=jours,
+            motif=motif,
+        )
+        valider_demande(demande)
+        creees.append(demande)
+
+    fermeture.appliquee = True
+    fermeture.appliquee_le = timezone.now()
+    fermeture.save(update_fields=['appliquee', 'appliquee_le'])
+    return creees

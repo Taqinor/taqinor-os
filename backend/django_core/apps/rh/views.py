@@ -47,6 +47,7 @@ from .models import (
     Departement,
     DeviceKiosque,
     EmployeDeviceMap,
+    PeriodeFermeture,
     ReglageRH,
     DocumentEmploye,
     DossierEmploye,
@@ -102,6 +103,7 @@ from .serializers import (
     DepartementSerializer,
     DeviceKiosqueSerializer,
     EmployeDeviceMapSerializer,
+    PeriodeFermetureSerializer,
     ReglageRHSerializer,
     DocumentEmployeSerializer,
     DossierActivitySerializer,
@@ -1080,6 +1082,34 @@ class PointageViewSet(_RhBaseViewSet):
             pointage.note = note
         pointage.save()
         return Response(self.get_serializer(pointage).data)
+
+
+class PeriodeFermetureViewSet(_RhBaseViewSet):
+    """Fermetures collectives / congés imposés (XRH14).
+
+    Société scopée + Administrateur/Responsable. ``company`` posée CÔTÉ
+    SERVEUR. ``departements`` (M2M) restreint la fermeture ; vide = toute
+    la société.
+
+    Action :
+    * ``POST .../{id}/appliquer/`` — génère les demandes de congé VALIDÉES
+      pour tous les employés concernés (idempotent, ré-appliquer ne duplique
+      jamais).
+    """
+    queryset = PeriodeFermeture.objects.prefetch_related(
+        'departements').select_related('type_absence').all()
+    serializer_class = PeriodeFermetureSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_debut', 'date_creation']
+
+    @action(detail=True, methods=['post'], url_path='appliquer')
+    def appliquer(self, request, pk=None):
+        fermeture = self.get_object()
+        creees = services.appliquer_fermeture(fermeture)
+        return Response({
+            'appliquee': True,
+            'demandes_creees': len(creees),
+        }, status=status.HTTP_200_OK)
 
 
 class EmployeDeviceMapViewSet(_RhBaseViewSet):

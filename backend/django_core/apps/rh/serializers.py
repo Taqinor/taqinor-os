@@ -28,6 +28,7 @@ from .models import (
     DeviceKiosque,
     DocumentEmploye,
     EmployeDeviceMap,
+    PeriodeFermeture,
     ReglageRH,
     DossierActivity,
     DossierEmploye,
@@ -2071,6 +2072,23 @@ class CorrectionPointageSerializer(serializers.ModelSerializer):
 
     def get_auteur_nom(self, obj):
         return getattr(obj.auteur, 'username', '') if obj.auteur_id else ''
+
+
+class PeriodeFermetureSerializer(serializers.ModelSerializer):
+    """Fermeture collective / congé imposé (XRH14). ``company`` posée côté
+    serveur ; ``appliquee``/``appliquee_le`` en lecture seule (posés par
+    l'action ``appliquer``)."""
+    type_absence_code = serializers.CharField(
+        source='type_absence.code', read_only=True)
+
+    class Meta:
+        model = PeriodeFermeture
+        fields = [
+            'id', 'libelle', 'date_debut', 'date_fin', 'type_absence',
+            'type_absence_code', 'departements', 'appliquee',
+            'appliquee_le', 'date_creation',
+        ]
+        read_only_fields = ['appliquee', 'appliquee_le', 'date_creation']
 
 
 class EmployeDeviceMapSerializer(serializers.ModelSerializer):
