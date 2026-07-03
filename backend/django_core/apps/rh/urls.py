@@ -31,6 +31,7 @@ from .views import (
     FeuilleTempsViewSet,
     HabilitationViewSet,
     HeuresSuppViewSet,
+    HoraireTravailViewSet,
     IncidentPresenceViewSet,
     ModeleIntegrationViewSet,
     NoteDeFraisViewSet,
@@ -56,6 +57,7 @@ from .views import (
 router = DefaultRouter()
 router.register(r'departements', DepartementViewSet)
 router.register(r'postes', PosteViewSet)
+router.register(r'horaires-travail', HoraireTravailViewSet)
 router.register(r'employes', DossierEmployeViewSet)
 router.register(r'remunerations', RemunerationViewSet)
 router.register(r'documents', DocumentEmployeViewSet)

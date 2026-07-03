@@ -82,6 +82,67 @@ class Poste(models.Model):
         return self.intitule
 
 
+class HoraireTravail(models.Model):
+    """Gabarit d'horaire de travail (XRH8) — 44 h standard, Ramadan, saisonnier.
+
+    Le seuil HS journalier de ``HeuresSupp`` et le décompte présence supposent
+    aujourd'hui un horaire implicite (8 h/j). Ce modèle rend l'horaire EXPLICITE
+    et périodable : une société peut activer un horaire Ramadan (ex. 6 h/j) sur
+    une fenêtre ``date_debut``→``date_fin``, avec retour automatique au standard
+    une fois la fenêtre passée (aucune ligne active à cette date-là).
+
+    ``heures_semaine``/``heures_jour_defaut`` bornent la durée normale ;
+    ``heures_jour_defaut`` alimente directement le seuil HS via
+    ``selectors.horaire_actif``. ``date_debut``/``date_fin`` NULL = horaire
+    permanent (le cas standard 44 h) ; une fenêtre bornée cible un horaire
+    temporaire (Ramadan, saison haute…).
+    """
+    class TypeHoraire(models.TextChoices):
+        STANDARD_44H = 'standard_44h', 'Standard 44h'
+        RAMADAN = 'ramadan', 'Ramadan'
+        SAISONNIER = 'saisonnier', 'Saisonnier'
+        TEMPS_PARTIEL = 'temps_partiel', 'Temps partiel'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_horaires_travail',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=120, verbose_name='Nom')
+    heures_semaine = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('44'),
+        verbose_name='Heures / semaine')
+    heures_jour_defaut = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('8'),
+        verbose_name='Heures / jour (défaut)')
+    type_horaire = models.CharField(
+        max_length=15, choices=TypeHoraire.choices,
+        default=TypeHoraire.STANDARD_44H, verbose_name="Type d'horaire")
+    date_debut = models.DateField(
+        null=True, blank=True,
+        verbose_name='Début de validité (vide = permanent)')
+    date_fin = models.DateField(
+        null=True, blank=True,
+        verbose_name='Fin de validité (vide = permanent)')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Horaire de travail'
+        verbose_name_plural = 'Horaires de travail'
+        ordering = ['nom']
+        indexes = [
+            models.Index(
+                fields=['company', 'date_debut', 'date_fin'],
+                name='rh_horaire_comp_periode_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.nom} ({self.get_type_horaire_display()})'
+
+
 class DossierEmploye(models.Model):
     """Fiche employé maître (DC29) — source de vérité unique du collaborateur.
 
@@ -169,6 +230,16 @@ class DossierEmploye(models.Model):
         null=True, blank=True,
         related_name='employes',
         verbose_name='Département',
+    )
+    # XRH8 — horaire de travail assigné (nullable : le seuil HS par défaut
+    # 8 h/j s'applique tant qu'aucun horaire n'est assigné, cf.
+    # ``selectors.horaire_actif``).
+    horaire = models.ForeignKey(
+        HoraireTravail,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='employes',
+        verbose_name='Horaire de travail',
     )
     date_embauche = models.DateField(
         null=True, blank=True, verbose_name="Date d'embauche")

@@ -199,14 +199,26 @@ def calculer_majoration(heures_travaillees, heures_nuit=0,
     }
 
 
-def appliquer_majoration(heures_supp):
+def appliquer_majoration(heures_supp, derive_seuil_from_horaire=False):
     """Calcule et POSE les décomptes majorés sur une instance ``HeuresSupp``.
 
     Utilise ``calculer_majoration`` avec le ``taux_horaire`` de l'entrée (ou, à
     défaut, le ``cout_horaire`` interne du dossier employé). Renseigne
     ``heures_normales``, ``hs_25``, ``hs_50``, ``hs_100``, ``taux_horaire`` et
     ``montant_majore`` sur l'objet (non sauvegardé — l'appelant ``save()``).
+
+    XRH8 — si ``derive_seuil_from_horaire`` est vrai (l'appelant n'a PAS fourni
+    explicitement ``seuil_journalier`` dans la requête), le seuil journalier
+    est dérivé de l'horaire ACTIF de l'employé à la date de l'entrée
+    (``selectors.horaire_actif``) : un horaire Ramadan à 6 h/j abaisse le
+    seuil sur sa fenêtre de validité ; hors fenêtre (ou sans horaire assigné),
+    le seuil par défaut du modèle (8 h) reste inchangé — retour automatique.
     """
+    if derive_seuil_from_horaire and heures_supp.employe_id:
+        from . import selectors
+        horaire = selectors.horaire_actif(heures_supp.employe, heures_supp.date)
+        if horaire is not None:
+            heures_supp.seuil_journalier = horaire.heures_jour_defaut
     taux = heures_supp.taux_horaire
     if taux is None and heures_supp.employe_id:
         taux = heures_supp.employe.cout_horaire

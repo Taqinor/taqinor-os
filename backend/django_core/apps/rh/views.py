@@ -53,6 +53,7 @@ from .models import (
     FeuilleTemps,
     Habilitation,
     HeuresSupp,
+    HoraireTravail,
     IncidentPresence,
     ModeleIntegration,
     NoteDeFrais,
@@ -105,6 +106,7 @@ from .serializers import (
     FeuilleTempsSerializer,
     HabilitationSerializer,
     HeuresSuppSerializer,
+    HoraireTravailSerializer,
     IncidentPresenceSerializer,
     MesInfosSerializer,
     ModeleIntegrationSerializer,
@@ -505,6 +507,25 @@ class PosteViewSet(_RhBaseViewSet):
         return qs
 
 
+class HoraireTravailViewSet(_RhBaseViewSet):
+    """Gabarits d'horaire de travail (XRH8) — 44 h standard, Ramadan,
+    saisonnier. Recherche par nom ; ``?actif=1`` filtre les actifs."""
+    queryset = HoraireTravail.objects.all()
+    serializer_class = HoraireTravailSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom']
+    ordering_fields = ['nom', 'date_debut']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        actif = self.request.query_params.get('actif')
+        if actif in ('1', 'true', 'True'):
+            qs = qs.filter(actif=True)
+        elif actif in ('0', 'false', 'False'):
+            qs = qs.filter(actif=False)
+        return qs
+
+
 class ElementSortieViewSet(_RhBaseViewSet):
     """Checklist d'offboarding (FG161) — éléments à récupérer au départ.
 
@@ -803,15 +824,24 @@ class HeuresSuppViewSet(_RhBaseViewSet):
             return None
 
     def perform_create(self, serializer):
-        """Company posée côté serveur ; majoration calculée côté serveur."""
+        """Company posée côté serveur ; majoration calculée côté serveur.
+
+        XRH8 — si le corps ne fournit PAS explicitement ``seuil_journalier``,
+        le seuil est dérivé de l'horaire actif de l'employé à la date de
+        l'entrée (Ramadan/saisonnier abaisse le seuil sur sa fenêtre).
+        """
+        derive = 'seuil_journalier' not in self.request.data
         instance = serializer.save(company=self.request.user.company)
-        services.appliquer_majoration(instance)
+        services.appliquer_majoration(
+            instance, derive_seuil_from_horaire=derive)
         instance.save()
 
     def perform_update(self, serializer):
-        """Recalcule la majoration à chaque mise à jour."""
+        """Recalcule la majoration à chaque mise à jour (même règle XRH8)."""
+        derive = 'seuil_journalier' not in self.request.data
         instance = serializer.save()
-        services.appliquer_majoration(instance)
+        services.appliquer_majoration(
+            instance, derive_seuil_from_horaire=derive)
         instance.save()
 
     @action(detail=False, methods=['get'], url_path='export-paie')

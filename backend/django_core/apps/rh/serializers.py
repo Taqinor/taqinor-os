@@ -37,6 +37,7 @@ from .models import (
     FeuilleTemps,
     Habilitation,
     HeuresSupp,
+    HoraireTravail,
     IncidentPresence,
     InscriptionFormation,
     LigneRisqueChantier,
@@ -110,15 +111,36 @@ class DossierEmployeSerializer(serializers.ModelSerializer):
             # via l'action ``marquer-declare`` ; en écriture directe reste
             # possible pour ``non_requis`` par un admin, mais jamais la date).
             'declaration_entree_statut', 'declaration_entree_date',
+            # XRH8 — horaire de travail assigné.
+            'horaire',
             'date_creation',
         ]
         read_only_fields = ['date_creation', 'declaration_entree_date']
+
+    def validate_horaire(self, value):
+        return _meme_societe(self, value, 'Horaire de travail')
 
     def validate_departement(self, value):
         return _meme_societe(self, value, 'Département')
 
     def validate_poste_ref(self, value):
         return _meme_societe(self, value, 'Poste')
+
+
+class HoraireTravailSerializer(serializers.ModelSerializer):
+    """Gabarit d'horaire de travail (XRH8) — 44 h standard, Ramadan,
+    saisonnier. ``date_debut``/``date_fin`` vides = permanent."""
+    type_horaire_display = serializers.CharField(
+        source='get_type_horaire_display', read_only=True)
+
+    class Meta:
+        model = HoraireTravail
+        fields = [
+            'id', 'nom', 'heures_semaine', 'heures_jour_defaut',
+            'type_horaire', 'type_horaire_display',
+            'date_debut', 'date_fin', 'actif', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
 
 
 class DossierActivitySerializer(serializers.ModelSerializer):
