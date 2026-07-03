@@ -198,6 +198,11 @@ class TicketSerializer(serializers.ModelSerializer):
     sla_breach = serializers.BooleanField(read_only=True)
     sla_due_at = serializers.DateField(read_only=True)
     date_premiere_reponse = serializers.DateTimeField(read_only=True)
+    # XSAV5 — échéance SLA EFFECTIVE (décalée du temps de pause), et pause.
+    sla_due_at_effectif = serializers.SerializerMethodField()
+    en_attente_client = serializers.BooleanField(read_only=True)
+    attente_depuis = serializers.DateField(read_only=True)
+    jours_pause = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = Ticket
@@ -210,6 +215,9 @@ class TicketSerializer(serializers.ModelSerializer):
             # FG88 — date_tournee est posée par l'action de planification de
             # tournée (bulk-assign), jamais directement du corps de requête.
             'date_tournee',
+            # XSAV5 — la pause se pilote via les actions dédiées, jamais en
+            # écriture directe du corps de requête.
+            'en_attente_client', 'attente_depuis', 'jours_pause',
         ]
         # client peut être déduit côté serveur d'un équipement lié (ticket
         # ouvert depuis le parc) ; sinon il reste exigé — voir
@@ -242,6 +250,10 @@ class TicketSerializer(serializers.ModelSerializer):
     def get_nb_interventions(self, obj):
         return obj.interventions.count()
 
+    def get_sla_due_at_effectif(self, obj):
+        due = obj.sla_due_at_effectif()
+        return due.isoformat() if due else None
+
 
 # ── FG81 — Réglages SLA ────────────────────────────────────────────────────────
 
@@ -251,7 +263,8 @@ class SavSlaSettingsSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'sla_response_days', 'sla_resolution_days',
             'sla_par_priorite', 'sla_breach_enabled',
-            'notifications_client_sav', 'date_modification',
+            'notifications_client_sav', 'sla_jours_ouvres',
+            'date_modification',
         ]
         read_only_fields = ['date_modification']
 

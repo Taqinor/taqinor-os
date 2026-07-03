@@ -270,7 +270,8 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         if self.action in READ_ACTIONS + ['historique', 'rapport_pdf', 'lien_client']:
             return [HasPermissionOrLegacy('sav_voir')()]
         elif self.action in WRITE_ACTIONS + [
-                'noter', 'annuler', 'reactiver', 'creer_devis']:
+                'noter', 'annuler', 'reactiver', 'creer_devis',
+                'attente_client', 'reprendre']:
             return [HasPermissionOrLegacy('sav_gerer')()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
@@ -302,11 +303,19 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
                 serializer.validated_data['client'] = client
 
     def _compute_sla_due_at(self, company, priorite, date_ouverture):
-        """FG81 — Calcule sla_due_at depuis les réglages société (ou None)."""
+        """FG81 — Calcule sla_due_at depuis les réglages société (ou None).
+
+        XSAV5 — quand ``sla_jours_ouvres`` est activé, l'échéance avance de
+        ``resolution_days`` JOURS OUVRÉS (via ``core.calendar``, jours ouvrés +
+        fériés marocains) plutôt qu'en jours calendaires. OFF (défaut) =
+        comportement calendaire byte-identique à avant XSAV5."""
         sla = SavSlaSettings.get(company)
         if not sla.sla_breach_enabled:
             return None
         _, resolution_days = sla.days_for(priorite)
+        if sla.sla_jours_ouvres:
+            from core.calendar import add_working_days
+            return add_working_days(date_ouverture, resolution_days)
         return date_ouverture + timedelta(days=resolution_days)
 
     def perform_create(self, serializer):
@@ -595,6 +604,39 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             item.note = request.data['note'] or ''
         item.save()
         return Response(TicketChecklistItemSerializer(item).data)
+
+    @action(detail=True, methods=['post'], url_path='attente-client',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def attente_client(self, request, pk=None):
+        """XSAV5 — Démarre la pause « en attente client » (idempotent).
+
+        Pendant la pause, l'échéance SLA effective (``sla_due_at_effectif``)
+        avance d'autant de jours — l'horloge SLA ignore le temps d'attente."""
+        ticket = self.get_object()
+        if not ticket.en_attente_client:
+            ticket.mettre_en_attente_client()
+            ticket.save(update_fields=['en_attente_client', 'attente_depuis'])
+            activity.log_note(ticket, request.user, 'Mis en attente client')
+        return Response(
+            TicketSerializer(ticket, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='reprendre',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def reprendre(self, request, pk=None):
+        """XSAV5 — Clôt la pause « en attente client » (idempotent).
+
+        Cumule la durée de la pause dans ``jours_pause`` puis recalcule
+        ``sla_breach`` avec la nouvelle échéance effective."""
+        ticket = self.get_object()
+        if ticket.en_attente_client:
+            ticket.reprendre_apres_attente()
+            ticket.save(update_fields=[
+                'en_attente_client', 'attente_depuis', 'jours_pause'])
+            ticket.recompute_sla_breach()
+            ticket.save(update_fields=['sla_breach'])
+            activity.log_note(ticket, request.user, "Reprise après attente client")
+        return Response(
+            TicketSerializer(ticket, context={'request': request}).data)
 
     @action(detail=True, methods=['post'], url_path='creer-devis',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])

@@ -62,6 +62,11 @@ class SavSlaSettings(models.Model):
     # résolu). Défaut OFF : comportement actuel inchangé tant que la société ne
     # l'active pas explicitement.
     notifications_client_sav = models.BooleanField(default=False)
+    # XSAV5 — échéance SLA calculée en JOURS OUVRÉS (via core/calendar.py :
+    # jours ouvrés + fériés marocains) plutôt qu'en jours calendaires. Défaut
+    # OFF : comportement actuel (calendaire) inchangé tant que la société ne
+    # l'active pas explicitement.
+    sla_jours_ouvres = models.BooleanField(default=False)
     date_modification = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -331,6 +336,14 @@ class Ticket(models.Model):
     # Mis à jour par le scan journalier + à chaque changement de statut.
     sla_breach = models.BooleanField(default=False)
 
+    # ── XSAV5 — pause « en attente client » (l'horloge SLA ignore ce temps) ──
+    en_attente_client = models.BooleanField(default=False)
+    attente_depuis = models.DateField(null=True, blank=True)
+    # Cumul de jours déjà passés en pause (mis à jour à la REPRISE, pas en
+    # continu) — sert à décaler l'échéance affichée sans perdre l'historique
+    # des pauses précédentes.
+    jours_pause = models.PositiveIntegerField(default=0)
+
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, related_name='tickets_crees',
@@ -385,14 +398,62 @@ class Ticket(models.Model):
         return self.sous_garantie
 
     def recompute_sla_breach(self):
-        """Recalcule sla_breach : True si sla_due_at dépassé + ticket ouvert."""
+        """Recalcule sla_breach : True si sla_due_at dépassé + ticket ouvert.
+
+        XSAV5 — l'échéance affichée (donc le calcul de dépassement) ignore le
+        temps déjà passé en pause « en attente client » : on décale la
+        comparaison de ``jours_pause`` jours (+ la pause EN COURS, si active,
+        comptée jusqu'à aujourd'hui). Un ticket qui n'a jamais été mis en
+        pause (jours_pause=0, en_attente_client=False) est comparé tel quel —
+        byte-identique au comportement d'avant XSAV5.
+        """
         if not self.sla_due_at:
             self.sla_breach = False
             return
         if self.statut not in self.OPEN_STATUTS or self.annule:
             self.sla_breach = False
             return
-        self.sla_breach = timezone.localdate() > self.sla_due_at
+        today = timezone.localdate()
+        due = self.sla_due_at_effectif(today=today)
+        self.sla_breach = today > due
+
+    def _pause_en_cours_jours(self, today=None):
+        """XSAV5 — jours déjà écoulés dans la pause EN COURS (0 si aucune)."""
+        if not self.en_attente_client or not self.attente_depuis:
+            return 0
+        today = today or timezone.localdate()
+        return max(0, (today - self.attente_depuis).days)
+
+    def sla_due_at_effectif(self, today=None):
+        """XSAV5 — échéance SLA décalée du temps déjà passé en pause.
+
+        ``sla_due_at`` reste la valeur brute posée à la création (jamais
+        réécrite) ; cette méthode ajoute ``jours_pause`` (pauses déjà closes)
+        + la pause en cours (si active) pour obtenir l'échéance EFFECTIVE.
+        Sans jamais avoir été mis en pause, renvoie ``sla_due_at`` inchangé.
+        """
+        if not self.sla_due_at:
+            return self.sla_due_at
+        total_pause = self.jours_pause + self._pause_en_cours_jours(today=today)
+        if total_pause <= 0:
+            return self.sla_due_at
+        return self.sla_due_at + timezone.timedelta(days=total_pause)
+
+    def mettre_en_attente_client(self, today=None):
+        """XSAV5 — démarre la pause « en attente client » (idempotent)."""
+        if self.en_attente_client:
+            return
+        self.en_attente_client = True
+        self.attente_depuis = today or timezone.localdate()
+
+    def reprendre_apres_attente(self, today=None):
+        """XSAV5 — clôt la pause en cours et cumule sa durée dans
+        ``jours_pause`` (idempotent : sans pause active, ne fait rien)."""
+        if not self.en_attente_client:
+            return
+        self.jours_pause += self._pause_en_cours_jours(today=today)
+        self.en_attente_client = False
+        self.attente_depuis = None
 
     def ensure_share_token(self):
         """FG86 — Génère (lazily) et renvoie le jeton de partage public.
