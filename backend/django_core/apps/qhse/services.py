@@ -11,11 +11,12 @@ from decimal import Decimal
 from django.db import transaction
 
 from .models import (
-    ActionCorrectivePreventive, CauseIncident, ControleReception,
+    ActionCorrectivePreventive, CauseIncident, CheckinSecurite,
+    ControleReception,
     DeclarationCnss, Derogation, EtapeDeclarationAt, NonConformite,
     NotationFinChantier, PlanControleReception, PlanInspectionChantier,
     PointControleModele,
-    ProcedureQualite, ReponseCritere, ReleveControle,
+    ProcedureQualite, ReleveThermographie, ReponseCritere, ReleveControle,
 )
 
 
@@ -1014,3 +1015,124 @@ def lever_ncr_controle_reception(controle):
     controle.non_conformite = ncr
     controle.save(update_fields=['non_conformite'])
     return ncr
+
+
+# ── XFSM14 — Thermographie IR : NCR auto sur sévérité maximale ─────────────
+
+@transaction.atomic
+def enregistrer_releve_thermographie(
+        *, company, equipement_ref, delta_t=None,
+        campagne=ReleveThermographie.Campagne.SUIVI,
+        chantier_id=None, attachment_id=None,
+        seuil_a_surveiller=None, seuil_intervention=None,
+        releve_par=None, note=''):
+    """Crée un relevé de thermographie et lève une NCR si sévérité maximale.
+
+    Le classement (``classe_severite``) est dérivé automatiquement du
+    ``delta_t`` et des seuils au ``save()``. Une classe ``intervention_requise``
+    déclenche la levée d'une NCR liée (idempotent par relevé : chaque relevé ne
+    lève sa NCR qu'une fois, gérée par l'appelant qui ne repasse pas par ici sur
+    un relevé déjà persisté).
+    """
+    releve = ReleveThermographie(
+        company=company, equipement_ref=equipement_ref, delta_t=delta_t,
+        campagne=campagne, chantier_id=chantier_id,
+        attachment_id=attachment_id, releve_par=releve_par, note=note,
+    )
+    if seuil_a_surveiller is not None:
+        releve.seuil_a_surveiller = seuil_a_surveiller
+    if seuil_intervention is not None:
+        releve.seuil_intervention = seuil_intervention
+    releve.save()
+
+    if (releve.classe_severite == ReleveThermographie.Severite.INTERVENTION_REQUISE
+            and releve.ncr_id is None):
+        ncr = NonConformite.objects.create(
+            company=company,
+            titre=f'[Thermographie IR] {equipement_ref}',
+            description=(
+                note or
+                f'Point chaud détecté (ΔT={delta_t}°C) sur {equipement_ref} — '
+                f'intervention requise (IEC 62446-3).'),
+            origine='Thermographie IR',
+            gravite=NonConformite.Gravite.MAJEURE,
+            chantier_id=chantier_id,
+        )
+        releve.ncr = ncr
+        releve.save(update_fields=['ncr'])
+    return releve
+
+
+def comparer_campagnes_thermographie(company, equipement_ref):
+    """Compare la dernière ``recette`` (baseline) et le dernier ``suivi`` d'un
+    équipement (XFSM14). Renvoie ``{'recette': releve|None, 'suivi': releve|None,
+    'delta': Decimal|None}`` — ``delta`` = évolution ΔT entre les deux.
+    """
+    qs = ReleveThermographie.objects.filter(
+        company=company, equipement_ref=equipement_ref)
+    recette = qs.filter(
+        campagne=ReleveThermographie.Campagne.RECETTE
+    ).order_by('-date_releve', '-id').first()
+    suivi = qs.filter(
+        campagne=ReleveThermographie.Campagne.SUIVI
+    ).order_by('-date_releve', '-id').first()
+    delta = None
+    if recette is not None and suivi is not None \
+            and recette.delta_t is not None and suivi.delta_t is not None:
+        delta = suivi.delta_t - recette.delta_t
+    return {'recette': recette, 'suivi': suivi, 'delta': delta}
+
+
+# ── XFSM24 — Check-in travailleur isolé avec escalade ───────────────────────
+
+def _notifier_escalade_checkin(checkin):
+    """Notifie le responsable + téléphone du site (best-effort, sans erreur)."""
+    try:
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+
+        # XFSM8 — téléphone du site, si dispo, est intégré dans le corps du
+        # message (le canal d'envoi effectif reste `notify`, best-effort).
+        responsables = checkin.company.users.filter(
+            role_legacy__in=('responsable', 'admin', 'manager'))
+        corps = (
+            f'{checkin.technicien} — check-out prévu dépassé sur '
+            f'{checkin.site_ref or "site"} (intervention '
+            f'{checkin.intervention_id or "?"}).')
+        for resp in responsables:
+            notify(resp, EventType.MAINTENANCE_DUE,
+                   'Escalade check-in sécurité', body=corps,
+                   link='/qhse/checkins', company=checkin.company)
+    except Exception:  # pragma: no cover - défensif
+        pass
+
+
+@transaction.atomic
+def escalader_checkins_en_retard(company=None, now=None):
+    """Escalade tout check-in dont le check-out prévu est dépassé sans
+    check-out réel (XFSM24). Idempotent : un check-in déjà escaladé
+    (``escalade_declenchee=True``) n'est jamais re-notifié.
+
+    Renvoie la liste des check-ins escaladés dans cet appel.
+    """
+    from django.utils import timezone
+
+    if now is None:
+        now = timezone.now()
+    qs = CheckinSecurite.objects.filter(
+        heure_checkout_reelle__isnull=True,
+        escalade_declenchee=False,
+        heure_checkout_prevue__isnull=False,
+    )
+    if company is not None:
+        qs = qs.filter(company=company)
+
+    escalades = []
+    for checkin in qs:
+        if checkin.en_retard(now=now):
+            checkin.escalade_declenchee = True
+            checkin.escalade_le = now
+            checkin.save(update_fields=['escalade_declenchee', 'escalade_le'])
+            _notifier_escalade_checkin(checkin)
+            escalades.append(checkin)
+    return escalades

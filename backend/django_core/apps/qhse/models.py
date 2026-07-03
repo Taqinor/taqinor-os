@@ -3444,3 +3444,199 @@ class CodeDefaut(models.Model):
 
     def __str__(self):
         return f'{self.code} — {self.libelle}'
+
+
+# ── XFSM14 — Thermographie IR : points chauds classés + baseline/suivi ─────
+
+class ReleveThermographie(models.Model):
+    """Relevé de thermographie infrarouge (IEC 62446-3) d'un équipement.
+
+    Chaque relevé capture une image IR (via ``records.Attachment``, référence
+    LÂCHE par id — jamais un import cross-app de modèle) d'un ``equipement_ref``
+    texte libre, le ``delta_t`` mesuré (écart de température °C) et une
+    ``classe_severite`` dérivée automatiquement du seuillage société (méthode
+    ``classer_severite``). Deux ``campagne`` : ``recette`` (baseline initiale) et
+    ``suivi`` (contrôle périodique) permettent la comparaison dans le temps pour
+    un même ``equipement_ref``.
+
+    Rattachement chantier par référence LÂCHE (``chantier_id``). Multi-société
+    via ``company`` posée côté serveur. Entièrement additif.
+    """
+    class Campagne(models.TextChoices):
+        RECETTE = 'recette', 'Recette (baseline)'
+        SUIVI = 'suivi', 'Suivi périodique'
+
+    class Severite(models.TextChoices):
+        OBSERVATION = 'observation', 'Observation'
+        A_SURVEILLER = 'a_surveiller', 'À surveiller'
+        INTERVENTION_REQUISE = 'intervention_requise', 'Intervention requise'
+
+    # Seuils par défaut ΔT (°C) — classement IEC 62446-3, paramétrable par
+    # société via les champs seuil_* ci-dessous.
+    SEUIL_A_SURVEILLER_DEFAUT = 5
+    SEUIL_INTERVENTION_DEFAUT = 15
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_releves_thermo',
+        verbose_name='Société',
+    )
+    # Référence LÂCHE au chantier (installations.Chantier) par id.
+    chantier_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du chantier')
+    equipement_ref = models.CharField(
+        max_length=255, verbose_name='Référence équipement')
+    # Référence LÂCHE à la pièce jointe (records.Attachment) par id.
+    attachment_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID de la pièce jointe (image IR)')
+    campagne = models.CharField(
+        max_length=10, choices=Campagne.choices,
+        default=Campagne.SUIVI, verbose_name='Campagne')
+    delta_t = models.DecimalField(
+        max_digits=6, decimal_places=2,
+        null=True, blank=True, verbose_name='ΔT mesuré (°C)')
+    seuil_a_surveiller = models.DecimalField(
+        max_digits=6, decimal_places=2,
+        default=SEUIL_A_SURVEILLER_DEFAUT,
+        verbose_name='Seuil « à surveiller » (°C)')
+    seuil_intervention = models.DecimalField(
+        max_digits=6, decimal_places=2,
+        default=SEUIL_INTERVENTION_DEFAUT,
+        verbose_name='Seuil « intervention requise » (°C)')
+    classe_severite = models.CharField(
+        max_length=25, choices=Severite.choices,
+        default=Severite.OBSERVATION, verbose_name='Classe de sévérité')
+    date_releve = models.DateField(
+        null=True, blank=True, verbose_name='Date du relevé')
+    note = models.TextField(blank=True, default='', verbose_name='Note')
+    # Lien lâche vers la NCR auto-créée en cas de sévérité maximale.
+    ncr = models.ForeignKey(
+        NonConformite,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='releves_thermo',
+        verbose_name='NCR levée',
+    )
+    releve_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_releves_thermo',
+        verbose_name='Relevé par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Relevé de thermographie'
+        verbose_name_plural = 'Relevés de thermographie'
+        ordering = ['-date_releve', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'equipement_ref'],
+                name='qhse_thermo_co_equip',
+            ),
+        ]
+
+    def classer_severite(self):
+        """Dérive la classe de sévérité depuis ``delta_t`` et les seuils.
+
+        ``intervention_requise`` si ΔT ≥ seuil_intervention, ``a_surveiller``
+        si ΔT ≥ seuil_a_surveiller, sinon ``observation``. Sans ΔT mesuré,
+        renvoie ``observation`` (rien à classer).
+        """
+        if self.delta_t is None:
+            return self.Severite.OBSERVATION
+        if self.delta_t >= self.seuil_intervention:
+            return self.Severite.INTERVENTION_REQUISE
+        if self.delta_t >= self.seuil_a_surveiller:
+            return self.Severite.A_SURVEILLER
+        return self.Severite.OBSERVATION
+
+    def save(self, *args, **kwargs):
+        self.classe_severite = self.classer_severite()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'{self.equipement_ref} — ΔT {self.delta_t}°C'
+
+
+# ── XFSM24 — Check-in travailleur isolé avec escalade ───────────────────────
+
+class CheckinSecurite(models.Model):
+    """Cycle check-in/check-out d'un technicien seul sur site à risque.
+
+    Le technicien check-in au démarrage d'une intervention à risque (toiture,
+    local HT…) avec une ``heure_checkout_prevue``. Si le check-out réel dépasse
+    ce délai de plus de ``delai_escalade_min`` minutes sans check-out, la
+    tâche périodique ``escalader_checkins_en_retard`` (service) déclenche UNE
+    escalade (``escalade_declenchee`` — idempotent, jamais deux fois).
+
+    Rattachement intervention par référence LÂCHE (``intervention_id`` —
+    jamais un import cross-app de ``sav``/``installations``). Multi-société via
+    ``company`` posée côté serveur. Entièrement additif.
+    """
+    DELAI_ESCALADE_MIN_DEFAUT = 30
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_checkins',
+        verbose_name='Société',
+    )
+    technicien = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='qhse_checkins',
+        verbose_name='Technicien',
+    )
+    # Référence LÂCHE à l'intervention (sav.Ticket ou installations.*) par id.
+    intervention_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="ID de l'intervention")
+    site_ref = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Site')
+    heure_checkin = models.DateTimeField(
+        null=True, blank=True, verbose_name='Heure de check-in')
+    heure_checkout_prevue = models.DateTimeField(
+        null=True, blank=True, verbose_name='Heure de check-out prévue')
+    heure_checkout_reelle = models.DateTimeField(
+        null=True, blank=True, verbose_name='Heure de check-out réelle')
+    delai_escalade_min = models.PositiveIntegerField(
+        default=DELAI_ESCALADE_MIN_DEFAUT,
+        verbose_name="Délai avant escalade (min)")
+    escalade_declenchee = models.BooleanField(
+        default=False, verbose_name='Escalade déclenchée')
+    escalade_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Escaladé le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Check-in sécurité'
+        verbose_name_plural = 'Check-ins sécurité'
+        ordering = ['-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'heure_checkout_prevue'],
+                name='qhse_checkin_co_prevue',
+            ),
+        ]
+
+    def en_retard(self, now=None):
+        """True si le check-out réel manque et le délai d'escalade est dépassé."""
+        from django.utils import timezone
+
+        if self.heure_checkout_reelle is not None:
+            return False
+        if self.heure_checkout_prevue is None:
+            return False
+        if now is None:
+            now = timezone.now()
+        from datetime import timedelta
+        limite = self.heure_checkout_prevue + timedelta(
+            minutes=self.delai_escalade_min or 0)
+        return now > limite
+
+    def __str__(self):
+        return f'Check-in {self.technicien} — {self.site_ref or "site"}'
