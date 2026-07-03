@@ -1692,6 +1692,50 @@ class TimesheetViewSet(_GestionProjetBaseViewSet):
             ],
         })
 
+    @action(detail=False, methods=['get'], url_path='rapprochement')
+    def rapprochement(self, request):
+        """Rapprochement pointages RH ↔ temps projet, par employé/jour (XPRJ8).
+
+        Query params ``?debut=YYYY-MM-DD&fin=YYYY-MM-DD`` (obligatoires),
+        ``?seuil=<heures>`` (optionnel, défaut 0.5 h). Délègue à
+        ``selectors.rapprochement_pointages`` (dégrade proprement si aucun
+        pointage RH n'est exposé). Toujours scopé société.
+        """
+        debut = _parse_date_param(request.query_params.get('debut'))
+        fin = _parse_date_param(request.query_params.get('fin'))
+        if debut is None or fin is None:
+            return Response(
+                {'detail': 'Les paramètres « debut » et « fin » '
+                           '(YYYY-MM-DD) sont obligatoires.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        seuil_raw = request.query_params.get('seuil')
+        try:
+            from decimal import Decimal as _Decimal
+            seuil = _Decimal(seuil_raw) if seuil_raw else _Decimal('0.5')
+        except Exception:
+            seuil = None
+        if seuil is None:
+            return Response(
+                {'detail': 'Le paramètre « seuil » doit être un nombre.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        data = selectors.rapprochement_pointages(
+            request.user.company, debut, fin, seuil_heures=seuil)
+        return Response({
+            'debut': str(data['debut']),
+            'fin': str(data['fin']),
+            'ecarts': [
+                {
+                    'ressource_id': e['ressource_id'],
+                    'ressource_nom': e['ressource_nom'],
+                    'date': str(e['date']),
+                    'type_ecart': e['type_ecart'],
+                    'heures_pointees': str(e['heures_pointees']),
+                    'heures_imputees': str(e['heures_imputees']),
+                }
+                for e in data['ecarts']
+            ],
+        })
+
 
 class PeriodeVerrouilleeTempsViewSet(_GestionProjetBaseViewSet):
     """Verrous de période (mois) sur les feuilles de temps (XPRJ1) — CRUD scopé.

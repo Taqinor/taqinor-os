@@ -1798,6 +1798,89 @@ def temps_manquants(company, debut, fin):
     return {'debut': debut, 'fin': fin, 'lignes': lignes}
 
 
+# ── Rapprochement pointages RH ↔ temps projet (XPRJ8) ────────────────────────
+def rapprochement_pointages(company, debut, fin, seuil_heures=Decimal('0.5')):
+    """Croise pointages RH (FG166) et temps projet, par employé/jour (XPRJ8).
+
+    Pour chaque ``RessourceProfil`` ACTIVE liée à un ``user`` : agrège la durée
+    POINTÉE (via ``apps.rh.selectors.pointages_par_user_jour`` — frontière
+    cross-app, import fonction-local, JAMAIS ``rh.models``) et les heures de
+    ``Timesheet`` de la ressource, par jour, sur [debut, fin] (inclusif).
+    Signale un ÉCART pour chaque jour où :
+
+    * pointé SANS imputation — un pointage existe, aucune timesheet ce jour ;
+    * imputé SANS pointage — une timesheet existe, aucun pointage ce jour ;
+    * delta d'heures — les deux existent mais divergent de plus de
+      ``seuil_heures`` (défaut 0.5 h = 30 min).
+
+    Dégrade PROPREMENT si ``rh`` n'expose aucun pointage (dict vide) — aucune
+    exception ne remonte. Lecture seule, multi-société. Renvoie un dict
+    ``{debut, fin, ecarts: [{ressource_id, ressource_nom, date, type_ecart,
+    heures_pointees, heures_imputees}]}`` trié par ressource puis date.
+    """
+    if fin < debut:
+        return {'debut': debut, 'fin': fin, 'ecarts': []}
+
+    try:
+        from apps.rh import selectors as rh_selectors
+        pointages = rh_selectors.pointages_par_user_jour(company, debut, fin)
+    except Exception:  # pragma: no cover - défensif, dégrade proprement
+        pointages = {}
+
+    ressources = RessourceProfil.objects.filter(
+        company=company, actif=True, user__isnull=False)
+
+    timesheets = Timesheet.objects.filter(
+        company=company, ressource__in=ressources,
+        date__gte=debut, date__lte=fin,
+    ).values('ressource_id', 'date').annotate(total_heures=Sum('heures'))
+    heures_imputees_par_res_jour = {
+        (row['ressource_id'], row['date']): row['total_heures'] or Decimal('0')
+        for row in timesheets
+    }
+
+    ecarts = []
+    for ressource in ressources.order_by('nom', 'id'):
+        cur = debut
+        while cur <= fin:
+            minutes_pointees = pointages.get((ressource.user_id, cur))
+            heures_imputees = heures_imputees_par_res_jour.get(
+                (ressource.id, cur))
+            a_pointage = minutes_pointees is not None
+            a_imputation = heures_imputees is not None
+
+            if not a_pointage and not a_imputation:
+                cur += timedelta(days=1)
+                continue
+
+            heures_pointees = (
+                Decimal(minutes_pointees) / Decimal('60')
+            ).quantize(Decimal('0.01')) if a_pointage else Decimal('0')
+            heures_imputees_val = heures_imputees or Decimal('0')
+
+            if a_pointage and not a_imputation:
+                type_ecart = 'pointe_sans_imputation'
+            elif a_imputation and not a_pointage:
+                type_ecart = 'impute_sans_pointage'
+            elif abs(heures_pointees - heures_imputees_val) > seuil_heures:
+                type_ecart = 'delta_heures'
+            else:
+                cur += timedelta(days=1)
+                continue
+
+            ecarts.append({
+                'ressource_id': ressource.id,
+                'ressource_nom': ressource.nom,
+                'date': cur,
+                'type_ecart': type_ecart,
+                'heures_pointees': heures_pointees,
+                'heures_imputees': heures_imputees_val,
+            })
+            cur += timedelta(days=1)
+
+    return {'debut': debut, 'fin': fin, 'ecarts': ecarts}
+
+
 # ── Consommation matière vs BoM (PROJ25) ─────────────────────────────────────
 def _consommation_matiere_cross_app(projet):
     """Consommation matière RÉELLE d'un projet via les apps cibles (ou dégrade).
