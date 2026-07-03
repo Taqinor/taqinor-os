@@ -7,7 +7,7 @@ acceptée du corps de requête (multi-tenant).
 import datetime
 
 from rest_framework import filters, viewsets
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
@@ -21,6 +21,8 @@ from .models import (
     CarteCarburant,
     CarteGriseVehicule,
     Conducteur,
+    ContratVehicule,
+    CoutVehicule,
     DemandeVehicule,
     EcheanceEntretien,
     EcheanceReglementaire,
@@ -28,6 +30,7 @@ from .models import (
     EtatDesLieux,
     Garage,
     Infraction,
+    JournalStatutVehicule,
     OrdreReparation,
     PieceFlotte,
     PlanEntretien,
@@ -36,6 +39,7 @@ from .models import (
     ReferentielFlotte,
     ReleveTelematique,
     ReservationVehicule,
+    SignalementVehicule,
     Sinistre,
     TrajetChantier,
     TrajetTelematique,
@@ -50,12 +54,15 @@ from .serializers import (
     CarteCarburantSerializer,
     CarteGriseVehiculeSerializer,
     ConducteurSerializer,
+    ContratVehiculeSerializer,
+    CoutVehiculeSerializer,
     EcheanceEntretienSerializer,
     EcheanceReglementaireSerializer,
     EnginRoulantSerializer,
     EtatDesLieuxSerializer,
     GarageSerializer,
     InfractionSerializer,
+    JournalStatutVehiculeSerializer,
     OrdreReparationSerializer,
     PieceFlotteSerializer,
     PlanEntretienSerializer,
@@ -65,6 +72,7 @@ from .serializers import (
     ReferentielFlotteSerializer,
     ReleveTelematiqueSerializer,
     ReservationVehiculeSerializer,
+    SignalementVehiculeSerializer,
     SinistreSerializer,
     TrajetChantierSerializer,
     TrajetTelematiqueSerializer,
@@ -75,7 +83,19 @@ from .serializers import (
 READ_ACTIONS = ['list', 'retrieve', 'consommation', 'anomalies', 'echeances',
                 'couts', 'synthese', 'expirantes', 'tsav', 'alertes_echeances',
                 'tco', 'eco_conduite', 'documents', 'tableau_bord', 'journal',
-                'amortissement']
+                'amortissement', 'expirants', 'ledger', 'historique',
+                'synthese_tva']
+
+
+def _parse_date_param(value):
+    """XFLT8 — Parse une date 'YYYY-MM-DD' de query param (``None`` si
+    absente/invalide)."""
+    if not value:
+        return None
+    try:
+        return datetime.date.fromisoformat(value)
+    except ValueError:
+        return None
 
 
 class _FlotteBaseViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -164,11 +184,75 @@ class VehiculeViewSet(_FlotteBaseViewSet):
         Lit l'amortissement comptable lié au véhicule (FLOTTE30) via
         ``selectors.amortissement_vehicule`` (lecture cross-app du module compta,
         jamais d'écriture). Lecture seule, scopée société.
+
+        XFLT9 — Ajoute ``part_non_deductible`` : la part de l'amortissement
+        NON déductible fiscalement quand un véhicule ``type_fiscal=tourisme``
+        dépasse le plafond CGI de la société (voir
+        ``selectors.part_non_deductible_amortissement``) — 0 pour un
+        utilitaire ou un véhicule sous le plafond.
         """
         vehicule = self.get_object()
-        from .selectors import amortissement_vehicule
+        from .selectors import (
+            amortissement_vehicule,
+            part_non_deductible_amortissement,
+        )
+        data = amortissement_vehicule(request.user.company, vehicule.id)
+        plafond = part_non_deductible_amortissement(
+            request.user.company, vehicule.id)
+        data['part_non_deductible'] = plafond['part_non_deductible']
+        data['plafond_ttc'] = plafond['plafond_ttc']
+        data['assujetti_plafond_cgi'] = plafond['assujetti']
+        return Response(data)
+
+    @action(detail=True, methods=['get'])
+    def ledger(self, request, pk=None):
+        """XFLT3 — Grand livre unifié des coûts du véhicule (lecture seule).
+
+        Fusionne carburant, réparations, assurances (franchise), TSAV,
+        infractions et coûts divers (``CoutVehicule``) en une vue
+        chronologique unique via ``selectors.ledger_vehicule``. Scopée
+        société. Le TCO (FLOTTE31) reste disponible séparément.
+        """
+        vehicule = self.get_object()
+        from .selectors import ledger_vehicule
         return Response(
-            amortissement_vehicule(request.user.company, vehicule.id))
+            ledger_vehicule(request.user.company, vehicule.id))
+
+    @action(detail=True, methods=['post'], url_path='changer-statut')
+    def changer_statut(self, request, pk=None):
+        """XFLT4 — Change le statut du véhicule (écriture responsable/admin).
+
+        ``statut`` (obligatoire) au body. Le passage ``commande`` → ``actif``
+        est refusé (400, message FR) tant que la checklist de mise en
+        service n'est pas complète. Chaque transition RÉELLE est journalisée
+        (``JournalStatutVehicule``, utilisateur et horodatage posés côté
+        serveur).
+        """
+        vehicule = self.get_object()
+        nouveau_statut = request.data.get('statut')
+        if not nouveau_statut:
+            return Response(
+                {'detail': "Le champ 'statut' est requis."}, status=400)
+
+        from .services import changer_statut_vehicule
+        try:
+            vehicule = changer_statut_vehicule(
+                vehicule, nouveau_statut, user=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+
+        return Response(self.get_serializer(vehicule).data)
+
+    @action(detail=True, methods=['get'])
+    def historique(self, request, pk=None):
+        """XFLT4 — Journal des changements de statut du véhicule (lecture
+        tout rôle), du plus récent au plus ancien."""
+        vehicule = self.get_object()
+        qs = JournalStatutVehicule.objects.filter(
+            company=request.user.company, vehicule=vehicule
+        ).select_related('user')
+        serializer = JournalStatutVehiculeSerializer(qs, many=True)
+        return Response(serializer.data)
 
     @action(detail=False, methods=['get'], url_path='tableau-bord')
     def tableau_bord(self, request):
@@ -453,6 +537,23 @@ class PleinCarburantViewSet(_FlotteBaseViewSet):
 
         return qs
 
+    @action(detail=False, methods=['get'], url_path='synthese-tva')
+    def synthese_tva(self, request):
+        """XFLT8 — Synthèse mensuelle TVA carburant récupérable / non
+        déductible (lecture tout rôle).
+
+        ``?debut=YYYY-MM-DD&fin=YYYY-MM-DD`` (facultatifs) bornent la
+        période. Alimente la déclaration TVA (voir
+        ``selectors.synthese_tva_carburant``) — lecture seule.
+        """
+        company = request.user.company
+        debut = _parse_date_param(request.query_params.get('debut'))
+        fin = _parse_date_param(request.query_params.get('fin'))
+
+        from .selectors import synthese_tva_carburant
+        return Response(
+            synthese_tva_carburant(company, periode=(debut, fin)))
+
     @action(detail=False, methods=['get'])
     def consommation(self, request):
         """FLOTTE13 — Consommation calculée d'un véhicule (L/100 km et
@@ -550,6 +651,37 @@ class CarteCarburantViewSet(_FlotteBaseViewSet):
 
         from .selectors import anomalies_pleins
         return Response(anomalies_pleins(company, vehicule_id))
+
+    @action(detail=True, methods=['post'], url_path='importer-releve')
+    def importer_releve(self, request, pk=None):
+        """XFLT6 — Importe un relevé CSV (carte carburant / Jawaz) et
+        rapproche les lignes (écriture responsable/admin).
+
+        Fichier CSV attendu au champ ``fichier`` (colonnes : date, montant,
+        litres, station/gare). Une ligne AVEC litres crée un
+        ``PleinCarburant`` ; une ligne SANS litres (péage) crée un
+        ``CoutVehicule`` catégorie péage (tag Jawaz). Import fichier
+        uniquement — aucun appel réseau. Rapproche les doublons (même
+        véhicule/date/montant) et signale les lignes non rapprochées (carte
+        sans véhicule attribué).
+        """
+        carte = self.get_object()
+        fichier = request.FILES.get('fichier')
+        if fichier is None:
+            return Response(
+                {'detail': "Le champ 'fichier' (CSV) est requis."},
+                status=400)
+
+        try:
+            contenu = fichier.read().decode('utf-8-sig')
+        except UnicodeDecodeError:
+            return Response(
+                {'detail': "Fichier CSV illisible (encodage invalide)."},
+                status=400)
+
+        from .services import importer_releve_carte
+        rapport = importer_releve_carte(carte, contenu)
+        return Response(rapport)
 
 
 class PlanEntretienViewSet(_FlotteBaseViewSet):
@@ -1665,3 +1797,216 @@ class DemandeVehiculeViewSet(_FlotteBaseViewSet):
             return Response({'detail': str(exc)}, status=400)
 
         return Response(self.get_serializer(demande).data)
+
+
+class ContratVehiculeViewSet(_FlotteBaseViewSet):
+    """Contrats véhicule (leasing/LLD/location/entretien) (XFLT1).
+
+    CRUD scopé société (écriture responsable/admin) : type de contrat,
+    fournisseur/bailleur, dates début/fin, montant récurrent + périodicité,
+    services inclus, km contractuel/an. Distinct de ``AssuranceVehicule``
+    (FLOTTE21) — jamais de doublon. Filtrable par
+    ``?statut=<actif|expire>`` et ``?vehicule=<id>``. Recherche par
+    fournisseur/notes. ``statut_calcule`` (état réel vs la date du jour) est
+    exposé en lecture. Le véhicule et le garage liés doivent appartenir à la
+    société (validé au sérialiseur).
+
+    Action ``GET /contrats-vehicule/expirants/?within=N`` (lecture tout
+    rôle) — contrats déjà expirés ou dus dans les ``N`` prochains jours
+    (défaut 30), de la plus urgente à la moins urgente. Ces mêmes contrats
+    remontent aussi dans ``alertes-echeances`` (FLOTTE24, source
+    ``contrat_vehicule``).
+    """
+    queryset = ContratVehicule.objects.select_related('vehicule', 'garage')
+    serializer_class = ContratVehiculeSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['fournisseur', 'notes']
+    ordering_fields = ['date_debut', 'date_fin', 'montant_recurrent',
+                       'statut', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+
+        vehicule = params.get('vehicule')
+        if vehicule:
+            try:
+                qs = qs.filter(vehicule_id=int(vehicule))
+            except (ValueError, TypeError):
+                pass
+
+        return qs
+
+    @action(detail=False, methods=['get'])
+    def expirants(self, request):
+        """XFLT1 — Contrats expirés ou dus sous ``?within=N`` jours.
+
+        Lecture (tout rôle), scopée société. ``within`` défaut = 30 jours ;
+        une valeur invalide retombe sur 30. Renvoie la liste sérialisée, de
+        la plus urgente (déjà expirée) à la moins urgente.
+        """
+        company = request.user.company
+
+        within_param = request.query_params.get('within')
+        within = 30
+        if within_param:
+            try:
+                within = int(within_param)
+            except (ValueError, TypeError):
+                within = 30
+
+        from .selectors import contrats_vehicule_expirants
+        qs = contrats_vehicule_expirants(company, within=within)
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
+
+
+class CoutVehiculeViewSet(_FlotteBaseViewSet):
+    """Coûts véhicule divers (péage, parking, lavage, contrat, autre…)
+    (XFLT3).
+
+    CRUD scopé société (écriture responsable/admin) : catégorie, date,
+    montant, fournisseur, référence pièce, conducteur optionnel. Complète —
+    sans les dupliquer — les sources déjà saisies ailleurs (carburant,
+    réparation, assurance, infraction). Filtrable par
+    ``?actif_flotte=<id>`` et ``?categorie=<...>``. Recherche par
+    fournisseur / référence pièce / notes.
+    """
+    queryset = CoutVehicule.objects.select_related(
+        'actif_flotte', 'actif_flotte__vehicule', 'actif_flotte__engin',
+        'conducteur')
+    serializer_class = CoutVehiculeSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['fournisseur', 'reference_piece', 'notes']
+    ordering_fields = ['date', 'montant', 'categorie', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        actif_flotte = params.get('actif_flotte')
+        if actif_flotte:
+            try:
+                qs = qs.filter(actif_flotte_id=int(actif_flotte))
+            except (ValueError, TypeError):
+                pass
+
+        categorie = params.get('categorie')
+        if categorie:
+            qs = qs.filter(categorie=categorie)
+
+        return qs
+
+
+class SignalementVehiculeViewSet(_FlotteBaseViewSet):
+    """Signalements d'anomalie véhicule déposés par un conducteur (XFLT5).
+
+    CRUD scopé société : tout rôle peut CRÉER un signalement (comme
+    ``DemandeVehicule``, FLOTTE32) — ``company`` ET ``auteur`` posés côté
+    serveur. La résolution (mise à jour du ``statut``) reste réservée aux
+    rôles écriture. Filtrable par ``?statut=`` et ``?actif_flotte=``.
+
+    Action ``POST /signalements/<id>/convertir-en-or/`` (écriture
+    responsable/admin) : crée un ``OrdreReparation`` (FLOTTE17) pré-rempli
+    depuis le signalement (actif, description) et lie les deux.
+    """
+    queryset = SignalementVehicule.objects.select_related(
+        'actif_flotte', 'actif_flotte__vehicule', 'actif_flotte__engin',
+        'conducteur', 'auteur', 'ordre_reparation')
+    serializer_class = SignalementVehiculeSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['description']
+    ordering_fields = ['gravite', 'statut', 'date_creation']
+
+    def get_permissions(self):
+        # La création est ouverte à tout rôle (comme DemandeVehicule) ; la
+        # résolution (update/convertir-en-or) reste responsable/admin.
+        if self.action == 'create':
+            return [IsAnyRole()]
+        return super().get_permissions()
+
+    def perform_create(self, serializer):
+        # company ET auteur posés côté serveur (jamais du body).
+        serializer.save(
+            company=self.request.user.company, auteur=self.request.user)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+
+        actif_flotte = params.get('actif_flotte')
+        if actif_flotte:
+            try:
+                qs = qs.filter(actif_flotte_id=int(actif_flotte))
+            except (ValueError, TypeError):
+                pass
+
+        return qs
+
+    @action(detail=True, methods=['post'], url_path='convertir-en-or')
+    def convertir_en_or(self, request, pk=None):
+        """XFLT5 — Crée un ``OrdreReparation`` pré-rempli depuis le
+        signalement et lie les deux (écriture responsable/admin)."""
+        signalement = self.get_object()
+        if signalement.ordre_reparation_id is not None:
+            return Response(
+                {'detail': "Ce signalement est déjà converti en ordre de "
+                           "réparation."}, status=400)
+
+        ordre = OrdreReparation.objects.create(
+            company=request.user.company,
+            actif_flotte=signalement.actif_flotte,
+            description=signalement.description,
+            date_ouverture=datetime.date.today(),
+        )
+        signalement.ordre_reparation = ordre
+        signalement.save(update_fields=['ordre_reparation'])
+
+        return Response(self.get_serializer(signalement).data)
+
+
+# ── XFLT7 — Rapport d'analyse des coûts (pivot + benchmark) ────────────────────
+
+GROUP_BY_VALIDES = ('vehicule', 'categorie', 'mois', 'conducteur', 'garage')
+
+
+@api_view(['GET'])
+@permission_classes([IsAnyRole])
+def rapport_couts(request):
+    """XFLT7 — Rapport d'analyse des coûts (pivot + benchmark), lecture seule.
+
+    ``GET /flotte/rapports/couts/?group_by=vehicule|categorie|mois|conducteur|garage``
+    (défaut ``vehicule`` ; une valeur inconnue retombe sur ``vehicule``).
+    Construit sur le ledger unifié (XFLT3, ``selectors.analyse_couts_report``) :
+    matrice coûts, coût/km par véhicule, dépense par garage, outliers de
+    consommation. ``?export=xlsx`` télécharge le pivot (JAMAIS ``?format=``,
+    réservé par DRF).
+    """
+    company = request.user.company
+    group_by = request.query_params.get('group_by', 'vehicule')
+    if group_by not in GROUP_BY_VALIDES:
+        group_by = 'vehicule'
+
+    from .selectors import analyse_couts_report
+    rapport = analyse_couts_report(company, group_by=group_by)
+
+    if request.query_params.get('export') == 'xlsx':
+        from apps.records.xlsx import build_xlsx_response
+        headers = ['Clé', 'Libellé', 'Total (MAD)']
+        rows = [
+            [ligne['cle'], ligne['libelle'], ligne['total']]
+            for ligne in rapport['pivot']
+        ]
+        return build_xlsx_response(
+            'flotte-analyse-couts.xlsx', headers, rows,
+            sheet_title='Analyse coûts')
+
+    return Response(rapport)

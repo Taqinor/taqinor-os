@@ -9,6 +9,8 @@ from .views import (
     CarteCarburantViewSet,
     CarteGriseVehiculeViewSet,
     ConducteurViewSet,
+    ContratVehiculeViewSet,
+    CoutVehiculeViewSet,
     DemandeVehiculeViewSet,
     EcheanceEntretienViewSet,
     EcheanceReglementaireViewSet,
@@ -24,11 +26,13 @@ from .views import (
     ReferentielFlotteViewSet,
     ReleveTelematiqueViewSet,
     ReservationVehiculeViewSet,
+    SignalementVehiculeViewSet,
     SinistreViewSet,
     TrajetChantierViewSet,
     TrajetTelematiqueViewSet,
     VehiculeViewSet,
     VisiteTechniqueViewSet,
+    rapport_couts,
 )
 
 router = DefaultRouter()
@@ -59,7 +63,11 @@ router.register(r'releves-telematiques', ReleveTelematiqueViewSet)
 router.register(r'trajets-telematiques', TrajetTelematiqueViewSet)
 router.register(r'trajets-chantier', TrajetChantierViewSet)
 router.register(r'demandes-vehicule', DemandeVehiculeViewSet)
+router.register(r'contrats-vehicule', ContratVehiculeViewSet)
+router.register(r'couts', CoutVehiculeViewSet)
+router.register(r'signalements', SignalementVehiculeViewSet)
 
 urlpatterns = [
+    path('rapports/couts/', rapport_couts, name='flotte-rapport-couts'),
     path('', include(router.urls)),
 ]

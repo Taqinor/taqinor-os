@@ -616,3 +616,318 @@ def decider_demande_vehicule(demande, *, statut, decide_par=None,
         raise ValueError(str(exc))
     demande.save()
     return demande
+
+
+# ── XFLT2 — Génération des coûts récurrents de contrat ─────────────────────────
+
+def _contrat_actif_sur_periode(contrat, annee, mois):
+    """XFLT2 — Vrai si le ``ContratVehicule`` couvre le mois ``annee-mois``.
+
+    ``date_debut`` doit être <= à la fin du mois cible, et ``date_fin`` (si
+    renseignée) doit être >= au début du mois cible. Un contrat sans
+    ``date_fin`` (durée indéterminée) reste actif indéfiniment.
+    """
+    import calendar
+
+    debut_mois = datetime.date(annee, mois, 1)
+    dernier_jour = calendar.monthrange(annee, mois)[1]
+    fin_mois = datetime.date(annee, mois, dernier_jour)
+
+    if contrat.date_debut is not None and contrat.date_debut > fin_mois:
+        return False
+    if contrat.date_fin is not None and contrat.date_fin < debut_mois:
+        return False
+    return True
+
+
+def generer_couts_contrat(company, period):
+    """XFLT2 — Matérialise l'échéance récurrente des contrats véhicule DUS
+    pour ``period``.
+
+    ``period`` est une chaîne ``'YYYY-MM'``. Pour chaque ``ContratVehicule``
+    (XFLT1) de la société qui COUVRE ce mois (``date_debut``/``date_fin``),
+    crée UNE ``EcheanceContrat`` (XFLT2) portant le ``montant_recurrent`` du
+    contrat — sauf si une échéance existe déjà pour ce couple
+    ``(contrat, period)`` (contrainte ``unique_together`` + vérification
+    applicative avant écriture) : la génération est donc IDEMPOTENTE, deux
+    exécutions sur la même période ne créent jamais de doublon.
+
+    NOTE (repli XFLT3) : tant que ``CoutVehicule`` (grand livre unifié,
+    XFLT3) n'existe pas sur cette branche, la matérialisation utilise le
+    modèle propre ``EcheanceContrat``. Le jour où ``CoutVehicule`` existe,
+    ce service devra y écrire à la place (catégorie ``contrat``) — voir
+    XFLT3 pour le branchement.
+
+    Multi-tenant : ``company`` est toujours posée côté serveur. Retourne un
+    dict scopé société ::
+
+        {'company_id', 'period', 'nb_contrats_actifs', 'nb_creees',
+         'nb_existantes', 'echeances': [<EcheanceContrat>, …]}  # nouvelles uniquement
+
+    Aucune écriture hors ``EcheanceContrat`` ; l'opération est sûre à relancer.
+    """
+    from django.db import IntegrityError, transaction
+
+    from .models import ContratVehicule, EcheanceContrat
+
+    try:
+        annee, mois = (int(part) for part in period.split('-'))
+    except (ValueError, AttributeError):
+        raise ValueError(
+            "Période invalide : format attendu 'YYYY-MM'.")
+
+    contrats = ContratVehicule.objects.filter(company=company)
+    contrats_actifs = [
+        c for c in contrats if _contrat_actif_sur_periode(c, annee, mois)
+    ]
+
+    deja_generes = set(
+        EcheanceContrat.objects
+        .filter(company=company, period=period,
+                contrat__in=[c.id for c in contrats_actifs])
+        .values_list('contrat_id', flat=True)
+    )
+
+    date_echeance = datetime.date(annee, mois, 1)
+    creees = []
+    nb_existantes = 0
+    for contrat in contrats_actifs:
+        if contrat.id in deja_generes:
+            nb_existantes += 1
+            continue
+        try:
+            with transaction.atomic():
+                echeance = EcheanceContrat.objects.create(
+                    company=company,
+                    contrat=contrat,
+                    period=period,
+                    date_echeance=date_echeance,
+                    montant=contrat.montant_recurrent,
+                )
+        except IntegrityError:
+            # Course concurrente sur le même (contrat, period) : une autre
+            # exécution a déjà créé la ligne — comportement idempotent.
+            nb_existantes += 1
+            continue
+        creees.append(echeance)
+
+    return {
+        'company_id': company.id,
+        'period': period,
+        'nb_contrats_actifs': len(contrats_actifs),
+        'nb_creees': len(creees),
+        'nb_existantes': nb_existantes,
+        'echeances': creees,
+    }
+
+
+# ── XFLT4 — Cycle de vie du véhicule (transition de statut journalisée) ────────
+
+def changer_statut_vehicule(vehicule, nouveau_statut, user=None):
+    """XFLT4 — Change le statut d'un ``Vehicule`` et journalise la transition.
+
+    Le passage ``commande`` → ``actif`` est BLOQUÉ (``ValueError``) tant que
+    la checklist de mise en service n'est pas complète (immatriculation
+    faite, plaques, assurance active, carte grise reçue — voir
+    ``Vehicule.checklist_mise_en_service_ok``). Tout autre changement de
+    statut est libre.
+
+    À chaque transition RÉELLE (statut effectivement différent), une entrée
+    ``JournalStatutVehicule`` est créée (ancien→nouveau, utilisateur,
+    horodatage serveur-side). Un changement vers le MÊME statut est un no-op
+    silencieux (aucune entrée de journal).
+
+    Retourne le véhicule mis à jour. Lève ``ValueError`` sur un statut cible
+    invalide ou la checklist incomplète (message FR, utilisable tel quel côté
+    API).
+    """
+    from .models import JournalStatutVehicule, Vehicule
+
+    statuts_valides = {choice for choice, _ in Vehicule.Statut.choices}
+    if nouveau_statut not in statuts_valides:
+        raise ValueError("Statut de véhicule invalide.")
+
+    ancien_statut = vehicule.statut
+    if ancien_statut == nouveau_statut:
+        return vehicule
+
+    if ancien_statut == Vehicule.Statut.COMMANDE \
+            and nouveau_statut == Vehicule.Statut.ACTIF \
+            and not vehicule.checklist_mise_en_service_ok():
+        raise ValueError(
+            "Impossible de passer le véhicule en actif : la checklist de "
+            "mise en service n'est pas complète (immatriculation, plaques, "
+            "assurance active, carte grise reçue).")
+
+    vehicule.statut = nouveau_statut
+    vehicule.save(update_fields=['statut'])
+
+    JournalStatutVehicule.objects.create(
+        company=vehicule.company,
+        vehicule=vehicule,
+        ancien_statut=ancien_statut,
+        nouveau_statut=nouveau_statut,
+        user=user,
+    )
+
+    return vehicule
+
+
+# ── XFLT6 — Import relevé carte carburant / Jawaz (CSV) + rapprochement ────────
+
+def _parse_montant_csv(valeur):
+    """XFLT6 — Parse un montant CSV (accepte virgule ou point décimal)."""
+    if valeur in (None, ''):
+        return None
+    try:
+        return float(str(valeur).strip().replace(',', '.'))
+    except (ValueError, TypeError):
+        return None
+
+
+def _parse_date_csv(valeur):
+    """XFLT6 — Parse une date CSV au format ISO 'YYYY-MM-DD'."""
+    if not valeur:
+        return None
+    try:
+        return datetime.date.fromisoformat(str(valeur).strip())
+    except ValueError:
+        return None
+
+
+def importer_releve_carte(carte, contenu_csv):
+    """XFLT6 — Importe un relevé de carte carburant / Jawaz (CSV) et
+    rapproche les lignes.
+
+    ``contenu_csv`` est le TEXTE du fichier CSV (colonnes attendues, avec
+    en-tête, insensible à la casse : ``date``, ``montant``, ``litres``,
+    ``station`` ou ``gare``). Aucun appel réseau — import fichier uniquement.
+
+    Pour chaque ligne :
+
+    * une ligne avec ``litres`` renseigné (> 0) crée un ``PleinCarburant``
+      (carte carburant, FLOTTE12) rattaché au véhicule de la carte ;
+    * une ligne SANS ``litres`` (péage/Jawaz) crée un ``CoutVehicule``
+      (XFLT3) catégorie ``peage``, avec ``reference_piece`` taggée
+      ``'Jawaz'`` — nécessite un ``actif_flotte`` résolu depuis le véhicule
+      de la carte (une carte sans véhicule attribué → ligne « non
+      rapprochée », rien n'est créé) ;
+    * une ligne DÉJÀ présente (même date + montant ± centime, pour le MÊME
+      véhicule) est marquée DOUBLON et ignorée — l'import est donc
+      IDEMPOTENT (un ré-import ne crée jamais de doublon) ;
+    * une ligne sans véhicule résolu (carte sans ``vehicule``) est comptée
+      « non rapprochée » et rien n'est créé.
+
+    Retourne un dict rapport ::
+
+        {'nb_lignes': N, 'crees': N, 'doublons': N, 'non_rapprochees': N,
+         'erreurs': [{'ligne': i, 'motif': str}, …]}
+
+    Multi-tenant : la société est celle de ``carte`` (jamais du corps de
+    requête).
+    """
+    import csv
+    import io
+
+    from .models import CoutVehicule, PleinCarburant
+
+    company = carte.company
+    vehicule = carte.vehicule
+
+    reader = csv.DictReader(io.StringIO(contenu_csv))
+    # Normalise les en-têtes (insensible à la casse/espaces).
+    if reader.fieldnames:
+        reader.fieldnames = [
+            (name or '').strip().lower() for name in reader.fieldnames]
+
+    crees = 0
+    doublons = 0
+    non_rapprochees = 0
+    erreurs = []
+
+    for i, row in enumerate(reader, start=1):
+        date_ = _parse_date_csv(row.get('date'))
+        montant = _parse_montant_csv(row.get('montant'))
+        litres = _parse_montant_csv(row.get('litres'))
+        station = (row.get('station') or row.get('gare') or '').strip()
+
+        if date_ is None or montant is None:
+            erreurs.append({
+                'ligne': i,
+                'motif': "Date ou montant invalide/manquant.",
+            })
+            continue
+
+        if vehicule is None:
+            non_rapprochees += 1
+            continue
+
+        if litres and litres > 0:
+            # Rapprochement : plein déjà présent (même véhicule/date/montant
+            # ± 0.01) → doublon ignoré.
+            deja_present = PleinCarburant.objects.filter(
+                company=company, vehicule=vehicule, date_plein=date_,
+                prix_total__gte=montant - 0.01,
+                prix_total__lte=montant + 0.01,
+            ).exists()
+            if deja_present:
+                doublons += 1
+                continue
+            PleinCarburant.objects.create(
+                company=company, vehicule=vehicule, date_plein=date_,
+                kilometrage=vehicule.kilometrage, quantite=litres,
+                prix_total=montant, station=station,
+            )
+            crees += 1
+        else:
+            actif = getattr(vehicule, 'actif_flotte', None)
+            if actif is None:
+                non_rapprochees += 1
+                continue
+            deja_present = CoutVehicule.objects.filter(
+                company=company, actif_flotte=actif, categorie='peage',
+                date=date_, montant__gte=montant - 0.01,
+                montant__lte=montant + 0.01,
+            ).exists()
+            if deja_present:
+                doublons += 1
+                continue
+            CoutVehicule.objects.create(
+                company=company, actif_flotte=actif, categorie='peage',
+                date=date_, montant=montant, fournisseur=station,
+                reference_piece='Jawaz',
+            )
+            crees += 1
+
+    return {
+        'nb_lignes': crees + doublons + non_rapprochees + len(erreurs),
+        'crees': crees,
+        'doublons': doublons,
+        'non_rapprochees': non_rapprochees,
+        'erreurs': erreurs,
+    }
+
+
+# ── XFLT8 — TVA carburant : récupérable vs non déductible ──────────────────────
+
+def classifier_tva_recuperable(vehicule):
+    """XFLT8 — Classification PAR DÉFAUT de la récupérabilité TVA d'un plein.
+
+    Règle CGI TVA (Maroc) simplifiée : le gasoil sur un véhicule
+    ``type_fiscal='utilitaire'`` est RÉCUPÉRABLE ; le carburant sur un
+    véhicule ``type_fiscal='tourisme'`` est NON DÉDUCTIBLE. Sans
+    ``type_fiscal`` renseigné (valeur vide, XFLT4), on retombe sur le
+    comportement historique : récupérable par défaut (aucune régression pour
+    les véhicules déjà saisis avant XFLT8).
+
+    Lecture seule — un ``PleinCarburant.tva_recuperable`` DÉJÀ posé explicitement
+    (override founder) n'est jamais recalculé par cette fonction ; elle ne sert
+    qu'à proposer une valeur PAR DÉFAUT à la création.
+    """
+    from .models import Vehicule
+
+    type_fiscal = getattr(vehicule, 'type_fiscal', '') or ''
+    if type_fiscal == Vehicule.TypeFiscal.TOURISME:
+        return False
+    # 'utilitaire' ou vide (type fiscal inconnu) → récupérable par défaut.
+    return True

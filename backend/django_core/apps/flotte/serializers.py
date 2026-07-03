@@ -14,6 +14,8 @@ from .models import (
     CarteCarburant,
     CarteGriseVehicule,
     Conducteur,
+    ContratVehicule,
+    CoutVehicule,
     DemandeVehicule,
     EcheanceEntretien,
     EcheanceReglementaire,
@@ -42,9 +44,13 @@ class VehiculeSerializer(serializers.ModelSerializer):
         source='get_energie_display', read_only=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
+    type_fiscal_display = serializers.CharField(
+        source='get_type_fiscal_display', read_only=True)
     # FLOTTE3 — libellé en lecture de l'emplacement de stock lié (résolu via le
     # sélecteur de `apps.stock`, dégrade sur l'id nu).
     emplacement_stock_label = serializers.SerializerMethodField()
+    # XFLT4 — checklist de mise en service, exposée en lecture calculée.
+    checklist_mise_en_service_ok = serializers.SerializerMethodField()
 
     class Meta:
         model = Vehicule
@@ -53,9 +59,14 @@ class VehiculeSerializer(serializers.ModelSerializer):
             'energie_display', 'kilometrage', 'puissance_fiscale', 'valeur',
             'statut', 'statut_display', 'categorie_permis_requise',
             'emplacement_stock_id', 'emplacement_stock_label',
-            'date_creation',
+            'vin', 'annee', 'date_acquisition', 'type_fiscal',
+            'type_fiscal_display', 'tags', 'checklist_mise_en_service',
+            'checklist_mise_en_service_ok', 'date_creation',
         ]
         read_only_fields = ['date_creation']
+
+    def get_checklist_mise_en_service_ok(self, obj):
+        return obj.checklist_mise_en_service_ok()
 
     def get_emplacement_stock_label(self, obj):
         from .selectors import emplacement_stock_label
@@ -85,6 +96,27 @@ class VehiculeSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Emplacement de stock introuvable pour cette société.")
         return value
+
+
+class JournalStatutVehiculeSerializer(serializers.ModelSerializer):
+    """XFLT4 — Entrée du journal des changements de statut véhicule.
+
+    Lecture seule côté API (créé uniquement par
+    ``services.changer_statut_vehicule``, jamais via un POST direct)."""
+
+    user_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import JournalStatutVehicule
+        model = JournalStatutVehicule
+        fields = [
+            'id', 'vehicule', 'ancien_statut', 'nouveau_statut', 'user',
+            'user_nom', 'horodatage',
+        ]
+        read_only_fields = fields
+
+    def get_user_nom(self, obj):
+        return obj.user.get_username() if obj.user_id else None
 
 
 class EnginRoulantSerializer(serializers.ModelSerializer):
@@ -548,6 +580,10 @@ class PleinCarburantSerializer(serializers.ModelSerializer):
     - ``vehicule_label``  : désignation du véhicule.
     - ``unite_display``   : libellé de l'unité.
     - ``prix_unitaire``   : prix par litre / kWh (MAD), ``None`` si quantité nulle.
+
+    XFLT8 — ``tva_recuperable`` est CALCULÉ par défaut à la création depuis
+    ``Vehicule.type_fiscal`` (``services.classifier_tva_recuperable``) si non
+    fourni explicitement au body — reste éditable (override founder).
     """
 
     unite_display = serializers.CharField(
@@ -561,7 +597,7 @@ class PleinCarburantSerializer(serializers.ModelSerializer):
             'id', 'vehicule', 'vehicule_label', 'conducteur', 'date_plein',
             'kilometrage', 'quantite', 'unite', 'unite_display', 'prix_total',
             'prix_unitaire', 'plein_complet', 'station', 'notes',
-            'date_creation',
+            'tva_recuperable', 'montant_tva', 'date_creation',
         ]
         read_only_fields = ['date_creation']
 
@@ -570,6 +606,17 @@ class PleinCarburantSerializer(serializers.ModelSerializer):
 
     def get_prix_unitaire(self, obj):
         return obj.prix_unitaire
+
+    def create(self, validated_data):
+        # XFLT8 — 'tva_recuperable' non fourni explicitement → classification
+        # par défaut depuis le type fiscal du véhicule.
+        if 'tva_recuperable' not in self.initial_data:
+            from .services import classifier_tva_recuperable
+            vehicule = validated_data.get('vehicule')
+            if vehicule is not None:
+                validated_data['tva_recuperable'] = \
+                    classifier_tva_recuperable(vehicule)
+        return super().create(validated_data)
 
     def validate_quantite(self, value):
         if value is not None and value < 0:
@@ -1698,3 +1745,134 @@ class DemandeVehiculeSerializer(serializers.ModelSerializer):
                 {'date_fin_souhaitee':
                  "La fin souhaitée ne peut pas précéder le début souhaité."})
         return attrs
+
+
+class ContratVehiculeSerializer(serializers.ModelSerializer):
+    """XFLT1 — Contrat véhicule (leasing/LLD/location/entretien).
+
+    ``company`` est posée côté serveur (jamais lue du corps de requête). Le
+    véhicule et le garage liés doivent appartenir à la société courante. La
+    fin de contrat doit être >= au début (quand renseignée).
+
+    Champs lecture seule :
+    - ``vehicule_label``     : désignation du véhicule.
+    - ``type_contrat_display`` / ``periodicite_display`` / ``statut_display``.
+    - ``statut_calcule``     : état RÉEL vs la date du jour
+      (``actif`` | ``expire``), calculé côté modèle.
+    """
+
+    vehicule_label = serializers.SerializerMethodField()
+    type_contrat_display = serializers.CharField(
+        source='get_type_contrat_display', read_only=True)
+    periodicite_display = serializers.CharField(
+        source='get_periodicite_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    statut_calcule = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ContratVehicule
+        fields = [
+            'id', 'vehicule', 'vehicule_label', 'type_contrat',
+            'type_contrat_display', 'fournisseur', 'garage', 'date_debut',
+            'date_fin', 'montant_recurrent', 'periodicite',
+            'periodicite_display', 'services_inclus', 'km_contractuel_an',
+            'statut', 'statut_display', 'statut_calcule', 'notes',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_vehicule_label(self, obj):
+        return str(obj.vehicule) if obj.vehicule_id else None
+
+    def get_statut_calcule(self, obj):
+        return obj.statut_calcule()
+
+    def validate(self, attrs):
+        debut = attrs.get(
+            'date_debut', getattr(self.instance, 'date_debut', None))
+        fin = attrs.get(
+            'date_fin', getattr(self.instance, 'date_fin', None))
+        if debut is not None and fin is not None and fin < debut:
+            raise serializers.ValidationError(
+                {'date_fin':
+                 "La fin du contrat ne peut pas précéder le début."})
+        return attrs
+
+
+class CoutVehiculeSerializer(serializers.ModelSerializer):
+    """XFLT3 — Coût véhicule divers (péage, parking, lavage, contrat…).
+
+    ``company`` est posée côté serveur (jamais lue du corps de requête).
+    L'actif et le conducteur liés doivent appartenir à la société courante.
+
+    Champs lecture seule :
+    - ``actif_label``       : désignation de l'actif (véhicule ou engin).
+    - ``categorie_display``.
+    - ``conducteur_nom``    : nom d'utilisateur du conducteur lié.
+    """
+
+    actif_label = serializers.SerializerMethodField()
+    categorie_display = serializers.CharField(
+        source='get_categorie_display', read_only=True)
+    conducteur_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CoutVehicule
+        fields = [
+            'id', 'actif_flotte', 'actif_label', 'categorie',
+            'categorie_display', 'date', 'montant', 'fournisseur',
+            'reference_piece', 'conducteur', 'conducteur_nom', 'notes',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_actif_label(self, obj):
+        return obj.actif_flotte.label if obj.actif_flotte_id else None
+
+    def get_conducteur_nom(self, obj):
+        return str(obj.conducteur) if obj.conducteur_id else None
+
+    def validate_montant(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "Le montant ne peut pas être négatif.")
+        return value
+
+
+class SignalementVehiculeSerializer(serializers.ModelSerializer):
+    """XFLT5 — Signalement d'anomalie véhicule déposé par un conducteur.
+
+    ``company`` ET ``auteur`` sont posés côté serveur (jamais lus du corps de
+    requête). L'actif et le conducteur liés doivent appartenir à la société
+    courante.
+
+    Champs lecture seule :
+    - ``actif_label``      : désignation de l'actif (véhicule ou engin).
+    - ``gravite_display`` / ``statut_display``.
+    - ``auteur_nom``       : nom d'utilisateur de l'auteur.
+    """
+
+    actif_label = serializers.SerializerMethodField()
+    gravite_display = serializers.CharField(
+        source='get_gravite_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    auteur_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import SignalementVehicule
+        model = SignalementVehicule
+        fields = [
+            'id', 'actif_flotte', 'actif_label', 'conducteur', 'auteur',
+            'auteur_nom', 'description', 'photo', 'gravite',
+            'gravite_display', 'statut', 'statut_display',
+            'ordre_reparation', 'date_creation',
+        ]
+        read_only_fields = ['auteur', 'ordre_reparation', 'date_creation']
+
+    def get_actif_label(self, obj):
+        return obj.actif_flotte.label if obj.actif_flotte_id else None
+
+    def get_auteur_nom(self, obj):
+        return obj.auteur.get_username() if obj.auteur_id else None
