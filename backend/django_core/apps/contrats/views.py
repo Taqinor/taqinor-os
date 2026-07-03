@@ -271,6 +271,7 @@ class ContratViewSet(_ContratsBaseViewSet):
             'valeur_active': _money(data['valeur_active']),
             'valeur_totale': _money(data['valeur_totale']),
             'mrr': _money(data['mrr']),
+            'mrr_combine': _money(data['mrr_combine']),
             'exceptions_facturation': data['exceptions_facturation'],
             'mrr_par_responsable': {
                 str(k): _money(v)

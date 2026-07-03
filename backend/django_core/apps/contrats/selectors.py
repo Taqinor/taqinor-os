@@ -496,6 +496,68 @@ def mrr_contrats(company):
     return total.quantize(Decimal('0.01'))
 
 
+# Diviseur mensuel par périodicité ``sav.ContratMaintenance`` (mêmes maths que
+# l'insight ``recurring_revenue`` du reporting — mensuel/trimestriel/
+# semestriel/annuel, valeurs différentes de l'enum contrats ci-dessus).
+_MOIS_PAR_PERIODICITE_SAV = {
+    'mensuel': 1,
+    'trimestriel': 3,
+    'semestriel': 6,
+    'annuel': 12,
+}
+
+
+def mrr_maintenance_sav(company, *, exclure_ids=None):
+    """MRR équivalent mensuel des ``sav.ContratMaintenance`` facturables — XCTR13.
+
+    Lecture seule, scopée société. Frontière cross-app : lit UNIQUEMENT via
+    ``sav.selectors.contrats_maintenance_facturables`` (jamais
+    ``sav.models``). Même maths que ``mrr_contrats``/l'insight
+    ``recurring_revenue`` du reporting (prix × équivalent mensuel de la
+    périodicité). ``exclure_ids`` (itérable d'ids ``ContratMaintenance``,
+    optionnel) permet d'exclure les contrats DÉJÀ comptés via un ``Contrat``
+    lié (anti double-comptage — XCTR13).
+    """
+    from decimal import Decimal
+
+    from apps.sav.selectors import contrats_maintenance_facturables
+
+    exclure = set(exclure_ids or ())
+    total = Decimal('0')
+    for cm in contrats_maintenance_facturables(company):
+        if cm['id'] in exclure:
+            continue
+        mois = _MOIS_PAR_PERIODICITE_SAV.get(cm['periodicite'])
+        if not mois:
+            continue
+        total += (cm['prix'] or Decimal('0')) / Decimal(mois)
+    return total.quantize(Decimal('0.01'))
+
+
+def mrr_combine(company):
+    """MRR combiné contrats + maintenance SAV, SANS double-comptage — XCTR13.
+
+    Somme ``mrr_contrats`` (échéanciers CONTRAT31) et ``mrr_maintenance_sav``
+    (``sav.ContratMaintenance`` facturables) — un ``ContratMaintenance``
+    RATTACHÉ à un ``Contrat`` (via ``Contrat.sav_contrat_maintenance_id``) est
+    EXCLU de la part maintenance SAV (compté une seule fois, côté contrat, où
+    son échéancier CONTRAT31 porte déjà le MRR — le lien ne duplique jamais
+    la facturation, XCTR13 valide seulement l'existence de l'id). Lecture
+    seule, scopée société.
+    """
+    from .models import Contrat
+
+    ids_lies = set(
+        Contrat.objects.filter(
+            company=company, sav_contrat_maintenance_id__isnull=False)
+        .values_list('sav_contrat_maintenance_id', flat=True))
+
+    return (
+        mrr_contrats(company)
+        + mrr_maintenance_sav(company, exclure_ids=ids_lies)
+    )
+
+
 def contrats_en_risque(company, within_days=30, today=None):
     """Contrats « EN RISQUE » : suspendus, en préavis dû, ou en résiliation active.
 
@@ -544,7 +606,10 @@ def tableau_de_bord_contrats(company, within_days=30, today=None):
     - ``en_risque`` : nombre de contrats à risque (``contrats_en_risque``) ;
     - ``valeur_active`` : somme des ``montant`` des contrats ``actif`` ;
     - ``valeur_totale`` : somme des ``montant`` de tous les contrats ;
-    - ``mrr`` : revenu mensuel récurrent (``mrr_contrats``) ;
+    - ``mrr`` : revenu mensuel récurrent des échéanciers contrats seuls
+      (``mrr_contrats`` — inchangé, rétrocompatible) ;
+    - ``mrr_combine`` : MRR contrats + ``sav.ContratMaintenance`` facturables,
+      SANS double-comptage (``mrr_combine`` — XCTR13) ;
     - ``mrr_par_responsable`` : ventilation du MRR par responsable (XCTR10,
       clé ``id`` du responsable, ``'sans_responsable'`` si non renseigné).
     """
@@ -577,6 +642,7 @@ def tableau_de_bord_contrats(company, within_days=30, today=None):
         'valeur_active': valeur_active,
         'valeur_totale': valeur_totale,
         'mrr': mrr_contrats(company),
+        'mrr_combine': mrr_combine(company),
         'exceptions_facturation': exceptions_facturation_count(company),
         'mrr_par_responsable': mrr_par_responsable(company),
     }

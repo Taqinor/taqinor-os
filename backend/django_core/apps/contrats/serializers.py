@@ -73,12 +73,12 @@ class ContratSerializer(serializers.ModelSerializer):
     """Sérialiseur d'un ``Contrat``.
 
     ``sav_contrat_maintenance_id`` est un lien LÂCHE (id seul) vers un contrat
-    de maintenance SAV (``sav.ContratMaintenance``) : il est STOCKÉ tel quel,
-    sans validation cross-app — l'app ``sav`` n'expose pas de ``selectors.py``
-    aujourd'hui, donc on ne vérifie pas l'existence/la société de la cible et on
-    n'importe JAMAIS ``apps.sav``. Quand un sélecteur SAV de lecture existera,
-    l'enrichissement/validation pourra s'y brancher (même schéma que les
-    ``ContratLien`` enrichis dans ``selectors.py``).
+    de maintenance SAV (``sav.ContratMaintenance``) — jamais un FK dur ni un
+    import de ``apps.sav.models``. Depuis XCTR13, l'ÉCRITURE de ce champ est
+    VALIDÉE via le sélecteur cross-app ``sav.selectors.contrat_maintenance_
+    existe`` (frontière cross-app, CLAUDE.md) : un id inexistant OU d'une
+    AUTRE société est refusé (400). ``None``/vide reste toujours accepté
+    (aucun contrat de maintenance rattaché).
     """
     type_contrat_display = serializers.CharField(
         source='get_type_contrat_display', read_only=True)
@@ -153,6 +153,28 @@ class ContratSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Ce responsable n'appartient pas à votre société.")
         return responsable
+
+    def validate_sav_contrat_maintenance_id(self, pk):
+        """L'id, s'il est fourni, doit exister DANS la société — XCTR13.
+
+        Frontière cross-app : délègue à ``sav.selectors.contrat_maintenance_
+        existe`` (import fonction-local, jamais ``sav.models``). ``None``
+        reste toujours accepté (aucun rattachement).
+        """
+        if not pk:
+            return pk
+        request = self.context.get('request')
+        company = getattr(request, 'user', None) and request.user.company \
+            if request is not None else None
+        if company is None:
+            return pk
+        from apps.sav.selectors import contrat_maintenance_existe
+
+        if not contrat_maintenance_existe(pk, company):
+            raise serializers.ValidationError(
+                "Ce contrat de maintenance SAV est introuvable dans votre "
+                "société.")
+        return pk
 
 
 class PartieContratSerializer(serializers.ModelSerializer):
