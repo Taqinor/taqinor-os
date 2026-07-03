@@ -890,6 +890,46 @@ export function financingComparison(
   };
 }
 
+// ── WJ53 · « Payer comptant / paiement échelonné » — toggle interactif ───────
+
+/**
+ * WJ53 — Choix de durées (mois) proposés par le toggle « paiement échelonné ».
+ * Volontairement COURT (pas de simulation de crédit bancaire, voir WJ10/WJ32
+ * pour l'éco-prêt) : c'est une simple division indicative du TTC, pour un
+ * client qui négocie un paiement en plusieurs fois DIRECTEMENT avec Taqinor —
+ * jamais présentée comme une offre bancaire.
+ */
+export const INSTALLMENT_MONTH_OPTIONS = [3, 6, 12, 24] as const;
+export type InstallmentMonths = (typeof INSTALLMENT_MONTH_OPTIONS)[number];
+
+export interface InstallmentSplit {
+  /** Prix comptant TTC (backend, inchangé). */
+  cashTtc: number;
+  /** Nombre de mois choisi. */
+  months: InstallmentMonths;
+  /** TTC ÷ mois, arrondi au MAD — AUCUN taux/intérêt ajouté (simple division). */
+  monthly: number;
+}
+
+/**
+ * WJ53 — Calcule la mensualité INDICATIVE d'un paiement échelonné sur `months`
+ * mois, par simple division du TTC (aucun taux inventé, aucun frais). Renvoie
+ * `null` quand le TTC n'est pas un prix réel positif (même garde-fou zéro-total
+ * que `hasRealPrice`) — jamais un chiffre calculé sur un montant fabriqué.
+ */
+export function installmentSplit(
+  cashTtc: number,
+  months: InstallmentMonths = 12,
+): InstallmentSplit | null {
+  if (!Number.isFinite(cashTtc) || cashTtc <= 0) return null;
+  const safeMonths = INSTALLMENT_MONTH_OPTIONS.includes(months) ? months : 12;
+  return {
+    cashTtc,
+    months: safeMonths,
+    monthly: Math.round(cashTtc / safeMonths),
+  };
+}
+
 // ── WJ12 · Contact intégré (WhatsApp prérempli avec la réf devis) ────────────
 
 /**
@@ -910,6 +950,23 @@ export function whatsappLink(reference: string, phone: string = TAQINOR_WHATSAPP
     ? `Bonjour, j'ai une question sur ma proposition Taqinor (réf. ${ref}).`
     : 'Bonjour, j\'ai une question sur ma proposition Taqinor.';
   return `https://wa.me/${digits}?text=${encodeURIComponent(msg)}`;
+}
+
+/**
+ * WJ56 — Partage du lien TOKENISÉ de LA PROPOSITION ELLE-MÊME (pas une question
+ * pour Taqinor) : le client transmet sa proposition à un conjoint/co-décideur
+ * SANS rien ressaisir. Différent de `whatsappLink` (qui adresse un message AU
+ * numéro Taqinor) — ici `wa.me/` sans numéro ouvre le compositeur WhatsApp
+ * générique (le client choisit lui-même le destinataire). `pageUrl` est
+ * l'URL COMPLÈTE de la page courante (avec le token), jamais reconstruite.
+ */
+export function whatsappShareLink(pageUrl: string, reference: string): string {
+  const url = (pageUrl || '').trim();
+  const ref = (reference || '').trim();
+  const msg = ref
+    ? `Voici ma proposition solaire Taqinor (réf. ${ref}) : ${url}`
+    : `Voici ma proposition solaire Taqinor : ${url}`;
+  return `https://wa.me/?text=${encodeURIComponent(msg)}`;
 }
 
 /**
@@ -953,6 +1010,14 @@ export interface SignSignatureMeta {
   consent_esign?: boolean;
   /** Horodatage côté client (ISO 8601) du moment de la signature. */
   signed_at_client?: string;
+  /**
+   * WJ87 — Nom facultatif de la personne/du foyer au nom de qui le signataire
+   * agit (ex. « mes parents », « mon foyer »). Le signataire enregistré reste
+   * TOUJOURS `nom` (champ de base) ; ce champ est une précision ADDITIVE,
+   * jamais un remplacement — un backend qui l'ignore continue de fonctionner
+   * exactement comme avant.
+   */
+  on_behalf_of?: string;
 }
 
 /**
@@ -973,6 +1038,10 @@ export function buildAcceptBodyRich(
   if (meta.consent_esign === true) body.consent_esign = true;
   if (typeof meta.signed_at_client === 'string' && meta.signed_at_client) {
     body.signed_at_client = meta.signed_at_client;
+  }
+  // WJ87 — omis quand vide/absent (jamais une chaîne vide envoyée au backend).
+  if (typeof meta.on_behalf_of === 'string' && meta.on_behalf_of.trim()) {
+    body.on_behalf_of = meta.on_behalf_of.trim();
   }
   return body;
 }

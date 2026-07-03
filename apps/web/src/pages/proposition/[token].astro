@@ -22,6 +22,11 @@ import StarRating from '../../components/StarRating.astro';
 import TestimonialCarousel from '../../components/TestimonialCarousel.astro';
 import InstallCounter from '../../components/InstallCounter.astro';
 import CertLogoRow from '../../components/CertLogoRow.astro';
+// WJ57 — « confiance au moment de la signature » : UN témoignage court (texte,
+// slot vidéo réservé pour quand WG6 fournira de vrais témoignages filmés) +
+// le bandeau certifications/garanties, juste au-dessus du bloc e-sign. Même
+// source unique de vérité que <TestimonialCarousel/> (aucun avis fabriqué).
+import { TESTIMONIALS, hasTestimonials } from '../../lib/testimonials';
 // WJ35 — grade « heure dorée » v3 (.v3-grade / .photo-grade), importé ici car
 // cette page ne monte pas <V2Enhance/> (qui l'importe pour les pages v2). La
 // feuille est dédupliquée par Vite si une autre page l'importe déjà ailleurs.
@@ -52,8 +57,11 @@ import {
   savingsHeadline,
   environmentalImpact,
   financingComparison,
+  installmentSplit,
+  INSTALLMENT_MONTH_OPTIONS,
   whatsappLink,
   whatsappLinkForIntent,
+  whatsappShareLink,
   parseRoofLayout,
   buildViewerModel,
   zoneAnnotations,
@@ -72,17 +80,30 @@ const API_BASE = (import.meta.env.PUBLIC_API_BASE as string | undefined) ?? 'htt
 const { token } = Astro.params as { token: string };
 
 // ── Lecture serveur de la proposition ────────────────────────────────────────
+// WJ81 — la page la plus commercialement critique du site ne doit JAMAIS
+// rester blanche : un backend lent/qui ne répond pas bloquait auparavant ce
+// `fetch` sans limite (le SSR pouvait pendre jusqu'au timeout de la
+// plateforme, une page blanche générique plutôt qu'un message de marque). Un
+// `AbortController` borne l'attente à SSR_FETCH_TIMEOUT_MS ; un timeout obtient
+// désormais son PROPRE message honnête (« connexion lente ») distinct d'une
+// vraie panne réseau, et l'état d'erreur porte un bouton « Réessayer » qui
+// recharge la MÊME URL (lien pur, fonctionne même sans JS).
+const SSR_FETCH_TIMEOUT_MS = 8000;
 let data: ProposalResponse | null = null;
 let errorDetail: string | null = null;
 let httpStatus = 200;
+let isTimeout = false;
 
 if (!token || !token.trim()) {
   httpStatus = 404;
   errorDetail = 'Ce lien de proposition est introuvable ou a expiré.';
 } else {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SSR_FETCH_TIMEOUT_MS);
   try {
     const res = await fetch(proposalEndpoint(API_BASE, token), {
       headers: { accept: 'application/json' },
+      signal: controller.signal,
     });
     httpStatus = res.status;
     if (res.ok) {
@@ -101,9 +122,14 @@ if (!token || !token.trim()) {
           ? 'Ce lien de proposition est introuvable ou a expiré.'
           : 'Cette proposition n’est pas accessible pour le moment.');
     }
-  } catch {
+  } catch (err) {
     httpStatus = 502;
-    errorDetail = 'Proposition momentanément indisponible. Veuillez réessayer dans un instant.';
+    isTimeout = err instanceof Error && err.name === 'AbortError';
+    errorDetail = isTimeout
+      ? 'La connexion est lente — cette proposition met plus de temps que prévu à charger. Réessayez, ou contactez votre conseiller sur WhatsApp.'
+      : 'Proposition momentanément indisponible. Veuillez réessayer dans un instant.';
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -172,16 +198,32 @@ const instLabel =
 // ── P2 — Graphe production estimée vs consommation (depuis les tableaux Q6) ──
 // On ne dessine QUE les chiffres backend ; tableaux vides/absents → bloc masqué.
 const chartSeries = ok ? resolveSeries(data?.monthly_production, data?.monthly_consumption) : { mode: 'none' as const, production: null, consumption: null };
-const chartSvg = ok && chartSeries.mode !== 'none'
-  ? renderProposalChart(data?.monthly_production, data?.monthly_consumption)
+// WJ80 — les DEUX graphes les plus persuasifs de la page restaient français-
+// only (mois FR figés dans le SVG) même en mode EN/AR actif. Plutôt que de
+// réimporter toute la chaîne de rendu SVG côté client (bundle supplémentaire),
+// on PRÉ-RENDU les trois variantes langue côté serveur — même discipline
+// tri-node que le texte (`data-i18n`/`prepareI18n`) : FR visible par défaut,
+// EN/AR posés `hidden`, le script de bascule de langue montre la bonne.
+const chartSvgFr = ok && chartSeries.mode !== 'none'
+  ? renderProposalChart(data?.monthly_production, data?.monthly_consumption, undefined, 'fr')
   : '';
-const showChart = ok && hasProductionSeries(data!) && chartSvg.length > 0;
+const chartSvgEn = ok && chartSeries.mode !== 'none'
+  ? renderProposalChart(data?.monthly_production, data?.monthly_consumption, undefined, 'en')
+  : '';
+const chartSvgAr = ok && chartSeries.mode !== 'none'
+  ? renderProposalChart(data?.monthly_production, data?.monthly_consumption, undefined, 'ar')
+  : '';
+const showChart = ok && hasProductionSeries(data!) && chartSvgFr.length > 0;
 const chartHasConso = chartSeries.mode === 'comparison';
 
 // ── WJ16 — Courbe journalière production vs consommation (lever → coucher) ────
 // Calée sur la production annuelle RÉELLE backend si présente, sinon « année
 // type » clairement libellée. Le visuel le plus persuasif ne disparaît jamais.
-const dailyCurve = ok ? renderYearCurve(prodKwh) : { svg: '', hasRealScale: false };
+// WJ80 — même pré-rendu tri-langue que le graphe ci-dessus.
+const dailyCurveFr = ok ? renderYearCurve(prodKwh, undefined, 'fr') : { svg: '', hasRealScale: false };
+const dailyCurveEn = ok ? renderYearCurve(prodKwh, undefined, 'en') : { svg: '', hasRealScale: false };
+const dailyCurveAr = ok ? renderYearCurve(prodKwh, undefined, 'ar') : { svg: '', hasRealScale: false };
+const dailyCurve = dailyCurveFr;
 
 // ── WJ15 — Fenêtre de validité honnête (date backend réelle, jamais inventée) ─
 const validity = ok ? resolveValidity(data!) : { label: null, fromBackend: false, expired: false };
@@ -194,6 +236,15 @@ const enviro = ok ? environmentalImpact(prodKwh) : null;
 
 // ── WJ10 — Comparatif de financement (cash backend + éco-prêt indicatif) ─────
 const financing = ok ? financingComparison(data!, reco ?? 'sans_batterie') : null;
+
+// ── WJ53 — Toggle « payer comptant / paiement échelonné » interactif ─────────
+// Le TTC de départ vient de l'option retenue (reco, ou sans_batterie par
+// défaut) ; le recalcul en direct (mois → mensualité) se fait CÔTÉ CLIENT via
+// installmentSplit (script de fin de page) — ce bloc ne rend RIEN sans prix
+// réel (même garde-fou zéro-total que le reste de la page).
+const installmentTtc = ok ? optionTtc(data!, reco ?? 'sans_batterie') : 0;
+const showInstallmentToggle = ok && Number.isFinite(installmentTtc) && installmentTtc > 0;
+const defaultInstallment = showInstallmentToggle ? installmentSplit(installmentTtc, 12) : null;
 
 // ── WJ12 — Contact intégré : deep-link WhatsApp prérempli avec la réf devis ──
 // « Demander un rappel » = appeler le numéro TAQINOR (NAP), jamais le numéro du
@@ -209,6 +260,12 @@ const callbackHref = ok ? `tel:${TAQINOR_TEL}` : '';
 const waLinkDiscuss = ok ? whatsappLinkForIntent(reference, 'discuss') : '';
 const waLinkQuestion = ok ? whatsappLinkForIntent(reference, 'question') : '';
 const waLinkVoice = ok ? whatsappLinkForIntent(reference, 'voice') : '';
+
+// ── WJ56 — « Partager sur WhatsApp » : le lien TOKENISÉ lui-même (même page),
+// pour qu'un conjoint/co-décideur le reçoive sans rien ressaisir. `Astro.url`
+// est l'URL COMPLÈTE réellement servie (jamais reconstruite manuellement).
+const shareUrl = ok ? Astro.url.href : '';
+const waLinkShare = ok ? whatsappShareLink(shareUrl, reference) : '';
 
 // ── P3 — Lien public du devis PDF premium (même token, nouvel onglet) ────────
 const pdfUrl = ok ? proposalPdfEndpoint(API_BASE, token) : '';
@@ -252,7 +309,21 @@ const faq = objectionFaq();
 const REAL_PROJECT_PHOTOS_AVAILABLE = false;
 const REAL_FOUNDER_QUOTE_AVAILABLE = false;
 
+// ── WJ57 — « confiance au moment de la signature ». Même discipline no-op :
+// tant qu'aucun témoignage FILMÉ réel n'existe (WG6), le slot vidéo ne rend
+// RIEN (pas de player vide, pas de mention "bientôt") ; le repli texte réutilise
+// la MÊME source unique de vérité (`TESTIMONIALS`) que <TestimonialCarousel/> —
+// jamais un avis fabriqué pour ce placement. `signTestimonial` = le premier avis
+// réel disponible (le plus court à lire juste avant de signer).
+const REAL_TESTIMONIAL_VIDEO_AVAILABLE = false;
+const signTestimonial = hasTestimonials() ? TESTIMONIALS[0] : null;
+
 const pageTitle = ok ? `Proposition ${reference} — ${clientName} | Taqinor` : 'Proposition | Taqinor';
+
+// ── WJ81 — Lien WhatsApp de repli utilisable MÊME quand la proposition n'a pas
+// pu être chargée (`!ok` : timeout, panne, lien invalide). `whatsappLink('')`
+// dégrade déjà proprement sur un message générique sans référence.
+const waLinkFallback = whatsappLink(reference || '');
 
 // Données passées au script de signature (sérialisées en JSON dans un data-attr).
 const signConfig = ok
@@ -263,14 +334,36 @@ const signConfig = ok
 <Layout title={pageTitle} description="Votre proposition solaire personnalisée Taqinor." noindex={true}>
   {!ok ? (
     <!-- ── État « lien expiré / introuvable » ─────────────────────────────── -->
+    <!-- WJ81 — la page ne reste JAMAIS blanche : ce cadre de marque (rappel
+         visuel Taqinor, jamais une page d'erreur générique du navigateur/
+         plateforme) affiche un message honnête. Pour un TIMEOUT (backend
+         lent) spécifiquement, un bouton « Réessayer » (recharge la MÊME URL,
+         lien pur — fonctionne sans JS) et un repli WhatsApp direct sont
+         proposés, plutôt que le seul lien « Retour à l'accueil ». -->
     <section class="mx-auto flex min-h-[60vh] max-w-2xl flex-col items-center justify-center px-5 py-24 text-center">
       <div class="rule-brass mx-auto text-brass-300" aria-hidden="true"></div>
       <h1 class="display mt-6 text-3xl text-lune sm:text-4xl">Proposition indisponible</h1>
       <p class="v2-body mt-4 max-w-md">{errorDetail}</p>
-      <p class="mt-8 text-sm text-lune-faint">
-        Besoin d’un nouveau lien ? Contactez votre conseiller Taqinor.
-      </p>
-      <a href="/" class="btn-pill mt-8">Retour à l’accueil</a>
+      {isTimeout ? (
+        <>
+          <div class="mt-8 flex flex-col gap-3 sm:flex-row">
+            <a href={Astro.url.href} class="btn-pill" style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)">
+              Réessayer
+            </a>
+            <a href={waLinkFallback} target="_blank" rel="noopener noreferrer" class="btn-pill">
+              Contacter sur WhatsApp
+            </a>
+          </div>
+          <a href="/" class="mt-4 text-sm text-lune-faint underline-offset-2 hover:underline">Retour à l’accueil</a>
+        </>
+      ) : (
+        <>
+          <p class="mt-8 text-sm text-lune-faint">
+            Besoin d’un nouveau lien ? Contactez votre conseiller Taqinor.
+          </p>
+          <a href="/" class="btn-pill mt-8">Retour à l’accueil</a>
+        </>
+      )}
     </section>
   ) : (
     <div class="proposition pb-28" data-sign-config={signConfig}>
@@ -379,6 +472,34 @@ const signConfig = ok
               </div>
             )}
           </dl>
+          <!-- ── WJ56 · PARTAGER SUR WHATSAPP ─────────────────────────────────
+               Partage le lien TOKENISÉ (cette page) tel quel — un conjoint ou
+               co-décideur peut l'ouvrir sans rien ressaisir. Web Share API
+               native quand disponible (meilleure expérience tablette/mobile,
+               feuille de partage système) ; repli sur le compositeur wa.me
+               générique sinon (toujours fonctionnel, aucun JS requis pour le
+               lien lui-même). -->
+          <div class="cine-in cine-in-3 mt-5">
+            <a
+              id="prop-share-whatsapp"
+              href={waLinkShare}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-share-url={shareUrl}
+              data-share-ref={reference}
+              class="btn-pill inline-flex items-center justify-center gap-2 border-white/20 text-sm text-lune-soft hover:text-white"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.9 9.9 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2Zm0 18.1h-.01a8.2 8.2 0 0 1-4.18-1.15l-.3-.18-3.11.82.83-3.04-.2-.31a8.2 8.2 0 0 1-1.26-4.37c0-4.54 3.7-8.23 8.24-8.23 2.2 0 4.27.86 5.83 2.42a8.18 8.18 0 0 1 2.41 5.82c0 4.54-3.7 8.23-8.23 8.23Zm4.52-6.16c-.25-.12-1.47-.72-1.69-.81-.23-.08-.39-.12-.56.13-.16.25-.64.81-.78.97-.14.17-.29.19-.54.06-.25-.12-1.05-.39-1.99-1.23-.74-.66-1.23-1.47-1.38-1.72-.14-.25-.01-.38.11-.51.11-.11.25-.29.37-.43.13-.14.17-.25.25-.41.08-.17.04-.31-.02-.43-.06-.12-.56-1.35-.77-1.85-.2-.48-.41-.42-.56-.43l-.48-.01c-.17 0-.43.06-.66.31-.23.25-.86.85-.86 2.07 0 1.22.89 2.4 1.01 2.57.12.17 1.75 2.67 4.23 3.74.59.26 1.05.41 1.41.52.59.19 1.13.16 1.56.1.48-.07 1.47-.6 1.68-1.18.21-.58.21-1.07.14-1.18-.06-.1-.22-.16-.47-.28Z"/>
+              </svg>
+              <span data-i18n
+                data-fr="Partager sur WhatsApp"
+                data-en="Share on WhatsApp"
+                data-ar="مشاركة على واتساب">
+                Partager sur WhatsApp
+              </span>
+            </a>
+          </div>
         </div>
       </section>
 
@@ -607,7 +728,18 @@ const signConfig = ok
             {chartHasConso ? 'Production estimée vs votre consommation' : 'Production estimée'}
           </p>
           <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6">
-            <div class="chart-svg" set:html={chartSvg}></div>
+            <!-- WJ80 — trois variantes langue pré-rendues (FR visible par
+                 défaut) : le script de bascule de langue affiche la bonne au
+                 lieu de réimporter la chaîne de rendu SVG côté client. -->
+            <div class="chart-svg" data-chart-lang="fr" set:html={chartSvgFr}></div>
+            <div class="chart-svg" data-chart-lang="en" hidden set:html={chartSvgEn}></div>
+            <div class="chart-svg" data-chart-lang="ar" hidden set:html={chartSvgAr}></div>
+            <!-- WJ80 — tap-to-reveal : le `<title>` SVG (survol souris) est
+                 invisible au tactile — l'essentiel du trafic de cette page.
+                 Un tap/clic sur une barre affiche ici son mois + sa valeur ;
+                 câblé par le script de fin de page (délégation d'événement,
+                 aucune dépendance au SVG choisi). -->
+            <p id="chart-tap-caption" class="mt-2 min-h-[1.25rem] text-sm text-brass-300" aria-live="polite"></p>
             <div class="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
               <span class="inline-flex items-center gap-2 text-lune-soft">
                 <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-brass-400)" aria-hidden="true"></span>
@@ -648,7 +780,14 @@ const signConfig = ok
         <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
           <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Votre journée solaire" data-en="Your solar day" data-ar="يومكم الشمسي">Votre journée solaire</p>
           <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6">
-            <div class="daily-curve-wrap" set:html={dailyCurve.svg}></div>
+            <!-- WJ80 — mêmes trois variantes langue pré-rendues que le graphe
+                 ci-dessus (FR visible par défaut). -->
+            <div class="daily-curve-wrap" data-curve-lang="fr" set:html={dailyCurveFr.svg}></div>
+            <div class="daily-curve-wrap" data-curve-lang="en" hidden set:html={dailyCurveEn.svg}></div>
+            <div class="daily-curve-wrap" data-curve-lang="ar" hidden set:html={dailyCurveAr.svg}></div>
+            <!-- WJ80 — tap-to-reveal du repère pic/moyenne (même discipline que
+                 le graphe ci-dessus — le survol est invisible au tactile). -->
+            <p id="curve-tap-caption" class="mt-2 min-h-[1.25rem] text-sm text-brass-300" aria-live="polite"></p>
             <div class="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
               <span class="inline-flex items-center gap-2 text-lune-soft">
                 <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-brass-400)" aria-hidden="true"></span>
@@ -787,6 +926,80 @@ const signConfig = ok
           })}
         </div>
       </section>
+
+      <!-- ── WJ53 · TOGGLE « PAYER COMPTANT / PAIEMENT ÉCHELONNÉ » ────────────
+           Recalcul EN DIRECT (côté client) d'une mensualité indicative en
+           divisant simplement le TTC de l'option retenue par le nombre de mois
+           choisi — AUCUN taux inventé, distinct de l'éco-prêt bancaire WJ10/
+           WJ32 juste en dessous. Rendu UNIQUEMENT si un prix réel existe. -->
+      {showInstallmentToggle && defaultInstallment && (
+        <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8" data-installment-ttc={installmentTtc}>
+          <p class="tech-label rule-brass text-brass-300" data-i18n
+            data-fr="Comptant ou échelonné ?" data-en="Cash or in installments?" data-ar="نقداً أم بالتقسيط؟">
+            Comptant ou échelonné ?
+          </p>
+          <div class="cine-card mt-5 rounded-2xl p-6 sm:p-7">
+            <div class="flex flex-wrap items-center gap-2" role="group" aria-label="Payer comptant ou en plusieurs fois">
+              <button
+                type="button"
+                id="installment-cash-btn"
+                class="btn-pill px-4 py-2 text-sm"
+                data-installment-mode="cash"
+                aria-pressed="true"
+                style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
+              >
+                <span data-i18n data-fr="Payer comptant" data-en="Pay cash" data-ar="الدفع نقداً">Payer comptant</span>
+              </button>
+              <button
+                type="button"
+                id="installment-split-btn"
+                class="btn-pill px-4 py-2 text-sm"
+                data-installment-mode="split"
+                aria-pressed="false"
+              >
+                <span data-i18n data-fr="Paiement échelonné" data-en="Pay in installments" data-ar="الدفع بالتقسيط">Paiement échelonné</span>
+              </button>
+            </div>
+
+            <!-- État « comptant » -->
+            <div id="installment-cash-view" class="mt-5">
+              <p class="fig fig-md lum" dir="ltr">{formatMAD(installmentTtc)}</p>
+              <p class="mt-1 text-sm text-lune-soft" data-i18n data-fr="TTC, en une fois." data-en="Incl. tax, in one payment." data-ar="شامل الضريبة، دفعة واحدة.">TTC, en une fois.</p>
+            </div>
+
+            <!-- État « échelonné » (masqué par défaut, JS bascule l'affichage) -->
+            <div id="installment-split-view" class="mt-5" hidden>
+              <label for="installment-months" class="tech-label text-lune-faint" data-i18n data-fr="Nombre de mois" data-en="Number of months" data-ar="عدد الأشهر">Nombre de mois</label>
+              <select
+                id="installment-months"
+                class="mt-2 rounded-xl border border-white/15 bg-nuit-800 px-4 py-2 text-lune"
+                dir="ltr"
+              >
+                {INSTALLMENT_MONTH_OPTIONS.map((m) => (
+                  <option value={m} selected={m === 12}>{m} {m === 1 ? 'mois' : 'mois'}</option>
+                ))}
+              </select>
+              <p class="mt-4">
+                <span class="fig fig-md text-lune" dir="ltr" id="installment-monthly-value">{formatMAD(defaultInstallment.monthly)}</span>
+                <span class="text-lg text-lune-soft" data-i18n data-fr="/mois" data-en="/month" data-ar="/شهرياً">/mois</span>
+              </p>
+              <p class="mt-2 text-sm text-brass-300" data-i18n
+                data-fr="à confirmer — hors offre bancaire ferme"
+                data-en="to confirm — not a firm bank offer"
+                data-ar="للتأكيد — ليس عرضاً بنكياً نهائياً">
+                à confirmer — hors offre bancaire ferme
+              </p>
+              <p class="mt-2 text-xs text-lune-faint" data-i18n
+                data-fr="Simple division du prix TTC par le nombre de mois choisi — aucun taux ni frais ajouté ici. Les modalités exactes (calendrier, garantie) sont à convenir avec votre conseiller Taqinor."
+                data-en="Simple division of the incl.-tax price by the number of months chosen — no rate or fee added here. Exact terms (schedule, guarantee) are to be agreed with your Taqinor advisor."
+                data-ar="تقسيم بسيط للثمن شامل الضريبة على عدد الأشهر المختار — دون أي معدل أو رسوم مضافة هنا. تُحدَّد الشروط الدقيقة (الجدول، الضمان) مع مستشاركم في تاقينور.">
+                Simple division du prix TTC par le nombre de mois choisi — aucun taux ni frais ajouté ici.
+                Les modalités exactes (calendrier, garantie) sont à convenir avec votre conseiller Taqinor.
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
 
       <!-- ── WJ10/WJ32 · COMPARATIF DE FINANCEMENT ───────────────────────────
            Priorité au bloc BACKEND réel (QJ12, programme Tatwir/ISTIDAMA +
@@ -1081,6 +1294,37 @@ const signConfig = ok
         </div>
       </section>
 
+      <!-- ── WJ57 · CONFIANCE AU MOMENT DE SIGNER — juste au-dessus du bloc
+           e-sign (pas seulement dans la section « Pourquoi nous faire
+           confiance » plus haut). Un slot vidéo est réservé pour quand WG6
+           fournira de vrais témoignages filmés (no-op tant qu'absent — MÊME
+           discipline que REAL_FOUNDER_QUOTE_AVAILABLE) ; en attendant, repli
+           texte sur le même avis client réel (hasTestimonials()) que
+           <TestimonialCarousel/> plus haut, jamais un second avis fabriqué.
+           Les badges certifications/garanties (mêmes FAITS que CertLogoRow
+           plus haut) sont TOUJOURS affichés ici, qu'un témoignage soit
+           disponible ou non — ce sont des faits vérifiables, pas du contenu
+           gated. -->
+      <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
+        <div class="cine-card rounded-2xl p-6 sm:p-7">
+          {REAL_TESTIMONIAL_VIDEO_AVAILABLE ? (
+            <!-- Slot vidéo réservé (WG6) : à remplir par Reda avec le vrai
+                 témoignage filmé le jour où il devient disponible. -->
+            <div class="video-testimonial-slot" data-testimonial-video></div>
+          ) : signTestimonial ? (
+            <blockquote class="v2-body text-lune">
+              &ldquo;{signTestimonial.quote}&rdquo;
+              <footer class="mt-3 text-sm text-lune-faint not-italic">
+                <span class="font-bold text-lune">{signTestimonial.name}</span> · {signTestimonial.city} · {signTestimonial.system}
+              </footer>
+            </blockquote>
+          ) : null}
+          <div class={signTestimonial || REAL_TESTIMONIAL_VIDEO_AVAILABLE ? 'mt-5 border-t border-white/10 pt-5' : ''}>
+            <CertLogoRow />
+          </div>
+        </div>
+      </section>
+
       <!-- ── SIGNATURE EN LIGNE ───────────────────────────────────────────── -->
       <section id="signer" class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
         <div class="cine-card rounded-2xl p-6 sm:p-8">
@@ -1323,6 +1567,41 @@ const signConfig = ok
                 data-ar="ارسموا توقيعكم أعلاه (اختياري لكن مستحسن). اسمكم وموافقتكم أدناه بمثابة توقيع إلكتروني (القانون 53-05).">Dessinez votre signature ci-dessus (facultatif mais recommandé). Votre nom et votre accord ci-dessous valent signature électronique (loi 53-05).</p>
             </div>
 
+            <!-- ── WJ87 · SIGNER AU NOM DU FOYER (optionnel) ─────────────────────
+                 Le MRE qui signe pour ses parents, ou tout couple qui décide à
+                 distance, n'avait aucun moyen honnête d'enregistrer une décision
+                 déléguée/conjointe. Champ FACULTATIF, additif dans le payload
+                 d'acceptation (le backend qui l'ignore continue de fonctionner
+                 exactement comme avant) — formulation volontairement générique
+                 (le libellé légal précis WG16 est encore en attente). -->
+            <div class="mt-5">
+              <label for="sign-on-behalf-of" class="tech-label text-lune-faint" data-i18n
+                data-fr="Je signe au nom de (optionnel)"
+                data-en="I am signing on behalf of (optional)"
+                data-ar="أوقّع نيابة عن (اختياري)">
+                Je signe au nom de (optionnel)
+              </label>
+              <input
+                id="sign-on-behalf-of"
+                name="on_behalf_of"
+                type="text"
+                autocomplete="off"
+                class="mt-2 w-full rounded-xl border border-white/15 bg-nuit-800 px-4 py-3 text-lune placeholder:text-lune-faint"
+                data-i18n-placeholder
+                data-placeholder-fr="Ex. : mes parents, mon foyer"
+                data-placeholder-en="E.g.: my parents, my household"
+                data-placeholder-ar="مثال: والديّ، عائلتي"
+                placeholder="Ex. : mes parents, mon foyer"
+              />
+              <p class="mt-1.5 text-xs text-lune-faint" data-i18n
+                data-fr="Si vous signez pour le compte du propriétaire ou de votre foyer, précisez-le ici — votre nom ci-dessus reste le signataire enregistré."
+                data-en="If you are signing on behalf of the owner or your household, note it here — your name above remains the recorded signatory."
+                data-ar="إن كنتم توقّعون نيابة عن المالك أو عائلتكم، وضّحوا ذلك هنا — يبقى اسمكم أعلاه هو الموقّع المسجَّل.">
+                Si vous signez pour le compte du propriétaire ou de votre foyer, précisez-le ici —
+                votre nom ci-dessus reste le signataire enregistré.
+              </p>
+            </div>
+
             <label class="mt-5 flex cursor-pointer items-start gap-3 text-sm">
               <input id="sign-accord" name="accord" type="checkbox" required class="mt-1 h-4 w-4 accent-[var(--color-brass-400)]" />
               <span class="text-lune-soft" data-i18n
@@ -1452,7 +1731,14 @@ const signConfig = ok
            / barre de geste : le CTA ne se cache jamais derrière la zone système).
            WJ82 — sur une offre morte (refusée/expirée/retirée), le CTA de
            signature devient « Demander un devis actualisé » pointant vers le
-           contact WhatsApp plutôt que vers le formulaire supprimé. -->
+           contact WhatsApp plutôt que vers le formulaire supprimé.
+           WJ56 — QA tablette/desktop (présentation en direct par un commercial) :
+           les grilles passent en multi-colonnes dès `sm:` (640px, couvre tablette
+           portrait/paysage ET desktop) ; le CTA collant reste `fixed inset-x-0`
+           pleine largeur avec conteneur interne `max-w-4xl` centré à toutes les
+           largeurs ; la bascule de langue (`fixed top-3 right-3`) et le bouton
+           « Partager » (flux normal, jamais `fixed`) ne se chevauchent à aucune
+           largeur testée. Aucune régression de layout introduite par WJ53/WJ56. -->
       <div
         id="sticky-cta"
         class="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-nuit-800/95 px-4 pt-3 backdrop-blur supports-[backdrop-filter]:bg-nuit-800/80"
@@ -1611,6 +1897,24 @@ const signConfig = ok
     // le premier rendu) : on les retraduit ici, à chaque bascule ET après
     // chaque changement d'état, via un petit registre partagé.
     propI18nBusyLabels.forEach((fn) => fn(currentLang));
+    // WJ80 — bascule des TROIS variantes langue pré-rendues du graphe
+    // production-vs-consommation et de la courbe journalière (chacune posée
+    // dans le DOM au premier rendu serveur, voir data-chart-lang/data-curve-lang) :
+    // même logique show/hide que les triplets data-i18n ci-dessus.
+    document.querySelectorAll<HTMLElement>('[data-chart-lang]').forEach((el) => {
+      el.hidden = el.dataset.chartLang !== currentLang;
+    });
+    document.querySelectorAll<HTMLElement>('[data-curve-lang]').forEach((el) => {
+      el.hidden = el.dataset.curveLang !== currentLang;
+    });
+    // WJ87 — les attributs `placeholder` ne sont pas couverts par le mécanisme
+    // data-i18n (qui ne touche que le contenu affiché) : ce petit registre
+    // dédié retraduit les placeholders posés via data-placeholder-{fr,en,ar}
+    // à chaque bascule de langue.
+    document.querySelectorAll<HTMLInputElement>('[data-i18n-placeholder]').forEach((el) => {
+      const value = isAr ? el.dataset.placeholderAr : isEn ? el.dataset.placeholderEn : el.dataset.placeholderFr;
+      if (typeof value === 'string') el.placeholder = value;
+    });
   }
   prepareI18n();
   document.getElementById('prop-lang-fr')?.addEventListener('click', () => applyLang('fr'));
@@ -1803,6 +2107,9 @@ const signConfig = ok
       const accord = (document.getElementById('sign-accord') as HTMLInputElement | null)?.checked;
       const consent = (document.getElementById('sign-consent') as HTMLInputElement | null)?.checked;
       const nom = (document.getElementById('sign-nom') as HTMLInputElement | null)?.value ?? '';
+      // WJ87 — facultatif : « je signe au nom de… » (MRE signant pour ses
+      // parents, foyer, etc.). Le signataire enregistré reste `nom` ci-dessus.
+      const onBehalfOf = (document.getElementById('sign-on-behalf-of') as HTMLInputElement | null)?.value ?? '';
       const state: SignFormState = { nom, option: selectedOption() };
 
       const v = validateSign(state, cfg.twoOptions);
@@ -1837,6 +2144,16 @@ const signConfig = ok
       submitBusy = true;
       renderSubmitLabel(currentLang);
 
+      // WJ81 — jamais un « Signature… » désactivé pour l'éternité : une
+      // connexion lente/un backend qui ne répond pas laissait auparavant ce
+      // bouton bloqué SANS limite. 15 s est le seuil documenté par le
+      // founder pour ce moment de très haute intention — au-delà, on annule
+      // la requête et on rend la main avec un message honnête + un chemin de
+      // repli (WhatsApp, déjà visible juste au-dessus dans « Une question
+      // avant de signer ? »).
+      const SIGN_SUBMIT_TIMEOUT_MS = 15000;
+      const submitController = new AbortController();
+      const submitTimer = window.setTimeout(() => submitController.abort(), SIGN_SUBMIT_TIMEOUT_MS);
       try {
         // Corps RÉTRO-COMPATIBLE : base (token/nom/option) + champs optionnels
         // (signature, consentement, horodatage) que le backend peut ignorer.
@@ -1844,6 +2161,7 @@ const signConfig = ok
           signature_data_url: signatureDataUrl,
           consent_esign: true,
           signed_at_client: signedAtIso,
+          on_behalf_of: onBehalfOf,
         });
         const res = await fetch('/api/proposition-accept', {
           method: 'POST',
@@ -1853,6 +2171,7 @@ const signConfig = ok
             twoOptions: cfg.twoOptions,
             ...richBody,
           }),
+          signal: submitController.signal,
         });
         const data = (await res.json()) as {
           ok?: boolean;
@@ -1870,9 +2189,15 @@ const signConfig = ok
           return;
         }
         showError(data.detail || 'Une erreur est survenue. Veuillez réessayer.');
-      } catch {
-        showError('Service momentanément indisponible. Veuillez réessayer.');
+      } catch (err) {
+        const timedOut = err instanceof Error && err.name === 'AbortError';
+        showError(
+          timedOut
+            ? 'La connexion est lente — réessayez, ou contactez-nous sur WhatsApp ci-dessus.'
+            : 'Service momentanément indisponible. Veuillez réessayer.',
+        );
       } finally {
+        window.clearTimeout(submitTimer);
         submitting = false;
         if (submitBtn) submitBtn.disabled = false;
         if (spinner) spinner.hidden = true;
@@ -2114,6 +2439,135 @@ const signConfig = ok
       if (document.visibilityState === 'visible') setPdfLoading(false);
     });
   }
+
+  // ── WJ53 — Toggle « payer comptant / paiement échelonné », recalcul en
+  // direct (aucun appel réseau : simple division du TTC déjà connu côté
+  // client via data-installment-ttc). Utilise installmentSplit (même fonction
+  // PURE que testée sous vitest) pour garantir zéro divergence de calcul.
+  // Regroupé dans CE script (voir la note WJ34 ci-dessus sur le 4ᵉ <script>
+  // sans import ES qui perdait son chunk client) — un <script> supplémentaire
+  // isolé sur cette route reste un risque connu, pas seulement historique.
+  (function setupInstallmentToggle(): void {
+    const installmentSection = document.querySelector<HTMLElement>('[data-installment-ttc]');
+    if (!installmentSection) return;
+    const ttc = Number(installmentSection.dataset.installmentTtc || '0');
+    const cashBtn = document.getElementById('installment-cash-btn');
+    const splitBtn = document.getElementById('installment-split-btn');
+    const cashView = document.getElementById('installment-cash-view');
+    const splitView = document.getElementById('installment-split-view');
+    const monthsSelect = document.getElementById('installment-months') as HTMLSelectElement | null;
+    const monthlyValueEl = document.getElementById('installment-monthly-value');
+
+    function setMode(mode: 'cash' | 'split'): void {
+      const isCash = mode === 'cash';
+      if (cashView) cashView.hidden = !isCash;
+      if (splitView) splitView.hidden = isCash;
+      cashBtn?.setAttribute('aria-pressed', String(isCash));
+      splitBtn?.setAttribute('aria-pressed', String(!isCash));
+      if (cashBtn) {
+        cashBtn.setAttribute(
+          'style',
+          isCash
+            ? 'background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)'
+            : '',
+        );
+      }
+      if (splitBtn) {
+        splitBtn.setAttribute(
+          'style',
+          !isCash
+            ? 'background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)'
+            : '',
+        );
+      }
+    }
+    cashBtn?.addEventListener('click', () => setMode('cash'));
+    splitBtn?.addEventListener('click', () => setMode('split'));
+
+    function recompute(): void {
+      if (!monthsSelect || !monthlyValueEl) return;
+      const months = (Number(monthsSelect.value) || 12) as InstallmentMonths;
+      const split = installmentSplit(ttc, months);
+      if (split) monthlyValueEl.textContent = formatMAD(split.monthly);
+    }
+    monthsSelect?.addEventListener('change', recompute);
+    recompute();
+  })();
+
+  // ── WJ56 — « Partager sur WhatsApp » : Web Share API native quand disponible
+  // (feuille de partage système — la meilleure expérience sur mobile/tablette,
+  // laisse le client choisir WhatsApp OU tout autre canal), repli sur le lien
+  // wa.me générique (déjà posé en `href`, fonctionne SANS JS) sinon. On ne
+  // bloque JAMAIS le clic : navigator.share() réussi → preventDefault (évite
+  // une double feuille de partage) ; échec/absence → le lien wa.me s'ouvre
+  // normalement.
+  (function setupShareWhatsapp(): void {
+    const shareBtn = document.getElementById('prop-share-whatsapp') as HTMLAnchorElement | null;
+    if (!shareBtn || typeof navigator.share !== 'function') return;
+    shareBtn.addEventListener('click', (e) => {
+      const url = shareBtn.dataset.shareUrl || shareBtn.href;
+      const ref = shareBtn.dataset.shareRef || '';
+      e.preventDefault();
+      navigator
+        .share({
+          title: 'Proposition solaire Taqinor',
+          text: ref ? `Voici ma proposition solaire Taqinor (réf. ${ref})` : 'Voici ma proposition solaire Taqinor',
+          url,
+        })
+        .catch(() => {
+          // Annulé par l'utilisateur ou API indisponible en pratique : on
+          // rouvre le repli wa.me pour ne jamais laisser le clic sans effet.
+          window.open(shareBtn.href, '_blank', 'noopener,noreferrer');
+        });
+    });
+  })();
+
+  // ── WJ80 — Tap-to-reveal des valeurs du graphe + de la courbe journalière.
+  // Le `<title>` SVG (survol souris) est INVISIBLE au tactile — l'essentiel du
+  // trafic de cette page. Délégation d'événement sur le conteneur visible
+  // (peu importe la langue active) : un tap/clic/Entrée sur une barre ou le
+  // repère pic/moyenne affiche son libellé déjà formaté (data-month/
+  // data-value ou data-peak/data-avg, posés côté serveur — aucun recalcul).
+  (function setupChartTapReveal(): void {
+    function nearestTarget(el: EventTarget | null): HTMLElement | null {
+      if (!(el instanceof Element)) return null;
+      return el.closest<HTMLElement>('[data-chart-bar], [data-curve-scale]');
+    }
+
+    function reveal(target: HTMLElement): void {
+      if (target.matches('[data-chart-bar]')) {
+        const caption = document.getElementById('chart-tap-caption');
+        if (!caption) return;
+        const month = target.dataset.month ?? '';
+        const value = target.dataset.value ?? '';
+        caption.textContent = `${month} · ${value}`;
+      } else if (target.matches('[data-curve-scale]')) {
+        const caption = document.getElementById('curve-tap-caption');
+        if (!caption) return;
+        const peak = target.dataset.peak ?? '';
+        const avg = target.dataset.avg ?? '';
+        caption.textContent = [peak, avg].filter(Boolean).join(' · ');
+      }
+    }
+
+    function wireTapReveal(container: HTMLElement | null): void {
+      if (!container) return;
+      container.addEventListener('click', (e) => {
+        const target = nearestTarget(e.target);
+        if (target) reveal(target);
+      });
+      container.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        const target = nearestTarget(e.target);
+        if (target) {
+          e.preventDefault();
+          reveal(target);
+        }
+      });
+    }
+
+    document.querySelectorAll<HTMLElement>('.chart-svg, .daily-curve-wrap').forEach(wireTapReveal);
+  })();
 </script>
 
 <style>
@@ -2129,6 +2583,16 @@ const signConfig = ok
     width: 100%;
     height: 100%;
   }
+  /* WJ80 — affordance tap-to-reveal : curseur main sur les barres (souris) ;
+     le tactile n'a pas besoin de curseur mais bénéficie du focus-visible
+     ci-dessous (navigation clavier — les barres portent tabindex="0"). */
+  .chart-svg :global([data-chart-bar]) {
+    cursor: pointer;
+  }
+  .chart-svg :global([data-chart-bar]:focus-visible) {
+    outline: 2px solid var(--color-brass-300, #f3cc66);
+    outline-offset: 1px;
+  }
 
   /* WJ16 — courbe journalière : ratio réservé AVANT rendu (viewBox 360×170)
      → zéro CLS. Le SVG enfant occupe 100 % de la largeur. */
@@ -2140,6 +2604,14 @@ const signConfig = ok
     display: block;
     width: 100%;
     height: 100%;
+  }
+  /* WJ80 — même affordance tap-to-reveal sur le repère pic/moyenne. */
+  .daily-curve-wrap :global([data-curve-scale]) {
+    cursor: pointer;
+  }
+  .daily-curve-wrap :global([data-curve-scale]:focus-visible) {
+    outline: 2px solid var(--color-brass-300, #f3cc66);
+    outline-offset: 1px;
   }
 
   /* WJ11 — pad de signature : hauteur fixe (zéro CLS) ; pas de débordement.

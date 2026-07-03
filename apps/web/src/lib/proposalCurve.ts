@@ -60,6 +60,9 @@ function esc(s: string): string {
     .replace(/'/g, '&#39;');
 }
 
+/** WJ80 — Langue courante de la page, thread à travers étiquettes + annotations. */
+export type CurveLang = 'fr' | 'en' | 'ar';
+
 export interface CurveBox {
   width: number;
   height: number;
@@ -117,22 +120,46 @@ export interface DailyCurve {
   hasRealScale: boolean;
 }
 
-/** Format kWh court FR. */
-function fmtKwh(n: number): string {
+/** Format kWh court, virgule/point décimal selon la langue. */
+function fmtKwh(n: number, lang: CurveLang = 'fr'): string {
   const v = Number.isFinite(n) && n > 0 ? n : 0;
-  const grouped = (Math.round(v * 10) / 10).toString().replace('.', ',');
+  const rounded = (Math.round(v * 10) / 10).toString();
+  // WJ80 — FR/AR gardent la virgule décimale (convention déjà utilisée
+  // ailleurs sur la page en arabe) ; EN utilise le point décimal.
+  const grouped = lang === 'en' ? rounded : rounded.replace('.', ',');
   return `${grouped} kWh`;
 }
+
+/** WJ80 — Libellés horaires (lever/midi/coucher) FR/EN/AR. */
+const HOUR_TICK_LABELS: Record<CurveLang, { sunrise: string; noon: string; sunset: string }> = {
+  fr: { sunrise: 'lever', noon: 'midi', sunset: 'coucher' },
+  en: { sunrise: 'sunrise', noon: 'noon', sunset: 'sunset' },
+  ar: { sunrise: 'الشروق', noon: 'الظهر', sunset: 'الغروب' },
+};
+
+/** WJ80 — Texte du repère d'échelle (pic + moyenne journalière ou repli « année type »). */
+const SCALE_LABELS: Record<CurveLang, { peak: string; dailyAvg: string; typicalYear: string }> = {
+  fr: { peak: 'pic ≈', dailyAvg: '/ jour en moyenne', typicalYear: 'profil — année type' },
+  en: { peak: 'peak ≈', dailyAvg: '/ day on average', typicalYear: 'profile — typical year' },
+  ar: { peak: 'الذروة ≈', dailyAvg: '/ يومياً في المتوسط', typicalYear: 'نمط — سنة نموذجية' },
+};
 
 /**
  * WJ16 — Construit le SVG de la courbe journalière production-vs-consommation.
  * `annualProdKwh` (backend `prod_kwh`) cale l'amplitude réelle ; absent/nul →
  * mode « année type » (forme normalisée, libellée). Aucune transition n'est
  * intégrée au SVG : l'animation vit dans la page, gatée reduced-motion.
+ *
+ * WJ80 — `lang` sélectionne les étiquettes horaires + le repère d'échelle
+ * (FR/EN/AR) ; les tailles de police (7,5→8 → 9→9,5) sont relevées pour rester
+ * lisibles sur petit écran, et le groupe de repère porte des `data-*` (déjà
+ * formatés) qu'un petit script de la page lit au TAP (le survol/`<title>` est
+ * invisible au tactile).
  */
 export function renderYearCurve(
   annualProdKwh: number | null | undefined,
   box: CurveBox = DEFAULT_CURVE_BOX,
+  lang: CurveLang = 'fr',
 ): DailyCurve {
   const annual = typeof annualProdKwh === 'number' && Number.isFinite(annualProdKwh) && annualProdKwh > 0
     ? annualProdKwh : null;
@@ -146,27 +173,33 @@ export function renderYearCurve(
 
   // Étiquettes horaires (lever / midi / coucher) — repères de lecture neutres.
   const plotW = box.width - box.padLeft - box.padRight;
-  const tickHours = [6, 13, 20];
+  const tickHours = [6, 13, 20] as const;
+  const tickLabels = HOUR_TICK_LABELS[lang];
+  const tickTexts = [tickLabels.sunrise, tickLabels.noon, tickLabels.sunset];
   const ticks = tickHours
-    .map((h) => {
+    .map((h, i) => {
       const x = box.padLeft + ((h - HOUR_START) / HOURS) * plotW;
-      const lbl = h === 6 ? 'lever' : h === 13 ? 'midi' : 'coucher';
-      return `<text x="${x.toFixed(2)}" y="${(box.height - 8).toFixed(2)}" text-anchor="middle" font-size="8" fill="var(--color-lune-faint, #8d96b4)">${esc(lbl)}</text>`;
+      return `<text x="${x.toFixed(2)}" y="${(box.height - 8).toFixed(2)}" text-anchor="middle" font-size="9" fill="var(--color-lune-faint, #8d96b4)">${esc(tickTexts[i])}</text>`;
     })
     .join('');
 
+  const scale = SCALE_LABELS[lang];
   // Repère d'axe Y réel : production journalière moyenne (annuel / 365), libellée.
   let scaleLabel = '';
   if (hasRealScale) {
     const dailyAvg = annual! / 365;
     // Le pic horaire vaut env. dailyAvg / surface-sous-la-cloche (≈ 4,6 h équiv.).
     const peak = dailyAvg / 4.6;
+    const peakFmt = fmtKwh(peak, lang);
+    const avgFmt = fmtKwh(dailyAvg, lang);
     scaleLabel =
-      `<text x="${(box.padLeft + 2).toFixed(2)}" y="${(box.padTop + 8).toFixed(2)}" font-size="8" fill="var(--color-brass-300, #f3cc66)">pic ≈ ${esc(fmtKwh(peak))}</text>` +
-      `<text x="${(box.padLeft + 2).toFixed(2)}" y="${(box.padTop + 19).toFixed(2)}" font-size="7.5" fill="var(--color-lune-faint, #8d96b4)">${esc(fmtKwh(dailyAvg))} / jour en moyenne</text>`;
+      `<g data-curve-scale data-peak="${esc(peakFmt)}" data-avg="${esc(avgFmt)}" tabindex="0" role="button" aria-label="${esc(scale.peak)} ${esc(peakFmt)}, ${esc(avgFmt)} ${esc(scale.dailyAvg)}">` +
+      `<text x="${(box.padLeft + 2).toFixed(2)}" y="${(box.padTop + 8).toFixed(2)}" font-size="9" fill="var(--color-brass-300, #f3cc66)">${esc(scale.peak)} ${esc(peakFmt)}</text>` +
+      `<text x="${(box.padLeft + 2).toFixed(2)}" y="${(box.padTop + 19).toFixed(2)}" font-size="8.5" fill="var(--color-lune-faint, #8d96b4)">${esc(avgFmt)} ${esc(scale.dailyAvg)}</text>` +
+      `</g>`;
   } else {
     scaleLabel =
-      `<text x="${(box.padLeft + 2).toFixed(2)}" y="${(box.padTop + 8).toFixed(2)}" font-size="8" fill="var(--color-lune-faint, #8d96b4)">profil — année type</text>`;
+      `<text x="${(box.padLeft + 2).toFixed(2)}" y="${(box.padTop + 8).toFixed(2)}" font-size="9" fill="var(--color-lune-faint, #8d96b4)">${esc(scale.typicalYear)}</text>`;
   }
 
   const baseline = `<line x1="${box.padLeft}" y1="${baseY.toFixed(2)}" x2="${(box.width - box.padRight).toFixed(2)}" y2="${baseY.toFixed(2)}" stroke="var(--color-white, #fff)" stroke-opacity="0.12" stroke-width="1"/>`;
@@ -177,13 +210,21 @@ export function renderYearCurve(
   const sun = `<circle class="curve-sun" cx="${sunX.toFixed(2)}" cy="${sunY.toFixed(2)}" r="6" fill="var(--color-brass-300, #f3cc66)" fill-opacity="0.9"/>`;
 
   // Longueur de tracé pour l'animation de dessin (dasharray en CSS).
-  const desc = hasRealScale
-    ? 'Production solaire estimée sur une journée type comparée à la consommation du foyer.'
-    : "Profil type d'une journée : production solaire (jour) face à la consommation (matin et soirée).";
+  const descByLang: Record<CurveLang, string> = {
+    fr: 'Production solaire estimée sur une journée type comparée à la consommation du foyer.',
+    en: "Estimated solar production over a typical day compared to the household's consumption.",
+    ar: 'الإنتاج الشمسي المقدّر خلال يوم نموذجي مقارنة باستهلاك المنزل.',
+  };
+  const titleByLang: Record<CurveLang, string> = {
+    fr: 'Production vs consommation — journée type',
+    en: 'Production vs consumption — typical day',
+    ar: 'الإنتاج مقابل الاستهلاك — يوم نموذجي',
+  };
+  const desc = descByLang[lang];
 
   const svg =
     `<svg class="daily-curve" viewBox="0 0 ${box.width} ${box.height}" width="100%" height="auto" preserveAspectRatio="xMidYMid meet" role="img" xmlns="http://www.w3.org/2000/svg">` +
-    `<title>Production vs consommation — journée type</title><desc>${esc(desc)}</desc>` +
+    `<title>${esc(titleByLang[lang])}</title><desc>${esc(desc)}</desc>` +
     `<defs><linearGradient id="solarFill" x1="0" y1="0" x2="0" y2="1">` +
     `<stop offset="0%" stop-color="var(--color-brass-400, #e8b54a)" stop-opacity="0.42"/>` +
     `<stop offset="100%" stop-color="var(--color-brass-400, #e8b54a)" stop-opacity="0.04"/>` +
