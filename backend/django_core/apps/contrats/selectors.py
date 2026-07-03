@@ -652,3 +652,149 @@ def reporting_contrats(company):
         'nb_echus': nb_echus,
         'taux_renouvellement': taux,
     }
+
+
+# ---------------------------------------------------------------------------
+# XCTR7 — Cascade MRR (new / expansion / contraction / churn / net) + motif
+# ---------------------------------------------------------------------------
+
+
+def _mrr_equivalent_mensuel(montant, periodicite):
+    """Convertit un montant de PÉRIODE en équivalent MENSUEL selon la
+    périodicité (même table que ``mrr_contrats``). ``None`` si la périodicité
+    n'est pas prorata-able (unique/personnalisée) — le montant est alors ignoré
+    du calcul MRR."""
+    from decimal import Decimal
+
+    mois = _MOIS_PAR_PERIODE.get(periodicite)
+    if not mois:
+        return None
+    return montant / Decimal(mois)
+
+
+def mrr_contrat_actif(contrat):
+    """MRR mensuel d'UN contrat (somme de ses échéanciers actifs facturables).
+
+    Réutilise la même conversion que ``mrr_contrats`` (CONTRAT33) mais bornée à
+    UN contrat — sert de brique à ``mouvements_mrr`` (new/expansion/churn).
+    """
+    from decimal import Decimal
+
+    from .models import EcheancierContrat
+
+    total = Decimal('0')
+    qs = contrat.echeanciers.filter(
+        facturation_active=True, statut=EcheancierContrat.Statut.ACTIF)
+    for ech in qs.only('montant_total', 'periodicite'):
+        equiv = _mrr_equivalent_mensuel(
+            ech.montant_total or Decimal('0'), ech.periodicite)
+        if equiv is not None:
+            total += equiv
+    return total.quantize(Decimal('0.01'))
+
+
+def mouvements_mrr(company, debut, fin):
+    """Cascade MRR new/expansion/contraction/churn/net sur ``[debut, fin]`` — XCTR7.
+
+    Décompose les MOUVEMENTS de revenu mensuel récurrent survenus dans la
+    fenêtre ``[debut, fin]`` (dates incluses), scopés société :
+
+    - ``new`` : somme du MRR (à date d'aujourd'hui) des contrats dont
+      ``date_creation`` tombe dans la fenêtre ET qui portent un MRR non nul
+      (échéancier actif facturable) — un nouveau contrat sans facturation
+      récurrente n'entre pas dans le MRR (cohérent avec ``mrr_contrats``) ;
+    - ``expansion`` : somme des ``Avenant.montant_delta`` POSITIFS dont
+      ``date_effet`` (repli ``date_creation``) tombe dans la fenêtre, convertis
+      en équivalent mensuel via la périodicité du PREMIER échéancier actif du
+      contrat (repli : montant brut si aucun échéancier — traité comme mensuel) ;
+    - ``contraction`` : idem pour les deltas NÉGATIFS (valeur renvoyée négative) ;
+    - ``churn`` : somme (négative) du MRR PERDU par les contrats RÉSILIÉS dans la
+      fenêtre (``Resiliation.statut != annulee``, ``date_effet`` repli
+      ``date_demande`` dans la fenêtre) — le MRR perdu est celui du contrat AU
+      MOMENT de la résiliation (``mrr_contrat_actif`` avant résiliation n'étant
+      plus recalculable après coup, on utilise le MRR courant du contrat comme
+      meilleure approximation disponible — cohérent avec CONTRAT33) ;
+    - ``churn_par_motif`` : ventilation de ``churn`` par ``Resiliation.motif``
+      (motif vide groupé sous ``''``) ;
+    - ``net`` : ``new + expansion + contraction + churn`` (contraction et churn
+      étant déjà négatifs, ``net`` est une simple somme algébrique — la garde
+      ``somme new+expansion−contraction−churn = variation du MRR`` du Done= se
+      lit avec contraction/churn déjà signés négatifs, donc ``net`` EST la
+      variation).
+
+    Lecture seule, scopée société. Tous les montants sont des ``Decimal``
+    arrondis 2 décimales.
+    """
+    from decimal import Decimal
+
+    from .models import Avenant, Contrat, Resiliation
+
+    new = Decimal('0')
+    for contrat in Contrat.objects.filter(
+            company=company, date_creation__date__gte=debut,
+            date_creation__date__lte=fin):
+        new += mrr_contrat_actif(contrat)
+
+    expansion = Decimal('0')
+    contraction = Decimal('0')
+    avenants = (
+        Avenant.objects.filter(company=company, montant_delta__isnull=False)
+        .exclude(montant_delta=Decimal('0'))
+        .select_related('contrat')
+    )
+    for avenant in avenants:
+        date_ref = avenant.date_effet or avenant.date_creation.date()
+        if not (debut <= date_ref <= fin):
+            continue
+        premier_ech = (
+            avenant.contrat.echeanciers
+            .exclude(periodicite='unique')
+            .exclude(periodicite='personnalisee')
+            .order_by('id')
+            .first()
+        )
+        if premier_ech is not None:
+            equiv = _mrr_equivalent_mensuel(
+                avenant.montant_delta, premier_ech.periodicite)
+        else:
+            equiv = avenant.montant_delta
+        if equiv is None:
+            continue
+        if equiv > 0:
+            expansion += equiv
+        elif equiv < 0:
+            contraction += equiv
+
+    churn = Decimal('0')
+    churn_par_motif = {}
+    resiliations = (
+        Resiliation.objects.filter(company=company)
+        .exclude(statut=Resiliation.Statut.ANNULEE)
+        .select_related('contrat')
+    )
+    for resiliation in resiliations:
+        date_ref = resiliation.date_effet or resiliation.date_demande
+        if date_ref is None or not (debut <= date_ref <= fin):
+            continue
+        perte = mrr_contrat_actif(resiliation.contrat)
+        if perte <= 0:
+            continue
+        motif = (resiliation.motif or '').strip()
+        churn -= perte
+        churn_par_motif[motif] = churn_par_motif.get(
+            motif, Decimal('0')) - perte
+
+    net = (new + expansion + contraction + churn).quantize(Decimal('0.01'))
+
+    return {
+        'debut': debut,
+        'fin': fin,
+        'new': new.quantize(Decimal('0.01')),
+        'expansion': expansion.quantize(Decimal('0.01')),
+        'contraction': contraction.quantize(Decimal('0.01')),
+        'churn': churn.quantize(Decimal('0.01')),
+        'churn_par_motif': {
+            k: v.quantize(Decimal('0.01')) for k, v in churn_par_motif.items()
+        },
+        'net': net,
+    }

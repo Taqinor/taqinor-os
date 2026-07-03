@@ -264,6 +264,48 @@ class ContratViewSet(_ContratsBaseViewSet):
             'valeur_active': _money(data['valeur_active']),
             'valeur_totale': _money(data['valeur_totale']),
             'mrr': _money(data['mrr']),
+            'exceptions_facturation': data['exceptions_facturation'],
+        })
+
+    @action(detail=False, methods=['get'], url_path='mrr-mouvements')
+    def mrr_mouvements(self, request):
+        """Cascade MRR new/expansion/contraction/churn/net (XCTR7).
+
+        Filtres requis ``?debut=AAAA-MM-JJ&fin=AAAA-MM-JJ`` (défaut : le mois
+        calendaire en cours). Lecture seule, scopée société ; ventile le churn
+        par ``Resiliation.motif`` (``churn_par_motif``).
+        """
+        from datetime import date as _date
+
+        from django.utils import timezone as _tz
+
+        debut_raw = request.query_params.get('debut')
+        fin_raw = request.query_params.get('fin')
+        try:
+            debut = (
+                _date.fromisoformat(debut_raw) if debut_raw
+                else _tz.localdate().replace(day=1))
+            fin = _date.fromisoformat(fin_raw) if fin_raw else _tz.localdate()
+        except ValueError:
+            return Response(
+                {'detail': 'debut/fin invalides (AAAA-MM-JJ).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if debut > fin:
+            return Response(
+                {'detail': 'debut doit précéder fin.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        data = selectors.mouvements_mrr(request.user.company, debut, fin)
+        return Response({
+            'debut': data['debut'].isoformat(),
+            'fin': data['fin'].isoformat(),
+            'new': _money(data['new']),
+            'expansion': _money(data['expansion']),
+            'contraction': _money(data['contraction']),
+            'churn': _money(data['churn']),
+            'churn_par_motif': {
+                k: _money(v) for k, v in data['churn_par_motif'].items()},
+            'net': _money(data['net']),
         })
 
     @action(detail=False, methods=['get'])
