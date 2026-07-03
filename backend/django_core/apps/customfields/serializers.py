@@ -1,13 +1,16 @@
 from rest_framework import serializers
 from .models import CustomFieldDef
 
+# XPLT15 — clés reconnues du JSON `conditions` (visible/requis/lecture seule).
+CONDITION_KEYS = ('visible_si', 'requis_si', 'lecture_seule_si')
+
 
 class CustomFieldDefSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomFieldDef
         fields = ['id', 'module', 'code', 'libelle', 'type', 'options',
                   'obligatoire', 'visible_liste', 'ordre', 'actif',
-                  'relation_module']
+                  'relation_module', 'conditions']
 
     def validate_options(self, value):
         # Normalise les options en liste de chaînes non vides (tolère un dict
@@ -59,6 +62,26 @@ class CustomFieldDefSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {'code': 'Code non modifiable : des enregistrements '
                              'portent déjà ce champ.'})
+
+        # XPLT15 — valide la STRUCTURE des arbres de conditions à la
+        # définition (jamais évaluée ici — juste refusée si mal formée).
+        if 'conditions' in attrs:
+            conditions = attrs.get('conditions')
+            if conditions not in (None, ''):
+                if not isinstance(conditions, dict):
+                    raise serializers.ValidationError(
+                        {'conditions': 'Objet attendu.'})
+                unknown = set(conditions) - set(CONDITION_KEYS)
+                if unknown:
+                    raise serializers.ValidationError(
+                        {'conditions': f'Clé(s) inconnue(s) : '
+                                       f'{", ".join(sorted(unknown))}.'})
+                from core.rules import validate_condition_group
+                for key, tree in conditions.items():
+                    errors = validate_condition_group(tree)
+                    if errors:
+                        raise serializers.ValidationError(
+                            {'conditions': f'{key} : {"; ".join(errors)}'})
         return attrs
 
 
@@ -132,7 +155,15 @@ def validate_custom_data(module, company, data):
     for code, d in defs.items():
         val = data.get(code)
         if val in (None, ''):
-            if d.obligatoire:
+            required = d.obligatoire
+            # XPLT15 — requis_si : re-évalué CÔTÉ SERVEUR contre les valeurs
+            # soumises (le masquage front n'est jamais fait confiance seul).
+            requis_si = (d.conditions or {}).get('requis_si') \
+                if isinstance(d.conditions, dict) else None
+            if requis_si and not required:
+                from core.rules import evaluate_condition_group
+                required = evaluate_condition_group(requis_si, data)
+            if required:
                 raise ValidationError(
                     {code: f'Le champ « {d.libelle} » est obligatoire.'})
             continue

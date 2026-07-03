@@ -54,6 +54,15 @@ class CustomFieldDef(models.Model):
     # Ignoré pour tout autre type. Valeurs valides = Module.choices.
     relation_module = models.CharField(
         max_length=20, choices=Module.choices, null=True, blank=True)
+    # XPLT15 — conditions dynamiques (visible/requis/lecture seule) sans code.
+    # Dict optionnel à clés parmi 'visible_si' / 'requis_si' /
+    # 'lecture_seule_si', chaque valeur étant un arbre de conditions ET/OU/NON
+    # au format core.rules (validé par validate_condition_group à la
+    # définition). Évalué CÔTÉ FRONT pour l'affichage ET RE-VALIDÉ côté
+    # serializer (requis_si est enforce serveur — jamais fait confiance au
+    # seul masquage front). None/absent = pas de condition (comportement
+    # actuel inchangé).
+    conditions = models.JSONField(null=True, blank=True)
 
     class Meta:
         ordering = ['module', 'ordre', 'libelle']
