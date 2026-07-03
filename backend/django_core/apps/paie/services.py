@@ -4183,13 +4183,26 @@ def appliquer_regularisation_ir(bulletin):
         raise BulletinPaie.BulletinVerrouille(
             'Bulletin validé : régularisation IR impossible (figé).')
 
-    resultat = calculer_regularisation_ir(bulletin)
-    delta = resultat['delta']
-
     with transaction.atomic():
-        # Retire une éventuelle ligne de régularisation précédente (recalcul
-        # idempotent tant que le bulletin est en brouillon).
-        bulletin.lignes.filter(code='IR-REGUL').delete()
+        # Idempotence : annuler l'effet d'une régularisation PRÉCÉDENTE sur
+        # ``ir``/``net_a_payer`` AVANT de recalculer. Sinon un 2ᵉ appel voit un
+        # IR déjà gonflé du 1er delta (l'IR retenu cumulé inclut ce bulletin) et
+        # calcule un delta nul — la ligne IR-REGUL disparaîtrait. Supprimer la
+        # seule ligne ne suffit pas : il faut aussi défaire son effet sur l'IR.
+        prior = bulletin.lignes.filter(code='IR-REGUL').first()
+        if prior is not None:
+            prior_delta = (
+                prior.montant if prior.type == Rubrique.TYPE_RETENUE
+                else -prior.montant)
+            bulletin.ir = _q(Decimal(bulletin.ir or 0) - prior_delta)
+            bulletin.net_a_payer = _q(
+                Decimal(bulletin.net_a_payer or 0) + prior_delta)
+            bulletin.save(update_fields=['ir', 'net_a_payer'])
+            prior.delete()
+
+        resultat = calculer_regularisation_ir(bulletin)
+        delta = resultat['delta']
+
         if delta != 0:
             ordre_max = (
                 bulletin.lignes.order_by('-ordre').values_list(

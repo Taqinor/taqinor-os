@@ -54,6 +54,11 @@ class FournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
+        elif self.action == 'performance':
+            # XPUR7 — rapport de performance fournisseur (OTD…) : lecture, ouvert
+            # à tout rôle porteur du droit de lecture stock (get_permissions
+            # prime sur le permission_classes de l'@action, d'où ce cas explicite).
+            return [HasPermissionOrLegacy('stock_voir')()]
         elif self.action in WRITE_ACTIONS:
             return [HasPermissionOrLegacy('stock_modifier')()]
         elif self.action == 'destroy':

@@ -130,6 +130,21 @@ def valider_vente(*, vente, paiements, user):
         if mode == MODE_ESPECES:
             total_especes += montant
 
+    # (b bis) — les espèces encaissées entrent dans la caisse comptable de la
+    # session (XPOS4) : sans ce mouvement, le solde théorique de la caisse à la
+    # clôture ignore les ventes réglées en espèces et l'écart est faux.
+    if total_especes > 0 and vente.session_caisse_id:
+        from apps.compta.models import MouvementCaisse
+        from apps.compta.services import enregistrer_mouvement_caisse
+        enregistrer_mouvement_caisse(
+            vente.session_caisse.caisse_comptable,
+            sens=MouvementCaisse.Sens.ENTREE,
+            montant=total_especes,
+            date_mouvement=today,
+            motif=f'Vente comptoir {vente.reference}',
+            user=user,
+        )
+
     # (c) Décrément stock immédiat (sortie) via stock.services.
     from apps.stock import services as stock_services
     for ligne in lignes:

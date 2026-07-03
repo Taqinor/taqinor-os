@@ -3065,7 +3065,10 @@ def signer_demande_publique_avec_champs(demande, *, consentement,
             valeurs_champs = _json.loads(valeurs_champs) if valeurs_champs else {}
         except (TypeError, ValueError):
             valeurs_champs = {}
-    valeurs_champs = valeurs_champs or {}
+    # Tout ce qui n'est pas un mapping (int/list/None d'un client mal formé) est
+    # traité comme « aucun champ fourni » plutôt que de planter sur `.keys()`.
+    if not isinstance(valeurs_champs, dict):
+        valeurs_champs = {}
     fournis = {int(k) for k in valeurs_champs.keys()
                if str(k).lstrip('-').isdigit()}
     manquants = [c for c in requis_a_remplir if c.id not in fournis]
@@ -4008,7 +4011,13 @@ def scinder_pdf(version, points_de_coupe):
     src = fitz.open(stream=data, filetype='pdf')
     try:
         n_pages = src.page_count
-        coupes = sorted(set(int(p) for p in (points_de_coupe or [])))
+        # Un point de coupe hors [1, n_pages] est une entrée invalide (ex. page
+        # 99 d'un PDF de 3 pages) — on refuse explicitement plutôt que de le
+        # filtrer silencieusement et produire un découpage faux.
+        raw_points = [int(p) for p in (points_de_coupe or [])]
+        if any(p < 1 or p > n_pages for p in raw_points):
+            raise ValueError("Points de coupe invalides.")
+        coupes = sorted(set(raw_points))
         if not coupes or coupes[0] != 1:
             coupes = [1] + [c for c in coupes if c != 1]
         coupes = [c for c in coupes if 1 <= c <= n_pages]

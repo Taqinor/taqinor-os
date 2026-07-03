@@ -307,9 +307,21 @@ class KbArticleAcl(models.Model):
         verbose_name = "Droit d'accès de l'article"
         verbose_name_plural = "Droits d'accès de l'article"
         ordering = ['id']
-        unique_together = [
-            ('article', 'role', 'niveau'),
-            ('article', 'utilisateur', 'niveau'),
+        constraints = [
+            # Unicité CONDITIONNELLE : une ligne par-RÔLE est unique sur
+            # (article, role, niveau) UNIQUEMENT quand ``role`` est renseigné —
+            # sinon deux ACL par-utilisateur (role='') sur le même article/niveau
+            # entreraient en collision sur (article, '', niveau). Idem pour les
+            # lignes par-UTILISATEUR (unicité seulement quand ``utilisateur`` est
+            # posé), pour ne pas contraindre les lignes par-rôle (utilisateur NULL).
+            models.UniqueConstraint(
+                fields=['article', 'role', 'niveau'],
+                condition=~models.Q(role=''),
+                name='kb_acl_role_niveau_uniq'),
+            models.UniqueConstraint(
+                fields=['article', 'utilisateur', 'niveau'],
+                condition=models.Q(utilisateur__isnull=False),
+                name='kb_acl_user_niveau_uniq'),
         ]
         indexes = [
             # Nom EXPLICITE (≤30 car.) pour éviter toute divergence entre le

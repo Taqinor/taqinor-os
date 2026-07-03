@@ -204,9 +204,13 @@ class PublicApiTests(XGed3Base):
         champ = ChampSignature.objects.create(
             company=self.co_a, demande=self.demande,
             type_champ=CHAMP_TYPE_TEXTE, page=0, requis=True)
+        # Client DRF + format='json' : le dict imbriqué `valeurs_champs` doit
+        # partir en VRAI JSON (le Client Django par défaut ignore `format` et
+        # form-encode le dict, qui arrive alors mal formé côté serveur).
+        api = APIClient()
         with mock.patch('apps.records.storage.fetch_attachment',
                         return_value=(b'data', None)):
-            resp = self.client.post(
+            resp = api.post(
                 f'/api/django/ged/signature/{self.demande.token}/',
                 {'action': 'signer', 'consentement': True,
                  'signature_texte': 'Jean',

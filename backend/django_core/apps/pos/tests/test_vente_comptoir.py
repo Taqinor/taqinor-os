@@ -157,11 +157,17 @@ class ValiderVenteServiceTests(TestCase):
         services.valider_vente(
             vente=vente, paiements=[{'mode': 'carte', 'montant': '240'}],
             user=self.user)
+        # Le prix d'achat du produit porte une valeur DISTINCTIVE (43.17) qui
+        # n'est sous-chaîne d'aucun montant légitime sérialisé (240.00/200.00/…),
+        # pour que la vérification de non-fuite ne soit pas un faux positif sur
+        # « 40.00 » présent dans « 240.00 ».
+        self.produit.prix_achat = Decimal('43.17')
+        self.produit.save(update_fields=['prix_achat'])
         from apps.pos.serializers import VenteComptoirSerializer
         data = VenteComptoirSerializer(vente).data
         as_str = str(data)
         self.assertNotIn('prix_achat', as_str)
-        self.assertNotIn('40.00', as_str)  # prix_achat value never leaks
+        self.assertNotIn('43.17', as_str)  # prix_achat value never leaks
 
     def test_especes_requires_open_session(self):
         vente = self._vente()
