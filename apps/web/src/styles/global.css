@@ -451,6 +451,55 @@ summary:focus-visible {
   }
 }
 
+/* ─── W365 — Signature moment : un seul balayage de lumière laiton sur le
+   titre héros ────────────────────────────────────────────────────────────
+   « La lumière vient des chantiers » est la thèse de marque : le titre héros
+   est le seul endroit où elle ne touche jamais le texte. Un seul passage
+   (jamais `infinite`, contrairement à .seam-lumiere) d'un reflet laiton,
+   masqué par le texte lui-même via `background-clip: text` — donc AUCUN
+   pseudo-élément, aucune boîte supplémentaire, zéro impact de layout/CLS.
+   Réutilise l'easing .seam (--ease-shimmer) pour une cohérence de "toucher".
+
+   Déclenchement : la classe .hero-sweep-armed n'est posée qu'après `load`
+   par un petit script (voir index.astro), donc CE calque ne peint JAMAIS
+   avant le premier rendu du LCP (l'affiche héros) — protection LCP intacte.
+
+   Sécurité anti-texte-invisible : le masquage (background-clip:text +
+   color:transparent) n'est appliqué QUE sur le sélecteur COMPOSÉ
+   `.hero-title-sweep.hero-sweep-armed`, jamais sur `.hero-title-sweep` seul.
+   Le markup pose seulement `.hero-title-sweep` (classe neutre, aucun style) ;
+   `.hero-sweep-armed` n'est ajoutée que par le script après `load`, donc :
+   sans JS, sans @supports, ou en reduced-motion → le titre reste blanc plein
+   à l'identique d'avant (aucune régression, jamais de risque de texte
+   transparent sans le fallback background-clip). */
+@supports (background-clip: text) or (-webkit-background-clip: text) {
+  @media (prefers-reduced-motion: no-preference) {
+    .hero-title-sweep.hero-sweep-armed {
+      background-image: linear-gradient(
+        100deg,
+        currentColor 0%,
+        currentColor 42%,
+        var(--color-brass-300) 50%,
+        currentColor 58%,
+        currentColor 100%
+      );
+      background-size: 260% 100%;
+      background-position: 150% 0;
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      animation: heroTitleSweep 1.4s var(--ease-shimmer) 1 both;
+    }
+    @keyframes heroTitleSweep {
+      from { background-position: 150% 0; }
+      to {
+        background-position: -50% 0;
+        color: transparent;
+      }
+    }
+  }
+}
+
 /* W207 — .reveal and .emerge were defined here but had zero usages across all
    .astro/.tsx/.ts/.js sources (confirmed by grep). Removed as dead code. */
 

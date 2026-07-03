@@ -267,7 +267,7 @@ const engineeringPillars = [
           data-hero-tally: خطّاف JS أدناه، متمايز عن data-tally. */}
       <div class="mx-auto w-full max-w-6xl px-4 pb-24 pt-32 sm:pb-32">
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">الدراسة أولًا، ثم الورش</p>
-        <h1 class="display v2-hero-title cine-in cine-in-1 mt-6 max-w-[15ch]">
+        <h1 id="hero-title" class="display v2-hero-title hero-title-sweep cine-in cine-in-1 mt-6 max-w-[15ch]">
           <span data-hero-tally class="font-variant-numeric tabular-nums" dir="ltr">{heroFigure}</span>{heroTitleSuffix}
         </h1>
         {/* W267 — المال في الصدارة، والـ kWh يبقى الإثبات خلفه. مجال صادق (لا
@@ -757,6 +757,19 @@ const engineeringPillars = [
       if (document.readyState === 'complete') kick();
       else addEventListener('load', kick, { once: true });
     }
+  }
+</script>
+
+<script>
+  // W365 — بريق نحاسي واحد فقط يعبر عنوان البطل. يُسلَّح فقط بعد `load`
+  // (أبداً قبل ذلك: لا رسم إضافي ينافس ملصق البطل على LCP). الـ CSS
+  // (.hero-title-sweep، global.css) لا يفعل شيئاً قبل إضافة .hero-sweep-armed،
+  // لذا لا يمكن لهذا السكربت أبداً تأخير أو تغيير أول رسم للصفحة.
+  const heroTitle = document.getElementById('hero-title');
+  if (heroTitle) {
+    const arm = () => heroTitle.classList.add('hero-sweep-armed');
+    if (document.readyState === 'complete') requestAnimationFrame(arm);
+    else addEventListener('load', () => requestAnimationFrame(arm), { once: true });
   }
 </script>
 

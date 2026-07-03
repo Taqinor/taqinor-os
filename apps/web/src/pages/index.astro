@@ -279,7 +279,7 @@ const engineeringPillars = [
           data-hero-tally : hook JS ci-dessous, distinct de data-tally. */}
       <div class="mx-auto w-full max-w-6xl px-4 pb-24 pt-32 sm:pb-32">
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">L'étude d'abord, le chantier ensuite</p>
-        <h1 class="display v2-hero-title cine-in cine-in-1 mt-6 max-w-[15ch]">
+        <h1 id="hero-title" class="display v2-hero-title hero-title-sweep cine-in cine-in-1 mt-6 max-w-[15ch]">
           <span data-hero-tally class="font-variant-numeric tabular-nums">{heroFigure}</span>{heroTitleSuffix}
         </h1>
         {/* W267 — l'argent en tête, le kWh reste la crédibilité derrière.
@@ -782,6 +782,20 @@ const engineeringPillars = [
       if (document.readyState === 'complete') kick();
       else addEventListener('load', kick, { once: true });
     }
+  }
+</script>
+
+<script>
+  // W365 — Balayage de lumière laiton, une seule fois, sur le titre héros.
+  // Armé UNIQUEMENT après `load` (jamais avant : aucune peinture supplémentaire
+  // ne concurrence l'affiche héros pour le LCP). Le CSS (.hero-title-sweep,
+  // global.css) ne fait RIEN tant que .hero-sweep-armed n'est pas posée, donc
+  // ce script ne peut jamais retarder ni modifier la première peinture.
+  const heroTitle = document.getElementById('hero-title');
+  if (heroTitle) {
+    const arm = () => heroTitle.classList.add('hero-sweep-armed');
+    if (document.readyState === 'complete') requestAnimationFrame(arm);
+    else addEventListener('load', () => requestAnimationFrame(arm), { once: true });
   }
 </script>
 
