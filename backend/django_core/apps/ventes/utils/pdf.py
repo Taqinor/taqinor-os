@@ -320,6 +320,18 @@ def generate_lettre_relance_pdf(facture, niveau, message):
     return _html_to_pdf(html)
 
 
+def generate_proforma_pdf(devis, reference):
+    """XFAC10 — facture pro-forma NON comptabilisée (layout facture legacy,
+    variante filigranée). Rendu à la volée, non stocké — ne touche jamais le
+    moteur devis premium (RULE #4 : /proposal reste le seul chemin PDF
+    client-facing pour un DEVIS ; ceci est un rendu FACTURE, pas un devis)."""
+    context = _company_context(company=devis.company)
+    context['devis'] = devis
+    context['reference'] = reference
+    html = _render_html('proforma.html', context)
+    return _html_to_pdf(html)
+
+
 def generate_recu_pdf(paiement):
     """XFAC9 — quittance (reçu de paiement) PDF. Layout maison (PAS le moteur
     devis) : identité société, montant en chiffres ET en lettres, mode,

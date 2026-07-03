@@ -359,6 +359,37 @@ class FactureActivity(models.Model):
         return f"{self.facture_id} {self.kind} {self.field or ''}".strip()
 
 
+class ProformaDocument(models.Model):
+    """XFAC10 — trace d'une facture PRO-FORMA générée pour un devis.
+
+    Document NON comptabilisé (aucun impact statuts/GL/numérotation des
+    vraies factures) : uniquement un rendu PDF filigrané avec sa PROPRE
+    séquence ``PF-`` (via ``utils/references.py``), indépendante de celle des
+    factures réelles. Ce modèle sert UNIQUEMENT à garantir cette séquence
+    sans collision (même mécanisme highest-used+1 que Facture/Devis) et à
+    tracer les émissions dans le chatter du devis — il ne devient JAMAIS une
+    facture réelle (la conversion reste `generer-facture`, inchangée)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='proforma_documents')
+    reference = models.CharField(max_length=50)
+    devis = models.ForeignKey(
+        'Devis', on_delete=models.CASCADE, related_name='proformas')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        related_name='proformas_creees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Facture pro-forma'
+        verbose_name_plural = 'Factures pro-forma'
+        ordering = ['-date_creation']
+        unique_together = [('company', 'reference')]
+
+    def __str__(self):
+        return self.reference
+
+
 class BonCommande(models.Model):
     class Statut(models.TextChoices):
         EN_ATTENTE = 'en_attente', 'En attente'
