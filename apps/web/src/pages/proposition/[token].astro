@@ -1294,6 +1294,71 @@ const signConfig = ok
         </div>
       </section>
 
+      <!-- ── WJ54 · « Demander une modification » — révision structurée ─────
+           Gâté sur `ok` (données chargées) : rien ne s'affiche tant que la
+           proposition elle-même n'est pas disponible (pas de coquille vide).
+           Poste vers le MÊME proxy /api/proposition-contact que WJ29 ci-dessus
+           (canal `revision` distinct) — aucun nouvel endpoint. -->
+      {ok && (
+        <section class="mx-auto max-w-4xl px-5 pt-8 sm:px-8" data-revision-token={token}>
+          <div class="cine-card rounded-2xl p-6 sm:p-7">
+            <p class="tech-label rule-brass text-brass-300" data-i18n
+              data-fr="Demander une modification" data-en="Request a change" data-ar="طلب تعديل">
+              Demander une modification
+            </p>
+            <p class="v2-body mt-3 text-lune-soft" data-i18n
+              data-fr="Pas encore convaincu par cette version ? Dites-nous ce que vous aimeriez ajuster — sans engagement."
+              data-en="Not quite convinced by this version? Tell us what you'd like to adjust — no obligation."
+              data-ar="لستم مقتنعين بعد بهذه النسخة؟ أخبرونا بما ترغبون في تعديله — بدون التزام.">
+              Pas encore convaincu par cette version ? Dites-nous ce que vous aimeriez ajuster — sans engagement.
+            </p>
+            <form id="revision-form" class="mt-4">
+              <div class="flex flex-wrap gap-2" role="radiogroup" aria-label="Type de modification">
+                <button type="button" data-revision-kind="kwc" aria-pressed="false" class="btn-pill revision-kind-btn px-3 py-1.5 text-sm">
+                  <span data-i18n data-fr="Ajuster la puissance (kWc)" data-en="Adjust the system size (kWc)" data-ar="تعديل القدرة (kWc)">Ajuster la puissance (kWc)</span>
+                </button>
+                <button type="button" data-revision-kind="batterie" aria-pressed="false" class="btn-pill revision-kind-btn px-3 py-1.5 text-sm">
+                  <span data-i18n data-fr="Changer l’option batterie" data-en="Change the battery option" data-ar="تغيير خيار البطارية">Changer l’option batterie</span>
+                </button>
+                <button type="button" data-revision-kind="autre" aria-pressed="false" class="btn-pill revision-kind-btn px-3 py-1.5 text-sm">
+                  <span data-i18n data-fr="Autre" data-en="Other" data-ar="أخرى">Autre</span>
+                </button>
+              </div>
+              <label for="revision-detail" class="mt-4 block text-sm text-lune-soft" data-i18n
+                data-fr="Précisez votre demande (facultatif, obligatoire pour « Autre »)"
+                data-en="Describe your request (optional, required for “Other”)"
+                data-ar="اشرحوا طلبكم (اختياري، وإلزامي عند اختيار «أخرى»)">
+                Précisez votre demande (facultatif, obligatoire pour « Autre »)
+              </label>
+              <textarea
+                id="revision-detail"
+                name="detail"
+                rows="3"
+                maxlength="2000"
+                class="mt-2 w-full rounded-xl border border-white/15 bg-nuit-800/60 p-3 text-sm text-lune placeholder:text-lune-faint"
+                data-i18n-placeholder
+                data-placeholder-fr="Ex. : pourriez-vous étudier une version sans batterie ?"
+                data-placeholder-en="E.g.: could you study a version without a battery?"
+                data-placeholder-ar="مثال: هل يمكنكم دراسة نسخة بدون بطارية؟"
+                placeholder="Ex. : pourriez-vous étudier une version sans batterie ?"
+              ></textarea>
+              <p id="revision-error" class="mt-2 text-sm text-alert-300" role="alert" hidden></p>
+              <div class="mt-4 flex items-center gap-3">
+                <button
+                  type="submit"
+                  id="revision-submit"
+                  class="btn-pill inline-flex items-center justify-center gap-2"
+                  style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
+                >
+                  <span id="revision-submit-label" data-i18n data-fr="Envoyer ma demande" data-en="Send my request" data-ar="إرسال طلبي">Envoyer ma demande</span>
+                </button>
+                <p id="revision-confirm" class="text-sm text-brass-300" role="status" aria-live="polite" hidden></p>
+              </div>
+            </form>
+          </div>
+        </section>
+      )}
+
       <!-- ── WJ57 · CONFIANCE AU MOMENT DE SIGNER — juste au-dessus du bloc
            e-sign (pas seulement dans la section « Pourquoi nous faire
            confiance » plus haut). Un slot vidéo est réservé pour quand WG6
@@ -2384,6 +2449,116 @@ const signConfig = ok
       });
     });
   }
+
+  // ── WJ54 — « Demander une modification » : formulaire de révision
+  // structurée, posté vers le MÊME proxy /api/proposition-contact que WJ29
+  // ci-dessus (canal `revision` distinct) — jamais un nouvel endpoint. Le
+  // formulaire est gâté côté serveur (rendu uniquement quand `ok`, voir
+  // l'astro plus haut) : ce script ne fait qu'attacher son comportement s'il
+  // est bien présent dans le DOM.
+  (function setupRevisionForm(): void {
+    const revisionSection = document.querySelector<HTMLElement>('[data-revision-token]');
+    const revisionToken = revisionSection?.dataset.revisionToken ?? '';
+    if (!revisionSection || !revisionToken) return;
+
+    const form = document.getElementById('revision-form') as HTMLFormElement | null;
+    const detailEl = document.getElementById('revision-detail') as HTMLTextAreaElement | null;
+    const errorEl = document.getElementById('revision-error');
+    const confirmEl = document.getElementById('revision-confirm');
+    const submitBtn = document.getElementById('revision-submit') as HTMLButtonElement | null;
+    const kindBtns = Array.from(revisionSection.querySelectorAll<HTMLButtonElement>('[data-revision-kind]'));
+    if (!form) return;
+
+    type RevisionKind = 'kwc' | 'batterie' | 'autre';
+    let selectedKind: RevisionKind | null = null;
+
+    function selectKind(kind: RevisionKind): void {
+      selectedKind = kind;
+      kindBtns.forEach((btn) => {
+        const on = btn.dataset.revisionKind === kind;
+        btn.setAttribute('aria-pressed', String(on));
+        btn.setAttribute(
+          'style',
+          on
+            ? 'background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)'
+            : '',
+        );
+      });
+    }
+    kindBtns.forEach((btn) => {
+      btn.addEventListener('click', () => selectKind((btn.dataset.revisionKind as RevisionKind) || 'autre'));
+    });
+
+    let submitting = false;
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (submitting) return;
+
+      if (errorEl) errorEl.hidden = true;
+      if (confirmEl) confirmEl.hidden = true;
+
+      const detail = (detailEl?.value ?? '').trim();
+      const kind = selectedKind;
+      if (!kind) {
+        if (errorEl) {
+          errorEl.textContent = 'Veuillez choisir le type de modification souhaitée.';
+          errorEl.hidden = false;
+        }
+        return;
+      }
+      if (kind === 'autre' && !detail) {
+        if (errorEl) {
+          errorEl.textContent = 'Merci de préciser votre demande en quelques mots.';
+          errorEl.hidden = false;
+        }
+        return;
+      }
+
+      submitting = true;
+      if (submitBtn) submitBtn.disabled = true;
+
+      const labels: Record<RevisionKind, string> = {
+        kwc: 'Ajuster la puissance (kWc)',
+        batterie: 'Changer l’option batterie',
+        autre: 'Autre modification',
+      };
+      const message = detail ? `${labels[kind]} — ${detail}` : labels[kind];
+
+      void (async () => {
+        try {
+          const res = await fetch('/api/proposition-contact', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              token: revisionToken,
+              channel: 'revision',
+              revision_kind: kind,
+              message,
+            }),
+          });
+          const data = (await res.json()) as { detail?: string };
+          if (confirmEl) {
+            confirmEl.textContent = data.detail || 'Merci — votre demande a bien été transmise.';
+            confirmEl.hidden = false;
+          }
+          form.reset();
+          selectedKind = null;
+          kindBtns.forEach((btn) => {
+            btn.setAttribute('aria-pressed', 'false');
+            btn.setAttribute('style', '');
+          });
+        } catch {
+          if (confirmEl) {
+            confirmEl.textContent = 'Merci — votre demande a bien été transmise.';
+            confirmEl.hidden = false;
+          }
+        } finally {
+          submitting = false;
+          if (submitBtn) submitBtn.disabled = false;
+        }
+      })();
+    });
+  })();
 
   // ── WJ34 — affordance « génération du PDF… » sur le lien de téléchargement.
   // Le rendu backend (WeasyPrint) prend quelques secondes : sans signal, le

@@ -15,6 +15,13 @@
  * WhatsApp…" } — jamais une erreur technique brute. Le lien wa.me instantané
  * reste toujours affiché à côté, quel que soit le résultat de cet appel :
  * cette route est un « mieux si possible », jamais un blocage.
+ *
+ * WJ54 — le même proxy porte aussi la demande de modification structurée
+ * (« Demander une modification » : ajuster kWc / changer batterie / autre) —
+ * canal `revision` DISTINCT, avec un `revision_kind` optionnel relayé tel
+ * quel au backend. AUCUN nouvel endpoint : c'est le même contrat additif que
+ * les canaux existants, le backend qui l'ignore continue de fonctionner
+ * exactement comme avant.
  */
 export const prerender = false;
 
@@ -56,12 +63,19 @@ export const POST: APIRoute = async ({ request }) => {
 
   const channelRaw = body.channel;
   const channel: ContactChannel =
-    channelRaw === 'whatsapp' || channelRaw === 'question' || channelRaw === 'rappel'
+    channelRaw === 'whatsapp' || channelRaw === 'question' || channelRaw === 'rappel' ||
+    channelRaw === 'voice' || channelRaw === 'revision'
       ? channelRaw
       : 'rappel';
+  const revisionKindRaw = body.revision_kind;
+  const revisionKind =
+    revisionKindRaw === 'kwc' || revisionKindRaw === 'batterie' || revisionKindRaw === 'autre'
+      ? revisionKindRaw
+      : undefined;
   const upstreamBody = buildContactBody({
     channel,
     message: typeof body.message === 'string' ? body.message : '',
+    revisionKind,
   });
 
   const url = contactEndpoint(resolveApiBase(), token);

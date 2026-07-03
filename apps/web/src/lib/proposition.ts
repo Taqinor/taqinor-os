@@ -446,18 +446,25 @@ export function contactEndpoint(apiBase: string, token: string): string {
 /** Canal choisi par le client pour la demande de contact. WJ85 — `voice`
  *  couvre l'invitation à la note vocale WhatsApp (canal distinct de `whatsapp`
  *  générique, pour que l'équipe voie que le client a été orienté vers un
- *  message vocal plutôt qu'un texte). */
-export type ContactChannel = 'rappel' | 'whatsapp' | 'question' | 'voice';
+ *  message vocal plutôt qu'un texte). WJ54 — `revision` couvre la demande de
+ *  modification structurée (voir `RevisionKind` ci-dessous) : un canal
+ *  DISTINCT des précédents pour que le CRM/lead webhook puisse la trier
+ *  séparément d'un simple rappel/question. */
+export type ContactChannel = 'rappel' | 'whatsapp' | 'question' | 'voice' | 'revision';
 
 export interface ContactRequestState {
   channel: ContactChannel;
   /** Message libre optionnel (ex. depuis « Poser une question »). */
   message?: string;
+  /** WJ54 — précise le TYPE de modification demandée (uniquement quand `channel === 'revision'`). */
+  revisionKind?: RevisionKind;
 }
 
 export interface ContactRequestBody {
   channel: ContactChannel;
   message: string;
+  /** WJ54 — omis quand `channel !== 'revision'` (jamais un champ vide envoyé sans raison). */
+  revision_kind?: RevisionKind;
 }
 
 /**
@@ -467,11 +474,76 @@ export interface ContactRequestBody {
  */
 export function buildContactBody(state: ContactRequestState): ContactRequestBody {
   const channel: ContactChannel =
-    state.channel === 'whatsapp' || state.channel === 'question' || state.channel === 'voice'
+    state.channel === 'whatsapp' || state.channel === 'question' || state.channel === 'voice' || state.channel === 'revision'
       ? state.channel
       : 'rappel';
   const message = (state.message ?? '').trim().slice(0, 2000);
-  return { channel, message };
+  const body: ContactRequestBody = { channel, message };
+  if (channel === 'revision') {
+    const kind = state.revisionKind;
+    body.revision_kind = kind === 'kwc' || kind === 'batterie' || kind === 'autre' ? kind : 'autre';
+  }
+  return body;
+}
+
+// ── WJ54 · « Demander une modification » — formulaire de révision structurée ─
+
+/**
+ * WJ54 — Type d'ajustement demandé par le client sur SA proposition : ajuster
+ * la puissance (kWc), changer l'option batterie, ou « autre » (texte libre
+ * obligatoire dans ce cas). Volontairement les 3 catégories les plus
+ * fréquentes observées en négociation avant signature — pas une nomenclature
+ * exhaustive.
+ */
+export type RevisionKind = 'kwc' | 'batterie' | 'autre';
+
+export interface RevisionRequestState {
+  kind: RevisionKind;
+  /** Texte libre — TOUJOURS envoyé (contexte utile même pour kwc/batterie), tronqué comme un message normal. */
+  detail: string;
+}
+
+export interface RevisionValidation {
+  valid: boolean;
+  /** Message FR à afficher quand invalide (null si valide). */
+  error: string | null;
+}
+
+/**
+ * WJ54 — Validation du formulaire de révision : le type doit être l'une des 3
+ * valeurs reconnues ; le texte libre est OBLIGATOIRE pour « autre » (sinon la
+ * demande n'a aucun contenu exploitable), optionnel pour kwc/batterie (le type
+ * suffit à orienter le conseiller, le texte est un complément).
+ */
+export function validateRevisionRequest(state: RevisionRequestState): RevisionValidation {
+  const kind = state.kind;
+  if (kind !== 'kwc' && kind !== 'batterie' && kind !== 'autre') {
+    return { valid: false, error: 'Veuillez choisir le type de modification souhaitée.' };
+  }
+  const detail = (state.detail ?? '').trim();
+  if (kind === 'autre' && !detail) {
+    return { valid: false, error: 'Merci de préciser votre demande en quelques mots.' };
+  }
+  return { valid: true, error: null };
+}
+
+/**
+ * WJ54 — Construit le corps de la demande de révision, prêt à poster vers le
+ * proxy /api/proposition-contact (même endpoint que WJ29 — canal `revision`
+ * distinct, AUCUN nouveau endpoint). Le message combine un préfixe FR lisible
+ * par le conseiller (« Ajuster la puissance (kWc) » etc.) et le texte libre du
+ * client, tronqué comme tout message de contact.
+ */
+export function buildRevisionContactState(state: RevisionRequestState): ContactRequestState {
+  const kind: RevisionKind = state.kind === 'kwc' || state.kind === 'batterie' ? state.kind : 'autre';
+  const labels: Record<RevisionKind, string> = {
+    kwc: 'Ajuster la puissance (kWc)',
+    batterie: 'Changer l’option batterie',
+    autre: 'Autre modification',
+  };
+  const detail = (state.detail ?? '').trim();
+  const message = detail ? `${labels[kind]} — ${detail}` : labels[kind];
+  return { channel: 'revision', message, revisionKind: kind };
 }
 
 export interface ContactResult {
