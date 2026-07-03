@@ -3863,3 +3863,59 @@ class DemandeActionFournisseur(models.Model):
 
     def __str__(self):
         return f'SCAR #{self.pk} — {self.fournisseur_id} ({self.get_statut_display()})'
+
+
+# ── XQHS7 — Analyse structurée 5-Pourquoi / 8D sur NCR ──────────────────────
+
+class AnalyseNcr(models.Model):
+    """Analyse structurée d'une NCR : chaîne 5-Pourquoi et/ou rapport 8D.
+
+    ``cinq_pourquoi`` — liste ordonnée JSON de ``{'pourquoi': str, 'reponse':
+    str}`` (bornée à 5 entrées par ``clean()``). ``huit_d`` — dict JSON des 8
+    disciplines D1 à D8, chacune ``{'texte': str, 'statut': str}`` ; D5/D6
+    réutilisent les CAPA existantes de la NCR (pas dupliquées ici, juste
+    référencées par le texte/lien côté rendu PDF).
+
+    Un seul enregistrement par NCR (OneToOne). Multi-société via ``company``
+    posée côté serveur. Entièrement additif.
+    """
+    MAX_POURQUOI = 5
+    DISCIPLINES = [
+        'D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8',
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_analyses_ncr',
+        verbose_name='Société',
+    )
+    non_conformite = models.OneToOneField(
+        NonConformite,
+        on_delete=models.CASCADE,
+        related_name='analyse',
+        verbose_name='Non-conformité',
+    )
+    cinq_pourquoi = models.JSONField(
+        default=list, blank=True, verbose_name='5-Pourquoi')
+    huit_d = models.JSONField(
+        default=dict, blank=True, verbose_name='8D')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Analyse NCR (5-Pourquoi / 8D)'
+        verbose_name_plural = 'Analyses NCR (5-Pourquoi / 8D)'
+        ordering = ['-id']
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if isinstance(self.cinq_pourquoi, list) \
+                and len(self.cinq_pourquoi) > self.MAX_POURQUOI:
+            raise ValidationError(
+                f'Le 5-Pourquoi ne peut dépasser {self.MAX_POURQUOI} entrées.')
+
+    def __str__(self):
+        return f'Analyse NCR #{self.non_conformite_id}'

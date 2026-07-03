@@ -11,7 +11,7 @@ from decimal import Decimal
 from django.db import transaction
 
 from .models import (
-    ActionCorrectivePreventive, CampagneRappel, CauseIncident,
+    ActionCorrectivePreventive, AnalyseNcr, CampagneRappel, CauseIncident,
     CheckinSecurite, ControleReception,
     DeclarationCnss, DemandeActionFournisseur, Derogation, ElementRappel,
     EtapeDeclarationAt, NonConformite,
@@ -1323,3 +1323,83 @@ def verifier_efficacite_scar(scar, efficace, verifiee_par=None):
     scar.save(update_fields=[
         'efficace', 'verifiee_par', 'date_verification', 'statut'])
     return scar
+
+
+# ── XQHS7 — Analyse structurée 5-Pourquoi / 8D sur NCR ──────────────────────
+
+@transaction.atomic
+def enregistrer_analyse_ncr(ncr, *, cinq_pourquoi=None, huit_d=None):
+    """Crée ou met à jour l'``AnalyseNcr`` d'une NCR (XQHS7).
+
+    ``cinq_pourquoi`` — liste de ``{'pourquoi': str, 'reponse': str}`` (≤5,
+    validé par ``AnalyseNcr.clean()``). ``huit_d`` — dict des disciplines D1-D8
+    fourni partiellement (merge sur les clés fournies, les autres disciplines
+    existantes sont conservées).
+    """
+    analyse, _ = AnalyseNcr.objects.get_or_create(
+        company=ncr.company, non_conformite=ncr)
+    if cinq_pourquoi is not None:
+        analyse.cinq_pourquoi = cinq_pourquoi
+    if huit_d is not None:
+        merged = dict(analyse.huit_d or {})
+        merged.update(huit_d)
+        analyse.huit_d = merged
+    analyse.full_clean()
+    analyse.save()
+    return analyse
+
+
+def _analyse_ncr_html(analyse):
+    """Construit le HTML de l'export 8D/5-Pourquoi (PDF INTERNE, hors
+    ``/proposal`` — jamais de prix d'achat)."""
+    ncr = analyse.non_conformite
+    pourquoi_rows = ''.join(
+        f"<tr><td>Pourquoi {i + 1}</td><td>{item.get('pourquoi', '')}</td>"
+        f"<td>{item.get('reponse', '')}</td></tr>"
+        for i, item in enumerate(analyse.cinq_pourquoi or [])
+    )
+    huit_d_rows = ''.join(
+        f"<tr><td>{code}</td><td>{(analyse.huit_d or {}).get(code, {}).get('texte', '')}</td>"
+        f"<td>{(analyse.huit_d or {}).get(code, {}).get('statut', '')}</td></tr>"
+        for code in AnalyseNcr.DISCIPLINES
+    )
+    capa_rows = ''.join(
+        f"<tr><td>{a.get_type_action_display()}</td><td>{a.description}</td>"
+        f"<td>{a.get_statut_display()}</td></tr>"
+        for a in ncr.actions.all()
+    )
+    return (
+        "<html><head><meta charset='utf-8'><style>"
+        "body{font-family:sans-serif;font-size:10pt;color:#1a1a1a;"
+        "margin:1.5cm;line-height:1.4;}"
+        "h1{font-size:15pt;border-bottom:2px solid #2b5cab;"
+        "padding-bottom:6px;}"
+        "h2{font-size:12pt;margin-top:18px;}"
+        "table{width:100%;border-collapse:collapse;margin-top:6px;}"
+        "td,th{border:1px solid #ccc;padding:4px 6px;text-align:left;}"
+        "</style></head><body>"
+        f"<h1>Analyse NCR — {ncr.titre}</h1>"
+        f"<div>Référence : {ncr.reference or ncr.pk} — Gravité : "
+        f"{ncr.get_gravite_display()}</div>"
+        "<h2>5-Pourquoi</h2>"
+        f"<table><tr><th>#</th><th>Pourquoi</th><th>Réponse</th></tr>"
+        f"{pourquoi_rows}</table>"
+        "<h2>8D</h2>"
+        "<table><tr><th>Discipline</th><th>Texte</th><th>Statut</th></tr>"
+        f"{huit_d_rows}</table>"
+        "<h2>Actions correctives / préventives liées</h2>"
+        "<table><tr><th>Type</th><th>Description</th><th>Statut</th></tr>"
+        f"{capa_rows}</table>"
+        "</body></html>"
+    )
+
+
+def rendre_analyse_ncr_pdf(analyse):
+    """Rend un PDF INTERNE (bytes) de l'analyse 5-Pourquoi/8D d'une NCR
+    (XQHS7). Ce N'EST PAS un chemin client-facing — ``/proposal`` reste
+    l'unique chemin des PDF de devis (règle CLAUDE.md #4). Import
+    ``weasyprint`` FONCTION-LOCAL (lib lourde, chargée à la demande)."""
+    import weasyprint  # import local : lib lourde, chargée à la demande
+
+    html_str = _analyse_ncr_html(analyse)
+    return weasyprint.HTML(string=html_str).write_pdf()
