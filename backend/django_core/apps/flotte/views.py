@@ -22,6 +22,7 @@ from .models import (
     CarteGriseVehicule,
     Conducteur,
     ContratVehicule,
+    CoutVehicule,
     DemandeVehicule,
     EcheanceEntretien,
     EcheanceReglementaire,
@@ -52,6 +53,7 @@ from .serializers import (
     CarteGriseVehiculeSerializer,
     ConducteurSerializer,
     ContratVehiculeSerializer,
+    CoutVehiculeSerializer,
     EcheanceEntretienSerializer,
     EcheanceReglementaireSerializer,
     EnginRoulantSerializer,
@@ -77,7 +79,7 @@ from .serializers import (
 READ_ACTIONS = ['list', 'retrieve', 'consommation', 'anomalies', 'echeances',
                 'couts', 'synthese', 'expirantes', 'tsav', 'alertes_echeances',
                 'tco', 'eco_conduite', 'documents', 'tableau_bord', 'journal',
-                'amortissement', 'expirants']
+                'amortissement', 'expirants', 'ledger']
 
 
 class _FlotteBaseViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -171,6 +173,20 @@ class VehiculeViewSet(_FlotteBaseViewSet):
         from .selectors import amortissement_vehicule
         return Response(
             amortissement_vehicule(request.user.company, vehicule.id))
+
+    @action(detail=True, methods=['get'])
+    def ledger(self, request, pk=None):
+        """XFLT3 — Grand livre unifié des coûts du véhicule (lecture seule).
+
+        Fusionne carburant, réparations, assurances (franchise), TSAV,
+        infractions et coûts divers (``CoutVehicule``) en une vue
+        chronologique unique via ``selectors.ledger_vehicule``. Scopée
+        société. Le TCO (FLOTTE31) reste disponible séparément.
+        """
+        vehicule = self.get_object()
+        from .selectors import ledger_vehicule
+        return Response(
+            ledger_vehicule(request.user.company, vehicule.id))
 
     @action(detail=False, methods=['get'], url_path='tableau-bord')
     def tableau_bord(self, request):
@@ -1733,3 +1749,40 @@ class ContratVehiculeViewSet(_FlotteBaseViewSet):
         qs = contrats_vehicule_expirants(company, within=within)
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
+
+
+class CoutVehiculeViewSet(_FlotteBaseViewSet):
+    """Coûts véhicule divers (péage, parking, lavage, contrat, autre…)
+    (XFLT3).
+
+    CRUD scopé société (écriture responsable/admin) : catégorie, date,
+    montant, fournisseur, référence pièce, conducteur optionnel. Complète —
+    sans les dupliquer — les sources déjà saisies ailleurs (carburant,
+    réparation, assurance, infraction). Filtrable par
+    ``?actif_flotte=<id>`` et ``?categorie=<...>``. Recherche par
+    fournisseur / référence pièce / notes.
+    """
+    queryset = CoutVehicule.objects.select_related(
+        'actif_flotte', 'actif_flotte__vehicule', 'actif_flotte__engin',
+        'conducteur')
+    serializer_class = CoutVehiculeSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['fournisseur', 'reference_piece', 'notes']
+    ordering_fields = ['date', 'montant', 'categorie', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        actif_flotte = params.get('actif_flotte')
+        if actif_flotte:
+            try:
+                qs = qs.filter(actif_flotte_id=int(actif_flotte))
+            except (ValueError, TypeError):
+                pass
+
+        categorie = params.get('categorie')
+        if categorie:
+            qs = qs.filter(categorie=categorie)
+
+        return qs

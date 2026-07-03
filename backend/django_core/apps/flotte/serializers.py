@@ -15,6 +15,7 @@ from .models import (
     CarteGriseVehicule,
     Conducteur,
     ContratVehicule,
+    CoutVehicule,
     DemandeVehicule,
     EcheanceEntretien,
     EcheanceReglementaire,
@@ -1752,3 +1753,43 @@ class ContratVehiculeSerializer(serializers.ModelSerializer):
                 {'date_fin':
                  "La fin du contrat ne peut pas précéder le début."})
         return attrs
+
+
+class CoutVehiculeSerializer(serializers.ModelSerializer):
+    """XFLT3 — Coût véhicule divers (péage, parking, lavage, contrat…).
+
+    ``company`` est posée côté serveur (jamais lue du corps de requête).
+    L'actif et le conducteur liés doivent appartenir à la société courante.
+
+    Champs lecture seule :
+    - ``actif_label``       : désignation de l'actif (véhicule ou engin).
+    - ``categorie_display``.
+    - ``conducteur_nom``    : nom d'utilisateur du conducteur lié.
+    """
+
+    actif_label = serializers.SerializerMethodField()
+    categorie_display = serializers.CharField(
+        source='get_categorie_display', read_only=True)
+    conducteur_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CoutVehicule
+        fields = [
+            'id', 'actif_flotte', 'actif_label', 'categorie',
+            'categorie_display', 'date', 'montant', 'fournisseur',
+            'reference_piece', 'conducteur', 'conducteur_nom', 'notes',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_actif_label(self, obj):
+        return obj.actif_flotte.label if obj.actif_flotte_id else None
+
+    def get_conducteur_nom(self, obj):
+        return str(obj.conducteur) if obj.conducteur_id else None
+
+    def validate_montant(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "Le montant ne peut pas être négatif.")
+        return value

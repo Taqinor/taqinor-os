@@ -17,6 +17,7 @@ from .models import (
     CarteGriseVehicule,
     Conducteur,
     ContratVehicule,
+    CoutVehicule,
     DemandeVehicule,
     EcheanceEntretien,
     EcheanceReglementaire,
@@ -1276,6 +1277,178 @@ def contrats_vehicule_expirants(company, within=30, today=None):
         date_fin__isnull=False,
         date_fin__lte=horizon,
     ).order_by('date_fin', 'id')
+
+
+# ── XFLT3 — Grand livre des coûts par véhicule ──────────────────────────────────
+
+def couts_vehicule_de_la_societe(company, actif_flotte_id=None,
+                                 categorie=None):
+    """XFLT3 — Coûts véhicule divers d'une société (queryset scopé).
+
+    Filtres facultatifs : ``actif_flotte_id`` (un actif précis) et
+    ``categorie``. Lecture seule, scopée société, du plus récent au plus
+    ancien.
+    """
+    qs = CoutVehicule.objects.filter(company=company).select_related(
+        'actif_flotte', 'actif_flotte__vehicule', 'actif_flotte__engin',
+        'conducteur')
+    if actif_flotte_id is not None:
+        qs = qs.filter(actif_flotte_id=actif_flotte_id)
+    if categorie is not None:
+        qs = qs.filter(categorie=categorie)
+    return qs
+
+
+def ledger_vehicule(company, vehicule_id, periode=None):
+    """XFLT3 — Grand livre unifié des coûts d'un véhicule (lecture seule).
+
+    Fusionne, pour un véhicule de la société, TOUTES les sources de coûts déjà
+    saisies dans le module flotte en une vue chronologique UNIQUE, triée par
+    date décroissante :
+
+    * ``carburant``   — chaque ``PleinCarburant`` (FLOTTE12), montant =
+      ``prix_total`` ;
+    * ``reparation``  — chaque ``OrdreReparation`` (FLOTTE17) de l'actif,
+      montant = ``cout_total`` (daté à l'ouverture) ;
+    * ``assurance``   — chaque ``AssuranceVehicule`` (FLOTTE21) de l'actif,
+      montant = ``franchise`` (datée au début de couverture, ou à l'échéance
+      si le début est absent) ;
+    * ``tsav``        — la TSAV annuelle calculée (FLOTTE20, via
+      ``calcul_tsav``) pour l'année courante, datée au 1er janvier — omise si
+      aucun montant n'est calculable (puissance fiscale inconnue) ;
+    * ``infraction``  — chaque ``Infraction`` (FLOTTE26) de l'actif, montant =
+      ``montant_amende`` ;
+    * ``cout_divers`` — chaque ``CoutVehicule`` (XFLT3) de l'actif (péage,
+      parking, lavage, contrat, autre…).
+
+    ``periode`` (optionnel) est un tuple ``(date_debut, date_fin)`` inclusif
+    qui borne toutes les sources DATÉES (la TSAV, sans date propre, suit sa
+    date d'ancrage au 1er janvier).
+
+    Retourne un dict LECTURE SEULE ::
+
+        {
+          'vehicule_id', 'actif_flotte_id', 'nb_lignes',
+          'lignes': [ {'source', 'categorie', 'date', 'montant',
+                       'libelle', 'conducteur_id', 'objet_id'}, … ],
+        }
+
+    Le TCO (FLOTTE31, ``tco_vehicule``) reste intact — ce sélecteur est une
+    vue chronologique complémentaire, pas un remplacement de l'agrégat. Aucune
+    écriture, aucun effet de bord.
+    """
+    vehicule = (Vehicule.objects
+                .filter(company=company, id=vehicule_id)
+                .select_related('actif_flotte')
+                .first())
+    if vehicule is None:
+        return {
+            'vehicule_id': vehicule_id, 'actif_flotte_id': None,
+            'nb_lignes': 0, 'lignes': [],
+        }
+
+    actif_flotte_id = getattr(
+        getattr(vehicule, 'actif_flotte', None), 'id', None)
+
+    lignes = []
+
+    def _dans_periode(date_):
+        if periode is None or date_ is None:
+            return True
+        debut, fin = periode
+        if debut is not None and date_ < debut:
+            return False
+        if fin is not None and date_ > fin:
+            return False
+        return True
+
+    # 1) Carburant.
+    for plein in PleinCarburant.objects.filter(
+            company=company, vehicule_id=vehicule_id):
+        if not _dans_periode(plein.date_plein):
+            continue
+        lignes.append({
+            'source': 'carburant', 'categorie': 'carburant',
+            'date': plein.date_plein, 'montant': float(plein.prix_total or 0),
+            'libelle': f'Plein — {plein.station}'.strip(' —'),
+            'conducteur_id': plein.conducteur_id, 'objet_id': plein.id,
+        })
+
+    if actif_flotte_id is not None:
+        # 2) Réparations.
+        for ordre in OrdreReparation.objects.filter(
+                company=company, actif_flotte_id=actif_flotte_id):
+            if not _dans_periode(ordre.date_ouverture):
+                continue
+            lignes.append({
+                'source': 'reparation', 'categorie': 'entretien',
+                'date': ordre.date_ouverture,
+                'montant': float(ordre.cout_total or 0),
+                'libelle': f'OR — {ordre.garage}'.strip(' —') if
+                ordre.garage_id else 'Ordre de réparation',
+                'conducteur_id': None, 'objet_id': ordre.id,
+            })
+
+        # 3) Assurances (franchise, datée au début de couverture).
+        for assur in AssuranceVehicule.objects.filter(
+                company=company, actif_flotte_id=actif_flotte_id):
+            date_ = assur.date_debut or assur.date_echeance
+            if not _dans_periode(date_):
+                continue
+            lignes.append({
+                'source': 'assurance', 'categorie': 'assurance',
+                'date': date_, 'montant': float(assur.franchise or 0),
+                'libelle': f'Assurance — {assur.assureur}'.strip(' —'),
+                'conducteur_id': None, 'objet_id': assur.id,
+            })
+
+        # 4) Infractions.
+        for inf in Infraction.objects.filter(
+                company=company, actif_flotte_id=actif_flotte_id):
+            if not _dans_periode(inf.date_infraction):
+                continue
+            lignes.append({
+                'source': 'infraction', 'categorie': 'amende',
+                'date': inf.date_infraction,
+                'montant': float(inf.montant_amende or 0),
+                'libelle': f'Infraction — {inf.get_type_infraction_display()}',
+                'conducteur_id': inf.conducteur_id, 'objet_id': inf.id,
+            })
+
+        # 6) Coûts divers.
+        for cout in CoutVehicule.objects.filter(
+                company=company, actif_flotte_id=actif_flotte_id):
+            if not _dans_periode(cout.date):
+                continue
+            lignes.append({
+                'source': 'cout_divers', 'categorie': cout.categorie,
+                'date': cout.date, 'montant': float(cout.montant or 0),
+                'libelle': (f'{cout.get_categorie_display()} — '
+                            f'{cout.fournisseur}').strip(' —'),
+                'conducteur_id': cout.conducteur_id, 'objet_id': cout.id,
+            })
+
+    # 5) TSAV (annuelle, ancrée au 1er janvier de l'année courante).
+    tsav_annee = datetime.date.today().year
+    tsav_date = datetime.date(tsav_annee, 1, 1)
+    if _dans_periode(tsav_date):
+        tsav = calcul_tsav(vehicule, annee=tsav_annee)
+        if tsav.get('montant') is not None:
+            lignes.append({
+                'source': 'tsav', 'categorie': 'vignette',
+                'date': tsav_date, 'montant': float(tsav['montant']),
+                'libelle': f'TSAV {tsav_annee}',
+                'conducteur_id': None, 'objet_id': None,
+            })
+
+    lignes.sort(key=lambda x: (x['date'] is None, x['date']), reverse=True)
+
+    return {
+        'vehicule_id': vehicule_id,
+        'actif_flotte_id': actif_flotte_id,
+        'nb_lignes': len(lignes),
+        'lignes': lignes,
+    }
 
 
 # ── FLOTTE24 — Moteur d'alertes d'échéances réglementaires (J-30/15/7/échu) ────

@@ -2948,3 +2948,108 @@ class EcheanceContrat(models.Model):
 
     def __str__(self):
         return f'Échéance {self.period} — {self.contrat} ({self.montant} MAD)'
+
+
+# ── XFLT3 — Grand livre des coûts par véhicule ──────────────────────────────────
+
+class CoutVehicule(models.Model):
+    """Ligne de coût divers saisie manuellement pour un actif de flotte
+    (XFLT3).
+
+    Capture les coûts qu'aucun autre modèle flotte ne saisit aujourd'hui
+    (péage Jawaz, parking, lavage…) mais aussi tout coût libre rattachable à
+    un contrat (catégorie ``contrat``). Alimente le grand livre unifié
+    ``selectors.ledger_vehicule`` aux côtés de ``PleinCarburant``,
+    ``OrdreReparation.cout_total``, ``AssuranceVehicule``, la TSAV et
+    ``Infraction.montant_amende`` — sans dupliquer ces sources : une dépense
+    déjà saisie ailleurs (carburant, réparation…) n'a PAS à être re-saisie
+    ici.
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête). L'actif et le conducteur liés doivent appartenir à la MÊME
+    société (validé dans ``clean``).
+    """
+
+    class Categorie(models.TextChoices):
+        CARBURANT = 'carburant', 'Carburant'
+        ENTRETIEN = 'entretien', 'Entretien'
+        ASSURANCE = 'assurance', 'Assurance'
+        VIGNETTE = 'vignette', 'Vignette'
+        AMENDE = 'amende', 'Amende'
+        PEAGE = 'peage', 'Péage'
+        PARKING = 'parking', 'Parking'
+        LAVAGE = 'lavage', 'Lavage'
+        CONTRAT = 'contrat', 'Contrat'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_couts_vehicule',
+        verbose_name='Société',
+    )
+    actif_flotte = models.ForeignKey(
+        'ActifFlotte',
+        on_delete=models.CASCADE,
+        related_name='flotte_couts_vehicule',
+        verbose_name='Actif (véhicule ou engin)',
+    )
+    categorie = models.CharField(
+        max_length=10, choices=Categorie.choices, default=Categorie.AUTRE,
+        verbose_name='Catégorie')
+    date = models.DateField(verbose_name='Date')
+    montant = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name='Montant (MAD)')
+    fournisseur = models.CharField(
+        max_length=150, blank=True, verbose_name='Fournisseur')
+    reference_piece = models.CharField(
+        max_length=80, blank=True, verbose_name='Référence pièce')
+    conducteur = models.ForeignKey(
+        'Conducteur',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='flotte_couts_vehicule',
+        verbose_name='Conducteur',
+    )
+    notes = models.TextField(blank=True, verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Coût véhicule'
+        verbose_name_plural = 'Coûts véhicule'
+        ordering = ['-date', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'actif_flotte'],
+                name='flotte_cv_co_actif_idx',
+            ),
+            models.Index(
+                fields=['company', 'categorie'],
+                name='flotte_cv_co_cat_idx',
+            ),
+            models.Index(
+                fields=['company', 'date'],
+                name='flotte_cv_co_date_idx',
+            ),
+        ]
+
+    def clean(self):
+        """Valide l'appartenance société de l'actif et du conducteur, et un
+        montant non négatif."""
+        if self.actif_flotte_id is not None \
+                and self.actif_flotte.company_id != self.company_id:
+            raise ValidationError(
+                "L'actif n'appartient pas à la même société.")
+        if self.conducteur_id is not None \
+                and self.conducteur.company_id != self.company_id:
+            raise ValidationError(
+                "Le conducteur n'appartient pas à la même société.")
+        if self.montant is not None and self.montant < 0:
+            raise ValidationError(
+                "Le montant ne peut pas être négatif.")
+
+    def __str__(self):
+        return (f'{self.get_categorie_display()} — {self.actif_flotte} '
+                f'({self.montant} MAD, {self.date})')
