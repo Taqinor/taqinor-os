@@ -520,6 +520,31 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           <p class="mt-2 flex items-center gap-1.5 text-xs font-semibold text-ok-400">
             Instant estimate — not just a callback request within 24 h.
           </p>
+
+          <!-- W360 — the honest cost of waiting: DERIVED from the same savings
+               range already calculated (savingsMonthlyLow), never an invented
+               figure or a countdown. Hidden until a real estimate is showing. -->
+          <p id="mt-cost-of-waiting" hidden class="mt-2 text-xs text-lune-soft">
+            <span>Each month you wait ≈</span>
+            {' '}<strong id="mt-cost-of-waiting-value" class="text-white">—</strong>
+            {' '}<span>not saved.</span>
+          </p>
+
+          <!-- W356 — takeaway: "Save my estimate" generates a LIGHTWEIGHT
+               one-pager, 100% client-side (canvas → PNG), never a server call.
+               Content: kWc + range + caveat + wa.me link — nothing beyond
+               what's already on screen. -->
+          <button type="button" id="mt-save-estimate"
+            class="mt-3 inline-flex items-center gap-2 border border-white/25 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:border-brass-400 hover:text-brass-300">
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <span>Save my estimate</span>
+          </button>
+          <p id="mt-save-estimate-note" hidden class="mt-1.5 text-xs text-lune-faint">
+            Image saved — check your downloads.
+          </p>
+
           <!-- WJ1 — when the estimate is unavailable (bill missing/uncomputable) -->
           <p id="mt-estimate-unavailable" hidden class="mt-4 text-sm text-alert-300">
             Estimate unavailable: enter your monthly bill to calculate it. We'll refine it
@@ -606,6 +631,25 @@ const noscriptTelHref = `tel:${NAP.phone}`;
                   class="h-4 w-4 flex-none accent-brass-400" />
                 <span>An advisor may call me</span>
               </label>
+            </div>
+          </fieldset>
+
+          <!-- W353 — "Book a technical visit slot" v1: a STATIC, OPTIONAL
+               preference (time of day + week) forwarded as-is to the webhook —
+               never a confirmed booking, no calendar dependency, no online
+               payment/deposit (the online-deposit question stays a WG13
+               founder decision, not built here). A human confirms the real
+               slot after contact. -->
+          <fieldset class="mt-1">
+            <legend class="text-sm text-lune-soft">Preferred technical visit slot (optional)</legend>
+            <p class="mt-1 text-xs text-lune-faint">A preference, not a booking — we confirm the exact slot with you.</p>
+            <div class="mt-2 grid grid-cols-2 gap-2">
+              <button type="button" class="mt-visit-part cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="matin" aria-pressed="false">Morning</button>
+              <button type="button" class="mt-visit-part cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="apres_midi" aria-pressed="false">Afternoon</button>
+            </div>
+            <div class="mt-2 grid grid-cols-2 gap-2">
+              <button type="button" class="mt-visit-week cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="cette_semaine" aria-pressed="false">This week</button>
+              <button type="button" class="mt-visit-week cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="semaine_prochaine" aria-pressed="false">Next week</button>
             </div>
           </fieldset>
 
@@ -821,7 +865,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
 </style>
 
 <script>
-  import { estimateFromBill, formatMadRange } from '../../../lib/billEstimate';
+  import { estimateFromBill, formatMad, formatMadRange } from '../../../lib/billEstimate';
   import { captureWhatsappText, whatsappLink } from '../../../lib/whatsapp';
   import { WHATSAPP_LEADS } from '../../../lib/nap';
   import { buildClientRef, validateLead } from '../../../lib/lead';
@@ -878,6 +922,45 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   const addressEl = $('rp9-address') as HTMLInputElement | null;
   const fallbackAddrEl = $('mt-fallback-address') as HTMLInputElement | null;
 
+  // ——— WJ59 : step-level funnel beacon (privacy-light, no PII) ———
+  // Anonymous PER-TAB token (sessionStorage, never a device/user id): only
+  // used to dedupe/correlate "reached"/"abandoned" events within ONE visit,
+  // never to identify a visitor. See src/lib/funnelBeacon.ts for the full
+  // contract (strict 4-field allowlist, never name/phone/email/address/GPS/outline).
+  const FUNNEL_TOKEN_KEY = 'mt-funnel-token-v1';
+  function getFunnelToken(): string {
+    try {
+      let t = sessionStorage.getItem(FUNNEL_TOKEN_KEY);
+      if (!t) {
+        t = Math.random().toString(36).slice(2) + Date.now().toString(36);
+        sessionStorage.setItem(FUNNEL_TOKEN_KEY, t);
+      }
+      return t;
+    } catch {
+      return Math.random().toString(36).slice(2);
+    }
+  }
+  const funnelToken = getFunnelToken();
+  const funnelStepReached = new Set<string>();
+  function sendFunnelBeacon(step: 'toit' | 'facture' | 'estimation' | 'contact', action: 'reached' | 'abandoned') {
+    if (action === 'reached') {
+      const key = `${step}:${action}`;
+      if (funnelStepReached.has(key)) return;
+      funnelStepReached.add(key);
+    }
+    try {
+      const payload = JSON.stringify({ step, action, sessionToken: funnelToken, path: location.pathname });
+      if (navigator.sendBeacon) {
+        const blob = new Blob([payload], { type: 'application/json' });
+        navigator.sendBeacon('/api/funnel-beacon', blob);
+      } else {
+        void fetch('/api/funnel-beacon', { method: 'POST', headers: { 'content-type': 'application/json' }, body: payload, keepalive: true }).catch(() => {});
+      }
+    } catch {
+      // Best-effort measurement only — must never disrupt the flow.
+    }
+  }
+
   // ——— état capture (repère / contour) tenu par onCaptureChange ———
   let capturePin: { lat: number; lng: number } | null = null;
   let captureOutline: Array<[number, number]> = [];
@@ -903,6 +986,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     step?: number;
     mode?: string;
     ombrage?: string;
+    visitWindowPart?: string;
+    visitWindowWeek?: string;
     futureLoads?: string[];
     capturePin?: { lat: number; lng: number } | null;
     captureOutline?: Array<[number, number]>;
@@ -932,6 +1017,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       }
       const snapshot: WizardSnapshot = {
         step, mode, ombrage,
+        visitWindowPart, visitWindowWeek,
         futureLoads: Array.from(futureLoads),
         capturePin, captureOutline,
         fields, checks,
@@ -1040,6 +1126,40 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       b.classList.toggle('border-white/15', !on);
     });
   }
+
+  // ——— W353 : technical visit slot — two INDEPENDENT single-select toggles
+  // (time of day + week), same pattern as .mt-ombrage above. STATIC and
+  // OPTIONAL preference: no calendar, no confirmed booking — a human
+  // validates the real slot after contact. ———
+  let visitWindowPart = savedWizard?.visitWindowPart || '';
+  let visitWindowWeek = savedWizard?.visitWindowWeek || '';
+  function wireVisitToggle(selector: string, getCurrent: () => string, setCurrent: (v: string) => void) {
+    document.querySelectorAll<HTMLButtonElement>(selector).forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const same = getCurrent() === btn.dataset.value;
+        setCurrent(same ? '' : (btn.dataset.value || ''));
+        document.querySelectorAll<HTMLButtonElement>(selector).forEach((b) => {
+          const on = !same && b === btn;
+          b.setAttribute('aria-pressed', String(on));
+          b.classList.toggle('border-brass-400', on);
+          b.classList.toggle('border-white/15', !on);
+        });
+        markDataEntered();
+        saveWizardState();
+      });
+    });
+    const current = getCurrent();
+    if (current) {
+      document.querySelectorAll<HTMLButtonElement>(selector).forEach((b) => {
+        const on = b.dataset.value === current;
+        b.setAttribute('aria-pressed', String(on));
+        b.classList.toggle('border-brass-400', on);
+        b.classList.toggle('border-white/15', !on);
+      });
+    }
+  }
+  wireVisitToggle('.mt-visit-part', () => visitWindowPart, (v) => { visitWindowPart = v; });
+  wireVisitToggle('.mt-visit-week', () => visitWindowWeek, (v) => { visitWindowWeek = v; });
 
   // ——— WJ31 : puces multi-sélection (charges futures) ———
   const futureLoads = new Set<string>(savedWizard?.futureLoads ?? []);
@@ -1172,6 +1292,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     // W324 — the map step is now ACTIVE: this is where (never on plain page
     // load) we fire the config fetch + the lazy maplibre-gl import.
     if (step === 0) ensureMapBooted();
+    // WJ59 — "step reached", deduped by sendFunnelBeacon (once per step per visit).
+    sendFunnelBeacon(step === 0 ? 'toit' : step === 1 ? 'facture' : 'estimation', 'reached');
     // WJ61 — on the very first render (load/rehydration), don't force a
     // scroll: the visitor just arrived/came back, the page hasn't moved under
     // them yet. Scrolling stays for every SUBSEQUENT step.
@@ -1283,6 +1405,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   let lastKwcLabel = '';
   let lastSavingsLabel = '';
   let lastKwc: number | null = null;
+  // W356/W360 — full snapshot of the last REAL estimate shown (never
+  // fabricated: identical to the numbers already on screen) — powers the
+  // takeaway one-pager (W356) and the "cost of waiting" line (W360).
+  let lastEstFull: { kwc: number; monthlyLabel: string; paybackLabel: string; savingsMonthlyLow: number } | null = null;
   // WJ88 — single, clean announcement of the result (never during the
   // skeleton phase): replaces the old aria-live set on the whole
   // #mt-estimate-card, which caused a screen-reader double-fire (skeleton
@@ -1298,6 +1424,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     const note = $('mt-estimate-note');
     const unavail = $('mt-estimate-unavailable');
     const toolarge = $('mt-estimate-toolarge');
+    const cowEl = $('mt-cost-of-waiting');
+    const saveBtn = $('mt-save-estimate');
     // WJ65 — exact amount beyond the cap: dedicated honest message (never a
     // confidently computed figure on a likely-mistaken entry) + inline error
     // on the field itself, without ever BLOCKING the step (the visitor can
@@ -1311,6 +1439,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       lastKwcLabel = '';
       lastSavingsLabel = '';
       lastKwc = null;
+      lastEstFull = null;
+      if (cowEl) cowEl.hidden = true;
+      if (saveBtn) saveBtn.hidden = true;
       updatePanels3dVisibility();
       announceEstimate('Estimate unavailable — please check the amount entered.');
       return;
@@ -1327,6 +1458,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       lastKwcLabel = '';
       lastSavingsLabel = '';
       lastKwc = null;
+      lastEstFull = null;
+      if (cowEl) cowEl.hidden = true;
+      if (saveBtn) saveBtn.hidden = true;
       updatePanels3dVisibility();
       announceEstimate('Estimate unavailable: enter your monthly bill to calculate it.');
       return;
@@ -1344,7 +1478,23 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     lastKwcLabel = `${est.kwc} kWc`;
     lastSavingsLabel = `${monthly}/mois`;
     lastKwc = est.kwc;
+    lastEstFull = {
+      kwc: est.kwc,
+      monthlyLabel: monthly,
+      paybackLabel: est.paybackLabel,
+      savingsMonthlyLow: est.savingsMonthlyLow,
+    };
+    // W360 — cost of waiting DERIVED from the same low bound already shown
+    // (never a separate/invented figure, never a countdown).
+    if (cowEl) {
+      const costEl = $('mt-cost-of-waiting-value');
+      if (costEl) costEl.textContent = `${formatMad(est.savingsMonthlyLow)} MAD`;
+      cowEl.hidden = est.savingsMonthlyLow <= 0;
+    }
+    if (saveBtn) saveBtn.hidden = false;
     updatePanels3dVisibility();
+    // WJ59 — the real estimate is when the contact form becomes the relevant action.
+    sendFunnelBeacon('contact', 'reached');
     // WJ88 — single, clean final announcement (never during the skeleton phase).
     announceEstimate(`Your estimate: ${est.kwc} kWc, estimated savings ${monthly}/month, payback ${est.paybackLabel}.`);
   }
@@ -1450,6 +1600,91 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   }
   panels3dStart?.addEventListener('click', () => { void startPanels3d(); });
 
+  // ——— W356 : takeaway "Save my estimate" — a LIGHTWEIGHT one-pager generated
+  // 100% client-side (canvas → PNG), NO server call, NO new dependency.
+  // Content strictly identical to what's already on screen: kWc, savings
+  // range, caveat, wa.me link — nothing invented here. ———
+  function drawWrappedText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, lineHeight: number): number {
+    const words = text.split(' ');
+    let line = '';
+    let cy = y;
+    for (const word of words) {
+      const test = line ? `${line} ${word}` : word;
+      if (ctx.measureText(test).width > maxWidth && line) {
+        ctx.fillText(line, x, cy);
+        line = word;
+        cy += lineHeight;
+      } else {
+        line = test;
+      }
+    }
+    if (line) { ctx.fillText(line, x, cy); cy += lineHeight; }
+    return cy;
+  }
+  function buildEstimatePng(): string | null {
+    if (!lastEstFull) return null;
+    const W = 640;
+    const H = 380;
+    const canvas = document.createElement('canvas');
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.fillStyle = '#0a0e1f';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#caa15a';
+    ctx.font = '600 14px system-ui, sans-serif';
+    ctx.fillText('Taqinor — solar estimate', 32, 44);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '700 40px system-ui, sans-serif';
+    ctx.fillText(`${lastEstFull.kwc} kWc`, 32, 104);
+    ctx.font = '600 22px system-ui, sans-serif';
+    ctx.fillStyle = '#4ade80';
+    ctx.fillText(`Estimated savings: ${lastEstFull.monthlyLabel}/month`, 32, 144);
+    ctx.fillStyle = '#e5e7eb';
+    ctx.font = '500 18px system-ui, sans-serif';
+    ctx.fillText(`Payback: ${lastEstFull.paybackLabel}`, 32, 178);
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = 'italic 400 14px system-ui, sans-serif';
+    let cy = drawWrappedText(
+      ctx,
+      'Preliminary estimate, refined after a technical site visit. Not contractual.',
+      32, 216, W - 64, 20,
+    );
+    cy += 12;
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.beginPath();
+    ctx.moveTo(32, cy);
+    ctx.lineTo(W - 32, cy);
+    ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '600 15px system-ui, sans-serif';
+    ctx.fillText('WhatsApp: wa.me/212661850410', 32, cy + 34);
+    ctx.fillStyle = '#6b7280';
+    ctx.font = '400 12px system-ui, sans-serif';
+    ctx.fillText('taqinor.ma', 32, H - 20);
+    return canvas.toDataURL('image/png');
+  }
+  $('mt-save-estimate')?.addEventListener('click', () => {
+    const dataUrl = buildEstimatePng();
+    const note = $('mt-save-estimate-note');
+    if (!dataUrl) return;
+    try {
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = 'taqinor-solar-estimate.png';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      if (note) note.hidden = false;
+    } catch {
+      // Honest fallback: the image stays visible on screen even if the
+      // download fails (e.g. a browser blocking data: URLs) — never a
+      // silent block of the action.
+      if (note) note.hidden = true;
+    }
+  });
+
   // ——— WJ4 : validation INLINE alignée sur validateLead (avant le round-trip) ———
   function setFieldError(inputId: string, errId: string, message: string | null) {
     const input = $(inputId) as HTMLInputElement | null;
@@ -1516,6 +1751,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       // WJ52 — short reference for the post-submission artefact (echoed as-is,
       // never a server uniqueness key — see lib/lead.ts).
       clientRef: getOrCreateClientRef(),
+      // W353 — technical visit slot preference (optional, STATIC).
+      visitWindowPart: visitWindowPart || undefined,
+      visitWindowWeek: visitWindowWeek || undefined,
     };
     // WJ4 — repère FACULTATIF : on le joint s'il existe, on ne BLOQUE jamais sans lui.
     if (capturePin) {
@@ -1713,11 +1951,20 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     return whatsappLink(WHATSAPP_LEADS, text);
   }
 
+  // WJ59 — "step abandoned": tracked separately from the WhatsApp offer
+  // (which only shows once per visit via `exitShown`), since the measurement
+  // signal stays useful even if the offer already showed once.
+  let funnelAbandonSent = false;
   function maybeShowExit(triggerEl: HTMLElement | null = null) {
     if (exitShown || submitted) return;
     // ne déranger que si l'utilisateur a au moins commencé (mode/facture ou step > 0)
     const started2 = step > 0 || resolveMonthlyBill() != null || (capturePin != null);
     if (!started2) return;
+    if (!funnelAbandonSent) {
+      funnelAbandonSent = true;
+      const currentStep = step === 0 ? 'toit' : step === 1 ? 'facture' : (lastKwc != null ? 'contact' : 'estimation');
+      sendFunnelBeacon(currentStep, 'abandoned');
+    }
     exitShown = true;
     exitTriggerEl = triggerEl ?? (document.activeElement as HTMLElement | null);
     if (exitWaLink) exitWaLink.href = buildExitWaHref();
