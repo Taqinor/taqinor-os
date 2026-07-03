@@ -23,6 +23,22 @@ class KbArticle(models.Model):
         PUBLIE = 'publie', 'Publié'
         OBSOLETE = 'obsolete', 'Obsolète'
 
+    class Visibilite(models.TextChoices):
+        """XKB9 — section de l'article. RÉTRO-COMPATIBLE : ``workspace`` est
+        la valeur par défaut, comportement historique inchangé (visible de
+        tous les paliers autorisés, sous réserve des ACL KB7)."""
+        WORKSPACE = 'workspace', 'Espace de travail'
+        PRIVE = 'prive', 'Privé'
+        PARTAGE = 'partage', 'Partagé'
+
+    class CorpsFormat(models.TextChoices):
+        """XKB10 — format de rendu du champ ``corps``. RÉTRO-COMPATIBLE :
+        ``texte`` (défaut) reproduit le rendu brut historique ; ``markdown``
+        active le rendu Markdown sanitizé côté frontend (aucune conséquence
+        backend au-delà du champ — le rendu/sanitizing vit côté client)."""
+        TEXTE = 'texte', 'Texte brut'
+        MARKDOWN = 'markdown', 'Markdown'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -38,6 +54,23 @@ class KbArticle(models.Model):
     statut = models.CharField(
         max_length=15, choices=Statut.choices,
         default=Statut.BROUILLON, verbose_name='Statut')
+    # XKB9 — section. Défaut ``workspace`` = comportement historique inchangé.
+    visibilite = models.CharField(
+        max_length=10, choices=Visibilite.choices,
+        default=Visibilite.WORKSPACE, verbose_name='Visibilité')
+    # XKB10 — format du corps. Défaut ``texte`` = comportement historique
+    # inchangé (aucun rendu Markdown des articles existants).
+    corps_format = models.CharField(
+        max_length=10, choices=CorpsFormat.choices,
+        default=CorpsFormat.TEXTE, verbose_name='Format du contenu')
+    # XKB12 — gabarit réutilisable (« enregistrer comme gabarit ») : apparaît
+    # dans la galerie « nouveau depuis gabarit ». Couvre AUSSI les 5 gabarits
+    # SOP/ONEE/82-21 seedés (KB5, ``seed_kb_templates`` — additif, aucune
+    # migration de données requise : le flag est simplement False par défaut
+    # sur les lignes existantes, qui restent des articles normaux tant qu'on
+    # ne les marque pas gabarit explicitement).
+    est_gabarit = models.BooleanField(
+        default=False, verbose_name='Gabarit')
     auteur = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -45,6 +78,43 @@ class KbArticle(models.Model):
         related_name='kb_app_articles',
         verbose_name='Auteur',
     )
+    # XKB8 — arborescence de pages imbriquées : sous-article d'un article
+    # parent (profondeur arbitraire). Validé même-société + anti-cycle côté
+    # serializer/service (jamais en base). NULL = article racine.
+    parent = models.ForeignKey(
+        'self',
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='enfants',
+        verbose_name='Article parent',
+    )
+    # XKB8 — position parmi les frères (même parent) pour le réordonnancement
+    # manuel dans l'arbre latéral. Posé côté serveur, jamais recalculé par
+    # count() (juste un entier libre, pas une contrainte d'unicité).
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    # XKB14 — vérification & péremption. ``verifie_par`` + ``verifie_jusqua``
+    # (posés par l'action ``verifier``) portent le badge « Vérifié » et
+    # l'échéance de re-revue (7/30/90 j ou date libre — calculée côté client,
+    # stockée en date absolue côté serveur pour un sweep simple).
+    verifie_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='kb_app_articles_verifies',
+        verbose_name='Vérifié par',
+    )
+    verifie_jusqua = models.DateTimeField(
+        null=True, blank=True, verbose_name="Vérifié jusqu'au")
+    # XKB14 — verrou d'article (SOP approuvées, lecture seule). Seule une
+    # personne avec ACL ÉDITION (ou admin) peut déverrouiller ; l'API rejette
+    # tout PATCH sur un article verrouillé pour les autres.
+    est_verrouille = models.BooleanField(
+        default=False, verbose_name='Verrouillé')
+    # XKB16 — compteur de VUES par article, DISTINCT de KbLecture (KB7) :
+    # incrémenté à CHAQUE consultation (même relecture par la même personne),
+    # alors que KbLecture est un « lu/pas lu » idempotent par utilisateur.
+    # Posé côté serveur (jamais du corps de requête) via l'action de détail.
+    vues = models.PositiveIntegerField(default=0, verbose_name='Vues')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
     date_modification = models.DateTimeField(
@@ -54,6 +124,11 @@ class KbArticle(models.Model):
         verbose_name = 'Article'
         verbose_name_plural = 'Articles'
         ordering = ['-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'parent', 'ordre'],
+                name='kb_article_parent_ordre_idx'),
+        ]
 
     def __str__(self):
         return self.titre
@@ -124,6 +199,10 @@ class KbArticleLien(models.Model):
         PRODUIT = 'produit', 'Produit'
         EQUIPEMENT = 'equipement', 'Équipement'
         TYPE_INTERVENTION = 'type_intervention', "Type d'intervention"
+        # XKB11 — lien interne ARTICLE → ARTICLE (cible = autre KbArticle,
+        # même société, validée côté serializer). ``cible_id`` porte alors le
+        # PK d'un autre KbArticle plutôt qu'un objet d'une autre app.
+        ARTICLE = 'article', 'Article'
 
     company = models.ForeignKey(
         'authentication.Company',
@@ -203,9 +282,21 @@ class KbArticleAcl(models.Model):
         related_name='acls',
         verbose_name='Article',
     )
+    # ``role`` XOR ``utilisateur`` (validé côté serializer) : une ligne ACL
+    # par-RÔLE (comportement historique KB7, ``role`` seul) OU par-UTILISATEUR
+    # (XKB9 — partage nominatif d'un article ``partage``, ``utilisateur``
+    # seul). ``role`` reste blank pour les lignes par-utilisateur.
     role = models.CharField(
-        max_length=20, choices=ROLE_CHOICES,
+        max_length=20, choices=ROLE_CHOICES, blank=True, default='',
         verbose_name='Palier de rôle autorisé')
+    # XKB9 — ACL nominative : membre explicite d'un article ``partage``.
+    utilisateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='kb_app_acls',
+        verbose_name='Utilisateur autorisé',
+    )
     niveau = models.CharField(
         max_length=10, choices=Niveau.choices,
         default=Niveau.LECTURE, verbose_name='Niveau')
@@ -216,7 +307,10 @@ class KbArticleAcl(models.Model):
         verbose_name = "Droit d'accès de l'article"
         verbose_name_plural = "Droits d'accès de l'article"
         ordering = ['id']
-        unique_together = [('article', 'role', 'niveau')]
+        unique_together = [
+            ('article', 'role', 'niveau'),
+            ('article', 'utilisateur', 'niveau'),
+        ]
         indexes = [
             # Nom EXPLICITE (≤30 car.) pour éviter toute divergence entre le
             # nom haché déterministe de Django et celui de la migration.
@@ -225,7 +319,8 @@ class KbArticleAcl(models.Model):
         ]
 
     def __str__(self):
-        return f'{self.article_id} · {self.role} ({self.niveau})'
+        cible = self.role or f'user:{self.utilisateur_id}'
+        return f'{self.article_id} · {cible} ({self.niveau})'
 
 
 class KbLecture(models.Model):
@@ -336,3 +431,143 @@ class KbArticleChunk(models.Model):
 
     def __str__(self):
         return f'{self.article_id} #{self.chunk_index}'
+
+
+class KbLectureObligatoire(models.Model):
+    """XKB7 — Assignation de lecture OBLIGATOIRE d'un article publié.
+
+    Assigne un article à un utilisateur donné OU à un palier de rôle entier
+    (``menu_tier`` : admin/responsable/normal — exactement les mêmes paliers
+    canoniques que :class:`KbArticleAcl`). La complétion s'appuie sur le
+    ``KbLecture``/``marquer-lu`` DÉJÀ existant (KB7) — on ne réimplémente pas
+    le suivi de lecture, on l'annote d'une échéance + d'un statut
+    obligatoire/volontaire. La société est posée côté serveur (jamais du corps
+    de requête) et reste cohérente avec celle de l'article.
+
+    Exactement un de ``utilisateur``/``role_cible`` est renseigné (validé côté
+    serializer) : une ligne par utilisateur explicite, ou une ligne par palier
+    de rôle couvrant tous les utilisateurs de ce palier.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='kb_app_lectures_obligatoires',
+        verbose_name='Société',
+    )
+    article = models.ForeignKey(
+        KbArticle,
+        on_delete=models.CASCADE,
+        related_name='lectures_obligatoires',
+        verbose_name='Article',
+    )
+    utilisateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='kb_app_lectures_obligatoires',
+        verbose_name='Utilisateur assigné',
+    )
+    # Palier de rôle canonique (mêmes choix que KbArticleAcl.ROLE_CHOICES) :
+    # assigne TOUS les utilisateurs de ce palier, sans énumérer chaque ligne.
+    role_cible = models.CharField(
+        max_length=20, choices=KbArticleAcl.ROLE_CHOICES,
+        blank=True, default='', verbose_name='Palier de rôle ciblé')
+    echeance = models.DateTimeField(
+        null=True, blank=True, verbose_name='Échéance')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Assigné le')
+
+    class Meta:
+        verbose_name = 'Lecture obligatoire'
+        verbose_name_plural = 'Lectures obligatoires'
+        ordering = ['-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'article'], name='kb_lecobl_co_article_idx'),
+        ]
+
+    def __str__(self):
+        cible = self.utilisateur_id or f'rôle:{self.role_cible}'
+        return f'{self.article_id} → {cible}'
+
+
+class KbFavori(models.Model):
+    """XKB15 — Article ÉTOILÉ par un utilisateur (favori personnel).
+
+    Une ligne par (article, utilisateur) — togglable (créer/supprimer). La
+    société et l'utilisateur agissant sont posés côté serveur (jamais du
+    corps de requête). Les favoris d'un utilisateur ne sont jamais visibles
+    d'un autre (strictement personnel, contrairement au reste de la base qui
+    est partagée à l'échelle de la société).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='kb_app_favoris',
+        verbose_name='Société',
+    )
+    article = models.ForeignKey(
+        KbArticle,
+        on_delete=models.CASCADE,
+        related_name='favoris',
+        verbose_name='Article',
+    )
+    utilisateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='kb_app_favoris',
+        verbose_name='Utilisateur',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Ajouté le')
+
+    class Meta:
+        verbose_name = 'Favori'
+        verbose_name_plural = 'Favoris'
+        ordering = ['-date_creation', '-id']
+        unique_together = [('article', 'utilisateur')]
+        indexes = [
+            models.Index(
+                fields=['company', 'utilisateur'], name='kb_favori_co_user_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.utilisateur_id} ★ {self.article_id}'
+
+
+class KbRechercheVide(models.Model):
+    """XKB16 — Journal des recherches KB SANS RÉSULTAT (terme, qui, quand).
+
+    Alimente le rapport « lacunes de connaissance » : les termes cherchés
+    jamais servis, pour prioriser la rédaction. Écrit par l'action de liste
+    des articles quand une recherche ``?search=`` ne renvoie aucun résultat.
+    Société et utilisateur posés côté serveur (jamais du corps de requête).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='kb_app_recherches_vides',
+        verbose_name='Société',
+    )
+    terme = models.CharField(max_length=255, verbose_name='Terme recherché')
+    utilisateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='kb_app_recherches_vides',
+        verbose_name='Utilisateur',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Recherché le')
+
+    class Meta:
+        verbose_name = 'Recherche sans résultat'
+        verbose_name_plural = 'Recherches sans résultat'
+        ordering = ['-date_creation', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'terme'], name='kb_rech_vide_co_terme_idx'),
+        ]
+
+    def __str__(self):
+        return f'« {self.terme} » (0 résultat)'
