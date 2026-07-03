@@ -268,6 +268,12 @@ class Tache(models.Model):
         TERMINE = 'termine', 'Terminée'
         BLOQUE = 'bloque', 'Bloquée'
 
+    class Priorite(models.TextChoices):
+        BASSE = 'basse', 'Basse'
+        NORMALE = 'normale', 'Normale'
+        HAUTE = 'haute', 'Haute'
+        URGENTE = 'urgente', 'Urgente'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -288,6 +294,22 @@ class Tache(models.Model):
         related_name='taches',
         verbose_name='Phase',
     )
+    # Assigné (XPRJ10) : une ressource UNIQUE porteuse de la tâche — distinct
+    # de ``AffectationRessource`` qui gère l'affectation fine multi-ressources
+    # (charge, période). ``assigne`` est le raccourci "qui fait cette tâche".
+    assigne = models.ForeignKey(
+        'RessourceProfil',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='taches_assignees',
+        verbose_name='Assigné',
+    )
+    priorite = models.CharField(
+        max_length=10, choices=Priorite.choices,
+        default=Priorite.NORMALE, verbose_name='Priorité')
+    # Tags légers en CSV (ex. "toiture,urgent") — filtrables via ?etiquette=.
+    etiquettes = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Étiquettes')
     # FK auto-référent : porte les SOUS-TÂCHES (arborescence WBS, profondeur
     # arbitraire). Supprimer une tâche supprime ses descendants (CASCADE).
     parent = models.ForeignKey(
@@ -317,6 +339,12 @@ class Tache(models.Model):
         null=True, blank=True, verbose_name='Date de début prévue')
     date_fin_prevue = models.DateField(
         null=True, blank=True, verbose_name='Date de fin prévue')
+    # Date de complétion RÉELLE (XPRJ17) — posée côté serveur quand ``statut``
+    # passe à TERMINE (jamais lue du corps de requête), réinitialisée si le
+    # statut repasse à un état non-terminé. Base du burndown (charge restante
+    # reconstituée à chaque date).
+    date_fin_reelle = models.DateField(
+        null=True, blank=True, verbose_name='Date de fin réelle')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -2298,3 +2326,204 @@ class ChronoEnCours(models.Model):
 
     def __str__(self):
         return f'{self.user_id} — tâche {self.tache_id} ({self.demarre_a})'
+
+
+class RecurrenceTache(models.Model):
+    """Gabarit de tâche RÉCURRENTE d'un projet (XPRJ13).
+
+    Génère la PROCHAINE ``Tache`` à échéance via
+    ``manage.py generer_taches_recurrentes`` (branchable Celery beat, pattern
+    FG1/XPRJ7). ``prochaine_echeance`` avance à chaque génération ; la
+    récurrence s'arrête à ``date_fin`` OU après ``nb_occurrences`` (l'un des
+    deux, optionnels ; aucun des deux = récurrence sans fin).
+
+    Le gabarit porte les champs minimaux d'une ``Tache`` à créer : libellé,
+    phase (optionnelle), charge estimée, assigné (XPRJ10). Tout est
+    multi-société : ``company`` est posée côté serveur, jamais lue du corps de
+    requête. Modèle entièrement additif.
+    """
+    class Regle(models.TextChoices):
+        HEBDOMADAIRE = 'hebdomadaire', 'Hebdomadaire'
+        MENSUELLE = 'mensuelle', 'Mensuelle'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gp_recurrences_tache',
+        verbose_name='Société',
+    )
+    projet = models.ForeignKey(
+        Projet,
+        on_delete=models.CASCADE,
+        related_name='recurrences_tache',
+        verbose_name='Projet',
+    )
+    # ── Gabarit de la tâche à générer ────────────────────────────────────────
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    phase = models.ForeignKey(
+        PhaseProjet,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='recurrences_tache',
+        verbose_name='Phase',
+    )
+    charge_estimee = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        verbose_name='Charge estimée (j-h)')
+    assigne = models.ForeignKey(
+        'RessourceProfil',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='recurrences_tache',
+        verbose_name='Assigné',
+    )
+    # ── Règle de récurrence ──────────────────────────────────────────────────
+    regle = models.CharField(
+        max_length=15, choices=Regle.choices, verbose_name='Règle')
+    intervalle = models.PositiveSmallIntegerField(
+        default=1, verbose_name='Intervalle')
+    prochaine_echeance = models.DateField(verbose_name='Prochaine échéance')
+    date_fin = models.DateField(
+        null=True, blank=True, verbose_name='Fin de récurrence')
+    nb_occurrences = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="Nombre d'occurrences")
+    nb_generees = models.PositiveIntegerField(
+        default=0, verbose_name='Occurrences générées')
+    actif = models.BooleanField(default=True, verbose_name='Active')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Récurrence de tâche'
+        verbose_name_plural = 'Récurrences de tâches'
+        ordering = ['prochaine_echeance', 'id']
+        indexes = [
+            models.Index(
+                fields=['actif', 'prochaine_echeance'],
+                name='gp_recur_actif_echeance_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.libelle} ({self.get_regle_display()})'
+
+
+class ItemChecklistTache(models.Model):
+    """Item de checklist d'une ``Tache`` (XPRJ14).
+
+    ``fait`` bascule côté serveur via l'action ``toggle`` du viewset : quand il
+    passe à ``True``, ``fait_par``/``fait_le`` sont posés côté serveur (jamais
+    lus du corps de requête) ; quand il repasse à ``False``, ils sont
+    réinitialisés. Le % d'items cochés d'une tâche est une SUGGESTION affichée
+    à l'``avancement_pct`` — jamais un écrasement silencieux d'un avancement
+    saisi manuellement (voir sérialiseur ``Tache``).
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Modèle entièrement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gp_items_checklist',
+        verbose_name='Société',
+    )
+    tache = models.ForeignKey(
+        Tache,
+        on_delete=models.CASCADE,
+        related_name='items_checklist',
+        verbose_name='Tâche',
+    )
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    fait = models.BooleanField(default=False, verbose_name='Fait')
+    fait_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='+',
+        verbose_name='Fait par',
+    )
+    fait_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Fait le')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Item de checklist'
+        verbose_name_plural = 'Items de checklist'
+        ordering = ['tache', 'ordre', 'id']
+        indexes = [
+            models.Index(
+                fields=['tache'], name='gp_item_checklist_tache_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.tache_id} — {self.libelle}'
+
+
+class PointAvancement(models.Model):
+    """Point d'avancement PÉRIODIQUE d'un projet — statut RAG (XPRJ15).
+
+    Historisé (une ligne par point, jamais mise à jour) : ``sante`` capture un
+    statut RAG (Rouge/Orange/Vert) PROPRE à ce module (jamais une clé de
+    ``STAGES.py``, règle #2), ``avancement_pct`` est FIGÉ au moment du point
+    (photo, distincte du roll-up temps réel PROJ9). Le DERNIER point d'un
+    projet alimente la colonne « santé » du portefeuille (``portefeuille``,
+    PROJ36) et du dashboard.
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête ; ``auteur`` est posé côté serveur. Modèle entièrement
+    additif.
+    """
+    class Sante(models.TextChoices):
+        VERT = 'vert', 'Vert'
+        ORANGE = 'orange', 'Orange'
+        ROUGE = 'rouge', 'Rouge'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gp_points_avancement',
+        verbose_name='Société',
+    )
+    projet = models.ForeignKey(
+        Projet,
+        on_delete=models.CASCADE,
+        related_name='points_avancement',
+        verbose_name='Projet',
+    )
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='+',
+        verbose_name='Auteur',
+    )
+    sante = models.CharField(
+        max_length=10, choices=Sante.choices, verbose_name='Santé')
+    # Avancement FIGÉ au moment du point (photo) — distinct du roll-up temps
+    # réel (PROJ9).
+    avancement_pct = models.PositiveSmallIntegerField(
+        default=0, validators=[MaxValueValidator(100)],
+        verbose_name='Avancement (%)')
+    realisations = models.TextField(
+        blank=True, default='', verbose_name='Réalisations')
+    risques = models.TextField(
+        blank=True, default='', verbose_name='Risques')
+    prochaines_etapes = models.TextField(
+        blank=True, default='', verbose_name='Prochaines étapes')
+    date_point = models.DateField(verbose_name='Date du point')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Point d'avancement"
+        verbose_name_plural = "Points d'avancement"
+        ordering = ['-date_point', '-id']
+        indexes = [
+            models.Index(
+                fields=['projet', '-date_point'],
+                name='gp_point_av_projet_date_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.projet_id} — {self.date_point} ({self.sante})'

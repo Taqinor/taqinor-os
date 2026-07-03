@@ -65,6 +65,8 @@ class EventType(models.TextChoices):
         'supplier_doc_expiring', 'Document fournisseur bientôt expiré')
     # XPUR7 — BCF envoyé en retard (prévue/confirmée dépassée, non reçu).
     BCF_LATE = 'bcf_late', 'Bon de commande fournisseur en retard'
+    # XPRJ22 — retard/risque de planning sur un projet (gestion_projet).
+    PROJET_RETARD = 'projet_retard', 'Retard planning projet'
 
 
 class Channel(models.TextChoices):

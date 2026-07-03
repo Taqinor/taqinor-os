@@ -29,8 +29,10 @@ from .models import (
     DependanceTache,
     Equipe,
     Indisponibilite,
+    ItemChecklistTache,
     Jalon,
     JourFerie,
+    PointAvancement,
     LigneBudgetProjet,
     ModeleProjet,
     ModeleTache,
@@ -41,6 +43,7 @@ from .models import (
     ProjetActivity,
     ProjetChantier,
     ProjetLien,
+    RecurrenceTache,
     RessourceProfil,
     Risque,
     SituationTravaux,
@@ -70,7 +73,9 @@ from .serializers import (
     DependanceTacheSerializer,
     EquipeSerializer,
     IndisponibiliteSerializer,
+    ItemChecklistTacheSerializer,
     JalonSerializer,
+    PointAvancementSerializer,
     JourFerieSerializer,
     LigneBudgetProjetSerializer,
     ModeleProjetSerializer,
@@ -82,6 +87,7 @@ from .serializers import (
     ProjetChantierSerializer,
     ProjetLienSerializer,
     ProjetSerializer,
+    RecurrenceTacheSerializer,
     RessourceProfilSerializer,
     RisqueSerializer,
     TacheSerializer,
@@ -156,6 +162,41 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
         projet = self.get_object()
         return Response(selectors.liens_enrichis(projet))
 
+    @action(detail=False, methods=['post'], url_path='depuis-devis')
+    def depuis_devis(self, request):
+        """Crée un projet depuis un devis ACCEPTÉ (XPRJ21) — action explicite.
+
+        Corps : ``devis_id`` (obligatoire). Crée le ``Projet`` (client résolu,
+        code via numérotation SÛRE), le ``ProjetLien`` vers le devis, et un
+        ``BudgetProjet`` v1 pré-ventilé matériel/main-d'œuvre depuis les
+        lignes du devis (lu via ``apps.ventes.selectors.devis_pour_projet`` —
+        jamais un import de ``ventes.models``). JAMAIS automatique sur
+        ``devis_accepted`` (le chantier auto existe déjà côté
+        ``installations``) : action UTILISATEUR uniquement.
+
+        Un devis d'une autre société, inexistant, ou non ACCEPTÉ → 404. Un
+        re-run sur le même devis (déjà lié) → 400.
+        """
+        from apps.ventes.selectors import devis_pour_projet
+
+        devis_id = request.data.get('devis_id')
+        if not devis_id:
+            return Response(
+                {'devis_id': 'devis_id est obligatoire.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        devis_data = devis_pour_projet(devis_id, request.user.company)
+        if devis_data is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        try:
+            resultat = services.creer_projet_depuis_devis(
+                devis_data, company=request.user.company, user=request.user)
+        except services.DevisVersProjetError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            ProjetSerializer(resultat['projet']).data,
+            status=status.HTTP_201_CREATED)
+
     # ── Machine à états (PROPRE au projet, jamais STAGES.py) ─────────────────
     def _transition(self, request, *, allowed_from, target):
         """Applique une transition de statut si elle est légale, sinon 400.
@@ -183,6 +224,9 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
             new_value=target,
             auteur=request.user,
         )
+        services.notifier_transition_projet(
+            projet, ancien_statut=old, nouveau_statut=target,
+            user=request.user)
         return Response(ProjetSerializer(projet).data)
 
     @action(detail=True, methods=['post'], url_path='planifier')
@@ -269,9 +313,50 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
 
         La société est garantie par ``get_object`` (queryset scopé société) :
         chaque dict porte ses ``sous_taches`` (profondeur arbitraire).
+        ``?export=xlsx`` télécharge le plan de tâches à PLAT (XPRJ24 : code
+        WBS, libellé, parent, dates, charge, statut, assigné, dépendances) au
+        lieu de l'arbre JSON (le pattern DRF ``?format=`` réservé est évité).
         """
         projet = self.get_object()
+        if request.query_params.get('export') == 'xlsx':
+            from apps.records.xlsx import build_xlsx_response
+
+            lignes = services.exporter_taches(projet)
+            rows = [
+                [ligne[champ] for champ in services.EXPORT_TACHES_ENTETES]
+                for ligne in lignes
+            ]
+            return build_xlsx_response(
+                f'plan_taches_{projet.code}.xlsx',
+                services.EXPORT_TACHES_ENTETES, rows,
+                sheet_title='Plan de tâches')
         return Response(selectors.arbre_taches(projet))
+
+    @action(detail=True, methods=['post'], url_path='importer-taches')
+    def importer_taches(self, request, pk=None):
+        """Importe un plan de tâches (WBS) CSV/xlsx (XPRJ24).
+
+        Corps : ``lignes`` (liste de dicts suivant
+        ``services.EXPORT_TACHES_ENTETES`` — le frontend parse le
+        CSV/xlsx et poste le tableau). DRY-RUN par DÉFAUT (``?confirm=1``
+        pour écrire, transaction atomique) : les lignes invalides sont
+        rapportées SANS RIEN écrire. La société est garantie par
+        ``get_object`` : un projet d'une autre société → 404.
+        """
+        projet = self.get_object()
+        lignes = request.data.get('lignes')
+        if not isinstance(lignes, list) or not lignes:
+            return Response(
+                {'lignes': 'Une liste de lignes non vide est obligatoire.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        confirm = request.query_params.get('confirm') in ('1', 'true', 'True')
+        try:
+            resultat = services.importer_taches(
+                projet, lignes, confirm=confirm)
+        except services.ImportTachesError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(resultat)
 
     @action(detail=True, methods=['post'], url_path='baseline')
     def baseline(self, request, pk=None):
@@ -719,6 +804,7 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
                     'nb_risques': p['nb_risques'],
                     'marge_reelle': str(p['marge_reelle']),
                     'charge_totale': str(p['charge_totale']),
+                    'derniere_sante': p['derniere_sante'],
                 }
                 for p in data['projets']
             ],
@@ -755,6 +841,80 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
             'cpi': _num(data['cpi']),
             'spi': _num(data['spi']),
             'date_reference': data['date_reference'].isoformat(),
+        })
+
+    @action(detail=True, methods=['get'], url_path='prevision-fin')
+    def prevision_fin(self, request, pk=None):
+        """Prévision fin de projet — ETC/EAC par catégorie (XPRJ16).
+
+        Par catégorie de budget (PROJ21) : ETC ajusté du CPI courant (EVM
+        PROJ29, garde CPI nul/absent), EAC = réel + ETC, écart EAC vs budget +
+        %. Donnée 100 % INTERNE de pilotage — jamais dans le portail client.
+        La société est garantie par ``get_object`` : un projet d'une autre
+        société → 404.
+        """
+        projet = self.get_object()
+        date_ref = _parse_date_param(request.query_params.get('date'))
+        data = selectors.prevision_fin_projet(projet, date_reference=date_ref)
+
+        def _num(value):
+            return str(value) if value is not None else None
+
+        return Response({
+            'cpi': _num(data['cpi']),
+            'budget_total': str(data['budget_total']),
+            'reel_total': str(data['reel_total']),
+            'etc_total': str(data['etc_total']),
+            'eac_total': str(data['eac_total']),
+            'ecart_eac_budget_total': str(data['ecart_eac_budget_total']),
+            'ecart_eac_budget_total_pct': _num(
+                data['ecart_eac_budget_total_pct']),
+            'par_categorie': [
+                {
+                    'categorie': ligne['categorie'],
+                    'budget': str(ligne['budget']),
+                    'reel': str(ligne['reel']),
+                    'etc': str(ligne['etc']),
+                    'eac': str(ligne['eac']),
+                    'ecart_eac_budget': str(ligne['ecart_eac_budget']),
+                    'ecart_eac_budget_pct': _num(
+                        ligne['ecart_eac_budget_pct']),
+                }
+                for ligne in data['par_categorie']
+            ],
+        })
+
+    @action(detail=True, methods=['get'], url_path='burndown')
+    def burndown(self, request, pk=None):
+        """Burndown du projet — charge restante vs ligne idéale (XPRJ17).
+
+        Corps : ``?debut=&fin=`` (YYYY-MM-DD, obligatoires). Série HEBDOMADAIRE
+        de charge restante (reconstituée depuis ``date_fin_reelle``) vs ligne
+        idéale + heures loguées cumulées. Un projet sans charge estimée →
+        réponse vide propre (``points`` = []). La société est garantie par
+        ``get_object`` : un projet d'une autre société → 404.
+        """
+        projet = self.get_object()
+        debut = _parse_date_param(request.query_params.get('debut'))
+        fin = _parse_date_param(request.query_params.get('fin'))
+        if debut is None or fin is None or fin < debut:
+            return Response(
+                {'detail': 'debut et fin (YYYY-MM-DD, fin >= debut) sont '
+                           'obligatoires.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        data = selectors.burndown(projet, debut, fin)
+        return Response({
+            'charge_totale': str(data['charge_totale']),
+            'points': [
+                {
+                    'date': p['date'],
+                    'charge_restante': str(p['charge_restante']),
+                    'charge_ideale': str(p['charge_ideale']),
+                    'heures_loguees_cumulees': str(
+                        p['heures_loguees_cumulees']),
+                }
+                for p in data['points']
+            ],
         })
 
     @action(detail=True, methods=['post'], url_path='cloturer')
@@ -851,6 +1011,22 @@ class PhaseProjetViewSet(_GestionProjetBaseViewSet):
             qs = qs.filter(projet_id=projet)
         return qs
 
+    def perform_update(self, serializer):
+        """Émet ``PROJET_PHASE_CHANGE`` (XPRJ23) au changement de ``statut``.
+
+        Best-effort ABSOLU (voir ``services.notifier_transition_phase``) : la
+        mise à jour de la phase n'est JAMAIS bloquée par une règle
+        d'automatisation en erreur.
+        """
+        instance = serializer.instance
+        ancien_statut = instance.statut
+        nouveau_statut = serializer.validated_data.get(
+            'statut', ancien_statut)
+        phase = serializer.save()
+        services.notifier_transition_phase(
+            phase, ancien_statut=ancien_statut,
+            nouveau_statut=nouveau_statut, user=self.request.user)
+
 
 class TacheViewSet(_GestionProjetBaseViewSet):
     """Tâches & sous-tâches (WBS) d'un projet — CRUD scopé société.
@@ -859,15 +1035,17 @@ class TacheViewSet(_GestionProjetBaseViewSet):
     ``phase``, ``parent``) sont validés même-société par le sérialiseur (cible
     d'une autre société → 400). Filtres optionnels : ``?projet=<id>``,
     ``?parent=<id>`` (sous-tâches directes), ``?racines=1`` (tâches sans
-    parent), ``?statut=<statut>``. Recherche par libellé / code WBS ; tri par
-    défaut ``ordre`` puis ``id``. L'arborescence complète est servie par
-    ``projets/<id>/taches/``.
+    parent), ``?statut=<statut>``, ``?assigne=<id>``, ``?priorite=<priorite>``,
+    ``?etiquette=<tag>`` (XPRJ10 — correspondance CSV, insensible à la casse).
+    Recherche par libellé / code WBS ; tri par défaut ``ordre`` puis ``id``.
+    L'arborescence complète est servie par ``projets/<id>/taches/``.
     """
-    queryset = Tache.objects.select_related('projet', 'phase', 'parent').all()
+    queryset = Tache.objects.select_related(
+        'projet', 'phase', 'parent', 'assigne').all()
     serializer_class = TacheSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['libelle', 'code_wbs']
-    ordering_fields = ['ordre', 'code_wbs', 'statut', 'id']
+    ordering_fields = ['ordre', 'code_wbs', 'statut', 'priorite', 'id']
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -882,7 +1060,48 @@ class TacheViewSet(_GestionProjetBaseViewSet):
         statut = self.request.query_params.get('statut')
         if statut:
             qs = qs.filter(statut=statut)
+        assigne = self.request.query_params.get('assigne')
+        if assigne:
+            qs = qs.filter(assigne_id=assigne)
+        priorite = self.request.query_params.get('priorite')
+        if priorite:
+            qs = qs.filter(priorite=priorite)
+        etiquette = self.request.query_params.get('etiquette')
+        if etiquette:
+            qs = qs.filter(etiquettes__icontains=etiquette)
         return qs
+
+    def perform_update(self, serializer):
+        """Pose ``date_fin_reelle`` côté serveur au passage à TERMINE (XPRJ17).
+
+        Réinitialisée si le statut repasse à un état non-terminé (correction
+        d'une clôture erronée). Base du burndown (charge restante reconstituée
+        à chaque date).
+        """
+        instance = serializer.instance
+        nouveau_statut = serializer.validated_data.get(
+            'statut', instance.statut)
+        if nouveau_statut == Tache.Statut.TERMINE \
+                and instance.statut != Tache.Statut.TERMINE:
+            from datetime import date as _date
+            serializer.save(date_fin_reelle=_date.today())
+        elif nouveau_statut != Tache.Statut.TERMINE \
+                and instance.date_fin_reelle is not None:
+            serializer.save(date_fin_reelle=None)
+        else:
+            serializer.save()
+
+    @action(detail=False, methods=['get'], url_path='mes-taches')
+    def mes_taches(self, request):
+        """Tâches non terminées de l'utilisateur courant, tri par urgence.
+
+        Transverse à TOUS les projets de la société (XPRJ12) : tâches où
+        l'utilisateur est ``assigne`` (XPRJ10) ou affecté (directement ou via
+        une équipe, ``AffectationRessource``). Isolation garantie côté
+        sélecteur (toujours scopé à ``request.user.company``) — un utilisateur
+        ne voit jamais les tâches d'un autre.
+        """
+        return Response(selectors.mes_taches(request.user))
 
     @action(detail=True, methods=['get'], url_path='dependances')
     def dependances(self, request, pk=None):
@@ -1105,6 +1324,34 @@ class CalendrierProjetViewSet(_GestionProjetBaseViewSet):
         if projet:
             qs = qs.filter(projet_id=projet)
         return qs
+
+    @action(detail=True, methods=['post'], url_path='seed-feries')
+    def seed_feries(self, request, pk=None):
+        """Pré-remplit les jours fériés marocains depuis ``core/calendar.py``.
+
+        Corps/query ``?annee=`` (obligatoire). IDEMPOTENT : jamais de doublon
+        (``unique (calendrier, date)``). Renvoie les dates créées + le nombre
+        déjà présentes. Si l'année n'a pas de jeu de fêtes MOBILES codé, le
+        champ ``fetes_mobiles_manquantes`` signale qu'elles restent à saisir
+        manuellement (Aïd, 1 Moharram, Mawlid). La société est garantie par
+        ``get_object`` : un calendrier d'une autre société → 404.
+        """
+        calendrier = self.get_object()
+        annee_raw = (
+            request.query_params.get('annee') or request.data.get('annee'))
+        try:
+            annee = int(annee_raw)
+        except (TypeError, ValueError):
+            return Response(
+                {'annee': 'Le paramètre « annee » (entier) est obligatoire.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        resultat = services.seeder_feries_calendrier(calendrier, annee)
+        return Response({
+            'crees': [d.isoformat() for d in resultat['crees']],
+            'nb_crees': len(resultat['crees']),
+            'nb_deja_presents': resultat['nb_deja_presents'],
+            'fetes_mobiles_manquantes': resultat['fetes_mobiles_manquantes'],
+        })
 
 
 class JourFerieViewSet(_GestionProjetBaseViewSet):
@@ -1736,6 +1983,73 @@ class TimesheetViewSet(_GestionProjetBaseViewSet):
             ],
         })
 
+    @action(detail=False, methods=['get'], url_path='rapport')
+    def rapport(self, request):
+        """Rapport des temps MULTI-DIMENSIONS (XPRJ18) — interne/admin.
+
+        Corps : ``?debut=&fin=`` (obligatoires, YYYY-MM-DD),
+        ``?group_by=ressource|projet|tache|phase|type_activite|semaine|mois``
+        (défaut ``ressource``). Agrège les heures (et facturables) par
+        dimension, avec le comparatif heures loguées vs ``charge_estimee`` par
+        tâche impliquée (dépassement flaggé). ``?export=xlsx`` télécharge le
+        classeur (le pattern DRF ``?format=`` réservé est évité). AUCUN
+        ``cout`` interne dans l'export. La société est imposée côté serveur.
+        """
+        debut = _parse_date_param(request.query_params.get('debut'))
+        fin = _parse_date_param(request.query_params.get('fin'))
+        if debut is None or fin is None or fin < debut:
+            return Response(
+                {'detail': 'debut et fin (YYYY-MM-DD, fin >= debut) sont '
+                           'obligatoires.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        group_by = request.query_params.get('group_by', 'ressource')
+        data = selectors.rapport_temps(
+            request.user.company, debut, fin, group_by=group_by)
+
+        if request.query_params.get('export') == 'xlsx':
+            from apps.records.xlsx import build_xlsx_response
+
+            headers = [
+                data['group_by'].capitalize(), 'Heures',
+                'Heures facturables',
+            ]
+            rows = [
+                [ligne['libelle'], ligne['heures'],
+                 ligne['heures_facturables']]
+                for ligne in data['lignes']
+            ]
+            return build_xlsx_response(
+                'rapport_temps.xlsx', headers, rows,
+                sheet_title='Rapport des temps')
+
+        return Response({
+            'group_by': data['group_by'],
+            'total_heures': str(data['total_heures']),
+            'total_heures_facturables': str(
+                data['total_heures_facturables']),
+            'lignes': [
+                {
+                    'cle': ligne['cle'],
+                    'libelle': ligne['libelle'],
+                    'heures': str(ligne['heures']),
+                    'heures_facturables': str(ligne['heures_facturables']),
+                }
+                for ligne in data['lignes']
+            ],
+            'par_tache': [
+                {
+                    'tache_id': t['tache_id'],
+                    'libelle': t['libelle'],
+                    'heures_loguees': str(t['heures_loguees']),
+                    'charge_estimee_heures': (
+                        str(t['charge_estimee_heures'])
+                        if t['charge_estimee_heures'] is not None else None),
+                    'depassement': t['depassement'],
+                }
+                for t in data['par_tache']
+            ],
+        })
+
 
 class PeriodeVerrouilleeTempsViewSet(_GestionProjetBaseViewSet):
     """Verrous de période (mois) sur les feuilles de temps (XPRJ1) — CRUD scopé.
@@ -2250,4 +2564,97 @@ class LigneSituationViewSet(_GestionProjetBaseViewSet):
         situation = self.request.query_params.get('situation')
         if situation:
             qs = qs.filter(situation_id=situation)
+        return qs
+
+
+class RecurrenceTacheViewSet(_GestionProjetBaseViewSet):
+    """Gabarits de tâches récurrentes (XPRJ13) — CRUD scopé société.
+
+    ``company`` est posée côté serveur (TenantMixin) ; les FK reçus
+    (``projet``, ``phase``, ``assigne``) sont validés même-société par le
+    sérialiseur. Filtre optionnel ``?projet=<id>``. La génération effective
+    des tâches se fait via ``manage.py generer_taches_recurrentes``
+    (idempotente), jamais via ce viewset.
+    """
+    queryset = RecurrenceTache.objects.select_related(
+        'projet', 'phase', 'assigne').all()
+    serializer_class = RecurrenceTacheSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['prochaine_echeance', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(projet_id=projet)
+        return qs
+
+
+class ItemChecklistTacheViewSet(_GestionProjetBaseViewSet):
+    """Items de checklist d'une tâche (XPRJ14) — CRUD scopé société.
+
+    ``company`` posée côté serveur ; la ``tache`` reçue est validée
+    même-société. Filtre optionnel ``?tache=<id>``. Le bascule ``fait``
+    passe de préférence par l'action ``toggle`` (pose ``fait_par``/``fait_le``
+    côté serveur).
+    """
+    queryset = ItemChecklistTache.objects.select_related(
+        'tache', 'fait_par').all()
+    serializer_class = ItemChecklistTacheSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['ordre', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        tache = self.request.query_params.get('tache')
+        if tache:
+            qs = qs.filter(tache_id=tache)
+        return qs
+
+    @action(detail=True, methods=['post'], url_path='toggle')
+    def toggle(self, request, pk=None):
+        """Inverse ``fait`` et pose ``fait_par``/``fait_le`` côté serveur.
+
+        La société est garantie par ``get_object`` (queryset scopé société) :
+        un item d'une autre société → 404. Repasser à ``False`` réinitialise
+        ``fait_par``/``fait_le``.
+        """
+        from django.utils import timezone
+
+        item = self.get_object()
+        item.fait = not item.fait
+        if item.fait:
+            item.fait_par = request.user
+            item.fait_le = timezone.now()
+        else:
+            item.fait_par = None
+            item.fait_le = None
+        item.save(update_fields=['fait', 'fait_par', 'fait_le'])
+        return Response(ItemChecklistTacheSerializer(item).data)
+
+
+class PointAvancementViewSet(_GestionProjetBaseViewSet):
+    """Points d'avancement périodiques — statut RAG (XPRJ15).
+
+    ``company`` et ``auteur`` posés côté serveur (TenantMixin) ; le ``projet``
+    reçu est validé même-société. Filtre ``?projet=<id>`` (historique par
+    projet, tri par défaut du plus récent au plus ancien). Le DERNIER point
+    d'un projet alimente ``portefeuille`` (PROJ36) — voir
+    ``selectors.tableau_portefeuille``.
+    """
+    queryset = PointAvancement.objects.select_related(
+        'projet', 'auteur').all()
+    serializer_class = PointAvancementSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_point', 'id']
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, auteur=self.request.user)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(projet_id=projet)
         return qs

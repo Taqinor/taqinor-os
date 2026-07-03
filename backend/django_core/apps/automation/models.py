@@ -37,6 +37,13 @@ class TriggerType(models.TextChoices):
     # XPLT4 — webhook entrant générique : le POST externe reçu sur l'URL
     # tokenisée de la règle devient le contexte des conditions/actions.
     WEBHOOK_INBOUND = 'webhook_inbound', 'Webhook entrant'
+    # XPRJ23 — étapes du projet (gestion_projet), émis DEPUIS le module (jamais
+    # via un signal Django cross-app) ; config {'statut': …} avec les enums
+    # PROPRES à gestion_projet (jamais STAGES.py, règle #2).
+    PROJET_STATUS_CHANGE = (
+        'projet_status_change', 'Changement de statut de projet')
+    PROJET_PHASE_CHANGE = (
+        'projet_phase_change', 'Changement de phase de projet')
 
 
 # XPLT3 — whitelist FERMÉE (app_label, model) -> {champ date autorisé: label}

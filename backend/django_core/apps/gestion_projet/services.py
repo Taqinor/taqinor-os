@@ -13,8 +13,10 @@ from .models import (
     BaselinePlanning,
     BaselineTache,
     DependanceTache,
+    JourFerie,
     PhaseProjet,
     Projet,
+    RecurrenceTache,
     Tache,
 )
 
@@ -1022,3 +1024,571 @@ def creer_baseline(projet, libelle='', auteur=None):
     if lignes:
         BaselineTache.objects.bulk_create(lignes)
     return baseline
+
+
+# ── Tâches récurrentes (XPRJ13) ──────────────────────────────────────────────
+
+def _prochaine_echeance_suivante(echeance, regle, intervalle):
+    """Avance ``echeance`` d'un pas de la règle (hebdomadaire/mensuelle)."""
+    if regle == RecurrenceTache.Regle.HEBDOMADAIRE:
+        return echeance + timedelta(weeks=intervalle)
+    # Mensuelle : avance de ``intervalle`` mois, en clampant le jour si le
+    # mois cible est plus court (ex. 31 janvier + 1 mois → 28/29 février).
+    mois_total = echeance.month - 1 + intervalle
+    annee = echeance.year + mois_total // 12
+    mois = mois_total % 12 + 1
+    import calendar
+    dernier_jour = calendar.monthrange(annee, mois)[1]
+    jour = min(echeance.day, dernier_jour)
+    return echeance.replace(year=annee, month=mois, day=jour)
+
+
+@transaction.atomic
+def generer_taches_recurrentes(company, *, aujourd_hui=None):
+    """Génère la PROCHAINE ``Tache`` de chaque récurrence ACTIVE à échéance.
+
+    IDEMPOTENT : chaque appel avance ``prochaine_echeance`` immédiatement
+    après avoir créé la tâche, donc un re-run le même jour ne crée jamais deux
+    occurrences pour la même échéance. Respecte ``date_fin`` et
+    ``nb_occurrences`` (désactive la récurrence une fois atteinte). Renvoie la
+    liste des ``Tache`` créées.
+    """
+    if aujourd_hui is None:
+        from datetime import date as _date
+        aujourd_hui = _date.today()
+
+    crees = []
+    recurrences = RecurrenceTache.objects.select_for_update().filter(
+        company=company, actif=True, prochaine_echeance__lte=aujourd_hui)
+    for rec in recurrences:
+        # Une récurrence peut avoir plusieurs échéances en retard (ex. cron
+        # arrêté un moment) : on rattrape TOUTES les échéances passées, une
+        # tâche par échéance, jamais deux pour la même échéance (avance
+        # systématique avant la prochaine itération).
+        while rec.actif and rec.prochaine_echeance <= aujourd_hui:
+            if rec.date_fin is not None \
+                    and rec.prochaine_echeance > rec.date_fin:
+                rec.actif = False
+                rec.save(update_fields=['actif'])
+                break
+            if rec.nb_occurrences is not None \
+                    and rec.nb_generees >= rec.nb_occurrences:
+                rec.actif = False
+                rec.save(update_fields=['actif'])
+                break
+
+            tache = Tache.objects.create(
+                company=rec.company,
+                projet=rec.projet,
+                phase=rec.phase,
+                libelle=rec.libelle,
+                charge_estimee=rec.charge_estimee,
+                assigne=rec.assigne,
+                date_debut_prevue=rec.prochaine_echeance,
+                date_fin_prevue=rec.prochaine_echeance,
+            )
+            crees.append(tache)
+
+            rec.nb_generees += 1
+            rec.prochaine_echeance = _prochaine_echeance_suivante(
+                rec.prochaine_echeance, rec.regle, rec.intervalle)
+            if rec.date_fin is not None \
+                    and rec.prochaine_echeance > rec.date_fin:
+                rec.actif = False
+            if rec.nb_occurrences is not None \
+                    and rec.nb_generees >= rec.nb_occurrences:
+                rec.actif = False
+            rec.save(update_fields=[
+                'nb_generees', 'prochaine_echeance', 'actif'])
+    return crees
+
+
+# ── Jours fériés marocains pré-remplis (XPRJ20) ──────────────────────────────
+def seeder_feries_calendrier(calendrier, annee):
+    """Pré-remplit ``JourFerie`` depuis le référentiel UNIQUE ``core.calendar``.
+
+    Source EXCLUSIVE : ``core.calendar.MOROCCAN_FIXED_HOLIDAYS`` (fixes) +
+    ``MOROCCAN_MOVABLE_HOLIDAYS`` (mobiles, hégiriens) de l'année demandée —
+    JAMAIS une nouvelle liste de dates codée en dur ici (règle DC26/FG5).
+    IDEMPOTENT : ``unique (calendrier, date)`` respecté (``get_or_create``,
+    aucun doublon même en re-run). Pour une année SANS jeu de fêtes mobiles
+    codé (``MOROCCAN_MOVABLE_HOLIDAYS`` n'a pas cette année), les fêtes
+    mobiles (Aïd al-Fitr, Aïd al-Adha, Nouvel An hégirien, Aïd al-Mawlid)
+    restent à saisir MANUELLEMENT — signalé dans le résultat.
+
+    Renvoie ``{'crees': [...], 'nb_deja_presents': N, 'fetes_mobiles_manquantes': bool}``.
+    """
+    from core.calendar import MOROCCAN_MOVABLE_HOLIDAYS, moroccan_holidays
+
+    company = calendrier.company
+    dates_feriees = moroccan_holidays(annee)
+
+    # Libellés : fixes via un mapping mois/jour → libellé, mobiles via le
+    # dict de l'année (déjà date → libellé).
+    from core.calendar import MOROCCAN_FIXED_HOLIDAYS
+    libelles_fixes = {
+        _date_du_mois_jour(annee, mois, jour): libelle
+        for (mois, jour), libelle in MOROCCAN_FIXED_HOLIDAYS.items()
+    }
+    libelles_mobiles = MOROCCAN_MOVABLE_HOLIDAYS.get(annee, {})
+
+    crees = []
+    nb_deja = 0
+    for d in sorted(dates_feriees):
+        libelle = libelles_fixes.get(d) or libelles_mobiles.get(d, '')
+        _, created = JourFerie.objects.get_or_create(
+            company=company, calendrier=calendrier, date=d,
+            defaults={'libelle': libelle})
+        if created:
+            crees.append(d)
+        else:
+            nb_deja += 1
+
+    return {
+        'crees': crees,
+        'nb_deja_presents': nb_deja,
+        'fetes_mobiles_manquantes': annee not in MOROCCAN_MOVABLE_HOLIDAYS,
+    }
+
+
+def _date_du_mois_jour(annee, mois, jour):
+    from datetime import date as _date
+    return _date(annee, mois, jour)
+
+
+# ── Créer un projet depuis un devis accepté (XPRJ21) ─────────────────────────
+class DevisVersProjetError(Exception):
+    """Erreur métier lors de la création d'un projet depuis un devis."""
+
+
+def _prochain_code_projet(company):
+    """Code ``Projet`` sûr : plus haut suffixe utilisé + 1 (JAMAIS count()+1).
+
+    Radical ``PRJ-<année>-`` (reset annuel), même politique anti-collision que
+    ``apps/ventes/utils/references.py`` (pas de dépendance croisée : logique
+    dupliquée localement, modèle différent).
+    """
+    import re
+    from django.utils import timezone
+
+    annee = timezone.now().strftime('%Y')
+    prefix = f'PRJ-{annee}-'
+    refs = Projet.objects.filter(
+        company=company, code__startswith=prefix).values_list(
+            'code', flat=True)
+    highest = 0
+    suffix_re = re.compile(r'-(\d+)$')
+    for ref in refs:
+        m = suffix_re.search(ref)
+        if m:
+            highest = max(highest, int(m.group(1)))
+    return f'{prefix}{highest + 1:04d}'
+
+
+@transaction.atomic
+def creer_projet_depuis_devis(devis_data, *, company, user=None):
+    """Crée un ``Projet`` + ``ProjetLien`` + ``BudgetProjet`` v1 depuis un
+    devis ACCEPTÉ (XPRJ21) — action UTILISATEUR EXPLICITE uniquement (JAMAIS
+    automatique sur ``devis_accepted`` : le chantier auto existe déjà côté
+    ``installations``).
+
+    ``devis_data`` provient EXCLUSIVEMENT de
+    ``apps.ventes.selectors.devis_pour_projet`` (jamais un import de
+    ``ventes.models``). Refuse (``DevisVersProjetError``) si un ``ProjetLien``
+    pointant déjà ce devis existe pour la société (re-run → « déjà lié »). Le
+    ``code`` du projet est généré via une numérotation SÛRE (plus haut
+    suffixe utilisé + 1, jamais ``count()+1``).
+
+    Renvoie ``{'projet': Projet, 'lien': ProjetLien, 'budget': BudgetProjet}``.
+    """
+    from .models import BudgetProjet, LigneBudgetProjet, ProjetLien
+
+    devis_id = devis_data['id']
+    deja_lie = ProjetLien.objects.filter(
+        company=company, type_cible=ProjetLien.TypeCible.DEVIS,
+        cible_id=devis_id).exists()
+    if deja_lie:
+        raise DevisVersProjetError(
+            f'Le devis {devis_data["reference"]} est déjà lié à un projet.')
+
+    projet = Projet.objects.create(
+        company=company,
+        code=_prochain_code_projet(company),
+        nom=f'Projet — devis {devis_data["reference"]}',
+        client_id=devis_data['client_id'],
+        budget_total=(
+            devis_data['montant_materiel']
+            + devis_data['montant_main_oeuvre']),
+    )
+
+    lien = ProjetLien.objects.create(
+        company=company,
+        projet=projet,
+        type_cible=ProjetLien.TypeCible.DEVIS,
+        cible_id=devis_id,
+        libelle=devis_data['reference'],
+    )
+
+    budget = BudgetProjet.objects.create(
+        company=company, projet=projet, version=1,
+        statut=BudgetProjet.Statut.BROUILLON,
+    )
+    if devis_data['montant_materiel']:
+        LigneBudgetProjet.objects.create(
+            company=company, budget=budget,
+            categorie=LigneBudgetProjet.Categorie.MATERIEL,
+            libelle='Matériel (depuis devis)',
+            montant_prevu=devis_data['montant_materiel'],
+        )
+    if devis_data['montant_main_oeuvre']:
+        LigneBudgetProjet.objects.create(
+            company=company, budget=budget,
+            categorie=LigneBudgetProjet.Categorie.MAIN_OEUVRE,
+            libelle="Main-d'œuvre (depuis devis)",
+            montant_prevu=devis_data['montant_main_oeuvre'],
+        )
+
+    return {'projet': projet, 'lien': lien, 'budget': budget}
+
+
+# ── Alertes automatiques de retard planning (XPRJ22) ─────────────────────────
+def alertes_retards_projets(company, *, seuil_jours=None):
+    """Notifie le ``responsable`` des projets ACTIFS en retard/à risque (XPRJ22).
+
+    Balaie ``selectors.retards_projet`` (PROJ14) sur chaque projet ACTIF
+    (exclut TERMINE/ANNULE) de la société et notifie son ``responsable`` via
+    ``apps.notifications.services.notify`` (import fonction-local — frontière
+    cross-app ; événement dédié ``EventType.PROJET_RETARD``, XPRJ22).
+
+    IDEMPOTENT : UNE notification par (projet, élément, jour) — un marqueur
+    unique dans ``Notification.link`` empêche tout spam en re-run le même
+    jour. Un projet SANS responsable est ignoré silencieusement (pas de
+    destinataire). Best-effort par élément : un échec n'interrompt pas les
+    suivants. Renvoie ``{nb_projets_scannes, nb_alertes_envoyees,
+    nb_deja_notifiees}``.
+    """
+    from django.utils import timezone
+
+    from . import selectors
+
+    from apps.notifications.models import EventType, Notification
+    from apps.notifications.services import notify
+
+    today = timezone.localdate()
+    projets = Projet.objects.filter(company=company).exclude(
+        statut__in=[Projet.Statut.TERMINE, Projet.Statut.ANNULE]
+    ).select_related('responsable')
+
+    nb_envoyees = 0
+    nb_deja = 0
+    for projet in projets:
+        if projet.responsable_id is None:
+            continue
+        data = selectors.retards_projet(projet, seuil_jours=seuil_jours)
+        elements = (
+            [('tache', t) for t in data['taches_en_retard']]
+            + [('tache', t) for t in data['taches_a_risque']]
+            + [('jalon', j) for j in data['jalons_en_retard']]
+            + [('jalon', j) for j in data['jalons_a_risque']]
+        )
+        for type_elem, item in elements:
+            marqueur = (
+                f'gestion_projet:alerte_retard:{projet.id}:'
+                f'{type_elem}:{item["id"]}:{today}')
+            deja_notifiee = Notification.objects.filter(
+                company=company, recipient_id=projet.responsable_id,
+                event_type=EventType.PROJET_RETARD, link=marqueur,
+                created_at__date=today,
+            ).exists()
+            if deja_notifiee:
+                nb_deja += 1
+                continue
+            try:
+                notify(
+                    projet.responsable, EventType.PROJET_RETARD,
+                    title=f'Retard planning — {projet.code}',
+                    body=(
+                        f'{type_elem.capitalize()} « {item["libelle"]} » '
+                        f'({item["retard_jours"]} j).'),
+                    link=marqueur,
+                    company=company,
+                )
+                nb_envoyees += 1
+            except Exception:  # pragma: no cover - défensif, best-effort
+                continue
+
+    return {
+        'nb_projets_scannes': projets.count(),
+        'nb_alertes_envoyees': nb_envoyees,
+        'nb_deja_notifiees': nb_deja,
+    }
+
+
+# ── Notifications client aux étapes du projet (XPRJ23) ───────────────────────
+def notifier_transition_projet(
+        projet, *, ancien_statut, nouveau_statut, user=None):
+    """Émet ``TriggerType.PROJET_STATUS_CHANGE`` vers le moteur automation.
+
+    NE crée AUCUN modèle de notification parallèle : délègue au moteur
+    no-code EXISTANT (``apps.automation`` N72/N73, import fonction-local —
+    frontière cross-app). Config ``{'statut': …}`` avec les enums PROPRES à
+    gestion_projet (jamais ``STAGES.py``, règle #2). Best-effort ABSOLU :
+    toute exception est avalée ici (le moteur est déjà best-effort en
+    interne) — la transition de statut qui a appelé cette fonction n'est
+    JAMAIS bloquée. Variables ``{nom_projet}``/``{date}`` disponibles dans le
+    corps des modèles de message (substitution côté automation).
+    """
+    if ancien_statut == nouveau_statut:
+        return
+    try:
+        from apps.automation.engine import evaluate
+        from apps.automation.models import TriggerType
+
+        evaluate(
+            TriggerType.PROJET_STATUS_CHANGE, projet, projet.company,
+            context={
+                'new_statut': nouveau_statut,
+                'old_statut': ancien_statut,
+                'nom_projet': projet.nom,
+                'date': _date_du_jour().isoformat(),
+            },
+            user=user,
+        )
+    except Exception:  # pragma: no cover - défensif, ne bloque jamais
+        pass
+
+
+def notifier_transition_phase(
+        phase, *, ancien_statut, nouveau_statut, user=None):
+    """Émet ``TriggerType.PROJET_PHASE_CHANGE`` vers le moteur automation.
+
+    Même politique que ``notifier_transition_projet`` : moteur EXISTANT,
+    aucun modèle parallèle, best-effort ABSOLU (n'interrompt jamais la
+    transition de phase). Variables ``{nom_projet}``/``{date}`` disponibles.
+    """
+    if ancien_statut == nouveau_statut:
+        return
+    try:
+        from apps.automation.engine import evaluate
+        from apps.automation.models import TriggerType
+
+        evaluate(
+            TriggerType.PROJET_PHASE_CHANGE, phase, phase.company,
+            context={
+                'new_statut': nouveau_statut,
+                'old_statut': ancien_statut,
+                'nom_projet': phase.projet.nom,
+                'date': _date_du_jour().isoformat(),
+            },
+            user=user,
+        )
+    except Exception:  # pragma: no cover - défensif, ne bloque jamais
+        pass
+
+
+def _date_du_jour():
+    from datetime import date as _date
+    return _date.today()
+
+
+# ── Export/import du plan de tâches (XPRJ24) ─────────────────────────────────
+EXPORT_TACHES_ENTETES = [
+    'code_wbs', 'libelle', 'parent_wbs', 'date_debut_prevue',
+    'date_fin_prevue', 'charge_estimee', 'statut', 'assigne',
+    'dependances_fs',
+]
+
+
+def exporter_taches(projet):
+    """Lignes du plan de tâches (WBS) prêtes pour un export xlsx (XPRJ24).
+
+    Une ligne par ``Tache`` : ``code_wbs``, libellé, ``parent_wbs`` (code WBS
+    du parent, vide si racine), dates, charge, statut, assigné (nom de la
+    ressource), et ``dependances_fs`` (codes WBS des PRÉDÉCESSEURS FS de
+    cette tâche, séparés par ``;`` — seul le type FS est exporté/réimporté,
+    le cas courant du module). Round-trip STABLE : réimporter ce jeu de
+    lignes reconstruit le même arbre (même hiérarchie + mêmes dépendances).
+    Tout est scopé société via le projet. Lecture seule.
+    """
+    from .models import DependanceTache
+
+    taches = list(
+        Tache.objects.filter(projet=projet, company=projet.company)
+        .select_related('parent', 'assigne').order_by('ordre', 'id'))
+    par_id = {t.id: t for t in taches}
+
+    deps_par_successeur = {}
+    for dep in DependanceTache.objects.filter(
+            successeur__in=taches, type_dependance='fs'):
+        deps_par_successeur.setdefault(dep.successeur_id, []).append(
+            dep.predecesseur_id)
+
+    lignes = []
+    for t in taches:
+        parent_wbs = par_id[t.parent_id].code_wbs if t.parent_id else ''
+        deps_codes = [
+            par_id[pid].code_wbs for pid in deps_par_successeur.get(t.id, [])
+            if pid in par_id
+        ]
+        lignes.append({
+            'code_wbs': t.code_wbs,
+            'libelle': t.libelle,
+            'parent_wbs': parent_wbs,
+            'date_debut_prevue': (
+                t.date_debut_prevue.isoformat()
+                if t.date_debut_prevue else ''),
+            'date_fin_prevue': (
+                t.date_fin_prevue.isoformat() if t.date_fin_prevue else ''),
+            'charge_estimee': (
+                str(t.charge_estimee) if t.charge_estimee is not None
+                else ''),
+            'statut': t.statut,
+            'assigne': t.assigne.nom if t.assigne_id else '',
+            'dependances_fs': ';'.join(deps_codes),
+        })
+    return lignes
+
+
+class ImportTachesError(Exception):
+    """Erreur métier lors de l'import du plan de tâches."""
+
+
+def _parse_date_iso(value):
+    if not value:
+        return None
+    from datetime import date as _date
+    try:
+        return _date.fromisoformat(str(value).strip())
+    except ValueError:
+        return None
+
+
+def _parse_decimal(value):
+    if value in (None, ''):
+        return None
+    try:
+        return Decimal(str(value).strip())
+    except Exception:
+        return None
+
+
+@transaction.atomic
+def importer_taches(projet, lignes, *, confirm=False):
+    """Importe un plan de tâches (WBS) depuis des lignes (CSV/xlsx) (XPRJ24).
+
+    Chaque ligne suit ``EXPORT_TACHES_ENTETES`` (``code_wbs`` obligatoire et
+    UNIQUE dans le fichier — clé d'identité du round-trip). DEUX PASSES :
+    1) crée/rattache toutes les tâches par ``code_wbs`` (hiérarchie
+       ``parent_wbs`` résolue APRÈS que toutes les tâches existent, pour
+       accepter un ordre de lignes arbitraire) ;
+    2) recrée les dépendances FS depuis ``dependances_fs``.
+
+    ``confirm=False`` (DÉFAUT) : DRY-RUN — valide toutes les lignes, renvoie
+    le rapport d'ERREURS, N'ÉCRIT RIEN. ``confirm=True`` : écrit dans une
+    TRANSACTION ATOMIQUE (tout ou rien) — une erreur de validation est
+    rapportée SANS écrire une seule ligne, même en confirm.
+
+    Renvoie ``{'erreurs': [...], 'nb_lignes': N, 'nb_creees': N, 'nb_deps': N}``.
+    """
+    from .models import DependanceTache
+
+    erreurs = []
+    codes_vus = set()
+    for i, ligne in enumerate(lignes, start=1):
+        code = (ligne.get('code_wbs') or '').strip()
+        libelle = (ligne.get('libelle') or '').strip()
+        if not code:
+            erreurs.append(f'Ligne {i} : code_wbs obligatoire.')
+            continue
+        if code in codes_vus:
+            erreurs.append(f'Ligne {i} : code_wbs « {code} » en double.')
+            continue
+        codes_vus.add(code)
+        if not libelle:
+            erreurs.append(f'Ligne {i} ({code}) : libelle obligatoire.')
+        statut = (ligne.get('statut') or Tache.Statut.A_FAIRE).strip()
+        if statut not in Tache.Statut.values:
+            erreurs.append(
+                f'Ligne {i} ({code}) : statut « {statut} » inconnu.')
+        parent_wbs = (ligne.get('parent_wbs') or '').strip()
+        if parent_wbs and parent_wbs not in {
+                (r.get('code_wbs') or '').strip() for r in lignes}:
+            erreurs.append(
+                f'Ligne {i} ({code}) : parent_wbs « {parent_wbs} » introuvable '
+                'dans le fichier.')
+        for dep_code in _split_deps(ligne.get('dependances_fs')):
+            if dep_code not in {
+                    (r.get('code_wbs') or '').strip() for r in lignes}:
+                erreurs.append(
+                    f'Ligne {i} ({code}) : dépendance « {dep_code} » '
+                    'introuvable dans le fichier.')
+
+    if erreurs:
+        return {
+            'erreurs': erreurs, 'nb_lignes': len(lignes),
+            'nb_creees': 0, 'nb_deps': 0,
+        }
+
+    if not confirm:
+        return {
+            'erreurs': [], 'nb_lignes': len(lignes),
+            'nb_creees': 0, 'nb_deps': 0,
+        }
+
+    # Résolution des ressources par nom (best-effort : nom introuvable →
+    # assigné laissé vide, jamais bloquant).
+    from .models import RessourceProfil
+    ressources_par_nom = {
+        r.nom: r for r in RessourceProfil.objects.filter(
+            company=projet.company)
+    }
+
+    # Passe 1 : crée/rattache toutes les tâches (sans parent pour l'instant).
+    taches_par_code = {}
+    for ligne in lignes:
+        code = ligne['code_wbs'].strip()
+        taches_par_code[code] = Tache.objects.create(
+            company=projet.company,
+            projet=projet,
+            code_wbs=code,
+            libelle=ligne['libelle'].strip(),
+            date_debut_prevue=_parse_date_iso(ligne.get('date_debut_prevue')),
+            date_fin_prevue=_parse_date_iso(ligne.get('date_fin_prevue')),
+            charge_estimee=_parse_decimal(ligne.get('charge_estimee')),
+            statut=(ligne.get('statut') or Tache.Statut.A_FAIRE).strip(),
+            assigne=ressources_par_nom.get(
+                (ligne.get('assigne') or '').strip()),
+        )
+
+    # Passe 1bis : rattache la hiérarchie parent (toutes les tâches existent).
+    for ligne in lignes:
+        parent_wbs = (ligne.get('parent_wbs') or '').strip()
+        if parent_wbs:
+            tache = taches_par_code[ligne['code_wbs'].strip()]
+            tache.parent = taches_par_code[parent_wbs]
+            tache.save(update_fields=['parent'])
+
+    # Passe 2 : recrée les dépendances FS.
+    nb_deps = 0
+    for ligne in lignes:
+        successeur = taches_par_code[ligne['code_wbs'].strip()]
+        for dep_code in _split_deps(ligne.get('dependances_fs')):
+            predecesseur = taches_par_code[dep_code]
+            DependanceTache.objects.create(
+                company=projet.company,
+                predecesseur=predecesseur,
+                successeur=successeur,
+                type_dependance='fs',
+            )
+            nb_deps += 1
+
+    return {
+        'erreurs': [], 'nb_lignes': len(lignes),
+        'nb_creees': len(taches_par_code), 'nb_deps': nb_deps,
+    }
+
+
+def _split_deps(raw):
+    if not raw:
+        return []
+    return [c.strip() for c in str(raw).split(';') if c.strip()]

@@ -61,18 +61,49 @@ def _resolve_email(instance):
     return None
 
 
+class _SafeDict(dict):
+    """Dict tolérant pour ``str.format_map`` : une clé absente reste littérale
+    (``{inconnue}``) au lieu de lever ``KeyError`` — les corps existants sans
+    aucune variable (immense majorité) restent rendus À L'IDENTIQUE."""
+
+    def __missing__(self, key):
+        return '{' + key + '}'
+
+
+def _substitute_variables(body, context):
+    """Substitue les variables ``{var}`` du corps depuis ``context`` (XPRJ23).
+
+    ``context`` peut porter des variables métier calculées par l'émetteur
+    (ex. ``nom_projet``/``date`` côté ``gestion_projet``). Best-effort total :
+    toute erreur de formatage (accolade non fermée, etc.) renvoie le corps
+    ORIGINAL sans lever — jamais de blocage d'une automatisation existante.
+    """
+    if not body or not context:
+        return body
+    try:
+        return body.format_map(_SafeDict(**context))
+    except Exception:  # pragma: no cover - défensif
+        return body
+
+
 def _message_body(rule, context):
-    """Corps du message : texte littéral, sinon modèle Paramètres existant."""
+    """Corps du message : texte littéral, sinon modèle Paramètres existant.
+
+    Substitue les variables ``{var}`` (XPRJ23) depuis ``context`` quand le
+    corps en contient — no-op quand aucune accolade n'est présente
+    (comportement historique inchangé pour toutes les règles existantes).
+    """
     cfg = rule.action_config or {}
     body = cfg.get('body')
     if body:
-        return body
+        return _substitute_variables(body, context)
     template_key = cfg.get('template')
     if template_key:
         try:
             from apps.parametres.models_messages import MessageTemplate
-            return MessageTemplate.get_corps(
+            corps = MessageTemplate.get_corps(
                 rule.company, template_key, cfg.get('langue', 'fr'))
+            return _substitute_variables(corps, context)
         except Exception:
             return ''
     return ''

@@ -24,6 +24,7 @@ from .models import (
     Indisponibilite,
     Jalon,
     LigneBudgetProjet,
+    PointAvancement,
     Projet,
     ProjetLien,
     RessourceProfil,
@@ -2195,6 +2196,260 @@ def evm_projet(company, projet, date_reference=None):
     }
 
 
+# ── Prévision fin de projet — ETC/EAC (XPRJ16) ───────────────────────────────
+def prevision_fin_projet(projet, date_reference=None):
+    """Prévision fin de projet PAR CATÉGORIE de budget (XPRJ16) — interne/admin.
+
+    Pour CHAQUE catégorie canonique de budget (PROJ21 : matériel /
+    main-d'œuvre / sous-traitance / divers) :
+        • ETC (Estimate To Complete) = (budget − réel) ajusté du CPI courant
+          de l'EVM (PROJ29). CPI = EV/AC globalement projet (pas par
+          catégorie — l'EVM n'est pas ventilé par catégorie).
+              CPI absent/nul → ETC = budget restant (budget − réel), non ajusté
+              (garde division-par-zéro : pas d'ajustement de performance).
+        • EAC (Estimate At Completion) = réel + ETC.
+        • écart EAC vs budget + % (garde division par zéro : budget nul →
+          ``ecart_pct`` = None).
+
+    Donnée 100 % INTERNE de pilotage — jamais un montant dans le portail
+    client (``portail_avancement_client``, PROJ37, reste inchangé). Tout est
+    scopé société via le projet. Lecture seule.
+    """
+    company = projet.company
+    couts = couts_engages_vs_reels(company, projet)
+    evm = evm_projet(company, projet, date_reference=date_reference)
+    cpi = evm['cpi']
+
+    def _ecart_pct_local(eac, budget):
+        if not budget:
+            return None
+        return ((eac - budget) / budget * Decimal('100')).quantize(
+            Decimal('0.01'))
+
+    par_categorie = []
+    total_etc = Decimal('0')
+    total_eac = Decimal('0')
+    for ligne in couts['par_categorie']:
+        budget_montant = ligne['budget']
+        reel_montant = ligne['reel']
+        budget_restant = budget_montant - reel_montant
+        if cpi is not None and cpi != 0:
+            etc = (budget_restant / cpi).quantize(Decimal('0.01'))
+        else:
+            etc = budget_restant
+        eac = reel_montant + etc
+        total_etc += etc
+        total_eac += eac
+        par_categorie.append({
+            'categorie': ligne['categorie'],
+            'budget': budget_montant,
+            'reel': reel_montant,
+            'etc': etc,
+            'eac': eac,
+            'ecart_eac_budget': eac - budget_montant,
+            'ecart_eac_budget_pct': _ecart_pct_local(eac, budget_montant),
+        })
+
+    return {
+        'cpi': cpi,
+        'budget_total': couts['total']['budget'],
+        'reel_total': couts['total']['reel'],
+        'etc_total': total_etc,
+        'eac_total': total_eac,
+        'ecart_eac_budget_total': total_eac - couts['total']['budget'],
+        'ecart_eac_budget_total_pct': _ecart_pct_local(
+            total_eac, couts['total']['budget']),
+        'par_categorie': par_categorie,
+    }
+
+
+# ── Rapport des temps multi-dimensions (XPRJ18) ──────────────────────────────
+_GROUP_BY_CHAMPS = {
+    'ressource': ('ressource_id', 'ressource.nom'),
+    'projet': ('projet_id', 'projet.code'),
+    'tache': ('tache_id', 'tache.libelle'),
+    'phase': ('phase_id', 'phase.libelle'),
+    'type_activite': ('type_activite', None),
+    'semaine': (None, None),  # calculé (année-ISO, semaine-ISO)
+    'mois': (None, None),  # calculé (année-mois)
+}
+
+
+def _cle_groupe(ts, group_by):
+    if group_by == 'semaine':
+        iso = ts.date.isocalendar()
+        return f'{iso[0]}-S{iso[1]:02d}'
+    if group_by == 'mois':
+        return f'{ts.date.year}-{ts.date.month:02d}'
+    if group_by == 'ressource':
+        return ts.ressource_id
+    if group_by == 'projet':
+        return ts.projet_id
+    if group_by == 'tache':
+        return ts.tache_id
+    if group_by == 'phase':
+        return ts.phase_id
+    if group_by == 'type_activite':
+        return ts.type_activite
+    return None
+
+
+def _libelle_groupe(ts, group_by):
+    if group_by == 'semaine' or group_by == 'mois':
+        return _cle_groupe(ts, group_by)
+    if group_by == 'ressource':
+        return ts.ressource.nom
+    if group_by == 'projet':
+        return ts.projet.code
+    if group_by == 'tache':
+        return ts.tache.libelle if ts.tache_id else '(sans tâche)'
+    if group_by == 'phase':
+        return ts.phase.libelle if ts.phase_id else '(sans phase)'
+    if group_by == 'type_activite':
+        return ts.get_type_activite_display()
+    return ''
+
+
+def rapport_temps(company, debut, fin, group_by='ressource'):
+    """Rapport des temps MULTI-DIMENSIONS agrégé (XPRJ18) — interne/admin.
+
+    Agrège les heures (et heures FACTURABLES, XPRJ2) sur la fenêtre
+    ``[debut, fin]`` par dimension ``group_by`` parmi ressource / projet /
+    tâche / phase / type_activite / semaine / mois (défaut ``ressource``,
+    retombe dessus si ``group_by`` invalide). Pour CHAQUE tâche impliquée,
+    ajoute le comparatif heures loguées vs ``charge_estimee`` (en heures,
+    8h/jour) — un dépassement (heures > charge × 8) est FLAGGÉ
+    ``depassement=True``. Donnée 100 % INTERNE de pilotage (jamais ``cout``
+    dans l'export xlsx, voir vue). Tout est scopé société. Lecture seule.
+    """
+    if group_by not in _GROUP_BY_CHAMPS:
+        group_by = 'ressource'
+
+    timesheets = list(
+        Timesheet.objects.filter(
+            company=company, date__gte=debut, date__lte=fin)
+        .select_related('ressource', 'projet', 'tache', 'phase'))
+
+    groupes = {}
+    ordre_cles = []
+    for ts in timesheets:
+        cle = _cle_groupe(ts, group_by)
+        if cle not in groupes:
+            groupes[cle] = {
+                'cle': cle,
+                'libelle': _libelle_groupe(ts, group_by),
+                'heures': Decimal('0'),
+                'heures_facturables': Decimal('0'),
+                'cout': Decimal('0'),
+            }
+            ordre_cles.append(cle)
+        groupes[cle]['heures'] += ts.heures
+        if ts.facturable:
+            groupes[cle]['heures_facturables'] += ts.heures
+        groupes[cle]['cout'] += ts.cout
+
+    lignes = [groupes[cle] for cle in ordre_cles]
+
+    # Comparatif par tâche : heures loguées (sur la fenêtre) vs charge
+    # estimée convertie en heures (8h/jour). Dépassement flaggé.
+    taches_impliquees_ids = {
+        ts.tache_id for ts in timesheets if ts.tache_id is not None}
+    par_tache = []
+    if taches_impliquees_ids:
+        for tache in Tache.objects.filter(
+                id__in=taches_impliquees_ids, company=company):
+            heures_loguees = sum(
+                (ts.heures for ts in timesheets if ts.tache_id == tache.id),
+                Decimal('0'))
+            charge_heures = (
+                (tache.charge_estimee * Decimal('8'))
+                if tache.charge_estimee is not None else None)
+            depassement = (
+                charge_heures is not None
+                and heures_loguees > charge_heures)
+            par_tache.append({
+                'tache_id': tache.id,
+                'libelle': tache.libelle,
+                'heures_loguees': heures_loguees,
+                'charge_estimee_heures': charge_heures,
+                'depassement': depassement,
+            })
+
+    total_heures = sum((ts.heures for ts in timesheets), Decimal('0'))
+    total_facturables = sum(
+        (ts.heures for ts in timesheets if ts.facturable), Decimal('0'))
+
+    return {
+        'group_by': group_by,
+        'lignes': lignes,
+        'par_tache': par_tache,
+        'total_heures': total_heures,
+        'total_heures_facturables': total_facturables,
+    }
+
+
+# ── Burndown du projet (XPRJ17) ──────────────────────────────────────────────
+def burndown(projet, debut, fin):
+    """Série HEBDOMADAIRE de charge restante vs ligne idéale (XPRJ17).
+
+    Pour chaque semaine (date de fin de semaine, pas de 7 jours depuis
+    ``debut``) jusqu'à ``fin`` inclus : la charge restante = somme des
+    ``charge_estimee`` des tâches NON TERMINÉES À CETTE DATE, reconstituée
+    depuis ``date_fin_reelle`` (une tâche est "restante" tant qu'elle n'a pas
+    encore de ``date_fin_reelle`` à la date considérée, ou que sa
+    ``date_fin_reelle`` est postérieure). La ligne IDÉALE décroît linéairement
+    de la charge totale à 0 entre ``debut`` et ``fin``. Les heures loguées
+    CUMULÉES (timesheets) sont ajoutées par semaine pour comparaison.
+
+    Un projet SANS AUCUNE charge estimée (toutes tâches à ``charge_estimee``
+    None ou pas de tâche) renvoie une réponse vide propre (``points`` = []).
+    Tout est scopé société via le projet. Lecture seule.
+    """
+    taches = list(Tache.objects.filter(
+        projet=projet, company=projet.company,
+        charge_estimee__isnull=False))
+    charge_totale = sum((t.charge_estimee for t in taches), Decimal('0'))
+    if not taches or charge_totale <= 0:
+        return {'points': [], 'charge_totale': Decimal('0')}
+
+    timesheets = list(Timesheet.objects.filter(
+        projet=projet, company=projet.company,
+        date__gte=debut, date__lte=fin).order_by('date'))
+
+    duree_totale_jours = max((fin - debut).days, 1)
+    points = []
+    courant = debut
+    heures_cumulees = Decimal('0')
+    while courant <= fin:
+        # Charge restante : somme des tâches pas encore terminées à cette
+        # date (date_fin_reelle absente OU postérieure à ``courant``).
+        restant = sum(
+            (t.charge_estimee for t in taches
+             if t.date_fin_reelle is None or t.date_fin_reelle > courant),
+            Decimal('0'))
+
+        ecoule_jours = (courant - debut).days
+        fraction = min(
+            Decimal(ecoule_jours) / Decimal(duree_totale_jours),
+            Decimal('1'))
+        ideal = (charge_totale * (Decimal('1') - fraction)).quantize(
+            Decimal('0.01'))
+
+        heures_cumulees += sum(
+            (ts.heures for ts in timesheets if ts.date == courant),
+            Decimal('0'))
+
+        points.append({
+            'date': courant.isoformat(),
+            'charge_restante': restant,
+            'charge_ideale': ideal,
+            'heures_loguees_cumulees': heures_cumulees,
+        })
+        courant = courant + timedelta(weeks=1)
+
+    return {'points': points, 'charge_totale': charge_totale}
+
+
 # ── Tableau de bord portefeuille (PROJ36) ────────────────────────────────────
 def tableau_portefeuille(company, statut=None, seuil_jours=None):
     """Tableau de bord PORTEFEUILLE de la société (PROJ36) — interne/admin.
@@ -2238,6 +2493,11 @@ def tableau_portefeuille(company, statut=None, seuil_jours=None):
         total_retards += nb_retards
         total_risques += nb_risques
 
+        # Dernière santé RAG du projet (XPRJ15) — None si aucun point saisi.
+        dernier_point = PointAvancement.objects.filter(
+            company=company, projet=projet).order_by(
+                '-date_point', '-id').first()
+
         lignes.append({
             'projet_id': projet.id,
             'code': projet.code,
@@ -2248,6 +2508,8 @@ def tableau_portefeuille(company, statut=None, seuil_jours=None):
             'nb_risques': nb_risques,
             'marge_reelle': pnl['marge_reelle'],
             'charge_totale': charge,
+            'derniere_sante': (
+                dernier_point.sante if dernier_point else None),
         })
 
     return {
@@ -2323,3 +2585,105 @@ def portail_avancement_client(projet):
         'phases': phases,
         'jalons': jalons,
     }
+
+
+def _urgence_key(tache, aujourd_hui):
+    """Clé de tri d'urgence : retard > échéance proche > priorité > id.
+
+    Plus petite valeur = plus urgent. Une tâche sans ``date_fin_prevue`` est
+    considérée la MOINS urgente sur l'axe date (mais reste triée par
+    priorité). L'ordre de priorité est URGENTE < HAUTE < NORMALE < BASSE
+    (numériquement) pour un tri croissant naturel.
+    """
+    ordre_priorite = {
+        Tache.Priorite.URGENTE: 0,
+        Tache.Priorite.HAUTE: 1,
+        Tache.Priorite.NORMALE: 2,
+        Tache.Priorite.BASSE: 3,
+    }
+    if tache.date_fin_prevue is None:
+        retard_jours = 0
+        echeance_rank = 1  # après les tâches datées
+        echeance_ordre = 0
+    else:
+        delta = (tache.date_fin_prevue - aujourd_hui).days
+        retard_jours = min(delta, 0)  # négatif si en retard, 0 sinon
+        echeance_rank = 0
+        echeance_ordre = delta
+    return (
+        retard_jours,  # plus négatif (plus en retard) trie en premier
+        echeance_rank,
+        echeance_ordre,
+        ordre_priorite.get(tache.priorite, 2),
+        tache.id,
+    )
+
+
+def mes_taches(user, aujourd_hui=None):
+    """Tâches NON TERMINÉES de TOUS les projets d'un utilisateur (XPRJ12).
+
+    Un utilisateur voit UNIQUEMENT ses propres tâches : celles où il est
+    ``assigne`` directement (XPRJ10) sur la tâche, OU celles où sa
+    ``RessourceProfil`` liée (``user`` FK) est affectée via
+    ``AffectationRessource`` — soit directement (``ressource``), soit via une
+    ``Equipe`` dont il est membre. Isolation société garantie : les querysets
+    sont TOUJOURS scopés à ``user.company``.
+
+    Trie par urgence : retard d'abord, puis échéance proche, puis priorité.
+    Renvoie une liste de dicts (projet/échéance/retard_jours inclus) — jamais
+    d'objets ORM bruts, pour rester un sélecteur LECTURE SEULE stable.
+    """
+    if aujourd_hui is None:
+        aujourd_hui = _date.today()
+    company = user.company
+
+    ressource_ids = list(
+        RessourceProfil.objects.filter(
+            company=company, user=user).values_list('id', flat=True))
+
+    filtre = Q(assigne__user=user)
+    if ressource_ids:
+        equipe_ids = list(
+            Equipe.objects.filter(
+                company=company, membres__id__in=ressource_ids)
+            .values_list('id', flat=True))
+        affectation_filtre = Q(
+            affectations__ressource_id__in=ressource_ids)
+        if equipe_ids:
+            affectation_filtre |= Q(
+                affectations__equipe_id__in=equipe_ids)
+        filtre |= affectation_filtre
+
+    taches = (
+        Tache.objects.filter(company=company)
+        .exclude(statut=Tache.Statut.TERMINE)
+        .filter(filtre)
+        .select_related('projet', 'assigne')
+        .distinct()
+    )
+
+    resultats = []
+    for tache in taches:
+        retard_jours = 0
+        if tache.date_fin_prevue is not None:
+            delta = (aujourd_hui - tache.date_fin_prevue).days
+            retard_jours = max(delta, 0)
+        resultats.append({
+            'id': tache.id,
+            'libelle': tache.libelle,
+            'statut': tache.statut,
+            'priorite': tache.priorite,
+            'projet_id': tache.projet_id,
+            'projet_code': tache.projet.code,
+            'projet_nom': tache.projet.nom,
+            'date_fin_prevue': (
+                tache.date_fin_prevue.isoformat()
+                if tache.date_fin_prevue else None),
+            'retard_jours': retard_jours,
+            '_urgence': _urgence_key(tache, aujourd_hui),
+        })
+
+    resultats.sort(key=lambda r: r['_urgence'])
+    for r in resultats:
+        del r['_urgence']
+    return resultats
