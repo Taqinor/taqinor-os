@@ -4094,3 +4094,124 @@ class AuditCertification(models.Model):
 
     def __str__(self):
         return f'{self.get_type_etape_display()} — {self.certification}'
+
+
+# ── XQHS10 — Programme d'audit interne annuel ───────────────────────────────
+
+class ProgrammeAudit(models.Model):
+    """Programme d'audit interne annuel.
+
+    Regroupe les ``AuditPlanifie`` d'une ``annee`` civile pour une société.
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        ACTIF = 'actif', 'Actif'
+        CLOS = 'clos', 'Clôturé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_programmes_audit',
+        verbose_name='Société',
+    )
+    annee = models.PositiveIntegerField(verbose_name='Année')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.BROUILLON, verbose_name='Statut')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Programme d'audit"
+        verbose_name_plural = "Programmes d'audit"
+        ordering = ['-annee']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'annee'],
+                name='qhse_programmeaudit_co_annee_uniq',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Programme audit {self.annee}'
+
+
+class AuditPlanifie(models.Model):
+    """Audit planifié au sein d'un ``ProgrammeAudit`` (avant instanciation).
+
+    ``responsable_domaine`` sert de GARDE D'INDÉPENDANCE ADVISORY : si
+    ``auditeur == responsable_domaine``, ``independance_ok`` renvoie ``False``
+    (avertissement, jamais un blocage dur). L'instanciation en ``Audit`` réel se
+    fait via le service ``instancier_audit_planifie`` (garde le lien via
+    ``audit`` — idempotent).
+    """
+    class Statut(models.TextChoices):
+        PLANIFIE = 'planifie', 'Planifié'
+        REALISE = 'realise', 'Réalisé'
+        EN_RETARD = 'en_retard', 'En retard'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_audits_planifies',
+        verbose_name='Société',
+    )
+    programme = models.ForeignKey(
+        ProgrammeAudit,
+        on_delete=models.CASCADE,
+        related_name='audits_planifies',
+        verbose_name='Programme',
+    )
+    processus_domaine = models.CharField(
+        max_length=255, verbose_name='Processus / domaine audité')
+    grille = models.ForeignKey(
+        GrilleAudit,
+        on_delete=models.PROTECT,
+        related_name='qhse_audits_planifies',
+        verbose_name="Grille d'audit",
+    )
+    date_cible = models.DateField(
+        null=True, blank=True, verbose_name='Date cible')
+    auditeur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_audits_planifies_conduits',
+        verbose_name='Auditeur assigné',
+    )
+    responsable_domaine = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_audits_planifies_domaines',
+        verbose_name='Responsable du domaine',
+    )
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.PLANIFIE, verbose_name='Statut')
+    # Lien vers l'Audit réel une fois instancié (QHSE16) — idempotence.
+    audit = models.OneToOneField(
+        Audit,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='audit_planifie',
+        verbose_name='Audit instancié',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Audit planifié'
+        verbose_name_plural = 'Audits planifiés'
+        ordering = ['date_cible', 'id']
+
+    def independance_ok(self):
+        """Garde d'indépendance ADVISORY : ``False`` si l'auditeur est aussi le
+        responsable du domaine audité (avertissement, jamais bloquant)."""
+        if self.auditeur_id is None or self.responsable_domaine_id is None:
+            return True
+        return self.auditeur_id != self.responsable_domaine_id
+
+    def __str__(self):
+        return f'{self.processus_domaine} — {self.date_cible or "sans date"}'

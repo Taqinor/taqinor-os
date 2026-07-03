@@ -11,7 +11,7 @@ from decimal import Decimal
 from django.db import transaction
 
 from .models import (
-    ActionCorrectivePreventive, AnalyseNcr,
+    ActionCorrectivePreventive, AnalyseNcr, Audit, AuditPlanifie,
     CampagneRappel, CauseIncident,
     CheckinSecurite, ControleReception,
     DeclarationCnss, DemandeActionFournisseur, Derogation, ElementRappel,
@@ -1454,3 +1454,70 @@ def lever_ncr_audit_certification(audit_certif, signale_par=None):
     audit_certif.ncr_id = ncr.id
     audit_certif.save(update_fields=['ncr_id'])
     return ncr
+
+
+# ── XQHS10 — Programme d'audit interne annuel ───────────────────────────────
+
+@transaction.atomic
+def instancier_audit_planifie(audit_planifie):
+    """Instancie l'``Audit`` réel d'un ``AuditPlanifie`` (XQHS10).
+
+    Idempotent : si déjà instancié (``audit_planifie.audit_id`` posé), renvoie
+    l'audit existant sans en recréer un. Copie grille/date/auditeur.
+    """
+    if audit_planifie.audit_id is not None:
+        return audit_planifie.audit
+
+    audit = Audit.objects.create(
+        company=audit_planifie.company, grille=audit_planifie.grille,
+        date_audit=audit_planifie.date_cible,
+        auditeur=audit_planifie.auditeur,
+    )
+    audit_planifie.audit = audit
+    audit_planifie.statut = AuditPlanifie.Statut.REALISE
+    audit_planifie.save(update_fields=['audit', 'statut'])
+    return audit
+
+
+def _notifier_audit_planifie_retard(audit_planifie):
+    """Notifie l'auditeur d'un audit planifié en retard (best-effort)."""
+    try:
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+
+        if audit_planifie.auditeur_id is None:
+            return
+        corps = (
+            f'Audit planifié « {audit_planifie.processus_domaine} » — '
+            f'date cible {audit_planifie.date_cible} dépassée sans '
+            f'réalisation.')
+        notify(audit_planifie.auditeur, EventType.MAINTENANCE_DUE,
+               'Audit planifié en retard', body=corps,
+               link='/qhse/programmes-audit', company=audit_planifie.company)
+    except Exception:  # pragma: no cover - défensif
+        pass
+
+
+@transaction.atomic
+def relancer_audits_planifies_en_retard(company=None, today=None):
+    """Relance les ``AuditPlanifie`` non réalisés dont la date cible est
+    dépassée (XQHS10, pattern QHSE12). Fait avancer le statut à
+    ``en_retard`` (idempotent : un audit déjà ``en_retard`` n'est pas
+    re-notifié à chaque appel, seulement à son premier passage en retard).
+    """
+    from django.utils import timezone
+
+    if today is None:
+        today = timezone.localdate()
+    qs = AuditPlanifie.objects.filter(
+        statut=AuditPlanifie.Statut.PLANIFIE, date_cible__lt=today)
+    if company is not None:
+        qs = qs.filter(company=company)
+
+    relances = []
+    for audit_planifie in qs:
+        audit_planifie.statut = AuditPlanifie.Statut.EN_RETARD
+        audit_planifie.save(update_fields=['statut'])
+        _notifier_audit_planifie_retard(audit_planifie)
+        relances.append(audit_planifie)
+    return relances
