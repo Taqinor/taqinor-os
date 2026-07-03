@@ -46,6 +46,65 @@ def is_devis_accepte(devis):
     return devis.statut == Devis.Statut.ACCEPTE
 
 
+# ── XPRJ21 — devis accepté → projet (gestion_projet) ─────────────────────────
+_MOTS_CLES_MO = (
+    'pose', 'installation', 'main d’œuvre', "main d'œuvre",
+    'main d’oeuvre', "main d'oeuvre", 'mo ', 'montage',
+)
+
+
+def devis_pour_projet(devis_id, company):
+    """Devis ACCEPTÉ prêt pour création de projet (XPRJ21) — scopé société.
+
+    Thin selector cross-app pour ``apps.gestion_projet`` (jamais un import de
+    ``ventes.models``) : renvoie ``None`` si le devis n'existe pas, n'est pas
+    de la société demandée, ou n'est pas ACCEPTÉ. Sinon un dict LECTURE SEULE
+    avec les données nécessaires à la création du projet + du budget v1
+    ventilé matériel/main-d'œuvre (classification par mots-clés de la
+    désignation, alignée sur ``frontend/src/features/ventes/solar.js``).
+    """
+    from .models import Devis
+
+    devis = (
+        Devis.objects.filter(pk=devis_id, company=company)
+        .select_related('client')
+        .prefetch_related('lignes')
+        .first())
+    if devis is None or devis.statut != Devis.Statut.ACCEPTE:
+        return None
+
+    lignes_mo = []
+    lignes_materiel = []
+    for ligne in devis.lignes.all():
+        cible = lignes_mo if _est_main_oeuvre(ligne.designation) \
+            else lignes_materiel
+
+        cible.append({
+            'designation': ligne.designation,
+            'total_ht': ligne.total_ht,
+        })
+
+    montant_mo = sum((ligne['total_ht'] for ligne in lignes_mo), 0)
+    montant_materiel = sum(
+        (ligne['total_ht'] for ligne in lignes_materiel), 0)
+
+    return {
+        'id': devis.id,
+        'reference': devis.reference,
+        'client_id': devis.client_id,
+        'lead_id': devis.lead_id,
+        'montant_materiel': montant_materiel,
+        'montant_main_oeuvre': montant_mo,
+        'nb_lignes_materiel': len(lignes_materiel),
+        'nb_lignes_main_oeuvre': len(lignes_mo),
+    }
+
+
+def _est_main_oeuvre(designation):
+    d = (designation or '').lower()
+    return any(mot in d for mot in _MOTS_CLES_MO)
+
+
 def paiements_totaux_par_mode(facture_ids):
     """Totaux + nombre de ``Paiement`` groupés par mode, pour un ensemble de
     factures (thin selector pour apps.pos — rapport Z de session XPOS4)."""

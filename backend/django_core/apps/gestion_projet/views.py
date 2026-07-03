@@ -162,6 +162,41 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
         projet = self.get_object()
         return Response(selectors.liens_enrichis(projet))
 
+    @action(detail=False, methods=['post'], url_path='depuis-devis')
+    def depuis_devis(self, request):
+        """Crée un projet depuis un devis ACCEPTÉ (XPRJ21) — action explicite.
+
+        Corps : ``devis_id`` (obligatoire). Crée le ``Projet`` (client résolu,
+        code via numérotation SÛRE), le ``ProjetLien`` vers le devis, et un
+        ``BudgetProjet`` v1 pré-ventilé matériel/main-d'œuvre depuis les
+        lignes du devis (lu via ``apps.ventes.selectors.devis_pour_projet`` —
+        jamais un import de ``ventes.models``). JAMAIS automatique sur
+        ``devis_accepted`` (le chantier auto existe déjà côté
+        ``installations``) : action UTILISATEUR uniquement.
+
+        Un devis d'une autre société, inexistant, ou non ACCEPTÉ → 404. Un
+        re-run sur le même devis (déjà lié) → 400.
+        """
+        from apps.ventes.selectors import devis_pour_projet
+
+        devis_id = request.data.get('devis_id')
+        if not devis_id:
+            return Response(
+                {'devis_id': 'devis_id est obligatoire.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        devis_data = devis_pour_projet(devis_id, request.user.company)
+        if devis_data is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        try:
+            resultat = services.creer_projet_depuis_devis(
+                devis_data, company=request.user.company, user=request.user)
+        except services.DevisVersProjetError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            ProjetSerializer(resultat['projet']).data,
+            status=status.HTTP_201_CREATED)
+
     # ── Machine à états (PROPRE au projet, jamais STAGES.py) ─────────────────
     def _transition(self, request, *, allowed_from, target):
         """Applique une transition de statut si elle est légale, sinon 400.

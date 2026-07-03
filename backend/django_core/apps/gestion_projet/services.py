@@ -1154,3 +1154,98 @@ def seeder_feries_calendrier(calendrier, annee):
 def _date_du_mois_jour(annee, mois, jour):
     from datetime import date as _date
     return _date(annee, mois, jour)
+
+
+# ── Créer un projet depuis un devis accepté (XPRJ21) ─────────────────────────
+class DevisVersProjetError(Exception):
+    """Erreur métier lors de la création d'un projet depuis un devis."""
+
+
+def _prochain_code_projet(company):
+    """Code ``Projet`` sûr : plus haut suffixe utilisé + 1 (JAMAIS count()+1).
+
+    Radical ``PRJ-<année>-`` (reset annuel), même politique anti-collision que
+    ``apps/ventes/utils/references.py`` (pas de dépendance croisée : logique
+    dupliquée localement, modèle différent).
+    """
+    import re
+    from django.utils import timezone
+
+    annee = timezone.now().strftime('%Y')
+    prefix = f'PRJ-{annee}-'
+    refs = Projet.objects.filter(
+        company=company, code__startswith=prefix).values_list(
+            'code', flat=True)
+    highest = 0
+    suffix_re = re.compile(r'-(\d+)$')
+    for ref in refs:
+        m = suffix_re.search(ref)
+        if m:
+            highest = max(highest, int(m.group(1)))
+    return f'{prefix}{highest + 1:04d}'
+
+
+@transaction.atomic
+def creer_projet_depuis_devis(devis_data, *, company, user=None):
+    """Crée un ``Projet`` + ``ProjetLien`` + ``BudgetProjet`` v1 depuis un
+    devis ACCEPTÉ (XPRJ21) — action UTILISATEUR EXPLICITE uniquement (JAMAIS
+    automatique sur ``devis_accepted`` : le chantier auto existe déjà côté
+    ``installations``).
+
+    ``devis_data`` provient EXCLUSIVEMENT de
+    ``apps.ventes.selectors.devis_pour_projet`` (jamais un import de
+    ``ventes.models``). Refuse (``DevisVersProjetError``) si un ``ProjetLien``
+    pointant déjà ce devis existe pour la société (re-run → « déjà lié »). Le
+    ``code`` du projet est généré via une numérotation SÛRE (plus haut
+    suffixe utilisé + 1, jamais ``count()+1``).
+
+    Renvoie ``{'projet': Projet, 'lien': ProjetLien, 'budget': BudgetProjet}``.
+    """
+    from .models import BudgetProjet, LigneBudgetProjet, ProjetLien
+
+    devis_id = devis_data['id']
+    deja_lie = ProjetLien.objects.filter(
+        company=company, type_cible=ProjetLien.TypeCible.DEVIS,
+        cible_id=devis_id).exists()
+    if deja_lie:
+        raise DevisVersProjetError(
+            f'Le devis {devis_data["reference"]} est déjà lié à un projet.')
+
+    projet = Projet.objects.create(
+        company=company,
+        code=_prochain_code_projet(company),
+        nom=f'Projet — devis {devis_data["reference"]}',
+        client_id=devis_data['client_id'],
+        budget_total=(
+            devis_data['montant_materiel']
+            + devis_data['montant_main_oeuvre']),
+    )
+
+    lien = ProjetLien.objects.create(
+        company=company,
+        projet=projet,
+        type_cible=ProjetLien.TypeCible.DEVIS,
+        cible_id=devis_id,
+        libelle=devis_data['reference'],
+    )
+
+    budget = BudgetProjet.objects.create(
+        company=company, projet=projet, version=1,
+        statut=BudgetProjet.Statut.BROUILLON,
+    )
+    if devis_data['montant_materiel']:
+        LigneBudgetProjet.objects.create(
+            company=company, budget=budget,
+            categorie=LigneBudgetProjet.Categorie.MATERIEL,
+            libelle='Matériel (depuis devis)',
+            montant_prevu=devis_data['montant_materiel'],
+        )
+    if devis_data['montant_main_oeuvre']:
+        LigneBudgetProjet.objects.create(
+            company=company, budget=budget,
+            categorie=LigneBudgetProjet.Categorie.MAIN_OEUVRE,
+            libelle="Main-d'œuvre (depuis devis)",
+            montant_prevu=devis_data['montant_main_oeuvre'],
+        )
+
+    return {'projet': projet, 'lien': lien, 'budget': budget}
