@@ -45,6 +45,20 @@ class KbArticle(models.Model):
         related_name='kb_app_articles',
         verbose_name='Auteur',
     )
+    # XKB8 — arborescence de pages imbriquées : sous-article d'un article
+    # parent (profondeur arbitraire). Validé même-société + anti-cycle côté
+    # serializer/service (jamais en base). NULL = article racine.
+    parent = models.ForeignKey(
+        'self',
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='enfants',
+        verbose_name='Article parent',
+    )
+    # XKB8 — position parmi les frères (même parent) pour le réordonnancement
+    # manuel dans l'arbre latéral. Posé côté serveur, jamais recalculé par
+    # count() (juste un entier libre, pas une contrainte d'unicité).
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
     date_modification = models.DateTimeField(
@@ -54,6 +68,11 @@ class KbArticle(models.Model):
         verbose_name = 'Article'
         verbose_name_plural = 'Articles'
         ordering = ['-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'parent', 'ordre'],
+                name='kb_article_parent_ordre_idx'),
+        ]
 
     def __str__(self):
         return self.titre

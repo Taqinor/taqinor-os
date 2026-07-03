@@ -25,11 +25,42 @@ class KbArticleSerializer(serializers.ModelSerializer):
         model = KbArticle
         fields = [
             'id', 'titre', 'corps', 'categorie', 'tags', 'statut',
-            'statut_display', 'auteur', 'auteur_nom', 'date_creation',
-            'date_modification',
+            'statut_display', 'auteur', 'auteur_nom', 'parent', 'ordre',
+            'date_creation', 'date_modification',
         ]
         read_only_fields = [
             'auteur', 'date_creation', 'date_modification']
+
+    def validate_parent(self, parent):
+        """XKB8 — le parent doit être même-société et ne jamais créer de cycle.
+
+        Un cycle survient si ``parent`` est l'article courant lui-même, ou si
+        l'article courant figure dans la chaîne d'ancêtres du ``parent``
+        proposé (déplacer un article sous l'un de ses propres descendants).
+        """
+        if parent is None:
+            return parent
+        request = self.context.get('request')
+        if request is not None and parent.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "L'article parent doit appartenir à votre société.")
+        if self.instance is not None:
+            if parent.id == self.instance.id:
+                raise serializers.ValidationError(
+                    "Un article ne peut pas être son propre parent.")
+            # Remonte la chaîne d'ancêtres du parent proposé : si l'article
+            # courant y figure, c'est un cycle (déplacement sous un
+            # descendant). Borné pour ne jamais boucler sur des données
+            # corrompues.
+            cursor = parent
+            for _ in range(1000):
+                if cursor is None:
+                    break
+                if cursor.id == self.instance.id:
+                    raise serializers.ValidationError(
+                        "Ce déplacement créerait un cycle dans l'arborescence.")
+                cursor = cursor.parent
+        return parent
 
 
 class KbArticleVersionSerializer(serializers.ModelSerializer):

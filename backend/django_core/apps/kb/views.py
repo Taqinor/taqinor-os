@@ -129,6 +129,27 @@ class KbArticleViewSet(_KbBaseViewSet):
         article = self.get_object()
         return Response(selectors.rapport_conformite_article(article))
 
+    @action(detail=False, methods=['get'], url_path='arbre')
+    def arbre(self, request):
+        """XKB8 — Arbre des articles visibles (racines → enfants imbriqués)."""
+        return Response(selectors.arbre_articles(self.get_queryset()))
+
+    @action(detail=True, methods=['post'], url_path='deplacer')
+    def deplacer(self, request, pk=None):
+        """XKB8 — Déplace (re-parente) tout un sous-arbre + réordonne.
+
+        Attend ``{"parent": <id ou null>, "ordre": <entier, optionnel>}``.
+        Réutilise ``KbArticleSerializer.validate_parent`` (même-société +
+        anti-cycle) via une validation partielle.
+        """
+        article = self.get_object()
+        ser = self.get_serializer(
+            article, data=request.data, partial=True,
+            context={'request': request})
+        ser.is_valid(raise_exception=True)
+        ser.save(company=self.request.user.company)
+        return Response(ser.data)
+
 
 class KbArticleVersionViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     """Historique des versions d'article (lecture seule). Filtrable par

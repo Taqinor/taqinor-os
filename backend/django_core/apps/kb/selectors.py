@@ -78,6 +78,43 @@ def resume_lecture(article):
     return {'nombre': len(lecteurs), 'lecteurs': lecteurs}
 
 
+# ── XKB8 — Arborescence d'articles (pages imbriquées) ──────────────────────
+
+def arbre_articles(queryset):
+    """XKB8 — Construit l'arbre (liste de dicts imbriqués) d'un queryset
+    d'articles DÉJÀ scopé société + visibilité (``visible_articles_qs``).
+
+    Renvoie la liste des racines (``parent`` absent du queryset visible, y
+    compris un parent existant mais invisible pour l'utilisateur — dégrade
+    proprement en le traitant comme racine plutôt que de faire planter
+    l'arbre), chacune portant une clé ``enfants`` triée par ``(ordre, id)``,
+    récursivement. Une seule requête (pas de N+1) : le queryset est
+    matérialisé une fois puis assemblé en mémoire.
+    """
+    articles = list(queryset.order_by('ordre', 'id'))
+    by_id = {a.id: a for a in articles}
+    children_of = {}
+    roots = []
+    for article in articles:
+        if article.parent_id and article.parent_id in by_id:
+            children_of.setdefault(article.parent_id, []).append(article)
+        else:
+            roots.append(article)
+
+    def _node(article):
+        enfants = children_of.get(article.id, [])
+        return {
+            'id': article.id,
+            'titre': article.titre,
+            'statut': article.statut,
+            'parent': article.parent_id,
+            'ordre': article.ordre,
+            'enfants': [_node(e) for e in enfants],
+        }
+
+    return [_node(a) for a in roots]
+
+
 # ── XKB7 — Lecture obligatoire ─────────────────────────────────────────────
 
 def _assignees_for_role(company, role_cible):
