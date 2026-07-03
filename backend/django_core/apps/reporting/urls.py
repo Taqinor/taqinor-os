@@ -25,6 +25,7 @@ from .approbations import (
 from .kpi_alertes import KpiAlerteViewSet
 from .classeur import ClasseurViewSet
 from .integrity_views import integrite_insight
+from .sav_pivot import sav_tickets_pivot, sav_tickets_cout_moyen
 
 # N79 — CRUD des rapports sauvegardés (router DRF, ajouté en additif).
 # FG96 — CRUD + effective/ pour la config tableau de bord.
@@ -98,4 +99,9 @@ urlpatterns = [
          name='reporting-approbations-decider-masse'),
     # YSERV13 — contrôle d'intégrité inter-documents (états orphelins).
     path('insights/integrite/', integrite_insight, name='insights-integrite'),
+    # ZSAV7 — pivot tickets SAV (dataset core.data_explorer sav_tickets).
+    path('insights/sav-tickets-pivot/', sav_tickets_pivot,
+         name='insights-sav-tickets-pivot'),
+    path('insights/sav-tickets-cout-moyen/', sav_tickets_cout_moyen,
+         name='insights-sav-tickets-cout-moyen'),
 ]
