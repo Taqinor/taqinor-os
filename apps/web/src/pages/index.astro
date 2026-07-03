@@ -207,9 +207,11 @@ const solutionIcons: Record<string, string> = {
 // la main. L'or vit sur les chiffres .lum (discipline laiton). Aucun claim
 // inventé.
 const chantiersVisitablesCount = new Set(REALISATIONS.map((r) => r.ville)).size;
+// W375 — totalKwcLabel devient le pull-figure monumental de la bande (voir
+// plus bas dans le markup) ; le tableau `trust` ne porte donc plus que les
+// TROIS statistiques restantes (jamais un doublon de la même donnée).
 const trust = [
   { fig: String(chantiersVisitablesCount), tally: false, label: 'Chantiers visitables', body: 'Installations réelles à voir sur demande — Casablanca, El Jadida, Nouaceur' },
-  { fig: totalKwcLabel, tally: true, label: 'Installés', body: 'Casablanca, El Jadida, Nouaceur' },
   { fig: 'Loi 82-21', tally: false, label: 'Conformité incluse', body: 'Déclaration préparée et déposée pour vous par Taqinor' },
   { fig: 'Deye Cloud', tally: false, label: 'Production mesurée', body: 'Monitoring sur chaque installation, accès client inclus' },
 ];
@@ -539,8 +541,9 @@ const engineeringPillars = [
         persuasif pour ce genre de clip. */}
     <VideoCompteur />
 
-    {/* ── POURQUOI TAQINOR / CONFIANCE — quatre chiffres monumentaux (l'or vit
-        sur les chiffres .lum, discipline laiton) — faits déjà publiés ── */}
+    {/* ── POURQUOI TAQINOR / CONFIANCE — un pull-figure monumental (W375) +
+        trois statistiques de support (l'or vit sur les chiffres .lum,
+        discipline laiton) — faits déjà publiés ── */}
     <section class="section px-4">
       <div class="mx-auto max-w-6xl">
         <div class="v2-rise max-w-2xl">
@@ -551,12 +554,23 @@ const engineeringPillars = [
             main sur votre facture réelle. Le chiffre décide du matériel — jamais l'inverse.
           </p>
         </div>
-        {/* W268 — bande monumentale pleine largeur, 4 colonnes, chiffres
-            .fig-lg + filet laiton fin par colonne (même dispositif que la
-            bande « Comment ça marche » et GarantiesTeaser). « La preuve avant
-            la promesse » est la thèse de marque : elle mérite une déclaration,
-            pas un tableau de specs. */}
-        <dl class="mt-12 grid grid-cols-2 gap-x-8 gap-y-12 lg:grid-cols-4" data-stagger>
+        {/* W375 — UN moment typographique monumental : le total kWc installé
+            (déjà publié, dérivé de REALISATIONS — voir plus haut) devient un
+            pull-figure isolé, clamp ~8–10 rem, axe de largeur Archivo à son
+            maximum (.v2-fig-monument, v2.css). Le corps environnant reste
+            calme (tech-label + une ligne) pour que le contraste d'échelle
+            porte seul la déclaration. Largeur réservée par le clamp lui-même
+            (pas de count-up ici) → zéro CLS vérifié : cette figure ne change
+            jamais après le premier rendu. */}
+        <div class="v2-rise mt-14 border-t-2 border-brass-400/60 pt-6">
+          <p class="fig v2-fig-monument lum whitespace-nowrap" data-tally>{totalKwcLabel}</p>
+          <p class="tech-label mt-3 text-lune-faint">Installés à ce jour — Casablanca, El Jadida, Nouaceur</p>
+        </div>
+        {/* W268 — bande monumentale pleine largeur, chiffres .fig-lg + filet
+            laiton fin par colonne (même dispositif que la bande « Comment ça
+            marche » et GarantiesTeaser) : les TROIS statistiques restantes,
+            en support du pull-figure ci-dessus (jamais un doublon du total kWc). */}
+        <dl class="mt-12 grid grid-cols-1 gap-x-8 gap-y-12 sm:grid-cols-3" data-stagger>
           {trust.map((t, i) => (
             <div class="v2-rise relative min-w-0 border-t-2 border-white/10 pt-5" style={`--v2-i:${i}`}>
               <span class="absolute -top-px left-0 h-0.5 w-10 bg-brass-400" aria-hidden="true"></span>

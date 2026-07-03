@@ -140,6 +140,26 @@
   text-wrap: pretty;
 }
 
+/* ─── W375 — Un moment typographique monumental ─────────────────────────────
+   .v2-fig-monument : UN pull-figure/eyebrow par page, à l'échelle réservée
+   pour la thèse de marque (la bande "preuve avant la promesse" sur l'accueil)
+   — contraste d'échelle net avec le corps calme qui l'entoure. Réutilise
+   l'axe de largeur variable Archivo (déjà chargé, cf. W378) à sa valeur la
+   plus large (125 %, le maximum de la fonte livrée) plutôt que le
+   font-stretch 106 % de .fig standard : c'est UNE déclaration, pas un
+   chiffre de tableau parmi d'autres — jamais utilisé deux fois sur la même
+   page (sinon il cesse d'être monumental).
+   Largeur RÉSERVÉE avant toute interaction (aucune animation ici — la seule
+   dramatisation est l'échelle elle-même) : zéro CLS, `tabular-nums` hérité
+   de `.fig`. Le clamp reste sous 10rem même en 4K (160px) pour ne jamais
+   forcer un retour à la ligne qui romprait le rythme de la bande. */
+.v2 .v2-fig-monument {
+  font-size: clamp(5rem, 7vw + 3rem, 10rem);
+  font-stretch: 125%;
+  line-height: 0.9;
+  letter-spacing: -0.02em;
+}
+
 /* Couture de lumière plus longue et plus douce (transitions de sections) */
 .v2 .v2-seam {
   height: 9rem;
