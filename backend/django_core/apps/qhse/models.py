@@ -3946,3 +3946,151 @@ class AnalyseNcr(models.Model):
 
     def __str__(self):
         return f'Analyse NCR #{self.non_conformite_id}'
+
+
+# ── XQHS9 — Registre des certifications (ISO / IMANOR NM) + audits ─────────
+
+class Certification(models.Model):
+    """Certificat détenu par l'entreprise (ISO 9001/14001/45001, NM…).
+
+    Suit le ``referentiel``, l'``organisme`` certificateur (IMANOR, AFNOR…),
+    le numéro/périmètre et la fenêtre de validité (``date_emission`` →
+    ``date_expiration``). Relance à échéance : pattern ``prealerte``
+    (QHSE38/XQHS8), ``statut_calcule`` dérive l'état réel.
+
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    PREALERTE_JOURS_DEFAUT = 60
+
+    class Referentiel(models.TextChoices):
+        ISO_9001 = 'iso_9001', 'ISO 9001'
+        ISO_14001 = 'iso_14001', 'ISO 14001'
+        ISO_45001 = 'iso_45001', 'ISO 45001'
+        NM = 'nm', 'NM (norme marocaine)'
+        AUTRE = 'autre', 'Autre'
+
+    class Statut(models.TextChoices):
+        VALIDE = 'valide', 'Valide'
+        A_RENOUVELER = 'a_renouveler', 'À renouveler'
+        EXPIRE = 'expire', 'Expiré'
+        SUSPENDU = 'suspendu', 'Suspendu'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_certifications',
+        verbose_name='Société',
+    )
+    referentiel = models.CharField(
+        max_length=15, choices=Referentiel.choices,
+        default=Referentiel.ISO_9001, verbose_name='Référentiel')
+    organisme = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Organisme')
+    numero_certificat = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Numéro de certificat')
+    perimetre = models.TextField(
+        blank=True, default='', verbose_name='Périmètre')
+    date_emission = models.DateField(
+        null=True, blank=True, verbose_name="Date d'émission")
+    date_expiration = models.DateField(
+        null=True, blank=True, verbose_name="Date d'expiration")
+    prealerte_jours = models.PositiveIntegerField(
+        default=PREALERTE_JOURS_DEFAUT, verbose_name='Préalerte (jours)')
+    statut = models.CharField(
+        max_length=15, choices=Statut.choices,
+        default=Statut.VALIDE, verbose_name='Statut')
+    responsable = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_certifications',
+        verbose_name='Responsable',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Certification'
+        verbose_name_plural = 'Certifications'
+        ordering = ['-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'date_expiration'],
+                name='qhse_certif_co_exp',
+            ),
+        ]
+
+    def statut_calcule(self, today=None):
+        """État réel à une date — même logique que ``ConformiteEnvironnementale``."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        if today is None:
+            today = timezone.localdate()
+        if self.statut == self.Statut.SUSPENDU:
+            return self.statut
+        if self.date_expiration is None:
+            return self.statut
+        if self.date_expiration < today:
+            return self.Statut.EXPIRE
+        limite = today + timedelta(days=self.prealerte_jours or 0)
+        if self.date_expiration <= limite:
+            return self.Statut.A_RENOUVELER
+        return self.statut
+
+    def __str__(self):
+        return f'{self.get_referentiel_display()} — {self.numero_certificat or "sans n°"}'
+
+
+class AuditCertification(models.Model):
+    """Audit d'un organisme certificateur sur une ``Certification``.
+
+    ``type_etape`` (étape 1 / étape 2 / surveillance / renouvellement),
+    l'auditeur externe et les constats. Un constat MAJEUR peut ouvrir une NCR
+    liée via le service ``lever_ncr`` existant (réutilise
+    ``lever_ncr_audit``-style : lien lâche ``ncr_id``).
+    """
+    class TypeEtape(models.TextChoices):
+        ETAPE_1 = 'etape_1', 'Étape 1'
+        ETAPE_2 = 'etape_2', 'Étape 2'
+        SURVEILLANCE = 'surveillance', 'Surveillance'
+        RENOUVELLEMENT = 'renouvellement', 'Renouvellement'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_audits_certification',
+        verbose_name='Société',
+    )
+    certification = models.ForeignKey(
+        Certification,
+        on_delete=models.CASCADE,
+        related_name='audits',
+        verbose_name='Certification',
+    )
+    type_etape = models.CharField(
+        max_length=15, choices=TypeEtape.choices,
+        default=TypeEtape.SURVEILLANCE, verbose_name='Type')
+    date_audit = models.DateField(
+        null=True, blank=True, verbose_name="Date de l'audit")
+    auditeur_externe = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Auditeur externe')
+    constats = models.TextField(
+        blank=True, default='', verbose_name='Constats')
+    constat_majeur = models.BooleanField(
+        default=False, verbose_name='Constat majeur')
+    # Lien lâche vers la NCR levée pour un constat majeur (même app, IntegerField
+    # pour garder un couplage minimal — pattern ReponseCritere.ncr_id).
+    ncr_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID de la NCR levée')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Audit de certification'
+        verbose_name_plural = 'Audits de certification'
+        ordering = ['-id']
+
+    def __str__(self):
+        return f'{self.get_type_etape_display()} — {self.certification}'

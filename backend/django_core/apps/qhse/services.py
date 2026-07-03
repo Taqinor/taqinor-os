@@ -11,7 +11,8 @@ from decimal import Decimal
 from django.db import transaction
 
 from .models import (
-    ActionCorrectivePreventive, AnalyseNcr, CampagneRappel, CauseIncident,
+    ActionCorrectivePreventive, AnalyseNcr,
+    CampagneRappel, CauseIncident,
     CheckinSecurite, ControleReception,
     DeclarationCnss, DemandeActionFournisseur, Derogation, ElementRappel,
     EtapeDeclarationAt, NonConformite,
@@ -1422,3 +1423,34 @@ def enregistrer_evaluation_conformite(conformite, resultat, *, date=None):
     conformite.save(update_fields=[
         'date_derniere_evaluation', 'resultat_derniere_evaluation'])
     return conformite
+
+
+# ── XQHS9 — Registre des certifications + audits de certification ──────────
+
+@transaction.atomic
+def lever_ncr_audit_certification(audit_certif, signale_par=None):
+    """Lève une NCR pour un constat majeur d'audit de certification (XQHS9).
+
+    Idempotent : si ``audit_certif.ncr_id`` est déjà posé, ne recrée rien et
+    renvoie la NCR existante. N'agit que si ``constat_majeur=True``.
+    """
+    if audit_certif.ncr_id is not None:
+        return NonConformite.objects.filter(pk=audit_certif.ncr_id).first()
+    if not audit_certif.constat_majeur:
+        return None
+
+    certif = audit_certif.certification
+    ncr = NonConformite.objects.create(
+        company=audit_certif.company,
+        titre=f'[Audit certification] {certif.get_referentiel_display()}',
+        description=audit_certif.constats or (
+            f'Constat majeur lors de l\'audit '
+            f'{audit_certif.get_type_etape_display()} du '
+            f'{audit_certif.date_audit or "date inconnue"}.'),
+        origine='Audit de certification',
+        gravite=NonConformite.Gravite.MAJEURE,
+        signale_par=signale_par,
+    )
+    audit_certif.ncr_id = ncr.id
+    audit_certif.save(update_fields=['ncr_id'])
+    return ncr
