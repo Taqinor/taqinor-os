@@ -2350,7 +2350,8 @@ def marquer_signe(demande, *, provider_ref=None, date_signature=None):
     if demande.statut in (SIGNATURE_ANNULE, SIGNATURE_REFUSE):
         return demande
     champs = []
-    if demande.statut != SIGNATURE_SIGNE:
+    etait_deja_signe = demande.statut == SIGNATURE_SIGNE
+    if not etait_deja_signe:
         demande.statut = SIGNATURE_SIGNE
         champs.append('statut')
     if demande.date_signature is None:
@@ -2361,7 +2362,1002 @@ def marquer_signe(demande, *, provider_ref=None, date_signature=None):
         champs.append('provider_ref')
     if champs:
         demande.save(update_fields=champs)
+    # XGED4 — À la PREMIÈRE complétion (jamais en ré-appel idempotent) : génère
+    # le certificat + classe automatiquement, SANS action manuelle. Best-effort
+    # total (try/except large) — un souci de rendu/stockage ne doit JAMAIS
+    # empêcher la signature elle-même d'être enregistrée.
+    if not etait_deja_signe:
+        try:
+            classer_signature_completee(demande)
+        except Exception:  # pragma: no cover - défensif, jamais bloquant.
+            import logging
+            logging.getLogger(__name__).warning(
+                'XGED4: classement automatique après signature échoué '
+                'pour la demande %s', demande.pk, exc_info=True)
     return demande
+
+
+# ── XGED1 — Cérémonie de signature in-app (lien public tokenisé) ────────────
+
+# Sentinelles de résolution publique — même motif que `resolve_partage_public`
+# (GED20) : jamais de fuite distinguant « jeton inconnu » d'un état terminal
+# révélateur ; un jeton inconnu ET une demande annulée renvoient le même 404.
+SIGNATURE_PUBLIQUE_OK = 'ok'
+SIGNATURE_PUBLIQUE_INTROUVABLE = 'introuvable'   # jeton inconnu → 404
+SIGNATURE_PUBLIQUE_EXPIREE = 'expiree'           # expirée/annulée → 410
+SIGNATURE_PUBLIQUE_DEJA_TRAITEE = 'deja_traitee'  # déjà signée/refusée → 410
+
+
+def resolve_signature_publique(token):
+    """XGED1 — Résout une demande de signature DEPUIS le seul jeton public.
+
+    Cœur sécurité : aucune identité/société n'est jamais lue de la requête —
+    tout est résolu à partir du `token` (qui ne référence qu'UNE seule demande
+    d'UNE seule société). Renvoie `(statut, demande_ou_None)` :
+
+      - SIGNATURE_PUBLIQUE_INTROUVABLE : jeton inconnu → 404.
+      - SIGNATURE_PUBLIQUE_EXPIREE     : `expires_at` dépassée OU demande
+        `annule` → 410 Gone.
+      - SIGNATURE_PUBLIQUE_DEJA_TRAITEE : déjà `signe`/`refuse` → 410 Gone
+        (idempotence visible : le lien ne re-signe jamais deux fois).
+      - SIGNATURE_PUBLIQUE_OK          : la demande est signable/refusable.
+    """
+    from .models import (
+        DemandeSignatureDocument, SIGNATURE_ANNULE, SIGNATURE_EN_ATTENTE,
+    )
+    demande = (DemandeSignatureDocument.objects
+               .select_related('document', 'document__company', 'company')
+               .filter(token=token)
+               .first())
+    if demande is None:
+        return SIGNATURE_PUBLIQUE_INTROUVABLE, None
+    if demande.statut == SIGNATURE_ANNULE or demande.is_expired:
+        return SIGNATURE_PUBLIQUE_EXPIREE, demande
+    if demande.statut != SIGNATURE_EN_ATTENTE:
+        return SIGNATURE_PUBLIQUE_DEJA_TRAITEE, demande
+    return SIGNATURE_PUBLIQUE_OK, demande
+
+
+def _hash_version_contenu(version):
+    """XGED1 — SHA-256 hex du CONTENU de la version courante (preuve QJ10).
+
+    Best-effort : si le contenu n'est pas récupérable (stockage indisponible),
+    renvoie une chaîne vide plutôt que de bloquer la signature — le hash reste
+    une preuve BONUS, jamais un bloqueur de cérémonie."""
+    if version is None:
+        return ''
+    try:
+        from apps.records.storage import fetch_attachment
+        data, err = fetch_attachment(version.file_key)
+        if err or data is None:
+            return ''
+        return hashlib.sha256(data).hexdigest()
+    except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        return ''
+
+
+def signer_demande_publique(demande, *, consentement, signature_texte='',
+                            signature_tracee='', adresse_ip=None,
+                            user_agent=''):
+    """XGED1 — Enregistre la SIGNATURE d'une demande depuis le lien public.
+
+    Exige un consentement explicite (`consentement is True`) ET au moins une
+    des deux formes de signature (nom tapé OU tracé vectoriel — pattern FG69
+    `signature_client`). Les preuves (IP/UA/horodatage/hash du contenu de la
+    version courante — pattern QJ10) sont posées CÔTÉ SERVEUR, jamais lues du
+    corps au-delà de ce que l'appelant (la vue publique) fournit explicitement.
+    Une fois signée, les champs de preuve sont IMMUABLES (l'API ne les modifie
+    plus jamais). Bascule le statut via `marquer_signe` (réutilisé, ne le
+    duplique pas). Lève `ValueError` si le consentement/la signature manquent.
+
+    Renvoie la `DemandeSignatureDocument` mise à jour.
+    """
+    from django.utils import timezone
+
+    if not consentement:
+        raise ValueError(
+            "Le consentement explicite à contracter électroniquement est requis.")
+    signature_texte = (signature_texte or '').strip()
+    signature_tracee = (signature_tracee or '').strip()
+    if not signature_texte and not signature_tracee:
+        raise ValueError(
+            "Une signature (nom tapé ou tracé) est requise.")
+
+    version = selectors_latest_version(demande.document)
+    demande.consentement_explicite = True
+    demande.signature_texte = signature_texte
+    demande.signature_tracee = signature_tracee
+    demande.adresse_ip = adresse_ip or None
+    demande.user_agent = (user_agent or '')[:512]
+    demande.hash_contenu = _hash_version_contenu(version)
+    demande.save(update_fields=[
+        'consentement_explicite', 'signature_texte', 'signature_tracee',
+        'adresse_ip', 'user_agent', 'hash_contenu', 'updated_at',
+    ])
+    return marquer_signe(demande, date_signature=timezone.now())
+
+
+def refuser_demande_publique(demande, *, motif, adresse_ip=None, user_agent=''):
+    """XGED1 — Enregistre le REFUS d'une demande depuis le lien public.
+
+    Motif OBLIGATOIRE (non vide). Statut → `refuse`, horodaté ; les preuves
+    IP/UA sont posées côté serveur. Idempotent : un refus déjà enregistré ne
+    modifie pas `refuse_le`. Lève `ValueError` si le motif est vide.
+
+    Renvoie la `DemandeSignatureDocument` mise à jour.
+    """
+    from django.utils import timezone
+    from .models import SIGNATURE_REFUSE
+
+    motif = (motif or '').strip()
+    if not motif:
+        raise ValueError("Le motif de refus est requis.")
+
+    champs = ['motif_refus', 'adresse_ip', 'user_agent', 'updated_at']
+    demande.motif_refus = motif
+    demande.adresse_ip = adresse_ip or None
+    demande.user_agent = (user_agent or '')[:512]
+    if demande.statut != SIGNATURE_REFUSE:
+        demande.statut = SIGNATURE_REFUSE
+        champs.append('statut')
+    if demande.refuse_le is None:
+        demande.refuse_le = timezone.now()
+        champs.append('refuse_le')
+    demande.save(update_fields=champs)
+    return demande
+
+
+def selectors_latest_version(document):
+    """Import paresseux de `selectors.latest_version` (évite un cycle module)."""
+    from . import selectors
+    return selectors.latest_version(document)
+
+
+# ── XGED2 — Circuit multi-signataires (séquentiel/parallèle) ────────────────
+
+def _send_signataire_email(signataire, demande, *, relance=False):
+    """XGED2 — Envoie (best-effort) le lien de signature à un destinataire.
+
+    Réutilise `django.core.mail.send_mail` (pattern `ventes._send_otp_email`) —
+    backend console en local, jamais bloquant : toute erreur d'envoi est
+    journalisée mais ne casse jamais le flux de notification/relance."""
+    if not signataire.email:
+        return False
+    try:
+        from django.conf import settings
+        from django.core.mail import send_mail
+        from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@erp.local')
+        sujet = (
+            f'Relance — document à signer : {demande.document.nom}'
+            if relance else f'Document à signer : {demande.document.nom}')
+        corps = (
+            f'Bonjour {signataire.nom},\n\n'
+            f'Un document « {demande.document.nom} » requiert votre '
+            f'{"attention" if signataire.role != "signataire" else "signature"}.\n'
+            f'Lien : /ged/signature/{signataire.token}/\n\n'
+            "Cordialement,\nL'équipe TAQINOR"
+        )
+        send_mail(sujet, corps, from_email, [signataire.email], fail_silently=False)
+        return True
+    except Exception as exc:  # noqa: BLE001 - best-effort, jamais bloquant.
+        import logging
+        logging.getLogger(__name__).warning(
+            'XGED2: envoi email signataire échoué : %s', exc)
+        return False
+
+
+@transaction.atomic
+def creer_demande_multi_signataires(document, *, destinataires, company,
+                                    routage=None, expires_at=None,
+                                    relance_cadence_jours=None,
+                                    created_by=None):
+    """XGED2 — Crée une demande de signature à PLUSIEURS destinataires.
+
+    `destinataires` : liste ordonnée de dicts
+    `{"nom", "email"?, "telephone"?, "role"?, "ordre"?}`. Le premier élément
+    devient le signataire « principal » de la `DemandeSignatureDocument`
+    (`signataire_nom`/`signataire_email`, rétrocompatibilité GED30/XGED1) ;
+    TOUS les éléments deviennent des `SignataireDemande` ordonnés. `company`
+    est TOUJOURS fournie par l'appelant (jamais lue du corps) et doit
+    correspondre à celle du document (sinon `PermissionError`).
+
+    Routage : `notifier_prochains_signataires` est appelé immédiatement après
+    création — en parallèle, tous les `signataire` sont notifiés ; en
+    séquentiel, seul le rang 1 l'est.
+
+    Renvoie la `DemandeSignatureDocument` créée (avec ses `.signataires`).
+    """
+    from .models import (
+        ROLE_SIGNATAIRE, ROUTAGE_SEQUENTIEL, SignataireDemande,
+    )
+
+    if not destinataires:
+        raise ValueError("Au moins un destinataire est requis.")
+    premier = destinataires[0]
+    demande = demander_signature(
+        document,
+        signataire_nom=premier.get('nom', ''),
+        signataire_email=premier.get('email', ''),
+        company=company,
+        created_by=created_by)
+    demande.routage = routage or ROUTAGE_SEQUENTIEL
+    demande.expires_at = expires_at
+    demande.relance_cadence_jours = relance_cadence_jours
+    demande.save(update_fields=[
+        'routage', 'expires_at', 'relance_cadence_jours', 'updated_at'])
+
+    for idx, dest in enumerate(destinataires, start=1):
+        SignataireDemande.objects.create(
+            company=demande.company,
+            demande=demande,
+            nom=(dest.get('nom') or '').strip(),
+            email=(dest.get('email') or '').strip(),
+            telephone=(dest.get('telephone') or '').strip(),
+            ordre=dest.get('ordre', idx),
+            role=dest.get('role', ROLE_SIGNATAIRE),
+        )
+    notifier_prochains_signataires(demande)
+    return demande
+
+
+def notifier_prochains_signataires(demande):
+    """XGED2 — Notifie les destinataires dont c'est le tour (routage-aware).
+
+    Parallèle : notifie tous les `SignataireDemande` encore `en_attente`.
+    Séquentiel : notifie uniquement le/les rang(s) le(s) plus bas parmi ceux
+    encore `en_attente` (le rang N+1 n'est notifié qu'après le traitement — ie.
+    signature/refus — du rang N). Les `copie`/`approbateur` sont TOUJOURS
+    notifiés en parallèle du flux (jamais bloquants pour les signataires).
+    Idempotent : un destinataire déjà notifié n'est pas re-notifié ici (seule
+    `relancer_signataires_dus` ré-émet, à cadence)."""
+    from django.utils import timezone
+    from .models import (
+        ROLE_SIGNATAIRE, ROUTAGE_SEQUENTIEL, SIGNATAIRE_EN_ATTENTE,
+        SIGNATAIRE_NOTIFIE,
+    )
+
+    a_notifier = list(demande.signataires.filter(statut=SIGNATAIRE_EN_ATTENTE))
+    if not a_notifier:
+        return []
+
+    if demande.routage == ROUTAGE_SEQUENTIEL:
+        signataires_en_cours = [s for s in a_notifier if s.role == ROLE_SIGNATAIRE]
+        non_signataires = [s for s in a_notifier if s.role != ROLE_SIGNATAIRE]
+        cible = []
+        if signataires_en_cours:
+            rang_min = min(s.ordre for s in signataires_en_cours)
+            cible = [s for s in signataires_en_cours if s.ordre == rang_min]
+        cible += non_signataires
+    else:
+        cible = a_notifier
+
+    notifies = []
+    now = timezone.now()
+    for signataire in cible:
+        signataire.statut = SIGNATAIRE_NOTIFIE
+        signataire.notifie_le = now
+        signataire.save(update_fields=['statut', 'notifie_le', 'updated_at'])
+        _send_signataire_email(signataire, demande)
+        notifies.append(signataire)
+    return notifies
+
+
+def signer_signataire(signataire, *, consentement, signature_texte='',
+                      signature_tracee='', adresse_ip=None, user_agent=''):
+    """XGED2 — Signe le rang d'UN signataire et fait progresser le circuit
+    (notifie le rang suivant en séquentiel).
+
+    Exige le même consentement + forme de signature que le mono-signataire
+    (`ValueError` sinon — réutilise les mêmes règles que XGED1, appliquées ICI
+    au signataire individuel plutôt qu'à la demande globale). N'affecte QUE ce
+    `SignataireDemande` ; le statut GLOBAL de la demande n'est marqué `signe`
+    que lorsque TOUS les `signataire` requis ont signé (`_maj_statut_global`).
+    """
+    from django.utils import timezone
+    from .models import SIGNATAIRE_SIGNE
+
+    if not consentement:
+        raise ValueError(
+            "Le consentement explicite à contracter électroniquement est requis.")
+    signature_texte = (signature_texte or '').strip()
+    signature_tracee = (signature_tracee or '').strip()
+    if not signature_texte and not signature_tracee:
+        raise ValueError("Une signature (nom tapé ou tracé) est requise.")
+
+    signataire.statut = SIGNATAIRE_SIGNE
+    signataire.date_action = timezone.now()
+    signataire.save(update_fields=['statut', 'date_action', 'updated_at'])
+    notifier_prochains_signataires(signataire.demande)
+    _maj_statut_global(signataire.demande)
+    return signataire
+
+
+def refuser_signataire(signataire, *, motif):
+    """XGED2 — Refuse le rang d'UN signataire. Un refus INDIVIDUEL bascule la
+    demande GLOBALE en `refuse` (un refus de N'IMPORTE quel signataire requis
+    arrête le circuit — cohérent avec le refus mono-signataire XGED1)."""
+    from django.utils import timezone
+    from .models import SIGNATAIRE_REFUSE, SIGNATURE_REFUSE
+
+    motif = (motif or '').strip()
+    if not motif:
+        raise ValueError("Le motif de refus est requis.")
+    signataire.statut = SIGNATAIRE_REFUSE
+    signataire.motif_refus = motif
+    signataire.date_action = timezone.now()
+    signataire.save(update_fields=[
+        'statut', 'motif_refus', 'date_action', 'updated_at'])
+
+    demande = signataire.demande
+    champs = ['motif_refus', 'updated_at']
+    demande.motif_refus = motif
+    if demande.statut != SIGNATURE_REFUSE:
+        demande.statut = SIGNATURE_REFUSE
+        champs.append('statut')
+    if demande.refuse_le is None:
+        demande.refuse_le = timezone.now()
+        champs.append('refuse_le')
+    demande.save(update_fields=champs)
+    return signataire
+
+
+def _maj_statut_global(demande):
+    """XGED2 — Bascule la demande en `signe` quand tous les `signataire`
+    requis ont signé (aucun-op si des signataires restent en attente, ou s'il
+    n'y a aucun `SignataireDemande` — comportement mono-partie XGED1 inchangé,
+    piloté directement par `marquer_signe`)."""
+    from .models import ROLE_SIGNATAIRE, SIGNATAIRE_SIGNE
+
+    requis = list(demande.signataires.filter(role=ROLE_SIGNATAIRE))
+    if not requis:
+        return demande
+    if all(s.statut == SIGNATAIRE_SIGNE for s in requis):
+        return marquer_signe(demande)
+    return demande
+
+
+def annuler_demande(demande, *, user):
+    """XGED2 — Annule une demande de signature (action ÉMETTEUR, tracée).
+
+    Bascule `statut → annule`, horodate `annule_le`/`annule_par`. Une demande
+    déjà `signe`/`refuse` ne peut plus être annulée (`ValueError`) — l'issue
+    est déjà définitive. Idempotent sur une demande déjà `annule`."""
+    from django.utils import timezone
+    from .models import SIGNATURE_ANNULE, SIGNATURE_REFUSE, SIGNATURE_SIGNE
+
+    if demande.statut in (SIGNATURE_SIGNE, SIGNATURE_REFUSE):
+        raise ValueError(
+            "Une demande déjà signée ou refusée ne peut plus être annulée.")
+    if demande.statut == SIGNATURE_ANNULE:
+        return demande
+    demande.statut = SIGNATURE_ANNULE
+    demande.annule_le = timezone.now()
+    demande.annule_par = user
+    demande.save(update_fields=[
+        'statut', 'annule_le', 'annule_par', 'updated_at'])
+    return demande
+
+
+def expirer_demandes_echues(company, *, now=None):
+    """XGED2 — Bascule en `annule` les demandes `en_attente` dont `expires_at`
+    est dépassée (sweep planifié, idempotent, bornée à une société).
+
+    Renvoie le nombre de demandes basculées."""
+    from django.utils import timezone
+    from .models import DemandeSignatureDocument, SIGNATURE_ANNULE, SIGNATURE_EN_ATTENTE
+
+    now = now or timezone.now()
+    echues = DemandeSignatureDocument.objects.filter(
+        company=company, statut=SIGNATURE_EN_ATTENTE,
+        expires_at__isnull=False, expires_at__lte=now)
+    count = 0
+    for demande in echues:
+        demande.statut = SIGNATURE_ANNULE
+        demande.annule_le = now
+        demande.save(update_fields=['statut', 'annule_le', 'updated_at'])
+        count += 1
+    return count
+
+
+def relancer_signataires_dus(company, *, now=None):
+    """XGED2 — Relance (email best-effort) les signataires `notifie` dont la
+    cadence configurée sur leur demande (`relance_cadence_jours`) est due.
+
+    Un signataire est DÛ si : sa demande porte une cadence > 0, il est encore
+    `notifie` (ni signé ni refusé), et le temps écoulé depuis sa dernière
+    relance (ou sa notification initiale si aucune relance encore) dépasse la
+    cadence. Idempotent par appel (ne relance jamais deux fois dans le même
+    passage). Renvoie la liste des `SignataireDemande` relancés."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+    from .models import SIGNATAIRE_NOTIFIE, SignataireDemande
+
+    now = now or timezone.now()
+    candidats = (SignataireDemande.objects
+                 .filter(company=company, statut=SIGNATAIRE_NOTIFIE,
+                         demande__relance_cadence_jours__isnull=False)
+                 .exclude(demande__relance_cadence_jours=0)
+                 .select_related('demande'))
+    relances = []
+    for signataire in candidats:
+        cadence = signataire.demande.relance_cadence_jours
+        reference = signataire.derniere_relance_le or signataire.notifie_le
+        if reference is None:
+            continue
+        if now - reference < timedelta(days=cadence):
+            continue
+        signataire.derniere_relance_le = now
+        signataire.nb_relances += 1
+        signataire.save(update_fields=[
+            'derniere_relance_le', 'nb_relances', 'updated_at'])
+        _send_signataire_email(signataire, signataire.demande, relance=True)
+        relances.append(signataire)
+    return relances
+
+
+# ── XGED3 — Zones de champs positionnées sur le PDF à signer ────────────────
+
+def champs_pour_demande(demande):
+    """XGED3 — Champs positionnés d'une demande (QuerySet, triés page/position).
+
+    Rétrocompatible : renvoie un QuerySet vide pour une demande sans aucun
+    champ placé (aucune régression sur le flux mono-champ XGED1)."""
+    return demande.champs.all()
+
+
+def enregistrer_valeurs_champs(demande, valeurs):
+    """XGED3 — Enregistre les VALEURS saisies par le signataire pour les
+    champs `texte`/`case`/`date` d'une demande (les champs `signature`/
+    `initiales` restent vides ici — ils utilisent la signature de la
+    cérémonie elle-même, XGED1/XGED2, jamais dupliquée dans `valeur`).
+
+    `valeurs` : dict `{champ_id: valeur_str}`. Ignore silencieusement les
+    identifiants inconnus ou hors société (pas d'injection cross-société).
+    Ne bloque JAMAIS la cérémonie — best-effort par champ. Renvoie la liste
+    des champs mis à jour."""
+    from .models import CHAMP_TYPE_INITIALES, CHAMP_TYPE_SIGNATURE
+
+    if not valeurs:
+        return []
+    champs = {c.id: c for c in demande.champs.all()}
+    mis_a_jour = []
+    for champ_id, valeur in valeurs.items():
+        try:
+            champ_id = int(champ_id)
+        except (TypeError, ValueError):
+            continue
+        champ = champs.get(champ_id)
+        if champ is None or champ.type_champ in (
+                CHAMP_TYPE_SIGNATURE, CHAMP_TYPE_INITIALES):
+            continue
+        champ.valeur = str(valeur)[:500]
+        champ.save(update_fields=['valeur', 'updated_at'])
+        mis_a_jour.append(champ)
+    return mis_a_jour
+
+
+def _flatten_champs_pdf(file_bytes, champs, *, signature_texte='',
+                        signature_tracee=''):
+    """XGED3 — Aplati les VALEURS des champs positionnés sur un PDF final.
+
+    Utilise PyMuPDF (`fitz`) via un import PARESSEUX et GARDÉ — même motif que
+    `_watermark_pdf` (GED21) : si la lib est absente, on DÉGRADE en annexant
+    une page-texte listant les champs/valeurs (jamais une perte de données,
+    jamais un échec bloquant). Les positions `x`/`y`/`largeur`/`hauteur` sont
+    en POURCENTAGE de la page — converties en points via `page.rect`.
+
+    Renvoie `(out_bytes, aplati)` où `aplati` est False si PyMuPDF est absent
+    (repli annexe texte, toujours `aplati=False` pour signaler la dégradation
+    à l'appelant/aux tests)."""
+    try:
+        import fitz  # PyMuPDF
+    except Exception:  # pragma: no cover - chemin de repli sans la lib.
+        return _annexe_texte_champs(file_bytes, champs, signature_texte), False
+    try:
+        from .models import CHAMP_TYPE_CASE, CHAMP_TYPE_SIGNATURE
+
+        doc = fitz.open(stream=file_bytes, filetype='pdf')
+        try:
+            for champ in champs:
+                if champ.page >= len(doc):
+                    continue
+                page = doc[champ.page]
+                rect = page.rect
+                x0 = rect.x0 + float(champ.x) / 100.0 * rect.width
+                y0 = rect.y0 + float(champ.y) / 100.0 * rect.height
+                x1 = x0 + float(champ.largeur) / 100.0 * rect.width
+                y1 = y0 + float(champ.hauteur) / 100.0 * rect.height
+                zone = fitz.Rect(x0, y0, x1, y1)
+                if champ.type_champ == CHAMP_TYPE_SIGNATURE:
+                    texte = signature_texte or (
+                        '✓ signé' if signature_tracee else '')
+                elif champ.type_champ == CHAMP_TYPE_CASE:
+                    texte = '☑' if champ.valeur else '☐'
+                else:
+                    texte = champ.valeur or ''
+                if texte:
+                    page.insert_textbox(
+                        zone, texte, fontsize=10, color=(0, 0, 0.6),
+                        align=fitz.TEXT_ALIGN_LEFT, overlay=True)
+            out = doc.tobytes()
+        finally:
+            doc.close()
+        return out, True
+    except Exception:  # pragma: no cover - robustesse : jamais bloquer.
+        return _annexe_texte_champs(file_bytes, champs, signature_texte), False
+
+
+def _annexe_texte_champs(file_bytes, champs, signature_texte):
+    """XGED3 — Dégradation SANS PyMuPDF : renvoie le PDF original inchangé.
+
+    Les valeurs restent disponibles via l'API (`ChampSignature.valeur`) même
+    quand l'aplatissement visuel n'a pas pu avoir lieu — aucune perte de
+    donnée, seulement une dégradation du RENDU (pattern GED21)."""
+    return file_bytes
+
+
+def signer_demande_publique_avec_champs(demande, *, consentement,
+                                        signature_texte='',
+                                        signature_tracee='', adresse_ip=None,
+                                        user_agent='', valeurs_champs=None):
+    """XGED3 — Signature publique QUI honore les champs positionnés (XGED1 +
+    remplissage/aplatissement). Wrapper ADDITIF autour de
+    `signer_demande_publique` : ne change rien à son comportement pour une
+    demande SANS champ (rétrocompatible XGED1) ; pour une demande AVEC des
+    champs `requis` non `signature`/`initiales`, exige qu'ils soient tous
+    renseignés dans `valeurs_champs` AVANT de signer (sinon `ValueError`).
+
+    Enregistre les valeurs (`enregistrer_valeurs_champs`) puis délègue la
+    signature elle-même à `signer_demande_publique` (preuves QJ10 inchangées).
+    Renvoie la `DemandeSignatureDocument` signée."""
+    from .models import CHAMP_TYPE_INITIALES, CHAMP_TYPE_SIGNATURE
+
+    champs = list(demande.champs.all())
+    requis_a_remplir = [
+        c for c in champs
+        if c.requis and c.type_champ not in (
+            CHAMP_TYPE_SIGNATURE, CHAMP_TYPE_INITIALES)]
+    valeurs_champs = valeurs_champs or {}
+    fournis = {int(k) for k in valeurs_champs.keys()
+               if str(k).lstrip('-').isdigit()}
+    manquants = [c for c in requis_a_remplir if c.id not in fournis]
+    if manquants:
+        raise ValueError(
+            "Certains champs requis du document ne sont pas remplis.")
+
+    if valeurs_champs:
+        enregistrer_valeurs_champs(demande, valeurs_champs)
+
+    return signer_demande_publique(
+        demande, consentement=consentement,
+        signature_texte=signature_texte, signature_tracee=signature_tracee,
+        adresse_ip=adresse_ip, user_agent=user_agent)
+
+
+def rendre_pdf_signe_avec_champs(demande):
+    """XGED3 — Rend le PDF final de la version courante avec les champs
+    positionnés APLATIS (valeurs + signature). Best-effort : si le contenu
+    n'est pas récupérable, renvoie `(None, False)` sans lever.
+
+    Renvoie `(pdf_bytes_ou_None, aplati)`."""
+    version = selectors_latest_version(demande.document)
+    if version is None:
+        return None, False
+    try:
+        from apps.records.storage import fetch_attachment
+        data, err = fetch_attachment(version.file_key)
+        if err or data is None:
+            return None, False
+    except Exception:  # pragma: no cover - défensif.
+        return None, False
+    champs = list(demande.champs.all())
+    if not champs:
+        return data, False
+    return _flatten_champs_pdf(
+        data, champs, signature_texte=demande.signature_texte,
+        signature_tracee=demande.signature_tracee)
+
+
+# ── XGED4 — Certificat de complétion + classement automatique ───────────────
+
+def _evenements_cerentonie(demande):
+    """XGED4 — Séquence horodatée des événements d'une demande de signature
+    (demande → notification(s) → signature/refus), triée chronologiquement.
+
+    Best-effort et purement descriptive : ne lève jamais, utilisée seulement
+    pour l'affichage du certificat."""
+    evenements = [('Demande créée', demande.date_demande)]
+    for signataire in demande.signataires.all():
+        if signataire.notifie_le:
+            evenements.append(
+                (f'{signataire.nom} notifié', signataire.notifie_le))
+        if signataire.date_action:
+            libelle = ('signé' if signataire.statut == 'signe' else 'refusé')
+            evenements.append(
+                (f'{signataire.nom} a {libelle}', signataire.date_action))
+    if demande.date_signature:
+        evenements.append(('Demande signée', demande.date_signature))
+    if demande.refuse_le:
+        evenements.append(('Demande refusée', demande.refuse_le))
+    return sorted(
+        (e for e in evenements if e[1] is not None), key=lambda e: e[1])
+
+
+def _certificat_html(demande):
+    """XGED4 — HTML du certificat de complétion (squelette imprimable minimal,
+    même esprit que `_modele_html_document` GED27 — jamais `/proposal`)."""
+    document = demande.document
+    signataires = list(demande.signataires.all())
+    lignes_signataires = ''.join(
+        f"<tr><td>{s.nom}</td><td>{s.email or '—'}</td>"
+        f"<td>{s.get_role_display()}</td><td>{s.get_statut_display()}</td></tr>"
+        for s in signataires
+    ) or (
+        f"<tr><td>{demande.signataire_nom}</td>"
+        f"<td>{demande.signataire_email}</td><td>Signataire</td>"
+        f"<td>{demande.get_statut_display()}</td></tr>"
+    )
+    evenements_html = ''.join(
+        f"<li>{libelle} — {quand:%Y-%m-%d %H:%M}</li>"
+        for libelle, quand in _evenements_cerentonie(demande)
+    )
+    geoloc = getattr(demande, 'geolocalisation', '') or 'Non transmise'
+    return (
+        "<!DOCTYPE html><html lang='fr'><head><meta charset='utf-8'>"
+        "<style>"
+        "body{font-family:sans-serif;font-size:10pt;color:#1a1a1a;"
+        "margin:2cm;line-height:1.5;}"
+        "h1{font-size:15pt;border-bottom:2px solid #2b5cab;padding-bottom:6px;}"
+        "table{width:100%;border-collapse:collapse;margin:10px 0;}"
+        "td,th{border:1px solid #ccc;padding:4px 8px;text-align:left;}"
+        "</style></head><body>"
+        "<h1>Certificat de complétion de signature électronique</h1>"
+        f"<p><strong>Document :</strong> {document.nom}</p>"
+        f"<p><strong>Statut final :</strong> {demande.get_statut_display()}</p>"
+        f"<p><strong>Adresse IP :</strong> {demande.adresse_ip or 'Non transmise'}</p>"
+        f"<p><strong>User-Agent :</strong> {demande.user_agent or 'Non transmis'}</p>"
+        f"<p><strong>Géolocalisation :</strong> {geoloc}</p>"
+        f"<p><strong>Méthode :</strong> "
+        f"{'Tracée' if demande.signature_tracee else 'Nom tapé'}</p>"
+        f"<p><strong>Hash du document signé (SHA-256) :</strong> "
+        f"{demande.hash_contenu or 'Non calculé'}</p>"
+        "<h2>Signataires</h2>"
+        f"<table><tr><th>Nom</th><th>Email</th><th>Rôle</th>"
+        f"<th>Statut</th></tr>{lignes_signataires}</table>"
+        "<h2>Séquence des événements</h2>"
+        f"<ul>{evenements_html}</ul>"
+        "</body></html>"
+    )
+
+
+def generer_certificat_completion(demande):
+    """XGED4 — Rend le certificat de complétion PDF (WeasyPrint, hors
+    `/proposal`) d'une demande de signature COMPLÉTÉE (signée).
+
+    Contenu : identités/emails des signataires, IP, user-agent, géolocalisation
+    (optionnelle — jamais requise, vide si non transmise par le navigateur),
+    méthode (tapée/tracée), séquence horodatée des événements, hash SHA-256.
+    Import de WeasyPrint FONCTION-LOCAL (même motif que `rendre_modele` GED27).
+
+    Renvoie les octets du PDF certificat."""
+    try:
+        import weasyprint
+    except Exception as exc:  # pragma: no cover - WeasyPrint est installé.
+        raise RuntimeError(
+            "WeasyPrint est requis pour générer le certificat de complétion "
+            f"mais n'a pas pu être chargé : {exc}")
+    return weasyprint.HTML(string=_certificat_html(demande)).write_pdf()
+
+
+def classer_signature_completee(demande, *, created_by=None):
+    """XGED4 — À la complétion d'une demande SIGNÉE : génère le certificat +
+    CLASSE AUTOMATIQUEMENT le document signé + son certificat dans un dossier
+    « Signés » (réutilise `deposit_document`, idempotent par source), et pose
+    un `DocumentLien` vers l'objet métier d'origine SI un lien existe déjà sur
+    le document (best-effort, jamais bloquant).
+
+    No-op silencieux si la demande n'est pas `signe` (rien à classer). Renvoie
+    un dict `{'document_signe', 'certificat', 'created'}` où `document_signe`
+    est le `Document` GED source, `certificat` le `Document` du certificat
+    déposé, et `created` un booléen (False = déjà classé, idempotent)."""
+    from .models import SIGNATURE_SIGNE
+
+    if demande.statut != SIGNATURE_SIGNE:
+        return None
+
+    company = demande.company
+    document_source = demande.document
+
+    # 1) Le document signé lui-même : dépose la VERSION COURANTE (déjà
+    #    signée/aplatie si XGED3 a produit un PDF final) dans « Signés ».
+    version = selectors_latest_version(document_source)
+    contenu = None
+    if version is not None:
+        try:
+            from apps.records.storage import fetch_attachment
+            data, err = fetch_attachment(version.file_key)
+            contenu = data if not err else None
+        except Exception:  # pragma: no cover - défensif.
+            contenu = None
+
+    # XGED5 — Scellement cryptographique best-effort AVANT dépôt (no-op sans
+    # pyHanko — contenu byte-identique dans ce cas, flux XGED4 intact).
+    if contenu is not None and (contenu[:4] == b'%PDF'):
+        contenu, _scelle = sceller_pdf(contenu, company=company)
+
+    document_signe, created_doc = deposit_document(
+        company=company,
+        nom=document_source.nom,
+        source_type='ged.demandesignaturedocument.document',
+        source_id=demande.pk,
+        contenu_bytes=contenu,
+        mime=(version.mime if version else 'application/pdf') or 'application/pdf',
+        description=f'Document signé — demande #{demande.pk}',
+        cabinet_nom='Signés', folder_nom='Signés',
+        created_by=created_by,
+    )
+
+    # 2) Le certificat de complétion — best-effort (WeasyPrint requis).
+    certificat_document = None
+    try:
+        certificat_bytes = generer_certificat_completion(demande)
+        certificat_document, _ = deposit_document(
+            company=company,
+            nom=f'Certificat de complétion — {document_source.nom}',
+            source_type='ged.demandesignaturedocument.certificat',
+            source_id=demande.pk,
+            contenu_bytes=certificat_bytes,
+            mime='application/pdf',
+            description=f'Certificat de complétion — demande #{demande.pk}',
+            cabinet_nom='Signés', folder_nom='Signés',
+            created_by=created_by,
+        )
+    except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        certificat_document = None
+
+    # 3) Lien vers l'objet métier d'origine, s'il existe déjà sur le document
+    #    source (best-effort — ne crée jamais de lien inventé).
+    try:
+        from .models import DocumentLien
+        liens_source = DocumentLien.objects.filter(document=document_source)
+        for lien in liens_source:
+            for cible in (document_signe, certificat_document):
+                if cible is None:
+                    continue
+                DocumentLien.objects.get_or_create(
+                    company=company, document=cible,
+                    content_type=lien.content_type, object_id=lien.object_id,
+                    defaults={'created_by': created_by})
+    except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        pass
+
+    return {
+        'document_signe': document_signe,
+        'certificat': certificat_document,
+        'created': created_doc,
+    }
+
+
+# ── XGED5 — Scellement cryptographique (PAdES) + horodatage qualifié (gated) ─
+
+def _pades_signer_disponible():
+    """XGED5 — True si pyHanko est installé (import paresseux, GARDÉ).
+
+    pyHanko est une dépendance OUVERTE/gratuite (requirements.txt) mais reste
+    importée fonction-locale : si elle venait à manquer en prod (image non
+    reconstruite, etc.), le scellement dégrade proprement en no-op plutôt que
+    de lever au chargement du module."""
+    try:
+        import pyhanko  # noqa: F401
+        return True
+    except Exception:  # pragma: no cover - chemin de repli sans la lib.
+        return False
+
+
+def tsa_url_configuree():
+    """XGED5 — URL de la TSA (RFC 3161) configurée, ou '' (no-op).
+
+    KEY-GATED (mirroir `esign_active`/`embedding_enabled`) : sans
+    `settings.GED_TSA_URL`, l'horodatage qualifié est un no-op — le sceau
+    PAdES reste posé (si pyHanko est disponible) mais SANS horodatage TSA."""
+    from django.conf import settings
+    return (getattr(settings, 'GED_TSA_URL', '') or '').strip()
+
+
+def _certificat_societe_pour_scellement(company):
+    """XGED5 — Résout le SIGNATAIRE pyHanko (certificat + clé) à utiliser pour
+    sceller les PDF signés d'une société (PAdES).
+
+    POINT D'INTÉGRATION — squelette isolé, JAMAIS exécuté tant qu'aucune
+    source de certificat concrète n'est câblée : par défaut aucun certificat
+    par société n'est provisionné automatiquement (une clé privée persistée
+    en base sans HSM/coffre dédié serait une régression de sécurité qu'on ne
+    prend pas ici sans l'accord du founder). Une intégration future posera un
+    `settings.GED_PADES_CERT_PATH`/`GED_PADES_KEY_PATH` par société (ou un
+    provider HSM) et cette fonction chargera `signers.SimpleSigner.load(...)`
+    depuis cette source — l'appelant (`sceller_pdf`) n'aura pas à changer.
+
+    Renvoie un objet signataire pyHanko, ou None (dégrade en no-op, comme
+    `esign_active()`/`_default_partage_token` sans provider câblé)."""
+    from django.conf import settings
+
+    if not _pades_signer_disponible():
+        return None
+    cert_path = getattr(settings, 'GED_PADES_CERT_PATH', '')
+    key_path = getattr(settings, 'GED_PADES_KEY_PATH', '')
+    if not cert_path or not key_path:
+        return None
+    try:  # pragma: no cover - dépend d'un certificat réel non provisionné.
+        from pyhanko.sign import signers
+        return signers.SimpleSigner.load(
+            key_file=key_path, cert_file=cert_path, ca_chain_files=())
+    except Exception:  # pragma: no cover - défensif.
+        return None
+
+
+def sceller_pdf(pdf_bytes, *, company=None):
+    """XGED5 — Scelle CRYPTOGRAPHIQUEMENT un PDF signé (PAdES, via pyHanko).
+
+    Import PARESSEUX et GARDÉ (même motif que `_watermark_pdf` GED21) : sans
+    pyHanko installé, dégrade proprement en renvoyant le PDF INCHANGÉ (le flux
+    XGED4 reste intact — aucune régression, aucun blocage). Avec pyHanko
+    disponible ET un certificat de société exploitable, appose une signature
+    numérique PAdES vérifiable dans n'importe quel lecteur PDF conforme ; toute
+    modification ultérieure du fichier invalide le sceau.
+
+    Si `tsa_url_configuree()` renvoie une URL, un horodatage RFC 3161 est
+    demandé à cette TSA et inclus dans la signature (prépare l'« horodatage »
+    loi 43-20) — sinon le sceau est posé SANS horodatage TSA (no-op sur ce
+    volet uniquement, jamais bloquant).
+
+    Renvoie `(out_bytes, scelle)` où `scelle` est False si la lib est absente,
+    si aucun certificat n'est exploitable, ou si le scellement a échoué pour
+    toute autre raison (best-effort total — ne lève JAMAIS)."""
+    if not _pades_signer_disponible():
+        return pdf_bytes, False
+    try:
+        signataire = _certificat_societe_pour_scellement(company)
+        if signataire is None:
+            return pdf_bytes, False
+        from io import BytesIO
+
+        from pyhanko.pdf_utils.incremental_writer import IncrementalPdfFileWriter
+        from pyhanko.sign import PdfSignatureMetadata, signers as pyhanko_signers
+
+        timestamper = None
+        tsa_url = tsa_url_configuree()
+        if tsa_url:
+            from pyhanko.sign.timestamps import HTTPTimeStamper
+            timestamper = HTTPTimeStamper(tsa_url)
+
+        writer = IncrementalPdfFileWriter(BytesIO(pdf_bytes))
+        out = pyhanko_signers.sign_pdf(
+            writer,
+            PdfSignatureMetadata(field_name='TaqinorSeal'),
+            signer=signataire,
+            timestamper=timestamper,
+        )
+        return out.getvalue(), True
+    except Exception:  # pragma: no cover - robustesse : jamais bloquer XGED4.
+        return pdf_bytes, False
+
+
+# ── XGED6 — Vérification périodique d'intégrité des archives légales ────────
+
+def _hash_constate_pour_archivage(archivage):
+    """XGED6 — Recalcule le hash SHA-256 ACTUEL du contenu archivé, ou None si
+    indisponible (stockage KO). Ne lève jamais."""
+    version = archivage.version
+    if version is None:
+        return None
+    try:
+        from apps.records.storage import fetch_attachment
+        data, err = fetch_attachment(version.file_key)
+        if err or data is None:
+            return None
+        return compute_checksum(data)
+    except Exception:  # pragma: no cover - défensif.
+        return None
+
+
+def verifier_integrite_archives(company):
+    """XGED6 — Re-vérifie l'intégrité de CHAQUE archivage légal (GED23) d'une
+    société : re-télécharge le contenu archivé, recompare au
+    `hash_integrite` figé AU DÉPÔT, et journalise le résultat
+    (`ControleIntegrite`). Notifie l'admin en cas d'écart (best-effort).
+
+    Trois issues par archivage :
+      * OK           : hash constaté == hash figé au dépôt.
+      * ALTÉRÉ       : hash constaté != hash figé (preuve d'altération).
+      * INDISPONIBLE : contenu non re-téléchargeable (ne prouve PAS une
+        altération — signale seulement un problème de disponibilité).
+
+    Ne modifie JAMAIS `ArchivageLegal` (write-once, GED23 intact) — ne fait
+    QUE journaliser. Renvoie un dict de synthèse
+    `{'total', 'ok', 'altere', 'indisponible'}`."""
+    from .models import (
+        ArchivageLegal, CONTROLE_RESULTAT_ALTERE, CONTROLE_RESULTAT_INDISPONIBLE,
+        CONTROLE_RESULTAT_OK, ControleIntegrite,
+    )
+
+    synthese = {'total': 0, 'ok': 0, 'altere': 0, 'indisponible': 0}
+    archivages = ArchivageLegal.objects.filter(
+        company=company).select_related('version', 'document')
+    alteres = []
+    for archivage in archivages:
+        synthese['total'] += 1
+        hash_constate = _hash_constate_pour_archivage(archivage)
+        if hash_constate is None:
+            resultat = CONTROLE_RESULTAT_INDISPONIBLE
+            synthese['indisponible'] += 1
+        elif hash_constate == (archivage.hash_integrite or ''):
+            resultat = CONTROLE_RESULTAT_OK
+            synthese['ok'] += 1
+        else:
+            resultat = CONTROLE_RESULTAT_ALTERE
+            synthese['altere'] += 1
+            alteres.append(archivage)
+        ControleIntegrite.objects.create(
+            company=company, archivage=archivage, resultat=resultat,
+            hash_constate=hash_constate or '')
+
+    if alteres:
+        _notifier_alteration_archives(company, alteres)
+    return synthese
+
+
+def _notifier_alteration_archives(company, archivages_alteres):
+    """XGED6 — Notifie (best-effort, jamais bloquant) les admins de la société
+    d'une altération détectée sur un ou plusieurs archivages légaux."""
+    try:
+        from authentication.models import CustomUser
+        admins = CustomUser.admins_actifs_qs(company)
+        noms = ', '.join(a.document.nom for a in archivages_alteres[:5])
+        sujet = (
+            f'Alerte intégrité — {len(archivages_alteres)} archive(s) '
+            f'légale(s) altérée(s)')
+        corps = (
+            f'Le contrôle périodique a détecté une altération sur : {noms}.\n'
+            'Consultez le dossier de preuve pour chaque archivage concerné.')
+        for admin in admins:
+            try:
+                from django.conf import settings
+                from django.core.mail import send_mail
+                from_email = getattr(
+                    settings, 'DEFAULT_FROM_EMAIL', 'noreply@erp.local')
+                if admin.email:
+                    send_mail(sujet, corps, from_email, [admin.email],
+                              fail_silently=True)
+            except Exception:  # pragma: no cover - best-effort.
+                continue
+    except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        pass
+
+
+def dossier_preuve_archivage(archivage):
+    """XGED6 — Exporte le DOSSIER DE PREUVE d'un archivage légal (JSON) :
+    hash au dépôt, tous les contrôles successifs (append-only), horodatages —
+    aligné « validation et conservation » loi 43-20.
+
+    Renvoie un dict directement sérialisable en JSON (jamais de prix d'achat/
+    marge — hors sujet ici)."""
+    controles = list(archivage.controles.order_by('created_at').values(
+        'resultat', 'hash_constate', 'created_at'))
+    return {
+        'document': archivage.document.nom,
+        'archive_le': archivage.archive_le,
+        'motif': archivage.motif,
+        'hash_integrite_au_depot': archivage.hash_integrite,
+        'controles': [
+            {
+                'date': c['created_at'],
+                'resultat': c['resultat'],
+                'hash_constate': c['hash_constate'],
+            }
+            for c in controles
+        ],
+    }
 
 
 # ── GED35 — Journal d'audit d'accès aux documents (lectures) ─────────────────

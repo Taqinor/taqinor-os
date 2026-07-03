@@ -30,20 +30,21 @@ from apps.records.serializers import resolve_target
 
 from . import selectors, services
 from .models import (
-    ArchivageLegal, ArchivageLegalError, Cabinet, Coffre, DemandeApprobation,
-    DemandeSignatureDocument, Document, DocumentLien, DocumentTag,
-    DocumentTagAssignment, DocumentVersion, Folder, JournalAcces, LegalHold,
-    LegalHoldError, ModeleDocument, PartageGed, PolitiqueRetention,
-    QuotaDepasseError, QuotaStockage,
+    ArchivageLegal, ArchivageLegalError, Cabinet, ChampSignature, Coffre,
+    DemandeApprobation, DemandeSignatureDocument, Document, DocumentLien,
+    DocumentTag, DocumentTagAssignment, DocumentVersion, Folder,
+    JournalAcces, LegalHold, LegalHoldError, ModeleDocument, PartageGed,
+    PolitiqueRetention, QuotaDepasseError, QuotaStockage, SignataireDemande,
 )
 from .serializers import (
-    ArchivageLegalSerializer, CabinetSerializer, CoffreSerializer,
-    DemandeApprobationSerializer, DemandeSignatureDocumentSerializer,
-    DocumentLienSerializer, DocumentSerializer,
-    DocumentTagAssignmentSerializer, DocumentTagSerializer,
+    ArchivageLegalSerializer, CabinetSerializer, ChampSignatureSerializer,
+    CoffreSerializer, DemandeApprobationSerializer,
+    DemandeSignatureDocumentSerializer, DocumentLienSerializer,
+    DocumentSerializer, DocumentTagAssignmentSerializer, DocumentTagSerializer,
     DocumentVersionSerializer, FolderSerializer, JournalAccesSerializer,
     LegalHoldSerializer, ModeleDocumentSerializer, PartageGedSerializer,
     PolitiqueRetentionSerializer, QuotaStockageSerializer,
+    SignataireDemandeSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -1634,6 +1635,23 @@ class ArchivageLegalViewSet(TenantMixin,
                 archivage, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=['get'], url_path='dossier-preuve')
+    def dossier_preuve(self, request, pk=None):
+        """XGED6 — Exporte le DOSSIER DE PREUVE JSON d'un archivage légal :
+        hash au dépôt, tous les contrôles d'intégrité successifs, horodatages
+        (aligné « validation et conservation » loi 43-20)."""
+        archivage = self.get_object()  # borné à la société (TenantMixin)
+        return Response(
+            services.dossier_preuve_archivage(archivage),
+            status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='verifier-integrite')
+    def verifier_integrite(self, request):
+        """XGED6 — Déclenche un contrôle d'intégrité IMMÉDIAT (hors sweep
+        planifié) pour la société courante. Écriture : responsable/admin."""
+        synthese = services.verifier_integrite_archives(request.user.company)
+        return Response(synthese, status=status.HTTP_200_OK)
+
 
 class LegalHoldViewSet(TenantMixin,
                        mixins.ListModelMixin,
@@ -1937,6 +1955,118 @@ class DemandeSignatureDocumentViewSet(TenantMixin,
                 demande, context={'request': request}).data,
             status=status.HTTP_200_OK)
 
+    @action(detail=False, methods=['post'], url_path='creer-multi')
+    def creer_multi(self, request):
+        """XGED2 — Crée une demande de signature MULTI-destinataires.
+
+        Body : `{"document": <id>, "destinataires": [{"nom", "email"?,
+        "telephone"?, "role"?, "ordre"?}, …], "routage"?: "sequentiel"|
+        "parallele", "expires_at"?: <iso>, "relance_cadence_jours"?: <int>}`.
+        Le document est borné à la société (404 cross-société).
+        `company`/`created_by` posés côté serveur."""
+        document_id = request.data.get('document')
+        destinataires = request.data.get('destinataires') or []
+        if not document_id:
+            return Response(
+                {'document': 'Le document à signer est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if not destinataires:
+            return Response(
+                {'destinataires': 'Au moins un destinataire est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        document = (Document.objects.filter(company=request.user.company)
+                    .filter(pk=document_id).first())
+        if document is None:
+            return Response(
+                {'document': 'Document inconnu.'},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            demande = services.creer_demande_multi_signataires(
+                document, destinataires=destinataires,
+                company=request.user.company,
+                routage=request.data.get('routage'),
+                expires_at=request.data.get('expires_at'),
+                relance_cadence_jours=request.data.get('relance_cadence_jours'),
+                created_by=request.user)
+        except (PermissionError, ValueError) as exc:
+            code = (status.HTTP_403_FORBIDDEN
+                    if isinstance(exc, PermissionError)
+                    else status.HTTP_400_BAD_REQUEST)
+            return Response({'detail': str(exc)}, status=code)
+        return Response(
+            DemandeSignatureDocumentSerializer(
+                demande, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='annuler')
+    def annuler(self, request, pk=None):
+        """XGED2 — Annule une demande de signature (action ÉMETTEUR, tracée).
+
+        `POST …/demandes-signature/<id>/annuler/`. Une demande déjà `signe`/
+        `refuse` ne peut plus être annulée (400). Écriture : responsable/admin."""
+        demande = self.get_object()  # borné à la société (TenantMixin)
+        try:
+            demande = services.annuler_demande(demande, user=request.user)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            DemandeSignatureDocumentSerializer(
+                demande, context={'request': request}).data,
+            status=status.HTTP_200_OK)
+
+
+class SignataireDemandeViewSet(TenantMixin, mixins.ListModelMixin,
+                               mixins.RetrieveModelMixin,
+                               viewsets.GenericViewSet):
+    """XGED2 — Destinataires d'une demande de signature (LECTURE SEULE via
+    l'API authentifiée). Créés/mutés uniquement via `services` (création
+    groupée, cérémonie publique par jeton, notifications/relances)."""
+    queryset = SignataireDemande.objects.select_related('demande').all()
+    serializer_class = SignataireDemandeSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['ordre', 'id']
+    permission_classes = [IsAnyRole]
+
+    def get_queryset(self):
+        qs = SignataireDemande.objects.filter(
+            company=self.request.user.company).select_related('demande')
+        demande = self.request.query_params.get('demande')
+        if demande:
+            qs = qs.filter(demande_id=demande)
+        return qs
+
+
+class ChampSignatureViewSet(TenantMixin, viewsets.ModelViewSet):
+    """XGED3 — Zones de champs positionnées (placement de modèle de signature).
+
+    `company` posée CÔTÉ SERVEUR (`TenantMixin.perform_create`) — jamais lue
+    du corps. Lecture : tout rôle authentifié. Écriture (placement/édition/
+    suppression) : responsable/admin. La page publique de cérémonie
+    (XGED1/XGED3 `public_signature`) expose ces champs en LECTURE via son
+    propre payload — jamais par cette route authentifiée."""
+    queryset = ChampSignature.objects.select_related('demande', 'modele').all()
+    serializer_class = ChampSignatureSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['page', 'y', 'x', 'id']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = ChampSignature.objects.filter(
+            company=self.request.user.company).select_related(
+                'demande', 'modele')
+        demande = self.request.query_params.get('demande')
+        if demande:
+            qs = qs.filter(demande_id=demande)
+        modele = self.request.query_params.get('modele')
+        if modele:
+            qs = qs.filter(modele_id=modele)
+        return qs
+
 
 class JournalAccesViewSet(TenantMixin, mixins.ListModelMixin,
                           mixins.RetrieveModelMixin, viewsets.GenericViewSet):
@@ -2147,3 +2277,226 @@ def public_partage(request, token):
     resp['Content-Disposition'] = f'{disposition}; filename="{safe_name}"'
     resp['X-Content-Type-Options'] = 'nosniff'
     return _ged_noindex(resp)
+
+
+class PublicSignatureRateThrottle(SimpleRateThrottle):
+    """XGED1 — Limite de débit de la cérémonie publique par IP + jeton.
+
+    Même motif que `PublicPartageRateThrottle` (GED20) : décourage le balayage
+    de jetons sans bloquer un signataire légitime."""
+    scope = 'public_ged_signature'
+    rate = '30/minute'
+
+    def get_rate(self):
+        return self.rate
+
+    def get_cache_key(self, request, view):
+        token = (getattr(view, 'kwargs', None) or {}).get('token', '')
+        ident = self.get_ident(request)
+        return self.cache_format % {
+            'scope': self.scope,
+            'ident': f'{ident}:{token}',
+        }
+
+
+def _signature_publique_payload(demande):
+    """XGED1/XGED3 — Représentation JSON publique d'une demande (jamais de
+    données d'une autre société ; aucun prix d'achat/marge — cette demande ne
+    porte aucune donnée commerciale de toute façon). Inclut les champs
+    positionnés (XGED3) — liste vide pour une demande sans champ (mono-champ
+    rétrocompatible XGED1)."""
+    document = demande.document
+    return {
+        'document_nom': document.nom,
+        'document_id': document.id,
+        'signataire_nom': demande.signataire_nom,
+        'statut': demande.statut,
+        'expires_at': demande.expires_at,
+        'champs': ChampSignatureSerializer(demande.champs.all(), many=True).data,
+    }
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicSignatureRateThrottle])
+def public_signature(request, token):
+    """XGED1 — Cérémonie de signature PUBLIQUE (sans login), loi 53-05.
+
+    `GET /api/django/ged/signature/<token>/` : consulte la demande + le
+    document à signer (réutilise le stream d'aperçu GED14 via `versions/<id>/
+    apercu/` côté client, ce endpoint ne renvoie que les métadonnées).
+    `POST /api/django/ged/signature/<token>/` avec
+    `{"action": "signer", "consentement": true,
+    "signature_texte"?: str, "signature_tracee"?: str}` ou
+    `{"action": "refuser", "motif": str}`.
+
+    Codes :
+      - 404 : jeton inconnu (jamais de fuite).
+      - 410 : demande expirée/annulée OU déjà traitée (signée/refusée) —
+        idempotence visible, pas de re-signature.
+      - 400 : consentement/signature manquants (signer) ou motif vide (refuser).
+      - 200 : succès (GET consultation, ou POST signer/refuser).
+
+    Ne touche NI `contrats.SignatureContrat` NI `/proposal` (rule #4)."""
+    statut, demande = services.resolve_signature_publique(token)
+
+    if statut == services.SIGNATURE_PUBLIQUE_INTROUVABLE:
+        return _ged_noindex(Response(
+            {'detail': "Ce lien de signature est introuvable."},
+            status=status.HTTP_404_NOT_FOUND))
+    if statut == services.SIGNATURE_PUBLIQUE_EXPIREE:
+        return _ged_noindex(Response(
+            {'detail': "Ce lien de signature a expiré ou a été annulé."},
+            status=status.HTTP_410_GONE))
+    if statut == services.SIGNATURE_PUBLIQUE_DEJA_TRAITEE:
+        return _ged_noindex(Response(
+            {'detail': "Cette demande a déjà été traitée (signée ou refusée).",
+             'statut': demande.statut},
+            status=status.HTTP_410_GONE))
+
+    if request.method == 'GET':
+        return _ged_noindex(
+            Response(_signature_publique_payload(demande),
+                     status=status.HTTP_200_OK))
+
+    # POST — signer ou refuser.
+    action_demandee = (request.data.get('action') or '').strip().lower()
+    ip = services._adresse_ip_requete(request)
+    ua = (request.META.get('HTTP_USER_AGENT') or '')[:512]
+
+    if action_demandee == 'refuser':
+        try:
+            demande = services.refuser_demande_publique(
+                demande, motif=request.data.get('motif'),
+                adresse_ip=ip, user_agent=ua)
+        except ValueError as exc:
+            return _ged_noindex(Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST))
+        return _ged_noindex(
+            Response(_signature_publique_payload(demande),
+                     status=status.HTTP_200_OK))
+
+    if action_demandee == 'signer':
+        try:
+            # XGED3 — la variante champs-aware exige les champs `requis`
+            # remplis puis délègue à `signer_demande_publique` (preuves
+            # inchangées) ; comportement STRICTEMENT identique à XGED1 pour
+            # une demande sans aucun `ChampSignature` (rétrocompatible).
+            demande = services.signer_demande_publique_avec_champs(
+                demande,
+                consentement=bool(request.data.get('consentement')),
+                signature_texte=request.data.get('signature_texte', ''),
+                signature_tracee=request.data.get('signature_tracee', ''),
+                adresse_ip=ip, user_agent=ua,
+                valeurs_champs=request.data.get('valeurs_champs'))
+        except ValueError as exc:
+            return _ged_noindex(Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST))
+        return _ged_noindex(
+            Response(_signature_publique_payload(demande),
+                     status=status.HTTP_200_OK))
+
+    return _ged_noindex(Response(
+        {'detail': "Action inconnue : 'signer' ou 'refuser' attendu."},
+        status=status.HTTP_400_BAD_REQUEST))
+
+
+class PublicSignataireRateThrottle(PublicSignatureRateThrottle):
+    """XGED2 — Même limite de débit que la cérémonie mono-partie, sur le
+    jeton PROPRE à un destinataire du circuit multi-signataires."""
+    scope = 'public_ged_signataire'
+
+
+def _signataire_publique_payload(signataire):
+    """XGED2 — Représentation JSON publique d'un destinataire (jamais de
+    données d'une autre société ; ne révèle jamais les AUTRES destinataires)."""
+    demande = signataire.demande
+    return {
+        'document_nom': demande.document.nom,
+        'document_id': demande.document_id,
+        'nom': signataire.nom,
+        'role': signataire.role,
+        'ordre': signataire.ordre,
+        'statut': signataire.statut,
+        'demande_statut': demande.statut,
+    }
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicSignataireRateThrottle])
+def public_signataire(request, token):
+    """XGED2 — Cérémonie de signature PUBLIQUE d'UN destinataire du circuit
+    multi-signataires (`SignataireDemande.token`), distincte du jeton de la
+    demande globale (XGED1 `public_signature`, toujours servable pour le
+    mono-signataire rétrocompatible).
+
+    `GET /api/django/ged/signataire/<token>/` consulte ; `POST` avec
+    `{"action": "signer"|"refuser", …}` (mêmes champs que `public_signature`).
+    Un signataire qui n'est PAS encore `notifie` (séquentiel, pas son tour) ne
+    peut ni signer ni refuser (403 explicite, jamais un blocage silencieux)."""
+    signataire = (SignataireDemande.objects
+                  .select_related(
+                      'demande', 'demande__document', 'demande__document__company')
+                  .filter(token=token)
+                  .first())
+    if signataire is None:
+        return _ged_noindex(Response(
+            {'detail': "Ce lien de signature est introuvable."},
+            status=status.HTTP_404_NOT_FOUND))
+    demande = signataire.demande
+    from .models import (
+        SIGNATAIRE_NOTIFIE, SIGNATAIRE_REFUSE, SIGNATAIRE_SIGNE,
+        SIGNATURE_ANNULE,
+    )
+    if demande.statut == SIGNATURE_ANNULE or demande.is_expired:
+        return _ged_noindex(Response(
+            {'detail': "Ce lien de signature a expiré ou a été annulé."},
+            status=status.HTTP_410_GONE))
+    if signataire.statut in (SIGNATAIRE_SIGNE, SIGNATAIRE_REFUSE):
+        return _ged_noindex(Response(
+            {'detail': "Vous avez déjà traité cette demande.",
+             'statut': signataire.statut},
+            status=status.HTTP_410_GONE))
+
+    if request.method == 'GET':
+        return _ged_noindex(
+            Response(_signataire_publique_payload(signataire),
+                     status=status.HTTP_200_OK))
+
+    if signataire.statut != SIGNATAIRE_NOTIFIE:
+        return _ged_noindex(Response(
+            {'detail': "Ce n'est pas encore votre tour de signer."},
+            status=status.HTTP_403_FORBIDDEN))
+
+    action_demandee = (request.data.get('action') or '').strip().lower()
+    if action_demandee == 'refuser':
+        try:
+            signataire = services.refuser_signataire(
+                signataire, motif=request.data.get('motif'))
+        except ValueError as exc:
+            return _ged_noindex(Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST))
+        return _ged_noindex(
+            Response(_signataire_publique_payload(signataire),
+                     status=status.HTTP_200_OK))
+
+    if action_demandee == 'signer':
+        try:
+            signataire = services.signer_signataire(
+                signataire,
+                consentement=bool(request.data.get('consentement')),
+                signature_texte=request.data.get('signature_texte', ''),
+                signature_tracee=request.data.get('signature_tracee', ''),
+                adresse_ip=services._adresse_ip_requete(request),
+                user_agent=(request.META.get('HTTP_USER_AGENT') or '')[:512])
+        except ValueError as exc:
+            return _ged_noindex(Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST))
+        return _ged_noindex(
+            Response(_signataire_publique_payload(signataire),
+                     status=status.HTTP_200_OK))
+
+    return _ged_noindex(Response(
+        {'detail': "Action inconnue : 'signer' ou 'refuser' attendu."},
+        status=status.HTTP_400_BAD_REQUEST))

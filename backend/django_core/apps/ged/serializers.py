@@ -1,10 +1,11 @@
 from rest_framework import serializers
 
 from .models import (
-    ArchivageLegal, Cabinet, Coffre, DemandeApprobation,
+    ArchivageLegal, Cabinet, ChampSignature, Coffre, DemandeApprobation,
     DemandeSignatureDocument, Document, DocumentLien, DocumentTag,
     DocumentTagAssignment, DocumentVersion, Folder, JournalAcces, LegalHold,
     ModeleDocument, PartageGed, PolitiqueRetention, QuotaStockage,
+    SignataireDemande,
 )
 from . import services
 
@@ -581,6 +582,8 @@ class DemandeSignatureDocumentSerializer(serializers.ModelSerializer):
     created_by_nom = serializers.CharField(
         source='created_by.username', read_only=True, default=None)
 
+    signataires = serializers.SerializerMethodField()
+
     class Meta:
         model = DemandeSignatureDocument
         fields = [
@@ -588,13 +591,80 @@ class DemandeSignatureDocumentSerializer(serializers.ModelSerializer):
             'signataire_nom', 'signataire_email',
             'statut', 'provider', 'provider_ref',
             'date_demande', 'date_signature',
+            # XGED1 — lien public + preuves de cérémonie : TOUS en lecture
+            # seule via l'API (posés côté serveur uniquement, jamais mutés par
+            # une requête authentifiée après coup).
+            'token', 'expires_at', 'consentement_explicite',
+            'adresse_ip', 'user_agent', 'hash_contenu',
+            'signature_texte', 'signature_tracee',
+            'motif_refus', 'refuse_le',
+            # XGED2 — circuit multi-signataires.
+            'routage', 'relance_cadence_jours', 'annule_le', 'annule_par',
+            'signataires',
             'created_by', 'created_by_nom', 'created_at', 'updated_at',
         ]
         read_only_fields = [
             'statut', 'provider', 'provider_ref',
             'date_demande', 'date_signature',
+            'token', 'consentement_explicite',
+            'adresse_ip', 'user_agent', 'hash_contenu',
+            'signature_texte', 'signature_tracee',
+            'motif_refus', 'refuse_le',
+            'annule_le', 'annule_par',
             'created_by', 'created_at', 'updated_at',
         ]
+
+    def get_signataires(self, obj):
+        return SignataireDemandeSerializer(
+            obj.signataires.all(), many=True).data
+
+
+class ChampSignatureSerializer(serializers.ModelSerializer):
+    """XGED3 — Champ positionné sur le PDF à signer (demande OU modèle,
+    exactement l'un des deux). `company` posée CÔTÉ SERVEUR (jamais lue du
+    corps). `valeur` reste modifiable par cette API de GESTION (édition d'un
+    placement) — le remplissage PUBLIC passe par `services.
+    enregistrer_valeurs_champs`, jamais par cette route authentifiée."""
+    class Meta:
+        model = ChampSignature
+        fields = [
+            'id', 'demande', 'modele', 'type_champ', 'page',
+            'x', 'y', 'largeur', 'hauteur', 'role', 'requis', 'valeur',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def validate(self, attrs):
+        demande = attrs.get('demande', getattr(self.instance, 'demande', None))
+        modele = attrs.get('modele', getattr(self.instance, 'modele', None))
+        if bool(demande) == bool(modele):
+            raise serializers.ValidationError(
+                "Un champ cible exactement une demande OU un modèle de document.")
+        request = self.context.get('request')
+        if request is not None:
+            company = request.user.company
+            if demande is not None and demande.company_id != company.id:
+                raise serializers.ValidationError(
+                    {'demande': 'Demande inconnue.'})
+            if modele is not None and modele.company_id != company.id:
+                raise serializers.ValidationError(
+                    {'modele': 'Modèle inconnu.'})
+        return attrs
+
+
+class SignataireDemandeSerializer(serializers.ModelSerializer):
+    """XGED2 — Destinataire (signataire/copie/approbateur) d'une demande de
+    signature multi-parties. LECTURE SEULE via l'API — créé/muté uniquement
+    par `services` (création groupée, signature/refus par jeton public,
+    notifications/relances)."""
+    class Meta:
+        model = SignataireDemande
+        fields = [
+            'id', 'demande', 'nom', 'email', 'telephone', 'ordre', 'role',
+            'statut', 'notifie_le', 'derniere_relance_le', 'nb_relances',
+            'date_action', 'motif_refus', 'created_at', 'updated_at',
+        ]
+        read_only_fields = fields
 
 
 class ModeleDocumentSerializer(serializers.ModelSerializer):

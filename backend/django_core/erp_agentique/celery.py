@@ -35,6 +35,10 @@ app.conf.enable_utc = False
 #   - GED25 : purge automatique de la corbeille échue (02:30) — apps/ged/tasks.py
 #     (DRY-RUN par défaut : n'efface rien tant que GED_PURGE_AUTO_APPLY n'est pas
 #     activé ; respecte le délai de grâce + les gardes légales GED23/GED24).
+#   - XGED2 : relances de signataires dus + expiration des demandes de
+#     signature échues (07:45) — apps/ged/tasks.py (jamais destructif).
+#   - XGED6 : contrôle périodique d'intégrité des archives légales GED23
+#     (03:15) — apps/ged/tasks.py (lecture seule, jamais destructif).
 app.conf.beat_schedule = {
     'ventes-check-overdue-factures': {
         'task': 'ventes.check_overdue_factures',
@@ -85,5 +89,15 @@ app.conf.beat_schedule = {
     'ged-purge-corbeille-echue': {
         'task': 'ged.purge_corbeille_echue',
         'schedule': crontab(hour=2, minute=30),
+    },
+    # XGED2 — relances de signataires dus + expiration des demandes échues.
+    'ged-signature-relances-expiration': {
+        'task': 'ged.signature_relances_expiration',
+        'schedule': crontab(hour=7, minute=45),
+    },
+    # XGED6 — contrôle périodique d'intégrité des archives légales.
+    'ged-verifier-integrite-archives': {
+        'task': 'ged.verifier_integrite_archives',
+        'schedule': crontab(hour=3, minute=15),
     },
 }

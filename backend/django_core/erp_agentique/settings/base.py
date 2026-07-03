@@ -361,6 +361,12 @@ CRM_CAPTURE_OCR_ENABLED = (
 # valeur PAR DÉFAUT quand une société n'a pas de quota explicite (`QuotaStockage`).
 GED_QUOTA_DEFAUT_OCTETS = int(os.environ.get('GED_QUOTA_DEFAUT_OCTETS', '0'))
 
+# XGED5 — Horodatage qualifié RFC 3161 (TSA) du scellement PAdES des PDF
+# signés. KEY-GATED : vide par défaut → no-op (le sceau PAdES, s'il est posé
+# via pyHanko, l'est SANS horodatage TSA). Le founder configurera l'URL d'une
+# TSA (ex. un service conforme loi 43-20) pour activer ce volet.
+GED_TSA_URL = os.environ.get('GED_TSA_URL', '')
+
 # Security headers (safe in all environments)
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'
