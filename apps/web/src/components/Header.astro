@@ -28,9 +28,16 @@
  *         specialised paths. Ressources is honestly split: financement +
  *         marocains-du-monde are service/offer items (own labelled group),
  *         separate from the editorial/blog group — CSS-only, no JS added.
+ * W251 — Header CTA proof fragment: on long-scroll pages (guides/blog) the
+ *         sticky CTA pairs with a compact <StarRating/> (WJ35's existing
+ *         no-op-safe component reading src/lib/testimonials.ts GOOGLE_RATING).
+ *         Renders NOTHING until the founder supplies a real rating (WG5) —
+ *         never a placeholder number.
  */
 import Logo from './Logo.astro';
 import LanguageSwitcher from './LanguageSwitcher.astro';
+import StarRating from './StarRating.astro';
+import { hasRating } from '../lib/testimonials';
 import { NAP } from '../lib/nap';
 import { getLocaleFromPath, stripLocale, useTranslations } from '../i18n/utils';
 import { localesForPath, localizeNavHref, QUOTE_JOURNEY_PATH } from '../i18n/pages';
@@ -94,6 +101,14 @@ const ressourcesGroupLabels: Record<'fr' | 'en' | 'ar', { offre: string; contenu
   ar: { offre: 'خدماتنا', contenu: 'أدلة وأخبار' },
 };
 const ressourcesGroups = ressourcesGroupLabels[locale] ?? ressourcesGroupLabels.fr;
+
+// W251 — Pages longues (guides/blog) : la preuve sociale compacte accompagne
+// le CTA brass au lieu du bouton seul. `showProof` combine « bonne page » ET
+// « donnée réelle disponible » — sur toute autre page, ou tant que
+// GOOGLE_RATING n'est pas renseigné par le fondateur, rien ne change ici.
+const isLongScrollPage = rootPath === '/guides' || rootPath.startsWith('/guides/') ||
+  rootPath === '/blog' || rootPath.startsWith('/blog/');
+const showHeaderProof = isLongScrollPage && hasRating();
 
 // Liste à plat conservée pour la détection de page active + le menu mobile
 // (ordre inchangé pour ne pas perturber l'existant hors dropdown desktop).
@@ -271,6 +286,16 @@ const itemClass =
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
         {NAP.phoneDisplayIntl}
       </a>
+      {/* W251 — Proof fragment beside the CTA on long-scroll pages (guides/
+          blog) ONLY, and only once a real Google rating exists (WG5) —
+          StarRating itself is also no-op-safe, this wrapper just avoids
+          reserving any layout space elsewhere. Hidden on narrow mobile
+          widths to protect the header's compact row. */}
+      {showHeaderProof && (
+        <div class="hidden items-center xl:flex">
+          <StarRating compact />
+        </div>
+      )}
       {/* W210 — .glow on primary CTA. WJ36 — the ONE brass action: the quote
           journey (/devis/mon-toit), primary label verbatim. The container
           flexes with the string (no fixed width) — AR runs 25–35 % longer. */}
