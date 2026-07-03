@@ -363,6 +363,11 @@ class Ticket(models.Model):
     sla_pre_alert_notifiee = models.BooleanField(default=False)
     sla_escalade_notifiee = models.BooleanField(default=False)
 
+    # ── XSAV11 — suivi des réouvertures ──────────────────────────────────────
+    # Incrémenté CÔTÉ SERVEUR à chaque transition résolu/clôturé → statut
+    # ouvert (jamais décrémenté). 0 = jamais réouvert (comportement actuel).
+    reopen_count = models.PositiveIntegerField(default=0)
+
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, related_name='tickets_crees',

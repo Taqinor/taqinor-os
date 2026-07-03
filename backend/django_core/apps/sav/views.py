@@ -374,6 +374,10 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
                     inst.save(update_fields=['technicien_responsable'])
         activity.log_creation(serializer.instance, self.request.user)
 
+    # XSAV11 — statuts « clos » depuis lesquels revenir à un statut ouvert
+    # compte comme une réouverture.
+    _CLOTURE_STATUTS = (Ticket.Statut.RESOLU, Ticket.Statut.CLOTURE)
+
     def perform_update(self, serializer):
         self._check_tenant(serializer)
         old = Ticket.objects.get(pk=serializer.instance.pk)
@@ -381,7 +385,15 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         # FG81 — recalcule sla_breach après toute mise à jour de statut.
         inst = serializer.instance
         inst.recompute_sla_breach()
-        inst.save(update_fields=['sla_breach'])
+        update_fields = ['sla_breach']
+        # XSAV11 — réouverture : résolu/clôturé → statut OUVERT. Compté côté
+        # serveur, jamais décrémenté. La transition est déjà tracée par
+        # TicketActivity (activity.log_changes ci-dessous).
+        if (old.statut in self._CLOTURE_STATUTS
+                and inst.statut in Ticket.OPEN_STATUTS):
+            inst.reopen_count += 1
+            update_fields.append('reopen_count')
+        inst.save(update_fields=update_fields)
         activity.log_changes(old, inst, self.request.user)
         # XSAV4 — notification client best-effort sur transition de statut
         # (reçu/planifié/résolu). Toggle OFF par défaut = aucun effet.

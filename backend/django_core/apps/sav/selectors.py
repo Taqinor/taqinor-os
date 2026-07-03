@@ -16,7 +16,7 @@ le stock passe l'``id`` de produit et la liste de séries reçues en arguments
 bruts ; ce module lit uniquement `sav.Equipement` (règle de modularité
 CLAUDE.md — les lectures cross-app passent par les selectors de l'app cible).
 """
-from .models import Equipement, TicketSatisfaction
+from .models import Equipement, Ticket, TicketSatisfaction
 
 
 def reconcile_serials_to_equipements(company, produit_id, serials):
@@ -223,4 +223,60 @@ def csat_par_technicien(company, *, date_debut=None, date_fin=None):
             'note_moyenne': round(float(row['note_moyenne']), 2)
             if row['note_moyenne'] is not None else None,
         })
+    return out
+
+
+def taux_reouverture(company, *, group_by='technicien', date_debut=None,
+                     date_fin=None):
+    """XSAV11 — Taux de réouverture par technicien OU par type de panne.
+
+    ``group_by`` ∈ {'technicien', 'type'}. Un ticket compte comme « réouvert »
+    si ``reopen_count > 0``. Filtre optionnel sur ``date_creation``.
+
+    Renvoie une liste de dicts triée par taux décroissant :
+      [{'cle': int|str|None, 'libelle': str,
+        'nb_tickets': int, 'nb_reouverts': int, 'taux': float}, …]
+    ``taux`` est un pourcentage (0-100), arrondi à 2 décimales.
+    """
+    from django.db.models import Case, Count, When, IntegerField
+
+    qs = Ticket.objects.filter(company=company)
+    if date_debut is not None:
+        qs = qs.filter(date_creation__date__gte=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(date_creation__date__lte=date_fin)
+
+    if group_by == 'type':
+        field, label_field = 'type', None
+    else:
+        field, label_field = (
+            'technicien_responsable_id', 'technicien_responsable__username')
+
+    values = [field] if label_field is None else [field, label_field]
+    rows = (qs
+            .values(*values)
+            .annotate(
+                nb_tickets=Count('id'),
+                nb_reouverts=Count(Case(
+                    When(reopen_count__gt=0, then=1),
+                    output_field=IntegerField())),
+            )
+            .order_by('-nb_reouverts'))
+
+    out = []
+    for row in rows:
+        nb_tickets = row['nb_tickets']
+        nb_reouverts = row['nb_reouverts']
+        taux = round((nb_reouverts / nb_tickets) * 100, 2) if nb_tickets else 0.0
+        cle = row[field]
+        if group_by == 'type':
+            libelle = dict(Ticket.Type.choices).get(cle, cle or 'Inconnu')
+        else:
+            libelle = row.get(label_field) or 'Non assigné'
+        out.append({
+            'cle': cle, 'libelle': libelle,
+            'nb_tickets': nb_tickets, 'nb_reouverts': nb_reouverts,
+            'taux': taux,
+        })
+    out.sort(key=lambda r: r['taux'], reverse=True)
     return out

@@ -204,6 +204,8 @@ class TicketSerializer(serializers.ModelSerializer):
     en_attente_client = serializers.BooleanField(read_only=True)
     attente_depuis = serializers.DateField(read_only=True)
     jours_pause = serializers.IntegerField(read_only=True)
+    # XSAV11 — compteur de réouvertures (côté serveur uniquement).
+    reopen_count = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = Ticket
@@ -219,6 +221,8 @@ class TicketSerializer(serializers.ModelSerializer):
             # XSAV5 — la pause se pilote via les actions dédiées, jamais en
             # écriture directe du corps de requête.
             'en_attente_client', 'attente_depuis', 'jours_pause',
+            # XSAV11 — incrémenté côté serveur uniquement (perform_update).
+            'reopen_count',
         ]
         # client peut être déduit côté serveur d'un équipement lié (ticket
         # ouvert depuis le parc) ; sinon il reste exigé — voir
