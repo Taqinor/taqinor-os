@@ -901,3 +901,90 @@ def controler_geofence_presence(presence, gps_lat, gps_lng):
                 f'≈{int(distance_m)} m du chantier).'),
         )
     return presence
+
+
+# ── XRH13 — import de pointages externes (pointeuse biométrique, CSV) ──────
+
+def importer_pointages_csv(company, rows):
+    """Importe des lignes CSV (device_user_id, horodatage, sens) → Pointage.
+
+    ``rows`` est une liste de dicts (issue de ``csv.DictReader``) avec les
+    clés ``device_user_id``, ``horodatage`` (ISO 8601 ou ``YYYY-MM-DD
+    HH:MM:SS``) et ``sens`` (``in``/``out``). Mappe via ``EmployeDeviceMap``
+    (société scopée) → crée les ``Pointage`` correspondants. IDEMPOTENT par
+    ``(employe, horodatage)`` : une ligne déjà importée n'est jamais dupliquée.
+    Une ligne SANS mapping connu est RAPPORTÉE en erreur (jamais silencieusement
+    ignorée). Renvoie un résumé ``{crees, doublons, erreurs}``.
+    """
+    from datetime import datetime
+
+    from django.db.models import Q
+    from django.utils import timezone as dj_timezone
+
+    from .models import EmployeDeviceMap, Pointage
+
+    device_ids = {
+        (row.get('device_user_id') or '').strip() for row in rows}
+    device_ids.discard('')
+    mapping = {
+        m.device_user_id: m.employe
+        for m in EmployeDeviceMap.objects.filter(
+            company=company, device_user_id__in=device_ids)
+        .select_related('employe')
+    }
+
+    crees, doublons, erreurs = [], [], []
+    for i, row in enumerate(rows, start=1):
+        device_user_id = (row.get('device_user_id') or '').strip()
+        horodatage_raw = (row.get('horodatage') or '').strip()
+        sens = (row.get('sens') or '').strip().lower()
+
+        employe = mapping.get(device_user_id)
+        if employe is None:
+            erreurs.append({
+                'ligne': i, 'device_user_id': device_user_id,
+                'motif': 'Aucun mappage employé pour cet ID pointeuse.'})
+            continue
+
+        horodatage = None
+        for fmt in ('%Y-%m-%dT%H:%M:%S', '%Y-%m-%d %H:%M:%S'):
+            try:
+                horodatage = datetime.strptime(horodatage_raw, fmt)
+                break
+            except ValueError:
+                continue
+        if horodatage is None:
+            erreurs.append({
+                'ligne': i, 'device_user_id': device_user_id,
+                'motif': f'Horodatage invalide : {horodatage_raw!r}.'})
+            continue
+        if dj_timezone.is_naive(horodatage):
+            horodatage = dj_timezone.make_aware(horodatage)
+
+        type_pointage = (
+            Pointage.TypePointage.DEPART if sens == 'out'
+            else Pointage.TypePointage.ARRIVEE)
+        # Idempotent par (employe, horodatage) — cherche un pointage existant
+        # sur la même seconde, quel que soit le champ arrivée/départ touché.
+        deja = Pointage.objects.filter(
+            company=company, employe=employe
+        ).filter(
+            Q(heure_arrivee=horodatage) | Q(heure_depart=horodatage)
+        ).exists()
+        if deja:
+            doublons.append({'ligne': i, 'device_user_id': device_user_id})
+            continue
+
+        if type_pointage == Pointage.TypePointage.DEPART:
+            Pointage.objects.create(
+                company=company, employe=employe,
+                type_pointage=Pointage.TypePointage.DEPART,
+                heure_depart=horodatage)
+        else:
+            Pointage.objects.create(
+                company=company, employe=employe,
+                type_pointage=Pointage.TypePointage.ARRIVEE,
+                heure_arrivee=horodatage)
+        crees.append({'ligne': i, 'device_user_id': device_user_id})
+
+    return {'crees': crees, 'doublons': doublons, 'erreurs': erreurs}

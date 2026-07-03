@@ -24,6 +24,7 @@ from .views import (
     DossierEmployeViewSet,
     DotationEpiViewSet,
     EcheancesRhViewSet,
+    EmployeDeviceMapViewSet,
     ElementIntegrationEmployeViewSet,
     ElementIntegrationViewSet,
     ElementSortieViewSet,
@@ -75,6 +76,7 @@ router.register(r'soldes-conge', SoldeCongeViewSet)
 router.register(r'demandes-conge', DemandeCongeViewSet)
 router.register(r'pointages', PointageViewSet)
 router.register(r'devices-kiosque', DeviceKiosqueViewSet)
+router.register(r'devices-employe-map', EmployeDeviceMapViewSet)
 router.register(r'reglages', ReglageRHViewSet, basename='rh-reglages')
 router.register(
     r'pointages/kiosque', KiosquePointageViewSet, basename='rh-kiosque')

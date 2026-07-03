@@ -4483,3 +4483,40 @@ class ReglageRH(models.Model):
 
     def __str__(self):
         return f'Réglages RH — {self.company_id}'
+
+
+class EmployeDeviceMap(models.Model):
+    """Mappage pointeuse externe → employé (XRH13) — import CSV pivot.
+
+    Aucun connecteur propriétaire ni dépendance : le CSV est le format pivot
+    pour toute pointeuse badge/empreinte biométrique. ``device_user_id`` est
+    l'identifiant de l'employé TEL QUE connu par la pointeuse externe (unique
+    par société) ; il se mappe à un seul ``employe`` de l'ERP.
+
+    Multi-société : ``company`` posée côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_device_maps',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='device_maps',
+        verbose_name='Employé',
+    )
+    device_user_id = models.CharField(
+        max_length=60, verbose_name='ID employé (pointeuse)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Mappage pointeuse'
+        verbose_name_plural = 'Mappages pointeuse'
+        unique_together = [('company', 'device_user_id')]
+        ordering = ['device_user_id']
+
+    def __str__(self):
+        return f'{self.device_user_id} → {self.employe.matricule}'

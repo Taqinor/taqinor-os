@@ -27,6 +27,7 @@ from .models import (
     Departement,
     DeviceKiosque,
     DocumentEmploye,
+    EmployeDeviceMap,
     ReglageRH,
     DossierActivity,
     DossierEmploye,
@@ -2070,6 +2071,22 @@ class CorrectionPointageSerializer(serializers.ModelSerializer):
 
     def get_auteur_nom(self, obj):
         return getattr(obj.auteur, 'username', '') if obj.auteur_id else ''
+
+
+class EmployeDeviceMapSerializer(serializers.ModelSerializer):
+    """Mappage pointeuse externe → employé (XRH13). ``company`` posée côté
+    serveur ; ``employe`` doit appartenir à la société."""
+    employe_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EmployeDeviceMap
+        fields = [
+            'id', 'employe', 'employe_nom', 'device_user_id',
+            'date_creation']
+        read_only_fields = ['date_creation']
+
+    def get_employe_nom(self, obj):
+        return f'{obj.employe.nom} {obj.employe.prenom}'
 
 
 class ReglageRHSerializer(serializers.ModelSerializer):

@@ -46,6 +46,7 @@ from .models import (
     DemandeRH,
     Departement,
     DeviceKiosque,
+    EmployeDeviceMap,
     ReglageRH,
     DocumentEmploye,
     DossierEmploye,
@@ -100,6 +101,7 @@ from .serializers import (
     DemandeRHSerializer,
     DepartementSerializer,
     DeviceKiosqueSerializer,
+    EmployeDeviceMapSerializer,
     ReglageRHSerializer,
     DocumentEmployeSerializer,
     DossierActivitySerializer,
@@ -983,6 +985,33 @@ class PointageViewSet(_RhBaseViewSet):
         qs = pointage.corrections.select_related('auteur').all()
         return Response(CorrectionPointageSerializer(qs, many=True).data)
 
+    @action(detail=False, methods=['post'], url_path='importer',
+            parser_classes=[MultiPartParser])
+    def importer(self, request):
+        """XRH13 — importe un CSV de pointeuse externe (device_user_id,
+        horodatage, sens). Mappe via ``EmployeDeviceMap`` (société scopée) ;
+        idempotent par ``(employe, horodatage)`` ; les lignes sans mapping
+        connu sont rapportées en erreur (jamais silencieusement ignorées)."""
+        import csv
+        import io
+
+        f = request.FILES.get('file')
+        if f is None:
+            return Response(
+                {'detail': 'Aucun fichier fourni.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            text = f.read().decode('utf-8-sig', errors='replace')
+        except Exception:
+            return Response(
+                {'detail': 'Fichier illisible (encodage invalide).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        reader = csv.DictReader(io.StringIO(text))
+        rows = list(reader)
+        result = services.importer_pointages_csv(
+            request.user.company, rows)
+        return Response(result, status=status.HTTP_200_OK)
+
     def perform_create(self, serializer):
         """Company posée côté serveur ; heure_arrivee auto si absente."""
         now = timezone.now()
@@ -1051,6 +1080,20 @@ class PointageViewSet(_RhBaseViewSet):
             pointage.note = note
         pointage.save()
         return Response(self.get_serializer(pointage).data)
+
+
+class EmployeDeviceMapViewSet(_RhBaseViewSet):
+    """Mappages pointeuse externe → employé (XRH13) — préalable à l'import CSV.
+
+    Société scopée + Administrateur/Responsable. ``company`` posée CÔTÉ
+    SERVEUR ; ``employe`` doit appartenir à la société. ``device_user_id``
+    unique par société.
+    """
+    queryset = EmployeDeviceMap.objects.select_related('employe').all()
+    serializer_class = EmployeDeviceMapSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['device_user_id', 'employe__matricule', 'employe__nom']
+    ordering_fields = ['device_user_id', 'date_creation']
 
 
 class ReglageRHViewSet(viewsets.ViewSet):
