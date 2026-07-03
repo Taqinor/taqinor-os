@@ -596,15 +596,19 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           <p id="mt-estimate-announce" class="sr-only" aria-live="polite"></p>
           <div id="mt-estimate-body" class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div>
-              <p class="text-3xl font-bold text-white"><span id="mt-est-kwc">—</span> <span class="text-base font-normal text-lune-soft">kWc</span></p>
+              <!-- WJ72 — <bdi> isole le chiffre latin du texte AR environnant
+                   (unicode-bidi: isolate) SANS forcer toute la ligne en LTR —
+                   contrairement au dir="ltr" employé ailleurs sur cette page,
+                   qui bascule aussi la ponctuation/l'espacement voisins. -->
+              <p class="text-3xl font-bold text-white"><bdi id="mt-est-kwc">—</bdi> <span class="text-base font-normal text-lune-soft">kWc</span></p>
               <p class="text-xs text-lune-faint" data-i18n data-fr="Puissance recommandée" data-ar="القدرة الموصى بها">Puissance recommandée</p>
             </div>
             <div>
-              <p class="text-3xl font-bold text-ok-400"><span id="mt-est-savings">—</span></p>
+              <p class="text-3xl font-bold text-ok-400"><bdi id="mt-est-savings">—</bdi></p>
               <p class="text-xs text-lune-faint" data-i18n data-fr="Économies estimées / mois" data-ar="التوفير المقدّر / شهر">Économies estimées / mois</p>
             </div>
             <div>
-              <p class="text-3xl font-bold text-white" id="mt-est-payback">—</p>
+              <bdi class="block text-3xl font-bold text-white" id="mt-est-payback">—</bdi>
               <p class="text-xs text-lune-faint" data-i18n data-fr="Amortissement" data-ar="استرداد التكلفة">Amortissement</p>
             </div>
           </div>
@@ -1040,6 +1044,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   import { captureWhatsappText, whatsappLink } from '../../../lib/whatsapp';
   import { WHATSAPP_LEADS } from '../../../lib/nap';
   import { buildClientRef, validateLead } from '../../../lib/lead';
+  // WJ72 — style de nombre kWc UNIQUE, partagé avec la proposition
+  // (src/lib/proposition.ts) : virgule décimale, zéros de fin retirés — plus
+  // jamais le point brut de `String(est.kwc)`.
+  import { formatKwc } from '../../../lib/proposition';
   import { type CaptureStrings } from '../../../scripts/roofPro11/mapDraw';
 
   // WJ41 — رسائل نظام الخريطة/محدد المواقع (roofPro11/mapDraw.ts + captureBoot.ts
@@ -1706,11 +1714,11 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     const kwcEl = $('mt-est-kwc');
     const savEl = $('mt-est-savings');
     const payEl = $('mt-est-payback');
-    if (kwcEl) kwcEl.textContent = String(est.kwc);
+    if (kwcEl) kwcEl.textContent = formatKwc(est.kwc);
     const monthly = formatMadRange(est.savingsMonthlyLow, est.savingsMonthlyHigh);
     if (savEl) savEl.textContent = monthly;
     if (payEl) payEl.textContent = est.paybackLabel;
-    lastKwcLabel = `${est.kwc} kWc`;
+    lastKwcLabel = `${formatKwc(est.kwc)} kWc`;
     lastSavingsLabel = `${monthly}/mois`;
     lastKwc = est.kwc;
     // WJ71 — bande de confiance climatique, affichée seulement quand elle dit
@@ -1743,8 +1751,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     sendFunnelBeacon('contact', 'reached');
     // WJ88 — annonce UNIQUE et propre du résultat final (jamais pendant le squelette).
     announceEstimate(currentLang === 'ar'
-      ? `تقديرك: ${est.kwc} كيلوواط، توفير مقدّر ${monthly}/شهر، استرداد التكلفة ${est.paybackLabel}.`
-      : `Votre estimation : ${est.kwc} kWc, économies estimées ${monthly}/mois, amortissement ${est.paybackLabel}.`);
+      ? `تقديرك: ${formatKwc(est.kwc)} كيلوواط، توفير مقدّر ${monthly}/شهر، استرداد التكلفة ${est.paybackLabel}.`
+      : `Votre estimation : ${formatKwc(est.kwc)} kWc, économies estimées ${monthly}/mois, amortissement ${est.paybackLabel}.`);
   }
   // WJ34 — squelette bref pendant le calcul (performance perçue) : les 3
   // chiffres passent en squelette shimmer AVANT le calcul, puis
@@ -1887,7 +1895,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     ctx.fillText(currentLang === 'ar' ? 'تقدير تاكينور الشمسي' : 'Taqinor — estimation solaire', 32, 44);
     ctx.fillStyle = '#ffffff';
     ctx.font = '700 40px system-ui, sans-serif';
-    ctx.fillText(`${lastEstFull.kwc} kWc`, 32, 104);
+    ctx.fillText(`${formatKwc(lastEstFull.kwc)} kWc`, 32, 104);
     ctx.font = '600 22px system-ui, sans-serif';
     ctx.fillStyle = '#4ade80'; // ok-400 approx
     ctx.fillText(

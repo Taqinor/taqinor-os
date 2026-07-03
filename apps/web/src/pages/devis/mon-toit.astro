@@ -1050,6 +1050,10 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   import { captureWhatsappText, whatsappLink } from '../../lib/whatsapp';
   import { WHATSAPP_LEADS } from '../../lib/nap';
   import { buildClientRef, validateLead } from '../../lib/lead';
+  // WJ72 — UN SEUL style de nombre kWc, partagé avec la proposition
+  // (src/lib/proposition.ts) : virgule décimale, zéros de fin retirés — plus
+  // jamais le point brut de `String(est.kwc)`.
+  import { formatKwc } from '../../lib/proposition';
 
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const $ = (id: string) => document.getElementById(id);
@@ -1730,11 +1734,11 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     const kwcEl = $('mt-est-kwc');
     const savEl = $('mt-est-savings');
     const payEl = $('mt-est-payback');
-    if (kwcEl) kwcEl.textContent = String(est.kwc);
+    if (kwcEl) kwcEl.textContent = formatKwc(est.kwc);
     const monthly = formatMadRange(est.savingsMonthlyLow, est.savingsMonthlyHigh);
     if (savEl) savEl.textContent = monthly;
     if (payEl) payEl.textContent = est.paybackLabel;
-    lastKwcLabel = `${est.kwc} kWc`;
+    lastKwcLabel = `${formatKwc(est.kwc)} kWc`;
     lastSavingsLabel = `${monthly}/mois`;
     lastKwc = est.kwc;
     // WJ71 — bande de confiance climatique, affichée SEULEMENT quand elle dit
@@ -1769,8 +1773,8 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     // WJ88 — annonce UNIQUE et propre du résultat final (jamais pendant le
     // squelette — cf. announceEstimate ci-dessus).
     announceEstimate(currentLang === 'ar'
-      ? `تقديرك: ${est.kwc} كيلوواط، توفير مقدّر ${monthly}/شهر، استرداد التكلفة ${est.paybackLabel}.`
-      : `Votre estimation : ${est.kwc} kWc, économies estimées ${monthly}/mois, amortissement ${est.paybackLabel}.`);
+      ? `تقديرك: ${formatKwc(est.kwc)} كيلوواط، توفير مقدّر ${monthly}/شهر، استرداد التكلفة ${est.paybackLabel}.`
+      : `Votre estimation : ${formatKwc(est.kwc)} kWc, économies estimées ${monthly}/mois, amortissement ${est.paybackLabel}.`);
     return true;
   }
   // WJ34 — squelette bref pendant le calcul (performance perçue) : les 3
@@ -1924,7 +1928,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     ctx.fillText(currentLang === 'ar' ? 'تقدير تاكينور الشمسي' : 'Taqinor — estimation solaire', 32, 44);
     ctx.fillStyle = '#ffffff';
     ctx.font = '700 40px system-ui, sans-serif';
-    ctx.fillText(`${lastEstFull.kwc} kWc`, 32, 104);
+    ctx.fillText(`${formatKwc(lastEstFull.kwc)} kWc`, 32, 104);
     ctx.font = '600 22px system-ui, sans-serif';
     ctx.fillStyle = '#4ade80'; // ok-400 approx
     ctx.fillText(

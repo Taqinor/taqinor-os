@@ -221,6 +221,21 @@ export function formatPercent(value: number | null | undefined, decimals = 0): s
 }
 
 /**
+ * WJ72 — UN SEUL style de nombre de bout en bout : l'estimation instantanée
+ * (/devis/mon-toit) affichait jusqu'ici le kWc BRUT (`String(est.kwc)` →
+ * point décimal, ex. « 7.5 kWc ») pendant que la proposition utilisait déjà
+ * `formatNumber(kwc, 2)` (virgule décimale, zéros de fin retirés, ex.
+ * « 7,5 kWc » ou « 11 kWc »). Un client qui compare son estimation à sa
+ * proposition voyait deux langages de nombres différents. `formatKwc` est
+ * l'UNIQUE point de formatage kWc du site — mon-toit.astro (FR/EN/AR) et la
+ * proposition l'utilisent tous les deux désormais, jamais un `String(...)`
+ * ou un `.toFixed(...)` local.
+ */
+export function formatKwc(value: number | null | undefined): string {
+  return formatNumber(value, 2);
+}
+
+/**
  * Affiche une durée de retour sur investissement. Le backend peut renvoyer un
  * nombre (années) ou une chaîne déjà formatée — on respecte les deux.
  */

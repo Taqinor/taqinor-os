@@ -957,6 +957,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   import { captureWhatsappText, whatsappLink } from '../../../lib/whatsapp';
   import { WHATSAPP_LEADS } from '../../../lib/nap';
   import { buildClientRef, validateLead } from '../../../lib/lead';
+  // WJ72 — single kWc number style, shared with the proposal (src/lib/proposition.ts):
+  // comma decimal, trailing zeros stripped — never the raw dot from `String(est.kwc)`.
+  import { formatKwc } from '../../../lib/proposition';
   import { type CaptureStrings } from '../../../scripts/roofPro11/mapDraw';
 
   // WJ60/WJ63 fix — moved here from the frontmatter: a plain <script> tag in an
@@ -1582,11 +1585,11 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     const kwcEl = $('mt-est-kwc');
     const savEl = $('mt-est-savings');
     const payEl = $('mt-est-payback');
-    if (kwcEl) kwcEl.textContent = String(est.kwc);
+    if (kwcEl) kwcEl.textContent = formatKwc(est.kwc);
     const monthly = formatMadRange(est.savingsMonthlyLow, est.savingsMonthlyHigh);
     if (savEl) savEl.textContent = monthly;
     if (payEl) payEl.textContent = est.paybackLabel;
-    lastKwcLabel = `${est.kwc} kWc`;
+    lastKwcLabel = `${formatKwc(est.kwc)} kWc`;
     lastSavingsLabel = `${monthly}/mois`;
     lastKwc = est.kwc;
     // WJ71 — climate confidence band, shown only when it says something real
@@ -1617,7 +1620,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     // WJ59 — the real estimate is when the contact form becomes the relevant action.
     sendFunnelBeacon('contact', 'reached');
     // WJ88 — single, clean final announcement (never during the skeleton phase).
-    announceEstimate(`Your estimate: ${est.kwc} kWc, estimated savings ${monthly}/month, payback ${est.paybackLabel}.`);
+    announceEstimate(`Your estimate: ${formatKwc(est.kwc)} kWc, estimated savings ${monthly}/month, payback ${est.paybackLabel}.`);
   }
   // WJ34 — squelette bref pendant le calcul (performance perçue) : les 3
   // chiffres passent en squelette shimmer AVANT le calcul, puis
@@ -1758,7 +1761,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     ctx.fillText('Taqinor — solar estimate', 32, 44);
     ctx.fillStyle = '#ffffff';
     ctx.font = '700 40px system-ui, sans-serif';
-    ctx.fillText(`${lastEstFull.kwc} kWc`, 32, 104);
+    ctx.fillText(`${formatKwc(lastEstFull.kwc)} kWc`, 32, 104);
     ctx.font = '600 22px system-ui, sans-serif';
     ctx.fillStyle = '#4ade80';
     ctx.fillText(`Estimated savings: ${lastEstFull.monthlyLabel}/month`, 32, 144);

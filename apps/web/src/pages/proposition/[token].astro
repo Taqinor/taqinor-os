@@ -1173,7 +1173,12 @@ const signConfig = ok
         <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Pourquoi nous faire confiance" data-en="Why trust us" data-ar="لماذا تثقون بنا">Pourquoi nous faire confiance</p>
         <div class="mt-5 grid gap-4 sm:grid-cols-3">
           <div class="cine-card rounded-xl p-5">
-            <p class="fig text-2xl text-lune" dir="ltr">20–25 ans</p>
+            <!-- WJ72 — « X à Y » est la convention de fourchette du reste du
+                 site (lib/billRange.ts paybackLabel : « 4 à 6 ans », etc.) ;
+                 corrigé depuis l'en-dash « 20–25 ans », seul écart au format
+                 commun. <bdi> isole le chiffre latin sans forcer toute la
+                 ligne en LTR (voir la même discipline sur mon-toit.astro). -->
+            <p class="fig text-2xl text-lune"><bdi>20 à 25 ans</bdi></p>
             <p class="mt-1 text-sm text-lune-soft" data-i18n data-fr="Garanties constructeur : 25 ans de performance sur les panneaux, 10 ans sur l’onduleur." data-en="Manufacturer warranties: 25 years of performance on panels, 10 years on the inverter." data-ar="ضمانات الصانع: 25 سنة أداء للألواح، 10 سنوات للعاكس.">Garanties constructeur : 25 ans de performance sur les panneaux, 10 ans sur l’onduleur.</p>
           </div>
           <div class="cine-card rounded-xl p-5">
