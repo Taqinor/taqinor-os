@@ -1619,3 +1619,196 @@ def cockpit_rh(company, *, inclure_masse_salariale=False):
         result['masse_salariale_mensuelle'] = _masse_salariale_mensuelle(
             company)
     return result
+
+
+def jours_fermeture_exclus(company, employe, date_debut, date_fin):
+    """XRH14 — jours de ``date_debut``→``date_fin`` déjà couverts par une
+    fermeture collective (chevauchant le département de l'employé, ou toute
+    la société si la fermeture n'a pas de département). Renvoie l'ensemble
+    des dates (``set`` de ``date``) à EXCLURE du décompte d'une nouvelle
+    demande de congé qui chevauche cette période — évite le double-décompte.
+    Lecture seule, société scopée.
+    """
+    from datetime import timedelta
+
+    from .models import PeriodeFermeture
+
+    fermetures = (
+        PeriodeFermeture.objects
+        .filter(company=company, date_debut__lte=date_fin,
+                date_fin__gte=date_debut)
+        .prefetch_related('departements'))
+
+    exclues = set()
+    for fermeture in fermetures:
+        departements = list(fermeture.departements.all())
+        if departements and employe.departement_id not in [
+                d.id for d in departements]:
+            continue
+        debut = max(fermeture.date_debut, date_debut)
+        fin = min(fermeture.date_fin, date_fin)
+        jour = debut
+        while jour <= fin:
+            exclues.add(jour)
+            jour += timedelta(days=1)
+    return exclues
+
+
+def ecarts_competences(employe):
+    """XRH15 — écart requis-vs-actuel pour un employé, au poste de référence.
+
+    Compare le profil requis de ``employe.poste_ref``
+    (``CompetenceRequise``) au niveau réel de l'employé
+    (``CompetenceEmploye``, 0 si jamais évalué). Renvoie une liste de dicts
+    ``{competence_id, competence_libelle, niveau_requis, niveau_actuel,
+    ecart}`` pour chaque compétence MANQUANTE ou INSUFFISANTE (niveau_actuel
+    < niveau_requis) — les compétences déjà couvertes sont omises. Liste vide
+    si l'employé n'a pas de ``poste_ref``. Lecture seule.
+    """
+    from .models import CompetenceEmploye, CompetenceRequise
+
+    if not employe.poste_ref_id:
+        return []
+
+    requises = (
+        CompetenceRequise.objects
+        .filter(company=employe.company, poste=employe.poste_ref)
+        .select_related('competence'))
+    niveaux_actuels = dict(
+        CompetenceEmploye.objects
+        .filter(company=employe.company, employe=employe)
+        .values_list('competence_id', 'niveau'))
+
+    ecarts = []
+    for requise in requises:
+        actuel = niveaux_actuels.get(requise.competence_id, 0)
+        if actuel < requise.niveau_requis:
+            ecarts.append({
+                'competence_id': requise.competence_id,
+                'competence_libelle': requise.competence.libelle,
+                'niveau_requis': requise.niveau_requis,
+                'niveau_actuel': actuel,
+                'ecart': requise.niveau_requis - actuel,
+            })
+    return ecarts
+
+
+def candidats_internes(company, poste_id):
+    """XRH15 — classe les employés d'un poste par COUVERTURE de son profil
+    requis (décroissante). Couverture = proportion (0..1) des compétences
+    requises satisfaites (``niveau_actuel >= niveau_requis``). Un poste sans
+    profil requis renvoie une liste vide. Lecture seule, société scopée.
+    """
+    from .models import CompetenceEmploye, CompetenceRequise, DossierEmploye
+
+    requises = list(
+        CompetenceRequise.objects.filter(company=company, poste_id=poste_id))
+    if not requises:
+        return []
+
+    employes = DossierEmploye.objects.filter(
+        company=company, statut=DossierEmploye.Statut.ACTIF)
+    resultats = []
+    for employe in employes:
+        competence_ids = [r.competence_id for r in requises]
+        niveaux_actuels = dict(
+            CompetenceEmploye.objects
+            .filter(company=company, employe=employe,
+                    competence_id__in=competence_ids)
+            .values_list('competence_id', 'niveau'))
+        satisfaites = sum(
+            1 for r in requises
+            if niveaux_actuels.get(r.competence_id, 0) >= r.niveau_requis)
+        couverture = satisfaites / len(requises)
+        resultats.append({
+            'employe_id': employe.id,
+            'employe_nom': f'{employe.nom} {employe.prenom}',
+            'couverture_pct': round(couverture * 100, 1),
+        })
+    resultats.sort(key=lambda r: r['couverture_pct'], reverse=True)
+    return resultats
+
+
+def compa_ratio(employe):
+    """XRH16 — compa-ratio de l'employé : salaire actuel vs milieu de bande
+    de son poste (``GrilleSalariale`` la plus récente, ``date_effet``).
+
+    Renvoie ``None`` si l'employé n'a pas de ``poste_ref``, pas de bande
+    salariale connue, ou pas de ``Remuneration`` (salaire actuel). Sinon un
+    dict ``{salaire_actuel, salaire_min, salaire_max, milieu_bande,
+    compa_ratio_pct, statut}`` où ``statut`` ∈ {sous_bande, dans_bande,
+    sur_bande}. Donnée SENSIBLE (paie) — gatée ``salaires_voir`` côté vue,
+    JAMAIS dans un PDF ni une sortie client.
+    """
+    from .models import GrilleSalariale, Remuneration
+
+    if not employe.poste_ref_id:
+        return None
+
+    grille = (
+        GrilleSalariale.objects
+        .filter(company=employe.company, poste=employe.poste_ref)
+        .order_by('-date_effet')
+        .first())
+    if grille is None:
+        return None
+
+    remuneration = (
+        Remuneration.objects
+        .filter(company=employe.company, employe=employe)
+        .order_by('-date_effet')
+        .first())
+    if remuneration is None:
+        return None
+
+    salaire_actuel = remuneration.montant
+    milieu_bande = (grille.salaire_min + grille.salaire_max) / 2
+    if milieu_bande == 0:
+        return None
+    ratio_pct = round(float(salaire_actuel / milieu_bande) * 100, 1)
+
+    if salaire_actuel < grille.salaire_min:
+        statut = 'sous_bande'
+    elif salaire_actuel > grille.salaire_max:
+        statut = 'sur_bande'
+    else:
+        statut = 'dans_bande'
+
+    return {
+        'salaire_actuel': salaire_actuel,
+        'salaire_min': grille.salaire_min,
+        'salaire_max': grille.salaire_max,
+        'milieu_bande': milieu_bande,
+        'compa_ratio_pct': ratio_pct,
+        'statut': statut,
+    }
+
+
+def comparatif_candidats(company, ouverture_id):
+    """XRH17 — compare les candidats d'une MÊME ouverture par la moyenne de
+    leurs notes d'entretien (toutes notes, tous entretiens confondus).
+    Classé décroissant. Un candidat sans note reçoit ``moyenne=None`` (en
+    fin de liste). Lecture seule, société scopée.
+    """
+    from .models import Candidature, NoteEntretien
+
+    candidatures = Candidature.objects.filter(
+        company=company, ouverture_id=ouverture_id)
+
+    resultats = []
+    for candidature in candidatures:
+        notes = NoteEntretien.objects.filter(
+            company=company, entretien__candidature=candidature)
+        moyennes = [
+            n.moyenne_criteres for n in notes
+            if n.moyenne_criteres is not None]
+        moyenne = sum(moyennes) / len(moyennes) if moyennes else None
+        resultats.append({
+            'candidature_id': candidature.id,
+            'nom': candidature.nom,
+            'moyenne': round(moyenne, 2) if moyenne is not None else None,
+            'nb_notes': len(moyennes),
+        })
+    resultats.sort(
+        key=lambda r: (r['moyenne'] is None, -(r['moyenne'] or 0)))
+    return resultats

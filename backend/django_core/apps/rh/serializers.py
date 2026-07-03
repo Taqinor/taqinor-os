@@ -16,14 +16,27 @@ from .models import (
     BulletinPaie,
     CampagneEvaluation,
     Candidature,
+    CandidatureActivity,
     CauserieParticipant,
     CauserieSecurite,
     Certification,
     Competence,
     CompetenceEmploye,
+    CompetenceRequise,
+    CorrectionPointage,
     DemandeConge,
+    DemandeRH,
     Departement,
+    DeviceKiosque,
     DocumentEmploye,
+    EmployeDeviceMap,
+    EntretienRecrutement,
+    GabaritEmailRecrutement,
+    GrilleSalariale,
+    NoteEntretien,
+    PeriodeFermeture,
+    PromesseEmbauche,
+    ReglageRH,
     DossierActivity,
     DossierEmploye,
     DotationEpi,
@@ -576,10 +589,13 @@ class PresenceChantierSerializer(serializers.ModelSerializer):
             'statut', 'statut_display',
             'heure_arrivee', 'heure_depart',
             'emarge', 'emarge_le', 'emarge_par', 'note',
+            # XRH12 — géofence (posés côté serveur via l'action ``emarger``).
+            'gps_lat', 'gps_lng', 'hors_zone',
             'date_creation', 'date_modification',
         ]
         read_only_fields = [
             'emarge', 'emarge_le', 'emarge_par',
+            'gps_lat', 'gps_lng', 'hors_zone',
             'date_creation', 'date_modification',
         ]
 
@@ -1498,10 +1514,13 @@ class CandidatureSerializer(serializers.ModelSerializer):
             'nom', 'email', 'telephone', 'cv_fichier', 'source', 'note',
             'etape', 'etape_display',
             'employe_cree', 'employe_cree_nom',
+            # XRH19 (opt-out email auto), XRH21 (vivier / talent pool).
+            'emails_auto', 'vivier', 'tags_vivier', 'vivier_origine',
             'date_candidature', 'date_creation', 'date_modification',
         ]
         read_only_fields = [
-            'employe_cree', 'date_creation', 'date_modification']
+            'employe_cree', 'vivier_origine',
+            'date_creation', 'date_modification']
 
     def get_ouverture_intitule(self, obj):
         if not obj.ouverture_id:
@@ -2009,6 +2028,243 @@ class NoteDeFraisSerializer(serializers.ModelSerializer):
         if not obj.employe_id:
             return ''
         return f'{obj.employe.nom} {obj.employe.prenom}'
+
+
+class DemandeRHSerializer(serializers.ModelSerializer):
+    """Demande RH self-service (XRH9) — guichet d'attestations à la demande.
+
+    ``employe``, ``company`` et ``statut`` sont posés CÔTÉ SERVEUR par la vue
+    self-service. ``attachment_url`` expose le lien de téléchargement du PDF
+    une fois la demande traitée (vide sinon).
+    """
+    employe_nom = serializers.SerializerMethodField()
+    type_display = serializers.CharField(
+        source='get_type_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    attachment_id = serializers.IntegerField(
+        source='attachment.id', read_only=True, default=None)
+
+    class Meta:
+        model = DemandeRH
+        fields = [
+            'id', 'employe', 'employe_nom',
+            'type', 'type_display', 'message',
+            'statut', 'statut_display', 'motif_refus',
+            'attachment_id', 'traite_par', 'traite_le',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'employe', 'employe_nom', 'statut', 'motif_refus',
+            'attachment_id', 'traite_par', 'traite_le',
+            'date_creation', 'date_modification']
+
+    def get_employe_nom(self, obj):
+        if not obj.employe_id:
+            return ''
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+
+class CorrectionPointageSerializer(serializers.ModelSerializer):
+    """Ligne d'audit immuable d'une correction de pointage (XRH11).
+
+    Lecture seule — AUCUNE route update/delete n'existe pour ce modèle.
+    """
+    auteur_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CorrectionPointage
+        fields = [
+            'id', 'pointage', 'champ', 'ancienne_valeur', 'nouvelle_valeur',
+            'motif', 'auteur', 'auteur_nom', 'date_creation',
+        ]
+        read_only_fields = fields
+
+    def get_auteur_nom(self, obj):
+        return getattr(obj.auteur, 'username', '') if obj.auteur_id else ''
+
+
+class PromesseEmbaucheSerializer(serializers.ModelSerializer):
+    """Promesse d'embauche (XRH20). ``company`` posée côté serveur ;
+    ``salaire_propose`` gaté ``salaires_voir`` côté vue (le champ existe ici
+    pour l'écran interne RH — le lien public candidat utilise sa propre vue
+    dédiée)."""
+    candidature_nom = serializers.CharField(
+        source='candidature.nom', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = PromesseEmbauche
+        fields = [
+            'id', 'candidature', 'candidature_nom', 'poste_propose',
+            'type_contrat', 'date_debut_proposee', 'salaire_propose',
+            'statut', 'statut_display', 'token', 'expires_at',
+            'signataire_nom', 'date_signature', 'date_creation',
+        ]
+        read_only_fields = [
+            'statut', 'token', 'signataire_nom', 'date_signature',
+            'date_creation']
+
+
+class GabaritEmailRecrutementSerializer(serializers.ModelSerializer):
+    """Gabarit d'email automatique par étape (XRH19). ``company`` posée côté
+    serveur."""
+    etape_display = serializers.CharField(
+        source='get_etape_display', read_only=True)
+
+    class Meta:
+        model = GabaritEmailRecrutement
+        fields = [
+            'id', 'etape', 'etape_display', 'objet', 'corps', 'actif',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class CandidatureActivitySerializer(serializers.ModelSerializer):
+    """Chatter d'une candidature (XRH18) — lecture seule côté client."""
+    auteur_nom = serializers.SerializerMethodField()
+    type_display = serializers.CharField(
+        source='get_type_display', read_only=True)
+
+    class Meta:
+        model = CandidatureActivity
+        fields = [
+            'id', 'candidature', 'type', 'type_display', 'field',
+            'old_value', 'new_value', 'message', 'auteur', 'auteur_nom',
+            'date_creation',
+        ]
+        read_only_fields = fields
+
+    def get_auteur_nom(self, obj):
+        return getattr(obj.auteur, 'username', '') if obj.auteur_id else ''
+
+
+class NoteEntretienSerializer(serializers.ModelSerializer):
+    """Note d'entretien (XRH17) — une par évaluateur. ``evaluateur`` et
+    ``company`` posés côté serveur."""
+    evaluateur_nom = serializers.SerializerMethodField()
+    moyenne_criteres = serializers.FloatField(read_only=True)
+
+    class Meta:
+        model = NoteEntretien
+        fields = [
+            'id', 'entretien', 'evaluateur', 'evaluateur_nom',
+            'notes_criteres', 'commentaire', 'avis', 'moyenne_criteres',
+            'date_creation',
+        ]
+        read_only_fields = ['evaluateur', 'evaluateur_nom', 'date_creation']
+
+    def get_evaluateur_nom(self, obj):
+        return getattr(obj.evaluateur, 'username', '')
+
+
+class EntretienRecrutementSerializer(serializers.ModelSerializer):
+    """Entretien de recrutement (XRH17). ``company`` posée côté serveur ;
+    ``candidature`` doit appartenir à la société."""
+    type_display = serializers.CharField(
+        source='get_type_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    notes = NoteEntretienSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = EntretienRecrutement
+        fields = [
+            'id', 'candidature', 'date_heure', 'type', 'type_display',
+            'evaluateurs', 'statut', 'statut_display', 'notes',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class GrilleSalarialeSerializer(serializers.ModelSerializer):
+    """Grille salariale par poste (XRH16) — donnée SENSIBLE (paie).
+    ``company`` posée côté serveur. Jamais exposée hors du palier
+    ``salaires_voir``."""
+    poste_intitule = serializers.CharField(
+        source='poste.intitule', read_only=True)
+
+    class Meta:
+        model = GrilleSalariale
+        fields = [
+            'id', 'poste', 'poste_intitule', 'echelon',
+            'salaire_min', 'salaire_max', 'date_effet', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class CompetenceRequiseSerializer(serializers.ModelSerializer):
+    """Profil de compétence requise par poste (XRH15). ``company`` posée côté
+    serveur ; unicité (poste, compétence)."""
+    competence_libelle = serializers.CharField(
+        source='competence.libelle', read_only=True)
+    niveau_requis_display = serializers.CharField(
+        source='get_niveau_requis_display', read_only=True)
+
+    class Meta:
+        model = CompetenceRequise
+        fields = [
+            'id', 'poste', 'competence', 'competence_libelle',
+            'niveau_requis', 'niveau_requis_display', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class PeriodeFermetureSerializer(serializers.ModelSerializer):
+    """Fermeture collective / congé imposé (XRH14). ``company`` posée côté
+    serveur ; ``appliquee``/``appliquee_le`` en lecture seule (posés par
+    l'action ``appliquer``)."""
+    type_absence_code = serializers.CharField(
+        source='type_absence.code', read_only=True)
+
+    class Meta:
+        model = PeriodeFermeture
+        fields = [
+            'id', 'libelle', 'date_debut', 'date_fin', 'type_absence',
+            'type_absence_code', 'departements', 'appliquee',
+            'appliquee_le', 'date_creation',
+        ]
+        read_only_fields = ['appliquee', 'appliquee_le', 'date_creation']
+
+
+class EmployeDeviceMapSerializer(serializers.ModelSerializer):
+    """Mappage pointeuse externe → employé (XRH13). ``company`` posée côté
+    serveur ; ``employe`` doit appartenir à la société."""
+    employe_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EmployeDeviceMap
+        fields = [
+            'id', 'employe', 'employe_nom', 'device_user_id',
+            'date_creation']
+        read_only_fields = ['date_creation']
+
+    def get_employe_nom(self, obj):
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+
+class ReglageRHSerializer(serializers.ModelSerializer):
+    """Réglages RH (XRH12) — géofence de pointage chantier. ``company``
+    posée côté serveur (jamais lue du corps)."""
+    class Meta:
+        model = ReglageRH
+        fields = ['id', 'geofence_metres', 'date_modification']
+        read_only_fields = ['date_modification']
+
+
+class DeviceKiosqueSerializer(serializers.ModelSerializer):
+    """Device kiosque de pointage (XRH10) — administration.
+
+    Le token en clair n'est JAMAIS exposé ici (seul ``token_hash`` en base) ;
+    il n'apparaît que dans la réponse ponctuelle de l'action d'émission.
+    """
+    class Meta:
+        model = DeviceKiosque
+        fields = ['id', 'label', 'actif', 'date_creation',
+                  'derniere_utilisation']
+        read_only_fields = ['date_creation', 'derniere_utilisation']
 
 
 class MesInfosSerializer(serializers.ModelSerializer):
