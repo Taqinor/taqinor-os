@@ -168,6 +168,10 @@ class KbArticleLien(models.Model):
         PRODUIT = 'produit', 'Produit'
         EQUIPEMENT = 'equipement', 'Équipement'
         TYPE_INTERVENTION = 'type_intervention', "Type d'intervention"
+        # XKB11 — lien interne ARTICLE → ARTICLE (cible = autre KbArticle,
+        # même société, validée côté serializer). ``cible_id`` porte alors le
+        # PK d'un autre KbArticle plutôt qu'un objet d'une autre app.
+        ARTICLE = 'article', 'Article'
 
     company = models.ForeignKey(
         'authentication.Company',

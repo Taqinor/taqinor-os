@@ -111,6 +111,39 @@ def resume_lecture(article):
     return {'nombre': len(lecteurs), 'lecteurs': lecteurs}
 
 
+# ── XKB11 — Liens internes article↔article + rétroliens ────────────────────
+
+def retroliens(article):
+    """XKB11 — Articles qui pointent VERS ``article`` (liens entrants).
+
+    Recherche inverse scopée société : tous les ``KbArticleLien`` de type
+    ``ARTICLE`` dont ``cible_id == article.id`` dans la MÊME société, avec le
+    libellé/statut de l'article SOURCE (celui qui porte le lien). Évite le
+    contenu orphelin — affiché en panneau sur la fiche article. Lecture
+    seule, pas de N+1 (une seule requête + ``select_related``).
+    """
+    liens = (KbArticleLien.objects
+             .filter(
+                 company=article.company,
+                 type_cible=KbArticleLien.TypeCible.ARTICLE,
+                 cible_id=article.id)
+             .select_related('article')
+             .order_by('article_id'))
+    out = []
+    seen = set()
+    for lien in liens:
+        source = lien.article
+        if source.id in seen:
+            continue
+        seen.add(source.id)
+        out.append({
+            'id': source.id,
+            'titre': source.titre,
+            'statut': source.statut,
+        })
+    return out
+
+
 # ── XKB10 — Éditeur Markdown : sommaire auto ────────────────────────────────
 
 _ATX_HEADING_RE = re.compile(r'^(#{1,6})\s+(.+?)\s*#*\s*$')

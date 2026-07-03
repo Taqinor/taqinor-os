@@ -140,6 +140,12 @@ class KbArticleViewSet(_KbBaseViewSet):
         article = self.get_object()
         return Response(selectors.sommaire_article(article))
 
+    @action(detail=True, methods=['get'], url_path='retroliens')
+    def retroliens(self, request, pk=None):
+        """XKB11 — Articles qui pointent vers celui-ci (liens entrants)."""
+        article = self.get_object()
+        return Response(selectors.retroliens(article))
+
     @action(detail=True, methods=['post'], url_path='deplacer')
     def deplacer(self, request, pk=None):
         """XKB8 — Déplace (re-parente) tout un sous-arbre + réordonne.

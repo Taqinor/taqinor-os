@@ -102,6 +102,25 @@ class KbArticleLienSerializer(serializers.ModelSerializer):
                 "Cet article n'appartient pas à votre société.")
         return article
 
+    def validate(self, attrs):
+        # XKB11 — quand la cible est un autre ARTICLE, ``cible_id`` doit
+        # référencer un KbArticle EXISTANT de la MÊME société (jamais une
+        # référence flottante ni cross-tenant, contrairement aux cibles
+        # d'autres apps qui restent lâches par design).
+        type_cible = attrs.get(
+            'type_cible', getattr(self.instance, 'type_cible', None))
+        cible_id = attrs.get(
+            'cible_id', getattr(self.instance, 'cible_id', None))
+        if type_cible == KbArticleLien.TypeCible.ARTICLE and cible_id:
+            request = self.context.get('request')
+            company_id = (
+                request.user.company_id if request is not None else None)
+            if not KbArticle.objects.filter(
+                    id=cible_id, company_id=company_id).exists():
+                raise serializers.ValidationError(
+                    {'cible_id': "Article cible introuvable dans votre société."})
+        return attrs
+
 
 class KbArticleAclSerializer(serializers.ModelSerializer):
     """Droit d'accès sur un article : par-RÔLE (KB7) OU par-UTILISATEUR (XKB9).
