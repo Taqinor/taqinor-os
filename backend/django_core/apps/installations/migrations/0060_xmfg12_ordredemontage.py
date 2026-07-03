@@ -7,7 +7,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('installations', '0059_xmfg11_taux_perte'),
-        ('stock', '0029_xmfg11_rebut'),
+        ('stock', '0039_xmfg11_rebut'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
