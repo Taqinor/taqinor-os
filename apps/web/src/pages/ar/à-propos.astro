@@ -14,10 +14,21 @@ import StickyCta from '../../components/StickyCta.astro';
 import FounderPortrait from '../../components/FounderPortrait.astro';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
+import { REALISATIONS } from '../../lib/realisations';
+import { NAP } from '../../lib/nap';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 const devisHref = L('/devis/mon-toit');
+
+/**
+ * W345 — فيشة صحفية/شراكات مُشتقة (لا رقم مُدخَل يدوياً). انظر النسخة
+ * الفرنسية (src/pages/à-propos.astro) للمنطق الكامل: عدد الإنجازات وأقدم
+ * ورش موثَّق يأتيان من realisations.ts؛ لا تاريخ تأسيس للشركة منشور في أي
+ * مكان بالموقع، لذا لا نخترعه هنا.
+ */
+const installCount = REALISATIONS.length;
+const earliestRealisation = REALISATIONS[REALISATIONS.length - 1];
 
 const etapes = [
   {
@@ -159,6 +170,67 @@ const etapes = [
             <dt class="tech-label mt-2 text-lune-faint">تصريح وتسوية، من البداية إلى النهاية</dt>
           </div>
         </dl>
+      </div>
+    </section>
+
+    <!-- W345 — الصحافة والشراكات: باب مخصّص، منفصل عن نموذج البيع -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="border-y border-white/10 bg-blanc-azur px-4 py-16 text-encre sm:py-20">
+      <div class="mx-auto max-w-5xl">
+        <p class="tech-label v2-kicker rule-brass text-azur-600">الصحافة والشراكات</p>
+        <h2 class="display v2-section-title mt-5">هل تمثّل وسيلة إعلامية أو بنكاً أو شريكاً محتملاً؟</h2>
+        <p class="v2-lead mt-5 max-w-2xl text-encre-soft">
+          الصحفي أو البنك أو الشريك المحتمل الذي يتحقّق من هويتنا لا يحتاج عرض ثمن — إليك ما يلزم
+          لملف تدقيقك، وقناة مخصّصة للذهاب أبعد.
+        </p>
+
+        <div class="mt-10 grid gap-8 lg:grid-cols-[1.1fr_1fr]">
+          {/* فيشة وقائعية — كل رقم مُشتق، لا شيء مُدخَل يدوياً */}
+          <dl class="grid grid-cols-2 gap-x-6 gap-y-8 border-t-2 border-azur-900 pt-6">
+            <div>
+              <dd class="font-display text-2xl font-bold" dir="ltr">{NAP.name}</dd>
+              <dt class="tech-label mt-2 text-encre-faint">الاسم التجاري</dt>
+            </div>
+            <div>
+              <dd class="font-display text-2xl font-bold">الدار البيضاء</dd>
+              <dt class="tech-label mt-2 text-encre-faint">السجل التجاري (RC 691213)</dt>
+            </div>
+            <div>
+              <dd class="font-display text-2xl font-bold">{installCount} تركيبات</dd>
+              <dt class="tech-label mt-2 text-encre-faint">إنجازات موثَّقة علناً</dt>
+            </div>
+            <div>
+              <dd class="font-display text-2xl font-bold">{earliestRealisation.date}</dd>
+              <dt class="tech-label mt-2 text-encre-faint">أقدم ورش موثَّق ({earliestRealisation.ville})</dt>
+            </div>
+          </dl>
+
+          {/* قناة صحفية مخصّصة + شعار قابل للتحميل */}
+          <div class="border-2 border-azur-600/30 bg-blanc p-7 text-center sm:p-8">
+            <p class="tech-label text-azur-600">تواصل الصحافة والشراكات</p>
+            <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+              راسلنا مباشرة — وضّح أن الأمر يتعلق بطلب صحفي أو شراكة كي يُعالَج بشكل مناسب، منفصل
+              عن طلبات عروض الأثمنة.
+            </p>
+            <p class="mt-5">
+              <a href={`mailto:${NAP.email}`} dir="ltr" class="font-semibold underline decoration-azur-600 decoration-2 underline-offset-4">{NAP.email}</a>
+            </p>
+            <p class="mt-2">
+              <a href={`tel:${NAP.phone}`} dir="ltr" class="text-sm underline decoration-azur-600 decoration-2 underline-offset-4">{NAP.phoneDisplayIntl}</a>
+            </p>
+            <a
+              href="/logo.png"
+              download
+              class="mt-6 inline-flex items-center gap-2 border border-azur-900/25 px-5 py-2.5 text-sm font-semibold text-encre transition-colors hover:border-azur-600"
+            >
+              تحميل الشعار (PNG) ↓
+            </a>
+          </div>
+        </div>
+
+        <p class="mx-auto mt-10 max-w-2xl border-s-4 border-azur-600 ps-4 text-xs leading-relaxed text-encre-faint">
+          الهوية القانونية الكاملة (السجل التجاري، الوسم الجبائي) على صفحة <a href={L('/mentions-legales')} class="underline decoration-azur-600 decoration-2 underline-offset-4">الإشعارات القانونية</a>.
+        </p>
       </div>
     </section>
 
