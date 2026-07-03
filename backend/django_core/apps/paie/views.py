@@ -67,6 +67,7 @@ from .services import (
     generer_bulletin,
     generer_bulletin_stc,
     generer_ordre_virement,
+    generer_run_gratification,
     importer_elements_rh,
     journal_de_paie,
     livre_de_paie,
@@ -329,6 +330,30 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(
             self.get_serializer(periode).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='run-gratification')
+    def run_gratification(self, request, pk=None):
+        """Génère les bulletins « 13e mois » de tous les profils actifs (XPAI4).
+
+        La période cible doit être ``type_run == 'hors_cycle'``. Paramètre de
+        corps ``annee_reference`` facultatif (défaut : l'année de la période).
+        """
+        periode = self.get_object()
+        annee_reference = request.data.get('annee_reference') or None
+        try:
+            if annee_reference is not None:
+                annee_reference = int(annee_reference)
+            bulletins = generer_run_gratification(
+                periode, annee_reference=annee_reference)
+        except (ValueError, TypeError) as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except BulletinPaie.BulletinVerrouille as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {'bulletins': [b.id for b in bulletins], 'nombre': len(bulletins)},
+            status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='importer-elements-rh')
     def importer_elements_rh(self, request, pk=None):

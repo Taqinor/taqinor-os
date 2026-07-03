@@ -24,7 +24,7 @@ déduction pour charges de famille — ≈ 30 MAD/mois et par personne, plafond 
 Ils servent de DÉFAUTS éditables — ``valide_par_fondateur=False`` matérialise
 qu'ils restent à confirmer.
 """
-from datetime import date
+from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
 from django.db import transaction
@@ -2349,6 +2349,209 @@ def recalculer_cumul_annuel(profil, annee):
         cumul.date_calcul = timezone.now()
         cumul.save()
     return cumul
+
+
+# ── XPAI4 — 13e mois & gratifications + runs hors-cycle ─────────────────────
+
+CODE_GRATIFICATION_13E = 'GRATIF_13E'
+
+
+def prorata_presence_annee(date_embauche, date_sortie, annee, *,
+                           mois_reference=12):
+    """Fraction de l'année couverte par la présence de l'employé (XPAI4).
+
+    Le 13e mois/prime de bilan se calcule au prorata des MOIS de présence sur
+    ``annee`` (embauché en cours d'année → prorata ; sorti en cours d'année →
+    prorata jusqu'à la sortie). ``mois_reference`` borne la fenêtre (12 = année
+    civile complète). Renvoie ``(mois_presence, Decimal fraction 0..1)`` —
+    mois de présence comptés ENTIERS (mois d'embauche/sortie inclus).
+    """
+    debut_annee = date(annee, 1, 1)
+    fin_annee = date(annee, mois_reference, 1)
+    # Dernier jour du mois de référence.
+    if mois_reference == 12:
+        fin_annee = date(annee, 12, 31)
+    else:
+        fin_annee = date(annee, mois_reference + 1, 1) - timedelta(days=1)
+
+    debut = date_embauche if date_embauche and date_embauche > debut_annee \
+        else debut_annee
+    fin = date_sortie if date_sortie and date_sortie < fin_annee else fin_annee
+    if debut > fin:
+        return 0, Decimal('0.00')
+
+    mois_presence = (
+        (fin.year - debut.year) * 12 + (fin.month - debut.month) + 1
+    )
+    mois_presence = max(0, min(mois_reference, mois_presence))
+    fraction = (Decimal(mois_presence) / Decimal(mois_reference)) \
+        if mois_reference else Decimal('0')
+    return mois_presence, _q(fraction)
+
+
+def calculer_gratification(profil, periode, *, annee_reference=None,
+                           personnes_a_charge=0):
+    """Calcule le 13e mois / prime de bilan prorata d'un profil (XPAI4).
+
+    Moteur SANS effet de bord : le montant de base
+    (``profil.salaire_base``, une mensualité pleine) est proratisé sur la
+    présence de l'année ``annee_reference`` (défaut : l'année de la
+    ``periode``), puis soumis aux cotisations CNSS/AMO/IR standard comme un
+    gain normal (flags portés par la rubrique ``GRATIF_13E`` — soumis CNSS/AMO,
+    imposable). Renvoie un dict ``{'montant_brut', 'mois_presence',
+    'fraction_presence', 'cnss_salariale', 'amo_salariale', 'net_imposable',
+    'ir', 'net_a_payer', 'lignes'}``.
+    """
+    annee_reference = annee_reference or periode.annee
+    le_jour = date(periode.annee, periode.mois, 1)
+    parametre = parametre_en_vigueur(profil.company, le_jour)
+    bareme = bareme_en_vigueur(profil.company, le_jour)
+
+    from apps.rh import selectors as rh_selectors  # import paresseux cross-app
+
+    date_embauche = rh_selectors.date_embauche_employe(
+        profil.company, profil.employe_id)
+    date_sortie, _motif = rh_selectors.sortie_employe(
+        profil.company, profil.employe_id)
+    mois_presence, fraction = prorata_presence_annee(
+        date_embauche, date_sortie, annee_reference)
+
+    base_pleine = Decimal(profil.salaire_base or 0)
+    montant_brut = _q(base_pleine * fraction)
+
+    cnss_sal = cnss_salariale(parametre, montant_brut, profil.affilie_cnss) \
+        if parametre else Decimal('0.00')
+    amo_sal = amo_salariale(parametre, montant_brut, profil.affilie_amo) \
+        if parametre else Decimal('0.00')
+    cnss_pat = cnss_patronale(parametre, montant_brut, profil.affilie_cnss) \
+        if parametre else Decimal('0.00')
+    amo_pat = amo_patronale(parametre, montant_brut, profil.affilie_amo) \
+        if parametre else Decimal('0.00')
+
+    net_imposable = _q(montant_brut - cnss_sal - amo_sal)
+    ir = Decimal('0.00')
+    if bareme and parametre:
+        ir = compute_ir(net_imposable, bareme, parametre, personnes_a_charge)
+    ir = _q(ir)
+    net_a_payer = _q(net_imposable - ir)
+
+    lignes = []
+    if montant_brut > 0:
+        lignes.append({
+            'code': CODE_GRATIFICATION_13E,
+            'libelle': '13e mois / prime de bilan (prorata présence)',
+            'type': Rubrique.TYPE_GAIN, 'montant': montant_brut,
+        })
+    if cnss_sal > 0:
+        lignes.append({
+            'code': 'CNSS_SAL', 'libelle': 'CNSS salariale',
+            'type': Rubrique.TYPE_RETENUE, 'montant': cnss_sal,
+        })
+    if amo_sal > 0:
+        lignes.append({
+            'code': 'AMO_SAL', 'libelle': 'AMO salariale',
+            'type': Rubrique.TYPE_RETENUE, 'montant': amo_sal,
+        })
+    if ir > 0:
+        lignes.append({
+            'code': 'IR', 'libelle': 'Impôt sur le revenu',
+            'type': Rubrique.TYPE_RETENUE, 'montant': ir,
+        })
+
+    return {
+        'brut': montant_brut,
+        'brut_imposable': montant_brut,
+        'mois_presence': mois_presence,
+        'fraction_presence': fraction,
+        'cnss_salariale': cnss_sal,
+        'cnss_patronale': cnss_pat,
+        'amo_salariale': amo_sal,
+        'amo_patronale': amo_pat,
+        'allocations_familiales': Decimal('0.00'),
+        'formation_professionnelle': Decimal('0.00'),
+        'provision_conges': Decimal('0.00'),
+        'cimr_salariale': Decimal('0.00'),
+        'frais_professionnels': Decimal('0.00'),
+        'net_imposable': net_imposable,
+        'ir': ir,
+        'retenues': Decimal('0.00'),
+        'prime_anciennete': Decimal('0.00'),
+        'charges_patronales': _q(cnss_pat + amo_pat),
+        'net_a_payer': net_a_payer,
+        'lignes': lignes,
+    }
+
+
+def generer_run_gratification(periode, *, annee_reference=None):
+    """Génère les bulletins « 13e mois » de TOUS les profils actifs (XPAI4).
+
+    ``periode`` doit être une ``PeriodePaie`` de ``type_run ==
+    TYPE_RUN_HORS_CYCLE`` (une période « run 13e mois » distincte du mois
+    calendaire, cf. modèle). Itère les profils actifs de la société (lecture
+    RH via ``rh.selectors.dossiers_actifs`` — jamais ``rh.models`` direct),
+    calcule et matérialise un ``BulletinPaie`` de nature
+    ``TYPE_GRATIFICATION`` par profil (prorata de présence), consolidé ensuite
+    par ``recalculer_cumul_annuel`` (PAIE27). Opération atomique par bulletin
+    (une erreur sur un profil n'interrompt pas les suivants). Renvoie la liste
+    des bulletins générés.
+    """
+    from apps.rh import selectors as rh_selectors  # import paresseux cross-app
+
+    from .models import BulletinPaie, LigneBulletin, ProfilPaie
+
+    if periode.type_run != PeriodePaie.TYPE_RUN_HORS_CYCLE:
+        raise ValueError(
+            "generer_run_gratification exige une période hors-cycle "
+            "(type_run='hors_cycle').")
+    if periode.statut == PeriodePaie.STATUT_CLOTUREE:
+        raise BulletinPaie.BulletinVerrouille(
+            'Période clôturée : génération de run gratification interdite.')
+
+    dossiers_actifs = rh_selectors.dossiers_actifs(periode.company)
+    employe_ids_actifs = set(dossiers_actifs.values_list('id', flat=True))
+    profils = ProfilPaie.objects.filter(
+        company=periode.company, actif=True,
+        employe_id__in=employe_ids_actifs)
+
+    bulletins = []
+    for profil in profils:
+        resultat = calculer_gratification(
+            profil, periode, annee_reference=annee_reference)
+        with transaction.atomic():
+            bulletin = (
+                BulletinPaie.objects
+                .select_for_update()
+                .filter(periode=periode, profil=profil)
+                .first()
+            )
+            if bulletin is not None and bulletin.est_valide:
+                continue  # déjà validé : figé, on ne régénère pas
+            if bulletin is None:
+                bulletin = BulletinPaie(
+                    company=periode.company, periode=periode, profil=profil)
+            bulletin.type_bulletin = BulletinPaie.TYPE_GRATIFICATION
+            bulletin.motif = '13e mois / gratification'
+            for champ in BulletinPaie.SNAPSHOT_FIELDS:
+                if champ == 'personnes_a_charge':
+                    continue
+                if champ in resultat:
+                    setattr(bulletin, champ, resultat[champ])
+            bulletin.statut = BulletinPaie.STATUT_BROUILLON
+            bulletin.save()
+
+            bulletin.lignes.all().delete()
+            for ordre, ligne in enumerate(resultat.get('lignes', []), start=1):
+                LigneBulletin.objects.create(
+                    company=periode.company,
+                    bulletin=bulletin,
+                    code=ligne.get('code', ''),
+                    libelle=ligne.get('libelle', ''),
+                    type=ligne.get('type', 'gain'),
+                    montant=ligne.get('montant', Decimal('0')),
+                    ordre=ordre,
+                )
+            bulletins.append(bulletin)
+    return bulletins
 
 
 # ── XPAI1 — Solde de tout compte (STC) ──────────────────────────────────────

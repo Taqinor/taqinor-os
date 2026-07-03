@@ -640,6 +640,18 @@ class PeriodePaie(models.Model):
         STATUT_BROUILLON, STATUT_CALCULEE, STATUT_VALIDEE, STATUT_CLOTUREE,
     ]
 
+    # XPAI4 — Nature du run. ``mensuel`` (défaut, comportement historique) est
+    # le cycle mensuel normal ; ``hors_cycle`` est un run INDÉPENDANT du mois
+    # calendaire (13e mois/gratification, rappel de masse…) : peut coexister
+    # avec le run mensuel du même (année, mois) — le couple unique
+    # ``(company, annee, mois)`` ci-dessous est donc étendu à ``type_run``.
+    TYPE_RUN_MENSUEL = 'mensuel'
+    TYPE_RUN_HORS_CYCLE = 'hors_cycle'
+    TYPE_RUN_CHOICES = [
+        (TYPE_RUN_MENSUEL, 'Mensuel'),
+        (TYPE_RUN_HORS_CYCLE, 'Hors-cycle (prime/rappel)'),
+    ]
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -648,6 +660,9 @@ class PeriodePaie(models.Model):
     )
     annee = models.PositiveIntegerField(verbose_name='Année')
     mois = models.PositiveSmallIntegerField(verbose_name='Mois')
+    type_run = models.CharField(
+        max_length=12, choices=TYPE_RUN_CHOICES, default=TYPE_RUN_MENSUEL,
+        verbose_name='Type de run')
     libelle = models.CharField(
         max_length=120, blank=True, default='', verbose_name='Libellé')
     statut = models.CharField(
@@ -664,7 +679,9 @@ class PeriodePaie(models.Model):
         verbose_name = 'Période de paie'
         verbose_name_plural = 'Périodes de paie'
         ordering = ['-annee', '-mois']
-        unique_together = [('company', 'annee', 'mois')]
+        # XPAI4 — ``type_run`` étend l'unicité : un run hors-cycle (13e mois)
+        # peut coexister avec le run mensuel du même (année, mois).
+        unique_together = [('company', 'annee', 'mois', 'type_run')]
 
     def __str__(self):
         return f'Paie {self.mois:02d}/{self.annee} ({self.statut})'
@@ -834,11 +851,15 @@ class BulletinPaie(models.Model):
     TYPE_RECTIFICATIF = 'rectificatif'
     TYPE_RAPPEL = 'rappel'
     TYPE_STC = 'stc'
+    # XPAI4 — Bulletin de run hors-cycle (13e mois / prime de bilan), généré
+    # sur une ``PeriodePaie`` de ``type_run == TYPE_RUN_HORS_CYCLE``.
+    TYPE_GRATIFICATION = 'gratification'
     TYPE_BULLETIN_CHOICES = [
         (TYPE_NORMAL, 'Normal'),
         (TYPE_RECTIFICATIF, 'Rectificatif'),
         (TYPE_RAPPEL, 'Rappel'),
         (TYPE_STC, 'Solde de tout compte'),
+        (TYPE_GRATIFICATION, '13e mois / gratification'),
     ]
 
     # Champs de montant figés au moment du calcul (snapshot). Modifiables tant
