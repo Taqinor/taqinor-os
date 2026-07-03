@@ -62,6 +62,14 @@ const closer = fillIntro(cc.closer);
 const pillarStudy = { heading: fillIntro(cc.pillars.study.heading), body: fillIntro(cc.pillars.study.body) };
 const pillarMeasure = { heading: fillIntro(cc.pillars.measure.heading), body: fillIntro(cc.pillars.measure.body) };
 const pillarCompliance = { heading: fillIntro(cc.pillars.compliance.heading), body: fillIntro(cc.pillars.compliance.body) };
+// W328 — nuance ROI par ville (dérivée de l'ensoleillement déjà committé,
+// jamais un nouveau chiffre) + ligne de prudence tarifaire pour les 3 villes
+// à délégataire (Lydec/Redal/Amendis) ; `undefined` ailleurs (régie non nommée).
+const roiNuance = fillIntro(cc.roiNuance);
+const delegataireNote = cc.delegataireNote ? fillIntro(cc.delegataireNote) : undefined;
+// W296 — positionnement géographique honnête (région, jamais un km inventé)
+// pour les villes sans chantier local.
+const nearestInstallNote = cc.nearestInstallNote ? fillIntro(cc.nearestInstallNote) : undefined;
 
 const title = fillIntro(cc.title);
 const description = fillIntro(cc.description);
@@ -142,6 +150,15 @@ const heroPhoto = inCity[0]?.photos[0] ?? neutralHero;
           </div>
         </dl>
       </div>
+      {/* W328 — la bande 3–7 ans reste le chiffre site-wide (résidentiel.astro/
+          billRange.ts) ; on la nuance ici par ville via l'ensoleillement déjà
+          committé, sans jamais lui substituer un nouveau chiffre inventé. */}
+      <p class="mx-auto mt-8 max-w-3xl text-sm leading-relaxed text-lune-soft">{roiNuance}</p>
+      {delegataireNote && (
+        <p class="mx-auto mt-4 max-w-3xl border-l-2 border-brass-400/60 pl-4 text-sm leading-relaxed text-lune-soft">
+          {delegataireNote}
+        </p>
+      )}
     </section>
 
     <!-- Chantiers : réels en ville, sinon les plus proches -->
@@ -190,9 +207,12 @@ const heroPhoto = inCity[0]?.photos[0] ?? neutralHero;
           <p class="tech-label v2-kicker rule-brass text-brass-300">Votre ville est couverte</p>
           <h2 class="display v2-section-title mt-5 text-white">Nous intervenons {c.intro} — et nos chantiers parlent pour nous</h2>
           <p class="v2-lead mt-5 text-lune-soft">
-            {c.name} fait partie de notre zone d'intervention. Nos installations déjà en service
-            les plus proches se trouvent en région de Casablanca — mêmes méthodes d'étude, même
-            matériel tier-1, même monitoring Deye Cloud. Voici nos chantiers les plus proches :
+            {/* W296 — positionnement géographique propre à la ville (région,
+                jamais un km inventé) au lieu d'une phrase générique « région de
+                Casablanca » identique sur les 4 pages sans chantier local. */}
+            {nearestInstallNote ?? `${c.name} fait partie de notre zone d'intervention. Nos installations déjà en service ` +
+              'les plus proches se trouvent en région de Casablanca — mêmes méthodes d\'étude, même ' +
+              'matériel tier-1, même monitoring Deye Cloud.'} Voici nos chantiers les plus proches :
           </p>
           <div class="mt-8 flex flex-wrap gap-3">
             {closest.map((r) => (
