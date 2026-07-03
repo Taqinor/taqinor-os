@@ -43,6 +43,7 @@ from .views import (
     PisteAuditComptableViewSet,
     BalanceOuvertureViewSet,
     ModeleRapprochementViewSet,
+    ProvisionsPeriodeViewSet,
 )
 
 router = DefaultRouter()
@@ -85,6 +86,8 @@ router.register(r'pilotage', PilotageViewSet, basename='pilotage')
 router.register(r'etats', EtatsComptablesViewSet, basename='etats')
 router.register(r'balance-ouverture', BalanceOuvertureViewSet,
                 basename='balance-ouverture')
+router.register(r'provisions-periode', ProvisionsPeriodeViewSet,
+                basename='provisions-periode')
 # ── Croissance commerciale / marketing / CPQ (FG201–FG214) ──────────────────
 router.register(r'campagnes', CampagneViewSet)
 router.register(r'sequences-relance', SequenceRelanceViewSet)

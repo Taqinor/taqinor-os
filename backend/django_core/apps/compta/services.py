@@ -773,6 +773,179 @@ def creer_periode(company, date_debut, date_fin, *, type_periode=None,
     return periode
 
 
+# ── XACC7 — Provisions FNP / FAE de fin de période ──────────────────────────
+# Aucun accrual « factures non parvenues / à établir » n'existait. Les
+# réceptions/avancements NON facturés vivent dans ``apps.stock``/``apps.ventes``
+# (rapprochement 3 voies FG131, avancement FG146…) : compta les reçoit ICI par
+# VALEUR — une liste de dicts déjà résolus par l'appelant via LEURS sélecteurs
+# (``stock.selectors.three_way_amounts`` pour les réceptions, les sélecteurs de
+# ``ventes`` pour l'avancement non facturé) — jamais un import de leurs
+# ``models``. Chaque item ``{'reference', 'montant_ht', 'tiers_id'?,
+# 'tiers_nom'?}`` devient UNE ligne de la provision ; ``source_id`` (entier)
+# identifie le document source pour l'idempotence (ex. l'id du BCF/chantier).
+
+def _ligne_provision(compte, montant, libelle, tiers_id=None, tiers_type=''):
+    return {'compte': compte, 'debit': montant, 'credit': Decimal('0'),
+            'libelle': libelle, 'tiers_type': tiers_type, 'tiers_id': tiers_id}
+
+
+@transaction.atomic
+def generer_provisions_fnp(company, *, date_periode, items, date_extourne=None,
+                           compte_charge=None, user=None):
+    """Provisionne les FACTURES NON PARVENUES (réceptions non facturées).
+
+    ``items`` : liste de ``{'source_id': int, 'reference': str, 'montant_ht':
+    Decimal, 'tiers_id'?: int}`` (une réception fournisseur non encore
+    facturée = un item). Pour chaque item, poste une écriture OD (débit
+    ``compte_charge`` [défaut 6111], crédit 4486 « Fournisseurs — factures non
+    parvenues ») datée ``date_periode``, PUIS son extourne automatique
+    (``extourner_ecriture``) datée du premier jour de la période suivante
+    (``date_extourne``, obligatoire — calculé côté appelant). IDEMPOTENT par
+    item (``source_type='fnp'``, ``source_id``). Renvoie la liste des
+    ``{'source_id', 'ecriture_id', 'extourne_id', 'montant'}`` postés.
+    """
+    if date_extourne is None:
+        raise ValidationError(
+            "La date d'extourne (1er jour de la période suivante) est "
+            "obligatoire.")
+    comptes = _comptes_requis(company)
+    compte_fnp = _assurer_compte(company, '4486')
+    compte_ch = compte_charge or comptes['achats']
+    journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+    resultats = []
+    for item in items or []:
+        source_id = item['source_id']
+        montant = Decimal(item.get('montant_ht') or 0)
+        if montant <= 0:
+            continue
+        existante = _ecriture_existante(company, 'fnp', source_id)
+        if existante:
+            ecriture = existante
+        else:
+            ref = item.get('reference', '') or ''
+            tiers_id = item.get('tiers_id')
+            lignes = [
+                _ligne_provision(
+                    compte_ch, montant, f'FNP {ref}', tiers_id, 'fournisseur'),
+                {'compte': compte_fnp, 'debit': Decimal('0'), 'credit': montant,
+                 'libelle': f'FNP {ref}', 'tiers_type': 'fournisseur',
+                 'tiers_id': tiers_id},
+            ]
+            ecriture = creer_ecriture(
+                company, journal, date_periode, f'Provision FNP {ref}', lignes,
+                reference=ref, source_type='fnp', source_id=source_id,
+                created_by=user, statut=EcritureComptable.Statut.VALIDEE,
+            )
+        extourne = extourner_ecriture(
+            ecriture, date_extourne=date_extourne, user=user,
+            libelle=f'Extourne FNP {ecriture.reference}')
+        resultats.append({
+            'source_id': source_id, 'ecriture_id': ecriture.id,
+            'extourne_id': extourne.id, 'montant': montant,
+        })
+    return resultats
+
+
+@transaction.atomic
+def generer_provisions_fae(company, *, date_periode, items, date_extourne=None,
+                           compte_produit=None, user=None):
+    """Provisionne les FACTURES À ÉTABLIR (livraisons/avancements non facturés).
+
+    Miroir client de ``generer_provisions_fnp``. ``items`` : liste de
+    ``{'source_id': int, 'reference': str, 'montant_ht': Decimal, 'tiers_id'?:
+    int}`` (une livraison/un avancement non encore facturé = un item). Poste
+    une écriture OD (débit 3427 « Clients — factures à établir », crédit
+    ``compte_produit`` [défaut 7121]) datée ``date_periode``, PUIS son extourne
+    automatique datée du premier jour de la période suivante. IDEMPOTENT par
+    item (``source_type='fae'``, ``source_id``). Renvoie la liste des
+    ``{'source_id', 'ecriture_id', 'extourne_id', 'montant'}`` postés.
+    """
+    if date_extourne is None:
+        raise ValidationError(
+            "La date d'extourne (1er jour de la période suivante) est "
+            "obligatoire.")
+    comptes = _comptes_requis(company)
+    compte_fae = _assurer_compte(company, '3427')
+    compte_pr = compte_produit or comptes['ventes']
+    journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+    resultats = []
+    for item in items or []:
+        source_id = item['source_id']
+        montant = Decimal(item.get('montant_ht') or 0)
+        if montant <= 0:
+            continue
+        existante = _ecriture_existante(company, 'fae', source_id)
+        if existante:
+            ecriture = existante
+        else:
+            ref = item.get('reference', '') or ''
+            tiers_id = item.get('tiers_id')
+            lignes = [
+                {'compte': compte_fae, 'debit': montant, 'credit': Decimal('0'),
+                 'libelle': f'FAE {ref}', 'tiers_type': 'client',
+                 'tiers_id': tiers_id},
+                {'compte': compte_pr, 'debit': Decimal('0'), 'credit': montant,
+                 'libelle': f'FAE {ref}', 'tiers_type': 'client',
+                 'tiers_id': tiers_id},
+            ]
+            ecriture = creer_ecriture(
+                company, journal, date_periode, f'Provision FAE {ref}', lignes,
+                reference=ref, source_type='fae', source_id=source_id,
+                created_by=user, statut=EcritureComptable.Statut.VALIDEE,
+            )
+        extourne = extourner_ecriture(
+            ecriture, date_extourne=date_extourne, user=user,
+            libelle=f'Extourne FAE {ecriture.reference}')
+        resultats.append({
+            'source_id': source_id, 'ecriture_id': ecriture.id,
+            'extourne_id': extourne.id, 'montant': montant,
+        })
+    return resultats
+
+
+def rapport_provisions_periode(company, *, date_debut, date_fin,
+                               type_provision=None):
+    """Rapport de contrôle des provisions FNP/FAE postées sur une période.
+
+    Liste chaque écriture ``source_type in ('fnp', 'fae')`` dont
+    ``date_ecriture`` tombe dans ``[date_debut ; date_fin]``, avec sa pièce
+    source (``reference``, ``source_id``) et le montant. Lecture seule, prête
+    pour l'export CSV (``services.export_provisions_periode_csv``).
+    """
+    types = [type_provision] if type_provision else ['fnp', 'fae']
+    qs = EcritureComptable.objects.filter(
+        company=company, source_type__in=types,
+        date_ecriture__gte=date_debut, date_ecriture__lte=date_fin,
+    ).order_by('source_type', 'date_ecriture', 'id')
+    lignes = []
+    for ecr in qs:
+        lignes.append({
+            'type': ecr.source_type,
+            'source_id': ecr.source_id,
+            'reference': ecr.reference,
+            'date': ecr.date_ecriture,
+            'libelle': ecr.libelle,
+            'montant': ecr.total_debit,
+        })
+    return lignes
+
+
+def export_provisions_periode_csv(company, *, date_debut, date_fin,
+                                  type_provision=None):
+    """Export CSV du rapport de contrôle des provisions FNP/FAE (XACC7)."""
+    lignes = rapport_provisions_periode(
+        company, date_debut=date_debut, date_fin=date_fin,
+        type_provision=type_provision)
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, delimiter=';')
+    writer.writerow(['Type', 'Référence', 'Date', 'Libellé', 'Montant HT'])
+    for lig in lignes:
+        writer.writerow([
+            lig['type'].upper(), lig['reference'], lig['date'], lig['libelle'],
+            lig['montant']])
+    return buffer.getvalue().encode('utf-8-sig')
+
+
 # ── FG116 — Écritures de régularisation / OD manuelles ─────────────────────
 
 @transaction.atomic

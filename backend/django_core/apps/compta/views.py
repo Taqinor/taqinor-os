@@ -4303,3 +4303,72 @@ class BalanceOuvertureViewSet(viewsets.ViewSet):
             'reference': ecriture.reference if ecriture else '',
             'total': str(ecriture.total_debit) if ecriture else '0',
         }, status=status.HTTP_201_CREATED)
+
+
+# ── XACC7 — Provisions FNP / FAE de fin de période ──────────────────────────
+
+class ProvisionsPeriodeViewSet(viewsets.ViewSet):
+    """Provisions de fin de période FNP/FAE (XACC7). ``items`` (corps :
+    réceptions/avancements non facturés déjà résolus côté appelant) est posté
+    en une écriture OD par item + extourne automatique. Admin/Responsable,
+    scopé société côté serveur."""
+    permission_classes = [IsResponsableOrAdmin]
+
+    @action(detail=False, methods=['post'], url_path='generer-fnp')
+    def generer_fnp(self, request):
+        data = request.data
+        try:
+            resultats = services.generer_provisions_fnp(
+                request.user.company,
+                date_periode=data.get('date_periode'),
+                items=data.get('items') or [],
+                date_extourne=data.get('date_extourne'),
+                user=request.user,
+            )
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response({'postees': resultats}, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'], url_path='generer-fae')
+    def generer_fae(self, request):
+        data = request.data
+        try:
+            resultats = services.generer_provisions_fae(
+                request.user.company,
+                date_periode=data.get('date_periode'),
+                items=data.get('items') or [],
+                date_extourne=data.get('date_extourne'),
+                user=request.user,
+            )
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response({'postees': resultats}, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'])
+    def rapport(self, request):
+        params = request.query_params
+        data = services.rapport_provisions_periode(
+            request.user.company,
+            date_debut=params.get('date_debut'),
+            date_fin=params.get('date_fin'),
+            type_provision=params.get('type') or None,
+        )
+        return Response(data)
+
+    @action(detail=False, methods=['get'], url_path='export-csv')
+    def export_csv(self, request):
+        params = request.query_params
+        data = services.export_provisions_periode_csv(
+            request.user.company,
+            date_debut=params.get('date_debut'),
+            date_fin=params.get('date_fin'),
+            type_provision=params.get('type') or None,
+        )
+        resp = HttpResponse(data, content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = (
+            'attachment; filename="provisions_fnp_fae.csv"')
+        return resp
