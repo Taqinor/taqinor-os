@@ -55,6 +55,7 @@ from .models import (
     PisteAuditComptable,
     ModeleRapprochement,
     AbonnementEcriture,
+    ObligationFiscale,
 )
 
 
@@ -3647,6 +3648,225 @@ def preparer_declaration_tva(company, *, date_debut, date_fin,
 
     # Savepoint + retry race-safe (highest-used+1, jamais count()+1).
     return create_with_reference(DeclarationTVA, 'TVA', company, _save)
+
+
+# ── XACC9 — Calendrier des obligations fiscales ─────────────────────────────
+# Les briques existent (TVA FG137, acomptes IS FG140, RAS FG139, timbre FG144,
+# état 9421 FG143, liasse FG142) mais aucune vue calendaire unifiée. On
+# GÉNÈRE ici toutes les échéances de l'exercice avec leur date limite
+# marocaine (délais CGI standards, arrondis au jour ouvré n'est PAS géré ici —
+# le fiduciaire humain ajuste en cas de jour férié), idempotent (une
+# obligation par (company, type, période) — la contrainte d'unicité du modèle
+# empêche tout doublon même en cas de rejeu).
+
+def _dernier_jour_mois(annee, mois):
+    import calendar
+    return calendar.monthrange(annee, mois)[1]
+
+
+# NB : l'ajout de mois avec clamp de fin de mois est DÉJÀ fourni par
+# ``_ajouter_mois(d, mois)`` (FG244, plus bas dans ce fichier) — on le
+# réutilise ici (même signature ``(date, n_mois)``) plutôt que de dupliquer.
+
+
+def _echeances_tva(exercice, regime_tva):
+    """Périodes + dates limites TVA de l'exercice (mensuel ou trimestriel).
+
+    Délai CGI marocain : dépôt/paiement au 20 du mois suivant la fin de la
+    période (mensuelle ou trimestrielle).
+    """
+    from datetime import date as _date
+
+    echeances = []
+    if regime_tva == DeclarationTVA.Regime.TRIMESTRIEL:
+        for q in range(4):
+            mois_debut = 1 + q * 3
+            debut = _date(exercice.date_debut.year, mois_debut, 1)
+            if debut > exercice.date_fin:
+                break
+            fin_mois = min(mois_debut + 2, 12)
+            fin = _date(debut.year, fin_mois,
+                        _dernier_jour_mois(debut.year, fin_mois))
+            fin = min(fin, exercice.date_fin)
+            limite = _ajouter_mois(fin.replace(day=1), 1).replace(day=20)
+            echeances.append((debut, fin, limite))
+    else:
+        mois = exercice.date_debut.replace(day=1)
+        while mois <= exercice.date_fin:
+            fin = mois.replace(day=_dernier_jour_mois(mois.year, mois.month))
+            fin = min(fin, exercice.date_fin)
+            limite = _ajouter_mois(mois, 1).replace(day=20)
+            echeances.append((mois, fin, limite))
+            mois = _ajouter_mois(mois, 1)
+    return echeances
+
+
+@transaction.atomic
+def generer_calendrier_fiscal(company, exercice, *, regime_tva=None,
+                              regime_ras=None):
+    """Génère le calendrier fiscal COMPLET de l'exercice (XACC9).
+
+    Régime TVA (mensuel/trimestriel, défaut mensuel) pilote la cadence TVA ET
+    RAS (même échéance CGI, 20 du mois suivant). Ajoute aussi : 4 acomptes IS
+    (31 mars/juin/sept/déc — CGI), 1 droit de timbre annuel (aligné sur la
+    dernière échéance TVA de l'exercice), 1 état 9421 et 1 liasse fiscale (31
+    mars N+1 — 3 mois après la clôture, hypothèse exercice civil). IDEMPOTENT :
+    ``get_or_create`` par ``(company, type, periode_debut, periode_fin)``, ne
+    duplique jamais un exercice déjà généré. Renvoie la liste des
+    ``ObligationFiscale`` (créées ou déjà existantes) triée par date limite.
+    """
+    from datetime import date as _date
+
+    regime_tva = regime_tva or DeclarationTVA.Regime.MENSUEL
+    obligations = []
+
+    for debut, fin, limite in _echeances_tva(exercice, regime_tva):
+        obl, _ = ObligationFiscale.objects.get_or_create(
+            company=company, type_obligation=ObligationFiscale.Type.TVA,
+            periode_debut=debut, periode_fin=fin,
+            defaults={'date_limite': limite,
+                      'libelle': f'TVA {debut.strftime("%m/%Y")}'})
+        obligations.append(obl)
+        obl_ras, _ = ObligationFiscale.objects.get_or_create(
+            company=company, type_obligation=ObligationFiscale.Type.RAS,
+            periode_debut=debut, periode_fin=fin,
+            defaults={'date_limite': limite,
+                      'libelle': f'RAS {debut.strftime("%m/%Y")}'})
+        obligations.append(obl_ras)
+
+    for mois in (3, 6, 9, 12):
+        if _date(exercice.date_debut.year, mois, 1) > exercice.date_fin:
+            continue
+        limite = _date(exercice.date_debut.year, mois,
+                       _dernier_jour_mois(exercice.date_debut.year, mois))
+        obl, _ = ObligationFiscale.objects.get_or_create(
+            company=company, type_obligation=ObligationFiscale.Type.IS_ACOMPTE,
+            periode_debut=exercice.date_debut, periode_fin=limite,
+            defaults={
+                'date_limite': limite,
+                'libelle': f'Acompte IS {mois:02d}/{exercice.date_debut.year}',
+            })
+        obligations.append(obl)
+
+    if obligations:
+        derniere_tva = max(
+            (o.date_limite for o in obligations
+             if o.type_obligation == ObligationFiscale.Type.TVA),
+            default=None)
+        if derniere_tva:
+            obl, _ = ObligationFiscale.objects.get_or_create(
+                company=company, type_obligation=ObligationFiscale.Type.TIMBRE,
+                periode_debut=exercice.date_debut, periode_fin=exercice.date_fin,
+                defaults={'date_limite': derniere_tva,
+                          'libelle': 'Droit de timbre'})
+            obligations.append(obl)
+
+    limite_liasse = _ajouter_mois(
+        exercice.date_fin.replace(day=1), 3).replace(day=31)
+    try:
+        limite_liasse = limite_liasse.replace(day=31)
+    except ValueError:
+        limite_liasse = limite_liasse.replace(
+            day=_dernier_jour_mois(limite_liasse.year, limite_liasse.month))
+    obl, _ = ObligationFiscale.objects.get_or_create(
+        company=company, type_obligation=ObligationFiscale.Type.LIASSE_FISCALE,
+        periode_debut=exercice.date_debut, periode_fin=exercice.date_fin,
+        defaults={'date_limite': limite_liasse, 'libelle': 'Liasse fiscale'})
+    obligations.append(obl)
+    obl_9421, _ = ObligationFiscale.objects.get_or_create(
+        company=company, type_obligation=ObligationFiscale.Type.ETAT_9421,
+        periode_debut=exercice.date_debut, periode_fin=exercice.date_fin,
+        defaults={'date_limite': limite_liasse, 'libelle': 'État 9421'})
+    obligations.append(obl_9421)
+
+    return sorted(obligations, key=lambda o: (o.date_limite, o.id))
+
+
+def marquer_obligation_deposee(obligation, *, source_type='', source_id=None):
+    """Passe une obligation en « déposée », liée à sa déclaration source (XACC9).
+
+    Appelé au dépôt d'une ``DeclarationTVA`` (ou toute autre déclaration
+    source interne à compta) : ``source_type``/``source_id`` tracent la pièce
+    déposée. Idempotent (repasser la même obligation à « déposée » ne change
+    rien d'autre). Renvoie l'obligation.
+    """
+    if obligation.statut == ObligationFiscale.Statut.A_PREPARER:
+        obligation.statut = ObligationFiscale.Statut.DEPOSEE
+    if source_type:
+        obligation.source_type = source_type
+    if source_id is not None:
+        obligation.source_id = source_id
+    obligation.save(update_fields=['statut', 'source_type', 'source_id'])
+    return obligation
+
+
+def envoyer_rappels_j7(company, *, aujourdhui=None):
+    """Notifie J-7 chaque obligation « à préparer » dont l'échéance approche.
+
+    Diffuse via ``notifications.services.notify_many`` (satellite — jamais
+    importé au niveau module, cf. carte des couches M4) vers les comptes
+    Admin/Responsable de la société. IDEMPOTENT : ``rappel_envoye_le`` marque
+    l'obligation notifiée, un second appel le même jour (ou plus tard) ne
+    renotifie pas. Renvoie la liste des obligations notifiées.
+    """
+    from datetime import timedelta
+
+    ref = aujourdhui or timezone.localdate()
+    seuil = ref + timedelta(days=7)
+    dues = ObligationFiscale.objects.filter(
+        company=company, statut=ObligationFiscale.Statut.A_PREPARER,
+        date_limite__lte=seuil, date_limite__gte=ref,
+        rappel_envoye_le__isnull=True)
+    notifiees = []
+    if not dues.exists():
+        return notifiees
+    from authentication.models import CustomUser
+    destinataires = CustomUser.objects.filter(
+        company=company, is_active=True,
+        role_legacy__in=[CustomUser.ROLE_ADMIN, CustomUser.ROLE_RESPONSABLE])
+    if not destinataires.exists():
+        return notifiees
+    from apps.notifications.services import notify_many
+    from apps.notifications.models import EventType
+    for obligation in dues:
+        libelle_defaut = obligation.get_type_obligation_display()
+        notify_many(
+            list(destinataires), EventType.DIGEST,
+            f'Échéance fiscale J-7 : {libelle_defaut}',
+            body=(f'{obligation.libelle or libelle_defaut} — date limite '
+                  f'{obligation.date_limite}.'),
+            company=company,
+        )
+        obligation.rappel_envoye_le = timezone.now()
+        obligation.save(update_fields=['rappel_envoye_le'])
+        notifiees.append(obligation)
+    return notifiees
+
+
+def deposer_declaration_tva(declaration):
+    """Dépose une ``DeclarationTVA`` PRÉPARÉE : passe DEPOSEE + son obligation.
+
+    Idempotent (redéposer une déclaration déjà déposée ne change rien
+    d'autre). Cherche l'``ObligationFiscale`` TVA de la société dont la
+    période COUVRE ``declaration`` (``periode_debut`` ≤ date_debut ET
+    ``periode_fin`` ≥ date_fin) et la fait passer « déposée » via
+    ``marquer_obligation_deposee`` — no-op silencieux si aucun calendrier
+    fiscal n'a été généré pour cette période (XACC9 est additif : ne bloque
+    jamais le dépôt d'une déclaration). Renvoie la déclaration.
+    """
+    if declaration.statut != DeclarationTVA.Statut.DEPOSEE:
+        declaration.statut = DeclarationTVA.Statut.DEPOSEE
+        declaration.save(update_fields=['statut'])
+    obligation = ObligationFiscale.objects.filter(
+        company=declaration.company,
+        type_obligation=ObligationFiscale.Type.TVA,
+        periode_debut__lte=declaration.date_debut,
+        periode_fin__gte=declaration.date_fin,
+    ).first()
+    if obligation is not None:
+        marquer_obligation_deposee(
+            obligation, source_type='declaration_tva', source_id=declaration.id)
+    return declaration
 
 
 # ── FG139 — Retenue à la source (RAS) sur honoraires/prestations ───────────

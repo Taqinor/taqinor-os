@@ -51,6 +51,7 @@ from .models import (
     MappingCompte, CompteAuxiliaire, PieceJustificative,
     PisteAuditComptable,
     ModeleRapprochement,
+    ObligationFiscale,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -99,6 +100,7 @@ from .serializers import (
     PieceJustificativeSerializer,
     PisteAuditComptableSerializer,
     ModeleRapprochementSerializer,
+    ObligationFiscaleSerializer,
 )
 
 
@@ -2249,6 +2251,13 @@ class DeclarationTVAViewSet(_ComptaBaseViewSet):
             f'{decl.reference or decl.id}.csv"')
         return resp
 
+    @action(detail=True, methods=['post'])
+    def deposer(self, request, pk=None):
+        """Dépose la déclaration : DEPOSEE + son obligation fiscale (XACC9)."""
+        decl = self.get_object()  # scopée société par TenantMixin.
+        decl = services.deposer_declaration_tva(decl)
+        return Response(self.get_serializer(decl).data)
+
 
 class RetenueSourceViewSet(_ComptaBaseViewSet):
     """Retenue à la source (RAS) sur honoraires/prestations (FG139).
@@ -4372,3 +4381,50 @@ class ProvisionsPeriodeViewSet(viewsets.ViewSet):
         resp['Content-Disposition'] = (
             'attachment; filename="provisions_fnp_fae.csv"')
         return resp
+
+
+# ── XACC9 — Calendrier des obligations fiscales ─────────────────────────────
+
+class ObligationFiscaleViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+    """Calendrier des échéances fiscales de l'exercice (XACC9). LECTURE
+    SEULE (générées par ``generer``) + action ``rappels`` (J-7). Admin/
+    Responsable, scopé société."""
+    queryset = ObligationFiscale.objects.all()
+    serializer_class = ObligationFiscaleSerializer
+    permission_classes = [IsResponsableOrAdmin]
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_limite', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    @action(detail=False, methods=['post'])
+    def generer(self, request):
+        """Génère (idempotent) le calendrier fiscal d'un exercice (XACC9).
+
+        Corps : ``{exercice: <id>, regime_tva?}``.
+        """
+        exercice_id = request.data.get('exercice')
+        exercice = ExerciceComptable.objects.filter(
+            company=request.user.company, pk=exercice_id).first()
+        if exercice is None:
+            return Response(
+                {'detail': 'Exercice introuvable pour cette société.'},
+                status=status.HTTP_404_NOT_FOUND)
+        obligations = services.generer_calendrier_fiscal(
+            request.user.company, exercice,
+            regime_tva=request.data.get('regime_tva') or None)
+        return Response(
+            ObligationFiscaleSerializer(obligations, many=True).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'])
+    def rappels(self, request):
+        """Envoie les rappels J-7 des obligations « à préparer » (XACC9)."""
+        notifiees = services.envoyer_rappels_j7(request.user.company)
+        return Response(
+            ObligationFiscaleSerializer(notifiees, many=True).data)

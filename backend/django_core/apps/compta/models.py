@@ -2772,6 +2772,84 @@ class DeclarationTVA(models.Model):
         return self
 
 
+# ── XACC9 — Calendrier des obligations fiscales ─────────────────────────────
+
+class ObligationFiscale(models.Model):
+    """Échéance fiscale de l'exercice (TVA/IS/RAS…), vue unifiée (XACC9).
+
+    Les briques existantes (TVA FG137, acomptes IS FG140, RAS FG139, timbre
+    FG144, état 9421 FG143, liasse FG142) n'avaient aucune vue calendaire
+    commune. Un ``ObligationFiscale`` par échéance de l'exercice, avec sa
+    ``date_limite`` calculée selon le régime (mensuel/trimestriel) et un lien
+    optionnel vers la déclaration source une fois déposée
+    (``source_type``/``source_id`` — string-ref, jamais un import de modèle
+    autre que ceux déjà internes à ``compta``).
+    """
+    class Type(models.TextChoices):
+        TVA = 'tva', 'TVA'
+        IS_ACOMPTE = 'is_acompte', 'Acompte IS'
+        RAS = 'ras', 'Retenue à la source'
+        TIMBRE = 'timbre', 'Droit de timbre'
+        ETAT_9421 = 'etat_9421', 'État 9421'
+        LIASSE_FISCALE = 'liasse_fiscale', 'Liasse fiscale'
+
+    class Statut(models.TextChoices):
+        A_PREPARER = 'a_preparer', 'À préparer'
+        DEPOSEE = 'deposee', 'Déposée'
+        PAYEE = 'payee', 'Payée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='obligations_fiscales',
+        verbose_name='Société',
+    )
+    type_obligation = models.CharField(
+        max_length=20, choices=Type.choices, verbose_name='Type')
+    periode_debut = models.DateField(verbose_name='Début de période')
+    periode_fin = models.DateField(verbose_name='Fin de période')
+    date_limite = models.DateField(verbose_name='Date limite')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices,
+        default=Statut.A_PREPARER, verbose_name='Statut')
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    # Lien vers la déclaration source une fois déposée (ex. DeclarationTVA) —
+    # string-ref interne à compta, jamais un import cross-app de modèle.
+    source_type = models.CharField(
+        max_length=30, blank=True, default='',
+        verbose_name='Type de déclaration source')
+    source_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID de la déclaration source')
+    # J-7 : horodatage du rappel déjà envoyé (idempotence de la notification).
+    rappel_envoye_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Rappel envoyé le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Obligation fiscale'
+        verbose_name_plural = 'Obligations fiscales'
+        ordering = ['date_limite', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'type_obligation', 'periode_debut',
+                        'periode_fin'],
+                name='uniq_obligation_fiscale_periode',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.get_type_obligation_display()} — {self.date_limite}'
+
+    def clean(self):
+        super().clean()
+        if (self.periode_debut and self.periode_fin
+                and self.periode_fin < self.periode_debut):
+            raise ValidationError(
+                "La fin de période doit être postérieure au début.")
+
+
 # ── FG139 — Retenue à la source (RAS) sur honoraires/prestations ────────────
 
 class RetenueSource(models.Model):
