@@ -102,6 +102,8 @@ class Fournisseur(models.Model):
     rib = models.CharField(
         max_length=50, blank=True, null=True,
         help_text='RIB / IBAN du fournisseur (règlements AP).')
+    # XPLT14 — champs personnalisés (apps.customfields, module='fournisseur').
+    custom_data = models.JSONField(null=True, blank=True)
 
     class Meta:
         verbose_name = "Fournisseur"

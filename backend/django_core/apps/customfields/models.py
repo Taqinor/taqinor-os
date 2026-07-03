@@ -19,6 +19,9 @@ class CustomFieldDef(models.Model):
         TICKET = 'ticket', 'Ticket SAV'
         # GED10 — métadonnées typées configurables sur les documents GED.
         DOCUMENT = 'document', 'Document GED'
+        # XPLT14 — couverture des modules récents (relation/fichier).
+        FOURNISSEUR = 'fournisseur', 'Fournisseur'
+        EMPLOYE = 'employe', 'Employé'
 
     class FieldType(models.TextChoices):
         TEXT = 'text', 'Texte'
@@ -26,6 +29,11 @@ class CustomFieldDef(models.Model):
         DATE = 'date', 'Date'
         CHOICE = 'choice', 'Choix'
         BOOLEAN = 'boolean', 'Oui/Non'
+        # XPLT14 — lien vers un enregistrement d'un autre module (id + libellé
+        # dénormalisé dans custom_data, résolu via les selectors du module
+        # cible) et fichier (clé MinIO, réutilise records.storage).
+        RELATION = 'relation', 'Relation'
+        FICHIER = 'fichier', 'Fichier'
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
@@ -42,6 +50,10 @@ class CustomFieldDef(models.Model):
     visible_liste = models.BooleanField(default=False)
     ordre = models.PositiveIntegerField(default=0)
     actif = models.BooleanField(default=True)
+    # XPLT14 — module cible d'un champ type=relation (ex. 'client', 'produit').
+    # Ignoré pour tout autre type. Valeurs valides = Module.choices.
+    relation_module = models.CharField(
+        max_length=20, choices=Module.choices, null=True, blank=True)
 
     class Meta:
         ordering = ['module', 'ordre', 'libelle']

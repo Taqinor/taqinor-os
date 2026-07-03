@@ -6,7 +6,8 @@ class CustomFieldDefSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomFieldDef
         fields = ['id', 'module', 'code', 'libelle', 'type', 'options',
-                  'obligatoire', 'visible_liste', 'ordre', 'actif']
+                  'obligatoire', 'visible_liste', 'ordre', 'actif',
+                  'relation_module']
 
     def validate_options(self, value):
         # Normalise les options en liste de chaînes non vides (tolère un dict
@@ -32,6 +33,22 @@ class CustomFieldDefSerializer(serializers.ModelSerializer):
         if type_ == 'choice' and not options:
             raise serializers.ValidationError(
                 {'options': 'Un champ « Choix » exige au moins une option.'})
+
+        # XPLT14 — un champ de type « relation » exige un module cible connu
+        # (celui vers lequel pointe le lien) : sans quoi il est impossible de
+        # résoudre id → libellé côté validation/affichage.
+        if 'relation_module' in attrs:
+            relation_module = attrs.get('relation_module')
+        else:
+            relation_module = getattr(instance, 'relation_module', None)
+        if type_ == 'relation':
+            if not relation_module:
+                raise serializers.ValidationError(
+                    {'relation_module': 'Un champ « Relation » exige un '
+                                        'module cible.'})
+            if _module_model(relation_module) is None:
+                raise serializers.ValidationError(
+                    {'relation_module': 'Module cible inconnu.'})
 
         # L814 — interdire le renommage de `code` (la clé JSON) dès qu'un
         # enregistrement porte une valeur custom_data pour ce champ : seules
@@ -88,6 +105,13 @@ def _module_model(module):
     if module == 'document':
         from apps.ged.models import Document
         return Document
+    # XPLT14 — couverture des modules récents.
+    if module == 'fournisseur':
+        from apps.stock.models import Fournisseur
+        return Fournisseur
+    if module == 'employe':
+        from apps.rh.models import DossierEmploye
+        return DossierEmploye
     return None
 
 
@@ -134,5 +158,73 @@ def validate_custom_data(module, company, data):
                     val = date.fromisoformat(str(val)[:10]).isoformat()
                 except (TypeError, ValueError):
                     raise ValidationError({code: 'Date invalide.'})
+        elif d.type == 'relation':
+            val = _validate_relation_value(d, company, val)
+        elif d.type == 'fichier':
+            val = _validate_fichier_value(d, val)
         clean[code] = val
     return clean
+
+
+def _validate_relation_value(field_def, company, val):
+    """XPLT14 — valide/normalise la valeur d'un champ type=relation.
+
+    Accepte soit un id brut (int/str numérique), soit un dict déjà résolu
+    ``{'id': ..., 'label': ...}`` (renvoyé par une saisie précédente). Résout
+    toujours l'id CONTRE le module cible (company-scopé, jamais cross-tenant)
+    et dénormalise le libellé au moment de la validation — le libellé stocké
+    peut donc devenir périmé si l'enregistrement cible est renommé plus tard
+    (comportement documenté, cohérent avec une dénormalisation en lecture
+    rapide ; re-valider re-synchronise)."""
+    from rest_framework.exceptions import ValidationError
+    target_module = field_def.relation_module
+    model = _module_model(target_module)
+    if model is None:
+        raise ValidationError(
+            {field_def.code: 'Module cible du lien introuvable.'})
+    raw_id = val.get('id') if isinstance(val, dict) else val
+    try:
+        raw_id = int(raw_id)
+    except (TypeError, ValueError):
+        raise ValidationError({field_def.code: 'Identifiant de lien invalide.'})
+    obj = model.objects.filter(company=company, pk=raw_id).first()
+    if obj is None:
+        raise ValidationError(
+            {field_def.code: 'Enregistrement lié introuvable.'})
+    return {'id': obj.pk, 'label': _relation_label(obj)}
+
+
+def _relation_label(obj):
+    """Libellé lisible dénormalisé pour un enregistrement lié.
+
+    La plupart des modèles cibles (Lead/Client/Produit/Fournisseur) n'ont pas
+    de ``__str__`` personnalisé (le défaut Django serait « ClassName object
+    (pk) », inutilisable en UI) : on préfère un champ nom/libellé usuel s'il
+    existe, sinon ``str(obj)``."""
+    for attr in ('nom', 'libelle', 'titre', 'reference', 'numero'):
+        value = getattr(obj, attr, None)
+        if value:
+            prenom = getattr(obj, 'prenom', '') or ''
+            return f'{value} {prenom}'.strip() if attr == 'nom' and prenom \
+                else str(value)
+    return str(obj)
+
+
+def _validate_fichier_value(field_def, val):
+    """XPLT14 — valide/normalise la valeur d'un champ type=fichier.
+
+    Accepte soit un objet fichier brut (upload multipart — passé par
+    ``store_attachment``), soit un dict déjà téléversé
+    ``{'file_key', 'filename', 'size', 'mime'}`` (réédition sans re-upload)."""
+    from rest_framework.exceptions import ValidationError
+    if isinstance(val, dict):
+        if not val.get('file_key'):
+            raise ValidationError({field_def.code: 'Fichier invalide.'})
+        return val
+    if hasattr(val, 'read'):
+        from apps.records.storage import store_attachment
+        stored, error = store_attachment(val)
+        if error:
+            raise ValidationError({field_def.code: error})
+        return stored
+    raise ValidationError({field_def.code: 'Fichier attendu.'})
