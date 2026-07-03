@@ -767,6 +767,68 @@ def valider_situation(situation, *, user):
     return situation
 
 
+# ── Congés RH approuvés → indisponibilités planning (XPRJ9) ──────────────────
+def _marqueur_conge_rh(demande):
+    """Marqueur STABLE identifiant la demande RH source (idempotence).
+
+    Stocké dans ``Indisponibilite.motif`` (aucune référence lâche dédiée sur ce
+    modèle historique — additif minimal) : permet de retrouver/mettre à jour la
+    MÊME indisponibilité sur une re-validation, sans jamais dupliquer.
+    """
+    return f'conge_rh:{demande.id}'
+
+
+def synchroniser_indisponibilite_conge(demande, *, annule=False):
+    """Synchronise l'``Indisponibilite`` planning à partir d'une ``DemandeConge``.
+
+    Appelé par ``receivers.py`` (abonné à l'événement ``conge_approuve`` du bus
+    ``core/events.py``) — JAMAIS appelé directement par ``rh`` (découplage M6).
+
+    Résout la ``RessourceProfil`` liée au MÊME utilisateur que
+    ``demande.employe.user`` (dans la société du profil ressource déduite du
+    lien utilisateur — jamais lue du corps de requête). Un employé sans compte
+    utilisateur, ou un utilisateur sans profil ressource dans ce module, est
+    ignoré PROPREMENT (retourne ``None``, aucune exception).
+
+    * ``annule=False`` (validation) : ``update_or_create`` sur le marqueur
+      ``_marqueur_conge_rh`` — IDEMPOTENT : une re-validation ne duplique
+      jamais, elle met juste à jour les dates si elles ont changé.
+    * ``annule=True`` : supprime l'indisponibilité correspondante si elle
+      existe encore (aucune erreur si déjà absente).
+
+    Renvoie l'``Indisponibilite`` créée/mise à jour (validation) ou ``None``
+    (annulation, ou dégradation propre).
+    """
+    from .models import Indisponibilite, RessourceProfil
+
+    employe = getattr(demande, 'employe', None)
+    user_id = getattr(employe, 'user_id', None) if employe else None
+    if not user_id:
+        return None
+
+    ressource = RessourceProfil.objects.filter(user_id=user_id).first()
+    if ressource is None:
+        return None
+
+    marqueur = _marqueur_conge_rh(demande)
+
+    if annule:
+        Indisponibilite.objects.filter(
+            company=ressource.company, ressource=ressource,
+            motif=marqueur).delete()
+        return None
+
+    indispo, _ = Indisponibilite.objects.update_or_create(
+        company=ressource.company, ressource=ressource, motif=marqueur,
+        defaults={
+            'type_indispo': Indisponibilite.TypeIndispo.CONGE,
+            'date_debut': demande.date_debut,
+            'date_fin': demande.date_fin,
+        },
+    )
+    return indispo
+
+
 # ── Rappels des temps manquants (XPRJ7) ──────────────────────────────────────
 def rappeler_temps_manquants(company, debut, fin):
     """Notifie CHAQUE ressource en retard de saisie sur [debut, fin] (XPRJ7).
