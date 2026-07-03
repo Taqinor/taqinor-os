@@ -10,6 +10,13 @@
  * if performance falls under the guaranteed floor (≥ 84.8 % already
  * published); (3) a claim step list, with the response window resolved by the
  * founder (WG9: "within 1 h, 7 days a week").
+ *
+ * W352 — "Taqinor Production Guarantee" scaffold: a DISTINCT block framing an
+ * annual-production commitment (a measured-kWh floor vs. the PVGIS estimate,
+ * plus a remedy). WG12 (founder gate) has not set the floor % or remedy yet:
+ * this block ships `pending founder commitment` — the mechanics are
+ * explained, NO threshold figure is shown until WG12 lands. See
+ * productionGuarantee below.
  */
 import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -89,6 +96,15 @@ const claimSteps = [
     body: 'Our response commitment — not a resolution time, but a human acknowledgement that starts your case moving.',
   },
 ];
+
+// W352 — "Taqinor Production Guarantee": scaffold `pending founder
+// commitment`. floorPct/remedy stay null until WG12 (founder gate) supplies
+// the annual production floor AND the remedy — until then the block shows
+// only the FRAMING, never an invented percentage.
+const productionGuarantee = {
+  floorPct: null as number | null,
+  remedy: null as string | null,
+};
 ---
 
 <Layout
@@ -182,6 +198,40 @@ const claimSteps = [
             monitoring runs continuously — to catch this kind of drift early, before you'd even see it
             on your bill.
           </p>
+        </div>
+
+        <!-- W352 — "Taqinor Production Guarantee": distinct scaffold,
+             `pending founder commitment`. Explains the FRAMING (how an annual
+             kWh floor would be measured, from which data) without ever
+             showing a percentage until WG12 lands — see productionGuarantee
+             above. -->
+        <div class="mx-auto mt-14 max-w-xl border-2 border-brass-400/50 bg-blanc p-6">
+          <p class="tech-label text-azur-600">What our data makes possible</p>
+          <h3 class="display mt-2 text-lg">Taqinor Production Guarantee</h3>
+          {productionGuarantee.floorPct ? (
+            <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+              We commit to a floor of <strong>{productionGuarantee.floorPct} %</strong> of estimated
+              annual production (PVGIS method), measured on your Deye Cloud monitoring.
+              {productionGuarantee.remedy ? ` ${productionGuarantee.remedy}` : ''}
+            </p>
+          ) : (
+            <>
+              <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+                Every Taqinor installation reports its real production, continuously, on Deye Cloud —
+                it's precisely this measured data, across a fleet now tracked for over a year (see our
+                {' '}<a href={L('/realisations')} class="font-semibold text-azur-600 underline decoration-azur-600/40 underline-offset-2 hover:decoration-azur-600">projects</a>),
+                that would make a numeric commitment credible: an annual production floor (as a % of the
+                PVGIS estimate used at assessment) below which a defined remedy would apply.
+              </p>
+              <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+                That floor and its remedy are not set yet — we publish no percentage until the commitment
+                is finalised. This section will be completed once it is.
+              </p>
+              <p class="mt-4 text-xs italic text-encre-faint">
+                Awaiting a founder commitment — no figure is published before confirmation.
+              </p>
+            </>
+          )}
         </div>
       </div>
     </section>
