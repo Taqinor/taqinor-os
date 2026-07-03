@@ -1391,6 +1391,225 @@ def creer_avenant(contrat, *, objet, description='', date_effet=None,
 
 
 # ---------------------------------------------------------------------------
+# XCTR6 — Prorata temporis sur avenant en cours de période
+# ---------------------------------------------------------------------------
+
+# Nombre de mois couverts par UNE période, par périodicité d'échéancier (même
+# table que ``selectors._MOIS_PAR_PERIODE`` — un avenant sur une périodicité
+# unique/personnalisée n'a pas de « prochaine échéance » calculable).
+_MOIS_PAR_PERIODE_PRORATA = {
+    'mensuelle': 1,
+    'trimestrielle': 3,
+    'semestrielle': 6,
+    'annuelle': 12,
+}
+
+
+class ProrataError(Exception):
+    """Levée quand un prorata d'avenant ne peut pas être calculé/appliqué.
+
+    Ex. : la ligne n'appartient pas à une périodicité prorata-able, l'avenant
+    n'a pas de ``date_effet``/``montant_delta``, ou la ligne est déjà facturée.
+    """
+
+
+def calculer_prorata_avenant(avenant, ligne, *, base_jours=None):
+    """Calcule le montant PRORATA TEMPORIS d'un avenant sur UNE échéance — XCTR6.
+
+    PUREMENT DÉCLARATIF (lecture seule) : ne crée AUCUNE écriture. La période
+    couverte par ``ligne`` est déduite de la ``periodicite`` de son échéancier :
+    ``[date_echeance − N mois, date_echeance[`` (N = 1/3/6/12 selon
+    mensuelle/trimestrielle/semestrielle/annuelle). Le calcul base « jours
+    réels » (par défaut) répartit ``avenant.montant_delta`` au prorata des
+    jours restants de la période APRÈS ``date_effet`` :
+
+        prorata = montant_delta × (jours_restants / jours_periode)
+
+    - ``date_effet`` HORS de la période (avant le début ou à/après la fin,
+      c.-à-d. à l'échéance elle-même) → prorata NUL (rien à répartir sur cette
+      échéance — l'avenant s'applique en totalité, ou ne concerne pas encore
+      cette période).
+    - ``base_jours`` : nombre de jours de la période, si fourni (permet une
+      base 30/360 conventionnelle) ; sinon les jours RÉELS calendaires
+      (défaut — ``(fin − debut).days``).
+
+    Renvoie un dict ``{'periode_debut', 'periode_fin', 'jours_periode',
+    'jours_restants', 'prorata'}`` (``Decimal`` arrondi 2 décimales). Renvoie
+    ``None`` si la périodicité de l'échéancier n'est pas prorata-able
+    (unique/personnalisée) ou si ``montant_delta`` est ``None``.
+    """
+    from .models import Contrat
+
+    if avenant.montant_delta is None or avenant.date_effet is None:
+        return None
+
+    periodicite = ligne.echeancier.periodicite
+    mois = _MOIS_PAR_PERIODE_PRORATA.get(periodicite)
+    if not mois:
+        return None
+
+    periode_fin = ligne.date_echeance
+    periode_debut = Contrat.ajouter_mois(periode_fin, -mois)
+
+    if avenant.date_effet <= periode_debut or avenant.date_effet >= periode_fin:
+        # Hors période (avant le début, ou à/après la fin = pas de prorata à
+        # appliquer sur CETTE échéance).
+        jours_periode = base_jours or (periode_fin - periode_debut).days
+        return {
+            'periode_debut': periode_debut,
+            'periode_fin': periode_fin,
+            'jours_periode': jours_periode,
+            'jours_restants': 0,
+            'prorata': Decimal('0.00'),
+        }
+
+    jours_periode = base_jours or (periode_fin - periode_debut).days
+    jours_restants = (periode_fin - avenant.date_effet).days
+    if jours_periode <= 0:
+        prorata = Decimal('0.00')
+    else:
+        prorata = (
+            avenant.montant_delta * Decimal(jours_restants)
+            / Decimal(jours_periode)
+        ).quantize(Decimal('0.01'))
+
+    return {
+        'periode_debut': periode_debut,
+        'periode_fin': periode_fin,
+        'jours_periode': jours_periode,
+        'jours_restants': jours_restants,
+        'prorata': prorata,
+    }
+
+
+@transaction.atomic
+def appliquer_prorata_avenant(avenant, ligne, *, auteur=None, base_jours=None):
+    """Applique le prorata d'un avenant sur UNE échéance à venir — XCTR6.
+
+    Calcule le prorata (``calculer_prorata_avenant``) puis, s'il est NON nul :
+
+    - HAUSSE (prorata > 0) : ajoute une ligne COMPLÉMENTAIRE à l'échéancier de
+      la ligne (``services.ajouter_ligne_echeance`` — numéro max+1 sous verrou,
+      jamais ``count()+1``), datée à ``ligne.date_echeance``, montant = prorata.
+      Cette ligne complémentaire est facturée normalement au cycle suivant
+      (CONTRAT31/XCTR5) — elle n'émet PAS de facture elle-même ici.
+    - BAISSE (prorata < 0) : crée un ``ventes.Avoir`` lié à la DERNIÈRE facture
+      émise pour le contrat (frontière cross-app, import fonction-local ;
+      ``ventes.services`` n'est pas encore requis ici — création directe du
+      modèle Avoir, cohérente avec ``ventes.services`` qui fait de même) pour
+      le montant absolu du prorata. Sans facture antérieure à créditer, l'avoir
+      n'est pas créé (rien à créditer) — le prorata reste tracé au chatter.
+    - Un avenant à date d'échéance (prorata nul) n'a AUCUN effet : ni ligne, ni
+      avoir.
+
+    Journalise le résultat dans le chatter du contrat (CONTRAT15). Lève
+    ``ProrataError`` si la ligne est déjà facturée (rien à ajuster) ou si le
+    calcul renvoie ``None`` (périodicité non prorata-able / avenant sans delta).
+
+    Renvoie un dict ``{'prorata', 'ligne_complementaire', 'avoir'}``
+    (``ligne_complementaire``/``avoir`` sont ``None`` si non applicables).
+    """
+    if ligne.facture_id:
+        raise ProrataError(
+            "Cette échéance est déjà facturée — le prorata ne peut plus être "
+            "ajusté dessus.")
+
+    calcul = calculer_prorata_avenant(avenant, ligne, base_jours=base_jours)
+    if calcul is None:
+        raise ProrataError(
+            "Le prorata n'est pas calculable pour cette échéance (périodicité "
+            "non prorata-able ou avenant sans montant_delta/date_effet).")
+
+    prorata = calcul['prorata']
+    ligne_complementaire = None
+    avoir = None
+
+    if prorata > 0:
+        ligne_complementaire = ajouter_ligne_echeance(
+            ligne.echeancier,
+            date_echeance=ligne.date_echeance,
+            montant=prorata,
+            libelle=(
+                f'Prorata avenant n°{avenant.numero} — {avenant.objet}'),
+        )
+    elif prorata < 0:
+        avoir = _creer_avoir_prorata(avenant, ligne.echeancier.contrat,
+                                     abs(prorata))
+
+    journaliser_transition(
+        avenant.contrat, field='prorata_avenant',
+        old_value='',
+        new_value=_fmt_montant(prorata, avenant.contrat.devise),
+        message=(
+            f'Prorata temporis avenant n°{avenant.numero} sur échéance '
+            f'n°{ligne.numero} (période {calcul["periode_debut"]} → '
+            f'{calcul["periode_fin"]}).'),
+        auteur=auteur)
+
+    return {
+        'prorata': prorata,
+        'ligne_complementaire': ligne_complementaire,
+        'avoir': avoir,
+    }
+
+
+def _creer_avoir_prorata(avenant, contrat, montant_abs):
+    """Crée un ``ventes.Avoir`` lié à la dernière facture du contrat — XCTR6.
+
+    Frontière cross-app (CLAUDE.md) : import FONCTION-LOCAL de
+    ``ventes.models``/``ventes.utils.references`` uniquement (jamais une vue).
+    Sans facture antérieure émise pour ce contrat, renvoie ``None`` (rien à
+    créditer — le prorata reste tracé au chatter seul).
+    """
+    from decimal import ROUND_HALF_UP
+
+    from .models import LigneEcheance
+
+    from apps.ventes.models import Avoir, Facture
+    from apps.ventes.utils.references import create_with_reference
+
+    facture_id = (
+        LigneEcheance.objects
+        .filter(echeancier__contrat=contrat, facture_id__isnull=False)
+        .exclude(statut=LigneEcheance.Statut.ANNULEE)
+        .order_by('-date_echeance', '-id')
+        .values_list('facture_id', flat=True)
+        .first()
+    )
+    if not facture_id:
+        return None
+
+    try:
+        facture = Facture.objects.get(pk=facture_id, company=contrat.company)
+    except Facture.DoesNotExist:  # pragma: no cover - défensif
+        return None
+
+    tva_pct = facture.taux_tva or Decimal('20')
+    montant_ttc = Decimal(str(montant_abs))
+    montant_ht = (montant_ttc / (1 + tva_pct / 100)).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+    montant_tva = (montant_ttc - montant_ht).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+    def _create(ref):
+        return Avoir.objects.create(
+            reference=ref,
+            company=contrat.company,
+            facture=facture,
+            client=facture.client,
+            taux_tva=tva_pct,
+            montant_ht=montant_ht,
+            montant_tva=montant_tva,
+            montant_ttc=montant_ttc,
+            motif=(
+                f'Prorata temporis avenant n°{avenant.numero} '
+                f'(baisse) — contrat #{contrat.id}'),
+        )
+
+    return create_with_reference(Avoir, 'AV', contrat.company, _create)
+
+
+# ---------------------------------------------------------------------------
 # CONTRAT25 — Résiliation (motif / préavis / solde) → statut « résilié »
 # ---------------------------------------------------------------------------
 
