@@ -16,6 +16,16 @@
  * (source unique de vérité), présentée comme axe Casablanca–Rabat (où sont les
  * chantiers réels) + les autres villes nommées desservies sur devis — jamais
  * de « tout le Maroc » implicite.
+ *
+ * W253 — Élévation en véritable hub de services : carte recharge véhicule
+ * électrique ajoutée (la page /recharge-voiture-electrique-solaire existait
+ * déjà mais restait invisible ici) ; bande « comment on finance votre projet »
+ * (chiffres et mécanismes REPRIS tels quels de /financement, aucun nouveau
+ * montant) ; liens croisés vers équipement + garanties (« ce que vous
+ * recevez ») ; icônes au trait par carte (mêmes pictogrammes que la grille
+ * de l'accueil, `solutionIcons`) + qualificatif « quand la choisir » d'une
+ * ligne par carte ; copie « Six métiers » + JSON-LD `hasPart` recalés sur le
+ * compte RÉEL (dérivé de `solutions.length`, jamais recopié à la main).
  */
 import Layout from '../layouts/Layout.astro';
 import V2Enhance from '../components/V2Enhance.astro';
@@ -36,6 +46,7 @@ const solutions = [
     title: 'Étude & diagnostic gratuit',
     summary:
       'Gratuit, sans engagement : design 3D de votre toit offert, dimensionnement sur votre facture réelle — le point de départ de toutes nos solutions.',
+    qualifier: 'Choisissez-la en premier — c’est elle qui désigne toutes les autres.',
     highlight: true,
   },
   {
@@ -54,44 +65,91 @@ const solutions = [
     title: 'Analyse gratuite de votre facture',
     summary:
       'Indiquez le montant de votre facture ONEE : on en tire votre consommation réelle et une fourchette chiffrée immédiate, sans passer par le relevé de toiture d’abord.',
+    qualifier: 'À choisir si vous n’avez pas encore mesuré votre toit, mais avez votre facture sous la main.',
   },
   {
     href: '/résidentiel',
     title: 'Solaire résidentiel',
     summary:
       'Villa ou appartement : on dimensionne sur votre facture, pas sur un kit, et la déclaration loi 82-21 part avec le chantier.',
+    qualifier: 'Pour un logement — la déclaration loi 82-21 est incluse.',
   },
   {
     href: '/professionnel',
     title: 'Solaire professionnel & industriel',
     summary:
       'Hangars, usines, hôtels, cliniques : on attaque le poste électricité, en moyenne tension si besoin, dans les règles de la loi 82-21.',
+    qualifier: 'Pour un site professionnel — jusqu’à la moyenne tension si nécessaire.',
   },
   {
     href: '/pompage-solaire',
     title: 'Pompage solaire',
     summary:
       'Irrigation au fil du soleil, le plus souvent sans batteries, calé sur le débit et la HMT — et exonéré de TVA en agricole.',
+    qualifier: 'Pour l’irrigation agricole — dimensionné sur votre débit et votre HMT réels.',
   },
   {
     href: '/batteries-stockage',
     title: 'Batteries & stockage',
     summary:
       'Batteries LFP Dyness pour le creux du soir ou la continuité de service, quand votre courbe de consommation le justifie.',
+    qualifier: 'À ajouter si votre consommation est surtout nocturne, ou si une coupure vous coûte cher.',
+  },
+  {
+    // W253 — page existante mais jusqu'ici invisible du hub (elle vivait sans
+    // lien entrant depuis /nos-solutions). Résumé repris tel quel du
+    // positionnement déjà publié sur la page elle-même.
+    href: '/recharge-voiture-electrique-solaire',
+    title: 'Recharge de véhicule électrique au solaire',
+    summary:
+      'Rechargez votre voiture électrique avec l’énergie produite sur votre propre toit, plutôt qu’au tarif plein du réseau.',
+    qualifier: 'Pour un foyer qui roule (ou va rouler) à l’électrique.',
   },
   {
     href: '/maintenance-monitoring',
     title: 'Maintenance & monitoring',
     summary:
       'Supervision Deye Cloud avec accès client, SAV qui agit sur alerte et dossier technique complet — la vie d’après la pose.',
+    qualifier: 'Inclus après la pose — à considérer aussi pour une installation existante non suivie.',
   },
   {
     href: '/regularization-article-33',
     title: 'Régularisation Loi 82-21',
     summary:
       'Une installation existante remise dans les clous via l’Article 33.',
+    qualifier: 'Si votre installation existante n’a jamais été déclarée.',
   },
 ];
+
+// W253 — icônes au trait, mêmes pictogrammes que la grille de l'accueil
+// (index.astro `solutionIcons`) : indexées par href pour rester stables même
+// si l'ordre des cartes change. Deux nouvelles entrées ajoutées ici
+// (étude/diagnostic, analyse de facture, recharge VE) qui n'existaient pas
+// sur la grille condensée de l'accueil.
+const solutionIcons: Record<string, string> = {
+  '/devis/mon-toit': '<path d="M4 13 12 5l8 8" /><path d="M6 11v8h12v-8" /><path d="M10 19v-4h4v4" /><path d="M9 9.5 12 8l3 1.5" />',
+  '/résidentiel': '<path d="M4 13 12 5l8 8" /><path d="M6 11v8h12v-8" /><path d="M10 19v-4h4v4" />',
+  '/professionnel': '<path d="M4 21V8l7-3v4l7-3v15" /><path d="M4 21h16" /><path d="M8 12h0M8 16h0M14 12h0M14 16h0" />',
+  '/pompage-solaire': '<path d="M12 3v6" /><path d="M5 21c1.6-2 3.2-2 4.8 0s3.2 2 4.8 0 3.2-2 4.4 0" /><path d="M8 9h8l-2 6H10z" />',
+  '/batteries-stockage': '<path d="M5 8h14v11H5z" /><path d="M9 5h6v3H9z" /><path d="M12 11v5" /><path d="M9.5 13.5h5" />',
+  '/maintenance-monitoring': '<path d="M4 18 9 12l3 3 4-6 4 5" /><path d="M4 21h16" /><circle cx="9" cy="12" r="0.6" /><circle cx="16" cy="9" r="0.6" />',
+  '/regularization-article-33': '<path d="M7 4h7l4 4v12H7z" /><path d="M14 4v4h4" /><path d="M9.5 14l1.5 1.5 3-3.5" />',
+};
+// Repli par préfixe pour les hrefs paramétrés (ex. ?etape=facture) — évite de
+// dupliquer la clé pour chaque variante de query string.
+function iconFor(href: string): string {
+  if (solutionIcons[href]) return solutionIcons[href];
+  const base = href.split('?')[0];
+  if (solutionIcons[base]) return solutionIcons[base];
+  if (base === '/recharge-voiture-electrique-solaire') {
+    return '<path d="M4 17V9a2 2 0 0 1 2-2h6l3 4h3a2 2 0 0 1 2 2v4" /><circle cx="7.5" cy="17.5" r="1.6" /><circle cx="16.5" cy="17.5" r="1.6" /><path d="M11 12v-5" /><path d="M9.5 7.5h3" />';
+  }
+  return '';
+}
+
+// W253 — « Six métiers » corrigé sur le compte RÉEL, jamais recopié à la
+// main : si `solutions` change, le texte ET le JSON-LD suivent automatiquement.
+const solutionsCount = solutions.length;
 
 const jsonLd = {
   '@context': 'https://schema.org',
@@ -107,7 +165,7 @@ const jsonLd = {
 
 <Layout
   title="Nos solutions solaires au Maroc | Taqinor"
-  description="Toute l’offre Taqinor en un coup d’œil : solaire résidentiel, professionnel & industriel, pompage agricole, batteries & stockage LFP, maintenance & monitoring Deye Cloud, et régularisation loi 82-21. Six chantiers différents, un même point de départ : votre situation réelle, chiffrée."
+  description="Toute l’offre Taqinor en un coup d’œil : étude gratuite, solaire résidentiel, professionnel & industriel, pompage agricole, recharge de véhicule électrique, batteries & stockage LFP, maintenance & monitoring Deye Cloud, et régularisation loi 82-21. Un même point de départ pour chaque solution : votre situation réelle, chiffrée."
   ogSlug="accueil"
 >
   <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
@@ -121,10 +179,13 @@ const jsonLd = {
       <div class="mx-auto max-w-3xl">
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">Nos solutions</p>
         <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">Une offre solaire pour chaque besoin</h1>
+        {/* W253 — le compte est dérivé de `solutions.length` (source unique de
+            vérité), jamais recopié à la main : « Six métiers » divergeait
+            silencieusement du nombre réel de cartes ci-dessous. */}
         <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
           Une villa ne se dimensionne pas comme un hangar, et le pompage agricole obéit encore à
-          d’autres règles que la régularisation d’une installation déjà en place. Six métiers
-          distincts, donc — mais tous commencent au même endroit : votre situation chiffrée, avant
+          d’autres règles que la régularisation d’une installation déjà en place. {solutionsCount} solutions
+          distinctes, donc — mais toutes commencent au même endroit : votre situation chiffrée, avant
           le moindre choix de matériel. Les voici.
         </p>
       </div>
@@ -133,10 +194,17 @@ const jsonLd = {
     <section class="px-4 pb-24 sm:pb-32">
       <div class="mx-auto grid max-w-6xl gap-6 md:grid-cols-3" data-stagger>
         {solutions.map((s, i) => (
-          <a href={s.href} class={`v2-rise cine-card flex flex-col p-7 ${s.highlight ? 'border-2 border-brass-400/70' : ''}`} style={`--v2-i:${i}`}>
-            <p class="tech-label text-lune">{s.highlight ? 'Gratuit · sans engagement' : 'Solution'}</p>
+          <a href={s.href} class={`v2-rise cine-card group flex flex-col p-7 ${s.highlight ? 'border-2 border-brass-400/70' : ''}`} style={`--v2-i:${i}`}>
+            {/* W253 — pictogramme au trait, currentColor (brass), même langage
+                que la grille de l'accueil : le hub doit être PLUS riche que le
+                teaser, pas identique à lui. */}
+            <svg class="h-9 w-9 text-brass-400 transition-colors group-hover:text-brass-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" set:html={iconFor(s.href)} />
+            <p class="tech-label mt-5 text-lune">{s.highlight ? 'Gratuit · sans engagement' : 'Solution'}</p>
             <h2 class="display mt-2 text-xl text-white" set:html={s.title.replace('&', '&amp;')} />
             <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{s.summary}</p>
+            {/* W253 — qualificatif « quand la choisir », une ligne, ton distinct
+                du résumé (bordure supérieure fine + tech-label brass). */}
+            <p class="mt-4 border-t border-white/10 pt-3 text-xs text-brass-300/90">{s.qualifier}</p>
             {/* W204 — nudge flèche : arrow dans un span inline-block motion-safe */}
             <span class="mt-5 inline-flex items-center gap-1 border-b-2 border-white/30 pb-0.5 text-sm font-bold text-white">Découvrir <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span></span>
           </a>
@@ -174,6 +242,72 @@ const jsonLd = {
           <a href="/recharge-voiture-electrique-solaire" class="text-white underline underline-offset-2 hover:text-lune">recharger votre voiture au solaire</a>,
           ou parcourez tous nos <a href="/guides" class="text-white underline underline-offset-2 hover:text-lune">guides</a>.
         </p>
+      </div>
+    </section>
+
+    {/* W253 — « Comment on finance votre projet » : chiffres et moyens repris
+        VERBATIM de /financement (source unique de vérité) — aucun nouveau
+        montant ici, seulement un rappel + un lien vers le détail complet. */}
+    <section class="section px-4">
+      <div class="mx-auto max-w-4xl text-center">
+        <p class="tech-label v2-kicker rule-brass text-lune">Comment on finance votre projet</p>
+        <h2 class="display v2-section-title mt-5 text-white">Trois façons de payer, aucune que nous imposons</h2>
+        <p class="v2-lead mt-5 text-lune-soft">
+          Au comptant, par crédit bancaire classique, ou via un financement vert pour les entreprises —
+          le montage se traite entre vous et votre établissement, nous n’y touchons aucune commission.
+        </p>
+        <dl class="mx-auto mt-10 grid max-w-2xl grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-4" data-stagger>
+          <div class="v2-rise min-w-0" style="--v2-i:0">
+            <dd class="fig fig-md lum whitespace-nowrap">3–7 ans</dd>
+            <dt class="tech-label mt-2 text-lune-faint">Retour sur investissement typique</dt>
+          </div>
+          <div class="v2-rise min-w-0" style="--v2-i:1">
+            <dd class="fig fig-md lum whitespace-nowrap">25 ans</dd>
+            <dt class="tech-label mt-2 text-lune-faint">Garantie de performance des panneaux</dt>
+          </div>
+          <div class="v2-rise min-w-0" style="--v2-i:2">
+            <dd class="fig fig-md lum whitespace-nowrap">60–90 %</dd>
+            <dt class="tech-label mt-2 text-lune-faint">De la facture couverte</dt>
+          </div>
+          <div class="v2-rise min-w-0" style="--v2-i:3">
+            <dd class="fig fig-md lum whitespace-nowrap">0 MAD</dd>
+            <dt class="tech-label mt-2 text-lune-faint">L’étude et le diagnostic</dt>
+          </div>
+        </dl>
+        <a href="/financement" class="v2-rise group mt-10 inline-flex items-center gap-1 border-b-2 border-white/30 pb-0.5 text-sm font-bold text-white transition-colors hover:border-white">
+          Voir le détail du financement <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span>
+        </a>
+      </div>
+    </section>
+
+    {/* W253 — Liens croisés « ce que vous recevez » : équipement posé +
+        garanties écrites, jusqu'ici absents de ce hub alors qu'ils répondent
+        directement à « qu'est-ce que j'obtiens concrètement ? ». */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="px-4 py-14 sm:py-16">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">Ce que vous recevez</p>
+        <h2 class="display v2-section-title mt-5 max-w-xl text-white">Le matériel posé et les garanties écrites</h2>
+        <div class="mt-8 grid gap-6 sm:grid-cols-2" data-stagger>
+          <a href="/équipement" class="v2-rise cine-card group flex flex-col p-7" style="--v2-i:0">
+            <p class="tech-label text-lune">Équipement</p>
+            <h3 class="display mt-2 text-xl text-white">L’équipement posé</h3>
+            <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">
+              Panneaux, onduleurs, batteries : les marques tier-1 réellement posées sur nos chantiers,
+              fiche par fiche.
+            </p>
+            <span class="mt-5 inline-flex items-center gap-1 border-b-2 border-white/30 pb-0.5 text-sm font-bold text-white">Voir l’équipement <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span></span>
+          </a>
+          <a href="/garanties" class="v2-rise cine-card group flex flex-col p-7" style="--v2-i:1">
+            <p class="tech-label text-lune">Garanties</p>
+            <h3 class="display mt-2 text-xl text-white">Nos garanties écrites</h3>
+            <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">
+              25 ans de garantie de performance sur les panneaux, et le détail écrit de ce qui est
+              couvert sur le reste du matériel et la pose.
+            </p>
+            <span class="mt-5 inline-flex items-center gap-1 border-b-2 border-white/30 pb-0.5 text-sm font-bold text-white">Voir les garanties <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span></span>
+          </a>
+        </div>
       </div>
     </section>
 

@@ -6,6 +6,13 @@
  *
  * W256/W262 — mirrors the FR additions: dedicated "free study" hub card +
  * section, honest "areas served" block.
+ *
+ * W253 — يرفع هذه الصفحة إلى مركز خدمات حقيقي: بطاقة شحن السيارة الكهربائية
+ * مضافة (الصفحة موجودة لكنها كانت غير مرئية هنا)؛ شريط «كيف تموّل مشروعك»
+ * (الأرقام مُعاد استخدامها حرفياً من /financement، دون أي مبلغ جديد)؛ روابط
+ * متقاطعة مرئية نحو المعدات + الضمانات («ما الذي تحصل عليه»)؛ أيقونات + سطر
+ * واحد «متى تختارها» لكل بطاقة؛ نص «ستة أوراش» + `hasPart` في JSON-LD أُعيد
+ * حسابهما من العدد الحقيقي (`solutions.length`).
  */
 import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -30,6 +37,7 @@ const solutions = [
     title: 'الدراسة والتشخيص المجاني',
     summary:
       'مجاني، دون أي التزام: تصميم ثلاثي الأبعاد لسطحك مُقدَّم، ومقاس محسوب على فاتورتك الحقيقية — نقطة انطلاق كل حلولنا.',
+    qualifier: 'اختر هذا أولاً — فهو الذي يحدّد كل الحلول الأخرى.',
     highlight: true,
   },
   {
@@ -47,44 +55,81 @@ const solutions = [
     title: 'تحليل مجاني لفاتورتك',
     summary:
       'أدخل مبلغ فاتورة الكهرباء: نستخرج منه استهلاكك الحقيقي وشريحة فورية مُقدَّرة، دون المرور أولاً عبر معاينة السطح.',
+    qualifier: 'اختر هذا إن لم تقس سطحك بعد، لكن فاتورتك في متناول يدك.',
   },
   {
     href: '/résidentiel',
     title: 'الطاقة الشمسية السكنية',
     summary:
       'فيلا أو شقة: نُحدّد المقاس حسب فاتورتك، لا حسب طقم جاهز، ويُرسَل تصريح القانون 82-21 مع الورش.',
+    qualifier: 'لسكن — تصريح القانون 82-21 مشمول.',
   },
   {
     href: '/professionnel',
     title: 'الطاقة الشمسية المهنية والصناعية',
     summary:
       'مستودعات، مصانع، فنادق، عيادات: نهاجم بند الكهرباء، بالجهد المتوسط عند الحاجة، وفق قواعد القانون 82-21.',
+    qualifier: 'لموقع مهني — حتى الجهد المتوسط عند الحاجة.',
   },
   {
     href: '/pompage-solaire',
     title: 'الضخ الشمسي',
     summary:
       'سقي على إيقاع الشمس، غالباً دون بطاريات، مضبوط على الصبيب والارتفاع المانومتري — ومُعفى من الضريبة في الفلاحة.',
+    qualifier: 'للسقي الفلاحي — مقاس على صبيبك وارتفاعك المانومتري الحقيقيين.',
   },
   {
     href: '/batteries-stockage',
     title: 'البطاريات والتخزين',
     summary:
       'بطاريات Dyness LFP لفترة المساء أو استمرارية الخدمة، حين يبرّر منحنى استهلاكك ذلك.',
+    qualifier: 'أضِفها إذا كان استهلاكك ليلياً بالأساس، أو إذا كان انقطاع التيار مكلفاً.',
+  },
+  {
+    // W253 — صفحة موجودة لكن دون رابط وارد من هذا المركز.
+    href: '/recharge-voiture-electrique-solaire',
+    title: 'شحن السيارة الكهربائية بالطاقة الشمسية',
+    summary:
+      'اشحن سيارتك الكهربائية بالطاقة المنتجة على سطحك أنت، بدل السعر الكامل للشبكة.',
+    qualifier: 'لبيت يقود (أو سيقود قريباً) سيارة كهربائية.',
   },
   {
     href: '/maintenance-monitoring',
     title: 'الصيانة والمراقبة',
     summary:
       'إشراف Deye Cloud مع ولوج للزبون، خدمة ما بعد البيع تتحرّك عند التنبيه وملف تقني كامل — الحياة بعد التركيب.',
+    qualifier: 'مشمولة بعد التركيب — تستحق النظر أيضاً لتركيبة قائمة غير مُراقَبة.',
   },
   {
     href: '/regularization-article-33',
     title: 'تسوية القانون 82-21',
     summary:
       'تركيبة قائمة تُعاد إلى القانون عبر المادة 33.',
+    qualifier: 'إذا لم تُصرَّح تركيبتك القائمة أبداً.',
   },
 ];
+
+// W253 — نفس مجموعة الأيقونات (index.astro `solutionIcons`)، مفهرسة بالمسار
+// الجذري حتى تُحلّ متغيرات سلسلة الاستعلام (مثل ?etape=facture) أيضاً.
+const solutionIcons: Record<string, string> = {
+  '/devis/mon-toit': '<path d="M4 13 12 5l8 8" /><path d="M6 11v8h12v-8" /><path d="M10 19v-4h4v4" /><path d="M9 9.5 12 8l3 1.5" />',
+  '/résidentiel': '<path d="M4 13 12 5l8 8" /><path d="M6 11v8h12v-8" /><path d="M10 19v-4h4v4" />',
+  '/professionnel': '<path d="M4 21V8l7-3v4l7-3v15" /><path d="M4 21h16" /><path d="M8 12h0M8 16h0M14 12h0M14 16h0" />',
+  '/pompage-solaire': '<path d="M12 3v6" /><path d="M5 21c1.6-2 3.2-2 4.8 0s3.2 2 4.8 0 3.2-2 4.4 0" /><path d="M8 9h8l-2 6H10z" />',
+  '/batteries-stockage': '<path d="M5 8h14v11H5z" /><path d="M9 5h6v3H9z" /><path d="M12 11v5" /><path d="M9.5 13.5h5" />',
+  '/maintenance-monitoring': '<path d="M4 18 9 12l3 3 4-6 4 5" /><path d="M4 21h16" /><circle cx="9" cy="12" r="0.6" /><circle cx="16" cy="9" r="0.6" />',
+  '/regularization-article-33': '<path d="M7 4h7l4 4v12H7z" /><path d="M14 4v4h4" /><path d="M9.5 14l1.5 1.5 3-3.5" />',
+};
+function iconFor(href: string): string {
+  if (solutionIcons[href]) return solutionIcons[href];
+  if (href === '/recharge-voiture-electrique-solaire') {
+    return '<path d="M4 17V9a2 2 0 0 1 2-2h6l3 4h3a2 2 0 0 1 2 2v4" /><circle cx="7.5" cy="17.5" r="1.6" /><circle cx="16.5" cy="17.5" r="1.6" /><path d="M11 12v-5" /><path d="M9.5 7.5h3" />';
+  }
+  return '';
+}
+
+// W253 — العدد مُشتقّ من `solutions.length` (مصدر الحقيقة الوحيد)، لا يُنسخ يدوياً.
+const solutionsCount = solutions.length;
 
 const jsonLd = {
   '@context': 'https://schema.org',
@@ -99,8 +144,8 @@ const jsonLd = {
 ---
 
 <Layout
-  title="حلولنا الشمسية بالمغرب: ست إجابات، منهج واحد | Taqinor"
-  description="كل عرض تاكينور في لمحة: طاقة شمسية سكنية، مهنية وصناعية، ضخ فلاحي، بطاريات وتخزين LFP، صيانة ومراقبة Deye Cloud، وتسوية القانون 82-21. ستة أوراش مختلفة، نقطة انطلاق واحدة — وضعك الحقيقي المقيس."
+  title="حلولنا الشمسية بالمغرب | Taqinor"
+  description="كل عرض تاكينور في لمحة: دراسة مجانية، طاقة شمسية سكنية، مهنية وصناعية، ضخ فلاحي، شحن سيارة كهربائية، بطاريات وتخزين LFP، صيانة ومراقبة Deye Cloud، وتسوية القانون 82-21. نقطة انطلاق واحدة لكل حل — وضعك الحقيقي المقيس."
   ogSlug="accueil"
 >
   <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
@@ -114,10 +159,11 @@ const jsonLd = {
       <div class="mx-auto max-w-3xl">
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">حلولنا</p>
         <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">عرض شمسي لكل حاجة</h1>
+        {/* W253 — العدد مُشتقّ من `solutions.length`، لا يُنسخ يدوياً. */}
         <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
           الفيلا والمستودع لا يُحدّد مقاسهما بنفس الطريقة؛ والضخ الفلاحي وتسوية تركيبة قائمة أقل من
-          ذلك بكثير. ستة أوراش مختلفة إذن، لكن نقطة انطلاق واحدة: وضعك، مقيساً، قبل أي اختيار للمعدات.
-          إليك الصورة كاملة.
+          ذلك بكثير. {solutionsCount} حلول مختلفة إذن، لكن نقطة انطلاق واحدة: وضعك، مقيساً، قبل أي
+          اختيار للمعدات. إليك الصورة كاملة.
         </p>
       </div>
     </section>
@@ -125,10 +171,12 @@ const jsonLd = {
     <section class="px-4 pb-24 sm:pb-32">
       <div class="mx-auto grid max-w-6xl gap-6 md:grid-cols-3" data-stagger>
         {solutions.map((s, i) => (
-          <a href={`${L(s.href)}${s.query ?? ''}`} class={`v2-rise cine-card flex flex-col p-7 ${s.highlight ? 'border-2 border-brass-400/70' : ''}`} style={`--v2-i:${i}`}>
-            <p class="tech-label text-lune">{s.highlight ? 'مجاني · دون التزام' : 'حل'}</p>
+          <a href={`${L(s.href)}${s.query ?? ''}`} class={`v2-rise cine-card group flex flex-col p-7 ${s.highlight ? 'border-2 border-brass-400/70' : ''}`} style={`--v2-i:${i}`}>
+            <svg class="h-9 w-9 text-brass-400 transition-colors group-hover:text-brass-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" set:html={iconFor(s.href)} />
+            <p class="tech-label mt-5 text-lune">{s.highlight ? 'مجاني · دون التزام' : 'حل'}</p>
             <h2 class="display mt-2 text-xl text-white">{s.title}</h2>
             <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{s.summary}</p>
+            <p class="mt-4 border-t border-white/10 pt-3 text-xs text-brass-300/90">{s.qualifier}</p>
             <span class="mt-5 inline-flex items-center gap-1 border-b-2 border-white/30 pb-0.5 text-sm font-bold text-white">اكتشف <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1 inline-block rtl:-scale-x-100" aria-hidden="true">→</span></span>
           </a>
         ))}
@@ -159,6 +207,69 @@ const jsonLd = {
           </div>
         </div>
         <a href={devisHref} class="mt-10 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">ابدأ تشخيصي المجاني</a>
+      </div>
+    </section>
+
+    {/* W253 — «كيف تموّل مشروعك»: الأرقام مُعاد استخدامها حرفياً من
+        /financement — لا مبلغ جديد هنا، فقط تذكير + رابط نحو التفاصيل الكاملة. */}
+    <section class="section px-4">
+      <div class="mx-auto max-w-4xl text-center">
+        <p class="tech-label v2-kicker rule-brass text-lune">كيف تموّل مشروعك</p>
+        <h2 class="display v2-section-title mt-5 text-white">ثلاث طرق للدفع، لا نفرض أياً منها</h2>
+        <p class="v2-lead mt-5 text-lune-soft">
+          نقداً، عبر قرض استهلاك بنكي كلاسيكي، أو تمويل أخضر للمقاولات — التفاوض يتم بينك وبين بنكك،
+          ونحن لا نأخذ أي عمولة على أي منها.
+        </p>
+        <dl class="mx-auto mt-10 grid max-w-2xl grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-4" data-stagger>
+          <div class="v2-rise min-w-0" style="--v2-i:0">
+            <dd class="fig fig-md lum whitespace-nowrap">3–7 سنوات</dd>
+            <dt class="tech-label mt-2 text-lune-faint">عائد الاستثمار النموذجي</dt>
+          </div>
+          <div class="v2-rise min-w-0" style="--v2-i:1">
+            <dd class="fig fig-md lum whitespace-nowrap">25 سنة</dd>
+            <dt class="tech-label mt-2 text-lune-faint">ضمان أداء الألواح</dt>
+          </div>
+          <div class="v2-rise min-w-0" style="--v2-i:2">
+            <dd class="fig fig-md lum whitespace-nowrap">60–90 %</dd>
+            <dt class="tech-label mt-2 text-lune-faint">من الفاتورة مُغطّاة</dt>
+          </div>
+          <div class="v2-rise min-w-0" style="--v2-i:3">
+            <dd class="fig fig-md lum whitespace-nowrap">0 درهم</dd>
+            <dt class="tech-label mt-2 text-lune-faint">الدراسة والتشخيص</dt>
+          </div>
+        </dl>
+        <a href={L('/financement')} class="v2-rise group mt-10 inline-flex items-center gap-1 border-b-2 border-white/30 pb-0.5 text-sm font-bold text-white transition-colors hover:border-white">
+          شاهد تفاصيل التمويل الكاملة <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1 inline-block rtl:-scale-x-100" aria-hidden="true">→</span>
+        </a>
+      </div>
+    </section>
+
+    {/* W253 — روابط متقاطعة «ما الذي تحصل عليه»: المعدات + الضمانات المكتوبة،
+        غائبة عن هذا المركز حتى الآن رغم أنها تجيب مباشرة على «ماذا سأحصل عليه فعلياً؟». */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="px-4 py-14 sm:py-16">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">ما الذي تحصل عليه</p>
+        <h2 class="display v2-section-title mt-5 max-w-xl text-white">المعدات المُركَّبة والضمانات المكتوبة</h2>
+        <div class="mt-8 grid gap-6 sm:grid-cols-2" data-stagger>
+          <a href={L('/équipement')} class="v2-rise cine-card group flex flex-col p-7" style="--v2-i:0">
+            <p class="tech-label text-lune">المعدات</p>
+            <h3 class="display mt-2 text-xl text-white">المعدات المُركَّبة</h3>
+            <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">
+              ألواح، عاكسات، بطاريات: الماركات من الفئة الأولى المُركَّبة فعلياً في أوراشنا، بطاقة تقنية
+              تلو الأخرى.
+            </p>
+            <span class="mt-5 inline-flex items-center gap-1 border-b-2 border-white/30 pb-0.5 text-sm font-bold text-white">شاهد المعدات <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1 inline-block rtl:-scale-x-100" aria-hidden="true">→</span></span>
+          </a>
+          <a href={L('/garanties')} class="v2-rise cine-card group flex flex-col p-7" style="--v2-i:1">
+            <p class="tech-label text-lune">الضمانات</p>
+            <h3 class="display mt-2 text-xl text-white">ضماناتنا المكتوبة</h3>
+            <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">
+              25 سنة ضمان أداء على الألواح، وتفاصيل مكتوبة لما هو مُغطّى في باقي المعدات والتركيب.
+            </p>
+            <span class="mt-5 inline-flex items-center gap-1 border-b-2 border-white/30 pb-0.5 text-sm font-bold text-white">شاهد الضمانات <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1 inline-block rtl:-scale-x-100" aria-hidden="true">→</span></span>
+          </a>
+        </div>
       </div>
     </section>
 
