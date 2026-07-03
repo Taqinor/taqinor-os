@@ -299,8 +299,12 @@ const engineeringPillars = [
         <div class="hero-depth-layer absolute inset-0" aria-hidden="true"></div>
       </div>
 
-      {/* W161 — Invitation au défilement : chevron animé, statique sous prefers-reduced-motion */}
-      <div class="absolute bottom-6 left-1/2 -translate-x-1/2 scroll-chevron" aria-hidden="true">
+      {/* W161/W275 — Invitation au défilement : chevron animé (statique sous
+          prefers-reduced-motion) + un court libellé, pour qu'un héros
+          photographique ~100svh ne repose plus sur un seul chevron discret
+          comme unique signal que le site continue. */}
+      <div class="absolute bottom-6 left-1/2 flex -translate-x-1/2 flex-col items-center gap-1.5 scroll-chevron" aria-hidden="true">
+        <span class="tech-label text-white/70">Voir nos réalisations mesurées</span>
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="6 9 12 15 18 9" />
         </svg>

@@ -790,14 +790,14 @@ summary:focus-visible {
   );
 }
 
-/* ─── W161 — Chevron d'invitation au défilement ─────────────────────────────
-   .scroll-chevron : SVG animé (bounce vertical). Gated prefers-reduced-motion :
+/* ─── W161/W275 — Chevron d'invitation au défilement ────────────────────────
+   .scroll-chevron : libellé + SVG animé (bounce vertical, sur le groupe
+   entier — texte et flèche descendent ensemble). Gated prefers-reduced-motion :
    statique quand la motion est réduite. */
 .scroll-chevron {
-  display: flex;
   justify-content: center;
   align-items: center;
-  opacity: 0.55;
+  opacity: 0.75;
 }
 
 @media (prefers-reduced-motion: no-preference) {
