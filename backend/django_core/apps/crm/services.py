@@ -778,6 +778,51 @@ def create_draft_lead_from_ocr(*, company, user, fields) -> Lead:
     return lead
 
 
+# ── YLEAD8 — Rattacher l'inbound WhatsApp à un lead OUVERT existant ──────────
+
+def resolve_or_create_lead_from_whatsapp(company, telephone, nom='',
+                                         user=None) -> Lead:
+    """YLEAD8 — Réutilise un lead OUVERT existant (même téléphone) au lieu de
+    toujours créer un doublon sur un message WhatsApp entrant.
+
+    « Ouvert » = non perdu (``Lead.perdu`` False) et non archivé
+    (``archived_at`` NULL). Parmi les leads ouverts partageant ce téléphone,
+    prend le plus récent ; journalise le message inbound dans SON chatter.
+    N'appelle ``create_draft_lead_from_ocr`` qu'en DERNIER RECOURS (aucun
+    lead ouvert trouvé pour ce numéro) — c'est ce service qui doit être
+    appelé par ``compta.services.capturer_message_whatsapp``, jamais l'inverse.
+    Company-scopé ; gated en amont par l'appelant (NO-OP si WhatsApp OFF).
+    """
+    candidates = find_duplicates_by_contact(company, phone=telephone)
+    ouverts = [
+        lead_ for lead_ in candidates
+        if not lead_.perdu and lead_.archived_at is None
+    ]
+    if ouverts:
+        lead = sorted(ouverts, key=lambda d: d.date_creation, reverse=True)[0]
+        body = 'Nouveau message WhatsApp reçu'
+        if nom:
+            body += f' de {nom}'
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=user,
+            kind=LeadActivity.Kind.NOTE, body=body)
+        return lead
+
+    lead = create_draft_lead_from_ocr(
+        company=company, user=user,
+        fields={'client': nom or telephone})
+    # create_draft_lead_from_ocr ne lit que fournisseur/client (nom) — le
+    # téléphone/whatsapp est posé ICI pour que le PROCHAIN message du même
+    # numéro retrouve ce lead via find_duplicates_by_contact (sinon YLEAD8
+    # créerait un doublon à chaque message, ce que ce service existe pour
+    # éviter).
+    if telephone:
+        lead.telephone = telephone
+        lead.whatsapp = telephone
+        lead.save(update_fields=['telephone', 'whatsapp'])
+    return lead
+
+
 # ── XMKT32 — Sync Meta Lead Ads → leads CRM (gated) ───────────────────────────
 
 _META_LEAD_ADS_SYSTEM = 'meta_lead_ads'
