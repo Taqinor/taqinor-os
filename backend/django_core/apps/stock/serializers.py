@@ -12,6 +12,7 @@ from .models import (
     DocumentConformiteFournisseur, AchatsParametres,
     CategorieFournisseur, ContactFournisseur,
     EcheanceFactureFournisseur, AcompteFournisseur,
+    AvoirFournisseur, ImputationAvoirFournisseur,
 )
 
 
@@ -715,6 +716,9 @@ class FactureFournisseurSerializer(serializers.ModelSerializer):
     # XPUR8 — acomptes fournisseur imputés sur cette facture (0 par défaut).
     total_acomptes_imputes = serializers.DecimalField(
         max_digits=14, decimal_places=2, read_only=True)
+    # XPUR9 — avoirs fournisseur imputés sur cette facture (0 par défaut).
+    total_avoirs_imputes = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
 
     class Meta:
         model = FactureFournisseur
@@ -725,7 +729,7 @@ class FactureFournisseurSerializer(serializers.ModelSerializer):
             'devise', 'taux_change', 'montant_ttc_devise',
             'type_achat', 'statut', 'statut_display', 'note', 'created_by',
             'created_by_username', 'date_creation', 'date_mise_a_jour',
-            'total_acomptes_imputes',
+            'total_acomptes_imputes', 'total_avoirs_imputes',
             'lignes', 'paiements', 'echeances', 'total_paye', 'solde_du',
         ]
         # company + reference + statut + created_by sont posés côté serveur.
@@ -1047,4 +1051,54 @@ class AcompteFournisseurSerializer(serializers.ModelSerializer):
         if company is not None and value.company_id != company.id:
             raise serializers.ValidationError(
                 'Bon de commande hors de votre entreprise.')
+        return value
+
+
+# ── XPUR9 — avoir fournisseur (note de crédit AP) ────────────────────────────
+
+class ImputationAvoirFournisseurSerializer(serializers.ModelSerializer):
+    facture_reference = serializers.CharField(
+        source='facture.reference', read_only=True)
+
+    class Meta:
+        model = ImputationAvoirFournisseur
+        fields = ['id', 'avoir', 'facture', 'facture_reference', 'montant',
+                  'date_creation']
+        read_only_fields = ['date_creation']
+
+
+class AvoirFournisseurSerializer(serializers.ModelSerializer):
+    fournisseur_nom = serializers.CharField(
+        source='fournisseur.nom', read_only=True)
+    retour_reference = serializers.CharField(
+        source='retour.reference', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    montant_disponible = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+    imputations = ImputationAvoirFournisseurSerializer(
+        many=True, read_only=True)
+
+    class Meta:
+        model = AvoirFournisseur
+        fields = [
+            'id', 'reference', 'fournisseur', 'fournisseur_nom',
+            'facture_origine', 'retour', 'retour_reference', 'montant_ht',
+            'montant_tva', 'montant_ttc', 'statut', 'statut_display',
+            'montant_impute', 'montant_disponible', 'note', 'created_by',
+            'date_creation', 'date_mise_a_jour', 'imputations',
+        ]
+        # company + reference + montant_impute + statut posés côté serveur
+        # (l'imputation avance le statut, jamais une écriture libre).
+        read_only_fields = [
+            'reference', 'created_by', 'date_creation', 'date_mise_a_jour',
+            'montant_impute',
+        ]
+
+    def validate_fournisseur(self, value):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is not None and value.company_id != company.id:
+            raise serializers.ValidationError(
+                'Fournisseur hors de votre entreprise.')
         return value

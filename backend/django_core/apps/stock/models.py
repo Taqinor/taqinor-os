@@ -1081,11 +1081,18 @@ class FactureFournisseur(models.Model):
             (a.montant for a in self.acomptes_imputes.all()), Decimal('0'))
 
     @property
+    def total_avoirs_imputes(self):
+        """XPUR9 — somme des avoirs fournisseur imputés sur CETTE facture
+        (0 si aucun — comportement historique inchangé)."""
+        return sum(
+            (i.montant for i in self.avoirs_imputes.all()), Decimal('0'))
+
+    @property
     def solde_du(self):
-        """Solde dû = TTC − Σ paiements − Σ acomptes imputés (jamais
-        négatif — XPUR8 déduit les acomptes du BCF d'origine)."""
+        """Solde dû = TTC − Σ paiements − Σ acomptes imputés − Σ avoirs
+        imputés (jamais négatif)."""
         solde = ((self.montant_ttc or Decimal('0')) - self.total_paye
-                 - self.total_acomptes_imputes)
+                 - self.total_acomptes_imputes - self.total_avoirs_imputes)
         return max(solde, Decimal('0'))
 
 
@@ -1252,6 +1259,92 @@ class AcompteFournisseur(models.Model):
         return max(
             (self.montant or Decimal('0'))
             - (self.montant_consomme or Decimal('0')), Decimal('0'))
+
+
+class AvoirFournisseur(models.Model):
+    """XPUR9 — avoir fournisseur (note de crédit AP). Matérialise la créance
+    qu'un ``RetourFournisseur`` validé (qui ne fait que reverser le stock)
+    laisse ouverte. Référencé via ``create_with_reference`` (préfixe AVF).
+    Imputable sur une ou plusieurs ``FactureFournisseur`` du MÊME
+    fournisseur ; les montants restent INTERNES (jamais client-facing)."""
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        VALIDE = 'valide', 'Validé'
+        IMPUTE = 'impute', 'Imputé'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='avoirs_fournisseur')
+    reference = models.CharField(max_length=50)
+    fournisseur = models.ForeignKey(
+        Fournisseur, on_delete=models.PROTECT, related_name='avoirs')
+    facture_origine = models.ForeignKey(
+        FactureFournisseur, on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='avoirs_origine')
+    retour = models.ForeignKey(
+        RetourFournisseur, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='avoirs')
+    montant_ht = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0)
+    montant_tva = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0)
+    montant_ttc = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0)
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.BROUILLON)
+    # Somme déjà imputée sur des factures — jamais > montant_ttc, jamais
+    # décrémentée (l'imputation est cumulative, sur 1..N factures).
+    montant_impute = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0)
+    note = models.TextField(blank=True, null=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='avoirs_fournisseur')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_mise_a_jour = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Avoir fournisseur'
+        verbose_name_plural = 'Avoirs fournisseur'
+        ordering = ['-date_creation']
+        unique_together = [('company', 'reference')]
+
+    def __str__(self):
+        return self.reference
+
+    @property
+    def montant_disponible(self):
+        """Solde de l'avoir NON encore imputé — jamais négatif."""
+        return max(
+            (self.montant_ttc or Decimal('0'))
+            - (self.montant_impute or Decimal('0')), Decimal('0'))
+
+
+class ImputationAvoirFournisseur(models.Model):
+    """XPUR9 — trace UNE imputation d'un ``AvoirFournisseur`` sur UNE
+    ``FactureFournisseur`` (un avoir peut être réparti sur plusieurs
+    factures). Additif, INTERNE."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='imputations_avoir_fournisseur')
+    avoir = models.ForeignKey(
+        AvoirFournisseur, on_delete=models.CASCADE,
+        related_name='imputations')
+    facture = models.ForeignKey(
+        FactureFournisseur, on_delete=models.CASCADE,
+        related_name='avoirs_imputes')
+    montant = models.DecimalField(max_digits=14, decimal_places=2)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Imputation d'avoir fournisseur"
+        verbose_name_plural = "Imputations d'avoir fournisseur"
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'{self.avoir_id} → {self.facture_id} : {self.montant}'
 
 
 # ── FG63 — Session d'inventaire (comptage physique en brouillon) ──────────────

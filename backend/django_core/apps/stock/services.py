@@ -2147,3 +2147,102 @@ def imputer_acomptes_bcf(bon_commande):
         acompte.save(update_fields=['facture_imputee', 'montant_consomme'])
         imputed.append(acompte)
     return imputed
+
+
+# ── XPUR9 — Avoir fournisseur (note de crédit AP) ───────────────────────────
+
+def _prix_ligne_retour(bon_commande, produit):
+    """XPUR9 — prix d'achat unitaire HT pour valoriser une ligne de retour :
+    priorité à la ligne du BCF d'origine (prix EXACT payé), repli sur
+    `cheapest_prix_fournisseur`, sinon 0."""
+    if bon_commande is not None:
+        ligne_bcf = bon_commande.lignes.filter(produit=produit).first()
+        if ligne_bcf is not None:
+            return ligne_bcf.prix_achat_unitaire or Decimal('0')
+    prix = cheapest_prix_fournisseur(produit)
+    return prix.prix_achat if prix is not None else Decimal('0')
+
+
+def preparer_avoir_depuis_retour(retour):
+    """XPUR9 — construit les montants HT/TVA/TTC pré-remplis d'un avoir
+    depuis un ``RetourFournisseur`` VALIDÉ (une ligne sans prix connu compte
+    pour 0 — jamais d'erreur bloquante). TVA 20 % (même taux par défaut que
+    ``facturer_reception``). Renvoie un dict ``{montant_ht, montant_tva,
+    montant_ttc}`` — NE CRÉE RIEN (pur calcul)."""
+    montant_ht = Decimal('0')
+    for ligne in retour.lignes.select_related('produit'):
+        pu = _prix_ligne_retour(retour.bon_commande, ligne.produit)
+        montant_ht += Decimal(str(ligne.quantite)) * pu
+    taux_tva = Decimal('20')
+    montant_tva = (montant_ht * taux_tva / Decimal('100')).quantize(
+        Decimal('0.01'))
+    return {
+        'montant_ht': montant_ht,
+        'montant_tva': montant_tva,
+        'montant_ttc': montant_ht + montant_tva,
+    }
+
+
+def creer_avoir_depuis_retour(company, retour, user=None):
+    """XPUR9 — génère un ``AvoirFournisseur`` BROUILLON pré-rempli en un
+    clic depuis un ``RetourFournisseur`` VALIDÉ. Lève ValueError si le
+    retour n'est pas validé ou a déjà un avoir. Référencé via
+    ``create_with_reference`` (préfixe AVF)."""
+    from apps.ventes.utils.references import create_with_reference
+    from .models import AvoirFournisseur, RetourFournisseur
+
+    if retour.statut != RetourFournisseur.Statut.VALIDE:
+        raise ValueError(
+            'Seul un retour validé peut générer un avoir (« attente '
+            "d'avoir » tant que non reçu).")
+    if AvoirFournisseur.objects.filter(retour=retour).exists():
+        raise ValueError('Ce retour a déjà un avoir associé.')
+
+    montants = preparer_avoir_depuis_retour(retour)
+    avoir = AvoirFournisseur(
+        company=company, fournisseur=retour.fournisseur,
+        facture_origine=None, retour=retour,
+        montant_ht=montants['montant_ht'], montant_tva=montants['montant_tva'],
+        montant_ttc=montants['montant_ttc'],
+        statut=AvoirFournisseur.Statut.BROUILLON, created_by=user)
+
+    def _save(ref):
+        avoir.reference = ref
+        avoir.save()
+        return avoir
+
+    return create_with_reference(AvoirFournisseur, 'AVF', company, _save)
+
+
+def imputer_avoir_fournisseur(avoir, facture, montant=None, *, user=None):
+    """XPUR9 — impute un ``AvoirFournisseur`` (VALIDÉ) sur une
+    ``FactureFournisseur`` du MÊME fournisseur ; réduit ``solde_du`` (jamais
+    sous zéro — plafonné à ``min(montant demandé, disponible avoir, solde
+    facture)``). Crée une ``ImputationAvoirFournisseur``. Lève ValueError si
+    fournisseurs différents, avoir non validé, ou rien à imputer."""
+    from .models import AvoirFournisseur, ImputationAvoirFournisseur
+
+    if avoir.fournisseur_id != facture.fournisseur_id:
+        raise ValueError(
+            "L'avoir et la facture doivent appartenir au même fournisseur.")
+    if avoir.statut not in (
+            AvoirFournisseur.Statut.VALIDE, AvoirFournisseur.Statut.IMPUTE):
+        raise ValueError('Seul un avoir validé peut être imputé.')
+
+    disponible = avoir.montant_disponible
+    solde_facture = facture.solde_du
+    plafond = min(disponible, solde_facture)
+    montant_impute = Decimal(str(montant)) if montant is not None else plafond
+    montant_impute = min(montant_impute, plafond)
+    if montant_impute <= 0:
+        raise ValueError("Rien à imputer (avoir épuisé ou facture soldée).")
+
+    imputation = ImputationAvoirFournisseur.objects.create(
+        company=avoir.company, avoir=avoir, facture=facture,
+        montant=montant_impute)
+    avoir.montant_impute = (avoir.montant_impute or Decimal('0')) + montant_impute
+    avoir.statut = (AvoirFournisseur.Statut.IMPUTE
+                    if avoir.montant_disponible <= 0
+                    else AvoirFournisseur.Statut.VALIDE)
+    avoir.save(update_fields=['montant_impute', 'statut'])
+    return imputation

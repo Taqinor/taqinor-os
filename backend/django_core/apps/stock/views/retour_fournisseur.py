@@ -26,6 +26,7 @@ from ..serializers import (  # noqa: F401
     ReceptionFournisseurSerializer,
     FactureFournisseurSerializer,
     PaiementFournisseurSerializer,
+    AvoirFournisseurSerializer,
 )
 from authentication.permissions import (  # noqa: F401
     IsAnyRole,
@@ -58,7 +59,9 @@ class RetourFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
-        elif self.action in WRITE_ACTIONS + ['valider', 'annuler']:
+        elif self.action in WRITE_ACTIONS + [
+            'valider', 'annuler', 'generer_avoir',
+        ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
@@ -98,3 +101,20 @@ class RetourFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
         retour.statut = RetourFournisseur.Statut.ANNULE
         retour.save(update_fields=['statut'])
         return Response(self.get_serializer(retour).data)
+
+    @action(detail=True, methods=['post'], url_path='generer-avoir')
+    def generer_avoir(self, request, pk=None):
+        """XPUR9 — génère un AvoirFournisseur BROUILLON pré-rempli depuis ce
+        retour VALIDÉ (« attente d'avoir » tant que non reçu). Refuse si le
+        retour n'est pas validé ou a déjà un avoir."""
+        from ..services import creer_avoir_depuis_retour
+        retour = self.get_object()
+        try:
+            avoir = creer_avoir_depuis_retour(
+                request.user.company, retour, user=request.user)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            AvoirFournisseurSerializer(avoir).data,
+            status=status.HTTP_201_CREATED)
