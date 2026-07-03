@@ -931,3 +931,77 @@ def classifier_tva_recuperable(vehicule):
         return False
     # 'utilitaire' ou vide (type fiscal inconnu) → récupérable par défaut.
     return True
+
+
+# ── XFLT10 — Périodicité visite technique NARSA auto-calculée ──────────────────
+
+def _ajouter_mois(date_ref, mois):
+    """Additionne ``mois`` mois à ``date_ref``, gère le débordement de fin de
+    mois (même logique que ``VisiteTechnique.calculer_date_prochaine``)."""
+    total = date_ref.month - 1 + int(mois)
+    year = date_ref.year + total // 12
+    month = total % 12 + 1
+    if month == 12:
+        last_day = 31
+    else:
+        last_day = (datetime.date(year, month + 1, 1)
+                    - datetime.timedelta(days=1)).day
+    day = min(date_ref.day, last_day)
+    return datetime.date(year, month, day)
+
+
+def prochaine_visite_narsa(vehicule, today=None):
+    """XFLT10 — Propose la prochaine date de visite technique NARSA.
+
+    Règles marocaines (simplifiées, éditables par le founder à la saisie —
+    cette fonction ne fait QUE proposer une valeur par défaut, jamais
+    n'écrase une saisie manuelle) :
+
+    - ``type_fiscal='utilitaire'`` (transport/utilitaire) : périodicité
+      6 mois dès la mise en circulation.
+    - Sinon (véhicule particulier, ``type_fiscal`` vide ou ``'tourisme'``) :
+      1re visite à 5 ans, puis tous les 2 ans jusqu'à 10 ans, puis annuelle
+      au-delà de 10 ans.
+
+    La date de mise en circulation est lue via le sélecteur flotte
+    (``CarteGriseVehicule.date_mise_circulation``, FLOTTE23) — jamais
+    dupliquée sur ``Vehicule`` (XFLT4). Retourne ``None`` si aucune date de
+    mise en circulation n'est connue (rien à proposer).
+    """
+    from .selectors import date_mise_circulation_vehicule
+
+    if today is None:
+        today = datetime.date.today()
+
+    mise_en_circulation = date_mise_circulation_vehicule(vehicule)
+    if mise_en_circulation is None:
+        return None
+
+    type_fiscal = getattr(vehicule, 'type_fiscal', '') or ''
+    if type_fiscal == 'utilitaire':
+        # Utilitaire/transport : périodicité 6 mois depuis la mise en
+        # circulation, en avançant par tranches de 6 mois jusqu'à couvrir
+        # aujourd'hui (prochaine échéance future).
+        proposition = _ajouter_mois(mise_en_circulation, 6)
+        while proposition < today:
+            proposition = _ajouter_mois(proposition, 6)
+        return proposition
+
+    age_ans = (today - mise_en_circulation).days / 365.25
+    premiere_visite = _ajouter_mois(mise_en_circulation, 60)  # 5 ans
+    if today < premiere_visite:
+        return premiere_visite
+
+    if age_ans < 10:
+        # Tous les 2 ans après la première visite (5 ans), jusqu'à 10 ans.
+        proposition = premiere_visite
+        while proposition < today:
+            proposition = _ajouter_mois(proposition, 24)
+        return proposition
+
+    # Au-delà de 10 ans : annuelle.
+    dix_ans = _ajouter_mois(mise_en_circulation, 120)
+    proposition = dix_ans
+    while proposition < today:
+        proposition = _ajouter_mois(proposition, 12)
+    return proposition

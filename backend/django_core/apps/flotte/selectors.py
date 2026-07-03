@@ -2405,3 +2405,25 @@ def demandes_vehicule_de_la_societe(company, statut=None, demandeur_id=None):
     if demandeur_id is not None:
         qs = qs.filter(demandeur_id=demandeur_id)
     return qs
+
+
+# ── XFLT10 — Périodicité visite technique NARSA auto-calculée ──────────────────
+
+def date_mise_circulation_vehicule(vehicule):
+    """XFLT10 — Date de mise en circulation d'un véhicule, lecture seule.
+
+    Lit ``CarteGriseVehicule.date_mise_circulation`` (FLOTTE23) via l'actif
+    flotte du véhicule — n'est JAMAIS dupliquée sur ``Vehicule`` (XFLT4).
+    Retourne ``None`` si aucune carte grise n'est saisie ou si la date n'est
+    pas renseignée. Prend la carte grise la plus récente en cas de multiples
+    enregistrements pour le même actif.
+    """
+    actif = getattr(vehicule, 'actif_flotte', None)
+    if actif is None:
+        return None
+    carte = CarteGriseVehicule.objects.filter(
+        actif_flotte=actif, date_mise_circulation__isnull=False,
+    ).order_by('-date_mise_circulation', '-id').first()
+    if carte is None:
+        return None
+    return carte.date_mise_circulation
