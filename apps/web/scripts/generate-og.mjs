@@ -24,6 +24,11 @@ const PAGES = [
   { slug: 'loi-82-21', title: 'Loi 82-21 :\nquel régime ?', subtitle: 'Déclaration, accord de raccordement, autorisation', photo: 'champ-villa-1024.webp' },
   { slug: 'article-33', title: 'Régularisation\nArticle 33', subtitle: 'Installations existantes — la fenêtre est ouverte', photo: 'reflet-468-1024.webp' },
   { slug: 'contact', title: 'Étude gratuite', subtitle: 'Estimation immédiate — réponse sous 24 h ouvrées', photo: 'equipe-trois-1024.webp' },
+  // WJ76 — image OG neutre dédiée aux propositions tokenisées : AUCUNE
+  // référence ni nom de client (c'est tout le sujet de la tâche — un lien de
+  // proposition privé, transféré sur WhatsApp par le client, ne doit jamais
+  // pousser ces données au-dessus d'une image générique de la page d'accueil).
+  { slug: 'proposition', title: 'Votre proposition\nsolaire', subtitle: 'Étude personnalisée — chiffrage détaillé Taqinor', photo: 'installation-crepuscule-1024.webp' },
 ];
 
 function esc(s) {

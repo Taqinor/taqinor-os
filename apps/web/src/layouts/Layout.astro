@@ -16,6 +16,15 @@ interface Props {
   ogImage?: string;
   /** Texte alternatif de ogImage (W185). */
   ogImageAlt?: string;
+  /**
+   * Titre de partage (og:title / twitter:title) — prend le dessus sur `title`
+   * quand fourni (WJ76). Sert aux pages dont le <title> d'onglet contient des
+   * données privées (référence devis, nom client…) : l'onglet garde le titre
+   * complet pour le client lui-même, mais la carte de partage WhatsApp/
+   * réseaux sociaux — vue par QUICONQUE reçoit le lien transféré — doit
+   * rester générique.
+   */
+  ogTitle?: string;
   /** Précharge l'affiche du héros vidéo (élément LCP de l'accueil) */
   preloadHeroPoster?: boolean;
   /** Pages de travail privées : jamais indexées */
@@ -24,7 +33,20 @@ interface Props {
    *  Absent / [fr] → page FR seule : rendu strictement inchangé. */
   locales?: Locale[];
 }
-const { title, description, ogSlug = 'accueil', ogImage: ogImageProp, ogImageAlt, preloadHeroPoster = false, noindex = false, locales } = Astro.props;
+const {
+  title,
+  description,
+  ogSlug = 'accueil',
+  ogImage: ogImageProp,
+  ogImageAlt,
+  ogTitle: ogTitleProp,
+  preloadHeroPoster = false,
+  noindex = false,
+  locales,
+} = Astro.props;
+// WJ76 — repli sur `title` quand la page ne fournit pas de titre de partage
+// dédié : rendu STRICTEMENT inchangé pour toutes les pages existantes.
+const ogTitle = ogTitleProp ?? title;
 
 // Locale courante (FR par défaut à la racine). Le rendu FR reste identique :
 // lang="fr" et aucun attribut dir (ltr implicite) ; hreflang seulement si la
@@ -130,7 +152,7 @@ const jsonLd = {
     )}
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content={NAP.name} />
-    <meta property="og:title" content={title} />
+    <meta property="og:title" content={ogTitle} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical.href} />
     <meta property="og:image" content={ogImageUrl} />
@@ -141,7 +163,7 @@ const jsonLd = {
     <meta property="og:locale" content={lang === 'en' ? 'en_US' : lang === 'ar' ? 'ar_MA' : 'fr_MA'} />
     <!-- W219 — Carte Twitter/X complète -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content={title} />
+    <meta name="twitter:title" content={ogTitle} />
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={ogImageUrl} />
     <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />

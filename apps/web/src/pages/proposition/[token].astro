@@ -354,6 +354,16 @@ const REAL_TESTIMONIAL_VIDEO_AVAILABLE = false;
 const signTestimonial = hasTestimonials() ? TESTIMONIALS[0] : null;
 
 const pageTitle = ok ? `Proposition ${reference} — ${clientName} | Taqinor` : 'Proposition | Taqinor';
+// WJ76 — fuite de confidentialité de l'aperçu de partage : cette page est un
+// lien tokenisé PRIVÉ que le client transfère lui-même (WhatsApp, SMS, email)
+// à sa famille/son entourage pour discuter du projet. `pageTitle` ci-dessus
+// (référence + nom du client) reste dans l'onglet du navigateur — utile au
+// client — mais NE DOIT JAMAIS apparaître dans la carte de partage
+// (og:title/twitter:title), affichée à TOUTE personne qui reçoit le lien
+// transféré, au-dessus de l'image d'accueil générique par défaut. Titre de
+// partage neutre + image OG dédiée (public/og/proposition.png, aucune photo
+// de chantier client, aucune donnée personnelle) — la page reste noindex.
+const ogTitle = 'Votre proposition solaire | Taqinor';
 
 // ── WJ81 — Lien WhatsApp de repli utilisable MÊME quand la proposition n'a pas
 // pu être chargée (`!ok` : timeout, panne, lien invalide). `whatsappLink('')`
@@ -378,7 +388,14 @@ const signConfig = ok
   : null;
 ---
 
-<Layout title={pageTitle} description="Votre proposition solaire personnalisée Taqinor." noindex={true}>
+<Layout
+  title={pageTitle}
+  description="Votre proposition solaire personnalisée Taqinor."
+  noindex={true}
+  ogTitle={ogTitle}
+  ogSlug="proposition"
+  ogImageAlt="Taqinor — votre proposition solaire"
+>
   {!ok ? (
     <!-- ── État « lien expiré / introuvable » ─────────────────────────────── -->
     <!-- WJ81 — la page ne reste JAMAIS blanche : ce cadre de marque (rappel
