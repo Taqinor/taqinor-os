@@ -572,3 +572,122 @@ def publish_annonce(annonce, *, now=None):
     annonce.date_publication_effective = now
     annonce.save(update_fields=['publiee', 'date_publication_effective'])
     return annonce
+
+
+# =============================================================================
+# XKB6 — Accusé de lecture obligatoire des annonces + rapport de conformité.
+# =============================================================================
+
+def acknowledge_annonce(annonce, user):
+    """« J'ai lu et compris » : crée (idempotent) l'accusé de lecture de
+    `user` pour `annonce`. Un second clic ne duplique rien (contrainte
+    unique) et ne réinitialise pas `relances_envoyees`."""
+    from .models import AnnonceLecture
+    if annonce is None or user is None:
+        return None
+    lecture, _created = AnnonceLecture.objects.get_or_create(
+        annonce=annonce, utilisateur=user,
+        defaults={'company': annonce.company})
+    return lecture
+
+
+def annonce_compliance_report(annonce):
+    """Rapport de conformité : qui a confirmé, quand, qui manque (XKB6).
+
+    Ne s'applique qu'aux annonces `lecture_obligatoire=True` ET publiées —
+    sinon la notion de « manquant » n'a pas de sens (renvoie des listes
+    vides). `destinataires` = ceux ciblés par l'annonce au moment de l'appel
+    (recalculé — le ciblage peut avoir changé depuis la publication)."""
+    from .models import AnnonceLecture
+    if not annonce.lecture_obligatoire or not annonce.publiee:
+        return {'lus': [], 'manquants': [], 'total_cibles': 0}
+
+    destinataires = list(annonce_recipients(annonce))
+    lectures = {
+        lc.utilisateur_id: lc
+        for lc in AnnonceLecture.objects.filter(
+            annonce=annonce).select_related('utilisateur')
+    }
+    lus = []
+    manquants = []
+    for user in destinataires:
+        lecture = lectures.get(user.pk)
+        if lecture is not None:
+            lus.append({
+                'user_id': user.pk,
+                'username': getattr(user, 'username', ''),
+                'date_lecture': lecture.date_lecture,
+            })
+        else:
+            manquants.append({
+                'user_id': user.pk,
+                'username': getattr(user, 'username', ''),
+            })
+    return {
+        'lus': lus, 'manquants': manquants,
+        'total_cibles': len(destinataires),
+    }
+
+
+# Paliers de relance (jours ouvrés depuis la publication). Le premier palier
+# relance le destinataire ; le second escalade vers les managers (mécanisme
+# partagé avec YEVNT9, mais ici les « manquants » sont par LECTURE, pas par
+# approbation).
+ANNONCE_REMINDER_DELAY_DAYS = 2
+
+
+def sweep_annonce_reminders(company, *, delay_days=None, today=None):
+    """Relance les destinataires n'ayant pas confirmé une lecture obligatoire
+    (XKB6), au-delà de `delay_days` jours ouvrés depuis la publication.
+
+    Suit l'état de relance dans `AnnonceRelance` — JAMAIS dans
+    `AnnonceLecture`, qui ne doit exister que pour une lecture réellement
+    confirmée. Idempotent : au plus une relance par jour de balayage pour un
+    même destinataire (`derniere_relance_le` comparée à `today`)."""
+    from .calendar_utils import ajouter_jours_ouvres
+    from .models import Annonce, AnnonceLecture, AnnonceRelance
+    delay = delay_days if delay_days is not None else ANNONCE_REMINDER_DELAY_DAYS
+    today = today or timezone.now().date()
+
+    try:
+        qs = Annonce.objects.filter(
+            company=company, publiee=True, lecture_obligatoire=True)
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.warning('sweep_annonce_reminders: chargement annonces échoué : %s', exc)
+        return 0
+
+    count = 0
+    for annonce in qs:
+        try:
+            if not annonce.date_publication_effective:
+                continue
+            due_date = ajouter_jours_ouvres(
+                annonce.date_publication_effective.date(), delay, company)
+            if due_date > today:
+                continue
+            destinataires = list(annonce_recipients(annonce))
+            lu_ids = set(AnnonceLecture.objects.filter(
+                annonce=annonce).values_list('utilisateur_id', flat=True))
+            link = '/annonces/' + str(annonce.pk)
+            for user in destinataires:
+                if user.pk in lu_ids:
+                    continue  # déjà lu → aucune relance.
+                relance, _created = AnnonceRelance.objects.get_or_create(
+                    annonce=annonce, utilisateur=user,
+                    defaults={'company': company})
+                if (relance.derniere_relance_le
+                        and relance.derniere_relance_le.date() == today):
+                    continue  # déjà relancé aujourd'hui → idempotent.
+                notify(
+                    user, EventType.ANNONCE_READ_REMINDER,
+                    f"Lecture obligatoire en attente : {annonce.titre}",
+                    body=annonce.corps, link=link, company=company)
+                relance.relances_envoyees = (relance.relances_envoyees or 0) + 1
+                relance.derniere_relance_le = timezone.now()
+                relance.save(update_fields=[
+                    'relances_envoyees', 'derniere_relance_le'])
+                count += 1
+        except Exception:  # pragma: no cover - défensif
+            logger.warning('sweep_annonce_reminders: annonce %s échouée',
+                           getattr(annonce, 'pk', None), exc_info=True)
+    return count

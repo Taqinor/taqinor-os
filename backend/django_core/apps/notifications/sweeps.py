@@ -287,6 +287,19 @@ def _sweep_annonces_due(company):
         return 0
 
 
+# ── Relance de lecture obligatoire (XKB6) ──────────────────────────────────────
+
+def _sweep_annonce_reminders(company):
+    """Relance les non-lecteurs d'annonces à lecture obligatoire (XKB6)."""
+    try:
+        from .services import sweep_annonce_reminders
+        return sweep_annonce_reminders(company)
+    except Exception:  # pragma: no cover
+        logger.warning('sweeps: annonce_reminders société %s échouée',
+                       getattr(company, 'pk', None), exc_info=True)
+        return 0
+
+
 # ── Tâche Celery Beat ─────────────────────────────────────────────────────────
 
 @shared_task(name='notifications.sweep_daily')
@@ -295,7 +308,7 @@ def sweep_daily():
 
     Pour chaque société active : garanties expirantes, maintenances dues,
     tickets SAV en rupture de délai, chantiers à venir, annonces programmées
-    à publier (XKB5).
+    à publier (XKB5), relances de lecture obligatoire en retard (XKB6).
     Best-effort par société ; renvoie le total de notifications émises."""
     total = 0
     for company in _companies():
@@ -305,6 +318,7 @@ def sweep_daily():
             total += _sweep_sav_breaching(company)
             total += _sweep_chantier_due(company)
             total += _sweep_annonces_due(company)
+            total += _sweep_annonce_reminders(company)
         except Exception:  # pragma: no cover
             logger.warning('sweeps: société %s échouée globalement',
                            getattr(company, 'pk', None), exc_info=True)

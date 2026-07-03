@@ -27,8 +27,9 @@ from .serializers import (
     WhatsAppTemplateSerializer, WorkingHoursConfigSerializer,
 )
 from .services import (
-    merged_preferences, publish_annonce, resolve_vapid_keys,
-    set_template_approval_status, submit_template_for_approval,
+    acknowledge_annonce, annonce_compliance_report, merged_preferences,
+    publish_annonce, resolve_vapid_keys, set_template_approval_status,
+    submit_template_for_approval,
 )
 
 
@@ -324,6 +325,22 @@ class AnnonceViewSet(TenantMixin, viewsets.ModelViewSet):
         publish_annonce(annonce)
         annonce.refresh_from_db()
         return Response(self.get_serializer(annonce).data)
+
+    # ── XKB6 — Accusé de lecture obligatoire + rapport de conformité ────────
+
+    @action(detail=True, methods=['post'], url_path='accuser-lecture',
+            permission_classes=[IsAnyRole])
+    def accuser_lecture(self, request, pk=None):
+        """« J'ai lu et compris » — tout rôle destinataire peut confirmer."""
+        annonce = self.get_object()
+        acknowledge_annonce(annonce, request.user)
+        return Response({'lu': True})
+
+    @action(detail=True, methods=['get'], url_path='conformite')
+    def conformite(self, request, pk=None):
+        """Rapport de conformité : qui a confirmé, quand, qui manque (admin)."""
+        annonce = self.get_object()
+        return Response(annonce_compliance_report(annonce))
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -50,6 +50,9 @@ class EventType(models.TextChoices):
     DIGEST = 'digest', 'Récapitulatif'
     # XKB5 — annonce interne publiée (programmée ou immédiate).
     ANNONCE_PUBLISHED = 'annonce_published', 'Nouvelle annonce interne'
+    # XKB6 — relance de lecture obligatoire non confirmée.
+    ANNONCE_READ_REMINDER = (
+        'annonce_read_reminder', 'Relance lecture obligatoire')
 
 
 class Channel(models.TextChoices):
@@ -657,10 +660,6 @@ class AnnonceLecture(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
         related_name='annonce_lectures')
     date_lecture = models.DateTimeField(auto_now_add=True)
-    # Nombre de relances déjà envoyées à ce destinataire pour cette annonce
-    # (idempotence du sweep de relance — un palier = une relance).
-    relances_envoyees = models.PositiveSmallIntegerField(default=0)
-    derniere_relance_le = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         verbose_name = 'Accusé de lecture'
@@ -678,3 +677,40 @@ class AnnonceLecture(models.Model):
 
     def __str__(self):
         return f'{self.annonce_id}:{self.utilisateur_id}'
+
+
+class AnnonceRelance(models.Model):
+    """XKB6 — État de relance PAR DESTINATAIRE N'AYANT PAS ENCORE CONFIRMÉ.
+
+    Distinct de `AnnonceLecture` (qui ne doit exister QUE pour une lecture
+    réellement confirmée) : cette table suit uniquement l'idempotence des
+    relances envoyées à qui n'a PAS (encore) cliqué « J'ai lu ». Une ligne ici
+    ne signifie jamais une lecture confirmée."""
+
+    annonce = models.ForeignKey(
+        Annonce, on_delete=models.CASCADE, related_name='relances')
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='annonce_relances')
+    utilisateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='annonce_relances')
+    relances_envoyees = models.PositiveSmallIntegerField(default=0)
+    derniere_relance_le = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Relance de lecture'
+        verbose_name_plural = 'Relances de lecture'
+        ordering = ['-derniere_relance_le']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['annonce', 'utilisateur'],
+                name='notif_annonce_relance_uniq',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'annonce']),
+        ]
+
+    def __str__(self):
+        return f'relance {self.annonce_id}:{self.utilisateur_id}'
