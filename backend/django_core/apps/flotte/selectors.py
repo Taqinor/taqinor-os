@@ -1600,6 +1600,64 @@ def analyse_couts_report(company, group_by='vehicule', periode=None):
     }
 
 
+# ── XFLT8 — TVA carburant : récupérable vs non déductible ──────────────────────
+
+def synthese_tva_carburant(company, periode):
+    """XFLT8 — Synthèse mensuelle TVA carburant récupérable / non déductible
+    (lecture seule).
+
+    ``periode`` est un tuple ``(date_debut, date_fin)`` bornant
+    ``PleinCarburant.date_plein`` (inclusif — ``None`` de part et d'autre =
+    aucune borne). Agrège, pour la société, le total ``montant_tva`` des
+    pleins RÉCUPÉRABLES et NON DÉDUCTIBLES, PAR MOIS (``'YYYY-MM'``), pour
+    alimenter la déclaration TVA (compta LIT ce sélecteur — jamais l'inverse,
+    voir CLAUDE.md).
+
+    Retourne un dict LECTURE SEULE ::
+
+        {
+          'periode': [<date_debut>, <date_fin>],
+          'par_mois': [
+            {'mois': 'YYYY-MM', 'tva_recuperable': <float>,
+             'tva_non_deductible': <float>}, …
+          ],
+          'total_recuperable': <float>, 'total_non_deductible': <float>,
+        }
+
+    Aucune écriture, aucun effet de bord.
+    """
+    debut, fin = periode if periode else (None, None)
+    qs = PleinCarburant.objects.filter(company=company)
+    if debut is not None:
+        qs = qs.filter(date_plein__gte=debut)
+    if fin is not None:
+        qs = qs.filter(date_plein__lte=fin)
+
+    par_mois = {}
+    total_recuperable = 0.0
+    total_non_deductible = 0.0
+
+    for plein in qs.values('date_plein', 'montant_tva', 'tva_recuperable'):
+        mois = plein['date_plein'].strftime('%Y-%m')
+        montant = float(plein['montant_tva'] or 0)
+        bloc = par_mois.setdefault(
+            mois, {'mois': mois, 'tva_recuperable': 0.0,
+                   'tva_non_deductible': 0.0})
+        if plein['tva_recuperable']:
+            bloc['tva_recuperable'] += montant
+            total_recuperable += montant
+        else:
+            bloc['tva_non_deductible'] += montant
+            total_non_deductible += montant
+
+    return {
+        'periode': [debut, fin],
+        'par_mois': sorted(par_mois.values(), key=lambda b: b['mois']),
+        'total_recuperable': round(total_recuperable, 2),
+        'total_non_deductible': round(total_non_deductible, 2),
+    }
+
+
 # ── FLOTTE24 — Moteur d'alertes d'échéances réglementaires (J-30/15/7/échu) ────
 
 # Fenêtre maximale de l'alerteur : on ne remonte que les échéances déjà

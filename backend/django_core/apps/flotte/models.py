@@ -716,6 +716,15 @@ class PleinCarburant(models.Model):
     station = models.CharField(
         max_length=120, blank=True, verbose_name='Station')
     notes = models.TextField(blank=True, verbose_name='Notes')
+    # XFLT8 — TVA carburant : récupérable (gasoil sur utilitaire) vs non
+    # déductible (carburant sur véhicule de tourisme, règles CGI TVA).
+    # ``tva_recuperable`` est CALCULÉ par défaut à la création (voir
+    # ``_classifier_tva_recuperable``) mais reste ÉDITABLE (override founder).
+    tva_recuperable = models.BooleanField(
+        default=True, verbose_name='TVA récupérable')
+    montant_tva = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name='Montant TVA (MAD)')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -737,6 +746,9 @@ class PleinCarburant(models.Model):
         if self.prix_total is not None and self.prix_total < 0:
             raise ValidationError(
                 "Le prix total ne peut pas être négatif.")
+        if self.montant_tva is not None and self.montant_tva < 0:
+            raise ValidationError(
+                "Le montant de TVA ne peut pas être négatif.")
 
     @property
     def prix_unitaire(self):

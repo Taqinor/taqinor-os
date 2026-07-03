@@ -906,3 +906,28 @@ def importer_releve_carte(carte, contenu_csv):
         'non_rapprochees': non_rapprochees,
         'erreurs': erreurs,
     }
+
+
+# ── XFLT8 — TVA carburant : récupérable vs non déductible ──────────────────────
+
+def classifier_tva_recuperable(vehicule):
+    """XFLT8 — Classification PAR DÉFAUT de la récupérabilité TVA d'un plein.
+
+    Règle CGI TVA (Maroc) simplifiée : le gasoil sur un véhicule
+    ``type_fiscal='utilitaire'`` est RÉCUPÉRABLE ; le carburant sur un
+    véhicule ``type_fiscal='tourisme'`` est NON DÉDUCTIBLE. Sans
+    ``type_fiscal`` renseigné (valeur vide, XFLT4), on retombe sur le
+    comportement historique : récupérable par défaut (aucune régression pour
+    les véhicules déjà saisis avant XFLT8).
+
+    Lecture seule — un ``PleinCarburant.tva_recuperable`` DÉJÀ posé explicitement
+    (override founder) n'est jamais recalculé par cette fonction ; elle ne sert
+    qu'à proposer une valeur PAR DÉFAUT à la création.
+    """
+    from .models import Vehicule
+
+    type_fiscal = getattr(vehicule, 'type_fiscal', '') or ''
+    if type_fiscal == Vehicule.TypeFiscal.TOURISME:
+        return False
+    # 'utilitaire' ou vide (type fiscal inconnu) → récupérable par défaut.
+    return True

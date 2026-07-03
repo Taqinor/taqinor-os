@@ -83,7 +83,19 @@ from .serializers import (
 READ_ACTIONS = ['list', 'retrieve', 'consommation', 'anomalies', 'echeances',
                 'couts', 'synthese', 'expirantes', 'tsav', 'alertes_echeances',
                 'tco', 'eco_conduite', 'documents', 'tableau_bord', 'journal',
-                'amortissement', 'expirants', 'ledger', 'historique']
+                'amortissement', 'expirants', 'ledger', 'historique',
+                'synthese_tva']
+
+
+def _parse_date_param(value):
+    """XFLT8 — Parse une date 'YYYY-MM-DD' de query param (``None`` si
+    absente/invalide)."""
+    if not value:
+        return None
+    try:
+        return datetime.date.fromisoformat(value)
+    except ValueError:
+        return None
 
 
 class _FlotteBaseViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -510,6 +522,23 @@ class PleinCarburantViewSet(_FlotteBaseViewSet):
             qs = qs.filter(unite=unite)
 
         return qs
+
+    @action(detail=False, methods=['get'], url_path='synthese-tva')
+    def synthese_tva(self, request):
+        """XFLT8 — Synthèse mensuelle TVA carburant récupérable / non
+        déductible (lecture tout rôle).
+
+        ``?debut=YYYY-MM-DD&fin=YYYY-MM-DD`` (facultatifs) bornent la
+        période. Alimente la déclaration TVA (voir
+        ``selectors.synthese_tva_carburant``) — lecture seule.
+        """
+        company = request.user.company
+        debut = _parse_date_param(request.query_params.get('debut'))
+        fin = _parse_date_param(request.query_params.get('fin'))
+
+        from .selectors import synthese_tva_carburant
+        return Response(
+            synthese_tva_carburant(company, periode=(debut, fin)))
 
     @action(detail=False, methods=['get'])
     def consommation(self, request):

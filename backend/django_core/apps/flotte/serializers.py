@@ -580,6 +580,10 @@ class PleinCarburantSerializer(serializers.ModelSerializer):
     - ``vehicule_label``  : désignation du véhicule.
     - ``unite_display``   : libellé de l'unité.
     - ``prix_unitaire``   : prix par litre / kWh (MAD), ``None`` si quantité nulle.
+
+    XFLT8 — ``tva_recuperable`` est CALCULÉ par défaut à la création depuis
+    ``Vehicule.type_fiscal`` (``services.classifier_tva_recuperable``) si non
+    fourni explicitement au body — reste éditable (override founder).
     """
 
     unite_display = serializers.CharField(
@@ -593,7 +597,7 @@ class PleinCarburantSerializer(serializers.ModelSerializer):
             'id', 'vehicule', 'vehicule_label', 'conducteur', 'date_plein',
             'kilometrage', 'quantite', 'unite', 'unite_display', 'prix_total',
             'prix_unitaire', 'plein_complet', 'station', 'notes',
-            'date_creation',
+            'tva_recuperable', 'montant_tva', 'date_creation',
         ]
         read_only_fields = ['date_creation']
 
@@ -602,6 +606,17 @@ class PleinCarburantSerializer(serializers.ModelSerializer):
 
     def get_prix_unitaire(self, obj):
         return obj.prix_unitaire
+
+    def create(self, validated_data):
+        # XFLT8 — 'tva_recuperable' non fourni explicitement → classification
+        # par défaut depuis le type fiscal du véhicule.
+        if 'tva_recuperable' not in self.initial_data:
+            from .services import classifier_tva_recuperable
+            vehicule = validated_data.get('vehicule')
+            if vehicule is not None:
+                validated_data['tva_recuperable'] = \
+                    classifier_tva_recuperable(vehicule)
+        return super().create(validated_data)
 
     def validate_quantite(self, value):
         if value is not None and value < 0:
