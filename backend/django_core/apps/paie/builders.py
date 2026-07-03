@@ -144,10 +144,18 @@ def render_bulletin_pdf(bulletin):
 TYPE_SALAIRE = 'salaire'
 TYPE_TRAVAIL = 'travail'
 TYPE_DOMICILIATION = 'domiciliation'
-ATTESTATION_TYPES = [TYPE_SALAIRE, TYPE_TRAVAIL, TYPE_DOMICILIATION]
+# XPAI14 — Attestation de salaire pour le dossier IJ (indemnités
+# journalières CNSS maladie/maternité) : nouveau type dans
+# ``render_attestation_pdf``, distinct de l'attestation de salaire
+# générique (celle-ci porte les jours d'arrêt + le brut de référence).
+TYPE_ATTESTATION_IJ_CNSS = 'attestation_ij_cnss'
+ATTESTATION_TYPES = [
+    TYPE_SALAIRE, TYPE_TRAVAIL, TYPE_DOMICILIATION, TYPE_ATTESTATION_IJ_CNSS,
+]
 
 
-def _corps_attestation(attestation_type, profil, bulletin, today):
+def _corps_attestation(attestation_type, profil, bulletin, today, *,
+                       arret_cnss=None):
     """Corps (HTML) de l'attestation selon son type."""
     nom = escape(_nom_employe(profil))
     if attestation_type == TYPE_SALAIRE:
@@ -166,6 +174,26 @@ def _corps_attestation(attestation_type, profil, bulletin, today):
             "partie de notre personnel.</p>"
             "<p>La présente attestation de travail est délivrée à "
             "l'intéressé(e) pour servir et valoir ce que de droit.</p>")
+    if attestation_type == TYPE_ATTESTATION_IJ_CNSS:
+        # XPAI14 — Attestation de salaire pour le dossier d'indemnités
+        # journalières CNSS (arrêt maladie/maternité).
+        arret_cnss = arret_cnss or {}
+        numero_cnss = escape(profil.numero_cnss or '')
+        brut_ref = _fmt(arret_cnss.get('brut_reference', 0))
+        jours_arret = arret_cnss.get('jours_arret', 0)
+        type_arret = escape(arret_cnss.get('type_arret_libelle', 'maladie'))
+        return (
+            f"<p>Nous soussignés, attestons que <strong>{nom}</strong> "
+            f"(n° CNSS : <strong>{numero_cnss}</strong>) est employé(e) au "
+            f"sein de notre société avec un salaire brut mensuel de "
+            f"référence de <strong>{brut_ref} MAD</strong>.</p>"
+            f"<p>L'intéressé(e) a été en arrêt de travail "
+            f"(<strong>{type_arret}</strong>) pour "
+            f"<strong>{jours_arret} jour(s)</strong> sur la période "
+            "concernée.</p>"
+            "<p>La présente attestation de salaire est délivrée pour "
+            "constituer le dossier d'indemnités journalières auprès de la "
+            "CNSS.</p>")
     # Domiciliation irrévocable de salaire.
     rib = escape(profil.rib or '')
     banque = escape(profil.banque or '')
@@ -180,12 +208,14 @@ def _corps_attestation(attestation_type, profil, bulletin, today):
 
 
 def render_attestation_html(attestation_type, profil, *, bulletin=None,
-                            today=None):
+                            today=None, arret_cnss=None):
     """Construit le HTML d'une attestation (PAIE34).
 
-    ``attestation_type`` ∈ {salaire, travail, domiciliation}. ``bulletin`` (le
-    dernier bulletin validé) alimente l'attestation de salaire. Lève
-    ``ValueError`` pour un type inconnu.
+    ``attestation_type`` ∈ {salaire, travail, domiciliation,
+    attestation_ij_cnss}. ``bulletin`` (le dernier bulletin validé) alimente
+    l'attestation de salaire. ``arret_cnss`` (dict {'brut_reference',
+    'jours_arret', 'type_arret_libelle'}) alimente l'attestation IJ CNSS
+    (XPAI14). Lève ``ValueError`` pour un type inconnu.
     """
     if attestation_type not in ATTESTATION_TYPES:
         raise ValueError(f'Type d\'attestation inconnu : {attestation_type!r}.')
@@ -195,9 +225,12 @@ def render_attestation_html(attestation_type, profil, *, bulletin=None,
         TYPE_SALAIRE: 'Attestation de salaire',
         TYPE_TRAVAIL: 'Attestation de travail',
         TYPE_DOMICILIATION: 'Attestation de domiciliation irrévocable',
+        TYPE_ATTESTATION_IJ_CNSS:
+            'Attestation de salaire — dossier IJ CNSS',
     }
     titre = titres[attestation_type]
-    corps = _corps_attestation(attestation_type, profil, bulletin, today)
+    corps = _corps_attestation(
+        attestation_type, profil, bulletin, today, arret_cnss=arret_cnss)
     date_txt = f'{today.day} {MOIS_FR[today.month]} {today.year}'
     return f"""<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">
 <style>
@@ -212,11 +245,12 @@ def render_attestation_html(attestation_type, profil, *, bulletin=None,
 
 
 def render_attestation_pdf(attestation_type, profil, *, bulletin=None,
-                           today=None):
+                           today=None, arret_cnss=None):
     """Attestation → octets PDF (PAIE34)."""
     return _html_to_pdf(
         render_attestation_html(
-            attestation_type, profil, bulletin=bulletin, today=today))
+            attestation_type, profil, bulletin=bulletin, today=today,
+            arret_cnss=arret_cnss))
 
 
 # ── XPAI1 — Reçu pour solde de tout compte (STC) ────────────────────────────

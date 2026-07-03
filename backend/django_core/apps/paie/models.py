@@ -433,6 +433,21 @@ class ProfilPaie(models.Model):
         max_length=40, blank=True, default='', verbose_name='RIB')
     banque = models.CharField(
         max_length=120, blank=True, default='', verbose_name='Banque')
+    # XPAI9 — Mode de paiement du salarié. ``virement`` (défaut, comportement
+    # historique — seul mode couvert jusqu'ici) entre dans l'ordre de
+    # virement (PAIE30) ; ``cheque``/``especes`` en sont EXCLUS (listés à
+    # part) — un profil espèces/chèque est réglé hors virement.
+    MODE_PAIEMENT_VIREMENT = 'virement'
+    MODE_PAIEMENT_CHEQUE = 'cheque'
+    MODE_PAIEMENT_ESPECES = 'especes'
+    MODE_PAIEMENT_CHOICES = [
+        (MODE_PAIEMENT_VIREMENT, 'Virement'),
+        (MODE_PAIEMENT_CHEQUE, 'Chèque'),
+        (MODE_PAIEMENT_ESPECES, 'Espèces'),
+    ]
+    mode_paiement = models.CharField(
+        max_length=10, choices=MODE_PAIEMENT_CHOICES,
+        default=MODE_PAIEMENT_VIREMENT, verbose_name='Mode de paiement')
     actif = models.BooleanField(default=True, verbose_name='Actif')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
@@ -640,6 +655,18 @@ class PeriodePaie(models.Model):
         STATUT_BROUILLON, STATUT_CALCULEE, STATUT_VALIDEE, STATUT_CLOTUREE,
     ]
 
+    # XPAI4 — Nature du run. ``mensuel`` (défaut, comportement historique) est
+    # le cycle mensuel normal ; ``hors_cycle`` est un run INDÉPENDANT du mois
+    # calendaire (13e mois/gratification, rappel de masse…) : peut coexister
+    # avec le run mensuel du même (année, mois) — le couple unique
+    # ``(company, annee, mois)`` ci-dessous est donc étendu à ``type_run``.
+    TYPE_RUN_MENSUEL = 'mensuel'
+    TYPE_RUN_HORS_CYCLE = 'hors_cycle'
+    TYPE_RUN_CHOICES = [
+        (TYPE_RUN_MENSUEL, 'Mensuel'),
+        (TYPE_RUN_HORS_CYCLE, 'Hors-cycle (prime/rappel)'),
+    ]
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -648,6 +675,9 @@ class PeriodePaie(models.Model):
     )
     annee = models.PositiveIntegerField(verbose_name='Année')
     mois = models.PositiveSmallIntegerField(verbose_name='Mois')
+    type_run = models.CharField(
+        max_length=12, choices=TYPE_RUN_CHOICES, default=TYPE_RUN_MENSUEL,
+        verbose_name='Type de run')
     libelle = models.CharField(
         max_length=120, blank=True, default='', verbose_name='Libellé')
     statut = models.CharField(
@@ -664,7 +694,9 @@ class PeriodePaie(models.Model):
         verbose_name = 'Période de paie'
         verbose_name_plural = 'Périodes de paie'
         ordering = ['-annee', '-mois']
-        unique_together = [('company', 'annee', 'mois')]
+        # XPAI4 — ``type_run`` étend l'unicité : un run hors-cycle (13e mois)
+        # peut coexister avec le run mensuel du même (année, mois).
+        unique_together = [('company', 'annee', 'mois', 'type_run')]
 
     def __str__(self):
         return f'Paie {self.mois:02d}/{self.annee} ({self.statut})'
@@ -780,6 +812,25 @@ class ElementVariable(models.Model):
     # solde reste géré par RH). Ignoré hors absence.
     deduit_solde = models.BooleanField(
         default=False, verbose_name='Déduit du solde de congés')
+    # XPAI14 — Catégorie d'un arrêt CNSS (utilisée uniquement quand
+    # ``type == TYPE_ABSENCE``). ``aucune`` (défaut) = absence ordinaire
+    # (comportement historique inchangé). ``maladie``/``maternite`` marquent
+    # un arrêt indemnisé par la CNSS : les jours sont neutralisés côté
+    # salaire ET cotisations (comme toute absence ``remunere=False`` déduite
+    # du salaire proraté), et déclenchent l'attestation de salaire CNSS
+    # (dossier IJ, ``builders.render_attestation_ij_cnss_pdf``).
+    ABSENCE_AUCUNE = 'aucune'
+    ABSENCE_MALADIE_CNSS = 'maladie'
+    ABSENCE_MATERNITE_CNSS = 'maternite'
+    CATEGORIE_ABSENCE_CHOICES = [
+        (ABSENCE_AUCUNE, 'Absence ordinaire'),
+        (ABSENCE_MALADIE_CNSS, 'Arrêt CNSS — maladie'),
+        (ABSENCE_MATERNITE_CNSS, 'Arrêt CNSS — maternité'),
+    ]
+    categorie_absence = models.CharField(
+        max_length=10, choices=CATEGORIE_ABSENCE_CHOICES,
+        default=ABSENCE_AUCUNE, blank=True,
+        verbose_name='Catégorie d\'absence')
     source = models.CharField(
         max_length=10, choices=SOURCE_CHOICES, default=SOURCE_MANUEL,
         verbose_name='Source')
@@ -834,11 +885,15 @@ class BulletinPaie(models.Model):
     TYPE_RECTIFICATIF = 'rectificatif'
     TYPE_RAPPEL = 'rappel'
     TYPE_STC = 'stc'
+    # XPAI4 — Bulletin de run hors-cycle (13e mois / prime de bilan), généré
+    # sur une ``PeriodePaie`` de ``type_run == TYPE_RUN_HORS_CYCLE``.
+    TYPE_GRATIFICATION = 'gratification'
     TYPE_BULLETIN_CHOICES = [
         (TYPE_NORMAL, 'Normal'),
         (TYPE_RECTIFICATIF, 'Rectificatif'),
         (TYPE_RAPPEL, 'Rappel'),
         (TYPE_STC, 'Solde de tout compte'),
+        (TYPE_GRATIFICATION, '13e mois / gratification'),
     ]
 
     # Champs de montant figés au moment du calcul (snapshot). Modifiables tant
@@ -954,6 +1009,13 @@ class BulletinPaie(models.Model):
         verbose_name='Net à payer')
     date_validation = models.DateTimeField(
         null=True, blank=True, verbose_name='Validé le')
+    # XPAI9 — Statut de décompte du paiement, horodaté. Distinct de
+    # ``statut`` (brouillon/valide — le CALCUL) : ``paye`` trace que le
+    # salarié a EFFECTIVEMENT reçu son net (virement exécuté, chèque remis,
+    # espèces décomptées) — jamais posé automatiquement par le calcul.
+    paye = models.BooleanField(default=False, verbose_name='Payé')
+    date_paiement = models.DateTimeField(
+        null=True, blank=True, verbose_name='Payé le')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -1458,6 +1520,22 @@ class LigneVirement(models.Model):
         verbose_name='Montant')
     reference = models.CharField(
         max_length=80, blank=True, default='', verbose_name='Référence')
+    # XPAI9 — Suivi des rejets de virement (RIB invalide). Une ligne rejetée
+    # n'est JAMAIS supprimée (trace comptable/audit) ; ``ligne_correction``
+    # référence la ligne RÉÉMISE avec le RIB corrigé (nouvelle ligne, même
+    # bulletin) — chaîne d'audit complète.
+    rejetee = models.BooleanField(default=False, verbose_name='Rejetée')
+    motif_rejet = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Motif du rejet')
+    date_rejet = models.DateTimeField(
+        null=True, blank=True, verbose_name='Rejetée le')
+    ligne_correction = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='corrige',
+        verbose_name='Ligne de correction (réémission)',
+    )
 
     class Meta:
         verbose_name = 'Ligne de virement'
@@ -1466,3 +1544,143 @@ class LigneVirement(models.Model):
 
     def __str__(self):
         return f'{self.beneficiaire} {self.montant} (ordre #{self.ordre_id})'
+
+
+# ── XPAI6 — Échéancier déclaratif paie ──────────────────────────────────────
+
+class EcheanceDeclarative(models.Model):
+    """Échéance de conformité déclarative d'une période de paie (XPAI6).
+
+    Calendrier des déclarations dues par organisme : BDS mensuelle (CNSS,
+    avant le 10 du mois suivant), IR mensuel (retenue à la source, versée à
+    l'État), 9421 (état annuel des traitements & salaires, fin février de
+    l'année suivante), CIMR (cotisation retraite). Générée AUTOMATIQUEMENT à
+    la création d'une ``PeriodePaie`` (``services.generer_echeances_periode``,
+    idempotent) — jamais saisie à la main. ``statut`` progresse
+    manuellement (à_générer → générée → déposée → payée) au fil du traitement
+    réel de la déclaration.
+
+    Multi-société : ``company`` posée côté serveur.
+    """
+    TYPE_BDS = 'bds'
+    TYPE_IR_MENSUEL = 'ir_mensuel'
+    TYPE_9421 = 'etat_9421'
+    TYPE_CIMR = 'cimr'
+    TYPE_CHOICES = [
+        (TYPE_BDS, 'BDS (CNSS)'),
+        (TYPE_IR_MENSUEL, 'IR mensuel'),
+        (TYPE_9421, 'État 9421 (annuel)'),
+        (TYPE_CIMR, 'CIMR'),
+    ]
+
+    STATUT_A_GENERER = 'a_generer'
+    STATUT_GENEREE = 'generee'
+    STATUT_DEPOSEE = 'deposee'
+    STATUT_PAYEE = 'payee'
+    STATUT_CHOICES = [
+        (STATUT_A_GENERER, 'À générer'),
+        (STATUT_GENEREE, 'Générée'),
+        (STATUT_DEPOSEE, 'Déposée'),
+        (STATUT_PAYEE, 'Payée'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paie_echeances_declaratives',
+        verbose_name='Société',
+    )
+    periode = models.ForeignKey(
+        PeriodePaie,
+        on_delete=models.CASCADE,
+        related_name='echeances_declaratives',
+        verbose_name='Période',
+    )
+    type_echeance = models.CharField(
+        max_length=12, choices=TYPE_CHOICES, verbose_name='Type')
+    date_limite = models.DateField(verbose_name='Date limite')
+    statut = models.CharField(
+        max_length=10, choices=STATUT_CHOICES, default=STATUT_A_GENERER,
+        verbose_name='Statut')
+    date_notification = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name='Rappel envoyé le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Échéance déclarative'
+        verbose_name_plural = 'Échéances déclaratives'
+        ordering = ['date_limite', 'type_echeance']
+        unique_together = [('periode', 'type_echeance')]
+
+    def __str__(self):
+        return f'{self.get_type_echeance_display()} — {self.date_limite} ({self.statut})'
+
+    @property
+    def en_retard(self):
+        """Vrai si la date limite est dépassée sans dépôt (déposée/payée)."""
+        from django.utils import timezone
+        if self.statut in (self.STATUT_DEPOSEE, self.STATUT_PAYEE):
+            return False
+        return timezone.localdate() > self.date_limite
+
+
+# ── XPAI12 — BDS complémentaire/rectificative + trace des dépôts DAMANCOM ───
+
+class DepotBDS(models.Model):
+    """Trace un DÉPÔT de BDS (CNSS) pour une période (XPAI12).
+
+    Un dépôt PRINCIPAL couvre l'ensemble des salariés déclarés au format
+    DAMANCOM (``fichier_damancom_cnss``, PAIE31). Un dépôt COMPLÉMENTAIRE
+    corrige un dépôt principal déjà déposé — salariés omis/corrections — et
+    référence son dépôt principal via ``depot_principal`` : son contenu ne
+    contient QUE le delta (jamais l'ensemble des salariés à nouveau). Une
+    période ne peut avoir qu'UN dépôt principal, mais PLUSIEURS
+    complémentaires (corrections successives).
+
+    Multi-société : ``company`` posée côté serveur.
+    """
+    TYPE_PRINCIPAL = 'principal'
+    TYPE_COMPLEMENTAIRE = 'complementaire'
+    TYPE_CHOICES = [
+        (TYPE_PRINCIPAL, 'Principal'),
+        (TYPE_COMPLEMENTAIRE, 'Complémentaire'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paie_depots_bds',
+        verbose_name='Société',
+    )
+    periode = models.ForeignKey(
+        PeriodePaie,
+        on_delete=models.CASCADE,
+        related_name='depots_bds',
+        verbose_name='Période',
+    )
+    type_depot = models.CharField(
+        max_length=14, choices=TYPE_CHOICES, default=TYPE_PRINCIPAL,
+        verbose_name='Type de dépôt')
+    depot_principal = models.ForeignKey(
+        'self',
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='complements',
+        verbose_name='Dépôt principal référencé',
+    )
+    # Salariés couverts par CE dépôt (liste d'ids de ProfilPaie) — pour un
+    # complémentaire, uniquement le delta (omis/corrigés).
+    profils_couverts = models.JSONField(
+        default=list, blank=True, verbose_name='Profils couverts')
+    date_depot = models.DateTimeField(
+        auto_now_add=True, verbose_name='Déposé le')
+
+    class Meta:
+        verbose_name = 'Dépôt BDS'
+        verbose_name_plural = 'Dépôts BDS'
+        ordering = ['-date_depot']
+
+    def __str__(self):
+        return f'Dépôt BDS {self.get_type_depot_display()} — {self.periode}'
