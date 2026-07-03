@@ -111,6 +111,49 @@ def resume_lecture(article):
     return {'nombre': len(lecteurs), 'lecteurs': lecteurs}
 
 
+def peut_editer(article, user):
+    """XKB14 — ``user`` peut-il déverrouiller/éditer un article verrouillé ?
+
+    Le palier ``admin`` passe toujours. Sinon, il faut une ligne ACL
+    d'ÉDITION explicite pour le palier de l'utilisateur OU son id nominatif
+    (XKB9). Sans aucune ligne ACL d'édition pour cet article, PERSONNE
+    d'autre que l'admin ne peut déverrouiller (le verrou protège vraiment).
+    """
+    tier = getattr(user, 'menu_tier', None) if user is not None else None
+    if tier == 'admin':
+        return True
+    user_id = getattr(user, 'id', None) if user is not None else None
+    qs = KbArticleAcl.objects.filter(
+        article=article, niveau=KbArticleAcl.Niveau.EDITION)
+    if tier:
+        qs = qs.filter(Q(role=tier) | Q(utilisateur_id=user_id))
+    else:
+        qs = qs.filter(utilisateur_id=user_id) if user_id else qs.none()
+    return qs.exists()
+
+
+# ── XKB14 — Vérification, péremption & verrou ───────────────────────────────
+
+def rapport_peremption(company):
+    """XKB14 — Articles PÉRIMÉS d'une société : ``verifie_jusqua`` dépassée
+    OU jamais vérifiés et non modifiés/non lus depuis longtemps.
+
+    Renvoie une liste de dicts ``{id, titre, verifie_jusqua}`` triée par
+    ``date_modification`` croissante (le plus ancien d'abord — le plus
+    urgent à re-revoir). Scopé société. Lecture seule.
+    """
+    from django.utils import timezone
+    now = timezone.now()
+    qs = (KbArticle.objects
+          .filter(company=company, verifie_jusqua__isnull=False,
+                  verifie_jusqua__lt=now)
+          .order_by('date_modification'))
+    return [
+        {'id': a.id, 'titre': a.titre, 'verifie_jusqua': a.verifie_jusqua}
+        for a in qs
+    ]
+
+
 # ── XKB11 — Liens internes article↔article + rétroliens ────────────────────
 
 def retroliens(article):

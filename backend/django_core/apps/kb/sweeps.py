@@ -44,3 +44,25 @@ def sweep_lectures_obligatoires():
     logger.info(
         'sweep_lectures_obligatoires: %s relance(s) émise(s)', total)
     return total
+
+
+@shared_task(name='kb.sweep_articles_perimes')
+def sweep_articles_perimes():
+    """XKB14 — Relance quotidienne de re-revue des articles PÉRIMÉS.
+
+    Best-effort par société : une société en erreur n'empêche pas les
+    suivantes. Renvoie le total de notifications émises.
+    """
+    from . import services
+
+    total = 0
+    for company in _companies():
+        try:
+            total += services.relancer_revues_perimees(company=company)
+        except Exception:  # pragma: no cover
+            logger.warning(
+                'kb sweeps: société %s échouée globalement (péremption)',
+                getattr(company, 'pk', None), exc_info=True)
+    logger.info(
+        'sweep_articles_perimes: %s relance(s) émise(s)', total)
+    return total

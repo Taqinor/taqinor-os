@@ -21,16 +21,21 @@ class KbArticleSerializer(serializers.ModelSerializer):
     auteur_nom = serializers.CharField(
         source='auteur.get_full_name', read_only=True)
 
+    verifie_par_nom = serializers.CharField(
+        source='verifie_par.get_full_name', read_only=True)
+
     class Meta:
         model = KbArticle
         fields = [
             'id', 'titre', 'corps', 'corps_format', 'categorie', 'tags',
             'statut', 'statut_display', 'auteur', 'auteur_nom', 'parent',
-            'ordre', 'visibilite', 'est_gabarit', 'date_creation',
-            'date_modification',
+            'ordre', 'visibilite', 'est_gabarit', 'verifie_par',
+            'verifie_par_nom', 'verifie_jusqua', 'est_verrouille',
+            'date_creation', 'date_modification',
         ]
         read_only_fields = [
-            'auteur', 'date_creation', 'date_modification']
+            'auteur', 'verifie_par', 'verifie_jusqua', 'est_verrouille',
+            'date_creation', 'date_modification']
 
     def validate_parent(self, parent):
         """XKB8 — le parent doit être même-société et ne jamais créer de cycle.

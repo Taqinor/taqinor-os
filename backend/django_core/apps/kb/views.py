@@ -7,6 +7,7 @@ requête). Les versions d'article sont des instantanés numérotés côté serve
 """
 from rest_framework import filters, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
@@ -80,6 +81,14 @@ class KbArticleViewSet(_KbBaseViewSet):
             company=self.request.user.company, auteur=self.request.user)
 
     def perform_update(self, serializer):
+        # XKB14 — un article VERROUILLÉ rejette tout PATCH/PUT venant de
+        # quelqu'un sans ACL d'ÉDITION (ou admin) — 403, jamais silencieux.
+        article = serializer.instance
+        if article.est_verrouille and not selectors.peut_editer(
+                article, self.request.user):
+            raise PermissionDenied(
+                "Cet article est verrouillé : seule une personne avec un "
+                "droit d'édition peut le modifier.")
         # Sauvegarde l'article (société re-posée côté serveur) puis fige un
         # instantané versionné du nouvel état.
         article = serializer.save(company=self.request.user.company)
@@ -168,6 +177,47 @@ class KbArticleViewSet(_KbBaseViewSet):
             gabarit, auteur=request.user, company=request.user.company)
         return Response(
             self.get_serializer(article).data, status=201)
+
+    @action(detail=True, methods=['post'], url_path='verifier')
+    def verifier(self, request, pk=None):
+        """XKB14 — Marque l'article vérifié (badge) jusqu'à ``horizon_jours``
+        (défaut 90, accepte 7/30/90 ou tout entier via le corps)."""
+        article = self.get_object()
+        horizon = request.data.get('horizon_jours', 90)
+        try:
+            horizon = int(horizon)
+        except (TypeError, ValueError):
+            horizon = 90
+        services.verifier_article(
+            article, verificateur=request.user, horizon_jours=horizon)
+        return Response(self.get_serializer(article).data)
+
+    @action(detail=True, methods=['post'], url_path='verrouiller')
+    def verrouiller(self, request, pk=None):
+        """XKB14 — Verrouille l'article (lecture seule, SOP approuvées)."""
+        article = self.get_object()
+        article.est_verrouille = True
+        article.save(update_fields=['est_verrouille'])
+        return Response(self.get_serializer(article).data)
+
+    @action(detail=True, methods=['post'], url_path='deverrouiller')
+    def deverrouiller(self, request, pk=None):
+        """XKB14 — Déverrouille l'article. Requiert un droit d'ÉDITION (ACL)
+        ou le palier admin — sinon 403 (le verrou protège vraiment)."""
+        article = self.get_object()
+        if not selectors.peut_editer(article, request.user):
+            raise PermissionDenied(
+                "Seule une personne avec un droit d'édition peut "
+                "déverrouiller cet article.")
+        article.est_verrouille = False
+        article.save(update_fields=['est_verrouille'])
+        return Response(self.get_serializer(article).data)
+
+    @action(detail=False, methods=['get'], url_path='rapport-peremption')
+    def rapport_peremption(self, request):
+        """XKB14 — Articles périmés (re-revue due) de la société."""
+        return Response(
+            selectors.rapport_peremption(request.user.company))
 
     @action(detail=True, methods=['post'], url_path='deplacer')
     def deplacer(self, request, pk=None):

@@ -86,6 +86,64 @@ def creer_depuis_gabarit(gabarit, *, auteur, company):
     )
 
 
+# ── XKB14 — Vérification, péremption & verrou ───────────────────────────────
+
+def verifier_article(article, *, verificateur, horizon_jours=90):
+    """XKB14 — Marque l'article VÉRIFIÉ par ``verificateur`` jusqu'à
+    ``horizon_jours`` (défaut 90 j — l'appelant peut passer 7/30/90 ou tout
+    autre horizon libre). Renvoie l'article sauvegardé.
+    """
+    from django.utils import timezone
+    article.verifie_par = verificateur
+    article.verifie_jusqua = timezone.now() + timezone.timedelta(
+        days=horizon_jours)
+    article.save(update_fields=['verifie_par', 'verifie_jusqua'])
+    return article
+
+
+def relancer_revues_perimees(company=None):
+    """XKB14 — Notifie le vérificateur des articles PÉRIMÉS (re-revue due).
+
+    Best-effort et jamais bloquant. ``company`` restreint à une seule société
+    (sweep par société) ; ``None`` balaie toutes les sociétés actives.
+    Renvoie le nombre de notifications émises.
+    """
+    from apps.notifications.models import EventType
+    from apps.notifications.services import notify
+
+    from . import selectors
+
+    companies = [company] if company is not None else _companies_actives()
+    total = 0
+    for co in companies:
+        for entry in selectors.rapport_peremption(co):
+            try:
+                article = KbArticle.objects.filter(id=entry['id']).first()
+                if article is None or not article.verifie_par_id:
+                    continue
+                notify(
+                    article.verifie_par, EventType.DIGEST,
+                    f'Re-revue due : {article.titre}',
+                    body="Cet article est périmé et nécessite une re-revue.",
+                    link=f'/kb/articles/{article.id}',
+                    company=co,
+                )
+                total += 1
+            except Exception:  # pragma: no cover - défensif
+                logger.warning(
+                    'relancer_revues_perimees: article %s échoué',
+                    entry.get('id'), exc_info=True)
+    return total
+
+
+def _companies_actives():
+    try:
+        from authentication.models import Company
+        return list(Company.objects.filter(actif=True))
+    except Exception:  # pragma: no cover
+        return []
+
+
 # ── XKB7 — Relance des non-lecteurs de lecture obligatoire ─────────────────
 
 def relancer_lectures_obligatoires(company=None):

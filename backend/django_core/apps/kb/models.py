@@ -92,6 +92,24 @@ class KbArticle(models.Model):
     # manuel dans l'arbre latéral. Posé côté serveur, jamais recalculé par
     # count() (juste un entier libre, pas une contrainte d'unicité).
     ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    # XKB14 — vérification & péremption. ``verifie_par`` + ``verifie_jusqua``
+    # (posés par l'action ``verifier``) portent le badge « Vérifié » et
+    # l'échéance de re-revue (7/30/90 j ou date libre — calculée côté client,
+    # stockée en date absolue côté serveur pour un sweep simple).
+    verifie_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='kb_app_articles_verifies',
+        verbose_name='Vérifié par',
+    )
+    verifie_jusqua = models.DateTimeField(
+        null=True, blank=True, verbose_name="Vérifié jusqu'au")
+    # XKB14 — verrou d'article (SOP approuvées, lecture seule). Seule une
+    # personne avec ACL ÉDITION (ou admin) peut déverrouiller ; l'API rejette
+    # tout PATCH sur un article verrouillé pour les autres.
+    est_verrouille = models.BooleanField(
+        default=False, verbose_name='Verrouillé')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
     date_modification = models.DateTimeField(
