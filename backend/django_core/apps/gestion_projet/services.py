@@ -1322,3 +1322,70 @@ def alertes_retards_projets(company, *, seuil_jours=None):
         'nb_alertes_envoyees': nb_envoyees,
         'nb_deja_notifiees': nb_deja,
     }
+
+
+# ── Notifications client aux étapes du projet (XPRJ23) ───────────────────────
+def notifier_transition_projet(
+        projet, *, ancien_statut, nouveau_statut, user=None):
+    """Émet ``TriggerType.PROJET_STATUS_CHANGE`` vers le moteur automation.
+
+    NE crée AUCUN modèle de notification parallèle : délègue au moteur
+    no-code EXISTANT (``apps.automation`` N72/N73, import fonction-local —
+    frontière cross-app). Config ``{'statut': …}`` avec les enums PROPRES à
+    gestion_projet (jamais ``STAGES.py``, règle #2). Best-effort ABSOLU :
+    toute exception est avalée ici (le moteur est déjà best-effort en
+    interne) — la transition de statut qui a appelé cette fonction n'est
+    JAMAIS bloquée. Variables ``{nom_projet}``/``{date}`` disponibles dans le
+    corps des modèles de message (substitution côté automation).
+    """
+    if ancien_statut == nouveau_statut:
+        return
+    try:
+        from apps.automation.engine import evaluate
+        from apps.automation.models import TriggerType
+
+        evaluate(
+            TriggerType.PROJET_STATUS_CHANGE, projet, projet.company,
+            context={
+                'new_statut': nouveau_statut,
+                'old_statut': ancien_statut,
+                'nom_projet': projet.nom,
+                'date': _date_du_jour().isoformat(),
+            },
+            user=user,
+        )
+    except Exception:  # pragma: no cover - défensif, ne bloque jamais
+        pass
+
+
+def notifier_transition_phase(
+        phase, *, ancien_statut, nouveau_statut, user=None):
+    """Émet ``TriggerType.PROJET_PHASE_CHANGE`` vers le moteur automation.
+
+    Même politique que ``notifier_transition_projet`` : moteur EXISTANT,
+    aucun modèle parallèle, best-effort ABSOLU (n'interrompt jamais la
+    transition de phase). Variables ``{nom_projet}``/``{date}`` disponibles.
+    """
+    if ancien_statut == nouveau_statut:
+        return
+    try:
+        from apps.automation.engine import evaluate
+        from apps.automation.models import TriggerType
+
+        evaluate(
+            TriggerType.PROJET_PHASE_CHANGE, phase, phase.company,
+            context={
+                'new_statut': nouveau_statut,
+                'old_statut': ancien_statut,
+                'nom_projet': phase.projet.nom,
+                'date': _date_du_jour().isoformat(),
+            },
+            user=user,
+        )
+    except Exception:  # pragma: no cover - défensif, ne bloque jamais
+        pass
+
+
+def _date_du_jour():
+    from datetime import date as _date
+    return _date.today()

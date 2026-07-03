@@ -93,6 +93,16 @@ def _trigger_matches(rule, instance, context):
             return True
         return getattr(instance, 'statut', None) == wanted
 
+    if rule.trigger_type in (
+            TriggerType.PROJET_STATUS_CHANGE, TriggerType.PROJET_PHASE_CHANGE):
+        # XPRJ23 — enums PROPRES à gestion_projet (jamais STAGES.py, règle
+        # #2) ; émis DEPUIS le module (pas de signal Django ici), donc le
+        # nouveau statut/phase est TOUJOURS fourni dans ``context``.
+        wanted = cfg.get('statut')
+        if not wanted:
+            return True
+        return ctx.get('new_statut') == wanted
+
     # DEVIS_ACCEPTED / FACTURE_OVERDUE / WARRANTY_EXPIRING / MAINTENANCE_DUE /
     # STOCK_BELOW_THRESHOLD : la condition est déjà tranchée par l'émetteur du
     # signal (le moteur n'est appelé que quand l'événement s'est produit).

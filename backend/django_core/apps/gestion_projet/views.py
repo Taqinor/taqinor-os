@@ -224,6 +224,9 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
             new_value=target,
             auteur=request.user,
         )
+        services.notifier_transition_projet(
+            projet, ancien_statut=old, nouveau_statut=target,
+            user=request.user)
         return Response(ProjetSerializer(projet).data)
 
     @action(detail=True, methods=['post'], url_path='planifier')
@@ -966,6 +969,22 @@ class PhaseProjetViewSet(_GestionProjetBaseViewSet):
         if projet:
             qs = qs.filter(projet_id=projet)
         return qs
+
+    def perform_update(self, serializer):
+        """Émet ``PROJET_PHASE_CHANGE`` (XPRJ23) au changement de ``statut``.
+
+        Best-effort ABSOLU (voir ``services.notifier_transition_phase``) : la
+        mise à jour de la phase n'est JAMAIS bloquée par une règle
+        d'automatisation en erreur.
+        """
+        instance = serializer.instance
+        ancien_statut = instance.statut
+        nouveau_statut = serializer.validated_data.get(
+            'statut', ancien_statut)
+        phase = serializer.save()
+        services.notifier_transition_phase(
+            phase, ancien_statut=ancien_statut,
+            nouveau_statut=nouveau_statut, user=self.request.user)
 
 
 class TacheViewSet(_GestionProjetBaseViewSet):

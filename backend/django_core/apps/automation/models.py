@@ -30,6 +30,13 @@ class TriggerType(models.TextChoices):
     WARRANTY_EXPIRING = 'warranty_expiring', 'Garantie proche expiration'
     MAINTENANCE_DUE = 'maintenance_due', 'Visite de maintenance due'
     STOCK_BELOW_THRESHOLD = 'stock_below_threshold', 'Stock sous le seuil'
+    # XPRJ23 — étapes du projet (gestion_projet), émis DEPUIS le module (jamais
+    # via un signal Django cross-app) ; config {'statut': …} avec les enums
+    # PROPRES à gestion_projet (jamais STAGES.py, règle #2).
+    PROJET_STATUS_CHANGE = (
+        'projet_status_change', 'Changement de statut de projet')
+    PROJET_PHASE_CHANGE = (
+        'projet_phase_change', 'Changement de phase de projet')
 
 
 class ActionType(models.TextChoices):
