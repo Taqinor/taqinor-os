@@ -561,7 +561,7 @@ class FollowupLevelSerializer(serializers.ModelSerializer):
         from .models import FollowupLevel
         model = FollowupLevel
         fields = ['id', 'ordre', 'nom', 'delai_jours', 'message',
-                  'taux_interet_annuel', 'frais_fixes']
+                  'taux_interet_annuel', 'frais_fixes', 'canal']
 
 
 class RelanceLogSerializer(serializers.ModelSerializer):
@@ -571,8 +571,8 @@ class RelanceLogSerializer(serializers.ModelSerializer):
     class Meta:
         from .models import RelanceLog
         model = RelanceLog
-        fields = ['id', 'facture', 'niveau', 'niveau_nom', 'note', 'date',
-                  'created_by_nom']
+        fields = ['id', 'facture', 'niveau', 'niveau_nom', 'note', 'canal',
+                  'courrier_pdf_key', 'date', 'created_by_nom']
         read_only_fields = fields
 
 

@@ -1223,6 +1223,18 @@ class FollowupLevel(models.Model):
     frais_fixes = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True, default=0)
 
+    # XFAC8 — canal par niveau de relance (Odoo 19/D365 : courtoisie email →
+    # ferme WhatsApp → mise en demeure courrier → niveau « appel » qui crée
+    # une tâche téléphonique). Défaut EMAIL → comportement historique inchangé.
+    class Canal(models.TextChoices):
+        EMAIL = 'email', 'Email'
+        WHATSAPP = 'whatsapp', 'WhatsApp'
+        COURRIER = 'courrier', 'Courrier'
+        APPEL = 'appel', 'Appel (tâche téléphonique)'
+
+    canal = models.CharField(
+        max_length=10, choices=Canal.choices, default=Canal.EMAIL)
+
     class Meta:
         ordering = ['delai_jours', 'ordre']
         verbose_name = 'Niveau de relance'
@@ -1258,6 +1270,12 @@ class RelanceLog(models.Model):
     niveau = models.PositiveIntegerField(null=True, blank=True)
     niveau_nom = models.CharField(max_length=120, blank=True, default='')
     note = models.TextField(blank=True, default='')
+    # XFAC8 — canal réellement utilisé pour CETTE relance (trace, pas config).
+    # Vide = comportement historique (email implicite avant XFAC8).
+    canal = models.CharField(max_length=10, blank=True, default='')
+    # Canal courrier : clé MinIO de la lettre PDF générée en file d'attente
+    # d'impression (jamais d'envoi postal automatisé — impression manuelle).
+    courrier_pdf_key = models.CharField(max_length=500, blank=True, default='')
     date = models.DateField(auto_now_add=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,

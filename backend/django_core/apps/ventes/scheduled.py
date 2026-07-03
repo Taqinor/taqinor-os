@@ -115,6 +115,88 @@ def _check_promesses_expirees(today):
     return rompues
 
 
+def _dispatch_relance_canal(facture, niveau, note, user=None):
+    """XFAC8 — route la relance selon ``niveau.canal`` et renvoie un dict
+    ``{'canal': …, 'courrier_pdf_key': …}`` à consigner sur la RelanceLog.
+
+    - email (défaut, historique inchangé) : ``send_relance_email``.
+    - whatsapp : prépare un brouillon wa.me (jamais d'envoi auto) via le
+      ShareLink/MessageTemplate existants — n'échoue jamais le job (best
+      effort, ex. téléphone absent).
+    - courrier : génère la lettre de relance PDF (file d'attente
+      d'impression, jamais d'envoi postal automatisé) et stocke sa clé MinIO.
+    - appel : crée une ``records.Activity`` type Appel assignée au owner du
+      client, au lieu d'un message.
+    """
+    from .email_service import send_relance_email
+    from .models import FollowupLevel
+
+    canal = getattr(niveau, 'canal', FollowupLevel.Canal.EMAIL) \
+        if niveau is not None else FollowupLevel.Canal.EMAIL
+    niveau_nom = niveau.nom if niveau is not None else ''
+    message = niveau.message if niveau is not None else ''
+
+    if canal == FollowupLevel.Canal.WHATSAPP:
+        try:
+            from .utils.whatsapp import build_facture_whatsapp_draft
+            build_facture_whatsapp_draft(facture, modele='relance')
+        except Exception:  # pragma: no cover — best-effort, ex. tél. absent
+            logger.warning(
+                'relance_reminders: brouillon WhatsApp indisponible pour '
+                'facture %s', facture.id)
+        return {'canal': canal, 'courrier_pdf_key': ''}
+
+    if canal == FollowupLevel.Canal.COURRIER:
+        courrier_key = ''
+        try:
+            from .utils.pdf import generate_lettre_relance_pdf, _upload_pdf
+            pdf_bytes = generate_lettre_relance_pdf(facture, {
+                'ordre': getattr(niveau, 'ordre', None), 'nom': niveau_nom,
+                'delai_jours': getattr(niveau, 'delai_jours', None),
+            } if niveau is not None else None, message)
+            courrier_key = (
+                f'relances/courrier/{facture.company_id}/'
+                f'{facture.reference}-{casablanca_today().isoformat()}.pdf')
+            _upload_pdf(pdf_bytes, courrier_key)
+        except Exception:  # pragma: no cover — best-effort
+            logger.warning(
+                'relance_reminders: lettre courrier indisponible pour '
+                'facture %s', facture.id)
+        return {'canal': canal, 'courrier_pdf_key': courrier_key}
+
+    if canal == FollowupLevel.Canal.APPEL:
+        try:
+            from django.contrib.contenttypes.models import ContentType
+            from apps.records.models import Activity, ActivityType
+            ct = ContentType.objects.get_for_model(facture.__class__)
+            atype = ActivityType.objects.filter(
+                company=facture.company, nom='Appel').first()
+            if atype is None:
+                atype = ActivityType.objects.create(
+                    company=facture.company, nom='Appel', icone='📞',
+                    ordre=45, est_systeme=True)
+            assigned_to = (
+                getattr(facture.client, 'owner', None)
+                or getattr(facture.client, 'created_by', None)
+                or facture.created_by)
+            Activity.objects.create(
+                company=facture.company, content_type=ct,
+                object_id=facture.id, activity_type=atype,
+                summary=f'Relance téléphonique — facture {facture.reference}',
+                note=message, due_date=casablanca_today(),
+                assigned_to=assigned_to,
+            )
+        except Exception:  # pragma: no cover — best-effort
+            logger.warning(
+                'relance_reminders: activité appel indisponible pour '
+                'facture %s', facture.id)
+        return {'canal': canal, 'courrier_pdf_key': ''}
+
+    # Défaut / email — comportement historique strictement inchangé.
+    send_relance_email(facture, niveau_nom=niveau_nom, message=message, user=user)
+    return {'canal': FollowupLevel.Canal.EMAIL, 'courrier_pdf_key': ''}
+
+
 @shared_task(name='ventes.relance_reminders')
 def relance_reminders():
     """Envoie les relances programmées arrivées à échéance (date Casablanca).
@@ -185,12 +267,17 @@ def relance_reminders():
         idx = min(deja, len(levels) - 1)
         niveau = levels[idx]
 
-        send_relance_email(
-            facture, niveau_nom=niveau.nom, message=niveau.message, user=None)
+        # XFAC8 — route selon le canal configuré sur CE niveau (email par
+        # défaut = comportement historique inchangé).
+        dispatch = _dispatch_relance_canal(
+            facture, niveau, 'Relance automatique programmée (email).',
+            user=None)
         RelanceLog.objects.create(
             company=facture.company, facture=facture, niveau=niveau.ordre,
             niveau_nom=niveau.nom,
-            note='Relance automatique programmée (email).')
+            note='Relance automatique programmée (email).',
+            canal=dispatch['canal'],
+            courrier_pdf_key=dispatch['courrier_pdf_key'])
 
         # Avance vers le niveau suivant : prochaine_relance = aujourd'hui +
         # (délai du niveau suivant − délai du niveau courant). Dernier niveau

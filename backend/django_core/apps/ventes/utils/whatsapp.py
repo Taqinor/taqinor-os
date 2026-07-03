@@ -138,12 +138,32 @@ def build_facture_whatsapp(request, facture, modele='facture', langue='fr'):
 
     Renvoie (message, link_info). `modele` ∈ {'facture', 'relance'}.
     """
+    url_builder = (lambda token: public_document_url(request, token))
+    return _build_facture_whatsapp_message(facture, modele, langue, url_builder)
+
+
+def build_facture_whatsapp_draft(facture, modele='relance', langue='fr'):
+    """XFAC8 — variante SANS ``request`` (job planifié, pas de vue HTTP).
+
+    L'URL publique s'appuie sur ``settings.PUBLIC_BASE_URL`` (déjà utilisé en
+    priorité par ``public_document_url``) ; sans ce réglage, le lien reste un
+    chemin relatif (le message garde son sens, seul le lien est incomplet).
+    Ne fait QU'ouvrir un brouillon wa.me — aucun envoi automatique."""
+    def _url(token):
+        from django.conf import settings
+        base = getattr(settings, 'PUBLIC_BASE_URL', '') or ''
+        path = f'/api/django/public/document/{token}/'
+        return (base.rstrip('/') + path) if base else path
+    return _build_facture_whatsapp_message(facture, modele, langue, _url)
+
+
+def _build_facture_whatsapp_message(facture, modele, langue, url_builder):
     from apps.ventes.models import ShareLink
     from apps.parametres.models import MessageTemplate
 
     company = facture.company
     link = ShareLink.for_facture(facture)
-    url = public_document_url(request, link.token)
+    url = url_builder(link.token)
     cle = 'relance' if modele == 'relance' else 'facture'
     tpl = MessageTemplate.get_corps(company, cle, langue)
     nom = facture.client.nom if facture.client_id else ''
