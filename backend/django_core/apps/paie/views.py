@@ -7,6 +7,7 @@ société côté serveur.
 """
 import csv
 import io
+from decimal import Decimal, InvalidOperation
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.http import HttpResponse
@@ -62,6 +63,7 @@ from .services import (
     calculer_bulletin,
     changer_statut,
     cloturer_periode_paie,
+    controle_ecarts,
     creer_bulletin_rectificatif,
     declaration_cimr,
     declaration_cnss,
@@ -621,6 +623,26 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
         periode = self.get_object()
         return Response(
             profils_hors_virement(periode), status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='controle-ecarts')
+    def controle_ecarts_action(self, request, pk=None):
+        """Contrôle des écarts avant validation, M vs M-1 (XPAI15).
+
+        Paramètre de requête ``seuil_pct`` facultatif (défaut 20 %) —
+        variation de net au-delà de laquelle un salarié est signalé.
+        Avertissement uniquement, jamais un blocage.
+        """
+        periode = self.get_object()
+        seuil_pct = request.query_params.get('seuil_pct')
+        try:
+            seuil_pct = Decimal(seuil_pct) if seuil_pct is not None else None
+        except (InvalidOperation, ValueError):
+            return Response(
+                {'detail': 'Paramètre "seuil_pct" invalide.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            controle_ecarts(periode, seuil_pct=seuil_pct),
+            status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='journal-de-paie')
     def journal_de_paie(self, request, pk=None):

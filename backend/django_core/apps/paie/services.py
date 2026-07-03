@@ -3011,6 +3011,127 @@ def valider_xml_simpl_ir_9421(xml_str):
     return True
 
 
+# ── XPAI15 — Contrôle des écarts avant validation (M vs M-1) ───────────────
+
+SEUIL_ECART_NET_DEFAUT = Decimal('20')  # % — seuil paramétrable (query param).
+
+
+def controle_ecarts(periode, *, seuil_pct=None):
+    """Compare le run courant au mois précédent, par salarié (XPAI15).
+
+    Garde-fou PRÉ-VALIDATION (avertissement, JAMAIS blocage) : détecte, en
+    comparant les bulletins de la ``periode`` (n'importe quel statut — le
+    contrôle a lieu AVANT validation) aux bulletins VALIDÉS du mois
+    précédent :
+
+    * salariés MANQUANTS (bulletin le mois dernier, aucun ce mois-ci) ;
+    * salariés NOUVEAUX (bulletin ce mois-ci, aucun le mois dernier) ;
+    * VARIATION DE NET > ``seuil_pct`` % (défaut ``SEUIL_ECART_NET_DEFAUT``,
+      20 %) — un net qui double, qui s'effondre, etc. ;
+    * HS ANORMALES — heures supplémentaires du mois > 2× la moyenne des HS
+      du mois précédent (ou HS ce mois alors qu'il n'y en avait aucune le
+      mois dernier, au-delà d'un seuil bas de 10 h pour éviter le bruit).
+
+    Lecture seule. Renvoie ``{'salaries_manquants': [...],
+    'salaries_nouveaux': [...], 'variations_net': [...],
+    'hs_anormales': [...]}`` — chaque item porte assez de contexte pour
+    l'écran de contrôle (profil, nom, montants comparés).
+    """
+    from .models import BulletinPaie, ElementVariable
+
+    seuil = Decimal(seuil_pct) if seuil_pct is not None \
+        else SEUIL_ECART_NET_DEFAUT
+
+    precedente = _periode_precedente(periode)
+
+    bulletins_courants = {
+        b.profil_id: b
+        for b in BulletinPaie.objects.filter(
+            company=periode.company, periode=periode)
+        .select_related('profil', 'profil__employe')
+    }
+    bulletins_precedents = {}
+    if precedente is not None:
+        bulletins_precedents = {
+            b.profil_id: b
+            for b in BulletinPaie.objects.filter(
+                company=periode.company, periode=precedente,
+                statut=BulletinPaie.STATUT_VALIDE)
+            .select_related('profil', 'profil__employe')
+        }
+
+    def _nom(bulletin):
+        employe = bulletin.profil.employe
+        return f'{employe.nom} {employe.prenom}'.strip() if employe else ''
+
+    salaries_manquants = [
+        {'profil_id': pid, 'nom': _nom(b)}
+        for pid, b in bulletins_precedents.items()
+        if pid not in bulletins_courants
+    ]
+    salaries_nouveaux = [
+        {'profil_id': pid, 'nom': _nom(b)}
+        for pid, b in bulletins_courants.items()
+        if pid not in bulletins_precedents
+    ]
+
+    variations_net = []
+    for pid, b_courant in bulletins_courants.items():
+        b_prec = bulletins_precedents.get(pid)
+        if b_prec is None:
+            continue
+        net_prec = Decimal(b_prec.net_a_payer or 0)
+        net_courant = Decimal(b_courant.net_a_payer or 0)
+        if net_prec == 0:
+            continue
+        variation_pct = abs(net_courant - net_prec) / net_prec * 100
+        if variation_pct > seuil:
+            variations_net.append({
+                'profil_id': pid, 'nom': _nom(b_courant),
+                'net_precedent': _q(net_prec), 'net_courant': _q(net_courant),
+                'variation_pct': _q(variation_pct),
+            })
+
+    # HS anormales : somme des heures TYPE_HS de la période courante vs mois
+    # précédent, par profil.
+    def _total_hs(periode_cible):
+        if periode_cible is None:
+            return {}
+        totaux = {}
+        for el in ElementVariable.objects.filter(
+                company=periode.company, periode=periode_cible,
+                type=ElementVariable.TYPE_HS):
+            totaux[el.profil_id] = totaux.get(
+                el.profil_id, Decimal('0')) + Decimal(el.quantite or 0)
+        return totaux
+
+    hs_courant = _total_hs(periode)
+    hs_precedent = _total_hs(precedente)
+    hs_anormales = []
+    for pid, heures in hs_courant.items():
+        heures_prec = hs_precedent.get(pid, Decimal('0'))
+        anormale = False
+        if heures_prec > 0 and heures > heures_prec * 2:
+            anormale = True
+        elif heures_prec == 0 and heures > Decimal('10'):
+            anormale = True
+        if anormale:
+            bulletin = bulletins_courants.get(pid)
+            hs_anormales.append({
+                'profil_id': pid,
+                'nom': _nom(bulletin) if bulletin else '',
+                'hs_precedent': _q(heures_prec), 'hs_courant': _q(heures),
+            })
+
+    return {
+        'salaries_manquants': salaries_manquants,
+        'salaries_nouveaux': salaries_nouveaux,
+        'variations_net': variations_net,
+        'hs_anormales': hs_anormales,
+        'seuil_pct': _q(seuil),
+    }
+
+
 # ── PAIE33 — Livre de paie + journal de paie → écritures (via compta) ───────
 
 # Comptes CGNC utilisés par l'écriture de paie (barème CGNC marocain) :
