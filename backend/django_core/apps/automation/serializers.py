@@ -1,6 +1,9 @@
 from rest_framework import serializers
 
-from .models import AutomationApproval, AutomationRule, AutomationRun
+from .models import (
+    ApprovalRequest, ApprovalRequestType, AutomationApproval, AutomationRule,
+    AutomationRun,
+)
 
 
 class AutomationRuleSerializer(serializers.ModelSerializer):
@@ -56,3 +59,43 @@ class AutomationApprovalSerializer(serializers.ModelSerializer):
             'decided_by', 'decided_by_nom', 'decided_at', 'date_creation',
         ]
         read_only_fields = fields
+
+
+class ApprovalRequestTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ApprovalRequestType
+        # `company` posée côté serveur (TenantMixin) — jamais lue du corps.
+        fields = [
+            'id', 'nom', 'description', 'enabled',
+            'champs_requis', 'champs_optionnels', 'palier_approbateur',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+
+class ApprovalRequestSerializer(serializers.ModelSerializer):
+    status_display = serializers.CharField(
+        source='get_status_display', read_only=True)
+    request_type_nom = serializers.CharField(
+        source='request_type.nom', read_only=True, default=None)
+    demandeur_nom = serializers.CharField(
+        source='demandeur.username', read_only=True, default=None)
+    decided_by_nom = serializers.CharField(
+        source='decided_by.username', read_only=True, default=None)
+
+    class Meta:
+        model = ApprovalRequest
+        fields = [
+            'id', 'request_type', 'request_type_nom', 'demandeur',
+            'demandeur_nom', 'payload', 'status', 'status_display',
+            'decided_by', 'decided_by_nom', 'decided_at', 'decision_note',
+            'date_creation',
+        ]
+        # `company` + `demandeur` posés côté serveur ; le statut/décision ne
+        # se change QUE via les actions dédiées (approve/reject), jamais par
+        # un PATCH direct du champ.
+        read_only_fields = [
+            'id', 'request_type_nom', 'demandeur', 'demandeur_nom', 'status',
+            'status_display', 'decided_by', 'decided_by_nom', 'decided_at',
+            'decision_note', 'date_creation',
+        ]

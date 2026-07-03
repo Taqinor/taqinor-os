@@ -263,3 +263,131 @@ class AutomationApproval(models.Model):
 
     def __str__(self):
         return f'{self.rule_id}:{self.status}'
+
+
+# ── XKB2 — Types de demandes d'approbation ad-hoc configurables ─────────────
+#
+# Distinct de `parametres.ApprovalPolicy` (FG25 — politiques déclaratives
+# seuil+palier sur des types d'action EXISTANTS, consultées par les chemins
+# d'écriture) : ici c'est la couche demande/soumission ad-hoc générique
+# (note de frais, déplacement, achat hors catalogue…) qu'un admin définit
+# librement, alimentant la boîte d'approbations XKB1
+# (``AutomationApprovalViewSet`` / futur agrégateur ``reporting``).
+
+class ApprovalFieldKey(models.TextChoices):
+    """Champs optionnels qu'un type de demande peut exiger/afficher."""
+    MONTANT = 'montant', 'Montant'
+    TIERS = 'tiers', 'Tiers'
+    DATE_DEBUT = 'date_debut', 'Date de début'
+    DATE_FIN = 'date_fin', 'Date de fin'
+    QUANTITE = 'quantite', 'Quantité'
+    REFERENCE = 'reference', 'Référence'
+
+
+class ApprovalRequestType(models.Model):
+    """Type de demande d'approbation ad-hoc, défini par un admin (XKB2).
+
+    ``champs_requis`` / ``champs_optionnels`` listent des clés parmi
+    ``ApprovalFieldKey`` : un champ requis doit être renseigné dans
+    ``ApprovalRequest.payload`` à la soumission, sinon rejet (400 FR).
+
+    ``palier_approbateur`` réutilise les mêmes paliers que
+    ``parametres.ApprovalPolicy.ApproverTier`` (chaîne libre ici pour éviter
+    tout couplage cross-app — validée par les mêmes valeurs côté serializer).
+    """
+
+    class ApproverTier(models.TextChoices):
+        RESPONSABLE = 'responsable', 'Responsable (ou plus)'
+        ADMIN = 'admin', 'Administrateur uniquement'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='approval_request_types')
+    nom = models.CharField(max_length=120)
+    description = models.CharField(max_length=255, blank=True, default='')
+    enabled = models.BooleanField(default=True)
+
+    champs_requis = models.JSONField(default=list, blank=True)
+    champs_optionnels = models.JSONField(default=list, blank=True)
+
+    palier_approbateur = models.CharField(
+        max_length=20, choices=ApproverTier.choices,
+        default=ApproverTier.ADMIN)
+
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Type de demande d'approbation"
+        verbose_name_plural = "Types de demande d'approbation"
+        ordering = ['nom', 'id']
+        indexes = [
+            models.Index(fields=['company', 'enabled']),
+        ]
+
+    def __str__(self):
+        return self.nom
+
+    def validate_payload(self, payload):
+        """Renvoie une liste d'erreurs FR (vide = payload valide).
+
+        Un champ listé dans ``champs_requis`` doit être présent et non vide
+        dans ``payload`` (dict soumis par le demandeur).
+        """
+        errors = []
+        payload = payload or {}
+        for champ in (self.champs_requis or []):
+            value = payload.get(champ)
+            if value in (None, '', [], {}):
+                label = ApprovalFieldKey(champ).label \
+                    if champ in ApprovalFieldKey.values else champ
+                errors.append(f'Le champ « {label} » est requis.')
+        return errors
+
+
+class ApprovalRequest(models.Model):
+    """Demande d'approbation ad-hoc soumise par un employé (XKB2).
+
+    Alimente la boîte d'approbations XKB1 au même titre qu'``AutomationApproval``
+    (déclenchées, elles, par le moteur de règles) — deux origines, une seule
+    boîte de décision côté propriétaire.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'En attente'
+        APPROVED = 'approved', 'Approuvé'
+        REJECTED = 'rejected', 'Rejeté'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='approval_requests')
+    request_type = models.ForeignKey(
+        ApprovalRequestType, on_delete=models.PROTECT,
+        related_name='requests')
+
+    demandeur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='approval_requests_soumises')
+    payload = models.JSONField(default=dict, blank=True)
+
+    status = models.CharField(
+        max_length=12, choices=Status.choices, default=Status.PENDING)
+
+    decided_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='approval_requests_decidees')
+    decided_at = models.DateTimeField(null=True, blank=True)
+    decision_note = models.CharField(max_length=255, blank=True, default='')
+
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Demande d'approbation"
+        verbose_name_plural = "Demandes d'approbation"
+        ordering = ['-date_creation', '-id']
+        indexes = [
+            models.Index(fields=['company', 'status']),
+        ]
+
+    def __str__(self):
+        return f'{self.request_type_id}:{self.status}'

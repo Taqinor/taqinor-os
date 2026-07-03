@@ -22,8 +22,8 @@ from apps.ventes.models import Devis, Facture
 
 from apps.automation import engine
 from apps.automation.models import (
-    ActionType, AutomationApproval, AutomationRule, AutomationRun,
-    CanalMessage, ModeleMessage, TriggerType,
+    ActionType, ApprovalRequest, ApprovalRequestType, AutomationApproval,
+    AutomationRule, AutomationRun, CanalMessage, ModeleMessage, TriggerType,
 )
 
 User = get_user_model()
@@ -799,3 +799,113 @@ class BeatTaskTests(TestCase):
         # Mais aucun run enregistré pour other_co.
         self.assertEqual(
             AutomationRun.objects.filter(company=other_co).count(), 0)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# XKB2 — Types de demandes d'approbation ad-hoc configurables.
+
+class ApprovalRequestTests(TestCase):
+    def setUp(self):
+        self.co = make_company('xkb2-a', 'XKB2 A')
+        self.admin = make_user(self.co, 'xkb2-admin', 'admin')
+        self.employe = make_user(self.co, 'xkb2-emp', 'normal')
+
+    def _type(self, **kwargs):
+        defaults = dict(
+            company=self.co, nom='Note de frais', enabled=True,
+            champs_requis=['montant'], champs_optionnels=['reference'])
+        defaults.update(kwargs)
+        return ApprovalRequestType.objects.create(**defaults)
+
+    def test_admin_creates_type_with_required_field(self):
+        api = auth(self.admin)
+        resp = api.post('/api/django/automation/approval-request-types/', {
+            'nom': 'Note de frais > 1000 MAD',
+            'champs_requis': ['montant'],
+            'champs_optionnels': [],
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(
+            ApprovalRequestType.objects.get(pk=resp.data['id']).company,
+            self.co)
+
+    def test_employee_cannot_create_type(self):
+        api = auth(self.employe)
+        resp = api.post('/api/django/automation/approval-request-types/', {
+            'nom': 'Hack', 'champs_requis': [],
+        }, format='json')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_employee_submits_request_seen_by_approver(self):
+        req_type = self._type()
+        api = auth(self.employe)
+        resp = api.post('/api/django/automation/approval-requests/', {
+            'request_type': req_type.pk,
+            'payload': {'montant': '1200'},
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        req = ApprovalRequest.objects.get(pk=resp.data['id'])
+        self.assertEqual(req.demandeur, self.employe)
+        self.assertEqual(req.status, ApprovalRequest.Status.PENDING)
+
+        # L'approbateur (admin) le voit dans la boîte.
+        admin_api = auth(self.admin)
+        listing = admin_api.get('/api/django/automation/approval-requests/')
+        ids = [r['id'] for r in rows(listing)]
+        self.assertIn(req.pk, ids)
+
+    def test_submission_rejects_missing_required_field(self):
+        req_type = self._type()
+        api = auth(self.employe)
+        resp = api.post('/api/django/automation/approval-requests/', {
+            'request_type': req_type.pk,
+            'payload': {},
+        }, format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(ApprovalRequest.objects.count(), 0)
+
+    def test_approver_approves_and_decision_is_visible(self):
+        req_type = self._type()
+        req = ApprovalRequest.objects.create(
+            company=self.co, request_type=req_type, demandeur=self.employe,
+            payload={'montant': '900'})
+        api = auth(self.admin)
+        resp = api.post(
+            f'/api/django/automation/approval-requests/{req.pk}/approve/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        req.refresh_from_db()
+        self.assertEqual(req.status, ApprovalRequest.Status.APPROVED)
+        self.assertEqual(req.decided_by, self.admin)
+
+    def test_employee_cannot_approve(self):
+        req_type = self._type()
+        req = ApprovalRequest.objects.create(
+            company=self.co, request_type=req_type, demandeur=self.employe,
+            payload={'montant': '900'})
+        api = auth(self.employe)
+        resp = api.post(
+            f'/api/django/automation/approval-requests/{req.pk}/approve/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_tenant_isolation_on_requests(self):
+        req_type = self._type()
+        req = ApprovalRequest.objects.create(
+            company=self.co, request_type=req_type, demandeur=self.employe,
+            payload={'montant': '900'})
+        other_co = make_company('xkb2-b', 'XKB2 B')
+        other_admin = make_user(other_co, 'xkb2-admin-b', 'admin')
+        api = auth(other_admin)
+        resp = api.get('/api/django/automation/approval-requests/')
+        ids = [r['id'] for r in rows(resp)]
+        self.assertNotIn(req.pk, ids)
+
+    def test_disabled_type_cannot_be_used_for_submission(self):
+        req_type = self._type(enabled=False)
+        api = auth(self.employe)
+        resp = api.post('/api/django/automation/approval-requests/', {
+            'request_type': req_type.pk,
+            'payload': {'montant': '100'},
+        }, format='json')
+        self.assertEqual(resp.status_code, 400)
