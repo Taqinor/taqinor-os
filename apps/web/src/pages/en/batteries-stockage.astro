@@ -57,6 +57,38 @@ const installs = [
   { kwh: '5 kWh', where: 'El Jadida', ref: '236' },
 ];
 
+// W334 — 4 panels day/evening/outage/night: STRICTLY reuses the reasoning
+// already published above (the "Without storage" / "With storage" cases) and
+// in the "Do you need batteries?" guide — no new flow or figure, only the
+// visual changes. Every active flow is also listed in plain text for
+// accessibility (the figure stays legible without the SVG).
+const flowPanels = [
+  {
+    k: 'Day',
+    title: 'The sun powers the house',
+    flows: ['Solar → Consumption', 'Solar → Battery (surplus)'],
+    note: 'The best kWh is the one that goes straight from the panels to your appliances, no detour.',
+  },
+  {
+    k: 'Evening',
+    title: 'The battery takes over',
+    flows: ['Battery → Consumption'],
+    note: 'The surplus stored at midday covers the evening peak, exactly when the grid charges the most.',
+  },
+  {
+    k: 'Outage',
+    title: 'The backup circuit holds',
+    flows: ['Solar → Battery (if daytime)', 'Battery → Consumption (EPS circuits)'],
+    note: 'The hybrid inverter isolates a backup circuit; the grid is down, the house is not.',
+  },
+  {
+    k: 'Night',
+    title: "What's left is shared out",
+    flows: ['Battery → Consumption', 'Grid → Consumption (if battery empty)'],
+    note: 'Once the battery is spent, the grid takes over again — nothing exceptional, just the logical next step.',
+  },
+];
+
 // FAQ — schema={false} so /faq stays the only page carrying the FAQPage JSON-LD.
 const faqItems = [
   {
@@ -146,6 +178,80 @@ const jsonLd = {
       </div>
     </section>
 
+    <!-- W334 — 24-hour flow diagram: day/evening/outage/night (solar→consumption→battery→grid) -->
+    <section class="section px-4">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">In one picture</p>
+        <h2 class="display v2-section-title mt-5 text-white">A day with a battery, in four moments</h2>
+        <p class="v2-lead mt-4 max-w-2xl text-lune-soft">
+          The same principle repeats four times a day: produce, consume, store the surplus, give it
+          back when needed.
+        </p>
+        <div class="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
+          {flowPanels.map((p, i) => (
+            <figure class="v2-rise cine-card flex flex-col p-6" style={`--v2-i:${i}`}>
+              <figcaption>
+                <p class="tech-label text-lune">{p.k}</p>
+                <h3 class="display mt-2 text-lg text-white">{p.title}</h3>
+              </figcaption>
+              <svg
+                class="mt-5 w-full"
+                viewBox="0 0 220 200"
+                role="img"
+                aria-label={`${p.title} — flows: ${p.flows.join(', ')}`}
+              >
+                {/* Sun */}
+                <g transform="translate(110,30)" opacity={p.k === 'Night' ? '0.28' : '1'}>
+                  <circle r="14" fill="none" stroke="#e8b54a" stroke-width="2.5" />
+                  {Array.from({ length: 8 }).map((_, r) => (
+                    <line
+                      x1="0" y1="-20" x2="0" y2="-26"
+                      stroke="#e8b54a" stroke-width="2.5" stroke-linecap="round"
+                      transform={`rotate(${r * 45})`}
+                    />
+                  ))}
+                </g>
+                {/* House (consumption) */}
+                <g transform="translate(30,100)">
+                  <path d="M-16 8 L-16 -6 L0 -18 L16 -6 L16 8 Z" fill="none" stroke="white" stroke-width="2.5" stroke-linejoin="round" />
+                </g>
+                {/* Battery */}
+                <g transform="translate(110,100)">
+                  <rect x="-14" y="-14" width="28" height="28" rx="3" fill="none" stroke="white" stroke-width="2.5" />
+                  <rect x="-6" y="-19" width="12" height="5" rx="1" fill="white" />
+                  <rect x="-8" y="-6" width="16" height="12" fill={p.k === 'Night' ? 'rgb(255 255 255 / 0.25)' : '#e8b54a'} />
+                </g>
+                {/* Grid (pylon) */}
+                <g transform="translate(190,100)" opacity={p.k === 'Outage' ? '0.3' : '1'}>
+                  <path d="M0 -16 L0 14 M-10 -6 L10 -6 M-13 4 L13 4" stroke="white" stroke-width="2.5" stroke-linecap="round" />
+                  {p.k === 'Outage' && <path d="M-10 -18 L10 18" stroke="#e8b54a" stroke-width="2.5" stroke-linecap="round" />}
+                </g>
+                {/* Flow arrows — labelled in aria-label above, decorative here */}
+                <g stroke="#7fa8ff" stroke-width="2" fill="none" opacity="0.85" aria-hidden="true">
+                  {p.k !== 'Night' && <path d="M104 44 L40 88" marker-end="url(#arrow-en)" />}
+                  {(p.k === 'Day' || p.k === 'Outage') && <path d="M116 44 L110 84" marker-end="url(#arrow-en)" />}
+                  {(p.k === 'Evening' || p.k === 'Outage' || p.k === 'Night') && <path d="M96 100 L46 100" marker-end="url(#arrow-en)" />}
+                  {p.k === 'Night' && <path d="M174 100 L124 100" marker-end="url(#arrow-en)" />}
+                </g>
+                <defs>
+                  <marker id="arrow-en" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                    <path d="M0 0 L6 3 L0 6 Z" fill="#7fa8ff" />
+                  </marker>
+                </defs>
+                <text x="30" y="130" text-anchor="middle" class="fill-lune-soft" font-size="9">House</text>
+                <text x="110" y="132" text-anchor="middle" class="fill-lune-soft" font-size="9">Battery</text>
+                <text x="190" y="130" text-anchor="middle" class="fill-lune-soft" font-size="9">Grid</text>
+              </svg>
+              <ul class="mt-2 space-y-1 text-xs leading-relaxed text-lune-soft">
+                {p.flows.map((f) => (<li>{f}</li>))}
+              </ul>
+              <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{p.note}</p>
+            </figure>
+          ))}
+        </div>
+      </div>
+    </section>
+
     <!-- The storage hardware installed — Dyness LFP -->
     <div class="v2-seam" aria-hidden="true"></div>
     <section class="section bg-blanc-azur px-4 text-encre">
@@ -188,6 +294,49 @@ const jsonLd = {
             </div>
           ))}
         </div>
+      </div>
+    </section>
+
+    <!-- W278 — Outages & prepaid meters (Nour): the resilience segment, independent of the tariff regime -->
+    <section class="section px-4 text-white">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">A need, not a tariff</p>
+        <h2 class="display v2-section-title mt-5 text-white">Outages, prepaid meters: the battery answers the anxiety, not the spreadsheet</h2>
+        <p class="v2-lead mt-5 text-lune-soft">
+          Everything on this page so far has been about economics — consume by day, store for the
+          evening. There's another household, a different one: the one that dreads the outage
+          itself, not its cost. Two situations come up often.
+        </p>
+        <div class="mt-10 grid gap-6 md:grid-cols-2" data-stagger>
+          <div class="v2-rise cine-card flex flex-col p-7" style="--v2-i:0">
+            <p class="tech-label text-lune">Prepaid meter</p>
+            <h3 class="display mt-2 text-xl text-white">Automatic cut-off once the balance runs out</h3>
+            <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">
+              A prepaid electricity meter (often called "Nour" in Morocco) works like a phone plan:
+              you top up credit in advance, and the power cuts automatically the moment that balance
+              hits zero — until the next top-up. That's the generic principle of any prepaid meter,
+              whichever utility runs it; we cite no operator-specific rate table or grace period
+              here, for lack of a public source to cite.
+            </p>
+          </div>
+          <div class="v2-rise cine-card flex flex-col p-7" style="--v2-i:1">
+            <p class="tech-label text-lune">The anxiety of the outage</p>
+            <h3 class="display mt-2 text-xl text-white">The real trigger isn't the kWh</h3>
+            <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">
+              A top-up forgotten over a weekend, a grid-wide power cut, a local fault: the result is
+              the same — power stops with no warning. For this household, the question isn't "how
+              much will I save on my bill?" but "can I count on having electricity when I need it?"
+            </p>
+          </div>
+        </div>
+        <p class="mt-8 max-w-2xl border-l-4 border-azur-200/50 pl-4 text-sm leading-relaxed text-lune-soft">
+          In both cases, the honest answer is the same: a battery paired with a hybrid inverter in
+          backup (EPS) mode gives you an autonomy of your own, independent of the grid and of how
+          it bills you. This isn't an economics argument — it's a continuity argument. It holds
+          whether your installation is on a standard connection or a prepaid meter, and it doesn't
+          depend on any future 82-21 buy-back tariff.
+          <a href={L('/guides/electricite-pendant-les-coupures')} class="border-b-2 border-azur-200/60 pb-0.5 font-bold text-azur-200 transition-colors hover:text-white">How EPS backup works →</a>
+        </p>
       </div>
     </section>
 

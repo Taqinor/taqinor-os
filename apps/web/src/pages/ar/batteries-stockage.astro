@@ -58,6 +58,37 @@ const installs = [
   { kwh: '5 kWh', where: 'El Jadida', ref: '236' },
 ];
 
+// W334 — 4 لوحات نهار/مساء/انقطاع/ليل: تكرار حرفي للمنطق المنشور أعلاه (حالتا
+// «بدون تخزين» / «مع تخزين») ودليل «هل تلزم البطاريات؟» — لا تدفق جديد ولا رقم
+// جديد، فقط التمثيل البصري يتغيّر. كل تدفق نشِط مذكور بالنص أيضاً لإتاحة
+// الوصول (تبقى الصورة مقروءة دون SVG).
+const flowPanels = [
+  {
+    k: 'نهاراً',
+    title: 'الشمس تغذّي البيت',
+    flows: ['شمسي ← استهلاك', 'شمسي ← بطارية (الفائض)'],
+    note: 'أفضل kWh هو الذي يذهب مباشرة من الألواح إلى أجهزتك، دون التفاف.',
+  },
+  {
+    k: 'مساءً',
+    title: 'البطارية تأخذ المُقود',
+    flows: ['بطارية ← استهلاك'],
+    note: 'الفائض المخزَّن ظهراً يغطّي ذروة المساء، في الساعة التي تُفوتر فيها الشبكة بأعلى سعر.',
+  },
+  {
+    k: 'انقطاع',
+    title: 'دائرة الطوارئ تصمد',
+    flows: ['شمسي ← بطارية (إن كان نهاراً)', 'بطارية ← استهلاك (دوائر EPS)'],
+    note: 'العاكس الهجين يعزل دائرة طوارئ؛ الشبكة مقطوعة، والبيت ليس كذلك.',
+  },
+  {
+    k: 'ليلاً',
+    title: 'ما تبقّى يُوزَّع',
+    flows: ['بطارية ← استهلاك', 'شبكة ← استهلاك (إن فرغت البطارية)'],
+    note: 'حين تنفد البطارية، تعود الشبكة لتأخذ المُقود — لا شيء استثنائي، مجرّد المسار المنطقي التالي.',
+  },
+];
+
 // FAQ مرئية — schema={false} حتى تبقى /faq هي الصفحة الوحيدة الحاملة لـ FAQPage.
 const faqItems = [
   {
@@ -144,6 +175,81 @@ const jsonLd = {
       </div>
     </section>
 
+    <!-- W334 — مخطط تدفق 24 ساعة: نهار/مساء/انقطاع/ليل (شمسي ← استهلاك ← بطارية ← شبكة) -->
+    <section class="section px-4">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">بالصورة</p>
+        <h2 class="display v2-section-title mt-5 text-white">يوم مع بطارية، في أربع لحظات</h2>
+        <p class="v2-lead mt-4 max-w-2xl text-lune-soft">
+          نفس المبدأ يتكرّر أربع مرات في اليوم: الإنتاج، الاستهلاك، تخزين الفائض، ثم إعادته عند
+          الحاجة.
+        </p>
+        <div class="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
+          {flowPanels.map((p, i) => (
+            <figure class="v2-rise cine-card flex flex-col p-6" style={`--v2-i:${i}`}>
+              <figcaption>
+                <p class="tech-label text-lune">{p.k}</p>
+                <h3 class="display mt-2 text-lg text-white">{p.title}</h3>
+              </figcaption>
+              <svg
+                class="mt-5 w-full"
+                viewBox="0 0 220 200"
+                dir="ltr"
+                role="img"
+                aria-label={`${p.title} — التدفقات: ${p.flows.join('، ')}`}
+              >
+                {/* الشمس */}
+                <g transform="translate(110,30)" opacity={p.k === 'ليلاً' ? '0.28' : '1'}>
+                  <circle r="14" fill="none" stroke="#e8b54a" stroke-width="2.5" />
+                  {Array.from({ length: 8 }).map((_, r) => (
+                    <line
+                      x1="0" y1="-20" x2="0" y2="-26"
+                      stroke="#e8b54a" stroke-width="2.5" stroke-linecap="round"
+                      transform={`rotate(${r * 45})`}
+                    />
+                  ))}
+                </g>
+                {/* البيت (الاستهلاك) */}
+                <g transform="translate(30,100)">
+                  <path d="M-16 8 L-16 -6 L0 -18 L16 -6 L16 8 Z" fill="none" stroke="white" stroke-width="2.5" stroke-linejoin="round" />
+                </g>
+                {/* البطارية */}
+                <g transform="translate(110,100)">
+                  <rect x="-14" y="-14" width="28" height="28" rx="3" fill="none" stroke="white" stroke-width="2.5" />
+                  <rect x="-6" y="-19" width="12" height="5" rx="1" fill="white" />
+                  <rect x="-8" y="-6" width="16" height="12" fill={p.k === 'ليلاً' ? 'rgb(255 255 255 / 0.25)' : '#e8b54a'} />
+                </g>
+                {/* الشبكة (عمود) */}
+                <g transform="translate(190,100)" opacity={p.k === 'انقطاع' ? '0.3' : '1'}>
+                  <path d="M0 -16 L0 14 M-10 -6 L10 -6 M-13 4 L13 4" stroke="white" stroke-width="2.5" stroke-linecap="round" />
+                  {p.k === 'انقطاع' && <path d="M-10 -18 L10 18" stroke="#e8b54a" stroke-width="2.5" stroke-linecap="round" />}
+                </g>
+                {/* أسهم التدفق — موصوفة في aria-label أعلاه، زخرفية هنا */}
+                <g stroke="#7fa8ff" stroke-width="2" fill="none" opacity="0.85" aria-hidden="true">
+                  {p.k !== 'ليلاً' && <path d="M104 44 L40 88" marker-end="url(#arrow-ar)" />}
+                  {(p.k === 'نهاراً' || p.k === 'انقطاع') && <path d="M116 44 L110 84" marker-end="url(#arrow-ar)" />}
+                  {(p.k === 'مساءً' || p.k === 'انقطاع' || p.k === 'ليلاً') && <path d="M96 100 L46 100" marker-end="url(#arrow-ar)" />}
+                  {p.k === 'ليلاً' && <path d="M174 100 L124 100" marker-end="url(#arrow-ar)" />}
+                </g>
+                <defs>
+                  <marker id="arrow-ar" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                    <path d="M0 0 L6 3 L0 6 Z" fill="#7fa8ff" />
+                  </marker>
+                </defs>
+                <text x="30" y="130" text-anchor="middle" class="fill-lune-soft" font-size="9">بيت</text>
+                <text x="110" y="132" text-anchor="middle" class="fill-lune-soft" font-size="9">بطارية</text>
+                <text x="190" y="130" text-anchor="middle" class="fill-lune-soft" font-size="9">شبكة</text>
+              </svg>
+              <ul class="mt-2 space-y-1 text-xs leading-relaxed text-lune-soft">
+                {p.flows.map((f) => (<li>{f}</li>))}
+              </ul>
+              <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{p.note}</p>
+            </figure>
+          ))}
+        </div>
+      </div>
+    </section>
+
     <!-- معدات التخزين المركَّبة — Dyness LFP -->
     <div class="v2-seam" aria-hidden="true"></div>
     <section class="section bg-blanc-azur px-4 text-encre">
@@ -184,6 +290,46 @@ const jsonLd = {
             </div>
           ))}
         </div>
+      </div>
+    </section>
+
+    <!-- W278 — الانقطاعات والعدّاد المسبق الدفع (نور): قطاع الصمود، مستقل عن نظام التعريفة -->
+    <section class="section px-4 text-white">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">حاجة، لا تعريفة</p>
+        <h2 class="display v2-section-title mt-5 text-white">الانقطاعات، العدّاد المسبق الدفع: البطارية تجيب عن القلق، لا عن الحساب</h2>
+        <p class="v2-lead mt-5 text-lune-soft">
+          كل ما سبق في هذه الصفحة يتحدّث عن مفاضلة اقتصادية — الاستهلاك نهاراً، التخزين للمساء. لكن
+          هناك بيت آخر، مختلف: من يخشى الانقطاع نفسه، لا كلفته. حالتان تتكرّران غالباً.
+        </p>
+        <div class="mt-10 grid gap-6 md:grid-cols-2" data-stagger>
+          <div class="v2-rise cine-card flex flex-col p-7" style="--v2-i:0">
+            <p class="tech-label text-lune">عدّاد مسبق الدفع</p>
+            <h3 class="display mt-2 text-xl text-white">انقطاع تلقائي عند نفاد الرصيد</h3>
+            <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">
+              يعمل عدّاد الكهرباء المسبق الدفع (يُعرف غالباً بـ«نور» في المغرب) كباقة هاتفية: تشحن
+              رصيداً مسبقاً، وتنقطع التغذية تلقائياً بمجرد بلوغ هذا الرصيد الصفر — إلى حين الشحن
+              التالي. هذا هو المبدأ العام لأي عدّاد مسبق الدفع، أياً كان الموزِّع؛ لا نذكر هنا أي
+              جدول تسعيرة أو مهلة خاصة بمشغِّل بعينه، لغياب مصدر عمومي يُستشهد به.
+            </p>
+          </div>
+          <div class="v2-rise cine-card flex flex-col p-7" style="--v2-i:1">
+            <p class="tech-label text-lune">قلق الانقطاع</p>
+            <h3 class="display mt-2 text-xl text-white">المحفّز الحقيقي ليس الـ kWh</h3>
+            <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">
+              شحنة نُسيت في عطلة نهاية أسبوع، انقطاع عام في الشبكة، عطب محلي: النتيجة واحدة — تتوقّف
+              الكهرباء دون سابق إنذار. بالنسبة لهذا البيت، السؤال ليس «كم سأوفّر في فاتورتي؟» بل «هل
+              يمكنني الاعتماد على الكهرباء وقت الحاجة؟».
+            </p>
+          </div>
+        </div>
+        <p class="mt-8 max-w-2xl border-s-4 border-azur-200/50 ps-4 text-sm leading-relaxed text-lune-soft">
+          في الحالتين، الجواب الصادق واحد: بطارية مقرونة بعاكس هجين في وضع الطوارئ (EPS) تمنحك
+          استقلالية خاصة بك، مستقلة عن الشبكة وعن طريقة فوترتها. هذا ليس منطقاً اقتصادياً — إنه منطق
+          استمرارية. يصمد سواء كانت تركيبتك موصولة بنظام كلاسيكي أو بعدّاد مسبق الدفع، ولا يتوقّف على
+          أي تعريفة شراء مستقبلية للقانون 82-21.
+          <a href={L('/guides/electricite-pendant-les-coupures')} class="border-b-2 border-azur-200/60 pb-0.5 font-bold text-azur-200 transition-colors hover:text-white">كيف يعمل الطوارئ EPS <span class="inline-block rtl:-scale-x-100">→</span></a>
+        </p>
       </div>
     </section>
 
