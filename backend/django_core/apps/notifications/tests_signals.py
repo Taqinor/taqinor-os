@@ -2,7 +2,8 @@
 
 Vérifie que les producteurs émettent bien une notification in-app :
 - LEAD_ASSIGNED quand un Lead reçoit/réassigne un owner ;
-- DEVIS_ACCEPTED quand un Devis passe au statut « accepté ».
+- DEVIS_ACCEPTED quand un Devis passe au statut « accepté » ;
+- SAV_TICKET_OPENED (YEVNT4) quand un ticket SAV est CRÉÉ.
 """
 from decimal import Decimal
 
@@ -78,3 +79,39 @@ class TestNotificationProducers(TestCase):
         devis.save()  # re-save while already accepted
         self.assertEqual(
             Notification.objects.filter(event_type=EventType.DEVIS_ACCEPTED).count(), 0)
+
+    # ── YEVNT4 — SAV_TICKET_OPENED ───────────────────────────────────────────
+
+    def test_sav_ticket_creation_notifies_assigned_technicien(self):
+        from apps.sav.models import Ticket
+        client = Client.objects.create(company=self.company, nom='SAV Client')
+        Ticket.objects.create(
+            company=self.company, client=client, reference='SAV-NOTIF-1',
+            technicien_responsable=self.actor)
+        notifs = Notification.objects.filter(
+            recipient=self.actor, event_type=EventType.SAV_TICKET_OPENED)
+        self.assertEqual(notifs.count(), 1)
+        self.assertIn('SAV-NOTIF-1', notifs.first().body)
+
+    def test_sav_ticket_creation_without_technicien_falls_back_to_managers(self):
+        from apps.sav.models import Ticket
+        self.owner.role_legacy = 'admin'
+        self.owner.save(update_fields=['role_legacy'])
+        client = Client.objects.create(company=self.company, nom='SAV Client 2')
+        Ticket.objects.create(
+            company=self.company, client=client, reference='SAV-NOTIF-2')
+        self.assertTrue(Notification.objects.filter(
+            recipient=self.owner, event_type=EventType.SAV_TICKET_OPENED).exists())
+
+    def test_sav_ticket_update_does_not_reemit(self):
+        from apps.sav.models import Ticket
+        ticket = Ticket.objects.create(
+            company=self.company, client=Client.objects.create(
+                company=self.company, nom='SAV Client 3'),
+            reference='SAV-NOTIF-3', technicien_responsable=self.actor)
+        Notification.objects.all().delete()
+        ticket.statut = Ticket.Statut.EN_COURS
+        ticket.save()
+        self.assertEqual(
+            Notification.objects.filter(
+                event_type=EventType.SAV_TICKET_OPENED).count(), 0)
