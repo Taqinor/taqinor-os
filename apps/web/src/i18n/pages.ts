@@ -60,6 +60,10 @@ const STATIC_TRANSLATED: readonly string[] = [
   '/guides/faut-il-des-batteries',
   '/guides/loi-82-21-expliquee',
   '/guides/onduleur-hybride-ou-reseau',
+  // W294 — fermeture de l'écart EN/AR des guides (routes EN/AR livrées ci-dessous).
+  '/guides/quelle-taille-de-batterie',
+  '/guides/combien-de-panneaux-pour-ma-maison',
+  '/guides/on-grid-off-grid-ou-hybride',
   // WJ38 — parcours devis « Mon toit » localisé (routes EN/AR livrées) : les CTA
   // devis/étude basculent d'eux-mêmes vers /en/... et /ar/... via quoteJourneyHref.
   '/devis/mon-toit',

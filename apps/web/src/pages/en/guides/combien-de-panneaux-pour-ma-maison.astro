@@ -1,0 +1,171 @@
+---
+/**
+ * EN — Guide (W294): How many panels for my house? Faithful translation of
+ * /guides/combien-de-panneaux-pour-ma-maison, every figure kept EXACT
+ * (6 000 kWh example, 1 500–1 800 kWh/kWc, 700 Wc panels, 5–6 m²/kWc).
+ * Includes the FR's HowTo schema (W290) alongside Article. Internal links use
+ * localizeNavHref (EN/AR if available, else the existing FR page — never a
+ * dead link). FR untouched.
+ */
+import Layout from '../../../layouts/Layout.astro';
+import V2Enhance from '../../../components/V2Enhance.astro';
+import Article33Ribbon from '../../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../../components/Breadcrumb.astro';
+import CtaBand from '../../../components/CtaBand.astro';
+import StickyCta from '../../../components/StickyCta.astro';
+import { NAP } from '../../../lib/nap';
+import RelatedLinks from '../../../components/RelatedLinks.astro';
+import { getLocaleFromPath } from '../../../i18n/utils';
+import { localizeNavHref } from '../../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const schemaImageUrl = new URL('/og/residentiel.png', Astro.site).href;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: 'How many solar panels and what power (kWc) for my house?',
+  description: 'The step-by-step method to size your solar installation in Morocco: reading your ONEE/Lydec bill, converting to annual kWh, choosing the power in kWc, and estimating the number of panels.',
+  image: schemaImageUrl,
+  about: { '@type': 'Thing', name: 'Solar installation sizing' },
+  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: url,
+};
+
+// W290 — HowTo schema, alongside the Article above (the 3 steps already published in the article).
+const howToLd = {
+  '@context': 'https://schema.org',
+  '@type': 'HowTo',
+  name: 'How many panels and what power (kWc) for my house?',
+  description: 'The step-by-step method to go from your electricity bill to the number of solar panels.',
+  step: [
+    {
+      '@type': 'HowToStep',
+      position: 1,
+      name: 'Find the kWh on your bill',
+      text: 'Add up the year\'s ONEE/Lydec/Redal/Amendis bi-monthly readings to get your annual consumption in kWh — or multiply the average bi-monthly reading by six.',
+      url: `${url}#etape-1`,
+    },
+    {
+      '@type': 'HowToStep',
+      position: 2,
+      name: 'Go from kWh to kWc',
+      text: 'Divide your annual kWh consumption by the expected output of one kWc in your region (rule of thumb: 1,500 to 1,800 kWh per kWc per year in Morocco) to get the power to install in kWc.',
+      url: `${url}#etape-2`,
+    },
+    {
+      '@type': 'HowToStep',
+      position: 3,
+      name: 'From kWc to number of panels',
+      text: 'Divide the power in kWc by the power of one panel (about 700 Wc for current high-power modules) to get the number of panels, at a rate of about 5 to 6 m² of roof per kWc.',
+      url: `${url}#etape-3`,
+    },
+  ],
+};
+---
+
+<Layout
+  title="How many solar panels for my house? The kWc method | Taqinor"
+  description="ONEE or Lydec bill → annual kWh → kWc → number of panels: the sizing method explained simply. Indicative benchmarks for Morocco, no invented figure."
+  ogSlug="residentiel"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <script type="application/ld+json" set:html={JSON.stringify(howToLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'Guides', href: L('/guides') }, { label: 'How many panels for my house?' }]} />
+
+    <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
+      <p class="tech-label v2-kicker rule-brass text-lune">Guide · Sizing</p>
+      <h1 class="display v2-page-title mt-5 text-white">How many panels and what power?</h1>
+
+      <p class="v2-lead mt-6 text-lune-soft">
+        The question comes up at every first contact: "how many panels do I need?". The answer isn't
+        read off a panel, it's read off a bill. Let's take a real one and follow it through to the
+        number of modules. Our example: a Casablanca villa whose Lydec reading shows
+        <strong class="text-white">6,000 kWh over the year</strong>. We'll work back from that
+        figure to the power to install, then to the number of panels.
+      </p>
+
+      <h2 id="etape-1" class="display v2-section-title mt-12 text-white">Step 1 — find the kWh on your bill</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        The starting data point is annual consumption in kilowatt-hours (kWh). It appears on the
+        ONEE bi-monthly reading, or in your distributor's customer portal: Lydec in Casablanca,
+        Redal in Rabat, Amendis in Tangier. The reflex is to add up the year's six bi-monthly
+        readings, or multiply the average bi-monthly reading by six. For our villa, the sum of
+        readings gives 6,000 kWh — it's this figure, read off the paper, that drives everything
+        else.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Without readings on hand — a new house, a first installation — you estimate from the big
+        loads: air conditioners, water heaters, appliances, lighting. A Moroccan villa with air
+        conditioning commonly runs between 4,000 and 10,000 kWh a year, but that's a range, not an
+        average to copy. Start from your real numbers.
+      </p>
+
+      <h2 id="etape-2" class="display v2-section-title mt-12 text-white">Step 2 — go from kWh to kWc</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        You divide annual consumption by the expected output of one kWc in your region. In Morocco,
+        the benchmark is <strong class="text-white">1,500 to 1,800 kWh produced per kWc installed
+        per year</strong> depending on the zone, or about 5 to 5.5 hours of useful sunshine a day on
+        annual average (source: PVGIS / Global Solar Atlas).
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Applied to our villa: 6,000 kWh divided by about 1,600 kWh/kWc gives roughly
+        <strong class="text-white"> 4 kWc</strong>. More broadly, consumption of
+        <strong class="text-white"> 4,000 to 6,000 kWh/year</strong> points to
+        <strong class="text-white"> 3 to 5 kWc</strong>, and <strong class="text-white">6,000 to
+        10,000 kWh/year</strong> to <strong class="text-white">5 to 8 kWc</strong>. These are
+        benchmarks: roof orientation, shading, the targeted self-consumption rate, and Law 82-21's
+        20 % injection cap shift the result one way or the other.
+      </p>
+
+      <h2 id="etape-3" class="display v2-section-title mt-12 text-white">Step 3 — from kWc to number of panels</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        The modules we install today are high-power panels of about
+        <strong class="text-white"> 700 Wc</strong> (Canadian Solar and Jinko at 710 Wc,
+        monocrystalline). At this power, one kWc corresponds to about
+        <strong class="text-white"> 1.4 to 1.5 panels</strong>: seven 710 Wc modules make roughly
+        5 kWc. Our 4 kWc villa therefore fits in <strong class="text-white"> 6 panels</strong>; a
+        5 kWc installation needs 7, a 3 kWc one needs 4 to 5.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        On the roof, each panel takes up about <strong class="text-white">2.2 to 2.3 m²</strong>,
+        which always comes back to the same area benchmark, around <strong class="text-white">5 to
+        6 m² of roof per kWc</strong> installed: the rise in module power reduces their number, not
+        the total space they take up. Our 4 kWc villa thus needs on the order of 22 to 24 m² of
+        clear, well-oriented, unshaded surface.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Where your bill isn't enough anymore</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        This bill → kWc → panels path gives a reliable order of magnitude, and that's exactly what
+        it's for. But it stops at your roof's door. Real orientation and tilt move production: a
+        flat roof facing north and a south-facing pitched one don't give the same kWh per kWc. Your
+        targeted self-consumption rate also shifts the optimal size — covering 80 % of your
+        consumption doesn't call for the same installation as covering 60 %. And the 20 % injection
+        cap means that beyond a certain point, adding panels no longer translates into value.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        That's where an on-site survey takes over: we start from your real readings, measure
+        orientation and obstructions, and produce the exact sizing — kWc, number of panels, surface
+        area — for your house rather than the example villa.
+      </p>
+
+      <RelatedLinks links={[
+        { href: L('/guides/orientation-inclinaison-ombrage'), label: 'Orientation, tilt, shading' },
+        { href: L('/guides/monocristallin-ou-polycristallin'), label: 'Monocrystalline or polycrystalline?' },
+        { href: L('/guides'), label: 'All the guides' },
+      ]} />
+    </article>
+
+    <CtaBand title="Give us your annual kWh, we'll give you the exact panel count for your roof." href={L('/devis/mon-toit')} />
+
+    <StickyCta />
+  </div>
+</Layout>
