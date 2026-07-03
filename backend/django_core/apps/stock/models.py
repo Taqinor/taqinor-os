@@ -1074,9 +1074,19 @@ class FactureFournisseur(models.Model):
         return sum((p.montant for p in self.paiements.all()), Decimal('0'))
 
     @property
+    def total_acomptes_imputes(self):
+        """XPUR8 — somme des acomptes fournisseur imputés sur CETTE facture
+        (0 si aucun — comportement historique inchangé)."""
+        return sum(
+            (a.montant for a in self.acomptes_imputes.all()), Decimal('0'))
+
+    @property
     def solde_du(self):
-        """Solde dû = TTC − Σ paiements (jamais négatif affiché)."""
-        return (self.montant_ttc or Decimal('0')) - self.total_paye
+        """Solde dû = TTC − Σ paiements − Σ acomptes imputés (jamais
+        négatif — XPUR8 déduit les acomptes du BCF d'origine)."""
+        solde = ((self.montant_ttc or Decimal('0')) - self.total_paye
+                 - self.total_acomptes_imputes)
+        return max(solde, Decimal('0'))
 
 
 class LigneFactureFournisseur(models.Model):
@@ -1187,6 +1197,61 @@ class PaiementFournisseur(models.Model):
         """XPUR2 — net réellement décaissé = montant − RAS-TVA retenue."""
         return (self.montant or Decimal('0')) - (
             self.montant_ras_tva or Decimal('0'))
+
+
+class AcompteFournisseur(models.Model):
+    """XPUR8 — acompte / avance versée à un fournisseur sur un BCF (pratique
+    d'import 30 % à la commande / 70 % à l'expédition). Pattern
+    ``PaiementFournisseur`` mais rattaché au BON DE COMMANDE (avant toute
+    facture). Imputé automatiquement sur la première ``FactureFournisseur``
+    du BCF (``consommer_acomptes_bcf``) : ``montant_consomme`` suit
+    l'imputation, jamais négative, jamais imputée deux fois."""
+
+    class Mode(models.TextChoices):
+        VIREMENT = 'virement', 'Virement'
+        CHEQUE = 'cheque', 'Chèque'
+        ESPECES = 'especes', 'Espèces'
+        CARTE = 'carte', 'Carte'
+        EFFET = 'effet', 'Effet / traite'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='acomptes_fournisseur')
+    bon_commande = models.ForeignKey(
+        'BonCommandeFournisseur', on_delete=models.CASCADE,
+        related_name='acomptes')
+    montant = models.DecimalField(max_digits=14, decimal_places=2)
+    date_versement = models.DateField(null=True, blank=True)
+    mode = models.CharField(
+        max_length=20, choices=Mode.choices, default=Mode.VIREMENT)
+    # Portion déjà imputée sur une facture — jamais > montant, jamais
+    # décrémentée (imputation idempotente, un acompte ne s'impute qu'une
+    # fois sur SA facture cible).
+    montant_consomme = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0)
+    facture_imputee = models.ForeignKey(
+        'FactureFournisseur', on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='acomptes_imputes')
+    note = models.TextField(blank=True, null=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='acomptes_fournisseur')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Acompte fournisseur'
+        verbose_name_plural = 'Acomptes fournisseur'
+        ordering = ['-date_versement', '-date_creation']
+
+    def __str__(self):
+        return f'{self.bon_commande_id} — {self.montant}'
+
+    @property
+    def montant_non_consomme(self):
+        return max(
+            (self.montant or Decimal('0'))
+            - (self.montant_consomme or Decimal('0')), Decimal('0'))
 
 
 # ── FG63 — Session d'inventaire (comptage physique en brouillon) ──────────────

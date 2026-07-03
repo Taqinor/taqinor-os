@@ -330,3 +330,31 @@ def echeances_facture_fournisseur(company, facture_id):
         }
         for e in facture.echeances.all()
     ]
+
+
+def acomptes_fournisseur_ouverts(company):
+    """XPUR8 — acomptes fournisseur PARTIELLEMENT/NON consommés de la
+    société (montant_non_consomme > 0), pour la vue trésorerie/cash-flow
+    existante (compta). Renvoie une liste de dicts triés par date de
+    versement. LECTURE SEULE, INTERNE."""
+    from decimal import Decimal
+    from .models import AcompteFournisseur
+    qs = (AcompteFournisseur.objects.filter(company=company)
+          .select_related('bon_commande', 'bon_commande__fournisseur')
+          .order_by('-date_versement'))
+    out = []
+    for a in qs:
+        non_consomme = (a.montant or Decimal('0')) - (
+            a.montant_consomme or Decimal('0'))
+        if non_consomme > 0:
+            out.append({
+                'id': a.id,
+                'bon_commande_id': a.bon_commande_id,
+                'bon_commande_reference': a.bon_commande.reference,
+                'fournisseur_nom': (a.bon_commande.fournisseur.nom
+                                    if a.bon_commande.fournisseur_id else None),
+                'montant': a.montant,
+                'montant_non_consomme': non_consomme,
+                'date_versement': a.date_versement,
+            })
+    return out

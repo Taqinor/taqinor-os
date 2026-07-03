@@ -26,6 +26,7 @@ from .fiche_technique import FicheTechniqueViewSet
 from .conformite_fournisseur import (
     DocumentConformiteFournisseurViewSet, AchatsParametresViewSet,
 )
+from .acompte_fournisseur import AcompteFournisseurViewSet
 
 __all__ = [
     'ProduitViewSet',
@@ -49,4 +50,5 @@ __all__ = [
     'AchatsParametresViewSet',
     'ContactFournisseurViewSet',
     'CategorieFournisseurViewSet',
+    'AcompteFournisseurViewSet',
 ]

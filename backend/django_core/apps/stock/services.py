@@ -1241,6 +1241,9 @@ def facturer_reception(company, user, reception):
         return ff
 
     create_with_reference(FactureFournisseur, 'FF', company, _save)
+    # XPUR8 — impute automatiquement les acomptes non consommés du BCF sur
+    # cette première facture (idempotent, no-op si aucun acompte).
+    imputer_acomptes_bcf(reception.bon_commande)
     return created['ff']
 
 
@@ -2120,3 +2123,27 @@ def otd_stats(company, fournisseur):
         'otd_ecart_moyen_jours': round(sum(ecarts) / len(ecarts), 1),
         'otd_a_lheure_pct': round(a_lheure / len(ecarts) * 100, 1),
     }
+
+
+# ── XPUR8 — Acomptes / avances fournisseur sur BCF ──────────────────────────
+
+def imputer_acomptes_bcf(bon_commande):
+    """XPUR8 — impute les acomptes NON CONSOMMÉS du BCF sur sa PREMIÈRE
+    ``FactureFournisseur`` (par date de création). Idempotent : un acompte
+    déjà imputé (``facture_imputee`` déjà posé) n'est jamais réimputé,
+    même si la fonction est rappelée. No-op si le BCF n'a pas encore de
+    facture. Renvoie la liste des acomptes imputés lors de CET appel."""
+    from .models import AcompteFournisseur
+    facture = (bon_commande.factures_fournisseur
+               .order_by('date_creation').first())
+    if facture is None:
+        return []
+    acomptes = AcompteFournisseur.objects.filter(
+        bon_commande=bon_commande, facture_imputee__isnull=True)
+    imputed = []
+    for acompte in acomptes:
+        acompte.facture_imputee = facture
+        acompte.montant_consomme = acompte.montant
+        acompte.save(update_fields=['facture_imputee', 'montant_consomme'])
+        imputed.append(acompte)
+    return imputed

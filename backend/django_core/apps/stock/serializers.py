@@ -11,7 +11,7 @@ from .models import (
     FicheTechnique,
     DocumentConformiteFournisseur, AchatsParametres,
     CategorieFournisseur, ContactFournisseur,
-    EcheanceFactureFournisseur,
+    EcheanceFactureFournisseur, AcompteFournisseur,
 )
 
 
@@ -451,6 +451,10 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
     total_achat = serializers.DecimalField(
         max_digits=14, decimal_places=2, read_only=True)
     est_entierement_recu = serializers.BooleanField(read_only=True)
+    # XPUR8 — acomptes versés sur ce BCF (SerializerMethodField : évite une
+    # dépendance d'ordre de classe vers AcompteFournisseurSerializer, défini
+    # plus bas dans ce module).
+    acomptes = serializers.SerializerMethodField()
 
     class Meta:
         model = BonCommandeFournisseur
@@ -461,7 +465,7 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
             'date_confirmee_fournisseur', 'numero_confirmation_fournisseur',
             'created_by',
             'created_by_username', 'date_creation', 'date_mise_a_jour',
-            'lignes', 'total_achat', 'est_entierement_recu',
+            'lignes', 'total_achat', 'est_entierement_recu', 'acomptes',
         ]
         # company + reference + created_by sont posés côté serveur. La date
         # confirmée/numéro d'accusé n'est modifiable QUE via l'action
@@ -470,6 +474,10 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
             'reference', 'created_by', 'date_creation', 'date_mise_a_jour',
             'date_confirmee_fournisseur', 'numero_confirmation_fournisseur',
         ]
+
+    def get_acomptes(self, obj):
+        return AcompteFournisseurSerializer(
+            obj.acomptes.all(), many=True).data
 
     def validate_lignes(self, value):
         if not value:
@@ -704,6 +712,9 @@ class FactureFournisseurSerializer(serializers.ModelSerializer):
         max_digits=14, decimal_places=2, read_only=True)
     solde_du = serializers.DecimalField(
         max_digits=14, decimal_places=2, read_only=True)
+    # XPUR8 — acomptes fournisseur imputés sur cette facture (0 par défaut).
+    total_acomptes_imputes = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
 
     class Meta:
         model = FactureFournisseur
@@ -714,6 +725,7 @@ class FactureFournisseurSerializer(serializers.ModelSerializer):
             'devise', 'taux_change', 'montant_ttc_devise',
             'type_achat', 'statut', 'statut_display', 'note', 'created_by',
             'created_by_username', 'date_creation', 'date_mise_a_jour',
+            'total_acomptes_imputes',
             'lignes', 'paiements', 'echeances', 'total_paye', 'solde_du',
         ]
         # company + reference + statut + created_by sont posés côté serveur.
@@ -998,3 +1010,41 @@ class AchatsParametresSerializer(serializers.ModelSerializer):
             'date_creation', 'date_modification',
         ]
         read_only_fields = ['date_creation', 'date_modification']
+
+
+# ── XPUR8 — acomptes fournisseur ─────────────────────────────────────────────
+
+class AcompteFournisseurSerializer(serializers.ModelSerializer):
+    mode_display = serializers.CharField(
+        source='get_mode_display', read_only=True)
+    bon_commande_reference = serializers.CharField(
+        source='bon_commande.reference', read_only=True)
+    montant_non_consomme = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = AcompteFournisseur
+        fields = [
+            'id', 'bon_commande', 'bon_commande_reference', 'montant',
+            'date_versement', 'mode', 'mode_display', 'montant_consomme',
+            'montant_non_consomme', 'facture_imputee', 'note', 'created_by',
+            'date_creation',
+        ]
+        # company + created_by + imputation posés côté serveur.
+        read_only_fields = [
+            'created_by', 'date_creation', 'montant_consomme',
+            'facture_imputee',
+        ]
+
+    def validate_montant(self, value):
+        if value is None or value <= 0:
+            raise serializers.ValidationError('Le montant doit être positif.')
+        return value
+
+    def validate_bon_commande(self, value):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is not None and value.company_id != company.id:
+            raise serializers.ValidationError(
+                'Bon de commande hors de votre entreprise.')
+        return value
