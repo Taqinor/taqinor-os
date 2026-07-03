@@ -277,7 +277,7 @@ const engineeringPillars = [
         <p class="v2-lead cine-in cine-in-2 mt-4 max-w-xl text-white/85">{heroSub}</p>
         <div class="cine-in cine-in-3 mt-10 flex flex-wrap items-center gap-3">
           {/* CTA نحاسي وحيد (انضباط النحاس) — الذهب مأذون هنا */}
-          <a href={L('/devis/mon-toit')} class="glow-hero bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
+          <a id="hero-cta-magnetic" href={L('/devis/mon-toit')} class="glow-hero magnetic-cta bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
             احصل على دراستي المجانية <span class="inline-block rtl:-scale-x-100">→</span>
           </a>
           {/* WhatsApp شبحي — حدّ أبيض، بلا أي نحاس */}
@@ -627,6 +627,18 @@ const engineeringPillars = [
     --hero-scrim-strength: 0.52;
   }
 
+  /* W368 — CTA مغناطيسي: السكربت يضبط فقط transform: translate(x, y)
+     (بحد أقصى ±8px) عند pointermove؛ هذا يضيف فقط عودة ناعمة إلى الأصل عند
+     مغادرة المؤشر (pointerleave يزيل النمط المضمّن، وهذا الانتقال يحرّك
+     العودة). transform فقط: لا reflow ولا CLS أبداً. مُقيَّد بـ
+     (pointer:fine) + reduced-motion داخل السكربت. */
+  @media (prefers-reduced-motion: no-preference) and (pointer: fine) {
+    .magnetic-cta {
+      transition: transform var(--dur-hover) var(--ease-cine), background-color var(--dur-hover) ease;
+      will-change: transform;
+    }
+  }
+
   /* ── W271 — lightbox المعرض ──────────────────────────────────────────── */
   .gallery-lightbox {
     max-width: min(92vw, 1100px);
@@ -770,6 +782,34 @@ const engineeringPillars = [
     const arm = () => heroTitle.classList.add('hero-sweep-armed');
     if (document.readyState === 'complete') requestAnimationFrame(arm);
     else addEventListener('load', () => requestAnimationFrame(arm), { once: true });
+  }
+</script>
+
+<script>
+  // W368 — CTA مغناطيسي: زر النحاس في البطل يتبع المؤشر بلطف شديد (±8px
+  // كحد أقصى)، transform فقط (لا reflow). مُقيَّد بالمؤشرات الدقيقة فقط
+  // ((pointer:fine) — أبداً على اللمس، حيث لا معنى لـ "pointermove") و
+  // prefers-reduced-motion. تحسين تدريجي خالص: بدون JS أو خارج التطابق، يبقى
+  // الزر رابطاً عادياً.
+  const magnet = document.getElementById('hero-cta-magnetic');
+  const canMagnet =
+    matchMedia('(prefers-reduced-motion: no-preference)').matches && matchMedia('(pointer: fine)').matches;
+  if (magnet && canMagnet) {
+    const strength = 8; // px — الإزاحة القصوى، انضباط «مهموس»
+    let raf = 0;
+    magnet.addEventListener('pointermove', (ev) => {
+      const rect = magnet.getBoundingClientRect();
+      const relX = (ev.clientX - rect.left) / rect.width - 0.5;
+      const relY = (ev.clientY - rect.top) / rect.height - 0.5;
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        magnet.style.transform = `translate(${(relX * 2 * strength).toFixed(1)}px, ${(relY * 2 * strength).toFixed(1)}px)`;
+      });
+    });
+    magnet.addEventListener('pointerleave', () => {
+      if (raf) cancelAnimationFrame(raf);
+      magnet.style.transform = '';
+    });
   }
 </script>
 

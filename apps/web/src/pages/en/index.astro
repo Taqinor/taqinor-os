@@ -283,7 +283,7 @@ const engineeringPillars = [
         <p class="v2-lead cine-in cine-in-2 mt-4 max-w-xl text-white/85">{heroSub}</p>
         <div class="cine-in cine-in-3 mt-10 flex flex-wrap items-center gap-3">
           {/* The single brass CTA (brass discipline) — gold is allowed here */}
-          <a href={L('/devis/mon-toit')} class="glow-hero bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
+          <a id="hero-cta-magnetic" href={L('/devis/mon-toit')} class="glow-hero magnetic-cta bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
             Get my free study →
           </a>
           {/* Ghost WhatsApp — white outline, no brass */}
@@ -634,6 +634,18 @@ const engineeringPillars = [
     --hero-scrim-strength: 0.52;
   }
 
+  /* W368 — Magnetic CTA: the script only sets transform: translate(x, y)
+     (max ±8px) on pointermove; this just adds the soft return-to-origin when
+     the pointer leaves (pointerleave clears the inline style, this
+     transition animates the return). Transform only: never a reflow/CLS.
+     Gated (pointer:fine) + reduced-motion in the script. */
+  @media (prefers-reduced-motion: no-preference) and (pointer: fine) {
+    .magnetic-cta {
+      transition: transform var(--dur-hover) var(--ease-cine), background-color var(--dur-hover) ease;
+      will-change: transform;
+    }
+  }
+
   /* ── W271 — Gallery lightbox ─────────────────────────────────────────── */
   .gallery-lightbox {
     max-width: min(92vw, 1100px);
@@ -781,6 +793,34 @@ const engineeringPillars = [
     const arm = () => heroTitle.classList.add('hero-sweep-armed');
     if (document.readyState === 'complete') requestAnimationFrame(arm);
     else addEventListener('load', () => requestAnimationFrame(arm), { once: true });
+  }
+</script>
+
+<script>
+  // W368 — Magnetic CTA: the hero brass button follows the pointer very
+  // slightly (±8px max), transform only (no reflow). Gated to precise
+  // pointers only ((pointer:fine) — never on touch, where "pointermove"
+  // doesn't apply) and prefers-reduced-motion. Pure progressive enhancement:
+  // without JS or outside the media match, the button is a normal link.
+  const magnet = document.getElementById('hero-cta-magnetic');
+  const canMagnet =
+    matchMedia('(prefers-reduced-motion: no-preference)').matches && matchMedia('(pointer: fine)').matches;
+  if (magnet && canMagnet) {
+    const strength = 8; // px — max displacement, "whispered" discipline
+    let raf = 0;
+    magnet.addEventListener('pointermove', (ev) => {
+      const rect = magnet.getBoundingClientRect();
+      const relX = (ev.clientX - rect.left) / rect.width - 0.5;
+      const relY = (ev.clientY - rect.top) / rect.height - 0.5;
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        magnet.style.transform = `translate(${(relX * 2 * strength).toFixed(1)}px, ${(relY * 2 * strength).toFixed(1)}px)`;
+      });
+    });
+    magnet.addEventListener('pointerleave', () => {
+      if (raf) cancelAnimationFrame(raf);
+      magnet.style.transform = '';
+    });
   }
 </script>
 
