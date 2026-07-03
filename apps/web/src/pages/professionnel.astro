@@ -37,10 +37,14 @@ import { whatsappLink } from '../lib/whatsapp';
 
 const waDirect = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour une installation solaire.');
 
+// W260 — sous-cartes d'auto-identification par type de bâtiment (au lieu d'un
+// seul bloc générique) : un acheteur C&I se reconnaît d'abord dans son type de
+// site, avant de penser en kWc. Une preuve concrète par carte.
 const segments = [
-  { n: '01', title: 'Industriels', body: "Chaque kWh entre dans le prix de revient d'une pièce produite. Une toiture de hangar, large et plane, se rembourse en 3 à 5 ans et produit pile aux heures où les machines tournent — la production tombe quand la demande est là." },
-  { n: '02', title: 'Hôtels', body: "Climatisation l'après-midi, blanchisserie le matin, pompes de piscine en continu : la courbe d'un hôtel épouse celle du soleil, heure pour heure. Le solaire vient plafonner un poste qui grimpe chaque saison." },
-  { n: '03', title: 'Cliniques', body: "Un bloc ne tolère pas la coupure. Onduleurs hybrides plus batteries tiennent les équipements critiques pendant les creux du réseau, et en journée la facture baisse sur le reste du bâtiment." },
+  { n: '01', title: 'Entrepôt / usine', body: "Chaque kWh entre dans le prix de revient d'une pièce produite. Une toiture large et plane se rembourse en 3 à 5 ans et produit pile aux heures où les machines tournent — la production tombe quand la demande est là.", proof: 'Preuve : El Jadida, 17,04 kWc, 21 406 kWh/an' },
+  { n: '02', title: 'Hangar agro-industriel', body: "Séchage, froid, transformation : un hangar agricole consomme en plein jour, exactement quand le soleil donne. La toiture, déjà là, ne coûte rien de plus à exploiter — elle porte les panneaux sans grignoter un mètre carré au sol.", proof: 'Preuve : structure acier galvanisé garantie 20 ans, posée sur toiture existante' },
+  { n: '03', title: 'Commerce / hôtellerie', body: "Climatisation l'après-midi, blanchisserie le matin, pompes de piscine en continu : la courbe d'un commerce ou d'un hôtel épouse celle du soleil, heure pour heure. Le solaire vient plafonner un poste qui grimpe chaque saison.", proof: 'Preuve : amortissement 3 à 5 ans, même logique de charge que l’industrie' },
+  { n: '04', title: 'Collectivités', body: "Un bâtiment public ou une clinique ne tolère pas la coupure. Onduleurs hybrides plus batteries tiennent les équipements critiques pendant les creux du réseau, et en journée la facture baisse sur le reste du bâtiment.", proof: 'Preuve : onduleurs hybrides Deye/Huawei, garantie 10 ans' },
 ];
 
 const PRIX_PAR_KWC = { bas: 8500, haut: 11000 };
@@ -92,7 +96,7 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
 
       {/* Contenu ancré BAS — eyebrow rétrogradé en lune (discipline laiton) */}
       <div class="mx-auto w-full max-w-6xl px-4 pb-24 pt-32 sm:pb-32">
-        <p class="tech-label v2-kicker rule-brass cine-in text-lune">Industriels · hôtels · cliniques</p>
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">Entrepôt · agro-industriel · commerce · collectivité</p>
         <h1 class="display v2-page-title cine-in cine-in-1 mt-5 max-w-[20ch]">Votre poste électricité, vous pouvez le piloter au lieu de le subir</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
           Sur un site professionnel, le solaire n'est pas une vitrine : c'est un équipement de
@@ -129,15 +133,18 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
       </div>
     </section>
 
-    {/* Trois segments */}
+    {/* W260 — Quatre cartes d'auto-identification par type de site */}
     <div class="seam-soft" aria-hidden="true"></div>
     <section class="section mx-auto max-w-6xl px-4">
-      <div class="grid gap-6 md:grid-cols-3" data-stagger>
+      <p class="tech-label v2-kicker rule-brass text-lune">Vous vous reconnaissez où ?</p>
+      <h2 class="display v2-section-title mt-5 text-white">Quatre types de site, une même logique de charge</h2>
+      <div class="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
         {segments.map((s, i) => (
           <div class="v2-rise border-l-2 border-brass-400/60 pl-6" style={`--v2-i:${i}`}>
             <p class="fig lum text-2xl">{s.n}</p>
-            <h2 class="display mt-2 text-2xl text-white">{s.title}</h2>
+            <h2 class="display mt-2 text-xl text-white">{s.title}</h2>
             <p class="mt-3 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+            <p class="tech-label mt-3 text-brass-300">{s.proof}</p>
           </div>
         ))}
       </div>

@@ -41,10 +41,14 @@ const L = (href: string) => localizeNavHref(href, locale);
 
 const waDirect = whatsappLink(WHATSAPP_LEADS, 'Hello, I would like a study for a solar installation.');
 
+// W260 — self-identification sub-cards by building type (instead of one
+// generic block): a C&I buyer recognises their site type before thinking in
+// kWc. One concrete proof point per card.
 const segments = [
-  { n: '01', title: 'Industry', body: "Every kWh enters the cost price of a manufactured part. A warehouse roof, wide and flat, pays for itself in 3 to 5 years and produces exactly when the machines are running — production lands when demand is there." },
-  { n: '02', title: 'Hotels', body: "Air conditioning in the afternoon, laundry in the morning, pool pumps running non-stop: a hotel's curve hugs the sun's, hour for hour. Solar comes to cap a cost item that climbs every season." },
-  { n: '03', title: 'Clinics', body: "An operating theatre tolerates no outage. Hybrid inverters plus batteries hold the critical equipment through grid dips, and by day the bill drops on the rest of the building." },
+  { n: '01', title: 'Warehouse / plant', body: "Every kWh enters the cost price of a manufactured part. A wide, flat roof pays for itself in 3 to 5 years and produces exactly when the machines are running — production lands when demand is there.", proof: 'Proof: El Jadida, 17,04 kWc, 21 406 kWh/year' },
+  { n: '02', title: 'Agro-industrial shed', body: "Drying, cold storage, processing: an agricultural shed consumes in broad daylight, exactly when the sun gives. The roof, already there, costs nothing extra to use — it carries the panels without eating a square metre of ground.", proof: 'Proof: galvanised steel structure, 20-year warranty, mounted on the existing roof' },
+  { n: '03', title: 'Retail / hospitality', body: "Air conditioning in the afternoon, laundry in the morning, pool pumps running non-stop: a shop or hotel's curve hugs the sun's, hour for hour. Solar comes to cap a cost item that climbs every season.", proof: 'Proof: 3-to-5-year payback, the same load logic as industry' },
+  { n: '04', title: 'Public sites', body: "A public building or clinic tolerates no outage. Hybrid inverters plus batteries hold the critical equipment through grid dips, and by day the bill drops on the rest of the building.", proof: 'Proof: Deye/Huawei hybrid inverters, 10-year warranty' },
 ];
 
 const PRIX_PAR_KWC = { bas: 8500, haut: 11000 };
@@ -96,7 +100,7 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
 
       {/* Content anchored LOW — eyebrow demoted to lune (brass discipline) */}
       <div class="mx-auto w-full max-w-6xl px-4 pb-24 pt-32 sm:pb-32">
-        <p class="tech-label v2-kicker rule-brass cine-in text-lune">Industry · hotels · clinics</p>
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">Warehouse · agro-industrial · retail · public sites</p>
         <h1 class="display v2-page-title cine-in cine-in-1 mt-5 max-w-[20ch]">Your electricity cost line — you can steer it instead of enduring it</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
           On a business site, solar isn't a showpiece: it's a production asset, paid back in 3 to
@@ -133,15 +137,18 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
       </div>
     </section>
 
-    {/* Three segments */}
+    {/* W260 — Four self-identification cards by site type */}
     <div class="seam-soft" aria-hidden="true"></div>
     <section class="section mx-auto max-w-6xl px-4">
-      <div class="grid gap-6 md:grid-cols-3" data-stagger>
+      <p class="tech-label v2-kicker rule-brass text-lune">Where do you see yourself?</p>
+      <h2 class="display v2-section-title mt-5 text-white">Four site types, one load logic</h2>
+      <div class="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
         {segments.map((s, i) => (
           <div class="v2-rise border-l-2 border-brass-400/60 pl-6" style={`--v2-i:${i}`}>
             <p class="fig lum text-2xl">{s.n}</p>
-            <h2 class="display mt-2 text-2xl text-white">{s.title}</h2>
+            <h2 class="display mt-2 text-xl text-white">{s.title}</h2>
             <p class="mt-3 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+            <p class="tech-label mt-3 text-brass-300">{s.proof}</p>
           </div>
         ))}
       </div>
