@@ -30,12 +30,20 @@ import StickyCta from '../components/StickyCta.astro';
 import ZelligeDivider from '../components/ZelligeDivider.astro';
 import GarantiesTeaser from '../components/GarantiesTeaser.astro';
 import Testimonials from '../components/Testimonials.astro';
+import CertLogoRow from '../components/CertLogoRow.astro';
 import { localEstimateBand } from '../lib/billRange';
 import { formatMAD } from '../lib/format';
 import { WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink } from '../lib/whatsapp';
 
 const waDirect = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour une installation solaire.');
+// W337 — invitation « visiter un chantier », même mécanique que pourquoi-taqinor.astro
+const waVisite = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite visiter une installation professionnelle réelle.');
+
+// W337 — RC Pro / assurance : scaffold no-op-safe (WG8). Aucune donnée réelle
+// n'existe encore côté fondateur → reste `null` et la section ne rend RIEN
+// tant que la valeur n'est pas fournie. Ne jamais inventer un numéro de police.
+const RC_PRO_ASSURANCE: string | null = null;
 
 // W260 — sous-cartes d'auto-identification par type de bâtiment (au lieu d'un
 // seul bloc générique) : un acheteur C&I se reconnaît d'abord dans son type de
@@ -173,9 +181,11 @@ const capexOpex = [
           de charge — pas d'un gabarit.
         </p>
         <div class="cine-in cine-in-3 mt-10 flex flex-wrap items-center gap-3">
-          {/* UN seul CTA brass (discipline laiton) — l'or est ici autorisé */}
+          {/* UN seul CTA brass (discipline laiton) — l'or est ici autorisé.
+              W337 — reformulé en offre d'audit : même parcours, même webhook
+              DiagnosticForm, seul le libellé change. */}
           <a href="/devis/mon-toit" class="glow-hero bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
-            Obtenir mon étude gratuite →
+            Audit énergétique gratuit de mon site →
           </a>
           {/* Ghost WhatsApp — contour blanc, aucun laiton */}
           <a href={waDirect} rel="noopener" class="inline-flex items-center gap-2 border border-white/40 px-6 py-3.5 text-base font-semibold text-white backdrop-blur-sm transition-colors hover:border-white hover:bg-white/10">
@@ -289,6 +299,19 @@ const capexOpex = [
               </tbody>
             </table>
           </div>
+        </div>
+
+        {/* W337 — confiance achats/procurement, près du tableau de prix.
+            CertLogoRow est déjà no-op-safe (WJ35) : n'affiche que des faits
+            techniques déjà publiés. La ligne RC Pro / assurance reste un
+            scaffold WG8 — elle ne rend RIEN tant que Reda n'a pas fourni le
+            numéro de police réel. */}
+        <div class="mt-14 border-t border-white/10 pt-10">
+          <p class="tech-label v2-kicker rule-brass text-lune">Ce que vérifie votre service achats</p>
+          <CertLogoRow />
+          {RC_PRO_ASSURANCE && (
+            <p class="tech-label mt-4 text-lune-faint">Assurance responsabilité civile professionnelle : {RC_PRO_ASSURANCE}</p>
+          )}
         </div>
       </div>
     </section>
@@ -405,6 +428,8 @@ const capexOpex = [
         <a href="/pompage-solaire" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Pompage solaire →</a>
         <a href="/financement" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Financement &amp; rentabilité →</a>
         <a href="/pourquoi-taqinor" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Pourquoi Taqinor →</a>
+        {/* W337 — invitation « visiter un chantier », même mécanique que pourquoi-taqinor.astro */}
+        <a href={waVisite} rel="noopener" class="border border-brass-400/60 px-5 py-3 text-sm font-bold text-brass-300 transition-colors hover:border-brass-400 hover:bg-white/10">Visiter un chantier réel →</a>
       </div>
     </section>
 

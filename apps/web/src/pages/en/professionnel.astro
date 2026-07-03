@@ -29,6 +29,7 @@ import StickyCta from '../../components/StickyCta.astro';
 import ZelligeDivider from '../../components/ZelligeDivider.astro';
 import GarantiesTeaser from '../../components/GarantiesTeaser.astro';
 import Testimonials from '../../components/Testimonials.astro';
+import CertLogoRow from '../../components/CertLogoRow.astro';
 import { localEstimateBand } from '../../lib/billRange';
 import { formatMAD } from '../../lib/format';
 import { getLocaleFromPath } from '../../i18n/utils';
@@ -40,6 +41,13 @@ const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 
 const waDirect = whatsappLink(WHATSAPP_LEADS, 'Hello, I would like a study for a solar installation.');
+// W337 — "visit a real site" invitation, same mechanic as pourquoi-taqinor.astro
+const waVisite = whatsappLink(WHATSAPP_LEADS, 'Hello, I would like to visit a real business installation.');
+
+// W337 — RC Pro / liability insurance: no-op-safe scaffold (WG8). No real data
+// exists yet from the founder → stays `null` and the section renders NOTHING
+// until the value is supplied. Never invent a policy number.
+const RC_PRO_ASSURANCE: string | null = null;
 
 // W260 — self-identification sub-cards by building type (instead of one
 // generic block): a C&I buyer recognises their site type before thinking in
@@ -175,9 +183,11 @@ const capexOpex = [
           curves — not from a template.
         </p>
         <div class="cine-in cine-in-3 mt-10 flex flex-wrap items-center gap-3">
-          {/* ONE brass CTA (brass discipline) — gold is authorised here */}
+          {/* ONE brass CTA (brass discipline) — gold is authorised here.
+              W337 — reframed as an audit offer: same journey, same
+              DiagnosticForm webhook, only the label changes. */}
           <a href={L('/devis/mon-toit')} class="glow-hero bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
-            Get my free study →
+            Free energy audit of my site →
           </a>
           {/* Ghost WhatsApp — white border, no brass */}
           <a href={waDirect} rel="noopener" class="inline-flex items-center gap-2 border border-white/40 px-6 py-3.5 text-base font-semibold text-white backdrop-blur-sm transition-colors hover:border-white hover:bg-white/10">
@@ -291,6 +301,19 @@ const capexOpex = [
               </tbody>
             </table>
           </div>
+        </div>
+
+        {/* W337 — procurement trust, near the pricing table. CertLogoRow is
+            already no-op-safe (WJ35): it only shows already-published
+            technical facts. The RC Pro / insurance line stays a WG8 scaffold
+            — it renders NOTHING until the founder supplies the real policy
+            number. */}
+        <div class="mt-14 border-t border-white/10 pt-10">
+          <p class="tech-label v2-kicker rule-brass text-lune">What your procurement team checks</p>
+          <CertLogoRow />
+          {RC_PRO_ASSURANCE && (
+            <p class="tech-label mt-4 text-lune-faint">Professional liability insurance: {RC_PRO_ASSURANCE}</p>
+          )}
         </div>
       </div>
     </section>
@@ -406,6 +429,8 @@ const capexOpex = [
         <a href={L('/pompage-solaire')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Solar pumping →</a>
         <a href={L('/financement')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Financing &amp; returns →</a>
         <a href={L('/pourquoi-taqinor')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Why Taqinor →</a>
+        {/* W337 — "visit a real site" invitation, same mechanic as pourquoi-taqinor.astro */}
+        <a href={waVisite} rel="noopener" class="border border-brass-400/60 px-5 py-3 text-sm font-bold text-brass-300 transition-colors hover:border-brass-400 hover:bg-white/10">Visit a real installation →</a>
       </div>
     </section>
 

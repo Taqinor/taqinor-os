@@ -25,6 +25,7 @@ import StickyCta from '../../components/StickyCta.astro';
 import ZelligeDivider from '../../components/ZelligeDivider.astro';
 import GarantiesTeaser from '../../components/GarantiesTeaser.astro';
 import Testimonials from '../../components/Testimonials.astro';
+import CertLogoRow from '../../components/CertLogoRow.astro';
 import { localEstimateBand } from '../../lib/billRange';
 import { formatMAD } from '../../lib/format';
 import { WHATSAPP_LEADS } from '../../lib/nap';
@@ -36,6 +37,13 @@ const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 
 const waDirect = whatsappLink(WHATSAPP_LEADS, 'مرحباً، أرغب في دراسة لتركيبة شمسية.');
+// W337 — دعوة «زيارة ورش حقيقي»، نفس آلية pourquoi-taqinor.astro
+const waVisite = whatsappLink(WHATSAPP_LEADS, 'مرحباً، أرغب في زيارة تركيبة مهنية حقيقية.');
+
+// W337 — التأمين على المسؤولية المدنية المهنية: scaffold آمن بدون تأثير (WG8).
+// لا توجد بعد بيانات حقيقية من المؤسس ← تبقى `null` ولا يُعرض القسم بتاتاً حتى
+// تُقدَّم القيمة. لا تختلقوا أبداً رقم بوليصة.
+const RC_PRO_ASSURANCE: string | null = null;
 
 // W260 — بطاقات تعريف ذاتي حسب نوع المبنى، بدل كتلة واحدة عامة: المشتري
 // المهني يتعرّف أولاً على نوع موقعه قبل أن يفكّر بالـ kWc. دليل واحد ملموس لكل بطاقة.
@@ -165,9 +173,10 @@ const capexOpex = [
           حمولتك — لا من قالب جاهز.
         </p>
         <div class="cine-in cine-in-3 mt-10 flex flex-wrap items-center gap-3">
-          {/* CTA نحاسي وحيد */}
+          {/* CTA نحاسي وحيد. W337 — مُعاد صياغته كعرض تدقيق: نفس المسار،
+              نفس webhook DiagnosticForm، يتغيّر فقط النص. */}
           <a href={L('/devis/mon-toit')} class="glow-hero bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
-            احصل على دراستي المجانية ←
+            تدقيق طاقي مجاني لموقعي ←
           </a>
           {/* Ghost WhatsApp */}
           <a href={waDirect} rel="noopener" class="inline-flex items-center gap-2 border border-white/40 px-6 py-3.5 text-base font-semibold text-white backdrop-blur-sm transition-colors hover:border-white hover:bg-white/10">
@@ -281,6 +290,18 @@ const capexOpex = [
             </table>
           </div>
         </div>
+
+        {/* W337 — ثقة المشتريات، قرب جدول الأسعار. CertLogoRow آمن أصلاً بلا
+            تأثير (WJ35): يعرض فقط حقائق تقنية منشورة أصلاً. سطر التأمين على
+            المسؤولية المدنية المهنية يبقى scaffold من بوابة WG8 — لا يعرض
+            شيئاً حتى يُقدّم المؤسس رقم البوليصة الحقيقي. */}
+        <div class="mt-14 border-t border-white/10 pt-10">
+          <p class="tech-label v2-kicker rule-brass text-lune">ما تتحقّق منه مصلحة المشتريات لديكم</p>
+          <CertLogoRow />
+          {RC_PRO_ASSURANCE && (
+            <p class="tech-label mt-4 text-lune-faint">تأمين المسؤولية المدنية المهنية: {RC_PRO_ASSURANCE}</p>
+          )}
+        </div>
       </div>
     </section>
 
@@ -392,6 +413,8 @@ const capexOpex = [
         <a href={L('/pompage-solaire')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">الضخ الشمسي <span class="inline-block rtl:-scale-x-100">→</span></a>
         <a href={L('/financement')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">التمويل والمردودية <span class="inline-block rtl:-scale-x-100">→</span></a>
         <a href={L('/pourquoi-taqinor')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">لماذا تاكينور <span class="inline-block rtl:-scale-x-100">→</span></a>
+        {/* W337 — دعوة «زيارة ورش حقيقي»، نفس آلية pourquoi-taqinor.astro */}
+        <a href={waVisite} rel="noopener" class="border border-brass-400/60 px-5 py-3 text-sm font-bold text-brass-300 transition-colors hover:border-brass-400 hover:bg-white/10">زيارة تركيبة حقيقية <span class="inline-block rtl:-scale-x-100">→</span></a>
       </div>
     </section>
 
