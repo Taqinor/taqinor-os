@@ -135,11 +135,12 @@ const noscriptTelHref = `tel:${NAP.phone}`;
         </div>
       </div>
 
-      <!-- WJ6 — microcopie « pas de pression » -->
+      <!-- WJ6/WJ58 — microcopie « pas de pression » + promesse de délai honnête
+           (WG9 résolu par le fondateur, 2026-07-03 : « sous 1 h, 7j/7 »). -->
       <p class="mt-3 text-sm text-lune-soft" data-i18n
-        data-fr="Réponse sous 24–48 h · on vous répond sur WhatsApp, pas d'appels commerciaux."
-        data-ar="رد خلال 24–48 ساعة · نجيبك على واتساب، بدون مكالمات تجارية.">
-        Réponse sous 24–48 h · on vous répond sur WhatsApp, pas d'appels commerciaux.
+        data-fr="Réponse WhatsApp sous 1 h, 7j/7 · pas d'appels commerciaux."
+        data-ar="رد واتساب خلال ساعة واحدة، 7 أيام على 7 · بدون مكالمات تجارية.">
+        Réponse WhatsApp sous 1 h, 7j/7 · pas d'appels commerciaux.
       </p>
 
       <!-- WJ6 — barre de progression étiquetée -->
@@ -793,6 +794,19 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             <span id="mt-submit-label" data-i18n data-fr="Recevoir mon estimation sur WhatsApp" data-ar="استلام تقديري على واتساب">Recevoir mon estimation sur WhatsApp</span>
             <span id="mt-submit-pending" hidden data-i18n data-fr="Envoi en cours…" data-ar="جارٍ الإرسال…">Envoi en cours…</span>
           </button>
+
+          <!-- WJ58 — promesse de délai honnête near la CTA de capture (WG9
+               résolu, 2026-07-03 : « sous 1 h, 7j/7 »). Badge statique, jamais
+               un compte à rebours. L'icône reste HORS du nœud data-i18n (le
+               mécanisme dual-node WJ33 ne préserve le markup imbriqué que côté
+               FR — un data-ar est du texte brut ; l'icône disparaîtrait en AR
+               si elle était à l'intérieur). -->
+          <p class="mt-2 flex items-center justify-center gap-1.5 text-center text-xs text-lune-faint">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="flex-none text-ok-600">
+              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+            </svg>
+            <span data-i18n data-fr="Réponse WhatsApp sous 1 h, 7j/7" data-ar="رد واتساب خلال ساعة واحدة، 7 أيام على 7">Réponse WhatsApp sous 1 h, 7j/7</span>
+          </p>
 
           <div class="flex items-center justify-between gap-3">
             <button type="button" id="mt-back-2"

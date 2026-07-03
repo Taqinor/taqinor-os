@@ -1284,6 +1284,22 @@ const signConfig = ok
             data-ar="سؤال قبل التوقيع؟ لنتحدث — بدون التزام، وبدون مكالمات تجارية غير مرغوبة.">
             Une question avant de signer ? Parlons-en — sans engagement, et sans appel commercial non sollicité.
           </p>
+          <!-- WJ58 — promesse de délai honnête near la CTA de contact (WG9
+               résolu par le fondateur, 2026-07-03 : « sous 1 h, 7j/7 »). Badge
+               statique, jamais un compte à rebours. L'icône reste HORS du
+               nœud data-i18n (le tri-node FR/EN/AR ne préserve le markup
+               imbriqué que côté FR — l'icône disparaîtrait en EN/AR sinon). -->
+          <p class="mt-2 flex items-center gap-1.5 text-sm text-lune-faint">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="flex-none text-ok-600">
+              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+            </svg>
+            <span data-i18n
+              data-fr="Réponse WhatsApp sous 1 h, 7j/7"
+              data-en="WhatsApp reply within 1 h, 7 days a week"
+              data-ar="رد واتساب خلال ساعة واحدة، 7 أيام على 7">
+              Réponse WhatsApp sous 1 h, 7j/7
+            </span>
+          </p>
           <div class="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             <!-- WJ85 — chaque bouton porte désormais un prérempli WhatsApp
                  DISTINCT (whatsappLinkForIntent) : "Discuter" et "Poser une
@@ -1636,6 +1652,21 @@ const signConfig = ok
               data-ar="أكّدوا عرضكم في ثوانٍ معدودة. ستصلكم بعدها رسالة تأكيد من مستشاركم.">
               Validez votre proposition en quelques secondes. Vous recevrez ensuite la confirmation
               de votre conseiller.
+            </p>
+
+            <!-- WJ58 — promesse de délai honnête near la CTA de signature
+                 (WG9 résolu, 2026-07-03 : « sous 1 h, 7j/7 »). Icône hors du
+                 nœud data-i18n (voir note plus haut sur le tri-node). -->
+            <p class="mt-2 flex items-center gap-1.5 text-sm text-lune-faint">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="flex-none text-ok-600">
+                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+              </svg>
+              <span data-i18n
+                data-fr="Réponse WhatsApp sous 1 h, 7j/7"
+                data-en="WhatsApp reply within 1 h, 7 days a week"
+                data-ar="رد واتساب خلال ساعة واحدة، 7 أيام على 7">
+                Réponse WhatsApp sous 1 h, 7j/7
+              </span>
             </p>
 
             {twoOptions && (

@@ -122,9 +122,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
         </div>
       </div>
 
-      <!-- WJ6 — "no pressure" microcopy -->
+      <!-- WJ6/WJ58 — "no pressure" microcopy + honest response-time promise
+           (WG9 resolved by the founder, 2026-07-03: "within 1 h, 7 days a week"). -->
       <p class="mt-3 text-sm text-lune-soft">
-        Reply within 24–48 h · we answer on WhatsApp, no sales calls.
+        WhatsApp reply within 1 h, 7 days a week · no sales calls.
       </p>
 
       <!-- WJ6 — labelled progress bar -->
@@ -726,6 +727,16 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             <span id="mt-submit-label">Receive my estimate on WhatsApp</span>
             <span id="mt-submit-pending" hidden>Sending…</span>
           </button>
+
+          <!-- WJ58 — honest response-time promise near the capture CTA (WG9
+               resolved, 2026-07-03: "within 1 h, 7 days a week"). Static
+               badge, never a countdown. -->
+          <p class="mt-2 flex items-center justify-center gap-1.5 text-center text-xs text-lune-faint">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="flex-none text-ok-600">
+              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+            </svg>
+            WhatsApp reply within 1 h, 7 days a week
+          </p>
 
           <div class="flex items-center justify-between gap-3">
             <button type="button" id="mt-back-2"
