@@ -2051,6 +2051,7 @@ class KitComposantSerializer(serializers.ModelSerializer):
         model = KitComposant
         fields = [
             'id', 'kit', 'produit', 'produit_nom', 'designation', 'quantite',
+            'taux_perte_pct',
         ]
 
     def validate(self, attrs):

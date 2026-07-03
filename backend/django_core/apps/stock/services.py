@@ -1053,6 +1053,72 @@ def mouvement_type_entree():
     return MouvementStock.TypeMouvement.ENTREE
 
 
+def mouvement_type_rebut():
+    """XMFG11 — valeur enum REBUT (sans importer le modèle côté appelant)."""
+    from .models import MouvementStock
+    return MouvementStock.TypeMouvement.REBUT
+
+
+def declarer_rebut(*, company, produit, quantite, motif, reference, note,
+                   user):
+    """XMFG11 — déclare un rebut de production : SORTIE typée REBUT, motivée,
+    rattachée à un document source (``reference``, ex. un ordre d'assemblage).
+    ``motif`` doit être une valeur de ``MouvementStock.MotifRebut``. Lève
+    ValueError si la quantité est invalide."""
+    from django.db import transaction
+    from .models import MouvementStock, Produit
+
+    if quantite is None or quantite <= 0:
+        raise ValueError('La quantité de rebut doit être positive.')
+    valeurs_motif = {c for c, _ in MouvementStock.MotifRebut.choices}
+    if motif not in valeurs_motif:
+        raise ValueError('Motif de rebut invalide.')
+
+    with transaction.atomic():
+        p = Produit.objects.select_for_update().get(id=produit.id)
+        avant = p.quantite_stock
+        qte_sortie = min(quantite, avant) if avant > 0 else 0
+        apres = avant - qte_sortie
+        mouvement = MouvementStock.objects.create(
+            company=company, produit=p,
+            type_mouvement=MouvementStock.TypeMouvement.REBUT,
+            quantite=qte_sortie, quantite_avant=avant, quantite_apres=apres,
+            reference=reference, note=note, motif_rebut=motif,
+            created_by=user)
+        p.quantite_stock = apres
+        p.save(update_fields=['quantite_stock'])
+    return mouvement
+
+
+def rapport_rebuts(company, *, date_debut=None, date_fin=None):
+    """XMFG11 — mini-rapport rebuts agrégé par produit sur une période
+    (bornes optionnelles). Renvoie une liste de dicts {produit_id, produit_nom,
+    quantite_totale, motifs: {motif: quantite}}, triée par quantité totale
+    décroissante. INTERNE."""
+    from .models import MouvementStock
+
+    qs = MouvementStock.objects.filter(
+        company=company, type_mouvement=MouvementStock.TypeMouvement.REBUT)
+    if date_debut is not None:
+        qs = qs.filter(date__gte=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(date__lte=date_fin)
+
+    par_produit = {}
+    for mvt in qs.select_related('produit'):
+        entry = par_produit.setdefault(mvt.produit_id, {
+            'produit_id': mvt.produit_id,
+            'produit_nom': mvt.produit.nom,
+            'quantite_totale': 0,
+            'motifs': {},
+        })
+        entry['quantite_totale'] += mvt.quantite
+        motif = mvt.motif_rebut or 'autre'
+        entry['motifs'][motif] = entry['motifs'].get(motif, 0) + mvt.quantite
+    return sorted(
+        par_produit.values(), key=lambda e: -e['quantite_totale'])
+
+
 def sortie_exists_for_reference(company, reference):
     """True si un mouvement SORTIE référence déjà ``reference`` pour la société.
 

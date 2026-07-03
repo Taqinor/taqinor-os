@@ -373,6 +373,51 @@ class OrdreAssemblageViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(OrdreAssemblageActivitySerializer(act).data,
                         status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=['post'], url_path='declarer-rebut')
+    def declarer_rebut(self, request, pk=None):
+        """XMFG11 — déclare un rebut de production (casse/défaut/erreur/autre)
+        rattaché à cet ordre : une SORTIE typée REBUT, motivée."""
+        from apps.stock.services import declarer_rebut as _declarer_rebut
+        from apps.stock.selectors import get_produit_scoped
+
+        ordre = self.get_object()
+        company = self.request.user.company
+        produit_id = request.data.get('produit')
+        quantite = request.data.get('quantite')
+        motif = request.data.get('motif')
+        note = (request.data.get('note') or '').strip()
+        if not produit_id:
+            raise ValidationError({'produit': 'Produit requis.'})
+        produit = get_produit_scoped(company, produit_id)
+        if produit is None:
+            raise ValidationError({'produit': 'Produit inconnu pour cette société.'})
+        try:
+            quantite = int(quantite)
+        except (TypeError, ValueError):
+            raise ValidationError({'quantite': 'Quantité invalide.'})
+        try:
+            mouvement = _declarer_rebut(
+                company=company, produit=produit, quantite=quantite,
+                motif=motif, reference=ordre.reference,
+                note=note or f'Rebut ordre {ordre.reference}',
+                user=request.user)
+        except ValueError as exc:
+            raise ValidationError({'detail': str(exc)})
+        return Response({
+            'id': mouvement.id, 'produit': produit.id, 'quantite': mouvement.quantite,
+            'motif_rebut': mouvement.motif_rebut, 'reference': mouvement.reference,
+        }, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'], url_path='rapport-rebuts')
+    def rapport_rebuts(self, request):
+        """XMFG11 — mini-rapport rebuts agrégé par produit/période."""
+        from apps.stock.services import rapport_rebuts as _rapport_rebuts
+        company = self.request.user.company
+        params = request.query_params
+        return Response(_rapport_rebuts(
+            company, date_debut=params.get('date_debut'),
+            date_fin=params.get('date_fin')))
+
     @action(detail=True, methods=['post'])
     def terminer(self, request, pk=None):
         """FG328/XMFG1 — clôture l'ordre (→ terminé, horodate) et backflush le

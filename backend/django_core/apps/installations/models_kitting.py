@@ -67,6 +67,12 @@ class KitComposant(models.Model):
         related_name='installations_kit_composants')
     designation = models.CharField(max_length=255, blank=True, null=True)
     quantite = models.PositiveIntegerField(default=1)
+    # XMFG11 — taux de perte attendu (%) pour ce composant (casse/chutes au
+    # montage). Défaut 0 = comportement historique inchangé. Gonfle le besoin
+    # planifié (XMFG2 réservation) : besoin_effectif = quantite × (1 + taux/100).
+    taux_perte_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        help_text="Taux de perte attendu (%) — gonfle le besoin planifié.")
 
     class Meta:
         verbose_name = 'Composant de kit'

@@ -1315,9 +1315,21 @@ def generer_handover_pack(installation, user=None):
 # (ou les lignes d'ordre XMFG6, repli BOM si absentes). Consommation marquée
 # par XMFG1 (verrou d'idempotence côté backflush) ; libération à l'annulation.
 
+def _besoin_avec_perte(quantite, taux_perte_pct):
+    """XMFG11 — gonfle une quantité planifiée par le taux de perte attendu (%).
+    Arrondi au SUPÉRIEUR (on ne sous-réserve jamais). Défaut 0 = inchangé."""
+    from decimal import Decimal, ROUND_CEILING
+    if not taux_perte_pct:
+        return quantite
+    facteur = Decimal('1') + Decimal(str(taux_perte_pct)) / Decimal('100')
+    return int((Decimal(str(quantite)) * facteur).to_integral_value(
+        rounding=ROUND_CEILING))
+
+
 def _ordre_besoin_composants(ordre):
     """{produit_id: quantite} pour CET ordre : lignes XMFG6 si présentes
-    (repli BOM du kit sinon), multipliées par `ordre.quantite`."""
+    (repli BOM du kit sinon, multipliées par `ordre.quantite` et gonflées du
+    taux de perte attendu — XMFG11)."""
     lignes = list(getattr(ordre, 'lignes', None).all()) if hasattr(
         ordre, 'lignes') else []
     besoins = {}
@@ -1331,8 +1343,9 @@ def _ordre_besoin_composants(ordre):
     for c in ordre.kit.composants.all():
         if c.produit_id is None:
             continue
-        besoins[c.produit_id] = besoins.get(
-            c.produit_id, 0) + (c.quantite or 0) * ordre.quantite
+        qte = _besoin_avec_perte(
+            (c.quantite or 0) * ordre.quantite, c.taux_perte_pct)
+        besoins[c.produit_id] = besoins.get(c.produit_id, 0) + qte
     return besoins
 
 
@@ -1443,15 +1456,16 @@ def alerter_penurie_assemblage(ordre):
 
 def seed_lignes_assemblage(ordre):
     """XMFG6 — copie la BOM du kit en lignes d'ordre éditables, UNE fois (à la
-    création). Idempotent : n'écrase jamais des lignes déjà présentes (même
-    partiellement personnalisées)."""
+    création), quantités gonflées du taux de perte attendu (XMFG11). Idempotent :
+    n'écrase jamais des lignes déjà présentes (même partiellement personnalisées)."""
     from .models import OrdreAssemblageLigne
     if ordre.lignes.exists():
         return list(ordre.lignes.all())
     lignes = [
         OrdreAssemblageLigne(
             ordre=ordre, produit=c.produit, designation=c.designation,
-            quantite=(c.quantite or 0) * ordre.quantite,
+            quantite=_besoin_avec_perte(
+                (c.quantite or 0) * ordre.quantite, c.taux_perte_pct),
             origine=OrdreAssemblageLigne.Origine.KIT)
         for c in ordre.kit.composants.all()
     ]

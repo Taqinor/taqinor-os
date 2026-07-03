@@ -292,6 +292,16 @@ class MouvementStock(models.Model):
         SORTIE = 'sortie', 'Sortie'
         TRANSFERT = 'transfert', 'Transfert'
         AJUSTEMENT = 'ajustement', 'Ajustement'
+        # XMFG11 — rebut de production (casse/défaut/erreur), distinct d'un
+        # simple ajustement anonyme : toujours motivé + rattaché à un document
+        # source (ex. un ordre d'assemblage) via `reference`.
+        REBUT = 'rebut', 'Rebut'
+
+    class MotifRebut(models.TextChoices):
+        CASSE = 'casse', 'Casse'
+        DEFAUT = 'defaut', 'Défaut'
+        ERREUR = 'erreur', 'Erreur'
+        AUTRE = 'autre', 'Autre'
 
     company = models.ForeignKey(
         'authentication.Company',
@@ -314,6 +324,10 @@ class MouvementStock(models.Model):
     quantite_apres = models.IntegerField()
     reference = models.CharField(max_length=100, blank=True, null=True)
     note = models.TextField(blank=True, null=True)
+    # XMFG11 — motif du rebut (uniquement pour type_mouvement=REBUT). NULL
+    # pour tous les autres types de mouvement — comportement historique inchangé.
+    motif_rebut = models.CharField(
+        max_length=10, choices=MotifRebut.choices, blank=True, null=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -1000,6 +1014,12 @@ class KitComposant(models.Model):
     quantite = models.DecimalField(
         max_digits=12, decimal_places=2, default=1,
         help_text='Quantité de ce produit dans une unité de kit.')
+    # XMFG11 — taux de perte attendu (%) pour ce composant (casse, chutes...).
+    # Défaut 0 = comportement historique inchangé. Gonfle le besoin/réservation
+    # planifiés côté atelier (installations.KitComposant), pas la vente.
+    taux_perte_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        help_text="Taux de perte attendu (%) — gonfle le besoin planifié.")
 
     class Meta:
         verbose_name = 'Composant de kit'
