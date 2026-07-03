@@ -90,9 +90,19 @@ def decide_request(req, *, decider, approve, note=''):
     """Approuve/rejette une demande XKB2, en posant automatiquement la
     mention « au nom de » (XKB3) si ``decider`` agit comme suppléant actif
     du demandeur au moment de la décision. Hors plage de délégation, rien
-    ne change (comportement XKB2 identique)."""
+    ne change (comportement XKB2 identique).
+
+    YEVNT11 — SOD : le demandeur ne peut jamais approuver sa propre demande
+    (override admin audité, journalisé par ``engine``)."""
     if req.status != ApprovalRequest.Status.PENDING:
         raise ApprovalError('Décision déjà prise.')
+
+    from . import engine
+    # Laisse `SodViolation` remonter TELLE QUELLE (distincte d'`ApprovalError`)
+    # pour que l'appelant (vue) puisse répondre 403 plutôt que 400.
+    engine.enforce_requester_not_approver(
+        requester=req.demandeur, approver=decider, company=req.company,
+        label=f'approval_request#{req.pk}')
 
     on_behalf_of = None
     demandeur = req.demandeur

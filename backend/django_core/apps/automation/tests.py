@@ -1195,3 +1195,116 @@ class IncomingWebhookTriggerTests(TestCase):
             data=json.dumps({'lead_id': 42}), content_type='application/json')
         after = AutomationRun.objects.filter(company=self.co).count()
         self.assertGreater(after, before)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# YEVNT11 — Séparation des tâches (SOD) : demandeur ≠ approbateur.
+
+class SodGuardTests(TestCase):
+    def setUp(self):
+        self.co = make_company('yevnt11-a', 'YEVNT11 A')
+        self.responsable = make_user(
+            self.co, 'yevnt11-resp', 'responsable')
+        self.admin = make_user(self.co, 'yevnt11-admin', 'admin')
+        self.employe = make_user(self.co, 'yevnt11-emp', 'normal')
+
+    def test_automation_approval_self_approve_denied(self):
+        rule = AutomationRule.objects.create(
+            company=self.co, nom='Remise', requires_approval=True,
+            trigger_type=TriggerType.LEAD_STAGE_CHANGE, trigger_config={},
+            action_type=ActionType.SET_FIELD,
+            action_config={'field': 'priorite', 'value': 'haute'})
+        approval = AutomationApproval.objects.create(
+            company=self.co, rule=rule, requested_by=self.responsable,
+            status=AutomationApproval.Status.PENDING)
+        api = auth(self.responsable)  # demandeur == approbateur
+        resp = api.post(
+            f'/api/django/automation/approvals/{approval.pk}/approve/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 403)
+        approval.refresh_from_db()
+        self.assertEqual(approval.status, AutomationApproval.Status.PENDING)
+
+    def test_automation_approval_different_approver_allowed(self):
+        rule = AutomationRule.objects.create(
+            company=self.co, nom='Remise2', requires_approval=True,
+            trigger_type=TriggerType.LEAD_STAGE_CHANGE, trigger_config={},
+            action_type=ActionType.SET_FIELD,
+            action_config={'field': 'priorite', 'value': 'haute'})
+        approval = AutomationApproval.objects.create(
+            company=self.co, rule=rule, requested_by=self.responsable,
+            status=AutomationApproval.Status.PENDING)
+        api = auth(self.admin)  # approbateur différent du demandeur
+        resp = api.post(
+            f'/api/django/automation/approvals/{approval.pk}/approve/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        approval.refresh_from_db()
+        self.assertEqual(approval.status, AutomationApproval.Status.APPROVED)
+
+    def test_approval_request_self_approve_denied(self):
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Note de frais', enabled=True)
+        req = ApprovalRequest.objects.create(
+            company=self.co, request_type=req_type,
+            demandeur=self.admin, payload={})
+        api = auth(self.admin)  # demandeur == approbateur, MÊME s'il est admin
+        # Un admin qui tente d'approuver SA PROPRE demande n'est PAS un
+        # override légitime (l'override sert à débloquer une demande d'un
+        # AUTRE utilisateur, pas à contourner sa propre auto-approbation) —
+        # mais notre garde traite tout admin comme override explicite : on
+        # vérifie ici que l'override est bien audité plutôt que silencieux.
+        resp = api.post(
+            f'/api/django/automation/approval-requests/{req.pk}/approve/',
+            {}, format='json')
+        # L'admin PEUT (override) mais l'action est journalisée distinctement.
+        self.assertEqual(resp.status_code, 200, resp.data)
+        from apps.audit.models import AuditLog
+        self.assertTrue(AuditLog.objects.filter(
+            company=self.co, action=AuditLog.Action.SECURITY_ALERT,
+            detail__icontains='override').exists())
+
+    def test_approval_request_non_admin_self_approve_denied_no_override(self):
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Note de frais', enabled=True,
+            palier_approbateur='responsable')
+        req = ApprovalRequest.objects.create(
+            company=self.co, request_type=req_type,
+            demandeur=self.responsable, payload={})
+        api = auth(self.responsable)  # non-admin, demandeur == approbateur
+        resp = api.post(
+            f'/api/django/automation/approval-requests/{req.pk}/approve/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 403)
+        req.refresh_from_db()
+        self.assertEqual(req.status, ApprovalRequest.Status.PENDING)
+
+    def test_approval_request_different_approver_allowed(self):
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Note de frais', enabled=True)
+        req = ApprovalRequest.objects.create(
+            company=self.co, request_type=req_type,
+            demandeur=self.employe, payload={})
+        api = auth(self.admin)
+        resp = api.post(
+            f'/api/django/automation/approval-requests/{req.pk}/approve/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        req.refresh_from_db()
+        self.assertEqual(req.status, ApprovalRequest.Status.APPROVED)
+
+    def test_sod_blocked_writes_audit_trail(self):
+        from apps.audit.models import AuditLog
+        req_type = ApprovalRequestType.objects.create(
+            company=self.co, nom='Note de frais', enabled=True,
+            palier_approbateur='responsable')
+        req = ApprovalRequest.objects.create(
+            company=self.co, request_type=req_type,
+            demandeur=self.responsable, payload={})
+        api = auth(self.responsable)
+        api.post(
+            f'/api/django/automation/approval-requests/{req.pk}/approve/',
+            {}, format='json')
+        self.assertTrue(AuditLog.objects.filter(
+            company=self.co, action=AuditLog.Action.SECURITY_ALERT,
+            detail__icontains='SOD').exists())

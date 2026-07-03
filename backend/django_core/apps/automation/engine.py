@@ -223,6 +223,71 @@ def run_approved(approval, *, user=None):
                context=approval.context, user=user)
 
 
+# ── YEVNT11 — Séparation des tâches (SOD) : demandeur ≠ approbateur ─────────
+#
+# Contrôle SOX de base : côté serveur, un utilisateur ne doit jamais pouvoir
+# approuver sa propre demande. S'applique aux TROIS moteurs d'approbation du
+# repo (chacun appelle cette fonction depuis SA propre vue — automation,
+# compta.DemandeApprobationConfig, ventes « Approuver remise ») ; un override
+# admin explicite est permis mais écrit lui-même une ligne d'audit distincte.
+
+class SodViolation(Exception):
+    """Levée quand l'approbateur est aussi le demandeur (SOD), sans override."""
+
+
+def enforce_requester_not_approver(
+        *, requester, approver, company=None, label='', allow_admin_override=True):
+    """Garde SOD générique : lève ``SodViolation`` si ``approver`` est le
+    même utilisateur que ``requester`` — SAUF override admin explicite
+    (``allow_admin_override`` et l'appelant a déjà vérifié le rôle admin ;
+    cette fonction se contente d'écrire la ligne d'audit distincte quand
+    l'appelant signale l'override via ``allow_admin_override=True`` ET que
+    ``approver`` porte le rôle admin).
+
+    Aucun effet quand ``requester`` est ``None`` (demandeur inconnu/système) :
+    on ne peut pas juger d'une auto-approbation sans demandeur identifié.
+    """
+    if requester is None or approver is None:
+        return
+    if requester.pk != approver.pk:
+        return  # cas nominal : personnes différentes, rien à faire
+
+    is_admin = bool(getattr(approver, 'is_admin_role', False))
+    if allow_admin_override and is_admin:
+        _audit_sod_override(approver, company, label)
+        return
+
+    _audit_sod_blocked(approver, company, label)
+    raise SodViolation(
+        "Vous ne pouvez pas approuver votre propre demande "
+        "(séparation des tâches).")
+
+
+def _audit_sod_blocked(user, company, label):
+    try:
+        from apps.audit.recorder import record
+        from apps.audit.models import AuditLog
+        record(
+            AuditLog.Action.SECURITY_ALERT, user=user, company=company,
+            detail=f'SOD : auto-approbation refusée ({label}).')
+    except Exception:  # pragma: no cover - best-effort
+        logger.debug('automation: audit SOD (blocage) indisponible',
+                     exc_info=True)
+
+
+def _audit_sod_override(user, company, label):
+    try:
+        from apps.audit.recorder import record
+        from apps.audit.models import AuditLog
+        record(
+            AuditLog.Action.SECURITY_ALERT, user=user, company=company,
+            detail=f'SOD : override admin — auto-approbation autorisée '
+                   f'({label}).')
+    except Exception:  # pragma: no cover - best-effort
+        logger.debug('automation: audit SOD (override) indisponible',
+                     exc_info=True)
+
+
 # Réexport pratique.
 __all__ = [
     'evaluate', 'run_action', 'run_approved', 'ActionType', 'TriggerType',

@@ -165,6 +165,14 @@ class AutomationApprovalViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         if approval.status != AutomationApproval.Status.PENDING:
             return Response(
                 {'detail': 'Décision déjà prise.'}, status=400)
+        # YEVNT11 — SOD : le demandeur ne peut pas approuver sa propre
+        # demande (override admin audité).
+        try:
+            engine.enforce_requester_not_approver(
+                requester=approval.requested_by, approver=request.user,
+                company=approval.company, label=f'approval#{approval.pk}')
+        except engine.SodViolation as exc:
+            return Response({'detail': str(exc)}, status=403)
         approval.status = AutomationApproval.Status.APPROVED
         approval.decided_by = request.user
         approval.decided_at = timezone.now()
@@ -289,6 +297,8 @@ class ApprovalRequestViewSet(TenantMixin, viewsets.ModelViewSet):
             services.decide_request(
                 req, decider=request.user, approve=True,
                 note=request.data.get('note', '') or '')
+        except engine.SodViolation as exc:
+            return Response({'detail': str(exc)}, status=403)
         except services.ApprovalError as exc:
             return Response({'detail': str(exc)}, status=400)
         return Response(self.get_serializer(req).data)
@@ -300,6 +310,8 @@ class ApprovalRequestViewSet(TenantMixin, viewsets.ModelViewSet):
             services.decide_request(
                 req, decider=request.user, approve=False,
                 note=request.data.get('note', '') or '')
+        except engine.SodViolation as exc:
+            return Response({'detail': str(exc)}, status=403)
         except services.ApprovalError as exc:
             return Response({'detail': str(exc)}, status=400)
         return Response(self.get_serializer(req).data)
