@@ -147,6 +147,88 @@ def approbations_en_attente(request):
     return Response({'items': items, 'total': len(items)})
 
 
+def _decider_approbation_core(company, user, source, obj_id, decision, motif):
+    """Logique métier partagée par ``decider_approbation`` (vue DRF) et
+    ``decider_en_masse`` (boucle en masse). Prend des arguments déjà
+    parsés — aucune dépendance à un objet ``request`` — pour éviter tout
+    besoin de fabriquer un faux ``HttpRequest`` lors des appels en boucle.
+
+    Retourne ``(status_code, body_dict)``."""
+    if company is None:
+        return 403, {'detail': 'Accès refusé.'}
+
+    if source not in _SOURCE_LOADERS:
+        return 400, {'detail': 'Source inconnue.'}
+    if decision not in ('approuver', 'refuser'):
+        return 400, {'detail': 'Décision invalide.'}
+    approve = decision == 'approuver'
+    if not approve and not motif:
+        return 400, {'detail': 'Un motif de refus est obligatoire.'}
+
+    try:
+        if source == 'automation':
+            from apps.automation import selectors as automation_selectors
+            from apps.automation import services as automation_services
+            approval = (automation_selectors.approvals_en_attente(company)
+                        .filter(id=obj_id).first())
+            if approval is None:
+                return 404, {'detail': 'Introuvable.'}
+            automation_services.decider_approval(
+                approval, approve=approve, user=user)
+
+        elif source == 'contrats':
+            from apps.contrats import selectors as contrats_selectors
+            from apps.contrats import services as contrats_services
+            etape = (contrats_selectors.etapes_approbation_en_attente(company)
+                     .filter(id=obj_id).first())
+            if etape is None:
+                return 404, {'detail': 'Introuvable.'}
+            if approve:
+                contrats_services.approuver_etape(
+                    etape, approbateur=user, commentaire=motif)
+            else:
+                contrats_services.rejeter_etape(
+                    etape, approbateur=user, commentaire=motif)
+
+        elif source == 'ged':
+            from apps.ged import selectors as ged_selectors
+            from apps.ged import services as ged_services
+            demande = (ged_selectors.demandes_approbation_en_attente(company)
+                       .filter(id=obj_id).first())
+            if demande is None:
+                return 404, {'detail': 'Introuvable.'}
+            if approve:
+                ged_services.approve_demande(
+                    demande, user=user, commentaire=motif)
+            else:
+                ged_services.reject_demande(
+                    demande, user=user, commentaire=motif)
+
+        elif source == 'installations':
+            from apps.installations import selectors as installations_selectors
+            from apps.installations import services as installations_services
+            da = (installations_selectors.demandes_achat_en_attente(company)
+                  .filter(id=obj_id).first())
+            if da is None:
+                return 404, {'detail': 'Introuvable.'}
+            installations_services.decider_demande_achat(
+                da, approuver=approve, user=user, motif_refus=motif)
+
+        else:  # workflow
+            from core import workflow as core_workflow
+            step = next(
+                (s for s in core_workflow.pending_steps_for_company(company)
+                 if s.id == int(obj_id)), None) if obj_id else None
+            if step is None:
+                return 404, {'detail': 'Introuvable.'}
+            core_workflow.decide_step(
+                step, approve=approve, user=user, commentaire=motif)
+    except Exception as exc:  # garde générique : jamais de 500 opaque
+        return 400, {'detail': str(exc)}
+
+    return 200, {'detail': 'Décision enregistrée.'}
+
+
 @api_view(['POST'])
 @permission_classes([IsAnyRole])
 def decider_approbation(request):
@@ -158,85 +240,14 @@ def decider_approbation(request):
     journalise (le journal reste porté par l'app source, ex. TicketActivity /
     AutomationApproval.decided_at — pas de duplication ici)."""
     company = _co(request.user)
-    if company is None:
-        return Response({'detail': 'Accès refusé.'}, status=403)
-
     source = request.data.get('source')
     obj_id = request.data.get('id')
     decision = request.data.get('decision')
     motif = (request.data.get('motif') or '').strip()
 
-    if source not in _SOURCE_LOADERS:
-        return Response({'detail': 'Source inconnue.'}, status=400)
-    if decision not in ('approuver', 'refuser'):
-        return Response({'detail': 'Décision invalide.'}, status=400)
-    approve = decision == 'approuver'
-    if not approve and not motif:
-        return Response(
-            {'detail': 'Un motif de refus est obligatoire.'}, status=400)
-
-    try:
-        if source == 'automation':
-            from apps.automation import selectors as automation_selectors
-            from apps.automation import services as automation_services
-            approval = (automation_selectors.approvals_en_attente(company)
-                        .filter(id=obj_id).first())
-            if approval is None:
-                return Response({'detail': 'Introuvable.'}, status=404)
-            automation_services.decider_approval(
-                approval, approve=approve, user=request.user)
-
-        elif source == 'contrats':
-            from apps.contrats import selectors as contrats_selectors
-            from apps.contrats import services as contrats_services
-            etape = (contrats_selectors.etapes_approbation_en_attente(company)
-                     .filter(id=obj_id).first())
-            if etape is None:
-                return Response({'detail': 'Introuvable.'}, status=404)
-            if approve:
-                contrats_services.approuver_etape(
-                    etape, approbateur=request.user, commentaire=motif)
-            else:
-                contrats_services.rejeter_etape(
-                    etape, approbateur=request.user, commentaire=motif)
-
-        elif source == 'ged':
-            from apps.ged import selectors as ged_selectors
-            from apps.ged import services as ged_services
-            demande = (ged_selectors.demandes_approbation_en_attente(company)
-                       .filter(id=obj_id).first())
-            if demande is None:
-                return Response({'detail': 'Introuvable.'}, status=404)
-            if approve:
-                ged_services.approve_demande(
-                    demande, user=request.user, commentaire=motif)
-            else:
-                ged_services.reject_demande(
-                    demande, user=request.user, commentaire=motif)
-
-        elif source == 'installations':
-            from apps.installations import selectors as installations_selectors
-            from apps.installations import services as installations_services
-            da = (installations_selectors.demandes_achat_en_attente(company)
-                  .filter(id=obj_id).first())
-            if da is None:
-                return Response({'detail': 'Introuvable.'}, status=404)
-            installations_services.decider_demande_achat(
-                da, approuver=approve, user=request.user, motif_refus=motif)
-
-        else:  # workflow
-            from core import workflow as core_workflow
-            step = next(
-                (s for s in core_workflow.pending_steps_for_company(company)
-                 if s.id == int(obj_id)), None) if obj_id else None
-            if step is None:
-                return Response({'detail': 'Introuvable.'}, status=404)
-            core_workflow.decide_step(
-                step, approve=approve, user=request.user, commentaire=motif)
-    except Exception as exc:  # garde générique : jamais de 500 opaque
-        return Response({'detail': str(exc)}, status=400)
-
-    return Response({'detail': 'Décision enregistrée.'})
+    status_code, body = _decider_approbation_core(
+        company, request.user, source, obj_id, decision, motif)
+    return Response(body, status=status_code)
 
 
 @api_view(['POST'])
@@ -244,9 +255,10 @@ def decider_approbation(request):
 def decider_en_masse(request):
     """XKB1 — actions en masse : ``{items: [{source, id}], decision, motif}``.
 
-    Applique la même décision à chaque item via ``decider_approbation``
-    (réutilise sa logique un par un) ; renvoie le détail des réussites/échecs
-    sans jamais laisser un échec interrompre les suivants."""
+    Applique la même décision à chaque item via ``_decider_approbation_core``
+    (réutilise sa logique un par un, sans passer par un ``Request`` DRF
+    factice) ; renvoie le détail des réussites/échecs sans jamais laisser un
+    échec interrompre les suivants."""
     company = _co(request.user)
     if company is None:
         return Response({'detail': 'Accès refusé.'}, status=403)
@@ -257,25 +269,12 @@ def decider_en_masse(request):
 
     resultats = []
     for item in items:
-        fake_request = _FakeSubRequest(
-            data={'source': item.get('source'), 'id': item.get('id'),
-                  'decision': decision, 'motif': motif},
-            query_params={}, user=request.user)
-        resp = decider_approbation(fake_request)
+        status_code, body = _decider_approbation_core(
+            company, request.user, item.get('source'), item.get('id'),
+            decision, motif)
         resultats.append({
             'source': item.get('source'), 'id': item.get('id'),
-            'ok': resp.status_code == 200,
-            'detail': resp.data.get('detail'),
+            'ok': status_code == 200,
+            'detail': body.get('detail'),
         })
     return Response({'resultats': resultats})
-
-
-class _FakeSubRequest:
-    """Adaptateur minimal réutilisant ``decider_approbation`` pour l'action en
-    masse sans dupliquer sa logique. Porte uniquement ce que la vue lit :
-    ``data``/``query_params``/``user``."""
-
-    def __init__(self, data, query_params, user):
-        self.data = data
-        self.query_params = query_params
-        self.user = user
