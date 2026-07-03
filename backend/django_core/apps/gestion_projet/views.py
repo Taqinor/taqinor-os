@@ -33,6 +33,7 @@ from .models import (
     LigneBudgetProjet,
     ModeleProjet,
     ModeleTache,
+    PeriodeVerrouilleeTemps,
     PhaseProjet,
     PortailProjetToken,
     Projet,
@@ -68,6 +69,7 @@ from .serializers import (
     LigneBudgetProjetSerializer,
     ModeleProjetSerializer,
     ModeleTacheSerializer,
+    PeriodeVerrouilleeTempsSerializer,
     PhaseProjetSerializer,
     PortailProjetTokenSerializer,
     ProjetActivitySerializer,
@@ -1403,6 +1405,13 @@ class TimesheetViewSet(_GestionProjetBaseViewSet):
     ressource) — jamais lu du corps de requête, jamais exposé au client.
     Filtres optionnels : ``?projet=<id>``, ``?tache=<id>``, ``?ressource=<id>``,
     ``?debut=YYYY-MM-DD&fin=YYYY-MM-DD`` (saisies dans la fenêtre inclusive).
+
+    XPRJ1 — cycle de vie + verrouillage de période : ``saisi_par`` est posé côté
+    serveur à la création ; création/édition/suppression sont REFUSÉES (400) si
+    la ``date`` (ou la date CIBLE en cas d'édition) tombe dans une période
+    verrouillée (``PeriodeVerrouilleeTemps``) — sauf pour un utilisateur ADMIN
+    (``request.user.is_admin_role``). Une timesheet déjà APPROUVÉE ne peut plus
+    être éditée ni supprimée (même hors période verrouillée).
     """
     queryset = Timesheet.objects.select_related(
         'projet', 'tache', 'phase', 'ressource').all()
@@ -1411,11 +1420,60 @@ class TimesheetViewSet(_GestionProjetBaseViewSet):
     search_fields = ['commentaire']
     ordering_fields = ['date', 'heures', 'cout', 'id']
 
+    def _est_admin(self):
+        return bool(getattr(self.request.user, 'is_admin_role', False))
+
+    def create(self, request, *args, **kwargs):
+        date_val = _parse_date_param(request.data.get('date'))
+        if date_val is not None:
+            try:
+                services.verifier_periode_ouverte(
+                    request.user.company, date_val, admin=self._est_admin())
+            except services.PeriodeVerrouilleeError as exc:
+                return Response(
+                    {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return super().create(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.statut == Timesheet.Statut.APPROUVEE:
+            return Response(
+                {'detail': 'Une feuille de temps approuvée ne peut plus être '
+                           'modifiée.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        date_val = _parse_date_param(
+            request.data.get('date')) or instance.date
+        try:
+            services.verifier_periode_ouverte(
+                instance.company, date_val, admin=self._est_admin())
+            services.verifier_periode_ouverte(
+                instance.company, instance.date, admin=self._est_admin())
+        except services.PeriodeVerrouilleeError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.statut == Timesheet.Statut.APPROUVEE:
+            return Response(
+                {'detail': 'Une feuille de temps approuvée ne peut plus être '
+                           'supprimée.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            services.verifier_periode_ouverte(
+                instance.company, instance.date, admin=self._est_admin())
+        except services.PeriodeVerrouilleeError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return super().destroy(request, *args, **kwargs)
+
     def perform_create(self, serializer):
         ressource = serializer.validated_data.get('ressource')
         heures = serializer.validated_data.get('heures')
         serializer.save(
             company=self.request.user.company,
+            saisi_par=self.request.user,
             cout=services.cout_timesheet(ressource, heures))
 
     def perform_update(self, serializer):
@@ -1439,7 +1497,66 @@ class TimesheetViewSet(_GestionProjetBaseViewSet):
         fin = self.request.query_params.get('fin')
         if debut and fin:
             qs = qs.filter(date__gte=debut, date__lte=fin)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
         return qs
+
+    @action(detail=True, methods=['post'], url_path='soumettre')
+    def soumettre(self, request, pk=None):
+        """brouillon → soumise."""
+        timesheet = self.get_object()
+        try:
+            services.soumettre_timesheet(timesheet)
+        except services.TimesheetTransitionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(TimesheetSerializer(timesheet).data)
+
+    @action(detail=True, methods=['post'], url_path='approuver')
+    def approuver(self, request, pk=None):
+        """soumise → approuvee (palier Responsable/Admin — déjà gardé en vue)."""
+        timesheet = self.get_object()
+        try:
+            services.approuver_timesheet(timesheet, request.user)
+        except services.TimesheetTransitionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(TimesheetSerializer(timesheet).data)
+
+    @action(detail=True, methods=['post'], url_path='rejeter')
+    def rejeter(self, request, pk=None):
+        """soumise → rejetee (palier Responsable/Admin — déjà gardé en vue)."""
+        timesheet = self.get_object()
+        motif = request.data.get('motif', '') or request.data.get(
+            'motif_rejet', '')
+        try:
+            services.rejeter_timesheet(timesheet, request.user, motif=motif)
+        except services.TimesheetTransitionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(TimesheetSerializer(timesheet).data)
+
+
+class PeriodeVerrouilleeTempsViewSet(_GestionProjetBaseViewSet):
+    """Verrous de période (mois) sur les feuilles de temps (XPRJ1) — CRUD scopé.
+
+    ``company`` est posée côté serveur (TenantMixin) ; ``verrouille_par`` est
+    posé côté serveur à la création. Réservé au palier Administrateur/
+    Responsable (``IsResponsableOrAdmin``, base commune) — le déverrouillage
+    (suppression) reste ouvert au même palier (journalisé par l'historique
+    applicatif standard des requêtes DRF/serveur).
+    """
+    queryset = PeriodeVerrouilleeTemps.objects.select_related(
+        'verrouille_par').all()
+    serializer_class = PeriodeVerrouilleeTempsSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['mois', 'id']
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company,
+            verrouille_par=self.request.user)
 
 
 class RisqueViewSet(_GestionProjetBaseViewSet):

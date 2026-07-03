@@ -1196,7 +1196,26 @@ class Timesheet(models.Model):
     corps de requête. La ressource / la tâche / la phase doivent appartenir au
     MÊME projet et à la MÊME société (validé au sérialiseur). Modèle entièrement
     additif.
+
+    Cycle de vie ``statut`` (XPRJ1) — machine à états PROPRE à la feuille de
+    temps, JAMAIS ``STAGES.py`` (règle #2) :
+
+        brouillon ─soumettre→ soumise ─approuver→ approuvee
+                                  │
+                                  └────rejeter────→ rejetee
+
+    Le ``statut`` n'est jamais posé depuis le corps de requête (comme
+    ``Projet.statut``) : seules les actions ``soumettre``/``approuver``/
+    ``rejeter`` (voir ``views.py``) le déplacent. ``saisi_par`` est posé côté
+    serveur à la création ; ``approuve_par``/``date_approbation`` sont posés
+    par l'action ``approuver`` (palier Responsable/Admin — vérifié en vue).
     """
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        SOUMISE = 'soumise', 'Soumise'
+        APPROUVEE = 'approuvee', 'Approuvée'
+        REJETEE = 'rejetee', 'Rejetée'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -1242,6 +1261,28 @@ class Timesheet(models.Model):
         verbose_name='Coût interne (figé)')
     commentaire = models.TextField(
         blank=True, default='', verbose_name='Commentaire')
+    # ── Cycle de vie (XPRJ1) ──────────────────────────────────────────────────
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.BROUILLON, verbose_name='Statut')
+    saisi_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='gestion_projet_timesheets_saisies',
+        verbose_name='Saisi par',
+    )
+    approuve_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='gestion_projet_timesheets_approuvees',
+        verbose_name='Approuvé par',
+    )
+    date_approbation = models.DateTimeField(
+        null=True, blank=True, verbose_name="Date d'approbation")
+    motif_rejet = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Motif de rejet')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -1254,10 +1295,57 @@ class Timesheet(models.Model):
                 fields=['projet', 'date'], name='gp_ts_proj_date_idx'),
             models.Index(
                 fields=['ressource', 'date'], name='gp_ts_res_date_idx'),
+            models.Index(
+                fields=['company', 'statut'], name='gp_ts_co_statut_idx'),
         ]
 
     def __str__(self):
         return f'{self.ressource_id} {self.date} {self.heures} h'
+
+
+class PeriodeVerrouilleeTemps(models.Model):
+    """Verrou de PÉRIODE (mois) sur les feuilles de temps d'une société (XPRJ1).
+
+    Une période verrouillée (``mois`` = 1er jour du mois, ex. 2026-01-01)
+    interdit toute création/édition/suppression de ``Timesheet`` dont la
+    ``date`` tombe dans ce mois — sauf pour un utilisateur ADMIN qui la
+    déverrouille explicitement (suppression de la ligne, tracée dans
+    ``ProjetActivity`` n'étant pas pertinent ici : le verrou n'est pas propre à
+    un projet — la trace se fait au niveau applicatif, voir ``views.py``).
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Modèle entièrement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_periodes_verrouillees',
+        verbose_name='Société',
+    )
+    mois = models.DateField(
+        verbose_name='Mois verrouillé (1er jour du mois)')
+    verrouille_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='gestion_projet_periodes_verrouillees',
+        verbose_name='Verrouillé par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Période verrouillée (temps)'
+        verbose_name_plural = 'Périodes verrouillées (temps)'
+        ordering = ['-mois']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'mois'],
+                name='gp_periode_verr_co_mois_uniq'),
+        ]
+
+    def __str__(self):
+        return f'{self.company_id} verrouillé {self.mois:%Y-%m}'
 
 
 class Risque(models.Model):

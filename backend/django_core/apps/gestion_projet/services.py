@@ -33,6 +33,89 @@ def cout_timesheet(ressource, heures):
     return (Decimal(heures) * cout_horaire).quantize(Decimal('0.01'))
 
 
+# ── Cycle de vie & verrouillage de période (XPRJ1) ───────────────────────────
+class TimesheetTransitionError(Exception):
+    """Transition de statut illégale sur une ``Timesheet``."""
+
+
+class PeriodeVerrouilleeError(Exception):
+    """Écriture refusée : la période (mois) de la timesheet est verrouillée."""
+
+
+def mois_de(date_val):
+    """1er jour du mois d'une date (clé de ``PeriodeVerrouilleeTemps.mois``)."""
+    return date_val.replace(day=1)
+
+
+def periode_verrouillee(company, date_val):
+    """``True`` si le mois de ``date_val`` est verrouillé pour cette société."""
+    from .models import PeriodeVerrouilleeTemps
+    if date_val is None:
+        return False
+    return PeriodeVerrouilleeTemps.objects.filter(
+        company=company, mois=mois_de(date_val)).exists()
+
+
+def verifier_periode_ouverte(company, date_val, *, admin=False):
+    """Lève ``PeriodeVerrouilleeError`` si la période est verrouillée.
+
+    Un utilisateur ADMIN (``admin=True``) contourne le verrou (déverrouillage
+    implicite d'usage — la donnée reste verrouillée pour les autres tant que la
+    ligne ``PeriodeVerrouilleeTemps`` n'est pas supprimée).
+    """
+    if admin:
+        return
+    if periode_verrouillee(company, date_val):
+        raise PeriodeVerrouilleeError(
+            f"La période {mois_de(date_val):%Y-%m} est verrouillée : "
+            "aucune création/édition/suppression de feuille de temps.")
+
+
+def soumettre_timesheet(timesheet):
+    """brouillon → soumise."""
+    from .models import Timesheet
+    if timesheet.statut != Timesheet.Statut.BROUILLON:
+        raise TimesheetTransitionError(
+            "Seule une feuille de temps en brouillon peut être soumise.")
+    timesheet.statut = Timesheet.Statut.SOUMISE
+    timesheet.save(update_fields=['statut'])
+    return timesheet
+
+
+def approuver_timesheet(timesheet, approbateur):
+    """soumise → approuvee (``approuve_par``/``date_approbation`` posés serveur)."""
+    from django.utils import timezone
+
+    from .models import Timesheet
+    if timesheet.statut != Timesheet.Statut.SOUMISE:
+        raise TimesheetTransitionError(
+            "Seule une feuille de temps soumise peut être approuvée.")
+    timesheet.statut = Timesheet.Statut.APPROUVEE
+    timesheet.approuve_par = approbateur
+    timesheet.date_approbation = timezone.now()
+    timesheet.motif_rejet = ''
+    timesheet.save(update_fields=[
+        'statut', 'approuve_par', 'date_approbation', 'motif_rejet'])
+    return timesheet
+
+
+def rejeter_timesheet(timesheet, approbateur, motif=''):
+    """soumise → rejetee (``approuve_par``/``date_approbation`` posés serveur)."""
+    from django.utils import timezone
+
+    from .models import Timesheet
+    if timesheet.statut != Timesheet.Statut.SOUMISE:
+        raise TimesheetTransitionError(
+            "Seule une feuille de temps soumise peut être rejetée.")
+    timesheet.statut = Timesheet.Statut.REJETEE
+    timesheet.approuve_par = approbateur
+    timesheet.date_approbation = timezone.now()
+    timesheet.motif_rejet = motif or ''
+    timesheet.save(update_fields=[
+        'statut', 'approuve_par', 'date_approbation', 'motif_rejet'])
+    return timesheet
+
+
 # ── Jalons de facturation liés à l'avancement (PROJ27) ───────────────────────
 class FacturationJalonError(Exception):
     """Erreur métier au déclenchement de la facturation d'un jalon."""

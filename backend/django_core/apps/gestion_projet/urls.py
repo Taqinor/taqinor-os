@@ -21,6 +21,7 @@ from .views import (
     LigneBudgetProjetViewSet,
     ModeleProjetViewSet,
     ModeleTacheViewSet,
+    PeriodeVerrouilleeTempsViewSet,
     PhaseProjetViewSet,
     PortailProjetTokenViewSet,
     ProjetChantierViewSet,
@@ -51,6 +52,7 @@ router.register(r'indisponibilites', IndisponibiliteViewSet)
 router.register(r'budgets', BudgetProjetViewSet)
 router.register(r'lignes-budget', LigneBudgetProjetViewSet)
 router.register(r'timesheets', TimesheetViewSet)
+router.register(r'periodes-verrouillees-temps', PeriodeVerrouilleeTempsViewSet)
 router.register(r'risques', RisqueViewSet)
 router.register(r'actions', ActionProjetViewSet)
 router.register(r'comptes-rendus', CompteRenduReunionViewSet)

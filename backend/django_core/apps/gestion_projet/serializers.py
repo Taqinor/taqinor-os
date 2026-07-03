@@ -25,6 +25,7 @@ from .models import (
     LigneBudgetProjet,
     ModeleProjet,
     ModeleTache,
+    PeriodeVerrouilleeTemps,
     PhaseProjet,
     PortailProjetToken,
     Projet,
@@ -632,19 +633,35 @@ class TimesheetSerializer(serializers.ModelSerializer):
     une tâche / phase reçue doit en outre cibler le MÊME projet. ``cout`` est
     calculé côté serveur (``heures`` × ``cout_horaire`` interne de la ressource)
     et exposé en LECTURE seule — jamais lu du corps de requête.
+
+    ``statut`` (XPRJ1) est piloté UNIQUEMENT par les actions de transition
+    (``soumettre``/``approuver``/``rejeter``) — jamais écrit depuis le corps de
+    requête. ``saisi_par``/``approuve_par``/``date_approbation`` sont posés côté
+    serveur.
     """
     projet_code = serializers.CharField(source='projet.code', read_only=True)
     ressource_nom = serializers.CharField(
         source='ressource.nom', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    saisi_par_nom = serializers.CharField(
+        source='saisi_par.username', read_only=True, default='')
+    approuve_par_nom = serializers.CharField(
+        source='approuve_par.username', read_only=True, default='')
 
     class Meta:
         model = Timesheet
         fields = [
             'id', 'projet', 'projet_code', 'tache', 'phase', 'ressource',
             'ressource_nom', 'date', 'heures', 'cout', 'commentaire',
-            'date_creation',
+            'statut', 'statut_display', 'saisi_par', 'saisi_par_nom',
+            'approuve_par', 'approuve_par_nom', 'date_approbation',
+            'motif_rejet', 'date_creation',
         ]
-        read_only_fields = ['cout', 'date_creation']
+        read_only_fields = [
+            'cout', 'statut', 'saisi_par', 'approuve_par', 'date_approbation',
+            'motif_rejet', 'date_creation',
+        ]
 
     def validate_projet(self, value):
         return _meme_societe(self, value, 'Projet')
@@ -678,6 +695,24 @@ class TimesheetSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'phase': 'La phase doit appartenir au même projet.'})
         return attrs
+
+
+class PeriodeVerrouilleeTempsSerializer(serializers.ModelSerializer):
+    """Verrou de période (mois) sur les feuilles de temps (XPRJ1).
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur.
+    ``verrouille_par`` est posé côté serveur (jamais lu du corps de requête).
+    """
+    verrouille_par_nom = serializers.CharField(
+        source='verrouille_par.username', read_only=True, default='')
+
+    class Meta:
+        model = PeriodeVerrouilleeTemps
+        fields = [
+            'id', 'mois', 'verrouille_par', 'verrouille_par_nom',
+            'date_creation',
+        ]
+        read_only_fields = ['verrouille_par', 'date_creation']
 
 
 class RisqueSerializer(serializers.ModelSerializer):
