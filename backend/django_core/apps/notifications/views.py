@@ -297,9 +297,13 @@ class AnnonceViewSet(TenantMixin, viewsets.ModelViewSet):
     queryset = Annonce.objects.all()
     serializer_class = AnnonceSerializer
     READ_ACTIONS = ['list', 'retrieve']
+    # accuser_lecture : « J'ai lu et compris » est ouvert à tout rôle
+    # destinataire — seules création/édition/publication/conformité restent
+    # réservées à l'admin (voir docstrings des actions ci-dessous).
+    ANY_ROLE_ACTIONS = READ_ACTIONS + ['accuser_lecture']
 
     def get_permissions(self):
-        if self.action in self.READ_ACTIONS:
+        if self.action in self.ANY_ROLE_ACTIONS:
             return [IsAnyRole()]
         return [IsAdminRole()]
 

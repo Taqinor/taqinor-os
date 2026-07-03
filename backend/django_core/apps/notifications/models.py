@@ -742,10 +742,12 @@ class ApprovalReminderConfig(models.Model):
     en attente, par société. Singleton par société.
 
     ADDITIF : sans ligne, les helpers du sweep retombent sur les défauts de
-    classe (2 jours ouvrés pour la relance, 4 pour l'escalade admin)."""
+    classe (2 jours ouvrés pour la relance, 6 pour l'escalade admin — un
+    écart net entre les deux paliers : 4 était trop proche de la relance et
+    pouvait se déclencher dès J+5 calendaires selon le jour de la semaine)."""
 
     DEFAULT_RELANCE_DAYS = 2
-    DEFAULT_ESCALADE_DAYS = 4
+    DEFAULT_ESCALADE_DAYS = 6
 
     company = models.OneToOneField(
         'authentication.Company', on_delete=models.CASCADE,

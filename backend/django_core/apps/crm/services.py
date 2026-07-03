@@ -1990,7 +1990,7 @@ def find_lead_by_phone(company, telephone):
         return None
     candidates = [
         lead for lead in Lead.objects.filter(company=company)
-        .order_by('-created_at')
+        .order_by('-date_creation')
         if normalize_phone(lead.telephone) == key
         or normalize_phone(lead.whatsapp) == key
     ]
