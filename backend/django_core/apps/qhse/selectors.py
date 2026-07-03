@@ -24,7 +24,7 @@ from django.db.models import Avg
 
 from .models import (
     ActionCorrectivePreventive, Audit, ConformiteEnvironnementale,
-    DeclarationCnss, EvaluationRisque,
+    DeclarationCnss, EtapeDeclarationAt, EvaluationRisque,
     Incident, IndicateurESG, InspectionSecurite, NonConformite,
     NotationFinChantier,
     PermisTravail, PlanInspectionChantier,
@@ -1141,3 +1141,43 @@ def export_esg(company, annee=None):
         'piliers': piliers,
         'lignes': lignes,
     }
+
+
+# ── XQHS1 — Étapes légales AT/MP (checklist datée) ──────────────────────────
+
+def etapes_at_a_echeance(company, within_hours=48, now=None):
+    """Étapes AT/MP non réalisées à échéance imminente ou déjà hors délai.
+
+    Scopé société. Retient les étapes ``fait_le`` vide dont ``echeance`` tombe
+    au plus tard dans ``within_hours`` heures (y compris déjà dépassées) ; les
+    étapes sans échéance fixe (suivi ITT, certificat de guérison, conciliation)
+    sont exclues de cette fenêtre de rappel. Lecture seule, triée par échéance
+    la plus proche d'abord.
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    if company is None:
+        return EtapeDeclarationAt.objects.none()
+    try:
+        within_hours = int(within_hours)
+    except (TypeError, ValueError):
+        within_hours = 48
+    if within_hours < 0:
+        within_hours = 0
+    if now is None:
+        now = timezone.now()
+    limite = now + timedelta(hours=within_hours)
+    return (EtapeDeclarationAt.objects
+            .filter(company=company,
+                    fait_le__isnull=True,
+                    echeance__isnull=False,
+                    echeance__lte=limite)
+            .select_related('declaration', 'declaration__accident_travail')
+            .order_by('echeance'))
+
+
+def etapes_declaration(declaration):
+    """Étapes légales AT/MP d'une déclaration CNSS, triées par échéance."""
+    return declaration.etapes.all().order_by('echeance', 'id')

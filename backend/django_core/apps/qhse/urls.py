@@ -8,7 +8,7 @@ from .views import (
     CauseIncidentViewSet, ConformiteEnvironnementaleViewSet,
     ConsignationLotoViewSet,
     ContactUrgenceViewSet, DechetViewSet,
-    CritereAuditViewSet, DeclarationCnssViewSet,
+    CritereAuditViewSet, DeclarationCnssViewSet, EtapeDeclarationAtViewSet,
     EvaluationRisqueViewSet, GrilleAuditViewSet, IncidentViewSet,
     IndicateurESGViewSet,
     InductionSecuriteViewSet, InspectionSecuriteViewSet,
@@ -51,6 +51,7 @@ router.register(r'contacts-urgence', ContactUrgenceViewSet)
 router.register(r'secouristes', SecouristeViewSet)
 router.register(r'incidents', IncidentViewSet)
 router.register(r'declarations-cnss', DeclarationCnssViewSet)
+router.register(r'etapes-declaration-at', EtapeDeclarationAtViewSet)
 router.register(r'analyses-incident', AnalyseIncidentViewSet)
 router.register(r'causes-incident', CauseIncidentViewSet)
 router.register(r'inspections-securite', InspectionSecuriteViewSet)

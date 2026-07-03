@@ -1900,6 +1900,41 @@ class DeclarationCnss(models.Model):
         default=Statut.A_DECLARER, verbose_name='Statut')
     notes = models.TextField(
         blank=True, default='', verbose_name='Notes')
+    # ── XQHS1 — jours d'ITT + certificat/consolidation/conciliation ─────────
+    # ``jours_itt`` est SAISI/COPIÉ à la création comme ``date_accident`` : la
+    # source RH vivante reste ``rh.AccidentTravail.nb_jours_arret`` (pas de
+    # double saisie synchronisée en continu, juste un instantané au moment de
+    # la déclaration QHSE).
+    jours_itt = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name="Jours d'incapacité temporaire de travail (ITT)")
+    date_certificat_initial = models.DateField(
+        null=True, blank=True,
+        verbose_name='Date du certificat médical initial')
+    date_consolidation = models.DateField(
+        null=True, blank=True,
+        verbose_name='Date de consolidation / guérison')
+
+    class ConciliationStatut(models.TextChoices):
+        NON_REQUISE = 'non_requise', 'Non requise'
+        A_FAIRE = 'a_faire', 'À faire'
+        EN_COURS = 'en_cours', 'En cours'
+        FAITE = 'faite', 'Faite'
+
+    conciliation_statut = models.CharField(
+        max_length=15, choices=ConciliationStatut.choices,
+        default=ConciliationStatut.NON_REQUISE,
+        verbose_name='Statut de la conciliation préalable')
+    # ── XQHS1 — volet maladie professionnelle (MP) ───────────────────────────
+    # Réutilise la même mécanique d'échéances ; ``est_maladie_professionnelle``
+    # gate l'affichage du volet MP côté UI sans dupliquer le modèle.
+    est_maladie_professionnelle = models.BooleanField(
+        default=False, verbose_name='Maladie professionnelle')
+    type_maladie_professionnelle = models.CharField(
+        max_length=120, blank=True, default='',
+        verbose_name='Type MP (tableau marocain)')
+    exposition_mp = models.TextField(
+        blank=True, default='', verbose_name="Exposition (agent, durée, poste)")
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
     date_modification = models.DateTimeField(
@@ -1964,6 +1999,121 @@ class DeclarationCnss(models.Model):
     def __str__(self):
         return (f'Décl. CNSS accident#{self.accident_travail_id} — '
                 f'{self.get_statut_display()}')
+
+
+# ── XQHS1 — Checklist des étapes légales AT/MP (loi 18-12) ──────────────────
+
+class EtapeDeclarationAt(models.Model):
+    """Étape légale datée de la chaîne de déclaration AT/MP (loi 18-12, XQHS1).
+
+    La loi 18-12 impose une CHAÎNE d'étapes (pas une échéance unique) :
+
+    * ``avis_employeur`` — avis à l'employeur/assureur sous 48 h ;
+    * ``dossier_assureur`` — dossier de déclaration à l'assureur AT sous 5 j ;
+    * ``information_inspection`` — information de l'inspection du travail dans
+      le même délai (5 j) ;
+    * ``certificat_medical`` — certificat médical initial (en 3 exemplaires) ;
+    * ``suivi_itt`` — suivi des jours d'ITT ;
+    * ``certificat_guerison`` — certificat de guérison / consolidation ;
+    * ``conciliation`` — étape de conciliation préalable obligatoire.
+
+    Chaque étape porte une ``echeance`` CALCULÉE côté serveur (jamais lue du
+    corps de requête) à partir de ``declaration.date_accident`` + un délai en
+    heures/jours propre au type d'étape (cf. ``services.instancier_etapes_at``),
+    un statut (``a_faire``/``fait``/``hors_delai``) et une date de réalisation.
+    Une pièce jointe peut être rattachée via ``records.Attachment`` (ContentType
+    générique, comme ``ReleveControle``/``NonConformite``).
+
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    class TypeEtape(models.TextChoices):
+        AVIS_EMPLOYEUR = 'avis_employeur', 'Avis à l\'employeur/assureur (48 h)'
+        DOSSIER_ASSUREUR = 'dossier_assureur', \
+            "Dossier de déclaration à l'assureur AT (5 j)"
+        INFORMATION_INSPECTION = 'information_inspection', \
+            "Information de l'inspection du travail (5 j)"
+        CERTIFICAT_MEDICAL = 'certificat_medical', \
+            'Certificat médical initial (3 exemplaires)'
+        SUIVI_ITT = 'suivi_itt', "Suivi des jours d'ITT"
+        CERTIFICAT_GUERISON = 'certificat_guerison', \
+            'Certificat de guérison / consolidation'
+        CONCILIATION = 'conciliation', 'Conciliation préalable obligatoire'
+
+    class Statut(models.TextChoices):
+        A_FAIRE = 'a_faire', 'À faire'
+        FAIT = 'fait', 'Fait'
+        HORS_DELAI = 'hors_delai', 'Hors délai'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_etapes_declaration_at',
+        verbose_name='Société',
+    )
+    declaration = models.ForeignKey(
+        DeclarationCnss,
+        on_delete=models.CASCADE,
+        related_name='etapes',
+        verbose_name='Déclaration CNSS',
+    )
+    type_etape = models.CharField(
+        max_length=25, choices=TypeEtape.choices, verbose_name="Type d'étape")
+    # Échéance calculée côté serveur (cf. services.instancier_etapes_at) —
+    # jamais lue du corps de requête.
+    echeance = models.DateTimeField(
+        null=True, blank=True, verbose_name='Échéance')
+    fait_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Fait le')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices,
+        default=Statut.A_FAIRE, verbose_name='Statut')
+    notes = models.TextField(blank=True, default='', verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Étape de déclaration AT/MP'
+        verbose_name_plural = 'Étapes de déclaration AT/MP'
+        ordering = ['declaration', 'echeance', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['declaration', 'type_etape'],
+                name='qhse_etapeat_decl_type_uniq',
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='qhse_etapeat_co_statut',
+            ),
+            models.Index(
+                fields=['company', 'echeance'],
+                name='qhse_etapeat_co_echeance',
+            ),
+        ]
+
+    def statut_calcule(self, now=None):
+        """État réel de l'étape : fait / hors délai / à faire.
+
+        ``fait`` si ``fait_le`` est renseigné (figé, indépendant de l'échéance) ;
+        sinon ``hors_delai`` si l'échéance est strictement dépassée ; sinon
+        ``a_faire``. Lecture seule.
+        """
+        from django.utils import timezone
+        if self.fait_le is not None:
+            return self.Statut.FAIT
+        if now is None:
+            now = timezone.now()
+        if self.echeance is not None and self.echeance < now:
+            return self.Statut.HORS_DELAI
+        return self.Statut.A_FAIRE
+
+    def save(self, *args, **kwargs):
+        self.statut = self.statut_calcule()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'{self.get_type_etape_display()} — {self.get_statut_display()}'
 
 
 # ── QHSE31 — Analyse d'incident (arbre des causes) → CAPA ───────────────────

@@ -10,7 +10,8 @@ from .models import (
     ActionCorrectivePreventive, AnalyseIncident, Audit, CauseIncident,
     ConsignationLoto, ContactUrgence,
     BilanCarbone, BordereauSuiviDechet, ConformiteEnvironnementale,
-    CritereAudit, Dechet, DeclarationCnss, EvaluationRisque, GrilleAudit,
+    CritereAudit, Dechet, DeclarationCnss, EtapeDeclarationAt,
+    EvaluationRisque, GrilleAudit,
     InductionSecurite, IndicateurESG,
     LigneBilanCarbone,
     Incident, InspectionSecurite,
@@ -761,6 +762,10 @@ class DeclarationCnssSerializer(serializers.ModelSerializer):
             'id', 'accident_travail', 'date_accident', 'delai_jours',
             'date_limite', 'date_declaration', 'numero_declaration',
             'statut', 'statut_display', 'statut_courant', 'notes',
+            # XQHS1 — ITT + certificat/consolidation/conciliation + volet MP.
+            'jours_itt', 'date_certificat_initial', 'date_consolidation',
+            'conciliation_statut', 'est_maladie_professionnelle',
+            'type_maladie_professionnelle', 'exposition_mp',
             'date_creation', 'date_modification',
         ]
         read_only_fields = [
@@ -777,6 +782,32 @@ class DeclarationCnssSerializer(serializers.ModelSerializer):
         l'instance résolue par DRF, sans importer ``rh.models``.
         """
         return _meme_societe(self, value, 'Accident du travail')
+
+
+class EtapeDeclarationAtSerializer(serializers.ModelSerializer):
+    """Étape légale datée de la chaîne AT/MP (loi 18-12, XQHS1).
+
+    ``company`` posée côté serveur ; ``echeance``/``statut`` calculés côté
+    serveur (jamais lus du corps). ``fait_le`` se pose via l'action
+    ``marquer-fait`` du viewset plutôt qu'un PATCH direct, pour garder le
+    recalcul de ``statut`` centralisé côté service.
+    """
+    type_etape_display = serializers.CharField(
+        source='get_type_etape_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = EtapeDeclarationAt
+        fields = [
+            'id', 'declaration', 'type_etape', 'type_etape_display',
+            'echeance', 'fait_le', 'statut', 'statut_display', 'notes',
+            'date_creation',
+        ]
+        read_only_fields = ['echeance', 'statut', 'date_creation']
+
+    def validate_declaration(self, value):
+        return _meme_societe(self, value, 'Déclaration CNSS')
 
 
 class InspectionSecuriteSerializer(serializers.ModelSerializer):

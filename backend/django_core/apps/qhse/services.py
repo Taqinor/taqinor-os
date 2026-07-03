@@ -11,7 +11,8 @@ from decimal import Decimal
 from django.db import transaction
 
 from .models import (
-    ActionCorrectivePreventive, CauseIncident, NonConformite,
+    ActionCorrectivePreventive, CauseIncident, DeclarationCnss,
+    EtapeDeclarationAt, NonConformite,
     NotationFinChantier, PlanInspectionChantier, PointControleModele,
     ProcedureQualite, ReponseCritere, ReleveControle,
 )
@@ -632,5 +633,143 @@ def _notifier_conformite(user, titre, corps, company):
         from apps.notifications.services import notify
         notify(user, EventType.MAINTENANCE_DUE, titre, body=corps,
                link='/qhse/conformites-environnementales', company=company)
+    except Exception:  # pragma: no cover - défensif
+        pass
+
+
+# ── XQHS1 — Chaîne d'étapes légales AT/MP (loi 18-12) ────────────────────────
+
+# Délai par type d'étape, exprimé en HEURES pour rester précis sur le délai de
+# 48 h (avis employeur). Les autres délais légaux (5 j) sont donnés en jours
+# convertis en heures. Les étapes sans délai légal fixe (suivi ITT, certificat
+# de guérison, conciliation) n'ont pas d'échéance calculée automatiquement
+# (``echeance=None``) — elles restent pilotables manuellement.
+DELAI_HEURES_PAR_ETAPE = {
+    EtapeDeclarationAt.TypeEtape.AVIS_EMPLOYEUR: 48,
+    EtapeDeclarationAt.TypeEtape.DOSSIER_ASSUREUR: 5 * 24,
+    EtapeDeclarationAt.TypeEtape.INFORMATION_INSPECTION: 5 * 24,
+    EtapeDeclarationAt.TypeEtape.CERTIFICAT_MEDICAL: 5 * 24,
+}
+
+# Étapes systématiquement instanciées à la création d'une déclaration.
+ETAPES_STANDARD = [
+    EtapeDeclarationAt.TypeEtape.AVIS_EMPLOYEUR,
+    EtapeDeclarationAt.TypeEtape.DOSSIER_ASSUREUR,
+    EtapeDeclarationAt.TypeEtape.INFORMATION_INSPECTION,
+    EtapeDeclarationAt.TypeEtape.CERTIFICAT_MEDICAL,
+    EtapeDeclarationAt.TypeEtape.SUIVI_ITT,
+    EtapeDeclarationAt.TypeEtape.CERTIFICAT_GUERISON,
+]
+
+
+@transaction.atomic
+def instancier_etapes_at(declaration):
+    """Instancie la checklist des étapes légales AT/MP d'une déclaration CNSS.
+
+    Idempotent : réutilise les étapes déjà créées pour cette déclaration (une
+    seule par ``type_etape``, contrainte d'unicité) et n'ajoute que celles
+    manquantes. L'échéance de chaque étape est calculée côté serveur à partir
+    de ``declaration.date_accident`` + son délai légal (cf.
+    ``DELAI_HEURES_PAR_ETAPE``) ; les étapes sans délai fixe restent sans
+    échéance. La ``conciliation`` n'est instanciée QUE si
+    ``conciliation_statut`` n'est pas ``non_requise`` (elle est facultative
+    selon le dossier).
+
+    Renvoie la liste des ``EtapeDeclarationAt`` de la déclaration (créées +
+    déjà existantes).
+    """
+    from datetime import datetime, time, timedelta
+
+    from django.utils import timezone
+
+    types_a_creer = list(ETAPES_STANDARD)
+    if (declaration.conciliation_statut !=
+            DeclarationCnss.ConciliationStatut.NON_REQUISE):
+        types_a_creer.append(EtapeDeclarationAt.TypeEtape.CONCILIATION)
+
+    existantes = {
+        e.type_etape: e
+        for e in declaration.etapes.all()
+    }
+
+    base_dt = None
+    if declaration.date_accident is not None:
+        base_dt = timezone.make_aware(
+            datetime.combine(declaration.date_accident, time.min))
+
+    for type_etape in types_a_creer:
+        if type_etape in existantes:
+            continue
+        delai_h = DELAI_HEURES_PAR_ETAPE.get(type_etape)
+        echeance = (
+            base_dt + timedelta(hours=delai_h)
+            if (base_dt is not None and delai_h is not None) else None)
+        etape = EtapeDeclarationAt.objects.create(
+            company=declaration.company,
+            declaration=declaration,
+            type_etape=type_etape,
+            echeance=echeance,
+        )
+        existantes[type_etape] = etape
+
+    return list(declaration.etapes.all())
+
+
+@transaction.atomic
+def marquer_etape_faite(etape, fait_le=None):
+    """Marque une étape AT/MP comme réalisée (``fait_le`` posé côté serveur)."""
+    from django.utils import timezone
+    etape.fait_le = fait_le or timezone.now()
+    etape.save(update_fields=['fait_le', 'statut'])
+    return etape
+
+
+def relancer_etapes_at_en_retard(company, now=None):
+    """Relance (notification) les étapes AT/MP à échéance imminente ou dépassée.
+
+    Réutilise le pattern ``relancer_capa_en_retard``/``relancer_conformites`` :
+    best-effort, ne mute aucune étape, renvoie un digest
+    ``{'total', 'notifiees', 'items'}``.
+    """
+    from django.utils import timezone
+
+    from apps.qhse.selectors import etapes_at_a_echeance
+
+    if now is None:
+        now = timezone.now()
+    etapes = list(etapes_at_a_echeance(company, now=now))
+
+    notifiees = 0
+    items = []
+    for etape in etapes:
+        titre = 'Étape AT/MP à échéance'
+        corps = (
+            f'« {etape.get_type_etape_display()} » de la déclaration CNSS '
+            f'accident#{etape.declaration.accident_travail_id} '
+            f'({etape.get_statut_display()}).')
+        responsable = getattr(
+            etape.declaration.accident_travail, 'employe', None)
+        cible = getattr(responsable, 'user', None)
+        if cible is not None:
+            _notifier_etape_at(cible, titre, corps, company)
+            notifiees += 1
+        items.append({
+            'etape_id': etape.id,
+            'type_etape': etape.type_etape,
+            'echeance': etape.echeance.isoformat() if etape.echeance else None,
+            'statut': etape.statut_calcule(now),
+            'declaration_id': etape.declaration_id,
+        })
+
+    return {'total': len(etapes), 'notifiees': notifiees, 'items': items}
+
+
+def _notifier_etape_at(user, titre, corps, company):
+    """Notifie un responsable d'une étape AT/MP à échéance (best-effort)."""
+    try:
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+        notify(user, EventType.MAINTENANCE_DUE, titre, body=corps,
+               link='/qhse/declarations-cnss', company=company)
     except Exception:  # pragma: no cover - défensif
         pass

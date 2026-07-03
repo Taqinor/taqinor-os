@@ -19,7 +19,8 @@ from .models import (
     ActionCorrectivePreventive, AnalyseIncident, Audit,
     BilanCarbone, BordereauSuiviDechet, CauseIncident,
     ConformiteEnvironnementale, ConsignationLoto, ContactUrgence,
-    CritereAudit, Dechet, DeclarationCnss, EvaluationRisque, GrilleAudit,
+    CritereAudit, Dechet, DeclarationCnss, EtapeDeclarationAt,
+    EvaluationRisque, GrilleAudit,
     Incident, IndicateurESG,
     InductionSecurite, InspectionSecurite,
     ItemNotation, LigneBilanCarbone,
@@ -36,6 +37,7 @@ from .serializers import (
     ConformiteEnvironnementaleSerializer,
     ConsignationLotoSerializer, ContactUrgenceSerializer,
     CritereAuditSerializer, DechetSerializer, DeclarationCnssSerializer,
+    EtapeDeclarationAtSerializer,
     EvaluationRisqueSerializer, GrilleAuditSerializer,
     IncidentSerializer,
     IndicateurESGSerializer,
@@ -1365,6 +1367,60 @@ class DeclarationCnssViewSet(_QhseBaseViewSet):
             serializer = self.get_serializer(page, many=True)
             return self.get_paginated_response(serializer.data)
         serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
+
+    def perform_create(self, serializer):
+        """Crée la déclaration puis instancie sa checklist d'étapes légales
+        (XQHS1) — best-effort, ne bloque jamais la création de la déclaration."""
+        declaration = serializer.save(company=self.request.user.company)
+        try:
+            from apps.qhse.services import instancier_etapes_at
+            instancier_etapes_at(declaration)
+        except Exception:  # pragma: no cover - défensif
+            pass
+        return declaration
+
+    @action(detail=True, methods=['post'], url_path='generer-etapes')
+    def generer_etapes(self, request, pk=None):
+        """(Ré)instancie la checklist des étapes légales AT/MP (XQHS1).
+
+        Idempotent — utile si la ``conciliation_statut`` a été activée après
+        coup (l'étape conciliation manque alors à l'appel initial).
+        """
+        from apps.qhse.services import instancier_etapes_at
+        declaration = self.get_object()
+        etapes = instancier_etapes_at(declaration)
+        serializer = EtapeDeclarationAtSerializer(etapes, many=True)
+        return Response(serializer.data)
+
+
+class EtapeDeclarationAtViewSet(_QhseBaseViewSet):
+    """Étapes légales datées de la chaîne AT/MP (loi 18-12, XQHS1).
+
+    CRUD scopé société (surtout utilisé en lecture — la création passe par
+    ``instancier_etapes_at``). Filtre optionnel ``?declaration=``.
+
+    Action ``POST …/<id>/marquer-fait/`` — marque l'étape réalisée
+    (``fait_le`` posé côté serveur, jamais lu du corps).
+    """
+    queryset = EtapeDeclarationAt.objects.select_related(
+        'declaration', 'declaration__accident_travail').all()
+    serializer_class = EtapeDeclarationAtSerializer
+    ordering_fields = ['id', 'echeance', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        declaration = self.request.query_params.get('declaration')
+        if declaration not in (None, ''):
+            qs = qs.filter(declaration_id=declaration)
+        return qs
+
+    @action(detail=True, methods=['post'], url_path='marquer-fait')
+    def marquer_fait(self, request, pk=None):
+        from apps.qhse.services import marquer_etape_faite
+        etape = self.get_object()
+        marquer_etape_faite(etape)
+        serializer = self.get_serializer(etape)
         return Response(serializer.data)
 
 
