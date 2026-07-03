@@ -136,8 +136,11 @@ describe('VideoChantier — FR verbatim, EN/AR présents, lieux/chemins invarian
     // Noms de lieux jamais traduits.
     expect(video).toContain('El Jadida');
     expect(video).toContain('Nouaceur');
-    // Chemins /videos/... intacts.
-    expect(video).toContain('/videos/chantier-poster.avif');
+    // Chemins /videos/... intacts. W346 — la façade clic-pour-lire est
+    // désormais LiteVideo (poster passé SANS extension, .avif/.webp dérivés
+    // à l'intérieur du composant) ; le chemin racine et le mp4 restent
+    // identiques dans toutes les locales.
+    expect(video).toContain('poster="/videos/chantier-poster"');
     expect(video).toContain('/videos/chantier-a.mp4');
   });
 });
