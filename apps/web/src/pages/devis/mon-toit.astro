@@ -773,6 +773,37 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     hasMeterPhoto = !!(meterPhotoInput.files && meterPhotoInput.files.length > 0);
   });
 
+  // ——— WJ46 : fenêtre de grâce anti-faux-déclenchement de l'exit-intent ———
+  // Ouvrir le sélecteur de fichier (photo compteur/facture, capture="environment")
+  // fait basculer l'onglet en arrière-plan le temps que l'appareil photo/la
+  // galerie s'affiche : le SEUL `visibilitychange→hidden` déclenchait alors
+  // l'exit-intent au moment EXACT où le formulaire invite l'utilisateur à
+  // prendre une photo. On suspend l'exit-intent pendant que le picker est
+  // ouvert : posé au clic/focus sur le champ fichier, levé au retour de focus
+  // fenêtre (le picker s'est fermé) — avec un filet de sécurité (timeout) au
+  // cas où l'événement de retour de focus n'arrive jamais (repli navigateur).
+  let filePickerOpen = false;
+  let filePickerGraceTimer: ReturnType<typeof setTimeout> | null = null;
+  function openFilePickerGrace() {
+    filePickerOpen = true;
+    if (filePickerGraceTimer != null) clearTimeout(filePickerGraceTimer);
+    // filet de sécurité : 60 s couvre largement une prise de photo, sans
+    // bloquer l'exit-intent indéfiniment si le navigateur n'émet jamais de
+    // `focus`/`visibilitychange→visible` de retour (cas rare).
+    filePickerGraceTimer = setTimeout(() => { filePickerOpen = false; }, 60_000);
+  }
+  function closeFilePickerGrace() {
+    filePickerOpen = false;
+    if (filePickerGraceTimer != null) { clearTimeout(filePickerGraceTimer); filePickerGraceTimer = null; }
+  }
+  meterPhotoInput?.addEventListener('click', openFilePickerGrace);
+  meterPhotoInput?.addEventListener('focus', openFilePickerGrace);
+  meterPhotoInput?.addEventListener('change', closeFilePickerGrace);
+  meterPhotoInput?.addEventListener('cancel', closeFilePickerGrace);
+  // Le retour de focus sur la fenêtre est le signal le plus fiable que le
+  // picker (caméra/galerie) s'est refermé, qu'un fichier ait été choisi ou non.
+  window.addEventListener('focus', closeFilePickerGrace);
+
   // ——— WJ6 : assistant multi-étapes + barre de progression ———
   let step = 0;
   const panels = [0, 1, 2].map((i) => $(`mt-panel-${i}`));
@@ -804,12 +835,16 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     if (started) return;
     started = true;
     try {
-      const mod = await import('../../scripts/roof-tool-pro11.ts');
-      mod.initRoofToolPro8({
+      // WJ47 — importe roofPro11/captureBoot DIRECTEMENT (pas tout
+      // roof-tool-pro11.ts) : le boot complet entraîne scene3d/optimizer/matrix
+      // (Three.js + le moteur de calepinage), du code interne à l'outil que
+      // cette page publique de capture n'exécute jamais. Ce chunk lazy ne
+      // charge plus que MapLibre + le géocodeur + le pin/tracé.
+      const { bootCaptureOnly } = await import('../../scripts/roofPro11/captureBoot');
+      bootCaptureOnly({
         maptilerKey: key,
         mapboxToken: mapboxToken || undefined,
         reducedMotion,
-        captureOnly: true,
         onReady: clearMapSkeleton,
         onCaptureChange: (s) => {
           capturePin = s.pin;
@@ -881,7 +916,11 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   let lastKwcLabel = '';
   let lastSavingsLabel = '';
   let lastKwc: number | null = null;
-  function computeEstimate() {
+  /** @returns true si une estimation réelle a été calculée et affichée (false si
+   *  indisponible — facture absente/non chiffrable). WJ46 — le SEUL appelant qui
+   *  agit sur cette valeur est le clic « Voir mon estimation » (pic d'intérêt) ;
+   *  les recalculs silencieux (retour corriger la facture) l'ignorent. */
+  function computeEstimate(): boolean {
     const bill = resolveMonthlyBill();
     const lat = capturePin?.lat;
     const city = (val('mt-city') || addressEl?.value || '').trim() || undefined;
@@ -897,7 +936,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       lastSavingsLabel = '';
       lastKwc = null;
       updatePanels3dVisibility();
-      return;
+      return false;
     }
     if (card) card.hidden = false;
     if (note) note.hidden = false;
@@ -913,6 +952,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     lastSavingsLabel = `${monthly}/mois`;
     lastKwc = est.kwc;
     updatePanels3dVisibility();
+    return true;
   }
   // WJ34 — squelette bref pendant le calcul (performance perçue) : les 3
   // chiffres passent en squelette shimmer AVANT le calcul, puis
@@ -932,12 +972,24 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     const payEl = $('mt-est-payback');
     if (payEl) payEl.innerHTML = '<span class="mt-est-skeleton mt-skeleton-shimmer"></span>';
   }
-  $('mt-estimate')?.addEventListener('click', () => {
+  $('mt-estimate')?.addEventListener('click', (e) => {
     showEstimateSkeleton();
     goStep(2);
-    requestAnimationFrame(() => computeEstimate());
+    const triggerEl = e.currentTarget as HTMLElement | null;
+    requestAnimationFrame(() => {
+      const hasEstimate = computeEstimate();
+      // WJ46 — pic d'intérêt : dès que l'estimation instantanée est RÉELLEMENT
+      // affichée (pas le squelette, pas l'état « indisponible »), on propose
+      // l'offre WhatsApp ici plutôt que d'attendre un exit-intent (desktop
+      // uniquement, de moins en moins vu) — c'est l'équivalent honnête et
+      // mobile-réel du moment de plus fort engagement. Court délai (pas un
+      // compte à rebours, aucune urgence affichée) pour laisser les chiffres
+      // s'afficher avant l'offre.
+      if (hasEstimate) setTimeout(() => showWhatsappOffer(triggerEl), reducedMotion ? 0 : 1500);
+    });
   });
-  // recalcule à la volée si l'utilisateur revient corriger sa facture
+  // recalcule à la volée si l'utilisateur revient corriger sa facture (ne
+  // redéclenche PAS l'offre WhatsApp : showWhatsappOffer n'est ici jamais appelée).
   $('mt-facture-hiver')?.addEventListener('input', computeEstimate);
   $('mt-bill')?.addEventListener('change', computeEstimate);
 
@@ -1148,7 +1200,11 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     }
   });
 
-  // ——— WJ7/WJ33 : récupération d'abandon (exit-intent desktop + retour/onglet caché mobile) ———
+  // ——— WJ7/WJ33/WJ46 : offre WhatsApp — exit-intent (desktop + onglet caché
+  // mobile) ET pic d'intérêt (estimation instantanée affichée). Même modale,
+  // même garde `exitShown` (ne s'affiche qu'UNE fois, quel que soit le
+  // déclencheur) : l'exit-intent reste un FILET pour qui n'a pas vu l'offre au
+  // pic d'intérêt (ex. ferme l'onglet avant l'étape 3), jamais un doublon. ———
   const exitModal = $('mt-exit') as HTMLElement | null;
   const exitPhoneInput = $('mt-exit-phone') as HTMLInputElement | null;
   const exitWaLink = $('mt-exit-wa') as HTMLAnchorElement | null;
@@ -1167,11 +1223,10 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     return whatsappLink(WHATSAPP_LEADS, text);
   }
 
-  function maybeShowExit(triggerEl: HTMLElement | null = null) {
+  /** WJ46 — affiche l'offre WhatsApp (exit-intent OU pic d'intérêt). Ne
+   *  s'affiche qu'une fois par visite (`exitShown`), jamais après soumission. */
+  function showWhatsappOffer(triggerEl: HTMLElement | null = null) {
     if (exitShown || submitted) return;
-    // ne déranger que si l'utilisateur a au moins commencé (mode/facture ou step > 0)
-    const started2 = step > 0 || resolveMonthlyBill() != null || (capturePin != null);
-    if (!started2) return;
     exitShown = true;
     exitTriggerEl = triggerEl ?? (document.activeElement as HTMLElement | null);
     if (exitWaLink) exitWaLink.href = buildExitWaHref();
@@ -1180,6 +1235,17 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       // WJ33 — focus initial DANS la modale (premier champ interactif).
       exitPhoneInput?.focus();
     }
+  }
+  function maybeShowExit(triggerEl: HTMLElement | null = null) {
+    // WJ46 — grace window : ne PAS interpréter comme un abandon le passage en
+    // arrière-plan pendant que le sélecteur de photo compteur/facture est
+    // ouvert (l'appareil photo/la galerie masquent l'onglet le temps de la
+    // prise de vue — l'exact geste que le formulaire invite à faire).
+    if (filePickerOpen) return;
+    // ne déranger que si l'utilisateur a au moins commencé (mode/facture ou step > 0)
+    const started2 = step > 0 || resolveMonthlyBill() != null || (capturePin != null);
+    if (!started2) return;
+    showWhatsappOffer(triggerEl);
   }
   function closeExit() {
     if (!exitModal || exitModal.hidden) return;

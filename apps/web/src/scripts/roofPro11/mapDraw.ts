@@ -14,6 +14,52 @@ import { isSimplePolygon, type LngLat } from '../../lib/roof';
 import { $ } from './dom';
 import { type Ctx } from './context';
 
+/**
+ * WJ41 — libellés/messages de statut de la carte/géocodeur, tous LOCALISABLES.
+ * Définis ici (module feuille, sans dépendance vers captureBoot.ts — évite un
+ * import circulaire) et réexportés par captureBoot.ts qui les consomme aussi.
+ * Le boot complet (non-capture) reste inchangé : `opts.strings` est optionnel
+ * et absent → replis FR ci-dessous (CAPTURE_STRINGS_FR), comportement identique
+ * à avant WJ41 pour la page FR.
+ */
+export interface CaptureStrings {
+  searchAddressThenPin: string;
+  pinPlaced: string;
+  outlineTraced: string;
+  traceOutline: string;
+  outlineCrosses: string;
+  pointWouldCross: string;
+  doubleClickToClose: string;
+  cornerPlaced: (n: number) => string;
+  lastPointUndone: (n: number) => string;
+  /** Message initial du builder COMPLET (non-capture) : « cliquez les coins…
+   *  double-cliquez pour fermer et lancer le calcul » (distinct du message
+   *  capture-only `searchAddressThenPin`). */
+  clickCornersToClose: string;
+  searchingAddress: string;
+  addressNotFound: string;
+  chooseFromList: string;
+  searchUnavailable: string;
+}
+
+/** Replis FR — texte OCTET POUR OCTET identique au comportement pré-WJ41. */
+export const CAPTURE_STRINGS_FR: CaptureStrings = {
+  searchAddressThenPin: 'Cherchez votre adresse, puis posez un repère sur votre toit.',
+  pinPlaced: 'Repère posé. Vous pouvez l’ajuster, ou tracer le contour (facultatif), puis remplir vos coordonnées.',
+  outlineTraced: 'Contour tracé. Remplissez vos coordonnées ci-dessous, puis envoyez.',
+  traceOutline: 'Tracez le contour de votre toit. Double-cliquez pour fermer (facultatif).',
+  outlineCrosses: 'Votre tracé se croise — corrigez-le (« Effacer ») avant de fermer.',
+  pointWouldCross: 'Ce point croiserait votre tracé — placez-le ailleurs pour garder un contour simple.',
+  doubleClickToClose: 'Double-cliquez (ou « Terminer ») pour fermer le toit et lancer le calcul.',
+  cornerPlaced: (n) => `Coin ${n} placé — continuez à tracer le contour.`,
+  lastPointUndone: (n) => `Dernier point annulé — ${n} coin(s) restant(s). Continuez le tracé.`,
+  clickCornersToClose: 'Cliquez les coins de votre toit. Double-cliquez pour fermer et lancer le calcul.',
+  searchingAddress: 'Recherche de l’adresse…',
+  addressNotFound: 'Adresse introuvable. Précisez la ville ou déplacez la carte à la main.',
+  chooseFromList: 'Choisissez votre adresse dans la liste, puis cliquez les coins de votre toit.',
+  searchUnavailable: 'Recherche indisponible. Déplacez la carte à la main pour trouver votre toit.',
+};
+
 /** Dépendances injectées (carte + bandeau de statut + re-lecture d'aire + bouton finir). */
 export interface MapDrawDeps {
   /** La carte MapLibre (sources GeoJSON du tracé + flyTo/jumpTo de la recherche). */
@@ -42,6 +88,10 @@ export interface MapDraw {
 export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
   const { map, setStatus, updateAreaReadout } = deps;
   const opts = ctx.opts;
+  // WJ41 — `opts.strings` n'existe pas sur `InitOptions` (types.ts, hors
+  // périmètre) : lu via cast local. Absent → CAPTURE_STRINGS_FR (rendu FR
+  // inchangé, comportement pré-WJ41).
+  const t = (opts as { strings?: CaptureStrings }).strings ?? CAPTURE_STRINGS_FR;
 
   const srcOf = (id: string) => map.getSource(id) as maplibregl.GeoJSONSource | undefined;
 
@@ -71,13 +121,13 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     // la fois la nouvelle arête et l'arête de fermeture implicite v→1ᵉʳ sommet. Un anneau
     // croisé fausse l'aire géodésique (la shoelace s'annule) et le pavage.
     if (ctx.vertices.length >= 3 && !isSimplePolygon([...ctx.vertices, v])) {
-      setStatus('Ce point croiserait votre tracé — placez-le ailleurs pour garder un contour simple.');
+      setStatus(t.pointWouldCross);
       return;
     }
     ctx.vertices.push(v);
     redrawTrace();
-    if (ctx.vertices.length >= 3) setStatus('Double-cliquez (ou « Terminer ») pour fermer le toit et lancer le calcul.');
-    else setStatus(`Coin ${ctx.vertices.length} placé — continuez à tracer le contour.`);
+    if (ctx.vertices.length >= 3) setStatus(t.doubleClickToClose);
+    else setStatus(t.cornerPlaced(ctx.vertices.length));
   }
 
   // W92 — retire le DERNIER sommet posé pendant le tracé (avant fermeture). N'agit pas une
@@ -87,9 +137,9 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     if (ctx.closed || ctx.vertices.length === 0) return;
     ctx.vertices.pop();
     redrawTrace();
-    if (ctx.vertices.length === 0) setStatus('Cliquez les coins de votre toit. Double-cliquez pour fermer et lancer le calcul.');
-    else if (ctx.vertices.length >= 3) setStatus('Double-cliquez (ou « Terminer ») pour fermer le toit et lancer le calcul.');
-    else setStatus(`Dernier point annulé — ${ctx.vertices.length} coin(s) restant(s). Continuez le tracé.`);
+    if (ctx.vertices.length === 0) setStatus(t.clickCornersToClose);
+    else if (ctx.vertices.length >= 3) setStatus(t.doubleClickToClose);
+    else setStatus(t.lastPointUndone(ctx.vertices.length));
   }
   undoPointBtn?.addEventListener('click', undoLastPoint);
 
@@ -107,7 +157,7 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     const target = { center, zoom: 19, pitch: 0 } as const;
     if (opts.reducedMotion) map.jumpTo(target);
     else map.flyTo({ ...target, essential: true });
-    setStatus('Cliquez les coins de votre toit. Double-cliquez pour fermer et lancer le calcul.');
+    setStatus(t.clickCornersToClose);
   }
 
   /** Ferme la liste de suggestions et réinitialise l'état combobox/aria. */
@@ -175,8 +225,12 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     geoAbort?.abort();
     const ctrl = new AbortController();
     geoAbort = ctrl;
-    setStatus('Recherche de l’adresse…');
+    setStatus(t.searchingAddress);
     try {
+      // WJ41 — `language=fr` stays fixed regardless of page locale: Moroccan
+      // addresses are indexed best in French in MapTiler/OSM, and changing the
+      // returned address TEXT is a data-quality decision outside WJ41's scope
+      // (system messages + placeholders), not a hardcoded UI string.
       const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(query)}.json?key=${encodeURIComponent(opts.maptilerKey)}&country=ma&limit=5&language=fr`;
       const res = await fetch(url, { signal: ctrl.signal });
       if (!res.ok) throw new Error('geocode');
@@ -191,7 +245,7 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
       activeIdx = -1;
       if (suggestions.length === 0) {
         closeSuggestions();
-        setStatus('Adresse introuvable. Précisez la ville ou déplacez la carte à la main.');
+        setStatus(t.addressNotFound);
         return;
       }
       if (autoSelect) {
@@ -200,11 +254,11 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
         return;
       }
       renderSuggestions();
-      setStatus('Choisissez votre adresse dans la liste, puis cliquez les coins de votre toit.');
+      setStatus(t.chooseFromList);
     } catch (err) {
       if ((err as Error)?.name === 'AbortError' || myToken !== geoToken) return; // annulée / périmée
       closeSuggestions();
-      setStatus('Recherche indisponible. Déplacez la carte à la main pour trouver votre toit.');
+      setStatus(t.searchUnavailable);
     }
   }
 

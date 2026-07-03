@@ -20,15 +20,27 @@ import { buildSatelliteStyle } from '../../lib/roofConfig';
 import { GOLD, MOROCCO_CENTER } from './constants';
 import { $ } from './dom';
 import { type Ctx } from './context';
-import { createMapDraw } from './mapDraw';
+import { createMapDraw, type CaptureStrings, CAPTURE_STRINGS_FR } from './mapDraw';
 import { type InitOptions } from './types';
+
+// WJ41 — réexportés pour que les pages mon-toit.astro puissent importer le
+// type/replis directement depuis captureBoot.ts si besoin (mapDraw.ts en reste
+// la SEULE source de vérité).
+export type { CaptureStrings };
+export { CAPTURE_STRINGS_FR };
+
+/** `initRoofToolPro8`/`bootCaptureOnly` acceptent un `opts.strings` optionnel sans
+ *  modifier `types.ts` (hors périmètre WJ41) : on élargit le type localement par
+ *  intersection. Absent → CAPTURE_STRINGS_FR (rendu FR inchangé). */
+export type CaptureOptions = InitOptions & { strings?: CaptureStrings };
 
 /**
  * Démarre le mode capture client. Construit la carte + le géocodeur + le pin/tracé,
  * câble le bouton « Terminer le tracé » et « Effacer », et notifie la page à chaque
  * changement de pin/contour via `opts.onCaptureChange`.
  */
-export function bootCaptureOnly(opts: InitOptions): void {
+export function bootCaptureOnly(opts: CaptureOptions): void {
+  const t = opts.strings ?? CAPTURE_STRINGS_FR;
   const mapEl = $('rp9-map');
   if (!mapEl) return;
 
@@ -191,7 +203,7 @@ export function bootCaptureOnly(opts: InitOptions): void {
       paint: { 'circle-radius': 9, 'circle-color': GOLD, 'circle-stroke-color': '#070b1d', 'circle-stroke-width': 2.5 },
     });
     if (opts.initialQuery) void mapDraw.geocode(opts.initialQuery, true);
-    else setStatus('Cherchez votre adresse, puis posez un repère sur votre toit.');
+    else setStatus(t.searchAddressThenPin);
     // W113 — hydratation : sème pin/contour quand un lead est fourni.
     if (opts.hydrate?.lead) seedFromLead(opts.hydrate.lead);
   });
@@ -207,7 +219,7 @@ export function bootCaptureOnly(opts: InitOptions): void {
     updateAreaReadout();
     if (undoPointBtn) undoPointBtn.hidden = true;
     if (finishBtn) finishBtn.disabled = true;
-    setStatus('Repère posé. Vous pouvez l’ajuster, ou tracer le contour (facultatif), puis remplir vos coordonnées.');
+    setStatus(t.pinPlaced);
     notify();
     // W2 — lit l'adresse DEPUIS la carte : remplit le champ adresse + capture le GPS.
     refreshAddressFromPin();
@@ -242,7 +254,7 @@ export function bootCaptureOnly(opts: InitOptions): void {
       srcOf('rp9-line')?.setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: [...vertices, vertices[0]] }, properties: {} } as never);
       if (finishBtn) finishBtn.disabled = true;
       if (undoPointBtn) undoPointBtn.hidden = true;
-      setStatus('Contour tracé. Remplissez vos coordonnées ci-dessous, puis envoyez.');
+      setStatus(t.outlineTraced);
       updateAreaReadout();
       notify();
       refreshAddressFromPin();
@@ -256,7 +268,7 @@ export function bootCaptureOnly(opts: InitOptions): void {
       redrawPin();
     }
     addVertex(start);
-    setStatus('Tracez le contour de votre toit. Double-cliquez pour fermer (facultatif).');
+    setStatus(t.traceOutline);
     notify();
     refreshAddressFromPin();
   });
@@ -264,7 +276,7 @@ export function bootCaptureOnly(opts: InitOptions): void {
   finishBtn?.addEventListener('click', () => {
     if (closed || vertices.length < 3) return;
     if (!isSimplePolygon(vertices)) {
-      setStatus('Votre tracé se croise — corrigez-le (« Effacer ») avant de fermer.');
+      setStatus(t.outlineCrosses);
       return;
     }
     closed = true;
@@ -272,7 +284,7 @@ export function bootCaptureOnly(opts: InitOptions): void {
     srcOf('rp9-line')?.setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: [...vertices, vertices[0]] }, properties: {} } as never);
     finishBtn.disabled = true;
     if (undoPointBtn) undoPointBtn.hidden = true;
-    setStatus('Contour tracé. Remplissez vos coordonnées ci-dessous, puis envoyez.');
+    setStatus(t.outlineTraced);
     updateAreaReadout();
     notify();
     refreshAddressFromPin();
@@ -284,7 +296,7 @@ export function bootCaptureOnly(opts: InitOptions): void {
     redrawTrace();
     if (vertices.length === 0) {
       if (undoPointBtn) undoPointBtn.hidden = true;
-      setStatus('Cherchez votre adresse, puis posez un repère sur votre toit.');
+      setStatus(t.searchAddressThenPin);
     }
     if (finishBtn) finishBtn.disabled = vertices.length < 3;
     updateAreaReadout();
@@ -304,7 +316,7 @@ export function bootCaptureOnly(opts: InitOptions): void {
     if (finishBtn) finishBtn.disabled = true;
     if (undoPointBtn) undoPointBtn.hidden = true;
     updateAreaReadout();
-    setStatus('Cherchez votre adresse, puis posez un repère sur votre toit.');
+    setStatus(t.searchAddressThenPin);
     notify();
   });
 
