@@ -3426,3 +3426,153 @@ class ModeleVehicule(models.Model):
 
     def __str__(self):
         return f'{self.marque} {self.modele}'
+
+
+# ── XFLT13 — Inspections périodiques paramétrables (check-lists DVIR) ──────────
+
+class ModeleInspection(models.Model):
+    """Modèle de check-list d'inspection périodique pré-départ (XFLT13).
+
+    Distinct de l'état des lieux ``EtatDesLieux`` (FLOTTE11, remise/retour de
+    véhicule) : ceci est l'inspection PÉRIODIQUE (type DVIR — Driver Vehicle
+    Inspection Report), généralement pré-départ, paramétrable par société.
+    ``items`` est une liste JSON ``[{"libelle": str, "photo_requise": bool,
+    "bloquant": bool}, …]`` — la structure des items reste souple (pas de
+    modèle enfant) pour rester simple à éditer côté founder.
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête).
+    """
+
+    class TypeActifCible(models.TextChoices):
+        VEHICULE = 'vehicule', 'Véhicule'
+        ENGIN = 'engin', 'Engin roulant'
+        TOUS = 'tous', 'Tous'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_modeles_inspection',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=120, verbose_name='Nom')
+    type_actif_cible = models.CharField(
+        max_length=10, choices=TypeActifCible.choices,
+        default=TypeActifCible.TOUS, verbose_name="Type d'actif visé")
+    items = models.JSONField(
+        default=list, blank=True, verbose_name='Items de la check-list',
+        help_text='[{"libelle": str, "photo_requise": bool, '
+        '"bloquant": bool}, …]')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Modèle d'inspection"
+        verbose_name_plural = "Modèles d'inspection"
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
+class InspectionVehicule(models.Model):
+    """Inspection périodique pré-départ réalisée sur un actif (XFLT13).
+
+    Résultats par item stockés en JSON, alignés sur ``ModeleInspection.items``
+    par INDEX : ``[{"libelle": str, "resultat": "pass"|"fail", "photo": url|
+    None}, …]``. Tout item ``fail`` crée automatiquement un
+    ``SignalementVehicule`` lié (voir ``services.traiter_items_fail``).
+    ``signature_nom`` est le nom saisi par le conducteur/utilisateur au moment
+    de la validation (e-signature loi 53-05, comme le flux devis existant) —
+    pas de signature graphique, juste un nom + horodatage serveur.
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête). L'actif et le modèle liés doivent appartenir à la MÊME société.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_inspections_vehicule',
+        verbose_name='Société',
+    )
+    actif_flotte = models.ForeignKey(
+        'ActifFlotte',
+        on_delete=models.CASCADE,
+        related_name='flotte_inspections_vehicule',
+        verbose_name='Actif (véhicule ou engin)',
+    )
+    modele_inspection = models.ForeignKey(
+        'ModeleInspection',
+        on_delete=models.PROTECT,
+        related_name='inspections',
+        verbose_name="Modèle d'inspection",
+    )
+    conducteur = models.ForeignKey(
+        'Conducteur',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='flotte_inspections_vehicule',
+        verbose_name='Conducteur',
+    )
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='flotte_inspections_vehicule',
+        verbose_name='Auteur',
+    )
+    date_inspection = models.DateTimeField(
+        auto_now_add=True, verbose_name="Date de l'inspection")
+    resultats = models.JSONField(
+        default=list, blank=True, verbose_name='Résultats par item',
+        help_text='[{"libelle": str, "resultat": "pass"|"fail", '
+        '"photo": url|None}, …]')
+    signature_nom = models.CharField(
+        max_length=150, blank=True,
+        verbose_name='Nom du signataire (e-signature)')
+    signature_horodatage = models.DateTimeField(
+        null=True, blank=True, verbose_name='Horodatage de signature')
+
+    class Meta:
+        verbose_name = 'Inspection véhicule'
+        verbose_name_plural = 'Inspections véhicule'
+        ordering = ['-date_inspection', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'actif_flotte'],
+                name='flotte_insp_co_actif_idx',
+            ),
+            models.Index(
+                fields=['company', 'conducteur'],
+                name='flotte_insp_co_cond_idx',
+            ),
+        ]
+
+    def clean(self):
+        """Valide l'appartenance société de l'actif, du modèle et du
+        conducteur liés."""
+        if self.actif_flotte_id is not None \
+                and self.actif_flotte.company_id != self.company_id:
+            raise ValidationError(
+                "L'actif n'appartient pas à la même société.")
+        if self.modele_inspection_id is not None \
+                and self.modele_inspection.company_id != self.company_id:
+            raise ValidationError(
+                "Le modèle d'inspection n'appartient pas à la même société.")
+        if self.conducteur_id is not None \
+                and self.conducteur.company_id != self.company_id:
+            raise ValidationError(
+                "Le conducteur n'appartient pas à la même société.")
+
+    def nb_items_fail(self):
+        """XFLT13 — Nombre d'items en échec (``resultat='fail'``). Lecture
+        seule, calculé depuis ``resultats``."""
+        return sum(
+            1 for item in (self.resultats or [])
+            if item.get('resultat') == 'fail')
+
+    def __str__(self):
+        return (f'Inspection {self.modele_inspection.nom} — '
+                f'{self.actif_flotte} ({self.date_inspection:%Y-%m-%d})')

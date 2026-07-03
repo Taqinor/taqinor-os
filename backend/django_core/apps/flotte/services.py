@@ -1066,3 +1066,94 @@ def prefill_depuis_modele(vehicule_data, modele):
         if valeur_modele not in (None, ''):
             vehicule_data[champ_vehicule] = valeur_modele
     return vehicule_data
+
+
+# ── XFLT13 — Inspections périodiques paramétrables (check-lists DVIR) ──────────
+
+def traiter_items_fail(inspection):
+    """XFLT13 — Crée un ``SignalementVehicule`` (XFLT5) pour chaque item
+    ``resultat='fail'`` de ``inspection.resultats``.
+
+    Un signalement est créé PAR item en échec, gravité ``moyenne`` par
+    défaut (``critique`` si l'item porte ``"bloquant": true`` dans le modèle
+    d'inspection correspondant — recherché par libellé), description
+    reprenant le libellé de l'item + le nom de l'inspection. Idempotent au
+    niveau appelant (appelée une seule fois à la création de l'inspection) —
+    ne déduplique pas elle-même (chaque appel crée les signalements).
+    Retourne la liste des ``SignalementVehicule`` créés.
+    """
+    from .models import SignalementVehicule
+
+    items_modele = {
+        item.get('libelle'): item
+        for item in (inspection.modele_inspection.items or [])
+    }
+
+    crees = []
+    for resultat_item in (inspection.resultats or []):
+        if resultat_item.get('resultat') != 'fail':
+            continue
+        libelle = resultat_item.get('libelle', '')
+        item_modele = items_modele.get(libelle, {})
+        bloquant = bool(item_modele.get('bloquant'))
+        gravite = (SignalementVehicule.Gravite.CRITIQUE if bloquant
+                   else SignalementVehicule.Gravite.MOYENNE)
+        signalement = SignalementVehicule.objects.create(
+            company=inspection.company,
+            actif_flotte=inspection.actif_flotte,
+            conducteur=inspection.conducteur,
+            auteur=inspection.auteur,
+            description=(
+                f"Inspection « {inspection.modele_inspection.nom} » — "
+                f"item en échec : {libelle}"),
+            gravite=gravite,
+        )
+        crees.append(signalement)
+    return crees
+
+
+def taux_completion_inspections_par_conducteur(company, periode=None):
+    """XFLT13 — Taux de complétion des items d'inspection, par conducteur.
+
+    Pour chaque conducteur ayant réalisé au moins une inspection sur la
+    société (filtrable par ``periode`` = ``(debut, fin)`` inclusif sur
+    ``date_inspection``), calcule le taux d'items ``pass`` sur le total
+    d'items renseignés à travers toutes ses inspections. Lecture seule.
+    Retourne une liste ``[{'conducteur_id', 'conducteur_nom', 'nb_inspections',
+    'nb_items', 'nb_pass', 'taux_completion'}, …]`` triée par conducteur.
+    """
+    from .models import InspectionVehicule
+
+    qs = InspectionVehicule.objects.filter(
+        company=company, conducteur__isnull=False,
+    ).select_related('conducteur')
+    if periode is not None:
+        debut, fin = periode
+        qs = qs.filter(
+            date_inspection__date__gte=debut, date_inspection__date__lte=fin)
+
+    par_conducteur = {}
+    for inspection in qs:
+        cid = inspection.conducteur_id
+        entree = par_conducteur.setdefault(cid, {
+            'conducteur_id': cid,
+            'conducteur_nom': inspection.conducteur.nom,
+            'nb_inspections': 0,
+            'nb_items': 0,
+            'nb_pass': 0,
+        })
+        entree['nb_inspections'] += 1
+        for item in (inspection.resultats or []):
+            entree['nb_items'] += 1
+            if item.get('resultat') == 'pass':
+                entree['nb_pass'] += 1
+
+    resultats = []
+    for entree in par_conducteur.values():
+        taux = (entree['nb_pass'] / entree['nb_items'] * 100
+                if entree['nb_items'] else 0.0)
+        entree['taux_completion'] = round(taux, 1)
+        resultats.append(entree)
+
+    resultats.sort(key=lambda e: e['conducteur_nom'])
+    return resultats

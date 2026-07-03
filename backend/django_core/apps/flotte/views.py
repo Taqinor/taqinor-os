@@ -30,7 +30,9 @@ from .models import (
     EtatDesLieux,
     Garage,
     Infraction,
+    InspectionVehicule,
     JournalStatutVehicule,
+    ModeleInspection,
     ModeleVehicule,
     OrdreReparation,
     PieceFlotte,
@@ -63,7 +65,9 @@ from .serializers import (
     EtatDesLieuxSerializer,
     GarageSerializer,
     InfractionSerializer,
+    InspectionVehiculeSerializer,
     JournalStatutVehiculeSerializer,
+    ModeleInspectionSerializer,
     ModeleVehiculeSerializer,
     OrdreReparationSerializer,
     PieceFlotteSerializer,
@@ -2039,6 +2043,92 @@ class SignalementVehiculeViewSet(_FlotteBaseViewSet):
         signalement.save(update_fields=['ordre_reparation'])
 
         return Response(self.get_serializer(signalement).data)
+
+
+# ── XFLT13 — Inspections périodiques paramétrables (check-lists DVIR) ──────────
+
+class ModeleInspectionViewSet(_FlotteBaseViewSet):
+    """Modèles de check-list d'inspection périodique (XFLT13).
+
+    CRUD scopé société (écriture responsable/admin). Filtrable par
+    ``?actif=true|false`` et ``?type_actif_cible=``.
+    """
+    queryset = ModeleInspection.objects.all()
+    serializer_class = ModeleInspectionSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom']
+    ordering_fields = ['nom', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        actif = params.get('actif')
+        if actif is not None:
+            qs = qs.filter(actif=actif.lower() in ('1', 'true'))
+        type_actif_cible = params.get('type_actif_cible')
+        if type_actif_cible:
+            qs = qs.filter(type_actif_cible=type_actif_cible)
+        return qs
+
+
+class InspectionVehiculeViewSet(_FlotteBaseViewSet):
+    """Inspections périodiques réalisées sur les actifs (XFLT13).
+
+    CRUD scopé société : tout rôle peut CRÉER une inspection (le conducteur
+    réalise l'inspection lui-même) — ``company`` ET ``auteur`` posés côté
+    serveur. Tout item ``resultat='fail'`` crée automatiquement un
+    ``SignalementVehicule`` (XFLT5) lié. Filtrable par ``?actif_flotte=`` et
+    ``?conducteur=``.
+
+    Action ``GET /inspections/taux-completion/`` (lecture tout rôle) :
+    taux de complétion des items par conducteur (``services.
+    taux_completion_inspections_par_conducteur``).
+    """
+    queryset = InspectionVehicule.objects.select_related(
+        'actif_flotte', 'actif_flotte__vehicule', 'actif_flotte__engin',
+        'modele_inspection', 'conducteur', 'auteur')
+    serializer_class = InspectionVehiculeSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['signature_nom']
+    ordering_fields = ['date_inspection']
+
+    def get_permissions(self):
+        if self.action == 'create':
+            return [IsAnyRole()]
+        return super().get_permissions()
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        actif_flotte = params.get('actif_flotte')
+        if actif_flotte:
+            try:
+                qs = qs.filter(actif_flotte_id=int(actif_flotte))
+            except (ValueError, TypeError):
+                pass
+
+        conducteur = params.get('conducteur')
+        if conducteur:
+            try:
+                qs = qs.filter(conducteur_id=int(conducteur))
+            except (ValueError, TypeError):
+                pass
+
+        return qs
+
+    def perform_create(self, serializer):
+        from .services import traiter_items_fail
+
+        inspection = serializer.save(
+            company=self.request.user.company, auteur=self.request.user)
+        traiter_items_fail(inspection)
+
+    @action(detail=False, methods=['get'], url_path='taux-completion')
+    def taux_completion(self, request):
+        from .services import taux_completion_inspections_par_conducteur
+        return Response(
+            taux_completion_inspections_par_conducteur(request.user.company))
 
 
 # ── XFLT7 — Rapport d'analyse des coûts (pivot + benchmark) ────────────────────

@@ -1909,3 +1909,67 @@ class ModeleVehiculeSerializer(serializers.ModelSerializer):
             'capacite_reservoir_l', 'date_creation',
         ]
         read_only_fields = ['date_creation']
+
+
+# ── XFLT13 — Inspections périodiques paramétrables (check-lists DVIR) ──────────
+
+class ModeleInspectionSerializer(serializers.ModelSerializer):
+    """XFLT13 — Modèle de check-list d'inspection périodique.
+
+    ``company`` posée côté serveur (jamais lue du corps de requête).
+    """
+
+    type_actif_cible_display = serializers.CharField(
+        source='get_type_actif_cible_display', read_only=True)
+
+    class Meta:
+        from .models import ModeleInspection
+        model = ModeleInspection
+        fields = [
+            'id', 'nom', 'type_actif_cible', 'type_actif_cible_display',
+            'items', 'actif', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class InspectionVehiculeSerializer(serializers.ModelSerializer):
+    """XFLT13 — Inspection périodique réalisée sur un actif.
+
+    ``company`` ET ``auteur`` posés côté serveur. Un item ``fail`` dans
+    ``resultats`` crée automatiquement un ``SignalementVehicule`` lié (voir
+    ``services.traiter_items_fail``, appelé côté vue à la création).
+
+    Champs lecture seule :
+    - ``actif_label``   : désignation de l'actif (véhicule ou engin).
+    - ``modele_nom``    : nom du modèle d'inspection utilisé.
+    - ``conducteur_nom``: nom du conducteur (ou None).
+    - ``nb_items_fail`` : nombre d'items en échec, calculé.
+    """
+
+    actif_label = serializers.SerializerMethodField()
+    modele_nom = serializers.SerializerMethodField()
+    conducteur_nom = serializers.SerializerMethodField()
+    nb_items_fail = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import InspectionVehicule
+        model = InspectionVehicule
+        fields = [
+            'id', 'actif_flotte', 'actif_label', 'modele_inspection',
+            'modele_nom', 'conducteur', 'conducteur_nom', 'auteur',
+            'date_inspection', 'resultats', 'nb_items_fail',
+            'signature_nom', 'signature_horodatage',
+        ]
+        read_only_fields = ['auteur', 'date_inspection']
+
+    def get_actif_label(self, obj):
+        return obj.actif_flotte.label if obj.actif_flotte_id else None
+
+    def get_modele_nom(self, obj):
+        return obj.modele_inspection.nom if obj.modele_inspection_id else None
+
+    def get_conducteur_nom(self, obj):
+        return obj.conducteur.nom if obj.conducteur_id else None
+
+    def get_nb_items_fail(self, obj):
+        return obj.nb_items_fail()
