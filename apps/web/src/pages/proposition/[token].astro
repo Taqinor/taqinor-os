@@ -80,17 +80,30 @@ const API_BASE = (import.meta.env.PUBLIC_API_BASE as string | undefined) ?? 'htt
 const { token } = Astro.params as { token: string };
 
 // ── Lecture serveur de la proposition ────────────────────────────────────────
+// WJ81 — la page la plus commercialement critique du site ne doit JAMAIS
+// rester blanche : un backend lent/qui ne répond pas bloquait auparavant ce
+// `fetch` sans limite (le SSR pouvait pendre jusqu'au timeout de la
+// plateforme, une page blanche générique plutôt qu'un message de marque). Un
+// `AbortController` borne l'attente à SSR_FETCH_TIMEOUT_MS ; un timeout obtient
+// désormais son PROPRE message honnête (« connexion lente ») distinct d'une
+// vraie panne réseau, et l'état d'erreur porte un bouton « Réessayer » qui
+// recharge la MÊME URL (lien pur, fonctionne même sans JS).
+const SSR_FETCH_TIMEOUT_MS = 8000;
 let data: ProposalResponse | null = null;
 let errorDetail: string | null = null;
 let httpStatus = 200;
+let isTimeout = false;
 
 if (!token || !token.trim()) {
   httpStatus = 404;
   errorDetail = 'Ce lien de proposition est introuvable ou a expiré.';
 } else {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SSR_FETCH_TIMEOUT_MS);
   try {
     const res = await fetch(proposalEndpoint(API_BASE, token), {
       headers: { accept: 'application/json' },
+      signal: controller.signal,
     });
     httpStatus = res.status;
     if (res.ok) {
@@ -109,9 +122,14 @@ if (!token || !token.trim()) {
           ? 'Ce lien de proposition est introuvable ou a expiré.'
           : 'Cette proposition n’est pas accessible pour le moment.');
     }
-  } catch {
+  } catch (err) {
     httpStatus = 502;
-    errorDetail = 'Proposition momentanément indisponible. Veuillez réessayer dans un instant.';
+    isTimeout = err instanceof Error && err.name === 'AbortError';
+    errorDetail = isTimeout
+      ? 'La connexion est lente — cette proposition met plus de temps que prévu à charger. Réessayez, ou contactez votre conseiller sur WhatsApp.'
+      : 'Proposition momentanément indisponible. Veuillez réessayer dans un instant.';
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -302,6 +320,11 @@ const signTestimonial = hasTestimonials() ? TESTIMONIALS[0] : null;
 
 const pageTitle = ok ? `Proposition ${reference} — ${clientName} | Taqinor` : 'Proposition | Taqinor';
 
+// ── WJ81 — Lien WhatsApp de repli utilisable MÊME quand la proposition n'a pas
+// pu être chargée (`!ok` : timeout, panne, lien invalide). `whatsappLink('')`
+// dégrade déjà proprement sur un message générique sans référence.
+const waLinkFallback = whatsappLink(reference || '');
+
 // Données passées au script de signature (sérialisées en JSON dans un data-attr).
 const signConfig = ok
   ? JSON.stringify({ token, twoOptions, preselect, accepted, acceptedName: data?.accepte_par_nom ?? '', reference })
@@ -311,14 +334,36 @@ const signConfig = ok
 <Layout title={pageTitle} description="Votre proposition solaire personnalisée Taqinor." noindex={true}>
   {!ok ? (
     <!-- ── État « lien expiré / introuvable » ─────────────────────────────── -->
+    <!-- WJ81 — la page ne reste JAMAIS blanche : ce cadre de marque (rappel
+         visuel Taqinor, jamais une page d'erreur générique du navigateur/
+         plateforme) affiche un message honnête. Pour un TIMEOUT (backend
+         lent) spécifiquement, un bouton « Réessayer » (recharge la MÊME URL,
+         lien pur — fonctionne sans JS) et un repli WhatsApp direct sont
+         proposés, plutôt que le seul lien « Retour à l'accueil ». -->
     <section class="mx-auto flex min-h-[60vh] max-w-2xl flex-col items-center justify-center px-5 py-24 text-center">
       <div class="rule-brass mx-auto text-brass-300" aria-hidden="true"></div>
       <h1 class="display mt-6 text-3xl text-lune sm:text-4xl">Proposition indisponible</h1>
       <p class="v2-body mt-4 max-w-md">{errorDetail}</p>
-      <p class="mt-8 text-sm text-lune-faint">
-        Besoin d’un nouveau lien ? Contactez votre conseiller Taqinor.
-      </p>
-      <a href="/" class="btn-pill mt-8">Retour à l’accueil</a>
+      {isTimeout ? (
+        <>
+          <div class="mt-8 flex flex-col gap-3 sm:flex-row">
+            <a href={Astro.url.href} class="btn-pill" style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)">
+              Réessayer
+            </a>
+            <a href={waLinkFallback} target="_blank" rel="noopener noreferrer" class="btn-pill">
+              Contacter sur WhatsApp
+            </a>
+          </div>
+          <a href="/" class="mt-4 text-sm text-lune-faint underline-offset-2 hover:underline">Retour à l’accueil</a>
+        </>
+      ) : (
+        <>
+          <p class="mt-8 text-sm text-lune-faint">
+            Besoin d’un nouveau lien ? Contactez votre conseiller Taqinor.
+          </p>
+          <a href="/" class="btn-pill mt-8">Retour à l’accueil</a>
+        </>
+      )}
     </section>
   ) : (
     <div class="proposition pb-28" data-sign-config={signConfig}>
@@ -2053,6 +2098,16 @@ const signConfig = ok
       submitBusy = true;
       renderSubmitLabel(currentLang);
 
+      // WJ81 — jamais un « Signature… » désactivé pour l'éternité : une
+      // connexion lente/un backend qui ne répond pas laissait auparavant ce
+      // bouton bloqué SANS limite. 15 s est le seuil documenté par le
+      // founder pour ce moment de très haute intention — au-delà, on annule
+      // la requête et on rend la main avec un message honnête + un chemin de
+      // repli (WhatsApp, déjà visible juste au-dessus dans « Une question
+      // avant de signer ? »).
+      const SIGN_SUBMIT_TIMEOUT_MS = 15000;
+      const submitController = new AbortController();
+      const submitTimer = window.setTimeout(() => submitController.abort(), SIGN_SUBMIT_TIMEOUT_MS);
       try {
         // Corps RÉTRO-COMPATIBLE : base (token/nom/option) + champs optionnels
         // (signature, consentement, horodatage) que le backend peut ignorer.
@@ -2069,6 +2124,7 @@ const signConfig = ok
             twoOptions: cfg.twoOptions,
             ...richBody,
           }),
+          signal: submitController.signal,
         });
         const data = (await res.json()) as {
           ok?: boolean;
@@ -2086,9 +2142,15 @@ const signConfig = ok
           return;
         }
         showError(data.detail || 'Une erreur est survenue. Veuillez réessayer.');
-      } catch {
-        showError('Service momentanément indisponible. Veuillez réessayer.');
+      } catch (err) {
+        const timedOut = err instanceof Error && err.name === 'AbortError';
+        showError(
+          timedOut
+            ? 'La connexion est lente — réessayez, ou contactez-nous sur WhatsApp ci-dessus.'
+            : 'Service momentanément indisponible. Veuillez réessayer.',
+        );
       } finally {
+        window.clearTimeout(submitTimer);
         submitting = false;
         if (submitBtn) submitBtn.disabled = false;
         if (spinner) spinner.hidden = true;
