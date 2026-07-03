@@ -877,6 +877,33 @@ class PeriodeComptableViewSet(_ComptaBaseViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(periode).data)
 
+    @action(detail=True, methods=['get'])
+    def checklist(self, request, pk=None):
+        """Checklist de clôture calculée depuis les données réelles (XACC10).
+
+        INFORMATIF SEULEMENT : n'empêche jamais ``cloturer`` (warning, pas de
+        blocage dur — cf. ``cloturer`` ci-dessus, inchangée).
+        """
+        periode = self.get_object()  # scopé société par TenantMixin.
+        return Response(selectors.checklist_cloture_periode(periode))
+
+    @action(detail=True, methods=['post'], url_path='solder-tva')
+    def solder_tva(self, request, pk=None):
+        """Poste l'écriture de solde TVA de la période (XACC10)."""
+        periode = self.get_object()  # scopé société par TenantMixin.
+        try:
+            ecriture = services.solder_tva_periode(periode, user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        if ecriture is None:
+            return Response(
+                {'detail': 'Rien à solder (pas de TVA nette due sur la '
+                           'période).', 'ecriture_id': None})
+        return Response({'ecriture_id': ecriture.id,
+                         'reference': ecriture.reference})
+
 
 # ── FG116 / FG117 — Exercices comptables (clôture, OD, à-nouveaux) ──────────
 

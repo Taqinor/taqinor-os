@@ -3869,6 +3869,61 @@ def deposer_declaration_tva(declaration):
     return declaration
 
 
+# ── XACC10 — Solde TVA de la période (clôture) ──────────────────────────────
+
+@transaction.atomic
+def solder_tva_periode(periode, *, user=None):
+    """Poste l'écriture de solde TVA d'une période (XACC10, checklist de clôture).
+
+    Recalcule la TVA à déclarer EXACTEMENT comme ``preparer_declaration_tva``
+    (même agrégation GL, cohérente avec FG137 — aucune divergence possible)
+    et poste, si le montant net dû est positif, l'écriture de solde :
+    débit 4455 (TVA facturée, on solde) + débit 3455 (TVA récupérable, on
+    solde) → crédit 44552 (« État TVA due »). Si le net est négatif (crédit de
+    TVA), ne poste rien (rien à devoir — le crédit se reporte via FG137).
+    IDEMPOTENT par période (``source_type='solde_tva'``,
+    ``source_id=periode.id``). Renvoie l'écriture, ou None si rien à solder.
+    """
+    from . import selectors
+
+    company = periode.company
+    existante = _ecriture_existante(company, 'solde_tva', periode.id)
+    if existante:
+        return existante
+    calc = selectors.preparer_declaration_tva(
+        company, date_debut=periode.date_debut, date_fin=periode.date_fin)
+    collectee = calc['tva_collectee']
+    deductible = calc['tva_deductible']
+    net = calc['tva_a_declarer']
+    if net <= 0:
+        return None
+    comptes = _comptes_requis(company)
+    compte_due = _assurer_compte(company, '44552')
+    # Mécanique CGNC : 4455 (TVA facturée) porte un solde CRÉDITEUR, 3455 (TVA
+    # récupérable) un solde DÉBITEUR. Pour les solder tous les deux, on
+    # DÉBITE 4455 (annule son crédit) et on CRÉDITE 3455 (annule son débit) ;
+    # le NET (collectée − déductible = 44552) équilibre l'écriture.
+    lignes = []
+    if collectee > 0:
+        lignes.append({
+            'compte': comptes['tva_facturee'], 'debit': collectee,
+            'credit': Decimal('0'), 'libelle': 'Solde TVA facturée'})
+    if deductible > 0:
+        lignes.append({
+            'compte': comptes['tva_recuperable'], 'debit': Decimal('0'),
+            'credit': deductible, 'libelle': 'Solde TVA récupérable'})
+    lignes.append({
+        'compte': compte_due, 'debit': Decimal('0'), 'credit': net,
+        'libelle': 'État TVA due'})
+    journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+    return creer_ecriture(
+        company, journal, periode.date_fin, 'Solde TVA de la période', lignes,
+        reference=f'SOLDE-TVA-{periode.id}', source_type='solde_tva',
+        source_id=periode.id, created_by=user,
+        statut=EcritureComptable.Statut.VALIDEE,
+    )
+
+
 # ── FG139 — Retenue à la source (RAS) sur honoraires/prestations ───────────
 
 def enregistrer_retenue_source(company, *, date_piece, base, taux=None,

@@ -15,6 +15,8 @@ from .models import (
     EntiteConsolidation, LigneEcriture, LignePrevisionnelTresorerie,
     MouvementCaisse, Rapprochement, RetenueGarantie, RetenueSource,
     TimbreFiscal,
+    ClotureCaisse, DotationAmortissement, EcritureComptable,
+    RapprochementBancaire,
 )
 
 
@@ -899,6 +901,117 @@ def resume_rapprochement(rapprochement):
         'statut': rapprochement.statut,
         'rapproche': rapproche,
     }
+
+
+# ── XACC10 — Checklist de clôture de période ────────────────────────────────
+
+def checklist_cloture_periode(periode):
+    """Checklist de clôture calculée depuis les DONNÉES réelles (XACC10).
+
+    ``cloturer_periode`` verrouille mais sans guidage : cette checklist
+    calcule automatiquement l'état « fait / à faire / non applicable » de
+    chaque étape type, à partir des données déjà en base — jamais une case à
+    cocher manuelle. Renvoie ``{'etapes': [{'code', 'libelle', 'statut',
+    'detail'}], 'toutes_faites': bool}`` ; ``statut`` ∈ {'fait', 'a_faire',
+    'non_applicable'}. Une étape ``non_applicable`` compte comme faite pour
+    ``toutes_faites`` (jamais un blocage dur sur une fonctionnalité absente,
+    ex. écarts de change tant qu'aucun module multi-devise n'existe).
+    """
+    company = periode.company
+    debut, fin = periode.date_debut, periode.date_fin
+    etapes = []
+
+    # 1. Dotations d'amortissement postées (pertinent en fin d'exercice : le
+    # mois de décembre de l'exercice, où la dotation annuelle est passée).
+    if fin.month == 12:
+        dotations_annee = DotationAmortissement.objects.filter(
+            company=company, annee=fin.year)
+        if not dotations_annee.exists():
+            etapes.append({
+                'code': 'dotations', 'libelle': 'Dotations aux amortissements',
+                'statut': 'non_applicable',
+                'detail': "Aucun plan d'amortissement actif cette année."})
+        else:
+            non_postees = dotations_annee.filter(posted=False).count()
+            etapes.append({
+                'code': 'dotations', 'libelle': 'Dotations aux amortissements',
+                'statut': 'fait' if non_postees == 0 else 'a_faire',
+                'detail': f'{non_postees} dotation(s) non postée(s).'
+                if non_postees else 'Toutes les dotations sont postées.'})
+    else:
+        etapes.append({
+            'code': 'dotations', 'libelle': 'Dotations aux amortissements',
+            'statut': 'non_applicable',
+            'detail': "Postées en fin d'exercice (décembre) uniquement."})
+
+    # 2. FNP/FAE de la période (XACC7) — au moins vérifié si une provision a
+    # été postée OU s'il n'y a aucune écriture d'achat/vente non rapprochée
+    # à provisionner ; par défaut « à faire » tant qu'aucune provision n'a
+    # été générée pour cette période (rappel actif, jamais un blocage).
+    provisions = EcritureComptable.objects.filter(
+        company=company, source_type__in=['fnp', 'fae'],
+        date_ecriture__gte=debut, date_ecriture__lte=fin).exists()
+    etapes.append({
+        'code': 'fnp_fae', 'libelle': 'Provisions FNP/FAE',
+        'statut': 'fait' if provisions else 'a_faire',
+        'detail': 'Provisions postées sur la période.' if provisions
+        else 'Aucune provision FNP/FAE postée sur la période — à vérifier.'})
+
+    # 3. Rapprochements bancaires soldés sur la période.
+    rapprochements = RapprochementBancaire.objects.filter(
+        company=company, date_fin__gte=debut, date_fin__lte=fin)
+    if not rapprochements.exists():
+        etapes.append({
+            'code': 'rapprochements', 'libelle': 'Rapprochements bancaires',
+            'statut': 'non_applicable',
+            'detail': 'Aucun rapprochement ouvert sur la période.'})
+    else:
+        non_soldes = rapprochements.exclude(
+            statut=RapprochementBancaire.Statut.RAPPROCHE).count()
+        etapes.append({
+            'code': 'rapprochements', 'libelle': 'Rapprochements bancaires',
+            'statut': 'fait' if non_soldes == 0 else 'a_faire',
+            'detail': f'{non_soldes} rapprochement(s) non soldé(s).'
+            if non_soldes else 'Tous les rapprochements sont soldés.'})
+
+    # 4. Caisses clôturées sur la période.
+    caisses = Caisse.objects.filter(company=company)
+    if not caisses.exists():
+        etapes.append({
+            'code': 'caisses', 'libelle': 'Caisses clôturées',
+            'statut': 'non_applicable', 'detail': 'Aucune caisse configurée.'})
+    else:
+        cloturees = ClotureCaisse.objects.filter(
+            company=company, date_cloture__gte=debut,
+            date_cloture__lte=fin).values_list('caisse_id', flat=True).distinct()
+        manquantes = caisses.exclude(id__in=list(cloturees)).count()
+        etapes.append({
+            'code': 'caisses', 'libelle': 'Caisses clôturées',
+            'statut': 'fait' if manquantes == 0 else 'a_faire',
+            'detail': f'{manquantes} caisse(s) sans clôture sur la période.'
+            if manquantes else 'Toutes les caisses sont clôturées.'})
+
+    # 5. Écarts de change — AUCUN module multi-devise n'existe encore dans
+    # apps.compta (XACC17/18 planifiés) : toujours non applicable, jamais
+    # faussement « fait » ou « à faire ».
+    etapes.append({
+        'code': 'ecarts_change', 'libelle': 'Écarts de change',
+        'statut': 'non_applicable',
+        'detail': 'Module multi-devise non encore disponible.'})
+
+    # 6. TVA soldée (XACC10 — solder_tva_periode).
+    tva_soldee = EcritureComptable.objects.filter(
+        company=company, source_type='solde_tva',
+        date_ecriture__gte=debut, date_ecriture__lte=fin).exists()
+    etapes.append({
+        'code': 'tva_soldee', 'libelle': 'TVA soldée',
+        'statut': 'fait' if tva_soldee else 'a_faire',
+        'detail': 'Écriture de solde TVA postée.' if tva_soldee
+        else 'Aucune écriture de solde TVA postée sur la période.'})
+
+    toutes_faites = all(
+        e['statut'] in ('fait', 'non_applicable') for e in etapes)
+    return {'etapes': etapes, 'toutes_faites': toutes_faites}
 
 
 # ── FG124 — Caisse / petty cash (journal d'espèces) ────────────────────────
