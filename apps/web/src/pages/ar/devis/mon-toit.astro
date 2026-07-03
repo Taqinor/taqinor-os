@@ -460,7 +460,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
           <label class="block text-sm text-lune-soft">
             <span data-i18n data-fr="E-mail (facultatif)" data-ar="البريد الإلكتروني (اختياري)">E-mail (facultatif)</span>
             <input id="mt-email" name="email" type="email" inputmode="email" autocomplete="email"
-              placeholder="vous@exemple.com" dir="ltr" class={`${inputClass} mt-1`} />
+              placeholder="you@example.com" dir="ltr" class={`${inputClass} mt-1`} />
           </label>
 
           <label class="flex items-start gap-3 text-sm text-lune-soft">
@@ -660,6 +660,27 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   import { captureWhatsappText, whatsappLink } from '../../../lib/whatsapp';
   import { WHATSAPP_LEADS } from '../../../lib/nap';
   import { validateLead } from '../../../lib/lead';
+  import { type CaptureStrings } from '../../../scripts/roofPro11/mapDraw';
+
+  // WJ41 — رسائل نظام الخريطة/محدد المواقع (roofPro11/mapDraw.ts + captureBoot.ts
+  // تكون افتراضياً بالفرنسية) — هذه الصفحة تمرر نصوصاً عربية حتى لا تتحدث اللحظة
+  // الأكثر تفاعلاً في المسار بالفرنسية مع الزوار الناطقين بالعربية.
+  const ROOF_TOOL_STRINGS_AR: CaptureStrings = {
+    searchAddressThenPin: 'ابحثوا عن عنوانكم، ثم ضعوا علامة على سطحكم.',
+    pinPlaced: 'تم وضع العلامة. يمكنكم تعديلها، أو رسم محيط السطح (اختياري)، ثم ملء بياناتكم.',
+    outlineTraced: 'تم رسم المحيط. املؤوا بياناتكم أدناه، ثم أرسلوا.',
+    traceOutline: 'ارسموا محيط سطحكم. انقروا نقراً مزدوجاً للإغلاق (اختياري).',
+    outlineCrosses: 'رسمكم يتقاطع مع نفسه — صححوه (« مسح ») قبل الإغلاق.',
+    pointWouldCross: 'هذه النقطة ستقاطع رسمكم — ضعوها في مكان آخر للحفاظ على محيط بسيط.',
+    doubleClickToClose: 'انقروا نقراً مزدوجاً (أو « إنهاء ») لإغلاق السطح وبدء الحساب.',
+    cornerPlaced: (n) => `تم وضع الزاوية ${n} — واصلوا رسم المحيط.`,
+    lastPointUndone: (n) => `تم التراجع عن آخر نقطة — ${n} زاوية (زوايا) متبقية. واصلوا الرسم.`,
+    clickCornersToClose: 'انقروا زوايا سطحكم. انقروا نقراً مزدوجاً للإغلاق وبدء الحساب.',
+    searchingAddress: 'جارٍ البحث عن العنوان…',
+    addressNotFound: 'العنوان غير موجود. حددوا المدينة أو حرّكوا الخريطة يدوياً.',
+    chooseFromList: 'اختاروا عنوانكم من القائمة، ثم انقروا زوايا سطحكم.',
+    searchUnavailable: 'البحث غير متوفر. حرّكوا الخريطة يدوياً للعثور على سطحكم.',
+  };
 
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const $ = (id: string) => document.getElementById(id);
@@ -830,6 +851,9 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
         mapboxToken: mapboxToken || undefined,
         reducedMotion,
         captureOnly: true,
+        // WJ41 — رسائل الخريطة/محدد المواقع بالعربية (الافتراضي بالفرنسية). هذا
+        // المسار يعرض العربية افتراضياً (applyLang('ar') عند التحميل).
+        strings: ROOF_TOOL_STRINGS_AR,
         onReady: clearMapSkeleton,
         onCaptureChange: (s) => {
           capturePin = s.pin;

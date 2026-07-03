@@ -125,12 +125,12 @@ import { createShadingUi } from './roofPro11/shadingUi';
 import { createMapDraw } from './roofPro11/mapDraw';
 import { createScene3d } from './roofPro11/scene3d';
 import { createOptimizer } from './roofPro11/optimizer';
-import { bootCaptureOnly } from './roofPro11/captureBoot';
+import { bootCaptureOnly, type CaptureOptions } from './roofPro11/captureBoot';
 import { hydrateFromLead, serializeLayout } from './roofPro11/prefill';
 
 let booted = false;
 
-export function initRoofToolPro8(opts: InitOptions): void {
+export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   if (booted) return;
   booted = true;
 
@@ -139,8 +139,10 @@ export function initRoofToolPro8(opts: InitOptions): void {
   // createOptimizer / createMatrix ne sont jamais appelés ici), donc aucun panneau,
   // aucune 3D, aucune carte de production ne peut apparaître. Le boot complet ci-
   // dessous reste octet pour octet identique quand le drapeau est absent/false.
+  // WJ41 — `opts` peut porter `strings` (localisation des messages carte/géocodeur),
+  // lu par `bootCaptureOnly`/`createMapDraw` ; ignoré du boot complet ci-dessous.
   if (opts.captureOnly) {
-    bootCaptureOnly(opts);
+    bootCaptureOnly(opts as CaptureOptions);
     return;
   }
 
