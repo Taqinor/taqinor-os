@@ -140,13 +140,19 @@ const itemListJsonLd = {
                   proviennent de ratio variés (16/9, 4/3, 1:1) mais sont toutes
                   recadrées en 3/2 par le CSS. Le ratio déclaré doit correspondre
                   pour que width/height attrs réservent la bonne hauteur (anti-CLS). */}
+              {/* W364 — view-transition-name matching /realisations/[slug]'s
+                  hero photo (photos[0].name), which this card also uses — so
+                  the morph is guaranteed to match, not merely possible. */}
               <Picture
                 name={r.photos[0].name}
                 alt={r.photos[0].alt}
                 widths={r.photos[0].widths}
                 ratio={3 / 2}
                 sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
-                style={(r.photos[0] as any).objectPosition ? `object-position:${(r.photos[0] as any).objectPosition}` : undefined}
+                style={[
+                  (r.photos[0] as any).objectPosition ? `object-position:${(r.photos[0] as any).objectPosition}` : '',
+                  `view-transition-name: vt-photo-${r.photos[0].name}`,
+                ].filter(Boolean).join(';')}
                 class="photo-card-img aspect-[3/2] w-full object-cover"
               />
               {/* W283 — légende standard : « [Ville] — X kWc — installé en Y — Z kWh mesurés »

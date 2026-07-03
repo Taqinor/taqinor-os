@@ -421,9 +421,16 @@ const engineeringPillars = [
           {gallery.map((g, i) => (
             <div class="v2-rise cine-card cine-card-link group relative overflow-hidden" style={`--v2-i:${i % 3}`} data-gallery-card data-city={g.ville}>
               <a href={`/realisations/${g.slug}`} class="absolute inset-0 z-0" aria-label={`Voir la réalisation : ${g.ville}, ${g.kwc}`}></a>
-              {/* Grade « heure dorée » uniforme — .v3-grade sur la photo de contenu */}
+              {/* Grade « heure dorée » uniforme — .v3-grade sur la photo de contenu.
+                  W364 — view-transition-name par photo (g.name, PAS g.slug —
+                  certaines installations ont plusieurs cartes/photos, et un nom
+                  de transition doit rester unique par page) : morphe contre le
+                  héros de /realisations/[slug] SEULEMENT quand ce héros utilise
+                  la MÊME photo (photos[0].name) — sinon repli silencieux sur une
+                  transition de page normale, sans morph. */}
               <Picture name={g.name} alt={g.alt} widths={g.widths} ratio={4 / 3} sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
-                class="v3-grade aspect-[4/3] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
+                class="v3-grade aspect-[4/3] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"
+                style={`view-transition-name: vt-photo-${g.name}`} />
               {/* Bouton d'agrandissement (lightbox) — élément séparé du lien de
                   carte (pas de bouton imbriqué dans un <a>, HTML invalide) ;
                   z-index au-dessus du lien étiré. */}

@@ -129,7 +129,13 @@ const waCaseStudy = whatsappLink(
         {/* W155 — portraitPosition : recadrage doux vers le haut sur téléphones
             verticaux (les panneaux sont en haut de la photo de chantier). Si
             hero.objectPosition est déjà défini, il est gardé en paysage ; le
-            portrait override est center 25% (haut du champ) par défaut. */}
+            portrait override est center 25% (haut du champ) par défaut.
+            W364 — view-transition-name matching the gallery card that shares
+            this exact photo (index.astro / realisations/index.astro both key
+            off the same photo name) — morphs on arrival when the outgoing
+            page carried the matching name, silently degrades to a normal
+            navigation otherwise (LCP unaffected: this only shapes the
+            cross-document transition, never image loading/priority). */}
         <Picture
           name={hero.name}
           alt={hero.alt}
@@ -141,6 +147,7 @@ const waCaseStudy = whatsappLink(
           position={hero.objectPosition}
           portraitPosition="center 25%"
           class="h-full w-full object-cover"
+          style={`view-transition-name: vt-photo-${hero.name}`}
         />
         <div class="absolute inset-0 bg-gradient-to-t from-nuit via-nuit/55 to-nuit/20"></div>
       </div>

@@ -52,11 +52,15 @@ const wa = whatsappLink(WHATSAPP_LEADS, pageContextWhatsappText(stripLocale(Astr
       <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" class="sm:h-[15px] sm:w-[15px]"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
       WhatsApp
     </a>
-    {/* W210 — .glow on the brass diagnostic CTA */}
+    {/* W210 — .glow on the brass diagnostic CTA.
+        W364 — stable view-transition-name: the one persistent primary CTA
+        keeps its own identity across a cross-document transition (no
+        cross-fade against itself), independent of whichever photo pair is
+        morphing on a given navigation. No-op where the API isn't supported. */}
     <a
       id="sticky-diag"
       href={diagHref}
-      class="glow flex flex-1 items-center justify-center bg-brass-400 px-4 py-2.5 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300 sm:flex-none sm:rounded-full sm:px-3.5 sm:py-2 sm:text-[13px]"
+      class="glow primary-cta-vt flex flex-1 items-center justify-center bg-brass-400 px-4 py-2.5 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300 sm:flex-none sm:rounded-full sm:px-3.5 sm:py-2 sm:text-[13px]"
     >{t('cta.primary')}</a>
     </div>
   </div>

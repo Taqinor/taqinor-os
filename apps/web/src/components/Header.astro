@@ -208,7 +208,12 @@ const itemClass =
   class="sticky top-0 z-50 border-b border-transparent bg-transparent transition-[background-color,border-color,backdrop-filter] duration-300 motion-reduce:transition-none"
 >
   <div class="mx-auto flex max-w-6xl items-center justify-between gap-2 px-4 py-3 sm:gap-4" id="header-inner">
-    <a href={L('/')} aria-label="TAQINOR — accueil">
+    {/* W364 — nom de transition stable (view-transition-name) : le logo ne
+        doit jamais cross-fader/morpher contre lui-même pendant une
+        navigation qui porte par ailleurs un morph de photo (galerie →
+        héros de réalisation) ; classe pure CSS, no-op tant que le
+        navigateur ne supporte pas les cross-document view transitions. */}
+    <a href={L('/')} aria-label="TAQINOR — accueil" class="site-logo-vt">
       <Logo size={24} theme="dark" />
     </a>
     <nav class="hidden items-center gap-7 lg:flex" aria-label={t('nav.primary')}>

@@ -124,6 +124,20 @@ const jsonLd = {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#070b1d" />
+    {/* W364 — Cross-document view transitions natives (Chrome/Edge 126+),
+        PAS le routeur client-side d'Astro (astro:transitions/ClientRouter) :
+        ce site reste une MPA classique, chaque navigation reste un
+        chargement de page complet. Cette meta demande seulement au
+        navigateur d'animer la transition ENTRE deux documents du même
+        site quand elle le supporte (repli intégral et silencieux — simple
+        navigation normale — partout ailleurs, y compris Firefox/Safari
+        aujourd'hui). Le morph lui-même vient du couplage de
+        `view-transition-name` entre la photo de galerie (accueil/liste
+        réalisations) et le héros de la page réalisation ciblée. Motion
+        réduite : gérée NATIVEMENT par le navigateur via
+        `@media (prefers-reduced-motion: reduce) { ::view-transition-group(*) { animation: none !important; } }`
+        ci-dessous (global.css) — même garde que le reste du site. */}
+    <meta name="view-transition" content="same-origin" />
     <title>{title}</title>
     <meta name="description" content={description} />
     {noindex && <meta name="robots" content="noindex, nofollow" />}

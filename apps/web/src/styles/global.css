@@ -1138,3 +1138,47 @@ summary:focus-visible {
        simply snaps rather than tweening. */
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * W364 — Cross-document view-transition morphs (native, no JS router)
+ * ═══════════════════════════════════════════════════════════════════════
+ * `<meta name="view-transition" content="same-origin">` (Layout.astro) asks
+ * the browser to animate SAME-ORIGIN document navigations when it supports
+ * the API (Chrome/Edge 126+) — everywhere else (older browsers, and every
+ * browser when the meta tag is absent) navigation is a completely normal
+ * full-page load, unaffected. This is NOT astro:transitions' ClientRouter —
+ * no client-side routing, no link interception, no page script re-execution
+ * model change; every page keeps loading exactly as before.
+ *
+ * The morph itself comes from a MATCHING `view-transition-name` on the
+ * outgoing element (gallery card photo on / or /realisations) and the
+ * incoming element (case-study hero photo on /realisations/[slug]) — the
+ * browser cross-fades/morphs between the two automatically. Names are
+ * assigned inline per photo (`style="view-transition-name: vt-photo-<slug>"`)
+ * in the markup, not here — this file only holds the SHARED, STABLE names
+ * (logo, primary CTA) and the reduced-motion guard.
+ *
+ * Reduced motion : `::view-transition-group(*)` disables ALL view-transition
+ * animation outright — same gate already used for every other animation on
+ * this site (prefers-reduced-motion: reduce), so a visitor who has asked for
+ * less motion gets an ordinary instant navigation, exactly as they would
+ * without this feature at all.
+ */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
+/* Stable cross-page identities: the header wordmark and the single primary
+   CTA keep the SAME view-transition-name site-wide, so they never "jump" or
+   cross-fade against themselves when a navigation also carries a photo morph
+   — only the photo pair is meant to visibly morph. */
+.site-logo-vt {
+  view-transition-name: vt-logo;
+}
+.primary-cta-vt {
+  view-transition-name: vt-primary-cta;
+}
