@@ -17,7 +17,7 @@ class CustomFieldDefSerializer(serializers.ModelSerializer):
         model = CustomFieldDef
         fields = ['id', 'module', 'code', 'libelle', 'type', 'options',
                   'obligatoire', 'visible_liste', 'ordre', 'actif',
-                  'relation_module', 'conditions']
+                  'relation_module', 'conditions', 'ia_prompt']
 
     def validate_module(self, value):
         from .models import CustomFieldDef as _CFD
@@ -67,6 +67,16 @@ class CustomFieldDefSerializer(serializers.ModelSerializer):
             if _module_model(relation_module) is None:
                 raise serializers.ValidationError(
                     {'relation_module': 'Module cible inconnu.'})
+
+        # XPLT17 — un champ IA ne peut RÉFÉRENCER aucun placeholder interne
+        # sensible (prix_achat/marge…) — validé à la DÉFINITION, pas
+        # seulement à la génération, pour refuser tôt un prompt mal conçu.
+        if type_ == 'ia':
+            ia_prompt = attrs.get('ia_prompt', getattr(instance, 'ia_prompt', ''))
+            from .services import validate_ia_prompt
+            errors = validate_ia_prompt(ia_prompt)
+            if errors:
+                raise serializers.ValidationError({'ia_prompt': errors})
 
         # L814 — interdire le renommage de `code` (la clé JSON) dès qu'un
         # enregistrement porte une valeur custom_data pour ce champ : seules

@@ -35,6 +35,10 @@ class CustomFieldDef(models.Model):
         # cible) et fichier (clé MinIO, réutilise records.storage).
         RELATION = 'relation', 'Relation'
         FICHIER = 'fichier', 'Fichier'
+        # XPLT17 — valeur générée par LLM à la demande (jamais automatique en
+        # masse). Le prompt admin vit dans `ia_prompt` ; la génération elle-
+        # même n'écrit dans custom_data QUE sur action explicite utilisateur.
+        IA = 'ia', 'Champ IA'
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
@@ -68,6 +72,12 @@ class CustomFieldDef(models.Model):
     # seul masquage front). None/absent = pas de condition (comportement
     # actuel inchangé).
     conditions = models.JSONField(null=True, blank=True)
+    # XPLT17 — prompt admin d'un champ type=ia (placeholders {code_champ} des
+    # AUTRES champs du même enregistrement, whitelist comme les gabarits
+    # existants — jamais {prix_achat} ni aucun champ sensible, cf.
+    # `_FORBIDDEN_PROMPT_PLACEHOLDERS` dans services.py). Ignoré pour tout
+    # autre type.
+    ia_prompt = models.TextField(blank=True, default='')
 
     class Meta:
         ordering = ['module', 'ordre', 'libelle']

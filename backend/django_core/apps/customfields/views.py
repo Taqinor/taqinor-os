@@ -9,6 +9,7 @@ from apps.parametres.models import SettingsAuditLog
 from .models import CustomFieldDef, CustomObjectDef, CustomRecord
 from .serializers import (
     CustomFieldDefSerializer, CustomObjectDefSerializer, CustomRecordSerializer,
+    _module_model,
 )
 
 
@@ -70,6 +71,64 @@ class CustomFieldDefViewSet(TenantMixin, viewsets.ModelViewSet):
                 d.ordre = position
                 d.save(update_fields=['ordre'])
         return Response({'ok': True, 'count': len(defs)})
+
+    @action(detail=True, methods=['post'])
+    def generer(self, request, pk=None):
+        """XPLT17 — génère (bouton « Générer ») la valeur d'un champ IA pour
+        UN enregistrement précis, à la demande UNIQUEMENT (jamais de
+        génération de masse — pas de boucle sur un queryset ici).
+
+        Corps : ``{"record_id": <id>}``. Le contexte de prompt est le
+        ``custom_data``/``data`` ACTUEL de l'enregistrement (jamais les
+        champs natifs sensibles — cohérent avec la garde `ia_prompt`).
+        Écrit le résultat dans le champ (même clé que les autres types) et
+        journalise le changement. NO-OP-safe : sans clé LLM, renvoie 200 avec
+        ``configured=False`` et un message dégradé, n'écrit rien."""
+        field_def = self.get_object()
+        if field_def.type != 'ia':
+            return Response(
+                {'detail': "Ce champ n'est pas de type IA."}, status=400)
+        record_id = request.data.get('record_id')
+        if not record_id:
+            return Response(
+                {'detail': 'record_id requis.'}, status=400)
+
+        from .services import generate_ia_value
+        company = request.user.company
+
+        if field_def.module.startswith('custom:'):
+            object_code = field_def.module.split(':', 1)[1]
+            record = get_object_or_404(
+                CustomRecord, company=company, objet__code=object_code,
+                pk=record_id)
+            context = dict(record.data or {})
+            result = generate_ia_value(field_def=field_def, context=context)
+            if not result.available:
+                return Response({'configured': result.configured,
+                                 'ok': result.ok, 'error': result.error})
+            old = (record.data or {}).get(field_def.code)
+            record.data = {**(record.data or {}), field_def.code: result.text}
+            record.save(update_fields=['data', 'date_modification'])
+        else:
+            model = _module_model(field_def.module)
+            if model is None:
+                return Response(
+                    {'detail': 'Module cible introuvable.'}, status=400)
+            record = get_object_or_404(model, company=company, pk=record_id)
+            context = dict(getattr(record, 'custom_data', None) or {})
+            result = generate_ia_value(field_def=field_def, context=context)
+            if not result.available:
+                return Response({'configured': result.configured,
+                                 'ok': result.ok, 'error': result.error})
+            old = (record.custom_data or {}).get(field_def.code)
+            record.custom_data = {**(record.custom_data or {}),
+                                  field_def.code: result.text}
+            record.save(update_fields=['custom_data'])
+
+        self._audit(f'Champ IA généré ({field_def.libelle})', field_def,
+                    old=old, new=result.text)
+        return Response({'configured': True, 'ok': True, 'value': result.text,
+                         'source': result.source})
 
 
 def _object_permission_code(object_code, action_kind):
