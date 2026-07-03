@@ -47,6 +47,38 @@ const installs = [
   { kwh: '5 kWh', where: 'El Jadida', ref: '236' },
 ];
 
+// W334 — 4 panneaux jour/soir/coupure/nuit : reprend STRICTEMENT le
+// raisonnement déjà publié plus haut (cas « Sans stockage » / « Avec stockage »)
+// et dans le guide « Faut-il des batteries ? » — aucun flux ni chiffre nouveau,
+// seule la mise en image change. Chaque flux actif est listé en toutes lettres
+// pour l'accessibilité (la figure reste lisible sans le SVG).
+const flowPanels = [
+  {
+    k: 'Jour',
+    title: 'Le soleil alimente la maison',
+    flows: ['Solaire → Consommation', 'Solaire → Batterie (surplus)'],
+    note: 'Le meilleur kWh est celui qui part direct des panneaux vers vos appareils, sans détour.',
+  },
+  {
+    k: 'Soir',
+    title: 'La batterie prend le relais',
+    flows: ['Batterie → Consommation'],
+    note: 'Le surplus stocké à midi couvre le pic du soir, à l’heure où le réseau facture le plus cher.',
+  },
+  {
+    k: 'Coupure',
+    title: 'Le circuit de secours tient',
+    flows: ['Solaire → Batterie (si jour)', 'Batterie → Consommation (circuits EPS)'],
+    note: 'L’onduleur hybride isole un circuit de secours ; réseau coupé, la maison ne l’est pas.',
+  },
+  {
+    k: 'Nuit',
+    title: 'Ce qu’il reste distribue',
+    flows: ['Batterie → Consommation', 'Réseau → Consommation (si batterie vide)'],
+    note: 'Batterie épuisée, le réseau reprend le relais — rien d’exceptionnel, juste la suite logique.',
+  },
+];
+
 // FAQ W130 — questions tracées sur CONTENT_SEO_NOTES.md §7 + §1 (PUBLISH-SAFE).
 // schema={false} → /faq reste l'unique page portant le FAQPage JSON-LD.
 const faqItems = [
@@ -135,6 +167,80 @@ const jsonLd = {
           réponse honnête tient en deux mots — pas maintenant.
           <a href="/guides/faut-il-des-batteries" class="border-b-2 border-azur-200/60 pb-0.5 font-bold text-azur-200 transition-colors hover:text-white">Lire le guide complet →</a>
         </p>
+      </div>
+    </section>
+
+    <!-- W334 — Diagramme de flux 24h : jour/soir/coupure/nuit (solaire→consommation→batterie→réseau) -->
+    <section class="section px-4">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">En image</p>
+        <h2 class="display v2-section-title mt-5 text-white">Une journée avec batterie, en quatre temps</h2>
+        <p class="v2-lead mt-4 max-w-2xl text-lune-soft">
+          Le même principe revient quatre fois par jour : produire, consommer, stocker le surplus,
+          restituer quand il le faut.
+        </p>
+        <div class="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
+          {flowPanels.map((p, i) => (
+            <figure class="v2-rise cine-card flex flex-col p-6" style={`--v2-i:${i}`}>
+              <figcaption>
+                <p class="tech-label text-lune">{p.k}</p>
+                <h3 class="display mt-2 text-lg text-white">{p.title}</h3>
+              </figcaption>
+              <svg
+                class="mt-5 w-full"
+                viewBox="0 0 220 200"
+                role="img"
+                aria-label={`${p.title} — flux : ${p.flows.join(', ')}`}
+              >
+                {/* Soleil */}
+                <g transform="translate(110,30)" opacity={p.k === 'Nuit' ? '0.28' : '1'}>
+                  <circle r="14" fill="none" stroke="#e8b54a" stroke-width="2.5" />
+                  {Array.from({ length: 8 }).map((_, r) => (
+                    <line
+                      x1="0" y1="-20" x2="0" y2="-26"
+                      stroke="#e8b54a" stroke-width="2.5" stroke-linecap="round"
+                      transform={`rotate(${r * 45})`}
+                    />
+                  ))}
+                </g>
+                {/* Maison (consommation) */}
+                <g transform="translate(30,100)">
+                  <path d="M-16 8 L-16 -6 L0 -18 L16 -6 L16 8 Z" fill="none" stroke="white" stroke-width="2.5" stroke-linejoin="round" />
+                </g>
+                {/* Batterie */}
+                <g transform="translate(110,100)">
+                  <rect x="-14" y="-14" width="28" height="28" rx="3" fill="none" stroke="white" stroke-width="2.5" />
+                  <rect x="-6" y="-19" width="12" height="5" rx="1" fill="white" />
+                  <rect x="-8" y="-6" width="16" height="12" fill={p.k === 'Nuit' ? 'rgb(255 255 255 / 0.25)' : '#e8b54a'} />
+                </g>
+                {/* Réseau (pylône) */}
+                <g transform="translate(190,100)" opacity={p.k === 'Coupure' ? '0.3' : '1'}>
+                  <path d="M0 -16 L0 14 M-10 -6 L10 -6 M-13 4 L13 4" stroke="white" stroke-width="2.5" stroke-linecap="round" />
+                  {p.k === 'Coupure' && <path d="M-10 -18 L10 18" stroke="#e8b54a" stroke-width="2.5" stroke-linecap="round" />}
+                </g>
+                {/* Flèches de flux — libellées dans aria-label ci-dessus, décoratives ici */}
+                <g stroke="#7fa8ff" stroke-width="2" fill="none" opacity="0.85" aria-hidden="true">
+                  {p.k !== 'Nuit' && <path d="M104 44 L40 88" marker-end="url(#arrow)" />}
+                  {(p.k === 'Jour' || p.k === 'Coupure') && <path d="M116 44 L110 84" marker-end="url(#arrow)" />}
+                  {(p.k === 'Soir' || p.k === 'Coupure' || p.k === 'Nuit') && <path d="M96 100 L46 100" marker-end="url(#arrow)" />}
+                  {p.k === 'Nuit' && <path d="M174 100 L124 100" marker-end="url(#arrow)" />}
+                </g>
+                <defs>
+                  <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                    <path d="M0 0 L6 3 L0 6 Z" fill="#7fa8ff" />
+                  </marker>
+                </defs>
+                <text x="30" y="130" text-anchor="middle" class="fill-lune-soft" font-size="9">Maison</text>
+                <text x="110" y="132" text-anchor="middle" class="fill-lune-soft" font-size="9">Batterie</text>
+                <text x="190" y="130" text-anchor="middle" class="fill-lune-soft" font-size="9">Réseau</text>
+              </svg>
+              <ul class="mt-2 space-y-1 text-xs leading-relaxed text-lune-soft">
+                {p.flows.map((f) => (<li>{f}</li>))}
+              </ul>
+              <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{p.note}</p>
+            </figure>
+          ))}
+        </div>
       </div>
     </section>
 
