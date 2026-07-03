@@ -34,6 +34,22 @@ const solutions = [
     highlight: true,
   },
   {
+    // W348 — named "bill" entry into the same quote journey, pre-set to the
+    // bill step via ?etape=facture (query appended after localizeNavHref so
+    // the lookup itself always uses the clean root path).
+    // TODO(follow-up, out of scope here): /devis/mon-toit does not yet read
+    // ?etape=facture to jump straight to the bill panel (see
+    // apps/web/src/pages/devis/mon-toit.astro — wizard `step` is only
+    // restored from sessionStorage). The link lands on the roof step (0)
+    // today, same as any other link into this journey; wiring the param is a
+    // separate follow-up since that file is outside this task's scope.
+    href: '/devis/mon-toit',
+    query: '?etape=facture',
+    title: 'Free bill analysis',
+    summary:
+      'Enter your ONEE bill amount: we pull your real consumption and an instant costed range from it, without going through the roof survey first.',
+  },
+  {
     href: '/résidentiel',
     title: 'Residential solar',
     summary:
@@ -111,7 +127,7 @@ const jsonLd = {
     <section class="px-4 pb-24 sm:pb-32">
       <div class="mx-auto grid max-w-6xl gap-6 md:grid-cols-3" data-stagger>
         {solutions.map((s, i) => (
-          <a href={L(s.href)} class={`v2-rise cine-card flex flex-col p-7 ${s.highlight ? 'border-2 border-brass-400/70' : ''}`} style={`--v2-i:${i}`}>
+          <a href={`${L(s.href)}${s.query ?? ''}`} class={`v2-rise cine-card flex flex-col p-7 ${s.highlight ? 'border-2 border-brass-400/70' : ''}`} style={`--v2-i:${i}`}>
             <p class="tech-label text-lune">{s.highlight ? 'Free · no obligation' : 'Solution'}</p>
             <h2 class="display mt-2 text-xl text-white" set:html={s.title.replace('&', '&amp;')} />
             <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{s.summary}</p>

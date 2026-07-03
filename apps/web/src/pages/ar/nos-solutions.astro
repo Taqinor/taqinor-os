@@ -33,6 +33,22 @@ const solutions = [
     highlight: true,
   },
   {
+    // W348 — مدخل مُسمّى «فاتورة» لنفس مسار الدراسة، مُهيَّأ مسبقاً على خطوة
+    // الفاتورة عبر ?etape=facture (يُضاف بعد localizeNavHref حتى يبقى البحث
+    // دوماً على المسار الجذري النظيف).
+    // TODO(متابعة، خارج نطاق هذه المهمة): /devis/mon-toit لا تقرأ بعد
+    // ?etape=facture لفتح لوحة الفاتورة مباشرة (انظر
+    // apps/web/src/pages/devis/mon-toit.astro — `step` المُستعادة من
+    // sessionStorage فقط). الرابط يصل اليوم إلى خطوة السطح (0) كأي رابط آخر
+    // نحو هذا المسار؛ ربط هذا المُعامل مهمة منفصلة لأن هذا الملف خارج نطاق
+    // هذه المهمة.
+    href: '/devis/mon-toit',
+    query: '?etape=facture',
+    title: 'تحليل مجاني لفاتورتك',
+    summary:
+      'أدخل مبلغ فاتورة الكهرباء: نستخرج منه استهلاكك الحقيقي وشريحة فورية مُقدَّرة، دون المرور أولاً عبر معاينة السطح.',
+  },
+  {
     href: '/résidentiel',
     title: 'الطاقة الشمسية السكنية',
     summary:
@@ -109,7 +125,7 @@ const jsonLd = {
     <section class="px-4 pb-24 sm:pb-32">
       <div class="mx-auto grid max-w-6xl gap-6 md:grid-cols-3" data-stagger>
         {solutions.map((s, i) => (
-          <a href={L(s.href)} class={`v2-rise cine-card flex flex-col p-7 ${s.highlight ? 'border-2 border-brass-400/70' : ''}`} style={`--v2-i:${i}`}>
+          <a href={`${L(s.href)}${s.query ?? ''}`} class={`v2-rise cine-card flex flex-col p-7 ${s.highlight ? 'border-2 border-brass-400/70' : ''}`} style={`--v2-i:${i}`}>
             <p class="tech-label text-lune">{s.highlight ? 'مجاني · دون التزام' : 'حل'}</p>
             <h2 class="display mt-2 text-xl text-white">{s.title}</h2>
             <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{s.summary}</p>

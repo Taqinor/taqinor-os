@@ -39,6 +39,23 @@ const solutions = [
     highlight: true,
   },
   {
+    // W348 — entrée nommée « facture » du même parcours devis, pré-réglée sur
+    // l'étape facture via le paramètre d'URL ?etape=facture (repris par
+    // /devis/mon-toit — voir le TODO ci-dessous si ce paramètre n'est pas
+    // encore câblé côté assistant).
+    // TODO(follow-up, hors périmètre de cette tâche) : /devis/mon-toit
+    // n'interprète pas encore ?etape=facture pour ouvrir directement le
+    // panneau facture de l'assistant (voir apps/web/src/pages/devis/mon-toit.astro,
+    // wizard `step` initialisé depuis sessionStorage seulement) — le lien
+    // atterrit aujourd'hui sur l'étape toiture (étape 0) comme n'importe quel
+    // autre lien vers ce parcours ; câbler la lecture de ce paramètre est une
+    // tâche distincte, ce fichier n'étant pas dans le périmètre autorisé ici.
+    href: '/devis/mon-toit?etape=facture',
+    title: 'Analyse gratuite de votre facture',
+    summary:
+      'Indiquez le montant de votre facture ONEE : on en tire votre consommation réelle et une fourchette chiffrée immédiate, sans passer par le relevé de toiture d’abord.',
+  },
+  {
     href: '/résidentiel',
     title: 'Solaire résidentiel',
     summary:
