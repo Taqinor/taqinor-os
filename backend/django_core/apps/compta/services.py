@@ -54,6 +54,7 @@ from .models import (
     MappingCompte, CompteAuxiliaire,
     PisteAuditComptable,
     ModeleRapprochement,
+    AbonnementEcriture,
 )
 
 
@@ -944,6 +945,103 @@ def export_provisions_periode_csv(company, *, date_debut, date_fin,
             lig['type'].upper(), lig['reference'], lig['date'], lig['libelle'],
             lig['montant']])
     return buffer.getvalue().encode('utf-8-sig')
+
+
+# ── XACC8 — Modèles d'écriture, écritures récurrentes & extourne auto ──────
+
+@transaction.atomic
+def generer_ecriture_depuis_modele(modele, *, date_ecriture, montants=None,
+                                   libelle=None, source_type='', source_id=None,
+                                   user=None, statut=None):
+    """Génère UNE écriture à partir d'un ``ModeleEcriture`` (lignes pré-codées).
+
+    ``montants`` (optionnel) : dict ``{ligne_modele_id: Decimal}`` qui
+    surcharge le ``montant_defaut`` de la ligne — obligatoire pour toute ligne
+    dont ``montant_defaut`` est ``None``, sinon ``ValidationError``. Renvoie
+    l'écriture (naît en BROUILLON par défaut — relecture humaine avant
+    validation, sauf ``statut`` explicite).
+    """
+    montants = montants or {}
+    lignes = []
+    for lig_modele in modele.lignes.order_by('ordre', 'id'):
+        montant = montants.get(lig_modele.id, lig_modele.montant_defaut)
+        if montant is None:
+            raise ValidationError(
+                f"Montant manquant pour la ligne {lig_modele.compte.numero} "
+                "du modèle (pas de montant par défaut).")
+        montant = Decimal(montant)
+        lignes.append({
+            'compte': lig_modele.compte,
+            'debit': montant if lig_modele.sens == 'debit' else Decimal('0'),
+            'credit': montant if lig_modele.sens == 'credit' else Decimal('0'),
+            'libelle': lig_modele.libelle or modele.libelle,
+        })
+    return creer_ecriture(
+        modele.company, modele.journal, date_ecriture,
+        libelle or modele.libelle, lignes,
+        source_type=source_type, source_id=source_id, created_by=user,
+        statut=statut or EcritureComptable.Statut.BROUILLON,
+    )
+
+
+@transaction.atomic
+def generer_ecritures_recurrentes(company, *, jusqua=None, user=None):
+    """Génère les écritures dues de tous les abonnements actifs (XACC8).
+
+    Pour chaque ``AbonnementEcriture`` actif dont ``prochaine_echeance`` est
+    ≤ ``jusqua`` (défaut : aujourd'hui) ET ``date_fin`` non dépassée, génère
+    l'écriture du modèle (montants par défaut des lignes — un abonnement sans
+    montant par défaut sur une ligne est SKIP avec le détail), puis avance
+    ``prochaine_echeance`` d'un cran. IDEMPOTENT PAR PÉRIODE :
+    ``source_type='abonnement'`` + ``source_id=abonnement.id`` ne suffit pas à
+    distinguer deux échéances du même abonnement — la référence de l'écriture
+    porte la période (``AB{id}-{YYYY-MM}``) et sert de clef d'idempotence
+    explicite en plus du couple source. Si ``modele.extourne_auto`` est posé,
+    l'extourne est postée au 1er jour du mois suivant (COMPTA11). Renvoie
+    ``{'generees': [...], 'ignorees': [...]}``.
+    """
+    ref_date = jusqua or timezone.localdate()
+    generees, ignorees = [], []
+    abonnements = AbonnementEcriture.objects.filter(
+        company=company, actif=True,
+        prochaine_echeance__lte=ref_date).select_related('modele')
+    for ab in abonnements:
+        if ab.date_fin and ab.prochaine_echeance > ab.date_fin:
+            continue
+        periode_key = ab.prochaine_echeance.strftime('%Y-%m')
+        ref = f'AB{ab.id}-{periode_key}'
+        deja = EcritureComptable.objects.filter(
+            company=company, source_type='abonnement', reference=ref).first()
+        if deja:
+            ignorees.append({'abonnement_id': ab.id, 'periode': periode_key,
+                             'raison': 'déjà générée'})
+        else:
+            try:
+                ecriture = generer_ecriture_depuis_modele(
+                    ab.modele, date_ecriture=ab.prochaine_echeance,
+                    libelle=ab.libelle or ab.modele.libelle,
+                    source_type='abonnement', source_id=ab.id, user=user)
+            except ValidationError as exc:
+                ignorees.append({
+                    'abonnement_id': ab.id, 'periode': periode_key,
+                    'raison': exc.messages[0] if exc.messages else str(exc)})
+                continue
+            ecriture.reference = ref
+            ecriture.save(update_fields=['reference'])
+            extourne_id = None
+            if ab.modele.extourne_auto:
+                prochain_mois = ab.echeance_suivante(ab.prochaine_echeance)
+                date_extourne = prochain_mois.replace(day=1)
+                extourne = extourner_ecriture(
+                    ecriture, date_extourne=date_extourne, user=user)
+                extourne_id = extourne.id
+            generees.append({
+                'abonnement_id': ab.id, 'ecriture_id': ecriture.id,
+                'extourne_id': extourne_id, 'periode': periode_key})
+        ab.prochaine_echeance = ab.echeance_suivante(ab.prochaine_echeance)
+        ab.derniere_generation = ref_date
+        ab.save(update_fields=['prochaine_echeance', 'derniere_generation'])
+    return {'generees': generees, 'ignorees': ignorees}
 
 
 # ── FG116 — Écritures de régularisation / OD manuelles ─────────────────────

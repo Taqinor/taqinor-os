@@ -433,6 +433,155 @@ class LigneEcriture(models.Model):
         return super().delete(*args, **kwargs)
 
 
+# ── XACC8 — Modèles d'écriture & écritures récurrentes ──────────────────────
+
+class ModeleEcriture(models.Model):
+    """Modèle d'écriture réutilisable (lignes pré-codées, montants paramétrables).
+
+    La saisie d'OD existe (COMPTA8) mais sans réutilisation : un modèle fige
+    la STRUCTURE (compte/sens/libellé) d'une écriture récurrente (loyer,
+    abonnement…) ; le MONTANT de chaque ligne est renseigné à la génération
+    (``AbonnementEcriture``) ou repris du modèle si posé ici comme défaut.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='modeles_ecriture',
+        verbose_name='Société',
+    )
+    libelle = models.CharField(max_length=150, verbose_name='Libellé')
+    journal = models.ForeignKey(
+        'compta.Journal',
+        on_delete=models.PROTECT,
+        related_name='modeles_ecriture',
+        verbose_name='Journal',
+    )
+    # XACC8 — extourne automatique (contre-passation au 1er jour de la
+    # période suivante) — réutilise COMPTA11 (``services.extourner_ecriture``).
+    extourne_auto = models.BooleanField(
+        default=False, verbose_name='Extourne automatique')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Modèle d'écriture"
+        verbose_name_plural = "Modèles d'écriture"
+        ordering = ['libelle']
+
+    def __str__(self):
+        return self.libelle
+
+
+class LigneModeleEcriture(models.Model):
+    """Ligne pré-codée d'un ``ModeleEcriture`` (compte/sens/libellé/montant défaut)."""
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='lignes_modele_ecriture',
+        verbose_name='Société',
+    )
+    modele = models.ForeignKey(
+        ModeleEcriture,
+        on_delete=models.CASCADE,
+        related_name='lignes',
+        verbose_name='Modèle',
+    )
+    compte = models.ForeignKey(
+        CompteComptable,
+        on_delete=models.PROTECT,
+        related_name='lignes_modele_ecriture',
+        verbose_name='Compte',
+    )
+    libelle = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Libellé')
+    sens = models.CharField(
+        max_length=6,
+        choices=[('debit', 'Débit'), ('credit', 'Crédit')],
+        verbose_name='Sens')
+    # Montant par défaut (paramétrable à la génération). NULL = doit être
+    # fourni explicitement à chaque génération (pas de défaut).
+    montant_defaut = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Montant par défaut')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+
+    class Meta:
+        verbose_name = "Ligne de modèle d'écriture"
+        verbose_name_plural = "Lignes de modèle d'écriture"
+        ordering = ['modele', 'ordre', 'id']
+
+    def __str__(self):
+        return f'{self.compte.numero} {self.sens} ({self.modele_id})'
+
+
+class AbonnementEcriture(models.Model):
+    """Écriture récurrente : régénère un ``ModeleEcriture`` à échéance (XACC8).
+
+    ``frequence`` mensuelle ou trimestrielle ; ``prochaine_echeance`` avance
+    d'elle-même après chaque génération (``services.generer_ecritures_
+    recurrentes``). ``date_fin`` optionnelle arrête la récurrence. Chaque
+    génération pose l'écriture en BROUILLON (relecture humaine avant
+    validation), idempotente PAR PÉRIODE (une seule écriture par
+    ``(abonnement, période)`` — pas de doublon si la commande est rejouée).
+    """
+    class Frequence(models.TextChoices):
+        MENSUELLE = 'mensuelle', 'Mensuelle'
+        TRIMESTRIELLE = 'trimestrielle', 'Trimestrielle'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='abonnements_ecriture',
+        verbose_name='Société',
+    )
+    modele = models.ForeignKey(
+        ModeleEcriture,
+        on_delete=models.CASCADE,
+        related_name='abonnements',
+        verbose_name='Modèle',
+    )
+    libelle = models.CharField(
+        max_length=150, blank=True, default='', verbose_name='Libellé')
+    frequence = models.CharField(
+        max_length=15, choices=Frequence.choices,
+        default=Frequence.MENSUELLE, verbose_name='Fréquence')
+    prochaine_echeance = models.DateField(verbose_name='Prochaine échéance')
+    date_fin = models.DateField(
+        null=True, blank=True, verbose_name='Date de fin')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    derniere_generation = models.DateField(
+        null=True, blank=True, verbose_name='Dernière génération')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Abonnement d\'écriture'
+        verbose_name_plural = 'Abonnements d\'écriture'
+        ordering = ['prochaine_echeance']
+
+    def __str__(self):
+        return self.libelle or f'Abonnement {self.modele_id}'
+
+    def echeance_suivante(self, depuis):
+        """Prochaine échéance après ``depuis`` selon la fréquence.
+
+        Ajoute 1 mois (mensuelle) ou 3 mois (trimestrielle) SANS dépendance
+        externe (stdlib pure) : calcule le mois/année cible puis clampe le
+        jour au dernier jour du mois cible (ex. 31 janvier + 1 mois → 28/29
+        février, jamais une ``ValueError``).
+        """
+        import calendar
+
+        pas = 1 if self.frequence == self.Frequence.MENSUELLE else 3
+        mois_total = depuis.month - 1 + pas
+        annee = depuis.year + mois_total // 12
+        mois = mois_total % 12 + 1
+        dernier_jour = calendar.monthrange(annee, mois)[1]
+        jour = min(depuis.day, dernier_jour)
+        return depuis.replace(year=annee, month=mois, day=jour)
+
+
 # ── FG121 / COMPTA23 — Référentiel comptes bancaires & caisses ─────────────
 
 class CompteTresorerie(models.Model):
