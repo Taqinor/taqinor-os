@@ -125,6 +125,16 @@ const trust = [
   { fig: 'القانون 82-21', tally: false, label: 'مطابقة مُدرَجة', body: 'تصريح تُعِدّه وتُودِعه عنكم Taqinor' },
   { fig: 'Deye Cloud', tally: false, label: 'إنتاج مُقاس', body: 'مراقبة على كل تركيب، مع ولوج للزبون' },
 ];
+
+// W265 — قصة استثمار الـ25 سنة: الرقعة اللونية الفاتحة الوحيدة في الصفحة
+// (خلفية blanc-azur، نص encre)، في الموضع 3-4 لإراحة السرد dark→light→dark.
+// أرقام مطابقة تماماً لصفحة /financement (منشورة سلفاً) — بلا أي رقم جديد.
+const investment = [
+  { v: '3–7 سنوات', label: 'العائد على الاستثمار النموذجي' },
+  { v: '25 سنة', label: 'ضمان أداء الألواح' },
+  { v: '60–90 %', label: 'من الفاتورة مُغطّاة' },
+  { v: '0 MAD', label: 'الدراسة والتشخيص' },
+];
 ---
 
 <Layout
@@ -293,6 +303,34 @@ const trust = [
           ))}
         </div>
         <a href={L('/nos-solutions')} class="v2-rise group mt-10 inline-flex items-center gap-1 border border-white/40 px-6 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">شاهدوا كل حلولنا <span class="inline-block rtl:-scale-x-100 motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:-translate-x-1" aria-hidden="true">→</span></a>
+      </div>
+    </section>
+
+    {/* ── رقعة لونية فاتحة واضحة (W265) — «استثمار يُسدَّد ثم يدفع لكم»، الرقعة
+        الوحيدة بخلفية blanc-azur في الصفحة، لإراحة dark→light→dark. أرقام
+        مطابقة لصفحة /financement (بلا أي رقم جديد). ── */}
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="bg-blanc-azur px-4 py-20 text-encre sm:py-28">
+      <div class="mx-auto max-w-6xl">
+        <div class="v2-rise max-w-2xl">
+          <p class="tech-label v2-kicker rule-brass text-azur-600">الاستثمار</p>
+          <h2 class="display v2-section-title mt-5 text-encre">استثمار يُسدَّد نفسه، ثم يدفع لكم</h2>
+          <p class="v2-body mt-5 text-encre-soft">
+            التركيب يُسدَّد بفضل الكهرباء التي تتوقّفون عن شرائها من الشبكة — ويبقى بعد ذلك سنوات
+            عديدة من أصل 25 سنة من ضمان الأداء، يستمر خلالها التركيب في الإنتاج لكم، بـ 0 درهم.
+          </p>
+        </div>
+        <dl class="mt-12 grid grid-cols-2 gap-x-8 gap-y-10 sm:grid-cols-4" data-stagger>
+          {investment.map((it, i) => (
+            <div class="v2-rise min-w-0" style={`--v2-i:${i}`}>
+              <dd class="fig fig-md whitespace-nowrap text-azur-600" data-tally dir="ltr">{it.v}</dd>
+              <dt class="tech-label mt-2 text-encre-soft">{it.label}</dt>
+            </div>
+          ))}
+        </dl>
+        <a href={L('/financement')} class="v2-rise group mt-10 inline-flex items-center gap-1 border-b-2 border-azur-600 pb-0.5 text-sm font-bold text-azur-700 transition-colors hover:text-azur-600">
+          اطّلعوا على تفاصيل التمويل <span class="inline-block rtl:-scale-x-100 motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:-translate-x-1" aria-hidden="true">→</span>
+        </a>
       </div>
     </section>
 
