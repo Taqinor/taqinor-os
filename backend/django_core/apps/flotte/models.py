@@ -2372,6 +2372,21 @@ class Infraction(models.Model):
     date_paiement = models.DateField(
         null=True, blank=True, verbose_name='Date de paiement')
     notes = models.TextField(blank=True, verbose_name='Notes')
+    # XFLT11 — Imputation automatique du conducteur : trace si ``conducteur``
+    # a été résolu automatiquement (via l'historique ``AffectationConducteur``
+    # à la date de l'infraction) plutôt que saisi manuellement.
+    imputation_auto = models.BooleanField(
+        default=False, verbose_name='Conducteur imputé automatiquement')
+    date_limite_contestation = models.DateField(
+        null=True, blank=True, verbose_name='Date limite de contestation')
+    # La retenue de paie éventuelle reste une écriture MANUELLE côté paie —
+    # ces champs ne font qu'exposer l'intention en lecture
+    # (``infractions/?refacturables=1``), jamais d'écriture cross-app.
+    refacture_conducteur = models.BooleanField(
+        default=False, verbose_name='Refacturée au conducteur')
+    montant_retenu = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Montant retenu (MAD)')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 

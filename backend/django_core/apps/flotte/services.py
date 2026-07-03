@@ -1005,3 +1005,32 @@ def prochaine_visite_narsa(vehicule, today=None):
     while proposition < today:
         proposition = _ajouter_mois(proposition, 12)
     return proposition
+
+
+# ── XFLT11 — Imputation automatique du conducteur sur les infractions ──────────
+
+def conducteur_a_la_date(vehicule, dt):
+    """XFLT11 — Conducteur affecté à ``vehicule`` à l'horodatage ``dt``.
+
+    Résout l'affectation dont la période ``[date_debut, date_fin]`` couvre
+    ``dt`` (``date_fin`` nullable = affectation en cours, couvre toute date
+    ``>= date_debut``). Ne s'applique qu'aux infractions rattachées à un
+    ``Vehicule`` (l'historique d'affectation est propre aux véhicules, pas
+    aux engins) — retourne ``None`` si ``vehicule`` est ``None`` ou ``dt``
+    absent, ou si aucune affectation ne couvre la date (véhicule non
+    affecté à ce moment-là). Lecture seule.
+    """
+    from django.db.models import Q
+
+    from .models import AffectationConducteur
+
+    if vehicule is None or dt is None:
+        return None
+
+    qs = AffectationConducteur.objects.filter(
+        vehicule=vehicule, date_debut__lte=dt,
+    ).filter(
+        Q(date_fin__isnull=True) | Q(date_fin__gte=dt)
+    ).order_by('-date_debut', '-id')
+    affectation = qs.first()
+    return affectation.conducteur if affectation is not None else None

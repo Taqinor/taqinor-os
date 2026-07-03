@@ -1546,7 +1546,42 @@ class InfractionViewSet(_FlotteBaseViewSet):
             except (ValueError, TypeError):
                 pass
 
+        # XFLT11 — infractions refacturables au conducteur (lecture seule ;
+        # l'écriture de la retenue de paie reste manuelle côté paie).
+        if params.get('refacturables') == '1':
+            qs = qs.filter(refacture_conducteur=True)
+
         return qs
+
+    def _imputer_conducteur_auto(self, serializer):
+        """XFLT11 — Si aucun conducteur n'est fourni, résout automatiquement
+        le conducteur affecté au véhicule à la date de l'infraction via
+        l'historique ``AffectationConducteur``. Ne s'applique qu'aux
+        infractions rattachées à un ``Vehicule`` (pas un engin) ; une
+        résolution manquante laisse ``conducteur=None`` et
+        ``imputation_auto=False`` (le front peut afficher un avertissement)."""
+        from .services import conducteur_a_la_date
+
+        conducteur_fourni = serializer.validated_data.get('conducteur')
+        if conducteur_fourni is not None:
+            serializer.save(imputation_auto=False)
+            return
+
+        actif = serializer.validated_data.get('actif_flotte')
+        date_infraction = serializer.validated_data.get('date_infraction')
+        vehicule = getattr(actif, 'vehicule', None) if actif else None
+        conducteur_resolu = conducteur_a_la_date(vehicule, date_infraction)
+        if conducteur_resolu is not None:
+            serializer.save(
+                conducteur=conducteur_resolu, imputation_auto=True)
+        else:
+            serializer.save(imputation_auto=False)
+
+    def perform_create(self, serializer):
+        self._imputer_conducteur_auto(serializer)
+
+    def perform_update(self, serializer):
+        self._imputer_conducteur_auto(serializer)
 
 
 # ── FLOTTE28 — Suivi de position & trajets télématiques ────────────────────────

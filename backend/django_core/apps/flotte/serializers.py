@@ -1458,9 +1458,11 @@ class InfractionSerializer(serializers.ModelSerializer):
             'conducteur_nom', 'date_infraction', 'type_infraction',
             'type_infraction_display', 'lieu', 'reference_pv',
             'montant_amende', 'pv_fichier', 'statut', 'statut_display',
-            'date_paiement', 'notes', 'date_creation',
+            'date_paiement', 'notes', 'imputation_auto',
+            'date_limite_contestation', 'refacture_conducteur',
+            'montant_retenu', 'date_creation',
         ]
-        read_only_fields = ['date_creation']
+        read_only_fields = ['date_creation', 'imputation_auto']
 
     def get_actif_label(self, obj):
         return obj.actif_flotte.label if obj.actif_flotte_id else None
