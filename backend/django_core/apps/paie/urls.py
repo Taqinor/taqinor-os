@@ -2,6 +2,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    AdhesionMutuelleViewSet,
     AvanceSalarieViewSet,
     BaremeIRViewSet,
     BulletinPaieViewSet,
@@ -12,6 +13,7 @@ from .views import (
     ParametrePaieViewSet,
     PeriodePaieViewSet,
     ProfilPaieViewSet,
+    RegimeMutuelleViewSet,
     RubriqueEmployeViewSet,
     RubriqueViewSet,
     SaisieArretViewSet,
@@ -23,6 +25,8 @@ router.register(r'baremes', BaremeIRViewSet)
 router.register(r'rubriques', RubriqueViewSet)
 router.register(r'profils', ProfilPaieViewSet)
 router.register(r'rubriques-employe', RubriqueEmployeViewSet)
+router.register(r'regimes-mutuelle', RegimeMutuelleViewSet)
+router.register(r'adhesions-mutuelle', AdhesionMutuelleViewSet)
 router.register(r'periodes', PeriodePaieViewSet)
 router.register(r'elements-variables', ElementVariableViewSet)
 router.register(r'bulletins', BulletinPaieViewSet)

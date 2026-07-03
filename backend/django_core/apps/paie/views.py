@@ -18,6 +18,7 @@ from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 
 from .models import (
+    AdhesionMutuelle,
     AvanceSalarie,
     BaremeIR,
     BulletinPaie,
@@ -27,11 +28,13 @@ from .models import (
     ParametrePaie,
     PeriodePaie,
     ProfilPaie,
+    RegimeMutuelle,
     Rubrique,
     RubriqueEmploye,
     SaisieArret,
 )
 from .serializers import (
+    AdhesionMutuelleSerializer,
     AvanceSalarieSerializer,
     BaremeIRSerializer,
     BulletinPaieSerializer,
@@ -41,6 +44,7 @@ from .serializers import (
     PeriodePaieSerializer,
     OrdreVirementSerializer,
     ProfilPaieSerializer,
+    RegimeMutuelleSerializer,
     RubriqueEmployeSerializer,
     RubriqueSerializer,
     SaisieArretSerializer,
@@ -261,6 +265,23 @@ class RubriqueEmployeViewSet(_PaieBaseViewSet):
     queryset = RubriqueEmploye.objects.select_related(
         'profil', 'rubrique').all()
     serializer_class = RubriqueEmployeSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation', 'id']
+
+
+class RegimeMutuelleViewSet(_PaieBaseViewSet):
+    """Catalogue des régimes de mutuelle/prévoyance (XPAI3) — société scopée."""
+    queryset = RegimeMutuelle.objects.all()
+    serializer_class = RegimeMutuelleSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['libelle']
+    ordering_fields = ['libelle', 'id']
+
+
+class AdhesionMutuelleViewSet(_PaieBaseViewSet):
+    """Adhésions des profils aux régimes de mutuelle (XPAI3) — société scopée."""
+    queryset = AdhesionMutuelle.objects.select_related('profil', 'regime').all()
+    serializer_class = AdhesionMutuelleSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_creation', 'id']
 

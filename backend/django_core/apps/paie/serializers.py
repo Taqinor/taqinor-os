@@ -7,6 +7,7 @@ appartenant à la société de l'utilisateur.
 from rest_framework import serializers
 
 from .models import (
+    AdhesionMutuelle,
     AvanceSalarie,
     BaremeIR,
     BulletinPaie,
@@ -18,6 +19,7 @@ from .models import (
     ParametrePaie,
     PeriodePaie,
     ProfilPaie,
+    RegimeMutuelle,
     Rubrique,
     RubriqueEmploye,
     SaisieArret,
@@ -166,6 +168,43 @@ class ProfilPaieSerializer(serializers.ModelSerializer):
                     request.user.company, value.id):
                 raise serializers.ValidationError('Employé inconnu.')
         return value
+
+
+class RegimeMutuelleSerializer(serializers.ModelSerializer):
+    """Régime de mutuelle/prévoyance/assurance groupe (XPAI3)."""
+
+    class Meta:
+        model = RegimeMutuelle
+        fields = [
+            'id', 'libelle', 'mode', 'palier', 'part_salariale',
+            'part_patronale', 'deductible_net_imposable', 'actif',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class AdhesionMutuelleSerializer(serializers.ModelSerializer):
+    """Adhésion d'un profil à un régime de mutuelle (XPAI3).
+
+    ``company`` posée côté serveur ; ``profil`` et ``regime`` validés comme
+    appartenant à la société de l'utilisateur.
+    """
+    regime_libelle = serializers.CharField(
+        source='regime.libelle', read_only=True)
+
+    class Meta:
+        model = AdhesionMutuelle
+        fields = [
+            'id', 'profil', 'regime', 'regime_libelle', 'date_debut',
+            'actif', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_profil(self, value):
+        return _meme_societe(self, value, 'Profil')
+
+    def validate_regime(self, value):
+        return _meme_societe(self, value, 'Régime')
 
 
 class RubriqueEmployeSerializer(serializers.ModelSerializer):

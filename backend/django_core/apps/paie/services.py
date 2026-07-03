@@ -1190,6 +1190,33 @@ def bareme_en_vigueur(company, le_jour):
     )
 
 
+# ── XPAI3 — Mutuelle / prévoyance / assurance groupe ────────────────────────
+
+def mutuelle_du_profil(profil, brut):
+    """Cotisations mutuelle (salariale + patronale) d'un profil (XPAI3).
+
+    Lit l'adhésion mutuelle ACTIVE du profil (``AdhesionMutuelle``, OneToOne)
+    et calcule les parts salariale/patronale selon le mode du régime :
+    ``pourcentage`` (× ``brut``) ou ``fixe`` (montant tel quel). Renvoie
+    ``(part_salariale, part_patronale, deductible)`` — deux ``Decimal`` au
+    centime et un booléen. ``(0, 0, False)`` si le profil n'est pas adhérent
+    (pas d'``AdhesionMutuelle`` active).
+    """
+    adhesion = getattr(profil, 'adhesion_mutuelle', None)
+    if adhesion is None or not adhesion.actif:
+        return Decimal('0.00'), Decimal('0.00'), False
+    regime = adhesion.regime
+    if regime is None or not regime.actif:
+        return Decimal('0.00'), Decimal('0.00'), False
+    if regime.mode == regime.MODE_POURCENTAGE:
+        salariale = Decimal(brut or 0) * Decimal(regime.part_salariale or 0) / Decimal('100')
+        patronale = Decimal(brut or 0) * Decimal(regime.part_patronale or 0) / Decimal('100')
+    else:
+        salariale = Decimal(regime.part_salariale or 0)
+        patronale = Decimal(regime.part_patronale or 0)
+    return _q(salariale), _q(patronale), bool(regime.deductible_net_imposable)
+
+
 def calculer_bulletin(profil, periode, personnes_a_charge=0):
     """Calcule le bulletin de paie d'un employé pour une période (PAIE12).
 
@@ -1339,6 +1366,14 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
     # chacun avec SON taux propre. Non adhérent → 0 (défaut).
     cimr = cimr_salariale(brut, profil.affilie_cimr, profil.taux_cimr_salarial)
 
+    # 4bis. Mutuelle / prévoyance / assurance groupe (XPAI3) — OPTIONNELLE :
+    # seuls les profils avec une adhésion active cotisent. La part salariale
+    # se déduit du net imposable AVANT IR quand le régime est déductible ; la
+    # part patronale rejoint les charges patronales (jamais le net du
+    # salarié).
+    mutuelle_sal, mutuelle_pat, mutuelle_deductible = mutuelle_du_profil(
+        profil, brut)
+
     # 5. Frais professionnels.
     frais_pro = Decimal('0')
     if parametre:
@@ -1352,8 +1387,10 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
             frais_pro = plafond
     frais_pro = _q(frais_pro)
 
-    # 6. Net imposable.
+    # 6. Net imposable (XPAI3 : − part salariale mutuelle si déductible).
     net_imposable = brut_imposable - cnss - amo - cimr - frais_pro
+    if mutuelle_deductible:
+        net_imposable -= mutuelle_sal
     if net_imposable < 0:
         net_imposable = Decimal('0')
     net_imposable = _q(net_imposable)
@@ -1378,7 +1415,17 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
             'montant': _q(montant),
         })
 
-    # 8. Net à payer (− retenues variables type avances).
+    # XPAI3 — Ligne mutuelle salariale (retenue nette, comme la CIMR).
+    if mutuelle_sal > 0:
+        retenues_variables += mutuelle_sal
+        lignes.append({
+            'code': 'MUTUELLE_SAL',
+            'libelle': 'Mutuelle (part salariale)',
+            'type': Rubrique.TYPE_RETENUE,
+            'montant': mutuelle_sal,
+        })
+
+    # 8. Net à payer (− retenues variables type avances, mutuelle incluse).
     net_a_payer = brut - cnss - amo - cimr - ir - retenues_variables
     net_a_payer = _q(net_a_payer)
     # Net AVANT saisie : base de calcul de la quotité saisissable (conservé pour
@@ -1402,10 +1449,21 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
             })
         net_a_payer = _q(net_a_payer - saisies_total)
 
-    # PAIE18/PAIE19/PAIE23/PAIE24 — Total des charges patronales (coût
+    # PAIE18/PAIE19/PAIE23/PAIE24/XPAI3 — Total des charges patronales (coût
     # employeur), informatif : CNSS + AMO + allocations familiales + taxe de
-    # formation professionnelle patronales.
-    charges_patronales = _q(cnss_pat + amo_pat + alloc_fam + formation_pro)
+    # formation professionnelle + mutuelle patronales.
+    charges_patronales = _q(
+        cnss_pat + amo_pat + alloc_fam + formation_pro + mutuelle_pat)
+
+    # XPAI3 — Ligne EMPLOYEUR informative pour la mutuelle. Type cotisation,
+    # marquée part patronale ; ne diminue jamais le net du salarié.
+    if mutuelle_pat > 0:
+        lignes.append({
+            'code': 'MUTUELLE_PAT',
+            'libelle': 'Mutuelle (part patronale)',
+            'type': Rubrique.TYPE_COTISATION,
+            'montant': mutuelle_pat,
+        })
 
     # PAIE23 — Ligne EMPLOYEUR informative pour les allocations familiales.
     # Type cotisation, marquée part patronale ; comme toute charge patronale
@@ -1447,6 +1505,8 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
         'net_a_payer': net_a_payer,
         'prime_anciennete': prime_anciennete,
         'charges_patronales': charges_patronales,
+        'mutuelle_salariale': mutuelle_sal,
+        'mutuelle_patronale': mutuelle_pat,
         'lignes': lignes,
         # Interne (PAIE29) : net avant saisie, base de la quotité saisissable.
         # Non persisté en bulletin — sert à rejouer l'imputation à la validation.

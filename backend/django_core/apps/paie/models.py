@@ -446,6 +446,110 @@ class ProfilPaie(models.Model):
         return f'Profil paie #{self.employe_id} ({self.type_remuneration})'
 
 
+# ── XPAI3 — Mutuelle / prévoyance / assurance groupe ────────────────────────
+
+class RegimeMutuelle(models.Model):
+    """Régime de mutuelle/prévoyance/assurance groupe (XPAI3), company-scoped.
+
+    Catalogue des régimes proposés par l'employeur (AMO complémentaire,
+    prévoyance, assurance groupe…) : part salariale et part patronale — en
+    POURCENTAGE (d'une base, typiquement le brut) ou en MONTANT FIXE — un
+    palier CÉLIBATAIRE ou FAMILLE, et le drapeau ``deductible_net_imposable``
+    qui pilote si la part salariale se déduit du net imposable AVANT IR
+    (cadre marocain : les cotisations de prévoyance/mutuelle complémentaire
+    collective sont déductibles sous conditions).
+
+    Multi-société : ``company`` posée côté serveur.
+    """
+    MODE_POURCENTAGE = 'pourcentage'
+    MODE_FIXE = 'fixe'
+    MODE_CHOICES = [
+        (MODE_POURCENTAGE, 'Pourcentage'),
+        (MODE_FIXE, 'Montant fixe'),
+    ]
+
+    PALIER_CELIBATAIRE = 'celibataire'
+    PALIER_FAMILLE = 'famille'
+    PALIER_CHOICES = [
+        (PALIER_CELIBATAIRE, 'Célibataire'),
+        (PALIER_FAMILLE, 'Famille'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paie_regimes_mutuelle',
+        verbose_name='Société',
+    )
+    libelle = models.CharField(max_length=120, verbose_name='Libellé')
+    mode = models.CharField(
+        max_length=12, choices=MODE_CHOICES, default=MODE_POURCENTAGE,
+        verbose_name='Mode de calcul')
+    palier = models.CharField(
+        max_length=12, choices=PALIER_CHOICES, default=PALIER_CELIBATAIRE,
+        verbose_name='Palier')
+    part_salariale = models.DecimalField(
+        max_digits=14, decimal_places=4, default=Decimal('0'),
+        verbose_name='Part salariale (% ou montant)')
+    part_patronale = models.DecimalField(
+        max_digits=14, decimal_places=4, default=Decimal('0'),
+        verbose_name='Part patronale (% ou montant)')
+    deductible_net_imposable = models.BooleanField(
+        default=True,
+        verbose_name='Déductible du net imposable (part salariale)')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Régime de mutuelle'
+        verbose_name_plural = 'Régimes de mutuelle'
+        ordering = ['libelle']
+
+    def __str__(self):
+        return f'{self.libelle} ({self.get_palier_display()})'
+
+
+class AdhesionMutuelle(models.Model):
+    """Adhésion d'un ``ProfilPaie`` à un ``RegimeMutuelle`` (XPAI3).
+
+    ``OneToOne`` vers ``ProfilPaie`` : un employé n'a qu'une adhésion active à
+    la fois (changer de régime remplace l'adhésion, jamais de cumul). Porte la
+    ``date_debut`` d'affiliation. Multi-société : ``company`` posée côté
+    serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paie_adhesions_mutuelle',
+        verbose_name='Société',
+    )
+    profil = models.OneToOneField(
+        ProfilPaie,
+        on_delete=models.CASCADE,
+        related_name='adhesion_mutuelle',
+        verbose_name='Profil de paie',
+    )
+    regime = models.ForeignKey(
+        RegimeMutuelle,
+        on_delete=models.PROTECT,
+        related_name='adhesions',
+        verbose_name='Régime',
+    )
+    date_debut = models.DateField(verbose_name="Date d'adhésion")
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Adhésion mutuelle'
+        verbose_name_plural = 'Adhésions mutuelle'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'{self.regime.libelle} → profil #{self.profil_id}'
+
+
 # ── PAIE9 — Rubriques récurrentes par employé ──────────────────────────────
 
 class RubriqueEmploye(models.Model):
