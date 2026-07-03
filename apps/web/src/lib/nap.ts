@@ -5,6 +5,10 @@
  *
  * Valeurs réelles confirmées par Reda (2026-06-12) — phoneDisplay reste
  * caractère pour caractère identique à l'affichage GBP : « 0661850410 ».
+ *
+ * W298 (2026-07-03) — réconciliation byte-for-byte avec la fiche Google
+ * Business Profile évaluée : EN ATTENTE de WG5 (confirmation GBP), non
+ * résolue ici. Aucune valeur ci-dessous n'a été modifiée par cette tâche.
  */
 export const NAP = {
   name: 'Taqinor', // pas de suffixe SARL — aligné GBP

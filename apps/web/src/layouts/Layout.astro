@@ -50,6 +50,21 @@ const ogImage = { href: ogImageUrl };
 
 // LocalBusiness JSON-LD — mode zone de service (pas d'adresse postale),
 // liste de services alignée exactement sur le Google Business Profile.
+//
+// W298 — type schema.org évalué contre la hiérarchie réelle (2026-07-03) :
+// schema.org n'a AUCUN type dédié « installateur solaire » (pas de
+// SolarInstaller / SolarEnergyContractor dans le vocabulaire). Le sous-arbre
+// HomeAndConstructionBusiness (Electrician, RoofingContractor, HVACBusiness,
+// GeneralContractor, HousePainter, Locksmith, MovingCompany,
+// PlumbingContractor) ne contient aucun sous-type qui corresponde
+// GENUINEMENT au métier : Electrician viserait un électricien agréé (autre
+// métier/licence), RoofingContractor un couvreur, HVACBusiness le
+// chauffage/climatisation — les trois seraient une erreur de catégorie, pas
+// une précision. Conclusion : `LocalBusiness` reste le type le plus correct
+// disponible ; conservé tel quel (aucun sous-type n'est « genuinement plus
+// spécifique ou correct », condition posée par la tâche). NAP : chaîne
+// inchangée, conforme à Reda (2026-06-12) — la réconciliation byte-for-byte
+// avec la fiche Google Business Profile reste en attente de WG5.
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'LocalBusiness',
