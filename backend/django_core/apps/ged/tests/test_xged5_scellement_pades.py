@@ -2,14 +2,17 @@
 (gated).
 
 Couvre :
-  * sans pyHanko installé (cas réel de cet environnement) : `sceller_pdf`
-    dégrade proprement et renvoie le PDF INCHANGÉ, `scelle=False` ;
+  * sans pyHanko disponible (mocké — la lib est un dépendance réelle et
+    installée via requirements.txt, donc l'absence est simulée plutôt que
+    supposée de l'environnement) : `sceller_pdf` dégrade proprement et
+    renvoie le PDF INCHANGÉ, `scelle=False` ;
   * `tsa_url_configuree()` vide par défaut → no-op déterministe ;
   * `_certificat_societe_pour_scellement` renvoie None sans
     `GED_PADES_CERT_PATH`/`GED_PADES_KEY_PATH`, même si pyHanko est "présent"
     (mocké) ;
   * avec pyHanko simulé disponible ET un certificat configuré, le PDF est
-    scellé (mocké — la vraie lib n'est pas installée dans cet environnement) ;
+    scellé (mocké — le vrai scellement dépend d'un certificat non
+    provisionné dans les tests) ;
   * le flux XGED4 (classement automatique) reste intact que le scellement
     réussisse ou dégrade (jamais bloquant) ;
   * `sceller_pdf` ne lève jamais, quel que soit l'échec interne.
@@ -43,14 +46,18 @@ class XGed5Base(TestCase):
 
 
 class NoOpWithoutPyHankoTests(XGed5Base):
-    def test_pades_signer_disponible_false_in_this_env(self):
-        """pyHanko n'est PAS installé dans cet environnement — confirme le
-        chemin de dégradation réel (pas seulement mocké)."""
-        self.assertFalse(services._pades_signer_disponible())
+    def test_pades_signer_disponible_false_without_pyhanko(self):
+        """Sans pyHanko disponible (mocké — la lib est réellement installée
+        via requirements.txt, donc l'absence est simulée à l'import) :
+        confirme le chemin de dégradation."""
+        with mock.patch.dict('sys.modules', {'pyhanko': None}):
+            self.assertFalse(services._pades_signer_disponible())
 
     def test_sceller_pdf_returns_original_unchanged(self):
-        original = b'%PDF-1.4 contenu original'
-        out, scelle = services.sceller_pdf(original, company=self.co_a)
+        with mock.patch('apps.ged.services._pades_signer_disponible',
+                        return_value=False):
+            original = b'%PDF-1.4 contenu original'
+            out, scelle = services.sceller_pdf(original, company=self.co_a)
         self.assertEqual(out, original)
         self.assertFalse(scelle)
 
@@ -58,8 +65,10 @@ class NoOpWithoutPyHankoTests(XGed5Base):
         self.assertEqual(services.tsa_url_configuree(), '')
 
     def test_certificat_societe_none_without_pyhanko(self):
-        self.assertIsNone(
-            services._certificat_societe_pour_scellement(self.co_a))
+        with mock.patch('apps.ged.services._pades_signer_disponible',
+                        return_value=False):
+            self.assertIsNone(
+                services._certificat_societe_pour_scellement(self.co_a))
 
 
 class NoOpWithoutCertificatTests(XGed5Base):
