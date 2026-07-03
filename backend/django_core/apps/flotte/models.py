@@ -3160,3 +3160,112 @@ class CoutVehicule(models.Model):
     def __str__(self):
         return (f'{self.get_categorie_display()} — {self.actif_flotte} '
                 f'({self.montant} MAD, {self.date})')
+
+
+# ── XFLT5 — Signalement d'anomalie véhicule par le conducteur ──────────────────
+
+class SignalementVehicule(models.Model):
+    """Signalement d'anomalie sur un actif de flotte, déposé par un
+    conducteur (XFLT5).
+
+    Tout rôle peut CRÉER un signalement (comme ``DemandeVehicule``, FLOTTE32)
+    — la résolution (passage à ``en_cours``/``resolu``/``clos``) reste
+    réservée aux rôles écriture. L'action ``convertir-en-or`` crée un
+    ``OrdreReparation`` (FLOTTE17) pré-rempli et lie les deux.
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête). L'actif et le conducteur liés (si renseigné) doivent
+    appartenir à la MÊME société (validé dans ``clean``).
+    """
+
+    class Gravite(models.TextChoices):
+        FAIBLE = 'faible', 'Faible'
+        MOYENNE = 'moyenne', 'Moyenne'
+        CRITIQUE = 'critique', 'Critique'
+
+    class Statut(models.TextChoices):
+        OUVERT = 'ouvert', 'Ouvert'
+        EN_COURS = 'en_cours', 'En cours'
+        RESOLU = 'resolu', 'Résolu'
+        CLOS = 'clos', 'Clos'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_signalements_vehicule',
+        verbose_name='Société',
+    )
+    actif_flotte = models.ForeignKey(
+        'ActifFlotte',
+        on_delete=models.CASCADE,
+        related_name='flotte_signalements_vehicule',
+        verbose_name='Actif (véhicule ou engin)',
+    )
+    conducteur = models.ForeignKey(
+        'Conducteur',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='flotte_signalements_vehicule',
+        verbose_name='Conducteur',
+    )
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='flotte_signalements_vehicule',
+        verbose_name='Auteur',
+    )
+    description = models.TextField(verbose_name='Description')
+    photo = models.FileField(
+        upload_to='flotte/signalements/photos/%Y/%m/',
+        blank=True, null=True, verbose_name='Photo')
+    gravite = models.CharField(
+        max_length=8, choices=Gravite.choices, default=Gravite.MOYENNE,
+        verbose_name='Gravité')
+    statut = models.CharField(
+        max_length=8, choices=Statut.choices, default=Statut.OUVERT,
+        verbose_name='Statut')
+    ordre_reparation = models.ForeignKey(
+        'OrdreReparation',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='signalements',
+        verbose_name='Ordre de réparation lié',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Signalement d'anomalie véhicule"
+        verbose_name_plural = "Signalements d'anomalie véhicule"
+        ordering = ['-date_creation', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='flotte_sig_co_stat_idx',
+            ),
+            models.Index(
+                fields=['company', 'actif_flotte'],
+                name='flotte_sig_co_actif_idx',
+            ),
+        ]
+
+    def clean(self):
+        """Valide l'appartenance société de l'actif, du conducteur et de
+        l'auteur."""
+        if self.actif_flotte_id is not None \
+                and self.actif_flotte.company_id != self.company_id:
+            raise ValidationError(
+                "L'actif n'appartient pas à la même société.")
+        if self.conducteur_id is not None \
+                and self.conducteur.company_id != self.company_id:
+            raise ValidationError(
+                "Le conducteur n'appartient pas à la même société.")
+        if self.auteur_id is not None \
+                and self.auteur.company_id != self.company_id:
+            raise ValidationError(
+                "L'auteur n'appartient pas à la même société.")
+
+    def __str__(self):
+        return (f'Signalement {self.get_gravite_display()} — '
+                f'{self.actif_flotte} [{self.get_statut_display()}]')

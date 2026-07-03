@@ -1823,3 +1823,41 @@ class CoutVehiculeSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Le montant ne peut pas être négatif.")
         return value
+
+
+class SignalementVehiculeSerializer(serializers.ModelSerializer):
+    """XFLT5 — Signalement d'anomalie véhicule déposé par un conducteur.
+
+    ``company`` ET ``auteur`` sont posés côté serveur (jamais lus du corps de
+    requête). L'actif et le conducteur liés doivent appartenir à la société
+    courante.
+
+    Champs lecture seule :
+    - ``actif_label``      : désignation de l'actif (véhicule ou engin).
+    - ``gravite_display`` / ``statut_display``.
+    - ``auteur_nom``       : nom d'utilisateur de l'auteur.
+    """
+
+    actif_label = serializers.SerializerMethodField()
+    gravite_display = serializers.CharField(
+        source='get_gravite_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    auteur_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import SignalementVehicule
+        model = SignalementVehicule
+        fields = [
+            'id', 'actif_flotte', 'actif_label', 'conducteur', 'auteur',
+            'auteur_nom', 'description', 'photo', 'gravite',
+            'gravite_display', 'statut', 'statut_display',
+            'ordre_reparation', 'date_creation',
+        ]
+        read_only_fields = ['auteur', 'ordre_reparation', 'date_creation']
+
+    def get_actif_label(self, obj):
+        return obj.actif_flotte.label if obj.actif_flotte_id else None
+
+    def get_auteur_nom(self, obj):
+        return obj.auteur.get_username() if obj.auteur_id else None

@@ -39,6 +39,7 @@ from .models import (
     ReferentielFlotte,
     ReleveTelematique,
     ReservationVehicule,
+    SignalementVehicule,
     Sinistre,
     TrajetChantier,
     TrajetTelematique,
@@ -71,6 +72,7 @@ from .serializers import (
     ReferentielFlotteSerializer,
     ReleveTelematiqueSerializer,
     ReservationVehiculeSerializer,
+    SignalementVehiculeSerializer,
     SinistreSerializer,
     TrajetChantierSerializer,
     TrajetTelematiqueSerializer,
@@ -1824,3 +1826,74 @@ class CoutVehiculeViewSet(_FlotteBaseViewSet):
             qs = qs.filter(categorie=categorie)
 
         return qs
+
+
+class SignalementVehiculeViewSet(_FlotteBaseViewSet):
+    """Signalements d'anomalie véhicule déposés par un conducteur (XFLT5).
+
+    CRUD scopé société : tout rôle peut CRÉER un signalement (comme
+    ``DemandeVehicule``, FLOTTE32) — ``company`` ET ``auteur`` posés côté
+    serveur. La résolution (mise à jour du ``statut``) reste réservée aux
+    rôles écriture. Filtrable par ``?statut=`` et ``?actif_flotte=``.
+
+    Action ``POST /signalements/<id>/convertir-en-or/`` (écriture
+    responsable/admin) : crée un ``OrdreReparation`` (FLOTTE17) pré-rempli
+    depuis le signalement (actif, description) et lie les deux.
+    """
+    queryset = SignalementVehicule.objects.select_related(
+        'actif_flotte', 'actif_flotte__vehicule', 'actif_flotte__engin',
+        'conducteur', 'auteur', 'ordre_reparation')
+    serializer_class = SignalementVehiculeSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['description']
+    ordering_fields = ['gravite', 'statut', 'date_creation']
+
+    def get_permissions(self):
+        # La création est ouverte à tout rôle (comme DemandeVehicule) ; la
+        # résolution (update/convertir-en-or) reste responsable/admin.
+        if self.action == 'create':
+            return [IsAnyRole()]
+        return super().get_permissions()
+
+    def perform_create(self, serializer):
+        # company ET auteur posés côté serveur (jamais du body).
+        serializer.save(
+            company=self.request.user.company, auteur=self.request.user)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+
+        actif_flotte = params.get('actif_flotte')
+        if actif_flotte:
+            try:
+                qs = qs.filter(actif_flotte_id=int(actif_flotte))
+            except (ValueError, TypeError):
+                pass
+
+        return qs
+
+    @action(detail=True, methods=['post'], url_path='convertir-en-or')
+    def convertir_en_or(self, request, pk=None):
+        """XFLT5 — Crée un ``OrdreReparation`` pré-rempli depuis le
+        signalement et lie les deux (écriture responsable/admin)."""
+        signalement = self.get_object()
+        if signalement.ordre_reparation_id is not None:
+            return Response(
+                {'detail': "Ce signalement est déjà converti en ordre de "
+                           "réparation."}, status=400)
+
+        ordre = OrdreReparation.objects.create(
+            company=request.user.company,
+            actif_flotte=signalement.actif_flotte,
+            description=signalement.description,
+            date_ouverture=datetime.date.today(),
+        )
+        signalement.ordre_reparation = ordre
+        signalement.save(update_fields=['ordre_reparation'])
+
+        return Response(self.get_serializer(signalement).data)
