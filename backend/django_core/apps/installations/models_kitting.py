@@ -418,3 +418,97 @@ class OrdreDemontageLigne(models.Model):
     def __str__(self):
         return (f'{self.ordre_id} · {self.designation or self.produit_id} '
                 f'récup {self.quantite_recuperee}/{self.quantite_attendue}')
+
+
+class ControleQualiteModele(models.Model):
+    """XMFG13 — modèle de checklist qualité PAR KIT (gate avant clôture).
+    Un kit SANS modèle défini garde le comportement actuel inchangé (aucune
+    checklist n'est exigée). Un kit AVEC un modèle actif voit `terminer`
+    bloqué tant que sa checklist n'est pas passée."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='installations_controle_qualite_modeles')
+    kit = models.OneToOneField(
+        Kit, on_delete=models.CASCADE, related_name='controle_qualite_modele')
+    active = models.BooleanField(default=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Modèle de contrôle qualité'
+        verbose_name_plural = 'Modèles de contrôle qualité'
+        ordering = ['kit_id']
+
+    def __str__(self):
+        return f'QC · {self.kit_id}'
+
+
+class ControleQualiteItemModele(models.Model):
+    """XMFG13 — item de checklist QC du modèle (pass/fail, valeur mesurée
+    optionnelle avec tolérance min/max, photo optionnelle exigée)."""
+
+    modele = models.ForeignKey(
+        ControleQualiteModele, on_delete=models.CASCADE, related_name='items')
+    libelle = models.CharField(max_length=255)
+    ordre = models.PositiveIntegerField(default=0)
+    # Tolérance optionnelle : si définie, la valeur mesurée doit être dans
+    # [valeur_min, valeur_max] pour que l'item passe automatiquement (pass/fail
+    # manuel reste toujours possible même sans tolérance définie).
+    valeur_min = models.DecimalField(
+        max_digits=12, decimal_places=3, null=True, blank=True)
+    valeur_max = models.DecimalField(
+        max_digits=12, decimal_places=3, null=True, blank=True)
+    unite = models.CharField(max_length=20, blank=True, default='')
+    photo_requise = models.BooleanField(default=False)
+
+    class Meta:
+        verbose_name = 'Item de contrôle qualité'
+        verbose_name_plural = 'Items de contrôle qualité'
+        ordering = ['modele_id', 'ordre', 'id']
+
+    def __str__(self):
+        return self.libelle
+
+
+class ControleQualiteOrdre(models.Model):
+    """XMFG13 — état d'exécution d'un item QC POUR un ordre d'assemblage
+    donné (résultat, valeur mesurée, photo). Instancié depuis
+    `ControleQualiteItemModele` à la première consultation de l'ordre."""
+
+    class Resultat(models.TextChoices):
+        EN_ATTENTE = 'en_attente', 'En attente'
+        PASS_ = 'pass', 'Passé'
+        FAIL = 'fail', 'Échec'
+
+    ordre = models.ForeignKey(
+        OrdreAssemblage, on_delete=models.CASCADE,
+        related_name='controles_qualite')
+    item_modele = models.ForeignKey(
+        ControleQualiteItemModele, on_delete=models.CASCADE,
+        related_name='executions')
+    resultat = models.CharField(
+        max_length=12, choices=Resultat.choices, default=Resultat.EN_ATTENTE)
+    valeur_mesuree = models.DecimalField(
+        max_digits=12, decimal_places=3, null=True, blank=True)
+    photo = models.ForeignKey(
+        'records.Attachment', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+')
+    controle_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+')
+    date_controle = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Exécution de contrôle qualité"
+        verbose_name_plural = "Exécutions de contrôle qualité"
+        ordering = ['ordre_id', 'item_modele__ordre', 'id']
+        unique_together = [('ordre', 'item_modele')]
+        indexes = [
+            models.Index(fields=['ordre', 'resultat'],
+                         name='idx_cqordre_ordre_resultat'),
+        ]
+
+    def __str__(self):
+        return f'{self.ordre_id} · {self.item_modele_id} · {self.resultat}'

@@ -1581,3 +1581,88 @@ def seed_lignes_demontage(ordre_demontage):
     ]
     OrdreDemontageLigne.objects.bulk_create(lignes)
     return list(ordre_demontage.lignes.all())
+
+
+# ── XMFG13 — Contrôle qualité de fin d'assemblage (gate avant clôture) ───────
+
+def instancier_controle_qualite(ordre):
+    """XMFG13 — instancie la checklist QC du kit sur cet ordre (une fois),
+    depuis `ControleQualiteItemModele`. Kit sans modèle (ou modèle inactif) →
+    ne crée rien (comportement actuel inchangé). Idempotent."""
+    from .models import ControleQualiteOrdre
+    modele = getattr(ordre.kit, 'controle_qualite_modele', None)
+    if modele is None or not modele.active:
+        return []
+    existants = set(
+        ordre.controles_qualite.values_list('item_modele_id', flat=True))
+    items = modele.items.all()
+    a_creer = [
+        ControleQualiteOrdre(ordre=ordre, item_modele=item)
+        for item in items if item.id not in existants
+    ]
+    if a_creer:
+        ControleQualiteOrdre.objects.bulk_create(a_creer)
+    return list(ordre.controles_qualite.select_related('item_modele').all())
+
+
+def controle_qualite_bloque_cloture(ordre):
+    """XMFG13 — True si l'ordre a un modèle QC actif et que la checklist n'est
+    PAS entièrement passée (tout item doit être `pass` ; un `fail` ou
+    `en_attente` bloque). Kit sans modèle → jamais bloquant (False)."""
+    modele = getattr(ordre.kit, 'controle_qualite_modele', None)
+    if modele is None or not modele.active:
+        return False
+    from .models import ControleQualiteOrdre
+    controles = instancier_controle_qualite(ordre)
+    if not controles:
+        return False
+    return any(
+        c.resultat != ControleQualiteOrdre.Resultat.PASS_ for c in controles)
+
+
+def enregistrer_controle_qualite(ordre, item_modele_id, *, resultat,
+                                 valeur_mesuree=None, photo=None, user):
+    """XMFG13 — enregistre le résultat d'un item QC pour cet ordre. Si une
+    tolérance (valeur_min/max) est définie sur l'item ET qu'une valeur mesurée
+    est fournie SANS résultat explicite, le pass/fail est déduit automatiquement.
+    Un item en échec ouvre une NCR liée (`qhse.services`, écriture cross-app
+    fine) — best-effort, ne bloque jamais l'enregistrement."""
+    from django.utils import timezone
+    from .models import ControleQualiteOrdre
+
+    controle = ControleQualiteOrdre.objects.select_related('item_modele').get(
+        ordre=ordre, item_modele_id=item_modele_id)
+    item = controle.item_modele
+
+    if resultat is None and valeur_mesuree is not None and (
+            item.valeur_min is not None or item.valeur_max is not None):
+        ok = True
+        if item.valeur_min is not None and valeur_mesuree < item.valeur_min:
+            ok = False
+        if item.valeur_max is not None and valeur_mesuree > item.valeur_max:
+            ok = False
+        resultat = (ControleQualiteOrdre.Resultat.PASS_ if ok
+                    else ControleQualiteOrdre.Resultat.FAIL)
+
+    controle.resultat = resultat or ControleQualiteOrdre.Resultat.EN_ATTENTE
+    controle.valeur_mesuree = valeur_mesuree
+    if photo is not None:
+        controle.photo = photo
+    controle.controle_par = user
+    controle.date_controle = timezone.now()
+    controle.save(update_fields=[
+        'resultat', 'valeur_mesuree', 'photo', 'controle_par', 'date_controle'])
+
+    if controle.resultat == ControleQualiteOrdre.Resultat.FAIL:
+        try:
+            from apps.qhse.services import creer_ncr_depuis_controle_assemblage
+            creer_ncr_depuis_controle_assemblage(
+                company=ordre.company, ordre_id=ordre.id,
+                titre=f'QC échec — {ordre.reference} · {item.libelle}',
+                description=(
+                    f'Item « {item.libelle} » en échec sur l\'ordre '
+                    f'{ordre.reference} (kit {ordre.kit.nom}).'),
+                signale_par=user)
+        except Exception:  # pragma: no cover - défensif
+            pass
+    return controle

@@ -103,6 +103,38 @@ def creer_ncr_depuis_reserve(reserve_id, company, signale_par=None,
     return ncr, True
 
 
+# ── XMFG13 — Pont Contrôle qualité d'assemblage → NCR ────────────────────────
+
+@transaction.atomic
+def creer_ncr_depuis_controle_assemblage(*, company, ordre_id, titre,
+                                         description='', gravite=None,
+                                         signale_par=None):
+    """Crée une non-conformité (NCR) à partir d'un item de checklist QC en
+    échec sur un ordre d'assemblage (XMFG13). Écriture FINE, cross-app
+    conforme : l'appelant (`installations`) ne fait que passer les données déjà
+    résolues (id + titre + description) — jamais d'import du modèle
+    `installations.OrdreAssemblage` ici. Lien lâche via FK chaîne
+    `ordre_assemblage`. Idempotent : une seule NCR ouverte par (ordre, titre) ;
+    ré-appeler renvoie la NCR existante. Renvoie ``(ncr, created)``."""
+    existante = NonConformite.objects.filter(
+        company=company, ordre_assemblage_id=ordre_id, titre=titre,
+        statut__in=[NonConformite.Statut.OUVERTE,
+                    NonConformite.Statut.EN_TRAITEMENT]).first()
+    if existante is not None:
+        return existante, False
+
+    ncr = NonConformite.objects.create(
+        company=company,
+        titre=titre,
+        description=description,
+        origine="Contrôle qualité d'assemblage",
+        gravite=gravite or NonConformite.Gravite.MINEURE,
+        ordre_assemblage_id=ordre_id,
+        signale_par=signale_par,
+    )
+    return ncr, True
+
+
 # ── QHSE12 — Relances CAPA en retard (notifications / digest) ───────────────
 
 def relancer_capa_en_retard(company, today=None):

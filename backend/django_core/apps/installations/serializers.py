@@ -56,6 +56,9 @@ from .models import (
     SerieAssemblage,
     OrdreDemontage,
     OrdreDemontageLigne,
+    ControleQualiteModele,
+    ControleQualiteItemModele,
+    ControleQualiteOrdre,
     Livraison,
     LivraisonLigne,
     PreuveLivraison,
@@ -2207,6 +2210,49 @@ class OrdreDemontageLigneSerializer(serializers.ModelSerializer):
             'quantite_attendue', 'quantite_recuperee',
         ]
         read_only_fields = ['quantite_attendue']
+
+
+class ControleQualiteItemModeleSerializer(serializers.ModelSerializer):
+    """XMFG13 - item du modèle de checklist QC d'un kit."""
+
+    class Meta:
+        model = ControleQualiteItemModele
+        fields = [
+            'id', 'modele', 'libelle', 'ordre', 'valeur_min', 'valeur_max',
+            'unite', 'photo_requise',
+        ]
+
+
+class ControleQualiteModeleSerializer(serializers.ModelSerializer):
+    """XMFG13 - modèle de checklist QC par kit. Société posée COTE SERVEUR."""
+    items = ControleQualiteItemModeleSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ControleQualiteModele
+        fields = ['id', 'kit', 'active', 'items',
+                  'date_creation', 'date_modification']
+        read_only_fields = ['date_creation', 'date_modification']
+
+
+class ControleQualiteOrdreSerializer(serializers.ModelSerializer):
+    """XMFG13 - exécution d'un item QC pour un ordre d'assemblage donné."""
+    item_libelle = serializers.CharField(
+        source='item_modele.libelle', read_only=True, default=None)
+    valeur_min = serializers.DecimalField(
+        source='item_modele.valeur_min', max_digits=12, decimal_places=3,
+        read_only=True, default=None)
+    valeur_max = serializers.DecimalField(
+        source='item_modele.valeur_max', max_digits=12, decimal_places=3,
+        read_only=True, default=None)
+
+    class Meta:
+        model = ControleQualiteOrdre
+        fields = [
+            'id', 'ordre', 'item_modele', 'item_libelle', 'resultat',
+            'valeur_mesuree', 'valeur_min', 'valeur_max', 'photo',
+            'controle_par', 'date_controle',
+        ]
+        read_only_fields = ['controle_par', 'date_controle']
 
 
 class OrdreDemontageSerializer(serializers.ModelSerializer):

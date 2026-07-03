@@ -26,19 +26,22 @@ from apps.ventes.selectors import get_devis_by_pk
 from .. import activity_kitting as activity
 from ..models import (
     Kit, KitComposant, OrdreAssemblage, OrdreAssemblageLigne,
-    OrdreDemontage, OrdreDemontageLigne,
+    OrdreDemontage, OrdreDemontageLigne, ControleQualiteModele,
 )
 from ..serializers import (
     KitSerializer, KitComposantSerializer, OrdreAssemblageSerializer,
     OrdreAssemblageActivitySerializer, OrdreAssemblageLigneSerializer,
     SerieAssemblageSerializer, OrdreDemontageSerializer,
-    OrdreDemontageLigneSerializer,
+    OrdreDemontageLigneSerializer, ControleQualiteModeleSerializer,
+    ControleQualiteOrdreSerializer,
 )
 from ..services import (
     seed_reservations_assemblage, release_reservations_assemblage,
     disponibilite_par_ligne, alerter_penurie_assemblage,
     seed_lignes_assemblage, enregistrer_series_assemblage,
     etiquette_items_assemblage, seed_lignes_demontage,
+    instancier_controle_qualite, controle_qualite_bloque_cloture,
+    enregistrer_controle_qualite,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -131,6 +134,48 @@ class KitComposantViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         self._check_parent(serializer)
         serializer.save()
+
+
+class ControleQualiteModeleViewSet(viewsets.ModelViewSet):
+    """XMFG13 — modèle de checklist QC par kit. Société posée COTE SERVEUR.
+    Un kit sans modèle (ou avec un modèle inactif) garde le comportement
+    `terminer` actuel inchangé (aucune checklist exigée)."""
+    queryset = ControleQualiteModele.objects.select_related(
+        'kit').prefetch_related('items').all()
+    serializer_class = ControleQualiteModeleSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if user.company_id:
+            qs = qs.filter(company=user.company)
+        elif not user.is_superuser:
+            qs = qs.none()
+        kit = self.request.query_params.get('kit')
+        if kit:
+            qs = qs.filter(kit_id=kit)
+        return qs
+
+    def _check_tenant(self, serializer):
+        company = self.request.user.company
+        cid = getattr(company, 'id', None)
+        kit = serializer.validated_data.get('kit')
+        if kit is not None and getattr(kit, 'company_id', None) != cid:
+            raise ValidationError(
+                {'kit': 'Kit inconnu pour cette société.'})
+
+    def perform_create(self, serializer):
+        self._check_tenant(serializer)
+        serializer.save(company=self.request.user.company)
+
+    def perform_update(self, serializer):
+        self._check_tenant(serializer)
+        serializer.save(company=self.request.user.company)
 
 
 class OrdreAssemblageLigneViewSet(viewsets.ModelViewSet):
@@ -422,6 +467,31 @@ class OrdreAssemblageViewSet(TenantMixin, viewsets.ModelViewSet):
             company, date_debut=params.get('date_debut'),
             date_fin=params.get('date_fin')))
 
+    @action(detail=True, methods=['get'], url_path='controle-qualite')
+    def controle_qualite(self, request, pk=None):
+        """XMFG13 — checklist QC de l'ordre (instanciée à la volée depuis le
+        modèle du kit ; liste vide si le kit n'a pas de modèle)."""
+        ordre = self.get_object()
+        controles = instancier_controle_qualite(ordre)
+        return Response(ControleQualiteOrdreSerializer(controles, many=True).data)
+
+    @action(detail=True, methods=['post'],
+            url_path='controle-qualite/(?P<item_modele_id>[^/.]+)')
+    def enregistrer_controle_qualite_item(self, request, pk=None,
+                                          item_modele_id=None):
+        """XMFG13 — enregistre le résultat d'un item de checklist QC."""
+        ordre = self.get_object()
+        instancier_controle_qualite(ordre)
+        resultat = request.data.get('resultat')
+        valeur_mesuree = request.data.get('valeur_mesuree')
+        try:
+            controle = enregistrer_controle_qualite(
+                ordre, item_modele_id, resultat=resultat,
+                valeur_mesuree=valeur_mesuree, user=request.user)
+        except Exception as exc:
+            raise ValidationError({'detail': str(exc)})
+        return Response(ControleQualiteOrdreSerializer(controle).data)
+
     @action(detail=True, methods=['post'])
     def terminer(self, request, pk=None):
         """FG328/XMFG1 — clôture l'ordre (→ terminé, horodate) et backflush le
@@ -438,6 +508,23 @@ class OrdreAssemblageViewSet(TenantMixin, viewsets.ModelViewSet):
             raise ValidationError({
                 'kit': "Ce kit n'a pas d'article composite "
                        "(produit_compose) : clôture impossible."})
+
+        # XMFG13 — gate qualité : un kit avec modèle QC actif bloque la
+        # clôture tant que la checklist n'est pas entièrement passée, sauf
+        # `forcer=true` + motif (responsable/admin — déjà exigé par les
+        # permissions du viewset).
+        instancier_controle_qualite(ordre)
+        forcer = str(request.data.get('forcer') or '').lower() in (
+            '1', 'true', 'yes')
+        motif_forcage = (request.data.get('motif_forcage') or '').strip()
+        if controle_qualite_bloque_cloture(ordre) and not forcer:
+            raise ValidationError({
+                'controle_qualite':
+                    "Checklist qualité incomplète ou en échec : clôture "
+                    "bloquée. Forcer avec `forcer=true` + `motif_forcage`."})
+        if forcer and not motif_forcage:
+            raise ValidationError({
+                'motif_forcage': 'Motif de forçage requis.'})
 
         quantite_produite = request.data.get('quantite_produite')
         try:
