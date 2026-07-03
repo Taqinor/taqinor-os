@@ -9,6 +9,9 @@
  * locale, consistent with every other /en/* page on this site) — the
  * WhatsApp deep-link text stays French by design (same convention as
  * en/contact.astro: it reaches the French-speaking sales team).
+ *
+ * W245 — noindex removed (this is the site's primary conversion CTA, not a
+ * private tunnel); real landing-page SEO (meta description, OG, hreflang).
  */
 import Layout from '../../../layouts/Layout.astro';
 import { BILL_RANGES } from '../../../lib/billRange';
@@ -68,9 +71,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
 ---
 
 <Layout
-  title="Get your solar estimate — My roof | Taqinor"
-  description="Address + bill: get an instant solar estimate (power, savings, payback), then your personalised study on WhatsApp."
-  noindex={true}
+  title="Instant solar estimate — My roof | Taqinor"
+  description="Instant estimate + 3D roof design + online signature: enter your address and your bill, get your power, savings and payback in seconds, for free."
+  ogSlug="accueil"
+  locales={['fr', 'en', 'ar']}
 >
   <!-- W320 — preconnect to the map origin (MapTiler style JSON + the Mapbox/
        Maxar raster tile host when configured): the most interactive moment

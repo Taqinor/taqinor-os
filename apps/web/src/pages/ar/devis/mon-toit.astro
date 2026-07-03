@@ -14,6 +14,9 @@
  * est déjà posé au niveau <html> par Layout.astro via Astro.currentLocale ;
  * on applique en plus le même mécanisme RTL-natif (line-height, mirroring)
  * que le reste du parcours.
+ *
+ * W245 — retrait du noindex (CTA principal du site, pas un tunnel privé) ;
+ * vraie SEO de page d'atterrissage (meta description, OG, hreflang).
  */
 import Layout from '../../../layouts/Layout.astro';
 import { BILL_RANGES } from '../../../lib/billRange';
@@ -76,9 +79,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
 ---
 
 <Layout
-  title="استلموا تقديركم الشمسي — سطحكم | Taqinor"
-  description="العنوان + الفاتورة: استلموا فوراً تقديراً شمسياً (القدرة، التوفير، استرداد التكلفة)، ثم دراستكم الشخصية على واتساب."
-  noindex={true}
+  title="تقدير شمسي فوري — سطحكم | Taqinor"
+  description="تقدير فوري + تصميم ثلاثي الأبعاد لسطحكم + توقيع إلكتروني: أدخلوا العنوان والفاتورة، واستلموا القدرة والتوفير ومدة الاسترداد في ثوانٍ، مجاناً."
+  ogSlug="accueil"
+  locales={['fr', 'en', 'ar']}
 >
   <!-- W320 — préconnexion à l'origine carte (style JSON MapTiler + hôte de
        tuiles raster Mapbox/Maxar quand configuré) : le moment le plus

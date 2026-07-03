@@ -177,16 +177,17 @@ describe('inventaire des routes (sortie construite réelle)', () => {
 
   it('les routes privées construites sont toutes sous un préfixe privé connu (hors sitemap)', () => {
     expect(privatePaths.length).toBeGreaterThan(0);
-    // Préfixes privés connus : la zone de revue /preview/* + le tunnel devis↔
-    // toiture-3D (capture client /devis/, atelier interne Meriem /internal/,
-    // proposition client tokenisée /proposition/) + le widget partenaire
-    // chrome-less /embed/* (W358, iframe-safe, noindex, hors sitemap) — tous
-    // noindex et hors sitemap par conception.
-    const PRIVATE_PREFIXES = ['/preview/', '/devis/', '/internal/', '/proposition/', '/embed/'];
+    // Préfixes privés connus : la zone de revue /preview/* + l'atelier interne
+    // Meriem (/internal/) + la proposition client tokenisée (/proposition/) +
+    // le widget partenaire chrome-less /embed/* (W358, iframe-safe, noindex,
+    // hors sitemap) — tous noindex et hors sitemap par conception.
+    // W245 — /devis/ (capture « Mon toit ») est RETIRÉE de cette liste : c'est
+    // devenu le CTA principal du site, indexé + dans le sitemap comme
+    // n'importe quelle page publique (donc plus jamais dans privatePaths).
+    const PRIVATE_PREFIXES = ['/preview/', '/internal/', '/proposition/', '/embed/'];
     for (const p of privatePaths) {
-      // Retire un éventuel préfixe de locale (/en, /ar) : le tunnel devis est
-      // privé dans toutes les langues — WJ38 a localisé /devis/mon-toit en
-      // /en/devis/mon-toit et /ar/devis/mon-toit (noindex + hors sitemap comme le FR).
+      // Retire un éventuel préfixe de locale (/en, /ar) : ces tunnels restent
+      // privés dans toutes les langues.
       const rootP = p.replace(/^\/(en|ar)(?=\/)/, '');
       expect(PRIVATE_PREFIXES.some((pre) => rootP.startsWith(pre)), `privée inattendue : ${p}`).toBe(true);
     }

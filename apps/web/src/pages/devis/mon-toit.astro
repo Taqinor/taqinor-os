@@ -1,6 +1,6 @@
 ---
 /**
- * « Mon toit » — CAPTURE CLIENT (PUBLIC, noindex). Élevée WJ1-WJ8.
+ * « Mon toit » — CAPTURE CLIENT (PUBLIC, INDEXABLE depuis W245). Élevée WJ1-WJ8.
  *
  * Parcours mobile-first en assistant (WJ6) : Votre toit → Votre facture → Votre
  * estimation. La carte/le repère sont FACULTATIFS (WJ4) : on peut soumettre avec
@@ -16,6 +16,11 @@
  * Le contrat de soumission /api/capture-lead est INCHANGÉ (validateLead, seuil,
  * consentement/UTM/fbclid, roofPoint/roofOutline/profil énergétique facultatifs).
  * L'outil 3D est booté en captureOnly : aucun panneau ne s'affiche ici.
+ *
+ * W245 — la page était noindex depuis sa création ("tunnel privé"), alors
+ * qu'elle est devenue le CTA principal du site. Retrait du noindex + hreflang
+ * (déjà déclarée dans STATIC_TRANSLATED) + meta description vendant
+ * l'estimation instantanée + OG dédié.
  */
 import Layout from '../../layouts/Layout.astro';
 import { BILL_RANGES } from '../../lib/billRange';
@@ -67,9 +72,10 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
 ---
 
 <Layout
-  title="Recevez votre estimation solaire — Mon toit | Taqinor"
-  description="Adresse + facture : recevez instantanément une estimation solaire (puissance, économies, amortissement), puis votre étude personnalisée sur WhatsApp."
-  noindex={true}
+  title="Estimation solaire instantanée — Mon toit | Taqinor"
+  description="Estimation instantanée + design 3D de votre toit + signature en ligne : indiquez votre adresse et votre facture, recevez votre puissance, vos économies et votre amortissement en quelques secondes, gratuitement."
+  ogSlug="accueil"
+  locales={['fr', 'en', 'ar']}
 >
   <!-- W320 — préconnexion à l'origine carte (MapTiler style JSON + tuiles
        raster Mapbox/Maxar quand configuré) : le moment le plus interactif de
