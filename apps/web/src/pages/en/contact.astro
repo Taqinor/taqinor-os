@@ -10,6 +10,7 @@ import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
 import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import DiagnosticForm from '../../components/DiagnosticForm.astro';
+import StarRating from '../../components/StarRating.astro';
 import { NAP, WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink, regularizationWhatsappText } from '../../lib/whatsapp';
 
@@ -17,6 +18,17 @@ import { whatsappLink, regularizationWhatsappText } from '../../lib/whatsapp';
 // pre-filled text stays French (it reaches the French-speaking sales team).
 const waGeneral = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour une installation solaire.');
 const waRegul = whatsappLink(WHATSAPP_LEADS, regularizationWhatsappText());
+
+/**
+ * W285 — "Visit a project" becomes an action: same invitation as
+ * pourquoi-taqinor.astro ("Ask to visit"), here as a direct WhatsApp
+ * shortcut rather than a plain link to /realisations. Pre-filled text stays
+ * French (same sales team reads every WhatsApp deeplink on the site).
+ */
+const waVisite = whatsappLink(
+  WHATSAPP_LEADS,
+  'Bonjour, je souhaite visiter une installation réelle Taqinor avant de me décider.',
+);
 
 // W339 — "Already a customer?" SAV/urgent door, SEPARATE from the commercial
 // lead webhook (DiagnosticForm above, unchanged). Pre-filled text stays
@@ -45,6 +57,11 @@ const waSav = whatsappLink(
           The form gives you an instant range. To move faster, write to us directly
           on WhatsApp.
         </p>
+        {/* W280 — StarRating: real Google rating only, no-op-safe (renders
+            nothing until the founder supplies a real rating). */}
+        <div class="cine-in mt-6 [animation-delay:320ms]">
+          <StarRating />
+        </div>
       </div>
     </section>
 
@@ -52,8 +69,8 @@ const waSav = whatsappLink(
 
     <!-- Still in the lit act: the WhatsApp shortcuts and the NAP card -->
     <section class="bg-blanc-azur px-4 pb-16 text-encre">
-      <div class="mx-auto max-w-2xl">
-        <div class="grid gap-4 sm:grid-cols-2" data-stagger>
+      <div class="mx-auto max-w-3xl">
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
           <a href={waGeneral} rel="noopener"
             class="v2-rise group border border-azur-900/15 bg-blanc p-6 text-center transition-all hover:-translate-y-0.5 hover:border-azur-600 hover:shadow-[0_14px_40px_-16px_rgb(15_28_84/0.4)]" style="--v2-i:0">
             <p class="tech-label text-azur-600">New project</p>
@@ -65,6 +82,14 @@ const waSav = whatsappLink(
             <p class="tech-label text-azur-600">Article 33</p>
             <p class="mt-2 font-display font-bold">WhatsApp — regularization</p>
             <p class="mt-1 text-sm text-encre-soft">Existing installation to bring into compliance</p>
+          </a>
+          {/* W285 — "Visit a project" becomes an action: same invitation as
+              pourquoi-taqinor.astro, as a direct WhatsApp shortcut. */}
+          <a href={waVisite} rel="noopener"
+            class="v2-rise group border border-azur-900/15 bg-blanc p-6 text-center transition-all hover:-translate-y-0.5 hover:border-azur-600 hover:shadow-[0_14px_40px_-16px_rgb(15_28_84/0.4)]" style="--v2-i:2">
+            <p class="tech-label text-azur-600">See before you sign</p>
+            <p class="mt-2 font-display font-bold">WhatsApp — visit a project</p>
+            <p class="mt-1 text-sm text-encre-soft">I'd like to visit a real installation</p>
           </a>
         </div>
 

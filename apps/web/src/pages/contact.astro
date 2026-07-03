@@ -15,11 +15,22 @@ import Layout from '../layouts/Layout.astro';
 import V2Enhance from '../components/V2Enhance.astro';
 import Article33Ribbon from '../components/Article33Ribbon.astro';
 import DiagnosticForm from '../components/DiagnosticForm.astro';
+import StarRating from '../components/StarRating.astro';
 import { NAP, WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink, regularizationWhatsappText } from '../lib/whatsapp';
 
 const waGeneral = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour une installation solaire.');
 const waRegul = whatsappLink(WHATSAPP_LEADS, regularizationWhatsappText());
+
+/**
+ * W285 — « Visiter un chantier » devient une action : même invitation que
+ * pourquoi-taqinor.astro (« Demandez à visiter »), mais ici sous forme de
+ * raccourci WhatsApp direct plutôt qu'un simple lien vers /realisations.
+ */
+const waVisite = whatsappLink(
+  WHATSAPP_LEADS,
+  'Bonjour, je souhaite visiter une installation réelle Taqinor avant de me décider.',
+);
 
 /**
  * W339 — « Déjà client ? » porte SAV/urgence, SÉPARÉE du webhook de leads
@@ -52,6 +63,11 @@ const waSav = whatsappLink(
           Le formulaire vous donne une fourchette immédiate. Pour aller plus vite,
           écrivez-nous directement sur WhatsApp.
         </p>
+        {/* W280 — StarRating : note Google réelle uniquement, no-op-safe
+            (n'affiche rien tant que le fondateur n'a pas renseigné une vraie note). */}
+        <div class="cine-in mt-6 [animation-delay:320ms]">
+          <StarRating />
+        </div>
       </div>
     </section>
 
@@ -59,8 +75,8 @@ const waSav = whatsappLink(
 
     <!-- Toujours dans l'acte éclairé : les raccourcis WhatsApp et la fiche NAP -->
     <section class="bg-blanc-azur px-4 pb-16 text-encre">
-      <div class="mx-auto max-w-2xl">
-        <div class="grid gap-4 sm:grid-cols-2" data-stagger>
+      <div class="mx-auto max-w-3xl">
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
           <a href={waGeneral} rel="noopener"
             class="v2-rise group border border-azur-900/15 bg-blanc p-6 text-center transition-all hover:-translate-y-0.5 hover:border-azur-600 hover:shadow-[0_14px_40px_-16px_rgb(15_28_84/0.4)]" style="--v2-i:0">
             <p class="tech-label text-azur-600">Nouveau projet</p>
@@ -72,6 +88,14 @@ const waSav = whatsappLink(
             <p class="tech-label text-azur-600">Article 33</p>
             <p class="mt-2 font-display font-bold">WhatsApp — régularisation</p>
             <p class="mt-1 text-sm text-encre-soft">Installation existante à mettre en conformité</p>
+          </a>
+          {/* W285 — « Visiter un chantier » devient une action : même
+              invitation que pourquoi-taqinor.astro, en raccourci WhatsApp direct. */}
+          <a href={waVisite} rel="noopener"
+            class="v2-rise group border border-azur-900/15 bg-blanc p-6 text-center transition-all hover:-translate-y-0.5 hover:border-azur-600 hover:shadow-[0_14px_40px_-16px_rgb(15_28_84/0.4)]" style="--v2-i:2">
+            <p class="tech-label text-azur-600">Voir avant de signer</p>
+            <p class="mt-2 font-display font-bold">WhatsApp — visiter un chantier</p>
+            <p class="mt-1 text-sm text-encre-soft">Je souhaite visiter une installation réelle</p>
           </a>
         </div>
 
