@@ -2263,6 +2263,131 @@ def prevision_fin_projet(projet, date_reference=None):
     }
 
 
+# ── Rapport des temps multi-dimensions (XPRJ18) ──────────────────────────────
+_GROUP_BY_CHAMPS = {
+    'ressource': ('ressource_id', 'ressource.nom'),
+    'projet': ('projet_id', 'projet.code'),
+    'tache': ('tache_id', 'tache.libelle'),
+    'phase': ('phase_id', 'phase.libelle'),
+    'type_activite': ('type_activite', None),
+    'semaine': (None, None),  # calculé (année-ISO, semaine-ISO)
+    'mois': (None, None),  # calculé (année-mois)
+}
+
+
+def _cle_groupe(ts, group_by):
+    if group_by == 'semaine':
+        iso = ts.date.isocalendar()
+        return f'{iso[0]}-S{iso[1]:02d}'
+    if group_by == 'mois':
+        return f'{ts.date.year}-{ts.date.month:02d}'
+    if group_by == 'ressource':
+        return ts.ressource_id
+    if group_by == 'projet':
+        return ts.projet_id
+    if group_by == 'tache':
+        return ts.tache_id
+    if group_by == 'phase':
+        return ts.phase_id
+    if group_by == 'type_activite':
+        return ts.type_activite
+    return None
+
+
+def _libelle_groupe(ts, group_by):
+    if group_by == 'semaine' or group_by == 'mois':
+        return _cle_groupe(ts, group_by)
+    if group_by == 'ressource':
+        return ts.ressource.nom
+    if group_by == 'projet':
+        return ts.projet.code
+    if group_by == 'tache':
+        return ts.tache.libelle if ts.tache_id else '(sans tâche)'
+    if group_by == 'phase':
+        return ts.phase.libelle if ts.phase_id else '(sans phase)'
+    if group_by == 'type_activite':
+        return ts.get_type_activite_display()
+    return ''
+
+
+def rapport_temps(company, debut, fin, group_by='ressource'):
+    """Rapport des temps MULTI-DIMENSIONS agrégé (XPRJ18) — interne/admin.
+
+    Agrège les heures (et heures FACTURABLES, XPRJ2) sur la fenêtre
+    ``[debut, fin]`` par dimension ``group_by`` parmi ressource / projet /
+    tâche / phase / type_activite / semaine / mois (défaut ``ressource``,
+    retombe dessus si ``group_by`` invalide). Pour CHAQUE tâche impliquée,
+    ajoute le comparatif heures loguées vs ``charge_estimee`` (en heures,
+    8h/jour) — un dépassement (heures > charge × 8) est FLAGGÉ
+    ``depassement=True``. Donnée 100 % INTERNE de pilotage (jamais ``cout``
+    dans l'export xlsx, voir vue). Tout est scopé société. Lecture seule.
+    """
+    if group_by not in _GROUP_BY_CHAMPS:
+        group_by = 'ressource'
+
+    timesheets = list(
+        Timesheet.objects.filter(
+            company=company, date__gte=debut, date__lte=fin)
+        .select_related('ressource', 'projet', 'tache', 'phase'))
+
+    groupes = {}
+    ordre_cles = []
+    for ts in timesheets:
+        cle = _cle_groupe(ts, group_by)
+        if cle not in groupes:
+            groupes[cle] = {
+                'cle': cle,
+                'libelle': _libelle_groupe(ts, group_by),
+                'heures': Decimal('0'),
+                'heures_facturables': Decimal('0'),
+                'cout': Decimal('0'),
+            }
+            ordre_cles.append(cle)
+        groupes[cle]['heures'] += ts.heures
+        if ts.facturable:
+            groupes[cle]['heures_facturables'] += ts.heures
+        groupes[cle]['cout'] += ts.cout
+
+    lignes = [groupes[cle] for cle in ordre_cles]
+
+    # Comparatif par tâche : heures loguées (sur la fenêtre) vs charge
+    # estimée convertie en heures (8h/jour). Dépassement flaggé.
+    taches_impliquees_ids = {
+        ts.tache_id for ts in timesheets if ts.tache_id is not None}
+    par_tache = []
+    if taches_impliquees_ids:
+        for tache in Tache.objects.filter(
+                id__in=taches_impliquees_ids, company=company):
+            heures_loguees = sum(
+                (ts.heures for ts in timesheets if ts.tache_id == tache.id),
+                Decimal('0'))
+            charge_heures = (
+                (tache.charge_estimee * Decimal('8'))
+                if tache.charge_estimee is not None else None)
+            depassement = (
+                charge_heures is not None
+                and heures_loguees > charge_heures)
+            par_tache.append({
+                'tache_id': tache.id,
+                'libelle': tache.libelle,
+                'heures_loguees': heures_loguees,
+                'charge_estimee_heures': charge_heures,
+                'depassement': depassement,
+            })
+
+    total_heures = sum((ts.heures for ts in timesheets), Decimal('0'))
+    total_facturables = sum(
+        (ts.heures for ts in timesheets if ts.facturable), Decimal('0'))
+
+    return {
+        'group_by': group_by,
+        'lignes': lignes,
+        'par_tache': par_tache,
+        'total_heures': total_heures,
+        'total_heures_facturables': total_facturables,
+    }
+
+
 # ── Burndown du projet (XPRJ17) ──────────────────────────────────────────────
 def burndown(projet, debut, fin):
     """Série HEBDOMADAIRE de charge restante vs ligne idéale (XPRJ17).

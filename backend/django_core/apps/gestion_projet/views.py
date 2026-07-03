@@ -1860,6 +1860,73 @@ class TimesheetViewSet(_GestionProjetBaseViewSet):
             ],
         })
 
+    @action(detail=False, methods=['get'], url_path='rapport')
+    def rapport(self, request):
+        """Rapport des temps MULTI-DIMENSIONS (XPRJ18) — interne/admin.
+
+        Corps : ``?debut=&fin=`` (obligatoires, YYYY-MM-DD),
+        ``?group_by=ressource|projet|tache|phase|type_activite|semaine|mois``
+        (défaut ``ressource``). Agrège les heures (et facturables) par
+        dimension, avec le comparatif heures loguées vs ``charge_estimee`` par
+        tâche impliquée (dépassement flaggé). ``?export=xlsx`` télécharge le
+        classeur (le pattern DRF ``?format=`` réservé est évité). AUCUN
+        ``cout`` interne dans l'export. La société est imposée côté serveur.
+        """
+        debut = _parse_date_param(request.query_params.get('debut'))
+        fin = _parse_date_param(request.query_params.get('fin'))
+        if debut is None or fin is None or fin < debut:
+            return Response(
+                {'detail': 'debut et fin (YYYY-MM-DD, fin >= debut) sont '
+                           'obligatoires.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        group_by = request.query_params.get('group_by', 'ressource')
+        data = selectors.rapport_temps(
+            request.user.company, debut, fin, group_by=group_by)
+
+        if request.query_params.get('export') == 'xlsx':
+            from apps.records.xlsx import build_xlsx_response
+
+            headers = [
+                data['group_by'].capitalize(), 'Heures',
+                'Heures facturables',
+            ]
+            rows = [
+                [ligne['libelle'], ligne['heures'],
+                 ligne['heures_facturables']]
+                for ligne in data['lignes']
+            ]
+            return build_xlsx_response(
+                'rapport_temps.xlsx', headers, rows,
+                sheet_title='Rapport des temps')
+
+        return Response({
+            'group_by': data['group_by'],
+            'total_heures': str(data['total_heures']),
+            'total_heures_facturables': str(
+                data['total_heures_facturables']),
+            'lignes': [
+                {
+                    'cle': ligne['cle'],
+                    'libelle': ligne['libelle'],
+                    'heures': str(ligne['heures']),
+                    'heures_facturables': str(ligne['heures_facturables']),
+                }
+                for ligne in data['lignes']
+            ],
+            'par_tache': [
+                {
+                    'tache_id': t['tache_id'],
+                    'libelle': t['libelle'],
+                    'heures_loguees': str(t['heures_loguees']),
+                    'charge_estimee_heures': (
+                        str(t['charge_estimee_heures'])
+                        if t['charge_estimee_heures'] is not None else None),
+                    'depassement': t['depassement'],
+                }
+                for t in data['par_tache']
+            ],
+        })
+
 
 class PeriodeVerrouilleeTempsViewSet(_GestionProjetBaseViewSet):
     """Verrous de période (mois) sur les feuilles de temps (XPRJ1) — CRUD scopé.
