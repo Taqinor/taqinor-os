@@ -1,0 +1,210 @@
+---
+/**
+ * EN — /parrainage (W338). Faithful English translation; FR untouched. Not
+ * registered in i18n/pages.ts STATIC_TRANSLATED per the task's explicit
+ * instruction (hreflang skipped for this new page) — this route exists and
+ * renders standalone, it simply has no automatic language-switcher entry yet.
+ *
+ * Same referral mechanic as the FR page: personal link rides the EXISTING
+ * utm_campaign passthrough (zero backend change). WG14 (reward amount +
+ * trigger milestone) stays gated — no invented figure.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import Callout from '../../components/Callout.astro';
+import RelatedLinks from '../../components/RelatedLinks.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import { NAP, WHATSAPP_LEADS } from '../../lib/nap';
+import { whatsappLink } from '../../lib/whatsapp';
+
+// GATE WG14 — not yet set by the founder: never invent a figure. Once WG14
+// is decided, these two constants carry the real value and the rest of the
+// page displays it automatically.
+const REWARD_AMOUNT_LABEL: string | null = null;
+const REWARD_MILESTONE_LABEL: string | null = null;
+
+// Pre-filled text stays French (it reaches the French-speaking sales team) —
+// same convention as every other WhatsApp deeplink on EN/AR pages.
+const waParrainage = whatsappLink(
+  WHATSAPP_LEADS,
+  'Bonjour, je souhaite parrainer un proche pour une installation solaire Taqinor.',
+);
+
+const steps = [
+  {
+    n: '01',
+    title: 'Share your link',
+    body: 'One link to send over WhatsApp, SMS, or any channel you already use: your friend clicks through straight to our free diagnostic journey, and we know it came from you.',
+  },
+  {
+    n: '02',
+    title: 'Your referral runs their diagnostic',
+    body: 'They answer the same questions as any visitor (bill, roof, city) and get their instant range — the journey doesn’t change a pixel because it came from you.',
+  },
+  {
+    n: '03',
+    title: 'We review their file',
+    body: 'The founder validates the study just like for every client. Nothing is sped up or watered down because a file came through a referral.',
+  },
+  {
+    n: '04',
+    title: 'The reward, at the right moment',
+    body: REWARD_MILESTONE_LABEL
+      ? `Your reward is paid ${REWARD_MILESTONE_LABEL}.`
+      : 'The exact amount and trigger for the reward are still being finalized — this page will be updated as soon as they are set. The principle won’t change: a reward is only due on a real milestone, never on a simple click.',
+  },
+];
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'WebPage',
+  name: 'Taqinor referral program',
+  description:
+    'Refer a friend for a Taqinor solar installation: share your personal link, they run their free diagnostic, you get rewarded when their project becomes real.',
+  isPartOf: { '@type': 'WebSite', name: 'Taqinor', url: 'https://taqinor.ma' },
+};
+---
+
+<Layout
+  title="Taqinor referral program — refer a friend, get rewarded | Taqinor"
+  description="Share your personal link, your friend runs their free solar diagnostic, you get rewarded when their project becomes real. No door-to-door: everything happens through a shared link."
+  ogSlug="parrainage"
+>
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+
+    <Breadcrumb items={[{ label: 'Home', href: '/en' }, { label: 'Referral' }]} />
+
+    <section class="section-lg px-4 pb-10 text-white">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">Referral</p>
+        <h1 class="display v2-page-title cine-in cine-in-1 mt-6">Solar spreads neighbor to neighbor</h1>
+        <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
+          Already a customer, or simply convinced by our method? Share your personal link with a
+          friend: if they become a customer, you get rewarded — simply, with nothing to manage on
+          your end.
+        </p>
+      </div>
+    </section>
+
+    <!-- The mechanic, in plain language -->
+    <section class="section px-4">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">How it works</p>
+        <h2 class="display v2-section-title mt-5 text-white">Four steps, none of them oversold</h2>
+        <div class="mt-10 grid gap-6 md:grid-cols-2" data-stagger>
+          {steps.map((s, i) => (
+            <div class="v2-rise cine-card flex flex-col p-7" style={`--v2-i:${i}`}>
+              <p class="fig lum text-3xl">{s.n}</p>
+              <h3 class="display mt-2 text-2xl text-white">{s.title}</h3>
+              <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+            </div>
+          ))}
+        </div>
+
+        <Callout type="info" title="Your personal link">
+          <p>
+            No account to create, no app to install: your personal link is simply our usual
+            diagnostic journey, with a code you choose yourself so we know it came from you — for
+            example your first name or your client file number:
+          </p>
+          <p class="mt-3 break-all rounded-none border border-white/15 bg-black/20 px-4 py-3 font-mono text-xs text-lune" dir="ltr">
+            taqinor.ma/devis/mon-toit?utm_source=parrainage&utm_campaign=<strong class="text-brass-300">your-code</strong>
+          </p>
+          <p class="mt-3">
+            Send it over WhatsApp, SMS, or any other channel — that’s all there is to do on your
+            end.
+          </p>
+        </Callout>
+      </div>
+    </section>
+
+    <!-- The reward — data-gated (WG14) -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="section bg-blanc-azur px-4 text-encre">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-azur-600">The reward</p>
+        {REWARD_AMOUNT_LABEL ? (
+          <>
+            <h2 class="display v2-section-title mt-5">{REWARD_AMOUNT_LABEL}</h2>
+            <p class="v2-lead mt-5 text-encre-soft">
+              Paid {REWARD_MILESTONE_LABEL}. No limit to how many friends you can refer.
+            </p>
+          </>
+        ) : (
+          <>
+            <h2 class="display v2-section-title mt-5">The amount is still being finalized</h2>
+            <p class="v2-lead mt-5 text-encre-soft">
+              We’d rather not announce anything until the amount and exact milestone are set —
+              this page will be updated as soon as they are, without your personal link changing.
+              The principle stays simple: your reward is only due on a real milestone reached by
+              your referral, never on a simple click.
+            </p>
+          </>
+        )}
+      </div>
+    </section>
+
+    <!-- The rules, in plain language -->
+    <section class="section px-4 text-white">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">The rules</p>
+        <h2 class="display v2-section-title mt-5 text-white">Simple, honest, no gray area</h2>
+        <ul class="mt-8 space-y-5 text-sm leading-relaxed text-lune-soft" data-stagger>
+          <li class="v2-rise flex gap-3" style="--v2-i:0">
+            <span class="fig lum shrink-0 text-lg">·</span>
+            <span><strong class="text-white">No self-referrals.</strong> You cannot refer your own file, or a file we already know under another form.</span>
+          </li>
+          <li class="v2-rise flex gap-3" style="--v2-i:1">
+            <span class="fig lum shrink-0 text-lg">·</span>
+            <span><strong class="text-white">The reward is paid on a real milestone</strong> reached by your referral (signature or payment — see above once the exact milestone is set), never on the simple fact of sharing the link.</span>
+          </li>
+          <li class="v2-rise flex gap-3" style="--v2-i:2">
+            <span class="fig lum shrink-0 text-lg">·</span>
+            <span><strong class="text-white">Shared link only, never door-to-door.</strong> Taqinor does not canvass door-to-door, and referrals follow the same rule: you share a link with whoever you want, we never solicit anyone on your behalf.</span>
+          </li>
+          <li class="v2-rise flex gap-3" style="--v2-i:3">
+            <span class="fig lum shrink-0 text-lg">·</span>
+            <span><strong class="text-white">Your study stays identical.</strong> A referred file follows the exact same study and validation process as any other file — nothing is sped up or watered down.</span>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Closing CTA — direct WhatsApp to start a referral -->
+    <section class="section-tight px-4 pb-20 sm:pb-24">
+      <div class="mx-auto max-w-3xl border-2 border-azur-600 bg-blanc-azur px-6 py-10 text-center text-encre sm:px-10">
+        <p class="tech-label text-azur-600">A question about referrals?</p>
+        <h2 class="display v2-section-title mx-auto mt-3 max-w-2xl text-3xl sm:text-4xl">Write to us directly on WhatsApp</h2>
+        <a
+          href={waParrainage}
+          rel="noopener noreferrer"
+          class="glow mt-6 inline-flex items-center gap-2 bg-brass-400 px-6 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300"
+        >
+          WhatsApp — referral
+        </a>
+        <p class="mt-4 text-xs text-encre-faint">
+          Or by phone: <a href={`tel:${NAP.phone}`} dir="ltr" class="underline decoration-azur-600 decoration-2 underline-offset-4">{NAP.phoneDisplayIntl}</a>
+        </p>
+      </div>
+    </section>
+
+    <section class="section-tight px-4 pb-20 sm:pb-24">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">Go further</p>
+        <RelatedLinks links={[
+          { href: '/en/devis/mon-toit', label: 'Start a diagnostic' },
+          { href: '/en/realisations', label: 'Our installations' },
+          { href: '/en/à-propos', label: 'About Taqinor' },
+        ]} />
+      </div>
+    </section>
+
+    <StickyCta />
+  </div>
+</Layout>

@@ -55,6 +55,15 @@ const solutions = [
 
 // Colonne Ressources (W29) + équipement & garanties (pages existantes liées
 // ailleurs sur le site, conservées ici pour le maillage).
+//
+// W338 — /parrainage n'est PAS enregistrée dans i18n/pages.ts (hreflang
+// volontairement sauté pour cette nouvelle page) : L('/parrainage') retombe
+// donc sur la version FR pour toutes les locales, jamais de lien mort. Le
+// libellé reste néanmoins traduit dans les trois langues du chrome.
+const parrainageLabel = locale === 'en' ? 'Referral' : locale === 'ar' ? 'الإحالة' : 'Parrainage';
+
+// W339 — libellé du lien SAV/urgence « Déjà client ? » (colonne Contact).
+const dejaClientLabel = locale === 'en' ? 'Already a customer?' : locale === 'ar' ? 'هل أنت زبون بالفعل؟' : 'Déjà client ?';
 const ressources = [
   { href: '/realisations', label: t('nav.realisations') },
   { href: '/guides', label: t('nav.guides') },
@@ -63,6 +72,7 @@ const ressources = [
   { href: '/pourquoi-taqinor', label: t('nav.why') },
   { href: '/financement', label: t('nav.financing') },
   { href: '/marocains-du-monde', label: t('nav.mre') },
+  { href: '/parrainage', label: parrainageLabel },
   { href: '/à-propos', label: t('nav.about') },
   { href: '/équipement', label: t('nav.equipment') },
   { href: '/produits', label: 'Fiches techniques' },
@@ -227,6 +237,10 @@ const SOCIAL_LINKS: SocialLink[] = [];
         <li><a href={`tel:${NAP.phone}`} class={linkClass} dir="ltr">{NAP.phoneDisplayIntl}</a></li>
         <li><a href={`mailto:${NAP.email}`} class={linkClass} dir="ltr">{NAP.email}</a></li>
         <li><a href={wa} rel="noopener" class={linkClass}>{t('common.whatsapp')}</a></li>
+        {/* W339 — porte SAV/urgence « Déjà client ? », séparée du CTA devis
+            ci-dessus ; ancre vers le bloc dédié de /contact (repli FR via L(),
+            jamais de lien mort). */}
+        <li><a href={`${L('/contact')}#deja-client`} class={linkClass}>{dejaClientLabel}</a></li>
         <li class="text-lune-soft">{t('footer.serviceArea')} : {NAP.serviceArea.slice(0, -1).join(', ')} — {t('footer.allMorocco')}</li>
       </ul>
     </div>
