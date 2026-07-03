@@ -64,6 +64,36 @@ def reconcile_serials_to_equipements(company, produit_id, serials):
     return {'matched': matched, 'unmatched': unmatched}
 
 
+def equipements_par_produit(
+        company, produit_id, *, serie_debut=None, serie_fin=None):
+    """XQHS5 — équipements posés du parc pour une ``CampagneRappel``.
+
+    Renvoie le parc réel (``sav.Equipement``) d'un produit donné, filtré à la
+    société ; optionnellement borné à une plage de numéros de série
+    (comparaison alphabétique — utile pour un rappel « lot/série X à Y »).
+    Lu UNIQUEMENT via ce sélecteur par les autres apps (jamais un import de
+    ``apps.sav.models``).
+
+    Renvoie une liste de dicts légers (pas le queryset ORM, pour ne jamais
+    fuiter le modèle hors de l'app).
+    """
+    qs = Equipement.objects.filter(company=company, produit_id=produit_id)
+    if serie_debut:
+        qs = qs.filter(numero_serie__gte=serie_debut)
+    if serie_fin:
+        qs = qs.filter(numero_serie__lte=serie_fin)
+    return [
+        {
+            'id': eq.id,
+            'numero_serie': eq.numero_serie,
+            'installation_id': eq.installation_id,
+            'statut': eq.statut,
+        }
+        for eq in qs.only(
+            'id', 'numero_serie', 'installation_id', 'statut')
+    ]
+
+
 def warranty_registry(equipements_qs, *, expiring_soon_days=60, today=None):
     """FG290 — Registre des garanties matériel & échéancier de fin PAR PARC.
 

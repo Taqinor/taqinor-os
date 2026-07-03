@@ -11,11 +11,17 @@ from decimal import Decimal
 from django.db import transaction
 
 from .models import (
-    ActionCorrectivePreventive, CauseIncident, ControleReception,
-    DeclarationCnss, Derogation, EtapeDeclarationAt, NonConformite,
+    AccuseLecture, ActionCorrectivePreventive, AnalyseNcr, Audit,
+    AuditPlanifie,
+    CampagneRappel, CauseIncident,
+    CheckinSecurite, ControleReception,
+    DeclarationCnss, DemandeActionFournisseur, Derogation, DiffusionProcedure,
+    ElementRappel,
+    EtapeDeclarationAt, NonConformite,
     NotationFinChantier, PlanControleReception, PlanInspectionChantier,
     PointControleModele,
-    ProcedureQualite, ReponseCritere, ReleveControle,
+    ProcedureQualite, ReleveThermographie, ReponseCritere, ReleveControle,
+    ReunionQhse, RisqueOpportunite, RisqueOpportuniteCapa,
 )
 
 
@@ -1014,3 +1020,764 @@ def lever_ncr_controle_reception(controle):
     controle.non_conformite = ncr
     controle.save(update_fields=['non_conformite'])
     return ncr
+
+
+# ── XFSM14 — Thermographie IR : NCR auto sur sévérité maximale ─────────────
+
+@transaction.atomic
+def enregistrer_releve_thermographie(
+        *, company, equipement_ref, delta_t=None,
+        campagne=ReleveThermographie.Campagne.SUIVI,
+        chantier_id=None, attachment_id=None,
+        seuil_a_surveiller=None, seuil_intervention=None,
+        releve_par=None, note=''):
+    """Crée un relevé de thermographie et lève une NCR si sévérité maximale.
+
+    Le classement (``classe_severite``) est dérivé automatiquement du
+    ``delta_t`` et des seuils au ``save()``. Une classe ``intervention_requise``
+    déclenche la levée d'une NCR liée (idempotent par relevé : chaque relevé ne
+    lève sa NCR qu'une fois, gérée par l'appelant qui ne repasse pas par ici sur
+    un relevé déjà persisté).
+    """
+    releve = ReleveThermographie(
+        company=company, equipement_ref=equipement_ref, delta_t=delta_t,
+        campagne=campagne, chantier_id=chantier_id,
+        attachment_id=attachment_id, releve_par=releve_par, note=note,
+    )
+    if seuil_a_surveiller is not None:
+        releve.seuil_a_surveiller = seuil_a_surveiller
+    if seuil_intervention is not None:
+        releve.seuil_intervention = seuil_intervention
+    releve.save()
+
+    if (releve.classe_severite == ReleveThermographie.Severite.INTERVENTION_REQUISE
+            and releve.ncr_id is None):
+        ncr = NonConformite.objects.create(
+            company=company,
+            titre=f'[Thermographie IR] {equipement_ref}',
+            description=(
+                note or
+                f'Point chaud détecté (ΔT={delta_t}°C) sur {equipement_ref} — '
+                f'intervention requise (IEC 62446-3).'),
+            origine='Thermographie IR',
+            gravite=NonConformite.Gravite.MAJEURE,
+            chantier_id=chantier_id,
+        )
+        releve.ncr = ncr
+        releve.save(update_fields=['ncr'])
+    return releve
+
+
+def comparer_campagnes_thermographie(company, equipement_ref):
+    """Compare la dernière ``recette`` (baseline) et le dernier ``suivi`` d'un
+    équipement (XFSM14). Renvoie ``{'recette': releve|None, 'suivi': releve|None,
+    'delta': Decimal|None}`` — ``delta`` = évolution ΔT entre les deux.
+    """
+    qs = ReleveThermographie.objects.filter(
+        company=company, equipement_ref=equipement_ref)
+    recette = qs.filter(
+        campagne=ReleveThermographie.Campagne.RECETTE
+    ).order_by('-date_releve', '-id').first()
+    suivi = qs.filter(
+        campagne=ReleveThermographie.Campagne.SUIVI
+    ).order_by('-date_releve', '-id').first()
+    delta = None
+    if recette is not None and suivi is not None \
+            and recette.delta_t is not None and suivi.delta_t is not None:
+        delta = suivi.delta_t - recette.delta_t
+    return {'recette': recette, 'suivi': suivi, 'delta': delta}
+
+
+# ── XFSM24 — Check-in travailleur isolé avec escalade ───────────────────────
+
+def _notifier_escalade_checkin(checkin):
+    """Notifie le responsable + téléphone du site (best-effort, sans erreur)."""
+    try:
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+
+        # XFSM8 — téléphone du site, si dispo, est intégré dans le corps du
+        # message (le canal d'envoi effectif reste `notify`, best-effort).
+        responsables = checkin.company.users.filter(
+            role_legacy__in=('responsable', 'admin', 'manager'))
+        corps = (
+            f'{checkin.technicien} — check-out prévu dépassé sur '
+            f'{checkin.site_ref or "site"} (intervention '
+            f'{checkin.intervention_id or "?"}).')
+        for resp in responsables:
+            notify(resp, EventType.MAINTENANCE_DUE,
+                   'Escalade check-in sécurité', body=corps,
+                   link='/qhse/checkins', company=checkin.company)
+    except Exception:  # pragma: no cover - défensif
+        pass
+
+
+@transaction.atomic
+def escalader_checkins_en_retard(company=None, now=None):
+    """Escalade tout check-in dont le check-out prévu est dépassé sans
+    check-out réel (XFSM24). Idempotent : un check-in déjà escaladé
+    (``escalade_declenchee=True``) n'est jamais re-notifié.
+
+    Renvoie la liste des check-ins escaladés dans cet appel.
+    """
+    from django.utils import timezone
+
+    if now is None:
+        now = timezone.now()
+    qs = CheckinSecurite.objects.filter(
+        heure_checkout_reelle__isnull=True,
+        escalade_declenchee=False,
+        heure_checkout_prevue__isnull=False,
+    )
+    if company is not None:
+        qs = qs.filter(company=company)
+
+    escalades = []
+    for checkin in qs:
+        if checkin.en_retard(now=now):
+            checkin.escalade_declenchee = True
+            checkin.escalade_le = now
+            checkin.save(update_fields=['escalade_declenchee', 'escalade_le'])
+            _notifier_escalade_checkin(checkin)
+            escalades.append(checkin)
+    return escalades
+
+
+# ── XQHS5 — Campagne de rappel / containment par produit-lot-série ─────────
+
+@transaction.atomic
+def peupler_campagne_rappel(campagne):
+    """Peuple les ``ElementRappel`` d'une campagne depuis le parc réel.
+
+    Lit le parc UNIQUEMENT via ``sav.selectors.equipements_par_produit``
+    (jamais un import de ``apps.sav.models``). Idempotent : ré-appelée, elle
+    n'ajoute que les équipements pas encore présents dans la campagne
+    (contrainte unique ``(campagne, equipement_id)``).
+
+    Renvoie la liste des ``ElementRappel`` créés dans cet appel.
+    """
+    from apps.sav.selectors import equipements_par_produit
+
+    equipements = equipements_par_produit(
+        campagne.company, campagne.produit_id,
+        serie_debut=campagne.serie_debut or None,
+        serie_fin=campagne.serie_fin or None,
+    )
+    existants = set(
+        ElementRappel.objects.filter(campagne=campagne)
+        .values_list('equipement_id', flat=True)
+    )
+    crees = []
+    for eq in equipements:
+        if eq['id'] in existants:
+            continue
+        element = ElementRappel.objects.create(
+            company=campagne.company, campagne=campagne,
+            equipement_id=eq['id'], numero_serie=eq.get('numero_serie') or '',
+            installation_id=eq.get('installation_id'),
+        )
+        crees.append(element)
+    return crees
+
+
+def _notifier_element_rappel(element, responsable):
+    """Notifie le responsable d'un élément de rappel à traiter (best-effort)."""
+    try:
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+
+        corps = (
+            f'Campagne « {element.campagne.titre} » — équipement '
+            f'{element.numero_serie or element.equipement_id} à traiter.')
+        notify(responsable, EventType.MAINTENANCE_DUE,
+               'Élément de campagne de rappel', body=corps,
+               link='/qhse/campagnes-rappel', company=element.company)
+    except Exception:  # pragma: no cover - défensif
+        pass
+
+
+@transaction.atomic
+def notifier_elements_rappel(campagne):
+    """Notifie le responsable de campagne pour chaque élément ``à_notifier``
+    et fait avancer son statut à ``notifie`` (XQHS5).
+
+    Renvoie la liste des ``ElementRappel`` notifiés dans cet appel.
+    """
+    from django.utils import timezone
+
+    if campagne.responsable_id is None:
+        return []
+    a_notifier = list(
+        campagne.elements.filter(statut=ElementRappel.Statut.A_NOTIFIER))
+    now = timezone.now()
+    for element in a_notifier:
+        _notifier_element_rappel(element, campagne.responsable)
+        element.statut = ElementRappel.Statut.NOTIFIE
+        element.notifie_le = now
+        element.save(update_fields=['statut', 'notifie_le'])
+    return a_notifier
+
+
+@transaction.atomic
+def planifier_remplacement_element_rappel(element, *, client, created_by):
+    """Crée l'intervention SAV de remplacement pour un élément (XQHS5).
+
+    Passe par ``sav.services.create_corrective_ticket`` (jamais un import de
+    modèle SAV). Fait avancer l'élément à ``planifie`` et enregistre
+    ``ticket_sav_id`` (référence LÂCHE).
+    """
+    from apps.sav.services import create_corrective_ticket
+
+    installation = None
+    if element.installation_id:
+        from apps.installations.models import Installation
+        installation = Installation.objects.filter(
+            pk=element.installation_id).first()
+
+    ticket = create_corrective_ticket(
+        company=element.company, client=client, installation=installation,
+        description=(
+            f'Remplacement — campagne de rappel « {element.campagne.titre} » '
+            f'({element.numero_serie or element.equipement_id}).'),
+        created_by=created_by,
+    )
+    element.ticket_sav_id = ticket.id
+    element.statut = ElementRappel.Statut.PLANIFIE
+    element.save(update_fields=['ticket_sav_id', 'statut'])
+    return element
+
+
+@transaction.atomic
+def cloturer_campagne_rappel(campagne, date_verification_efficacite):
+    """Clôture une campagne après vérification d'efficacité (XQHS5).
+
+    N'autorise la clôture que si tous les éléments sont ``remplace`` ou
+    ``clos`` (traitement terminé) — sinon lève ``ValueError``.
+    """
+    en_cours = campagne.elements.exclude(
+        statut__in=[ElementRappel.Statut.REMPLACE, ElementRappel.Statut.CLOS]
+    ).count()
+    if en_cours:
+        raise ValueError(
+            f'{en_cours} élément(s) non traités — clôture impossible.')
+    campagne.statut = CampagneRappel.Statut.CLOTUREE
+    campagne.date_verification_efficacite = date_verification_efficacite
+    campagne.save(update_fields=['statut', 'date_verification_efficacite'])
+    campagne.elements.filter(
+        statut=ElementRappel.Statut.REMPLACE
+    ).update(statut=ElementRappel.Statut.CLOS)
+    return campagne
+
+
+# ── XQHS6 — SCAR : demande d'action corrective fournisseur ─────────────────
+
+@transaction.atomic
+def creer_scar_depuis_ncr(
+        ncr, *, echeance_reponse=None, description_defaut=''):
+    """Crée une SCAR depuis une NCR d'origine fournisseur (XQHS6).
+
+    Exige que la NCR porte un ``fournisseur`` (disposition retour fournisseur
+    ou origine fournisseur) — sinon lève ``ValueError``.
+    """
+    if ncr.fournisseur_id is None:
+        raise ValueError(
+            'La NCR ne porte pas de fournisseur — impossible de créer une SCAR.')
+    return DemandeActionFournisseur.objects.create(
+        company=ncr.company, fournisseur=ncr.fournisseur, ncr_source=ncr,
+        description_defaut=description_defaut or ncr.description,
+        echeance_reponse=echeance_reponse,
+    )
+
+
+@transaction.atomic
+def repondre_scar(scar, *, cause_racine, action, preuve_attachment_ids=None):
+    """Enregistre la réponse fournisseur à une SCAR (XQHS6)."""
+    from django.utils import timezone
+
+    scar.cause_racine_fournisseur = cause_racine
+    scar.action_fournisseur = action
+    if preuve_attachment_ids is not None:
+        scar.preuve_attachment_ids = list(preuve_attachment_ids)
+    scar.statut = DemandeActionFournisseur.Statut.REPONDUE
+    scar.date_reponse = timezone.now()
+    scar.save(update_fields=[
+        'cause_racine_fournisseur', 'action_fournisseur',
+        'preuve_attachment_ids', 'statut', 'date_reponse'])
+    return scar
+
+
+@transaction.atomic
+def verifier_efficacite_scar(scar, efficace, verifiee_par=None):
+    """Vérifie l'efficacité d'une SCAR répondue (XQHS6, pattern QHSE13).
+
+    Une SCAR non encore répondue ne peut être vérifiée — lève ``ValueError``.
+    ``efficace=True`` clôt la SCAR ; ``efficace=False`` la laisse ``verifiee``
+    (réponse jugée insuffisante, à relancer côté appelant).
+    """
+    from django.utils import timezone
+
+    if scar.statut == DemandeActionFournisseur.Statut.EMISE:
+        raise ValueError('SCAR pas encore répondue — vérification impossible.')
+    scar.efficace = efficace
+    scar.verifiee_par = verifiee_par
+    scar.date_verification = timezone.now()
+    scar.statut = (
+        DemandeActionFournisseur.Statut.CLOSE if efficace
+        else DemandeActionFournisseur.Statut.VERIFIEE)
+    scar.save(update_fields=[
+        'efficace', 'verifiee_par', 'date_verification', 'statut'])
+    return scar
+
+
+# ── XQHS7 — Analyse structurée 5-Pourquoi / 8D sur NCR ──────────────────────
+
+@transaction.atomic
+def enregistrer_analyse_ncr(ncr, *, cinq_pourquoi=None, huit_d=None):
+    """Crée ou met à jour l'``AnalyseNcr`` d'une NCR (XQHS7).
+
+    ``cinq_pourquoi`` — liste de ``{'pourquoi': str, 'reponse': str}`` (≤5,
+    validé par ``AnalyseNcr.clean()``). ``huit_d`` — dict des disciplines D1-D8
+    fourni partiellement (merge sur les clés fournies, les autres disciplines
+    existantes sont conservées).
+    """
+    analyse, _ = AnalyseNcr.objects.get_or_create(
+        company=ncr.company, non_conformite=ncr)
+    if cinq_pourquoi is not None:
+        analyse.cinq_pourquoi = cinq_pourquoi
+    if huit_d is not None:
+        merged = dict(analyse.huit_d or {})
+        merged.update(huit_d)
+        analyse.huit_d = merged
+    analyse.full_clean()
+    analyse.save()
+    return analyse
+
+
+def _analyse_ncr_html(analyse):
+    """Construit le HTML de l'export 8D/5-Pourquoi (PDF INTERNE, hors
+    ``/proposal`` — jamais de prix d'achat)."""
+    ncr = analyse.non_conformite
+    pourquoi_rows = ''.join(
+        f"<tr><td>Pourquoi {i + 1}</td><td>{item.get('pourquoi', '')}</td>"
+        f"<td>{item.get('reponse', '')}</td></tr>"
+        for i, item in enumerate(analyse.cinq_pourquoi or [])
+    )
+    huit_d_rows = ''.join(
+        f"<tr><td>{code}</td><td>{(analyse.huit_d or {}).get(code, {}).get('texte', '')}</td>"
+        f"<td>{(analyse.huit_d or {}).get(code, {}).get('statut', '')}</td></tr>"
+        for code in AnalyseNcr.DISCIPLINES
+    )
+    capa_rows = ''.join(
+        f"<tr><td>{a.get_type_action_display()}</td><td>{a.description}</td>"
+        f"<td>{a.get_statut_display()}</td></tr>"
+        for a in ncr.actions.all()
+    )
+    return (
+        "<html><head><meta charset='utf-8'><style>"
+        "body{font-family:sans-serif;font-size:10pt;color:#1a1a1a;"
+        "margin:1.5cm;line-height:1.4;}"
+        "h1{font-size:15pt;border-bottom:2px solid #2b5cab;"
+        "padding-bottom:6px;}"
+        "h2{font-size:12pt;margin-top:18px;}"
+        "table{width:100%;border-collapse:collapse;margin-top:6px;}"
+        "td,th{border:1px solid #ccc;padding:4px 6px;text-align:left;}"
+        "</style></head><body>"
+        f"<h1>Analyse NCR — {ncr.titre}</h1>"
+        f"<div>Référence : {ncr.reference or ncr.pk} — Gravité : "
+        f"{ncr.get_gravite_display()}</div>"
+        "<h2>5-Pourquoi</h2>"
+        f"<table><tr><th>#</th><th>Pourquoi</th><th>Réponse</th></tr>"
+        f"{pourquoi_rows}</table>"
+        "<h2>8D</h2>"
+        "<table><tr><th>Discipline</th><th>Texte</th><th>Statut</th></tr>"
+        f"{huit_d_rows}</table>"
+        "<h2>Actions correctives / préventives liées</h2>"
+        "<table><tr><th>Type</th><th>Description</th><th>Statut</th></tr>"
+        f"{capa_rows}</table>"
+        "</body></html>"
+    )
+
+
+def rendre_analyse_ncr_pdf(analyse):
+    """Rend un PDF INTERNE (bytes) de l'analyse 5-Pourquoi/8D d'une NCR
+    (XQHS7). Ce N'EST PAS un chemin client-facing — ``/proposal`` reste
+    l'unique chemin des PDF de devis (règle CLAUDE.md #4). Import
+    ``weasyprint`` FONCTION-LOCAL (lib lourde, chargée à la demande)."""
+    import weasyprint  # import local : lib lourde, chargée à la demande
+
+    html_str = _analyse_ncr_html(analyse)
+    return weasyprint.HTML(string=html_str).write_pdf()
+
+
+# ── XQHS8 — Registre des exigences légales toutes thématiques ──────────────
+
+def enregistrer_evaluation_conformite(conformite, resultat, *, date=None):
+    """Enregistre l'évaluation périodique d'une exigence légale (XQHS8, ISO
+    45001/9001 6.1.3 conformité obligations légales).
+
+    Met à jour ``date_derniere_evaluation``/``resultat_derniere_evaluation``
+    sans toucher au ``statut`` déclaré (le statut reste piloté par
+    ``statut_calcule`` — l'évaluation est une trace périodique distincte).
+    """
+    from django.utils import timezone
+
+    conformite.date_derniere_evaluation = date or timezone.localdate()
+    conformite.resultat_derniere_evaluation = resultat
+    conformite.save(update_fields=[
+        'date_derniere_evaluation', 'resultat_derniere_evaluation'])
+    return conformite
+
+
+# ── XQHS9 — Registre des certifications + audits de certification ──────────
+
+@transaction.atomic
+def lever_ncr_audit_certification(audit_certif, signale_par=None):
+    """Lève une NCR pour un constat majeur d'audit de certification (XQHS9).
+
+    Idempotent : si ``audit_certif.ncr_id`` est déjà posé, ne recrée rien et
+    renvoie la NCR existante. N'agit que si ``constat_majeur=True``.
+    """
+    if audit_certif.ncr_id is not None:
+        return NonConformite.objects.filter(pk=audit_certif.ncr_id).first()
+    if not audit_certif.constat_majeur:
+        return None
+
+    certif = audit_certif.certification
+    ncr = NonConformite.objects.create(
+        company=audit_certif.company,
+        titre=f'[Audit certification] {certif.get_referentiel_display()}',
+        description=audit_certif.constats or (
+            f'Constat majeur lors de l\'audit '
+            f'{audit_certif.get_type_etape_display()} du '
+            f'{audit_certif.date_audit or "date inconnue"}.'),
+        origine='Audit de certification',
+        gravite=NonConformite.Gravite.MAJEURE,
+        signale_par=signale_par,
+    )
+    audit_certif.ncr_id = ncr.id
+    audit_certif.save(update_fields=['ncr_id'])
+    return ncr
+
+
+# ── XQHS10 — Programme d'audit interne annuel ───────────────────────────────
+
+@transaction.atomic
+def instancier_audit_planifie(audit_planifie):
+    """Instancie l'``Audit`` réel d'un ``AuditPlanifie`` (XQHS10).
+
+    Idempotent : si déjà instancié (``audit_planifie.audit_id`` posé), renvoie
+    l'audit existant sans en recréer un. Copie grille/date/auditeur.
+    """
+    if audit_planifie.audit_id is not None:
+        return audit_planifie.audit
+
+    audit = Audit.objects.create(
+        company=audit_planifie.company, grille=audit_planifie.grille,
+        date_audit=audit_planifie.date_cible,
+        auditeur=audit_planifie.auditeur,
+    )
+    audit_planifie.audit = audit
+    audit_planifie.statut = AuditPlanifie.Statut.REALISE
+    audit_planifie.save(update_fields=['audit', 'statut'])
+    return audit
+
+
+def _notifier_audit_planifie_retard(audit_planifie):
+    """Notifie l'auditeur d'un audit planifié en retard (best-effort)."""
+    try:
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+
+        if audit_planifie.auditeur_id is None:
+            return
+        corps = (
+            f'Audit planifié « {audit_planifie.processus_domaine} » — '
+            f'date cible {audit_planifie.date_cible} dépassée sans '
+            f'réalisation.')
+        notify(audit_planifie.auditeur, EventType.MAINTENANCE_DUE,
+               'Audit planifié en retard', body=corps,
+               link='/qhse/programmes-audit', company=audit_planifie.company)
+    except Exception:  # pragma: no cover - défensif
+        pass
+
+
+@transaction.atomic
+def relancer_audits_planifies_en_retard(company=None, today=None):
+    """Relance les ``AuditPlanifie`` non réalisés dont la date cible est
+    dépassée (XQHS10, pattern QHSE12). Fait avancer le statut à
+    ``en_retard`` (idempotent : un audit déjà ``en_retard`` n'est pas
+    re-notifié à chaque appel, seulement à son premier passage en retard).
+    """
+    from django.utils import timezone
+
+    if today is None:
+        today = timezone.localdate()
+    qs = AuditPlanifie.objects.filter(
+        statut=AuditPlanifie.Statut.PLANIFIE, date_cible__lt=today)
+    if company is not None:
+        qs = qs.filter(company=company)
+
+    relances = []
+    for audit_planifie in qs:
+        audit_planifie.statut = AuditPlanifie.Statut.EN_RETARD
+        audit_planifie.save(update_fields=['statut'])
+        _notifier_audit_planifie_retard(audit_planifie)
+        relances.append(audit_planifie)
+    return relances
+
+
+# ── XQHS12 — Revue de direction + comité de sécurité et d'hygiène ──────────
+
+@transaction.atomic
+def creer_capa_depuis_decision(
+        decision, *, description=None, responsable=None, echeance=None):
+    """Crée une CAPA liée depuis une ``DecisionReunion`` (XQHS12).
+
+    La CAPA a besoin d'une NCR porteuse (contrainte existante) : crée une NCR
+    de convenance « Décision de réunion » d'origine ``ReunionQhse`` — pattern
+    déjà utilisé par les autres ponts de l'app (ex. inspection → NCR → CAPA).
+    Idempotent : si ``decision.capa_id`` est déjà posé, renvoie la CAPA
+    existante sans en recréer une.
+    """
+    if decision.capa_id is not None:
+        return ActionCorrectivePreventive.objects.filter(
+            pk=decision.capa_id).first()
+
+    ncr = NonConformite.objects.create(
+        company=decision.company,
+        titre=f'[Réunion QHSE] {decision.reunion.get_type_reunion_display()}',
+        description=decision.texte,
+        origine='Décision de réunion QHSE',
+        gravite=NonConformite.Gravite.MINEURE,
+    )
+    capa = ActionCorrectivePreventive.objects.create(
+        company=decision.company, non_conformite=ncr,
+        description=description or decision.texte,
+        responsable=responsable or decision.responsable,
+        echeance=echeance,
+    )
+    decision.capa_id = capa.id
+    decision.save(update_fields=['capa_id'])
+    return capa
+
+
+@transaction.atomic
+def cloturer_reunion_qhse(reunion):
+    """Clôture une ``ReunionQhse`` (XQHS12).
+
+    Pour une ``revue_direction`` : exige la checklist ISO 9.3 complète
+    (``checklist_9_3_complete()``) — sinon lève ``ValueError``. Les autres
+    types de réunion clôturent sans condition supplémentaire.
+    """
+    if reunion.type_reunion == ReunionQhse.TypeReunion.REVUE_DIRECTION \
+            and not reunion.checklist_9_3_complete():
+        raise ValueError(
+            'Checklist ISO 9.3 incomplète — clôture de la revue de '
+            'direction impossible.')
+    reunion.statut = ReunionQhse.Statut.CLOTUREE
+    reunion.save(update_fields=['statut'])
+    return reunion
+
+
+def _notifier_csh_relance(company, membres):
+    """Notifie les membres du CSH de la prochaine réunion due (best-effort)."""
+    try:
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+
+        for membre in membres:
+            notify(membre, EventType.MAINTENANCE_DUE,
+                   'CSH — réunion trimestrielle due',
+                   body='Le comité de sécurité et d\'hygiène doit se réunir '
+                        '(cadence trimestrielle Code du travail).',
+                   link='/qhse/reunions', company=company)
+    except Exception:  # pragma: no cover - défensif
+        pass
+
+
+def csh_relance_due(company, cadence_jours=90, today=None):
+    """True si la cadence trimestrielle CSH est dépassée depuis la dernière
+    réunion tenue (XQHS12, obligation Code du travail).
+
+    Sans aucune réunion CSH antérieure, considère la relance due (première
+    réunion à planifier). Ne mute rien — pur, lu par l'appelant (tâche
+    périodique/cockpit) pour décider s'il notifie.
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    if today is None:
+        today = timezone.localdate()
+    derniere = ReunionQhse.objects.filter(
+        company=company,
+        type_reunion=ReunionQhse.TypeReunion.COMITE_HYGIENE_SECURITE,
+        statut__in=[ReunionQhse.Statut.TENUE, ReunionQhse.Statut.CLOTUREE],
+    ).order_by('-date_reunion').first()
+    if derniere is None or derniere.date_reunion is None:
+        return True
+    return today >= derniere.date_reunion + timedelta(days=cadence_jours)
+
+
+# ── XQHS14 — Registre des risques & opportunités SMQ ────────────────────────
+
+@transaction.atomic
+def lier_capa_risque_opportunite(risque_opportunite, capa):
+    """Lie une CAPA existante à un ``RisqueOpportunite`` (XQHS14).
+
+    Idempotent via la contrainte unique ``(risque_opportunite, capa)`` —
+    ré-appelée avec le même couple, ne duplique rien.
+    """
+    lien, _ = RisqueOpportuniteCapa.objects.get_or_create(
+        company=risque_opportunite.company,
+        risque_opportunite=risque_opportunite, capa=capa)
+    return lien
+
+
+def _notifier_revue_risque_due(risque_opportunite):
+    """Notifie le responsable qu'une revue de risque/opportunité est due
+    (best-effort)."""
+    try:
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+
+        if risque_opportunite.responsable_id is None:
+            return
+        notify(risque_opportunite.responsable, EventType.MAINTENANCE_DUE,
+               'Revue de risque/opportunité due',
+               body=f'{risque_opportunite.description[:120]} — revue due.',
+               link='/qhse/risques-opportunites',
+               company=risque_opportunite.company)
+    except Exception:  # pragma: no cover - défensif
+        pass
+
+
+def risques_opportunites_revue_due(company, today=None):
+    """Risques/opportunités dont la revue périodique est due (XQHS14).
+
+    « Due » = ``date_revue`` absente OU dépassée de ``frequence_revue_jours``.
+    Pure (ne notifie ni ne mute) — l'appelant décide de la relance.
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    if today is None:
+        today = timezone.localdate()
+
+    dus = []
+    for ro in RisqueOpportunite.objects.filter(company=company):
+        if ro.date_revue is None:
+            dus.append(ro)
+            continue
+        limite = ro.date_revue + timedelta(days=ro.frequence_revue_jours or 180)
+        if today >= limite:
+            dus.append(ro)
+    return dus
+
+
+# ── XQHS15 — Diffusion & accusé de lecture des procédures qualité ──────────
+
+@transaction.atomic
+def diffuser_procedure(procedure, users):
+    """Diffuse une version de procédure à une population d'utilisateurs
+    (XQHS15). Crée la ``DiffusionProcedure`` et un ``AccuseLecture`` par
+    utilisateur cible (idempotent : re-diffuser à un utilisateur déjà ciblé ne
+    duplique pas son accusé, via la contrainte unique).
+
+    ``users`` — itérable d'utilisateurs (objets, pas des ids) ; leurs ids sont
+    stockés dans ``population_cible`` pour la traçabilité de la cible visée.
+    """
+    users = list(users)
+    diffusion = DiffusionProcedure.objects.create(
+        company=procedure.company, procedure=procedure,
+        population_cible={'user_ids': [u.id for u in users]},
+    )
+    for user in users:
+        AccuseLecture.objects.get_or_create(
+            company=procedure.company, diffusion=diffusion, user=user)
+    return diffusion
+
+
+@transaction.atomic
+def accuser_lecture(diffusion, user):
+    """Enregistre l'accusé de lecture d'un utilisateur (XQHS15).
+
+    ``lu_le`` est une confirmation datée CÔTÉ SERVEUR (jamais une date reçue
+    du client). Idempotent : ré-appelé pour le même (diffusion, user), ne fait
+    que confirmer la lecture (ne change pas ``lu_le`` une fois posé — la
+    première lecture fait foi).
+    """
+    from django.utils import timezone
+
+    accuse, _ = AccuseLecture.objects.get_or_create(
+        company=diffusion.company, diffusion=diffusion, user=user)
+    if accuse.lu_le is None:
+        accuse.lu_le = timezone.now()
+        accuse.save(update_fields=['lu_le'])
+    return accuse
+
+
+def lectures_en_attente(user):
+    """Diffusions non lues d'un utilisateur (XQHS15, endpoint « mes lectures
+    en attente »). Renvoie un queryset d'``AccuseLecture`` avec ``lu_le`` nul.
+    """
+    return AccuseLecture.objects.filter(
+        user=user, lu_le__isnull=True).select_related(
+            'diffusion', 'diffusion__procedure')
+
+
+def _notifier_retardataire_lecture(accuse):
+    """Notifie un utilisateur en retard de lecture (best-effort)."""
+    try:
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+
+        procedure = accuse.diffusion.procedure
+        notify(accuse.user, EventType.MAINTENANCE_DUE,
+               'Lecture de procédure en attente',
+               body=f'Procédure « {procedure.titre} » (v{procedure.version}) '
+                    f'à lire et accuser réception.',
+               link='/qhse/procedures', company=accuse.company)
+    except Exception:  # pragma: no cover - défensif
+        pass
+
+
+def relancer_retardataires_lecture(company=None):
+    """Relance TOUS les accusés de lecture en attente (XQHS15, pattern
+    QHSE12). Renvoie la liste des ``AccuseLecture`` relancés dans cet appel
+    (ne mute rien — la relance est une notification, pas un changement
+    d'état).
+    """
+    qs = AccuseLecture.objects.filter(lu_le__isnull=True)
+    if company is not None:
+        qs = qs.filter(company=company)
+
+    relances = []
+    for accuse in qs.select_related('diffusion__procedure'):
+        _notifier_retardataire_lecture(accuse)
+        relances.append(accuse)
+    return relances
+
+
+@transaction.atomic
+def rediffuser_nouvelle_version(procedure_precedente, procedure_nouvelle):
+    """Re-déclenche la diffusion sur la population de la version précédente
+    quand une nouvelle version entre en vigueur (XQHS15).
+
+    Reprend les utilisateurs de la dernière ``DiffusionProcedure`` de la
+    version précédente et diffuse la nouvelle version aux mêmes utilisateurs
+    (nouveaux ``AccuseLecture`` à zéro — la lecture de l'ancienne version ne
+    vaut pas pour la nouvelle).
+    """
+    from django.contrib.auth import get_user_model
+
+    User = get_user_model()
+    derniere = procedure_precedente.diffusions.order_by('-id').first()
+    if derniere is None:
+        return None
+    user_ids = (derniere.population_cible or {}).get('user_ids', [])
+    users = list(User.objects.filter(id__in=user_ids))
+    if not users:
+        return None
+    return diffuser_procedure(procedure_nouvelle, users)

@@ -23,12 +23,15 @@ un suivi à part : un appelant consulte cette porte, il ne la franchit pas ici.
 from django.db.models import Avg
 
 from .models import (
-    ActionCorrectivePreventive, Audit, ConformiteEnvironnementale,
-    ControleReception, DeclarationCnss, EtapeDeclarationAt, EvaluationRisque,
+    ActionCorrectivePreventive, Audit, ClauseNorme, ConformiteEnvironnementale,
+    ControleReception, CritereAudit, DeclarationCnss,
+    DemandeActionFournisseur, DiffusionProcedure,
+    EtapeDeclarationAt, EvaluationRisque,
     Incident, IndicateurESG, InspectionSecurite, NonConformite,
-    NotationFinChantier,
+    NotationFinChantier, ObjectifQhse,
     PermisTravail, PlanInspectionChantier,
-    ProcedureQualite, ReleveControle, ReleveCourbeIV, RetourClientQualite,
+    ProcedureQualite, ReleveControle, ReleveCourbeIV, ReponseCritere,
+    RetourClientQualite,
 )
 
 
@@ -1301,3 +1304,167 @@ def taux_conformite_premier_passage(
     conformes = qs.filter(conforme=True).count()
     taux = round(conformes / total * 100, 1) if total else None
     return {'total_statues': total, 'conformes': conformes, 'taux': taux}
+
+
+# ── XQHS6 — SCAR par fournisseur (advisory, exposé au scorecard stock) ──────
+
+def scar_count_par_fournisseur(company, fournisseur_id):
+    """Compte SCAR ouvertes/répétées d'un fournisseur (XQHS6).
+
+    Point d'entrée destiné à être lu par ``apps.stock`` (le scorecard
+    fournisseur l'affiche en ADVISORY, jamais un import de modèle qhse côté
+    stock). Renvoie ``{'total': int, 'ouvertes': int}`` — ``ouvertes`` exclut
+    les SCAR ``close``.
+    """
+    qs = DemandeActionFournisseur.objects.filter(
+        company=company, fournisseur_id=fournisseur_id)
+    total = qs.count()
+    ouvertes = qs.exclude(
+        statut=DemandeActionFournisseur.Statut.CLOSE).count()
+    return {'total': total, 'ouvertes': ouvertes}
+
+
+# ── XQHS11 — Heatmap constats-par-clause + readiness multi-référentiel ─────
+
+def constats_par_clause(company, referentiel=None):
+    """Heatmap des non-conformités d'audit agrégées par clause ISO (XQHS11).
+
+    Compte les ``ReponseCritere`` NON CONFORMES dont le critère porte une
+    ``clause`` (les critères sans clause sont exclus — rien à cartographier).
+    Renvoie une liste de dicts ``{'clause': str, 'referentiel': str,
+    'nb_non_conformes': int}`` triée par nb décroissant.
+    """
+    qs = ReponseCritere.objects.filter(
+        company=company, resultat=ReponseCritere.Resultat.NON_CONFORME,
+        critere__clause__gt='')
+    if referentiel:
+        qs = qs.filter(critere__referentiel=referentiel)
+
+    counts = {}
+    for clause, ref in qs.values_list('critere__clause', 'critere__referentiel'):
+        key = (clause, ref)
+        counts[key] = counts.get(key, 0) + 1
+
+    result = [
+        {'clause': clause, 'referentiel': ref, 'nb_non_conformes': nb}
+        for (clause, ref), nb in counts.items()
+    ]
+    result.sort(key=lambda item: -item['nb_non_conformes'])
+    return result
+
+
+def readiness_multi_referentiel(company):
+    """Readiness étendu par référentiel (9001/14001/45001, XQHS11).
+
+    Pour chaque référentiel avec des clauses seedées, calcule le % de clauses
+    couvertes par AU MOINS UN critère audité CONFORME (une clause « couverte »
+    a une ``ReponseCritere`` conforme sur un critère qui la référence).
+    Renvoie ``{referentiel: {'total_clauses': int, 'couvertes': int, 'pct':
+    float|None}}``.
+    """
+    result = {}
+    referentiels = ClauseNorme.objects.filter(
+        company=company).values_list('referentiel', flat=True).distinct()
+    for referentiel in referentiels:
+        clauses = set(
+            ClauseNorme.objects.filter(
+                company=company, referentiel=referentiel
+            ).values_list('numero', flat=True))
+        total = len(clauses)
+        if total == 0:
+            result[referentiel] = {
+                'total_clauses': 0, 'couvertes': 0, 'pct': None}
+            continue
+
+        clauses_conformes = set(
+            CritereAudit.objects.filter(
+                company=company, referentiel=referentiel,
+                qhse_reponses__resultat=ReponseCritere.Resultat.CONFORME,
+            ).values_list('clause', flat=True))
+        couvertes = len(clauses & clauses_conformes)
+        pct = round(couvertes / total * 100, 1)
+        result[referentiel] = {
+            'total_clauses': total, 'couvertes': couvertes, 'pct': pct}
+    return result
+
+
+# ── XQHS13 — Trajectoire baseline → cible vs réel (cockpit) ────────────────
+
+def trajectoire_objectif(objectif):
+    """Trajectoire baseline→cible vs réel d'un ``ObjectifQhse`` (XQHS13).
+
+    Renvoie ``{'baseline': ..., 'cible': ..., 'echeance': ..., 'points':
+    [{'periode': str, 'valeur': Decimal, 'atteint': bool|None}, ...]}`` —
+    ``points`` est l'historique des ``RevueObjectif`` triées chronologiquement
+    (ordre croissant, pour un tracé de courbe direct côté frontend).
+    """
+    revues = list(
+        objectif.revues.order_by('date_revue', 'id').values(
+            'periode', 'valeur_constatee', 'atteint', 'date_revue'))
+    return {
+        'baseline': objectif.valeur_baseline,
+        'cible': objectif.valeur_cible,
+        'echeance': objectif.echeance,
+        'points': [
+            {
+                'periode': r['periode'],
+                'valeur': r['valeur_constatee'],
+                'atteint': r['atteint'],
+                'date_revue': r['date_revue'],
+            }
+            for r in revues
+        ],
+    }
+
+
+def objectifs_revue_due(company, today=None):
+    """Objectifs dont la revue périodique est due (XQHS13, relance).
+
+    « Due » = aucune ``RevueObjectif`` dans la fenêtre de fréquence depuis la
+    dernière revue (ou jamais revu). Renvoie la liste des ``ObjectifQhse``.
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    if today is None:
+        today = timezone.localdate()
+
+    jours_par_frequence = {
+        ObjectifQhse.Frequence.MENSUELLE: 30,
+        ObjectifQhse.Frequence.TRIMESTRIELLE: 90,
+        ObjectifQhse.Frequence.SEMESTRIELLE: 180,
+        ObjectifQhse.Frequence.ANNUELLE: 365,
+    }
+
+    dus = []
+    for objectif in ObjectifQhse.objects.filter(company=company):
+        derniere = objectif.revues.order_by('-date_revue', '-id').first()
+        if derniere is None or derniere.date_revue is None:
+            dus.append(objectif)
+            continue
+        delai = jours_par_frequence.get(objectif.frequence_revue, 90)
+        if today >= derniere.date_revue + timedelta(days=delai):
+            dus.append(objectif)
+    return dus
+
+
+# ── XQHS15 — % conformité de lecture par procédure (cockpit) ───────────────
+
+def conformite_lecture_procedure(company, reference):
+    """% de conformité de lecture pour une référence de procédure (XQHS15).
+
+    Agrège TOUTES les diffusions de TOUTES les versions de la ``reference``
+    (une référence versionnée reste UNE procédure du point de vue du cockpit).
+    Renvoie ``{'total': int, 'lus': int, 'pct': float|None}``.
+    """
+    diffusions = DiffusionProcedure.objects.filter(
+        company=company, procedure__reference=reference)
+    total = 0
+    lus = 0
+    for diffusion in diffusions:
+        accuses = diffusion.accuses_lecture.all()
+        total += accuses.count()
+        lus += accuses.filter(lu_le__isnull=False).count()
+    pct = round(lus / total * 100, 1) if total else None
+    return {'total': total, 'lus': lus, 'pct': pct}
