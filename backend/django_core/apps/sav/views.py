@@ -302,17 +302,34 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             if client is not None:
                 serializer.validated_data['client'] = client
 
-    def _compute_sla_due_at(self, company, priorite, date_ouverture):
+    def _resolve_resolution_days(self, company, client, priorite):
+        """XSAV7 — Résout le délai de résolution (jours) avec précédence :
+        contrat de maintenance ACTIF du client avec override > sla_par_priorite
+        > défauts société (premier match gagne). Sans contrat/override, la
+        résolution retombe exactement sur le comportement FG81 d'origine."""
+        from .models import ContratMaintenance
+        sla = SavSlaSettings.get(company)
+        contrat = ContratMaintenance.actif_pour_client(client)
+        if contrat is not None and contrat.sla_resolution_days is not None:
+            return contrat.sla_resolution_days
+        _, resolution_days = sla.days_for(priorite)
+        return resolution_days
+
+    def _compute_sla_due_at(self, company, client, priorite, date_ouverture):
         """FG81 — Calcule sla_due_at depuis les réglages société (ou None).
 
         XSAV5 — quand ``sla_jours_ouvres`` est activé, l'échéance avance de
         ``resolution_days`` JOURS OUVRÉS (via ``core.calendar``, jours ouvrés +
         fériés marocains) plutôt qu'en jours calendaires. OFF (défaut) =
-        comportement calendaire byte-identique à avant XSAV5."""
+        comportement calendaire byte-identique à avant XSAV5.
+
+        XSAV7 — ``resolution_days`` peut venir d'un contrat de maintenance actif
+        du client (override), avant repli sur ``sla_par_priorite``/défauts."""
         sla = SavSlaSettings.get(company)
         if not sla.sla_breach_enabled:
             return None
-        _, resolution_days = sla.days_for(priorite)
+        resolution_days = self._resolve_resolution_days(
+            company, client, priorite)
         if sla.sla_jours_ouvres:
             from core.calendar import add_working_days
             return add_working_days(date_ouverture, resolution_days)
@@ -330,8 +347,11 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             serializer.validated_data.get('date_ouverture')
             or timezone.localdate())
         # FG81 — SLA : calcul de l'échéance cible à la création.
+        # XSAV7 — le client résolu alimente l'override contrat éventuel.
         priorite = serializer.validated_data.get('priorite', 'normale')
-        sla_due_at = self._compute_sla_due_at(company, priorite, date_ouverture)
+        client = serializer.validated_data.get('client')
+        sla_due_at = self._compute_sla_due_at(
+            company, client, priorite, date_ouverture)
         create_with_reference(
             Ticket, 'SAV', company,
             lambda ref: serializer.save(

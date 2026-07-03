@@ -728,6 +728,23 @@ class ContratMaintenance(models.Model):
         verbose_name='Dernière facturation',
         help_text='Date du dernier cycle de facturation émis. Null = jamais facturé.',
     )
+    # ── XSAV7 — SLA différencié par contrat (override optionnel) ────────────
+    # NULL = pas d'override : le ticket retombe sur sla_par_priorite puis les
+    # défauts société (comportement actuel inchangé). Un contrat premium peut
+    # poser des délais plus stricts que le SLA société standard. On NE crée
+    # PAS un second référentiel parallèle à `contrats.EngagementSLA` (qui
+    # exprime un taux cible %, pas des délais en jours) — ce sont des overrides
+    # simples, au même format que `SavSlaSettings`.
+    sla_response_days = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='SLA — délai de première réponse (jours, override)',
+        help_text='Vide = pas de override contrat (SLA société standard).',
+    )
+    sla_resolution_days = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='SLA — délai de résolution (jours, override)',
+        help_text='Vide = pas de override contrat (SLA société standard).',
+    )
     date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -737,6 +754,23 @@ class ContratMaintenance(models.Model):
 
     def __str__(self):
         return f'Contrat #{self.pk} — {self.client_id}'
+
+    @classmethod
+    def actif_pour_client(cls, client):
+        """XSAV7 — Contrat de maintenance ACTIF du client portant un override
+        SLA, s'il en existe un. Renvoie None sinon (comportement actuel).
+
+        Premier match gagne : le contrat le plus RÉCEMMENT créé parmi les
+        actifs qui posent au moins un override (``sla_response_days`` ou
+        ``sla_resolution_days`` non NULL)."""
+        if client is None:
+            return None
+        return (cls.objects
+                .filter(client=client, actif=True)
+                .exclude(sla_response_days__isnull=True,
+                         sla_resolution_days__isnull=True)
+                .order_by('-date_creation')
+                .first())
 
     def prochaine_visite(self):
         """Date de la prochaine visite (dernière visite ou début + période).
