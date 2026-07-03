@@ -183,19 +183,16 @@ const solutionsActive = isActive('/nos-solutions') ||
 const ressourcesActive = isActive('/guides') ||
   ressources.some((r) => isActive(r.href));
 
+// W374 — link-underline: mask/clip-path draw-in from the leading edge
+// (RTL-aware via global.css's [dir="rtl"] clip-path flip), replacing the
+// former Tailwind width-tween (`w-0` → `group-hover:w-full`) with the
+// crafted reveal. The class carries `position: relative` itself, so
+// `linkBase`/`linkBaseActive` no longer need to.
 const linkBase =
-  'group/link relative text-sm font-medium text-lune-soft transition-colors hover:text-white';
+  'group/link text-sm font-medium text-lune-soft transition-colors hover:text-white link-underline';
 // W151 — variante active : texte blanc + indicateur brass visible au repos.
 const linkBaseActive =
-  'group/link relative text-sm font-medium text-white';
-// W311 — inset-inline-start-0 (logique) au lieu de left-0 : le soulignement
-// grandit depuis le bon côté (début de ligne) sous dir="rtl" au lieu de
-// rester ancré à gauche physique.
-const underline =
-  'absolute -bottom-1 inset-inline-start-0 h-0.5 w-0 bg-brass-400 transition-all duration-200 group-hover/link:w-full';
-// W151 — underline actif : toujours pleine largeur, couleur brass.
-const underlineActive =
-  'absolute -bottom-1 inset-inline-start-0 h-0.5 w-full bg-brass-400';
+  'group/link text-sm font-medium text-white link-underline-active';
 // Classes de révélation du panneau : survol, focus clavier OU classe .is-open (JS).
 const menuReveal =
   'invisible translate-y-1 opacity-0 transition-all duration-150 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:opacity-100 group-[.is-open]:visible group-[.is-open]:translate-y-0 group-[.is-open]:opacity-100';
@@ -232,7 +229,6 @@ const itemClass =
             stroke-linejoin="round" aria-hidden="true"
             class="dropdown-chevron opacity-70 transition-transform duration-200 motion-reduce:transition-none"
           ><polyline points="6 9 12 15 18 9"></polyline></svg>
-          <span class={solutionsActive ? underlineActive : underline}></span>
         </a>
         {/* W163 — polished panel: rounded, layered shadow, brass top accent.
             W264 — widened (w-72) to fit leading glyphs + featured subtitles.
@@ -310,12 +306,12 @@ const itemClass =
         href={L('/realisations')}
         class={isActive('/realisations') ? linkBaseActive : linkBase}
         {...(isActive('/realisations') ? { 'aria-current': 'page' } : {})}
-      >{t('nav.realisations')}<span class={isActive('/realisations') ? underlineActive : underline}></span></a>
+      >{t('nav.realisations')}</a>
       <a
         href={L('/équipement')}
         class={isActive('/équipement') ? linkBaseActive : linkBase}
         {...(isActive('/équipement') ? { 'aria-current': 'page' } : {})}
-      >{t('nav.equipment')}<span class={isActive('/équipement') ? underlineActive : underline}></span></a>
+      >{t('nav.equipment')}</a>
 
       <!-- Ressources (déroulant) -->
       <div class="dropdown group relative" data-dropdown>
@@ -334,7 +330,6 @@ const itemClass =
             stroke-linejoin="round" aria-hidden="true"
             class="dropdown-chevron opacity-70 transition-transform duration-200 motion-reduce:transition-none"
           ><polyline points="6 9 12 15 18 9"></polyline></svg>
-          <span class={ressourcesActive ? underlineActive : underline}></span>
         </a>
         {/* W163 — polished panel: rounded, layered shadow, brass top accent.
             W264 — honest split: service-adjacent items (financement,
@@ -368,13 +363,13 @@ const itemClass =
         href={L('/à-propos')}
         class={isActive('/à-propos') ? linkBaseActive : linkBase}
         {...(isActive('/à-propos') ? { 'aria-current': 'page' } : {})}
-      >{t('nav.about')}<span class={isActive('/à-propos') ? underlineActive : underline}></span></a>
+      >{t('nav.about')}</a>
     </nav>
     <div class="flex items-center gap-1.5 sm:gap-3">
       <LanguageSwitcher path={rootPath} current={locale} locales={pageLocales} />
       <a
         href={`tel:${NAP.phone}`}
-        class="hidden items-center gap-1.5 text-sm font-semibold text-lune-soft transition-colors hover:text-white md:flex"
+        class="link-underline hidden items-center gap-1.5 text-sm font-semibold text-lune-soft transition-colors hover:text-white md:flex"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
         {NAP.phoneDisplayIntl}

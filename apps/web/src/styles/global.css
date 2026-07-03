@@ -1035,3 +1035,70 @@ summary:focus-visible {
     to { transform: scaleX(1); }
   }
 }
+
+/* ─── W374 — Crafted link hovers: mask/clip-path underline ─────────────────
+   Replaces the plain width-tween underline (previously a `.group-hover:w-full`
+   Tailwind utility inline in Header.astro) with a drawn-in-from-the-leading-
+   edge reveal: a `::after` bar sits at full inline-size from the start, then
+   `clip-path: inset()` hides everything past the leading edge at rest and
+   retracts to nothing on hover/focus — reading as ink drawing itself in,
+   the "crafted" tier above a generic width tween.
+
+   RTL-aware via LOGICAL properties: the bar itself uses `inset-inline-start`
+   for its own position (so it never needs repositioning under `dir="rtl"`),
+   and only the *inset() clip-path* — which has no logical-side syntax in CSS
+   today — is flipped per direction with a `[dir="rtl"]` override, so the
+   reveal always animates from the start edge of the line (left under LTR,
+   right under `dir="rtl"`) rather than a fixed physical side.
+
+   Usage: add `.link-underline` next to the existing text-color hover classes
+   on nav/inline links; the element must be `position: relative` (nav links
+   already are, via `relative` in `linkBase`/`linkBaseActive`). No markup
+   change needed — the bar is a pseudo-element, not the old `<span>` (which
+   is removed from Header.astro in the same change).
+
+   ZERO CLS: `position: absolute`, taken out of flow — never reserves space.
+   Reduced-motion: the `clip-path` transition is removed entirely, so
+   hover/focus still reveals the bar but as an instant cut rather than a
+   drawn-in tween — the site's standing motion-reduce contract (see
+   `.dropdown-chevron`, header scroll, etc.) collapses the *animation*,
+   never the interaction itself. */
+.link-underline {
+  position: relative;
+}
+.link-underline::after {
+  content: '';
+  position: absolute;
+  inset-block-end: -0.25rem;
+  inset-inline-start: 0;
+  inline-size: 100%;
+  block-size: 2px;
+  background: var(--color-brass-400, #e8b54a);
+  clip-path: inset(0 100% 0 0);
+  transition: clip-path var(--dur-hover) var(--ease-cine);
+}
+[dir="rtl"] .link-underline::after {
+  clip-path: inset(0 0 0 100%);
+}
+.link-underline:hover::after,
+.link-underline:focus-visible::after {
+  clip-path: inset(0 0 0 0);
+}
+/* W151 — "active page" variant: always fully drawn, no hover needed. */
+.link-underline-active::after {
+  content: '';
+  position: absolute;
+  inset-block-end: -0.25rem;
+  inset-inline-start: 0;
+  inline-size: 100%;
+  block-size: 2px;
+  background: var(--color-brass-400, #e8b54a);
+}
+@media (prefers-reduced-motion: reduce) {
+  .link-underline::after {
+    transition: none;
+    /* Instant underline at rest, per spec — no draw-in animation, but the
+       hover state itself is preserved (still CSS-only, still zero-JS); it
+       simply snaps rather than tweening. */
+  }
+}
