@@ -563,6 +563,11 @@ class Facture(models.Model):
     # relance) ; exclu_relances retire la facture des listes d'impayés.
     prochaine_relance = models.DateField(null=True, blank=True)
     exclu_relances = models.BooleanField(default=False)
+    # XFAC5 — exclusion des relances avec EXPIRATION (contrairement au
+    # booléen éternel ci-dessus). NULL = pas d'expiration programmée
+    # (comportement historique inchangé). Une promesse de paiement active
+    # pose aussi cette date automatiquement (voir PromessePaiement).
+    exclu_relances_jusquau = models.DateField(null=True, blank=True)
 
     # ── Statut de télédéclaration DGI (N39) — purement INFORMATIF, posé à la
     # main. Prépare le modèle de données pour un futur flux DGI sans aucun
@@ -1157,6 +1162,42 @@ class RetenueSubie(models.Model):
 
     def __str__(self):
         return f'RAS {self.montant} MAD — {self.facture.reference}'
+
+
+class PromessePaiement(models.Model):
+    """XFAC5 — engagement client tracé (« je paie le 15 ») qui SUSPEND les
+    relances automatiques de la facture jusqu'à ``date_promise``. Le job beat
+    (``scheduled.py relance_reminders``) marque la promesse ``rompue`` si la
+    date passe sans encaissement suffisant et reprend les relances avec un
+    flag « promesse rompue »."""
+    class Statut(models.TextChoices):
+        EN_COURS = 'en_cours', 'En cours'
+        TENUE = 'tenue', 'Tenue'
+        ROMPUE = 'rompue', 'Rompue'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='promesses_paiement')
+    facture = models.ForeignKey(
+        Facture, on_delete=models.CASCADE, related_name='promesses_paiement')
+    montant_promis = models.DecimalField(max_digits=12, decimal_places=2)
+    date_promise = models.DateField()
+    note = models.TextField(blank=True, default='')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.EN_COURS)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        related_name='promesses_paiement_creees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Promesse de paiement'
+        verbose_name_plural = 'Promesses de paiement'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return (f'Promesse {self.montant_promis} MAD le {self.date_promise} '
+                f'— {self.facture.reference}')
 
 
 class FollowupLevel(models.Model):

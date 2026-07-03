@@ -30,6 +30,7 @@ from .views import (
 )
 from .recouvrement import (
     FollowupLevelViewSet,
+    PromessePaiementViewSet,
     relances_list,
     balance_agee,
     client_releve,
@@ -62,6 +63,9 @@ router.register(r'fiches-techniques', FicheTechniqueViewSet,
                 basename='fiche-technique')
 router.register(r'niveaux-relance', FollowupLevelViewSet,
                 basename='niveau-relance')
+# XFAC5 — promesses de paiement (suspendent la relance auto jusqu'à échéance).
+router.register(r'promesses-paiement', PromessePaiementViewSet,
+                basename='promesse-paiement')
 # QJ16-wiring — presets de devis (list + destroy uniquement).
 # La création passe par POST /devis/{id}/save-preset/ sur le DevisViewSet.
 router.register(r'presets', DevisPresetViewSet, basename='devis-preset')

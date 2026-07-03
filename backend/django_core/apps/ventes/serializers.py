@@ -540,6 +540,22 @@ class AvoirSerializer(serializers.ModelSerializer):
         return f"{c.nom} {c.prenom or ''}".strip() if c else None
 
 
+class PromessePaiementSerializer(serializers.ModelSerializer):
+    """XFAC5 — engagement de paiement client (« je paie le 15 »)."""
+    facture_reference = serializers.CharField(
+        source='facture.reference', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    created_by_username = serializers.CharField(
+        source='created_by.username', read_only=True, default=None)
+
+    class Meta:
+        from .models import PromessePaiement
+        model = PromessePaiement
+        fields = '__all__'
+        read_only_fields = ['company', 'created_by', 'date_creation', 'statut']
+
+
 class FollowupLevelSerializer(serializers.ModelSerializer):
     class Meta:
         from .models import FollowupLevel

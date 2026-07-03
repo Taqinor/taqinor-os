@@ -82,6 +82,39 @@ def check_overdue_factures():
     return flipped
 
 
+def _check_promesses_expirees(today):
+    """XFAC5 — marque ``rompue`` toute promesse ``en_cours`` dont la date est
+    dépassée SANS encaissement suffisant, et libère la suspension de relance
+    (``exclu_relances_jusquau``) de la facture pour que ``relance_reminders``
+    reprenne avec un flag « promesse rompue » (priorité haute dans la liste
+    des impayés de ``recouvrement.py``). Une promesse tenue (facture réglée
+    avant/à la date promise) n'est jamais touchée ici — elle est marquée
+    ``tenue`` dès que la facture passe payée (voir ``enregistrer_paiement``
+    côté vue, qui referme les promesses en cours à ce moment-là)."""
+    from .models import PromessePaiement
+
+    rompues = 0
+    en_cours = PromessePaiement.objects.filter(
+        statut=PromessePaiement.Statut.EN_COURS,
+        date_promise__lt=today,
+    ).select_related('facture').prefetch_related(
+        'facture__paiements', 'facture__avoirs',
+        'facture__retenues_subies', 'facture__affectations_paiement')
+    for promesse in en_cours:
+        facture = promesse.facture
+        if facture.montant_du <= 0:
+            promesse.statut = PromessePaiement.Statut.TENUE
+            promesse.save(update_fields=['statut'])
+            continue
+        promesse.statut = PromessePaiement.Statut.ROMPUE
+        promesse.save(update_fields=['statut'])
+        if facture.exclu_relances_jusquau is not None:
+            facture.exclu_relances_jusquau = None
+            facture.save(update_fields=['exclu_relances_jusquau'])
+        rompues += 1
+    return rompues
+
+
 @shared_task(name='ventes.relance_reminders')
 def relance_reminders():
     """Envoie les relances programmées arrivées à échéance (date Casablanca).
@@ -93,17 +126,26 @@ def relance_reminders():
     d'échéance du niveau suivant (au lieu de la nullifier) — la séquence
     progresse donc niveau par niveau au lieu de ne tirer qu'une fois. Quand le
     dernier niveau a été envoyé (ou s'il n'existe aucun niveau), on efface la
-    date pour stopper proprement. Renvoie le nombre de relances déclenchées."""
+    date pour stopper proprement. Renvoie le nombre de relances déclenchées.
+
+    XFAC5 — avant tout envoi, expire les promesses de paiement dépassées
+    (``_check_promesses_expirees``), puis SAUTE toute facture dont
+    ``exclu_relances_jusquau`` est encore dans le futur (promesse active en
+    cours) : la relance reste suspendue jusqu'à la date promise ou la rupture
+    de la promesse."""
     from datetime import timedelta
     from .models import Facture, FollowupLevel, RelanceLog
     from .email_service import send_relance_email
 
     today = casablanca_today()
+    _check_promesses_expirees(today)
     sent = 0
     factures = Facture.objects.filter(
         prochaine_relance__lte=today, exclu_relances=False,
     ).exclude(
         statut__in=['payee', 'annulee', 'brouillon'],
+    ).exclude(
+        exclu_relances_jusquau__gte=today,
     ).select_related('client', 'company').prefetch_related(
         'lignes', 'paiements', 'avoirs')
 

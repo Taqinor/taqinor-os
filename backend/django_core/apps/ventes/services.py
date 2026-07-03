@@ -1323,6 +1323,19 @@ def reset_relance_escalation(facture):
     n = autos.update(note=RELANCE_AUTO_NOTE_RESOLUE)
     if n:
         changed = True
+    # XFAC5 — une facture soldée referme toute promesse de paiement encore
+    # « en_cours » (tenue) et lève l'exclusion de relance expirante posée par
+    # la promesse.
+    from .models import PromessePaiement
+    tenues = facture.promesses_paiement.filter(
+        statut=PromessePaiement.Statut.EN_COURS,
+    ).update(statut=PromessePaiement.Statut.TENUE)
+    if tenues:
+        changed = True
+    if facture.exclu_relances_jusquau is not None:
+        facture.exclu_relances_jusquau = None
+        facture.save(update_fields=['exclu_relances_jusquau'])
+        changed = True
     return changed
 
 
