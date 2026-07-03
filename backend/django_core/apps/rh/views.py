@@ -236,6 +236,24 @@ class DossierEmployeViewSet(_RhBaseViewSet):
             request.user.company, employe.pk)
         return Response(registre)
 
+    @action(detail=True, methods=['post'], url_path='confirmer-essai')
+    def confirmer_essai(self, request, pk=None):
+        """Confirme la période d'essai (XRH1) — retire l'alerte d'échéance.
+
+        Efface ``essai_date_fin`` (plus d'échéance à surveiller). L'employé est
+        résolu via ``get_object`` (scopé société par TenantMixin) — un employé
+        d'une autre société renvoie 404. Journalisée si XRH6 (chatter) est
+        disponible, best-effort sinon.
+        """
+        employe = self.get_object()
+        if employe.essai_date_fin is None:
+            return Response(
+                {'detail': "Aucune période d'essai en cours pour ce dossier."},
+                status=status.HTTP_400_BAD_REQUEST)
+        employe.essai_date_fin = None
+        employe.save(update_fields=['essai_date_fin'])
+        return Response(self.get_serializer(employe).data)
+
 
 class RemunerationViewSet(TenantMixin, viewsets.ModelViewSet):
     """Rémunération de base des employés (FG157) — paie SENSIBLE.

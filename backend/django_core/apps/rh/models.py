@@ -218,6 +218,15 @@ class DossierEmploye(models.Model):
         verbose_name='Coût horaire')
     rib = models.CharField(
         max_length=40, blank=True, default='', verbose_name='RIB')
+    # XRH1 — période d'essai (Code du travail marocain : 3 mois cadres / 1,5
+    # mois employés, renouvelable UNE fois). ``essai_date_fin`` borne la
+    # période en cours (nullable : la plupart des dossiers n'ont pas d'essai
+    # en cours) ; ``essai_renouvele`` mémorise qu'un renouvellement a déjà eu
+    # lieu (le Code n'en autorise qu'un).
+    essai_date_fin = models.DateField(
+        null=True, blank=True, verbose_name="Fin de période d'essai")
+    essai_renouvele = models.BooleanField(
+        default=False, verbose_name="Période d'essai renouvelée")
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 

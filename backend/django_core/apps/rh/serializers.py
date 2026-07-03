@@ -100,6 +100,8 @@ class DossierEmployeSerializer(serializers.ModelSerializer):
             'adresse_perso', 'telephone_perso', 'email_perso',
             'urgence_nom', 'urgence_lien', 'urgence_telephone',
             'groupe_sanguin',
+            # XRH1 — période d'essai.
+            'essai_date_fin', 'essai_renouvele',
             'date_creation',
         ]
         read_only_fields = ['date_creation']

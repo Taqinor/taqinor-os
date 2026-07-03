@@ -696,13 +696,18 @@ def echeances_rh(company, within_days=30, today=None):
     ``{
         'type': 'habilitation' | 'certification' | 'document'
                 | 'visite_medicale' | 'dotation_epi'
-                | 'epi_peremption' | 'epi_controle',
+                | 'epi_peremption' | 'epi_controle' | 'fin_essai',
         'employe_id': int,
         'employe': str,                 # « MATRICULE — Nom Prénom »
         'libelle': str,                 # libellé lisible du titre/document
         'date_validite': date,          # échéance
         'jours_restants': int,          # négatif si déjà expiré
     }``
+
+    XRH1 — la famille ``fin_essai`` alerte AVANT ``DossierEmploye.essai_date_fin``
+    (une période d'essai qui arrive à son terme doit être confirmée ou rompue
+    à temps) ; confirmer l'essai (``employes/{id}/confirmer-essai``) efface la
+    date et retire l'employé de cette famille.
     """
     if company is None:
         return []
@@ -836,6 +841,22 @@ def echeances_rh(company, within_days=30, today=None):
             'libelle': f'EPI à recontrôler ({dot.epi.designation})',
             'date_validite': dot.date_prochain_controle,
             'jours_restants': (dot.date_prochain_controle - today).days,
+        })
+
+    # XRH1 — période d'essai en cours dont la fin approche (ou est dépassée).
+    essais = (
+        DossierEmploye.objects
+        .filter(company=company,
+                essai_date_fin__isnull=False, essai_date_fin__lte=limite)
+    )
+    for emp in essais:
+        rows.append({
+            'type': 'fin_essai',
+            'employe_id': emp.id,
+            'employe': _employe_label(emp),
+            'libelle': "Fin de période d'essai",
+            'date_validite': emp.essai_date_fin,
+            'jours_restants': (emp.essai_date_fin - today).days,
         })
 
     rows.sort(key=lambda r: (r['date_validite'], r['type'], r['employe_id']))
