@@ -632,6 +632,16 @@ class PrixFournisseur(models.Model):
         return f'{self.produit_id} @ {self.fournisseur_id} = {self.prix_achat}'
 
 
+# XPUR3 — devises d'achat courantes (imports panneaux/onduleurs). MAD reste le
+# défaut partout : un document sans devise saisie garde le comportement
+# historique (contre-valeur = montant, taux = 1) puisque tout est déjà en MAD.
+class DeviseAchat(models.TextChoices):
+    MAD = 'MAD', 'Dirham marocain (MAD)'
+    EUR = 'EUR', 'Euro (EUR)'
+    USD = 'USD', 'Dollar américain (USD)'
+    CNY = 'CNY', 'Yuan chinois (CNY)'
+
+
 class BonCommandeFournisseur(models.Model):
     """Bon de commande FOURNISSEUR (achat / approvisionnement) — N12.
 
@@ -670,6 +680,18 @@ class BonCommandeFournisseur(models.Model):
         default=Statut.BROUILLON,
     )
     date_commande = models.DateField(null=True, blank=True)
+    # XPUR3 — devise du document (défaut MAD, comportement historique
+    # inchangé) + taux de change saisi à la date du document (aucun appel
+    # externe). Les LIGNES portent le prix d'achat unitaire EN CETTE DEVISE ;
+    # la contre-valeur MAD (utilisée PARTOUT en interne : coût moyen pondéré,
+    # balance âgée, payment run, comparatif fournisseurs) est calculée par
+    # `LigneBonCommandeFournisseur.prix_achat_unitaire_mad`.
+    devise = models.CharField(
+        max_length=3, choices=DeviseAchat.choices, default=DeviseAchat.MAD)
+    taux_change = models.DecimalField(
+        max_digits=12, decimal_places=6, default=1,
+        help_text='Taux de change devise → MAD à la date du document '
+                  '(saisie manuelle, aucun appel externe).')
     note = models.TextField(blank=True, null=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -718,11 +740,23 @@ class LigneBonCommandeFournisseur(models.Model):
         related_name='lignes_bon_commande_fournisseur',
     )
     quantite = models.IntegerField()
-    # Prix d'ACHAT unitaire — donnée INTERNE. N'apparaît JAMAIS sur un document
-    # destiné au client (devis, facture, BC client).
+    # Prix d'ACHAT unitaire — donnée INTERNE, TOUJOURS en contre-valeur MAD
+    # (utilisée PARTOUT en interne : coût moyen pondéré/landed cost, balance
+    # âgée, payment run, comparatif fournisseurs — XPUR3). N'apparaît JAMAIS
+    # sur un document destiné au client (devis, facture, BC client).
     prix_achat_unitaire = models.DecimalField(
         max_digits=10, decimal_places=2, default=0,
     )
+    # XPUR3 — prix d'achat unitaire saisi dans la DEVISE du document (BCF.
+    # devise/taux_change). Null = document en MAD (comportement historique) :
+    # `prix_achat_unitaire` reste alors l'unique source de vérité. Quand
+    # renseigné, `prix_achat_unitaire` DOIT être sa contre-valeur MAD
+    # (prix_achat_unitaire_devise × bon_commande.taux_change) — recalculée
+    # côté service à la saisie, jamais divergente.
+    prix_achat_unitaire_devise = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text="Prix d'achat unitaire dans la devise du document "
+                  '(optionnel — null = document en MAD).')
     # ── FG67 / DC38 — Coût débarqué (landed cost) ────────────────────────────
     # Frais annexes TOTAUX de la LIGNE (fret + douane + TVA import + transit),
     # à répartir sur les unités de la ligne. Le coût de revient débarqué
@@ -897,6 +931,21 @@ class FactureFournisseur(models.Model):
                   'prestations de services.')
     date_facture = models.DateField(null=True, blank=True)
     date_echeance = models.DateField(null=True, blank=True)
+    # XPUR3 — devise + taux de change (mêmes règles que le BCF : défaut MAD,
+    # taux 1, saisi à la date du document, aucun appel externe). Les montants
+    # HT/TVA/TTC ci-dessous restent TOUJOURS la contre-valeur MAD (utilisée
+    # partout en interne : balance âgée FG132, payment run FG133) ; les
+    # montants en devise natifs sont ajoutés séparément pour l'affichage.
+    devise = models.CharField(
+        max_length=3, choices=DeviseAchat.choices, default=DeviseAchat.MAD)
+    taux_change = models.DecimalField(
+        max_digits=12, decimal_places=6, default=1,
+        help_text='Taux de change devise → MAD à la date du document '
+                  '(saisie manuelle, aucun appel externe).')
+    montant_ttc_devise = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        help_text='Montant TTC dans la devise du document (optionnel — '
+                  'null = document en MAD).')
     montant_ht = models.DecimalField(
         max_digits=14, decimal_places=2, default=0)
     montant_tva = models.DecimalField(

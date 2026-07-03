@@ -1852,3 +1852,39 @@ def export_ras_tva_xlsx(company, *, date_debut=None, date_fin=None):
     return build_xlsx_response(
         'ras_tva_fournisseurs.xlsx', headers, data_rows,
         sheet_title='RAS-TVA')
+
+
+# ── XPUR3 — Multi-devises sur les achats ────────────────────────────────────
+
+def contre_valeur_mad(montant_devise, taux_change):
+    """XPUR3 — convertit un montant en devise vers sa contre-valeur MAD au
+    taux fourni (saisi à la date du document, aucun appel externe). Renvoie
+    Decimal('0') si l'un des deux est absent."""
+    montant = _dec(montant_devise)
+    taux = _dec(taux_change)
+    if montant is None or taux is None:
+        return Decimal('0')
+    return (montant * taux).quantize(Decimal('0.01'))
+
+
+def apply_devise_ligne_bcf(ligne_data, devise, taux_change):
+    """XPUR3 — si la ligne porte un ``prix_achat_unitaire_devise``, dérive et
+    ÉCRASE ``prix_achat_unitaire`` (MAD) = devise × taux. Document en MAD
+    (devise MAD / champ non renseigné) : ``prix_achat_unitaire`` reste tel
+    quel, saisi directement en MAD (comportement historique). Modifie
+    ``ligne_data`` EN PLACE et le renvoie (pratique dans un serializer)."""
+    from .models import DeviseAchat
+    prix_devise = ligne_data.get('prix_achat_unitaire_devise')
+    if prix_devise is not None and devise and devise != DeviseAchat.MAD:
+        ligne_data['prix_achat_unitaire'] = contre_valeur_mad(
+            prix_devise, taux_change)
+    return ligne_data
+
+
+def apply_devise_facture(montant_ttc_devise, devise, taux_change):
+    """XPUR3 — contre-valeur MAD du TTC facture depuis son montant en
+    devise (None si le document est en MAD — comportement historique)."""
+    from .models import DeviseAchat
+    if montant_ttc_devise is None or not devise or devise == DeviseAchat.MAD:
+        return None
+    return contre_valeur_mad(montant_ttc_devise, taux_change)

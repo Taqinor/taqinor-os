@@ -389,7 +389,8 @@ class LigneBonCommandeFournisseurSerializer(serializers.ModelSerializer):
         model = LigneBonCommandeFournisseur
         fields = [
             'id', 'produit', 'produit_nom', 'produit_sku', 'quantite',
-            'prix_achat_unitaire', 'frais_annexes', 'quantite_recue',
+            'prix_achat_unitaire', 'prix_achat_unitaire_devise',
+            'frais_annexes', 'quantite_recue',
             'quantite_restante', 'total_achat',
         ]
         # quantite_recue n'est jamais posée librement : elle évolue uniquement
@@ -418,7 +419,8 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
         model = BonCommandeFournisseur
         fields = [
             'id', 'reference', 'fournisseur', 'fournisseur_nom', 'statut',
-            'statut_display', 'date_commande', 'note', 'created_by',
+            'statut_display', 'date_commande', 'note', 'devise',
+            'taux_change', 'created_by',
             'created_by_username', 'date_creation', 'date_mise_a_jour',
             'lignes', 'total_achat', 'est_entierement_recu',
         ]
@@ -452,15 +454,20 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
                     {'lignes': 'Produit hors de votre entreprise.'})
 
     def create(self, validated_data):
+        from .services import apply_devise_ligne_bcf
         lignes_data = validated_data.pop('lignes')
         self._validate_company_produits(lignes_data)
+        devise = validated_data.get('devise')
+        taux = validated_data.get('taux_change')
         bon = BonCommandeFournisseur.objects.create(**validated_data)
         for ligne in lignes_data:
+            apply_devise_ligne_bcf(ligne, devise, taux)
             LigneBonCommandeFournisseur.objects.create(
                 bon_commande=bon, **ligne)
         return bon
 
     def update(self, instance, validated_data):
+        from .services import apply_devise_ligne_bcf
         # Les écritures sur les lignes ne sont permises qu'en BROUILLON :
         # une fois envoyé/reçu, le contenu commandé est figé.
         lignes_data = validated_data.pop('lignes', None)
@@ -474,6 +481,8 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
             self._validate_company_produits(lignes_data)
             instance.lignes.all().delete()
             for ligne in lignes_data:
+                apply_devise_ligne_bcf(
+                    ligne, instance.devise, instance.taux_change)
                 LigneBonCommandeFournisseur.objects.create(
                     bon_commande=instance, **ligne)
         return instance
@@ -640,6 +649,7 @@ class FactureFournisseurSerializer(serializers.ModelSerializer):
             'id', 'reference', 'fournisseur', 'fournisseur_nom', 'bon_commande',
             'bon_commande_reference', 'ref_fournisseur', 'date_facture',
             'date_echeance', 'montant_ht', 'montant_tva', 'montant_ttc',
+            'devise', 'taux_change', 'montant_ttc_devise',
             'type_achat', 'statut', 'statut_display', 'note', 'created_by',
             'created_by_username', 'date_creation', 'date_mise_a_jour',
             'lignes', 'paiements', 'total_paye', 'solde_du',
@@ -684,7 +694,16 @@ class FactureFournisseurSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         if validated_data.get('bon_commande'):
             raise serializers.ValidationError({'bon_commande': self._MSG_DC16_CREATE})
+        from .services import apply_devise_facture
         lignes_data = validated_data.pop('lignes', [])
+        # XPUR3 — si un montant TTC en devise est fourni, sa contre-valeur
+        # MAD ÉCRASE montant_ttc (comportement historique inchangé quand la
+        # facture est en MAD / le champ devise n'est pas renseigné).
+        mad = apply_devise_facture(
+            validated_data.get('montant_ttc_devise'),
+            validated_data.get('devise'), validated_data.get('taux_change'))
+        if mad is not None:
+            validated_data['montant_ttc'] = mad
         facture = FactureFournisseur.objects.create(**validated_data)
         for ligne in lignes_data:
             LigneFactureFournisseur.objects.create(facture=facture, **ligne)
