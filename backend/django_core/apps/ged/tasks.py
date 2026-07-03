@@ -68,3 +68,30 @@ def signature_relances_expiration():
         'ged.signature_relances_expiration: %d relance(s), %d expiration(s)',
         total_relances, total_expirees)
     return {'relances': total_relances, 'expirations': total_expirees}
+
+
+@shared_task(name='ged.verifier_integrite_archives')
+def verifier_integrite_archives_task():
+    """XGED6 — Contrôle périodique d'intégrité des archives légales (GED23),
+    une société à la fois. Journalise chaque contrôle et notifie les admins
+    (best-effort) en cas d'altération détectée — jamais destructif."""
+    from authentication.models import Company
+
+    from . import services
+
+    total = {'total': 0, 'ok': 0, 'altere': 0, 'indisponible': 0}
+    for company in Company.objects.filter(actif=True):
+        try:
+            res = services.verifier_integrite_archives(company)
+            for key in total:
+                total[key] += res[key]
+        except Exception:  # pragma: no cover - défensif, une société KO
+            # n'interrompt jamais les suivantes.
+            logger.warning(
+                'ged.verifier_integrite_archives: échec société %s',
+                company.pk, exc_info=True)
+    logger.info(
+        'ged.verifier_integrite_archives: %d contrôlé(s), %d intègre(s), '
+        '%d altéré(s), %d indisponible(s)',
+        total['total'], total['ok'], total['altere'], total['indisponible'])
+    return total

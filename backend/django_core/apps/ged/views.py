@@ -1635,6 +1635,23 @@ class ArchivageLegalViewSet(TenantMixin,
                 archivage, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=['get'], url_path='dossier-preuve')
+    def dossier_preuve(self, request, pk=None):
+        """XGED6 — Exporte le DOSSIER DE PREUVE JSON d'un archivage légal :
+        hash au dépôt, tous les contrôles d'intégrité successifs, horodatages
+        (aligné « validation et conservation » loi 43-20)."""
+        archivage = self.get_object()  # borné à la société (TenantMixin)
+        return Response(
+            services.dossier_preuve_archivage(archivage),
+            status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='verifier-integrite')
+    def verifier_integrite(self, request):
+        """XGED6 — Déclenche un contrôle d'intégrité IMMÉDIAT (hors sweep
+        planifié) pour la société courante. Écriture : responsable/admin."""
+        synthese = services.verifier_integrite_archives(request.user.company)
+        return Response(synthese, status=status.HTTP_200_OK)
+
 
 class LegalHoldViewSet(TenantMixin,
                        mixins.ListModelMixin,

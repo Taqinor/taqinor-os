@@ -1418,6 +1418,63 @@ class LegalHold(models.Model):
         return f'Legal hold — {self.document} ({etat})'
 
 
+# XGED6 — Vérification périodique d'intégrité des archives légales (loi 43-20).
+CONTROLE_RESULTAT_OK = 'ok'
+CONTROLE_RESULTAT_ALTERE = 'altere'
+CONTROLE_RESULTAT_INDISPONIBLE = 'indisponible'  # contenu introuvable/erreur
+
+CONTROLE_RESULTAT_CHOICES = [
+    (CONTROLE_RESULTAT_OK, 'Intègre'),
+    (CONTROLE_RESULTAT_ALTERE, 'Altéré'),
+    (CONTROLE_RESULTAT_INDISPONIBLE, 'Indisponible'),
+]
+
+
+class ControleIntegrite(models.Model):
+    """XGED6 — Journal d'un contrôle d'intégrité périodique d'un archivage
+    légal (GED23, loi 43-20).
+
+    `ArchivageLegal` fige un `hash_integrite` (SHA-256) AU DÉPÔT mais rien ne
+    le RE-VÉRIFIE dans le temps. Ce modèle journalise CHAQUE contrôle
+    (`verifier_integrite_archives`) : le hash CONSTATÉ au moment du contrôle,
+    le résultat (intègre / altéré / indisponible) et l'horodatage — append-only
+    par convention (aucun update/delete via l'API, comme `JournalAcces` GED35).
+
+    « Altéré » signale un écart entre `hash_integrite` (figé au dépôt) et le
+    hash recalculé maintenant — preuve d'une altération. « Indisponible »
+    signale un contenu non re-téléchargeable (stockage KO) — DISTINCT d'une
+    altération confirmée (pas d'accusation sans preuve positive).
+
+    Multi-tenant : `company` posée CÔTÉ SERVEUR (cohérente avec l'archivage) —
+    jamais lue du corps de requête."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_controles_integrite')
+    archivage = models.ForeignKey(
+        ArchivageLegal, on_delete=models.CASCADE, related_name='controles')
+    resultat = models.CharField(
+        max_length=14, choices=CONTROLE_RESULTAT_CHOICES,
+        default=CONTROLE_RESULTAT_OK, verbose_name='résultat')
+    hash_constate = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='hash constaté (SHA-256)')
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        verbose_name = "Contrôle d'intégrité"
+        verbose_name_plural = "Contrôles d'intégrité"
+        indexes = [
+            models.Index(fields=['company', 'archivage'],
+                         name='ged_ctrl_co_arch_idx'),
+            models.Index(fields=['company', 'resultat'],
+                         name='ged_ctrl_co_resultat_idx'),
+        ]
+
+    def __str__(self):
+        return f'Contrôle {self.archivage_id} — {self.resultat} @ {self.created_at}'
+
+
 # GED30 — Signature électronique (point d'intégration + stub no-op).
 #
 # Statuts LOCAUX à la GED d'une demande de signature électronique sur un

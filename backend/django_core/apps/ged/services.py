@@ -3243,6 +3243,123 @@ def sceller_pdf(pdf_bytes, *, company=None):
         return pdf_bytes, False
 
 
+# ── XGED6 — Vérification périodique d'intégrité des archives légales ────────
+
+def _hash_constate_pour_archivage(archivage):
+    """XGED6 — Recalcule le hash SHA-256 ACTUEL du contenu archivé, ou None si
+    indisponible (stockage KO). Ne lève jamais."""
+    version = archivage.version
+    if version is None:
+        return None
+    try:
+        from apps.records.storage import fetch_attachment
+        data, err = fetch_attachment(version.file_key)
+        if err or data is None:
+            return None
+        return compute_checksum(data)
+    except Exception:  # pragma: no cover - défensif.
+        return None
+
+
+def verifier_integrite_archives(company):
+    """XGED6 — Re-vérifie l'intégrité de CHAQUE archivage légal (GED23) d'une
+    société : re-télécharge le contenu archivé, recompare au
+    `hash_integrite` figé AU DÉPÔT, et journalise le résultat
+    (`ControleIntegrite`). Notifie l'admin en cas d'écart (best-effort).
+
+    Trois issues par archivage :
+      * OK           : hash constaté == hash figé au dépôt.
+      * ALTÉRÉ       : hash constaté != hash figé (preuve d'altération).
+      * INDISPONIBLE : contenu non re-téléchargeable (ne prouve PAS une
+        altération — signale seulement un problème de disponibilité).
+
+    Ne modifie JAMAIS `ArchivageLegal` (write-once, GED23 intact) — ne fait
+    QUE journaliser. Renvoie un dict de synthèse
+    `{'total', 'ok', 'altere', 'indisponible'}`."""
+    from .models import (
+        ArchivageLegal, CONTROLE_RESULTAT_ALTERE, CONTROLE_RESULTAT_INDISPONIBLE,
+        CONTROLE_RESULTAT_OK, ControleIntegrite,
+    )
+
+    synthese = {'total': 0, 'ok': 0, 'altere': 0, 'indisponible': 0}
+    archivages = ArchivageLegal.objects.filter(
+        company=company).select_related('version', 'document')
+    alteres = []
+    for archivage in archivages:
+        synthese['total'] += 1
+        hash_constate = _hash_constate_pour_archivage(archivage)
+        if hash_constate is None:
+            resultat = CONTROLE_RESULTAT_INDISPONIBLE
+            synthese['indisponible'] += 1
+        elif hash_constate == (archivage.hash_integrite or ''):
+            resultat = CONTROLE_RESULTAT_OK
+            synthese['ok'] += 1
+        else:
+            resultat = CONTROLE_RESULTAT_ALTERE
+            synthese['altere'] += 1
+            alteres.append(archivage)
+        ControleIntegrite.objects.create(
+            company=company, archivage=archivage, resultat=resultat,
+            hash_constate=hash_constate or '')
+
+    if alteres:
+        _notifier_alteration_archives(company, alteres)
+    return synthese
+
+
+def _notifier_alteration_archives(company, archivages_alteres):
+    """XGED6 — Notifie (best-effort, jamais bloquant) les admins de la société
+    d'une altération détectée sur un ou plusieurs archivages légaux."""
+    try:
+        from authentication.models import CustomUser
+        admins = CustomUser.admins_actifs_qs(company)
+        noms = ', '.join(a.document.nom for a in archivages_alteres[:5])
+        sujet = (
+            f'Alerte intégrité — {len(archivages_alteres)} archive(s) '
+            f'légale(s) altérée(s)')
+        corps = (
+            f'Le contrôle périodique a détecté une altération sur : {noms}.\n'
+            'Consultez le dossier de preuve pour chaque archivage concerné.')
+        for admin in admins:
+            try:
+                from django.conf import settings
+                from django.core.mail import send_mail
+                from_email = getattr(
+                    settings, 'DEFAULT_FROM_EMAIL', 'noreply@erp.local')
+                if admin.email:
+                    send_mail(sujet, corps, from_email, [admin.email],
+                              fail_silently=True)
+            except Exception:  # pragma: no cover - best-effort.
+                continue
+    except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        pass
+
+
+def dossier_preuve_archivage(archivage):
+    """XGED6 — Exporte le DOSSIER DE PREUVE d'un archivage légal (JSON) :
+    hash au dépôt, tous les contrôles successifs (append-only), horodatages —
+    aligné « validation et conservation » loi 43-20.
+
+    Renvoie un dict directement sérialisable en JSON (jamais de prix d'achat/
+    marge — hors sujet ici)."""
+    controles = list(archivage.controles.order_by('created_at').values(
+        'resultat', 'hash_constate', 'created_at'))
+    return {
+        'document': archivage.document.nom,
+        'archive_le': archivage.archive_le,
+        'motif': archivage.motif,
+        'hash_integrite_au_depot': archivage.hash_integrite,
+        'controles': [
+            {
+                'date': c['created_at'],
+                'resultat': c['resultat'],
+                'hash_constate': c['hash_constate'],
+            }
+            for c in controles
+        ],
+    }
+
+
 # ── GED35 — Journal d'audit d'accès aux documents (lectures) ─────────────────
 
 def journaliser_acces(document, *, utilisateur=None, type_acces=None,
