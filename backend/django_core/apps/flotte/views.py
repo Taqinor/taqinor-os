@@ -564,6 +564,44 @@ class AffectationConducteurViewSet(_FlotteBaseViewSet):
 
         return qs
 
+    @action(detail=False, methods=['post'])
+    def masse(self, request):
+        """XFLT22 — Réaffectation conducteur en masse (écriture responsable/
+        admin).
+
+        Body : ``reaffectations`` (liste de ``{'vehicule_id',
+        'conducteur_id'}``, obligatoire) et ``date_debut`` (obligatoire).
+        Clôt les affectations courantes et ouvre les nouvelles ; le contrôle
+        permis (FLOTTE9) par ligne est respecté — les échecs sont LISTÉS
+        sans bloquer le lot. Renvoie ``{'reussies': [...], 'echecs': [...]}``.
+        """
+        reaffectations = request.data.get('reaffectations') or []
+        date_debut = request.data.get('date_debut')
+        if not isinstance(reaffectations, list) or not reaffectations \
+                or not date_debut:
+            return Response(
+                {'detail': "Les champs 'reaffectations' (liste) et "
+                           "'date_debut' sont requis."}, status=400)
+
+        from datetime import date as _date
+
+        try:
+            date_debut_parsed = _date.fromisoformat(str(date_debut))
+        except ValueError:
+            return Response(
+                {'detail': "Format de 'date_debut' invalide (YYYY-MM-DD)."},
+                status=400)
+
+        from .services import reaffecter_conducteurs_masse
+        resultat = reaffecter_conducteurs_masse(
+            request.user.company, reaffectations,
+            date_debut=date_debut_parsed, user=request.user)
+        return Response({
+            'reussies': AffectationConducteurSerializer(
+                resultat['reussies'], many=True).data,
+            'echecs': resultat['echecs'],
+        })
+
 
 class ReservationVehiculeViewSet(_FlotteBaseViewSet):
     """Réservations de véhicules avec détection de conflit (FLOTTE10).
@@ -1018,6 +1056,31 @@ class PlanEntretienViewSet(_FlotteBaseViewSet):
         return Response(
             plans_entretien_status(company, actif_only=actif_only,
                                    statut=statut))
+
+    @action(detail=True, methods=['post'])
+    def rollout(self, request, pk=None):
+        """XFLT22 — Duplique ce plan sur une sélection d'actifs (écriture
+        responsable/admin).
+
+        Body : ``actif_flotte_ids`` (liste d'id, obligatoire). Un actif déjà
+        couvert par un plan du même type d'entretien est SAUTÉ (jamais de
+        doublon). Renvoie ``{'crees': [...], 'ignores': [...]}``.
+        """
+        plan = self.get_object()
+        actif_ids = request.data.get('actif_flotte_ids') or []
+        if not isinstance(actif_ids, list) or not actif_ids:
+            return Response(
+                {'detail': "Le champ 'actif_flotte_ids' (liste) est requis."},
+                status=400)
+
+        from .services import rollout_plan_entretien
+        resultat = rollout_plan_entretien(
+            request.user.company, plan, actif_ids)
+        return Response({
+            'crees': PlanEntretienSerializer(
+                resultat['crees'], many=True).data,
+            'ignores': resultat['ignores'],
+        })
 
 
 class EcheanceEntretienViewSet(_FlotteBaseViewSet):

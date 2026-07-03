@@ -1541,3 +1541,195 @@ def journaliser_diff_affectation(avant, apres, user=None):
             objet_id=apres['instance'].id, champ=champ,
             ancienne_valeur=ancienne, nouvelle_valeur=nouvelle, user=user))
     return crees
+
+
+# ── XFLT22 — Import CSV du parc + opérations en masse ───────────────────────────
+
+def creer_vehicule_import(company, ligne):
+    """XFLT22 — Crée (ou saute si doublon) UN véhicule depuis une ligne
+    d'import CSV (dict de colonnes déjà nettoyées), via ``apps.flotte.
+    services`` — jamais les models directement (contrat du framework
+    ``apps.dataimport``).
+
+    Colonnes attendues : ``immatriculation`` (obligatoire, clé d'idempotence),
+    ``marque``, ``modele``, ``energie``, ``kilometrage``, ``puissance_fiscale``
+    (``cv``). Idempotent sur ``immatriculation`` : une ligne déjà présente pour
+    la société est SAUTÉE (retourne ``'doublon'``), jamais mise à jour ni
+    dupliquée. Retourne ``('cree'|'doublon'|'erreur', message|None)``.
+    """
+    from .models import Vehicule
+
+    immatriculation = str(ligne.get('immatriculation', '')).strip()
+    if not immatriculation:
+        return 'erreur', "Immatriculation manquante."
+
+    if Vehicule.objects.filter(
+            company=company, immatriculation=immatriculation).exists():
+        return 'doublon', None
+
+    def _to_int(valeur):
+        try:
+            return int(float(str(valeur).strip().replace(',', '.')))
+        except (ValueError, TypeError):
+            return None
+
+    energie_brute = str(ligne.get('energie', '') or '').strip().lower()
+    energies_valides = {c for c, _ in Vehicule.Energie.choices}
+    energie = energie_brute if energie_brute in energies_valides \
+        else Vehicule.Energie.DIESEL
+
+    try:
+        Vehicule.objects.create(
+            company=company,
+            immatriculation=immatriculation,
+            marque=str(ligne.get('marque', '') or '').strip(),
+            modele=str(ligne.get('modele', '') or '').strip(),
+            energie=energie,
+            kilometrage=_to_int(ligne.get('kilometrage')) or 0,
+            puissance_fiscale=_to_int(
+                ligne.get('cv') or ligne.get('puissance_fiscale')),
+        )
+    except Exception as exc:  # noqa: BLE001 — ligne isolée, jamais bloquant
+        return 'erreur', str(exc)
+
+    return 'cree', None
+
+
+def importer_vehicules_csv(company, lignes, *, dry_run=False):
+    """XFLT22 — Importe une liste de lignes véhicule (dry-run ou commit).
+
+    ``lignes`` est une liste de dicts (déjà parsés — bornes anti-DoS gérées
+    par le framework ``apps.dataimport`` appelant). En ``dry_run=True``,
+    simule (détection de doublon incluse) SANS écrire (utilise une
+    transaction annulée). Retourne ``{'crees', 'doublons', 'erreurs':
+    [{'ligne', 'message'}, …]}``.
+    """
+    from django.db import transaction
+
+    crees = 0
+    doublons = 0
+    erreurs = []
+
+    if dry_run:
+        with transaction.atomic():
+            for index, ligne in enumerate(lignes, start=1):
+                statut, message = creer_vehicule_import(company, ligne)
+                if statut == 'cree':
+                    crees += 1
+                elif statut == 'doublon':
+                    doublons += 1
+                else:
+                    erreurs.append({'ligne': index, 'message': message})
+            transaction.set_rollback(True)
+    else:
+        for index, ligne in enumerate(lignes, start=1):
+            statut, message = creer_vehicule_import(company, ligne)
+            if statut == 'cree':
+                crees += 1
+            elif statut == 'doublon':
+                doublons += 1
+            else:
+                erreurs.append({'ligne': index, 'message': message})
+
+    return {'crees': crees, 'doublons': doublons, 'erreurs': erreurs}
+
+
+def reaffecter_conducteurs_masse(company, reaffectations, *, date_debut,
+                                 user=None):
+    """XFLT22 — Réaffectation conducteur en masse (clôt les affectations
+    courantes et ouvre les nouvelles).
+
+    ``reaffectations`` est une liste de ``{'vehicule_id', 'conducteur_id'}``.
+    Pour chaque ligne : contrôle permis (FLOTTE9, ``controle_permis`` — un
+    échec est LISTÉ dans ``echecs`` sans bloquer le lot), clôture
+    l'affectation ``actif=True`` courante du véhicule (``date_fin`` = veille
+    de ``date_debut``, ``actif=False``) puis crée la nouvelle affectation.
+    Retourne ``{'reussies': [...], 'echecs': [{'vehicule_id',
+    'conducteur_id', 'message'}, …]}``.
+    """
+    import datetime as _dt
+
+    from .models import AffectationConducteur, Conducteur, Vehicule
+
+    reussies = []
+    echecs = []
+
+    for ligne in reaffectations:
+        vehicule_id = ligne.get('vehicule_id')
+        conducteur_id = ligne.get('conducteur_id')
+
+        vehicule = Vehicule.objects.filter(
+            company=company, id=vehicule_id).first()
+        conducteur = Conducteur.objects.filter(
+            company=company, id=conducteur_id).first()
+        if vehicule is None or conducteur is None:
+            echecs.append({
+                'vehicule_id': vehicule_id, 'conducteur_id': conducteur_id,
+                'message': "Véhicule ou conducteur introuvable.",
+            })
+            continue
+
+        ok, _code, message = controle_permis(conducteur, vehicule)
+        if not ok:
+            echecs.append({
+                'vehicule_id': vehicule_id, 'conducteur_id': conducteur_id,
+                'message': message,
+            })
+            continue
+
+        AffectationConducteur.objects.filter(
+            company=company, vehicule=vehicule, actif=True,
+        ).update(
+            actif=False,
+            date_fin=date_debut - _dt.timedelta(days=1))
+
+        nouvelle = AffectationConducteur.objects.create(
+            company=company, vehicule=vehicule, conducteur=conducteur,
+            date_debut=date_debut, actif=True)
+        reussies.append(nouvelle)
+
+    return {'reussies': reussies, 'echecs': echecs}
+
+
+def rollout_plan_entretien(company, plan_modele, actif_flotte_ids):
+    """XFLT22 — Duplique ``plan_modele`` (un ``PlanEntretien`` existant) sur
+    une sélection d'autres actifs.
+
+    Copie ``type_entretien``/les critères d'intervalle/les seuils d'alerte
+    sur chaque actif de ``actif_flotte_ids`` (de la MÊME société). Un actif
+    déjà couvert par un plan du même ``type_entretien`` est SAUTÉ (jamais de
+    doublon). Retourne ``{'crees': [...], 'ignores': [<actif_flotte_id>, …]}``.
+    """
+    from .models import ActifFlotte, PlanEntretien
+
+    crees = []
+    ignores = []
+
+    for actif_id in actif_flotte_ids:
+        actif = ActifFlotte.objects.filter(
+            company=company, id=actif_id).first()
+        if actif is None:
+            ignores.append(actif_id)
+            continue
+
+        deja_present = PlanEntretien.objects.filter(
+            company=company, actif_flotte=actif,
+            type_entretien=plan_modele.type_entretien,
+        ).exists()
+        if deja_present:
+            ignores.append(actif_id)
+            continue
+
+        nouveau = PlanEntretien.objects.create(
+            company=company, actif_flotte=actif,
+            type_entretien=plan_modele.type_entretien,
+            intervalle_km=plan_modele.intervalle_km,
+            intervalle_jours=plan_modele.intervalle_jours,
+            intervalle_heures=plan_modele.intervalle_heures,
+            seuil_alerte_km=plan_modele.seuil_alerte_km,
+            seuil_alerte_jours=plan_modele.seuil_alerte_jours,
+            seuil_alerte_heures=plan_modele.seuil_alerte_heures,
+        )
+        crees.append(nouveau)
+
+    return {'crees': crees, 'ignores': ignores}
