@@ -1244,6 +1244,24 @@ class RapprochementBancaireViewSet(_ComptaBaseViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(LigneReleveSerializer(ligne).data)
 
+    @action(detail=True, methods=['get'])
+    def suggestions(self, request, pk=None):
+        """Suggestions d'appariement relevé↔GL, notées par confiance (XACC3)."""
+        rapprochement = self.get_object()  # scopé société par TenantMixin.
+        return Response(selectors.suggestions_rapprochement(rapprochement))
+
+    @action(detail=True, methods=['post'], url_path='accepter-suggestions')
+    def accepter_suggestions(self, request, pk=None):
+        """Pointe en un clic les suggestions non ambiguës (XACC3).
+
+        Ne pointe JAMAIS silencieusement une ligne ambiguë (≥2 candidats au
+        même score) — celles-ci restent listées dans ``ignorees`` pour
+        arbitrage manuel via l'action ``pointer`` existante.
+        """
+        rapprochement = self.get_object()  # scopé société par TenantMixin.
+        resultat = services.accepter_suggestions_rapprochement(rapprochement)
+        return Response(resultat)
+
     @action(detail=True, methods=['post'])
     def cloturer(self, request, pk=None):
         """Clôture le rapprochement quand tout concorde (FG123)."""

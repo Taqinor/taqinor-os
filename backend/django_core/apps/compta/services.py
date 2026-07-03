@@ -1656,6 +1656,44 @@ def cloturer_rapprochement(rapprochement):
     return rapprochement
 
 
+# ── XACC3 — Auto-suggestion de rapprochement bancaire ───────────────────────
+
+@transaction.atomic
+def accepter_suggestions_rapprochement(rapprochement):
+    """Pointe en un clic les suggestions NON ambiguës (XACC3).
+
+    Relit ``selectors.suggestions_rapprochement`` et, pour chaque ligne de
+    relevé suggérée, pointe AUTOMATIQUEMENT la meilleure candidate SEULEMENT
+    si : il y a au moins un candidat, la suggestion n'est PAS ``ambigue``
+    (deux candidats à égalité de score ne sont JAMAIS auto-acceptés — l'humain
+    tranche), et le score du meilleur candidat est strictement positif. JAMAIS
+    de pointage silencieux : chaque ligne effectivement pointée est listée dans
+    le retour. Renvoie ``{'pointees': [...ligne_releve_id...], 'ignorees':
+    [{'ligne_releve_id', 'raison'}, ...]}``.
+    """
+    from . import selectors
+
+    suggestions = selectors.suggestions_rapprochement(rapprochement)
+    pointees, ignorees = [], []
+    for sugg in suggestions:
+        if sugg['ambigue']:
+            ignorees.append({
+                'ligne_releve_id': sugg['ligne_releve_id'],
+                'raison': 'ambiguë : plusieurs candidats au même score'})
+            continue
+        if not sugg['candidats']:
+            ignorees.append({
+                'ligne_releve_id': sugg['ligne_releve_id'],
+                'raison': 'aucun candidat'})
+            continue
+        meilleur = sugg['candidats'][0]
+        ligne_releve = LigneReleve.objects.get(
+            company=rapprochement.company, id=sugg['ligne_releve_id'])
+        pointer_ligne_releve(ligne_releve, [meilleur['ligne_gl_id']])
+        pointees.append(sugg['ligne_releve_id'])
+    return {'pointees': pointees, 'ignorees': ignorees}
+
+
 # ── FG124 — Caisse / petty cash (journal d'espèces) ────────────────────────
 
 def creer_caisse(company, compte_tresorerie, *, libelle, responsable=None,

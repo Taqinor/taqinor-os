@@ -757,6 +757,106 @@ def lignes_gl_pointables(rapprochement):
     return resultat
 
 
+# ── XACC3 — Auto-suggestion de rapprochement bancaire ──────────────────────
+
+# Fenêtre de date par défaut pour un candidat « date proche » (± N jours).
+SUGGESTION_FENETRE_JOURS = 5
+
+
+def _score_candidat(ligne_releve, ligne_gl):
+    """Score de confiance d'un appariement candidat (0-100, plus haut = mieux).
+
+    Cumule des indices INDÉPENDANTS (chacun additionne des points) : montant
+    exact (poids fort), date proche (± ``SUGGESTION_FENETRE_JOURS`` jours),
+    référence/numéro de pièce présent dans le libellé du relevé, tiers déjà
+    renseigné sur la ligne GL. Lecture seule, ne modifie rien.
+    """
+    score = 0
+    montant_gl = (ligne_gl.debit or Decimal('0')) - (ligne_gl.credit or Decimal('0'))
+    if montant_gl == ligne_releve.montant:
+        score += 60
+    ecart_jours = abs((ligne_releve.date_operation
+                       - ligne_gl.ecriture.date_ecriture).days)
+    if ecart_jours == 0:
+        score += 20
+    elif ecart_jours <= SUGGESTION_FENETRE_JOURS:
+        score += 10
+    ref_piece = (ligne_gl.ecriture.reference or '').strip()
+    libelle_releve = (ligne_releve.libelle or '') + ' ' + (
+        ligne_releve.reference or '')
+    if ref_piece and ref_piece.lower() in libelle_releve.lower():
+        score += 15
+    if ligne_gl.tiers_id:
+        score += 5
+    return score
+
+
+def suggestions_rapprochement(rapprochement):
+    """Suggère les appariements ligne de relevé ↔ ligne GL les plus probables.
+
+    Pour chaque ligne de relevé NON encore pointée dans CE rapprochement,
+    cherche les lignes GL pointables (même compte de trésorerie, période)
+    candidates : montant exact, date à ± ``SUGGESTION_FENETRE_JOURS`` jours,
+    référence dans le libellé, tiers connu — chacune notée par
+    ``_score_candidat``. Renvoie une liste ``[{'ligne_releve_id', 'candidats':
+    [{'ligne_gl_id', 'score', ...}, ...], 'ambigue'}]`` triée par
+    ``ligne_releve.date_operation``. ``candidats`` est trié par score
+    décroissant (la meilleure suggestion en tête). ``ambigue`` est vrai quand ≥2
+    candidats partagent le MEILLEUR score (montant identique, p. ex. deux
+    factures au même montant) — CES lignes ne doivent jamais être
+    auto-acceptées. Lecture seule, ne pointe rien.
+    """
+    from .models import LigneReleve
+
+    treso = rapprochement.compte_tresorerie
+    lignes_gl = list(LigneEcriture.objects.filter(
+        company=rapprochement.company,
+        compte=treso.compte_comptable,
+        ecriture__date_ecriture__gte=rapprochement.date_debut
+        - timedelta(days=SUGGESTION_FENETRE_JOURS),
+        ecriture__date_ecriture__lte=rapprochement.date_fin
+        + timedelta(days=SUGGESTION_FENETRE_JOURS),
+    ).select_related('ecriture', 'ecriture__journal'))
+    deja_pointees = set(
+        LigneReleve.objects.filter(rapprochement=rapprochement).values_list(
+            'lignes_gl__id', flat=True))
+    lignes_releve = rapprochement.lignes_releve.filter(
+        statut=LigneReleve.Statut.NON_POINTEE).order_by('date_operation', 'id')
+    resultat = []
+    for lr in lignes_releve:
+        candidats = []
+        for gl in lignes_gl:
+            if gl.id in deja_pointees:
+                continue
+            montant_gl = (gl.debit or Decimal('0')) - (gl.credit or Decimal('0'))
+            ecart_jours = abs((lr.date_operation - gl.ecriture.date_ecriture).days)
+            if montant_gl != lr.montant and ecart_jours > SUGGESTION_FENETRE_JOURS:
+                continue  # ni le montant ni la date ne concordent : pas candidat.
+            score = _score_candidat(lr, gl)
+            if score <= 0:
+                continue
+            candidats.append({
+                'ligne_gl_id': gl.id,
+                'score': score,
+                'montant': montant_gl,
+                'date': gl.ecriture.date_ecriture,
+                'reference': gl.ecriture.reference,
+                'libelle': gl.libelle or gl.ecriture.libelle,
+            })
+        candidats.sort(key=lambda c: c['score'], reverse=True)
+        ambigue = (len(candidats) >= 2
+                   and candidats[0]['score'] == candidats[1]['score'])
+        resultat.append({
+            'ligne_releve_id': lr.id,
+            'date_operation': lr.date_operation,
+            'libelle': lr.libelle,
+            'montant': lr.montant,
+            'candidats': candidats,
+            'ambigue': ambigue,
+        })
+    return resultat
+
+
 def resume_rapprochement(rapprochement):
     """Synthèse d'un rapprochement : solde relevé vs solde GL vs écart (FG123).
 
