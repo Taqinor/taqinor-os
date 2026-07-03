@@ -28,11 +28,13 @@ from ..models import Kit, KitComposant, OrdreAssemblage, OrdreAssemblageLigne
 from ..serializers import (
     KitSerializer, KitComposantSerializer, OrdreAssemblageSerializer,
     OrdreAssemblageActivitySerializer, OrdreAssemblageLigneSerializer,
+    SerieAssemblageSerializer,
 )
 from ..services import (
     seed_reservations_assemblage, release_reservations_assemblage,
     disponibilite_par_ligne, alerter_penurie_assemblage,
-    seed_lignes_assemblage,
+    seed_lignes_assemblage, enregistrer_series_assemblage,
+    etiquette_items_assemblage,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -457,4 +459,38 @@ class OrdreAssemblageViewSet(TenantMixin, viewsets.ModelViewSet):
                     active=True, consomme=False).update(consomme=True)
             ordre.save(update_fields=update_fields)
             activity.log_changes(old, ordre, request.user)
+            # XMFG7 — capture optionnelle des séries à la clôture (composite
+            # produit + composants sérialisés consommés, si transmis).
+            series_composite = request.data.get('series_composite')
+            series_composants = request.data.get('series_composants')
+            if series_composite or series_composants:
+                enregistrer_series_assemblage(
+                    ordre, series_composite=series_composite or [],
+                    series_composants=series_composants or [],
+                    user=request.user)
         return Response(self.get_serializer(ordre).data)
+
+    @action(detail=True, methods=['get'])
+    def series(self, request, pk=None):
+        """XMFG7 — séries enregistrées sur cet ordre (composite + composants)."""
+        ordre = self.get_object()
+        return Response(
+            SerieAssemblageSerializer(ordre.series.all(), many=True).data)
+
+    @action(detail=True, methods=['get'])
+    def etiquette(self, request, pk=None):
+        """XMFG7 — étiquette QR/PDF du composite (référence, kit, série,
+        contenu — SANS AUCUN PRIX), une carte par unité avec série enregistrée.
+        Renvoie du HTML prêt WeasyPrint, sur le patron des étiquettes FG85."""
+        from apps.stock.labels import render_labels_html
+        from django.http import HttpResponse as HR
+
+        ordre = self.get_object()
+        items = etiquette_items_assemblage(ordre)
+        if not items:
+            return Response(
+                {'detail': 'Aucune série de composite enregistrée.'},
+                status=status.HTTP_404_NOT_FOUND)
+        symbology = request.query_params.get('symbology', 'qr')
+        html = render_labels_html(items, symbology=symbology)
+        return HR(html, content_type='text/html; charset=utf-8')

@@ -1481,3 +1481,68 @@ def cout_prevu_assemblage(ordre):
         qte = (c.quantite or 0) * ordre.quantite
         total += Decimal(str(qte)) * Decimal(str(prix))
     return total
+
+
+# ── XMFG7 — Capture des numéros de série à l'assemblage + étiquette ──────────
+# Comble le trou noir entre la réception (FG61) et la pose (`ComponentSerial`) :
+# à la clôture, on relève les séries du composite produit (une par unité) et,
+# en option, celles des composants sérialisés consommés (liées au composite).
+
+def enregistrer_series_assemblage(ordre, *, series_composite, series_composants,
+                                  user):
+    """XMFG7 — enregistre les séries relevées à la clôture. `series_composite` =
+    liste de numéros (une entrée par unité produite, dans l'ordre) ;
+    `series_composants` = liste optionnelle de dicts
+    {produit_id, numero_serie, composite_index} (`composite_index` = index
+    dans `series_composite` pour lier le composant à son unité). Renvoie la
+    liste des `SerieAssemblage` créées."""
+    from .models import SerieAssemblage
+    created = []
+    composite_objs = []
+    for numero in series_composite:
+        numero = (numero or '').strip()
+        if not numero:
+            continue
+        obj = SerieAssemblage.objects.create(
+            company=ordre.company, ordre=ordre, produit=ordre.kit.produit_compose,
+            numero_serie=numero, role=SerieAssemblage.Role.COMPOSITE,
+            created_by=user)
+        composite_objs.append(obj)
+        created.append(obj)
+    for entry in (series_composants or []):
+        numero = (entry.get('numero_serie') or '').strip()
+        if not numero:
+            continue
+        idx = entry.get('composite_index')
+        composite_ref = None
+        if isinstance(idx, int) and 0 <= idx < len(composite_objs):
+            composite_ref = composite_objs[idx]
+        from apps.stock.models import Produit
+        produit = None
+        produit_id = entry.get('produit_id')
+        if produit_id:
+            produit = Produit.objects.filter(
+                id=produit_id, company=ordre.company).first()
+        obj = SerieAssemblage.objects.create(
+            company=ordre.company, ordre=ordre, produit=produit,
+            numero_serie=numero, role=SerieAssemblage.Role.COMPOSANT,
+            composite_ref=composite_ref, created_by=user)
+        created.append(obj)
+    return created
+
+
+def etiquette_items_assemblage(ordre):
+    """XMFG7 — items d'étiquette (jeton QR + titre + sous-titre, SANS AUCUN
+    PRIX) pour chaque unité composite avec série enregistrée sur cet ordre.
+    Format attendu par `apps.stock.labels.render_labels_html`."""
+    from .models import SerieAssemblage
+    series = ordre.series.filter(role=SerieAssemblage.Role.COMPOSITE)
+    kit_nom = ordre.kit.nom
+    items = []
+    for s in series:
+        items.append({
+            'token': f'ASMSER:{s.id}',
+            'titre': kit_nom,
+            'sous_titre': s.numero_serie,
+        })
+    return items

@@ -53,6 +53,7 @@ from .models import (
     OrdreAssemblage,
     OrdreAssemblageActivity,
     OrdreAssemblageLigne,
+    SerieAssemblage,
     Livraison,
     LivraisonLigne,
     PreuveLivraison,
@@ -2168,6 +2169,26 @@ class OrdreAssemblageActivitySerializer(serializers.ModelSerializer):
 
     def get_user_nom(self, obj):
         return getattr(obj.user, 'username', None)
+
+
+class SerieAssemblageSerializer(serializers.ModelSerializer):
+    """XMFG7 - n° de série relevé à la clôture d'un ordre d'assemblage."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+
+    class Meta:
+        model = SerieAssemblage
+        fields = [
+            'id', 'ordre', 'produit', 'produit_nom', 'numero_serie', 'role',
+            'composite_ref', 'created_by', 'date_creation',
+        ]
+        read_only_fields = ['created_by', 'date_creation']
+
+    def validate_numero_serie(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError('Numéro de série requis.')
+        return value
 
 
 class LivraisonLigneSerializer(serializers.ModelSerializer):

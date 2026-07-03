@@ -278,3 +278,52 @@ class OrdreAssemblageLigne(models.Model):
 
     def __str__(self):
         return f'{self.ordre_id} · {self.designation or self.produit_id} × {self.quantite}'
+
+
+class SerieAssemblage(models.Model):
+    """XMFG7 — n° de série relevé À LA CLÔTURE d'un ordre d'assemblage : une
+    ligne par unité de composite produite (`role=composite`) et, en option,
+    une ligne par composant sérialisé consommé (`role=composant`), reliée à
+    son composite via `composite_ref`. Comble le trou noir entre la réception
+    (FG61) et la pose (`ComponentSerial`) : après l'assemblage, on sait quel
+    onduleur est parti dans quel coffret. Company posée côté serveur."""
+
+    class Role(models.TextChoices):
+        COMPOSITE = 'composite', 'Composite produit'
+        COMPOSANT = 'composant', 'Composant consommé'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='installations_series_assemblage')
+    ordre = models.ForeignKey(
+        OrdreAssemblage, on_delete=models.CASCADE, related_name='series')
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='installations_series_assemblage')
+    numero_serie = models.CharField(max_length=120)
+    role = models.CharField(max_length=12, choices=Role.choices)
+    # Lien composite↔composants : pour une ligne `composant`, référence la
+    # ligne `composite` de la même unité produite (NULL pour une ligne
+    # `composite` elle-même, ou si le lien composite n'est pas précisé).
+    composite_ref = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='composants_lies')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='installations_series_assemblage_crees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Série d'assemblage"
+        verbose_name_plural = "Séries d'assemblage"
+        ordering = ['ordre_id', 'id']
+        indexes = [
+            models.Index(fields=['ordre', 'role'], name='idx_serieasm_ordre_role'),
+            models.Index(fields=['numero_serie'], name='idx_serieasm_numero'),
+        ]
+
+    def __str__(self):
+        return f'{self.ordre_id} · {self.role} · {self.numero_serie}'
