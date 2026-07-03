@@ -86,6 +86,8 @@ const STATIC_TRANSLATED: readonly string[] = [
   '/production-mesuree',
   '/ensoleillement-maroc',
   '/parrainage',
+  // W254 — pilier « recharge VE au solaire » : routes EN/AR livrées ci-dessous.
+  '/recharge-voiture-electrique-solaire',
 ];
 
 /**

@@ -1,0 +1,390 @@
+---
+/**
+ * EN — EV charging on solar (W254). Faithful translation of
+ * /recharge-voiture-electrique-solaire ; a CAPABILITY page, not a proof one.
+ * Taqinor has installed ZERO EV chargers to date: ZERO invented project, ZERO
+ * photo, ZERO real production figure. We explain the method (solar top-up,
+ * sizing by daily km) and anchor everything on law 82-21 (self-consumption:
+ * capped/low-paid export → charge on your own surplus).
+ *
+ * FIGURE HONESTY — every figure comes from apps/web/CONTENT_SEO_NOTES.md §6/§1,
+ * in DATED, SOURCED RANGES, assumptions stated — kept EXACT:
+ *   - EV ≈ 15 kWh/100 km (+~10% charging losses ≈ 16.5 kWh drawn/100 km)
+ *   - petrol ~93 MAD/100 km · grid-EV ~23 MAD/100 km (19–27) ·
+ *     solar-EV ~0–13 MAD/100 km marginal
+ *   - 7.4 kW = single-phase sweet spot; 11/22 kW = three-phase (ONEE/utility request)
+ * FORBIDDEN (Tunisia bleed-through, NOT a Moroccan measure): the "50,000 /
+ * 100,000 MAD purchase premium". We cite ONLY the real Moroccan advantages:
+ * VAT exemption, road-tax (TSAVA) exemption, import-duty exemption — no cash
+ * state premium.
+ *
+ * Internal links via localizeNavHref. FR untouched.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import Faq from '../../components/Faq.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import { getLocaleFromPath } from '../../i18n/utils';
+import { localizeNavHref } from '../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+const devisHref = L('/devis/mon-toit');
+
+// How many panels for my km — ranges §6, assumptions stated.
+const dimensionnement = [
+  {
+    title: 'A trip, not a full charge',
+    body: 'A compact electric car uses on the order of 15 to 20 kWh per 100 km (≈16.5 kWh actually drawn, charging losses included). A 30–50 km/day commute is therefore about 6 to 10 kWh a day: a small daily top-up, not a 0-to-100% charge.',
+  },
+  {
+    title: 'Two to four panels are enough',
+    body: 'A 550 W panel produces, under about 5 hours of full sun, on the order of 2 to 2.4 kWh per day. Covering the top-up for a typical commute therefore comes out, roughly, to 2 to 4 extra 550 W panels on the array — about 1.1 to 2.2 kWc.',
+  },
+  {
+    title: 'A method, not a guaranteed figure',
+    body: 'The kWh per panel under ~5 hours of sun stays a qualitative benchmark: it depends on your city, your roof orientation and the season. We start from your real kilometres and your roof, not a generic table — the study settles it.',
+  },
+];
+
+// Visual FAQ — schema={false} so /faq stays the ONLY FAQPage on the site.
+const faq = [
+  {
+    q: 'Can you really charge an electric car with solar power in Morocco?',
+    a: 'Yes, as a top-up. Solar covers the daily top-up of a typical commute very well (a few kWh a day), but a "dumb" solar-only charge at full power, with no grid, no battery and no modulation, is not practical — output varies with the sun. You charge on the surplus when there is sun, and complete on the grid in the evening if needed.',
+  },
+  {
+    q: 'How many panels do I need for my electric car?',
+    a: 'As an order of magnitude: a 30–50 km/day trip needs about 6 to 10 kWh, roughly 2 to 4 panels of 550 W. It is a benchmark, not a guarantee: your city, roof orientation and the season shift the result, and the study pins it down for your case.',
+  },
+  {
+    q: '7, 11 or 22 kW: which charger, and do I need three-phase?',
+    a: 'Most Moroccan homes are single-phase 220–230 V: a 7 kW charger (sweet spot ~7.4 kW) works there and charges most of a battery overnight. 11 and 22 kW chargers require three-phase, meaning a power-increase request to ONEE or your local utility.',
+  },
+  {
+    q: 'Is it really cheaper than petrol?',
+    a: 'In indicative ranges (mid-2026, assumptions stated): petrol at ~6.5 L/100 km costs ~93 MAD/100 km; the same distance in an EV on the grid costs ~23 MAD/100 km (19–27); and charged on your own solar surplus, ~0 to 13 MAD/100 km. The order of magnitude — solar ≪ grid ≪ petrol — is solid; the exact figure depends on the day\'s fuel price and your ONEE tier.',
+  },
+  {
+    q: 'What incentives exist for an electric car in Morocco?',
+    a: 'The confirmed advantages are fiscal: VAT exemption, road-tax (TSAVA) exemption for 100% electric and plug-in hybrid vehicles, and import-duty exemption on eligible electric vehicles. There is, to date, no cash purchase premium paid by the state for buying an EV in Morocco.',
+  },
+];
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Service',
+  name: 'Electric vehicle charging on solar',
+  serviceType: 'Solar installation for electric vehicle charging',
+  provider: { '@type': 'Organization', name: 'Taqinor', url: 'https://taqinor.ma' },
+  areaServed: { '@type': 'Country', name: 'Maroc' },
+  description:
+    'Charging an electric car on your own solar surplus in Morocco: a daily top-up sized on your kilometres, choice of 7/11/22 kW charger (single- or three-phase), charging on surplus or via a home battery, all anchored on law 82-21 self-consumption.',
+};
+
+const breadcrumbJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://taqinor.ma/en' },
+    {
+      '@type': 'ListItem',
+      position: 2,
+      name: 'EV charging on solar',
+      item: 'https://taqinor.ma/en/recharge-voiture-electrique-solaire',
+    },
+  ],
+};
+---
+
+<Layout
+  title="Charging your electric car on solar in Morocco: panels, charger, cost | Taqinor"
+  description="Charging an electric car on your own solar surplus in Morocco: 2 to 4 panels are enough for the daily top-up of a typical commute, a 7 kW single-phase charger (11/22 kW = three-phase), charging on surplus or a home battery. Anchored on law 82-21 self-consumption — indicative 2026 cost ranges."
+  ogSlug="equipement"
+>
+  <div class="v2">
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+    <script type="application/ld+json" set:html={JSON.stringify(breadcrumbJsonLd)} />
+
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'EV charging on solar' }]} />
+
+    <!-- Dark hero -->
+    <section class="px-4 pb-10 pt-16 text-white sm:pt-20">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">Electric car + solar</p>
+        <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">Charge your car on sunshine, not on full-rate grid</h1>
+        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+          In Morocco, law 82-21 caps what you can sell back to the grid and buys it back at a low
+          price. The real gain of solar, then, isn't export — it's consuming what you produce
+          yourself, at midday. Charging your electric car on your own surplus is exactly that use
+          case: a daily top-up your roof largely covers, without a tank of fuel.
+        </p>
+      </div>
+    </section>
+
+    <!-- Can you charge an EV with solar? -->
+    <section class="px-4 pb-20 sm:pb-24">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">The honest answer</p>
+        <h2 class="display v2-section-title mt-5 text-white">Can you charge an electric car with solar power?</h2>
+        <p class="v2-lead mt-5 text-lune-soft">
+          Yes — as a top-up. Solar covers the daily need of a typical commute very well: a few
+          kilowatt-hours a day, drawn from the energy the roof produces while the sun is out.
+          It isn't an on-demand 0-to-100% charge, and that's just fine — a car spends most of its
+          time parked and plugged in, during production hours.
+        </p>
+        <p class="mt-5 max-w-xl border-l-4 border-white/25 pl-4 text-sm leading-relaxed text-lune-soft">
+          The point of honesty: a "dumb" solar-only charge at full power, with no grid, no battery
+          and no modulation, is not practical — output varies with clouds and time of day. You
+          charge on the surplus when there's sun, and complete on the grid in the evening if
+          needed. It's the combination that makes the use case reliable, not solar taken alone.
+        </p>
+      </div>
+    </section>
+
+    <!-- How many panels for my daily km (light background) -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="bg-blanc-azur px-4 pb-20 pt-10 text-encre sm:pb-24">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-azur-600">Sizing on your kilometres</p>
+        <h2 class="display v2-section-title mt-5">How many panels for my daily kilometres?</h2>
+        <p class="v2-lead mt-5 max-w-2xl text-encre-soft">
+          We don't start from battery size, but from your real trip. A compact electric car runs
+          around 15 to 20 kWh per 100 km; multiply by your daily kilometres, and you get the
+          energy to cover.
+        </p>
+        <div class="mt-10 grid gap-6 md:grid-cols-3" data-stagger>
+          {dimensionnement.map((d, i) => (
+            <div class="v2-rise border-t-2 border-azur-900 bg-blanc p-6" style={`--v2-i:${i}`}>
+              <h3 class="display text-xl text-azur-700">{d.title}</h3>
+              <p class="mt-3 text-sm leading-relaxed text-encre-soft">{d.body}</p>
+            </div>
+          ))}
+        </div>
+        <p class="mx-auto mt-8 max-w-2xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
+          These orders of magnitude come from public technical data, stated in ranges; the exact
+          sizing depends on your roof and your usage. <a href={L('/équipement')} class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">See the equipment →</a>
+        </p>
+      </div>
+    </section>
+
+    <!-- 7, 11 or 22 kW + single- vs three-phase -->
+    <section class="px-4 py-20 sm:py-28">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">Choosing the charger</p>
+        <h2 class="display v2-section-title mt-5 text-white">7, 11 or 22 kW — and single- or three-phase?</h2>
+        <p class="v2-lead mt-5 max-w-2xl text-lune-soft">
+          Charger power depends first on your home's connection, not the car. No point aiming for
+          the maximum: a charger more powerful than what the meter allows doesn't charge any
+          faster.
+        </p>
+        <div class="mt-10 grid gap-6 md:grid-cols-2">
+          <div class="v2-rise cine-card p-7" style="--v2-i:0">
+            <h3 class="display text-xl text-white">7 kW — single-phase, the sweet spot</h3>
+            <p class="mt-3 text-sm leading-relaxed text-lune-soft">
+              Most Moroccan homes are single-phase 220–230 V. A charger of about 7 kW (sweet spot
+              ~7.4 kW) works there directly and charges most of a battery overnight. It's the
+              right residential choice in the large majority of cases.
+            </p>
+          </div>
+          <div class="v2-rise cine-card p-7" style="--v2-i:1">
+            <h3 class="display text-xl text-white">11 or 22 kW — three-phase required</h3>
+            <p class="mt-3 text-sm leading-relaxed text-lune-soft">
+              11 and 22 kW chargers require a three-phase connection. That means a power-increase
+              request to ONEE or your local distribution utility — a step to plan ahead, which
+              only makes sense for large daily needs.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Day vs night: surplus, battery, smart charger -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="bg-blanc-azur px-4 pb-20 pt-10 text-encre sm:pb-24">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-azur-600">Day or night</p>
+        <h2 class="display v2-section-title mt-5">Solar produces by day, you drive in the evening</h2>
+        <p class="v2-lead mt-5 text-encre-soft">
+          That's the whole challenge: the roof produces when the sun is high, but the car often
+          comes home in the evening. Three ways to reconcile the two, from simplest to most
+          complete:
+        </p>
+        <div class="mt-8 space-y-5">
+          <div class="border-t-2 border-azur-900 bg-blanc p-6">
+            <h3 class="display text-lg text-azur-700">Direct charging on surplus</h3>
+            <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+              The car is plugged in during the day — at the office, or at home on weekends — and
+              charges on the solar surplus as it's produced. The simplest solution, no extra
+              hardware, but it assumes the car is there when the sun is out.
+            </p>
+          </div>
+          <div class="border-t-2 border-azur-900 bg-blanc p-6">
+            <h3 class="display text-lg text-azur-700">Home battery</h3>
+            <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+              The midday surplus is stored in a home battery, then given back in the evening to
+              charge the car. More flexibility on timing, at the cost of an extra investment —
+              and it's exactly the use case law 82-21 rewards, since stored energy is worth your
+              avoided tariff, far more than the buy-back rate.
+            </p>
+          </div>
+          <div class="border-t-2 border-azur-900 bg-blanc p-6">
+            <h3 class="display text-lg text-azur-700">A "smart" charger that tracks the surplus</h3>
+            <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+              Some chargers modulate their power in real time to charge only with the available
+              solar excess, and hand back to the grid when a cloud rolls in. It's this modulation
+              — not a "dumb" full-power charge — that makes solar charging genuinely practical
+              day to day.
+            </p>
+          </div>
+        </div>
+        <p class="mx-auto mt-8 max-w-2xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
+          Is the midday surplus worth more in the car, in a battery, or exported? The answer
+          depends on your driving profile. <a href={L('/batteries-stockage')} class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Understand storage →</a>
+        </p>
+      </div>
+    </section>
+
+    <!-- Carport -->
+    <section class="px-4 py-20 sm:py-28">
+      <div class="mx-auto max-w-6xl">
+        <div class="grid gap-10 lg:grid-cols-[1.1fr_1fr] lg:items-center">
+          <div class="v2-rise">
+            <p class="tech-label v2-kicker rule-brass text-lune">Solar carport</p>
+            <h2 class="display v2-section-title mt-5 text-white">The car shelter that produces its own energy</h2>
+            <p class="v2-lead mt-5 text-lune-soft">
+              When the house roof is saturated or poorly oriented, the car shelter — the solar
+              carport — becomes a useful surface: its roof carries the panels, shades the car, and
+              feeds the charger directly at the parking spot. The car charges right where it
+              parks, under the energy it receives.
+            </p>
+          </div>
+          <div class="v2-rise cine-card p-7" style="--v2-i:1">
+            <h3 class="display text-xl text-white">An extra surface, not a lost one</h3>
+            <p class="mt-3 text-sm leading-relaxed text-lune-soft">
+              The carport takes nothing away from the house: it adds square metres of capture
+              where, otherwise, there'd only be a sheet-metal roof or nothing at all. As with a
+              rooftop, the sizing is calculated on the real need and the site's sun exposure.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- V2H / V2G (coming to Morocco) -->
+    <section class="border-t border-white/10 px-4 py-16 sm:py-20">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">Coming to Morocco</p>
+        <h2 class="display v2-section-title mt-5 text-white">V2H and V2G: the car as the house's battery</h2>
+        <p class="v2-lead mt-5 text-lune-soft">
+          V2H (vehicle-to-home) and V2G (vehicle-to-grid) reverse the direction of the cable: the
+          car's large battery gives energy back to the house in the evening, or even to the grid.
+          On paper, it's the ideal complement to solar — the car becomes the reservoir that stores
+          the midday surplus for the evening peak.
+        </p>
+        <p class="mt-5 text-sm leading-relaxed text-lune-soft">
+          We frame it honestly: in Morocco, it's a future prospect rather than a standard offer
+          today. Compatible vehicles and chargers remain rare and the framework is still being
+          written. We'd rather present it for what it is — promising, not yet mainstream — than
+          sell it as a given.
+        </p>
+      </div>
+    </section>
+
+    <!-- Is it worth it vs petrol? (light background) -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="bg-blanc-azur px-4 pb-20 pt-10 text-encre sm:pb-24">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-azur-600">The maths, in ranges</p>
+        <h2 class="display v2-section-title mt-5">Is it really worth it against petrol?</h2>
+        <p class="v2-lead mt-5 text-encre-soft">
+          The figures below are indicative Moroccan ranges (mid-2026), assumptions stated — not
+          promises. The order of magnitude is solid; the exact figure depends on the day's fuel
+          price and your ONEE tier.
+        </p>
+        <div class="mt-8 space-y-4">
+          <div class="flex items-baseline justify-between gap-4 border-t-2 border-azur-900 bg-blanc p-5">
+            <span class="font-display text-base font-bold text-azur-700">Petrol (~6.5 L/100 km)</span>
+            <span class="fig text-2xl text-azur-700">~93 MAD/100 km</span>
+          </div>
+          <div class="flex items-baseline justify-between gap-4 border-t-2 border-azur-900 bg-blanc p-5">
+            <span class="font-display text-base font-bold text-azur-700">EV charged on the grid</span>
+            <span class="fig text-2xl text-azur-700">~23 MAD/100 km</span>
+          </div>
+          <div class="flex items-baseline justify-between gap-4 border-t-2 border-azur-900 bg-blanc p-5">
+            <span class="font-display text-base font-bold text-azur-700">EV charged on solar</span>
+            <span class="fig text-2xl text-azur-700">~0–13 MAD/100 km</span>
+          </div>
+        </div>
+        <p class="mt-6 text-sm leading-relaxed text-encre-soft">
+          Assumptions: petrol at 6.5 L/100 km and ~14.3 MAD/L (mid-June 2026); EV at 15 kWh/100 km
+          +~10% charging losses; grid at ~1.40 MAD/kWh (marginal tier). On the grid, the EV already
+          costs about a quarter of petrol; charged on your own surplus, the marginal cost tends
+          toward zero (3 to 13 MAD if you value solar at its cost). The full dated figures live in
+          a dedicated article, refreshed as prices move.
+        </p>
+        <div class="mt-8 flex flex-wrap gap-3">
+          <a href="/blog/recharger-voiture-electrique-solaire-cout-maroc" class="inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">The detailed cost, 2026 figures →</a>
+          <a href={L('/guides')} class="inline-block border-b-2 border-azur-600 pb-0.5 text-base font-bold text-azur-600 transition-colors hover:text-azur-700">Read the guides →</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Real Moroccan advantages (NO purchase premium) -->
+    <section class="px-4 py-20 sm:py-28">
+      <div class="mx-auto max-w-6xl">
+        <div class="grid gap-10 lg:grid-cols-[1.1fr_1fr] lg:items-center">
+          <div class="v2-rise">
+            <p class="tech-label v2-kicker rule-brass text-lune">Verified advantages</p>
+            <h2 class="display v2-section-title mt-5 text-white">What Moroccan tax policy really grants</h2>
+            <p class="v2-lead mt-5 text-lune-soft">
+              The confirmed advantages for an electric car in Morocco are fiscal: VAT exemption,
+              road-tax (TSAVA) exemption for 100% electric and plug-in hybrid vehicles, and
+              import-duty exemption on eligible electric vehicles.
+            </p>
+          </div>
+          <div class="v2-rise cine-card p-7" style="--v2-i:1">
+            <h3 class="display text-xl text-white">Not to be confused</h3>
+            <p class="mt-3 text-sm leading-relaxed text-lune-soft">
+              There is <strong class="text-white">no cash purchase premium paid by the state</strong>,
+              to date, for buying an EV in Morocco — the "50,000 or 100,000 MAD premium" that
+              circulates online refers to a scheme from another country, not to Moroccan finance
+              law. We will never promise it to you: only the fiscal advantages opposite are real.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Visual FAQ — schema={false}: /faq keeps the only FAQPage -->
+    <Faq items={faq} heading="EV charging on solar — frequently asked questions" schema={false} />
+
+    <!-- Closing links block -->
+    <section class="border-t border-white/10 px-4 py-16 sm:py-20">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">To go further</p>
+        <h2 class="display v2-section-title mt-5 text-white">Preparing your solar charging setup</h2>
+        <p class="v2-lead mt-5 max-w-2xl text-lune-soft">
+          Charging your car on sunshine gets prepared as early as the roof study: that's where we
+          decide the surplus to capture, any storage, and the charger matched to your connection.
+        </p>
+        <div class="mt-10 flex flex-wrap gap-3">
+          <a href={L('/batteries-stockage')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Storage →</a>
+          <a href={L('/équipement')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">See the equipment →</a>
+          <a href={L('/guides')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">The guides →</a>
+          <a href={devisHref} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">My free assessment →</a>
+        </div>
+      </div>
+    </section>
+
+    <CtaBand title="An electric car to charge on sunshine? Start with the free study." href={devisHref} />
+
+    <StickyCta />
+  </div>
+</Layout>
