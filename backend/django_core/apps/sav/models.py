@@ -76,6 +76,10 @@ class SavSlaSettings(models.Model):
     # notification technicien existante — FG81/scan_sla_breaches). OFF par
     # défaut : comportement actuel inchangé.
     escalade_activee = models.BooleanField(default=False)
+    # XSAV9 — affectation automatique des tickets à la création (round-robin /
+    # équilibrage de charge). Défaut OFF : comportement actuel inchangé (tout
+    # ticket reste affecté à la main tant que la société ne l'active pas).
+    affectation_auto_sav = models.BooleanField(default=False)
     date_modification = models.DateTimeField(auto_now=True)
 
     class Meta:

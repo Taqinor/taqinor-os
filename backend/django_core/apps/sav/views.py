@@ -360,6 +360,18 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
                 date_ouverture=date_ouverture,
                 sla_due_at=sla_due_at),
         )
+        # XSAV9 — affectation automatique si aucun technicien n'a été choisi
+        # à la création et que la société l'a activée (défaut OFF = inchangé).
+        inst = serializer.instance
+        if not inst.technicien_responsable_id:
+            sla = SavSlaSettings.get(company)
+            if sla.affectation_auto_sav:
+                from .services import assign_technicien_auto
+                technicien = assign_technicien_auto(
+                    company=company, jour=date_ouverture)
+                if technicien is not None:
+                    inst.technicien_responsable = technicien
+                    inst.save(update_fields=['technicien_responsable'])
         activity.log_creation(serializer.instance, self.request.user)
 
     def perform_update(self, serializer):
