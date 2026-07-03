@@ -1213,6 +1213,15 @@ class FollowupLevel(models.Model):
     nom = models.CharField(max_length=120)
     delai_jours = models.PositiveIntegerField(default=7)
     message = models.TextField(blank=True, default='')
+    # XFAC6 — pénalités/intérêts de retard (loi 69-21, intérêts moratoires
+    # B2B) : taux annuel (%) + frais fixes (MAD), tous deux nullable/défaut 0
+    # → comportement historique BYTE-IDENTIQUE (aucune pénalité) tant qu'ils
+    # ne sont pas paramétrés. Purement INDICATIF sur la lettre de relance tant
+    # que la facturation optionnelle n'est pas déclenchée.
+    taux_interet_annuel = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True, default=0)
+    frais_fixes = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True, default=0)
 
     class Meta:
         ordering = ['delai_jours', 'ordre']
@@ -1220,6 +1229,23 @@ class FollowupLevel(models.Model):
 
     def __str__(self):
         return f'{self.nom} (J+{self.delai_jours})'
+
+    def calcul_penalite(self, montant_du, jours_retard):
+        """XFAC6 — pénalité de retard = montant dû × taux annuel × jours/365 +
+        frais fixes. Taux/frais à 0 (ou NULL) → renvoie 0 (comportement
+        actuel byte-identique). N'affecte JAMAIS ``montant_du`` — purement
+        indicatif tant que non facturé."""
+        from decimal import Decimal, ROUND_HALF_UP
+        taux = self.taux_interet_annuel or Decimal('0')
+        frais = self.frais_fixes or Decimal('0')
+        if taux <= 0 and frais <= 0:
+            return Decimal('0.00')
+        montant_du = Decimal(montant_du or 0)
+        jours = max(int(jours_retard or 0), 0)
+        interet = montant_du * Decimal(taux) / Decimal('100') * \
+            Decimal(jours) / Decimal('365')
+        return (interet + Decimal(frais)).quantize(
+            Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
 class RelanceLog(models.Model):

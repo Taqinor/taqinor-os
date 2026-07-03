@@ -821,6 +821,60 @@ class FactureViewSet(viewsets.ModelViewSet):
         facture.save(update_fields=['exclu_relances'])
         return Response(FactureSerializer(facture).data)
 
+    @action(detail=True, methods=['post'], url_path='facturer-penalites',
+            permission_classes=[IsResponsableOrAdmin])
+    def facturer_penalites(self, request, pk=None):
+        """XFAC6 — action OPTIONNELLE : crée une facture de frais dédiée pour
+        la pénalité de retard calculée au niveau de relance courant. Ne
+        modifie JAMAIS ``montant_du`` de la facture d'origine (la pénalité
+        reste indicative tant que non facturée — cette action la matérialise
+        volontairement en un nouveau document, séparé)."""
+        from decimal import Decimal
+        from ..utils.company_settings import create_numbered
+
+        facture = self.get_object()
+        levels = list(FollowupLevel.objects.filter(
+            company=facture.company).order_by('delai_jours', 'ordre'))
+        jr = facture.jours_retard
+        niveau = None
+        for lvl in levels:
+            if jr >= lvl.delai_jours:
+                niveau = lvl
+        if niveau is None:
+            return Response(
+                {'detail': "Aucun niveau de relance atteint pour "
+                           "cette facture."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        penalite = niveau.calcul_penalite(facture.montant_du, jr)
+        if penalite <= 0:
+            return Response(
+                {'detail': "Aucune pénalité à facturer (taux/frais à 0)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        libelle = (
+            f"Pénalités de retard — facture {facture.reference} "
+            f"({jr} jour(s) de retard, {niveau.nom})")
+
+        def _create(ref):
+            return Facture.objects.create(
+                reference=ref, company=facture.company,
+                client=facture.client, statut=Facture.Statut.EMISE,
+                libelle=libelle, montant_ht=penalite,
+                montant_tva=Decimal('0'), montant_ttc=penalite,
+                taux_tva=Decimal('0'), created_by=request.user,
+            )
+
+        facture_penalite = create_numbered(
+            Facture, facture.company, 'facture', _create)
+        from .. import activity
+        activity.log_facture_penalite_facturee(
+            facture, request.user, facture_penalite, penalite)
+        return Response(
+            FactureSerializer(facture_penalite).data,
+            status=status.HTTP_201_CREATED,
+        )
+
     @action(detail=True, methods=['get'], url_path='relances',
             permission_classes=[IsAnyRole])
     def relances(self, request, pk=None):

@@ -560,7 +560,8 @@ class FollowupLevelSerializer(serializers.ModelSerializer):
     class Meta:
         from .models import FollowupLevel
         model = FollowupLevel
-        fields = ['id', 'ordre', 'nom', 'delai_jours', 'message']
+        fields = ['id', 'ordre', 'nom', 'delai_jours', 'message',
+                  'taux_interet_annuel', 'frais_fixes']
 
 
 class RelanceLogSerializer(serializers.ModelSerializer):

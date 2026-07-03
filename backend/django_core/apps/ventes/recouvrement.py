@@ -33,17 +33,23 @@ def _levels(company):
     return list(FollowupLevel.objects.filter(company=company).order_by('delai_jours'))
 
 
-def _current_level(jours_retard, levels):
-    """Niveau de relance courant : le plus haut seuil atteint, ou None."""
+def _current_level(jours_retard, levels, montant_du=None):
+    """Niveau de relance courant : le plus haut seuil atteint, ou None.
+
+    XFAC6 — quand ``montant_du`` est fourni, le dict porte aussi la pénalité
+    de retard calculée pour ce niveau (indicative, taux 0 → 0.00)."""
     current = None
     for lvl in levels:
         if jours_retard >= lvl.delai_jours:
             current = lvl
     if current is None:
         return None
-    return {'ordre': current.ordre, 'nom': current.nom,
-            'delai_jours': current.delai_jours,
-            'message': current.message or ''}
+    out = {'ordre': current.ordre, 'nom': current.nom,
+           'delai_jours': current.delai_jours,
+           'message': current.message or ''}
+    if montant_du is not None:
+        out['penalite'] = str(current.calcul_penalite(montant_du, jours_retard))
+    return out
 
 
 def _next_level(jours_retard, levels):
@@ -143,7 +149,7 @@ def relances_list(request):
             'date_echeance': f.date_echeance.isoformat() if f.date_echeance else None,
             'montant_du': _s(f.montant_du),
             'jours_retard': jr,
-            'niveau': _current_level(jr, levels),
+            'niveau': _current_level(jr, levels, montant_du=f.montant_du),
             'niveau_suivant': _next_level(jr, levels),
             'prochaine_relance': (f.prochaine_relance.isoformat()
                                   if f.prochaine_relance else None),
@@ -307,7 +313,8 @@ def lettre_relance_pdf(request, facture_id):
         return Response({'detail': 'Facture introuvable.'},
                         status=status.HTTP_404_NOT_FOUND)
     levels = _levels(facture.company)
-    niveau = _current_level(facture.jours_retard, levels)
+    niveau = _current_level(
+        facture.jours_retard, levels, montant_du=facture.montant_du)
     message = ''
     if niveau:
         lvl = next((x for x in levels if x.ordre == niveau['ordre']), None)

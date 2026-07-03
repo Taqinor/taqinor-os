@@ -174,6 +174,21 @@ def log_facture_avance_affectee(facture, user, paiement, montant):
     )
 
 
+def log_facture_penalite_facturee(facture, user, facture_penalite, montant):
+    """XFAC6 — chatter de la facture d'origine : pénalités de retard
+    facturées séparément (nouvelle facture de frais dédiée)."""
+    from .models import FactureActivity
+    qui = getattr(user, 'username', '?')
+    return FactureActivity.objects.create(
+        company=facture.company, facture=facture, user=user,
+        kind=FactureActivity.Kind.MODIFICATION,
+        field='penalite', field_label='Pénalité facturée',
+        new_value=facture_penalite.reference,
+        body=(f"Pénalités de retard ({montant} MAD) facturées séparément "
+              f"par {qui} — {facture_penalite.reference}."),
+    )
+
+
 def log_facture_retenue_subie(facture, user, retenue):
     """XFAC4 — chatter de la facture : retenue à la source subie constatée."""
     from .models import FactureActivity
