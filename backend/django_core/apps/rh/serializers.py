@@ -216,7 +216,8 @@ class TypeAbsenceSerializer(serializers.ModelSerializer):
         model = TypeAbsence
         fields = [
             'id', 'code', 'libelle', 'decompte_jours_ouvres', 'deduit_solde',
-            'remunere', 'actif', 'jours_legaux', 'date_creation',
+            'remunere', 'actif', 'jours_legaux',
+            'jours_max_sans_justificatif', 'date_creation',
         ]
         read_only_fields = ['date_creation']
 
@@ -251,7 +252,9 @@ class DemandeCongeSerializer(serializers.ModelSerializer):
         model = DemandeConge
         fields = [
             'id', 'employe', 'type_absence', 'type_absence_code',
-            'date_debut', 'date_fin', 'jours', 'motif',
+            'date_debut', 'date_fin', 'jours',
+            'demi_journee_debut', 'demi_journee_fin', 'justificatif',
+            'motif',
             'statut', 'statut_display',
             'decide_par', 'date_decision', 'motif_refus', 'date_creation',
         ]

@@ -452,6 +452,7 @@ class DemandeCongeViewSet(_RhBaseViewSet):
     queryset = DemandeConge.objects.select_related(
         'employe', 'type_absence', 'decide_par').all()
     serializer_class = DemandeCongeSerializer
+    parser_classes = [MultiPartParser, JSONParser]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_debut', 'date_fin', 'date_creation', 'statut']
 
@@ -466,17 +467,26 @@ class DemandeCongeViewSet(_RhBaseViewSet):
         return qs
 
     def perform_create(self, serializer):
-        # ``jours`` calculé côté serveur selon la règle de décompte du type.
+        # ``jours`` calculé côté serveur selon la règle de décompte du type
+        # (XRH3 : les drapeaux demi-journée retranchent chacun 0,5 j).
         type_absence = serializer.validated_data['type_absence']
         jours = services.calculer_jours_demande(
             type_absence,
             serializer.validated_data['date_debut'],
-            serializer.validated_data['date_fin'])
+            serializer.validated_data['date_fin'],
+            demi_journee_debut=serializer.validated_data.get(
+                'demi_journee_debut', False),
+            demi_journee_fin=serializer.validated_data.get(
+                'demi_journee_fin', False))
         serializer.save(company=self.request.user.company, jours=jours)
 
     @action(detail=True, methods=['post'])
     def valider(self, request, pk=None):
-        """Valide une demande soumise et déduit le solde si le type le requiert."""
+        """Valide une demande soumise et déduit le solde si le type le requiert.
+
+        XRH3 : refusée (400, message explicite) si le type exige un
+        justificatif au-delà de son seuil et qu'aucun n'est joint.
+        """
         demande = self.get_object()
         try:
             services.valider_demande(demande, decide_par=request.user)
@@ -3186,11 +3196,16 @@ class PortailSelfServiceViewSet(viewsets.ViewSet):
         ser = DemandeCongeSerializer(
             data=data, context={'request': request})
         ser.is_valid(raise_exception=True)
-        # ``jours`` calculé côté serveur selon la règle de décompte du type.
+        # ``jours`` calculé côté serveur selon la règle de décompte du type
+        # (XRH3 : les drapeaux demi-journée retranchent chacun 0,5 j).
         jours = services.calculer_jours_demande(
             ser.validated_data['type_absence'],
             ser.validated_data['date_debut'],
-            ser.validated_data['date_fin'])
+            ser.validated_data['date_fin'],
+            demi_journee_debut=ser.validated_data.get(
+                'demi_journee_debut', False),
+            demi_journee_fin=ser.validated_data.get(
+                'demi_journee_fin', False))
         ser.save(company=request.user.company, jours=jours)
         return Response(ser.data, status=status.HTTP_201_CREATED)
 

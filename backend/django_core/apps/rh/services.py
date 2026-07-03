@@ -66,19 +66,33 @@ def droit_annuel(annees_service=0):
 
 
 def calculer_jours_demande(type_absence, date_debut, date_fin,
-                           extra_holidays=None):
+                           extra_holidays=None,
+                           demi_journee_debut=False, demi_journee_fin=False):
     """Durée décomptée d'une demande de congé (FG163).
 
     Si ``type_absence.decompte_jours_ouvres`` est vrai, ne compte que les jours
     ouvrés (hors week-end et fériés, cf. ``holidays.working_days`` / FG5) ;
     sinon, compte les jours calendaires. Renvoie un ``Decimal`` (0 si la plage
     est invalide).
+
+    XRH3 — ``demi_journee_debut``/``demi_journee_fin`` retranchent chacune
+    0,5 j du total (une demande d'1 jour avec les deux drapeaux reste bornée
+    à 0 minimum — jamais négative). Un flag sur une plage de 0 jour (date
+    invalide) n'a aucun effet.
     """
     if type_absence is not None and type_absence.decompte_jours_ouvres:
         n = holidays.working_days(date_debut, date_fin, extra_holidays)
     else:
         n = holidays.calendar_days(date_debut, date_fin)
-    return Decimal(n)
+    jours = Decimal(n)
+    if n > 0:
+        if demi_journee_debut:
+            jours -= Decimal('0.5')
+        if demi_journee_fin:
+            jours -= Decimal('0.5')
+        if jours < 0:
+            jours = Decimal('0')
+    return jours
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -267,11 +281,23 @@ def valider_demande(demande, decide_par=None):
 
     Idempotent vis-à-vis d'une demande déjà validée : ne re-déduit pas. Lève
     ``ValueError`` si la demande n'est pas dans un état décidable.
+
+    XRH3 — si ``type_absence.jours_max_sans_justificatif`` est renseigné et
+    que ``demande.jours`` le DÉPASSE, un ``justificatif`` est OBLIGATOIRE :
+    sans lui la validation est refusée (``ValueError`` — 400 explicite côté
+    vue). ``None`` (pas de plafond configuré) ne bloque jamais.
     """
     from .models import DemandeConge, SoldeConge
     if demande.statut != DemandeConge.Statut.SOUMISE:
         raise ValueError(
             "Seule une demande soumise peut être validée.")
+    plafond = demande.type_absence.jours_max_sans_justificatif
+    if (plafond is not None and demande.jours is not None
+            and demande.jours > plafond and not demande.justificatif):
+        raise ValueError(
+            "Justificatif obligatoire : cette absence de "
+            f"{demande.jours} j dépasse le seuil de {plafond} j sans "
+            "justificatif.")
     # Verrou pessimiste sur le solde pour éviter une double déduction concurrente.
     if demande.type_absence.deduit_solde and demande.jours:
         annee = demande.date_debut.year

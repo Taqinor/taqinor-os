@@ -448,6 +448,12 @@ class TypeAbsence(models.Model):
     jours_legaux = models.DecimalField(
         max_digits=6, decimal_places=2, null=True, blank=True,
         verbose_name='Plafond légal (jours, informatif)')
+    # XRH3 — au Maroc un certificat médical est exigé sous 48 h pour les
+    # absences dépassant ce seuil (maladie typiquement). ``None`` = jamais
+    # exigé pour ce type (comportement historique, non bloquant).
+    jours_max_sans_justificatif = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Jours max sans justificatif')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -845,6 +851,21 @@ class DemandeConge(models.Model):
     jours = models.DecimalField(
         max_digits=6, decimal_places=2, default=Decimal('0'),
         verbose_name='Jours décomptés')
+    # XRH3 — demi-journée en début/fin de demande (décompte −0,5 j chacune via
+    # ``services.calculer_jours_demande``). Une demande d'UN jour avec les deux
+    # drapeaux à vrai reste 1 jour entier (les deux flags visent la même seule
+    # journée dans ce cas — le service les traite indépendamment sur chaque
+    # borne, ce qui a un sens dès que la plage dépasse 1 jour).
+    demi_journee_debut = models.BooleanField(
+        default=False, verbose_name='Demi-journée (début)')
+    demi_journee_fin = models.BooleanField(
+        default=False, verbose_name='Demi-journée (fin)')
+    # XRH3 — justificatif (certificat médical…) exigé au-delà de
+    # ``type_absence.jours_max_sans_justificatif`` (VALIDATION uniquement,
+    # cf. ``services.valider_demande``).
+    justificatif = models.FileField(
+        upload_to='rh/demandes_conge/justificatifs/', null=True, blank=True,
+        verbose_name='Justificatif')
     motif = models.CharField(
         max_length=255, blank=True, default='', verbose_name='Motif')
     statut = models.CharField(
