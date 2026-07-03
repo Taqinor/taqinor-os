@@ -183,6 +183,10 @@ class AchatsParametres(models.Model):
     # XPUR1 — quand actif, un PaiementFournisseur est refusé si le
     # fournisseur a un document de conformité OBLIGATOIRE manquant/expiré.
     bloquer_paiement_conformite_expiree = models.BooleanField(default=False)
+    # XPUR2 — quand actif, la RAS-TVA (LF 2024) est calculée et retenue à
+    # chaque PaiementFournisseur. OFF par défaut = comportement historique
+    # (paiement intégral, aucune retenue).
+    ras_tva_actif = models.BooleanField(default=False)
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
 
@@ -866,6 +870,15 @@ class FactureFournisseur(models.Model):
         PARTIELLEMENT_PAYEE = 'partiellement_payee', 'Partiellement payée'
         PAYEE = 'payee', 'Payée'
 
+    # XPUR2 — nature de l'achat pour la RAS-TVA (LF 2024) : biens & travaux
+    # (retenue 100 % de la TVA SI le fournisseur n'a pas d'ARF valide, sinon
+    # rien) vs prestations de services (75 % avec ARF valide / 100 % sans).
+    # Défaut 'biens' — comportement historique inchangé tant que la RAS-TVA
+    # est désactivée (AchatsParametres.ras_tva_actif = False par défaut).
+    class TypeAchat(models.TextChoices):
+        BIENS = 'biens', 'Biens & travaux'
+        SERVICES = 'services', 'Prestations de services'
+
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='factures_fournisseur')
@@ -878,6 +891,10 @@ class FactureFournisseur(models.Model):
         blank=True, related_name='factures_fournisseur')
     # Référence du document chez le fournisseur (numéro de sa facture).
     ref_fournisseur = models.CharField(max_length=100, blank=True, null=True)
+    type_achat = models.CharField(
+        max_length=10, choices=TypeAchat.choices, default=TypeAchat.BIENS,
+        help_text="Nature de l'achat (RAS-TVA LF 2024) : biens & travaux ou "
+                  'prestations de services.')
     date_facture = models.DateField(null=True, blank=True)
     date_echeance = models.DateField(null=True, blank=True)
     montant_ht = models.DecimalField(
@@ -966,6 +983,17 @@ class PaiementFournisseur(models.Model):
     mode = models.CharField(
         max_length=20, choices=Mode.choices, default=Mode.VIREMENT)
     note = models.TextField(blank=True, null=True)
+    # ── XPUR2 — RAS-TVA fournisseurs (LF 2024, en vigueur 01/07/2024) ───────
+    # Montant retenu à la source sur la TVA facturée + le taux appliqué
+    # (0/75/100 %), calculés selon FactureFournisseur.type_achat + la
+    # validité ARF du fournisseur (XPUR1). 0 par défaut = comportement
+    # historique inchangé tant que AchatsParametres.ras_tva_actif est OFF.
+    montant_ras_tva = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        help_text='Montant de la retenue à la source sur la TVA (LF 2024).')
+    taux_ras = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        help_text='Taux de RAS-TVA appliqué (0/75/100 %).')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='paiements_fournisseur')
@@ -978,6 +1006,12 @@ class PaiementFournisseur(models.Model):
 
     def __str__(self):
         return f'{self.facture_id} — {self.montant}'
+
+    @property
+    def montant_net_paye(self):
+        """XPUR2 — net réellement décaissé = montant − RAS-TVA retenue."""
+        return (self.montant or Decimal('0')) - (
+            self.montant_ras_tva or Decimal('0'))
 
 
 # ── FG63 — Session d'inventaire (comptage physique en brouillon) ──────────────

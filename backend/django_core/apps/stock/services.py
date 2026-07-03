@@ -1745,3 +1745,110 @@ def notify_expiring_conformite_documents(company, jours=30):
                 'notify_expiring_conformite_documents: échec pour doc %s',
                 doc.pk)
     return count
+
+
+# ── XPUR2 — RAS-TVA sur paiements fournisseurs (LF 2024) ───────────────────
+
+def _fournisseur_a_arf_valide(fournisseur):
+    """XPUR2 — vrai si le fournisseur a une ARF (XPUR1) valide (< 6 mois,
+    non expirée). Aucune ARF renseignée = pas de couverture (retenue max)."""
+    from django.utils import timezone
+    from datetime import timedelta
+    from .models import DocumentConformiteFournisseur
+    seuil = timezone.now().date() - timedelta(days=183)  # ~6 mois
+    return fournisseur.documents_conformite.filter(
+        type_document=DocumentConformiteFournisseur.Type.ARF,
+    ).filter(
+        models.Q(date_expiration__isnull=True) |
+        models.Q(date_expiration__gte=timezone.now().date()),
+    ).filter(
+        models.Q(date_emission__isnull=True) |
+        models.Q(date_emission__gte=seuil),
+    ).exists()
+
+
+def taux_ras_tva(facture):
+    """XPUR2 — taux de RAS-TVA (0/75/100) applicable à une FactureFournisseur
+    selon son ``type_achat`` et la validité ARF (< 6 mois) du fournisseur.
+
+    - Biens & travaux : 100 % SANS ARF valide, 0 % AVEC.
+    - Prestations de services : 75 % AVEC ARF valide, 100 % SANS.
+    """
+    from .models import FactureFournisseur
+    a_arf = _fournisseur_a_arf_valide(facture.fournisseur)
+    if facture.type_achat == FactureFournisseur.TypeAchat.SERVICES:
+        return Decimal('75') if a_arf else Decimal('100')
+    # Biens & travaux.
+    return Decimal('0') if a_arf else Decimal('100')
+
+
+def compute_ras_tva(company, facture, montant_paiement):
+    """XPUR2 — calcule (taux, montant_ras) pour un paiement de
+    ``montant_paiement`` sur ``facture``, proportionnellement à la part de
+    TVA couverte par ce règlement. No-op (0, 0) si la société n'a pas activé
+    la RAS-TVA (``AchatsParametres.ras_tva_actif`` OFF par défaut) ou si la
+    facture ne porte aucune TVA."""
+    from .models import AchatsParametres
+    parametres = AchatsParametres.for_company(company)
+    if not parametres.ras_tva_actif:
+        return Decimal('0'), Decimal('0')
+    montant_tva = facture.montant_tva or Decimal('0')
+    montant_ttc = facture.montant_ttc or Decimal('0')
+    if montant_tva <= 0 or montant_ttc <= 0:
+        return Decimal('0'), Decimal('0')
+    taux = taux_ras_tva(facture)
+    if taux <= 0:
+        return Decimal('0'), Decimal('0')
+    # TVA proportionnelle à la part du TTC réglée par CE paiement.
+    montant_paiement = Decimal(montant_paiement or 0)
+    part_tva = (montant_tva * montant_paiement / montant_ttc).quantize(
+        Decimal('0.01'))
+    montant_ras = (part_tva * taux / Decimal('100')).quantize(Decimal('0.01'))
+    return taux, montant_ras
+
+
+def relevé_ras_tva(company, *, date_debut=None, date_fin=None):
+    """XPUR2 — relevé détaillé des RAS-TVA retenues sur la période, pour la
+    télédéclaration Simpl-TVA (pattern du bordereau FG139). Renvoie une liste
+    de dicts triés par date de paiement."""
+    from .models import PaiementFournisseur
+    qs = PaiementFournisseur.objects.filter(
+        company=company, montant_ras_tva__gt=0,
+    ).select_related('facture', 'facture__fournisseur')
+    if date_debut:
+        qs = qs.filter(date_paiement__gte=date_debut)
+    if date_fin:
+        qs = qs.filter(date_paiement__lte=date_fin)
+    rows = []
+    for p in qs.order_by('date_paiement'):
+        rows.append({
+            'date_paiement': p.date_paiement,
+            'fournisseur': p.facture.fournisseur.nom,
+            'facture': p.facture.reference,
+            'type_achat': p.facture.get_type_achat_display(),
+            'montant_paiement': p.montant,
+            'taux_ras': p.taux_ras,
+            'montant_ras_tva': p.montant_ras_tva,
+            'montant_net_paye': p.montant_net_paye,
+        })
+    return rows
+
+
+def export_ras_tva_xlsx(company, *, date_debut=None, date_fin=None):
+    """XPUR2 — export xlsx du relevé RAS-TVA (réutilise le helper commun)."""
+    from apps.records.xlsx import build_xlsx_response
+    rows = relevé_ras_tva(company, date_debut=date_debut, date_fin=date_fin)
+    headers = [
+        'Date paiement', 'Fournisseur', 'Facture', 'Type achat',
+        'Montant paiement', 'Taux RAS %', 'Montant RAS-TVA',
+        'Net payé',
+    ]
+    data_rows = [
+        [r['date_paiement'], r['fournisseur'], r['facture'],
+         r['type_achat'], r['montant_paiement'], r['taux_ras'],
+         r['montant_ras_tva'], r['montant_net_paye']]
+        for r in rows
+    ]
+    return build_xlsx_response(
+        'ras_tva_fournisseurs.xlsx', headers, data_rows,
+        sheet_title='RAS-TVA')

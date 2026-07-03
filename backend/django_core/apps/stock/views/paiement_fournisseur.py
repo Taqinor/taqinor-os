@@ -88,10 +88,19 @@ class PaiementFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
         return super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer):
-        from ..services import recompute_facture_fournisseur_statut
+        from ..services import (
+            recompute_facture_fournisseur_statut, compute_ras_tva,
+        )
         with transaction.atomic():
-            paiement = serializer.save(company=self.request.user.company,
-                                       created_by=self.request.user)
+            facture = serializer.validated_data['facture']
+            montant = serializer.validated_data['montant']
+            # XPUR2 — RAS-TVA calculée côté serveur, jamais depuis le corps.
+            taux, montant_ras = compute_ras_tva(
+                self.request.user.company, facture, montant)
+            paiement = serializer.save(
+                company=self.request.user.company,
+                created_by=self.request.user,
+                taux_ras=taux, montant_ras_tva=montant_ras)
             paiement.facture.refresh_from_db()
             recompute_facture_fournisseur_statut(paiement.facture)
 
@@ -102,3 +111,15 @@ class PaiementFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
             instance.delete()
             facture.refresh_from_db()
             recompute_facture_fournisseur_statut(facture)
+
+    @action(detail=False, methods=['get'], url_path='ras-tva/export',
+            permission_classes=[IsResponsableOrAdmin])
+    def export_ras_tva(self, request):
+        """XPUR2 — relevé RAS-TVA exportable xlsx pour la télédéclaration
+        Simpl-TVA. Filtres optionnels ``?date_debut=`` / ``?date_fin=``
+        (YYYY-MM-DD)."""
+        from ..services import export_ras_tva_xlsx
+        return export_ras_tva_xlsx(
+            request.user.company,
+            date_debut=request.query_params.get('date_debut'),
+            date_fin=request.query_params.get('date_fin'))

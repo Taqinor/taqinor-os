@@ -587,16 +587,22 @@ class PaiementFournisseurSerializer(serializers.ModelSerializer):
         source='facture.reference', read_only=True)
     created_by_username = serializers.CharField(
         source='created_by.username', read_only=True)
+    # XPUR2 — RAS-TVA : calculée côté serveur (jamais depuis le corps de
+    # requête), exposée en lecture pour affichage du net payé.
+    montant_net_paye = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
 
     class Meta:
         model = PaiementFournisseur
         fields = [
             'id', 'facture', 'facture_reference', 'montant', 'date_paiement',
             'mode', 'mode_display', 'note', 'created_by', 'created_by_username',
-            'date_creation',
+            'date_creation', 'montant_ras_tva', 'taux_ras', 'montant_net_paye',
         ]
-        # company + created_by posés côté serveur.
-        read_only_fields = ['created_by', 'date_creation']
+        # company + created_by + RAS-TVA posés côté serveur (jamais du corps).
+        read_only_fields = [
+            'created_by', 'date_creation', 'montant_ras_tva', 'taux_ras',
+        ]
 
     def validate_montant(self, value):
         if value is None or value <= 0:
@@ -634,7 +640,7 @@ class FactureFournisseurSerializer(serializers.ModelSerializer):
             'id', 'reference', 'fournisseur', 'fournisseur_nom', 'bon_commande',
             'bon_commande_reference', 'ref_fournisseur', 'date_facture',
             'date_echeance', 'montant_ht', 'montant_tva', 'montant_ttc',
-            'statut', 'statut_display', 'note', 'created_by',
+            'type_achat', 'statut', 'statut_display', 'note', 'created_by',
             'created_by_username', 'date_creation', 'date_mise_a_jour',
             'lignes', 'paiements', 'total_paye', 'solde_du',
         ]
