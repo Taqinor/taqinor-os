@@ -164,6 +164,33 @@ const investment = [
   { v: '60–90 %', label: 'Of the bill covered' },
   { v: '0 MAD', label: 'The study and the assessment' },
 ];
+
+// W276 — "Our engine, built in Morocco": the true in-house engineering
+// story, told with the THREE tools actually built and already in production
+// on the site (no third-party software, no invented claim):
+//   1. The bill-driven estimator (src/lib/estimatorBrain.ts — home-grown
+//      solar position, row spacing derived from a winter-solstice shading
+//      rule, see ESTIMATOR_BRAIN_NOTES.md).
+//   2. The 3D roof engine (/devis/mon-toit — real roof tracing, real
+//      orientation/tilt, not a generic lookup table).
+//   3. The premium quote engine (apps/ventes/quote_engine, e-signed PDF,
+//      see CLAUDE.md rule #4) that renders the final quote.
+// No fabricated number here: the link leads straight to the real journey
+// (/devis/mon-toit) so the visitor can VERIFY it themselves in 60 seconds.
+const engineeringPillars = [
+  {
+    title: 'The bill-driven estimator',
+    body: 'Your electricity bill is enough: our engine computes the sun’s position and the row spacing between panels from a winter-solstice shading rule — not a generic imported lookup table.',
+  },
+  {
+    title: 'The 3D roof engine',
+    body: 'Trace your roof, orient it, and the sizing adapts to your home’s real geometry — the same technology you just tried in the diagnostic above.',
+  },
+  {
+    title: 'The quote engine',
+    body: 'The resulting quote is signed electronically, online — no manual re-entry between the study and the document you sign.',
+  },
+];
 ---
 
 <Layout
@@ -432,6 +459,39 @@ const investment = [
       </div>
     </section>
 
+    {/* ── OUR ENGINE, BUILT IN MOROCCO (W276) — the in-house engineering
+        story: an installer that also builds its own tools (bill-driven
+        estimator, 3D roof engine, quote engine). True, rare in the sector,
+        and one click away from verification: the link leads to the real
+        journey (/devis/mon-toit) instead of just asserting it. ── */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="section px-4">
+      <div class="mx-auto max-w-6xl">
+        <div class="v2-rise max-w-2xl">
+          <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">03</span>Our engine, built in Morocco</p>
+          <h2 class="display v2-section-title mt-5 text-white">An installer that also builds its own tools</h2>
+          <p class="v2-body mt-5">
+            Most solar installers buy a generic quoting tool. Taqinor built its own: the estimator
+            that reads your bill, the engine that traces your roof in 3D, and the engine that
+            produces the quote you sign electronically. Three tools, one technical team — try them
+            yourself below.
+          </p>
+        </div>
+        <div class="mt-12 grid gap-6 sm:grid-cols-3" data-stagger>
+          {engineeringPillars.map((p, i) => (
+            <div class="v2-rise relative min-w-0 border-t-2 border-white/10 pt-5" style={`--v2-i:${i}`}>
+              <span class="absolute -top-px left-0 h-0.5 w-10 bg-brass-400" aria-hidden="true"></span>
+              <h3 class="display mt-2 text-lg text-white">{p.title}</h3>
+              <p class="mt-2 text-sm leading-relaxed text-lune-soft">{p.body}</p>
+            </div>
+          ))}
+        </div>
+        <a href={L('/devis/mon-toit')} class="v2-rise group mt-10 inline-flex items-center gap-1 border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-brass-300 transition-colors hover:text-brass-200">
+          Try the engine on my roof <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span>
+        </a>
+      </div>
+    </section>
+
     {/* ── THE FOUNDER — human presence (W266). The copy asserts intimacy
         ("founder-signed") but never shows it: the real portrait + a
         first-person signed note make it tangible. Shared component with
@@ -446,7 +506,7 @@ const investment = [
       <div class="mx-auto max-w-6xl">
         <div class="grid items-center gap-12 lg:grid-cols-[1.1fr_1fr]">
           <div class="v2-rise">
-            <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">03</span>How it works</p>
+            <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">04</span>How it works</p>
             <h2 class="display v2-section-title mt-5 max-w-md text-white">The rest happens on WhatsApp</h2>
             <p class="v2-body mt-5 max-w-md">
               No call centre, no chasing: your diagnostic arrives on WhatsApp,

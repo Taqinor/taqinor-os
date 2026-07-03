@@ -159,6 +159,32 @@ const investment = [
   { v: '60–90 %', label: 'من الفاتورة مُغطّاة' },
   { v: '0 MAD', label: 'الدراسة والتشخيص' },
 ];
+
+// W276 — « محرّكنا، مصمَّم في المغرب » : قصة هندسة داخلية صادقة، تُروى عبر
+// الأدوات الثلاث المبنية فعليًا والمُستخدمة سلفًا على الموقع (لا برنامج خارجي،
+// لا ادّعاء مُختلَق):
+//   1. المُقدِّر المُوجَّه بالفاتورة (src/lib/estimatorBrain.ts — موضع الشمس
+//      محسوب داخليًا، تباعد الصفوف مُشتق من قاعدة تظليل الانقلاب الشتوي).
+//   2. محرّك السطح ثلاثي الأبعاد (/devis/mon-toit — تتبّع حقيقي للسطح،
+//      اتجاه وميل حقيقيان، لا جدول عام جاهز).
+//   3. محرّك عرض الأسعار (apps/ventes/quote_engine، PDF مُوقَّع إلكترونيًا)
+//      الذي يُصدر العرض النهائي.
+// لا رقم مُختلَق هنا: الرابط يقود مباشرة إلى المسار الحقيقي (/devis/mon-toit)
+// ليتحقق منه الزائر بنفسه خلال 60 ثانية.
+const engineeringPillars = [
+  {
+    title: 'المُقدِّر المُوجَّه بالفاتورة',
+    body: 'فاتورة الكهرباء وحدها تكفي: محرّكنا يحسب موضع الشمس وتباعد صفوف الألواح انطلاقًا من قاعدة تظليل عند الانقلاب الشتوي — لا جدول عام مستورد.',
+  },
+  {
+    title: 'محرّك السطح ثلاثي الأبعاد',
+    body: 'ارسم سطح منزلك، حدّد اتجاهه، ويتكيّف التحجيم مع الهندسة الحقيقية لمنزلك — نفس التقنية التي جرّبتها للتو في التشخيص أعلاه.',
+  },
+  {
+    title: 'محرّك عرض الأسعار',
+    body: 'العرض الناتج يُوقَّع إلكترونيًا، عبر الإنترنت — بلا إعادة إدخال يدوية بين الدراسة والوثيقة التي توقّعها.',
+  },
+];
 ---
 
 <Layout
@@ -427,6 +453,38 @@ const investment = [
       </div>
     </section>
 
+    {/* ── محرّكنا، مصمَّم في المغرب (W276) — قصة الهندسة الداخلية: مُركِّب
+        يبني أيضًا أدواته الخاصة (مُقدِّر مُوجَّه بالفاتورة، محرّك سطح ثلاثي
+        الأبعاد، محرّك عرض أسعار). صادقة، نادرة في القطاع، وعلى بُعد نقرة
+        واحدة من التحقّق: الرابط يقود إلى المسار الحقيقي (/devis/mon-toit)
+        بدل الاكتفاء بالتصريح به. ── */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="section px-4">
+      <div class="mx-auto max-w-6xl">
+        <div class="v2-rise max-w-2xl">
+          <p class="tech-label v2-kicker rule-brass text-lune"><span class="ms-2 font-display text-xs text-azur-200/80" aria-hidden="true">03</span>محرّكنا، مصمَّم في المغرب</p>
+          <h2 class="display v2-section-title mt-5 text-white">مُركِّب يبني أيضًا أدواته الخاصة</h2>
+          <p class="v2-body mt-5">
+            معظم مُركِّبي الطاقة الشمسية يشترون برنامج عروض أسعار جاهزًا. تاكينور بنت برنامجها
+            الخاص: المُقدِّر الذي يقرأ فاتورتكم، ومحرّك يرسم سطحكم ثلاثي الأبعاد، ومحرّك يُصدر
+            العرض الذي توقّعونه إلكترونيًا. ثلاث أدوات، فريق تقني واحد — جرّبوها بأنفسكم أدناه.
+          </p>
+        </div>
+        <div class="mt-12 grid gap-6 sm:grid-cols-3" data-stagger>
+          {engineeringPillars.map((p, i) => (
+            <div class="v2-rise relative min-w-0 border-t-2 border-white/10 pt-5" style={`--v2-i:${i}`}>
+              <span class="absolute -top-px start-0 h-0.5 w-10 bg-brass-400" aria-hidden="true"></span>
+              <h3 class="display mt-2 text-lg text-white">{p.title}</h3>
+              <p class="mt-2 text-sm leading-relaxed text-lune-soft">{p.body}</p>
+            </div>
+          ))}
+        </div>
+        <a href={L('/devis/mon-toit')} class="v2-rise group mt-10 inline-flex items-center gap-1 border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-brass-300 transition-colors hover:text-brass-200">
+          جرّبوا المحرّك على سطحي <span class="inline-block rtl:-scale-x-100 motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:-translate-x-1" aria-hidden="true">→</span>
+        </a>
+      </div>
+    </section>
+
     {/* ── المؤسِّس — حضور إنساني (W266). النص يدّعي حميمية («يصادق عليه
         المؤسِّس») لكن لا يُظهرها أبداً: البورتريه الحقيقي + ملاحظة موقَّعة
         بصيغة المتكلم يجعلانها ملموسة. مكوّن مشترك مع /à-propos (نفس الوقائع،
@@ -441,7 +499,7 @@ const investment = [
       <div class="mx-auto max-w-6xl">
         <div class="grid items-center gap-12 lg:grid-cols-[1.1fr_1fr]">
           <div class="v2-rise">
-            <p class="tech-label v2-kicker rule-brass text-lune"><span class="ms-2 font-display text-xs text-azur-200/80" aria-hidden="true">03</span>كيف يجري الأمر</p>
+            <p class="tech-label v2-kicker rule-brass text-lune"><span class="ms-2 font-display text-xs text-azur-200/80" aria-hidden="true">04</span>كيف يجري الأمر</p>
             <h2 class="display v2-section-title mt-5 max-w-md text-white">البقية تجري على WhatsApp</h2>
             <p class="v2-body mt-5 max-w-md">
               لا مركز اتصال ولا ملاحقة: يصلكم تشخيصكم عبر WhatsApp، وتتبادلون

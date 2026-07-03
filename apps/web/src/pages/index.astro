@@ -170,6 +170,33 @@ const investment = [
   { v: '60–90 %', label: 'De la facture couverte' },
   { v: '0 MAD', label: 'L’étude et le diagnostic' },
 ];
+
+// W276 — « Notre moteur, conçu au Maroc » : l'histoire vraie d'ingénierie
+// interne, racontée avec les TROIS outils réellement construits et déjà en
+// production sur le site (aucun logiciel tiers, aucun claim inventé) :
+//   1. L'estimateur piloté par la facture (src/lib/estimatorBrain.ts —
+//      position solaire calculée maison, espacement inter-rangées dérivé
+//      d'une règle solstice d'hiver, voir ESTIMATOR_BRAIN_NOTES.md).
+//   2. Le moteur de toiture 3D (/devis/mon-toit — traçage de toiture,
+//      orientation/inclinaison réelles, pas un abaque générique).
+//   3. Le moteur de devis premium (apps/ventes/quote_engine, PDF signé en
+//      ligne, cf. CLAUDE.md règle #4) qui rend le devis final.
+// Aucun chiffre fabriqué ici : le lien mène directement vers le parcours réel
+// (/devis/mon-toit) pour que le visiteur le VÉRIFIE lui-même en 60 secondes.
+const engineeringPillars = [
+  {
+    title: 'L’estimateur piloté par la facture',
+    body: 'Votre facture d’électricité suffit : notre moteur calcule la position du soleil et l’espacement des rangées de panneaux selon une règle d’ombrage au solstice d’hiver — pas un abaque générique importé.',
+  },
+  {
+    title: 'Le moteur de toiture 3D',
+    body: 'Tracez votre toit, orientez-le, et le dimensionnement s’ajuste à la géométrie réelle de votre maison — la même technologie que vous testez dans le diagnostic ci-dessus.',
+  },
+  {
+    title: 'Le moteur de devis',
+    body: 'Le chiffrage qui en sort se signe électroniquement, en ligne — aucune ressaisie manuelle entre l’étude et le document que vous signez.',
+  },
+];
 ---
 
 <Layout
@@ -441,6 +468,40 @@ const investment = [
       </div>
     </section>
 
+    {/* ── NOTRE MOTEUR, CONÇU AU MAROC (W276) — l'histoire d'ingénierie
+        interne : un installateur qui construit aussi ses propres outils
+        (estimateur piloté par la facture, moteur de toiture 3D, moteur de
+        devis). Vrai, rare dans le secteur, et vérifiable en un clic : le lien
+        mène vers le parcours réel (/devis/mon-toit) plutôt que de l'affirmer
+        dans le vide. ── */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="section px-4">
+      <div class="mx-auto max-w-6xl">
+        <div class="v2-rise max-w-2xl">
+          <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">03</span>Notre moteur, conçu au Maroc</p>
+          <h2 class="display v2-section-title mt-5 text-white">Un installateur qui construit aussi ses outils</h2>
+          <p class="v2-body mt-5">
+            La plupart des installateurs solaires achètent un logiciel de devis générique. Taqinor a
+            construit le sien : l'estimateur qui lit votre facture, le moteur qui trace votre toiture
+            en 3D, et le moteur qui produit le devis signé électroniquement. Trois outils, une seule
+            équipe technique — testez-les vous-même ci-dessous.
+          </p>
+        </div>
+        <div class="mt-12 grid gap-6 sm:grid-cols-3" data-stagger>
+          {engineeringPillars.map((p, i) => (
+            <div class="v2-rise relative min-w-0 border-t-2 border-white/10 pt-5" style={`--v2-i:${i}`}>
+              <span class="absolute -top-px left-0 h-0.5 w-10 bg-brass-400" aria-hidden="true"></span>
+              <h3 class="display mt-2 text-lg text-white">{p.title}</h3>
+              <p class="mt-2 text-sm leading-relaxed text-lune-soft">{p.body}</p>
+            </div>
+          ))}
+        </div>
+        <a href="/devis/mon-toit" class="v2-rise group mt-10 inline-flex items-center gap-1 border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-brass-300 transition-colors hover:text-brass-200">
+          Essayer le moteur sur mon toit <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span>
+        </a>
+      </div>
+    </section>
+
     {/* ── LE FONDATEUR — présence humaine (W266). Une intimité affirmée dans le
         texte (« signé par le fondateur ») mais jamais montrée : le portrait
         réel + une note signée à la première personne la rendent tangible.
@@ -455,7 +516,7 @@ const investment = [
       <div class="mx-auto max-w-6xl">
         <div class="grid items-center gap-12 lg:grid-cols-[1.1fr_1fr]">
           <div class="v2-rise">
-            <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">03</span>Comment ça se passe</p>
+            <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">04</span>Comment ça se passe</p>
             <h2 class="display v2-section-title mt-5 max-w-md text-white">La suite se passe sur WhatsApp</h2>
             <p class="v2-body mt-5 max-w-md">
               Pas de centre d'appels, pas de relances : votre diagnostic arrive sur WhatsApp,
