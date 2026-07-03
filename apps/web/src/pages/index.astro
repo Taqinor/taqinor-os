@@ -8,14 +8,17 @@
  * eyebrows sont rétrogradés en lune), grade « heure dorée » (.v3-grade) sur la
  * photographie de contenu — JAMAIS le héros (protection LCP). Mouvements et
  * chiffres réutilisent les hooks de l'accueil (count-up héro, Ken Burns,
- * .cine-in / .v2-rise), tous gated `prefers-reduced-motion`. Le diagnostic et
- * son flux de données restent inchangés (composant partagé DiagnosticForm).
+ * .cine-in / .v2-rise), tous gated `prefers-reduced-motion`.
  * Voir apps/web/DESIGN_RATIONALE.md.
+ *
+ * W249 — Un seul entonnoir : l'ancien second formulaire DiagnosticForm en
+ * fin de page (qui dupliquait les deux InstantEstimator déjà présents sur
+ * cette même page) est retiré ; DiagnosticForm.astro + /api/simulate restent
+ * intacts dans le code comme repli documenté (montés ailleurs).
  */
 import Layout from '../layouts/Layout.astro';
 import V2Enhance from '../components/V2Enhance.astro';
 import Article33Ribbon from '../components/Article33Ribbon.astro';
-import DiagnosticForm from '../components/DiagnosticForm.astro';
 import Faq from '../components/Faq.astro';
 import Picture from '../components/Picture.astro';
 import VideoChantier from '../components/VideoChantier.astro';
@@ -628,21 +631,45 @@ const engineeringPillars = [
         toute la page sans encore chiffrer sa facture. ── */}
     <InstantEstimator variant="compact" />
 
-    {/* ── ACTE FINAL — le diagnostic respire, dans le système navy+or (W51) ── */}
-    <DiagnosticForm>
-      <aside slot="aside" class="cine-card border-t-4 border-t-brass-400 p-6">
-        <p class="tech-label text-lune-faint">Dernière installation livrée</p>
-        <p class="fig lum mt-3 text-4xl" data-tally>{featured.kwc}</p>
-        <p class="tech-label mt-1 text-lune-faint">{featured.ville} · {featured.date}</p>
-        <p class="mt-4 text-sm leading-relaxed text-lune-soft">
-          Production : <strong class="text-brass-300" data-tally>{featured.production}</strong><br />
-          {[featured.panneaux, featured.onduleur, featured.batterie].filter(Boolean).join(' · ')}
-        </p>
-        <p class="mt-4 border-t border-white/10 pt-3 text-xs text-lune-faint">
-          Production mesurée — Deye Cloud. Visites de site possibles sur demande.
-        </p>
-      </aside>
-    </DiagnosticForm>
+    {/* ── ACTE FINAL — W249 : un seul entonnoir. L'ancien second formulaire
+        (DiagnosticForm, qui dupliquait les deux InstantEstimator déjà sur
+        cette page) est retiré ; à sa place, une carte CTA riche vers le
+        parcours devis réel (/devis/mon-toit), avec la même preuve sociale
+        (dernière installation livrée) qu'affichait l'aside du formulaire. ── */}
+    <section class="section px-4">
+      <div class="mx-auto grid max-w-6xl gap-8 sm:grid-cols-[1.1fr_1fr] sm:items-center">
+        <div class="v2-rise cine-card border-t-4 border-t-brass-400 p-7 sm:p-10">
+          <p class="tech-label v2-kicker rule-brass text-lune">Prêt à démarrer</p>
+          <h2 class="display v2-section-title mt-4 text-xl text-white sm:text-2xl">
+            Tracez votre toit, obtenez votre étude
+          </h2>
+          <p class="v2-body mt-4 max-w-md">
+            Le même moteur que ci-dessus, en version complète : dessinez votre toiture, affinez
+            l'orientation réelle, et recevez une étude signée par notre équipe technique.
+          </p>
+          <div class="mt-6 flex flex-wrap gap-3">
+            <a href="/devis/mon-toit" class="glow inline-flex items-center gap-2 bg-brass-400 px-6 py-3.5 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">
+              Obtenir mon étude gratuite →
+            </a>
+            <a href={waDirect} rel="noopener" class="inline-flex items-center gap-2 border border-white/40 px-6 py-3.5 text-sm font-semibold text-white transition-colors hover:border-white hover:bg-white/10">
+              WhatsApp direct
+            </a>
+          </div>
+        </div>
+        <aside class="v2-rise cine-card border-t-4 border-t-brass-400 p-6" style="--v2-i:1">
+          <p class="tech-label text-lune-faint">Dernière installation livrée</p>
+          <p class="fig lum mt-3 text-4xl" data-tally>{featured.kwc}</p>
+          <p class="tech-label mt-1 text-lune-faint">{featured.ville} · {featured.date}</p>
+          <p class="mt-4 text-sm leading-relaxed text-lune-soft">
+            Production : <strong class="text-brass-300" data-tally>{featured.production}</strong><br />
+            {[featured.panneaux, featured.onduleur, featured.batterie].filter(Boolean).join(' · ')}
+          </p>
+          <p class="mt-4 border-t border-white/10 pt-3 text-xs text-lune-faint">
+            Production mesurée — Deye Cloud. Visites de site possibles sur demande.
+          </p>
+        </aside>
+      </div>
+    </section>
 
     {/* FAQ courte de l'accueil : accordéon visuel SANS JSON-LD FAQPage —
         la page dédiée /faq est la seule à porter le FAQPage (hygiène W19). */}

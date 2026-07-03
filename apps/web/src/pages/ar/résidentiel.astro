@@ -9,6 +9,11 @@
  * visible labels are translated. Internal links via localizeNavHref. Shared
  * components auto-detect locale. FR untouched.
  *
+ * W249 — قناة واحدة: الفعل الختامي لم يعد DiagnosticForm بل عنصر التقدير
+ * الفوري المشترك مع الصفحة الرئيسية (InstantEstimator، W250 — نفس محرك
+ * billEstimate.ts، نفس رابط CTA نحو مسار عرض الثمن). DiagnosticForm يبقى
+ * سليماً في الكود كحل احتياطي موثّق.
+ *
  * ÉLÉVATION (W241) — mirrors the FR résidentiel.astro elevation:
  *  1. cinematic hero (~92svh), scrim relevé, scroll chevron, CTAs anchored bottom;
  *  2. brass discipline: eyebrows text-lune, gold only on .lum + primary CTA;
@@ -21,7 +26,7 @@ import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
 import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
-import DiagnosticForm from '../../components/DiagnosticForm.astro';
+import InstantEstimator from '../../components/InstantEstimator.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import Picture from '../../components/Picture.astro';
 import StickyCta from '../../components/StickyCta.astro';
@@ -252,8 +257,8 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
       <ServiceWarrantyTable />
     </section>
 
-    <!-- الفصل الأخير — الغرفة البيضاء -->
-    <DiagnosticForm heading="تشخيصك في 60 ثانية" />
+    <!-- الفصل الأخير — الغرفة البيضاء (W249: قناة واحدة، InstantEstimator) -->
+    <InstantEstimator variant="hero" />
 
     <CtaBand
       title="سؤال قبل أن تلتزم؟ تحدّث مع إنسان."

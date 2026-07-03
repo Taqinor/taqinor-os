@@ -6,7 +6,12 @@
  * noir. Mêmes hooks de mouvement que l'accueil élevé (.cine-in / .v2-rise,
  * count-up, Ken Burns), tous gated `prefers-reduced-motion`. Données et chiffres
  * VERBATIM — aucun fait inventé ; le formulaire et son flux de lead sont
- * inchangés byte-for-byte (composant partagé DiagnosticForm).
+ * inchangés byte-for-byte (composant partagé DiagnosticForm, conservé dans le
+ * code comme repli documenté — cf. /api/simulate).
+ *
+ * W249 — Un seul entonnoir : l'acte final n'est plus DiagnosticForm mais le
+ * widget d'estimation instantanée partagé avec l'accueil (InstantEstimator,
+ * W250 — même cerveau billEstimate.ts, même CTA vers le parcours devis).
  *
  * Élévations appliquées (réf. /preview/accueil-v3 + index.astro) :
  *  1. héros cinématographique plus haut (~92svh), photo plein cadre
@@ -23,7 +28,7 @@ import Layout from '../layouts/Layout.astro';
 import V2Enhance from '../components/V2Enhance.astro';
 import Article33Ribbon from '../components/Article33Ribbon.astro';
 import Breadcrumb from '../components/Breadcrumb.astro';
-import DiagnosticForm from '../components/DiagnosticForm.astro';
+import InstantEstimator from '../components/InstantEstimator.astro';
 import CtaBand from '../components/CtaBand.astro';
 import Picture from '../components/Picture.astro';
 import StickyCta from '../components/StickyCta.astro';
@@ -465,8 +470,8 @@ const capexOpex = [
       <ServiceWarrantyTable />
     </section>
 
-    <!-- ACTE FINAL — la salle blanche -->
-    <DiagnosticForm heading="Diagnostic pour votre site professionnel" />
+    <!-- ACTE FINAL — la salle blanche (W249 : un seul entonnoir, InstantEstimator) -->
+    <InstantEstimator variant="hero" />
 
     <CtaBand
       title="Une question sur votre site avant de vous lancer ? Parlez à un humain."

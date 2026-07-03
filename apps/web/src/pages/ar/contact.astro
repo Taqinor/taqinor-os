@@ -1,15 +1,19 @@
 ---
 /**
  * AR — Contact (W67). Faithful Arabic (RTL) translation of /contact ; FR
- * untouched. The lead form keeps an IDENTICAL data flow in every locale: same
- * payload, same /api/simulate endpoint, same 1 000 MAD threshold, same WhatsApp
- * deeplink — only the VISIBLE labels are localised. Latin brand names, phone
- * and email stay LTR via dir="ltr" spans inside the RTL page.
+ * untouched. Latin brand names, phone and email stay LTR via dir="ltr" spans
+ * inside the RTL page.
+ *
+ * W249 — /contact تصبح صفحة «التحدث مع إنسان»: تمت إزالة نموذج DiagnosticForm
+ * (الذي كان يكرر التقاط /devis/mon-toit والصفحة الرئيسية) من هنا.
+ * DiagnosticForm.astro و /api/simulate يبقيان سليمين في الكود كحل احتياطي
+ * موثّق (مثبّتان في أماكن أخرى) — كانت هذه الصفحة أصلاً، تحت النموذج، تحتوي
+ * فقط على أبواب إنسانية (واتساب، هاتف، NAP، SAV)؛ تصبح النسخة الخالصة من ذلك،
+ * مع طلب معاودة اتصال هاتفي صريح إضافي.
  */
 import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
 import Article33Ribbon from '../../components/Article33Ribbon.astro';
-import DiagnosticForm from '../../components/DiagnosticForm.astro';
 import StarRating from '../../components/StarRating.astro';
 import { NAP, WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink, regularizationWhatsappText } from '../../lib/whatsapp';
@@ -18,6 +22,12 @@ import { whatsappLink, regularizationWhatsappText } from '../../lib/whatsapp';
 // pre-filled text stays French (it reaches the French-speaking sales team).
 const waGeneral = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour une installation solaire.');
 const waRegul = whatsappLink(WHATSAPP_LEADS, regularizationWhatsappText());
+// W249 — طلب معاودة الاتصال: رسالة واتساب مُعبَّأة مسبقاً تطلب صراحة معاودة
+// اتصال هاتفي (بدل عرض ثمن عبر الإنترنت) — باب إنساني لمن يفضّل التحدث بدل الكتابة.
+const waRappel = whatsappLink(
+  WHATSAPP_LEADS,
+  'Bonjour, pouvez-vous me rappeler par téléphone pour parler de mon projet solaire ?',
+);
 
 // W285 — «زيارة ورش» تصبح فعلاً: نفس دعوة pourquoi-taqinor.astro، هنا في
 // شكل رابط واتساب مباشر بدل رابط بسيط نحو /realisations. النص المُعبَّأ
@@ -27,8 +37,8 @@ const waVisite = whatsappLink(
   'Bonjour, je souhaite visiter une installation réelle Taqinor avant de me décider.',
 );
 
-// W339 — باب SAV/الأعطال «هل أنت زبون بالفعل؟»، منفصل عن ويبهوك العملاء
-// المحتملين التجاري (DiagnosticForm أعلاه، دون تغيير). النص مُعبَّأ مسبقاً
+// W339 — باب SAV/الأعطال «هل أنت زبون بالفعل؟»، منفصل عن أبواب الاستقطاب
+// التجاري أعلاه (مشروع جديد / معاودة اتصال / تسوية). النص مُعبَّأ مسبقاً
 // يبقى بالفرنسية (نفس فريق البيع/الصيانة) لكنه يحدد صراحة بلاغ عطل على
 // تركيبة قائمة، ليُوجَّه بشكل مختلف عن طلب عرض ثمن.
 const waSav = whatsappLink(
@@ -38,8 +48,8 @@ const waSav = whatsappLink(
 ---
 
 <Layout
-  title="اتصال — دراسة شمسية مجانية | Taqinor"
-  description="اطلب دراستك الشمسية المجانية: نموذج تقدير فوري، واتساب مباشر، تدخّل في كامل المغرب. رد خلال 48 ساعة عمل."
+  title="اتصال — تحدّث مع إنسان | Taqinor"
+  description="واتساب مباشر، معاودة اتصال هاتفي، معلومات تواصل كاملة: تحدّث مع فريق Taqinor التقني بخصوص مشروعك الشمسي. رد خلال 48 ساعة عمل."
   ogSlug="contact"
 >
   <div class="v2">
@@ -49,9 +59,10 @@ const waSav = whatsappLink(
     <section class="px-4 py-20 text-white">
       <div class="mx-auto max-w-6xl">
         <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">رد خلال 48 ساعة عمل</p>
-        <h1 class="display v2-page-title cine-in mt-5 max-w-2xl [animation-delay:120ms]">لنتحدّث عن تركيبتك</h1>
+        <h1 class="display v2-page-title cine-in mt-5 max-w-2xl [animation-delay:120ms]">تحدّث مع إنسان</h1>
         <p class="v2-lead cine-in mt-5 max-w-xl text-white/85 [animation-delay:240ms]">
-          يمنحك النموذج شريحة فورية. وللذهاب أسرع، راسلنا مباشرة عبر واتساب.
+          لا نموذج هنا: راسلنا مباشرة عبر واتساب، اتصل بنا، أو اطلب معاودة الاتصال. للحصول على
+          تقدير مُسعّر في 60 ثانية، التشخيص متوفر في الصفحة الرئيسية.
         </p>
         {/* W280 — StarRating: تقييم Google حقيقي فقط، آمن بدون بيانات (لا
             يعرض شيئاً حتى يوفّر المؤسّس تقييماً حقيقياً). */}
@@ -61,20 +72,26 @@ const waSav = whatsappLink(
       </div>
     </section>
 
-    <DiagnosticForm heading="تشخيص شمسي — تقدير فوري" />
-
-    <!-- لا نزال في الفصل المضيء: اختصارات واتساب وبطاقة NAP -->
-    <section class="bg-blanc-azur px-4 pb-16 text-encre">
-      <div class="mx-auto max-w-3xl">
-        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
+    <!-- W249 — صفحة «التحدث مع إنسان»: اختصارات واتساب/الهاتف وبطاقة NAP -->
+    <section class="bg-blanc-azur px-4 py-16 text-encre">
+      <div class="mx-auto max-w-4xl">
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
           <a href={waGeneral} rel="noopener"
             class="v2-rise group border border-azur-900/15 bg-blanc p-6 text-center transition-all hover:-translate-y-0.5 hover:border-azur-600 hover:shadow-[0_14px_40px_-16px_rgb(15_28_84/0.4)]" style="--v2-i:0">
             <p class="tech-label text-azur-600">مشروع جديد</p>
             <p class="mt-2 font-display font-bold">واتساب — تركيبة جديدة</p>
             <p class="mt-1 text-sm text-encre-soft">دراسة وعرض ثمن لمشروع جديد</p>
           </a>
-          <a href={waRegul} rel="noopener"
+          {/* W249 — معاودة الاتصال الهاتفي: باب إنساني لمن يفضّل التحدث بدل
+              الكتابة (مُعبَّأ مسبقاً، لا فراغ للتحرير). */}
+          <a href={waRappel} rel="noopener"
             class="v2-rise group border border-azur-900/15 bg-blanc p-6 text-center transition-all hover:-translate-y-0.5 hover:border-azur-600 hover:shadow-[0_14px_40px_-16px_rgb(15_28_84/0.4)]" style="--v2-i:1">
+            <p class="tech-label text-azur-600">عبر الهاتف</p>
+            <p class="mt-2 font-display font-bold">اطلب معاودة الاتصال</p>
+            <p class="mt-1 text-sm text-encre-soft">نتصل بك — بدون نموذج إلكتروني</p>
+          </a>
+          <a href={waRegul} rel="noopener"
+            class="v2-rise group border border-azur-900/15 bg-blanc p-6 text-center transition-all hover:-translate-y-0.5 hover:border-azur-600 hover:shadow-[0_14px_40px_-16px_rgb(15_28_84/0.4)]" style="--v2-i:2">
             <p class="tech-label text-azur-600">المادة 33</p>
             <p class="mt-2 font-display font-bold">واتساب — التسوية</p>
             <p class="mt-1 text-sm text-encre-soft">تركيبة قائمة لتسويتها قانونياً</p>
@@ -82,7 +99,7 @@ const waSav = whatsappLink(
           {/* W285 — «زيارة ورش» تصبح فعلاً: نفس دعوة pourquoi-taqinor.astro،
               في شكل رابط واتساب مباشر. */}
           <a href={waVisite} rel="noopener"
-            class="v2-rise group border border-azur-900/15 bg-blanc p-6 text-center transition-all hover:-translate-y-0.5 hover:border-azur-600 hover:shadow-[0_14px_40px_-16px_rgb(15_28_84/0.4)]" style="--v2-i:2">
+            class="v2-rise group border border-azur-900/15 bg-blanc p-6 text-center transition-all hover:-translate-y-0.5 hover:border-azur-600 hover:shadow-[0_14px_40px_-16px_rgb(15_28_84/0.4)]" style="--v2-i:3">
             <p class="tech-label text-azur-600">اطّلع قبل أن توقّع</p>
             <p class="mt-2 font-display font-bold">واتساب — زيارة ورش</p>
             <p class="mt-1 text-sm text-encre-soft">أرغب في زيارة تركيبة حقيقية</p>

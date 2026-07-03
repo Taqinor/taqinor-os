@@ -13,13 +13,16 @@
  * on the AR page when one exists, else falls back to the existing FR page
  * (never a dead link). The Layout auto-sets lang=ar + dir=rtl; only text is
  * translated, RTL-logical classes (border-s/e, ps/pe, ms/me, start/end) keep
- * the composition mirrored. The FR homepage is untouched. The DiagnosticForm
- * and its lead data flow are locale-agnostic.
+ * the composition mirrored. The FR homepage is untouched.
+ *
+ * W249 — Single funnel: the former second lead form (DiagnosticForm, which
+ * duplicated the two InstantEstimator widgets already on this same page) is
+ * removed; DiagnosticForm.astro + /api/simulate stay intact in the codebase
+ * as the documented fallback (mounted elsewhere).
  */
 import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
 import Article33Ribbon from '../../components/Article33Ribbon.astro';
-import DiagnosticForm from '../../components/DiagnosticForm.astro';
 import Faq from '../../components/Faq.astro';
 import Picture from '../../components/Picture.astro';
 import VideoChantier from '../../components/VideoChantier.astro';
@@ -600,21 +603,45 @@ const engineeringPillars = [
         الصفحة كاملة دون أن يُقدِّر فاتورته بعد. ── */}
     <InstantEstimator variant="compact" />
 
-    {/* ── الفصل الأخير — التشخيص يتنفّس، ضمن نظام الكحلي+الذهبي ── */}
-    <DiagnosticForm>
-      <aside slot="aside" class="cine-card border-t-4 border-t-brass-400 p-6">
-        <p class="tech-label text-lune-faint">آخر تركيب مُسلَّم</p>
-        <p class="fig lum mt-3 text-4xl" data-tally>{featured.kwc}</p>
-        <p class="tech-label mt-1 text-lune-faint">{featuredVilleAr} · {featured.date}</p>
-        <p class="mt-4 text-sm leading-relaxed text-lune-soft">
-          الإنتاج: <strong class="text-brass-300" data-tally>{featured.production?.replace('/an', '/سنة')}</strong><br />
-          {[featured.panneaux, featured.onduleur, featured.batterie].filter(Boolean).join(' · ')}
-        </p>
-        <p class="mt-4 border-t border-white/10 pt-3 text-xs text-lune-faint">
-          إنتاج مُقاس — Deye Cloud. زيارات الموقع ممكنة عند الطلب.
-        </p>
-      </aside>
-    </DiagnosticForm>
+    {/* ── الفصل الأخير — W249: قناة واحدة. النموذج الثاني السابق
+        (DiagnosticForm، الذي كان يكرر عنصري InstantEstimator الموجودين أصلاً
+        في هذه الصفحة) استُبدل ببطاقة CTA غنية نحو مسار عرض الثمن الحقيقي
+        (/devis/mon-toit)، مع الاحتفاظ بنفس الدليل الاجتماعي (آخر تركيب
+        مُسلَّم) الذي كان يعرضه العمود الجانبي للنموذج. ── */}
+    <section class="section px-4">
+      <div class="mx-auto grid max-w-6xl gap-8 sm:grid-cols-[1.1fr_1fr] sm:items-center">
+        <div class="v2-rise cine-card border-t-4 border-t-brass-400 p-7 sm:p-10">
+          <p class="tech-label v2-kicker rule-brass text-lune">جاهز للبدء</p>
+          <h2 class="display v2-section-title mt-4 text-xl text-white sm:text-2xl">
+            ارسم سطحك، احصل على دراستك
+          </h2>
+          <p class="v2-body mt-4 max-w-md">
+            نفس المحرك أعلاه، بالنسخة الكاملة: ارسم سطحك، اضبط التوجيه الحقيقي، واحصل على دراسة
+            موقّعة من فريقنا التقني.
+          </p>
+          <div class="mt-6 flex flex-wrap gap-3">
+            <a href={L('/devis/mon-toit')} class="glow inline-flex items-center gap-2 bg-brass-400 px-6 py-3.5 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">
+              احصل على دراستي المجانية ←
+            </a>
+            <a href={waDirect} rel="noopener" class="inline-flex items-center gap-2 border border-white/40 px-6 py-3.5 text-sm font-semibold text-white transition-colors hover:border-white hover:bg-white/10">
+              واتساب مباشر
+            </a>
+          </div>
+        </div>
+        <aside class="v2-rise cine-card border-t-4 border-t-brass-400 p-6" style="--v2-i:1">
+          <p class="tech-label text-lune-faint">آخر تركيب مُسلَّم</p>
+          <p class="fig lum mt-3 text-4xl" data-tally>{featured.kwc}</p>
+          <p class="tech-label mt-1 text-lune-faint">{featuredVilleAr} · {featured.date}</p>
+          <p class="mt-4 text-sm leading-relaxed text-lune-soft">
+            الإنتاج: <strong class="text-brass-300" data-tally>{featured.production?.replace('/an', '/سنة')}</strong><br />
+            {[featured.panneaux, featured.onduleur, featured.batterie].filter(Boolean).join(' · ')}
+          </p>
+          <p class="mt-4 border-t border-white/10 pt-3 text-xs text-lune-faint">
+            إنتاج مُقاس — Deye Cloud. زيارات الموقع ممكنة عند الطلب.
+          </p>
+        </aside>
+      </div>
+    </section>
 
     {/* FAQ قصيرة للصفحة الرئيسية: أكورديون بصري بلا JSON-LD من نوع FAQPage —
          صفحة /faq المخصّصة هي الوحيدة التي تحمل FAQPage. */}

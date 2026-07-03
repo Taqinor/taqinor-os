@@ -5,8 +5,11 @@
  * 21 406 kWh/an, 3,72 kWc, ref. 468, Canadian Solar 710 Wc, Deye 15 kW, law
  * 82-21) — UK spelling (authorisation). Price-bracket data + solar math (localEstimateBand / formatMAD) reused
  * UNCHANGED — only visible labels translated. Internal links via localizeNavHref.
- * Shared components (GarantiesTeaser, Testimonials, DiagnosticForm) auto-detect
- * locale. FR untouched.
+ * Shared components (GarantiesTeaser, Testimonials) auto-detect locale. FR untouched.
+ *
+ * W249 — Single funnel: the closing act is no longer DiagnosticForm but the
+ * instant-estimate widget shared with the homepage (InstantEstimator, W250).
+ * DiagnosticForm stays intact in the codebase as the documented fallback.
  *
  * ELEVATION (W237) — mirrors /professionnel.astro elevation treatment:
  *  1. Cinematic hero (~92svh) full-frame photo, eyebrow text-lune, ONE brass CTA
@@ -22,7 +25,7 @@ import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
 import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
-import DiagnosticForm from '../../components/DiagnosticForm.astro';
+import InstantEstimator from '../../components/InstantEstimator.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import Picture from '../../components/Picture.astro';
 import StickyCta from '../../components/StickyCta.astro';
@@ -463,8 +466,8 @@ const capexOpex = [
       <ServiceWarrantyTable />
     </section>
 
-    <!-- FINAL ACT — the clean room -->
-    <DiagnosticForm heading="Assessment for your business site" />
+    <!-- FINAL ACT — the clean room (W249: single funnel, InstantEstimator) -->
+    <InstantEstimator variant="hero" />
 
     <CtaBand
       title="A question about your site before you commit? Talk to a human."

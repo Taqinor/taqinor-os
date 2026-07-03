@@ -3,24 +3,37 @@
  * Page publique — élévation « élégance retenue » : typographie éditoriale,
  * révélations au défilement, chiffres count-up, parallaxe d'en-tête (desktop)
  * + mouvement photo (Ken Burns d'en-tête, montée d'échelle au défilement).
- * Tout le mouvement est désactivé sous prefers-reduced-motion. Le diagnostic
- * et son flux de données restent inchangés (composant partagé DiagnosticForm).
+ * Tout le mouvement est désactivé sous prefers-reduced-motion.
  * Voir apps/web/DESIGN_RATIONALE.md.
  *
  * W262 — Zone d'intervention reformulée honnêtement : axe Casablanca–Rabat
  * (où sont les chantiers réels) + les autres villes NAP.serviceArea nommées
  * sur devis, plus de « déplacements dans tout le Maroc » implicite.
+ *
+ * W249 — /contact devient la page « parler à un humain » : le formulaire
+ * DiagnosticForm (qui dupliquait la capture de /devis/mon-toit et de
+ * l'accueil) est retiré d'ici. DiagnosticForm.astro + /api/simulate restent
+ * intacts dans le code comme repli documenté (montés ailleurs) — cette page
+ * ne contenait déjà, sous le formulaire, que des portes humaines (WhatsApp,
+ * téléphone, NAP, SAV) : elle en devient la version pure, avec en plus un
+ * rappel téléphonique explicite.
  */
 import Layout from '../layouts/Layout.astro';
 import V2Enhance from '../components/V2Enhance.astro';
 import Article33Ribbon from '../components/Article33Ribbon.astro';
-import DiagnosticForm from '../components/DiagnosticForm.astro';
 import StarRating from '../components/StarRating.astro';
 import { NAP, WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink, regularizationWhatsappText } from '../lib/whatsapp';
 
 const waGeneral = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour une installation solaire.');
 const waRegul = whatsappLink(WHATSAPP_LEADS, regularizationWhatsappText());
+// W249 — rappel téléphonique : message WhatsApp pré-rempli qui demande
+// explicitement un rappel (plutôt qu'un devis en ligne) — porte humaine pour
+// qui préfère parler de vive voix.
+const waRappel = whatsappLink(
+  WHATSAPP_LEADS,
+  'Bonjour, pouvez-vous me rappeler par téléphone pour parler de mon projet solaire ?',
+);
 
 /**
  * W285 — « Visiter un chantier » devient une action : même invitation que
@@ -33,9 +46,9 @@ const waVisite = whatsappLink(
 );
 
 /**
- * W339 — « Déjà client ? » porte SAV/urgence, SÉPARÉE du webhook de leads
- * commerciaux (formulaire DiagnosticForm ci-dessus, inchangé). Même numéro
- * WhatsApp que le reste du site (WHATSAPP_LEADS — un seul numéro connu à ce
+ * W339 — « Déjà client ? » porte SAV/urgence, SÉPARÉE des portes de
+ * prospection commerciale ci-dessus (nouveau projet / rappel / régularisation).
+ * Même numéro WhatsApp que le reste du site (WHATSAPP_LEADS — un seul numéro connu à ce
  * jour), mais un message pré-rempli qui identifie explicitement un signalement
  * de panne sur une installation EXISTANTE, pour que l'équipe SAV le route
  * différemment d'une demande de devis dès la première lecture.
@@ -47,8 +60,8 @@ const waSav = whatsappLink(
 ---
 
 <Layout
-  title="Contact — étude solaire gratuite | Taqinor"
-  description="Demandez votre étude solaire gratuite : formulaire d'estimation immédiate, WhatsApp direct, intervention dans tout le Maroc. Réponse sous 48 h ouvrées."
+  title="Contact — parlez à un humain | Taqinor"
+  description="WhatsApp direct, rappel téléphonique, coordonnées complètes : parlez à l'équipe technique Taqinor pour votre projet solaire. Réponse sous 48 h ouvrées."
   ogSlug="contact"
 >
   <div class="v2">
@@ -58,10 +71,10 @@ const waSav = whatsappLink(
     <section class="px-4 py-20 text-white">
       <div class="mx-auto max-w-6xl">
         <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Réponse sous 48 h ouvrées</p>
-        <h1 class="display v2-page-title cine-in mt-5 max-w-2xl [animation-delay:120ms]">Parlons de votre installation</h1>
+        <h1 class="display v2-page-title cine-in mt-5 max-w-2xl [animation-delay:120ms]">Parlez à un humain</h1>
         <p class="v2-lead cine-in mt-5 max-w-xl text-white/85 [animation-delay:240ms]">
-          Le formulaire vous donne une fourchette immédiate. Pour aller plus vite,
-          écrivez-nous directement sur WhatsApp.
+          Pas de formulaire ici : écrivez-nous directement sur WhatsApp, appelez, ou demandez à être
+          rappelé. Pour une estimation chiffrée en 60 secondes, le diagnostic vit sur la page d'accueil.
         </p>
         {/* W280 — StarRating : note Google réelle uniquement, no-op-safe
             (n'affiche rien tant que le fondateur n'a pas renseigné une vraie note). */}
@@ -71,20 +84,26 @@ const waSav = whatsappLink(
       </div>
     </section>
 
-    <DiagnosticForm heading="Diagnostic solaire — estimation immédiate" />
-
-    <!-- Toujours dans l'acte éclairé : les raccourcis WhatsApp et la fiche NAP -->
-    <section class="bg-blanc-azur px-4 pb-16 text-encre">
-      <div class="mx-auto max-w-3xl">
-        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
+    <!-- W249 — page « parler à un humain » : les raccourcis WhatsApp/téléphone et la fiche NAP -->
+    <section class="bg-blanc-azur px-4 py-16 text-encre">
+      <div class="mx-auto max-w-4xl">
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
           <a href={waGeneral} rel="noopener"
             class="v2-rise group border border-azur-900/15 bg-blanc p-6 text-center transition-all hover:-translate-y-0.5 hover:border-azur-600 hover:shadow-[0_14px_40px_-16px_rgb(15_28_84/0.4)]" style="--v2-i:0">
             <p class="tech-label text-azur-600">Nouveau projet</p>
             <p class="mt-2 font-display font-bold">WhatsApp — nouvelle installation</p>
             <p class="mt-1 text-sm text-encre-soft">Étude et devis pour un nouveau projet</p>
           </a>
-          <a href={waRegul} rel="noopener"
+          {/* W249 — rappel téléphonique : porte humaine pour qui préfère parler
+              de vive voix plutôt qu'écrire (pré-rempli, jamais un blanc à éditer). */}
+          <a href={waRappel} rel="noopener"
             class="v2-rise group border border-azur-900/15 bg-blanc p-6 text-center transition-all hover:-translate-y-0.5 hover:border-azur-600 hover:shadow-[0_14px_40px_-16px_rgb(15_28_84/0.4)]" style="--v2-i:1">
+            <p class="tech-label text-azur-600">Par téléphone</p>
+            <p class="mt-2 font-display font-bold">Demander un rappel</p>
+            <p class="mt-1 text-sm text-encre-soft">On vous appelle, pas de saisie en ligne</p>
+          </a>
+          <a href={waRegul} rel="noopener"
+            class="v2-rise group border border-azur-900/15 bg-blanc p-6 text-center transition-all hover:-translate-y-0.5 hover:border-azur-600 hover:shadow-[0_14px_40px_-16px_rgb(15_28_84/0.4)]" style="--v2-i:2">
             <p class="tech-label text-azur-600">Article 33</p>
             <p class="mt-2 font-display font-bold">WhatsApp — régularisation</p>
             <p class="mt-1 text-sm text-encre-soft">Installation existante à mettre en conformité</p>
@@ -92,7 +111,7 @@ const waSav = whatsappLink(
           {/* W285 — « Visiter un chantier » devient une action : même
               invitation que pourquoi-taqinor.astro, en raccourci WhatsApp direct. */}
           <a href={waVisite} rel="noopener"
-            class="v2-rise group border border-azur-900/15 bg-blanc p-6 text-center transition-all hover:-translate-y-0.5 hover:border-azur-600 hover:shadow-[0_14px_40px_-16px_rgb(15_28_84/0.4)]" style="--v2-i:2">
+            class="v2-rise group border border-azur-900/15 bg-blanc p-6 text-center transition-all hover:-translate-y-0.5 hover:border-azur-600 hover:shadow-[0_14px_40px_-16px_rgb(15_28_84/0.4)]" style="--v2-i:3">
             <p class="tech-label text-azur-600">Voir avant de signer</p>
             <p class="mt-2 font-display font-bold">WhatsApp — visiter un chantier</p>
             <p class="mt-1 text-sm text-encre-soft">Je souhaite visiter une installation réelle</p>
