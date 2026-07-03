@@ -1073,52 +1073,6 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     hasMeterPhoto = !!(meterPhotoInput.files && meterPhotoInput.files.length > 0);
   });
 
-  // ——— WJ6 : assistant multi-étapes + barre de progression ———
-  // WJ61 — the initial step reprises the sessionStorage snapshot if present
-  // (refresh/back mid-journey), otherwise 0 as before.
-  let step = savedWizard?.step != null ? Math.max(0, Math.min(2, savedWizard.step)) : 0;
-  const panels = [0, 1, 2].map((i) => $(`mt-panel-${i}`));
-  let firstRender = true;
-  function renderStep() {
-    panels.forEach((p, i) => { if (p) p.hidden = i !== step; });
-    document.querySelectorAll<HTMLElement>('.mt-step').forEach((li, i) => {
-      const bar = li.querySelector<HTMLElement>('.mt-step-bar');
-      const label = li.querySelector<HTMLElement>('.mt-step-label');
-      const active = i <= step;
-      if (bar) bar.className = `h-1.5 w-full rounded-full mt-step-bar transition-colors ${active ? 'bg-brass-400' : 'bg-white/10'}`;
-      if (label) label.classList.toggle('text-white', i === step);
-    });
-    // WJ61 — on the very first render (load/rehydration), don't force a
-    // scroll: the visitor just arrived/came back, the page hasn't moved under
-    // them yet. Scrolling stays for every SUBSEQUENT step.
-    if (firstRender) { firstRender = false; return; }
-    const root = document.querySelector('section');
-    root?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
-  }
-  // WJ61 — pushState PER STEP: the browser's back button steps back one
-  // wizard step instead of leaving the page outright (the most frequent
-  // failure of an accidental "back"). `fromPopstate` avoids re-pushing a
-  // state while already reacting to a `popstate`.
-  function goStep(n: number, fromPopstate = false) {
-    step = Math.max(0, Math.min(2, n));
-    renderStep();
-    saveWizardState();
-    if (!fromPopstate) {
-      history.pushState({ mtStep: step }, '', location.href);
-    }
-  }
-  window.addEventListener('popstate', (e) => {
-    const st = (e.state as { mtStep?: number } | null)?.mtStep;
-    goStep(st != null ? st : Math.max(0, step - 1), true);
-  });
-  $('mt-next-0')?.addEventListener('click', () => goStep(1));
-  $('mt-back-1')?.addEventListener('click', () => goStep(0));
-  $('mt-back-2')?.addEventListener('click', () => goStep(1));
-  // WJ61 — push a first history entry on load so the very first "back" has an
-  // `mtStep` state to consult.
-  history.replaceState({ mtStep: step }, '', location.href);
-  renderStep();
-
   // ——— boot carte (captureOnly). Repli sans clé carte AUTORISE la suite (WJ4) ———
   let started = false;
   const mapEl = $('rp9-map');
@@ -1178,16 +1132,76 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // ample time to respond while still bounding the wait; the failure (timeout
   // included) falls into the existing address fallback (WJ4), never a block.
   const FETCH_TIMEOUT_MS = 10_000;
-  (async () => {
-    try {
-      const res = await fetch('/api/roof-config', { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
-      const cfg = (await res.json()) as { available?: boolean; maptilerKey?: string; mapboxToken?: string };
-      if (!cfg.available || !cfg.maptilerKey) { showFallback(); return; }
-      void boot(cfg.maptilerKey, cfg.mapboxToken || '');
-    } catch {
-      showFallback();
+  // W324 — only fire the /api/roof-config fetch (→ lazy maplibre-gl import,
+  // ~200 KB+) once the map step (step 0) is actually the ACTIVE step — never
+  // on plain page load. A visitor resuming mid-journey at step 1/2 (WJ61:
+  // restored sessionStorage snapshot, or browser back) never pays for a map
+  // they won't see. `mapFetchDone` keeps the call idempotent (one fetch per
+  // visit, even across repeated step-0 visits via Back/Continue).
+  let mapFetchDone = false;
+  function ensureMapBooted() {
+    if (mapFetchDone) return;
+    mapFetchDone = true;
+    (async () => {
+      try {
+        const res = await fetch('/api/roof-config', { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+        const cfg = (await res.json()) as { available?: boolean; maptilerKey?: string; mapboxToken?: string };
+        if (!cfg.available || !cfg.maptilerKey) { showFallback(); return; }
+        void boot(cfg.maptilerKey, cfg.mapboxToken || '');
+      } catch {
+        showFallback();
+      }
+    })();
+  }
+
+  // ——— WJ6 : assistant multi-étapes + barre de progression ———
+  // WJ61 — the initial step reprises the sessionStorage snapshot if present
+  // (refresh/back mid-journey), otherwise 0 as before.
+  let step = savedWizard?.step != null ? Math.max(0, Math.min(2, savedWizard.step)) : 0;
+  const panels = [0, 1, 2].map((i) => $(`mt-panel-${i}`));
+  let firstRender = true;
+  function renderStep() {
+    panels.forEach((p, i) => { if (p) p.hidden = i !== step; });
+    document.querySelectorAll<HTMLElement>('.mt-step').forEach((li, i) => {
+      const bar = li.querySelector<HTMLElement>('.mt-step-bar');
+      const label = li.querySelector<HTMLElement>('.mt-step-label');
+      const active = i <= step;
+      if (bar) bar.className = `h-1.5 w-full rounded-full mt-step-bar transition-colors ${active ? 'bg-brass-400' : 'bg-white/10'}`;
+      if (label) label.classList.toggle('text-white', i === step);
+    });
+    // W324 — the map step is now ACTIVE: this is where (never on plain page
+    // load) we fire the config fetch + the lazy maplibre-gl import.
+    if (step === 0) ensureMapBooted();
+    // WJ61 — on the very first render (load/rehydration), don't force a
+    // scroll: the visitor just arrived/came back, the page hasn't moved under
+    // them yet. Scrolling stays for every SUBSEQUENT step.
+    if (firstRender) { firstRender = false; return; }
+    const root = document.querySelector('section');
+    root?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
+  }
+  // WJ61 — pushState PER STEP: the browser's back button steps back one
+  // wizard step instead of leaving the page outright (the most frequent
+  // failure of an accidental "back"). `fromPopstate` avoids re-pushing a
+  // state while already reacting to a `popstate`.
+  function goStep(n: number, fromPopstate = false) {
+    step = Math.max(0, Math.min(2, n));
+    renderStep();
+    saveWizardState();
+    if (!fromPopstate) {
+      history.pushState({ mtStep: step }, '', location.href);
     }
-  })();
+  }
+  window.addEventListener('popstate', (e) => {
+    const st = (e.state as { mtStep?: number } | null)?.mtStep;
+    goStep(st != null ? st : Math.max(0, step - 1), true);
+  });
+  $('mt-next-0')?.addEventListener('click', () => goStep(1));
+  $('mt-back-1')?.addEventListener('click', () => goStep(0));
+  $('mt-back-2')?.addEventListener('click', () => goStep(1));
+  // WJ61 — push a first history entry on load so the very first "back" has an
+  // `mtStep` state to consult.
+  history.replaceState({ mtStep: step }, '', location.href);
+  renderStep();
 
   // ——— helpers de saisie ———
   const val = (id: string) => (($(id) as HTMLInputElement | HTMLSelectElement | null)?.value ?? '');
