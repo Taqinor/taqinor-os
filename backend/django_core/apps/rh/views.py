@@ -48,7 +48,9 @@ from .models import (
     Departement,
     DeviceKiosque,
     EmployeDeviceMap,
+    EntretienRecrutement,
     GrilleSalariale,
+    NoteEntretien,
     PeriodeFermeture,
     ReglageRH,
     DocumentEmploye,
@@ -106,7 +108,9 @@ from .serializers import (
     DepartementSerializer,
     DeviceKiosqueSerializer,
     EmployeDeviceMapSerializer,
+    EntretienRecrutementSerializer,
     GrilleSalarialeSerializer,
+    NoteEntretienSerializer,
     PeriodeFermetureSerializer,
     ReglageRHSerializer,
     DocumentEmployeSerializer,
@@ -2834,6 +2838,52 @@ class CandidatureViewSet(_RhBaseViewSet):
         candidature.refresh_from_db()
         return Response(
             self.get_serializer(candidature).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='comparatif')
+    def comparatif(self, request, pk=None):
+        """XRH17 — comparatif des candidats de la MÊME ouverture (moyennes
+        des notes d'entretien, classées décroissant)."""
+        candidature = self.get_object()
+        return Response(
+            selectors.comparatif_candidats(
+                request.user.company, candidature.ouverture_id))
+
+
+class EntretienRecrutementViewSet(_RhBaseViewSet):
+    """Entretiens de recrutement (XRH17) — planification + évaluation.
+
+    Société scopée + Administrateur/Responsable. ``company`` posée CÔTÉ
+    SERVEUR ; ``candidature`` doit appartenir à la société. Filtre
+    ``?candidature=<id>``.
+    """
+    queryset = EntretienRecrutement.objects.select_related(
+        'candidature').prefetch_related('evaluateurs', 'notes').all()
+    serializer_class = EntretienRecrutementSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_heure', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        candidature = self.request.query_params.get('candidature')
+        if candidature:
+            qs = qs.filter(candidature_id=candidature)
+        return qs
+
+    @action(detail=True, methods=['post'], url_path='noter')
+    def noter(self, request, pk=None):
+        """Note l'entretien pour l'évaluateur APPELANT (posé côté serveur).
+        Une seule note par (entretien, évaluateur) — un 2e appel met à jour."""
+        entretien = self.get_object()
+        note, _ = NoteEntretien.objects.update_or_create(
+            entretien=entretien, evaluateur=request.user,
+            defaults={
+                'company': request.user.company,
+                'notes_criteres': request.data.get('notes_criteres', {}),
+                'commentaire': request.data.get('commentaire', ''),
+                'avis': request.data.get('avis', NoteEntretien.Avis.RESERVE),
+            })
+        return Response(
+            NoteEntretienSerializer(note).data, status=status.HTTP_201_CREATED)
 
 
 class CampagneEvaluationViewSet(_RhBaseViewSet):

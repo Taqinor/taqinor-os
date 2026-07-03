@@ -4667,3 +4667,133 @@ class GrilleSalariale(models.Model):
         echelon = f' [{self.echelon}]' if self.echelon else ''
         return (f'{self.poste}{echelon} — {self.salaire_min}–'
                 f'{self.salaire_max} MAD')
+
+
+class EntretienRecrutement(models.Model):
+    """Entretien de recrutement (XRH17) — planification pour une candidature.
+
+    Le pipeline (FG189) a une étape « entretien » mais aucun objet dédié :
+    pas de date, pas d'évaluateur, pas de notation structurée. Un entretien
+    porte une ``date_heure``, un ``type`` (téléphonique/technique/RH/final),
+    des ``evaluateurs`` (M2M users) et un ``statut``. Les notes vivent dans
+    ``NoteEntretien`` (une par évaluateur).
+
+    Multi-société : ``company`` posée côté serveur ; ``candidature`` doit
+    appartenir à la société.
+    """
+    class TypeEntretien(models.TextChoices):
+        TELEPHONIQUE = 'telephonique', 'Téléphonique'
+        TECHNIQUE = 'technique', 'Technique'
+        RH = 'rh', 'RH'
+        FINAL = 'final', 'Final'
+
+    class Statut(models.TextChoices):
+        PLANIFIE = 'planifie', 'Planifié'
+        REALISE = 'realise', 'Réalisé'
+        ANNULE = 'annule', 'Annulé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_entretiens_recrutement',
+        verbose_name='Société',
+    )
+    candidature = models.ForeignKey(
+        Candidature,
+        on_delete=models.CASCADE,
+        related_name='entretiens',
+        verbose_name='Candidature',
+    )
+    date_heure = models.DateTimeField(
+        null=True, blank=True, verbose_name='Date et heure')
+    type = models.CharField(
+        max_length=15, choices=TypeEntretien.choices,
+        default=TypeEntretien.RH, verbose_name='Type')
+    evaluateurs = models.ManyToManyField(
+        settings.AUTH_USER_MODEL, blank=True,
+        related_name='rh_entretiens_a_evaluer', verbose_name='Évaluateurs')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.PLANIFIE, verbose_name='Statut')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Entretien de recrutement'
+        verbose_name_plural = 'Entretiens de recrutement'
+        ordering = ['-date_heure', '-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'candidature'],
+                name='rh_entretien_comp_cand_idx'),
+        ]
+
+    def __str__(self):
+        return f'Entretien {self.get_type_display()} — {self.candidature}'
+
+
+class NoteEntretien(models.Model):
+    """Grille d'évaluation d'un entretien (XRH17) — une note par évaluateur.
+
+    ``notes_criteres`` (JSON, {critère: note 1–5}) porte la notation par
+    critère ; ``avis`` synthétise (favorable/réservé/défavorable).
+    ``evaluateur`` est posé CÔTÉ SERVEUR (jamais lu du corps). Un même
+    évaluateur ne note qu'une fois un même entretien.
+
+    Multi-société : ``company`` posée côté serveur.
+    """
+    class Avis(models.TextChoices):
+        FAVORABLE = 'favorable', 'Favorable'
+        RESERVE = 'reserve', 'Réservé'
+        DEFAVORABLE = 'defavorable', 'Défavorable'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_notes_entretien',
+        verbose_name='Société',
+    )
+    entretien = models.ForeignKey(
+        EntretienRecrutement,
+        on_delete=models.CASCADE,
+        related_name='notes',
+        verbose_name='Entretien',
+    )
+    evaluateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='rh_notes_entretien',
+        verbose_name='Évaluateur',
+    )
+    notes_criteres = models.JSONField(
+        default=dict, blank=True, verbose_name='Notes par critère')
+    commentaire = models.TextField(
+        blank=True, default='', verbose_name='Commentaire')
+    avis = models.CharField(
+        max_length=15, choices=Avis.choices,
+        default=Avis.RESERVE, verbose_name='Avis')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Note d'entretien"
+        verbose_name_plural = "Notes d'entretien"
+        ordering = ['-date_creation']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['entretien', 'evaluateur'],
+                name='rh_note_entretien_uniq'),
+        ]
+
+    @property
+    def moyenne_criteres(self):
+        """Moyenne des notes par critère (None si aucun critère noté)."""
+        valeurs = [
+            v for v in (self.notes_criteres or {}).values()
+            if isinstance(v, (int, float))]
+        if not valeurs:
+            return None
+        return sum(valeurs) / len(valeurs)
+
+    def __str__(self):
+        return f'{self.entretien_id} — {self.evaluateur_id} ({self.avis})'

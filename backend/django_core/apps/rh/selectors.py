@@ -1782,3 +1782,33 @@ def compa_ratio(employe):
         'compa_ratio_pct': ratio_pct,
         'statut': statut,
     }
+
+
+def comparatif_candidats(company, ouverture_id):
+    """XRH17 — compare les candidats d'une MÊME ouverture par la moyenne de
+    leurs notes d'entretien (toutes notes, tous entretiens confondus).
+    Classé décroissant. Un candidat sans note reçoit ``moyenne=None`` (en
+    fin de liste). Lecture seule, société scopée.
+    """
+    from .models import Candidature, NoteEntretien
+
+    candidatures = Candidature.objects.filter(
+        company=company, ouverture_id=ouverture_id)
+
+    resultats = []
+    for candidature in candidatures:
+        notes = NoteEntretien.objects.filter(
+            company=company, entretien__candidature=candidature)
+        moyennes = [
+            n.moyenne_criteres for n in notes
+            if n.moyenne_criteres is not None]
+        moyenne = sum(moyennes) / len(moyennes) if moyennes else None
+        resultats.append({
+            'candidature_id': candidature.id,
+            'nom': candidature.nom,
+            'moyenne': round(moyenne, 2) if moyenne is not None else None,
+            'nb_notes': len(moyennes),
+        })
+    resultats.sort(
+        key=lambda r: (r['moyenne'] is None, -(r['moyenne'] or 0)))
+    return resultats

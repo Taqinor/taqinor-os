@@ -30,6 +30,7 @@ from .views import (
     ElementIntegrationViewSet,
     ElementSortieViewSet,
     ElementsVariablesPaieViewSet,
+    EntretienRecrutementViewSet,
     EpiCatalogueViewSet,
     GrilleSalarialeViewSet,
     EvaluationEmployeViewSet,
@@ -109,6 +110,7 @@ router.register(r'sessions-formation', SessionFormationViewSet)
 router.register(r'besoins-formation', BesoinFormationViewSet)
 router.register(r'ouvertures-poste', OuverturePosteViewSet)
 router.register(r'candidatures', CandidatureViewSet)
+router.register(r'entretiens-recrutement', EntretienRecrutementViewSet)
 router.register(r'campagnes-evaluation', CampagneEvaluationViewSet)
 router.register(r'evaluations-employe', EvaluationEmployeViewSet)
 router.register(r'sanctions', SanctionViewSet)

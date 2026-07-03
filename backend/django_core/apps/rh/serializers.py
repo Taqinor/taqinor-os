@@ -29,7 +29,9 @@ from .models import (
     DeviceKiosque,
     DocumentEmploye,
     EmployeDeviceMap,
+    EntretienRecrutement,
     GrilleSalariale,
+    NoteEntretien,
     PeriodeFermeture,
     ReglageRH,
     DossierActivity,
@@ -2074,6 +2076,44 @@ class CorrectionPointageSerializer(serializers.ModelSerializer):
 
     def get_auteur_nom(self, obj):
         return getattr(obj.auteur, 'username', '') if obj.auteur_id else ''
+
+
+class NoteEntretienSerializer(serializers.ModelSerializer):
+    """Note d'entretien (XRH17) — une par évaluateur. ``evaluateur`` et
+    ``company`` posés côté serveur."""
+    evaluateur_nom = serializers.SerializerMethodField()
+    moyenne_criteres = serializers.FloatField(read_only=True)
+
+    class Meta:
+        model = NoteEntretien
+        fields = [
+            'id', 'entretien', 'evaluateur', 'evaluateur_nom',
+            'notes_criteres', 'commentaire', 'avis', 'moyenne_criteres',
+            'date_creation',
+        ]
+        read_only_fields = ['evaluateur', 'evaluateur_nom', 'date_creation']
+
+    def get_evaluateur_nom(self, obj):
+        return getattr(obj.evaluateur, 'username', '')
+
+
+class EntretienRecrutementSerializer(serializers.ModelSerializer):
+    """Entretien de recrutement (XRH17). ``company`` posée côté serveur ;
+    ``candidature`` doit appartenir à la société."""
+    type_display = serializers.CharField(
+        source='get_type_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    notes = NoteEntretienSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = EntretienRecrutement
+        fields = [
+            'id', 'candidature', 'date_heure', 'type', 'type_display',
+            'evaluateurs', 'statut', 'statut_display', 'notes',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
 
 
 class GrilleSalarialeSerializer(serializers.ModelSerializer):
