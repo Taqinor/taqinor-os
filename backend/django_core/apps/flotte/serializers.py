@@ -870,10 +870,11 @@ class OrdreReparationSerializer(serializers.ModelSerializer):
             'id', 'actif_flotte', 'actif_label', 'garage', 'garage_nom',
             'echeance', 'description', 'date_ouverture', 'date_cloture',
             'statut', 'statut_display', 'cout_main_oeuvre', 'cout_pieces',
-            'cout_total', 'notes', 'date_creation',
+            'cout_total', 'sous_garantie', 'notes', 'date_creation',
         ]
-        # cout_total est dérivé côté modèle, jamais saisi.
-        read_only_fields = ['cout_total', 'date_creation']
+        # cout_total est dérivé côté modèle, jamais saisi. sous_garantie est
+        # posé automatiquement à la création (XFLT14), jamais du body.
+        read_only_fields = ['cout_total', 'sous_garantie', 'date_creation']
 
     def get_actif_label(self, obj):
         return obj.actif_flotte.label if obj.actif_flotte_id else None
@@ -1973,3 +1974,38 @@ class InspectionVehiculeSerializer(serializers.ModelSerializer):
 
     def get_nb_items_fail(self, obj):
         return obj.nb_items_fail()
+
+
+# ── XFLT14 — Garanties véhicule & pièces ────────────────────────────────────────
+
+class GarantieFlotteSerializer(serializers.ModelSerializer):
+    """XFLT14 — Garantie constructeur/fournisseur sur un actif ou composant.
+
+    ``company`` posée côté serveur (jamais lue du corps de requête).
+    """
+
+    actif_label = serializers.SerializerMethodField()
+    date_fin = serializers.SerializerMethodField()
+    active = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import GarantieFlotte
+        model = GarantieFlotte
+        fields = [
+            'id', 'actif_flotte', 'actif_label', 'composant', 'duree_mois',
+            'duree_km', 'date_debut', 'date_fin', 'active', 'fournisseur',
+            'notes', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_actif_label(self, obj):
+        return obj.actif_flotte.label if obj.actif_flotte_id else None
+
+    def get_date_fin(self, obj):
+        date_fin = obj.date_fin()
+        return date_fin.isoformat() if date_fin else None
+
+    def get_active(self, obj):
+        vehicule = getattr(obj.actif_flotte, 'vehicule', None)
+        kilometrage = getattr(vehicule, 'kilometrage', None) if vehicule else None
+        return obj.couvre(kilometrage=kilometrage)

@@ -1157,3 +1157,26 @@ def taux_completion_inspections_par_conducteur(company, periode=None):
 
     resultats.sort(key=lambda e: e['conducteur_nom'])
     return resultats
+
+
+# ── XFLT14 — Garanties véhicule & pièces ────────────────────────────────────────
+
+def garantie_active_pour(actif_flotte, today=None):
+    """XFLT14 — Garantie(s) ACTIVE(S) couvrant ``actif_flotte`` à ``today``.
+
+    Lit le kilométrage courant depuis ``actif_flotte.vehicule.kilometrage``
+    (``None`` pour un engin — la garantie km n'est alors jamais évaluée sur
+    ce critère). Retourne la liste des ``GarantieFlotte`` de l'actif dont
+    ``couvre(today, kilometrage)`` est vrai (peut en retourner plusieurs si
+    plusieurs composants sont garantis). Lecture seule.
+    """
+    from .models import GarantieFlotte
+
+    if today is None:
+        today = datetime.date.today()
+
+    vehicule = getattr(actif_flotte, 'vehicule', None)
+    kilometrage = getattr(vehicule, 'kilometrage', None) if vehicule else None
+
+    garanties = GarantieFlotte.objects.filter(actif_flotte=actif_flotte)
+    return [g for g in garanties if g.couvre(today, kilometrage)]

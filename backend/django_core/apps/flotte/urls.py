@@ -17,6 +17,7 @@ from .views import (
     EnginRoulantViewSet,
     EtatDesLieuxViewSet,
     GarageViewSet,
+    GarantieFlotteViewSet,
     InfractionViewSet,
     InspectionVehiculeViewSet,
     ModeleInspectionViewSet,
@@ -53,6 +54,7 @@ router.register(r'cartes', CarteCarburantViewSet)
 router.register(r'plans-entretien', PlanEntretienViewSet)
 router.register(r'echeances-entretien', EcheanceEntretienViewSet)
 router.register(r'garages', GarageViewSet)
+router.register(r'garanties', GarantieFlotteViewSet)
 router.register(r'ordres-reparation', OrdreReparationViewSet)
 router.register(r'pneumatiques', PneumatiqueViewSet)
 router.register(r'pieces', PieceFlotteViewSet)

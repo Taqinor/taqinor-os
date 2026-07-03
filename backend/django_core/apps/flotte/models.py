@@ -1220,6 +1220,12 @@ class OrdreReparation(models.Model):
         max_digits=12, decimal_places=2, default=0,
         verbose_name='Coût total (MAD)')
     notes = models.TextField(blank=True, verbose_name='Notes')
+    # XFLT14 — Flag posé automatiquement à la création si l'actif a une
+    # garantie active couvrant la date (et le km courant si connu) : sert au
+    # suivi de récupération du coût auprès du fournisseur (warning non
+    # bloquant, jamais recalculé après coup).
+    sous_garantie = models.BooleanField(
+        default=False, verbose_name='Sous garantie (possiblement)')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -3576,3 +3582,105 @@ class InspectionVehicule(models.Model):
     def __str__(self):
         return (f'Inspection {self.modele_inspection.nom} — '
                 f'{self.actif_flotte} ({self.date_inspection:%Y-%m-%d})')
+
+
+# ── XFLT14 — Garanties véhicule & pièces ────────────────────────────────────────
+
+class GarantieFlotte(models.Model):
+    """Garantie constructeur/fournisseur sur un actif ou un composant
+    (XFLT14).
+
+    ``composant`` est du texte libre (ex. « moteur », « boîte de vitesses »)
+    ou la valeur conventionnelle ``'vehicule'`` pour une garantie couvrant
+    l'actif entier. La couverture est exprimée en durée (``duree_mois``
+    depuis ``date_debut``) ET/OU en kilométrage (``duree_km``) — l'un des
+    deux suffit, les deux peuvent coexister (garantie expire au premier
+    seuil atteint). À la création d'un ``OrdreReparation``, un warning NON
+    BLOQUANT est levé si l'actif a une garantie active couvrant la date (et
+    le km courant si renseigné) — voir ``services.garantie_active_pour``.
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête). L'actif lié doit appartenir à la MÊME société.
+    """
+
+    VEHICULE_ENTIER = 'vehicule'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_garanties',
+        verbose_name='Société',
+    )
+    actif_flotte = models.ForeignKey(
+        'ActifFlotte',
+        on_delete=models.CASCADE,
+        related_name='flotte_garanties',
+        verbose_name='Actif (véhicule ou engin)',
+    )
+    composant = models.CharField(
+        max_length=120, default=VEHICULE_ENTIER, verbose_name='Composant',
+        help_text="Texte libre, ou 'vehicule' pour une garantie couvrant "
+        "l'actif entier.")
+    duree_mois = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Durée (mois)')
+    duree_km = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Durée (km)')
+    date_debut = models.DateField(verbose_name='Date de début')
+    fournisseur = models.CharField(
+        max_length=150, blank=True, verbose_name='Fournisseur')
+    notes = models.TextField(blank=True, verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Garantie flotte'
+        verbose_name_plural = 'Garanties flotte'
+        ordering = ['-date_debut', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'actif_flotte'],
+                name='flotte_gar_co_actif_idx',
+            ),
+        ]
+
+    def clean(self):
+        """Valide l'appartenance société de l'actif lié."""
+        if self.actif_flotte_id is not None \
+                and self.actif_flotte.company_id != self.company_id:
+            raise ValidationError(
+                "L'actif n'appartient pas à la même société.")
+
+    def date_fin(self):
+        """XFLT14 — Date d'expiration par durée (mois), ou ``None`` si
+        ``duree_mois`` n'est pas renseignée. Lecture seule."""
+        if self.duree_mois is None or self.date_debut is None:
+            return None
+        total = self.date_debut.month - 1 + int(self.duree_mois)
+        year = self.date_debut.year + total // 12
+        month = total % 12 + 1
+        if month == 12:
+            last_day = 31
+        else:
+            last_day = (datetime.date(year, month + 1, 1)
+                        - datetime.timedelta(days=1)).day
+        day = min(self.date_debut.day, last_day)
+        return datetime.date(year, month, day)
+
+    def couvre(self, today=None, kilometrage=None):
+        """XFLT14 — ``True`` si la garantie couvre encore ``today`` (et
+        ``kilometrage`` si les deux sont renseignés — expire au PREMIER
+        seuil atteint). Lecture seule, dates/km injectables."""
+        if today is None:
+            today = datetime.date.today()
+        if today < self.date_debut:
+            return False
+        fin_date = self.date_fin()
+        if fin_date is not None and today > fin_date:
+            return False
+        if self.duree_km is not None and kilometrage is not None \
+                and kilometrage > self.duree_km:
+            return False
+        return True
+
+    def __str__(self):
+        return f'Garantie {self.composant} — {self.actif_flotte}'

@@ -29,6 +29,7 @@ from .models import (
     EnginRoulant,
     EtatDesLieux,
     Garage,
+    GarantieFlotte,
     Infraction,
     InspectionVehicule,
     JournalStatutVehicule,
@@ -64,6 +65,7 @@ from .serializers import (
     EnginRoulantSerializer,
     EtatDesLieuxSerializer,
     GarageSerializer,
+    GarantieFlotteSerializer,
     InfractionSerializer,
     InspectionVehiculeSerializer,
     JournalStatutVehiculeSerializer,
@@ -887,6 +889,30 @@ class GarageViewSet(_FlotteBaseViewSet):
         return qs
 
 
+class GarantieFlotteViewSet(_FlotteBaseViewSet):
+    """Garanties véhicule & pièces (XFLT14).
+
+    CRUD scopé société (écriture responsable/admin). Filtrable par
+    ``?actif_flotte=<id>``.
+    """
+    queryset = GarantieFlotte.objects.select_related(
+        'actif_flotte', 'actif_flotte__vehicule', 'actif_flotte__engin')
+    serializer_class = GarantieFlotteSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['composant', 'fournisseur']
+    ordering_fields = ['date_debut', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        actif_flotte = self.request.query_params.get('actif_flotte')
+        if actif_flotte:
+            try:
+                qs = qs.filter(actif_flotte_id=int(actif_flotte))
+            except (ValueError, TypeError):
+                pass
+        return qs
+
+
 class OrdreReparationViewSet(_FlotteBaseViewSet):
     """Ordres de réparation atelier/garage + coûts (FLOTTE17).
 
@@ -939,6 +965,20 @@ class OrdreReparationViewSet(_FlotteBaseViewSet):
             qs = qs.exclude(statut__in=OrdreReparation.STATUTS_CLOS)
 
         return qs
+
+    def perform_create(self, serializer):
+        # XFLT14 — Pose ``sous_garantie`` automatiquement si l'actif a une
+        # garantie active couvrant la date d'ouverture (warning non bloquant,
+        # jamais recalculé après coup — juste un flag de suivi).
+        from .services import garantie_active_pour
+
+        actif = serializer.validated_data.get('actif_flotte')
+        date_ouverture = serializer.validated_data.get('date_ouverture')
+        sous_garantie = bool(
+            actif is not None
+            and garantie_active_pour(actif, today=date_ouverture))
+        serializer.save(
+            company=self.request.user.company, sous_garantie=sous_garantie)
 
     @action(detail=False, methods=['get'])
     def couts(self, request):
