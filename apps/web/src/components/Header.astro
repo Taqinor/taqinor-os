@@ -20,9 +20,24 @@
  * W164 — Mobile menu: animated panel, phone SVG, LanguageSwitcher inside,
  *         scrollable on small screens.
  * W210 — .glow on primary CTA button.
+ * W264 — Solutions dropdown: leading glyphs reuse the SAME per-solution SVG
+ *         paths already shipped on the homepage (W58, index.astro
+ *         `solutionIcons`) — no new iconography invented. Résidentiel &
+ *         Professionnel (the two mass-market entry points) are visually
+ *         featured (subtitle line, slightly larger row) over the four more
+ *         specialised paths. Ressources is honestly split: financement +
+ *         marocains-du-monde are service/offer items (own labelled group),
+ *         separate from the editorial/blog group — CSS-only, no JS added.
+ * W251 — Header CTA proof fragment: on long-scroll pages (guides/blog) the
+ *         sticky CTA pairs with a compact <StarRating/> (WJ35's existing
+ *         no-op-safe component reading src/lib/testimonials.ts GOOGLE_RATING).
+ *         Renders NOTHING until the founder supplies a real rating (WG5) —
+ *         never a placeholder number.
  */
 import Logo from './Logo.astro';
 import LanguageSwitcher from './LanguageSwitcher.astro';
+import StarRating from './StarRating.astro';
+import { hasRating } from '../lib/testimonials';
 import { NAP } from '../lib/nap';
 import { getLocaleFromPath, stripLocale, useTranslations } from '../i18n/utils';
 import { localesForPath, localizeNavHref, QUOTE_JOURNEY_PATH } from '../i18n/pages';
@@ -37,16 +52,66 @@ const pageLocales = localesForPath(rootPath);
 const L = (href: string) => localizeNavHref(href, locale);
 
 // Solutions — dans cet ordre (W28). Le déclencheur pointe vers /nos-solutions.
+// W264 — `featured` : les deux points d'entrée grand public (résidentiel,
+// professionnel/industriel) sont visuellement mis en avant dans le déroulant ;
+// les quatre chemins plus spécialisés restent listés mais en second plan.
 const solutions = [
-  { href: '/résidentiel', label: t('nav.residential') },
-  { href: '/professionnel', label: t('nav.professional') },
-  { href: '/pompage-solaire', label: t('nav.pumping') },
-  { href: '/batteries-stockage', label: t('nav.batteries') },
-  { href: '/maintenance-monitoring', label: t('nav.maintenance') },
-  { href: '/regularization-article-33', label: t('nav.regularization') },
+  { href: '/résidentiel', label: t('nav.residential'), featured: true },
+  { href: '/professionnel', label: t('nav.professional'), featured: true },
+  { href: '/pompage-solaire', label: t('nav.pumping'), featured: false },
+  { href: '/batteries-stockage', label: t('nav.batteries'), featured: false },
+  { href: '/maintenance-monitoring', label: t('nav.maintenance'), featured: false },
+  { href: '/regularization-article-33', label: t('nav.regularization'), featured: false },
 ];
 
+// W264 — Iconographie du déroulant Solutions : MÊMES tracés SVG que la page
+// d'accueil (W58, index.astro `solutionIcons`), indexés par href pour rester
+// stables si l'ordre change. Un seul trait, currentColor (teinte brass).
+const solutionIcons: Record<string, string> = {
+  '/résidentiel': '<path d="M4 13 12 5l8 8" /><path d="M6 11v8h12v-8" /><path d="M10 19v-4h4v4" />',
+  '/professionnel': '<path d="M4 21V8l7-3v4l7-3v15" /><path d="M4 21h16" /><path d="M8 12h0M8 16h0M14 12h0M14 16h0" />',
+  '/pompage-solaire': '<path d="M12 3v6" /><path d="M5 21c1.6-2 3.2-2 4.8 0s3.2 2 4.8 0 3.2-2 4.4 0" /><path d="M8 9h8l-2 6H10z" />',
+  '/batteries-stockage': '<path d="M5 8h14v11H5z" /><path d="M9 5h6v3H9z" /><path d="M12 11v5" /><path d="M9.5 13.5h5" />',
+  '/maintenance-monitoring': '<path d="M4 18 9 12l3 3 4-6 4 5" /><path d="M4 21h16" /><circle cx="9" cy="12" r="0.6" /><circle cx="16" cy="9" r="0.6" />',
+  '/regularization-article-33': '<path d="M7 4h7l4 4v12H7z" /><path d="M14 4v4h4" /><path d="M9.5 14l1.5 1.5 3-3.5" />',
+};
+
 // Ressources — le déclencheur pointe vers /guides (repli sans-JS).
+// W264 — Split honnête : les items adjacents à un service (financement,
+// marocains-du-monde) sont désormais un groupe « Offre » distinct du groupe
+// éditorial/blog — ils ne se lisent plus comme du contenu de blog.
+const ressourcesOffre = [
+  { href: '/financement', label: t('nav.financing') },
+  { href: '/marocains-du-monde', label: t('nav.mre') },
+  { href: '/loi-82-21', label: t('nav.law') },
+];
+const ressourcesContenu = [
+  { href: '/guides', label: t('nav.guides') },
+  { href: '/blog', label: 'Blog' },
+  { href: '/faq', label: t('nav.faq') },
+  { href: '/produits', label: 'Fiches techniques' },
+  { href: '/pourquoi-taqinor', label: t('nav.why') },
+];
+// W264 — Libellés des deux groupes du déroulant Ressources. Pas de nouvelle
+// clé i18n partagée (portée limitée à Header.astro) : petite table locale,
+// même mécanisme de repli FR que le reste du fichier.
+const ressourcesGroupLabels: Record<'fr' | 'en' | 'ar', { offre: string; contenu: string }> = {
+  fr: { offre: 'Nos services', contenu: 'Guides & actualités' },
+  en: { offre: 'Our services', contenu: 'Guides & news' },
+  ar: { offre: 'خدماتنا', contenu: 'أدلة وأخبار' },
+};
+const ressourcesGroups = ressourcesGroupLabels[locale] ?? ressourcesGroupLabels.fr;
+
+// W251 — Pages longues (guides/blog) : la preuve sociale compacte accompagne
+// le CTA brass au lieu du bouton seul. `showProof` combine « bonne page » ET
+// « donnée réelle disponible » — sur toute autre page, ou tant que
+// GOOGLE_RATING n'est pas renseigné par le fondateur, rien ne change ici.
+const isLongScrollPage = rootPath === '/guides' || rootPath.startsWith('/guides/') ||
+  rootPath === '/blog' || rootPath.startsWith('/blog/');
+const showHeaderProof = isLongScrollPage && hasRating();
+
+// Liste à plat conservée pour la détection de page active + le menu mobile
+// (ordre inchangé pour ne pas perturber l'existant hors dropdown desktop).
 const ressources = [
   { href: '/guides', label: t('nav.guides') },
   { href: '/blog', label: 'Blog' },
@@ -120,15 +185,32 @@ const itemClass =
           ><polyline points="6 9 12 15 18 9"></polyline></svg>
           <span class={solutionsActive ? underlineActive : underline}></span>
         </a>
-        {/* W163 — polished panel: rounded, layered shadow, brass top accent */}
+        {/* W163 — polished panel: rounded, layered shadow, brass top accent.
+            W264 — widened (w-72) to fit leading glyphs + featured subtitles. */}
         <div class={`absolute start-0 top-full z-50 pt-3 ${menuReveal}`}>
           <ul
-            class="w-64 overflow-hidden rounded-lg border border-white/10 bg-nuit/95 p-2 shadow-[0_4px_6px_-2px_rgb(0_0_0/0.4),0_12px_40px_-8px_rgb(0_0_0/0.6)] backdrop-blur before:absolute before:inset-x-0 before:top-0 before:h-[2px] before:bg-brass-400/60 relative"
+            class="w-72 overflow-hidden rounded-lg border border-white/10 bg-nuit/95 p-2 shadow-[0_4px_6px_-2px_rgb(0_0_0/0.4),0_12px_40px_-8px_rgb(0_0_0/0.6)] backdrop-blur before:absolute before:inset-x-0 before:top-0 before:h-[2px] before:bg-brass-400/60 relative"
             role="menu" aria-label={t('nav.solutions')}
           >
             <li role="none"><a href={L('/nos-solutions')} role="menuitem" class={`${itemClass} font-semibold text-white`}>{t('nav.allSolutions')}</a></li>
             {solutions.map((s) => (
-              <li role="none"><a href={L(s.href)} role="menuitem" class={itemClass}>{s.label}</a></li>
+              <li role="none">
+                <a
+                  href={L(s.href)}
+                  role="menuitem"
+                  class={`${itemClass} flex items-center gap-3 ${s.featured ? 'py-2.5' : ''}`}
+                >
+                  <svg
+                    width={s.featured ? 20 : 16} height={s.featured ? 20 : 16}
+                    viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
+                    aria-hidden="true"
+                    class={`flex-none ${s.featured ? 'text-brass-300' : 'text-lune-faint'}`}
+                    set:html={solutionIcons[s.href] ?? ''}
+                  />
+                  <span class={s.featured ? 'font-semibold text-white' : ''}>{s.label}</span>
+                </a>
+              </li>
             ))}
           </ul>
         </div>
@@ -164,13 +246,25 @@ const itemClass =
           ><polyline points="6 9 12 15 18 9"></polyline></svg>
           <span class={ressourcesActive ? underlineActive : underline}></span>
         </a>
-        {/* W163 — polished panel: rounded, layered shadow, brass top accent */}
+        {/* W163 — polished panel: rounded, layered shadow, brass top accent.
+            W264 — honest split: service-adjacent items (financement,
+            marocains-du-monde, loi 82-21) get their own labelled group,
+            visually separated from the editorial/blog group — so financing
+            reads as an offer, not a blog post. CSS-only, same <ul role="menu">
+            keyboard/focus contract as before (ArrowUp/Down still walk every
+            [role=menuitem] in DOM order across both groups). */}
         <div class={`absolute start-0 top-full z-50 pt-3 ${menuReveal}`}>
           <ul
             class="w-64 overflow-hidden rounded-lg border border-white/10 bg-nuit/95 p-2 shadow-[0_4px_6px_-2px_rgb(0_0_0/0.4),0_12px_40px_-8px_rgb(0_0_0/0.6)] backdrop-blur before:absolute before:inset-x-0 before:top-0 before:h-[2px] before:bg-brass-400/60 relative"
             role="menu" aria-label={t('nav.resources')}
           >
-            {ressources.map((r) => (
+            <li role="none" class="tech-label px-3 pb-1 pt-1.5 text-brass-300/90" aria-hidden="true">{ressourcesGroups.offre}</li>
+            {ressourcesOffre.map((r) => (
+              <li role="none"><a href={L(r.href)} role="menuitem" class={itemClass}>{r.label}</a></li>
+            ))}
+            <li role="none" class="my-1.5 border-t border-white/10" aria-hidden="true"></li>
+            <li role="none" class="tech-label px-3 pb-1 pt-1 text-lune-faint" aria-hidden="true">{ressourcesGroups.contenu}</li>
+            {ressourcesContenu.map((r) => (
               <li role="none"><a href={L(r.href)} role="menuitem" class={itemClass}>{r.label}</a></li>
             ))}
           </ul>
@@ -192,6 +286,16 @@ const itemClass =
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
         {NAP.phoneDisplayIntl}
       </a>
+      {/* W251 — Proof fragment beside the CTA on long-scroll pages (guides/
+          blog) ONLY, and only once a real Google rating exists (WG5) —
+          StarRating itself is also no-op-safe, this wrapper just avoids
+          reserving any layout space elsewhere. Hidden on narrow mobile
+          widths to protect the header's compact row. */}
+      {showHeaderProof && (
+        <div class="hidden items-center xl:flex">
+          <StarRating compact />
+        </div>
+      )}
       {/* W210 — .glow on primary CTA. WJ36 — the ONE brass action: the quote
           journey (/devis/mon-toit), primary label verbatim. The container
           flexes with the string (no fixed width) — AR runs 25–35 % longer. */}
@@ -223,6 +327,7 @@ const itemClass =
     class="grid grid-rows-[0fr] overflow-hidden border-t border-white/10 bg-nuit transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none lg:hidden"
     aria-label={t('nav.mobile')}
     aria-hidden="true"
+    inert
   >
     <div class="max-h-[calc(100svh-3.5rem)] overflow-y-auto overscroll-contain">
       <div class="flex flex-col gap-5 px-4 py-4">
@@ -318,10 +423,14 @@ const itemClass =
     if (isOpen) {
       menu?.classList.replace('grid-rows-[1fr]', 'grid-rows-[0fr]');
       menu?.setAttribute('aria-hidden', 'true');
+      // W314 — inert alongside aria-hidden: keeps focusable links behind the
+      // closed panel truly unreachable (not just visually/AT-hidden).
+      menu?.setAttribute('inert', '');
       toggle.setAttribute('aria-expanded', 'false');
     } else {
       menu?.classList.replace('grid-rows-[0fr]', 'grid-rows-[1fr]');
       menu?.setAttribute('aria-hidden', 'false');
+      menu?.removeAttribute('inert');
       toggle.setAttribute('aria-expanded', 'true');
     }
   });
