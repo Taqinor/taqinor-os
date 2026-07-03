@@ -1357,6 +1357,16 @@ class PresenceChantier(models.Model):
     )
     note = models.CharField(
         max_length=255, blank=True, default='', verbose_name='Note')
+    # XRH12 — géofence optionnelle : GPS capturé à l'émargement + drapeau si
+    # hors du rayon configuré (jamais bloquant — le terrain a un GPS imprécis).
+    gps_lat = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True,
+        verbose_name='GPS — latitude')
+    gps_lng = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True,
+        verbose_name='GPS — longitude')
+    hors_zone = models.BooleanField(
+        default=False, verbose_name='Hors zone (géofence)')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
     date_modification = models.DateTimeField(
@@ -4444,3 +4454,32 @@ class CorrectionPointage(models.Model):
 
     def __str__(self):
         return f'{self.pointage_id} — {self.champ}'
+
+
+class ReglageRH(models.Model):
+    """Réglages RH par société (Paramètres RH) — ``OneToOne`` company.
+
+    Regroupe les réglages fins du module RH qui n'ont pas leur propre écran
+    Paramètres dédié : ``geofence_metres`` (XRH12 — rayon de contrôle du
+    pointage chantier, désactivé par défaut/``None``). Additif, une seule
+    ligne par société (créée à la demande — ``get_or_create``).
+    """
+    company = models.OneToOneField(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_reglage',
+        verbose_name='Société',
+    )
+    # XRH12 — rayon de géofence (mètres) du pointage chantier. ``None`` =
+    # contrôle désactivé (comportement par défaut, jamais bloquant).
+    geofence_metres = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Géofence (mètres)')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Réglage RH'
+        verbose_name_plural = 'Réglages RH'
+
+    def __str__(self):
+        return f'Réglages RH — {self.company_id}'

@@ -47,6 +47,7 @@ from .views import (
     PresenceChantierViewSet,
     PresquAccidentViewSet,
     PrimeAttribueeViewSet,
+    ReglageRHViewSet,
     RemunerationViewSet,
     SanctionViewSet,
     SessionFormationViewSet,
@@ -74,6 +75,7 @@ router.register(r'soldes-conge', SoldeCongeViewSet)
 router.register(r'demandes-conge', DemandeCongeViewSet)
 router.register(r'pointages', PointageViewSet)
 router.register(r'devices-kiosque', DeviceKiosqueViewSet)
+router.register(r'reglages', ReglageRHViewSet, basename='rh-reglages')
 router.register(
     r'pointages/kiosque', KiosquePointageViewSet, basename='rh-kiosque')
 router.register(r'feuilles-temps', FeuilleTempsViewSet)

@@ -27,6 +27,7 @@ from .models import (
     Departement,
     DeviceKiosque,
     DocumentEmploye,
+    ReglageRH,
     DossierActivity,
     DossierEmploye,
     DotationEpi,
@@ -579,10 +580,13 @@ class PresenceChantierSerializer(serializers.ModelSerializer):
             'statut', 'statut_display',
             'heure_arrivee', 'heure_depart',
             'emarge', 'emarge_le', 'emarge_par', 'note',
+            # XRH12 — géofence (posés côté serveur via l'action ``emarger``).
+            'gps_lat', 'gps_lng', 'hors_zone',
             'date_creation', 'date_modification',
         ]
         read_only_fields = [
             'emarge', 'emarge_le', 'emarge_par',
+            'gps_lat', 'gps_lng', 'hors_zone',
             'date_creation', 'date_modification',
         ]
 
@@ -2066,6 +2070,15 @@ class CorrectionPointageSerializer(serializers.ModelSerializer):
 
     def get_auteur_nom(self, obj):
         return getattr(obj.auteur, 'username', '') if obj.auteur_id else ''
+
+
+class ReglageRHSerializer(serializers.ModelSerializer):
+    """Réglages RH (XRH12) — géofence de pointage chantier. ``company``
+    posée côté serveur (jamais lue du corps)."""
+    class Meta:
+        model = ReglageRH
+        fields = ['id', 'geofence_metres', 'date_modification']
+        read_only_fields = ['date_modification']
 
 
 class DeviceKiosqueSerializer(serializers.ModelSerializer):

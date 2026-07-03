@@ -833,3 +833,71 @@ def pointer_via_kiosque(device, pin):
     device.derniere_utilisation = now
     device.save(update_fields=['derniere_utilisation'])
     return dossier, pointage, 'arrivee'
+
+
+# ── XRH12 — géofence de pointage chantier (optionnelle) ────────────────────
+
+def _haversine_metres(lat1, lng1, lat2, lng2):
+    """Distance approximative (mètres) entre deux points GPS (Haversine).
+
+    Implémentation locale volontaire (pas d'import de
+    ``apps.installations.selectors._haversine_km``, privée et non exportée) —
+    même formule que le calcul F6 réutilisé ailleurs dans l'ERP.
+    """
+    from math import asin, cos, radians, sin, sqrt
+
+    lat1, lng1, lat2, lng2 = (
+        radians(float(v)) for v in (lat1, lng1, lat2, lng2))
+    dlat = lat2 - lat1
+    dlng = lng2 - lng1
+    a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlng / 2) ** 2
+    return 2 * 6371000.0 * asin(sqrt(a))
+
+
+def controler_geofence_presence(presence, gps_lat, gps_lng):
+    """Contrôle optionnel du géofence à l'émargement d'une présence chantier.
+
+    Résout ``geofence_metres`` (``ReglageRH``, désactivé/``None`` par défaut)
+    et les coordonnées de référence du chantier via le selector
+    ``apps.installations.selectors.installation_gps_map`` (cross-app en
+    LECTURE SEULE, jamais d'import de ``installations.models``). Hors rayon →
+    ``presence.hors_zone=True`` + un ``IncidentPresence`` (FG171) créé — JAMAIS
+    bloquant (le pointage passe toujours). Sans géofence configuré, sans GPS
+    fourni, ou sans coordonnée de référence du chantier : aucun contrôle
+    (silencieux). Stocke aussi les coordonnées reçues sur la présence.
+    """
+    from apps.installations import selectors as installations_selectors
+
+    from .models import IncidentPresence, ReglageRH
+
+    if gps_lat is not None:
+        presence.gps_lat = gps_lat
+    if gps_lng is not None:
+        presence.gps_lng = gps_lng
+
+    reglage = ReglageRH.objects.filter(company=presence.company).first()
+    geofence_metres = reglage.geofence_metres if reglage else None
+    if not geofence_metres or gps_lat is None or gps_lng is None:
+        presence.hors_zone = False
+        return presence
+
+    gps_map = installations_selectors.installation_gps_map(
+        [presence.installation_id])
+    ref_lat, ref_lng = gps_map.get(presence.installation_id, (None, None))
+    if ref_lat is None or ref_lng is None:
+        presence.hors_zone = False
+        return presence
+
+    distance_m = _haversine_metres(gps_lat, gps_lng, ref_lat, ref_lng)
+    presence.hors_zone = distance_m > geofence_metres
+    if presence.hors_zone:
+        IncidentPresence.objects.create(
+            company=presence.company,
+            employe=presence.employe,
+            type_incident=IncidentPresence.TypeIncident.RETARD,
+            date=presence.date,
+            note=(
+                f'Émargement hors zone (géofence {geofence_metres} m, '
+                f'≈{int(distance_m)} m du chantier).'),
+        )
+    return presence

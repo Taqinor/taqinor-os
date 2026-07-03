@@ -46,6 +46,7 @@ from .models import (
     DemandeRH,
     Departement,
     DeviceKiosque,
+    ReglageRH,
     DocumentEmploye,
     DossierEmploye,
     DotationEpi,
@@ -99,6 +100,7 @@ from .serializers import (
     DemandeRHSerializer,
     DepartementSerializer,
     DeviceKiosqueSerializer,
+    ReglageRHSerializer,
     DocumentEmployeSerializer,
     DossierActivitySerializer,
     DossierEmployeSerializer,
@@ -1051,6 +1053,28 @@ class PointageViewSet(_RhBaseViewSet):
         return Response(self.get_serializer(pointage).data)
 
 
+class ReglageRHViewSet(viewsets.ViewSet):
+    """Réglages RH (XRH12) — singleton par société (Paramètres RH).
+
+    Société scopée + Administrateur/Responsable. ``GET .../mon-reglage/`` /
+    ``PATCH .../mon-reglage/`` lisent/éditent le réglage de l'appelant (créé à
+    la demande — ``get_or_create``). ``company`` posée CÔTÉ SERVEUR.
+    """
+    permission_classes = [IsResponsableOrAdmin]
+
+    @action(detail=False, methods=['get', 'patch'], url_path='mon-reglage')
+    def mon_reglage(self, request):
+        reglage, _ = ReglageRH.objects.get_or_create(
+            company=request.user.company)
+        if request.method == 'PATCH':
+            ser = ReglageRHSerializer(
+                reglage, data=request.data, partial=True)
+            ser.is_valid(raise_exception=True)
+            ser.save()
+            return Response(ser.data)
+        return Response(ReglageRHSerializer(reglage).data)
+
+
 class DeviceKiosqueViewSet(_RhBaseViewSet):
     """Devices kiosque de pointage (XRH10) — administration (Paramètres RH).
 
@@ -1300,13 +1324,24 @@ class PresenceChantierViewSet(_RhBaseViewSet):
         ``emarge=True``, ``emarge_le=now``, ``emarge_par=user``. Idempotent :
         ré-émarger ne change que l'horodatage/auteur. Société garantie par le
         TenantMixin (un autre tenant reçoit 404).
+
+        XRH12 — accepte optionnellement ``gps_lat``/``gps_lng`` (GPS mobile) :
+        si un géofence est configuré (Paramètres RH) et les coordonnées de
+        référence du chantier sont connues, hors rayon flague ``hors_zone``
+        et journalise un incident (FG171) — JAMAIS bloquant.
         """
         presence = self.get_object()
         presence.emarge = True
         presence.emarge_le = timezone.now()
         presence.emarge_par = request.user
-        presence.save(update_fields=[
-            'emarge', 'emarge_le', 'emarge_par', 'date_modification'])
+        update_fields = [
+            'emarge', 'emarge_le', 'emarge_par', 'date_modification']
+        gps_lat = request.data.get('gps_lat')
+        gps_lng = request.data.get('gps_lng')
+        if gps_lat is not None or gps_lng is not None:
+            services.controler_geofence_presence(presence, gps_lat, gps_lng)
+            update_fields += ['gps_lat', 'gps_lng', 'hors_zone']
+        presence.save(update_fields=update_fields)
         return Response(self.get_serializer(presence).data)
 
     @action(detail=False, methods=['get'])
