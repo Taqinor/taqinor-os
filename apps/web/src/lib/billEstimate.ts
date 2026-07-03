@@ -36,9 +36,12 @@ import {
   PANEL2_WATT,
   annualSavingsMad,
   billToAnnualKwh,
+  climateDerateFactor,
   optimalSouthTiltDeg,
+  productionConfidenceBand,
   specificYield,
   tariffForCity,
+  type ProductionBand,
 } from './estimatorBrainV2';
 import { LOCAL_PAYBACK_BY_KWC, type PaybackHint } from './billRange';
 
@@ -64,6 +67,23 @@ export interface BillEstimate {
   paybackLabel: string;
   /** Latitude réellement utilisée (repère si fourni, sinon défaut). */
   latitudeUsed: number;
+  /**
+   * WJ71 — bande de confiance climatique (kWh production, puis MAD économies
+   * dérivées à la même proportion), SURFACÉE PAR DÉFAUT sur l'estimation
+   * publique. Avant WJ71, `productionConfidenceBand`/`climateDerateFactor`
+   * (estimatorBrainV2.ts, WJ22) n'étaient appelés QUE dans le labo privé — la
+   * page publique affichait un seul chiffre de production sans jamais dire
+   * qu'un été côtier chaud/poussiéreux le réduit réellement de ~15–20 %.
+   * `productionBand.low` est le même `productionKwhYr` déjà affiché × le
+   * dérate climatique documenté (jamais un chiffre en MOINS inventé — une
+   * décomposition documentée de pertes déjà réelles) ; `high` = le chiffre nu
+   * déjà affiché. Les économies suivent la MÊME proportion (le modèle
+   * d'économies n'a pas de fonction dérate propre — on applique le même ratio
+   * production pour rester honnête sans réinventer un second modèle).
+   */
+  productionBand: ProductionBand;
+  savingsLowBand: number;
+  savingsHighBand: number;
 }
 
 /** Arrondi « commercial » d'une fourchette MAD à la centaine la plus proche. */
@@ -104,6 +124,16 @@ export function estimateFromBill(
 
   const payback = paybackForKwc(kwc);
 
+  // WJ71 — bande de confiance climatique, DÉFAUT ON pour l'estimation publique
+  // (cf. note d'interface ci-dessus). `high` = le chiffre nu déjà affiché
+  // (identique à productionKwhYr avant arrondi) ; `low` = ce même chiffre ×
+  // le dérate climatique documenté (été côtier : thermique + salissure + brume).
+  const productionBand = productionConfidenceBand(productionKwhYr);
+  // Les économies suivent la MÊME proportion basse/haute que la production —
+  // on ne réinvente pas un second modèle d'économies, on reflète honnêtement
+  // que moins de kWh produits ⇒ proportionnellement moins de kWh autoconsommés.
+  const bandRatioLow = productionKwhYr > 0 ? productionBand.low / productionKwhYr : 1;
+
   return {
     kwc,
     productionKwhYr: Math.round(productionKwhYr),
@@ -113,7 +143,39 @@ export function estimateFromBill(
     savingsMonthlyHigh: roundMad(high / 12),
     paybackLabel: payback,
     latitudeUsed: lat,
+    productionBand,
+    savingsLowBand: roundMad(low * bandRatioLow),
+    savingsHighBand: roundMad(high),
   };
+}
+
+/**
+ * WJ71 — dérate climatique BRUT (0–1], exposé pour l'affichage d'un libellé
+ * (« ≈ X % en été côtier ») sans que l'appelant ait à réimporter
+ * estimatorBrainV2 directement. Fonction compagnon PURE, aucun état.
+ */
+export function climateConfidenceFactor(): number {
+  return climateDerateFactor();
+}
+
+/**
+ * WJ70 — HONNÊTETÉ DU SÉLECTEUR DISTRIBUTEUR. `distributeur` (ONEE/Lydec/
+ * Redal, collecté par le formulaire — cf. `DISTRIBUTEURS` dans lib/lead.ts)
+ * ne change AUJOURD'HUI aucun chiffre affiché : `tariffForCity`/
+ * `TARIFF_BY_CITY` (estimatorBrainV2.ts, WJ23) égalent encore Lydec/Redal au
+ * barème RÉGIE ONEE — la grille exacte des délégataires attend une vraie
+ * facture récente par ville (voir le commentaire de TARIFF_BY_CITY). Router
+ * le choix collecté vers un calcul qui ne produit RIEN de différent serait
+ * une fausse promesse de personnalisation. Cette fonction retourne donc un
+ * texte honnête à afficher À CÔTÉ du sélecteur, jamais un chiffre inventé —
+ * dès que WG2 livre les vraies grilles délégataires, `tariffForCity`
+ * commencera à diverger et cette note perdra sa raison d'être (à retirer
+ * alors).
+ */
+export function distributeurHonestyNote(locale: 'fr' | 'ar' = 'fr'): string {
+  return locale === 'ar'
+    ? 'التقدير أدناه يعتمد حالياً على تعريفة المكتب الوطني (ONEE) المتحفظة لجميع الموزعين، إلى حين توفر شبكات أسعار حقيقية لكل موزع.'
+    : "Cette estimation utilise pour l'instant le barème ONEE (conservateur) pour tous les distributeurs, en attendant les grilles tarifaires réelles par distributeur.";
 }
 
 /** Libellé d'amortissement par taille (constante committée, jamais inventé). */
