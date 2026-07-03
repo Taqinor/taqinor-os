@@ -146,6 +146,29 @@ class KbArticleViewSet(_KbBaseViewSet):
         article = self.get_object()
         return Response(selectors.retroliens(article))
 
+    @action(detail=True, methods=['post'], url_path='enregistrer-comme-gabarit')
+    def enregistrer_comme_gabarit(self, request, pk=None):
+        """XKB12 — Marque cet article comme gabarit réutilisable."""
+        article = self.get_object()
+        article.est_gabarit = True
+        article.save(update_fields=['est_gabarit'])
+        return Response(self.get_serializer(article).data)
+
+    @action(detail=False, methods=['get'], url_path='gabarits')
+    def gabarits(self, request):
+        """XKB12 — Galerie des gabarits disponibles (société + seedés)."""
+        qs = self.get_queryset().filter(est_gabarit=True)
+        return Response(self.get_serializer(qs, many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='depuis-gabarit')
+    def depuis_gabarit(self, request, pk=None):
+        """XKB12 — Crée un nouvel article brouillon pré-rempli depuis ce gabarit."""
+        gabarit = self.get_object()
+        article = services.creer_depuis_gabarit(
+            gabarit, auteur=request.user, company=request.user.company)
+        return Response(
+            self.get_serializer(article).data, status=201)
+
     @action(detail=True, methods=['post'], url_path='deplacer')
     def deplacer(self, request, pk=None):
         """XKB8 — Déplace (re-parente) tout un sous-arbre + réordonne.

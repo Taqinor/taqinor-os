@@ -63,6 +63,14 @@ class KbArticle(models.Model):
     corps_format = models.CharField(
         max_length=10, choices=CorpsFormat.choices,
         default=CorpsFormat.TEXTE, verbose_name='Format du contenu')
+    # XKB12 — gabarit réutilisable (« enregistrer comme gabarit ») : apparaît
+    # dans la galerie « nouveau depuis gabarit ». Couvre AUSSI les 5 gabarits
+    # SOP/ONEE/82-21 seedés (KB5, ``seed_kb_templates`` — additif, aucune
+    # migration de données requise : le flag est simplement False par défaut
+    # sur les lignes existantes, qui restent des articles normaux tant qu'on
+    # ne les marque pas gabarit explicitement).
+    est_gabarit = models.BooleanField(
+        default=False, verbose_name='Gabarit')
     auteur = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

@@ -9,7 +9,7 @@ import logging
 
 from django.db import transaction
 
-from .models import KbLecture, KbArticleVersion, KbArticleChunk
+from .models import KbArticle, KbLecture, KbArticleVersion, KbArticleChunk
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +59,31 @@ def snapshot_article(article, *, auteur=None):
             contenu=article.corps,
             auteur=auteur,
         )
+
+
+# ── XKB12 — Gabarits d'articles utilisateur ─────────────────────────────────
+
+def creer_depuis_gabarit(gabarit, *, auteur, company):
+    """XKB12 — Crée un nouvel article BROUILLON pré-rempli depuis un gabarit.
+
+    Copie titre + corps + format + catégorie/tags du gabarit ; le nouvel
+    article N'EST PAS lui-même un gabarit (``est_gabarit=False``). La société
+    et l'auteur sont fournis par l'appelant (résolus côté serveur, jamais du
+    corps de requête) — jamais celle du gabarit si elle diffère (protège
+    contre un gabarit d'une autre société, même si ce cas est déjà bloqué en
+    amont par le scoping du queryset appelant).
+    """
+    return KbArticle.objects.create(
+        company=company,
+        titre=gabarit.titre,
+        corps=gabarit.corps,
+        corps_format=gabarit.corps_format,
+        categorie=gabarit.categorie,
+        tags=gabarit.tags,
+        statut=KbArticle.Statut.BROUILLON,
+        auteur=auteur,
+        est_gabarit=False,
+    )
 
 
 # ── XKB7 — Relance des non-lecteurs de lecture obligatoire ─────────────────
