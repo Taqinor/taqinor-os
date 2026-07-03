@@ -841,19 +841,21 @@ def mouvements_mrr(company, debut, fin):
     def _cle_resp(contrat):
         return contrat.responsable_id or 'sans_responsable'
 
-    new = Decimal('0')
     net_par_resp = {}
-    for contrat in Contrat.objects.filter(
-            company=company, date_creation__date__gte=debut,
-            date_creation__date__lte=fin):
-        montant = mrr_contrat_actif(contrat)
-        new += montant
-        if montant:
-            cle = _cle_resp(contrat)
-            net_par_resp[cle] = net_par_resp.get(cle, Decimal('0')) + montant
 
+    # Avenants D'ABORD : leur équivalent mensuel sert à la fois à la cascade
+    # expansion/contraction ET à neutraliser le double-comptage avec ``new``
+    # (un avenant appliqué à un contrat NÉ dans la même fenêtre modifie
+    # ``Contrat.montant`` sans forcément re-synchroniser l'échéancier — voir
+    # ``creer_avenant`` — donc ``mrr_contrat_actif`` calculé APRÈS l'avenant
+    # peut déjà (ou pas) porter l'effet de l'avenant selon que l'échéancier a
+    # été resynchronisé entre-temps ; dans les deux cas l'avenant est déjà
+    # compté une fois dans expansion/contraction, donc il ne doit JAMAIS être
+    # recompté dans ``new`` — cf. l'invariant
+    # new+expansion-contraction-churn = variation du MRR observée).
     expansion = Decimal('0')
     contraction = Decimal('0')
+    avenant_equiv_par_contrat = {}
     avenants = (
         Avenant.objects.filter(company=company, montant_delta__isnull=False)
         .exclude(montant_delta=Decimal('0'))
@@ -884,6 +886,25 @@ def mouvements_mrr(company, debut, fin):
         if equiv:
             cle = _cle_resp(avenant.contrat)
             net_par_resp[cle] = net_par_resp.get(cle, Decimal('0')) + equiv
+            avenant_equiv_par_contrat[avenant.contrat_id] = (
+                avenant_equiv_par_contrat.get(avenant.contrat_id, Decimal('0'))
+                + equiv)
+
+    new = Decimal('0')
+    for contrat in Contrat.objects.filter(
+            company=company, date_creation__date__gte=debut,
+            date_creation__date__lte=fin):
+        # Neutralise l'effet des avenants DÉJÀ compté ci-dessus pour ce même
+        # contrat (même fenêtre) — sinon un avenant sur un contrat tout juste
+        # créé serait compté à la fois dans ``new`` et dans
+        # ``expansion``/``contraction``.
+        montant = (
+            mrr_contrat_actif(contrat)
+            - avenant_equiv_par_contrat.get(contrat.id, Decimal('0')))
+        new += montant
+        if montant:
+            cle = _cle_resp(contrat)
+            net_par_resp[cle] = net_par_resp.get(cle, Decimal('0')) + montant
 
     churn = Decimal('0')
     churn_par_motif = {}
@@ -938,6 +959,29 @@ def _mois_ecoules(debut, fin):
     """
     delta = (fin.year - debut.year) * 12 + (fin.month - debut.month)
     return max(0, delta)
+
+
+def _mrr_initial_contrat(contrat):
+    """Montant D'ORIGINE (à la signature) d'un contrat — avant tout avenant.
+
+    ``Contrat.montant`` est un champ mutable : ``services.creer_avenant``
+    l'incrémente en place à chaque avenant (``montant_delta``), donc sa valeur
+    COURANTE n'est PAS le montant initial de la cohorte dès qu'un avenant a été
+    posé. On reconstruit le montant d'origine en retranchant la somme de tous
+    les ``Avenant.montant_delta`` déjà appliqués — cf. XCTR8 (NRR/GRR doivent se
+    mesurer contre le MRR DE DÉPART de la cohorte, pas contre le montant courant
+    déjà gonflé par l'expansion elle-même, sinon ``revenu_pct`` reste bloqué à
+    100 % quelle que soit l'expansion réelle).
+    """
+    from decimal import Decimal
+
+    from .models import Avenant
+
+    deltas = (
+        Avenant.objects.filter(contrat=contrat, montant_delta__isnull=False)
+        .values_list('montant_delta', flat=True))
+    total_deltas = sum(deltas, Decimal('0'))
+    return (contrat.montant or Decimal('0')) - total_deltas
 
 
 def cohortes_retention(company, today=None):
@@ -1006,7 +1050,7 @@ def cohortes_retention(company, today=None):
 
             mrr_initial_total = Decimal('0')
             for contrat in eligibles:
-                mrr_initial_total += (contrat.montant or Decimal('0'))
+                mrr_initial_total += _mrr_initial_contrat(contrat)
 
             actifs = 0
             mrr_courant_total = Decimal('0')
@@ -1022,7 +1066,9 @@ def cohortes_retention(company, today=None):
                     actifs += 1
                 mrr = Decimal('0') if perdu else mrr_contrat_actif(contrat)
                 mrr_courant_total += mrr
-                plafond = contrat.montant or Decimal('0')
+                # Plafond GRR = montant D'ORIGINE de CE contrat (pas le montant
+                # courant, déjà gonflé par l'expansion qu'on plafonne ici).
+                plafond = _mrr_initial_contrat(contrat)
                 mrr_courant_plafonne_total += min(mrr, plafond)
 
             logo_pct = (
