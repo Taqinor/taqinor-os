@@ -1,0 +1,158 @@
+---
+/**
+ * EN — Guide (W294): Keeping the power on during outages: EPS, hybrid inverter
+ * and battery. Faithful translation of /guides/electricite-pendant-les-coupures,
+ * every figure kept EXACT (Deye SG series 4–10 ms, Huawei Backup Box, 5–10 kWh
+ * battery). Internal links use localizeNavHref (EN/AR if available, else the
+ * existing FR page — never a dead link). FR untouched.
+ */
+import Layout from '../../../layouts/Layout.astro';
+import V2Enhance from '../../../components/V2Enhance.astro';
+import Article33Ribbon from '../../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../../components/Breadcrumb.astro';
+import CtaBand from '../../../components/CtaBand.astro';
+import StickyCta from '../../../components/StickyCta.astro';
+import { NAP } from '../../../lib/nap';
+import RelatedLinks from '../../../components/RelatedLinks.astro';
+import { getLocaleFromPath } from '../../../i18n/utils';
+import { localizeNavHref } from '../../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const schemaImageUrl = new URL('/og/equipement.png', Astro.site).href;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: 'Keeping the power on during outages: EPS, hybrid inverter and battery',
+  description: 'Power outage and solar: how the EPS outputs of a hybrid inverter (Deye, Huawei) work, the "off-grid" myth explained, and why a standard on-grid system always shuts down during an outage.',
+  image: schemaImageUrl,
+  about: { '@type': 'Thing', name: 'Solar EPS emergency power hybrid inverter' },
+  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: url,
+};
+---
+
+<Layout
+  title="Keeping the power on during outages: EPS, hybrid inverter and battery | Taqinor"
+  description="Power outage and solar: how the EPS outputs of a hybrid inverter (Deye, Huawei) work, why backup isn't off-grid, and why a standard on-grid system always shuts down during an outage."
+  ogSlug="equipement"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'Guides', href: L('/guides') }, { label: 'Electricity during outages' }]} />
+
+    <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
+      <p class="tech-label v2-kicker rule-brass text-lune">Guide · Equipment</p>
+      <h1 class="display v2-page-title mt-5 text-white">Keeping the power on during outages</h1>
+
+      <p class="v2-lead mt-6 text-lune-soft">
+        The scene is familiar: ONEE cuts power in the middle of the day, the sun is beating down on
+        the roof, and yet everything goes dark at your place just like the neighbours'. Many
+        homeowners discover at that moment that their panels are useless during an outage. This
+        guide explains why, and what needs adding — a hybrid inverter, a battery,
+        <strong>EPS</strong> outputs — so the next outage doesn't leave you in the dark.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Sun overhead, house dark: what's going on?</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        A standard on-grid inverter is designed to inject electricity <em>in phase</em> with the
+        grid. As soon as the grid disappears, it shuts down automatically. This legal safety
+        requirement is called <strong>anti-islanding</strong>: the inverter must never keep
+        producing on a line declared de-energised, at the risk of endangering technicians working
+        on it. That's why your panels stop with the grid, even in full sunshine. To keep the power
+        on during an outage, you need a hybrid inverter with a dedicated backup output.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Keeping the power on isn't the same as going off-grid</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Many people think "riding out an outage" means doing without the grid entirely, like an
+        off-grid system powering the whole house indefinitely. That's not what a hybrid inverter's
+        backup mode does. It creates a <strong>limited electrical island</strong>: only the circuits
+        wired to the <em>EPS outputs</em> (Emergency Power Supply) stay powered, and only as long as
+        the battery holds energy. The goal isn't to replace the grid, but to keep the fridge,
+        essential lights or the Wi-Fi router alive for the duration of the interruption. This
+        nuance changes everything when sizing the installation.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">EPS outputs: the hybrid inverter's backup circuits</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        A hybrid inverter has two types of outputs: normal <em>grid</em> outputs, and
+        <strong>EPS</strong> outputs reserved for backup. During installation, an electrician wires
+        only the priority circuits onto these EPS outputs — backup lighting, fridge, internet box,
+        possibly a pump or water heater depending on battery capacity. The rest of the house follows
+        the grid and shuts down normally during the outage. This separation is deliberate: it
+        protects the inverter from overloads and lets the battery last longer on genuinely essential
+        uses.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Deye SG series: near-instant switchover, no extra box</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Deye's SG-series inverters (single-phase SG03LP1, three-phase SG04LP3) integrate backup
+        mode natively, with no external box. When the grid goes down, the switchover to the EPS
+        outputs is <strong>near-instant (~4–10 ms, UPS-type)</strong>. This delay is so short that
+        most sensitive electronics don't notice it, provided they're plugged into the EPS circuits.
+        The battery used is low-voltage 48 V LFP, and the inverter offers six configurable TOU
+        (Time of Use) windows to charge the battery during off-peak hours and maximise the autonomy
+        available at night or during a prolonged outage.
+      </p>
+      <p class="v2-lead mt-4 text-lune-soft">
+        This UPS-mode (uninterruptible power supply) operation is one of the main strengths of this
+        range in the Moroccan context, where micro-outages and load shedding can damage electronic
+        equipment or interrupt sensitive processes.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Huawei SUN2000 + Backup Box: a separate box to plan for</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        The Huawei SUN2000 range (L1 single-phase, M1 three-phase) paired with LUNA2000 batteries
+        offers excellent integration and advanced monitoring. For the backup function, Huawei
+        requires a separate unit: the <strong>Backup Box</strong>. Once installed, it takes over
+        the backup circuits with a <strong>very fast</strong> switchover, fast enough for most
+        household uses (lights, standby devices, fridge). The real difference from Deye isn't speed
+        but the fact that an extra box is needed.
+      </p>
+      <p class="v2-lead mt-4 text-lune-soft">
+        One point to check when choosing: depending on model and firmware, the
+        <strong>three-phase SUN2000 M0 may not offer a backup function</strong>. If power
+        continuity matters to you, confirm the backup compatibility of the exact reference, or lean
+        towards the M1 or another range.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Hybrid without a battery: "battery-ready"</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        It's entirely possible to install a hybrid inverter without a battery at first. This is
+        called a <em>battery-ready</em> configuration. The inverter then works like a standard
+        on-grid system: it produces, self-consumes, and, where Law 82-21 allows it, injects a
+        surplus onto the grid. The difference is that it's sized to accept batteries later, without
+        rewiring everything. However, without a battery, there's no EPS backup possible: the backup
+        outputs have no energy to distribute if the grid goes down. Backup only becomes operational
+        once a battery is connected.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">What determines backup duration: the battery</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        The EPS switchover only lasts as long as the battery allows. For essential uses (LED
+        lighting, fridge, internet box), a battery of 5 to 10 kWh can cover several hours to a full
+        night depending on the actual consumption of the connected circuits. If the panels produce
+        during the outage (a daytime outage), the hybrid inverter can recharge the battery in real
+        time and extend backup almost indefinitely as long as the sun is shining. This is where the
+        hybrid system shows its full value compared to a simple generator.
+      </p>
+
+      <RelatedLinks links={[
+        { href: L('/guides/on-grid-off-grid-ou-hybride'), label: 'On-grid, off-grid or hybrid?' },
+        { href: L('/guides/faut-il-des-batteries'), label: 'Do you need batteries?' },
+        { href: L('/guides'), label: 'All the guides' },
+      ]} />
+    </article>
+
+    <CtaBand title="Your installation needs to hold up during outages? Launch the free study." href={L('/devis/mon-toit')} />
+
+    <StickyCta />
+  </div>
+</Layout>

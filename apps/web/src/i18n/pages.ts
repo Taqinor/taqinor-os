@@ -64,6 +64,12 @@ const STATIC_TRANSLATED: readonly string[] = [
   '/guides/quelle-taille-de-batterie',
   '/guides/combien-de-panneaux-pour-ma-maison',
   '/guides/on-grid-off-grid-ou-hybride',
+  '/guides/batterie-lithium-ou-gel',
+  '/guides/electricite-pendant-les-coupures',
+  '/guides/entretien-et-duree-de-vie-des-panneaux',
+  '/guides/mon-toit-peut-il-supporter-des-panneaux',
+  '/guides/monocristallin-ou-polycristallin',
+  '/guides/orientation-inclinaison-ombrage',
   // WJ38 — parcours devis « Mon toit » localisé (routes EN/AR livrées) : les CTA
   // devis/étude basculent d'eux-mêmes vers /en/... et /ar/... via quoteJourneyHref.
   '/devis/mon-toit',

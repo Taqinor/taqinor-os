@@ -1,0 +1,192 @@
+---
+/**
+ * AR — Guide (W294, RTL): Solar battery — LFP vs GEL/lead-acid (and NMC).
+ * Faithful Arabic translation of /guides/batterie-lithium-ou-gel, every figure
+ * kept in Latin digits (500–1000 vs 3000–6000 cycles, 3–7 vs 10–15 years,
+ * 50 % vs 80–90 % DoD, 80–85 % vs 92–98 % round-trip, NMC 150–210 °C
+ * decomposition). Internal links use localizeNavHref (EN/AR if available,
+ * else the existing FR page — never a dead link). FR untouched.
+ */
+import Layout from '../../../layouts/Layout.astro';
+import V2Enhance from '../../../components/V2Enhance.astro';
+import Article33Ribbon from '../../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../../components/Breadcrumb.astro';
+import CtaBand from '../../../components/CtaBand.astro';
+import StickyCta from '../../../components/StickyCta.astro';
+import { NAP } from '../../../lib/nap';
+import RelatedLinks from '../../../components/RelatedLinks.astro';
+import { getLocaleFromPath } from '../../../i18n/utils';
+import { localizeNavHref } from '../../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const schemaImageUrl = new URL('/og/equipement.png', Astro.site).href;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: 'بطارية شمسية: ليثيوم LiFePO4 (LFP) أم GEL/رصاص (وNMC)',
+  description: 'LFP أم GEL؟ دورات الحياة، عمق التفريغ، المردودية، تحمّل الحرارة بالمغرب، والسلامة أمام NMC: كل ما يجب معرفته قبل اختيار بطارية شمسية.',
+  image: schemaImageUrl,
+  about: { '@type': 'Thing', name: 'بطارية التخزين الشمسي LFP' },
+  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: url,
+};
+---
+
+<Layout
+  title="بطارية شمسية: LFP أم GEL/رصاص (وNMC) | Taqinor"
+  description="LFP أم GEL؟ دورات الحياة، عمق التفريغ، المردودية، تحمّل الحرارة بالمغرب، والسلامة أمام NMC: كل ما يجب معرفته قبل اختيار بطارية شمسية."
+  ogSlug="equipement"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: 'الأدلّة', href: L('/guides') }, { label: 'بطارية LFP أم GEL/رصاص' }]} />
+
+    <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
+      <p class="tech-label v2-kicker rule-brass text-lune">دليل · العتاد</p>
+      <h1 class="display v2-page-title mt-5 text-white">بطارية شمسية: LFP أم GEL/رصاص (وNMC)</h1>
+
+      <p class="v2-lead mt-6 text-lune-soft">
+        للتخزين الشمسي السكني تحت المناخ المغربي، نُركّب ليثيوم حديد الفوسفات (LFP، أو LiFePO4). هذه
+        الخلاصة، لا التشويق. الرصاص الحمضي الجل أرخص عند الشراء، والليثيوم نيكل-منغنيز-كوبالت (NMC)
+        يُظهر أرقام كثافة جميلة، لكن لا واحدة منهما تصمد أمام المقارنة بمجرّد النظر إلى العمر، الطاقة
+        المتاحة فعلياً، وسلوك الحرارة. باقي هذا الدليل يُبيّن لماذا، تقنية بتقنية.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">التقنيات الثلاث جنباً إلى جنب</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        قبل التفصيل، يلخّص الجدول أدناه ما يفصل التقنيات الثلاث في المعايير التي تهمّ حقاً في بيت.
+        الأرقام هوامش سوق؛ قيم Dyness هي قيم بطاريات LFP التي نُركّبها.
+      </p>
+      <div class="mt-6 overflow-x-auto">
+        <table class="v2-lead w-full border-collapse text-left text-sm text-lune-soft">
+          <thead>
+            <tr class="border-b border-white/20 text-white">
+              <th class="py-3 pr-4 font-bold"></th>
+              <th class="py-3 pr-4 font-bold">رصاص / GEL</th>
+              <th class="py-3 pr-4 font-bold">LFP (LiFePO4)</th>
+              <th class="py-3 font-bold">NMC</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="border-b border-white/10">
+              <td class="py-3 pr-4 font-bold text-white">الدورات</td>
+              <td class="py-3 pr-4">500 إلى 1 000</td>
+              <td class="py-3 pr-4">3 000 إلى 6 000</td>
+              <td class="py-3">2 000 إلى 4 000</td>
+            </tr>
+            <tr class="border-b border-white/10">
+              <td class="py-3 pr-4 font-bold text-white">العمر</td>
+              <td class="py-3 pr-4">3 إلى 7 سنوات</td>
+              <td class="py-3 pr-4">10 إلى 15 سنة</td>
+              <td class="py-3">8 إلى 12 سنة</td>
+            </tr>
+            <tr class="border-b border-white/10">
+              <td class="py-3 pr-4 font-bold text-white">تفريغ فعلي</td>
+              <td class="py-3 pr-4">50 %</td>
+              <td class="py-3 pr-4">80 إلى 90 %</td>
+              <td class="py-3">80 إلى 90 %</td>
+            </tr>
+            <tr class="border-b border-white/10">
+              <td class="py-3 pr-4 font-bold text-white">المردودية</td>
+              <td class="py-3 pr-4">80 إلى 85 %</td>
+              <td class="py-3 pr-4">92 إلى 98 %</td>
+              <td class="py-3">92 إلى 96 %</td>
+            </tr>
+            <tr>
+              <td class="py-3 pr-4 font-bold text-white">السلامة الحرارية</td>
+              <td class="py-3 pr-4">جيدة</td>
+              <td class="py-3 pr-4">ممتازة</td>
+              <td class="py-3">حسّاسة للانفلات الحراري</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 class="display v2-section-title mt-12 text-white">كم سنة قبل استبدالها</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        يصمد مركم الرصاص الحمضي الجل عادة بين <strong class="text-white">500 و1 000 دورة كاملة</strong>،
+        وهو ما يقابل عمراً مفيداً من <strong class="text-white">3 إلى 7 سنوات</strong> في استخدام شمسي
+        حقيقي. أما بطارية LFP فتبلغ <strong class="text-white">3 000 إلى 6 000 دورة</strong> في ظروف
+        الاستخدام المنزلي المعتاد، أي أمل حياة يقارب <strong class="text-white">10 إلى 15 سنة</strong>.
+        بطاريات Dyness LFP التي نُركّبها تحمل ضماناً لـ10 سنوات عند 70 % من السعة الأولية، بادّعاء
+        مصنّع لا يقل عن 6 000 دورة على المجموعة.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        لاستخدام نموذجي بدورة واحدة يومياً، يتجاوز رصيد دورات LFP 10 سنوات من العمر التقويمي. غالباً
+        ما يكون الشيخوخة المرتبطة بالزمن والحرارة هي التي تُحدّ من البطارية قبل أن ينفد عدّاد الدورات.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">الطاقة التي تسترجعونها فعلاً</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        لا يجب تفريغ الرصاص الحمضي الجل أكثر من <strong class="text-white">50 %</strong> من سعته
+        الاسمية دون تقصير عمره بشكل ملحوظ. عملياً، لا تُقدّم بطارية جل بسعة 10 kWh سوى 5 kWh من الطاقة
+        القابلة للاستغلال فعلاً. يسمح LFP بعمق تفريغ فعلي من <strong class="text-white">80 إلى
+        90 %</strong>: نفس البطارية بسعة 10 kWh بتقنية LFP تُسلّم 8 إلى 9 kWh. بسعة اسمية متطابقة، يكون
+        LFP إذن قابلاً للاستغلال تقريباً ضعف الآخر. لهذا فمقارنة أثمنة نزيهة تُجرى دائماً على السعة
+        الفعلية، لا على الرقم الاسمي المطبوع على الملصق.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">الخسائر عند الشحن والتفريغ</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        تتراوح مردودية الرصاص الحمضي الجل ذهاباً وإياباً بين <strong class="text-white">80 و85 %</strong>:
+        من كل 100 kWh شمسية تُرسَل إلى البطارية، تتبدّد 15 إلى 20 kWh حرارةً أثناء الشحن ثم التفريغ.
+        يُظهر LFP مردودية من <strong class="text-white">92 إلى 98 %</strong>، مُخفّضاً هذه الخسائر إلى
+        2 إلى 8 kWh. على تركيبة تُدوِّر 5 kWh يومياً لعشر سنوات، نتحدّث عن آلاف الكيلوواط ساعة مُسترجَعة
+        بدل مفقودة.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">لماذا تُغيّر الحرارة كل شيء بالمغرب</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        الحرارة هي العدو رقم واحد للبطاريات. القاعدة المقبولة عموماً هي أن ارتفاع 10 درجات مئوية
+        يُضاعف تقريباً الشيخوخة، ويتحمّل الرصاص هذه الظاهرة بشكل سيّئ خصوصاً. محلّ تقني دون تكييف
+        يصعد بسهولة إلى 40 أو 50 درجة مئوية صيفاً بمراكش، أكادير أو مكناس، ما يقلّص عمر الرصاص إلى
+        النصف، أحياناً أكثر.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        يتحمّل LFP هذه الظروف أفضل: يصل مجال تفريغ بطاريات Dyness التي نُركّبها إلى 55 درجة مئوية
+        للطُّرز المُكيَّفة للبيئات الحارة. تبقى التوصية بتركيب البطارية في فضاء مُهوّى وبمنأى عن أشعة
+        الشمس المباشرة، لكن الهامش الحراري لـLFP أعلى بكثير. هذا أحد أسباب فرض هذه التقنية نفسها
+        كمرجع للتخزين السكني في البلدان الحارة.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">LFP أمام NMC: مسألة السلامة</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        ينافس NMC (نيكل-منغنيز-كوبالت) LFP في المردودية (92 إلى 96 %) وعمق التفريغ (80 إلى 90 %)،
+        لكنه يختلف جذرياً في السلامة الحرارية. كل شيء ينطلق من كيمياء الكاثود. في NMC، يتحلّل أكسيد
+        المعدن المُصفّح ابتداءً من حوالي 150 إلى 210 درجة مئوية ويُطلق أكسجيناً، ما قد يُغذّي انفلاتاً
+        حرارياً. في LFP، تُقاوم روابط الفوسفور-الأكسجين لبنية الأوليفين التحلّل: لا يُطلق الكاثود
+        أكسجيناً، ويُدفَع عتبة الانفلات الحراري أبعد بكثير.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        عملياً، تخصّ حوادث البطاريات المتضمّنة حريقاً بأغلبية ساحقة تقنيات NMC أو NCA. للتخزين الثابت
+        المُودَع في محل تقني بمسكن، يبقى LFP أسلم تقنية في السكني. ليس شعاراً تجارياً: إنه ما تخلص إليه
+        الدراسات المستقلّة حول آليات فشل كل تقنية.
+      </p>
+
+      <p class="v2-lead mt-10 text-lune-soft">
+        يحتفظ NMC بمكانته في السيارات الكهربائية والأنظمة المحمولة، حيث تتفوّق الكثافة الطاقية على كل
+        شيء آخر. لبطارية ثابتة معلّقة على جدار بيت أو محل تقني، يميل الحساب نحو LFP: تعيش أطول، تُسلّم
+        طاقة أكثر لكل kWh مُشترى، تتحمّل حرارة المغرب، وتحمل ضمانات مصنّع أطول. يبقى الجل خياراً للدخول،
+        لكن بمجرّد إرجاع ثمنه إلى الـkWh المُسلَّم فعلياً طيلة حياته، تنغلق الفجوة بسرعة.
+      </p>
+
+      <RelatedLinks links={[
+        { href: L('/guides/quelle-taille-de-batterie'), label: 'أي حجم بطارية؟' },
+        { href: L('/guides/faut-il-des-batteries'), label: 'هل تحتاج بطاريات؟' },
+        { href: L('/batteries-stockage'), label: 'البطاريات والتخزين' },
+        { href: L('/guides'), label: 'كل الأدلّة' },
+      ]} />
+    </article>
+
+    <CtaBand title="مترددون بشأن التقنية أو السعة؟ نُحجّم التخزين على وضعكم الحقيقي، مجاناً." href={L('/devis/mon-toit')} />
+
+    <StickyCta />
+  </div>
+</Layout>

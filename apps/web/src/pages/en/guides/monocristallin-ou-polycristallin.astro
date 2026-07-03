@@ -1,0 +1,125 @@
+---
+/**
+ * EN — Guide (W294): Monocrystalline or polycrystalline? String or
+ * micro-inverters? Faithful translation of /guides/monocristallin-ou-polycristallin,
+ * every figure kept EXACT (19–22 % vs 15–17 % efficiency). Internal links use
+ * localizeNavHref (EN/AR if available, else the existing FR page — never a
+ * dead link). FR untouched.
+ */
+import Layout from '../../../layouts/Layout.astro';
+import V2Enhance from '../../../components/V2Enhance.astro';
+import Article33Ribbon from '../../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../../components/Breadcrumb.astro';
+import CtaBand from '../../../components/CtaBand.astro';
+import StickyCta from '../../../components/StickyCta.astro';
+import { NAP } from '../../../lib/nap';
+import RelatedLinks from '../../../components/RelatedLinks.astro';
+import { getLocaleFromPath } from '../../../i18n/utils';
+import { localizeNavHref } from '../../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const schemaImageUrl = new URL('/og/equipement.png', Astro.site).href;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: 'Monocrystalline or polycrystalline? String or micro-inverters?',
+  description: 'Efficiency, heat behaviour, shading: how to choose between monocrystalline and polycrystalline panels, and between string inverters and micro-inverters.',
+  image: schemaImageUrl,
+  about: { '@type': 'Thing', name: 'Photovoltaic panels and solar inverters' },
+  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: url,
+};
+---
+
+<Layout
+  title="Monocrystalline or polycrystalline? String or micro-inverters? | Taqinor"
+  description="~19–22 % efficiency for mono, very different shading behaviour depending on the inverter: this guide explains how to choose your panels and inverter based on your roof, with no jargon."
+  ogSlug="equipement"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'Guides', href: L('/guides') }, { label: 'Monocrystalline or polycrystalline?' }]} />
+
+    <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
+      <p class="tech-label v2-kicker rule-brass text-lune">Guide · Equipment</p>
+      <h1 class="display v2-page-title mt-5 text-white">Monocrystalline or polycrystalline? String or micro-inverters?</h1>
+
+      <p class="v2-lead mt-6 text-lune-soft">
+        These two questions come up as soon as you compare quotes, but for most Moroccan homes one
+        of them is already settled. Here's how much each one actually deserves to keep you up at
+        night, and why.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">The panel: a question that's basically settled</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Honestly, the mono-versus-poly choice shouldn't take up much of your time. Monocrystalline
+        has won. A monocrystalline panel is cut from a single silicon crystal, giving its cells a
+        uniform structure and an efficiency of 19 to 22 % on current models: every square metre
+        produces more than a poly panel of the same surface. On a tight or oddly shaped roof, that
+        translates directly into extra kilowatt-peak without enlarging the installation.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        It also handles heat better. All panels lose a bit of power as temperature rises — that's
+        semiconductor physics — but monocrystalline resists this thermal degradation better. In
+        Marrakech or Agadir in high summer, that matters during the hottest hours.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Polycrystalline, meanwhile, was the standard until the mid-2010s: cells made from several
+        fused crystals, bluish look, efficiency of 15 to 17 % and more pronounced heat sensitivity.
+        With prices having converged, it's no longer the default choice. It's still available, but
+        in practice we install monocrystalline — and that's what you'll see on nearly every serious
+        quote today. In short, on this point, your real decision-making work lies elsewhere.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">The inverter: this one deserves your attention</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        We install <strong class="text-white">string</strong> inverters, and only those: Deye and
+        Huawei. String architecture wires several panels in series to form a "chain" that feeds a
+        centralised inverter. It's simple, proven and cheaper to install. Its weak point is well
+        known: if one panel is partially shaded — an antenna, a shared wall, a chimney — it drags
+        the whole chain down, like the weak link in a rope.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        That's precisely why your roof's shape weighs more than the budget in this choice. Some
+        string inverters, including the Huawei SUN2000 range we install, integrate per-string
+        optimisation that partly mitigates the effect of shading. On a clear roof, well oriented and
+        without recurring shade — the most common case in Morocco — a string setup is more than
+        enough and remains the most rational choice.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">What about micro-inverters? What you should know</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        You'll surely come across the terms "micro-inverters" and "optimisers" in your reading, and
+        it's useful to know what they do — even though it's not what we install. A micro-inverter is
+        a small converter mounted behind each panel: each module works independently, shading on one
+        no longer affects the others. The power optimiser is a variant: also installed panel by
+        panel, but connected to a central string inverter. Both allow individual tracking and
+        fine-grained, panel-by-panel monitoring.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Their value is concentrated on truly difficult roofs: broken up, facing several directions,
+        or subject to partial shading for a good part of the day. The trade-off is a higher cost and
+        more components on the roof, so more parts liable to age. For configurations where these
+        solutions are called for, it's better to turn to an installer who has made them their
+        specialty. On the vast majority of Moroccan roofs, the right pairing remains high-density
+        monocrystalline on a string inverter.
+      </p>
+      <RelatedLinks links={[
+        { href: L('/guides/orientation-inclinaison-ombrage'), label: 'Orientation, tilt, shading' },
+        { href: L('/équipement'), label: 'See the equipment' },
+        { href: L('/guides'), label: 'All the guides' },
+      ]} />
+    </article>
+
+    <CtaBand title="Clear roof or full of shading? We'll assess it and tell you which inverter holds up." href={L('/devis/mon-toit')} />
+
+    <StickyCta />
+  </div>
+</Layout>
