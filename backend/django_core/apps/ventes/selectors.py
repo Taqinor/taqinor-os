@@ -7,6 +7,23 @@ inline d'origine.
 """
 
 
+def factures_echues(company, *, today=None):
+    """YEVNT3 — Factures en retard d'une société : échéance dépassée, non
+    payées, non annulées. Point d'entrée cross-app sanctionné pour
+    `apps.notifications` (jamais un import direct de `apps.ventes.models`).
+    Lecture seule ; renvoie un QuerySet (peut être vide)."""
+    from django.utils import timezone as _tz
+
+    from .models import Facture
+    today = today or _tz.localdate()
+    return Facture.objects.filter(
+        company=company, date_echeance__isnull=False,
+        date_echeance__lt=today,
+    ).exclude(
+        statut__in=[Facture.Statut.PAYEE, Facture.Statut.ANNULEE],
+    ).select_related('client', 'created_by')
+
+
 def devis_for_lead(lead, ids):
     """Devis d'un lead (dans la société du lead), pour les ids donnés, triés par
     id. Liste matérialisée — comportement identique au filtre inline d'origine."""

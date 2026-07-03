@@ -17,15 +17,20 @@ from authentication.mixins import TenantMixin
 from authentication.permissions import IsAdminRole, IsAnyRole
 
 from .models import (
-    EventType, Holiday, Notification, NotificationPreference,
-    NotificationRoutingRule, PushSubscription, WorkingHoursConfig,
+    Annonce, EventType, Holiday, Notification, NotificationPreference,
+    NotificationRoutingRule, PushSubscription, WhatsAppTemplate,
+    WorkingHoursConfig,
 )
 from .serializers import (
-    HolidaySerializer, NotificationPreferenceSerializer,
+    AnnonceSerializer, HolidaySerializer, NotificationPreferenceSerializer,
     NotificationRoutingRuleSerializer, NotificationSerializer,
-    WorkingHoursConfigSerializer,
+    WhatsAppTemplateSerializer, WorkingHoursConfigSerializer,
 )
-from .services import merged_preferences, resolve_vapid_keys
+from .services import (
+    acknowledge_annonce, annonce_compliance_report, merged_preferences,
+    publish_annonce, resolve_vapid_keys, set_template_approval_status,
+    submit_template_for_approval,
+)
 
 
 class NotificationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
@@ -225,6 +230,117 @@ class HolidayViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)
+
+
+class WhatsAppTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
+    """XMKT25 — Registre des gabarits BSP + cycle d'approbation Meta.
+
+    Lecture : tout rôle (pour la sélection dans une campagne). Écriture
+    (créer/soumettre/décider) : admin seulement. company posée côté serveur.
+    Une campagne ne peut choisir qu'un gabarit `statut_approbation=approuve`
+    (appliqué côté service `approved_templates_for`, pas ici — ce viewset gère
+    le registre lui-même)."""
+    queryset = WhatsAppTemplate.objects.all()
+    serializer_class = WhatsAppTemplateSerializer
+    READ_ACTIONS = ['list', 'retrieve']
+
+    def get_permissions(self):
+        if self.action in self.READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsAdminRole()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut_approbation')
+        if statut:
+            qs = qs.filter(statut_approbation=statut)
+        groupe = self.request.query_params.get('groupe')
+        if groupe:
+            qs = qs.filter(groupe=groupe)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=True, methods=['post'], url_path='submit')
+    def submit(self, request, pk=None):
+        """Soumet le gabarit à l'approbation Meta (gated, no-op sans jeton)."""
+        tpl = self.get_object()
+        submit_template_for_approval(tpl, user=request.user)
+        tpl.refresh_from_db()
+        return Response(self.get_serializer(tpl).data)
+
+    @action(detail=True, methods=['post'], url_path='decision')
+    def decision(self, request, pk=None):
+        """Saisie manuelle du statut d'approbation (retour Meta Business Manager).
+
+        Corps : { statut_approbation: 'approuve'|'rejete', motif_rejet? }."""
+        tpl = self.get_object()
+        statut = request.data.get('statut_approbation')
+        if statut not in WhatsAppTemplate.StatutApprobation.values:
+            return Response(
+                {'detail': "Statut d'approbation invalide."},
+                status=status.HTTP_400_BAD_REQUEST)
+        set_template_approval_status(
+            tpl, statut, motif_rejet=request.data.get('motif_rejet', ''))
+        tpl.refresh_from_db()
+        return Response(self.get_serializer(tpl).data)
+
+
+class AnnonceViewSet(TenantMixin, viewsets.ModelViewSet):
+    """XKB5 — Annonces internes ciblées et programmées.
+
+    Lecture : tout rôle (dashboard + écran annonces). Écriture (créer/publier/
+    modifier/supprimer) : admin seulement. company + auteur posés côté serveur.
+    `?active=1` restreint aux annonces publiées et non expirées (pour le
+    bandeau/carte du dashboard)."""
+    queryset = Annonce.objects.all()
+    serializer_class = AnnonceSerializer
+    READ_ACTIONS = ['list', 'retrieve']
+
+    def get_permissions(self):
+        if self.action in self.READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsAdminRole()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.request.query_params.get('active') in ('1', 'true', 'True'):
+            now = timezone.now()
+            from django.db.models import Q
+            qs = qs.filter(publiee=True).filter(
+                Q(date_expiration__isnull=True) | Q(date_expiration__gt=now))
+        epinglee = self.request.query_params.get('epinglee')
+        if epinglee in ('0', '1', 'true', 'false'):
+            qs = qs.filter(epinglee=epinglee in ('1', 'true'))
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company, auteur=self.request.user)
+
+    @action(detail=True, methods=['post'], url_path='publier')
+    def publier(self, request, pk=None):
+        """Publie immédiatement l'annonce (idempotent si déjà publiée)."""
+        annonce = self.get_object()
+        publish_annonce(annonce)
+        annonce.refresh_from_db()
+        return Response(self.get_serializer(annonce).data)
+
+    # ── XKB6 — Accusé de lecture obligatoire + rapport de conformité ────────
+
+    @action(detail=True, methods=['post'], url_path='accuser-lecture',
+            permission_classes=[IsAnyRole])
+    def accuser_lecture(self, request, pk=None):
+        """« J'ai lu et compris » — tout rôle destinataire peut confirmer."""
+        annonce = self.get_object()
+        acknowledge_annonce(annonce, request.user)
+        return Response({'lu': True})
+
+    @action(detail=True, methods=['get'], url_path='conformite')
+    def conformite(self, request, pk=None):
+        """Rapport de conformité : qui a confirmé, quand, qui manque (admin)."""
+        annonce = self.get_object()
+        return Response(annonce_compliance_report(annonce))
 
 
 # ─────────────────────────────────────────────────────────────────────────────

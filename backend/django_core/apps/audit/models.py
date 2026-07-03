@@ -29,6 +29,8 @@ class AuditLog(models.Model):
         EXPORT = 'export', 'Export'
         ACCEPT = 'accept', 'Devis accepté'
         REFUSE = 'refuse', 'Devis refusé'
+        # YEVNT5 — notification in-app émise (notifications.notify()).
+        NOTIFY = 'notify', 'Notification envoyée'
 
     # Société forcée côté serveur (jamais depuis le corps de requête). Nullable
     # pour les évènements sans société connue (échec de connexion avant auth).

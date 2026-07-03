@@ -8,9 +8,14 @@ Deux endpoints publics (pas de session / JWT) :
        Retourne 403 si non configuré ou token incorrect.
 
   POST /api/django/notifications/whatsapp/webhook/
-       Reçoit les callbacks de statut (delivered / read) et les met à
-       jour dans WhatsAppMessageLog (via external_id). Valide la
-       signature X-Hub-Signature-256 contre WHATSAPP_BSP_APP_SECRET (env).
+       Reçoit les callbacks de statut (delivered / read) ET les messages
+       ENTRANTS (XKB33). Les statuts mettent à jour WhatsAppMessageLog (via
+       external_id). Les messages entrants sont capturés via le service gated
+       FG207 (`compta.services.capturer_message_whatsapp`) puis rattachés au
+       chatter du lead/client correspondant (matching par numéro, via
+       `crm.services`) ET surfacés dans une conversation Discuss dédiée
+       « WhatsApp — <contact> » (`chat.services`). Valide la signature
+       X-Hub-Signature-256 contre WHATSAPP_BSP_APP_SECRET (env).
        Retourne 200 même si la signature est absente MAIS que
        WHATSAPP_BSP_APP_SECRET n'est pas configuré (mode non sécurisé
        explicite) — log d'avertissement.
@@ -24,6 +29,14 @@ SÉCURITÉ :
     signature (scaffold non sécurisé ; avertissement dans les logs).
   - Aucun appel réseau sortant depuis ce module.
   - Aucune session / authentification JWT (webhook public).
+
+XKB33 — GATING DES MESSAGES ENTRANTS : le traitement des messages entrants
+  passe TOUJOURS par `capturer_message_whatsapp`, qui est lui-même gated par
+  `compta.services.whatsapp_actif()` (WHATSAPP_ENABLED + WHATSAPP_ACCESS_TOKEN).
+  Sans ce jeton, RIEN ne change (comportement actuel préservé) : ni capture,
+  ni chatter, ni conversation Discuss. La résolution de la société cible se
+  fait via `WHATSAPP_BSP_COMPANY_ID` (env, id opaque) — scaffold mono-société
+  tant qu'aucun routage multi-société par numéro Meta n'est fourni.
 """
 import hashlib
 import hmac
@@ -37,6 +50,26 @@ from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 
 logger = logging.getLogger(__name__)
+
+
+def _target_company():
+    """Société cible pour la capture des messages entrants (XKB33), ou None.
+
+    Scaffold mono-société : `WHATSAPP_BSP_COMPANY_ID` (env, id opaque). Sans
+    cette variable, la capture entrante reste un NO-OP complet (aucune
+    société résolue → rien n'est traité), même si le webhook de statut
+    continue de fonctionner normalement."""
+    raw = os.getenv("WHATSAPP_BSP_COMPANY_ID", "").strip()
+    if not raw:
+        return None
+    try:
+        from authentication.models import Company
+        return Company.objects.filter(pk=int(raw)).first()
+    except (ValueError, TypeError):
+        return None
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.warning("Webhook BSP WhatsApp : résolution société échouée : %s", exc)
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -129,6 +162,7 @@ class WhatsAppBspWebhookView(View):
             return JsonResponse({"detail": "JSON invalide."}, status=400)
 
         self._process_statuses(payload)
+        self._process_messages(payload)
         # Meta exige un 200 OK dans tous les cas pour ne pas rejouer.
         return JsonResponse({"ok": True}, status=200)
 
@@ -180,3 +214,102 @@ class WhatsAppBspWebhookView(View):
                             )
         except Exception as exc:  # pragma: no cover - defensif
             logger.warning("Webhook BSP WhatsApp : traitement des statuts echoue : %s", exc)
+
+    # ---- Traitement interne des messages entrants (XKB33) ----
+
+    @staticmethod
+    def _process_messages(payload):
+        """Parse les messages ENTRANTS Meta et les rattache au chatter du
+        lead/client correspondant + a la conversation Discuss dediee.
+
+        Structure Meta (simplifiee) :
+          { "entry": [{ "changes": [{ "value": {
+              "contacts": [{ "profile": { "name": "..." }, "wa_id": "..." }],
+              "messages": [{ "id": "wamid.xxx", "from": "2126...",
+                             "type": "text", "text": {"body": "..."} }]
+          }}]}]}
+
+        GATED : sans societe cible resolue (`_target_company`) OU sans
+        `compta.services.whatsapp_actif()`, c'est un NO-OP complet — rien
+        n'est traite, rien ne change. Erreurs absorbees (best-effort) : un
+        webhook mal forme ne doit jamais planter le serveur.
+        """
+        try:
+            from apps.compta.services import whatsapp_actif
+            if not whatsapp_actif():
+                return
+            company = _target_company()
+            if company is None:
+                return
+
+            entries = payload.get("entry") or []
+            for entry in entries:
+                for change in (entry.get("changes") or []):
+                    value = change.get("value") or {}
+                    messages = value.get("messages") or []
+                    if not messages:
+                        continue
+                    contacts = value.get("contacts") or []
+                    profile_names = {
+                        (c.get("wa_id") or "").strip():
+                            (c.get("profile") or {}).get("name", "")
+                        for c in contacts
+                    }
+                    for msg in messages:
+                        wa_message_id = (msg.get("id") or "").strip()
+                        expediteur = (msg.get("from") or "").strip()
+                        if not wa_message_id or not expediteur:
+                            continue
+                        texte = ((msg.get("text") or {}).get("body", "") or "")
+                        nom_profil = profile_names.get(expediteur, "")
+                        WhatsAppBspWebhookView._capture_and_route(
+                            company, wa_message_id=wa_message_id,
+                            expediteur=expediteur, nom_profil=nom_profil,
+                            texte=texte)
+        except Exception as exc:  # pragma: no cover - defensif
+            logger.warning(
+                "Webhook BSP WhatsApp : traitement des messages entrants echoue : %s",
+                exc)
+
+    @staticmethod
+    def _capture_and_route(company, *, wa_message_id, expediteur, nom_profil, texte):
+        """Capture FG207 puis rattachement chatter lead + conversation Discuss.
+
+        Best-effort a chaque etape : un echec de rattachement chatter ne doit
+        pas empecher la conversation Discuss (et inversement)."""
+        from apps.compta.services import capturer_message_whatsapp
+
+        log = capturer_message_whatsapp(
+            company, wa_message_id=wa_message_id, expediteur=expediteur,
+            nom_profil=nom_profil, texte=texte)
+        if log is None:
+            return  # gated / whatsapp_actif() False (deja verifie en amont).
+
+        # Rattachement au chatter du lead correspondant (matching par numero).
+        try:
+            from apps.crm.services import (
+                find_lead_by_phone, log_whatsapp_message_on_lead,
+            )
+            lead = find_lead_by_phone(company, expediteur)
+            if lead is None and log.lead_id:
+                from apps.crm.selectors import get_company_lead
+                lead = get_company_lead(company, log.lead_id)
+            if lead is not None:
+                log_whatsapp_message_on_lead(
+                    lead, texte=texte, expediteur=expediteur,
+                    nom_profil=nom_profil)
+        except Exception as exc:  # pragma: no cover - defensif
+            logger.warning(
+                "Webhook BSP WhatsApp : rattachement chatter echoue : %s", exc)
+
+        # Conversation Discuss dediee (equipe).
+        try:
+            from apps.chat.services import (
+                get_or_create_whatsapp_conversation, post_system_message,
+            )
+            label = nom_profil or expediteur
+            conv = get_or_create_whatsapp_conversation(company, label)
+            post_system_message(conv, texte or "(message vide)")
+        except Exception as exc:  # pragma: no cover - defensif
+            logger.warning(
+                "Webhook BSP WhatsApp : conversation Discuss echouee : %s", exc)
