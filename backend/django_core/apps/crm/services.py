@@ -39,12 +39,14 @@ _STATUT_VERS_STAGE = {
 def _rang_funnel(stage_key: str) -> int:
     """Rang d'avancement dans le funnel, depuis l'ordre canonique de STAGES.
 
-    COLD est un état de PARKING, pas « plus avancé » : il est classé sous
-    QUOTE_SENT pour qu'un lead froid soit RÉACTIVÉ par les deux mouvements
-    automatiques (devis envoyé / accepté).
+    COLD est un état de PARKING, pas « plus avancé » : il est classé SOUS
+    NEW (rang -1, donc sous toute étape active y compris NEW/CONTACTED) pour
+    qu'un lead froid soit RÉACTIVÉ par les mouvements automatiques (devis
+    envoyé/accepté, réactivation sur nouvelle touche YLEAD11) quelle que soit
+    l'étape cible visée.
     """
     if stage_key == 'COLD':
-        return stages.STAGES.index('QUOTE_SENT') - 1
+        return -1
     return stages.STAGES.index(stage_key)
 
 
@@ -711,22 +713,29 @@ def maybe_assign_mql(lead) -> bool:
             company=lead.company, lead=lead, user=None,
             kind=LeadActivity.Kind.NOTE, body=body)
 
-        try:
-            from apps.notifications.services import notify
-            cible = assignee or getattr(lead, 'owner', None)
-            if cible is not None:
-                nom = (getattr(lead, 'nom', '') or '').strip() or 'Nouveau prospect'
-                # Réutilise EventType.LEAD_ASSIGNED (pas de nouveau type dédié
-                # « lead_mql » — le corps du message précise le déclencheur MQL).
-                notify(
-                    cible, 'lead_assigned',
-                    f'Lead MQL : {nom}',
-                    body=f'{nom} a franchi le seuil MQL (score {lead.score}).',
-                    link=f'/crm/leads?lead={lead.pk}',
-                    company=lead.company,
-                )
-        except Exception:
-            pass
+        # Si on vient d'assigner un owner (round-robin), le save() ci-dessus a
+        # déjà déclenché apps.notifications.signals.lead_post_save
+        # (LEAD_ASSIGNED sur transition d'owner) — ne pas notifier une
+        # deuxième fois ici. On ne notifie explicitement que le cas où le
+        # lead avait DÉJÀ un owner (pas de transition, donc pas de signal).
+        if assignee is None:
+            try:
+                from apps.notifications.services import notify
+                cible = getattr(lead, 'owner', None)
+                if cible is not None:
+                    nom = (getattr(lead, 'nom', '') or '').strip() or 'Nouveau prospect'
+                    # Réutilise EventType.LEAD_ASSIGNED (pas de nouveau type
+                    # dédié « lead_mql » — le corps du message précise le
+                    # déclencheur MQL).
+                    notify(
+                        cible, 'lead_assigned',
+                        f'Lead MQL : {nom}',
+                        body=f'{nom} a franchi le seuil MQL (score {lead.score}).',
+                        link=f'/crm/leads?lead={lead.pk}',
+                        company=lead.company,
+                    )
+            except Exception:
+                pass
         return True
     except Exception:
         return False

@@ -29,9 +29,13 @@ def _make_company(slug='mql-co'):
 
 
 def _make_commercial_role(company):
-    return Role.objects.create(
+    # get_or_create : (company, nom) est unique — un test appelant ce helper
+    # deux fois pour la même société (ou oubliant de réutiliser un rôle déjà
+    # créé) ne doit jamais lever d'IntegrityError.
+    role, _ = Role.objects.get_or_create(
         company=company, nom='Commercial',
-        permissions=['crm_voir', 'crm_creer', 'crm_modifier'])
+        defaults={'permissions': ['crm_voir', 'crm_creer', 'crm_modifier']})
+    return role
 
 
 def _make_commercial(company, username, role=None):
@@ -113,7 +117,8 @@ class MqlThresholdCrossingTests(TestCase):
     def test_existing_owner_is_not_reassigned(self):
         """Un lead qui a déjà un responsable n'est pas réassigné par le
         round-robin — seul le marqueur MQL + la notification jouent."""
-        other = _make_commercial(self.company, 'owner_deja_present')
+        other = _make_commercial(
+            self.company, 'owner_deja_present', role=self.role)
         lead = _make_lead(self.company, owner=other, score=90)
         assigned = maybe_assign_mql(lead)
         self.assertTrue(assigned)

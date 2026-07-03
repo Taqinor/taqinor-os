@@ -448,10 +448,11 @@ LIVECHAT_QUALIFICATION_SYSTEM_PROMPT = (
     "3) le type de projet (résidentiel / professionnel / agricole - pompage), "
     "4) son nom, 5) son téléphone ou email. "
     "N'invente JAMAIS de prix, de délai, de remise ni de disponibilité produit. "
-    "Ne mentionne JAMAIS de prix d'achat, de marge, de coût interne ni de nom "
-    "de fournisseur — ces informations ne te sont de toute façon jamais "
-    "fournies. Si le visiteur pose une question hors sujet solaire, réponds "
-    "brièvement puis reviens à la qualification."
+    "Ne mentionne JAMAIS aucune donnée commerciale interne ou confidentielle "
+    "de l'entreprise (coûts, chiffres internes, partenaires ou origine des "
+    "produits) — ces informations ne te sont de toute façon jamais fournies. "
+    "Si le visiteur pose une question hors sujet solaire, réponds brièvement "
+    "puis reviens à la qualification."
 )
 
 #: Champs interdits — sert de garde-fou testable : le prompt ne doit JAMAIS
@@ -531,5 +532,15 @@ def extract_livechat_qualification(
         r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', visitor_text)
     if email_match:
         extract.email = email_match.group(0).strip()
+
+    # Nom : heuristique légère sur les tournures de présentation courantes en
+    # français ("je m'appelle X", "je suis X", "mon nom est X", "c'est X").
+    # Capture 1 à 3 mots (prénom [+ nom de famille]) jusqu'à la ponctuation.
+    name_match = re.search(
+        r"(?:je\s+m['’]appelle|je\s+suis|mon\s+nom\s+est|c['’]est)\s+"
+        r"([A-ZÀ-Ý][\wÀ-ÿ'’-]*(?:\s+[A-ZÀ-Ý][\wÀ-ÿ'’-]*){0,2})",
+        visitor_text, re.IGNORECASE)
+    if name_match:
+        extract.nom = name_match.group(1).strip(' ,.;:').title()
 
     return extract

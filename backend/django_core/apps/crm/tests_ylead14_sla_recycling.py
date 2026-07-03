@@ -32,9 +32,16 @@ User = get_user_model()
 
 def _old_new_lead(company, hours_ago=48, owner=None):
     lead = Lead.objects.create(
-        company=company, nom='Prospect ancien', stage=stages.NEW, owner=owner)
+        company=company, nom='Prospect ancien', stage=stages.NEW)
+    # L'owner est posé via .update() (comme date_creation ci-dessous), pas à
+    # la création : passer owner=... à Lead.objects.create() déclencherait le
+    # signal apps.notifications.signals.lead_post_save (LEAD_ASSIGNED) sur la
+    # transition d'owner, ce qui polluerait les assertions de comptage de
+    # notification de ces tests (elles ne portent que sur la notification
+    # d'escalade SLA émise par la commande elle-même).
     Lead.objects.filter(pk=lead.pk).update(
-        date_creation=timezone.now() - datetime.timedelta(hours=hours_ago))
+        date_creation=timezone.now() - datetime.timedelta(hours=hours_ago),
+        owner=owner)
     lead.refresh_from_db()
     return lead
 
