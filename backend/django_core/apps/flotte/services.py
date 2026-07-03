@@ -382,8 +382,14 @@ def cloturer_ordre_reparation(ordre, date_cloture=None,
         ordre.date_cloture = date_cloture
 
     if ordre.montant_devis and float(ordre.montant_devis) > 0:
+        # cout_total n'est (re)dérivé qu'à ordre.save() — le calculer ici
+        # depuis les deux postes bruts pour ne pas lire une valeur figée
+        # avant la sauvegarde.
+        cout_total_actuel = (
+            float(ordre.cout_main_oeuvre or 0)
+            + float(ordre.cout_pieces or 0))
         ecart = (
-            (float(ordre.cout_total or 0) - float(ordre.montant_devis))
+            (cout_total_actuel - float(ordre.montant_devis))
             / float(ordre.montant_devis) * 100)
         ordre.ecart_facture_devis_pct = round(ecart, 2)
 

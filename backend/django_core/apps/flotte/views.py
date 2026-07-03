@@ -1958,9 +1958,14 @@ class InfractionViewSet(_FlotteBaseViewSet):
         ``imputation_auto=False`` (le front peut afficher un avertissement)."""
         from .services import conducteur_a_la_date
 
+        save_kwargs = {}
+        if serializer.instance is None:
+            # Create path only — company is immutable on update.
+            save_kwargs['company'] = self.request.user.company
+
         conducteur_fourni = serializer.validated_data.get('conducteur')
         if conducteur_fourni is not None:
-            serializer.save(imputation_auto=False)
+            serializer.save(imputation_auto=False, **save_kwargs)
             return
 
         actif = serializer.validated_data.get('actif_flotte')
@@ -1969,9 +1974,10 @@ class InfractionViewSet(_FlotteBaseViewSet):
         conducteur_resolu = conducteur_a_la_date(vehicule, date_infraction)
         if conducteur_resolu is not None:
             serializer.save(
-                conducteur=conducteur_resolu, imputation_auto=True)
+                conducteur=conducteur_resolu, imputation_auto=True,
+                **save_kwargs)
         else:
-            serializer.save(imputation_auto=False)
+            serializer.save(imputation_auto=False, **save_kwargs)
 
     def perform_create(self, serializer):
         self._imputer_conducteur_auto(serializer)

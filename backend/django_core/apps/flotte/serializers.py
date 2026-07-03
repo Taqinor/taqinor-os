@@ -1904,6 +1904,23 @@ class ContratVehiculeSerializer(serializers.ModelSerializer):
         return obj.statut_calcule()
 
     def validate(self, attrs):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+
+        vehicule = attrs.get(
+            'vehicule', getattr(self.instance, 'vehicule', None))
+        garage = attrs.get('garage', getattr(self.instance, 'garage', None))
+
+        if company is not None:
+            if vehicule is not None and vehicule.company_id != company.id:
+                raise serializers.ValidationError(
+                    {'vehicule':
+                     "Ce véhicule n'appartient pas à votre société."})
+            if garage is not None and garage.company_id != company.id:
+                raise serializers.ValidationError(
+                    {'garage':
+                     "Ce garage n'appartient pas à votre société."})
+
         debut = attrs.get(
             'date_debut', getattr(self.instance, 'date_debut', None))
         fin = attrs.get(
