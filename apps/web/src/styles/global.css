@@ -500,6 +500,49 @@ summary:focus-visible {
   }
 }
 
+/* ─── W378 — L'axe de largeur Archivo comme interaction ───────────────────
+   Le site charge une fonte variable 62–125 % de largeur (font-stretch) mais
+   n'en rendait que 3 valeurs figées (.display 112 %, .fig 106 %, .display-tight
+   106 %) : l'axe existe déjà dans le poids de police téléchargé, l'animer ne
+   coûte donc RIEN de plus (aucune requête, aucune fonte supplémentaire) —
+   juste une interpolation `font-stretch` que le navigateur fait déjà pour le
+   texte statique. Hanken Grotesk (le texte courant/CTA) N'EST PAS une fonte
+   variable en largeur (seule Archivo l'est, cf. les @font-face plus haut) :
+   l'interaction reste donc scopée au titre héros lui-même, seul élément
+   Archivo du bloc héros.
+
+   1) Reveal : au chargement, le titre « respire » de 112 % vers 118 % puis
+      revient à 112 % (repos), un cran plus large l'instant de son
+      apparition — un chuchotement, jamais un à-coup.
+   2) Survol : re-déclenche le même chuchotement (112 → 118 % → 112) au survol
+      du titre — la zone la plus proche d'une navigation dans le héros (le
+      titre ancre tout le bloc de contenu, juste au-dessus du CTA/nav ghost).
+
+   LCP-safe : `.v2-hero-title` n'est ni le poster ni la vidéo héros (l'élément
+   LCP réel), donc cette interpolation typographique ne retarde ni ne mute
+   jamais l'élément mesuré pour le LCP. Gated reduced-motion : hors media
+   match, le titre reste figé à 112 % (valeur .display normale), aucune
+   régression. */
+@media (prefers-reduced-motion: no-preference) {
+  .v2-hero-title {
+    animation: heroStretchBreathe var(--dur-in) var(--ease-cine) both;
+    /* Décalé après le fondu cine-in-1 (120ms) pour ne jamais superposer deux
+       mutations de layout au même instant — l'effet démarre une fois le
+       titre déjà visible. */
+    animation-delay: 480ms;
+    transition: font-stretch var(--dur-hover) var(--ease-cine);
+  }
+  @keyframes heroStretchBreathe {
+    0% { font-stretch: 112%; }
+    45% { font-stretch: 118%; }
+    100% { font-stretch: 112%; }
+  }
+  .v2-hero-title:hover,
+  .v2-hero-title:focus-within {
+    font-stretch: 118%;
+  }
+}
+
 /* W207 — .reveal and .emerge were defined here but had zero usages across all
    .astro/.tsx/.ts/.js sources (confirmed by grep). Removed as dead code. */
 
