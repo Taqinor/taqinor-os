@@ -7,7 +7,7 @@ acceptée du corps de requête (multi-tenant).
 import datetime
 
 from rest_framework import filters, viewsets
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
@@ -1928,3 +1928,42 @@ class SignalementVehiculeViewSet(_FlotteBaseViewSet):
         signalement.save(update_fields=['ordre_reparation'])
 
         return Response(self.get_serializer(signalement).data)
+
+
+# ── XFLT7 — Rapport d'analyse des coûts (pivot + benchmark) ────────────────────
+
+GROUP_BY_VALIDES = ('vehicule', 'categorie', 'mois', 'conducteur', 'garage')
+
+
+@api_view(['GET'])
+@permission_classes([IsAnyRole])
+def rapport_couts(request):
+    """XFLT7 — Rapport d'analyse des coûts (pivot + benchmark), lecture seule.
+
+    ``GET /flotte/rapports/couts/?group_by=vehicule|categorie|mois|conducteur|garage``
+    (défaut ``vehicule`` ; une valeur inconnue retombe sur ``vehicule``).
+    Construit sur le ledger unifié (XFLT3, ``selectors.analyse_couts_report``) :
+    matrice coûts, coût/km par véhicule, dépense par garage, outliers de
+    consommation. ``?export=xlsx`` télécharge le pivot (JAMAIS ``?format=``,
+    réservé par DRF).
+    """
+    company = request.user.company
+    group_by = request.query_params.get('group_by', 'vehicule')
+    if group_by not in GROUP_BY_VALIDES:
+        group_by = 'vehicule'
+
+    from .selectors import analyse_couts_report
+    rapport = analyse_couts_report(company, group_by=group_by)
+
+    if request.query_params.get('export') == 'xlsx':
+        from apps.records.xlsx import build_xlsx_response
+        headers = ['Clé', 'Libellé', 'Total (MAD)']
+        rows = [
+            [ligne['cle'], ligne['libelle'], ligne['total']]
+            for ligne in rapport['pivot']
+        ]
+        return build_xlsx_response(
+            'flotte-analyse-couts.xlsx', headers, rows,
+            sheet_title='Analyse coûts')
+
+    return Response(rapport)

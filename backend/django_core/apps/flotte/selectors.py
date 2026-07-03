@@ -1451,6 +1451,155 @@ def ledger_vehicule(company, vehicule_id, periode=None):
     }
 
 
+# ── XFLT7 — Rapport d'analyse des coûts (pivot + benchmark) ────────────────────
+
+def analyse_couts_report(company, group_by='vehicule', periode=None):
+    """XFLT7 — Rapport pivot des coûts par véhicule × catégorie × mois
+    (lecture seule).
+
+    Construit, pour CHAQUE véhicule de la société, son ``ledger_vehicule``
+    (XFLT3, toutes sources unifiées) puis agrège selon ``group_by`` :
+
+    * ``'vehicule'``  — total par véhicule (label + immatriculation) ;
+    * ``'categorie'`` — total par catégorie de coût ;
+    * ``'mois'``      — total par mois (``'YYYY-MM'``) ;
+    * ``'conducteur'``— total par conducteur (lignes sans conducteur exclues) ;
+    * ``'garage'``    — total par garage des ``OrdreReparation`` (lignes hors
+      réparation exclues).
+
+    ``periode`` (optionnel) est un tuple ``(date_debut, date_fin)`` transmis
+    tel quel à ``ledger_vehicule``.
+
+    Calcule aussi, par véhicule : ``cout_par_km`` (coût total / distance
+    parcourue, réutilise l'odomètre courant du véhicule — ``None`` si
+    kilométrage nul) et signale un OUTLIER de consommation quand la
+    consommation moyenne du véhicule (L/100km ou kWh/100km, FLOTTE13) dépasse
+    de plus de 20 % la MÉDIANE des véhicules de MÊME modèle
+    (``marque``+``modele`` identiques ; un modèle seul dans le parc n'est
+    jamais outlier — pas de comparaison possible).
+
+    Retourne un dict LECTURE SEULE ::
+
+        {
+          'group_by', 'pivot': [ {'cle', 'libelle', 'total'}, … ],
+          'par_vehicule': [ {'vehicule_id', 'label', 'cout_total',
+                             'cout_par_km', 'distance_km'}, … ],
+          'par_garage': [ {'garage_id', 'garage_nom', 'total'}, … ],
+          'outliers': [ {'vehicule_id', 'label', 'conso', 'mediane_modele',
+                         'ecart_pct'}, … ],
+        }
+
+    Aucune écriture, aucun effet de bord.
+    """
+    vehicules = list(Vehicule.objects.filter(company=company))
+
+    pivot_totaux = {}
+    par_vehicule = []
+    par_garage_totaux = {}
+
+    for vehicule in vehicules:
+        ledger = ledger_vehicule(company, vehicule.id, periode=periode)
+        cout_total = 0.0
+        for ligne in ledger['lignes']:
+            montant = ligne['montant']
+            cout_total += montant
+
+            if group_by == 'categorie':
+                cle = ligne['categorie']
+                pivot_totaux[cle] = pivot_totaux.get(cle, 0.0) + montant
+            elif group_by == 'mois':
+                date_ = ligne['date']
+                cle = date_.strftime('%Y-%m') if date_ else 'inconnu'
+                pivot_totaux[cle] = pivot_totaux.get(cle, 0.0) + montant
+            elif group_by == 'conducteur':
+                if ligne['conducteur_id'] is not None:
+                    cle = ligne['conducteur_id']
+                    pivot_totaux[cle] = pivot_totaux.get(cle, 0.0) + montant
+
+            if ligne['source'] == 'reparation' and ligne['objet_id']:
+                ordre = OrdreReparation.objects.filter(
+                    id=ligne['objet_id']).select_related('garage').first()
+                if ordre is not None and ordre.garage_id is not None:
+                    nom = ordre.garage.nom
+                    par_garage_totaux[nom] = (
+                        par_garage_totaux.get(nom, 0.0) + montant)
+
+        if group_by == 'vehicule':
+            pivot_totaux[vehicule.id] = cout_total
+
+        distance = vehicule.kilometrage or 0
+        cout_par_km = round(cout_total / distance, 3) if distance > 0 \
+            else None
+        par_vehicule.append({
+            'vehicule_id': vehicule.id,
+            'label': str(vehicule),
+            'cout_total': round(cout_total, 2),
+            'cout_par_km': cout_par_km,
+            'distance_km': distance,
+        })
+
+    # Pivot en liste triée par total décroissant.
+    pivot = [
+        {'cle': cle, 'libelle': str(cle), 'total': round(total, 2)}
+        for cle, total in sorted(
+            pivot_totaux.items(), key=lambda kv: kv[1], reverse=True)
+    ]
+
+    par_garage = [
+        {'garage_nom': nom, 'total': round(total, 2)}
+        for nom, total in sorted(
+            par_garage_totaux.items(), key=lambda kv: kv[1], reverse=True)
+    ]
+
+    # ── Outliers de consommation (>20% au-dessus de la médiane du modèle) ──
+    par_modele = {}
+    conso_par_vehicule = {}
+    for vehicule in vehicules:
+        conso = consommation_vehicule(company, vehicule.id)
+        valeur = None
+        bloc_litres = conso.get('litres')
+        bloc_kwh = conso.get('kwh')
+        if bloc_litres:
+            valeur = bloc_litres['conso_l_100km']
+        elif bloc_kwh:
+            valeur = bloc_kwh['conso_kwh_100km']
+        if valeur is None:
+            continue
+        conso_par_vehicule[vehicule.id] = valeur
+        cle_modele = (vehicule.marque, vehicule.modele)
+        par_modele.setdefault(cle_modele, []).append(valeur)
+
+    outliers = []
+    for vehicule in vehicules:
+        valeur = conso_par_vehicule.get(vehicule.id)
+        if valeur is None:
+            continue
+        cle_modele = (vehicule.marque, vehicule.modele)
+        groupe = par_modele.get(cle_modele, [])
+        if len(groupe) < 2:
+            continue  # Seul de son modèle : pas de comparaison possible.
+        mediane = _mediane(groupe)
+        if mediane is None or mediane <= 0:
+            continue
+        ecart_pct = round((valeur - mediane) / mediane * 100, 1)
+        if ecart_pct > 20:
+            outliers.append({
+                'vehicule_id': vehicule.id,
+                'label': str(vehicule),
+                'conso': valeur,
+                'mediane_modele': round(mediane, 2),
+                'ecart_pct': ecart_pct,
+            })
+
+    return {
+        'group_by': group_by,
+        'pivot': pivot,
+        'par_vehicule': par_vehicule,
+        'par_garage': par_garage,
+        'outliers': outliers,
+    }
+
+
 # ── FLOTTE24 — Moteur d'alertes d'échéances réglementaires (J-30/15/7/échu) ────
 
 # Fenêtre maximale de l'alerteur : on ne remonte que les échéances déjà
