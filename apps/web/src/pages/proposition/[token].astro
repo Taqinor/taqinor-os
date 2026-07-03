@@ -239,6 +239,19 @@ const assumptions = ok ? proposalAssumptions(data!) : [];
 const monitoring = monitoringPoints();
 const faq = objectionFaq();
 
+// ── WJ86 — « Nos chantiers » (photos réelles) et « Le mot du fondateur »
+// n'ont AUCUNE source de données réelle aujourd'hui (WG5/WG6, toujours GATED
+// dans docs/WEB_PLAN.md) : « (Photos à venir.) » et la citation-scaffold du
+// fondateur s'affichaient comme du contenu FINI sur un document commercial —
+// « bientôt disponible » sur sa propre proposition lit comme un produit
+// inachevé au moment le plus critique pour la confiance. Même discipline
+// « no-op » que <TestimonialCarousel/>/<InstallCounter/> (hasTestimonials()) :
+// tant que ces constantes restent `false`, les deux blocs ne rendent RIEN —
+// pas de squelette vide, pas de mention "à venir". Basculer à `true` (et
+// fournir le VRAI contenu ci-dessous) le jour où Reda livre WG5/WG6.
+const REAL_PROJECT_PHOTOS_AVAILABLE = false;
+const REAL_FOUNDER_QUOTE_AVAILABLE = false;
+
 const pageTitle = ok ? `Proposition ${reference} — ${clientName} | Taqinor` : 'Proposition | Taqinor';
 
 // Données passées au script de signature (sérialisées en JSON dans un data-attr).
@@ -920,34 +933,39 @@ const signConfig = ok
           </div>
         </div>
 
-        <!-- Photos d'installations réelles — scaffold, à remplir par Reda. -->
-        <div class="mt-4 cine-card rounded-xl p-5">
-          <p class="tech-label text-lune-faint" data-i18n data-fr="Nos chantiers" data-en="Our projects" data-ar="ورشاتنا">Nos chantiers</p>
-          <!-- pending real content from Reda : photos d'installations réelles -->
-          <p class="mt-2 text-sm text-lune-soft" data-i18n
-            data-fr="Installations documentées, dossiers techniques à l’appui. (Photos à venir.)"
-            data-en="Documented installations, backed by technical files. (Photos coming soon.)"
-            data-ar="تركيبات موثقة، بملفات تقنية داعمة. (الصور قريباً.)">
-            Installations documentées, dossiers techniques à l’appui.
-            <span class="text-lune-faint"> (Photos à venir.)</span>
-          </p>
-        </div>
+        <!-- WJ86 — « Nos chantiers » (photos réelles) : NO-OP tant que WG5/WG6
+             ne fournissent pas de vraies photos — jamais de mention "à venir"
+             sur un document commercial. Même discipline que
+             <TestimonialCarousel/> (hasTestimonials()). -->
+        {REAL_PROJECT_PHOTOS_AVAILABLE && (
+          <div class="mt-4 cine-card rounded-xl p-5">
+            <p class="tech-label text-lune-faint" data-i18n data-fr="Nos chantiers" data-en="Our projects" data-ar="ورشاتنا">Nos chantiers</p>
+            <p class="mt-2 text-sm text-lune-soft" data-i18n
+              data-fr="Installations documentées, dossiers techniques à l’appui."
+              data-en="Documented installations, backed by technical files."
+              data-ar="تركيبات موثقة، بملفات تقنية داعمة.">
+              Installations documentées, dossiers techniques à l’appui.
+            </p>
+          </div>
+        )}
 
-        <!-- WJ17 — mot du fondateur : bascule TOGGLE (au lieu des deux citations
-             FR+AR toujours visibles côte à côte — le symptôme « bolt-on » que
-             WJ17 corrige) ; scaffold, contenu réel à confirmer. -->
-        <div class="mt-4 cine-card rounded-xl p-6">
-          <p class="tech-label text-lune-faint" data-i18n data-fr="Le mot du fondateur" data-en="A word from the founder" data-ar="كلمة المؤسس">Le mot du fondateur</p>
-          <!-- pending real content from Reda : texte définitif du mot de bienvenue -->
-          <blockquote class="mt-3 v2-body text-lune" data-i18n
-            data-fr="« Chez Taqinor, nous traitons chaque toit comme le nôtre : une étude honnête, du matériel certifié, et un accompagnement après l’installation. Merci de votre confiance. »"
-            data-en="\"At Taqinor, we treat every roof as our own: an honest study, certified equipment, and support after installation. Thank you for your trust.\""
-            data-ar="« في تاقينور، نتعامل مع كل سطح كأنه سطحنا: دراسة صادقة، معدات معتمدة، ومرافقة بعد التركيب. شكراً على ثقتكم. »">
-            « Chez Taqinor, nous traitons chaque toit comme le nôtre : une étude honnête,
-            du matériel certifié, et un accompagnement après l’installation. Merci de votre confiance. »
-          </blockquote>
-          <p class="mt-2 text-sm text-lune-faint">Reda Kasri — <span data-i18n data-fr="fondateur, Taqinor" data-en="founder, Taqinor" data-ar="مؤسس تاقينور">fondateur, Taqinor</span></p>
-        </div>
+        <!-- WJ17/WJ86 — mot du fondateur : NO-OP tant qu'aucune citation réelle
+             n'est fournie (WG6) — un texte placeholder affiché comme un vrai
+             mot du fondateur lit comme un produit inachevé au moment critique
+             de la confiance. -->
+        {REAL_FOUNDER_QUOTE_AVAILABLE && (
+          <div class="mt-4 cine-card rounded-xl p-6">
+            <p class="tech-label text-lune-faint" data-i18n data-fr="Le mot du fondateur" data-en="A word from the founder" data-ar="كلمة المؤسس">Le mot du fondateur</p>
+            <blockquote class="mt-3 v2-body text-lune" data-i18n
+              data-fr="« Chez Taqinor, nous traitons chaque toit comme le nôtre : une étude honnête, du matériel certifié, et un accompagnement après l’installation. Merci de votre confiance. »"
+              data-en="\"At Taqinor, we treat every roof as our own: an honest study, certified equipment, and support after installation. Thank you for your trust.\""
+              data-ar="« في تاقينور، نتعامل مع كل سطح كأنه سطحنا: دراسة صادقة، معدات معتمدة، ومرافقة بعد التركيب. شكراً على ثقتكم. »">
+              « Chez Taqinor, nous traitons chaque toit comme le nôtre : une étude honnête,
+              du matériel certifié, et un accompagnement après l’installation. Merci de votre confiance. »
+            </blockquote>
+            <p class="mt-2 text-sm text-lune-faint">Reda Kasri — <span data-i18n data-fr="fondateur, Taqinor" data-en="founder, Taqinor" data-ar="مؤسس تاقينور">fondateur, Taqinor</span></p>
+          </div>
+        )}
       </section>
 
       <!-- ── WJ32 · FAQ OBJECTIONS (4–5 questions fréquentes) ────────────────
