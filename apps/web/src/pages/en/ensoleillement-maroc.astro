@@ -1,0 +1,202 @@
+---
+/**
+ * EN — Ensoleillement Maroc / "Solar yield in Morocco" (W355). Faithful
+ * translation of /ensoleillement-maroc ; the rendered table IS `YIELD_TABLE`
+ * (read-only), no value re-typed or recalculated. Internal links use
+ * localizeNavHref (EN if it exists, else the FR page — never a dead link).
+ * FR untouched.
+ *
+ * NOTE: this EN route is NOT yet registered in src/i18n/pages.ts
+ * (STATIC_TRANSLATED) — that file is out of scope for this task, so the
+ * language switcher / hreflang do not surface this page yet. The route itself
+ * renders correctly and is a real, indexable page.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import Callout from '../../components/Callout.astro';
+import RelatedLinks from '../../components/RelatedLinks.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import { getLocaleFromPath } from '../../i18n/utils';
+import { localizeNavHref } from '../../i18n/pages';
+import { YIELD_TABLE } from '../../lib/yieldTable';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+const devisHref = L('/devis/mon-toit');
+
+const AZIMUTHS = ['-90', '-45', '0', '45', '90'] as const;
+const AZIMUTH_LABELS: Record<string, string> = {
+  '-90': 'East',
+  '-45': 'South-East',
+  '0': 'South',
+  '45': 'South-West',
+  '90': 'West',
+};
+
+const CITY_LABELS: Record<string, string> = {
+  agadir: 'Agadir',
+  marrakech: 'Marrakech',
+  casablanca: 'Casablanca',
+  rabat: 'Rabat',
+  tanger: 'Tangier',
+};
+
+// Ordered by ascending latitude (South → North), same as estimatorBrain.ts.
+const cities = Object.entries(YIELD_TABLE)
+  .map(([slug, data]) => ({ slug, label: CITY_LABELS[slug] ?? slug, ...data }))
+  .sort((a, b) => a.lat - b.lat);
+
+const tilts = Object.keys(cities[0].grid['0']).map(Number).sort((a, b) => a - b);
+
+// Best (tilt, azimuth) pair per city — for the summary at the top of the page.
+const bestByCity = cities.map((c) => {
+  let best = { tilt: 0, azimuth: '0', value: 0 };
+  for (const az of AZIMUTHS) {
+    for (const [tiltStr, value] of Object.entries(c.grid[az] ?? {})) {
+      if (value > best.value) best = { tilt: Number(tiltStr), azimuth: az, value };
+    }
+  }
+  return { ...c, best };
+});
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Dataset',
+  name: 'Solar yield by city, tilt and orientation — Morocco',
+  description:
+    'Photovoltaic yield (kWh/kWc/year, 14% system losses) for 5 Moroccan cities, in a tilt × orientation grid, derived from PVGIS.',
+  variableMeasured: 'Solar yield (kWh/kWc/year)',
+  creator: { '@type': 'Organization', name: 'Taqinor', url: 'https://taqinor.ma' },
+  spatialCoverage: 'Morocco',
+};
+---
+
+<Layout
+  title="Solar yield in Morocco by city, tilt and orientation | Taqinor"
+  description="Solar yield (kWh/kWc/year) for Casablanca, Rabat, Marrakech, Tangier and Agadir, in a full tilt × orientation grid, derived from PVGIS — the same data our estimator uses, published as-is."
+  ogSlug="equipement"
+>
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+
+    <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'Solar yield in Morocco' }]} />
+
+    <section class="section-lg px-4 pb-10 text-white">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">Open data</p>
+        <h1 class="display v2-page-title cine-in cine-in-1 mt-6">Solar yield and irradiation in Morocco</h1>
+        <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
+          How many kWh does each installed kWc produce, depending on city, roof tilt and
+          orientation? Here is the full table our own estimator falls back on — published
+          unfiltered, for anyone to cite or verify.
+        </p>
+      </div>
+    </section>
+
+    <!-- Summary — best tilt/orientation pair per city -->
+    <section class="section px-4">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">The best setting, city by city</p>
+        <h2 class="display v2-section-title mt-5 text-white">Theoretical optimum by city</h2>
+        <div class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
+          {bestByCity.map((c, i) => (
+            <div class="v2-rise cine-card p-6" style={`--v2-i:${i}`}>
+              <p class="tech-label text-lune-faint">{c.label} · lat. {c.lat.toLocaleString('en-US')}°</p>
+              <p class="fig lum mt-2 text-3xl">
+                {c.best.value.toLocaleString('en-US')}
+                <span class="ms-1 text-sm font-semibold text-brass-400">kWh/kWc/yr</span>
+              </p>
+              <p class="mt-2 text-sm text-lune-soft">
+                at {c.best.tilt}° tilt, {AZIMUTH_LABELS[c.best.azimuth]}-facing
+              </p>
+            </div>
+          ))}
+        </div>
+        <Callout type="info" title="How to read this figure">
+          <p>
+            Yield (kWh/kWc/year) is the theoretical annual output of a photovoltaic system,
+            system losses included (14%) — not real measured production (see our{' '}
+            <a href={L('/production-mesuree')} class="border-b border-brass-300 pb-0.5 font-semibold text-brass-300">Measured production</a> page for
+            actual figures). It's meant to compare configurations, not replace a site survey that
+            accounts for real shading and the equipment actually chosen.
+          </p>
+        </Callout>
+      </div>
+    </section>
+
+    <!-- Full table by city -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="section bg-blanc-azur px-4 text-encre">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-azur-600">The full table</p>
+        <h2 class="display v2-section-title mt-5">Yield (kWh/kWc/year) by city</h2>
+        <p class="v2-lead mt-4 max-w-3xl text-encre-soft">
+          Each table crosses roof tilt (rows) with panel orientation (columns) for one city.
+          Azimuth: South = due south (the optimum in Morocco), South-East/South-West = ±45°,
+          East/West = ±90°.
+        </p>
+
+        {cities.map((c) => (
+          <div class="mt-12">
+            <h3 class="display text-xl text-azur-900">{c.label} <span class="text-base font-normal text-encre-faint">— latitude {c.lat.toLocaleString('en-US')}°</span></h3>
+            <div class="mt-4 overflow-x-auto">
+              <table class="w-full min-w-[560px] border-collapse text-sm">
+                <caption class="sr-only">Solar yield (kWh/kWc/year) in {c.label}, by tilt and orientation</caption>
+                <thead>
+                  <tr class="border-b-2 border-azur-900">
+                    <th scope="col" class="px-3 py-2 text-left font-semibold text-encre">Tilt</th>
+                    {AZIMUTHS.map((az) => (
+                      <th scope="col" class="px-3 py-2 text-right font-semibold text-encre">{AZIMUTH_LABELS[az]}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {tilts.map((tilt) => (
+                    <tr class="border-b border-azur-900/15">
+                      <th scope="row" class="px-3 py-2 text-left font-medium text-encre-soft">{tilt}°</th>
+                      {AZIMUTHS.map((az) => (
+                        <td class="fig px-3 py-2 text-right text-azur-600">
+                          {c.grid[az]?.[String(tilt)] != null ? c.grid[az][String(tilt)].toLocaleString('en-US') : '—'}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ))}
+
+        <p class="mx-auto mt-10 max-w-3xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
+          <strong>Source:</strong> values derived from PVGIS (European Commission, Joint Research
+          Centre), computed for the 5 cities in our service area and generated via our{' '}
+          <code>generate-yield-table.mjs</code> script. They include a 14% system loss (wiring,
+          inverter, heating, soiling) — the same rate our online estimator uses. An intermediate
+          latitude is interpolated between the two surrounding cities.
+        </p>
+      </div>
+    </section>
+
+    <section class="section-tight px-4 pb-20 sm:pb-24">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">To go further</p>
+        <RelatedLinks links={[
+          { href: L('/guides/orientation-inclinaison-ombrage'), label: 'Orientation, tilt & shading guide' },
+          { href: L('/guides/combien-de-panneaux-pour-ma-maison'), label: 'How many panels for my home' },
+          { href: L('/production-mesuree'), label: 'Measured production (our real projects)' },
+          { href: L('/realisations'), label: 'Our projects' },
+        ]} />
+      </div>
+    </section>
+
+    <CtaBand title="Your roof has its own orientation. Start the free assessment to find out." href={devisHref} />
+
+    <StickyCta />
+  </div>
+</Layout>
