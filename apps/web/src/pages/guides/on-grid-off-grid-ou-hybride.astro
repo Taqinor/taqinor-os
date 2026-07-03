@@ -58,6 +58,8 @@ const jsonLd = {
   ogSlug="accueil"
 >
   <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  {/* W376 — reading progress bar (see global.css .reading-bar) */}
+  <div class="reading-bar" aria-hidden="true"></div>
   <div class="v2">
     <V2Enhance />
     <Article33Ribbon />

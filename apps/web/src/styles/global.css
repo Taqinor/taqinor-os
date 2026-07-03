@@ -978,3 +978,60 @@ summary:focus-visible {
   right: auto;
   left: 0.75rem;
 }
+
+/* ─── W376 — Reading progress bar (blog + guides long-form templates) ──────
+   A 2px brass bar fixed to the very top of the viewport (above the sticky
+   header's z-50), filling left→right (right→left under RTL, via `inset-
+   inline-start` + the logical transform-origin below) as the reader scrolls
+   through the article. Markup: a single empty `<div class="reading-bar"
+   aria-hidden="true"></div>` placed once per long-article template (blog
+   [...slug].astro, each guides/*.astro article — NOT guides/index.astro,
+   which is a card grid, not an article).
+
+   ZERO CLS: `position: fixed` takes the element out of flow from the very
+   first paint — it never reserves box space, so it cannot shift anything
+   else on the page regardless of browser support.
+
+   Progressive enhancement, three tiers, no JS in any of them:
+     1. Modern engines (`@supports (animation-timeline: scroll())`): the bar
+        is driven natively by `animation-timeline: scroll(root)` — the
+        compositor reads scroll offset directly, no scroll listener, no
+        main-thread work.
+     2. Motion-safe engines without scroll-timeline support: the bar is
+        simply hidden (`display: none`) rather than shipping a JS polyfill —
+        this task is CSS-only per spec ("CSS scroll-timeline where
+        supported, no-op otherwise").
+     3. `prefers-reduced-motion: reduce`: same no-op — a bar that visibly
+        crawls with scroll position IS the motion, so reduced-motion removes
+        it entirely instead of freezing it at some arbitrary width. */
+.reading-bar {
+  position: fixed;
+  inset-block-start: 0;
+  inset-inline: 0;
+  z-index: 60;
+  height: 2px;
+  background: var(--color-brass-400, #e8b54a);
+  transform-origin: left center;
+  display: none;
+  pointer-events: none;
+}
+[dir="rtl"] .reading-bar {
+  transform-origin: right center;
+}
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: scroll()) {
+    .reading-bar {
+      display: block;
+      transform: scaleX(0);
+      animation: reading-bar-fill auto linear;
+      animation-timeline: scroll(root block);
+    }
+    [dir="rtl"] .reading-bar {
+      animation-timeline: scroll(root block);
+    }
+  }
+  @keyframes reading-bar-fill {
+    from { transform: scaleX(0); }
+    to { transform: scaleX(1); }
+  }
+}
