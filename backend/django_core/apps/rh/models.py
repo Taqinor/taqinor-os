@@ -4387,3 +4387,60 @@ class DeviceKiosque(models.Model):
 
     def __str__(self):
         return self.label or f'Kiosque #{self.pk}'
+
+
+class CorrectionPointage(models.Model):
+    """Audit IMMUABLE des corrections de pointage (XRH11).
+
+    Un ``Pointage`` modifié (heures/type/GPS) sans trace est indéfendable en
+    litige prud'homal / inspection du travail. Chaque correction écrit UNE
+    ligne : le ``champ`` touché, l'ancien et le nouvel état (``ancienne_valeur``
+    / ``nouvelle_valeur``), un ``motif`` OBLIGATOIRE, et l'``auteur``/
+    ``date_creation`` posés côté serveur. JAMAIS modifiable ni supprimable :
+    aucune route update/delete n'est exposée (pattern write-once, comme
+    ``contrats.ContratActivity``).
+
+    Écrite AUTOMATIQUEMENT par la vue à toute modification d'un ``Pointage``
+    existant (jamais par le navigateur). Multi-société : ``company`` posée
+    côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_corrections_pointage',
+        verbose_name='Société',
+    )
+    pointage = models.ForeignKey(
+        Pointage,
+        on_delete=models.CASCADE,
+        related_name='corrections',
+        verbose_name='Pointage',
+    )
+    champ = models.CharField(max_length=60, verbose_name='Champ modifié')
+    ancienne_valeur = models.TextField(
+        blank=True, default='', verbose_name='Ancienne valeur')
+    nouvelle_valeur = models.TextField(
+        blank=True, default='', verbose_name='Nouvelle valeur')
+    motif = models.CharField(max_length=255, verbose_name='Motif')
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_corrections_pointage',
+        verbose_name='Auteur',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Correction de pointage'
+        verbose_name_plural = 'Corrections de pointage'
+        ordering = ['-date_creation', '-id']
+        indexes = [
+            models.Index(
+                fields=['pointage', '-date_creation'],
+                name='rh_correction_pt_date_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.pointage_id} — {self.champ}'

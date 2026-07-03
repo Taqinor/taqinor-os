@@ -21,6 +21,7 @@ from .models import (
     Certification,
     Competence,
     CompetenceEmploye,
+    CorrectionPointage,
     DemandeConge,
     DemandeRH,
     Departement,
@@ -2046,6 +2047,25 @@ class DemandeRHSerializer(serializers.ModelSerializer):
         if not obj.employe_id:
             return ''
         return f'{obj.employe.nom} {obj.employe.prenom}'
+
+
+class CorrectionPointageSerializer(serializers.ModelSerializer):
+    """Ligne d'audit immuable d'une correction de pointage (XRH11).
+
+    Lecture seule — AUCUNE route update/delete n'existe pour ce modèle.
+    """
+    auteur_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CorrectionPointage
+        fields = [
+            'id', 'pointage', 'champ', 'ancienne_valeur', 'nouvelle_valeur',
+            'motif', 'auteur', 'auteur_nom', 'date_creation',
+        ]
+        read_only_fields = fields
+
+    def get_auteur_nom(self, obj):
+        return getattr(obj.auteur, 'username', '') if obj.auteur_id else ''
 
 
 class DeviceKiosqueSerializer(serializers.ModelSerializer):

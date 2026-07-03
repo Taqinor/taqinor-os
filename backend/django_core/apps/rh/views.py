@@ -41,6 +41,7 @@ from .models import (
     Certification,
     Competence,
     CompetenceEmploye,
+    CorrectionPointage,
     DemandeConge,
     DemandeRH,
     Departement,
@@ -93,6 +94,7 @@ from .serializers import (
     EmbaucherSerializer,
     CompetenceEmployeSerializer,
     CompetenceSerializer,
+    CorrectionPointageSerializer,
     DemandeCongeSerializer,
     DemandeRHSerializer,
     DepartementSerializer,
@@ -923,6 +925,61 @@ class PointageViewSet(_RhBaseViewSet):
             except (TypeError, ValueError):
                 pass
         return qs
+
+    # XRH11 — champs suivis par l'audit immuable des corrections.
+    _CHAMPS_AUDITES = (
+        'heure_arrivee', 'heure_depart', 'type_pointage',
+        'arrivee_gps_lat', 'arrivee_gps_lng',
+        'depart_gps_lat', 'depart_gps_lng',
+    )
+
+    def update(self, request, *args, **kwargs):
+        """XRH11 — toute modification d'un pointage EXISTANT (heures/type/GPS)
+        exige un ``motif`` non vide et écrit une ligne d'audit immuable par
+        champ modifié (``CorrectionPointage``). Sans motif → 400 ; avec motif
+        → correction créée AVANT la sauvegarde effective. La création (POST)
+        n'est PAS concernée — seule l'édition d'un pointage déjà existant."""
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(
+            instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+
+        changements = []
+        for champ in self._CHAMPS_AUDITES:
+            if champ not in serializer.validated_data:
+                continue
+            ancien = getattr(instance, champ)
+            nouveau = serializer.validated_data[champ]
+            if ancien != nouveau:
+                changements.append((champ, ancien, nouveau))
+
+        if changements:
+            motif = (request.data.get('motif') or '').strip()
+            if not motif:
+                return Response(
+                    {'motif': "Un motif est obligatoire pour corriger "
+                              "un pointage."},
+                    status=status.HTTP_400_BAD_REQUEST)
+            for champ, ancien, nouveau in changements:
+                CorrectionPointage.objects.create(
+                    company=request.user.company,
+                    pointage=instance,
+                    champ=champ,
+                    ancienne_valeur=str(ancien) if ancien is not None else '',
+                    nouvelle_valeur=str(nouveau) if nouveau is not None else '',
+                    motif=motif,
+                    auteur=request.user,
+                )
+        serializer.save()
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['get'], url_path='corrections')
+    def corrections(self, request, pk=None):
+        """XRH11 — historique immuable des corrections de ce pointage."""
+        pointage = self.get_object()
+        qs = pointage.corrections.select_related('auteur').all()
+        return Response(CorrectionPointageSerializer(qs, many=True).data)
 
     def perform_create(self, serializer):
         """Company posée côté serveur ; heure_arrivee auto si absente."""
