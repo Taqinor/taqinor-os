@@ -4,4 +4,30 @@ Disallow: /preview/
 Disallow: /proposition/
 Disallow: /internal/
 
+# W379 — robots explicitement listés pour le contenu public (assistants IA /
+# réponse générative) ; les mêmes zones privées restent interdites.
+User-agent: GPTBot
+Allow: /
+Disallow: /preview/
+Disallow: /proposition/
+Disallow: /internal/
+
+User-agent: ClaudeBot
+Allow: /
+Disallow: /preview/
+Disallow: /proposition/
+Disallow: /internal/
+
+User-agent: PerplexityBot
+Allow: /
+Disallow: /preview/
+Disallow: /proposition/
+Disallow: /internal/
+
+User-agent: Google-Extended
+Allow: /
+Disallow: /preview/
+Disallow: /proposition/
+Disallow: /internal/
+
 Sitemap: https://taqinor.ma/sitemap.xml
