@@ -44,8 +44,10 @@ describe('WJ18 — mon-toit.astro : le 3D (WJ2) n’est JAMAIS statiquement impo
     expect(wj2Block).not.toContain('IntersectionObserver');
   });
 
-  it('la carte (MapLibre) est aussi chargée par import() dynamique (roof-tool-pro11)', () => {
-    expect(MON_TOIT).toContain("await import('../../scripts/roof-tool-pro11.ts')");
+  it('la carte (MapLibre) est aussi chargée par import() dynamique (roofPro11/captureBoot — WJ47)', () => {
+    // WJ47 : la capture importe directement roofPro11/captureBoot (qui charge MapLibre)
+    // au lieu de roof-tool-pro11.ts, pour ne PAS embarquer Three.js dans le bundle capture.
+    expect(MON_TOIT).toContain("await import('../../scripts/roofPro11/captureBoot')");
   });
 });
 

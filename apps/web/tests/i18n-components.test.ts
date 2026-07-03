@@ -55,14 +55,21 @@ describe('GarantiesTeaser — FR verbatim, EN/AR présents, chiffres invariants'
     expect(garanties).toContain('See all our warranties →');
     expect(garanties).toContain('ضمانات مكتوبة');
   });
-  it('les CHIFFRES sont identiques dans toutes les locales (ni « ans » ni « 84,8 » traduits)', () => {
-    // Les valeurs years vivent dans un tableau unique partagé par toutes les locales.
-    for (const fig of ['12 ans', '25 ans', '10 ans', '20 ans', '2 ans']) {
+  it('les VALEURS chiffrées sont identiques dans toutes les locales — seuls le mot d’unité et le séparateur décimal localisent (W302)', () => {
+    // years est désormais locale-keyé (YEARS_BY_LOCALE) : mêmes nombres, unité localisée.
+    for (const fig of ['12 ans', '25 ans', '10 ans', '20 ans', '2 ans']) {       // FR
       expect(garanties, fig).toContain(fig);
     }
-    // Le token figure « 84,8 % » est identique fr/en/ar (jamais « 84.8 » ni traduit).
+    for (const fig of ['12 years', '25 years', '10 years', '20 years', '2 years']) { // EN
+      expect(garanties, fig).toContain(fig);
+    }
+    // Performance : « 84,8 % » en FR (virgule) ; « 84.8 % » en EN/AR (point —
+    // convention déjà en place sur garanties/financement/faq/équipement). La
+    // VALEUR (84,8) est identique partout ; seul le séparateur décimal localise.
     expect(garanties).toContain('Performance ≥ 84,8 %');
-    expect(garanties).not.toContain('84.8');
+    expect(garanties).toContain('84.8 %');
+    // Les chiffres ne sont JAMAIS « traduits » en chiffres arabo-indiens.
+    expect(garanties).not.toMatch(/[٠-٩۰-۹]/);
     // Le nom de marque reste identique et présent dans le corps rendu.
     expect(garanties).toContain('Deye Cloud');
     // Lien interne localisé (via le helper L = localizeNavHref(href, locale)).

@@ -32,7 +32,10 @@ describe('WJ34 — mon-toit.astro : squelettes de performance perçue', () => {
     expect(MON_TOIT).toContain('function showEstimateSkeleton()');
     expect(MON_TOIT).toContain('mt-est-skeleton');
     expect(MON_TOIT).toContain('showEstimateSkeleton();');
-    expect(MON_TOIT).toContain('requestAnimationFrame(() => computeEstimate());');
+    // WJ46 a élargi le rAF (récupère le retour de computeEstimate pour déclencher
+    // l'offre WhatsApp au rendu de l'estimation) — le squelette reste peint avant le calcul.
+    expect(MON_TOIT).toContain('requestAnimationFrame(() => {');
+    expect(MON_TOIT).toContain('computeEstimate();');
   });
 
   it('le shimmer est gated prefers-reduced-motion (statique sinon)', () => {
@@ -64,10 +67,10 @@ describe('WJ34 — [token].astro : poster blur-up, PDF affordance, safe-area', (
     expect(cssBlock).toContain('prefers-reduced-motion: no-preference');
   });
 
-  it('le lien PDF affiche « Génération du PDF… » au clic puis revient à l’état par défaut (WJ17 : FR/AR-aware)', () => {
+  it('le lien PDF affiche « Génération du PDF… » au clic puis revient à l’état par défaut (WJ17/WJ43 : FR/EN/AR-aware)', () => {
     expect(PROPOSITION).toContain('id="pdf-download"');
-    expect(PROPOSITION).toContain("PDF_LABEL_LOADING = { fr: 'Génération du PDF…', ar: 'جارٍ إنشاء PDF…' }");
-    expect(PROPOSITION).toContain("PDF_LABEL_DEFAULT = { fr: 'Télécharger le devis (PDF)', ar: 'تحميل العرض (PDF)' }");
+    expect(PROPOSITION).toContain("PDF_LABEL_LOADING = { fr: 'Génération du PDF…', en: 'Generating the PDF…', ar: 'جارٍ إنشاء PDF…' }");
+    expect(PROPOSITION).toContain("PDF_LABEL_DEFAULT = { fr: 'Télécharger le devis (PDF)', en: 'Download the quote (PDF)', ar: 'تحميل العرض (PDF)' }");
     expect(PROPOSITION).toContain("pdfLink.addEventListener('click'");
     expect(PROPOSITION).toContain("document.addEventListener('visibilitychange'");
   });
