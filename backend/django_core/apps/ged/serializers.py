@@ -588,11 +588,22 @@ class DemandeSignatureDocumentSerializer(serializers.ModelSerializer):
             'signataire_nom', 'signataire_email',
             'statut', 'provider', 'provider_ref',
             'date_demande', 'date_signature',
+            # XGED1 — lien public + preuves de cérémonie : TOUS en lecture
+            # seule via l'API (posés côté serveur uniquement, jamais mutés par
+            # une requête authentifiée après coup).
+            'token', 'expires_at', 'consentement_explicite',
+            'adresse_ip', 'user_agent', 'hash_contenu',
+            'signature_texte', 'signature_tracee',
+            'motif_refus', 'refuse_le',
             'created_by', 'created_by_nom', 'created_at', 'updated_at',
         ]
         read_only_fields = [
             'statut', 'provider', 'provider_ref',
             'date_demande', 'date_signature',
+            'token', 'consentement_explicite',
+            'adresse_ip', 'user_agent', 'hash_contenu',
+            'signature_texte', 'signature_tracee',
+            'motif_refus', 'refuse_le',
             'created_by', 'created_at', 'updated_at',
         ]
 

@@ -2147,3 +2147,117 @@ def public_partage(request, token):
     resp['Content-Disposition'] = f'{disposition}; filename="{safe_name}"'
     resp['X-Content-Type-Options'] = 'nosniff'
     return _ged_noindex(resp)
+
+
+class PublicSignatureRateThrottle(SimpleRateThrottle):
+    """XGED1 — Limite de débit de la cérémonie publique par IP + jeton.
+
+    Même motif que `PublicPartageRateThrottle` (GED20) : décourage le balayage
+    de jetons sans bloquer un signataire légitime."""
+    scope = 'public_ged_signature'
+    rate = '30/minute'
+
+    def get_rate(self):
+        return self.rate
+
+    def get_cache_key(self, request, view):
+        token = (getattr(view, 'kwargs', None) or {}).get('token', '')
+        ident = self.get_ident(request)
+        return self.cache_format % {
+            'scope': self.scope,
+            'ident': f'{ident}:{token}',
+        }
+
+
+def _signature_publique_payload(demande):
+    """XGED1 — Représentation JSON publique d'une demande (jamais de données
+    d'une autre société ; aucun prix d'achat/marge — cette demande ne porte
+    aucune donnée commerciale de toute façon)."""
+    document = demande.document
+    return {
+        'document_nom': document.nom,
+        'document_id': document.id,
+        'signataire_nom': demande.signataire_nom,
+        'statut': demande.statut,
+        'expires_at': demande.expires_at,
+    }
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicSignatureRateThrottle])
+def public_signature(request, token):
+    """XGED1 — Cérémonie de signature PUBLIQUE (sans login), loi 53-05.
+
+    `GET /api/django/ged/signature/<token>/` : consulte la demande + le
+    document à signer (réutilise le stream d'aperçu GED14 via `versions/<id>/
+    apercu/` côté client, ce endpoint ne renvoie que les métadonnées).
+    `POST /api/django/ged/signature/<token>/` avec
+    `{"action": "signer", "consentement": true,
+    "signature_texte"?: str, "signature_tracee"?: str}` ou
+    `{"action": "refuser", "motif": str}`.
+
+    Codes :
+      - 404 : jeton inconnu (jamais de fuite).
+      - 410 : demande expirée/annulée OU déjà traitée (signée/refusée) —
+        idempotence visible, pas de re-signature.
+      - 400 : consentement/signature manquants (signer) ou motif vide (refuser).
+      - 200 : succès (GET consultation, ou POST signer/refuser).
+
+    Ne touche NI `contrats.SignatureContrat` NI `/proposal` (rule #4)."""
+    statut, demande = services.resolve_signature_publique(token)
+
+    if statut == services.SIGNATURE_PUBLIQUE_INTROUVABLE:
+        return _ged_noindex(Response(
+            {'detail': "Ce lien de signature est introuvable."},
+            status=status.HTTP_404_NOT_FOUND))
+    if statut == services.SIGNATURE_PUBLIQUE_EXPIREE:
+        return _ged_noindex(Response(
+            {'detail': "Ce lien de signature a expiré ou a été annulé."},
+            status=status.HTTP_410_GONE))
+    if statut == services.SIGNATURE_PUBLIQUE_DEJA_TRAITEE:
+        return _ged_noindex(Response(
+            {'detail': "Cette demande a déjà été traitée (signée ou refusée).",
+             'statut': demande.statut},
+            status=status.HTTP_410_GONE))
+
+    if request.method == 'GET':
+        return _ged_noindex(
+            Response(_signature_publique_payload(demande),
+                     status=status.HTTP_200_OK))
+
+    # POST — signer ou refuser.
+    action_demandee = (request.data.get('action') or '').strip().lower()
+    ip = services._adresse_ip_requete(request)
+    ua = (request.META.get('HTTP_USER_AGENT') or '')[:512]
+
+    if action_demandee == 'refuser':
+        try:
+            demande = services.refuser_demande_publique(
+                demande, motif=request.data.get('motif'),
+                adresse_ip=ip, user_agent=ua)
+        except ValueError as exc:
+            return _ged_noindex(Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST))
+        return _ged_noindex(
+            Response(_signature_publique_payload(demande),
+                     status=status.HTTP_200_OK))
+
+    if action_demandee == 'signer':
+        try:
+            demande = services.signer_demande_publique(
+                demande,
+                consentement=bool(request.data.get('consentement')),
+                signature_texte=request.data.get('signature_texte', ''),
+                signature_tracee=request.data.get('signature_tracee', ''),
+                adresse_ip=ip, user_agent=ua)
+        except ValueError as exc:
+            return _ged_noindex(Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST))
+        return _ged_noindex(
+            Response(_signature_publique_payload(demande),
+                     status=status.HTTP_200_OK))
+
+    return _ged_noindex(Response(
+        {'detail': "Action inconnue : 'signer' ou 'refuser' attendu."},
+        status=status.HTTP_400_BAD_REQUEST))

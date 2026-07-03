@@ -1499,6 +1499,46 @@ class DemandeSignatureDocument(models.Model):
     # Horodatage de la signature effective — NULL tant que non signée.
     date_signature = models.DateTimeField(
         null=True, blank=True, verbose_name='signée le')
+    # XGED1 — Cérémonie de signature in-app (lien public tokenisé, loi 53-05).
+    #
+    # `token` est le SEUL secret d'accès public — même motif que
+    # `PartageGed.token` (secrets.token_urlsafe, cryptographiquement fort,
+    # impossible à deviner/énumérer). `expires_at` optionnelle (NULL = jamais
+    # expiré) borne la validité du lien (token inconnu/expiré → 404/410 côté
+    # endpoint public, jamais de fuite distinguant les deux cas pour un jeton
+    # inconnu). Rétro-compatible : une demande GED30 pré-XGED1 reçoit un token
+    # au premier `save()` via le défaut — aucune migration de données requise.
+    token = models.CharField(
+        max_length=64, unique=True, default=_default_partage_token,
+        editable=False)
+    expires_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='expire le')
+    # Preuves IMMUABLES de la cérémonie (posées CÔTÉ SERVEUR uniquement, jamais
+    # lues du corps de requête) — pattern QJ10 (`ventes.DevisSignature`) :
+    # consentement explicite, IP, user-agent, hash SHA-256 du contenu signé
+    # (la version courante du document au moment de la signature), horodatage.
+    # En LECTURE SEULE via l'API (aucun endpoint ne les modifie après coup).
+    consentement_explicite = models.BooleanField(
+        default=False, verbose_name="consentement explicite à signer")
+    adresse_ip = models.GenericIPAddressField(
+        null=True, blank=True, verbose_name='adresse IP du signataire')
+    user_agent = models.CharField(
+        max_length=512, blank=True, default='', verbose_name='user-agent')
+    hash_contenu = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='hash du contenu signé (SHA-256)')
+    # Signature tapée (nom) ET/OU tracée (pattern FG69 `signature_client` —
+    # data-URL/vecteur base64 d'un tracé). Au moins l'un des deux est requis
+    # pour signer (garde côté service). Jamais lues du corps après signature.
+    signature_texte = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='signature tapée')
+    signature_tracee = models.TextField(
+        blank=True, default='', verbose_name='signature tracée (vecteur/data-URL)')
+    # Refus explicite avec motif obligatoire — alternative terminale à la
+    # signature. `refuse_le` horodate le refus (NULL tant que non refusée).
+    motif_refus = models.TextField(blank=True, default='', verbose_name='motif de refus')
+    refuse_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='refusée le')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='ged_demandes_signature_creees')
@@ -1520,6 +1560,11 @@ class DemandeSignatureDocument(models.Model):
     def is_pending(self):
         """True si la demande est encore en attente de signature."""
         return self.statut == SIGNATURE_EN_ATTENTE
+
+    @property
+    def is_expired(self):
+        """XGED1 — True si le lien public de signature a une expiration dépassée."""
+        return self.expires_at is not None and self.expires_at <= timezone.now()
 
     def __str__(self):
         return f'Signature {self.document} → {self.signataire_nom} ' \

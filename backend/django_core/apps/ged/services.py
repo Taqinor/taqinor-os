@@ -2364,6 +2364,142 @@ def marquer_signe(demande, *, provider_ref=None, date_signature=None):
     return demande
 
 
+# ── XGED1 — Cérémonie de signature in-app (lien public tokenisé) ────────────
+
+# Sentinelles de résolution publique — même motif que `resolve_partage_public`
+# (GED20) : jamais de fuite distinguant « jeton inconnu » d'un état terminal
+# révélateur ; un jeton inconnu ET une demande annulée renvoient le même 404.
+SIGNATURE_PUBLIQUE_OK = 'ok'
+SIGNATURE_PUBLIQUE_INTROUVABLE = 'introuvable'   # jeton inconnu → 404
+SIGNATURE_PUBLIQUE_EXPIREE = 'expiree'           # expirée/annulée → 410
+SIGNATURE_PUBLIQUE_DEJA_TRAITEE = 'deja_traitee'  # déjà signée/refusée → 410
+
+
+def resolve_signature_publique(token):
+    """XGED1 — Résout une demande de signature DEPUIS le seul jeton public.
+
+    Cœur sécurité : aucune identité/société n'est jamais lue de la requête —
+    tout est résolu à partir du `token` (qui ne référence qu'UNE seule demande
+    d'UNE seule société). Renvoie `(statut, demande_ou_None)` :
+
+      - SIGNATURE_PUBLIQUE_INTROUVABLE : jeton inconnu → 404.
+      - SIGNATURE_PUBLIQUE_EXPIREE     : `expires_at` dépassée OU demande
+        `annule` → 410 Gone.
+      - SIGNATURE_PUBLIQUE_DEJA_TRAITEE : déjà `signe`/`refuse` → 410 Gone
+        (idempotence visible : le lien ne re-signe jamais deux fois).
+      - SIGNATURE_PUBLIQUE_OK          : la demande est signable/refusable.
+    """
+    from .models import (
+        DemandeSignatureDocument, SIGNATURE_ANNULE, SIGNATURE_EN_ATTENTE,
+    )
+    demande = (DemandeSignatureDocument.objects
+               .select_related('document', 'document__company', 'company')
+               .filter(token=token)
+               .first())
+    if demande is None:
+        return SIGNATURE_PUBLIQUE_INTROUVABLE, None
+    if demande.statut == SIGNATURE_ANNULE or demande.is_expired:
+        return SIGNATURE_PUBLIQUE_EXPIREE, demande
+    if demande.statut != SIGNATURE_EN_ATTENTE:
+        return SIGNATURE_PUBLIQUE_DEJA_TRAITEE, demande
+    return SIGNATURE_PUBLIQUE_OK, demande
+
+
+def _hash_version_contenu(version):
+    """XGED1 — SHA-256 hex du CONTENU de la version courante (preuve QJ10).
+
+    Best-effort : si le contenu n'est pas récupérable (stockage indisponible),
+    renvoie une chaîne vide plutôt que de bloquer la signature — le hash reste
+    une preuve BONUS, jamais un bloqueur de cérémonie."""
+    if version is None:
+        return ''
+    try:
+        from apps.records.storage import fetch_attachment
+        data, err = fetch_attachment(version.file_key)
+        if err or data is None:
+            return ''
+        return hashlib.sha256(data).hexdigest()
+    except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        return ''
+
+
+def signer_demande_publique(demande, *, consentement, signature_texte='',
+                            signature_tracee='', adresse_ip=None,
+                            user_agent=''):
+    """XGED1 — Enregistre la SIGNATURE d'une demande depuis le lien public.
+
+    Exige un consentement explicite (`consentement is True`) ET au moins une
+    des deux formes de signature (nom tapé OU tracé vectoriel — pattern FG69
+    `signature_client`). Les preuves (IP/UA/horodatage/hash du contenu de la
+    version courante — pattern QJ10) sont posées CÔTÉ SERVEUR, jamais lues du
+    corps au-delà de ce que l'appelant (la vue publique) fournit explicitement.
+    Une fois signée, les champs de preuve sont IMMUABLES (l'API ne les modifie
+    plus jamais). Bascule le statut via `marquer_signe` (réutilisé, ne le
+    duplique pas). Lève `ValueError` si le consentement/la signature manquent.
+
+    Renvoie la `DemandeSignatureDocument` mise à jour.
+    """
+    from django.utils import timezone
+
+    if not consentement:
+        raise ValueError(
+            "Le consentement explicite à contracter électroniquement est requis.")
+    signature_texte = (signature_texte or '').strip()
+    signature_tracee = (signature_tracee or '').strip()
+    if not signature_texte and not signature_tracee:
+        raise ValueError(
+            "Une signature (nom tapé ou tracé) est requise.")
+
+    version = selectors_latest_version(demande.document)
+    demande.consentement_explicite = True
+    demande.signature_texte = signature_texte
+    demande.signature_tracee = signature_tracee
+    demande.adresse_ip = adresse_ip or None
+    demande.user_agent = (user_agent or '')[:512]
+    demande.hash_contenu = _hash_version_contenu(version)
+    demande.save(update_fields=[
+        'consentement_explicite', 'signature_texte', 'signature_tracee',
+        'adresse_ip', 'user_agent', 'hash_contenu', 'updated_at',
+    ])
+    return marquer_signe(demande, date_signature=timezone.now())
+
+
+def refuser_demande_publique(demande, *, motif, adresse_ip=None, user_agent=''):
+    """XGED1 — Enregistre le REFUS d'une demande depuis le lien public.
+
+    Motif OBLIGATOIRE (non vide). Statut → `refuse`, horodaté ; les preuves
+    IP/UA sont posées côté serveur. Idempotent : un refus déjà enregistré ne
+    modifie pas `refuse_le`. Lève `ValueError` si le motif est vide.
+
+    Renvoie la `DemandeSignatureDocument` mise à jour.
+    """
+    from django.utils import timezone
+    from .models import SIGNATURE_REFUSE
+
+    motif = (motif or '').strip()
+    if not motif:
+        raise ValueError("Le motif de refus est requis.")
+
+    champs = ['motif_refus', 'adresse_ip', 'user_agent', 'updated_at']
+    demande.motif_refus = motif
+    demande.adresse_ip = adresse_ip or None
+    demande.user_agent = (user_agent or '')[:512]
+    if demande.statut != SIGNATURE_REFUSE:
+        demande.statut = SIGNATURE_REFUSE
+        champs.append('statut')
+    if demande.refuse_le is None:
+        demande.refuse_le = timezone.now()
+        champs.append('refuse_le')
+    demande.save(update_fields=champs)
+    return demande
+
+
+def selectors_latest_version(document):
+    """Import paresseux de `selectors.latest_version` (évite un cycle module)."""
+    from . import selectors
+    return selectors.latest_version(document)
+
+
 # ── GED35 — Journal d'audit d'accès aux documents (lectures) ─────────────────
 
 def journaliser_acces(document, *, utilisateur=None, type_acces=None,

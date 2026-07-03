@@ -8,6 +8,7 @@ from .views import (
     DocumentVersionViewSet, DocumentViewSet, FolderViewSet, JournalAccesViewSet,
     LegalHoldViewSet, ModeleDocumentViewSet, PartageGedViewSet,
     PolitiqueRetentionViewSet, QuotaStockageViewSet, public_partage,
+    public_signature,
 )
 
 router = DefaultRouter()
@@ -35,5 +36,9 @@ urlpatterns = [
     # jamais être capté par une route authentifiée (le préfixe `public/` est
     # distinct des routes du routeur). AllowAny est posé sur la vue elle-même.
     path('public/<str:token>/', public_partage, name='ged-public-partage'),
+    # XGED1 — cérémonie de signature PUBLIQUE (sans login), résolue par jeton
+    # uniquement. Déclarée avant le routeur pour ne jamais être captée par une
+    # route authentifiée.
+    path('signature/<str:token>/', public_signature, name='ged-public-signature'),
     path('', include(router.urls)),
 ]
