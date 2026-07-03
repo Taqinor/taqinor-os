@@ -237,13 +237,17 @@ const signConfig = ok
     </section>
   ) : (
     <div class="proposition pb-28" data-sign-config={signConfig}>
-      <!-- WJ17 — bascule de langue FR/عربي, flottante (ne perturbe aucun rythme
-           existant, zéro CLS). Même mécanisme dual-node que WJ33 (mon-toit.astro) :
-           voir le <script> de fin de page. Le contenu reste TOUJOURS lisible FR
-           sans JS (pas de gate v2-js ici, page déjà rendue serveur). -->
-      <div class="prop-lang-switch fixed right-3 top-3 z-50 flex gap-1 rounded-sm border border-white/15 bg-nuit/80 p-0.5 backdrop-blur" role="group" aria-label="Langue / اللغة">
+      <!-- WJ17/WJ43 — bascule de langue FR/EN/عربي, flottante (ne perturbe aucun
+           rythme existant, zéro CLS). Même mécanisme tri-node (dual-node élargi)
+           que WJ33 (mon-toit.astro) : voir le <script> de fin de page. Le contenu
+           reste TOUJOURS lisible FR sans JS (pas de gate v2-js ici, page déjà
+           rendue serveur). WJ43 — EN ajouté comme 3ᵉ langue (segment
+           marocains-du-monde), au même niveau que FR/AR, jamais un repli dégradé. -->
+      <div class="prop-lang-switch fixed right-3 top-3 z-50 flex gap-1 rounded-sm border border-white/15 bg-nuit/80 p-0.5 backdrop-blur" role="group" aria-label="Langue / Language / اللغة">
         <button type="button" id="prop-lang-fr" aria-pressed="true"
           class="px-2.5 py-1 text-xs font-semibold text-azur-950 bg-brass-400 transition-colors">FR</button>
+        <button type="button" id="prop-lang-en" aria-pressed="false"
+          class="px-2.5 py-1 text-xs font-semibold text-lune-soft transition-colors hover:text-white">EN</button>
         <button type="button" id="prop-lang-ar" aria-pressed="false"
           class="px-2.5 py-1 text-xs font-semibold text-lune-soft transition-colors hover:text-white">عربي</button>
       </div>
@@ -1198,8 +1202,11 @@ const signConfig = ok
   import {
     validateSign,
     buildAcceptBodyRich,
+    signStampLabel,
+    localizedStamp,
     type OptionKey,
     type SignFormState,
+    type PropLang as SignPropLang,
   } from '../../lib/proposition';
 
   interface SignConfig {
@@ -1211,42 +1218,51 @@ const signConfig = ok
     reference: string;
   }
 
-  // ── WJ17 · bascule de langue FR/عربي — MÊME mécanisme dual-node que WJ33
-  // (mon-toit.astro) : `el.textContent = v` APLATIRAIT toute balise imbriquée
-  // (ex. <strong> dans un data-i18n) à chaque aller-retour. On enveloppe donc
-  // chaque élément `[data-i18n]` d'une PAIRE de nœuds show/hide au premier
-  // passage (FR = markup ORIGINAL capturé une fois via innerHTML, AR = texte
-  // simple depuis data-ar), puis on masque/affiche la bonne paire — aucune
-  // balise n'est jamais perdue, quel que soit le nombre de bascules.
-  type PropLang = 'fr' | 'ar';
+  // ── WJ17/WJ43 · bascule de langue FR/EN/عربي — MÊME mécanisme dual-node que
+  // WJ33 (mon-toit.astro), élargi en TRI-node par WJ43 : `el.textContent = v`
+  // APLATIRAIT toute balise imbriquée (ex. <strong> dans un data-i18n) à chaque
+  // aller-retour. On enveloppe donc chaque élément `[data-i18n]` d'un TRIPLET de
+  // nœuds show/hide au premier passage (FR = markup ORIGINAL capturé une fois
+  // via innerHTML, EN = texte simple depuis data-en, AR = texte simple depuis
+  // data-ar), puis on masque/affiche le bon nœud — aucune balise n'est jamais
+  // perdue, quel que soit le nombre de bascules. Un élément SANS `data-en`
+  // (ne devrait pas arriver — chaque data-i18n doit porter les 3 langues) replie
+  // simplement sur le markup FR en mode EN plutôt que de planter.
+  type PropLang = 'fr' | 'en' | 'ar';
   let currentLang: PropLang = 'fr';
-  const i18nPairs: Array<{ fr: HTMLElement; ar: HTMLElement }> = [];
+  const i18nTriples: Array<{ fr: HTMLElement; en: HTMLElement; ar: HTMLElement }> = [];
   /** Registre des labels à retraduire à chaque bascule (busy-state, non couverts par data-i18n). */
   const propI18nBusyLabels: Array<(lang: PropLang) => void> = [];
   function prepareI18n(): void {
     document.querySelectorAll<HTMLElement>('[data-i18n]').forEach((el) => {
       const arText = el.dataset.ar;
       if (typeof arText !== 'string') return;
+      const enText = typeof el.dataset.en === 'string' ? el.dataset.en : el.innerHTML;
       const frSpan = document.createElement('span');
       frSpan.innerHTML = el.innerHTML;
+      const enSpan = document.createElement('span');
+      enSpan.textContent = enText;
+      enSpan.hidden = true;
       const arSpan = document.createElement('span');
       arSpan.textContent = arText;
       arSpan.hidden = true;
       el.textContent = '';
-      el.append(frSpan, arSpan);
-      i18nPairs.push({ fr: frSpan, ar: arSpan });
+      el.append(frSpan, enSpan, arSpan);
+      i18nTriples.push({ fr: frSpan, en: enSpan, ar: arSpan });
     });
   }
   function applyLang(lang: PropLang): void {
     const isAr = lang === 'ar';
+    const isEn = lang === 'en';
     currentLang = lang;
-    i18nPairs.forEach(({ fr, ar }) => {
-      fr.hidden = isAr;
+    i18nTriples.forEach(({ fr, en, ar }) => {
+      fr.hidden = isAr || isEn;
+      en.hidden = !isEn;
       ar.hidden = !isAr;
     });
     // RTL/langue au niveau DOCUMENT (pas seulement un bloc local) : un lecteur
     // d'écran ou le rendu natif du navigateur doivent voir la vraie langue.
-    document.documentElement.lang = isAr ? 'ar' : 'fr';
+    document.documentElement.lang = isAr ? 'ar' : isEn ? 'en' : 'fr';
     document.documentElement.dir = isAr ? 'rtl' : 'ltr';
     const propRoot = document.querySelector<HTMLElement>('.proposition');
     if (propRoot) {
@@ -1254,10 +1270,12 @@ const signConfig = ok
       propRoot.style.lineHeight = isAr ? '1.75' : '';
     }
     const frBtn = document.getElementById('prop-lang-fr');
+    const enBtn = document.getElementById('prop-lang-en');
     const arBtn = document.getElementById('prop-lang-ar');
-    frBtn?.setAttribute('aria-pressed', String(!isAr));
+    frBtn?.setAttribute('aria-pressed', String(!isAr && !isEn));
+    enBtn?.setAttribute('aria-pressed', String(isEn));
     arBtn?.setAttribute('aria-pressed', String(isAr));
-    for (const [btn, on] of [[frBtn, !isAr], [arBtn, isAr]] as const) {
+    for (const [btn, on] of [[frBtn, !isAr && !isEn], [enBtn, isEn], [arBtn, isAr]] as const) {
       if (!btn) continue;
       btn.className = on
         ? 'px-2.5 py-1 text-xs font-semibold text-azur-950 bg-brass-400 transition-colors'
@@ -1271,6 +1289,7 @@ const signConfig = ok
   }
   prepareI18n();
   document.getElementById('prop-lang-fr')?.addEventListener('click', () => applyLang('fr'));
+  document.getElementById('prop-lang-en')?.addEventListener('click', () => applyLang('en'));
   document.getElementById('prop-lang-ar')?.addEventListener('click', () => applyLang('ar'));
   // Exposé aux AUTRES <script> de cette page (PDF affordance) — chaque bloc
   // <script> d'une île Astro est un module séparé, donc pas de portée
@@ -1294,13 +1313,13 @@ const signConfig = ok
     const submitBtn = document.getElementById('sign-submit') as HTMLButtonElement | null;
     const submitLabel = document.getElementById('sign-submit-label');
     const spinner = document.getElementById('sign-spinner');
-    // ── WJ17 — état « Signature… » n'est pas couvert par prepareI18n (il écrase
-    // le libellé APRÈS le premier rendu) : on le pilote via un petit état
-    // + le registre partagé, pour rester correct FR/AR à chaque bascule.
+    // ── WJ17/WJ43 — état « Signature… » n'est pas couvert par prepareI18n (il
+    // écrase le libellé APRÈS le premier rendu) : on le pilote via un petit
+    // état + le registre partagé, pour rester correct FR/EN/AR à chaque bascule.
     let submitBusy = false;
-    const SUBMIT_LABEL = { fr: 'Signer en ligne', ar: 'التوقيع إلكترونياً' } as const;
-    const SUBMIT_LABEL_BUSY = { fr: 'Signature…', ar: 'جارٍ التوقيع…' } as const;
-    function renderSubmitLabel(lang: 'fr' | 'ar'): void {
+    const SUBMIT_LABEL = { fr: 'Signer en ligne', en: 'Sign online', ar: 'التوقيع إلكترونياً' } as const;
+    const SUBMIT_LABEL_BUSY = { fr: 'Signature…', en: 'Signing…', ar: 'جارٍ التوقيع…' } as const;
+    function renderSubmitLabel(lang: PropLang): void {
       if (!submitLabel) return;
       submitLabel.textContent = submitBusy ? SUBMIT_LABEL_BUSY[lang] : SUBMIT_LABEL[lang];
     }
@@ -1368,20 +1387,23 @@ const signConfig = ok
     }
     clearBtn?.addEventListener('click', clearSignature);
 
-    // Horodatage local lisible (fr-MA) — affiché en direct dans le récap.
-    function frenchStamp(d: Date): string {
-      try {
-        return d.toLocaleString('fr-MA', {
-          dateStyle: 'long', timeStyle: 'short',
-        });
-      } catch {
-        return d.toLocaleString('fr-FR');
-      }
+    // ── WJ42 — Horodatage localisé (FR/EN/AR), affiché en direct dans le récap.
+    // AVANT : `stampEl.textContent = frenchStamp(now)` écrasait le markup
+    // tri-node data-i18n du <p id="sign-stamp"> (ses deux <span data-i18n>
+    // portant Réf./« l'horodatage s'affichera ici ») avec une chaîne FR figée,
+    // JAMAIS ré-inscrite dans `propI18nBusyLabels` — résultat : au moindre
+    // aller-retour de langue, cette seule ligne restait en français au beau
+    // milieu d'une page par ailleurs pleinement AR (ou EN). Cette fonction est
+    // désormais une busy-label REGISTRÉE (même discipline que
+    // `renderSubmitLabel`) : elle régénère tout le texte, dans la langue
+    // courante, à CHAQUE bascule — jamais un remplacement ponctuel figé.
+    const signedAtLocal = new Date();
+    function renderStamp(lang: PropLang): void {
+      if (!stampEl) return;
+      stampEl.textContent = signStampLabel(cfg.reference, signedAtLocal, lang as SignPropLang);
     }
-    if (stampEl) {
-      const now = new Date();
-      stampEl.textContent = `Réf. ${cfg.reference} · signature horodatée le ${frenchStamp(now)} (heure de votre appareil).`;
-    }
+    propI18nBusyLabels.push(renderStamp);
+    renderStamp(currentLang);
 
     function showError(msg: string): void {
       if (!errorEl) return;
@@ -1391,11 +1413,27 @@ const signConfig = ok
     function clearError(): void {
       if (errorEl) errorEl.hidden = true;
     }
-    function showSuccess(name: string, when?: string): void {
+    // ── WJ42 — `successTime` portait le même défaut que le stamp : une chaîne
+    // FR figée (« · signé le … ») jamais ré-inscrite au registre. `signedWhen`
+    // garde la Date brute ; `renderSuccessTime` (busy-label enregistrée) la
+    // reformate dans la langue courante à chaque bascule.
+    let signedWhen: Date | null = null;
+    const SUCCESS_TIME_PREFIX = { fr: ' · signé le ', en: ' · signed on ', ar: ' · تم التوقيع بتاريخ ' } as const;
+    function renderSuccessTime(lang: PropLang): void {
+      if (!successTime) return;
+      successTime.textContent = signedWhen
+        ? `${SUCCESS_TIME_PREFIX[lang]}${localizedStamp(signedWhen, lang as SignPropLang)}`
+        : '';
+    }
+    propI18nBusyLabels.push(renderSuccessTime);
+    function showSuccess(name: string, when?: Date): void {
       if (form) form.hidden = true;
       if (sticky) sticky.hidden = true;
       if (successName) successName.textContent = name || '';
-      if (successTime && when) successTime.textContent = ` · signé le ${when}`;
+      if (when) {
+        signedWhen = when;
+        renderSuccessTime(currentLang);
+      }
       if (success) success.hidden = false;
     }
 
@@ -1476,7 +1514,7 @@ const signConfig = ok
           accepte_par_nom?: string;
         };
         if (res.ok && data.ok) {
-          showSuccess(data.accepte_par_nom || nom.trim(), frenchStamp(signedAt));
+          showSuccess(data.accepte_par_nom || nom.trim(), signedAt);
           return;
         }
         // 400 / 409 / 404 : message backend inline. 409 = déjà accepté →
@@ -1692,13 +1730,14 @@ const signConfig = ok
   const pdfIcon = document.getElementById('pdf-download-icon');
   const pdfSpinner = document.getElementById('pdf-download-spinner');
   const pdfLabel = document.getElementById('pdf-download-label');
-  const PDF_LABEL_DEFAULT = { fr: 'Télécharger le devis (PDF)', ar: 'تحميل العرض (PDF)' } as const;
-  const PDF_LABEL_LOADING = { fr: 'Génération du PDF…', ar: 'جارٍ إنشاء PDF…' } as const;
-  // WJ17 — le libellé bascule FR/AR APRÈS le premier rendu (état « génération »),
-  // donc hors du mécanisme dual-node data-i18n : on lit la langue courante via
-  // le pont __propCurrentLang exposé par le script de bascule (module séparé),
-  // et on se réinscrit pour être retraduit à chaque clic FR/عربي.
-  type PropLang = 'fr' | 'ar';
+  const PDF_LABEL_DEFAULT = { fr: 'Télécharger le devis (PDF)', en: 'Download the quote (PDF)', ar: 'تحميل العرض (PDF)' } as const;
+  const PDF_LABEL_LOADING = { fr: 'Génération du PDF…', en: 'Generating the PDF…', ar: 'جارٍ إنشاء PDF…' } as const;
+  // WJ17/WJ43 — le libellé bascule FR/EN/AR APRÈS le premier rendu (état
+  // « génération »), donc hors du mécanisme tri-node data-i18n : on lit la
+  // langue courante via le pont __propCurrentLang exposé par le script de
+  // bascule (module séparé), et on se réinscrit pour être retraduit à chaque
+  // clic FR/EN/عربي.
+  type PropLang = 'fr' | 'en' | 'ar';
   const propWin = window as unknown as {
     __propCurrentLang?: () => PropLang;
     __propRegisterBusyLabel?: (fn: (l: PropLang) => void) => void;

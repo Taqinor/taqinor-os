@@ -271,6 +271,16 @@ export function optionLabel(opt: OptionKey): string {
   return opt === 'avec_batterie' ? 'Avec batterie' : 'Sans batterie';
 }
 
+/** WJ43 — Étiquette arabe d'une option (paire de `optionLabel` pour le data-i18n). */
+export function optionLabelAr(opt: OptionKey): string {
+  return opt === 'avec_batterie' ? 'مع بطارية' : 'بدون بطارية';
+}
+
+/** WJ43 — Étiquette anglaise d'une option (paire de `optionLabel` pour le data-i18n). */
+export function optionLabelEn(opt: OptionKey): string {
+  return opt === 'avec_batterie' ? 'With battery' : 'Without battery';
+}
+
 /** Lignes d'équipement d'une option (toujours un tableau). */
 export function optionItems(p: ProposalResponse, opt: OptionKey): ProposalItem[] {
   const items = opt === 'avec_batterie' ? p.quote?.avec_items : p.quote?.sans_items;
@@ -293,8 +303,45 @@ export function defaultSelectedOption(p: ProposalResponse): OptionKey {
 }
 
 /** Vrai si la proposition est déjà acceptée (signée) — affiche l'état confirmé. */
-export function isAccepted(p: ProposalResponse): boolean {
+export function isAccepted(p: Pick<ProposalResponse, 'accepted' | 'statut'>): boolean {
   return p.accepted === true || p.statut === 'accepte';
+}
+
+// ── WJ82 · États explicites d'une offre morte (refusée / expirée / retirée) ──
+
+/**
+ * L'état de l'offre du point de vue de la signature. `statut` backend est l'un
+ * des 5 statuts canoniques du devis (brouillon/envoye/accepte/refuse/expire —
+ * voir `apps/ventes/models.py Devis.Statut`) ; « withdrawn » n'existe pas côté
+ * backend aujourd'hui mais est accepté défensivement comme alias de `refuse`
+ * si jamais rencontré (jamais une nouvelle valeur inventée, juste une synonymie
+ * de lecture). `expired` retombe sur `resolveValidity` (date_validite dépassée)
+ * quand le statut lui-même ne le dit pas déjà.
+ */
+export type OfferState = 'live' | 'accepted' | 'refused' | 'expired' | 'withdrawn';
+
+/**
+ * WJ82 — Résout l'état de signature d'une offre : une offre acceptée, refusée,
+ * expirée (statut backend `expire` OU date de validité dépassée) ou retirée ne
+ * doit plus pouvoir être signée. `live` = tout le reste (brouillon/envoyé,
+ * dans les temps) — seul état où le formulaire + le CTA collant restent actifs.
+ */
+export function resolveOfferState(
+  p: Pick<ProposalResponse, 'statut' | 'accepted' | 'date_validite' | 'quote'>,
+  now: Date = new Date(),
+): OfferState {
+  if (isAccepted(p)) return 'accepted';
+  const statut = (p.statut ?? '').trim().toLowerCase();
+  if (statut === 'refuse' || statut === 'refusee' || statut === 'refusé') return 'refused';
+  if (statut === 'withdrawn' || statut === 'retire' || statut === 'retiré') return 'withdrawn';
+  if (statut === 'expire' || statut === 'expiré' || statut === 'expired') return 'expired';
+  if (resolveValidity(p, now).expired) return 'expired';
+  return 'live';
+}
+
+/** Vrai quand l'offre ne peut plus être signée (tout sauf `live`). */
+export function isOfferDead(state: OfferState): boolean {
+  return state !== 'live';
 }
 
 // ── Formulaire de signature : validation + mise en forme de la requête ───────
@@ -619,6 +666,47 @@ export function resolveValidity(
   if (!dt) return { label: null, fromBackend: false, expired: false };
   const expired = dt.getTime() < now.getTime();
   return { label: formatFrenchDate(dt), fromBackend: true, expired };
+}
+
+// ── WJ42 · Horodatage de signature localisé (FR/AR/EN) ───────────────────────
+
+/** Langue active de la page proposition (bascule FR/EN/AR — WJ17/WJ43). */
+export type PropLang = 'fr' | 'en' | 'ar';
+
+const STAMP_LOCALE: Record<PropLang, string> = {
+  fr: 'fr-MA',
+  en: 'en-GB',
+  ar: 'ar-MA',
+};
+
+/**
+ * WJ42 — Formate un horodatage de signature dans la langue active. Auparavant
+ * la page injectait toujours `frenchStamp()` en texte brut dans `#sign-stamp`,
+ * ce qui (a) écrasait le markup dual-node d'i18n et (b) affichait une date
+ * française même en mode arabe/anglais. Cette fonction est PURE (testable sans
+ * DOM) : le composant appelant doit la ré-invoquer à chaque bascule de langue
+ * ET la ré-enregistrer via le registre `propI18nBusyLabels` (même discipline
+ * que `renderSubmitLabel`), jamais un remplacement ponctuel non ré-inscrit.
+ */
+export function localizedStamp(d: Date, lang: PropLang): string {
+  const locale = STAMP_LOCALE[lang] ?? STAMP_LOCALE.fr;
+  try {
+    return d.toLocaleString(locale, { dateStyle: 'long', timeStyle: 'short' });
+  } catch {
+    return d.toLocaleString('fr-FR');
+  }
+}
+
+/** WJ42 — Libellé « Réf. … · signature horodatée le … » dans les 3 langues. */
+export function signStampLabel(reference: string, d: Date, lang: PropLang): string {
+  const stamp = localizedStamp(d, lang);
+  if (lang === 'ar') {
+    return `المرجع ${reference} · تم توقيعه بتاريخ ${stamp} (بتوقيت جهازكم).`;
+  }
+  if (lang === 'en') {
+    return `Ref. ${reference} · signature timestamped on ${stamp} (your device's local time).`;
+  }
+  return `Réf. ${reference} · signature horodatée le ${stamp} (heure de votre appareil).`;
 }
 
 // ── WJ9 · Argent dans le temps (cumul 25 ans + cadrage mensuel) ──────────────
@@ -1345,8 +1433,11 @@ export interface NextStep {
   id: string;
   title: string;
   titleAr: string;
+  /** WJ43 — variante anglaise (segment marocains-du-monde). */
+  titleEn: string;
   body: string;
   bodyAr: string;
+  bodyEn: string;
 }
 
 /**
@@ -1362,29 +1453,37 @@ export function nextSteps(): NextStep[] {
       id: 'signature',
       title: 'Signature',
       titleAr: 'التوقيع',
+      titleEn: 'Signature',
       body: 'Vous signez en ligne ci-dessous. Votre conseiller Taqinor confirme la réception dans la journée.',
       bodyAr: 'توقعون إلكترونياً أدناه، ويؤكد مستشاركم الاستلام خلال اليوم نفسه.',
+      bodyEn: 'You sign online below. Your Taqinor advisor confirms receipt the same day.',
     },
     {
       id: 'visite',
       title: 'Visite technique',
       titleAr: 'الزيارة التقنية',
+      titleEn: 'Technical visit',
       body: 'Un technicien confirme les mesures sur site sous 48–72 h (délai indicatif).',
       bodyAr: 'يتحقق فني من القياسات في الموقع خلال 48 إلى 72 ساعة (أجل تقريبي).',
+      bodyEn: 'A technician confirms the on-site measurements within 48–72 h (indicative timeframe).',
     },
     {
       id: 'installation',
       title: 'Installation',
       titleAr: 'التركيب',
+      titleEn: 'Installation',
       body: 'Pose de votre installation par notre équipe, généralement sous 7–14 jours (délai indicatif) selon la disponibilité matériel.',
       bodyAr: 'تركيب منظومتكم بواسطة فريقنا، عادة خلال 7 إلى 14 يوماً (أجل تقريبي) حسب توفر المعدات.',
+      bodyEn: 'Our team installs your system, typically within 7–14 days (indicative timeframe) depending on equipment availability.',
     },
     {
       id: 'mise-en-service',
       title: 'Mise en service',
       titleAr: 'التشغيل',
+      titleEn: 'Commissioning',
       body: 'Vérification finale, mise en service et remise des documents (garanties, attestations).',
       bodyAr: 'فحص نهائي، تشغيل المنظومة وتسليم الوثائق (الضمانات والشهادات).',
+      bodyEn: 'Final check, commissioning, and handover of documents (warranties, certificates).',
     },
   ];
 }
@@ -1394,7 +1493,16 @@ export function nextSteps(): NextStep[] {
 export interface AssumptionItem {
   label: string;
   labelAr: string;
+  /** WJ43 — variante anglaise. */
+  labelEn: string;
   value: string;
+  /**
+   * WJ43 — la valeur n'avait jusqu'ici AUCUNE traduction (ni AR ni EN) : elle
+   * s'affichait en français quelle que soit la langue active. `valueAr`/
+   * `valueEn` corrigent cette fuite au passage (même chiffres, texte traduit).
+   */
+  valueAr: string;
+  valueEn: string;
 }
 
 /**
@@ -1413,12 +1521,18 @@ export function proposalAssumptions(p: ProposalResponse): AssumptionItem[] {
     {
       label: 'Cadre tarifaire',
       labelAr: 'الإطار التعريفي',
+      labelEn: 'Tariff framework',
       value: 'Autoconsommation basse tension (loi 82-21), tarif ONEE supposé constant (0 % de dérive) — toute hausse réelle ne ferait qu\'augmenter l\'économie.',
+      valueAr: 'الاستهلاك الذاتي في التوتر المنخفض (القانون 82-21)، بافتراض تعريفة ONEE ثابتة (0 % تغير) — أي ارتفاع فعلي لن يزيد إلا من التوفير.',
+      valueEn: 'Low-voltage self-consumption (law 82-21), assuming a constant ONEE tariff (0 % drift) — any real increase would only raise your savings.',
     },
     {
       label: 'Horizon d\'analyse',
       labelAr: 'أفق التحليل',
+      labelEn: 'Analysis horizon',
       value: `${SAVINGS_HORIZON_YEARS} ans — durée de garantie de performance standard d'un panneau photovoltaïque.`,
+      valueAr: `${SAVINGS_HORIZON_YEARS} سنة — مدة ضمان الأداء المعيارية للوح الشمسي.`,
+      valueEn: `${SAVINGS_HORIZON_YEARS} years — standard performance warranty duration of a solar panel.`,
     },
   ];
   const instType = p.quote?.inst_type;
@@ -1429,14 +1543,31 @@ export function proposalAssumptions(p: ProposalResponse): AssumptionItem[] {
         : instType === 'industriel' || instType === 'commercial'
           ? 'Autoconsommation industrielle/commerciale (étude taux de couverture)'
           : 'Résidentiel (simulateur)';
-    items.push({ label: 'Type d\'installation', labelAr: 'نوع التركيب', value: label });
+    const labelAr =
+      instType === 'agricole'
+        ? 'ضخ شمسي (محسوب حسب HMT ومعدل الضخ المرغوب)'
+        : instType === 'industriel' || instType === 'commercial'
+          ? 'استهلاك ذاتي صناعي/تجاري (دراسة معدل التغطية)'
+          : 'سكني (المحاكي)';
+    const labelEn =
+      instType === 'agricole'
+        ? 'Solar pumping (sized on head + desired flow rate)'
+        : instType === 'industriel' || instType === 'commercial'
+          ? 'Industrial/commercial self-consumption (coverage-rate study)'
+          : 'Residential (simulator)';
+    items.push({ label: 'Type d\'installation', labelAr: 'نوع التركيب', labelEn: 'Installation type', value: label, valueAr: labelAr, valueEn: labelEn });
   }
   const fin = backendFinancing(p);
   if (fin?.credit?.programme_label) {
+    const rate = formatNumber(fin.credit.taux_annuel_pct, 2);
+    const years = Math.round(fin.credit.duree_mois / 12);
     items.push({
       label: 'Programme de financement indicatif',
       labelAr: 'برنامج التمويل الإرشادي',
-      value: `${fin.credit.programme_label} — taux ${formatNumber(fin.credit.taux_annuel_pct, 2)} %/an, ${Math.round(fin.credit.duree_mois / 12)} ans (à confirmer avec votre banque).`,
+      labelEn: 'Indicative financing programme',
+      value: `${fin.credit.programme_label} — taux ${rate} %/an, ${years} ans (à confirmer avec votre banque).`,
+      valueAr: `${fin.credit.programme_label} — معدل ${rate} %/سنة، ${years} سنة (يُؤكَّد مع بنككم).`,
+      valueEn: `${fin.credit.programme_label} — rate ${rate} %/year, ${years} years (to confirm with your bank).`,
     });
   }
   return items;
@@ -1447,6 +1578,8 @@ export function proposalAssumptions(p: ProposalResponse): AssumptionItem[] {
 export interface MonitoringPoint {
   label: string;
   labelAr: string;
+  /** WJ43 — variante anglaise. */
+  labelEn: string;
 }
 
 /**
@@ -1456,9 +1589,21 @@ export interface MonitoringPoint {
  */
 export function monitoringPoints(): MonitoringPoint[] {
   return [
-    { label: 'Suivi de production disponible via l\'application de votre onduleur', labelAr: 'تتبع الإنتاج متاح عبر تطبيق العاكس' },
-    { label: 'SAV Taqinor joignable sur WhatsApp pour toute question après installation', labelAr: 'خدمة ما بعد البيع لتاقينور متاحة عبر واتساب لأي سؤال بعد التركيب' },
-    { label: 'Garanties constructeur actives dès la mise en service (voir « Pourquoi nous faire confiance »)', labelAr: 'ضمانات الصانع سارية فور التشغيل' },
+    {
+      label: 'Suivi de production disponible via l\'application de votre onduleur',
+      labelAr: 'تتبع الإنتاج متاح عبر تطبيق العاكس',
+      labelEn: 'Production monitoring available via your inverter\'s app',
+    },
+    {
+      label: 'SAV Taqinor joignable sur WhatsApp pour toute question après installation',
+      labelAr: 'خدمة ما بعد البيع لتاقينور متاحة عبر واتساب لأي سؤال بعد التركيب',
+      labelEn: 'Taqinor after-sales support reachable on WhatsApp for any question after installation',
+    },
+    {
+      label: 'Garanties constructeur actives dès la mise en service (voir « Pourquoi nous faire confiance »)',
+      labelAr: 'ضمانات الصانع سارية فور التشغيل',
+      labelEn: 'Manufacturer warranties active from commissioning (see "Why trust us")',
+    },
   ];
 }
 
@@ -1468,8 +1613,11 @@ export interface FaqItem {
   id: string;
   question: string;
   questionAr: string;
+  /** WJ43 — variante anglaise. */
+  questionEn: string;
   answer: string;
   answerAr: string;
+  answerEn: string;
 }
 
 /** WJ32 — 5 objections fréquentes avant signature, réponses factuelles courtes. */
@@ -1479,36 +1627,46 @@ export function objectionFaq(): FaqItem[] {
       id: 'panne-reseau',
       question: 'Que se passe-t-il en cas de coupure du réseau électrique ?',
       questionAr: 'ماذا يحدث في حال انقطاع التيار الكهربائي؟',
+      questionEn: 'What happens during a power grid outage?',
       answer: 'Une installation sans batterie s\'arrête par sécurité (norme anti-îlotage) ; une installation avec batterie peut continuer à alimenter les circuits prioritaires.',
       answerAr: 'التركيب بدون بطارية يتوقف لأسباب أمنية؛ أما مع البطارية فيمكن أن يستمر تزويد الدارات ذات الأولوية.',
+      answerEn: 'A battery-less installation shuts down for safety (anti-islanding standard); a battery-equipped installation can keep powering priority circuits.',
     },
     {
       id: 'entretien',
       question: 'Quel entretien est nécessaire ?',
       questionAr: 'ما هي الصيانة المطلوبة؟',
+      questionEn: 'What maintenance is required?',
       answer: 'Un nettoyage occasionnel des panneaux (poussière) et une vérification visuelle annuelle suffisent dans la majorité des cas.',
       answerAr: 'تنظيف الألواح بين الحين والآخر وفحص بصري سنوي يكفيان في أغلب الحالات.',
+      answerEn: 'Occasional panel cleaning (dust) and an annual visual check are enough in most cases.',
     },
     {
       id: 'demenagement',
       question: 'Puis-je emporter mon installation si je déménage ?',
       questionAr: 'هل يمكنني نقل التركيب إذا انتقلت للسكن في مكان آخر؟',
+      questionEn: 'Can I take my installation with me if I move?',
       answer: 'L\'installation est fixée au bâtiment ; elle valorise généralement le bien lors d\'une revente plutôt que d\'être démontée.',
       answerAr: 'التركيب مثبت بالمبنى؛ وعادة ما يرفع من قيمة العقار عند البيع بدل تفكيكه.',
+      answerEn: 'The installation is fixed to the building; it typically raises the property\'s value on resale rather than being removed.',
     },
     {
       id: 'toit-abime',
       question: 'Est-ce que l\'installation abîme la toiture ?',
       questionAr: 'هل يضر التركيب بالسطح؟',
+      questionEn: 'Does the installation damage the roof?',
       answer: 'La fixation est étudiée pour respecter l\'étanchéité de votre toiture ; l\'étude technique en amont vérifie la structure porteuse.',
       answerAr: 'يُدرس التثبيت لاحترام عزل السطح؛ وتتحقق الدراسة التقنية المسبقة من متانة البنية الحاملة.',
+      answerEn: 'The mounting is engineered to preserve your roof\'s waterproofing; the upfront technical study verifies the load-bearing structure.',
     },
     {
       id: 'garanties',
       question: 'Que couvrent exactement les garanties ?',
       questionAr: 'ماذا تغطي الضمانات بالضبط؟',
+      questionEn: 'What exactly do the warranties cover?',
       answer: 'Les garanties constructeur (panneaux/onduleur) couvrent le matériel selon les durées indiquées dans « Pourquoi nous faire confiance » ci-dessous ; la main d\'œuvre Taqinor est couverte séparément selon votre contrat.',
       answerAr: 'تغطي ضمانات الصانع (الألواح والعاكس) المعدات حسب المدد المذكورة أدناه؛ أما اليد العاملة لتاقينور فمشمولة بضمان منفصل حسب عقدكم.',
+      answerEn: 'Manufacturer warranties (panels/inverter) cover the equipment for the durations shown in "Why trust us" below; Taqinor\'s labour is covered separately under your contract.',
     },
   ];
 }
