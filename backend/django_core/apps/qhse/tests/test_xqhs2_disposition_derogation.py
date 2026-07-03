@@ -4,7 +4,8 @@ Couvre :
 
 * la disposition posée sur une NCR (``poser_disposition``, tracée qui/quand) ;
 * la disposition ``retouche`` créant une CAPA pré-remplie (optionnel) ;
-* la clôture NCR bloquée tant qu'aucune disposition n'est posée ;
+* la disposition reste FACULTATIVE pour la clôture (QHSE13 fait foi : seule
+  l'efficacité des CAPA bloque — cf. ``test_capa_efficacite.py``) ;
 * le modèle ``Derogation`` (acceptation en l'état bornée, expiration) ;
 * le sélecteur/relance des dérogations à échéance ;
 * l'isolation entre sociétés.
@@ -107,17 +108,25 @@ class PoserDispositionTests(TestCase):
         self.assertEqual(str(ncr.cout_disposition), '150.00')
 
 
-# ── Clôture NCR conditionnée à la disposition ───────────────────────────────
+# ── Clôture NCR — la disposition (XQHS2) est tracée mais reste FACULTATIVE ──
+# pour la clôture : le contrat de blocage préexistant (QHSE13) porte
+# uniquement sur l'efficacité des CAPA, cf. ``ncr_capa_bloquantes`` — une NCR
+# sans aucune CAPA, disposition posée ou non, se clôture librement
+# (``test_capa_efficacite.CloturerNcrServiceTests.test_ncr_without_capa_can_close``).
 
 class ClotureNcrDispositionTests(TestCase):
     def setUp(self):
         self.company = make_company('co-xqhs2-clot', 'CoXqhs2Clot')
         self.user = make_user(self.company, 'resp-xqhs2-clot')
 
-    def test_cloture_refusee_sans_disposition(self):
+    def test_cloture_ok_sans_disposition(self):
+        # QHSE13 : une NCR sans CAPA bloquante se clôture même sans
+        # disposition posée — la disposition (XQHS2) trace le traitement
+        # mais ne conditionne pas la fermeture.
         ncr = make_ncr(self.company)
-        with self.assertRaises(ValueError):
-            cloturer_ncr(ncr)
+        cloturer_ncr(ncr)
+        ncr.refresh_from_db()
+        self.assertEqual(ncr.statut, NonConformite.Statut.CLOTUREE)
 
     def test_cloture_ok_avec_disposition_et_capa_vide(self):
         ncr = make_ncr(self.company)
@@ -246,11 +255,14 @@ class DispositionApiTests(TestCase):
             f'{NCR_URL}{ncr.id}/poser-disposition/', {}, format='json')
         self.assertEqual(resp.status_code, 400)
 
-    def test_cloturer_sans_disposition_400(self):
+    def test_cloturer_sans_disposition_200(self):
+        # QHSE13 : la clôture ne dépend pas de la disposition (facultative,
+        # XQHS2), seulement de l'efficacité des CAPA — une NCR sans CAPA se
+        # clôture même sans disposition posée.
         ncr = make_ncr(self.company)
         resp = self.client.post(
             f'{NCR_URL}{ncr.id}/cloturer/', {}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 200, resp.data)
 
     def test_derogation_creation_scoped_company(self):
         ncr = make_ncr(self.company)

@@ -342,13 +342,17 @@ def ncr_capa_bloquantes(ncr):
 
 @transaction.atomic
 def cloturer_ncr(ncr):
-    """Clôture une non-conformité — conditionnée à l'efficacité des CAPA (QHSE13)
-    ET à une disposition posée (XQHS2).
+    """Clôture une non-conformité — conditionnée à l'efficacité des CAPA (QHSE13).
 
-    La clôture n'est autorisée que si (a) toutes les CAPA de la NCR sont
-    vérifiées efficaces (cf. ``ncr_capa_bloquantes``) ET (b) une disposition a
-    été posée (``disposition`` non vide). Lève ``ValueError`` sinon. Idempotent
-    si déjà clôturée. Renvoie la NCR.
+    La clôture n'est autorisée que si toutes les CAPA de la NCR sont vérifiées
+    efficaces (cf. ``ncr_capa_bloquantes``) ; une NCR sans CAPA se clôture
+    librement. Lève ``ValueError`` sinon. Idempotent si déjà clôturée. Renvoie
+    la NCR.
+
+    Une disposition (XQHS2, ``poser_disposition``) reste facultative pour la
+    clôture : elle trace *comment* la non-conformité a été traitée (rebut,
+    retouche, retour fournisseur…) mais ne bloque pas la fermeture — ce
+    contrat QHSE13 est préexistant et ne doit pas être durci silencieusement.
     """
     if ncr.statut == NonConformite.Statut.CLOTUREE:
         return ncr
@@ -357,10 +361,6 @@ def cloturer_ncr(ncr):
         raise ValueError(
             "Clôture impossible : %d action(s) corrective(s) non vérifiée(s) "
             "efficace(s)." % len(bloquantes))
-    if not ncr.disposition:
-        raise ValueError(
-            "Clôture impossible : aucune disposition n'a été posée sur "
-            "cette non-conformité.")
     ncr.statut = NonConformite.Statut.CLOTUREE
     ncr.save(update_fields=['statut'])
     return ncr
