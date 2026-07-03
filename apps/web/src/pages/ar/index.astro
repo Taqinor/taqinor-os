@@ -26,6 +26,7 @@ import VideoChantier from '../../components/VideoChantier.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import WhatsAppMock from '../../components/WhatsAppMock.astro';
 import GarantiesTeaser from '../../components/GarantiesTeaser.astro';
+import InstantEstimator from '../../components/InstantEstimator.astro';
 import Testimonials from '../../components/Testimonials.astro';
 import BrandStrip from '../../components/BrandStrip.astro';
 import ZelligeSignature from '../../components/ZelligeSignature.astro';
@@ -315,6 +316,13 @@ const engineeringPillars = [
       </div>
     </section>
 
+    {/* W250 — أداة التقدير الفوري، أعلى الصفحة: «أداة التقدير هي القمع نفسه».
+        تعيد استخدام estimateFromBill (lib/billEstimate.ts) — لا منطق مكرّر.
+        وُضعت مباشرة بعد «كيف يجري الأمر» ليتمكّن الزائر من تقدير فاتورته قبل
+        الوصول حتى إلى التشخيص من 3 خطوات أسفله. ── */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <InstantEstimator variant="hero" />
+
     {/* وعد الضمان في الصدارة — التزام حقيقي وقوي، مأخوذ من /garanties (25 سنة
         أداء) ومن مراقبة Deye Cloud المقاسة. */}
     <div class="seam-soft" aria-hidden="true"></div>
@@ -586,6 +594,11 @@ const engineeringPillars = [
 
     {/* ── الضمانات (طمأنة) — الضمانات المكتوبة، باختصار (إحالة نحو /garanties) ── */}
     <GarantiesTeaser />
+
+    {/* W250 — أداة التقدير الفوري، قبل التذييل: نسخة مُكثَّفة من الأداة نفسها
+        (variant="compact")، مباشرة قبل التشخيص الكامل — فرصة أخيرة لمن مرّر
+        الصفحة كاملة دون أن يُقدِّر فاتورته بعد. ── */}
+    <InstantEstimator variant="compact" />
 
     {/* ── الفصل الأخير — التشخيص يتنفّس، ضمن نظام الكحلي+الذهبي ── */}
     <DiagnosticForm>

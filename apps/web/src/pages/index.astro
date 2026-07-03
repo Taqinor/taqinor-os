@@ -22,6 +22,7 @@ import VideoChantier from '../components/VideoChantier.astro';
 import StickyCta from '../components/StickyCta.astro';
 import WhatsAppMock from '../components/WhatsAppMock.astro';
 import GarantiesTeaser from '../components/GarantiesTeaser.astro';
+import InstantEstimator from '../components/InstantEstimator.astro';
 import Testimonials from '../components/Testimonials.astro';
 import BrandStrip from '../components/BrandStrip.astro';
 import ZelligeSignature from '../components/ZelligeSignature.astro';
@@ -331,6 +332,14 @@ const engineeringPillars = [
       </div>
     </section>
 
+    {/* W250 — Estimation instantanée HAUT DE PAGE : « l'estimateur EST le
+        tunnel ». Réutilise estimateFromBill (lib/billEstimate.ts) — aucune
+        logique dupliquée. Placé juste après « Comment ça marche » : le
+        visiteur peut chiffrer sa facture avant même d'atteindre le
+        diagnostic 3 étapes plus bas. ── */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <InstantEstimator variant="hero" />
+
     {/* Promesse de garantie en tête — engagement vrai et fort, repris de
         /garanties (25 ans de performance) et du monitoring Deye Cloud mesuré. */}
     <div class="seam-soft" aria-hidden="true"></div>
@@ -612,6 +621,12 @@ const engineeringPillars = [
 
     {/* ── GARANTIES (teaser) — les garanties écrites, en bref (renvoi vers /garanties) ── */}
     <GarantiesTeaser />
+
+    {/* W250 — Estimation instantanée PRÉ-PIED DE PAGE : version compacte du
+        même widget (variant="compact"), juste avant l'acte final du
+        diagnostic complet — un dernier rattrapage pour qui a fait défiler
+        toute la page sans encore chiffrer sa facture. ── */}
+    <InstantEstimator variant="compact" />
 
     {/* ── ACTE FINAL — le diagnostic respire, dans le système navy+or (W51) ── */}
     <DiagnosticForm>

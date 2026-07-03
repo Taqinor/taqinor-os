@@ -25,6 +25,7 @@ import VideoChantier from '../../components/VideoChantier.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import WhatsAppMock from '../../components/WhatsAppMock.astro';
 import GarantiesTeaser from '../../components/GarantiesTeaser.astro';
+import InstantEstimator from '../../components/InstantEstimator.astro';
 import Testimonials from '../../components/Testimonials.astro';
 import BrandStrip from '../../components/BrandStrip.astro';
 import ZelligeSignature from '../../components/ZelligeSignature.astro';
@@ -321,6 +322,13 @@ const engineeringPillars = [
       </div>
     </section>
 
+    {/* W250 — Instant estimate widget, HIGH ON THE PAGE: "the estimator IS
+        the funnel". Reuses estimateFromBill (lib/billEstimate.ts) — no
+        duplicated logic. Placed right after "How it works" so a visitor can
+        size their bill before even reaching the 3-step diagnostic below. ── */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <InstantEstimator variant="hero" />
+
     {/* Warranty promise up top — a true, strong commitment, taken from
         /garanties (25-year performance) and the measured Deye Cloud monitoring. */}
     <div class="seam-soft" aria-hidden="true"></div>
@@ -594,6 +602,12 @@ const engineeringPillars = [
 
     {/* ── WARRANTIES (teaser) — the written warranties, in brief (links to /garanties) ── */}
     <GarantiesTeaser />
+
+    {/* W250 — Instant estimate widget, PRE-FOOTER: a compact repeat of the
+        same widget (variant="compact"), right before the full diagnostic —
+        one last catch for anyone who scrolled the whole page without yet
+        sizing their bill. ── */}
+    <InstantEstimator variant="compact" />
 
     <!-- FINAL ACT — the diagnostic breathes, in the navy+gold system -->
     <DiagnosticForm>
