@@ -52,6 +52,7 @@ from .models import (
     KitComposant,
     OrdreAssemblage,
     OrdreAssemblageActivity,
+    OrdreAssemblageLigne,
     Livraison,
     LivraisonLigne,
     PreuveLivraison,
@@ -2087,6 +2088,32 @@ class KitSerializer(serializers.ModelSerializer):
         return value
 
 
+class OrdreAssemblageLigneSerializer(serializers.ModelSerializer):
+    """XMFG6 - ligne de composant PERSONNALISABLE d'un ordre. `origine` posee
+    cote serveur (kit vs ajout) ; l'editabilite (planifie uniquement) est
+    controlee par la vue."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+
+    class Meta:
+        model = OrdreAssemblageLigne
+        fields = [
+            'id', 'ordre', 'produit', 'produit_nom', 'designation',
+            'quantite', 'origine',
+        ]
+        read_only_fields = ['origine']
+
+    def validate(self, attrs):
+        produit = attrs.get('produit') if 'produit' in attrs else getattr(
+            self.instance, 'produit', None)
+        designation = attrs.get('designation') if 'designation' in attrs else (
+            getattr(self.instance, 'designation', None))
+        if produit is None and not (designation or '').strip():
+            raise serializers.ValidationError(
+                {'designation': 'Indiquez un produit ou une designation.'})
+        return attrs
+
+
 class OrdreAssemblageSerializer(serializers.ModelSerializer):
     """FG328 - ordre d'assemblage de N kits. Reference/societe/`created_by`
     poses COTE SERVEUR ; le statut avance via `demarrer`/`terminer`/`annuler`."""
@@ -2096,6 +2123,8 @@ class OrdreAssemblageSerializer(serializers.ModelSerializer):
         source='get_statut_display', read_only=True, default=None)
     responsable_nom = serializers.CharField(
         source='responsable.username', read_only=True, default=None)
+    lignes = OrdreAssemblageLigneSerializer(many=True, read_only=True)
+    cout_prevu = serializers.SerializerMethodField()
 
     class Meta:
         model = OrdreAssemblage
@@ -2106,7 +2135,7 @@ class OrdreAssemblageSerializer(serializers.ModelSerializer):
             'quantite_produite', 'stock_mouvemente',
             'devis', 'chantier',
             'date_prevue', 'responsable', 'responsable_nom',
-            'motif_annulation',
+            'motif_annulation', 'lignes', 'cout_prevu',
             'created_by', 'date_creation', 'date_modification',
         ]
         read_only_fields = [
@@ -2120,6 +2149,10 @@ class OrdreAssemblageSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'La quantite a assembler doit etre strictement positive.')
         return value
+
+    def get_cout_prevu(self, obj):
+        from .services import cout_prevu_assemblage
+        return str(cout_prevu_assemblage(obj))
 
 
 class OrdreAssemblageActivitySerializer(serializers.ModelSerializer):

@@ -242,3 +242,39 @@ class OrdreAssemblageActivity(models.Model):
 
     def __str__(self):
         return f"{self.ordre_id} {self.kind} {self.field or ''}".strip()
+
+
+class OrdreAssemblageLigne(models.Model):
+    """XMFG6 — composants PERSONNALISABLES d'un ordre (kit sur-mesure à la
+    commande). Copiées depuis la BOM du kit à la création de l'ordre, puis
+    éditables tant que l'ordre est PLANIFIÉ (verrouillé dès `en_cours`).
+    XMFG1 (backflush) et XMFG2 (réservation) consomment/réservent depuis CES
+    lignes en priorité — repli sur la BOM du kit si aucune ligne n'existe
+    (rétro-compatible avec les ordres créés avant XMFG6)."""
+
+    class Origine(models.TextChoices):
+        KIT = 'kit', 'Copié du kit'
+        AJOUT = 'ajout', 'Ajouté sur cet ordre'
+
+    ordre = models.ForeignKey(
+        OrdreAssemblage, on_delete=models.CASCADE, related_name='lignes')
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='installations_ordre_assemblage_lignes')
+    designation = models.CharField(max_length=255, blank=True, null=True)
+    quantite = models.PositiveIntegerField(default=1)
+    origine = models.CharField(
+        max_length=10, choices=Origine.choices, default=Origine.KIT)
+
+    class Meta:
+        verbose_name = "Ligne d'ordre d'assemblage"
+        verbose_name_plural = "Lignes d'ordre d'assemblage"
+        ordering = ['ordre_id', 'id']
+        indexes = [
+            models.Index(fields=['ordre'], name='idx_asmligne_ordre'),
+            models.Index(fields=['produit'], name='idx_asmligne_produit'),
+        ]
+
+    def __str__(self):
+        return f'{self.ordre_id} · {self.designation or self.produit_id} × {self.quantite}'

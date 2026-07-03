@@ -1681,13 +1681,17 @@ def exploser_kit_par_id(company, kit_id, quantite_kit=1):
 def consommer_et_produire_assemblage(*, company, kit, composants, produit_compose,
                                      quantite_produite, reference, user,
                                      emplacement_source=None,
-                                     emplacement_destination=None):
-    """Consomme les composants d'un kit (SORTIE, qté BOM × ``quantite_produite``)
-    et produit le composite (ENTREE, qté ``quantite_produite``). ``composants``
-    est un itérable d'objets avec ``.produit`` et ``.quantite`` (la BOM, ou les
-    lignes d'ordre — XMFG6). Ventile sur les emplacements fournis (StockEmplacement,
-    N15) en plus du total canonique. Lève ValueError si ``produit_compose`` est
-    None (kit non finalisable) — l'appelant refuse `terminer` dans ce cas."""
+                                     emplacement_destination=None,
+                                     per_unit=True):
+    """Consomme les composants d'un kit et produit le composite (ENTREE, qté
+    ``quantite_produite``). ``composants`` est un itérable d'objets avec
+    ``.produit`` et ``.quantite``. Si ``per_unit`` (défaut, la BOM du kit),
+    ``.quantite`` est PAR UNITÉ et la sortie = ``.quantite`` × ``quantite_produite``
+    (tolérance sur/sous-production XMFG1). Si ``per_unit=False`` (lignes d'ordre
+    personnalisées — XMFG6), ``.quantite`` est déjà le TOTAL à consommer, utilisé
+    tel quel. Ventile sur les emplacements fournis (StockEmplacement, N15) en
+    plus du total canonique. Lève ValueError si ``produit_compose`` est None
+    (kit non finalisable) — l'appelant refuse `terminer` dans ce cas."""
     from django.db import transaction
     from .models import Produit, StockEmplacement
 
@@ -1702,7 +1706,8 @@ def consommer_et_produire_assemblage(*, company, kit, composants, produit_compos
             comp_produit = ligne.produit
             if comp_produit is None:
                 continue
-            qte_conso = (ligne.quantite or 0) * quantite_produite
+            qte_conso = ((ligne.quantite or 0) * quantite_produite if per_unit
+                         else (ligne.quantite or 0))
             if qte_conso <= 0:
                 continue
             p = Produit.objects.select_for_update().get(id=comp_produit.id)

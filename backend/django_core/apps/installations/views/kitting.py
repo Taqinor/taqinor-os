@@ -8,6 +8,7 @@ tout rôle, écriture responsable/admin. Multi-tenant via ``TenantMixin`` ;
 produit/kit validés tenant. Cross-app : ``stock`` en string-FK.
 """
 import copy
+from collections import namedtuple
 
 from django.utils import timezone
 
@@ -23,17 +24,20 @@ from apps.ventes.utils.references import create_with_reference
 from apps.ventes.selectors import get_devis_by_pk
 
 from .. import activity_kitting as activity
-from ..models import Kit, KitComposant, OrdreAssemblage
+from ..models import Kit, KitComposant, OrdreAssemblage, OrdreAssemblageLigne
 from ..serializers import (
     KitSerializer, KitComposantSerializer, OrdreAssemblageSerializer,
-    OrdreAssemblageActivitySerializer,
+    OrdreAssemblageActivitySerializer, OrdreAssemblageLigneSerializer,
 )
 from ..services import (
     seed_reservations_assemblage, release_reservations_assemblage,
     disponibilite_par_ligne, alerter_penurie_assemblage,
+    seed_lignes_assemblage,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
+
+_ScaledLigne = namedtuple('_ScaledLigne', ['produit', 'quantite'])
 
 
 class KitViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -123,6 +127,66 @@ class KitComposantViewSet(viewsets.ModelViewSet):
         serializer.save()
 
 
+class OrdreAssemblageLigneViewSet(viewsets.ModelViewSet):
+    """XMFG6 — lignes de composant PERSONNALISABLES d'un ordre. Pas de
+    `company` propre : scope via l'ordre parent. Filtrable par `ordre`.
+    Éditable UNIQUEMENT tant que l'ordre est planifié (verrouillé dès
+    `en_cours`/`termine`/`annule`) — recalcule le coût prévu de l'ordre
+    (`OrdreAssemblageSerializer.cout_prevu`, lecture live sur les lignes)."""
+    queryset = OrdreAssemblageLigne.objects.select_related('ordre', 'produit').all()
+    serializer_class = OrdreAssemblageLigneSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if user.company_id:
+            qs = qs.filter(ordre__company=user.company)
+        elif not user.is_superuser:
+            qs = qs.none()
+        ordre = self.request.query_params.get('ordre')
+        if ordre:
+            qs = qs.filter(ordre_id=ordre)
+        return qs
+
+    def _check_editable(self, ordre):
+        if ordre.statut != OrdreAssemblage.Statut.PLANIFIE:
+            raise ValidationError({
+                'ordre': "Lignes verrouillées : l'ordre n'est plus planifié."})
+
+    def _check_parent(self, serializer):
+        company = self.request.user.company
+        cid = getattr(company, 'id', None)
+        ordre = serializer.validated_data.get('ordre') or getattr(
+            serializer.instance, 'ordre', None)
+        if ordre is not None and getattr(ordre, 'company_id', None) != cid:
+            raise ValidationError(
+                {'ordre': 'Ordre inconnu pour cette société.'})
+        if ordre is not None:
+            self._check_editable(ordre)
+        produit = serializer.validated_data.get('produit')
+        if produit is not None and getattr(
+                produit, 'company_id', None) != cid:
+            raise ValidationError(
+                {'produit': 'Produit inconnu pour cette société.'})
+
+    def perform_create(self, serializer):
+        self._check_parent(serializer)
+        serializer.save(origine=OrdreAssemblageLigne.Origine.AJOUT)
+
+    def perform_update(self, serializer):
+        self._check_parent(serializer)
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        self._check_editable(instance.ordre)
+        instance.delete()
+
+
 class OrdreAssemblageViewSet(TenantMixin, viewsets.ModelViewSet):
     """FG328 — ordres d'assemblage. Lecture tout rôle, écriture
     responsable/admin. Référence/société/`created_by` posés serveur. Filtrable
@@ -176,6 +240,9 @@ class OrdreAssemblageViewSet(TenantMixin, viewsets.ModelViewSet):
                 reference=reference)
 
         create_with_reference(OrdreAssemblage, 'ASM', company, _save)
+        # XMFG6 — copie la BOM du kit en lignes éditables AVANT de semer les
+        # réservations (XMFG2 lit ces lignes en priorité).
+        seed_lignes_assemblage(serializer.instance)
         # XMFG2 — sème les réservations composant depuis la BOM du kit dès la
         # création de l'ordre.
         seed_reservations_assemblage(serializer.instance)
@@ -233,6 +300,7 @@ class OrdreAssemblageViewSet(TenantMixin, viewsets.ModelViewSet):
                         reference=reference)
                 ordre = create_with_reference(
                     OrdreAssemblage, 'ASM', company, _save)
+                seed_lignes_assemblage(ordre)
                 seed_reservations_assemblage(ordre)
             ordres.append(ordre)
         return Response(
@@ -351,14 +419,36 @@ class OrdreAssemblageViewSet(TenantMixin, viewsets.ModelViewSet):
                 'quantite_produite', 'emplacement_source',
                 'emplacement_destination']
             if not already_moved:
-                consommer_et_produire_assemblage(
-                    company=ordre.company, kit=ordre.kit,
-                    composants=ordre.kit.composants.select_related('produit').all(),
-                    produit_compose=ordre.kit.produit_compose,
-                    quantite_produite=quantite_produite,
-                    reference=ordre.reference, user=request.user,
-                    emplacement_source=ordre.emplacement_source,
-                    emplacement_destination=ordre.emplacement_destination)
+                lignes = list(ordre.lignes.select_related('produit').all())
+                if lignes:
+                    # XMFG6 — lignes personnalisées : quantité déjà TOTALE pour
+                    # `ordre.quantite`, remise à l'échelle si `quantite_produite`
+                    # en diffère (même tolérance sur/sous-production que XMFG1).
+                    ratio = (quantite_produite / ordre.quantite
+                             if ordre.quantite else 1)
+                    composants = [
+                        _ScaledLigne(ligne.produit, round(
+                            (ligne.quantite or 0) * ratio))
+                        for ligne in lignes]
+                    consommer_et_produire_assemblage(
+                        company=ordre.company, kit=ordre.kit,
+                        composants=composants,
+                        produit_compose=ordre.kit.produit_compose,
+                        quantite_produite=quantite_produite,
+                        reference=ordre.reference, user=request.user,
+                        emplacement_source=ordre.emplacement_source,
+                        emplacement_destination=ordre.emplacement_destination,
+                        per_unit=False)
+                else:
+                    consommer_et_produire_assemblage(
+                        company=ordre.company, kit=ordre.kit,
+                        composants=ordre.kit.composants.select_related(
+                            'produit').all(),
+                        produit_compose=ordre.kit.produit_compose,
+                        quantite_produite=quantite_produite,
+                        reference=ordre.reference, user=request.user,
+                        emplacement_source=ordre.emplacement_source,
+                        emplacement_destination=ordre.emplacement_destination)
                 ordre.stock_mouvemente = True
                 update_fields.append('stock_mouvemente')
                 # XMFG2 — les réservations composant sont désormais consommées

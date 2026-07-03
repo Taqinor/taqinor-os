@@ -1433,3 +1433,51 @@ def alerter_penurie_assemblage(ordre):
                     company=ordre.company)
     except Exception:  # pragma: no cover - défensif
         pass
+
+
+# ── XMFG6 — Composants personnalisables par ordre (kit sur-mesure) ───────────
+# Les lignes (`OrdreAssemblageLigne`) sont copiées depuis la BOM du kit à la
+# CRÉATION de l'ordre, puis éditables tant que l'ordre est planifié. XMFG1 et
+# XMFG2 lisent ces lignes en priorité (repli BOM si absentes — voir
+# `_ordre_besoin_composants` ci-dessus, déjà écrit pour ce repli).
+
+def seed_lignes_assemblage(ordre):
+    """XMFG6 — copie la BOM du kit en lignes d'ordre éditables, UNE fois (à la
+    création). Idempotent : n'écrase jamais des lignes déjà présentes (même
+    partiellement personnalisées)."""
+    from .models import OrdreAssemblageLigne
+    if ordre.lignes.exists():
+        return list(ordre.lignes.all())
+    lignes = [
+        OrdreAssemblageLigne(
+            ordre=ordre, produit=c.produit, designation=c.designation,
+            quantite=(c.quantite or 0) * ordre.quantite,
+            origine=OrdreAssemblageLigne.Origine.KIT)
+        for c in ordre.kit.composants.all()
+    ]
+    OrdreAssemblageLigne.objects.bulk_create(lignes)
+    return list(ordre.lignes.all())
+
+
+def cout_prevu_assemblage(ordre):
+    """XMFG6 — coût prévu de l'ordre : somme(lignes.quantite × produit.prix_achat)
+    si des lignes existent, sinon somme(BOM du kit × ordre.quantite ×
+    prix_achat) — repli BOM. Décimal, jamais négatif."""
+    from decimal import Decimal
+    total = Decimal('0')
+    lignes = list(getattr(ordre, 'lignes', None).all()) if hasattr(
+        ordre, 'lignes') else []
+    if lignes:
+        for ligne in lignes:
+            if ligne.produit_id is None:
+                continue
+            prix = getattr(ligne.produit, 'prix_achat', None) or Decimal('0')
+            total += Decimal(str(ligne.quantite or 0)) * Decimal(str(prix))
+        return total
+    for c in ordre.kit.composants.select_related('produit').all():
+        if c.produit_id is None:
+            continue
+        prix = getattr(c.produit, 'prix_achat', None) or Decimal('0')
+        qte = (c.quantite or 0) * ordre.quantite
+        total += Decimal(str(qte)) * Decimal(str(prix))
+    return total
