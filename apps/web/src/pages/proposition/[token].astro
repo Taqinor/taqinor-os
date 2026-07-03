@@ -1758,12 +1758,18 @@ const signConfig = ok
 
             <label class="mt-3 flex cursor-pointer items-start gap-3 text-sm">
               <input id="sign-consent" name="consent" type="checkbox" required class="mt-1 h-4 w-4 accent-[var(--color-brass-400)]" />
+              <!-- W318 — précise que l'image de la signature dessinée ci-dessus
+                   (quand elle est tracée) est elle aussi enregistrée avec le
+                   nom, la date et l'heure — cohérent avec ce que le code
+                   envoie réellement (signature_data_url, cf. plus bas dans ce
+                   fichier) et avec la politique de confidentialité (W318). -->
               <span class="text-lune-soft" data-i18n
-                data-fr="J’accepte de signer électroniquement cette proposition. Mon nom, la date et l’heure de signature sont enregistrés avec mon accord."
-                data-en="I agree to electronically sign this proposal. My name and the date and time of signature are recorded with my consent."
-                data-ar="أوافق على التوقيع إلكترونياً على هذا العرض. يتم تسجيل اسمي وتاريخ ووقت التوقيع مع موافقتي.">
+                data-fr="J’accepte de signer électroniquement cette proposition. Mon nom, l’image de ma signature dessinée ci-dessus (si tracée), et la date et l’heure de signature sont enregistrés avec mon accord."
+                data-en="I agree to electronically sign this proposal. My name, the image of my signature drawn above (if drawn), and the date and time of signature are recorded with my consent."
+                data-ar="أوافق على التوقيع إلكترونياً على هذا العرض. يتم تسجيل اسمي وصورة توقيعي المرسوم أعلاه (إن رُسم) وتاريخ ووقت التوقيع مع موافقتي.">
                 J’accepte de <strong class="text-lune">signer électroniquement</strong> cette proposition.
-                Mon nom, la date et l’heure de signature sont enregistrés avec mon accord.
+                Mon nom, l’image de ma signature dessinée ci-dessus (si tracée), et la date et l’heure de
+                signature sont enregistrés avec mon accord.
               </span>
             </label>
 
