@@ -154,16 +154,31 @@ import '../styles/v3-photo-motion.css';
   // .v2-hero-media, jamais les .v2-rise/[data-tally]) : elle doit s'exécuter
   // dans les deux cas, sinon le support natif de `animation-timeline`
   // désactiverait silencieusement la parallaxe du héros — régression W373.
+  //
+  // W373 — Plan de profondeur : le même listener de scroll déplace AUSSI
+  // .hero-depth-layer (si présent sur la page), à un facteur plus LENT
+  // (0.045 vs 0.12) que l'affiche — la couche perçue "plus loin" bouge moins
+  // vite, illusion de profondeur classique. Purement transform/opacity,
+  // jamais posé au chargement (aucune mutation avant le premier scroll) donc
+  // aucun impact sur le LCP (l'affiche <img fetchpriority="high"> reste seule
+  // responsable du premier rendu).
   if (!reduce && 'IntersectionObserver' in window) {
     const media = document.querySelector<HTMLElement>('.v2-hero-media');
+    const depthLayer = document.querySelector<HTMLElement>('.hero-depth-layer');
     if (media && window.innerWidth >= 1024) {
       // Le scale(1.1) est déjà posé en CSS statique — on N'applique RIEN au
       // chargement (pas de mutation de l'élément LCP) ; on n'ajoute la
       // translation qu'au premier défilement.
       const over = media.offsetHeight * 0.045; // marge < sur-cadrage (5 %)
+      const depthOver = depthLayer ? depthLayer.offsetHeight * 0.03 : 0;
       const apply = () => {
         const y = Math.min(window.scrollY * 0.12, over);
         media.style.transform = `scale(1.1) translate3d(0, ${y}px, 0)`;
+        if (depthLayer) {
+          // Facteur ~2.5× plus lent que l'affiche : plan perçu plus profond.
+          const dy = Math.min(window.scrollY * 0.045, depthOver);
+          depthLayer.style.transform = `translate3d(0, ${dy}px, 0)`;
+        }
       };
       let ticking = false;
       window.addEventListener(

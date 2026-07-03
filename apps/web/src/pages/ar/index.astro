@@ -253,6 +253,12 @@ const engineeringPillars = [
         {/* الـ scrim المرجعي مرفوع (--hero-scrim-strength 0.52): يعوّض دفء
             «الساعة الذهبية» ويُبقي العنوان ≥ AA. */}
         <div class="hero-scrim hero-scrim-v3 absolute inset-0"></div>
+        {/* W373 — طبقة العمق: حجاب ضوء نحاسي خفيف جداً، زخرفي بحت (لا صورة،
+            تدرّجات CSS فقط)، يتوازى بشكل أبطأ من الملصق خلفه (عامل JS
+            منفصل، انظر V2Enhance). لا يمسّ LCP أبداً: موضوع بعد <img
+            fetchpriority="high"> في الـ DOM، بلا أي وزن شبكي،
+            transform/opacity فقط عند التمرير. */}
+        <div class="hero-depth-layer absolute inset-0" aria-hidden="true"></div>
       </div>
 
       {/* W161 — دعوة إلى التمرير: شيفرون متحرّك، ساكن تحت prefers-reduced-motion */}
@@ -625,6 +631,26 @@ const engineeringPillars = [
      الأبيض فوق الصورة. */
   .hero-scrim-v3 {
     --hero-scrim-strength: 0.52;
+  }
+
+  /* ── W373 — طبقة عمق البطل ──────────────────────────────────────────
+     حجاب ضوء ساكن عند الراحة (تدرّجات إشعاعية فقط، بلا صورة)؛ السكربت
+     (V2Enhance) يحرّك فقط `transform` عند التمرير، بعامل أبطأ من سُرعة
+     تكبير الملصق (الطبقة «الأعمق» تتحرك أقل — وهم عمق كلاسيكي). عتامة
+     أساسية منخفضة جداً لتبقى «همساً»، أبداً حجاباً يُضعف وضوح العنوان. */
+  .hero-depth-layer {
+    background:
+      radial-gradient(38% 32% at 82% 22%, rgb(232 181 74 / 0.16), transparent 70%),
+      radial-gradient(30% 26% at 14% 78%, rgb(232 181 74 / 0.08), transparent 72%);
+    opacity: 0.9;
+    pointer-events: none;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    @media (min-width: 1024px) {
+      .hero-depth-layer {
+        will-change: transform;
+      }
+    }
   }
 
   /* W368 — CTA مغناطيسي: السكربت يضبط فقط transform: translate(x, y)

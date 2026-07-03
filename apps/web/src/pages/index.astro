@@ -265,6 +265,13 @@ const engineeringPillars = [
         {/* Scrim canonique RELEVÉ (--hero-scrim-strength 0.52) : compense la
             chaleur du grade « heure dorée » et garde le headline ≥ AA. */}
         <div class="hero-scrim hero-scrim-v3 absolute inset-0"></div>
+        {/* W373 — Plan de profondeur : un voile de lumière laiton très
+            discret, purement décoratif (aucune image, aucune requête —
+            dégradés CSS seuls), qui parallaxe plus LENTEMENT que l'affiche
+            derrière lui (facteur JS distinct, voir V2Enhance). N'affecte
+            JAMAIS le LCP : posé APRÈS l'<img fetchpriority="high"> dans le
+            DOM, aucun poids réseau, transform/opacity seuls au scroll. */}
+        <div class="hero-depth-layer absolute inset-0" aria-hidden="true"></div>
       </div>
 
       {/* W161 — Invitation au défilement : chevron animé, statique sous prefers-reduced-motion */}
@@ -647,6 +654,29 @@ const engineeringPillars = [
      garantit le contraste AA du headline blanc sur la photo. */
   .hero-scrim-v3 {
     --hero-scrim-strength: 0.52;
+  }
+
+  /* ── W373 — Plan de profondeur du héros ───────────────────────────────
+     Voile de lumière statique (dégradés radiaux seuls, aucune image) posé
+     au repos ; le script (V2Enhance) n'anime que sa `transform` au scroll,
+     à un facteur plus LENT que le sur-cadrage de l'affiche (couche plus
+     profonde = déplacement plus faible, illusion de profondeur classique).
+     `opacity` de base très faible pour rester un « souffle », jamais un
+     voile qui dégraderait la lisibilité du headline (le scrim reste
+     au-dessus en z-index via l'ordre du DOM + la même pile isolate). */
+  .hero-depth-layer {
+    background:
+      radial-gradient(38% 32% at 82% 22%, rgb(232 181 74 / 0.16), transparent 70%),
+      radial-gradient(30% 26% at 14% 78%, rgb(232 181 74 / 0.08), transparent 72%);
+    opacity: 0.9;
+    pointer-events: none;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    @media (min-width: 1024px) {
+      .hero-depth-layer {
+        will-change: transform;
+      }
+    }
   }
 
   /* ── W368 — CTA magnétique ───────────────────────────────────────────

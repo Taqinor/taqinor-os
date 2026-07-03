@@ -259,6 +259,12 @@ const engineeringPillars = [
         {/* Canonical scrim RAISED (--hero-scrim-strength 0.52): compensates for
             the "golden hour" grade warmth and keeps the headline ≥ AA. */}
         <div class="hero-scrim hero-scrim-v3 absolute inset-0"></div>
+        {/* W373 — Depth layer: a very subtle brass light veil, purely
+            decorative (no image, CSS gradients only), parallaxing SLOWER
+            than the poster behind it (separate JS factor, see V2Enhance).
+            Never touches LCP: placed AFTER the fetchpriority="high" <img> in
+            the DOM, zero network weight, transform/opacity only on scroll. */}
+        <div class="hero-depth-layer absolute inset-0" aria-hidden="true"></div>
       </div>
 
       {/* W161 — Scroll invitation: animated chevron, static under prefers-reduced-motion */}
@@ -632,6 +638,27 @@ const engineeringPillars = [
      guarantees the white headline's AA contrast over the photo. */
   .hero-scrim-v3 {
     --hero-scrim-strength: 0.52;
+  }
+
+  /* ── W373 — Hero depth layer ───────────────────────────────────────────
+     Static light veil at rest (radial gradients only, no image); the script
+     (V2Enhance) only animates its `transform` on scroll, at a SLOWER factor
+     than the poster's over-scale (a "deeper" plane moves less — classic
+     depth illusion). Very low base opacity so it stays a whisper, never a
+     veil that would degrade headline legibility. */
+  .hero-depth-layer {
+    background:
+      radial-gradient(38% 32% at 82% 22%, rgb(232 181 74 / 0.16), transparent 70%),
+      radial-gradient(30% 26% at 14% 78%, rgb(232 181 74 / 0.08), transparent 72%);
+    opacity: 0.9;
+    pointer-events: none;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    @media (min-width: 1024px) {
+      .hero-depth-layer {
+        will-change: transform;
+      }
+    }
   }
 
   /* W368 — Magnetic CTA: the script only sets transform: translate(x, y)
