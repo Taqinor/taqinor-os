@@ -21,6 +21,7 @@ import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import ZelligeDivider from '../../components/ZelligeDivider.astro';
+import RelatedLinks from '../../components/RelatedLinks.astro';
 import { WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink, regularizationWhatsappText } from '../../lib/whatsapp';
 import { getLocaleFromPath } from '../../i18n/utils';
@@ -66,13 +67,42 @@ const sanctions = [
         <h1 class="display v2-page-title cine-in cine-in-1 mt-5 max-w-3xl">تركيبتك الشمسية قائمة بالفعل؟ سوّها الآن.</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
           المرسوم 2-25-100، الذي نُشِر بالجريدة الرسمية في 9 مارس 2026، دخل حيّز التنفيذ في
-          9 يونيو 2026، وقرار ANRE يحدّد تعريفة شراء الفائض؛ ومنذ ذلك التاريخ يُطبَّق نظام
-          القانون 82-21 على جميع تركيبات الإنتاج الذاتي — حتى تلك المُركّبة قبل صدور النص بزمن.
+          9 يونيو 2026، وقرار ANRE رقم 04/26 يحدّد تعريفة شراء الفائض للتوتر المتوسط والعالي (أمّا
+          تعريفة نظام التصريح للتوتر المنخفض، وهي حالة أغلب التركيبات السكنية، فلم تُنشَر بعد)؛
+          ومنذ ذلك التاريخ يُطبَّق نظام القانون 82-21 على جميع تركيبات الإنتاج الذاتي — حتى تلك
+          المُركّبة قبل صدور النص بزمن.
         </p>
       </div>
     </section>
 
+    <!-- W259 — «أين وصل القانون؟»: يميّز بين السّاري (MT/HT) والمنتظَر (BT سكني). -->
     <div class="seam-soft" aria-hidden="true"></div>
+    <section class="section mx-auto max-w-3xl px-4">
+      <div class="v2-rise border-2 border-brass-400/50 bg-nuit-800/60 p-6 sm:p-8">
+        <p class="tech-label v2-kicker text-brass-300">أين وصل القانون؟ · تم التحقّق في 3 يوليوز 2026</p>
+        <div class="mt-4 grid gap-5 sm:grid-cols-2">
+          <div>
+            <p class="tech-label text-lune">ساري المفعول</p>
+            <p class="mt-2 text-sm leading-relaxed text-lune-soft">
+              المرسوم <strong class="text-white">2-25-100</strong> (الجريدة الرسمية بتاريخ 9 مارس 2026،
+              ساري منذ 9 يونيو 2026) وقرار ANRE رقم <strong class="text-white">04/26</strong>:
+              <strong class="text-white"> 0,18–0,21 درهم/kWh</strong> لشراء الفائض في
+              <strong class="text-white"> التوتر المتوسط والعالي (MT/HT)</strong> فقط.
+            </p>
+          </div>
+          <div>
+            <p class="tech-label text-lune">لم يُنشَر بعد</p>
+            <p class="mt-2 text-sm leading-relaxed text-lune-soft">
+              تعريفة الشراء في <strong class="text-white">التوتر المنخفض (BT)</strong> — نظام
+              التصريح الذي يشمل أغلب التركيبات السكنية — تبقى غير منشورة، مع أجل يُتداوَل في حدود
+              <strong class="text-white"> 2027</strong>، غير مؤكَّد. أمّا نافذة تسوية المادة 33،
+              فهي مفتوحة منذ اليوم، بصرف النظر عن هذه التعريفة.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section class="section mx-auto max-w-3xl px-4">
       <div class="v2-rise">
         {/* eyebrow مُخفَّض إلى lune */}
@@ -117,10 +147,12 @@ const sanctions = [
         ))}
       </div>
 
-      <div class="mt-8 flex flex-wrap gap-3">
-        <a href={L('/loi-82-21')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">الأنظمة الثلاثة للقانون 82-21 <span class="inline-block rtl:-scale-x-100">→</span></a>
-        <a href={L('/professionnel')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">تسوية موقع مهني <span class="inline-block rtl:-scale-x-100">→</span></a>
-      </div>
+      <RelatedLinks mt="mt-8" links={[
+        { href: L('/loi-82-21'), label: 'الأنظمة الثلاثة للقانون 82-21' },
+        { href: L('/guides/loi-82-21-expliquee'), label: 'القانون 82-21 مشروحاً ببساطة' },
+        { href: L('/résidentiel'), label: 'تسوية منزل سكني' },
+        { href: L('/professionnel'), label: 'تسوية موقع مهني' },
+      ]} />
     </section>
 
     <!-- ACTE FINAL — le dossier se confie en pleine lumière -->

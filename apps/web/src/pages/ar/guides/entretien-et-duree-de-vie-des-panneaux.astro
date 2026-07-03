@@ -1,0 +1,139 @@
+---
+/**
+ * AR — Guide (W294, RTL): Maintenance, cleaning and lifespan of solar panels in
+ * Morocco. Faithful Arabic translation of
+ * /guides/entretien-et-duree-de-vie-des-panneaux, every figure kept in Latin
+ * digits (0.3–0.5 %/°C above 25 °C, 25-year 84.8 % warranty, 10–15 year
+ * inverter life). Internal links use localizeNavHref (EN/AR if available,
+ * else the existing FR page — never a dead link). FR untouched.
+ */
+import Layout from '../../../layouts/Layout.astro';
+import V2Enhance from '../../../components/V2Enhance.astro';
+import Article33Ribbon from '../../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../../components/Breadcrumb.astro';
+import CtaBand from '../../../components/CtaBand.astro';
+import StickyCta from '../../../components/StickyCta.astro';
+import { NAP } from '../../../lib/nap';
+import RelatedLinks from '../../../components/RelatedLinks.astro';
+import { getLocaleFromPath } from '../../../i18n/utils';
+import { localizeNavHref } from '../../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const schemaImageUrl = new URL('/og/accueil.png', Astro.site).href;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: 'صيانة، تنظيف وعمر الألواح الشمسية بالمغرب',
+  description: 'وتيرة تنظيف مُكيَّفة مع السياق المغربي (غبار، رمل، مطر)، أثر الحرارة على الإنتاج، العمر الفعلي والضمان لـ25 سنة: كل ما يجب معرفته للحفاظ على ألواحكم.',
+  image: schemaImageUrl,
+  about: { '@type': 'Thing', name: 'صيانة الألواح الشمسية بالمغرب' },
+  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: url,
+};
+---
+
+<Layout
+  title="صيانة وعمر الألواح الشمسية بالمغرب | Taqinor"
+  description="ما وتيرة التنظيف المناسبة بالمغرب؟ كيف تؤثّر الحرارة على الإنتاج؟ ما العمر الفعلي؟ أجوبة واضحة، مُكيَّفة مع السياق المغربي."
+  ogSlug="guides"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: 'الأدلّة', href: L('/guides') }, { label: 'صيانة وعمر الألواح' }]} />
+
+    <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
+      <p class="tech-label v2-kicker rule-brass text-lune">دليل · الصيانة</p>
+      <h1 class="display v2-page-title mt-5 text-white">صيانة وعمر الألواح بالمغرب</h1>
+
+      <p class="v2-lead mt-6 text-lune-soft">
+        في أماكن أخرى، لا يتطلّب اللوح الشمسي شيئاً يُذكر. بالمغرب، لهذا «تقريباً» اسم: الغبار. هو،
+        والرمل الذي تُودعه الريح بعد هبّة الشرقي، ما يُنقص الإنتاج قبل أي عطب تقني بكثير. ميدانياً،
+        معظم التركيبات التي «تُنتج أقلّ من قبل» ليس فيها شيء معطوب: فقط طبقة رمادية على الزجاج. ينطلق
+        هذا الدليل إذن من هذا الواقع — المناخ المغربي — ويستخلص منه ما يجب مراقبته حقاً.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">الغبار والرمل، خسارتكم الفعلية في الإنتاج</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        لوح متّسخ يُنتج أقلّ، نقطة على السطر. تعمل طبقة الغبار المُترسِّبة على الزجاج كظلّ منتشر دائم:
+        في منطقة قاحلة أو شبه قاحلة، تكفي طبقة متراكمة على مدى أسابيع لبتر الإنتاج بعدّة نقاط مئوية.
+        الخسارة بطيئة، غير مرئية يومياً، وتستقرّ دون أي إشارة تنبيه — لا تُرى إلا في منحنى الإنتاج، أو
+        بالصعود إلى السقف.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        وليس كل المغرب في نفس الوضع. قرب طريق غير معبّد، بمحاذاة حقل محروث، أو بالقرب من الصحراء، تعود
+        الطبقة بسرعة ولا مبالغة في تنظيف كل أربعة إلى ستة أسابيع صيفاً. فيلا بتجمّع الدار البيضاء أو على
+        الساحل الأطلسي، أكثر رياً جزءاً كبيراً من السنة، تكتفي بمرورين أو ثلاثة في الموسم الجاف. تبقى
+        أفضل قاعدة هي العين: لوح متّسخ بوضوح يستحق تنظيفاً، مهما كان تاريخ آخر تنظيف.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">ما يُزيله المطر، وما يتركه</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        زجاج اللوح الحديث مضادّ للانعكاس قليلاً ولا يُمسك كثيراً بالغبار الجاف. بضعة ملم من مطر حقيقي
+        تُساوي غالباً تنظيفاً يدوياً كاملاً، ولهذا يقفز الإنتاج بانتظام بعد أول أمطار الخريف. بالمغرب،
+        تُنجز هذه الزخّات جزءاً كبيراً من العمل بدلاً عنكم طيلة جزء كبير من السنة.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        ما لا يُزيله المطر أعند، وهو أيضاً مغربي نموذجي: الآثار البيضاء التي يتركها الماء القاسي
+        والجيري في مناطق عديدة، فضلات الطيور، الطين الجاف على حافة الإطار. تتطلّب هذه الرواسب تنظيفاً
+        موجَّهاً بماء نظيف وقطعة قماش ناعمة. أبداً إسفنجة كاشطة أو منتج قاسٍ: لا يغفر الطلاء المضادّ
+        للانعكاس، وتبقى الخدشة إلى الأبد.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">لماذا تُنقص الحرارة العدّاد</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        إليكم المفارقة التي يجهلها قليلون: يعيش اللوح على الضوء، لكن الحرارة تُعاقبه. تفقد خلايا
+        السيليكون البلوري مردوديتها بمجرّد أن تتجاوز حرارتها 25 درجة مئوية، بحوالي 0,3 إلى 0,5 % لكل
+        درجة إضافية. وبالمغرب، في عزّ الصيف، يتسلّق سطح اللوح عادة نحو 60 درجة مئوية: يعمل حينها على
+        قاعدة أدنى بكثير من ظروف اختباره المخبرية.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        لا نُفلت من ذلك كلياً — إنها فيزياء — لكن يمكن تجنّب الزيادة عليها. لوح مُركَّب بفراغ تحت الإطار
+        يترك الهواء يتنقّل والحرارة تتبدّد بالحمل الحراري. أما نفس اللوح المُلصَق بشكل مسطّح على صفيح
+        أسود، فيطهو ويفقد أكثر. إنها تفصيلة تركيب تُدفَع أو تُجنى على مدى 25 سنة.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">كم تدوم، وما يُتلفها</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        الألواح الشمسية تدوم. يمتدّ ضمان المنتوج القياسي للسوق اليوم على 25 سنة ويضمن أنه عند هذا
+        الأجل ينتج اللوح دائماً على الأقل حوالي 84,8 % من قدرته الأولية، أي تدهور بحوالي 0,5 % سنوياً،
+        منتظم ومتوقَّع. يمكن أن يتجاوز العمر الفيزيائي الفعلي 30 سنة إذا كانت التركيبة جيدة التركيب
+        وتلقّت صيانة موجزة.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        ما يشيخ فعلاً ليس خلية السيليكون بل ما يحيط بها. يمكن أن يصفرّ الغشاء المُغلِّف تحت الأشعة فوق
+        البنفسجية إن كانت جودته رديئة، ويمكن أن يتآكل إطار الألمنيوم في المنطقة الساحلية إن كان
+        الأكسدة الكهربائية غير كافية، وتنتهي الموصّلات المعرَّضة للرطوبة بالأكسدة. تستثمر الماركات
+        الجادّة في جودة هذه المواد، وهذا سبب ملموس لعدم اختيار لوح بناءً على الثمن وحده.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        أما العاكس، فيعيش أقلّ: يحتوي إلكترونيات فعّالة ويدوم عادة 10 إلى 15 سنة. توقّعوا استبداله أو
+        صيانة كبرى في منتصف عمر التركيبة. باستثناء تنظيف الألواح، إنه بند الصيانة الحقيقي الوحيد.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">قراءة المنحنى قبل القلق</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        أفضل أداة صيانة عندكم ليست إسفنجة، بل منحنى الإنتاج. تُنذر السقطة الحادّة بحادث يجب حلّه فوراً:
+        ظلّ جديد، موصّل معطوب، عاكس في حالة إنذار. أما الانخفاض البطيء والمنتظم سنة بعد سنة، دون قفزة،
+        فليس سوى التدهور العادي المُغطّى بالضمان. تعلّم التمييز بين هاتين الإشارتين يُجنّبكم القلق دون
+        سبب وتفويت مشكلة حقيقية معاً.
+      </p>
+
+      <RelatedLinks links={[
+        { href: L('/guides/orientation-inclinaison-ombrage'), label: 'الاتجاه، الميلان، التظليل' },
+        { href: L('/garanties'), label: 'الضمانات بالتفصيل' },
+        { href: L('/guides'), label: 'كل الأدلّة' },
+      ]} />
+    </article>
+
+    <CtaBand title="تركيبة تُنتج أقلّ من قبل؟ نتحقّق إن كان السبب الغبار أو شيئاً آخر." href={L('/devis/mon-toit')} />
+
+    <StickyCta />
+  </div>
+</Layout>

@@ -1,0 +1,208 @@
+---
+/**
+ * W250 — Widget d'estimation instantanée embarqué SUR l'accueil (« l'estimateur
+ * EST le tunnel »). Réutilise le MÊME cerveau que /devis/mon-toit et
+ * /embed/estimation (estimateFromBill / formatMadRange, src/lib/billEstimate.ts)
+ * — lecture seule, AUCUNE logique dupliquée/divergente, AUCUN chiffre inventé.
+ *
+ * Le calcul est 100% client (script ci-dessous), déclenché à la soumission du
+ * formulaire — ZÉRO CLS : le résultat reste `hidden` (hauteur nulle) jusqu'à
+ * une action VOLONTAIRE de l'utilisateur (submit), donc son apparition n'est
+ * jamais un décalage de mise en page mesuré par Core Web Vitals (aucun
+ * contenu ne bouge au chargement ni de façon asynchrone/non sollicitée).
+ * Aucune requête réseau, aucun JS bloquant : le bundle est le module
+ * `billEstimate.ts` déjà utilisé par /embed/estimation (léger, pur), chargé
+ * en `<script>` de module (differé par défaut, jamais render-blocking).
+ *
+ * Répété deux fois sur l'accueil (haut de page + pré-pied de page) via la prop
+ * `variant` : `"hero"` (pleine largeur, ton cine-card) et `"compact"` (bande
+ * resserrée juste avant le diagnostic complet). Les DEUX partagent EXACTEMENT
+ * la même logique de calcul et le même comportement — seule la mise en page
+ * change. `id` généré aléatoirement par instance (cf. LiteVideo.astro /
+ * TestimonialCarousel.astro) pour que les deux occurrences par page ne
+ * collisionnent jamais sur leurs ids DOM.
+ *
+ * Deep-link : le CTA pointe vers le parcours devis localisé
+ * (`quoteJourneyHref`, WJ36/WJ38) avec `?bill=<MAD>` — le paramètre est lu de
+ * façon anticipée par /devis/mon-toit dans une tâche future ; en attendant, un
+ * paramètre non consommé reste inoffensif (même garantie déjà documentée par
+ * /embed/estimation, W358). AUCUNE écriture dans mon-toit.astro depuis ce
+ * composant (hors périmètre de cette tâche).
+ */
+import { getLocaleFromPath, useTranslations } from '../i18n/utils';
+import { quoteJourneyHref } from '../i18n/pages';
+
+interface Props {
+  /** `"hero"` = bloc pleine largeur (placement haut de page) ; `"compact"` =
+   *  bande resserrée (placement pré-pied de page). Défaut `"hero"`. */
+  variant?: 'hero' | 'compact';
+}
+const { variant = 'hero' } = Astro.props;
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const t = useTranslations(locale);
+const quoteHref = quoteJourneyHref(locale);
+const uid = `ie-${Math.random().toString(36).slice(2, 9)}`;
+const isCompact = variant === 'compact';
+---
+
+<section
+  class:list={[
+    'instant-estimator',
+    isCompact ? 'instant-estimator--compact border-t border-white/10 px-4 py-14 sm:py-16' : 'section px-4',
+  ]}
+  data-instant-estimator
+  data-variant={variant}
+>
+  <div class:list={['mx-auto', isCompact ? 'max-w-4xl' : 'max-w-4xl']}>
+    <div class:list={['cine-card', isCompact ? 'p-6 sm:p-8' : 'p-7 sm:p-10']}>
+      <div class:list={['grid gap-8', !isCompact && 'sm:grid-cols-[1.1fr_1fr] sm:items-center']}>
+        <div class="v2-rise">
+          <p class="tech-label v2-kicker rule-brass text-brass-300">{t('estimator.eyebrow')}</p>
+          <h2 class:list={['display v2-section-title mt-4 text-white', isCompact ? 'text-xl sm:text-2xl' : 'text-2xl sm:text-3xl']}>
+            {isCompact ? t('estimator.headingCompact') : t('estimator.heading')}
+          </h2>
+          {!isCompact && (
+            <p class="v2-body mt-4 max-w-lg">{t('estimator.body')}</p>
+          )}
+        </div>
+
+        <div class="v2-rise">
+          <form id={`${uid}-form`} novalidate class="instant-estimator-form">
+            <label for={`${uid}-bill`} class="mb-1.5 block text-sm font-semibold text-lune">
+              {t('estimator.bill.label')}
+            </label>
+            <div class="flex flex-col gap-2.5 sm:flex-row">
+              <input
+                id={`${uid}-bill`}
+                name="bill"
+                type="number"
+                inputmode="decimal"
+                step="any"
+                min="0"
+                placeholder={t('estimator.bill.placeholder')}
+                aria-describedby={`${uid}-err`}
+                class="min-h-[44px] w-full min-w-0 flex-1 border border-white/15 bg-nuit-800 px-3 py-3 text-base text-white placeholder:text-lune-soft outline-none transition-colors focus:border-brass-400 focus:ring-2 focus:ring-brass-400/60"
+              />
+              <button
+                type="submit"
+                class="min-h-[44px] shrink-0 bg-brass-400 px-6 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300"
+              >
+                {t('estimator.submit')}
+              </button>
+            </div>
+            <p id={`${uid}-err`} role="alert" data-err-msg={t('estimator.err.bill')} class="mt-2 hidden text-xs text-alert-300"></p>
+          </form>
+
+          {/* Résultat — masqué (hauteur nulle) jusqu'à la soumission volontaire
+              du formulaire ci-dessus : son apparition n'est jamais un CLS. */}
+          <div id={`${uid}-result`} class="instant-estimator-result mt-5 hidden">
+            <dl class="grid grid-cols-2 gap-3 text-sm">
+              <div class="border border-white/10 bg-white/5 p-3">
+                <dt class="tech-label text-brass-300">{t('estimator.result.kwc')}</dt>
+                <dd id={`${uid}-kwc`} class="fig lum mt-1 text-xl" dir="ltr">—</dd>
+              </div>
+              <div class="border border-white/10 bg-white/5 p-3">
+                <dt class="tech-label text-brass-300">{t('estimator.result.production')}</dt>
+                <dd id={`${uid}-prod`} class="mt-1 text-lg font-bold text-white" dir="ltr">—</dd>
+              </div>
+              <div class="col-span-2 border border-white/10 bg-white/5 p-3">
+                <dt class="tech-label text-brass-300">{t('estimator.result.savings')}</dt>
+                <dd id={`${uid}-savings`} data-per-month={t('estimator.result.perMonth')} class="fig lum mt-1 text-xl" dir="ltr">—</dd>
+              </div>
+            </dl>
+            <p class="mt-3 text-xs text-lune-soft">{t('estimator.note')}</p>
+            <a
+              id={`${uid}-cta`}
+              href={quoteHref}
+              class="mt-4 inline-flex w-full items-center justify-center gap-2 border border-brass-300 px-5 py-3 text-center text-sm font-bold text-brass-200 transition-colors hover:bg-brass-300 hover:text-nuit sm:w-auto"
+            >
+              {t('estimator.cta')}
+            </a>
+          </div>
+
+          <p id={`${uid}-unavailable`} class="instant-estimator-result mt-5 hidden text-sm text-lune-soft">
+            {t('estimator.unavailable')}
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  import { estimateFromBill, formatMadRange } from '../lib/billEstimate';
+
+  // W250 — une instance de script par <section data-instant-estimator> rendue
+  // sur la page (jusqu'à 2 : haut de page + pré-pied de page). Chaque section
+  // porte ses propres ids uniques (uid généré côté serveur) — on scope donc la
+  // logique par section plutôt que par id global, pour rester correct quel que
+  // soit le nombre d'instances.
+  document.querySelectorAll<HTMLElement>('[data-instant-estimator]').forEach((section) => {
+    const form = section.querySelector('form') as HTMLFormElement | null;
+    const billInput = section.querySelector('input[name="bill"]') as HTMLInputElement | null;
+    const errEl = section.querySelector('[role="alert"]') as HTMLElement | null;
+    const result = section.querySelector('div.instant-estimator-result') as HTMLElement | null;
+    const unavailable = section.querySelector('p.instant-estimator-result') as HTMLElement | null;
+    const kwcEl = section.querySelector('[id$="-kwc"]') as HTMLElement | null;
+    const prodEl = section.querySelector('[id$="-prod"]') as HTMLElement | null;
+    const savingsEl = section.querySelector('[id$="-savings"]') as HTMLElement | null;
+    const cta = section.querySelector('[id$="-cta"]') as HTMLAnchorElement | null;
+    const baseHref = cta?.getAttribute('href') ?? '/devis/mon-toit';
+    const errMsg = errEl?.dataset.errMsg ?? 'Entrez un montant de facture valide.';
+    const perMonthSuffix = savingsEl?.dataset.perMonth ?? '/mois';
+
+    if (!form || !billInput) return;
+
+    function setError(msg: string | null) {
+      if (!errEl) return;
+      errEl.textContent = msg ?? '';
+      errEl.classList.toggle('hidden', !msg);
+    }
+
+    // Deep-link retour : facture pré-remplie en query param (?bill=<MAD>),
+    // conservant les éventuels UTM déjà présents dans l'URL courante — même
+    // convention que /embed/estimation (W358).
+    function buildDeepLink(bill: number): string {
+      const [path, existingQuery] = baseHref.split('?');
+      const params = new URLSearchParams(existingQuery ?? '');
+      const currentParams = new URLSearchParams(location.search);
+      for (const key of ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term']) {
+        const v = currentParams.get(key);
+        if (v) params.set(key, v);
+      }
+      params.set('bill', String(Math.round(bill)));
+      return `${path}?${params.toString()}`;
+    }
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const raw = billInput.value ?? '';
+      const bill = raw === '' ? NaN : Number(raw);
+
+      if (!Number.isFinite(bill) || bill <= 0) {
+        setError(errMsg);
+        result?.classList.add('hidden');
+        unavailable?.classList.add('hidden');
+        return;
+      }
+      setError(null);
+
+      const est = estimateFromBill(bill);
+      if (!est) {
+        result?.classList.add('hidden');
+        unavailable?.classList.remove('hidden');
+        return;
+      }
+
+      unavailable?.classList.add('hidden');
+      if (kwcEl) kwcEl.textContent = `${est.kwc} kWc`;
+      if (prodEl) prodEl.textContent = `${est.productionKwhYr.toLocaleString('fr-FR')} kWh`;
+      if (savingsEl) {
+        savingsEl.textContent = `${formatMadRange(est.savingsMonthlyLow, est.savingsMonthlyHigh)}${perMonthSuffix}`;
+      }
+      if (cta) cta.href = buildDeepLink(bill);
+      result?.classList.remove('hidden');
+    });
+  });
+</script>

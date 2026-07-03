@@ -22,6 +22,12 @@ import StarRating from '../../components/StarRating.astro';
 import TestimonialCarousel from '../../components/TestimonialCarousel.astro';
 import InstallCounter from '../../components/InstallCounter.astro';
 import CertLogoRow from '../../components/CertLogoRow.astro';
+import VideoCompteur from '../../components/VideoCompteur.astro';
+// WJ57 — « confiance au moment de la signature » : UN témoignage court (texte,
+// slot vidéo réservé pour quand WG6 fournira de vrais témoignages filmés) +
+// le bandeau certifications/garanties, juste au-dessus du bloc e-sign. Même
+// source unique de vérité que <TestimonialCarousel/> (aucun avis fabriqué).
+import { TESTIMONIALS, hasTestimonials } from '../../lib/testimonials';
 // WJ35 — grade « heure dorée » v3 (.v3-grade / .photo-grade), importé ici car
 // cette page ne monte pas <V2Enhance/> (qui l'importe pour les pages v2). La
 // feuille est dédupliquée par Vite si une autre page l'importe déjà ailleurs.
@@ -35,11 +41,16 @@ import {
   hasTwoOptions,
   recommendedOption,
   optionTtc,
+  hasRealPrice,
   optionItems,
   optionTotaux,
   optionLabel,
+  optionLabelAr,
+  optionLabelEn,
   defaultSelectedOption,
   isAccepted,
+  resolveOfferState,
+  isOfferDead,
   proposalEndpoint,
   proposalPdfEndpoint,
   hasProductionSeries,
@@ -47,7 +58,12 @@ import {
   savingsHeadline,
   environmentalImpact,
   financingComparison,
+  installmentSplit,
+  INSTALLMENT_MONTH_OPTIONS,
   whatsappLink,
+  whatsappLinkForIntent,
+  whatsappShareLink,
+  whatsappReferralLink,
   parseRoofLayout,
   buildViewerModel,
   zoneAnnotations,
@@ -61,22 +77,50 @@ import {
 } from '../../lib/proposition';
 import { renderYearCurve } from '../../lib/proposalCurve';
 import { renderProposalChart, resolveSeries } from '../../lib/proposalChart';
+import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
+// W342 — « installation la plus proche » : haversine sur un point GPS réel
+// (premier sommet du premier pan de toiture, quand roof_layout est exposé) ou,
+// à défaut, correspondance texte sur le nom de ville dans l'adresse client.
+import { nearestRealisation, nearestRealisationByCityText } from '../../lib/realisations';
 
 const API_BASE = (import.meta.env.PUBLIC_API_BASE as string | undefined) ?? 'https://api.taqinor.ma';
 const { token } = Astro.params as { token: string };
 
 // ── Lecture serveur de la proposition ────────────────────────────────────────
+// WJ81 — la page la plus commercialement critique du site ne doit JAMAIS
+// rester blanche : un backend lent/qui ne répond pas bloquait auparavant ce
+// `fetch` sans limite (le SSR pouvait pendre jusqu'au timeout de la
+// plateforme, une page blanche générique plutôt qu'un message de marque). Un
+// `AbortController` borne l'attente à SSR_FETCH_TIMEOUT_MS ; un timeout obtient
+// désormais son PROPRE message honnête (« connexion lente ») distinct d'une
+// vraie panne réseau, et l'état d'erreur porte un bouton « Réessayer » qui
+// recharge la MÊME URL (lien pur, fonctionne même sans JS).
+const SSR_FETCH_TIMEOUT_MS = 8000;
 let data: ProposalResponse | null = null;
 let errorDetail: string | null = null;
 let httpStatus = 200;
+let isTimeout = false;
 
-if (!token || !token.trim()) {
+// ── W316 — Rate-limit le SSR de cette page : un token de proposition est un
+// identifiant devinable (chaîne opaque mais finie) ; sans garde-fou, un
+// script pouvait bombarder /proposition/<token-aléatoire> pour sonder des
+// tokens valides. Bucket DISTINCT et GÉNÉREUX (une famille entière peut relire
+// la même proposition plusieurs fois depuis le même foyer/NAT) : on écrête le
+// balayage automatisé, jamais une relecture humaine légitime.
+const rl = rateLimit(`proposition-view:${clientIpFromRequest(Astro.request)}`, { limit: 60, windowMs: 60_000 });
+if (!rl.allowed) {
+  httpStatus = 429;
+  errorDetail = 'Trop de tentatives depuis cette connexion — réessayez dans un instant.';
+} else if (!token || !token.trim()) {
   httpStatus = 404;
   errorDetail = 'Ce lien de proposition est introuvable ou a expiré.';
 } else {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SSR_FETCH_TIMEOUT_MS);
   try {
     const res = await fetch(proposalEndpoint(API_BASE, token), {
       headers: { accept: 'application/json' },
+      signal: controller.signal,
     });
     httpStatus = res.status;
     if (res.ok) {
@@ -95,9 +139,14 @@ if (!token || !token.trim()) {
           ? 'Ce lien de proposition est introuvable ou a expiré.'
           : 'Cette proposition n’est pas accessible pour le moment.');
     }
-  } catch {
+  } catch (err) {
     httpStatus = 502;
-    errorDetail = 'Proposition momentanément indisponible. Veuillez réessayer dans un instant.';
+    isTimeout = err instanceof Error && err.name === 'AbortError';
+    errorDetail = isTimeout
+      ? 'La connexion est lente — cette proposition met plus de temps que prévu à charger. Réessayez, ou contactez votre conseiller sur WhatsApp.'
+      : 'Proposition momentanément indisponible. Veuillez réessayer dans un instant.';
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -116,6 +165,16 @@ const twoOptions = ok ? hasTwoOptions(data!) : false;
 const reco: OptionKey | null = ok ? recommendedOption(data!) : null;
 const accepted = ok ? isAccepted(data!) : false;
 const preselect: OptionKey | null = ok ? defaultSelectedOption(data!) : null;
+// WJ83 — le CTA collant montre le prix de l'option phare (reco/sans_batterie) :
+// même garde-fou zéro-total que les cartes d'options plus bas.
+const heroHasRealPrice = ok ? hasRealPrice(data!, reco ?? 'sans_batterie') : false;
+
+// ── WJ82 — État explicite de l'offre (live/accepted/refused/expired/withdrawn).
+// Calculé UNE fois côté serveur à partir du même statut backend + de la même
+// fenêtre de validité que `resolveValidity` ci-dessous (pas de nouvelle donnée
+// inventée) : pilote la suppression du formulaire de signature + du CTA collant
+// pour toute offre qui n'est plus signable.
+const offerState = ok ? resolveOfferState(data!) : 'live';
 
 const roofImg = data?.roof_image_url ?? null;
 const clientName = data?.client_name || q?.client_name || 'Client';
@@ -156,16 +215,32 @@ const instLabel =
 // ── P2 — Graphe production estimée vs consommation (depuis les tableaux Q6) ──
 // On ne dessine QUE les chiffres backend ; tableaux vides/absents → bloc masqué.
 const chartSeries = ok ? resolveSeries(data?.monthly_production, data?.monthly_consumption) : { mode: 'none' as const, production: null, consumption: null };
-const chartSvg = ok && chartSeries.mode !== 'none'
-  ? renderProposalChart(data?.monthly_production, data?.monthly_consumption)
+// WJ80 — les DEUX graphes les plus persuasifs de la page restaient français-
+// only (mois FR figés dans le SVG) même en mode EN/AR actif. Plutôt que de
+// réimporter toute la chaîne de rendu SVG côté client (bundle supplémentaire),
+// on PRÉ-RENDU les trois variantes langue côté serveur — même discipline
+// tri-node que le texte (`data-i18n`/`prepareI18n`) : FR visible par défaut,
+// EN/AR posés `hidden`, le script de bascule de langue montre la bonne.
+const chartSvgFr = ok && chartSeries.mode !== 'none'
+  ? renderProposalChart(data?.monthly_production, data?.monthly_consumption, undefined, 'fr')
   : '';
-const showChart = ok && hasProductionSeries(data!) && chartSvg.length > 0;
+const chartSvgEn = ok && chartSeries.mode !== 'none'
+  ? renderProposalChart(data?.monthly_production, data?.monthly_consumption, undefined, 'en')
+  : '';
+const chartSvgAr = ok && chartSeries.mode !== 'none'
+  ? renderProposalChart(data?.monthly_production, data?.monthly_consumption, undefined, 'ar')
+  : '';
+const showChart = ok && hasProductionSeries(data!) && chartSvgFr.length > 0;
 const chartHasConso = chartSeries.mode === 'comparison';
 
 // ── WJ16 — Courbe journalière production vs consommation (lever → coucher) ────
 // Calée sur la production annuelle RÉELLE backend si présente, sinon « année
 // type » clairement libellée. Le visuel le plus persuasif ne disparaît jamais.
-const dailyCurve = ok ? renderYearCurve(prodKwh) : { svg: '', hasRealScale: false };
+// WJ80 — même pré-rendu tri-langue que le graphe ci-dessus.
+const dailyCurveFr = ok ? renderYearCurve(prodKwh, undefined, 'fr') : { svg: '', hasRealScale: false };
+const dailyCurveEn = ok ? renderYearCurve(prodKwh, undefined, 'en') : { svg: '', hasRealScale: false };
+const dailyCurveAr = ok ? renderYearCurve(prodKwh, undefined, 'ar') : { svg: '', hasRealScale: false };
+const dailyCurve = dailyCurveFr;
 
 // ── WJ15 — Fenêtre de validité honnête (date backend réelle, jamais inventée) ─
 const validity = ok ? resolveValidity(data!) : { label: null, fromBackend: false, expired: false };
@@ -179,12 +254,41 @@ const enviro = ok ? environmentalImpact(prodKwh) : null;
 // ── WJ10 — Comparatif de financement (cash backend + éco-prêt indicatif) ─────
 const financing = ok ? financingComparison(data!, reco ?? 'sans_batterie') : null;
 
+// ── WJ53 — Toggle « payer comptant / paiement échelonné » interactif ─────────
+// Le TTC de départ vient de l'option retenue (reco, ou sans_batterie par
+// défaut) ; le recalcul en direct (mois → mensualité) se fait CÔTÉ CLIENT via
+// installmentSplit (script de fin de page) — ce bloc ne rend RIEN sans prix
+// réel (même garde-fou zéro-total que le reste de la page).
+const installmentTtc = ok ? optionTtc(data!, reco ?? 'sans_batterie') : 0;
+const showInstallmentToggle = ok && Number.isFinite(installmentTtc) && installmentTtc > 0;
+const defaultInstallment = showInstallmentToggle ? installmentSplit(installmentTtc, 12) : null;
+
 // ── WJ12 — Contact intégré : deep-link WhatsApp prérempli avec la réf devis ──
 // « Demander un rappel » = appeler le numéro TAQINOR (NAP), jamais le numéro du
 // client. Numéro réel (= lib/nap NAP.phone), affiché tel quel.
 const waLink = ok ? whatsappLink(reference) : '';
 const TAQINOR_TEL = '+212661850410';
 const callbackHref = ok ? `tel:${TAQINOR_TEL}` : '';
+// WJ85 — « Discuter » et « Poser une question » pointaient vers le MÊME
+// waLink (un seul message générique) : deux boutons faisant la même chose au
+// point de décision de la page lisent comme du remplissage. Prérempli DISTINCT
+// par intention (voir whatsappLinkForIntent) ; waLinkVoice sert l'invitation
+// à la note vocale (canal natif WhatsApp, plus rapide pour beaucoup de clients).
+const waLinkDiscuss = ok ? whatsappLinkForIntent(reference, 'discuss') : '';
+const waLinkQuestion = ok ? whatsappLinkForIntent(reference, 'question') : '';
+const waLinkVoice = ok ? whatsappLinkForIntent(reference, 'voice') : '';
+
+// ── WJ56 — « Partager sur WhatsApp » : le lien TOKENISÉ lui-même (même page),
+// pour qu'un conjoint/co-décideur le reçoive sans rien ressaisir. `Astro.url`
+// est l'URL COMPLÈTE réellement servie (jamais reconstruite manuellement).
+const shareUrl = ok ? Astro.url.href : '';
+const waLinkShare = ok ? whatsappShareLink(shareUrl, reference) : '';
+
+// ── W343 — « Partager avec un proche » (parrainage, état signé/merci) : lien
+// TAGUÉ vers /parrainage (utm_campaign = référence du devis SIGNÉ), DISTINCT
+// du partage WJ56 ci-dessus (qui partage CE devis avec un co-décideur du même
+// foyer, pas le programme de parrainage avec un proche différent).
+const waLinkReferral = ok ? whatsappReferralLink(Astro.url.origin, reference) : '';
 
 // ── P3 — Lien public du devis PDF premium (même token, nouvel onglet) ────────
 const pdfUrl = ok ? proposalPdfEndpoint(API_BASE, token) : '';
@@ -198,6 +302,19 @@ const roofLayout = ok ? parseRoofLayout(data?.roof_layout) : null;
 const viewerModel = roofLayout ? buildViewerModel(roofLayout) : null;
 const show3d = !!viewerModel && viewerModel.totalPanels >= 0;
 const viewerConfig = show3d ? JSON.stringify({ model: viewerModel }) : null;
+
+// ── W342 — « L'installation la plus proche de chez vous » ────────────────────
+// Priorité au VRAI GPS du toit (premier sommet du premier pan de
+// roofLayout — [lng, lat]) quand le backend l'expose (QJ26, pas encore en
+// prod aujourd'hui) ; à défaut, correspondance texte du nom de ville dans
+// `client_addr` (déjà exposé). Honnêtement scopé aux villes réelles de
+// REALISATIONS (nearestRealisation borne à 80 km) — jamais une ville devinée.
+const roofPinLngLat = roofLayout?.zones?.[0]?.vertices?.[0] ?? null;
+const nearestInstall = ok
+  ? (roofPinLngLat ? nearestRealisation(roofPinLngLat[1], roofPinLngLat[0])?.realisation ?? null : null) ??
+    (q?.client_addr ? nearestRealisationByCityText(q.client_addr) : null)
+  : null;
+const nearestInstallHref = nearestInstall ? `/realisations/${nearestInstall.slug}` : '';
 
 // ── WJ26 — « Tout est expliqué » : légende par pan + visite guidée en 4 étapes.
 // Chaque chiffre vient du layout serveur ou du payload quote (les fonctions
@@ -215,35 +332,151 @@ const assumptions = ok ? proposalAssumptions(data!) : [];
 const monitoring = monitoringPoints();
 const faq = objectionFaq();
 
+// ── WJ86 — « Nos chantiers » (photos réelles) et « Le mot du fondateur »
+// n'ont AUCUNE source de données réelle aujourd'hui (WG5/WG6, toujours GATED
+// dans docs/WEB_PLAN.md) : « (Photos à venir.) » et la citation-scaffold du
+// fondateur s'affichaient comme du contenu FINI sur un document commercial —
+// « bientôt disponible » sur sa propre proposition lit comme un produit
+// inachevé au moment le plus critique pour la confiance. Même discipline
+// « no-op » que <TestimonialCarousel/>/<InstallCounter/> (hasTestimonials()) :
+// tant que ces constantes restent `false`, les deux blocs ne rendent RIEN —
+// pas de squelette vide, pas de mention "à venir". Basculer à `true` (et
+// fournir le VRAI contenu ci-dessous) le jour où Reda livre WG5/WG6.
+const REAL_PROJECT_PHOTOS_AVAILABLE = false;
+const REAL_FOUNDER_QUOTE_AVAILABLE = false;
+
+// ── WJ57 — « confiance au moment de la signature ». Même discipline no-op :
+// tant qu'aucun témoignage FILMÉ réel n'existe (WG6), le slot vidéo ne rend
+// RIEN (pas de player vide, pas de mention "bientôt") ; le repli texte réutilise
+// la MÊME source unique de vérité (`TESTIMONIALS`) que <TestimonialCarousel/> —
+// jamais un avis fabriqué pour ce placement. `signTestimonial` = le premier avis
+// réel disponible (le plus court à lire juste avant de signer).
+const REAL_TESTIMONIAL_VIDEO_AVAILABLE = false;
+const signTestimonial = hasTestimonials() ? TESTIMONIALS[0] : null;
+
 const pageTitle = ok ? `Proposition ${reference} — ${clientName} | Taqinor` : 'Proposition | Taqinor';
+// WJ76 — fuite de confidentialité de l'aperçu de partage : cette page est un
+// lien tokenisé PRIVÉ que le client transfère lui-même (WhatsApp, SMS, email)
+// à sa famille/son entourage pour discuter du projet. `pageTitle` ci-dessus
+// (référence + nom du client) reste dans l'onglet du navigateur — utile au
+// client — mais NE DOIT JAMAIS apparaître dans la carte de partage
+// (og:title/twitter:title), affichée à TOUTE personne qui reçoit le lien
+// transféré, au-dessus de l'image d'accueil générique par défaut. Titre de
+// partage neutre + image OG dédiée (public/og/proposition.png, aucune photo
+// de chantier client, aucune donnée personnelle) — la page reste noindex.
+const ogTitle = 'Votre proposition solaire | Taqinor';
+
+// ── WJ81 — Lien WhatsApp de repli utilisable MÊME quand la proposition n'a pas
+// pu être chargée (`!ok` : timeout, panne, lien invalide). `whatsappLink('')`
+// dégrade déjà proprement sur un message générique sans référence.
+const waLinkFallback = whatsappLink(reference || '');
 
 // Données passées au script de signature (sérialisées en JSON dans un data-attr).
+// WJ55 — `clientPhone` est AJOUTÉ ici (jamais un nouvel attribut DOM) pour que
+// le script de télémétrie de vue/engagement puisse construire un événement
+// corrélable côté CRM (voir buildProposalTrackPayload) sans jamais fabriquer
+// de lead fantôme quand le devis n'a pas de téléphone client.
 const signConfig = ok
-  ? JSON.stringify({ token, twoOptions, preselect, accepted, acceptedName: data?.accepte_par_nom ?? '', reference })
+  ? JSON.stringify({
+      token,
+      twoOptions,
+      preselect,
+      accepted,
+      acceptedName: data?.accepte_par_nom ?? '',
+      reference,
+      clientPhone: q?.client_phone ?? '',
+    })
   : null;
 ---
 
-<Layout title={pageTitle} description="Votre proposition solaire personnalisée Taqinor." noindex={true}>
+<Layout
+  title={pageTitle}
+  description="Votre proposition solaire personnalisée Taqinor."
+  noindex={true}
+  ogTitle={ogTitle}
+  ogSlug="proposition"
+  ogImageAlt="Taqinor — votre proposition solaire"
+>
   {!ok ? (
     <!-- ── État « lien expiré / introuvable » ─────────────────────────────── -->
+    <!-- WJ81 — la page ne reste JAMAIS blanche : ce cadre de marque (rappel
+         visuel Taqinor, jamais une page d'erreur générique du navigateur/
+         plateforme) affiche un message honnête. Pour un TIMEOUT (backend
+         lent) spécifiquement, un bouton « Réessayer » (recharge la MÊME URL,
+         lien pur — fonctionne sans JS) et un repli WhatsApp direct sont
+         proposés, plutôt que le seul lien « Retour à l'accueil ». W316 — un
+         429 (rate-limit) est tout aussi RETRYABLE (relire dans un instant) :
+         même bouton « Réessayer », jamais un cul-de-sac. -->
     <section class="mx-auto flex min-h-[60vh] max-w-2xl flex-col items-center justify-center px-5 py-24 text-center">
       <div class="rule-brass mx-auto text-brass-300" aria-hidden="true"></div>
       <h1 class="display mt-6 text-3xl text-lune sm:text-4xl">Proposition indisponible</h1>
       <p class="v2-body mt-4 max-w-md">{errorDetail}</p>
-      <p class="mt-8 text-sm text-lune-faint">
-        Besoin d’un nouveau lien ? Contactez votre conseiller Taqinor.
-      </p>
-      <a href="/" class="btn-pill mt-8">Retour à l’accueil</a>
+      {(isTimeout || httpStatus === 429) ? (
+        <>
+          <div class="mt-8 flex flex-col gap-3 sm:flex-row">
+            <a href={Astro.url.href} class="btn-pill" style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)">
+              Réessayer
+            </a>
+            <a href={waLinkFallback} target="_blank" rel="noopener noreferrer" class="btn-pill">
+              Contacter sur WhatsApp
+            </a>
+          </div>
+          <a href="/" class="mt-4 text-sm text-lune-faint underline-offset-2 hover:underline">Retour à l’accueil</a>
+        </>
+      ) : (
+        <>
+          <p class="mt-8 text-sm text-lune-faint">
+            Besoin d’un nouveau lien ? Contactez votre conseiller Taqinor.
+          </p>
+          <a href="/" class="btn-pill mt-8">Retour à l’accueil</a>
+        </>
+      )}
     </section>
   ) : (
     <div class="proposition pb-28" data-sign-config={signConfig}>
-      <!-- WJ17 — bascule de langue FR/عربي, flottante (ne perturbe aucun rythme
-           existant, zéro CLS). Même mécanisme dual-node que WJ33 (mon-toit.astro) :
-           voir le <script> de fin de page. Le contenu reste TOUJOURS lisible FR
-           sans JS (pas de gate v2-js ici, page déjà rendue serveur). -->
-      <div class="prop-lang-switch fixed right-3 top-3 z-50 flex gap-1 rounded-sm border border-white/15 bg-nuit/80 p-0.5 backdrop-blur" role="group" aria-label="Langue / اللغة">
+      <!-- WJ84 — imprimable proprement : invisible à l'écran (print:block only),
+           rappelle qu'un Ctrl-P sur cette page « UI » n'est pas le document
+           officiel — le PDF premium (même token) est le document contractuel.
+           Le reste du chrome (bascule langue, CTA collant, overlay 3D) est
+           masqué en impression par les règles @media print ci-dessous. -->
+      <p class="print-hint hidden">
+        <span data-i18n
+          data-fr="Pour un PDF officiel, utilisez « Télécharger le devis (PDF) » — cette page imprimée est une vue d'écran, pas le document contractuel."
+          data-en="For an official PDF, use “Download the quote (PDF)” — this printed page is a screen view, not the contractual document."
+          data-ar="للحصول على PDF رسمي، استخدموا «تحميل العرض (PDF)» — هذه الصفحة المطبوعة عرض شاشة، وليست الوثيقة التعاقدية.">
+          Pour un PDF officiel, utilisez « Télécharger le devis (PDF) » — cette page imprimée est une vue d'écran, pas le document contractuel.
+        </span>
+      </p>
+
+      <!-- WJ45 — bandeau hors-ligne (navigator.onLine + online/offline) : une
+           coupure réseau au moment de signer ne doit jamais ressembler à un
+           échec muet. Le formulaire de signature reste rempli (aucune
+           soumission n'a eu lieu) : on prévient explicitement ET on rassure
+           que rien n'est perdu, plutôt que le message générique de panne. -->
+      <div id="prop-offline-banner" hidden role="status" aria-live="polite"
+        class="mx-auto mt-4 flex max-w-4xl items-start gap-2 border border-brass-400/40 bg-brass-400/10 p-3 text-sm text-white sm:px-8">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="mt-0.5 flex-none text-brass-300">
+          <line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.58 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/>
+        </svg>
+        <span data-i18n
+          data-fr="Pas de connexion — vos réponses sont conservées, on réessaie dès le retour du réseau."
+          data-en="No connection — your answers are kept, we'll retry as soon as the network is back."
+          data-ar="لا يوجد اتصال — إجاباتكم محفوظة، سنعيد المحاولة فور عودة الشبكة.">
+          Pas de connexion — vos réponses sont conservées, on réessaie dès le retour du réseau.
+        </span>
+      </div>
+
+      <!-- WJ17/WJ43 — bascule de langue FR/EN/عربي, flottante (ne perturbe aucun
+           rythme existant, zéro CLS). Même mécanisme tri-node (dual-node élargi)
+           que WJ33 (mon-toit.astro) : voir le <script> de fin de page. Le contenu
+           reste TOUJOURS lisible FR sans JS (pas de gate v2-js ici, page déjà
+           rendue serveur). WJ43 — EN ajouté comme 3ᵉ langue (segment
+           marocains-du-monde), au même niveau que FR/AR, jamais un repli dégradé. -->
+      <div class="prop-lang-switch fixed right-3 top-3 z-50 flex gap-1 rounded-sm border border-white/15 bg-nuit/80 p-0.5 backdrop-blur" role="group" aria-label="Langue / Language / اللغة">
         <button type="button" id="prop-lang-fr" aria-pressed="true"
           class="px-2.5 py-1 text-xs font-semibold text-azur-950 bg-brass-400 transition-colors">FR</button>
+        <button type="button" id="prop-lang-en" aria-pressed="false"
+          class="px-2.5 py-1 text-xs font-semibold text-lune-soft transition-colors hover:text-white">EN</button>
         <button type="button" id="prop-lang-ar" aria-pressed="false"
           class="px-2.5 py-1 text-xs font-semibold text-lune-soft transition-colors hover:text-white">عربي</button>
       </div>
@@ -282,15 +515,17 @@ const signConfig = ok
         <div class="relative mx-auto flex min-h-[72vh] w-full max-w-4xl flex-col justify-end px-5 pb-12 pt-24 sm:min-h-[78vh] sm:px-8 sm:pb-16 sm:pt-32">
           <p class="tech-label rule-brass cine-in text-brass-300" data-i18n
             data-fr={`${roofImg ? 'Votre installation · ' : 'Proposition · '}${instLabel}`}
+            data-en={`${roofImg ? 'Your installation · ' : 'Proposal · '}${instLabel}`}
             data-ar={`${roofImg ? 'تركيبكم · ' : 'العرض · '}${instLabel}`}>
             {roofImg ? 'Votre installation · ' : 'Proposition · '}{instLabel}
           </p>
           <h1 class="display cine-in cine-in-1 mt-4 text-4xl text-blanc sm:text-5xl" data-i18n
-            data-fr={`Bonjour ${clientName},`} data-ar={`مرحباً ${clientName}،`}>
+            data-fr={`Bonjour ${clientName},`} data-en={`Hello ${clientName},`} data-ar={`مرحباً ${clientName}،`}>
             Bonjour {clientName},
           </h1>
           <p class="v2-body cine-in cine-in-2 mt-4 max-w-xl text-lune" data-i18n
             data-fr="Voici votre proposition solaire personnalisée. Tout est détaillé ci-dessous — vous pouvez la signer en ligne en bas de page."
+            data-en="Here is your personalized solar proposal. Everything is detailed below — you can sign it online at the bottom of the page."
             data-ar="إليكم عرضكم الشمسي الشخصي. كل التفاصيل أدناه — يمكنكم التوقيع إلكترونياً أسفل الصفحة.">
             Voici votre proposition solaire personnalisée. Tout est détaillé ci-dessous —
             vous pouvez la signer en ligne en bas de page.
@@ -298,30 +533,58 @@ const signConfig = ok
           <dl class="cine-in cine-in-3 mt-7 flex flex-wrap gap-x-8 gap-y-3 text-sm">
             {reference && (
               <div>
-                <dt class="text-lune-faint" data-i18n data-fr="Référence" data-ar="المرجع">Référence</dt>
+                <dt class="text-lune-faint" data-i18n data-fr="Référence" data-en="Reference" data-ar="المرجع">Référence</dt>
                 <dd class="fig text-lg text-lune" dir="ltr">{reference}</dd>
               </div>
             )}
             {proposalDate && (
               <div>
-                <dt class="text-lune-faint" data-i18n data-fr="Date" data-ar="التاريخ">Date</dt>
+                <dt class="text-lune-faint" data-i18n data-fr="Date" data-en="Date" data-ar="التاريخ">Date</dt>
                 <dd class="fig text-lg text-lune" dir="ltr">{proposalDate}</dd>
               </div>
             )}
             {/* WJ15 — Fenêtre de validité honnête : date backend réelle, sinon mention libellée. Jamais un compte-à-rebours. */}
             {validity.fromBackend && validity.label && !validity.expired && (
               <div>
-                <dt class="text-lune-faint" data-i18n data-fr="Devis valable jusqu’au" data-ar="العرض صالح حتى">Devis valable jusqu’au</dt>
+                <dt class="text-lune-faint" data-i18n data-fr="Devis valable jusqu’au" data-en="Quote valid until" data-ar="العرض صالح حتى">Devis valable jusqu’au</dt>
                 <dd class="fig text-lg text-brass-300" dir="ltr">{validity.label}</dd>
               </div>
             )}
             {validity.fromBackend && validity.expired && (
               <div>
-                <dt class="text-lune-faint" data-i18n data-fr="Validité" data-ar="الصلاحية">Validité</dt>
-                <dd class="text-base text-lune-soft" data-i18n data-fr="Offre échue — demandez une réactualisation" data-ar="العرض منتهي — اطلبوا تحديثاً">Offre échue — demandez une réactualisation</dd>
+                <dt class="text-lune-faint" data-i18n data-fr="Validité" data-en="Validity" data-ar="الصلاحية">Validité</dt>
+                <dd class="text-base text-lune-soft" data-i18n data-fr="Offre échue — demandez une réactualisation" data-en="Offer expired — request an updated quote" data-ar="العرض منتهي — اطلبوا تحديثاً">Offre échue — demandez une réactualisation</dd>
               </div>
             )}
           </dl>
+          <!-- ── WJ56 · PARTAGER SUR WHATSAPP ─────────────────────────────────
+               Partage le lien TOKENISÉ (cette page) tel quel — un conjoint ou
+               co-décideur peut l'ouvrir sans rien ressaisir. Web Share API
+               native quand disponible (meilleure expérience tablette/mobile,
+               feuille de partage système) ; repli sur le compositeur wa.me
+               générique sinon (toujours fonctionnel, aucun JS requis pour le
+               lien lui-même). -->
+          <div class="cine-in cine-in-3 mt-5">
+            <a
+              id="prop-share-whatsapp"
+              href={waLinkShare}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-share-url={shareUrl}
+              data-share-ref={reference}
+              class="btn-pill inline-flex items-center justify-center gap-2 border-white/20 text-sm text-lune-soft hover:text-white"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.9 9.9 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2Zm0 18.1h-.01a8.2 8.2 0 0 1-4.18-1.15l-.3-.18-3.11.82.83-3.04-.2-.31a8.2 8.2 0 0 1-1.26-4.37c0-4.54 3.7-8.23 8.24-8.23 2.2 0 4.27.86 5.83 2.42a8.18 8.18 0 0 1 2.41 5.82c0 4.54-3.7 8.23-8.23 8.23Zm4.52-6.16c-.25-.12-1.47-.72-1.69-.81-.23-.08-.39-.12-.56.13-.16.25-.64.81-.78.97-.14.17-.29.19-.54.06-.25-.12-1.05-.39-1.99-1.23-.74-.66-1.23-1.47-1.38-1.72-.14-.25-.01-.38.11-.51.11-.11.25-.29.37-.43.13-.14.17-.25.25-.41.08-.17.04-.31-.02-.43-.06-.12-.56-1.35-.77-1.85-.2-.48-.41-.42-.56-.43l-.48-.01c-.17 0-.43.06-.66.31-.23.25-.86.85-.86 2.07 0 1.22.89 2.4 1.01 2.57.12.17 1.75 2.67 4.23 3.74.59.26 1.05.41 1.41.52.59.19 1.13.16 1.56.1.48-.07 1.47-.6 1.68-1.18.21-.58.21-1.07.14-1.18-.06-.1-.22-.16-.47-.28Z"/>
+              </svg>
+              <span data-i18n
+                data-fr="Partager sur WhatsApp"
+                data-en="Share on WhatsApp"
+                data-ar="مشاركة على واتساب">
+                Partager sur WhatsApp
+              </span>
+            </a>
+          </div>
         </div>
       </section>
 
@@ -329,9 +592,10 @@ const signConfig = ok
       {accepted && (
         <section class="mx-auto max-w-4xl px-5 pt-8 sm:px-8">
           <div class="cine-card rounded-xl border-brass-400/40 p-5 sm:p-6" style="border-color: rgb(232 181 74 / 0.4)">
-            <p class="fig text-xl text-brass-300" data-i18n data-fr="Devis accepté ✓" data-ar="تمت الموافقة على العرض ✓">Devis accepté ✓</p>
+            <p class="fig text-xl text-brass-300" data-i18n data-fr="Devis accepté ✓" data-en="Quote accepted ✓" data-ar="تمت الموافقة على العرض ✓">Devis accepté ✓</p>
             <p class="v2-body mt-1" data-i18n
               data-fr={`Cette proposition a été acceptée${data?.accepte_par_nom ? ` par ${data.accepte_par_nom}` : ''}. Merci de votre confiance — votre conseiller Taqinor revient vers vous.`}
+              data-en={`This proposal has been accepted${data?.accepte_par_nom ? ` by ${data.accepte_par_nom}` : ''}. Thank you for your trust — your Taqinor advisor will be in touch.`}
               data-ar={`تمت الموافقة على هذا العرض${data?.accepte_par_nom ? ` من طرف ${data.accepte_par_nom}` : ''}. شكراً على ثقتكم — سيتواصل معكم مستشار تاقينور قريباً.`}>
               Cette proposition a été acceptée
               {data?.accepte_par_nom ? <> par <strong class="text-lune">{data.accepte_par_nom}</strong></> : null}.
@@ -351,8 +615,8 @@ const signConfig = ok
         <>
         <div class="seam-soft" aria-hidden="true"></div>
         <section id="roof3d" class="mx-auto max-w-5xl px-5 pt-14 sm:px-8 sm:pt-20" data-viewer-config={viewerConfig}>
-          <p class="tech-label rule-brass cine-in text-brass-300" data-i18n data-fr="Le centre de votre proposition" data-ar="جوهر عرضكم">Le centre de votre proposition</p>
-          <h2 class="display cine-in cine-in-1 mt-3 text-2xl text-lune sm:text-3xl" data-i18n data-fr="Votre toit en 3D" data-ar="سطحكم بتقنية ثلاثية الأبعاد">Votre toit en 3D</h2>
+          <p class="tech-label rule-brass cine-in text-brass-300" data-i18n data-fr="Le centre de votre proposition" data-en="At the heart of your proposal" data-ar="جوهر عرضكم">Le centre de votre proposition</p>
+          <h2 class="display cine-in cine-in-1 mt-3 text-2xl text-lune sm:text-3xl" data-i18n data-fr="Votre toit en 3D" data-en="Your roof in 3D" data-ar="سطحكم بتقنية ثلاثية الأبعاد">Votre toit en 3D</h2>
           <div class="cine-card cine-in cine-in-2 mt-5 overflow-hidden rounded-2xl p-0 shadow-premium">
             <div id="roof3d-stage" class="roof3d-stage">
               {roofImg ? (
@@ -375,21 +639,23 @@ const signConfig = ok
                   type="button"
                   class="btn-pill inline-flex items-center justify-center gap-2"
                   style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
-                  data-i18n data-fr="Explorer votre toit en 3D" data-ar="استكشفوا سطحكم بتقنية ثلاثية الأبعاد"
+                  data-i18n data-fr="Explorer votre toit en 3D" data-en="Explore your roof in 3D" data-ar="استكشفوا سطحكم بتقنية ثلاثية الأبعاد"
                 >
                   Explorer votre toit en 3D
                 </button>
                 <p id="roof3d-note" class="max-w-sm text-sm text-lune-soft" data-i18n
                   data-fr="Tournez, zoomez : ce sont votre toit et vos panneaux, tels qu’étudiés."
+                  data-en="Rotate, zoom: this is your roof and your panels, exactly as studied."
                   data-ar="دوّروا، قرّبوا: هذا سطحكم وألواحكم، كما تمت دراستهما.">
                   Tournez, zoomez : ce sont votre toit et vos panneaux, tels qu’étudiés.
                 </p>
               </div>
             </div>
             <p id="roof3d-hint" class="px-5 py-3 text-xs text-lune-faint" hidden data-i18n
-              data-fr="Faites glisser pour tourner · pincez ou molette pour zoomer · deux doigts pour déplacer."
-              data-ar="اسحبوا للتدوير · قرّبوا بإصبعين أو بعجلة الفأرة · إصبعان للتحريك.">
-              Faites glisser pour tourner · pincez ou molette pour zoomer · deux doigts pour déplacer.
+              data-fr="Faites glisser pour tourner · pincez ou molette pour zoomer · deux doigts pour déplacer · flèches pour tourner, + / − pour zoomer au clavier."
+              data-en="Drag to rotate · pinch or scroll to zoom · two fingers to pan · arrow keys to rotate, + / − to zoom on keyboard."
+              data-ar="اسحبوا للتدوير · قرّبوا بإصبعين أو بعجلة الفأرة · إصبعان للتحريك · أسهم لوحة المفاتيح للتدوير، + / − للتكبير.">
+              Faites glisser pour tourner · pincez ou molette pour zoomer · deux doigts pour déplacer · flèches pour tourner, + / − pour zoomer au clavier.
             </p>
           </div>
 
@@ -397,15 +663,15 @@ const signConfig = ok
           <div class="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm" aria-label="Légende de la vue 3D">
             <span class="inline-flex items-center gap-2 text-lune-soft">
               <span class="inline-block h-3 w-3 rounded-sm" style="background: #14263f; outline: 1px solid rgb(255 255 255 / 0.25)" aria-hidden="true"></span>
-              <span data-i18n data-fr="Vos panneaux solaires" data-ar="ألواحكم الشمسية">Vos panneaux solaires</span>
+              <span data-i18n data-fr="Vos panneaux solaires" data-en="Your solar panels" data-ar="ألواحكم الشمسية">Vos panneaux solaires</span>
             </span>
             <span class="inline-flex items-center gap-2 text-lune-soft">
               <span class="inline-block h-3 w-3 rounded-sm" style="background: #b9bfca" aria-hidden="true"></span>
-              <span data-i18n data-fr="Votre toiture" data-ar="سطحكم">Votre toiture</span>
+              <span data-i18n data-fr="Votre toiture" data-en="Your roof" data-ar="سطحكم">Votre toiture</span>
             </span>
             <span class="inline-flex items-center gap-2 text-lune-soft">
               <span class="inline-block h-3 w-3 rounded-sm" style="background: #9aa3b4" aria-hidden="true"></span>
-              <span data-i18n data-fr="Obstacles (cheminée, cage d’escalier…)" data-ar="عوائق (مدخنة، بيت الدرج…)">Obstacles (cheminée, cage d’escalier…)</span>
+              <span data-i18n data-fr="Obstacles (cheminée, cage d’escalier…)" data-en="Obstacles (chimney, stairwell…)" data-ar="عوائق (مدخنة، بيت الدرج…)">Obstacles (cheminée, cage d’escalier…)</span>
             </span>
           </div>
           {annotations.length > 0 && (
@@ -415,6 +681,7 @@ const signConfig = ok
                   <p class="tech-label text-lune-faint">{a.label} · {a.roofTypeLabel}</p>
                   <p class="mt-2 text-lune-soft" data-i18n
                     data-fr={`Orientation ${a.orientation}${a.tiltDeg !== null ? ` · pente ${a.tiltDeg}°` : ''}${a.panels !== null ? ` · ${formatNumber(a.panels)} panneaux` : ''}${a.kwc !== null ? ` · ${formatNumber(a.kwc, 2)} kWc` : ''}`}
+                    data-en={`Orientation ${a.orientation}${a.tiltDeg !== null ? ` · slope ${a.tiltDeg}°` : ''}${a.panels !== null ? ` · ${formatNumber(a.panels)} panels` : ''}${a.kwc !== null ? ` · ${formatNumber(a.kwc, 2)} kWc` : ''}`}
                     data-ar={`الاتجاه ${a.orientation}${a.tiltDeg !== null ? ` · الميل ${a.tiltDeg}°` : ''}${a.panels !== null ? ` · ${formatNumber(a.panels)} لوح` : ''}${a.kwc !== null ? ` · ${formatNumber(a.kwc, 2)} kWc` : ''}`}>
                     Orientation <strong class="text-lune">{a.orientation}</strong>
                     {a.tiltDeg !== null ? <> · pente <strong class="text-lune">{a.tiltDeg}°</strong></> : null}
@@ -430,8 +697,8 @@ const signConfig = ok
           {walkSteps.length > 0 && (
             <div id="roof3d-walk" class="mt-6" role="group" aria-label="Explication guidée de votre installation">
               <div class="flex items-baseline justify-between gap-3">
-                <p class="tech-label text-lune-faint" data-i18n data-fr="Tout est expliqué, étape par étape" data-ar="كل شيء موضّح، خطوة بخطوة">Tout est expliqué, étape par étape</p>
-                <a href="#options" class="text-xs text-lune-faint underline-offset-2 hover:underline" data-i18n data-fr="Passer l’explication" data-ar="تخطي الشرح">Passer l’explication</a>
+                <p class="tech-label text-lune-faint" data-i18n data-fr="Tout est expliqué, étape par étape" data-en="Everything is explained, step by step" data-ar="كل شيء موضّح، خطوة بخطوة">Tout est expliqué, étape par étape</p>
+                <a href="#options" class="text-xs text-lune-faint underline-offset-2 hover:underline" data-i18n data-fr="Passer l’explication" data-en="Skip the explanation" data-ar="تخطي الشرح">Passer l’explication</a>
               </div>
               <ol class="mt-3 space-y-3">
                 {walkSteps.map((s, i) => (
@@ -440,7 +707,7 @@ const signConfig = ok
                     data-walk-step={s.id}
                     aria-current={i === 0 ? 'step' : undefined}
                   >
-                    <p class="text-sm font-bold text-lune" data-i18n data-fr={`${i + 1}. ${s.title}`} data-ar={`${i + 1}. ${s.titleAr}`}>
+                    <p class="text-sm font-bold text-lune" data-i18n data-fr={`${i + 1}. ${s.title}`} data-en={`${i + 1}. ${s.title}`} data-ar={`${i + 1}. ${s.titleAr}`}>
                       <span class="fig text-brass-300">{i + 1}.</span> {s.title}
                     </p>
                     <p class="v2-body mt-1.5 text-sm text-lune-soft">{s.body}</p>
@@ -448,9 +715,9 @@ const signConfig = ok
                 ))}
               </ol>
               <div class="mt-3 flex items-center gap-3">
-                <button id="roof3d-walk-prev" type="button" class="btn-pill px-4 py-1.5 text-sm" disabled data-i18n data-fr="Précédent" data-ar="السابق">Précédent</button>
-                <button id="roof3d-walk-next" type="button" class="btn-pill px-4 py-1.5 text-sm" data-i18n data-fr="Suivant" data-ar="التالي">Suivant</button>
-                <span id="roof3d-walk-count" class="text-xs text-lune-faint" aria-live="polite" data-i18n data-fr={`Étape 1 sur ${walkSteps.length}`} data-ar={`الخطوة 1 من ${walkSteps.length}`}>Étape 1 sur {walkSteps.length}</span>
+                <button id="roof3d-walk-prev" type="button" class="btn-pill px-4 py-1.5 text-sm" disabled data-i18n data-fr="Précédent" data-en="Previous" data-ar="السابق">Précédent</button>
+                <button id="roof3d-walk-next" type="button" class="btn-pill px-4 py-1.5 text-sm" data-i18n data-fr="Suivant" data-en="Next" data-ar="التالي">Suivant</button>
+                <span id="roof3d-walk-count" class="text-xs text-lune-faint" aria-live="polite" data-i18n data-fr={`Étape 1 sur ${walkSteps.length}`} data-en={`Step 1 of ${walkSteps.length}`} data-ar={`الخطوة 1 من ${walkSteps.length}`}>Étape 1 sur {walkSteps.length}</span>
               </div>
             </div>
           )}
@@ -460,23 +727,36 @@ const signConfig = ok
       )}
 
       <!-- ── WJ9 · ARGENT DANS LE TEMPS (cumul 25 ans + payback + /mois) ───── -->
+      <!-- id="financing-headline" — ancre WJ55 (télémétrie « scrolled to financing »). -->
       {headline && (headline.cumulative || headline.annual || paybackHero || prodKwh) && (
-        <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8 sm:pt-16">
+        <section id="financing-headline" class="mx-auto max-w-4xl px-5 pt-12 sm:px-8 sm:pt-16">
           {/* Accroche « coût de ne rien faire » : le cumul phare. */}
           {headline.cumulative ? (
             <div class="cine-card cine-in rounded-2xl p-6 shadow-premium sm:p-8" style="border-color: rgb(232 181 74 / 0.35)">
               <p class="tech-label text-lune-faint" data-i18n
                 data-fr={`Sans le solaire, votre facture continue de courir. Avec, vous économisez sur ${headline.years} ans`}
+                data-en={`Without solar, your bill keeps climbing. With it, you save over ${headline.years} years`}
                 data-ar={`بدون الطاقة الشمسية، تستمر فاتورتكم في الارتفاع. معها، توفرون على مدى ${headline.years} سنة`}>
                 Sans le solaire, votre facture continue de courir. Avec, vous économisez sur {headline.years} ans
               </p>
               <p class="fig lum mt-3 text-4xl sm:text-5xl" dir="ltr">{formatMAD(headline.cumulative)}</p>
+              <!-- WJ75 — la mention « tarif constant » s'affiche désormais TOUJOURS,
+                   que le taux vienne du backend ou du repli local : les deux
+                   partagent la MÊME hypothèse 0 % d'escalade tarifaire (voir
+                   savingsHeadline/BILL_INFLATION_RATE dans lib/proposition.ts —
+                   vérifié dans le moteur PDF vendorisé, generate_devis_premium.py,
+                   qui construit sa propre courbe cumulative par une simple
+                   multiplication linéaire, sans terme de dérive). Avant ce
+                   correctif, la mention disparaissait quand le taux venait du
+                   backend, laissant croire — à tort — que ce chiffre intégrait
+                   une hausse tarifaire que ni lui ni le PDF ne modélisent. -->
               <p class="v2-body mt-2 text-sm text-lune-soft" data-i18n
-                data-fr={`Économies cumulées estimées sur ${headline.years} ans${headline.monthly ? ` — soit ≈ ${formatMAD(headline.monthly)}/mois qui restent dans votre poche` : ''}.${!headline.cumulativeFromBackend ? ' Estimation à tarif constant (loi 82-21, autoconsommation).' : ''}`}
-                data-ar={`توفير تراكمي مقدّر على مدى ${headline.years} سنة${headline.monthly ? ` — أي ما يعادل ≈ ${formatMAD(headline.monthly)}/شهر تبقى في جيبكم` : ''}.${!headline.cumulativeFromBackend ? ' تقدير بتعريفة ثابتة (القانون 82-21، الاستهلاك الذاتي).' : ''}`}>
+                data-fr={`Économies cumulées estimées sur ${headline.years} ans${headline.monthly ? ` — soit ≈ ${formatMAD(headline.monthly)}/mois qui restent dans votre poche` : ''}. Estimation à tarif constant (loi 82-21, autoconsommation) — même hypothèse que votre devis PDF.`}
+                data-en={`Estimated cumulative savings over ${headline.years} years${headline.monthly ? ` — that's ≈ ${formatMAD(headline.monthly)}/month staying in your pocket` : ''}. Estimate at constant tariff (law 82-21, self-consumption) — the same assumption as your PDF quote.`}
+                data-ar={`توفير تراكمي مقدّر على مدى ${headline.years} سنة${headline.monthly ? ` — أي ما يعادل ≈ ${formatMAD(headline.monthly)}/شهر تبقى في جيبكم` : ''}. تقدير بتعريفة ثابتة (القانون 82-21، الاستهلاك الذاتي) — نفس الافتراض المعتمد في عرض PDF الخاص بكم.`}>
                 Économies cumulées estimées sur {headline.years} ans
                 {headline.monthly ? <> — soit <span class="text-brass-300">≈ {formatMAD(headline.monthly)}/mois</span> qui restent dans votre poche</> : null}.
-                {!headline.cumulativeFromBackend ? <span class="text-lune-faint"> Estimation à tarif constant (loi 82-21, autoconsommation).</span> : null}
+                <span class="text-lune-faint"> Estimation à tarif constant (loi 82-21, autoconsommation) — même hypothèse que votre devis PDF.</span>
               </p>
             </div>
           ) : null}
@@ -484,21 +764,21 @@ const signConfig = ok
           <div class="mt-4 grid gap-4 sm:grid-cols-3">
             {headline.annual ? (
               <div class="cine-card rounded-xl p-5">
-                <p class="tech-label text-lune-faint" data-i18n data-fr="Économies estimées / an" data-ar="التوفير المقدّر / سنة">Économies estimées / an</p>
+                <p class="tech-label text-lune-faint" data-i18n data-fr="Économies estimées / an" data-en="Estimated savings / year" data-ar="التوفير المقدّر / سنة">Économies estimées / an</p>
                 <p class="fig fig-md lum mt-2" dir="ltr">{formatMAD(headline.annual)}</p>
                 {headline.monthly ? <p class="mt-1 text-sm text-lune-faint" dir="ltr">≈ {formatMAD(headline.monthly)}/mois</p> : null}
               </div>
             ) : null}
             {paybackHero ? (
               <div class="cine-card rounded-xl p-5">
-                <p class="tech-label text-lune-faint" data-i18n data-fr="Rentabilisé en" data-ar="يُسترد خلال">Rentabilisé en</p>
+                <p class="tech-label text-lune-faint" data-i18n data-fr="Rentabilisé en" data-en="Paid back in" data-ar="يُسترد خلال">Rentabilisé en</p>
                 <p class="fig fig-md mt-2 text-lune" dir="ltr">{paybackHero}</p>
-                <p class="mt-1 text-sm text-lune-faint" data-i18n data-fr="puis l’énergie est gratuite" data-ar="ثم تصبح الطاقة مجانية">puis l’énergie est gratuite</p>
+                <p class="mt-1 text-sm text-lune-faint" data-i18n data-fr="puis l’énergie est gratuite" data-en="then energy is free" data-ar="ثم تصبح الطاقة مجانية">puis l’énergie est gratuite</p>
               </div>
             ) : null}
             {prodKwh ? (
               <div class="cine-card rounded-xl p-5">
-                <p class="tech-label text-lune-faint" data-i18n data-fr="Production estimée / an" data-ar="الإنتاج المقدّر / سنة">Production estimée / an</p>
+                <p class="tech-label text-lune-faint" data-i18n data-fr="Production estimée / an" data-en="Estimated production / year" data-ar="الإنتاج المقدّر / سنة">Production estimée / an</p>
                 <p class="fig fig-md mt-2 text-lune" dir="ltr">{formatNumber(prodKwh)} <span class="text-lg text-lune-soft">kWh</span></p>
               </div>
             ) : null}
@@ -506,20 +786,26 @@ const signConfig = ok
         </section>
       )}
 
+      {/* W347 — « Compteur à zéro » : ne rend RIEN tant que le fondateur n'a
+          pas fourni le vrai clip (src/lib/compteurVideo.ts, livré vide).
+          Placé juste après les chiffres d'économies ci-dessus — le contexte
+          le plus persuasif pour ce genre de clip. */}
+      <VideoCompteur />
+
       <!-- ── SYSTÈME : puissance / panneaux ───────────────────────────────── -->
       {(puissance || nbPanneaux) && (
         <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8">
-          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Votre système" data-ar="نظامكم">Votre système</p>
+          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Votre système" data-en="Your system" data-ar="نظامكم">Votre système</p>
           <div class="mt-5 grid gap-4 sm:grid-cols-3">
             {puissance ? (
               <div class="cine-card rounded-xl p-5">
-                <p class="tech-label text-lune-faint" data-i18n data-fr="Puissance" data-ar="القدرة">Puissance</p>
+                <p class="tech-label text-lune-faint" data-i18n data-fr="Puissance" data-en="Power" data-ar="القدرة">Puissance</p>
                 <p class="fig mt-2 text-2xl text-lune" dir="ltr">{formatNumber(puissance, 2)} <span class="text-base text-lune-soft">kWc</span></p>
               </div>
             ) : null}
             {nbPanneaux ? (
               <div class="cine-card rounded-xl p-5">
-                <p class="tech-label text-lune-faint" data-i18n data-fr="Panneaux" data-ar="الألواح">Panneaux</p>
+                <p class="tech-label text-lune-faint" data-i18n data-fr="Panneaux" data-en="Panels" data-ar="الألواح">Panneaux</p>
                 <p class="fig mt-2 text-2xl text-lune" dir="ltr">
                   {formatNumber(nbPanneaux)}
                   {wattPanneau ? <span class="text-base text-lune-soft"> × {formatNumber(wattPanneau)} W</span> : null}
@@ -527,7 +813,7 @@ const signConfig = ok
               </div>
             ) : null}
             <div class="cine-card rounded-xl p-5">
-              <p class="tech-label text-lune-faint" data-i18n data-fr="Type" data-ar="النوع">Type</p>
+              <p class="tech-label text-lune-faint" data-i18n data-fr="Type" data-en="Type" data-ar="النوع">Type</p>
               <p class="fig mt-2 text-2xl text-lune">{instLabel}</p>
             </div>
           </div>
@@ -539,30 +825,49 @@ const signConfig = ok
         <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
           <p class="tech-label rule-brass text-brass-300" data-i18n
             data-fr={chartHasConso ? 'Production estimée vs votre consommation' : 'Production estimée'}
+            data-en={chartHasConso ? 'Estimated production vs your consumption' : 'Estimated production'}
             data-ar={chartHasConso ? 'الإنتاج المقدّر مقابل استهلاككم' : 'الإنتاج المقدّر'}>
             {chartHasConso ? 'Production estimée vs votre consommation' : 'Production estimée'}
           </p>
           <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6">
-            <div class="chart-svg" set:html={chartSvg}></div>
+            <!-- WJ80 — trois variantes langue pré-rendues (FR visible par
+                 défaut) : le script de bascule de langue affiche la bonne au
+                 lieu de réimporter la chaîne de rendu SVG côté client. -->
+            <div class="chart-svg" data-chart-lang="fr" set:html={chartSvgFr}></div>
+            <div class="chart-svg" data-chart-lang="en" hidden set:html={chartSvgEn}></div>
+            <div class="chart-svg" data-chart-lang="ar" hidden set:html={chartSvgAr}></div>
+            <!-- WJ80 — tap-to-reveal : le `<title>` SVG (survol souris) est
+                 invisible au tactile — l'essentiel du trafic de cette page.
+                 Un tap/clic sur une barre affiche ici son mois + sa valeur ;
+                 câblé par le script de fin de page (délégation d'événement,
+                 aucune dépendance au SVG choisi). -->
+            <p id="chart-tap-caption" class="mt-2 min-h-[1.25rem] text-sm text-brass-300" aria-live="polite"></p>
             <div class="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
               <span class="inline-flex items-center gap-2 text-lune-soft">
                 <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-brass-400)" aria-hidden="true"></span>
-                <span data-i18n data-fr="Production solaire estimée" data-ar="الإنتاج الشمسي المقدّر">Production solaire estimée</span>
+                <span data-i18n data-fr="Production solaire estimée" data-en="Estimated solar production" data-ar="الإنتاج الشمسي المقدّر">Production solaire estimée</span>
               </span>
               {chartHasConso && (
                 <span class="inline-flex items-center gap-2 text-lune-soft">
                   <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-azur-300, #7fb4e8)" aria-hidden="true"></span>
-                  <span data-i18n data-fr="Votre consommation" data-ar="استهلاككم">Votre consommation</span>
+                  <span data-i18n data-fr="Votre consommation" data-en="Your consumption" data-ar="استهلاككم">Votre consommation</span>
                 </span>
               )}
-              <span class="text-lune-faint" data-i18n data-fr="kWh par mois" data-ar="كيلوواط ساعة شهرياً">kWh par mois</span>
+              <span class="text-lune-faint" data-i18n data-fr="kWh par mois" data-en="kWh per month" data-ar="كيلوواط ساعة شهرياً">kWh par mois</span>
             </div>
+            {/* WJ83 — `ecoHero` gardait le rôle d'un simple booléen dans ce
+                `||` (jamais affiché lui-même) : la légende ne parlait QUE de
+                production, jamais d'économie, alors même que le chiffre existe.
+                On le SURFACE désormais explicitement quand présent — sinon la
+                légende garde son texte production-only d'origine. */}
             {(prodKwh || ecoHero) && (
               <p class="v2-body mt-4 text-sm text-lune-soft" data-i18n
-                data-fr={`${prodKwh ? `Sur l’année, votre installation produit environ ${formatNumber(prodKwh)} kWh.` : ''}${chartHasConso ? ' Plus la production (laiton) couvre votre consommation (azur), plus vous économisez.' : ''}`}
-                data-ar={`${prodKwh ? `على مدار السنة، ينتج تركيبكم حوالي ${formatNumber(prodKwh)} kWh.` : ''}${chartHasConso ? ' كلما غطى الإنتاج (الذهبي) استهلاككم (الأزرق)، كلما وفّرتم أكثر.' : ''}`}>
+                data-fr={`${prodKwh ? `Sur l’année, votre installation produit environ ${formatNumber(prodKwh)} kWh.` : ''}${chartHasConso ? ' Plus la production (laiton) couvre votre consommation (azur), plus vous économisez.' : ''}${ecoHero ? ` Économie estimée : ${formatMAD(ecoHero)}/an.` : ''}`}
+                data-en={`${prodKwh ? `Over the year, your installation produces around ${formatNumber(prodKwh)} kWh.` : ''}${chartHasConso ? ' The more production (brass) covers your consumption (blue), the more you save.' : ''}${ecoHero ? ` Estimated savings: ${formatMAD(ecoHero)}/year.` : ''}`}
+                data-ar={`${prodKwh ? `على مدار السنة، ينتج تركيبكم حوالي ${formatNumber(prodKwh)} kWh.` : ''}${chartHasConso ? ' كلما غطى الإنتاج (الذهبي) استهلاككم (الأزرق)، كلما وفّرتم أكثر.' : ''}${ecoHero ? ` التوفير المقدّر: ${formatMAD(ecoHero)}/سنة.` : ''}`}>
                 {prodKwh ? <>Sur l’année, votre installation produit environ <strong class="text-lune">{formatNumber(prodKwh)} kWh</strong>.</> : null}
                 {chartHasConso ? ' Plus la production (laiton) couvre votre consommation (azur), plus vous économisez.' : ''}
+                {ecoHero ? <> Économie estimée : <span class="text-brass-300">{formatMAD(ecoHero)}/an</span>.</> : null}
               </p>
             )}
           </div>
@@ -575,24 +880,32 @@ const signConfig = ok
           Animation gatée prefers-reduced-motion (voir <style>). */}
       {dailyCurve.svg && (
         <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
-          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Votre journée solaire" data-ar="يومكم الشمسي">Votre journée solaire</p>
+          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Votre journée solaire" data-en="Your solar day" data-ar="يومكم الشمسي">Votre journée solaire</p>
           <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6">
-            <div class="daily-curve-wrap" set:html={dailyCurve.svg}></div>
+            <!-- WJ80 — mêmes trois variantes langue pré-rendues que le graphe
+                 ci-dessus (FR visible par défaut). -->
+            <div class="daily-curve-wrap" data-curve-lang="fr" set:html={dailyCurveFr.svg}></div>
+            <div class="daily-curve-wrap" data-curve-lang="en" hidden set:html={dailyCurveEn.svg}></div>
+            <div class="daily-curve-wrap" data-curve-lang="ar" hidden set:html={dailyCurveAr.svg}></div>
+            <!-- WJ80 — tap-to-reveal du repère pic/moyenne (même discipline que
+                 le graphe ci-dessus — le survol est invisible au tactile). -->
+            <p id="curve-tap-caption" class="mt-2 min-h-[1.25rem] text-sm text-brass-300" aria-live="polite"></p>
             <div class="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
               <span class="inline-flex items-center gap-2 text-lune-soft">
                 <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-brass-400)" aria-hidden="true"></span>
-                <span data-i18n data-fr="Production solaire" data-ar="الإنتاج الشمسي">Production solaire</span>
+                <span data-i18n data-fr="Production solaire" data-en="Solar production" data-ar="الإنتاج الشمسي">Production solaire</span>
               </span>
               <span class="inline-flex items-center gap-2 text-lune-soft">
                 <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-azur-300, #7fb4e8)" aria-hidden="true"></span>
-                <span data-i18n data-fr="Votre consommation" data-ar="استهلاككم">Votre consommation</span>
+                <span data-i18n data-fr="Votre consommation" data-en="Your consumption" data-ar="استهلاككم">Votre consommation</span>
               </span>
               {!dailyCurve.hasRealScale && (
-                <span class="text-lune-faint" data-i18n data-fr="profil — année type (forme indicative)" data-ar="نمط — سنة نموذجية (شكل إرشادي)">profil — année type (forme indicative)</span>
+                <span class="text-lune-faint" data-i18n data-fr="profil — année type (forme indicative)" data-en="profile — typical year (indicative shape)" data-ar="نمط — سنة نموذجية (شكل إرشادي)">profil — année type (forme indicative)</span>
               )}
             </div>
             <p class="v2-body mt-4 text-sm text-lune-soft" data-i18n
               data-fr={`Le soleil produit en pleine journée : chaque kWh consommé à ce moment-là ne vient plus du réseau. ${dailyCurve.hasRealScale ? 'Les repères sont calés sur votre production estimée.' : 'Cette courbe illustre une journée type — votre profil exact est précisé avec votre conseiller.'}`}
+              data-en={`The sun produces during the day: every kWh consumed at that moment no longer comes from the grid. ${dailyCurve.hasRealScale ? 'The markers are calibrated on your estimated production.' : 'This curve illustrates a typical day — your exact profile is confirmed with your advisor.'}`}
               data-ar={`تنتج الشمس في وضح النهار: كل كيلوواط ساعة يُستهلك في تلك اللحظة لم يعد يأتي من الشبكة. ${dailyCurve.hasRealScale ? 'المعالم مضبوطة على إنتاجكم المقدّر.' : 'يوضّح هذا المنحنى يوماً نموذجياً — يُحدَّد ملفكم الدقيق مع مستشاركم.'}`}>
               Le soleil produit en pleine journée : chaque kWh consommé à ce moment-là
               ne vient plus du réseau. {dailyCurve.hasRealScale
@@ -607,6 +920,7 @@ const signConfig = ok
       <section id="options" class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
         <p class="tech-label rule-brass text-brass-300" data-i18n
           data-fr={twoOptions ? 'Vos deux options' : 'Votre proposition'}
+          data-en={twoOptions ? 'Your two options' : 'Your proposal'}
           data-ar={twoOptions ? 'خياراكم' : 'عرضكم'}>
           {twoOptions ? 'Vos deux options' : 'Votre proposition'}
         </p>
@@ -616,22 +930,40 @@ const signConfig = ok
             const items = optionItems(data!, opt);
             const isReco = twoOptions && opt === reco;
             const eco = opt === 'avec_batterie' ? ecoAvec : ecoSans;
+            // WJ83 — un payload totaux-less retombe sur `optionTtc() === 0` (le
+            // `?? 0` défensif de la fonction) : sans ce garde-fou, "0 MAD TTC,
+            // clé en main" s'affichait comme un VRAI prix. `realPrice` distingue
+            // les deux cas ; sans prix réel on affiche un message honnête à la
+            // place — jamais un chiffre fabriqué.
+            const realPrice = hasRealPrice(data!, opt);
             return (
               <article
                 class="cine-card relative flex flex-col rounded-2xl p-6"
                 style={isReco ? 'border-color: rgb(232 181 74 / 0.45)' : undefined}
               >
                 {isReco && (
-                  <span class="absolute -top-3 left-6 rounded-full bg-brass-400 px-3 py-1 text-xs font-bold text-nuit" data-i18n data-fr="Recommandé" data-ar="موصى به">
+                  <span class="absolute -top-3 left-6 rounded-full bg-brass-400 px-3 py-1 text-xs font-bold text-nuit" data-i18n data-fr="Recommandé" data-en="Recommended" data-ar="موصى به">
                     Recommandé
                   </span>
                 )}
-                <h3 class="display text-xl text-lune">{optionLabel(opt)}</h3>
-                <p class="fig fig-md lum mt-3" dir="ltr">{formatMAD(optionTtc(data!, opt))}</p>
-                <p class="text-sm text-lune-faint" data-i18n data-fr="TTC, clé en main" data-ar="شامل الضريبة، تسليم مفتاح في اليد">TTC, clé en main</p>
+                <h3 class="display text-xl text-lune" data-i18n data-fr={optionLabel(opt)} data-en={optionLabelEn(opt)} data-ar={optionLabelAr(opt)}>{optionLabel(opt)}</h3>
+                {realPrice ? (
+                  <>
+                    <p class="fig fig-md lum mt-3" dir="ltr">{formatMAD(optionTtc(data!, opt))}</p>
+                    <p class="text-sm text-lune-faint" data-i18n data-fr="TTC, clé en main" data-en="incl. tax, turnkey" data-ar="شامل الضريبة، تسليم مفتاح في اليد">TTC, clé en main</p>
+                  </>
+                ) : (
+                  <p class="v2-body mt-3 text-lune-soft" data-i18n
+                    data-fr="Prix communiqué par votre conseiller"
+                    data-en="Price provided by your advisor"
+                    data-ar="السعر يُبلَّغ من طرف مستشاركم">
+                    Prix communiqué par votre conseiller
+                  </p>
+                )}
                 {eco ? (
                   <p class="mt-2 text-sm text-lune-soft" data-i18n
                     data-fr={`Économies estimées : ${formatMAD(eco)}/an`}
+                    data-en={`Estimated savings: ${formatMAD(eco)}/year`}
                     data-ar={`التوفير المقدّر: ${formatMAD(eco)}/سنة`}>
                     Économies estimées : <span class="text-brass-300">{formatMAD(eco)}/an</span>
                   </p>
@@ -640,7 +972,7 @@ const signConfig = ok
                 <!-- Équipement (WJ32 : marque + garantie + description quand disponibles — jamais de lien fiche technique fabriqué, le backend n'expose pas encore cette URL publiquement) -->
                 {items.length > 0 && (
                   <div class="mt-5 border-t border-white/10 pt-4">
-                    <p class="tech-label text-lune-faint" data-i18n data-fr="Équipement" data-ar="المعدات">Équipement</p>
+                    <p class="tech-label text-lune-faint" data-i18n data-fr="Équipement" data-en="Equipment" data-ar="المعدات">Équipement</p>
                     <ul class="mt-3 space-y-3 text-sm text-lune-soft">
                       {items.map((it) => (
                         <li>
@@ -656,7 +988,7 @@ const signConfig = ok
                           ) : null}
                           {it.garantie ? (
                             <p class="mt-0.5 text-xs text-brass-300" data-i18n
-                              data-fr={`Garantie : ${it.garantie}`} data-ar={`الضمان: ${it.garantie}`}>Garantie : {it.garantie}</p>
+                              data-fr={`Garantie : ${it.garantie}`} data-en={`Warranty: ${it.garantie}`} data-ar={`الضمان: ${it.garantie}`}>Garantie : {it.garantie}</p>
                           ) : null}
                         </li>
                       ))}
@@ -668,25 +1000,25 @@ const signConfig = ok
                 {totaux && (
                   <dl class="mt-5 space-y-1.5 border-t border-white/10 pt-4 text-sm">
                     <div class="flex justify-between">
-                      <dt class="text-lune-faint" data-i18n data-fr="Sous-total HT" data-ar="المجموع الفرعي (بدون ضريبة)">Sous-total HT</dt>
+                      <dt class="text-lune-faint" data-i18n data-fr="Sous-total HT" data-en="Subtotal excl. tax" data-ar="المجموع الفرعي (بدون ضريبة)">Sous-total HT</dt>
                       <dd class="fig text-lune-soft" dir="ltr">{formatMAD(totaux.ht_brut)}</dd>
                     </div>
                     {totaux.remise > 0 && (
                       <div class="flex justify-between">
-                        <dt class="text-lune-faint" data-i18n data-fr="Remise" data-ar="التخفيض">Remise</dt>
+                        <dt class="text-lune-faint" data-i18n data-fr="Remise" data-en="Discount" data-ar="التخفيض">Remise</dt>
                         <dd class="fig text-brass-300" dir="ltr">−{formatMAD(totaux.remise)}</dd>
                       </div>
                     )}
                     <div class="flex justify-between">
-                      <dt class="text-lune-faint" data-i18n data-fr="Total HT" data-ar="المجموع (بدون ضريبة)">Total HT</dt>
+                      <dt class="text-lune-faint" data-i18n data-fr="Total HT" data-en="Total excl. tax" data-ar="المجموع (بدون ضريبة)">Total HT</dt>
                       <dd class="fig text-lune-soft" dir="ltr">{formatMAD(totaux.ht_net)}</dd>
                     </div>
                     <div class="flex justify-between">
-                      <dt class="text-lune-faint" data-i18n data-fr="TVA" data-ar="الضريبة على القيمة المضافة">TVA</dt>
+                      <dt class="text-lune-faint" data-i18n data-fr="TVA" data-en="VAT" data-ar="الضريبة على القيمة المضافة">TVA</dt>
                       <dd class="fig text-lune-soft" dir="ltr">{formatMAD(totaux.tva)}</dd>
                     </div>
                     <div class="flex justify-between border-t border-white/10 pt-2">
-                      <dt class="text-lune" data-i18n data-fr="Total TTC" data-ar="المجموع شامل الضريبة">Total TTC</dt>
+                      <dt class="text-lune" data-i18n data-fr="Total TTC" data-en="Total incl. tax" data-ar="المجموع شامل الضريبة">Total TTC</dt>
                       <dd class="fig text-lg text-lune" dir="ltr">{formatMAD(totaux.ttc)}</dd>
                     </div>
                   </dl>
@@ -697,26 +1029,101 @@ const signConfig = ok
         </div>
       </section>
 
+      <!-- ── WJ53 · TOGGLE « PAYER COMPTANT / PAIEMENT ÉCHELONNÉ » ────────────
+           Recalcul EN DIRECT (côté client) d'une mensualité indicative en
+           divisant simplement le TTC de l'option retenue par le nombre de mois
+           choisi — AUCUN taux inventé, distinct de l'éco-prêt bancaire WJ10/
+           WJ32 juste en dessous. Rendu UNIQUEMENT si un prix réel existe. -->
+      {showInstallmentToggle && defaultInstallment && (
+        <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8" data-installment-ttc={installmentTtc}>
+          <p class="tech-label rule-brass text-brass-300" data-i18n
+            data-fr="Comptant ou échelonné ?" data-en="Cash or in installments?" data-ar="نقداً أم بالتقسيط؟">
+            Comptant ou échelonné ?
+          </p>
+          <div class="cine-card mt-5 rounded-2xl p-6 sm:p-7">
+            <div class="flex flex-wrap items-center gap-2" role="group" aria-label="Payer comptant ou en plusieurs fois">
+              <button
+                type="button"
+                id="installment-cash-btn"
+                class="btn-pill px-4 py-2 text-sm"
+                data-installment-mode="cash"
+                aria-pressed="true"
+                style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
+              >
+                <span data-i18n data-fr="Payer comptant" data-en="Pay cash" data-ar="الدفع نقداً">Payer comptant</span>
+              </button>
+              <button
+                type="button"
+                id="installment-split-btn"
+                class="btn-pill px-4 py-2 text-sm"
+                data-installment-mode="split"
+                aria-pressed="false"
+              >
+                <span data-i18n data-fr="Paiement échelonné" data-en="Pay in installments" data-ar="الدفع بالتقسيط">Paiement échelonné</span>
+              </button>
+            </div>
+
+            <!-- État « comptant » -->
+            <div id="installment-cash-view" class="mt-5">
+              <p class="fig fig-md lum" dir="ltr">{formatMAD(installmentTtc)}</p>
+              <p class="mt-1 text-sm text-lune-soft" data-i18n data-fr="TTC, en une fois." data-en="Incl. tax, in one payment." data-ar="شامل الضريبة، دفعة واحدة.">TTC, en une fois.</p>
+            </div>
+
+            <!-- État « échelonné » (masqué par défaut, JS bascule l'affichage) -->
+            <div id="installment-split-view" class="mt-5" hidden>
+              <label for="installment-months" class="tech-label text-lune-faint" data-i18n data-fr="Nombre de mois" data-en="Number of months" data-ar="عدد الأشهر">Nombre de mois</label>
+              <select
+                id="installment-months"
+                class="mt-2 rounded-xl border border-white/15 bg-nuit-800 px-4 py-2 text-lune"
+                dir="ltr"
+              >
+                {INSTALLMENT_MONTH_OPTIONS.map((m) => (
+                  <option value={m} selected={m === 12}>{m} {m === 1 ? 'mois' : 'mois'}</option>
+                ))}
+              </select>
+              <p class="mt-4">
+                <span class="fig fig-md text-lune" dir="ltr" id="installment-monthly-value">{formatMAD(defaultInstallment.monthly)}</span>
+                <span class="text-lg text-lune-soft" data-i18n data-fr="/mois" data-en="/month" data-ar="/شهرياً">/mois</span>
+              </p>
+              <p class="mt-2 text-sm text-brass-300" data-i18n
+                data-fr="à confirmer — hors offre bancaire ferme"
+                data-en="to confirm — not a firm bank offer"
+                data-ar="للتأكيد — ليس عرضاً بنكياً نهائياً">
+                à confirmer — hors offre bancaire ferme
+              </p>
+              <p class="mt-2 text-xs text-lune-faint" data-i18n
+                data-fr="Simple division du prix TTC par le nombre de mois choisi — aucun taux ni frais ajouté ici. Les modalités exactes (calendrier, garantie) sont à convenir avec votre conseiller Taqinor."
+                data-en="Simple division of the incl.-tax price by the number of months chosen — no rate or fee added here. Exact terms (schedule, guarantee) are to be agreed with your Taqinor advisor."
+                data-ar="تقسيم بسيط للثمن شامل الضريبة على عدد الأشهر المختار — دون أي معدل أو رسوم مضافة هنا. تُحدَّد الشروط الدقيقة (الجدول، الضمان) مع مستشاركم في تاقينور.">
+                Simple division du prix TTC par le nombre de mois choisi — aucun taux ni frais ajouté ici.
+                Les modalités exactes (calendrier, garantie) sont à convenir avec votre conseiller Taqinor.
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
+
       <!-- ── WJ10/WJ32 · COMPARATIF DE FINANCEMENT ───────────────────────────
            Priorité au bloc BACKEND réel (QJ12, programme Tatwir/ISTIDAMA +
            comparaison ONEE déjà rédigée serveur) quand il est présent ; repli
            sur le calcul générique WJ10 sinon — jamais les deux à la fois. -->
       {financingBlock ? (
         <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
-          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Comment financer" data-ar="كيفية التمويل">Comment financer</p>
+          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Comment financer" data-en="How to finance" data-ar="كيفية التمويل">Comment financer</p>
           <div class="mt-5 grid gap-4 sm:grid-cols-2">
             <div class="cine-card rounded-2xl p-6">
               <p class="tech-label text-lune-faint">{financingBlock.cash.label}</p>
               <p class="fig fig-md lum mt-2" dir="ltr">{formatMAD(financingBlock.cash.montant_ttc)}</p>
-              <p class="mt-2 text-sm text-lune-soft" data-i18n data-fr="Prix clé en main, TTC. L’investissement le plus rentable sur la durée." data-ar="ثمن تسليم مفتاح في اليد، شامل الضريبة. الاستثمار الأكثر مردودية على المدى الطويل.">Prix clé en main, TTC. L’investissement le plus rentable sur la durée.</p>
+              <p class="mt-2 text-sm text-lune-soft" data-i18n data-fr="Prix clé en main, TTC. L’investissement le plus rentable sur la durée." data-en="Turnkey price, incl. tax. The most cost-effective investment over time." data-ar="ثمن تسليم مفتاح في اليد، شامل الضريبة. الاستثمار الأكثر مردودية على المدى الطويل.">Prix clé en main, TTC. L’investissement le plus rentable sur la durée.</p>
             </div>
             <div class="cine-card rounded-2xl p-6">
-              <p class="tech-label text-lune-faint" data-i18n data-fr={financingBlock.credit.programme_label || 'À crédit'} data-ar={financingBlock.credit.programme_label || 'بالتقسيط'}>{financingBlock.credit.programme_label || 'À crédit'}</p>
+              <p class="tech-label text-lune-faint" data-i18n data-fr={financingBlock.credit.programme_label || 'À crédit'} data-en={financingBlock.credit.programme_label || 'On credit'} data-ar={financingBlock.credit.programme_label || 'بالتقسيط'}>{financingBlock.credit.programme_label || 'À crédit'}</p>
               <p class="fig fig-md mt-2 text-lune" dir="ltr">
                 ≈ {formatMAD(financingBlock.credit.mensualite)}<span class="text-lg text-lune-soft">/mois</span>
               </p>
               <p class="mt-2 text-sm text-lune-soft" data-i18n
                 data-fr={`Sur ${Math.round(financingBlock.credit.duree_mois / 12)} ans, taux indicatif ${formatNumber(financingBlock.credit.taux_annuel_pct, 2)} %/an à confirmer avec votre banque.${financingBlock.onee_comparison.show && financingBlock.onee_comparison.message ? ` ${financingBlock.onee_comparison.message}` : ''}`}
+                data-en={`Over ${Math.round(financingBlock.credit.duree_mois / 12)} years, indicative rate ${formatNumber(financingBlock.credit.taux_annuel_pct, 2)} %/year to confirm with your bank.${financingBlock.onee_comparison.show && financingBlock.onee_comparison.message ? ` ${financingBlock.onee_comparison.message}` : ''}`}
                 data-ar={`على مدى ${Math.round(financingBlock.credit.duree_mois / 12)} سنة، معدل إرشادي ${formatNumber(financingBlock.credit.taux_annuel_pct, 2)} %/سنة يُؤكَّد مع بنككم.${financingBlock.onee_comparison.show && financingBlock.onee_comparison.message ? ` ${financingBlock.onee_comparison.message}` : ''}`}>
                 Sur {Math.round(financingBlock.credit.duree_mois / 12)} ans, taux indicatif {formatNumber(financingBlock.credit.taux_annuel_pct, 2)} %/an
                 <span class="text-brass-300"> à confirmer</span> avec votre banque.
@@ -731,26 +1138,28 @@ const signConfig = ok
           )}
           <p class="mt-3 text-xs text-lune-faint" data-i18n
             data-fr="Mensualités calculées à titre indicatif (taux et durée non contractuels). Le montant exact dépend de l’offre bancaire retenue."
+            data-en="Monthly payments calculated for guidance only (rate and duration non-contractual). The exact amount depends on the bank offer chosen."
             data-ar="الأقساط الشهرية محسوبة على سبيل الإرشاد (المعدل والمدة غير تعاقديين). المبلغ الدقيق يتوقف على العرض البنكي المعتمد.">
             Mensualités calculées à titre indicatif (taux et durée non contractuels). Le montant exact dépend de l’offre bancaire retenue.
           </p>
         </section>
       ) : financing && (
         <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
-          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Comment financer" data-ar="كيفية التمويل">Comment financer</p>
+          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Comment financer" data-en="How to finance" data-ar="كيفية التمويل">Comment financer</p>
           <div class="mt-5 grid gap-4 sm:grid-cols-2">
             <div class="cine-card rounded-2xl p-6">
-              <p class="tech-label text-lune-faint" data-i18n data-fr="Au comptant" data-ar="نقداً">Au comptant</p>
+              <p class="tech-label text-lune-faint" data-i18n data-fr="Au comptant" data-en="Cash" data-ar="نقداً">Au comptant</p>
               <p class="fig fig-md lum mt-2" dir="ltr">{formatMAD(financing.cash)}</p>
-              <p class="mt-2 text-sm text-lune-soft" data-i18n data-fr="Prix clé en main, TTC. L’investissement le plus rentable sur la durée." data-ar="ثمن تسليم مفتاح في اليد، شامل الضريبة. الاستثمار الأكثر مردودية على المدى الطويل.">Prix clé en main, TTC. L’investissement le plus rentable sur la durée.</p>
+              <p class="mt-2 text-sm text-lune-soft" data-i18n data-fr="Prix clé en main, TTC. L’investissement le plus rentable sur la durée." data-en="Turnkey price, incl. tax. The most cost-effective investment over time." data-ar="ثمن تسليم مفتاح في اليد، شامل الضريبة. الاستثمار الأكثر مردودية على المدى الطويل.">Prix clé en main, TTC. L’investissement le plus rentable sur la durée.</p>
             </div>
             <div class="cine-card rounded-2xl p-6">
-              <p class="tech-label text-lune-faint" data-i18n data-fr="À crédit (éco-prêt)" data-ar="بالتقسيط (قرض إيكولوجي)">À crédit (éco-prêt)</p>
+              <p class="tech-label text-lune-faint" data-i18n data-fr="À crédit (éco-prêt)" data-en="On credit (eco-loan)" data-ar="بالتقسيط (قرض إيكولوجي)">À crédit (éco-prêt)</p>
               <p class="fig fig-md mt-2 text-lune" dir="ltr">
                 ≈ {formatMAD(financing.monthlyLow)}<span class="text-lg text-lune-soft"> – {formatMAD(financing.monthlyHigh)}/mois</span>
               </p>
               <p class="mt-2 text-sm text-lune-soft" data-i18n
                 data-fr={`Sur ${Math.round(financing.months / 12)} ans, fourchette indicative à confirmer avec votre banque.${financing.beatsBill && financing.currentBillMonthly ? ` Souvent moins que votre facture actuelle (≈ ${formatMAD(financing.currentBillMonthly)}/mois).` : ''}`}
+                data-en={`Over ${Math.round(financing.months / 12)} years, indicative range to confirm with your bank.${financing.beatsBill && financing.currentBillMonthly ? ` Often less than your current bill (≈ ${formatMAD(financing.currentBillMonthly)}/month).` : ''}`}
                 data-ar={`على مدى ${Math.round(financing.months / 12)} سنة، شريحة إرشادية تُؤكَّد مع بنككم.${financing.beatsBill && financing.currentBillMonthly ? ` غالباً أقل من فاتورتكم الحالية (≈ ${formatMAD(financing.currentBillMonthly)}/شهر).` : ''}`}>
                 Sur {Math.round(financing.months / 12)} ans, fourchette indicative
                 <span class="text-brass-300"> à confirmer</span> avec votre banque.
@@ -762,6 +1171,7 @@ const signConfig = ok
           </div>
           <p class="mt-3 text-xs text-lune-faint" data-i18n
             data-fr="Mensualités calculées à titre indicatif (taux et durée non contractuels). Le montant exact dépend de l’offre bancaire retenue."
+            data-en="Monthly payments calculated for guidance only (rate and duration non-contractual). The exact amount depends on the bank offer chosen."
             data-ar="الأقساط الشهرية محسوبة على سبيل الإرشاد (المعدل والمدة غير تعاقديين). المبلغ الدقيق يتوقف على العرض البنكي المعتمد.">
             Mensualités calculées à titre indicatif (taux et durée non contractuels). Le montant exact dépend de l’offre bancaire retenue.
           </p>
@@ -773,35 +1183,163 @@ const signConfig = ok
            devis est isolé (variants=[]) — jamais un chiffre calculé ici. -->
       {variants.length > 0 && (
         <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
-          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Autres tailles proposées" data-ar="أحجام أخرى مقترحة">Autres tailles proposées</p>
+          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Autres tailles proposées" data-en="Other sizes available" data-ar="أحجام أخرى مقترحة">Autres tailles proposées</p>
           <div class="mt-5 flex gap-4 overflow-x-auto pb-2">
             {variants.map((v) => (
               <div class="cine-card min-w-[220px] shrink-0 rounded-xl p-5">
                 <p class="tech-label text-lune-faint" dir="ltr">Réf. {v.reference}{v.version > 1 ? ` · v${v.version}` : ''}</p>
                 <p class="fig fig-md lum mt-2" dir="ltr">{formatMAD(v.total_ttc)}</p>
-                <p class="mt-1 text-xs text-lune-faint" data-i18n data-fr="TTC, clé en main" data-ar="شامل الضريبة، تسليم مفتاح في اليد">TTC, clé en main</p>
+                <p class="mt-1 text-xs text-lune-faint" data-i18n data-fr="TTC, clé en main" data-en="incl. tax, turnkey" data-ar="شامل الضريبة، تسليم مفتاح في اليد">TTC, clé en main</p>
                 {v.note && <p class="mt-2 text-sm text-lune-soft">{v.note}</p>}
               </div>
             ))}
           </div>
           <p class="mt-3 text-xs text-lune-faint" data-i18n
             data-fr="Demandez à votre conseiller Taqinor de basculer sur l’une de ces tailles si elle vous convient mieux."
+            data-en="Ask your Taqinor advisor to switch to one of these sizes if it suits you better."
             data-ar="اطلبوا من مستشاركم في تاقينور التحويل إلى أحد هذه الأحجام إن كان يناسبكم أكثر.">
             Demandez à votre conseiller Taqinor de basculer sur l’une de ces tailles si elle vous convient mieux.
           </p>
         </section>
       )}
 
+      <!-- ── WJ13/WJ35 · BLOC CRÉDIBILITÉ (garanties · certifications · réassurance) -->
+      {/* Aucune donnée chiffrée fabriquée : nombre de clients / avis / photos
+          réelles marqués `pending real content` tant que Reda ne les fournit pas.
+          Les garanties et normes ci-dessous sont des FAITS techniques vérifiables.
+          WJ35 — CertLogoRow reprend ces mêmes faits en bandeau ; le compteur
+          d'installations et la note Google sont désormais des composants premium
+          RÉUTILISABLES (InstallCounter / StarRating), avec la même intégrité. */}
+      <section class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
+        <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Pourquoi nous faire confiance" data-en="Why trust us" data-ar="لماذا تثقون بنا">Pourquoi nous faire confiance</p>
+        <div class="mt-5 grid gap-4 sm:grid-cols-3">
+          <div class="cine-card rounded-xl p-5">
+            <!-- WJ72 — « X à Y » est la convention de fourchette du reste du
+                 site (lib/billRange.ts paybackLabel : « 4 à 6 ans », etc.) ;
+                 corrigé depuis l'en-dash « 20–25 ans », seul écart au format
+                 commun. <bdi> isole le chiffre latin sans forcer toute la
+                 ligne en LTR (voir la même discipline sur mon-toit.astro). -->
+            <p class="fig text-2xl text-lune"><bdi>20 à 25 ans</bdi></p>
+            <p class="mt-1 text-sm text-lune-soft" data-i18n data-fr="Garanties constructeur : 25 ans de performance sur les panneaux, 10 ans sur l’onduleur." data-en="Manufacturer warranties: 25 years of performance on panels, 10 years on the inverter." data-ar="ضمانات الصانع: 25 سنة أداء للألواح، 10 سنوات للعاكس.">Garanties constructeur : 25 ans de performance sur les panneaux, 10 ans sur l’onduleur.</p>
+          </div>
+          <div class="cine-card rounded-xl p-5">
+            <p class="fig text-xl text-lune" dir="ltr">IEC 61215 / 61730</p>
+            <p class="mt-1 text-sm text-lune-soft" data-i18n data-fr="Modules certifiés aux normes internationales. Conformité étude IRESEN / AMEE." data-en="Modules certified to international standards. IRESEN / AMEE study compliance." data-ar="ألواح معتمدة وفق المعايير الدولية. مطابقة لدراسة IRESEN / AMEE.">Modules certifiés aux normes internationales. Conformité étude IRESEN / AMEE.</p>
+          </div>
+          <div class="cine-card rounded-xl p-5">
+            <p class="fig text-xl text-lune" data-i18n data-fr="Loi 82-21" data-en="Law 82-21" data-ar="القانون 82-21">Loi 82-21</p>
+            <p class="mt-1 text-sm text-lune-soft" data-i18n data-fr="Installation conforme au cadre marocain d’autoconsommation en basse tension." data-en="Installation compliant with the Moroccan low-voltage self-consumption framework." data-ar="تركيب مطابق للإطار المغربي للاستهلاك الذاتي في التوتر المنخفض.">Installation conforme au cadre marocain d’autoconsommation en basse tension.</p>
+          </div>
+        </div>
+
+        <!-- WJ35 — compteur d'installations réel + note Google (scaffold tant qu'absente). -->
+        <div class="mt-4 cine-card rounded-xl p-5 sm:p-6">
+          <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <InstallCounter />
+            <StarRating />
+          </div>
+        </div>
+
+        {/* W342 — « L'installation la plus proche de chez vous » : GPS réel du
+            toit (roof_layout, pas encore exposé backend) ou correspondance
+            texte de ville (client_addr). Absent → section entière omise,
+            jamais une ville inventée. */}
+        {nearestInstall && (
+          <div class="mt-4 cine-card rounded-xl p-5 sm:p-6">
+            <p class="tech-label text-brass-300" data-i18n
+              data-fr="L'installation la plus proche de chez vous"
+              data-en="The installation closest to you"
+              data-ar="أقرب تركيب من منزلكم">
+              L'installation la plus proche de chez vous
+            </p>
+            <p class="v2-body mt-2">
+              <span data-i18n
+                data-fr={`${nearestInstall.ville} — ${nearestInstall.kwc} — installation réelle Taqinor`}
+                data-en={`${nearestInstall.ville} — ${formatNumber(nearestInstall.kwcNum, 2)} kWc — real Taqinor installation`}
+                data-ar={`${nearestInstall.ville} — ${nearestInstall.kwc} — تركيب حقيقي لتاقينور`}>
+                {nearestInstall.ville} — {nearestInstall.kwc} — installation réelle Taqinor
+              </span>
+            </p>
+            <a href={nearestInstallHref} class="mt-2 inline-block text-sm text-brass-300 underline-offset-2 hover:underline" data-i18n
+              data-fr="Voir cette réalisation" data-en="See this project" data-ar="مشاهدة هذا الإنجاز">
+              Voir cette réalisation
+            </a>
+          </div>
+        )}
+
+        <!-- WJ35 — bandeau certifications/garanties (texte, sobre — aucun logo fabriqué). -->
+        <div class="mt-4">
+          <CertLogoRow />
+        </div>
+
+        <!-- WJ35 — avis clients réels (carrousel, vide-mais-premium — même intégrité que <Testimonials/>). -->
+        <div class="mt-4 cine-card rounded-xl p-5 sm:p-6">
+          <p class="tech-label text-lune-faint" data-i18n data-fr="Avis clients" data-en="Customer reviews" data-ar="آراء العملاء">Avis clients</p>
+          <div class="mt-3">
+            <TestimonialCarousel />
+          </div>
+        </div>
+
+        <!-- WJ86 — « Nos chantiers » (photos réelles) : NO-OP tant que WG5/WG6
+             ne fournissent pas de vraies photos — jamais de mention "à venir"
+             sur un document commercial. Même discipline que
+             <TestimonialCarousel/> (hasTestimonials()). -->
+        {REAL_PROJECT_PHOTOS_AVAILABLE && (
+          <div class="mt-4 cine-card rounded-xl p-5">
+            <p class="tech-label text-lune-faint" data-i18n data-fr="Nos chantiers" data-en="Our projects" data-ar="ورشاتنا">Nos chantiers</p>
+            <p class="mt-2 text-sm text-lune-soft" data-i18n
+              data-fr="Installations documentées, dossiers techniques à l’appui."
+              data-en="Documented installations, backed by technical files."
+              data-ar="تركيبات موثقة، بملفات تقنية داعمة.">
+              Installations documentées, dossiers techniques à l’appui.
+            </p>
+          </div>
+        )}
+
+        <!-- WJ17/WJ86 — mot du fondateur : NO-OP tant qu'aucune citation réelle
+             n'est fournie (WG6) — un texte placeholder affiché comme un vrai
+             mot du fondateur lit comme un produit inachevé au moment critique
+             de la confiance. -->
+        {REAL_FOUNDER_QUOTE_AVAILABLE && (
+          <div class="mt-4 cine-card rounded-xl p-6">
+            <p class="tech-label text-lune-faint" data-i18n data-fr="Le mot du fondateur" data-en="A word from the founder" data-ar="كلمة المؤسس">Le mot du fondateur</p>
+            <blockquote class="mt-3 v2-body text-lune" data-i18n
+              data-fr="« Chez Taqinor, nous traitons chaque toit comme le nôtre : une étude honnête, du matériel certifié, et un accompagnement après l’installation. Merci de votre confiance. »"
+              data-en="\"At Taqinor, we treat every roof as our own: an honest study, certified equipment, and support after installation. Thank you for your trust.\""
+              data-ar="« في تاقينور، نتعامل مع كل سطح كأنه سطحنا: دراسة صادقة، معدات معتمدة، ومرافقة بعد التركيب. شكراً على ثقتكم. »">
+              « Chez Taqinor, nous traitons chaque toit comme le nôtre : une étude honnête,
+              du matériel certifié, et un accompagnement après l’installation. Merci de votre confiance. »
+            </blockquote>
+            <p class="mt-2 text-sm text-lune-faint">Reda Kasri — <span data-i18n data-fr="fondateur, Taqinor" data-en="founder, Taqinor" data-ar="مؤسس تاقينور">fondateur, Taqinor</span></p>
+          </div>
+        )}
+      </section>
+
+      <!-- ── WJ32 · FAQ OBJECTIONS (4–5 questions fréquentes) ────────────────
+           <details> par item : accordéon accessible sans JS, zéro CLS. -->
+      <section class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
+        <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Vos questions, nos réponses" data-en="Your questions, our answers" data-ar="أسئلتكم، وأجوبتنا">Vos questions, nos réponses</p>
+        <div class="mt-5 space-y-3">
+          {faq.map((item) => (
+            <details class="cine-card rounded-xl p-5">
+              <summary class="cursor-pointer text-sm font-bold text-lune" data-i18n data-fr={item.question} data-en={item.questionEn} data-ar={item.questionAr}>{item.question}</summary>
+              <p class="mt-3 text-sm text-lune-soft" data-i18n data-fr={item.answer} data-en={item.answerEn} data-ar={item.answerAr}>{item.answer}</p>
+            </details>
+          ))}
+        </div>
+      </section>
+
       <!-- ── WJ14 · IMPACT ENVIRONNEMENTAL (CO₂ ≈ arbres) — clôture émotion ── -->
       {enviro && (
         <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
-          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Votre impact, concrètement" data-ar="أثركم، بالأرقام">Votre impact, concrètement</p>
+          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Votre impact, concrètement" data-en="Your impact, in real terms" data-ar="أثركم، بالأرقام">Votre impact, concrètement</p>
           <div class="cine-card mt-5 rounded-2xl p-6 sm:p-8">
             <div class="grid gap-6 sm:grid-cols-2 sm:items-center">
               <div>
                 <p class="fig lum text-4xl sm:text-5xl" dir="ltr">{formatNumber(enviro.co2TonnesPerYear, 1)} <span class="text-2xl text-lune-soft">t CO₂ / an</span></p>
                 <p class="v2-body mt-2 text-sm text-lune-soft" data-i18n
                   data-fr={`évités chaque année — l’équivalent de ${formatNumber(enviro.trees)} arbres qui absorberaient ce CO₂.`}
+                  data-en={`avoided every year — the equivalent of ${formatNumber(enviro.trees)} trees absorbing that much CO₂.`}
                   data-ar={`تُتجنَّب كل سنة — أي ما يعادل ${formatNumber(enviro.trees)} شجرة قادرة على امتصاص هذا الكربون.`}>
                   évités chaque année — l’équivalent de
                   <strong class="text-brass-300"> {formatNumber(enviro.trees)} arbres</strong> qui absorberaient ce CO₂.
@@ -810,6 +1348,7 @@ const signConfig = ok
               <div class="text-sm text-lune-faint">
                 <p data-i18n
                   data-fr={`Calcul transparent : production estimée × ${formatNumber(enviro.kgPerKwh, 2)} kg CO₂/kWh (facteur d’émission du réseau marocain), ramené à raison de ${formatNumber(enviro.kgPerTreeYear)} kg CO₂ absorbés par arbre et par an.`}
+                  data-en={`Transparent calculation: estimated production × ${formatNumber(enviro.kgPerKwh, 2)} kg CO₂/kWh (Moroccan grid emission factor), converted at ${formatNumber(enviro.kgPerTreeYear)} kg CO₂ absorbed per tree per year.`}
                   data-ar={`حساب شفاف: الإنتاج المقدّر × ${formatNumber(enviro.kgPerKwh, 2)} كلغ CO₂/kWh (معامل انبعاث الشبكة المغربية)، مقارنة بمعدل ${formatNumber(enviro.kgPerTreeYear)} كلغ CO₂ تمتصه الشجرة الواحدة سنوياً.`}>Calcul transparent : production estimée × {formatNumber(enviro.kgPerKwh, 2)} kg CO₂/kWh (facteur d’émission du réseau marocain), ramené à raison de {formatNumber(enviro.kgPerTreeYear)} kg CO₂ absorbés par arbre et par an.</p>
               </div>
             </div>
@@ -832,12 +1371,33 @@ const signConfig = ok
         <div class="cine-card rounded-2xl p-6 sm:p-7">
           <p class="v2-body text-lune" data-i18n
             data-fr="Une question avant de signer ? Parlons-en — sans engagement, et sans appel commercial non sollicité."
+            data-en="A question before signing? Let's talk — no obligation, and no unsolicited sales call."
             data-ar="سؤال قبل التوقيع؟ لنتحدث — بدون التزام، وبدون مكالمات تجارية غير مرغوبة.">
             Une question avant de signer ? Parlons-en — sans engagement, et sans appel commercial non sollicité.
           </p>
+          <!-- WJ58 — promesse de délai honnête near la CTA de contact (WG9
+               résolu par le fondateur, 2026-07-03 : « sous 1 h, 7j/7 »). Badge
+               statique, jamais un compte à rebours. L'icône reste HORS du
+               nœud data-i18n (le tri-node FR/EN/AR ne préserve le markup
+               imbriqué que côté FR — l'icône disparaîtrait en EN/AR sinon). -->
+          <p class="mt-2 flex items-center gap-1.5 text-sm text-lune-faint">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="flex-none text-ok-600">
+              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+            </svg>
+            <span data-i18n
+              data-fr="Réponse WhatsApp sous 1 h, 7j/7"
+              data-en="WhatsApp reply within 1 h, 7 days a week"
+              data-ar="رد واتساب خلال ساعة واحدة، 7 أيام على 7">
+              Réponse WhatsApp sous 1 h, 7j/7
+            </span>
+          </p>
           <div class="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+            <!-- WJ85 — chaque bouton porte désormais un prérempli WhatsApp
+                 DISTINCT (whatsappLinkForIntent) : "Discuter" et "Poser une
+                 question" partageaient auparavant le même waLink générique —
+                 deux boutons identiques au point de décision de la page. -->
             <a
-              href={waLink}
+              href={waLinkDiscuss}
               target="_blank"
               rel="noopener noreferrer"
               data-contact-channel="whatsapp"
@@ -847,58 +1407,362 @@ const signConfig = ok
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                 <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.9 9.9 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2Zm0 18.1h-.01a8.2 8.2 0 0 1-4.18-1.15l-.3-.18-3.11.82.83-3.04-.2-.31a8.2 8.2 0 0 1-1.26-4.37c0-4.54 3.7-8.23 8.24-8.23 2.2 0 4.27.86 5.83 2.42a8.18 8.18 0 0 1 2.41 5.82c0 4.54-3.7 8.23-8.23 8.23Zm4.52-6.16c-.25-.12-1.47-.72-1.69-.81-.23-.08-.39-.12-.56.13-.16.25-.64.81-.78.97-.14.17-.29.19-.54.06-.25-.12-1.05-.39-1.99-1.23-.74-.66-1.23-1.47-1.38-1.72-.14-.25-.01-.38.11-.51.11-.11.25-.29.37-.43.13-.14.17-.25.25-.41.08-.17.04-.31-.02-.43-.06-.12-.56-1.35-.77-1.85-.2-.48-.41-.42-.56-.43l-.48-.01c-.17 0-.43.06-.66.31-.23.25-.86.85-.86 2.07 0 1.22.89 2.4 1.01 2.57.12.17 1.75 2.67 4.23 3.74.59.26 1.05.41 1.41.52.59.19 1.13.16 1.56.1.48-.07 1.47-.6 1.68-1.18.21-.58.21-1.07.14-1.18-.06-.1-.22-.16-.47-.28Z"/>
               </svg>
-              <span data-i18n data-fr="Discuter sur WhatsApp" data-ar="الدردشة على واتساب">Discuter sur WhatsApp</span>
+              <span data-i18n data-fr="Discuter sur WhatsApp" data-en="Chat on WhatsApp" data-ar="الدردشة على واتساب">Discuter sur WhatsApp</span>
             </a>
             {callbackHref ? (
               <a href={callbackHref} data-contact-channel="rappel" class="btn-pill inline-flex items-center justify-center gap-2">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/>
                 </svg>
-                <span data-i18n data-fr="Demander un rappel" data-ar="طلب معاودة الاتصال">Demander un rappel</span>
+                <span data-i18n data-fr="Demander un rappel" data-en="Request a callback" data-ar="طلب معاودة الاتصال">Demander un rappel</span>
               </a>
             ) : null}
-            <a href={waLink} target="_blank" rel="noopener noreferrer" data-contact-channel="question" class="btn-pill inline-flex items-center justify-center gap-2">
+            <a href={waLinkQuestion} target="_blank" rel="noopener noreferrer" data-contact-channel="question" class="btn-pill inline-flex items-center justify-center gap-2">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z"/>
               </svg>
-              <span data-i18n data-fr="Poser une question" data-ar="طرح سؤال">Poser une question</span>
+              <span data-i18n data-fr="Poser une question" data-en="Ask a question" data-ar="طرح سؤال">Poser une question</span>
             </a>
           </div>
+          <!-- WJ85 — invitation à la note vocale : canal WhatsApp natif, souvent
+               plus rapide à envoyer qu'un texte long pour expliquer un doute. -->
+          <p class="mt-3 text-sm text-lune-faint">
+            <a href={waLinkVoice} target="_blank" rel="noopener noreferrer" data-contact-channel="voice" class="inline-flex items-center gap-1.5 underline-offset-2 hover:underline">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3Z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/>
+              </svg>
+              <span data-i18n
+                data-fr="Plus simple à l’oral ? Envoyez-nous une note vocale sur WhatsApp."
+                data-en="Easier to say than type? Send us a voice note on WhatsApp."
+                data-ar="أسهل بصوتكم؟ أرسلوا لنا رسالة صوتية على واتساب.">
+                Plus simple à l’oral ? Envoyez-nous une note vocale sur WhatsApp.
+              </span>
+            </a>
+          </p>
           <p id="contact-confirm" class="mt-3 text-sm text-brass-300" role="status" aria-live="polite" hidden></p>
+        </div>
+      </section>
+
+      <!-- ── WJ54 · « Demander une modification » — révision structurée ─────
+           Gâté sur `ok` (données chargées) : rien ne s'affiche tant que la
+           proposition elle-même n'est pas disponible (pas de coquille vide).
+           Poste vers le MÊME proxy /api/proposition-contact que WJ29 ci-dessus
+           (canal `revision` distinct) — aucun nouvel endpoint. -->
+      {ok && (
+        <section class="mx-auto max-w-4xl px-5 pt-8 sm:px-8" data-revision-token={token}>
+          <div class="cine-card rounded-2xl p-6 sm:p-7">
+            <p class="tech-label rule-brass text-brass-300" data-i18n
+              data-fr="Demander une modification" data-en="Request a change" data-ar="طلب تعديل">
+              Demander une modification
+            </p>
+            <p class="v2-body mt-3 text-lune-soft" data-i18n
+              data-fr="Pas encore convaincu par cette version ? Dites-nous ce que vous aimeriez ajuster — sans engagement."
+              data-en="Not quite convinced by this version? Tell us what you'd like to adjust — no obligation."
+              data-ar="لستم مقتنعين بعد بهذه النسخة؟ أخبرونا بما ترغبون في تعديله — بدون التزام.">
+              Pas encore convaincu par cette version ? Dites-nous ce que vous aimeriez ajuster — sans engagement.
+            </p>
+            <form id="revision-form" class="mt-4">
+              <div class="flex flex-wrap gap-2" role="radiogroup" aria-label="Type de modification">
+                <button type="button" data-revision-kind="kwc" aria-pressed="false" class="btn-pill revision-kind-btn px-3 py-1.5 text-sm">
+                  <span data-i18n data-fr="Ajuster la puissance (kWc)" data-en="Adjust the system size (kWc)" data-ar="تعديل القدرة (kWc)">Ajuster la puissance (kWc)</span>
+                </button>
+                <button type="button" data-revision-kind="batterie" aria-pressed="false" class="btn-pill revision-kind-btn px-3 py-1.5 text-sm">
+                  <span data-i18n data-fr="Changer l’option batterie" data-en="Change the battery option" data-ar="تغيير خيار البطارية">Changer l’option batterie</span>
+                </button>
+                <button type="button" data-revision-kind="autre" aria-pressed="false" class="btn-pill revision-kind-btn px-3 py-1.5 text-sm">
+                  <span data-i18n data-fr="Autre" data-en="Other" data-ar="أخرى">Autre</span>
+                </button>
+              </div>
+              <label for="revision-detail" class="mt-4 block text-sm text-lune-soft" data-i18n
+                data-fr="Précisez votre demande (facultatif, obligatoire pour « Autre »)"
+                data-en="Describe your request (optional, required for “Other”)"
+                data-ar="اشرحوا طلبكم (اختياري، وإلزامي عند اختيار «أخرى»)">
+                Précisez votre demande (facultatif, obligatoire pour « Autre »)
+              </label>
+              <textarea
+                id="revision-detail"
+                name="detail"
+                rows="3"
+                maxlength="2000"
+                class="mt-2 w-full rounded-xl border border-white/15 bg-nuit-800/60 p-3 text-sm text-lune placeholder:text-lune-faint"
+                data-i18n-placeholder
+                data-placeholder-fr="Ex. : pourriez-vous étudier une version sans batterie ?"
+                data-placeholder-en="E.g.: could you study a version without a battery?"
+                data-placeholder-ar="مثال: هل يمكنكم دراسة نسخة بدون بطارية؟"
+                placeholder="Ex. : pourriez-vous étudier une version sans batterie ?"
+              ></textarea>
+              <p id="revision-error" class="mt-2 text-sm text-alert-300" role="alert" hidden></p>
+              <div class="mt-4 flex items-center gap-3">
+                <button
+                  type="submit"
+                  id="revision-submit"
+                  class="btn-pill inline-flex items-center justify-center gap-2"
+                  style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
+                >
+                  <span id="revision-submit-label" data-i18n data-fr="Envoyer ma demande" data-en="Send my request" data-ar="إرسال طلبي">Envoyer ma demande</span>
+                </button>
+                <p id="revision-confirm" class="text-sm text-brass-300" role="status" aria-live="polite" hidden></p>
+              </div>
+            </form>
+          </div>
+        </section>
+      )}
+
+      <!-- ── WJ57 · CONFIANCE AU MOMENT DE SIGNER — juste au-dessus du bloc
+           e-sign (pas seulement dans la section « Pourquoi nous faire
+           confiance » plus haut). Un slot vidéo est réservé pour quand WG6
+           fournira de vrais témoignages filmés (no-op tant qu'absent — MÊME
+           discipline que REAL_FOUNDER_QUOTE_AVAILABLE) ; en attendant, repli
+           texte sur le même avis client réel (hasTestimonials()) que
+           <TestimonialCarousel/> plus haut, jamais un second avis fabriqué.
+           Les badges certifications/garanties (mêmes FAITS que CertLogoRow
+           plus haut) sont TOUJOURS affichés ici, qu'un témoignage soit
+           disponible ou non — ce sont des faits vérifiables, pas du contenu
+           gated. -->
+      <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
+        <div class="cine-card rounded-2xl p-6 sm:p-7">
+          {REAL_TESTIMONIAL_VIDEO_AVAILABLE ? (
+            <!-- Slot vidéo réservé (WG6) : à remplir par Reda avec le vrai
+                 témoignage filmé le jour où il devient disponible. -->
+            <div class="video-testimonial-slot" data-testimonial-video></div>
+          ) : signTestimonial ? (
+            <blockquote class="v2-body text-lune">
+              &ldquo;{signTestimonial.quote}&rdquo;
+              <footer class="mt-3 text-sm text-lune-faint not-italic">
+                <span class="font-bold text-lune">{signTestimonial.name}</span> · {signTestimonial.city} · {signTestimonial.system}
+              </footer>
+            </blockquote>
+          ) : null}
+          <div class={signTestimonial || REAL_TESTIMONIAL_VIDEO_AVAILABLE ? 'mt-5 border-t border-white/10 pt-5' : ''}>
+            <CertLogoRow />
+          </div>
         </div>
       </section>
 
       <!-- ── SIGNATURE EN LIGNE ───────────────────────────────────────────── -->
       <section id="signer" class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
         <div class="cine-card rounded-2xl p-6 sm:p-8">
-          <!-- État confirmé (caché par défaut, affiché après signature ou si déjà accepté) -->
+          <!-- État confirmé (caché par défaut, affiché après signature ou si déjà accepté).
+               WJ78 — le moment le plus « haute intention » de toute l'entreprise ne
+               doit plus se contenter de démasquer un paragraphe : un accusé visuel
+               (sceau ✓, reduced-motion-safe), l'écho de la signature manuscrite du
+               client (ou un sceau textuel si non dessinée), le PDF et « Et après ? »
+               vivent directement ICI, pas seulement plus bas dans la page. -->
           <div id="sign-success" class="result-fade" hidden>
-            <p class="fig text-2xl text-brass-300" data-i18n data-fr="Devis accepté ✓" data-ar="تمت الموافقة على العرض ✓">Devis accepté ✓</p>
+            <div class="success-seal" aria-hidden="true">
+              <svg viewBox="0 0 52 52" width="52" height="52" fill="none">
+                <circle class="success-seal-ring" cx="26" cy="26" r="24" stroke="var(--color-brass-400)" stroke-width="2"/>
+                <path class="success-seal-check" d="M15 27l7 7 16-16" stroke="var(--color-brass-400)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+              </svg>
+            </div>
+            <p class="fig text-2xl text-brass-300" data-i18n data-fr="Devis accepté ✓" data-en="Quote accepted ✓" data-ar="تمت الموافقة على العرض ✓">Devis accepté ✓</p>
             <p class="v2-body mt-2" data-i18n
               data-fr="Merci — votre acceptation est bien enregistrée. Votre conseiller Taqinor revient vers vous très vite."
+              data-en="Thank you — your acceptance has been recorded. Your Taqinor advisor will be in touch very soon."
               data-ar="شكراً — تم تسجيل موافقتكم بنجاح. سيتواصل معكم مستشار تاقينور قريباً جداً.">
               Merci <span id="sign-success-name" class="text-lune"></span> — votre acceptation est bien enregistrée.
               Votre conseiller Taqinor revient vers vous très vite.
             </p>
+            <!-- WJ79 — « Réf. » passe par le data-i18n tri-node (comme #sign-stamp
+                 plus bas) au lieu d'un texte français figé : sans ce wrapper, la
+                 mention restait en FR même en mode arabe/anglais. Le suffixe
+                 (#sign-success-time) est lui déjà une busy-label enregistrée
+                 (renderSuccessTime), qui utilise localizedStamp → un timestamp
+                 ar-MA/en-GB/fr-MA — jamais un fr-FR figé. -->
             <p id="sign-success-stamp" class="mt-3 text-sm text-lune-faint">
-              Réf. <span dir="ltr">{reference}</span><span id="sign-success-time"></span>.
+              <span data-i18n data-fr="Réf." data-en="Ref." data-ar="المرجع">Réf.</span> <span dir="ltr">{reference}</span><span id="sign-success-time"></span>.
             </p>
+
+            <!-- WJ78 — écho de l'artefact du client : la signature manuscrite si
+                 dessinée (image capturée par le pad, WJ11), sinon un sceau textuel
+                 « signature enregistrée ✓ » — jamais un vide après un geste aussi
+                 engageant. -->
+            <div class="mt-5 rounded-xl border border-white/10 bg-nuit-800/60 p-4">
+              <p class="tech-label text-lune-faint" data-i18n data-fr="Votre signature" data-en="Your signature" data-ar="توقيعكم">Votre signature</p>
+              <img id="sign-success-echo-img" class="mt-2 h-16 w-auto" style="filter: invert(1) brightness(1.4);" alt="" hidden />
+              <p id="sign-success-echo-seal" class="mt-2 fig text-lg text-lune" data-i18n
+                data-fr="Signature enregistrée ✓" data-en="Signature recorded ✓" data-ar="تم تسجيل التوقيع ✓">
+                Signature enregistrée ✓
+              </p>
+            </div>
+
+            <!-- WJ78 — PDF + « Et après ? » directement dans le bloc de succès :
+                 le client n'a plus besoin de chercher plus bas dans la page au
+                 moment précis où il vient de s'engager. -->
+            <div class="mt-6 flex flex-col gap-3 sm:flex-row">
+              <a
+                href={pdfUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="btn-pill glow-hero inline-flex items-center justify-center gap-2"
+                style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                <span data-i18n data-fr="Télécharger le devis (PDF)" data-en="Download the quote (PDF)" data-ar="تحميل العرض (PDF)">Télécharger le devis (PDF)</span>
+              </a>
+              <a href="#etapes-suivantes" class="btn-pill inline-flex items-center justify-center gap-2">
+                <span data-i18n data-fr="Voir « Et après ? »" data-en="See “What happens next?”" data-ar="ماذا بعد؟">Voir « Et après ? »</span>
+              </a>
+            </div>
+            <div class="mt-5 border-t border-white/10 pt-5">
+              <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Et après ?" data-en="What happens next?" data-ar="ماذا بعد؟">Et après ?</p>
+              <ol class="mt-4 grid gap-3 sm:grid-cols-2">
+                {steps.map((s, i) => (
+                  <li class="rounded-xl border border-white/10 bg-nuit-800/40 p-4">
+                    <p class="fig text-brass-300">{i + 1}.</p>
+                    <p class="mt-1 text-sm font-bold text-lune" data-i18n data-fr={s.title} data-en={s.titleEn} data-ar={s.titleAr}>{s.title}</p>
+                    <p class="mt-1 text-sm text-lune-soft" data-i18n data-fr={s.body} data-en={s.bodyEn} data-ar={s.bodyAr}>{s.body}</p>
+                  </li>
+                ))}
+              </ol>
+            </div>
+
+            <!-- ── W343 · « Partager avec un proche » (parrainage) ────────────
+                 DISTINCT du partage WJ56 plus haut sur la page (qui partage CE
+                 devis avec un co-décideur du MÊME foyer, avant signature) : ici
+                 le client vient de SIGNER — le moment de satisfaction maximale
+                 — et partage le programme de parrainage (/parrainage, W338)
+                 avec un PROCHE différent. Lien tagué (utm_campaign = référence
+                 de son devis) : zéro changement backend, même convention que
+                 /parrainage.astro. -->
+            <div class="mt-5 border-t border-white/10 pt-5">
+              <p class="tech-label rule-brass text-brass-300" data-i18n
+                data-fr="Partager avec un proche" data-en="Share with someone close to you" data-ar="شاركوا مع أحد المقربين">
+                Partager avec un proche
+              </p>
+              <p class="v2-body mt-2 text-sm text-lune-soft" data-i18n
+                data-fr="Un proche envisage aussi le solaire ? Partagez votre lien de parrainage — Taqinor vous en dit merci quand son projet se concrétise."
+                data-en="Know someone else considering solar? Share your referral link — Taqinor says thank you once their project goes through."
+                data-ar="هل يفكر أحد المقربين أيضاً في الطاقة الشمسية؟ شاركوا رابط الإحالة الخاص بكم — تشكركم تاقينور عندما يتحقق مشروعه.">
+                Un proche envisage aussi le solaire ? Partagez votre lien de parrainage — Taqinor vous en dit merci quand son projet se concrétise.
+              </p>
+              <a
+                id="referral-share-whatsapp"
+                href={waLinkReferral}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="btn-pill mt-3 inline-flex items-center justify-center gap-2"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.9 9.9 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2Zm0 18.1h-.01a8.2 8.2 0 0 1-4.18-1.15l-.3-.18-3.11.82.83-3.04-.2-.31a8.2 8.2 0 0 1-1.26-4.37c0-4.54 3.7-8.23 8.24-8.23 2.2 0 4.27.86 5.83 2.42a8.18 8.18 0 0 1 2.41 5.82c0 4.54-3.7 8.23-8.23 8.23Zm4.52-6.16c-.25-.12-1.47-.72-1.69-.81-.23-.08-.39-.12-.56.13-.16.25-.64.81-.78.97-.14.17-.29.19-.54.06-.25-.12-1.05-.39-1.99-1.23-.74-.66-1.23-1.47-1.38-1.72-.14-.25-.01-.38.11-.51.11-.11.25-.29.37-.43.13-.14.17-.25.25-.41.08-.17.04-.31-.02-.43-.06-.12-.56-1.35-.77-1.85-.2-.48-.41-.42-.56-.43l-.48-.01c-.17 0-.43.06-.66.31-.23.25-.86.85-.86 2.07 0 1.22.89 2.4 1.01 2.57.12.17 1.75 2.67 4.23 3.74.59.26 1.05.41 1.41.52.59.19 1.13.16 1.56.1.48-.07 1.47-.6 1.68-1.18.21-.58.21-1.07.14-1.18-.06-.1-.22-.16-.47-.28Z"/>
+                </svg>
+                <span data-i18n data-fr="Partager avec un proche" data-en="Share with someone close to you" data-ar="شاركوا مع أحد المقربين">
+                  Partager avec un proche
+                </span>
+              </a>
+            </div>
           </div>
 
-          <!-- Formulaire de signature -->
-          <form id="sign-form" novalidate>
-            <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Signer en ligne" data-ar="التوقيع إلكترونياً">Signer en ligne</p>
-            <h2 class="display mt-3 text-2xl text-lune" data-i18n data-fr="Bon pour accord" data-ar="موافقة نهائية">Bon pour accord</h2>
+          <!-- ── WJ82 · États explicites d'une offre morte (refusée/expirée/retirée) —
+               masque le formulaire de signature et affiche un message localisé
+               clair à la place, jamais un formulaire signable sur une offre morte. -->
+          {offerState !== 'live' && offerState !== 'accepted' && (
+            <div id="sign-dead-offer" class="result-fade">
+              <p class="fig text-xl text-alert-300" data-i18n
+                data-fr={offerState === 'expired' ? 'Offre échue' : 'Devis non disponible à la signature'}
+                data-en={offerState === 'expired' ? 'Offer expired' : 'Quote not available for signature'}
+                data-ar={offerState === 'expired' ? 'العرض منتهي' : 'العرض غير متاح للتوقيع'}>
+                {offerState === 'expired' ? 'Offre échue' : 'Devis non disponible à la signature'}
+              </p>
+              <p class="v2-body mt-2" data-i18n
+                data-fr={
+                  offerState === 'expired'
+                    ? 'La date de validité de cette proposition est dépassée. Demandez un devis actualisé à votre conseiller Taqinor — sans frais, en quelques minutes.'
+                    : offerState === 'refused'
+                      ? 'Ce devis a été marqué comme refusé. Si c’est une erreur ou si votre projet a évolué, contactez votre conseiller Taqinor pour une nouvelle proposition.'
+                      : 'Ce devis a été retiré. Contactez votre conseiller Taqinor pour toute question.'
+                }
+                data-en={
+                  offerState === 'expired'
+                    ? 'This proposal\'s validity date has passed. Ask your Taqinor advisor for an updated quote — free of charge, in a few minutes.'
+                    : offerState === 'refused'
+                      ? 'This quote has been marked as declined. If this is an error or your project has changed, contact your Taqinor advisor for a new proposal.'
+                      : 'This quote has been withdrawn. Contact your Taqinor advisor with any questions.'
+                }
+                data-ar={
+                  offerState === 'expired'
+                    ? 'تاريخ صلاحية هذا العرض قد انتهى. اطلبوا من مستشاركم في تاقينور عرضاً محدّثاً — مجاناً وفي دقائق معدودة.'
+                    : offerState === 'refused'
+                      ? 'تم رفض هذا العرض. إن كان هذا خطأً أو تغيّر مشروعكم، تواصلوا مع مستشاركم في تاقينور للحصول على عرض جديد.'
+                      : 'تم سحب هذا العرض. تواصلوا مع مستشاركم في تاقينور لأي سؤال.'
+                }>
+                {offerState === 'expired'
+                  ? 'La date de validité de cette proposition est dépassée. Demandez un devis actualisé à votre conseiller Taqinor — sans frais, en quelques minutes.'
+                  : offerState === 'refused'
+                    ? 'Ce devis a été marqué comme refusé. Si c’est une erreur ou si votre projet a évolué, contactez votre conseiller Taqinor pour une nouvelle proposition.'
+                    : 'Ce devis a été retiré. Contactez votre conseiller Taqinor pour toute question.'}
+              </p>
+              <a
+                href={waLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="btn-pill mt-5 inline-flex items-center justify-center gap-2"
+                style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
+                data-i18n
+                data-fr="Demander un devis actualisé"
+                data-en="Request an updated quote"
+                data-ar="طلب عرض محدّث"
+              >
+                Demander un devis actualisé
+              </a>
+            </div>
+          )}
+
+          <!-- Formulaire de signature — masqué si l'offre est morte (WJ82) -->
+          <form id="sign-form" novalidate hidden={offerState !== 'live'}>
+            <!-- ── WJ44 · Bandeau d'offre échue, directement au-dessus du formulaire
+                 de signature — le client ne doit jamais découvrir l'expiration
+                 seulement après avoir rempli tout le formulaire. -->
+            {offerState === 'expired' && (
+              <div class="mb-6 rounded-xl border border-alert-300/40 bg-alert-300/10 p-4">
+                <p class="text-sm font-bold text-alert-300" data-i18n
+                  data-fr="Offre échue — demandez un devis actualisé"
+                  data-en="Offer expired — request an updated quote"
+                  data-ar="العرض منتهي — اطلبوا عرضاً محدّثاً">
+                  Offre échue — demandez un devis actualisé
+                </p>
+                <p class="mt-1 text-xs text-lune-soft" data-i18n
+                  data-fr="La date de validité de cette proposition est dépassée. Vous pouvez toujours contacter votre conseiller Taqinor pour une réactualisation rapide."
+                  data-en="This proposal's validity date has passed. You can still contact your Taqinor advisor for a quick refresh."
+                  data-ar="تاريخ صلاحية هذا العرض قد انتهى. لا يزال بإمكانكم التواصل مع مستشاركم في تاقينور لتحديث سريع.">
+                  La date de validité de cette proposition est dépassée. Vous pouvez toujours contacter
+                  votre conseiller Taqinor pour une réactualisation rapide.
+                </p>
+              </div>
+            )}
+            <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Signer en ligne" data-en="Sign online" data-ar="التوقيع إلكترونياً">Signer en ligne</p>
+            <h2 class="display mt-3 text-2xl text-lune" data-i18n data-fr="Bon pour accord" data-en="Approved" data-ar="موافقة نهائية">Bon pour accord</h2>
             <p class="v2-body mt-2" data-i18n
               data-fr="Validez votre proposition en quelques secondes. Vous recevrez ensuite la confirmation de votre conseiller."
+              data-en="Approve your proposal in a few seconds. You'll then receive confirmation from your advisor."
               data-ar="أكّدوا عرضكم في ثوانٍ معدودة. ستصلكم بعدها رسالة تأكيد من مستشاركم.">
               Validez votre proposition en quelques secondes. Vous recevrez ensuite la confirmation
               de votre conseiller.
             </p>
 
+            <!-- WJ58 — promesse de délai honnête near la CTA de signature
+                 (WG9 résolu, 2026-07-03 : « sous 1 h, 7j/7 »). Icône hors du
+                 nœud data-i18n (voir note plus haut sur le tri-node). -->
+            <p class="mt-2 flex items-center gap-1.5 text-sm text-lune-faint">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="flex-none text-ok-600">
+                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+              </svg>
+              <span data-i18n
+                data-fr="Réponse WhatsApp sous 1 h, 7j/7"
+                data-en="WhatsApp reply within 1 h, 7 days a week"
+                data-ar="رد واتساب خلال ساعة واحدة، 7 أيام على 7">
+                Réponse WhatsApp sous 1 h, 7j/7
+              </span>
+            </p>
+
             {twoOptions && (
               <fieldset class="mt-6">
-                <legend class="tech-label text-lune-faint" data-i18n data-fr="Votre choix" data-ar="اختياركم">Votre choix</legend>
+                <legend class="tech-label text-lune-faint" data-i18n data-fr="Votre choix" data-en="Your choice" data-ar="اختياركم">Votre choix</legend>
                 <div class="mt-3 grid gap-3 sm:grid-cols-2">
                   {options.map((opt) => (
                     <label class="flex cursor-pointer items-center gap-3 rounded-xl border border-white/12 p-4 text-sm has-[:checked]:border-brass-400">
@@ -910,8 +1774,17 @@ const signConfig = ok
                         class="h-4 w-4 accent-[var(--color-brass-400)]"
                       />
                       <span class="text-lune">
-                        {optionLabel(opt)}
-                        <span class="block text-lune-faint" dir="ltr">{formatMAD(optionTtc(data!, opt))} TTC</span>
+                        <span data-i18n data-fr={optionLabel(opt)} data-en={optionLabelEn(opt)} data-ar={optionLabelAr(opt)}>{optionLabel(opt)}</span>
+                        {hasRealPrice(data!, opt) ? (
+                          <span class="block text-lune-faint" dir="ltr">{formatMAD(optionTtc(data!, opt))} TTC</span>
+                        ) : (
+                          <span class="block text-lune-faint" data-i18n
+                            data-fr="Prix communiqué par votre conseiller"
+                            data-en="Price provided by your advisor"
+                            data-ar="السعر يُبلَّغ من طرف مستشاركم">
+                            Prix communiqué par votre conseiller
+                          </span>
+                        )}
                       </span>
                     </label>
                   ))}
@@ -920,7 +1793,7 @@ const signConfig = ok
             )}
 
             <div class="mt-6">
-              <label for="sign-nom" class="tech-label text-lune-faint" data-i18n data-fr="Votre nom complet" data-ar="اسمكم الكامل">Votre nom complet</label>
+              <label for="sign-nom" class="tech-label text-lune-faint" data-i18n data-fr="Votre nom complet" data-en="Your full name" data-ar="اسمكم الكامل">Votre nom complet</label>
               <input
                 id="sign-nom"
                 name="nom"
@@ -935,12 +1808,12 @@ const signConfig = ok
             <!-- WJ11 · SIGNATURE MANUSCRITE (canvas natif, tactile + souris) ── -->
             <div class="mt-6">
               <div class="flex items-baseline justify-between gap-3">
-                <label for="sign-pad" class="tech-label text-lune-faint" data-i18n data-fr="Votre signature" data-ar="توقيعكم">Votre signature</label>
+                <label for="sign-pad" class="tech-label text-lune-faint" data-i18n data-fr="Votre signature" data-en="Your signature" data-ar="توقيعكم">Votre signature</label>
                 <button
                   id="sign-clear"
                   type="button"
                   class="text-xs text-lune-faint underline-offset-2 hover:underline"
-                  data-i18n data-fr="Effacer" data-ar="مسح"
+                  data-i18n data-fr="Effacer" data-en="Clear" data-ar="مسح"
                 >Effacer</button>
               </div>
               <div class="sign-pad-wrap mt-2 rounded-xl border border-white/15 bg-nuit-800">
@@ -955,13 +1828,50 @@ const signConfig = ok
               </div>
               <p class="mt-1.5 text-xs text-lune-faint" data-i18n
                 data-fr="Dessinez votre signature ci-dessus (facultatif mais recommandé). Votre nom et votre accord ci-dessous valent signature électronique (loi 53-05)."
+                data-en="Draw your signature above (optional but recommended). Your name and your agreement below constitute an electronic signature (law 53-05)."
                 data-ar="ارسموا توقيعكم أعلاه (اختياري لكن مستحسن). اسمكم وموافقتكم أدناه بمثابة توقيع إلكتروني (القانون 53-05).">Dessinez votre signature ci-dessus (facultatif mais recommandé). Votre nom et votre accord ci-dessous valent signature électronique (loi 53-05).</p>
+            </div>
+
+            <!-- ── WJ87 · SIGNER AU NOM DU FOYER (optionnel) ─────────────────────
+                 Le MRE qui signe pour ses parents, ou tout couple qui décide à
+                 distance, n'avait aucun moyen honnête d'enregistrer une décision
+                 déléguée/conjointe. Champ FACULTATIF, additif dans le payload
+                 d'acceptation (le backend qui l'ignore continue de fonctionner
+                 exactement comme avant) — formulation volontairement générique
+                 (le libellé légal précis WG16 est encore en attente). -->
+            <div class="mt-5">
+              <label for="sign-on-behalf-of" class="tech-label text-lune-faint" data-i18n
+                data-fr="Je signe au nom de (optionnel)"
+                data-en="I am signing on behalf of (optional)"
+                data-ar="أوقّع نيابة عن (اختياري)">
+                Je signe au nom de (optionnel)
+              </label>
+              <input
+                id="sign-on-behalf-of"
+                name="on_behalf_of"
+                type="text"
+                autocomplete="off"
+                class="mt-2 w-full rounded-xl border border-white/15 bg-nuit-800 px-4 py-3 text-lune placeholder:text-lune-faint"
+                data-i18n-placeholder
+                data-placeholder-fr="Ex. : mes parents, mon foyer"
+                data-placeholder-en="E.g.: my parents, my household"
+                data-placeholder-ar="مثال: والديّ، عائلتي"
+                placeholder="Ex. : mes parents, mon foyer"
+              />
+              <p class="mt-1.5 text-xs text-lune-faint" data-i18n
+                data-fr="Si vous signez pour le compte du propriétaire ou de votre foyer, précisez-le ici — votre nom ci-dessus reste le signataire enregistré."
+                data-en="If you are signing on behalf of the owner or your household, note it here — your name above remains the recorded signatory."
+                data-ar="إن كنتم توقّعون نيابة عن المالك أو عائلتكم، وضّحوا ذلك هنا — يبقى اسمكم أعلاه هو الموقّع المسجَّل.">
+                Si vous signez pour le compte du propriétaire ou de votre foyer, précisez-le ici —
+                votre nom ci-dessus reste le signataire enregistré.
+              </p>
             </div>
 
             <label class="mt-5 flex cursor-pointer items-start gap-3 text-sm">
               <input id="sign-accord" name="accord" type="checkbox" required class="mt-1 h-4 w-4 accent-[var(--color-brass-400)]" />
               <span class="text-lune-soft" data-i18n
                 data-fr="Je certifie « Bon pour accord » et j’accepte cette proposition aux conditions indiquées ci-dessus."
+                data-en="I certify \"Approved\" and I accept this proposal under the conditions indicated above."
                 data-ar="أشهد بـ«الموافقة النهائية» وأقبل هذا العرض وفق الشروط المذكورة أعلاه.">
                 Je certifie « <strong class="text-lune">Bon pour accord</strong> » et j’accepte cette proposition
                 aux conditions indiquées ci-dessus.
@@ -970,17 +1880,27 @@ const signConfig = ok
 
             <label class="mt-3 flex cursor-pointer items-start gap-3 text-sm">
               <input id="sign-consent" name="consent" type="checkbox" required class="mt-1 h-4 w-4 accent-[var(--color-brass-400)]" />
+              <!-- W318 — précise que l'image de la signature dessinée ci-dessus
+                   (quand elle est tracée) est elle aussi enregistrée avec le
+                   nom, la date et l'heure — cohérent avec ce que le code
+                   envoie réellement (signature_data_url, cf. plus bas dans ce
+                   fichier) et avec la politique de confidentialité (W318). -->
               <span class="text-lune-soft" data-i18n
-                data-fr="J’accepte de signer électroniquement cette proposition. Mon nom, la date et l’heure de signature sont enregistrés avec mon accord."
-                data-ar="أوافق على التوقيع إلكترونياً على هذا العرض. يتم تسجيل اسمي وتاريخ ووقت التوقيع مع موافقتي.">
+                data-fr="J’accepte de signer électroniquement cette proposition. Mon nom, l’image de ma signature dessinée ci-dessus (si tracée), et la date et l’heure de signature sont enregistrés avec mon accord."
+                data-en="I agree to electronically sign this proposal. My name, the image of my signature drawn above (if drawn), and the date and time of signature are recorded with my consent."
+                data-ar="أوافق على التوقيع إلكترونياً على هذا العرض. يتم تسجيل اسمي وصورة توقيعي المرسوم أعلاه (إن رُسم) وتاريخ ووقت التوقيع مع موافقتي.">
                 J’accepte de <strong class="text-lune">signer électroniquement</strong> cette proposition.
-                Mon nom, la date et l’heure de signature sont enregistrés avec mon accord.
+                Mon nom, l’image de ma signature dessinée ci-dessus (si tracée), et la date et l’heure de
+                signature sont enregistrés avec mon accord.
               </span>
             </label>
 
-            <!-- Récapitulatif horodaté (réf + date/heure côté client) -->
+            <!-- Récapitulatif horodaté (réf + date/heure côté client) — le texte
+                 initial (data-i18n) est le rendu AVANT JS ; dès l'hydratation,
+                 renderStamp() (WJ42, script de fin de page) prend le relais et
+                 régénère ce <p> ENTIER dans la langue courante à chaque bascule. -->
             <p id="sign-stamp" class="mt-4 text-xs text-lune-faint">
-              <span data-i18n data-fr="Réf." data-ar="المرجع">Réf.</span> <span dir="ltr">{reference}</span> · <span data-i18n data-fr="l’horodatage de votre signature s’affichera ici." data-ar="سيظهر توقيت توقيعكم هنا.">l’horodatage de votre signature s’affichera ici.</span>
+              <span data-i18n data-fr="Réf." data-en="Ref." data-ar="المرجع">Réf.</span> <span dir="ltr">{reference}</span> · <span data-i18n data-fr="l’horodatage de votre signature s’affichera ici." data-en="your signature's timestamp will appear here." data-ar="سيظهر توقيت توقيعكم هنا.">l’horodatage de votre signature s’affichera ici.</span>
             </p>
 
             <p id="sign-error" class="mt-4 text-sm text-alert-300" role="alert" hidden></p>
@@ -990,8 +1910,9 @@ const signConfig = ok
               type="submit"
               class="btn-pill glow-hero mt-6 w-full justify-center bg-brass-400 px-6 py-3 text-base font-bold text-nuit sm:w-auto"
               style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
+              disabled={offerState === 'expired'}
             >
-              <span id="sign-submit-label" data-i18n data-fr="Signer en ligne" data-ar="التوقيع إلكترونياً">Signer en ligne</span>
+              <span id="sign-submit-label" data-i18n data-fr="Signer en ligne" data-en="Sign online" data-ar="التوقيع إلكترونياً">Signer en ligne</span>
               <span id="sign-spinner" class="spinner" hidden aria-hidden="true"></span>
             </button>
           </form>
@@ -1017,99 +1938,30 @@ const signConfig = ok
               <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
             <span id="pdf-download-spinner" class="spinner" hidden aria-hidden="true"></span>
-            <span id="pdf-download-label" data-i18n data-fr="Télécharger le devis (PDF)" data-ar="تحميل العرض (PDF)">Télécharger le devis (PDF)</span>
+            <span id="pdf-download-label" data-i18n data-fr="Télécharger le devis (PDF)" data-en="Download the quote (PDF)" data-ar="تحميل العرض (PDF)">Télécharger le devis (PDF)</span>
           </a>
         </div>
 
         <p class="mt-6 text-center text-xs text-lune-faint" data-i18n
           data-fr={`Proposition Taqinor · réf. ${reference}. Document non contractuel sans signature du devis officiel.`}
+          data-en={`Taqinor proposal · ref. ${reference}. Non-contractual document without signature of the official quote.`}
           data-ar={`عرض تاقينور · المرجع ${reference}. وثيقة غير تعاقدية بدون توقيع العرض الرسمي.`}>
           Proposition Taqinor · réf. {reference}. Document non contractuel sans signature du devis officiel.
         </p>
       </section>
 
-      <!-- ── WJ13/WJ35 · BLOC CRÉDIBILITÉ (garanties · certifications · réassurance) -->
-      {/* Aucune donnée chiffrée fabriquée : nombre de clients / avis / photos
-          réelles marqués `pending real content` tant que Reda ne les fournit pas.
-          Les garanties et normes ci-dessous sont des FAITS techniques vérifiables.
-          WJ35 — CertLogoRow reprend ces mêmes faits en bandeau ; le compteur
-          d'installations et la note Google sont désormais des composants premium
-          RÉUTILISABLES (InstallCounter / StarRating), avec la même intégrité. */}
-      <section class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
-        <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Pourquoi nous faire confiance" data-ar="لماذا تثقون بنا">Pourquoi nous faire confiance</p>
-        <div class="mt-5 grid gap-4 sm:grid-cols-3">
-          <div class="cine-card rounded-xl p-5">
-            <p class="fig text-2xl text-lune" dir="ltr">20–25 ans</p>
-            <p class="mt-1 text-sm text-lune-soft" data-i18n data-fr="Garanties constructeur : 25 ans de performance sur les panneaux, 10 ans sur l’onduleur." data-ar="ضمانات الصانع: 25 سنة أداء للألواح، 10 سنوات للعاكس.">Garanties constructeur : 25 ans de performance sur les panneaux, 10 ans sur l’onduleur.</p>
-          </div>
-          <div class="cine-card rounded-xl p-5">
-            <p class="fig text-xl text-lune" dir="ltr">IEC 61215 / 61730</p>
-            <p class="mt-1 text-sm text-lune-soft" data-i18n data-fr="Modules certifiés aux normes internationales. Conformité étude IRESEN / AMEE." data-ar="ألواح معتمدة وفق المعايير الدولية. مطابقة لدراسة IRESEN / AMEE.">Modules certifiés aux normes internationales. Conformité étude IRESEN / AMEE.</p>
-          </div>
-          <div class="cine-card rounded-xl p-5">
-            <p class="fig text-xl text-lune" data-i18n data-fr="Loi 82-21" data-ar="القانون 82-21">Loi 82-21</p>
-            <p class="mt-1 text-sm text-lune-soft" data-i18n data-fr="Installation conforme au cadre marocain d’autoconsommation en basse tension." data-ar="تركيب مطابق للإطار المغربي للاستهلاك الذاتي في التوتر المنخفض.">Installation conforme au cadre marocain d’autoconsommation en basse tension.</p>
-          </div>
-        </div>
 
-        <!-- WJ35 — compteur d'installations réel + note Google (scaffold tant qu'absente). -->
-        <div class="mt-4 cine-card rounded-xl p-5 sm:p-6">
-          <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <InstallCounter />
-            <StarRating />
-          </div>
-        </div>
-
-        <!-- WJ35 — bandeau certifications/garanties (texte, sobre — aucun logo fabriqué). -->
-        <div class="mt-4">
-          <CertLogoRow />
-        </div>
-
-        <!-- WJ35 — avis clients réels (carrousel, vide-mais-premium — même intégrité que <Testimonials/>). -->
-        <div class="mt-4 cine-card rounded-xl p-5 sm:p-6">
-          <p class="tech-label text-lune-faint" data-i18n data-fr="Avis clients" data-ar="آراء العملاء">Avis clients</p>
-          <div class="mt-3">
-            <TestimonialCarousel />
-          </div>
-        </div>
-
-        <!-- Photos d'installations réelles — scaffold, à remplir par Reda. -->
-        <div class="mt-4 cine-card rounded-xl p-5">
-          <p class="tech-label text-lune-faint" data-i18n data-fr="Nos chantiers" data-ar="ورشاتنا">Nos chantiers</p>
-          <!-- pending real content from Reda : photos d'installations réelles -->
-          <p class="mt-2 text-sm text-lune-soft" data-i18n
-            data-fr="Installations documentées, dossiers techniques à l’appui. (Photos à venir.)"
-            data-ar="تركيبات موثقة، بملفات تقنية داعمة. (الصور قريباً.)">
-            Installations documentées, dossiers techniques à l’appui.
-            <span class="text-lune-faint"> (Photos à venir.)</span>
-          </p>
-        </div>
-
-        <!-- WJ17 — mot du fondateur : bascule TOGGLE (au lieu des deux citations
-             FR+AR toujours visibles côte à côte — le symptôme « bolt-on » que
-             WJ17 corrige) ; scaffold, contenu réel à confirmer. -->
-        <div class="mt-4 cine-card rounded-xl p-6">
-          <p class="tech-label text-lune-faint" data-i18n data-fr="Le mot du fondateur" data-ar="كلمة المؤسس">Le mot du fondateur</p>
-          <!-- pending real content from Reda : texte définitif du mot de bienvenue -->
-          <blockquote class="mt-3 v2-body text-lune" data-i18n
-            data-fr="« Chez Taqinor, nous traitons chaque toit comme le nôtre : une étude honnête, du matériel certifié, et un accompagnement après l’installation. Merci de votre confiance. »"
-            data-ar="« في تاقينور، نتعامل مع كل سطح كأنه سطحنا: دراسة صادقة، معدات معتمدة، ومرافقة بعد التركيب. شكراً على ثقتكم. »">
-            « Chez Taqinor, nous traitons chaque toit comme le nôtre : une étude honnête,
-            du matériel certifié, et un accompagnement après l’installation. Merci de votre confiance. »
-          </blockquote>
-          <p class="mt-2 text-sm text-lune-faint">Reda Kasri — <span data-i18n data-fr="fondateur, Taqinor" data-ar="مؤسس تاقينور">fondateur, Taqinor</span></p>
-        </div>
-      </section>
-
-      <!-- ── WJ32 · « ET APRÈS ? » — timeline des prochaines étapes ─────────── -->
-      <section class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
-        <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Et après ?" data-ar="ماذا بعد؟">Et après ?</p>
+      <!-- ── WJ32 · « ET APRÈS ? » — timeline des prochaines étapes ───────────
+           WJ78 — ancre ciblée par le lien « Voir « Et après ? » » du bloc de
+           succès (au-dessus, plus haut sur la page). -->
+      <section id="etapes-suivantes" class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
+        <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Et après ?" data-en="What happens next?" data-ar="ماذا بعد؟">Et après ?</p>
         <ol class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {steps.map((s, i) => (
             <li class="cine-card rounded-xl p-5">
               <p class="fig text-brass-300">{i + 1}.</p>
-              <p class="mt-1 text-sm font-bold text-lune" data-i18n data-fr={s.title} data-ar={s.titleAr}>{s.title}</p>
-              <p class="mt-2 text-sm text-lune-soft" data-i18n data-fr={s.body} data-ar={s.bodyAr}>{s.body}</p>
+              <p class="mt-1 text-sm font-bold text-lune" data-i18n data-fr={s.title} data-en={s.titleEn} data-ar={s.titleAr}>{s.title}</p>
+              <p class="mt-2 text-sm text-lune-soft" data-i18n data-fr={s.body} data-en={s.bodyEn} data-ar={s.bodyAr}>{s.body}</p>
             </li>
           ))}
         </ol>
@@ -1117,11 +1969,11 @@ const signConfig = ok
 
       <!-- ── WJ32 · ACCOMPAGNEMENT POST-INSTALLATION ─────────────────────────  -->
       <section class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
-        <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Après l’installation" data-ar="بعد التركيب">Après l’installation</p>
+        <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Après l’installation" data-en="After installation" data-ar="بعد التركيب">Après l’installation</p>
         <div class="cine-card mt-5 rounded-2xl p-6 sm:p-7">
           <ul class="space-y-3 text-sm text-lune-soft">
             {monitoring.map((m) => (
-              <li data-i18n data-fr={m.label} data-ar={m.labelAr}>{m.label}</li>
+              <li data-i18n data-fr={m.label} data-en={m.labelEn} data-ar={m.labelAr}>{m.label}</li>
             ))}
           </ul>
         </div>
@@ -1132,36 +1984,44 @@ const signConfig = ok
       {assumptions.length > 0 && (
         <section class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
           <details class="cine-card rounded-2xl p-6 sm:p-7">
-            <summary class="tech-label cursor-pointer text-brass-300" data-i18n data-fr="Nos hypothèses" data-ar="فرضياتنا">Nos hypothèses</summary>
+            <summary class="tech-label cursor-pointer text-brass-300" data-i18n data-fr="Nos hypothèses" data-en="Our assumptions" data-ar="فرضياتنا">Nos hypothèses</summary>
             <dl class="mt-4 space-y-3 text-sm">
               {assumptions.map((a) => (
                 <div>
-                  <dt class="text-lune-faint" data-i18n data-fr={a.label} data-ar={a.labelAr}>{a.label}</dt>
-                  <dd class="mt-0.5 text-lune-soft">{a.value}</dd>
+                  <dt class="text-lune-faint" data-i18n data-fr={a.label} data-en={a.labelEn} data-ar={a.labelAr}>{a.label}</dt>
+                  <dd class="mt-0.5 text-lune-soft" data-i18n data-fr={a.value} data-en={a.valueEn} data-ar={a.valueAr}>{a.value}</dd>
                 </div>
               ))}
             </dl>
+            <!-- W359 — lien vers la page de transparence méthodologique
+                 (source PVGIS, pertes système, autoconsommation d'abord,
+                 tarif BT ANRE non publié) : le détail de la méthode derrière
+                 ces hypothèses. -->
+            <p class="mt-4 text-xs">
+              <a href="/methodologie-estimation" class="text-brass-300 underline-offset-2 hover:underline" data-i18n
+                data-fr="En savoir plus sur notre méthode de calcul"
+                data-en="Learn more about our calculation method"
+                data-ar="اعرفوا المزيد عن منهجية حسابنا">
+                En savoir plus sur notre méthode de calcul
+              </a>
+            </p>
           </details>
         </section>
       )}
 
-      <!-- ── WJ32 · FAQ OBJECTIONS (4–5 questions fréquentes) ────────────────
-           <details> par item : accordéon accessible sans JS, zéro CLS. -->
-      <section class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
-        <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Vos questions, nos réponses" data-ar="أسئلتكم، وأجوبتنا">Vos questions, nos réponses</p>
-        <div class="mt-5 space-y-3">
-          {faq.map((item) => (
-            <details class="cine-card rounded-xl p-5">
-              <summary class="cursor-pointer text-sm font-bold text-lune" data-i18n data-fr={item.question} data-ar={item.questionAr}>{item.question}</summary>
-              <p class="mt-3 text-sm text-lune-soft" data-i18n data-fr={item.answer} data-ar={item.answerAr}>{item.answer}</p>
-            </details>
-          ))}
-        </div>
-      </section>
 
-      <!-- ── CTA COLLANT « Signer en ligne » (WJ34 — safe-area-inset-bottom pour
-           les iPhone à encoche / barre de geste : le CTA ne se cache jamais
-           derrière la zone système) ──────────────────────────────────────── -->
+      <!-- ── CTA COLLANT (WJ34 — safe-area-inset-bottom pour les iPhone à encoche
+           / barre de geste : le CTA ne se cache jamais derrière la zone système).
+           WJ82 — sur une offre morte (refusée/expirée/retirée), le CTA de
+           signature devient « Demander un devis actualisé » pointant vers le
+           contact WhatsApp plutôt que vers le formulaire supprimé.
+           WJ56 — QA tablette/desktop (présentation en direct par un commercial) :
+           les grilles passent en multi-colonnes dès `sm:` (640px, couvre tablette
+           portrait/paysage ET desktop) ; le CTA collant reste `fixed inset-x-0`
+           pleine largeur avec conteneur interne `max-w-4xl` centré à toutes les
+           largeurs ; la bascule de langue (`fixed top-3 right-3`) et le bouton
+           « Partager » (flux normal, jamais `fixed`) ne se chevauchent à aucune
+           largeur testée. Aucune régression de layout introduite par WJ53/WJ56. -->
       <div
         id="sticky-cta"
         class="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-nuit-800/95 px-4 pt-3 backdrop-blur supports-[backdrop-filter]:bg-nuit-800/80"
@@ -1169,25 +2029,63 @@ const signConfig = ok
       >
         <div class="mx-auto flex max-w-4xl items-center justify-between gap-4">
           <div class="min-w-0">
-            <p class="truncate text-sm text-lune-soft">
-              <span data-i18n data-fr={twoOptions ? 'À partir de ' : ''} data-ar={twoOptions ? 'ابتداءً من ' : ''}>{twoOptions ? 'À partir de ' : ''}</span>
-              <span class="lum fig text-lg" dir="ltr">{formatMAD(optionTtc(data!, reco ?? 'sans_batterie'))}</span>
-              <span class="text-lune-faint" data-i18n data-fr=" TTC" data-ar=" شامل الضريبة"> TTC</span>
-            </p>
+            {heroHasRealPrice ? (
+              <p class="truncate text-sm text-lune-soft">
+                <span data-i18n data-fr={twoOptions ? 'À partir de ' : ''} data-en={twoOptions ? 'From ' : ''} data-ar={twoOptions ? 'ابتداءً من ' : ''}>{twoOptions ? 'À partir de ' : ''}</span>
+                <span class="lum fig text-lg" dir="ltr">{formatMAD(optionTtc(data!, reco ?? 'sans_batterie'))}</span>
+                <span class="text-lune-faint" data-i18n data-fr=" TTC" data-en=" incl. tax" data-ar=" شامل الضريبة"> TTC</span>
+              </p>
+            ) : (
+              <!-- WJ83 — garde-fou zéro-total : jamais "0 MAD TTC" comme un
+                   vrai prix. -->
+              <p class="truncate text-sm text-lune-soft" data-i18n
+                data-fr="Prix communiqué par votre conseiller"
+                data-en="Price provided by your advisor"
+                data-ar="السعر يُبلَّغ من طرف مستشاركم">
+                Prix communiqué par votre conseiller
+              </p>
+            )}
             {validity.fromBackend && validity.label && !validity.expired && (
               <p class="truncate text-xs text-lune-faint">
-                <span data-i18n data-fr="Valable jusqu’au" data-ar="صالح حتى">Valable jusqu’au</span> <span dir="ltr">{validity.label}</span>
+                <span data-i18n data-fr="Valable jusqu’au" data-en="Valid until" data-ar="صالح حتى">Valable jusqu’au</span> <span dir="ltr">{validity.label}</span>
               </p>
             )}
           </div>
-          <a
-            href="#signer"
-            class="btn-pill shrink-0 whitespace-nowrap"
-            style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
-            data-i18n data-fr="Signer en ligne" data-ar="التوقيع إلكترونياً"
-          >
-            Signer en ligne
-          </a>
+          {isOfferDead(offerState) ? (
+            <a
+              href={waLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="btn-pill shrink-0 whitespace-nowrap"
+              style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
+              data-i18n data-fr="Demander un devis actualisé" data-en="Request an updated quote" data-ar="طلب عرض محدّث"
+            >
+              Demander un devis actualisé
+            </a>
+          ) : heroHasRealPrice ? (
+            <a
+              href="#signer"
+              class="btn-pill shrink-0 whitespace-nowrap"
+              style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
+              data-i18n data-fr="Signer en ligne" data-en="Sign online" data-ar="التوقيع إلكترونياً"
+            >
+              Signer en ligne
+            </a>
+          ) : (
+            <!-- WJ83 — sans prix réel, le CTA principal ne peut pas pointer vers
+                 une signature à 0 MAD : on renvoie vers le conseiller (WhatsApp),
+                 jamais vers un formulaire de signature sur un montant fabriqué. -->
+            <a
+              href={waLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="btn-pill shrink-0 whitespace-nowrap"
+              style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
+              data-i18n data-fr="Contacter mon conseiller" data-en="Contact my advisor" data-ar="التواصل مع مستشاري"
+            >
+              Contacter mon conseiller
+            </a>
+          )}
         </div>
       </div>
     </div>
@@ -1198,8 +2096,11 @@ const signConfig = ok
   import {
     validateSign,
     buildAcceptBodyRich,
+    signStampLabel,
+    localizedStamp,
     type OptionKey,
     type SignFormState,
+    type PropLang as SignPropLang,
   } from '../../lib/proposition';
 
   interface SignConfig {
@@ -1209,44 +2110,55 @@ const signConfig = ok
     accepted: boolean;
     acceptedName: string;
     reference: string;
+    /** WJ55 — présent uniquement quand le devis porte un téléphone client. */
+    clientPhone?: string;
   }
 
-  // ── WJ17 · bascule de langue FR/عربي — MÊME mécanisme dual-node que WJ33
-  // (mon-toit.astro) : `el.textContent = v` APLATIRAIT toute balise imbriquée
-  // (ex. <strong> dans un data-i18n) à chaque aller-retour. On enveloppe donc
-  // chaque élément `[data-i18n]` d'une PAIRE de nœuds show/hide au premier
-  // passage (FR = markup ORIGINAL capturé une fois via innerHTML, AR = texte
-  // simple depuis data-ar), puis on masque/affiche la bonne paire — aucune
-  // balise n'est jamais perdue, quel que soit le nombre de bascules.
-  type PropLang = 'fr' | 'ar';
+  // ── WJ17/WJ43 · bascule de langue FR/EN/عربي — MÊME mécanisme dual-node que
+  // WJ33 (mon-toit.astro), élargi en TRI-node par WJ43 : `el.textContent = v`
+  // APLATIRAIT toute balise imbriquée (ex. <strong> dans un data-i18n) à chaque
+  // aller-retour. On enveloppe donc chaque élément `[data-i18n]` d'un TRIPLET de
+  // nœuds show/hide au premier passage (FR = markup ORIGINAL capturé une fois
+  // via innerHTML, EN = texte simple depuis data-en, AR = texte simple depuis
+  // data-ar), puis on masque/affiche le bon nœud — aucune balise n'est jamais
+  // perdue, quel que soit le nombre de bascules. Un élément SANS `data-en`
+  // (ne devrait pas arriver — chaque data-i18n doit porter les 3 langues) replie
+  // simplement sur le markup FR en mode EN plutôt que de planter.
+  type PropLang = 'fr' | 'en' | 'ar';
   let currentLang: PropLang = 'fr';
-  const i18nPairs: Array<{ fr: HTMLElement; ar: HTMLElement }> = [];
+  const i18nTriples: Array<{ fr: HTMLElement; en: HTMLElement; ar: HTMLElement }> = [];
   /** Registre des labels à retraduire à chaque bascule (busy-state, non couverts par data-i18n). */
   const propI18nBusyLabels: Array<(lang: PropLang) => void> = [];
   function prepareI18n(): void {
     document.querySelectorAll<HTMLElement>('[data-i18n]').forEach((el) => {
       const arText = el.dataset.ar;
       if (typeof arText !== 'string') return;
+      const enText = typeof el.dataset.en === 'string' ? el.dataset.en : el.innerHTML;
       const frSpan = document.createElement('span');
       frSpan.innerHTML = el.innerHTML;
+      const enSpan = document.createElement('span');
+      enSpan.textContent = enText;
+      enSpan.hidden = true;
       const arSpan = document.createElement('span');
       arSpan.textContent = arText;
       arSpan.hidden = true;
       el.textContent = '';
-      el.append(frSpan, arSpan);
-      i18nPairs.push({ fr: frSpan, ar: arSpan });
+      el.append(frSpan, enSpan, arSpan);
+      i18nTriples.push({ fr: frSpan, en: enSpan, ar: arSpan });
     });
   }
   function applyLang(lang: PropLang): void {
     const isAr = lang === 'ar';
+    const isEn = lang === 'en';
     currentLang = lang;
-    i18nPairs.forEach(({ fr, ar }) => {
-      fr.hidden = isAr;
+    i18nTriples.forEach(({ fr, en, ar }) => {
+      fr.hidden = isAr || isEn;
+      en.hidden = !isEn;
       ar.hidden = !isAr;
     });
     // RTL/langue au niveau DOCUMENT (pas seulement un bloc local) : un lecteur
     // d'écran ou le rendu natif du navigateur doivent voir la vraie langue.
-    document.documentElement.lang = isAr ? 'ar' : 'fr';
+    document.documentElement.lang = isAr ? 'ar' : isEn ? 'en' : 'fr';
     document.documentElement.dir = isAr ? 'rtl' : 'ltr';
     const propRoot = document.querySelector<HTMLElement>('.proposition');
     if (propRoot) {
@@ -1254,10 +2166,12 @@ const signConfig = ok
       propRoot.style.lineHeight = isAr ? '1.75' : '';
     }
     const frBtn = document.getElementById('prop-lang-fr');
+    const enBtn = document.getElementById('prop-lang-en');
     const arBtn = document.getElementById('prop-lang-ar');
-    frBtn?.setAttribute('aria-pressed', String(!isAr));
+    frBtn?.setAttribute('aria-pressed', String(!isAr && !isEn));
+    enBtn?.setAttribute('aria-pressed', String(isEn));
     arBtn?.setAttribute('aria-pressed', String(isAr));
-    for (const [btn, on] of [[frBtn, !isAr], [arBtn, isAr]] as const) {
+    for (const [btn, on] of [[frBtn, !isAr && !isEn], [enBtn, isEn], [arBtn, isAr]] as const) {
       if (!btn) continue;
       btn.className = on
         ? 'px-2.5 py-1 text-xs font-semibold text-azur-950 bg-brass-400 transition-colors'
@@ -1268,9 +2182,28 @@ const signConfig = ok
     // le premier rendu) : on les retraduit ici, à chaque bascule ET après
     // chaque changement d'état, via un petit registre partagé.
     propI18nBusyLabels.forEach((fn) => fn(currentLang));
+    // WJ80 — bascule des TROIS variantes langue pré-rendues du graphe
+    // production-vs-consommation et de la courbe journalière (chacune posée
+    // dans le DOM au premier rendu serveur, voir data-chart-lang/data-curve-lang) :
+    // même logique show/hide que les triplets data-i18n ci-dessus.
+    document.querySelectorAll<HTMLElement>('[data-chart-lang]').forEach((el) => {
+      el.hidden = el.dataset.chartLang !== currentLang;
+    });
+    document.querySelectorAll<HTMLElement>('[data-curve-lang]').forEach((el) => {
+      el.hidden = el.dataset.curveLang !== currentLang;
+    });
+    // WJ87 — les attributs `placeholder` ne sont pas couverts par le mécanisme
+    // data-i18n (qui ne touche que le contenu affiché) : ce petit registre
+    // dédié retraduit les placeholders posés via data-placeholder-{fr,en,ar}
+    // à chaque bascule de langue.
+    document.querySelectorAll<HTMLInputElement>('[data-i18n-placeholder]').forEach((el) => {
+      const value = isAr ? el.dataset.placeholderAr : isEn ? el.dataset.placeholderEn : el.dataset.placeholderFr;
+      if (typeof value === 'string') el.placeholder = value;
+    });
   }
   prepareI18n();
   document.getElementById('prop-lang-fr')?.addEventListener('click', () => applyLang('fr'));
+  document.getElementById('prop-lang-en')?.addEventListener('click', () => applyLang('en'));
   document.getElementById('prop-lang-ar')?.addEventListener('click', () => applyLang('ar'));
   // Exposé aux AUTRES <script> de cette page (PDF affordance) — chaque bloc
   // <script> d'une île Astro est un module séparé, donc pas de portée
@@ -1280,27 +2213,87 @@ const signConfig = ok
   (window as unknown as { __propRegisterBusyLabel?: (fn: (l: PropLang) => void) => void }).__propRegisterBusyLabel =
     (fn: (l: PropLang) => void) => propI18nBusyLabels.push(fn);
 
+  // ——— WJ45 : bandeau hors-ligne (navigator.onLine + online/offline) ———
+  // Une coupure réseau au moment de signer ne doit jamais ressembler à un
+  // échec muet : le bandeau apparaît/disparaît en direct, indépendamment de
+  // toute soumission. Exposé sur `window` pour que le formulaire de
+  // signature (autre <script>/module plus bas) puisse re-vérifier l'état
+  // au moment précis d'un échec fetch.
+  const propOfflineBanner = document.getElementById('prop-offline-banner');
+  function syncPropOfflineBanner(): void {
+    if (propOfflineBanner) propOfflineBanner.hidden = navigator.onLine;
+  }
+  syncPropOfflineBanner();
+  window.addEventListener('online', syncPropOfflineBanner);
+  window.addEventListener('offline', syncPropOfflineBanner);
+  (window as unknown as { __propSyncOfflineBanner?: () => void }).__propSyncOfflineBanner = syncPropOfflineBanner;
+
   const root = document.querySelector<HTMLElement>('.proposition');
   const raw = root?.dataset.signConfig;
   if (root && raw) {
     const cfg = JSON.parse(raw) as SignConfig;
 
+    // ── WJ55 · Télémétrie de vue/engagement — proxy same-origin vers le fil
+    // lead existant (voir lib/proposition.ts buildProposalTrackPayload pour le
+    // garde-fou anti-pollution CRM : sans téléphone client, rien n'est posté).
+    // Best-effort strict, `keepalive` pour survivre à une navigation immédiate.
+    const sentTrackEvents = new Set<string>();
+    function trackProposalEvent(event: 'proposal_first_view' | 'proposal_scrolled_financing'): void {
+      if (sentTrackEvents.has(event)) return; // une fois par événement/session de page
+      sentTrackEvents.add(event);
+      fetch('/api/proposition-track', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        keepalive: true,
+        body: JSON.stringify({
+          token: cfg.token,
+          reference: cfg.reference,
+          clientPhone: cfg.clientPhone ?? '',
+          event,
+        }),
+      }).catch(() => {
+        // Jamais bloquant : une panne réseau ne doit rien changer côté client.
+      });
+    }
+    trackProposalEvent('proposal_first_view');
+    // Défilement jusqu'au bloc financement (« Argent dans le temps » — WJ9,
+    // id="financing-headline") : le moment où le client regarde vraiment les
+    // chiffres. Observé une seule fois (IntersectionObserver déconnecté après
+    // le premier passage). Absent quand le backend ne fournit aucun chiffre
+    // d'économie (headline vide) — rien à observer alors.
+    const financingSection = document.getElementById('financing-headline');
+    if (financingSection && 'IntersectionObserver' in window) {
+      const financingIo = new IntersectionObserver(
+        (entries) => {
+          if (entries.some((e) => e.isIntersecting)) {
+            financingIo.disconnect();
+            trackProposalEvent('proposal_scrolled_financing');
+          }
+        },
+        { threshold: 0.4 },
+      );
+      financingIo.observe(financingSection);
+    }
+
     const form = document.getElementById('sign-form') as HTMLFormElement | null;
     const success = document.getElementById('sign-success');
     const successName = document.getElementById('sign-success-name');
     const successTime = document.getElementById('sign-success-time');
+    // WJ78 — écho de l'artefact du client dans le bloc de succès.
+    const successEchoImg = document.getElementById('sign-success-echo-img') as HTMLImageElement | null;
+    const successEchoSeal = document.getElementById('sign-success-echo-seal');
     const stampEl = document.getElementById('sign-stamp');
     const errorEl = document.getElementById('sign-error');
     const submitBtn = document.getElementById('sign-submit') as HTMLButtonElement | null;
     const submitLabel = document.getElementById('sign-submit-label');
     const spinner = document.getElementById('sign-spinner');
-    // ── WJ17 — état « Signature… » n'est pas couvert par prepareI18n (il écrase
-    // le libellé APRÈS le premier rendu) : on le pilote via un petit état
-    // + le registre partagé, pour rester correct FR/AR à chaque bascule.
+    // ── WJ17/WJ43 — état « Signature… » n'est pas couvert par prepareI18n (il
+    // écrase le libellé APRÈS le premier rendu) : on le pilote via un petit
+    // état + le registre partagé, pour rester correct FR/EN/AR à chaque bascule.
     let submitBusy = false;
-    const SUBMIT_LABEL = { fr: 'Signer en ligne', ar: 'التوقيع إلكترونياً' } as const;
-    const SUBMIT_LABEL_BUSY = { fr: 'Signature…', ar: 'جارٍ التوقيع…' } as const;
-    function renderSubmitLabel(lang: 'fr' | 'ar'): void {
+    const SUBMIT_LABEL = { fr: 'Signer en ligne', en: 'Sign online', ar: 'التوقيع إلكترونياً' } as const;
+    const SUBMIT_LABEL_BUSY = { fr: 'Signature…', en: 'Signing…', ar: 'جارٍ التوقيع…' } as const;
+    function renderSubmitLabel(lang: PropLang): void {
       if (!submitLabel) return;
       submitLabel.textContent = submitBusy ? SUBMIT_LABEL_BUSY[lang] : SUBMIT_LABEL[lang];
     }
@@ -1368,20 +2361,23 @@ const signConfig = ok
     }
     clearBtn?.addEventListener('click', clearSignature);
 
-    // Horodatage local lisible (fr-MA) — affiché en direct dans le récap.
-    function frenchStamp(d: Date): string {
-      try {
-        return d.toLocaleString('fr-MA', {
-          dateStyle: 'long', timeStyle: 'short',
-        });
-      } catch {
-        return d.toLocaleString('fr-FR');
-      }
+    // ── WJ42 — Horodatage localisé (FR/EN/AR), affiché en direct dans le récap.
+    // AVANT : `stampEl.textContent = frenchStamp(now)` écrasait le markup
+    // tri-node data-i18n du <p id="sign-stamp"> (ses deux <span data-i18n>
+    // portant Réf./« l'horodatage s'affichera ici ») avec une chaîne FR figée,
+    // JAMAIS ré-inscrite dans `propI18nBusyLabels` — résultat : au moindre
+    // aller-retour de langue, cette seule ligne restait en français au beau
+    // milieu d'une page par ailleurs pleinement AR (ou EN). Cette fonction est
+    // désormais une busy-label REGISTRÉE (même discipline que
+    // `renderSubmitLabel`) : elle régénère tout le texte, dans la langue
+    // courante, à CHAQUE bascule — jamais un remplacement ponctuel figé.
+    const signedAtLocal = new Date();
+    function renderStamp(lang: PropLang): void {
+      if (!stampEl) return;
+      stampEl.textContent = signStampLabel(cfg.reference, signedAtLocal, lang as SignPropLang);
     }
-    if (stampEl) {
-      const now = new Date();
-      stampEl.textContent = `Réf. ${cfg.reference} · signature horodatée le ${frenchStamp(now)} (heure de votre appareil).`;
-    }
+    propI18nBusyLabels.push(renderStamp);
+    renderStamp(currentLang);
 
     function showError(msg: string): void {
       if (!errorEl) return;
@@ -1391,15 +2387,49 @@ const signConfig = ok
     function clearError(): void {
       if (errorEl) errorEl.hidden = true;
     }
-    function showSuccess(name: string, when?: string): void {
+    // ── WJ42 — `successTime` portait le même défaut que le stamp : une chaîne
+    // FR figée (« · signé le … ») jamais ré-inscrite au registre. `signedWhen`
+    // garde la Date brute ; `renderSuccessTime` (busy-label enregistrée) la
+    // reformate dans la langue courante à chaque bascule.
+    let signedWhen: Date | null = null;
+    const SUCCESS_TIME_PREFIX = { fr: ' · signé le ', en: ' · signed on ', ar: ' · تم التوقيع بتاريخ ' } as const;
+    function renderSuccessTime(lang: PropLang): void {
+      if (!successTime) return;
+      successTime.textContent = signedWhen
+        ? `${SUCCESS_TIME_PREFIX[lang]}${localizedStamp(signedWhen, lang as SignPropLang)}`
+        : '';
+    }
+    propI18nBusyLabels.push(renderSuccessTime);
+    // WJ78 — « le moment après la signature » : accusé visuel + écho de
+    // l'artefact du client + scroll dans la vue (reduced-motion-safe : le
+    // scroll lui-même n'est pas une "animation" au sens strict, mais on lui
+    // demande explicitement un comportement 'auto' — pas de smooth-scroll
+    // forcé — quand le client préfère un mouvement réduit).
+    function showSuccess(name: string, when?: Date, signatureDataUrl?: string, scrollIntoView = false): void {
       if (form) form.hidden = true;
       if (sticky) sticky.hidden = true;
       if (successName) successName.textContent = name || '';
-      if (successTime && when) successTime.textContent = ` · signé le ${when}`;
+      if (when) {
+        signedWhen = when;
+        renderSuccessTime(currentLang);
+      }
+      // Écho de la signature manuscrite si dessinée, sinon le sceau textuel
+      // « Signature enregistrée ✓ » reste affiché (déjà visible par défaut).
+      if (signatureDataUrl && successEchoImg) {
+        successEchoImg.src = signatureDataUrl;
+        successEchoImg.hidden = false;
+        if (successEchoSeal) successEchoSeal.hidden = true;
+      }
       if (success) success.hidden = false;
+      if (scrollIntoView && success) {
+        const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        success.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
+      }
     }
 
-    // Déjà accepté au chargement → affiche directement l'état confirmé.
+    // Déjà accepté au chargement → affiche directement l'état confirmé (pas de
+    // scroll : le client arrive déjà sur une page qui affiche l'état confirmé,
+    // rien à "faire défiler jusqu'à" au premier paint).
     if (cfg.accepted) {
       showSuccess(cfg.acceptedName);
     }
@@ -1419,6 +2449,9 @@ const signConfig = ok
       const accord = (document.getElementById('sign-accord') as HTMLInputElement | null)?.checked;
       const consent = (document.getElementById('sign-consent') as HTMLInputElement | null)?.checked;
       const nom = (document.getElementById('sign-nom') as HTMLInputElement | null)?.value ?? '';
+      // WJ87 — facultatif : « je signe au nom de… » (MRE signant pour ses
+      // parents, foyer, etc.). Le signataire enregistré reste `nom` ci-dessus.
+      const onBehalfOf = (document.getElementById('sign-on-behalf-of') as HTMLInputElement | null)?.value ?? '';
       const state: SignFormState = { nom, option: selectedOption() };
 
       const v = validateSign(state, cfg.twoOptions);
@@ -1453,6 +2486,16 @@ const signConfig = ok
       submitBusy = true;
       renderSubmitLabel(currentLang);
 
+      // WJ81 — jamais un « Signature… » désactivé pour l'éternité : une
+      // connexion lente/un backend qui ne répond pas laissait auparavant ce
+      // bouton bloqué SANS limite. 15 s est le seuil documenté par le
+      // founder pour ce moment de très haute intention — au-delà, on annule
+      // la requête et on rend la main avec un message honnête + un chemin de
+      // repli (WhatsApp, déjà visible juste au-dessus dans « Une question
+      // avant de signer ? »).
+      const SIGN_SUBMIT_TIMEOUT_MS = 15000;
+      const submitController = new AbortController();
+      const submitTimer = window.setTimeout(() => submitController.abort(), SIGN_SUBMIT_TIMEOUT_MS);
       try {
         // Corps RÉTRO-COMPATIBLE : base (token/nom/option) + champs optionnels
         // (signature, consentement, horodatage) que le backend peut ignorer.
@@ -1460,6 +2503,7 @@ const signConfig = ok
           signature_data_url: signatureDataUrl,
           consent_esign: true,
           signed_at_client: signedAtIso,
+          on_behalf_of: onBehalfOf,
         });
         const res = await fetch('/api/proposition-accept', {
           method: 'POST',
@@ -1469,6 +2513,7 @@ const signConfig = ok
             twoOptions: cfg.twoOptions,
             ...richBody,
           }),
+          signal: submitController.signal,
         });
         const data = (await res.json()) as {
           ok?: boolean;
@@ -1476,19 +2521,39 @@ const signConfig = ok
           accepte_par_nom?: string;
         };
         if (res.ok && data.ok) {
-          showSuccess(data.accepte_par_nom || nom.trim(), frenchStamp(signedAt));
+          showSuccess(data.accepte_par_nom || nom.trim(), signedAt, signatureDataUrl, true);
           return;
         }
         // 400 / 409 / 404 : message backend inline. 409 = déjà accepté →
         // on bascule quand même sur l'état confirmé (double-clic sûr).
         if (res.status === 409) {
-          showSuccess(data.accepte_par_nom || nom.trim());
+          showSuccess(data.accepte_par_nom || nom.trim(), undefined, signatureDataUrl, true);
           return;
         }
         showError(data.detail || 'Une erreur est survenue. Veuillez réessayer.');
-      } catch {
-        showError('Service momentanément indisponible. Veuillez réessayer.');
+      } catch (err) {
+        // WJ45 — si le navigateur se sait hors-ligne au moment de l'échec, on
+        // l'affirme explicitement (bandeau + message dédié, dans la langue
+        // courante) plutôt que la formule générique de panne/lenteur : rien
+        // n'a été soumis, le formulaire reste rempli tel quel.
+        syncPropOfflineBanner();
+        if (!navigator.onLine) {
+          const OFFLINE_SIGN_MSG: Record<PropLang, string> = {
+            fr: 'Pas de connexion — vos réponses sont conservées, on réessaie dès le retour du réseau.',
+            en: "No connection — your answers are kept, we'll retry as soon as the network is back.",
+            ar: 'لا يوجد اتصال — إجاباتكم محفوظة، سنعيد المحاولة فور عودة الشبكة.',
+          };
+          showError(OFFLINE_SIGN_MSG[currentLang]);
+        } else {
+          const timedOut = err instanceof Error && err.name === 'AbortError';
+          showError(
+            timedOut
+              ? 'La connexion est lente — réessayez, ou contactez-nous sur WhatsApp ci-dessus.'
+              : 'Service momentanément indisponible. Veuillez réessayer.',
+          );
+        }
       } finally {
+        window.clearTimeout(submitTimer);
         submitting = false;
         if (submitBtn) submitBtn.disabled = false;
         if (spinner) spinner.hidden = true;
@@ -1676,6 +2741,116 @@ const signConfig = ok
     });
   }
 
+  // ── WJ54 — « Demander une modification » : formulaire de révision
+  // structurée, posté vers le MÊME proxy /api/proposition-contact que WJ29
+  // ci-dessus (canal `revision` distinct) — jamais un nouvel endpoint. Le
+  // formulaire est gâté côté serveur (rendu uniquement quand `ok`, voir
+  // l'astro plus haut) : ce script ne fait qu'attacher son comportement s'il
+  // est bien présent dans le DOM.
+  (function setupRevisionForm(): void {
+    const revisionSection = document.querySelector<HTMLElement>('[data-revision-token]');
+    const revisionToken = revisionSection?.dataset.revisionToken ?? '';
+    if (!revisionSection || !revisionToken) return;
+
+    const form = document.getElementById('revision-form') as HTMLFormElement | null;
+    const detailEl = document.getElementById('revision-detail') as HTMLTextAreaElement | null;
+    const errorEl = document.getElementById('revision-error');
+    const confirmEl = document.getElementById('revision-confirm');
+    const submitBtn = document.getElementById('revision-submit') as HTMLButtonElement | null;
+    const kindBtns = Array.from(revisionSection.querySelectorAll<HTMLButtonElement>('[data-revision-kind]'));
+    if (!form) return;
+
+    type RevisionKind = 'kwc' | 'batterie' | 'autre';
+    let selectedKind: RevisionKind | null = null;
+
+    function selectKind(kind: RevisionKind): void {
+      selectedKind = kind;
+      kindBtns.forEach((btn) => {
+        const on = btn.dataset.revisionKind === kind;
+        btn.setAttribute('aria-pressed', String(on));
+        btn.setAttribute(
+          'style',
+          on
+            ? 'background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)'
+            : '',
+        );
+      });
+    }
+    kindBtns.forEach((btn) => {
+      btn.addEventListener('click', () => selectKind((btn.dataset.revisionKind as RevisionKind) || 'autre'));
+    });
+
+    let submitting = false;
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (submitting) return;
+
+      if (errorEl) errorEl.hidden = true;
+      if (confirmEl) confirmEl.hidden = true;
+
+      const detail = (detailEl?.value ?? '').trim();
+      const kind = selectedKind;
+      if (!kind) {
+        if (errorEl) {
+          errorEl.textContent = 'Veuillez choisir le type de modification souhaitée.';
+          errorEl.hidden = false;
+        }
+        return;
+      }
+      if (kind === 'autre' && !detail) {
+        if (errorEl) {
+          errorEl.textContent = 'Merci de préciser votre demande en quelques mots.';
+          errorEl.hidden = false;
+        }
+        return;
+      }
+
+      submitting = true;
+      if (submitBtn) submitBtn.disabled = true;
+
+      const labels: Record<RevisionKind, string> = {
+        kwc: 'Ajuster la puissance (kWc)',
+        batterie: 'Changer l’option batterie',
+        autre: 'Autre modification',
+      };
+      const message = detail ? `${labels[kind]} — ${detail}` : labels[kind];
+
+      void (async () => {
+        try {
+          const res = await fetch('/api/proposition-contact', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              token: revisionToken,
+              channel: 'revision',
+              revision_kind: kind,
+              message,
+            }),
+          });
+          const data = (await res.json()) as { detail?: string };
+          if (confirmEl) {
+            confirmEl.textContent = data.detail || 'Merci — votre demande a bien été transmise.';
+            confirmEl.hidden = false;
+          }
+          form.reset();
+          selectedKind = null;
+          kindBtns.forEach((btn) => {
+            btn.setAttribute('aria-pressed', 'false');
+            btn.setAttribute('style', '');
+          });
+        } catch {
+          if (confirmEl) {
+            confirmEl.textContent = 'Merci — votre demande a bien été transmise.';
+            confirmEl.hidden = false;
+          }
+        } finally {
+          submitting = false;
+          if (submitBtn) submitBtn.disabled = false;
+        }
+      })();
+    });
+  })();
+
   // ── WJ34 — affordance « génération du PDF… » sur le lien de téléchargement.
   // Le rendu backend (WeasyPrint) prend quelques secondes : sans signal, le
   // visiteur peut croire que le clic n'a rien fait. Le lien continue de
@@ -1692,13 +2867,14 @@ const signConfig = ok
   const pdfIcon = document.getElementById('pdf-download-icon');
   const pdfSpinner = document.getElementById('pdf-download-spinner');
   const pdfLabel = document.getElementById('pdf-download-label');
-  const PDF_LABEL_DEFAULT = { fr: 'Télécharger le devis (PDF)', ar: 'تحميل العرض (PDF)' } as const;
-  const PDF_LABEL_LOADING = { fr: 'Génération du PDF…', ar: 'جارٍ إنشاء PDF…' } as const;
-  // WJ17 — le libellé bascule FR/AR APRÈS le premier rendu (état « génération »),
-  // donc hors du mécanisme dual-node data-i18n : on lit la langue courante via
-  // le pont __propCurrentLang exposé par le script de bascule (module séparé),
-  // et on se réinscrit pour être retraduit à chaque clic FR/عربي.
-  type PropLang = 'fr' | 'ar';
+  const PDF_LABEL_DEFAULT = { fr: 'Télécharger le devis (PDF)', en: 'Download the quote (PDF)', ar: 'تحميل العرض (PDF)' } as const;
+  const PDF_LABEL_LOADING = { fr: 'Génération du PDF…', en: 'Generating the PDF…', ar: 'جارٍ إنشاء PDF…' } as const;
+  // WJ17/WJ43 — le libellé bascule FR/EN/AR APRÈS le premier rendu (état
+  // « génération »), donc hors du mécanisme tri-node data-i18n : on lit la
+  // langue courante via le pont __propCurrentLang exposé par le script de
+  // bascule (module séparé), et on se réinscrit pour être retraduit à chaque
+  // clic FR/EN/عربي.
+  type PropLang = 'fr' | 'en' | 'ar';
   const propWin = window as unknown as {
     __propCurrentLang?: () => PropLang;
     __propRegisterBusyLabel?: (fn: (l: PropLang) => void) => void;
@@ -1729,6 +2905,135 @@ const signConfig = ok
       if (document.visibilityState === 'visible') setPdfLoading(false);
     });
   }
+
+  // ── WJ53 — Toggle « payer comptant / paiement échelonné », recalcul en
+  // direct (aucun appel réseau : simple division du TTC déjà connu côté
+  // client via data-installment-ttc). Utilise installmentSplit (même fonction
+  // PURE que testée sous vitest) pour garantir zéro divergence de calcul.
+  // Regroupé dans CE script (voir la note WJ34 ci-dessus sur le 4ᵉ <script>
+  // sans import ES qui perdait son chunk client) — un <script> supplémentaire
+  // isolé sur cette route reste un risque connu, pas seulement historique.
+  (function setupInstallmentToggle(): void {
+    const installmentSection = document.querySelector<HTMLElement>('[data-installment-ttc]');
+    if (!installmentSection) return;
+    const ttc = Number(installmentSection.dataset.installmentTtc || '0');
+    const cashBtn = document.getElementById('installment-cash-btn');
+    const splitBtn = document.getElementById('installment-split-btn');
+    const cashView = document.getElementById('installment-cash-view');
+    const splitView = document.getElementById('installment-split-view');
+    const monthsSelect = document.getElementById('installment-months') as HTMLSelectElement | null;
+    const monthlyValueEl = document.getElementById('installment-monthly-value');
+
+    function setMode(mode: 'cash' | 'split'): void {
+      const isCash = mode === 'cash';
+      if (cashView) cashView.hidden = !isCash;
+      if (splitView) splitView.hidden = isCash;
+      cashBtn?.setAttribute('aria-pressed', String(isCash));
+      splitBtn?.setAttribute('aria-pressed', String(!isCash));
+      if (cashBtn) {
+        cashBtn.setAttribute(
+          'style',
+          isCash
+            ? 'background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)'
+            : '',
+        );
+      }
+      if (splitBtn) {
+        splitBtn.setAttribute(
+          'style',
+          !isCash
+            ? 'background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)'
+            : '',
+        );
+      }
+    }
+    cashBtn?.addEventListener('click', () => setMode('cash'));
+    splitBtn?.addEventListener('click', () => setMode('split'));
+
+    function recompute(): void {
+      if (!monthsSelect || !monthlyValueEl) return;
+      const months = (Number(monthsSelect.value) || 12) as InstallmentMonths;
+      const split = installmentSplit(ttc, months);
+      if (split) monthlyValueEl.textContent = formatMAD(split.monthly);
+    }
+    monthsSelect?.addEventListener('change', recompute);
+    recompute();
+  })();
+
+  // ── WJ56 — « Partager sur WhatsApp » : Web Share API native quand disponible
+  // (feuille de partage système — la meilleure expérience sur mobile/tablette,
+  // laisse le client choisir WhatsApp OU tout autre canal), repli sur le lien
+  // wa.me générique (déjà posé en `href`, fonctionne SANS JS) sinon. On ne
+  // bloque JAMAIS le clic : navigator.share() réussi → preventDefault (évite
+  // une double feuille de partage) ; échec/absence → le lien wa.me s'ouvre
+  // normalement.
+  (function setupShareWhatsapp(): void {
+    const shareBtn = document.getElementById('prop-share-whatsapp') as HTMLAnchorElement | null;
+    if (!shareBtn || typeof navigator.share !== 'function') return;
+    shareBtn.addEventListener('click', (e) => {
+      const url = shareBtn.dataset.shareUrl || shareBtn.href;
+      const ref = shareBtn.dataset.shareRef || '';
+      e.preventDefault();
+      navigator
+        .share({
+          title: 'Proposition solaire Taqinor',
+          text: ref ? `Voici ma proposition solaire Taqinor (réf. ${ref})` : 'Voici ma proposition solaire Taqinor',
+          url,
+        })
+        .catch(() => {
+          // Annulé par l'utilisateur ou API indisponible en pratique : on
+          // rouvre le repli wa.me pour ne jamais laisser le clic sans effet.
+          window.open(shareBtn.href, '_blank', 'noopener,noreferrer');
+        });
+    });
+  })();
+
+  // ── WJ80 — Tap-to-reveal des valeurs du graphe + de la courbe journalière.
+  // Le `<title>` SVG (survol souris) est INVISIBLE au tactile — l'essentiel du
+  // trafic de cette page. Délégation d'événement sur le conteneur visible
+  // (peu importe la langue active) : un tap/clic/Entrée sur une barre ou le
+  // repère pic/moyenne affiche son libellé déjà formaté (data-month/
+  // data-value ou data-peak/data-avg, posés côté serveur — aucun recalcul).
+  (function setupChartTapReveal(): void {
+    function nearestTarget(el: EventTarget | null): HTMLElement | null {
+      if (!(el instanceof Element)) return null;
+      return el.closest<HTMLElement>('[data-chart-bar], [data-curve-scale]');
+    }
+
+    function reveal(target: HTMLElement): void {
+      if (target.matches('[data-chart-bar]')) {
+        const caption = document.getElementById('chart-tap-caption');
+        if (!caption) return;
+        const month = target.dataset.month ?? '';
+        const value = target.dataset.value ?? '';
+        caption.textContent = `${month} · ${value}`;
+      } else if (target.matches('[data-curve-scale]')) {
+        const caption = document.getElementById('curve-tap-caption');
+        if (!caption) return;
+        const peak = target.dataset.peak ?? '';
+        const avg = target.dataset.avg ?? '';
+        caption.textContent = [peak, avg].filter(Boolean).join(' · ');
+      }
+    }
+
+    function wireTapReveal(container: HTMLElement | null): void {
+      if (!container) return;
+      container.addEventListener('click', (e) => {
+        const target = nearestTarget(e.target);
+        if (target) reveal(target);
+      });
+      container.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        const target = nearestTarget(e.target);
+        if (target) {
+          e.preventDefault();
+          reveal(target);
+        }
+      });
+    }
+
+    document.querySelectorAll<HTMLElement>('.chart-svg, .daily-curve-wrap').forEach(wireTapReveal);
+  })();
 </script>
 
 <style>
@@ -1744,6 +3049,16 @@ const signConfig = ok
     width: 100%;
     height: 100%;
   }
+  /* WJ80 — affordance tap-to-reveal : curseur main sur les barres (souris) ;
+     le tactile n'a pas besoin de curseur mais bénéficie du focus-visible
+     ci-dessous (navigation clavier — les barres portent tabindex="0"). */
+  .chart-svg :global([data-chart-bar]) {
+    cursor: pointer;
+  }
+  .chart-svg :global([data-chart-bar]:focus-visible) {
+    outline: 2px solid var(--color-brass-300, #f3cc66);
+    outline-offset: 1px;
+  }
 
   /* WJ16 — courbe journalière : ratio réservé AVANT rendu (viewBox 360×170)
      → zéro CLS. Le SVG enfant occupe 100 % de la largeur. */
@@ -1755,6 +3070,14 @@ const signConfig = ok
     display: block;
     width: 100%;
     height: 100%;
+  }
+  /* WJ80 — même affordance tap-to-reveal sur le repère pic/moyenne. */
+  .daily-curve-wrap :global([data-curve-scale]) {
+    cursor: pointer;
+  }
+  .daily-curve-wrap :global([data-curve-scale]:focus-visible) {
+    outline: 2px solid var(--color-brass-300, #f3cc66);
+    outline-offset: 1px;
   }
 
   /* WJ11 — pad de signature : hauteur fixe (zéro CLS) ; pas de débordement.
@@ -1848,6 +3171,91 @@ const signConfig = ok
     }
     .hero-photo.is-loaded {
       opacity: 1;
+    }
+  }
+
+  /* WJ78 — sceau ✓ du moment après signature. Statique (visible, opacité 1)
+     par défaut ; l'anneau se dessine et le check apparaît en fondu UNIQUEMENT
+     sans préférence de mouvement réduit (jamais caché en reduced-motion —
+     juste immobile). Zéro CLS : taille fixe, pas de mise en page dépendante. */
+  .success-seal {
+    width: 52px;
+    height: 52px;
+  }
+  .success-seal-ring,
+  .success-seal-check {
+    opacity: 1;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .success-seal-ring {
+      stroke-dasharray: 151;
+      stroke-dashoffset: 151;
+      animation: seal-ring-draw 0.5s ease-out forwards;
+    }
+    .success-seal-check {
+      stroke-dasharray: 34;
+      stroke-dashoffset: 34;
+      opacity: 0;
+      animation: seal-check-draw 0.35s ease-out 0.45s forwards;
+    }
+  }
+  @keyframes seal-ring-draw {
+    to { stroke-dashoffset: 0; }
+  }
+  @keyframes seal-check-draw {
+    to { stroke-dashoffset: 0; opacity: 1; }
+  }
+
+  /* WJ84 — page imprimable propre. Ctrl-P est un réflexe naturel sur une
+     proposition ; sans ces règles, le chrome flottant (bascule langue, CTA
+     collant) et le fond sombre produisaient du "dark-on-dark" par-dessus le
+     contenu imprimé. `.print-hint` est masqué à l'écran (classe utilitaire
+     `hidden`) et réapparaît UNIQUEMENT en impression. */
+  .print-hint {
+    display: none;
+  }
+  @media print {
+    .print-hint {
+      display: block;
+      margin: 0 0 1rem;
+      padding: 0.5rem 0.75rem;
+      border: 1px solid #999;
+      font-size: 11px;
+      color: #111;
+      background: #fff;
+    }
+    /* Chrome flottant / interactif qui n'a aucun sens sur une feuille imprimée. */
+    .prop-lang-switch,
+    #sticky-cta,
+    #roof3d-overlay,
+    #contact-confirm,
+    #sign-form,
+    #pdf-download,
+    .btn-pill {
+      display: none !important;
+    }
+    /* Fond clair + texte sombre : le thème nuit/laiton par défaut du site
+       imprimerait en dark-on-dark (fond quasi noir, texte clair illisible sur
+       papier/PDF navigateur). */
+    html,
+    body,
+    .proposition {
+      background: #fff !important;
+      color: #111 !important;
+    }
+    .proposition :global(*) {
+      color: inherit;
+      text-shadow: none !important;
+      box-shadow: none !important;
+    }
+    .cine-card {
+      border: 1px solid #ccc !important;
+      background: #fff !important;
+    }
+    /* La scène 3D (canvas WebGL) ne s'imprime pas de façon fiable — masquée,
+       le poster/héros photo reste visible via <img> normal. */
+    .roof3d-stage :global(canvas) {
+      display: none !important;
     }
   }
 </style>

@@ -10,15 +10,58 @@ import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
+import Faq from '../../components/Faq.astro';
 import { NAP } from '../../lib/nap';
 import RelatedLinks from '../../components/RelatedLinks.astro';
+import { estimateReadingTime } from '../../lib/readingTime';
+
+// W303 — date de vérification + auteur + temps de lecture.
+const verifiedDate = new Date('2026-07-03');
+const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+const guideBodyText = `
+  L'ONEE coupe en pleine journée, le soleil tape sur le toit, et pourtant tout s'éteint chez vous comme
+  chez les voisins. Un onduleur on-grid classique est conçu pour injecter de l'électricité en phase
+  avec le réseau. Dès que le réseau disparaît, il se coupe automatiquement — c'est l'anti-îlotage.
+  Garder le courant n'est pas devenir autonome : le mode secours d'un onduleur hybride crée une île
+  électrique limitée, seuls les circuits branchés sur les sorties EPS restent alimentés, et uniquement
+  tant que la batterie contient de l'énergie. Un onduleur hybride possède deux types de sorties : les
+  sorties réseau normales, et les sorties EPS réservées au secours. Les onduleurs Deye de la série SG
+  intègrent le mode secours nativement, avec une bascule quasi-instantanée de l'ordre de 4 à 10 ms. La
+  gamme Huawei SUN2000 associée aux batteries LUNA2000 requiert un équipement séparé, la Backup Box. Il
+  est possible d'installer un onduleur hybride sans batterie, une configuration battery-ready, mais
+  sans batterie il n'y a pas de secours EPS possible. La bascule EPS ne dure que ce que la batterie
+  permet : une batterie de 5 à 10 kWh peut couvrir plusieurs heures à une nuit complète selon la
+  consommation réelle des circuits raccordés.
+`;
+const readingMinutes = estimateReadingTime(guideBodyText);
+
+// W297 — AEO/GEO : Q&A autonome reprenant les faits déjà énoncés ci-dessus, pour
+// que les assistants IA (Google AI Overviews / ChatGPT) puissent citer directement
+// une réponse complète. schema={false} : /faq garde le seul FAQPage du site.
+const faq = [
+  {
+    q: 'Pourquoi mes panneaux solaires ne fonctionnent-ils pas pendant une coupure ONEE ?',
+    a: 'Un onduleur on-grid classique se coupe automatiquement dès que le réseau disparaît — c’est l’anti-îlotage, une obligation de sécurité qui protège les techniciens intervenant sur le réseau. Vos panneaux s’arrêtent donc avec le réseau, même en plein soleil.',
+  },
+  {
+    q: 'Comment garder l’électricité pendant une coupure avec le solaire ?',
+    a: 'Il faut un onduleur hybride doté de sorties EPS (Emergency Power Supply) et d’une batterie. Lors d’une coupure, l’onduleur bascule en quelques millisecondes sur ces sorties de secours, qui alimentent uniquement les circuits prioritaires câblés dessus.',
+  },
+  {
+    q: 'Combien de temps dure la batterie de secours pendant une coupure ?',
+    a: 'Pour des usages essentiels (éclairage, réfrigérateur, box internet), une batterie de 5 à 10 kWh peut couvrir plusieurs heures à une nuit complète selon la consommation réelle des circuits raccordés. Si les panneaux produisent pendant la coupure, l’onduleur peut recharger la batterie en temps réel et prolonger le secours.',
+  },
+];
 
 const url = new URL(Astro.url.pathname, Astro.site).href;
+// W291 — image OG (même URL que celle passée à ogSlug plus bas), pour l'éligibilité Article rich results.
+const schemaImageUrl = new URL('/og/equipement.png', Astro.site).href;
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Article',
   headline: 'Garder l\'électricité pendant les coupures : EPS, onduleur hybride et batterie',
   description: 'Coupure de courant et solaire : comment fonctionnent les sorties EPS d\'un onduleur hybride (Deye, Huawei), le mythe du "off-grid" expliqué, et pourquoi un on-grid standard s\'éteint toujours pendant une panne.',
+  image: schemaImageUrl,
   about: { '@type': 'Thing', name: 'Secours électrique solaire EPS onduleur hybride' },
   author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
   publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
@@ -29,9 +72,11 @@ const jsonLd = {
 <Layout
   title="Garder l'électricité pendant les coupures : EPS, onduleur hybride et batterie | Taqinor"
   description="Coupure de courant et solaire : comment fonctionnent les sorties EPS d'un onduleur hybride (Deye, Huawei), pourquoi le secours n'est pas du off-grid, et pourquoi un on-grid standard s'éteint toujours pendant une panne."
-  ogSlug="equipement"
+  ogSlug="guides"
 >
   <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  {/* W376 — reading progress bar (see global.css .reading-bar) */}
+  <div class="reading-bar" aria-hidden="true"></div>
   <div class="v2">
     <V2Enhance />
     <Article33Ribbon />
@@ -41,6 +86,14 @@ const jsonLd = {
     <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
       <p class="tech-label v2-kicker rule-brass text-lune">Guide · Équipement</p>
       <h1 class="display v2-page-title mt-5 text-white">Garder l'électricité pendant les coupures</h1>
+
+      <!-- W303 — date de vérification + auteur + temps de lecture -->
+      <p class="guide-byline mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-lune-faint">
+        <span>Vérifié le {dateFmt.format(verifiedDate)} · par Reda Kasri</span>
+        <span aria-hidden="true">·</span>
+        <span>{readingMinutes} min de lecture</span>
+      </p>
+
       <p class="v2-lead mt-6 text-lune-soft">
         La scène est familière : l'ONEE coupe en pleine journée, le soleil tape sur le toit, et
         pourtant tout s'éteint chez vous comme chez les voisins. Beaucoup de propriétaires
@@ -145,9 +198,13 @@ const jsonLd = {
       <RelatedLinks links={[
         { href: '/guides/on-grid-off-grid-ou-hybride', label: 'On-grid, off-grid ou hybride ?' },
         { href: '/guides/faut-il-des-batteries', label: 'Faut-il des batteries ?' },
+        { href: '/batteries-stockage', label: 'Batteries & stockage' },
         { href: '/guides', label: 'Tous les guides' },
       ]} />
     </article>
+
+    <!-- W297 — FAQ visuelle : schema={false}, /faq garde le seul FAQPage du site -->
+    <Faq items={faq} heading="Électricité pendant les coupures — questions fréquentes" schema={false} />
 
     <CtaBand title="Votre installation doit tenir pendant les coupures ? Lancez l'étude gratuite." href="/devis/mon-toit" />
 

@@ -17,8 +17,8 @@
     opacity: 0;
     transform: translateY(26px);
     transition:
-      opacity 0.7s cubic-bezier(0.2, 0.65, 0.25, 1),
-      transform 0.7s cubic-bezier(0.2, 0.65, 0.25, 1);
+      opacity 0.7s var(--ease-cine),
+      transform 0.7s var(--ease-cine);
     will-change: opacity, transform;
   }
   .v2-js .v2-rise.v2-in {
@@ -28,6 +28,54 @@
   /* Décalage doux dans une grille marquée data-stagger (enfants .v2-rise) */
   .v2-js [data-stagger] > .v2-rise {
     transition-delay: calc(var(--v2-i, 0) * 80ms);
+  }
+}
+
+/* ── W361 — Couche scroll-driven native (progressive enhancement) ─────────
+   Là où le navigateur supporte `animation-timeline: view()` (Chrome/Edge
+   126+), on remplace la transition pilotée par IntersectionObserver par une
+   animation liée nativement au défilement — même image finale, décodée par
+   le compositor plutôt que par le fil JS principal (moins coûteux, jamais un
+   jank au scroll). Le fallback IO (.v2-js .v2-rise ci-dessus) ne s'exécute
+   jamais dans les navigateurs qui prennent cette branche : le CSS @supports
+   court-circuite le JS via `animation-timeline`, sans toucher au marquage ni
+   au script (celui-ci pose toujours .v2-in, simplement il n'est plus la
+   seule source du fondu). Reduced-motion : cette règle est imbriquée dans le
+   même @media (prefers-reduced-motion: no-preference) que le fallback, donc
+   désactivée à l'identique. Sans support @supports : la règle n'existe pas,
+   le fallback JS/IO ci-dessus reste seul responsable → zéro régression. */
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .v2-js .v2-rise {
+      /* Neutralise la transition IO : l'animation ci-dessous prend le relais. */
+      transition: none;
+      animation: v2RiseScroll linear both;
+      animation-timeline: view();
+      /* Entre dans l'animation quand l'élément atteint ~85 % de la hauteur de
+         vue (même seuil visuel que rootMargin -10% / threshold 0.2 du JS) et
+         termine la course à mi-hauteur — un seul passage, jamais de retour en
+         arrière au re-scroll vers le haut (l'image reste stable une fois
+         révélée grâce au `both` + la borne de sortie choisie loin en dessous
+         du pli). */
+      animation-range: entry 0% cover 35%;
+    }
+    /* .v2-in n'est plus nécessaire pour déclencher le fondu dans cette
+       branche, mais le JS continue de le poser (compte-à-rebours ci-dessous) :
+       on le neutralise ici pour ne jamais entrer en conflit avec l'animation
+       liée au scroll. */
+    .v2-js .v2-rise.v2-in {
+      animation-fill-mode: both;
+    }
+  }
+  @keyframes v2RiseScroll {
+    from {
+      opacity: 0;
+      transform: translateY(26px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
   }
 }
 
@@ -87,6 +135,29 @@
 .v2 .v2-lead {
   font-size: clamp(1.05rem, 1.5vw, 1.3rem);
   line-height: 1.7;
+  /* W367 — pretty wrapping on lead copy (see prose.css); progressive
+     enhancement, no RTL impact. */
+  text-wrap: pretty;
+}
+
+/* ─── W375 — Un moment typographique monumental ─────────────────────────────
+   .v2-fig-monument : UN pull-figure/eyebrow par page, à l'échelle réservée
+   pour la thèse de marque (la bande "preuve avant la promesse" sur l'accueil)
+   — contraste d'échelle net avec le corps calme qui l'entoure. Réutilise
+   l'axe de largeur variable Archivo (déjà chargé, cf. W378) à sa valeur la
+   plus large (125 %, le maximum de la fonte livrée) plutôt que le
+   font-stretch 106 % de .fig standard : c'est UNE déclaration, pas un
+   chiffre de tableau parmi d'autres — jamais utilisé deux fois sur la même
+   page (sinon il cesse d'être monumental).
+   Largeur RÉSERVÉE avant toute interaction (aucune animation ici — la seule
+   dramatisation est l'échelle elle-même) : zéro CLS, `tabular-nums` hérité
+   de `.fig`. Le clamp reste sous 10rem même en 4K (160px) pour ne jamais
+   forcer un retour à la ligne qui romprait le rythme de la bande. */
+.v2 .v2-fig-monument {
+  font-size: clamp(5rem, 7vw + 3rem, 10rem);
+  font-stretch: 125%;
+  line-height: 0.9;
+  letter-spacing: -0.02em;
 }
 
 /* Couture de lumière plus longue et plus douce (transitions de sections) */
@@ -95,4 +166,59 @@
   background:
     radial-gradient(70% 140% at 50% 100%, rgb(232 181 74 / 0.14), transparent 72%),
     linear-gradient(to bottom, var(--color-nuit), var(--color-blanc-azur));
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * W377 — [data-choreo] entrance choreography primitive
+ * ═══════════════════════════════════════════════════════════════════════
+ * Extends W270's one-off WhatsAppMock stagger into a reusable system: any
+ * container marked `data-choreo` reveals its direct children one after the
+ * other as it scrolls into view, each child offset by its own `--i` index
+ * (`style="--i:0"`, `--i:1`, …) — the same authored entrance language,
+ * applied consistently instead of re-invented per component.
+ *
+ * UNLIKE the rest of this file, this block is DELIBERATELY NOT scoped to
+ * `.v2`/`.v2-js`: WhatsAppMock, Testimonials and CertLogoRow render on pages
+ * that don't all carry the `.v2` wrapper (e.g. devis/mon-toit,
+ * proposition/[token]), so the primitive has to work everywhere those
+ * components are reused, not just inside `.v2` routes.
+ *
+ * Progressive enhancement, pure CSS, no JS required:
+ *   1. `@supports (animation-timeline: view())`: each child animates in on
+ *      its own view-timeline, native to the compositor — no scroll
+ *      listener, no IntersectionObserver, no main-thread cost. `--i` drives
+ *      a small `animation-delay` so siblings settle in a soft cascade
+ *      instead of all at once.
+ *   2. No support: children are simply visible immediately (no hidden
+ *      state exists outside the @supports block below) — same zero-JS,
+ *      zero-CLS floor as the rest of the site's progressive-enhancement
+ *      rule; never a broken/invisible fallback.
+ *   3. `prefers-reduced-motion: reduce`: identical to (2) — instant,
+ *      un-animated, fully visible from first paint.
+ *
+ * ZERO CLS: the animated properties are opacity/transform only; the
+ * `animation-range` entry point is chosen so the element is already laid
+ * out (occupying its final box) before the fade starts, so nothing shifts.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    [data-choreo] > * {
+      opacity: 0;
+      transform: translateY(18px);
+      animation: choreo-rise linear both;
+      animation-timeline: view();
+      animation-range: entry 0% cover 30%;
+      animation-delay: calc(var(--i, 0) * 90ms);
+    }
+  }
+  @keyframes choreo-rise {
+    from {
+      opacity: 0;
+      transform: translateY(18px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
 }

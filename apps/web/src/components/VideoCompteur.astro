@@ -1,0 +1,63 @@
+---
+/**
+ * W347 — « Compteur à zéro » : scaffold vidéo montrant un vrai compteur/appli
+ * client dont la consommation facturée chute après l'installation. Composant
+ * « vide-mais-premium » (même discipline que StarRating.astro/Testimonials.astro) :
+ * tant que le fondateur n'a pas fourni le vrai clip (src/lib/compteurVideo.ts,
+ * livré VIDE), ce composant ne rend RIEN publiquement — jamais un placeholder
+ * vidéo fabriqué. Une fois le clip renseigné, il s'affiche via LiteVideo (façade
+ * clic-pour-lire, aucun préchargement) au même endroit, sans autre changement.
+ *
+ * Placé « near the savings figures » (accueil : après la bande rupture tonale
+ * « L'investissement » ; proposition : près des chiffres de chantier/économies)
+ * — le contexte le plus persuasif pour ce genre de clip.
+ */
+import LiteVideo from './LiteVideo.astro';
+import { COMPTEUR_VIDEO, hasCompteurVideo } from '../lib/compteurVideo';
+import { getLocaleFromPath } from '../i18n/utils';
+import type { Locale } from '../i18n/config';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+
+const STR: Record<Locale, { eyebrow: string; title: string; lead: string; playLabel: string }> = {
+  fr: {
+    eyebrow: 'Preuve mesurée',
+    title: 'Le compteur qui tombe à zéro',
+    lead: "Le geste le plus parlant : un client réel montre sa consommation facturée avant/après l'installation.",
+    playLabel: 'Lire la vidéo du compteur',
+  },
+  en: {
+    eyebrow: 'Measured proof',
+    title: 'The meter dropping to zero',
+    lead: 'The clearest proof of all: a real client shows their billed consumption before and after the install.',
+    playLabel: 'Play the meter video',
+  },
+  ar: {
+    eyebrow: 'دليل مقيس',
+    title: 'العداد الذي ينزل إلى الصفر',
+    lead: 'أوضح دليل على الإطلاق: عميل حقيقي يعرض استهلاكه المفوتَر قبل وبعد التركيب.',
+    playLabel: 'تشغيل فيديو العداد',
+  },
+};
+const s = STR[locale] ?? STR.fr;
+const video = COMPTEUR_VIDEO;
+---
+
+{hasCompteurVideo() && video && (
+  <section class="px-4 py-20 text-white sm:py-24">
+    <div class="mx-auto max-w-4xl">
+      <p class="tech-label v2-kicker rule-brass text-lune">{s.eyebrow}</p>
+      <h2 class="display v2-section-title mt-4 text-white">{s.title}</h2>
+      <p class="v2-body mt-4 max-w-xl">{s.lead}</p>
+      <div class="relative mt-8 border border-brass-400/40" style="box-shadow: 0 0 0 1px rgb(232 181 74 / 0.08), 0 24px 60px -20px rgb(0 0 0 / 0.7);">
+        <LiteVideo
+          src={video.src}
+          poster={video.poster}
+          alt={video.alt}
+          playLabel={s.playLabel}
+          aspectRatio={video.aspectRatio ?? '16/9'}
+        />
+      </div>
+    </div>
+  </section>
+)}

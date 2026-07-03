@@ -40,6 +40,7 @@ const workersDevRedirect = () => ({
       await copyFile(new URL('./worker/canonical.mjs', import.meta.url), new URL('canonical.mjs', serverDir));
       await copyFile(new URL('./worker/redirects.mjs', import.meta.url), new URL('redirects.mjs', serverDir));
       await copyFile(new URL('./worker/cache.mjs', import.meta.url), new URL('cache.mjs', serverDir));
+      await copyFile(new URL('./worker/headers.mjs', import.meta.url), new URL('headers.mjs', serverDir));
       await copyFile(new URL('./worker/redirect-entry.mjs', import.meta.url), new URL('redirect-entry.mjs', serverDir));
 
       cfg.main = 'redirect-entry.mjs';
@@ -79,10 +80,12 @@ export default defineConfig({
       // jamais indexées. Les prévisualisations /v2 et /v3 ont été promues en
       // production puis supprimées ; /preview/* est la zone de revue privée
       // actuelle (diagnostic enrichi + schéma), exclue tant qu'elle n'est pas promue.
-      // Le tunnel devis↔toiture-3D est privé de bout en bout : capture client
-      // (/devis/), atelier interne Meriem (/internal/) et proposition client
-      // tokenisée (/proposition/) restent hors sitemap et noindex.
-      filter: (page) => !/type-test|media-test|variants-test|craft-|\/preview\/|\/devis\/|\/internal\/|\/proposition\//.test(page)
+      // W245 — /devis/ (capture « Mon toit ») est devenue le CTA principal du
+      // site : retirée de l'exclusion + noindex retiré des pages elles-mêmes.
+      // L'atelier interne Meriem (/internal/) et la proposition client
+      // tokenisée (/proposition/) restent des tunnels privés hors sitemap et
+      // noindex — jamais destinés à l'indexation.
+      filter: (page) => !/type-test|media-test|variants-test|craft-|\/preview\/|\/internal\/|\/proposition\/|\/embed\//.test(page)
     }),
     workersDevRedirect()
   ]

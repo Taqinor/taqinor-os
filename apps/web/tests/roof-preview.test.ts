@@ -61,16 +61,7 @@ describe('estimateur — MapLibre chargé paresseusement (aucun autre bundle tou
     const KNOWN_MAPLIBRE = [
       'src/scripts/roof-tool-3d.ts',
       'src/scripts/roof-tool-pro.ts',
-      'src/scripts/roof-tool-pro10.ts',
       'src/scripts/roof-tool-pro11.ts',
-      'src/scripts/roof-tool-pro2.ts',
-      'src/scripts/roof-tool-pro3.ts',
-      'src/scripts/roof-tool-pro4.ts',
-      'src/scripts/roof-tool-pro5.ts',
-      'src/scripts/roof-tool-pro6.ts',
-      'src/scripts/roof-tool-pro7.ts',
-      'src/scripts/roof-tool-pro8.ts',
-      'src/scripts/roof-tool-pro9.ts',
       'src/scripts/roof-tool.ts',
     ];
     expect(
@@ -281,16 +272,7 @@ describe('estimateur 3D RÉALISTE (pro) — Three.js isolé, parallèle, sans to
     // splitté, chargé à la demande) peuvent importer three ; rien d'autre dans `src`.
     const KNOWN_THREE = [
       'src/scripts/roof-tool-pro.ts',
-      'src/scripts/roof-tool-pro10.ts',
       'src/scripts/roof-tool-pro11.ts',
-      'src/scripts/roof-tool-pro2.ts',
-      'src/scripts/roof-tool-pro3.ts',
-      'src/scripts/roof-tool-pro4.ts',
-      'src/scripts/roof-tool-pro5.ts',
-      'src/scripts/roof-tool-pro6.ts',
-      'src/scripts/roof-tool-pro7.ts',
-      'src/scripts/roof-tool-pro8.ts',
-      'src/scripts/roof-tool-pro9.ts',
     ];
     expect(
       offenders.filter((f) => !f.startsWith('src/scripts/roofPro11/') && !KNOWN_THREE.includes(f)),
@@ -377,125 +359,6 @@ describe('estimateur 3D RÉALISTE (pro) — Three.js isolé, parallèle, sans to
     for (const p of ['index', 'résidentiel', 'professionnel', 'contact', 'équipement', 'loi-82-21', 'regularization-article-33']) {
       const page = read(`../src/pages/${p}.astro`);
       expect(page).not.toContain('roof-tool-pro');
-      expect(page).not.toMatch(/from\s+['"]three/);
-    }
-  });
-});
-
-describe('estimateur 3D HAUTE FIDÉLITÉ (pro 2) — vrais panneaux, vrai sud, vrai soleil', () => {
-  const page2 = '../src/pages/preview/toiture-3d-pro-2.astro';
-  const tool2 = '../src/scripts/roof-tool-pro2.ts';
-  const lib2 = '../src/lib/roofPro2.ts';
-
-  it('la page /preview/toiture-3d-pro-2 est noindex et vit dans /preview/ (sous-dossier)', () => {
-    expect(read(page2)).toContain('noindex={true}');
-    expect(existsSync(fileURLToPath(new URL(page2, import.meta.url)))).toBe(true);
-    expect(existsSync(fileURLToPath(new URL('../src/pages/toiture-3d-pro-2.astro', import.meta.url)))).toBe(false);
-  });
-
-  it('le filtre sitemap exclut /preview/ (donc aussi /preview/toiture-3d-pro-2)', () => {
-    const filterLine = read('../astro.config.mjs')
-      .split('\n')
-      .find((l) => l.includes('filter:')) ?? '';
-    expect(filterLine).toContain('preview');
-  });
-
-  it('les previews existantes (2D, 3D volumes, 3D racks) restent inchangées', () => {
-    for (const f of [
-      '../src/pages/preview/toiture.astro',
-      '../src/scripts/roof-tool.ts',
-      '../src/pages/preview/toiture-3d.astro',
-      '../src/scripts/roof-tool-3d.ts',
-      '../src/pages/preview/toiture-3d-pro.astro',
-      '../src/scripts/roof-tool-pro.ts',
-      '../src/lib/roofPro.ts',
-    ]) {
-      expect(read(f)).not.toContain('toiture-3d-pro-2');
-      expect(read(f)).not.toContain('roof-tool-pro2');
-      expect(read(f)).not.toContain('roofPro2');
-    }
-  });
-
-  it('aucune NOUVELLE dépendance : Three.js déjà présent, rien d’autre ajouté', () => {
-    const pkg = JSON.parse(read('../package.json')) as {
-      dependencies?: Record<string, string>;
-      devDependencies?: Record<string, string>;
-    };
-    expect(pkg.dependencies?.three).toBeTruthy();
-    const all = { ...pkg.dependencies, ...pkg.devDependencies };
-    expect(all.threebox).toBeUndefined();
-    expect(all['@types/three']).toBeUndefined();
-  });
-
-  it('la page pro 2 charge l’outil par import() dynamique, pas en statique', () => {
-    const page = read(page2);
-    expect(page).toContain("import('../../scripts/roof-tool-pro2");
-    expect(page).not.toMatch(/import\s+\w+\s+from\s+['"]maplibre/);
-    expect(page).not.toMatch(/import\s+.*\s+from\s+['"]three/);
-  });
-
-  it('le module pro 2 : couche perso MapLibre + Three, vrai panneau, vrai soleil, ombres', () => {
-    const tool = read(tool2);
-    expect(tool).toContain("import * as THREE from 'three'");
-    expect(tool).toContain("type: 'custom'");
-    expect(tool).toContain('InstancedMesh');
-    expect(tool).toContain('mainMatrix');
-    // Vraies ombres portées.
-    expect(tool).toContain('castShadow');
-    expect(tool).toContain('shadowMap.enabled');
-    // Boussole (cap réel visible).
-    expect(tool).toContain('getBearing');
-  });
-
-  it('la pro 2 RÉUTILISE le calepinage 720 W et le même lead (jamais de fork)', () => {
-    const tool = read(tool2);
-    expect(tool).toContain("from '../lib/roofPro2'");
-    expect(tool).toContain('layoutProRows2');
-    expect(tool).toContain("'/api/roof-estimate'");
-    expect(tool).not.toContain('re.jrc.ec.europa.eu');
-    expect(tool).toContain("'lf-area'");
-    expect(tool).toContain("'lf-orient'");
-    expect(tool).toContain("'lf-kwc-est'");
-    expect(tool).not.toContain('/api/preview-lead');
-    expect(tool).not.toContain('/api/simulate');
-    const page = read(page2);
-    expect(page).toContain('DiagnosticFormEnriched');
-    expect(page).not.toContain("fetch('/api/preview-lead'");
-  });
-
-  it('roofPro2 réutilise roof.ts (aire, point-dans-polygone) sans le modifier', () => {
-    const lib = read(lib2);
-    expect(lib).toContain("from './roof'");
-    expect(lib).toContain('geodesicAreaM2');
-    // Vrai panneau 720 W + géométrie solaire d'espacement.
-    expect(lib).toContain('2.384');
-    expect(lib).toContain('1.303');
-    expect(lib).toContain('720');
-    expect(lib).toContain('designSunElevationDeg');
-  });
-
-  it('prefers-reduced-motion : bascule instantanée, aucun rendu/rotation auto', () => {
-    const tool = read(tool2);
-    expect(tool).toContain('opts.reducedMotion');
-    expect(tool).toContain('map.jumpTo');
-    expect(tool).not.toContain('rotateTo');
-    expect(tool).not.toMatch(/setInterval|requestAnimationFrame/);
-    expect(tool).not.toMatch(/render\([^)]*\)\s*\{[\s\S]{0,400}triggerRepaint/);
-  });
-
-  it('repli gracieux : WebGL absent → l’outil lève (la page bascule sur le repli)', () => {
-    const tool = read(tool2);
-    expect(tool).toContain('webgl');
-    expect(tool).toMatch(/throw new Error/);
-    const page = read(page2);
-    expect(page).toContain('mapCreated');
-    expect(page).toMatch(/if \(!mapCreated\)[\s\S]{0,80}showFallback/);
-  });
-
-  it('aucune page publique ne monte l’estimateur pro 2 (ni Three.js)', () => {
-    for (const p of ['index', 'résidentiel', 'professionnel', 'contact', 'équipement', 'loi-82-21', 'regularization-article-33']) {
-      const page = read(`../src/pages/${p}.astro`);
-      expect(page).not.toContain('roof-tool-pro2');
       expect(page).not.toMatch(/from\s+['"]three/);
     }
   });

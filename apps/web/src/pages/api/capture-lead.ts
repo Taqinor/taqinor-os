@@ -18,9 +18,13 @@ import type { APIRoute } from 'astro';
 import * as cf from 'cloudflare:workers';
 import {
   buildLeadRecord,
+  crossSiteRejection,
   forwardLead,
+  isHoneypotTripped,
+  isSameOriginRequest,
   redactLeadForLog,
   runSimulation,
+  trackForwardLeadOutcome,
   validateLead,
   type LeadEnv,
 } from '../../lib/lead';
@@ -34,6 +38,12 @@ function json(data: unknown, status = 200, headers: Record<string, string> = {})
 }
 
 export const POST: APIRoute = async ({ request }) => {
+  // W317 — Origin/Sec-Fetch-Site : « proxy same-origin » n'était jusqu'ici que
+  // de la documentation, jamais vérifiée (le rate-limit par IP est best-effort
+  // par isolate, pas un blocage). Un POST cross-site forgé est refusé (403)
+  // avant même le rate-limit.
+  if (!isSameOriginRequest(request)) return crossSiteRejection();
+
   // Même garde-fou anti-spam que /api/preview-lead (bucket distinct par endpoint).
   const rl = rateLimit(`capture-lead:${clientIpFromRequest(request)}`);
   if (!rl.allowed) {
@@ -48,6 +58,12 @@ export const POST: APIRoute = async ({ request }) => {
   } catch {
     return json({ ok: false, errors: { body: 'JSON invalide' } }, 400);
   }
+
+  // W317 — honeypot : un champ caché que seul un bot remplit. Rejeté en
+  // silence côté serveur avec une réponse de succès factice (jamais un signal
+  // que révélerait au bot QUEL champ l'a trahi) — le contrat webhook existant
+  // reste inchangé, ce lead n'est simplement jamais transmis.
+  if (isHoneypotTripped(body)) return json({ ok: true, qualified: false });
 
   const validation = validateLead(body);
   if (!validation.ok) return json({ ok: false, errors: validation.errors }, 400);
@@ -79,6 +95,18 @@ export const POST: APIRoute = async ({ request }) => {
       console.log(
         `[capture-lead] non transmis au CRM (${fw.reason}) — lead qualifié:`,
         JSON.stringify(redactLeadForLog(baseRecord)),
+      );
+    }
+    // WJ66 — visibilité de panne de livraison : au-delà du seuil d'échecs
+    // CONSÉCUTIFS (webhook configuré, lead qualifié, mais la livraison échoue
+    // à répétition), une ligne d'ALERTE distincte et grep-able (`[capture-lead][ALERT]`)
+    // signale une panne CRM probable — jusqu'ici un tel silence pouvait durer
+    // des jours sans que personne ne soit notifié. Best-effort, en mémoire par
+    // isolat (cf. trackForwardLeadOutcome) : jamais bloquant pour le visiteur.
+    const { shouldAlert, streak } = trackForwardLeadOutcome(fw.delivered, fw.reason);
+    if (shouldAlert) {
+      console.error(
+        `[capture-lead][ALERT] ${streak} échecs de livraison CRM consécutifs (dernier motif: ${fw.reason}) — vérifier LEAD_WEBHOOK_URL / le récepteur taqinor-os.`,
       );
     }
   })();

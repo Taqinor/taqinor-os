@@ -1,0 +1,206 @@
+---
+/**
+ * Ensoleillement Maroc (W355) — page publique INDEXÉE qui publie le
+ * productible solaire (kWh/kWc/an) par ville, inclinaison et orientation.
+ *
+ * INTÉGRITÉ (règle du WEB_PLAN) : le tableau affiché EST `YIELD_TABLE`
+ * (`src/lib/yieldTable.ts`, lecture seule — jamais modifié ici), rendu tel
+ * quel, sans arrondi supplémentaire ni recalcul. `YIELD_TABLE` est lui-même
+ * généré par `scripts/generate-yield-table.mjs` à partir de PVGIS (voir le
+ * commentaire en tête de ce fichier source) — c'est LA MÊME donnée qui sert
+ * de repli à l'estimateur (`estimatorBrain.ts` / `estimatorBrainV2.ts`), ici
+ * publiée directement comme ressource citable, avec sa note de source datée.
+ *
+ * Azimut : 0 = Sud, -90 = Est, 90 = Ouest, ±45 = Sud-Est / Sud-Ouest.
+ * Inclinaison : 0° (toit plat) à 35°, y compris 29° (≈ latitude Casablanca).
+ *
+ * NOTE (hors périmètre de cette tâche) : cette page n'est PAS encore liée
+ * depuis les guides orientation / combien-de-panneaux (ces fichiers ne sont
+ * pas dans le périmètre autorisé de cette tâche) ni enregistrée dans
+ * `src/i18n/pages.ts` — l'orchestrateur fera ce câblage dans une passe
+ * séparée.
+ */
+import Layout from '../layouts/Layout.astro';
+import V2Enhance from '../components/V2Enhance.astro';
+import Article33Ribbon from '../components/Article33Ribbon.astro';
+import Breadcrumb from '../components/Breadcrumb.astro';
+import Callout from '../components/Callout.astro';
+import RelatedLinks from '../components/RelatedLinks.astro';
+import CtaBand from '../components/CtaBand.astro';
+import StickyCta from '../components/StickyCta.astro';
+import { YIELD_TABLE } from '../lib/yieldTable';
+
+const AZIMUTHS = ['-90', '-45', '0', '45', '90'] as const;
+const AZIMUTH_LABELS: Record<string, string> = {
+  '-90': 'Est',
+  '-45': 'Sud-Est',
+  '0': 'Sud',
+  '45': 'Sud-Ouest',
+  '90': 'Ouest',
+};
+
+const CITY_LABELS: Record<string, string> = {
+  agadir: 'Agadir',
+  marrakech: 'Marrakech',
+  casablanca: 'Casablanca',
+  rabat: 'Rabat',
+  tanger: 'Tanger',
+};
+
+// Ordre par latitude croissante (Sud → Nord), comme dans estimatorBrain.ts.
+const cities = Object.entries(YIELD_TABLE)
+  .map(([slug, data]) => ({ slug, label: CITY_LABELS[slug] ?? slug, ...data }))
+  .sort((a, b) => a.lat - b.lat);
+
+const tilts = Object.keys(cities[0].grid['0']).map(Number).sort((a, b) => a - b);
+
+// Meilleur couple (inclinaison, orientation) par ville — pour le résumé en tête de page.
+const bestByCity = cities.map((c) => {
+  let best = { tilt: 0, azimuth: '0', value: 0 };
+  for (const az of AZIMUTHS) {
+    for (const [tiltStr, value] of Object.entries(c.grid[az] ?? {})) {
+      if (value > best.value) best = { tilt: Number(tiltStr), azimuth: az, value };
+    }
+  }
+  return { ...c, best };
+});
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Dataset',
+  name: 'Productible solaire par ville, inclinaison et orientation — Maroc',
+  description:
+    'Productible photovoltaïque (kWh/kWc/an, pertes système 14 %) pour 5 villes marocaines, en grille inclinaison × orientation, dérivé de PVGIS.',
+  variableMeasured: 'Productible solaire (kWh/kWc/an)',
+  creator: { '@type': 'Organization', name: 'Taqinor', url: 'https://taqinor.ma' },
+  spatialCoverage: 'Maroc',
+};
+---
+
+<Layout
+  title="Productible solaire au Maroc par ville, inclinaison et orientation | Taqinor"
+  description="Le productible solaire (kWh/kWc/an) pour Casablanca, Rabat, Marrakech, Tanger et Agadir, en grille complète inclinaison × orientation, dérivé de PVGIS — la donnée qui sert de base à notre estimateur, publiée telle quelle."
+  ogSlug="equipement"
+>
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+
+    <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Ensoleillement au Maroc' }]} />
+
+    <section class="section-lg px-4 pb-10 text-white">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">Donnée ouverte</p>
+        <h1 class="display v2-page-title cine-in cine-in-1 mt-6">Ensoleillement et productible solaire au Maroc</h1>
+        <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
+          Combien de kWh produit chaque kWc installé, selon la ville, l'inclinaison et
+          l'orientation du toit ? Voici la table complète que notre propre estimateur utilise en
+          repli — publiée sans filtre, pour que n'importe qui puisse la citer ou la vérifier.
+        </p>
+      </div>
+    </section>
+
+    <!-- Résumé — meilleur couple inclinaison/orientation par ville -->
+    <section class="section px-4">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">Le meilleur réglage, ville par ville</p>
+        <h2 class="display v2-section-title mt-5 text-white">Optimum théorique par ville</h2>
+        <div class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
+          {bestByCity.map((c, i) => (
+            <div class="v2-rise cine-card p-6" style={`--v2-i:${i}`}>
+              <p class="tech-label text-lune-faint">{c.label} · lat. {c.lat.toLocaleString('fr-FR')}°</p>
+              <p class="fig lum mt-2 text-3xl">
+                {c.best.value.toLocaleString('fr-FR')}
+                <span class="ms-1 text-sm font-semibold text-brass-400">kWh/kWc/an</span>
+              </p>
+              <p class="mt-2 text-sm text-lune-soft">
+                à {c.best.tilt}° d'inclinaison, orientation {AZIMUTH_LABELS[c.best.azimuth]}
+              </p>
+            </div>
+          ))}
+        </div>
+        <Callout type="info" title="Comment lire ce chiffre">
+          <p>
+            Le productible (kWh/kWc/an) est le rendement annuel théorique d'un système
+            photovoltaïque, pertes système incluses (14 %) — pas une production réelle mesurée
+            (voir plutôt notre page <a href="/production-mesuree" class="border-b border-brass-300 pb-0.5 font-semibold text-brass-300">Production mesurée</a> pour
+            des chiffres constatés). Il sert à comparer des configurations, pas à remplacer une
+            étude de site qui tient compte de l'ombrage réel et du matériel retenu.
+          </p>
+        </Callout>
+      </div>
+    </section>
+
+    <!-- Table complète par ville -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="section bg-blanc-azur px-4 text-encre">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-azur-600">La table complète</p>
+        <h2 class="display v2-section-title mt-5">Productible (kWh/kWc/an) par ville</h2>
+        <p class="v2-lead mt-4 max-w-3xl text-encre-soft">
+          Chaque tableau croise l'inclinaison du toit (lignes) et l'orientation des panneaux
+          (colonnes) pour une ville. Azimut : Sud = plein sud (optimum au Maroc), Sud-Est/Sud-Ouest
+          = ±45°, Est/Ouest = ±90°.
+        </p>
+
+        {cities.map((c) => (
+          <div class="mt-12">
+            <h3 class="display text-xl text-azur-900">{c.label} <span class="text-base font-normal text-encre-faint">— latitude {c.lat.toLocaleString('fr-FR')}°</span></h3>
+            <div class="mt-4 overflow-x-auto">
+              <table class="w-full min-w-[560px] border-collapse text-sm">
+                <caption class="sr-only">Productible solaire (kWh/kWc/an) à {c.label}, par inclinaison et orientation</caption>
+                <thead>
+                  <tr class="border-b-2 border-azur-900">
+                    <th scope="col" class="px-3 py-2 text-left font-semibold text-encre">Inclinaison</th>
+                    {AZIMUTHS.map((az) => (
+                      <th scope="col" class="px-3 py-2 text-right font-semibold text-encre">{AZIMUTH_LABELS[az]}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {tilts.map((tilt) => (
+                    <tr class="border-b border-azur-900/15">
+                      <th scope="row" class="px-3 py-2 text-left font-medium text-encre-soft">{tilt}°</th>
+                      {AZIMUTHS.map((az) => (
+                        <td class="fig px-3 py-2 text-right text-azur-600">
+                          {c.grid[az]?.[String(tilt)] != null ? c.grid[az][String(tilt)].toLocaleString('fr-FR') : '—'}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ))}
+
+        <p class="mx-auto mt-10 max-w-3xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
+          <strong>Source :</strong> valeurs dérivées de PVGIS (Commission européenne, Joint
+          Research Centre), calculées pour les 5 villes de notre zone de service et générées via
+          notre script <code>generate-yield-table.mjs</code>. Elles incluent une perte système de
+          14 % (câblage, onduleur, échauffement, salissure) — le même taux que celui utilisé par
+          notre estimateur en ligne. Une latitude intermédiaire à celle indiquée est interpolée
+          entre les deux villes encadrantes.
+        </p>
+      </div>
+    </section>
+
+    <section class="section-tight px-4 pb-20 sm:pb-24">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">Pour aller plus loin</p>
+        <RelatedLinks links={[
+          { href: '/guides/orientation-inclinaison-ombrage', label: 'Guide orientation, inclinaison, ombrage' },
+          { href: '/guides/combien-de-panneaux-pour-ma-maison', label: 'Combien de panneaux pour ma maison' },
+          { href: '/production-mesuree', label: 'Production mesurée (nos chantiers réels)' },
+          { href: '/realisations', label: 'Nos réalisations' },
+        ]} />
+      </div>
+    </section>
+
+    <CtaBand title="Votre toit a sa propre orientation. Lancez le diagnostic gratuit pour le savoir." href="/devis/mon-toit" />
+
+    <StickyCta />
+  </div>
+</Layout>

@@ -1,0 +1,209 @@
+---
+/**
+ * W358 — /embed/estimation : widget partenaire (fournisseurs agricoles,
+ * agences immobilières…) affichable dans une iframe tierce. Réutilise le
+ * MÊME cerveau que /devis/mon-toit (estimateFromBill, lib/billEstimate.ts —
+ * lecture seule, AUCUNE logique dupliquée/divergente) pour transformer une
+ * facture mensuelle en fourchette kWc / production / économies, puis
+ * renvoie vers le parcours complet (/devis/mon-toit) avec la facture
+ * pré-remplie en paramètre d'URL + utm_source=partner.
+ *
+ * CHROME-LESS PAR CONCEPTION : ce document N'UTILISE PAS `Layout.astro`
+ * (qui impose Header + Footer + nav sur toute page du site) — c'est une
+ * page HTML autonome minimale, pensée pour vivre dans une <iframe> sur un
+ * site tiers, jamais comme une page de navigation du site.
+ *
+ * FRAME-FRIENDLY — LIMITE CONNUE (à lire avant de supposer que l'iframe
+ * s'affiche) : le Worker (apps/web/worker/headers.mjs, HORS PÉRIMÈTRE de
+ * cette tâche) applique `frame-ancestors 'none'` à TOUTE réponse HTML du
+ * site, ce qui bloquerait aujourd'hui l'affichage de CETTE page dans une
+ * iframe tierce. Assouplir cette CSP pour /embed/* (ou lui donner une valeur
+ * dédiée, ex. `frame-ancestors *` ou une allowlist de domaines partenaires)
+ * est un changement délibéré, HORS SCOPE de cette tâche (le mandat borne les
+ * fichiers touchables à src/pages/embed/**) — à traiter dans une tâche
+ * dédiée qui review aussi tests/headers.test.ts. Le widget lui-même (markup,
+ * calcul, deep-link) est livré complet et fonctionnel en accès direct
+ * (non-iframe) dès maintenant.
+ *
+ * PRÉ-REMPLISSAGE — LIMITE CONNUE : le lien de retour porte `?bill=<MAD>&
+ * utm_source=partner&utm_medium=embed` ; /devis/mon-toit (HORS PÉRIMÈTRE de
+ * cette tâche) ne lit pas encore ce paramètre `bill` pour pré-remplir son
+ * champ facture — une tâche de suivi doit ajouter la lecture côté
+ * /devis/mon-toit. Le comportement actuel reste sûr : le paramètre est
+ * simplement ignoré, le visiteur atterrit sur le parcours complet et
+ * ressaisit sa facture.
+ *
+ * NOINDEX : ce widget est fait pour être intégré ailleurs, pas pour classer
+ * en recherche comme une page du site — balisage robots noindex ci-dessous.
+ */
+import '../../styles/global.css';
+
+const title = 'Estimation solaire instantanée | Taqinor';
+const description = "Entrez votre facture d'électricité mensuelle pour une estimation solaire instantanée (kWc, production, économies) — widget partenaire Taqinor.";
+---
+
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#070b1d" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  </head>
+  <body class="embed-body bg-nuit font-sans text-lune antialiased">
+    <main id="embed-main" class="embed-widget">
+      <p class="tech-label rule-brass text-brass-300">Taqinor</p>
+      <h1 class="display mt-2 text-xl font-bold text-white sm:text-2xl">Estimation solaire instantanée</h1>
+      <p class="mt-2 text-sm text-lune-soft">
+        Votre facture d'électricité mensuelle (MAD) suffit pour une première fourchette.
+      </p>
+
+      <form id="embed-form" novalidate class="mt-6">
+        <label for="embed-bill" class="block text-sm font-semibold text-white">Facture mensuelle (MAD)</label>
+        <input
+          id="embed-bill"
+          name="bill"
+          type="number"
+          inputmode="decimal"
+          step="any"
+          min="0"
+          placeholder="ex. 1200"
+          class="mt-1 w-full rounded-md border border-white/15 bg-white/5 px-3 py-2 text-white placeholder:text-lune-soft/60 focus:border-brass-300 focus:outline-none"
+          aria-describedby="embed-bill-err"
+        />
+        <span id="embed-bill-err" role="alert" class="mt-1 block text-xs text-alert-300" hidden></span>
+
+        <button
+          type="submit"
+          class="mt-4 w-full rounded-md bg-brass-400 px-4 py-2.5 text-sm font-bold text-nuit transition-colors hover:bg-brass-300"
+        >
+          Voir mon estimation
+        </button>
+      </form>
+
+      <div id="embed-result" class="mt-6" hidden>
+        <dl class="grid grid-cols-2 gap-3 text-sm">
+          <div class="rounded-md border border-white/10 bg-white/5 p-3">
+            <dt class="tech-label text-brass-300">Puissance</dt>
+            <dd id="embed-kwc" class="mt-1 text-lg font-bold text-white">—</dd>
+          </div>
+          <div class="rounded-md border border-white/10 bg-white/5 p-3">
+            <dt class="tech-label text-brass-300">Production/an</dt>
+            <dd id="embed-prod" class="mt-1 text-lg font-bold text-white">—</dd>
+          </div>
+          <div class="col-span-2 rounded-md border border-white/10 bg-white/5 p-3">
+            <dt class="tech-label text-brass-300">Économies estimées</dt>
+            <dd id="embed-savings" class="mt-1 text-lg font-bold text-white">—</dd>
+          </div>
+        </dl>
+        <p class="mt-3 text-xs text-lune-soft">
+          Estimation indicative (facture seule, sud optimal). Le chiffre réel vient après la visite technique.
+        </p>
+        <a
+          id="embed-cta"
+          href="/devis/mon-toit"
+          target="_top"
+          rel="noopener"
+          class="mt-4 block rounded-md border border-brass-300 px-4 py-2.5 text-center text-sm font-bold text-brass-200 transition-colors hover:bg-brass-300 hover:text-nuit"
+        >
+          Continuer mon étude gratuite →
+        </a>
+      </div>
+
+      <p id="embed-unavailable" class="mt-6 text-sm text-lune-soft" hidden>
+        Estimation indisponible — vérifiez le montant saisi.
+      </p>
+    </main>
+
+    <script>
+      import { estimateFromBill, formatMadRange } from '../../lib/billEstimate';
+
+      const $ = (id: string) => document.getElementById(id);
+      const form = $('embed-form') as HTMLFormElement | null;
+      const billInput = $('embed-bill') as HTMLInputElement | null;
+      const billErr = $('embed-bill-err');
+      const result = $('embed-result');
+      const unavailable = $('embed-unavailable');
+      const kwcEl = $('embed-kwc');
+      const prodEl = $('embed-prod');
+      const savingsEl = $('embed-savings');
+      const cta = $('embed-cta') as HTMLAnchorElement | null;
+
+      function setError(msg: string | null) {
+        if (!billErr) return;
+        if (msg) {
+          billErr.textContent = msg;
+          billErr.hidden = false;
+        } else {
+          billErr.textContent = '';
+          billErr.hidden = true;
+        }
+      }
+
+      // W358 — deep-link retour : facture + attribution partenaire (utm_source
+      // fixe = provenance widget embarqué ; utm_medium distingue du site direct).
+      // La query `bill` est un artefact PRÉVU pour un futur pré-remplissage côté
+      // /devis/mon-toit (hors périmètre ici, voir note de tête de fichier) — un
+      // paramètre non lu aujourd'hui reste inoffensif (ignoré par la page cible).
+      function buildDeepLink(bill: number): string {
+        const params = new URLSearchParams(location.search);
+        const utmSource = params.get('utm_source') || 'partner';
+        const utmMedium = params.get('utm_medium') || 'embed';
+        const utmCampaign = params.get('utm_campaign');
+        const url = new URLSearchParams();
+        url.set('bill', String(Math.round(bill)));
+        url.set('utm_source', utmSource);
+        url.set('utm_medium', utmMedium);
+        if (utmCampaign) url.set('utm_campaign', utmCampaign);
+        return `/devis/mon-toit?${url.toString()}`;
+      }
+
+      form?.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const raw = billInput?.value ?? '';
+        const bill = raw === '' ? NaN : Number(raw);
+
+        if (!Number.isFinite(bill) || bill <= 0) {
+          setError('Entrez un montant de facture valide.');
+          if (result) result.hidden = true;
+          if (unavailable) unavailable.hidden = true;
+          return;
+        }
+        setError(null);
+
+        const est = estimateFromBill(bill);
+        if (!est) {
+          if (result) result.hidden = true;
+          if (unavailable) unavailable.hidden = false;
+          return;
+        }
+
+        if (unavailable) unavailable.hidden = true;
+        if (kwcEl) kwcEl.textContent = `${est.kwc} kWc`;
+        if (prodEl) prodEl.textContent = `${est.productionKwhYr.toLocaleString('fr-FR')} kWh`;
+        if (savingsEl) savingsEl.textContent = `${formatMadRange(est.savingsLow, est.savingsHigh)}/an`;
+        if (cta) cta.href = buildDeepLink(bill);
+        if (result) result.hidden = false;
+      });
+    </script>
+
+    <style>
+      /* W358 — widget autonome : pas de largeur de conteneur du site, pensé
+         pour épouser l'iframe partenaire (largeur fluide, hauteur au contenu,
+         zéro CLS — pas d'animation d'entrée, le formulaire est visible d'emblée). */
+      .embed-body {
+        margin: 0;
+        min-height: 100vh;
+      }
+      .embed-widget {
+        box-sizing: border-box;
+        max-width: 28rem;
+        margin: 0 auto;
+        padding: 1.25rem;
+      }
+    </style>
+  </body>
+</html>

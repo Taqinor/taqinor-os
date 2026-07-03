@@ -6,7 +6,15 @@
  * noir. Mêmes hooks de mouvement que l'accueil élevé (.cine-in / .v2-rise,
  * count-up, Ken Burns), tous gated `prefers-reduced-motion`. Données et chiffres
  * VERBATIM — aucun fait inventé ; le formulaire et son flux de lead sont
- * inchangés byte-for-byte (composant partagé DiagnosticForm).
+ * inchangés byte-for-byte (composant partagé DiagnosticForm, conservé dans le
+ * code comme repli documenté — cf. /api/simulate).
+ *
+ * W249 — Un seul entonnoir : l'acte final n'est plus DiagnosticForm mais le
+ * widget d'estimation instantanée partagé avec l'accueil (InstantEstimator,
+ * W250 — même cerveau billEstimate.ts, même CTA vers le parcours devis). Deux
+ * captures divergentes sur la même page brouillaient l'attribution ; le
+ * composant DiagnosticForm reste intact et importé ailleurs (résidentiel garde
+ * son data-flow inchangé partout où il est encore monté).
  *
  * Élévations appliquées (réf. /preview/accueil-v3 + index.astro) :
  *  1. héros cinématographique plus haut (~92svh), photo plein cadre
@@ -23,19 +31,26 @@ import Layout from '../layouts/Layout.astro';
 import V2Enhance from '../components/V2Enhance.astro';
 import Article33Ribbon from '../components/Article33Ribbon.astro';
 import Breadcrumb from '../components/Breadcrumb.astro';
-import DiagnosticForm from '../components/DiagnosticForm.astro';
+import InstantEstimator from '../components/InstantEstimator.astro';
 import CtaBand from '../components/CtaBand.astro';
 import Picture from '../components/Picture.astro';
 import StickyCta from '../components/StickyCta.astro';
 import ZelligeDivider from '../components/ZelligeDivider.astro';
 import GarantiesTeaser from '../components/GarantiesTeaser.astro';
 import Testimonials from '../components/Testimonials.astro';
+import Faq from '../components/Faq.astro';
+import ServiceWarrantyTable from '../components/ServiceWarrantyTable.astro';
+import RelatedLinks from '../components/RelatedLinks.astro';
 import { BILL_RANGES, localEstimateBand } from '../lib/billRange';
 import { formatMAD } from '../lib/format';
 import { WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink } from '../lib/whatsapp';
+import { serviceFaqItems } from '../lib/serviceFaq';
 
 const waDirect = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour une installation solaire.');
+
+// W263 — FAQ partagée + garanties par composant, localisées FR (repli par défaut).
+const faqItems = serviceFaqItems('residentiel', 'fr');
 
 const PRIX_PAR_KWC = { bas: 10000, haut: 12500 };
 const arrondi5k = (v: number) => Math.round(v / 5000) * 5000;
@@ -134,7 +149,10 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
     {/* Transparence des prix — le grand livre, chiffres qui s'égrènent.
         Eyebrow rétrogradé en lune (discipline laiton). */}
     <section class="section mx-auto max-w-4xl px-4">
-      <p class="tech-label v2-kicker rule-brass text-lune">Transparence des prix</p>
+      {/* W274 — Système de numérotation par chapitre (01/02…), même dispositif
+          que l'accueil (index.astro) : étendu ici pour que le procédé éditorial
+          soit cohérent sur tout le site plutôt qu'exclusif à l'accueil. */}
+      <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">01</span>Transparence des prix</p>
       <h2 class="display v2-section-title mt-5 text-white">Votre facture vous place déjà dans une fourchette</h2>
       <p class="v2-lead mt-4 max-w-2xl text-lune-soft">
         Voici les ordres de grandeur relevés sur nos chantiers résidentiels — <strong class="text-lune">jamais un
@@ -171,7 +189,8 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
     <section class="section px-4">
       <div class="mx-auto grid max-w-6xl gap-12 lg:grid-cols-[1.1fr_1fr] lg:items-center">
         <div class="v2-rise">
-          <p class="tech-label v2-kicker rule-brass text-lune">L'horizon d'investissement</p>
+          {/* W274 — Chapitre 02, même dispositif que ci-dessus. */}
+          <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">02</span>L'horizon d'investissement</p>
           <h2 class="display v2-section-title mt-5 text-white">Ce que les 25 ans donnent, année par année</h2>
           <p class="v2-lead mt-5 text-lune-soft">
             Le constructeur garantit la performance des panneaux sur 25 ans. Prenez une villa à
@@ -219,16 +238,20 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
       </div>
     </section>
 
-    {/* Liens contextuels */}
+    {/* Liens contextuels — cluster prix/résidentiel (W299) */}
     <div class="seam-soft" aria-hidden="true"></div>
     <section class="section-tight px-4">
-      <div class="mx-auto flex max-w-6xl flex-wrap gap-3">
-        <a href="/realisations" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Nos réalisations résidentielles →</a>
-        <a href="/équipement" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">L'équipement posé →</a>
-        <a href="/garanties" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Nos garanties →</a>
-        <a href="/batteries-stockage" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Batteries &amp; stockage →</a>
-        <a href="/financement" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Financement &amp; rentabilité →</a>
-        <a href="/pourquoi-taqinor" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Pourquoi Taqinor →</a>
+      <div class="mx-auto max-w-6xl">
+        <RelatedLinks mt="mt-0" links={[
+          { href: '/realisations', label: 'Nos réalisations résidentielles' },
+          { href: '/prix-panneaux-solaires-maroc', label: 'Prix des panneaux solaires au Maroc' },
+          { href: '/guides/combien-de-panneaux-pour-ma-maison', label: 'Combien de panneaux pour ma maison ?' },
+          { href: '/équipement', label: "L'équipement posé" },
+          { href: '/garanties', label: 'Nos garanties' },
+          { href: '/batteries-stockage', label: 'Batteries & stockage' },
+          { href: '/financement', label: 'Financement & rentabilité' },
+          { href: '/pourquoi-taqinor', label: 'Pourquoi Taqinor' },
+        ]} />
       </div>
     </section>
 
@@ -238,10 +261,23 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
     <!-- Réassurance : les garanties écrites, en bref (renvoi vers /garanties) -->
     <GarantiesTeaser />
 
-    <!-- ACTE FINAL — la salle blanche -->
-    <DiagnosticForm heading="Votre diagnostic en 60 secondes" />
+    <!-- W263 — FAQ partagée (entretien/prix/inclus-exclus/délais/garanties)
+         + garantie par composant, AVANT le formulaire final. schema={false} :
+         /faq reste l'unique page émettant le FAQPage JSON-LD (W19). -->
+    <Faq schema={false} heading="Questions fréquentes — solaire résidentiel" items={faqItems} />
+    <section class="section-tight bg-blanc-azur px-4 text-encre">
+      <ServiceWarrantyTable />
+    </section>
 
-    <CtaBand href="/devis/mon-toit" seam={false} />
+    <!-- ACTE FINAL — la salle blanche (W249 : un seul entonnoir, InstantEstimator) -->
+    <InstantEstimator variant="hero" />
+
+    <CtaBand
+      title="Une question avant de vous lancer ? Parlez à un humain."
+      buttonLabel="WhatsApp direct avec un conseiller"
+      href={waDirect}
+      seam={false}
+    />
 
     <StickyCta />
   </div>

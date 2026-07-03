@@ -10,17 +10,41 @@
  *
  * Ne touche AUCUNE donnée de lead. Route additive : /api/roof-estimate (15°,
  * formulaire live) reste strictement inchangée.
+ *
+ * W316 — rate-limit GÉNÉREUX et DÉDIÉ : cet endpoint est appelé à chaque
+ * ajustement d'inclinaison/azimut pendant que le visiteur manipule l'outil
+ * interactif (plusieurs appels par minute sont un usage NORMAL, pas un abus).
  */
 export const prerender = false;
 
 import type { APIRoute } from 'astro';
 import { fetchPvgisAnnualKwhAtTilt } from '../../lib/roofEstimate';
+import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 
-function json(data: unknown, status = 200): Response {
+function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+    headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...headers },
   });
+}
+
+// W317 — Origin/Sec-Fetch-Site : garde-fou LOCAL (jamais importé de lib/lead —
+// cette route reste volontairement découplée de toute plomberie de lead/CRM,
+// garanti par un test dédié). Voir lib/lead.ts pour la version jumelle utilisée
+// par les endpoints lead/proposition.
+function isSameOriginRequest(request: Request): boolean {
+  const secFetchSite = request.headers.get('sec-fetch-site');
+  if (secFetchSite) return secFetchSite !== 'cross-site';
+  const origin = request.headers.get('origin');
+  if (!origin) return true;
+  try {
+    return new URL(origin).origin === new URL(request.url).origin;
+  } catch {
+    return false;
+  }
+}
+function crossSiteRejection(): Response {
+  return json({ ok: false, error: 'Requête refusée.' }, 403);
 }
 
 function num(v: unknown): number {
@@ -34,6 +58,17 @@ interface Leg {
 }
 
 export const POST: APIRoute = async ({ request }) => {
+  // W317 — Origin/Sec-Fetch-Site : refuse un POST cross-site forgé avant tout
+  // traitement (même garde-fou que les autres proxies same-origin).
+  if (!isSameOriginRequest(request)) return crossSiteRejection();
+
+  const rl = rateLimit(`roof-yield:${clientIpFromRequest(request)}`, { limit: 60, windowMs: 60_000 });
+  if (!rl.allowed) {
+    return json({ ok: false, error: 'Trop de tentatives, réessayez dans un instant.' }, 429, {
+      'retry-after': String(rl.retryAfterSec),
+    });
+  }
+
   let body: Record<string, unknown>;
   try {
     body = (await request.json()) as Record<string, unknown>;

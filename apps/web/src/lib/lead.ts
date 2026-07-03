@@ -8,6 +8,67 @@
 import { isBillRangeId, localEstimateBand, qualifiesForCrm, type BillRangeId, type EstimateBand } from './billRange';
 import { normalizeMoroccanPhone } from './phone';
 
+// ─────────────────────────────────────────────────────────────────────────
+// W317 — same-origin enforcement + honeypot, partagés par TOUS les proxies
+// POST same-origin (src/pages/api/*.ts). Additif : le contrat webhook/CRM
+// existant (validateLead, buildLeadRecord, forwardLead…) est INCHANGÉ ; ceci
+// ajoute une vérification EN AMONT, avant tout traitement de body.
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * `Origin`/`Sec-Fetch-Site` étaient jusqu'ici de la documentation
+ * (« proxy same-origin ») jamais vérifiée en pratique : le rate-limit par IP
+ * (lib/rateLimit.ts) reste best-effort par isolate et ne bloque pas un
+ * cross-site direct. `Sec-Fetch-Site` (émis par tous les navigateurs
+ * modernes) est le signal le plus fiable — `same-origin`/`same-site`/`none`
+ * (navigation directe, ex. curl/Postman) passent ; `cross-site` est rejeté.
+ * Quand `Sec-Fetch-Site` est absent (vieux navigateur, certains clients HTTP
+ * hors-navigateur), on retombe sur `Origin` comparé à `request.url` — un
+ * mismatch EXPLICITE est rejeté, mais l'absence totale des deux en-têtes
+ * (navigation directe sans fetch, tests, outils serveur-à-serveur légitimes)
+ * n'est PAS bloquée : ce garde-fou cible le cross-site FORGÉ, pas les clients
+ * qui n'envoient simplement pas ces en-têtes.
+ */
+export function isSameOriginRequest(request: Request): boolean {
+  const secFetchSite = request.headers.get('sec-fetch-site');
+  if (secFetchSite) return secFetchSite !== 'cross-site';
+
+  const origin = request.headers.get('origin');
+  if (!origin) return true; // aucun signal exploitable → laissé passer (voir note ci-dessus)
+  try {
+    return new URL(origin).origin === new URL(request.url).origin;
+  } catch {
+    return false; // Origin illisible : on ne peut pas prouver l'égalité → rejeté
+  }
+}
+
+/**
+ * Réponse 403 uniforme pour un POST cross-site détecté. Porte à la fois
+ * `errors.origin` (forme des endpoints capture-lead/simulate/preview-lead/
+ * roof-*) ET `detail` (forme des endpoints proposition-*) — chaque handler
+ * lit déjà l'un ou l'autre selon son propre contrat, jamais les deux à la
+ * fois, donc les deux clés cohabitent sans ambiguïté pour l'appelant.
+ */
+export function crossSiteRejection(): Response {
+  return new Response(
+    JSON.stringify({ ok: false, detail: 'Requête refusée.', errors: { origin: 'Requête refusée.' } }),
+    { status: 403, headers: { 'content-type': 'application/json' } },
+  );
+}
+
+/**
+ * Honeypot anti-bot : un champ caché (jamais rempli par un humain, CSS-masqué
+ * côté formulaire) que seul un bot remplissant tous les champs remplit. Additif
+ * — n'existe pas encore côté payload actuel, donc absent/vide est le cas
+ * NORMAL pour un visiteur réel ; seule une valeur non vide est suspecte.
+ */
+export const HONEYPOT_FIELD = 'website_url';
+
+export function isHoneypotTripped(body: unknown): boolean {
+  const v = (body as Record<string, unknown> | null | undefined)?.[HONEYPOT_FIELD];
+  return typeof v === 'string' && v.trim().length > 0;
+}
+
 export const ROOF_TYPES = [
   { id: 'villa', label: 'Villa' },
   { id: 'hangar', label: 'Hangar industriel' },
@@ -47,6 +108,36 @@ export type ProjectTimingId = (typeof PROJECT_TIMINGS)[number];
 
 export const FINANCING_INTENTS = ['comptant', 'financement', 'indecis'] as const;
 export type FinancingIntentId = (typeof FINANCING_INTENTS)[number];
+
+// ——— WJ51 : préférence de contact explicite (facultative, pass-through webhook) ———
+// Remplace la promesse floue « pas d'appels commerciaux » par un choix nommé,
+// mappé sur le champ `canal` du CRM. Facultatif : une soumission sans ce champ
+// reste valide (repli implicite WhatsApp, cohérent avec whatsappOptIn coché
+// par défaut).
+export const CONTACT_PREFERENCES = ['whatsapp_only', 'phone_ok'] as const;
+export type ContactPreferenceId = (typeof CONTACT_PREFERENCES)[number];
+
+// ——— W353 : créneau de visite technique v1 (facultatif, STATIQUE — pas de
+// dépendance calendrier, pas de paiement/dépôt en ligne — cette question reste
+// une décision fondateur WG13). Un choix de MOMENT (matin/après-midi) + un
+// choix de SEMAINE (cette semaine / la semaine prochaine) : une préférence
+// forwardée telle quelle, jamais un vrai créneau réservé/confirmé — la visite
+// reste planifiée par un humain après contact.
+export const VISIT_WINDOW_PARTS = ['matin', 'apres_midi'] as const;
+export type VisitWindowPartId = (typeof VISIT_WINDOW_PARTS)[number];
+
+export const VISIT_WINDOW_WEEKS = ['cette_semaine', 'semaine_prochaine'] as const;
+export type VisitWindowWeekId = (typeof VISIT_WINDOW_WEEKS)[number];
+
+// ——— WJ68 : mode PROFESSIONNEL — vocabulaires FACULTATIFS, additifs. Le
+// formulaire résidentiel-shaped ne bloque aucun visiteur C&I ; ces trois
+// signaux (raison sociale, type de site, nombre de sites) partent au webhook
+// SEULEMENT si renseignés — jamais un nouveau champ obligatoire. ———
+export const FACILITY_TYPES = ['bureau', 'entrepot', 'usine', 'commerce', 'agricole', 'autre'] as const;
+export type FacilityTypeId = (typeof FACILITY_TYPES)[number];
+
+export const SITE_COUNTS = ['1', '2-5', '6+'] as const;
+export type SiteCountId = (typeof SITE_COUNTS)[number];
 
 /**
  * Bornes GPS ≈ Maroc (Tanger ~35,9 N → Lagouira ~20,8 N ; Atlantique ~-17,2 O →
@@ -113,6 +204,38 @@ export interface ValidatedLead {
    *  d'endpoint d'upload aujourd'hui — cf. PLAN2 QK6 OCR). Signal booléen SEUL :
    *  aucune donnée binaire ne quitte le navigateur. */
   hasMeterPhoto?: boolean;
+  // — WJ51 : préférence de contact explicite (facultative — mappée sur `canal` CRM).
+  contactPreference?: ContactPreferenceId;
+  // — W353 : préférence de créneau de visite technique (facultative, STATIQUE —
+  //   jamais une réservation confirmée). Les deux moitiés sont indépendantes :
+  //   l'une peut être présente sans l'autre.
+  visitWindowPart?: VisitWindowPartId;
+  visitWindowWeek?: VisitWindowWeekId;
+  // — WJ52 : référence courte générée CÔTÉ CLIENT (aucune garantie d'unicité
+  //   globale — un simple artefact affiché au visiteur + échoé au webhook pour
+  //   corréler une conversation WhatsApp ; jamais utilisée comme clé d'unicité
+  //   serveur). Bornée en longueur/format pour rester un artefact honnête.
+  clientRef?: string;
+  // — WJ64 : diaspora — présent et `true` UNIQUEMENT quand `phoneE164` est un
+  //   E.164 étranger (indicatif ≠ 212, cf. lib/phone.ts). Absent pour un numéro
+  //   marocain (contrat de fil inchangé pour la quasi-totalité des leads). La
+  //   logique 1 000 MAD (qualifiesForCrm) ne lit jamais ce champ.
+  phoneIsForeign?: boolean;
+  // — WJ66 : jeton d'idempotence généré CÔTÉ NAVIGATEUR à l'ouverture de la
+  //   session de saisie (pas un identifiant serveur, aucune garantie
+  //   d'unicité globale — sert de signal de dédoublonnage best-effort côté
+  //   CRM, jamais une clé bloquante ici). Facultatif, borné, jamais bloquant.
+  idempotencyKey?: string;
+  // — WJ68 : mode PROFESSIONNEL — champs facultatifs, additifs, jamais
+  //   bloquants (raison sociale, type de site, nombre de sites).
+  raisonSociale?: string;
+  facilityType?: FacilityTypeId;
+  siteCount?: SiteCountId;
+  // — WJ92 : CAPI « match quality » — em haché (SHA-256, spec Meta) quand un
+  //   e-mail est capturé, + un identifiant de déduplication par soumission
+  //   (echoé au CRM ET au CAPI). Ni l'un ni l'autre n'est de la PII en clair.
+  emHash?: string;
+  eventId?: string;
 }
 
 export type ValidationResult =
@@ -268,6 +391,49 @@ function validateOptionalFields(b: Record<string, unknown>): Partial<ValidatedLe
 
   if (typeof b.hasMeterPhoto === 'boolean') opt.hasMeterPhoto = b.hasMeterPhoto;
 
+  // ——— WJ51 : préférence de contact explicite (facultative) ———
+  const contactPreference = cleanEnum(b.contactPreference, CONTACT_PREFERENCES);
+  if (contactPreference) opt.contactPreference = contactPreference;
+
+  // ——— W353 : créneau de visite technique (facultatif, STATIQUE) ———
+  const visitWindowPart = cleanEnum(b.visitWindowPart, VISIT_WINDOW_PARTS);
+  if (visitWindowPart) opt.visitWindowPart = visitWindowPart;
+
+  const visitWindowWeek = cleanEnum(b.visitWindowWeek, VISIT_WINDOW_WEEKS);
+  if (visitWindowWeek) opt.visitWindowWeek = visitWindowWeek;
+
+  // ——— WJ52 : référence courte générée côté client (facultative, jamais bloquante) ———
+  const clientRef = cleanStr(b.clientRef, 24);
+  // Anti-garbage minimal : lettres/chiffres/tirets seulement (le format généré
+  // par buildClientRef() plus bas) — une valeur malformée est simplement écartée.
+  if (clientRef && /^[A-Z0-9-]{4,24}$/i.test(clientRef)) opt.clientRef = clientRef;
+
+  // ——— WJ66 : jeton d'idempotence généré côté navigateur (facultatif, jamais
+  // bloquant). Même discipline anti-garbage que clientRef : alphanumérique +
+  // tiret/underscore, borné — une valeur malformée est simplement écartée
+  // (jamais une clé d'unicité serveur, un simple signal de dédoublonnage CRM). ———
+  const idempotencyKey = cleanStr(b.idempotencyKey, 64);
+  if (idempotencyKey && /^[A-Za-z0-9_-]{8,64}$/.test(idempotencyKey)) opt.idempotencyKey = idempotencyKey;
+
+  // ——— WJ68 : mode PROFESSIONNEL — facultatif, additif, jamais bloquant ———
+  const raisonSociale = cleanStr(b.raisonSociale, 150);
+  if (raisonSociale) opt.raisonSociale = raisonSociale;
+
+  const facilityType = cleanEnum(b.facilityType, FACILITY_TYPES);
+  if (facilityType) opt.facilityType = facilityType;
+
+  const siteCount = cleanEnum(b.siteCount, SITE_COUNTS);
+  if (siteCount) opt.siteCount = siteCount;
+
+  // ——— WJ92 : identifiant de déduplication CAPI par soumission (facultatif,
+  // généré côté navigateur — même discipline anti-garbage qu'idempotencyKey).
+  // Distinct d'idempotencyKey (WJ66, sémantique CRM) : eventId est le champ de
+  // corrélation attendu par la spec Meta CAPI (`event_id`), échoé tel quel sur
+  // le lead ET sur l'appel fireCapi ci-dessous pour permettre la déduplication
+  // pixel-navigateur ↔ serveur côté Meta. ———
+  const eventId = cleanStr(b.eventId, 64);
+  if (eventId && /^[A-Za-z0-9_-]{8,64}$/.test(eventId)) opt.eventId = eventId;
+
   return opt;
 }
 
@@ -306,6 +472,10 @@ export function validateLead(body: unknown): ValidationResult {
     lead: {
       fullName,
       phoneE164: phone.e164!,
+      // WJ64 — additif : présent uniquement pour un E.164 étranger (jamais
+      // pour un numéro marocain — la clé n'existe simplement pas alors, comme
+      // pour tout champ facultatif WJ30/WJ31 ci-dessous).
+      ...(phone.phoneIsForeign ? { phoneIsForeign: true as const } : {}),
       whatsappOptIn: b.whatsappOptIn === true,
       city,
       roofType: roofType as RoofTypeId,
@@ -381,6 +551,44 @@ export function buildLeadRecord(
 }
 
 /**
+ * WJ52 — référence client courte, générée CÔTÉ NAVIGATEUR juste avant l'envoi
+ * (aucun appel serveur, aucune garantie d'unicité globale — c'est un artefact
+ * pour combler le vide post-soumission, pas une clé d'unicité). Format
+ * `TQ-XXXX` (4 caractères alphanumériques majuscules, alphabet sans 0/O/1/I
+ * pour éviter toute confusion à l'oral/à l'écrit sur WhatsApp). Le préfixe
+ * `TQ-` (Taqinor) + le format sont bornés par le regex de validation côté
+ * `validateOptionalFields` ci-dessus (`^[A-Z0-9-]{4,24}$`).
+ */
+const CLIENT_REF_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+export function buildClientRef(rand: () => number = Math.random): string {
+  let code = '';
+  for (let i = 0; i < 4; i++) {
+    code += CLIENT_REF_ALPHABET[Math.floor(rand() * CLIENT_REF_ALPHABET.length)];
+  }
+  return `TQ-${code}`;
+}
+
+/**
+ * WJ66 — jeton d'idempotence, généré CÔTÉ NAVIGATEUR une seule fois par session
+ * de saisie (comme `clientRef`, PAS un identifiant serveur). But : donner au
+ * CRM un signal de DÉDOUBLONNAGE quand une même soumission est renvoyée (retry
+ * réseau, double-clic, bouton « précédent » puis re-soumission) — le CRM-side
+ * dedupe reste un suivi PLAN2 (hors périmètre ici), ce jeton n'est qu'un champ
+ * additif transmis tel quel. Format alphanumérique 32 caractères (assez
+ * d'entropie pour une clé de dédup best-effort, jamais une garantie
+ * d'unicité globale) — borné par le regex de validation côté
+ * `validateOptionalFields` (`^[A-Za-z0-9_-]{8,64}$`).
+ */
+const IDEMPOTENCY_KEY_ALPHABET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+export function buildIdempotencyKey(rand: () => number = Math.random): string {
+  let key = '';
+  for (let i = 0; i < 32; i++) {
+    key += IDEMPOTENCY_KEY_ALPHABET[Math.floor(rand() * IDEMPOTENCY_KEY_ALPHABET.length)];
+  }
+  return key;
+}
+
+/**
  * Identifiant court, NON réversible, dérivé du téléphone E.164 — pour corréler
  * deux lignes de log d'un même lead SANS jamais journaliser le numéro. FNV-1a
  * 32 bits (suffisant pour une corrélation de logs, pas pour de la sécurité) ;
@@ -419,6 +627,52 @@ export function redactLeadForLog(record: LeadRecord): Record<string, unknown> {
     submittedAt: record.submittedAt,
     page: record.page,
     enrichment: 'enrichment' in record ? 'present' : 'absent',
+  };
+}
+
+/**
+ * WJ66 — VISIBILITÉ DE PANNE DE LIVRAISON. `forwardLead` tolère déjà l'absence
+ * de configuration et les pannes réseau EN SILENCE (jamais levé, jamais
+ * bloquant pour le visiteur) — mais un webhook CRM en panne prolongée ne
+ * remontait nulle part : chaque visiteur voyait quand même « enregistré »
+ * pendant que ses leads qualifiés n'atteignaient jamais le CRM, potentiellement
+ * pendant des jours, sans qu'aucune alerte ne se déclenche.
+ *
+ * Compteur EN MÉMOIRE (même idiome que `rateLimit.ts` : Map au niveau du
+ * module, best-effort, borné à l'isolat Worker courant — pas un quota/état
+ * global durable, cf. limitation documentée dans rateLimit.ts). On ne compte
+ * QUE les échecs de livraison d'un lead QUALIFIÉ avec un webhook CONFIGURÉ
+ * (`webhook-status-*` / `webhook-error-*`) : jamais `below-threshold` ni
+ * `no-webhook-configured`, qui sont des états normaux, pas des pannes.
+ * Un succès réinitialise le compteur (la panne n'est plus active).
+ */
+const FORWARD_LEAD_ALERT_THRESHOLD = 3;
+let consecutiveForwardFailures = 0;
+
+/** Réinitialise le compteur de pannes (tests uniquement). */
+export function resetForwardLeadFailureStreak(): void {
+  consecutiveForwardFailures = 0;
+}
+
+/**
+ * Enregistre le résultat d'un `forwardLead` et indique si le seuil d'alerte
+ * est atteint (>= FORWARD_LEAD_ALERT_THRESHOLD échecs consécutifs). Pur
+ * vis-à-vis de l'appelant : ne lève jamais, ne bloque jamais — un simple
+ * indicateur pour décider de journaliser une ligne d'ALERTE plus visible.
+ */
+export function trackForwardLeadOutcome(delivered: boolean, reason?: string): { shouldAlert: boolean; streak: number } {
+  if (delivered) {
+    consecutiveForwardFailures = 0;
+    return { shouldAlert: false, streak: 0 };
+  }
+  // Les états normaux (pas de panne) ne comptent jamais comme un échec de livraison.
+  if (reason === 'below-threshold' || reason === 'no-webhook-configured') {
+    return { shouldAlert: false, streak: consecutiveForwardFailures };
+  }
+  consecutiveForwardFailures += 1;
+  return {
+    shouldAlert: consecutiveForwardFailures >= FORWARD_LEAD_ALERT_THRESHOLD,
+    streak: consecutiveForwardFailures,
   };
 }
 
@@ -508,6 +762,16 @@ export async function hashCityForCapi(city: string): Promise<string> {
 }
 
 /**
+ * WJ92 — Hash SHA-256 de l'e-mail selon la spec Meta « Advanced Matching » :
+ * minuscules, trim, aucune autre normalisation (Meta ne dé-ponctue PAS
+ * l'e-mail comme la ville — seuls casse/espaces varient légitimement).
+ */
+export async function hashEmailForCapi(email: string): Promise<string> {
+  const normalized = email.trim().toLowerCase();
+  return sha256Hex(normalized);
+}
+
+/**
  * Meta Conversions API (CAPI_URL) — fire-and-forget. Le service vit dans
  * taqinor-os et peut ne pas être déployé : l'absence est tolérée en silence.
  * Uniquement pour les leads qualifiés (signal publicitaire propre).
@@ -519,6 +783,16 @@ export async function hashCityForCapi(city: string): Promise<string> {
  * hachés (SHA-256, normalisés) ; on hache donc à la source. Les champs sortent
  * sous `ph`/`ct` (noms de la spec Meta « user_data », déjà hachés) ; on n'envoie
  * PLUS jamais `phoneE164`/`city` en clair vers le relais.
+ *
+ * WJ92 — MATCH QUALITY : deux leviers additifs, aucun n'est bloquant ni ne
+ * change le contrat existant :
+ *  - `em` (e-mail haché SHA-256, spec Meta) — présent SEULEMENT quand le lead
+ *    a capturé un e-mail (WJ30, facultatif) ; absent sinon, comme aujourd'hui.
+ *  - `event_id` — identifiant de DÉDUPLICATION par soumission. Priorité au
+ *    jeton généré côté navigateur (`record.eventId`, WJ92 côté lead.ts/mon-toit)
+ *    pour permettre une dédup pixel-navigateur ↔ serveur ; à défaut, un id
+ *    dérivé STABLE et NON réversible du même lead (leadLogId + submittedAt)
+ *    garantit qu'un `event_id` est TOUJOURS présent même sans jeton client.
  */
 export async function fireCapi(
   record: LeadRecord,
@@ -529,20 +803,24 @@ export async function fireCapi(
   const url = env.CAPI_URL?.trim();
   if (!url) return { sent: false };
   try {
-    const [ph, ct] = await Promise.all([
+    const [ph, ct, em] = await Promise.all([
       hashPhoneForCapi(record.phoneE164),
       hashCityForCapi(record.city),
+      record.email ? hashEmailForCapi(record.email) : Promise.resolve(undefined),
     ]);
+    const eventId = record.eventId || `${leadLogId(record.phoneE164)}-${record.submittedAt}`;
     await fetchFn(url, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         event: 'Lead',
+        event_id: eventId,
         fbclid: record.fbclid,
         utm: record.utm,
-        // PII hachée SHA-256 (jamais en clair) — noms `ph`/`ct` de la spec Meta.
+        // PII hachée SHA-256 (jamais en clair) — noms `ph`/`ct`/`em` de la spec Meta.
         ph,
         ct,
+        ...(em ? { em } : {}),
         billRange: record.billRange,
         timestamp: record.submittedAt,
         page: record.page,

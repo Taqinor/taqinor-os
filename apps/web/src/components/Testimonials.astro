@@ -11,6 +11,11 @@
  * Google » sont traduits (FR/EN/AR). La note (GOOGLE_RATING.value) et le nombre
  * d'avis restent identiques dans toutes les langues. Rendu FR inchangé (branche
  * `fr` = strings actuels mot pour mot).
+ *
+ * W282 — slot vidéo témoignage (scaffold, style UGC WhatsApp auto-hébergé).
+ * Un témoignage peut porter `videoMp4`/`videoWebm`/`videoAlt` (voir
+ * src/lib/testimonials.ts) ; tant qu'aucun clip réel n'est fourni (WG6), rien
+ * n'est rendu — le fallback texte/photo existant reste inchangé.
  */
 import {
   TESTIMONIALS,
@@ -56,6 +61,19 @@ const reviews = hasTestimonials()
       author: { '@type': 'Person', name: t.name },
       ...(t.date ? { datePublished: t.date } : {}),
       itemReviewed: { '@type': 'Organization', name: 'Taqinor' },
+      // W282 — VideoObject ajouté au Review UNIQUEMENT quand un vrai clip est
+      // fourni (jamais de placeholder ; uploadDate reprend t.date si connue).
+      ...(t.videoMp4
+        ? {
+            video: {
+              '@type': 'VideoObject',
+              name: t.videoAlt || t.name,
+              description: t.videoAlt || t.quote,
+              contentUrl: t.videoMp4,
+              ...(t.date ? { uploadDate: t.date } : {}),
+            },
+          }
+        : {}),
     }))
   : [];
 
@@ -118,9 +136,29 @@ const jsonLd =
       )}
 
       {hasTestimonials() && (
-        <div class="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
+        // W377 — data-choreo replaces the ad-hoc data-stagger/v2-rise combo
+        // with the shared choreography primitive (v2.css); same visual
+        // cascade, now systemic rather than bespoke to this component.
+        <div class="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3" data-choreo>
           {TESTIMONIALS.map((t, i) => (
-            <figure class="cine-card v2-rise flex flex-col p-7" style={`--v2-i:${i % 3}`}>
+            <figure class="cine-card flex flex-col p-7" style={`--i:${i % 3}`}>
+              {t.videoMp4 && (
+                // W282 — slot vidéo témoignage (scaffold). Ratio fixe (aspect-video)
+                // pour zéro CLS ; pas d'autoplay (immobile au repos, respecte
+                // prefers-reduced-motion par défaut) ; controls natifs seulement.
+                <div class="mb-5 aspect-video overflow-hidden rounded-lg bg-black/40">
+                  <video
+                    class="h-full w-full"
+                    controls
+                    preload="none"
+                    playsinline
+                    aria-label={t.videoAlt || t.name}
+                  >
+                    {t.videoWebm && <source src={t.videoWebm} type="video/webm" />}
+                    <source src={t.videoMp4} type="video/mp4" />
+                  </video>
+                </div>
+              )}
               <blockquote class="flex-1 text-lune-soft">“{t.quote}”</blockquote>
               <figcaption class="mt-6">
                 <span class="block font-bold text-white">{t.name}</span>

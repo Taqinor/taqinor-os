@@ -1,0 +1,381 @@
+---
+/**
+ * AR — Recharge VE au solaire (W254, RTL). ترجمة عربية أمينة لصفحة
+ * /recharge-voiture-electrique-solaire — صفحة قدرة، وليست صفحة دليل. لم تركّب
+ * Taqinor أي محطة شحن سيارات كهربائية حتى اليوم: صفر مشروع مُختلَق، صفر صورة،
+ * صفر رقم إنتاج حقيقي. نشرح المنهج (تكملة شمسية، تحديد المقاس حسب الكيلومترات
+ * اليومية) ونؤسّس كل شيء على القانون 82-21 (الاستهلاك الذاتي: تصدير محدود
+ * السقف/منخفض الأجر ← الشحن على الفائض الخاص).
+ *
+ * أمانة الأرقام — كل رقم من apps/web/CONTENT_SEO_NOTES.md §6/§1، بفوارق
+ * مؤرَّخة ومُوثَّقة، مع فرضيات معلَنة — محفوظة كما هي بالأرقام اللاتينية:
+ *   - VE ≈ 15 kWh/100 km (+~10 % خسائر شحن ≈ 16,5 kWh مسحوبة/100 km)
+ *   - بنزين ~93 MAD/100 km · VE-شبكة ~23 MAD/100 km (19–27) ·
+ *     VE-شمسي ~0–13 MAD/100 km هامشي
+ *   - 7,4 kW = النقطة المثلى أحادي الطور ؛ 11/22 kW = ثلاثي الطور (طلب لدى ONEE/الوكالة)
+ * ممنوع (تسرّب من تونس، وليس إجراءً مغربياً): «منحة شراء 50 000 / 100 000 درهم».
+ * لا نذكر إلا المزايا المغربية الحقيقية: الإعفاء من الضريبة على القيمة
+ * المضافة، الإعفاء من رسم السيارات (TSAVA)، الإعفاء من الرسوم الجمركية عند
+ * الاستيراد — لا منحة نقدية من الدولة.
+ *
+ * الروابط الداخلية عبر localizeNavHref. النسخة الفرنسية لم تُمَسّ.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import Faq from '../../components/Faq.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import { getLocaleFromPath } from '../../i18n/utils';
+import { localizeNavHref } from '../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+const devisHref = L('/devis/mon-toit');
+
+// كم لوحاً أحتاج لكيلومتراتي — فوارق §6، فرضيات معلَنة.
+const dimensionnement = [
+  {
+    title: 'رحلة، لا شحن كامل',
+    body: 'تستهلك سيارة كهربائية مدمجة في حدود 15 إلى 20 kWh لكل 100 km (≈16,5 kWh مسحوبة فعلياً، بما في ذلك خسائر الشحن). فرحلة منزل-عمل من 30 إلى 50 km/يوم تعني إذن نحو 6 إلى 10 kWh في اليوم: تكملة يومية صغيرة، لا شحناً من 0 إلى 100 %.',
+  },
+  {
+    title: 'لوحان إلى أربعة تكفي',
+    body: 'ينتج لوح 550 واط، تحت نحو 5 ساعات من الشمس الكاملة، في حدود 2 إلى 2,4 kWh يومياً. فتغطية تكملة رحلة اعتيادية تعادل إذن، تقريباً، 2 إلى 4 ألواح من 550 واط تُضاف إلى الحقل — أي ما يقارب 1,1 إلى 2,2 kWc.',
+  },
+  {
+    title: 'منهج، لا رقم مضمون',
+    body: 'يبقى الـ kWh لكل لوح تحت ~5 ساعات من الشمس مؤشراً نوعياً: يتوقّف على مدينتكم، اتجاه السطح والموسم. ننطلق من كيلومتراتكم الحقيقية وسطحكم، لا من جدول عام — الدراسة تحسم الأمر.',
+  },
+];
+
+// FAQ مرئية — schema={false} حتى تبقى /faq الصفحة الوحيدة الحاملة لـ FAQPage.
+const faq = [
+  {
+    q: 'هل يمكن فعلاً شحن سيارة كهربائية بالطاقة الشمسية بالمغرب؟',
+    a: 'نعم، كتكملة. تغطّي الطاقة الشمسية جيداً التكملة اليومية لرحلة اعتيادية (بضع kWh في اليوم)، لكن شحناً شمسياً «أعمى» بكامل القدرة، دون شبكة ولا بطارية ولا تعديل، غير عملي — فالإنتاج يتغيّر مع الشمس. نشحن على الفائض عند توفّر الشمس، ونكمل من الشبكة مساءً عند الحاجة.',
+  },
+  {
+    q: 'كم لوحاً أحتاج لسيارتي الكهربائية؟',
+    a: 'تقريباً: رحلة من 30 إلى 50 km/يوم تتطلّب نحو 6 إلى 10 kWh، أي ما يقارب 2 إلى 4 ألواح من 550 واط. هذا مؤشر لا ضمان: مدينتكم، اتجاه السطح والموسم تُغيّر النتيجة، والدراسة تُدقّقها على حالتكم.',
+  },
+  {
+    q: '7 أو 11 أو 22 kW: أي محطة، وهل يلزم الثلاثي الطور؟',
+    a: 'معظم البيوت المغربية أحادية الطور 220–230 V: تعمل محطة بقدرة 7 kW (النقطة المثلى ~7,4 kW) هناك مباشرة وتشحن جلّ البطارية في ليلة واحدة. أما محطات 11 و22 kW فتتطلّب الثلاثي الطور، أي طلب زيادة قدرة لدى ONEE أو الوكالة المحلية.',
+  },
+  {
+    q: 'هل هي فعلاً أرخص من البنزين؟',
+    a: 'بفوارق إرشادية مغربية (منتصف 2026، فرضيات معلَنة): يكلّف البنزين بمعدّل ~6,5 L/100 km نحو ~93 درهم/100 km ؛ وتكلّف المسافة نفسها بسيارة كهربائية على الشبكة ~23 درهم/100 km (19–27) ؛ وحين تُشحَن على الفائض الشمسي الخاص، ~0 إلى 13 درهم/100 km. حجم الفارق — شمسي ≪ شبكة ≪ بنزين — متين ؛ أما الرقم الدقيق فيتوقّف على سعر الوقود في اليوم وشريحتكم لدى ONEE.',
+  },
+  {
+    q: 'ما هي المساعدات المتاحة لسيارة كهربائية بالمغرب؟',
+    a: 'المزايا المؤكَّدة ضريبية: الإعفاء من الضريبة على القيمة المضافة، الإعفاء من رسم السيارات (TSAVA) للمركبات الكهربائية الخالصة والهجينة القابلة للشحن، والإعفاء من الرسوم الجمركية عند الاستيراد على المركبات الكهربائية المؤهَّلة. لا توجد، حتى اليوم، منحة شراء نقدية تدفعها الدولة لاقتناء سيارة كهربائية بالمغرب.',
+  },
+];
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Service',
+  name: 'شحن السيارات الكهربائية بالطاقة الشمسية',
+  serviceType: 'تركيب شمسي لشحن السيارات الكهربائية',
+  provider: { '@type': 'Organization', name: 'Taqinor', url: 'https://taqinor.ma' },
+  areaServed: { '@type': 'Country', name: 'Maroc' },
+  description:
+    'شحن سيارة كهربائية على فائضكم الشمسي الخاص بالمغرب: تكملة يومية مُحدَّدة المقاس حسب كيلومتراتكم، اختيار محطة 7/11/22 kW (أحادي أو ثلاثي الطور)، شحن على الفائض أو عبر بطارية منزلية، كل ذلك مؤسَّس على الاستهلاك الذاتي وفق القانون 82-21.',
+};
+
+const breadcrumbJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'الرئيسية', item: 'https://taqinor.ma/ar' },
+    {
+      '@type': 'ListItem',
+      position: 2,
+      name: 'شحن السيارة الكهربائية بالطاقة الشمسية',
+      item: 'https://taqinor.ma/ar/recharge-voiture-electrique-solaire',
+    },
+  ],
+};
+---
+
+<Layout
+  title="شحن سيارتكم الكهربائية بالطاقة الشمسية بالمغرب: ألواح، محطة، تكلفة | Taqinor"
+  description="شحن سيارة كهربائية على فائضكم الشمسي الخاص بالمغرب: 2 إلى 4 ألواح تكفي لتكملة رحلة يومية، محطة 7 kW أحادية الطور (11/22 kW = ثلاثي الطور)، شحن على الفائض أو بطارية منزلية. مؤسَّس على الاستهلاك الذاتي وفق القانون 82-21 — فوارق تكلفة إرشادية 2026."
+  ogSlug="recharge-voiture-electrique-solaire"
+>
+  <div class="v2">
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+    <script type="application/ld+json" set:html={JSON.stringify(breadcrumbJsonLd)} />
+
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: 'شحن السيارة الكهربائية بالطاقة الشمسية' }]} />
+
+    <!-- هيرو داكن -->
+    <section class="px-4 pb-10 pt-16 text-white sm:pt-20">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">سيارة كهربائية + طاقة شمسية</p>
+        <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">اشحنوا سيارتكم بالشمس، لا بالشبكة بالسعر الكامل</h1>
+        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+          بالمغرب، يحدّ القانون 82-21 ما يمكنكم بيعه للشبكة ويشتريه بثمن منخفض. فالربح الحقيقي
+          للطاقة الشمسية إذن ليس التصدير — بل استهلاك ما تنتجونه بأنفسكم، ظهراً. وشحن سيارتكم
+          الكهربائية على فائضكم الخاص هو بالضبط هذا الاستعمال: تكملة يومية يغطّيها السطح إلى حدّ
+          كبير، دون ملء خزّان وقود.
+        </p>
+      </div>
+    </section>
+
+    <!-- هل يمكن شحن سيارة كهربائية بالطاقة الشمسية؟ -->
+    <section class="px-4 pb-20 sm:pb-24">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">الجواب الصريح</p>
+        <h2 class="display v2-section-title mt-5 text-white">هل يمكن شحن سيارة كهربائية بالطاقة الشمسية؟</h2>
+        <p class="v2-lead mt-5 text-lune-soft">
+          نعم — كتكملة. تغطّي الطاقة الشمسية جيداً الحاجة اليومية لرحلة اعتيادية: بضع كيلوواط-ساعة
+          في اليوم، مأخوذة من الطاقة التي ينتجها السطح والشمس ساطعة. ليس شحناً من 0 إلى 100 % حسب
+          الطلب، وهذا أمر جيّد: تقضي السيارة معظم وقتها متوقّفة، موصولة، خلال ساعات الإنتاج.
+        </p>
+        <p class="mt-5 max-w-xl border-s-4 border-white/25 ps-4 text-sm leading-relaxed text-lune-soft">
+          نقطة الصراحة: شحن «شمسي فقط» أعمى بكامل القدرة، دون شبكة ولا بطارية ولا تعديل، غير عملي
+          — فالإنتاج يتغيّر مع الغيوم وساعة اليوم. نشحن على الفائض عند توفّر الشمس، ونكمل من
+          الشبكة مساءً عند الحاجة. هذا المزيج هو ما يجعل الاستعمال موثوقاً، لا الطاقة الشمسية
+          وحدها.
+        </p>
+      </div>
+    </section>
+
+    <!-- كم لوحاً لكيلومتراتي اليومية (خلفية فاتحة) -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="bg-blanc-azur px-4 pb-20 pt-10 text-encre sm:pb-24">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-azur-600">تحديد المقاس حسب كيلومتراتكم</p>
+        <h2 class="display v2-section-title mt-5">كم لوحاً أحتاج لكيلومتراتي اليومية؟</h2>
+        <p class="v2-lead mt-5 max-w-2xl text-encre-soft">
+          لا ننطلق من حجم البطارية، بل من رحلتكم الحقيقية. تدور سيارة كهربائية مدمجة حول 15 إلى
+          20 kWh لكل 100 km ؛ اضربوا في كيلومتراتكم اليومية، وستحصلون على الطاقة الواجب تغطيتها.
+        </p>
+        <div class="mt-10 grid gap-6 md:grid-cols-3" data-stagger>
+          {dimensionnement.map((d, i) => (
+            <div class="v2-rise border-t-2 border-azur-900 bg-blanc p-6" style={`--v2-i:${i}`}>
+              <h3 class="display text-xl text-azur-700">{d.title}</h3>
+              <p class="mt-3 text-sm leading-relaxed text-encre-soft">{d.body}</p>
+            </div>
+          ))}
+        </div>
+        <p class="mx-auto mt-8 max-w-2xl border-s-4 border-azur-600 ps-4 text-sm leading-relaxed text-encre-soft">
+          تأتي هذه المقادير من معطيات تقنية عامة، معلَنة بفوارق ؛ أما التحديد الدقيق فيتوقّف على
+          سطحكم واستعمالكم. <a href={L('/équipement')} class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">شاهدوا المعدات →</a>
+        </p>
+      </div>
+    </section>
+
+    <!-- 7 أو 11 أو 22 kW + أحادي مقابل ثلاثي الطور -->
+    <section class="px-4 py-20 sm:py-28">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">اختيار المحطة</p>
+        <h2 class="display v2-section-title mt-5 text-white">7 أو 11 أو 22 kW — وأحادي أم ثلاثي الطور؟</h2>
+        <p class="v2-lead mt-5 max-w-2xl text-lune-soft">
+          تتوقّف قدرة المحطة أولاً على ربط بيتكم، لا على السيارة. لا فائدة من استهداف الحد الأقصى:
+          محطة أقوى مما يسمح به العدّاد لا تشحن أسرع.
+        </p>
+        <div class="mt-10 grid gap-6 md:grid-cols-2">
+          <div class="v2-rise cine-card p-7" style="--v2-i:0">
+            <h3 class="display text-xl text-white">7 kW — أحادي الطور، النقطة المثلى</h3>
+            <p class="mt-3 text-sm leading-relaxed text-lune-soft">
+              معظم البيوت المغربية أحادية الطور 220–230 فولت. تعمل محطة بنحو 7 kW (النقطة المثلى
+              ~7,4 kW) هناك مباشرة وتشحن جلّ البطارية في ليلة واحدة. هذا هو الخيار السكني الصحيح
+              في الغالبية العظمى من الحالات.
+            </p>
+          </div>
+          <div class="v2-rise cine-card p-7" style="--v2-i:1">
+            <h3 class="display text-xl text-white">11 أو 22 kW — يلزم الثلاثي الطور</h3>
+            <p class="mt-3 text-sm leading-relaxed text-lune-soft">
+              تفرض محطات 11 و22 kW ربطاً ثلاثي الطور. ويعني ذلك تقديم طلب زيادة قدرة لدى ONEE أو
+              وكالة التوزيع المحلية — خطوة يجب التخطيط لها، ولا معنى لها إلا لحاجات يومية كبيرة.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- نهار مقابل ليل: فائض، بطارية، محطة ذكية -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="bg-blanc-azur px-4 pb-20 pt-10 text-encre sm:pb-24">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-azur-600">نهاراً أم ليلاً</p>
+        <h2 class="display v2-section-title mt-5">الطاقة الشمسية تُنتَج نهاراً، ونقود مساءً</h2>
+        <p class="v2-lead mt-5 text-encre-soft">
+          هنا يكمن التحدّي كلّه: ينتج السطح حين تكون الشمس مرتفعة، لكن السيارة كثيراً ما تعود
+          مساءً. ثلاث طرق للتوفيق بين الاثنين، من الأبسط إلى الأكمل:
+        </p>
+        <div class="mt-8 space-y-5">
+          <div class="border-t-2 border-azur-900 bg-blanc p-6">
+            <h3 class="display text-lg text-azur-700">شحن مباشر على الفائض</h3>
+            <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+              تكون السيارة موصولة نهاراً — في المكتب، أو في البيت خلال عطلة نهاية الأسبوع — وتُشحَن
+              على الفائض الشمسي لحظة إنتاجه. الحلّ الأبسط، دون معدّات إضافية، لكنه يفترض وجود
+              السيارة عندما تكون الشمس ساطعة.
+            </p>
+          </div>
+          <div class="border-t-2 border-azur-900 bg-blanc p-6">
+            <h3 class="display text-lg text-azur-700">بطارية منزلية</h3>
+            <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+              يُخزَّن فائض الظهيرة في بطارية منزلية، ثم يُستعاد مساءً لشحن السيارة. مرونة أكبر في
+              التوقيت، مقابل استثمار إضافي — وهو بالضبط الاستعمال الذي يُثمّنه القانون 82-21،
+              لأنّ الطاقة المخزَّنة تساوي تعريفتكم المُتجنَّبة، أكثر بكثير من ثمن إعادة الشراء.
+            </p>
+          </div>
+          <div class="border-t-2 border-azur-900 bg-blanc p-6">
+            <h3 class="display text-lg text-azur-700">محطة «ذكية» تتبع الفائض</h3>
+            <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+              تُعدّل بعض المحطات قدرتها في الزمن الحقيقي لتشحن فقط بالفائض الشمسي المتوفّر، وتترك
+              المجال للشبكة حين تمرّ غيمة. هذا التعديل — لا شحن «أعمى» بكامل القدرة — هو ما يجعل
+              الشحن الشمسي عملياً فعلاً يوماً بعد يوم.
+            </p>
+          </div>
+        </div>
+        <p class="mx-auto mt-8 max-w-2xl border-s-4 border-azur-600 ps-4 text-sm leading-relaxed text-encre-soft">
+          هل فائض الظهيرة أفضل في السيارة، أم في بطارية، أم مُصدَّراً؟ الجواب يتوقّف على نمط
+          قيادتكم. <a href={L('/batteries-stockage')} class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">افهموا التخزين →</a>
+        </p>
+      </div>
+    </section>
+
+    <!-- مرآب شمسي -->
+    <section class="px-4 py-20 sm:py-28">
+      <div class="mx-auto max-w-6xl">
+        <div class="grid gap-10 lg:grid-cols-[1.1fr_1fr] lg:items-center">
+          <div class="v2-rise">
+            <p class="tech-label v2-kicker rule-brass text-lune">مرآب شمسي</p>
+            <h2 class="display v2-section-title mt-5 text-white">مأوى السيارة الذي يُنتج طاقته بنفسه</h2>
+            <p class="v2-lead mt-5 text-lune-soft">
+              حين يكون سطح البيت مُشبَعاً أو سيّئ التوجيه، يصبح مأوى السيارة — المرآب الشمسي —
+              مساحة مفيدة: يحمل سقفه الألواح، يُظلّل السيارة، ويغذّي المحطة مباشرة عند مكان
+              الوقوف. تُشحَن السيارة حيث تقف بالضبط، تحت الطاقة التي تتلقّاها.
+            </p>
+          </div>
+          <div class="v2-rise cine-card p-7" style="--v2-i:1">
+            <h3 class="display text-xl text-white">مساحة إضافية، لا منقوصة</h3>
+            <p class="mt-3 text-sm leading-relaxed text-lune-soft">
+              لا يأخذ المرآب شيئاً من البيت: يضيف أمتاراً مربّعة من الالتقاط حيث لم يكن، لولاه،
+              سوى صفيحة أو لا شيء البتّة. وكما هو الحال في سطح البيت، يُحسَب المقاس حسب الحاجة
+              الحقيقية وتعرّض الموقع للشمس.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- V2H / V2G (قادم إلى المغرب) -->
+    <section class="border-t border-white/10 px-4 py-16 sm:py-20">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">قادم إلى المغرب</p>
+        <h2 class="display v2-section-title mt-5 text-white">V2H وV2G: السيارة كبطارية للبيت</h2>
+        <p class="v2-lead mt-5 text-lune-soft">
+          يعكس V2H (من السيارة إلى البيت) وV2G (من السيارة إلى الشبكة) اتجاه السلك: تُعيد البطارية
+          الكبيرة للسيارة الطاقة إلى البيت مساءً، بل وحتى إلى الشبكة. ونظرياً، هذا هو المكمّل
+          المثالي للطاقة الشمسية — تصبح السيارة الخزّان الذي يُخزّن فائض الظهيرة لذروة المساء.
+        </p>
+        <p class="mt-5 text-sm leading-relaxed text-lune-soft">
+          نؤطّر الأمر بصراحة: بالمغرب، هذا أفق مستقبلي أكثر منه عرضاً معيارياً اليوم. تبقى
+          المركبات والمحطات المتوافقة نادرة، ولا يزال الإطار القانوني قيد الكتابة. نفضّل تقديمه
+          كما هو — واعد، وليس شائعاً بعد — على بيعه كأمر مكتسب.
+        </p>
+      </div>
+    </section>
+
+    <!-- هل هو مربح مقارنة بالبنزين؟ (خلفية فاتحة) -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="bg-blanc-azur px-4 pb-20 pt-10 text-encre sm:pb-24">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-azur-600">الحساب، بفوارق</p>
+        <h2 class="display v2-section-title mt-5">هل هو مربح فعلاً مقارنة بالبنزين؟</h2>
+        <p class="v2-lead mt-5 text-encre-soft">
+          الأرقام أدناه فوارق إرشادية مغربية (منتصف 2026)، بفرضيات معلَنة — وليست وعوداً. حجم
+          الفارق متين ؛ أما الرقم الدقيق فيتوقّف على سعر الوقود في اليوم وشريحتكم لدى ONEE.
+        </p>
+        <div class="mt-8 space-y-4">
+          <div class="flex items-baseline justify-between gap-4 border-t-2 border-azur-900 bg-blanc p-5">
+            <span class="font-display text-base font-bold text-azur-700">بنزين (~6,5 L/100 km)</span>
+            <span class="fig text-2xl text-azur-700">~93 درهم/100 km</span>
+          </div>
+          <div class="flex items-baseline justify-between gap-4 border-t-2 border-azur-900 bg-blanc p-5">
+            <span class="font-display text-base font-bold text-azur-700">سيارة كهربائية مشحونة من الشبكة</span>
+            <span class="fig text-2xl text-azur-700">~23 درهم/100 km</span>
+          </div>
+          <div class="flex items-baseline justify-between gap-4 border-t-2 border-azur-900 bg-blanc p-5">
+            <span class="font-display text-base font-bold text-azur-700">سيارة كهربائية مشحونة من الشمس</span>
+            <span class="fig text-2xl text-azur-700">~0–13 درهم/100 km</span>
+          </div>
+        </div>
+        <p class="mt-6 text-sm leading-relaxed text-encre-soft">
+          الفرضيات: بنزين بمعدّل 6,5 L/100 km وبسعر ~14,3 درهم/لتر (منتصف يونيو 2026) ؛ سيارة
+          كهربائية بمعدّل 15 kWh/100 km +~10 % خسائر شحن ؛ شبكة بسعر ~1,40 درهم/kWh (الشريحة
+          الهامشية). على الشبكة، تكلّف السيارة الكهربائية بالفعل نحو ربع تكلفة البنزين ؛ وحين
+          تُشحَن على فائضكم الخاص، تميل التكلفة الهامشية نحو الصفر (3 إلى 13 درهم إذا قُيِّمت
+          الطاقة الشمسية بتكلفتها). التفاصيل الرقمية والمؤرَّخة تعيش في مقال مخصَّص، يُحدَّث كلّما
+          تحرّكت الأسعار.
+        </p>
+        <div class="mt-8 flex flex-wrap gap-3">
+          <a href="/blog/recharger-voiture-electrique-solaire-cout-maroc" class="inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">التكلفة المفصَّلة، أرقام 2026 →</a>
+          <a href={L('/guides')} class="inline-block border-b-2 border-azur-600 pb-0.5 text-base font-bold text-azur-600 transition-colors hover:text-azur-700">اقرأوا الأدلة →</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- مزايا مغربية حقيقية (بدون منحة شراء) -->
+    <section class="px-4 py-20 sm:py-28">
+      <div class="mx-auto max-w-6xl">
+        <div class="grid gap-10 lg:grid-cols-[1.1fr_1fr] lg:items-center">
+          <div class="v2-rise">
+            <p class="tech-label v2-kicker rule-brass text-lune">مزايا مؤكَّدة</p>
+            <h2 class="display v2-section-title mt-5 text-white">ما تمنحه الجبايات المغربية فعلاً</h2>
+            <p class="v2-lead mt-5 text-lune-soft">
+              المزايا المؤكَّدة لسيارة كهربائية بالمغرب ضريبية: الإعفاء من الضريبة على القيمة
+              المضافة، الإعفاء من رسم السيارات (TSAVA) للمركبات الكهربائية الخالصة والهجينة
+              القابلة للشحن، والإعفاء من الرسوم الجمركية عند الاستيراد على المركبات الكهربائية
+              المؤهَّلة.
+            </p>
+          </div>
+          <div class="v2-rise cine-card p-7" style="--v2-i:1">
+            <h3 class="display text-xl text-white">عدم الخلط</h3>
+            <p class="mt-3 text-sm leading-relaxed text-lune-soft">
+              لا توجد <strong class="text-white">حتى اليوم منحة شراء نقدية تدفعها الدولة</strong>
+              لاقتناء سيارة كهربائية بالمغرب — «منحة الـ 50 000 أو 100 000 درهم» المتداولة على
+              الإنترنت تُحيل إلى نظام بلد آخر، لا إلى قانون المالية المغربي. لن نَعِدكم بها أبداً:
+              المزايا الضريبية أعلاه وحدها حقيقية.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ مرئية — schema={false}: /faq تبقى الوحيدة الحاملة لـ FAQPage -->
+    <Faq items={faq} heading="شحن السيارة الكهربائية بالطاقة الشمسية — أسئلة متكررة" schema={false} />
+
+    <!-- كتلة روابط الختام -->
+    <section class="border-t border-white/10 px-4 py-16 sm:py-20">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">لمزيد من التعمّق</p>
+        <h2 class="display v2-section-title mt-5 text-white">تحضير شحنكم الشمسي</h2>
+        <p class="v2-lead mt-5 max-w-2xl text-lune-soft">
+          يبدأ تحضير شحن سيارتكم بالشمس منذ دراسة السطح: هناك يُقرَّر الفائض الواجب التقاطه،
+          التخزين المحتمل والمحطة الملائمة لربطكم.
+        </p>
+        <div class="mt-10 flex flex-wrap gap-3">
+          <a href={L('/batteries-stockage')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">التخزين →</a>
+          <a href={L('/équipement')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">شاهدوا المعدات →</a>
+          <a href={L('/guides')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">الأدلة →</a>
+          <a href={devisHref} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">تشخيصي المجاني →</a>
+        </div>
+      </div>
+    </section>
+
+    <CtaBand title="سيارة كهربائية تريدون شحنها بالشمس؟ ابدؤوا بالدراسة المجانية." href={devisHref} />
+
+    <StickyCta />
+  </div>
+</Layout>

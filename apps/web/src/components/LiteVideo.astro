@@ -1,0 +1,154 @@
+---
+/**
+ * W346 — LiteVideo : primitive « façade clic-pour-lire » réutilisable,
+ * extraite de VideoChantier.astro (dont le motif était déjà correct). Aucune
+ * vidéo n'est jamais préchargée : seule l'affiche (poster) est servie au
+ * chargement ; le <video> réel n'est monté qu'au clic sur le bouton play.
+ *
+ * STANDING RULE (voir docs/WEB_PLAN.md) : la vidéo sociale sur /, le
+ * parcours, /realisations et la proposition est un MP4 auto-hébergé derrière
+ * cette façade ; les iframes tiers (YouTube/Vimeo/etc.) ne sont autorisées
+ * QUE sur le blog. Ne jamais embarquer un iframe tiers ailleurs — la façade
+ * protège ~800 ms de LCP, un iframe le casserait immédiatement.
+ *
+ * Props :
+ *   - src           : chemin du MP4 auto-hébergé (ex. /videos/chantier-a.mp4)
+ *   - poster        : chemin RACINE du poster, SANS extension (ex.
+ *                     /videos/chantier-poster) — .avif et .webp sont
+ *                     dérivés automatiquement (même convention que le
+ *                     couple existant chantier-poster.avif/.webp).
+ *   - alt           : texte alternatif de l'affiche (obligatoire, a11y).
+ *   - playLabel     : aria-label du bouton play (obligatoire, a11y).
+ *   - aspectRatio   : "16/9" par défaut ; accepte tout ratio CSS valide
+ *                     (ex. "9/16" pour un format vertical — vertical-ready).
+ *   - posterWidth / posterHeight : dimensions intrinsèques de l'affiche pour
+ *     réserver l'espace (anti-CLS). Défaut 1600×900 (16:9). Pour un format
+ *     vertical, passer par ex. 900×1600.
+ *
+ * Ce composant est un PUR primitif de présentation : pas d'i18n interne (le
+ * parent fournit alt/playLabel déjà traduits), pas de comportement au-delà du
+ * clic-pour-lire. Les enrichissements spécifiques (ex. la boucle teaser au
+ * scroll de VideoChantier, W269) restent dans le composant appelant, qui peut
+ * s'accrocher à l'événement `litevideo:play` (CustomEvent, bubbles) émis sur
+ * la racine JUSTE AVANT le montage du <video> réel — utile par ex. pour
+ * mettre en pause une boucle teaser superposée avant que la lecture complète
+ * ne démarre (évite un double flux audio/vidéo).
+ *
+ * - id : id DOM optionnel de la racine (sinon un id généré est utilisé) —
+ *   permet à un composant appelant de cibler cette instance précise (ex.
+ *   VideoChantier écoute `litevideo:play` sur son id connu).
+ */
+interface Props {
+  id?: string;
+  src: string;
+  poster: string;
+  alt: string;
+  playLabel: string;
+  aspectRatio?: string;
+  posterWidth?: number;
+  posterHeight?: number;
+  class?: string;
+}
+
+const {
+  id,
+  src,
+  poster,
+  alt,
+  playLabel,
+  aspectRatio = '16/9',
+  posterWidth = 1600,
+  posterHeight = 900,
+  class: className,
+} = Astro.props;
+
+// padding-bottom en % pour réserver l'espace avant chargement (anti-CLS),
+// dérivé du ratio fourni (ex. "16/9" → 56.25%, "9/16" → 177.78%).
+const [rw, rh] = aspectRatio.split('/').map(Number);
+const paddingBottomPct = rw > 0 && rh > 0 ? (rh / rw) * 100 : 56.25;
+
+// Un id unique par instance (évite les collisions si LiteVideo apparaît
+// plusieurs fois sur une même page — ex. galerie de réalisations) — sauf si
+// le parent fournit son propre id stable.
+const uid = id ?? `lv-${Math.random().toString(36).slice(2, 9)}`;
+---
+
+<div
+  id={uid}
+  class={`lite-video group relative w-full cursor-pointer overflow-hidden ${className ?? ''}`}
+  data-lite-video
+  data-src={src}
+  data-poster={`${poster}.webp`}
+>
+  <div class="relative" style={`padding-bottom: ${paddingBottomPct}%;`}>
+    <picture class="absolute inset-0">
+      <source type="image/avif" srcset={`${poster}.avif`} />
+      <img
+        src={`${poster}.webp`}
+        alt={alt}
+        width={posterWidth}
+        height={posterHeight}
+        loading="lazy"
+        decoding="async"
+        class="lite-video-poster h-full w-full object-cover"
+      />
+    </picture>
+    <div class="absolute inset-0 bg-azur-950/20 transition-colors group-hover:bg-azur-950/5"></div>
+    <button
+      type="button"
+      class="lite-video-play absolute inset-0 flex items-center justify-center"
+      aria-label={playLabel}
+    >
+      <span class="flex h-20 w-20 items-center justify-center rounded-full bg-brass-400 text-azur-950 shadow-lg transition-transform group-hover:scale-110">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+      </span>
+    </button>
+  </div>
+</div>
+
+<style>
+  @media (prefers-reduced-motion: no-preference) {
+    .lite-video-poster {
+      transition: transform 700ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    }
+    .lite-video:hover .lite-video-poster {
+      transform: scale(1.04);
+    }
+  }
+</style>
+
+<script>
+  // W346 — Façade clic-pour-lire : ne monte le <video> réel qu'au clic.
+  // Chaque instance porte data-src/data-poster ; aucune vidéo n'est
+  // préchargée avant l'interaction. Comportement identique à l'ancien
+  // script embarqué dans VideoChantier.astro.
+  document.querySelectorAll<HTMLElement>('[data-lite-video]').forEach((wrap) => {
+    const playBtn = wrap.querySelector<HTMLButtonElement>('.lite-video-play');
+    const src = wrap.dataset.src ?? '';
+    const poster = wrap.dataset.poster ?? '';
+    const inner = wrap.querySelector<HTMLElement>('div[style]');
+
+    playBtn?.addEventListener('click', () => {
+      if (!inner || !src) return;
+
+      // Laisse une chance à un composant appelant (ex. VideoChantier / W269)
+      // de réagir juste avant le montage du <video> réel — typiquement pour
+      // couper une boucle teaser superposée.
+      wrap.dispatchEvent(new CustomEvent('litevideo:play', { bubbles: true }));
+
+      const video = document.createElement('video');
+      video.src = src;
+      video.poster = poster;
+      video.preload = 'none';
+      video.controls = true;
+      video.autoplay = true;
+      video.playsInline = true;
+      video.style.cssText =
+        'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#070b1d';
+
+      inner.innerHTML = '';
+      inner.appendChild(video);
+      wrap.classList.remove('cursor-pointer');
+    });
+  });
+</script>

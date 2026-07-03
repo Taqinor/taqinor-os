@@ -12,13 +12,35 @@ import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { NAP } from '../../lib/nap';
 import RelatedLinks from '../../components/RelatedLinks.astro';
+import { estimateReadingTime } from '../../lib/readingTime';
+
+// W303 — date de vérification + auteur + temps de lecture.
+const verifiedDate = new Date('2026-07-03');
+const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+const guideBodyText = `
+  L'onduleur est la pièce qui convertit le courant continu des panneaux en courant utilisable chez
+  vous : sans lui, rien ne fonctionne. Le débat entre hybride et réseau peut sembler technique, mais il
+  se ramène à une seule question : stockez-vous l'énergie, oui ou non ? L'hybride est l'onduleur qui
+  sait gérer une batterie. Les Deye pilotent en même temps les panneaux et le stockage. Leur intérêt
+  est double : déplacer l'énergie du jour vers le soir, et garder le courant pendant une coupure.
+  L'onduleur réseau fait une seule chose, mais très bien : envoyer la production solaire vers vos
+  appareils et le réseau, sans stockage à amortir. Les Huawei SUN2000 sont taillés pour cette
+  autoconsommation directe. Le revers est connu — pas de secours pendant une coupure. Le surplus
+  injecté sur le réseau a, de toute façon, peu de valeur face au tarif de détail. Le choix de
+  l'onduleur n'est donc pas le premier, c'est le dernier : il découle de la décision sur le stockage,
+  qui découle elle-même de votre profil de consommation et de la stabilité de votre réseau.
+`;
+const readingMinutes = estimateReadingTime(guideBodyText);
 
 const url = new URL(Astro.url.pathname, Astro.site).href;
+// W291 — image OG (même URL que celle passée à ogSlug plus bas), pour l'éligibilité Article rich results.
+const schemaImageUrl = new URL('/og/equipement.png', Astro.site).href;
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Article',
   headline: 'Onduleur hybride ou onduleur réseau ?',
   description: 'Onduleur hybride Deye ou onduleur réseau Huawei : la différence tient à une question simple — stockez-vous l’énergie, oui ou non ?',
+  image: schemaImageUrl,
   about: { '@type': 'Thing', name: 'Onduleurs solaires' },
   author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
   publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
@@ -29,9 +51,11 @@ const jsonLd = {
 <Layout
   title="Onduleur hybride ou onduleur réseau ? | Taqinor"
   description="Onduleur hybride Deye (avec stockage, continuité de service) ou onduleur réseau Huawei SUN2000 (autoconsommation sans batterie) : comment se fait le choix, expliqué simplement."
-  ogSlug="equipement"
+  ogSlug="guides"
 >
   <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  {/* W376 — reading progress bar (see global.css .reading-bar) */}
+  <div class="reading-bar" aria-hidden="true"></div>
   <div class="v2">
     <V2Enhance />
     <Article33Ribbon />
@@ -41,6 +65,14 @@ const jsonLd = {
     <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
       <p class="tech-label v2-kicker rule-brass text-lune">Guide · Équipement</p>
       <h1 class="display v2-page-title mt-5 text-white">Onduleur hybride ou onduleur réseau ?</h1>
+
+      <!-- W303 — date de vérification + auteur + temps de lecture -->
+      <p class="guide-byline mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-lune-faint">
+        <span>Vérifié le {dateFmt.format(verifiedDate)} · par Reda Kasri</span>
+        <span aria-hidden="true">·</span>
+        <span>{readingMinutes} min de lecture</span>
+      </p>
+
       <p class="v2-lead mt-6 text-lune-soft">
         L’onduleur est la pièce qui convertit le courant continu des panneaux en courant
         utilisable chez vous : sans lui, rien ne fonctionne. Le débat entre
@@ -52,12 +84,12 @@ const jsonLd = {
       <h2 class="display v2-section-title mt-12 text-white">L’onduleur hybride (Deye)</h2>
       <p class="v2-lead mt-5 text-lune-soft">
         L’hybride est l’onduleur qui sait gérer une batterie. Les Deye (monophasés et triphasés, de
-        5 à 30 kW) pilotent en même temps les panneaux et le stockage, gestion CAN BMS intégrée. Leur
-        intérêt est double : déplacer l’énergie du jour vers le soir, et basculer en mode autonome en
-        quelques millisecondes lors d’une coupure, ce qu’un onduleur réseau ne fait jamais (par
-        sécurité, il se déconnecte automatiquement quand le réseau tombe). Cette polyvalence a un
-        prix — il faut ajouter la batterie elle-même — et un onduleur de stockage convertit l’énergie
-        avec une étape de plus qu’un simple onduleur de couplage réseau.
+        5 à 30 kW) pilotent en même temps les panneaux et le stockage, avec un dialogue numérique
+        direct avec le système de gestion de la batterie (BMS) qui affine la charge en continu. Leur
+        intérêt est double : déplacer l’énergie du jour vers le soir, et garder le courant pendant une
+        coupure — ce qu’un onduleur réseau ne fait jamais (voir juste en dessous pourquoi). Cette
+        polyvalence a un prix — il faut ajouter la batterie elle-même — et un onduleur de stockage
+        convertit l’énergie avec une étape de plus qu’un simple onduleur de couplage réseau.
       </p>
 
       <h2 class="display v2-section-title mt-12 text-white">L’onduleur réseau (Huawei SUN2000)</h2>
@@ -67,20 +99,19 @@ const jsonLd = {
         taillés pour cette autoconsommation directe, du résidentiel aux toitures tertiaires. Moins de
         matériel, moins de conversions, moins de pannes possibles : c’est la solution la plus simple
         et la plus efficace tant que votre consommation suit le soleil. Le revers est connu — pas de
-        secours pendant une coupure, et rien à offrir le soir au-delà de ce que produisent les
-        panneaux à l’instant T.
+        secours pendant une coupure (pourquoi, exactement, se lit dans notre guide
+        <a href="/guides/on-grid-off-grid-ou-hybride" class="border-b border-azur-200/60 pb-0.5 font-semibold text-lune transition-colors hover:text-white">on-grid, off-grid ou hybride</a>),
+        et rien à offrir le soir au-delà de ce que produisent les panneaux à l’instant T.
       </p>
 
-      <h2 class="display v2-section-title mt-12 text-white">Pourquoi la loi 82-21 pèse dans la balance</h2>
       <p class="v2-lead mt-5 text-lune-soft">
-        On pourrait croire qu’un onduleur réseau « se rattrape » en revendant tout le surplus. La loi
-        82-21 dit l’inverse. L’injection est plafonnée à 20 % de votre production annuelle, et ce
-        surplus n’est racheté que 0,18 à 0,21 DH/kWh — quand vous rachetez ce même kWh au réseau entre
-        0,90 et 1,66 DH/kWh. Autrement dit, l’énergie que vous ne consommez pas sur place a peu de
-        valeur. Cela renforce la logique des deux onduleurs : sur un profil diurne, le réseau capte
-        déjà l’essentiel de cette valeur en autoconsommation directe ; sur un profil du soir, c’est
-        l’hybride qui récupère ce que l’export ne paierait quasiment pas, en le décalant vers vos
-        heures de pointe.
+        Le surplus injecté sur le réseau a, de toute façon, peu de valeur face au tarif de détail —
+        le détail des chiffres (plafond de 20 %, tarif de rachat ANRE) est à jour dans notre guide
+        <a href="/guides/loi-82-21-expliquee" class="border-b border-azur-200/60 pb-0.5 font-semibold text-lune transition-colors hover:text-white">loi 82-21 expliquée simplement</a>.
+        Cela renforce la logique des deux onduleurs : sur un profil diurne, le réseau capte déjà
+        l’essentiel de la valeur en autoconsommation directe ; sur un profil du soir, c’est l’hybride
+        qui récupère ce que l’export ne paierait quasiment pas, en le décalant vers vos heures de
+        pointe.
       </p>
 
       <h2 class="display v2-section-title mt-12 text-white">Comment on choisit</h2>
@@ -92,6 +123,8 @@ const jsonLd = {
         l’avance.
       </p>
       <RelatedLinks links={[
+        { href: "/guides/on-grid-off-grid-ou-hybride", label: "On-grid, off-grid ou hybride ?" },
+        { href: "/guides/electricite-pendant-les-coupures", label: "Électricité pendant les coupures" },
         { href: "/guides/faut-il-des-batteries", label: "Faut-il des batteries ?" },
         { href: "/équipement", label: "Voir l’équipement" },
         { href: "/guides", label: "Tous les guides" },

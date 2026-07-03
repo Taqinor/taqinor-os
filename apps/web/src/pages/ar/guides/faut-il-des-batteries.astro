@@ -15,16 +15,23 @@ import StickyCta from '../../../components/StickyCta.astro';
 import { NAP } from '../../../lib/nap';
 import { getLocaleFromPath } from '../../../i18n/utils';
 import { localizeNavHref } from '../../../i18n/pages';
+// W310 — يعيد كتلتَي KeyFigure و Callout الموجودتين في النسخة الفرنسية
+// (إحصائية 6000 دورة + نصيحة «الانعكاس الصحيح») واللتين سقطتا صامتتين من هذه المرآة.
+import Callout from '../../../components/Callout.astro';
+import KeyFigure from '../../../components/KeyFigure.astro';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 
 const url = new URL(Astro.url.pathname, Astro.site).href;
+// W291 — صورة OG (نفس الرابط المُمرَّر إلى ogSlug أدناه)، لأهلية Article rich results.
+const schemaImageUrl = new URL('/og/equipement.png', Astro.site).href;
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Article',
   headline: 'هل تحتاج بطاريات لتركيبتك الشمسية؟',
   description: 'استهلاك ذاتي نهاري أو تخزين: متى تُبرَّر البطاريات في تركيبة شمسية، مشروحاً ببساطة.',
+  image: schemaImageUrl,
   about: { '@type': 'Thing', name: 'بطاريات التخزين الشمسي' },
   author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
   publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
@@ -35,7 +42,7 @@ const jsonLd = {
 <Layout
   title="هل تحتاج بطاريات لتركيبتك الشمسية؟ | Taqinor"
   description="غالباً لا. إن كنت تستهلك أساساً في النهار، فالاستهلاك الذاتي المباشر يُربِح أكثر من أي بطارية؛ التخزين يُبرَّر للّيل أو لاستمرارية الخدمة. كل شيء يتوقّف على الساعة التي يدور فيها عدّادك."
-  ogSlug="equipement"
+  ogSlug="guides"
 >
   <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
   <div class="v2">
@@ -75,11 +82,14 @@ const jsonLd = {
         الألواح والعاكس الهجين. هذا البند لا يُبرَّر إلا إن وفّر لك أكثر ممّا يكلّفك.
       </p>
       <p class="v2-lead mt-5 text-lune-soft">
-        وهنا بالضبط يُحسَم الأمر. منذ القانون 82-21، يُشترى منك الفائض الذي تعيده إلى الشبكة بـ
-        0,18 إلى 0,21 درهم/kWh، بينما <em>تشتري</em> أنت نفس الـ kWh بين 0,90 و1,66 درهم/kWh حسب
-        شطرك. ومن ثَمّ فإن kWh تستهلكه عندك — مباشرة نهاراً، أو مخزَّناً للمساء — يساوي ما بين أربعة
-        وتسعة أضعاف kWh مُصدَّر. للبطارية قيمة فقط حين تنقل استهلاكك من النهار إلى المساء: أمّا بيت
-        نهاري أصلاً، فلا يكاد يوجد فيه ما يُنقَل، فيؤدّي التخزين ثمنه دون مردود.
+        وهنا بالضبط يُحسَم الأمر. منذ القانون 82-21، يُشترى الفائض المُعاد إلى الشبكة بتعريفة تحدّدها
+        ANRE (قرار 04/26) — <strong class="text-white">0,18 إلى 0,21 درهم/kWh للتوتر المتوسط/العالي؛
+        أمّا تعريفة نظام التصريح للتوتر المنخفض (أقلّ من 11 kW، وهي حالة أغلب البيوت) فلم تُنشَر
+        بعد</strong>، لكن لا سبب يجعلها أفضل. بينما <em>تشتري</em> أنت نفس الـ kWh بين 0,90 و1,66
+        درهم/kWh حسب شطرك — وهذا رقم معروف، وهو أعلى بكثير من أي تعريفة شراء أُعلنت حتى الآن. ومن ثَمّ
+        فإن kWh تستهلكه عندك — مباشرة نهاراً، أو مخزَّناً للمساء — يساوي أضعاف kWh مُصدَّر. للبطارية
+        قيمة فقط حين تنقل استهلاكك من النهار إلى المساء: أمّا بيت نهاري أصلاً، فلا يكاد يوجد فيه ما
+        يُنقَل، فيؤدّي التخزين ثمنه دون مردود.
       </p>
 
       <h2 class="display v2-section-title mt-12 text-white">كم تستغرق حتى تسترجع كلفتها</h2>
@@ -91,6 +101,15 @@ const jsonLd = {
         سعتها — عمرٌ يكفي لاسترجاع كلفة تخزين <em>مضبوط</em> الحجم، لا لتربيح مجموعة مُبالَغ في
         حجمها «احتياطاً».
       </p>
+
+      <KeyFigure value="6 000" unit="دورة" label="عمر بطارية LFP">
+        مضمونة 10 سنوات عند 70 % من السعة — يكفي لاسترجاع كلفة تخزين مضبوط الحجم.
+      </KeyFigure>
+
+      <Callout type="tip" title="الانعكاس الصحيح">
+        قبل إضافة بطارية، اسأل نفسك: في أي ساعة تستهلك أكثر؟ إن كان ذلك نهاراً،
+        فالاستهلاك الذاتي المباشر يسترجع كلفته أسرع — دون أي تخزين.
+      </Callout>
 
       <h2 class="display v2-section-title mt-12 text-white">ما يقوله منحنى استهلاكك</h2>
       <p class="v2-lead mt-5 text-lune-soft">

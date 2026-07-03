@@ -3,6 +3,30 @@
  * Nos garanties / engagements (W8). Reprend EXACTEMENT le tableau de garanties
  * déjà publié sur la page Équipement + l'engagement monitoring/SAV existant.
  * AUCUN délai de réponse (SLA) ni politique de sous-performance inventés.
+ *
+ * W306 — FAQ assurance habitation ajoutée : contenu générique (déclaration à
+ * l'assureur, garanties typiquement concernées), explicitement non un conseil
+ * juridique/contractuel — chaque contrat d'assurance étant différent, on
+ * renvoie systématiquement à l'assureur du client. schema={false} sur <Faq> :
+ * la seule page qui émet le FAQPage JSON-LD du site est /faq (W19).
+ *
+ * W331 — trois ajouts honnêtes : (1) une clause « ce qui n'est pas couvert »
+ * (WG16 encore en cours : exclusions GÉNÉRIQUES d'une garantie PV standard,
+ * marquées « à confirmer » — pas la liste définitive de Taqinor tant que Reda
+ * ne l'a pas validée) ; (2) un scénario concret si la performance tombe sous
+ * le seuil garanti (≥ 84,8 % déjà publié) ; (3) une marche à suivre pour faire
+ * jouer la garantie, avec le délai de réponse résolu par le fondateur
+ * (WG9 : « sous 1 h, 7j/7 »).
+ *
+ * W352 — scaffold « Garantie de production Taqinor » : un bloc DISTINCT qui
+ * pose le cadre d'un engagement de production annuelle (plancher de kWh
+ * mesuré par rapport à la production estimée PVGIS, remède si le seuil n'est
+ * pas tenu). WG12 (gate fondateur) n'a pas encore fourni le pourcentage
+ * plancher ni le remède exact : ce bloc rend donc `pending founder
+ * commitment` — la mécanique et la logique sont expliquées, AUCUN chiffre de
+ * seuil n'est affiché tant que WG12 n'a pas tranché. Dès que WG12 livre
+ * l'engagement, seule la constante `productionGuarantee.floorPct` (et le
+ * texte de remède) a besoin d'être renseignée pour que le bloc s'anime.
  */
 import Layout from '../layouts/Layout.astro';
 import V2Enhance from '../components/V2Enhance.astro';
@@ -10,6 +34,44 @@ import Article33Ribbon from '../components/Article33Ribbon.astro';
 import Breadcrumb from '../components/Breadcrumb.astro';
 import CtaBand from '../components/CtaBand.astro';
 import StickyCta from '../components/StickyCta.astro';
+import Faq from '../components/Faq.astro';
+import ZelligeDivider from '../components/ZelligeDivider.astro';
+import InstallCounter from '../components/InstallCounter.astro';
+import CertLogoRow from '../components/CertLogoRow.astro';
+import { WHATSAPP_LEADS } from '../lib/nap';
+import { whatsappLink } from '../lib/whatsapp';
+
+const waClaim = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite faire jouer ma garantie Taqinor.');
+
+// W331 — exclusions GÉNÉRIQUES d'une garantie PV standard (secteur), pas la
+// liste contractuelle définitive de Taqinor. WG16 gate encore ouvert : Reda
+// doit la confirmer/l'ajuster avant qu'elle devienne la référence contractuelle.
+const exclusions = [
+  'Dommage accidentel ou choc externe (chute d’objet, grêle exceptionnelle, acte de vandalisme)',
+  'Modification, désinstallation ou intervention par un tiers non habilité par Taqinor',
+  'Défaut d’entretien manifeste (encrassement non traité, végétation non dégagée)',
+  'Événement de force majeure (foudre directe, incendie, catastrophe naturelle) — relève de votre assurance habitation, pas de notre garantie matériel',
+  'Usure normale au-delà des seuils de performance garantis (voir le tableau ci-dessus)',
+];
+
+const insuranceFaq = [
+  {
+    q: 'Dois-je déclarer mon installation solaire à mon assureur habitation ?',
+    a: 'En général, oui : une installation solaire modifie la construction et sa valeur assurée, ce qui justifie une déclaration à votre assureur habitation (multirisque habitation). Chaque contrat étant différent, la démarche exacte et les conséquences sur votre prime dépendent de votre assureur — ceci n’est pas un conseil juridique, contactez le vôtre pour connaître la procédure et les clauses qui s’appliquent à votre contrat.',
+  },
+  {
+    q: 'Qu’est-ce qu’une assurance habitation couvre habituellement sur une installation solaire ?',
+    a: 'Les contrats multirisque habitation couvrent typiquement l’incendie, la foudre, les dégâts des eaux et parfois les événements climatiques (grêle, vent) sur les biens immobiliers, panneaux inclus une fois déclarés. La casse accidentelle, le vol de matériel ou la sous-performance ne sont pas systématiquement couverts par une multirisque habitation standard — vérifiez les clauses exactes et les exclusions avec votre assureur, elles varient d’un contrat à l’autre.',
+  },
+  {
+    q: 'La garantie Taqinor remplace-t-elle mon assurance habitation ?',
+    a: 'Non, ce sont deux choses différentes et complémentaires. Notre garantie (voir le tableau ci-dessus) couvre un défaut de matériel ou de pose sur la durée contractuelle. Votre assurance habitation couvre des sinistres extérieurs à l’installation elle-même — incendie, dégât des eaux, événement climatique. Les deux se déclenchent dans des situations différentes ; ni l’une ni l’autre ne remplace la déclaration à votre assureur.',
+  },
+  {
+    q: 'Une installation solaire peut-elle faire baisser ma prime d’assurance ?',
+    a: 'Cela dépend entièrement de votre assureur et de votre contrat — nous n’avons pas d’accord commercial avec un assureur en particulier et ne pouvons pas l’affirmer de manière générale. C’est une question à poser directement à votre assureur au moment de la déclaration.',
+  },
+];
 
 // Identique au tableau de la page Équipement (source de vérité publiée).
 const warranties = [
@@ -35,12 +97,47 @@ const engagements = [
     body: 'À la livraison, vous repartez avec tout : schémas unifilaires, calcul de câbles, liste des protections, procédure de mise en service et accès au monitoring Deye Cloud. De quoi faire intervenir n’importe quel technicien, le jour où vous le voudrez.',
   },
 ];
+
+// W331 — marche à suivre pour faire jouer la garantie. Délai de réponse
+// résolu par le fondateur (WG9, 2026-07-03) : « sous 1 h, 7j/7 ».
+const claimSteps = [
+  {
+    n: '01',
+    title: 'Contactez-nous sur WhatsApp',
+    body: 'Le même canal que pour votre étude — décrivez ce que vous observez (baisse de production, alerte, dommage visible).',
+  },
+  {
+    n: '02',
+    title: 'Donnez votre référence chantier',
+    body: 'La référence de votre installation (visible sur votre dossier technique remis à la livraison) permet de retrouver immédiatement votre équipement, sa date de pose et sa garantie.',
+  },
+  {
+    n: '03',
+    title: 'Joignez une photo si le défaut est visible',
+    body: 'Un panneau, un onduleur ou une fixation qui posent un problème matériel visible — la photo accélère le diagnostic avant même notre passage.',
+  },
+  {
+    n: '04',
+    title: 'Nous répondons sous 1 h, 7j/7',
+    body: 'Notre engagement de réponse — pas un délai de résolution, mais un accusé de réception humain qui enclenche le traitement de votre dossier.',
+  },
+];
+
+// W352 — « Garantie de production Taqinor » : scaffold `pending founder
+// commitment`. `floorPct` et `remedy` restent `null` tant que WG12 (gate
+// fondateur) n'a pas fourni le plancher annuel de production ET le remède —
+// le bloc affiche alors uniquement le CADRE (comment un tel engagement se
+// mesurerait, avec quelles données), jamais un pourcentage inventé.
+const productionGuarantee = {
+  floorPct: null as number | null,
+  remedy: null as string | null,
+};
 ---
 
 <Layout
   title="Nos garanties — ce qui est couvert, et pour combien d’années | Taqinor"
   description="Une installation Taqinor s’engage sur la durée : 25 ans de performance et 12 ans produit sur les panneaux (≥ 84,8 % de puissance à 25 ans), 10 ans onduleurs et batteries, 20 ans structure, 2 ans pose. Et un suivi qui repère l’anomalie avant vous, sur Deye Cloud."
-  ogSlug="equipement"
+  ogSlug="garanties"
 >
   <div class="v2">
     <V2Enhance />
@@ -59,6 +156,14 @@ const engagements = [
           <strong class="text-white">au moins 84,8 % de leur puissance à 25 ans</strong>. Le tableau
           ci-dessous ne cache aucune ligne.
         </p>
+      </div>
+    </section>
+
+    {/* W280 — InstallCounter : chiffres réels d'installations, dérivés de
+        realisations.ts (aucun nombre fabriqué). No-op-safe. */}
+    <section class="px-4 pb-4 sm:pb-6">
+      <div class="mx-auto max-w-3xl">
+        <InstallCounter />
       </div>
     </section>
 
@@ -81,6 +186,81 @@ const engagements = [
           officiels au Maroc. Une garantie ne vaut que si on peut la faire jouer sans rapatrier un
           panneau à l’autre bout du monde — celles-ci s’activent sur place. <a href="/équipement" class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Voir le matériel posé →</a>
         </p>
+
+        {/* W280 — CertLogoRow : normes/garanties déjà publiées ci-dessus,
+            no-op-safe (aucun logo fabriqué). */}
+        <div class="mx-auto mt-10 max-w-xl">
+          <CertLogoRow />
+        </div>
+
+        <!-- W331 — « ce qui n'est pas couvert » : lire les exclusions rend une
+             garantie PLUS crédible, pas moins. Générique secteur, WG16-pending. -->
+        <div class="mx-auto mt-14 max-w-xl">
+          <p class="tech-label text-azur-600">Dit aussi noir sur blanc</p>
+          <h3 class="display mt-2 text-lg">Ce qui n’est pas couvert</h3>
+          <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+            Une garantie honnête énonce aussi ses limites. Voici, à titre indicatif, les exclusions
+            standards d’une garantie matériel photovoltaïque dans le secteur :
+          </p>
+          <ul class="mt-4 space-y-2 border-t border-azur-900/15 pt-4 text-sm leading-relaxed text-encre-soft">
+            {exclusions.map((ex) => (
+              <li class="flex gap-2"><span class="text-azur-600" aria-hidden="true">–</span><span>{ex}</span></li>
+            ))}
+          </ul>
+          <p class="mt-4 text-xs italic text-encre-faint">
+            À confirmer : liste précise en cours de validation par Taqinor — la version contractuelle
+            qui vous sera remise à la signature fait foi.
+          </p>
+        </div>
+
+        <!-- W331 — scénario concret si la performance tombe sous le seuil garanti -->
+        <div class="mx-auto mt-14 max-w-xl border-t-2 border-azur-900 bg-blanc p-6">
+          <p class="tech-label text-azur-600">Un scénario concret</p>
+          <h3 class="display mt-2 text-lg">Si la performance tombe sous 84,8 %</h3>
+          <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+            Vos panneaux sont mesurés en continu sur Deye Cloud. Si un contrôle constate, à l’intérieur
+            de la période de 25 ans, que la puissance restituée est passée sous le seuil garanti de
+            84,8 % de la puissance initiale — hors les exclusions ci-dessus — la garantie constructeur
+            s’applique : remplacement ou compensation du panneau concerné, selon les termes du
+            fabricant. C’est précisément pour repérer ce genre d’écart tôt que le monitoring tourne en
+            continu, avant même que vous n’ayez à le constater sur votre facture.
+          </p>
+        </div>
+
+        <!-- W352 — « Garantie de production Taqinor » : scaffold distinct,
+             `pending founder commitment`. Explique le CADRE (comment un
+             plancher annuel de kWh se mesurerait, à partir de quelles
+             données) sans jamais afficher de pourcentage tant que WG12 n'a
+             pas tranché — cf. productionGuarantee ci-dessus. -->
+        <div class="mx-auto mt-14 max-w-xl border-2 border-brass-400/50 bg-blanc p-6">
+          <p class="tech-label text-azur-600">Ce que nos données rendent possible</p>
+          <h3 class="display mt-2 text-lg">Garantie de production Taqinor</h3>
+          {productionGuarantee.floorPct ? (
+            <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+              Nous nous engageons sur un plancher de <strong>{productionGuarantee.floorPct} %</strong> de
+              la production annuelle estimée (méthode PVGIS), mesurée sur votre monitoring Deye Cloud.
+              {productionGuarantee.remedy ? ` ${productionGuarantee.remedy}` : ''}
+            </p>
+          ) : (
+            <>
+              <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+                Chaque installation Taqinor remonte sa production réelle, en continu, sur Deye Cloud —
+                c’est justement cette donnée mesurée, sur un parc désormais suivi depuis plus d’un an
+                (voir nos <a href="/realisations" class="font-semibold text-azur-600 underline decoration-azur-600/40 underline-offset-2 hover:decoration-azur-600">réalisations</a>),
+                qui rendrait crédible un engagement chiffré : un plancher de production annuelle
+                (en % de l’estimation PVGIS retenue à l’étude) en dessous duquel un remède défini
+                s’appliquerait.
+              </p>
+              <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+                Ce plancher et son remède ne sont pas encore fixés — nous ne publions aucun pourcentage
+                tant que l’engagement n’est pas arrêté. Cette section sera complétée dès que ce sera fait.
+              </p>
+              <p class="mt-4 text-xs italic text-encre-faint">
+                En attente d’un engagement du fondateur — aucun chiffre n’est publié avant confirmation.
+              </p>
+            </>
+          )}
+        </div>
       </div>
     </section>
 
@@ -104,6 +284,39 @@ const engagements = [
         </div>
       </div>
     </section>
+
+    <!-- W331 — comment faire jouer sa garantie, marche à suivre concrète -->
+    <ZelligeDivider tone="white" />
+    <section class="section px-4">
+      <div class="mx-auto max-w-4xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">Le jour où vous en avez besoin</p>
+        <h2 class="display v2-section-title mt-5 text-white">Comment faire jouer votre garantie</h2>
+        <p class="v2-lead mt-4 max-w-2xl text-lune-soft">
+          Une garantie écrite ne sert à rien si activer devient un parcours. Voici exactement la
+          marche à suivre.
+        </p>
+        <ol class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
+          {claimSteps.map((s, i) => (
+            <li class="v2-rise border-l-2 border-brass-400/60 pl-6" style={`--v2-i:${i}`}>
+              <p class="fig lum text-2xl">{s.n}</p>
+              <h3 class="display mt-2 text-lg text-white">{s.title}</h3>
+              <p class="mt-3 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+            </li>
+          ))}
+        </ol>
+        <a href={waClaim} rel="noopener" class="mt-10 inline-flex items-center gap-2 bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
+          Faire jouer ma garantie sur WhatsApp
+        </a>
+      </div>
+    </section>
+
+    <!-- W306 — FAQ assurance habitation : contenu générique, non un conseil juridique. -->
+    <Faq
+      heading="Assurance habitation et installation solaire"
+      items={insuranceFaq}
+      schema={false}
+    />
 
     <CtaBand title="Une garantie de 25 ans se mérite par une étude sérieuse. La nôtre est gratuite." href="/devis/mon-toit" />
 

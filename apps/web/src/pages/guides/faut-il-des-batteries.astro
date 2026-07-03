@@ -14,13 +14,35 @@ import { NAP } from '../../lib/nap';
 import RelatedLinks from '../../components/RelatedLinks.astro';
 import Callout from '../../components/Callout.astro';
 import KeyFigure from '../../components/KeyFigure.astro';
+import { estimateReadingTime } from '../../lib/readingTime';
+
+// W303 — date de vérification + auteur + temps de lecture.
+const verifiedDate = new Date('2026-07-03');
+const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+const guideBodyText = `
+  Réponse courte : souvent non. La batterie n'est pas le cœur d'une installation, c'est une option. Ce
+  qui la justifie ou non, c'est l'heure à laquelle vous consommez votre électricité. Quand l'essentiel
+  de votre consommation tombe en plein jour, l'électricité de vos panneaux part directement vers vos
+  appareils, sans détour par une batterie : c'est le scénario le plus rentable. Le calcul s'inverse dès
+  que votre pic de consommation arrive une fois le soleil couché, ou pour la continuité de service
+  pendant une coupure. Sur le marché marocain, une batterie LFP se situe autour de 3 000 à 4 000 DH par
+  kWh de capacité installée. Depuis la loi 82-21, le surplus renvoyé au réseau est racheté à un tarif
+  nettement inférieur au tarif d'achat. Un kWh consommé chez vous vaut donc plusieurs fois un kWh
+  exporté. Une installation résidentielle bien dimensionnée s'amortit en 5 à 7 ans sans stockage.
+  Ajouter une batterie allonge ce délai de 1 à 3 ans, selon votre profil et la capacité retenue. La
+  réponse n'est donc pas dans un catalogue, elle est dans votre relevé de consommation.
+`;
+const readingMinutes = estimateReadingTime(guideBodyText);
 
 const url = new URL(Astro.url.pathname, Astro.site).href;
+// W291 — image OG (même URL que celle passée à ogSlug plus bas), pour l'éligibilité Article rich results.
+const schemaImageUrl = new URL('/og/equipement.png', Astro.site).href;
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Article',
   headline: 'Faut-il des batteries pour son installation solaire ?',
   description: 'Autoconsommation diurne ou stockage : quand les batteries se justifient dans une installation solaire, expliqué simplement.',
+  image: schemaImageUrl,
   about: { '@type': 'Thing', name: 'Batteries de stockage solaire' },
   author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
   publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
@@ -31,9 +53,11 @@ const jsonLd = {
 <Layout
   title="Faut-il des batteries pour son installation solaire ? | Taqinor"
   description="Souvent non. Si vous consommez surtout en journée, l’autoconsommation directe rapporte plus que n’importe quelle batterie ; le stockage se justifie pour le nocturne ou la continuité de service. Tout se joue sur l’heure à laquelle votre compteur tourne."
-  ogSlug="equipement"
+  ogSlug="guides"
 >
   <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  {/* W376 — reading progress bar (see global.css .reading-bar) */}
+  <div class="reading-bar" aria-hidden="true"></div>
   <div class="v2">
     <V2Enhance />
     <Article33Ribbon />
@@ -43,6 +67,14 @@ const jsonLd = {
     <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
       <p class="tech-label v2-kicker rule-brass text-lune">Guide · Équipement</p>
       <h1 class="display v2-page-title mt-5 text-white">Faut-il des batteries ?</h1>
+
+      <!-- W303 — date de vérification + auteur + temps de lecture -->
+      <p class="guide-byline mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-lune-faint">
+        <span>Vérifié le {dateFmt.format(verifiedDate)} · par Reda Kasri</span>
+        <span aria-hidden="true">·</span>
+        <span>{readingMinutes} min de lecture</span>
+      </p>
+
       <p class="v2-lead mt-6 text-lune-soft">
         Réponse courte : souvent non. C’est la question qui revient le plus, et beaucoup la posent
         à l’envers — la batterie n’est pas le cœur d’une installation, c’est une option. Ce qui la
@@ -76,10 +108,14 @@ const jsonLd = {
         se justifie que s’il vous fait économiser plus qu’il ne vous coûte.
       </p>
       <p class="v2-lead mt-5 text-lune-soft">
-        Or c’est précisément là que se joue l’arbitrage. Depuis la loi 82-21, le surplus que vous
-        renvoyez au réseau vous est racheté 0,18 à 0,21 DH/kWh, quand vous <em>achetez</em> ce même
-        kWh entre 0,90 et 1,66 DH/kWh selon votre tranche. Un kWh consommé chez vous — directement
-        en journée, ou stocké pour le soir — vaut donc quatre à neuf fois un kWh exporté. La batterie
+        Or c’est précisément là que se joue l’arbitrage. Depuis la loi 82-21, le surplus renvoyé au
+        réseau est racheté à un tarif fixé par l’ANRE (décision 04/26) — <strong class="text-white">
+        0,18 à 0,21 DH/kWh pour le moyen/haut tension ; le tarif du régime déclaration BT
+        (&lt; 11 kW, celui de la quasi-totalité des maisons) n’est pas encore publié</strong>, mais il
+        n’a aucune raison d’être plus avantageux. Vous <em>achetez</em>, vous, ce même kWh entre
+        0,90 et 1,66 DH/kWh selon votre tranche — ce chiffre-là est connu et déjà nettement supérieur
+        à n’importe quel tarif de rachat annoncé jusqu’ici. Un kWh consommé chez vous — directement
+        en journée, ou stocké pour le soir — vaut donc plusieurs fois un kWh exporté. La batterie
         a de la valeur uniquement quand elle déplace votre consommation du jour vers le soir : sur une
         maison déjà diurne, il n’y a presque rien à déplacer, et le stockage paie sans rapporter.
       </p>
@@ -116,6 +152,7 @@ const jsonLd = {
       <RelatedLinks links={[
         { href: "/équipement", label: "Voir l’équipement" },
         { href: "/guides/onduleur-hybride-ou-reseau", label: "Onduleur hybride ou réseau ?" },
+        { href: "/blog/batterie-stocker-ou-revendre-maroc", label: "Stocker ou revendre : l’économie détaillée" },
         { href: "/guides", label: "Tous les guides" },
       ]} />
     </article>

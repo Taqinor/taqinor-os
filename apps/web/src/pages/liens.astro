@@ -1,0 +1,122 @@
+---
+/**
+ * W350 — /liens : hub « link-in-bio » minimal pour Instagram/TikTok (une
+ * plateforme n'autorise qu'UN SEUL lien en bio) — au lieu de renvoyer tout le
+ * trafic social vers l'accueil sans contexte, ce lien unique ouvre un choix
+ * clair : réalisations, estimation, WhatsApp, blog. Zéro dépendance ajoutée
+ * (pas de service tiers type Linktree), page statique, indexable, mobile-first.
+ *
+ * NAP/WhatsApp/estimation réutilisent les sources uniques existantes
+ * (lib/nap.ts, lib/whatsapp.ts) — aucun nouveau numéro, aucune nouvelle URL
+ * inventée. Volontairement HORS navigation (comme /parrainage) : cette page
+ * n'est destinée qu'aux bios de réseaux sociaux, jamais au menu du site.
+ */
+import Layout from '../layouts/Layout.astro';
+import V2Enhance from '../components/V2Enhance.astro';
+import Logo from '../components/Logo.astro';
+import { NAP, WHATSAPP_LEADS } from '../lib/nap';
+import { whatsappLink } from '../lib/whatsapp';
+
+const waGeneral = whatsappLink(
+  WHATSAPP_LEADS,
+  'Bonjour, je vous ai trouvé sur les réseaux sociaux et je souhaite en savoir plus sur une installation solaire.',
+);
+
+const links = [
+  {
+    href: '/realisations',
+    label: 'Nos réalisations',
+    sub: 'Des installations réelles, chiffres mesurés',
+  },
+  {
+    href: '/devis/mon-toit',
+    label: 'Mon estimation gratuite',
+    sub: 'Toiture, facture, ville — 2 minutes',
+    featured: true,
+  },
+  {
+    href: waGeneral,
+    label: 'WhatsApp',
+    sub: 'Une question ? Écrivez-nous directement',
+    external: true,
+  },
+  {
+    href: '/blog',
+    label: 'Blog & guides',
+    sub: 'Comprendre avant de décider',
+  },
+];
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'WebPage',
+  name: 'Taqinor — liens',
+  description: 'Tous les liens Taqinor : réalisations, estimation gratuite, WhatsApp, blog.',
+  isPartOf: { '@type': 'WebSite', name: 'Taqinor', url: 'https://taqinor.ma' },
+};
+---
+
+<Layout
+  title="Taqinor — tous nos liens"
+  description="Réalisations, estimation gratuite, WhatsApp, blog : tous les liens Taqinor au même endroit."
+  ogSlug="accueil"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+
+  <div class="v2">
+    <V2Enhance />
+
+    <main class="liens-page flex min-h-[100svh] flex-col items-center px-4 py-14 text-white sm:py-20">
+      <div class="mx-auto flex w-full max-w-sm flex-1 flex-col items-center">
+        <div class="liens-logo cine-in">
+          <Logo size={30} theme="dark" />
+        </div>
+        <p class="tech-label v2-kicker rule-brass cine-in cine-in-1 mt-5 text-center text-lune">
+          Installateur solaire — Maroc
+        </p>
+
+        <nav class="mt-10 flex w-full flex-col gap-4" aria-label="Liens Taqinor" data-stagger>
+          {links.map((l, i) => (
+            <a
+              href={l.href}
+              class={`liens-btn v2-rise group flex flex-col border px-6 py-4 text-left transition-colors ${
+                l.featured
+                  ? 'border-brass-400 bg-brass-400 text-azur-950 hover:bg-brass-300'
+                  : 'border-white/25 bg-white/[0.03] text-white hover:border-white/50 hover:bg-white/[0.08]'
+              }`}
+              style={`--v2-i:${i}`}
+              {...(l.external ? { rel: 'noopener noreferrer', target: '_blank' } : {})}
+            >
+              <span class="font-display text-base font-bold">{l.label}</span>
+              <span class={`mt-0.5 text-xs ${l.featured ? 'text-azur-900/80' : 'text-lune-faint'}`}>{l.sub}</span>
+            </a>
+          ))}
+        </nav>
+
+        <p class="mt-10 text-center text-xs text-lune-faint">
+          Ou appelez-nous directement :
+          <a href={`tel:${NAP.phone}`} dir="ltr" class="ml-1 underline decoration-white/30 decoration-2 underline-offset-4 hover:decoration-white/60">
+            {NAP.phoneDisplayIntl}
+          </a>
+        </p>
+      </div>
+
+      <footer class="mt-14 text-center text-[0.7rem] uppercase tracking-[0.16em] text-lune-faint/70">
+        <a href="/" class="hover:text-lune-faint">taqinor.ma</a>
+      </footer>
+    </main>
+  </div>
+</Layout>
+
+<style>
+  .liens-page {
+    background: radial-gradient(ellipse at top, rgb(20 28 62 / 0.6), transparent 60%);
+  }
+  .liens-logo :global(span) {
+    font-size: 1.5rem !important;
+  }
+  .liens-btn {
+    /* Zero-CLS: reserve stable box regardless of hover/focus state changes. */
+    outline-offset: 2px;
+  }
+</style>

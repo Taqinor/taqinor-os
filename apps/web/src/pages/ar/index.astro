@@ -13,38 +13,86 @@
  * on the AR page when one exists, else falls back to the existing FR page
  * (never a dead link). The Layout auto-sets lang=ar + dir=rtl; only text is
  * translated, RTL-logical classes (border-s/e, ps/pe, ms/me, start/end) keep
- * the composition mirrored. The FR homepage is untouched. The DiagnosticForm
- * and its lead data flow are locale-agnostic.
+ * the composition mirrored. The FR homepage is untouched.
+ *
+ * W249 — Single funnel: the former second lead form (DiagnosticForm, which
+ * duplicated the two InstantEstimator widgets already on this same page) is
+ * removed; DiagnosticForm.astro + /api/simulate stay intact in the codebase
+ * as the documented fallback (mounted elsewhere).
  */
 import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
 import Article33Ribbon from '../../components/Article33Ribbon.astro';
-import DiagnosticForm from '../../components/DiagnosticForm.astro';
 import Faq from '../../components/Faq.astro';
 import Picture from '../../components/Picture.astro';
 import VideoChantier from '../../components/VideoChantier.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import WhatsAppMock from '../../components/WhatsAppMock.astro';
 import GarantiesTeaser from '../../components/GarantiesTeaser.astro';
+import InstantEstimator from '../../components/InstantEstimator.astro';
 import Testimonials from '../../components/Testimonials.astro';
 import BrandStrip from '../../components/BrandStrip.astro';
 import ZelligeSignature from '../../components/ZelligeSignature.astro';
+import FounderPortrait from '../../components/FounderPortrait.astro';
 import { WHATSAPP_LEADS } from '../../lib/nap';
-import { whatsappLink } from '../../lib/whatsapp';
+import { whatsappLink, zeroFormWhatsappText } from '../../lib/whatsapp';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
+import { REGIE_MARGINAL_RATE_SECOND, REGIE_MARGINAL_RATE_HIGH } from '../../lib/regieTariff';
+import { REALISATIONS, realisationBySlug } from '../../lib/realisations';
+import { YIELD_TABLE } from '../../lib/yieldTable';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 
 const waDirect = whatsappLink(WHATSAPP_LEADS, 'مرحبًا، أرغب في دراسة لتركيب نظام للطاقة الشمسية.');
+// W349 — باب بدون نموذج: الفعل الثانوي للهيرو، مع سطر دارجة قصير بعد الفصحى.
+const waZeroForm = whatsappLink(WHATSAPP_LEADS, zeroFormWhatsappText('ar'));
+
+// W284 — أرقام دقيقة، لا تُقرَّب أبدًا: مُشتقّة من REALISATIONS (مصدر الحقيقة
+// الوحيد، apps/web/src/lib/realisations.ts) بدل نسخها يدويًا، لذا لا يمكن أن
+// تصبح خاطئة بصمت. الأرقام اللاتينية تبقى كما في FR (toLocaleString('fr-FR')).
+const totalKwc = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
+const totalKwcLabel = totalKwc.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' kWc';
+// أكبر تركيبة سكنية منشورة (المرجع 468، الجديدة) — بطلة البطل والملاحظة
+// الختامية. مُشتقّة بالفرز على kwcNum، وليست مرجعًا منسوخًا يدويًا.
+const featured = [...REALISATIONS].sort((a, b) => b.kwcNum - a.kwcNum)[0];
+
+// WJ73 — فجوة التقدير مقابل الدليل، مشروحة بصدق: التركيبة الرائدة تقيس
+// إنتاجية kWh/kWc/سنة أقل من الرقم الجنوبي الأمثل الذي يفترضه جدول الإنتاجية
+// المُنمذَج — كلا القيمتين مُشتقّة (REALISATIONS + YIELD_TABLE)، غير منسوختين يدوياً.
+const featuredYieldPerKwc = featured.productionNum && featured.kwcNum
+  ? Math.round(featured.productionNum / featured.kwcNum)
+  : null;
+const casablancaSouthOptimalYield = YIELD_TABLE.casablanca.grid['0']['29'];
+// اسم المدينة بالعربية للعرض فقط (الأرقام تبقى اللاتينية من REALISATIONS) —
+// نفس أسماء المدن المستخدمة أسفله في `gallery`.
+const CITY_AR: Record<string, string> = { 'El Jadida': 'الجديدة', 'Casablanca': 'الدار البيضاء', 'Nouaceur': 'النواصر' };
+const featuredVilleAr = CITY_AR[featured.ville] ?? featured.ville;
 
 // W205 — The protagonist figure of the headline is separated for the count-up.
 // Its width is reserved (tabular-nums + JS-locked min-width) → zero CLS.
-const heroFigure = '21 406';
-const heroTitleSuffix = ' kWh في السنة، منتَجة على سطح في الجديدة.';
+const heroFigure = (featured.productionNum ?? 0).toLocaleString('fr-FR');
+const heroTitleSuffix = ` kWh في السنة، منتَجة على سطح في ${featuredVilleAr}.`;
 const heroSub =
-  'تركيب رقم 468 — 17,04 kWc، مُحجَّم ومُركَّب ومُقاس من طرف Taqinor. تركيبكم يبدأ بتشخيص في 60 ثانية.';
+  `تركيب رقم ${featured.ref} — ${featured.kwc}، مُحجَّم ومُركَّب ومُقاس من طرف Taqinor. تركيبكم يبدأ بتشخيص في 60 ثانية.`;
+
+// W267 — السطر المالي تحت البطل. بلا أي رقم مخترَع: الاستهلاك الحقيقي لأسرة
+// المرجع 468 غير منشور في أي مكان بالموقع، لذا لا يمكن استدعاء
+// `annualSavingsMad(production, consumption)` بدون اختراع هذا المتغيّر الثاني.
+// الاشتقاق الوحيد الصادق من المعطى المنشور الوحيد (21 406 kWh مُنتَجة) هو
+// تثمين هذا الإنتاج بالتعريفة الحدّية الحقيقية لبارِم RÉGIE
+// (REGIE_TARIFF.selective، الشطرتان الأعلى — منسجم مع «أكبر تركيبة سكنية لنا
+// في 2026»، أي أسرة في أعلى الفئات بلا أي التباس): وهذا بالضبط نفس مجال
+// «≈ 1,38–1,60 MAD/kWh» المنشور والموثَّق سلفاً في billRange.ts /
+// recharge-voiture-electrique-solaire.astro. مجال (لا رقم واحد أبداً): لأن
+// الاستهلاك الذاتي الحقيقي للأسرة غير معروف، فرقم واحد سيخترع دقّة لا نملكها.
+const heroProductionKwh = featured.productionNum ?? 0;
+const heroTariffLowRate = REGIE_MARGINAL_RATE_SECOND; // 1,3817 MAD/kWh
+const heroTariffHighRate = REGIE_MARGINAL_RATE_HIGH; // 1,5958 MAD/kWh
+const heroMoneyLow = Math.round((heroProductionKwh * heroTariffLowRate) / 100) * 100;
+const heroMoneyHigh = Math.round((heroProductionKwh * heroTariffHighRate) / 100) * 100;
+const heroMoneyLine = `≈ ${heroMoneyLow.toLocaleString('fr-FR')} إلى ${heroMoneyHigh.toLocaleString('fr-FR')} MAD تُمحى من الفاتورة كل سنة`;
 
 // PLACEHOLDER(MERYEM): FAQ مؤقتة.
 const faq = [
@@ -55,16 +103,35 @@ const faq = [
   { q: 'هل تلزم البطاريات؟', a: 'ليس بالضرورة. إذا كان استهلاككم نهاريًا في الغالب، فإن الاستهلاك الذاتي المباشر هو أفضل استثمار. تُبرَّر البطاريات للاستهلاك الليلي أو لاستمرارية الخدمة — نحسب ذلك في الدراسة.' },
 ];
 
-const gallery = [
-  { name: 'reflet-468', alt: 'انعكاس الشمس على صف الألواح أثناء التركيب، الجديدة', widths: [1600, 1024, 640], ratio: 3 / 2, ville: 'الجديدة', kwc: '17,04 kWc', prod: '21 406 kWh/سنة', type: '24 × Canadian Solar 710 Wc · Deye 15 kW', slug: 'el-jadida-17-kwc' },
-  { name: 'equipe-trois', alt: 'فريق Taqinor أمام الصف الطويل من الألواح في نهاية الورش، الجديدة', widths: [1600, 1024, 640], ratio: 3 / 2, ville: 'الجديدة', kwc: '17,04 kWc', prod: null, type: 'نهاية الورش · فريق Taqinor', slug: 'el-jadida-17-kwc' },
-  { name: 'hero-skyline', alt: 'صف من الألواح الشمسية أمام أفق الدار البيضاء ومئذنة، ضوء ذهبي', widths: [2000, 1280, 768, 480], ratio: 16 / 9, ville: 'الدار البيضاء', kwc: '11,36 kWc', prod: '14 271 kWh/سنة', type: '16 × Canadian Solar 710 Wc · Deye 10 kW', slug: 'casablanca-11-kwc' },
-  { name: 'portrait-400', alt: 'المهندس أمام حقل الألواح، أفق الدار البيضاء', widths: [1600, 1024, 640], ratio: 4 / 3, ville: 'الدار البيضاء', kwc: '11,36 kWc', prod: null, type: 'إنتاج مقاس — Deye Cloud', slug: 'casablanca-11-kwc' },
-  { name: 'champ-villa', alt: 'حقل من ثمانية ألواح على سطح فيلا مسطّح، الجديدة', widths: [1600, 1024, 640], ratio: 3 / 2, ville: 'الجديدة', kwc: '5,68 kWc', prod: '7 135 kWh/سنة', type: '8 × Canadian Solar 710 Wc · Deye 5 kW', slug: 'el-jadida-6-kwc' },
-  { name: 'pose-134', alt: 'الفريق يميل لوحًا أثناء التركيب، الدار البيضاء', widths: [1600, 1024, 640], ratio: 4 / 3, ville: 'الدار البيضاء', kwc: '5,68 kWc', prod: '7 135 kWh/سنة', type: 'تركيب جارٍ · 8 × Canadian Solar 710 Wc', slug: 'casablanca-6-kwc' },
-  { name: 'equipe-gilet-taqinor', alt: 'مركّب بسترة Taqinor يضع قضبان هيكل، النواصر', widths: [1600, 1024, 640], ratio: 1, ville: 'النواصر', kwc: '3,72 kWc', prod: null, type: 'وضع القضبان · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
-  { name: 'entretien-jet', alt: 'تنظيف حقل الألواح بنفث الماء، النواصر', widths: [1600, 1024, 640], ratio: 1, ville: 'النواصر', kwc: '3,72 kWc', prod: null, type: 'صيانة الحقل · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
+// W284 — kwc/prod لم تعد منسوخة يدويًا: مُشتقّة من REALISATIONS عبر `slug`
+// (مصدر الحقيقة الوحيد) لتجنّب أي انحراف صامت. `ville` تبقى بالعربية للعرض
+// (خريطة CITY_AR)، و`prod` تبقى `null` عندما لا يجب أن تُظهر الصورة رقم
+// إنتاج (مثلاً صورة «نهاية الورش» ليست بطاقة الإنتاج لمرجعها) — هذا الخيار
+// التحريري (أي صورة تحمل الرقم) يبقى هنا؛ فقط الرقم نفسه مُشتقّ.
+const galleryRaw = [
+  { name: 'reflet-468', alt: 'انعكاس الشمس على صف الألواح أثناء التركيب، الجديدة', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: true, type: '24 × Canadian Solar 710 Wc · Deye 15 kW', slug: 'el-jadida-17-kwc' },
+  { name: 'equipe-trois', alt: 'فريق Taqinor أمام الصف الطويل من الألواح في نهاية الورش، الجديدة', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: false, type: 'نهاية الورش · فريق Taqinor', slug: 'el-jadida-17-kwc' },
+  { name: 'hero-skyline', alt: 'صف من الألواح الشمسية أمام أفق الدار البيضاء ومئذنة، ضوء ذهبي', widths: [2000, 1280, 768, 480], ratio: 16 / 9, showProd: true, type: '16 × Canadian Solar 710 Wc · Deye 10 kW', slug: 'casablanca-11-kwc' },
+  { name: 'portrait-400', alt: 'المهندس أمام حقل الألواح، أفق الدار البيضاء', widths: [1600, 1024, 640], ratio: 4 / 3, showProd: false, type: 'إنتاج مقاس — Deye Cloud', slug: 'casablanca-11-kwc' },
+  { name: 'champ-villa', alt: 'حقل من ثمانية ألواح على سطح فيلا مسطّح، الجديدة', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: true, type: '8 × Canadian Solar 710 Wc · Deye 5 kW', slug: 'el-jadida-6-kwc' },
+  { name: 'pose-134', alt: 'الفريق يميل لوحًا أثناء التركيب، الدار البيضاء', widths: [1600, 1024, 640], ratio: 4 / 3, showProd: true, type: 'تركيب جارٍ · 8 × Canadian Solar 710 Wc', slug: 'casablanca-6-kwc' },
+  { name: 'equipe-gilet-taqinor', alt: 'مركّب بسترة Taqinor يضع قضبان هيكل، النواصر', widths: [1600, 1024, 640], ratio: 1, showProd: false, type: 'وضع القضبان · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
+  { name: 'entretien-jet', alt: 'تنظيف حقل الألواح بنفث الماء، النواصر', widths: [1600, 1024, 640], ratio: 1, showProd: false, type: 'صيانة الحقل · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
 ];
+const gallery = galleryRaw.map((g) => {
+  const r = realisationBySlug(g.slug);
+  return {
+    ...g,
+    ville: CITY_AR[r?.ville ?? ''] ?? r?.ville ?? '',
+    kwc: r?.kwc ?? '',
+    prod: g.showProd ? (r?.production?.replace('/an', '/سنة') ?? null) : null,
+  };
+});
+
+// W271 — شقائق فلترة المدينة: «الكل» + المدن الموجودة فعلاً في `gallery`
+// أعلاه (بلا أي مدينة مخترَعة؛ الترتيب يتبع ظهور كل مدينة أول مرة في
+// المصفوفة — الجديدة، الدار البيضاء، النواصر).
+const galleryCities = ['الكل', ...Array.from(new Set(gallery.map((g) => g.ville)))];
 
 // حلولنا — كل العروض ظاهرة منذ الصفحة الرئيسية، لا في القائمة فقط. الأوصاف من
 // التموقع المنشور سلفًا، بلا أي ادعاء أو رقم جديد. بطاقات نصية (بلا صورة) → صفر CLS.
@@ -89,6 +156,20 @@ const journey = [
   { n: '6', title: 'مراقبة Deye Cloud', body: 'إنتاج مُقاس باستمرار، مع ولوج للزبون — القياس يحلّ محلّ الوعد.' },
 ];
 
+// W252 — «كيف يجري الأمر»: شريط من 4 مراحل تحت البطل، الصيغة شبه العالمية
+// بـ 3-4 أيقونات المعتمدة لدى كل الفاعلين الجادّين في القطاع. هذه هي نفس
+// المراحل الأربع لشريط «المسار» المفصّل أسفله — مُكثَّفة فقط إلى 4 (بدل 6)
+// للإجابة فوراً، تحت البطل، عن «ماذا يحدث بعد الاستمارة؟». بلا أي أجل/SLA
+// مخترَع؛ المراحل الأربع هي فعلاً ما يُسلّمه المسار المبني (تشخيص ← دراسة
+// موقَّعة ← عرض ثمن + توقيع إلكتروني ← تركيب وخدمة ما بعد البيع، انظر
+// /devis/mon-toit).
+const howItWorks = [
+  { n: '1', title: 'تقدير فوري', body: 'فاتورتكم تمنح مجالاً بالـ kWc في 60 ثانية، بلا أي التزام.' },
+  { n: '2', title: 'دراسة شخصية موقَّعة', body: 'زيارة تقنية، تحجيم على سطحكم الحقيقي، مُصادَق عليه وموقَّع قبل أي عرض ثمن.' },
+  { n: '3', title: 'عرض ثمن + توقيع إلكتروني', body: 'التسعير المفصَّل يُوقَّع إلكترونياً، أينما كنتم.' },
+  { n: '4', title: 'التركيب وخدمة ما بعد البيع', body: 'تركيب من طرف فريقنا، تشغيل، ثم مراقبة Deye Cloud وخدمة ما بعد بيع استباقية.' },
+];
+
 // أيقونات سوبر لبطاقات «حلولنا»: خطّ SVG واحد لكل بطاقة، currentColor (درجة
 // النحاس)، ضمن لغة العلامة. مُفهرسة بـ href ليبقى ثابتًا حتى لو تغيّر ترتيب البطاقات.
 const solutionIcons: Record<string, string> = {
@@ -103,19 +184,57 @@ const solutionIcons: Record<string, string> = {
 // لماذا تاكينور / الثقة — أربعة أرقام ضخمة، وقائع منشورة سلفًا. قرار المؤسس
 // 2026-06-22: خانة «دكتور-مهندس» تُستبدَل بمطابقة القانون 82-21 — إشارة ثقة
 // ملموسة وغير شخصية (يعيش رصيد المؤسس على صفحة الفريق). القيم الثلاث الأخرى
-// (3 أوراش قابلة للزيارة، 43,48 kWc مُركَّبة، Deye Cloud) بلا تغيير. الذهب يعيش
-// على أرقام .lum (انضباط النحاس). بلا أي ادعاء مخترَع.
+// (أوراش قابلة للزيارة، kWc مُركَّبة، Deye Cloud) بلا تغيير، لكن W284 تشتقّها
+// الآن من REALISATIONS بدل نسخها يدويًا. الذهب يعيش على أرقام .lum (انضباط
+// النحاس). بلا أي ادعاء مخترَع.
+const chantiersVisitablesCount = new Set(REALISATIONS.map((r) => r.ville)).size;
 const trust = [
-  { fig: '3', tally: false, label: 'أوراش قابلة للزيارة', body: 'تركيبات حقيقية للمعاينة عند الطلب — الدار البيضاء، الجديدة، النواصر' },
-  { fig: '43,48 kWc', tally: true, label: 'مُركَّبة', body: 'الدار البيضاء، الجديدة، النواصر' },
+  { fig: String(chantiersVisitablesCount), tally: false, label: 'أوراش قابلة للزيارة', body: 'تركيبات حقيقية للمعاينة عند الطلب — الدار البيضاء، الجديدة، النواصر' },
+  { fig: totalKwcLabel, tally: true, label: 'مُركَّبة', body: 'الدار البيضاء، الجديدة، النواصر' },
   { fig: 'القانون 82-21', tally: false, label: 'مطابقة مُدرَجة', body: 'تصريح تُعِدّه وتُودِعه عنكم Taqinor' },
   { fig: 'Deye Cloud', tally: false, label: 'إنتاج مُقاس', body: 'مراقبة على كل تركيب، مع ولوج للزبون' },
+];
+
+// W265 — قصة استثمار الـ25 سنة: الرقعة اللونية الفاتحة الوحيدة في الصفحة
+// (خلفية blanc-azur، نص encre)، في الموضع 3-4 لإراحة السرد dark→light→dark.
+// أرقام مطابقة تماماً لصفحة /financement (منشورة سلفاً) — بلا أي رقم جديد.
+const investment = [
+  { v: '3–7 سنوات', label: 'العائد على الاستثمار النموذجي' },
+  { v: '25 سنة', label: 'ضمان أداء الألواح' },
+  { v: '60–90 %', label: 'من الفاتورة مُغطّاة' },
+  { v: '0 MAD', label: 'الدراسة والتشخيص' },
+];
+
+// W276 — « محرّكنا، مصمَّم في المغرب » : قصة هندسة داخلية صادقة، تُروى عبر
+// الأدوات الثلاث المبنية فعليًا والمُستخدمة سلفًا على الموقع (لا برنامج خارجي،
+// لا ادّعاء مُختلَق):
+//   1. المُقدِّر المُوجَّه بالفاتورة (محرّك تقدير داخلي — موضع الشمس
+//      محسوب داخليًا، تباعد الصفوف مُشتق من قاعدة تظليل الانقلاب الشتوي).
+//   2. محرّك السطح ثلاثي الأبعاد (/devis/mon-toit — تتبّع حقيقي للسطح،
+//      اتجاه وميل حقيقيان، لا جدول عام جاهز).
+//   3. محرّك عرض الأسعار (apps/ventes/quote_engine، PDF مُوقَّع إلكترونيًا)
+//      الذي يُصدر العرض النهائي.
+// لا رقم مُختلَق هنا: الرابط يقود مباشرة إلى المسار الحقيقي (/devis/mon-toit)
+// ليتحقق منه الزائر بنفسه خلال 60 ثانية.
+const engineeringPillars = [
+  {
+    title: 'المُقدِّر المُوجَّه بالفاتورة',
+    body: 'فاتورة الكهرباء وحدها تكفي: محرّكنا يحسب موضع الشمس وتباعد صفوف الألواح انطلاقًا من قاعدة تظليل عند الانقلاب الشتوي — لا جدول عام مستورد.',
+  },
+  {
+    title: 'محرّك السطح ثلاثي الأبعاد',
+    body: 'ارسم سطح منزلك، حدّد اتجاهه، ويتكيّف التحجيم مع الهندسة الحقيقية لمنزلك — نفس التقنية التي جرّبتها للتو في التشخيص أعلاه.',
+  },
+  {
+    title: 'محرّك عرض الأسعار',
+    body: 'العرض الناتج يُوقَّع إلكترونيًا، عبر الإنترنت — بلا إعادة إدخال يدوية بين الدراسة والوثيقة التي توقّعها.',
+  },
 ];
 ---
 
 <Layout
   title="Taqinor — تركيبات الطاقة الشمسية في المغرب، مطابقة للقانون 82-21"
-  description="تصميم وتركيب والتصريح بتركيبات الطاقة الشمسية للفيلات والصناعة والفنادق في المغرب. دراسة مجانية، تحجيم بالهندسة، ومطابقة القانون 82-21."
+  description="21 406 kWh أُنتِجت في سنة واحدة فوق سطح بالجديدة، مرصودة على Deye Cloud: تركيبات الطاقة الشمسية للفيلات والصناعة والفنادق بالمغرب، محسوبة على فاتورتكم ومصرَّح بها وفق القانون 82-21."
   ogSlug="accueil"
   preloadHeroPoster
 >
@@ -149,6 +268,12 @@ const trust = [
         {/* الـ scrim المرجعي مرفوع (--hero-scrim-strength 0.52): يعوّض دفء
             «الساعة الذهبية» ويُبقي العنوان ≥ AA. */}
         <div class="hero-scrim hero-scrim-v3 absolute inset-0"></div>
+        {/* W373 — طبقة العمق: حجاب ضوء نحاسي خفيف جداً، زخرفي بحت (لا صورة،
+            تدرّجات CSS فقط)، يتوازى بشكل أبطأ من الملصق خلفه (عامل JS
+            منفصل، انظر V2Enhance). لا يمسّ LCP أبداً: موضوع بعد <img
+            fetchpriority="high"> في الـ DOM، بلا أي وزن شبكي،
+            transform/opacity فقط عند التمرير. */}
+        <div class="hero-depth-layer absolute inset-0" aria-hidden="true"></div>
       </div>
 
       {/* W161 — دعوة إلى التمرير: شيفرون متحرّك، ساكن تحت prefers-reduced-motion */}
@@ -163,23 +288,55 @@ const trust = [
           data-hero-tally: خطّاف JS أدناه، متمايز عن data-tally. */}
       <div class="mx-auto w-full max-w-6xl px-4 pb-24 pt-32 sm:pb-32">
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">الدراسة أولًا، ثم الورش</p>
-        <h1 class="display v2-hero-title cine-in cine-in-1 mt-6 max-w-[15ch]">
+        <h1 id="hero-title" class="display v2-hero-title hero-title-sweep cine-in cine-in-1 mt-6 max-w-[15ch]">
           <span data-hero-tally class="font-variant-numeric tabular-nums" dir="ltr">{heroFigure}</span>{heroTitleSuffix}
         </h1>
-        <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">{heroSub}</p>
+        {/* W267 — المال في الصدارة، والـ kWh يبقى الإثبات خلفه. مجال صادق (لا
+            رقم واحد أبداً) مُشتقّ من التعريفة الحدّية الحقيقية لـ RÉGIE — انظر
+            تعليق الحساب أعلاه. */}
+        <p class="cine-in cine-in-2 mt-4 max-w-xl text-lg font-bold text-brass-300 sm:text-xl">{heroMoneyLine}</p>
+        <p class="v2-lead cine-in cine-in-2 mt-4 max-w-xl text-white/85">{heroSub}</p>
         <div class="cine-in cine-in-3 mt-10 flex flex-wrap items-center gap-3">
           {/* CTA نحاسي وحيد (انضباط النحاس) — الذهب مأذون هنا */}
-          <a href={L('/devis/mon-toit')} class="glow-hero bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
+          <a id="hero-cta-magnetic" href={L('/devis/mon-toit')} class="glow-hero magnetic-cta bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
             احصل على دراستي المجانية <span class="inline-block rtl:-scale-x-100">→</span>
           </a>
-          {/* WhatsApp شبحي — حدّ أبيض، بلا أي نحاس */}
-          <a href={waDirect} rel="noopener" class="inline-flex items-center gap-2 border border-white/40 px-6 py-3.5 text-base font-semibold text-white backdrop-blur-sm transition-colors hover:border-white hover:bg-white/10">
+          {/* W349 — WhatsApp الشبحي يصبح باب بدون نموذج: حدّ أبيض، بلا أي
+              نحاس. لا يطلب أي قراءة أو تعبئة — صورة الفاتورة كافية للبدء. */}
+          <a href={waZeroForm} rel="noopener" class="inline-flex items-center gap-2 border border-white/40 px-6 py-3.5 text-base font-semibold text-white backdrop-blur-sm transition-colors hover:border-white hover:bg-white/10">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
-            WhatsApp مباشر
+            أرسل صورة عبر واتساب
           </a>
         </div>
       </div>
     </section>
+
+    {/* ── كيف يجري الأمر — شريط من 4 مراحل تحت البطل (W252). يُجيب فوراً عن
+        «ماذا يحدث بعد الاستمارة؟»: نفس المراحل الأربع لشريط المسار المفصّل
+        أسفله، مُكثَّفة. ── */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="px-4 py-14 sm:py-18">
+      <div class="mx-auto max-w-6xl">
+        <h2 class="tech-label v2-kicker rule-brass text-lune text-center sm:text-start">كيف يجري الأمر</h2>
+        <ol class="mt-8 grid gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
+          {howItWorks.map((s, i) => (
+            <li class="v2-rise relative border-t-2 border-white/10 pt-5" style={`--v2-i:${i}`}>
+              <span class="absolute -top-px start-0 h-0.5 w-10 bg-brass-400" aria-hidden="true"></span>
+              <span class="fig lum text-2xl">{s.n}</span>
+              <h3 class="display mt-2 text-lg text-white">{s.title}</h3>
+              <p class="mt-2 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </section>
+
+    {/* W250 — أداة التقدير الفوري، أعلى الصفحة: «أداة التقدير هي القمع نفسه».
+        تعيد استخدام estimateFromBill (lib/billEstimate.ts) — لا منطق مكرّر.
+        وُضعت مباشرة بعد «كيف يجري الأمر» ليتمكّن الزائر من تقدير فاتورته قبل
+        الوصول حتى إلى التشخيص من 3 خطوات أسفله. ── */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <InstantEstimator variant="hero" />
 
     {/* وعد الضمان في الصدارة — التزام حقيقي وقوي، مأخوذ من /garanties (25 سنة
         أداء) ومن مراقبة Deye Cloud المقاسة. */}
@@ -209,19 +366,63 @@ const trust = [
             لا إضافة ولا حذف.
           </p>
         </div>
-        <div class="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
+        {/* W271 — شقائق فلترة المدينة، بجافاسكريبت خفيف من جانب العميل فوق
+            المعطيات التي تحملها البطاقات أصلاً (بلا أي معطى جديد). «الكل»
+            نشِطة افتراضياً؛ aria-pressed يعكس الحالة لقارئات الشاشة. تعمل بلا
+            جافاسكريبت: بدون النص البرمجي، تبقى كل البطاقات ظاهرة (تحسين
+            تدريجي). */}
+        <div class="v2-rise mt-8 flex flex-wrap gap-2" role="group" aria-label="فلترة حسب المدينة" data-gallery-filter>
+          {galleryCities.map((c, i) => (
+            <button
+              type="button"
+              class={`gallery-filter-chip border px-4 py-2 text-xs font-bold uppercase tracking-wide transition-colors hover:border-white/50 hover:text-white ${i === 0 ? 'gallery-filter-chip-active border-brass-400 bg-brass-400/10 text-brass-300' : 'border-white/25 text-lune-soft'}`}
+              data-city={c}
+              aria-pressed={i === 0 ? 'true' : 'false'}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
+        <div class="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" data-stagger data-gallery-grid>
           {gallery.map((g, i) => (
-            <a href={L(`/realisations/${g.slug}`)} class="v2-rise cine-card group relative block overflow-hidden" style={`--v2-i:${i % 3}`}>
+            <div class="v2-rise cine-card cine-card-link group relative overflow-hidden" style={`--v2-i:${i % 3}`} data-gallery-card data-city={g.ville}>
+              <a href={L(`/realisations/${g.slug}`)} class="absolute inset-0 z-0" aria-label={`شاهدوا الإنجاز: ${g.ville}, ${g.kwc}`}></a>
               {/* grade «الساعة الذهبية» موحّد — .v3-grade على صورة المحتوى */}
               <Picture name={g.name} alt={g.alt} widths={g.widths} ratio={4 / 3} sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
                 class="v3-grade aspect-[4/3] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
-              <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
+              {/* زرّ التكبير (lightbox) — عنصر مستقلّ عن رابط البطاقة (لا زرّ
+                  داخل <a>، HTML غير صالح)؛ z-index أعلى من الرابط الممتدّ. */}
+              <button
+                type="button"
+                class="gallery-zoom-btn absolute end-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-nuit/70 text-white backdrop-blur-sm transition-colors hover:bg-nuit/90"
+                aria-label={`تكبير الصورة: ${g.ville}, ${g.kwc}${g.prod ? `, ${g.prod}` : ''}`}
+                data-lightbox-open
+                data-name={g.name}
+                data-alt={g.alt}
+                data-widths={g.widths.join(',')}
+                data-caption={`${g.ville} · ${g.kwc}${g.prod ? ` · ${g.prod}` : ''}`}
+                data-type={g.type}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M8 3H5a2 2 0 0 0-2 2v3" /><path d="M21 8V5a2 2 0 0 0-2-2h-3" /><path d="M3 16v3a2 2 0 0 0 2 2h3" /><path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+                </svg>
+              </button>
+              <div class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
                 <span class="tech-label block text-lune">{g.ville} · {g.kwc}{g.prod ? ` · ${g.prod}` : ''}</span>
                 <span class="mt-0.5 block text-xs text-lune-soft">{g.type}</span>
               </div>
-            </a>
+            </div>
           ))}
         </div>
+        {/* WJ73 — فجوة التقدير مقابل الدليل، مشروحة بصدق. */}
+        {featuredYieldPerKwc && (
+          <p class="v2-rise mt-6 max-w-2xl text-xs leading-relaxed text-lune-faint">
+            للإشارة: هذه التركيبة تقيس ≈{featuredYieldPerKwc.toLocaleString('fr-FR')} kWh/kWc/سنة، وهو أقل من
+            ≈{casablancaSouthOptimalYield.toLocaleString('fr-FR')} kWh/kWc/سنة التي يفترضها جدول الإنتاجية
+            المُنمذَج المُستخدَم للتقديرات — التركيبات الحقيقية ليست كلها متّجهة جنوباً بميل 29°، خلافاً
+            لافتراض النموذج. الدراسة تُدقّق هذا الرقم على سطحك الحقيقي.
+          </p>
+        )}
         {/* رابط هادئ نحو كل الإنجازات — لا زرّ ممتلئ */}
         <a href={L('/realisations')} class="v2-rise group mt-10 inline-flex items-center gap-1 border-b-2 border-white/30 pb-0.5 text-sm font-bold text-white transition-colors hover:border-white">
           شاهدوا كل إنجازاتنا <span class="inline-block rtl:-scale-x-100 motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:-translate-x-1" aria-hidden="true">→</span>
@@ -262,6 +463,34 @@ const trust = [
       </div>
     </section>
 
+    {/* ── رقعة لونية فاتحة واضحة (W265) — «استثمار يُسدَّد ثم يدفع لكم»، الرقعة
+        الوحيدة بخلفية blanc-azur في الصفحة، لإراحة dark→light→dark. أرقام
+        مطابقة لصفحة /financement (بلا أي رقم جديد). ── */}
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="bg-blanc-azur px-4 py-20 text-encre sm:py-28">
+      <div class="mx-auto max-w-6xl">
+        <div class="v2-rise max-w-2xl">
+          <p class="tech-label v2-kicker rule-brass text-azur-600">الاستثمار</p>
+          <h2 class="display v2-section-title mt-5 text-encre">استثمار يُسدَّد نفسه، ثم يدفع لكم</h2>
+          <p class="v2-body mt-5 text-encre-soft">
+            التركيب يُسدَّد بفضل الكهرباء التي تتوقّفون عن شرائها من الشبكة — ويبقى بعد ذلك سنوات
+            عديدة من أصل 25 سنة من ضمان الأداء، يستمر خلالها التركيب في الإنتاج لكم، بـ 0 درهم.
+          </p>
+        </div>
+        <dl class="mt-12 grid grid-cols-2 gap-x-8 gap-y-10 sm:grid-cols-4" data-stagger>
+          {investment.map((it, i) => (
+            <div class="v2-rise min-w-0" style={`--v2-i:${i}`}>
+              <dd class="fig fig-md whitespace-nowrap text-azur-600" data-tally dir="ltr">{it.v}</dd>
+              <dt class="tech-label mt-2 text-encre-soft">{it.label}</dt>
+            </div>
+          ))}
+        </dl>
+        <a href={L('/financement')} class="v2-rise group mt-10 inline-flex items-center gap-1 border-b-2 border-azur-600 pb-0.5 text-sm font-bold text-azur-700 transition-colors hover:text-azur-600">
+          اطّلعوا على تفاصيل التمويل <span class="inline-block rtl:-scale-x-100 motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:-translate-x-1" aria-hidden="true">→</span>
+        </a>
+      </div>
+    </section>
+
     {/* ── لماذا تاكينور / الثقة — أربعة أرقام ضخمة (الذهب يعيش على أرقام .lum،
         انضباط النحاس) — وقائع منشورة سلفًا ── */}
     <div class="seam-soft" aria-hidden="true"></div>
@@ -275,10 +504,15 @@ const trust = [
             الحقيقية. الرقم يقرّر العتاد — لا العكس أبدًا.
           </p>
         </div>
-        <dl class="mt-12 grid gap-x-8 gap-y-12 sm:grid-cols-2 lg:grid-cols-2" data-stagger>
+        {/* W268 — شريط ضخم بعرض كامل من 4 أعمدة، أرقام .fig-lg + خط نحاسي رفيع
+            لكل عمود (نفس أداة شريط «كيف يجري الأمر» و GarantiesTeaser).
+            «الإثبات قبل الوعد» هي أطروحة العلامة: تستحق بياناً، لا جدول
+            مواصفات. ── */}
+        <dl class="mt-12 grid grid-cols-2 gap-x-8 gap-y-12 lg:grid-cols-4" data-stagger>
           {trust.map((t, i) => (
-            <div class="v2-rise min-w-0" style={`--v2-i:${i}`}>
-              <dd class="fig fig-md lum break-words" data-tally={t.tally ? '' : undefined}>{t.fig}</dd>
+            <div class="v2-rise relative min-w-0 border-t-2 border-white/10 pt-5" style={`--v2-i:${i}`}>
+              <span class="absolute -top-px start-0 h-0.5 w-10 bg-brass-400" aria-hidden="true"></span>
+              <dd class="fig fig-lg lum break-words" data-tally={t.tally ? '' : undefined}>{t.fig}</dd>
               <dt class="tech-label mt-2 text-lune-faint">{t.label}</dt>
               <p class="mt-1 text-sm leading-snug text-lune-soft">{t.body}</p>
             </div>
@@ -287,38 +521,87 @@ const trust = [
       </div>
     </section>
 
-    {/* ── المسار (6 مراحل) + معاينة WhatsApp. يحلّ الشريط من البداية إلى النهاية
-        (تشخيص → مراقبة) محلّ القائمة الصغيرة بثلاث خطوات. وقائع منشورة سلفًا على
-        الموقع، بلا أجل مخترَع. ── */}
+    {/* ── محرّكنا، مصمَّم في المغرب (W276) — قصة الهندسة الداخلية: مُركِّب
+        يبني أيضًا أدواته الخاصة (مُقدِّر مُوجَّه بالفاتورة، محرّك سطح ثلاثي
+        الأبعاد، محرّك عرض أسعار). صادقة، نادرة في القطاع، وعلى بُعد نقرة
+        واحدة من التحقّق: الرابط يقود إلى المسار الحقيقي (/devis/mon-toit)
+        بدل الاكتفاء بالتصريح به. ── */}
     <div class="seam-soft" aria-hidden="true"></div>
     <section class="section px-4">
       <div class="mx-auto max-w-6xl">
-        <div class="grid items-center gap-12 lg:grid-cols-[1.1fr_1fr]">
-          <div class="v2-rise">
-            <p class="tech-label v2-kicker rule-brass text-lune"><span class="ms-2 font-display text-xs text-azur-200/80" aria-hidden="true">03</span>كيف يجري الأمر</p>
+        <div class="v2-rise max-w-2xl">
+          <p class="tech-label v2-kicker rule-brass text-lune"><span class="ms-2 font-display text-xs text-azur-200/80" aria-hidden="true">03</span>محرّكنا، مصمَّم في المغرب</p>
+          <h2 class="display v2-section-title mt-5 text-white">مُركِّب يبني أيضًا أدواته الخاصة</h2>
+          <p class="v2-body mt-5">
+            معظم مُركِّبي الطاقة الشمسية يشترون برنامج عروض أسعار جاهزًا. تاكينور بنت برنامجها
+            الخاص: المُقدِّر الذي يقرأ فاتورتكم، ومحرّك يرسم سطحكم ثلاثي الأبعاد، ومحرّك يُصدر
+            العرض الذي توقّعونه إلكترونيًا. ثلاث أدوات، فريق تقني واحد — جرّبوها بأنفسكم أدناه.
+          </p>
+        </div>
+        <div class="mt-12 grid gap-6 sm:grid-cols-3" data-stagger>
+          {engineeringPillars.map((p, i) => (
+            <div class="v2-rise relative min-w-0 border-t-2 border-white/10 pt-5" style={`--v2-i:${i}`}>
+              <span class="absolute -top-px start-0 h-0.5 w-10 bg-brass-400" aria-hidden="true"></span>
+              <h3 class="display mt-2 text-lg text-white">{p.title}</h3>
+              <p class="mt-2 text-sm leading-relaxed text-lune-soft">{p.body}</p>
+            </div>
+          ))}
+        </div>
+        <a href={L('/devis/mon-toit')} class="v2-rise group mt-10 inline-flex items-center gap-1 border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-brass-300 transition-colors hover:text-brass-200">
+          جرّبوا المحرّك على سطحي <span class="inline-block rtl:-scale-x-100 motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:-translate-x-1" aria-hidden="true">→</span>
+        </a>
+      </div>
+    </section>
+
+    {/* ── المؤسِّس — حضور إنساني (W266). النص يدّعي حميمية («يصادق عليه
+        المؤسِّس») لكن لا يُظهرها أبداً: البورتريه الحقيقي + ملاحظة موقَّعة
+        بصيغة المتكلم يجعلانها ملموسة. مكوّن مشترك مع /à-propos (نفس الوقائع،
+        بلا أي تكرار). ── */}
+    <FounderPortrait />
+
+    {/* ── المسار (6 مراحل) + معاينة WhatsApp. يحلّ الشريط من البداية إلى النهاية
+        (تشخيص → مراقبة) محلّ القائمة الصغيرة بثلاث خطوات. وقائع منشورة سلفًا على
+        الموقع، بلا أجل مخترَع.
+        W371 — لحظة سرد مثبَّتة أثناء التمرير (فريدة في الصفحة): على الحاسوب
+        ودون prefers-reduced-motion، يبقى العمود الأيسر (المقدمة + WhatsAppMock)
+        مثبَّتًا (`position: sticky`) بينما تمرّ المراحل الست بجانبه؛ المرحلة
+        التي تعبر مركز الشاشة تُضاء (`data-journey-active`، عبر
+        IntersectionObserver — أبدًا بلا اختطاف للتمرير، أبدًا بلا
+        `preventDefault`). على الهاتف وتحت reduced-motion، يتراجع القسم بالكامل
+        إلى الشبكة المسطّحة الأصلية (بلا تثبيت، بلا صنف نشِط، ترتيب القراءة كما
+        هو) — تحسين تدريجي خالص: بلا جافاسكريبت يبقى كل المحتوى مقروءًا كما هو. ── */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="section px-4" data-journey-section>
+      <div class="mx-auto max-w-6xl">
+        <div class="grid items-start gap-12 lg:grid-cols-[1.1fr_1fr]">
+          <div class="v2-rise journey-sticky-col" data-journey-sticky>
+            <p class="tech-label v2-kicker rule-brass text-lune"><span class="ms-2 font-display text-xs text-azur-200/80" aria-hidden="true">04</span>كيف يجري الأمر</p>
             <h2 class="display v2-section-title mt-5 max-w-md text-white">البقية تجري على WhatsApp</h2>
             <p class="v2-body mt-5 max-w-md">
               لا مركز اتصال ولا ملاحقة: يصلكم تشخيصكم عبر WhatsApp، وتتبادلون
               مباشرةً مع الفريق التقني، بصور للسطح، حتى الزيارة في عين المكان.
               نموذج تبادل في الجانب — مع إخفاء الهوية.
             </p>
+            {/* نص مقترن بالمرحلة النشِطة — مخفي افتراضيًا؛ لا يُظهره السكربت
+                إلا إذا كان التثبيت مفعَّلًا (حاسوب، حركة مسموحة). */}
+            <p class="v2-body mt-5 max-w-md journey-active-caption" data-journey-caption hidden></p>
+            <div class="mt-6">
+              <WhatsAppMock />
+            </div>
           </div>
-          <div class="v2-rise">
-            <WhatsAppMock />
-          </div>
+          {/* شريط المسار الحقيقي — من التشخيص إلى المراقبة */}
+          <ol class="journey-steps mt-14 grid gap-x-6 gap-y-8 sm:grid-cols-2 lg:mt-0 lg:grid-cols-1 lg:gap-y-16" data-stagger data-journey-steps>
+            {journey.map((s, i) => (
+              <li class="v2-rise journey-step relative border-t-2 border-white/10 pt-5" style={`--v2-i:${i % 3}`} data-journey-step data-journey-title={s.title} data-journey-body={s.body}>
+                <span class="absolute -top-px start-0 h-0.5 w-10 bg-brass-400 journey-step-rule" aria-hidden="true"></span>
+                {/* رقم المرحلة بـ .lum: الذهب هنا رقم مفتاحي (انضباط النحاس) */}
+                <span class="fig lum text-2xl">{s.n}</span>
+                <h3 class="display mt-2 text-lg text-white">{s.title}</h3>
+                <p class="mt-2 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+              </li>
+            ))}
+          </ol>
         </div>
-        {/* شريط المسار الحقيقي — من التشخيص إلى المراقبة */}
-        <ol class="mt-14 grid gap-x-6 gap-y-8 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
-          {journey.map((s, i) => (
-            <li class="v2-rise relative border-t-2 border-white/10 pt-5" style={`--v2-i:${i % 3}`}>
-              <span class="absolute -top-px start-0 h-0.5 w-10 bg-brass-400" aria-hidden="true"></span>
-              {/* رقم المرحلة بـ .lum: الذهب هنا رقم مفتاحي (انضباط النحاس) */}
-              <span class="fig lum text-2xl">{s.n}</span>
-              <h3 class="display mt-2 text-lg text-white">{s.title}</h3>
-              <p class="mt-2 text-sm leading-relaxed text-lune-soft">{s.body}</p>
-            </li>
-          ))}
-        </ol>
       </div>
     </section>
 
@@ -336,27 +619,73 @@ const trust = [
     {/* ── الضمانات (طمأنة) — الضمانات المكتوبة، باختصار (إحالة نحو /garanties) ── */}
     <GarantiesTeaser />
 
-    {/* ── الفصل الأخير — التشخيص يتنفّس، ضمن نظام الكحلي+الذهبي ── */}
-    <DiagnosticForm>
-      <aside slot="aside" class="cine-card border-t-4 border-t-brass-400 p-6">
-        <p class="tech-label text-lune-faint">آخر تركيب مُسلَّم</p>
-        <p class="fig lum mt-3 text-4xl" data-tally>17,04 kWc</p>
-        <p class="tech-label mt-1 text-lune-faint">الجديدة · أبريل 2026</p>
-        <p class="mt-4 text-sm leading-relaxed text-lune-soft">
-          الإنتاج: <strong class="text-brass-300" data-tally>21 406 kWh/سنة</strong><br />
-          24 × Canadian Solar 710 Wc · Deye 15 kW · 15 kWh Dyness
-        </p>
-        <p class="mt-4 border-t border-white/10 pt-3 text-xs text-lune-faint">
-          إنتاج مُقاس — Deye Cloud. زيارات الموقع ممكنة عند الطلب.
-        </p>
-      </aside>
-    </DiagnosticForm>
+    {/* W250 — أداة التقدير الفوري، قبل التذييل: نسخة مُكثَّفة من الأداة نفسها
+        (variant="compact")، مباشرة قبل التشخيص الكامل — فرصة أخيرة لمن مرّر
+        الصفحة كاملة دون أن يُقدِّر فاتورته بعد. ── */}
+    <InstantEstimator variant="compact" />
+
+    {/* ── الفصل الأخير — W249: قناة واحدة. النموذج الثاني السابق
+        (DiagnosticForm، الذي كان يكرر عنصري InstantEstimator الموجودين أصلاً
+        في هذه الصفحة) استُبدل ببطاقة CTA غنية نحو مسار عرض الثمن الحقيقي
+        (/devis/mon-toit)، مع الاحتفاظ بنفس الدليل الاجتماعي (آخر تركيب
+        مُسلَّم) الذي كان يعرضه العمود الجانبي للنموذج. ── */}
+    <section class="section px-4">
+      <div class="mx-auto grid max-w-6xl gap-8 sm:grid-cols-[1.1fr_1fr] sm:items-center">
+        <div class="v2-rise cine-card border-t-4 border-t-brass-400 p-7 sm:p-10">
+          <p class="tech-label v2-kicker rule-brass text-lune">جاهز للبدء</p>
+          <h2 class="display v2-section-title mt-4 text-xl text-white sm:text-2xl">
+            ارسم سطحك، احصل على دراستك
+          </h2>
+          <p class="v2-body mt-4 max-w-md">
+            نفس المحرك أعلاه، بالنسخة الكاملة: ارسم سطحك، اضبط التوجيه الحقيقي، واحصل على دراسة
+            موقّعة من فريقنا التقني.
+          </p>
+          <div class="mt-6 flex flex-wrap gap-3">
+            <a href={L('/devis/mon-toit')} class="glow inline-flex items-center gap-2 bg-brass-400 px-6 py-3.5 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">
+              احصل على دراستي المجانية ←
+            </a>
+            <a href={waDirect} rel="noopener" class="inline-flex items-center gap-2 border border-white/40 px-6 py-3.5 text-sm font-semibold text-white transition-colors hover:border-white hover:bg-white/10">
+              واتساب مباشر
+            </a>
+          </div>
+        </div>
+        <aside class="v2-rise cine-card border-t-4 border-t-brass-400 p-6" style="--v2-i:1">
+          <p class="tech-label text-lune-faint">آخر تركيب مُسلَّم</p>
+          <p class="fig lum mt-3 text-4xl" data-tally>{featured.kwc}</p>
+          <p class="tech-label mt-1 text-lune-faint">{featuredVilleAr} · {featured.date}</p>
+          <p class="mt-4 text-sm leading-relaxed text-lune-soft">
+            الإنتاج: <strong class="text-brass-300" data-tally>{featured.production?.replace('/an', '/سنة')}</strong><br />
+            {[featured.panneaux, featured.onduleur, featured.batterie].filter(Boolean).join(' · ')}
+          </p>
+          <p class="mt-4 border-t border-white/10 pt-3 text-xs text-lune-faint">
+            إنتاج مُقاس — Deye Cloud. زيارات الموقع ممكنة عند الطلب.
+          </p>
+        </aside>
+      </div>
+    </section>
 
     {/* FAQ قصيرة للصفحة الرئيسية: أكورديون بصري بلا JSON-LD من نوع FAQPage —
          صفحة /faq المخصّصة هي الوحيدة التي تحمل FAQPage. */}
     <Faq items={faq} schema={false} />
 
     <StickyCta />
+
+    {/* W271 — lightbox معرض الإثبات. <dialog> أصلي: Escape + حصر التركيز
+        مجاناً، بلا أي تبعية. المحتوى يُملأ عبر النص البرمجي أدناه عند الفتح
+        (صورة + تعليق المدينة · kWc · الإنتاج). reduced-motion: انتقال CSS
+        محروس أدناه. */}
+    <dialog id="gallery-lightbox" class="gallery-lightbox" aria-label="صورة مكبَّرة">
+      <button type="button" class="gallery-lightbox-close" data-lightbox-close aria-label="إغلاق">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M6 6l12 12M18 6 6 18" />
+        </svg>
+      </button>
+      <img data-lightbox-img src="" alt="" />
+      <figcaption>
+        <span data-lightbox-caption></span>
+        <span data-lightbox-type class="gallery-lightbox-type"></span>
+      </figcaption>
+    </dialog>
   </div>
 </Layout>
 
@@ -374,6 +703,142 @@ const trust = [
      الأبيض فوق الصورة. */
   .hero-scrim-v3 {
     --hero-scrim-strength: 0.52;
+  }
+
+  /* ── W373 — طبقة عمق البطل ──────────────────────────────────────────
+     حجاب ضوء ساكن عند الراحة (تدرّجات إشعاعية فقط، بلا صورة)؛ السكربت
+     (V2Enhance) يحرّك فقط `transform` عند التمرير، بعامل أبطأ من سُرعة
+     تكبير الملصق (الطبقة «الأعمق» تتحرك أقل — وهم عمق كلاسيكي). عتامة
+     أساسية منخفضة جداً لتبقى «همساً»، أبداً حجاباً يُضعف وضوح العنوان. */
+  .hero-depth-layer {
+    background:
+      radial-gradient(38% 32% at 82% 22%, rgb(232 181 74 / 0.16), transparent 70%),
+      radial-gradient(30% 26% at 14% 78%, rgb(232 181 74 / 0.08), transparent 72%);
+    opacity: 0.9;
+    pointer-events: none;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    @media (min-width: 1024px) {
+      .hero-depth-layer {
+        will-change: transform;
+      }
+    }
+  }
+
+  /* W368 — CTA مغناطيسي: السكربت يضبط فقط transform: translate(x, y)
+     (بحد أقصى ±8px) عند pointermove؛ هذا يضيف فقط عودة ناعمة إلى الأصل عند
+     مغادرة المؤشر (pointerleave يزيل النمط المضمّن، وهذا الانتقال يحرّك
+     العودة). transform فقط: لا reflow ولا CLS أبداً. مُقيَّد بـ
+     (pointer:fine) + reduced-motion داخل السكربت. */
+  @media (prefers-reduced-motion: no-preference) and (pointer: fine) {
+    .magnetic-cta {
+      transition: transform var(--dur-hover) var(--ease-cine), background-color var(--dur-hover) ease;
+      will-change: transform;
+    }
+  }
+
+  /* ── W271 — lightbox المعرض ──────────────────────────────────────────── */
+  .gallery-lightbox {
+    max-width: min(92vw, 1100px);
+    max-height: 90vh;
+    border: none;
+    background: var(--color-nuit);
+    padding: 0;
+    color: white;
+  }
+  .gallery-lightbox::backdrop {
+    background: rgb(6 10 30 / 0.86);
+  }
+  .gallery-lightbox img {
+    display: block;
+    width: 100%;
+    max-height: 72vh;
+    object-fit: contain;
+    background: black;
+  }
+  .gallery-lightbox figcaption {
+    padding: 0.9rem 1.25rem 1.1rem;
+    font-size: 0.9rem;
+  }
+  .gallery-lightbox figcaption span[data-lightbox-caption] {
+    display: block;
+    font-weight: 700;
+    color: var(--color-brass-300);
+  }
+  .gallery-lightbox-type {
+    display: block;
+    margin-top: 0.2rem;
+    color: var(--color-lune-soft);
+    font-size: 0.8rem;
+  }
+  .gallery-lightbox-close {
+    position: absolute;
+    top: 0.6rem;
+    inset-inline-end: 0.6rem;
+    z-index: 1;
+    display: flex;
+    height: 2.25rem;
+    width: 2.25rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    background: rgb(6 10 30 / 0.7);
+    color: white;
+  }
+  .gallery-lightbox-close:hover {
+    background: rgb(6 10 30 / 0.9);
+  }
+  /* انتقال الفتح — محروس خلف reduced-motion: يظهر الحوار فوراً بلا تفضيل حركة. */
+  @media (prefers-reduced-motion: no-preference) {
+    .gallery-lightbox {
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+    .gallery-lightbox:not([open]) {
+      opacity: 0;
+      transform: scale(0.98);
+    }
+  }
+
+  /* ── W271 — شقائق فلترة المدينة: تُخفي البطاقات خارج الفلتر عبر صنف يضبطه
+     النص البرمجي، أبداً عبر [hidden]، لتبقى data-stagger قادرة على إعادة
+     تشغيل ظهور أول عرض بسلاسة. */
+  [data-gallery-card].gallery-card-hidden {
+    display: none;
+  }
+
+  /* ── W371 — سرد مثبَّت أثناء التمرير لقسم «كيف يجري الأمر» ──────────────────
+     الحالة الافتراضية = الشبكة المسطّحة الأصلية (لا تُطبَّق أي قاعدة أدناه إلا
+     بعد أن يضبط السكربت `.journey-pinned` على القسم، وهذا لا يحدث إلا على
+     الحاسوب مع حركة مسموحة). صفر انزياح تخطيطي: التثبيت لا يغيّر عرض ولا
+     ارتفاع التدفّق، فقط `position` عند الترسو. */
+  @media (min-width: 1024px) and (prefers-reduced-motion: no-preference) {
+    .journey-pinned .journey-sticky-col {
+      position: sticky;
+      top: 6rem;
+      align-self: start;
+    }
+
+    /* نص كل مرحلة حاضر في حالة الراحة (تحسين تدريجي: مقروء بلا جافاسكريبت أو
+       خارج تطابق الوسائط)؛ بمجرد التثبيت، تُضاء المرحلة النشِطة فقط، والبقية
+       تخفت بلطف — أبدًا لا تُخفى (بلا انزياح تخطيطي، بلا فقدان محتوى لقارئ
+       الشاشة). */
+    .journey-pinned .journey-step {
+      opacity: 0.42;
+      transition: opacity 0.35s ease, border-color 0.35s ease;
+    }
+    .journey-pinned .journey-step[data-journey-active] {
+      opacity: 1;
+    }
+    .journey-pinned .journey-step[data-journey-active] .journey-step-rule {
+      background-color: var(--color-brass-300, #e8b54a);
+    }
+
+    /* النص المقترن في العمود المثبَّت: لا يظهر إلا إذا كان التثبيت مفعَّلًا،
+       وإلا يتراجع بالكامل إلى الوصف الثابت الموجود أصلًا عندما لا تجتمع كل من
+       الحاسوب/الحركة/جافاسكريبت. */
+    .journey-pinned .journey-active-caption {
+      display: block;
+    }
   }
 </style>
 
@@ -437,5 +902,188 @@ const trust = [
       if (document.readyState === 'complete') kick();
       else addEventListener('load', kick, { once: true });
     }
+  }
+</script>
+
+<script>
+  // W365 — بريق نحاسي واحد فقط يعبر عنوان البطل. يُسلَّح فقط بعد `load`
+  // (أبداً قبل ذلك: لا رسم إضافي ينافس ملصق البطل على LCP). الـ CSS
+  // (.hero-title-sweep، global.css) لا يفعل شيئاً قبل إضافة .hero-sweep-armed،
+  // لذا لا يمكن لهذا السكربت أبداً تأخير أو تغيير أول رسم للصفحة.
+  const heroTitle = document.getElementById('hero-title');
+  if (heroTitle) {
+    const arm = () => heroTitle.classList.add('hero-sweep-armed');
+    if (document.readyState === 'complete') requestAnimationFrame(arm);
+    else addEventListener('load', () => requestAnimationFrame(arm), { once: true });
+  }
+</script>
+
+<script>
+  // W368 — CTA مغناطيسي: زر النحاس في البطل يتبع المؤشر بلطف شديد (±8px
+  // كحد أقصى)، transform فقط (لا reflow). مُقيَّد بالمؤشرات الدقيقة فقط
+  // ((pointer:fine) — أبداً على اللمس، حيث لا معنى لـ "pointermove") و
+  // prefers-reduced-motion. تحسين تدريجي خالص: بدون JS أو خارج التطابق، يبقى
+  // الزر رابطاً عادياً.
+  const magnet = document.getElementById('hero-cta-magnetic');
+  const canMagnet =
+    matchMedia('(prefers-reduced-motion: no-preference)').matches && matchMedia('(pointer: fine)').matches;
+  if (magnet && canMagnet) {
+    const strength = 8; // px — الإزاحة القصوى، انضباط «مهموس»
+    let raf = 0;
+    magnet.addEventListener('pointermove', (ev) => {
+      const rect = magnet.getBoundingClientRect();
+      const relX = (ev.clientX - rect.left) / rect.width - 0.5;
+      const relY = (ev.clientY - rect.top) / rect.height - 0.5;
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        magnet.style.transform = `translate(${(relX * 2 * strength).toFixed(1)}px, ${(relY * 2 * strength).toFixed(1)}px)`;
+      });
+    });
+    magnet.addEventListener('pointerleave', () => {
+      if (raf) cancelAnimationFrame(raf);
+      magnet.style.transform = '';
+    });
+  }
+</script>
+
+<script>
+  // W271 — فلترة المدينة + lightbox لمعرض الإثبات. DOM خالص، بلا أي تبعية.
+  // بلا جافاسكريبت: تبقى كل البطاقات ظاهرة ويبقى زرّ التكبير زرّاً عادياً بلا
+  // معالِج (تحسين تدريجي — أبداً فخّاً للوحة المفاتيح أو لقارئات الشاشة).
+
+  // — فلترة المدينة —
+  const filterGroup = document.querySelector<HTMLElement>('[data-gallery-filter]');
+  const cards = Array.from(document.querySelectorAll<HTMLElement>('[data-gallery-card]'));
+  if (filterGroup) {
+    filterGroup.addEventListener('click', (ev) => {
+      const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>('button[data-city]');
+      if (!btn) return;
+      const city = btn.dataset.city;
+      filterGroup.querySelectorAll<HTMLButtonElement>('button[data-city]').forEach((b) => {
+        const active = b === btn;
+        b.setAttribute('aria-pressed', active ? 'true' : 'false');
+        b.classList.toggle('gallery-filter-chip-active', active);
+        b.classList.toggle('border-brass-400', active);
+        b.classList.toggle('bg-brass-400/10', active);
+        b.classList.toggle('text-brass-300', active);
+        b.classList.toggle('border-white/25', !active);
+        b.classList.toggle('text-lune-soft', !active);
+      });
+      cards.forEach((card) => {
+        const show = city === 'الكل' || card.dataset.city === city;
+        card.classList.toggle('gallery-card-hidden', !show);
+      });
+    });
+  }
+
+  // — Lightbox —
+  const dialog = document.getElementById('gallery-lightbox') as HTMLDialogElement | null;
+  if (dialog && typeof dialog.showModal === 'function') {
+    const img = dialog.querySelector<HTMLImageElement>('[data-lightbox-img]');
+    const captionEl = dialog.querySelector<HTMLElement>('[data-lightbox-caption]');
+    const typeEl = dialog.querySelector<HTMLElement>('[data-lightbox-type]');
+    const closeBtn = dialog.querySelector<HTMLButtonElement>('[data-lightbox-close]');
+
+    let lastTrigger: HTMLElement | null = null;
+
+    const openFromButton = (btn: HTMLElement) => {
+      const name = btn.dataset.name ?? '';
+      const widths = (btn.dataset.widths ?? '').split(',').map((w) => parseInt(w, 10)).filter((n) => !Number.isNaN(n));
+      const largest = widths.length ? Math.max(...widths) : 1600;
+      if (img) {
+        img.src = `/photos/${name}-${largest}.webp`;
+        img.alt = btn.dataset.alt ?? '';
+      }
+      if (captionEl) captionEl.textContent = btn.dataset.caption ?? '';
+      if (typeEl) typeEl.textContent = btn.dataset.type ?? '';
+      lastTrigger = btn;
+      dialog.showModal();
+    };
+
+    document.querySelectorAll<HTMLButtonElement>('[data-lightbox-open]').forEach((btn) => {
+      btn.addEventListener('click', () => openFromButton(btn));
+    });
+
+    const closeDialog = () => {
+      dialog.close();
+    };
+    closeBtn?.addEventListener('click', closeDialog);
+
+    // نقر على الخلفية (backdrop) → إغلاق. <dialog> الأصلي يتكفّل بـ Escape سلفاً.
+    dialog.addEventListener('click', (ev) => {
+      if (ev.target === dialog) closeDialog();
+    });
+
+    // إعادة التركيز إلى الزرّ المُطلِق عند الإغلاق (إتاحة لوحة المفاتيح).
+    dialog.addEventListener('close', () => {
+      lastTrigger?.focus();
+    });
+  }
+</script>
+
+<script>
+  // W371 — لحظة سرد مثبَّتة أثناء التمرير، فريدة في الصفحة («كيف يجري الأمر»).
+  // تحسين تدريجي خالص: بلا جافاسكريبت، أو خارج الحاسوب، أو تحت
+  // prefers-reduced-motion، يبقى القسم الشبكة المسطّحة الأصلية — هذا السكربت
+  // يكتفي بإضافة صنف + سِمة، أبدًا لا يختطف التمرير (بلا preventDefault، بلا
+  // scrollTo قسري).
+  const journeySection = document.querySelector<HTMLElement>('[data-journey-section]');
+  const steps = Array.from(document.querySelectorAll<HTMLElement>('[data-journey-step]'));
+  const caption = document.querySelector<HTMLElement>('[data-journey-caption]');
+
+  if (journeySection && steps.length && 'IntersectionObserver' in window) {
+    const desktopMotionOk = matchMedia('(min-width: 1024px) and (prefers-reduced-motion: no-preference)');
+
+    let io: IntersectionObserver | null = null;
+
+    const setActive = (step: HTMLElement) => {
+      for (const s of steps) s.removeAttribute('data-journey-active');
+      step.setAttribute('data-journey-active', '');
+      if (caption) {
+        const title = step.dataset.journeyTitle ?? '';
+        const body = step.dataset.journeyBody ?? '';
+        caption.textContent = title && body ? `${title} — ${body}` : '';
+      }
+    };
+
+    const teardown = () => {
+      io?.disconnect();
+      io = null;
+      journeySection.classList.remove('journey-pinned');
+      for (const s of steps) s.removeAttribute('data-journey-active');
+      if (caption) {
+        caption.hidden = true;
+        caption.textContent = '';
+      }
+    };
+
+    const setup = () => {
+      journeySection.classList.add('journey-pinned');
+      if (caption) caption.hidden = false;
+      // المرحلة التي يكون مركزها الأقرب لمركز الشاشة «تُضاء» — نافذة ضيّقة
+      // حول خط المنتصف، لا مجرّد عتبة دخول، لربط دقيق بين القراءة والحركة.
+      io = new IntersectionObserver(
+        (entries) => {
+          const visible = entries.filter((e) => e.isIntersecting);
+          if (!visible.length) return;
+          const closest = visible.reduce((best, e) =>
+            Math.abs(e.boundingClientRect.top) < Math.abs(best.boundingClientRect.top) ? e : best
+          );
+          setActive(closest.target as HTMLElement);
+        },
+        { rootMargin: '-45% 0px -45% 0px', threshold: 0 }
+      );
+      for (const s of steps) io.observe(s);
+      // المرحلة الأولى نشِطة افتراضيًا، قبل أي عبور لعتبة.
+      setActive(steps[0]);
+    };
+
+    const sync = () => {
+      if (desktopMotionOk.matches) setup();
+      else teardown();
+    };
+
+    sync();
+    desktopMotionOk.addEventListener('change', sync);
   }
 </script>

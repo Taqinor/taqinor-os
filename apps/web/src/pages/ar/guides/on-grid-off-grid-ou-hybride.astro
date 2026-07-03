@@ -1,0 +1,126 @@
+---
+/**
+ * AR — Guide (W294, RTL): On-grid, off-grid or hybrid? Faithful Arabic
+ * translation of /guides/on-grid-off-grid-ou-hybride. No new figures beyond
+ * the FR's own (4–10 ms switchover, 5–10 kWh battery). Internal links use
+ * localizeNavHref (EN/AR if available, else the existing FR page — never a
+ * dead link). FR untouched.
+ */
+import Layout from '../../../layouts/Layout.astro';
+import V2Enhance from '../../../components/V2Enhance.astro';
+import Article33Ribbon from '../../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../../components/Breadcrumb.astro';
+import CtaBand from '../../../components/CtaBand.astro';
+import StickyCta from '../../../components/StickyCta.astro';
+import { NAP } from '../../../lib/nap';
+import RelatedLinks from '../../../components/RelatedLinks.astro';
+import { getLocaleFromPath } from '../../../i18n/utils';
+import { localizeNavHref } from '../../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const schemaImageUrl = new URL('/og/accueil.png', Astro.site).href;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: 'مربوط بالشبكة، مستقل أم هجين: ماذا يحدث أثناء الانقطاع؟',
+  description: 'مربوط بالشبكة، مستقل أم هجين: لماذا ينقطع نظام مربوط بالشبكة تلقائياً أثناء العطب، وما يلزم للحفاظ على الكهرباء.',
+  image: schemaImageUrl,
+  about: { '@type': 'Thing', name: 'البنية الشمسية واستمرارية الخدمة' },
+  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: url,
+};
+---
+
+<Layout
+  title="مربوط بالشبكة، مستقل أم هجين: ماذا يحدث أثناء الانقطاع؟ | Taqinor"
+  description="ينقطع نظام شمسي مربوط بالشبكة تلقائياً أثناء انقطاع — إنه قانون منع الجزيرة الكهربائية. للحفاظ على الكهرباء، يلزم عاكس هجين ببطارية. شرح واضح."
+  ogSlug="guides"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: 'الأدلّة', href: L('/guides') }, { label: 'مربوط بالشبكة، مستقل أم هجين؟' }]} />
+
+    <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
+      <p class="tech-label v2-kicker rule-brass text-lune">دليل · البنية</p>
+      <h1 class="display v2-page-title mt-5 text-white">مربوط بالشبكة، مستقل أم هجين؟</h1>
+
+      <p class="v2-lead mt-6 text-lune-soft">
+        ينقطع تيار ONEE في عزّ بعد الظهر. ثلاثة بيوت من نفس الحي لديها ألواح على السقف؛ واحد فقط يحتفظ
+        بالكهرباء. الفرق لا يعود إلى ماركة الألواح ولا عددها، بل إلى البنية المختارة. إليكم كيف تتصرّف
+        كل واحدة من الثلاث عندما تنقطع الشبكة — ولماذا يُفسِّر منع الجزيرة الكهربائية جُلّ الأمر.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">النظام المربوط بالشبكة (on-grid)</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        نظام <strong class="text-lune">on-grid</strong> — يُسمّى أيضاً مربوطاً بالشبكة أو
+        «grid-tied» — يُنتج كهرباء شمسية ويستهلكها استهلاكاً ذاتياً مباشراً، مع لعب شبكة ONEE دور
+        «بطارية افتراضية»: يذهب الفائض إلى الشبكة، ويُعوَّض العجز منها. إنها البنية الأكثر ربحاً
+        للبيوت والمقاولات الحضرية المربوطة بONEE، إذ لا تخزين فيزيائياً يجب استهلاك تكلفته.
+      </p>
+      <p class="v2-lead mt-4 text-lune-soft">
+        في المقابل، أثناء انقطاع الشبكة، يتوقّف هذا العاكس <em>فوراً</em> — حتى في عزّ الشمس. ليس
+        عيباً: إنه حماية إلزامية.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">لماذا يتوقّف العاكس: منع الجزيرة الكهربائية</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        يفرض المعيار على كل عاكس مربوط بالشبكة وظيفة تُسمّى <strong class="text-lune">منع الجزيرة
+        الكهربائية</strong>: بمجرّد اختفاء الشبكة، يكتشف العاكس غياب التوتر ويعزل نفسه في غضون
+        ميلي ثوانٍ. السبب: لو استمرّ العاكس في حقن التيار على خط يعتقد تقنيو ONEE أنه بلا توتر، لكانت
+        هناك مخاطرة مميتة على فرق التدخّل. التوقّف التلقائي يحمي الأشخاص — لا العاكس.
+      </p>
+      <p class="v2-lead mt-4 text-lune-soft">
+        النتيجة العملية: <strong class="text-lune">امتلاك ألواح شمسية لا يضمن وجود كهرباء أثناء
+        انقطاع</strong> إذا كان النظام مربوطاً بالشبكة فقط.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">النظام المستقل (off-grid)</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        نظام <strong class="text-lune">off-grid</strong> غير مربوط بالشبكة أبداً. يُنتج، يُخزّن في
+        بطاريات، ويُعيد الطاقة باستقلالية تامة. إنه الحل الطبيعي للمواقع المعزولة — مزارع بعيدة، مرحّلات
+        اتصالات، مناطق قروية غير مخدومة — حيث لا توجد شبكة للانضمام إليها. في وسط حضري مربوط بONEE،
+        نادراً ما يُبرَّر off-grid خالص اقتصادياً: تحجيم التخزين لتغطية الليالي والأيام الغائمة يُمثّل
+        استثماراً معتبراً، دون المرونة التي تُوفّرها الشبكة مجاناً.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">النظام الهجين: شبكة + بطارية + نجدة</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        نظام <strong class="text-lune">هجين</strong> يبقى مربوطاً بالشبكة للاستهلاك الذاتي وتوازن
+        النهار/الليل، لكنه يضيف بطارية تأخذ المُقود على دارات ذات أولوية — الإضاءة، الثلاجة، الشواحن،
+        صندوق الإنترنت — بمجرّد سقوط الشبكة. تكفي عادة بطارية بـ5 إلى 10 kWh للحفاظ على هذه الاستخدامات
+        الأساسية لعدّة ساعات.
+      </p>
+      <p class="v2-lead mt-4 text-lune-soft">
+        عندما يحدث الانقطاع، يتحوّل العاكس الهجين إلى مخارج النجدة في غضون ميلي ثوانٍ (حوالي 4 إلى
+        10 ملي ثانية على الطُّرز ذات وضع UPS، حتى ثانية أو ثانيتين على طُرز أخرى). يعزل هذه الدارات
+        عن الشبكة، وهو ما يحترم منع الجزيرة الكهربائية، ويواصل تغذيتها. إنها البنية الوحيدة من الثلاث
+        التي تضمن الاستهلاك الذاتي يومياً مع الحفاظ على الكهرباء أثناء عطب.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">أيّها للبيوت الثلاثة في الحي؟</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        لنعد إلى انقطاع البداية. البيت المربوط بONEE الذي تبقى فيه الانقطاعات إزعاجاً عرضياً يعيش
+        بكل هناء مع on-grid: هو الذي يسترجع كلفته الأسرع. بيت ريفي دون خط كهربائي لا خيار له، إنه
+        off-grid. الثالث — عيادة طبية، متجر لا يمكنه التوقّف، مكتب عمل عن بُعد — يدفع ثمن بطاريته
+        الهجينة مقابل الاستمرارية التي يشتريها. المرجع الصحيح إذن ليس الميزانية الأولية بل سؤال بسيط:
+        ماذا يحدث عندكم، عملياً، يوم يتوقّف التيار؟
+      </p>
+      <RelatedLinks links={[
+        { href: L('/guides/onduleur-hybride-ou-reseau'), label: 'عاكس هجين أم شبكة؟' },
+        { href: L('/guides/electricite-pendant-les-coupures'), label: 'الكهرباء أثناء الانقطاعات' },
+        { href: L('/guides'), label: 'كل الأدلّة' },
+      ]} />
+    </article>
+
+    <CtaBand title="نحسم البنية المناسبة لكم في الدراسة المجانية." href={L('/devis/mon-toit')} />
+
+    <StickyCta />
+  </div>
+</Layout>

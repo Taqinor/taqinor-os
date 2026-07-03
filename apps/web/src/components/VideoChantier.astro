@@ -13,9 +13,26 @@
  * W179 — hover-zoom standardisé à scale(1.04) (réduit-mouvement safe).
  * W182 — framing palette nuit/laiton, dimensions explicites anti-CLS,
  *         preload="none" + poster sur la vidéo, considération save-data/mobile.
+ * W269 — « cinéma du chantier » : mouvement réel. Réutilise la technique
+ *         différée-muette-en-boucle du héros (index.astro) : au scroll dans
+ *         le champ (IntersectionObserver, gated reduced-motion + saveData),
+ *         l'affiche est remplacée par une boucle muette courte (3–6 s, même
+ *         fichier chantier-a.mp4 — aucun nouvel asset) qui joue en fondu ;
+ *         le bouton play reste superposé pour la lecture complète, avec son,
+ *         sans boucle, contrôles natifs. Jamais de préchargement bloquant :
+ *         `preload="none"`, chargement déclenché uniquement par
+ *         l'intersection (comme le héros est déclenché par l'interaction).
+ * W346 — la façade clic-pour-lire (affiche + bouton play + injection du
+ *         <video> réel au clic) est désormais LiteVideo.astro, un primitif
+ *         générique extrait d'ici. Ce composant garde SA prose i18n et
+ *         SON enrichissement propre (la boucle teaser W269, superposée en
+ *         `absolute inset-0` par-dessus LiteVideo) — la boucle s'accroche à
+ *         l'événement `litevideo:play` de LiteVideo pour se couper avant que
+ *         la lecture complète ne démarre. Rendu FR inchangé.
  */
 import { getLocaleFromPath } from '../i18n/utils';
 import type { Locale } from '../i18n/config';
+import LiteVideo from './LiteVideo.astro';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 
@@ -69,83 +86,110 @@ const s = STR[locale] ?? STR.fr;
         • preload="none" sur la video (chargée à la demande)
         • poster="/videos/chantier-poster.webp" sur la video (premier frame visible)
         • W179 : group-hover scale-[1.04] (standardisé, était 1.02)
+      W346 — la façade clic-pour-lire elle-même est LiteVideo (affiche +
+        bouton play + injection du <video> réel au clic). La boucle teaser
+        W269 est superposée en `absolute inset-0` par-dessus, dans le même
+        conteneur `border-brass-400/40` qu'avant (rendu inchangé).
     -->
     <div
       id="chantier-player"
-      class="group relative mt-8 w-full cursor-pointer overflow-hidden border border-brass-400/40"
+      class="relative mt-8 border border-brass-400/40"
       style="box-shadow: 0 0 0 1px rgb(232 181 74 / 0.08), 0 24px 60px -20px rgb(0 0 0 / 0.7);"
     >
-      <!-- Aspect-ratio réservé : 16/9, largeur max ~1600 px → hauteur = 900 px -->
-      <div class="relative" style="padding-bottom: 56.25%;">
-        <picture class="absolute inset-0">
-          <source type="image/avif" srcset="/videos/chantier-poster.avif" />
-          <img
-            src="/videos/chantier-poster.webp"
-            alt={s.imgAlt}
-            width="1600"
-            height="900"
-            loading="lazy"
-            decoding="async"
-            class="chantier-poster h-full w-full object-cover"
-          />
-        </picture>
-        <!-- Halo laiton discret derrière le bouton play -->
-        <div class="absolute inset-0 bg-azur-950/20 transition-colors group-hover:bg-azur-950/5"></div>
-        <button
-          id="chantier-play"
-          type="button"
-          aria-label={s.playLabel}
-          class="absolute inset-0 flex items-center justify-center"
-        >
-          <span class="flex h-20 w-20 items-center justify-center rounded-full bg-brass-400 text-azur-950 shadow-lg transition-transform group-hover:scale-110">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
-          </span>
-        </button>
-      </div>
+      <LiteVideo
+        id="chantier-lite-video"
+        src="/videos/chantier-a.mp4"
+        poster="/videos/chantier-poster"
+        alt={s.imgAlt}
+        playLabel={s.playLabel}
+        aspectRatio="16/9"
+        posterWidth={1600}
+        posterHeight={900}
+      />
+      {/* W269 — boucle teaser muette (3–6 s), jamais préchargée : `src` posé
+          uniquement par le script au moment de l'intersection. Fondu depuis
+          l'affiche (opacity-0 → opacity-100), jamais de saut visuel. Superposée
+          par-dessus la façade LiteVideo (pointer-events: none — le clic passe
+          au bouton play de LiteVideo en dessous). */}
+      <video
+        id="chantier-teaser"
+        class="chantier-teaser pointer-events-none absolute inset-0 h-full w-full object-cover opacity-0"
+        muted
+        loop
+        playsinline
+        preload="none"
+        aria-hidden="true"
+        tabindex="-1"
+        poster="/videos/chantier-poster.webp"
+      ></video>
     </div>
   </div>
 </section>
 
 <style>
-  /* W179 — hover-zoom affiche à 1.04, reduced-motion safe */
-  @media (prefers-reduced-motion: no-preference) {
-    .chantier-poster {
-      transition: transform 700ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
-    }
-    #chantier-player:hover .chantier-poster {
-      transform: scale(1.04);
-    }
+  /* W269 — fondu de la boucle teaser par-dessus l'affiche (jamais de saut) */
+  .chantier-teaser {
+    transition: opacity 500ms ease;
+  }
+  .chantier-teaser.chantier-teaser--visible {
+    opacity: 1;
   }
 </style>
 
 <script>
+  // W269 — Boucle teaser : reprend la technique différée-muette du héros
+  // (index.astro « Vidéo héro : différée ») mais déclenchée par l'ENTRÉE dans
+  // le champ (IntersectionObserver) plutôt que par le chargement/interaction —
+  // cette section est sous la ligne de flottaison. Gated reduced-motion +
+  // saveData : sous l'une ou l'autre, l'affiche reste seule (comme le héros).
+  // Boucle plafonnée à 6 s (repart à 0) : même fichier chantier-a.mp4, aucun
+  // nouvel asset — si le clip est plus court, `loop` natif prend le relais.
+  //
+  // W346 — le clic-pour-lire lui-même est géré par LiteVideo.astro ; ce script
+  // n'écoute plus que `litevideo:play` (émis par LiteVideo juste avant de
+  // monter le <video> réel) pour couper la boucle teaser avant la lecture
+  // complète (évite un second flux audio/vidéo qui jouerait en double).
   const wrap = document.getElementById('chantier-player');
-  const playBtn = document.getElementById('chantier-play');
+  const liteVideoRoot = document.getElementById('chantier-lite-video');
+  const teaser = document.getElementById('chantier-teaser') as HTMLVideoElement | null;
 
-  playBtn?.addEventListener('click', () => {
-    if (!wrap) return;
+  const motionOk = matchMedia('(prefers-reduced-motion: no-preference)').matches;
+  // @ts-expect-error saveData non typé partout
+  const saveData = navigator.connection?.saveData === true;
 
-    const video = document.createElement('video');
-    video.src = '/videos/chantier-a.mp4';
-    // W182 — poster visible dès le chargement ; preload="none" pour économiser
-    // la bande passante (la vidéo n'est chargée qu'après le clic).
-    video.poster = '/videos/chantier-poster.webp';
-    video.preload = 'none';
-    video.controls = true;
-    video.autoplay = true;
-    video.playsInline = true;
-    // W182 — respecter prefers-reduced-data si disponible dans le futur
-    // (pas d'API standard stable — on garde preload="none" comme proxy)
-    video.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#070b1d';
+  const TEASER_MAX_S = 6;
 
-    // Remplace le contenu interne (poster + bouton) par la vidéo
-    const inner = wrap.querySelector<HTMLElement>('div[style]');
-    if (inner) {
-      inner.innerHTML = '';
-      inner.appendChild(video);
-    } else {
-      wrap.appendChild(video);
-    }
-    wrap.classList.remove('cursor-pointer');
+  if (teaser && motionOk && !saveData && 'IntersectionObserver' in window) {
+    let armed = false;
+    const arm = () => {
+      if (armed) return;
+      armed = true;
+      teaser.src = '/videos/chantier-a.mp4';
+      teaser.addEventListener('timeupdate', () => {
+        if (teaser.currentTime >= TEASER_MAX_S) teaser.currentTime = 0;
+      });
+      teaser.play().then(() => teaser.classList.add('chantier-teaser--visible')).catch(() => {});
+    };
+    const io = new IntersectionObserver(
+      (entries, obs) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          arm();
+          obs.disconnect();
+        }
+      },
+      { rootMargin: '0px 0px -10% 0px', threshold: 0.25 },
+    );
+    io.observe(wrap ?? teaser);
+  }
+
+  liteVideoRoot?.addEventListener('litevideo:play', () => {
+    // Stoppe ET masque la boucle teaser avant que LiteVideo ne monte la
+    // lecture complète — le teaser est un frère DOM de LiteVideo (superposé
+    // en absolute inset-0 par-dessus, ordre source), donc rester visible le
+    // laisserait recouvrir le <video> réel injecté par LiteVideo.
+    teaser?.pause();
+    teaser?.classList.remove('chantier-teaser--visible');
+    if (teaser) teaser.style.display = 'none';
   });
 </script>

@@ -11,7 +11,8 @@ import V2Enhance from '../../components/V2Enhance.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
-import { FICHES, ficheDownloadHref, type Fiche } from '../../lib/fiches';
+import RelatedLinks from '../../components/RelatedLinks.astro';
+import { FICHES, ficheDownloadHref, relatedFiches, type Fiche } from '../../lib/fiches';
 
 export function getStaticPaths() {
   return FICHES.map((f) => ({ params: { slug: f.slug }, props: { fiche: f } }));
@@ -22,7 +23,14 @@ interface Props {
 }
 const { fiche } = Astro.props as Props;
 const downloadHref = ficheDownloadHref(fiche);
+const pairings = relatedFiches(fiche);
 
+// W326 — Offer/availability : AUCUN prix inventé. Le prix dépend de l'étude
+// (dimensionnement propre à chaque toiture), donc n'existe pas au niveau
+// produit générique ; on déclare seulement la disponibilité + le vendeur,
+// via un Offer schema.org valide sans propriété `price`/`priceCurrency`.
+// La garantie est jointe en `warranty` (WarrantyPromise), fidèle à
+// `fiche.warranty` — aucune durée inventée, reprise telle quelle de fiches.ts.
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Product',
@@ -31,6 +39,18 @@ const jsonLd = {
   brand: { '@type': 'Brand', name: fiche.marque },
   model: fiche.modele,
   url: new URL(`/produits/${fiche.slug}`, Astro.site).href,
+  offers: {
+    '@type': 'Offer',
+    availability: 'https://schema.org/InStock',
+    itemCondition: 'https://schema.org/NewCondition',
+    seller: { '@type': 'Organization', name: 'Taqinor' },
+    url: new URL('/devis/mon-toit', Astro.site).href,
+    warranty: {
+      '@type': 'WarrantyPromise',
+      durationOfWarranty: { '@type': 'QuantitativeValue', value: fiche.warranty.years, unitCode: 'ANN' },
+      ...(fiche.warranty.note ? { description: fiche.warranty.note } : {}),
+    },
+  },
 };
 ---
 
@@ -115,6 +135,25 @@ const jsonLd = {
           </div>
         )}
 
+        {/* W326 — « se combine avec » : les autres familles de produits qu'une
+            installation associe typiquement à celle-ci (ex. panneau → onduleur
+            + supervision). Aucun produit ne se référence lui-même. */}
+        {pairings.length > 0 && (
+          <div class="v2-rise mt-10 border-t border-white/10 pt-8">
+            <h2 class="tech-label text-brass-300">Se combine avec</h2>
+            <p class="mt-2 max-w-2xl text-sm text-lune-soft">
+              Sur une installation réelle, {fiche.nom.toLowerCase()} n'est jamais posé seul —
+              voici les familles de matériel avec lesquelles il travaille.
+            </p>
+            <RelatedLinks
+              mt="mt-5"
+              links={pairings.flatMap((group) =>
+                group.fiches.map((f) => ({ href: `/produits/${f.slug}`, label: f.nom }))
+              )}
+            />
+          </div>
+        )}
+
         <p class="mt-6 text-xs leading-relaxed text-lune-faint">
           Les spécifications détaillées font foi dans la fiche constructeur officielle liée ci-dessus.
           Le raisonnement derrière chaque marque est expliqué sur
@@ -123,7 +162,7 @@ const jsonLd = {
       </div>
     </section>
 
-    <CtaBand title="Le bon matériel, c'est celui que l'étude justifie." seam={false} />
+    <CtaBand title={`${fiche.nom}, oui ou non pour votre toiture ? L'étude gratuite le dira.`} seam={false} />
     <StickyCta />
   </div>
 </Layout>

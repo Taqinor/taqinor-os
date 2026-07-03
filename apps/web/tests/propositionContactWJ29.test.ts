@@ -37,13 +37,15 @@ describe('WJ29 — contactEndpoint (URL backend attendue)', () => {
 });
 
 describe('WJ29 — buildContactBody (normalisation du canal + message)', () => {
-  it('canal valide (rappel/whatsapp/question) préservé', () => {
+  it('canal valide (rappel/whatsapp/question/voice) préservé', () => {
     expect(buildContactBody({ channel: 'rappel' })).toEqual({ channel: 'rappel', message: '' });
     expect(buildContactBody({ channel: 'whatsapp' })).toEqual({ channel: 'whatsapp', message: '' });
     expect(buildContactBody({ channel: 'question', message: 'Une question' })).toEqual({
       channel: 'question',
       message: 'Une question',
     });
+    // WJ85 — invitation à la note vocale : canal distinct, préservé lui aussi.
+    expect(buildContactBody({ channel: 'voice' })).toEqual({ channel: 'voice', message: '' });
   });
 
   it('canal invalide → repli "rappel"', () => {
