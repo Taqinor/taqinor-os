@@ -7,6 +7,9 @@
  * W178 — lightbox accessible (vanilla JS, ESC/flèches, focus-trap, aria)
  * W179 — hover-zoom standardisé à 1.04 sur toutes les cartes (reduced-motion safe)
  * W181 — object-position lu depuis realisations.ts (objectPosition optionnel)
+ * W281 — VideoChantier (film de chantier réel) monté sous la galerie : le hub
+ *        de preuve dédié avait des photos mais pas la vidéo, alors que l'asset
+ *        est prêt en production et n'était monté que sur l'accueil.
  */
 import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -14,6 +17,7 @@ import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
 import Picture from '../../components/Picture.astro';
 import PhotoCaption from '../../components/PhotoCaption.astro';
+import VideoChantier from '../../components/VideoChantier.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { REALISATIONS, standardCaption } from '../../lib/realisations';
@@ -115,6 +119,9 @@ const galleryItems = REALISATIONS.map((r) => ({
         ))}
       </div>
     </section>
+
+    {/* W281 — film de chantier réel, sous la galerie du hub de preuve dédié */}
+    <VideoChantier />
 
     <CtaBand title="La prochaine étude de cas, c'est peut-être votre toiture." href="/devis/mon-toit" />
 
