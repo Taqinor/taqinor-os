@@ -10,7 +10,7 @@ from .models import (
     ActionCorrectivePreventive, AnalyseIncident, Audit, CauseIncident,
     ConsignationLoto, ContactUrgence,
     BilanCarbone, BordereauSuiviDechet, ConformiteEnvironnementale,
-    CritereAudit, Dechet, DeclarationCnss, EtapeDeclarationAt,
+    CritereAudit, Dechet, DeclarationCnss, Derogation, EtapeDeclarationAt,
     EvaluationRisque, GrilleAudit,
     InductionSecurite, IndicateurESG,
     LigneBilanCarbone,
@@ -37,6 +37,8 @@ class NonConformiteSerializer(serializers.ModelSerializer):
         source='get_gravite_display', read_only=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
+    disposition_display = serializers.CharField(
+        source='get_disposition_display', read_only=True)
 
     class Meta:
         model = NonConformite
@@ -44,9 +46,19 @@ class NonConformiteSerializer(serializers.ModelSerializer):
             'id', 'reference', 'titre', 'description', 'gravite',
             'gravite_display', 'origine', 'statut', 'statut_display',
             'chantier_id', 'reserve', 'signale_par', 'date_detection',
+            # XQHS2 — disposition tracée (qui/quand) + coût interne + retour
+            # fournisseur.
+            'disposition', 'disposition_display', 'disposition_par',
+            'disposition_le', 'cout_disposition', 'fournisseur',
             'date_creation',
         ]
-        read_only_fields = ['reserve', 'signale_par', 'date_creation']
+        read_only_fields = [
+            'reserve', 'signale_par', 'disposition_par', 'disposition_le',
+            'date_creation',
+        ]
+
+    def validate_fournisseur(self, value):
+        return _meme_societe(self, value, 'Fournisseur')
 
 
 class ActionCorrectivePreventiveSerializer(serializers.ModelSerializer):
@@ -67,6 +79,33 @@ class ActionCorrectivePreventiveSerializer(serializers.ModelSerializer):
             'efficace', 'commentaire_verification', 'date_verification',
             'verifiee_par', 'date_creation',
         ]
+
+    def validate_non_conformite(self, value):
+        return _meme_societe(self, value, 'Non-conformité')
+
+
+class DerogationSerializer(serializers.ModelSerializer):
+    """Acceptation en l'état bornée (dérogation) liée à une NCR (XQHS2).
+
+    ``company`` posée côté serveur ; le ``statut`` bascule sur ``expiree``
+    côté modèle (jamais lu du corps).
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    statut_courant = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Derogation
+        fields = [
+            'id', 'non_conformite', 'justification', 'evaluation_risque',
+            'quantite_max', 'date_debut', 'date_expiration',
+            'prealerte_jours', 'approbateur', 'statut', 'statut_display',
+            'statut_courant', 'date_creation',
+        ]
+        read_only_fields = ['statut', 'date_creation']
+
+    def get_statut_courant(self, obj):
+        return obj.statut_calcule()
 
     def validate_non_conformite(self, value):
         return _meme_societe(self, value, 'Non-conformité')

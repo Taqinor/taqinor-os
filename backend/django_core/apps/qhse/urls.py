@@ -8,7 +8,8 @@ from .views import (
     CauseIncidentViewSet, ConformiteEnvironnementaleViewSet,
     ConsignationLotoViewSet,
     ContactUrgenceViewSet, DechetViewSet,
-    CritereAuditViewSet, DeclarationCnssViewSet, EtapeDeclarationAtViewSet,
+    CritereAuditViewSet, DeclarationCnssViewSet, DerogationViewSet,
+    EtapeDeclarationAtViewSet,
     EvaluationRisqueViewSet, GrilleAuditViewSet, IncidentViewSet,
     IndicateurESGViewSet,
     InductionSecuriteViewSet, InspectionSecuriteViewSet,
@@ -26,6 +27,7 @@ from .views import (
 
 router = DefaultRouter()
 router.register(r'non-conformites', NonConformiteViewSet)
+router.register(r'derogations', DerogationViewSet)
 router.register(r'capa', ActionCorrectivePreventiveViewSet)
 router.register(r'plans-inspection', PlanInspectionModeleViewSet)
 router.register(r'points-controle', PointControleModeleViewSet)

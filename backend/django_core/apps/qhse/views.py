@@ -19,7 +19,7 @@ from .models import (
     ActionCorrectivePreventive, AnalyseIncident, Audit,
     BilanCarbone, BordereauSuiviDechet, CauseIncident,
     ConformiteEnvironnementale, ConsignationLoto, ContactUrgence,
-    CritereAudit, Dechet, DeclarationCnss, EtapeDeclarationAt,
+    CritereAudit, Dechet, DeclarationCnss, Derogation, EtapeDeclarationAt,
     EvaluationRisque, GrilleAudit,
     Incident, IndicateurESG,
     InductionSecurite, InspectionSecurite,
@@ -37,7 +37,7 @@ from .serializers import (
     ConformiteEnvironnementaleSerializer,
     ConsignationLotoSerializer, ContactUrgenceSerializer,
     CritereAuditSerializer, DechetSerializer, DeclarationCnssSerializer,
-    EtapeDeclarationAtSerializer,
+    DerogationSerializer, EtapeDeclarationAtSerializer,
     EvaluationRisqueSerializer, GrilleAuditSerializer,
     IncidentSerializer,
     IndicateurESGSerializer,
@@ -73,6 +73,7 @@ from .services import (
     cloturer_ncr, creer_ncr_depuis_reserve, generer_capa_depuis_analyse,
     instancier_plan_chantier,
     lever_ncr_audit, lever_ncr_inspection, nouvelle_version_procedure,
+    poser_disposition,
     relancer_capa_en_retard, relancer_conformites,
     verifier_efficacite_capa,
 )
@@ -201,6 +202,64 @@ class NonConformiteViewSet(_ChatterMixin, _QhseBaseViewSet):
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(ncr).data)
+
+    @action(detail=True, methods=['post'], url_path='poser-disposition')
+    def poser_disposition_action(self, request, pk=None):
+        """Pose la disposition d'une NCR (XQHS2).
+
+        Corps : ``disposition`` (requis, une des valeurs de
+        ``NonConformite.Disposition``), ``cout_disposition`` optionnel,
+        ``fournisseur`` (requis si ``retour_fournisseur``),
+        ``creer_capa_retouche`` (bool, si ``retouche``). ``disposition_par``
+        posé côté serveur (jamais lu du corps).
+        """
+        ncr = self.get_object()
+        disposition = request.data.get('disposition')
+        if not disposition:
+            return Response(
+                {'detail': 'disposition est requise.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        fournisseur = None
+        fournisseur_id = request.data.get('fournisseur')
+        if fournisseur_id not in (None, ''):
+            from apps.stock.selectors import get_fournisseur_by_id
+            fournisseur = get_fournisseur_by_id(
+                request.user.company, fournisseur_id)
+            if fournisseur is None:
+                return Response(
+                    {'detail': 'Fournisseur introuvable.'},
+                    status=status.HTTP_404_NOT_FOUND)
+        try:
+            poser_disposition(
+                ncr, disposition,
+                disposition_par=request.user,
+                cout_disposition=request.data.get('cout_disposition'),
+                fournisseur=fournisseur,
+                creer_capa_retouche=bool(
+                    request.data.get('creer_capa_retouche')),
+                capa_description=request.data.get('capa_description', ''),
+            )
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(ncr).data)
+
+
+class DerogationViewSet(_QhseBaseViewSet):
+    """Dérogations (acceptation en l'état bornée) liées à une NCR (XQHS2).
+
+    CRUD scopé société. Filtre optionnel ``?non_conformite=``.
+    """
+    queryset = Derogation.objects.select_related('non_conformite').all()
+    serializer_class = DerogationSerializer
+    ordering_fields = ['id', 'date_expiration', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        ncr = self.request.query_params.get('non_conformite')
+        if ncr not in (None, ''):
+            qs = qs.filter(non_conformite_id=ncr)
+        return qs
 
 
 class ActionCorrectivePreventiveViewSet(_ChatterMixin, _QhseBaseViewSet):

@@ -12,7 +12,7 @@ from django.db import transaction
 
 from .models import (
     ActionCorrectivePreventive, CauseIncident, DeclarationCnss,
-    EtapeDeclarationAt, NonConformite,
+    Derogation, EtapeDeclarationAt, NonConformite,
     NotationFinChantier, PlanInspectionChantier, PointControleModele,
     ProcedureQualite, ReponseCritere, ReleveControle,
 )
@@ -303,11 +303,13 @@ def ncr_capa_bloquantes(ncr):
 
 @transaction.atomic
 def cloturer_ncr(ncr):
-    """Clôture une non-conformité — conditionnée à l'efficacité des CAPA (QHSE13).
+    """Clôture une non-conformité — conditionnée à l'efficacité des CAPA (QHSE13)
+    ET à une disposition posée (XQHS2).
 
-    La clôture n'est autorisée que si toutes les CAPA de la NCR sont vérifiées
-    efficaces (cf. ``ncr_capa_bloquantes``). Lève ``ValueError`` avec la liste
-    des CAPA bloquantes sinon. Idempotent si déjà clôturée. Renvoie la NCR.
+    La clôture n'est autorisée que si (a) toutes les CAPA de la NCR sont
+    vérifiées efficaces (cf. ``ncr_capa_bloquantes``) ET (b) une disposition a
+    été posée (``disposition`` non vide). Lève ``ValueError`` sinon. Idempotent
+    si déjà clôturée. Renvoie la NCR.
     """
     if ncr.statut == NonConformite.Statut.CLOTUREE:
         return ncr
@@ -316,9 +318,116 @@ def cloturer_ncr(ncr):
         raise ValueError(
             "Clôture impossible : %d action(s) corrective(s) non vérifiée(s) "
             "efficace(s)." % len(bloquantes))
+    if not ncr.disposition:
+        raise ValueError(
+            "Clôture impossible : aucune disposition n'a été posée sur "
+            "cette non-conformité.")
     ncr.statut = NonConformite.Statut.CLOTUREE
     ncr.save(update_fields=['statut'])
     return ncr
+
+
+# ── XQHS2 — Disposition de la NCR + dérogations ─────────────────────────────
+
+@transaction.atomic
+def poser_disposition(
+        ncr, disposition, *, disposition_par=None, cout_disposition=None,
+        fournisseur=None, creer_capa_retouche=False, capa_description=''):
+    """Pose la disposition d'une non-conformité (XQHS2).
+
+    ``disposition_par``/``disposition_le`` sont posés CÔTÉ SERVEUR (jamais lus
+    du corps). Si ``disposition == RETOUCHE`` et ``creer_capa_retouche=True``,
+    pré-remplit une CAPA corrective liée (mêmes valeurs par défaut que le
+    linkage NCR→CAPA existant). Si ``disposition == RETOUR_FOURNISSEUR``, le
+    ``fournisseur`` (référence FK-chaîne ``stock.Fournisseur``) est requis et
+    posé. Renvoie la NCR mise à jour.
+    """
+    from django.utils import timezone
+
+    valeurs_valides = {c.value for c in NonConformite.Disposition}
+    if disposition not in valeurs_valides:
+        raise ValueError(f'Disposition invalide : {disposition!r}')
+
+    ncr.disposition = disposition
+    ncr.disposition_par = disposition_par
+    ncr.disposition_le = timezone.now()
+    if cout_disposition is not None:
+        ncr.cout_disposition = cout_disposition
+    if disposition == NonConformite.Disposition.RETOUR_FOURNISSEUR:
+        ncr.fournisseur = fournisseur
+    ncr.save(update_fields=[
+        'disposition', 'disposition_par', 'disposition_le',
+        'cout_disposition', 'fournisseur'])
+
+    if (disposition == NonConformite.Disposition.RETOUCHE
+            and creer_capa_retouche):
+        ActionCorrectivePreventive.objects.create(
+            company=ncr.company,
+            non_conformite=ncr,
+            type_action=ActionCorrectivePreventive.Type.CORRECTIVE,
+            description=capa_description or (
+                f'Retouche suite à disposition NCR « {ncr.titre} »'),
+        )
+    return ncr
+
+
+def derogations_a_relancer(company, today=None):
+    """Dérogations actives à échéance imminente ou déjà expirées (XQHS2).
+
+    Même logique de préalerte que ``ConformiteEnvironnementale`` (QHSE38) :
+    retient les dérogations non clôturées dont ``date_expiration`` tombe dans
+    la fenêtre ``prealerte_jours`` (ou déjà passée). Scopé société.
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    if today is None:
+        today = timezone.localdate()
+    qs = Derogation.objects.filter(
+        company=company, date_expiration__isnull=False
+    ).exclude(statut=Derogation.Statut.CLOTUREE)
+    return [
+        d for d in qs
+        if d.date_expiration <= today + timedelta(days=d.prealerte_jours or 0)
+    ]
+
+
+def relancer_derogations(company, today=None):
+    """Relance les dérogations à échéance imminente/dépassée (best-effort)."""
+    from django.utils import timezone
+
+    if today is None:
+        today = timezone.localdate()
+    derogs = derogations_a_relancer(company, today=today)
+    notifiees = 0
+    items = []
+    for derog in derogs:
+        titre = 'Dérogation à échéance'
+        corps = (
+            f'La dérogation liée à la non-conformité '
+            f'« {derog.non_conformite.titre} » expire le '
+            f'{derog.date_expiration.isoformat()}.')
+        if derog.approbateur_id is not None:
+            _notifier_derogation(derog.approbateur, titre, corps, company)
+            notifiees += 1
+        items.append({
+            'derogation_id': derog.id,
+            'non_conformite_id': derog.non_conformite_id,
+            'date_expiration': derog.date_expiration.isoformat(),
+        })
+    return {'total': len(derogs), 'notifiees': notifiees, 'items': items}
+
+
+def _notifier_derogation(user, titre, corps, company):
+    """Notifie l'approbateur d'une dérogation à échéance (best-effort)."""
+    try:
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+        notify(user, EventType.MAINTENANCE_DUE, titre, body=corps,
+               link='/qhse/non-conformites', company=company)
+    except Exception:  # pragma: no cover - défensif
+        pass
 
 
 # ── QHSE17 — Score de notation fin de chantier ──────────────────────────────

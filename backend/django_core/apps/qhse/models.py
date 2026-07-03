@@ -40,6 +40,14 @@ class NonConformite(models.Model):
         RESOLUE = 'resolue', 'Résolue'
         CLOTUREE = 'cloturee', 'Clôturée'
 
+    # ── XQHS2 — Disposition (que devient le produit/travail non conforme ?) ──
+    class Disposition(models.TextChoices):
+        REBUT = 'rebut', 'Rebut'
+        RETOUCHE = 'retouche', 'Retouche'
+        RETOUR_FOURNISSEUR = 'retour_fournisseur', 'Retour fournisseur'
+        ACCEPTE_EN_ETAT = 'accepte_en_etat', "Accepté en l'état"
+        TRI_RECONTROLE = 'tri_recontrole', 'Tri / recontrôle'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -82,6 +90,33 @@ class NonConformite(models.Model):
     )
     date_detection = models.DateField(
         null=True, blank=True, verbose_name='Date de détection')
+    # ── XQHS2 — Disposition tracée (qui/quand) + coût interne ────────────────
+    disposition = models.CharField(
+        max_length=20, choices=Disposition.choices,
+        blank=True, default='', verbose_name='Disposition')
+    disposition_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_ncr_dispositions',
+        verbose_name='Disposition posée par',
+    )
+    disposition_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Disposition posée le')
+    # Coût interne de la disposition — JAMAIS client-facing (même règle que
+    # `stock.Produit.prix_achat`).
+    cout_disposition = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        null=True, blank=True, verbose_name='Coût de la disposition (interne)')
+    # Référence LÂCHE au fournisseur (stock.Fournisseur) — FK-chaîne, jamais un
+    # import cross-app de modèle. Posée quand disposition = retour_fournisseur.
+    fournisseur = models.ForeignKey(
+        'stock.Fournisseur',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_ncr_retours',
+        verbose_name='Fournisseur (retour)',
+    )
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -169,6 +204,104 @@ class ActionCorrectivePreventive(models.Model):
 
     def __str__(self):
         return f'{self.get_type_action_display()} — {self.description[:40]}'
+
+
+# ── XQHS2 — Dérogation (acceptation en l'état bornée) ───────────────────────
+
+class Derogation(models.Model):
+    """Acceptation en l'état bornée (dérogation) liée à une NCR (XQHS2).
+
+    Une disposition ``accepte_en_etat`` peut nécessiter une dérogation formelle
+    bornée dans le temps OU en quantité : justification, évaluation du risque,
+    approbateur, et une ``date_expiration`` avec relance à échéance (même
+    pattern que ``ConformiteEnvironnementale.prealerte_jours`` — QHSE38).
+
+    Le ``statut_calcule(today)`` dérive l'état réel : ``expiree`` si l'échéance
+    est dépassée, sinon le ``statut`` enregistré. Multi-société via ``company``
+    posée côté serveur. Entièrement additif.
+    """
+    class Statut(models.TextChoices):
+        ACTIVE = 'active', 'Active'
+        EXPIREE = 'expiree', 'Expirée'
+        CLOTUREE = 'cloturee', 'Clôturée'
+
+    PREALERTE_JOURS_DEFAUT = 15
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_derogations',
+        verbose_name='Société',
+    )
+    non_conformite = models.ForeignKey(
+        NonConformite,
+        on_delete=models.CASCADE,
+        related_name='derogations',
+        verbose_name='Non-conformité',
+    )
+    justification = models.TextField(
+        blank=True, default='', verbose_name='Justification')
+    evaluation_risque = models.TextField(
+        blank=True, default='', verbose_name='Évaluation du risque')
+    # Bornage : période ET/OU quantité (les deux facultatifs, au moins un
+    # attendu côté UI — non forcé côté modèle pour rester additif/souple).
+    quantite_max = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Quantité maximale couverte')
+    date_debut = models.DateField(
+        null=True, blank=True, verbose_name='Date de début')
+    date_expiration = models.DateField(
+        null=True, blank=True, verbose_name="Date d'expiration")
+    prealerte_jours = models.PositiveIntegerField(
+        default=PREALERTE_JOURS_DEFAUT, verbose_name='Préalerte (jours)')
+    approbateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_derogations_approuvees',
+        verbose_name='Approbateur',
+    )
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.ACTIVE, verbose_name='Statut')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Dérogation'
+        verbose_name_plural = 'Dérogations'
+        ordering = ['-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='qhse_derog_co_statut',
+            ),
+            models.Index(
+                fields=['company', 'date_expiration'],
+                name='qhse_derog_co_exp',
+            ),
+        ]
+
+    def statut_calcule(self, today=None):
+        """État réel : clôturée figée, sinon expirée si l'échéance est
+        dépassée, sinon le statut enregistré. Lecture seule."""
+        from django.utils import timezone
+        if self.statut == self.Statut.CLOTUREE:
+            return self.Statut.CLOTUREE
+        if today is None:
+            today = timezone.localdate()
+        if self.date_expiration is not None and self.date_expiration < today:
+            return self.Statut.EXPIREE
+        return self.statut
+
+    def save(self, *args, **kwargs):
+        # Le statut n'est auto-basculé sur EXPIREE que s'il n'a pas déjà été
+        # clôturé manuellement — la clôture reste une action explicite.
+        if self.statut != self.Statut.CLOTUREE:
+            self.statut = self.statut_calcule()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'Dérogation NCR#{self.non_conformite_id} — {self.get_statut_display()}'
 
 
 # ── QHSE2 — ITP (Inspection & Test Plan) ───────────────────────────────────
