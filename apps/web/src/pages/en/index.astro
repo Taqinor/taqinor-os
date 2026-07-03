@@ -28,6 +28,7 @@ import GarantiesTeaser from '../../components/GarantiesTeaser.astro';
 import Testimonials from '../../components/Testimonials.astro';
 import BrandStrip from '../../components/BrandStrip.astro';
 import ZelligeSignature from '../../components/ZelligeSignature.astro';
+import FounderPortrait from '../../components/FounderPortrait.astro';
 import { WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink } from '../../lib/whatsapp';
 import { getLocaleFromPath } from '../../i18n/utils';
@@ -360,6 +361,12 @@ const investment = [
         </dl>
       </div>
     </section>
+
+    {/* ── THE FOUNDER — human presence (W266). The copy asserts intimacy
+        ("founder-signed") but never shows it: the real portrait + a
+        first-person signed note make it tangible. Shared component with
+        /à-propos (same facts, never duplicated). ── */}
+    <FounderPortrait />
 
     {/* ── THE JOURNEY (6 steps) + WhatsApp preview. The end-to-end timeline
         (diagnostic → monitoring) replaces the small 3-step list. Facts already

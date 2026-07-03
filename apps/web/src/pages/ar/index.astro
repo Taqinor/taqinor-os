@@ -29,6 +29,7 @@ import GarantiesTeaser from '../../components/GarantiesTeaser.astro';
 import Testimonials from '../../components/Testimonials.astro';
 import BrandStrip from '../../components/BrandStrip.astro';
 import ZelligeSignature from '../../components/ZelligeSignature.astro';
+import FounderPortrait from '../../components/FounderPortrait.astro';
 import { WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink } from '../../lib/whatsapp';
 import { getLocaleFromPath } from '../../i18n/utils';
@@ -358,6 +359,12 @@ const investment = [
         </dl>
       </div>
     </section>
+
+    {/* ── المؤسِّس — حضور إنساني (W266). النص يدّعي حميمية («يصادق عليه
+        المؤسِّس») لكن لا يُظهرها أبداً: البورتريه الحقيقي + ملاحظة موقَّعة
+        بصيغة المتكلم يجعلانها ملموسة. مكوّن مشترك مع /à-propos (نفس الوقائع،
+        بلا أي تكرار). ── */}
+    <FounderPortrait />
 
     {/* ── المسار (6 مراحل) + معاينة WhatsApp. يحلّ الشريط من البداية إلى النهاية
         (تشخيص → مراقبة) محلّ القائمة الصغيرة بثلاث خطوات. وقائع منشورة سلفًا على

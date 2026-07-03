@@ -25,6 +25,7 @@ import GarantiesTeaser from '../components/GarantiesTeaser.astro';
 import Testimonials from '../components/Testimonials.astro';
 import BrandStrip from '../components/BrandStrip.astro';
 import ZelligeSignature from '../components/ZelligeSignature.astro';
+import FounderPortrait from '../components/FounderPortrait.astro';
 import { WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink } from '../lib/whatsapp';
 
@@ -366,6 +367,12 @@ const investment = [
         </dl>
       </div>
     </section>
+
+    {/* ── LE FONDATEUR — présence humaine (W266). Une intimité affirmée dans le
+        texte (« signé par le fondateur ») mais jamais montrée : le portrait
+        réel + une note signée à la première personne la rendent tangible.
+        Composant partagé avec /à-propos (mêmes faits, jamais de doublon). ── */}
+    <FounderPortrait />
 
     {/* ── LE PARCOURS (6 steps) + aperçu WhatsApp. W57 — la frise de bout en bout
         (diagnostic → monitoring) remplace le petit <ol> à 3 pas. Faits déjà
