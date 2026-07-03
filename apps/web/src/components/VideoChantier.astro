@@ -13,6 +13,15 @@
  * W179 — hover-zoom standardisé à scale(1.04) (réduit-mouvement safe).
  * W182 — framing palette nuit/laiton, dimensions explicites anti-CLS,
  *         preload="none" + poster sur la vidéo, considération save-data/mobile.
+ * W269 — « cinéma du chantier » : mouvement réel. Réutilise la technique
+ *         différée-muette-en-boucle du héros (index.astro) : au scroll dans
+ *         le champ (IntersectionObserver, gated reduced-motion + saveData),
+ *         l'affiche est remplacée par une boucle muette courte (3–6 s, même
+ *         fichier chantier-a.mp4 — aucun nouvel asset) qui joue en fondu ;
+ *         le bouton play reste superposé pour la lecture complète, avec son,
+ *         sans boucle, contrôles natifs. Jamais de préchargement bloquant :
+ *         `preload="none"`, chargement déclenché uniquement par
+ *         l'intersection (comme le héros est déclenché par l'interaction).
  */
 import { getLocaleFromPath } from '../i18n/utils';
 import type { Locale } from '../i18n/config';
@@ -89,6 +98,20 @@ const s = STR[locale] ?? STR.fr;
             class="chantier-poster h-full w-full object-cover"
           />
         </picture>
+        {/* W269 — boucle teaser muette (3–6 s), jamais préchargée : `src` posé
+            uniquement par le script au moment de l'intersection. Fondu depuis
+            l'affiche (opacity-0 → opacity-100), jamais de saut visuel. */}
+        <video
+          id="chantier-teaser"
+          class="chantier-teaser absolute inset-0 h-full w-full object-cover opacity-0"
+          muted
+          loop
+          playsinline
+          preload="none"
+          aria-hidden="true"
+          tabindex="-1"
+          poster="/videos/chantier-poster.webp"
+        ></video>
         <!-- Halo laiton discret derrière le bouton play -->
         <div class="absolute inset-0 bg-azur-950/20 transition-colors group-hover:bg-azur-950/5"></div>
         <button
@@ -116,14 +139,64 @@ const s = STR[locale] ?? STR.fr;
       transform: scale(1.04);
     }
   }
+
+  /* W269 — fondu de la boucle teaser par-dessus l'affiche (jamais de saut) */
+  .chantier-teaser {
+    transition: opacity 500ms ease;
+  }
+  .chantier-teaser.chantier-teaser--visible {
+    opacity: 1;
+  }
 </style>
 
 <script>
+  // W269 — Boucle teaser : reprend la technique différée-muette du héros
+  // (index.astro « Vidéo héro : différée ») mais déclenchée par l'ENTRÉE dans
+  // le champ (IntersectionObserver) plutôt que par le chargement/interaction —
+  // cette section est sous la ligne de flottaison. Gated reduced-motion +
+  // saveData : sous l'une ou l'autre, l'affiche reste seule (comme le héros).
+  // Boucle plafonnée à 6 s (repart à 0) : même fichier chantier-a.mp4, aucun
+  // nouvel asset — si le clip est plus court, `loop` natif prend le relais.
   const wrap = document.getElementById('chantier-player');
+  const teaser = document.getElementById('chantier-teaser') as HTMLVideoElement | null;
   const playBtn = document.getElementById('chantier-play');
+
+  const motionOk = matchMedia('(prefers-reduced-motion: no-preference)').matches;
+  // @ts-expect-error saveData non typé partout
+  const saveData = navigator.connection?.saveData === true;
+
+  const TEASER_MAX_S = 6;
+
+  if (teaser && motionOk && !saveData && 'IntersectionObserver' in window) {
+    let armed = false;
+    const arm = () => {
+      if (armed) return;
+      armed = true;
+      teaser.src = '/videos/chantier-a.mp4';
+      teaser.addEventListener('timeupdate', () => {
+        if (teaser.currentTime >= TEASER_MAX_S) teaser.currentTime = 0;
+      });
+      teaser.play().then(() => teaser.classList.add('chantier-teaser--visible')).catch(() => {});
+    };
+    const io = new IntersectionObserver(
+      (entries, obs) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          arm();
+          obs.disconnect();
+        }
+      },
+      { rootMargin: '0px 0px -10% 0px', threshold: 0.25 },
+    );
+    io.observe(wrap ?? teaser);
+  }
 
   playBtn?.addEventListener('click', () => {
     if (!wrap) return;
+
+    // Stoppe la boucle teaser avant de monter la lecture complète (évite un
+    // second flux audio/vidéo qui jouerait en double).
+    teaser?.pause();
 
     const video = document.createElement('video');
     video.src = '/videos/chantier-a.mp4';
@@ -138,7 +211,7 @@ const s = STR[locale] ?? STR.fr;
     // (pas d'API standard stable — on garde preload="none" comme proxy)
     video.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#070b1d';
 
-    // Remplace le contenu interne (poster + bouton) par la vidéo
+    // Remplace le contenu interne (poster + teaser + bouton) par la vidéo
     const inner = wrap.querySelector<HTMLElement>('div[style]');
     if (inner) {
       inner.innerHTML = '';
