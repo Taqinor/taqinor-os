@@ -39,6 +39,9 @@ app.conf.enable_utc = False
 #     signature échues (07:45) — apps/ged/tasks.py (jamais destructif).
 #   - XGED6 : contrôle périodique d'intégrité des archives légales GED23
 #     (03:15) — apps/ged/tasks.py (lecture seule, jamais destructif).
+#   - YLEAD14 : recyclage des leads non travaillés (SLA dépassé → escalade,
+#     désassignation optionnelle au 2e seuil), toutes les heures — apps/crm/tasks.py
+#     (best-effort, no-op société par société tant que lead_sla_hours=0).
 app.conf.beat_schedule = {
     'ventes-check-overdue-factures': {
         'task': 'ventes.check_overdue_factures',
@@ -99,5 +102,9 @@ app.conf.beat_schedule = {
     'ged-verifier-integrite-archives': {
         'task': 'ged.verifier_integrite_archives',
         'schedule': crontab(hour=3, minute=15),
+    },
+    'crm-recycler-leads-non-travailles': {
+        'task': 'crm.recycler_leads_non_travailles',
+        'schedule': crontab(minute=0),  # every hour
     },
 }

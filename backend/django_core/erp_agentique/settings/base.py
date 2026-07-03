@@ -308,6 +308,17 @@ WEBSITE_LEAD_WEBHOOK_SECRET = os.environ.get('WEBSITE_LEAD_WEBHOOK_SECRET', '')
 # Tenant cible des leads web (id de Company) ; à défaut, la première Company.
 WEBSITE_LEADS_COMPANY_ID = os.environ.get('WEBSITE_LEADS_COMPANY_ID') or None
 
+# XMKT32 — Sync Meta Lead Ads → leads CRM (gated, API officielle, jamais de
+# scraping). Sans META_LEAD_ADS_VERIFY_TOKEN, le webhook de vérification
+# (GET hub.challenge) répond 404 ; sans META_LEAD_ADS_ACCESS_TOKEN, le POST
+# de notification est un no-op silencieux (rien n'est créé). Voir
+# apps/crm/webhooks.py::meta_lead_ads_webhook.
+META_LEAD_ADS_VERIFY_TOKEN = os.environ.get('META_LEAD_ADS_VERIFY_TOKEN', '')
+META_LEAD_ADS_ACCESS_TOKEN = os.environ.get('META_LEAD_ADS_ACCESS_TOKEN', '')
+# Tenant cible des leads Meta Lead Ads (id de Company) ; à défaut, la
+# première Company (même repli que WEBSITE_LEADS_COMPANY_ID).
+META_LEAD_ADS_COMPANY_ID = os.environ.get('META_LEAD_ADS_COMPANY_ID') or None
+
 # Stockage fichiers — MinIO / S3 (Phase 2 Sem. 4)
 MINIO_ENDPOINT = os.environ.get('MINIO_ENDPOINT', 'minio:9000')
 MINIO_ACCESS_KEY = os.environ.get('MINIO_ROOT_USER', 'erp_admin')

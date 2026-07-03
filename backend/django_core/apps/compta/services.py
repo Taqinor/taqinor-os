@@ -3763,10 +3763,12 @@ def capturer_message_whatsapp(company, *, wa_message_id, expediteur,
 
     Si l'intégration WhatsApp est inactive (défaut), c'est un NO-OP strict :
     aucun message n'est traité ni stocké. Quand activée, le message est
-    journalisé (idempotent par ``wa_message_id``) et un lead DRAFT est
-    créé/rattaché via ``crm.services`` (import function-local — jamais les
-    modèles crm), en laissant le funnel à NEW. Renvoie le log, ou ``None`` si
-    l'intégration est OFF.
+    journalisé (idempotent par ``wa_message_id``) et rattaché via
+    ``crm.services.resolve_or_create_lead_from_whatsapp`` (YLEAD8, import
+    function-local — jamais les modèles crm) : un lead OUVERT existant du
+    même numéro est réutilisé (message ajouté à son chatter) au lieu de
+    toujours créer un doublon ; sinon un lead DRAFT est créé, funnel à NEW.
+    Renvoie le log, ou ``None`` si l'intégration est OFF.
     """
     if not whatsapp_actif():
         return None
@@ -3780,18 +3782,11 @@ def capturer_message_whatsapp(company, *, wa_message_id, expediteur,
     )
     if not cree or log.traite:
         return log
-    # Création du lead DRAFT via le service crm (jamais ses modèles).
+    # Rattachement/création du lead via le service crm (jamais ses modèles).
     try:
         from apps.crm import services as crm_services
-        lead = crm_services.create_draft_lead_from_ocr(
-            company=company, user=user,
-            fields={
-                # le service lit 'fournisseur'/'client' pour le nom du lead
-                'client': nom_profil or expediteur,
-                'telephone': expediteur,
-                'whatsapp': expediteur,
-            },
-        )
+        lead = crm_services.resolve_or_create_lead_from_whatsapp(
+            company, expediteur, nom=nom_profil, user=user)
         log.lead_id = getattr(lead, 'id', None)
     except Exception:
         # Le lead reste à créer manuellement ; le message est conservé.

@@ -99,6 +99,60 @@ def avancer_stage_new_vers_contacted(lead, user) -> bool:
     return True
 
 
+# ── YLEAD11 — Réactivation d'un lead perdu/COLD sur nouvelle touche entrante ──
+
+def reactivate_lead_on_new_touch(lead, *, source='site web') -> bool:
+    """YLEAD11 — Réactive ``lead`` s'il est actuellement PERDU ou COLD.
+
+    Une nouvelle touche entrante (re-POST site web, nouveau message WhatsApp)
+    sur un lead perdu/froid rouvre le cycle d'achat : lève ``perdu``,
+    repositionne le funnel (AVANCE-SEULEMENT, jamais en arrière — donc un
+    lead déjà ≥ CONTACTED et non perdu ne bouge pas) vers CONTACTED s'il
+    avait déjà été contacté (``first_contacted_at`` posé), sinon NEW, et
+    journalise une activité de réactivation. N'écrase JAMAIS l'attribution
+    first-touch d'origine (ce service ne touche à aucun champ UTM/fbclid).
+    Idempotent : un lead ni perdu ni COLD → no-op (False). Company-scopée par
+    construction (opère sur l'instance ``lead`` déjà résolue dans SA société).
+    """
+    if lead is None:
+        return False
+    etait_perdu = bool(lead.perdu)
+    etait_cold = lead.stage == stages.COLD
+    if not etait_perdu and not etait_cold:
+        return False
+
+    update_fields = []
+    if etait_perdu:
+        lead.perdu = False
+        update_fields.append('perdu')
+
+    cible = _STAGE_CONTACTED if lead.first_contacted_at else stages.NEW
+    if _rang_funnel(lead.stage) < _rang_funnel(cible):
+        ancien_stage = lead.stage
+        lead.stage = cible
+        update_fields.append('stage')
+    else:
+        ancien_stage = None  # étape déjà ≥ cible — pas de changement d'étape.
+
+    if update_fields:
+        lead.save(update_fields=update_fields)
+
+    body = f'auto — réactivation : nouvelle demande {source}'
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE, body=body)
+    if ancien_stage is not None:
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.MODIFICATION,
+            field='stage', field_label='Étape',
+            old_value=stages.STAGE_LABELS[ancien_stage],
+            new_value=stages.STAGE_LABELS[cible],
+            body=f'auto — réactivation ({source})',
+        )
+    return True
+
+
 def avancer_stage_pour_devis(devis, ancien_statut, nouveau_statut, user):
     """Avance l'étape du lead quand le STATUT d'un devis change.
 
@@ -565,9 +619,117 @@ def recompute_lead_score(lead) -> int:
         score = compute_score(lead)
         lead.score = score
         lead.save(update_fields=['score'])
+        maybe_assign_mql(lead)
         return score
     except Exception:
         return 0
+
+
+# ── XMKT21 — Passage MQL automatique sur seuil de score ──────────────────────
+
+def _seuil_mql_for(company) -> int:
+    """Seuil de score MQL configuré pour la société. 0 = désactivé (défaut)."""
+    if company is None:
+        return 0
+    try:
+        from apps.parametres.models import CompanyProfile
+        profile = CompanyProfile.objects.filter(company=company).first()
+        if profile is not None and profile.seuil_mql:
+            return int(profile.seuil_mql)
+    except Exception:
+        pass
+    return 0
+
+
+def _next_round_robin_commercial(company):
+    """Choisit le prochain commercial actif par round-robin.
+
+    Round-robin simple et sans état dédié : parmi les commerciaux actifs de
+    la société (rôle « Commercial »), on prend celui qui a le MOINS de leads
+    MQL déjà assignés (``mql_assigned_at`` renseigné) — départage par id pour
+    rester déterministe. Renvoie None si aucun commercial actif.
+    """
+    from django.contrib.auth import get_user_model
+    from django.db.models import Count, Q
+
+    User = get_user_model()
+    candidats = list(
+        User.objects.filter(
+            company=company, is_active=True, role__nom='Commercial',
+        ).annotate(
+            nb_mql=Count(
+                'leads_assignes',
+                filter=Q(leads_assignes__mql_assigned_at__isnull=False)),
+        ).order_by('nb_mql', 'id')
+    )
+    return candidats[0] if candidats else None
+
+
+def maybe_assign_mql(lead) -> bool:
+    """XMKT21 — Assigne+notifie automatiquement un lead franchissant le seuil MQL.
+
+    Idempotent (``mql_assigned_at`` posé une seule fois) : seuil non configuré
+    (0/NULL) → no-op, lead déjà passé MQL → no-op, score sous le seuil → no-op.
+    Assigne le lead (round-robin parmi les commerciaux actifs de la société,
+    ou via le territoire FG236 si un jour câblé — hors périmètre ici), notifie
+    l'assigné et journalise le contexte marketing dans le chatter.
+    Best-effort : n'échoue jamais l'appelant.
+    """
+    try:
+        if lead is None or lead.mql_assigned_at is not None:
+            return False
+        seuil = _seuil_mql_for(getattr(lead, 'company', None))
+        if not seuil:
+            return False
+        if (lead.score or 0) < seuil:
+            return False
+
+        assignee = None
+        if not lead.owner_id:
+            assignee = _next_round_robin_commercial(lead.company)
+            if assignee is not None:
+                lead.owner = assignee
+
+        lead.mql_assigned_at = timezone.now()
+        update_fields = ['mql_assigned_at']
+        if assignee is not None:
+            update_fields.append('owner')
+        lead.save(update_fields=update_fields)
+
+        contexte = []
+        if getattr(lead, 'utm_source', None):
+            contexte.append(f"source={lead.utm_source}")
+        if getattr(lead, 'utm_campaign', None):
+            contexte.append(f"campagne={lead.utm_campaign}")
+        if getattr(lead, 'canal', None):
+            contexte.append(f"canal={lead.get_canal_display()}")
+        contexte_txt = ', '.join(contexte) if contexte else 'aucun'
+        body = (f"auto — MQL : score {lead.score} ≥ seuil {seuil}"
+                f"{' — assigné à ' + str(assignee) if assignee else ''}. "
+                f"Contexte marketing : {contexte_txt}.")
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE, body=body)
+
+        try:
+            from apps.notifications.services import notify
+            cible = assignee or getattr(lead, 'owner', None)
+            if cible is not None:
+                nom = (getattr(lead, 'nom', '') or '').strip() or 'Nouveau prospect'
+                # Réutilise EventType.LEAD_ASSIGNED (pas de nouveau type dédié
+                # « lead_mql » — le corps du message précise le déclencheur MQL).
+                notify(
+                    cible, 'lead_assigned',
+                    f'Lead MQL : {nom}',
+                    body=f'{nom} a franchi le seuil MQL (score {lead.score}).',
+                    link=f'/crm/leads?lead={lead.pk}',
+                    company=lead.company,
+                )
+        except Exception:
+            pass
+        return True
+    except Exception:
+        return False
 
 
 def resolve_client_for_lead(lead: Lead) -> Client:
@@ -670,6 +832,259 @@ def create_draft_lead_from_ocr(*, company, user, fields) -> Lead:
     return lead
 
 
+# ── YLEAD8 — Rattacher l'inbound WhatsApp à un lead OUVERT existant ──────────
+
+def resolve_or_create_lead_from_whatsapp(company, telephone, nom='',
+                                         user=None) -> Lead:
+    """YLEAD8 — Réutilise un lead OUVERT existant (même téléphone) au lieu de
+    toujours créer un doublon sur un message WhatsApp entrant.
+
+    « Ouvert » = non perdu (``Lead.perdu`` False) et non archivé
+    (``archived_at`` NULL). Parmi les leads ouverts partageant ce téléphone,
+    prend le plus récent ; journalise le message inbound dans SON chatter.
+
+    YLEAD11 — si aucun lead OUVERT n'existe mais qu'un lead PERDU/COLD (non
+    archivé) partage ce téléphone, il est RÉACTIVÉ (même règle que le
+    webhook site : lève ``perdu``, repositionne NEW/CONTACTED avance-seul)
+    plutôt que de créer un doublon — une nouvelle touche WhatsApp rouvre
+    aussi le cycle d'achat.
+
+    N'appelle ``create_draft_lead_from_ocr`` qu'en DERNIER RECOURS (aucun
+    lead — ouvert ou réactivable — trouvé pour ce numéro) — c'est ce service
+    qui doit être appelé par ``compta.services.capturer_message_whatsapp``,
+    jamais l'inverse. Company-scopé ; gated en amont par l'appelant (NO-OP si
+    WhatsApp OFF).
+    """
+    candidates = find_duplicates_by_contact(company, phone=telephone)
+    non_archives = [c for c in candidates if c.archived_at is None]
+    ouverts = [lead_ for lead_ in non_archives if not lead_.perdu]
+    if ouverts:
+        lead = sorted(ouverts, key=lambda d: d.date_creation, reverse=True)[0]
+        body = 'Nouveau message WhatsApp reçu'
+        if nom:
+            body += f' de {nom}'
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=user,
+            kind=LeadActivity.Kind.NOTE, body=body)
+        return lead
+
+    # YLEAD11 — aucun lead ouvert : un lead perdu/COLD non archivé est
+    # réactivé plutôt que dupliqué.
+    reactivables = [lead_ for lead_ in non_archives if lead_.perdu]
+    if reactivables:
+        lead = sorted(
+            reactivables, key=lambda d: d.date_creation, reverse=True)[0]
+        reactivate_lead_on_new_touch(lead, source='WhatsApp')
+        return lead
+
+    lead = create_draft_lead_from_ocr(
+        company=company, user=user,
+        fields={'client': nom or telephone})
+    # create_draft_lead_from_ocr ne lit que fournisseur/client (nom) — le
+    # téléphone/whatsapp est posé ICI pour que le PROCHAIN message du même
+    # numéro retrouve ce lead via find_duplicates_by_contact (sinon YLEAD8
+    # créerait un doublon à chaque message, ce que ce service existe pour
+    # éviter).
+    if telephone:
+        lead.telephone = telephone
+        lead.whatsapp = telephone
+        lead.save(update_fields=['telephone', 'whatsapp'])
+    return lead
+
+
+# ── XMKT32 — Sync Meta Lead Ads → leads CRM (gated) ───────────────────────────
+
+_META_LEAD_ADS_SYSTEM = 'meta_lead_ads'
+
+
+def create_lead_from_meta_lead_ads(
+        *, company, leadgen_id, field_data,
+        campaign_name='', adset_name='') -> Lead:
+    """XMKT32 — Crée (ou dédupe sur) un lead depuis un formulaire Meta Lead Ads.
+
+    Point d'entrée cross-app sanctionné (services.py), appelé par
+    ``webhooks.meta_lead_ads_webhook`` une fois le lead récupéré via l'API
+    officielle (jamais de scraping). ``field_data`` est la liste
+    ``[{'name': ..., 'values': [...]}, ...]`` renvoyée par le Graph API pour
+    ce ``leadgen_id`` — seuls des champs connus (nom/email/téléphone/ville)
+    sont lus.
+
+    Dédup (QJ8) — DEUX couches, dans l'ordre :
+      1. même ``leadgen_id`` déjà traité (idempotence webhook — retries Meta)
+         → renvoie le lead existant sans le modifier ;
+      2. sinon, téléphone/email connu dans la société (visiteur/prospect déjà
+         en base, ex. venu par un autre canal) → absorbe la nouvelle touche
+         dans le lead existant (complète sans écraser), comme le webhook site.
+
+    Attribution : ``canal=META_ADS``, ``utm_source='facebook'``,
+    ``utm_campaign``/``utm_content`` portent le nom de campagne/adset quand
+    fournis par l'appelant.
+
+    Best-effort côté séquence de bienvenue : XMKT1 (moteur d'exécution des
+    séquences) n'est pas encore construit — aucune inscription automatique
+    tant qu'il n'existe pas ; ce service reste le point d'accroche futur.
+    """
+    # ── Couche 1 : idempotence sur le leadgen_id (retries webhook Meta) ──────
+    existing = Lead.objects.filter(
+        company=company, external_system=_META_LEAD_ADS_SYSTEM,
+        external_id=str(leadgen_id)).first()
+    if existing is not None:
+        return existing
+
+    fields = {}
+    for entry in (field_data or []):
+        name = str(entry.get('name', '')).strip().lower()
+        values = entry.get('values') or []
+        value = (values[0] if values else '') or ''
+        if name in ('full_name', 'nom', 'name'):
+            fields['nom'] = str(value)[:255]
+        elif name == 'first_name':
+            fields.setdefault('nom', str(value)[:255])
+        elif name in ('email',):
+            fields['email'] = str(value)[:254]
+        elif name in ('phone_number', 'telephone'):
+            fields['telephone'] = str(value)[:20]
+        elif name in ('city', 'ville'):
+            fields['ville'] = str(value)[:120]
+
+    nom = (fields.get('nom') or '').strip() or 'Lead Meta Ads'
+    telephone = fields.get('telephone') or ''
+    email = fields.get('email') or ''
+
+    # ── Couche 2 (QJ8) : dédup société par téléphone/email ──────────────────
+    absorbed = None
+    if telephone or email:
+        dupes = find_duplicates_by_contact(
+            company, phone=telephone or None, email=email or None)
+        if dupes:
+            absorbed = sorted(
+                dupes, key=lambda d: d.date_creation, reverse=True)[0]
+
+    utm_source = 'facebook'
+    utm_campaign = (campaign_name or '')[:300] or None
+    utm_content = (adset_name or '')[:300] or None
+
+    if absorbed is not None:
+        lead = absorbed
+        for field_name, value in (
+            ('email', email), ('telephone', telephone),
+            ('ville', fields.get('ville')),
+        ):
+            if value and not getattr(lead, field_name, None):
+                setattr(lead, field_name, value)
+        # first-touch UTM/attribution préservée si déjà posée.
+        if not lead.utm_source:
+            lead.utm_source = utm_source
+        if not lead.utm_campaign:
+            lead.utm_campaign = utm_campaign
+        if not lead.utm_content:
+            lead.utm_content = utm_content
+        if not lead.external_system:
+            lead.external_system = _META_LEAD_ADS_SYSTEM
+            lead.external_id = str(leadgen_id)
+        lead.save()
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE,
+            body=(f'Nouvelle touche Meta Lead Ads (leadgen_id={leadgen_id}) '
+                  f'absorbée dans ce lead existant.'))
+    else:
+        extra = {}
+        default = default_responsable_for(company)
+        if default is not None:
+            extra['owner'] = default
+        lead = Lead.objects.create(
+            company=company,
+            nom=nom,
+            email=email or None,
+            telephone=telephone or None,
+            ville=fields.get('ville') or None,
+            source=Lead.Source.META_LEAD_ADS,
+            canal=Lead.Canal.META_ADS,
+            utm_source=utm_source,
+            utm_campaign=utm_campaign,
+            utm_content=utm_content,
+            external_system=_META_LEAD_ADS_SYSTEM,
+            external_id=str(leadgen_id),
+            **extra,
+        )
+        activity.log_creation(lead, None)
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE,
+            body='Lead créé depuis Meta Lead Ads (formulaire Facebook/Instagram).')
+        try:
+            notify_new_lead(lead)
+        except Exception:  # noqa: BLE001 — best-effort
+            pass
+
+    recompute_lead_score(lead)
+    return lead
+
+
+# ── XMKT37 — Livechat / assistant IA de qualification (ERP-side) ─────────────
+
+def create_lead_from_livechat(*, company, nom, telephone='', email='',
+                              transcript_text='') -> Lead:
+    """XMKT37 — Crée (ou dédupe sur) un lead dès que nom + contact sont captés
+    par une session de livechat public.
+
+    Point d'entrée cross-app sanctionné (services.py), appelé par
+    ``apps.crm.public_chat_views``. Dédup (QJ8) par téléphone/email dans la
+    société avant de créer (comme le webhook site) ; canal ``livechat``,
+    stage NEW (STAGES.py, jamais hardcodé — ``Lead.stage`` a NEW pour
+    défaut). Le transcript complet est collé en note chatter (``LeadActivity``).
+    """
+    nom = (nom or '').strip()[:255] or 'Prospect livechat'
+    telephone = (telephone or '').strip()[:20]
+    email = (email or '').strip()[:254]
+
+    lead = None
+    if telephone or email:
+        dupes = find_duplicates_by_contact(
+            company, phone=telephone or None, email=email or None)
+        if dupes:
+            lead = sorted(dupes, key=lambda d: d.date_creation, reverse=True)[0]
+
+    if lead is None:
+        extra = {}
+        default = default_responsable_for(company)
+        if default is not None:
+            extra['owner'] = default
+        lead = Lead.objects.create(
+            company=company,
+            nom=nom,
+            telephone=telephone or None,
+            email=email or None,
+            canal=Lead.Canal.AUTRE,
+            **extra,
+        )
+        activity.log_creation(lead, None)
+        try:
+            notify_new_lead(lead)
+        except Exception:  # noqa: BLE001 — best-effort
+            pass
+    else:
+        changed = False
+        if telephone and not lead.telephone:
+            lead.telephone = telephone
+            changed = True
+        if email and not lead.email:
+            lead.email = email
+            changed = True
+        if changed:
+            lead.save()
+
+    if transcript_text:
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE,
+            body=f'Transcript livechat :\n{transcript_text}')
+
+    recompute_lead_score(lead)
+    return lead
+
+
 def noter_devis_ouvert(devis_reference: str, lead) -> None:
     """QJ1 — Consigne « Le client a ouvert le devis » dans le chatter du lead.
 
@@ -677,11 +1092,47 @@ def noter_devis_ouvert(devis_reference: str, lead) -> None:
     public. Best-effort : les appelants catchent toute exception.
     ``lead`` doit être un objet Lead avec company_id ; ``devis_reference`` est
     la référence textuelle du devis (pas d'import ventes ici).
+
+    YLEAD10 — après la note, avance aussi l'étape du lead vers FOLLOW_UP
+    (fast-lane comportemental : une forte intention — l'ouverture de la
+    proposition — sort le lead du parking). Distinct de QJ5 (re-stage sur
+    staleness TEMPORELLE) : ici le déclencheur est un COMPORTEMENT observé.
     """
     LeadActivity.objects.create(
         company=lead.company, lead=lead, user=None,
         kind=LeadActivity.Kind.NOTE,
         body=f"Le client a ouvert le devis {devis_reference}")
+    avancer_stage_sur_ouverture_devis(lead)
+
+
+# ── YLEAD10 — Fast-lane comportemental : FOLLOW_UP à l'ouverture du devis ────
+
+def avancer_stage_sur_ouverture_devis(lead) -> bool:
+    """YLEAD10 — Avance le lead à FOLLOW_UP (STAGES.py) quand le client ouvre
+    sa proposition, comme les autres avances de funnel automatiques
+    (``avancer_stage_pour_devis``) : ne recule jamais, ignore les leads
+    perdus et ceux déjà ≥ FOLLOW_UP (donc un lead déjà SIGNED/COLD-au-delà
+    ne bouge pas). Idempotent : une seconde ouverture ne réécrit rien de
+    plus (le rang est déjà atteint). Renvoie True si l'avance a eu lieu.
+    """
+    if lead is None or lead.perdu:
+        return False
+    cible = stages.FOLLOW_UP
+    if _rang_funnel(lead.stage) >= _rang_funnel(cible):
+        return False  # déjà à FOLLOW_UP ou plus avancé (jamais en arrière).
+
+    ancien_stage = lead.stage
+    lead.stage = cible
+    lead.save(update_fields=['stage'])
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.MODIFICATION,
+        field='stage', field_label='Étape',
+        old_value=stages.STAGE_LABELS[ancien_stage],
+        new_value=stages.STAGE_LABELS[cible],
+        body='auto — devis ouvert par le client',
+    )
+    return True
 
 
 # ── QJ2 — Speed-to-lead : notifications vendeur avec lien wa.me ──────────────
