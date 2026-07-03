@@ -67,6 +67,15 @@ class SavSlaSettings(models.Model):
     # OFF : comportement actuel (calendaire) inchangé tant que la société ne
     # l'active pas explicitement.
     sla_jours_ouvres = models.BooleanField(default=False)
+    # ── XSAV6 — pré-alerte SLA (J-x) + escalade à la violation ──────────────
+    # Nombre de jours AVANT sla_due_at où une pré-alerte est émise au
+    # technicien assigné. 0 = pré-alerte désactivée (défaut : comportement
+    # actuel inchangé, aucune pré-alerte n'a jamais existé).
+    sla_warning_days = models.PositiveIntegerField(default=0)
+    # Escalade au tier responsable/direction à la violation (en plus de la
+    # notification technicien existante — FG81/scan_sla_breaches). OFF par
+    # défaut : comportement actuel inchangé.
+    escalade_activee = models.BooleanField(default=False)
     date_modification = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -343,6 +352,12 @@ class Ticket(models.Model):
     # continu) — sert à décaler l'échéance affichée sans perdre l'historique
     # des pauses précédentes.
     jours_pause = models.PositiveIntegerField(default=0)
+
+    # ── XSAV6 — idempotence pré-alerte / escalade (un niveau notifié une
+    # seule fois, jamais chaque jour au re-passage du sweep). Remis à False
+    # quand sla_due_at est recalculée (nouvelle échéance = nouveau cycle).
+    sla_pre_alert_notifiee = models.BooleanField(default=False)
+    sla_escalade_notifiee = models.BooleanField(default=False)
 
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,

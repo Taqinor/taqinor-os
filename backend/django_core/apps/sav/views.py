@@ -1076,3 +1076,82 @@ def scan_sla_breaches():
                 company=ticket.company,
             )
     return updated
+
+
+# ── XSAV6 — Pré-alerte SLA (J-x) + escalade à la violation ────────────────────
+
+def scan_sla_pre_alerts_and_escalations():
+    """XSAV6 — Pré-alerte à J-x + escalade au tier responsable à la violation.
+
+    DISTINCT de ``scan_sla_breaches`` (FG81, notifie le technicien À la
+    violation) et de ``notifications.sweeps._sweep_sav_breaching`` (âge du
+    ticket, repli managers). Ici : pré-alerte configurable AVANT l'échéance
+    (``sla_warning_days`` jours avant ``sla_due_at_effectif``), puis escalade
+    au tier responsable/direction (``resolve_recipients``, mute-aware via
+    ``notify()``) une fois l'échéance dépassée — si ``escalade_activee``.
+
+    IDEMPOTENT : un ticket déjà notifié pour un niveau (pré-alerte ou
+    escalade) ne l'est plus les jours suivants — flag posé sur le ticket.
+    OFF par défaut (``sla_warning_days=0`` et ``escalade_activee=False``) :
+    aucun effet, aucune notification supplémentaire.
+    """
+    from apps.notifications.services import notify, resolve_recipients
+    from apps.notifications.models import EventType
+
+    today = timezone.localdate()
+    qs = Ticket.objects.filter(
+        statut__in=Ticket.OPEN_STATUTS,
+        annule=False,
+        sla_due_at__isnull=False,
+    ).select_related('company', 'technicien_responsable')
+
+    pre_alerts = 0
+    escalations = 0
+    for ticket in qs:
+        sla = SavSlaSettings.get(ticket.company)
+        due_effectif = ticket.sla_due_at_effectif(today=today)
+
+        # ── Pré-alerte J-x au technicien assigné ──
+        if (sla.sla_warning_days > 0
+                and not ticket.sla_pre_alert_notifiee
+                and not ticket.sla_escalade_notifiee
+                and ticket.technicien_responsable_id
+                and due_effectif is not None):
+            seuil = due_effectif - timedelta(days=sla.sla_warning_days)
+            if today >= seuil and today <= due_effectif:
+                notify(
+                    user=ticket.technicien_responsable,
+                    event_type=EventType.SAV_TICKET_BREACHING,
+                    title=f'SLA bientôt dépassé — {ticket.reference}',
+                    body=(f'Le ticket {ticket.reference} approche son '
+                          f'échéance SLA ({due_effectif.strftime("%d/%m/%Y")}).'),
+                    link=f'/sav/tickets/{ticket.pk}',
+                    company=ticket.company,
+                )
+                ticket.sla_pre_alert_notifiee = True
+                ticket.save(update_fields=['sla_pre_alert_notifiee'])
+                pre_alerts += 1
+
+        # ── Escalade au tier responsable/direction à la violation ──
+        if (sla.escalade_activee
+                and not ticket.sla_escalade_notifiee
+                and due_effectif is not None
+                and today > due_effectif):
+            recipients = resolve_recipients(
+                ticket.company, EventType.SAV_TICKET_BREACHING)
+            for user in recipients:
+                notify(
+                    user=user,
+                    event_type=EventType.SAV_TICKET_BREACHING,
+                    title=f'Escalade SLA — {ticket.reference}',
+                    body=(f'Le ticket {ticket.reference} a dépassé son '
+                          f'échéance SLA ({due_effectif.strftime("%d/%m/%Y")}) '
+                          'et requiert une attention immédiate.'),
+                    link=f'/sav/tickets/{ticket.pk}',
+                    company=ticket.company,
+                )
+            ticket.sla_escalade_notifiee = True
+            ticket.save(update_fields=['sla_escalade_notifiee'])
+            escalations += 1
+
+    return {'pre_alerts': pre_alerts, 'escalations': escalations}
