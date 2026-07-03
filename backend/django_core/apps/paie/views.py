@@ -73,6 +73,7 @@ from .services import (
     etat_des_charges,
     etat_ir_9421,
     etat_ir_9421_annuel,
+    export_xml_simpl_ir_9421,
     fichier_cimr,
     fichier_damancom_cnss,
     fichier_damancom_strict,
@@ -642,6 +643,25 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
         return Response(
             etat_ir_9421_annuel(request.user.company, annee),
             status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'], url_path='etat-ir-annuel-xml')
+    def etat_ir_annuel_xml(self, request):
+        """État IR 9421 ANNUEL — export XML EDI SIMPL-IR (XPAI13).
+
+        Paramètre de requête ``annee`` requis. Renvoie le fichier XML
+        téléchargeable, bien formé et validé contre le schéma embarqué.
+        """
+        try:
+            annee = int(request.query_params.get('annee'))
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': 'Paramètre "annee" requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        xml = export_xml_simpl_ir_9421(request.user.company, annee)
+        resp = HttpResponse(xml, content_type='application/xml; charset=utf-8')
+        resp['Content-Disposition'] = (
+            f'attachment; filename="etat_9421_{annee}.xml"')
+        return resp
 
 
 class ElementVariableViewSet(_PaieBaseViewSet):

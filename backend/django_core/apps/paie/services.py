@@ -2822,6 +2822,143 @@ def etat_ir_9421_annuel(company, annee):
     }
 
 
+# ── XPAI13 — Export XML EDI SIMPL-IR (état 9421) ────────────────────────────
+
+# DÉCISION — schéma SIMPL-IR EMBARQUÉ (structure des éléments/attributs
+# attendus, cahier des charges état 9421 annuel). Le schéma XSD OFFICIEL de
+# la DGI n'est pas embarqué tel quel (dépendance externe) ; ce descripteur
+# STRUCTUREL (noms d'éléments, cardinalité, types simples) sert de contrat de
+# validation local — suffisant pour prouver la conformité de FORME avant tout
+# dépôt réel, qui reste soumis à validation DGI.
+XSD_SIMPL_IR_9421 = {
+    'root': 'Etat9421',
+    'children': {
+        'Entete': {'cardinalite': '1', 'attrs': ['annee', 'nombreSalaries']},
+        'Salarie': {
+            'cardinalite': '*',
+            'attrs': [
+                'matricule', 'categorie', 'brutImposable', 'netImposable',
+                'ir', 'montantExonere',
+            ],
+        },
+        'Totaux': {
+            'cardinalite': '1',
+            'attrs': ['totalBrutImposable', 'totalNetImposable', 'totalIr'],
+        },
+    },
+}
+
+# Catégories SIMPL-IR — personnel permanent/occasionnel/stagiaire.
+# ``ProfilPaie.type_remuneration`` distingue mensuel/forfait (permanent) de
+# journalier/horaire (occasionnel) ; les stagiaires (statut RH dédié) ne sont
+# pas encore distingués côté paie (limitation connue, à affiner avec le
+# statut RH stagiaire quand il existera dans ce référentiel).
+_CATEGORIE_PAR_TYPE_REMUNERATION = {
+    'mensuel': 'permanent',
+    'forfait': 'permanent',
+    'journalier': 'occasionnel',
+    'horaire': 'occasionnel',
+}
+
+
+def categorie_9421_profil(profil):
+    """Catégorie SIMPL-IR d'un profil — permanent/occasionnel (XPAI13)."""
+    return _CATEGORIE_PAR_TYPE_REMUNERATION.get(
+        profil.type_remuneration, 'permanent')
+
+
+def _xml_escape(texte):
+    return (
+        str(texte)
+        .replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        .replace('"', '&quot;'))
+
+
+def export_xml_simpl_ir_9421(company, annee):
+    """Génère le fichier XML EDI conforme SIMPL-IR de l'état 9421 (XPAI13).
+
+    Reprend ``etat_ir_9421_annuel`` (mêmes totaux, aucun recalcul) et le
+    formate en XML bien formé selon la structure ``XSD_SIMPL_IR_9421``
+    (validée par ``valider_xml_simpl_ir_9421``) : un ``<Etat9421>`` racine,
+    une ``<Entete>``, une ``<Salarie>`` par ligne (avec ``categorie``
+    permanent/occasionnel, ``montantExonere`` — 0 tant que XPAI18 n'est pas
+    câblé, champ présent pour compat future), une ``<Totaux>``. Renvoie le
+    XML (str). Lève ``ValueError`` si la validation structurelle échoue
+    (garde de non-régression — ne devrait jamais se produire, le générateur
+    et le validateur partagent le même schéma).
+    """
+    from .models import ProfilPaie
+
+    etat = etat_ir_9421_annuel(company, annee)
+    profils_par_id = {
+        p.id: p for p in ProfilPaie.objects.filter(
+            company=company,
+            id__in=[ligne['profil_id'] for ligne in etat['lignes']])
+    }
+
+    parties = ['<?xml version="1.0" encoding="UTF-8"?>', '<Etat9421>']
+    parties.append(
+        f'<Entete annee="{annee}" '
+        f'nombreSalaries="{etat["nombre_salaries"]}"/>')
+    for ligne in etat['lignes']:
+        profil = profils_par_id.get(ligne['profil_id'])
+        categorie = categorie_9421_profil(profil) if profil else 'permanent'
+        parties.append(
+            '<Salarie '
+            f'matricule="{_xml_escape(ligne["matricule"])}" '
+            f'categorie="{categorie}" '
+            f'brutImposable="{ligne["brut_imposable"]}" '
+            f'netImposable="{ligne["net_imposable"]}" '
+            f'ir="{ligne["ir"]}" '
+            'montantExonere="0.00"/>')
+    parties.append(
+        '<Totaux '
+        f'totalBrutImposable="{etat["total_brut_imposable"]}" '
+        f'totalNetImposable="{etat["total_net_imposable"]}" '
+        f'totalIr="{etat["total_ir"]}"/>')
+    parties.append('</Etat9421>')
+    xml = ''.join(parties)
+
+    valider_xml_simpl_ir_9421(xml)  # lève ValueError si non conforme
+    return xml
+
+
+def valider_xml_simpl_ir_9421(xml_str):
+    """Valide un XML SIMPL-IR contre le schéma embarqué (XPAI13).
+
+    Vérifie la BONNE FORMATION (``xml.etree.ElementTree``, lève
+    ``ValueError`` si mal formé) puis la CONFORMITÉ STRUCTURELLE au
+    descripteur ``XSD_SIMPL_IR_9421`` : élément racine, cardinalité de
+    ``Entete``/``Totaux`` (exactement 1), attributs requis présents sur
+    chaque élément. Lève ``ValueError`` avec un message explicite au premier
+    écart. Renvoie ``True`` si conforme.
+    """
+    import xml.etree.ElementTree as ET
+
+    try:
+        root = ET.fromstring(xml_str)
+    except ET.ParseError as exc:
+        raise ValueError(f'XML mal formé : {exc}') from exc
+
+    schema = XSD_SIMPL_IR_9421
+    if root.tag != schema['root']:
+        raise ValueError(
+            f'Élément racine attendu "{schema["root"]}", trouvé "{root.tag}".')
+
+    for nom, regle in schema['children'].items():
+        elements = root.findall(nom)
+        if regle['cardinalite'] == '1' and len(elements) != 1:
+            raise ValueError(
+                f'Élément "{nom}" attendu exactement 1 fois, trouvé '
+                f'{len(elements)} fois.')
+        for element in elements:
+            for attr in regle['attrs']:
+                if attr not in element.attrib:
+                    raise ValueError(
+                        f'Attribut requis "{attr}" manquant sur "{nom}".')
+    return True
+
+
 # ── PAIE33 — Livre de paie + journal de paie → écritures (via compta) ───────
 
 # Comptes CGNC utilisés par l'écriture de paie (barème CGNC marocain) :
