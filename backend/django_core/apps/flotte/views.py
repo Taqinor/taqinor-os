@@ -30,6 +30,7 @@ from .models import (
     EtatDesLieux,
     Garage,
     Infraction,
+    JournalStatutVehicule,
     OrdreReparation,
     PieceFlotte,
     PlanEntretien,
@@ -60,6 +61,7 @@ from .serializers import (
     EtatDesLieuxSerializer,
     GarageSerializer,
     InfractionSerializer,
+    JournalStatutVehiculeSerializer,
     OrdreReparationSerializer,
     PieceFlotteSerializer,
     PlanEntretienSerializer,
@@ -79,7 +81,7 @@ from .serializers import (
 READ_ACTIONS = ['list', 'retrieve', 'consommation', 'anomalies', 'echeances',
                 'couts', 'synthese', 'expirantes', 'tsav', 'alertes_echeances',
                 'tco', 'eco_conduite', 'documents', 'tableau_bord', 'journal',
-                'amortissement', 'expirants', 'ledger']
+                'amortissement', 'expirants', 'ledger', 'historique']
 
 
 class _FlotteBaseViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -187,6 +189,42 @@ class VehiculeViewSet(_FlotteBaseViewSet):
         from .selectors import ledger_vehicule
         return Response(
             ledger_vehicule(request.user.company, vehicule.id))
+
+    @action(detail=True, methods=['post'], url_path='changer-statut')
+    def changer_statut(self, request, pk=None):
+        """XFLT4 — Change le statut du véhicule (écriture responsable/admin).
+
+        ``statut`` (obligatoire) au body. Le passage ``commande`` → ``actif``
+        est refusé (400, message FR) tant que la checklist de mise en
+        service n'est pas complète. Chaque transition RÉELLE est journalisée
+        (``JournalStatutVehicule``, utilisateur et horodatage posés côté
+        serveur).
+        """
+        vehicule = self.get_object()
+        nouveau_statut = request.data.get('statut')
+        if not nouveau_statut:
+            return Response(
+                {'detail': "Le champ 'statut' est requis."}, status=400)
+
+        from .services import changer_statut_vehicule
+        try:
+            vehicule = changer_statut_vehicule(
+                vehicule, nouveau_statut, user=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+
+        return Response(self.get_serializer(vehicule).data)
+
+    @action(detail=True, methods=['get'])
+    def historique(self, request, pk=None):
+        """XFLT4 — Journal des changements de statut du véhicule (lecture
+        tout rôle), du plus récent au plus ancien."""
+        vehicule = self.get_object()
+        qs = JournalStatutVehicule.objects.filter(
+            company=request.user.company, vehicule=vehicule
+        ).select_related('user')
+        serializer = JournalStatutVehiculeSerializer(qs, many=True)
+        return Response(serializer.data)
 
     @action(detail=False, methods=['get'], url_path='tableau-bord')
     def tableau_bord(self, request):

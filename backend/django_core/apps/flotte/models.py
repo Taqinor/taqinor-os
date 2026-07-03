@@ -38,6 +38,15 @@ class Vehicule(models.Model):
         ACTIF = 'actif', 'Actif'
         MAINTENANCE = 'maintenance', 'En maintenance'
         REFORME = 'reforme', 'Réformé'
+        # XFLT4 — cycle de vie complet : les 3 statuts historiques restent
+        # intacts, ces 3 nouveaux couvrent l'acquisition → cession.
+        COMMANDE = 'commande', 'Commandé'
+        A_VENDRE = 'a_vendre', 'À vendre'
+        VENDU = 'vendu', 'Vendu'
+
+    class TypeFiscal(models.TextChoices):
+        UTILITAIRE = 'utilitaire', 'Utilitaire'
+        TOURISME = 'tourisme', 'Tourisme'
 
     company = models.ForeignKey(
         'authentication.Company',
@@ -95,6 +104,29 @@ class Vehicule(models.Model):
         related_name='vehicules_flotte',
         verbose_name='Immobilisation comptable',
     )
+    # XFLT4 — Fiche véhicule enrichie + cycle de vie complet. La date de mise
+    # en circulation existe DÉJÀ (``CarteGriseVehicule.date_mise_circulation``,
+    # FLOTTE23) : elle n'est PAS dupliquée ici, on la lit via sélecteur.
+    vin = models.CharField(
+        max_length=30, blank=True, verbose_name='N° châssis (VIN)')
+    annee = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name='Année')
+    date_acquisition = models.DateField(
+        null=True, blank=True, verbose_name="Date d'acquisition")
+    # Clé pour XFLT8 (TVA carburant) / XFLT9 (plafond CGI amortissement).
+    type_fiscal = models.CharField(
+        max_length=15, choices=TypeFiscal.choices, blank=True,
+        verbose_name='Type fiscal',
+        help_text='Utilitaire ou tourisme — sert au calcul TVA et au '
+        'plafond CGI amortissement.')
+    tags = models.JSONField(default=list, blank=True, verbose_name='Tags')
+    # XFLT4 — checklist de mise en service (immatriculation faite, plaques,
+    # assurance active, carte grise reçue) : dict {item: bool}. Distincte des
+    # ``tags`` (liste libre) — bloque le passage commande→actif tant qu'un
+    # item n'est pas coché (voir ``checklist_mise_en_service_ok``).
+    checklist_mise_en_service = models.JSONField(
+        default=dict, blank=True,
+        verbose_name='Checklist de mise en service')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -106,6 +138,81 @@ class Vehicule(models.Model):
 
     def __str__(self):
         return f'{self.immatriculation} — {self.marque} {self.modele}'.strip()
+
+    # ── XFLT4 — Checklist de mise en service (commande → actif) ────────────
+
+    CHECKLIST_MISE_EN_SERVICE = (
+        'immatriculation_faite', 'plaques', 'assurance_active',
+        'carte_grise_recue',
+    )
+
+    def checklist_mise_en_service_ok(self):
+        """XFLT4 — Vrai si tous les items de la checklist de mise en service
+        sont cochés (``self.checklist_mise_en_service``, dict {item: bool}).
+
+        Lecture seule, aucun effet de bord.
+        """
+        checklist = self.checklist_mise_en_service
+        if not isinstance(checklist, dict):
+            return False
+        return all(checklist.get(item) for item in
+                   self.CHECKLIST_MISE_EN_SERVICE)
+
+
+# ── XFLT4 — Journal des changements de statut véhicule ─────────────────────────
+
+class JournalStatutVehicule(models.Model):
+    """Trace un changement de statut d'un ``Vehicule`` (XFLT4).
+
+    Une entrée par transition (ancien statut → nouveau statut), posée
+    SERVEUR-SIDE (utilisateur et horodatage jamais lus du corps de requête).
+    Immuable : aucune modification/suppression via l'API (lecture + création
+    interne uniquement — même patron que le futur ``ActiviteFlotte`` XFLT21).
+
+    Multi-tenant : ``company`` est posée côté serveur. Le véhicule et
+    l'utilisateur doivent appartenir à la MÊME société.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_journal_statuts_vehicule',
+        verbose_name='Société',
+    )
+    vehicule = models.ForeignKey(
+        'Vehicule',
+        on_delete=models.CASCADE,
+        related_name='journal_statuts',
+        verbose_name='Véhicule',
+    )
+    ancien_statut = models.CharField(
+        max_length=20, blank=True, verbose_name='Ancien statut')
+    nouveau_statut = models.CharField(
+        max_length=20, verbose_name='Nouveau statut')
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='flotte_journal_statuts_vehicule',
+        verbose_name='Utilisateur',
+    )
+    horodatage = models.DateTimeField(
+        auto_now_add=True, verbose_name='Horodatage')
+
+    class Meta:
+        verbose_name = 'Journal de statut véhicule'
+        verbose_name_plural = 'Journal des statuts véhicule'
+        ordering = ['-horodatage', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'vehicule'],
+                name='flotte_jsv_co_veh_idx',
+            ),
+        ]
+
+    def __str__(self):
+        return (f'{self.vehicule} : {self.ancien_statut} → '
+                f'{self.nouveau_statut} ({self.horodatage})')
 
 
 # ── FLOTTE4 — Engins roulants suivis au compteur d'heures ──────────────────

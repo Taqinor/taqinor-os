@@ -719,3 +719,55 @@ def generer_couts_contrat(company, period):
         'nb_existantes': nb_existantes,
         'echeances': creees,
     }
+
+
+# ── XFLT4 — Cycle de vie du véhicule (transition de statut journalisée) ────────
+
+def changer_statut_vehicule(vehicule, nouveau_statut, user=None):
+    """XFLT4 — Change le statut d'un ``Vehicule`` et journalise la transition.
+
+    Le passage ``commande`` → ``actif`` est BLOQUÉ (``ValueError``) tant que
+    la checklist de mise en service n'est pas complète (immatriculation
+    faite, plaques, assurance active, carte grise reçue — voir
+    ``Vehicule.checklist_mise_en_service_ok``). Tout autre changement de
+    statut est libre.
+
+    À chaque transition RÉELLE (statut effectivement différent), une entrée
+    ``JournalStatutVehicule`` est créée (ancien→nouveau, utilisateur,
+    horodatage serveur-side). Un changement vers le MÊME statut est un no-op
+    silencieux (aucune entrée de journal).
+
+    Retourne le véhicule mis à jour. Lève ``ValueError`` sur un statut cible
+    invalide ou la checklist incomplète (message FR, utilisable tel quel côté
+    API).
+    """
+    from .models import JournalStatutVehicule, Vehicule
+
+    statuts_valides = {choice for choice, _ in Vehicule.Statut.choices}
+    if nouveau_statut not in statuts_valides:
+        raise ValueError("Statut de véhicule invalide.")
+
+    ancien_statut = vehicule.statut
+    if ancien_statut == nouveau_statut:
+        return vehicule
+
+    if ancien_statut == Vehicule.Statut.COMMANDE \
+            and nouveau_statut == Vehicule.Statut.ACTIF \
+            and not vehicule.checklist_mise_en_service_ok():
+        raise ValueError(
+            "Impossible de passer le véhicule en actif : la checklist de "
+            "mise en service n'est pas complète (immatriculation, plaques, "
+            "assurance active, carte grise reçue).")
+
+    vehicule.statut = nouveau_statut
+    vehicule.save(update_fields=['statut'])
+
+    JournalStatutVehicule.objects.create(
+        company=vehicule.company,
+        vehicule=vehicule,
+        ancien_statut=ancien_statut,
+        nouveau_statut=nouveau_statut,
+        user=user,
+    )
+
+    return vehicule

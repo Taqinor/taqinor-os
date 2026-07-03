@@ -44,9 +44,13 @@ class VehiculeSerializer(serializers.ModelSerializer):
         source='get_energie_display', read_only=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
+    type_fiscal_display = serializers.CharField(
+        source='get_type_fiscal_display', read_only=True)
     # FLOTTE3 — libellé en lecture de l'emplacement de stock lié (résolu via le
     # sélecteur de `apps.stock`, dégrade sur l'id nu).
     emplacement_stock_label = serializers.SerializerMethodField()
+    # XFLT4 — checklist de mise en service, exposée en lecture calculée.
+    checklist_mise_en_service_ok = serializers.SerializerMethodField()
 
     class Meta:
         model = Vehicule
@@ -55,9 +59,14 @@ class VehiculeSerializer(serializers.ModelSerializer):
             'energie_display', 'kilometrage', 'puissance_fiscale', 'valeur',
             'statut', 'statut_display', 'categorie_permis_requise',
             'emplacement_stock_id', 'emplacement_stock_label',
-            'date_creation',
+            'vin', 'annee', 'date_acquisition', 'type_fiscal',
+            'type_fiscal_display', 'tags', 'checklist_mise_en_service',
+            'checklist_mise_en_service_ok', 'date_creation',
         ]
         read_only_fields = ['date_creation']
+
+    def get_checklist_mise_en_service_ok(self, obj):
+        return obj.checklist_mise_en_service_ok()
 
     def get_emplacement_stock_label(self, obj):
         from .selectors import emplacement_stock_label
@@ -87,6 +96,27 @@ class VehiculeSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Emplacement de stock introuvable pour cette société.")
         return value
+
+
+class JournalStatutVehiculeSerializer(serializers.ModelSerializer):
+    """XFLT4 — Entrée du journal des changements de statut véhicule.
+
+    Lecture seule côté API (créé uniquement par
+    ``services.changer_statut_vehicule``, jamais via un POST direct)."""
+
+    user_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import JournalStatutVehicule
+        model = JournalStatutVehicule
+        fields = [
+            'id', 'vehicule', 'ancien_statut', 'nouveau_statut', 'user',
+            'user_nom', 'horodatage',
+        ]
+        read_only_fields = fields
+
+    def get_user_nom(self, obj):
+        return obj.user.get_username() if obj.user_id else None
 
 
 class EnginRoulantSerializer(serializers.ModelSerializer):
