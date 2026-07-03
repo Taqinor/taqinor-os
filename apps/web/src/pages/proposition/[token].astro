@@ -1017,8 +1017,14 @@ const signConfig = ok
               Merci <span id="sign-success-name" class="text-lune"></span> — votre acceptation est bien enregistrée.
               Votre conseiller Taqinor revient vers vous très vite.
             </p>
+            <!-- WJ79 — « Réf. » passe par le data-i18n tri-node (comme #sign-stamp
+                 plus bas) au lieu d'un texte français figé : sans ce wrapper, la
+                 mention restait en FR même en mode arabe/anglais. Le suffixe
+                 (#sign-success-time) est lui déjà une busy-label enregistrée
+                 (renderSuccessTime), qui utilise localizedStamp → un timestamp
+                 ar-MA/en-GB/fr-MA — jamais un fr-FR figé. -->
             <p id="sign-success-stamp" class="mt-3 text-sm text-lune-faint">
-              Réf. <span dir="ltr">{reference}</span><span id="sign-success-time"></span>.
+              <span data-i18n data-fr="Réf." data-en="Ref." data-ar="المرجع">Réf.</span> <span dir="ltr">{reference}</span><span id="sign-success-time"></span>.
             </p>
 
             <!-- WJ78 — écho de l'artefact du client : la signature manuscrite si
