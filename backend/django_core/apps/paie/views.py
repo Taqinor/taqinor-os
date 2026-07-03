@@ -70,6 +70,7 @@ from .services import (
     etat_ir_9421_annuel,
     fichier_damancom_cnss,
     fichier_virement_paie,
+    fichier_virement_paie_simt,
     generer_bulletin,
     generer_bulletin_stc,
     generer_echeances_periode,
@@ -783,10 +784,17 @@ class OrdreVirementViewSet(_PaieVoirOuGerer, TenantMixin,
 
     @action(detail=True, methods=['get'], url_path='fichier')
     def fichier(self, request, pk=None):
-        """Renvoie le fichier de virement banque (lignes + total, PAIE30)."""
+        """Renvoie le fichier de virement banque (lignes + total, PAIE30).
+
+        XPAI8 — ``?format_banque=simt`` renvoie le format bancaire marocain
+        SIMT (longueurs fixes) au lieu du CSV/JSON générique par défaut.
+        """
         ordre = self.get_object()
         try:
-            fichier = fichier_virement_paie(ordre)
+            if request.query_params.get('format_banque') == 'simt':
+                fichier = fichier_virement_paie_simt(ordre)
+            else:
+                fichier = fichier_virement_paie(ordre)
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)

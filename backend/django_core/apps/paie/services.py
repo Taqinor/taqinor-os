@@ -2009,6 +2009,100 @@ def fichier_virement_paie(ordre):
     }
 
 
+# ── XPAI8 — Fichier de virement bancaire marocain (SIMT / masse) ───────────
+
+# DÉCISION — gabarit SIMT STANDARD (longueurs fixes, virement de masse). Le
+# layout EXACT dépend de la banque du fondateur et reste À CONFIRMER auprès
+# d'elle avant tout dépôt réel ; ce gabarit livre le MÉCANISME (longueurs
+# fixes, ordre des champs, remplissage/troncature) + une structure standard
+# couramment utilisée (émetteur/bénéficiaire/montant en centimes/référence).
+# ``(nom_champ, longueur, remplissage)`` — remplissage 'L' (gauche, espaces,
+# texte) ou 'R' (droite, zéros, numérique).
+GABARIT_SIMT_ENTETE = [
+    ('type_enregistrement', 1, 'L'),   # 'E' = en-tête
+    ('rib_emetteur', 24, 'L'),
+    ('nom_emetteur', 26, 'L'),
+    ('date_execution', 8, 'L'),        # AAAAMMJJ
+    ('devise', 3, 'L'),
+    ('nombre_lignes', 6, 'R'),
+    ('total_centimes', 15, 'R'),
+]
+GABARIT_SIMT_LIGNE = [
+    ('type_enregistrement', 1, 'L'),   # 'D' = détail
+    ('rib_beneficiaire', 24, 'L'),
+    ('nom_beneficiaire', 26, 'L'),
+    ('montant_centimes', 15, 'R'),
+    ('reference', 16, 'L'),
+    ('motif', 30, 'L'),
+]
+
+
+def _formater_champ_simt(valeur, longueur, remplissage):
+    """Formate un champ à LONGUEUR FIXE (gabarit SIMT) : tronque si trop
+    long, complète sinon (espaces à droite pour 'L', zéros à gauche pour
+    'R')."""
+    texte = str(valeur or '')
+    if remplissage == 'R':
+        texte = texte[-longueur:] if len(texte) > longueur else texte
+        return texte.rjust(longueur, '0')
+    texte = texte[:longueur]
+    return texte.ljust(longueur, ' ')
+
+
+def _formater_enregistrement_simt(valeurs, gabarit):
+    """Concatène les champs d'un enregistrement selon ``gabarit`` (SIMT)."""
+    return ''.join(
+        _formater_champ_simt(valeurs.get(champ, ''), longueur, remplissage)
+        for champ, longueur, remplissage in gabarit)
+
+
+def fichier_virement_paie_simt(ordre):
+    """Fichier de virement au format bancaire marocain SIMT (XPAI8).
+
+    Format à LONGUEURS FIXES (virement de masse) construit depuis les mêmes
+    lignes que ``fichier_virement_paie`` — un enregistrement EN-TÊTE société
+    (``GABARIT_SIMT_ENTETE``) puis un enregistrement DÉTAIL par bénéficiaire
+    (``GABARIT_SIMT_LIGNE``), montants en CENTIMES (convention SIMT). Le
+    gabarit exact dépend de la banque du fondateur (à valider) ; ce format
+    STANDARD livre le mécanisme + une structure usuelle. Lève ``ValueError``
+    dans les mêmes cas que ``fichier_virement_paie`` (aucune ligne / RIB
+    manquant). N'affecte JAMAIS le CSV existant. Renvoie ``{'lignes': [str,
+    …] (longueur fixe), 'total', 'nb_lignes'}``.
+    """
+    base = fichier_virement_paie(ordre)  # valide + lève ValueError au besoin
+    emetteur = base['emetteur']
+    date_execution = ordre.date_execution or date.today()
+
+    total_centimes = int(_q(base['total']) * 100)
+    entete = _formater_enregistrement_simt({
+        'type_enregistrement': 'E',
+        'rib_emetteur': emetteur.get('rib', ''),
+        'nom_emetteur': emetteur.get('libelle', '') or ordre.company.nom,
+        'date_execution': date_execution.strftime('%Y%m%d'),
+        'devise': ordre.devise or 'MAD',
+        'nombre_lignes': base['nb_lignes'],
+        'total_centimes': total_centimes,
+    }, GABARIT_SIMT_ENTETE)
+
+    lignes_txt = [entete]
+    for ligne in ordre.lignes.all():
+        montant_centimes = int(_q(ligne.montant) * 100)
+        lignes_txt.append(_formater_enregistrement_simt({
+            'type_enregistrement': 'D',
+            'rib_beneficiaire': ligne.rib,
+            'nom_beneficiaire': ligne.beneficiaire,
+            'montant_centimes': montant_centimes,
+            'reference': ligne.reference or '',
+            'motif': f'Salaire {ligne.reference}'.strip(),
+        }, GABARIT_SIMT_LIGNE))
+
+    return {
+        'lignes': lignes_txt,
+        'total': base['total'],
+        'nb_lignes': base['nb_lignes'],
+    }
+
+
 # ── PAIE31 — Déclaration CNSS (BDS / format DAMANCOM) ──────────────────────
 
 def declaration_cnss(periode):
