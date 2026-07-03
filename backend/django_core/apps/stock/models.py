@@ -118,12 +118,67 @@ class Fournisseur(models.Model):
                   'paiements ou bloqué total.')
     motif_blocage = models.TextField(blank=True, null=True)
 
+    # ── XPUR5 — fiche fournisseur enrichie ──────────────────────────────────
+    categorie = models.ForeignKey(
+        'CategorieFournisseur', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='fournisseurs')
+    # Préremplit XPUR3 (devise du BCF) / le BCF (incoterm).
+    devise_defaut = models.CharField(
+        max_length=3, blank=True, default='',
+        help_text='Devise par défaut pour les BCF de ce fournisseur '
+                  "(vide = MAD, comportement historique).")
+    incoterm = models.CharField(
+        max_length=10, blank=True, default='',
+        help_text="Incoterm par défaut (EXW, FOB, CIF…). Vide = non défini.")
+
     class Meta:
         verbose_name = "Fournisseur"
         verbose_name_plural = "Fournisseurs"
 
     def __str__(self):
         return self.nom
+
+
+class CategorieFournisseur(models.Model):
+    """XPUR5 — référentiel léger de catégories fournisseur (type ``Marque``),
+    filtrable dans la liste. Additif — aucune migration destructive."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='categories_fournisseur')
+    nom = models.CharField(max_length=100)
+    archived = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['nom']
+        unique_together = [('company', 'nom')]
+        verbose_name = 'Catégorie fournisseur'
+        verbose_name_plural = 'Catégories fournisseur'
+
+    def __str__(self):
+        return self.nom
+
+
+class ContactFournisseur(models.Model):
+    """XPUR5 — contact secondaire d'un fournisseur (N contacts par
+    fournisseur ; ``Fournisseur.contact_personne`` reste le contact
+    principal, comportement historique inchangé)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='contacts_fournisseur')
+    fournisseur = models.ForeignKey(
+        Fournisseur, on_delete=models.CASCADE, related_name='contacts')
+    nom = models.CharField(max_length=255)
+    fonction = models.CharField(max_length=120, blank=True, default='')
+    email = models.EmailField(blank=True, null=True)
+    telephone = models.CharField(max_length=20, blank=True, null=True)
+
+    class Meta:
+        verbose_name = 'Contact fournisseur'
+        verbose_name_plural = 'Contacts fournisseur'
+        ordering = ['fournisseur_id', 'nom']
+
+    def __str__(self):
+        return f'{self.nom} ({self.fournisseur_id})'
 
 
 class SousTraitantProfile(models.Model):

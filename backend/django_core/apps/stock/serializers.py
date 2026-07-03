@@ -10,6 +10,7 @@ from .models import (
     KitProduit, KitComposant,
     FicheTechnique,
     DocumentConformiteFournisseur, AchatsParametres,
+    CategorieFournisseur, ContactFournisseur,
 )
 
 
@@ -30,6 +31,28 @@ class CategorieSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class ContactFournisseurSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ContactFournisseur
+        fields = [
+            'id', 'fournisseur', 'nom', 'fonction', 'email', 'telephone',
+        ]
+
+    def validate_fournisseur(self, value):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is not None and value.company_id != company.id:
+            raise serializers.ValidationError(
+                'Fournisseur hors de votre entreprise.')
+        return value
+
+
+class CategorieFournisseurSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CategorieFournisseur
+        fields = ['id', 'nom', 'archived']
+
+
 class FournisseurSerializer(serializers.ModelSerializer):
     # L699 — compteurs LECTURE SEULE : nombre de produits liés et de bons de
     # commande fournisseur associés. Affichés « X produits · Y bons de
@@ -42,6 +65,11 @@ class FournisseurSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(
         required=False, allow_null=True, allow_blank=True,
         error_messages={'invalid': 'Adresse email invalide.'})
+    # XPUR5 — contacts multiples (lecture) + catégorie affichée + doublon ICE
+    # (warning non bloquant, ajouté dynamiquement à la réponse par la vue).
+    contacts = ContactFournisseurSerializer(many=True, read_only=True)
+    categorie_nom = serializers.CharField(
+        source='categorie.nom', read_only=True, default=None)
 
     class Meta:
         model = Fournisseur
@@ -58,6 +86,14 @@ class FournisseurSerializer(serializers.ModelSerializer):
         if annotated is not None:
             return annotated
         return obj.bons_commande.count()
+
+    def validate_ice(self, value):
+        from .services import validate_ice_format
+        if value and not validate_ice_format(value):
+            raise serializers.ValidationError(
+                "Format ICE invalide : l'ICE doit comporter exactement 15 "
+                'chiffres.')
+        return value
 
 
 class MouvementStockSerializer(serializers.ModelSerializer):

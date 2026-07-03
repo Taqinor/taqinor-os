@@ -1918,3 +1918,26 @@ def check_fournisseur_statut_paiement(fournisseur):
             f"Impossible d'enregistrer un paiement : {fournisseur.nom} est "
             f"{fournisseur.get_statut_display().lower()}"
             f"{' (' + fournisseur.motif_blocage + ')' if fournisseur.motif_blocage else ''}.")
+
+
+# ── XPUR5 — fiche fournisseur enrichie : validation ICE ────────────────────
+
+def validate_ice_format(ice):
+    """XPUR5 — vrai si ``ice`` est un ICE marocain bien formé (15 chiffres).
+    Chaîne vide/None = pas d'ICE saisi (pas une erreur de format)."""
+    if not ice:
+        return True
+    return bool(ice.isdigit() and len(ice) == 15)
+
+
+def find_duplicate_ice(company, ice, *, exclude_id=None):
+    """XPUR5 — renvoie le premier Fournisseur de la société qui porte déjà
+    ce même ICE (hors ``exclude_id`` — mise à jour d'un fournisseur
+    existant), ou None. Détection non bloquante (warning)."""
+    from .models import Fournisseur
+    if not ice:
+        return None
+    qs = Fournisseur.objects.filter(company=company, ice=ice)
+    if exclude_id is not None:
+        qs = qs.exclude(pk=exclude_id)
+    return qs.first()

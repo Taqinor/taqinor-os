@@ -10,7 +10,7 @@ from ..models import (  # noqa: F401
     Produit, Categorie, Fournisseur, MouvementStock, Marque,
     BonCommandeFournisseur, EmplacementStock, TransfertStock, PrixFournisseur,
     RetourFournisseur, ReceptionFournisseur, FactureFournisseur,
-    PaiementFournisseur,
+    PaiementFournisseur, CategorieFournisseur, ContactFournisseur,
 )
 from ..serializers import (  # noqa: F401
     ProduitSerializer,
@@ -26,6 +26,8 @@ from ..serializers import (  # noqa: F401
     ReceptionFournisseurSerializer,
     FactureFournisseurSerializer,
     PaiementFournisseurSerializer,
+    CategorieFournisseurSerializer,
+    ContactFournisseurSerializer,
 )
 from authentication.permissions import (  # noqa: F401
     IsAnyRole,
@@ -63,11 +65,46 @@ class FournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
         # pour la fiche/liste fournisseur, sans N+1.
         qs = super().get_queryset()
         if self.action in READ_ACTIONS:
-            return qs.annotate(
+            qs = qs.annotate(
                 nb_produits_annot=Count('produits', distinct=True),
                 nb_bons_commande_annot=Count('bons_commande', distinct=True),
             )
+        # XPUR5 — filtre liste par catégorie fournisseur.
+        categorie_id = self.request.query_params.get('categorie')
+        if categorie_id:
+            qs = qs.filter(categorie_id=categorie_id)
         return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+    def create(self, request, *args, **kwargs):
+        # XPUR5 — doublon ICE (warning non bloquant) ajouté à la réponse.
+        response = super().create(request, *args, **kwargs)
+        self._attach_ice_warning(response, request)
+        return response
+
+    def update(self, request, *args, **kwargs):
+        response = super().update(request, *args, **kwargs)
+        self._attach_ice_warning(response, request)
+        return response
+
+    def _attach_ice_warning(self, response, request):
+        if response.status_code not in (200, 201):
+            return
+        try:
+            from ..services import find_duplicate_ice
+            ice = response.data.get('ice')
+            if not ice:
+                return
+            dup = find_duplicate_ice(
+                request.user.company, ice, exclude_id=response.data.get('id'))
+            if dup is not None:
+                response.data['ice_duplicate_warning'] = (
+                    f"Attention : l'ICE {ice} est déjà utilisé par "
+                    f'« {dup.nom} ».')
+        except Exception:  # noqa: BLE001 — le warning ne casse jamais
+            pass
 
     @action(detail=True, methods=['get'], url_path='performance',
             permission_classes=[IsAdminRole])
@@ -77,3 +114,46 @@ class FournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
         from ..services import supplier_performance
         fournisseur = self.get_object()
         return Response(supplier_performance(request.user.company, fournisseur))
+
+
+class ContactFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
+    """XPUR5 — contacts secondaires d'un fournisseur (N par fournisseur)."""
+    queryset = ContactFournisseur.objects.select_related('fournisseur').all()
+    serializer_class = ContactFournisseurSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering = ['fournisseur_id', 'nom']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        elif self.action == 'destroy':
+            return [IsAdminRole()]
+        return [HasPermissionOrLegacy('stock_modifier')()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        fournisseur_id = self.request.query_params.get('fournisseur')
+        if fournisseur_id:
+            qs = qs.filter(fournisseur_id=fournisseur_id)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+
+class CategorieFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
+    """XPUR5 — référentiel léger de catégories fournisseur (type Marque)."""
+    queryset = CategorieFournisseur.objects.all()
+    serializer_class = CategorieFournisseurSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering = ['nom']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        elif self.action == 'destroy':
+            return [IsAdminRole()]
+        return [HasPermissionOrLegacy('stock_modifier')()]
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)

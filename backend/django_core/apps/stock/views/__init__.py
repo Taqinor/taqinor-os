@@ -8,7 +8,9 @@ l'identique. Aucun changement de comportement ni d'endpoint."""
 from .produit import ProduitViewSet
 from .marque import MarqueViewSet, seed_marques
 from .categorie import CategorieViewSet
-from .fournisseur import FournisseurViewSet
+from .fournisseur import (
+    FournisseurViewSet, ContactFournisseurViewSet, CategorieFournisseurViewSet,
+)
 from .mouvement import MouvementStockViewSet
 from .prix_fournisseur import PrixFournisseurViewSet
 from .emplacement import EmplacementStockViewSet
@@ -45,4 +47,6 @@ __all__ = [
     'FicheTechniqueViewSet',
     'DocumentConformiteFournisseurViewSet',
     'AchatsParametresViewSet',
+    'ContactFournisseurViewSet',
+    'CategorieFournisseurViewSet',
 ]
