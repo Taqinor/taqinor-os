@@ -92,9 +92,33 @@ def _pdf_response(pdf_bytes, filename):
     return resp
 
 
-class _PaieBaseViewSet(TenantMixin, viewsets.ModelViewSet):
-    """Base : société scopée + accès Administrateur/Responsable uniquement."""
-    permission_classes = [IsResponsableOrAdmin]
+class _PaieVoirOuGerer:
+    """XPAI7 — ``paie_voir``/``paie_gerer`` selon la méthode HTTP (fine-grained).
+
+    Un compte AVEC rôle fin est jugé par ``has_erp_permission`` : lecture
+    (``GET``/``HEAD``/``OPTIONS``, y compris les actions custom en ``GET``
+    comme ``bulletin``/``declaration-cnss``/``etat-charges``) exige
+    ``paie_voir`` ; toute écriture (POST/PUT/PATCH/DELETE, y compris les
+    actions custom comme ``changer-statut``/``cloturer``/``valider``) exige
+    ``paie_gerer``. Repli legacy : un compte SANS rôle fin garde l'accès
+    Responsable/Admin d'avant (aucune régression). Mixin réutilisé par TOUS
+    les viewsets paie (y compris ceux qui n'héritent pas de
+    ``_PaieBaseViewSet``) — le coffre-fort employé (scopé utilisateur) reste
+    à part, hors périmètre.
+    """
+    def get_permissions(self):
+        from rest_framework.permissions import SAFE_METHODS
+
+        from authentication.permissions import HasPermissionOrLegacy
+
+        code = 'paie_voir' if self.request.method in SAFE_METHODS \
+            else 'paie_gerer'
+        return [HasPermissionOrLegacy(code)()]
+
+
+class _PaieBaseViewSet(_PaieVoirOuGerer, TenantMixin, viewsets.ModelViewSet):
+    """Base : société scopée + ``paie_voir``/``paie_gerer`` (XPAI7)."""
+    permission_classes = [IsResponsableOrAdmin]  # repli si get_permissions absent
 
 
 class ParametrePaieViewSet(_PaieBaseViewSet):
@@ -538,14 +562,16 @@ class ElementVariableViewSet(_PaieBaseViewSet):
     ordering_fields = ['periode', 'profil', 'id']
 
 
-class BulletinPaieViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+class BulletinPaieViewSet(_PaieVoirOuGerer, TenantMixin,
+                          viewsets.ReadOnlyModelViewSet):
     """Bulletins de paie matérialisés (PAIE17) — snapshot immuable.
 
     Lecture seule via l'API : un bulletin se crée/recalcule par l'action
     ``generer`` et se fige par l'action ``valider``. Les montants ne sont JAMAIS
-    écrits directement (snapshot). Société scopée, palier paie uniquement.
+    écrits directement (snapshot). Société scopée, ``paie_voir``/``paie_gerer``
+    (XPAI7).
     """
-    permission_classes = [IsResponsableOrAdmin]
+    permission_classes = [IsResponsableOrAdmin]  # repli si get_permissions absent
     queryset = BulletinPaie.objects.select_related(
         'periode', 'profil').prefetch_related('lignes').all()
     serializer_class = BulletinPaieSerializer
@@ -698,14 +724,15 @@ class CoffreFortBulletinViewSet(viewsets.ReadOnlyModelViewSet):
         return _pdf_response(pdf, nom)
 
 
-class OrdreVirementViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+class OrdreVirementViewSet(_PaieVoirOuGerer, TenantMixin,
+                           viewsets.ReadOnlyModelViewSet):
     """Ordres de virement des salaires (PAIE30) — lecture seule + actions.
 
     L'ordre se construit/regénère par ``generer`` (depuis les bulletins validés
     d'une période), se fige par ``emettre``, et le fichier banque s'obtient par
-    ``fichier``. Société scopée, palier paie uniquement.
+    ``fichier``. Société scopée, ``paie_voir``/``paie_gerer`` (XPAI7).
     """
-    permission_classes = [IsResponsableOrAdmin]
+    permission_classes = [IsResponsableOrAdmin]  # repli si get_permissions absent
     queryset = OrdreVirement.objects.select_related('periode').prefetch_related(
         'lignes').all()
     serializer_class = OrdreVirementSerializer
@@ -779,14 +806,16 @@ class SaisieArretViewSet(_PaieBaseViewSet):
     ordering_fields = ['date_debut', 'prioritaire', 'date_creation', 'id']
 
 
-class CumulAnnuelViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+class CumulAnnuelViewSet(_PaieVoirOuGerer, TenantMixin,
+                         viewsets.ReadOnlyModelViewSet):
     """Cumuls annuels de paie par employé (PAIE27) — lecture seule.
 
     Le cumul est un agrégat MATÉRIALISÉ recalculé depuis les bulletins validés
     via l'action ``recalculer`` (corps : ``profil`` id, ``annee``). Jamais saisi
-    directement. Société scopée, palier paie uniquement (donnée SENSIBLE).
+    directement. Société scopée, ``paie_voir``/``paie_gerer`` (XPAI7, donnée
+    SENSIBLE).
     """
-    permission_classes = [IsResponsableOrAdmin]
+    permission_classes = [IsResponsableOrAdmin]  # repli si get_permissions absent
     queryset = CumulAnnuel.objects.select_related('profil').all()
     serializer_class = CumulAnnuelSerializer
     filter_backends = [filters.OrderingFilter]
@@ -818,16 +847,17 @@ class CumulAnnuelViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
             self.get_serializer(cumul).data, status=status.HTTP_200_OK)
 
 
-class EcheanceDeclarativeViewSet(TenantMixin, viewsets.ModelViewSet):
+class EcheanceDeclarativeViewSet(_PaieVoirOuGerer, TenantMixin,
+                                 viewsets.ModelViewSet):
     """Échéances déclaratives paie (XPAI6) — générées automatiquement.
 
     Lecture + modification du ``statut`` uniquement (progression manuelle du
     traitement réel d'une déclaration : générée → déposée → payée). Les
     champs ``periode``/``type_echeance``/``date_limite`` sont posés par le
     générateur (``services.generer_echeances_periode``) et restent en
-    lecture seule côté API.
+    lecture seule côté API. ``paie_voir``/``paie_gerer`` (XPAI7).
     """
-    permission_classes = [IsResponsableOrAdmin]
+    permission_classes = [IsResponsableOrAdmin]  # repli si get_permissions absent
     queryset = EcheanceDeclarative.objects.select_related('periode').all()
     serializer_class = EcheanceDeclarativeSerializer
     filter_backends = [filters.OrderingFilter]
