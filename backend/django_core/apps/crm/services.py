@@ -1515,3 +1515,38 @@ def send_due_appointment_reminders() -> int:
 
     _appt_logger.info('QJ20 send_due_appointment_reminders: %d rappel(s)', sent)
     return sent
+
+
+# ── XKB33 — WhatsApp entrant → chatter du lead/client ────────────────────────
+
+def find_lead_by_phone(company, telephone):
+    """Lead de `company` dont téléphone OU whatsapp correspond (normalisé).
+
+    Point d'entrée cross-app sanctionné pour `apps.notifications` (webhook BSP
+    WhatsApp) : matching par numéro SANS jamais exposer les modèles crm.
+    Renvoie le lead le plus RÉCEMMENT créé en cas de doublon, ou None."""
+    key = normalize_phone(telephone)
+    if not key:
+        return None
+    candidates = [
+        lead for lead in Lead.objects.filter(company=company)
+        .order_by('-created_at')
+        if normalize_phone(lead.telephone) == key
+        or normalize_phone(lead.whatsapp) == key
+    ]
+    return candidates[0] if candidates else None
+
+
+def log_whatsapp_message_on_lead(lead, *, texte, expediteur, nom_profil=''):
+    """Ajoute un message WhatsApp entrant au chatter d'un lead (XKB33).
+
+    Note SYSTÈME (user=None) — un message reçu n'est pas une action manuelle
+    d'un utilisateur de l'ERP. Best-effort : jamais d'exception remontée (le
+    webhook qui appelle cette fonction ne doit jamais planter)."""
+    if lead is None:
+        return None
+    try:
+        body = f"WhatsApp de {nom_profil or expediteur} : {texte}".strip()
+        return activity.log_note(lead, None, body)
+    except Exception:  # noqa: BLE001 — jamais bloquant pour le webhook
+        return None
