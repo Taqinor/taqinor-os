@@ -51,6 +51,8 @@ class VehiculeSerializer(serializers.ModelSerializer):
     emplacement_stock_label = serializers.SerializerMethodField()
     # XFLT4 — checklist de mise en service, exposée en lecture calculée.
     checklist_mise_en_service_ok = serializers.SerializerMethodField()
+    # XFLT12 — libellé du modèle de référence (catalogue), lecture seule.
+    modele_ref_label = serializers.SerializerMethodField()
 
     class Meta:
         model = Vehicule
@@ -61,9 +63,16 @@ class VehiculeSerializer(serializers.ModelSerializer):
             'emplacement_stock_id', 'emplacement_stock_label',
             'vin', 'annee', 'date_acquisition', 'type_fiscal',
             'type_fiscal_display', 'tags', 'checklist_mise_en_service',
-            'checklist_mise_en_service_ok', 'date_creation',
+            'checklist_mise_en_service_ok', 'modele_ref', 'modele_ref_label',
+            'date_cession', 'prix_cession', 'acheteur', 'date_creation',
         ]
-        read_only_fields = ['date_creation']
+        # XFLT16 — la cession passe UNIQUEMENT par l'action ``ceder/`` (calcule
+        # le gain/perte, délègue à compta si immobilisé) — jamais un PATCH direct.
+        read_only_fields = [
+            'date_creation', 'date_cession', 'prix_cession', 'acheteur']
+
+    def get_modele_ref_label(self, obj):
+        return str(obj.modele_ref) if obj.modele_ref_id else None
 
     def get_checklist_mise_en_service_ok(self, obj):
         return obj.checklist_mise_en_service_ok()
@@ -306,6 +315,12 @@ class AffectationConducteurSerializer(serializers.ModelSerializer):
     force = serializers.BooleanField(write_only=True, required=False,
                                      default=False)
     permis_avertissement = serializers.SerializerMethodField()
+    # XFLT17 — avertissement non bloquant (charte véhicule non accusée),
+    # calculé à la CRÉATION uniquement (première affectation).
+    charte_avertissement = serializers.SerializerMethodField()
+    # XFLT20 — avertissement non bloquant (accessoires non rendus), calculé
+    # quand ``date_fin`` est posée (fin d'affectation).
+    accessoires_avertissement = serializers.SerializerMethodField()
 
     class Meta:
         model = AffectationConducteur
@@ -321,6 +336,8 @@ class AffectationConducteurSerializer(serializers.ModelSerializer):
             "actif",
             "force",
             "permis_avertissement",
+            "charte_avertissement",
+            "accessoires_avertissement",
             "date_creation",
         ]
         read_only_fields = ["date_creation"]
@@ -329,6 +346,16 @@ class AffectationConducteurSerializer(serializers.ModelSerializer):
         """Avertissement de permis posé lors d'une affectation forcée
         (non-conformité acceptée volontairement)."""
         return getattr(obj, '_permis_avertissement', None)
+
+    def get_charte_avertissement(self, obj):
+        """XFLT17 — Message si la charte véhicule courante n'a pas été
+        accusée par le conducteur (posé à la création seulement)."""
+        return getattr(obj, '_charte_avertissement', None)
+
+    def get_accessoires_avertissement(self, obj):
+        """XFLT20 — Message si des accessoires restent non rendus (posé à
+        la mise à jour, quand ``date_fin`` clôture l'affectation)."""
+        return getattr(obj, '_accessoires_avertissement', None)
 
     def get_conducteur_nom(self, obj):
         return str(obj.conducteur) if obj.conducteur_id else None
@@ -387,13 +414,64 @@ class AffectationConducteurSerializer(serializers.ModelSerializer):
     def _attach_warning(self, instance):
         instance._permis_avertissement = getattr(
             self, '_permis_avertissement', None)
+        instance._charte_avertissement = getattr(
+            self, '_charte_avertissement', None)
+        instance._accessoires_avertissement = getattr(
+            self, '_accessoires_avertissement', None)
         return instance
 
     def create(self, validated_data):
-        return self._attach_warning(super().create(validated_data))
+        instance = super().create(validated_data)
+        # XFLT17 — Avertissement charte véhicule, à la CRÉATION seulement
+        # (première affectation) — jamais recalculé à la mise à jour.
+        from .services import accuse_charte_manquant, charte_courante
+
+        self._charte_avertissement = None
+        if instance.conducteur_id is not None \
+                and accuse_charte_manquant(instance.conducteur):
+            charte = charte_courante(instance.company)
+            self._charte_avertissement = (
+                f"Charte véhicule non accusée par le conducteur "
+                f"(version courante : v{charte.version}).")
+        return self._attach_warning(instance)
 
     def update(self, instance, validated_data):
-        return self._attach_warning(super().update(instance, validated_data))
+        # XFLT21 — Journal d'audit : capture l'état AVANT modification pour
+        # journaliser chaque changement RÉEL (conducteur/date_fin/actif).
+        from .services import journaliser_diff_affectation
+
+        avant = {
+            'conducteur_id': instance.conducteur_id,
+            'date_fin': instance.date_fin,
+            'actif': instance.actif,
+        }
+        company = instance.company
+        vehicule = instance.vehicule
+
+        instance = super().update(instance, validated_data)
+
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        apres = {
+            'company': company,
+            'vehicule': vehicule,
+            'instance': instance,
+            'conducteur_id': instance.conducteur_id,
+            'date_fin': instance.date_fin,
+            'actif': instance.actif,
+        }
+        journaliser_diff_affectation(avant, apres, user=user)
+
+        # XFLT20 — Warning accessoires non rendus, calculé QUAND la mise à
+        # jour clôture l'affectation (date_fin renseignée).
+        from .services import avertissement_accessoires_non_rendus
+
+        self._accessoires_avertissement = None
+        if 'date_fin' in validated_data and validated_data['date_fin'] \
+                is not None:
+            self._accessoires_avertissement = \
+                avertissement_accessoires_non_rendus(instance)
+        return self._attach_warning(instance)
 
 
 # ── FLOTTE10 — Réservation de véhicule + détection de conflit ────────────────
@@ -510,9 +588,18 @@ class EtatDesLieuxSerializer(serializers.ModelSerializer):
             'id', 'vehicule', 'vehicule_label', 'reservation', 'conducteur',
             'moment', 'moment_display', 'date_constat', 'kilometrage',
             'niveau_carburant', 'etat_general', 'etat_general_display',
-            'points', 'photos', 'nb_photos', 'commentaire', 'date_creation',
+            'points', 'photos', 'nb_photos', 'accessoires',
+            'signature_conducteur', 'signature_conducteur_horodatage',
+            'signature_responsable', 'signature_responsable_horodatage',
+            'commentaire', 'date_creation',
         ]
-        read_only_fields = ['date_creation']
+        # XFLT17 — les signatures passent UNIQUEMENT par l'action ``signer/``
+        # (nom saisi + horodatage serveur, e-signature loi 53-05) — jamais un
+        # PATCH direct sur ces champs.
+        read_only_fields = [
+            'date_creation', 'signature_conducteur',
+            'signature_conducteur_horodatage', 'signature_responsable',
+            'signature_responsable_horodatage']
 
     def get_vehicule_label(self, obj):
         return str(obj.vehicule) if obj.vehicule_id else None
@@ -864,10 +951,17 @@ class OrdreReparationSerializer(serializers.ModelSerializer):
             'id', 'actif_flotte', 'actif_label', 'garage', 'garage_nom',
             'echeance', 'description', 'date_ouverture', 'date_cloture',
             'statut', 'statut_display', 'cout_main_oeuvre', 'cout_pieces',
-            'cout_total', 'notes', 'date_creation',
+            'cout_total', 'sous_garantie', 'montant_devis', 'devis_fichier',
+            'approuve_par', 'date_approbation', 'ecart_facture_devis_pct',
+            'notes', 'date_creation',
         ]
-        # cout_total est dérivé côté modèle, jamais saisi.
-        read_only_fields = ['cout_total', 'date_creation']
+        # cout_total est dérivé côté modèle, jamais saisi. sous_garantie et
+        # ecart_facture_devis_pct sont posés automatiquement (XFLT14/XFLT19).
+        # approuve_par/date_approbation passent UNIQUEMENT par l'action
+        # ``approuver/`` — jamais un PATCH direct.
+        read_only_fields = [
+            'cout_total', 'sous_garantie', 'approuve_par', 'date_approbation',
+            'ecart_facture_devis_pct', 'date_creation']
 
     def get_actif_label(self, obj):
         return obj.actif_flotte.label if obj.actif_flotte_id else None
@@ -920,6 +1014,25 @@ class OrdreReparationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'date_cloture':
                  "La date de clôture ne peut pas précéder l'ouverture."})
+
+        # XFLT19 — Un devis au-dessus du seuil d'approbation société ne peut
+        # pas passer en « en_cours » sans être passé par l'action
+        # ``approuver/`` au préalable (statut approuve).
+        nouveau_statut = attrs.get('statut')
+        if nouveau_statut is not None and self.instance is not None:
+            from .services import transition_statut_or_autorisee
+
+            # Simule l'instance avec le montant_devis à jour (peut être
+            # modifié dans la même requête) pour le contrôle de seuil.
+            montant_devis = attrs.get(
+                'montant_devis', self.instance.montant_devis)
+            statut_courant = self.instance.statut
+            self.instance.montant_devis = montant_devis
+            ok, message = transition_statut_or_autorisee(
+                self.instance, nouveau_statut)
+            self.instance.statut = statut_courant
+            if not ok:
+                raise serializers.ValidationError({'statut': message})
 
         return attrs
 
@@ -1458,9 +1571,11 @@ class InfractionSerializer(serializers.ModelSerializer):
             'conducteur_nom', 'date_infraction', 'type_infraction',
             'type_infraction_display', 'lieu', 'reference_pv',
             'montant_amende', 'pv_fichier', 'statut', 'statut_display',
-            'date_paiement', 'notes', 'date_creation',
+            'date_paiement', 'notes', 'imputation_auto',
+            'date_limite_contestation', 'refacture_conducteur',
+            'montant_retenu', 'date_creation',
         ]
-        read_only_fields = ['date_creation']
+        read_only_fields = ['date_creation', 'imputation_auto']
 
     def get_actif_label(self, obj):
         return obj.actif_flotte.label if obj.actif_flotte_id else None
@@ -1876,3 +1991,276 @@ class SignalementVehiculeSerializer(serializers.ModelSerializer):
 
     def get_auteur_nom(self, obj):
         return obj.auteur.get_username() if obj.auteur_id else None
+
+
+# ── XFLT12 — Catalogue de modèles véhicule ──────────────────────────────────────
+
+class ModeleVehiculeSerializer(serializers.ModelSerializer):
+    """XFLT12 — Modèle véhicule de référence (catalogue).
+
+    ``company`` posée côté serveur (jamais lue du corps de requête).
+    """
+
+    categorie_display = serializers.CharField(
+        source='get_categorie_display', read_only=True)
+    energie_display = serializers.CharField(
+        source='get_energie_display', read_only=True)
+
+    class Meta:
+        from .models import ModeleVehicule
+        model = ModeleVehicule
+        fields = [
+            'id', 'marque', 'modele', 'categorie', 'categorie_display',
+            'energie', 'energie_display', 'co2_g_km', 'places',
+            'puissance_fiscale', 'puissance_kw', 'valeur_catalogue',
+            'capacite_reservoir_l', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+# ── XFLT13 — Inspections périodiques paramétrables (check-lists DVIR) ──────────
+
+class ModeleInspectionSerializer(serializers.ModelSerializer):
+    """XFLT13 — Modèle de check-list d'inspection périodique.
+
+    ``company`` posée côté serveur (jamais lue du corps de requête).
+    """
+
+    type_actif_cible_display = serializers.CharField(
+        source='get_type_actif_cible_display', read_only=True)
+
+    class Meta:
+        from .models import ModeleInspection
+        model = ModeleInspection
+        fields = [
+            'id', 'nom', 'type_actif_cible', 'type_actif_cible_display',
+            'items', 'actif', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class InspectionVehiculeSerializer(serializers.ModelSerializer):
+    """XFLT13 — Inspection périodique réalisée sur un actif.
+
+    ``company`` ET ``auteur`` posés côté serveur. Un item ``fail`` dans
+    ``resultats`` crée automatiquement un ``SignalementVehicule`` lié (voir
+    ``services.traiter_items_fail``, appelé côté vue à la création).
+
+    Champs lecture seule :
+    - ``actif_label``   : désignation de l'actif (véhicule ou engin).
+    - ``modele_nom``    : nom du modèle d'inspection utilisé.
+    - ``conducteur_nom``: nom du conducteur (ou None).
+    - ``nb_items_fail`` : nombre d'items en échec, calculé.
+    """
+
+    actif_label = serializers.SerializerMethodField()
+    modele_nom = serializers.SerializerMethodField()
+    conducteur_nom = serializers.SerializerMethodField()
+    nb_items_fail = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import InspectionVehicule
+        model = InspectionVehicule
+        fields = [
+            'id', 'actif_flotte', 'actif_label', 'modele_inspection',
+            'modele_nom', 'conducteur', 'conducteur_nom', 'auteur',
+            'date_inspection', 'resultats', 'nb_items_fail',
+            'signature_nom', 'signature_horodatage',
+        ]
+        read_only_fields = ['auteur', 'date_inspection']
+
+    def get_actif_label(self, obj):
+        return obj.actif_flotte.label if obj.actif_flotte_id else None
+
+    def get_modele_nom(self, obj):
+        return obj.modele_inspection.nom if obj.modele_inspection_id else None
+
+    def get_conducteur_nom(self, obj):
+        return obj.conducteur.nom if obj.conducteur_id else None
+
+    def get_nb_items_fail(self, obj):
+        return obj.nb_items_fail()
+
+
+# ── XFLT14 — Garanties véhicule & pièces ────────────────────────────────────────
+
+class GarantieFlotteSerializer(serializers.ModelSerializer):
+    """XFLT14 — Garantie constructeur/fournisseur sur un actif ou composant.
+
+    ``company`` posée côté serveur (jamais lue du corps de requête).
+    """
+
+    actif_label = serializers.SerializerMethodField()
+    date_fin = serializers.SerializerMethodField()
+    active = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import GarantieFlotte
+        model = GarantieFlotte
+        fields = [
+            'id', 'actif_flotte', 'actif_label', 'composant', 'duree_mois',
+            'duree_km', 'date_debut', 'date_fin', 'active', 'fournisseur',
+            'notes', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_actif_label(self, obj):
+        return obj.actif_flotte.label if obj.actif_flotte_id else None
+
+    def get_date_fin(self, obj):
+        date_fin = obj.date_fin()
+        return date_fin.isoformat() if date_fin else None
+
+    def get_active(self, obj):
+        vehicule = getattr(obj.actif_flotte, 'vehicule', None)
+        kilometrage = getattr(vehicule, 'kilometrage', None) if vehicule else None
+        return obj.couvre(kilometrage=kilometrage)
+
+
+# ── XFLT17 — Charte véhicule + accusé de lecture ────────────────────────────────
+
+class CharteVehiculeSerializer(serializers.ModelSerializer):
+    """XFLT17 — Charte véhicule versionnée. ``company`` posée côté serveur ;
+    ``version`` est posée côté serveur (auto-incrémentée) — jamais du body."""
+
+    class Meta:
+        from .models import CharteVehicule
+        model = CharteVehicule
+        fields = ['id', 'version', 'document', 'date_publication']
+        read_only_fields = ['version', 'date_publication']
+
+
+class AccuseCharteSerializer(serializers.ModelSerializer):
+    """XFLT17 — Accusé de lecture de la charte véhicule par un conducteur.
+
+    ``company`` posée côté serveur. ``version`` est posée côté serveur
+    (toujours la version courante au moment de l'accusé) — jamais du body.
+    """
+
+    conducteur_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import AccuseCharte
+        model = AccuseCharte
+        fields = [
+            'id', 'conducteur', 'conducteur_nom', 'version', 'date_accuse']
+        read_only_fields = ['version', 'date_accuse']
+
+    def get_conducteur_nom(self, obj):
+        return obj.conducteur.nom if obj.conducteur_id else None
+
+
+# ── XFLT18 — Budget flotte annuel vs réalisé ────────────────────────────────────
+
+class BudgetFlotteSerializer(serializers.ModelSerializer):
+    """XFLT18 — Ligne budgétaire annuelle par catégorie. ``company`` posée
+    côté serveur. ``notifie_depassement`` est géré côté serveur (jamais du
+    body — voir ``services.verifier_depassements_budget``)."""
+
+    categorie_display = serializers.CharField(
+        source='get_categorie_display', read_only=True)
+
+    class Meta:
+        from .models import BudgetFlotte
+        model = BudgetFlotte
+        fields = [
+            'id', 'annee', 'categorie', 'categorie_display',
+            'montant_budgete', 'notifie_depassement', 'date_creation',
+        ]
+        read_only_fields = ['notifie_depassement', 'date_creation']
+
+    def validate_montant_budgete(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "Le montant budgété ne peut pas être négatif.")
+        return value
+
+
+# ── XFLT20 — Registre de remise clés / carte / badge / tag Jawaz ───────────────
+
+class RemiseAccessoireSerializer(serializers.ModelSerializer):
+    """XFLT20 — Remise d'un accessoire (clé/carte/badge/tag Jawaz) à un
+    conducteur. ``company`` posée côté serveur. L'actif et le conducteur
+    liés doivent appartenir à la société courante.
+
+    Champs lecture seule :
+    - ``actif_label``          : désignation de l'actif.
+    - ``conducteur_nom``       : nom du détenteur.
+    - ``type_accessoire_display`` : libellé du type.
+    """
+
+    actif_label = serializers.SerializerMethodField()
+    conducteur_nom = serializers.SerializerMethodField()
+    type_accessoire_display = serializers.CharField(
+        source='get_type_accessoire_display', read_only=True)
+
+    class Meta:
+        from .models import RemiseAccessoire
+        model = RemiseAccessoire
+        fields = [
+            'id', 'actif_flotte', 'actif_label', 'type_accessoire',
+            'type_accessoire_display', 'conducteur', 'conducteur_nom',
+            'date_remise', 'date_retour', 'commentaire', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_actif_label(self, obj):
+        return obj.actif_flotte.label if obj.actif_flotte_id else None
+
+    def get_conducteur_nom(self, obj):
+        return obj.conducteur.nom if obj.conducteur_id else None
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+
+        actif = attrs.get(
+            'actif_flotte', getattr(self.instance, 'actif_flotte', None))
+        conducteur = attrs.get(
+            'conducteur', getattr(self.instance, 'conducteur', None))
+        date_remise = attrs.get(
+            'date_remise', getattr(self.instance, 'date_remise', None))
+        date_retour = attrs.get(
+            'date_retour', getattr(self.instance, 'date_retour', None))
+
+        if company is not None:
+            if actif is not None and actif.company_id != company.id:
+                raise serializers.ValidationError(
+                    {'actif_flotte':
+                     "Cet actif n'appartient pas à votre société."})
+            if conducteur is not None and conducteur.company_id != company.id:
+                raise serializers.ValidationError(
+                    {'conducteur':
+                     "Ce conducteur n'appartient pas à votre société."})
+
+        if date_remise is not None and date_retour is not None \
+                and date_retour < date_remise:
+            raise serializers.ValidationError(
+                {'date_retour':
+                 "La date de retour ne peut pas précéder la remise."})
+
+        return attrs
+
+
+# ── XFLT21 — Journal d'audit flotte ─────────────────────────────────────────────
+
+class ActiviteFlotteSerializer(serializers.ModelSerializer):
+    """XFLT21 — Entrée du journal d'audit flotte (lecture + création seules,
+    IMMUABLE — jamais d'update/delete depuis l'API)."""
+
+    type_objet_display = serializers.CharField(
+        source='get_type_objet_display', read_only=True)
+    user_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import ActiviteFlotte
+        model = ActiviteFlotte
+        fields = [
+            'id', 'vehicule', 'type_objet', 'type_objet_display', 'objet_id',
+            'champ', 'ancienne_valeur', 'nouvelle_valeur', 'user', 'user_nom',
+            'date_creation',
+        ]
+        read_only_fields = fields
+
+    def get_user_nom(self, obj):
+        return obj.user.get_username() if obj.user_id else None

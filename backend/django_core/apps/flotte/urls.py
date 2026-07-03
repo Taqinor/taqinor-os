@@ -2,12 +2,15 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    AccuseCharteViewSet,
     ActifFlotteViewSet,
     AffectationConducteurViewSet,
     AssuranceVehiculeViewSet,
     BaremeVignetteViewSet,
+    BudgetFlotteViewSet,
     CarteCarburantViewSet,
     CarteGriseVehiculeViewSet,
+    CharteVehiculeViewSet,
     ConducteurViewSet,
     ContratVehiculeViewSet,
     CoutVehiculeViewSet,
@@ -17,7 +20,11 @@ from .views import (
     EnginRoulantViewSet,
     EtatDesLieuxViewSet,
     GarageViewSet,
+    GarantieFlotteViewSet,
     InfractionViewSet,
+    InspectionVehiculeViewSet,
+    ModeleInspectionViewSet,
+    ModeleVehiculeViewSet,
     OrdreReparationViewSet,
     PieceFlotteViewSet,
     PlanEntretienViewSet,
@@ -25,6 +32,7 @@ from .views import (
     PleinCarburantViewSet,
     ReferentielFlotteViewSet,
     ReleveTelematiqueViewSet,
+    RemiseAccessoireViewSet,
     ReservationVehiculeViewSet,
     SignalementVehiculeViewSet,
     SinistreViewSet,
@@ -32,11 +40,14 @@ from .views import (
     TrajetTelematiqueViewSet,
     VehiculeViewSet,
     VisiteTechniqueViewSet,
+    rapport_budget,
     rapport_couts,
+    rapport_remplacement,
 )
 
 router = DefaultRouter()
 router.register(r'vehicules', VehiculeViewSet)
+router.register(r'modeles-vehicule', ModeleVehiculeViewSet)
 router.register(r'engins', EnginRoulantViewSet)
 router.register(r'referentiels', ReferentielFlotteViewSet)
 router.register(r'actifs', ActifFlotteViewSet)
@@ -49,6 +60,7 @@ router.register(r'cartes', CarteCarburantViewSet)
 router.register(r'plans-entretien', PlanEntretienViewSet)
 router.register(r'echeances-entretien', EcheanceEntretienViewSet)
 router.register(r'garages', GarageViewSet)
+router.register(r'garanties', GarantieFlotteViewSet)
 router.register(r'ordres-reparation', OrdreReparationViewSet)
 router.register(r'pneumatiques', PneumatiqueViewSet)
 router.register(r'pieces', PieceFlotteViewSet)
@@ -66,8 +78,17 @@ router.register(r'demandes-vehicule', DemandeVehiculeViewSet)
 router.register(r'contrats-vehicule', ContratVehiculeViewSet)
 router.register(r'couts', CoutVehiculeViewSet)
 router.register(r'signalements', SignalementVehiculeViewSet)
+router.register(r'modeles-inspection', ModeleInspectionViewSet)
+router.register(r'inspections', InspectionVehiculeViewSet)
+router.register(r'chartes-vehicule', CharteVehiculeViewSet)
+router.register(r'accuses-charte', AccuseCharteViewSet)
+router.register(r'budgets', BudgetFlotteViewSet)
+router.register(r'remises-accessoire', RemiseAccessoireViewSet)
 
 urlpatterns = [
     path('rapports/couts/', rapport_couts, name='flotte-rapport-couts'),
+    path('rapports/remplacement/', rapport_remplacement,
+         name='flotte-rapport-remplacement'),
+    path('rapports/budget/', rapport_budget, name='flotte-rapport-budget'),
     path('', include(router.urls)),
 ]

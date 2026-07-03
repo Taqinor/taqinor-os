@@ -67,6 +67,9 @@ class EventType(models.TextChoices):
     BCF_LATE = 'bcf_late', 'Bon de commande fournisseur en retard'
     # XPRJ22 — retard/risque de planning sur un projet (gestion_projet).
     PROJET_RETARD = 'projet_retard', 'Retard planning projet'
+    # XFLT18 — dépassement de budget flotte annuel (par catégorie de coût).
+    FLOTTE_BUDGET_DEPASSEMENT = (
+        'flotte_budget_depassement', 'Dépassement budget flotte')
 
 
 class Channel(models.TextChoices):
