@@ -34,6 +34,7 @@ import { WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink, zeroFormWhatsappText } from '../lib/whatsapp';
 import { REGIE_MARGINAL_RATE_SECOND, REGIE_MARGINAL_RATE_HIGH } from '../lib/regieTariff';
 import { REALISATIONS, realisationBySlug } from '../lib/realisations';
+import { YIELD_TABLE } from '../lib/yieldTable';
 
 const waDirect = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour une installation solaire.');
 // W349 — porte sans formulaire : action secondaire du héros, pour le visiteur
@@ -50,6 +51,22 @@ const totalKwcLabel = totalKwc.toLocaleString('fr-FR', { minimumFractionDigits: 
 // protagoniste du héros et de l'aside final. Dérivée par tri sur kwcNum,
 // jamais une référence recopiée à la main.
 const featured = [...REALISATIONS].sort((a, b) => b.kwcNum - a.kwcNum)[0];
+
+// WJ73 — L'écart estimation-vs-preuve, expliqué honnêtement. Le chantier
+// phare (réf. 468) mesure ≈1 256 kWh/kWc/an (21 406 kWh / 17,04 kWc) — un
+// visiteur qui divise ces deux chiffres déjà publiés sur cette page tombe sur
+// un nombre bien inférieur aux ≈1 650 kWh/kWc/an que la table de rendement
+// (yieldTable.ts, PVGIS) donne pour un plein sud à 29° à Casablanca, l'
+// hypothèse utilisée par le tableau modélisé de TOUTE estimation du site.
+// Plutôt que de laisser cet écart de 24 % sans explication (un « gotcha »
+// pour qui fait le calcul), on l'explique en une ligne, honnêtement : les
+// toits réels ne sont pas tous plein sud à l'inclinaison optimale — l'étude
+// affine. AUCUN chiffre inventé : les deux valeurs viennent de sources déjà
+// committées (REALISATIONS + YIELD_TABLE), jamais recopiées à la main.
+const featuredYieldPerKwc = featured.productionNum && featured.kwcNum
+  ? Math.round(featured.productionNum / featured.kwcNum)
+  : null;
+const casablancaSouthOptimalYield = YIELD_TABLE.casablanca.grid['0']['29'];
 
 // W205 — Le chiffre protagoniste de l’en-tête est séparé pour le count-up.
 // La largeur est réservée (tabular-nums + min-width verrouillée par JS) → zéro CLS.
@@ -425,6 +442,19 @@ const engineeringPillars = [
             </div>
           ))}
         </div>
+        {/* WJ73 — écart estimation-vs-preuve, expliqué honnêtement. Un
+            visiteur qui divise les deux chiffres déjà affichés ci-dessus
+            (production mesurée / kWc) sur le chantier phare tombe sur un
+            rendement inférieur à celui du tableau modélisé des estimations —
+            plutôt que de laisser ce delta sans explication, on le nomme. */}
+        {featuredYieldPerKwc && (
+          <p class="v2-rise mt-6 max-w-2xl text-xs leading-relaxed text-lune-faint">
+            À noter : cette installation mesure ≈{featuredYieldPerKwc.toLocaleString('fr-FR')} kWh/kWc/an,
+            en dessous des ≈{casablancaSouthOptimalYield.toLocaleString('fr-FR')} kWh/kWc/an du tableau
+            modélisé utilisé pour les estimations — les installations réelles ne sont pas toutes plein
+            sud à 29°, contrairement à l'hypothèse du modèle. L'étude affine ce chiffre sur votre toit réel.
+          </p>
+        )}
         {/* Lien discret vers TOUTES les réalisations — pas un bouton plein */}
         <a href="/realisations" class="v2-rise group mt-10 inline-flex items-center gap-1 border-b-2 border-white/30 pb-0.5 text-sm font-bold text-white transition-colors hover:border-white">
           Voir toutes les réalisations <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span>

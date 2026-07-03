@@ -40,6 +40,7 @@ import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
 import { REGIE_MARGINAL_RATE_SECOND, REGIE_MARGINAL_RATE_HIGH } from '../../lib/regieTariff';
 import { REALISATIONS, realisationBySlug } from '../../lib/realisations';
+import { YIELD_TABLE } from '../../lib/yieldTable';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
@@ -56,6 +57,14 @@ const totalKwcLabel = totalKwc.toLocaleString('fr-FR', { minimumFractionDigits: 
 // أكبر تركيبة سكنية منشورة (المرجع 468، الجديدة) — بطلة البطل والملاحظة
 // الختامية. مُشتقّة بالفرز على kwcNum، وليست مرجعًا منسوخًا يدويًا.
 const featured = [...REALISATIONS].sort((a, b) => b.kwcNum - a.kwcNum)[0];
+
+// WJ73 — فجوة التقدير مقابل الدليل، مشروحة بصدق: التركيبة الرائدة تقيس
+// إنتاجية kWh/kWc/سنة أقل من الرقم الجنوبي الأمثل الذي يفترضه جدول الإنتاجية
+// المُنمذَج — كلا القيمتين مُشتقّة (REALISATIONS + YIELD_TABLE)، غير منسوختين يدوياً.
+const featuredYieldPerKwc = featured.productionNum && featured.kwcNum
+  ? Math.round(featured.productionNum / featured.kwcNum)
+  : null;
+const casablancaSouthOptimalYield = YIELD_TABLE.casablanca.grid['0']['29'];
 // اسم المدينة بالعربية للعرض فقط (الأرقام تبقى اللاتينية من REALISATIONS) —
 // نفس أسماء المدن المستخدمة أسفله في `gallery`.
 const CITY_AR: Record<string, string> = { 'El Jadida': 'الجديدة', 'Casablanca': 'الدار البيضاء', 'Nouaceur': 'النواصر' };
@@ -405,6 +414,15 @@ const engineeringPillars = [
             </div>
           ))}
         </div>
+        {/* WJ73 — فجوة التقدير مقابل الدليل، مشروحة بصدق. */}
+        {featuredYieldPerKwc && (
+          <p class="v2-rise mt-6 max-w-2xl text-xs leading-relaxed text-lune-faint">
+            للإشارة: هذه التركيبة تقيس ≈{featuredYieldPerKwc.toLocaleString('fr-FR')} kWh/kWc/سنة، وهو أقل من
+            ≈{casablancaSouthOptimalYield.toLocaleString('fr-FR')} kWh/kWc/سنة التي يفترضها جدول الإنتاجية
+            المُنمذَج المُستخدَم للتقديرات — التركيبات الحقيقية ليست كلها متّجهة جنوباً بميل 29°، خلافاً
+            لافتراض النموذج. الدراسة تُدقّق هذا الرقم على سطحك الحقيقي.
+          </p>
+        )}
         {/* رابط هادئ نحو كل الإنجازات — لا زرّ ممتلئ */}
         <a href={L('/realisations')} class="v2-rise group mt-10 inline-flex items-center gap-1 border-b-2 border-white/30 pb-0.5 text-sm font-bold text-white transition-colors hover:border-white">
           شاهدوا كل إنجازاتنا <span class="inline-block rtl:-scale-x-100 motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:-translate-x-1" aria-hidden="true">→</span>

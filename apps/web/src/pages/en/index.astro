@@ -38,6 +38,7 @@ import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
 import { REGIE_MARGINAL_RATE_SECOND, REGIE_MARGINAL_RATE_HIGH } from '../../lib/regieTariff';
 import { REALISATIONS, realisationBySlug } from '../../lib/realisations';
+import { YIELD_TABLE } from '../../lib/yieldTable';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
@@ -58,6 +59,15 @@ const totalKwcLabel = totalKwc.toLocaleString('fr-FR', { minimumFractionDigits: 
 // protagonist of the hero and closing aside. Derived by sorting on kwcNum,
 // never a hand-copied reference.
 const featured = [...REALISATIONS].sort((a, b) => b.kwcNum - a.kwcNum)[0];
+
+// WJ73 — The estimate-vs-proof gap, explained honestly. See the FR index.astro
+// comment for the full rationale: the flagship install measures a lower
+// kWh/kWc/yr than the south-optimal figure the modeled yield table assumes —
+// both values are derived (REALISATIONS + YIELD_TABLE), never hand-copied.
+const featuredYieldPerKwc = featured.productionNum && featured.kwcNum
+  ? Math.round(featured.productionNum / featured.kwcNum)
+  : null;
+const casablancaSouthOptimalYield = YIELD_TABLE.casablanca.grid['0']['29'];
 
 // W205 — The protagonist figure of the headline is separated for the count-up.
 // Its width is reserved (tabular-nums + JS-locked min-width) → zero CLS.
@@ -413,6 +423,16 @@ const engineeringPillars = [
             </div>
           ))}
         </div>
+        {/* WJ73 — estimate-vs-proof gap, explained honestly. */}
+        {featuredYieldPerKwc && (
+          <p class="v2-rise mt-6 max-w-2xl text-xs leading-relaxed text-lune-faint">
+            Worth noting: this installation measures ≈{featuredYieldPerKwc.toLocaleString('en-US')} kWh/kWc/yr,
+            below the ≈{casablancaSouthOptimalYield.toLocaleString('en-US')} kWh/kWc/yr the modeled yield
+            table used for estimates assumes — real installations aren't all south-facing at the
+            optimal 29° tilt, unlike the model's assumption. The on-site study refines this figure for
+            your actual roof.
+          </p>
+        )}
         {/* Quiet link to ALL installations — not a solid button */}
         <a href={L('/realisations')} class="v2-rise group mt-10 inline-flex items-center gap-1 border-b-2 border-white/30 pb-0.5 text-sm font-bold text-white transition-colors hover:border-white">
           See all our installations <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span>
