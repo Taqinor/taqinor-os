@@ -50,6 +50,7 @@ from .models import (
     AbonnementMonitoring,
     MappingCompte, CompteAuxiliaire, PieceJustificative,
     PisteAuditComptable,
+    ModeleRapprochement,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -97,6 +98,7 @@ from .serializers import (
     MappingCompteSerializer, CompteAuxiliaireSerializer,
     PieceJustificativeSerializer,
     PisteAuditComptableSerializer,
+    ModeleRapprochementSerializer,
 )
 
 
@@ -4093,6 +4095,38 @@ class MappingCompteViewSet(_ComptaBaseViewSet):
         mappings = services.seed_mappings_defaut(request.user.company)
         return Response(
             MappingCompteSerializer(mappings, many=True).data)
+
+
+# ── XACC4 — Modèles de rapprochement (règles de contrepartie automatique) ──
+
+class ModeleRapprochementViewSet(_ComptaBaseViewSet):
+    """Règles de contrepartie automatique pour le rapprochement bancaire
+    (XACC4). CRUD company-scopé + action ``appliquer`` (bouton un-clic)."""
+    queryset = ModeleRapprochement.objects.select_related(
+        'compte_contrepartie').all()
+    serializer_class = ModeleRapprochementSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['priorite', 'libelle']
+
+    @action(detail=True, methods=['post'])
+    def appliquer(self, request, pk=None):
+        """Applique CE modèle à une ligne de relevé (corps : ``ligne_releve``)."""
+        modele = self.get_object()  # scopé société par TenantMixin.
+        ligne = LigneReleve.objects.filter(
+            company=request.user.company,
+            id=request.data.get('ligne_releve')).first()
+        if ligne is None:
+            return Response(
+                {'detail': 'Ligne de relevé inconnue.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            ecriture = services.appliquer_modele_rapprochement(ligne, modele)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {'ecriture_id': ecriture.id, 'reference': ecriture.reference})
 
 
 # ── COMPTA3 — Comptes auxiliaires tiers ────────────────────────────────────

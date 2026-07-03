@@ -1158,6 +1158,81 @@ class PointageReleve(models.Model):
         return f'Pointage relevé {self.ligne_releve_id} ↔ GL {self.ligne_gl_id}'
 
 
+# ── XACC4 — Modèles de rapprochement (règles de contrepartie automatique) ──
+
+class ModeleRapprochement(models.Model):
+    """Règle de contrepartie automatique pour une ligne de relevé (XACC4).
+
+    Rien ne comptabilise automatiquement les agios/frais/virements récurrents
+    du relevé : une règle dit « toute ligne dont le libellé contient
+    ``motif`` va au compte ``compte_contrepartie`` ». Appliquée en bouton
+    un-clic (``services.appliquer_modele_rapprochement``) — ou automatiquement
+    si ``auto=True`` — elle crée l'écriture équilibrée banque↔contrepartie et
+    pointe la ligne de relevé. Le montant de l'écriture est celui de la ligne
+    de relevé (signé), sauf si ``montant_fixe`` est posé (montant imposé par la
+    règle, ex. un forfait de frais bancaires connu).
+    """
+    class TypeMotif(models.TextChoices):
+        CONTIENT = 'contient', 'Le libellé contient'
+        REGEX = 'regex', 'Expression régulière'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='modeles_rapprochement',
+        verbose_name='Société',
+    )
+    libelle = models.CharField(max_length=120, verbose_name='Libellé')
+    type_motif = models.CharField(
+        max_length=10, choices=TypeMotif.choices,
+        default=TypeMotif.CONTIENT, verbose_name='Type de motif')
+    motif = models.CharField(
+        max_length=200, verbose_name='Motif (libellé relevé)')
+    compte_contrepartie = models.ForeignKey(
+        CompteComptable,
+        on_delete=models.PROTECT,
+        related_name='modeles_rapprochement',
+        verbose_name='Compte de contrepartie',
+    )
+    # TVA optionnelle sur le montant de la contrepartie (ex. frais bancaires
+    # soumis à TVA) — taux en % (0-100). NULL = pas de ventilation TVA.
+    taux_tva = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        verbose_name='Taux de TVA (%)')
+    # Montant imposé par la règle (sinon : montant de la ligne de relevé).
+    montant_fixe = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Montant fixe')
+    # Application automatique (sans clic) — OFF par défaut : le founder décide
+    # au cas par cas tant que la règle n'est pas jugée fiable.
+    auto = models.BooleanField(default=False, verbose_name='Application automatique')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    priorite = models.PositiveIntegerField(
+        default=100, verbose_name='Priorité (plus petit = prioritaire)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Modèle de rapprochement'
+        verbose_name_plural = 'Modèles de rapprochement'
+        ordering = ['priorite', 'libelle']
+
+    def __str__(self):
+        return f'{self.libelle} ({self.motif!r} → {self.compte_contrepartie})'
+
+    def correspond(self, texte_libelle):
+        """Vrai si ``texte_libelle`` (libellé d'une ligne de relevé) matche."""
+        import re
+
+        texte = (texte_libelle or '')
+        if self.type_motif == self.TypeMotif.REGEX:
+            try:
+                return bool(re.search(self.motif, texte, re.IGNORECASE))
+            except re.error:
+                return False
+        return self.motif.strip().lower() in texte.lower()
+
+
 # ── FG124 — Caisse / petty cash (journal d'espèces) ────────────────────────
 
 class Caisse(models.Model):

@@ -53,6 +53,7 @@ from .models import (
     PaiementFacturePortail,
     MappingCompte, CompteAuxiliaire,
     PisteAuditComptable,
+    ModeleRapprochement,
 )
 
 
@@ -1692,6 +1693,96 @@ def accepter_suggestions_rapprochement(rapprochement):
         pointer_ligne_releve(ligne_releve, [meilleur['ligne_gl_id']])
         pointees.append(sugg['ligne_releve_id'])
     return {'pointees': pointees, 'ignorees': ignorees}
+
+
+# ── XACC4 — Modèles de rapprochement (règles de contrepartie automatique) ──
+
+def modele_correspondant(company, libelle_releve):
+    """Premier ``ModeleRapprochement`` actif dont le motif matche (ou None).
+
+    Trié par ``priorite`` croissante (plus petit = prioritaire). Lecture seule.
+    """
+    for modele in ModeleRapprochement.objects.filter(
+            company=company, actif=True).order_by('priorite', 'id'):
+        if modele.correspond(libelle_releve):
+            return modele
+    return None
+
+
+@transaction.atomic
+def appliquer_modele_rapprochement(ligne_releve, modele=None):
+    """Applique une règle de contrepartie à une ligne de relevé (XACC4).
+
+    Sans ``modele`` explicite, résout la première règle active dont le motif
+    matche le libellé (``modele_correspondant``) — lève ``ValidationError`` si
+    aucune ne correspond. Crée une écriture ÉQUILIBRÉE banque↔contrepartie
+    (débit/crédit selon le signe du montant : une sortie d'argent débite la
+    contrepartie et crédite la banque, une entrée l'inverse), ventile la TVA si
+    ``modele.taux_tva`` est posé, puis POINTE la ligne de relevé sur la ligne
+    banque de l'écriture créée. Respecte le verrou de période (``creer_
+    ecriture``). Idempotent : rejouer sur la même ligne de relevé déjà pointée
+    ne recrée rien (renvoie l'écriture existante liée à son pointage).
+    """
+    company = ligne_releve.company
+    rapprochement = ligne_releve.rapprochement
+    if ligne_releve.statut == LigneReleve.Statut.RAPPROCHEE:
+        pointage = PointageReleve.objects.filter(
+            ligne_releve=ligne_releve).select_related(
+            'ligne_gl__ecriture').first()
+        if pointage:
+            return pointage.ligne_gl.ecriture
+    if modele is None:
+        modele = modele_correspondant(company, ligne_releve.libelle)
+    if modele is None:
+        raise ValidationError(
+            "Aucun modèle de rapprochement ne correspond à cette ligne.")
+    if modele.company_id != company.id:
+        raise ValidationError("Modèle de rapprochement inconnu.")
+    montant = (Decimal(modele.montant_fixe)
+               if modele.montant_fixe is not None
+               else abs(Decimal(ligne_releve.montant or 0)))
+    if montant <= 0:
+        raise ValidationError(
+            "Le montant à comptabiliser doit être strictement positif.")
+    compte_banque = rapprochement.compte_tresorerie.compte_comptable
+    entree = (ligne_releve.montant or Decimal('0')) >= 0
+    lignes = []
+    if modele.taux_tva:
+        taux = Decimal(modele.taux_tva) / Decimal('100')
+        tva = (montant * taux / (1 + taux)).quantize(Decimal('0.01'))
+        ht = montant - tva
+        compte_tva = _assurer_compte(company, '34552')
+    else:
+        tva = Decimal('0')
+        ht = montant
+        compte_tva = None
+    if entree:
+        lignes.append({'compte': compte_banque, 'debit': montant,
+                       'credit': Decimal('0'), 'libelle': modele.libelle})
+        lignes.append({'compte': modele.compte_contrepartie, 'debit': Decimal('0'),
+                       'credit': ht, 'libelle': modele.libelle})
+        if tva:
+            lignes.append({'compte': compte_tva, 'debit': Decimal('0'),
+                           'credit': tva, 'libelle': f'TVA {modele.libelle}'})
+    else:
+        lignes.append({'compte': modele.compte_contrepartie, 'debit': ht,
+                       'credit': Decimal('0'), 'libelle': modele.libelle})
+        if tva:
+            lignes.append({'compte': compte_tva, 'debit': tva,
+                           'credit': Decimal('0'), 'libelle': f'TVA {modele.libelle}'})
+        lignes.append({'compte': compte_banque, 'debit': Decimal('0'),
+                       'credit': montant, 'libelle': modele.libelle})
+    journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+    ecriture = creer_ecriture(
+        company, journal, ligne_releve.date_operation,
+        f'{modele.libelle} — {ligne_releve.libelle}', lignes,
+        reference=ligne_releve.reference,
+        source_type='modele_rapprochement', source_id=ligne_releve.id,
+        statut=EcritureComptable.Statut.VALIDEE,
+    )
+    ligne_gl_banque = ecriture.lignes.get(compte=compte_banque)
+    pointer_ligne_releve(ligne_releve, [ligne_gl_banque.id])
+    return ecriture
 
 
 # ── FG124 — Caisse / petty cash (journal d'espèces) ────────────────────────

@@ -42,6 +42,7 @@ from .views import (
     PieceJustificativeViewSet,
     PisteAuditComptableViewSet,
     BalanceOuvertureViewSet,
+    ModeleRapprochementViewSet,
 )
 
 router = DefaultRouter()
@@ -56,6 +57,7 @@ router.register(r'immobilisations', ImmobilisationViewSet)
 router.register(r'dotations', DotationAmortissementViewSet)
 router.register(r'cessions', CessionImmobilisationViewSet)
 router.register(r'rapprochements', RapprochementBancaireViewSet)
+router.register(r'modeles-rapprochement', ModeleRapprochementViewSet)
 router.register(r'rapprochements-3voies', RapprochementViewSet,
                 basename='rapprochement-3voies')
 router.register(r'caisses', CaisseViewSet)

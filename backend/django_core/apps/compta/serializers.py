@@ -38,6 +38,7 @@ from .models import (
     AbonnementMonitoring,
     MappingCompte, CompteAuxiliaire, PieceJustificative,
     PisteAuditComptable,
+    ModeleRapprochement,
 )
 
 
@@ -1973,6 +1974,24 @@ class MappingCompteSerializer(serializers.ModelSerializer):
 
     def validate_compte(self, value):
         return _meme_societe(self, value, 'Compte')
+
+
+class ModeleRapprochementSerializer(serializers.ModelSerializer):
+    """Règle de contrepartie automatique (XACC4)."""
+    compte_contrepartie_numero = serializers.CharField(
+        source='compte_contrepartie.numero', read_only=True)
+
+    class Meta:
+        model = ModeleRapprochement
+        fields = [
+            'id', 'libelle', 'type_motif', 'motif', 'compte_contrepartie',
+            'compte_contrepartie_numero', 'taux_tva', 'montant_fixe', 'auto',
+            'actif', 'priorite', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_compte_contrepartie(self, value):
+        return _meme_societe(self, value, 'Compte de contrepartie')
 
 
 # ── COMPTA3 — Comptes auxiliaires tiers ────────────────────────────────────
