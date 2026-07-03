@@ -24,6 +24,37 @@ const jsonLd = {
   publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
   mainEntityOfPage: url,
 };
+
+// W290 — HowTo schema, en plus de l'Article ci-dessus (les 3 étapes déjà publiées dans l'article).
+const howToLd = {
+  '@context': 'https://schema.org',
+  '@type': 'HowTo',
+  name: 'Combien de panneaux et quelle puissance (kWc) pour ma maison ?',
+  description: 'La méthode pas à pas pour passer de votre facture d’électricité au nombre de panneaux solaires.',
+  step: [
+    {
+      '@type': 'HowToStep',
+      position: 1,
+      name: 'Trouver les kWh sur votre facture',
+      text: 'Additionnez les relevés bimestriels ONEE/Lydec/Redal/Amendis de l’année pour obtenir votre consommation annuelle en kWh — ou multipliez le relevé bimestriel moyen par six.',
+      url: `${url}#etape-1`,
+    },
+    {
+      '@type': 'HowToStep',
+      position: 2,
+      name: 'Passer des kWh aux kWc',
+      text: 'Divisez la consommation annuelle en kWh par la production attendue d’un kWc dans votre région (repère : 1 500 à 1 800 kWh par kWc et par an au Maroc) pour obtenir la puissance à installer en kWc.',
+      url: `${url}#etape-2`,
+    },
+    {
+      '@type': 'HowToStep',
+      position: 3,
+      name: 'Du kWc au nombre de panneaux',
+      text: 'Divisez la puissance en kWc par la puissance d’un panneau (environ 700 Wc pour les modules haute puissance actuels) pour obtenir le nombre de panneaux, à raison d’environ 5 à 6 m² de toiture par kWc.',
+      url: `${url}#etape-3`,
+    },
+  ],
+};
 ---
 
 <Layout
@@ -32,6 +63,7 @@ const jsonLd = {
   ogSlug="residentiel"
 >
   <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <script type="application/ld+json" set:html={JSON.stringify(howToLd)} />
   <div class="v2">
     <V2Enhance />
     <Article33Ribbon />
@@ -49,7 +81,7 @@ const jsonLd = {
         chiffre vers la puissance à installer, puis vers le nombre de panneaux.
       </p>
 
-      <h2 class="display v2-section-title mt-12 text-white">Étape 1 — trouver les kWh sur votre facture</h2>
+      <h2 id="etape-1" class="display v2-section-title mt-12 text-white">Étape 1 — trouver les kWh sur votre facture</h2>
       <p class="v2-lead mt-5 text-lune-soft">
         La donnée de départ est la consommation annuelle en kilowattheures (kWh). Elle figure sur le
         relevé bimestriel ONEE, ou dans l'espace client de votre distributeur : Lydec à Casablanca,
@@ -64,7 +96,7 @@ const jsonLd = {
         moyenne à recopier. Partez de votre réel.
       </p>
 
-      <h2 class="display v2-section-title mt-12 text-white">Étape 2 — passer des kWh aux kWc</h2>
+      <h2 id="etape-2" class="display v2-section-title mt-12 text-white">Étape 2 — passer des kWh aux kWc</h2>
       <p class="v2-lead mt-5 text-lune-soft">
         On divise la consommation annuelle par la production attendue d'un kWc dans votre région. Au
         Maroc, le repère est de <strong class="text-white">1 500 à 1 800 kWh produits par kWc installé
@@ -81,7 +113,7 @@ const jsonLd = {
         20 % de la loi 82-21 déplacent le résultat dans un sens ou dans l'autre.
       </p>
 
-      <h2 class="display v2-section-title mt-12 text-white">Étape 3 — du kWc au nombre de panneaux</h2>
+      <h2 id="etape-3" class="display v2-section-title mt-12 text-white">Étape 3 — du kWc au nombre de panneaux</h2>
       <p class="v2-lead mt-5 text-lune-soft">
         Les modules que nous posons aujourd'hui sont des panneaux haute puissance d'environ
         <strong class="text-white"> 700 Wc</strong> (Canadian Solar et Jinko en 710 Wc, monocristallins).
