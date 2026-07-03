@@ -137,6 +137,12 @@ class ParametrePaie(models.Model):
     anciennete_taux_5 = models.DecimalField(
         max_digits=6, decimal_places=2, default=Decimal('25'),
         verbose_name="Taux ancienneté seuil 5 (%)")
+    # XPAI1 — Solde de tout compte (STC) : plafond d'exonération IR de
+    # l'indemnité légale de licenciement/départ (barème art. 53 du Code du
+    # travail). Valeur ÉDITABLE par société ; défaut LF courant 1 000 000 MAD.
+    plafond_exoneration_ir_indemnite_licenciement = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('1000000'),
+        verbose_name="Plafond exonération IR indemnité de licenciement")
     actif = models.BooleanField(default=True, verbose_name='Actif')
     # PAIE3 — Validation fondateur des valeurs légales par défaut. Les valeurs
     # 2026 sont préremplies par le seed mais restent ÉDITABLES ; tant que le
@@ -717,13 +723,18 @@ class BulletinPaie(models.Model):
     # PAIE36 — Nature du bulletin : normal, RECTIFICATIF (corrige un bulletin
     # déjà validé/clôturé, qui reste figé) ou RAPPEL (régularisation/rattrapage
     # d'un mois antérieur sur un mois courant).
+    # XPAI1 — STC (solde de tout compte) : bulletin de sortie d'un employé,
+    # calculé une seule fois (dernier salaire proraté + indemnités de
+    # licenciement/préavis/congés non pris − avances/saisies en cours).
     TYPE_NORMAL = 'normal'
     TYPE_RECTIFICATIF = 'rectificatif'
     TYPE_RAPPEL = 'rappel'
+    TYPE_STC = 'stc'
     TYPE_BULLETIN_CHOICES = [
         (TYPE_NORMAL, 'Normal'),
         (TYPE_RECTIFICATIF, 'Rectificatif'),
         (TYPE_RAPPEL, 'Rappel'),
+        (TYPE_STC, 'Solde de tout compte'),
     ]
 
     # Champs de montant figés au moment du calcul (snapshot). Modifiables tant

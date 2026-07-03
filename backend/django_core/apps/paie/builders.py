@@ -217,3 +217,58 @@ def render_attestation_pdf(attestation_type, profil, *, bulletin=None,
     return _html_to_pdf(
         render_attestation_html(
             attestation_type, profil, bulletin=bulletin, today=today))
+
+
+# ── XPAI1 — Reçu pour solde de tout compte (STC) ────────────────────────────
+
+def render_stc_html(bulletin, *, today=None):
+    """Construit le HTML du reçu pour solde de tout compte (XPAI1).
+
+    Reprend le contexte du bulletin (``bulletin_context``) et affiche en plus
+    les lignes d'indemnités de fin de contrat déjà matérialisées sur le
+    bulletin STC (préfixe ``STC_`` des codes de ligne).
+    """
+    if today is None:
+        today = date.today()
+    ctx = bulletin_context(bulletin)
+    lignes_html = ''.join(
+        _LIGNE_TPL.format(**ligne) for ligne in ctx['lignes'])
+    date_txt = f'{today.day} {MOIS_FR[today.month]} {today.year}'
+    motif = escape(getattr(bulletin, 'motif', '') or '')
+    return f"""<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">
+<style>
+  body {{ font-family: sans-serif; font-size: 11px; color: #222; margin: 30px; }}
+  h1 {{ font-size: 18px; text-align: center; }}
+  table {{ width: 100%; border-collapse: collapse; margin-top: 8px; }}
+  th, td {{ border: 1px solid #ccc; padding: 4px 6px; }}
+  .total {{ font-weight: bold; font-size: 13px; margin-top: 10px; }}
+  .date {{ text-align: right; margin-top: 40px; }}
+  .signature {{ margin-top: 60px; display: flex; justify-content: space-between; }}
+</style></head><body>
+  <h1>Reçu pour solde de tout compte</h1>
+  <p><strong>Salarié :</strong> {ctx['employe']}
+     &nbsp; <strong>Matricule :</strong> {ctx['matricule']}
+     &nbsp; <strong>N° CNSS :</strong> {ctx['numero_cnss']}</p>
+  <p><strong>Période de sortie :</strong> {ctx['periode']}</p>
+  {f'<p><strong>Motif :</strong> {motif}</p>' if motif else ''}
+  <table>
+    <thead><tr><th>Code</th><th>Libellé</th><th>Montant (MAD)</th></tr></thead>
+    <tbody>{lignes_html}</tbody>
+  </table>
+  <p class="total">Net à payer (solde de tout compte) : {ctx['net_a_payer']} MAD</p>
+  <p>Je soussigné(e) {ctx['employe']}, reconnais avoir reçu de mon employeur la
+  somme ci-dessus au titre du solde de tout compte, et lui donne quittance,
+  sans réserve ni restriction, pour raison de salaire, indemnités et
+  accessoires de toute nature.</p>
+  <div class="signature">
+    <span>Signature de l'employeur</span>
+    <span>Signature du salarié (précédée de la mention « pour solde de tout
+    compte »)</span>
+  </div>
+  <p class="date">Fait le {escape(date_txt)}.</p>
+</body></html>"""
+
+
+def render_stc_pdf(bulletin, *, today=None):
+    """Reçu pour solde de tout compte → octets PDF (XPAI1)."""
+    return _html_to_pdf(render_stc_html(bulletin, today=today))

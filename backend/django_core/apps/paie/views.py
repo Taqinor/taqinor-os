@@ -61,6 +61,7 @@ from .services import (
     fichier_damancom_cnss,
     fichier_virement_paie,
     generer_bulletin,
+    generer_bulletin_stc,
     generer_ordre_virement,
     importer_elements_rh,
     journal_de_paie,
@@ -183,6 +184,76 @@ class ProfilPaieViewSet(_PaieBaseViewSet):
                 {'detail': str(exc)},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE)
         return _pdf_response(pdf, f'attestation_{type_att}_{profil.id}.pdf')
+
+    @action(detail=True, methods=['post'], url_path='stc')
+    def stc(self, request, pk=None):
+        """Solde de tout compte (STC) — génère le bulletin de sortie (XPAI1).
+
+        Corps : ``periode`` (id, requis — la période cible du STC) ;
+        ``motif`` (facultatif, sinon repris du motif de sortie RH) ;
+        ``mois_preavis`` (défaut 1) ; ``personnes_a_charge`` (défaut 0). Crée
+        (ou recalcule tant que non validé) un bulletin de nature STC.
+        """
+        profil = self.get_object()
+        periode_id = request.data.get('periode')
+        if not periode_id:
+            return Response(
+                {'detail': 'Champ "periode" requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            periode = PeriodePaie.objects.get(
+                pk=periode_id, company=request.user.company)
+        except (PeriodePaie.DoesNotExist, ValueError):
+            return Response(
+                {'detail': 'Période inconnue.'},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            mois_preavis = int(request.data.get('mois_preavis', 1))
+        except (TypeError, ValueError):
+            mois_preavis = 1
+        try:
+            pac = int(request.data.get('personnes_a_charge', 0))
+        except (TypeError, ValueError):
+            pac = 0
+        try:
+            bulletin = generer_bulletin_stc(
+                profil, periode, motif=request.data.get('motif', ''),
+                mois_preavis=mois_preavis, personnes_a_charge=pac)
+        except BulletinPaie.BulletinVerrouille as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            BulletinPaieSerializer(bulletin).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='stc-pdf')
+    def stc_pdf(self, request, pk=None):
+        """Reçu pour solde de tout compte au format PDF (XPAI1).
+
+        Sert le dernier bulletin STC du profil (peu importe son statut —
+        brouillon consultable avant validation, comme un aperçu).
+        """
+        profil = self.get_object()
+        bulletin = (
+            BulletinPaie.objects
+            .filter(company=request.user.company, profil=profil,
+                    type_bulletin=BulletinPaie.TYPE_STC)
+            .order_by('-date_creation')
+            .first()
+        )
+        if bulletin is None:
+            return Response(
+                {'detail': 'Aucun bulletin STC pour ce profil.'},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            pdf = builders.render_stc_pdf(bulletin)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        return _pdf_response(pdf, f'stc_{profil.id}.pdf')
 
 
 class RubriqueEmployeViewSet(_PaieBaseViewSet):

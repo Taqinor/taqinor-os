@@ -2289,3 +2289,281 @@ def recalculer_cumul_annuel(profil, annee):
         cumul.date_calcul = timezone.now()
         cumul.save()
     return cumul
+
+
+# ── XPAI1 — Solde de tout compte (STC) ──────────────────────────────────────
+
+# Barème de l'indemnité légale de licenciement (Code du travail marocain,
+# art. 53) : nombre d'heures de salaire par ANNÉE d'ancienneté, par tranche.
+# Tuples ``(borne_max_annees, heures_par_annee)`` ; la dernière tranche a une
+# ``borne_max`` à ``None`` (sans plafond). Barème standard (DÉCISION, valeurs
+# couramment citées) :
+#   * <= 5 ans     -> 96 h par année d'ancienneté ;
+#   * 6-10 ans     -> 144 h par année d'ancienneté ;
+#   * 11-15 ans    -> 192 h par année d'ancienneté ;
+#   * > 15 ans     -> 240 h par année d'ancienneté.
+BAREME_INDEMNITE_LICENCIEMENT_ART53 = [
+    (Decimal('5'), Decimal('96')),
+    (Decimal('10'), Decimal('144')),
+    (Decimal('15'), Decimal('192')),
+    (None, Decimal('240')),
+]
+
+
+def indemnite_licenciement_art53(anciennete_annees, taux_horaire_base,
+                                 bareme=None):
+    """Indemnité légale de licenciement/départ — barème art. 53 (XPAI1).
+
+    Le barème est PROGRESSIF PAR TRANCHE : chaque tranche d'ancienneté (0-5,
+    6-10, 11-15, >15 ans) contribue ses PROPRES heures de salaire par année
+    couverte par la tranche (jamais tout à un seul taux — c'est le taux
+    marginal de la tranche qui s'applique à la fraction d'années qu'elle
+    couvre). ``anciennete_annees`` peut être fractionnaire (années complètes +
+    mois) ; ``taux_horaire_base`` est le taux horaire de référence du salarié.
+
+    Renvoie un ``Decimal`` >= 0 arrondi au centime. 0 si l'ancienneté ou le
+    taux horaire sont nuls/négatifs.
+    """
+    annees = Decimal(anciennete_annees or 0)
+    taux_h = Decimal(taux_horaire_base or 0)
+    if annees <= 0 or taux_h <= 0:
+        return Decimal('0.00')
+    if bareme is None:
+        bareme = BAREME_INDEMNITE_LICENCIEMENT_ART53
+
+    total_heures = Decimal('0')
+    borne_basse = Decimal('0')
+    for borne_max, heures_par_annee in bareme:
+        if borne_max is None or annees <= borne_max:
+            total_heures += (annees - borne_basse) * heures_par_annee
+            break
+        total_heures += (borne_max - borne_basse) * heures_par_annee
+        borne_basse = borne_max
+    return _q(total_heures * taux_h)
+
+
+def indemnite_preavis(salaire_mensuel, mois_preavis=1):
+    """Indemnité de préavis — ``salaire_mensuel × mois_preavis`` (XPAI1).
+
+    ``mois_preavis`` par défaut à 1 mois (durée courante pour un cadre/agent
+    de maîtrise ; éditable par l'appelant selon la catégorie/ancienneté).
+    Renvoie un ``Decimal`` >= 0 au centime.
+    """
+    salaire = Decimal(salaire_mensuel or 0)
+    mois = Decimal(mois_preavis or 0)
+    if salaire <= 0 or mois <= 0:
+        return Decimal('0.00')
+    return _q(salaire * mois)
+
+
+def indemnite_compensatrice_conges(company, employe_id, annee, taux_journalier):
+    """Indemnité compensatrice de congés payés non pris (XPAI1).
+
+    Valorise le solde de congés DISPONIBLE (``solde_conge_disponible``) au
+    ``taux_journalier`` du salarié. Renvoie un ``Decimal`` >= 0 au centime.
+    """
+    solde = solde_conge_disponible(company, employe_id, annee)
+    taux = Decimal(taux_journalier or 0)
+    if solde <= 0 or taux <= 0:
+        return Decimal('0.00')
+    return _q(solde * taux)
+
+
+def exoneration_ir_indemnite_licenciement(indemnite, parametre):
+    """Part EXONÉRÉE d'IR de l'indemnité de licenciement (XPAI1).
+
+    Cadre marocain : l'indemnité légale de licenciement/départ est exonérée
+    d'IR dans la limite du barème légal ; au-delà d'un plafond (paramétré par
+    la Loi de Finances,
+    ``ParametrePaie.plafond_exoneration_ir_indemnite_licenciement``, défaut
+    1 000 000 MAD), l'excédent est réintégré dans la base imposable. Renvoie
+    ``(part_exoneree, part_imposable)`` — deux ``Decimal`` au centime, sommant
+    exactement à ``indemnite``.
+    """
+    indemnite = Decimal(indemnite or 0)
+    if indemnite <= 0:
+        return Decimal('0.00'), Decimal('0.00')
+    plafond = Decimal('1000000')
+    if parametre is not None:
+        plafond = Decimal(
+            parametre.plafond_exoneration_ir_indemnite_licenciement or 0)
+    if indemnite <= plafond:
+        return _q(indemnite), Decimal('0.00')
+    return _q(plafond), _q(indemnite - plafond)
+
+
+def calculer_stc(profil, periode, *, motif='', mois_preavis=1,
+                 personnes_a_charge=0):
+    """Calcule le solde de tout compte (STC) d'un profil sortant (XPAI1).
+
+    Moteur de calcul additif SANS effet de bord (renvoie un dict, ne crée
+    aucun objet) : part du bulletin normal calculé par ``calculer_bulletin``
+    (dernier salaire proraté + éléments variables de la période), puis AJOUTE
+    les indemnités de fin de contrat :
+
+    * indemnité compensatrice de congés payés non pris
+      (``indemnite_compensatrice_conges``) ;
+    * indemnité de préavis (``indemnite_preavis``, si ``mois_preavis > 0``) ;
+    * indemnité légale de licenciement (barème art. 53,
+      ``indemnite_licenciement_art53``), avec EXONÉRATION IR partielle
+      (``exoneration_ir_indemnite_licenciement``) — seule la part imposable
+      entre dans le net imposable/IR, la part exonérée est versée nette.
+
+    Le solde des ``AvanceSalarie`` et ``SaisieArret`` actifs est retenu comme
+    pour un bulletin normal (déjà couvert par ``calculer_bulletin``).
+
+    ``motif`` est informatif (tracé sur le bulletin). Renvoie un dict de même
+    forme que ``calculer_bulletin`` PLUS les clés
+    ``{'indemnite_conges', 'indemnite_preavis', 'indemnite_licenciement',
+    'indemnite_licenciement_exoneree', 'indemnite_licenciement_imposable',
+    'anciennete_annees'}``. Donnée SENSIBLE (salaires) — usage interne paie.
+    """
+    le_jour = date(periode.annee, periode.mois, 1)
+    parametre = parametre_en_vigueur(profil.company, le_jour)
+    bareme = bareme_en_vigueur(profil.company, le_jour)
+
+    from apps.rh import selectors as rh_selectors  # import paresseux cross-app
+
+    date_embauche = rh_selectors.date_embauche_employe(
+        profil.company, profil.employe_id)
+    date_sortie, motif_sortie = rh_selectors.sortie_employe(
+        profil.company, profil.employe_id)
+    jour_reference = date_sortie or le_jour
+    anciennete_annees = calculer_anciennete_annees(date_embauche, jour_reference)
+
+    # Base du calcul normal (salaire proraté, éléments variables, retenues
+    # d'avances/saisies déjà gérées par calculer_bulletin).
+    base = calculer_bulletin(profil, periode, personnes_a_charge)
+
+    taux_j = taux_journalier_profil(profil)
+    indemnite_conges = indemnite_compensatrice_conges(
+        profil.company, profil.employe_id, periode.annee, taux_j)
+
+    salaire_mensuel = Decimal(profil.salaire_base or 0)
+    indemnite_pre = (
+        indemnite_preavis(salaire_mensuel, mois_preavis)
+        if mois_preavis and Decimal(mois_preavis) > 0 else Decimal('0.00')
+    )
+
+    taux_h = taux_horaire_base_profil(profil)
+    indemnite_licenciement = indemnite_licenciement_art53(
+        anciennete_annees, taux_h)
+    exoneree, imposable = exoneration_ir_indemnite_licenciement(
+        indemnite_licenciement, parametre)
+
+    # Les indemnités s'ajoutent au NET (versées au salarié) ; seule la part
+    # IMPOSABLE de l'indemnité de licenciement rejoint la base IR — recalcul
+    # de l'IR sur le net imposable augmenté de cette fraction.
+    net_imposable_stc = _q(base['net_imposable'] + imposable)
+    ir_stc = Decimal('0')
+    if bareme and parametre:
+        ir_stc = compute_ir(net_imposable_stc, bareme, parametre,
+                            personnes_a_charge)
+    ir_stc = _q(ir_stc)
+    delta_ir = _q(ir_stc - base['ir'])
+
+    indemnites_nettes = _q(indemnite_conges + indemnite_pre + exoneree + imposable)
+    net_a_payer_stc = _q(base['net_a_payer'] + indemnites_nettes - delta_ir)
+
+    lignes = list(base['lignes'])
+    if indemnite_conges > 0:
+        lignes.append({
+            'code': 'STC_CONGES',
+            'libelle': 'Indemnité compensatrice de congés payés',
+            'type': Rubrique.TYPE_GAIN, 'montant': indemnite_conges,
+        })
+    if indemnite_pre > 0:
+        lignes.append({
+            'code': 'STC_PREAVIS',
+            'libelle': 'Indemnité de préavis',
+            'type': Rubrique.TYPE_GAIN, 'montant': indemnite_pre,
+        })
+    if indemnite_licenciement > 0:
+        lignes.append({
+            'code': 'STC_LICENCIEMENT',
+            'libelle': 'Indemnité légale de licenciement (art. 53)',
+            'type': Rubrique.TYPE_GAIN, 'montant': indemnite_licenciement,
+        })
+    if delta_ir != 0:
+        lignes.append({
+            'code': 'STC_IR_INDEMNITE',
+            'libelle': "IR sur part imposable de l'indemnité de licenciement",
+            'type': Rubrique.TYPE_RETENUE, 'montant': delta_ir,
+        })
+
+    resultat = dict(base)
+    resultat.update({
+        'ir': ir_stc,
+        'net_imposable': net_imposable_stc,
+        'net_a_payer': net_a_payer_stc,
+        'lignes': lignes,
+        'indemnite_conges': indemnite_conges,
+        'indemnite_preavis': indemnite_pre,
+        'indemnite_licenciement': indemnite_licenciement,
+        'indemnite_licenciement_exoneree': exoneree,
+        'indemnite_licenciement_imposable': imposable,
+        'anciennete_annees': anciennete_annees,
+        'motif': motif or motif_sortie or '',
+    })
+    return resultat
+
+
+def generer_bulletin_stc(profil, periode, *, motif='', mois_preavis=1,
+                         personnes_a_charge=0):
+    """Matérialise le bulletin STC d'un profil sortant (XPAI1).
+
+    Calcule via ``calculer_stc`` puis persiste un ``BulletinPaie`` de nature
+    ``TYPE_STC`` (même garde d'immuabilité que les autres bulletins — figé une
+    fois validé). Opération atomique. Renvoie le ``BulletinPaie`` STC
+    (brouillon).
+    """
+    from .models import BulletinPaie, LigneBulletin
+
+    if profil.company_id != periode.company_id:
+        raise ValueError("Profil et période de sociétés différentes.")
+    if periode.statut == PeriodePaie.STATUT_CLOTUREE:
+        raise BulletinPaie.BulletinVerrouille(
+            'Période clôturée : génération de bulletin STC interdite.')
+
+    resultat = calculer_stc(
+        profil, periode, motif=motif, mois_preavis=mois_preavis,
+        personnes_a_charge=personnes_a_charge)
+    lignes = resultat.get('lignes', [])
+
+    with transaction.atomic():
+        bulletin = (
+            BulletinPaie.objects
+            .select_for_update()
+            .filter(periode=periode, profil=profil)
+            .first()
+        )
+        if bulletin is not None and bulletin.est_valide:
+            raise BulletinPaie.BulletinVerrouille(
+                'Bulletin déjà validé pour cette période : STC impossible.')
+        if bulletin is None:
+            bulletin = BulletinPaie(
+                company=periode.company, periode=periode, profil=profil)
+
+        bulletin.type_bulletin = BulletinPaie.TYPE_STC
+        bulletin.motif = resultat.get('motif', '') or motif
+        bulletin.personnes_a_charge = max(0, int(personnes_a_charge or 0))
+        for champ in BulletinPaie.SNAPSHOT_FIELDS:
+            if champ == 'personnes_a_charge':
+                continue
+            if champ in resultat:
+                setattr(bulletin, champ, resultat[champ])
+        bulletin.statut = BulletinPaie.STATUT_BROUILLON
+        bulletin.save()
+
+        bulletin.lignes.all().delete()
+        for ordre, ligne in enumerate(lignes, start=1):
+            LigneBulletin.objects.create(
+                company=periode.company,
+                bulletin=bulletin,
+                code=ligne.get('code', ''),
+                libelle=ligne.get('libelle', ''),
+                type=ligne.get('type', 'gain'),
+                montant=ligne.get('montant', Decimal('0')),
+                ordre=ordre,
+            )
+        return bulletin

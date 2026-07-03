@@ -151,6 +151,24 @@ def date_embauche_employe(company, employe_id):
         return None
 
 
+def sortie_employe(company, employe_id):
+    """Date/motif de sortie d'un employé (cross-app, pour la paie XPAI1).
+
+    Sélecteur cadré société : la paie l'utilise pour générer le solde de tout
+    compte (STC) sans jamais importer ``rh.models`` directement. Renvoie
+    ``(date_sortie, motif_sortie)`` — les deux peuvent être ``None``/vides si
+    le dossier n'a pas encore de date de sortie renseignée — ou
+    ``(None, None)`` si le dossier est introuvable ou hors société.
+    """
+    if company is None or employe_id is None:
+        return None, None
+    try:
+        dossier = DossierEmploye.objects.get(company=company, pk=employe_id)
+        return dossier.date_sortie, dossier.motif_sortie
+    except DossierEmploye.DoesNotExist:
+        return None, None
+
+
 def labour_hours_for_installation(installation_id, company=None):
     """Heures de main-d'œuvre imputées à une installation (job-costing, FG167).
 
