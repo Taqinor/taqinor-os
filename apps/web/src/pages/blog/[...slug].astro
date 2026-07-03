@@ -12,7 +12,7 @@
  * JSON-LD BlogPosting + BreadcrumbList sont construits ICI à partir du
  * frontmatter, pour que les fichiers .md ne portent que frontmatter + corps.
  * Canonique auto-référencé : émis par le Layout via l'URL de la page. L'image
- * OG vient de `ogSlug` (repli 'accueil'). Liens précédent/suivant + articles
+ * OG vient de `ogSlug` (repli 'blog' — W292). Liens précédent/suivant + articles
  * liés (par tag partagé) en pied d'article.
  */
 import { getCollection, render } from 'astro:content';
@@ -58,10 +58,12 @@ const readingMinutes = estimateReadingTime(body ?? '');
 const toc = extractTocFromMarkdown(body ?? '');
 const showToc = toc.length >= 3;
 
-// W291 — image OG déjà calculée par le Layout (ogSlug ?? 'accueil' → /og/<slug>.png) ;
+// W291 — image OG déjà calculée par le Layout (ogSlug ?? 'blog' → /og/<slug>.png) ;
 // on reproduit ici la même URL pour l'exposer au BlogPosting, Google recommandant
 // explicitement `image` pour l'éligibilité aux rich results Article.
-const schemaImageUrl = new URL(`/og/${data.ogSlug ?? 'accueil'}.png`, Astro.site).href;
+// W292 — repli générique 'blog' (au lieu de 'accueil') pour tout article sans
+// ogSlug propre : une vignette « Blog Taqinor » reste plus juste qu'accueil.
+const schemaImageUrl = new URL(`/og/${data.ogSlug ?? 'blog'}.png`, Astro.site).href;
 
 const blogPosting = {
   '@context': 'https://schema.org',
@@ -91,7 +93,7 @@ const breadcrumbLd = {
 <Layout
   title={`${data.title} | Blog Taqinor`}
   description={data.description}
-  ogSlug={data.ogSlug ?? 'accueil'}
+  ogSlug={data.ogSlug ?? 'blog'}
 >
   <script type="application/ld+json" set:html={JSON.stringify(blogPosting)} />
   <script type="application/ld+json" set:html={JSON.stringify(breadcrumbLd)} />

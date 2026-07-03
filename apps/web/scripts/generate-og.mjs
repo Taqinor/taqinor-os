@@ -29,6 +29,20 @@ const PAGES = [
   // proposition privé, transféré sur WhatsApp par le client, ne doit jamais
   // pousser ces données au-dessus d'une image générique de la page d'accueil).
   { slug: 'proposition', title: 'Votre proposition\nsolaire', subtitle: 'Étude personnalisée — chiffrage détaillé Taqinor', photo: 'installation-crepuscule-1024.webp' },
+  // W292 — catégories de service + génériques guides/blog : avant cette tâche
+  // 7 images couvraient 110+ pages (la plupart repliaient sur accueil/
+  // equipement), donc la plupart des partages WhatsApp/social montraient la
+  // mauvaise vignette. Chaque nouvelle entrée réutilise une photo RÉELLE déjà
+  // au catalogue (public/photos/), jamais une image inventée.
+  { slug: 'pompage-solaire', title: 'Pompage solaire\nagricole', subtitle: 'Irrigation sans facture — dimensionné sur votre HMT et débit', photo: 'champ-villa-1024.webp' },
+  { slug: 'nos-solutions', title: 'Nos solutions\nsolaires', subtitle: 'Résidentiel, professionnel, pompage — un seul interlocuteur', photo: 'equipe-pose-structure-1024.webp' },
+  { slug: 'garanties', title: 'Garanties\net matériel', subtitle: '10 à 25 ans — Canadian Solar · Deye · Dyness', photo: 'pose-134-1024.webp' },
+  { slug: 'financement', title: 'Financement\nsolaire', subtitle: 'Comptant, crédit, leasing — simulation honnête', photo: 'portrait-400-1024.webp' },
+  { slug: 'batteries-stockage', title: 'Batteries\net stockage', subtitle: 'Dyness LFP — 6 000 cycles, garantie 10 ans', photo: 'mur-technique-dyness-1024.webp' },
+  { slug: 'maintenance-monitoring', title: 'Maintenance\net monitoring', subtitle: 'Supervision Deye Cloud — SAV avant la réclamation', photo: 'entretien-jet-1024.webp' },
+  { slug: 'recharge-voiture-electrique-solaire', title: 'Recharger sa voiture\nau solaire', subtitle: 'Borne 7 à 22 kW — au fil du surplus photovoltaïque', photo: 'equipe-gilet-taqinor-1024.webp' },
+  { slug: 'guides', title: 'Guides solaires', subtitle: 'Comprendre avant de signer — réponses factuelles', photo: 'detail-cablage-1024.webp' },
+  { slug: 'blog', title: 'Blog Taqinor', subtitle: 'Prix, retours de chantier, réglementation 82-21', photo: 'mesure-rails-1024.webp' },
 ];
 
 function esc(s) {
