@@ -17,6 +17,19 @@ export interface Testimonial {
   city: string;
   system: string;
   date?: string;
+  /**
+   * W282 — vidéo témoignage auto-hébergée (scaffold), optionnelle. Style
+   * UGC WhatsApp (brut, non produit — la recherche montre que ce format
+   * inspire plus confiance qu'une vidéo léchée). Renseigner UNIQUEMENT des
+   * chemins vers de vrais clips reçus et consentis par le client (WG6) ;
+   * ne jamais fabriquer de placeholder. mp4 obligatoire si vidéo, webm
+   * optionnel (meilleure compression, servi en priorité par <source>).
+   * Chemins attendus sous /public (ex. /videos/temoignages/nom.mp4).
+   */
+  videoMp4?: string;
+  videoWebm?: string;
+  /** Texte alternatif court décrivant la vidéo (accessibilité, requis si videoMp4 est renseigné). */
+  videoAlt?: string;
 }
 
 /** LIVRÉ VIDE — les vrais avis sont ajoutés plus tard par le fondateur. Ne jamais fabriquer. */
