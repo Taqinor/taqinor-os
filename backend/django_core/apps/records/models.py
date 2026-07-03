@@ -45,6 +45,12 @@ ALLOWED_TARGETS = {
     # MÊME entrée pour les commentaires génériques (records.Comment) sur les
     # articles KB.
     ('kb', 'kbarticle'),
+    # XGED15 — chatter documentaire : réutilise le chatter générique @mentions
+    # (FG7, `records.Comment`) sur un document GED au lieu d'un système de
+    # mentions parallèle. N'active QUE notes+@mentions ; le journal automatique
+    # des événements majeurs (nouvelle version, statut, partage, signature) vit
+    # à part dans `ged.DocumentActivity` (couche séparée, complète GED35).
+    ('ged', 'document'),
 }
 
 

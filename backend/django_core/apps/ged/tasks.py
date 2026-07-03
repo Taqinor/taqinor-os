@@ -95,3 +95,32 @@ def verifier_integrite_archives_task():
         '%d altéré(s), %d indisponible(s)',
         total['total'], total['ok'], total['altere'], total['indisponible'])
     return total
+
+
+@shared_task(name='ged.poll_mail_intake')
+def poll_mail_intake_task():
+    """XGED9 — Relève l'ingestion email→GED de chaque société active.
+
+    KEY-GATED : `services.mail_intake_enabled()` no-op propre sans le flag.
+    Une société KO n'interrompt jamais les suivantes."""
+    from authentication.models import Company
+
+    from . import services
+
+    if not services.mail_intake_enabled():
+        return {'fetched': 0, 'imported': 0}
+    total = {'fetched': 0, 'imported': 0}
+    for company in Company.objects.filter(actif=True):
+        try:
+            res = services.poll_mail_intake(company)
+            total['fetched'] += res['fetched']
+            total['imported'] += res['imported']
+        except Exception:  # pragma: no cover - défensif, une société KO
+            # n'interrompt jamais les suivantes.
+            logger.warning(
+                'ged.poll_mail_intake: échec société %s', company.pk,
+                exc_info=True)
+    logger.info(
+        'ged.poll_mail_intake: %d relevé(s), %d importé(s)',
+        total['fetched'], total['imported'])
+    return total
