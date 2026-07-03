@@ -223,3 +223,60 @@ def send_relance_email(facture, *, niveau_nom='', message='', user=None,
     log.erreur = err
     log.save()
     return log
+
+
+def send_pre_echeance_email(facture, *, user=None):
+    """XFAC7 — envoie le rappel de courtoisie PRÉ-échéance (J-N avant
+    ``date_echeance``, jamais après) et le consigne. Utilise le modèle
+    ``EmailTemplate`` (clé ``pre_echeance``), NO-OP réseau sans clé d'envoi
+    configurée (backend console) — même patron que ``send_relance_email``.
+    Inclut le lien de paiement FG53 quand disponible. Renvoie l'EmailLog créé.
+    """
+    from apps.parametres.models_email import EmailTemplate
+
+    client = getattr(facture, 'client', None)
+    dest = (getattr(client, 'email', '') or '').strip()
+    reference = getattr(facture, 'reference', '') or ''
+    nom_client = ''
+    civilite = ''
+    if client is not None:
+        nom_client = f"{client.nom} {getattr(client, 'prenom', '') or ''}".strip()
+
+    lien = ''
+    try:
+        from .services import create_payment_link
+        from .payments.providers import get_provider
+        link = create_payment_link(facture=facture)
+        session = get_provider(link.provider).create_session(link)
+        lien = session.get('pay_url') or ''
+    except Exception:  # pragma: no cover — lien de paiement best-effort
+        lien = ''
+
+    rendered = EmailTemplate.render(
+        getattr(facture, 'company', None), 'pre_echeance',
+        civilite=civilite, nom=nom_client, reference=reference, lien=lien)
+    sujet = rendered['sujet'] or f'Rappel amical — échéance {reference}'
+    corps = rendered['corps'] or (
+        f"Bonjour {nom_client},\n\nVotre facture {reference} arrive "
+        f"prochainement à échéance.\n\nCordialement,\nL'équipe TAQINOR")
+
+    log = EmailLog(
+        company=getattr(facture, 'company', None),
+        direction=EmailLog.Direction.SORTANT,
+        client=client, facture=facture,
+        to_email=dest, from_email=_from_email(),
+        sujet=sujet[:300], corps=corps, reference=reference[:80],
+        created_by=user if getattr(user, 'is_authenticated', False) else None,
+    )
+
+    if not dest:
+        log.statut = EmailLog.Statut.ECHEC
+        log.erreur = 'Aucune adresse email destinataire.'
+        log.save()
+        return log
+
+    ok, err = _send(dest, sujet, corps)
+    log.statut = EmailLog.Statut.ENVOYE if ok else EmailLog.Statut.ECHEC
+    log.erreur = err
+    log.save()
+    return log

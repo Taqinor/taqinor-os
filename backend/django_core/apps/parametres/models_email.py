@@ -58,6 +58,16 @@ EMAIL_TEMPLATE_DEFAULTS = {
             'Vous avez une nouvelle notification concernant {reference}.\n\n'
             'Cordialement,\nL\'équipe Taqinor',
     },
+    # XFAC7 — rappel de courtoisie PRÉ-échéance (J-N avant échéance, jamais
+    # après). Ton amical, distinct de la relance (qui part APRÈS échéance).
+    'pre_echeance': {
+        'sujet': 'Rappel amical — échéance à venir ({reference})',
+        'corps':
+            'Bonjour {civilite} {nom},\n\n'
+            'Votre facture Taqinor ({reference}) arrive prochainement à '
+            'échéance. Vous pouvez régler dès maintenant : {lien}\n\n'
+            'Merci de votre confiance,\nL\'équipe Taqinor',
+    },
 }
 
 
@@ -68,6 +78,7 @@ EMAIL_TEMPLATE_PLACEHOLDERS = {
     'facture': ['{civilite}', '{nom}', '{reference}', '{lien}'],
     'relance': ['{civilite}', '{nom}', '{reference}', '{lien}'],
     'notification': ['{civilite}', '{nom}', '{reference}', '{lien}', '{n}'],
+    'pre_echeance': ['{civilite}', '{nom}', '{reference}', '{lien}'],
 }
 
 
@@ -85,6 +96,8 @@ class EmailTemplate(models.Model):
         FACTURE = 'facture', 'Facture'
         RELANCE = 'relance', 'Rappel de paiement'
         NOTIFICATION = 'notification', 'Notification'
+        # XFAC7 — rappel de courtoisie PRÉ-échéance (J-N avant échéance).
+        PRE_ECHEANCE = 'pre_echeance', 'Rappel pré-échéance'
 
     company = models.ForeignKey(
         'authentication.Company',

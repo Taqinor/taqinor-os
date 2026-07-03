@@ -260,6 +260,15 @@ class CompanyProfile(models.Model):
         default=0,
         help_text="Rétention du journal d'audit en jours (0 = illimité).")
 
+    # ── XFAC7 — rappel de courtoisie PRÉ-échéance (J-N avant échéance) ──
+    # N jours AVANT date_echeance d'une facture émise, envoie un rappel amical
+    # (prouvé pour réduire les retards — Chargebee/Odoo). Défaut 5, 0 = désactivé
+    # → comportement historique inchangé tant que la société n'y touche pas.
+    rappel_pre_echeance_jours = models.PositiveIntegerField(
+        default=5,
+        help_text="Jours avant échéance pour le rappel de courtoisie "
+                  "(0 = désactivé).")
+
     class Meta:
         verbose_name = 'Profil entreprise'
 

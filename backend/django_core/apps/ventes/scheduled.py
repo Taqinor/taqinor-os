@@ -269,3 +269,66 @@ def devis_followup_nudges():
     count = send_devis_followup_nudges()
     logger.info('devis_followup_nudges: %d nudge(s) déclenchés', count)
     return count
+
+
+# XFAC7 — marqueur dédié du rappel de courtoisie pré-échéance, pour
+# distinguer son log d'un email de relance classique (idempotence par jour).
+PRE_ECHEANCE_MARKER = 'pre_echeance'
+
+
+@shared_task(name='ventes.pre_echeance_reminders')
+def pre_echeance_reminders():
+    """XFAC7 — rappel de courtoisie J-N AVANT échéance (jamais après).
+
+    Pour chaque facture ÉMISE (jamais payée/annulée/exclue) dont l'échéance
+    tombe dans EXACTEMENT N jours (N = ``CompanyProfile.rappel_pre_echeance_
+    jours`` de la société, défaut 5, 0 = désactivé), envoie l'email de
+    courtoisie (clé ``EmailTemplate`` ``pre_echeance``, NO-OP réseau sans clé
+    d'envoi) avec le lien de paiement FG53 si disponible, et consigne dans
+    ``EmailLog``. Idempotent : un log dédié (``reference`` suffixée du
+    marqueur) empêche un second envoi pour la même facture. Renvoie le
+    nombre de rappels envoyés."""
+    from .models import EmailLog, Facture
+    from .email_service import send_pre_echeance_email
+    from apps.parametres.models_company import CompanyProfile
+
+    today = casablanca_today()
+    sent = 0
+    candidates = Facture.objects.filter(
+        statut=Facture.Statut.EMISE, exclu_relances=False,
+        date_echeance__isnull=False,
+    ).select_related('client', 'company').prefetch_related(
+        'lignes', 'paiements', 'avoirs')
+
+    profiles_cache = {}
+    for facture in candidates:
+        if facture.montant_du <= 0:
+            continue
+        company_id = facture.company_id
+        if company_id not in profiles_cache:
+            profiles_cache[company_id] = CompanyProfile.get(
+                company=facture.company)
+        profile = profiles_cache[company_id]
+        n = getattr(profile, 'rappel_pre_echeance_jours', 5) or 0
+        if n <= 0:
+            continue
+        if facture.date_echeance != today + timedelta(days=n):
+            continue
+        # Idempotence : un seul rappel par facture (le marqueur reste tant
+        # que la facture n'a qu'une échéance figée — pas de doublon possible
+        # même si le job tourne plusieurs fois le même jour).
+        deja_envoye = EmailLog.objects.filter(
+            facture=facture, reference__endswith=f'::{PRE_ECHEANCE_MARKER}',
+        ).exists()
+        if deja_envoye:
+            continue
+        log = send_pre_echeance_email(facture, user=None)
+        # Marque le log avec le suffixe dédié (idempotence future) sans
+        # perdre la référence facture d'origine.
+        log.reference = f'{(facture.reference or "")[:70]}::' \
+            f'{PRE_ECHEANCE_MARKER}'
+        log.save(update_fields=['reference'])
+        sent += 1
+
+    logger.info('pre_echeance_reminders: %s rappel(s) envoyé(s)', sent)
+    return sent
