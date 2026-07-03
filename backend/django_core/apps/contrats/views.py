@@ -74,6 +74,7 @@ from .serializers import (
     EcheancierContratSerializer,
     EngagementSLASerializer,
     EtapeApprobationSerializer,
+    GenererDevisRenouvellementSerializer,
     IndexationActionSerializer,
     IndexationPrixSerializer,
     LigneEcheanceSerializer,
@@ -905,6 +906,41 @@ class ContratViewSet(_ContratsBaseViewSet):
         return Response(
             ResiliationSerializer(
                 resiliation, context={'request': request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=['post'],
+            url_path='generer-devis-renouvellement')
+    def generer_devis_renouvellement(self, request, pk=None):
+        """Génère un devis de renouvellement AVANT échéance (XCTR12).
+
+        Corps optionnel : ``valeur_indice`` (révise le montant proposé via
+        l'indexation active du contrat). Crée un ``ventes.Devis`` (référence
+        via ``ventes.utils.references`` — jamais ``count()+1``), lié au
+        contrat via ``ContratLien``. Refuse (400) si un devis de
+        renouvellement OUVERT existe déjà (garde anti-doublon — un double clic
+        ne crée jamais deux devis) ou si le contrat n'a pas de client
+        résoluble. Le ``Contrat.statut`` n'est JAMAIS modifié. L'utilisateur
+        et la société sont posés CÔTÉ SERVEUR.
+        """
+        contrat = self.get_object()
+        body = GenererDevisRenouvellementSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        try:
+            devis = services.generer_devis_renouvellement(
+                contrat,
+                auteur=request.user,
+                valeur_indice=body.validated_data.get('valeur_indice'),
+            )
+        except services.RenouvellementDevisError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                'devis_id': devis.id,
+                'devis_reference': devis.reference,
+                'note': devis.note,
+            },
             status=status.HTTP_201_CREATED,
         )
 

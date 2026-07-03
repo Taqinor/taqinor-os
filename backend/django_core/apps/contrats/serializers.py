@@ -759,6 +759,19 @@ class ResilierContratSerializer(serializers.Serializer):
         max_digits=14, decimal_places=2, required=False, allow_null=True)
 
 
+class GenererDevisRenouvellementSerializer(serializers.Serializer):
+    """Corps de POST /contrats/<id>/generer-devis-renouvellement/ (XCTR12).
+
+    ``valeur_indice`` (optionnel) : valeur COURANTE de l'indice de référence
+    de la première ``IndexationPrix`` active du contrat — si fournie, le
+    montant proposé est révisé par la formule d'indexation (CONTRAT32) ; sinon
+    le montant courant du contrat est repris tel quel.
+    """
+    valeur_indice = serializers.DecimalField(
+        max_digits=14, decimal_places=4, required=False, allow_null=True,
+        min_value=0)
+
+
 class JalonContratSerializer(serializers.ModelSerializer):
     """Jalon / étape clé d'un contrat (CONTRAT26).
 

@@ -2628,3 +2628,186 @@ def rollback_campagne_revision(company, avenant_ids, *, auteur=None):
         )
         compensations.append(compensation)
     return compensations
+
+
+# ---------------------------------------------------------------------------
+# XCTR12 — Devis de renouvellement généré avant échéance
+# ---------------------------------------------------------------------------
+
+
+class RenouvellementDevisError(Exception):
+    """Levée quand un devis de renouvellement ne peut pas être généré.
+
+    Ex. : un devis de renouvellement OUVERT (brouillon/envoyé) existe déjà
+    pour ce contrat (garde anti-doublon — un double clic ne crée jamais deux
+    devis), ou le contrat n'a pas de client résoluble.
+    """
+
+
+_STATUTS_DEVIS_FERMES = ('accepte', 'refuse', 'expire')
+
+
+def devis_renouvellement_ouvert(contrat):
+    """``ContratLien`` DEVIS de renouvellement OUVERT du contrat, ou ``None`` — XCTR12.
+
+    « Ouvert » = un lien vers un devis dont le statut ventes (résolu via
+    ``ventes.selectors.get_devis_by_pk``, frontière cross-app — lecture seule,
+    jamais d'import de ``ventes.models`` directement) n'est ni ``accepte`` ni
+    ``refuse`` ni ``expire`` — sert de GARDE ANTI-DOUBLON : un double clic sur
+    « générer le devis de renouvellement » ne crée jamais un second devis tant
+    qu'un devis ouvert existe déjà.
+    """
+    from .models import ContratLien
+
+    try:
+        from apps.ventes import selectors as ventes_selectors
+    except Exception:  # pragma: no cover - défensif (app absente)
+        return None
+
+    liens = ContratLien.objects.filter(
+        contrat=contrat, company=contrat.company,
+        type_cible=ContratLien.TypeCible.DEVIS,
+    ).order_by('-id')
+    for lien in liens:
+        try:
+            devis = ventes_selectors.get_devis_by_pk(lien.cible_id)
+        except Exception:  # pragma: no cover - défensif
+            continue
+        if devis is None or devis.company_id != contrat.company_id:
+            continue
+        if devis.statut not in _STATUTS_DEVIS_FERMES:
+            return lien
+    return None
+
+
+@transaction.atomic
+def generer_devis_renouvellement(contrat, *, auteur=None, valeur_indice=None,
+                                 today=None):
+    """Génère un devis de renouvellement AVANT échéance — XCTR12.
+
+    Crée un ``ventes.Devis`` (frontière cross-app : import FONCTION-LOCAL de
+    ``ventes.models``/``ventes.utils.references`` — jamais une vue) reprenant
+    le montant COURANT du contrat, éventuellement révisé par l'indexation
+    active (première ``IndexationPrix`` active du contrat, si
+    ``valeur_indice`` est fournie — sinon le montant courant sans révision).
+    Le client est résolu depuis ``contrat.client_id`` via ``crm.selectors``
+    (même frontière que ``facturer_ligne_echeance`` — CONTRAT31).
+
+    Le montant proposé (avec/sans révision) est porté dans ``Devis.note`` et
+    ``Devis.etude_params`` (résumé structuré : montant courant, montant
+    proposé, indexation appliquée) — un devis de renouvellement n'a pas de
+    lignes catalogue (aucune ligne inventée) ; l'affichage détaillé du
+    récapitulatif est un raffinement PDF ultérieur, hors périmètre ici (la
+    référence/numérotation passe déjà par le chemin standard
+    ``ventes.utils.references``, jamais ``count()+1``).
+
+    GARDE ANTI-DOUBLON : refuse (``RenouvellementDevisError``) si un devis de
+    renouvellement OUVERT existe déjà pour ce contrat
+    (``devis_renouvellement_ouvert``) — un double clic ne crée jamais de
+    doublon.
+
+    Relie le devis créé au contrat via un ``ContratLien`` (type ``devis``).
+    Journalise au chatter (CONTRAT15). Le ``Contrat.statut`` n'est JAMAIS
+    modifié (préservation des statuts — CONTRAT12) et aucun funnel
+    ``STAGES.py`` n'intervient (rule #2). Renvoie le ``Devis`` créé.
+    """
+    from .models import ContratLien
+
+    if devis_renouvellement_ouvert(contrat) is not None:
+        raise RenouvellementDevisError(
+            "Un devis de renouvellement est déjà ouvert pour ce contrat.")
+
+    if not contrat.client_id:
+        raise RenouvellementDevisError(
+            "Le contrat n'a pas de client : impossible de générer un devis "
+            "de renouvellement.")
+
+    from apps.crm.selectors import get_company_client
+
+    client = get_company_client(contrat.company, contrat.client_id)
+    if client is None:
+        raise RenouvellementDevisError(
+            "Le client du contrat est introuvable dans votre société.")
+
+    montant_courant = contrat.montant or Decimal('0')
+    montant_propose = montant_courant
+    indexation_appliquee = None
+
+    if valeur_indice is not None:
+        indexation = contrat.indexations.filter(actif=True).order_by(
+            'id').first()
+        if indexation is not None:
+            calcul = calculer_prix_indexe(
+                indexation, valeur_actuelle=valeur_indice,
+                prix_base=montant_courant)
+            montant_propose = calcul['prix_revise']
+            indexation_appliquee = {
+                'indice': indexation.indice,
+                'valeur_base': str(indexation.valeur_base),
+                'valeur_actuelle': str(calcul['valeur_actuelle']),
+                'delta': str(calcul['delta']),
+            }
+
+    note = (
+        f'Renouvellement du contrat {contrat.reference or contrat.pk} — '
+        f'montant courant {_fmt_montant(montant_courant, contrat.devise)} '
+        f'→ proposé {_fmt_montant(montant_propose, contrat.devise)}.'
+    )
+    etude_params = {
+        'renouvellement_contrat_id': contrat.id,
+        'montant_courant': str(montant_courant),
+        'montant_propose': str(montant_propose),
+        'indexation_appliquee': indexation_appliquee,
+    }
+
+    from apps.ventes.models import Devis
+    from apps.ventes.utils.references import create_with_reference
+
+    def _create(ref):
+        return Devis.objects.create(
+            reference=ref,
+            company=contrat.company,
+            client=client,
+            statut=Devis.Statut.BROUILLON,
+            note=note,
+            etude_params=etude_params,
+            created_by=auteur,
+        )
+
+    devis = create_with_reference(Devis, 'DEV', contrat.company, _create)
+
+    ContratLien.objects.create(
+        company=contrat.company,
+        contrat=contrat,
+        type_cible=ContratLien.TypeCible.DEVIS,
+        cible_id=devis.id,
+        libelle=f'Renouvellement — {devis.reference}',
+    )
+
+    journaliser_transition(
+        contrat, field='devis_renouvellement', old_value='',
+        new_value=devis.reference,
+        message='Devis de renouvellement généré.', auteur=auteur)
+
+    return devis
+
+
+def marquer_renouvellement_accepte(contrat, devis, *, auteur=None,
+                                   today=None):
+    """Marque le renouvellement proposé ACCEPTÉ sur le contrat — XCTR12.
+
+    Appelé par ``receivers.py`` sur l'événement ``devis_accepted`` (core.events)
+    quand le devis accepté est lié au contrat via un ``ContratLien`` de type
+    ``devis``. Journalise l'acceptation au chatter (CONTRAT15) — NE modifie
+    JAMAIS ``Contrat.statut`` (préservation des statuts CONTRAT12) : le
+    renouvellement effectif (prolongation de ``date_fin``) reste un acte
+    SÉPARÉ et EXPLICITE (``renouveler_contrat`` — CONTRAT23), jamais déclenché
+    automatiquement par la seule acceptation du devis (décision métier : le
+    founder peut vouloir revoir les termes avant de prolonger réellement).
+    """
+    journaliser_transition(
+        contrat, field='devis_renouvellement_accepte', old_value='',
+        new_value=getattr(devis, 'reference', str(devis.pk)),
+        message='Devis de renouvellement accepté par le client.',
+        auteur=auteur)
+    return contrat
