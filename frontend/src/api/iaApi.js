@@ -76,6 +76,15 @@ const iaApi = {
     })
   },
 
+  // AG1 — catalogue des actions agentiques exécutables par l'utilisateur
+  // courant (filtré par permission côté serveur). C'est un endpoint DJANGO
+  // (apps/agent) : on passe le chemin absolu `/api/django/...` pour que
+  // l'intercepteur NE préfixe PAS `/api/fastapi`. Métadonnées seules — aucune
+  // exécution ici. Réponse : { count, actions: [{ key, label, description,
+  // inputs, endpoint, method, required_permission, risk, confirm_summary }] }.
+  getAgentActions: () =>
+    iaApi_instance.get('/api/django/agent/actions/'),
+
   getSchema: () =>
     iaApi_instance.get('/sql-agent/schema'),
 

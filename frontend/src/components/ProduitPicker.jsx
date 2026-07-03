@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as PopoverPrimitive from '@radix-ui/react-popover'
+import { Plus } from 'lucide-react'
 import { cn } from '../lib/cn'
 import {
   groupCatalogue, searchCatalogue, keySpec, prixTtc, sansPrix,
 } from '../features/stock/catalogue'
+import { classifyProduct } from '../features/ventes/solar'
+import { useCanCreateProduit } from '../hooks/useHasPermission'
+import ProduitQuickCreateModal from './ProduitQuickCreateModal'
 
 /* G23 — Picker produit groupé CATÉGORIE → MARQUE → ARTICLE, search-first.
    Conçu pour la saisie ligne à ligne : ouvrir → taper → Entrée (le premier
@@ -12,13 +16,25 @@ import {
 
    Reconstruit sur le Popover (G28) + jetons sémantiques (les anciennes classes
    pp-* d'index.css ne sont plus utilisées). Props/API préservés 1:1 :
-   { produits, value, onChange, invalid }. */
-export default function ProduitPicker({ produits, value, onChange, invalid }) {
+   { produits, value, onChange, invalid }.
+
+   QP1 — `typeFilter` (optionnel) restreint la liste au type de produit attendu
+   par le slot de la ligne (ex. 'onduleur_hybride'), via classifyProduct (même
+   classification que le moteur PDF, builder.py). Une ligne sans type inférable
+   passe `typeFilter` à null/undefined et garde la liste complète.
+
+   QG6 — « + Nouveau produit » : visible uniquement pour Directeur + Commercial
+   responsable (hook QG5, backend QG4 est la garde qui compte). `onProduitCreated`
+   (optionnel) est appelé avec le produit créé EN PLUS de la sélection auto sur
+   cette ligne — utile pour rafraîchir la liste des produits de l'appelant. */
+export default function ProduitPicker({ produits, value, onChange, invalid, typeFilter, onProduitCreated }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [cursor, setCursor] = useState(0)
+  const [quickCreateOpen, setQuickCreateOpen] = useState(false)
   const inputRef = useRef(null)
   const listRef = useRef(null)
+  const canCreateProduit = useCanCreateProduit()
 
   const selected = useMemo(
     () => produits.find((p) => String(p.id) === String(value)) ?? null,
@@ -26,7 +42,10 @@ export default function ProduitPicker({ produits, value, onChange, invalid }) {
 
   // Lignes à plat (en-têtes + articles) dans l'ordre délibéré de la taxonomie
   const { rows, selectables } = useMemo(() => {
-    const actifs = produits.filter((p) => !p.is_archived)
+    let actifs = produits.filter((p) => !p.is_archived)
+    if (typeFilter) {
+      actifs = actifs.filter((p) => classifyProduct(p.nom) === typeFilter)
+    }
     const matches = searchCatalogue(actifs, query)
     const rows = []
     const selectables = []
@@ -43,7 +62,7 @@ export default function ProduitPicker({ produits, value, onChange, invalid }) {
       }
     }
     return { rows, selectables }
-  }, [produits, query])
+  }, [produits, query, typeFilter])
 
   useEffect(() => {
     if (open) requestAnimationFrame(() => inputRef.current?.focus())
@@ -105,7 +124,7 @@ export default function ProduitPicker({ produits, value, onChange, invalid }) {
           onOpenAutoFocus={(e) => e.preventDefault()}
           className="z-[var(--z-popover)] w-[max(var(--radix-popover-trigger-width),18rem)] overflow-hidden rounded-lg border border-border bg-popover p-0 text-popover-foreground shadow-ui-lg data-[state=open]:animate-pop-in data-[state=closed]:animate-pop-out focus:outline-none"
         >
-          <div className="border-b border-border p-1.5">
+          <div className="flex items-center gap-1 border-b border-border p-1.5">
             <input
               ref={inputRef}
               className="h-8 w-full rounded-md bg-transparent px-2 text-base outline-none placeholder:text-muted-foreground sm:text-sm"
@@ -114,6 +133,16 @@ export default function ProduitPicker({ produits, value, onChange, invalid }) {
               onChange={(e) => { setQuery(e.target.value); setCursor(0) }}
               onKeyDown={onKeyDown}
             />
+            {canCreateProduit && (
+              <button
+                type="button"
+                title="Nouveau produit"
+                onClick={() => { setOpen(false); setQuickCreateOpen(true) }}
+                className="flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-2 text-xs font-medium text-primary outline-none hover:bg-accent"
+              >
+                <Plus className="size-3.5" /> Nouveau
+              </button>
+            )}
           </div>
           <div className="max-h-72 overflow-y-auto p-1" ref={listRef} role="listbox">
             {value && (
@@ -176,6 +205,17 @@ export default function ProduitPicker({ produits, value, onChange, invalid }) {
           </div>
         </PopoverPrimitive.Content>
       </PopoverPrimitive.Portal>
+      {canCreateProduit && (
+        <ProduitQuickCreateModal
+          open={quickCreateOpen}
+          onClose={() => setQuickCreateOpen(false)}
+          onCreated={(p) => {
+            setQuickCreateOpen(false)
+            onProduitCreated?.(p)
+            onChange(String(p.id))
+          }}
+        />
+      )}
     </PopoverPrimitive.Root>
   )
 }

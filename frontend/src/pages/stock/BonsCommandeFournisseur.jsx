@@ -3,7 +3,10 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { Plus, FileText, Undo2, Package, Trash2 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import BcfProduitPicker from './BcfProduitPicker'
-import { downloadBlob } from '../../utils/downloadBlob'
+import ProduitQuickCreateModal from '../../components/ProduitQuickCreateModal'
+import { useCanCreateProduit } from '../../hooks/useHasPermission'
+import { filenameFromResponse } from '../../utils/downloadBlob'
+import { ouvrirPdfBlob, estBlobPdf, messageErreurBlob } from '../../utils/pdfBlob'
 import {
   Button, IconButton, StatusPill, DataTable,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -38,6 +41,7 @@ function frBcfError(err, fallback = 'Une erreur est survenue. Réessayez.') {
   }
   return fallback
 }
+
 
 const fmtMad = (v) => {
   const n = Number(v) || 0
@@ -154,10 +158,14 @@ function RetourModal({ bcf, onClose, onDone }) {
 }
 
 // ── Modal de création / consultation / réception d'un BCF ──
-function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
+// Export nommé : testé directement (QS1 — bouton « PDF (interne) »).
+export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   const isNew = !bcf?.id
   const statut = bcf?.statut ?? 'brouillon'
   const editableLignes = isNew || statut === 'brouillon'
+  // QS2 — « + Nouveau produit » : réservé à Directeur + Commercial responsable
+  // (hook QG5 ; backend QG4 est la garde qui compte). Réutilise la modale QG6.
+  const canCreateProduit = useCanCreateProduit()
 
   const [fournisseur, setFournisseur] = useState(bcf?.fournisseur ?? '')
   const [dateCommande, setDateCommande] = useState(bcf?.date_commande ?? '')
@@ -170,6 +178,12 @@ function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   const [error, setError] = useState(null)
   const [showRetour, setShowRetour] = useState(false)
   const [info, setInfo] = useState(null)
+  // QS2 — produits créés à la volée (fusionnés au catalogue prop, en lecture
+  // seule) + la ligne sur laquelle déposer le produit fraîchement créé.
+  const [extraProduits, setExtraProduits] = useState([])
+  const [quickCreateIdx, setQuickCreateIdx] = useState(null)
+  const allProduits = useMemo(
+    () => [...(produits ?? []), ...extraProduits], [produits, extraProduits])
 
   const total = useMemo(() => totalAchat(lignes), [lignes])
   const reception = useMemo(() => avancementReception(bcf?.lignes ?? lignes), [bcf, lignes])
@@ -195,12 +209,34 @@ function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
       const next = { ...l, produit: produitId }
       const sansPrix = l.prix_achat_unitaire === '' || l.prix_achat_unitaire == null
       if (sansPrix) {
-        const prod = (produits ?? []).find((p) => String(p.id) === String(produitId))
+        const prod = allProduits.find((p) => String(p.id) === String(produitId))
         const cat = prod ? Number(prod.prix_achat) : 0
         if (cat > 0) next.prix_achat_unitaire = String(cat)
       }
       return next
     }))
+  }
+
+  // QS2 — produit créé à la volée : l'ajoute au catalogue local, le dépose sur
+  // la ligne d'origine et pré-remplit son prix d'achat (interne) depuis
+  // `prix_achat` — jamais transmis par le client, renvoyé par le serveur
+  // seulement aux rôles autorisés à le voir. On dérive le prix d'achat DIRECTEMENT
+  // de l'objet produit renvoyé (pas via allProduits, dont le state n'est pas
+  // encore à jour dans ce même tick).
+  const onProduitCreatedForLine = (produit) => {
+    setExtraProduits((ps) => [...ps, produit])
+    const idx = quickCreateIdx
+    if (idx != null) {
+      setLignes((ls) => ls.map((l, i) => {
+        if (i !== idx) return l
+        const next = { ...l, produit: String(produit.id) }
+        const sansPrix = l.prix_achat_unitaire === '' || l.prix_achat_unitaire == null
+        const cat = Number(produit.prix_achat) || 0
+        if (sansPrix && cat > 0) next.prix_achat_unitaire = String(cat)
+        return next
+      }))
+    }
+    setQuickCreateIdx(null)
   }
 
   const buildPayload = () => ({
@@ -256,6 +292,46 @@ function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
     } finally { setBusy(false) }
   }
 
+  // QS4 — coordonnées du fournisseur sélectionné (pour griser honnêtement les
+  // boutons WhatsApp/email quand le contact manque). On lit la fiche
+  // fournisseur du prop `fournisseurs` (FournisseurSerializer expose tel/email).
+  const fournisseurObj = useMemo(
+    () => (fournisseurs ?? []).find((f) => String(f.id) === String(fournisseur)) ?? null,
+    [fournisseurs, fournisseur])
+  const fournisseurTel = (fournisseurObj?.telephone ?? '').trim()
+  const fournisseurEmail = (fournisseurObj?.email ?? '').trim()
+
+  // QS4 — Envoyer par WhatsApp (QS3) : prépare un lien wa.me prêt à envoyer et
+  // marque le BCF « envoyé ». On ouvre WhatsApp dans un nouvel onglet ; le
+  // commercial appuie lui-même sur Envoyer (aucun envoi automatique).
+  const envoyerWhatsapp = async () => {
+    if (isNew || !bcf?.id) { setError('Enregistrez d\'abord le bon de commande.'); return }
+    setBusy(true); setError(null)
+    try {
+      const r = await stockApi.whatsappBcf(bcf.id)
+      const waUrl = r.data?.wa_url
+      if (waUrl) window.open(waUrl, '_blank', 'noopener')
+      setInfo('WhatsApp ouvert — appuyez sur Envoyer dans WhatsApp. Le BCF est marqué « envoyé ».')
+      onSaved?.()
+    } catch (err) {
+      setError(frBcfError(err, "La préparation du message WhatsApp a échoué."))
+    } finally { setBusy(false) }
+  }
+
+  // QS4 — Envoyer par email (QS3) : envoie le PDF au fournisseur + marque
+  // « envoyé ». Confirmation affichée au retour.
+  const envoyerEmail = async () => {
+    if (isNew || !bcf?.id) { setError('Enregistrez d\'abord le bon de commande.'); return }
+    setBusy(true); setError(null)
+    try {
+      const r = await stockApi.envoyerEmailBcf(bcf.id)
+      setInfo(r.data?.detail || 'Email envoyé au fournisseur. Le BCF est marqué « envoyé ».')
+      onSaved?.()
+    } catch (err) {
+      setError(frBcfError(err, "L'envoi de l'email au fournisseur a échoué."))
+    } finally { setBusy(false) }
+  }
+
   // Tout recevoir : pré-remplit chaque saisie de réception au reste dû.
   const toutRecevoir = () => {
     const next = {}
@@ -291,11 +367,28 @@ function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
     } finally { setBusy(false) }
   }
 
+  // QS1 — PDF fournisseur : ouvre le PDF dans un nouvel onglet (repli :
+  // téléchargement si popup bloquée) et fait remonter la VRAIE erreur
+  // serveur au lieu d'un « PDF indisponible » générique.
   const telechargerPdf = async () => {
+    setError(null)
     try {
       const r = await stockApi.bcfPdf(bcf.id)
-      downloadBlob(r.data, `${bcf.reference ?? 'BCF'}.pdf`)
-    } catch { setError('PDF indisponible.') }
+      const blob = r.data
+      // Garde-fou : si la réponse n'est pas un PDF (page HTML d'erreur…),
+      // on le dit honnêtement au lieu d'ouvrir un fichier corrompu.
+      if (!estBlobPdf(blob)) {
+        setError('Le serveur n\'a pas renvoyé de PDF (réponse inattendue). Réessayez ou contactez un administrateur.')
+        return
+      }
+      // QD2 — nom cohérent posé par le serveur (repli sur la référence) pour
+      // le téléchargement de secours si le popup est bloqué.
+      ouvrirPdfBlob(blob, filenameFromResponse(r, `${bcf.reference ?? 'BCF'}.pdf`))
+    } catch (err) {
+      setError(await messageErreurBlob(err, {
+        fallback: 'La génération du PDF a échoué. Réessayez.',
+      }))
+    }
   }
 
   return (
@@ -390,8 +483,19 @@ function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
                     <tr key={l.id ?? `new-${idx}`} className="border-t border-border">
                       <td className="px-3 py-2">
                         {editableLignes ? (
-                          <BcfProduitPicker produits={produits} value={l.produit}
-                                            onChange={(v) => pickProduit(idx, v)} />
+                          <div className="flex items-center gap-1">
+                            <div className="flex-1">
+                              <BcfProduitPicker produits={allProduits} value={l.produit}
+                                                onChange={(v) => pickProduit(idx, v)} />
+                            </div>
+                            {canCreateProduit && (
+                              <IconButton type="button" label="Nouveau produit" size="sm"
+                                          className="size-8 text-primary hover:bg-accent"
+                                          onClick={() => setQuickCreateIdx(idx)}>
+                                <Plus />
+                              </IconButton>
+                            )}
+                          </div>
                         ) : (
                           <span>{l.produit_nom ?? '—'}{l.produit_sku ? ` (${l.produit_sku})` : ''}</span>
                         )}
@@ -478,12 +582,35 @@ function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
             </Button>
           )}
           <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
+          {/* QS4 — envois directs au fournisseur (BCF déjà enregistré, non
+              annulé). Grisés + tooltip explicite quand le contact manque. */}
+          {!isNew && statut !== 'annule' && (
+            <>
+              <Button type="button" variant="outline" loading={busy}
+                      disabled={busy || !fournisseurTel}
+                      title={fournisseurTel
+                        ? 'Préparer un message WhatsApp au fournisseur'
+                        : 'Ce fournisseur n\'a pas de numéro de téléphone'}
+                      onClick={envoyerWhatsapp}>
+                Envoyer par WhatsApp
+              </Button>
+              <Button type="button" variant="outline" loading={busy}
+                      disabled={busy || !fournisseurEmail}
+                      title={fournisseurEmail
+                        ? 'Envoyer le PDF par email au fournisseur'
+                        : 'Ce fournisseur n\'a pas d\'adresse email'}
+                      onClick={envoyerEmail}>
+                Envoyer par email
+              </Button>
+            </>
+          )}
           {editableLignes && (
             <>
               <Button type="button" variant="outline" loading={busy} onClick={save}>
                 {busy ? '…' : 'Enregistrer'}
               </Button>
-              <Button type="button" loading={busy} onClick={envoyer}>
+              <Button type="button" loading={busy} onClick={envoyer}
+                      title="Marque le BCF « envoyé » (sans email/WhatsApp)">
                 {busy ? '…' : 'Envoyer au fournisseur'}
               </Button>
             </>
@@ -504,6 +631,15 @@ function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
       {showRetour && (
         <RetourModal bcf={bcf} onClose={() => setShowRetour(false)}
                      onDone={(msg) => { onSaved?.(); if (msg) setInfo(msg) }} />
+      )}
+      {/* QS2 — création rapide de produit (réutilise la modale QG6) puis dépôt
+          sur la ligne du BCF avec pré-remplissage du prix d'achat interne. */}
+      {canCreateProduit && (
+        <ProduitQuickCreateModal
+          open={quickCreateIdx != null}
+          onClose={() => setQuickCreateIdx(null)}
+          onCreated={onProduitCreatedForLine}
+        />
       )}
     </Dialog>
   )

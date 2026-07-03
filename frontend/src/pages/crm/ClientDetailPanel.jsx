@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import api from '../../api/axios'
 import { Badge, Button, Spinner } from '../../ui'
+import ClientRgpdActions from './ClientRgpdActions'
 
 // Panneau détail client (L4) — lecture seule : devis, factures et chantiers
 // liés au client, avec référence / statut / total (montants client-facing
@@ -53,7 +54,7 @@ function DocTable({ titre, rows, withTotal, withDate, emptyLabel }) {
   )
 }
 
-export default function ClientDetailPanel({ client, onClose, onNewDevis }) {
+export default function ClientDetailPanel({ client, onClose, onNewDevis, onChanged }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
@@ -113,6 +114,11 @@ export default function ClientDetailPanel({ client, onClose, onNewDevis }) {
           )}
         </div>
         <div className="modal-footer">
+          {/* WR9/FG26 — export d'accès du sujet + anonymisation (gatés rôle). */}
+          <ClientRgpdActions
+            client={client}
+            onChanged={() => { onChanged?.(); onClose() }}
+          />
           <Button variant="outline" onClick={() => onNewDevis(client)}>
             Nouveau devis
           </Button>

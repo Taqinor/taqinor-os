@@ -90,6 +90,49 @@ def build_devis_whatsapp(request, lead, devis_list, langue='fr'):
     return message, links
 
 
+def devis_recipient_phone(devis):
+    """QG8 — Numéro du destinataire d'un devis : client, sinon lead
+    (WhatsApp puis téléphone). Renvoie la chaîne brute ou '' si aucune."""
+    client = getattr(devis, 'client', None)
+    if client is not None:
+        phone = getattr(client, 'telephone', None)
+        if phone:
+            return phone
+    lead = getattr(devis, 'lead', None)
+    if lead is not None:
+        return (getattr(lead, 'whatsapp', None)
+                or getattr(lead, 'telephone', None) or '')
+    return ''
+
+
+def build_single_devis_whatsapp(request, devis, langue='fr'):
+    """QG8 — Message WhatsApp pour UN devis (miroir de la voie lead CRM).
+
+    Réutilise le modèle « devis_unique » de la société, crée/réutilise un lien
+    public tokenisé (30 j) vers le PDF CLIENT du devis (jamais de prix d'achat
+    ni de marge). Renvoie (message, link_info). Le nom du destinataire vient du
+    client, sinon du lead."""
+    from apps.ventes.models import ShareLink
+    from apps.parametres.models import MessageTemplate
+
+    company = devis.company
+    client = getattr(devis, 'client', None)
+    lead = getattr(devis, 'lead', None)
+    if client is not None:
+        nom = _nom_complet(getattr(client, 'prenom', ''), client.nom)
+    elif lead is not None:
+        nom = _nom_complet(getattr(lead, 'prenom', ''), getattr(lead, 'nom', ''))
+    else:
+        nom = ''
+    link = ShareLink.for_devis(devis)
+    url = public_document_url(request, link.token)
+    tpl = MessageTemplate.get_corps(company, 'devis_unique', langue)
+    message = render_message_template(tpl, {
+        'civilite': '', 'nom': nom,
+        'reference': devis.reference, 'lien': url})
+    return message, {'token': link.token, 'url': url}
+
+
 def build_facture_whatsapp(request, facture, modele='facture', langue='fr'):
     """Construit le message WhatsApp pour une facture (ou un rappel).
 

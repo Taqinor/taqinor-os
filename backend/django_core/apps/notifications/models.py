@@ -30,6 +30,13 @@ class EventType(models.TextChoices):
     DEVIS_ACCEPTED = 'devis_accepted', 'Devis accepté'
     # QJ2 — première ouverture du lien de proposition par le client.
     DEVIS_OPENED = 'devis_opened', 'Proposition ouverte par le client'
+    # QJ27 — le client demande à être contacté (depuis la proposition publique).
+    CLIENT_CONTACT_REQUEST = (
+        'client_contact_request', 'Client souhaite être contacté')
+    # QJ28 — un vendeur demande l'avis de son supérieur sur un devis.
+    DEVIS_SUPERIOR_CONTACT_REQUESTED = (
+        'devis_superior_contact_requested',
+        'Avis du supérieur demandé sur un devis')
     CHANTIER_DUE = 'chantier_due', 'Chantier à installer'
     FACTURE_OVERDUE = 'facture_overdue', 'Facture en retard'
     WARRANTY_EXPIRING = 'warranty_expiring', 'Garantie bientôt expirée'

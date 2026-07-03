@@ -16,6 +16,7 @@ import {
   formatMAD,
 } from '../../../../features/crm/stages'
 import useCanaux from '../../../../features/crm/useCanaux'
+import CrmInsightsPanel from '../CrmInsightsPanel'
 import {
   Card, CardHeader, CardTitle, CardDescription, CardContent, EmptyState, Button,
 } from '../../../../ui'
@@ -135,6 +136,7 @@ export default function ChartsView({
     : { top: 8, right: 8, bottom: 4, left: 0 }
 
   return (
+    <>
     <div className="ch-grid">
       <Card className="ch-card">
         <CardHeader>
@@ -282,5 +284,8 @@ export default function ChartsView({
         </CardContent>
       </Card>
     </div>
+    {/* WR9 — surfaces consultatives : objectifs, ROI par source, SLA. */}
+    <CrmInsightsPanel />
+    </>
   )
 }

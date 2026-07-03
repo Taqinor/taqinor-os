@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import {
   Search, Plus, Download, BookText, ListChecks, FileWarning,
   MessageCircle, Code2, Check, FileText, ReceiptText, MoreHorizontal,
+  CreditCard, ShieldCheck, X,
 } from 'lucide-react'
 import {
   fetchFactures,
@@ -13,17 +14,19 @@ import {
   genererPdfFacture,
 } from '../../features/ventes/store/ventesSlice'
 import ventesApi from '../../api/ventesApi'
+import parametresApi from '../../api/parametresApi'
 import api from '../../api/axios'
 import importApi, { downloadXlsx } from '../../api/importApi'
 import FactureForm from './FactureForm'
 import {
   Button, Badge, StatusPill, Card, EmptyState, Spinner,
   Tabs, TabsList, TabsTrigger,
-  Input,
+  Input, Checkbox,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
   Form, FormField, FormActions,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+  toast,
 } from '../../ui'
 import { formatMAD, toNumber, normalizeMaPhone } from '../../lib/format'
 import { useSavedViews } from '../../hooks/useSavedViews'
@@ -194,6 +197,25 @@ export default function FactureList() {
   const [waBusy, setWaBusy] = useState({})
   const [waLangue, setWaLangue] = useState('fr')
   const [waPreview, setWaPreview] = useState(null) // { reference, message, url, wa_url }
+
+  // WR2b — interrupteur société « export DGI » (lu une fois au montage) :
+  // n'affiche le bouton/badge DGI que quand la société l'a activé (défaut OFF,
+  // capacité invisible sinon — même garde que côté serveur).
+  const [dgiActif, setDgiActif] = useState(false)
+  useEffect(() => {
+    parametresApi.getProfile()
+      .then(res => setDgiActif(!!res.data?.dgi_export_actif))
+      .catch(() => setDgiActif(false))
+  }, [])
+  const [dgiBusy, setDgiBusy] = useState({})
+  const [payLinkBusy, setPayLinkBusy] = useState({})
+
+  // WR2b — sélection multiple pour la barre d'actions en masse (FG43).
+  const [selectedIds, setSelectedIds] = useState([])
+  const toggleSelect = (id) => setSelectedIds(prev =>
+    prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  const clearSelection = () => setSelectedIds([])
+  const [bulkBusy, setBulkBusy] = useState(false)
 
   // ── Enregistrement de paiement ──
   const [payTarget, setPayTarget] = useState(null) // facture ciblée
@@ -461,6 +483,85 @@ export default function FactureList() {
       alert(err?.response?.data?.detail ?? "Audit de numérotation impossible.")
     } finally {
       setAuditBusy(false)
+    }
+  }
+
+  // FG53/WR2b — « Payer en ligne » : crée/réutilise le lien de paiement puis le
+  // copie au presse-papier (aucun envoi automatique au client).
+  const handleLienPaiement = async (f) => {
+    setPayLinkBusy(prev => ({ ...prev, [f.id]: true }))
+    try {
+      const { data } = await ventesApi.lienPaiementFacture(f.id)
+      const url = data?.pay_url ?? ''
+      if (url && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url)
+        toast.success(`Lien de paiement copié — ${formatMAD(data.montant)}.`)
+      } else if (url) {
+        window.open(url, '_blank', 'noopener')
+      } else {
+        toast.error('Lien de paiement indisponible.')
+      }
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Création du lien de paiement impossible.')
+    } finally {
+      setPayLinkBusy(prev => ({ ...prev, [f.id]: false }))
+    }
+  }
+
+  // N105/WR2b — export DGI (UBL local) : téléchargement direct, aucune transmission.
+  const handleDgiExport = async (f) => {
+    setDgiBusy(prev => ({ ...prev, [f.id]: true }))
+    try {
+      const res = await ventesApi.dgiExportFacture(f.id)
+      openPdfBlob(res.data, `${f.reference}-dgi.xml`)
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Export DGI impossible.')
+    } finally {
+      setDgiBusy(prev => ({ ...prev, [f.id]: false }))
+    }
+  }
+
+  // N105/WR2b — contrôle de conformité DGI à la demande (aucun statut modifié).
+  const handleDgiConformite = async (f) => {
+    setDgiBusy(prev => ({ ...prev, [f.id]: true }))
+    try {
+      const { data } = await ventesApi.dgiConformiteFacture(f.id)
+      if (data.conforme) {
+        toast.success('Conforme DGI : aucun problème détecté.')
+      } else {
+        alert(`Non conforme DGI :\n\n- ${(data.problemes || []).join('\n- ')}`)
+      }
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Contrôle de conformité DGI impossible.')
+    } finally {
+      setDgiBusy(prev => ({ ...prev, [f.id]: false }))
+    }
+  }
+
+  // FG43/WR2b — actions en masse sur la sélection courante.
+  const BULK_LABELS = {
+    emettre: 'Émettre', relancer: 'Relancer',
+    'envoyer-email': 'Envoyer par email', 'generer-pdf': 'Générer le PDF',
+  }
+  const handleBulkAction = async (action) => {
+    if (!selectedIds.length) return
+    setBulkBusy(true)
+    try {
+      const { data } = await ventesApi.bulkFactures(action, selectedIds)
+      const entries = Object.values(data || {})
+      const ok = entries.filter(r => r.ok).length
+      const ko = entries.length - ok
+      if (ko === 0) {
+        toast.success(`${BULK_LABELS[action] ?? action} : ${ok} facture(s) traitée(s).`)
+      } else {
+        toast.error(`${BULK_LABELS[action] ?? action} : ${ok} réussie(s), ${ko} échec(s).`)
+      }
+      dispatch(fetchFactures())
+      clearSelection()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Action en masse impossible.')
+    } finally {
+      setBulkBusy(false)
     }
   }
 
@@ -793,11 +894,49 @@ export default function FactureList() {
           className="mt-4"
         />
       ) : (
+        <>
+          {/* ── FG43/WR2b — barre d'actions en masse (visible dès une sélection) ── */}
+          {selectedIds.length > 0 && (
+            <div
+              role="region"
+              aria-label="Actions factures en masse"
+              className="mt-3 flex flex-wrap items-center gap-3 rounded-xl bg-nuit px-4 py-2.5 text-white shadow-ui-md"
+            >
+              <div className="text-sm">
+                <strong className="tabular-nums">{selectedIds.length}</strong> facture{selectedIds.length > 1 ? 's' : ''} sélectionnée{selectedIds.length > 1 ? 's' : ''}
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {Object.entries(BULK_LABELS).map(([action, label]) => (
+                  <button
+                    key={action}
+                    type="button" disabled={bulkBusy}
+                    onClick={() => handleBulkAction(action)}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-white/20 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-white/10 disabled:opacity-50"
+                  >
+                    {label}
+                  </button>
+                ))}
+                <button
+                  type="button" disabled={bulkBusy} onClick={clearSelection}
+                  className="inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium text-white/70 transition-colors hover:text-white disabled:opacity-50"
+                >
+                  <X className="size-3.5" /> Désélectionner
+                </button>
+              </div>
+            </div>
+          )}
         <Card className="mt-4 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="data-table">
               <thead>
                 <tr>
+                  <th className="w-10">
+                    <Checkbox
+                      checked={filtered.length > 0 && selectedIds.length === filtered.length}
+                      onCheckedChange={(v) => setSelectedIds(v ? filtered.map(f => f.id) : [])}
+                      aria-label="Tout sélectionner"
+                    />
+                  </th>
                   <th>Référence</th>
                   <th>Client</th>
                   <th>Émission</th>
@@ -818,9 +957,18 @@ export default function FactureList() {
                   // L853 — téléphone client normalisable (miroir backend).
                   const waPhoneOk = !!normalizeMaPhone(f.client_telephone)
                   const nba = nextBestAction(f)
+                  const isPayLinkBusy = payLinkBusy[f.id]
+                  const isDgiBusy = dgiBusy[f.id]
 
                   return (
                     <tr key={f.id} className={overdue ? 'bg-destructive/5' : undefined}>
+                      <td>
+                        <Checkbox
+                          checked={selectedIds.includes(f.id)}
+                          onCheckedChange={() => toggleSelect(f.id)}
+                          aria-label={`Sélectionner la facture ${f.reference}`}
+                        />
+                      </td>
                       <td>
                         <strong>{f.reference}</strong>
                         {(f.type_facture_display || toNumber(f.pourcentage) > 0) && (
@@ -895,6 +1043,17 @@ export default function FactureList() {
                             {TELEDECLARATION_DISPLAY[f.statut_teledeclaration] ?? f.statut_teledeclaration}
                           </Badge>
                         )}
+                        {/* WR2b — badge conformité DGI, visible seulement si l'interrupteur société est actif. */}
+                        {dgiActif && ['emise', 'payee', 'en_retard'].includes(f.statut) && (
+                          <Badge
+                            tone="info"
+                            className="mt-1 block w-fit cursor-pointer"
+                            title="Vérifier la conformité DGI (aucune transmission)"
+                            onClick={() => handleDgiConformite(f)}
+                          >
+                            <ShieldCheck className="size-3" /> Conformité DGI
+                          </Badge>
+                        )}
                       </td>
                       <td>
                         {nba === 'relancer' && (
@@ -925,6 +1084,13 @@ export default function FactureList() {
                             <Button size="sm" variant={nba === 'encaisser' ? 'default' : 'outline'}
                                     onClick={() => openPayModal(f)} title="Enregistrer un paiement">
                               Enregistrer paiement
+                            </Button>
+                          )}
+                          {/* FG53/WR2b — lien « Payer en ligne » (copié au presse-papier). */}
+                          {parseFloat(f.montant_du ?? 0) > 0 && f.statut !== 'annulee' && (
+                            <Button size="sm" variant="outline" loading={isPayLinkBusy}
+                                    onClick={() => handleLienPaiement(f)} title="Créer/copier le lien de paiement en ligne">
+                              <CreditCard /> Payer en ligne
                             </Button>
                           )}
                           {f.fichier_pdf ? (
@@ -971,6 +1137,14 @@ export default function FactureList() {
                                     <Code2 /> Aperçu UBL
                                   </DropdownMenuItem>
                                 )}
+                                {/* N105/WR2b — export DGI : masqué tant que l'interrupteur société est OFF. */}
+                                {dgiActif && ['emise', 'payee', 'en_retard'].includes(f.statut) && (
+                                  <DropdownMenuItem
+                                    disabled={isDgiBusy}
+                                    onSelect={(e) => { e.preventDefault(); handleDgiExport(f) }}>
+                                    <ShieldCheck /> Export DGI
+                                  </DropdownMenuItem>
+                                )}
                                 {f.statut !== 'payee' && f.statut !== 'annulee' && (
                                   <DropdownMenuItem
                                     onClick={() => doAction(annulerFacture, f.id, `Annuler la facture ${f.reference} ?`)}>
@@ -989,6 +1163,7 @@ export default function FactureList() {
             </table>
           </div>
         </Card>
+        </>
       )}
     </div>
   )

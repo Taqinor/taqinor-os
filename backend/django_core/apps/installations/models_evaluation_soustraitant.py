@@ -29,9 +29,11 @@ class EvaluationSousTraitant(models.Model):
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True,
         related_name='installations_evaluations_sous_traitant')
+    # DC34 — le sous-traitant est un stock.Fournisseur(type='service') ; FK
+    # CHAÎNE (jamais d'import de apps.stock.models).
     sous_traitant = models.ForeignKey(
-        'installations.SousTraitant', on_delete=models.CASCADE,
-        related_name='evaluations')
+        'stock.Fournisseur', on_delete=models.CASCADE,
+        related_name='installations_evaluations')
     # Prestation notée (optionnelle) : ordre de travaux et/ou chantier.
     ordre = models.ForeignKey(
         'installations.OrdreSousTraitance', on_delete=models.SET_NULL,

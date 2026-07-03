@@ -97,6 +97,247 @@ class ChecklistEtapeModele(models.Model):
         return self.libelle
 
 
+class StageModele(models.Model):
+    """CH1 — étape/gate CONFIGURABLE du cycle de vie chantier, par société.
+
+    Étend le motif ChecklistTemplate/ChecklistEtapeModele : une liste ordonnée
+    d'étapes (« stages ») éditable dans Paramètres (Directeur uniquement),
+    amorcée au cycle de vie PV international (étude de site → conception →
+    autorisations/82-21 → approvisionnement → montage mécanique → installation
+    électrique → mise en service IEC 62446-1 → inspection/raccordement →
+    remise client → O&M).
+
+    Chaque étape est un GATE : `bloquant` rend son franchissement OBLIGATOIREMENT
+    conditionné aux exigences cochées (`exige_*` — checklist faite, photos,
+    n° de série, essais de mise en service, matériel disponible, dossier 82-21,
+    pièces de remise) — plus les points d'arrêt QHSE (toujours vérifiés pour un
+    gate bloquant, cf. CH2). Une étape non bloquante reste PUREMENT consultative.
+
+    `statut_legacy` rabat l'étape sur l'entonnoir HISTORIQUE à 7 statuts de
+    `Installation.statut` (JAMAIS supprimé) : l'arrivée sur une étape synchronise
+    le statut hérité, ce qui préserve 1:1 les effets de bord existants
+    (consommation du stock à « Installé », remise de garantie/parc à
+    « Réceptionné » — FG70/N14) et toutes les vues/filtres actuels.
+    Additif — company-scopée, aucune migration destructive."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='stages_chantier')
+    cle = models.CharField(max_length=40)
+    libelle = models.CharField(max_length=120)
+    ordre = models.PositiveIntegerField(default=0)
+    # Gate BLOQUANT : le franchissement exige les éléments requis ci-dessous
+    # + la levée des points d'arrêt QHSE. Non bloquant = consultatif.
+    bloquant = models.BooleanField(default=False)
+    # ── Éléments REQUIS pour franchir le gate (si bloquant) ──
+    exige_checklist = models.BooleanField(default=False)
+    exige_photos = models.BooleanField(default=False)
+    exige_series = models.BooleanField(default=False)
+    exige_tests = models.BooleanField(default=False)
+    exige_materiel = models.BooleanField(default=False)
+    exige_dossier = models.BooleanField(default=False)
+    exige_pack = models.BooleanField(default=False)
+    # Statut HÉRITÉ (enum 7 étapes, jamais supprimé) que porte un chantier
+    # arrivé sur cette étape — c'est le pont qui fait tirer les effets de bord
+    # existants (stock/garantie) sur les gates mappés.
+    statut_legacy = models.CharField(
+        max_length=20, choices=Installation.Statut.choices,
+        null=True, blank=True)
+    actif = models.BooleanField(default=True)
+    # `protege` verrouille une étape système contre la suppression (comme les
+    # étapes de checklist) ; elle reste désactivable/réordonnable.
+    protege = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['ordre', 'id']
+        unique_together = [('company', 'cle')]
+        verbose_name = 'Étape de chantier (gate)'
+        verbose_name_plural = 'Étapes de chantier (gates)'
+
+    def __str__(self):
+        return f'{self.ordre} · {self.libelle}'
+
+
+class CommissioningRecord(models.Model):
+    """CH3 — fiche de RECETTE structurée d'un chantier selon IEC 62446-1
+    (essais de mise en service des systèmes PV raccordés au réseau).
+
+    Première classe côté ``installations`` : remplace la saisie libre historique
+    (``Installation.mes_pv_notes`` / ``mes_production_test`` / ``mes_tension``,
+    CONSERVÉS lisibles — aucune donnée détruite) par un jeu d'essais discret :
+
+      * documentation (dossier as-built / schéma / datasheets présents) ;
+      * inspection visuelle (structure, câblage, mise à la terre) ;
+      * essais électriques : continuité de terre, polarité, Voc/Isc par string
+        (relevés I-V — cf. ``CommissioningIVReading``, miroir de FG275), mesure
+        de résistance d'isolement ;
+      * vérification de performance (production d'essai vs attendu) ;
+      * sécurité (dispositifs de coupure, signalisation).
+
+    Une fiche PASSÉE (``resultat`` = conforme / conforme avec réserves) est
+    REQUISE pour franchir le gate « Mise en service » (CH2). Un chantier ↔ une
+    fiche (unicité). Additif — company posée côté serveur ; aucun statut de
+    devis touché (règle #4)."""
+
+    class Resultat(models.TextChoices):
+        EN_COURS = 'en_cours', 'En cours'
+        CONFORME = 'conforme', 'Conforme'
+        RESERVES = 'reserves', 'Conforme avec réserves'
+        NON_CONFORME = 'non_conforme', 'Non conforme'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='commissioning_records')
+    installation = models.OneToOneField(
+        Installation, on_delete=models.CASCADE,
+        related_name='commissioning_record')
+    date_essai = models.DateField(null=True, blank=True)
+    technicien = models.CharField(max_length=120, blank=True, null=True)
+    # ── Documentation (IEC 62446-1 §4) ──
+    doc_dossier_ok = models.BooleanField(null=True, blank=True)
+    doc_schema_ok = models.BooleanField(null=True, blank=True)
+    doc_datasheets_ok = models.BooleanField(null=True, blank=True)
+    # ── Inspection visuelle (§5) ──
+    visuel_structure_ok = models.BooleanField(null=True, blank=True)
+    visuel_cablage_ok = models.BooleanField(null=True, blank=True)
+    visuel_terre_ok = models.BooleanField(null=True, blank=True)
+    # ── Essais électriques (§6) ──
+    continuite_terre_ok = models.BooleanField(null=True, blank=True)
+    continuite_terre_ohm = models.DecimalField(
+        max_digits=8, decimal_places=3, null=True, blank=True)
+    polarite_ok = models.BooleanField(null=True, blank=True)
+    # Résistance d'isolement (MΩ) ; seuil usuel ≥ 1 MΩ.
+    isolement_mohm = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True)
+    isolement_ok = models.BooleanField(null=True, blank=True)
+    # ── Vérification de performance (§7) ──
+    production_test_kw = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    production_attendue_kw = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    performance_ok = models.BooleanField(null=True, blank=True)
+    # ── Sécurité ──
+    securite_coupure_ok = models.BooleanField(null=True, blank=True)
+    securite_signalisation_ok = models.BooleanField(null=True, blank=True)
+    resultat = models.CharField(
+        max_length=14, choices=Resultat.choices, default=Resultat.EN_COURS)
+    observations = models.TextField(blank=True, null=True)
+    # FG275 — lien LÂCHE (par id, jamais un import du modèle ventes) vers une
+    # fiche de recette ventes existante dont on réutilise les courbes I-V déjà
+    # saisies ; les relevés propres à cette fiche vivent dans
+    # ``CommissioningIVReading``.
+    ventes_recette_id = models.PositiveIntegerField(null=True, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='commissioning_records_crees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Fiche de recette (IEC 62446-1)'
+        verbose_name_plural = 'Fiches de recette (IEC 62446-1)'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'Recette {self.resultat} — chantier {self.installation_id}'
+
+    @property
+    def passe(self):
+        """La fiche est PASSÉE (débloque le gate) si conforme ou conforme
+        avec réserves."""
+        return self.resultat in (self.Resultat.CONFORME, self.Resultat.RESERVES)
+
+
+class CommissioningIVReading(models.Model):
+    """CH3/FG275 — relevé I-V par string d'une fiche de recette : Voc/Isc/Pmax
+    mesurés confrontés aux valeurs attendues (datasheet × modules en série).
+
+    Miroir, côté ``installations``, de la capture I-V ventes (FG275) : la fiche
+    de recette peut aussi référencer une fiche ventes existante
+    (``CommissioningRecord.ventes_recette_id``) pour réutiliser des courbes déjà
+    saisies. Additif — company posée côté serveur."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='commissioning_iv_readings')
+    record = models.ForeignKey(
+        CommissioningRecord, on_delete=models.CASCADE,
+        related_name='iv_readings')
+    string_label = models.CharField(max_length=60)
+    n_modules_serie = models.PositiveSmallIntegerField(null=True, blank=True)
+    voc_mesure_v = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True)
+    isc_mesure_a = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True)
+    pmax_mesure_w = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    voc_attendu_v = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True)
+    isc_attendu_a = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True)
+    pmax_attendu_w = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    ecart_pmax_pct = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True)
+    defaut_detecte = models.BooleanField(default=False)
+    observations = models.TextField(blank=True, null=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Relevé I-V (recette chantier)'
+        verbose_name_plural = 'Relevés I-V (recette chantier)'
+        ordering = ['record', 'string_label']
+
+    def __str__(self):
+        return f'I-V {self.string_label} (recette {self.record_id})'
+
+
+class HandoverPack(models.Model):
+    """CH4 — PACK DE REMISE client assemblé au franchissement du gate « Remise
+    au client » (handover).
+
+    Le pack RÉFÉRENCE (il ne stocke pas de binaire) les pièces du dossier remis
+    au client + au vendeur : dossier as-built / schémas, fiches techniques
+    (datasheets) des équipements, garanties (issues du parc SAV — FG70), le
+    certificat de recette IEC 62446-1 (CH3), la référence du dossier
+    réglementaire loi 82-21, et l'accès monitoring / application. La liste des
+    pièces est un JSON `[{type, libelle, reference, present}]`, calculé côté
+    serveur à partir de l'état réel du chantier — il DÉGRADE proprement quand
+    une pièce manque (elle apparaît `present=False` plutôt que d'empêcher la
+    génération).
+
+    Un chantier ↔ un pack (unicité). Additif — company posée côté serveur ;
+    aucun prix d'achat, aucun statut de devis touché (règle #4)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='handover_packs')
+    installation = models.OneToOneField(
+        Installation, on_delete=models.CASCADE,
+        related_name='handover_pack')
+    titre = models.CharField(max_length=160, blank=True, null=True)
+    # Pièces assemblées : [{type, libelle, reference, present}].
+    pieces = models.JSONField(default=list, blank=True)
+    # Accès monitoring / application (URL ou identifiant de portail) remis au
+    # client. Optionnel : dégrade proprement quand il n'est pas encore fourni.
+    monitoring_acces = models.CharField(max_length=255, blank=True, null=True)
+    # True dès que toutes les pièces OBLIGATOIRES sont présentes (calculé au
+    # ré-assemblage) — c'est ce que le gate « Remise au client » exige.
+    complet = models.BooleanField(default=False)
+    date_generation = models.DateTimeField(null=True, blank=True)
+    notes = models.TextField(blank=True, null=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='handover_packs_crees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Pack de remise client'
+        verbose_name_plural = 'Packs de remise client'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'Pack de remise — chantier {self.installation_id}'
+
+
 class StockReservation(models.Model):
     """N14 — réservation de stock d'un chantier sur un SKU (produit catalogue).
 

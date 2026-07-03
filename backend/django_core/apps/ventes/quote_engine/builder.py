@@ -84,6 +84,45 @@ def _is_panel(designation: str, produit_nom: str = "") -> bool:
     return "panneau" in blob or "panneaux" in blob
 
 
+def _is_inverter(designation: str) -> bool:
+    return "onduleur" in (designation or "").lower()
+
+
+def _is_smart_meter(designation: str) -> bool:
+    return "smart meter" in (designation or "").lower()
+
+
+def _is_wifi_dongle(designation: str) -> bool:
+    d = (designation or "").lower()
+    return "wifi" in d or "dongle" in d
+
+
+def _quote_is_huawei(items) -> bool:
+    """QF9 — True quand l'onduleur du devis est Huawei.
+
+    Smart Meter + Clé Wifi (dongle) sont des accessoires Huawei propres à
+    l'onduleur Huawei : ils ne doivent JAMAIS figurer sur un devis dont
+    l'onduleur est d'une autre marque (ex. Deye). On lit la marque de l'onduleur
+    (réseau ou hybride) via sa désignation, sa marque et le nom du produit lié.
+    Sans onduleur identifiable → False (on n'affiche pas ces accessoires par
+    défaut). Comportement conservateur : le moindre onduleur non-Huawei suffit à
+    retirer les accessoires du document.
+    """
+    inverters = [it for it in items if _is_inverter(it.get("designation", ""))]
+    if not inverters:
+        return False
+    huawei_seen = False
+    for it in inverters:
+        blob = (f"{it.get('designation', '')} {it.get('marque', '')} "
+                f"{it.get('_produit_nom', '')}").lower()
+        if "huawei" in blob:
+            huawei_seen = True
+        else:
+            # Un onduleur non-Huawei dans le devis → pas d'accessoires Huawei.
+            return False
+    return huawei_seen
+
+
 def _line_to_item(ligne, taux_tva: Decimal) -> dict:
     """Convert an OS LigneDevis (HT prices) into a premium item dict.
 
@@ -173,8 +212,11 @@ def clean_pdf_options(raw) -> dict:
 #
 # Tatwir Croissance Verte (CIH/BMCE/Attijariwafa — PME):
 #   Taux: ~4–5 % an (HT), durée max 7 ans.
-# ISTIDAMA (Crédit Agricole du Maroc — agricole):
-#   Taux: ~3–4 % an (HTT), durée max 10 ans, FDA subsidy compatible.
+# CAM « Saquii Solaire » (Crédit Agricole du Maroc — pompage agricole):
+#   QK3 correction — le pompage solaire est financé par l'offre CAM dédiée
+#   « Saquii Solaire » (~5–6 % an, 10 ans, 1 an de différé), cumulable avec la
+#   subvention FDA 30 %. Le pompage n'est PAS éligible à ISTIDAMA — d'où la
+#   correction ci-dessous (ISTIDAMA retiré du bloc agricole).
 #
 # Residential / uncategorised fall back to a generic green-mortgage proxy
 # (MCMA-style): ~6 % an, 10 ans.
@@ -192,10 +234,10 @@ _FINANCING_PROGRAMS = {
         "programme_label": "Tatwir",
     },
     "agricole": {
-        "nom": "ISTIDAMA (Crédit Agricole du Maroc)",
-        "taux_annuel": 0.035,         # milieu fourchette 3–4 %
-        "duree_mois": 120,            # 10 ans
-        "programme_label": "ISTIDAMA",
+        "nom": "CAM « Saquii Solaire » (Crédit Agricole du Maroc)",
+        "taux_annuel": 0.055,         # milieu fourchette 5–6 %
+        "duree_mois": 120,            # 10 ans (1 an de différé)
+        "programme_label": "Saquii Solaire",
     },
 }
 _DEFAULT_FINANCING_KEY = "residentiel"
@@ -247,7 +289,7 @@ def compute_financing_block(
                 eco_mensuelle_sans: float,
                 eco_mensuelle_avec: float,
             },
-            guidance_text: str | None,  # Tatwir / ISTIDAMA text or None
+            guidance_text: str | None,  # Tatwir / Saquii Solaire text or None
         }
     """
     if not display_total or display_total <= 0:
@@ -288,10 +330,14 @@ def compute_financing_block(
             "réservé aux projets d'efficacité énergétique. Demandez à votre banque."
         )
     elif key == "agricole":
+        # QK3 — le pompage solaire relève de l'offre CAM « Saquii Solaire »
+        # (≈ 5–6 % an, 10 ans, 1 an de différé), cumulable avec la subvention
+        # FDA 30 %. Le pompage n'est PAS éligible à ISTIDAMA.
         guidance = (
-            "Le programme ISTIDAMA du Crédit Agricole du Maroc propose un financement "
-            "dédié au pompage solaire, cumulable avec la subvention FDA 30 %. "
-            "Contactez votre agence CAM pour les conditions exactes."
+            "L'offre « Saquii Solaire » du Crédit Agricole du Maroc finance le "
+            "pompage solaire (≈ 5–6 % an, 10 ans, 1 an de différé), cumulable "
+            "avec la subvention FDA 30 %. Contactez votre agence CAM pour les "
+            "conditions exactes."
         )
 
     return {
@@ -360,6 +406,23 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         if not _is_reseau_inverter(_blob(it))
     ]
 
+    # ── QF9 — Smart Meter + Clé Wifi (dongle) uniquement si onduleur Huawei ───
+    # Ces accessoires sont propres à l'onduleur Huawei ; sur une option dont
+    # l'onduleur n'est PAS Huawei (ex. onduleur hybride Deye), ils ne doivent
+    # jamais apparaître, même si une ligne obsolète a été copiée à la main. On
+    # évalue Huawei PAR option (l'onduleur réseau de « sans » peut être Huawei
+    # alors que l'onduleur hybride de « avec » est Deye) et on retire les lignes
+    # Smart Meter / Wifi de l'option non-Huawei.
+    def _drop_huawei_accessories(rows):
+        if _quote_is_huawei(rows):
+            return rows
+        return [it for it in rows
+                if not _is_smart_meter(it.get("designation", ""))
+                and not _is_wifi_dongle(it.get("designation", ""))]
+
+    sans_items = _drop_huawei_accessories(sans_items)
+    avec_items = _drop_huawei_accessories(avec_items)
+
     def _has_qty(rows, pred):
         return any(pred(_blob(r)) and r["quantite"] > 0 for r in rows)
 
@@ -411,7 +474,40 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     if not sans_ok and not avec_ok:
         # Format une page (liste simple) : pas d'options — valeurs neutres.
         sans_ok = True
-    if sans_ok and avec_ok:
+
+    # ── QF6 — respecter le choix avec/sans-batterie STOCKÉ par le vendeur ─────
+    # L'écran générateur persiste le scénario choisi dans etude_params
+    # ('scenario' = « Sans batterie » / « Avec batterie » / « Les deux (Sans +
+    # Avec) ») et l'option recommandée ('recommended_option'). On LIT ce choix
+    # d'abord ; l'inférence depuis les lignes n'est qu'un REPLI quand rien n'est
+    # stocké. Un choix stocké ne peut jamais être satisfait au-delà de ce que
+    # l'équipement permet : « Avec » sans onduleur hybride+batterie ne peut pas
+    # rendre l'option avec — dans ce cas on retombe sur ce qui est disponible.
+    _stored_choice = (devis.etude_params or {}).get('scenario')
+    _valid_choices = {
+        'Sans batterie', 'Avec batterie', 'Les deux (Sans + Avec)'}
+    if _stored_choice in _valid_choices and (sans_ok or avec_ok):
+        if _stored_choice == 'Les deux (Sans + Avec)' and sans_ok and avec_ok:
+            scenario = 'Les deux (Sans + Avec)'
+        elif _stored_choice == 'Sans batterie' and sans_ok:
+            scenario = 'Sans batterie'
+        elif _stored_choice == 'Avec batterie' and avec_ok:
+            scenario = 'Avec batterie'
+        elif sans_ok and avec_ok:
+            scenario = 'Les deux (Sans + Avec)'
+        elif avec_ok:
+            scenario = 'Avec batterie'
+        else:
+            scenario = 'Sans batterie'
+        # Option recommandée stockée si valide, sinon dérivée du scénario.
+        _stored_reco = (devis.etude_params or {}).get('recommended_option')
+        if _stored_reco in ('Sans batterie', 'Avec batterie'):
+            recommended = _stored_reco
+        elif scenario == 'Sans batterie':
+            recommended = 'Sans batterie'
+        else:
+            recommended = 'Avec batterie'
+    elif sans_ok and avec_ok:
         scenario = "Les deux (Sans + Avec)"
         recommended = "Avec batterie"
     elif sans_ok:
@@ -420,6 +516,18 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     else:
         scenario = "Avec batterie"
         recommended = "Avec batterie"
+
+    # QF6 — le scénario STOCKÉ « Sans/Avec » restreint le document à une seule
+    # option même si les deux existent dans les lignes. On aligne donc les
+    # drapeaux d'option et le mélange une-page sur ce scénario (SANS = réseau
+    # seul, sans batterie ni onduleur hybride ; AVEC = hybride + batterie, sans
+    # onduleur réseau). Comportement « les deux » et repli inchangés.
+    if scenario == 'Sans batterie':
+        avec_ok = False
+        deux_options = False
+    elif scenario == 'Avec batterie':
+        sans_ok = False
+        deux_options = False
 
     # ── Canonical totals: ONE computation from the stored HT lines ───────────
     # Every page must display these exact values — never re-derive.
@@ -478,8 +586,17 @@ def build_quote_data(devis, pdf_options=None) -> dict:
 
     totaux_sans = _canonical_totaux(sans_items)
     totaux_avec = _canonical_totaux(avec_items)
-    # Une page : option 1 seule quand deux vraies options, sinon tout le devis
-    totaux_all = _canonical_totaux(sans_items if deux_options else items)
+    # Une page : option 1 seule quand deux vraies options ; l'option choisie
+    # quand le scénario stocké restreint à une seule (QF6) ; sinon tout le devis.
+    if deux_options:
+        _all_rows = sans_items
+    elif scenario == 'Avec batterie' and avec_ok:
+        _all_rows = avec_items
+    elif scenario == 'Sans batterie' and has_reseau:
+        _all_rows = sans_items
+    else:
+        _all_rows = items
+    totaux_all = _canonical_totaux(_all_rows)
 
     # ── Total d'AFFICHAGE canonique (liste des devis) ────────────────────────
     # Deux options → total de l'option 1 (remise incluse), jamais la somme
@@ -591,6 +708,128 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         if puissance_kwc > 0:
             etude["prix_kwc"] = round(_ref_total / puissance_kwc)
 
+    # ── QF2 — modèle « deux factures » (économies réelles, par tranche) ──────
+    # Le modèle effectivement utilisé pour les économies affichées :
+    #   'factures'   — facture_sans − facture_avec, par tranche (données réelles)
+    #   'etude'      — économies imposées par l'étude stockée (bloc ci-dessus)
+    #   'estimation' — ancienne approximation production × autoconso × prix,
+    #                  toujours étiquetée comme estimation (aucun chiffre inventé).
+    savings_model = roi.get("savings_model", "estimation")
+    if etude.get("production_annuelle") and etude.get("economies_annuelles"):
+        savings_model = "etude"
+    if savings_model == "factures":
+        # Persistance dans les paramètres d'étude RENDUS : la page étude et la
+        # proposition web reprennent exactement les mêmes chiffres (une seule
+        # source). Rendu seulement — aucun statut, aucune écriture en base.
+        etude["facture_annuelle_sans_solaire"] = roi["facture_sans"]
+        etude["facture_annuelle_avec_solaire_opt1"] = roi["facture_avec_s"]
+        etude["facture_annuelle_avec_solaire_opt2"] = roi["facture_avec_a"]
+        etude["economie_reelle_opt1"] = roi["eco_s_ann"]
+        etude["economie_reelle_opt2"] = roi["eco_a_ann"]
+
+    # ── QF3 — bloc « Comment nous calculons vos économies » ──────────────────
+    # Méthode + exemple chiffré compact, calculés UNE fois ici : le PDF premium
+    # et la proposition web (/proposal) rendent EXACTEMENT le même bloc.
+    def _fr_int(n):
+        return f"{int(round(n)):,}".replace(",", " ")
+
+    _sm_eco_ref = roi["eco_a_ann"] if scenario == "Avec batterie" else roi["eco_s_ann"]
+    if savings_model == "factures":
+        _sm_avec = (roi["facture_avec_a"] if scenario == "Avec batterie"
+                    else roi["facture_avec_s"])
+        savings_method = {
+            "model": "factures",
+            "facture_actuelle": roi["facture_sans"],
+            "facture_avec_solaire": _sm_avec,
+            "economie": roi["facture_sans"] - _sm_avec,
+            "approximatif": bool(roi.get("factures_approximatif")),
+            "ligne_methode": (
+                "Chaque kWh est valorisé au prix de SA tranche (barème "
+                "progressif du distributeur) : facture actuelle moins facture "
+                "résiduelle après autoconsommation — jamais un prix moyen "
+                "inventé."),
+            "exemple": (
+                f"Facture actuelle ≈ {_fr_int(roi['facture_sans'])} DH/an → "
+                f"avec solaire ≈ {_fr_int(_sm_avec)} DH/an → économie ≈ "
+                f"{_fr_int(roi['facture_sans'] - _sm_avec)} DH/an"),
+        }
+    elif savings_model == "etude":
+        savings_method = {
+            "model": "etude",
+            "facture_actuelle": None,
+            "facture_avec_solaire": None,
+            "economie": _sm_eco_ref,
+            "approximatif": False,
+            "ligne_methode": (
+                "Économies issues de l'étude de consommation enregistrée avec "
+                "ce devis (production et économies calculées sur votre profil "
+                "réel)."),
+            "exemple": None,
+        }
+    else:
+        savings_method = {
+            "model": "estimation",
+            "facture_actuelle": None,
+            "facture_avec_solaire": None,
+            "economie": _sm_eco_ref,
+            "approximatif": True,
+            "ligne_methode": (
+                "Estimation : production annuelle × part autoconsommée × tarif "
+                "kWh — loi 82-21 : seuls les kWh autoconsommés sont valorisés, "
+                "le surplus injecté n'est pas rémunéré. Fournissez une facture "
+                "réelle pour un calcul par tranche exact."),
+            "exemple": None,
+        }
+
+    # ── QK4 — « Nos hypothèses » : transparence des hypothèses d'économies ────
+    # Surface côté client les hypothèses derrière les économies : tarif MAD/kWh
+    # utilisé, source du barème (ONEE/Lydec/Redal — approximatif pour les
+    # distributeurs privés), autoconsommation d'abord (loi 82-21, injection OFF —
+    # rachat BT résidentiel différé par l'ANRE), base de production/dégradation.
+    # Toutes les valeurs viennent de roi/etude (une source) ; dégrade proprement.
+    _util_labels = {"onee": "ONEE", "lydec": "Lydec", "redal": "Redal"}
+    _util_key = (str(_utility).lower() if _utility else "")
+    _util_name = _util_labels.get(_util_key, "")
+    _util_approx = _util_key in ("lydec", "redal")
+    _tarif_val = roi.get("tarif_kwh")
+    _tarif_txt = (f"{_tarif_val:.2f}".replace(".", ",")
+                  if isinstance(_tarif_val, (int, float)) else None)
+    _prod_factor = roi.get("productible")
+    hypotheses = []
+    if savings_model == "factures" and _util_name:
+        hypotheses.append(
+            f"Tarif électricité : barème {_util_name} par tranche"
+            + (" (approximatif — distributeur privé)" if _util_approx
+               else " (barème public)"))
+    elif _tarif_txt:
+        _src = _util_name or "moyenne de référence"
+        hypotheses.append(
+            f"Tarif électricité retenu : {_tarif_txt} MAD/kWh"
+            + (f" ({_src})" if _util_name else " (estimation)"))
+    hypotheses.append(
+        "Économies valorisées sur l'autoconsommation uniquement (loi 82-21) — "
+        "le surplus injecté n'est pas rémunéré (rachat BT résidentiel différé "
+        "par l'ANRE).")
+    if _prod_factor:
+        hypotheses.append(
+            f"Production estimée : ≈ {int(round(_prod_factor))} kWh par kWc et "
+            "par an (irradiation moyenne au Maroc), performance panneaux "
+            "garantie sur 25 ans.")
+    hypotheses.append(
+        "Estimations non contractuelles ; toute hausse future du tarif "
+        "électrique améliore votre rentabilité.")
+    hypotheses_block = {
+        "titre": "Nos hypothèses",
+        "items": hypotheses,
+        "tarif_kwh": _tarif_val,
+        "tarif_kwh_txt": _tarif_txt,
+        "tranche_source": _util_name or None,
+        "tranche_approximatif": bool(_util_approx),
+        "autoconso_first": True,
+        "productible_kwh_kwc": (int(round(_prod_factor)) if _prod_factor
+                                else None),
+    }
+
     # ONEE monthly bill proxy (bars sit above the savings curves): full-price bill
     # ≈ Option-2 monthly savings / 0.85 autoconsumption.
     factures_mensuelles = [round(v / 0.85) for v in roi["eco_a_monthly"]]
@@ -602,7 +841,18 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # hybride+batterie) rend l'OPTION 1 (sans batterie) seule, avec une
     # mention discrète vers la proposition complète. Devis mono-option ou sans
     # options (pompage, liste libre) : toutes les lignes, comme avant.
-    onepage_source = sans_items if deux_options else items
+    # QF6 — le scénario choisi pilote aussi la liste une-page : « Sans » → les
+    # lignes de l'option sans batterie, « Avec » → celles de l'option avec
+    # batterie, « Les deux » → option 1 seule (jamais deux onduleurs), sinon
+    # tout le devis (liste libre/pompage).
+    if deux_options:
+        onepage_source = sans_items
+    elif scenario == 'Avec batterie' and avec_ok:
+        onepage_source = avec_items
+    elif scenario == 'Sans batterie' and has_reseau:
+        onepage_source = sans_items
+    else:
+        onepage_source = items
     onepage_note_batterie = deux_options
     all_items = [
         {
@@ -681,6 +931,26 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
         entreprise = {}
 
+    # ── QG7 — contact du CRÉATEUR du devis (nom + téléphone) ─────────────────
+    # Le bloc contact du PDF affichait uniquement la société (donc toujours le
+    # fondateur). On expose le créateur (Devis.created_by : first_name/last_name/
+    # phone_number) pour que le client sache qui le suit. Repli sur le contact
+    # société quand l'utilisateur n'a pas de téléphone. Données seulement.
+    seller = {"nom": "", "telephone": ""}
+    try:
+        _creator = getattr(devis, "created_by", None)
+        if _creator is not None:
+            _fn = (getattr(_creator, "first_name", "") or "").strip()
+            _ln = (getattr(_creator, "last_name", "") or "").strip()
+            _full = (f"{_fn} {_ln}").strip()
+            _tel = (getattr(_creator, "phone_number", "") or "").strip()
+            if _full:
+                seller["nom"] = _full
+            # Repli sur le téléphone société quand l'utilisateur n'en a pas.
+            seller["telephone"] = _tel or (entreprise.get("telephone") or "")
+    except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
+        seller = {"nom": "", "telephone": ""}
+
     tva_label = int(tva_pct) if tva_pct == int(tva_pct) else tva_pct
     # Texte TVA UNIQUE, partagé par toutes les notes/conditions des PDF.
     # Réforme (taux par ligne) : le texte décrit la règle 10/20 ; devis
@@ -722,6 +992,25 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # QJ13 — honest-number guard: True when savings are an estimate (no tariff data)
         "savings_estimated": roi.get("savings_estimated", False),
         "tarif_kwh": roi.get("tarif_kwh"),
+        # QF2 — modèle « deux factures » : les deux factures annuelles et le
+        # modèle d'économie réellement utilisé ('factures'/'etude'/'estimation').
+        # Les factures sont None hors modèle 'factures' — jamais inventées.
+        "savings_model": savings_model,
+        "facture_sans_solaire": (
+            roi.get("facture_sans") if savings_model == "factures" else None),
+        "facture_avec_solaire_s": (
+            roi.get("facture_avec_s") if savings_model == "factures" else None),
+        "facture_avec_solaire_a": (
+            roi.get("facture_avec_a") if savings_model == "factures" else None),
+        "factures_approximatif": (
+            bool(roi.get("factures_approximatif"))
+            if savings_model == "factures" else False),
+        # QF3 — bloc « Comment nous calculons vos économies » (méthode + exemple
+        # chiffré compact). Même dict rendu par le PDF premium et /proposal.
+        "savings_method": savings_method,
+        # QK4 — bloc « Nos hypothèses » (tarif, source barème, autoconso-first,
+        # productible). Même dict rendu par le PDF premium et /proposal.
+        "hypotheses": hypotheses_block,
         "factures_mensuelles": factures_mensuelles,
         "sans_items": sans_items,
         "avec_items": avec_items,
@@ -759,6 +1048,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # DC1 — identité société (multi-tenant). Champs vides → le moteur premium
         # applique ses littéraux historiques (aucune fuite d'un autre tenant).
         "entreprise": entreprise,
+        # QG7 — contact du créateur du devis (nom + tél ; repli société).
+        # Vide → le moteur retombe sur le contact société (byte-identique).
+        "seller": seller,
         # N26 — tampon d'acceptation : nom + date posés à l'acceptation du devis
         # (le moteur ne l'affiche QUE si les deux sont présents). Date au format
         # FR jj/mm/aaaa, vide sinon → devis byte-identique à aujourd'hui.
@@ -789,6 +1081,68 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     )
     if financing is not None:
         data["financing"] = financing
+
+    # ── QJ29 — Multi-propriétés (additif, tout optionnel) ────────────────────
+    # (A) ×N villas identiques : multiplicateur whole-quote (défaut 1) qui met à
+    #     l'échelle HT/TVA/TTC + production/économies. N=1 → aucune clé ajoutée
+    #     (chemin mono-système inchangé au bit près).
+    # (B) villas différentes : sous-totaux par villa + total général calculés
+    #     depuis les groupes de lignes (LigneDevis.groupe_index) via le sélecteur.
+    # Les clés ci-dessous ne sont posées QUE lorsqu'elles s'appliquent, donc un
+    # devis mono-système garde une sortie strictement identique.
+    try:
+        from apps.ventes.selectors import multi_villa_totaux, nombre_proprietes
+        _n = nombre_proprietes(devis)
+        if _n > 1:
+            def _scale_tot(t):
+                if not isinstance(t, dict):
+                    return t
+                out = dict(t)
+                for k in ("ht_brut", "remise", "ht_net", "tva", "ttc",
+                          "ttc_exact", "ttc_avant"):
+                    if isinstance(out.get(k), (int, float)):
+                        out[k] = round(out[k] * _n, 2) if k not in (
+                            "ttc", "ttc_avant") else round(out[k] * _n)
+                if isinstance(out.get("tva_par_taux"), list):
+                    out["tva_par_taux"] = [
+                        {**b, "montant": round(b.get("montant", 0) * _n, 2),
+                         "ht_net": round(b.get("ht_net", 0) * _n, 2)}
+                        for b in out["tva_par_taux"]]
+                return out
+            data["nombre_proprietes"] = _n
+            data["display_total_unitaire"] = display_total
+            data["display_total_multi"] = round(display_total * _n)
+            data["totaux_multi"] = {
+                "sans": _scale_tot(totaux_sans),
+                "avec": _scale_tot(totaux_avec),
+                "all": _scale_tot(totaux_all),
+            }
+            data["prod_kwh_multi"] = int(round(roi["prod_kwh"] * _n))
+            data["eco_s_ann_multi"] = int(round(roi["eco_s_ann"] * _n))
+            data["eco_a_ann_multi"] = int(round(roi["eco_a_ann"] * _n))
+        _mv = multi_villa_totaux(devis)
+        if _mv is not None:
+            # Rendu-friendly : totaux Decimal → float pour la sérialisation JSON.
+            def _f(t):
+                out = {k: (float(v) if hasattr(v, "quantize") else v)
+                       for k, v in t.items() if k != "tva_par_taux"}
+                out["tva_par_taux"] = [
+                    {"taux": float(b["taux"]),
+                     "montant": float(b["montant"]),
+                     "ht_net": float(b["ht_net"])}
+                    for b in t.get("tva_par_taux", [])]
+                return out
+            data["multi_villa"] = {
+                "groupes": [
+                    {"index": g["index"], "label": g["label"],
+                     "totaux": _f(g["totaux"])}
+                    for g in _mv["groupes"]],
+                "grand_total": _f(_mv["grand_total"]),
+            }
+    except Exception:  # noqa: BLE001 — un PDF/une liste ne casse jamais ici
+        logger.exception("QJ29 multi-propriétés: ignoré (devis %s)",
+                         getattr(devis, "reference", "?"))
+
     return data
 
 

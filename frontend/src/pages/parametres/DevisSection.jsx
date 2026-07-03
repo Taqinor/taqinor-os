@@ -2,13 +2,16 @@
 // pompage, numérotation, commission, TVA/Taxes). Restylé sur le système de
 // design (@/ui) ; champs, libellés et comportement identiques.
 import {
-  Card, CardContent, Input, Label,
+  Card, CardContent, Input, Label, Switch,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { SectionTitle, Field } from './peComponents'
 import { MODE_LABELS, DOC_TYPES } from './peConstants'
 
-export default function DevisSection({ form, set, setPT, setPrefix, setNumbering, numberingPreview }) {
+export default function DevisSection({
+  form, set, setForm, setPT, setPrefix, setNumbering, numberingPreview,
+  canManageSensitive = false,
+}) {
   return (
     <>
       {/* Devis — échéancier, validité, pompage, numérotation */}
@@ -94,6 +97,13 @@ export default function DevisSection({ form, set, setPT, setPrefix, setNumbering
             commercial (responsable du lead, sinon créateur). Visible des
             seuls admins dans Rapports → Commissions commerciales.
           </p>
+          {/* WR12/N99 — réglage sensible : édition réservée à l'admin. */}
+          {!canManageSensitive ? (
+            <p className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-[11.5px] text-muted-foreground">
+              Réservé à l'administrateur. Contactez un administrateur pour
+              configurer la commission commerciale.
+            </p>
+          ) : (
           <div className="pe-grid-2">
             <Field label="Mode" htmlFor="pe-commission-mode">
               <Select value={form.commission_mode}
@@ -124,6 +134,28 @@ export default function DevisSection({ form, set, setPT, setPrefix, setNumbering
               )}
             </Field>
           </div>
+          )}
+
+          {/* WR12/N105 — interrupteur maître DGI (export UBL local). Sensible :
+              édition réservée à l'admin. OFF par défaut → capacité invisible. */}
+          {canManageSensitive && (
+            <>
+              <div className="mb-1 mt-4 text-xs font-semibold text-foreground">
+                Export DGI (facturation électronique)
+              </div>
+              <p className="mb-2 text-[11.5px] text-muted-foreground">
+                Interrupteur maître de la capacité DGI locale (export UBL 2.1 +
+                validateur de conformité). Désactivé par défaut : tant qu'il
+                l'est, la capacité reste totalement invisible et ne change rien.
+              </p>
+              <label className="flex items-center gap-2 text-sm text-foreground">
+                <Switch name="dgi_export_actif"
+                        checked={!!form.dgi_export_actif}
+                        onCheckedChange={v => setForm(f => ({ ...f, dgi_export_actif: v }))} />
+                Activer l'export DGI
+              </label>
+            </>
+          )}
         </CardContent>
       </Card>
 

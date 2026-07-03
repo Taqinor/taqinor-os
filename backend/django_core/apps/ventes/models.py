@@ -254,6 +254,20 @@ class LigneDevis(models.Model):
         max_digits=5, decimal_places=2, null=True, blank=True,
         help_text='Taux TVA de la ligne (%). Vide = taux global du devis.')
 
+    # ── QJ29 — Multi-propriétés (villas différentes) — additif, tout optionnel ─
+    # Partitionne les lignes en groupes par-villa dans UN SEUL document (pas de
+    # scission du devis). ``groupe_index`` : 0 = équipement commun, 1..N = villa
+    # N ; NULL = ligne historique (chemin mono-système inchangé au bit près).
+    # ``groupe_label`` : libellé lisible de la villa (« Villa A »…), vide sinon.
+    groupe_index = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text='Groupe multi-villa : 0 = commun, 1..N = villa N. '
+                  'Vide = document mono-système (comportement historique).')
+    groupe_label = models.CharField(
+        max_length=80, blank=True, default='',
+        help_text='Libellé de la villa/du groupe (ex. « Villa A »). '
+                  'Vide = pas de groupe.')
+
     class Meta:
         verbose_name = 'Ligne de Devis'
         verbose_name_plural = 'Lignes de Devis'
@@ -1132,6 +1146,14 @@ class ShareLink(models.Model):
     facture = models.ForeignKey(
         Facture, on_delete=models.CASCADE, null=True, blank=True,
         related_name='share_links')
+    # QS3 — lien tokenisé vers le PDF d'un Bon de Commande FOURNISSEUR (stock).
+    # String-FK (ventes → stock) : ventes n'importe pas les modèles de stock.
+    # Additif/nullable : les liens existants (devis/facture) sont inchangés. Ce
+    # PDF montre légitimement les PRIX D'ACHAT au FOURNISSEUR — le jeton reste
+    # imprévisible + expirant, et le lien n'est JAMAIS exposé dans l'UI client.
+    bon_commande_fournisseur = models.ForeignKey(
+        'stock.BonCommandeFournisseur', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='share_links')
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField(default=_default_share_expiry)
     # QJ1 — Suivi d'ouverture : première et dernière consultation + compteur.
@@ -1151,7 +1173,14 @@ class ShareLink(models.Model):
         indexes = [models.Index(fields=['token'])]
 
     def __str__(self):
-        cible = self.devis_id and 'devis' or 'facture'
+        if self.devis_id:
+            cible = 'devis'
+        elif self.facture_id:
+            cible = 'facture'
+        elif self.bon_commande_fournisseur_id:
+            cible = 'bcf'
+        else:
+            cible = '?'
         return f'ShareLink {self.token[:8]}… ({cible})'
 
     @property
@@ -1173,6 +1202,24 @@ class ShareLink(models.Model):
         ).order_by('-expires_at').first()
         return link or cls.objects.create(
             company=facture.company, facture=facture)
+
+    @classmethod
+    def for_bon_commande_fournisseur(cls, bcf):
+        """QS3 — Réutilise (ou crée) un lien tokenisé vers le PDF d'un BCF.
+
+        La société vient du BCF (jamais du corps de requête). Le lien est
+        destiné au FOURNISSEUR (il peut légitimement voir les prix d'achat),
+        mais reste imprévisible + expirant et n'est jamais surfacé dans l'UI
+        client. ``bcf`` peut être l'objet ou un id."""
+        bcf_id = getattr(bcf, 'pk', bcf)
+        company = getattr(bcf, 'company', None)
+        link = cls.objects.filter(
+            bon_commande_fournisseur_id=bcf_id, expires_at__gt=timezone.now()
+        ).order_by('-expires_at').first()
+        if link is not None:
+            return link
+        return cls.objects.create(
+            company=company, bon_commande_fournisseur_id=bcf_id)
 
 
 PAYMENT_LINK_TTL_DAYS = 30

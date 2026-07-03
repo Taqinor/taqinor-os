@@ -158,7 +158,10 @@ export default function ExportSauvegarde() {
         <CardContent className="pt-5 space-y-4">
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-sm font-medium">Format :</span>
+            {/* MB5 — la liste de formats vient du serveur (longueur non bornée) :
+                l'enveloppe évite tout débordement horizontal sur mobile. */}
             <Segmented
+              className="flex-wrap"
               options={formatOptions}
               value={format}
               onChange={setFormat}

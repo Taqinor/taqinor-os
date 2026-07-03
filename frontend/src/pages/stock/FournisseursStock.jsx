@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
-import { Plus, Pencil, Trash2, Package, ShoppingCart } from 'lucide-react'
+import { Plus, Pencil, Trash2, Package, ShoppingCart, BarChart3 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import {
-  Button, IconButton, DataTable,
+  Button, IconButton, DataTable, Spinner,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   Form, FormField,
   Input, Textarea,
@@ -141,6 +141,86 @@ function FournisseurForm({ fournisseur, onClose, onSaved }) {
   )
 }
 
+// ── WR4 / FG59 — Scorecard performance fournisseur (admin, INTERNE) ──────────
+// Délai moyen de livraison, taux de remplissage, taux de retour, dépenses
+// totales (prix d'achat) — jamais client-facing.
+const fmtMad = (v) => `${(Number(v) || 0).toLocaleString('fr-FR', {
+  minimumFractionDigits: 2, maximumFractionDigits: 2,
+})} MAD`
+
+function ScorecardModal({ fournisseur, onClose }) {
+  const [data, setData] = useState(null)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    let active = true
+    stockApi.performanceFournisseur(fournisseur.id)
+      .then((r) => { if (active) setData(r.data) })
+      .catch((e) => {
+        if (active) {
+          setError(e?.response?.status === 403
+            ? 'Réservé à l\'administrateur.'
+            : (e?.response?.data?.detail ?? 'Chargement de la performance impossible.'))
+        }
+      })
+    return () => { active = false }
+  }, [fournisseur.id])
+
+  const pct = (v) => (v == null ? '—' : `${v} %`)
+  const jours = (v) => (v == null ? '—' : `${v} j`)
+
+  const cartes = data ? [
+    { label: 'Bons de commande', value: String(data.nb_bons ?? 0) },
+    { label: 'Délai moyen de livraison', value: jours(data.avg_lead_time_days) },
+    { label: 'Taux de remplissage', value: pct(data.fill_rate_pct) },
+    { label: 'Retours', value: String(data.nb_retours ?? 0) },
+    { label: 'Taux de retour', value: pct(data.return_rate_pct) },
+    { label: 'Dépenses totales (interne)', value: fmtMad(data.total_achats_ht) },
+  ] : []
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-h-[92vh] max-w-2xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <BarChart3 className="size-5 text-muted-foreground" aria-hidden="true" />
+            Performance — {fournisseur.nom}
+          </DialogTitle>
+          <DialogDescription>
+            Indicateurs d&apos;achat (délai, remplissage, retours, dépenses).
+            Donnée interne — jamais sur un document client.
+          </DialogDescription>
+        </DialogHeader>
+
+        {error && (
+          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+            {error}
+          </div>
+        )}
+        {!data && !error && (
+          <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+            <Spinner /> Chargement…
+          </div>
+        )}
+        {data && (
+          <div className="grid gap-3 sm:grid-cols-3">
+            {cartes.map((c) => (
+              <div key={c.label} className="rounded-lg border border-border bg-muted/30 p-3">
+                <p className="text-xs text-muted-foreground">{c.label}</p>
+                <p className="mt-1 text-lg font-semibold tabular-nums">{c.value}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>Fermer</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export default function FournisseursStock() {
   const role = useSelector((s) => s.auth.role)
   const permissions = useSelector((s) => s.auth.permissions) || []
@@ -153,6 +233,8 @@ export default function FournisseursStock() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [selected, setSelected] = useState(null) // objet fournisseur ou {} (nouveau)
+  const [scorecard, setScorecard] = useState(null) // WR4 — perf fournisseur (admin)
+  const isAdmin = role === 'admin'
 
   // setState n'arrive que dans les callbacks asynchrones (jamais synchrone dans
   // l'effet) : l'état initial loading=true couvre le premier chargement.
@@ -191,9 +273,15 @@ export default function FournisseursStock() {
       accessor: (f) => f.nb_produits ?? 0 },
     { id: 'nb_bons_commande', header: 'BCF', align: 'right', width: 80, searchable: false,
       accessor: (f) => f.nb_bons_commande ?? 0 },
-    { id: 'actions', header: '', width: 100, searchable: false, sortable: false,
+    { id: 'actions', header: '', width: 140, searchable: false, sortable: false,
       cell: (_v, f) => (
         <div className="flex items-center justify-end gap-1">
+          {isAdmin && (
+            <IconButton size="md" variant="ghost" label="Voir la performance"
+                        onClick={(e) => { e.stopPropagation(); setScorecard(f) }}>
+              <BarChart3 className="size-4" aria-hidden="true" />
+            </IconButton>
+          )}
           <IconButton size="md" variant="ghost" label="Modifier"
                       onClick={(e) => { e.stopPropagation(); setSelected(f) }}>
             <Pencil className="size-4" aria-hidden="true" />
@@ -207,7 +295,7 @@ export default function FournisseursStock() {
           )}
         </div>
       ) },
-  // canDelete est stable au sein d'une session ; reload via closure stable.
+  // canDelete/isAdmin stables au sein d'une session ; reload via closure stable.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   ], [canDelete])
 
@@ -247,6 +335,9 @@ export default function FournisseursStock() {
       {selected && (
         <FournisseurForm fournisseur={selected}
                          onClose={() => setSelected(null)} onSaved={reload} />
+      )}
+      {scorecard && (
+        <ScorecardModal fournisseur={scorecard} onClose={() => setScorecard(null)} />
       )}
     </div>
   )

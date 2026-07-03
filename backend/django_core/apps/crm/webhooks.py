@@ -118,6 +118,53 @@ def _clean_roof_outline(raw):
     return out or None
 
 
+# QK1 — Mode marché du site → Lead.type_installation (tolérant FR/EN).
+_MARKET_MODE_ALIASES = {
+    'residentiel': 'residentiel',
+    'residential': 'residentiel',
+    'commercial': 'commercial',
+    'industriel': 'industriel',
+    'industrial': 'industriel',
+    'agricole': 'agricole',
+    'agricultural': 'agricole',
+    'pompage': 'agricole',
+}
+
+# QK1 — Langue du site → Lead.langue_preferee ('fr'/'darija' uniquement).
+# L'arabe du site est rapproché du darija (langue des messages WhatsApp).
+_LANGUE_ALIASES = {
+    'fr': 'fr',
+    'darija': 'darija',
+    'ar': 'darija',
+}
+
+
+def _clean_choice(raw, values):
+    """Normalise une clé de choix (str, lowercase) si elle appartient à
+    ``values`` ; sinon None (jamais d'erreur — style tolérant du webhook)."""
+    if raw in (None, ''):
+        return None
+    key = str(raw).strip().lower()
+    return key if key in values else None
+
+
+def _clean_futures_charges(raw):
+    """Normalise les charges futures en liste triée de clés autorisées, ou None.
+
+    Accepte une liste (['clim', 've']) OU un dict ({'clim': True, 've': False}).
+    Toute clé hors ``Lead.FUTURES_CHARGES_KEYS`` est ignorée silencieusement."""
+    allowed = Lead.FUTURES_CHARGES_KEYS
+    keys = []
+    if isinstance(raw, dict):
+        keys = [k for k, v in raw.items() if v]
+    elif isinstance(raw, (list, tuple)):
+        keys = list(raw)
+    else:
+        return None
+    out = sorted({str(k).strip().lower() for k in keys} & set(allowed))
+    return out or None
+
+
 def _map_payload_to_fields(data: dict) -> dict:
     """Payload du site (lead.ts:LeadRecord) → champs du modèle Lead."""
     band = data.get('band')
@@ -194,6 +241,55 @@ def _map_payload_to_fields(data: dict) -> dict:
         data.get('gpsLng', data.get('gps_lng')), lo=-180, hi=180)
     if gps_lng is not None:
         fields['gps_lng'] = gps_lng
+
+    # ── QK1 — Ne plus JETER la qualification déjà captée par le site ──
+    # Mode marché (Résidentiel/Industriel/Commercial/Agricole) → type_installation.
+    market_mode = (data.get('marketMode') or data.get('market_mode')
+                   or data.get('mode') or data.get('typeInstallation')
+                   or data.get('type_installation'))
+    if market_mode not in (None, ''):
+        mapped_mode = _MARKET_MODE_ALIASES.get(str(market_mode).strip().lower())
+        if mapped_mode:
+            fields['type_installation'] = mapped_mode
+    # Langue du visiteur (fr/ar/darija) → langue préférée des messages.
+    langue = data.get('langue') or data.get('language') or data.get('lang')
+    if langue not in (None, ''):
+        mapped_langue = _LANGUE_ALIASES.get(str(langue).strip().lower())
+        if mapped_langue:
+            fields['langue_preferee'] = mapped_langue
+    # Distributeur d'électricité (ONEE/Lydec/Redal/autre).
+    distributeur = _clean_choice(
+        data.get('distributeur', data.get('utility')),
+        Lead.Distributeur.values)
+    if distributeur is not None:
+        fields['distributeur'] = distributeur
+    # Âge de la toiture (années, bornes plausibles 0–200).
+    roof_age = _clean_decimal(
+        data.get('roofAge', data.get('roof_age')), lo=0, hi=200)
+    if roof_age is not None:
+        fields['roof_age'] = int(roof_age)
+    # Propriétaire / locataire.
+    ownership = _clean_choice(data.get('ownership'), Lead.Ownership.values)
+    if ownership is not None:
+        fields['ownership'] = ownership
+    # Horizon du projet.
+    timeline = _clean_choice(
+        data.get('projectTimeline', data.get('project_timeline')),
+        Lead.ProjectTimeline.values)
+    if timeline is not None:
+        fields['project_timeline'] = timeline
+    # Intention de financement.
+    financing = _clean_choice(
+        data.get('financingIntent', data.get('financing_intent')),
+        Lead.FinancingIntent.values)
+    if financing is not None:
+        fields['financing_intent'] = financing
+    # Charges futures prévues (clim / VE / pompe).
+    futures = _clean_futures_charges(
+        data.get('futuresCharges', data.get('futures_charges',
+                                            data.get('futureLoads'))))
+    if futures is not None:
+        fields['futures_charges'] = futures
 
     if fields['whatsapp_opt_in'] and fields['telephone']:
         fields['whatsapp'] = fields['telephone']
@@ -315,6 +411,17 @@ def website_lead_webhook(request):
                 logger.warning(
                     'website_lead_webhook: notify_new_lead échoué (lead #%s) : %s',
                     lead.pk, _exc)
+
+        # QK6 — photo de facture/compteur/toiture jointe à la capture :
+        # attachée au lead (+ OCR si configuré), best-effort — une photo
+        # invalide ou un stockage en panne ne remet JAMAIS le lead en cause.
+        try:
+            from .intake_photo import attach_capture_photo
+            attach_capture_photo(lead, data)
+        except Exception as _exc:  # noqa: BLE001 — le lead prime sur la photo
+            logger.warning(
+                'website_lead_webhook: photo non jointe (lead #%s) : %s',
+                lead.pk, _exc)
 
         raw.lead = lead
         raw.processed = True

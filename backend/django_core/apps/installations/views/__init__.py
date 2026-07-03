@@ -7,6 +7,8 @@ ré-exporte toutes les classes/fonctions publiques pour que
 fonctionner à l'identique. Aucun changement de comportement ni d'endpoint."""
 from .type_intervention import TypeInterventionViewSet, seed_types_intervention
 from .installation import InstallationViewSet
+from .commissioning import CommissioningRecordViewSet
+from .stage_config import StageModeleViewSet
 from .checklist_template import ChecklistTemplateViewSet
 from .checklist_etape import ChecklistEtapeModeleViewSet
 from .intervention import InterventionViewSet
@@ -68,6 +70,8 @@ __all__ = [
     'TypeInterventionViewSet',
     'seed_types_intervention',
     'InstallationViewSet',
+    'CommissioningRecordViewSet',
+    'StageModeleViewSet',
     'ChecklistTemplateViewSet',
     'ChecklistEtapeModeleViewSet',
     'InterventionViewSet',

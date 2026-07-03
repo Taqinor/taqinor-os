@@ -350,6 +350,13 @@ GED_OCR_ENABLED = os.environ.get('GED_OCR_ENABLED', '0') == '1'
 GED_CLASSIFICATION_ENABLED = (
     os.environ.get('GED_CLASSIFICATION_ENABLED', '0') == '1')
 
+# QK6 — OCR de la photo de facture/compteur captée par le site (webhook CRM).
+# KEY-GATED : OFF par défaut → la photo est simplement jointe au lead (aucun
+# appel réseau, aucun coût). Le founder l'active en posant le flag une fois la
+# clé Zhipu configurée côté service FastAPI IA.
+CRM_CAPTURE_OCR_ENABLED = (
+    os.environ.get('CRM_CAPTURE_OCR_ENABLED', '0') == '1')
+
 # GED36 — quota de stockage par société (octets). 0 = illimité (défaut). Sert de
 # valeur PAR DÉFAUT quand une société n'a pas de quota explicite (`QuotaStockage`).
 GED_QUOTA_DEFAUT_OCTETS = int(os.environ.get('GED_QUOTA_DEFAUT_OCTETS', '0'))

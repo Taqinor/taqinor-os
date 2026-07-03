@@ -142,11 +142,15 @@ class TestComputeFinancingBlockPure(TestCase):
         self.assertIsNotNone(result['guidance_text'])
         self.assertIn('Tatwir', result['guidance_text'])
 
-    def test_agricole_routes_to_istidama(self):
+    def test_agricole_routes_to_saquii_solaire(self):
+        # QK3 — le pompage relève de CAM « Saquii Solaire » (+ FDA 30 %),
+        # PAS d'ISTIDAMA (pompage inéligible).
         result = compute_financing_block(180_000, 12_000, 15_000, 'agricole')
-        self.assertEqual(result['credit']['programme_label'], 'ISTIDAMA')
+        self.assertEqual(result['credit']['programme_label'], 'Saquii Solaire')
         self.assertIsNotNone(result['guidance_text'])
-        self.assertIn('ISTIDAMA', result['guidance_text'])
+        self.assertIn('Saquii Solaire', result['guidance_text'])
+        self.assertIn('FDA', result['guidance_text'])
+        self.assertNotIn('ISTIDAMA', result['guidance_text'])
 
     def test_residentiel_no_programme_label(self):
         result = compute_financing_block(80_000, 6_000, 8_000, 'residentiel')
@@ -250,7 +254,8 @@ class TestFinancingInBuildQuoteData(TestCase):
         # Agricole degrades full→onepage but financing block must still be present
         fin = data.get('financing')
         if fin:  # may degrade to None on zero savings — still test mode
-            self.assertEqual(fin['credit']['programme_label'], 'ISTIDAMA')
+            # QK3 — pompage = CAM « Saquii Solaire », plus ISTIDAMA.
+            self.assertEqual(fin['credit']['programme_label'], 'Saquii Solaire')
 
     def test_company_scoped_devis_financing_not_crossleak(self):
         """Two companies' quotes don't interfere — each devis is scoped."""

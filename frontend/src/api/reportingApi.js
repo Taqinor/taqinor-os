@@ -50,6 +50,18 @@ const reportingApi = {
   updateSavedReport: (id, data) =>
     api.patch(`/reporting/saved-reports/${id}/`, data),
   deleteSavedReport: (id) => api.delete(`/reporting/saved-reports/${id}/`),
+  // FG96 — Config de tableau de bord (par utilisateur / palier de rôle).
+  //   listDashboardConfigs → CRUD ; effectiveDashboardConfig → la config
+  //   résolue pour l'utilisateur courant (per-user > palier > défaut Python).
+  //   company forcée côté serveur.
+  listDashboardConfigs: () => api.get('/reporting/dashboard-config/'),
+  effectiveDashboardConfig: () =>
+    api.get('/reporting/dashboard-config/effective/'),
+  saveDashboardConfig: (id, data) => id
+    ? api.patch(`/reporting/dashboard-config/${id}/`, data)
+    : api.post('/reporting/dashboard-config/', data),
+  deleteDashboardConfig: (id) =>
+    api.delete(`/reporting/dashboard-config/${id}/`),
   // FG92 — Comparaison périodique (MoM/YoY). ?compare=prev|yoy.
   dashboardCompare: (compare) =>
     api.get('/reporting/dashboard/', { params: { compare } }),

@@ -712,6 +712,129 @@ def recompute_facture_fournisseur_statut(facture):
     return statut
 
 
+# ── DC34 — Référentiel sous-traitant UNIFIÉ + AP par la chaîne standard ──────
+# Écritures cross-app : les autres apps (installations) créent/mettent à jour un
+# sous-traitant (Fournisseur type=service + SousTraitantProfile) et ses comptes à
+# payer (FactureFournisseur/PaiementFournisseur) à travers ces services, jamais
+# en important apps.stock.models directement. La société est TOUJOURS posée côté
+# serveur (jamais lue du corps) et le profil hérite de la société du fournisseur.
+
+def create_sous_traitant(*, company, user=None, nom, metier='autre',
+                         contact_personne=None, email=None, telephone=None,
+                         adresse=None, ice=None, identifiant_fiscal=None,
+                         rc=None, rib=None, actif=True, note=None):
+    """DC34 — crée un sous-traitant = Fournisseur(type='service') + son
+    SousTraitantProfile. Société posée serveur (fournisseur ET profil).
+    Renvoie le Fournisseur créé."""
+    from .models import Fournisseur, SousTraitantProfile
+    fournisseur = Fournisseur.objects.create(
+        company=company, nom=nom, type=Fournisseur.Type.SERVICE,
+        contact_personne=contact_personne, email=email or None,
+        telephone=telephone, adresse=adresse, ice=ice,
+        identifiant_fiscal=identifiant_fiscal, rc=rc, rib=rib)
+    SousTraitantProfile.objects.create(
+        company=company, fournisseur=fournisseur, metier=metier,
+        actif=actif, note=note, created_by=user)
+    return fournisseur
+
+
+def update_sous_traitant(*, fournisseur, metier=None, actif=None, note=None,
+                         **identity):
+    """DC34 — met à jour un sous-traitant : champs d'identité sur le
+    Fournisseur, champs propres (métier/actif/note) sur le profil satellite
+    (créé s'il manque). Renvoie le Fournisseur."""
+    from .models import SousTraitantProfile
+    id_fields = []
+    for champ in ('nom', 'contact_personne', 'email', 'telephone', 'adresse',
+                  'ice', 'identifiant_fiscal', 'rc', 'rib'):
+        if champ in identity and identity[champ] is not None:
+            setattr(fournisseur, champ, identity[champ])
+            id_fields.append(champ)
+    if id_fields:
+        fournisseur.save(update_fields=id_fields)
+    profil, _ = SousTraitantProfile.objects.get_or_create(
+        fournisseur=fournisseur,
+        defaults={'company': fournisseur.company})
+    prof_fields = []
+    if metier is not None:
+        profil.metier = metier
+        prof_fields.append('metier')
+    if actif is not None:
+        profil.actif = actif
+        prof_fields.append('actif')
+    if note is not None:
+        profil.note = note
+        prof_fields.append('note')
+    if prof_fields:
+        prof_fields.append('date_modification')
+        profil.save(update_fields=prof_fields)
+    return fournisseur
+
+
+def create_facture_sous_traitant(*, company, user=None, fournisseur,
+                                 ref_fournisseur=None, date_facture=None,
+                                 date_echeance=None, montant_ht=0,
+                                 montant_tva=0, montant_ttc=0, note=None):
+    """DC34 — crée une facture ENTRANTE de sous-traitant via la chaîne AP
+    standard (FactureFournisseur), jamais un modèle parallèle. Référence
+    anti-collision (préfixe FF), société + créateur posés serveur. Renvoie la
+    FactureFournisseur."""
+    from decimal import Decimal
+    from apps.ventes.utils.references import create_with_reference
+    from .models import FactureFournisseur
+
+    def _save(reference):
+        return FactureFournisseur.objects.create(
+            company=company, reference=reference, fournisseur=fournisseur,
+            ref_fournisseur=ref_fournisseur, date_facture=date_facture,
+            date_echeance=date_echeance,
+            montant_ht=montant_ht or Decimal('0'),
+            montant_tva=montant_tva or Decimal('0'),
+            montant_ttc=montant_ttc or Decimal('0'),
+            statut=FactureFournisseur.Statut.A_PAYER, note=note,
+            created_by=user)
+
+    return create_with_reference(FactureFournisseur, 'FF', company, _save)
+
+
+def add_paiement_sous_traitant(*, company, user=None, facture, montant,
+                               date_paiement=None, mode='virement', note=None):
+    """DC34 — impute un règlement sur une facture sous-traitant via la chaîne AP
+    standard (PaiementFournisseur) et recalcule le statut de la facture. On
+    n'impute jamais plus que le solde dû. Renvoie le PaiementFournisseur."""
+    from decimal import Decimal, InvalidOperation
+    from django.db import transaction
+    from .models import PaiementFournisseur
+
+    try:
+        montant_dec = Decimal(str(montant))
+    except (InvalidOperation, TypeError, ValueError):
+        raise ValueError('Montant de paiement invalide.')
+    if montant_dec <= 0:
+        raise ValueError('Le montant du paiement doit être positif.')
+    if montant_dec > facture.solde_du:
+        raise ValueError('Le paiement dépasse le reste à payer.')
+    with transaction.atomic():
+        paiement = PaiementFournisseur.objects.create(
+            company=company, facture=facture, montant=montant_dec,
+            date_paiement=date_paiement, mode=mode, note=note,
+            created_by=user)
+        facture.refresh_from_db()
+        recompute_facture_fournisseur_statut(facture)
+    return paiement
+
+
+def delete_paiement_sous_traitant(paiement):
+    """DC34 — supprime un règlement sous-traitant et recalcule le statut de sa
+    facture (chaîne AP standard)."""
+    from django.db import transaction
+    facture = paiement.facture
+    with transaction.atomic():
+        paiement.delete()
+        facture.refresh_from_db()
+        recompute_facture_fournisseur_statut(facture)
+
+
 # ── N14 — Réservé vs disponible : engagé-mais-non-consommé ───────────────────
 # Une réservation de chantier (installations.StockReservation) ENGAGE le stock
 # d'un SKU sans le décrémenter. Le « disponible » d'un produit en tient compte :

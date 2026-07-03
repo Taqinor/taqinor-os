@@ -57,9 +57,11 @@ def _augment(data: dict) -> dict:
     d["validity_days"] = d.get("validity_days", 30)
     d["site_url"] = d.get("site_url", "taqinor.ma")
     d["pages_total"] = 4
+    # QK5 — /avis n'existe pas sur taqinor.ma : repli sur /realisations
+    # (page réelle) pour ne pas produire un lien 404 sur un PDF client.
     d["links"] = d.get("links") or {
         "realisations": "taqinor.ma/realisations",
-        "avis": "taqinor.ma/avis",
+        "avis": "taqinor.ma/realisations",
         "produits": "taqinor.ma/produits",
         "garanties": "taqinor.ma/garanties",
         "signer": f"taqinor.ma/signer/{d.get('ref', '')}",

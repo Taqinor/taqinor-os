@@ -63,8 +63,23 @@ export function estimerPanneaux(factureHiver, perTranche = 8) {
   return Math.floor(factureHiver / 900) * (Number.isFinite(n) && n > 0 ? n : 8)
 }
 
+// Taux d'autoconsommation par option — miroir pricing.py AUTOCONSO_SANS/AVEC.
+// Utilisés UNIQUEMENT par le modèle « deux factures » (QF5) ; l'estimation
+// historique ci-dessous continue d'utiliser dayUsagePct (comportement inchangé).
+export const AUTOCONSO_SANS = 0.60
+export const AUTOCONSO_AVEC = 0.85
+
 // ── Simulation ROI (port exact de /api/roi/calculate du simulateur) ──────────
-export function computeROI({ kwp, factures, dayUsagePct, totalSans, totalAvec, batteryKwh, kwhPrice, efficiency }) {
+// QF5 — quand une consommation annuelle RÉELLE + un distributeur connu sont
+// fournis (`consoAnnuelleKwh`/`utility`, capturés par QF4), l'économie bascule
+// sur le modèle « deux factures » par tranche (miroir EXACT du backend QF2) :
+// l'écran affiche alors la MÊME économie que le PDF pour les mêmes entrées.
+// Sans ces données, comportement HISTORIQUE inchangé (estimation production ×
+// autoconsommation diurne × tarif) — jamais de régression pour un devis existant.
+export function computeROI({
+  kwp, factures, dayUsagePct, totalSans, totalAvec, batteryKwh, kwhPrice, efficiency,
+  consoAnnuelleKwh, utility,
+}) {
   // Tarif ONEE et rendement éditables (Paramètres → Avancé) ; sans valeur, on
   // garde EXACTEMENT les constantes historiques (parité simulateur garantie).
   const PRICE = (Number.isFinite(Number(kwhPrice)) && Number(kwhPrice) > 0) ? Number(kwhPrice) : KWH_PRICE
@@ -98,8 +113,26 @@ export function computeROI({ kwp, factures, dayUsagePct, totalSans, totalAvec, b
     })
   }
 
-  const ecoAnnuelleSans = ecoSansMonthly.reduce((s, v) => s + v, 0)
-  const ecoAnnuelleAvec = ecoAvecMonthly.reduce((s, v) => s + v, 0)
+  let ecoAnnuelleSans = ecoSansMonthly.reduce((s, v) => s + v, 0)
+  let ecoAnnuelleAvec = ecoAvecMonthly.reduce((s, v) => s + v, 0)
+
+  // QF2/QF5 — modèle « deux factures » (réel, par tranche) quand consommation
+  // ET barème sont disponibles. Remplace l'estimation ci-dessus par l'économie
+  // réelle facture_sans − facture_avec (jamais les deux mélangés).
+  let savingsModel = 'estimation'
+  let factureSans = null, factureAvecSans = null, factureAvecAvec = null
+  if (productionAnnuelle > 0 && consoAnnuelleKwh > 0 && utility) {
+    const tbSans = twoBillsSavings(productionAnnuelle, consoAnnuelleKwh, AUTOCONSO_SANS, utility)
+    const tbAvec = twoBillsSavings(productionAnnuelle, consoAnnuelleKwh, AUTOCONSO_AVEC, utility)
+    if (tbSans && tbAvec) {
+      savingsModel = 'factures'
+      ecoAnnuelleSans = tbSans.economie
+      ecoAnnuelleAvec = tbAvec.economie
+      factureSans = tbSans.factureSans
+      factureAvecSans = tbSans.factureAvec
+      factureAvecAvec = tbAvec.factureAvec
+    }
+  }
 
   const paybackSans = (ecoAnnuelleSans > 0 && totalSans > 0)
     ? Math.round(totalSans / ecoAnnuelleSans * 10) / 10 : null
@@ -115,6 +148,120 @@ export function computeROI({ kwp, factures, dayUsagePct, totalSans, totalAvec, b
     eco_avec_monthly: ecoAvecMonthly,
     payback_sans: paybackSans,
     payback_avec: paybackAvec,
+    // QF5 — transparence : le PDF (builder.py) porte les mêmes clés
+    // (savings_model/facture_sans/facture_avec_s/facture_avec_a).
+    savings_model: savingsModel,
+    facture_sans: factureSans,
+    facture_avec_sans: factureAvecSans,
+    facture_avec_avec: factureAvecAvec,
+  }
+}
+
+// ── QF4/QF5 — Modèle « deux factures » par tranche (MIROIR JS) ───────────────
+// Port fidèle de backend apps/ventes/quote_engine/pricing.py : mêmes tables de
+// tranches, mêmes formules. Permet à l'écran d'afficher EXACTEMENT le même
+// calcul que le PDF (facture sans vs avec solaire, économie réelle) au lieu
+// d'une approximation production × autoconsommation × prix moyen.
+//
+// QF5 — divergence de tarif corrigée : `KWH_PRICE` (1.75) reste le défaut
+// historique de `computeROI` (aligné sur CompanyProfile.onee_tarif_kwh, le
+// repli RÉEL en pratique) ; `FALLBACK_KWH_PRICE` (1.20) mirror l'ultime repli
+// `_FALLBACK_KWH_PRICE` de pricing.py, utilisé UNIQUEMENT quand ni tranche ni
+// tarif société ne sont disponibles (repli en cascade, comme le backend).
+export const FALLBACK_KWH_PRICE = 1.20 // MAD/kWh — miroir pricing.py._FALLBACK_KWH_PRICE
+
+// Tables de tranches (miroir pricing.py — mêmes valeurs, mêmes plafonds).
+// Format : [plafond_kWh_mensuel | null, prix_MAD_kWh_TTC].
+export const ONEE_TRANCHES = [
+  [100, 0.9010],
+  [150, 1.0258],
+  [200, 1.2515],
+  [null, 1.4017],
+]
+export const LYDEC_TRANCHES = [
+  [100, 0.9500],
+  [200, 1.1500],
+  [null, 1.4500],
+]
+export const REDAL_TRANCHES = [
+  [100, 0.9300],
+  [200, 1.1200],
+  [null, 1.4200],
+]
+export const UTILITY_TABLES = {
+  onee: ONEE_TRANCHES, lydec: LYDEC_TRANCHES, redal: REDAL_TRANCHES,
+}
+export const APPROX_UTILITIES = new Set(['lydec', 'redal'])
+
+function resolveTranches(utility, tranchesOverride) {
+  if (tranchesOverride && tranchesOverride.length) return { table: tranchesOverride, approx: false }
+  const key = (utility || '').toLowerCase()
+  if (key && UTILITY_TABLES[key]) return { table: UTILITY_TABLES[key], approx: APPROX_UTILITIES.has(key) }
+  return { table: null, approx: false }
+}
+
+// Facture mensuelle TTC (MAD) d'une consommation, valorisée PAR TRANCHE
+// (barème progressif) — miroir _monthly_bill_from_kwh.
+export function monthlyBillFromKwh(kwhMensuel, tranches) {
+  if (!(kwhMensuel > 0)) return 0
+  let remaining = kwhMensuel
+  let prevCeiling = 0
+  let totalCost = 0
+  for (const [ceiling, price] of tranches) {
+    if (ceiling == null) { totalCost += remaining * price; remaining = 0; break }
+    const width = ceiling - prevCeiling
+    const consumed = Math.min(remaining, width)
+    totalCost += consumed * price
+    remaining -= consumed
+    prevCeiling = ceiling
+    if (remaining <= 0) break
+  }
+  if (remaining > 0) totalCost += remaining * tranches[tranches.length - 1][1]
+  return totalCost
+}
+
+// QF1 — inverse du barème progressif : facture mensuelle (MAD TTC) → kWh/mois.
+// Miroir kwh_from_bill. Retourne { kwhMensuel, approximatif, estimation }.
+export function kwhFromBill(billMad, utility, tranchesOverride) {
+  const bill = parseFloat(billMad) || 0
+  if (bill <= 0) return { kwhMensuel: 0, approximatif: false, estimation: true }
+  const { table, approx } = resolveTranches(utility, tranchesOverride)
+  if (!table) {
+    return { kwhMensuel: Math.round((bill / FALLBACK_KWH_PRICE) * 10) / 10, approximatif: true, estimation: true }
+  }
+  let prevCeiling = 0
+  let costSoFar = 0
+  let kwh = null
+  for (const [ceiling, price] of table) {
+    if (ceiling == null) { kwh = prevCeiling + (bill - costSoFar) / price; break }
+    const trancheCost = (ceiling - prevCeiling) * price
+    if (costSoFar + trancheCost >= bill) { kwh = prevCeiling + (bill - costSoFar) / price; break }
+    costSoFar += trancheCost
+    prevCeiling = ceiling
+  }
+  if (kwh == null) kwh = prevCeiling + (bill - costSoFar) / table[table.length - 1][1]
+  return { kwhMensuel: Math.round(kwh * 10) / 10, approximatif: approx, estimation: false }
+}
+
+// QF2 — modèle « deux factures » : économie = facture_sans − facture_avec,
+// valorisée par tranche (self-consumption-first, loi 82-21). Miroir
+// two_bills_savings. Retourne null quand une vraie donnée manque (l'appelant
+// dégrade alors vers l'estimation, jamais un chiffre inventé).
+export function twoBillsSavings(productionKwh, consoAnnuelleKwh, autoconsoRatio, utility, tranchesOverride) {
+  const { table } = resolveTranches(utility, tranchesOverride)
+  if (!table) return null
+  const conso = parseFloat(consoAnnuelleKwh) || 0
+  const prod = parseFloat(productionKwh) || 0
+  const ratio = parseFloat(autoconsoRatio) || 0
+  if (conso <= 0 || prod <= 0 || ratio <= 0) return null
+  const factureSans = Math.round(monthlyBillFromKwh(conso / 12, table) * 12)
+  const autoconsoKwh = Math.min(prod * ratio, conso)
+  const residuel = Math.max(0, conso - autoconsoKwh)
+  const factureAvec = Math.round(monthlyBillFromKwh(residuel / 12, table) * 12)
+  return {
+    factureSans, factureAvec,
+    economie: Math.max(0, factureSans - factureAvec),
+    autoconsoKwh: Math.round(autoconsoKwh),
   }
 }
 
@@ -270,6 +417,53 @@ export function optionTotalsTTC(lines, discountPct) {
   const totalSans = pct > 0 ? Math.round(totalSansBrut * (1 - pct / 100)) : totalSansBrut
   const totalAvec = pct > 0 ? Math.round(totalAvecBrut * (1 - pct / 100)) : totalAvecBrut
   return { totalSansBrut, totalAvecBrut, totalSans, totalAvec }
+}
+
+// ── QJ31 — Multi-propriétés : aperçu écran (TTC) miroir du backend QJ29 ──────
+// Deux modes, tous deux additifs et mutuellement exclusifs à l'écran (un seul
+// devis, jamais scindé) :
+//   (A) ×N villas identiques : `nombreProprietes` multiplie le total TTC.
+//   (B) villas différentes : les lignes portent `groupeIndex`/`groupeLabel`
+//       (0 = commun) → sous-total par villa + total général, comme
+//       `multi_villa_totaux` (selectors.py) mais en TTC (écran) plutôt qu'en
+//       HT→TVA→TTC (backend, qui reste la source AUTORITAIRE au moment du PDF).
+// Retourne null quand aucun des deux modes n'est utilisé (aperçu inchangé).
+export function multiPropertyPreviewTTC(lines, { nombreProprietes, discountPct } = {}) {
+  const n = parseInt(nombreProprietes, 10)
+  if (Number.isFinite(n) && n > 1) {
+    const { totalSans, totalAvec, totalSansBrut, totalAvecBrut } = optionTotalsTTC(lines, discountPct)
+    return {
+      mode: 'multiplicateur',
+      nombreProprietes: n,
+      totalUnitaireSans: totalSans, totalUnitaireAvec: totalAvec,
+      totalMultiSans: Math.round(totalSans * n), totalMultiAvec: Math.round(totalAvec * n),
+      totalUnitaireSansBrut: totalSansBrut, totalUnitaireAvecBrut: totalAvecBrut,
+    }
+  }
+
+  const grouped = lines.filter(l => l.groupeIndex != null)
+  if (!grouped.length) return null
+
+  const ttc = (l) => (parseFloat(l.quantite) || 0) * (parseFloat(l.prix_unit_ttc) || 0)
+  const byIndex = new Map()
+  for (const l of grouped) {
+    const idx = l.groupeIndex
+    if (!byIndex.has(idx)) byIndex.set(idx, { lignes: [], label: '' })
+    const bucket = byIndex.get(idx)
+    bucket.lignes.push(l)
+    if (!bucket.label && (l.groupeLabel || '').trim()) bucket.label = l.groupeLabel.trim()
+  }
+  const groupes = [...byIndex.keys()].sort((a, b) => a - b).map(idx => {
+    const bucket = byIndex.get(idx)
+    const totalTtc = bucket.lignes.reduce((s, l) => s + ttc(l), 0)
+    return {
+      index: idx,
+      label: bucket.label || (idx === 0 ? 'Équipement commun' : `Villa ${idx}`),
+      totalTtc: Math.round(totalTtc),
+    }
+  })
+  const grandTotalTtc = Math.round(groupes.reduce((s, g) => s + g.totalTtc, 0))
+  return { mode: 'villas', groupes, grandTotalTtc }
 }
 
 // ── Catégories du catalogue simulateur (clés de brand_catalog.json) ──────────
@@ -442,9 +636,17 @@ export function autoFillLines(produits, { kwp, panelW, structureType }) {
   const prixTableau = blocks * 1500
   const prixInstallation = (blocks + 1) * 2400
 
-  // Smart Meter + Wifi Dongle : qté 1 dès qu'un onduleur réseau est retenu
-  const smQty = reseau ? 1 : 0
-  const wifiQty = reseau ? 1 : 0
+  // QF8 — Smart Meter + Clé Wifi : UNIQUEMENT quand l'onduleur retenu (réseau
+  // OU hybride) est de marque Huawei (miroir du garde `info_hw` de l'ancien
+  // simulateur Python). Un onduleur Deye — ou toute autre marque — ne les
+  // ajoute jamais : qté 0. Vérifie `marque` (catalogue seedé) ET le nom (les
+  // fixtures/anciens produits sans champ `marque` structuré) pour ne rien
+  // manquer.
+  const isHuawei = (p) => !!p && (
+    _norm(p.marque).includes('huawei') || _norm(p.nom).includes('huawei'))
+  const huaweiRetenu = isHuawei(reseau?.p) || isHuawei(hybride?.p)
+  const smQty = huaweiRetenu ? 1 : 0
+  const wifiQty = huaweiRetenu ? 1 : 0
 
   const first = (type) => (byType[type] ?? [])[0] ?? null
   const row = (p, designation, quantite, ttcOverride = null) =>
@@ -517,6 +719,28 @@ export function computeEtudeIndustrielle({ kwp, consoMensuelleKwh, dayUsagePct, 
     prix_kwc: (kwp > 0 && totalTtc > 0) ? Math.round(totalTtc / kwp) : null,
     prod_mensuelle: prodM.map(v => Math.round(v)),
     conso_mensuelle: consoA ? Array(12).fill(Math.round(consoMois)) : null,
+  }
+}
+
+// ── QF7 — fusion des paramètres d'étude + choix scénario/option, TOUS modes ──
+// Fonction pure isolée pour rendre testable la garantie : `scenario` /
+// `recommended_option` sont TOUJOURS persistés dans etude_params, quel que
+// soit le mode (résidentiel/industriel/agricole) et même quand aucune étude
+// dégénérée ne peut être construite (ex. industriel kwp=0 avec des lignes
+// manuelles). `baseEtudeParams` peut être null/undefined — le résultat est
+// TOUJOURS un objet non-null qui porte au moins le choix scénario/option.
+export function buildEtudeParamsChoice(baseEtudeParams, {
+  scenario, recommendedChoice, recommendedOption, distributeur, consoAnnuelleReelle,
+}) {
+  const realBillParams = consoAnnuelleReelle > 0
+    ? { distributeur, conso_annuelle: consoAnnuelleReelle }
+    : (distributeur && distributeur !== 'onee' ? { distributeur } : {})
+  return {
+    ...(baseEtudeParams || {}),
+    ...(baseEtudeParams?.conso_annuelle ? { distributeur } : realBillParams),
+    scenario,
+    recommended_choice: recommendedChoice,
+    recommended_option: recommendedOption,
   }
 }
 
