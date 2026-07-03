@@ -64,9 +64,12 @@ class VehiculeSerializer(serializers.ModelSerializer):
             'vin', 'annee', 'date_acquisition', 'type_fiscal',
             'type_fiscal_display', 'tags', 'checklist_mise_en_service',
             'checklist_mise_en_service_ok', 'modele_ref', 'modele_ref_label',
-            'date_creation',
+            'date_cession', 'prix_cession', 'acheteur', 'date_creation',
         ]
-        read_only_fields = ['date_creation']
+        # XFLT16 — la cession passe UNIQUEMENT par l'action ``ceder/`` (calcule
+        # le gain/perte, délègue à compta si immobilisé) — jamais un PATCH direct.
+        read_only_fields = [
+            'date_creation', 'date_cession', 'prix_cession', 'acheteur']
 
     def get_modele_ref_label(self, obj):
         return str(obj.modele_ref) if obj.modele_ref_id else None

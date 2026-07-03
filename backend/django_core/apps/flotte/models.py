@@ -139,6 +139,16 @@ class Vehicule(models.Model):
         related_name='vehicules',
         verbose_name='Modèle de référence',
     )
+    # XFLT16 — Cession / sortie de parc. Renseignés par l'action ``ceder/`` ;
+    # les véhicules vendus/réformés gardent TOUT leur historique mais sont
+    # exclus des KPI actifs (FLOTTE35) et des alertes d'échéances.
+    date_cession = models.DateField(
+        null=True, blank=True, verbose_name='Date de cession')
+    prix_cession = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Prix de cession (MAD)')
+    acheteur = models.CharField(
+        max_length=150, blank=True, verbose_name='Acheteur')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 

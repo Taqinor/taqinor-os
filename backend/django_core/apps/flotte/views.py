@@ -272,6 +272,40 @@ class VehiculeViewSet(_FlotteBaseViewSet):
         serializer = JournalStatutVehiculeSerializer(qs, many=True)
         return Response(serializer.data)
 
+    @action(detail=True, methods=['post'])
+    def ceder(self, request, pk=None):
+        """XFLT16 — Cède (vend) le véhicule (écriture responsable/admin).
+
+        Exige le statut ``a_vendre`` (400 sinon). Body : ``date_cession``
+        (obligatoire), ``prix_cession`` (obligatoire), ``acheteur``
+        (facultatif). Calcule le gain/perte de cession — DÉLÉGUÉ à compta
+        (``apps.compta.services``) si le véhicule est rattaché à une
+        immobilisation, calcul local sinon — passe le statut à ``vendu`` et
+        journalise. L'historique du véhicule reste consultable après vente.
+        """
+        vehicule = self.get_object()
+        date_cession = request.data.get('date_cession')
+        prix_cession = request.data.get('prix_cession')
+        if not date_cession or prix_cession in (None, ''):
+            return Response(
+                {'detail': "Les champs 'date_cession' et 'prix_cession' "
+                           "sont requis."}, status=400)
+
+        from .services import ceder_vehicule
+        try:
+            resultat = ceder_vehicule(
+                vehicule, date_cession=date_cession,
+                prix_cession=prix_cession,
+                acheteur=request.data.get('acheteur', ''),
+                user=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+
+        data = self.get_serializer(resultat['vehicule']).data
+        data['resultat_cession'] = resultat['resultat_cession']
+        data['source_calcul'] = resultat['source']
+        return Response(data)
+
     @action(detail=False, methods=['get'], url_path='tableau-bord')
     def tableau_bord(self, request):
         """FLOTTE35 — Tableau de bord flotte (dispo / échéances / coûts / conso).

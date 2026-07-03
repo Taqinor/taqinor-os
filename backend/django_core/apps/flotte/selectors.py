@@ -1862,6 +1862,19 @@ def alertes_echeances_reglementaires(company, today=None):
             f'{ctr.fournisseur}'.strip(' —'),
             ctr.date_fin)
 
+    # XFLT16 — Exclut les alertes portant sur un véhicule vendu/réformé (sortie
+    # de parc) : l'historique reste consultable ailleurs, mais ces véhicules ne
+    # doivent plus générer d'échéance à traiter.
+    actifs_exclus = set(
+        ActifFlotte.objects.filter(
+            company=company,
+            vehicule__statut__in=[Vehicule.Statut.VENDU, Vehicule.Statut.REFORME],
+        ).values_list('id', flat=True)
+    )
+    if actifs_exclus:
+        alertes = [
+            a for a in alertes if a['actif_flotte_id'] not in actifs_exclus]
+
     # Tri du plus urgent au moins urgent : par date d'échéance croissante (les
     # échéances déjà passées, donc les plus anciennes, remontent naturellement
     # en tête), puis par source/objet pour un ordre stable.
@@ -2353,6 +2366,12 @@ def tableau_bord_flotte(company, today=None):
     }
     nb_vehicules = sum(veh_par_statut.values())
     disponibles = veh_par_statut.get(Vehicule.Statut.ACTIF, 0)
+    # XFLT16 — KPI « actifs » du parc, EXCLUANT les véhicules vendus/réformés
+    # (sortie de parc) : leur historique reste consultable, mais ils ne comptent
+    # plus dans le parc opérationnel.
+    statuts_sortie = {Vehicule.Statut.VENDU, Vehicule.Statut.REFORME}
+    nb_vehicules_actifs = sum(
+        n for statut, n in veh_par_statut.items() if statut not in statuts_sortie)
 
     # Engins par statut.
     eng_par_statut = {
@@ -2384,6 +2403,7 @@ def tableau_bord_flotte(company, today=None):
         'today': today,
         'vehicules': {
             'total': nb_vehicules,
+            'total_actifs': nb_vehicules_actifs,
             'disponibles': disponibles,
             'par_statut': veh_par_statut,
         },

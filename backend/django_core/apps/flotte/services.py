@@ -1180,3 +1180,67 @@ def garantie_active_pour(actif_flotte, today=None):
 
     garanties = GarantieFlotte.objects.filter(actif_flotte=actif_flotte)
     return [g for g in garanties if g.couvre(today, kilometrage)]
+
+
+# ── XFLT16 — Cession / sortie de parc ───────────────────────────────────────────
+
+def ceder_vehicule(vehicule, *, date_cession, prix_cession, acheteur='',
+                   user=None):
+    """XFLT16 — Cède (vend) un véhicule ``statut='a_vendre'`` (XFLT4).
+
+    Exige le statut ``a_vendre`` (lève ``ValueError`` sinon). Le gain/perte
+    de cession est calculé :
+
+    * si le véhicule est rattaché à une ``compta.Immobilisation``
+      (``Vehicule.immobilisation``) : DÉLÉGUÉ à
+      ``apps.compta.services.calculer_cession`` + ``enregistrer_cession`` +
+      ``poster_cession`` (jamais recalculé en doublon — la cession
+      comptable existe déjà côté compta, FG120) ;
+    * sinon (véhicule non immobilisé) : gain/perte simple =
+      ``prix_cession - Vehicule.valeur`` (repli local, aucune écriture
+      comptable à générer puisqu'il n'y a pas d'immobilisation).
+
+    Pose ``date_cession``/``prix_cession``/``acheteur``, passe le statut à
+    ``vendu`` (via ``changer_statut_vehicule``, journalisé). L'historique du
+    véhicule (coûts, OR, affectations) reste intact — seuls les KPI actifs
+    du tableau de bord (FLOTTE35) et les alertes d'échéances l'excluent
+    désormais (filtre sur le statut, voir ``selectors``).
+
+    Retourne ``{'vehicule', 'resultat_cession', 'source'}`` où ``source``
+    vaut ``'compta'`` ou ``'local'``.
+    """
+    from .models import Vehicule
+    from .services import changer_statut_vehicule
+
+    if vehicule.statut != Vehicule.Statut.A_VENDRE:
+        raise ValueError(
+            "Le véhicule doit être au statut « à vendre » avant cession.")
+
+    resultat_cession = None
+    source = 'local'
+    if vehicule.immobilisation_id is not None:
+        from apps.compta.services import enregistrer_cession, poster_cession
+
+        cession = enregistrer_cession(
+            vehicule.immobilisation, date_cession=date_cession,
+            prix_cession=prix_cession, user=user)
+        poster_cession(cession, user=user)
+        resultat_cession = float(cession.resultat_cession)
+        source = 'compta'
+    else:
+        valeur_actuelle = float(vehicule.valeur or 0)
+        resultat_cession = float(prix_cession or 0) - valeur_actuelle
+
+    vehicule.date_cession = date_cession
+    vehicule.prix_cession = prix_cession
+    vehicule.acheteur = acheteur
+    vehicule.save(update_fields=['date_cession', 'prix_cession', 'acheteur'])
+
+    vehicule = changer_statut_vehicule(
+        vehicule, Vehicule.Statut.VENDU, user=user)
+
+    return {
+        'vehicule': vehicule,
+        'resultat_cession': round(resultat_cession, 2),
+        'source': source,
+    }
