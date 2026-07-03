@@ -813,9 +813,11 @@ def echeances_rh(company, within_days=30, today=None):
     à temps) ; confirmer l'essai (``employes/{id}/confirmer-essai``) efface la
     date et retire l'employé de cette famille.
 
-    XRH5 — la famille ``declaration_entree`` alerte tout embauché dont
-    ``declaration_entree_statut = a_faire`` (due dès ``date_embauche``, jamais
-    hors fenêtre) ; marquer déclaré retire l'employé de cette famille.
+    XRH5 — la famille ``declaration_entree`` alerte tout embauché DONT LA
+    ``date_embauche`` EST CONNUE et dont ``declaration_entree_statut =
+    a_faire`` (due dès ``date_embauche``, jamais hors fenêtre — mais un
+    dossier sans ``date_embauche`` renseignée n'a pas d'échéance calculable
+    et est exclu) ; marquer déclaré retire l'employé de cette famille.
     """
     if company is None:
         return []
@@ -968,17 +970,20 @@ def echeances_rh(company, within_days=30, today=None):
         })
 
     # XRH5 — déclaration d'entrée CNSS/AMO non faite. Due dès l'embauche : la
-    # « date_validite » est ``date_embauche`` (à défaut aujourd'hui, si un
-    # embauché n'a pas de date renseignée — TOUJOURS due, jamais hors fenêtre).
+    # « date_validite » est ``date_embauche``. Un dossier SANS date d'embauche
+    # renseignée n'a pas d'échéance calculable et est exclu (pas de « due
+    # aujourd'hui » fabriquée) — seuls les embauchés dont la date est connue
+    # entrent dans cette famille.
     a_declarer = (
         DossierEmploye.objects
         .filter(
             company=company,
+            date_embauche__isnull=False,
             declaration_entree_statut=(
                 DossierEmploye.DeclarationEntreeStatut.A_FAIRE))
     )
     for emp in a_declarer:
-        echeance = emp.date_embauche or today
+        echeance = emp.date_embauche
         if echeance > limite:
             continue
         rows.append({

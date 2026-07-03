@@ -1706,6 +1706,35 @@ class CompetenceEmployeViewSet(_RhBaseViewSet):
             evalue_par=self.request.user,
             evalue_le=timezone.now())
 
+    @action(detail=False, methods=['get'])
+    def matrice(self, request):
+        """Matrice de compétences (FG172) : pour chaque employé évalué, la
+        liste de ses compétences avec niveau.
+
+        Société garantie par ``get_queryset`` (TenantMixin). Respecte les
+        mêmes filtres que la liste standard (``?employe=``, ``?competence=``,
+        ``?domaine=``, ``?niveau_min=``).
+        """
+        qs = self.get_queryset().order_by('employe', 'competence')
+        matrice = {}
+        for ligne in qs:
+            emp = ligne.employe
+            entry = matrice.setdefault(emp.id, {
+                'employe_id': emp.id,
+                'matricule': emp.matricule,
+                'employe_nom': f'{emp.nom} {emp.prenom}',
+                'competences': [],
+            })
+            entry['competences'].append({
+                'competence_id': ligne.competence_id,
+                'code': ligne.competence.code,
+                'libelle': ligne.competence.libelle,
+                'domaine': ligne.competence.domaine,
+                'niveau': ligne.niveau,
+                'niveau_display': ligne.get_niveau_display(),
+            })
+        return Response(list(matrice.values()))
+
 
 class GrilleSalarialeViewSet(TenantMixin, viewsets.ModelViewSet):
     """Grille salariale par poste (XRH16) — bandes min/max, paie SENSIBLE.
