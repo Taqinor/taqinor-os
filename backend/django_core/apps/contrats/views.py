@@ -28,7 +28,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
-from authentication.permissions import IsResponsableOrAdmin
+from authentication.permissions import IsAdminRole, IsResponsableOrAdmin
 
 from . import selectors, services
 from .models import (
@@ -65,6 +65,7 @@ from .serializers import (
     ClauseSerializer,
     ContratActivitySerializer,
     ContratLienSerializer,
+    CampagneRevisionSerializer,
     ContratSerializer,
     CreerAvenantSerializer,
     CycleFacturationLogSerializer,
@@ -93,6 +94,7 @@ from .serializers import (
     ResiliationSerializer,
     RetenueGarantieSerializer,
     ResoudreRegleApprobationSerializer,
+    RollbackCampagneRevisionSerializer,
     SemerAlertesSerializer,
     SignatureContratSerializer,
     SignerContratSerializer,
@@ -376,6 +378,67 @@ class ContratViewSet(_ContratsBaseViewSet):
             'used_fallback': resultat.used_fallback,
             'plafonnee': resultat.plafonnee,
         })
+
+    @action(detail=False, methods=['post'], url_path='campagne-revision',
+            permission_classes=[IsAdminRole])
+    def campagne_revision(self, request):
+        """Campagne de révision tarifaire en masse — XCTR11 (admin uniquement).
+
+        Corps : ``filtres`` (optionnel), ``pct`` (requis), ``date_effet``
+        (optionnel), ``preview`` (défaut ``True``). Preview = AUCUNE écriture.
+        Application (``preview=false``) = un avenant d'indexation par contrat
+        couvert (idempotent — re-run = 0 nouvel avenant) + notification aux
+        responsables + liste de rollback (``rollback_ids``).
+        """
+        body = CampagneRevisionSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        resultat = services.campagne_revision(
+            request.user.company,
+            filtres=body.validated_data.get('filtres'),
+            pct=body.validated_data['pct'],
+            date_effet=body.validated_data.get('date_effet'),
+            preview=body.validated_data.get('preview', True),
+            auteur=request.user,
+        )
+        if resultat['preview']:
+            return Response({
+                'preview': True,
+                'lignes': [
+                    {
+                        'contrat_id': ligne['contrat_id'],
+                        'objet': ligne['objet'],
+                        'ancien_montant': _money(ligne['ancien_montant']),
+                        'nouveau_montant': _money(ligne['nouveau_montant']),
+                        'delta': _money(ligne['delta']),
+                    }
+                    for ligne in resultat['lignes']
+                ],
+            })
+        return Response({
+            'preview': False,
+            'avenants_crees': resultat['avenants_crees'],
+            'rollback_ids': resultat['rollback_ids'],
+        }, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'],
+            url_path='campagne-revision-rollback',
+            permission_classes=[IsAdminRole])
+    def campagne_revision_rollback(self, request):
+        """Rollback d'une campagne de révision tarifaire — XCTR11 (admin only).
+
+        Corps : ``avenant_ids`` (liste retournée par l'application). Crée un
+        avenant COMPENSATOIRE par avenant listé (jamais de suppression —
+        historique immuable CONTRAT18/24).
+        """
+        body = RollbackCampagneRevisionSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        compensations = services.rollback_campagne_revision(
+            request.user.company, body.validated_data['avenant_ids'],
+            auteur=request.user)
+        return Response({
+            'compensations_creees': len(compensations),
+            'avenant_ids': [c.id for c in compensations],
+        }, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['get'])
     def reporting(self, request):

@@ -1020,6 +1020,31 @@ class IndexationActionSerializer(serializers.Serializer):
         min_value=0)
 
 
+class CampagneRevisionSerializer(serializers.Serializer):
+    """Corps de POST /contrats/campagne-revision/ (XCTR11).
+
+    ``filtres`` (optionnel) : ``{type_contrat, statut, responsable_id}``.
+    ``pct`` (requis) : pourcentage de révision (ex. 5 = +5 %, -3 = -3 %).
+    ``date_effet`` (optionnel, application seulement) : défaut aujourd'hui.
+    ``preview`` (défaut ``True``) : aucune écriture tant que ``False`` n'est
+    pas explicitement passé.
+    """
+    filtres = serializers.DictField(required=False, allow_null=True)
+    pct = serializers.DecimalField(max_digits=6, decimal_places=2)
+    date_effet = serializers.DateField(required=False, allow_null=True)
+    preview = serializers.BooleanField(required=False, default=True)
+
+
+class RollbackCampagneRevisionSerializer(serializers.Serializer):
+    """Corps de POST /contrats/campagne-revision-rollback/ (XCTR11).
+
+    ``avenant_ids`` : liste des ids d'avenants à compenser (retournés par
+    l'application de la campagne — ``rollback_ids``).
+    """
+    avenant_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), allow_empty=False)
+
+
 class PenaliteSLASerializer(serializers.Serializer):
     """Corps de POST /sla/<id>/penalite/ (CONTRAT27).
 

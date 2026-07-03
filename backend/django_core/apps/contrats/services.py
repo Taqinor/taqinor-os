@@ -2440,3 +2440,191 @@ def exceptions_facturation(company):
     return CycleFacturationLog.objects.filter(
         company=company, statut=CycleFacturationLog.Statut.ECHEC,
     ).order_by('-date_creation', '-id')
+
+
+# ---------------------------------------------------------------------------
+# XCTR11 — Campagne de révision tarifaire en masse
+# ---------------------------------------------------------------------------
+
+
+def _filtrer_contrats_campagne(company, filtres):
+    """Applique les ``filtres`` (dict) d'une campagne de révision — XCTR11.
+
+    Filtres reconnus (tous optionnels) : ``type_contrat``, ``statut`` (défaut
+    ``actif`` seulement — on ne révise pas un contrat brouillon/résilié),
+    ``responsable_id``. Toujours scopé société. Renvoie un QuerySet.
+    """
+    from .models import Contrat
+
+    filtres = filtres or {}
+    qs = Contrat.objects.filter(company=company)
+    statut = filtres.get('statut')
+    if statut:
+        qs = qs.filter(statut=statut)
+    else:
+        qs = qs.filter(statut=Contrat.Statut.ACTIF)
+    type_contrat = filtres.get('type_contrat')
+    if type_contrat:
+        qs = qs.filter(type_contrat=type_contrat)
+    responsable_id = filtres.get('responsable_id')
+    if responsable_id:
+        qs = qs.filter(responsable_id=responsable_id)
+    return qs.order_by('id')
+
+
+def previsualiser_campagne_revision(company, *, filtres=None, pct):
+    """Mode PREVIEW d'une campagne de révision tarifaire — AUCUNE écriture (XCTR11).
+
+    Liste, pour chaque contrat couvert par les ``filtres``, l'ancien montant et
+    le nouveau montant (``ancien × (1 + pct/100)``, arrondi 2 décimales) —
+    purement déclaratif, ne crée ni avenant ni notification. ``pct`` est un
+    POURCENTAGE (ex. 5 = +5 %, -3 = -3 %).
+
+    Renvoie une liste de dicts ``{'contrat_id', 'objet', 'ancien_montant',
+    'nouveau_montant', 'delta'}``.
+    """
+    from decimal import ROUND_HALF_UP
+
+    pct_d = Decimal(str(pct))
+    facteur = Decimal('1') + (pct_d / Decimal('100'))
+
+    resultats = []
+    for contrat in _filtrer_contrats_campagne(company, filtres):
+        ancien = contrat.montant or Decimal('0')
+        nouveau = (ancien * facteur).quantize(
+            Decimal('0.01'), rounding=ROUND_HALF_UP)
+        resultats.append({
+            'contrat_id': contrat.id,
+            'objet': contrat.objet,
+            'ancien_montant': ancien,
+            'nouveau_montant': nouveau,
+            'delta': (nouveau - ancien).quantize(Decimal('0.01')),
+        })
+    return resultats
+
+
+@transaction.atomic
+def campagne_revision(company, *, filtres=None, pct, date_effet=None,
+                      preview=True, auteur=None):
+    """Campagne de révision tarifaire en masse (preview OU application) — XCTR11.
+
+    - ``preview=True`` (défaut) : délègue à ``previsualiser_campagne_revision``
+      — AUCUNE écriture, renvoie la liste des montants ancien/nouveau.
+    - ``preview=False`` : APPLIQUE la révision — un AVENANT d'indexation par
+      contrat couvert (réutilise ``creer_avenant``, CONTRAT24 — numérotation
+      max+1 sous verrou, instantané immuable, chatter journalisé), delta =
+      nouveau − ancien montant. IDEMPOTENT : un contrat déjà révisé par CETTE
+      campagne (même date d'effet, objet d'avenant identique) n'est PAS
+      re-révisé (0 nouvel avenant sur un re-run) — détecté via un avenant
+      existant du contrat portant l'objet ``« Révision tarifaire {pct}% —
+      {date_effet} »`` EXACT. Notifie les responsables (``notifications.
+      services``, import fonction-local, événement ``digest`` — best-effort,
+      jamais bloquant) et renvoie la liste des ids d'avenants créés
+      (``rollback_ids``) pour un rollback manuel ultérieur.
+
+    Endpoint réservé admin (vérifié côté vue). ``pct`` en pourcentage (ex. 5 =
+    +5 %). Renvoie un dict ``{'preview': bool, 'lignes'|'avenants_crees',
+    'rollback_ids'}``.
+    """
+    if preview:
+        return {
+            'preview': True,
+            'lignes': previsualiser_campagne_revision(
+                company, filtres=filtres, pct=pct),
+        }
+
+    if date_effet is None:
+        date_effet = timezone.localdate()
+
+    objet_avenant = f'Révision tarifaire {pct}% — {date_effet.isoformat()}'
+
+    avenants_crees = []
+    rollback_ids = []
+    for contrat in _filtrer_contrats_campagne(company, filtres):
+        # Garde d'idempotence : cette campagne EXACTE a déjà révisé ce contrat.
+        deja_revise = contrat.avenants.filter(
+            objet=objet_avenant, date_effet=date_effet).exists()
+        if deja_revise:
+            continue
+
+        ancien = contrat.montant or Decimal('0')
+        pct_d = Decimal(str(pct))
+        nouveau = (ancien * (Decimal('1') + pct_d / Decimal('100'))).quantize(
+            Decimal('0.01'))
+        delta = (nouveau - ancien).quantize(Decimal('0.01'))
+        if delta == Decimal('0'):
+            continue
+
+        avenant = creer_avenant(
+            contrat, objet=objet_avenant,
+            description=(
+                f'Campagne de révision tarifaire en masse : {ancien} → '
+                f'{nouveau} ({pct}%).'),
+            date_effet=date_effet, montant_delta=delta, auteur=auteur)
+        avenants_crees.append(avenant)
+        rollback_ids.append(avenant.id)
+
+    _notifier_campagne_revision(company, len(avenants_crees), pct)
+
+    return {
+        'preview': False,
+        'avenants_crees': len(avenants_crees),
+        'rollback_ids': rollback_ids,
+    }
+
+
+def _notifier_campagne_revision(company, nb_avenants, pct):
+    """Notifie les responsables du résultat d'une campagne — XCTR11.
+
+    Frontière cross-app (CLAUDE.md) : appelle EXCLUSIVEMENT
+    ``apps.notifications.services`` (jamais ses ``models``/``views``), import
+    FONCTION-LOCAL. BEST-EFFORT : une erreur de notification ne doit JAMAIS
+    faire échouer la campagne elle-même (déjà appliquée à ce stade).
+    """
+    if nb_avenants <= 0:
+        return
+    try:
+        from apps.notifications.services import notify_many, resolve_recipients
+    except Exception:  # pragma: no cover - app notifications absente
+        return
+    try:
+        recipients = resolve_recipients(company, 'digest')
+        notify_many(
+            recipients, 'digest',
+            'Campagne de révision tarifaire appliquée',
+            body=(
+                f'{nb_avenants} contrat(s) révisé(s) de {pct}% — '
+                'un avenant a été créé pour chacun.'),
+            link='/contrats', company=company)
+    except Exception:  # pragma: no cover - défensif (best-effort)
+        pass
+
+
+def rollback_campagne_revision(company, avenant_ids, *, auteur=None):
+    """Annule les avenants d'une campagne de révision (rollback manuel) — XCTR11.
+
+    Pour chaque avenant de la liste ``avenant_ids`` (scopés société) : crée un
+    avenant COMPENSATOIRE (delta inverse) via ``creer_avenant`` — on n'efface
+    JAMAIS un avenant existant (historique immuable, CONTRAT18/24), on
+    compense. Ignore silencieusement un id introuvable/hors société (best-
+    effort, l'appelant a la liste de ``rollback_ids`` retournée à
+    l'application). Renvoie la liste des avenants compensatoires créés.
+    """
+    from .models import Avenant
+
+    compensations = []
+    for avenant in Avenant.objects.filter(
+            id__in=avenant_ids, company=company).select_related('contrat'):
+        if avenant.montant_delta is None or avenant.montant_delta == 0:
+            continue
+        compensation = creer_avenant(
+            avenant.contrat,
+            objet=f'Rollback — {avenant.objet}',
+            description=(
+                f'Annulation (rollback) de l\'avenant n°{avenant.numero}.'),
+            date_effet=timezone.localdate(),
+            montant_delta=-avenant.montant_delta,
+            auteur=auteur,
+        )
+        compensations.append(compensation)
+    return compensations
