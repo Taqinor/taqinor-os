@@ -2320,3 +2320,82 @@ class ChronoEnCours(models.Model):
 
     def __str__(self):
         return f'{self.user_id} — tâche {self.tache_id} ({self.demarre_a})'
+
+
+class RecurrenceTache(models.Model):
+    """Gabarit de tâche RÉCURRENTE d'un projet (XPRJ13).
+
+    Génère la PROCHAINE ``Tache`` à échéance via
+    ``manage.py generer_taches_recurrentes`` (branchable Celery beat, pattern
+    FG1/XPRJ7). ``prochaine_echeance`` avance à chaque génération ; la
+    récurrence s'arrête à ``date_fin`` OU après ``nb_occurrences`` (l'un des
+    deux, optionnels ; aucun des deux = récurrence sans fin).
+
+    Le gabarit porte les champs minimaux d'une ``Tache`` à créer : libellé,
+    phase (optionnelle), charge estimée, assigné (XPRJ10). Tout est
+    multi-société : ``company`` est posée côté serveur, jamais lue du corps de
+    requête. Modèle entièrement additif.
+    """
+    class Regle(models.TextChoices):
+        HEBDOMADAIRE = 'hebdomadaire', 'Hebdomadaire'
+        MENSUELLE = 'mensuelle', 'Mensuelle'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gp_recurrences_tache',
+        verbose_name='Société',
+    )
+    projet = models.ForeignKey(
+        Projet,
+        on_delete=models.CASCADE,
+        related_name='recurrences_tache',
+        verbose_name='Projet',
+    )
+    # ── Gabarit de la tâche à générer ────────────────────────────────────────
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    phase = models.ForeignKey(
+        PhaseProjet,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='recurrences_tache',
+        verbose_name='Phase',
+    )
+    charge_estimee = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        verbose_name='Charge estimée (j-h)')
+    assigne = models.ForeignKey(
+        'RessourceProfil',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='recurrences_tache',
+        verbose_name='Assigné',
+    )
+    # ── Règle de récurrence ──────────────────────────────────────────────────
+    regle = models.CharField(
+        max_length=15, choices=Regle.choices, verbose_name='Règle')
+    intervalle = models.PositiveSmallIntegerField(
+        default=1, verbose_name='Intervalle')
+    prochaine_echeance = models.DateField(verbose_name='Prochaine échéance')
+    date_fin = models.DateField(
+        null=True, blank=True, verbose_name='Fin de récurrence')
+    nb_occurrences = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="Nombre d'occurrences")
+    nb_generees = models.PositiveIntegerField(
+        default=0, verbose_name='Occurrences générées')
+    actif = models.BooleanField(default=True, verbose_name='Active')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Récurrence de tâche'
+        verbose_name_plural = 'Récurrences de tâches'
+        ordering = ['prochaine_echeance', 'id']
+        indexes = [
+            models.Index(
+                fields=['actif', 'prochaine_echeance'],
+                name='gp_recur_actif_echeance_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.libelle} ({self.get_regle_display()})'

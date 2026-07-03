@@ -41,6 +41,7 @@ from .models import (
     ProjetActivity,
     ProjetChantier,
     ProjetLien,
+    RecurrenceTache,
     RessourceProfil,
     Risque,
     SituationTravaux,
@@ -82,6 +83,7 @@ from .serializers import (
     ProjetChantierSerializer,
     ProjetLienSerializer,
     ProjetSerializer,
+    RecurrenceTacheSerializer,
     RessourceProfilSerializer,
     RisqueSerializer,
     TacheSerializer,
@@ -2273,4 +2275,27 @@ class LigneSituationViewSet(_GestionProjetBaseViewSet):
         situation = self.request.query_params.get('situation')
         if situation:
             qs = qs.filter(situation_id=situation)
+        return qs
+
+
+class RecurrenceTacheViewSet(_GestionProjetBaseViewSet):
+    """Gabarits de tâches récurrentes (XPRJ13) — CRUD scopé société.
+
+    ``company`` est posée côté serveur (TenantMixin) ; les FK reçus
+    (``projet``, ``phase``, ``assigne``) sont validés même-société par le
+    sérialiseur. Filtre optionnel ``?projet=<id>``. La génération effective
+    des tâches se fait via ``manage.py generer_taches_recurrentes``
+    (idempotente), jamais via ce viewset.
+    """
+    queryset = RecurrenceTache.objects.select_related(
+        'projet', 'phase', 'assigne').all()
+    serializer_class = RecurrenceTacheSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['prochaine_echeance', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(projet_id=projet)
         return qs

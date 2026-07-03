@@ -15,6 +15,7 @@ from .models import (
     DependanceTache,
     PhaseProjet,
     Projet,
+    RecurrenceTache,
     Tache,
 )
 
@@ -1022,3 +1023,80 @@ def creer_baseline(projet, libelle='', auteur=None):
     if lignes:
         BaselineTache.objects.bulk_create(lignes)
     return baseline
+
+
+# ── Tâches récurrentes (XPRJ13) ──────────────────────────────────────────────
+
+def _prochaine_echeance_suivante(echeance, regle, intervalle):
+    """Avance ``echeance`` d'un pas de la règle (hebdomadaire/mensuelle)."""
+    if regle == RecurrenceTache.Regle.HEBDOMADAIRE:
+        return echeance + timedelta(weeks=intervalle)
+    # Mensuelle : avance de ``intervalle`` mois, en clampant le jour si le
+    # mois cible est plus court (ex. 31 janvier + 1 mois → 28/29 février).
+    mois_total = echeance.month - 1 + intervalle
+    annee = echeance.year + mois_total // 12
+    mois = mois_total % 12 + 1
+    import calendar
+    dernier_jour = calendar.monthrange(annee, mois)[1]
+    jour = min(echeance.day, dernier_jour)
+    return echeance.replace(year=annee, month=mois, day=jour)
+
+
+@transaction.atomic
+def generer_taches_recurrentes(company, *, aujourd_hui=None):
+    """Génère la PROCHAINE ``Tache`` de chaque récurrence ACTIVE à échéance.
+
+    IDEMPOTENT : chaque appel avance ``prochaine_echeance`` immédiatement
+    après avoir créé la tâche, donc un re-run le même jour ne crée jamais deux
+    occurrences pour la même échéance. Respecte ``date_fin`` et
+    ``nb_occurrences`` (désactive la récurrence une fois atteinte). Renvoie la
+    liste des ``Tache`` créées.
+    """
+    if aujourd_hui is None:
+        from datetime import date as _date
+        aujourd_hui = _date.today()
+
+    crees = []
+    recurrences = RecurrenceTache.objects.select_for_update().filter(
+        company=company, actif=True, prochaine_echeance__lte=aujourd_hui)
+    for rec in recurrences:
+        # Une récurrence peut avoir plusieurs échéances en retard (ex. cron
+        # arrêté un moment) : on rattrape TOUTES les échéances passées, une
+        # tâche par échéance, jamais deux pour la même échéance (avance
+        # systématique avant la prochaine itération).
+        while rec.actif and rec.prochaine_echeance <= aujourd_hui:
+            if rec.date_fin is not None \
+                    and rec.prochaine_echeance > rec.date_fin:
+                rec.actif = False
+                rec.save(update_fields=['actif'])
+                break
+            if rec.nb_occurrences is not None \
+                    and rec.nb_generees >= rec.nb_occurrences:
+                rec.actif = False
+                rec.save(update_fields=['actif'])
+                break
+
+            tache = Tache.objects.create(
+                company=rec.company,
+                projet=rec.projet,
+                phase=rec.phase,
+                libelle=rec.libelle,
+                charge_estimee=rec.charge_estimee,
+                assigne=rec.assigne,
+                date_debut_prevue=rec.prochaine_echeance,
+                date_fin_prevue=rec.prochaine_echeance,
+            )
+            crees.append(tache)
+
+            rec.nb_generees += 1
+            rec.prochaine_echeance = _prochaine_echeance_suivante(
+                rec.prochaine_echeance, rec.regle, rec.intervalle)
+            if rec.date_fin is not None \
+                    and rec.prochaine_echeance > rec.date_fin:
+                rec.actif = False
+            if rec.nb_occurrences is not None \
+                    and rec.nb_generees >= rec.nb_occurrences:
+                rec.actif = False
+            rec.save(update_fields=[
+                'nb_generees', 'prochaine_echeance', 'actif'])
+    return crees

@@ -33,6 +33,7 @@ from .models import (
     ProjetActivity,
     ProjetChantier,
     ProjetLien,
+    RecurrenceTache,
     RessourceProfil,
     Risque,
     SituationTravaux,
@@ -1136,3 +1137,40 @@ class ClotureProjetSerializer(serializers.ModelSerializer):
 
     def validate_projet(self, value):
         return _meme_societe(self, value, 'Projet')
+
+
+class RecurrenceTacheSerializer(serializers.ModelSerializer):
+    """Gabarit de tâche récurrente (XPRJ13).
+
+    ``company`` posée côté serveur ; les FK reçus (``projet``, ``phase``,
+    ``assigne``) sont validés même-société. ``nb_generees`` est en lecture
+    seule (avancée uniquement par la génération serveur).
+    """
+    projet_code = serializers.CharField(source='projet.code', read_only=True)
+    regle_display = serializers.CharField(
+        source='get_regle_display', read_only=True)
+
+    class Meta:
+        model = RecurrenceTache
+        fields = [
+            'id', 'projet', 'projet_code', 'libelle', 'phase',
+            'charge_estimee', 'assigne', 'regle', 'regle_display',
+            'intervalle', 'prochaine_echeance', 'date_fin', 'nb_occurrences',
+            'nb_generees', 'actif', 'date_creation',
+        ]
+        read_only_fields = ['nb_generees', 'date_creation']
+
+    def validate_projet(self, value):
+        return _meme_societe(self, value, 'Projet')
+
+    def validate_phase(self, value):
+        return _meme_societe(self, value, 'Phase')
+
+    def validate_assigne(self, value):
+        return _meme_societe(self, value, 'Assigné')
+
+    def validate_intervalle(self, value):
+        if value is not None and value < 1:
+            raise serializers.ValidationError(
+                "L'intervalle doit être d'au moins 1.")
+        return value
