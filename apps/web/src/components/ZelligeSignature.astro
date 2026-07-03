@@ -9,10 +9,13 @@
  * jamais un motif plein (cohérent avec global.css §9). Le laiton n'apparaît que
  * sur ce marqueur géométrique et le filet — pas sur le texte courant.
  *
- * Reduced-motion safe : la seule animation (apparition très douce du losange)
- * est gated `prefers-reduced-motion: no-preference` ET `.v2-js` ; sans JS / en
- * reduced-motion le marqueur est statique et opaque. Zéro CLS : SVG à
- * dimensions fixes, aucune propriété de reflow animée (opacity/transform seuls).
+ * Reduced-motion safe : la seule animation (W366 — l'étoile se dessine
+ * elle-même au trait, stroke-dashoffset) est gated `prefers-reduced-motion:
+ * no-preference` ET `.v2-js` ; sans JS / en reduced-motion le marqueur est
+ * statique et déjà tracé (dasharray/dashoffset neutralisés par la media
+ * query). Zéro CLS : SVG à dimensions fixes, aucune propriété de reflow
+ * animée (stroke-dashoffset + opacity seuls, jamais width/height/transform
+ * de layout).
  */
 interface Props {
   /** Ligne éditoriale principale. */
@@ -32,10 +35,16 @@ const {
     <span class="zellige-mark" aria-hidden="true">
       <span class="zellige-rule"></span>
       <svg width="34" height="34" viewBox="0 0 34 34" fill="none" class="zellige-glyph" aria-hidden="true">
-        {/* Étoile 8 branches au trait — deux carrés superposés à 45°, langage zellige */}
-        <rect x="7.5" y="7.5" width="19" height="19" stroke="currentColor" stroke-width="1.25" />
-        <rect x="7.5" y="7.5" width="19" height="19" stroke="currentColor" stroke-width="1.25" transform="rotate(45 17 17)" />
-        <circle cx="17" cy="17" r="2.1" fill="currentColor" />
+        {/* Étoile 8 branches au trait — deux carrés superposés à 45°, langage
+            zellige. W366 — chaque carré porte son périmètre exact en
+            stroke-dasharray (4 × 19 = 76) pour un tracé stroke-dashoffset
+            propre (jamais une valeur approximative qui laisserait un
+            segment visible à l'état "cadré"). */}
+        <rect x="7.5" y="7.5" width="19" height="19" stroke="currentColor" stroke-width="1.25"
+          class="zellige-stroke zellige-stroke-1" pathLength="76" />
+        <rect x="7.5" y="7.5" width="19" height="19" stroke="currentColor" stroke-width="1.25"
+          transform="rotate(45 17 17)" class="zellige-stroke zellige-stroke-2" pathLength="76" />
+        <circle cx="17" cy="17" r="2.1" fill="currentColor" class="zellige-dot" />
       </svg>
       <span class="zellige-rule"></span>
     </span>
@@ -85,19 +94,43 @@ const {
     filter: drop-shadow(0 0 12px rgb(232 181 74 / 0.3));
   }
 
-  /* Apparition très douce du glyphe — opacity/transform seuls (zéro CLS),
-     gated JS + motion. Sans JS / reduced-motion, le glyphe est déjà opaque. */
+  /* ── W366 — L'étoile se dessine elle-même ──────────────────────────────
+     Remplace l'ancien pop scale/rotate par un tracé au trait
+     (stroke-dashoffset), plus juste pour un motif géométrique zellige : le
+     filet se déroule comme s'il était tracé à la règle, exactement le
+     langage du marqueur (hairline + glyphe au trait).
+
+     État de repos (SANS .v2-js, ou reduced-motion) : dasharray/dashoffset
+     ne sont posés que dans la media query ci-dessous → hors de celle-ci, le
+     trait est un rect stroke normal, entièrement visible, ZÉRO différence
+     avec l'ancien rendu statique. Le point central est toujours visible
+     (fill, jamais affecté par le tracé).
+
+     Sous JS + motion : chaque carré démarre entièrement caché (dashoffset =
+     son propre périmètre, 76 grâce à pathLength) puis se trace jusqu'à 0 ;
+     le second carré (rotate 45°) démarre légèrement après le premier pour
+     lire les deux passes séparément ; le point central apparaît en dernier
+     (fondu opacity seul, zéro CLS). Stroke-dashoffset + opacity uniquement :
+     aucune propriété de layout animée. */
   @media (prefers-reduced-motion: no-preference) {
-    :global(.v2-js) .zellige-glyph {
-      opacity: 0;
-      transform: scale(0.82) rotate(-8deg);
-      animation: zelligeReveal 0.9s cubic-bezier(0.2, 0.65, 0.25, 1) forwards;
+    :global(.v2-js) .zellige-stroke {
+      stroke-dasharray: 76;
+      stroke-dashoffset: 76;
+      animation: zelligeDraw 0.85s cubic-bezier(0.2, 0.65, 0.25, 1) forwards;
     }
-    @keyframes zelligeReveal {
-      to {
-        opacity: 1;
-        transform: none;
-      }
+    :global(.v2-js) .zellige-stroke-2 {
+      animation-delay: 0.25s;
+    }
+    :global(.v2-js) .zellige-dot {
+      opacity: 0;
+      animation: zelligeDotIn 0.4s ease-out forwards;
+      animation-delay: 0.95s;
+    }
+    @keyframes zelligeDraw {
+      to { stroke-dashoffset: 0; }
+    }
+    @keyframes zelligeDotIn {
+      to { opacity: 1; }
     }
   }
 </style>
