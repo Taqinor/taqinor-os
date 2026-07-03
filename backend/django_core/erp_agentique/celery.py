@@ -35,6 +35,9 @@ app.conf.enable_utc = False
 #   - GED25 : purge automatique de la corbeille échue (02:30) — apps/ged/tasks.py
 #     (DRY-RUN par défaut : n'efface rien tant que GED_PURGE_AUTO_APPLY n'est pas
 #     activé ; respecte le délai de grâce + les gardes légales GED23/GED24).
+#   - YLEAD14 : recyclage des leads non travaillés (SLA dépassé → escalade,
+#     désassignation optionnelle au 2e seuil), toutes les heures — apps/crm/tasks.py
+#     (best-effort, no-op société par société tant que lead_sla_hours=0).
 app.conf.beat_schedule = {
     'ventes-check-overdue-factures': {
         'task': 'ventes.check_overdue_factures',
@@ -85,5 +88,9 @@ app.conf.beat_schedule = {
     'ged-purge-corbeille-echue': {
         'task': 'ged.purge_corbeille_echue',
         'schedule': crontab(hour=2, minute=30),
+    },
+    'crm-recycler-leads-non-travailles': {
+        'task': 'crm.recycler_leads_non_travailles',
+        'schedule': crontab(minute=0),  # every hour
     },
 }

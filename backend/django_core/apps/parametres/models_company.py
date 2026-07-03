@@ -271,6 +271,17 @@ class CompanyProfile(models.Model):
         help_text='Score (0–100) au-delà duquel un lead est automatiquement '
                   'assigné et le commercial notifié. Vide/0 = désactivé.')
 
+    # ── YLEAD14 — recyclage des leads non travaillés (2e seuil, désassignation) ──
+    # 0/NULL = désactivé (défaut) : un lead SLA-dépassé est escaladé (activité +
+    # notification) mais JAMAIS désassigné tant que ce champ n'est pas fixé —
+    # comportement actuel inchangé. Au-delà de ce délai (heures depuis la
+    # création, complémentaire au SLA de premier contact), le owner est retiré
+    # (owner→None) pour retourner le lead au pool.
+    lead_sla_deassign_hours = models.PositiveIntegerField(
+        default=0,
+        help_text='Délai (heures) au-delà duquel un lead SLA-dépassé est '
+                  'désassigné (rendu au pool). 0 = jamais désassigné (défaut).')
+
     class Meta:
         verbose_name = 'Profil entreprise'
 
