@@ -2196,6 +2196,73 @@ def evm_projet(company, projet, date_reference=None):
     }
 
 
+# ── Prévision fin de projet — ETC/EAC (XPRJ16) ───────────────────────────────
+def prevision_fin_projet(projet, date_reference=None):
+    """Prévision fin de projet PAR CATÉGORIE de budget (XPRJ16) — interne/admin.
+
+    Pour CHAQUE catégorie canonique de budget (PROJ21 : matériel /
+    main-d'œuvre / sous-traitance / divers) :
+        • ETC (Estimate To Complete) = (budget − réel) ajusté du CPI courant
+          de l'EVM (PROJ29). CPI = EV/AC globalement projet (pas par
+          catégorie — l'EVM n'est pas ventilé par catégorie).
+              CPI absent/nul → ETC = budget restant (budget − réel), non ajusté
+              (garde division-par-zéro : pas d'ajustement de performance).
+        • EAC (Estimate At Completion) = réel + ETC.
+        • écart EAC vs budget + % (garde division par zéro : budget nul →
+          ``ecart_pct`` = None).
+
+    Donnée 100 % INTERNE de pilotage — jamais un montant dans le portail
+    client (``portail_avancement_client``, PROJ37, reste inchangé). Tout est
+    scopé société via le projet. Lecture seule.
+    """
+    company = projet.company
+    couts = couts_engages_vs_reels(company, projet)
+    evm = evm_projet(company, projet, date_reference=date_reference)
+    cpi = evm['cpi']
+
+    def _ecart_pct_local(eac, budget):
+        if not budget:
+            return None
+        return ((eac - budget) / budget * Decimal('100')).quantize(
+            Decimal('0.01'))
+
+    par_categorie = []
+    total_etc = Decimal('0')
+    total_eac = Decimal('0')
+    for ligne in couts['par_categorie']:
+        budget_montant = ligne['budget']
+        reel_montant = ligne['reel']
+        budget_restant = budget_montant - reel_montant
+        if cpi is not None and cpi != 0:
+            etc = (budget_restant / cpi).quantize(Decimal('0.01'))
+        else:
+            etc = budget_restant
+        eac = reel_montant + etc
+        total_etc += etc
+        total_eac += eac
+        par_categorie.append({
+            'categorie': ligne['categorie'],
+            'budget': budget_montant,
+            'reel': reel_montant,
+            'etc': etc,
+            'eac': eac,
+            'ecart_eac_budget': eac - budget_montant,
+            'ecart_eac_budget_pct': _ecart_pct_local(eac, budget_montant),
+        })
+
+    return {
+        'cpi': cpi,
+        'budget_total': couts['total']['budget'],
+        'reel_total': couts['total']['reel'],
+        'etc_total': total_etc,
+        'eac_total': total_eac,
+        'ecart_eac_budget_total': total_eac - couts['total']['budget'],
+        'ecart_eac_budget_total_pct': _ecart_pct_local(
+            total_eac, couts['total']['budget']),
+        'par_categorie': par_categorie,
+    }
+
+
 # ── Tableau de bord portefeuille (PROJ36) ────────────────────────────────────
 def tableau_portefeuille(company, statut=None, seuil_jours=None):
     """Tableau de bord PORTEFEUILLE de la société (PROJ36) — interne/admin.

@@ -764,6 +764,47 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
             'date_reference': data['date_reference'].isoformat(),
         })
 
+    @action(detail=True, methods=['get'], url_path='prevision-fin')
+    def prevision_fin(self, request, pk=None):
+        """Prévision fin de projet — ETC/EAC par catégorie (XPRJ16).
+
+        Par catégorie de budget (PROJ21) : ETC ajusté du CPI courant (EVM
+        PROJ29, garde CPI nul/absent), EAC = réel + ETC, écart EAC vs budget +
+        %. Donnée 100 % INTERNE de pilotage — jamais dans le portail client.
+        La société est garantie par ``get_object`` : un projet d'une autre
+        société → 404.
+        """
+        projet = self.get_object()
+        date_ref = _parse_date_param(request.query_params.get('date'))
+        data = selectors.prevision_fin_projet(projet, date_reference=date_ref)
+
+        def _num(value):
+            return str(value) if value is not None else None
+
+        return Response({
+            'cpi': _num(data['cpi']),
+            'budget_total': str(data['budget_total']),
+            'reel_total': str(data['reel_total']),
+            'etc_total': str(data['etc_total']),
+            'eac_total': str(data['eac_total']),
+            'ecart_eac_budget_total': str(data['ecart_eac_budget_total']),
+            'ecart_eac_budget_total_pct': _num(
+                data['ecart_eac_budget_total_pct']),
+            'par_categorie': [
+                {
+                    'categorie': ligne['categorie'],
+                    'budget': str(ligne['budget']),
+                    'reel': str(ligne['reel']),
+                    'etc': str(ligne['etc']),
+                    'eac': str(ligne['eac']),
+                    'ecart_eac_budget': str(ligne['ecart_eac_budget']),
+                    'ecart_eac_budget_pct': _num(
+                        ligne['ecart_eac_budget_pct']),
+                }
+                for ligne in data['par_categorie']
+            ],
+        })
+
     @action(detail=True, methods=['post'], url_path='cloturer')
     def cloturer(self, request, pk=None):
         """Clôture le projet + enregistre le RETOUR D'EXPÉRIENCE (PROJ38).
