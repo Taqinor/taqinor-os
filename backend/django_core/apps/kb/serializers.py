@@ -152,6 +152,17 @@ class KbArticleAclSerializer(serializers.ModelSerializer):
             'utilisateur_nom', 'niveau', 'niveau_display', 'date_creation',
         ]
         read_only_fields = ['date_creation']
+        # DRF auto-génère un ``UniqueTogetherValidator`` par tuple de
+        # ``Meta.unique_together`` du modèle. Pour ``('article', 'role',
+        # 'niveau')``, ce validateur compare aussi les lignes par-UTILISATEUR
+        # (``role=''`` par défaut) entre elles — une fausse collision : deux
+        # ACL nominatives distinctes (rôle vide toutes les deux) sur le même
+        # article/niveau se retrouvent traitées comme un doublon de RÔLE alors
+        # qu'aucun rôle n'est renseigné. Désactivés ici ; l'unicité réelle
+        # (par-rôle et par-utilisateur, XOR) est appliquée explicitement dans
+        # ``validate()`` ci-dessous et reste garantie en base par les DEUX
+        # contraintes ``unique_together`` du modèle.
+        validators = []
 
     def validate_article(self, article):
         """L'article ciblé doit appartenir à la société de l'utilisateur."""
@@ -162,13 +173,29 @@ class KbArticleAclSerializer(serializers.ModelSerializer):
         return article
 
     def validate(self, attrs):
+        article = attrs.get('article', getattr(self.instance, 'article', None))
         role = attrs.get('role', getattr(self.instance, 'role', ''))
         utilisateur = attrs.get(
             'utilisateur', getattr(self.instance, 'utilisateur', None))
+        niveau = attrs.get('niveau', getattr(self.instance, 'niveau', None))
         if bool(role) == bool(utilisateur):
             raise serializers.ValidationError(
                 "Renseignez soit un rôle, soit un utilisateur "
                 "(jamais les deux, jamais aucun).")
+        if article is not None and niveau is not None:
+            if role:
+                qs = KbArticleAcl.objects.filter(
+                    article=article, role=role, niveau=niveau)
+            else:
+                qs = KbArticleAcl.objects.filter(
+                    article=article, utilisateur=utilisateur, niveau=niveau)
+            if self.instance is not None:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    "Les champs article, "
+                    + ('role' if role else 'utilisateur')
+                    + ", niveau doivent former un ensemble unique.")
         return attrs
 
 
