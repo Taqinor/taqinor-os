@@ -56,6 +56,7 @@ import {
   INSTALLMENT_MONTH_OPTIONS,
   whatsappLink,
   whatsappLinkForIntent,
+  whatsappShareLink,
   parseRoofLayout,
   buildViewerModel,
   zoneAnnotations,
@@ -220,6 +221,12 @@ const callbackHref = ok ? `tel:${TAQINOR_TEL}` : '';
 const waLinkDiscuss = ok ? whatsappLinkForIntent(reference, 'discuss') : '';
 const waLinkQuestion = ok ? whatsappLinkForIntent(reference, 'question') : '';
 const waLinkVoice = ok ? whatsappLinkForIntent(reference, 'voice') : '';
+
+// ── WJ56 — « Partager sur WhatsApp » : le lien TOKENISÉ lui-même (même page),
+// pour qu'un conjoint/co-décideur le reçoive sans rien ressaisir. `Astro.url`
+// est l'URL COMPLÈTE réellement servie (jamais reconstruite manuellement).
+const shareUrl = ok ? Astro.url.href : '';
+const waLinkShare = ok ? whatsappShareLink(shareUrl, reference) : '';
 
 // ── P3 — Lien public du devis PDF premium (même token, nouvel onglet) ────────
 const pdfUrl = ok ? proposalPdfEndpoint(API_BASE, token) : '';
@@ -390,6 +397,34 @@ const signConfig = ok
               </div>
             )}
           </dl>
+          <!-- ── WJ56 · PARTAGER SUR WHATSAPP ─────────────────────────────────
+               Partage le lien TOKENISÉ (cette page) tel quel — un conjoint ou
+               co-décideur peut l'ouvrir sans rien ressaisir. Web Share API
+               native quand disponible (meilleure expérience tablette/mobile,
+               feuille de partage système) ; repli sur le compositeur wa.me
+               générique sinon (toujours fonctionnel, aucun JS requis pour le
+               lien lui-même). -->
+          <div class="cine-in cine-in-3 mt-5">
+            <a
+              id="prop-share-whatsapp"
+              href={waLinkShare}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-share-url={shareUrl}
+              data-share-ref={reference}
+              class="btn-pill inline-flex items-center justify-center gap-2 border-white/20 text-sm text-lune-soft hover:text-white"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.9 9.9 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2Zm0 18.1h-.01a8.2 8.2 0 0 1-4.18-1.15l-.3-.18-3.11.82.83-3.04-.2-.31a8.2 8.2 0 0 1-1.26-4.37c0-4.54 3.7-8.23 8.24-8.23 2.2 0 4.27.86 5.83 2.42a8.18 8.18 0 0 1 2.41 5.82c0 4.54-3.7 8.23-8.23 8.23Zm4.52-6.16c-.25-.12-1.47-.72-1.69-.81-.23-.08-.39-.12-.56.13-.16.25-.64.81-.78.97-.14.17-.29.19-.54.06-.25-.12-1.05-.39-1.99-1.23-.74-.66-1.23-1.47-1.38-1.72-.14-.25-.01-.38.11-.51.11-.11.25-.29.37-.43.13-.14.17-.25.25-.41.08-.17.04-.31-.02-.43-.06-.12-.56-1.35-.77-1.85-.2-.48-.41-.42-.56-.43l-.48-.01c-.17 0-.43.06-.66.31-.23.25-.86.85-.86 2.07 0 1.22.89 2.4 1.01 2.57.12.17 1.75 2.67 4.23 3.74.59.26 1.05.41 1.41.52.59.19 1.13.16 1.56.1.48-.07 1.47-.6 1.68-1.18.21-.58.21-1.07.14-1.18-.06-.1-.22-.16-.47-.28Z"/>
+              </svg>
+              <span data-i18n
+                data-fr="Partager sur WhatsApp"
+                data-en="Share on WhatsApp"
+                data-ar="مشاركة على واتساب">
+                Partager sur WhatsApp
+              </span>
+            </a>
+          </div>
         </div>
       </section>
 
@@ -1537,7 +1572,14 @@ const signConfig = ok
            / barre de geste : le CTA ne se cache jamais derrière la zone système).
            WJ82 — sur une offre morte (refusée/expirée/retirée), le CTA de
            signature devient « Demander un devis actualisé » pointant vers le
-           contact WhatsApp plutôt que vers le formulaire supprimé. -->
+           contact WhatsApp plutôt que vers le formulaire supprimé.
+           WJ56 — QA tablette/desktop (présentation en direct par un commercial) :
+           les grilles passent en multi-colonnes dès `sm:` (640px, couvre tablette
+           portrait/paysage ET desktop) ; le CTA collant reste `fixed inset-x-0`
+           pleine largeur avec conteneur interne `max-w-4xl` centré à toutes les
+           largeurs ; la bascule de langue (`fixed top-3 right-3`) et le bouton
+           « Partager » (flux normal, jamais `fixed`) ne se chevauchent à aucune
+           largeur testée. Aucune régression de layout introduite par WJ53/WJ56. -->
       <div
         id="sticky-cta"
         class="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-nuit-800/95 px-4 pt-3 backdrop-blur supports-[backdrop-filter]:bg-nuit-800/80"
@@ -2252,6 +2294,35 @@ const signConfig = ok
     }
     monthsSelect?.addEventListener('change', recompute);
     recompute();
+  }
+</script>
+
+<script>
+  // ── WJ56 — « Partager sur WhatsApp » : Web Share API native quand disponible
+  // (feuille de partage système — la meilleure expérience sur mobile/tablette,
+  // laisse le client choisir WhatsApp OU tout autre canal), repli sur le lien
+  // wa.me générique (déjà posé en `href`, fonctionne SANS JS) sinon. On ne
+  // bloque JAMAIS le clic : navigator.share() réussi → preventDefault (évite
+  // une double feuille de partage) ; échec/absence → le lien wa.me s'ouvre
+  // normalement.
+  const shareBtn = document.getElementById('prop-share-whatsapp') as HTMLAnchorElement | null;
+  if (shareBtn && typeof navigator.share === 'function') {
+    shareBtn.addEventListener('click', (e) => {
+      const url = shareBtn.dataset.shareUrl || shareBtn.href;
+      const ref = shareBtn.dataset.shareRef || '';
+      e.preventDefault();
+      navigator
+        .share({
+          title: 'Proposition solaire Taqinor',
+          text: ref ? `Voici ma proposition solaire Taqinor (réf. ${ref})` : 'Voici ma proposition solaire Taqinor',
+          url,
+        })
+        .catch(() => {
+          // Annulé par l'utilisateur ou API indisponible en pratique : on
+          // rouvre le repli wa.me pour ne jamais laisser le clic sans effet.
+          window.open(shareBtn.href, '_blank', 'noopener,noreferrer');
+        });
+    });
   }
 </script>
 

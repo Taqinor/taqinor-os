@@ -953,6 +953,23 @@ export function whatsappLink(reference: string, phone: string = TAQINOR_WHATSAPP
 }
 
 /**
+ * WJ56 — Partage du lien TOKENISÉ de LA PROPOSITION ELLE-MÊME (pas une question
+ * pour Taqinor) : le client transmet sa proposition à un conjoint/co-décideur
+ * SANS rien ressaisir. Différent de `whatsappLink` (qui adresse un message AU
+ * numéro Taqinor) — ici `wa.me/` sans numéro ouvre le compositeur WhatsApp
+ * générique (le client choisit lui-même le destinataire). `pageUrl` est
+ * l'URL COMPLÈTE de la page courante (avec le token), jamais reconstruite.
+ */
+export function whatsappShareLink(pageUrl: string, reference: string): string {
+  const url = (pageUrl || '').trim();
+  const ref = (reference || '').trim();
+  const msg = ref
+    ? `Voici ma proposition solaire Taqinor (réf. ${ref}) : ${url}`
+    : `Voici ma proposition solaire Taqinor : ${url}`;
+  return `https://wa.me/?text=${encodeURIComponent(msg)}`;
+}
+
+/**
  * WJ85 — Intention du point de contact « au moindre doute » (avant signature).
  * `discuss` (« Discuter sur WhatsApp ») et `question` (« Poser une question »)
  * pointaient auparavant vers le MÊME `whatsappLink(reference)`, un seul message
