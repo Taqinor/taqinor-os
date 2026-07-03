@@ -36,6 +36,7 @@ from .models import (
     BulletinPaie,
     CampagneEvaluation,
     Candidature,
+    CandidatureActivity,
     CauserieParticipant,
     CauserieSecurite,
     Certification,
@@ -94,6 +95,7 @@ from .serializers import (
     BesoinFormationSerializer,
     BulletinPaieSerializer,
     CampagneEvaluationSerializer,
+    CandidatureActivitySerializer,
     CandidatureSerializer,
     CauserieParticipantSerializer,
     CauserieSecuriteSerializer,
@@ -2820,6 +2822,79 @@ class CandidatureViewSet(_RhBaseViewSet):
         if etape:
             qs = qs.filter(etape=etape)
         return qs
+
+    def perform_update(self, serializer):
+        """XRH18 — journalise automatiquement une transition d'étape."""
+        old_etape = serializer.instance.etape
+        candidature = serializer.save()
+        if old_etape != candidature.etape:
+            CandidatureActivity.objects.create(
+                company=candidature.company, candidature=candidature,
+                auteur=self.request.user,
+                type=CandidatureActivity.Kind.LOG, field='etape',
+                old_value=old_etape, new_value=candidature.etape)
+
+    @action(detail=True, methods=['get'], url_path='historique')
+    def historique(self, request, pk=None):
+        """XRH18 — timeline chatter de la candidature (auto + notes)."""
+        candidature = self.get_object()
+        return Response(CandidatureActivitySerializer(
+            candidature.activites.all(), many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='noter')
+    def noter(self, request, pk=None):
+        """XRH18 — note manuelle sur le chatter (auteur posé côté serveur)."""
+        candidature = self.get_object()
+        message = (request.data.get('message') or '').strip()
+        if not message:
+            return Response({'message': 'Note vide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        act = CandidatureActivity.objects.create(
+            company=candidature.company, candidature=candidature,
+            auteur=request.user, type=CandidatureActivity.Kind.NOTE,
+            message=message)
+        return Response(CandidatureActivitySerializer(act).data,
+                        status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'], url_path='check-duplicates')
+    def check_duplicates(self, request):
+        """XRH18 — contrôle PRÉ-CRÉATION (et édition) : un téléphone/email
+        saisi correspond-il déjà à une candidature de la société ?
+        Avertissement NON bloquant (pattern CRM ``check-duplicates``).
+        ``?exclude=<id>`` retire la candidature en cours d'édition."""
+        telephone = request.query_params.get('telephone')
+        email = request.query_params.get('email')
+        exclude = request.query_params.get('exclude')
+        exclude_pk = exclude if (exclude or '').isdigit() else None
+        doublons = services.candidatures_doublons(
+            request.user.company, telephone=telephone, email=email,
+            exclude_pk=exclude_pk)
+        return Response([
+            {'id': d.id, 'nom': d.nom, 'email': d.email,
+             'telephone': d.telephone, 'etape': d.etape}
+            for d in doublons
+        ])
+
+    @action(detail=True, methods=['post'], url_path='fusionner')
+    def fusionner(self, request, pk=None):
+        """XRH18 — fusionne une candidature SOURCE dans CETTE candidature
+        (cible). Corps : ``source`` (id, même société)."""
+        cible = self.get_object()
+        source = Candidature.objects.filter(
+            company=request.user.company,
+            pk=request.data.get('source')).first()
+        if source is None:
+            return Response(
+                {'detail': 'Candidature source introuvable.'},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            services.fusionner_candidatures(
+                cible, source, auteur=request.user)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        cible.refresh_from_db()
+        return Response(self.get_serializer(cible).data)
 
     @action(detail=True, methods=['post'], url_path='embaucher')
     def embaucher(self, request, pk=None):

@@ -4797,3 +4797,64 @@ class NoteEntretien(models.Model):
 
     def __str__(self):
         return f'{self.entretien_id} — {self.evaluateur_id} ({self.avis})'
+
+
+class CandidatureActivity(models.Model):
+    """Chatter / journal d'une candidature (XRH18) — audit + collaboration.
+
+    Pattern aligné sur ``DossierActivity`` (XRH6) / ``crm.LeadActivity`` :
+    deux familles d'entrées — automatiques (``type=log``, transitions
+    d'étape old→new) écrites CÔTÉ SERVEUR à chaque changement, et manuelles
+    (``type=note``) via ``candidatures/{id}/noter``.
+
+    Multi-société : ``company`` posée côté serveur ; ``auteur`` nullable
+    (une transition automatisée sans utilisateur reste journalisable).
+    """
+    class Kind(models.TextChoices):
+        LOG = 'log', 'Transition'
+        NOTE = 'note', 'Note'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_candidature_activites',
+        verbose_name='Société',
+    )
+    candidature = models.ForeignKey(
+        Candidature,
+        on_delete=models.CASCADE,
+        related_name='activites',
+        verbose_name='Candidature',
+    )
+    type = models.CharField(
+        max_length=10, choices=Kind.choices, verbose_name='Type')
+    field = models.CharField(
+        max_length=100, blank=True, default='', verbose_name='Champ')
+    old_value = models.TextField(
+        blank=True, default='', verbose_name='Ancienne valeur')
+    new_value = models.TextField(
+        blank=True, default='', verbose_name='Nouvelle valeur')
+    message = models.TextField(
+        blank=True, default='', verbose_name='Message')
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_candidature_activites',
+        verbose_name='Auteur',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Activité candidature'
+        verbose_name_plural = 'Activités candidature'
+        ordering = ['-date_creation', '-id']
+        indexes = [
+            models.Index(
+                fields=['candidature', '-date_creation'],
+                name='rh_cand_act_cand_date_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.candidature_id} {self.type}'.strip()

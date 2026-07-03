@@ -16,6 +16,7 @@ from .models import (
     BulletinPaie,
     CampagneEvaluation,
     Candidature,
+    CandidatureActivity,
     CauserieParticipant,
     CauserieSecurite,
     Certification,
@@ -2071,6 +2072,25 @@ class CorrectionPointageSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'pointage', 'champ', 'ancienne_valeur', 'nouvelle_valeur',
             'motif', 'auteur', 'auteur_nom', 'date_creation',
+        ]
+        read_only_fields = fields
+
+    def get_auteur_nom(self, obj):
+        return getattr(obj.auteur, 'username', '') if obj.auteur_id else ''
+
+
+class CandidatureActivitySerializer(serializers.ModelSerializer):
+    """Chatter d'une candidature (XRH18) — lecture seule côté client."""
+    auteur_nom = serializers.SerializerMethodField()
+    type_display = serializers.CharField(
+        source='get_type_display', read_only=True)
+
+    class Meta:
+        model = CandidatureActivity
+        fields = [
+            'id', 'candidature', 'type', 'type_display', 'field',
+            'old_value', 'new_value', 'message', 'auteur', 'auteur_nom',
+            'date_creation',
         ]
         read_only_fields = fields
 

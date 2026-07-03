@@ -1042,3 +1042,84 @@ def appliquer_fermeture(fermeture):
     fermeture.appliquee_le = timezone.now()
     fermeture.save(update_fields=['appliquee', 'appliquee_le'])
     return creees
+
+
+# ── XRH18 — chatter candidature + détection de doublons ────────────────────
+
+def _normalize_phone(value):
+    """Téléphone normalisé pour comparaison (chiffres, indicatif MA réduit) —
+    équivalent local (pas d'import cross-app) du normaliseur CRM."""
+    import re
+
+    digits = re.sub(r'\D', '', str(value or ''))
+    if not digits:
+        return ''
+    if digits.startswith('00'):
+        digits = digits[2:]
+    if digits.startswith('212'):
+        digits = digits[3:]
+    return digits.lstrip('0')
+
+
+def _normalize_email(value):
+    return str(value or '').strip().lower()
+
+
+def candidatures_doublons(company, *, telephone=None, email=None,
+                          exclude_pk=None):
+    """XRH18 — candidatures de la société partageant un téléphone OU un
+    email normalisé (pattern CRM ``check-duplicates``). Saisie libre
+    acceptée. ``exclude_pk`` retire la candidature en cours d'édition.
+    """
+    from .models import Candidature
+
+    phone = _normalize_phone(telephone)
+    mail = _normalize_email(email)
+    if not phone and not mail:
+        return []
+    qs = Candidature.objects.filter(company=company)
+    if exclude_pk is not None:
+        qs = qs.exclude(pk=exclude_pk)
+    doublons = []
+    for other in qs:
+        if phone and _normalize_phone(other.telephone) == phone:
+            doublons.append(other)
+        elif mail and _normalize_email(other.email) == mail:
+            doublons.append(other)
+    return doublons
+
+
+@transaction.atomic
+def fusionner_candidatures(cible, source, *, auteur=None):
+    """XRH18 — fusionne ``source`` DANS ``cible`` : la cible absorbe le CV
+    (si elle n'en a pas déjà un), la note (concaténée) et les activités
+    (déplacées) ; la source est marquée REJETÉE-doublon. Ne perd jamais
+    l'historique. Idempotent au sens où ``source`` déjà rejetée-doublon ne
+    re-déplace rien de plus.
+    """
+    from .models import Candidature, CandidatureActivity
+
+    if cible.pk == source.pk:
+        raise ValueError('Impossible de fusionner une candidature avec elle-même.')
+
+    if not cible.cv_fichier and source.cv_fichier:
+        cible.cv_fichier = source.cv_fichier
+    if source.note:
+        cible.note = (
+            f'{cible.note}\n[Fusionné depuis #{source.id}] {source.note}'
+            if cible.note else source.note)
+    cible.save(update_fields=['cv_fichier', 'note', 'date_modification'])
+
+    CandidatureActivity.objects.filter(candidature=source).update(
+        candidature=cible)
+
+    source.etape = Candidature.Etape.REJETE
+    source.note = (
+        f'{source.note}\n[Fusionnée dans #{cible.id}]'
+        if source.note else f'[Fusionnée dans #{cible.id}]')
+    source.save(update_fields=['etape', 'note', 'date_modification'])
+
+    CandidatureActivity.objects.create(
+        company=cible.company, candidature=cible, type='note', auteur=auteur,
+        message=f'Fusion : candidature #{source.id} absorbée.')
+    return cible
