@@ -146,6 +146,27 @@
   --color-alert-300: #f4a18a;
 }
 
+/* ─── W363 — Grain sur les dégradés nuit ───────────────────────────────────
+   Un bruit SVG feTurbulence, tuilé, en data-URI inline (aucune requête
+   supplémentaire, aucun élément supplémentaire). Ajouté comme dernière couche
+   background-image de .hero-scrim / .seam-lumiere / .diag-lumiere /
+   .cine-card, à une opacité effective ~2,5 % (portée par le canal alpha de la
+   tuile elle-même via feColorMatrix) : casse le banding visible des larges
+   dégradés nuit — le tell le moins cher des thèmes sombres premium. Purement
+   additif : les dégradés existants de chaque cible sont conservés à
+   l'identique en dessous, ce calque vient juste se superposer par-dessus
+   (comportement inchangé hors du bruit). Tuile 180×180 en repeat.
+   .grain-overlay : utilitaire autonome pour ajouter le même calque sur un
+   élément qui ne fixe pas déjà son propre background par shorthand. */
+:root {
+  --grain-svg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.025 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.grain-overlay {
+  background-image: var(--grain-svg);
+  background-repeat: repeat;
+}
+
 /* ─── W216 — Lien d'évitement « Aller au contenu » ─────────────────────────
    Visuellement masqué jusqu'au focus clavier (clip-path hors-écran) ; au focus,
    il surgit en haut-gauche avec le traitement brass du site. ZÉRO CLS :
@@ -349,6 +370,8 @@ summary:focus-visible {
    .cine-card-link : modificateur pour carte cliquable (cursor pointer). */
 .cine-card {
   background:
+    /* W363 — grain très fin par-dessus le verre, casse le banding du glass */
+    var(--grain-svg),
     /* reflet subtil en filet en haut de carte */
     linear-gradient(
       to bottom,
@@ -357,6 +380,7 @@ summary:focus-visible {
       transparent 1px
     ),
     rgb(255 255 255 / 0.06);
+  background-repeat: repeat;
   border: 1px solid rgb(255 255 255 / 0.12);
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.10),
@@ -390,8 +414,11 @@ summary:focus-visible {
 .seam-lumiere {
   height: 7rem;
   background:
+    /* W363 — grain très fin par-dessus la couture, casse le banding */
+    var(--grain-svg),
     radial-gradient(60% 130% at 50% 100%, rgb(232 181 74 / 0.16), transparent 70%),
     linear-gradient(to bottom, var(--color-nuit), var(--color-blanc-azur));
+  background-repeat: repeat;
   position: relative;
   overflow: hidden;
 }
@@ -606,6 +633,8 @@ summary:focus-visible {
 
 .hero-scrim {
   background:
+    /* W363 — grain très fin par-dessus le scrim, casse le banding */
+    var(--grain-svg),
     /* Point chaud central radial — atténue l'éclat de la photo */
     radial-gradient(
       ellipse 80% 60% at 50% 40%,
@@ -627,6 +656,7 @@ summary:focus-visible {
       rgb(7 11 29 / calc(var(--hero-scrim-strength) - 0.15)) 70%,
       transparent 100%
     );
+  background-repeat: repeat;
 }
 
 /* ─── W149 — Halo doré renforcé sur le CTA héro ────────────────────────────
@@ -693,6 +723,8 @@ summary:focus-visible {
    d'un acte final éclairé sans compromettre les couleurs de texte existantes. */
 .diag-lumiere {
   background:
+    /* W363 — grain très fin par-dessus le dégradé, casse le banding */
+    var(--grain-svg),
     radial-gradient(ellipse 100% 55% at 50% 0%, rgb(232 181 74 / 0.12), transparent 70%),
     radial-gradient(ellipse 60% 40% at 30% 60%, rgb(35 66 181 / 0.08), transparent 70%),
     linear-gradient(
@@ -700,6 +732,7 @@ summary:focus-visible {
       var(--color-nuit-800) 0%,
       var(--color-nuit) 60%
     );
+  background-repeat: repeat;
 }
 
 /* ─── W214 — RTL Arabic layout corrections ──────────────────────────────────
