@@ -7,8 +7,8 @@ from .views import (
     DocumentLienViewSet, DocumentTagAssignmentViewSet, DocumentTagViewSet,
     DocumentVersionViewSet, DocumentViewSet, FolderViewSet, JournalAccesViewSet,
     LegalHoldViewSet, ModeleDocumentViewSet, PartageGedViewSet,
-    PolitiqueRetentionViewSet, QuotaStockageViewSet, public_partage,
-    public_signature,
+    PolitiqueRetentionViewSet, QuotaStockageViewSet, SignataireDemandeViewSet,
+    public_partage, public_signataire, public_signature,
 )
 
 router = DefaultRouter()
@@ -27,6 +27,7 @@ router.register(r'archivages-legaux', ArchivageLegalViewSet)
 router.register(r'legal-holds', LegalHoldViewSet)
 router.register(r'modeles-document', ModeleDocumentViewSet)
 router.register(r'demandes-signature', DemandeSignatureDocumentViewSet)
+router.register(r'signataires-demande', SignataireDemandeViewSet)
 router.register(r'journal-acces', JournalAccesViewSet)
 router.register(r'quotas-stockage', QuotaStockageViewSet)
 
@@ -40,5 +41,9 @@ urlpatterns = [
     # uniquement. Déclarée avant le routeur pour ne jamais être captée par une
     # route authentifiée.
     path('signature/<str:token>/', public_signature, name='ged-public-signature'),
+    # XGED2 — cérémonie publique d'UN destinataire du circuit multi-signataires
+    # (jeton propre au signataire, distinct du jeton de la demande globale).
+    path('signataire/<str:token>/', public_signataire,
+         name='ged-public-signataire'),
     path('', include(router.urls)),
 ]

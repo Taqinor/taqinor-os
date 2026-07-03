@@ -42,3 +42,29 @@ def purge_corbeille_echue():
         result['dry_run'], result['eligibles'],
         result['purges'], result['proteges'])
     return result
+
+
+@shared_task(name='ged.signature_relances_expiration')
+def signature_relances_expiration():
+    """XGED2 — Balayage quotidien : relances de signataires dus + expiration
+    des demandes échues (une société à la fois, jamais destructif : n'annule
+    QUE des demandes déjà `en_attente` avec `expires_at` dépassée)."""
+    from authentication.models import Company
+
+    from . import services
+
+    total_relances = 0
+    total_expirees = 0
+    for company in Company.objects.filter(actif=True):
+        try:
+            total_relances += len(services.relancer_signataires_dus(company))
+            total_expirees += services.expirer_demandes_echues(company)
+        except Exception:  # pragma: no cover - défensif, une société KO
+            # n'interrompt jamais les suivantes.
+            logger.warning(
+                'ged.signature_relances_expiration: échec société %s',
+                company.pk, exc_info=True)
+    logger.info(
+        'ged.signature_relances_expiration: %d relance(s), %d expiration(s)',
+        total_relances, total_expirees)
+    return {'relances': total_relances, 'expirations': total_expirees}

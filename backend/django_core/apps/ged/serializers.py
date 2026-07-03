@@ -5,6 +5,7 @@ from .models import (
     DemandeSignatureDocument, Document, DocumentLien, DocumentTag,
     DocumentTagAssignment, DocumentVersion, Folder, JournalAcces, LegalHold,
     ModeleDocument, PartageGed, PolitiqueRetention, QuotaStockage,
+    SignataireDemande,
 )
 from . import services
 
@@ -581,6 +582,8 @@ class DemandeSignatureDocumentSerializer(serializers.ModelSerializer):
     created_by_nom = serializers.CharField(
         source='created_by.username', read_only=True, default=None)
 
+    signataires = serializers.SerializerMethodField()
+
     class Meta:
         model = DemandeSignatureDocument
         fields = [
@@ -595,6 +598,9 @@ class DemandeSignatureDocumentSerializer(serializers.ModelSerializer):
             'adresse_ip', 'user_agent', 'hash_contenu',
             'signature_texte', 'signature_tracee',
             'motif_refus', 'refuse_le',
+            # XGED2 — circuit multi-signataires.
+            'routage', 'relance_cadence_jours', 'annule_le', 'annule_par',
+            'signataires',
             'created_by', 'created_by_nom', 'created_at', 'updated_at',
         ]
         read_only_fields = [
@@ -604,8 +610,28 @@ class DemandeSignatureDocumentSerializer(serializers.ModelSerializer):
             'adresse_ip', 'user_agent', 'hash_contenu',
             'signature_texte', 'signature_tracee',
             'motif_refus', 'refuse_le',
+            'annule_le', 'annule_par',
             'created_by', 'created_at', 'updated_at',
         ]
+
+    def get_signataires(self, obj):
+        return SignataireDemandeSerializer(
+            obj.signataires.all(), many=True).data
+
+
+class SignataireDemandeSerializer(serializers.ModelSerializer):
+    """XGED2 — Destinataire (signataire/copie/approbateur) d'une demande de
+    signature multi-parties. LECTURE SEULE via l'API — créé/muté uniquement
+    par `services` (création groupée, signature/refus par jeton public,
+    notifications/relances)."""
+    class Meta:
+        model = SignataireDemande
+        fields = [
+            'id', 'demande', 'nom', 'email', 'telephone', 'ordre', 'role',
+            'statut', 'notifie_le', 'derniere_relance_le', 'nb_relances',
+            'date_action', 'motif_refus', 'created_at', 'updated_at',
+        ]
+        read_only_fields = fields
 
 
 class ModeleDocumentSerializer(serializers.ModelSerializer):

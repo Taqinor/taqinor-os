@@ -34,7 +34,7 @@ from .models import (
     DemandeSignatureDocument, Document, DocumentLien, DocumentTag,
     DocumentTagAssignment, DocumentVersion, Folder, JournalAcces, LegalHold,
     LegalHoldError, ModeleDocument, PartageGed, PolitiqueRetention,
-    QuotaDepasseError, QuotaStockage,
+    QuotaDepasseError, QuotaStockage, SignataireDemande,
 )
 from .serializers import (
     ArchivageLegalSerializer, CabinetSerializer, CoffreSerializer,
@@ -44,6 +44,7 @@ from .serializers import (
     DocumentVersionSerializer, FolderSerializer, JournalAccesSerializer,
     LegalHoldSerializer, ModeleDocumentSerializer, PartageGedSerializer,
     PolitiqueRetentionSerializer, QuotaStockageSerializer,
+    SignataireDemandeSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -1937,6 +1938,87 @@ class DemandeSignatureDocumentViewSet(TenantMixin,
                 demande, context={'request': request}).data,
             status=status.HTTP_200_OK)
 
+    @action(detail=False, methods=['post'], url_path='creer-multi')
+    def creer_multi(self, request):
+        """XGED2 — Crée une demande de signature MULTI-destinataires.
+
+        Body : `{"document": <id>, "destinataires": [{"nom", "email"?,
+        "telephone"?, "role"?, "ordre"?}, …], "routage"?: "sequentiel"|
+        "parallele", "expires_at"?: <iso>, "relance_cadence_jours"?: <int>}`.
+        Le document est borné à la société (404 cross-société).
+        `company`/`created_by` posés côté serveur."""
+        document_id = request.data.get('document')
+        destinataires = request.data.get('destinataires') or []
+        if not document_id:
+            return Response(
+                {'document': 'Le document à signer est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if not destinataires:
+            return Response(
+                {'destinataires': 'Au moins un destinataire est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        document = (Document.objects.filter(company=request.user.company)
+                    .filter(pk=document_id).first())
+        if document is None:
+            return Response(
+                {'document': 'Document inconnu.'},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            demande = services.creer_demande_multi_signataires(
+                document, destinataires=destinataires,
+                company=request.user.company,
+                routage=request.data.get('routage'),
+                expires_at=request.data.get('expires_at'),
+                relance_cadence_jours=request.data.get('relance_cadence_jours'),
+                created_by=request.user)
+        except (PermissionError, ValueError) as exc:
+            code = (status.HTTP_403_FORBIDDEN
+                    if isinstance(exc, PermissionError)
+                    else status.HTTP_400_BAD_REQUEST)
+            return Response({'detail': str(exc)}, status=code)
+        return Response(
+            DemandeSignatureDocumentSerializer(
+                demande, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='annuler')
+    def annuler(self, request, pk=None):
+        """XGED2 — Annule une demande de signature (action ÉMETTEUR, tracée).
+
+        `POST …/demandes-signature/<id>/annuler/`. Une demande déjà `signe`/
+        `refuse` ne peut plus être annulée (400). Écriture : responsable/admin."""
+        demande = self.get_object()  # borné à la société (TenantMixin)
+        try:
+            demande = services.annuler_demande(demande, user=request.user)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            DemandeSignatureDocumentSerializer(
+                demande, context={'request': request}).data,
+            status=status.HTTP_200_OK)
+
+
+class SignataireDemandeViewSet(TenantMixin, mixins.ListModelMixin,
+                               mixins.RetrieveModelMixin,
+                               viewsets.GenericViewSet):
+    """XGED2 — Destinataires d'une demande de signature (LECTURE SEULE via
+    l'API authentifiée). Créés/mutés uniquement via `services` (création
+    groupée, cérémonie publique par jeton, notifications/relances)."""
+    queryset = SignataireDemande.objects.select_related('demande').all()
+    serializer_class = SignataireDemandeSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['ordre', 'id']
+    permission_classes = [IsAnyRole]
+
+    def get_queryset(self):
+        qs = SignataireDemande.objects.filter(
+            company=self.request.user.company).select_related('demande')
+        demande = self.request.query_params.get('demande')
+        if demande:
+            qs = qs.filter(demande_id=demande)
+        return qs
+
 
 class JournalAccesViewSet(TenantMixin, mixins.ListModelMixin,
                           mixins.RetrieveModelMixin, viewsets.GenericViewSet):
@@ -2256,6 +2338,107 @@ def public_signature(request, token):
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST))
         return _ged_noindex(
             Response(_signature_publique_payload(demande),
+                     status=status.HTTP_200_OK))
+
+    return _ged_noindex(Response(
+        {'detail': "Action inconnue : 'signer' ou 'refuser' attendu."},
+        status=status.HTTP_400_BAD_REQUEST))
+
+
+class PublicSignataireRateThrottle(PublicSignatureRateThrottle):
+    """XGED2 — Même limite de débit que la cérémonie mono-partie, sur le
+    jeton PROPRE à un destinataire du circuit multi-signataires."""
+    scope = 'public_ged_signataire'
+
+
+def _signataire_publique_payload(signataire):
+    """XGED2 — Représentation JSON publique d'un destinataire (jamais de
+    données d'une autre société ; ne révèle jamais les AUTRES destinataires)."""
+    demande = signataire.demande
+    return {
+        'document_nom': demande.document.nom,
+        'document_id': demande.document_id,
+        'nom': signataire.nom,
+        'role': signataire.role,
+        'ordre': signataire.ordre,
+        'statut': signataire.statut,
+        'demande_statut': demande.statut,
+    }
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicSignataireRateThrottle])
+def public_signataire(request, token):
+    """XGED2 — Cérémonie de signature PUBLIQUE d'UN destinataire du circuit
+    multi-signataires (`SignataireDemande.token`), distincte du jeton de la
+    demande globale (XGED1 `public_signature`, toujours servable pour le
+    mono-signataire rétrocompatible).
+
+    `GET /api/django/ged/signataire/<token>/` consulte ; `POST` avec
+    `{"action": "signer"|"refuser", …}` (mêmes champs que `public_signature`).
+    Un signataire qui n'est PAS encore `notifie` (séquentiel, pas son tour) ne
+    peut ni signer ni refuser (403 explicite, jamais un blocage silencieux)."""
+    signataire = (SignataireDemande.objects
+                  .select_related(
+                      'demande', 'demande__document', 'demande__document__company')
+                  .filter(token=token)
+                  .first())
+    if signataire is None:
+        return _ged_noindex(Response(
+            {'detail': "Ce lien de signature est introuvable."},
+            status=status.HTTP_404_NOT_FOUND))
+    demande = signataire.demande
+    from .models import (
+        SIGNATAIRE_NOTIFIE, SIGNATAIRE_REFUSE, SIGNATAIRE_SIGNE,
+        SIGNATURE_ANNULE,
+    )
+    if demande.statut == SIGNATURE_ANNULE or demande.is_expired:
+        return _ged_noindex(Response(
+            {'detail': "Ce lien de signature a expiré ou a été annulé."},
+            status=status.HTTP_410_GONE))
+    if signataire.statut in (SIGNATAIRE_SIGNE, SIGNATAIRE_REFUSE):
+        return _ged_noindex(Response(
+            {'detail': "Vous avez déjà traité cette demande.",
+             'statut': signataire.statut},
+            status=status.HTTP_410_GONE))
+
+    if request.method == 'GET':
+        return _ged_noindex(
+            Response(_signataire_publique_payload(signataire),
+                     status=status.HTTP_200_OK))
+
+    if signataire.statut != SIGNATAIRE_NOTIFIE:
+        return _ged_noindex(Response(
+            {'detail': "Ce n'est pas encore votre tour de signer."},
+            status=status.HTTP_403_FORBIDDEN))
+
+    action_demandee = (request.data.get('action') or '').strip().lower()
+    if action_demandee == 'refuser':
+        try:
+            signataire = services.refuser_signataire(
+                signataire, motif=request.data.get('motif'))
+        except ValueError as exc:
+            return _ged_noindex(Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST))
+        return _ged_noindex(
+            Response(_signataire_publique_payload(signataire),
+                     status=status.HTTP_200_OK))
+
+    if action_demandee == 'signer':
+        try:
+            signataire = services.signer_signataire(
+                signataire,
+                consentement=bool(request.data.get('consentement')),
+                signature_texte=request.data.get('signature_texte', ''),
+                signature_tracee=request.data.get('signature_tracee', ''),
+                adresse_ip=services._adresse_ip_requete(request),
+                user_agent=(request.META.get('HTTP_USER_AGENT') or '')[:512])
+        except ValueError as exc:
+            return _ged_noindex(Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST))
+        return _ged_noindex(
+            Response(_signataire_publique_payload(signataire),
                      status=status.HTTP_200_OK))
 
     return _ged_noindex(Response(

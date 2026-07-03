@@ -2500,6 +2500,289 @@ def selectors_latest_version(document):
     return selectors.latest_version(document)
 
 
+# ── XGED2 — Circuit multi-signataires (séquentiel/parallèle) ────────────────
+
+def _send_signataire_email(signataire, demande, *, relance=False):
+    """XGED2 — Envoie (best-effort) le lien de signature à un destinataire.
+
+    Réutilise `django.core.mail.send_mail` (pattern `ventes._send_otp_email`) —
+    backend console en local, jamais bloquant : toute erreur d'envoi est
+    journalisée mais ne casse jamais le flux de notification/relance."""
+    if not signataire.email:
+        return False
+    try:
+        from django.conf import settings
+        from django.core.mail import send_mail
+        from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@erp.local')
+        sujet = (
+            f'Relance — document à signer : {demande.document.nom}'
+            if relance else f'Document à signer : {demande.document.nom}')
+        corps = (
+            f'Bonjour {signataire.nom},\n\n'
+            f'Un document « {demande.document.nom} » requiert votre '
+            f'{"attention" if signataire.role != "signataire" else "signature"}.\n'
+            f'Lien : /ged/signature/{signataire.token}/\n\n'
+            "Cordialement,\nL'équipe TAQINOR"
+        )
+        send_mail(sujet, corps, from_email, [signataire.email], fail_silently=False)
+        return True
+    except Exception as exc:  # noqa: BLE001 - best-effort, jamais bloquant.
+        import logging
+        logging.getLogger(__name__).warning(
+            'XGED2: envoi email signataire échoué : %s', exc)
+        return False
+
+
+@transaction.atomic
+def creer_demande_multi_signataires(document, *, destinataires, company,
+                                    routage=None, expires_at=None,
+                                    relance_cadence_jours=None,
+                                    created_by=None):
+    """XGED2 — Crée une demande de signature à PLUSIEURS destinataires.
+
+    `destinataires` : liste ordonnée de dicts
+    `{"nom", "email"?, "telephone"?, "role"?, "ordre"?}`. Le premier élément
+    devient le signataire « principal » de la `DemandeSignatureDocument`
+    (`signataire_nom`/`signataire_email`, rétrocompatibilité GED30/XGED1) ;
+    TOUS les éléments deviennent des `SignataireDemande` ordonnés. `company`
+    est TOUJOURS fournie par l'appelant (jamais lue du corps) et doit
+    correspondre à celle du document (sinon `PermissionError`).
+
+    Routage : `notifier_prochains_signataires` est appelé immédiatement après
+    création — en parallèle, tous les `signataire` sont notifiés ; en
+    séquentiel, seul le rang 1 l'est.
+
+    Renvoie la `DemandeSignatureDocument` créée (avec ses `.signataires`).
+    """
+    from .models import (
+        ROLE_SIGNATAIRE, ROUTAGE_SEQUENTIEL, SignataireDemande,
+    )
+
+    if not destinataires:
+        raise ValueError("Au moins un destinataire est requis.")
+    premier = destinataires[0]
+    demande = demander_signature(
+        document,
+        signataire_nom=premier.get('nom', ''),
+        signataire_email=premier.get('email', ''),
+        company=company,
+        created_by=created_by)
+    demande.routage = routage or ROUTAGE_SEQUENTIEL
+    demande.expires_at = expires_at
+    demande.relance_cadence_jours = relance_cadence_jours
+    demande.save(update_fields=[
+        'routage', 'expires_at', 'relance_cadence_jours', 'updated_at'])
+
+    for idx, dest in enumerate(destinataires, start=1):
+        SignataireDemande.objects.create(
+            company=demande.company,
+            demande=demande,
+            nom=(dest.get('nom') or '').strip(),
+            email=(dest.get('email') or '').strip(),
+            telephone=(dest.get('telephone') or '').strip(),
+            ordre=dest.get('ordre', idx),
+            role=dest.get('role', ROLE_SIGNATAIRE),
+        )
+    notifier_prochains_signataires(demande)
+    return demande
+
+
+def notifier_prochains_signataires(demande):
+    """XGED2 — Notifie les destinataires dont c'est le tour (routage-aware).
+
+    Parallèle : notifie tous les `SignataireDemande` encore `en_attente`.
+    Séquentiel : notifie uniquement le/les rang(s) le(s) plus bas parmi ceux
+    encore `en_attente` (le rang N+1 n'est notifié qu'après le traitement — ie.
+    signature/refus — du rang N). Les `copie`/`approbateur` sont TOUJOURS
+    notifiés en parallèle du flux (jamais bloquants pour les signataires).
+    Idempotent : un destinataire déjà notifié n'est pas re-notifié ici (seule
+    `relancer_signataires_dus` ré-émet, à cadence)."""
+    from django.utils import timezone
+    from .models import (
+        ROLE_SIGNATAIRE, ROUTAGE_SEQUENTIEL, SIGNATAIRE_EN_ATTENTE,
+        SIGNATAIRE_NOTIFIE,
+    )
+
+    a_notifier = list(demande.signataires.filter(statut=SIGNATAIRE_EN_ATTENTE))
+    if not a_notifier:
+        return []
+
+    if demande.routage == ROUTAGE_SEQUENTIEL:
+        signataires_en_cours = [s for s in a_notifier if s.role == ROLE_SIGNATAIRE]
+        non_signataires = [s for s in a_notifier if s.role != ROLE_SIGNATAIRE]
+        cible = []
+        if signataires_en_cours:
+            rang_min = min(s.ordre for s in signataires_en_cours)
+            cible = [s for s in signataires_en_cours if s.ordre == rang_min]
+        cible += non_signataires
+    else:
+        cible = a_notifier
+
+    notifies = []
+    now = timezone.now()
+    for signataire in cible:
+        signataire.statut = SIGNATAIRE_NOTIFIE
+        signataire.notifie_le = now
+        signataire.save(update_fields=['statut', 'notifie_le', 'updated_at'])
+        _send_signataire_email(signataire, demande)
+        notifies.append(signataire)
+    return notifies
+
+
+def signer_signataire(signataire, *, consentement, signature_texte='',
+                      signature_tracee='', adresse_ip=None, user_agent=''):
+    """XGED2 — Signe le rang d'UN signataire et fait progresser le circuit
+    (notifie le rang suivant en séquentiel).
+
+    Exige le même consentement + forme de signature que le mono-signataire
+    (`ValueError` sinon — réutilise les mêmes règles que XGED1, appliquées ICI
+    au signataire individuel plutôt qu'à la demande globale). N'affecte QUE ce
+    `SignataireDemande` ; le statut GLOBAL de la demande n'est marqué `signe`
+    que lorsque TOUS les `signataire` requis ont signé (`_maj_statut_global`).
+    """
+    from django.utils import timezone
+    from .models import SIGNATAIRE_SIGNE
+
+    if not consentement:
+        raise ValueError(
+            "Le consentement explicite à contracter électroniquement est requis.")
+    signature_texte = (signature_texte or '').strip()
+    signature_tracee = (signature_tracee or '').strip()
+    if not signature_texte and not signature_tracee:
+        raise ValueError("Une signature (nom tapé ou tracé) est requise.")
+
+    signataire.statut = SIGNATAIRE_SIGNE
+    signataire.date_action = timezone.now()
+    signataire.save(update_fields=['statut', 'date_action', 'updated_at'])
+    notifier_prochains_signataires(signataire.demande)
+    _maj_statut_global(signataire.demande)
+    return signataire
+
+
+def refuser_signataire(signataire, *, motif):
+    """XGED2 — Refuse le rang d'UN signataire. Un refus INDIVIDUEL bascule la
+    demande GLOBALE en `refuse` (un refus de N'IMPORTE quel signataire requis
+    arrête le circuit — cohérent avec le refus mono-signataire XGED1)."""
+    from django.utils import timezone
+    from .models import SIGNATAIRE_REFUSE, SIGNATURE_REFUSE
+
+    motif = (motif or '').strip()
+    if not motif:
+        raise ValueError("Le motif de refus est requis.")
+    signataire.statut = SIGNATAIRE_REFUSE
+    signataire.motif_refus = motif
+    signataire.date_action = timezone.now()
+    signataire.save(update_fields=[
+        'statut', 'motif_refus', 'date_action', 'updated_at'])
+
+    demande = signataire.demande
+    champs = ['motif_refus', 'updated_at']
+    demande.motif_refus = motif
+    if demande.statut != SIGNATURE_REFUSE:
+        demande.statut = SIGNATURE_REFUSE
+        champs.append('statut')
+    if demande.refuse_le is None:
+        demande.refuse_le = timezone.now()
+        champs.append('refuse_le')
+    demande.save(update_fields=champs)
+    return signataire
+
+
+def _maj_statut_global(demande):
+    """XGED2 — Bascule la demande en `signe` quand tous les `signataire`
+    requis ont signé (aucun-op si des signataires restent en attente, ou s'il
+    n'y a aucun `SignataireDemande` — comportement mono-partie XGED1 inchangé,
+    piloté directement par `marquer_signe`)."""
+    from .models import ROLE_SIGNATAIRE, SIGNATAIRE_SIGNE
+
+    requis = list(demande.signataires.filter(role=ROLE_SIGNATAIRE))
+    if not requis:
+        return demande
+    if all(s.statut == SIGNATAIRE_SIGNE for s in requis):
+        return marquer_signe(demande)
+    return demande
+
+
+def annuler_demande(demande, *, user):
+    """XGED2 — Annule une demande de signature (action ÉMETTEUR, tracée).
+
+    Bascule `statut → annule`, horodate `annule_le`/`annule_par`. Une demande
+    déjà `signe`/`refuse` ne peut plus être annulée (`ValueError`) — l'issue
+    est déjà définitive. Idempotent sur une demande déjà `annule`."""
+    from django.utils import timezone
+    from .models import SIGNATURE_ANNULE, SIGNATURE_REFUSE, SIGNATURE_SIGNE
+
+    if demande.statut in (SIGNATURE_SIGNE, SIGNATURE_REFUSE):
+        raise ValueError(
+            "Une demande déjà signée ou refusée ne peut plus être annulée.")
+    if demande.statut == SIGNATURE_ANNULE:
+        return demande
+    demande.statut = SIGNATURE_ANNULE
+    demande.annule_le = timezone.now()
+    demande.annule_par = user
+    demande.save(update_fields=[
+        'statut', 'annule_le', 'annule_par', 'updated_at'])
+    return demande
+
+
+def expirer_demandes_echues(company, *, now=None):
+    """XGED2 — Bascule en `annule` les demandes `en_attente` dont `expires_at`
+    est dépassée (sweep planifié, idempotent, bornée à une société).
+
+    Renvoie le nombre de demandes basculées."""
+    from django.utils import timezone
+    from .models import DemandeSignatureDocument, SIGNATURE_ANNULE, SIGNATURE_EN_ATTENTE
+
+    now = now or timezone.now()
+    echues = DemandeSignatureDocument.objects.filter(
+        company=company, statut=SIGNATURE_EN_ATTENTE,
+        expires_at__isnull=False, expires_at__lte=now)
+    count = 0
+    for demande in echues:
+        demande.statut = SIGNATURE_ANNULE
+        demande.annule_le = now
+        demande.save(update_fields=['statut', 'annule_le', 'updated_at'])
+        count += 1
+    return count
+
+
+def relancer_signataires_dus(company, *, now=None):
+    """XGED2 — Relance (email best-effort) les signataires `notifie` dont la
+    cadence configurée sur leur demande (`relance_cadence_jours`) est due.
+
+    Un signataire est DÛ si : sa demande porte une cadence > 0, il est encore
+    `notifie` (ni signé ni refusé), et le temps écoulé depuis sa dernière
+    relance (ou sa notification initiale si aucune relance encore) dépasse la
+    cadence. Idempotent par appel (ne relance jamais deux fois dans le même
+    passage). Renvoie la liste des `SignataireDemande` relancés."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+    from .models import SIGNATAIRE_NOTIFIE, SignataireDemande
+
+    now = now or timezone.now()
+    candidats = (SignataireDemande.objects
+                 .filter(company=company, statut=SIGNATAIRE_NOTIFIE,
+                         demande__relance_cadence_jours__isnull=False)
+                 .exclude(demande__relance_cadence_jours=0)
+                 .select_related('demande'))
+    relances = []
+    for signataire in candidats:
+        cadence = signataire.demande.relance_cadence_jours
+        reference = signataire.derniere_relance_le or signataire.notifie_le
+        if reference is None:
+            continue
+        if now - reference < timedelta(days=cadence):
+            continue
+        signataire.derniere_relance_le = now
+        signataire.nb_relances += 1
+        signataire.save(update_fields=[
+            'derniere_relance_le', 'nb_relances', 'updated_at'])
+        _send_signataire_email(signataire, signataire.demande, relance=True)
+        relances.append(signataire)
+    return relances
+
+
 # ── GED35 — Journal d'audit d'accès aux documents (lectures) ─────────────────
 
 def journaliser_acces(document, *, utilisateur=None, type_acces=None,

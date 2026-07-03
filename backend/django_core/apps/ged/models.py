@@ -1447,6 +1447,16 @@ SIGNATURE_CHOICES = [
 # Provider e-sign par défaut quand aucun n'est configuré : « aucun » (stub).
 SIGNATURE_PROVIDER_AUCUN = 'aucun'
 
+# XGED2 — Mode de routage d'une demande multi-signataires (déclaré ici, avant
+# `DemandeSignatureDocument`, qui porte le champ `routage`).
+ROUTAGE_SEQUENTIEL = 'sequentiel'
+ROUTAGE_PARALLELE = 'parallele'
+
+ROUTAGE_CHOICES = [
+    (ROUTAGE_SEQUENTIEL, 'Séquentiel (par ordre)'),
+    (ROUTAGE_PARALLELE, 'Parallèle (tous en même temps)'),
+]
+
 
 class DemandeSignatureDocument(models.Model):
     """GED30 — Demande de signature électronique sur un document (point
@@ -1539,6 +1549,23 @@ class DemandeSignatureDocument(models.Model):
     motif_refus = models.TextField(blank=True, default='', verbose_name='motif de refus')
     refuse_le = models.DateTimeField(
         null=True, blank=True, verbose_name='refusée le')
+    # XGED2 — Circuit multi-signataires : mode de routage des `SignataireDemande`
+    # rattachés (séquentiel par défaut = rétrocompatible avec le mono-signataire
+    # GED30/XGED1, qui n'a qu'un seul rang de toute façon). Cadence des relances
+    # automatiques en jours (0/NULL = pas de relance auto). `annule_le`/
+    # `annule_par` tracent une annulation ÉMETTEUR (action dédiée, jamais
+    # silencieuse) — distincte du refus SIGNATAIRE.
+    routage = models.CharField(
+        max_length=10, choices=ROUTAGE_CHOICES, default=ROUTAGE_SEQUENTIEL,
+        verbose_name='mode de routage')
+    relance_cadence_jours = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='cadence de relance (jours)')
+    annule_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='annulée le')
+    annule_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_demandes_signature_annulees',
+        verbose_name='annulée par')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='ged_demandes_signature_creees')
@@ -1569,6 +1596,125 @@ class DemandeSignatureDocument(models.Model):
     def __str__(self):
         return f'Signature {self.document} → {self.signataire_nom} ' \
                f'({self.statut})'
+
+
+# XGED2 — Circuit multi-signataires (séquentiel/parallèle).
+#
+# Statuts LOCAUX au signataire — indépendants du statut GLOBAL de la demande
+# (`DemandeSignatureDocument.statut`). Un signataire au rang N+1 n'est notifié
+# (et donc « actionnable ») qu'une fois le rang N traité, en mode séquentiel ;
+# tous les rangs sont notifiés immédiatement en mode parallèle.
+SIGNATAIRE_EN_ATTENTE = 'en_attente'   # pas encore son tour (séquentiel) / notifié
+SIGNATAIRE_NOTIFIE = 'notifie'         # notifié, en attente de son action
+SIGNATAIRE_SIGNE = 'signe'
+SIGNATAIRE_REFUSE = 'refuse'
+
+SIGNATAIRE_STATUT_CHOICES = [
+    (SIGNATAIRE_EN_ATTENTE, 'En attente de son tour'),
+    (SIGNATAIRE_NOTIFIE, 'Notifié'),
+    (SIGNATAIRE_SIGNE, 'Signé'),
+    (SIGNATAIRE_REFUSE, 'Refusé'),
+]
+
+# Rôle du destinataire dans le circuit — un « copie » consulte sans signer,
+# un « approbateur » valide sans être juridiquement signataire du document,
+# un « signataire » signe effectivement.
+ROLE_SIGNATAIRE = 'signataire'
+ROLE_COPIE = 'copie'
+ROLE_APPROBATEUR = 'approbateur'
+
+ROLE_DESTINATAIRE_CHOICES = [
+    (ROLE_SIGNATAIRE, 'Signataire'),
+    (ROLE_COPIE, 'Copie'),
+    (ROLE_APPROBATEUR, 'Approbateur'),
+]
+
+
+class SignataireDemande(models.Model):
+    """XGED2 — Un destinataire (signataire/copie/approbateur) d'une demande de
+    signature multi-parties.
+
+    Une `DemandeSignatureDocument` (GED30/XGED1) porte désormais N destinataires
+    ordonnés via cette table — RÉTROCOMPATIBLE : le signataire historique mono-
+    partie de GED30 (`signataire_nom`/`signataire_email` sur la demande) reste
+    la valeur affichée quand AUCUN `SignataireDemande` n'existe pour la demande
+    (comportement 1:1 inchangé pour les demandes XGED1 pré-existantes) ;
+    `services.signataires_effectifs` résout cette rétrocompatibilité.
+
+    Chaque destinataire porte son PROPRE `token` public (même motif que
+    `PartageGed`/`DemandeSignatureDocument.token`) : le lien envoyé à un
+    signataire ne dévoile jamais les autres, et signer/refuser à SON rang
+    n'affecte que SON statut individuel (`statut`) — le service agrège vers le
+    statut GLOBAL de la demande.
+
+    Routage (`demande.routage`) : en séquentiel, un signataire au rang `ordre`
+    N+1 n'est notifié (`statut → notifie`) qu'après que le rang N a signé ; en
+    parallèle, tous les signataires sont notifiés dès l'envoi. Les `copie` et
+    `approbateur` ne bloquent jamais la progression séquentielle des
+    `signataire` (ils sont notifiés en parallèle du flux, informatif).
+
+    Multi-tenant : `company` posée CÔTÉ SERVEUR (cohérente avec la demande) —
+    jamais lue du corps de requête.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_signataires_demande')
+    demande = models.ForeignKey(
+        DemandeSignatureDocument, on_delete=models.CASCADE,
+        related_name='signataires')
+    nom = models.CharField(max_length=255, verbose_name='nom')
+    email = models.EmailField(blank=True, default='', verbose_name='email')
+    telephone = models.CharField(
+        max_length=32, blank=True, default='', verbose_name='téléphone')
+    # Rang dans le circuit — détermine l'ordre de notification en séquentiel ;
+    # purement informatif (tri d'affichage) en parallèle.
+    ordre = models.PositiveIntegerField(default=1, verbose_name='ordre')
+    role = models.CharField(
+        max_length=12, choices=ROLE_DESTINATAIRE_CHOICES,
+        default=ROLE_SIGNATAIRE, verbose_name='rôle')
+    statut = models.CharField(
+        max_length=10, choices=SIGNATAIRE_STATUT_CHOICES,
+        default=SIGNATAIRE_EN_ATTENTE, verbose_name='statut')
+    # Jeton public PROPRE à ce destinataire — un lien par personne.
+    token = models.CharField(
+        max_length=64, unique=True, default=_default_partage_token,
+        editable=False)
+    # Horodatage de la dernière notification/relance envoyée (sert la cadence
+    # des relances automatiques — `services.relancer_signataires_dus`).
+    notifie_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='notifié le')
+    derniere_relance_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='dernière relance le')
+    nb_relances = models.PositiveIntegerField(
+        default=0, verbose_name='nombre de relances envoyées')
+    date_action = models.DateTimeField(
+        null=True, blank=True, verbose_name='signé/refusé le')
+    motif_refus = models.TextField(blank=True, default='', verbose_name='motif de refus')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['demande', 'ordre', 'id']
+        verbose_name = 'Signataire de demande'
+        verbose_name_plural = 'Signataires de demande'
+        indexes = [
+            models.Index(fields=['company', 'demande'],
+                         name='ged_signataire_co_dem_idx'),
+            models.Index(fields=['demande', 'ordre'],
+                         name='ged_signataire_dem_ordre_idx'),
+            models.Index(fields=['company', 'statut'],
+                         name='ged_signataire_co_statut_idx'),
+        ]
+
+    @property
+    def is_actionnable(self):
+        """True si CE destinataire peut actuellement signer/refuser (a été
+        notifié et n'a pas encore agi)."""
+        return self.statut in (SIGNATAIRE_EN_ATTENTE, SIGNATAIRE_NOTIFIE) \
+            and self.role == ROLE_SIGNATAIRE
+
+    def __str__(self):
+        return f'{self.nom} (#{self.ordre}) → {self.demande_id} ({self.statut})'
 
 
 class ModeleDocument(models.Model):

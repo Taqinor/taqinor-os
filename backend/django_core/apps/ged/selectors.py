@@ -648,6 +648,11 @@ def demandes_signature_for_company(company):
             .select_related('document', 'created_by'))
 
 
+def signataires_for_demande(demande):
+    """XGED2 — Destinataires ordonnés d'une demande de signature (QuerySet)."""
+    return demande.signataires.all()
+
+
 # ── GED35 — Journal d'audit d'accès aux documents ───────────────────────────
 
 def journal_acces_for_company(company, *, document=None, utilisateur=None,
