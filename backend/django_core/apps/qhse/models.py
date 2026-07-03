@@ -4400,3 +4400,143 @@ class DecisionReunion(models.Model):
 
     def __str__(self):
         return self.texte[:80]
+
+
+# ── XQHS13 — Objectifs & cibles QHSE/ESG avec revues périodiques ───────────
+
+class ObjectifQhse(models.Model):
+    """Objectif chiffré QHSE/ESG avec baseline, cible et échéance (ISO 6.2).
+
+    ``indicateur_esg`` — lien optionnel vers un ``IndicateurESG`` existant
+    (même app) pour réutiliser sa mesure ; sinon ``indicateur_libre`` texte.
+    ``sens_amelioration`` détermine si « mieux » = valeur qui monte ou qui
+    descend (ex. accidents → baisse, taux de satisfaction → hausse).
+
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    class Domaine(models.TextChoices):
+        QUALITE = 'qualite', 'Qualité'
+        SECURITE = 'securite', 'Sécurité'
+        ENVIRONNEMENT = 'environnement', 'Environnement'
+        ESG = 'esg', 'ESG'
+
+    class SensAmelioration(models.TextChoices):
+        HAUSSE = 'hausse', 'Hausse souhaitée'
+        BAISSE = 'baisse', 'Baisse souhaitée'
+
+    class Frequence(models.TextChoices):
+        MENSUELLE = 'mensuelle', 'Mensuelle'
+        TRIMESTRIELLE = 'trimestrielle', 'Trimestrielle'
+        SEMESTRIELLE = 'semestrielle', 'Semestrielle'
+        ANNUELLE = 'annuelle', 'Annuelle'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_objectifs',
+        verbose_name='Société',
+    )
+    domaine = models.CharField(
+        max_length=15, choices=Domaine.choices,
+        default=Domaine.QUALITE, verbose_name='Domaine')
+    intitule = models.CharField(max_length=255, verbose_name='Intitulé')
+    indicateur_libre = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Indicateur (libre)')
+    indicateur_esg = models.ForeignKey(
+        IndicateurESG,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='objectifs',
+        verbose_name='Indicateur ESG lié',
+    )
+    valeur_baseline = models.DecimalField(
+        max_digits=14, decimal_places=2,
+        null=True, blank=True, verbose_name='Valeur de référence (baseline)')
+    annee_baseline = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Année de base')
+    valeur_cible = models.DecimalField(
+        max_digits=14, decimal_places=2,
+        null=True, blank=True, verbose_name='Valeur cible')
+    echeance = models.DateField(
+        null=True, blank=True, verbose_name='Échéance')
+    sens_amelioration = models.CharField(
+        max_length=10, choices=SensAmelioration.choices,
+        default=SensAmelioration.HAUSSE, verbose_name="Sens d'amélioration")
+    responsable = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_objectifs',
+        verbose_name='Responsable',
+    )
+    frequence_revue = models.CharField(
+        max_length=15, choices=Frequence.choices,
+        default=Frequence.TRIMESTRIELLE, verbose_name='Fréquence de revue')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Objectif QHSE'
+        verbose_name_plural = 'Objectifs QHSE'
+        ordering = ['-id']
+
+    def __str__(self):
+        return self.intitule
+
+
+class RevueObjectif(models.Model):
+    """Revue périodique d'un ``ObjectifQhse`` : valeur constatée + verdict.
+
+    ``atteint`` est dérivé automatiquement au ``save()`` depuis
+    ``valeur_constatee`` vs ``objectif.valeur_cible`` et
+    ``objectif.sens_amelioration`` (``None`` sans cible/valeur — pas encore
+    calculable).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_revues_objectif',
+        verbose_name='Société',
+    )
+    objectif = models.ForeignKey(
+        ObjectifQhse,
+        on_delete=models.CASCADE,
+        related_name='revues',
+        verbose_name='Objectif',
+    )
+    periode = models.CharField(
+        max_length=30, blank=True, default='', verbose_name='Période')
+    date_revue = models.DateField(
+        null=True, blank=True, verbose_name='Date de revue')
+    valeur_constatee = models.DecimalField(
+        max_digits=14, decimal_places=2,
+        null=True, blank=True, verbose_name='Valeur constatée')
+    atteint = models.BooleanField(
+        null=True, blank=True, verbose_name='Atteint')
+    commentaire = models.TextField(
+        blank=True, default='', verbose_name='Commentaire')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Revue d'objectif"
+        verbose_name_plural = "Revues d'objectif"
+        ordering = ['-date_revue', '-id']
+
+    def calculer_atteint(self):
+        """``True``/``False``/``None`` selon la valeur constatée vs la cible et
+        le sens d'amélioration de l'objectif parent."""
+        cible = self.objectif.valeur_cible
+        if cible is None or self.valeur_constatee is None:
+            return None
+        if self.objectif.sens_amelioration == \
+                ObjectifQhse.SensAmelioration.BAISSE:
+            return self.valeur_constatee <= cible
+        return self.valeur_constatee >= cible
+
+    def save(self, *args, **kwargs):
+        self.atteint = self.calculer_atteint()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'{self.objectif.intitule} — {self.periode or "sans période"}'

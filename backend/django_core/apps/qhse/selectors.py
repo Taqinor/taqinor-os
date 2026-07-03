@@ -28,7 +28,7 @@ from .models import (
     DemandeActionFournisseur,
     EtapeDeclarationAt, EvaluationRisque,
     Incident, IndicateurESG, InspectionSecurite, NonConformite,
-    NotationFinChantier,
+    NotationFinChantier, ObjectifQhse,
     PermisTravail, PlanInspectionChantier,
     ProcedureQualite, ReleveControle, ReleveCourbeIV, ReponseCritere,
     RetourClientQualite,
@@ -1386,3 +1386,64 @@ def readiness_multi_referentiel(company):
         result[referentiel] = {
             'total_clauses': total, 'couvertes': couvertes, 'pct': pct}
     return result
+
+
+# ── XQHS13 — Trajectoire baseline → cible vs réel (cockpit) ────────────────
+
+def trajectoire_objectif(objectif):
+    """Trajectoire baseline→cible vs réel d'un ``ObjectifQhse`` (XQHS13).
+
+    Renvoie ``{'baseline': ..., 'cible': ..., 'echeance': ..., 'points':
+    [{'periode': str, 'valeur': Decimal, 'atteint': bool|None}, ...]}`` —
+    ``points`` est l'historique des ``RevueObjectif`` triées chronologiquement
+    (ordre croissant, pour un tracé de courbe direct côté frontend).
+    """
+    revues = list(
+        objectif.revues.order_by('date_revue', 'id').values(
+            'periode', 'valeur_constatee', 'atteint', 'date_revue'))
+    return {
+        'baseline': objectif.valeur_baseline,
+        'cible': objectif.valeur_cible,
+        'echeance': objectif.echeance,
+        'points': [
+            {
+                'periode': r['periode'],
+                'valeur': r['valeur_constatee'],
+                'atteint': r['atteint'],
+                'date_revue': r['date_revue'],
+            }
+            for r in revues
+        ],
+    }
+
+
+def objectifs_revue_due(company, today=None):
+    """Objectifs dont la revue périodique est due (XQHS13, relance).
+
+    « Due » = aucune ``RevueObjectif`` dans la fenêtre de fréquence depuis la
+    dernière revue (ou jamais revu). Renvoie la liste des ``ObjectifQhse``.
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    if today is None:
+        today = timezone.localdate()
+
+    jours_par_frequence = {
+        ObjectifQhse.Frequence.MENSUELLE: 30,
+        ObjectifQhse.Frequence.TRIMESTRIELLE: 90,
+        ObjectifQhse.Frequence.SEMESTRIELLE: 180,
+        ObjectifQhse.Frequence.ANNUELLE: 365,
+    }
+
+    dus = []
+    for objectif in ObjectifQhse.objects.filter(company=company):
+        derniere = objectif.revues.order_by('-date_revue', '-id').first()
+        if derniere is None or derniere.date_revue is None:
+            dus.append(objectif)
+            continue
+        delai = jours_par_frequence.get(objectif.frequence_revue, 90)
+        if today >= derniere.date_revue + timedelta(days=delai):
+            dus.append(objectif)
+    return dus
