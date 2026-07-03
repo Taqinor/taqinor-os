@@ -1567,6 +1567,41 @@ const signConfig = ok
                 data-ar="ارسموا توقيعكم أعلاه (اختياري لكن مستحسن). اسمكم وموافقتكم أدناه بمثابة توقيع إلكتروني (القانون 53-05).">Dessinez votre signature ci-dessus (facultatif mais recommandé). Votre nom et votre accord ci-dessous valent signature électronique (loi 53-05).</p>
             </div>
 
+            <!-- ── WJ87 · SIGNER AU NOM DU FOYER (optionnel) ─────────────────────
+                 Le MRE qui signe pour ses parents, ou tout couple qui décide à
+                 distance, n'avait aucun moyen honnête d'enregistrer une décision
+                 déléguée/conjointe. Champ FACULTATIF, additif dans le payload
+                 d'acceptation (le backend qui l'ignore continue de fonctionner
+                 exactement comme avant) — formulation volontairement générique
+                 (le libellé légal précis WG16 est encore en attente). -->
+            <div class="mt-5">
+              <label for="sign-on-behalf-of" class="tech-label text-lune-faint" data-i18n
+                data-fr="Je signe au nom de (optionnel)"
+                data-en="I am signing on behalf of (optional)"
+                data-ar="أوقّع نيابة عن (اختياري)">
+                Je signe au nom de (optionnel)
+              </label>
+              <input
+                id="sign-on-behalf-of"
+                name="on_behalf_of"
+                type="text"
+                autocomplete="off"
+                class="mt-2 w-full rounded-xl border border-white/15 bg-nuit-800 px-4 py-3 text-lune placeholder:text-lune-faint"
+                data-i18n-placeholder
+                data-placeholder-fr="Ex. : mes parents, mon foyer"
+                data-placeholder-en="E.g.: my parents, my household"
+                data-placeholder-ar="مثال: والديّ، عائلتي"
+                placeholder="Ex. : mes parents, mon foyer"
+              />
+              <p class="mt-1.5 text-xs text-lune-faint" data-i18n
+                data-fr="Si vous signez pour le compte du propriétaire ou de votre foyer, précisez-le ici — votre nom ci-dessus reste le signataire enregistré."
+                data-en="If you are signing on behalf of the owner or your household, note it here — your name above remains the recorded signatory."
+                data-ar="إن كنتم توقّعون نيابة عن المالك أو عائلتكم، وضّحوا ذلك هنا — يبقى اسمكم أعلاه هو الموقّع المسجَّل.">
+                Si vous signez pour le compte du propriétaire ou de votre foyer, précisez-le ici —
+                votre nom ci-dessus reste le signataire enregistré.
+              </p>
+            </div>
+
             <label class="mt-5 flex cursor-pointer items-start gap-3 text-sm">
               <input id="sign-accord" name="accord" type="checkbox" required class="mt-1 h-4 w-4 accent-[var(--color-brass-400)]" />
               <span class="text-lune-soft" data-i18n
@@ -1872,6 +1907,14 @@ const signConfig = ok
     document.querySelectorAll<HTMLElement>('[data-curve-lang]').forEach((el) => {
       el.hidden = el.dataset.curveLang !== currentLang;
     });
+    // WJ87 — les attributs `placeholder` ne sont pas couverts par le mécanisme
+    // data-i18n (qui ne touche que le contenu affiché) : ce petit registre
+    // dédié retraduit les placeholders posés via data-placeholder-{fr,en,ar}
+    // à chaque bascule de langue.
+    document.querySelectorAll<HTMLInputElement>('[data-i18n-placeholder]').forEach((el) => {
+      const value = isAr ? el.dataset.placeholderAr : isEn ? el.dataset.placeholderEn : el.dataset.placeholderFr;
+      if (typeof value === 'string') el.placeholder = value;
+    });
   }
   prepareI18n();
   document.getElementById('prop-lang-fr')?.addEventListener('click', () => applyLang('fr'));
@@ -2064,6 +2107,9 @@ const signConfig = ok
       const accord = (document.getElementById('sign-accord') as HTMLInputElement | null)?.checked;
       const consent = (document.getElementById('sign-consent') as HTMLInputElement | null)?.checked;
       const nom = (document.getElementById('sign-nom') as HTMLInputElement | null)?.value ?? '';
+      // WJ87 — facultatif : « je signe au nom de… » (MRE signant pour ses
+      // parents, foyer, etc.). Le signataire enregistré reste `nom` ci-dessus.
+      const onBehalfOf = (document.getElementById('sign-on-behalf-of') as HTMLInputElement | null)?.value ?? '';
       const state: SignFormState = { nom, option: selectedOption() };
 
       const v = validateSign(state, cfg.twoOptions);
@@ -2115,6 +2161,7 @@ const signConfig = ok
           signature_data_url: signatureDataUrl,
           consent_esign: true,
           signed_at_client: signedAtIso,
+          on_behalf_of: onBehalfOf,
         });
         const res = await fetch('/api/proposition-accept', {
           method: 'POST',

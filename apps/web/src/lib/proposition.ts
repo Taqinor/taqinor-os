@@ -1010,6 +1010,14 @@ export interface SignSignatureMeta {
   consent_esign?: boolean;
   /** Horodatage côté client (ISO 8601) du moment de la signature. */
   signed_at_client?: string;
+  /**
+   * WJ87 — Nom facultatif de la personne/du foyer au nom de qui le signataire
+   * agit (ex. « mes parents », « mon foyer »). Le signataire enregistré reste
+   * TOUJOURS `nom` (champ de base) ; ce champ est une précision ADDITIVE,
+   * jamais un remplacement — un backend qui l'ignore continue de fonctionner
+   * exactement comme avant.
+   */
+  on_behalf_of?: string;
 }
 
 /**
@@ -1030,6 +1038,10 @@ export function buildAcceptBodyRich(
   if (meta.consent_esign === true) body.consent_esign = true;
   if (typeof meta.signed_at_client === 'string' && meta.signed_at_client) {
     body.signed_at_client = meta.signed_at_client;
+  }
+  // WJ87 — omis quand vide/absent (jamais une chaîne vide envoyée au backend).
+  if (typeof meta.on_behalf_of === 'string' && meta.on_behalf_of.trim()) {
+    body.on_behalf_of = meta.on_behalf_of.trim();
   }
   return body;
 }
