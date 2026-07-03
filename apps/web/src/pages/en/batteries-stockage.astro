@@ -22,8 +22,10 @@ import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import Faq from '../../components/Faq.astro';
+import ServiceWarrantyTable from '../../components/ServiceWarrantyTable.astro';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
+import { serviceFaqItems } from '../../lib/serviceFaq';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
@@ -90,27 +92,38 @@ const flowPanels = [
 ];
 
 // FAQ — schema={false} so /faq stays the only page carrying the FAQPage JSON-LD.
+// W263 — the 5 usage questions below now carry a dedicated cluster ("Choosing
+// the right battery"); the shared bank (maintenance/price/included-excluded/
+// timelines/warranties, see lib/serviceFaq.ts) is appended to the same <Faq>
+// block to avoid a second FAQ section on the page.
+const usageCluster = 'Choosing the right battery';
 const faqItems = [
   {
+    cluster: usageCluster,
     q: 'Do I really need a battery with my solar panels?',
     a: "Not necessarily. If you use most of your electricity during the day — refrigeration, a pump, air conditioning, machines — your panels feed your loads directly, and a battery would only add cost and conversion losses. It earns its place when your consumption peak falls in the evening, or when you need power to stay on through outages. We read your consumption curve hour by hour before recommending anything.",
   },
   {
+    cluster: usageCluster,
     q: 'How long does an LFP battery last?',
     a: "On paper, a Dyness LFP battery takes 6,000 cycles at 90% depth of discharge, with a 10-year warranty and at least 70% of its capacity retained. Count one cycle a day and those 6,000 cycles alone span more than sixteen years. But a battery also ages while it sits — roughly 1 to 2% of capacity lost per year, even unused. It is this calendar ageing that usually decides matters in the end, bringing the real working life down to 12–15 years in the Moroccan climate. The way to claw back some of those years: keep the battery in the shade, ventilated, between 15 and 35 °C.",
   },
   {
+    cluster: usageCluster,
     q: 'What battery size should I choose? (5–10 kWh, 10–20 kWh or 20 kWh+)',
     a: "The tiers map to distinct needs. 5 to 10 kWh: basic night-time backup, or keeping a few essentials running through an outage. 10 to 20 kWh: full evening self-consumption for an average household — the day's solar surplus covers most of the night-time load. 20 kWh and up: near-autonomy, remote sites, or 2 to 3 days of cover with no sun. Our Dyness modules stack in 5 kWh steps, so we set the capacity to the evening dip you need to cover, not to a marketing tier. A dedicated guide walks through the calculation.",
   },
   {
+    cluster: usageCluster,
     q: 'Does a battery protect me from power cuts?',
     a: "Yes, if the hybrid inverter is set to EPS (Emergency Power Supply) mode. Deye SG-series inverters switch over almost instantly (about 4 ms) with no extra box — comparable to a UPS. How much power you have during an outage depends on the installed capacity and on the loads wired to the backup circuit. Don't confuse this with a plain on-grid inverter, which also shuts down during an outage, for safety.",
   },
   {
+    cluster: usageCluster,
     q: 'Is it better to store the surplus or sell it to the grid in Morocco?',
     a: "In Morocco, law 82-21 (in force since June 2026) caps grid injection at 20% of annual output, and the ANRE buy-back rate runs from 0.18 to 0.21 DH/kWh depending on the hour. Yet a kWh bought from the grid costs you between 0.90 DH (first tier) and 1.66 DH (heavy use). In other words, a kWh stored and self-consumed in the evening is worth 4 to 9 times more than one sold to the grid. So the order of priority is: (1) consume directly by day, (2) store for the evening, (3) export the balance, capped at 20%. Don't oversize your batteries to export more — it doesn't pay.",
   },
+  ...serviceFaqItems('batteries-stockage', 'en'),
 ];
 
 const jsonLd = {
@@ -389,6 +402,12 @@ const jsonLd = {
           <a href={L('/realisations')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Our projects →</a>
         </div>
       </div>
+    </section>
+
+    <!-- W263 — per-component warranty, BEFORE the final CTA. -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="section-tight bg-blanc-azur px-4 text-encre">
+      <ServiceWarrantyTable />
     </section>
 
     <CtaBand title="Storage or not? Your consumption curve will say — free assessment." href={devisHref} />

@@ -15,6 +15,8 @@ import Breadcrumb from '../components/Breadcrumb.astro';
 import CtaBand from '../components/CtaBand.astro';
 import StickyCta from '../components/StickyCta.astro';
 import Faq from '../components/Faq.astro';
+import ServiceWarrantyTable from '../components/ServiceWarrantyTable.astro';
+import { serviceFaqItems } from '../lib/serviceFaq';
 
 // Faits matériel — identiques à la page Équipement (réf. BAT), source publiée.
 const specs = [
@@ -81,27 +83,39 @@ const flowPanels = [
 
 // FAQ W130 — questions tracées sur CONTENT_SEO_NOTES.md §7 + §1 (PUBLISH-SAFE).
 // schema={false} → /faq reste l'unique page portant le FAQPage JSON-LD.
+// W263 — les 5 questions d'usage ci-dessous portent désormais un cluster
+// dédié (« Bien choisir sa batterie ») ; la banque partagée
+// (entretien/prix/inclus-exclus/délais/garanties, cf. lib/serviceFaq.ts) est
+// concaténée à la suite, dans le même bloc <Faq> pour éviter une deuxième
+// section FAQ sur la page.
+const usageCluster = 'Bien choisir sa batterie';
 const faqItems = [
   {
+    cluster: usageCluster,
     q: "Ai-je vraiment besoin d'une batterie avec mes panneaux solaires ?",
     a: "Pas nécessairement. Si vous consommez l'essentiel de votre électricité en journée — appareils de froid, pompe, climatisation, machines — vos panneaux alimentent directement vos charges et une batterie n'ajouterait qu'un coût et des pertes de conversion. Elle devient utile si votre pic de consommation tombe le soir, ou si vous avez besoin de continuité de service lors des coupures. Nous analysons votre courbe de consommation heure par heure avant toute recommandation.",
   },
   {
+    cluster: usageCluster,
     q: "Quelle est la durée de vie d'une batterie LFP ?",
     a: "Sur le papier, une Dyness LFP tient 6 000 cycles à 90 % de profondeur de décharge, garantie 10 ans avec ≥ 70 % de capacité conservée. Comptez un cycle par jour : les 6 000 cycles couvrent à eux seuls plus de seize ans. Mais une batterie vieillit aussi à l'arrêt — environ 1 à 2 % de capacité perdue par an, même quand on ne s'en sert pas. C'est ce vieillissement calendaire qui finit le plus souvent par décider, et qui ramène la durée utile réelle à 12-15 ans sous le climat marocain. Le bon réflexe pour grappiller ces années : une batterie à l'ombre, ventilée, qui reste entre 15 et 35 °C.",
   },
   {
+    cluster: usageCluster,
     q: "Quelle taille de batterie choisir ? (5–10 kWh, 10–20 kWh ou 20 kWh+)",
     a: "Les paliers correspondent à des besoins distincts. 5 à 10 kWh : secours nocturne basique ou recharge de quelques appareils essentiels lors d'une coupure. 10 à 20 kWh : autoconsommation du soir complète pour un foyer moyen — le surplus solaire de la journée couvre la majorité de la consommation nocturne. 20 kWh et plus : quasi-autonomie, sites éloignés ou besoin de 2 à 3 jours d'autonomie sans soleil. Nos modules Dyness s'empilent par tranches de 5 kWh — on cale la capacité sur le creux du soir à couvrir, pas sur un palier commercial. Un guide dédié détaille la méthode de calcul.",
   },
   {
+    cluster: usageCluster,
     q: "La batterie me protège-t-elle des coupures de courant ?",
     a: "Oui, si l'onduleur hybride est configuré en mode EPS (Emergency Power Supply). Les onduleurs Deye SG-series assurent un basculement quasi instantané (environ 4 ms) sans boîtier supplémentaire — comparable à un onduleur UPS. La puissance disponible pendant une coupure dépend de la capacité installée et des charges raccordées sur le circuit de secours. À ne pas confondre avec un simple onduleur réseau (« on-grid ») qui coupe lui aussi lors d'une coupure, par sécurité.",
   },
   {
+    cluster: usageCluster,
     q: "Vaut-il mieux stocker son surplus ou le revendre au réseau au Maroc ?",
     a: "Au Maroc, la loi 82-21 (en vigueur depuis juin 2026) plafonne l'injection à 20 % de la production annuelle, et le tarif de rachat ANRE est de 0,18 à 0,21 DH/kWh selon l'heure. Or, un kWh acheté sur le réseau vous coûte entre 0,90 DH (première tranche) et 1,66 DH (forte consommation). Autrement dit, un kWh stocké et autoconsommé le soir vaut 4 à 9 fois plus qu'un kWh vendu au réseau. L'ordre de priorité est donc : (1) consommer directement en journée, (2) stocker pour le soir, (3) exporter le solde plafonné à 20 %. Ne surdimensionnez pas vos batteries pour exporter davantage — ce n'est pas rentable.",
   },
+  ...serviceFaqItems('batteries-stockage', 'fr'),
 ];
 
 const jsonLd = {
@@ -383,6 +397,12 @@ const jsonLd = {
           <a href="/realisations" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Nos réalisations →</a>
         </div>
       </div>
+    </section>
+
+    <!-- W263 — garantie par composant, AVANT le CTA final. -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="section-tight bg-blanc-azur px-4 text-encre">
+      <ServiceWarrantyTable />
     </section>
 
     <CtaBand title="Stockage ou pas ? Votre courbe de consommation le dira — diagnostic gratuit." href="/devis/mon-toit" />
