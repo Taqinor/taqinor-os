@@ -704,10 +704,26 @@ class Facture(models.Model):
             Decimal('0'))
 
     @property
-    def montant_du(self):
-        """Reste à payer (TTC − payé − avoirs), jamais négatif."""
+    def retenues_subies_total(self):
+        """XFAC4 — total des retenues à la source SUBIES (RAS TVA/IS) que le
+        client a retenues sur cette facture. Une retenue solde la facture au
+        même titre qu'un paiement — trace la créance d'attestation, pas une
+        perte. Aucune retenue → 0 → comportement historique inchangé."""
         from decimal import Decimal
-        reste = self.total_ttc - self.montant_paye - self.avoirs_total
+        return sum(
+            (r.montant for r in self.retenues_subies.all()), Decimal('0'))
+
+    @property
+    def montant_paye_avec_retenues(self):
+        """XFAC4 — payé + retenues subies (ce qui solde réellement la facture)."""
+        return self.montant_paye + self.retenues_subies_total
+
+    @property
+    def montant_du(self):
+        """Reste à payer (TTC − payé − retenues subies − avoirs), jamais négatif."""
+        from decimal import Decimal
+        reste = (self.total_ttc - self.montant_paye_avec_retenues
+                 - self.avoirs_total)
         return reste if reste > 0 else Decimal('0')
 
     @property
@@ -1092,6 +1108,55 @@ class LigneAvoir(models.Model):
     @property
     def taux_tva_effectif(self):
         return self.taux_tva if self.taux_tva is not None else self.avoir.taux_tva
+
+
+class RetenueSubie(models.Model):
+    """XFAC4 — Retenue à la source SUBIE par NOUS sur une facture client
+    (RAS TVA / RAS honoraires, réforme TVA 2024) : un client (État, grande
+    entreprise) retient un pourcentage de notre facture et ne nous verse que le
+    net — la facture reste juridiquement soldée (payé + retenue + avoirs =
+    TTC) mais on trace la créance d'attestation de retenue à recevoir.
+
+    Miroir de ``compta.RetenueSource`` (FG139 — RAS que NOUS retenons sur nos
+    fournisseurs) mais côté RECETTE : ici c'est le CLIENT qui retient sur ce
+    qu'il nous doit. Snapshot figé (base/taux/montant) au moment de la saisie.
+    """
+    class TypeRetenue(models.TextChoices):
+        RAS_TVA = 'ras_tva', 'RAS TVA'
+        RAS_IS = 'ras_is', 'RAS IS'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='retenues_subies')
+    facture = models.ForeignKey(
+        Facture, on_delete=models.CASCADE, related_name='retenues_subies')
+    # Paiement qui a déclenché la constatation de la retenue (le paiement
+    # partiel + la retenue soldent ensemble la facture). Optionnel : la
+    # retenue peut être saisie avant ou après le paiement lui-même.
+    paiement = models.ForeignKey(
+        Paiement, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='retenues_subies')
+    type_retenue = models.CharField(
+        max_length=10, choices=TypeRetenue.choices, default=TypeRetenue.RAS_TVA)
+    taux = models.DecimalField(max_digits=5, decimal_places=2)
+    base = models.DecimalField(max_digits=12, decimal_places=2)
+    montant = models.DecimalField(max_digits=12, decimal_places=2)
+    attestation_recue = models.BooleanField(default=False)
+    attestation_date = models.DateField(null=True, blank=True)
+    attestation_fichier = models.CharField(max_length=500, blank=True, null=True)
+    note = models.TextField(blank=True, default='')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        related_name='retenues_subies_creees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Retenue à la source subie'
+        verbose_name_plural = 'Retenues à la source subies'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'RAS {self.montant} MAD — {self.facture.reference}'
 
 
 class FollowupLevel(models.Model):

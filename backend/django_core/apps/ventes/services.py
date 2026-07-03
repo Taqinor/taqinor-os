@@ -2187,3 +2187,87 @@ def ventiler_avance(*, paiement, facture, montant, user=None):
             locked_facture, user, locked_paiement, montant)
 
     return affectation
+
+
+# ── XFAC4 — Retenue à la source SUBIE (RAS TVA/RAS IS) sur factures ────────
+# ────────────────────────── clients ────────────────────────────────────────
+
+def enregistrer_paiement_avec_retenue(
+        *, facture, montant, date_paiement, mode, type_retenue, taux,
+        reference='', note='', created_by=None):
+    """Enregistre un paiement PARTIEL accompagné d'une retenue à la source
+    (RAS TVA / RAS IS) qui, ENSEMBLE, soldent la facture : payé + retenue +
+    avoirs = TTC. Sans cette écriture, la facture resterait « partiellement
+    payée » à tort — la retenue n'est pas un montant perdu, c'est une créance
+    d'attestation à recevoir de la DGT/du client.
+
+    ``taux`` est informatif (tracé sur la retenue) ; le MONTANT de la retenue
+    est déduit du reste à payer : ``retenue = reste_avant − montant`` (le
+    paiement partiel + la retenue soldent ensemble EXACTEMENT le reste à
+    payer). Rejette un montant qui dépasserait seul le reste à payer, ou une
+    retenue résultante négative (le paiement seul suffirait déjà). Le
+    paiement + la retenue sont créés dans la MÊME transaction ; la facture
+    bascule automatiquement « Payée » si le solde tombe à zéro (même seuil que
+    ``enregistrer_paiement``).
+    """
+    from decimal import Decimal
+    from django.db import transaction
+    from rest_framework.exceptions import ValidationError
+    from .models import Facture, Paiement, RetenueSubie
+
+    montant = Decimal(montant)
+    if montant <= 0:
+        raise ValidationError({'montant': 'Le montant doit être positif.'})
+    try:
+        taux = Decimal(taux)
+    except (TypeError, ValueError):
+        raise ValidationError({'taux': 'Taux de RAS invalide.'})
+    if taux < 0 or taux > 100:
+        raise ValidationError(
+            {'taux': 'Le taux de RAS doit être compris entre 0 et 100 %.'})
+
+    with transaction.atomic():
+        locked = Facture.objects.select_for_update().get(pk=facture.pk)
+        if locked.statut == Facture.Statut.ANNULEE:
+            raise ValidationError(
+                {'detail': "Impossible d'encaisser sur une facture annulée."})
+        reste = locked.montant_du
+        if montant - reste > Decimal('0.01'):
+            raise ValidationError({
+                'montant': (
+                    f'Le paiement dépasse le reste à payer '
+                    f'({reste:.2f} MAD).'),
+            })
+        # Base de la retenue = ce qui reste dû après le règlement partiel ;
+        # le paiement + la retenue soldent ensemble exactement le reste à
+        # payer (jamais de fraction perdue, jamais de sur-solde).
+        base = reste - montant
+        retenue_montant = base.quantize(Decimal('0.01'))
+        if retenue_montant < 0:
+            retenue_montant = Decimal('0')
+
+        paiement = Paiement.objects.create(
+            company=locked.company, facture=locked, montant=montant,
+            date_paiement=date_paiement, mode=mode, reference=reference,
+            note=note, created_by=created_by,
+        )
+        retenue = RetenueSubie.objects.create(
+            company=locked.company, facture=locked, paiement=paiement,
+            type_retenue=type_retenue, taux=taux, base=base,
+            montant=retenue_montant, note=note,
+            created_by=created_by,
+        )
+
+        from . import activity
+        activity.log_facture_paiement(locked, created_by, paiement)
+        activity.log_facture_retenue_subie(locked, created_by, retenue)
+
+        locked.refresh_from_db()
+        if locked.montant_paye_avec_retenues >= locked.total_ttc - \
+                locked.avoirs_total - Decimal('0.01') and \
+                locked.statut != Facture.Statut.ANNULEE:
+            locked.statut = Facture.Statut.PAYEE
+            locked.save(update_fields=['statut'])
+            reset_relance_escalation(locked)
+
+    return paiement, retenue

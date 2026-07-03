@@ -416,6 +416,21 @@ class AffectationPaiementSerializer(serializers.ModelSerializer):
         read_only_fields = ['company', 'created_by', 'date_affectation']
 
 
+class RetenueSubieSerializer(serializers.ModelSerializer):
+    """XFAC4 — RAS subie (TVA/IS) constatée sur une facture client."""
+    type_retenue_display = serializers.CharField(
+        source='get_type_retenue_display', read_only=True)
+    facture_reference = serializers.CharField(
+        source='facture.reference', read_only=True)
+
+    class Meta:
+        from .models import RetenueSubie
+        model = RetenueSubie
+        fields = '__all__'
+        read_only_fields = ['company', 'created_by', 'date_creation', 'facture',
+                            'paiement']
+
+
 class FactureSerializer(serializers.ModelSerializer):
     lignes = LigneFactureSerializer(many=True, read_only=True)
     paiements = PaiementSerializer(many=True, read_only=True)

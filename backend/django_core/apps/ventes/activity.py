@@ -172,3 +172,17 @@ def log_facture_avance_affectee(facture, user, paiement, montant):
         body=(f"Avance de {montant} MAD affectée par {qui} "
               f"(paiement #{paiement.id})."),
     )
+
+
+def log_facture_retenue_subie(facture, user, retenue):
+    """XFAC4 — chatter de la facture : retenue à la source subie constatée."""
+    from .models import FactureActivity
+    qui = getattr(user, 'username', '?')
+    return FactureActivity.objects.create(
+        company=facture.company, facture=facture, user=user,
+        kind=FactureActivity.Kind.MODIFICATION,
+        field='retenue', field_label='Retenue à la source',
+        new_value=str(retenue.montant),
+        body=(f"Retenue à la source ({retenue.get_type_retenue_display()}) "
+              f"de {retenue.montant} MAD constatée par {qui}."),
+    )

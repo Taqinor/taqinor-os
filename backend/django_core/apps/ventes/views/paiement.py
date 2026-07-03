@@ -10,8 +10,8 @@ from apps.stock.services import (  # noqa: F401
 )
 from ..models import (  # noqa: F401
     Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
-    AffectationPaiement, Avoir, LigneAvoir, FollowupLevel, RelanceLog,
-    EmailLog,
+    AffectationPaiement, RetenueSubie, Avoir, LigneAvoir, FollowupLevel,
+    RelanceLog, EmailLog,
 )
 from ..serializers import (  # noqa: F401
     DevisSerializer,
@@ -23,6 +23,7 @@ from ..serializers import (  # noqa: F401
     LigneFactureSerializer,
     PaiementSerializer,
     AffectationPaiementSerializer,
+    RetenueSubieSerializer,
     AvoirSerializer,
     RelanceLogSerializer,
     DevisActivitySerializer,
@@ -145,3 +146,69 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(
             AffectationPaiementSerializer(affectation).data,
             status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'],
+            url_path=r'factures/(?P<facture_id>[^/.]+)/paiement-avec-retenue',
+            permission_classes=[IsResponsableOrAdmin])
+    def paiement_avec_retenue(self, request, facture_id=None):
+        """XFAC4 — enregistre un paiement PARTIEL + une retenue à la source
+        (RAS TVA/RAS IS) qui, ENSEMBLE, soldent la facture. Corps :
+        ``{montant, date_paiement, mode, type_retenue, taux, reference?,
+        note?}``."""
+        from ..services import (
+            enregistrer_paiement_avec_retenue as _enregistrer_avec_retenue,
+        )
+        facture = _company_qs(Facture.objects.all(), request.user).filter(
+            pk=facture_id).first()
+        if facture is None:
+            return Response({'detail': 'Facture introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        try:
+            paiement, retenue = _enregistrer_avec_retenue(
+                facture=facture, montant=request.data.get('montant'),
+                date_paiement=request.data.get('date_paiement'),
+                mode=request.data.get('mode', Paiement.Mode.VIREMENT),
+                type_retenue=request.data.get(
+                    'type_retenue', RetenueSubie.TypeRetenue.RAS_TVA),
+                taux=request.data.get('taux'),
+                reference=request.data.get('reference', ''),
+                note=request.data.get('note', ''),
+                created_by=request.user,
+            )
+        except ValidationError as exc:
+            return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'paiement': PaiementSerializer(paiement).data,
+            'retenue': RetenueSubieSerializer(retenue).data,
+            'facture': FactureSerializer(facture.__class__.objects.get(
+                pk=facture.pk)).data,
+        }, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'], url_path='attestations-ras-en-attente')
+    def attestations_ras_en_attente(self, request):
+        """XFAC4 — état des attestations RAS à recevoir (non reçues)."""
+        qs = RetenueSubie.objects.select_related('facture').filter(
+            attestation_recue=False)
+        qs = _company_qs(qs, request.user)
+        return Response(RetenueSubieSerializer(qs, many=True).data)
+
+    @action(detail=False, methods=['post'],
+            url_path=r'retenues/(?P<retenue_id>[^/.]+)/attestation-recue',
+            permission_classes=[IsResponsableOrAdmin])
+    def attestation_recue(self, request, retenue_id=None):
+        """XFAC4 — coche la réception de l'attestation RAS (+ justificatif)."""
+        retenue = _company_qs(
+            RetenueSubie.objects.all(), request.user).filter(
+            pk=retenue_id).first()
+        if retenue is None:
+            return Response({'detail': 'Retenue introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        retenue.attestation_recue = True
+        retenue.attestation_date = (
+            request.data.get('attestation_date') or timezone.now().date())
+        if request.data.get('attestation_fichier'):
+            retenue.attestation_fichier = request.data.get(
+                'attestation_fichier')
+        retenue.save(update_fields=[
+            'attestation_recue', 'attestation_date', 'attestation_fichier'])
+        return Response(RetenueSubieSerializer(retenue).data)
