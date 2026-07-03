@@ -18,12 +18,14 @@ from .models import (
     KbArticleAcl,
     KbArticleLien,
     KbArticleVersion,
+    KbLectureObligatoire,
 )
 from .serializers import (
     KbArticleAclSerializer,
     KbArticleLienSerializer,
     KbArticleSerializer,
     KbArticleVersionSerializer,
+    KbLectureObligatoireSerializer,
 )
 
 
@@ -121,6 +123,12 @@ class KbArticleViewSet(_KbBaseViewSet):
         article = self.get_object()
         return Response(selectors.resume_lecture(article))
 
+    @action(detail=True, methods=['get'], url_path='rapport-conformite')
+    def rapport_conformite(self, request, pk=None):
+        """XKB7 — Rapport de conformité de lecture obligatoire (lus/non-lus)."""
+        article = self.get_object()
+        return Response(selectors.rapport_conformite_article(article))
+
 
 class KbArticleVersionViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     """Historique des versions d'article (lecture seule). Filtrable par
@@ -214,6 +222,29 @@ class KbArticleAclViewSet(_KbBaseViewSet):
         niveau = params.get('niveau')
         if niveau:
             qs = qs.filter(niveau=niveau)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+
+class KbLectureObligatoireViewSet(_KbBaseViewSet):
+    """XKB7 — Assignations de lecture obligatoire (article ↔ utilisateur/rôle).
+
+    ``company`` est posée côté serveur (TenantMixin) ; l'``article`` reçu est
+    validé même-société par le sérialiseur. Filtre optionnel ``?article=<id>``.
+    """
+    queryset = KbLectureObligatoire.objects.select_related(
+        'article', 'utilisateur').all()
+    serializer_class = KbLectureObligatoireSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'echeance']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        article = self.request.query_params.get('article')
+        if article:
+            qs = qs.filter(article_id=article)
         return qs
 
     def perform_create(self, serializer):

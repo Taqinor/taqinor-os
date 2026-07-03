@@ -10,7 +10,12 @@ rien importer.
 """
 from django.db.models import Exists, OuterRef, Q
 
-from .models import KbArticleAcl, KbArticleLien, KbLecture
+from .models import (
+    KbArticleAcl,
+    KbArticleLien,
+    KbLecture,
+    KbLectureObligatoire,
+)
 
 
 # ── Droits d'accès par rôle (KB7) ──────────────────────────────────────────
@@ -71,6 +76,65 @@ def resume_lecture(article):
             'lu_le': lecture.lu_le,
         })
     return {'nombre': len(lecteurs), 'lecteurs': lecteurs}
+
+
+# ── XKB7 — Lecture obligatoire ─────────────────────────────────────────────
+
+def _assignees_for_role(company, role_cible):
+    """Utilisateurs actifs de la société dont le palier ``menu_tier`` égale
+    ``role_cible``. Lecture seule, jamais d'import cross-app (authentication
+    est une app fondation, importable directement — voir CLAUDE.md)."""
+    from authentication.models import CustomUser
+    return [
+        u for u in CustomUser.objects.filter(company=company, is_active=True)
+        if u.menu_tier == role_cible
+    ]
+
+
+def assignees_for_assignation(assignation):
+    """Liste des utilisateurs concernés par UNE ligne ``KbLectureObligatoire``.
+
+    Un utilisateur explicite → liste à un élément. Un palier de rôle → tous les
+    utilisateurs actifs de la société portant ce palier (``menu_tier``).
+    """
+    if assignation.utilisateur_id:
+        return [assignation.utilisateur]
+    if assignation.role_cible:
+        return _assignees_for_role(assignation.company, assignation.role_cible)
+    return []
+
+
+def rapport_conformite_article(article):
+    """XKB7 — Rapport de conformité de lecture obligatoire d'un article.
+
+    Renvoie ``{article, lus: [...], non_lus: [...]}`` : pour chaque assignation
+    (utilisateur explicite ou palier de rôle résolu en utilisateurs), classe
+    chacun des concernés comme lu (a une ``KbLecture``) ou non-lu. Un même
+    utilisateur concerné par plusieurs assignations n'apparaît qu'une fois.
+    Scopé société via ``article.company``.
+    """
+    assignations = (KbLectureObligatoire.objects
+                    .filter(article=article, company=article.company)
+                    .select_related('utilisateur'))
+    lecteurs_ids = set(
+        KbLecture.objects.filter(article=article, company=article.company)
+        .values_list('utilisateur_id', flat=True))
+    vus, lus, non_lus = set(), [], []
+    for assignation in assignations:
+        for user in assignees_for_assignation(assignation):
+            if user.id in vus:
+                continue
+            vus.add(user.id)
+            entry = {
+                'utilisateur': user.id,
+                'nom': user.get_full_name() or user.get_username(),
+                'echeance': assignation.echeance,
+            }
+            if user.id in lecteurs_ids:
+                lus.append(entry)
+            else:
+                non_lus.append(entry)
+    return {'article': article.id, 'lus': lus, 'non_lus': non_lus}
 
 
 def liens_for_article(article):

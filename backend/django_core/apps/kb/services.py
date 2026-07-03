@@ -5,9 +5,13 @@ La société est TOUJOURS fournie par l'appelant (résolue côté serveur depuis
 version est incrémental PAR article et calculé côté serveur (max(version)+1,
 sous verrou — JAMAIS count()+1, qui collisionne sous concurrence).
 """
+import logging
+
 from django.db import transaction
 
 from .models import KbLecture, KbArticleVersion, KbArticleChunk
+
+logger = logging.getLogger(__name__)
 
 
 def marquer_lu(article, *, utilisateur):
@@ -55,6 +59,59 @@ def snapshot_article(article, *, auteur=None):
             contenu=article.corps,
             auteur=auteur,
         )
+
+
+# ── XKB7 — Relance des non-lecteurs de lecture obligatoire ─────────────────
+
+def relancer_lectures_obligatoires(company=None):
+    """Relance (notify()) tous les non-lecteurs de lecture obligatoire.
+
+    Best-effort et jamais bloquant : une notification qui échoue n'empêche pas
+    les suivantes. ``company`` restreint à une seule société (sweep par
+    société) ; ``None`` balaie toutes les sociétés actives. Import
+    fonction-local des apps notifications (lecture de service, jamais de
+    models/views directement — voir CLAUDE.md). Renvoie le nombre de relances
+    émises.
+    """
+    from apps.notifications.models import EventType
+    from apps.notifications.services import notify
+
+    from . import selectors
+    from .models import KbArticle, KbLectureObligatoire
+
+    qs = KbLectureObligatoire.objects.select_related('article')
+    if company is not None:
+        qs = qs.filter(company=company)
+    total = 0
+    for assignation in qs:
+        article = assignation.article
+        if article.statut != KbArticle.Statut.PUBLIE:
+            continue
+        try:
+            deja_lu = set(
+                KbLecture.objects.filter(article=article)
+                .values_list('utilisateur_id', flat=True))
+            for user in selectors.assignees_for_assignation(assignation):
+                if user.id in deja_lu:
+                    continue
+                try:
+                    notify(
+                        user, EventType.DIGEST,
+                        f'Lecture obligatoire : {article.titre}',
+                        body="Cet article requiert votre lecture.",
+                        link=f'/kb/articles/{article.id}',
+                        company=assignation.company,
+                    )
+                    total += 1
+                except Exception:  # pragma: no cover - défensif
+                    logger.warning(
+                        'relancer_lectures_obligatoires: notify échoué',
+                        exc_info=True)
+        except Exception:  # pragma: no cover - défensif
+            logger.warning(
+                'relancer_lectures_obligatoires: assignation %s échouée',
+                getattr(assignation, 'pk', None), exc_info=True)
+    return total
 
 
 # ── KB6 — Source de contenu pour le RAG/DocQA (FG352, pgvector, no-op sans clé) ──

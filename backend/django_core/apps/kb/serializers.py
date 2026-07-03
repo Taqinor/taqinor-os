@@ -11,6 +11,7 @@ from .models import (
     KbArticleLien,
     KbArticleVersion,
     KbLecture,
+    KbLectureObligatoire,
 )
 
 
@@ -111,3 +112,40 @@ class KbLectureSerializer(serializers.ModelSerializer):
             'id', 'article', 'utilisateur', 'utilisateur_nom', 'lu_le',
         ]
         read_only_fields = fields
+
+
+class KbLectureObligatoireSerializer(serializers.ModelSerializer):
+    """XKB7 — Assignation de lecture obligatoire (article ↔ utilisateur/rôle).
+
+    ``company`` n'est jamais exposée : posée côté serveur. L'``article`` reçu
+    est validé comme appartenant à la société de l'utilisateur. Exactement un
+    de ``utilisateur``/``role_cible`` doit être renseigné.
+    """
+    utilisateur_nom = serializers.CharField(
+        source='utilisateur.get_full_name', read_only=True)
+
+    class Meta:
+        model = KbLectureObligatoire
+        fields = [
+            'id', 'article', 'utilisateur', 'utilisateur_nom', 'role_cible',
+            'echeance', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_article(self, article):
+        request = self.context.get('request')
+        if request is not None and article.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Cet article n'appartient pas à votre société.")
+        return article
+
+    def validate(self, attrs):
+        utilisateur = attrs.get(
+            'utilisateur', getattr(self.instance, 'utilisateur', None))
+        role_cible = attrs.get(
+            'role_cible', getattr(self.instance, 'role_cible', ''))
+        if bool(utilisateur) == bool(role_cible):
+            raise serializers.ValidationError(
+                "Renseignez soit un utilisateur, soit un palier de rôle "
+                "(jamais les deux, jamais aucun).")
+        return attrs

@@ -336,3 +336,61 @@ class KbArticleChunk(models.Model):
 
     def __str__(self):
         return f'{self.article_id} #{self.chunk_index}'
+
+
+class KbLectureObligatoire(models.Model):
+    """XKB7 — Assignation de lecture OBLIGATOIRE d'un article publié.
+
+    Assigne un article à un utilisateur donné OU à un palier de rôle entier
+    (``menu_tier`` : admin/responsable/normal — exactement les mêmes paliers
+    canoniques que :class:`KbArticleAcl`). La complétion s'appuie sur le
+    ``KbLecture``/``marquer-lu`` DÉJÀ existant (KB7) — on ne réimplémente pas
+    le suivi de lecture, on l'annote d'une échéance + d'un statut
+    obligatoire/volontaire. La société est posée côté serveur (jamais du corps
+    de requête) et reste cohérente avec celle de l'article.
+
+    Exactement un de ``utilisateur``/``role_cible`` est renseigné (validé côté
+    serializer) : une ligne par utilisateur explicite, ou une ligne par palier
+    de rôle couvrant tous les utilisateurs de ce palier.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='kb_app_lectures_obligatoires',
+        verbose_name='Société',
+    )
+    article = models.ForeignKey(
+        KbArticle,
+        on_delete=models.CASCADE,
+        related_name='lectures_obligatoires',
+        verbose_name='Article',
+    )
+    utilisateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='kb_app_lectures_obligatoires',
+        verbose_name='Utilisateur assigné',
+    )
+    # Palier de rôle canonique (mêmes choix que KbArticleAcl.ROLE_CHOICES) :
+    # assigne TOUS les utilisateurs de ce palier, sans énumérer chaque ligne.
+    role_cible = models.CharField(
+        max_length=20, choices=KbArticleAcl.ROLE_CHOICES,
+        blank=True, default='', verbose_name='Palier de rôle ciblé')
+    echeance = models.DateTimeField(
+        null=True, blank=True, verbose_name='Échéance')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Assigné le')
+
+    class Meta:
+        verbose_name = 'Lecture obligatoire'
+        verbose_name_plural = 'Lectures obligatoires'
+        ordering = ['-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'article'], name='kb_lecobl_co_article_idx'),
+        ]
+
+    def __str__(self):
+        cible = self.utilisateur_id or f'rôle:{self.role_cible}'
+        return f'{self.article_id} → {cible}'

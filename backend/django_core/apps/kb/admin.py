@@ -6,6 +6,7 @@ from .models import (
     KbArticleLien,
     KbArticleVersion,
     KbLecture,
+    KbLectureObligatoire,
 )
 
 
@@ -44,3 +45,10 @@ class KbArticleAclAdmin(admin.ModelAdmin):
 class KbLectureAdmin(admin.ModelAdmin):
     list_display = ('id', 'article', 'utilisateur', 'company', 'lu_le')
     list_filter = ('company',)
+
+
+@admin.register(KbLectureObligatoire)
+class KbLectureObligatoireAdmin(admin.ModelAdmin):
+    list_display = ('id', 'article', 'utilisateur', 'role_cible', 'echeance',
+                    'company', 'date_creation')
+    list_filter = ('role_cible', 'company')
