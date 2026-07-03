@@ -22,6 +22,7 @@ import StarRating from '../../components/StarRating.astro';
 import TestimonialCarousel from '../../components/TestimonialCarousel.astro';
 import InstallCounter from '../../components/InstallCounter.astro';
 import CertLogoRow from '../../components/CertLogoRow.astro';
+import VideoCompteur from '../../components/VideoCompteur.astro';
 // WJ57 — « confiance au moment de la signature » : UN témoignage court (texte,
 // slot vidéo réservé pour quand WG6 fournira de vrais témoignages filmés) +
 // le bandeau certifications/garanties, juste au-dessus du bloc e-sign. Même
@@ -784,6 +785,12 @@ const signConfig = ok
           </div>
         </section>
       )}
+
+      {/* W347 — « Compteur à zéro » : ne rend RIEN tant que le fondateur n'a
+          pas fourni le vrai clip (src/lib/compteurVideo.ts, livré vide).
+          Placé juste après les chiffres d'économies ci-dessus — le contexte
+          le plus persuasif pour ce genre de clip. */}
+      <VideoCompteur />
 
       <!-- ── SYSTÈME : puissance / panneaux ───────────────────────────────── -->
       {(puissance || nbPanneaux) && (

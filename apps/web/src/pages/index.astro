@@ -22,6 +22,7 @@ import Article33Ribbon from '../components/Article33Ribbon.astro';
 import Faq from '../components/Faq.astro';
 import Picture from '../components/Picture.astro';
 import VideoChantier from '../components/VideoChantier.astro';
+import VideoCompteur from '../components/VideoCompteur.astro';
 import StickyCta from '../components/StickyCta.astro';
 import WhatsAppMock from '../components/WhatsAppMock.astro';
 import GarantiesTeaser from '../components/GarantiesTeaser.astro';
@@ -521,6 +522,12 @@ const engineeringPillars = [
         </a>
       </div>
     </section>
+
+    {/* W347 — « Compteur à zéro » : ne rend RIEN tant que le fondateur n'a pas
+        fourni le vrai clip (src/lib/compteurVideo.ts, livré vide). Placé juste
+        après les chiffres d'investissement/économies — le contexte le plus
+        persuasif pour ce genre de clip. */}
+    <VideoCompteur />
 
     {/* ── POURQUOI TAQINOR / CONFIANCE — quatre chiffres monumentaux (l'or vit
         sur les chiffres .lum, discipline laiton) — faits déjà publiés ── */}
