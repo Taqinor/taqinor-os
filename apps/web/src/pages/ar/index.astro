@@ -529,12 +529,20 @@ const engineeringPillars = [
 
     {/* ── المسار (6 مراحل) + معاينة WhatsApp. يحلّ الشريط من البداية إلى النهاية
         (تشخيص → مراقبة) محلّ القائمة الصغيرة بثلاث خطوات. وقائع منشورة سلفًا على
-        الموقع، بلا أجل مخترَع. ── */}
+        الموقع، بلا أجل مخترَع.
+        W371 — لحظة سرد مثبَّتة أثناء التمرير (فريدة في الصفحة): على الحاسوب
+        ودون prefers-reduced-motion، يبقى العمود الأيسر (المقدمة + WhatsAppMock)
+        مثبَّتًا (`position: sticky`) بينما تمرّ المراحل الست بجانبه؛ المرحلة
+        التي تعبر مركز الشاشة تُضاء (`data-journey-active`، عبر
+        IntersectionObserver — أبدًا بلا اختطاف للتمرير، أبدًا بلا
+        `preventDefault`). على الهاتف وتحت reduced-motion، يتراجع القسم بالكامل
+        إلى الشبكة المسطّحة الأصلية (بلا تثبيت، بلا صنف نشِط، ترتيب القراءة كما
+        هو) — تحسين تدريجي خالص: بلا جافاسكريبت يبقى كل المحتوى مقروءًا كما هو. ── */}
     <div class="seam-soft" aria-hidden="true"></div>
-    <section class="section px-4">
+    <section class="section px-4" data-journey-section>
       <div class="mx-auto max-w-6xl">
-        <div class="grid items-center gap-12 lg:grid-cols-[1.1fr_1fr]">
-          <div class="v2-rise">
+        <div class="grid items-start gap-12 lg:grid-cols-[1.1fr_1fr]">
+          <div class="v2-rise journey-sticky-col" data-journey-sticky>
             <p class="tech-label v2-kicker rule-brass text-lune"><span class="ms-2 font-display text-xs text-azur-200/80" aria-hidden="true">04</span>كيف يجري الأمر</p>
             <h2 class="display v2-section-title mt-5 max-w-md text-white">البقية تجري على WhatsApp</h2>
             <p class="v2-body mt-5 max-w-md">
@@ -542,23 +550,26 @@ const engineeringPillars = [
               مباشرةً مع الفريق التقني، بصور للسطح، حتى الزيارة في عين المكان.
               نموذج تبادل في الجانب — مع إخفاء الهوية.
             </p>
+            {/* نص مقترن بالمرحلة النشِطة — مخفي افتراضيًا؛ لا يُظهره السكربت
+                إلا إذا كان التثبيت مفعَّلًا (حاسوب، حركة مسموحة). */}
+            <p class="v2-body mt-5 max-w-md journey-active-caption" data-journey-caption hidden></p>
+            <div class="mt-6">
+              <WhatsAppMock />
+            </div>
           </div>
-          <div class="v2-rise">
-            <WhatsAppMock />
-          </div>
+          {/* شريط المسار الحقيقي — من التشخيص إلى المراقبة */}
+          <ol class="journey-steps mt-14 grid gap-x-6 gap-y-8 sm:grid-cols-2 lg:mt-0 lg:grid-cols-1 lg:gap-y-16" data-stagger data-journey-steps>
+            {journey.map((s, i) => (
+              <li class="v2-rise journey-step relative border-t-2 border-white/10 pt-5" style={`--v2-i:${i % 3}`} data-journey-step data-journey-title={s.title} data-journey-body={s.body}>
+                <span class="absolute -top-px start-0 h-0.5 w-10 bg-brass-400 journey-step-rule" aria-hidden="true"></span>
+                {/* رقم المرحلة بـ .lum: الذهب هنا رقم مفتاحي (انضباط النحاس) */}
+                <span class="fig lum text-2xl">{s.n}</span>
+                <h3 class="display mt-2 text-lg text-white">{s.title}</h3>
+                <p class="mt-2 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+              </li>
+            ))}
+          </ol>
         </div>
-        {/* شريط المسار الحقيقي — من التشخيص إلى المراقبة */}
-        <ol class="mt-14 grid gap-x-6 gap-y-8 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
-          {journey.map((s, i) => (
-            <li class="v2-rise relative border-t-2 border-white/10 pt-5" style={`--v2-i:${i % 3}`}>
-              <span class="absolute -top-px start-0 h-0.5 w-10 bg-brass-400" aria-hidden="true"></span>
-              {/* رقم المرحلة بـ .lum: الذهب هنا رقم مفتاحي (انضباط النحاس) */}
-              <span class="fig lum text-2xl">{s.n}</span>
-              <h3 class="display mt-2 text-lg text-white">{s.title}</h3>
-              <p class="mt-2 text-sm leading-relaxed text-lune-soft">{s.body}</p>
-            </li>
-          ))}
-        </ol>
       </div>
     </section>
 
@@ -732,6 +743,41 @@ const engineeringPillars = [
      تشغيل ظهور أول عرض بسلاسة. */
   [data-gallery-card].gallery-card-hidden {
     display: none;
+  }
+
+  /* ── W371 — سرد مثبَّت أثناء التمرير لقسم «كيف يجري الأمر» ──────────────────
+     الحالة الافتراضية = الشبكة المسطّحة الأصلية (لا تُطبَّق أي قاعدة أدناه إلا
+     بعد أن يضبط السكربت `.journey-pinned` على القسم، وهذا لا يحدث إلا على
+     الحاسوب مع حركة مسموحة). صفر انزياح تخطيطي: التثبيت لا يغيّر عرض ولا
+     ارتفاع التدفّق، فقط `position` عند الترسو. */
+  @media (min-width: 1024px) and (prefers-reduced-motion: no-preference) {
+    .journey-pinned .journey-sticky-col {
+      position: sticky;
+      top: 6rem;
+      align-self: start;
+    }
+
+    /* نص كل مرحلة حاضر في حالة الراحة (تحسين تدريجي: مقروء بلا جافاسكريبت أو
+       خارج تطابق الوسائط)؛ بمجرد التثبيت، تُضاء المرحلة النشِطة فقط، والبقية
+       تخفت بلطف — أبدًا لا تُخفى (بلا انزياح تخطيطي، بلا فقدان محتوى لقارئ
+       الشاشة). */
+    .journey-pinned .journey-step {
+      opacity: 0.42;
+      transition: opacity 0.35s ease, border-color 0.35s ease;
+    }
+    .journey-pinned .journey-step[data-journey-active] {
+      opacity: 1;
+    }
+    .journey-pinned .journey-step[data-journey-active] .journey-step-rule {
+      background-color: var(--color-brass-300, #e8b54a);
+    }
+
+    /* النص المقترن في العمود المثبَّت: لا يظهر إلا إذا كان التثبيت مفعَّلًا،
+       وإلا يتراجع بالكامل إلى الوصف الثابت الموجود أصلًا عندما لا تجتمع كل من
+       الحاسوب/الحركة/جافاسكريبت. */
+    .journey-pinned .journey-active-caption {
+      display: block;
+    }
   }
 </style>
 
@@ -911,5 +957,72 @@ const engineeringPillars = [
     dialog.addEventListener('close', () => {
       lastTrigger?.focus();
     });
+  }
+</script>
+
+<script>
+  // W371 — لحظة سرد مثبَّتة أثناء التمرير، فريدة في الصفحة («كيف يجري الأمر»).
+  // تحسين تدريجي خالص: بلا جافاسكريبت، أو خارج الحاسوب، أو تحت
+  // prefers-reduced-motion، يبقى القسم الشبكة المسطّحة الأصلية — هذا السكربت
+  // يكتفي بإضافة صنف + سِمة، أبدًا لا يختطف التمرير (بلا preventDefault، بلا
+  // scrollTo قسري).
+  const journeySection = document.querySelector<HTMLElement>('[data-journey-section]');
+  const steps = Array.from(document.querySelectorAll<HTMLElement>('[data-journey-step]'));
+  const caption = document.querySelector<HTMLElement>('[data-journey-caption]');
+
+  if (journeySection && steps.length && 'IntersectionObserver' in window) {
+    const desktopMotionOk = matchMedia('(min-width: 1024px) and (prefers-reduced-motion: no-preference)');
+
+    let io: IntersectionObserver | null = null;
+
+    const setActive = (step: HTMLElement) => {
+      for (const s of steps) s.removeAttribute('data-journey-active');
+      step.setAttribute('data-journey-active', '');
+      if (caption) {
+        const title = step.dataset.journeyTitle ?? '';
+        const body = step.dataset.journeyBody ?? '';
+        caption.textContent = title && body ? `${title} — ${body}` : '';
+      }
+    };
+
+    const teardown = () => {
+      io?.disconnect();
+      io = null;
+      journeySection.classList.remove('journey-pinned');
+      for (const s of steps) s.removeAttribute('data-journey-active');
+      if (caption) {
+        caption.hidden = true;
+        caption.textContent = '';
+      }
+    };
+
+    const setup = () => {
+      journeySection.classList.add('journey-pinned');
+      if (caption) caption.hidden = false;
+      // المرحلة التي يكون مركزها الأقرب لمركز الشاشة «تُضاء» — نافذة ضيّقة
+      // حول خط المنتصف، لا مجرّد عتبة دخول، لربط دقيق بين القراءة والحركة.
+      io = new IntersectionObserver(
+        (entries) => {
+          const visible = entries.filter((e) => e.isIntersecting);
+          if (!visible.length) return;
+          const closest = visible.reduce((best, e) =>
+            Math.abs(e.boundingClientRect.top) < Math.abs(best.boundingClientRect.top) ? e : best
+          );
+          setActive(closest.target as HTMLElement);
+        },
+        { rootMargin: '-45% 0px -45% 0px', threshold: 0 }
+      );
+      for (const s of steps) io.observe(s);
+      // المرحلة الأولى نشِطة افتراضيًا، قبل أي عبور لعتبة.
+      setActive(steps[0]);
+    };
+
+    const sync = () => {
+      if (desktopMotionOk.matches) setup();
+      else teardown();
+    };
+
+    sync();
+    desktopMotionOk.addEventListener('change', sync);
   }
 </script>

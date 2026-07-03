@@ -548,12 +548,21 @@ const engineeringPillars = [
 
     {/* ── LE PARCOURS (6 steps) + aperçu WhatsApp. W57 — la frise de bout en bout
         (diagnostic → monitoring) remplace le petit <ol> à 3 pas. Faits déjà
-        publiés sur le site, aucun délai inventé. ── */}
+        publiés sur le site, aucun délai inventé.
+        W371 — Scrollytelling épinglé (UNIQUE sur la page) : sur desktop et
+        sans prefers-reduced-motion, la colonne de gauche (intro + WhatsAppMock)
+        reste épinglée (`position: sticky`) pendant que les 6 étapes défilent
+        à droite ; l'étape qui croise le centre du viewport s'allume
+        (`data-journey-active`, IntersectionObserver — jamais de scroll-jack,
+        jamais de `preventDefault`). Sur mobile ET sous reduced-motion, la
+        section retombe intégralement sur la grille plate d'origine (aucun
+        sticky, aucune classe active, ordre de lecture inchangé) — progressive
+        enhancement pur : sans JS, tout le contenu reste lisible tel quel. ── */}
     <div class="seam-soft" aria-hidden="true"></div>
-    <section class="section px-4">
+    <section class="section px-4" data-journey-section>
       <div class="mx-auto max-w-6xl">
-        <div class="grid items-center gap-12 lg:grid-cols-[1.1fr_1fr]">
-          <div class="v2-rise">
+        <div class="grid items-start gap-12 lg:grid-cols-[1.1fr_1fr]">
+          <div class="v2-rise journey-sticky-col" data-journey-sticky>
             <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">04</span>Comment ça se passe</p>
             <h2 class="display v2-section-title mt-5 max-w-md text-white">La suite se passe sur WhatsApp</h2>
             <p class="v2-body mt-5 max-w-md">
@@ -561,23 +570,26 @@ const engineeringPillars = [
               vous échangez directement avec l'équipe technique, photos de toiture à l'appui,
               jusqu'à la visite sur site. Échange type ci-contre — anonymisé.
             </p>
+            {/* Copie appariée à l'étape active — masquée par défaut ; le script
+                ne l'affiche que si le pinning est armé (desktop, motion ok). */}
+            <p class="v2-body mt-5 max-w-md journey-active-caption" data-journey-caption hidden></p>
+            <div class="mt-6">
+              <WhatsAppMock />
+            </div>
           </div>
-          <div class="v2-rise">
-            <WhatsAppMock />
-          </div>
+          {/* Frise du parcours réel — du diagnostic au monitoring */}
+          <ol class="journey-steps mt-14 grid gap-x-6 gap-y-8 sm:grid-cols-2 lg:mt-0 lg:grid-cols-1 lg:gap-y-16" data-stagger data-journey-steps>
+            {journey.map((s, i) => (
+              <li class="v2-rise journey-step relative border-t-2 border-white/10 pt-5" style={`--v2-i:${i % 3}`} data-journey-step data-journey-title={s.title} data-journey-body={s.body}>
+                <span class="absolute -top-px left-0 h-0.5 w-10 bg-brass-400 journey-step-rule" aria-hidden="true"></span>
+                {/* Numéro de step en .lum : l'or est ici un chiffre clé (discipline laiton) */}
+                <span class="fig lum text-2xl">{s.n}</span>
+                <h3 class="display mt-2 text-lg text-white">{s.title}</h3>
+                <p class="mt-2 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+              </li>
+            ))}
+          </ol>
         </div>
-        {/* Frise du parcours réel — du diagnostic au monitoring */}
-        <ol class="mt-14 grid gap-x-6 gap-y-8 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
-          {journey.map((s, i) => (
-            <li class="v2-rise relative border-t-2 border-white/10 pt-5" style={`--v2-i:${i % 3}`}>
-              <span class="absolute -top-px left-0 h-0.5 w-10 bg-brass-400" aria-hidden="true"></span>
-              {/* Numéro de step en .lum : l'or est ici un chiffre clé (discipline laiton) */}
-              <span class="fig lum text-2xl">{s.n}</span>
-              <h3 class="display mt-2 text-lg text-white">{s.title}</h3>
-              <p class="mt-2 text-sm leading-relaxed text-lune-soft">{s.body}</p>
-            </li>
-          ))}
-        </ol>
       </div>
     </section>
 
@@ -766,6 +778,41 @@ const engineeringPillars = [
   [data-gallery-card].gallery-card-hidden {
     display: none;
   }
+
+  /* ── W371 — Scrollytelling épinglé de « Comment ça se passe » ─────────────
+     Repos = la grille plate d'origine (aucune règle ci-dessous ne s'applique
+     tant que le script n'a pas posé `.journey-pinned` sur la section, ce qui
+     n'arrive que desktop + motion ok). Zéro CLS : le sticky ne change ni la
+     largeur ni la hauteur du flux, seule sa `position` change à l'ancrage. */
+  @media (min-width: 1024px) and (prefers-reduced-motion: no-preference) {
+    .journey-pinned .journey-sticky-col {
+      position: sticky;
+      top: 6rem;
+      align-self: start;
+    }
+
+    /* Le corps de chaque étape est présent au repos (progressive enhancement :
+       lisible sans JS/hors media match) ; une fois épinglé, seule l'étape
+       active « s'allume », les autres s'estompent doucement — jamais masquées
+       (aucun CLS, aucune perte de contenu pour un lecteur d'écran). */
+    .journey-pinned .journey-step {
+      opacity: 0.42;
+      transition: opacity 0.35s ease, border-color 0.35s ease;
+    }
+    .journey-pinned .journey-step[data-journey-active] {
+      opacity: 1;
+    }
+    .journey-pinned .journey-step[data-journey-active] .journey-step-rule {
+      background-color: var(--color-brass-300, #e8b54a);
+    }
+
+    /* Copie appariée dans la colonne épinglée : ne s'affiche que lorsque le
+       pinning est armé, jamais avant (repli intégral vers la description
+       statique existante quand JS/desktop/motion ne sont pas tous réunis). */
+    .journey-pinned .journey-active-caption {
+      display: block;
+    }
+  }
 </style>
 
 <script>
@@ -949,5 +996,73 @@ const engineeringPillars = [
     dialog.addEventListener('close', () => {
       lastTrigger?.focus();
     });
+  }
+</script>
+
+<script>
+  // W371 — Scrollytelling épinglé, UNIQUE sur la page (« Comment ça se passe »).
+  // Progressive enhancement pur : sans JS, ou hors desktop, ou sous
+  // prefers-reduced-motion, la section reste la grille plate d'origine — ce
+  // script ne fait qu'AJOUTER une classe + un attribut, jamais de
+  // scroll-jack (aucun preventDefault, aucun scrollTo forcé).
+  const journeySection = document.querySelector<HTMLElement>('[data-journey-section]');
+  const steps = Array.from(document.querySelectorAll<HTMLElement>('[data-journey-step]'));
+  const caption = document.querySelector<HTMLElement>('[data-journey-caption]');
+
+  if (journeySection && steps.length && 'IntersectionObserver' in window) {
+    const desktopMotionOk = matchMedia('(min-width: 1024px) and (prefers-reduced-motion: no-preference)');
+
+    let io: IntersectionObserver | null = null;
+
+    const setActive = (step: HTMLElement) => {
+      for (const s of steps) s.removeAttribute('data-journey-active');
+      step.setAttribute('data-journey-active', '');
+      if (caption) {
+        const title = step.dataset.journeyTitle ?? '';
+        const body = step.dataset.journeyBody ?? '';
+        caption.textContent = title && body ? `${title} — ${body}` : '';
+      }
+    };
+
+    const teardown = () => {
+      io?.disconnect();
+      io = null;
+      journeySection.classList.remove('journey-pinned');
+      for (const s of steps) s.removeAttribute('data-journey-active');
+      if (caption) {
+        caption.hidden = true;
+        caption.textContent = '';
+      }
+    };
+
+    const setup = () => {
+      journeySection.classList.add('journey-pinned');
+      if (caption) caption.hidden = false;
+      // Le pas dont le centre est le plus proche du centre du viewport
+      // « s'allume » — une fenêtre resserrée autour de la ligne médiane,
+      // pas un simple seuil d'entrée, pour un couplage lecture/animation net.
+      io = new IntersectionObserver(
+        (entries) => {
+          const visible = entries.filter((e) => e.isIntersecting);
+          if (!visible.length) return;
+          const closest = visible.reduce((best, e) =>
+            Math.abs(e.boundingClientRect.top) < Math.abs(best.boundingClientRect.top) ? e : best
+          );
+          setActive(closest.target as HTMLElement);
+        },
+        { rootMargin: '-45% 0px -45% 0px', threshold: 0 }
+      );
+      for (const s of steps) io.observe(s);
+      // Premier pas actif par défaut, avant tout croisement de seuil.
+      setActive(steps[0]);
+    };
+
+    const sync = () => {
+      if (desktopMotionOk.matches) setup();
+      else teardown();
+    };
+
+    sync();
+    desktopMotionOk.addEventListener('change', sync);
   }
 </script>

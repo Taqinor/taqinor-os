@@ -536,12 +536,21 @@ const engineeringPillars = [
 
     {/* ── THE JOURNEY (6 steps) + WhatsApp preview. The end-to-end timeline
         (diagnostic → monitoring) replaces the small 3-step list. Facts already
-        published on the site, no invented delay. ── */}
+        published on the site, no invented delay.
+        W371 — Pinned scrollytelling beat (UNIQUE on the page): on desktop and
+        without prefers-reduced-motion, the left column (intro + WhatsAppMock)
+        stays pinned (`position: sticky`) while the 6 steps scroll past on the
+        right; the step crossing the viewport's centre lights up
+        (`data-journey-active`, IntersectionObserver — never scroll-jacking,
+        never `preventDefault`). On mobile AND under reduced-motion, the
+        section falls back fully to the original plain grid (no sticky, no
+        active class, reading order unchanged) — pure progressive
+        enhancement: without JS, all content stays readable as-is. ── */}
     <div class="seam-soft" aria-hidden="true"></div>
-    <section class="section px-4">
+    <section class="section px-4" data-journey-section>
       <div class="mx-auto max-w-6xl">
-        <div class="grid items-center gap-12 lg:grid-cols-[1.1fr_1fr]">
-          <div class="v2-rise">
+        <div class="grid items-start gap-12 lg:grid-cols-[1.1fr_1fr]">
+          <div class="v2-rise journey-sticky-col" data-journey-sticky>
             <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">04</span>How it works</p>
             <h2 class="display v2-section-title mt-5 max-w-md text-white">The rest happens on WhatsApp</h2>
             <p class="v2-body mt-5 max-w-md">
@@ -549,23 +558,26 @@ const engineeringPillars = [
               you talk directly with the technical team, roof photos in hand,
               right up to the on-site visit. Sample exchange opposite — anonymised.
             </p>
+            {/* Copy paired with the active step — hidden by default; the
+                script only shows it once pinning is armed (desktop, motion ok). */}
+            <p class="v2-body mt-5 max-w-md journey-active-caption" data-journey-caption hidden></p>
+            <div class="mt-6">
+              <WhatsAppMock />
+            </div>
           </div>
-          <div class="v2-rise">
-            <WhatsAppMock />
-          </div>
+          {/* The real journey timeline — from diagnostic to monitoring */}
+          <ol class="journey-steps mt-14 grid gap-x-6 gap-y-8 sm:grid-cols-2 lg:mt-0 lg:grid-cols-1 lg:gap-y-16" data-stagger data-journey-steps>
+            {journey.map((s, i) => (
+              <li class="v2-rise journey-step relative border-t-2 border-white/10 pt-5" style={`--v2-i:${i % 3}`} data-journey-step data-journey-title={s.title} data-journey-body={s.body}>
+                <span class="absolute -top-px left-0 h-0.5 w-10 bg-brass-400 journey-step-rule" aria-hidden="true"></span>
+                {/* Step number in .lum: gold here is a key figure (brass discipline) */}
+                <span class="fig lum text-2xl">{s.n}</span>
+                <h3 class="display mt-2 text-lg text-white">{s.title}</h3>
+                <p class="mt-2 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+              </li>
+            ))}
+          </ol>
         </div>
-        {/* The real journey timeline — from diagnostic to monitoring */}
-        <ol class="mt-14 grid gap-x-6 gap-y-8 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
-          {journey.map((s, i) => (
-            <li class="v2-rise relative border-t-2 border-white/10 pt-5" style={`--v2-i:${i % 3}`}>
-              <span class="absolute -top-px left-0 h-0.5 w-10 bg-brass-400" aria-hidden="true"></span>
-              {/* Step number in .lum: gold here is a key figure (brass discipline) */}
-              <span class="fig lum text-2xl">{s.n}</span>
-              <h3 class="display mt-2 text-lg text-white">{s.title}</h3>
-              <p class="mt-2 text-sm leading-relaxed text-lune-soft">{s.body}</p>
-            </li>
-          ))}
-        </ol>
       </div>
     </section>
 
@@ -741,6 +753,41 @@ const engineeringPillars = [
      first-render reveal cleanly. */
   [data-gallery-card].gallery-card-hidden {
     display: none;
+  }
+
+  /* ── W371 — Pinned scrollytelling for "How it works" ───────────────────────
+     Resting state = the original plain grid (none of the rules below apply
+     until the script sets `.journey-pinned` on the section, which only
+     happens desktop + motion ok). Zero CLS: sticky changes neither the
+     width nor the height of the flow, only its `position` once anchored. */
+  @media (min-width: 1024px) and (prefers-reduced-motion: no-preference) {
+    .journey-pinned .journey-sticky-col {
+      position: sticky;
+      top: 6rem;
+      align-self: start;
+    }
+
+    /* Each step's body is present at rest (progressive enhancement: readable
+       without JS/outside the media match); once pinned, only the active step
+       "lights up", the rest dim gently — never hidden (no CLS, no content
+       loss for a screen reader). */
+    .journey-pinned .journey-step {
+      opacity: 0.42;
+      transition: opacity 0.35s ease, border-color 0.35s ease;
+    }
+    .journey-pinned .journey-step[data-journey-active] {
+      opacity: 1;
+    }
+    .journey-pinned .journey-step[data-journey-active] .journey-step-rule {
+      background-color: var(--color-brass-300, #e8b54a);
+    }
+
+    /* Paired copy in the pinned column: only shown once pinning is armed,
+       never before (falls back fully to the existing static description
+       whenever desktop/motion/JS aren't all met). */
+    .journey-pinned .journey-active-caption {
+      display: block;
+    }
   }
 </style>
 
@@ -924,5 +971,73 @@ const engineeringPillars = [
     dialog.addEventListener('close', () => {
       lastTrigger?.focus();
     });
+  }
+</script>
+
+<script>
+  // W371 — Pinned scrollytelling beat, UNIQUE on the page ("How it works").
+  // Pure progressive enhancement: without JS, or outside desktop, or under
+  // prefers-reduced-motion, the section stays the original plain grid — this
+  // script only ADDS a class + an attribute, never scroll-jacks (no
+  // preventDefault, no forced scrollTo).
+  const journeySection = document.querySelector<HTMLElement>('[data-journey-section]');
+  const steps = Array.from(document.querySelectorAll<HTMLElement>('[data-journey-step]'));
+  const caption = document.querySelector<HTMLElement>('[data-journey-caption]');
+
+  if (journeySection && steps.length && 'IntersectionObserver' in window) {
+    const desktopMotionOk = matchMedia('(min-width: 1024px) and (prefers-reduced-motion: no-preference)');
+
+    let io: IntersectionObserver | null = null;
+
+    const setActive = (step: HTMLElement) => {
+      for (const s of steps) s.removeAttribute('data-journey-active');
+      step.setAttribute('data-journey-active', '');
+      if (caption) {
+        const title = step.dataset.journeyTitle ?? '';
+        const body = step.dataset.journeyBody ?? '';
+        caption.textContent = title && body ? `${title} — ${body}` : '';
+      }
+    };
+
+    const teardown = () => {
+      io?.disconnect();
+      io = null;
+      journeySection.classList.remove('journey-pinned');
+      for (const s of steps) s.removeAttribute('data-journey-active');
+      if (caption) {
+        caption.hidden = true;
+        caption.textContent = '';
+      }
+    };
+
+    const setup = () => {
+      journeySection.classList.add('journey-pinned');
+      if (caption) caption.hidden = false;
+      // The step whose centre is closest to the viewport's centre "lights
+      // up" — a tight window around the midline, not a simple entry
+      // threshold, for a crisp reading/animation coupling.
+      io = new IntersectionObserver(
+        (entries) => {
+          const visible = entries.filter((e) => e.isIntersecting);
+          if (!visible.length) return;
+          const closest = visible.reduce((best, e) =>
+            Math.abs(e.boundingClientRect.top) < Math.abs(best.boundingClientRect.top) ? e : best
+          );
+          setActive(closest.target as HTMLElement);
+        },
+        { rootMargin: '-45% 0px -45% 0px', threshold: 0 }
+      );
+      for (const s of steps) io.observe(s);
+      // First step active by default, before any threshold crossing.
+      setActive(steps[0]);
+    };
+
+    const sync = () => {
+      if (desktopMotionOk.matches) setup();
+      else teardown();
+    };
+
+    sync();
+    desktopMotionOk.addEventListener('change', sync);
   }
 </script>
