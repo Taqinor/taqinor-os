@@ -12,6 +12,7 @@ import Article33Ribbon from '../../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../../components/Breadcrumb.astro';
 import CtaBand from '../../../components/CtaBand.astro';
 import StickyCta from '../../../components/StickyCta.astro';
+import Faq from '../../../components/Faq.astro';
 import { NAP } from '../../../lib/nap';
 import { getLocaleFromPath } from '../../../i18n/utils';
 import { localizeNavHref } from '../../../i18n/pages';
@@ -33,6 +34,24 @@ const jsonLd = {
   publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
   mainEntityOfPage: url,
 };
+
+// W297 — تمريرة AEO/GEO: أسئلة وأجوبة مستقلّة تُعيد استعمال الحقائق المذكورة أعلاه،
+// كي تتمكّن مساعدات الذكاء الاصطناعي من الاستشهاد بجواب كامل مباشرة.
+// schema={false}: تبقى /faq الصفحة الوحيدة الحاملة لـFAQPage في الموقع.
+const faq = [
+  {
+    q: 'أي نظام من القانون 82-21 يخصّ فيلا بالمغرب؟',
+    a: 'دون 11 kW في الجهد المنخفض، يكفي تصريح مسبق بسيط — حالة جلّ الفيلات. فوق هذه العتبة وحتى 5 MW، يلزم اتفاق ربط؛ ابتداءً من 5 MW، ترخيص.',
+  },
+  {
+    q: 'منذ متى يسري القانون 82-21؟',
+    a: 'يُطبَّق المرسوم التطبيقي 2-25-100 منذ 9 يونيو 2026.',
+  },
+  {
+    q: 'ماذا أفعل إن كانت تركيبتي الشمسية الحالية غير مُصرَّح بها؟',
+    a: 'يفتح الفصل 33، منذ 9 يونيو 2026، فترة 18 شهراً لتسويتها. بعد هذا الأجل، تبقى في وضعية غير قانونية تجاه القانون، بالعقوبات التي يستوجبها ذلك.',
+  },
+];
 
 const regimes = [
   {
@@ -129,6 +148,9 @@ const regimes = [
         <a href={L('/guides')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">كل الأدلّة <span class="inline-block rtl:-scale-x-100">→</span></a>
       </div>
     </article>
+
+    <!-- W297 — FAQ مرئية: schema={false}، تبقى /faq الصفحة الوحيدة الحاملة لـFAQPage -->
+    <Faq items={faq} heading="القانون 82-21 — أسئلة متكرّرة" schema={false} />
 
     <CtaBand title="شكّ في نظامك؟ نتحقّق منه مجاناً." buttonLabel="تحقّقوا من ملفّي" href={L('/devis/mon-toit')} />
 

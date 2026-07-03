@@ -13,6 +13,7 @@ import Article33Ribbon from '../../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../../components/Breadcrumb.astro';
 import CtaBand from '../../../components/CtaBand.astro';
 import StickyCta from '../../../components/StickyCta.astro';
+import Faq from '../../../components/Faq.astro';
 import { NAP } from '../../../lib/nap';
 import RelatedLinks from '../../../components/RelatedLinks.astro';
 import { getLocaleFromPath } from '../../../i18n/utils';
@@ -20,6 +21,23 @@ import { localizeNavHref } from '../../../i18n/pages';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
+
+// W297 — تمريرة AEO/GEO: أسئلة وأجوبة مستقلّة تُعيد استعمال الحقائق المذكورة في
+// الدليل أدناه. schema={false}: تبقى /faq الصفحة الوحيدة الحاملة لـFAQPage.
+const faq = [
+  {
+    q: 'لماذا لا تعمل ألواحي الشمسية أثناء انقطاع ONEE؟',
+    a: 'يتوقّف عاكس on-grid قياسي تلقائياً بمجرّد اختفاء الشبكة — إنه منع الجزيرة الكهربائية، وهو إلزامية أمنية تحمي التقنيين المتدخّلين على الشبكة. لذا تتوقّف ألواحكم مع الشبكة، حتى في عزّ الشمس.',
+  },
+  {
+    q: 'كيف أحافظ على الكهرباء أثناء انقطاع بواسطة الطاقة الشمسية؟',
+    a: 'يلزم عاكس هجين بمخارج EPS (Emergency Power Supply) وبطارية. أثناء انقطاع، يتحوّل العاكس في غضون ميلي ثوانٍ إلى مخارج النجدة هذه، التي تُغذّي فقط الدارات ذات الأولوية المُوصَّلة بها.',
+  },
+  {
+    q: 'كم تدوم بطارية النجدة أثناء انقطاع؟',
+    a: 'للاستخدامات الأساسية (إضاءة، ثلاجة، صندوق إنترنت)، يمكن لبطارية بـ5 إلى 10 kWh تغطية عدّة ساعات إلى ليلة كاملة حسب الاستهلاك الفعلي للدارات المُوصَّلة. إن أنتجت الألواح أثناء الانقطاع، يمكن للعاكس شحن البطارية في الوقت الفعلي وإطالة النجدة.',
+  },
+];
 
 const url = new URL(Astro.url.pathname, Astro.site).href;
 const schemaImageUrl = new URL('/og/equipement.png', Astro.site).href;
@@ -139,6 +157,9 @@ const jsonLd = {
         { href: L('/guides'), label: 'كل الأدلّة' },
       ]} />
     </article>
+
+    <!-- W297 — FAQ مرئية: schema={false}، تبقى /faq الصفحة الوحيدة الحاملة لـFAQPage -->
+    <Faq items={faq} heading="الكهرباء أثناء الانقطاعات — أسئلة متكرّرة" schema={false} />
 
     <CtaBand title="تركيبتكم يجب أن تصمد أثناء الانقطاعات؟ أطلِقوا الدراسة المجانية." href={L('/devis/mon-toit')} />
 

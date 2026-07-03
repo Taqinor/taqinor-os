@@ -12,6 +12,7 @@ import Article33Ribbon from '../../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../../components/Breadcrumb.astro';
 import CtaBand from '../../../components/CtaBand.astro';
 import StickyCta from '../../../components/StickyCta.astro';
+import Faq from '../../../components/Faq.astro';
 import { NAP } from '../../../lib/nap';
 import RelatedLinks from '../../../components/RelatedLinks.astro';
 import { getLocaleFromPath } from '../../../i18n/utils';
@@ -19,6 +20,24 @@ import { localizeNavHref } from '../../../i18n/pages';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
+
+// W297 — AEO/GEO: self-contained Q&A reusing facts already stated in the guide
+// below, so AI assistants (Google AI Overviews / ChatGPT) can cite a complete
+// answer directly. schema={false}: /faq keeps the site's only FAQPage.
+const faq = [
+  {
+    q: "Why don't my solar panels work during an ONEE outage?",
+    a: "A standard on-grid inverter shuts down automatically as soon as the grid disappears — that's anti-islanding, a safety requirement that protects technicians working on the grid. Your panels therefore stop with the grid, even in full sunshine.",
+  },
+  {
+    q: 'How do I keep the power on during an outage with solar?',
+    a: 'You need a hybrid inverter with EPS (Emergency Power Supply) outputs and a battery. During an outage, the inverter switches within milliseconds to these backup outputs, which power only the priority circuits wired to them.',
+  },
+  {
+    q: 'How long does the backup battery last during an outage?',
+    a: 'For essential uses (lighting, fridge, internet box), a battery of 5 to 10 kWh can cover several hours to a full night depending on the actual consumption of the connected circuits. If the panels produce during the outage, the inverter can recharge the battery in real time and extend backup.',
+  },
+];
 
 const url = new URL(Astro.url.pathname, Astro.site).href;
 const schemaImageUrl = new URL('/og/equipement.png', Astro.site).href;
@@ -150,6 +169,9 @@ const jsonLd = {
         { href: L('/guides'), label: 'All the guides' },
       ]} />
     </article>
+
+    <!-- W297 — visual FAQ: schema={false}, /faq keeps the site's only FAQPage -->
+    <Faq items={faq} heading="Electricity during outages — frequently asked questions" schema={false} />
 
     <CtaBand title="Your installation needs to hold up during outages? Launch the free study." href={L('/devis/mon-toit')} />
 

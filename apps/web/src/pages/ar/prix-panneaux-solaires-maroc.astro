@@ -14,6 +14,7 @@ import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import RelatedLinks from '../../components/RelatedLinks.astro';
+import Faq from '../../components/Faq.astro';
 import { NAP } from '../../lib/nap';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
@@ -28,6 +29,24 @@ const fourchettes = [
   { kwc: '3 kWc', prix: '28 000 – 42 000 درهم' },
   { kwc: '5 kWc', prix: '45 000 – 65 000 درهم' },
   { kwc: '10 kWc', prix: '85 000 – 120 000 درهم' },
+];
+
+// W297 — تمريرة AEO/GEO: أسئلة وأجوبة مستقلّة تُعيد استعمال الهوامش المنشورة
+// أعلاه، كي تتمكّن مساعدات الذكاء الاصطناعي من الاستشهاد بجواب كامل حول الثمن.
+// schema={false}: تبقى /faq الصفحة الوحيدة الحاملة لـFAQPage في الموقع.
+const faq = [
+  {
+    q: 'كم تكلّف تركيبة شمسية جاهزة بالمغرب؟',
+    a: 'هوامش استرشادية حسب القدرة: 3 kWc بين 28 000 و42 000 درهم، 5 kWc بين 45 000 و65 000 درهم، 10 kWc بين 85 000 و120 000 درهم — أي حوالي 10 000 إلى 14 000 درهم لكل kWc في المتوسط، شاملاً العتاد والتركيب.',
+  },
+  {
+    q: 'لماذا يكون ثمن «4 700 درهم/kWc» مشبوهاً؟',
+    a: 'يقابل هذا الرقم كلفة عتاد التركيبة وحده (ألواح + عاكس)، دون التركيب، الأسلاك، البنية أو الربط — ليس تركيبة جاهزة ومنجَزة. لا تقارنوا هذا الرقم أبداً بالهوامش الجاهزة.',
+  },
+  {
+    q: 'ما العائد على الاستثمار لتركيبة شمسية بالمغرب؟',
+    a: 'من 5 إلى 7 سنوات في السكني القياسي دون بطارية؛ إضافة بطارية تُطيل هذا الأجل بـ1 إلى 3 سنوات. يعتمد الحساب بشدّة على استهلاككم الفعلي وشطركم التعريفي لدى ONEE.',
+  },
 ];
 
 const url = new URL(Astro.url.pathname, Astro.site).href;
@@ -184,6 +203,9 @@ const jsonLd = {
         { href: L('/blog'), label: 'المدوّنة' },
       ]} />
     </article>
+
+    <!-- W297 — FAQ مرئية: schema={false}، تبقى /faq الصفحة الوحيدة الحاملة لـFAQPage -->
+    <Faq items={faq} heading="أثمنة الألواح الشمسية — أسئلة متكرّرة" schema={false} />
 
     <CtaBand title="الرقم الوحيد المهم هو رقمكم. أطلِقوا الدراسة المجانية." href={L('/devis/mon-toit')} />
 

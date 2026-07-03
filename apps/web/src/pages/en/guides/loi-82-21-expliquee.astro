@@ -12,6 +12,7 @@ import Article33Ribbon from '../../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../../components/Breadcrumb.astro';
 import CtaBand from '../../../components/CtaBand.astro';
 import StickyCta from '../../../components/StickyCta.astro';
+import Faq from '../../../components/Faq.astro';
 import { NAP } from '../../../lib/nap';
 import { getLocaleFromPath } from '../../../i18n/utils';
 import { localizeNavHref } from '../../../i18n/pages';
@@ -33,6 +34,24 @@ const jsonLd = {
   publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
   mainEntityOfPage: url,
 };
+
+// W297 — AEO/GEO: self-contained Q&A reusing facts already stated above, so AI
+// assistants (Google AI Overviews / ChatGPT) can cite a complete answer directly.
+// schema={false}: /faq keeps the site's only FAQPage.
+const faq = [
+  {
+    q: 'Which Law 82-21 regime applies to a villa in Morocco?',
+    a: 'Under 11 kW at low voltage, a simple prior declaration is enough — the case for almost every villa. Above that threshold and up to 5 MW, a connection agreement is required; from 5 MW, an authorisation.',
+  },
+  {
+    q: 'Since when has Law 82-21 been in force?',
+    a: 'The implementing decree 2-25-100 has applied since 9 June 2026.',
+  },
+  {
+    q: 'What should I do if my existing solar installation is not declared?',
+    a: 'Article 33 opens, since 9 June 2026, an 18-month window to regularise it. After that deadline, it stays in an irregular situation under the law, with the penalties that brings.',
+  },
+];
 
 const regimes = [
   {
@@ -135,6 +154,9 @@ const regimes = [
         <a href={L('/guides')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">All the guides →</a>
       </div>
     </article>
+
+    <!-- W297 — visual FAQ: schema={false}, /faq keeps the site's only FAQPage -->
+    <Faq items={faq} heading="Law 82-21 — frequently asked questions" schema={false} />
 
     <CtaBand title="Unsure about your regime? We check it for free." buttonLabel="Have my file checked" href={L('/devis/mon-toit')} />
 
