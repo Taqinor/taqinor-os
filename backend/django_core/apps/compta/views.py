@@ -14,6 +14,7 @@ from django.http import HttpResponse
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
@@ -4186,3 +4187,67 @@ class PisteAuditComptableViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         return Response(
             PisteAuditComptableSerializer(maillon).data,
             status=status.HTTP_201_CREATED)
+
+
+# ── XACC2 — Import de la balance d'ouverture (reprise des existants) ────────
+
+class BalanceOuvertureViewSet(viewsets.ViewSet):
+    """Import guidé de la balance d'ouverture (COMPTA3, migration tooling).
+
+    ``gabarit`` télécharge le fichier modèle CSV ; ``importer`` valide puis
+    poste une écriture AN unique équilibrée (rejet détaillé ligne à ligne si
+    invalide, idempotent par exercice). Admin/Responsable, scopé société."""
+    permission_classes = [IsResponsableOrAdmin]
+
+    @action(detail=False, methods=['get'])
+    def gabarit(self, request):
+        data = services.gabarit_import_balance_ouverture()
+        resp = HttpResponse(data, content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = (
+            'attachment; filename="gabarit_balance_ouverture.csv"')
+        return resp
+
+    @action(detail=False, methods=['post'],
+            parser_classes=[MultiPartParser, FormParser])
+    def importer(self, request):
+        company = request.user.company
+        f = request.FILES.get('file')
+        exercice_id = request.data.get('exercice')
+        if f is None:
+            return Response(
+                {'detail': 'Aucun fichier fourni.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if not exercice_id:
+            return Response(
+                {'detail': "Le champ 'exercice' est requis."},
+                status=status.HTTP_400_BAD_REQUEST)
+        exercice = ExerciceComptable.objects.filter(
+            company=company, pk=exercice_id).first()
+        if exercice is None:
+            return Response(
+                {'detail': 'Exercice introuvable pour cette société.'},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            text = f.read().decode('utf-8-sig', errors='replace')
+        except Exception:
+            return Response(
+                {'detail': 'Fichier illisible (encodage invalide).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        sample = text[:2000]
+        delim = ';' if sample.count(';') > sample.count(',') else ','
+        reader = csv.DictReader(io.StringIO(text), delimiter=delim)
+        rows = list(reader)
+        result = services.importer_balance_ouverture(
+            company, rows, exercice=exercice, user=request.user)
+        if not result['ok']:
+            return Response(
+                {'detail': 'Fichier invalide.', 'erreurs': result['erreurs']},
+                status=status.HTTP_400_BAD_REQUEST)
+        ecriture = result['ecriture']
+        return Response({
+            'ok': True,
+            'deja_importee': result['deja_importee'],
+            'ecriture_id': ecriture.id if ecriture else None,
+            'reference': ecriture.reference if ecriture else '',
+            'total': str(ecriture.total_debit) if ecriture else '0',
+        }, status=status.HTTP_201_CREATED)

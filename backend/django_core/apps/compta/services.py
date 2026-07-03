@@ -20,7 +20,9 @@ Trois blocs :
 * ``creer_exercice`` / ``reporter_a_nouveaux`` (FG117) — ouverture d'exercice et
   report des soldes de bilan dans le nouvel exercice (à-nouveaux).
 """
+import csv
 import hashlib
+import io
 from decimal import ROUND_HALF_UP, Decimal
 from math import asin, cos, radians, sin, sqrt
 
@@ -901,6 +903,148 @@ def _ecriture_an_existante(company, exercice):
     return EcritureComptable.objects.filter(
         company=company, source_type='a_nouveaux',
         source_id=exercice.id).first()
+
+
+# ── XACC2 — Import de la balance d'ouverture (reprise des existants) ────────
+# Aucun outil de reprise n'existait pour démarrer la compta d'une société sur
+# TAQINOR OS : import CSV guidé de la balance d'ouverture par compte (avec, en
+# option, les items ouverts par tiers pour la balance âgée/lettrage dès le
+# jour 1). Une seule écriture d'ouverture équilibrée est postée au journal AN,
+# idempotente par exercice (rejouable sans doublon).
+
+BALANCE_OUVERTURE_COLONNES = [
+    'compte', 'libelle', 'debit', 'credit', 'tiers_type', 'tiers_id',
+]
+
+
+def gabarit_import_balance_ouverture():
+    """Fichier modèle (CSV) téléchargeable pour l'import de balance d'ouverture.
+
+    Colonnes : ``compte`` (numéro CGNC existant), ``libelle`` (optionnel),
+    ``debit``/``credit`` (l'un des deux, jamais les deux), ``tiers_type``/
+    ``tiers_id`` (optionnels — poser sur un compte tiers 3421/4411 rattache la
+    ligne à un item ouvert par tiers, cf. ``CompteAuxiliaire``). Renvoie les
+    octets du CSV.
+    """
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, delimiter=';')
+    writer.writerow(BALANCE_OUVERTURE_COLONNES)
+    writer.writerow(['3421', 'Client Dupont — solde ouverture', '12000', '',
+                     'client', '1'])
+    writer.writerow(['4411', 'Fournisseur Atlas — solde ouverture', '', '5000',
+                     'fournisseur', '3'])
+    writer.writerow(['1111', 'Capital social', '', '50000', '', ''])
+    return buffer.getvalue().encode('utf-8-sig')
+
+
+def _valider_ligne_balance_ouverture(company, index, row):
+    """Valide UNE ligne du fichier de balance d'ouverture.
+
+    Renvoie ``(ligne_ecriture_dict_ou_None, erreur_ou_None)``. N'écrit rien :
+    validation pure, ligne par ligne, pour le rapport d'erreurs (COMPTA3).
+    """
+    numero = (row.get('compte') or '').strip()
+    if not numero:
+        return None, {'ligne': index, 'raison': 'numéro de compte manquant'}
+    compte = get_compte(company, numero)
+    if compte is None:
+        return None, {
+            'ligne': index, 'raison': f'compte inconnu : {numero!r}'}
+    raw_debit = (row.get('debit') or '').strip()
+    raw_credit = (row.get('credit') or '').strip()
+    try:
+        debit = Decimal(raw_debit.replace(',', '.')) if raw_debit else Decimal('0')
+        credit = Decimal(raw_credit.replace(',', '.')) if raw_credit else Decimal('0')
+    except Exception:
+        return None, {
+            'ligne': index, 'raison': 'débit/crédit non numérique'}
+    if debit and credit:
+        return None, {
+            'ligne': index,
+            'raison': 'une ligne ne peut porter à la fois débit et crédit'}
+    if not debit and not credit:
+        return None, {'ligne': index, 'raison': 'débit et crédit tous deux nuls'}
+    if debit < 0 or credit < 0:
+        return None, {'ligne': index, 'raison': 'montant négatif refusé'}
+    tiers_type = (row.get('tiers_type') or '').strip().lower()
+    tiers_id_raw = (row.get('tiers_id') or '').strip()
+    tiers_id = None
+    if tiers_type and tiers_id_raw:
+        try:
+            tiers_id = int(tiers_id_raw)
+        except ValueError:
+            return None, {
+                'ligne': index, 'raison': f'tiers_id non numérique : {tiers_id_raw!r}'}
+    return {
+        'compte': compte,
+        'debit': debit,
+        'credit': credit,
+        'libelle': (row.get('libelle') or '').strip() or "Balance d'ouverture",
+        'tiers_type': tiers_type,
+        'tiers_id': tiers_id,
+    }, None
+
+
+def valider_balance_ouverture(company, rows):
+    """Valide TOUTES les lignes d'un import de balance d'ouverture.
+
+    ``rows`` est une liste de dicts (une ligne de fichier = un dict de
+    colonnes). Renvoie ``{'lignes': [...valides...], 'erreurs': [...]}``. Une
+    ligne totalement vide est ignorée silencieusement (pas une erreur).
+    """
+    lignes, erreurs = [], []
+    for i, row in enumerate(rows, start=1):
+        if not any((v or '').strip() for v in row.values() if isinstance(v, str)):
+            continue
+        ligne, erreur = _valider_ligne_balance_ouverture(company, i, row)
+        if erreur:
+            erreurs.append(erreur)
+        else:
+            lignes.append(ligne)
+    return {'lignes': lignes, 'erreurs': erreurs}
+
+
+@transaction.atomic
+def importer_balance_ouverture(company, rows, *, exercice, date_ecriture=None,
+                               user=None):
+    """Importe la balance d'ouverture : UNE écriture AN équilibrée + items ouverts.
+
+    Valide d'abord TOUTES les lignes (``valider_balance_ouverture``) — si la
+    moindre erreur est trouvée, RIEN n'est écrit et le rapport d'erreurs par
+    ligne est renvoyé (``{'ok': False, 'erreurs': [...]}``). Sinon, poste une
+    écriture unique au journal AN dont la somme des débits doit égaler la somme
+    des crédits (sinon ``ValidationError`` — fichier de balance déséquilibré).
+    Les lignes portant un ``tiers_type``/``tiers_id`` deviennent des items
+    ouverts (non lettrés) rattachés à l'auxiliaire correspondant, prêts pour la
+    balance âgée et le lettrage dès le jour 1 (COMPTA3). IDEMPOTENT par
+    exercice : rejouer le même exercice renvoie l'écriture déjà postée sans
+    dupliquer (``source_type='balance_ouverture'``, ``source_id=exercice.id``).
+    """
+    existante = _ecriture_existante(company, 'balance_ouverture', exercice.id)
+    if existante:
+        return {'ok': True, 'ecriture': existante, 'erreurs': [],
+                'deja_importee': True}
+    verif = valider_balance_ouverture(company, rows)
+    if verif['erreurs']:
+        return {'ok': False, 'ecriture': None, 'erreurs': verif['erreurs']}
+    if not verif['lignes']:
+        return {'ok': False, 'ecriture': None,
+                'erreurs': [{'ligne': 0, 'raison': 'fichier vide'}]}
+    journal = _journal(company, Journal.Type.A_NOUVEAUX)
+    if journal is None:
+        journal, _ = Journal.objects.get_or_create(
+            company=company, code='AN',
+            defaults={'libelle': 'À-nouveaux',
+                      'type_journal': Journal.Type.A_NOUVEAUX})
+    date_piece = date_ecriture or exercice.date_debut
+    ecriture = creer_ecriture(
+        company, journal, date_piece, "Balance d'ouverture", verif['lignes'],
+        reference=f'AN-OUV-{exercice.id}', source_type='balance_ouverture',
+        source_id=exercice.id, created_by=user,
+        statut=EcritureComptable.Statut.VALIDEE,
+    )
+    return {'ok': True, 'ecriture': ecriture, 'erreurs': [],
+            'deja_importee': False}
 
 
 # ── FG119 — Plan d'amortissement & dotations postées au grand livre ─────────
