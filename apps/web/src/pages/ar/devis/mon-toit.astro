@@ -80,6 +80,15 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   description="العنوان + الفاتورة: استلموا فوراً تقديراً شمسياً (القدرة، التوفير، استرداد التكلفة)، ثم دراستكم الشخصية على واتساب."
   noindex={true}
 >
+  <!-- W320 — préconnexion à l'origine carte (style JSON MapTiler + hôte de
+       tuiles raster Mapbox/Maxar quand configuré) : le moment le plus
+       interactif de cette page payait jusqu'ici une poignée de main
+       DNS+TLS série (~100–300 ms sur connexion froide). Layout.astro
+       n'expose pas de slot <head> (hors périmètre ici) : ces hints sont
+       honorés dès qu'ils sont analysés, où qu'ils apparaissent dans le
+       document. Coût nul si la carte n'est jamais bootée. -->
+  <link rel="preconnect" href="https://api.maptiler.com" crossorigin />
+  <link rel="preconnect" href="https://api.mapbox.com" crossorigin />
   <section class="bg-nuit px-4 py-8 sm:py-12">
     <div class="mx-auto max-w-2xl">
       <!-- WJ65 — سطر خروج صادق بدون جافاسكريبت: هذه الصفحة مدفوعة بالكامل

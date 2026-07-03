@@ -71,6 +71,16 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   description="Adresse + facture : recevez instantanément une estimation solaire (puissance, économies, amortissement), puis votre étude personnalisée sur WhatsApp."
   noindex={true}
 >
+  <!-- W320 — préconnexion à l'origine carte (MapTiler style JSON + tuiles
+       raster Mapbox/Maxar quand configuré) : le moment le plus interactif de
+       cette page (poser un repère sur son toit) payait jusqu'ici une
+       poignée de main DNS+TLS série (~100–300 ms sur connexion froide).
+       Layout.astro n'expose pas de slot <head> (hors périmètre ici) : ces
+       hints sont honorés par le navigateur dès qu'ils sont analysés, où
+       qu'ils apparaissent dans le document — sans dépendre du <head>. Coût
+       nul si la carte n'est jamais bootée (repli sans clé/adresse). -->
+  <link rel="preconnect" href="https://api.maptiler.com" crossorigin />
+  <link rel="preconnect" href="https://api.mapbox.com" crossorigin />
   <section class="bg-nuit px-4 py-8 sm:py-12">
     <div class="mx-auto max-w-2xl">
       <!-- WJ65 — sortie honnête SANS JavaScript : cette page est entièrement

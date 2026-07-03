@@ -72,6 +72,16 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   description="Address + bill: get an instant solar estimate (power, savings, payback), then your personalised study on WhatsApp."
   noindex={true}
 >
+  <!-- W320 — preconnect to the map origin (MapTiler style JSON + the Mapbox/
+       Maxar raster tile host when configured): the most interactive moment
+       of this page (dropping a pin on your roof) paid a serial DNS+TLS
+       handshake until now (~100-300 ms on a cold connection). Layout.astro
+       has no <head> slot (out of scope here) — resource hints are honoured
+       by the browser as soon as parsed, wherever they appear in the
+       document. Zero cost if the map is never booted (no key/address
+       fallback). -->
+  <link rel="preconnect" href="https://api.maptiler.com" crossorigin />
+  <link rel="preconnect" href="https://api.mapbox.com" crossorigin />
   <section class="bg-nuit px-4 py-8 sm:py-12">
     <div class="mx-auto max-w-2xl">
       <!-- WJ65 — honest exit WITHOUT JavaScript: this page is entirely
