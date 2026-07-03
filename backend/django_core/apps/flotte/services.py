@@ -1301,3 +1301,65 @@ def accuse_charte_manquant(conducteur):
         company=conducteur.company, conducteur=conducteur,
         version=charte.version,
     ).exists()
+
+
+# ── XFLT18 — Budget flotte annuel vs réalisé ────────────────────────────────────
+
+def verifier_depassements_budget(company, annee):
+    """XFLT18 — Notifie (best-effort, IDEMPOTENT) les dépassements de budget
+    flotte > 100 % pour une année.
+
+    Calcule la variance via ``selectors.variance_budget_flotte`` ; pour
+    chaque catégorie en dépassement (``niveau='rouge'``) dont la ligne
+    ``BudgetFlotte`` n'a pas déjà ``notifie_depassement=True``, notifie les
+    responsables/admins de la société (``apps.notifications.services.
+    notify_many``, best-effort — jamais levé) puis marque la ligne comme
+    notifiée. Un second appel sur la même période ne renvoie AUCUNE
+    notification supplémentaire tant que le dépassement reste inchangé.
+
+    Retourne la liste des catégories nouvellement notifiées (codes).
+    """
+    from .models import BudgetFlotte
+    from .selectors import variance_budget_flotte
+
+    variance = variance_budget_flotte(company, annee)
+    notifiees = []
+
+    for ligne in variance['categories']:
+        if ligne['niveau'] != 'rouge':
+            continue
+
+        budget = BudgetFlotte.objects.filter(
+            company=company, annee=annee, categorie=ligne['categorie'],
+        ).first()
+        if budget is None or budget.notifie_depassement:
+            continue
+
+        try:
+            from django.contrib.auth import get_user_model
+
+            from apps.notifications.models import EventType
+            from apps.notifications.services import notify_many
+
+            User = get_user_model()
+            destinataires = User.objects.filter(
+                company=company, is_active=True,
+                role_legacy__in=['responsable', 'admin'])
+            notify_many(
+                destinataires, EventType.FLOTTE_BUDGET_DEPASSEMENT,
+                title=f"Budget flotte dépassé : {ligne['categorie_display']}",
+                body=(
+                    f"Le budget {ligne['categorie_display']} {annee} est "
+                    f"dépassé : {ligne['realise']} MAD réalisés pour "
+                    f"{ligne['budgete']} MAD budgétés ({ligne['pct']} %)."
+                ),
+                company=company,
+            )
+        except Exception:
+            pass
+
+        budget.notifie_depassement = True
+        budget.save(update_fields=['notifie_depassement'])
+        notifiees.append(ligne['categorie'])
+
+    return notifiees

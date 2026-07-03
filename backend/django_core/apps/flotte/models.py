@@ -3852,3 +3852,65 @@ class AccuseCharte(models.Model):
 
     def __str__(self):
         return f'Accusé charte v{self.version} — {self.conducteur}'
+
+
+# ── XFLT18 — Budget flotte annuel vs réalisé ────────────────────────────────────
+
+class BudgetFlotte(models.Model):
+    """Budget flotte annuel par catégorie de coût (XFLT18).
+
+    Une ligne budgétaire par ``(company, annee, categorie)`` — mêmes clés de
+    catégorie que le ledger unifié (XFLT3, ``CoutVehicule.Categorie``), le
+    variance vs réalisé est calculé par
+    ``selectors.variance_budget_flotte`` (agrégat du ledger, jamais
+    dupliqué ici).
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête).
+    """
+
+    class Categorie(models.TextChoices):
+        CARBURANT = 'carburant', 'Carburant'
+        ENTRETIEN = 'entretien', 'Entretien'
+        ASSURANCE = 'assurance', 'Assurance'
+        VIGNETTE = 'vignette', 'Vignette'
+        CONTRAT = 'contrat', 'Contrat'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_budgets',
+        verbose_name='Société',
+    )
+    annee = models.PositiveSmallIntegerField(verbose_name='Année')
+    categorie = models.CharField(
+        max_length=10, choices=Categorie.choices, default=Categorie.AUTRE,
+        verbose_name='Catégorie')
+    montant_budgete = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name='Montant budgété (MAD)')
+    # XFLT18 — Trace qu'une alerte de dépassement (>100 %) a déjà été
+    # notifiée pour CETTE ligne budgétaire (idempotence : une seule
+    # notification par (société, année, catégorie), jamais renvoyée en
+    # boucle par un cron/appel répété de ``services.verifier_depassements``).
+    notifie_depassement = models.BooleanField(
+        default=False, verbose_name='Dépassement déjà notifié')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Budget flotte'
+        verbose_name_plural = 'Budgets flotte'
+        unique_together = [('company', 'annee', 'categorie')]
+        ordering = ['-annee', 'categorie']
+
+    def clean(self):
+        """Valide que le montant budgété n'est pas négatif."""
+        if self.montant_budgete is not None and self.montant_budgete < 0:
+            raise ValidationError(
+                "Le montant budgété ne peut pas être négatif.")
+
+    def __str__(self):
+        return (f'Budget {self.get_categorie_display()} {self.annee} — '
+                f'{self.montant_budgete} MAD')

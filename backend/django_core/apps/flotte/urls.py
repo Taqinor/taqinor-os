@@ -7,6 +7,7 @@ from .views import (
     AffectationConducteurViewSet,
     AssuranceVehiculeViewSet,
     BaremeVignetteViewSet,
+    BudgetFlotteViewSet,
     CarteCarburantViewSet,
     CarteGriseVehiculeViewSet,
     CharteVehiculeViewSet,
@@ -38,6 +39,7 @@ from .views import (
     TrajetTelematiqueViewSet,
     VehiculeViewSet,
     VisiteTechniqueViewSet,
+    rapport_budget,
     rapport_couts,
     rapport_remplacement,
 )
@@ -79,10 +81,12 @@ router.register(r'modeles-inspection', ModeleInspectionViewSet)
 router.register(r'inspections', InspectionVehiculeViewSet)
 router.register(r'chartes-vehicule', CharteVehiculeViewSet)
 router.register(r'accuses-charte', AccuseCharteViewSet)
+router.register(r'budgets', BudgetFlotteViewSet)
 
 urlpatterns = [
     path('rapports/couts/', rapport_couts, name='flotte-rapport-couts'),
     path('rapports/remplacement/', rapport_remplacement,
          name='flotte-rapport-remplacement'),
+    path('rapports/budget/', rapport_budget, name='flotte-rapport-budget'),
     path('', include(router.urls)),
 ]

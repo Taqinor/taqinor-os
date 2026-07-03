@@ -13,6 +13,7 @@ from .models import (
     AffectationConducteur,
     AssuranceVehicule,
     BaremeVignette,
+    BudgetFlotte,
     CarteCarburant,
     CarteGriseVehicule,
     Conducteur,
@@ -2595,4 +2596,88 @@ def analyse_remplacement(company, today=None):
         'vehicules': lignes,
         'a_remplacer': a_remplacer,
         'budget_annuel_estime': round(budget_annuel_estime, 2),
+    }
+
+
+# ── XFLT18 — Budget flotte annuel vs réalisé ────────────────────────────────────
+
+# Catégories du ledger (XFLT3 ``CoutVehicule.Categorie`` + sources
+# ``ledger_vehicule``) qui ne sont PAS des clés budgétaires (XFLT18) —
+# regroupées sous 'autre' pour le calcul de variance (jamais perdues, juste
+# reclassées côté budget).
+_CATEGORIES_LEDGER_VERS_AUTRE = {'amende', 'peage', 'parking', 'lavage'}
+
+
+def variance_budget_flotte(company, annee):
+    """XFLT18 — Variance budget vs réalisé par catégorie, pour une année
+    (lecture seule).
+
+    ``réalisé`` = agrégat du ledger unifié (XFLT3, un ``ledger_vehicule`` par
+    véhicule de la société, borné à l'année via ``periode``), reclassé sur
+    les 6 clés budgétaires (``BudgetFlotte.Categorie`` : carburant|entretien|
+    assurance|vignette|contrat|autre — les catégories hors périmètre budget
+    comme amende/péage/parking/lavage sont regroupées sous 'autre').
+    ``budgété`` = ``BudgetFlotte`` de l'année (0 si aucune ligne saisie pour
+    la catégorie). ``pct`` = réalisé/budgété × 100 (``None`` si budgété nul).
+    ``niveau`` = ``'rouge'`` si pct > 100, ``'orange'`` si pct > 85, sinon
+    ``'ok'`` (``None`` si aucun budget saisi — rien à comparer).
+
+    Retourne ``{'annee', 'categories': [{'categorie', 'categorie_display',
+    'budgete', 'realise', 'pct', 'niveau'}, …], 'total_budgete',
+    'total_realise'}``. Aucune écriture.
+    """
+    from .models import Vehicule as _Vehicule
+
+    periode = (datetime.date(annee, 1, 1), datetime.date(annee, 12, 31))
+
+    realise_par_categorie = {}
+    for vehicule in _Vehicule.objects.filter(company=company):
+        ledger = ledger_vehicule(company, vehicule.id, periode=periode)
+        for ligne in ledger['lignes']:
+            cle = ligne['categorie']
+            if cle in _CATEGORIES_LEDGER_VERS_AUTRE:
+                cle = 'autre'
+            elif cle not in dict(BudgetFlotte.Categorie.choices):
+                cle = 'autre'
+            realise_par_categorie[cle] = (
+                realise_par_categorie.get(cle, 0.0) + ligne['montant'])
+
+    budgets = {
+        b.categorie: float(b.montant_budgete)
+        for b in BudgetFlotte.objects.filter(company=company, annee=annee)
+    }
+
+    categories = []
+    total_budgete = 0.0
+    total_realise = 0.0
+    for cle, libelle in BudgetFlotte.Categorie.choices:
+        budgete = budgets.get(cle, 0.0)
+        realise = round(realise_par_categorie.get(cle, 0.0), 2)
+        total_budgete += budgete
+        total_realise += realise
+
+        pct = round(realise / budgete * 100, 1) if budgete > 0 else None
+        niveau = None
+        if budgete > 0:
+            if pct > 100:
+                niveau = 'rouge'
+            elif pct > 85:
+                niveau = 'orange'
+            else:
+                niveau = 'ok'
+
+        categories.append({
+            'categorie': cle,
+            'categorie_display': libelle,
+            'budgete': round(budgete, 2),
+            'realise': realise,
+            'pct': pct,
+            'niveau': niveau,
+        })
+
+    return {
+        'annee': annee,
+        'categories': categories,
+        'total_budgete': round(total_budgete, 2),
+        'total_realise': round(total_realise, 2),
     }

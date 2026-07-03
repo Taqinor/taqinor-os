@@ -2077,3 +2077,29 @@ class AccuseCharteSerializer(serializers.ModelSerializer):
 
     def get_conducteur_nom(self, obj):
         return obj.conducteur.nom if obj.conducteur_id else None
+
+
+# ── XFLT18 — Budget flotte annuel vs réalisé ────────────────────────────────────
+
+class BudgetFlotteSerializer(serializers.ModelSerializer):
+    """XFLT18 — Ligne budgétaire annuelle par catégorie. ``company`` posée
+    côté serveur. ``notifie_depassement`` est géré côté serveur (jamais du
+    body — voir ``services.verifier_depassements_budget``)."""
+
+    categorie_display = serializers.CharField(
+        source='get_categorie_display', read_only=True)
+
+    class Meta:
+        from .models import BudgetFlotte
+        model = BudgetFlotte
+        fields = [
+            'id', 'annee', 'categorie', 'categorie_display',
+            'montant_budgete', 'notifie_depassement', 'date_creation',
+        ]
+        read_only_fields = ['notifie_depassement', 'date_creation']
+
+    def validate_montant_budgete(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "Le montant budgété ne peut pas être négatif.")
+        return value

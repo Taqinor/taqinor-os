@@ -65,6 +65,9 @@ class EventType(models.TextChoices):
         'supplier_doc_expiring', 'Document fournisseur bientôt expiré')
     # XPUR7 — BCF envoyé en retard (prévue/confirmée dépassée, non reçu).
     BCF_LATE = 'bcf_late', 'Bon de commande fournisseur en retard'
+    # XFLT18 — dépassement de budget flotte annuel (par catégorie de coût).
+    FLOTTE_BUDGET_DEPASSEMENT = (
+        'flotte_budget_depassement', 'Dépassement budget flotte')
 
 
 class Channel(models.TextChoices):

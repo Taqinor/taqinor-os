@@ -20,6 +20,7 @@ from .models import (
     AffectationConducteur,
     AssuranceVehicule,
     BaremeVignette,
+    BudgetFlotte,
     CarteCarburant,
     CarteGriseVehicule,
     CharteVehicule,
@@ -59,6 +60,7 @@ from .serializers import (
     AffectationConducteurSerializer,
     AssuranceVehiculeSerializer,
     BaremeVignetteSerializer,
+    BudgetFlotteSerializer,
     CarteCarburantSerializer,
     CarteGriseVehiculeSerializer,
     CharteVehiculeSerializer,
@@ -666,6 +668,28 @@ class AccuseCharteViewSet(_FlotteBaseViewSet):
                 {'detail': "Aucune charte véhicule publiée pour cette "
                            "société."})
         serializer.save(company=company, version=charte.version)
+
+
+class BudgetFlotteViewSet(_FlotteBaseViewSet):
+    """Budget flotte annuel par catégorie (XFLT18).
+
+    CRUD scopé société (écriture responsable/admin). Filtrable par
+    ``?annee=``. ``notifie_depassement`` est géré côté serveur.
+    """
+    queryset = BudgetFlotte.objects.all()
+    serializer_class = BudgetFlotteSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['annee', 'categorie']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        annee = self.request.query_params.get('annee')
+        if annee:
+            try:
+                qs = qs.filter(annee=int(annee))
+            except (ValueError, TypeError):
+                pass
+        return qs
 
 
 class PleinCarburantViewSet(_FlotteBaseViewSet):
@@ -2348,3 +2372,31 @@ def rapport_remplacement(request):
     """
     from .selectors import analyse_remplacement
     return Response(analyse_remplacement(request.user.company))
+
+
+# ── XFLT18 — Budget flotte annuel vs réalisé ────────────────────────────────────
+
+@api_view(['GET'])
+@permission_classes([IsAnyRole])
+def rapport_budget(request):
+    """XFLT18 — Variance budget vs réalisé par catégorie, lecture seule.
+
+    ``GET /flotte/rapports/budget/?annee=N`` (défaut : année courante).
+    Réalisé = agrégat du ledger unifié (XFLT3) reclassé sur les 6 clés
+    budgétaires, via ``selectors.variance_budget_flotte``. Un dépassement
+    ``niveau='rouge'`` (> 100 %) déclenche une notification best-effort et
+    IDEMPOTENTE aux responsables/admins de la société
+    (``services.verifier_depassements_budget`` — jamais renvoyée en double).
+    """
+    annee_param = request.query_params.get('annee')
+    try:
+        annee = int(annee_param) if annee_param else datetime.date.today().year
+    except (ValueError, TypeError):
+        annee = datetime.date.today().year
+
+    from .services import verifier_depassements_budget
+
+    verifier_depassements_budget(request.user.company, annee)
+
+    from .selectors import variance_budget_flotte
+    return Response(variance_budget_flotte(request.user.company, annee))
