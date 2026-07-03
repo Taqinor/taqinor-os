@@ -242,6 +242,11 @@ class CommentViewSet(viewsets.ModelViewSet):
             except ValueError:
                 return qs.none()
             qs = qs.filter(content_type=ct, object_id=oid)
+        # XKB13 — ?resolved=true|false : masque/affiche les fils résolus
+        # (le frontend masque les fils résolus par défaut).
+        resolved = self.request.query_params.get('resolved')
+        if resolved is not None:
+            qs = qs.filter(resolved=resolved.lower() in ('1', 'true', 'yes'))
         return qs
 
     def create(self, request, *args, **kwargs):

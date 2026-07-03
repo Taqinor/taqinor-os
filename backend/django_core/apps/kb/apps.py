@@ -9,4 +9,7 @@ class KbConfig(AppConfig):
     def ready(self):
         # KB6 — branche le récepteur qui (ré)indexe un article dans le RAG/DocQA
         # à chaque enregistrement (no-op sans clé d'embedding).
-        from . import signals  # noqa: F401
+        from . import signals
+        # XKB13 — branche le récepteur qui notifie l'auteur d'un article KB
+        # commenté (records.Comment est une app fondation, chargée avant kb).
+        signals._kb_comment_receiver()
