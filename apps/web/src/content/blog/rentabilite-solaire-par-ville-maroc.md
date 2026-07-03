@@ -71,7 +71,7 @@ Le **payback résidentiel standard** est de **5 à 7 ans** — chiffre cohérent
 **Ce qui influence le payback :**
 - **Votre tranche tarifaire actuelle** : plus vous êtes en tranche haute (≥ 1,45 DH/kWh), plus les économies annuelles sont grandes et le retour rapide.
 - **Le coût de l'installation** : fourchette indicative 2026 de ~10 000 à 14 000 DH/kWc (matériel + pose, sources installateurs — non audité). Voir [notre guide des prix](/blog/prix-installation-solaire-maroc-2026).
-- **Votre taux d'autoconsommation** : avec la [loi 82-21](/blog/loi-82-21-autoproduction-2026), le surplus injecté sur le réseau est racheté à seulement 0,18–0,21 DH/kWh — bien en dessous du tarif de vente. La valeur réelle du solaire est dans la consommation immédiate, pas dans l'export.
+- **Votre taux d'autoconsommation** : avec la [loi 82-21](/blog/loi-82-21-autoproduction-2026), le surplus injecté sur le réseau est racheté à seulement 0,18–0,21 DH/kWh pour le moyen/haut tension — bien en dessous du tarif de vente (le tarif du régime déclaration BT, celui des maisons < 11 kW, n'est pas encore publié, mais rien n'indique qu'il change cette logique). La valeur réelle du solaire est dans la consommation immédiate, pas dans l'export.
 - **La batterie** : ajouter un stockage prolonge le payback de **1 à 3 ans** mais augmente le taux d'autoconsommation du soir.
 
 **Sur 25 ans**, après remboursement de l'installation, chaque kWh produit est quasi-gratuit (les panneaux modernes perdent ~0,5 %/an de performance et atteignent encore ~80–85 % de leur capacité initiale à 25 ans).

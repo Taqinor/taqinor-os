@@ -1,7 +1,8 @@
 ---
 title: "Batterie solaire : stocker ou revendre ? L'économie de l'autoconsommation au Maroc"
-description: "Export limité à 20 % racheté 0,18–0,21 DH/kWh : pourquoi un kWh stocké vaut bien plus qu'un kWh exporté au Maroc."
+description: "Export limité à 20 % de la production ; rachat 0,18–0,21 DH/kWh en MT/HT, tarif BT résidentiel non encore publié : pourquoi un kWh stocké vaut bien plus qu'un kWh exporté au Maroc."
 pubDate: 2026-06-21
+updatedDate: 2026-07-03
 tags: ["batterie", "autoconsommation", "stockage", "économie"]
 author: "Reda Kasri"
 ogSlug: "equipement"
@@ -10,9 +11,11 @@ draft: false
 
 ## Faut-il stocker son surplus, ou le revendre ?
 
-C'est la question que me posent presque tous les clients tentés par une batterie. La réponse tient dans deux chiffres qui s'affrontent. Depuis l'entrée en vigueur du décret 2-25-100, le 9 juin 2026, la loi 82-21 encadre l'autoproduction des particuliers. Vous pouvez injecter votre surplus sur le réseau, mais dans la limite de **20 % de votre production annuelle**, et ce surplus est racheté par l'ONEE à **0,18 DH/kWh en heures creuses et 0,21 DH/kWh en heures de pointe** (source : décision de l'ANRE, Médias24, LesEco).
+C'est la question que me posent presque tous les clients tentés par une batterie. La réponse tient dans deux chiffres qui s'affrontent. Depuis l'entrée en vigueur du décret 2-25-100, le 9 juin 2026, la loi 82-21 encadre l'autoproduction des particuliers. Vous pouvez injecter votre surplus sur le réseau, mais dans la limite de **20 % de votre production annuelle**, et ce surplus est racheté par l'ONEE à **0,18 DH/kWh en heures creuses et 0,21 DH/kWh en heures de pointe** pour le **moyen et le haut tension** (source : décision 04/26 de l'ANRE, Médias24, LesEco).
 
-Or l'électricité que vous *achetez* au réseau, elle, vous coûte entre **0,90 et 1,66 DH/kWh** selon votre tranche de consommation (grille ONEE BT en vigueur). L'écart est énorme : un kWh produit et consommé chez vous vaut de **4 à 9 fois plus** qu'un kWh exporté.
+> **Le tarif BT résidentiel n'est pas encore publié.** Ces 0,18–0,21 DH/kWh sont le tarif MT/HT de la décision 04/26. Pour le régime déclaration (< 11 kW en basse tension), qui couvre la quasi-totalité des maisons et villas, l'ANRE n'a pas encore publié de tarif de rachat spécifique. Cet article utilise le chiffre MT/HT connu comme ordre de grandeur indicatif ; nous le mettrons à jour dès la publication du tarif BT.
+
+Or l'électricité que vous *achetez* au réseau, elle, vous coûte entre **0,90 et 1,66 DH/kWh** selon votre tranche de consommation (grille ONEE BT en vigueur). Cette valeur-là est connue avec certitude, et l'écart avec le tarif de rachat MT/HT est déjà énorme : un kWh produit et consommé chez vous vaut de **4 à 9 fois plus** qu'un kWh exporté à ce tarif. Rien n'indique que le futur tarif BT inversera cette logique.
 
 La conclusion tombe avant même qu'on parle de matériel. Au Maroc, exporter n'est pas une stratégie rentable. C'est une soupape pour les 20 % de surplus que vous ne parvenez ni à consommer ni à stocker.
 
@@ -29,7 +32,7 @@ Un appareil qui tourne pendant que vos panneaux produisent consomme de l'énergi
 Ce que vous ne pouvez pas consommer immédiatement peut être stocké dans une batterie et utilisé le soir ou la nuit. Vous évitez d'acheter de l'électricité à 0,90–1,66 DH/kWh au réseau. C'est le cœur de l'argumentaire batterie au Maroc.
 
 **3. Exporter les 20 % restants (valeur faible)**
-Ce qui dépasse vos capacités de consommation et de stockage est injecté, dans la limite du plafond légal de 20 %, contre un tarif de rachat de 0,18–0,21 DH/kWh. Utile pour ne rien gaspiller, mais insuffisant pour être la raison principale d'un investissement.
+Ce qui dépasse vos capacités de consommation et de stockage est injecté, dans la limite du plafond légal de 20 %, contre un tarif de rachat de 0,18–0,21 DH/kWh en MT/HT (le tarif BT résidentiel reste à publier). Utile pour ne rien gaspiller, mais insuffisant pour être la raison principale d'un investissement.
 
 ---
 
@@ -71,7 +74,7 @@ Ce n'est pas une raison de refuser la batterie — c'est une raison de bien la d
 
 C'est l'erreur la plus fréquente : vouloir maximiser la taille de l'installation pour exporter davantage et « gagner » sur la revente. La réalité économique est inverse.
 
-Avec un rachat à 0,18–0,21 DH/kWh, **chaque kWh produit en excès et exporté au-delà de vos besoins est un kWh sous-valorisé**. Mieux vaut une installation juste à la taille de vos consommations réelles — avec ou sans batterie pour le soir — qu'un générateur surdimensionné dont une grande partie de la production part sur le réseau au prix le plus bas.
+Avec un rachat MT/HT connu à 0,18–0,21 DH/kWh (le tarif BT résidentiel restant à publier), **chaque kWh produit en excès et exporté au-delà de vos besoins est un kWh sous-valorisé**. Mieux vaut une installation juste à la taille de vos consommations réelles — avec ou sans batterie pour le soir — qu'un générateur surdimensionné dont une grande partie de la production part sur le réseau au prix le plus bas.
 
 Le bon point de départ : dimensionner d'abord pour couvrir vos usages diurnes, puis évaluer si la batterie est pertinente pour votre profil de consommation nocturne.
 
@@ -87,4 +90,4 @@ Pour comparer les technologies et les marques disponibles au Maroc — dont Dyne
 
 ---
 
-*Données réglementaires : Loi 82-21 / Décret 2-25-100, publié au BO le 9 mars 2026, en vigueur depuis le 9 juin 2026 / décision de l'ANRE. Tarifs ONEE BT en vigueur. Prix batteries : fourchette indicative marché général LFP 2026. Pour un chiffrage adapté à votre installation, demandez un diagnostic.*
+*Données réglementaires : Loi 82-21 / Décret 2-25-100, publié au BO le 9 mars 2026, en vigueur depuis le 9 juin 2026 / décision 04/26 de l'ANRE (tarif de rachat MT/HT ; tarif BT résidentiel non encore publié à la date de mise à jour de cet article). Tarifs ONEE BT en vigueur. Prix batteries : fourchette indicative marché général LFP 2026. Pour un chiffrage adapté à votre installation, demandez un diagnostic.*
