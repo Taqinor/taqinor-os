@@ -23,13 +23,15 @@ un suivi à part : un appelant consulte cette porte, il ne la franchit pas ici.
 from django.db.models import Avg
 
 from .models import (
-    ActionCorrectivePreventive, Audit, ConformiteEnvironnementale,
-    ControleReception, DeclarationCnss, DemandeActionFournisseur,
+    ActionCorrectivePreventive, Audit, ClauseNorme, ConformiteEnvironnementale,
+    ControleReception, CritereAudit, DeclarationCnss,
+    DemandeActionFournisseur,
     EtapeDeclarationAt, EvaluationRisque,
     Incident, IndicateurESG, InspectionSecurite, NonConformite,
     NotationFinChantier,
     PermisTravail, PlanInspectionChantier,
-    ProcedureQualite, ReleveControle, ReleveCourbeIV, RetourClientQualite,
+    ProcedureQualite, ReleveControle, ReleveCourbeIV, ReponseCritere,
+    RetourClientQualite,
 )
 
 
@@ -1320,3 +1322,67 @@ def scar_count_par_fournisseur(company, fournisseur_id):
     ouvertes = qs.exclude(
         statut=DemandeActionFournisseur.Statut.CLOSE).count()
     return {'total': total, 'ouvertes': ouvertes}
+
+
+# ── XQHS11 — Heatmap constats-par-clause + readiness multi-référentiel ─────
+
+def constats_par_clause(company, referentiel=None):
+    """Heatmap des non-conformités d'audit agrégées par clause ISO (XQHS11).
+
+    Compte les ``ReponseCritere`` NON CONFORMES dont le critère porte une
+    ``clause`` (les critères sans clause sont exclus — rien à cartographier).
+    Renvoie une liste de dicts ``{'clause': str, 'referentiel': str,
+    'nb_non_conformes': int}`` triée par nb décroissant.
+    """
+    qs = ReponseCritere.objects.filter(
+        company=company, resultat=ReponseCritere.Resultat.NON_CONFORME,
+        critere__clause__gt='')
+    if referentiel:
+        qs = qs.filter(critere__referentiel=referentiel)
+
+    counts = {}
+    for clause, ref in qs.values_list('critere__clause', 'critere__referentiel'):
+        key = (clause, ref)
+        counts[key] = counts.get(key, 0) + 1
+
+    result = [
+        {'clause': clause, 'referentiel': ref, 'nb_non_conformes': nb}
+        for (clause, ref), nb in counts.items()
+    ]
+    result.sort(key=lambda item: -item['nb_non_conformes'])
+    return result
+
+
+def readiness_multi_referentiel(company):
+    """Readiness étendu par référentiel (9001/14001/45001, XQHS11).
+
+    Pour chaque référentiel avec des clauses seedées, calcule le % de clauses
+    couvertes par AU MOINS UN critère audité CONFORME (une clause « couverte »
+    a une ``ReponseCritere`` conforme sur un critère qui la référence).
+    Renvoie ``{referentiel: {'total_clauses': int, 'couvertes': int, 'pct':
+    float|None}}``.
+    """
+    result = {}
+    referentiels = ClauseNorme.objects.filter(
+        company=company).values_list('referentiel', flat=True).distinct()
+    for referentiel in referentiels:
+        clauses = set(
+            ClauseNorme.objects.filter(
+                company=company, referentiel=referentiel
+            ).values_list('numero', flat=True))
+        total = len(clauses)
+        if total == 0:
+            result[referentiel] = {
+                'total_clauses': 0, 'couvertes': 0, 'pct': None}
+            continue
+
+        clauses_conformes = set(
+            CritereAudit.objects.filter(
+                company=company, referentiel=referentiel,
+                qhse_reponses__resultat=ReponseCritere.Resultat.CONFORME,
+            ).values_list('clause', flat=True))
+        couvertes = len(clauses & clauses_conformes)
+        pct = round(couvertes / total * 100, 1)
+        result[referentiel] = {
+            'total_clauses': total, 'couvertes': couvertes, 'pct': pct}
+    return result

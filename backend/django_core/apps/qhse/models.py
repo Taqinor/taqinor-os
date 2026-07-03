@@ -837,6 +837,18 @@ class CritereAudit(models.Model):
         default=5, verbose_name='Note maximale')
     description = models.TextField(
         blank=True, default='', verbose_name='Description')
+    # XQHS11 — mapping clause ISO multi-référentiel (nullable, additif). Ex.
+    # clause="9001:8.5.1", referentiel="9001". Sert à la heatmap
+    # constats-par-clause et au readiness étendu (14001/45001).
+    clause = models.CharField(
+        max_length=30, blank=True, default='', verbose_name='Clause ISO')
+    referentiel = models.CharField(
+        max_length=15, blank=True, default='',
+        choices=[
+            ('9001', 'ISO 9001'), ('14001', 'ISO 14001'),
+            ('45001', 'ISO 45001'), ('nm', 'NM'), ('autre', 'Autre'),
+        ],
+        verbose_name='Référentiel')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -4215,3 +4227,47 @@ class AuditPlanifie(models.Model):
 
     def __str__(self):
         return f'{self.processus_domaine} — {self.date_cible or "sans date"}'
+
+
+# ── XQHS11 — Référentiel de clauses ISO multi-norme (seedable) ─────────────
+
+class ClauseNorme(models.Model):
+    """Clause d'un référentiel ISO (9001/14001/45001/NM), seedable.
+
+    Structure HLS partagée (High Level Structure — commune aux normes de
+    management ISO récentes) : une même clause numérotée (ex. « 8.5.1 ») peut
+    exister sous plusieurs référentiels pour qu'une même preuve serve
+    plusieurs normes. Company-scopé pour rester cohérent avec le reste de
+    l'app (pas de référentiel global partagé entre sociétés).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_clauses_norme',
+        verbose_name='Société',
+    )
+    referentiel = models.CharField(
+        max_length=15,
+        choices=[
+            ('9001', 'ISO 9001'), ('14001', 'ISO 14001'),
+            ('45001', 'ISO 45001'), ('nm', 'NM'), ('autre', 'Autre'),
+        ],
+        verbose_name='Référentiel')
+    numero = models.CharField(max_length=20, verbose_name='Numéro de clause')
+    intitule = models.CharField(max_length=255, verbose_name='Intitulé')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Clause de norme'
+        verbose_name_plural = 'Clauses de norme'
+        ordering = ['referentiel', 'numero']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'referentiel', 'numero'],
+                name='qhse_clausenorme_co_ref_num_uniq',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.referentiel}:{self.numero} — {self.intitule}'
