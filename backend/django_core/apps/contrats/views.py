@@ -333,6 +333,41 @@ class ContratViewSet(_ContratsBaseViewSet):
         return Response({'cohortes': cohortes, 'mois_max': data['mois_max']})
 
     @action(detail=False, methods=['get'])
+    def clv(self, request):
+        """Valeur vie client (CLV) sur revenu récurrent — XCTR9.
+
+        Requiert ``?client_id=<id>`` (lien LÂCHE ``Contrat.client_id``).
+        Délègue à ``core.clv`` via ``selectors.clv_client`` (ARPC = MRR du
+        client, taux de churn observé de la société). ``clv=null`` quand le
+        calcul est impossible (churn nul/inconnu) — jamais une fausse valeur.
+        Lecture seule, scopée société.
+        """
+        client_id = request.query_params.get('client_id')
+        if not client_id:
+            return Response(
+                {'detail': 'client_id est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            client_id = int(client_id)
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': 'client_id invalide.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        resultat = selectors.clv_client(request.user.company, client_id)
+        return Response({
+            'client_id': client_id,
+            'arpc': _money(selectors.mrr_client(
+                request.user.company, client_id)),
+            'clv': _money(resultat.clv) if resultat.clv is not None else None,
+            'duree_vie_mois': (
+                str(resultat.duree_vie_mois)
+                if resultat.duree_vie_mois is not None else None),
+            'used_fallback': resultat.used_fallback,
+            'plafonnee': resultat.plafonnee,
+        })
+
+    @action(detail=False, methods=['get'])
     def reporting(self, request):
         """Reporting valeur contractuelle & taux de renouvellement (CONTRAT35).
 

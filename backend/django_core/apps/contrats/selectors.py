@@ -927,3 +927,78 @@ def cohortes_retention(company, today=None):
         resultat[cohorte_mois.isoformat()] = matrice
 
     return {'cohortes': resultat, 'mois_max': mois_max_global}
+
+
+# ---------------------------------------------------------------------------
+# XCTR9 — CLV (valeur vie client) sur revenu récurrent
+# ---------------------------------------------------------------------------
+
+
+def mrr_client(company, client_id):
+    """MRR mensuel d'UN client (somme du MRR de ses contrats actifs) — XCTR9.
+
+    Lecture seule, scopée société. ``client_id`` est un lien LÂCHE
+    (``Contrat.client_id``) — jamais un import de ``crm.models``. Renvoie un
+    ``Decimal`` (0 si le client n'a aucun contrat facturable).
+    """
+    from decimal import Decimal
+
+    from .models import Contrat
+
+    total = Decimal('0')
+    for contrat in Contrat.objects.filter(
+            company=company, client_id=client_id).exclude(
+                statut__in=[Contrat.Statut.RESILIE, Contrat.Statut.EXPIRE]):
+        total += mrr_contrat_actif(contrat)
+    return total.quantize(Decimal('0.01'))
+
+
+def taux_churn_mensuel_company(company, within_days=90):
+    """Taux de churn MENSUEL observé de la société (fraction ``[0, 1]``) — XCTR9.
+
+    Approxime le taux de churn mensuel à partir des résiliations RÉCENTES
+    (``within_days``, défaut 90 jours ≈ 3 mois) rapportées à la base de
+    contrats actifs+résiliés sur la fenêtre, ramené à un taux MENSUEL (division
+    par le nombre de mois de la fenêtre). Lecture seule, scopée société.
+
+    Renvoie ``None`` si la base est vide (aucun contrat pour calculer un taux
+    exploitable) — repli propre, jamais de division par zéro.
+    """
+    from decimal import Decimal
+
+    from .models import Contrat, Resiliation
+
+    today = timezone.localdate()
+    debut = today - timedelta(days=within_days)
+
+    base_count = Contrat.objects.filter(company=company).count()
+    if base_count == 0:
+        return None
+
+    resilies = Resiliation.objects.filter(
+        company=company,
+    ).exclude(statut=Resiliation.Statut.ANNULEE).filter(
+        date_demande__gte=debut, date_demande__lte=today).count()
+
+    mois_fenetre = max(Decimal('1'), Decimal(within_days) / Decimal('30'))
+    taux = (Decimal(resilies) / Decimal(base_count)) / mois_fenetre
+    if taux <= 0:
+        return None
+    return taux
+
+
+def clv_client(company, client_id, *, within_days=90):
+    """CLV d'un client sur revenu récurrent (délègue à ``core.clv``) — XCTR9.
+
+    Alimente le calculateur PUR ``core.clv.clv`` avec l'ARPC mensuel du client
+    (``mrr_client``) et le taux de churn OBSERVÉ de la société
+    (``taux_churn_mensuel_company``). Lecture seule, scopée société. Renvoie le
+    ``core.clv.ClvResult`` (``clv=None`` si le churn est nul/inconnu — un client
+    SANS contrat renvoie un ARPC à 0, donc une CLV à 0 si un taux de churn est
+    disponible, ou ``None`` si aucun taux n'est calculable).
+    """
+    from core.clv import clv as _clv
+
+    arpc = mrr_client(company, client_id)
+    taux = taux_churn_mensuel_company(company, within_days=within_days)
+    return _clv(arpc, taux)
