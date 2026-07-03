@@ -32,6 +32,15 @@ export interface Realisation {
   ville: string;
   /** Région administrative (pour le rattachement honnête aux pages ville). */
   region: string;
+  /**
+   * W342 — coordonnées GPS PUBLIQUES du centre-ville (source : coordonnées
+   * géographiques municipales usuelles, PAS l'adresse exacte du chantier —
+   * jamais publiée pour la vie privée du client). Suffisant pour un calcul de
+   * proximité honnête (haversine, à l'échelle de la ville) ; ne sert QUE ce
+   * calcul de distance, jamais affiché tel quel.
+   */
+  lat: number;
+  lng: number;
   kwc: string;
   kwcNum: number;
   /** Mois d'installation tel que publié. */
@@ -57,6 +66,8 @@ export const REALISATIONS: Realisation[] = [
     ref: '468',
     ville: 'El Jadida',
     region: 'Casablanca-Settat',
+    lat: 33.2549,
+    lng: -8.5058,
     kwc: '17,04 kWc',
     kwcNum: 17.04,
     date: 'avril 2026',
@@ -79,6 +90,8 @@ export const REALISATIONS: Realisation[] = [
     ref: '400',
     ville: 'Casablanca',
     region: 'Casablanca-Settat',
+    lat: 33.5731,
+    lng: -7.5898,
     kwc: '11,36 kWc',
     kwcNum: 11.36,
     date: 'avril 2026',
@@ -101,6 +114,8 @@ export const REALISATIONS: Realisation[] = [
     ref: '236',
     ville: 'El Jadida',
     region: 'Casablanca-Settat',
+    lat: 33.2549,
+    lng: -8.5058,
     kwc: '5,68 kWc',
     kwcNum: 5.68,
     date: 'mars 2026',
@@ -121,6 +136,8 @@ export const REALISATIONS: Realisation[] = [
     ref: '134',
     ville: 'Casablanca',
     region: 'Casablanca-Settat',
+    lat: 33.5731,
+    lng: -7.5898,
     kwc: '5,68 kWc',
     kwcNum: 5.68,
     date: 'mars 2026',
@@ -141,6 +158,8 @@ export const REALISATIONS: Realisation[] = [
     ref: 'NC-10/25',
     ville: 'Nouaceur',
     region: 'Casablanca-Settat',
+    lat: 33.3667,
+    lng: -7.5833,
     kwc: '3,72 kWc',
     kwcNum: 3.72,
     date: 'octobre 2025',
@@ -165,6 +184,67 @@ export const realisationBySlug = (slug: string): Realisation | undefined =>
 
 export const realisationByRef = (ref: string): Realisation | undefined =>
   REALISATIONS.find((r) => r.ref === ref);
+
+/**
+ * W342 — « L'installation la plus proche de chez vous » : distance haversine
+ * en km entre deux points GPS. Calcul client-side pur (aucun appel réseau,
+ * aucune dépendance) — la même formule que tout manuel de géodésie standard.
+ */
+export function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const R = 6371; // rayon terrestre moyen, km
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(bLat - aLat);
+  const dLng = toRad(bLng - aLng);
+  const sinLat = Math.sin(dLat / 2);
+  const sinLng = Math.sin(dLng / 2);
+  const h = sinLat * sinLat + Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * sinLng * sinLng;
+  return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
+export interface NearestRealisation {
+  realisation: Realisation;
+  distanceKm: number;
+}
+
+/**
+ * W342 — l'installation réelle la plus proche d'un point GPS donné (le repère
+ * posé par le visiteur sur son toit, ou le point du premier zone de toiture
+ * côté proposition). Honnêtement scopé aux villes réelles de `REALISATIONS` —
+ * jamais une ville inventée. `maxKm` (défaut 80 km, ≈ le rayon Grand
+ * Casablanca–El Jadida–Nouaceur) évite d'annoncer « la plus proche » pour un
+ * visiteur à Tanger ou Agadir, où le chantier le plus proche resterait à
+ * plusieurs centaines de km — pas une vraie preuve de proximité.
+ */
+export function nearestRealisation(
+  lat: number,
+  lng: number,
+  maxKm = 80,
+): NearestRealisation | null {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  let best: NearestRealisation | null = null;
+  for (const r of REALISATIONS) {
+    const distanceKm = haversineKm(lat, lng, r.lat, r.lng);
+    if (!best || distanceKm < best.distanceKm) best = { realisation: r, distanceKm };
+  }
+  if (!best || best.distanceKm > maxKm) return null;
+  return best;
+}
+
+/**
+ * W342 — repli par nom de ville (pas de GPS disponible, ex. proposition sans
+ * `roof_layout`) : recherche insensible à la casse/accents dans le texte
+ * d'adresse fourni. Retourne la PREMIÈRE réalisation dont la ville apparaît
+ * dans le texte — jamais une correspondance floue/devinée.
+ */
+export function nearestRealisationByCityText(addressText: string): Realisation | null {
+  const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const hay = norm(addressText || '');
+  if (!hay.trim()) return null;
+  for (const r of REALISATIONS) {
+    if (hay.includes(norm(r.ville))) return r;
+  }
+  return null;
+}
 
 /**
  * W283 — Standard de légende par étude de cas : « [Ville] — X kWc — installé

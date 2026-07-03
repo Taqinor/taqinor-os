@@ -77,6 +77,10 @@ import {
 import { renderYearCurve } from '../../lib/proposalCurve';
 import { renderProposalChart, resolveSeries } from '../../lib/proposalChart';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
+// W342 — « installation la plus proche » : haversine sur un point GPS réel
+// (premier sommet du premier pan de toiture, quand roof_layout est exposé) ou,
+// à défaut, correspondance texte sur le nom de ville dans l'adresse client.
+import { nearestRealisation, nearestRealisationByCityText } from '../../lib/realisations';
 
 const API_BASE = (import.meta.env.PUBLIC_API_BASE as string | undefined) ?? 'https://api.taqinor.ma';
 const { token } = Astro.params as { token: string };
@@ -297,6 +301,19 @@ const roofLayout = ok ? parseRoofLayout(data?.roof_layout) : null;
 const viewerModel = roofLayout ? buildViewerModel(roofLayout) : null;
 const show3d = !!viewerModel && viewerModel.totalPanels >= 0;
 const viewerConfig = show3d ? JSON.stringify({ model: viewerModel }) : null;
+
+// ── W342 — « L'installation la plus proche de chez vous » ────────────────────
+// Priorité au VRAI GPS du toit (premier sommet du premier pan de
+// roofLayout — [lng, lat]) quand le backend l'expose (QJ26, pas encore en
+// prod aujourd'hui) ; à défaut, correspondance texte du nom de ville dans
+// `client_addr` (déjà exposé). Honnêtement scopé aux villes réelles de
+// REALISATIONS (nearestRealisation borne à 80 km) — jamais une ville devinée.
+const roofPinLngLat = roofLayout?.zones?.[0]?.vertices?.[0] ?? null;
+const nearestInstall = ok
+  ? (roofPinLngLat ? nearestRealisation(roofPinLngLat[1], roofPinLngLat[0])?.realisation ?? null : null) ??
+    (q?.client_addr ? nearestRealisationByCityText(q.client_addr) : null)
+  : null;
+const nearestInstallHref = nearestInstall ? `/realisations/${nearestInstall.slug}` : '';
 
 // ── WJ26 — « Tout est expliqué » : légende par pan + visite guidée en 4 étapes.
 // Chaque chiffre vient du layout serveur ou du payload quote (les fonctions
@@ -1198,6 +1215,33 @@ const signConfig = ok
             <StarRating />
           </div>
         </div>
+
+        {/* W342 — « L'installation la plus proche de chez vous » : GPS réel du
+            toit (roof_layout, pas encore exposé backend) ou correspondance
+            texte de ville (client_addr). Absent → section entière omise,
+            jamais une ville inventée. */}
+        {nearestInstall && (
+          <div class="mt-4 cine-card rounded-xl p-5 sm:p-6">
+            <p class="tech-label text-brass-300" data-i18n
+              data-fr="L'installation la plus proche de chez vous"
+              data-en="The installation closest to you"
+              data-ar="أقرب تركيب من منزلكم">
+              L'installation la plus proche de chez vous
+            </p>
+            <p class="v2-body mt-2">
+              <span data-i18n
+                data-fr={`${nearestInstall.ville} — ${nearestInstall.kwc} — installation réelle Taqinor`}
+                data-en={`${nearestInstall.ville} — ${formatNumber(nearestInstall.kwcNum, 2)} kWc — real Taqinor installation`}
+                data-ar={`${nearestInstall.ville} — ${nearestInstall.kwc} — تركيب حقيقي لتاقينور`}>
+                {nearestInstall.ville} — {nearestInstall.kwc} — installation réelle Taqinor
+              </span>
+            </p>
+            <a href={nearestInstallHref} class="mt-2 inline-block text-sm text-brass-300 underline-offset-2 hover:underline" data-i18n
+              data-fr="Voir cette réalisation" data-en="See this project" data-ar="مشاهدة هذا الإنجاز">
+              Voir cette réalisation
+            </a>
+          </div>
+        )}
 
         <!-- WJ35 — bandeau certifications/garanties (texte, sobre — aucun logo fabriqué). -->
         <div class="mt-4">

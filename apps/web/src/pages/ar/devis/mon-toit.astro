@@ -624,6 +624,16 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             Fourchette préliminaire calculée à partir de votre facture (autoconsommation, loi
             82-21). Le chiffrage exact est établi après visite technique — sans engagement.
           </p>
+          <!-- W342 — « L'installation la plus proche de chez vous » : calculée
+               côté client (haversine sur REALISATIONS, lib/realisations.ts) à
+               partir du repère GPS posé sur la carte. Masquée par défaut —
+               n'apparaît QUE si un vrai chantier Taqinor est à proximité
+               honnête (≤ 80 km) ; jamais une ville inventée. -->
+          <div id="mt-nearest-install" hidden class="mt-4 border border-brass-400/25 bg-white/5 p-3 text-sm text-white">
+            <p class="tech-label text-brass-300" data-i18n data-fr="L'installation la plus proche de chez vous" data-ar="أقرب تركيب من منزلكم">L'installation la plus proche de chez vous</p>
+            <p class="mt-1"><bdi id="mt-nearest-install-text">—</bdi></p>
+            <a id="mt-nearest-install-link" href="/ar/realisations" class="mt-1 inline-block text-xs text-brass-300 underline-offset-2 hover:underline" data-i18n data-fr="Voir cette réalisation" data-ar="مشاهدة هذا الإنجاز">Voir cette réalisation</a>
+          </div>
           <!-- WJ71 — bande de confiance CLIMATIQUE, surfacée par défaut. -->
           <p id="mt-climate-band" hidden class="mt-1.5 text-xs text-lune-faint" data-i18n
             data-fr="Été côtier chaud/poussiéreux : la production peut descendre jusqu'à ≈"
@@ -1048,6 +1058,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // (src/lib/proposition.ts) : virgule décimale, zéros de fin retirés — plus
   // jamais le point brut de `String(est.kwc)`.
   import { formatKwc } from '../../../lib/proposition';
+  // W342 — « installation la plus proche » : haversine client-side sur le
+  // repère GPS posé (aucun appel réseau).
+  import { nearestRealisation } from '../../../lib/realisations';
   import { type CaptureStrings } from '../../../scripts/roofPro11/mapDraw';
 
   // WJ41 — رسائل نظام الخريطة/محدد المواقع (roofPro11/mapDraw.ts + captureBoot.ts
@@ -1681,6 +1694,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       lastEstFull = null;
       if (cowEl) cowEl.hidden = true;
       if (climateBandEl) climateBandEl.hidden = true;
+      { const nearestElTL = $('mt-nearest-install'); if (nearestElTL) nearestElTL.hidden = true; }
       if (saveBtn) saveBtn.hidden = true;
       updatePanels3dVisibility();
       announceEstimate(currentLang === 'ar' ? 'التقدير غير متاح — تحقّقوا من المبلغ المُدخل.' : 'Estimation indisponible — vérifiez le montant saisi.');
@@ -1701,6 +1715,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       lastEstFull = null;
       if (cowEl) cowEl.hidden = true;
       if (climateBandEl) climateBandEl.hidden = true;
+      { const nearestElNa = $('mt-nearest-install'); if (nearestElNa) nearestElNa.hidden = true; }
       if (saveBtn) saveBtn.hidden = true;
       updatePanels3dVisibility();
       announceEstimate(currentLang === 'ar'
@@ -1737,6 +1752,31 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       paybackLabel: est.paybackLabel,
       savingsMonthlyLow: est.savingsMonthlyLow,
     };
+    // W342 — « installation la plus proche de chez vous » : UNIQUEMENT si un
+    // repère GPS a été posé (capturePin) et qu'un vrai chantier Taqinor est à
+    // proximité honnête (≤ 80 km, cf. nearestRealisation). Sans repère, la
+    // carte reste masquée — jamais une ville devinée depuis le texte libre.
+    const nearestEl = $('mt-nearest-install');
+    if (nearestEl && capturePin) {
+      const near = nearestRealisation(capturePin.lat, capturePin.lng);
+      if (near) {
+        const { realisation: r, distanceKm } = near;
+        const textEl = $('mt-nearest-install-text');
+        const linkEl = $('mt-nearest-install-link') as HTMLAnchorElement | null;
+        const km = Math.round(distanceKm);
+        if (textEl) {
+          textEl.textContent = currentLang === 'ar'
+            ? `${r.ville} — ${r.kwc} — على بعد ${km} كم تقريباً`
+            : `${r.ville} — ${r.kwc} — à environ ${km} km de vous`;
+        }
+        if (linkEl) linkEl.href = `/ar/realisations/${r.slug}`;
+        nearestEl.hidden = false;
+      } else {
+        nearestEl.hidden = true;
+      }
+    } else if (nearestEl) {
+      nearestEl.hidden = true;
+    }
     // W360 — coût de l'attente DÉRIVÉ de la même borne basse déjà affichée
     // (jamais un chiffre séparé/inventé, jamais un compte à rebours).
     if (cowEl) {

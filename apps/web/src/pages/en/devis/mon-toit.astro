@@ -574,6 +574,16 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             Preliminary range calculated from your bill (self-consumption, law 82-21). The
             exact figure is established after a technical site visit — with no obligation.
           </p>
+          <!-- W342 — "the installation closest to you": computed client-side
+               (haversine over REALISATIONS, lib/realisations.ts) from the GPS
+               pin dropped on the map. Hidden by default -- only appears when a
+               real Taqinor job site is within an honest radius (<= 80 km);
+               never a made-up city. -->
+          <div id="mt-nearest-install" hidden class="mt-4 border border-brass-400/25 bg-white/5 p-3 text-sm text-white">
+            <p class="tech-label text-brass-300">The installation closest to you</p>
+            <p class="mt-1"><span id="mt-nearest-install-text">—</span></p>
+            <a id="mt-nearest-install-link" href="/en/realisations" class="mt-1 inline-block text-xs text-brass-300 underline-offset-2 hover:underline">See this project</a>
+          </div>
           <!-- WJ71 — climate confidence band, surfaced by default (never an
                invented lower figure: a hot/dusty coastal summer really does
                reduce production by ~15-20% -- see billEstimate.ts,
@@ -960,6 +970,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // WJ72 — single kWc number style, shared with the proposal (src/lib/proposition.ts):
   // comma decimal, trailing zeros stripped — never the raw dot from `String(est.kwc)`.
   import { formatKwc } from '../../../lib/proposition';
+  // W342 — "closest installation": client-side haversine over the dropped GPS
+  // pin (no network call).
+  import { nearestRealisation } from '../../../lib/realisations';
   import { type CaptureStrings } from '../../../scripts/roofPro11/mapDraw';
 
   // WJ60/WJ63 fix — moved here from the frontmatter: a plain <script> tag in an
@@ -1554,6 +1567,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       lastEstFull = null;
       if (cowEl) cowEl.hidden = true;
       if (climateBandEl) climateBandEl.hidden = true;
+      { const nearestElTL = $('mt-nearest-install'); if (nearestElTL) nearestElTL.hidden = true; }
       if (saveBtn) saveBtn.hidden = true;
       updatePanels3dVisibility();
       announceEstimate('Estimate unavailable — please check the amount entered.');
@@ -1574,6 +1588,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       lastEstFull = null;
       if (cowEl) cowEl.hidden = true;
       if (climateBandEl) climateBandEl.hidden = true;
+      { const nearestElNa = $('mt-nearest-install'); if (nearestElNa) nearestElNa.hidden = true; }
       if (saveBtn) saveBtn.hidden = true;
       updatePanels3dVisibility();
       announceEstimate('Estimate unavailable: enter your monthly bill to calculate it.');
@@ -1608,6 +1623,27 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       paybackLabel: est.paybackLabel,
       savingsMonthlyLow: est.savingsMonthlyLow,
     };
+    // W342 — "installation closest to you": ONLY when a GPS pin was dropped
+    // (capturePin) and a real Taqinor job site is within an honest radius
+    // (<= 80 km, see nearestRealisation). Without a pin, the card stays
+    // hidden -- never a guessed city from free text.
+    const nearestEl = $('mt-nearest-install');
+    if (nearestEl && capturePin) {
+      const near = nearestRealisation(capturePin.lat, capturePin.lng);
+      if (near) {
+        const { realisation: r, distanceKm } = near;
+        const textEl = $('mt-nearest-install-text');
+        const linkEl = $('mt-nearest-install-link') as HTMLAnchorElement | null;
+        const km = Math.round(distanceKm);
+        if (textEl) textEl.textContent = `${r.ville} — ${r.kwc} — about ${km} km from you`;
+        if (linkEl) linkEl.href = `/en/realisations/${r.slug}`;
+        nearestEl.hidden = false;
+      } else {
+        nearestEl.hidden = true;
+      }
+    } else if (nearestEl) {
+      nearestEl.hidden = true;
+    }
     // W360 — cost of waiting DERIVED from the same low bound already shown
     // (never a separate/invented figure, never a countdown).
     if (cowEl) {
