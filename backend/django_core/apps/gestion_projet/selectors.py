@@ -1727,6 +1727,77 @@ def synthese_temps_projet(projet):
     }
 
 
+# ── Détection des temps manquants (XPRJ7) ────────────────────────────────────
+def temps_manquants(company, debut, fin):
+    """Jours SANS saisie de temps par ressource ACTIVE liée à un user (XPRJ7).
+
+    Pour chaque ``RessourceProfil`` ACTIVE de la société PORTANT un ``user``
+    lié (une ressource sans compte ERP n'a personne à relancer) : compare les
+    jours OUVRÉS (semaine L-V par défaut, ``_JOURS_OUVRES_DEFAUT`` — même
+    convention que ``plan_de_charge``) de la fenêtre [debut, fin] (INCLUSIVE)
+    MOINS les jours couverts par une ``Indisponibilite`` chevauchante, à
+    l'ensemble des ``date`` distinctes où une ``Timesheet`` existe pour cette
+    ressource. Les jours ouvrés attendus SANS saisie sont listés en clair.
+
+    Lecture seule, multi-société : toutes les données lues sont filtrées sur
+    ``company``. ``fin < debut`` → aucun jour attendu pour personne. Renvoie
+    un dict ``{debut, fin, lignes: [{ressource_id, ressource_nom, user_id,
+    jours_attendus, jours_saisis, jours_manquants: [date, ...]}]}`` trié par
+    nom de ressource ; seules les ressources avec AU MOINS un jour manquant
+    figurent dans ``lignes``.
+    """
+    if fin < debut:
+        return {'debut': debut, 'fin': fin, 'lignes': []}
+
+    jours_ouvres = _JOURS_OUVRES_DEFAUT
+
+    # Tous les jours OUVRÉS de la fenêtre (indépendants de la ressource).
+    tous_jours_ouvres = []
+    cur = debut
+    while cur <= fin:
+        if cur.weekday() in jours_ouvres:
+            tous_jours_ouvres.append(cur)
+        cur += timedelta(days=1)
+
+    ressources = RessourceProfil.objects.filter(
+        company=company, actif=True, user__isnull=False)
+
+    lignes = []
+    for ressource in ressources.order_by('nom', 'id'):
+        indispos = list(Indisponibilite.objects.filter(
+            company=company, ressource=ressource,
+            date_debut__lte=fin, date_fin__gte=debut))
+
+        def _indisponible(jour, indispos=indispos):
+            return any(i.date_debut <= jour <= i.date_fin for i in indispos)
+
+        jours_attendus = [
+            j for j in tous_jours_ouvres if not _indisponible(j)]
+        if not jours_attendus:
+            continue
+
+        jours_saisis = set(Timesheet.objects.filter(
+            company=company, ressource=ressource,
+            date__gte=debut, date__lte=fin,
+        ).values_list('date', flat=True))
+
+        jours_manquants = [j for j in jours_attendus if j not in jours_saisis]
+        if not jours_manquants:
+            continue
+
+        lignes.append({
+            'ressource_id': ressource.id,
+            'ressource_nom': ressource.nom,
+            'user_id': ressource.user_id,
+            'jours_attendus': len(jours_attendus),
+            'jours_saisis': len(
+                [j for j in jours_attendus if j in jours_saisis]),
+            'jours_manquants': jours_manquants,
+        })
+
+    return {'debut': debut, 'fin': fin, 'lignes': lignes}
+
+
 # ── Consommation matière vs BoM (PROJ25) ─────────────────────────────────────
 def _consommation_matiere_cross_app(projet):
     """Consommation matière RÉELLE d'un projet via les apps cibles (ou dégrade).

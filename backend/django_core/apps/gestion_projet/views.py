@@ -1657,6 +1657,41 @@ class TimesheetViewSet(_GestionProjetBaseViewSet):
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(TimesheetSerializer(timesheet).data)
 
+    @action(detail=False, methods=['get'], url_path='manquants')
+    def manquants(self, request):
+        """Jours SANS saisie de temps par ressource sur une période (XPRJ7).
+
+        Query params ``?debut=YYYY-MM-DD&fin=YYYY-MM-DD`` (obligatoires).
+        Délègue à ``selectors.temps_manquants`` (jours ouvrés attendus moins
+        indisponibilités, comparés aux jours réellement saisis). Toujours
+        scopé société (``request.user.company``).
+        """
+        debut = _parse_date_param(request.query_params.get('debut'))
+        fin = _parse_date_param(request.query_params.get('fin'))
+        if debut is None or fin is None:
+            return Response(
+                {'detail': 'Les paramètres « debut » et « fin » '
+                           '(YYYY-MM-DD) sont obligatoires.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        data = selectors.temps_manquants(
+            request.user.company, debut, fin)
+        return Response({
+            'debut': str(data['debut']),
+            'fin': str(data['fin']),
+            'lignes': [
+                {
+                    'ressource_id': ligne['ressource_id'],
+                    'ressource_nom': ligne['ressource_nom'],
+                    'user_id': ligne['user_id'],
+                    'jours_attendus': ligne['jours_attendus'],
+                    'jours_saisis': ligne['jours_saisis'],
+                    'jours_manquants': [
+                        str(j) for j in ligne['jours_manquants']],
+                }
+                for ligne in data['lignes']
+            ],
+        })
+
 
 class PeriodeVerrouilleeTempsViewSet(_GestionProjetBaseViewSet):
     """Verrous de période (mois) sur les feuilles de temps (XPRJ1) — CRUD scopé.

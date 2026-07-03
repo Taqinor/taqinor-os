@@ -767,6 +767,74 @@ def valider_situation(situation, *, user):
     return situation
 
 
+# ── Rappels des temps manquants (XPRJ7) ──────────────────────────────────────
+def rappeler_temps_manquants(company, debut, fin):
+    """Notifie CHAQUE ressource en retard de saisie sur [debut, fin] (XPRJ7).
+
+    Délègue la détection à ``selectors.temps_manquants`` puis diffuse UNE
+    notification interne par ressource via ``apps.notifications.services.
+    notify`` (import fonction-local — frontière cross-app ; événement générique
+    ``DIGEST``, réutilisé tel quel par d'autres rappels périodiques du repo).
+
+    IDEMPOTENT : une notification déjà émise AUJOURD'HUI pour cette ressource +
+    cette fenêtre exacte (marqueur dans ``Notification.link``) n'est jamais
+    re-diffusée — relancer la commande plusieurs fois le même jour ne spamme
+    pas. Best-effort par ressource : un échec de notification n'interrompt pas
+    les suivantes. Renvoie ``{nb_en_retard, nb_notifies, nb_deja_notifies}``.
+    """
+    from django.utils import timezone
+
+    from . import selectors
+
+    data = selectors.temps_manquants(company, debut, fin)
+    lignes = data['lignes']
+    if not lignes:
+        return {'nb_en_retard': 0, 'nb_notifies': 0, 'nb_deja_notifies': 0}
+
+    from apps.notifications.models import EventType, Notification
+    from apps.notifications.services import notify
+
+    today = timezone.localdate()
+    nb_notifies = 0
+    nb_deja_notifies = 0
+    for ligne in lignes:
+        marqueur = (
+            f'gestion_projet:rappel_timesheet:{ligne["ressource_id"]}:'
+            f'{debut}:{fin}:{today}')
+        deja_notifie = Notification.objects.filter(
+            company=company, recipient_id=ligne['user_id'],
+            event_type=EventType.DIGEST, link=marqueur,
+            created_at__date=today,
+        ).exists()
+        if deja_notifie:
+            nb_deja_notifies += 1
+            continue
+        try:
+            from authentication.models import CustomUser
+            user = CustomUser.objects.filter(id=ligne['user_id']).first()
+            if user is None:
+                continue
+            nb_manquants = len(ligne['jours_manquants'])
+            notify(
+                user, EventType.DIGEST,
+                title='Feuilles de temps manquantes',
+                body=(
+                    f'{nb_manquants} jour(s) sans saisie de temps entre '
+                    f'{debut} et {fin}.'),
+                link=marqueur,
+                company=company,
+            )
+            nb_notifies += 1
+        except Exception:  # pragma: no cover - défensif, best-effort
+            continue
+
+    return {
+        'nb_en_retard': len(lignes),
+        'nb_notifies': nb_notifies,
+        'nb_deja_notifies': nb_deja_notifies,
+    }
+
+
 # ── Chrono start/stop sur tâche (XPRJ5) ──────────────────────────────────────
 class ChronoError(Exception):
     """Erreur métier sur le chrono start/stop d'une tâche."""
