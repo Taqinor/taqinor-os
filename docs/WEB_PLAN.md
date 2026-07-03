@@ -1780,6 +1780,46 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 architecture change, or a taste call — it builds and NOTES it. What remains here genuinely needs
 **you**: a real-world data drop, a Cloudflare dashboard secret, or a taste/business call.
 
+### GATE DECISIONS — RESOLVED by Reda 2026-07-03 (a build run honors these; do NOT re-ask)
+
+**Business / feature calls (decided):**
+- **Response-time promise (WG9): « Réponse WhatsApp sous 1 h, 7j/7 ».** WJ58 + every response-window
+  reference (W255/W331/W332/marocains-du-monde) use « sous 1 h, 7j/7 » (FR) / equivalent AR.
+- **Production guarantee (WG12): YES — build the W352 scaffold, gated.** Section ships but shows NO
+  number until Reda supplies the floor % + remedy (still-needed data below).
+- **Referral / parrainage (WG14): YES — build W338** (+ W343/W344 links). Publish the mechanic + terms
+  copy; the reward amount + trigger milestone stay blank until Reda gives them (still-needed below).
+- **Commerce (WG13): build W353 « réserver un créneau de visite » (NO payment).** Online deposit /
+  CMI is DECLINED for now — do NOT build any payment integration.
+- **AI assistant: NO chatbot for now — free prep only.** Build W379 (llms.txt) + W380 (facts.ts); do
+  NOT build the on-site AI-assistant concept.
+- **Promote the 3D roof tool live (WG1): NO — keep `/preview/*` private for now.** Do not surface
+  toiture-3d-pro-11 publicly; no `PUBLIC_MAPTILER_KEY` needed yet. (WJ2's lite in-capture 3D stays.)
+- **PWA (W357): YES — installable + minimal offline caching** (no push notifications).
+- **Financing content (WG11 / W258/W261/W336): publish ONLY primary-source-verified facts.** Research
+  + cite each named program during the build; drop anything unconfirmed; never a partnership claim or
+  invented rate.
+
+**Standing operating consent for a build run (decided):**
+- **Dependencies:** free npm packages MAY be added when a task needs one (NOTE each in the DONE LOG);
+  any PAID service still stops-and-asks.
+- **Cloudflare secrets:** Reda WILL set a dashboard secret when told exactly which — build each such
+  feature no-op-safe (does nothing until the secret exists) and hand over the exact key + value. The
+  one currently implied: `PUBLIC_CF_ANALYTICS_TOKEN` (WJ94).
+- **Lead fields:** additive OPTIONAL CRM fields (email, GPS pin, mode, utility, financing intent,
+  foreign-phone flag…) are APPROVED — the 1 000 MAD threshold + consent + webhook contract stay
+  byte-for-byte unchanged; every new field is optional and never blocks a submit.
+
+**STILL NEEDED FROM REDA (real data/content — a build run scaffolds these no-op-safe and leaves the
+task open until the data lands):** WG5 Google Business Profile + client reviews · WG6 testimonials
+(text + 2–3 WhatsApp-shot videos) · WG7 case-study photos/production data + any install outside
+Casablanca · WG8 ICE/RC + social URLs + any installer accreditation · WG10 entretien tier
+names/inclusions/SLAs/prices · WG12 exact production-guarantee floor % + remedy · WG14 referral
+reward amount + trigger milestone · WG15 create the « Taqinor Solaire Maroc » WhatsApp Channel (then
+the site adds the follow link) · WG16 warranty-exclusions list + pay-from-abroad mechanics + a legal
+skim of the CGI art. 123-22° corporate-VAT section · WG2 délégataire tariff grids (one recent bill
+each for Lydec/Redal/Amendis).
+
 - **WG1 — Promote a `/preview/*` tool to the live public site.** A taste + business decision (which
   tool, when, how it links into the funnel). **MY RECOMMENDATION: promote `toiture-3d-pro-11`** — the
   most-refined 3D roof-trace tool and the strongest top-of-funnel hook ("trace your roof → see your
