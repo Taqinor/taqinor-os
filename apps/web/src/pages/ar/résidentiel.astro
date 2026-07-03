@@ -237,7 +237,12 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
     <!-- الفصل الأخير — الغرفة البيضاء -->
     <DiagnosticForm heading="تشخيصك في 60 ثانية" />
 
-    <CtaBand href={L('/devis/mon-toit')} seam={false} />
+    <CtaBand
+      title="سؤال قبل أن تلتزم؟ تحدّث مع إنسان."
+      buttonLabel="واتساب مباشر مع مستشار"
+      href={waDirect}
+      seam={false}
+    />
 
     <StickyCta />
   </div>

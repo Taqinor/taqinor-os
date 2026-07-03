@@ -255,7 +255,12 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
     <!-- ACTE FINAL — la salle blanche -->
     <DiagnosticForm heading="Diagnostic pour votre site professionnel" />
 
-    <CtaBand title="Vos courbes de charge méritent une étude sérieuse." href="/devis/mon-toit" seam={false} />
+    <CtaBand
+      title="Une question sur votre site avant de vous lancer ? Parlez à un humain."
+      buttonLabel="WhatsApp direct avec un conseiller"
+      href={waDirect}
+      seam={false}
+    />
 
     <StickyCta />
   </div>

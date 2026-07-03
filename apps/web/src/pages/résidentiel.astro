@@ -241,7 +241,12 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
     <!-- ACTE FINAL — la salle blanche -->
     <DiagnosticForm heading="Votre diagnostic en 60 secondes" />
 
-    <CtaBand href="/devis/mon-toit" seam={false} />
+    <CtaBand
+      title="Une question avant de vous lancer ? Parlez à un humain."
+      buttonLabel="WhatsApp direct avec un conseiller"
+      href={waDirect}
+      seam={false}
+    />
 
     <StickyCta />
   </div>
