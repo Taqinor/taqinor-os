@@ -40,6 +40,7 @@ const workersDevRedirect = () => ({
       await copyFile(new URL('./worker/canonical.mjs', import.meta.url), new URL('canonical.mjs', serverDir));
       await copyFile(new URL('./worker/redirects.mjs', import.meta.url), new URL('redirects.mjs', serverDir));
       await copyFile(new URL('./worker/cache.mjs', import.meta.url), new URL('cache.mjs', serverDir));
+      await copyFile(new URL('./worker/headers.mjs', import.meta.url), new URL('headers.mjs', serverDir));
       await copyFile(new URL('./worker/redirect-entry.mjs', import.meta.url), new URL('redirect-entry.mjs', serverDir));
 
       cfg.main = 'redirect-entry.mjs';
