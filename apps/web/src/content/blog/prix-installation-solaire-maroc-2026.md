@@ -6,6 +6,7 @@ tags: ["coût", "prix", "installation", "2026"]
 author: "Reda Kasri"
 ogSlug: "accueil"
 draft: false
+theme: "Prix"
 ---
 
 « Combien ça coûte, vraiment ? » C'est la première phrase de presque tous mes rendez-vous. Et la raison pour laquelle les chiffres qu'on trouve en ligne vont du simple au triple est facile à expliquer : le prix d'un panneau posé sur une étagère n'a rien à voir avec celui d'une installation clé-en-main, montée sur votre toit et raccordée. Je préfère donc poser les fourchettes du marché marocain 2026 telles qu'elles sont, avec leurs sources et, surtout, leurs limites.

@@ -6,6 +6,7 @@ tags: ["batterie", "LFP", "Dyness", "Deye", "Huawei"]
 author: "Reda Kasri"
 ogSlug: "equipement"
 draft: false
+theme: "Batteries"
 ---
 
 Sur le terrain, le choix d'une batterie se joue rarement sur la capacité affichée. Il se joue sur deux détails qu'on oublie en showroom : comment la chimie vieillit sous la chaleur marocaine, et ce qui se passe exactement à l'instant où l'ONEE coupe le courant. Je passe sur ces deux points avec la gamme que j'installe le plus, Dyness, puis je tranche le débat onduleur entre Deye et Huawei.

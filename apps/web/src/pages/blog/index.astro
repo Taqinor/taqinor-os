@@ -7,6 +7,11 @@
  *
  * En PROD, les brouillons sont masqués du build (donc de l'index, du sitemap et
  * du flux RSS) ; en dev ils restent visibles pour relecture.
+ *
+ * W329 — puces de filtre par thème (miroir des groupes de /guides) + lien
+ * « guide associé » par carte quand l'article porte un `theme` (frontmatter
+ * optionnel, cf. src/content.config.ts). Un article sans thème reste affiché,
+ * simplement hors de tout filtre et sans lien associé — jamais de build cassé.
  */
 import { getCollection } from 'astro:content';
 import Layout from '../../layouts/Layout.astro';
@@ -15,12 +20,27 @@ import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
+import { BLOG_THEMES } from '../../content.config';
 
 const posts = (
   await getCollection('blog', ({ data }) => (import.meta.env.PROD ? !data.draft && data.pubDate.getTime() <= Date.now() : true))
 ).sort((a, b) => b.data.pubDate.getTime() - a.data.pubDate.getTime());
 
 const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+
+// W329 — un guide associé par thème, MÊME vocabulaire de thème que les groupes
+// de /guides (src/pages/guides/index.astro) : le guide le plus représentatif
+// de chaque thème, pour le lien « guide associé » sous les cartes concernées.
+const GUIDE_BY_THEME: Partial<Record<(typeof BLOG_THEMES)[number], { href: string; title: string }>> = {
+  Solaire: { href: '/guides/combien-de-panneaux-pour-ma-maison', title: 'Combien de panneaux et quelle puissance (kWc) ?' },
+  Batteries: { href: '/guides/faut-il-des-batteries', title: 'Faut-il des batteries ?' },
+  'Voiture électrique': { href: '/recharge-voiture-electrique-solaire', title: 'Recharger sa voiture électrique au solaire' },
+  Prix: { href: '/prix-panneaux-solaires-maroc', title: 'Prix des panneaux solaires au Maroc' },
+};
+
+// Puces de filtre : uniquement les thèmes réellement présents parmi les
+// articles publiés (jamais une puce vide qui ne filtrerait rien).
+const themesPresent = BLOG_THEMES.filter((theme) => posts.some((p) => p.data.theme === theme));
 
 const jsonLd = {
   '@context': 'https://schema.org',
@@ -66,15 +86,44 @@ const jsonLd = {
           <p class="v2-lead text-lune-soft">Les premiers articles arrivent très bientôt.</p>
         </div>
       ) : (
-        <div class="mx-auto grid max-w-6xl gap-6 md:grid-cols-3" data-stagger>
-          {posts.map((p, i) => (
-            <a href={`/blog/${p.id}`} class="v2-rise cine-card blog-card flex flex-col p-7" style={`--v2-i:${i}`}>
-              <p class="tech-label text-brass-300">{dateFmt.format(p.data.pubDate)}</p>
-              <h2 class="display mt-2 text-xl text-white">{p.data.title}</h2>
-              <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{p.data.description}</p>
-              <span class="mt-5 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white">Lire l’article →</span>
-            </a>
-          ))}
+        <div class="mx-auto max-w-6xl">
+          {/* W329 — puces de filtre par thème, miroir des groupes de /guides.
+              Progressive enhancement : sans JS, tous les articles restent
+              visibles (aucune puce n'est un lien, le filtrage est purement
+              client-side additif). */}
+          {themesPresent.length > 0 && (
+            <div id="blog-theme-filters" class="mb-8 flex flex-wrap gap-2.5" role="group" aria-label="Filtrer par thème">
+              <button type="button" class="theme-chip is-active" data-theme-filter="all" aria-pressed="true">
+                Tous
+              </button>
+              {themesPresent.map((theme) => (
+                <button type="button" class="theme-chip" data-theme-filter={theme} aria-pressed="false">
+                  {theme}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div class="grid gap-6 md:grid-cols-3" data-stagger>
+            {posts.map((p, i) => {
+              const guide = p.data.theme ? GUIDE_BY_THEME[p.data.theme] : undefined;
+              return (
+                <div class="blog-card-wrap" data-theme-item={p.data.theme ?? ''}>
+                  <a href={`/blog/${p.id}`} class="v2-rise cine-card blog-card flex flex-col p-7" style={`--v2-i:${i}`}>
+                    <p class="tech-label text-brass-300">{dateFmt.format(p.data.pubDate)}</p>
+                    <h2 class="display mt-2 text-xl text-white">{p.data.title}</h2>
+                    <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{p.data.description}</p>
+                    <span class="mt-5 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white">Lire l’article →</span>
+                  </a>
+                  {guide && (
+                    <a href={guide.href} class="related-guide-link mt-2 inline-flex items-center gap-1.5 text-xs text-lune-faint transition-colors hover:text-white">
+                      Guide associé : {guide.title} →
+                    </a>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </section>
@@ -96,4 +145,72 @@ const jsonLd = {
       box-shadow: 0 28px 64px -28px rgb(0 0 0 / 0.85);
     }
   }
+
+  /* W329 — puces de filtre par thème. Dimensions fixes (padding/bordure),
+     jamais de largeur dépendante du contenu chargé après coup : zéro CLS. */
+  .theme-chip {
+    border: 1px solid rgb(255 255 255 / 0.15);
+    background: rgb(255 255 255 / 0.03);
+    color: var(--color-lune-soft, #adb5cd);
+    padding: 0.4rem 0.9rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .theme-chip.is-active {
+    border-color: var(--color-brass-400, #e8b54a);
+    background: rgb(232 181 74 / 0.12);
+    color: var(--color-brass-300, #f3cc66);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .theme-chip {
+      transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    }
+  }
+
+  /* Carte + lien « guide associé » forment un même bloc visuel, sans jamais
+     imbriquer deux <a> (accessibilité) : le lien associé vit sous la carte. */
+  .blog-card-wrap {
+    display: flex;
+    flex-direction: column;
+  }
+  .related-guide-link {
+    align-self: flex-start;
+  }
+
+  /* Masquage par filtre — display:none ne change pas la hauteur des cartes
+     restantes (grid se recalcule normalement), donc pas de layout thrash
+     perçu comme un CLS a posteriori (c'est une interaction utilisateur, pas
+     un chargement asynchrone non sollicité). */
+  .blog-card-wrap[hidden] {
+    display: none;
+  }
 </style>
+
+<script>
+  // W329 — filtre client-side pur (aucune requête, aucun framework). Sans JS,
+  // les puces restent visibles mais inertes et TOUS les articles s'affichent
+  // (progressive enhancement, jamais de contenu qui disparaît sans JS).
+  const filterBar = document.getElementById('blog-theme-filters');
+  if (filterBar) {
+    const chips = Array.from(filterBar.querySelectorAll<HTMLButtonElement>('[data-theme-filter]'));
+    const cards = Array.from(document.querySelectorAll<HTMLElement>('[data-theme-item]'));
+
+    filterBar.addEventListener('click', (e) => {
+      const chip = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-theme-filter]');
+      if (!chip) return;
+      const selected = chip.dataset.themeFilter ?? 'all';
+
+      for (const c of chips) {
+        const isActive = c === chip;
+        c.classList.toggle('is-active', isActive);
+        c.setAttribute('aria-pressed', String(isActive));
+      }
+
+      for (const card of cards) {
+        const matches = selected === 'all' || card.dataset.themeItem === selected;
+        card.hidden = !matches;
+      }
+    });
+  }
+</script>
