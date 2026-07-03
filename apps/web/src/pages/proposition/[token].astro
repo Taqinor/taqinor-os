@@ -22,6 +22,11 @@ import StarRating from '../../components/StarRating.astro';
 import TestimonialCarousel from '../../components/TestimonialCarousel.astro';
 import InstallCounter from '../../components/InstallCounter.astro';
 import CertLogoRow from '../../components/CertLogoRow.astro';
+// WJ57 — « confiance au moment de la signature » : UN témoignage court (texte,
+// slot vidéo réservé pour quand WG6 fournira de vrais témoignages filmés) +
+// le bandeau certifications/garanties, juste au-dessus du bloc e-sign. Même
+// source unique de vérité que <TestimonialCarousel/> (aucun avis fabriqué).
+import { TESTIMONIALS, hasTestimonials } from '../../lib/testimonials';
 // WJ35 — grade « heure dorée » v3 (.v3-grade / .photo-grade), importé ici car
 // cette page ne monte pas <V2Enhance/> (qui l'importe pour les pages v2). La
 // feuille est dédupliquée par Vite si une autre page l'importe déjà ailleurs.
@@ -269,6 +274,15 @@ const faq = objectionFaq();
 // fournir le VRAI contenu ci-dessous) le jour où Reda livre WG5/WG6.
 const REAL_PROJECT_PHOTOS_AVAILABLE = false;
 const REAL_FOUNDER_QUOTE_AVAILABLE = false;
+
+// ── WJ57 — « confiance au moment de la signature ». Même discipline no-op :
+// tant qu'aucun témoignage FILMÉ réel n'existe (WG6), le slot vidéo ne rend
+// RIEN (pas de player vide, pas de mention "bientôt") ; le repli texte réutilise
+// la MÊME source unique de vérité (`TESTIMONIALS`) que <TestimonialCarousel/> —
+// jamais un avis fabriqué pour ce placement. `signTestimonial` = le premier avis
+// réel disponible (le plus court à lire juste avant de signer).
+const REAL_TESTIMONIAL_VIDEO_AVAILABLE = false;
+const signTestimonial = hasTestimonials() ? TESTIMONIALS[0] : null;
 
 const pageTitle = ok ? `Proposition ${reference} — ${clientName} | Taqinor` : 'Proposition | Taqinor';
 
@@ -1198,6 +1212,37 @@ const signConfig = ok
             </a>
           </p>
           <p id="contact-confirm" class="mt-3 text-sm text-brass-300" role="status" aria-live="polite" hidden></p>
+        </div>
+      </section>
+
+      <!-- ── WJ57 · CONFIANCE AU MOMENT DE SIGNER — juste au-dessus du bloc
+           e-sign (pas seulement dans la section « Pourquoi nous faire
+           confiance » plus haut). Un slot vidéo est réservé pour quand WG6
+           fournira de vrais témoignages filmés (no-op tant qu'absent — MÊME
+           discipline que REAL_FOUNDER_QUOTE_AVAILABLE) ; en attendant, repli
+           texte sur le même avis client réel (hasTestimonials()) que
+           <TestimonialCarousel/> plus haut, jamais un second avis fabriqué.
+           Les badges certifications/garanties (mêmes FAITS que CertLogoRow
+           plus haut) sont TOUJOURS affichés ici, qu'un témoignage soit
+           disponible ou non — ce sont des faits vérifiables, pas du contenu
+           gated. -->
+      <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
+        <div class="cine-card rounded-2xl p-6 sm:p-7">
+          {REAL_TESTIMONIAL_VIDEO_AVAILABLE ? (
+            <!-- Slot vidéo réservé (WG6) : à remplir par Reda avec le vrai
+                 témoignage filmé le jour où il devient disponible. -->
+            <div class="video-testimonial-slot" data-testimonial-video></div>
+          ) : signTestimonial ? (
+            <blockquote class="v2-body text-lune">
+              &ldquo;{signTestimonial.quote}&rdquo;
+              <footer class="mt-3 text-sm text-lune-faint not-italic">
+                <span class="font-bold text-lune">{signTestimonial.name}</span> · {signTestimonial.city} · {signTestimonial.system}
+              </footer>
+            </blockquote>
+          ) : null}
+          <div class={signTestimonial || REAL_TESTIMONIAL_VIDEO_AVAILABLE ? 'mt-5 border-t border-white/10 pt-5' : ''}>
+            <CertLogoRow />
+          </div>
         </div>
       </section>
 
