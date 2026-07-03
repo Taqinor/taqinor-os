@@ -107,10 +107,11 @@ class FournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
             pass
 
     @action(detail=True, methods=['get'], url_path='performance',
-            permission_classes=[IsAdminRole])
+            permission_classes=[HasPermissionOrLegacy('stock_voir')])
     def performance(self, request, *args, **kwargs):
         """FG59 — Scorecard performance fournisseur : délai moyen, taux de
-        remplissage, taux de retour, dépenses totales. Admin-only. INTERNE."""
+        remplissage, taux de retour, dépenses totales, OTD (XPUR7).
+        Lecture Stock. INTERNE."""
         from ..services import supplier_performance
         fournisseur = self.get_object()
         return Response(supplier_performance(request.user.company, fournisseur))
