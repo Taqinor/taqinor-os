@@ -147,8 +147,10 @@ class LigneVenteComptoir(models.Model):
 
     @property
     def total_ttc(self):
-        return (self.quantite * self.prix_unitaire_ttc
-                * (1 - (self.remise or Decimal('0')) / 100))
+        quantite = Decimal(str(self.quantite or 0))
+        prix = Decimal(str(self.prix_unitaire_ttc or 0))
+        remise = Decimal(str(self.remise or 0))
+        return quantite * prix * (1 - remise / 100)
 
     @property
     def taux_tva_effectif(self):
@@ -156,7 +158,9 @@ class LigneVenteComptoir(models.Model):
 
     @property
     def total_ht(self):
-        taux = self.taux_tva_effectif or Decimal('0')
+        # taux_tva peut arriver en float (valeur non encore persistée) — on le
+        # ramène en Decimal pour ne jamais diviser un Decimal par un float.
+        taux = Decimal(str(self.taux_tva_effectif or 0))
         return (self.total_ttc / (1 + taux / 100)) if taux else self.total_ttc
 
 
