@@ -70,6 +70,10 @@ const STATIC_TRANSLATED: readonly string[] = [
   '/guides/mon-toit-peut-il-supporter-des-panneaux',
   '/guides/monocristallin-ou-polycristallin',
   '/guides/orientation-inclinaison-ombrage',
+  // W295 — blog EN/AR pour les deux articles "argent" (routes EN/AR livrées ci-dessous).
+  '/blog',
+  '/blog/prix-installation-solaire-maroc-2026',
+  '/blog/rentabilite-solaire-par-ville-maroc',
   // WJ38 — parcours devis « Mon toit » localisé (routes EN/AR livrées) : les CTA
   // devis/étude basculent d'eux-mêmes vers /en/... et /ar/... via quoteJourneyHref.
   '/devis/mon-toit',
