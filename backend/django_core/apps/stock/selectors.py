@@ -307,3 +307,54 @@ def three_way_amounts(company, bc_id):
         'montant_recu': montant_recu_bcf(bon),
         'montant_facture': montant_facture_bcf(bon),
     }
+
+
+def echeances_facture_fournisseur(company, facture_id):
+    """XPUR6 — tranches d'échéancier d'une facture fournisseur (utilisées
+    par la balance âgée FG132 et le payment run FG133 pour proposer un
+    paiement PAR ÉCHÉANCE plutôt que par facture entière). Renvoie une liste
+    de dicts triés par date ; vide si la facture n'a pas d'échéancier
+    explicite (repli sur ``FactureFournisseur.date_echeance`` — comportement
+    historique inchangé) ou n'appartient pas à la société."""
+    from .models import FactureFournisseur
+    facture = FactureFournisseur.objects.filter(
+        company=company, pk=facture_id).first()
+    if facture is None:
+        return []
+    return [
+        {
+            'id': e.id,
+            'pourcentage': e.pourcentage,
+            'montant': e.montant,
+            'date_echeance': e.date_echeance,
+        }
+        for e in facture.echeances.all()
+    ]
+
+
+def acomptes_fournisseur_ouverts(company):
+    """XPUR8 — acomptes fournisseur PARTIELLEMENT/NON consommés de la
+    société (montant_non_consomme > 0), pour la vue trésorerie/cash-flow
+    existante (compta). Renvoie une liste de dicts triés par date de
+    versement. LECTURE SEULE, INTERNE."""
+    from decimal import Decimal
+    from .models import AcompteFournisseur
+    qs = (AcompteFournisseur.objects.filter(company=company)
+          .select_related('bon_commande', 'bon_commande__fournisseur')
+          .order_by('-date_versement'))
+    out = []
+    for a in qs:
+        non_consomme = (a.montant or Decimal('0')) - (
+            a.montant_consomme or Decimal('0'))
+        if non_consomme > 0:
+            out.append({
+                'id': a.id,
+                'bon_commande_id': a.bon_commande_id,
+                'bon_commande_reference': a.bon_commande.reference,
+                'fournisseur_nom': (a.bon_commande.fournisseur.nom
+                                    if a.bon_commande.fournisseur_id else None),
+                'montant': a.montant,
+                'montant_non_consomme': non_consomme,
+                'date_versement': a.date_versement,
+            })
+    return out

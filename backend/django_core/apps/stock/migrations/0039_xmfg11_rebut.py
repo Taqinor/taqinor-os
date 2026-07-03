@@ -4,7 +4,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('stock', '0028_dc34_fournisseur_type_soustraitantprofile'),
+        ('stock', '0038_xpur10_tolerances_exceptions'),
     ]
 
     operations = [

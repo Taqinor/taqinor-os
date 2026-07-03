@@ -63,6 +63,15 @@ class Fournisseur(models.Model):
         SERVICE = 'service', 'Service / sous-traitance'
         MIXTE = 'mixte', 'Mixte (matériel + service)'
 
+    # XPUR4 — statut fournisseur (défaut actif = comportement historique
+    # inchangé). Enforcé à la CRÉATION d'un BCF (bloque_commandes/total) et
+    # d'un PaiementFournisseur (bloque_paiements/total).
+    class Statut(models.TextChoices):
+        ACTIF = 'actif', 'Actif'
+        BLOQUE_COMMANDES = 'bloque_commandes', 'Bloqué (commandes)'
+        BLOQUE_PAIEMENTS = 'bloque_paiements', 'Bloqué (paiements)'
+        BLOQUE_TOTAL = 'bloque_total', 'Bloqué (total)'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -103,12 +112,86 @@ class Fournisseur(models.Model):
         max_length=50, blank=True, null=True,
         help_text='RIB / IBAN du fournisseur (règlements AP).')
 
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.ACTIF,
+        help_text='Statut fournisseur : actif, bloqué commandes, bloqué '
+                  'paiements ou bloqué total.')
+    motif_blocage = models.TextField(blank=True, null=True)
+
+    # ── XPUR5 — fiche fournisseur enrichie ──────────────────────────────────
+    categorie = models.ForeignKey(
+        'CategorieFournisseur', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='fournisseurs')
+    # Préremplit XPUR3 (devise du BCF) / le BCF (incoterm).
+    devise_defaut = models.CharField(
+        max_length=3, blank=True, default='',
+        help_text='Devise par défaut pour les BCF de ce fournisseur '
+                  "(vide = MAD, comportement historique).")
+    incoterm = models.CharField(
+        max_length=10, blank=True, default='',
+        help_text="Incoterm par défaut (EXW, FOB, CIF…). Vide = non défini.")
+
+    # ── XPUR6 — conditions de paiement fournisseur ──────────────────────────
+    # Délai en jours (0 = comptant, comportement historique : date_echeance
+    # reste saisie à la main). fin_de_mois arrondit l'échéance à la fin du
+    # mois calendaire suivant l'ajout du délai (« 60 j fin de mois »).
+    delai_paiement_jours = models.PositiveIntegerField(default=0)
+    fin_de_mois = models.BooleanField(default=False)
+    # Escompte paiement anticipé (type 2/10 net 30) : escompte_pct % si réglé
+    # dans les escompte_jours suivant la date de facture. 0 = pas d'escompte
+    # (comportement historique).
+    escompte_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0)
+    escompte_jours = models.PositiveIntegerField(default=0)
+
     class Meta:
         verbose_name = "Fournisseur"
         verbose_name_plural = "Fournisseurs"
 
     def __str__(self):
         return self.nom
+
+
+class CategorieFournisseur(models.Model):
+    """XPUR5 — référentiel léger de catégories fournisseur (type ``Marque``),
+    filtrable dans la liste. Additif — aucune migration destructive."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='categories_fournisseur')
+    nom = models.CharField(max_length=100)
+    archived = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['nom']
+        unique_together = [('company', 'nom')]
+        verbose_name = 'Catégorie fournisseur'
+        verbose_name_plural = 'Catégories fournisseur'
+
+    def __str__(self):
+        return self.nom
+
+
+class ContactFournisseur(models.Model):
+    """XPUR5 — contact secondaire d'un fournisseur (N contacts par
+    fournisseur ; ``Fournisseur.contact_personne`` reste le contact
+    principal, comportement historique inchangé)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='contacts_fournisseur')
+    fournisseur = models.ForeignKey(
+        Fournisseur, on_delete=models.CASCADE, related_name='contacts')
+    nom = models.CharField(max_length=255)
+    fonction = models.CharField(max_length=120, blank=True, default='')
+    email = models.EmailField(blank=True, null=True)
+    telephone = models.CharField(max_length=20, blank=True, null=True)
+
+    class Meta:
+        verbose_name = 'Contact fournisseur'
+        verbose_name_plural = 'Contacts fournisseur'
+        ordering = ['fournisseur_id', 'nom']
+
+    def __str__(self):
+        return f'{self.nom} ({self.fournisseur_id})'
 
 
 class SousTraitantProfile(models.Model):
@@ -166,6 +249,118 @@ class SousTraitantProfile(models.Model):
 
     def __str__(self):
         return f'{self.fournisseur.nom} · {self.get_metier_display()}'
+
+
+class AchatsParametres(models.Model):
+    """XPUR1 — paramètres achats/fournisseurs PAR SOCIÉTÉ (un seul par
+    company, créé paresseusement via ``get_or_create``). Regroupe les
+    interrupteurs fins que les tâches XPUR ajoutent au fil de l'eau
+    (blocage paiement sur conformité expirée XPUR1, RAS-TVA XPUR2,
+    tolérances 3-voies XPUR10…) SANS toucher à ``apps.parametres`` (foundation
+    app hors périmètre de ce lot) ni dupliquer un référentiel par tâche.
+    Défauts = comportement actuel inchangé (tout OFF / tolérances à 0)."""
+
+    company = models.OneToOneField(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='achats_parametres')
+    # XPUR1 — quand actif, un PaiementFournisseur est refusé si le
+    # fournisseur a un document de conformité OBLIGATOIRE manquant/expiré.
+    bloquer_paiement_conformite_expiree = models.BooleanField(default=False)
+    # XPUR2 — quand actif, la RAS-TVA (LF 2024) est calculée et retenue à
+    # chaque PaiementFournisseur. OFF par défaut = comportement historique
+    # (paiement intégral, aucune retenue).
+    ras_tva_actif = models.BooleanField(default=False)
+    # ── XPUR10 — tolérances par défaut du rapprochement 3 voies (FG131) ────
+    # Pré-remplissent `creer_rapprochement_3voies` (compta) : écart prix % +
+    # absolu MAD, écart quantité %. 0 = comportement historique inchangé
+    # (tolérance nulle, déjà le défaut actuel de FG131).
+    tolerance_prix_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0)
+    tolerance_prix_absolu_mad = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0)
+    tolerance_quantite_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0)
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Paramètres achats'
+        verbose_name_plural = 'Paramètres achats'
+
+    def __str__(self):
+        return f'Paramètres achats · {self.company_id}'
+
+    @classmethod
+    def for_company(cls, company):
+        """Renvoie (en le créant si besoin) le réglage de la société. Défauts
+        = comportement historique inchangé."""
+        obj, _created = cls.objects.get_or_create(company=company)
+        return obj
+
+
+class DocumentConformiteFournisseur(models.Model):
+    """XPUR1 — pièce de conformité fiscale/administrative d'un FOURNISSEUR
+    (matériel ET service — DC34 a fondu les deux populations dans le même
+    ``Fournisseur``, donc ce modèle sert les deux sans dupliquer FG307).
+
+    Miroir de ``installations.AttestationSousTraitant`` (FG307) mais posé côté
+    ``apps.stock`` puisque ``Fournisseur`` y vit désormais. Une pièce expirée
+    (ou manquante quand ``obligatoire``) déclenche un WARNING à la création
+    d'un BCF et peut bloquer le ``PaiementFournisseur`` (paramétrable par
+    société via ``CompanyProfile.bloquer_paiement_conformite_expiree`` —
+    XPUR1). Additif, multi-tenant (company posée côté serveur)."""
+
+    class Type(models.TextChoices):
+        ARF = 'arf', 'Attestation de régularité fiscale (ARF)'
+        CNSS = 'cnss', 'Attestation CNSS'
+        RC = 'rc', 'Registre du commerce (RC)'
+        ASSURANCE = 'assurance', 'Assurance'
+        AUTRE = 'autre', 'Autre pièce'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='documents_conformite_fournisseur')
+    fournisseur = models.ForeignKey(
+        Fournisseur, on_delete=models.CASCADE,
+        related_name='documents_conformite')
+    type_document = models.CharField(
+        max_length=20, choices=Type.choices, default=Type.AUTRE)
+    reference = models.CharField(max_length=120, blank=True, null=True)
+    date_emission = models.DateField(null=True, blank=True)
+    date_expiration = models.DateField(null=True, blank=True)
+    obligatoire = models.BooleanField(default=True)
+    note = models.TextField(blank=True, null=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='documents_conformite_fournisseur_crees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Document de conformité fournisseur'
+        verbose_name_plural = 'Documents de conformité fournisseur'
+        ordering = ['fournisseur_id', 'type_document']
+        indexes = [
+            models.Index(fields=['company', 'fournisseur'],
+                         name='idx_docf_co_fourn'),
+            models.Index(fields=['company', 'date_expiration'],
+                         name='idx_docf_co_expir'),
+        ]
+
+    def __str__(self):
+        return f'{self.get_type_document_display()} · {self.fournisseur_id}'
+
+    def est_valide(self, a_la_date=None):
+        """Vrai si la pièce est encore valide à la date donnée (aujourd'hui
+        par défaut). Sans date d'expiration = considérée valide (pièce sans
+        échéance)."""
+        from django.utils import timezone
+        if self.date_expiration is None:
+            return True
+        ref = a_la_date or timezone.now().date()
+        return self.date_expiration >= ref
 
 
 class Marque(models.Model):
@@ -533,6 +728,10 @@ class PrixFournisseur(models.Model):
     # Prix d'ACHAT — donnée INTERNE, jamais sur un document client.
     prix_achat = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     date_dernier_achat = models.DateField(null=True, blank=True)
+    # XPUR7 — délai de livraison (jours) constaté/annoncé pour ce couple
+    # produit×fournisseur. Alimente la suggestion `date_livraison_prevue`
+    # d'un BCF. Null = pas de délai connu (comportement historique).
+    delai_livraison_jours = models.PositiveIntegerField(null=True, blank=True)
 
     class Meta:
         verbose_name = "Prix fournisseur"
@@ -542,6 +741,16 @@ class PrixFournisseur(models.Model):
 
     def __str__(self):
         return f'{self.produit_id} @ {self.fournisseur_id} = {self.prix_achat}'
+
+
+# XPUR3 — devises d'achat courantes (imports panneaux/onduleurs). MAD reste le
+# défaut partout : un document sans devise saisie garde le comportement
+# historique (contre-valeur = montant, taux = 1) puisque tout est déjà en MAD.
+class DeviseAchat(models.TextChoices):
+    MAD = 'MAD', 'Dirham marocain (MAD)'
+    EUR = 'EUR', 'Euro (EUR)'
+    USD = 'USD', 'Dollar américain (USD)'
+    CNY = 'CNY', 'Yuan chinois (CNY)'
 
 
 class BonCommandeFournisseur(models.Model):
@@ -582,6 +791,29 @@ class BonCommandeFournisseur(models.Model):
         default=Statut.BROUILLON,
     )
     date_commande = models.DateField(null=True, blank=True)
+    # XPUR3 — devise du document (défaut MAD, comportement historique
+    # inchangé) + taux de change saisi à la date du document (aucun appel
+    # externe). Les LIGNES portent le prix d'achat unitaire EN CETTE DEVISE ;
+    # la contre-valeur MAD (utilisée PARTOUT en interne : coût moyen pondéré,
+    # balance âgée, payment run, comparatif fournisseurs) est calculée par
+    # `LigneBonCommandeFournisseur.prix_achat_unitaire_mad`.
+    devise = models.CharField(
+        max_length=3, choices=DeviseAchat.choices, default=DeviseAchat.MAD)
+    taux_change = models.DecimalField(
+        max_digits=12, decimal_places=6, default=1,
+        help_text='Taux de change devise → MAD à la date du document '
+                  '(saisie manuelle, aucun appel externe).')
+    # ── XPUR7 — dates de livraison prévues, accusé fournisseur, OTD réel ────
+    # Pré-calculée (date_commande + délai de PrixFournisseur) à la création,
+    # reste modifiable ensuite. Null = pas de date prévue (comportement
+    # historique, aucun délai connu).
+    date_livraison_prevue = models.DateField(null=True, blank=True)
+    # Accusé de commande du fournisseur : date qu'IL confirme (distincte de
+    # la date demandée ci-dessus, jamais écrasée — préserve l'OTD promis-vs-
+    # reçu) + son numéro de confirmation.
+    date_confirmee_fournisseur = models.DateField(null=True, blank=True)
+    numero_confirmation_fournisseur = models.CharField(
+        max_length=100, blank=True, default='')
     note = models.TextField(blank=True, null=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -630,11 +862,23 @@ class LigneBonCommandeFournisseur(models.Model):
         related_name='lignes_bon_commande_fournisseur',
     )
     quantite = models.IntegerField()
-    # Prix d'ACHAT unitaire — donnée INTERNE. N'apparaît JAMAIS sur un document
-    # destiné au client (devis, facture, BC client).
+    # Prix d'ACHAT unitaire — donnée INTERNE, TOUJOURS en contre-valeur MAD
+    # (utilisée PARTOUT en interne : coût moyen pondéré/landed cost, balance
+    # âgée, payment run, comparatif fournisseurs — XPUR3). N'apparaît JAMAIS
+    # sur un document destiné au client (devis, facture, BC client).
     prix_achat_unitaire = models.DecimalField(
         max_digits=10, decimal_places=2, default=0,
     )
+    # XPUR3 — prix d'achat unitaire saisi dans la DEVISE du document (BCF.
+    # devise/taux_change). Null = document en MAD (comportement historique) :
+    # `prix_achat_unitaire` reste alors l'unique source de vérité. Quand
+    # renseigné, `prix_achat_unitaire` DOIT être sa contre-valeur MAD
+    # (prix_achat_unitaire_devise × bon_commande.taux_change) — recalculée
+    # côté service à la saisie, jamais divergente.
+    prix_achat_unitaire_devise = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text="Prix d'achat unitaire dans la devise du document "
+                  '(optionnel — null = document en MAD).')
     # ── FG67 / DC38 — Coût débarqué (landed cost) ────────────────────────────
     # Frais annexes TOTAUX de la LIGNE (fret + douane + TVA import + transit),
     # à répartir sur les unités de la ligne. Le coût de revient débarqué
@@ -782,6 +1026,15 @@ class FactureFournisseur(models.Model):
         PARTIELLEMENT_PAYEE = 'partiellement_payee', 'Partiellement payée'
         PAYEE = 'payee', 'Payée'
 
+    # XPUR2 — nature de l'achat pour la RAS-TVA (LF 2024) : biens & travaux
+    # (retenue 100 % de la TVA SI le fournisseur n'a pas d'ARF valide, sinon
+    # rien) vs prestations de services (75 % avec ARF valide / 100 % sans).
+    # Défaut 'biens' — comportement historique inchangé tant que la RAS-TVA
+    # est désactivée (AchatsParametres.ras_tva_actif = False par défaut).
+    class TypeAchat(models.TextChoices):
+        BIENS = 'biens', 'Biens & travaux'
+        SERVICES = 'services', 'Prestations de services'
+
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='factures_fournisseur')
@@ -794,8 +1047,27 @@ class FactureFournisseur(models.Model):
         blank=True, related_name='factures_fournisseur')
     # Référence du document chez le fournisseur (numéro de sa facture).
     ref_fournisseur = models.CharField(max_length=100, blank=True, null=True)
+    type_achat = models.CharField(
+        max_length=10, choices=TypeAchat.choices, default=TypeAchat.BIENS,
+        help_text="Nature de l'achat (RAS-TVA LF 2024) : biens & travaux ou "
+                  'prestations de services.')
     date_facture = models.DateField(null=True, blank=True)
     date_echeance = models.DateField(null=True, blank=True)
+    # XPUR3 — devise + taux de change (mêmes règles que le BCF : défaut MAD,
+    # taux 1, saisi à la date du document, aucun appel externe). Les montants
+    # HT/TVA/TTC ci-dessous restent TOUJOURS la contre-valeur MAD (utilisée
+    # partout en interne : balance âgée FG132, payment run FG133) ; les
+    # montants en devise natifs sont ajoutés séparément pour l'affichage.
+    devise = models.CharField(
+        max_length=3, choices=DeviseAchat.choices, default=DeviseAchat.MAD)
+    taux_change = models.DecimalField(
+        max_digits=12, decimal_places=6, default=1,
+        help_text='Taux de change devise → MAD à la date du document '
+                  '(saisie manuelle, aucun appel externe).')
+    montant_ttc_devise = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        help_text='Montant TTC dans la devise du document (optionnel — '
+                  'null = document en MAD).')
     montant_ht = models.DecimalField(
         max_digits=14, decimal_places=2, default=0)
     montant_tva = models.DecimalField(
@@ -804,6 +1076,25 @@ class FactureFournisseur(models.Model):
         max_digits=14, decimal_places=2, default=0)
     statut = models.CharField(
         max_length=24, choices=Statut.choices, default=Statut.A_PAYER)
+
+    # ── XPUR10 — file d'exceptions du rapprochement 3 voies (FG131) ────────
+    # Une facture HORS tolérance société (XPUR10) passe en `exception` : la
+    # CRÉATION d'un PaiementFournisseur est refusée tant qu'elle n'est pas
+    # résolue par un responsable/admin. Défaut 'normale' = comportement
+    # historique inchangé (jamais bloquée).
+    class StatutControle(models.TextChoices):
+        NORMALE = 'normale', 'Normale'
+        EXCEPTION = 'exception', 'En exception'
+        RESOLUE = 'resolue', 'Résolue'
+
+    statut_controle = models.CharField(
+        max_length=12, choices=StatutControle.choices,
+        default=StatutControle.NORMALE)
+    motif_ecart = models.TextField(blank=True, null=True)
+    resolu_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='factures_fournisseur_resolues')
+    resolu_le = models.DateTimeField(null=True, blank=True)
     note = models.TextField(blank=True, null=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
@@ -826,9 +1117,26 @@ class FactureFournisseur(models.Model):
         return sum((p.montant for p in self.paiements.all()), Decimal('0'))
 
     @property
+    def total_acomptes_imputes(self):
+        """XPUR8 — somme des acomptes fournisseur imputés sur CETTE facture
+        (0 si aucun — comportement historique inchangé)."""
+        return sum(
+            (a.montant for a in self.acomptes_imputes.all()), Decimal('0'))
+
+    @property
+    def total_avoirs_imputes(self):
+        """XPUR9 — somme des avoirs fournisseur imputés sur CETTE facture
+        (0 si aucun — comportement historique inchangé)."""
+        return sum(
+            (i.montant for i in self.avoirs_imputes.all()), Decimal('0'))
+
+    @property
     def solde_du(self):
-        """Solde dû = TTC − Σ paiements (jamais négatif affiché)."""
-        return (self.montant_ttc or Decimal('0')) - self.total_paye
+        """Solde dû = TTC − Σ paiements − Σ acomptes imputés − Σ avoirs
+        imputés (jamais négatif)."""
+        solde = ((self.montant_ttc or Decimal('0')) - self.total_paye
+                 - self.total_acomptes_imputes - self.total_avoirs_imputes)
+        return max(solde, Decimal('0'))
 
 
 class LigneFactureFournisseur(models.Model):
@@ -860,6 +1168,34 @@ class LigneFactureFournisseur(models.Model):
             self.prix_unitaire_ht or Decimal('0'))
 
 
+class EcheanceFactureFournisseur(models.Model):
+    """XPUR6 — tranche d'échéancier d'une facture fournisseur (ex. 30 %
+    avance / 70 % livraison). Additif — une facture sans échéancier explicite
+    garde une échéance UNIQUE (``FactureFournisseur.date_echeance``,
+    comportement historique) ; le payment run (FG133) et la balance âgée
+    (FG132) lisent les tranches quand elles existent."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='echeances_facture_fournisseur')
+    facture = models.ForeignKey(
+        FactureFournisseur, on_delete=models.CASCADE,
+        related_name='echeances')
+    pourcentage = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text='Pourcentage du TTC de cette tranche (ex. 30.00).')
+    montant = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    date_echeance = models.DateField()
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Échéance de facture fournisseur'
+        verbose_name_plural = 'Échéances de facture fournisseur'
+        ordering = ['date_echeance', 'id']
+
+    def __str__(self):
+        return f'{self.facture_id} — {self.montant} @ {self.date_echeance}'
+
+
 class PaiementFournisseur(models.Model):
     """G5 — Paiement (règlement) d'une facture fournisseur. Chaque paiement
     réduit le solde dû de la facture. INTERNE."""
@@ -882,6 +1218,17 @@ class PaiementFournisseur(models.Model):
     mode = models.CharField(
         max_length=20, choices=Mode.choices, default=Mode.VIREMENT)
     note = models.TextField(blank=True, null=True)
+    # ── XPUR2 — RAS-TVA fournisseurs (LF 2024, en vigueur 01/07/2024) ───────
+    # Montant retenu à la source sur la TVA facturée + le taux appliqué
+    # (0/75/100 %), calculés selon FactureFournisseur.type_achat + la
+    # validité ARF du fournisseur (XPUR1). 0 par défaut = comportement
+    # historique inchangé tant que AchatsParametres.ras_tva_actif est OFF.
+    montant_ras_tva = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        help_text='Montant de la retenue à la source sur la TVA (LF 2024).')
+    taux_ras = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        help_text='Taux de RAS-TVA appliqué (0/75/100 %).')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='paiements_fournisseur')
@@ -894,6 +1241,153 @@ class PaiementFournisseur(models.Model):
 
     def __str__(self):
         return f'{self.facture_id} — {self.montant}'
+
+    @property
+    def montant_net_paye(self):
+        """XPUR2 — net réellement décaissé = montant − RAS-TVA retenue."""
+        return (self.montant or Decimal('0')) - (
+            self.montant_ras_tva or Decimal('0'))
+
+
+class AcompteFournisseur(models.Model):
+    """XPUR8 — acompte / avance versée à un fournisseur sur un BCF (pratique
+    d'import 30 % à la commande / 70 % à l'expédition). Pattern
+    ``PaiementFournisseur`` mais rattaché au BON DE COMMANDE (avant toute
+    facture). Imputé automatiquement sur la première ``FactureFournisseur``
+    du BCF (``consommer_acomptes_bcf``) : ``montant_consomme`` suit
+    l'imputation, jamais négative, jamais imputée deux fois."""
+
+    class Mode(models.TextChoices):
+        VIREMENT = 'virement', 'Virement'
+        CHEQUE = 'cheque', 'Chèque'
+        ESPECES = 'especes', 'Espèces'
+        CARTE = 'carte', 'Carte'
+        EFFET = 'effet', 'Effet / traite'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='acomptes_fournisseur')
+    bon_commande = models.ForeignKey(
+        'BonCommandeFournisseur', on_delete=models.CASCADE,
+        related_name='acomptes')
+    montant = models.DecimalField(max_digits=14, decimal_places=2)
+    date_versement = models.DateField(null=True, blank=True)
+    mode = models.CharField(
+        max_length=20, choices=Mode.choices, default=Mode.VIREMENT)
+    # Portion déjà imputée sur une facture — jamais > montant, jamais
+    # décrémentée (imputation idempotente, un acompte ne s'impute qu'une
+    # fois sur SA facture cible).
+    montant_consomme = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0)
+    facture_imputee = models.ForeignKey(
+        'FactureFournisseur', on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='acomptes_imputes')
+    note = models.TextField(blank=True, null=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='acomptes_fournisseur')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Acompte fournisseur'
+        verbose_name_plural = 'Acomptes fournisseur'
+        ordering = ['-date_versement', '-date_creation']
+
+    def __str__(self):
+        return f'{self.bon_commande_id} — {self.montant}'
+
+    @property
+    def montant_non_consomme(self):
+        return max(
+            (self.montant or Decimal('0'))
+            - (self.montant_consomme or Decimal('0')), Decimal('0'))
+
+
+class AvoirFournisseur(models.Model):
+    """XPUR9 — avoir fournisseur (note de crédit AP). Matérialise la créance
+    qu'un ``RetourFournisseur`` validé (qui ne fait que reverser le stock)
+    laisse ouverte. Référencé via ``create_with_reference`` (préfixe AVF).
+    Imputable sur une ou plusieurs ``FactureFournisseur`` du MÊME
+    fournisseur ; les montants restent INTERNES (jamais client-facing)."""
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        VALIDE = 'valide', 'Validé'
+        IMPUTE = 'impute', 'Imputé'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='avoirs_fournisseur')
+    reference = models.CharField(max_length=50)
+    fournisseur = models.ForeignKey(
+        Fournisseur, on_delete=models.PROTECT, related_name='avoirs')
+    facture_origine = models.ForeignKey(
+        FactureFournisseur, on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='avoirs_origine')
+    retour = models.ForeignKey(
+        RetourFournisseur, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='avoirs')
+    montant_ht = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0)
+    montant_tva = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0)
+    montant_ttc = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0)
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.BROUILLON)
+    # Somme déjà imputée sur des factures — jamais > montant_ttc, jamais
+    # décrémentée (l'imputation est cumulative, sur 1..N factures).
+    montant_impute = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0)
+    note = models.TextField(blank=True, null=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='avoirs_fournisseur')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_mise_a_jour = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Avoir fournisseur'
+        verbose_name_plural = 'Avoirs fournisseur'
+        ordering = ['-date_creation']
+        unique_together = [('company', 'reference')]
+
+    def __str__(self):
+        return self.reference
+
+    @property
+    def montant_disponible(self):
+        """Solde de l'avoir NON encore imputé — jamais négatif."""
+        return max(
+            (self.montant_ttc or Decimal('0'))
+            - (self.montant_impute or Decimal('0')), Decimal('0'))
+
+
+class ImputationAvoirFournisseur(models.Model):
+    """XPUR9 — trace UNE imputation d'un ``AvoirFournisseur`` sur UNE
+    ``FactureFournisseur`` (un avoir peut être réparti sur plusieurs
+    factures). Additif, INTERNE."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='imputations_avoir_fournisseur')
+    avoir = models.ForeignKey(
+        AvoirFournisseur, on_delete=models.CASCADE,
+        related_name='imputations')
+    facture = models.ForeignKey(
+        FactureFournisseur, on_delete=models.CASCADE,
+        related_name='avoirs_imputes')
+    montant = models.DecimalField(max_digits=14, decimal_places=2)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Imputation d'avoir fournisseur"
+        verbose_name_plural = "Imputations d'avoir fournisseur"
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'{self.avoir_id} → {self.facture_id} : {self.montant}'
 
 
 # ── FG63 — Session d'inventaire (comptage physique en brouillon) ──────────────
