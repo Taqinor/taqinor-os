@@ -86,6 +86,11 @@ const gallery = [
   { name: 'entretien-jet', alt: 'Jet-wash cleaning of the panel array, Nouaceur', widths: [1600, 1024, 640], ratio: 1, ville: 'Nouaceur', kwc: '3,72 kWc', prod: null, type: 'Array maintenance · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
 ];
 
+// W271 — City filter chips: "All" + the cities actually present in `gallery`
+// above (no invented city; order follows each city's first appearance in the
+// array — El Jadida, Casablanca, Nouaceur).
+const galleryCities = ['All', ...Array.from(new Set(gallery.map((g) => g.ville)))];
+
 // Our solutions — every offering visible from the homepage, not only in the
 // menu. Descriptions from the already-published positioning, no new claim or
 // figure. Text cards (no image) → zero CLS.
@@ -281,17 +286,53 @@ const investment = [
             nothing added, nothing erased.
           </p>
         </div>
-        <div class="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
+        {/* W271 — City filter chips, light client-side over the data the
+            cards already carry (no new data). "All" active by default;
+            aria-pressed reflects state for screen readers. Works without
+            JS: without the script, every card stays visible (progressive
+            enhancement). */}
+        <div class="v2-rise mt-8 flex flex-wrap gap-2" role="group" aria-label="Filter by city" data-gallery-filter>
+          {galleryCities.map((c, i) => (
+            <button
+              type="button"
+              class={`gallery-filter-chip border px-4 py-2 text-xs font-bold uppercase tracking-wide transition-colors hover:border-white/50 hover:text-white ${i === 0 ? 'gallery-filter-chip-active border-brass-400 bg-brass-400/10 text-brass-300' : 'border-white/25 text-lune-soft'}`}
+              data-city={c}
+              aria-pressed={i === 0 ? 'true' : 'false'}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
+        <div class="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" data-stagger data-gallery-grid>
           {gallery.map((g, i) => (
-            <a href={L(`/realisations/${g.slug}`)} class="v2-rise cine-card group relative block overflow-hidden" style={`--v2-i:${i % 3}`}>
+            <div class="v2-rise cine-card cine-card-link group relative overflow-hidden" style={`--v2-i:${i % 3}`} data-gallery-card data-city={g.ville}>
+              <a href={L(`/realisations/${g.slug}`)} class="absolute inset-0 z-0" aria-label={`View the installation: ${g.ville}, ${g.kwc}`}></a>
               {/* Uniform "golden hour" grade — .v3-grade on the content photo */}
               <Picture name={g.name} alt={g.alt} widths={g.widths} ratio={4 / 3} sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
                 class="v3-grade aspect-[4/3] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
-              <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
+              {/* Enlarge (lightbox) button — kept separate from the card link
+                  (no button nested in an <a>, invalid HTML); z-index above
+                  the stretched link. */}
+              <button
+                type="button"
+                class="gallery-zoom-btn absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-nuit/70 text-white backdrop-blur-sm transition-colors hover:bg-nuit/90"
+                aria-label={`Enlarge photo: ${g.ville}, ${g.kwc}${g.prod ? `, ${g.prod}` : ''}`}
+                data-lightbox-open
+                data-name={g.name}
+                data-alt={g.alt}
+                data-widths={g.widths.join(',')}
+                data-caption={`${g.ville} · ${g.kwc}${g.prod ? ` · ${g.prod}` : ''}`}
+                data-type={g.type}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M8 3H5a2 2 0 0 0-2 2v3" /><path d="M21 8V5a2 2 0 0 0-2-2h-3" /><path d="M3 16v3a2 2 0 0 0 2 2h3" /><path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+                </svg>
+              </button>
+              <div class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
                 <span class="tech-label block text-lune">{g.ville} · {g.kwc}{g.prod ? ` · ${g.prod}` : ''}</span>
                 <span class="mt-0.5 block text-xs text-lune-soft">{g.type}</span>
               </div>
-            </a>
+            </div>
           ))}
         </div>
         {/* Quiet link to ALL installations — not a solid button */}
@@ -467,6 +508,23 @@ const investment = [
     <Faq items={faq} schema={false} />
 
     <StickyCta />
+
+    {/* W271 — Proof-gallery lightbox. Native <dialog>: Escape + focus trap
+        for free, no dependency. Content filled by the script below on open
+        (image + city · kWc · production caption). Reduced-motion: the CSS
+        transition is gated below. */}
+    <dialog id="gallery-lightbox" class="gallery-lightbox" aria-label="Enlarged photo">
+      <button type="button" class="gallery-lightbox-close" data-lightbox-close aria-label="Close">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M6 6l12 12M18 6 6 18" />
+        </svg>
+      </button>
+      <img data-lightbox-img src="" alt="" />
+      <figcaption>
+        <span data-lightbox-caption></span>
+        <span data-lightbox-type class="gallery-lightbox-type"></span>
+      </figcaption>
+    </dialog>
   </div>
 </Layout>
 
@@ -484,6 +542,76 @@ const investment = [
      guarantees the white headline's AA contrast over the photo. */
   .hero-scrim-v3 {
     --hero-scrim-strength: 0.52;
+  }
+
+  /* ── W271 — Gallery lightbox ─────────────────────────────────────────── */
+  .gallery-lightbox {
+    max-width: min(92vw, 1100px);
+    max-height: 90vh;
+    border: none;
+    background: var(--color-nuit);
+    padding: 0;
+    color: white;
+  }
+  .gallery-lightbox::backdrop {
+    background: rgb(6 10 30 / 0.86);
+  }
+  .gallery-lightbox img {
+    display: block;
+    width: 100%;
+    max-height: 72vh;
+    object-fit: contain;
+    background: black;
+  }
+  .gallery-lightbox figcaption {
+    padding: 0.9rem 1.25rem 1.1rem;
+    font-size: 0.9rem;
+  }
+  .gallery-lightbox figcaption span[data-lightbox-caption] {
+    display: block;
+    font-weight: 700;
+    color: var(--color-brass-300);
+  }
+  .gallery-lightbox-type {
+    display: block;
+    margin-top: 0.2rem;
+    color: var(--color-lune-soft);
+    font-size: 0.8rem;
+  }
+  .gallery-lightbox-close {
+    position: absolute;
+    top: 0.6rem;
+    right: 0.6rem;
+    z-index: 1;
+    display: flex;
+    height: 2.25rem;
+    width: 2.25rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    background: rgb(6 10 30 / 0.7);
+    color: white;
+  }
+  .gallery-lightbox-close:hover {
+    background: rgb(6 10 30 / 0.9);
+  }
+  /* Opening transition — gated reduced-motion: the dialog appears instantly
+     with no motion preference. */
+  @media (prefers-reduced-motion: no-preference) {
+    .gallery-lightbox {
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+    .gallery-lightbox:not([open]) {
+      opacity: 0;
+      transform: scale(0.98);
+    }
+  }
+
+  /* ── W271 — City filter chips: hides out-of-filter cards via a class set
+     by the script, never via [hidden], so data-stagger can still replay the
+     first-render reveal cleanly. */
+  [data-gallery-card].gallery-card-hidden {
+    display: none;
   }
 </style>
 
@@ -549,5 +677,81 @@ const investment = [
       if (document.readyState === 'complete') kick();
       else addEventListener('load', kick, { once: true });
     }
+  }
+</script>
+
+<script>
+  // W271 — City filter + lightbox for the proof gallery. Pure DOM, no
+  // dependency. Without JS: every card stays visible and the enlarge button
+  // stays a plain <button> with no handler (progressive enhancement — never
+  // a keyboard or screen-reader trap).
+
+  // — City filter —
+  const filterGroup = document.querySelector<HTMLElement>('[data-gallery-filter]');
+  const cards = Array.from(document.querySelectorAll<HTMLElement>('[data-gallery-card]'));
+  if (filterGroup) {
+    filterGroup.addEventListener('click', (ev) => {
+      const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>('button[data-city]');
+      if (!btn) return;
+      const city = btn.dataset.city;
+      filterGroup.querySelectorAll<HTMLButtonElement>('button[data-city]').forEach((b) => {
+        const active = b === btn;
+        b.setAttribute('aria-pressed', active ? 'true' : 'false');
+        b.classList.toggle('gallery-filter-chip-active', active);
+        b.classList.toggle('border-brass-400', active);
+        b.classList.toggle('bg-brass-400/10', active);
+        b.classList.toggle('text-brass-300', active);
+        b.classList.toggle('border-white/25', !active);
+        b.classList.toggle('text-lune-soft', !active);
+      });
+      cards.forEach((card) => {
+        const show = city === 'All' || card.dataset.city === city;
+        card.classList.toggle('gallery-card-hidden', !show);
+      });
+    });
+  }
+
+  // — Lightbox —
+  const dialog = document.getElementById('gallery-lightbox') as HTMLDialogElement | null;
+  if (dialog && typeof dialog.showModal === 'function') {
+    const img = dialog.querySelector<HTMLImageElement>('[data-lightbox-img]');
+    const captionEl = dialog.querySelector<HTMLElement>('[data-lightbox-caption]');
+    const typeEl = dialog.querySelector<HTMLElement>('[data-lightbox-type]');
+    const closeBtn = dialog.querySelector<HTMLButtonElement>('[data-lightbox-close]');
+
+    let lastTrigger: HTMLElement | null = null;
+
+    const openFromButton = (btn: HTMLElement) => {
+      const name = btn.dataset.name ?? '';
+      const widths = (btn.dataset.widths ?? '').split(',').map((w) => parseInt(w, 10)).filter((n) => !Number.isNaN(n));
+      const largest = widths.length ? Math.max(...widths) : 1600;
+      if (img) {
+        img.src = `/photos/${name}-${largest}.webp`;
+        img.alt = btn.dataset.alt ?? '';
+      }
+      if (captionEl) captionEl.textContent = btn.dataset.caption ?? '';
+      if (typeEl) typeEl.textContent = btn.dataset.type ?? '';
+      lastTrigger = btn;
+      dialog.showModal();
+    };
+
+    document.querySelectorAll<HTMLButtonElement>('[data-lightbox-open]').forEach((btn) => {
+      btn.addEventListener('click', () => openFromButton(btn));
+    });
+
+    const closeDialog = () => {
+      dialog.close();
+    };
+    closeBtn?.addEventListener('click', closeDialog);
+
+    // Click on the backdrop → close. Native <dialog> already handles Escape.
+    dialog.addEventListener('click', (ev) => {
+      if (ev.target === dialog) closeDialog();
+    });
+
+    // Return focus to the trigger on close (keyboard accessibility).
+    dialog.addEventListener('close', () => {
+      lastTrigger?.focus();
+    });
   }
 </script>
