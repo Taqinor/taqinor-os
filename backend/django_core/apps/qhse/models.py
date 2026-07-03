@@ -4540,3 +4540,182 @@ class RevueObjectif(models.Model):
 
     def __str__(self):
         return f'{self.objectif.intitule} — {self.periode or "sans période"}'
+
+
+# ── XQHS14 — Registre des risques & opportunités SMQ + contexte (clause 4) ──
+
+class RisqueOpportunite(models.Model):
+    """Risque ou opportunité niveau ENTREPRISE/processus (ISO 6.1).
+
+    Distinct du document unique opérationnel chantier (``EvaluationRisque``) :
+    ce registre couvre le niveau SMQ (management system) — processus,
+    fournisseurs, marché… Cotation ``probabilite × gravite`` sur la même
+    échelle 1–5 que le document unique, à la fois INHÉRENTE (avant traitement)
+    et RÉSIDUELLE (après traitement) pour tracer l'effet des actions.
+
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    NIVEAU_MIN = 1
+    NIVEAU_MAX = 5
+
+    class Type(models.TextChoices):
+        RISQUE = 'risque', 'Risque'
+        OPPORTUNITE = 'opportunite', 'Opportunité'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_risques_opportunites',
+        verbose_name='Société',
+    )
+    type_ro = models.CharField(
+        max_length=15, choices=Type.choices,
+        default=Type.RISQUE, verbose_name='Type')
+    processus = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Processus concerné')
+    description = models.TextField(verbose_name='Description')
+    probabilite_inherente = models.PositiveSmallIntegerField(
+        default=1, verbose_name='Probabilité inhérente (1–5)')
+    gravite_inherente = models.PositiveSmallIntegerField(
+        default=1, verbose_name='Gravité inhérente (1–5)')
+    criticite_inherente = models.PositiveSmallIntegerField(
+        default=1, verbose_name='Criticité inhérente')
+    probabilite_residuelle = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name='Probabilité résiduelle (1–5)')
+    gravite_residuelle = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name='Gravité résiduelle (1–5)')
+    criticite_residuelle = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name='Criticité résiduelle')
+    actions_traitement = models.TextField(
+        blank=True, default='', verbose_name='Actions de traitement')
+    date_revue = models.DateField(
+        null=True, blank=True, verbose_name='Date de revue')
+    frequence_revue_jours = models.PositiveIntegerField(
+        default=180, verbose_name='Fréquence de revue (jours)')
+    responsable = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_risques_opportunites',
+        verbose_name='Responsable',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Risque / opportunité'
+        verbose_name_plural = 'Risques / opportunités'
+        ordering = ['-id']
+
+    def save(self, *args, **kwargs):
+        self.criticite_inherente = (
+            (self.probabilite_inherente or 1) * (self.gravite_inherente or 1))
+        if self.probabilite_residuelle is not None \
+                and self.gravite_residuelle is not None:
+            self.criticite_residuelle = (
+                self.probabilite_residuelle * self.gravite_residuelle)
+        else:
+            self.criticite_residuelle = None
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'{self.get_type_ro_display()} — {self.description[:60]}'
+
+
+class RisqueOpportuniteCapa(models.Model):
+    """Lien (M2M explicite) entre un ``RisqueOpportunite`` et une CAPA
+    (traitement lié — un même risque peut avoir plusieurs actions)."""
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_risque_capa',
+        verbose_name='Société',
+    )
+    risque_opportunite = models.ForeignKey(
+        RisqueOpportunite,
+        on_delete=models.CASCADE,
+        related_name='capa_liees',
+        verbose_name='Risque / opportunité',
+    )
+    capa = models.ForeignKey(
+        ActionCorrectivePreventive,
+        on_delete=models.CASCADE,
+        related_name='risques_opportunites_liees',
+        verbose_name='CAPA',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'CAPA liée à un risque/opportunité'
+        verbose_name_plural = 'CAPA liées à des risques/opportunités'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['risque_opportunite', 'capa'],
+                name='qhse_risque_capa_uniq',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.risque_opportunite_id} ↔ CAPA {self.capa_id}'
+
+
+class PartieInteressee(models.Model):
+    """Partie intéressée pertinente pour le SMQ (clause 4.2 ISO).
+
+    ``partie`` (ex. « Client », « Fournisseur », « Autorité locale »),
+    ``attentes`` et une ``pertinence`` qualitative.
+    """
+    class Pertinence(models.TextChoices):
+        FAIBLE = 'faible', 'Faible'
+        MOYENNE = 'moyenne', 'Moyenne'
+        FORTE = 'forte', 'Forte'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_parties_interessees',
+        verbose_name='Société',
+    )
+    partie = models.CharField(max_length=255, verbose_name='Partie')
+    attentes = models.TextField(
+        blank=True, default='', verbose_name='Attentes / exigences')
+    pertinence = models.CharField(
+        max_length=10, choices=Pertinence.choices,
+        default=Pertinence.MOYENNE, verbose_name='Pertinence SMQ')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Partie intéressée'
+        verbose_name_plural = 'Parties intéressées'
+        ordering = ['-id']
+
+    def __str__(self):
+        return self.partie
+
+
+class ContexteOrganisation(models.Model):
+    """Contexte/enjeux de l'organisation (clause 4.1 ISO) — 1 par société.
+
+    ``swot`` — texte structuré (forces/faiblesses/opportunités/menaces) ;
+    ``perimetre_smq`` — périmètre du système de management inclus.
+    """
+    company = models.OneToOneField(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_contexte_organisation',
+        verbose_name='Société',
+    )
+    swot = models.TextField(blank=True, default='', verbose_name='SWOT')
+    perimetre_smq = models.TextField(
+        blank=True, default='', verbose_name='Périmètre du SMQ')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = "Contexte de l'organisation"
+        verbose_name_plural = "Contextes de l'organisation"
+
+    def __str__(self):
+        return f'Contexte — {self.company_id}'

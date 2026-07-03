@@ -20,7 +20,7 @@ from .models import (
     NotationFinChantier, PlanControleReception, PlanInspectionChantier,
     PointControleModele,
     ProcedureQualite, ReleveThermographie, ReponseCritere, ReleveControle,
-    ReunionQhse,
+    ReunionQhse, RisqueOpportunite, RisqueOpportuniteCapa,
 )
 
 
@@ -1616,3 +1616,60 @@ def csh_relance_due(company, cadence_jours=90, today=None):
     if derniere is None or derniere.date_reunion is None:
         return True
     return today >= derniere.date_reunion + timedelta(days=cadence_jours)
+
+
+# ── XQHS14 — Registre des risques & opportunités SMQ ────────────────────────
+
+@transaction.atomic
+def lier_capa_risque_opportunite(risque_opportunite, capa):
+    """Lie une CAPA existante à un ``RisqueOpportunite`` (XQHS14).
+
+    Idempotent via la contrainte unique ``(risque_opportunite, capa)`` —
+    ré-appelée avec le même couple, ne duplique rien.
+    """
+    lien, _ = RisqueOpportuniteCapa.objects.get_or_create(
+        company=risque_opportunite.company,
+        risque_opportunite=risque_opportunite, capa=capa)
+    return lien
+
+
+def _notifier_revue_risque_due(risque_opportunite):
+    """Notifie le responsable qu'une revue de risque/opportunité est due
+    (best-effort)."""
+    try:
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+
+        if risque_opportunite.responsable_id is None:
+            return
+        notify(risque_opportunite.responsable, EventType.MAINTENANCE_DUE,
+               'Revue de risque/opportunité due',
+               body=f'{risque_opportunite.description[:120]} — revue due.',
+               link='/qhse/risques-opportunites',
+               company=risque_opportunite.company)
+    except Exception:  # pragma: no cover - défensif
+        pass
+
+
+def risques_opportunites_revue_due(company, today=None):
+    """Risques/opportunités dont la revue périodique est due (XQHS14).
+
+    « Due » = ``date_revue`` absente OU dépassée de ``frequence_revue_jours``.
+    Pure (ne notifie ni ne mute) — l'appelant décide de la relance.
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    if today is None:
+        today = timezone.localdate()
+
+    dus = []
+    for ro in RisqueOpportunite.objects.filter(company=company):
+        if ro.date_revue is None:
+            dus.append(ro)
+            continue
+        limite = ro.date_revue + timedelta(days=ro.frequence_revue_jours or 180)
+        if today >= limite:
+            dus.append(ro)
+    return dus
