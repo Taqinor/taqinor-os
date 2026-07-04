@@ -21,3 +21,7 @@ class VentesConfig(AppConfig):
         # démarrage. Idempotent si ready() est appelé plusieurs fois.
         from .agent_actions import register_ventes_actions
         register_ventes_actions()
+        # YLEDG12 — abonne ventes à `payment_captured` (core FG370) : câble
+        # les récepteurs du bus d'événements (M6). Import local, jamais
+        # d'effet de bord à l'import du module.
+        from . import receivers  # noqa: F401
