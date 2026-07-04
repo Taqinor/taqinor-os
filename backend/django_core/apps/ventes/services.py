@@ -1381,6 +1381,71 @@ def abandonner_solde_facture(facture, *, motif, user=None, auto=False,
     return reste
 
 
+def anomalies_emission_facture(facture):
+    """XFAC18 — anomalies à contrôler avant l'émission d'une facture.
+
+    Liste (jamais bloquante — informative pour le valideur) :
+      * doublon probable (même client + montant TTC à ±1 % sous 15 jours) ;
+      * remise globale au-delà de ``remise_max_pct`` (réglage société) ;
+      * client au-delà du plafond d'encours FG41.
+
+    Renvoie une liste de dicts ``{'code', 'message'}`` (vide si rien à
+    signaler)."""
+    from datetime import timedelta
+    from decimal import Decimal
+    from django.utils import timezone
+    from .models import Facture
+
+    anomalies = []
+
+    # Doublon probable : même client, montant TTC proche, facture récente.
+    montant = facture.total_ttc
+    if montant and facture.client_id:
+        seuil_jours = timezone.now().date() - timedelta(days=15)
+        marge = montant * Decimal('0.01')
+        doublons = Facture.objects.filter(
+            client_id=facture.client_id, company=facture.company,
+            date_emission__gte=seuil_jours,
+        ).exclude(pk=facture.pk).exclude(
+            statut=Facture.Statut.ANNULEE)
+        for autre in doublons:
+            if abs(autre.total_ttc - montant) <= marge:
+                anomalies.append({
+                    'code': 'doublon_probable',
+                    'message': (
+                        f'Doublon probable : facture {autre.reference} '
+                        f'({autre.total_ttc} MAD) du même client, émise le '
+                        f'{autre.date_emission}.'),
+                })
+                break
+
+    # Remise globale au-delà du seuil société.
+    from apps.parametres.models import CompanyProfile
+    profile = CompanyProfile.get(company=facture.company)
+    remise_max = getattr(profile, 'remise_max_pct', None)
+    if remise_max is not None and (facture.remise_globale or 0) > remise_max:
+        anomalies.append({
+            'code': 'remise_excessive',
+            'message': (
+                f'Remise globale ({facture.remise_globale} %) supérieure au '
+                f'seuil société ({remise_max} %).'),
+        })
+
+    # Client au-delà de son plafond d'encours (FG41).
+    if facture.client_id:
+        from apps.crm.selectors import client_credit_warning
+        warning = client_credit_warning(facture.client)
+        if warning['depasse']:
+            anomalies.append({
+                'code': 'plafond_credit_depasse',
+                'message': (
+                    f"Encours client ({warning['encours']} MAD) au-delà du "
+                    f"plafond ({warning['plafond']} MAD)."),
+            })
+
+    return anomalies
+
+
 class StockInsuffisantError(Exception):
     """Levée quand une réservation de stock dépasserait le disponible (U9)."""
 

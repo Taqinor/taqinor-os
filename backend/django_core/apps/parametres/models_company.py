@@ -312,6 +312,16 @@ class CompanyProfile(models.Model):
         help_text='Résiduel (MAD) toléré, abandonné automatiquement à '
                   "l'encaissement. 0 = désactivé (défaut).")
 
+    # ── XFAC18 — workflow de revue facture (ségrégation des tâches) ──
+    # Défaut OFF = comportement actuel byte-identique (n'importe quel rôle qui
+    # crée une facture peut l'émettre). ON : une facture créée par un
+    # utilisateur du tier limité démarre « à valider » et l'émission exige un
+    # valideur du tier responsable/admin DIFFÉRENT du créateur.
+    revue_factures_active = models.BooleanField(
+        default=False,
+        help_text="Active le contrôle 4-yeux à l'émission des factures "
+                  "(désactivé par défaut).")
+
     class Meta:
         verbose_name = 'Profil entreprise'
 

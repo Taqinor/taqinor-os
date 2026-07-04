@@ -136,6 +136,19 @@ class FactureViewSet(viewsets.ModelViewSet):
                 getattr(profile, 'escompte_jours_defaut', None) is not None:
             save_kwargs['escompte_jours'] = profile.escompte_jours_defaut
 
+        # XFAC18 — workflow de revue : flag OFF (défaut) → rien ne change
+        # (revue_statut reste vide). ON et créateur du tier LIMITÉ (menu_tier
+        # 'normal' — ex. un rôle Commercial avec seulement ventes_creer, qui
+        # passe IsResponsableOrAdmin via ses permissions d'écriture fines mais
+        # n'est PAS du palier responsable/admin) → démarre « à valider ». Un
+        # responsable/admin qui crée directement n'a pas besoin d'être
+        # re-validé.
+        from authentication.models import CustomUser
+        if getattr(profile, 'revue_factures_active', False) and \
+                self.request.user.menu_tier not in (
+                    CustomUser.ROLE_ADMIN, CustomUser.ROLE_RESPONSABLE):
+            save_kwargs['revue_statut'] = Facture.RevueStatut.A_VALIDER
+
         create_numbered(
             Facture, company, 'facture',
             lambda ref: serializer.save(reference=ref, **save_kwargs),
@@ -157,9 +170,32 @@ class FactureViewSet(viewsets.ModelViewSet):
                 )},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # XFAC18 — workflow de revue (ségrégation des tâches). Flag OFF
+        # (défaut) → comportement inchangé, aucun contrôle supplémentaire.
+        # Flag ON et facture « à valider » → le valideur doit être un
+        # responsable/admin DIFFÉRENT du créateur.
+        from apps.parametres.models import CompanyProfile
+        profile = CompanyProfile.get(company=facture.company)
+        anomalies = []
+        if getattr(profile, 'revue_factures_active', False) and \
+                facture.revue_statut == Facture.RevueStatut.A_VALIDER:
+            if facture.created_by_id == request.user.id:
+                return Response(
+                    {'detail': (
+                        'Cette facture doit être validée par un '
+                        'responsable/admin différent du créateur.'
+                    )},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            from ..services import anomalies_emission_facture
+            anomalies = anomalies_emission_facture(facture)
+            facture.revue_statut = Facture.RevueStatut.VALIDEE
         facture.statut = Facture.Statut.EMISE
         facture.save()
-        return Response(FactureSerializer(facture).data)
+        data = FactureSerializer(facture).data
+        if anomalies:
+            data['anomalies'] = anomalies
+        return Response(data)
 
     @action(detail=True, methods=['post'], url_path='marquer-payee',
             permission_classes=[IsResponsableOrAdmin])

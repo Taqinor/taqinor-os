@@ -670,6 +670,19 @@ class Facture(models.Model):
         related_name='factures_abandonnees',
     )
 
+    # ── XFAC18 — statut de REVUE (ségrégation des tâches, style Odoo 19) ──
+    # Statut de TRAVAIL additif, distinct du cycle ``Statut`` existant : quand
+    # le réglage société ``revue_factures_active`` est OFF (défaut), ce champ
+    # reste vide et n'affecte rien (comportement actuel byte-identique). ON,
+    # une facture créée par un utilisateur du tier limité démarre « à
+    # valider » et ``emettre`` exige un valideur DIFFÉRENT du créateur.
+    class RevueStatut(models.TextChoices):
+        A_VALIDER = 'a_valider', 'À valider'
+        VALIDEE = 'validee', 'Validée'
+
+    revue_statut = models.CharField(
+        max_length=15, choices=RevueStatut.choices, blank=True, default='')
+
     # ── Statut de télédéclaration DGI (N39) — purement INFORMATIF, posé à la
     # main. Prépare le modèle de données pour un futur flux DGI sans aucun
     # appel externe aujourd'hui. Défaut « Non soumise » = comportement actuel.
