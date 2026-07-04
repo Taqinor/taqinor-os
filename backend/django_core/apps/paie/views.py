@@ -110,6 +110,8 @@ from .services import (
     mouvements_cnss_periode,
     notifier_echeances_en_retard,
     parametre_en_vigueur,
+    payer_ordre_virement,
+    payer_organismes,
     profils_hors_virement,
     rapprochement_paie_gl,
     rapprocher_affebds,
@@ -1206,6 +1208,35 @@ class OrdreVirementViewSet(_PaieVoirOuGerer, TenantMixin,
         return Response(
             self.get_serializer(ordre).data, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['post'], url_path='payer')
+    def payer(self, request, pk=None):
+        """Poste l'écriture de règlement de l'OV (débit 4432, YLEDG7).
+
+        Corps : ``compte_tresorerie`` (id `compta.CompteTresorerie`,
+        requis) ; ``date_reglement`` facultative (défaut aujourd'hui).
+        Idempotent — rejouer renvoie la même écriture.
+        """
+        ordre = self.get_object()
+        compte_id = request.data.get('compte_tresorerie')
+        if not compte_id:
+            return Response(
+                {'detail': 'Champ "compte_tresorerie" requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            ecriture = payer_ordre_virement(
+                ordre, compte_id,
+                date_reglement=request.data.get('date_reglement') or None,
+                created_by=request.user)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                'ordre': self.get_serializer(ordre).data,
+                'ecriture_id': ecriture.id if ecriture else None,
+            },
+            status=status.HTTP_200_OK)
+
     @action(detail=True, methods=['get'], url_path='fichier')
     def fichier(self, request, pk=None):
         """Renvoie le fichier de virement banque (lignes + total, PAIE30).
@@ -1365,10 +1396,60 @@ class EcheanceDeclarativeViewSet(_PaieVoirOuGerer, TenantMixin,
     champs ``periode``/``type_echeance``/``date_limite`` sont posés par le
     générateur (``services.generer_echeances_periode``) et restent en
     lecture seule côté API. ``paie_voir``/``paie_gerer`` (XPAI7).
+
+    L'action ``payer`` (YLEDG7) poste l'écriture de règlement de l'organisme
+    (débit 4441/4452/4443, crédit trésorerie) et marque PAYÉES toutes les
+    échéances du même organisme sur la période — un ``patch`` manuel de
+    ``statut`` reste possible mais ne poste jamais d'écriture.
     """
     permission_classes = [IsResponsableOrAdmin]  # repli si get_permissions absent
     queryset = EcheanceDeclarative.objects.select_related('periode').all()
     serializer_class = EcheanceDeclarativeSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_limite', 'periode', 'id']
-    http_method_names = ['get', 'patch', 'head', 'options']
+    http_method_names = ['get', 'patch', 'post', 'head', 'options']
+
+    # Mappe ``type_echeance`` (modèle) au code ``organisme`` attendu par
+    # ``services.payer_organismes`` (codes de ``_ORGANISMES_CHARGES``).
+    _ORGANISME_PAR_TYPE = {
+        EcheanceDeclarative.TYPE_BDS: 'cnss_amo',
+        EcheanceDeclarative.TYPE_IR_MENSUEL: 'ir',
+        EcheanceDeclarative.TYPE_CIMR: 'cimr',
+    }
+
+    @action(detail=True, methods=['post'], url_path='payer')
+    def payer(self, request, pk=None):
+        """Poste le règlement de l'organisme de cette échéance (YLEDG7).
+
+        Corps : ``compte_tresorerie`` (id, requis), ``date_reglement``
+        facultative. Solde 4441/4452/4443 pour TOUTES les échéances du même
+        organisme sur la période (idempotent — déjà payée = ignorée).
+        """
+        echeance = self.get_object()
+        organisme = self._ORGANISME_PAR_TYPE.get(echeance.type_echeance)
+        if organisme is None:
+            return Response(
+                {'detail': (
+                    "Cette échéance (état 9421 annuel) n'a pas de règlement "
+                    "GL dédié.")},
+                status=status.HTTP_400_BAD_REQUEST)
+        compte_id = request.data.get('compte_tresorerie')
+        if not compte_id:
+            return Response(
+                {'detail': 'Champ "compte_tresorerie" requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            ecriture = payer_organismes(
+                echeance.periode, organisme, compte_id,
+                date_reglement=request.data.get('date_reglement') or None,
+                created_by=request.user)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        echeance.refresh_from_db()
+        return Response(
+            {
+                'echeance': self.get_serializer(echeance).data,
+                'ecriture_id': ecriture.id if ecriture else None,
+            },
+            status=status.HTTP_200_OK)

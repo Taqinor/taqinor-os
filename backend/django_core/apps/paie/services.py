@@ -32,6 +32,7 @@ from django.utils import timezone
 
 from .models import (
     BaremeIR,
+    EcheanceDeclarative,
     ElementVariable,
     ParametrePaie,
     PeriodePaie,
@@ -3777,6 +3778,150 @@ def rapprochement_paie_gl(periode):
         'ecart_total': _q(ecart_total),
         'coherent': ecart_total == 0,
     }
+
+
+# ── YLEDG7 — Règlement de l'OV salaires + des organismes sociaux ───────────
+#
+# ``journal_de_paie`` (PAIE33) poste correctement les DETTES (crédit 4432 net,
+# 4441 CNSS/AMO, 4452 IR, 4443 CIMR) mais rien ne poste jamais le RÈGLEMENT :
+# ``emettre_ordre_virement`` ne fait que figer le statut, et aucun service ne
+# solde 4441/4452/4443 aux organismes. Les dettes de paie s'empilent au GL
+# pour toujours. Les deux fonctions ci-dessous postent le débit du compte de
+# dette / crédit trésorerie, au même patron que ``journal_de_paie``
+# (``compta.services`` via import cross-app fonction-local, jamais
+# ``compta.models``).
+
+# Mappe le ``code`` de ``_ORGANISMES_CHARGES`` (utilisé par
+# ``etat_des_charges``/``rapprochement_paie_gl``) au(x) type(s)
+# ``EcheanceDeclarative.TYPE_*`` que ``payer_organismes`` peut solder.
+_ECHEANCE_TYPES_PAR_ORGANISME = {
+    'cnss_amo': (EcheanceDeclarative.TYPE_BDS,),
+    'ir': (EcheanceDeclarative.TYPE_IR_MENSUEL,),
+    'cimr': (EcheanceDeclarative.TYPE_CIMR,),
+}
+
+
+def payer_ordre_virement(ordre, compte_tresorerie, *,
+                         date_reglement=None, created_by=None):
+    """Poste l'écriture de règlement de l'OV salaires (YLEDG7).
+
+    À l'émission/exécution de l'``OrdreVirement`` : débite 4432
+    Rémunérations dues au personnel du ``ordre.total`` / crédite le compte
+    comptable du ``compte_tresorerie`` (banque, DC20). Idempotent — un ordre
+    déjà réglé (``ecriture_reglement_id`` posé) renvoie son écriture existante
+    sans repasser. Refusé si la période comptable de la date de règlement est
+    verrouillée (FG115). Le ``compte_tresorerie`` DOIT appartenir à la même
+    société que l'ordre.
+
+    Renvoie l'écriture comptable postée.
+    """
+    from apps.compta import services as compta_services
+    from apps.compta.models import EcritureComptable
+
+    company = ordre.company
+    if ordre.ecriture_reglement_id:
+        return EcritureComptable.objects.filter(
+            pk=ordre.ecriture_reglement_id).first()
+    compte_tresorerie = _resoudre_compte_emetteur(company, compte_tresorerie)
+    if compte_tresorerie is None:
+        raise ValueError(
+            "Le compte de trésorerie doit appartenir à la société de "
+            "l'ordre de virement.")
+    if not ordre.total or ordre.total <= 0:
+        raise ValueError("L'ordre de virement n'a aucun montant à régler.")
+
+    date_reg = date_reglement or timezone.localdate()
+    compte_net = compta_services.get_compte(company, _COMPTE_NET)
+    if compte_net is None:
+        compta_services.seed_plan_comptable(company)
+        compte_net = compta_services.get_compte(company, _COMPTE_NET)
+
+    montant = _q(ordre.total)
+    libelle = f'Règlement salaires {ordre.reference or ordre.id}'
+    lignes = [
+        {'compte': compte_net, 'libelle': libelle,
+         'debit': montant, 'credit': Decimal('0')},
+        {'compte': compte_tresorerie.compte_comptable, 'libelle': libelle,
+         'debit': Decimal('0'), 'credit': montant},
+    ]
+    ecriture = compta_services.creer_ecriture_od(
+        company, date_reg, libelle, lignes,
+        reference=f'OV-REGLEMENT-{ordre.id}', created_by=created_by)
+    ordre.ecriture_reglement_id = ecriture.id
+    ordre.date_reglement = timezone.now()
+    ordre.save(update_fields=['ecriture_reglement_id', 'date_reglement'])
+    return ecriture
+
+
+def payer_organismes(periode, organisme, compte_tresorerie, *,
+                     date_reglement=None, created_by=None):
+    """Poste l'écriture de règlement d'un organisme social (YLEDG7).
+
+    ``organisme`` est un des codes de ``_ORGANISMES_CHARGES``
+    (``'cnss_amo'``/``'ir'``/``'cimr'``) : débite le compte de dette
+    correspondant (4441/4452/4443) du montant dû (``etat_des_charges``) /
+    crédite le compte comptable du ``compte_tresorerie``. Marque PAYÉE la
+    (les) ``EcheanceDeclarative`` de la période correspondant à cet
+    organisme (idempotent par écheance — une échéance déjà payée n'est jamais
+    re-postée). Refusé si la période comptable de règlement est verrouillée.
+
+    Renvoie l'écriture postée, ou ``None`` si le montant dû est nul (rien à
+    régler) ou si toutes les échéances de l'organisme sont déjà payées.
+    """
+    from apps.compta import services as compta_services
+
+    mapping = {code: (libelle, numero)
+               for code, libelle, numero in _ORGANISMES_CHARGES}
+    if organisme not in mapping:
+        raise ValueError(f"Organisme inconnu : {organisme!r}.")
+    libelle_organisme, numero_compte = mapping[organisme]
+
+    company = periode.company
+    types_echeance = _ECHEANCE_TYPES_PAR_ORGANISME.get(organisme, ())
+    echeances = list(EcheanceDeclarative.objects.filter(
+        company=company, periode=periode, type_echeance__in=types_echeance,
+    ).exclude(statut=EcheanceDeclarative.STATUT_PAYEE))
+    if not echeances:
+        # Toutes déjà payées (ou aucune échéance de ce type) — no-op.
+        return None
+
+    etat = etat_des_charges(periode)
+    total_par_code = {o['code']: o['total'] for o in etat['organismes']}
+    montant = total_par_code.get(organisme, Decimal('0.00'))
+    if montant <= 0:
+        return None
+
+    compte_tresorerie = _resoudre_compte_emetteur(company, compte_tresorerie)
+    if compte_tresorerie is None:
+        raise ValueError(
+            "Le compte de trésorerie doit appartenir à la société de la "
+            "période.")
+
+    date_reg = date_reglement or timezone.localdate()
+    compte_dette = compta_services.get_compte(company, numero_compte)
+    if compte_dette is None:
+        compta_services.seed_plan_comptable(company)
+        compte_dette = compta_services.get_compte(company, numero_compte)
+
+    montant = _q(montant)
+    libelle_ecriture = (
+        f'Règlement {libelle_organisme} — {periode.mois:02d}/{periode.annee}')
+    lignes = [
+        {'compte': compte_dette, 'libelle': libelle_ecriture,
+         'debit': montant, 'credit': Decimal('0')},
+        {'compte': compte_tresorerie.compte_comptable,
+         'libelle': libelle_ecriture,
+         'debit': Decimal('0'), 'credit': montant},
+    ]
+    ecriture = compta_services.creer_ecriture_od(
+        company, date_reg, libelle_ecriture, lignes,
+        reference=f'ORG-{organisme.upper()}-{periode.id}',
+        created_by=created_by)
+    for echeance in echeances:
+        echeance.statut = EcheanceDeclarative.STATUT_PAYEE
+        echeance.ecriture_reglement_id = ecriture.id
+        echeance.save(update_fields=['statut', 'ecriture_reglement_id'])
+    return ecriture
 
 
 # ── PAIE27 — Cumul annuel par employé (recalcul depuis bulletins validés) ────

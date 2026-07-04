@@ -1521,6 +1521,16 @@ class OrdreVirement(models.Model):
         null=True, blank=True, verbose_name='Émis le')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
+    # YLEDG7 — écriture de règlement (débit 4432 / crédit trésorerie) postée
+    # par ``services.payer_ordre_virement``. String-ref vers
+    # ``compta.EcritureComptable`` (jamais d'import de compta.models depuis
+    # paie) : posée une seule fois, garantit l'idempotence du paiement de
+    # l'ordre.
+    ecriture_reglement_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Écriture de règlement (compta)')
+    date_reglement = models.DateTimeField(
+        null=True, blank=True, verbose_name='Réglé le')
 
     class Meta:
         verbose_name = 'Ordre de virement'
@@ -1668,6 +1678,13 @@ class EcheanceDeclarative(models.Model):
         verbose_name='Rappel envoyé le')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
+    # YLEDG7 — écriture de règlement (débit 4441/4452/4443 / crédit
+    # trésorerie) postée par ``services.payer_organismes`` au règlement
+    # effectif de la déclaration. String-ref vers
+    # ``compta.EcritureComptable`` : posée une seule fois (idempotence).
+    ecriture_reglement_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Écriture de règlement (compta)')
 
     class Meta:
         verbose_name = 'Échéance déclarative'
