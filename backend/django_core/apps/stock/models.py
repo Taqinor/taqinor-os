@@ -804,6 +804,77 @@ class StockEmplacement(models.Model):
         return f'{self.produit_id} @ {self.emplacement_id} = {self.quantite}'
 
 
+class ProfilSaisonnier(models.Model):
+    """XSTK17 — profil saisonnier de seuils min/max/cible, PAR PRODUIT ou PAR
+    CATÉGORIE (l'un des deux, jamais les deux — validé en base). Pendant sa
+    fenêtre (``mois_debut``..``mois_fin``, mois calendaires 1-12, la fenêtre
+    peut « boucler » l'année ex. 11→2), les sélecteurs de réappro (FG54, FG65,
+    FG326) lisent CE seuil en PRIORITÉ sur le seuil statique
+    (``Produit.seuil_alerte``). Hors saison ou sans profil actif : repli
+    STRICTEMENT inchangé sur le seuil statique existant (comportement
+    historique). Deux profils de la MÊME cible (produit ou catégorie) ne
+    peuvent pas se chevaucher (validé côté service, pas en DB — le
+    chevauchement calendaire n'est pas exprimable en CheckConstraint
+    portable)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='profils_saisonniers')
+    produit = models.ForeignKey(
+        Produit, on_delete=models.CASCADE, null=True, blank=True,
+        related_name='profils_saisonniers')
+    categorie = models.ForeignKey(
+        Categorie, on_delete=models.CASCADE, null=True, blank=True,
+        related_name='profils_saisonniers')
+    nom = models.CharField(
+        max_length=100, blank=True, null=True,
+        help_text='Libellé libre (ex. « Saison pompage »).')
+    mois_debut = models.PositiveSmallIntegerField(
+        help_text='Mois de début de la saison (1-12).')
+    mois_fin = models.PositiveSmallIntegerField(
+        help_text='Mois de fin de la saison (1-12, inclus). Peut être < '
+                  'mois_debut (fenêtre à cheval sur le nouvel an).')
+    seuil_min = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='Seuil minimum de saison (remplace seuil_alerte pendant '
+                  'la fenêtre).')
+    seuil_max = models.PositiveIntegerField(null=True, blank=True)
+    quantite_cible = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='Quantité cible de remplacement pendant la saison '
+                  '(remplace quantite_reappro_cible).')
+    actif = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='profils_saisonniers_crees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Profil saisonnier'
+        verbose_name_plural = 'Profils saisonniers'
+        ordering = ['mois_debut']
+        constraints = [
+            models.CheckConstraint(
+                check=(
+                    models.Q(produit__isnull=False, categorie__isnull=True)
+                    | models.Q(produit__isnull=True, categorie__isnull=False)
+                ),
+                name='stock_profilsaisonnier_produit_xor_categorie'),
+        ]
+
+    def __str__(self):
+        cible = f'produit={self.produit_id}' if self.produit_id \
+            else f'categorie={self.categorie_id}'
+        return f'{self.nom or "Profil"} ({cible}, {self.mois_debut}→{self.mois_fin})'
+
+    def couvre_mois(self, mois):
+        """Vrai si ``mois`` (1-12) tombe dans la fenêtre, y compris quand
+        elle boucle l'année (ex. mois_debut=11, mois_fin=2)."""
+        if self.mois_debut <= self.mois_fin:
+            return self.mois_debut <= mois <= self.mois_fin
+        return mois >= self.mois_debut or mois <= self.mois_fin
+
+
 class TransfertStock(models.Model):
     """Le « transfer record » de N15 : déplace une quantité d'un produit d'un
     emplacement source vers un emplacement destination.

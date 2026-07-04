@@ -1448,8 +1448,86 @@ def sortie_exists_for_reference(company, reference):
 
 # ── FG54 — Réapprovisionnement auto ──────────────────────────────────────────
 
+# ── XSTK17 — profils saisonniers de seuils (saison pompage) ─────────────────
+
+def profil_saisonnier_actif(company, produit, *, mois=None):
+    """XSTK17 — profil saisonnier ACTIF couvrant ``mois`` (défaut : mois
+    courant) pour ce produit (priorité) ou sa catégorie. Renvoie None hors
+    saison / sans profil — auquel cas l'appelant garde le seuil statique
+    (comportement historique inchangé)."""
+    from django.utils import timezone
+    from .models import ProfilSaisonnier
+    mois = mois or timezone.now().month
+
+    profil_produit = ProfilSaisonnier.objects.filter(
+        company=company, produit=produit, actif=True).first()
+    candidats = [profil_produit] if profil_produit else []
+    if not candidats and produit.categorie_id:
+        candidats = list(ProfilSaisonnier.objects.filter(
+            company=company, categorie_id=produit.categorie_id, actif=True))
+    for profil in candidats:
+        if profil and profil.couvre_mois(mois):
+            return profil
+    return None
+
+
+def seuil_effectif_produit(company, produit, *, mois=None):
+    """XSTK17 — (seuil_alerte, quantite_cible) EFFECTIFS pour ce produit : le
+    profil saisonnier ACTIF prime pendant sa fenêtre ; hors saison ou sans
+    profil, renvoie EXACTEMENT (produit.seuil_alerte,
+    produit.quantite_reappro_cible) — repli byte-identique au comportement
+    historique."""
+    profil = profil_saisonnier_actif(company, produit, mois=mois)
+    if profil is None:
+        return produit.seuil_alerte, produit.quantite_reappro_cible
+    seuil = profil.seuil_min if profil.seuil_min is not None \
+        else produit.seuil_alerte
+    cible = profil.quantite_cible if profil.quantite_cible is not None \
+        else produit.quantite_reappro_cible
+    return seuil, cible
+
+
+def creer_profil_saisonnier(
+        company, *, produit=None, categorie=None, mois_debut, mois_fin,
+        seuil_min=None, seuil_max=None, quantite_cible=None, nom=None,
+        user=None):
+    """XSTK17 — crée un profil saisonnier après avoir rejeté tout
+    CHEVAUCHEMENT calendaire avec un profil déjà ACTIF de la MÊME cible
+    (produit ou catégorie, jamais les deux). Lève ValueError si ni produit
+    ni catégorie n'est fourni (ou les deux), ou en cas de chevauchement."""
+    from .models import ProfilSaisonnier
+
+    if bool(produit) == bool(categorie):
+        raise ValueError(
+            'Un profil saisonnier cible soit un produit, soit une '
+            'catégorie (jamais les deux, jamais aucun).')
+    if not (1 <= mois_debut <= 12 and 1 <= mois_fin <= 12):
+        raise ValueError('Les mois doivent être compris entre 1 et 12.')
+
+    candidat = ProfilSaisonnier(
+        mois_debut=mois_debut, mois_fin=mois_fin)
+    existants = ProfilSaisonnier.objects.filter(company=company, actif=True)
+    existants = existants.filter(produit=produit) if produit \
+        else existants.filter(categorie=categorie)
+    for autre in existants:
+        for m in range(1, 13):
+            if candidat.couvre_mois(m) and autre.couvre_mois(m):
+                label = autre.nom or f'#{autre.id}'
+                raise ValueError(
+                    f'Ce profil chevauche le profil existant « {label} » '
+                    f'sur le mois {m}.')
+
+    return ProfilSaisonnier.objects.create(
+        company=company, produit=produit, categorie=categorie,
+        mois_debut=mois_debut, mois_fin=mois_fin, seuil_min=seuil_min,
+        seuil_max=seuil_max, quantite_cible=quantite_cible, nom=nom,
+        created_by=user)
+
+
 def produits_a_reapprovisionner(company):
-    """Retourne les produits dont le stock est <= seuil_alerte, groupés par
+    """Retourne les produits dont le stock est <= seuil EFFECTIF (XSTK17 :
+    le profil saisonnier ACTIF prime sur `seuil_alerte` pendant sa fenêtre ;
+    hors saison, repli byte-identique sur `seuil_alerte`), groupés par
     fournisseur le moins cher (PrixFournisseur). INTERNE.
 
     Chaque item : {produit_id, nom, quantite_stock, seuil_alerte,
@@ -1462,10 +1540,33 @@ def produits_a_reapprovisionner(company):
     from .models import Produit, PrixFournisseur
     from apps.installations.selectors import kit_map_for_produits_composes
 
+    # XSTK17 — exclut seulement les produits SANS seuil_alerte ET sans
+    # profil saisonnier actif (repli inchangé : seuil_alerte=0 = pas de
+    # suivi de seuil, comme avant). Les candidats avec un profil actif
+    # passent même si seuil_alerte=0 (le profil peut définir un seuil que
+    # le produit n'a pas statiquement).
+    candidats_ids = set(
+        Produit.objects.filter(
+            company=company, is_archived=False)
+        .exclude(seuil_alerte=0).values_list('id', flat=True))
+    from .models import ProfilSaisonnier
+    from django.utils import timezone
+    mois_actuel = timezone.now().month
+    for profil in ProfilSaisonnier.objects.filter(
+            company=company, actif=True).select_related('categorie'):
+        if not profil.couvre_mois(mois_actuel):
+            continue
+        if profil.produit_id:
+            candidats_ids.add(profil.produit_id)
+        elif profil.categorie_id:
+            candidats_ids.update(
+                Produit.objects.filter(
+                    company=company, is_archived=False,
+                    categorie_id=profil.categorie_id)
+                .values_list('id', flat=True))
+
     qs = (Produit.objects
-          .filter(company=company, is_archived=False)
-          .exclude(seuil_alerte=0)
-          .filter(quantite_stock__lte=models.F('seuil_alerte'))
+          .filter(company=company, id__in=candidats_ids)
           .prefetch_related('prix_fournisseurs__fournisseur'))
 
     produits = list(qs)
@@ -1474,20 +1575,25 @@ def produits_a_reapprovisionner(company):
 
     result = []
     for p in produits:
+        seuil_effectif, cible_effective = seuil_effectif_produit(
+            company, p, mois=mois_actuel)
+        if p.quantite_stock > (seuil_effectif or 0):
+            continue
         # Fournisseur le moins cher parmi les prix enregistrés.
         best = (PrixFournisseur.objects
                 .filter(company=company, produit=p)
                 .select_related('fournisseur')
                 .order_by('prix_achat')
                 .first())
-        qte_suggere = p.quantite_reappro_cible if p.quantite_reappro_cible else (p.seuil_alerte * 2)
+        qte_suggere = cible_effective if cible_effective else (
+            (seuil_effectif or 0) * 2)
         kit_id = kit_map.get(p.id)
         result.append({
             'produit_id': p.id,
             'nom': p.nom,
             'sku': p.sku,
             'quantite_stock': p.quantite_stock,
-            'seuil_alerte': p.seuil_alerte,
+            'seuil_alerte': seuil_effectif,
             'quantite_suggere': qte_suggere,
             'fournisseur_id': best.fournisseur_id if best else None,
             'fournisseur_nom': best.fournisseur.nom if best else None,
