@@ -72,6 +72,7 @@ from .services import (
     changer_statut,
     cloturer_periode_paie,
     commit_reprise_cumuls,
+    controle_completude,
     controle_ecarts,
     cout_global_par_profil,
     creer_bulletin_rectificatif,
@@ -898,6 +899,20 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
         return Response(
             controle_ecarts(periode, seuil_pct=seuil_pct),
             status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='controle-completude')
+    def controle_completude_action(self, request, pk=None):
+        """Contrôle de complétude pré-paie — trous structurels (YHIRE3).
+
+        Distinct de ``controle-ecarts`` (XPAI15, comparaison M vs M-1) :
+        liste les actifs sans profil de paie, les profils sans CNSS/RIB,
+        les profils actifs dont le dossier RH n'est plus actif (sorti/
+        embauché non pris de poste), et les CDD expirés avant la fin de la
+        période. Lecture seule, affiché en tête du PaieRunWizard.
+        """
+        periode = self.get_object()
+        return Response(
+            controle_completude(periode), status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='journal-de-paie')
     def journal_de_paie(self, request, pk=None):

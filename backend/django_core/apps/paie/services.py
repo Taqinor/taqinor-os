@@ -3587,6 +3587,107 @@ def controle_ecarts(periode, *, seuil_pct=None):
     }
 
 
+# ── YHIRE3 — Contrôle de complétude pré-paie ────────────────────────────────
+
+def controle_completude(periode):
+    """Contrôle de complétude pré-paie (YHIRE3, l'analogue « pas de CNSS = pas
+    de paie »). Rien ne signalait les trous avant génération : un actif SANS
+    ``ProfilPaie`` était silencieusement ignoré par l'import
+    (``importer_elements_rh``), un dossier sans n° CNSS/RIB passait quand même
+    en bulletin/virement, un profil actif dont le dossier est SORTI ou
+    EMBAUCHE (non pris de poste) n'était pas détecté, un CDD dont
+    ``contrat_date_fin`` est antérieure à la période non plus.
+
+    Lecture RH via ``apps.rh.selectors`` (jamais ``rh.models`` directement,
+    hormis la traversée du FK direct ``ProfilPaie.employe`` déjà propriété de
+    la paie). Distinct de ``controle_ecarts`` (XPAI15, comparaison des
+    MONTANTS M vs M-1) : ici ce sont des trous STRUCTURELS.
+
+    Renvoie ``{'actifs_sans_profil': [...], 'profils_sans_cnss': [...],
+    'profils_sans_rib': [...], 'profils_actifs_dossiers_non_actifs': [...],
+    'contrats_expires': [...]}`` — chaque item porte assez de contexte pour
+    l'écran de contrôle (dossier/profil id, matricule, nom).
+    """
+    import calendar
+
+    from apps.rh import selectors as rh_selectors
+
+    from .models import ProfilPaie
+
+    company = periode.company
+    date_fin_periode = date(
+        periode.annee, periode.mois,
+        calendar.monthrange(periode.annee, periode.mois)[1])
+
+    dossiers_actifs = {
+        d.id: d for d in rh_selectors.dossiers_actifs(company)
+    }
+    profils = list(
+        ProfilPaie.objects.filter(company=company)
+        .select_related('employe'))
+    profils_par_employe = {p.employe_id: p for p in profils}
+
+    def _libelle(dossier):
+        return f'{dossier.matricule} — {dossier.nom} {dossier.prenom}'.strip()
+
+    # Actifs sans profil de paie (l'import RH les ignore silencieusement).
+    actifs_sans_profil = [
+        {'dossier_id': did, 'matricule': d.matricule, 'nom': _libelle(d)}
+        for did, d in dossiers_actifs.items()
+        if did not in profils_par_employe
+    ]
+
+    # Profils actifs (paie) sans CNSS/RIB — bloquant recommandé côté écran.
+    profils_sans_cnss = []
+    profils_sans_rib = []
+    profils_actifs_dossiers_non_actifs = []
+    for profil in profils:
+        if not profil.actif:
+            continue
+        dossier = profil.employe
+        if not profil.numero_cnss:
+            profils_sans_cnss.append({
+                'profil_id': profil.id, 'dossier_id': dossier.id,
+                'matricule': dossier.matricule, 'nom': _libelle(dossier),
+            })
+        if not profil.rib:
+            profils_sans_rib.append({
+                'profil_id': profil.id, 'dossier_id': dossier.id,
+                'matricule': dossier.matricule, 'nom': _libelle(dossier),
+            })
+        # Profil actif alors que le dossier RH est SORTI ou EMBAUCHE (n'a
+        # jamais pris de poste) — décalage à corriger avant de payer.
+        if dossier.id not in dossiers_actifs:
+            profils_actifs_dossiers_non_actifs.append({
+                'profil_id': profil.id, 'dossier_id': dossier.id,
+                'matricule': dossier.matricule, 'nom': _libelle(dossier),
+                'statut_dossier': dossier.statut,
+            })
+
+    # CDD dont la fin de contrat est antérieure à la fin de la période.
+    contrats_expires = [
+        {
+            'profil_id': profil.id, 'dossier_id': profil.employe.id,
+            'matricule': profil.employe.matricule,
+            'nom': _libelle(profil.employe),
+            'contrat_date_fin': profil.employe.contrat_date_fin,
+        }
+        for profil in profils
+        if profil.actif
+        and profil.employe.type_contrat == 'cdd'
+        and profil.employe.contrat_date_fin is not None
+        and profil.employe.contrat_date_fin < date_fin_periode
+    ]
+
+    return {
+        'actifs_sans_profil': actifs_sans_profil,
+        'profils_sans_cnss': profils_sans_cnss,
+        'profils_sans_rib': profils_sans_rib,
+        'profils_actifs_dossiers_non_actifs': profils_actifs_dossiers_non_actifs,
+        'contrats_expires': contrats_expires,
+    }
+
+
 # ── PAIE33 — Livre de paie + journal de paie → écritures (via compta) ───────
 
 # Comptes CGNC utilisés par l'écriture de paie (barème CGNC marocain) :
