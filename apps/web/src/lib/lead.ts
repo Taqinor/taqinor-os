@@ -442,7 +442,11 @@ export function validateLead(body: unknown): ValidationResult {
   const errors: Record<string, string> = {};
 
   const fullName = cleanStr(b.fullName);
-  if (fullName.length < 2) errors.fullName = 'Nom complet requis';
+  // WB33 — durcissement additif : un nom fait uniquement d'emojis/symboles
+  // (ex. « 😀😀 ») passait le seuil de longueur ≥ 2 sans jamais contenir de
+  // lettre. On exige ICI au moins UNE lettre (tout alphabet — \p{L} couvre le
+  // latin ET l'arabe), même garde-fou que mon-toit.astro côté client.
+  if (fullName.length < 2 || !/\p{L}/u.test(fullName)) errors.fullName = 'Nom complet requis';
 
   const phone = normalizeMoroccanPhone(cleanStr(b.phone, 30));
   if (!phone.ok) errors.phone = phone.error ?? 'Numéro invalide';
