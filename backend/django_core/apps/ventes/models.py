@@ -1256,6 +1256,14 @@ class Avoir(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
         related_name='avoirs_crees')
     fichier_pdf = models.CharField(max_length=500, blank=True, null=True)
+    # ── XPOS7 — Retour client avec re-stockage (additif) ──
+    # Un avoir « normal » (correction de facturation) laisse ces deux champs
+    # à leur valeur par défaut (False/'') — comportement historique intact.
+    # Un avoir créé depuis l'action `retour-client` pose `restocke=True` quand
+    # la marchandise a été remise en stock (option — un retour peut choisir de
+    # NE PAS re-stocker, ex. produit défectueux détruit) et exige un motif.
+    restocke = models.BooleanField(default=False)
+    motif_retour = models.CharField(max_length=255, blank=True, default='')
 
     class Meta:
         verbose_name = 'Avoir'
