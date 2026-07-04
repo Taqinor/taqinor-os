@@ -124,6 +124,12 @@ class Projet(models.Model):
         max_length=12, choices=PolitiqueFacturation.choices,
         default=PolitiqueFacturation.FORFAIT,
         verbose_name='Politique de facturation')
+    # Alias e-mail du projet (ZPRJ12) — optionnel, unique par société quand
+    # renseigné (pattern ``chat.Conversation.alias_email`` ZCTR12). Sans
+    # ingestion e-mail configurée, ce champ reste un simple libellé sans effet.
+    alias_email = models.CharField(
+        max_length=254, blank=True, default='', null=True,
+        verbose_name='Alias e-mail (création de tâches)')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -132,6 +138,12 @@ class Projet(models.Model):
         verbose_name_plural = 'Projets'
         unique_together = [('company', 'code')]
         ordering = ['-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'alias_email'],
+                condition=~models.Q(alias_email__in=['', None]),
+                name='gp_projet_alias_email_uniq'),
+        ]
 
     def __str__(self):
         return f'{self.code} — {self.nom}'

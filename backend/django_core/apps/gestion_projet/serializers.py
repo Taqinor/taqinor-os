@@ -78,6 +78,8 @@ class ProjetSerializer(serializers.ModelSerializer):
             # Politique de facturation DÉCLARATIVE (ZPRJ10) — purement
             # informative, n'altère aucun statut devis/BC/facture.
             'politique_facturation', 'politique_facturation_display',
+            # Alias e-mail (ZPRJ12) — optionnel, unique par société.
+            'alias_email',
             'date_creation',
         ]
         # ``statut`` est piloté UNIQUEMENT par les actions de transition

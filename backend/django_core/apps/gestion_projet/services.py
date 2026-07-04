@@ -2361,3 +2361,53 @@ def convertir_tache_en_ticket_sav(tache, *, user=None):
     tache.ticket_sav_id = ticket.id
     tache.save(update_fields=['ticket_sav_id'])
     return ticket
+
+
+# ── Création de tâches par e-mail entrant (alias projet) (ZPRJ12) ──────────
+def is_email_ingestion_configured():
+    """True si une ingestion e-mail entrante est configurée (pattern
+    ``apps.ventes.inbound_email.is_inbound_configured``, réutilisé — jamais
+    réinventé). Sans configuration, ``ingest_email_projet`` reste un NO-OP
+    propre (aucune connexion réseau, jamais d'exception)."""
+    from apps.ventes import inbound_email
+    return inbound_email.is_inbound_configured()
+
+
+def ingest_email_projet(company, *, to_alias, subject='', body='',
+                        from_email=''):
+    """Crée une ``Tache`` depuis un e-mail entrant adressé à l'alias d'un
+    projet (ZPRJ12) — pattern d'ingestion réutilisé de
+    ``apps.ventes.inbound_email`` (parsing PUR, aucun appel réseau ici : la
+    connexion IMAP/webhook reste dans la commande appelante).
+
+    ``to_alias`` est comparé à ``Projet.alias_email`` (scopé société,
+    insensible à la casse). Un alias INCONNU (aucun projet ne le porte) est
+    IGNORÉ proprement (renvoie None, jamais d'erreur — un alias mal orthographié
+    ne doit jamais planter le sweep). Sans ingestion configurée
+    (``is_email_ingestion_configured`` False), NE FAIT RIEN et renvoie None
+    (no-op propre) — permet d'appeler cette fonction sans risque même hors
+    configuration (le contrôle est fait ici, pas seulement dans la commande).
+
+    Renvoie la ``Tache`` créée (``statut=a_faire``, ``libelle`` = objet,
+    ``description`` = corps), journalisant l'expéditeur dans la description.
+    """
+    if not is_email_ingestion_configured():
+        return None
+
+    alias = (to_alias or '').strip().lower()
+    if not alias:
+        return None
+
+    projet = Projet.objects.filter(
+        company=company, alias_email__iexact=alias).first()
+    if projet is None:
+        return None
+
+    libelle = (subject or '(sans objet)')[:200]
+    description = body or ''
+    if from_email:
+        description = f'[e-mail de {from_email}]\n\n{description}'
+
+    return Tache.objects.create(
+        company=company, projet=projet, libelle=libelle,
+        description=description, statut=Tache.Statut.A_FAIRE)
