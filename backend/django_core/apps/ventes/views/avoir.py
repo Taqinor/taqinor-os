@@ -80,9 +80,27 @@ class AvoirViewSet(viewsets.ReadOnlyModelViewSet):
             return [IsAdminRole()]
         return [IsResponsableOrAdmin()]
 
+    @staticmethod
+    def _guard_periode_verrouillee(document):
+        """YLEDG3 — même garde que FactureViewSet (voir sa docstring) :
+        refuse (400) une mutation d'un avoir daté dans une période comptable
+        CLÔTURÉE. Compta absent/aucune période = no-op silencieux."""
+        try:
+            from apps.compta.services import verifier_facture_modifiable
+        except Exception:  # noqa: BLE001 — compta absent = no-op
+            return
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        from rest_framework.exceptions import ValidationError
+        try:
+            verifier_facture_modifiable(document)
+        except DjangoValidationError as exc:
+            raise ValidationError({'detail': exc.messages[0]
+                                   if exc.messages else str(exc)})
+
     @action(detail=True, methods=['post'], url_path='annuler')
     def annuler(self, request, pk=None):
         avoir = self.get_object()
+        self._guard_periode_verrouillee(avoir)
         avoir.statut = Avoir.Statut.ANNULEE
         avoir.save(update_fields=['statut'])
         return Response(AvoirSerializer(avoir).data)

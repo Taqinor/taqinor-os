@@ -60,6 +60,8 @@ _PROFILE_AUDIT_FIELDS = {
     'transcription_provider': 'Fournisseur de transcription (F14)',
     'photo_qa_provider': 'Fournisseur QA photo IA (F20)',
     'overage_seuil_pct': 'Seuil de dépassement consommation (%) (F12)',
+    # XFAC24 — immutabilité de la facture émise (opt-in, correction par avoir).
+    'factures_immuables': 'Factures immuables après émission',
 }
 
 

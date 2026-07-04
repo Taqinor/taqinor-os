@@ -23,7 +23,7 @@ import re as _re
 from django.utils import timezone
 
 from . import activity, stages
-from .models import Canal, Client, Lead, LeadActivity
+from .models import Canal, Client, Lead, LeadActivity, PointContact
 
 # Mouvement automatique du funnel à partir des statuts DOCUMENT du devis
 # (couche séparée et permanente — CLAUDE.md règles #2/#4) :
@@ -794,6 +794,123 @@ def resolve_client_for_lead(lead: Lead) -> Client:
     return client
 
 
+def convertir_lead_en_client(*, lead, user, mode, client_id=None):
+    """ZSAL4 — assistant de conversion EXPLICITE lead → client (Odoo « Convert
+    to Opportunity » : nouveau contact / lier un contact existant / ne pas
+    lier), à la main du commercial.
+
+    ``mode``:
+      - ``'nouveau'`` : crée un client depuis les champs du lead. Réutilise
+        STRICTEMENT :func:`resolve_client_for_lead` (jamais un 2ᵉ chemin de
+        création) — si le lead est déjà lié, ce mode ne duplique jamais.
+      - ``'lier'`` : rattache un ``crm.Client`` EXISTANT, borné à la même
+        société que le lead (``client_id`` obligatoire ; ValueError sinon,
+        ou si le client n'existe pas / est d'une autre société).
+      - ``'aucun'`` : marque le lead qualifié sans client (ne crée rien).
+
+    Toute conversion est journalisée dans le chatter du lead (choix +
+    acteur). Retourne le :class:`Client` résolu (ou None pour ``'aucun'``).
+    """
+    if mode not in ('nouveau', 'lier', 'aucun'):
+        raise ValueError("Mode de conversion invalide (nouveau|lier|aucun).")
+
+    if mode == 'aucun':
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=user,
+            kind=LeadActivity.Kind.NOTE,
+            body="Conversion : lead qualifié SANS client rattaché "
+                 f"(choix de {getattr(user, 'username', '?')}).")
+        return None
+
+    if mode == 'lier':
+        if not client_id:
+            raise ValueError("client_id requis pour le mode « lier ».")
+        client = Client.objects.filter(
+            id=client_id, company=lead.company).first()
+        if client is None:
+            raise ValueError("Client introuvable dans votre société.")
+        lead.client = client
+        lead.save(update_fields=['client'])
+        nom_client = f"{client.nom} {client.prenom or ''}".strip()
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=user,
+            kind=LeadActivity.Kind.NOTE,
+            body=f"Conversion : client existant lié — {nom_client} "
+                 f"(choix de {getattr(user, 'username', '?')}).")
+        return client
+
+    # mode == 'nouveau' : jamais un 2ᵉ chemin de création — délègue
+    # entièrement à resolve_client_for_lead (réutilise le lien existant, sinon
+    # crée). Le chatter de resolve_client_for_lead trace déjà la résolution ;
+    # on ajoute une entrée dédiée précisant que c'est une conversion EXPLICITE.
+    client = resolve_client_for_lead(lead)
+    nom_client = f"{client.nom} {client.prenom or ''}".strip()
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=user,
+        kind=LeadActivity.Kind.NOTE,
+        body=f"Conversion : nouveau client — {nom_client} "
+             f"(choix de {getattr(user, 'username', '?')}).")
+    return client
+
+
+def appliquer_plan_activite(*, lead, plan, user):
+    """ZSAL2 — applique un :class:`~apps.crm.models.PlanActivite` à un lead.
+
+    Crée une ``records.Activity`` par étape du plan, échéance = aujourd'hui +
+    ``etape.delai_jours``, assignée à ``etape.assigne_par_defaut`` si posé
+    sinon au owner du lead sinon à l'acteur. IDEMPOTENT par (lead, plan) : les
+    activités déjà créées par une précédente application de CE plan sur CE
+    lead sont retrouvées via ``summary`` + une marque dédiée dans ``note``
+    (``[plan:<id>:<etape_id>]``) — une seconde application ne duplique rien et
+    renvoie la liste déjà existante. Un plan archivé (``actif=False``) n'est
+    jamais applicable (ValueError, traduit en 400 par la vue).
+
+    Retourne la liste des ``records.Activity`` (créées ou déjà existantes,
+    dans l'ordre des étapes).
+    """
+    if not plan.actif:
+        raise ValueError("Ce plan d'activité est archivé et n'est plus applicable.")
+    if plan.company_id != lead.company_id:
+        raise ValueError("Plan hors de votre société.")
+
+    from django.contrib.contenttypes.models import ContentType
+    from apps.records.models import Activity
+
+    ct = ContentType.objects.get_for_model(Lead)
+    today = timezone.now().date()
+    resultats = []
+    for etape in plan.etapes.select_related(
+            'activity_type', 'assigne_par_defaut').order_by('ordre', 'delai_jours'):
+        marque = f'[plan:{plan.id}:{etape.id}]'
+        existante = Activity.objects.filter(
+            company=lead.company, content_type=ct, object_id=lead.id,
+            note__contains=marque,
+        ).first()
+        if existante is not None:
+            resultats.append(existante)
+            continue
+        assigne = etape.assigne_par_defaut or lead.owner or user
+        from datetime import timedelta
+        due = today + timedelta(days=etape.delai_jours)
+        act = Activity.objects.create(
+            company=lead.company, content_type=ct, object_id=lead.id,
+            activity_type=etape.activity_type,
+            summary=(etape.resume_defaut or etape.activity_type.nom)[:255],
+            due_date=due,
+            assigned_to=assigne,
+            note=marque,
+            created_by=user,
+        )
+        resultats.append(act)
+
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=user,
+        kind=LeadActivity.Kind.NOTE,
+        body=f"Plan d'activité « {plan.nom} » appliqué "
+             f"({len(plan.etapes.all())} étape(s)).")
+    return resultats
+
+
 def create_draft_lead_from_ocr(*, company, user, fields) -> Lead:
     """FG106 — crée un LEAD brouillon à partir de champs extraits par l'OCR.
 
@@ -1112,6 +1229,28 @@ def noter_devis_ouvert(devis_reference: str, lead) -> None:
         kind=LeadActivity.Kind.NOTE,
         body=f"Le client a ouvert le devis {devis_reference}")
     avancer_stage_sur_ouverture_devis(lead)
+
+
+def noter_touche_marketing(lead, message, *, ordre=0, cout=None):
+    """XMKT16 — Consigne un événement marketing significatif (envoi/ouverture/
+    clic de campagne, étape de séquence exécutée, réponse WhatsApp entrante)
+    dans le chatter du lead (``LeadActivity``) + le journal d'attribution
+    multi-touch FG204 (``PointContact``). Appelé par ``apps.compta`` — jamais
+    d'import du modèle CRM depuis compta, ce point d'entrée reste dans
+    ``apps.crm.services`` comme toutes les écritures cross-app.
+
+    Le canal réutilise ``Lead.Canal.AUTRE`` (aucun nouveau vocabulaire de
+    canal n'est inventé) ; ``message`` porte le libellé lisible de
+    l'événement (ex. « Campagne X envoyée »), stocké aussi dans
+    ``PointContact.detail`` pour l'attribution.
+    """
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE, body=message)
+    return PointContact.objects.create(
+        company=lead.company, lead=lead, canal=Lead.Canal.AUTRE,
+        source='marketing', date_contact=timezone.now(),
+        ordre=ordre, detail=message, cout=cout)
 
 
 # ── YLEAD10 — Fast-lane comportemental : FOLLOW_UP à l'ouverture du devis ────
@@ -2010,3 +2149,43 @@ def log_whatsapp_message_on_lead(lead, *, texte, expediteur, nom_profil=''):
         return activity.log_note(lead, None, body)
     except Exception:  # noqa: BLE001 — jamais bloquant pour le webhook
         return None
+
+
+# ── ZSAV8 — Convertir un ticket SAV en opportunité CRM ──────────────────────
+# apps.sav ne peut PAS importer apps.crm.models directement (règle de
+# modularité CLAUDE.md) : cette fonction est son unique porte d'entrée pour
+# créer un lead depuis un ticket (upsell/remplacement).
+
+def create_lead_depuis_ticket(*, company, user, client, contexte=''):
+    """ZSAV8 — Crée (ou réutilise) un lead CRM depuis un ticket SAV.
+
+    Réutilise un lead OUVERT (stage != COLD, non archivé) déjà lié à ce
+    ``client`` plutôt que d'en créer un doublon. Sinon, crée un nouveau lead
+    au stade ``NEW`` (STAGES.py, jamais codé en dur), pré-rempli avec
+    l'identité du client + ``contexte`` en description.
+
+    Renvoie ``(lead, created)``."""
+    existant = (
+        Lead.objects
+        .filter(company=company, client=client)
+        .exclude(stage=stages.COLD)
+        .order_by('-date_creation')
+        .first())
+    if existant is not None:
+        return existant, False
+
+    lead = Lead.objects.create(
+        company=company,
+        nom=f'{client.nom} {client.prenom or ""}'.strip() or client.nom,
+        prenom=client.prenom or None,
+        email=client.email or None,
+        telephone=client.telephone or None,
+        client=client,
+        canal=Lead.Canal.AUTRE,
+        stage=stages.NEW,
+    )
+    activity.log_creation(lead, user)
+    contexte = (contexte or '').strip()
+    if contexte:
+        activity.log_note(lead, user, contexte)
+    return lead, True

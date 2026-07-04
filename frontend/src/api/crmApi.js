@@ -102,6 +102,22 @@ const crmApi = {
   createAppointment: (data) => api.post('/crm/appointments/', data),
   updateAppointment: (id, data) => api.patch(`/crm/appointments/${id}/`, data),
   deleteAppointment: (id) => api.delete(`/crm/appointments/${id}/`),
+
+  // ZSAL2 — Plans d'activité (checklists commerciales applicables en un clic).
+  getPlansActivite: () => api.get('/crm/plans-activite/'),
+  appliquerPlanActivite: (leadId, planId) =>
+    api.post(`/crm/leads/${leadId}/appliquer-plan/`, { plan_id: planId }),
+
+  // ZSAL3 — Tableau de bord « Mes équipes ».
+  getEquipesStatistiques: () => api.get('/crm/equipes/statistiques/'),
+
+  // ZSAL4 — Conversion lead → client explicite (nouveau / lier / aucun).
+  convertirLeadEnClient: (leadId, payload) =>
+    api.post(`/crm/leads/${leadId}/convertir-client/`, payload),
+
+  // ZSAL6 — Rapport d'attribution des leads (par commercial + par source).
+  getAttributionLeads: (params) =>
+    api.get('/crm/rapports/attribution/', { params }),
 }
 
 export default crmApi

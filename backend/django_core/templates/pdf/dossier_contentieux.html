@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 12px; color: #333; }
+    .page { padding: 40px; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 30px; }
+    .logo img { max-height: 64px; max-width: 200px; object-fit: contain; }
+    .doc-title { font-size: 24px; font-weight: bold; color: {{ couleur_principale }}; margin-top: 8px; }
+    .doc-subtitle { font-size: 11px; color: #666; margin-top: 4px; }
+    .company-info { text-align: right; font-size: 11px; color: #555; line-height: 1.6; }
+    .company-info strong { font-size: 13px; color: #222; }
+    .partie-block { background: #fef2f2; border-left: 3px solid #dc2626; border-radius: 6px; padding: 14px 16px; width: 60%; margin-bottom: 24px; }
+    .partie-label { font-size: 10px; text-transform: uppercase; color: #888; margin-bottom: 6px; letter-spacing: 1px; }
+    .partie-nom { font-weight: bold; font-size: 13px; color: #1e293b; }
+    .partie-detail { font-size: 11px; color: #555; line-height: 1.5; }
+    .section-title { font-size: 14px; font-weight: bold; color: {{ couleur_principale }}; margin: 22px 0 10px; border-bottom: 2px solid {{ couleur_principale }}; padding-bottom: 4px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+    thead tr { background: {{ couleur_principale }}; color: white; }
+    thead th { padding: 8px 10px; text-align: left; font-size: 10px; text-transform: uppercase; }
+    tbody tr:nth-child(even) { background: #f9fafb; }
+    tbody td { padding: 7px 10px; border-bottom: 1px solid #e5e7eb; font-size: 11px; }
+    .text-right { text-align: right; }
+    .totaux { margin-left: auto; width: 320px; margin-bottom: 16px; }
+    .totaux-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #e5e7eb; }
+    .totaux-row.du { font-size: 15px; font-weight: bold; color: #dc2626; border-top: 2px solid #dc2626; border-bottom: none; padding-top: 10px; }
+    .empty { text-align: center; color: #94a3b8; padding: 10px; }
+    .footer { margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 12px; font-size: 10px; color: #94a3b8; text-align: center; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="header">
+    <div>
+      {% if logo_uri %}<div class="logo"><img src="{{ logo_uri }}" alt="Logo" /></div>{% endif %}
+      <div class="doc-title">DOSSIER CONTENTIEUX</div>
+      <div class="doc-subtitle">Passage en recouvrement externe — {{ dossier.date_creation }}</div>
+    </div>
+    <div class="company-info">
+      <strong>{{ entreprise_nom }}</strong><br />
+      {% if entreprise_adresse %}{{ entreprise_adresse }}<br />{% endif %}
+      {% if entreprise_telephone %}Tél : {{ entreprise_telephone }}<br />{% endif %}
+      {% if entreprise_email %}{{ entreprise_email }}{% endif %}
+    </div>
+  </div>
+
+  <div class="partie-block">
+    <div class="partie-label">Client débiteur</div>
+    <div class="partie-nom">{{ dossier.client.nom }}</div>
+    <div class="partie-detail">
+      {% if dossier.client.email %}{{ dossier.client.email }}<br />{% endif %}
+      {% if dossier.client.telephone %}{{ dossier.client.telephone }}<br />{% endif %}
+      {% if dossier.client.adresse %}{{ dossier.client.adresse }}{% endif %}
+    </div>
+  </div>
+
+  <div class="section-title">Factures concernées</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Facture</th><th>Échéance</th><th>Jours de retard</th>
+        <th class="text-right">Total TTC</th><th class="text-right">Dû</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for f in dossier.factures %}
+      <tr>
+        <td>{{ f.reference }}</td>
+        <td>{{ f.date_echeance }}</td>
+        <td>{{ f.jours_retard }}</td>
+        <td class="text-right">{{ f.total_ttc }} MAD</td>
+        <td class="text-right"><strong>{{ f.du }} MAD</strong></td>
+      </tr>
+      {% endfor %}
+      {% if not dossier.factures %}
+      <tr><td colspan="5" class="empty">Aucune facture.</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+
+  <div class="totaux">
+    <div class="totaux-row du"><span>Total réclamé</span><span>{{ dossier.total_du }} MAD</span></div>
+  </div>
+
+  <div class="section-title">Historique des relances</div>
+  <table>
+    <thead>
+      <tr><th>Date</th><th>Facture</th><th>Niveau</th><th>Note</th></tr>
+    </thead>
+    <tbody>
+      {% for r in dossier.relances %}
+      <tr>
+        <td>{{ r.date }}</td><td>{{ r.facture_reference }}</td>
+        <td>{{ r.niveau_nom }}</td><td>{{ r.note }}</td>
+      </tr>
+      {% endfor %}
+      {% if not dossier.relances %}
+      <tr><td colspan="4" class="empty">Aucune relance consignée.</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+
+  <div class="section-title">Historique des emails</div>
+  <table>
+    <thead>
+      <tr><th>Date</th><th>Direction</th><th>Sujet</th></tr>
+    </thead>
+    <tbody>
+      {% for e in dossier.emails %}
+      <tr><td>{{ e.date }}</td><td>{{ e.direction }}</td><td>{{ e.sujet }}</td></tr>
+      {% endfor %}
+      {% if not dossier.emails %}
+      <tr><td colspan="3" class="empty">Aucun email consigné.</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+
+  <div class="section-title">Promesses de paiement rompues</div>
+  <table>
+    <thead>
+      <tr><th>Facture</th><th>Date promise</th><th class="text-right">Montant promis</th></tr>
+    </thead>
+    <tbody>
+      {% for p in dossier.promesses_rompues %}
+      <tr>
+        <td>{{ p.facture_reference }}</td><td>{{ p.date_promise }}</td>
+        <td class="text-right">{{ p.montant_promis }} MAD</td>
+      </tr>
+      {% endfor %}
+      {% if not dossier.promesses_rompues %}
+      <tr><td colspan="3" class="empty">Aucune promesse rompue.</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+
+  <div class="footer">
+    <strong>{{ entreprise_nom }}</strong>
+    {% if entreprise_ice %} — ICE : {{ entreprise_ice }}{% endif %}
+    <br />Dossier généré le {{ now.strftime('%d/%m/%Y à %H:%M') }}
+  </div>
+</div>
+</body>
+</html>

@@ -332,3 +332,48 @@ def send_recu_email(paiement, *, user=None, to_email=None):
     log.erreur = err
     log.save()
     return log
+
+
+def send_releve_email(client, releve_data, *, user=None):
+    """XFAC25 — envoi (programmé, mensuel) du relevé de compte PDF au client.
+
+    Même patron NO-OP que ``send_recu_email`` (sans clé d'envoi configurée,
+    « envoyé » via le backend console). Rendu à la volée depuis
+    ``releve_data`` (voir ``recouvrement._releve_data``), jamais stocké.
+    Consigne un ``EmailLog`` (client seul — pas de facture unique). Renvoie
+    l'EmailLog créé, ou ``None`` si le client n'a pas d'email (rien n'est
+    tenté ni consigné dans ce cas — l'appelant filtre déjà sur ce critère)."""
+    from .utils.pdf import generate_releve_pdf
+
+    dest = (getattr(client, 'email', '') or '').strip()
+    if not dest:
+        return None
+
+    nom_client = f"{client.nom} {getattr(client, 'prenom', '') or ''}".strip()
+    sujet = f'Relevé de compte — {nom_client}'
+    corps = (
+        f"Bonjour {nom_client},\n\nVeuillez trouver ci-joint votre relevé "
+        f"de compte mensuel.\n\nCordialement,\nL'équipe TAQINOR"
+    )
+
+    log = EmailLog(
+        company=getattr(client, 'company', None),
+        direction=EmailLog.Direction.SORTANT,
+        client=client, to_email=dest, from_email=_from_email(),
+        sujet=sujet[:300], corps=corps,
+        created_by=user if getattr(user, 'is_authenticated', False) else None,
+    )
+
+    try:
+        pdf_bytes = generate_releve_pdf(client, releve_data)
+    except Exception as exc:  # pragma: no cover — rendu best-effort
+        logger.warning('Relevé PDF indisponible pour envoi : %s', exc)
+        pdf_bytes = None
+
+    ok, err = _send(
+        dest, sujet, corps, pdf_bytes,
+        f'Releve_{client.nom}.pdf' if pdf_bytes else None)
+    log.statut = EmailLog.Statut.ENVOYE if ok else EmailLog.Statut.ECHEC
+    log.erreur = err
+    log.save()
+    return log

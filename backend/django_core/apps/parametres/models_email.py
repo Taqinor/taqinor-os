@@ -93,6 +93,23 @@ EMAIL_TEMPLATE_DEFAULTS = {
             'échéance. Vous pouvez régler dès maintenant : {lien}\n\n'
             'Merci de votre confiance,\nL\'équipe Taqinor',
     },
+    # XSTK22 — notifications client aux transitions de sa livraison.
+    'livraison_en_transit': {
+        'sujet': 'Votre livraison {reference} est en route',
+        'corps':
+            'Bonjour {civilite} {nom},\n\n'
+            'Votre matériel ({reference}) est en cours d\'acheminement vers '
+            'votre chantier. Suivi : {lien}\n\n'
+            'Cordialement,\nL\'équipe Taqinor',
+    },
+    'livraison_livree': {
+        'sujet': 'Votre livraison {reference} est arrivée',
+        'corps':
+            'Bonjour {civilite} {nom},\n\n'
+            'Votre matériel ({reference}) a été livré sur votre chantier. '
+            'Suivi : {lien}\n\n'
+            'Cordialement,\nL\'équipe Taqinor',
+    },
 }
 
 
@@ -107,6 +124,8 @@ EMAIL_TEMPLATE_PLACEHOLDERS = {
     'ticket_planifie': ['{civilite}', '{nom}', '{reference}', '{lien}'],
     'ticket_resolu': ['{civilite}', '{nom}', '{reference}', '{lien}'],
     'pre_echeance': ['{civilite}', '{nom}', '{reference}', '{lien}'],
+    'livraison_en_transit': ['{civilite}', '{nom}', '{reference}', '{lien}'],
+    'livraison_livree': ['{civilite}', '{nom}', '{reference}', '{lien}'],
 }
 
 
@@ -130,6 +149,9 @@ class EmailTemplate(models.Model):
         TICKET_RESOLU = 'ticket_resolu', 'Ticket SAV résolu'
         # XFAC7 — rappel de courtoisie PRÉ-échéance (J-N avant échéance).
         PRE_ECHEANCE = 'pre_echeance', 'Rappel pré-échéance'
+        # XSTK22 — notifications client aux transitions de livraison.
+        LIVRAISON_EN_TRANSIT = 'livraison_en_transit', 'Livraison en transit'
+        LIVRAISON_LIVREE = 'livraison_livree', 'Livraison livrée'
 
     company = models.ForeignKey(
         'authentication.Company',

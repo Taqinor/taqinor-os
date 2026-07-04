@@ -44,6 +44,11 @@ def make_user(company, username, role='responsable'):
 
 
 def make_ouverture(company, intitule='Technicien pose', **kwargs):
+    # YHIRE14 — le statut par défaut du modèle est désormais 'brouillon'
+    # (cycle d'approbation amont) ; ce fixture historique continue de
+    # produire des ouvertures 'ouvert' par défaut pour ne pas casser les
+    # tests existants qui postent des candidatures dessus.
+    kwargs.setdefault('statut', OuverturePoste.Statut.OUVERT)
     return OuverturePoste.objects.create(
         company=company, intitule=intitule, **kwargs)
 

@@ -9,12 +9,14 @@ import csv
 import io
 
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import IntegrityError
 from django.http import HttpResponse
 
 from rest_framework import filters, status, viewsets
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
@@ -25,16 +27,18 @@ from .models import (
     AppelTelephonique,
     BaremeIndemnite, BordereauRemise, Budget, BudgetLigne, Caisse,
     Campagne, CautionBancaire, CentreCout, CessionImmobilisation, CodePromotion,
-    CommissionPayoutRun,
+    CommissionPayoutRun, EnvoiCampagne,
     CompteComptable, CompteTresorerie, ContratAvancement, DeclarationTVA,
     DemandeApprobationConfig,
     DotationAmortissement, ECatalogue, EcritureComptable, Effet,
-    EntiteConsolidation, EtapeSequence,
+    EntiteConsolidation, EtapeSequence, InscriptionSequence,
+    ListeDiffusion, AbonnementListe, SegmentMarketing,
     ExerciceComptable, FormulaireIntake, Immobilisation, IndemniteChantier,
     Journal,
     LignePrevisionnelTresorerie, LigneReleve, MessageWhatsAppEntrant,
     ModeleDevis, MouvementCaisse, NoteFrais, OuverturePartage,
-    PaymentRun, PeriodeComptable, PlanComptable, ProvisionCreance,
+    PaymentRun, PeriodeComptable, PlafondNoteFrais, PlanComptable, Provision,
+    ProvisionCreance,
     Rapprochement, RapprochementBancaire, RelanceDevisAbandonne,
     RetenueGarantie, RetenueSource, SequenceRelance, SessionGuidedSelling,
     TimbreFiscal, TravauxEnCours, VirementInterne,
@@ -60,13 +64,15 @@ from .serializers import (
     BordereauRemiseSerializer, BudgetSerializer, CaisseSerializer,
     CampagneSerializer, CautionBancaireSerializer, CentreCoutSerializer,
     CessionImmobilisationSerializer, ClotureCaisseSerializer,
-    CodePromotionSerializer,
+    CodePromotionSerializer, EnvoiCampagneSerializer,
     CommissionPayoutRunSerializer, CompteComptableSerializer,
     CompteTresorerieSerializer, ContratAvancementSerializer,
     DeclarationTVASerializer, DemandeApprobationConfigSerializer,
     DotationAmortissementSerializer, ECatalogueSerializer,
     EcritureComptableSerializer, EffetSerializer, EntiteConsolidationSerializer,
-    EtapeSequenceSerializer,
+    EtapeSequenceSerializer, InscriptionSequenceSerializer,
+    ListeDiffusionSerializer, AbonnementListeSerializer,
+    SegmentMarketingSerializer,
     ExerciceComptableSerializer, FormulaireIntakeSerializer,
     ImmobilisationSerializer,
     IndemniteChantierSerializer, JournalSerializer,
@@ -75,7 +81,8 @@ from .serializers import (
     MouvementCaisseSerializer, NoteFraisSerializer, OuverturePartageSerializer,
     PaymentRunSerializer,
     PeriodeComptableSerializer, PlanAmortissementSerializer,
-    PlanComptableSerializer, ProvisionCreanceSerializer,
+    PlafondNoteFraisSerializer,
+    PlanComptableSerializer, ProvisionSerializer, ProvisionCreanceSerializer,
     RapprochementBancaireSerializer, RapprochementSerializer,
     RelanceDevisAbandonneSerializer,
     RetenueGarantieSerializer, RetenueSourceSerializer,
@@ -844,6 +851,44 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             f'_{exercice.date_debut}_{exercice.date_fin}.csv"')
         return resp
 
+    @action(detail=False, methods=['get'], url_path='provisions')
+    def provisions(self, request):
+        """État récapitulatif des dotations/reprises de provisions (XACC26)."""
+        params = request.query_params
+        data = selectors.etat_provisions(
+            request.user.company,
+            date_debut=params.get('date_debut') or None,
+            date_fin=params.get('date_fin') or None,
+            nature=params.get('nature') or None)
+        # Decimal n'est pas JSON-sérialisable nativement ; DRF Response le gère
+        # via son encoder, mais les clés dict (nature enum) doivent rester str.
+        return Response({str(k): v for k, v in data.items()})
+
+    @action(detail=False, methods=['get'], url_path='continuite-sequences')
+    def continuite_sequences(self, request):
+        """XACC29 — Rapport de continuité des séquences (gap detection).
+
+        Balaie factures/avoirs/pièces comptables et liste les trous de
+        numérotation par radical. ``?export=csv`` télécharge le rapport ;
+        sans le paramètre, renvoie le JSON (liste vide = tout continu)."""
+        rapport = selectors.trous_sequences(request.user.company)
+        if request.query_params.get('export') == 'csv':
+            buffer = io.StringIO()
+            writer = csv.writer(buffer, delimiter=';', lineterminator='\r\n')
+            writer.writerow(['source', 'journal', 'de', 'a', 'manquants'])
+            for entree in rapport:
+                writer.writerow([
+                    entree['source'], entree['journal'],
+                    entree['plage'][0], entree['plage'][1],
+                    ' '.join(str(n) for n in entree['manquants']),
+                ])
+            resp = HttpResponse(
+                buffer.getvalue(), content_type='text/csv; charset=utf-8')
+            resp['Content-Disposition'] = (
+                'attachment; filename="continuite_sequences.csv"')
+            return resp
+        return Response(rapport)
+
 
 # ── FG115 — Périodes comptables verrouillables ─────────────────────────────
 
@@ -1099,6 +1144,44 @@ class ImmobilisationViewSet(_ComptaBaseViewSet):
                 cession, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
+    @action(detail=False, methods=['post'],
+            url_path='depuis-facture-fournisseur')
+    def depuis_facture_fournisseur(self, request):
+        """XACC33 — Capitalise une ligne de facture fournisseur (bouton
+        « Immobiliser » sur l'écran facture fournisseur).
+
+        Corps : ``{facture_id, ligne_id, categorie?, duree?, mode?}``. La
+        ligne est résolue via ``apps.stock.selectors.
+        ligne_facture_fournisseur_scoped`` (company-scopée, jamais un import
+        de ``stock.models``) — introuvable ou cross-company → 404. Anti-
+        doublon : re-capitaliser la même ligne → 400. Crée l'Immobilisation
+        pré-remplie + son plan d'amortissement en un geste.
+        """
+        data = request.data
+        facture_id = data.get('facture_id')
+        ligne_id = data.get('ligne_id')
+        if not facture_id or not ligne_id:
+            return Response(
+                {'detail': 'facture_id et ligne_id sont obligatoires.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            immo = services.capitaliser_ligne_facture_fournisseur(
+                request.user.company,
+                facture_id=facture_id, ligne_id=ligne_id,
+                categorie=data.get('categorie') or None,
+                duree_annees=data.get('duree') or 5,
+                mode=data.get('mode') or None,
+                user=request.user,
+            )
+        except DjangoValidationError as exc:
+            message = exc.messages[0] if exc.messages else str(exc)
+            if 'introuvable' in message.lower():
+                return Response({'detail': message}, status=status.HTTP_404_NOT_FOUND)
+            return Response({'detail': message}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            ImmobilisationSerializer(immo, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)
+
 
 class CessionImmobilisationViewSet(_ComptaBaseViewSet):
     """Cessions / mises au rebut d'immobilisations (FG120) — lecture seule.
@@ -1308,6 +1391,53 @@ class RapprochementBancaireViewSet(_ComptaBaseViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         rapprochement.refresh_from_db()
         return Response(self.get_serializer(rapprochement).data)
+
+    @action(detail=True, methods=['post'], url_path='ocr-import',
+            parser_classes=[MultiPartParser, FormParser])
+    def ocr_import(self, request, pk=None):
+        """XACC30 — OCR d'un relevé (PDF/scan) → lignes proposées (gated).
+
+        Corps multipart : ``releve`` (fichier). Réponse : les lignes
+        extraites + le contrôle de solde (jamais d'intégration silencieuse).
+        Avec ``accepter=1`` dans le corps, injecte les lignes ``lignes``
+        fournies (JSON, normalement celles proposées par un appel précédent)
+        dans le rapprochement FG123 via ``ligne-releve``. Sans clé OCR
+        configurée : 503 explicite, rien d'autre ne change.
+        """
+        rapprochement = self.get_object()  # scopé société par TenantMixin.
+        accepter = str(request.data.get('accepter', '')).lower() in (
+            '1', 'true', 'yes')
+        if accepter:
+            import json
+            lignes_brutes = request.data.get('lignes') or '[]'
+            if isinstance(lignes_brutes, str):
+                try:
+                    lignes_brutes = json.loads(lignes_brutes)
+                except ValueError:
+                    lignes_brutes = []
+            try:
+                creees = services.accepter_lignes_releve_ocr(
+                    rapprochement, lignes_brutes)
+            except DjangoValidationError as exc:
+                return Response(
+                    {'detail': exc.messages[0] if exc.messages else str(exc)},
+                    status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'lignes_creees': LigneReleveSerializer(creees, many=True).data},
+                status=status.HTTP_201_CREATED)
+
+        releve = request.FILES.get('releve')
+        if releve is None:
+            return Response(
+                {'releve': "Le fichier 'releve' est obligatoire."},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            champs_bruts = services.extraire_releve_bancaire(
+                releve.read(), mime=getattr(releve, 'content_type', '') or '')
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        return Response(services.controler_solde_releve_ocr(champs_bruts))
 
 
 # ── FG124 — Caisse / petty cash (journal d'espèces) ────────────────────────
@@ -1597,6 +1727,70 @@ class EffetViewSet(_ComptaBaseViewSet):
                 date_rejet=request.data.get('date_rejet') or None,
                 frais_rejet=request.data.get('frais_rejet'),
                 commentaire=request.data.get('commentaire', '') or '',
+                user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(effet).data)
+
+    @action(detail=True, methods=['post'])
+    def escompter(self, request, pk=None):
+        """XACC34 — Remet un effet à recevoir à l'escompte (mobilisation).
+
+        Corps : ``{compte_tresorerie, agios?, interets?, date_escompte?}``.
+        Poste le net (débit trésorerie) + agios/intérêts (débit charge) /
+        crédit 5520 « crédits d'escompte » du montant brut. Refusé en période
+        close ; transitions illégales -> 400.
+        """
+        effet = self.get_object()  # scopé société par TenantMixin.
+        treso = CompteTresorerie.objects.filter(
+            company=request.user.company,
+            id=request.data.get('compte_tresorerie')).first()
+        if treso is None:
+            return Response(
+                {'detail': 'Compte de trésorerie inconnu.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            effet = services.escompter_effet(
+                effet, compte_tresorerie=treso,
+                agios=request.data.get('agios'),
+                interets=request.data.get('interets'),
+                date_escompte=request.data.get('date_escompte') or None,
+                user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(effet).data)
+
+    @action(detail=True, methods=['post'], url_path='apurer-escompte')
+    def apurer_escompte(self, request, pk=None):
+        """XACC34 — Apure le crédit d'escompte à l'échéance (5520 → 3425)."""
+        effet = self.get_object()  # scopé société par TenantMixin.
+        try:
+            effet = services.apurer_escompte_effet(
+                effet,
+                date_apurement=request.data.get('date_apurement') or None,
+                user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(effet).data)
+
+    @action(detail=True, methods=['post'])
+    def endosser(self, request, pk=None):
+        """XACC34 — Endosse un effet à recevoir à un tiers bénéficiaire.
+
+        Corps : ``{beneficiaire, date_endossement?}``. Transitions illégales
+        (effet déjà soldé/escompté/impayé) -> 400.
+        """
+        effet = self.get_object()  # scopé société par TenantMixin.
+        try:
+            effet = services.endosser_effet(
+                effet, beneficiaire=request.data.get('beneficiaire', '') or '',
+                date_endossement=request.data.get('date_endossement') or None,
                 user=request.user)
         except DjangoValidationError as exc:
             return Response(
@@ -1901,6 +2095,11 @@ class NoteFraisViewSet(_ComptaBaseViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         vd = serializer.validated_data
+        # XACC27 — doublon (même employé + date + montant) : WARNING joint à
+        # la réponse, jamais bloquant (l'utilisateur peut confirmer volontairement).
+        doublon = services.note_frais_doublon_possible(
+            request.user.company, employe=vd['employe'],
+            date_frais=vd['date_frais'], montant=vd['montant']).exists()
         try:
             note = services.creer_note_frais(
                 request.user.company,
@@ -1911,13 +2110,85 @@ class NoteFraisViewSet(_ComptaBaseViewSet):
                 categorie=vd.get('categorie'),
                 justificatif=vd.get('justificatif'),
                 compte_charge=vd.get('compte_charge'),
+                refacturable=vd.get('refacturable') or False,
+                taux_marge=vd.get('taux_marge'),
+                client_refacturation_id=vd.get('client_refacturation_id'),
+                chantier_refacturation=vd.get('chantier_refacturation', '') or '',
                 user=request.user)
         except DjangoValidationError as exc:
             return Response(
                 {'detail': exc.messages[0] if exc.messages else str(exc)},
                 status=status.HTTP_400_BAD_REQUEST)
+        data = self.get_serializer(note).data
+        data['doublon_possible'] = doublon
+        return Response(data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'], url_path='refacturables')
+    def refacturables(self, request):
+        """XACC28 — Notes refacturables VALIDÉES pas encore refacturées."""
+        client_id = request.query_params.get('client')
+        qs = selectors.frais_refacturables_non_factures(
+            request.user.company, client_id=client_id)
+        return Response(self.get_serializer(qs, many=True).data)
+
+    @action(detail=False, methods=['post'], url_path='refacturer')
+    def refacturer(self, request):
+        """XACC28 — Génère des lignes de refacturation sur une facture existante.
+
+        Corps : ``{facture_id, note_frais_ids: [...]}``. La facture doit
+        appartenir à la société courante (résolue via
+        ``apps.ventes.services.get_facture_or_none``, jamais un import de
+        ``ventes.models``).
+        """
+        from apps.ventes.services import get_facture_or_none
+
+        facture_id = request.data.get('facture_id')
+        note_frais_ids = request.data.get('note_frais_ids') or []
+        facture = get_facture_or_none(
+            company=request.user.company, facture_id=facture_id)
+        if facture is None:
+            return Response(
+                {'detail': 'Facture introuvable pour cette société.'},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            services.refacturer_frais_client(
+                request.user.company, facture=facture,
+                note_frais_ids=note_frais_ids, user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response({'facture_id': facture.id, 'refacture': True})
+
+    @action(detail=False, methods=['post'])
+    def ocr(self, request):
+        """XACC27 — OCR du justificatif → champs pré-remplis (gated).
+
+        Accepte une photo (``request.FILES['justificatif']``, multipart) et
+        renvoie les champs extraits (``montant``, ``date_frais``, ``motif``)
+        pour pré-remplir le formulaire — ne crée JAMAIS de note de frais et
+        n'écrase JAMAIS une saisie manuelle déjà présente (fusion côté
+        frontend). Sans clé OCR configurée : 503 explicite, la saisie
+        manuelle reste intacte.
+        """
+        from .services import (
+            extraire_justificatif_note_frais,
+            mapper_justificatif_vers_note_frais,
+        )
+
+        photo = request.FILES.get('justificatif')
+        if photo is None:
+            return Response(
+                {'justificatif': "Le fichier 'justificatif' est obligatoire."},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            champs_bruts = extraire_justificatif_note_frais(
+                photo.read(), mime=getattr(photo, 'content_type', '') or '')
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         return Response(
-            self.get_serializer(note).data, status=status.HTTP_201_CREATED)
+            {'champs': mapper_justificatif_vers_note_frais(champs_bruts)})
 
     @action(detail=True, methods=['post'])
     def soumettre(self, request, pk=None):
@@ -1999,6 +2270,26 @@ class NoteFraisViewSet(_ComptaBaseViewSet):
                 {'detail': exc.messages[0] if exc.messages else str(exc)},
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(note).data)
+
+
+class PlafondNoteFraisViewSet(_ComptaBaseViewSet):
+    """Plafonds de notes de frais par catégorie (XACC27).
+
+    ``company`` posée côté serveur ; une seule ligne par catégorie
+    (``get_or_create`` implicite via la contrainte d'unicité, 400 explicite
+    en cas de doublon) ; Admin/Responsable uniquement."""
+    queryset = PlafondNoteFrais.objects.all()
+    serializer_class = PlafondNoteFraisSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['categorie', 'montant_max', 'id']
+
+    def create(self, request, *args, **kwargs):
+        try:
+            return super().create(request, *args, **kwargs)
+        except IntegrityError:
+            return Response(
+                {'detail': 'Un plafond existe déjà pour cette catégorie.'},
+                status=status.HTTP_400_BAD_REQUEST)
 
 
 class BaremeIndemniteViewSet(_ComptaBaseViewSet):
@@ -2444,6 +2735,77 @@ class RetenueSourceViewSet(_ComptaBaseViewSet):
         resp['Content-Disposition'] = (
             'attachment; filename="retenues_source_'
             f"{data['date_debut'] or 'periode'}_{data['date_fin'] or ''}.csv\"")
+        return resp
+
+    @action(detail=True, methods=['get'])
+    def attestation(self, request, pk=None):
+        """XACC35 — Attestation PDF de RAS pour CE versement (par prestataire).
+
+        Rendu WeasyPrint sobre (moteur légal existant, PAS le quote engine) :
+        identité société (N27), tiers (IF/ICE), base, taux, montant retenu,
+        période — chiffres identiques au snapshot figé (ledger FG139)."""
+        from .pdf_ras import render_attestation_retenue_pdf
+
+        ras = self.get_object()  # scopée société par TenantMixin.
+        try:
+            from apps.parametres.models_company import CompanyProfile
+            profile = CompanyProfile.get(company=request.user.company)
+        except Exception:  # pragma: no cover - profil optionnel, jamais bloquant.
+            profile = None
+        try:
+            pdf_bytes = render_attestation_retenue_pdf(ras, profile)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'attachment; filename="attestation_ras_{ras.reference or ras.id}.pdf"')
+        return resp
+
+    @action(detail=False, methods=['get'], url_path='attestation-annuelle')
+    def attestation_annuelle(self, request):
+        """XACC35 — Cumul annuel de RAS d'un prestataire (PDF).
+
+        Paramètres : ``?tiers=<tiers_id>&annee=<YYYY>``. Le cumul reprend
+        TOUTES les ``RetenueSource`` du tiers pour l'année, tous types de
+        prestation confondus, company-scopées."""
+        from .pdf_ras import render_attestation_annuelle_pdf
+
+        tiers_id = request.query_params.get('tiers')
+        annee = request.query_params.get('annee')
+        if not tiers_id or not annee:
+            return Response(
+                {'detail': 'Les paramètres tiers et annee sont obligatoires.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            annee_int = int(annee)
+        except ValueError:
+            return Response(
+                {'detail': 'annee doit être une année valide.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        retenues = list(RetenueSource.objects.filter(
+            company=request.user.company, tiers_id=tiers_id,
+            date_piece__year=annee_int,
+        ).order_by('date_piece', 'id'))
+        if not retenues:
+            return Response(
+                {'detail': 'Aucune retenue trouvée pour ce prestataire/année.'},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            from apps.parametres.models_company import CompanyProfile
+            profile = CompanyProfile.get(company=request.user.company)
+        except Exception:  # pragma: no cover - profil optionnel, jamais bloquant.
+            profile = None
+        try:
+            pdf_bytes = render_attestation_annuelle_pdf(
+                retenues, retenues[0].tiers_nom, annee_int, profile)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'attachment; filename="attestation_ras_annuelle_{tiers_id}_'
+            f'{annee_int}.pdf"')
         return resp
 
 
@@ -3160,6 +3522,67 @@ class ProvisionCreanceViewSet(_ComptaBaseViewSet):
         return Response(self.get_serializer(prov).data)
 
 
+class ProvisionViewSet(_ComptaBaseViewSet):
+    """Provisions risques & charges / dépréciation stock / immo (XACC26).
+
+    La création poste l'écriture OD de dotation (sauf ``poster=false``).
+    ``reprendre`` (POST, ``montant`` optionnel = solde) reprend tout ou partie
+    de la provision. ``company`` / ``reference`` / ``montant_repris`` posés
+    côté serveur ; filtre ``nature`` ; société scopée ; Admin/Responsable.
+    """
+    queryset = Provision.objects.select_related('created_by').all()
+    serializer_class = ProvisionSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'motif']
+    ordering_fields = ['date_dotation', 'montant_dotation', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        nature = self.request.query_params.get('nature')
+        if nature:
+            qs = qs.filter(nature=nature)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        vd = serializer.validated_data
+        poster = request.data.get('poster', True)
+        if isinstance(poster, str):
+            poster = poster.lower() not in ('false', '0', 'no', '')
+        try:
+            prov = services.enregistrer_provision(
+                request.user.company,
+                nature=vd['nature'],
+                date_dotation=vd['date_dotation'],
+                montant=vd.get('montant_dotation') or 0,
+                motif=vd.get('motif', '') or '',
+                date_echeance_revue=vd.get('date_echeance_revue'),
+                poster=bool(poster), user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(prov).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def reprendre(self, request, pk=None):
+        """Reprend tout ou partie de la provision (``montant`` optionnel)."""
+        prov = self.get_object()
+        montant = request.data.get('montant')
+        date_reprise = request.data.get('date_reprise') or None
+        try:
+            services.reprendre_provision(
+                prov, montant=montant, date_reprise=date_reprise,
+                user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(prov).data)
+
+
 class EntiteConsolidationViewSet(_ComptaBaseViewSet):
     """Périmètre de consolidation multi-entités (FG153).
 
@@ -3218,6 +3641,141 @@ class CampagneViewSet(_ComptaBaseViewSet):
         services.envoyer_campagne(campagne, destinataires=destinataires)
         return Response(CampagneSerializer(campagne).data)
 
+    @action(detail=True, methods=['get'])
+    def apercu_fusion(self, request, pk=None):
+        """XMKT8 — Aperçu du corps fusionné pour un lead d'exemple
+        (``?lead_id=``), fallback appliqué par variable si le champ est vide."""
+        campagne = self.get_object()
+        lead_id = request.query_params.get('lead_id')
+        if not lead_id:
+            return Response({'detail': 'lead_id requis.'}, status=400)
+        try:
+            rendu = services.rendre_variables_fusion(
+                campagne.corps, request.user.company, lead_id)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response({'corps_fusionne': rendu})
+
+    @action(detail=True, methods=['post'], url_path='envoyer-test')
+    def envoyer_test(self, request, pk=None):
+        """XMKT13 — Envoi de test (jamais vers de vrais destinataires)."""
+        campagne = self.get_object()
+        adresses_seed = request.data.get('adresses_seed') or []
+        lead_id_exemple = request.data.get('lead_id_exemple')
+        resultat = services.envoyer_test_campagne(
+            campagne, adresses_seed=adresses_seed,
+            lead_id_exemple=lead_id_exemple)
+        return Response(resultat)
+
+    @action(detail=True, methods=['get'], url_path='precheck')
+    def precheck(self, request, pk=None):
+        """XMKT13 — Pré-check bloquant/avertissant avant l'envoi de masse."""
+        campagne = self.get_object()
+        verifier_liens = request.query_params.get('verifier_liens') == '1'
+        rapport = services.precheck_sante_campagne(
+            campagne, verifier_liens=verifier_liens)
+        return Response(rapport)
+
+    @action(detail=True, methods=['get'], url_path='cout-sms')
+    def cout_sms(self, request, pk=None):
+        """XMKT15 — Segments GSM-7/UCS-2 + coût multi-part en direct."""
+        campagne = self.get_object()
+        prix_unitaire = request.query_params.get('prix_unitaire_mad')
+        kwargs = {}
+        if prix_unitaire:
+            kwargs['prix_unitaire_mad'] = prix_unitaire
+        nb_destinataires = int(
+            request.query_params.get('nb_destinataires') or 1)
+        estimation = services.estimer_cout_sms(
+            campagne.corps, nb_destinataires=nb_destinataires, **kwargs)
+        return Response(estimation)
+
+
+# ── XMKT2 — Journal d'envoi par destinataire (drill-down) ───────────────────
+
+class EnvoiCampagneViewSet(_ComptaBaseViewSet):
+    """Trace d'envoi par destinataire (XMKT2), lecture seule pour le
+    drill-down depuis un KPI de campagne. Filtrable par ``campagne`` et
+    ``statut``."""
+    http_method_names = ['get', 'head', 'options']
+    queryset = EnvoiCampagne.objects.select_related('campagne').all()
+    serializer_class = EnvoiCampagneSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        campagne_id = self.request.query_params.get('campagne')
+        if campagne_id:
+            qs = qs.filter(campagne_id=campagne_id)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+
+# ── XMKT5 — Listes de diffusion nommées + abonnements ───────────────────────
+
+class ListeDiffusionViewSet(_ComptaBaseViewSet):
+    """CRUD des listes de diffusion nommées (XMKT5)."""
+    queryset = ListeDiffusion.objects.all()
+    serializer_class = ListeDiffusionSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom']
+    ordering_fields = ['nom', 'date_creation']
+
+    @action(detail=True, methods=['post'])
+    def importer(self, request, pk=None):
+        """Import CSV/XLSX déjà mappé côté client : ``lignes`` = liste de
+        ``{'destinataire': ..., 'contact_ref': ...}``."""
+        liste = self.get_object()
+        lignes = request.data.get('lignes') or []
+        rapport = services.importer_abonnements_liste(liste, lignes)
+        return Response(rapport)
+
+    @action(detail=True, methods=['get'])
+    def abonnes(self, request, pk=None):
+        liste = self.get_object()
+        qs = liste.abonnements.all()
+        statut = request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return Response(AbonnementListeSerializer(qs, many=True).data)
+
+
+class AbonnementListeViewSet(_ComptaBaseViewSet):
+    """Abonnements individuels à une liste (XMKT5)."""
+    queryset = AbonnementListe.objects.select_related('liste').all()
+    serializer_class = AbonnementListeSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        liste_id = self.request.query_params.get('liste')
+        if liste_id:
+            qs = qs.filter(liste_id=liste_id)
+        return qs
+
+
+# ── XMKT6 — Segments dynamiques enregistrés et réutilisables ────────────────
+
+class SegmentMarketingViewSet(_ComptaBaseViewSet):
+    """Segments nommés réutilisables (XMKT6), auto-actualisés à chaque
+    usage — ``previsualiser`` renvoie le compte exact + un échantillon."""
+    queryset = SegmentMarketing.objects.all()
+    serializer_class = SegmentMarketingSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom']
+    ordering_fields = ['nom', 'date_creation']
+
+    @action(detail=True, methods=['get'])
+    def previsualiser(self, request, pk=None):
+        segment = self.get_object()
+        try:
+            data = services.previsualiser_segment(segment)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(data)
+
 
 # ── FG202 — Séquences de relance automatisées ──────────────────────────────
 
@@ -3238,6 +3796,127 @@ class EtapeSequenceViewSet(_ComptaBaseViewSet):
     """Étapes d'une séquence de relance (FG202)."""
     queryset = EtapeSequence.objects.select_related('sequence').all()
     serializer_class = EtapeSequenceSerializer
+
+
+# ── XMKT1 — Inscriptions & exécution réelle des séquences ──────────────────
+
+class InscriptionSequenceViewSet(_ComptaBaseViewSet):
+    """Inscriptions de leads dans une séquence de relance (XMKT1) : trace par
+    participant (quel nœud, quand, quoi exécuté) via ``executions``."""
+    queryset = InscriptionSequence.objects.select_related(
+        'sequence', 'etape_courante').prefetch_related('executions').all()
+    serializer_class = InscriptionSequenceSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['declenchee_le']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        sequence_id = self.request.query_params.get('sequence')
+        if sequence_id:
+            qs = qs.filter(sequence_id=sequence_id)
+        lead_id = self.request.query_params.get('lead_id')
+        if lead_id:
+            qs = qs.filter(lead_id=lead_id)
+        return qs
+
+    @action(detail=False, methods=['post'])
+    def inscrire(self, request):
+        sequence_id = request.data.get('sequence')
+        lead_id = request.data.get('lead_id')
+        if not sequence_id or not lead_id:
+            return Response(
+                {'detail': 'sequence et lead_id requis.'}, status=400)
+        sequence = SequenceRelance.objects.filter(
+            id=sequence_id, company=request.user.company).first()
+        if not sequence:
+            return Response({'detail': 'Séquence introuvable.'}, status=404)
+        inscription = services.inscrire_lead_sequence(
+            request.user.company, sequence, lead_id=lead_id,
+            lead_reference=request.data.get('lead_reference', ''))
+        return Response(
+            InscriptionSequenceSerializer(inscription).data, status=201)
+
+    @action(detail=True, methods=['post'])
+    def sortir(self, request, pk=None):
+        inscription = self.get_object()
+        services.sortir_inscription(
+            inscription, motif=request.data.get('motif', 'manuel'))
+        inscription.refresh_from_db()
+        return Response(InscriptionSequenceSerializer(inscription).data)
+
+
+# ── XMKT2 — Webhook Brevo (gated, public, aucune auth) ──────────────────────
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def webhook_brevo_campagne(request):
+    """Réception d'un événement webhook Brevo (XMKT2/XMKT12) : delivered/
+    opened/click/bounce/unsubscribed/complaint. Résout la société depuis la
+    ``Campagne`` référencée (aucune session utilisateur côté webhook
+    externe). Payload minimal attendu : ``campagne_id``, ``destinataire``,
+    ``event``, et optionnellement ``reason`` (raison SMTP) + ``bounce_type``
+    (``hard``/``soft``, XMKT12).
+    """
+    data = request.data or {}
+    campagne_id = data.get('campagne_id')
+    destinataire = (data.get('destinataire') or '').strip()
+    evenement = data.get('event') or ''
+    if not campagne_id or not destinataire or not evenement:
+        return Response({'detail': 'payload incomplet'}, status=400)
+    campagne = Campagne.objects.filter(id=campagne_id).first()
+    if not campagne:
+        return Response({'detail': 'campagne introuvable'}, status=404)
+    envoi = services.webhook_brevo_evenement(
+        campagne.company, campagne_id=campagne.id,
+        destinataire=destinataire, evenement=evenement,
+        raison_smtp=data.get('reason', ''),
+        bounce_type=data.get('bounce_type', ''))
+    if not envoi:
+        return Response({'detail': 'destinataire introuvable'}, status=404)
+    return Response({'statut': envoi.statut})
+
+
+# ── XMKT15 — Webhook agrégateur SMS : mot-clé STOP entrant (gated, public) ──
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def webhook_sms_stop(request):
+    """Réception d'un SMS entrant STOP (XMKT15, gated/no-op sans intégration
+    d'agrégateur active). Payload minimal attendu : ``company_id``,
+    ``numero``. Désinscrit immédiatement le numéro (XMKT3).
+    """
+    from authentication.models import Company
+
+    data = request.data or {}
+    company_id = data.get('company_id')
+    numero = (data.get('numero') or '').strip()
+    if not company_id or not numero:
+        return Response({'detail': 'payload incomplet'}, status=400)
+    company = Company.objects.filter(id=company_id).first()
+    if not company:
+        return Response({'detail': 'société introuvable'}, status=404)
+    supprime = services.traiter_stop_entrant(company, numero)
+    if not supprime:
+        return Response({'detail': 'numéro invalide'}, status=400)
+    return Response({'desinscrit': True, 'destinataire': supprime.destinataire})
+
+
+# ── XMKT3 — Désinscription un clic (public, tokenisé, aucune auth) ─────────
+
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+def desinscription_publique(request, token):
+    """Page/endpoint public de désinscription un clic (XMKT3, RFC 8058).
+
+    Un jeton signé (``services.generer_token_desinscription``) porte la
+    société + le destinataire — aucune authentification requise. GET et POST
+    font la même chose (RFC 8058 recommande un POST simple sans confirmation
+    pour les clients mail qui suivent ``List-Unsubscribe``).
+    """
+    ok, resultat = services.desinscrire_via_token(token)
+    if not ok:
+        return Response({'detail': resultat}, status=400)
+    return Response({'desinscrit': True, 'destinataire': resultat})
 
 
 # ── FG203 — Récupération des devis abandonnés ──────────────────────────────
