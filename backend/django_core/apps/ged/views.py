@@ -271,8 +271,10 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         'folder', 'coffre', 'created_by').all()
     serializer_class = DocumentSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['nom', 'description']
-    ordering_fields = ['nom', 'created_at', 'updated_at']
+    # ZGED15 — la référence lisible est cherchable/triable au même titre que
+    # le nom.
+    search_fields = ['nom', 'description', 'reference']
+    ordering_fields = ['nom', 'reference', 'created_at', 'updated_at']
 
     def get_permissions(self):
         # `recherche`/`semantique`/`historique`/`check_out`/`check_in` lisibles

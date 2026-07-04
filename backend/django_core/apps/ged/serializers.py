@@ -239,7 +239,8 @@ class DocumentSerializer(serializers.ModelSerializer):
         model = Document
         # `company` + `created_by` posés côté serveur.
         fields = [
-            'id', 'folder', 'folder_nom', 'coffre', 'nom', 'description',
+            'id', 'reference', 'folder', 'folder_nom', 'coffre', 'nom',
+            'description',
             'custom_data', 'created_by', 'created_by_nom', 'version_count',
             'derniere_version', 'tags',
             'locked_by', 'locked_by_nom', 'locked_at', 'is_locked',
@@ -262,7 +263,7 @@ class DocumentSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at',
         ]
         read_only_fields = [
-            'created_by', 'created_at', 'updated_at',
+            'reference', 'created_by', 'created_at', 'updated_at',
             'locked_by', 'locked_at', 'is_locked',
             'statut', 'transitions_autorisees',
             'supprime_le', 'supprime_par', 'est_dans_corbeille',

@@ -539,6 +539,18 @@ class Document(models.Model):
     url_externe = models.URLField(
         max_length=2000, blank=True, default='',
         verbose_name="URL externe (document-lien)")
+    # ZGED15 — référence métier lisible (ex. « DOC-202607-0042 »), unique par
+    # société. Générée CÔTÉ SERVEUR à la création (jamais lue du corps de
+    # requête) via le pattern race-safe EXISTANT
+    # `apps/ventes/utils/references.py` (plus haut numéro utilisé + 1 par
+    # société+mois, retry sur IntegrityError — JAMAIS count()+1). Assignée
+    # automatiquement dans `save()` pour couvrir TOUS les chemins de création
+    # (viewset, `televerser`, `scan-lot`, document-lien, routage…) sans
+    # dupliquer l'appel à chaque site. Blank tant que non assignée (jamais un
+    # défaut de modèle statique) ; les documents existants sont rétro-remplis
+    # par une migration data distincte (jamais une valeur unique en masse).
+    reference = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Référence')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -559,6 +571,17 @@ class Document(models.Model):
             models.Index(fields=['proprietaire'], name='ged_doc_proprio_idx'),
             models.Index(fields=['company', 'contact_id'],
                          name='ged_doc_co_contact_idx'),
+        ]
+        constraints = [
+            # ZGED15 — référence lisible unique PAR SOCIÉTÉ (jamais globale).
+            # Un blank temporaire (avant assignation) n'est jamais dupliqué en
+            # pratique : `save()` assigne la référence avant le premier commit
+            # réel de la ligne (voir ci-dessous) — la contrainte reste la
+            # garantie DB ultime contre une course non rattrapée par le retry.
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                condition=~models.Q(reference=''),
+                name='ged_document_uniq_company_reference'),
         ]
 
     @property
@@ -630,9 +653,39 @@ class Document(models.Model):
         niveau modèle pour qu'aucun chemin d'écriture (`save`/`update_fields`) ne
         puisse la contourner. L'indexation plein-texte/embedding passe par des
         `QuerySet.update()` (qui n'appellent PAS `save()`) — elle n'est donc pas
-        affectée par cette garde et reste opérante après archivage."""
+        affectée par cette garde et reste opérante après archivage.
+
+        ZGED15 — à la CRÉATION (pk absent), assigne côté serveur une référence
+        lisible unique par société (jamais lue du corps de requête, jamais
+        générée par l'appelant) via le pattern race-safe EXISTANT
+        `apps/ventes/utils/references.py` (plus haut numéro utilisé + 1,
+        retry sur IntegrityError — jamais count()+1). Couvre automatiquement
+        TOUS les chemins de création du modèle (viewset, `televerser`,
+        `scan-lot`, document-lien, routage documentaire…) sans dupliquer
+        l'appel à chaque site d'appel."""
+        creating = self.pk is None
         if self.pk is not None and self.est_archive_legalement:
             raise ArchivageLegalError(ARCHIVE_LEGALE_MESSAGE)
+        if creating and not self.reference and self.company_id is not None:
+            from django.db import IntegrityError, transaction
+
+            from apps.ventes.utils.references import next_reference
+
+            last_exc = None
+            for _ in range(5):
+                self.reference = next_reference(
+                    Document, 'DOC', self.company)
+                try:
+                    with transaction.atomic():
+                        super().save(*args, **kwargs)
+                    return
+                except IntegrityError as exc:
+                    if 'reference' not in str(exc).lower():
+                        raise
+                    self.pk = None
+                    last_exc = exc
+                    continue
+            raise last_exc
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
