@@ -32,9 +32,12 @@ from .models import (
     AffectationVehicule,
     AnalyseRisquesChantier,
     AvanceSalaire,
+    AvantageSocial,
+    AyantDroit,
     BesoinFormation,
     BulletinPaie,
     CampagneEvaluation,
+    CampagnePulse,
     Candidature,
     CandidatureActivity,
     CauserieParticipant,
@@ -50,6 +53,7 @@ from .models import (
     DeviceKiosque,
     EmployeDeviceMap,
     EntretienRecrutement,
+    EntretienSortie,
     GabaritEmailRecrutement,
     GrilleSalariale,
     NoteEntretien,
@@ -93,10 +97,15 @@ from .serializers import (
     AffectationRosterSerializer,
     AffectationVehiculeSerializer,
     AnalyseRisquesChantierSerializer,
+    AnnuaireEmployeSerializer,
+    AutoEvaluationSerializer,
+    AvantageSocialSerializer,
+    AyantDroitSerializer,
     AvanceSalaireSerializer,
     BesoinFormationSerializer,
     BulletinPaieSerializer,
     CampagneEvaluationSerializer,
+    CampagnePulseSerializer,
     CandidatureActivitySerializer,
     CandidatureSerializer,
     CauserieParticipantSerializer,
@@ -113,6 +122,7 @@ from .serializers import (
     DeviceKiosqueSerializer,
     EmployeDeviceMapSerializer,
     EntretienRecrutementSerializer,
+    EntretienSortieSerializer,
     GabaritEmailRecrutementSerializer,
     GrilleSalarialeSerializer,
     NoteEntretienSerializer,
@@ -178,12 +188,24 @@ class _RhBaseViewSet(TenantMixin, viewsets.ModelViewSet):
 
 
 class DepartementViewSet(_RhBaseViewSet):
-    """Départements de la société. Recherche par nom/code."""
-    queryset = Departement.objects.all()
+    """Départements de la société. Recherche par nom/code.
+
+    XRH27 — ``parent`` (FK self) modélise la hiérarchie (cycle rejeté 400).
+
+    Action :
+    * ``GET .../arbre/`` — arbre imbriqué avec effectifs par nœud (propre +
+      cumulé descendants), via ``selectors.arbre_departements``.
+    """
+    queryset = Departement.objects.select_related('parent').all()
     serializer_class = DepartementSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nom', 'code']
     ordering_fields = ['nom']
+
+    @action(detail=False, methods=['get'], url_path='arbre')
+    def arbre(self, request):
+        return Response(
+            selectors.arbre_departements(request.user.company))
 
 
 class DossierEmployeViewSet(_RhBaseViewSet):
@@ -205,6 +227,12 @@ class DossierEmployeViewSet(_RhBaseViewSet):
         # bloqué en 403 avant même d'atteindre le corps de l'action).
         if self.action == 'compa_ratio':
             return [HasPermission('salaires_voir')()]
+        # XRH28 — l'annuaire est accessible à TOUT employé authentifié de la
+        # société (pas seulement Administrateur/Responsable) : le serializer
+        # dédié ``AnnuaireEmployeSerializer`` garantit qu'AUCUN champ sensible
+        # ne fuit, donc élargir ici l'accès en lecture est sûr.
+        if self.action == 'annuaire':
+            return [IsAnyRole()]
         return super().get_permissions()
 
     def perform_update(self, serializer):
@@ -276,11 +304,52 @@ class DossierEmployeViewSet(_RhBaseViewSet):
                 {'detail': detail}, status=status.HTTP_404_NOT_FOUND)
         return Response(resultat)
 
+    @action(detail=False, methods=['get'], url_path='annuaire')
+    def annuaire(self, request):
+        """XRH28 — annuaire interne (trombinoscope), TOUT employé de la
+        société. ``?q=`` recherche nom/prénom/poste/département ; ``?
+        competence=<id>&niveau_min=`` filtre par compétence (matrice FG172).
+        Serializer dédié SANS champ sensible (voir
+        ``AnnuaireEmployeSerializer``)."""
+        from django.db.models import Q
+
+        qs = DossierEmploye.objects.filter(
+            company=request.user.company).exclude(
+            statut=DossierEmploye.Statut.SORTI).select_related(
+            'poste_ref', 'departement', 'user')
+
+        q = request.query_params.get('q')
+        if q:
+            qs = qs.filter(
+                Q(nom__icontains=q) | Q(prenom__icontains=q)
+                | Q(poste__icontains=q) | Q(poste_ref__intitule__icontains=q)
+                | Q(departement__nom__icontains=q))
+
+        competence_id = request.query_params.get('competence')
+        if competence_id:
+            niveau_min = request.query_params.get('niveau_min', 0)
+            qs = qs.filter(
+                competences__company=request.user.company,
+                competences__competence_id=competence_id,
+                competences__niveau__gte=niveau_min)
+
+        return Response(
+            AnnuaireEmployeSerializer(qs.distinct(), many=True).data)
+
     @action(detail=True, methods=['get'], url_path='ecart-competences')
     def ecart_competences(self, request, pk=None):
         """XRH15 — écart requis-vs-actuel de l'employé, au poste de référence."""
         employe = self.get_object()
         return Response(selectors.ecarts_competences(employe))
+
+    @action(detail=True, methods=['get'], url_path='risque-attrition')
+    def risque_attrition(self, request, pk=None):
+        """XRH31 — score de risque d'attrition de l'employé (scorer pur
+        ``core.attrition_risk``, features assemblées via
+        ``selectors.features_risque_attrition``). Gaté
+        ``IsResponsableOrAdmin`` (gate de classe par défaut)."""
+        employe = self.get_object()
+        return Response(selectors.risque_attrition_employe(employe))
 
     @action(detail=True, methods=['post'],
             url_path='ecart-competences-creer-besoin-formation')
@@ -667,6 +736,116 @@ class ElementSortieViewSet(_RhBaseViewSet):
         elif recupere in ('1', 'true', 'True'):
             qs = qs.filter(recupere=True)
         return qs
+
+
+class EntretienSortieViewSet(_RhBaseViewSet):
+    """Entretiens de sortie / exit interview (XRH25).
+
+    Société scopée + Administrateur/Responsable. ``employe`` doit appartenir
+    à la société ; un seul entretien par employé (``OneToOne`` — un second
+    ``POST`` sur le même employé échoue à la contrainte d'unicité plutôt que
+    de dupliquer). Filtre ``?employe=<id>``.
+    """
+    queryset = EntretienSortie.objects.select_related('employe').all()
+    serializer_class = EntretienSortieSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        return qs
+
+
+class AyantDroitViewSet(_RhBaseViewSet):
+    """Ayants droit / personnes à charge (XRH29). ``?employe=<id>``."""
+    queryset = AyantDroit.objects.select_related('employe').all()
+    serializer_class = AyantDroitSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['nom', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        return qs
+
+
+class AvantageSocialViewSet(_RhBaseViewSet):
+    """Avantages sociaux (XRH29 — mutuelle/assurance groupe/CIMR).
+    ``?employe=<id>``."""
+    queryset = AvantageSocial.objects.select_related('employe').all()
+    serializer_class = AvantageSocialSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['type', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        return qs
+
+
+class CampagnePulseViewSet(_RhBaseViewSet):
+    """XRH32 — campagnes de baromètre interne eNPS anonyme (pulse).
+
+    Gestion (création/liste) réservée Administrateur/Responsable
+    (``IsResponsableOrAdmin`` — gate de classe par défaut) ; le VOTE lui-même
+    est ouvert à tout employé via une action dédiée en accès élargi.
+
+    Actions :
+    * ``POST .../{id}/repondre/`` — vote ANONYME (ouvert à tout employé
+      authentifié) ; un second vote du même utilisateur est refusé 409.
+    * ``GET .../{id}/resultats/`` — score eNPS agrégé (masqué sous 5
+      réponses), réservé Administrateur/Responsable.
+    """
+    queryset = CampagnePulse.objects.all()
+    serializer_class = CampagnePulseSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_debut', 'date_creation']
+
+    def get_permissions(self):
+        # XRH32 — voter est ouvert à TOUT employé authentifié de la société ;
+        # gérer les campagnes/consulter les résultats reste
+        # Administrateur/Responsable (gate de classe).
+        if self.action == 'repondre':
+            return [IsAnyRole()]
+        return super().get_permissions()
+
+    @action(detail=True, methods=['post'], url_path='repondre')
+    def repondre(self, request, pk=None):
+        campagne = self.get_object()
+        score = request.data.get('score')
+        try:
+            score = int(score)
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': 'Note (0–10) requise.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if not 0 <= score <= 10:
+            return Response(
+                {'detail': 'La note doit être comprise entre 0 et 10.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            services.repondre_pulse(
+                campagne, request.user, score=score,
+                commentaire=request.data.get('commentaire', ''))
+        except services.DejaVoteError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
+        return Response(
+            {'detail': 'Réponse enregistrée. Merci !'},
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], url_path='resultats')
+    def resultats(self, request, pk=None):
+        campagne = self.get_object()
+        return Response(
+            selectors.score_enps_campagne(request.user.company, campagne.id))
 
 
 class ModeleIntegrationViewSet(_RhBaseViewSet):
@@ -2237,6 +2416,26 @@ class EcheancesRhViewSet(TenantMixin, viewsets.ViewSet):
         return Response(rows)
 
 
+class RecrutementStatistiquesViewSet(TenantMixin, viewsets.ViewSet):
+    """XRH22 — analytics recrutement (délai d'embauche, entonnoir, sources).
+
+    Société scopée + Administrateur/Responsable. Lecture seule.
+
+    Action :
+    * ``GET .../recrutement/statistiques/?debut=YYYY-MM-DD&fin=YYYY-MM-DD`` —
+      délai d'embauche moyen, entonnoir par étape, candidatures par ouverture
+      et efficacité par source sur la période (bornes optionnelles).
+    """
+    permission_classes = [IsResponsableOrAdmin]
+
+    def list(self, request):
+        debut = request.query_params.get('debut') or None
+        fin = request.query_params.get('fin') or None
+        data = selectors.stats_recrutement(
+            request.user.company, debut=debut, fin=fin)
+        return Response(data)
+
+
 class TableauBordHseViewSet(TenantMixin, viewsets.ViewSet):
     """Tableau de bord HSE (FG185) — agrégation lecture seule, admin-gated.
 
@@ -3024,6 +3223,26 @@ class CandidatureViewSet(_RhBaseViewSet):
             self.get_serializer(nouvelle).data,
             status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=['post'], url_path='parser-cv')
+    def parser_cv(self, request, pk=None):
+        """XRH23 — OCR le CV attaché et pré-remplit les champs VIDES
+        (nom/email/téléphone) + suggère des tags vivier. Sans
+        ``ZHIPU_API_KEY`` configurée, répond 503 douce (message explicite,
+        aucune exception) — les champs déjà saisis ne sont jamais écrasés."""
+        candidature = self.get_object()
+        try:
+            resultat = services.parser_cv(candidature)
+        except services.CvParsingUnavailable as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        candidature.refresh_from_db()
+        return Response({
+            'candidature': self.get_serializer(candidature).data,
+            'champs_remplis': resultat['champs_remplis'],
+            'tags_suggeres': resultat['tags_suggeres'],
+        })
+
 
 class EntretienRecrutementViewSet(_RhBaseViewSet):
     """Entretiens de recrutement (XRH17) — planification + évaluation.
@@ -3219,12 +3438,33 @@ class EvaluationEmployeViewSet(_RhBaseViewSet):
         """Valide l'entretien (FG190) — passe en ``statut=valide``.
 
         La société est garantie par ``get_object`` (un autre tenant reçoit
-        404). Idempotent : revalider renvoie le même entretien sans erreur.
+        404). Idempotent : revalider renvoie le même entretien sans erreur
+        (les effets de bord XRH26 ne sont déclenchés qu'à la PREMIÈRE
+        validation — jamais recréés/renotifiés en boucle).
+
+        XRH26 — si ``issue``/``issue_details`` sont fournis dans le corps, ils
+        sont posés AVANT la validation (mêmes garanties FK que le sérialiseur
+        générique n'imposent pas ici car ce sont de simples choix bornés).
+        À la première validation : ``issue='formation'`` crée un
+        ``BesoinFormation`` lié ; ``issue='augmentation_proposee'`` notifie
+        (best-effort) les porteurs de ``salaires_voir`` — jamais de montant.
         """
         evaluation = self.get_object()
-        if evaluation.statut != EvaluationEmploye.Statut.VALIDE:
+        issue = request.data.get('issue')
+        if issue in dict(EvaluationEmploye.Issue.choices):
+            evaluation.issue = issue
+        if 'issue_details' in request.data:
+            evaluation.issue_details = request.data.get('issue_details') or ''
+
+        deja_validee = evaluation.statut == EvaluationEmploye.Statut.VALIDE
+        if not deja_validee:
             evaluation.statut = EvaluationEmploye.Statut.VALIDE
-            evaluation.save(update_fields=['statut', 'date_modification'])
+        evaluation.save(update_fields=[
+            'statut', 'issue', 'issue_details', 'date_modification'])
+
+        if not deja_validee and evaluation.issue:
+            services.traiter_issue_evaluation(evaluation)
+
         return Response(
             self.get_serializer(evaluation).data, status=status.HTTP_200_OK)
 
@@ -4238,6 +4478,45 @@ class PortailSelfServiceViewSet(viewsets.ViewSet):
         resp['X-Content-Type-Options'] = 'nosniff'
         return resp
 
+    @action(detail=False, methods=['get'], url_path='mes-evaluations')
+    def mes_evaluations(self, request):
+        """XRH26 — les entretiens d'évaluation DU collaborateur connecté."""
+        dossier = self._dossier(request)
+        if dossier is None:
+            return Response([])
+        qs = EvaluationEmploye.objects.filter(
+            company=request.user.company, employe=dossier).select_related(
+            'campagne', 'evaluateur')
+        return Response(EvaluationEmployeSerializer(qs, many=True).data)
+
+    @action(detail=True, methods=['patch'], url_path='mon-auto-evaluation')
+    def mon_auto_evaluation(self, request, pk=None):
+        """XRH26 — saisit SON auto-évaluation sur UN entretien.
+
+        Réservé à l'employé LIÉ à l'évaluation (l'``employe`` de
+        l'``EvaluationEmploye``, pas juste un membre de la société) : un
+        autre employé de la même société reçoit 403. Seuls
+        ``auto_evaluation``/``note_auto`` sont éditables via cette action.
+        """
+        dossier = self._dossier(request)
+        if dossier is None:
+            return Response(
+                {'detail': 'Aucun dossier employé lié à ce compte.'},
+                status=status.HTTP_404_NOT_FOUND)
+        evaluation = EvaluationEmploye.objects.filter(
+            company=request.user.company, pk=pk).first()
+        if evaluation is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        if evaluation.employe_id != dossier.id:
+            return Response(
+                {'detail': "Cette évaluation n'est pas la vôtre."},
+                status=status.HTTP_403_FORBIDDEN)
+        ser = AutoEvaluationSerializer(
+            evaluation, data=request.data, partial=True)
+        ser.is_valid(raise_exception=True)
+        ser.save()
+        return Response(ser.data)
+
 
 class CockpitRhViewSet(viewsets.ViewSet):
     """Cockpit RH — effectifs & coûts (FG200), tableau de bord en lecture.
@@ -4253,13 +4532,26 @@ class CockpitRhViewSet(viewsets.ViewSet):
 
     Endpoint :
     * ``GET cockpit/`` (list) — renvoie le tableau de bord agrégé.
+    * ``GET cockpit/top-risque-attrition/?limite=N`` — XRH31, top-N employés
+      actifs par risque d'attrition décroissant (scorer pur, calculé à la
+      demande — jamais inclus dans ``list()`` pour ne pas alourdir le cockpit
+      principal d'un scoring par employé à chaque chargement).
     """
     permission_classes = [IsResponsableOrAdmin]
 
     def list(self, request):
         peut_voir_salaires = HasPermission('salaires_voir')().has_permission(
             request, self)
+        departement = request.query_params.get('departement')
         data = selectors.cockpit_rh(
             request.user.company,
-            inclure_masse_salariale=peut_voir_salaires)
+            inclure_masse_salariale=peut_voir_salaires,
+            departement_id=departement)
         return Response(data)
+
+    @action(detail=False, methods=['get'], url_path='top-risque-attrition')
+    def top_risque_attrition(self, request):
+        limite = int(request.query_params.get('limite', 10))
+        return Response(
+            selectors.top_risque_attrition(
+                request.user.company, limite=limite))

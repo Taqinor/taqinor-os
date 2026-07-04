@@ -1519,7 +1519,32 @@ def _masse_salariale_mensuelle(company):
     return total
 
 
-def cockpit_rh(company, *, inclure_masse_salariale=False):
+def motifs_depart(company, debut, fin):
+    """XRH25 — répartition des motifs de départ sur ``[debut, fin]``.
+
+    Agrège les ``EntretienSortie.motif_principal`` des employés SORTIS de la
+    société dont ``date_sortie`` tombe dans la période (bornes incluses).
+    Renvoie un dict ``{motif: nb}`` (motifs sans entretien de sortie renseigné
+    ne sont PAS comptés — distinct du ``DossierEmploye.motif_sortie`` coarse,
+    toujours disponible via le cockpit ``par_statut``). Lecture seule, société
+    scopée.
+    """
+    from .models import EntretienSortie
+
+    entretiens = EntretienSortie.objects.filter(
+        company=company,
+        employe__date_sortie__gte=debut,
+        employe__date_sortie__lte=fin,
+    ).exclude(motif_principal='')
+
+    counts = {}
+    for entretien in entretiens:
+        counts[entretien.motif_principal] = (
+            counts.get(entretien.motif_principal, 0) + 1)
+    return counts
+
+
+def cockpit_rh(company, *, inclure_masse_salariale=False, departement_id=None):
     """Cockpit RH — effectifs & coûts (FG200), agrégation scopée société.
 
     Renvoie un tableau de bord en lecture :
@@ -1533,12 +1558,18 @@ def cockpit_rh(company, *, inclure_masse_salariale=False):
     * ``masse_salariale_mensuelle`` — UNIQUEMENT si ``inclure_masse_salariale``
       (GATED : donnée interne paie, jamais côté client).
 
+    XRH27 — ``departement_id`` filtre le cockpit à CE département ET TOUS ses
+    descendants (arbre de hiérarchie), via :func:`departements_descendants`.
+
     Tout est cadré société (jamais d'accès hors ``company``).
     """
     from datetime import date
 
     today = timezone.localdate()
     base = DossierEmploye.objects.filter(company=company)
+    if departement_id:
+        ids = departements_descendants(company, departement_id)
+        base = base.filter(departement_id__in=ids)
     non_sortis = base.exclude(statut=DossierEmploye.Statut.SORTI)
 
     # Répartitions par statut / contrat.
@@ -1617,6 +1648,11 @@ def cockpit_rh(company, *, inclure_masse_salariale=False):
             'entrees_12m': entrees,
             'sorties_12m': sorties,
             'taux_pct': taux_turnover,
+            # XRH25 — répartition des motifs de départ (12 mois glissants),
+            # depuis les entretiens de sortie structurés (distincts du
+            # ``motif_sortie`` coarse posé à l'offboarding FG161).
+            'motifs_depart': motifs_depart(
+                company, debut_periode, today),
         },
         'alertes': alertes,
     }
@@ -1817,3 +1853,296 @@ def comparatif_candidats(company, ouverture_id):
     resultats.sort(
         key=lambda r: (r['moyenne'] is None, -(r['moyenne'] or 0)))
     return resultats
+
+
+def stats_recrutement(company, debut=None, fin=None):
+    """XRH22 — analytics recrutement : délai d'embauche, entonnoir, sources.
+
+    Filtre les ``Candidature`` de la société sur ``date_candidature`` dans
+    ``[debut, fin]`` (bornes incluses, optionnelles — période complète si
+    absentes). Renvoie un dict :
+
+    * ``delai_embauche_moyen_jours`` — moyenne (candidat EMBAUCHÉ dans la
+      période) de ``date_modification - date_candidature`` (proxy de la date
+      d'embauche : le passage à l'étape ``embauche`` touche
+      ``date_modification``). ``None`` si aucun embauché avec les deux dates.
+    * ``entonnoir`` — dict ``{etape: nb_candidatures_ayant_atteint_ou_dépassé
+      cette étape}`` sur l'ordre reçu→présélection→entretien→offre→embauché
+      (une candidature à l'étape ``offre`` compte dans reçu/présélection/
+      entretien/offre). ``rejete`` compté séparément, hors entonnoir.
+    * ``candidatures_par_ouverture`` — liste ``{ouverture_id, intitule, nb}``.
+    * ``sources`` — liste ``{source, candidatures, embauches,
+      taux_embauche_pct}`` triée par taux d'embauche décroissant (division par
+      zéro gardée : ``0.0`` si aucune candidature pour la source).
+
+    Lecture seule, société scopée, pas de migration.
+    """
+    from .models import Candidature
+
+    qs = Candidature.objects.filter(company=company)
+    if debut:
+        qs = qs.filter(date_candidature__gte=debut)
+    if fin:
+        qs = qs.filter(date_candidature__lte=fin)
+    candidatures = list(qs.select_related('ouverture'))
+
+    # Délai d'embauche moyen (jours) sur les candidats embauchés de la
+    # période disposant des deux dates.
+    delais = []
+    for c in candidatures:
+        if (c.etape == Candidature.Etape.EMBAUCHE
+                and c.date_candidature and c.date_modification):
+            delta = c.date_modification.date() - c.date_candidature
+            delais.append(delta.days)
+    delai_moyen = round(sum(delais) / len(delais), 1) if delais else None
+
+    # Entonnoir : ordre des étapes et rang de chacune.
+    ordre_etapes = [
+        Candidature.Etape.RECU,
+        Candidature.Etape.PRESELECTION,
+        Candidature.Etape.ENTRETIEN,
+        Candidature.Etape.OFFRE,
+        Candidature.Etape.EMBAUCHE,
+    ]
+    rang = {etape: i for i, etape in enumerate(ordre_etapes)}
+    entonnoir = {etape: 0 for etape in ordre_etapes}
+    nb_rejetes = 0
+    for c in candidatures:
+        if c.etape == Candidature.Etape.REJETE:
+            nb_rejetes += 1
+            continue
+        rang_candidat = rang.get(c.etape)
+        if rang_candidat is None:
+            continue
+        for etape in ordre_etapes:
+            if rang[etape] <= rang_candidat:
+                entonnoir[etape] += 1
+    entonnoir['rejete'] = nb_rejetes
+
+    # Candidatures par ouverture.
+    par_ouverture = {}
+    for c in candidatures:
+        key = c.ouverture_id
+        if key not in par_ouverture:
+            par_ouverture[key] = {
+                'ouverture_id': key,
+                'intitule': c.ouverture.intitule if c.ouverture_id else '',
+                'nb': 0,
+            }
+        par_ouverture[key]['nb'] += 1
+    candidatures_par_ouverture = sorted(
+        par_ouverture.values(), key=lambda r: r['nb'], reverse=True)
+
+    # Efficacité par source.
+    par_source = {}
+    for c in candidatures:
+        source = c.source or ''
+        if source not in par_source:
+            par_source[source] = {'candidatures': 0, 'embauches': 0}
+        par_source[source]['candidatures'] += 1
+        if c.etape == Candidature.Etape.EMBAUCHE:
+            par_source[source]['embauches'] += 1
+
+    sources = []
+    for source, data in par_source.items():
+        nb_cand = data['candidatures']
+        taux = round(
+            (data['embauches'] / nb_cand) * 100, 1) if nb_cand else 0.0
+        sources.append({
+            'source': source,
+            'candidatures': nb_cand,
+            'embauches': data['embauches'],
+            'taux_embauche_pct': taux,
+        })
+    sources.sort(key=lambda r: r['taux_embauche_pct'], reverse=True)
+
+    return {
+        'delai_embauche_moyen_jours': delai_moyen,
+        'entonnoir': entonnoir,
+        'candidatures_par_ouverture': candidatures_par_ouverture,
+        'sources': sources,
+    }
+
+
+def _effectif_departement(company, departement_id):
+    """Effectif NON-SORTI directement rattaché à ce département (hors
+    descendants — l'agrégation cumulée se fait dans :func:`arbre_departements`)."""
+    return DossierEmploye.objects.filter(
+        company=company, departement_id=departement_id
+    ).exclude(statut=DossierEmploye.Statut.SORTI).count()
+
+
+def arbre_departements(company):
+    """XRH27 — arbre imbriqué des départements avec effectifs par nœud.
+
+    Renvoie une liste de nœuds RACINE (``parent`` vide), chacun
+    ``{id, nom, code, effectif_propre, effectif_cumule, enfants: [...]}`` où
+    ``effectif_propre`` = employés non-sortis DIRECTEMENT rattachés à ce
+    département, et ``effectif_cumule`` = ``effectif_propre`` + la somme
+    cumulée de TOUS les descendants (récursif). Lecture seule, société
+    scopée.
+    """
+    departements = list(Departement.objects.filter(company=company))
+    enfants_de = {}
+    for d in departements:
+        enfants_de.setdefault(d.parent_id, []).append(d)
+
+    def construire(dep):
+        enfants = [
+            construire(e) for e in enfants_de.get(dep.id, [])]
+        effectif_propre = _effectif_departement(company, dep.id)
+        effectif_cumule = effectif_propre + sum(
+            e['effectif_cumule'] for e in enfants)
+        return {
+            'id': dep.id,
+            'nom': dep.nom,
+            'code': dep.code,
+            'effectif_propre': effectif_propre,
+            'effectif_cumule': effectif_cumule,
+            'enfants': enfants,
+        }
+
+    racines = enfants_de.get(None, [])
+    return [construire(d) for d in racines]
+
+
+def departements_descendants(company, departement_id):
+    """XRH27 — ids du département donné + TOUS ses descendants (récursif).
+
+    Utilisé par le filtre cockpit ``?departement=`` (descendant-inclusif).
+    Renvoie ``[]`` si ``departement_id`` est absent/invalide.
+    """
+    if not departement_id:
+        return []
+    departements = list(Departement.objects.filter(company=company))
+    enfants_de = {}
+    for d in departements:
+        enfants_de.setdefault(d.parent_id, []).append(d.id)
+
+    resultat = []
+    a_visiter = [int(departement_id)]
+    while a_visiter:
+        courant = a_visiter.pop()
+        resultat.append(courant)
+        a_visiter.extend(enfants_de.get(courant, []))
+    return resultat
+
+
+def features_risque_attrition(employe, *, today=None, within_days=90):
+    """XRH31 — assemble les FEATURES d'un employé pour ``core.attrition_risk``.
+
+    Lit UNIQUEMENT via les selectors/models de ``apps.rh`` (jamais un import
+    d'app domaine dans ``core``) : ancienneté (``date_embauche``), incidents
+    de présence des ``within_days`` derniers jours (retards/départs anticipés
+    hors absences — ``IncidentPresence``), absences injustifiées sur la même
+    fenêtre, dernière note d'évaluation (``EvaluationEmploye.note_globale``
+    la plus récente), mois depuis la dernière ``Remuneration`` (augmentation),
+    nombre de ``Sanction`` (toutes, non filtrées par statut annulé — une
+    sanction contestée reste un signal). Renvoie un dict prêt pour
+    :func:`core.attrition_risk.attrition_risk`.
+    """
+    from .models import EvaluationEmploye, IncidentPresence, Remuneration, Sanction
+
+    today = today or timezone.localdate()
+    debut = today - timedelta(days=within_days)
+
+    features = {}
+
+    if employe.date_embauche:
+        jours = (today - employe.date_embauche).days
+        features['seniority_months'] = round(jours / 30.44, 2)
+
+    incidents_qs = IncidentPresence.objects.filter(
+        company=employe.company, employe=employe,
+        date__gte=debut, date__lte=today, justifie=False)
+    features['recent_attendance_incidents'] = incidents_qs.exclude(
+        type_incident=IncidentPresence.TypeIncident.ABSENCE_INJUSTIFIEE
+    ).count()
+    features['unplanned_absences'] = incidents_qs.filter(
+        type_incident=IncidentPresence.TypeIncident.ABSENCE_INJUSTIFIEE
+    ).count()
+
+    derniere_evaluation = EvaluationEmploye.objects.filter(
+        company=employe.company, employe=employe,
+        note_globale__isnull=False).order_by('-date_creation').first()
+    if derniere_evaluation is not None:
+        features['last_evaluation_score'] = float(
+            derniere_evaluation.note_globale)
+
+    derniere_remuneration = Remuneration.objects.filter(
+        company=employe.company, employe=employe
+    ).order_by('-date_effet').first()
+    if derniere_remuneration is not None and derniere_remuneration.date_effet:
+        jours_depuis = (today - derniere_remuneration.date_effet).days
+        features['months_since_last_raise'] = round(jours_depuis / 30.44, 2)
+
+    features['sanctions_count'] = Sanction.objects.filter(
+        company=employe.company, employe=employe).count()
+
+    return features
+
+
+def risque_attrition_employe(employe, *, today=None):
+    """XRH31 — score de risque d'attrition d'UN employé (dict prêt UI/API).
+
+    Assemble les features via :func:`features_risque_attrition` puis délègue
+    le scoring au moteur pur ``core.attrition_risk``. Renvoie
+    ``{employe_id, score, band, factors}``.
+    """
+    from core.attrition_risk import attrition_risk
+
+    features = features_risque_attrition(employe, today=today)
+    resultat = attrition_risk(features)
+    return {
+        'employe_id': employe.id,
+        'score': resultat.score,
+        'band': resultat.band,
+        'factors': resultat.factors,
+    }
+
+
+def top_risque_attrition(company, *, limite=10, today=None):
+    """XRH31 — top-N employés ACTIFS par risque d'attrition décroissant.
+
+    Lecture seule, société scopée. Renvoie une liste triée
+    ``[{employe_id, employe_nom, score, band}, ...]`` limitée à ``limite``.
+    """
+    employes = DossierEmploye.objects.filter(
+        company=company, statut=DossierEmploye.Statut.ACTIF)
+    resultats = []
+    for employe in employes:
+        r = risque_attrition_employe(employe, today=today)
+        resultats.append({
+            'employe_id': employe.id,
+            'employe_nom': f'{employe.nom} {employe.prenom}',
+            'score': r['score'],
+            'band': r['band'],
+        })
+    resultats.sort(key=lambda r: r['score'], reverse=True)
+    return resultats[:limite]
+
+
+# Seuil minimal de réponses avant d'afficher un score eNPS (anonymat XRH32).
+PULSE_SEUIL_ANONYMAT = 5
+
+
+def score_enps_campagne(company, campagne_id):
+    """XRH32 — score eNPS (%promoteurs − %détracteurs) d'une campagne pulse.
+
+    Renvoie ``{nb_reponses, score_enps, masque}`` où ``masque=True`` (et
+    ``score_enps=None``) SOUS ``PULSE_SEUIL_ANONYMAT`` réponses — protection
+    d'anonymat (une poignée de réponses redeviendrait identifiable). Lecture
+    seule, société scopée.
+    """
+    from .models import ReponsePulse
+
+    reponses = list(ReponsePulse.objects.filter(
+        company=company, campagne_id=campagne_id))
+    nb = len(reponses)
+    if nb < PULSE_SEUIL_ANONYMAT:
+        return {'nb_reponses': nb, 'score_enps': None, 'masque': True}
+
+    promoteurs = sum(1 for r in reponses if r.categorie == 'promoteur')
+    detracteurs = sum(1 for r in reponses if r.categorie == 'detracteur')
+    score = round(((promoteurs - detracteurs) / nb) * 100, 1)
+    return {'nb_reponses': nb, 'score_enps': score, 'masque': False}

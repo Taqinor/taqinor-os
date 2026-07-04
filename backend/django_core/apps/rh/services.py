@@ -1257,3 +1257,282 @@ def rattacher_depuis_vivier(candidature_vivier, ouverture):
             f'Rattaché depuis le vivier (candidature originale '
             f'#{candidature_vivier.id}).'))
     return nouvelle
+
+
+# ── XRH23 — parsing de CV par OCR (key-gated) ───────────────────────────────
+
+class CvParsingUnavailable(Exception):
+    """Levée quand aucun fournisseur OCR n'est configuré (503 douce)."""
+
+
+_CV_MIME_TYPES = {
+    'pdf': 'application/pdf',
+    'png': 'image/png',
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+}
+
+
+def parser_cv(candidature):
+    """XRH23 — OCR le ``cv_fichier`` de la candidature et PRÉ-REMPLIT
+    uniquement les champs VIDES (``nom``/``email``/``telephone``), sans
+    jamais écraser une valeur déjà saisie. Suggère aussi des ``tags_vivier``
+    (compétences détectées) — toujours en complément, jamais en remplacement
+    de tags déjà présents.
+
+    Lève :class:`CvParsingUnavailable` si aucun ``cv_fichier`` n'est attaché
+    ou si aucun fournisseur OCR n'est configuré (``ZHIPU_API_KEY`` absent) —
+    l'appelant (vue) traduit en 503 douce, sans exception non gérée.
+
+    Renvoie un dict ``{champs_remplis: [...], tags_suggeres: [...],
+    donnees_brutes: {...}}``. Entièrement additif, transaction atomique sur
+    la sauvegarde des champs remplis.
+    """
+    from core.ai.services import extract_document
+
+    if not candidature.cv_fichier:
+        raise CvParsingUnavailable('Aucun CV attaché à cette candidature.')
+
+    nom_fichier = candidature.cv_fichier.name or ''
+    ext = nom_fichier.rsplit('.', 1)[-1].lower() if '.' in nom_fichier else ''
+    mime_type = _CV_MIME_TYPES.get(ext, 'application/octet-stream')
+
+    try:
+        candidature.cv_fichier.open('rb')
+        content = candidature.cv_fichier.read()
+    finally:
+        candidature.cv_fichier.close()
+
+    result = extract_document(
+        content=content, mime_type=mime_type, schema='cv')
+    if not result.configured:
+        raise CvParsingUnavailable(
+            "Aucun fournisseur OCR n'est configuré (clé absente) — "
+            'saisie manuelle requise.')
+
+    data = result.data or {}
+    champs_remplis = []
+    update_fields = []
+
+    with transaction.atomic():
+        if not candidature.nom and data.get('nom'):
+            prenom = str(data.get('prenom') or '').strip()
+            nom = str(data.get('nom') or '').strip()
+            candidature.nom = f'{prenom} {nom}'.strip() if prenom else nom
+            champs_remplis.append('nom')
+            update_fields.append('nom')
+        if not candidature.email and data.get('email'):
+            candidature.email = str(data['email']).strip()
+            champs_remplis.append('email')
+            update_fields.append('email')
+        if not candidature.telephone and data.get('telephone'):
+            candidature.telephone = str(data['telephone']).strip()
+            champs_remplis.append('telephone')
+            update_fields.append('telephone')
+
+        competences = data.get('competences') or []
+        if isinstance(competences, str):
+            competences = [c.strip() for c in competences.split(',')
+                           if c.strip()]
+        tags_suggeres = [str(c).strip() for c in competences if str(c).strip()]
+
+        if update_fields:
+            update_fields.append('date_modification')
+            candidature.save(update_fields=update_fields)
+
+    return {
+        'champs_remplis': champs_remplis,
+        'tags_suggeres': tags_suggeres,
+        'donnees_brutes': data,
+    }
+
+
+# ── XRH24 — rétention & anonymisation des candidats (loi 09-08) ────────────
+
+_ANONYMISE_NOM = 'Candidat anonymisé'
+
+
+def candidatures_purgeables(company, *, retention_mois=None, now=None):
+    """XRH24 — candidatures REJETÉES éligibles à l'anonymisation.
+
+    Une candidature est éligible si : ``etape == rejete``, ``vivier`` est
+    ``False`` (jamais le vivier actif — même rejetée, un candidat au vivier
+    est délibérément conservé) et sa dernière activité (``date_modification``,
+    date du passage à ``rejete`` en pratique) dépasse ``retention_mois`` (le
+    réglage société ``ReglageRH.retention_candidatures_mois``, défaut 24, si
+    non fourni). Un candidat déjà anonymisé (``nom`` déjà marqué) est exclu —
+    idempotence. Jamais les embauchés (``etape == embauche`` exclue de fait
+    par le filtre ``rejete``).
+    """
+    from .models import Candidature, ReglageRH, _ajouter_mois
+
+    now = now or timezone.now()
+    if retention_mois is None:
+        reglage = ReglageRH.objects.filter(company=company).first()
+        retention_mois = (
+            reglage.retention_candidatures_mois if reglage else 24)
+
+    # Recule de ``retention_mois`` SANS dépendance externe (pas de dateutil),
+    # en réutilisant l'arithmétique de dates déjà éprouvée des EPI (FG179).
+    seuil_date = _ajouter_mois(now.date(), -int(retention_mois))
+    seuil = timezone.make_aware(
+        timezone.datetime.combine(seuil_date, timezone.datetime.min.time()))
+    return Candidature.objects.filter(
+        company=company,
+        etape=Candidature.Etape.REJETE,
+        vivier=False,
+        date_modification__lt=seuil,
+    ).exclude(nom=_ANONYMISE_NOM)
+
+
+@transaction.atomic
+def anonymiser_candidature(candidature):
+    """XRH24 — anonymise UNE candidature rejetée hors-vivier (irréversible) :
+    ``nom`` → « Candidat anonymisé », ``email``/``telephone`` vidés, le
+    ``cv_fichier`` est supprimé du storage (et le champ vidé), ``note``
+    purgée. La LIGNE survit (jamais de suppression) — les comptages/stats
+    XRH22 restent corrects. ``tags_vivier`` est également vidé (donnée
+    personnelle librement saisie)."""
+    if candidature.cv_fichier:
+        candidature.cv_fichier.delete(save=False)
+
+    candidature.nom = _ANONYMISE_NOM
+    candidature.email = ''
+    candidature.telephone = ''
+    candidature.note = ''
+    candidature.tags_vivier = ''
+    candidature.cv_fichier = None
+    candidature.save(update_fields=[
+        'nom', 'email', 'telephone', 'note', 'tags_vivier', 'cv_fichier',
+        'date_modification'])
+    return candidature
+
+
+def purger_candidatures(company, *, retention_mois=None, now=None,
+                        apply=False):
+    """XRH24 — purge (DRY-RUN par défaut) les candidatures rejetées hors
+    vivier au-delà de la rétention société.
+
+    ``apply=False`` (défaut) : ne modifie RIEN, renvoie seulement le compte et
+    les ids éligibles. ``apply=True`` : anonymise réellement chaque
+    candidature éligible (:func:`anonymiser_candidature`). Jamais les
+    embauchés ni le vivier actif (filtrés en amont par
+    :func:`candidatures_purgeables`). Renvoie
+    ``{'company_id', 'dry_run', 'eligibles', 'anonymisees', 'ids'}``.
+    """
+    candidats = list(candidatures_purgeables(
+        company, retention_mois=retention_mois, now=now))
+    ids = [c.id for c in candidats]
+    anonymisees = 0
+    if apply:
+        for candidature in candidats:
+            anonymiser_candidature(candidature)
+            anonymisees += 1
+
+    return {
+        'company_id': company.id,
+        'dry_run': not apply,
+        'eligibles': len(candidats),
+        'anonymisees': anonymisees,
+        'ids': ids,
+    }
+
+
+# ── XRH26 — auto-évaluation + issues d'évaluation structurées ──────────────
+
+def _porteurs_salaires_voir(company):
+    """Utilisateurs actifs de la société portant la permission
+    ``salaires_voir`` (JSONField liste de codes sur ``roles.Role``)."""
+    from django.contrib.auth import get_user_model
+
+    User = get_user_model()
+    return User.objects.filter(
+        company=company, is_active=True,
+        role__permissions__contains=['salaires_voir'])
+
+
+@transaction.atomic
+def traiter_issue_evaluation(evaluation):
+    """XRH26 — effets de bord de l'``issue`` posée À LA VALIDATION d'un
+    entretien d'évaluation :
+
+    * ``issue == 'formation'`` — crée un ``BesoinFormation`` lié à
+      l'employé évalué (thème = ``issue_details`` si renseigné, sinon un
+      libellé générique), priorité moyenne, statut ``identifie``.
+    * ``issue == 'augmentation_proposee'`` — notifie (best-effort, via
+      ``apps.notifications.services.notify``) chaque porteur actif de
+      ``salaires_voir`` — SANS JAMAIS inclure de montant dans le corps de la
+      notification (juste le nom de l'employé concerné).
+
+    Idempotence pragmatique : appelée uniquement au moment de la validation
+    (vue), jamais automatiquement en boucle. Aucune exception ne remonte côté
+    notification (best-effort) ; la création du besoin de formation reste,
+    elle, dans la transaction (erreur = rollback propre).
+    """
+    from .models import BesoinFormation, EvaluationEmploye
+
+    if evaluation.issue == EvaluationEmploye.Issue.FORMATION:
+        theme = evaluation.issue_details.strip() or (
+            f"Formation suite à l'évaluation {evaluation.campagne.intitule}")
+        BesoinFormation.objects.create(
+            company=evaluation.company,
+            employe=evaluation.employe,
+            theme=theme[:200],
+            priorite=BesoinFormation.Priorite.MOYENNE,
+            statut=BesoinFormation.Statut.IDENTIFIE,
+        )
+
+    if evaluation.issue == EvaluationEmploye.Issue.AUGMENTATION_PROPOSEE:
+        try:
+            from apps.notifications.models import EventType
+            from apps.notifications.services import notify_many
+
+            employe_nom = f'{evaluation.employe.nom} {evaluation.employe.prenom}'
+            notify_many(
+                _porteurs_salaires_voir(evaluation.company),
+                EventType.APPROVAL_REQUESTED,
+                title='Augmentation proposée',
+                body=(
+                    f'Une augmentation a été proposée pour {employe_nom} '
+                    "suite à son entretien d'évaluation."),
+            )
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant.
+            pass
+
+
+# ── XRH32 — baromètre interne eNPS anonyme (pulse) ──────────────────────────
+
+class DejaVoteError(Exception):
+    """Levée quand l'utilisateur a déjà participé à cette campagne pulse."""
+
+
+@transaction.atomic
+def repondre_pulse(campagne, user, *, score, commentaire=''):
+    """XRH32 — enregistre une réponse ANONYME à une campagne pulse.
+
+    Deux écritures dans LA MÊME transaction, JAMAIS reliées entre elles :
+      1. ``ParticipationPulse(campagne, user)`` — la contrainte d'unicité EST
+         le garde-fou anti-double-vote ; si elle existe déjà,
+         :class:`DejaVoteError` est levée AVANT toute écriture de réponse
+         (aucune deuxième ``ReponsePulse`` n'est créée pour ce vote refusé).
+      2. ``ReponsePulse(campagne, score, commentaire)`` — SANS AUCUNE
+         référence à ``user`` : structurellement impossible de relier cette
+         ligne au votant.
+
+    Renvoie la ``ReponsePulse`` créée.
+    """
+    from .models import (
+        ParticipationPulse, ReponsePulse, hash_participation_token,
+    )
+
+    if ParticipationPulse.objects.filter(
+            campagne=campagne, user=user).exists():
+        raise DejaVoteError('Vous avez déjà répondu à cette campagne.')
+
+    ParticipationPulse.objects.create(
+        company=campagne.company, campagne=campagne, user=user,
+        token_hash=hash_participation_token(user.id, campagne.id))
+
+    return ReponsePulse.objects.create(
+        company=campagne.company, campagne=campagne,
+        score=score, commentaire=commentaire or '')

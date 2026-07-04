@@ -21,7 +21,13 @@ from django.db import models
 
 
 class Departement(models.Model):
-    """Département d'une société (regroupe des ``DossierEmploye``)."""
+    """Département d'une société (regroupe des ``DossierEmploye``).
+
+    XRH27 — ``parent`` (FK self nullable) modélise la HIÉRARCHIE de
+    départements (ex. Direction → Pôle technique → Équipes pose), auparavant
+    plate. ``clean()`` protège contre les cycles (A→B→A) en remontant TOUTE
+    la chaîne d'ancêtres, pas seulement le lien direct.
+    """
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -31,6 +37,13 @@ class Departement(models.Model):
     nom = models.CharField(max_length=120, verbose_name='Nom')
     code = models.CharField(
         max_length=20, blank=True, default='', verbose_name='Code')
+    parent = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='enfants',
+        verbose_name='Département parent',
+    )
     actif = models.BooleanField(default=True, verbose_name='Actif')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
@@ -40,6 +53,29 @@ class Departement(models.Model):
         verbose_name_plural = 'Départements'
         unique_together = [('company', 'nom')]
         ordering = ['nom']
+
+    def clean(self):
+        """XRH27 — rejette un cycle A→B→A en remontant TOUTE la chaîne de
+        ``parent`` (pas seulement le lien direct)."""
+        from django.core.exceptions import ValidationError
+
+        if self.parent_id is None:
+            return
+        if self.pk is not None and self.parent_id == self.pk:
+            raise ValidationError(
+                'Un département ne peut pas être son propre parent.')
+
+        vus = set()
+        courant = self.parent
+        while courant is not None:
+            if self.pk is not None and courant.pk == self.pk:
+                raise ValidationError(
+                    'Cycle de hiérarchie détecté : ce département est déjà '
+                    "un ancêtre du parent choisi.")
+            if courant.pk in vus:
+                break  # cycle préexistant ailleurs — n'empêche pas CETTE sauvegarde
+            vus.add(courant.pk)
+            courant = courant.parent
 
     def __str__(self):
         return self.nom
@@ -3337,6 +3373,15 @@ class EvaluationEmploye(models.Model):
         REALISE = 'realise', 'Réalisé'
         VALIDE = 'valide', 'Validé'
 
+    class Issue(models.TextChoices):
+        # XRH26 — suite formalisée posée à la validation de l'entretien.
+        AUGMENTATION_PROPOSEE = (
+            'augmentation_proposee', "Augmentation proposée")
+        PROMOTION = 'promotion', 'Promotion'
+        FORMATION = 'formation', 'Formation'
+        PIP = 'pip', 'Plan de performance (PIP)'
+        AUCUNE = 'aucune', 'Aucune'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -3369,6 +3414,19 @@ class EvaluationEmploye(models.Model):
         null=True, blank=True, verbose_name='Note globale')
     synthese = models.TextField(
         blank=True, default='', verbose_name='Synthèse')
+    # XRH26 — auto-évaluation : saisissable UNIQUEMENT par l'employé concerné
+    # (via le portail self-service), à côté de l'évaluation manager.
+    auto_evaluation = models.TextField(
+        blank=True, default='', verbose_name='Auto-évaluation')
+    note_auto = models.DecimalField(
+        max_digits=3, decimal_places=1,
+        null=True, blank=True, verbose_name='Note (auto-évaluation)')
+    # XRH26 — issue posée À LA VALIDATION (manager/RH) : suite formalisée.
+    issue = models.CharField(
+        max_length=25, choices=Issue.choices,
+        blank=True, default='', verbose_name='Issue')
+    issue_details = models.TextField(
+        blank=True, default='', verbose_name="Détails de l'issue")
     statut = models.CharField(
         max_length=20, choices=Statut.choices,
         default=Statut.PLANIFIE, verbose_name='Statut')
@@ -4493,6 +4551,10 @@ class ReglageRH(models.Model):
     # contrôle désactivé (comportement par défaut, jamais bloquant).
     geofence_metres = models.PositiveIntegerField(
         null=True, blank=True, verbose_name='Géofence (mètres)')
+    # XRH24 — rétention des candidatures rejetées (loi 09-08), en MOIS avant
+    # anonymisation par ``manage.py purger_candidatures``. Défaut 24 mois.
+    retention_candidatures_mois = models.PositiveIntegerField(
+        default=24, verbose_name='Rétention candidatures (mois)')
     date_modification = models.DateTimeField(
         auto_now=True, verbose_name='Modifié le')
 
@@ -5014,3 +5076,329 @@ class PromesseEmbauche(models.Model):
 
     def __str__(self):
         return f'Promesse — {self.candidature} ({self.statut})'
+
+
+class EntretienSortie(models.Model):
+    """Entretien de sortie / exit interview (XRH25) — turnover structuré.
+
+    L'offboarding (FG161) ne stocke qu'un ``DossierEmploye.motif_sortie``
+    (coarse, obligatoire à la sortie). ``EntretienSortie`` ajoute un
+    entretien STRUCTURÉ, optionnel, mené après la sortie : un
+    ``motif_principal`` plus fin (RH), un questionnaire libre en JSON
+    (``{question: réponse}``), un ``recommanderait`` (l'employé
+    recommanderait-il l'entreprise, nullable — pas toujours demandé/répondu)
+    et un commentaire libre.
+
+    Un seul entretien par employé sorti (``OneToOneField`` — un second essai
+    d'ajout échoue naturellement à la contrainte unique plutôt que dupliquer).
+    Multi-société : ``company`` posée CÔTÉ SERVEUR ; ``employe`` doit
+    appartenir à la société. Entièrement additif.
+    """
+
+    class MotifPrincipal(models.TextChoices):
+        SALAIRE = 'salaire', 'Salaire'
+        MANAGEMENT = 'management', 'Management'
+        CONDITIONS = 'conditions', 'Conditions de travail'
+        DISTANCE = 'distance', 'Distance / trajet'
+        OPPORTUNITE = 'opportunite', "Opportunité ailleurs"
+        SANTE = 'sante', 'Santé'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_entretiens_sortie',
+        verbose_name='Société',
+    )
+    employe = models.OneToOneField(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='entretien_sortie',
+        verbose_name='Employé',
+    )
+    date = models.DateField(
+        null=True, blank=True, verbose_name="Date de l'entretien")
+    motif_principal = models.CharField(
+        max_length=20, choices=MotifPrincipal.choices,
+        blank=True, default='', verbose_name='Motif principal')
+    questionnaire = models.JSONField(
+        default=dict, blank=True, verbose_name='Questionnaire (réponses)')
+    recommanderait = models.BooleanField(
+        null=True, blank=True, verbose_name='Recommanderait l’entreprise')
+    commentaire = models.TextField(
+        blank=True, default='', verbose_name='Commentaire')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Entretien de sortie'
+        verbose_name_plural = 'Entretiens de sortie'
+        ordering = ['-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'motif_principal'],
+                name='rh_ent_sortie_comp_motif_idx'),
+        ]
+
+    def __str__(self):
+        return f'Entretien de sortie — {self.employe}'
+
+
+class AyantDroit(models.Model):
+    """XRH29 — ayant droit (personne à charge) nominatif d'un employé.
+
+    ``DossierEmploye.nombre_enfants`` n'est qu'un COMPTEUR pour l'IR ; l'AMO/
+    mutuelle exige les ayants droit NOMINATIFS (conjoint, enfants…) avec leur
+    couverture. Multi-société : ``company`` posée CÔTÉ SERVEUR ; ``employe``
+    doit appartenir à la société. Entièrement additif.
+    """
+
+    class Lien(models.TextChoices):
+        CONJOINT = 'conjoint', 'Conjoint(e)'
+        ENFANT = 'enfant', 'Enfant'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_ayants_droit',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='ayants_droit',
+        verbose_name='Employé',
+    )
+    lien = models.CharField(
+        max_length=20, choices=Lien.choices, verbose_name='Lien')
+    nom = models.CharField(max_length=160, verbose_name='Nom')
+    date_naissance = models.DateField(
+        null=True, blank=True, verbose_name='Date de naissance')
+    couvert_amo = models.BooleanField(
+        default=False, verbose_name='Couvert AMO')
+    couvert_mutuelle = models.BooleanField(
+        default=False, verbose_name='Couvert mutuelle')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Ayant droit'
+        verbose_name_plural = 'Ayants droit'
+        ordering = ['employe', 'nom']
+        indexes = [
+            models.Index(
+                fields=['company', 'employe'],
+                name='rh_ayant_droit_comp_emp_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.nom} ({self.get_lien_display()}) — {self.employe}'
+
+
+class AvantageSocial(models.Model):
+    """XRH29 — avantage social léger d'un employé (mutuelle, CIMR…).
+
+    Registre léger (organisme + dates d'adhésion/fin), DISTINCT des montants
+    de paie (``BulletinPaie``/``ElementsVariablesPaie``). Multi-société :
+    ``company`` posée CÔTÉ SERVEUR ; ``employe`` doit appartenir à la société.
+    Entièrement additif.
+    """
+
+    class Type(models.TextChoices):
+        MUTUELLE = 'mutuelle', 'Mutuelle'
+        ASSURANCE_GROUPE = 'assurance_groupe', 'Assurance groupe'
+        CIMR = 'cimr', 'CIMR'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_avantages_sociaux',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='avantages_sociaux',
+        verbose_name='Employé',
+    )
+    type = models.CharField(
+        max_length=20, choices=Type.choices, verbose_name='Type')
+    organisme = models.CharField(
+        max_length=160, blank=True, default='', verbose_name='Organisme')
+    date_adhesion = models.DateField(
+        null=True, blank=True, verbose_name="Date d'adhésion")
+    date_fin = models.DateField(
+        null=True, blank=True, verbose_name='Date de fin')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Avantage social'
+        verbose_name_plural = 'Avantages sociaux'
+        ordering = ['employe', 'type']
+        indexes = [
+            models.Index(
+                fields=['company', 'employe'],
+                name='rh_avantage_comp_emp_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.get_type_display()} — {self.employe}'
+
+
+def hash_participation_token(user_id, campagne_id):
+    """XRH32 — empreinte déterministe (HMAC-SHA256) « qui a déjà voté ».
+
+    Même construction que ``hash_device_token`` (kiosque XRH10) : dérivée de
+    ``SECRET_KEY`` + ``(user_id, campagne_id)``. Stockée à part
+    (``ParticipationPulse``), JAMAIS jointe à ``ReponsePulse`` — empêche le
+    double vote SANS relier la réponse au votant.
+    """
+    raw = f'{user_id}:{campagne_id}'
+    return hmac.new(
+        settings.SECRET_KEY.encode('utf-8'),
+        raw.encode('utf-8'),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+class CampagnePulse(models.Model):
+    """XRH32 — campagne de baromètre interne eNPS anonyme (pulse survey).
+
+    Une question eNPS (0–10, « recommanderiez-vous... ») + une question
+    libre, sur une fenêtre ``date_debut``/``date_fin``. Multi-société :
+    ``company`` posée CÔTÉ SERVEUR. Entièrement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_campagnes_pulse',
+        verbose_name='Société',
+    )
+    question_enps = models.CharField(
+        max_length=255,
+        default=(
+            'Sur une échelle de 0 à 10, recommanderiez-vous notre '
+            'entreprise comme employeur à un proche ?'),
+        verbose_name='Question eNPS')
+    question_libre = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Question libre')
+    date_debut = models.DateField(
+        null=True, blank=True, verbose_name='Date de début')
+    date_fin = models.DateField(
+        null=True, blank=True, verbose_name='Date de fin')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Campagne pulse'
+        verbose_name_plural = 'Campagnes pulse'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'Pulse — {self.date_debut or self.date_creation.date()}'
+
+
+class ReponsePulse(models.Model):
+    """XRH32 — réponse ANONYME à une campagne pulse.
+
+    STRUCTURELLEMENT non reliable au votant : AUCUNE FK vers un utilisateur
+    ou un employé sur ce modèle — c'est le garde-fou d'anonymat (testable par
+    inspection du schéma : ``[f.name for f in ReponsePulse._meta.fields]``
+    ne contient ni ``user`` ni ``employe``). Le double vote est empêché à
+    PART, par ``ParticipationPulse`` (jeton haché, jamais joint ici).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_reponses_pulse',
+        verbose_name='Société',
+    )
+    campagne = models.ForeignKey(
+        CampagnePulse,
+        on_delete=models.CASCADE,
+        related_name='reponses',
+        verbose_name='Campagne',
+    )
+    score = models.PositiveSmallIntegerField(verbose_name='Note (0–10)')
+    commentaire = models.TextField(
+        blank=True, default='', verbose_name='Commentaire libre')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Réponse pulse'
+        verbose_name_plural = 'Réponses pulse'
+        ordering = ['-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'campagne'],
+                name='rh_reppulse_comp_camp_idx'),
+        ]
+
+    def __str__(self):
+        return f'Réponse pulse — campagne {self.campagne_id}'
+
+    @property
+    def categorie(self):
+        """Catégorie eNPS de la réponse (promoteur/passif/détracteur) —
+        mêmes seuils que le NPS client (FG238)."""
+        if self.score >= 9:
+            return 'promoteur'
+        if self.score >= 7:
+            return 'passif'
+        return 'detracteur'
+
+
+class ParticipationPulse(models.Model):
+    """XRH32 — jeton de participation (empêche le double vote SANS lien
+    votant→réponse).
+
+    Une ligne par (``user``, ``campagne``) — la contrainte d'unicité EST le
+    mécanisme anti-double-vote. ``token_hash`` (HMAC déterministe, voir
+    :func:`hash_participation_token`) est stocké pour vérification, mais ce
+    modèle N'A AUCUN LIEN vers ``ReponsePulse`` : on sait QUI a voté, jamais
+    CE QU'IL A RÉPONDU.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_participations_pulse',
+        verbose_name='Société',
+    )
+    campagne = models.ForeignKey(
+        CampagnePulse,
+        on_delete=models.CASCADE,
+        related_name='participations',
+        verbose_name='Campagne',
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='participations_pulse',
+        verbose_name='Utilisateur',
+    )
+    token_hash = models.CharField(max_length=64, verbose_name='Jeton (empreinte)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Participation pulse'
+        verbose_name_plural = 'Participations pulse'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['campagne', 'user'],
+                name='rh_partpulse_camp_user_uniq'),
+        ]
+
+    def __str__(self):
+        return f'Participation — campagne {self.campagne_id}'

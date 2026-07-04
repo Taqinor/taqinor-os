@@ -8,9 +8,12 @@ from .views import (
     AffectationVehiculeViewSet,
     AnalyseRisquesChantierViewSet,
     AvanceSalaireViewSet,
+    AvantageSocialViewSet,
+    AyantDroitViewSet,
     BesoinFormationViewSet,
     BulletinPaieViewSet,
     CampagneEvaluationViewSet,
+    CampagnePulseViewSet,
     CandidatureViewSet,
     CauserieSecuriteViewSet,
     CockpitRhViewSet,
@@ -32,6 +35,7 @@ from .views import (
     ElementSortieViewSet,
     ElementsVariablesPaieViewSet,
     EntretienRecrutementViewSet,
+    EntretienSortieViewSet,
     EpiCatalogueViewSet,
     GabaritEmailRecrutementViewSet,
     GrilleSalarialeViewSet,
@@ -55,6 +59,7 @@ from .views import (
     PresquAccidentViewSet,
     PrimeAttribueeViewSet,
     PromesseEmbaucheViewSet,
+    RecrutementStatistiquesViewSet,
     ReglageRHViewSet,
     RemunerationViewSet,
     SanctionViewSet,
@@ -75,6 +80,9 @@ router.register(r'remunerations', RemunerationViewSet)
 router.register(r'grilles-salariales', GrilleSalarialeViewSet)
 router.register(r'documents', DocumentEmployeViewSet)
 router.register(r'elements-sortie', ElementSortieViewSet)
+router.register(r'entretiens-sortie', EntretienSortieViewSet)
+router.register(r'ayants-droit', AyantDroitViewSet)
+router.register(r'avantages-sociaux', AvantageSocialViewSet)
 router.register(r'modeles-integration', ModeleIntegrationViewSet)
 router.register(r'elements-integration', ElementIntegrationViewSet)
 router.register(
@@ -119,10 +127,14 @@ router.register(r'sessions-formation', SessionFormationViewSet)
 router.register(r'besoins-formation', BesoinFormationViewSet)
 router.register(r'ouvertures-poste', OuverturePosteViewSet)
 router.register(r'candidatures', CandidatureViewSet)
+router.register(
+    r'recrutement/statistiques', RecrutementStatistiquesViewSet,
+    basename='rh-recrutement-statistiques')
 router.register(r'entretiens-recrutement', EntretienRecrutementViewSet)
 router.register(r'gabarits-email-recrutement', GabaritEmailRecrutementViewSet)
 router.register(r'promesses-embauche', PromesseEmbaucheViewSet)
 router.register(r'campagnes-evaluation', CampagneEvaluationViewSet)
+router.register(r'campagnes-pulse', CampagnePulseViewSet)
 router.register(r'evaluations-employe', EvaluationEmployeViewSet)
 router.register(r'sanctions', SanctionViewSet)
 router.register(r'elements-variables-paie', ElementsVariablesPaieViewSet)
