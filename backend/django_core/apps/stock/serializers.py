@@ -500,16 +500,18 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
             'statut_display', 'date_commande', 'note', 'devise',
             'taux_change', 'date_livraison_prevue',
             'date_confirmee_fournisseur', 'numero_confirmation_fournisseur',
-            'created_by',
+            'revision', 'created_by',
             'created_by_username', 'date_creation', 'date_mise_a_jour',
             'lignes', 'total_achat', 'est_entierement_recu', 'acomptes',
         ]
         # company + reference + created_by sont posés côté serveur. La date
         # confirmée/numéro d'accusé n'est modifiable QUE via l'action
         # `confirmer` (XPUR7) — jamais en écriture libre sur le document.
+        # `revision` n'avance QUE via l'action `reviser` (XPUR18).
         read_only_fields = [
             'reference', 'created_by', 'date_creation', 'date_mise_a_jour',
             'date_confirmee_fournisseur', 'numero_confirmation_fournisseur',
+            'revision',
         ]
 
     def get_acomptes(self, obj):

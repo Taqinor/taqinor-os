@@ -3154,3 +3154,145 @@ def import_prix_fournisseur_xlsx(company, fournisseur, file_bytes):
                     defaults={'prix': palier_prix})
 
     return {'created': created, 'updated': updated, 'errors': errors}
+
+
+# ── XPUR18 — Révision de BCF tracée + ré-approbation ────────────────────────
+# Un BCF ENVOYE se modifiait silencieusement (aucun historique d'amendement).
+# `reviser_bcf` est le SEUL chemin pour modifier lignes/montants/dates après
+# l'envoi : chaque changement est journalisé (records.Comment, ancien→nouveau,
+# horodaté, utilisateur), le compteur `revision` avance, et une hausse du
+# montant au-delà du seuil FG312 invalide l'approbation existante (ré-exige
+# une nouvelle approbation — best-effort, cohérent avec YPROC4 même si le
+# gate d'envoi n'est pas encore câblé côté stock).
+
+_LIGNE_CHAMPS_SUIVIS = (
+    'quantite', 'prix_achat_unitaire', 'designation',
+)
+_BCF_CHAMPS_SUIVIS = (
+    'date_commande', 'date_livraison_prevue', 'note',
+)
+
+
+def _log_revision_change(company, bc, user, lines):
+    """XPUR18 — écrit UNE entrée `records.Comment` regroupant tous les
+    changements d'une révision (best-effort, jamais bloquant)."""
+    if not lines:
+        return
+    try:
+        from django.contrib.contenttypes.models import ContentType
+        from apps.records.models import Comment
+        from .models import BonCommandeFournisseur
+        body = f'Révision {bc.revision} :\n' + '\n'.join(lines)
+        Comment.objects.create(
+            company=company,
+            content_type=ContentType.objects.get_for_model(
+                BonCommandeFournisseur),
+            object_id=bc.pk,
+            body=body,
+            author=user,
+        )
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.info('XPUR18: révision non journalisée pour BCF %s', bc.pk)
+
+
+def _invalidate_approbation_si_hausse(company, bc, montant_avant, montant_apres):
+    """XPUR18 — si le montant du BCF a AUGMENTÉ au-delà du seuil d'approbation
+    en vigueur (FG312), supprime l'approbation existante pour qu'une nouvelle
+    approbation soit exigée avant un nouvel envoi. Best-effort (import
+    paresseux — jamais un import direct de modèles installations) ; no-op si
+    installations est absent ou si aucun seuil n'est configuré (comportement
+    historique préservé)."""
+    if montant_apres <= montant_avant:
+        return False
+    try:
+        from apps.installations.models_approbation_bcf import (
+            ApprobationBCF, SeuilApprobationBCF,
+        )
+        seuil = SeuilApprobationBCF.objects.filter(
+            company=company, actif=True).first()
+        if seuil is None:
+            return False
+        palier_avant = seuil.palier_requis(montant_avant)
+        palier_apres = seuil.palier_requis(montant_apres)
+        approbation = ApprobationBCF.objects.filter(
+            company=company, bcf=bc).first()
+        # La hausse invalide l'approbation si elle dépasse le montant déjà
+        # approuvé, OU si elle fait franchir un palier plus strict.
+        if approbation is not None and (
+                montant_apres > approbation.montant_approuve
+                or palier_apres != palier_avant):
+            approbation.delete()
+            return True
+        return False
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        return False
+
+
+def reviser_bcf(
+        company, user, bc, *, lignes=None, date_commande=None,
+        date_livraison_prevue=None, note=None):
+    """XPUR18 — révise un BCF déjà ENVOYE : SEUL chemin de modification des
+    lignes/montants/dates après envoi. Journalise chaque changement
+    (ancien→nouveau), incrémente `revision`, ré-exige une approbation FG312
+    si le montant augmente au-delà du seuil en vigueur. Lève ValueError si le
+    BCF est en brouillon/reçu/annulé (rien à réviser — utiliser l'édition
+    normale ou c'est déjà figé)."""
+    from .models import BonCommandeFournisseur
+
+    if bc.statut not in (
+        BonCommandeFournisseur.Statut.ENVOYE,
+        BonCommandeFournisseur.Statut.RECU,
+    ):
+        raise ValueError(
+            'Seul un BCF envoyé (ou partiellement reçu) peut être révisé.')
+
+    montant_avant = bc.total_achat
+    changements = []
+
+    # ── En-tête (date_commande / date_livraison_prevue / note) ─────────────
+    for champ, nouvelle_valeur in (
+        ('date_commande', date_commande),
+        ('date_livraison_prevue', date_livraison_prevue),
+        ('note', note),
+    ):
+        if nouvelle_valeur is None:
+            continue
+        ancienne = getattr(bc, champ)
+        if str(ancienne) != str(nouvelle_valeur):
+            changements.append(
+                f'{champ} : {ancienne!r} → {nouvelle_valeur!r}')
+            setattr(bc, champ, nouvelle_valeur)
+
+    # ── Lignes (quantité, prix, désignation) ────────────────────────────────
+    if lignes is not None:
+        existantes = {ligne.id: ligne for ligne in bc.lignes.all()}
+        for ligne_data in lignes:
+            ligne_id = ligne_data.get('id')
+            ligne = existantes.get(ligne_id)
+            if ligne is None:
+                continue
+            for champ in _LIGNE_CHAMPS_SUIVIS:
+                if champ not in ligne_data:
+                    continue
+                ancienne = getattr(ligne, champ)
+                nouvelle = ligne_data[champ]
+                if str(ancienne) != str(nouvelle):
+                    changements.append(
+                        f'Ligne {ligne_id} — {champ} : '
+                        f'{ancienne!r} → {nouvelle!r}')
+                    setattr(ligne, champ, nouvelle)
+            ligne.save()
+
+    if not changements:
+        return bc, False
+
+    bc.revision += 1
+    bc.save()
+    bc.refresh_from_db()
+    montant_apres = bc.total_achat
+
+    _log_revision_change(company, bc, user, changements)
+    reapprobation_requise = _invalidate_approbation_si_hausse(
+        company, bc, montant_avant, montant_apres)
+
+    return bc, reapprobation_requise

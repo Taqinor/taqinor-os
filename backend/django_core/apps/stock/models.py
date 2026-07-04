@@ -873,6 +873,11 @@ class BonCommandeFournisseur(models.Model):
     date_confirmee_fournisseur = models.DateField(null=True, blank=True)
     numero_confirmation_fournisseur = models.CharField(
         max_length=100, blank=True, default='')
+    # XPUR18 — compteur de révision (0 = jamais révisé, comportement
+    # historique). Incrémenté UNIQUEMENT par l'action `reviser` (édition
+    # directe des lignes/montants/dates refusée après ENVOYE) ; imprimé sur
+    # le PDF (« Rév. N » à partir de 1).
+    revision = models.PositiveIntegerField(default=0)
     note = models.TextField(blank=True, null=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,

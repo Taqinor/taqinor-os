@@ -71,7 +71,7 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
             # légacy responsable/admin pour les comptes sans rôle fin).
             return [HasPermissionOrLegacy('stock_modifier')()]
         elif self.action in WRITE_ACTIONS + [
-            'envoyer', 'recevoir', 'annuler', 'confirmer',
+            'envoyer', 'recevoir', 'annuler', 'confirmer', 'reviser',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'en_retard':
@@ -244,10 +244,50 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
         return response
 
     def update(self, request, *args, **kwargs):
+        # XPUR18 — un BCF ENVOYE/RECU se modifie UNIQUEMENT via l'action
+        # `reviser` (tracée + ré-approbation) : l'édition directe (PUT/PATCH)
+        # est refusée après l'envoi. Un BROUILLON garde l'édition normale
+        # (comportement historique inchangé).
+        bc = self.get_object()
+        if bc.statut in (
+            BonCommandeFournisseur.Statut.ENVOYE,
+            BonCommandeFournisseur.Statut.RECU,
+        ):
+            return Response(
+                {'detail': (
+                    "Ce BCF a été envoyé : utilisez l'action « réviser » "
+                    'pour le modifier (traçabilité + ré-approbation).')},
+                status=status.HTTP_400_BAD_REQUEST)
         response = super().update(request, *args, **kwargs)
         if response.status_code == status.HTTP_200_OK:
             self._attach_prix_warnings(response, request)
         return response
+
+    @action(detail=True, methods=['post'], url_path='reviser')
+    def reviser(self, request, pk=None):
+        """XPUR18 — SEUL chemin de modification d'un BCF déjà ENVOYE/RECU :
+        journalise chaque changement (ancien→nouveau, records.Comment),
+        incrémente `revision`, ré-exige une approbation FG312 si le montant
+        augmente au-delà du seuil en vigueur. Corps optionnel :
+        ``{"date_commande": "...", "date_livraison_prevue": "...",
+        "note": "...", "lignes": [{"id": <id>, "quantite": ..., "prix_achat_unitaire": ..., "designation": "..."}]}``."""
+        from ..services import reviser_bcf
+        bc = self.get_object()
+        try:
+            bc, reapprobation_requise = reviser_bcf(
+                request.user.company, request.user, bc,
+                lignes=request.data.get('lignes'),
+                date_commande=request.data.get('date_commande'),
+                date_livraison_prevue=request.data.get(
+                    'date_livraison_prevue'),
+                note=request.data.get('note'),
+            )
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        data = self.get_serializer(bc).data
+        data['reapprobation_requise'] = reapprobation_requise
+        return Response(data)
 
     def _attach_prix_warnings(self, response, request):
         """XPUR13 — WARNING (non bloquant) : ajoute `prix_warnings` à la

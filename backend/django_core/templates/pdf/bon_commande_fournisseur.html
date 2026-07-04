@@ -56,7 +56,7 @@
       <div class="logo"><img src="{{ logo_uri }}" alt="Logo" /></div>
       {% endif %}
       <div class="doc-title">BON DE COMMANDE</div>
-      <div class="doc-ref">{{ bc.reference }}</div>
+      <div class="doc-ref">{{ bc.reference }}{% if bc.revision and bc.revision > 0 %} — Rév. {{ bc.revision }}{% endif %}</div>
       <div class="doc-internal">Document interne — fournisseur</div>
     </div>
     <div class="company-info">
