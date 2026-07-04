@@ -1328,3 +1328,71 @@ class CompatibilitePiece(models.Model):
 
     def __str__(self):
         return f'{self.produit_equipement_id} <-> {self.piece_id}'
+
+
+# ── XMFG10 — Pièces retirées / récupérées sur ticket SAV ─────────────────────
+
+class PieceRetiree(models.Model):
+    """XMFG10 — pièce défectueuse RETIRÉE sur un ticket SAV (onduleur
+    remplacé, pompe HS…) — le pendant « retrait » de `PieceConsommee`
+    (qui ne couvre que l'ajout).
+
+    ``destination`` pilote ce qui arrive à la pièce retirée :
+      * ``stock_occasion`` — remise en stock (MouvementStock ENTRÉE), une
+        seule fois (`restockee` évite tout double mouvement) ;
+      * ``retour_fournisseur`` — pièce destinée à un RMA fournisseur, lien
+        `warranty_claim` proposé/créé (FG83) ;
+      * ``rebut`` — mise au rebut, aucun mouvement de restock.
+
+    Si `numero_serie` correspond à un `sav.Equipement` existant (même
+    société), celui-ci est marqué REMPLACÉ (`statut=REMPLACE`,
+    `remplace_par_ticket=ticket`)."""
+    class Destination(models.TextChoices):
+        REBUT = 'rebut', 'Rebut'
+        RETOUR_FOURNISSEUR = 'retour_fournisseur', 'Retour fournisseur'
+        STOCK_OCCASION = 'stock_occasion', 'Stock occasion'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='pieces_retirees_sav')
+    ticket = models.ForeignKey(
+        Ticket, on_delete=models.CASCADE, related_name='pieces_retirees')
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.PROTECT,
+        related_name='pieces_retirees_sav')
+    quantite = models.DecimalField(
+        max_digits=10, decimal_places=2, default=1)
+    numero_serie = models.CharField(max_length=120, blank=True, default='')
+    destination = models.CharField(
+        max_length=20, choices=Destination.choices, default=Destination.REBUT)
+    restockee = models.BooleanField(
+        default=False,
+        help_text=('True une fois le MouvementStock ENTRÉE (stock_occasion) '
+                   'appliqué — évite tout double restock.'))
+    # Lien optionnel vers la réclamation garantie créée/associée (FG83) quand
+    # destination = retour_fournisseur. SET_NULL : la suppression du RMA ne
+    # casse pas l'historique de la pièce retirée.
+    warranty_claim = models.ForeignKey(
+        'sav.WarrantyClaim', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='pieces_retirees')
+    # Équipement client marqué REMPLACÉ par ce retrait (si numero_serie a
+    # matché un Equipement de la société).
+    equipement_remplace = models.ForeignKey(
+        'sav.Equipement', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='retraits_pieces')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Pièce retirée'
+        verbose_name_plural = 'Pièces retirées'
+        ordering = ['-date_creation']
+        indexes = [
+            models.Index(fields=['company', 'ticket'],
+                         name='sav_piece_ret_co_tick_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.produit_id} ×{self.quantite} retirée (ticket {self.ticket_id})'

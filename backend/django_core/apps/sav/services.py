@@ -456,3 +456,66 @@ def creer_intervention_depuis_installation(
             description=full_description)
     ticket = create_with_reference(Ticket, 'SAV', company, _create)
     return ticket, True
+
+
+# ── XMFG10 — Pièces retirées / récupérées sur ticket SAV ─────────────────────
+
+def retirer_piece(*, company, ticket, produit, quantite, numero_serie,
+                  destination, user):
+    """Trace une pièce RETIRÉE du ticket (`PieceRetiree`) et applique les
+    effets de bord de sa `destination` :
+
+      * ``stock_occasion`` → ré-incrémente le stock (MouvementStock ENTRÉE,
+        UNE seule fois via `restockee`) ;
+      * ``retour_fournisseur`` → propose/crée un `WarrantyClaim` (FG83) lié
+        à l'équipement si `numero_serie` matche un équipement de la société ;
+      * ``rebut`` → aucun mouvement de stock.
+
+    Si `numero_serie` correspond à un `sav.Equipement` existant (société
+    scoped), il est marqué REMPLACÉ. Renvoie la `PieceRetiree` créée."""
+    from .models import Equipement, PieceRetiree, WarrantyClaim
+
+    equipement_remplace = None
+    if numero_serie:
+        equipement_remplace = Equipement.objects.filter(
+            company=company, numero_serie=numero_serie).first()
+        if equipement_remplace is not None:
+            equipement_remplace.statut = Equipement.Statut.REMPLACE
+            equipement_remplace.remplace_par_ticket = ticket
+            equipement_remplace.save(
+                update_fields=['statut', 'remplace_par_ticket'])
+
+    piece = PieceRetiree.objects.create(
+        company=company, ticket=ticket, produit=produit, quantite=quantite,
+        numero_serie=numero_serie or '', destination=destination,
+        equipement_remplace=equipement_remplace, created_by=user)
+
+    if destination == PieceRetiree.Destination.STOCK_OCCASION:
+        if not piece.restockee:
+            from apps.stock.services import (
+                mouvement_type_entree, record_stock_movement,
+            )
+            produit.refresh_from_db()
+            qte_avant = produit.quantite_stock
+            qte_apres = qte_avant + quantite
+            record_stock_movement(
+                company=company, produit=produit,
+                type_mouvement=mouvement_type_entree(),
+                quantite=quantite, quantite_avant=qte_avant,
+                quantite_apres=qte_apres, reference=ticket.reference,
+                note=f'Retrait pièce SAV {ticket.reference} (stock occasion)',
+                created_by=user)
+            piece.restockee = True
+            piece.save(update_fields=['restockee'])
+    elif destination == PieceRetiree.Destination.RETOUR_FOURNISSEUR:
+        if equipement_remplace is not None:
+            claim = WarrantyClaim.objects.create(
+                company=company, equipement=equipement_remplace,
+                ticket=ticket, created_by=user,
+                description=(
+                    'RMA proposé automatiquement — pièce retirée '
+                    f'(ticket {ticket.reference}).'))
+            piece.warranty_claim = claim
+            piece.save(update_fields=['warranty_claim'])
+
+    return piece

@@ -22,13 +22,13 @@ from .models import (
     SavSlaSettings, MaintenanceChecklistTemplate, TicketChecklistItem,
     WarrantyClaim, KbArticle, AlarmeOnduleur,
     CauseDefaillance, RemedeDefaillance, EquipementDowntime,
-    ReleveCompteurEquipement, ReponseType, CompatibilitePiece,
+    ReleveCompteurEquipement, ReponseType, CompatibilitePiece, PieceRetiree,
 )
 from .services import add_months
 from .pdf import rapport_intervention_pdf
 from .serializers import (
     EquipementSerializer, TicketSerializer, TicketActivitySerializer,
-    PieceConsommeeSerializer, EXPIRING_SOON_DAYS,
+    PieceConsommeeSerializer, PieceRetireeSerializer, EXPIRING_SOON_DAYS,
     SavSlaSettingsSerializer,
     MaintenanceChecklistTemplateSerializer, TicketChecklistItemSerializer,
     WarrantyClaimSerializer,
@@ -845,6 +845,51 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
                 f'Pièce {nom} ×{qte} retirée{suffixe}')
             piece.delete()
         return Response(status=204)
+
+    @action(detail=True, methods=['get', 'post'], url_path='pieces-retirees',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def pieces_retirees(self, request, pk=None):
+        """XMFG10 — pièces RETIRÉES du ticket (onduleur remplacé, pompe HS…).
+
+        GET liste, POST trace un retrait avec sa `destination` (rebut /
+        retour_fournisseur / stock_occasion) via `services.retirer_piece`."""
+        ticket = self.get_object()
+        if request.method == 'GET':
+            qs = ticket.pieces_retirees.select_related('produit')
+            return Response(PieceRetireeSerializer(qs, many=True).data)
+        from apps.stock.selectors import (
+            get_produit_or_raise, produit_does_not_exist,
+        )
+        from .services import retirer_piece
+        try:
+            quantite = Decimal(str(request.data.get('quantite') or '1'))
+        except (InvalidOperation, TypeError):
+            return Response({'detail': 'Quantité invalide.'}, status=400)
+        if quantite <= 0:
+            return Response({'detail': 'Quantité invalide.'}, status=400)
+        try:
+            produit = get_produit_or_raise(
+                ticket.company, request.data.get('produit'))
+        except (produit_does_not_exist(), ValueError, TypeError):
+            return Response({'detail': 'Produit inconnu.'}, status=404)
+        destination = request.data.get('destination') or PieceRetiree.Destination.REBUT
+        if destination not in PieceRetiree.Destination.values:
+            return Response({'detail': 'Destination invalide.'}, status=400)
+        numero_serie = (request.data.get('numero_serie') or '').strip()
+        with transaction.atomic():
+            piece = retirer_piece(
+                company=ticket.company, ticket=ticket, produit=produit,
+                quantite=quantite, numero_serie=numero_serie,
+                destination=destination, user=request.user)
+            suffixe = {
+                PieceRetiree.Destination.STOCK_OCCASION: ' (stock occasion +)',
+                PieceRetiree.Destination.RETOUR_FOURNISSEUR: ' (RMA)',
+                PieceRetiree.Destination.REBUT: ' (rebut)',
+            }.get(destination, '')
+            activity.log_note(
+                ticket, request.user,
+                f'Pièce {produit.nom} ×{quantite} retirée{suffixe}')
+        return Response(PieceRetireeSerializer(piece).data, status=201)
 
     @action(detail=True, methods=['get', 'post', 'patch'],
             url_path='checklist',

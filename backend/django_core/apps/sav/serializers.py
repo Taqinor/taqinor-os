@@ -9,7 +9,7 @@ from .models import (
     TicketChecklistItem, WarrantyClaim, KbArticle, AlarmeOnduleur,
     TicketSatisfaction, CauseDefaillance, RemedeDefaillance,
     EquipementDowntime, ReleveCompteurEquipement, ReponseType,
-    CompatibilitePiece,
+    CompatibilitePiece, PieceRetiree,
 )
 
 # Fenêtre « garantie expirant bientôt » (jours).
@@ -128,6 +128,31 @@ class TicketActivitySerializer(serializers.ModelSerializer):
 
     def get_user_nom(self, obj):
         return getattr(obj.user, 'username', None)
+
+
+class PieceRetireeSerializer(serializers.ModelSerializer):
+    """XMFG10 — pièce retirée (lecture). Aucun prix d'achat exposé côté client."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+    produit_marque = serializers.CharField(
+        source='produit.marque', read_only=True, default=None)
+    produit_sku = serializers.CharField(
+        source='produit.sku', read_only=True, default=None)
+    destination_display = serializers.CharField(
+        source='get_destination_display', read_only=True)
+
+    class Meta:
+        model = PieceRetiree
+        fields = [
+            'id', 'produit', 'produit_nom', 'produit_marque', 'produit_sku',
+            'quantite', 'numero_serie', 'destination', 'destination_display',
+            'restockee', 'warranty_claim', 'equipement_remplace',
+            'date_creation',
+        ]
+        read_only_fields = [
+            'restockee', 'warranty_claim', 'equipement_remplace',
+            'date_creation',
+        ]
 
 
 class PieceConsommeeSerializer(serializers.ModelSerializer):
