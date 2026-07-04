@@ -15,7 +15,8 @@ from .models import (
     CompteComptable,
     CompteTresorerie, EcheanceEmprunt,
     Effet, Emprunt,
-    EntiteConsolidation, LigneEcriture, LignePrevisionnelTresorerie,
+    EntiteConsolidation, IndemniteChantier, LigneEcriture,
+    LignePrevisionnelTresorerie,
     MouvementCaisse, Rapprochement, RetenueGarantie, RetenueSource,
     TauxDevise, TimbreFiscal,
     ClotureCaisse, DotationAmortissement, EcritureComptable,
@@ -2966,3 +2967,27 @@ def comptes_tresorerie_rib_invalides(company):
                 'rib': compte.rib, 'erreurs': diagnostic['erreurs'],
             })
     return resultat
+
+
+# ── XPAI25 — Indemnités chantier remboursables via la paie ─────────────────
+
+def indemnites_chantier_remboursables_par_paie(
+        company, employe_user_id, date_debut, date_fin):
+    """Indemnités chantier VALIDÉES non payées d'un employé sur une période.
+
+    Sélecteur cross-app fin (XPAI25) : la paie appelle CE sélecteur pour
+    lister les ``IndemniteChantier`` (FG136) éligibles à un remboursement via
+    le bulletin de salaire — validées (``statut == VALIDEE``, jamais déjà
+    remboursées, ni côté paie ni côté trésorerie) dont ``date_deplacement``
+    tombe dans ``[date_debut, date_fin]``. Jamais ``compta.models`` importé
+    hors de ce module (lecture seule, cadrée société). Renvoie un queryset.
+    """
+    return (
+        IndemniteChantier.objects
+        .filter(
+            company=company, employe_id=employe_user_id,
+            statut=IndemniteChantier.Statut.VALIDEE,
+            date_deplacement__gte=date_debut, date_deplacement__lte=date_fin,
+        )
+        .order_by('date_deplacement', 'id')
+    )

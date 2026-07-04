@@ -299,6 +299,66 @@ def labour_hours_for_installation(installation_id, company=None):
     }
 
 
+def fiche_identite_employe(company, employe_id):
+    """Identité + poste actuel d'un employé, pour la fiche carrière (XPAI26).
+
+    Sélecteur cross-app : la paie lit CE sélecteur (jamais ``rh.models``
+    direct) pour construire la fiche historique de carrière/salaire (registre
+    d'inspection du travail). Renvoie un dict ``{'matricule', 'nom', 'prenom',
+    'poste', 'date_embauche', 'type_contrat', 'date_sortie'}`` ou ``None`` si
+    le dossier est introuvable/hors société.
+    """
+    if company is None or employe_id is None:
+        return None
+    try:
+        dossier = DossierEmploye.objects.select_related(
+            'poste_ref').get(company=company, pk=employe_id)
+    except DossierEmploye.DoesNotExist:
+        return None
+    poste = (dossier.poste_ref.intitule if dossier.poste_ref_id
+             else dossier.poste)
+    return {
+        'matricule': dossier.matricule,
+        'nom': dossier.nom,
+        'prenom': dossier.prenom,
+        'poste': poste or '',
+        'date_embauche': dossier.date_embauche,
+        'type_contrat': dossier.get_type_contrat_display(),
+        'date_sortie': dossier.date_sortie,
+    }
+
+
+def labour_hours_par_installation_pour_employe(
+        company, employe_id, date_debut, date_fin):
+    """Heures ``FeuilleTemps`` d'un employé sur une période, par installation.
+
+    Sélecteur cross-app (XPAI17) : la paie appelle CE sélecteur pour ventiler
+    le coût employeur d'un bulletin au prorata des heures réellement imputées
+    à chaque chantier (``installations.Installation``, référencé en
+    ``installation_id`` — jamais importé directement). Renvoie une liste de
+    dicts ``{'installation_id', 'total_heures'}`` (Decimal), triée par
+    ``installation_id``, EXCLUANT les lignes à 0 heure. Liste vide si aucune
+    heure imputée sur la période (repli attendu vers une clé % fixe côté paie).
+    """
+    from decimal import Decimal
+
+    from django.db.models import Sum
+
+    qs = (
+        FeuilleTemps.objects
+        .filter(company=company, employe_id=employe_id,
+                date__gte=date_debut, date__lte=date_fin)
+        .values('installation_id')
+        .annotate(total_heures=Sum('heures'))
+        .order_by('installation_id')
+    )
+    return [
+        {'installation_id': row['installation_id'],
+         'total_heures': row['total_heures'] or Decimal('0')}
+        for row in qs if (row['total_heures'] or Decimal('0')) > 0
+    ]
+
+
 def heures_supp_pour_paie(company, date_debut, date_fin, employe_id=None):
     """Heures supplémentaires majorées d'une période (FG168, entrée de paie).
 

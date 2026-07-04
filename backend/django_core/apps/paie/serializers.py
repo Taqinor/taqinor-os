@@ -24,6 +24,8 @@ from .models import (
     Rubrique,
     RubriqueEmploye,
     SaisieArret,
+    StructurePaie,
+    StructurePaieRubrique,
     TrancheIR,
 )
 
@@ -151,7 +153,11 @@ class ProfilPaieSerializer(serializers.ModelSerializer):
             'jours_travail_mensuel', 'heures_travail_mensuel',
             'affilie_cnss', 'affilie_amo', 'affilie_cimr', 'taux_cimr_salarial',
             'numero_cnss', 'numero_amo', 'numero_cimr', 'rib', 'banque',
-            'mode_paiement', 'actif', 'date_creation',
+            'mode_paiement', 'structure',
+            # XPAI18 — régime d'exonération IR (stagiaire/ANAPEC/TAHFIZ).
+            'regime_exoneration', 'regime_date_debut', 'regime_date_fin',
+            'regime_plafond_mensuel',
+            'actif', 'date_creation',
         ]
         read_only_fields = ['date_creation']
 
@@ -168,6 +174,51 @@ class ProfilPaieSerializer(serializers.ModelSerializer):
             if not rh_selectors.dossier_appartient_societe(
                     request.user.company, value.id):
                 raise serializers.ValidationError('Employé inconnu.')
+        return value
+
+    def validate_structure(self, value):
+        return _meme_societe(self, value, 'Structure de paie')
+
+
+class StructurePaieRubriqueSerializer(serializers.ModelSerializer):
+    """Rubrique par défaut d'une structure de paie (XPAI24)."""
+    rubrique_code = serializers.CharField(
+        source='rubrique.code', read_only=True)
+
+    class Meta:
+        model = StructurePaieRubrique
+        fields = ['id', 'structure', 'rubrique', 'rubrique_code', 'montant', 'taux']
+
+    def validate_structure(self, value):
+        return _meme_societe(self, value, 'Structure de paie')
+
+    def validate_rubrique(self, value):
+        return _meme_societe(self, value, 'Rubrique')
+
+
+class StructurePaieSerializer(serializers.ModelSerializer):
+    """Structure de paie (gabarit de rubriques par catégorie, XPAI24)."""
+    rubriques_defaut = StructurePaieRubriqueSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = StructurePaie
+        fields = [
+            'id', 'code', 'libelle', 'description', 'actif',
+            'rubriques_defaut', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_code(self, value):
+        request = self.context.get('request')
+        if request is None:
+            return value
+        qs = StructurePaie.objects.filter(
+            company=request.user.company_id, code=value)
+        if self.instance is not None:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(
+                'Une structure avec ce code existe déjà.')
         return value
 
 
@@ -350,11 +401,12 @@ class BulletinPaieSerializer(serializers.ModelSerializer):
             'brut', 'brut_imposable', 'cnss_salariale', 'cnss_patronale',
             'amo_salariale', 'amo_patronale', 'allocations_familiales',
             'formation_professionnelle', 'provision_conges', 'cimr_salariale',
-            'frais_professionnels', 'net_imposable', 'ir', 'retenues',
+            'frais_professionnels', 'net_imposable', 'ir',
+            'montant_exonere_regime', 'retenues',
             'prime_anciennete', 'charges_patronales', 'net_a_payer',
             'provision_conges',
             'date_validation', 'date_creation', 'lignes',
-            'paye', 'date_paiement',
+            'paye', 'date_paiement', 'lu_le',
         ]
         read_only_fields = fields
 

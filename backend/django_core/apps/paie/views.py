@@ -15,6 +15,7 @@ from django.http import HttpResponse
 
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
 from . import builders
@@ -39,6 +40,8 @@ from .models import (
     Rubrique,
     RubriqueEmploye,
     SaisieArret,
+    StructurePaie,
+    ProvisionPaieMensuelle,
 )
 from .serializers import (
     AdhesionMutuelleSerializer,
@@ -57,26 +60,33 @@ from .serializers import (
     RubriqueEmployeSerializer,
     RubriqueSerializer,
     SaisieArretSerializer,
+    StructurePaieSerializer,
 )
 from .services import (
     TransitionPeriodeInterdite,
+    appliquer_structure_a_profil,
     attestation_salaire_ij_cnss,
     bareme_en_vigueur,
     brut_pour_net_cible,
     calculer_bulletin,
     changer_statut,
     cloturer_periode_paie,
+    commit_reprise_cumuls,
     controle_ecarts,
+    cout_global_par_profil,
     creer_bulletin_rectificatif,
     declaration_cimr,
     declaration_cnss,
     deposer_bds_complementaire,
     deposer_bds_principal,
+    dry_run_reprise_cumuls,
     emettre_ordre_virement,
     ensure_defaults,
     ensure_rubriques_defaut,
     ensure_rubriques_standard,
+    ensure_structures_standard,
     etat_des_charges,
+    expirer_regimes_echus,
     etat_ir_9421,
     etat_ir_9421_annuel,
     export_xml_simpl_ir_9421,
@@ -90,9 +100,12 @@ from .services import (
     generer_echeances_periode,
     generer_ordre_virement,
     generer_run_gratification,
+    historique_carriere,
     importer_elements_rh,
     journal_de_paie,
+    journal_de_paie_ventile,
     livre_de_paie,
+    marquer_bulletin_lu,
     marquer_bulletin_paye,
     mouvements_cnss_periode,
     notifier_echeances_en_retard,
@@ -102,6 +115,7 @@ from .services import (
     rapprocher_affebds,
     recalculer_cumul_annuel,
     reemettre_ligne_virement,
+    registre_conges,
     rejeter_ligne_virement,
     simuler_bulletin,
     valider_bulletin,
@@ -216,6 +230,19 @@ class ProfilPaieViewSet(_PaieBaseViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['employe__nom', 'employe__prenom', 'employe__matricule']
     ordering_fields = ['date_creation', 'id']
+
+    def perform_create(self, serializer):
+        """XPAI24 — un profil créé avec ``structure`` reçoit ses rubriques défaut."""
+        profil = serializer.save(company=self.request.user.company)
+        if profil.structure_id:
+            appliquer_structure_a_profil(profil, profil.structure)
+
+    @action(detail=False, methods=['post'], url_path='expirer-regimes')
+    def expirer_regimes(self, request):
+        """Bascule au régime normal les profils dont la fenêtre est expirée (XPAI18)."""
+        bascules = expirer_regimes_echus(request.user.company)
+        return Response(
+            {'bascules': [p.id for p in bascules]}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'], url_path='attestation')
     def attestation(self, request, pk=None):
@@ -371,6 +398,65 @@ class ProfilPaieViewSet(_PaieBaseViewSet):
             personnes_a_charge=pac)
         return Response(resultat, status=status.HTTP_200_OK)
 
+    @action(detail=False, methods=['get'], url_path='registre-conges')
+    def registre_conges_action(self, request):
+        """Registre des congés annuel, par employé (XPAI26).
+
+        Paramètre de requête ``annee`` requis. ``?export=pdf``/``?export=csv``
+        renvoient le fichier au lieu du JSON. Lecture seule.
+        """
+        try:
+            annee = int(request.query_params.get('annee'))
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': 'Paramètre "annee" requis (et valide).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        registre = registre_conges(request.user.company, annee)
+        export = request.query_params.get('export')
+        if export == 'pdf':
+            try:
+                pdf = builders.render_registre_conges_pdf(registre)
+            except RuntimeError as exc:
+                return Response(
+                    {'detail': str(exc)},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return _pdf_response(pdf, f'registre_conges_{annee}.pdf')
+        if export == 'csv':
+            buffer = io.StringIO()
+            writer = csv.writer(buffer, delimiter=';')
+            writer.writerow(['Matricule', 'Nom', 'Droits (j)', 'Pris (j)',
+                             'Solde (j)'])
+            for ligne in registre['lignes']:
+                writer.writerow([
+                    ligne['matricule'], ligne['nom'], ligne['droits'],
+                    ligne['pris'], ligne['solde']])
+            resp = HttpResponse(
+                buffer.getvalue(), content_type='text/csv; charset=utf-8')
+            resp['Content-Disposition'] = (
+                f'attachment; filename="registre_conges_{annee}.csv"')
+            return resp
+        return Response(registre, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='historique-carriere')
+    def historique_carriere_action(self, request, pk=None):
+        """Fiche historique de carrière/salaire d'un profil (XPAI26).
+
+        ``?export=pdf`` renvoie le PDF au lieu du JSON. Lecture seule,
+        AUCUNE écriture.
+        """
+        profil = self.get_object()
+        historique = historique_carriere(profil)
+        if request.query_params.get('export') == 'pdf':
+            try:
+                pdf = builders.render_historique_carriere_pdf(historique)
+            except RuntimeError as exc:
+                return Response(
+                    {'detail': str(exc)},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return _pdf_response(
+                pdf, f'historique_carriere_{profil.id}.pdf')
+        return Response(historique, status=status.HTTP_200_OK)
+
 
 class RubriqueEmployeViewSet(_PaieBaseViewSet):
     """Rubriques récurrentes par employé (PAIE9) — société scopée."""
@@ -379,6 +465,46 @@ class RubriqueEmployeViewSet(_PaieBaseViewSet):
     serializer_class = RubriqueEmployeSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_creation', 'id']
+
+
+class StructurePaieViewSet(_PaieBaseViewSet):
+    """Structures de paie par catégorie (XPAI24) — gabarits de rubriques.
+
+    ``ensure-standard`` sème (idempotent) les 3 structures standard
+    (cadre/employé/ouvrier). ``appliquer`` rattache les rubriques d'une
+    structure à un profil existant (corps : ``profil`` id) — la même
+    application se produit automatiquement à la CRÉATION d'un profil dont
+    ``structure`` est renseignée.
+    """
+    queryset = StructurePaie.objects.prefetch_related('rubriques_defaut').all()
+    serializer_class = StructurePaieSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['libelle', 'date_creation', 'id']
+
+    @action(detail=False, methods=['post'], url_path='ensure-standard')
+    def ensure_standard(self, request):
+        """Sème (idempotent) les 3 structures standard (XPAI24)."""
+        resultat = ensure_structures_standard(request.user.company)
+        return Response(resultat, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='appliquer')
+    def appliquer(self, request, pk=None):
+        """Applique cette structure à un profil existant (corps : ``profil``)."""
+        structure = self.get_object()
+        profil_id = request.data.get('profil')
+        if not profil_id:
+            return Response(
+                {'detail': 'Champ "profil" requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            profil = ProfilPaie.objects.get(
+                pk=profil_id, company=request.user.company)
+        except (ProfilPaie.DoesNotExist, ValueError):
+            return Response(
+                {'detail': 'Profil inconnu.'},
+                status=status.HTTP_404_NOT_FOUND)
+        nb = appliquer_structure_a_profil(profil, structure)
+        return Response({'rattachees': nb}, status=status.HTTP_200_OK)
 
 
 class RegimeMutuelleViewSet(_PaieBaseViewSet):
@@ -658,6 +784,49 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
         """Livre de paie (registre récapitulatif) de la période (PAIE33)."""
         periode = self.get_object()
         return Response(livre_de_paie(periode), status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='cout-global')
+    def cout_global(self, request, pk=None):
+        """Coût global employeur PAR EMPLOYÉ de la période (XPAI17).
+
+        Donnée INTERNE (jamais client-facing) : brut + charges patronales +
+        provisions par employé, plus la ventilation analytique appliquée.
+        """
+        periode = self.get_object()
+        return Response(
+            cout_global_par_profil(periode), status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='journal-ventile')
+    def journal_ventile(self, request, pk=None):
+        """Passe l'écriture du journal de paie AVEC ventilation analytique (XPAI17)."""
+        periode = self.get_object()
+        ecriture = journal_de_paie_ventile(periode, created_by=request.user)
+        if ecriture is None:
+            return Response(
+                {'detail': 'Aucun bulletin validé pour cette période.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {'id': ecriture.id, 'reference': ecriture.reference},
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], url_path='provisions')
+    def provisions(self, request, pk=None):
+        """Provisions 13e mois / IFC de la période, par employé (XPAI20)."""
+        periode = self.get_object()
+        qs = (
+            ProvisionPaieMensuelle.objects
+            .filter(company=request.user.company, periode=periode)
+            .select_related('profil', 'profil__employe'))
+        data = [{
+            'id': ligne.id,
+            'profil_id': ligne.profil_id,
+            'matricule': getattr(ligne.profil.employe, 'matricule', '')
+            if ligne.profil.employe_id else '',
+            'type_provision': ligne.type_provision,
+            'montant': ligne.montant,
+            'extournee': ligne.extournee,
+        } for ligne in qs]
+        return Response(data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'], url_path='hors-virement')
     def hors_virement(self, request, pk=None):
@@ -954,10 +1123,22 @@ class CoffreFortBulletinViewSet(viewsets.ReadOnlyModelViewSet):
             .prefetch_related('lignes')
         )
 
+    def retrieve(self, request, *args, **kwargs):
+        """XPAI21 — la consultation du détail pose l'accusé de lecture."""
+        bulletin = self.get_object()
+        marquer_bulletin_lu(bulletin)
+        return Response(
+            self.get_serializer(bulletin).data, status=status.HTTP_200_OK)
+
     @action(detail=True, methods=['get'], url_path='pdf')
     def pdf(self, request, pk=None):
-        """PDF du bulletin de l'employé (self-service, PAIE35)."""
+        """PDF du bulletin de l'employé (self-service, PAIE35).
+
+        XPAI21 — le téléchargement pose aussi l'accusé de lecture (première
+        consultation, jamais réécrit).
+        """
         bulletin = self.get_object()  # déjà scopé à l'utilisateur
+        marquer_bulletin_lu(bulletin)
         try:
             pdf = builders.render_bulletin_pdf(bulletin)
         except RuntimeError as exc:
@@ -1130,6 +1311,49 @@ class CumulAnnuelViewSet(_PaieVoirOuGerer, TenantMixin,
         cumul = recalculer_cumul_annuel(profil, annee)
         return Response(
             self.get_serializer(cumul).data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='reprise-dry-run',
+            parser_classes=[MultiPartParser, FormParser])
+    def reprise_dry_run(self, request):
+        """Aperçu de l'import de reprise des cumuls (XPAI22, go-live).
+
+        Corps multipart : ``file`` (CSV/XLSX). Signale les matricules
+        inconnus AVANT tout commit. Ne modifie rien.
+        """
+        f = request.FILES.get('file')
+        if f is None:
+            return Response(
+                {'detail': 'Aucun fichier fourni.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            resultat = dry_run_reprise_cumuls(
+                f.read(), f.name, request.user.company)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(resultat, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='reprise-commit',
+            parser_classes=[MultiPartParser, FormParser])
+    def reprise_commit(self, request):
+        """Commit de l'import de reprise des cumuls (XPAI22, go-live).
+
+        Corps multipart : ``file`` (CSV/XLSX). Crée/complète les cumuls sans
+        JAMAIS écraser un cumul déjà calculé depuis de vrais bulletins
+        validés.
+        """
+        f = request.FILES.get('file')
+        if f is None:
+            return Response(
+                {'detail': 'Aucun fichier fourni.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            resultat = commit_reprise_cumuls(
+                f.read(), f.name, request.user.company)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(resultat, status=status.HTTP_200_OK)
 
 
 class EcheanceDeclarativeViewSet(_PaieVoirOuGerer, TenantMixin,
