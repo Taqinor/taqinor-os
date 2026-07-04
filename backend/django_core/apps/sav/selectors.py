@@ -716,3 +716,56 @@ def tickets_similaires(ticket, *, limit=5):
                 if cand.date_resolution else None),
         })
     return out
+
+
+# ── XSAV25 — Pièces compatibles par modèle d'équipement ───────────────────────
+
+def pieces_compatibles(company, produit_equipement_id):
+    """XSAV25 — Pièces catalogue COMPATIBLES avec ``produit_equipement_id``,
+    triées en premier (le picker de pièces du ticket les propose avant le
+    reste du catalogue). Lecture via ``stock.selectors`` pour les champs
+    produit affichés — jamais un import direct de ``apps.stock.models``.
+
+    Suit la chaîne de supersession (``remplace_par``) UN niveau : si une
+    pièce compatible est marquée remplacée, la pièce de remplacement est
+    ajoutée à la liste (dédupliquée) avec une note explicite.
+
+    Renvoie une liste de dicts plats :
+      [{'piece_id': int, 'nom': str, 'sku': str, 'note': str,
+        'remplace_par_id': int|None, 'remplace_par_nom': str|None}, …]
+    """
+    from apps.stock.selectors import get_produit_scoped
+    from .models import CompatibilitePiece
+
+    qs = (CompatibilitePiece.objects
+          .filter(company=company, produit_equipement_id=produit_equipement_id)
+          .select_related('piece', 'remplace_par'))
+
+    out = []
+    seen = set()
+    for cp in qs:
+        piece = cp.piece
+        if piece.id in seen:
+            continue
+        seen.add(piece.id)
+        remplace_par = cp.remplace_par
+        out.append({
+            'piece_id': piece.id,
+            'nom': piece.nom,
+            'sku': getattr(piece, 'sku', '') or '',
+            'note': cp.note,
+            'remplace_par_id': remplace_par.id if remplace_par else None,
+            'remplace_par_nom': remplace_par.nom if remplace_par else None,
+        })
+        if remplace_par is not None and remplace_par.id not in seen:
+            seen.add(remplace_par.id)
+            resolved = get_produit_scoped(company, remplace_par.id) or remplace_par
+            out.append({
+                'piece_id': resolved.id,
+                'nom': resolved.nom,
+                'sku': getattr(resolved, 'sku', '') or '',
+                'note': f'Remplace {piece.nom} (référence discontinuée).',
+                'remplace_par_id': None,
+                'remplace_par_nom': None,
+            })
+    return out

@@ -9,6 +9,7 @@ from .views import (
     SavSlaSettingsViewSet, MaintenanceChecklistTemplateViewSet,
     WarrantyClaimViewSet, KbArticleViewSet, AlarmeOnduleurViewSet,
     CauseDefaillanceViewSet, RemedeDefaillanceViewSet, ReponseTypeViewSet,
+    CompatibilitePieceViewSet,
     sav_parts_forecast, sav_pareto_pannes, sav_fiabilite_insight,
 )
 from .maintenance import ContratMaintenanceViewSet
@@ -25,6 +26,7 @@ router.register(r'alarmes-onduleur', AlarmeOnduleurViewSet)
 router.register(r'causes-defaillance', CauseDefaillanceViewSet)
 router.register(r'remedes-defaillance', RemedeDefaillanceViewSet)
 router.register(r'reponses-type', ReponseTypeViewSet)
+router.register(r'compatibilites-piece', CompatibilitePieceViewSet)
 
 
 @api_view(['GET'])

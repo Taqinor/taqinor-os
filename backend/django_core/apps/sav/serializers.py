@@ -9,6 +9,7 @@ from .models import (
     TicketChecklistItem, WarrantyClaim, KbArticle, AlarmeOnduleur,
     TicketSatisfaction, CauseDefaillance, RemedeDefaillance,
     EquipementDowntime, ReleveCompteurEquipement, ReponseType,
+    CompatibilitePiece,
 )
 
 # Fenêtre « garantie expirant bientôt » (jours).
@@ -430,5 +431,25 @@ class ReponseTypeSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'titre', 'corps', 'nouveau_statut', 'archived',
             'date_creation',
+        ]
+        read_only_fields = ['id', 'company', 'date_creation']
+
+
+# ── XSAV25 — Compatibilité pièces ─────────────────────────────────────────────
+
+class CompatibilitePieceSerializer(serializers.ModelSerializer):
+    produit_equipement_nom = serializers.CharField(
+        source='produit_equipement.nom', read_only=True, default=None)
+    piece_nom = serializers.CharField(
+        source='piece.nom', read_only=True, default=None)
+    remplace_par_nom = serializers.CharField(
+        source='remplace_par.nom', read_only=True, default=None)
+
+    class Meta:
+        model = CompatibilitePiece
+        fields = [
+            'id', 'produit_equipement', 'produit_equipement_nom',
+            'piece', 'piece_nom', 'note', 'remplace_par',
+            'remplace_par_nom', 'date_creation',
         ]
         read_only_fields = ['id', 'company', 'date_creation']

@@ -1282,3 +1282,49 @@ class EquipementDowntime(models.Model):
             return
         self.fin = fin or timezone.now()
         self.save(update_fields=['fin'])
+
+
+# ── XSAV25 — Catalogue de pièces compatibles par modèle d'équipement ────────
+
+class CompatibilitePiece(models.Model):
+    """XSAV25 — Mapping « pièce compatible » entre un modèle d'équipement
+    catalogue (``produit_equipement``, ex. un onduleur) et une pièce
+    catalogue (``piece``, ex. un fusible/une carte) — décide quelles pièces
+    le picker du ticket propose EN PREMIER pour l'équipement lié.
+
+    Les deux FK pointent vers ``stock.Produit`` en référence STRING (comme
+    ``Equipement.produit``) — jamais un import direct de ``apps.stock.models``
+    (contrat import-linter M1 : les 5 modèles core-domain restent
+    mutuellement découplés). ``remplace_par`` optionnel permet une CHAÎNE de
+    supersession (pièce A remplacée par B, elle-même par C…) quand un
+    fournisseur discontinue une référence."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='compatibilites_piece')
+    produit_equipement = models.ForeignKey(
+        'stock.Produit', on_delete=models.CASCADE,
+        related_name='pieces_compatibles')
+    piece = models.ForeignKey(
+        'stock.Produit', on_delete=models.CASCADE,
+        related_name='equipements_compatibles')
+    note = models.CharField(max_length=255, blank=True, default='')
+    # Chaîne de supersession : la pièce qui remplace CETTE pièce (référence
+    # discontinuée par le fournisseur). SET_NULL : la suppression d'une pièce
+    # de remplacement ne casse pas le mapping existant.
+    remplace_par = models.ForeignKey(
+        'stock.Produit', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Compatibilité pièce'
+        verbose_name_plural = 'Compatibilités pièce'
+        ordering = ['produit_equipement_id', 'piece_id']
+        unique_together = [('company', 'produit_equipement', 'piece')]
+        indexes = [
+            models.Index(fields=['company', 'produit_equipement'],
+                         name='sav_compat_co_equip_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.produit_equipement_id} <-> {self.piece_id}'

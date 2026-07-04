@@ -22,7 +22,7 @@ from .models import (
     SavSlaSettings, MaintenanceChecklistTemplate, TicketChecklistItem,
     WarrantyClaim, KbArticle, AlarmeOnduleur,
     CauseDefaillance, RemedeDefaillance, EquipementDowntime,
-    ReleveCompteurEquipement, ReponseType,
+    ReleveCompteurEquipement, ReponseType, CompatibilitePiece,
 )
 from .services import add_months
 from .pdf import rapport_intervention_pdf
@@ -38,6 +38,7 @@ from .serializers import (
     EquipementDowntimeSerializer,
     ReleveCompteurEquipementSerializer,
     ReponseTypeSerializer,
+    CompatibilitePieceSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -616,6 +617,21 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         except (TypeError, ValueError):
             limit = 5
         data = tickets_similaires(ticket, limit=max(1, limit))
+        return Response({'results': data})
+
+    @action(detail=True, methods=['get'], url_path='pieces-compatibles',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def pieces_compatibles(self, request, pk=None):
+        """XSAV25 — Pièces catalogue compatibles avec le produit de
+        l'équipement lié à ce ticket, pour que le picker de pièces les
+        propose EN PREMIER. Liste vide (jamais une erreur) si le ticket
+        n'a pas d'équipement lié ou si aucune compatibilité n'est mappée."""
+        from .selectors import pieces_compatibles as _pieces_compatibles
+        ticket = self.get_object()
+        if not ticket.equipement_id or not ticket.equipement.produit_id:
+            return Response({'results': []})
+        data = _pieces_compatibles(
+            ticket.company, ticket.equipement.produit_id)
         return Response({'results': data})
 
     @action(detail=True, methods=['post'], url_path='noter',
@@ -1418,6 +1434,42 @@ class ReponseTypeViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)
+
+
+# ── XSAV25 — Compatibilité pièces ─────────────────────────────────────────────
+
+class CompatibilitePieceViewSet(TenantMixin, viewsets.ModelViewSet):
+    """CRUD du mapping pièce compatible <-> modèle d'équipement (XSAV25)."""
+    queryset = CompatibilitePiece.objects.select_related(
+        'produit_equipement', 'piece', 'remplace_par').all()
+    serializer_class = CompatibilitePieceSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        produit_equipement = self.request.query_params.get('produit_equipement')
+        if produit_equipement:
+            qs = qs.filter(produit_equipement_id=produit_equipement)
+        return qs
+
+    def _check_tenant(self, serializer):
+        company = self.request.user.company
+        for field in ('produit_equipement', 'piece', 'remplace_par'):
+            obj = serializer.validated_data.get(field)
+            if obj is not None and obj.company_id not in (company.id, None):
+                raise ValidationError({field: 'Produit inconnu.'})
+
+    def perform_create(self, serializer):
+        self._check_tenant(serializer)
+        serializer.save(company=self.request.user.company)
+
+    def perform_update(self, serializer):
+        self._check_tenant(serializer)
+        super().perform_update(serializer)
 
 
 def sav_pareto_pannes(request):
