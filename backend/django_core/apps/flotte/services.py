@@ -535,6 +535,427 @@ def synchroniser_releves(company, *, actif_flotte=None, depuis=None):
     return len(releves or [])  # pragma: no cover
 
 
+# ── XFLT24 — Géofencing sur les données télématiques (purement local) ────────
+#
+# Évalue les ``ReleveTelematique`` (FLOTTE27) déjà en base — manuels ou issus
+# du fournisseur — contre les ``ZoneGeographique`` de la société : PUREMENT
+# LOCAL (distance haversine en Python), aucun appel réseau, aucune dépendance
+# nouvelle. Ne dépend PAS de ``telematique_active()`` pour ÉVALUER (un relevé
+# saisi à la main déclenche l'alerte comme un relevé télématique — la gate
+# FLOTTE27 ne bloque QUE la synchronisation fournisseur, jamais la lecture des
+# relevés déjà ingérés) — reste néanmoins un NO-OP total si la télématique
+# n'a produit aucun relevé (aucun relevé à évaluer, aucune alerte).
+
+def _releve_dans_zone(releve, zone):
+    """XFLT24 — True si ``releve`` (position GPS) tombe dans le cercle
+    ``zone`` (centre + rayon). Lecture seule ; ``None`` si coordonnées
+    absentes de l'un des deux côtés (jamais d'exception)."""
+    if releve.position_lat is None or releve.position_lng is None:
+        return False
+    distance_km = _distance_haversine_km(
+        releve.position_lat, releve.position_lng,
+        zone.centre_lat, zone.centre_lng)
+    if distance_km is None:
+        return False
+    return (distance_km * 1000.0) <= float(zone.rayon_metres)
+
+
+def _hors_plage_horaire(releve, zone):
+    """XFLT24 — True si l'horodatage de ``releve`` tombe HORS la plage
+    ``[heure_debut_autorisee, heure_fin_autorisee]`` de ``zone``. Renvoie
+    ``False`` si la zone ne définit aucune plage (aucune contrainte
+    horaire) — comportement permissif par défaut."""
+    if zone.heure_debut_autorisee is None or zone.heure_fin_autorisee is None:
+        return False
+    heure = releve.horodatage.time()
+    return not (zone.heure_debut_autorisee <= heure <= zone.heure_fin_autorisee)
+
+
+def _alerter_zone(releve, zone, motif):
+    """XFLT24 — Diffuse une alerte géofencing best-effort (jamais ne lève).
+
+    Notifie via ``apps.notifications.services.notify`` (import LOCAL — la
+    flotte ne dépend jamais des modèles d'une autre app) le conducteur
+    actuellement affecté au véhicule de l'actif concerné, s'il existe."""
+    try:
+        from apps.notifications.services import notify
+    except Exception:
+        return None
+
+    user = None
+    try:
+        actif = releve.actif_flotte
+        if actif is not None and actif.vehicule_id is not None:
+            from .selectors import conducteur_actuel_du_vehicule
+            conducteur = conducteur_actuel_du_vehicule(
+                releve.company, actif.vehicule_id)
+            user = conducteur.user if conducteur is not None else None
+    except Exception:
+        user = None
+    if user is None:
+        return None
+
+    try:
+        return notify(
+            user=user,
+            event_type='flotte_zone_alerte',
+            title=f'Géofencing : {zone.nom}',
+            body=(
+                f'{releve.actif_flotte.label} — {motif} '
+                f'(« {zone.nom} », {releve.horodatage:%Y-%m-%d %H:%M}).'
+            ),
+            link='/flotte/releves-telematiques',
+            company=releve.company,
+        )
+    except Exception:
+        return None
+
+
+def evaluer_geofencing(company, *, releves=None, alerter=True):
+    """XFLT24 — Évalue le géofencing sur les relevés télématiques d'une société.
+
+    Pour chaque ``ReleveTelematique`` de ``company`` (ou le sous-ensemble
+    fourni via ``releves``, un itérable de ``ReleveTelematique`` DÉJÀ scopé
+    société — jamais revalidé ici), teste sa position contre CHAQUE
+    ``ZoneGeographique`` active de la société :
+
+    * s'il tombe dans une zone ``interdite`` → alerte « entrée en zone
+      interdite » ;
+    * si la zone porte une plage horaire autorisée et que l'horodatage du
+      relevé tombe hors cette plage → alerte « mouvement hors plage
+      horaire autorisée ».
+
+    Un relevé hors de toute zone (ou dans une zone ``depot``/``chantier``
+    sans dépassement horaire) ne déclenche RIEN. Chaque alerte est diffusée
+    au mieux (``alerter=True``) via ``notifications.notify`` — un échec de
+    notification n'interrompt jamais l'évaluation.
+
+    PUREMENT LOCAL : aucun appel réseau, aucune dépendance nouvelle. Multi-
+    tenant : tout est scopé ``company`` côté serveur.
+
+    Retourne la liste des alertes détectées, chacune un dict ``{'releve_id',
+    'zone_id', 'zone_nom', 'motif'}``.
+    """
+    from .models import ReleveTelematique, ZoneGeographique
+
+    if releves is None:
+        releves = ReleveTelematique.objects.filter(
+            company=company).select_related('actif_flotte')
+
+    zones = list(ZoneGeographique.objects.filter(
+        company=company, actif=True))
+    if not zones:
+        return []
+
+    alertes = []
+    for releve in releves:
+        for zone in zones:
+            if not _releve_dans_zone(releve, zone):
+                continue
+
+            motif = None
+            if zone.type_zone == ZoneGeographique.TypeZone.INTERDITE:
+                motif = 'entrée détectée en zone interdite'
+            elif _hors_plage_horaire(releve, zone):
+                motif = 'mouvement hors plage horaire autorisée'
+
+            if motif is None:
+                continue
+
+            alertes.append({
+                'releve_id': releve.id,
+                'zone_id': zone.id,
+                'zone_nom': zone.nom,
+                'motif': motif,
+            })
+            if alerter:
+                _alerter_zone(releve, zone, motif)
+
+    return alertes
+
+
+# ── XFLT25 — Codes défaut moteur (DTC) sur les relevés télématiques ──────────
+#
+# Un code critique déclenche une alerte + un ``SignalementVehicule`` (XFLT5)
+# gravité critique, IDEMPOTENT : pas de doublon ouvert pour le même
+# (code, véhicule). Key-gated comme toute la télématique (FLOTTE27) — la
+# saisie MANUELLE du code reste toujours possible, gate ou pas.
+
+# Préfixes DTC par défaut (norme OBD-II générique) si la société n'a pas
+# encore édité son propre référentiel ``code_dtc``. P0xxx = moteur/chaîne
+# cinématique générique = criticité par défaut la plus haute (sécurité).
+_CRITICITE_DTC_DEFAUT = {
+    'P0': 'critique',
+    'P1': 'moyenne',
+    'P2': 'moyenne',
+    'P3': 'moyenne',
+    'B0': 'moyenne',   # carrosserie
+    'C0': 'moyenne',   # châssis
+    'U0': 'faible',    # réseau/communication
+}
+
+
+def criticite_dtc(company, code):
+    """XFLT25 — Criticité d'un code DTC pour ``company`` (lecture seule).
+
+    Cherche d'abord une entrée ÉDITABLE du référentiel société
+    (``ReferentielFlotte`` domaine ``code_dtc``) dont ``code`` est un préfixe
+    du code fourni (préfixe le plus long qui matche l'emporte — ex. ``P03``
+    l'emporte sur ``P0``) ; à défaut, retombe sur le référentiel générique
+    OBD-II par défaut (``_CRITICITE_DTC_DEFAUT``). Retourne ``'faible'`` si
+    rien ne correspond (comportement permissif par défaut). Ne lève jamais.
+    """
+    from .models import ReferentielFlotte
+
+    code = (code or '').strip().upper()
+    if not code:
+        return 'faible'
+
+    entrees = list(ReferentielFlotte.objects.filter(
+        company=company, domaine=ReferentielFlotte.Domaine.CODE_DTC,
+        actif=True))
+    meilleure = None
+    for entree in entrees:
+        prefixe = (entree.code or '').strip().upper()
+        if prefixe and code.startswith(prefixe):
+            if meilleure is None or len(prefixe) > len(meilleure.code):
+                meilleure = entree
+    if meilleure is not None:
+        return (meilleure.libelle or 'faible').strip().lower()
+
+    for prefixe, criticite in _CRITICITE_DTC_DEFAUT.items():
+        if code.startswith(prefixe):
+            return criticite
+    return 'faible'
+
+
+def traiter_codes_defaut(releve):
+    """XFLT25 — Traite les ``codes_defaut`` d'un ``ReleveTelematique`` :
+    déclenche une alerte + un ``SignalementVehicule`` gravité CRITIQUE pour
+    chaque code critique (idempotent : pas de doublon ouvert pour le même
+    couple (code, actif)).
+
+    Un code non critique (moyenne/faible) ne fait rien de plus que ce que la
+    saisie a déjà posé (aucun signalement) — seul le CRITIQUE agit. Key-gated
+    implicitement par l'ingestion normale de la télématique : la saisie
+    MANUELLE fonctionne toujours (ne dépend pas de ``telematique_active``).
+
+    Retourne la liste des ``SignalementVehicule`` créés (vide si aucun code
+    critique ou si tous ont déjà un signalement ouvert).
+    """
+    from .models import SignalementVehicule
+
+    codes = releve.codes_defaut or []
+    if not codes:
+        return []
+
+    crees = []
+    for code in codes:
+        if criticite_dtc(releve.company, code) != 'critique':
+            continue
+
+        # Idempotence : pas de doublon OUVERT pour le même code+véhicule.
+        deja_ouvert = SignalementVehicule.objects.filter(
+            company=releve.company,
+            actif_flotte=releve.actif_flotte,
+            statut__in=[SignalementVehicule.Statut.OUVERT,
+                        SignalementVehicule.Statut.EN_COURS],
+            description__contains=f'DTC {code}',
+        ).exists()
+        if deja_ouvert:
+            continue
+
+        signalement = SignalementVehicule.objects.create(
+            company=releve.company,
+            actif_flotte=releve.actif_flotte,
+            description=(
+                f'Code défaut moteur critique DTC {code} détecté '
+                f'({releve.horodatage:%Y-%m-%d %H:%M}).'
+            ),
+            gravite=SignalementVehicule.Gravite.CRITIQUE,
+        )
+        crees.append(signalement)
+
+        try:
+            from apps.notifications.services import notify
+            from .selectors import conducteur_actuel_du_vehicule
+            actif = releve.actif_flotte
+            user = None
+            if actif is not None and actif.vehicule_id is not None:
+                conducteur = conducteur_actuel_du_vehicule(
+                    releve.company, actif.vehicule_id)
+                user = conducteur.user if conducteur is not None else None
+            if user is not None:
+                notify(
+                    user=user,
+                    event_type='flotte_dtc_critique',
+                    title=f'DTC critique : {code}',
+                    body=(
+                        f'{actif.label} — code défaut moteur critique '
+                        f'{code} détecté.'),
+                    link='/flotte/releves-telematiques',
+                    company=releve.company,
+                )
+        except Exception:
+            pass
+
+    return crees
+
+
+# ── XFLT28 — Rappels constructeur (recall) ──────────────────────────────────
+
+def rapprocher_rappel(rappel):
+    """XFLT28 — Rapproche un ``RappelConstructeur`` contre le parc de VIN de
+    la société et crée un ``SignalementVehicule`` (XFLT5) PAR véhicule
+    touché.
+
+    Compare ``rappel.vin_concernes`` (liste de VIN, saisie constructeur —
+    peut couvrir bien plus que le parc de la société) aux ``Vehicule.vin``
+    (XFLT4) de la MÊME société : un VIN vide ne matche jamais (évite les
+    faux positifs entre véhicules sans VIN renseigné). Chaque véhicule
+    touché reçoit un signalement gravité MOYENNE portant la référence de la
+    campagne — tous groupables via cette référence commune (recherche par
+    description) pour un traitement en un seul ``OrdreReparation``.
+
+    IDEMPOTENT : un véhicule déjà signalé pour la MÊME campagne (signalement
+    ouvert ou en cours portant la référence) n'est pas re-signalé.
+
+    Retourne ``{'crees': [<SignalementVehicule>, …], 'nb_vin_matches': int}``.
+    """
+    from .models import ActifFlotte, SignalementVehicule, Vehicule
+
+    vins_campagne = {
+        (vin or '').strip().upper()
+        for vin in (rappel.vin_concernes or [])
+        if (vin or '').strip()
+    }
+    if not vins_campagne:
+        return {'crees': [], 'nb_vin_matches': 0}
+
+    vehicules_touches = Vehicule.objects.filter(
+        company=rappel.company, vin__in=vins_campagne)
+
+    crees = []
+    for vehicule in vehicules_touches:
+        actif = ActifFlotte.objects.filter(
+            company=rappel.company, vehicule=vehicule).first()
+        if actif is None:
+            continue
+
+        marqueur = f'Rappel constructeur {rappel.reference_campagne}'
+        deja_signale = SignalementVehicule.objects.filter(
+            company=rappel.company, actif_flotte=actif,
+            statut__in=[SignalementVehicule.Statut.OUVERT,
+                        SignalementVehicule.Statut.EN_COURS],
+            description__contains=marqueur,
+        ).exists()
+        if deja_signale:
+            continue
+
+        signalement = SignalementVehicule.objects.create(
+            company=rappel.company,
+            actif_flotte=actif,
+            description=(
+                f'{marqueur} ({rappel.constructeur}) — VIN {vehicule.vin} : '
+                f'{rappel.description}'.strip(' :')
+            ),
+            gravite=SignalementVehicule.Gravite.MOYENNE,
+        )
+        crees.append(signalement)
+
+    return {'crees': crees, 'nb_vin_matches': vehicules_touches.count()}
+
+
+# ── XFLT30 — Ventilation d'une facture fournisseur sur plusieurs véhicules ───
+
+def ventiler_cout_fournisseur(company, *, montant_total, actif_flotte_ids,
+                              date, categorie=None, fournisseur='',
+                              fournisseur_id_ref=None, reference_piece='',
+                              repartitions=None, notes=''):
+    """XFLT30 — Répartit une facture fournisseur en N ``CoutVehicule``
+    (XFLT3), une ligne PAR actif, toutes portant la MÊME ``reference_piece``
+    (réconciliation compta).
+
+    Deux modes de répartition :
+
+    * ``repartitions`` fourni (dict ``{actif_flotte_id: montant}``) : montants
+      SAISIS explicitement — DOIVENT sommer exactement à ``montant_total``
+      (sinon ``ValueError``, jamais de facture silencieusement mal répartie) ;
+    * ``repartitions`` absent : répartition ÉGALE sur ``actif_flotte_ids`` —
+      le montant est divisé et ARRONDI au centime, le reliquat (dû à
+      l'arrondi) est ajouté à la DERNIÈRE ligne pour que la somme des lignes
+      créées soit TOUJOURS exactement égale à ``montant_total`` (jamais de
+      centime perdu ou en trop).
+
+    Chaque actif de ``actif_flotte_ids`` doit appartenir à ``company`` (les
+    autres sont IGNORÉS silencieusement plutôt que de faire échouer toute la
+    ventilation — un id invalide isolé ne doit pas bloquer le reste).
+
+    L'écriture comptable éventuelle (rapprochement, immobilisation…) reste du
+    ressort de ``apps.compta`` (qui lira ce ledger via sélecteur) — CETTE
+    fonction n'écrit JAMAIS hors de ``CoutVehicule`` (cross-app, voir
+    CLAUDE.md).
+
+    Retourne la liste des ``CoutVehicule`` créés (même ordre que
+    ``actif_flotte_ids``, actifs invalides omis).
+    """
+    from .models import ActifFlotte, CoutVehicule
+
+    if categorie is None:
+        categorie = CoutVehicule.Categorie.AUTRE
+
+    actifs_valides = list(
+        ActifFlotte.objects.filter(company=company, id__in=actif_flotte_ids))
+    actifs_par_id = {actif.id: actif for actif in actifs_valides}
+    # Préserve l'ordre demandé par l'appelant (actifs invalides omis).
+    ordre = [aid for aid in actif_flotte_ids if aid in actifs_par_id]
+    if not ordre:
+        return []
+
+    if repartitions is not None:
+        montants = [_arrondi_centime(repartitions[aid]) for aid in ordre]
+        total_saisi = sum(montants)
+        if _arrondi_centime(total_saisi) != _arrondi_centime(montant_total):
+            raise ValueError(
+                'La somme des montants saisis '
+                f'({total_saisi}) ne correspond pas au montant total '
+                f'({montant_total}).')
+    else:
+        n = len(ordre)
+        part = _arrondi_centime(montant_total) / n
+        montants = [_arrondi_centime(part) for _ in range(n)]
+        # Reliquat d'arrondi (peut être positif ou négatif) ajouté à la
+        # DERNIÈRE ligne : garantit une somme EXACTE au centime près.
+        reliquat = _arrondi_centime(montant_total) - _arrondi_centime(
+            sum(montants))
+        montants[-1] = _arrondi_centime(montants[-1] + reliquat)
+
+    crees = []
+    for actif_id, montant in zip(ordre, montants):
+        cout = CoutVehicule.objects.create(
+            company=company,
+            actif_flotte=actifs_par_id[actif_id],
+            categorie=categorie,
+            date=date,
+            montant=montant,
+            fournisseur=fournisseur,
+            fournisseur_id_ref=fournisseur_id_ref,
+            reference_piece=reference_piece,
+            notes=notes,
+        )
+        crees.append(cout)
+
+    return crees
+
+
+def _arrondi_centime(valeur):
+    """XFLT30 — Arrondit ``valeur`` au centime (2 décimales), type ``Decimal``
+    préservé si fourni. Lecture seule, aucun effet de bord."""
+    import decimal
+    return decimal.Decimal(str(valeur)).quantize(
+        decimal.Decimal('0.01'), rounding=decimal.ROUND_HALF_UP)
+
+
 # ── FLOTTE28 — Construction de trajets depuis les relevés télématiques ─────────
 
 def _distance_haversine_km(lat1, lng1, lat2, lng2):
@@ -1739,3 +2160,95 @@ def rollout_plan_entretien(company, plan_modele, actif_flotte_ids):
         crees.append(nouveau)
 
     return {'crees': crees, 'ignores': ignores}
+
+
+# ── XFLT23 — OCR reçu carburant → pré-remplissage du plein (KEY-GATED) ────────
+#
+# Réutilise le SERVICE OCR existant (``backend/fastapi_ia``, ``ZHIPU_API_KEY``)
+# comme point d'intégration : le squelette d'appel provider est isolé ici, à
+# l'image de ``apps.ged.services.ocr_extract_text`` (GED33). Tant qu'aucune
+# clé/flag n'est posé, l'extraction est un NO-OP DÉTERMINISTE : aucun appel
+# réseau, aucune dépendance, aucun coût. La création du ``PleinCarburant`` à
+# partir des champs extraits reste TOUJOURS du ressort de l'utilisateur (jamais
+# de création automatique) — cette fonction ne fait QUE lire/retourner les
+# champs, jamais écrire.
+
+def ocr_pleins_active():
+    """XFLT23 — True si l'OCR de reçu carburant est activé (clé configurée).
+
+    KEY-GATED : sans ``settings.FLOTTE_OCR_PLEINS_ENABLED`` à vrai (posé par le
+    founder aux côtés de ``ZHIPU_API_KEY``), toute extraction reste un no-op.
+    Ne lève jamais.
+    """
+    from django.conf import settings
+    return bool(getattr(settings, 'FLOTTE_OCR_PLEINS_ENABLED', False))
+
+
+def extraire_recu_carburant(file_bytes, *, mime=''):
+    """XFLT23 — Extrait les champs d'un reçu de station (photo) par OCR.
+
+    NO-OP tant que ``ocr_pleins_active()`` est faux : lève ``RuntimeError``
+    (l'appelant — la vue — traduit ceci en 503 avec un message FR clair,
+    « OCR indisponible (configuration manquante) »). Ceci est un
+    comportement DÉLIBÉRÉMENT différent de GED33 (qui renvoie une chaîne
+    vide) car ici l'appelant a besoin de distinguer "aucune donnée" de
+    "fonctionnalité indisponible" pour renvoyer le bon code HTTP.
+
+    Quand activé, délègue à un module fournisseur isolé
+    (``flotte_ocr_provider``, non câblé dans ce dépôt) qui appelle le service
+    OCR ``backend/fastapi_ia`` (Zhipu AI) et renvoie un dict de champs bruts.
+    Le mapping vers les champs ``PleinCarburant`` est fait par
+    ``mapper_recu_vers_plein``. Ne lève jamais au-delà du RuntimeError
+    "indisponible" ci-dessus — toute erreur provider est avalée et renvoie un
+    dict vide (aucun champ extrait, jamais de crash de l'écran de saisie).
+    """
+    if not ocr_pleins_active():
+        raise RuntimeError('OCR indisponible (configuration manquante).')
+    if not file_bytes:
+        return {}
+    try:  # pragma: no cover - dépend d'un provider externe non câblé ici.
+        from . import flotte_ocr_provider as provider  # noqa: F401
+    except ImportError:  # pragma: no cover
+        return {}
+    try:  # pragma: no cover
+        return provider.extraire_recu(file_bytes, mime=mime) or {}
+    except Exception:  # pragma: no cover - jamais casser l'écran de saisie.
+        return {}
+
+
+def mapper_recu_vers_plein(champs_bruts):
+    """XFLT23 — Normalise les champs bruts OCR vers les clés du formulaire
+    ``PleinCarburant`` (lecture seule, aucun effet de bord).
+
+    ``champs_bruts`` est le dict renvoyé par le provider OCR (ou un mock en
+    test) : accepte les clés ``date``/``litres``/``prix_unitaire``/
+    ``montant``/``station`` (FR, tel que documenté côté spec XFLT23) et
+    projette vers ``date_plein``/``quantite``/``prix_total``/``station`` —
+    les clés du formulaire ``PleinCarburant``. Une clé absente est simplement
+    omise du résultat (l'utilisateur complète le reste à la main). Ne lève
+    jamais : une valeur mal formée est ignorée plutôt que de faire échouer le
+    pré-remplissage.
+    """
+    if not champs_bruts:
+        return {}
+    resultat = {}
+    if champs_bruts.get('date'):
+        resultat['date_plein'] = champs_bruts['date']
+    if champs_bruts.get('litres') is not None:
+        resultat['quantite'] = champs_bruts['litres']
+    if champs_bruts.get('station'):
+        resultat['station'] = champs_bruts['station']
+    montant = champs_bruts.get('montant')
+    if montant is not None:
+        resultat['prix_total'] = montant
+    elif (champs_bruts.get('litres') is not None
+            and champs_bruts.get('prix_unitaire') is not None):
+        try:
+            resultat['prix_total'] = round(
+                float(champs_bruts['litres'])
+                * float(champs_bruts['prix_unitaire']), 2)
+        except (TypeError, ValueError):
+            pass
+    if champs_bruts.get('prix_unitaire') is not None:
+        resultat['prix_unitaire'] = champs_bruts['prix_unitaire']
+    return resultat
