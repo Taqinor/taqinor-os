@@ -7510,3 +7510,72 @@ class LigneRegleImputation(models.Model):
         if self.pourcentage is not None and not (0 < self.pourcentage <= 100):
             raise ValidationError(
                 "Le pourcentage doit être strictement compris entre 0 et 100.")
+
+
+# ── XACC24 — Approbation des changements de coordonnées bancaires ──────────
+
+class DemandeApprobationRib(models.Model):
+    """Demande d'approbation d'un CHANGEMENT de RIB fournisseur (XACC24).
+
+    Le RIB lui-même vit sur ``apps.stock.Fournisseur`` (DC15, hors périmètre
+    compta) : cette table ne DUPLIQUE pas le référentiel, elle trace le
+    workflow d'approbation d'un changement (principe 4-yeux, réutilise le
+    pattern ``DemandeApprobationConfig``, FG213). Tant que ``statut`` n'est
+    pas ``approuvee``, ``services._coordonnees_fournisseur`` (payment run,
+    FG133) continue d'utiliser ``ancien_rib`` — jamais le nouveau tant qu'il
+    n'est pas approuvé. ``fournisseur_id`` référence
+    ``apps.stock.Fournisseur`` par id opaque (jamais un FK cross-app).
+    """
+    class Statut(models.TextChoices):
+        EN_ATTENTE = 'en_attente', 'En attente'
+        APPROUVEE = 'approuvee', 'Approuvée'
+        REFUSEE = 'refusee', 'Refusée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='demandes_approbation_rib',
+        verbose_name='Société',
+    )
+    fournisseur_id = models.PositiveIntegerField(
+        verbose_name='Fournisseur (id stock)')
+    fournisseur_nom = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Fournisseur')
+    ancien_rib = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='Ancien RIB')
+    nouveau_rib = models.CharField(max_length=40, verbose_name='Nouveau RIB')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices, default=Statut.EN_ATTENTE,
+        verbose_name='Statut')
+    demandeur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='demandes_rib_demandees',
+        verbose_name='Demandeur')
+    decideur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='demandes_rib_decidees',
+        verbose_name='Décideur')
+    commentaire_decision = models.TextField(
+        blank=True, default='', verbose_name='Commentaire de décision')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+    date_decision = models.DateTimeField(
+        null=True, blank=True, verbose_name='Décidée le')
+
+    class Meta:
+        verbose_name = "Demande d'approbation de RIB"
+        verbose_name_plural = "Demandes d'approbation de RIB"
+        ordering = ['-date_creation', '-id']
+
+    def __str__(self):
+        return f'RIB {self.fournisseur_nom or self.fournisseur_id} ({self.statut})'
+
+    @property
+    def rib_actif(self):
+        """RIB à utiliser TANT QUE la demande n'est pas approuvée : l'ancien.
+        Une fois approuvée, le nouveau devient actif."""
+        if self.statut == self.Statut.APPROUVEE:
+            return self.nouveau_rib
+        return self.ancien_rib

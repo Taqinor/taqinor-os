@@ -2943,3 +2943,26 @@ def evaluer_etat_personnalise(etat, *, colonnes_override=None):
         ],
         'lignes': lignes_resultat,
     }
+
+
+# ── XACC24 — Validation RIB (comptes de trésorerie) ────────────────────────
+
+def comptes_tresorerie_rib_invalides(company):
+    """Liste les ``CompteTresorerie`` actifs dont le RIB porte une clé fausse
+    (XACC24), en WARNING pur — jamais un blocage de saisie historique. Un RIB
+    vide n'est PAS signalé (compte sans RIB renseigné, cas normal). Renvoie
+    une liste de ``{'id', 'libelle', 'rib', 'erreurs'}``. Lecture seule.
+    """
+    from core.rib import valider_rib
+
+    resultat = []
+    for compte in CompteTresorerie.objects.filter(company=company, actif=True):
+        if not (compte.rib or '').strip():
+            continue
+        diagnostic = valider_rib(compte.rib)
+        if not diagnostic['valide']:
+            resultat.append({
+                'id': compte.id, 'libelle': compte.libelle,
+                'rib': compte.rib, 'erreurs': diagnostic['erreurs'],
+            })
+    return resultat

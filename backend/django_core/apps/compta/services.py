@@ -46,7 +46,7 @@ from .models import (
     ItemOuvertDevise, EcartChange, ReevaluationCloture, LigneReevaluation,
     EtatPersonnalise, LigneEtatPersonnalise, ColonneEtatPersonnalise,
     VentilationAnalytique, LigneVentilation, RegleImputation,
-    LigneRegleImputation,
+    LigneRegleImputation, DemandeApprobationRib,
     Immobilisation, IndemniteChantier, Journal, LigneEcriture,
     LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, NoteFrais,
     OuverturePartage,
@@ -2957,6 +2957,11 @@ def _coordonnees_fournisseur(company, tiers_id):
     N'importe JAMAIS ``apps.stock.models`` : passe par
     ``apps.stock.selectors.get_fournisseur_by_id``. Renvoie un dict
     ``{'nom', 'rib', 'iban'}`` (valeurs vides si le tiers/champ est inconnu).
+
+    XACC24 — si une ``DemandeApprobationRib`` NON approuvée existe pour ce
+    fournisseur, le RIB retourné est l'ANCIEN (``rib_actif``) et non celui
+    actuellement sur le référentiel stock : le fichier de virement ne doit
+    JAMAIS utiliser un RIB fournisseur en cours d'approbation.
     """
     nom = rib = iban = ''
     if tiers_id is not None:
@@ -2969,6 +2974,13 @@ def _coordonnees_fournisseur(company, tiers_id):
             nom = getattr(fournisseur, 'nom', '') or ''
             rib = getattr(fournisseur, 'rib', '') or ''
             iban = getattr(fournisseur, 'iban', '') or ''
+        demande_en_cours = DemandeApprobationRib.objects.filter(
+            company=company, fournisseur_id=tiers_id,
+        ).exclude(statut=DemandeApprobationRib.Statut.REFUSEE).order_by(
+            '-date_creation').first()
+        if demande_en_cours is not None and (
+                demande_en_cours.statut != DemandeApprobationRib.Statut.APPROUVEE):
+            rib = demande_en_cours.ancien_rib
     return {'nom': nom, 'rib': rib, 'iban': iban}
 
 
@@ -7122,3 +7134,63 @@ def generer_ligne_budget_repartie(budget, *, compte, montant_annuel,
         m09=montants[8], m10=montants[9], m11=montants[10], m12=montants[11],
     )
     return ligne
+
+
+# ── XACC24 — Validation RIB marocain + approbation des changements de RIB ──
+
+def diagnostic_rib(rib):
+    """Diagnostic RIB marocain (mod 97) via ``core.rib`` (XACC24), pur.
+
+    Renvoie ``{'rib', 'valide', 'erreurs'}`` — jamais d'exception, jamais de
+    blocage de saisie historique : c'est un WARNING d'affichage laissé à
+    l'appelant (``apps.stock`` Fournisseur, ``CompteTresorerie`` ici,
+    ``apps.rh`` DossierEmploye).
+    """
+    from core.rib import valider_rib
+    return valider_rib(rib)
+
+
+def demander_changement_rib(company, *, fournisseur_id, fournisseur_nom='',
+                            ancien_rib, nouveau_rib, user=None):
+    """Ouvre une demande d'approbation pour un CHANGEMENT de RIB fournisseur
+    (XACC24, principe 4-yeux). Tant qu'elle n'est pas approuvée, le payment
+    run (FG133, via ``_coordonnees_fournisseur``) continue d'utiliser
+    ``ancien_rib``. Renvoie la demande créée (statut ``en_attente``).
+    """
+    demande = DemandeApprobationRib(
+        company=company, fournisseur_id=fournisseur_id,
+        fournisseur_nom=fournisseur_nom or '', ancien_rib=ancien_rib or '',
+        nouveau_rib=nouveau_rib, demandeur=user,
+    )
+    demande.full_clean()
+    demande.save()
+    return demande
+
+
+def approuver_demande_rib(demande, *, decideur, commentaire=''):
+    """Approuve une demande de changement de RIB (XACC24) : à partir de là,
+    le nouveau RIB devient actif (``rib_actif``) pour le payment run. Idempotente
+    (une demande déjà décidée n'est pas re-décidée)."""
+    if demande.statut != DemandeApprobationRib.Statut.EN_ATTENTE:
+        return demande
+    demande.statut = DemandeApprobationRib.Statut.APPROUVEE
+    demande.decideur = decideur
+    demande.commentaire_decision = commentaire or ''
+    demande.date_decision = timezone.now()
+    demande.save(update_fields=[
+        'statut', 'decideur', 'commentaire_decision', 'date_decision'])
+    return demande
+
+
+def refuser_demande_rib(demande, *, decideur, commentaire=''):
+    """Refuse une demande de changement de RIB (XACC24) : l'ancien RIB reste
+    actif définitivement pour cette demande. Idempotente."""
+    if demande.statut != DemandeApprobationRib.Statut.EN_ATTENTE:
+        return demande
+    demande.statut = DemandeApprobationRib.Statut.REFUSEE
+    demande.decideur = decideur
+    demande.commentaire_decision = commentaire or ''
+    demande.date_decision = timezone.now()
+    demande.save(update_fields=[
+        'statut', 'decideur', 'commentaire_decision', 'date_decision'])
+    return demande
