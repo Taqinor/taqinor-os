@@ -2427,6 +2427,84 @@ class CoutVehiculeViewSet(_FlotteBaseViewSet):
 
         return qs
 
+    @action(detail=False, methods=['post'])
+    def ventiler(self, request):
+        """XFLT30 — Ventile une facture fournisseur sur plusieurs véhicules
+        (écriture responsable/admin).
+
+        Corps attendu ::
+
+            {
+              "montant_total": "12000.00",
+              "actif_flotte_ids": [1, 2, 3],
+              "date": "2026-06-01",
+              "categorie": "entretien",        # optionnel (défaut 'autre')
+              "fournisseur": "Total Maroc",     # optionnel
+              "fournisseur_id_ref": 5,          # optionnel (stock.Fournisseur)
+              "reference_piece": "FAC-2026-042",
+              "repartitions": {"1": "5000", "2": "4000", "3": "3000"},
+              # optionnel — sinon répartition ÉGALE (arrondi centime,
+              # reliquat sur la dernière ligne).
+              "notes": "…",                     # optionnel
+            }
+
+        Crée N ``CoutVehicule`` (un par actif) portant TOUS la même
+        ``reference_piece`` — jamais d'écriture comptable directe (compta lit
+        le ledger via sélecteur). Renvoie les coûts créés (sérialisés).
+        """
+        data = request.data
+        actif_flotte_ids = data.get('actif_flotte_ids') or []
+        try:
+            actif_flotte_ids = [int(a) for a in actif_flotte_ids]
+        except (ValueError, TypeError):
+            return Response(
+                {'actif_flotte_ids': 'Liste d\'identifiants entiers attendue.'},
+                status=400)
+        if not actif_flotte_ids:
+            return Response(
+                {'actif_flotte_ids': 'Au moins un actif est requis.'},
+                status=400)
+
+        montant_total = data.get('montant_total')
+        date_ventilation = _parse_date_param(data.get('date'))
+        if montant_total is None or date_ventilation is None:
+            return Response(
+                {'detail': "'montant_total' et 'date' (YYYY-MM-DD) sont "
+                           "obligatoires."},
+                status=400)
+
+        repartitions_brutes = data.get('repartitions')
+        repartitions = None
+        if repartitions_brutes:
+            try:
+                repartitions = {
+                    int(k): v for k, v in repartitions_brutes.items()}
+            except (ValueError, TypeError, AttributeError):
+                return Response(
+                    {'repartitions': 'Répartition invalide (attendu '
+                                     '{actif_flotte_id: montant}).'},
+                    status=400)
+
+        from .services import ventiler_cout_fournisseur
+        try:
+            crees = ventiler_cout_fournisseur(
+                request.user.company,
+                montant_total=montant_total,
+                actif_flotte_ids=actif_flotte_ids,
+                date=date_ventilation,
+                categorie=data.get('categorie'),
+                fournisseur=data.get('fournisseur', ''),
+                fournisseur_id_ref=data.get('fournisseur_id_ref'),
+                reference_piece=data.get('reference_piece', ''),
+                repartitions=repartitions,
+                notes=data.get('notes', ''),
+            )
+        except (ValueError, TypeError) as exc:
+            return Response({'detail': str(exc)}, status=400)
+
+        serializer = self.get_serializer(crees, many=True)
+        return Response(serializer.data, status=201)
+
 
 class SignalementVehiculeViewSet(_FlotteBaseViewSet):
     """Signalements d'anomalie véhicule déposés par un conducteur (XFLT5).

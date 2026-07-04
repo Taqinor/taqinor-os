@@ -866,6 +866,96 @@ def rapprocher_rappel(rappel):
     return {'crees': crees, 'nb_vin_matches': vehicules_touches.count()}
 
 
+# ── XFLT30 — Ventilation d'une facture fournisseur sur plusieurs véhicules ───
+
+def ventiler_cout_fournisseur(company, *, montant_total, actif_flotte_ids,
+                              date, categorie=None, fournisseur='',
+                              fournisseur_id_ref=None, reference_piece='',
+                              repartitions=None, notes=''):
+    """XFLT30 — Répartit une facture fournisseur en N ``CoutVehicule``
+    (XFLT3), une ligne PAR actif, toutes portant la MÊME ``reference_piece``
+    (réconciliation compta).
+
+    Deux modes de répartition :
+
+    * ``repartitions`` fourni (dict ``{actif_flotte_id: montant}``) : montants
+      SAISIS explicitement — DOIVENT sommer exactement à ``montant_total``
+      (sinon ``ValueError``, jamais de facture silencieusement mal répartie) ;
+    * ``repartitions`` absent : répartition ÉGALE sur ``actif_flotte_ids`` —
+      le montant est divisé et ARRONDI au centime, le reliquat (dû à
+      l'arrondi) est ajouté à la DERNIÈRE ligne pour que la somme des lignes
+      créées soit TOUJOURS exactement égale à ``montant_total`` (jamais de
+      centime perdu ou en trop).
+
+    Chaque actif de ``actif_flotte_ids`` doit appartenir à ``company`` (les
+    autres sont IGNORÉS silencieusement plutôt que de faire échouer toute la
+    ventilation — un id invalide isolé ne doit pas bloquer le reste).
+
+    L'écriture comptable éventuelle (rapprochement, immobilisation…) reste du
+    ressort de ``apps.compta`` (qui lira ce ledger via sélecteur) — CETTE
+    fonction n'écrit JAMAIS hors de ``CoutVehicule`` (cross-app, voir
+    CLAUDE.md).
+
+    Retourne la liste des ``CoutVehicule`` créés (même ordre que
+    ``actif_flotte_ids``, actifs invalides omis).
+    """
+    from .models import ActifFlotte, CoutVehicule
+
+    if categorie is None:
+        categorie = CoutVehicule.Categorie.AUTRE
+
+    actifs_valides = list(
+        ActifFlotte.objects.filter(company=company, id__in=actif_flotte_ids))
+    actifs_par_id = {actif.id: actif for actif in actifs_valides}
+    # Préserve l'ordre demandé par l'appelant (actifs invalides omis).
+    ordre = [aid for aid in actif_flotte_ids if aid in actifs_par_id]
+    if not ordre:
+        return []
+
+    if repartitions is not None:
+        montants = [_arrondi_centime(repartitions[aid]) for aid in ordre]
+        total_saisi = sum(montants)
+        if _arrondi_centime(total_saisi) != _arrondi_centime(montant_total):
+            raise ValueError(
+                'La somme des montants saisis '
+                f'({total_saisi}) ne correspond pas au montant total '
+                f'({montant_total}).')
+    else:
+        n = len(ordre)
+        part = _arrondi_centime(montant_total) / n
+        montants = [_arrondi_centime(part) for _ in range(n)]
+        # Reliquat d'arrondi (peut être positif ou négatif) ajouté à la
+        # DERNIÈRE ligne : garantit une somme EXACTE au centime près.
+        reliquat = _arrondi_centime(montant_total) - _arrondi_centime(
+            sum(montants))
+        montants[-1] = _arrondi_centime(montants[-1] + reliquat)
+
+    crees = []
+    for actif_id, montant in zip(ordre, montants):
+        cout = CoutVehicule.objects.create(
+            company=company,
+            actif_flotte=actifs_par_id[actif_id],
+            categorie=categorie,
+            date=date,
+            montant=montant,
+            fournisseur=fournisseur,
+            fournisseur_id_ref=fournisseur_id_ref,
+            reference_piece=reference_piece,
+            notes=notes,
+        )
+        crees.append(cout)
+
+    return crees
+
+
+def _arrondi_centime(valeur):
+    """XFLT30 — Arrondit ``valeur`` au centime (2 décimales), type ``Decimal``
+    préservé si fourni. Lecture seule, aucun effet de bord."""
+    import decimal
+    return decimal.Decimal(str(valeur)).quantize(
+        decimal.Decimal('0.01'), rounding=decimal.ROUND_HALF_UP)
+
+
 # ── FLOTTE28 — Construction de trajets depuis les relevés télématiques ─────────
 
 def _distance_haversine_km(lat1, lng1, lat2, lng2):
