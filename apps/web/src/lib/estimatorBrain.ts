@@ -1,4 +1,7 @@
 /**
+ * WB22 — LABO SEULEMENT, PAS le moteur public : ne jamais brancher ce fichier
+ * (V1) sur une page cliente ; le chemin public est estimatorBrainV2.ts.
+ *
  * CERVEAU de l'estimateur piloté par la facture (preview privé
  * /preview/toiture-3d-pro-3). Module PUR, testé (tests/estimatorBrain.test.ts) :
  * aucun DOM, aucune carte, aucune dépendance.
