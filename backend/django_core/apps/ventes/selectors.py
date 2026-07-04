@@ -458,3 +458,52 @@ def references_avoirs(company):
         .exclude(reference='')
         .values_list('reference', flat=True)
     )
+
+
+def etat_recouvrement_client(company, client_id):
+    """YCASH4 — État de recouvrement d'UN client, pour le front du funnel.
+
+    Agrège ce que le blueprint L2C appelle "l'état recouvrement remontant au
+    commercial" : le retard maximum parmi ses factures ouvertes, le niveau de
+    relance atteint (réutilise ``recouvrement._current_level`` — jamais une
+    nouvelle échelle), et l'encours échu total (= somme des ``montant_du``
+    des factures en retard, jamais un montant TTC non dû). Ne modifie AUCUN
+    statut ; pur agrégat lecture seule pour l'avertissement FG41 enrichi.
+
+    Renvoie :
+      ``{'retard_max_jours': int, 'niveau_relance': dict|None,
+         'encours_echu': Decimal, 'a_jour': bool}``
+    Un client sans facture en retard renvoie ``a_jour=True`` et
+    ``encours_echu=0`` — l'appelant n'affiche alors aucun avertissement."""
+    from decimal import Decimal
+    from .models import Facture
+    from .recouvrement import _levels, _current_level
+
+    factures = (
+        Facture.objects
+        .filter(company=company, client_id=client_id)
+        .exclude(statut=Facture.Statut.ANNULEE)
+        .prefetch_related('paiements', 'avoirs')
+    )
+
+    retard_max = 0
+    encours_echu = Decimal('0')
+    for f in factures:
+        jr = f.jours_retard
+        if jr > 0:
+            retard_max = max(retard_max, jr)
+            encours_echu += f.montant_du
+
+    if retard_max <= 0:
+        return {
+            'retard_max_jours': 0, 'niveau_relance': None,
+            'encours_echu': Decimal('0'), 'a_jour': True,
+        }
+
+    niveau = _current_level(retard_max, _levels(company))
+    return {
+        'retard_max_jours': retard_max,
+        'niveau_relance': niveau,
+        'encours_echu': encours_echu,
+        'a_jour': False,
+    }
