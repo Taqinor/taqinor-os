@@ -21,6 +21,7 @@ from core.events import (
     avoir_cree,
     devis_accepted,
     devis_refused,
+    facture_annulee,
     facture_emise,
     facture_fournisseur_creee,
     paiement_enregistre,
@@ -28,12 +29,14 @@ from core.events import (
 )
 
 from .services import (  # noqa: F401  (ré-export du point d'intégration)
+    _ecriture_existante,
     auto_ecritures_actif,
     ecriture_pour_avoir,
     ecriture_pour_facture,
     ecriture_pour_facture_fournisseur,
     ecriture_pour_paiement,
     ecriture_pour_paiement_fournisseur,
+    extourner_ecriture,
     # XACC1 — transfert TVA attente→définitif (régime encaissement). Même
     # point d'ancrage : appel de service explicite depuis ``ventes`` tant
     # qu'aucun événement dédié « paiement enregistré » n'existe sur le bus.
@@ -79,6 +82,20 @@ def _ecriture_pour_facture_fournisseur_creee(sender, instance, company,
 def _ecriture_pour_paiement_fournisseur_enregistre(sender, instance, company,
                                                     **kwargs):
     ecriture_pour_paiement_fournisseur(instance)
+
+
+# ── YLEDG4 — extourne automatique quand un document comptabilisé est annulé ─
+# Si une écriture source existe déjà pour ce document (source_type='facture'),
+# on poste son extourne (jamais de suppression d'écriture validée, COMPTA11).
+# Un document jamais comptabilisé (toggle OFF, ou facture jamais émise via
+# facture_emise) n'a aucune écriture source → aucune extourne (no-op).
+
+@receiver(facture_annulee, dispatch_uid="compta_extourne_facture_annulee")
+def _extourne_facture_annulee(sender, instance, company, **kwargs):
+    ecriture = _ecriture_existante(company, 'facture', instance.id)
+    if ecriture is None:
+        return
+    extourner_ecriture(ecriture)
 
 
 # ── XMKT1 — sortie automatique des séquences de relance ────────────────────
