@@ -5411,3 +5411,136 @@ class ParticipationPulse(models.Model):
 
     def __str__(self):
         return f'Participation — campagne {self.campagne_id}'
+
+
+class QuizFormation(models.Model):
+    """XRH34 — quiz d'évaluation de formation (eLearning léger).
+
+    FG187/188 gèrent l'ADMIN de la formation (sessions + besoins) et
+    FG172/173 la matrice de compétences + les habilitations à échéance —
+    mais rien n'ÉVALUE : ``QuizFormation`` porte le CONTENU d'un quiz
+    (questions à choix unique/multiple, bonne(s) réponse(s), seuil de
+    réussite) qu'un employé passe via ``TentativeQuiz``.
+
+    ``questions`` (JSON) — liste de dicts :
+    ``{'question': str, 'type': 'unique'|'multiple',
+    'choix': [str, ...], 'bonnes_reponses': [int, ...]}`` (index dans
+    ``choix``). Les BONNES RÉPONSES ne sont JAMAIS exposées côté employé —
+    seul le serializer RH (gestion) les inclut.
+
+    ``validite_mois`` (optionnel) — si le quiz est lié à une
+    ``habilitation``, une réussite prolonge sa ``date_validite`` de ce
+    nombre de mois. ``competence`` / ``habilitation`` sont OPTIONNELS et
+    doivent appartenir à la MÊME société que le quiz (validés côté serveur).
+
+    Multi-société : ``company`` posée CÔTÉ SERVEUR (jamais lue du corps).
+    Additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_quiz_formation',
+        verbose_name='Société',
+    )
+    intitule = models.CharField(max_length=200, verbose_name='Intitulé')
+    questions = models.JSONField(
+        default=list, blank=True, verbose_name='Questions')
+    score_reussite = models.PositiveSmallIntegerField(
+        default=80, verbose_name='Score de réussite (%)')
+    validite_mois = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Validité de la certification (mois)')
+    # Liens optionnels — même app (rh), validation same-company côté serveur.
+    competence = models.ForeignKey(
+        'rh.Competence',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='quiz',
+        verbose_name='Compétence liée',
+    )
+    habilitation_type = models.CharField(
+        max_length=10, blank=True, default='',
+        choices=Habilitation.TypeHabilitation.choices,
+        verbose_name="Type d'habilitation liée")
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Quiz de formation'
+        verbose_name_plural = 'Quiz de formation'
+        ordering = ['intitule']
+        indexes = [
+            models.Index(
+                fields=['company', 'actif'],
+                name='rh_quiz_comp_actif_idx'),
+        ]
+
+    def __str__(self):
+        return self.intitule
+
+
+class TentativeQuiz(models.Model):
+    """XRH34 — tentative d'un employé sur un ``QuizFormation``.
+
+    ``reponses`` (JSON) — liste d'index (ou de listes d'index pour une
+    question à choix multiple) parallèle à ``quiz.questions``. Le ``score``
+    (%) est TOUJOURS calculé CÔTÉ SERVEUR (jamais accepté du corps de
+    requête) — les bonnes réponses ne sortent JAMAIS dans le payload
+    employé. ``reussi`` est dérivé de ``score >= quiz.score_reussite``.
+
+    Multi-société : ``company`` posée CÔTÉ SERVEUR ; ``quiz`` et ``employe``
+    doivent appartenir à la même société. Additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_tentatives_quiz',
+        verbose_name='Société',
+    )
+    quiz = models.ForeignKey(
+        QuizFormation,
+        on_delete=models.CASCADE,
+        related_name='tentatives',
+        verbose_name='Quiz',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='tentatives_quiz',
+        verbose_name='Employé',
+    )
+    # Session de formation optionnelle liée : quand renseignée, la réussite
+    # met à jour ``InscriptionFormation.resultat`` de cette session.
+    session = models.ForeignKey(
+        'rh.SessionFormation',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='tentatives_quiz',
+        verbose_name='Session liée',
+    )
+    reponses = models.JSONField(
+        default=list, blank=True, verbose_name='Réponses')
+    score = models.PositiveSmallIntegerField(
+        default=0, verbose_name='Score (%)')
+    reussi = models.BooleanField(default=False, verbose_name='Réussi')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Tentative de quiz'
+        verbose_name_plural = 'Tentatives de quiz'
+        ordering = ['-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'employe'],
+                name='rh_tquiz_comp_emp_idx'),
+            models.Index(
+                fields=['company', 'quiz'],
+                name='rh_tquiz_comp_quiz_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.employe.matricule} — {self.quiz.intitule} ({self.score}%)'

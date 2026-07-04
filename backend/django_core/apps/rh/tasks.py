@@ -96,7 +96,8 @@ def alertes_expiration(within_days=30):
     from authentication.models import Company
 
     from apps.notifications.services import notify
-    from apps.rh import selectors
+    from apps.rh import selectors, services
+    from apps.rh.models import Habilitation
 
     today = timezone.localdate()
     total_echeances = 0
@@ -114,6 +115,24 @@ def alertes_expiration(within_days=30):
         if not rows:
             continue
         total_echeances += len(rows)
+
+        # XRH34 — chaque habilitation ACTIVE mais EXPIRÉE (échéance dépassée)
+        # de la société fait naître (idempotent) un BesoinFormation de
+        # re-certification SI un quiz actif couvre son type — no-op sinon
+        # (``services.generer_besoin_recertification`` porte la garde).
+        # Requête directe (pas via les rows agrégées de ``echeances_rh``, qui
+        # n'exposent pas l'id de l'habilitation) — même fenêtre de temps.
+        habilitations_expirees = Habilitation.objects.filter(
+            company=company, actif=True,
+            date_validite__isnull=False, date_validite__lt=today)
+        for habilitation in habilitations_expirees:
+            try:
+                services.generer_besoin_recertification(habilitation)
+            except Exception:  # pragma: no cover - défensif
+                logger.warning(
+                    'rh.alertes_expiration: échec re-certification '
+                    'habilitation #%s', habilitation.pk, exc_info=True)
+
         recipients = _recipients(company)
         if not recipients:
             continue

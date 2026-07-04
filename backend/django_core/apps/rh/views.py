@@ -84,10 +84,12 @@ from .models import (
     PresenceChantier,
     PresquAccident,
     PrimeAttribuee,
+    QuizFormation,
     Remuneration,
     Sanction,
     SessionFormation,
     SoldeConge,
+    TentativeQuiz,
     TypeAbsence,
     TypePrime,
     VisiteMedicale,
@@ -157,10 +159,13 @@ from .serializers import (
     PresenceChantierSerializer,
     PresquAccidentSerializer,
     PrimeAttribueeSerializer,
+    QuizFormationPortailSerializer,
+    QuizFormationSerializer,
     RemunerationSerializer,
     SanctionSerializer,
     SessionFormationSerializer,
     SoldeCongeSerializer,
+    TentativeQuizSerializer,
     TypeAbsenceSerializer,
     TypePrimeSerializer,
     VisiteMedicaleSerializer,
@@ -3055,6 +3060,94 @@ class BesoinFormationViewSet(_RhBaseViewSet):
             self.get_serializer(besoin).data, status=status.HTTP_200_OK)
 
 
+class QuizFormationViewSet(_RhBaseViewSet):
+    """XRH34 — quiz d'évaluation de formation (eLearning léger, gestion RH).
+
+    Société scopée + Administrateur/Responsable. Porte le CONTENU (questions
+    + bonnes réponses, seuil de réussite, validité de certification, liens
+    optionnels compétence/type d'habilitation). Un employé passe un quiz via
+    le portail (``PortailSelfServiceViewSet``), jamais directement ici (les
+    bonnes réponses ne doivent jamais atteindre son écran).
+
+    Filtres : ``?actif=1``, ``?competence=<id>``, ``?habilitation_type=...``.
+    """
+    queryset = QuizFormation.objects.select_related('competence').all()
+    serializer_class = QuizFormationSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['intitule']
+    ordering_fields = ['intitule', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        actif = self.request.query_params.get('actif')
+        if actif in ('1', 'true', 'True'):
+            qs = qs.filter(actif=True)
+        competence = self.request.query_params.get('competence')
+        if competence:
+            qs = qs.filter(competence_id=competence)
+        habilitation_type = self.request.query_params.get('habilitation_type')
+        if habilitation_type:
+            qs = qs.filter(habilitation_type=habilitation_type)
+        return qs
+
+
+class TentativeQuizViewSet(_RhBaseViewSet):
+    """XRH34 — tentatives de quiz (consultation gestion RH — un employé
+    consulte SES tentatives via le portail, pas ici).
+
+    Lecture seule côté API générale (la création passe TOUJOURS par
+    ``services.passer_tentative_quiz``, jamais par un POST direct qui
+    accepterait un ``score``/``reussi`` côté client).
+
+    Filtres : ``?employe=<id>``, ``?quiz=<id>``, ``?reussi=1``.
+
+    Action :
+    * ``GET .../{id}/attestation/`` — attestation PDF de réussite
+      (``apps.rh.pdf_attestation``, renderer RH dédié — JAMAIS ``/proposal``).
+      404 si la tentative n'est pas réussie.
+    """
+    http_method_names = ['get', 'head', 'options']
+    queryset = TentativeQuiz.objects.select_related('quiz', 'employe').all()
+    serializer_class = TentativeQuizSerializer
+    ordering_fields = ['date_creation', 'score']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        quiz = self.request.query_params.get('quiz')
+        if quiz:
+            qs = qs.filter(quiz_id=quiz)
+        reussi = self.request.query_params.get('reussi')
+        if reussi in ('1', 'true', 'True'):
+            qs = qs.filter(reussi=True)
+        return qs
+
+    @action(detail=True, methods=['get'], url_path='attestation')
+    def attestation(self, request, pk=None):
+        """PDF d'attestation de réussite — 404 si non réussie."""
+        tentative = self.get_object()
+        if not tentative.reussi:
+            return Response(
+                {'detail': 'Aucune attestation : tentative non réussie.'},
+                status=status.HTTP_404_NOT_FOUND)
+        from django.http import HttpResponse
+
+        from .pdf_attestation import render_attestation_reussite_pdf
+
+        try:
+            pdf_bytes = render_attestation_reussite_pdf(tentative)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'attachment; filename="attestation-quiz-{tentative.pk}.pdf"')
+        return response
+
+
 class OuverturePosteViewSet(_RhBaseViewSet):
     """Ouvertures de poste / postes ouverts (FG189) — recrutement ATS-lite.
 
@@ -4543,6 +4636,59 @@ class PortailSelfServiceViewSet(viewsets.ViewSet):
             company=request.user.company, employe=dossier).select_related(
             'attachment')
         return Response(BulletinPaieSerializer(qs, many=True).data)
+
+    @action(detail=False, methods=['get'], url_path='quiz-disponibles')
+    def quiz_disponibles(self, request):
+        """XRH34 — quiz actifs de la société, SANS les bonnes réponses
+        (``QuizFormationPortailSerializer``)."""
+        qs = QuizFormation.objects.filter(
+            company=request.user.company, actif=True)
+        return Response(QuizFormationPortailSerializer(qs, many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='passer-quiz')
+    def passer_quiz(self, request, pk=None):
+        """XRH34 — passe (corrige côté serveur) le quiz ``pk`` pour le
+        collaborateur connecté. Corps : ``reponses`` (liste parallèle aux
+        questions), ``session`` (id ``SessionFormation`` optionnel — upsert
+        ``InscriptionFormation.resultat`` si réussi).
+
+        En cas de réussite : matrice de compétences mise à jour, habilitation
+        prolongée le cas échéant, attestation PDF téléchargeable ensuite via
+        ``GET tentatives-quiz/{id}/attestation/``.
+        """
+        dossier = self._dossier(request)
+        if dossier is None:
+            return Response(
+                {'detail': 'Aucun dossier employé lié à ce compte.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        quiz = QuizFormation.objects.filter(
+            company=request.user.company, pk=pk, actif=True).first()
+        if quiz is None:
+            return Response(
+                {'detail': 'Quiz introuvable.'},
+                status=status.HTTP_404_NOT_FOUND)
+        session = None
+        session_id = request.data.get('session')
+        if session_id:
+            session = SessionFormation.objects.filter(
+                company=request.user.company, pk=session_id).first()
+        tentative = services.passer_tentative_quiz(
+            quiz, dossier, reponses=request.data.get('reponses') or [],
+            session=session)
+        return Response(
+            TentativeQuizSerializer(tentative).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'], url_path='mes-tentatives-quiz')
+    def mes_tentatives_quiz(self, request):
+        """XRH34 — SES tentatives de quiz (autre employé → jamais visible)."""
+        dossier = self._dossier(request)
+        if dossier is None:
+            return Response([])
+        qs = TentativeQuiz.objects.filter(
+            company=request.user.company, employe=dossier).select_related(
+            'quiz')
+        return Response(TentativeQuizSerializer(qs, many=True).data)
 
     @action(detail=False, methods=['get'], url_path='mes-demandes')
     def mes_demandes(self, request):

@@ -1880,3 +1880,176 @@ def comptes_actifs_employes_sortis(company):
         }
         for d in qs
     ]
+
+
+# ── XRH34 — eLearning léger : quiz + certification ─────────────────────────
+
+def _ajouter_mois(une_date, mois):
+    """Ajoute ``mois`` mois calendaires à ``une_date`` (stdlib uniquement,
+    aucune dépendance externe) — cale le jour sur le dernier jour du mois
+    cible s'il déborde (ex. 31 janvier + 1 mois → 28/29 février)."""
+    import calendar
+
+    total = une_date.month - 1 + mois
+    annee = une_date.year + total // 12
+    moiscible = total % 12 + 1
+    jour = min(une_date.day, calendar.monthrange(annee, moiscible)[1])
+    return une_date.replace(year=annee, month=moiscible, day=jour)
+
+
+def _est_reponse_correcte(question, reponse):
+    """Compare une réponse brute (int ou liste d'ints) aux bonnes réponses
+    d'UNE question — vrai UNIQUEMENT si l'ensemble complet correspond
+    (aucune bonne réponse manquante, aucune fausse en plus)."""
+    bonnes = set(question.get('bonnes_reponses') or [])
+    if isinstance(reponse, (list, tuple, set)):
+        donnees = set(reponse)
+    elif reponse is None:
+        donnees = set()
+    else:
+        donnees = {reponse}
+    return donnees == bonnes
+
+
+def corriger_tentative_quiz(quiz, reponses):
+    """XRH34 — corrige une tentative CÔTÉ SERVEUR : ``reponses`` est une
+    liste parallèle à ``quiz.questions`` (index de choix, ou liste d'index
+    pour une question à choix multiple). Renvoie ``(score_pourcent, reussi)``.
+
+    Les bonnes réponses NE SONT JAMAIS renvoyées à l'appelant — seul le
+    score agrégé l'est. Un quiz sans question renvoie ``(0, False)``
+    (jamais de division par zéro).
+    """
+    questions = quiz.questions or []
+    if not questions:
+        return 0, False
+    reponses = list(reponses or [])
+    correctes = 0
+    for i, question in enumerate(questions):
+        reponse = reponses[i] if i < len(reponses) else None
+        if _est_reponse_correcte(question, reponse):
+            correctes += 1
+    score = round(100 * correctes / len(questions))
+    reussi = score >= quiz.score_reussite
+    return score, reussi
+
+
+@transaction.atomic
+def passer_tentative_quiz(quiz, employe, *, reponses, session=None):
+    """XRH34 — enregistre + corrige une ``TentativeQuiz`` et, en cas de
+    réussite, applique TOUS les effets de certification :
+
+    * upsert du niveau ``CompetenceEmploye`` (niveau CONFIRMÉ) si
+      ``quiz.competence`` est défini (même chemin que
+      ``SessionFormationViewSet.marquer_realisee``, FG187) ;
+    * si ``session`` est fournie ET que le quiz y est explicitement lié
+      (même valeur transmise ici), upsert
+      ``InscriptionFormation.resultat = REUSSI`` du participant ;
+    * si ``quiz.habilitation_type`` est défini ET ``quiz.validite_mois``
+      renseigné : prolonge (ou crée) l'``Habilitation`` de l'employé pour ce
+      type — nouvelle échéance = ``max(aujourd'hui, échéance actuelle) +
+      validite_mois``.
+
+    Un ÉCHEC (score < seuil) N'A AUCUN EFFET (aucune mise à jour de
+    compétence/inscription/habilitation) — seule la tentative est
+    enregistrée avec son score.
+    """
+    from .models import (
+        CompetenceEmploye, Habilitation, InscriptionFormation, TentativeQuiz,
+    )
+
+    score, reussi = corriger_tentative_quiz(quiz, reponses)
+    tentative = TentativeQuiz.objects.create(
+        company=quiz.company, quiz=quiz, employe=employe, session=session,
+        reponses=reponses, score=score, reussi=reussi)
+
+    if not reussi:
+        return tentative
+
+    if quiz.competence_id:
+        CompetenceEmploye.objects.update_or_create(
+            employe=employe, competence_id=quiz.competence_id,
+            defaults={
+                'company': quiz.company,
+                'niveau': CompetenceEmploye.Niveau.CONFIRME,
+                'evalue_le': timezone.now(),
+            },
+        )
+
+    if session is not None:
+        InscriptionFormation.objects.update_or_create(
+            session=session, participant=employe,
+            defaults={'company': quiz.company,
+                      'resultat': InscriptionFormation.Resultat.REUSSI},
+        )
+
+    if quiz.habilitation_type and quiz.validite_mois:
+        today = timezone.localdate()
+        habilitation = Habilitation.objects.filter(
+            employe=employe, type_habilitation=quiz.habilitation_type).first()
+        base = today
+        if habilitation is not None and habilitation.date_validite and \
+                habilitation.date_validite > today:
+            base = habilitation.date_validite
+        nouvelle_echeance = _ajouter_mois(base, quiz.validite_mois)
+        if habilitation is None:
+            Habilitation.objects.create(
+                company=quiz.company, employe=employe,
+                type_habilitation=quiz.habilitation_type,
+                date_obtention=today, date_validite=nouvelle_echeance,
+                actif=True,
+            )
+        else:
+            habilitation.date_validite = nouvelle_echeance
+            habilitation.actif = True
+            habilitation.save(update_fields=[
+                'date_validite', 'actif', 'date_modification'])
+
+    return tentative
+
+
+def generer_besoin_recertification(habilitation):
+    """XRH34 — à l'expiration d'une habilitation LIÉE à un quiz (un
+    ``QuizFormation`` actif existe pour ce ``type_habilitation`` et cette
+    société), crée IDEMPOTENT un ``BesoinFormation`` de re-certification.
+
+    Idempotence : clé stable dans ``theme`` (type d'habilitation + employé) —
+    un ``BesoinFormation`` ``identifie``/``planifie`` déjà ouvert pour cette
+    re-certification n'est jamais dupliqué (re-run = 0 doublon). Une fois le
+    besoin ``satisfait`` (nouvelle réussite prolongeant l'habilitation), un
+    futur cycle d'expiration peut en re-créer un NOUVEAU.
+
+    No-op si aucun quiz actif ne couvre ce type d'habilitation pour la
+    société (pas de fausse alerte pour un titre sans quiz associé), ou si
+    l'habilitation n'est pas expirée.
+    """
+    from .models import BesoinFormation, QuizFormation
+
+    if habilitation.valide:
+        return None
+    quiz_couvrant = QuizFormation.objects.filter(
+        company=habilitation.company, actif=True,
+        habilitation_type=habilitation.type_habilitation).exists()
+    if not quiz_couvrant:
+        return None
+
+    theme = (
+        f'Re-certification — {habilitation.get_type_habilitation_display()} '
+        f'— {habilitation.employe.matricule}')
+    deja_ouvert = BesoinFormation.objects.filter(
+        company=habilitation.company, employe=habilitation.employe,
+        theme=theme,
+        statut__in=[
+            BesoinFormation.Statut.IDENTIFIE, BesoinFormation.Statut.PLANIFIE],
+    ).exists()
+    if deja_ouvert:
+        return None
+
+    return BesoinFormation.objects.create(
+        company=habilitation.company,
+        employe=habilitation.employe,
+        theme=theme[:200],
+        priorite=BesoinFormation.Priorite.HAUTE,
+        obligation_reglementaire=True,
+        type_obligation=BesoinFormation.TypeObligation.AUTRE,
+    )
