@@ -34,11 +34,20 @@ export function stripLocale(pathname: string): string {
   return normalized;
 }
 
-/** Préfixe un chemin racine (/contact) pour une locale (FR = pas de préfixe). */
+/**
+ * Préfixe un chemin racine (/contact) pour une locale (FR = pas de préfixe).
+ *
+ * WB16 — la racine (/) préfixée en EN/AR DOIT garder sa barre finale
+ * (`/en/`, `/ar/`), sinon la forme émise (`/en`, `/ar`) est 301-redirigée vers
+ * elle-même AVEC barre par `trailingSlashRedirect` (worker/redirects.mjs) : un
+ * hreflang ne doit jamais cibler une URL qui redirige. Les chemins non-racine
+ * sont inchangés (jamais de barre ajoutée par ce helper).
+ */
 export function localizePath(path: string, locale: Locale): string {
   const clean = path.startsWith('/') ? path : '/' + path;
   if (locale === DEFAULT_LOCALE) return clean;
-  return `/${locale}${clean === '/' ? '' : clean}`;
+  if (clean === '/') return `/${locale}/`;
+  return `/${locale}${clean}`;
 }
 
 /** Sens d'écriture de la locale (AR = rtl). */

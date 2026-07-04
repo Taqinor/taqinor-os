@@ -359,6 +359,64 @@ class FactureActivity(models.Model):
         return f"{self.facture_id} {self.kind} {self.field or ''}".strip()
 
 
+class ProformaDocument(models.Model):
+    """XFAC10 — trace d'une facture PRO-FORMA générée pour un devis.
+
+    Document NON comptabilisé (aucun impact statuts/GL/numérotation des
+    vraies factures) : uniquement un rendu PDF filigrané avec sa PROPRE
+    séquence ``PF-`` (via ``utils/references.py``), indépendante de celle des
+    factures réelles. Ce modèle sert UNIQUEMENT à garantir cette séquence
+    sans collision (même mécanisme highest-used+1 que Facture/Devis) et à
+    tracer les émissions dans le chatter du devis — il ne devient JAMAIS une
+    facture réelle (la conversion reste `generer-facture`, inchangée)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='proforma_documents')
+    reference = models.CharField(max_length=50)
+    devis = models.ForeignKey(
+        'Devis', on_delete=models.CASCADE, related_name='proformas')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        related_name='proformas_creees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Facture pro-forma'
+        verbose_name_plural = 'Factures pro-forma'
+        ordering = ['-date_creation']
+        unique_together = [('company', 'reference')]
+
+    def __str__(self):
+        return self.reference
+
+
+class FactureSource(models.Model):
+    """XFAC11 — table de liaison « facture consolidée ↔ document source ».
+
+    Une facture consolidée (`POST factures/consolider/`) regroupe PLUSIEURS
+    devis/BC déjà acceptés d'un même client en UNE facture ; ``Facture.devis``
+    reste nullable/unique (chaîne historique inchangée) alors que CETTE table
+    trace CHAQUE document source consolidé (traçabilité multi-source), avec le
+    sous-total HT de ce document dans la facture regroupée (sert au sous-titre
+    « Devis DV-… » sur le PDF)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='facture_sources')
+    facture = models.ForeignKey(
+        'Facture', on_delete=models.CASCADE, related_name='sources')
+    devis = models.ForeignKey(
+        'Devis', on_delete=models.PROTECT, related_name='factures_sources')
+    sous_total_ht = models.DecimalField(max_digits=12, decimal_places=2)
+
+    class Meta:
+        verbose_name = 'Source de facture consolidée'
+        verbose_name_plural = 'Sources de facture consolidée'
+        unique_together = [('facture', 'devis')]
+
+    def __str__(self):
+        return f'{self.facture_id} ← {self.devis.reference}'
+
+
 class BonCommande(models.Model):
     class Statut(models.TextChoices):
         EN_ATTENTE = 'en_attente', 'En attente'
@@ -563,6 +621,24 @@ class Facture(models.Model):
     # relance) ; exclu_relances retire la facture des listes d'impayés.
     prochaine_relance = models.DateField(null=True, blank=True)
     exclu_relances = models.BooleanField(default=False)
+    # XFAC5 — exclusion des relances avec EXPIRATION (contrairement au
+    # booléen éternel ci-dessus). NULL = pas d'expiration programmée
+    # (comportement historique inchangé). Une promesse de paiement active
+    # pose aussi cette date automatiquement (voir PromessePaiement).
+    exclu_relances_jusquau = models.DateField(null=True, blank=True)
+
+    # XFAC12 — escompte pour règlement anticipé (ex. 2/10 net 30). Les deux
+    # champs sont nullable : NULL/absent = comportement actuel inchangé
+    # (aucun escompte). Proposés depuis un réglage société (surchargeables
+    # par facture) à la création côté serializer/vue — le modèle reste
+    # purement additif ici.
+    escompte_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text="Taux d'escompte (%) si réglé sous escompte_jours.")
+    escompte_jours = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Nombre de jours depuis l'émission pour bénéficier de "
+                  "l'escompte.")
 
     # ── Statut de télédéclaration DGI (N39) — purement INFORMATIF, posé à la
     # main. Prépare le modèle de données pour un futur flux DGI sans aucun
@@ -678,9 +754,26 @@ class Facture(models.Model):
 
     @property
     def montant_paye(self):
-        """Somme des paiements enregistrés sur cette facture."""
+        """Somme des paiements enregistrés sur cette facture.
+
+        XFAC1 — inclut aussi les ventilations d'avances (``AffectationPaiement``)
+        reçues par cette facture : une avance non affectée (``facture`` vide)
+        n'entre dans ``montant_paye`` d'aucune facture tant qu'elle n'est pas
+        ventilée. Comportement historique inchangé pour un paiement classique
+        (posé directement sur ``facture``, jamais ventilé).
+
+        XFAC12 — inclut aussi les escomptes automatiquement appliqués
+        (``Paiement.escompte_montant``) : le règlement net + l'escompte
+        SOLDENT ensemble la facture, exactement comme montant + retenue
+        (XFAC4). Sans escompte (0/NULL) → comportement inchangé."""
         from decimal import Decimal
-        return sum((p.montant for p in self.paiements.all()), Decimal('0'))
+        direct = sum((p.montant for p in self.paiements.all()), Decimal('0'))
+        escomptes = sum(
+            (p.escompte_montant or Decimal('0') for p in self.paiements.all()),
+            Decimal('0'))
+        via_affectation = sum(
+            (a.montant for a in self.affectations_paiement.all()), Decimal('0'))
+        return direct + escomptes + via_affectation
 
     @property
     def avoirs_total(self):
@@ -695,10 +788,26 @@ class Facture(models.Model):
             Decimal('0'))
 
     @property
-    def montant_du(self):
-        """Reste à payer (TTC − payé − avoirs), jamais négatif."""
+    def retenues_subies_total(self):
+        """XFAC4 — total des retenues à la source SUBIES (RAS TVA/IS) que le
+        client a retenues sur cette facture. Une retenue solde la facture au
+        même titre qu'un paiement — trace la créance d'attestation, pas une
+        perte. Aucune retenue → 0 → comportement historique inchangé."""
         from decimal import Decimal
-        reste = self.total_ttc - self.montant_paye - self.avoirs_total
+        return sum(
+            (r.montant for r in self.retenues_subies.all()), Decimal('0'))
+
+    @property
+    def montant_paye_avec_retenues(self):
+        """XFAC4 — payé + retenues subies (ce qui solde réellement la facture)."""
+        return self.montant_paye + self.retenues_subies_total
+
+    @property
+    def montant_du(self):
+        """Reste à payer (TTC − payé − retenues subies − avoirs), jamais négatif."""
+        from decimal import Decimal
+        reste = (self.total_ttc - self.montant_paye_avec_retenues
+                 - self.avoirs_total)
         return reste if reste > 0 else Decimal('0')
 
     @property
@@ -790,6 +899,44 @@ class Facture(models.Model):
 
         return manquantes
 
+    @property
+    def escompte_mention(self):
+        """XFAC12 — mention imprimable de l'escompte (« Escompte X % si
+        règlement sous N jours, soit Y MAD »), ou ``None`` si non configuré."""
+        if not self.escompte_pct or not self.escompte_jours:
+            return None
+        from decimal import Decimal
+        montant = (
+            self.total_ttc * Decimal(self.escompte_pct) / Decimal('100')
+        ).quantize(Decimal('0.01'))
+        return {
+            'pct': self.escompte_pct, 'jours': self.escompte_jours,
+            'montant': montant,
+        }
+
+    def escompte_applicable(self, date_paiement):
+        """XFAC12 — True si ``date_paiement`` tombe dans la fenêtre d'escompte
+        (émission + escompte_jours inclus). Sans escompte configuré ou sans
+        date d'émission/paiement → False (comportement actuel inchangé)."""
+        if not self.escompte_pct or not self.escompte_jours:
+            return False
+        if not self.date_emission or not date_paiement:
+            return False
+        from datetime import timedelta
+        limite = self.date_emission + timedelta(days=self.escompte_jours)
+        return date_paiement <= limite
+
+    def calcul_escompte(self, montant, date_paiement):
+        """XFAC12 — montant de l'escompte applicable à un règlement de
+        ``montant`` fait le ``date_paiement``, dans la fenêtre. Hors fenêtre
+        (ou non configuré) → 0 (comportement actuel inchangé)."""
+        from decimal import Decimal
+        if not self.escompte_applicable(date_paiement):
+            return Decimal('0.00')
+        return (
+            Decimal(montant) * Decimal(self.escompte_pct) / Decimal('100')
+        ).quantize(Decimal('0.01'))
+
 
 class LigneFacture(models.Model):
     facture = models.ForeignKey(
@@ -815,6 +962,12 @@ class LigneFacture(models.Model):
     taux_tva = models.DecimalField(
         max_digits=5, decimal_places=2, null=True, blank=True,
         help_text='Taux TVA de la ligne (%). Vide = taux global de la facture.')
+    # XFAC11 — facture CONSOLIDÉE : document source de cette ligne (pour le
+    # sous-titre « Devis DV-… » groupant les lignes par document d'origine).
+    # NULL = ligne classique (facture simple, comportement inchangé).
+    source_devis = models.ForeignKey(
+        Devis, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='lignes_facture_consolidee')
 
     class Meta:
         verbose_name = 'Ligne de Facture'
@@ -833,11 +986,20 @@ class LigneFacture(models.Model):
 
 
 class Paiement(models.Model):
-    """Paiement encaissé sur une facture (enregistrement MANUEL).
+    """Paiement encaissé sur une facture (enregistrement MANUEL) — ou une AVANCE
+    client non affectée (XFAC1) tant qu'aucune facture ne la reçoit.
 
     Une facture peut recevoir plusieurs paiements (acompte partiel, solde…).
     Le reste à payer d'une facture et le solde d'un devis se déduisent de ces
     lignes — source unique du « payé ».
+
+    XFAC1 — ``facture`` devient nullable : un règlement reçu SANS facture
+    (avance, acompte à la commande, trop-perçu) se rattache directement au
+    ``client`` et reste ``statut=non_affecte`` jusqu'à ventilation (voir
+    ``AffectationPaiement``) sur une ou plusieurs factures ouvertes. Un
+    paiement classique (facture posée à la création) reste ``affecte`` —
+    comportement historique strictement inchangé pour tout paiement déjà
+    rattaché à une facture.
     """
     class Mode(models.TextChoices):
         ESPECES = 'especes', 'Espèces'
@@ -846,6 +1008,11 @@ class Paiement(models.Model):
         CARTE = 'carte', 'Carte bancaire'
         PRELEVEMENT = 'prelevement', 'Prélèvement'
         AUTRE = 'autre', 'Autre'
+
+    class StatutAffectation(models.TextChoices):
+        AFFECTE = 'affecte', 'Affecté'
+        PARTIELLEMENT_AFFECTE = 'partiellement_affecte', 'Partiellement affecté'
+        NON_AFFECTE = 'non_affecte', 'Non affecté'
 
     company = models.ForeignKey(
         'authentication.Company',
@@ -858,6 +1025,22 @@ class Paiement(models.Model):
         Facture,
         on_delete=models.CASCADE,
         related_name='paiements',
+        null=True,
+        blank=True,
+    )
+    # XFAC1 — client titulaire d'une AVANCE non (encore) affectée à une
+    # facture. Requis quand ``facture`` est vide ; sinon dérivable de la
+    # facture (mais toujours dispo pour retrouver les avances d'un client).
+    client = models.ForeignKey(
+        'crm.Client',
+        on_delete=models.PROTECT,
+        related_name='avances',
+        null=True,
+        blank=True,
+    )
+    statut_affectation = models.CharField(
+        max_length=25, choices=StatutAffectation.choices,
+        default=StatutAffectation.AFFECTE,
     )
     montant = models.DecimalField(max_digits=12, decimal_places=2)
     date_paiement = models.DateField()
@@ -866,6 +1049,11 @@ class Paiement(models.Model):
     )
     reference = models.CharField(max_length=120, blank=True, null=True)
     note = models.TextField(blank=True, null=True)
+    # XFAC12 — escompte AUTOMATIQUEMENT appliqué à ce règlement (fenêtre
+    # atteinte). 0/NULL = comportement actuel inchangé (aucun escompte, ou
+    # règlement hors fenêtre).
+    escompte_montant = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True, default=0)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -880,7 +1068,62 @@ class Paiement(models.Model):
         ordering = ['-date_paiement', '-date_creation']
 
     def __str__(self):
-        return f'{self.montant} MAD — {self.facture.reference}'
+        cible = self.facture.reference if self.facture_id else (
+            f'avance client #{self.client_id}')
+        return f'{self.montant} MAD — {cible}'
+
+    @property
+    def montant_affecte(self):
+        """XFAC1 — somme déjà ventilée sur des factures (via AffectationPaiement).
+
+        Pour un paiement classique (facture posée directement, jamais ventilé),
+        renvoie son montant plein — comportement historique inchangé."""
+        from decimal import Decimal
+        total = sum(
+            (a.montant for a in self.affectations.all()), Decimal('0'))
+        if total:
+            return total
+        return self.montant if self.facture_id else Decimal('0')
+
+    @property
+    def montant_disponible(self):
+        """Solde de l'avance encore disponible pour ventilation."""
+        from decimal import Decimal
+        if self.facture_id and not self.affectations.exists():
+            return Decimal('0')
+        montant = self.montant if isinstance(self.montant, Decimal) \
+            else Decimal(str(self.montant))
+        reste = montant - self.montant_affecte
+        return reste if reste > 0 else Decimal('0')
+
+
+class AffectationPaiement(models.Model):
+    """XFAC1 — ventilation d'un paiement (avance/trop-perçu) sur UNE facture.
+
+    Un même ``Paiement`` non affecté peut porter plusieurs lignes
+    d'affectation (réparti sur N factures ouvertes du même client). La somme
+    des affectations d'un paiement ne peut jamais dépasser son montant (garde
+    posée côté service — jamais de sur-affectation)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='affectations_paiement')
+    paiement = models.ForeignKey(
+        Paiement, on_delete=models.CASCADE, related_name='affectations')
+    facture = models.ForeignKey(
+        Facture, on_delete=models.CASCADE, related_name='affectations_paiement')
+    montant = models.DecimalField(max_digits=12, decimal_places=2)
+    date_affectation = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        related_name='affectations_effectuees')
+
+    class Meta:
+        verbose_name = 'Affectation de paiement'
+        verbose_name_plural = 'Affectations de paiement'
+        ordering = ['-date_affectation']
+
+    def __str__(self):
+        return f'{self.montant} MAD — {self.paiement_id} → {self.facture.reference}'
 
 
 class Avoir(models.Model):
@@ -1002,6 +1245,91 @@ class LigneAvoir(models.Model):
         return self.taux_tva if self.taux_tva is not None else self.avoir.taux_tva
 
 
+class RetenueSubie(models.Model):
+    """XFAC4 — Retenue à la source SUBIE par NOUS sur une facture client
+    (RAS TVA / RAS honoraires, réforme TVA 2024) : un client (État, grande
+    entreprise) retient un pourcentage de notre facture et ne nous verse que le
+    net — la facture reste juridiquement soldée (payé + retenue + avoirs =
+    TTC) mais on trace la créance d'attestation de retenue à recevoir.
+
+    Miroir de ``compta.RetenueSource`` (FG139 — RAS que NOUS retenons sur nos
+    fournisseurs) mais côté RECETTE : ici c'est le CLIENT qui retient sur ce
+    qu'il nous doit. Snapshot figé (base/taux/montant) au moment de la saisie.
+    """
+    class TypeRetenue(models.TextChoices):
+        RAS_TVA = 'ras_tva', 'RAS TVA'
+        RAS_IS = 'ras_is', 'RAS IS'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='retenues_subies')
+    facture = models.ForeignKey(
+        Facture, on_delete=models.CASCADE, related_name='retenues_subies')
+    # Paiement qui a déclenché la constatation de la retenue (le paiement
+    # partiel + la retenue soldent ensemble la facture). Optionnel : la
+    # retenue peut être saisie avant ou après le paiement lui-même.
+    paiement = models.ForeignKey(
+        Paiement, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='retenues_subies')
+    type_retenue = models.CharField(
+        max_length=10, choices=TypeRetenue.choices, default=TypeRetenue.RAS_TVA)
+    taux = models.DecimalField(max_digits=5, decimal_places=2)
+    base = models.DecimalField(max_digits=12, decimal_places=2)
+    montant = models.DecimalField(max_digits=12, decimal_places=2)
+    attestation_recue = models.BooleanField(default=False)
+    attestation_date = models.DateField(null=True, blank=True)
+    attestation_fichier = models.CharField(max_length=500, blank=True, null=True)
+    note = models.TextField(blank=True, default='')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        related_name='retenues_subies_creees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Retenue à la source subie'
+        verbose_name_plural = 'Retenues à la source subies'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'RAS {self.montant} MAD — {self.facture.reference}'
+
+
+class PromessePaiement(models.Model):
+    """XFAC5 — engagement client tracé (« je paie le 15 ») qui SUSPEND les
+    relances automatiques de la facture jusqu'à ``date_promise``. Le job beat
+    (``scheduled.py relance_reminders``) marque la promesse ``rompue`` si la
+    date passe sans encaissement suffisant et reprend les relances avec un
+    flag « promesse rompue »."""
+    class Statut(models.TextChoices):
+        EN_COURS = 'en_cours', 'En cours'
+        TENUE = 'tenue', 'Tenue'
+        ROMPUE = 'rompue', 'Rompue'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='promesses_paiement')
+    facture = models.ForeignKey(
+        Facture, on_delete=models.CASCADE, related_name='promesses_paiement')
+    montant_promis = models.DecimalField(max_digits=12, decimal_places=2)
+    date_promise = models.DateField()
+    note = models.TextField(blank=True, default='')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.EN_COURS)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        related_name='promesses_paiement_creees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Promesse de paiement'
+        verbose_name_plural = 'Promesses de paiement'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return (f'Promesse {self.montant_promis} MAD le {self.date_promise} '
+                f'— {self.facture.reference}')
+
+
 class FollowupLevel(models.Model):
     """Niveau de relance configurable (J+7 rappel, J+15 relance, J+30 ferme…).
 
@@ -1015,6 +1343,27 @@ class FollowupLevel(models.Model):
     nom = models.CharField(max_length=120)
     delai_jours = models.PositiveIntegerField(default=7)
     message = models.TextField(blank=True, default='')
+    # XFAC6 — pénalités/intérêts de retard (loi 69-21, intérêts moratoires
+    # B2B) : taux annuel (%) + frais fixes (MAD), tous deux nullable/défaut 0
+    # → comportement historique BYTE-IDENTIQUE (aucune pénalité) tant qu'ils
+    # ne sont pas paramétrés. Purement INDICATIF sur la lettre de relance tant
+    # que la facturation optionnelle n'est pas déclenchée.
+    taux_interet_annuel = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True, default=0)
+    frais_fixes = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True, default=0)
+
+    # XFAC8 — canal par niveau de relance (Odoo 19/D365 : courtoisie email →
+    # ferme WhatsApp → mise en demeure courrier → niveau « appel » qui crée
+    # une tâche téléphonique). Défaut EMAIL → comportement historique inchangé.
+    class Canal(models.TextChoices):
+        EMAIL = 'email', 'Email'
+        WHATSAPP = 'whatsapp', 'WhatsApp'
+        COURRIER = 'courrier', 'Courrier'
+        APPEL = 'appel', 'Appel (tâche téléphonique)'
+
+    canal = models.CharField(
+        max_length=10, choices=Canal.choices, default=Canal.EMAIL)
 
     class Meta:
         ordering = ['delai_jours', 'ordre']
@@ -1022,6 +1371,23 @@ class FollowupLevel(models.Model):
 
     def __str__(self):
         return f'{self.nom} (J+{self.delai_jours})'
+
+    def calcul_penalite(self, montant_du, jours_retard):
+        """XFAC6 — pénalité de retard = montant dû × taux annuel × jours/365 +
+        frais fixes. Taux/frais à 0 (ou NULL) → renvoie 0 (comportement
+        actuel byte-identique). N'affecte JAMAIS ``montant_du`` — purement
+        indicatif tant que non facturé."""
+        from decimal import Decimal, ROUND_HALF_UP
+        taux = self.taux_interet_annuel or Decimal('0')
+        frais = self.frais_fixes or Decimal('0')
+        if taux <= 0 and frais <= 0:
+            return Decimal('0.00')
+        montant_du = Decimal(montant_du or 0)
+        jours = max(int(jours_retard or 0), 0)
+        interet = montant_du * Decimal(taux) / Decimal('100') * \
+            Decimal(jours) / Decimal('365')
+        return (interet + Decimal(frais)).quantize(
+            Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
 class RelanceLog(models.Model):
@@ -1034,6 +1400,12 @@ class RelanceLog(models.Model):
     niveau = models.PositiveIntegerField(null=True, blank=True)
     niveau_nom = models.CharField(max_length=120, blank=True, default='')
     note = models.TextField(blank=True, default='')
+    # XFAC8 — canal réellement utilisé pour CETTE relance (trace, pas config).
+    # Vide = comportement historique (email implicite avant XFAC8).
+    canal = models.CharField(max_length=10, blank=True, default='')
+    # Canal courrier : clé MinIO de la lettre PDF générée en file d'attente
+    # d'impression (jamais d'envoi postal automatisé — impression manuelle).
+    courrier_pdf_key = models.CharField(max_length=500, blank=True, default='')
     date = models.DateField(auto_now_add=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,

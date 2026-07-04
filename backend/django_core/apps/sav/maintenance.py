@@ -286,9 +286,17 @@ class ContratMaintenanceViewSet(TenantMixin, viewsets.ModelViewSet):
         et avance `derniere_facturation`. La facturation doit être activée
         (`facturation_active=True`) et un prix doit être renseigné sur le contrat.
 
+        XCTR5 — chaque tentative (succès/échec) est journalisée dans le journal
+        de facturation récurrente de ``apps.contrats`` (source_type=
+        ``sav_maintenance``) : best-effort, une erreur de journalisation ne
+        bloque JAMAIS la facturation elle-même.
+
         Réponse 201 : {ok: true, facture_reference: str, facture_id: int}
         """
+        from django.utils import timezone
+
         contrat = self.get_object()
+        periode = timezone.localdate().strftime('%Y-%m')
         try:
             from apps.ventes.services import creer_facture_contrat
             facture = creer_facture_contrat(
@@ -297,15 +305,24 @@ class ContratMaintenanceViewSet(TenantMixin, viewsets.ModelViewSet):
                 company=request.user.company,
             )
         except ValueError as exc:
+            self._journaliser_cycle_best_effort(
+                request.user.company, contrat.pk, periode,
+                statut_echec=True, motif=str(exc))
             return Response({'ok': False, 'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
         except Exception:
             import logging
             logging.getLogger(__name__).warning(
                 'facturer: erreur inattendue (contrat #%s)', pk, exc_info=True)
+            self._journaliser_cycle_best_effort(
+                request.user.company, contrat.pk, periode,
+                statut_echec=True, motif='Erreur inattendue lors de la facturation.')
             return Response(
                 {'ok': False, 'detail': 'Erreur inattendue lors de la facturation.'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        self._journaliser_cycle_best_effort(
+            request.user.company, contrat.pk, periode,
+            statut_echec=False, facture_id=facture.id)
         return Response(
             {
                 'ok': True,
@@ -313,6 +330,37 @@ class ContratMaintenanceViewSet(TenantMixin, viewsets.ModelViewSet):
                 'facture_id': facture.id,
             },
             status=status.HTTP_201_CREATED)
+
+    @staticmethod
+    def _journaliser_cycle_best_effort(company, contrat_id, periode, *,
+                                       statut_echec, motif='',
+                                       facture_id=None):
+        """Journalise UN cycle de facturation SAV dans le journal contrats — XCTR5.
+
+        Frontière cross-app (CLAUDE.md) : appelle EXCLUSIVEMENT
+        ``apps.contrats.services`` (jamais ses ``models``/``views``), import
+        FONCTION-LOCAL pour éviter tout cycle au chargement. BEST-EFFORT : une
+        erreur de journalisation (garde anti-doublon incluse) ne doit JAMAIS
+        remonter — la facturation SAV elle-même est déjà terminée.
+        """
+        try:
+            from apps.contrats import services as contrats_services
+            from apps.contrats.models import CycleFacturationLog
+
+            statut = (
+                CycleFacturationLog.Statut.ECHEC if statut_echec
+                else CycleFacturationLog.Statut.GENERE)
+            contrats_services.enregistrer_cycle(
+                company,
+                source_type=CycleFacturationLog.SourceType.SAV_MAINTENANCE,
+                source_id=contrat_id,
+                periode=periode,
+                statut=statut,
+                motif=motif,
+                facture_id=facture_id,
+            )
+        except Exception:  # pragma: no cover - défensif (best-effort)
+            pass
 
     @action(detail=True, methods=['get'], url_path='rapport-pdf',
             permission_classes=[IsResponsableOrAdmin])

@@ -1,6 +1,10 @@
 from rest_framework import serializers
 
-from .models import AutomationApproval, AutomationRule, AutomationRun
+from .models import (
+    ApprovalDelegation, ApprovalRequest, ApprovalRequestType,
+    AutomationApproval, AutomationRule, AutomationRun,
+    IncomingWebhookTrigger,
+)
 
 
 class AutomationRuleSerializer(serializers.ModelSerializer):
@@ -56,3 +60,102 @@ class AutomationApprovalSerializer(serializers.ModelSerializer):
             'decided_by', 'decided_by_nom', 'decided_at', 'date_creation',
         ]
         read_only_fields = fields
+
+
+class ApprovalRequestTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ApprovalRequestType
+        # `company` posée côté serveur (TenantMixin) — jamais lue du corps.
+        fields = [
+            'id', 'nom', 'description', 'enabled',
+            'champs_requis', 'champs_optionnels', 'palier_approbateur',
+            # ZCTR7 — min approbations / PJ obligatoire / config par champ.
+            'min_approbations', 'piece_jointe_obligatoire', 'champs_config',
+            # ZCTR8 — ordre des approbateurs (séquentiel/parallèle).
+            'sequence_approbateurs',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+
+class ApprovalRequestSerializer(serializers.ModelSerializer):
+    status_display = serializers.CharField(
+        source='get_status_display', read_only=True)
+    request_type_nom = serializers.CharField(
+        source='request_type.nom', read_only=True, default=None)
+    demandeur_nom = serializers.CharField(
+        source='demandeur.username', read_only=True, default=None)
+    decided_by_nom = serializers.CharField(
+        source='decided_by.username', read_only=True, default=None)
+    # XKB3 — présent uniquement quand la décision a été prise par un
+    # suppléant « au nom de » ce délégant (délégation active à l'instant T).
+    decided_on_behalf_of_nom = serializers.CharField(
+        source='decided_on_behalf_of.username', read_only=True, default=None)
+    # ZCTR7 — nombre de décisions favorables DISTINCTES déjà enregistrées,
+    # et seuil requis (pour afficher « 1/2 approbations » côté frontend).
+    approvals_count = serializers.SerializerMethodField()
+    min_approbations = serializers.IntegerField(
+        source='request_type.min_approbations', read_only=True, default=1)
+
+    class Meta:
+        model = ApprovalRequest
+        fields = [
+            'id', 'request_type', 'request_type_nom', 'demandeur',
+            'demandeur_nom', 'payload', 'status', 'status_display',
+            'decided_by', 'decided_by_nom', 'decided_at', 'decision_note',
+            'decided_on_behalf_of', 'decided_on_behalf_of_nom',
+            'approvals_count', 'min_approbations',
+            'date_creation',
+        ]
+        # `company` + `demandeur` posés côté serveur ; le statut/décision ne
+        # se change QUE via les actions dédiées (approve/reject), jamais par
+        # un PATCH direct du champ.
+        read_only_fields = [
+            'id', 'request_type_nom', 'demandeur', 'demandeur_nom', 'status',
+            'status_display', 'decided_by', 'decided_by_nom', 'decided_at',
+            'decision_note', 'decided_on_behalf_of',
+            'decided_on_behalf_of_nom', 'approvals_count', 'min_approbations',
+            'date_creation',
+        ]
+
+    def get_approvals_count(self, obj):
+        from .models import ApprovalDecision
+        return obj.decisions.filter(
+            decision=ApprovalDecision.Decision.APPROVE,
+        ).values('decided_by_id').distinct().count()
+
+
+class ApprovalDelegationSerializer(serializers.ModelSerializer):
+    delegant_nom = serializers.CharField(
+        source='delegant.username', read_only=True, default=None)
+    suppleant_nom = serializers.CharField(
+        source='suppleant.username', read_only=True, default=None)
+
+    class Meta:
+        model = ApprovalDelegation
+        # `company` posée côté serveur ; `delegant` par défaut = l'appelant
+        # (posé côté vue), mais un admin peut déléguer pour un tiers.
+        fields = [
+            'id', 'delegant', 'delegant_nom', 'suppleant', 'suppleant_nom',
+            'date_debut', 'date_fin', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class IncomingWebhookTriggerSerializer(serializers.ModelSerializer):
+    rule_nom = serializers.CharField(source='rule.nom', read_only=True)
+    url_path = serializers.SerializerMethodField()
+
+    class Meta:
+        model = IncomingWebhookTrigger
+        # `company` posée côté serveur ; `token` généré côté serveur (jamais
+        # lu du corps) — seule la rotation explicite (action dédiée) change.
+        fields = [
+            'id', 'rule', 'rule_nom', 'token', 'url_path', 'hmac_secret',
+            'enabled', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['id', 'rule_nom', 'token', 'url_path',
+                            'date_creation', 'date_modification']
+
+    def get_url_path(self, obj):
+        return f'/api/django/public/hooks/{obj.token}/'

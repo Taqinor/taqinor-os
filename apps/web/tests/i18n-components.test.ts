@@ -47,7 +47,7 @@ describe('W67 — les 6 composants à chiffres ont 3 branches de locale', () => 
 describe('GarantiesTeaser — FR verbatim, EN/AR présents, chiffres invariants', () => {
   it('reprend les libellés FR mot pour mot', () => {
     expect(garanties).toContain('Garanties écrites');
-    expect(garanties).toContain('De 2 à 25 ans, noir sur blanc');
+    expect(garanties).toContain('De 2 à 30 ans, noir sur blanc');
     expect(garanties).toContain('Voir toutes nos garanties →');
   });
   it('contient des traductions EN et AR distinctives', () => {
@@ -57,17 +57,18 @@ describe('GarantiesTeaser — FR verbatim, EN/AR présents, chiffres invariants'
   });
   it('les VALEURS chiffrées sont identiques dans toutes les locales — seuls le mot d’unité et le séparateur décimal localisent (W302)', () => {
     // years est désormais locale-keyé (YEARS_BY_LOCALE) : mêmes nombres, unité localisée.
-    for (const fig of ['12 ans', '25 ans', '10 ans', '20 ans', '2 ans']) {       // FR
+    for (const fig of ['12 ans', '30 ans', '10 ans', '20 ans', '2 ans']) {       // FR
       expect(garanties, fig).toContain(fig);
     }
-    for (const fig of ['12 years', '25 years', '10 years', '20 years', '2 years']) { // EN
+    for (const fig of ['12 years', '30 years', '10 years', '20 years', '2 years']) { // EN
       expect(garanties, fig).toContain(fig);
     }
-    // Performance : « 84,8 % » en FR (virgule) ; « 84.8 % » en EN/AR (point —
+    // Performance : « 87,4 % » en FR (virgule) ; « 87.4 % » en EN/AR (point —
     // convention déjà en place sur garanties/financement/faq/équipement). La
-    // VALEUR (84,8) est identique partout ; seul le séparateur décimal localise.
-    expect(garanties).toContain('Performance ≥ 84,8 %');
-    expect(garanties).toContain('84.8 %');
+    // VALEUR (87,4) est identique partout ; seul le séparateur décimal localise.
+    // (WA11 2026-07-04 : barème datasheet réel N-type TOPCon, 30 ans / ≥ 87,4 %.)
+    expect(garanties).toContain('Performance ≥ 87,4 %');
+    expect(garanties).toContain('87.4 %');
     // Les chiffres ne sont JAMAIS « traduits » en chiffres arabo-indiens.
     expect(garanties).not.toMatch(/[٠-٩۰-۹]/);
     // Le nom de marque reste identique et présent dans le corps rendu.

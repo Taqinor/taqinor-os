@@ -1323,6 +1323,19 @@ def reset_relance_escalation(facture):
     n = autos.update(note=RELANCE_AUTO_NOTE_RESOLUE)
     if n:
         changed = True
+    # XFAC5 — une facture soldée referme toute promesse de paiement encore
+    # « en_cours » (tenue) et lève l'exclusion de relance expirante posée par
+    # la promesse.
+    from .models import PromessePaiement
+    tenues = facture.promesses_paiement.filter(
+        statut=PromessePaiement.Statut.EN_COURS,
+    ).update(statut=PromessePaiement.Statut.TENUE)
+    if tenues:
+        changed = True
+    if facture.exclu_relances_jusquau is not None:
+        facture.exclu_relances_jusquau = None
+        facture.save(update_fields=['exclu_relances_jusquau'])
+        changed = True
     return changed
 
 
@@ -1478,6 +1491,187 @@ def creer_facture_contrat(*, contrat, user, company):
         'FG40: facture %s créée pour contrat #%s (company %s)',
         facture.reference, contrat.pk, company.id)
     return facture
+
+
+# ── XPRJ3 — Facturation en régie (T&M) depuis gestion_projet ─────────────────
+
+def creer_facture_regie(*, company, client, user, libelle, montant_ht,
+                        taux_tva=Decimal('20')):
+    """XPRJ3 — Crée une Facture BROUILLON « en régie » (temps & matériel).
+
+    Fonction FINE sanctionnée pour ``gestion_projet.services.facturer_temps_
+    projet`` (frontière cross-app, CLAUDE.md) : ce module ne connaît AUCUN
+    détail de gestion_projet (pas de timesheet, pas de tâche) — il reçoit juste
+    un montant HT déjà calculé (heures × taux de facturation, agrégées côté
+    appelant) et un libellé. Le client est résolu côté APPELANT (jamais importé
+    ici) et passé en instance ``crm.Client``.
+
+    Statut BROUILLON (contrairement à ``creer_facture_contrat`` qui émet
+    directement) : une facture de régie doit rester éditable/relisible avant
+    envoi. Numérotation via ``apps/ventes/utils/references.py`` (jamais
+    ``count()+1``). Renvoie la ``Facture`` créée.
+    """
+    from apps.ventes.models import Facture
+    from apps.ventes.utils.references import create_with_reference
+
+    montant_ht = Decimal(montant_ht).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+    montant_tva = (montant_ht * taux_tva / 100).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+    montant_ttc = montant_ht + montant_tva
+
+    def _create(ref):
+        return Facture.objects.create(
+            reference=ref,
+            company=company,
+            client=client,
+            statut=Facture.Statut.BROUILLON,
+            type_facture=Facture.TypeFacture.COMPLETE,
+            taux_tva=taux_tva,
+            montant_ht=montant_ht,
+            montant_tva=montant_tva,
+            montant_ttc=montant_ttc,
+            libelle=libelle,
+            created_by=user,
+        )
+
+    facture = create_with_reference(Facture, 'FAC', company, _create)
+    logger.info(
+        'XPRJ3: facture régie %s créée (company %s, montant HT %s)',
+        facture.reference, company.id, montant_ht)
+    return facture
+
+
+# ── XPRJ4 — Facture d'acompte pour une situation de travaux (décompte BTP) ───
+
+def creer_facture_acompte_situation(*, company, client, user, libelle,
+                                    montant_periode_ht,
+                                    retenue_garantie_pct=None,
+                                    taux_tva=Decimal('20')):
+    """XPRJ4 — Crée une Facture BROUILLON d'ACOMPTE pour une situation de
+    travaux (décompte progressif BTP).
+
+    Fonction FINE sanctionnée pour ``gestion_projet.services`` (frontière
+    cross-app, CLAUDE.md) : reçoit le montant HT DÉJÀ calculé de la PÉRIODE
+    (cumulé − antérieur, agrégé côté appelant sur toutes les lignes de la
+    situation) et une retenue de garantie optionnelle DÉDUITE du montant
+    facturé (le taux, pas le suivi de sa libération — qui vit dans
+    ``contrats``, jamais importé ici). Statut BROUILLON + ``type_facture``
+    ACOMPTE (chaîne standard devis→factures, réutilisée ici sans devis source).
+    Numérotation via ``apps/ventes/utils/references.py`` (jamais
+    ``count()+1``). Renvoie la ``Facture`` créée.
+    """
+    from apps.ventes.models import Facture
+    from apps.ventes.utils.references import create_with_reference
+
+    montant_periode_ht = Decimal(montant_periode_ht).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+    rg_pct = Decimal(retenue_garantie_pct or 0)
+    montant_rg = (montant_periode_ht * rg_pct / 100).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+    montant_ht_net = montant_periode_ht - montant_rg
+    montant_tva = (montant_ht_net * taux_tva / 100).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+    montant_ttc = montant_ht_net + montant_tva
+
+    def _create(ref):
+        return Facture.objects.create(
+            reference=ref,
+            company=company,
+            client=client,
+            statut=Facture.Statut.BROUILLON,
+            type_facture=Facture.TypeFacture.ACOMPTE,
+            taux_tva=taux_tva,
+            montant_ht=montant_ht_net,
+            montant_tva=montant_tva,
+            montant_ttc=montant_ttc,
+            libelle=libelle,
+            created_by=user,
+        )
+
+    facture = create_with_reference(Facture, 'FAC', company, _create)
+    logger.info(
+        'XPRJ4: facture acompte situation %s créée (company %s, montant HT '
+        'net %s, RG %s%%)',
+        facture.reference, company.id, montant_ht_net, rg_pct)
+    return facture
+
+
+# ── XPOS1/XPOS6 — Thin services exposés pour apps.pos (vente comptoir) ─────
+# apps.pos ne peut PAS importer apps.ventes.models directement (règle de
+# modularité CLAUDE.md) : ces fonctions sont son unique porte d'entrée pour
+# créer une facture classique et enregistrer/lire des paiements.
+
+def creer_facture_classique(*, company, client, user, taux_tva, montant_ht,
+                            montant_tva, montant_ttc, libelle=''):
+    """Crée une ``Facture`` classique (sans devis/BC), montants figés.
+
+    Utilisé par ``apps.pos.services.valider_vente`` pour la facture légale
+    d'une vente comptoir. ``company``/``client`` doivent déjà être validés par
+    l'appelant (scoping multi-tenant). Numérotation collision-proof (jamais
+    count()+1)."""
+    from apps.ventes.models import Facture
+    from apps.ventes.utils.references import create_with_reference
+
+    def _create(ref):
+        return Facture.objects.create(
+            reference=ref,
+            company=company,
+            client=client,
+            statut=Facture.Statut.EMISE,
+            type_facture=Facture.TypeFacture.COMPLETE,
+            taux_tva=taux_tva,
+            montant_ht=montant_ht,
+            montant_tva=montant_tva,
+            montant_ttc=montant_ttc,
+            libelle=libelle,
+            created_by=user,
+        )
+
+    return create_with_reference(Facture, 'FAC', company, _create)
+
+
+def enregistrer_paiement(*, facture, montant, mode, date_paiement, user,
+                         reference='', note=''):
+    """Enregistre un ``Paiement`` MANUEL sur une facture EXISTANTE.
+
+    Thin service exposé pour apps.pos (encaissement comptoir XPOS1/XPOS6) —
+    même modèle/table que le paiement enregistré depuis l'écran facture,
+    aucune duplication de logique."""
+    from apps.ventes.models import Paiement
+    return Paiement.objects.create(
+        company=facture.company,
+        facture=facture,
+        montant=montant,
+        date_paiement=date_paiement,
+        mode=mode,
+        reference=reference or '',
+        note=note or '',
+        created_by=user,
+    )
+
+
+def facture_montant_du(facture):
+    """Solde restant dû d'une facture (lecture, thin service pour apps.pos)."""
+    return facture.montant_du
+
+
+def get_facture_or_none(*, company, facture_id):
+    """Facture scopée société, ou None (thin service pour apps.pos XPOS6)."""
+    from apps.ventes.models import Facture
+    return Facture.objects.filter(company=company, id=facture_id).first()
+
+
+def facturables_pour_devis(*, company, query=''):
+    """Factures émises/en retard avec solde restant dû, scopées société (thin
+    selector pour apps.pos XPOS6 — recherche comptoir par référence)."""
+    from apps.ventes.models import Facture
+    qs = Facture.objects.filter(
+        company=company,
+        statut__in=(Facture.Statut.EMISE, Facture.Statut.EN_RETARD))
+    if query:
+        qs = qs.filter(reference__icontains=query)
+    return [f for f in qs.select_related('client', 'devis') if f.montant_du > 0]
 
 
 # ── FG53 — Liens de paiement « Payer en ligne » ──────────────────────────────
@@ -2074,3 +2268,334 @@ def _advance_lead_on_expiry(lead, today):
         return False, moved_cold
 
     return False, False
+
+
+# ── XSAV3 — Devis de réparation hors garantie depuis un ticket SAV ───────────
+
+def create_devis_pour_ticket(*, company, user, client_id, lignes, note=None):
+    """XSAV3 — Crée un Devis BROUILLON pour un travail SAV non couvert.
+
+    Point d'entrée cross-app (sav → ventes) : ``apps.sav`` appelle CETTE
+    fonction plutôt que d'importer ``apps.ventes.models`` directement (règle
+    de modularité CLAUDE.md). ``lignes`` est une liste de dicts
+    ``{'produit_id': int, 'designation': str, 'quantite': Decimal,
+    'prix_unitaire': Decimal}`` — le prix unitaire attendu ici est TOUJOURS le
+    prix de VENTE catalogue (``Produit.prix_vente``), jamais ``prix_achat``.
+
+    Référence générée via ``apps.ventes.utils.references`` (jamais count()+1).
+    Renvoie le ``Devis`` créé (brouillon, sans lien lead — un ticket SAV n'a
+    pas de lead d'origine).
+    """
+    from .models import Devis, LigneDevis
+    from .utils.references import create_with_reference
+    from apps.crm.models import Client
+
+    client = Client.objects.get(pk=client_id, company=company)
+
+    def _create(ref):
+        return Devis.objects.create(
+            company=company, reference=ref, client=client,
+            statut=Devis.Statut.BROUILLON, created_by=user,
+            note=note or '',
+        )
+    devis = create_with_reference(Devis, 'DEV', company, _create)
+
+    for ligne in (lignes or []):
+        produit_id = ligne.get('produit_id')
+        if not produit_id:
+            continue
+        LigneDevis.objects.create(
+            devis=devis,
+            produit_id=produit_id,
+            designation=ligne.get('designation') or '',
+            quantite=Decimal(str(ligne.get('quantite') or 1)),
+            prix_unitaire=Decimal(str(ligne.get('prix_unitaire') or 0)),
+        )
+    return devis
+
+
+# ── XFAC1 — Avances client (paiement sans facture) + affectation multi- ────
+# ────────────────────────── factures ───────────────────────────────────────
+
+def enregistrer_avance(*, company, client, montant, date_paiement, mode,
+                       reference='', note='', created_by=None):
+    """Enregistre un règlement reçu SANS facture (avance, acompte à la
+    commande, trop-perçu). Le paiement reste ``statut_affectation=non_affecte``
+    tant qu'il n'a pas été ventilé sur une ou plusieurs factures ouvertes du
+    même client (voir ``ventiler_avance``)."""
+    from decimal import Decimal, InvalidOperation
+    from rest_framework.exceptions import ValidationError
+    from .models import Paiement
+
+    if montant is None:
+        raise ValidationError({'montant': 'Le montant doit être positif.'})
+    try:
+        montant = Decimal(str(montant))
+    except InvalidOperation:
+        raise ValidationError({'montant': 'Montant invalide.'})
+    if montant <= 0:
+        raise ValidationError({'montant': 'Le montant doit être positif.'})
+    if client is None:
+        raise ValidationError({'client': 'Client requis pour une avance.'})
+    return Paiement.objects.create(
+        company=company, client=client, facture=None,
+        statut_affectation=Paiement.StatutAffectation.NON_AFFECTE,
+        montant=montant, date_paiement=date_paiement, mode=mode,
+        reference=reference, note=note, created_by=created_by,
+    )
+
+
+def ventiler_avance(*, paiement, facture, montant, user=None):
+    """Ventile UN paiement non affecté (avance) sur UNE facture ouverte du
+    même client, pour ``montant``. Peut être appelée plusieurs fois pour
+    répartir un même paiement sur plusieurs factures.
+
+    Garde-fous (jamais de sur-affectation) :
+      - la facture cible doit appartenir à la même société ET au même client
+        que le paiement ;
+      - le montant ventilé ne peut jamais dépasser le solde disponible du
+        paiement (``montant_disponible``) ;
+      - le montant ventilé ne peut jamais dépasser le reste à payer de la
+        facture cible (``montant_du``).
+
+    Met à jour ``statut_affectation`` du paiement (affecte / partiellement
+    affecte) et le statut de la facture si elle devient intégralement réglée
+    (réutilise le même seuil que ``enregistrer_paiement``)."""
+    from decimal import Decimal
+    from django.db import transaction
+    from rest_framework.exceptions import ValidationError
+    from .models import AffectationPaiement, Facture, Paiement
+
+    montant = Decimal(montant)
+    if montant <= 0:
+        raise ValidationError(
+            {'montant': "Le montant ventilé doit être positif."})
+
+    with transaction.atomic():
+        locked_paiement = Paiement.objects.select_for_update().get(
+            pk=paiement.pk)
+        if locked_paiement.facture_id is not None:
+            raise ValidationError(
+                {'paiement': "Ce paiement est déjà rattaché à une facture."})
+        locked_facture = Facture.objects.select_for_update().get(
+            pk=facture.pk)
+        if locked_facture.company_id != locked_paiement.company_id:
+            raise ValidationError(
+                {'facture': "Facture d'une autre société."})
+        if locked_facture.client_id != locked_paiement.client_id:
+            raise ValidationError(
+                {'facture': "La facture doit appartenir au même client "
+                            "que l'avance."})
+        if locked_facture.statut == Facture.Statut.ANNULEE:
+            raise ValidationError(
+                {'facture': "Impossible de ventiler sur une facture annulée."})
+
+        disponible = locked_paiement.montant_disponible
+        if montant - disponible > Decimal('0.01'):
+            raise ValidationError({
+                'montant': (
+                    f"Le montant ventilé dépasse le solde disponible de "
+                    f"l'avance ({disponible:.2f} MAD)."),
+            })
+        reste_facture = locked_facture.montant_du
+        if montant - reste_facture > Decimal('0.01'):
+            raise ValidationError({
+                'montant': (
+                    f"Le montant ventilé dépasse le reste à payer de la "
+                    f"facture ({reste_facture:.2f} MAD)."),
+            })
+
+        affectation = AffectationPaiement.objects.create(
+            company=locked_paiement.company, paiement=locked_paiement,
+            facture=locked_facture, montant=montant, created_by=user,
+        )
+
+        locked_paiement.refresh_from_db()
+        if locked_paiement.montant_disponible <= 0:
+            locked_paiement.statut_affectation = (
+                Paiement.StatutAffectation.AFFECTE)
+        else:
+            locked_paiement.statut_affectation = (
+                Paiement.StatutAffectation.PARTIELLEMENT_AFFECTE)
+        locked_paiement.save(update_fields=['statut_affectation'])
+
+        locked_facture.refresh_from_db()
+        if locked_facture.montant_du <= 0 and \
+                locked_facture.statut != Facture.Statut.ANNULEE:
+            locked_facture.statut = Facture.Statut.PAYEE
+            locked_facture.save(update_fields=['statut'])
+            reset_relance_escalation(locked_facture)
+
+        from . import activity
+        activity.log_facture_avance_affectee(
+            locked_facture, user, locked_paiement, montant)
+
+    return affectation
+
+
+# ── XFAC4 — Retenue à la source SUBIE (RAS TVA/RAS IS) sur factures ────────
+# ────────────────────────── clients ────────────────────────────────────────
+
+def enregistrer_paiement_avec_retenue(
+        *, facture, montant, date_paiement, mode, type_retenue, taux,
+        reference='', note='', created_by=None):
+    """Enregistre un paiement PARTIEL accompagné d'une retenue à la source
+    (RAS TVA / RAS IS) qui, ENSEMBLE, soldent la facture : payé + retenue +
+    avoirs = TTC. Sans cette écriture, la facture resterait « partiellement
+    payée » à tort — la retenue n'est pas un montant perdu, c'est une créance
+    d'attestation à recevoir de la DGT/du client.
+
+    ``taux`` est informatif (tracé sur la retenue) ; le MONTANT de la retenue
+    est déduit du reste à payer : ``retenue = reste_avant − montant`` (le
+    paiement partiel + la retenue soldent ensemble EXACTEMENT le reste à
+    payer). Rejette un montant qui dépasserait seul le reste à payer, ou une
+    retenue résultante négative (le paiement seul suffirait déjà). Le
+    paiement + la retenue sont créés dans la MÊME transaction ; la facture
+    bascule automatiquement « Payée » si le solde tombe à zéro (même seuil que
+    ``enregistrer_paiement``).
+    """
+    from decimal import Decimal
+    from django.db import transaction
+    from rest_framework.exceptions import ValidationError
+    from .models import Facture, Paiement, RetenueSubie
+
+    montant = Decimal(montant)
+    if montant <= 0:
+        raise ValidationError({'montant': 'Le montant doit être positif.'})
+    try:
+        taux = Decimal(taux)
+    except (TypeError, ValueError):
+        raise ValidationError({'taux': 'Taux de RAS invalide.'})
+    if taux < 0 or taux > 100:
+        raise ValidationError(
+            {'taux': 'Le taux de RAS doit être compris entre 0 et 100 %.'})
+
+    with transaction.atomic():
+        locked = Facture.objects.select_for_update().get(pk=facture.pk)
+        if locked.statut == Facture.Statut.ANNULEE:
+            raise ValidationError(
+                {'detail': "Impossible d'encaisser sur une facture annulée."})
+        reste = locked.montant_du
+        if montant - reste > Decimal('0.01'):
+            raise ValidationError({
+                'montant': (
+                    f'Le paiement dépasse le reste à payer '
+                    f'({reste:.2f} MAD).'),
+            })
+        # Base de la retenue = ce qui reste dû après le règlement partiel ;
+        # le paiement + la retenue soldent ensemble exactement le reste à
+        # payer (jamais de fraction perdue, jamais de sur-solde).
+        base = reste - montant
+        retenue_montant = base.quantize(Decimal('0.01'))
+        if retenue_montant < 0:
+            retenue_montant = Decimal('0')
+
+        paiement = Paiement.objects.create(
+            company=locked.company, facture=locked, montant=montant,
+            date_paiement=date_paiement, mode=mode, reference=reference,
+            note=note, created_by=created_by,
+        )
+        retenue = RetenueSubie.objects.create(
+            company=locked.company, facture=locked, paiement=paiement,
+            type_retenue=type_retenue, taux=taux, base=base,
+            montant=retenue_montant, note=note,
+            created_by=created_by,
+        )
+
+        from . import activity
+        activity.log_facture_paiement(locked, created_by, paiement)
+        activity.log_facture_retenue_subie(locked, created_by, retenue)
+
+        locked.refresh_from_db()
+        if locked.montant_paye_avec_retenues >= locked.total_ttc - \
+                locked.avoirs_total - Decimal('0.01') and \
+                locked.statut != Facture.Statut.ANNULEE:
+            locked.statut = Facture.Statut.PAYEE
+            locked.save(update_fields=['statut'])
+            reset_relance_escalation(locked)
+
+    return paiement, retenue
+
+
+# ── XFAC11 — Facture consolidée multi-devis/BC d'un même client ────────────
+
+def consolider_factures(*, company, devis_ids, user, created_by=None):
+    """Crée UNE Facture unique regroupant PLUSIEURS devis acceptés du MÊME
+    client (ex. projet multi-sites : ferme à N forages, tranches). Chaque
+    document source garde ses lignes (recopiées, groupées par ``source_devis``
+    pour le sous-titre « Devis DV-… » sur le PDF) et une ``FactureSource``
+    trace le sous-total HT de son document d'origine.
+
+    Contrôles :
+      - au moins 2 devis, tous acceptés, tous de la MÊME société ET du MÊME
+        client (clients différents → rejeté) ;
+      - un devis déjà facturé (une Facture non annulée référence ce devis,
+        directement ou via une FactureSource antérieure) est refusé.
+
+    La chaîne Sous-total → Remise → HT → TVA → TTC reste calculée par les
+    propriétés existantes de ``Facture`` (aucune formule dupliquée) : les
+    lignes recopiées portent leur ``taux_tva`` d'origine, donc la ventilation
+    TVA par taux (10 %/20 %) reste correcte pour le mélange.
+    """
+    from django.db import transaction
+    from rest_framework.exceptions import ValidationError
+    from .models import Devis, Facture, FactureSource, LigneFacture
+    from .utils.company_settings import create_numbered
+
+    if not devis_ids or len(devis_ids) < 2:
+        raise ValidationError(
+            {'devis_ids': 'Au moins 2 devis sont requis pour consolider.'})
+
+    devis_qs = list(Devis.objects.select_related('client').filter(
+        id__in=devis_ids, company=company).prefetch_related('lignes'))
+    if len(devis_qs) != len(set(devis_ids)):
+        raise ValidationError({'devis_ids': 'Un ou plusieurs devis introuvables.'})
+
+    client_ids = {d.client_id for d in devis_qs}
+    if len(client_ids) > 1:
+        raise ValidationError(
+            {'devis_ids': 'Tous les devis doivent appartenir au même client.'})
+
+    for d in devis_qs:
+        if d.statut != Devis.Statut.ACCEPTE:
+            raise ValidationError({
+                'devis_ids': (
+                    f'Le devis {d.reference} doit être accepté pour être '
+                    f'consolidé.'),
+            })
+        deja_facture = Facture.objects.filter(
+            devis=d).exclude(statut=Facture.Statut.ANNULEE).exists() or \
+            FactureSource.objects.filter(devis=d).exists()
+        if deja_facture:
+            raise ValidationError({
+                'devis_ids': f'Le devis {d.reference} est déjà facturé.',
+            })
+
+    client = devis_qs[0].client
+
+    with transaction.atomic():
+        def _create(ref):
+            return Facture.objects.create(
+                reference=ref, company=company, client=client,
+                statut=Facture.Statut.EMISE, created_by=created_by,
+            )
+
+        facture = create_numbered(Facture, company, 'facture', _create)
+
+        for d in devis_qs:
+            sous_total = Decimal('0')
+            for ligne in d.lignes.all():
+                LigneFacture.objects.create(
+                    facture=facture, produit=ligne.produit,
+                    designation=f'{d.reference} — {ligne.designation}',
+                    quantite=ligne.quantite, prix_unitaire=ligne.prix_unitaire,
+                    remise=ligne.remise, taux_tva=ligne.taux_tva,
+                    source_devis=d,
+                )
+                sous_total += ligne.total_ht
+            FactureSource.objects.create(
+                company=company, facture=facture, devis=d,
+                sous_total_ht=sous_total,
+            )
+
+    return facture

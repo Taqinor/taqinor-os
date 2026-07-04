@@ -51,6 +51,16 @@ from .models import (
     Kit,
     KitComposant,
     OrdreAssemblage,
+    OrdreAssemblageActivity,
+    OrdreAssemblageLigne,
+    SerieAssemblage,
+    OrdreDemontage,
+    OrdreDemontageLigne,
+    ControleQualiteModele,
+    ControleQualiteItemModele,
+    ControleQualiteOrdre,
+    EtapeAssemblage,
+    EtapeOrdre,
     Livraison,
     LivraisonLigne,
     PreuveLivraison,
@@ -2048,6 +2058,7 @@ class KitComposantSerializer(serializers.ModelSerializer):
         model = KitComposant
         fields = [
             'id', 'kit', 'produit', 'produit_nom', 'designation', 'quantite',
+            'taux_perte_pct',
         ]
 
     def validate(self, attrs):
@@ -2086,23 +2097,62 @@ class KitSerializer(serializers.ModelSerializer):
         return value
 
 
+class OrdreAssemblageLigneSerializer(serializers.ModelSerializer):
+    """XMFG6 - ligne de composant PERSONNALISABLE d'un ordre. `origine` posee
+    cote serveur (kit vs ajout) ; l'editabilite (planifie uniquement) est
+    controlee par la vue."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+
+    class Meta:
+        model = OrdreAssemblageLigne
+        fields = [
+            'id', 'ordre', 'produit', 'produit_nom', 'designation',
+            'quantite', 'origine',
+        ]
+        read_only_fields = ['origine']
+
+    def validate(self, attrs):
+        produit = attrs.get('produit') if 'produit' in attrs else getattr(
+            self.instance, 'produit', None)
+        designation = attrs.get('designation') if 'designation' in attrs else (
+            getattr(self.instance, 'designation', None))
+        if produit is None and not (designation or '').strip():
+            raise serializers.ValidationError(
+                {'designation': 'Indiquez un produit ou une designation.'})
+        return attrs
+
+
 class OrdreAssemblageSerializer(serializers.ModelSerializer):
     """FG328 - ordre d'assemblage de N kits. Reference/societe/`created_by`
-    poses COTE SERVEUR ; le statut avance via `demarrer`/`terminer`."""
+    poses COTE SERVEUR ; le statut avance via `demarrer`/`terminer`/`annuler`."""
     kit_nom = serializers.CharField(
         source='kit.nom', read_only=True, default=None)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True, default=None)
+    responsable_nom = serializers.CharField(
+        source='responsable.username', read_only=True, default=None)
+    lignes = OrdreAssemblageLigneSerializer(many=True, read_only=True)
+    cout_prevu = serializers.SerializerMethodField()
+    temps_prevu_min = serializers.SerializerMethodField()
+    temps_reel_min = serializers.SerializerMethodField()
 
     class Meta:
         model = OrdreAssemblage
         fields = [
             'id', 'reference', 'kit', 'kit_nom', 'quantite', 'statut',
             'statut_display', 'note', 'date_terminaison',
+            'emplacement_source', 'emplacement_destination',
+            'quantite_produite', 'stock_mouvemente',
+            'devis', 'chantier',
+            'date_prevue', 'responsable', 'responsable_nom',
+            'motif_annulation', 'lignes', 'cout_prevu',
+            'temps_prevu_min', 'temps_reel_min',
             'created_by', 'date_creation', 'date_modification',
         ]
         read_only_fields = [
             'reference', 'statut', 'date_terminaison', 'created_by',
+            'stock_mouvemente', 'motif_annulation',
             'date_creation', 'date_modification',
         ]
 
@@ -2111,6 +2161,181 @@ class OrdreAssemblageSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'La quantite a assembler doit etre strictement positive.')
         return value
+
+    def get_cout_prevu(self, obj):
+        from .services import cout_prevu_assemblage
+        return str(cout_prevu_assemblage(obj))
+
+    def get_temps_prevu_min(self, obj):
+        from .services import totaux_temps_ordre
+        return totaux_temps_ordre(obj)['prevu']
+
+    def get_temps_reel_min(self, obj):
+        from .services import totaux_temps_ordre
+        return totaux_temps_ordre(obj)['reel']
+
+
+class OrdreAssemblageActivitySerializer(serializers.ModelSerializer):
+    """XMFG4 - chatter de l'ordre d'assemblage."""
+    user_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = OrdreAssemblageActivity
+        fields = [
+            'id', 'kind', 'field', 'field_label', 'old_value', 'new_value',
+            'body', 'user_nom', 'created_at',
+        ]
+
+    def get_user_nom(self, obj):
+        return getattr(obj.user, 'username', None)
+
+
+class SerieAssemblageSerializer(serializers.ModelSerializer):
+    """XMFG7 - n° de série relevé à la clôture d'un ordre d'assemblage."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+
+    class Meta:
+        model = SerieAssemblage
+        fields = [
+            'id', 'ordre', 'produit', 'produit_nom', 'numero_serie', 'role',
+            'composite_ref', 'created_by', 'date_creation',
+        ]
+        read_only_fields = ['created_by', 'date_creation']
+
+    def validate_numero_serie(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError('Numéro de série requis.')
+        return value
+
+
+class OrdreDemontageLigneSerializer(serializers.ModelSerializer):
+    """XMFG12 - ligne de démontage : quantité attendue (BOM) vs récupérée
+    (éditable ligne à ligne avant clôture)."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+
+    class Meta:
+        model = OrdreDemontageLigne
+        fields = [
+            'id', 'ordre', 'produit', 'produit_nom', 'designation',
+            'quantite_attendue', 'quantite_recuperee',
+        ]
+        read_only_fields = ['quantite_attendue']
+
+
+class ControleQualiteItemModeleSerializer(serializers.ModelSerializer):
+    """XMFG13 - item du modèle de checklist QC d'un kit."""
+
+    class Meta:
+        model = ControleQualiteItemModele
+        fields = [
+            'id', 'modele', 'libelle', 'ordre', 'valeur_min', 'valeur_max',
+            'unite', 'photo_requise',
+        ]
+
+
+class ControleQualiteModeleSerializer(serializers.ModelSerializer):
+    """XMFG13 - modèle de checklist QC par kit. Société posée COTE SERVEUR."""
+    items = ControleQualiteItemModeleSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ControleQualiteModele
+        fields = ['id', 'kit', 'active', 'items',
+                  'date_creation', 'date_modification']
+        read_only_fields = ['date_creation', 'date_modification']
+
+
+class ControleQualiteOrdreSerializer(serializers.ModelSerializer):
+    """XMFG13 - exécution d'un item QC pour un ordre d'assemblage donné."""
+    item_libelle = serializers.CharField(
+        source='item_modele.libelle', read_only=True, default=None)
+    valeur_min = serializers.DecimalField(
+        source='item_modele.valeur_min', max_digits=12, decimal_places=3,
+        read_only=True, default=None)
+    valeur_max = serializers.DecimalField(
+        source='item_modele.valeur_max', max_digits=12, decimal_places=3,
+        read_only=True, default=None)
+
+    class Meta:
+        model = ControleQualiteOrdre
+        fields = [
+            'id', 'ordre', 'item_modele', 'item_libelle', 'resultat',
+            'valeur_mesuree', 'valeur_min', 'valeur_max', 'photo',
+            'controle_par', 'date_controle',
+        ]
+        read_only_fields = ['controle_par', 'date_controle']
+
+
+class OrdreDemontageSerializer(serializers.ModelSerializer):
+    """XMFG12 - ordre de démontage (unbuild) : composite → composants.
+    Référence/société/`created_by` posés COTE SERVEUR."""
+    kit_nom = serializers.CharField(
+        source='kit.nom', read_only=True, default=None)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+    lignes = OrdreDemontageLigneSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = OrdreDemontage
+        fields = [
+            'id', 'reference', 'kit', 'kit_nom', 'quantite', 'statut',
+            'statut_display', 'note', 'date_terminaison',
+            'emplacement_source', 'emplacement_destination',
+            'stock_mouvemente', 'lignes',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'reference', 'statut', 'date_terminaison', 'stock_mouvemente',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+
+    def validate_quantite(self, value):
+        if value is None or value <= 0:
+            raise serializers.ValidationError(
+                'La quantite a demonter doit etre strictement positive.')
+        return value
+
+
+class EtapeAssemblageSerializer(serializers.ModelSerializer):
+    """XMFG14 - étape de la gamme (mode opératoire) d'un kit."""
+
+    class Meta:
+        model = EtapeAssemblage
+        fields = [
+            'id', 'kit', 'ordre', 'libelle', 'instructions',
+            'duree_attendue_min', 'piece_jointe',
+        ]
+
+    def validate_libelle(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError("Le libellé de l'étape est requis.")
+        return value
+
+
+class EtapeOrdreSerializer(serializers.ModelSerializer):
+    """XMFG14 - étape d'exécution pour un ordre d'assemblage donné."""
+    libelle = serializers.CharField(
+        source='etape_modele.libelle', read_only=True, default=None)
+    instructions = serializers.CharField(
+        source='etape_modele.instructions', read_only=True, default=None)
+    duree_attendue_min = serializers.IntegerField(
+        source='etape_modele.duree_attendue_min', read_only=True, default=None)
+    piece_jointe = serializers.PrimaryKeyRelatedField(
+        source='etape_modele.piece_jointe', read_only=True, default=None)
+    fait_par_nom = serializers.CharField(
+        source='fait_par.username', read_only=True, default=None)
+
+    class Meta:
+        model = EtapeOrdre
+        fields = [
+            'id', 'ordre', 'etape_modele', 'libelle', 'instructions',
+            'duree_attendue_min', 'piece_jointe', 'fait', 'fait_par',
+            'fait_par_nom', 'fait_le', 'duree_reelle_min',
+        ]
+        read_only_fields = ['fait_par', 'fait_le']
 
 
 class LivraisonLigneSerializer(serializers.ModelSerializer):

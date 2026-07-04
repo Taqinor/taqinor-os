@@ -23,7 +23,7 @@ from django.http import JsonResponse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_http_methods
 
 from authentication.models import Company
 
@@ -392,6 +392,15 @@ def website_lead_webhook(request):
                 kind=LeadActivity.Kind.NOTE,
                 body=chatter_body,
             )
+            # YLEAD11 — une nouvelle touche sur un lead PERDU/COLD le
+            # réactive (lève perdu, repositionne NEW/CONTACTED avance-seul).
+            try:
+                from .services import reactivate_lead_on_new_touch
+                reactivate_lead_on_new_touch(lead, source='site web')
+            except Exception as _exc:  # noqa: BLE001 — best-effort
+                logger.warning(
+                    'website_lead_webhook: réactivation échouée (lead #%s) : %s',
+                    lead.pk, _exc)
         else:
             # Responsable par défaut de la société (Paramètres) si configuré.
             from .services import default_responsable_for
@@ -444,3 +453,108 @@ def website_lead_webhook(request):
             {'detail': 'Stocké, mapping échoué — payload rejouable.', 'payload_id': raw.pk},
             status=202,
         )
+
+
+# ── XMKT32 — Sync Meta Lead Ads → leads CRM (gated, API officielle) ──────────
+#
+# Deux jetons distincts (settings, jamais du corps de requête) :
+#   META_LEAD_ADS_VERIFY_TOKEN  — poignée de main GET de Meta (souscription
+#                                  du webhook, hub.challenge).
+#   META_LEAD_ADS_ACCESS_TOKEN  — token de page utilisé pour APPELER le Graph
+#                                  API officiel et récupérer le détail du lead
+#                                  (jamais de scraping — Meta ne pousse que
+#                                  l'id, pas les données du formulaire).
+# Sans jeton configuré : la vérification GET répond 404, et le POST est un
+# no-op silencieux (200, rien n'est créé) — jamais d'exception au webhook.
+
+
+def _meta_lead_ads_company():
+    company_id = getattr(settings, 'META_LEAD_ADS_COMPANY_ID', None)
+    if company_id:
+        return Company.objects.filter(pk=company_id).first()
+    return Company.objects.order_by('pk').first()
+
+
+def fetch_meta_lead_data(leadgen_id, access_token):
+    """Récupère le détail d'un lead Meta via le Graph API officiel.
+
+    Isolé dans sa propre fonction pour rester facilement simulable en test
+    (monkeypatch) — le test simulé décrit dans XMKT32 n'appelle jamais un
+    vrai serveur Meta. Renvoie un dict ``{'field_data': [...]}`` ou lève sur
+    échec réseau/HTTP (capté par l'appelant).
+    """
+    import urllib.request
+
+    url = (f'https://graph.facebook.com/v19.0/{leadgen_id}'
+           f'?access_token={access_token}')
+    with urllib.request.urlopen(url, timeout=10) as resp:  # noqa: S310
+        return json.loads(resp.read().decode('utf-8'))
+
+
+@csrf_exempt
+@require_http_methods(['GET', 'POST'])
+def meta_lead_ads_webhook(request):
+    verify_token = getattr(settings, 'META_LEAD_ADS_VERIFY_TOKEN', '') or ''
+    access_token = getattr(settings, 'META_LEAD_ADS_ACCESS_TOKEN', '') or ''
+
+    if request.method == 'GET':
+        # Poignée de main de souscription Meta (Graph API webhooks).
+        if not verify_token:
+            return JsonResponse({'detail': 'Non configuré.'}, status=404)
+        mode = request.GET.get('hub.mode')
+        token = request.GET.get('hub.verify_token')
+        challenge = request.GET.get('hub.challenge', '')
+        if mode == 'subscribe' and hmac.compare_digest(verify_token, token or ''):
+            from django.http import HttpResponse
+            return HttpResponse(challenge, content_type='text/plain')
+        return JsonResponse({'detail': 'Vérification refusée.'}, status=403)
+
+    # POST — notification de nouveau lead.
+    if not access_token:
+        # Sans jeton : no-op silencieux (défaut OFF), jamais d'exception.
+        logger.info('meta_lead_ads_webhook: aucun access token configuré — no-op.')
+        return JsonResponse({'detail': 'Non configuré — ignoré.'}, status=200)
+
+    try:
+        data = json.loads(request.body.decode('utf-8'))
+        if not isinstance(data, dict):
+            raise ValueError('payload non-objet')
+    except (ValueError, UnicodeDecodeError):
+        return JsonResponse({'detail': 'JSON invalide.'}, status=400)
+
+    company = _meta_lead_ads_company()
+    if company is None:
+        logger.error('meta_lead_ads_webhook: aucune Company résolue.')
+        return JsonResponse({'detail': 'Aucune société résolue.'}, status=202)
+
+    created_leads = []
+    try:
+        entries = data.get('entry') or []
+        for entry in entries:
+            for change in (entry.get('changes') or []):
+                value = change.get('value') or {}
+                leadgen_id = value.get('leadgen_id')
+                if not leadgen_id:
+                    continue
+                campaign_name = value.get('campaign_name', '') or ''
+                adset_name = value.get('adset_name', '') or ''
+                try:
+                    lead_data = fetch_meta_lead_data(leadgen_id, access_token)
+                except Exception as exc:  # noqa: BLE001 — un lead en échec
+                    # ne doit jamais bloquer les autres entrées du batch.
+                    logger.warning(
+                        'meta_lead_ads_webhook: fetch échoué pour %s : %s',
+                        leadgen_id, exc)
+                    continue
+                field_data = lead_data.get('field_data') or []
+                from .services import create_lead_from_meta_lead_ads
+                lead = create_lead_from_meta_lead_ads(
+                    company=company, leadgen_id=leadgen_id,
+                    field_data=field_data, campaign_name=campaign_name,
+                    adset_name=adset_name)
+                created_leads.append(lead.pk)
+        return JsonResponse({'detail': 'Traité.', 'lead_ids': created_leads},
+                            status=200)
+    except Exception:
+        logger.exception('meta_lead_ads_webhook: traitement échoué.')
+        return JsonResponse({'detail': 'Erreur de traitement.'}, status=202)

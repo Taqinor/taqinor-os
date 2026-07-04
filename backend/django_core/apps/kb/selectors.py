@@ -8,41 +8,80 @@ cycles. Quand une app cible n'a pas de sélecteur exploitable, on DÉGRADE
 proprement : on renvoie le ``libelle`` mis en cache et les ids stockés, sans
 rien importer.
 """
+import re
+
 from django.db.models import Exists, OuterRef, Q
 
-from .models import KbArticleAcl, KbArticleLien, KbLecture
+from .models import (
+    KbArticle,
+    KbArticleAcl,
+    KbArticleLien,
+    KbLecture,
+    KbLectureObligatoire,
+    KbRechercheVide,
+)
 
 
-# ── Droits d'accès par rôle (KB7) ──────────────────────────────────────────
+# ── Droits d'accès par rôle (KB7) + sections XKB9 ───────────────────────────
 
 def visible_articles_qs(queryset, user):
     """Restreint un queryset d'articles aux articles VISIBLES pour ``user``.
 
-    Règle RÉTRO-COMPATIBLE : un article SANS aucune ligne ACL reste visible de
-    tous (comportement historique préservé — KB2/KB3 inchangés). Dès qu'au moins
-    une ligne ACL de LECTURE existe pour un article, seuls les paliers listés
-    peuvent le lire. Le palier ``admin`` (accesseur de rôle faisant autorité
-    ``CustomUser.menu_tier``) passe TOUJOURS : un administrateur voit tout.
+    RÉTRO-COMPATIBLE (KB7, ``visibilite='workspace'``) : un article SANS
+    aucune ligne ACL de rôle reste visible de tous (comportement historique
+    préservé — KB2/KB3 inchangés). Dès qu'au moins une ligne ACL de LECTURE
+    par-RÔLE existe pour un article ``workspace``, seuls les paliers listés
+    peuvent le lire.
 
-    Implémentée en une seule requête (pas de N+1) : un article passe s'il
-    *n'a aucune* ACL de lecture, OU s'il a une ACL de lecture pour le palier de
-    l'utilisateur. ``user`` peut être ``None`` (palier inconnu) : seuls les
-    articles sans ACL restent alors visibles.
+    XKB9 — sections additionnelles, évaluées AVANT la règle KB7 ci-dessus
+    (qui ne s'applique qu'aux articles ``workspace``) :
+      * ``prive`` — visible du SEUL auteur (notes personnelles) ;
+      * ``partage`` — visible des membres listés en ACL nominative
+        (``utilisateur``) + l'auteur.
+
+    Le palier ``admin`` (``CustomUser.menu_tier``) passe TOUJOURS, quelle que
+    soit la section : un administrateur voit tout. Implémentée sans N+1
+    (annotations ``Exists``/``Q`` composées en une seule requête). ``user``
+    peut être ``None`` (palier inconnu) : seuls les articles ``workspace``
+    sans ACL restent alors visibles (aucun privé/partagé, aucun user-id).
     """
     tier = getattr(user, 'menu_tier', None) if user is not None else None
     if tier == 'admin':
         return queryset
-    # Article restreint en LECTURE = il porte au moins une ligne ACL de lecture.
-    a_restriction = KbArticleAcl.objects.filter(
-        article=OuterRef('pk'), niveau=KbArticleAcl.Niveau.LECTURE)
-    qs = queryset.annotate(_kb_acl_restreint=Exists(a_restriction))
-    if not tier:
-        # Palier inconnu : seuls les articles sans restriction restent visibles.
-        return qs.filter(_kb_acl_restreint=False)
-    # Article autorisé pour CE palier = il porte une ligne ACL de lecture pour lui.
-    autorise = a_restriction.filter(role=tier)
-    return qs.annotate(_kb_acl_autorise=Exists(autorise)).filter(
-        Q(_kb_acl_restreint=False) | Q(_kb_acl_autorise=True))
+    user_id = getattr(user, 'id', None) if user is not None else None
+
+    # Article restreint en LECTURE (workspace) = il porte au moins une ligne
+    # ACL de lecture PAR-RÔLE.
+    a_restriction_role = KbArticleAcl.objects.filter(
+        article=OuterRef('pk'), niveau=KbArticleAcl.Niveau.LECTURE,
+        role__gt='')
+    a_acl_utilisateur = KbArticleAcl.objects.filter(
+        article=OuterRef('pk'), niveau=KbArticleAcl.Niveau.LECTURE,
+        utilisateur_id=user_id)
+    qs = queryset.annotate(
+        _kb_acl_restreint=Exists(a_restriction_role),
+        _kb_membre_partage=Exists(a_acl_utilisateur))
+
+    workspace_visible = Q(visibilite=KbArticle.Visibilite.WORKSPACE)
+    if tier:
+        autorise = a_restriction_role.filter(role=tier)
+        qs = qs.annotate(_kb_acl_autorise=Exists(autorise))
+        workspace_visible &= (
+            Q(_kb_acl_restreint=False) | Q(_kb_acl_autorise=True))
+    else:
+        workspace_visible &= Q(_kb_acl_restreint=False)
+
+    prive_visible = Q(visibilite=KbArticle.Visibilite.PRIVE)
+    partage_visible = Q(visibilite=KbArticle.Visibilite.PARTAGE)
+    if user_id:
+        prive_visible &= Q(auteur_id=user_id)
+        partage_visible &= (Q(auteur_id=user_id) | Q(_kb_membre_partage=True))
+    else:
+        # Utilisateur inconnu : ni privé ni partagé n'est visible.
+        prive_visible &= Q(pk__isnull=True)
+        partage_visible &= Q(pk__isnull=True)
+
+    return qs.filter(workspace_visible | prive_visible | partage_visible)
 
 
 def acls_for_article(article):
@@ -71,6 +110,274 @@ def resume_lecture(article):
             'lu_le': lecture.lu_le,
         })
     return {'nombre': len(lecteurs), 'lecteurs': lecteurs}
+
+
+def peut_editer(article, user):
+    """XKB14 — ``user`` peut-il déverrouiller/éditer un article verrouillé ?
+
+    Le palier ``admin`` passe toujours. Sinon, il faut une ligne ACL
+    d'ÉDITION explicite pour le palier de l'utilisateur OU son id nominatif
+    (XKB9). Sans aucune ligne ACL d'édition pour cet article, PERSONNE
+    d'autre que l'admin ne peut déverrouiller (le verrou protège vraiment).
+    """
+    tier = getattr(user, 'menu_tier', None) if user is not None else None
+    if tier == 'admin':
+        return True
+    user_id = getattr(user, 'id', None) if user is not None else None
+    qs = KbArticleAcl.objects.filter(
+        article=article, niveau=KbArticleAcl.Niveau.EDITION)
+    if tier:
+        qs = qs.filter(Q(role=tier) | Q(utilisateur_id=user_id))
+    else:
+        qs = qs.filter(utilisateur_id=user_id) if user_id else qs.none()
+    return qs.exists()
+
+
+# ── XKB16 — Statistiques KB & recherches infructueuses ──────────────────────
+
+def rapport_top_consultes(company, limit=10):
+    """XKB16 — Articles les PLUS consultés d'une société (``vues`` décroissant).
+
+    Renvoie ``[{id, titre, vues}, ...]``. Scopé société, lecture seule.
+    """
+    qs = (KbArticle.objects.filter(company=company)
+          .order_by('-vues', '-id')[:limit])
+    return [{'id': a.id, 'titre': a.titre, 'vues': a.vues} for a in qs]
+
+
+def rapport_moins_consultes(company, limit=10):
+    """XKB16 — Articles les MOINS consultés d'une société (``vues`` croissant).
+
+    Renvoie ``[{id, titre, vues}, ...]``. Scopé société, lecture seule.
+    """
+    qs = (KbArticle.objects.filter(company=company)
+          .order_by('vues', 'id')[:limit])
+    return [{'id': a.id, 'titre': a.titre, 'vues': a.vues} for a in qs]
+
+
+def rapport_lacunes_connaissance(company, limit=50):
+    """XKB16 — « Lacunes de connaissance » : termes cherchés jamais servis.
+
+    Regroupe ``KbRechercheVide`` par ``terme`` (insensible à la casse),
+    compte les occurrences, trie par fréquence décroissante — les termes les
+    plus demandés en premier (priorité de rédaction). Scopé société.
+    """
+    from django.db.models import Count
+    from django.db.models.functions import Lower
+
+    qs = (KbRechercheVide.objects
+          .filter(company=company)
+          .annotate(terme_norm=Lower('terme'))
+          .values('terme_norm')
+          .annotate(occurrences=Count('id'))
+          .order_by('-occurrences', 'terme_norm')[:limit])
+    return [
+        {'terme': row['terme_norm'], 'occurrences': row['occurrences']}
+        for row in qs
+    ]
+
+
+# ── XKB15 — Favoris & récents ────────────────────────────────────────────────
+
+def recents_pour_utilisateur(user, limit=10):
+    """XKB15 — Articles récemment consultés par ``user`` (depuis
+    ``KbLecture.lu_le``), les plus récents en premier. Strictement personnel :
+    ne remonte QUE les lectures de l'utilisateur courant. Renvoie une liste de
+    dicts ``{id, titre, statut, lu_le}``."""
+    if user is None or not getattr(user, 'id', None):
+        return []
+    lectures = (KbLecture.objects
+                .filter(utilisateur=user)
+                .select_related('article')
+                .order_by('-lu_le', '-id')[:limit])
+    return [
+        {
+            'id': lecture.article.id,
+            'titre': lecture.article.titre,
+            'statut': lecture.article.statut,
+            'lu_le': lecture.lu_le,
+        }
+        for lecture in lectures
+    ]
+
+
+# ── XKB14 — Vérification, péremption & verrou ───────────────────────────────
+
+def rapport_peremption(company):
+    """XKB14 — Articles PÉRIMÉS d'une société : ``verifie_jusqua`` dépassée
+    OU jamais vérifiés et non modifiés/non lus depuis longtemps.
+
+    Renvoie une liste de dicts ``{id, titre, verifie_jusqua}`` triée par
+    ``date_modification`` croissante (le plus ancien d'abord — le plus
+    urgent à re-revoir). Scopé société. Lecture seule.
+    """
+    from django.utils import timezone
+    now = timezone.now()
+    qs = (KbArticle.objects
+          .filter(company=company, verifie_jusqua__isnull=False,
+                  verifie_jusqua__lt=now)
+          .order_by('date_modification'))
+    return [
+        {'id': a.id, 'titre': a.titre, 'verifie_jusqua': a.verifie_jusqua}
+        for a in qs
+    ]
+
+
+# ── XKB11 — Liens internes article↔article + rétroliens ────────────────────
+
+def retroliens(article):
+    """XKB11 — Articles qui pointent VERS ``article`` (liens entrants).
+
+    Recherche inverse scopée société : tous les ``KbArticleLien`` de type
+    ``ARTICLE`` dont ``cible_id == article.id`` dans la MÊME société, avec le
+    libellé/statut de l'article SOURCE (celui qui porte le lien). Évite le
+    contenu orphelin — affiché en panneau sur la fiche article. Lecture
+    seule, pas de N+1 (une seule requête + ``select_related``).
+    """
+    liens = (KbArticleLien.objects
+             .filter(
+                 company=article.company,
+                 type_cible=KbArticleLien.TypeCible.ARTICLE,
+                 cible_id=article.id)
+             .select_related('article')
+             .order_by('article_id'))
+    out = []
+    seen = set()
+    for lien in liens:
+        source = lien.article
+        if source.id in seen:
+            continue
+        seen.add(source.id)
+        out.append({
+            'id': source.id,
+            'titre': source.titre,
+            'statut': source.statut,
+        })
+    return out
+
+
+# ── XKB10 — Éditeur Markdown : sommaire auto ────────────────────────────────
+
+_ATX_HEADING_RE = re.compile(r'^(#{1,6})\s+(.+?)\s*#*\s*$')
+
+
+def sommaire_article(article):
+    """XKB10 — Sommaire auto : liste des titres Markdown (ATX ``#``…``######``)
+    du corps de l'article, dans l'ordre d'apparition.
+
+    Renvoie ``[{niveau, texte}, ...]``. Pas de dépendance markdown côté
+    serveur (pas de nouvelle dépendance payante) : un simple parseur de ligne
+    suffit pour l'extraction de titres ATX, qui est le seul besoin du
+    sommaire. Ne s'applique qu'aux articles ``corps_format == 'markdown'`` —
+    un article texte brut renvoie un sommaire vide (aucun titre structuré).
+    """
+    if article.corps_format != KbArticle.CorpsFormat.MARKDOWN:
+        return []
+    sommaire = []
+    for ligne in (article.corps or '').splitlines():
+        m = _ATX_HEADING_RE.match(ligne.strip())
+        if m:
+            sommaire.append({
+                'niveau': len(m.group(1)),
+                'texte': m.group(2).strip(),
+            })
+    return sommaire
+
+
+# ── XKB8 — Arborescence d'articles (pages imbriquées) ──────────────────────
+
+def arbre_articles(queryset):
+    """XKB8 — Construit l'arbre (liste de dicts imbriqués) d'un queryset
+    d'articles DÉJÀ scopé société + visibilité (``visible_articles_qs``).
+
+    Renvoie la liste des racines (``parent`` absent du queryset visible, y
+    compris un parent existant mais invisible pour l'utilisateur — dégrade
+    proprement en le traitant comme racine plutôt que de faire planter
+    l'arbre), chacune portant une clé ``enfants`` triée par ``(ordre, id)``,
+    récursivement. Une seule requête (pas de N+1) : le queryset est
+    matérialisé une fois puis assemblé en mémoire.
+    """
+    articles = list(queryset.order_by('ordre', 'id'))
+    by_id = {a.id: a for a in articles}
+    children_of = {}
+    roots = []
+    for article in articles:
+        if article.parent_id and article.parent_id in by_id:
+            children_of.setdefault(article.parent_id, []).append(article)
+        else:
+            roots.append(article)
+
+    def _node(article):
+        enfants = children_of.get(article.id, [])
+        return {
+            'id': article.id,
+            'titre': article.titre,
+            'statut': article.statut,
+            'parent': article.parent_id,
+            'ordre': article.ordre,
+            'enfants': [_node(e) for e in enfants],
+        }
+
+    return [_node(a) for a in roots]
+
+
+# ── XKB7 — Lecture obligatoire ─────────────────────────────────────────────
+
+def _assignees_for_role(company, role_cible):
+    """Utilisateurs actifs de la société dont le palier ``menu_tier`` égale
+    ``role_cible``. Lecture seule, jamais d'import cross-app (authentication
+    est une app fondation, importable directement — voir CLAUDE.md)."""
+    from authentication.models import CustomUser
+    return [
+        u for u in CustomUser.objects.filter(company=company, is_active=True)
+        if u.menu_tier == role_cible
+    ]
+
+
+def assignees_for_assignation(assignation):
+    """Liste des utilisateurs concernés par UNE ligne ``KbLectureObligatoire``.
+
+    Un utilisateur explicite → liste à un élément. Un palier de rôle → tous les
+    utilisateurs actifs de la société portant ce palier (``menu_tier``).
+    """
+    if assignation.utilisateur_id:
+        return [assignation.utilisateur]
+    if assignation.role_cible:
+        return _assignees_for_role(assignation.company, assignation.role_cible)
+    return []
+
+
+def rapport_conformite_article(article):
+    """XKB7 — Rapport de conformité de lecture obligatoire d'un article.
+
+    Renvoie ``{article, lus: [...], non_lus: [...]}`` : pour chaque assignation
+    (utilisateur explicite ou palier de rôle résolu en utilisateurs), classe
+    chacun des concernés comme lu (a une ``KbLecture``) ou non-lu. Un même
+    utilisateur concerné par plusieurs assignations n'apparaît qu'une fois.
+    Scopé société via ``article.company``.
+    """
+    assignations = (KbLectureObligatoire.objects
+                    .filter(article=article, company=article.company)
+                    .select_related('utilisateur'))
+    lecteurs_ids = set(
+        KbLecture.objects.filter(article=article, company=article.company)
+        .values_list('utilisateur_id', flat=True))
+    vus, lus, non_lus = set(), [], []
+    for assignation in assignations:
+        for user in assignees_for_assignation(assignation):
+            if user.id in vus:
+                continue
+            vus.add(user.id)
+            entry = {
+                'utilisateur': user.id,
+                'nom': user.get_full_name() or user.get_username(),
+                'echeance': assignation.echeance,
+            }
+            if user.id in lecteurs_ids:
+                lus.append(entry)
+            else:
+                non_lus.append(entry)
+    return {'article': article.id, 'lus': lus, 'non_lus': non_lus}
 
 
 def liens_for_article(article):

@@ -18,6 +18,14 @@ from .balance_export import balance_agee_export
 from .saved_reports_api import SavedReportViewSet
 from .commercial import commercial_dashboard, win_loss_by_source
 from .dashboard_config_api import DashboardConfigViewSet
+from .sav_sla import sav_sla_insight
+from .approbations import (
+    approbations_en_attente, decider_approbation, decider_en_masse,
+)
+from .kpi_alertes import KpiAlerteViewSet
+from .classeur import ClasseurViewSet
+from .integrity_views import integrite_insight
+from .sav_pivot import sav_tickets_pivot, sav_tickets_cout_moyen
 
 # N79 — CRUD des rapports sauvegardés (router DRF, ajouté en additif).
 # FG96 — CRUD + effective/ pour la config tableau de bord.
@@ -25,6 +33,10 @@ router = DefaultRouter()
 router.register(r'saved-reports', SavedReportViewSet, basename='saved-report')
 router.register(r'dashboard-config', DashboardConfigViewSet,
                 basename='dashboard-config')
+# XPLT6 — CRUD des alertes de seuil sur KPI agrégés.
+router.register(r'kpi-alertes', KpiAlerteViewSet, basename='kpi-alerte')
+# XPLT22 — classeur léger embarqué avec données live (mini-spreadsheet BI).
+router.register(r'classeurs', ClasseurViewSet, basename='classeur')
 
 urlpatterns = [
     path('', include(router.urls)),
@@ -75,4 +87,21 @@ urlpatterns = [
     # QJ19 — Win/loss par canal/source + top motifs de perte.
     path('commercial/win-loss-by-source/', win_loss_by_source,
          name='reporting-win-loss-by-source'),
+    # XSAV8 — conformité SLA + KPI SAV avancés (backlog vieilli, préventif vs
+    # correctif, ponctualité des visites, réouvertures si disponibles).
+    path('insights/sav-sla/', sav_sla_insight, name='insights-sav-sla'),
+    # XKB1 — boîte d'approbations centralisée cross-app.
+    path('approbations-en-attente/', approbations_en_attente,
+         name='reporting-approbations-en-attente'),
+    path('approbations-en-attente/decider/', decider_approbation,
+         name='reporting-approbations-decider'),
+    path('approbations-en-attente/decider-en-masse/', decider_en_masse,
+         name='reporting-approbations-decider-masse'),
+    # YSERV13 — contrôle d'intégrité inter-documents (états orphelins).
+    path('insights/integrite/', integrite_insight, name='insights-integrite'),
+    # ZSAV7 — pivot tickets SAV (dataset core.data_explorer sav_tickets).
+    path('insights/sav-tickets-pivot/', sav_tickets_pivot,
+         name='insights-sav-tickets-pivot'),
+    path('insights/sav-tickets-cout-moyen/', sav_tickets_cout_moyen,
+         name='insights-sav-tickets-cout-moyen'),
 ]

@@ -20,6 +20,7 @@ from .models import (
     FeuilleTemps,
     Habilitation,
     HeuresSupp,
+    HoraireTravail,
     IncidentPresence,
     InscriptionFormation,
     PermisConduire,
@@ -44,6 +45,47 @@ def dossier_appartient_societe(company, dossier_id):
         return False
     return DossierEmploye.objects.filter(
         company=company, pk=dossier_id).exists()
+
+
+def horaire_actif(employe, le=None):
+    """Horaire de travail effectif d'un employé à une date (XRH8).
+
+    Résout l'horaire APPLICABLE à ``le`` (par défaut aujourd'hui) :
+
+    * si ``employe.horaire`` est un horaire TEMPORAIRE (``date_debut``/
+      ``date_fin`` renseignées) et que ``le`` tombe dans sa fenêtre de
+      validité (bornes incluses) → cet horaire s'applique (ex. Ramadan) ;
+    * sinon, si ``employe.horaire`` est PERMANENT (``date_debut`` ET
+      ``date_fin`` tous deux vides) → il s'applique toujours ;
+    * sinon (horaire temporaire hors fenêtre, ou aucun horaire assigné,
+      ou horaire inactif) → ``None`` : l'appelant retombe sur le seuil par
+      défaut (8 h/j, ``services.SEUIL_JOURNALIER_DEFAUT``) — RETOUR
+      AUTOMATIQUE au standard une fois la fenêtre Ramadan/saisonnière passée.
+
+    Sélecteur PUR : ``le`` est un paramètre (déterministe, testable), jamais
+    lu de ``timezone.now()`` en dur.
+    """
+    if employe is None or employe.horaire_id is None:
+        return None
+    horaire = employe.horaire
+    if not horaire.actif:
+        return None
+    if le is None:
+        le = timezone.localdate()
+    if horaire.date_debut is None and horaire.date_fin is None:
+        return horaire
+    debut_ok = horaire.date_debut is None or le >= horaire.date_debut
+    fin_ok = horaire.date_fin is None or le <= horaire.date_fin
+    if debut_ok and fin_ok:
+        return horaire
+    return None
+
+
+def horaires_actifs_societe(company):
+    """Horaires de travail actifs de la société (référentiel, XRH8)."""
+    if company is None:
+        return HoraireTravail.objects.none()
+    return HoraireTravail.objects.filter(company=company, actif=True)
 
 
 def dossiers_actifs(company):
@@ -149,6 +191,67 @@ def date_embauche_employe(company, employe_id):
         return dossier.date_embauche
     except DossierEmploye.DoesNotExist:
         return None
+
+
+def sortie_employe(company, employe_id):
+    """Date/motif de sortie d'un employé (cross-app, pour la paie XPAI1).
+
+    Sélecteur cadré société : la paie l'utilise pour générer le solde de tout
+    compte (STC) sans jamais importer ``rh.models`` directement. Renvoie
+    ``(date_sortie, motif_sortie)`` — les deux peuvent être ``None``/vides si
+    le dossier n'a pas encore de date de sortie renseignée — ou
+    ``(None, None)`` si le dossier est introuvable ou hors société.
+    """
+    if company is None or employe_id is None:
+        return None, None
+    try:
+        dossier = DossierEmploye.objects.get(company=company, pk=employe_id)
+        return dossier.date_sortie, dossier.motif_sortie
+    except DossierEmploye.DoesNotExist:
+        return None, None
+
+
+def pointages_par_user_jour(company, debut, fin):
+    """Durée POINTÉE (FG166) par UTILISATEUR et par JOUR sur [debut, fin] (XPRJ8).
+
+    Sélecteur cross-app fin (frontière CLAUDE.md) : les autres modules (ex.
+    ``gestion_projet`` — rapprochement pointages ↔ temps projet) appellent CE
+    sélecteur au lieu d'importer ``rh.models.Pointage`` directement. Ne
+    considère que les employés reliés à un compte utilisateur (``employe.
+    user_id``) — un pointage sans compte ERP n'a aucun homologue « temps
+    projet » à rapprocher. Une ligne ``Pointage`` compte pour
+    ``duree_minutes`` (arrivée + départ posés) ; une ligne incomplète
+    (arrivée seule, ``heure_depart`` absente) compte pour 0 minute (pas de durée
+    calculable).
+
+    Toujours scopé société. Renvoie un dict ``{(user_id, date): minutes}`` —
+    clé absente = aucun pointage ce jour-là pour cet utilisateur.
+    """
+    from datetime import date as _date
+
+    from .models import Pointage
+
+    if company is None or debut is None or fin is None:
+        return {}
+
+    pointages = Pointage.objects.filter(
+        company=company,
+        employe__user__isnull=False,
+        heure_arrivee__date__gte=debut,
+        heure_arrivee__date__lte=fin,
+    ).select_related('employe')
+
+    par_user_jour = {}
+    for p in pointages:
+        if p.heure_arrivee is None or p.heure_depart is None:
+            continue
+        user_id = p.employe.user_id
+        jour = p.heure_arrivee.date() if isinstance(
+            p.heure_arrivee, _date) else p.heure_arrivee.date()
+        cle = (user_id, jour)
+        par_user_jour[cle] = par_user_jour.get(cle, 0) + (
+            p.duree_minutes or 0)
+    return par_user_jour
 
 
 def labour_hours_for_installation(installation_id, company=None):
@@ -696,13 +799,25 @@ def echeances_rh(company, within_days=30, today=None):
     ``{
         'type': 'habilitation' | 'certification' | 'document'
                 | 'visite_medicale' | 'dotation_epi'
-                | 'epi_peremption' | 'epi_controle',
+                | 'epi_peremption' | 'epi_controle' | 'fin_essai'
+                | 'declaration_entree',
         'employe_id': int,
         'employe': str,                 # « MATRICULE — Nom Prénom »
         'libelle': str,                 # libellé lisible du titre/document
         'date_validite': date,          # échéance
         'jours_restants': int,          # négatif si déjà expiré
     }``
+
+    XRH1 — la famille ``fin_essai`` alerte AVANT ``DossierEmploye.essai_date_fin``
+    (une période d'essai qui arrive à son terme doit être confirmée ou rompue
+    à temps) ; confirmer l'essai (``employes/{id}/confirmer-essai``) efface la
+    date et retire l'employé de cette famille.
+
+    XRH5 — la famille ``declaration_entree`` alerte tout embauché DONT LA
+    ``date_embauche`` EST CONNUE et dont ``declaration_entree_statut =
+    a_faire`` (due dès ``date_embauche``, jamais hors fenêtre — mais un
+    dossier sans ``date_embauche`` renseignée n'a pas d'échéance calculable
+    et est exclu) ; marquer déclaré retire l'employé de cette famille.
     """
     if company is None:
         return []
@@ -836,6 +951,48 @@ def echeances_rh(company, within_days=30, today=None):
             'libelle': f'EPI à recontrôler ({dot.epi.designation})',
             'date_validite': dot.date_prochain_controle,
             'jours_restants': (dot.date_prochain_controle - today).days,
+        })
+
+    # XRH1 — période d'essai en cours dont la fin approche (ou est dépassée).
+    essais = (
+        DossierEmploye.objects
+        .filter(company=company,
+                essai_date_fin__isnull=False, essai_date_fin__lte=limite)
+    )
+    for emp in essais:
+        rows.append({
+            'type': 'fin_essai',
+            'employe_id': emp.id,
+            'employe': _employe_label(emp),
+            'libelle': "Fin de période d'essai",
+            'date_validite': emp.essai_date_fin,
+            'jours_restants': (emp.essai_date_fin - today).days,
+        })
+
+    # XRH5 — déclaration d'entrée CNSS/AMO non faite. Due dès l'embauche : la
+    # « date_validite » est ``date_embauche``. Un dossier SANS date d'embauche
+    # renseignée n'a pas d'échéance calculable et est exclu (pas de « due
+    # aujourd'hui » fabriquée) — seuls les embauchés dont la date est connue
+    # entrent dans cette famille.
+    a_declarer = (
+        DossierEmploye.objects
+        .filter(
+            company=company,
+            date_embauche__isnull=False,
+            declaration_entree_statut=(
+                DossierEmploye.DeclarationEntreeStatut.A_FAIRE))
+    )
+    for emp in a_declarer:
+        echeance = emp.date_embauche
+        if echeance > limite:
+            continue
+        rows.append({
+            'type': 'declaration_entree',
+            'employe_id': emp.id,
+            'employe': _employe_label(emp),
+            'libelle': "Déclaration d'entrée CNSS/AMO",
+            'date_validite': echeance,
+            'jours_restants': (echeance - today).days,
         })
 
     rows.sort(key=lambda r: (r['date_validite'], r['type'], r['employe_id']))
@@ -1467,3 +1624,196 @@ def cockpit_rh(company, *, inclure_masse_salariale=False):
         result['masse_salariale_mensuelle'] = _masse_salariale_mensuelle(
             company)
     return result
+
+
+def jours_fermeture_exclus(company, employe, date_debut, date_fin):
+    """XRH14 — jours de ``date_debut``→``date_fin`` déjà couverts par une
+    fermeture collective (chevauchant le département de l'employé, ou toute
+    la société si la fermeture n'a pas de département). Renvoie l'ensemble
+    des dates (``set`` de ``date``) à EXCLURE du décompte d'une nouvelle
+    demande de congé qui chevauche cette période — évite le double-décompte.
+    Lecture seule, société scopée.
+    """
+    from datetime import timedelta
+
+    from .models import PeriodeFermeture
+
+    fermetures = (
+        PeriodeFermeture.objects
+        .filter(company=company, date_debut__lte=date_fin,
+                date_fin__gte=date_debut)
+        .prefetch_related('departements'))
+
+    exclues = set()
+    for fermeture in fermetures:
+        departements = list(fermeture.departements.all())
+        if departements and employe.departement_id not in [
+                d.id for d in departements]:
+            continue
+        debut = max(fermeture.date_debut, date_debut)
+        fin = min(fermeture.date_fin, date_fin)
+        jour = debut
+        while jour <= fin:
+            exclues.add(jour)
+            jour += timedelta(days=1)
+    return exclues
+
+
+def ecarts_competences(employe):
+    """XRH15 — écart requis-vs-actuel pour un employé, au poste de référence.
+
+    Compare le profil requis de ``employe.poste_ref``
+    (``CompetenceRequise``) au niveau réel de l'employé
+    (``CompetenceEmploye``, 0 si jamais évalué). Renvoie une liste de dicts
+    ``{competence_id, competence_libelle, niveau_requis, niveau_actuel,
+    ecart}`` pour chaque compétence MANQUANTE ou INSUFFISANTE (niveau_actuel
+    < niveau_requis) — les compétences déjà couvertes sont omises. Liste vide
+    si l'employé n'a pas de ``poste_ref``. Lecture seule.
+    """
+    from .models import CompetenceEmploye, CompetenceRequise
+
+    if not employe.poste_ref_id:
+        return []
+
+    requises = (
+        CompetenceRequise.objects
+        .filter(company=employe.company, poste=employe.poste_ref)
+        .select_related('competence'))
+    niveaux_actuels = dict(
+        CompetenceEmploye.objects
+        .filter(company=employe.company, employe=employe)
+        .values_list('competence_id', 'niveau'))
+
+    ecarts = []
+    for requise in requises:
+        actuel = niveaux_actuels.get(requise.competence_id, 0)
+        if actuel < requise.niveau_requis:
+            ecarts.append({
+                'competence_id': requise.competence_id,
+                'competence_libelle': requise.competence.libelle,
+                'niveau_requis': requise.niveau_requis,
+                'niveau_actuel': actuel,
+                'ecart': requise.niveau_requis - actuel,
+            })
+    return ecarts
+
+
+def candidats_internes(company, poste_id):
+    """XRH15 — classe les employés d'un poste par COUVERTURE de son profil
+    requis (décroissante). Couverture = proportion (0..1) des compétences
+    requises satisfaites (``niveau_actuel >= niveau_requis``). Un poste sans
+    profil requis renvoie une liste vide. Lecture seule, société scopée.
+    """
+    from .models import CompetenceEmploye, CompetenceRequise, DossierEmploye
+
+    requises = list(
+        CompetenceRequise.objects.filter(company=company, poste_id=poste_id))
+    if not requises:
+        return []
+
+    employes = DossierEmploye.objects.filter(
+        company=company, statut=DossierEmploye.Statut.ACTIF)
+    resultats = []
+    for employe in employes:
+        competence_ids = [r.competence_id for r in requises]
+        niveaux_actuels = dict(
+            CompetenceEmploye.objects
+            .filter(company=company, employe=employe,
+                    competence_id__in=competence_ids)
+            .values_list('competence_id', 'niveau'))
+        satisfaites = sum(
+            1 for r in requises
+            if niveaux_actuels.get(r.competence_id, 0) >= r.niveau_requis)
+        couverture = satisfaites / len(requises)
+        resultats.append({
+            'employe_id': employe.id,
+            'employe_nom': f'{employe.nom} {employe.prenom}',
+            'couverture_pct': round(couverture * 100, 1),
+        })
+    resultats.sort(key=lambda r: r['couverture_pct'], reverse=True)
+    return resultats
+
+
+def compa_ratio(employe):
+    """XRH16 — compa-ratio de l'employé : salaire actuel vs milieu de bande
+    de son poste (``GrilleSalariale`` la plus récente, ``date_effet``).
+
+    Renvoie ``None`` si l'employé n'a pas de ``poste_ref``, pas de bande
+    salariale connue, ou pas de ``Remuneration`` (salaire actuel). Sinon un
+    dict ``{salaire_actuel, salaire_min, salaire_max, milieu_bande,
+    compa_ratio_pct, statut}`` où ``statut`` ∈ {sous_bande, dans_bande,
+    sur_bande}. Donnée SENSIBLE (paie) — gatée ``salaires_voir`` côté vue,
+    JAMAIS dans un PDF ni une sortie client.
+    """
+    from .models import GrilleSalariale, Remuneration
+
+    if not employe.poste_ref_id:
+        return None
+
+    grille = (
+        GrilleSalariale.objects
+        .filter(company=employe.company, poste=employe.poste_ref)
+        .order_by('-date_effet')
+        .first())
+    if grille is None:
+        return None
+
+    remuneration = (
+        Remuneration.objects
+        .filter(company=employe.company, employe=employe)
+        .order_by('-date_effet')
+        .first())
+    if remuneration is None:
+        return None
+
+    salaire_actuel = remuneration.montant
+    milieu_bande = (grille.salaire_min + grille.salaire_max) / 2
+    if milieu_bande == 0:
+        return None
+    ratio_pct = round(float(salaire_actuel / milieu_bande) * 100, 1)
+
+    if salaire_actuel < grille.salaire_min:
+        statut = 'sous_bande'
+    elif salaire_actuel > grille.salaire_max:
+        statut = 'sur_bande'
+    else:
+        statut = 'dans_bande'
+
+    return {
+        'salaire_actuel': salaire_actuel,
+        'salaire_min': grille.salaire_min,
+        'salaire_max': grille.salaire_max,
+        'milieu_bande': milieu_bande,
+        'compa_ratio_pct': ratio_pct,
+        'statut': statut,
+    }
+
+
+def comparatif_candidats(company, ouverture_id):
+    """XRH17 — compare les candidats d'une MÊME ouverture par la moyenne de
+    leurs notes d'entretien (toutes notes, tous entretiens confondus).
+    Classé décroissant. Un candidat sans note reçoit ``moyenne=None`` (en
+    fin de liste). Lecture seule, société scopée.
+    """
+    from .models import Candidature, NoteEntretien
+
+    candidatures = Candidature.objects.filter(
+        company=company, ouverture_id=ouverture_id)
+
+    resultats = []
+    for candidature in candidatures:
+        notes = NoteEntretien.objects.filter(
+            company=company, entretien__candidature=candidature)
+        moyennes = [
+            n.moyenne_criteres for n in notes
+            if n.moyenne_criteres is not None]
+        moyenne = sum(moyennes) / len(moyennes) if moyennes else None
+        resultats.append({
+            'candidature_id': candidature.id,
+            'nom': candidature.nom,
+            'moyenne': round(moyenne, 2) if moyenne is not None else None,
+            'nb_notes': len(moyennes),
+        })
+    resultats.sort(
+        key=lambda r: (r['moyenne'] is None, -(r['moyenne'] or 0)))
+    return resultats

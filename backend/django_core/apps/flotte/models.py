@@ -38,6 +38,15 @@ class Vehicule(models.Model):
         ACTIF = 'actif', 'Actif'
         MAINTENANCE = 'maintenance', 'En maintenance'
         REFORME = 'reforme', 'Réformé'
+        # XFLT4 — cycle de vie complet : les 3 statuts historiques restent
+        # intacts, ces 3 nouveaux couvrent l'acquisition → cession.
+        COMMANDE = 'commande', 'Commandé'
+        A_VENDRE = 'a_vendre', 'À vendre'
+        VENDU = 'vendu', 'Vendu'
+
+    class TypeFiscal(models.TextChoices):
+        UTILITAIRE = 'utilitaire', 'Utilitaire'
+        TOURISME = 'tourisme', 'Tourisme'
 
     company = models.ForeignKey(
         'authentication.Company',
@@ -95,6 +104,51 @@ class Vehicule(models.Model):
         related_name='vehicules_flotte',
         verbose_name='Immobilisation comptable',
     )
+    # XFLT4 — Fiche véhicule enrichie + cycle de vie complet. La date de mise
+    # en circulation existe DÉJÀ (``CarteGriseVehicule.date_mise_circulation``,
+    # FLOTTE23) : elle n'est PAS dupliquée ici, on la lit via sélecteur.
+    vin = models.CharField(
+        max_length=30, blank=True, verbose_name='N° châssis (VIN)')
+    annee = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name='Année')
+    date_acquisition = models.DateField(
+        null=True, blank=True, verbose_name="Date d'acquisition")
+    # Clé pour XFLT8 (TVA carburant) / XFLT9 (plafond CGI amortissement).
+    type_fiscal = models.CharField(
+        max_length=15, choices=TypeFiscal.choices, blank=True,
+        verbose_name='Type fiscal',
+        help_text='Utilitaire ou tourisme — sert au calcul TVA et au '
+        'plafond CGI amortissement.')
+    tags = models.JSONField(default=list, blank=True, verbose_name='Tags')
+    # XFLT4 — checklist de mise en service (immatriculation faite, plaques,
+    # assurance active, carte grise reçue) : dict {item: bool}. Distincte des
+    # ``tags`` (liste libre) — bloque le passage commande→actif tant qu'un
+    # item n'est pas coché (voir ``checklist_mise_en_service_ok``).
+    checklist_mise_en_service = models.JSONField(
+        default=dict, blank=True,
+        verbose_name='Checklist de mise en service')
+    # XFLT12 — Catalogue de modèles véhicule : lien optionnel vers un
+    # ``ModeleVehicule`` de référence. À la sélection, pré-remplissage des
+    # specs (voir ``services.prefill_depuis_modele``) SANS écraser une saisie
+    # déjà présente. null = véhicule créé sans modèle de référence (saisie
+    # libre historique, aucune régression).
+    modele_ref = models.ForeignKey(
+        'ModeleVehicule',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='vehicules',
+        verbose_name='Modèle de référence',
+    )
+    # XFLT16 — Cession / sortie de parc. Renseignés par l'action ``ceder/`` ;
+    # les véhicules vendus/réformés gardent TOUT leur historique mais sont
+    # exclus des KPI actifs (FLOTTE35) et des alertes d'échéances.
+    date_cession = models.DateField(
+        null=True, blank=True, verbose_name='Date de cession')
+    prix_cession = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Prix de cession (MAD)')
+    acheteur = models.CharField(
+        max_length=150, blank=True, verbose_name='Acheteur')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -106,6 +160,81 @@ class Vehicule(models.Model):
 
     def __str__(self):
         return f'{self.immatriculation} — {self.marque} {self.modele}'.strip()
+
+    # ── XFLT4 — Checklist de mise en service (commande → actif) ────────────
+
+    CHECKLIST_MISE_EN_SERVICE = (
+        'immatriculation_faite', 'plaques', 'assurance_active',
+        'carte_grise_recue',
+    )
+
+    def checklist_mise_en_service_ok(self):
+        """XFLT4 — Vrai si tous les items de la checklist de mise en service
+        sont cochés (``self.checklist_mise_en_service``, dict {item: bool}).
+
+        Lecture seule, aucun effet de bord.
+        """
+        checklist = self.checklist_mise_en_service
+        if not isinstance(checklist, dict):
+            return False
+        return all(checklist.get(item) for item in
+                   self.CHECKLIST_MISE_EN_SERVICE)
+
+
+# ── XFLT4 — Journal des changements de statut véhicule ─────────────────────────
+
+class JournalStatutVehicule(models.Model):
+    """Trace un changement de statut d'un ``Vehicule`` (XFLT4).
+
+    Une entrée par transition (ancien statut → nouveau statut), posée
+    SERVEUR-SIDE (utilisateur et horodatage jamais lus du corps de requête).
+    Immuable : aucune modification/suppression via l'API (lecture + création
+    interne uniquement — même patron que le futur ``ActiviteFlotte`` XFLT21).
+
+    Multi-tenant : ``company`` est posée côté serveur. Le véhicule et
+    l'utilisateur doivent appartenir à la MÊME société.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_journal_statuts_vehicule',
+        verbose_name='Société',
+    )
+    vehicule = models.ForeignKey(
+        'Vehicule',
+        on_delete=models.CASCADE,
+        related_name='journal_statuts',
+        verbose_name='Véhicule',
+    )
+    ancien_statut = models.CharField(
+        max_length=20, blank=True, verbose_name='Ancien statut')
+    nouveau_statut = models.CharField(
+        max_length=20, verbose_name='Nouveau statut')
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='flotte_journal_statuts_vehicule',
+        verbose_name='Utilisateur',
+    )
+    horodatage = models.DateTimeField(
+        auto_now_add=True, verbose_name='Horodatage')
+
+    class Meta:
+        verbose_name = 'Journal de statut véhicule'
+        verbose_name_plural = 'Journal des statuts véhicule'
+        ordering = ['-horodatage', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'vehicule'],
+                name='flotte_jsv_co_veh_idx',
+            ),
+        ]
+
+    def __str__(self):
+        return (f'{self.vehicule} : {self.ancien_statut} → '
+                f'{self.nouveau_statut} ({self.horodatage})')
 
 
 # ── FLOTTE4 — Engins roulants suivis au compteur d'heures ──────────────────
@@ -524,6 +653,24 @@ class EtatDesLieux(models.Model):
     photos = models.JSONField(
         default=list, blank=True, verbose_name='Photos (clés)')
     commentaire = models.TextField(blank=True, verbose_name='Commentaire')
+    # XFLT17 — Signatures e-signature loi 53-05 (nom saisi + horodatage
+    # serveur, comme le flux devis existant — pas de signature graphique) et
+    # accessoires remis (gilet, triangle, cric, roue de secours…).
+    signature_conducteur = models.CharField(
+        max_length=150, blank=True,
+        verbose_name='Signature conducteur (nom saisi)')
+    signature_conducteur_horodatage = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name='Horodatage signature conducteur')
+    signature_responsable = models.CharField(
+        max_length=150, blank=True,
+        verbose_name='Signature responsable (nom saisi)')
+    signature_responsable_horodatage = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name='Horodatage signature responsable')
+    accessoires = models.JSONField(
+        default=list, blank=True, verbose_name='Accessoires',
+        help_text='[{"nom": "Gilet", "present": true}, …]')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -609,6 +756,15 @@ class PleinCarburant(models.Model):
     station = models.CharField(
         max_length=120, blank=True, verbose_name='Station')
     notes = models.TextField(blank=True, verbose_name='Notes')
+    # XFLT8 — TVA carburant : récupérable (gasoil sur utilitaire) vs non
+    # déductible (carburant sur véhicule de tourisme, règles CGI TVA).
+    # ``tva_recuperable`` est CALCULÉ par défaut à la création (voir
+    # ``_classifier_tva_recuperable``) mais reste ÉDITABLE (override founder).
+    tva_recuperable = models.BooleanField(
+        default=True, verbose_name='TVA récupérable')
+    montant_tva = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name='Montant TVA (MAD)')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -630,6 +786,9 @@ class PleinCarburant(models.Model):
         if self.prix_total is not None and self.prix_total < 0:
             raise ValidationError(
                 "Le prix total ne peut pas être négatif.")
+        if self.montant_tva is not None and self.montant_tva < 0:
+            raise ValidationError(
+                "Le montant de TVA ne peut pas être négatif.")
 
     @property
     def prix_unitaire(self):
@@ -1033,6 +1192,11 @@ class OrdreReparation(models.Model):
 
     class Statut(models.TextChoices):
         OUVERT = 'ouvert', 'Ouvert'
+        # XFLT19 — Approbation des devis de réparation externe : chaîne
+        # enrichie DEVIS_RECU → APPROUVE → EN_COURS, la chaîne existante
+        # ouvert/en_cours/clôturé reste intacte (jamais de doublon).
+        DEVIS_RECU = 'devis_recu', 'Devis reçu'
+        APPROUVE = 'approuve', 'Approuvé'
         EN_COURS = 'en_cours', 'En cours'
         CLOTURE = 'cloture', 'Clôturé'
 
@@ -1089,6 +1253,34 @@ class OrdreReparation(models.Model):
         max_digits=12, decimal_places=2, default=0,
         verbose_name='Coût total (MAD)')
     notes = models.TextField(blank=True, verbose_name='Notes')
+    # XFLT14 — Flag posé automatiquement à la création si l'actif a une
+    # garantie active couvrant la date (et le km courant si connu) : sert au
+    # suivi de récupération du coût auprès du fournisseur (warning non
+    # bloquant, jamais recalculé après coup).
+    sous_garantie = models.BooleanField(
+        default=False, verbose_name='Sous garantie (possiblement)')
+    # XFLT19 — Approbation des devis de réparation externe : montant du
+    # devis fournisseur + fichier scanné, contrôlés à l'entrée en
+    # ``en_cours`` (seuil société, voir ``ParametreApprobationOR``) et
+    # écart facture (``cout_total``) vs devis signalé à la clôture.
+    montant_devis = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Montant du devis (MAD)')
+    devis_fichier = models.FileField(
+        upload_to='flotte/ordres_reparation/devis/%Y/%m/',
+        blank=True, null=True, verbose_name='Devis (scan)')
+    approuve_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='flotte_ordres_reparation_approuves',
+        verbose_name='Approuvé par',
+    )
+    date_approbation = models.DateTimeField(
+        null=True, blank=True, verbose_name="Date d'approbation")
+    ecart_facture_devis_pct = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        verbose_name='Écart facture / devis (%)')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -2253,6 +2445,21 @@ class Infraction(models.Model):
     date_paiement = models.DateField(
         null=True, blank=True, verbose_name='Date de paiement')
     notes = models.TextField(blank=True, verbose_name='Notes')
+    # XFLT11 — Imputation automatique du conducteur : trace si ``conducteur``
+    # a été résolu automatiquement (via l'historique ``AffectationConducteur``
+    # à la date de l'infraction) plutôt que saisi manuellement.
+    imputation_auto = models.BooleanField(
+        default=False, verbose_name='Conducteur imputé automatiquement')
+    date_limite_contestation = models.DateField(
+        null=True, blank=True, verbose_name='Date limite de contestation')
+    # La retenue de paie éventuelle reste une écriture MANUELLE côté paie —
+    # ces champs ne font qu'exposer l'intention en lecture
+    # (``infractions/?refacturables=1``), jamais d'écriture cross-app.
+    refacture_conducteur = models.BooleanField(
+        default=False, verbose_name='Refacturée au conducteur')
+    montant_retenu = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Montant retenu (MAD)')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -2746,3 +2953,1206 @@ class DemandeVehicule(models.Model):
     def __str__(self):
         return (f'Demande {self.get_statut_display()} — '
                 f'{self.besoin} ({self.date_debut_souhaitee})')
+
+
+# ── XFLT1 — Contrats véhicule (leasing/LLD/location/entretien) ────────────────
+
+class ContratVehicule(models.Model):
+    """Contrat véhicule (leasing/LLD/location/entretien) rattaché à un
+    ``Vehicule`` de la société (XFLT1).
+
+    Distinct de ``AssuranceVehicule`` (FLOTTE21, contrat d'ASSURANCE
+    uniquement) : ce modèle couvre les contrats de FINANCEMENT / prestation
+    (leasing, location longue durée, location courte, contrat d'entretien,
+    garantie constructeur) qui portent un MONTANT RÉCURRENT (loyer mensuel/
+    trimestriel/annuel) plutôt qu'une prime d'assurance. Jamais de doublon
+    entre les deux familles.
+
+    ``statut_calcule(today)`` retourne l'état RÉEL du contrat vs une date
+    (``expire`` si ``date_fin`` est dépassée, ``actif`` sinon) — lecture
+    seule, date injectable, ne modifie rien en base.
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête). Le véhicule et le garage (bailleur/fournisseur interne)
+    rattachés doivent appartenir à la MÊME société (validé dans ``clean``).
+    """
+
+    class TypeContrat(models.TextChoices):
+        LEASING = 'leasing', 'Leasing'
+        LLD = 'lld', 'Location longue durée (LLD)'
+        LOCATION = 'location', 'Location'
+        CONTRAT_ENTRETIEN = 'contrat_entretien', "Contrat d'entretien"
+        GARANTIE_CONSTRUCTEUR = 'garantie_constructeur', \
+            'Garantie constructeur'
+
+    class Periodicite(models.TextChoices):
+        MENSUEL = 'mensuel', 'Mensuel'
+        TRIMESTRIEL = 'trimestriel', 'Trimestriel'
+        ANNUEL = 'annuel', 'Annuel'
+
+    class Statut(models.TextChoices):
+        ACTIF = 'actif', 'Actif'
+        EXPIRE = 'expire', 'Expiré'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_contrats_vehicule',
+        verbose_name='Société',
+    )
+    vehicule = models.ForeignKey(
+        'Vehicule',
+        on_delete=models.CASCADE,
+        related_name='contrats_vehicule',
+        verbose_name='Véhicule',
+    )
+    type_contrat = models.CharField(
+        max_length=25, choices=TypeContrat.choices,
+        default=TypeContrat.LOCATION, verbose_name='Type de contrat')
+    fournisseur = models.CharField(
+        max_length=150, blank=True,
+        verbose_name='Fournisseur / bailleur')
+    garage = models.ForeignKey(
+        'Garage',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='contrats_vehicule',
+        verbose_name='Garage / atelier (si prestataire référencé)',
+    )
+    date_debut = models.DateField(verbose_name='Début du contrat')
+    date_fin = models.DateField(
+        null=True, blank=True, verbose_name='Fin du contrat')
+    montant_recurrent = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name='Montant récurrent (MAD)')
+    periodicite = models.CharField(
+        max_length=12, choices=Periodicite.choices,
+        default=Periodicite.MENSUEL, verbose_name='Périodicité')
+    services_inclus = models.JSONField(
+        default=list, blank=True, verbose_name='Services inclus')
+    km_contractuel_an = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Km contractuel / an')
+    statut = models.CharField(
+        max_length=7, choices=Statut.choices, default=Statut.ACTIF,
+        verbose_name='Statut')
+    notes = models.TextField(blank=True, verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Contrat véhicule'
+        verbose_name_plural = 'Contrats véhicule'
+        ordering = ['date_fin', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='flotte_ctrv_co_stat_idx',
+            ),
+            models.Index(
+                fields=['company', 'vehicule'],
+                name='flotte_ctrv_co_veh_idx',
+            ),
+            models.Index(
+                fields=['company', 'date_fin'],
+                name='flotte_ctrv_co_fin_idx',
+            ),
+        ]
+
+    def clean(self):
+        """Valide l'appartenance société du véhicule/garage et la cohérence
+        des dates (fin ≥ début)."""
+        if self.vehicule_id is not None \
+                and self.vehicule.company_id != self.company_id:
+            raise ValidationError(
+                "Le véhicule n'appartient pas à la même société.")
+        if self.garage_id is not None \
+                and self.garage.company_id != self.company_id:
+            raise ValidationError(
+                "Le garage n'appartient pas à la même société.")
+        if self.date_fin is not None and self.date_debut is not None \
+                and self.date_fin < self.date_debut:
+            raise ValidationError(
+                "La fin du contrat ne peut pas précéder le début.")
+
+    def statut_calcule(self, today=None):
+        """État RÉEL du contrat vs ``today`` (lecture seule, date injectable).
+
+        Retourne ``'expire'`` si ``date_fin`` est renseignée et déjà passée,
+        ``'actif'`` sinon (y compris contrat sans date de fin — durée
+        indéterminée). ``today`` défaut = date du jour.
+        """
+        if today is None:
+            today = datetime.date.today()
+        if self.date_fin is not None and self.date_fin < today:
+            return self.Statut.EXPIRE
+        return self.Statut.ACTIF
+
+    def __str__(self):
+        return (f'{self.get_type_contrat_display()} — {self.vehicule} '
+                f'({self.montant_recurrent} MAD/{self.periodicite})')
+
+
+# ── XFLT2 — Génération des coûts récurrents de contrat ─────────────────────────
+
+class EcheanceContrat(models.Model):
+    """Ligne de coût datée matérialisant l'échéance d'un ``ContratVehicule``
+    (XFLT2).
+
+    Générée par ``services.generer_couts_contrat`` : une ligne PAR contrat ET
+    PAR période (``unique_together`` — garantit l'IDEMPOTENCE de la
+    génération, deux exécutions sur la même période ne créent qu'une seule
+    ligne). ``period`` est une chaîne ``'YYYY-MM'`` (mensuel — la seule
+    granularité de génération, indépendamment de la ``periodicite`` du
+    contrat qui reste informative sur le montant facturé).
+
+    Modèle transitoire : si ``CoutVehicule`` (XFLT3) existe sur cette
+    branche, la génération y écrit à la place (voir docstring du service) —
+    ce modèle reste le repli tant que XFLT3 n'est pas construit.
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête). Le contrat lié doit appartenir à la MÊME société.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_echeances_contrat',
+        verbose_name='Société',
+    )
+    contrat = models.ForeignKey(
+        'ContratVehicule',
+        on_delete=models.CASCADE,
+        related_name='echeances',
+        verbose_name='Contrat véhicule',
+    )
+    period = models.CharField(
+        max_length=7, verbose_name='Période (YYYY-MM)')
+    date_echeance = models.DateField(verbose_name="Date de l'échéance")
+    montant = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name='Montant (MAD)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Échéance de contrat'
+        verbose_name_plural = 'Échéances de contrat'
+        ordering = ['-date_echeance', '-id']
+        unique_together = [('contrat', 'period')]
+        indexes = [
+            models.Index(
+                fields=['company', 'period'],
+                name='flotte_ecc_co_period_idx',
+            ),
+        ]
+
+    def clean(self):
+        """Valide l'appartenance société du contrat lié."""
+        if self.contrat_id is not None \
+                and self.contrat.company_id != self.company_id:
+            raise ValidationError(
+                "Le contrat n'appartient pas à la même société.")
+
+    def __str__(self):
+        return f'Échéance {self.period} — {self.contrat} ({self.montant} MAD)'
+
+
+# ── XFLT3 — Grand livre des coûts par véhicule ──────────────────────────────────
+
+class CoutVehicule(models.Model):
+    """Ligne de coût divers saisie manuellement pour un actif de flotte
+    (XFLT3).
+
+    Capture les coûts qu'aucun autre modèle flotte ne saisit aujourd'hui
+    (péage Jawaz, parking, lavage…) mais aussi tout coût libre rattachable à
+    un contrat (catégorie ``contrat``). Alimente le grand livre unifié
+    ``selectors.ledger_vehicule`` aux côtés de ``PleinCarburant``,
+    ``OrdreReparation.cout_total``, ``AssuranceVehicule``, la TSAV et
+    ``Infraction.montant_amende`` — sans dupliquer ces sources : une dépense
+    déjà saisie ailleurs (carburant, réparation…) n'a PAS à être re-saisie
+    ici.
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête). L'actif et le conducteur liés doivent appartenir à la MÊME
+    société (validé dans ``clean``).
+    """
+
+    class Categorie(models.TextChoices):
+        CARBURANT = 'carburant', 'Carburant'
+        ENTRETIEN = 'entretien', 'Entretien'
+        ASSURANCE = 'assurance', 'Assurance'
+        VIGNETTE = 'vignette', 'Vignette'
+        AMENDE = 'amende', 'Amende'
+        PEAGE = 'peage', 'Péage'
+        PARKING = 'parking', 'Parking'
+        LAVAGE = 'lavage', 'Lavage'
+        CONTRAT = 'contrat', 'Contrat'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_couts_vehicule',
+        verbose_name='Société',
+    )
+    actif_flotte = models.ForeignKey(
+        'ActifFlotte',
+        on_delete=models.CASCADE,
+        related_name='flotte_couts_vehicule',
+        verbose_name='Actif (véhicule ou engin)',
+    )
+    categorie = models.CharField(
+        max_length=10, choices=Categorie.choices, default=Categorie.AUTRE,
+        verbose_name='Catégorie')
+    date = models.DateField(verbose_name='Date')
+    montant = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name='Montant (MAD)')
+    fournisseur = models.CharField(
+        max_length=150, blank=True, verbose_name='Fournisseur')
+    reference_piece = models.CharField(
+        max_length=80, blank=True, verbose_name='Référence pièce')
+    conducteur = models.ForeignKey(
+        'Conducteur',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='flotte_couts_vehicule',
+        verbose_name='Conducteur',
+    )
+    notes = models.TextField(blank=True, verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Coût véhicule'
+        verbose_name_plural = 'Coûts véhicule'
+        ordering = ['-date', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'actif_flotte'],
+                name='flotte_cv_co_actif_idx',
+            ),
+            models.Index(
+                fields=['company', 'categorie'],
+                name='flotte_cv_co_cat_idx',
+            ),
+            models.Index(
+                fields=['company', 'date'],
+                name='flotte_cv_co_date_idx',
+            ),
+        ]
+
+    def clean(self):
+        """Valide l'appartenance société de l'actif et du conducteur, et un
+        montant non négatif."""
+        if self.actif_flotte_id is not None \
+                and self.actif_flotte.company_id != self.company_id:
+            raise ValidationError(
+                "L'actif n'appartient pas à la même société.")
+        if self.conducteur_id is not None \
+                and self.conducteur.company_id != self.company_id:
+            raise ValidationError(
+                "Le conducteur n'appartient pas à la même société.")
+        if self.montant is not None and self.montant < 0:
+            raise ValidationError(
+                "Le montant ne peut pas être négatif.")
+
+    def __str__(self):
+        return (f'{self.get_categorie_display()} — {self.actif_flotte} '
+                f'({self.montant} MAD, {self.date})')
+
+
+# ── XFLT5 — Signalement d'anomalie véhicule par le conducteur ──────────────────
+
+class SignalementVehicule(models.Model):
+    """Signalement d'anomalie sur un actif de flotte, déposé par un
+    conducteur (XFLT5).
+
+    Tout rôle peut CRÉER un signalement (comme ``DemandeVehicule``, FLOTTE32)
+    — la résolution (passage à ``en_cours``/``resolu``/``clos``) reste
+    réservée aux rôles écriture. L'action ``convertir-en-or`` crée un
+    ``OrdreReparation`` (FLOTTE17) pré-rempli et lie les deux.
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête). L'actif et le conducteur liés (si renseigné) doivent
+    appartenir à la MÊME société (validé dans ``clean``).
+    """
+
+    class Gravite(models.TextChoices):
+        FAIBLE = 'faible', 'Faible'
+        MOYENNE = 'moyenne', 'Moyenne'
+        CRITIQUE = 'critique', 'Critique'
+
+    class Statut(models.TextChoices):
+        OUVERT = 'ouvert', 'Ouvert'
+        EN_COURS = 'en_cours', 'En cours'
+        RESOLU = 'resolu', 'Résolu'
+        CLOS = 'clos', 'Clos'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_signalements_vehicule',
+        verbose_name='Société',
+    )
+    actif_flotte = models.ForeignKey(
+        'ActifFlotte',
+        on_delete=models.CASCADE,
+        related_name='flotte_signalements_vehicule',
+        verbose_name='Actif (véhicule ou engin)',
+    )
+    conducteur = models.ForeignKey(
+        'Conducteur',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='flotte_signalements_vehicule',
+        verbose_name='Conducteur',
+    )
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='flotte_signalements_vehicule',
+        verbose_name='Auteur',
+    )
+    description = models.TextField(verbose_name='Description')
+    photo = models.FileField(
+        upload_to='flotte/signalements/photos/%Y/%m/',
+        blank=True, null=True, verbose_name='Photo')
+    gravite = models.CharField(
+        max_length=8, choices=Gravite.choices, default=Gravite.MOYENNE,
+        verbose_name='Gravité')
+    statut = models.CharField(
+        max_length=8, choices=Statut.choices, default=Statut.OUVERT,
+        verbose_name='Statut')
+    ordre_reparation = models.ForeignKey(
+        'OrdreReparation',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='signalements',
+        verbose_name='Ordre de réparation lié',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Signalement d'anomalie véhicule"
+        verbose_name_plural = "Signalements d'anomalie véhicule"
+        ordering = ['-date_creation', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='flotte_sig_co_stat_idx',
+            ),
+            models.Index(
+                fields=['company', 'actif_flotte'],
+                name='flotte_sig_co_actif_idx',
+            ),
+        ]
+
+    def clean(self):
+        """Valide l'appartenance société de l'actif, du conducteur et de
+        l'auteur."""
+        if self.actif_flotte_id is not None \
+                and self.actif_flotte.company_id != self.company_id:
+            raise ValidationError(
+                "L'actif n'appartient pas à la même société.")
+        if self.conducteur_id is not None \
+                and self.conducteur.company_id != self.company_id:
+            raise ValidationError(
+                "Le conducteur n'appartient pas à la même société.")
+        if self.auteur_id is not None \
+                and self.auteur.company_id != self.company_id:
+            raise ValidationError(
+                "L'auteur n'appartient pas à la même société.")
+
+    def __str__(self):
+        return (f'Signalement {self.get_gravite_display()} — '
+                f'{self.actif_flotte} [{self.get_statut_display()}]')
+
+
+# ── XFLT9 — Plafond CGI d'amortissement des véhicules de tourisme ──────────────
+
+class ParametreAmortissementCGI(models.Model):
+    """Paramètre société du plafond CGI d'amortissement des véhicules de
+    tourisme (XFLT9).
+
+    Un seul enregistrement par société (``OneToOne``-like via
+    ``unique=True``) : la valeur d'acquisition TTC des véhicules
+    ``type_fiscal='tourisme'`` au-delà de ``plafond_ttc`` génère une part
+    d'amortissement NON déductible fiscalement (article CGI, LF 2025 :
+    plafond par défaut 400 000 DH TTC). Les véhicules utilitaires sont
+    EXONÉRÉS du plafond (jamais de part non déductible).
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête).
+    """
+
+    PLAFOND_DEFAUT = 400000
+
+    company = models.OneToOneField(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_parametre_amortissement_cgi',
+        verbose_name='Société',
+    )
+    plafond_ttc = models.DecimalField(
+        max_digits=12, decimal_places=2, default=PLAFOND_DEFAUT,
+        verbose_name='Plafond CGI (DH TTC)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Paramètre d'amortissement CGI"
+        verbose_name_plural = "Paramètres d'amortissement CGI"
+
+    def __str__(self):
+        return f'Plafond CGI {self.company} : {self.plafond_ttc} DH TTC'
+
+    @classmethod
+    def plafond_pour(cls, company):
+        """XFLT9 — Plafond CGI (DH TTC) de la société, ou la valeur par
+        défaut si non paramétré. Lecture seule."""
+        param = cls.objects.filter(company=company).first()
+        if param is not None:
+            return float(param.plafond_ttc)
+        return float(cls.PLAFOND_DEFAUT)
+
+
+# ── XFLT12 — Catalogue de modèles véhicule ──────────────────────────────────────
+
+class ModeleVehicule(models.Model):
+    """Catalogue de modèles véhicule de référence (XFLT12).
+
+    Fiche modèle réutilisable (marque + modèle + specs standard) permettant de
+    pré-remplir un ``Vehicule`` à la création (``modele_ref``) sans écraser une
+    saisie existante. Le ``co2_g_km`` alimente l'éco-conduite (FLOTTE33) en
+    FALLBACK quand le véhicule n'a pas sa propre valeur mesurée ; la
+    ``capacite_reservoir_l`` renforce le détecteur d'anomalies FLOTTE14 (plein
+    > capacité réservoir = fraude probable).
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête).
+    """
+
+    class Categorie(models.TextChoices):
+        VOITURE = 'voiture', 'Voiture'
+        FOURGON = 'fourgon', 'Fourgon'
+        CAMION = 'camion', 'Camion'
+        REMORQUE = 'remorque', 'Remorque'
+        CHARIOT = 'chariot', 'Chariot'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_modeles_vehicule',
+        verbose_name='Société',
+    )
+    marque = models.CharField(max_length=80, verbose_name='Marque')
+    modele = models.CharField(max_length=80, verbose_name='Modèle')
+    categorie = models.CharField(
+        max_length=10, choices=Categorie.choices, default=Categorie.VOITURE,
+        verbose_name='Catégorie')
+    energie = models.CharField(
+        max_length=20, choices=Vehicule.Energie.choices,
+        default=Vehicule.Energie.DIESEL, verbose_name='Énergie')
+    co2_g_km = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='CO₂ (g/km)')
+    places = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name='Places')
+    puissance_fiscale = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name='Puissance fiscale (CV)')
+    puissance_kw = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name='Puissance (kW)')
+    valeur_catalogue = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Valeur catalogue (MAD)')
+    capacite_reservoir_l = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name='Capacité réservoir (L)',
+        help_text='Sert au détecteur de fraude FLOTTE14 : un plein '
+        'dépassant cette capacité est une anomalie.')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Modèle véhicule (catalogue)'
+        verbose_name_plural = 'Modèles véhicule (catalogue)'
+        ordering = ['marque', 'modele']
+        indexes = [
+            models.Index(
+                fields=['company', 'marque', 'modele'],
+                name='flotte_modveh_co_mm_idx',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.marque} {self.modele}'
+
+
+# ── XFLT13 — Inspections périodiques paramétrables (check-lists DVIR) ──────────
+
+class ModeleInspection(models.Model):
+    """Modèle de check-list d'inspection périodique pré-départ (XFLT13).
+
+    Distinct de l'état des lieux ``EtatDesLieux`` (FLOTTE11, remise/retour de
+    véhicule) : ceci est l'inspection PÉRIODIQUE (type DVIR — Driver Vehicle
+    Inspection Report), généralement pré-départ, paramétrable par société.
+    ``items`` est une liste JSON ``[{"libelle": str, "photo_requise": bool,
+    "bloquant": bool}, …]`` — la structure des items reste souple (pas de
+    modèle enfant) pour rester simple à éditer côté founder.
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête).
+    """
+
+    class TypeActifCible(models.TextChoices):
+        VEHICULE = 'vehicule', 'Véhicule'
+        ENGIN = 'engin', 'Engin roulant'
+        TOUS = 'tous', 'Tous'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_modeles_inspection',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=120, verbose_name='Nom')
+    type_actif_cible = models.CharField(
+        max_length=10, choices=TypeActifCible.choices,
+        default=TypeActifCible.TOUS, verbose_name="Type d'actif visé")
+    items = models.JSONField(
+        default=list, blank=True, verbose_name='Items de la check-list',
+        help_text='[{"libelle": str, "photo_requise": bool, '
+        '"bloquant": bool}, …]')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Modèle d'inspection"
+        verbose_name_plural = "Modèles d'inspection"
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
+class InspectionVehicule(models.Model):
+    """Inspection périodique pré-départ réalisée sur un actif (XFLT13).
+
+    Résultats par item stockés en JSON, alignés sur ``ModeleInspection.items``
+    par INDEX : ``[{"libelle": str, "resultat": "pass"|"fail", "photo": url|
+    None}, …]``. Tout item ``fail`` crée automatiquement un
+    ``SignalementVehicule`` lié (voir ``services.traiter_items_fail``).
+    ``signature_nom`` est le nom saisi par le conducteur/utilisateur au moment
+    de la validation (e-signature loi 53-05, comme le flux devis existant) —
+    pas de signature graphique, juste un nom + horodatage serveur.
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête). L'actif et le modèle liés doivent appartenir à la MÊME société.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_inspections_vehicule',
+        verbose_name='Société',
+    )
+    actif_flotte = models.ForeignKey(
+        'ActifFlotte',
+        on_delete=models.CASCADE,
+        related_name='flotte_inspections_vehicule',
+        verbose_name='Actif (véhicule ou engin)',
+    )
+    modele_inspection = models.ForeignKey(
+        'ModeleInspection',
+        on_delete=models.PROTECT,
+        related_name='inspections',
+        verbose_name="Modèle d'inspection",
+    )
+    conducteur = models.ForeignKey(
+        'Conducteur',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='flotte_inspections_vehicule',
+        verbose_name='Conducteur',
+    )
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='flotte_inspections_vehicule',
+        verbose_name='Auteur',
+    )
+    date_inspection = models.DateTimeField(
+        auto_now_add=True, verbose_name="Date de l'inspection")
+    resultats = models.JSONField(
+        default=list, blank=True, verbose_name='Résultats par item',
+        help_text='[{"libelle": str, "resultat": "pass"|"fail", '
+        '"photo": url|None}, …]')
+    signature_nom = models.CharField(
+        max_length=150, blank=True,
+        verbose_name='Nom du signataire (e-signature)')
+    signature_horodatage = models.DateTimeField(
+        null=True, blank=True, verbose_name='Horodatage de signature')
+
+    class Meta:
+        verbose_name = 'Inspection véhicule'
+        verbose_name_plural = 'Inspections véhicule'
+        ordering = ['-date_inspection', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'actif_flotte'],
+                name='flotte_insp_co_actif_idx',
+            ),
+            models.Index(
+                fields=['company', 'conducteur'],
+                name='flotte_insp_co_cond_idx',
+            ),
+        ]
+
+    def clean(self):
+        """Valide l'appartenance société de l'actif, du modèle et du
+        conducteur liés."""
+        if self.actif_flotte_id is not None \
+                and self.actif_flotte.company_id != self.company_id:
+            raise ValidationError(
+                "L'actif n'appartient pas à la même société.")
+        if self.modele_inspection_id is not None \
+                and self.modele_inspection.company_id != self.company_id:
+            raise ValidationError(
+                "Le modèle d'inspection n'appartient pas à la même société.")
+        if self.conducteur_id is not None \
+                and self.conducteur.company_id != self.company_id:
+            raise ValidationError(
+                "Le conducteur n'appartient pas à la même société.")
+
+    def nb_items_fail(self):
+        """XFLT13 — Nombre d'items en échec (``resultat='fail'``). Lecture
+        seule, calculé depuis ``resultats``."""
+        return sum(
+            1 for item in (self.resultats or [])
+            if item.get('resultat') == 'fail')
+
+    def __str__(self):
+        return (f'Inspection {self.modele_inspection.nom} — '
+                f'{self.actif_flotte} ({self.date_inspection:%Y-%m-%d})')
+
+
+# ── XFLT14 — Garanties véhicule & pièces ────────────────────────────────────────
+
+class GarantieFlotte(models.Model):
+    """Garantie constructeur/fournisseur sur un actif ou un composant
+    (XFLT14).
+
+    ``composant`` est du texte libre (ex. « moteur », « boîte de vitesses »)
+    ou la valeur conventionnelle ``'vehicule'`` pour une garantie couvrant
+    l'actif entier. La couverture est exprimée en durée (``duree_mois``
+    depuis ``date_debut``) ET/OU en kilométrage (``duree_km``) — l'un des
+    deux suffit, les deux peuvent coexister (garantie expire au premier
+    seuil atteint). À la création d'un ``OrdreReparation``, un warning NON
+    BLOQUANT est levé si l'actif a une garantie active couvrant la date (et
+    le km courant si renseigné) — voir ``services.garantie_active_pour``.
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête). L'actif lié doit appartenir à la MÊME société.
+    """
+
+    VEHICULE_ENTIER = 'vehicule'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_garanties',
+        verbose_name='Société',
+    )
+    actif_flotte = models.ForeignKey(
+        'ActifFlotte',
+        on_delete=models.CASCADE,
+        related_name='flotte_garanties',
+        verbose_name='Actif (véhicule ou engin)',
+    )
+    composant = models.CharField(
+        max_length=120, default=VEHICULE_ENTIER, verbose_name='Composant',
+        help_text="Texte libre, ou 'vehicule' pour une garantie couvrant "
+        "l'actif entier.")
+    duree_mois = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Durée (mois)')
+    duree_km = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Durée (km)')
+    date_debut = models.DateField(verbose_name='Date de début')
+    fournisseur = models.CharField(
+        max_length=150, blank=True, verbose_name='Fournisseur')
+    notes = models.TextField(blank=True, verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Garantie flotte'
+        verbose_name_plural = 'Garanties flotte'
+        ordering = ['-date_debut', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'actif_flotte'],
+                name='flotte_gar_co_actif_idx',
+            ),
+        ]
+
+    def clean(self):
+        """Valide l'appartenance société de l'actif lié."""
+        if self.actif_flotte_id is not None \
+                and self.actif_flotte.company_id != self.company_id:
+            raise ValidationError(
+                "L'actif n'appartient pas à la même société.")
+
+    def date_fin(self):
+        """XFLT14 — Date d'expiration par durée (mois), ou ``None`` si
+        ``duree_mois`` n'est pas renseignée. Lecture seule."""
+        if self.duree_mois is None or self.date_debut is None:
+            return None
+        total = self.date_debut.month - 1 + int(self.duree_mois)
+        year = self.date_debut.year + total // 12
+        month = total % 12 + 1
+        if month == 12:
+            last_day = 31
+        else:
+            last_day = (datetime.date(year, month + 1, 1)
+                        - datetime.timedelta(days=1)).day
+        day = min(self.date_debut.day, last_day)
+        return datetime.date(year, month, day)
+
+    def couvre(self, today=None, kilometrage=None):
+        """XFLT14 — ``True`` si la garantie couvre encore ``today`` (et
+        ``kilometrage`` si les deux sont renseignés — expire au PREMIER
+        seuil atteint). Lecture seule, dates/km injectables."""
+        if today is None:
+            today = datetime.date.today()
+        if today < self.date_debut:
+            return False
+        fin_date = self.date_fin()
+        if fin_date is not None and today > fin_date:
+            return False
+        if self.duree_km is not None and kilometrage is not None \
+                and kilometrage > self.duree_km:
+            return False
+        return True
+
+    def __str__(self):
+        return f'Garantie {self.composant} — {self.actif_flotte}'
+
+
+# ── XFLT15 — Analyse de remplacement (fin de vie économique) ───────────────────
+
+class ParametreRemplacementFlotte(models.Model):
+    """Seuils société pour l'analyse de remplacement (XFLT15).
+
+    Un seul enregistrement par société (comme
+    ``ParametreAmortissementCGI``) — style « 50/30/20 » : un véhicule
+    dépassant AU MOINS 2 des 3 règles (âge, kilométrage, ratio coût-
+    réparations-12-mois / valeur vénale) est flaggé « à remplacer ».
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête).
+    """
+
+    AGE_MAX_ANS_DEFAUT = 8
+    KM_MAX_DEFAUT = 200000
+    RATIO_COUT_REPARATION_DEFAUT = 0.30  # 30 % de la valeur vénale / an.
+
+    company = models.OneToOneField(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_parametre_remplacement',
+        verbose_name='Société',
+    )
+    age_max_ans = models.PositiveSmallIntegerField(
+        default=AGE_MAX_ANS_DEFAUT, verbose_name='Âge maximal (ans)')
+    km_max = models.PositiveIntegerField(
+        default=KM_MAX_DEFAUT, verbose_name='Kilométrage maximal')
+    ratio_cout_reparation_max = models.DecimalField(
+        max_digits=4, decimal_places=2, default=RATIO_COUT_REPARATION_DEFAUT,
+        verbose_name='Ratio coût-réparations/valeur vénale max')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Paramètre de remplacement flotte'
+        verbose_name_plural = 'Paramètres de remplacement flotte'
+
+    def __str__(self):
+        return f'Seuils remplacement {self.company}'
+
+    @classmethod
+    def pour(cls, company):
+        """XFLT15 — Paramètre de la société, ou les valeurs par défaut si
+        non paramétré. Lecture seule."""
+        param = cls.objects.filter(company=company).first()
+        if param is not None:
+            return param
+        return cls(
+            company=company, age_max_ans=cls.AGE_MAX_ANS_DEFAUT,
+            km_max=cls.KM_MAX_DEFAUT,
+            ratio_cout_reparation_max=cls.RATIO_COUT_REPARATION_DEFAUT)
+
+
+# ── XFLT17 — Charte véhicule + accusé de lecture ────────────────────────────────
+
+class CharteVehicule(models.Model):
+    """Charte véhicule versionnée d'une société (XFLT17).
+
+    Document (FileField) décrivant les règles d'usage du véhicule ; VERSIONNÉ
+    (``version`` entier croissant par société) — une nouvelle version
+    n'écrase jamais l'ancienne (historique conservé), elle rend juste les
+    accusés antérieurs obsolètes vs la version courante (voir
+    ``AccuseCharte`` et ``services.charte_courante``).
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête).
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_chartes_vehicule',
+        verbose_name='Société',
+    )
+    version = models.PositiveIntegerField(verbose_name='Version')
+    document = models.FileField(
+        upload_to='flotte/chartes_vehicule/%Y/%m/',
+        verbose_name='Document (charte véhicule)')
+    date_publication = models.DateTimeField(
+        auto_now_add=True, verbose_name='Date de publication')
+
+    class Meta:
+        verbose_name = 'Charte véhicule'
+        verbose_name_plural = 'Chartes véhicule'
+        unique_together = [('company', 'version')]
+        ordering = ['-version']
+
+    def __str__(self):
+        return f'Charte véhicule v{self.version} — {self.company}'
+
+
+class AccuseCharte(models.Model):
+    """Accusé de lecture de la charte véhicule par un conducteur (XFLT17).
+
+    Un conducteur accuse réception d'une VERSION précise de la charte
+    (``conducteur`` + ``version`` + horodatage serveur — nom saisi comme les
+    autres e-signatures flotte). À la première affectation d'un conducteur
+    (``AffectationConducteur``), un warning non bloquant liste la version
+    courante si aucun accusé ne la couvre (voir
+    ``services.accuse_charte_manquant``).
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête). Le conducteur lié doit appartenir à la MÊME société.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_accuses_charte',
+        verbose_name='Société',
+    )
+    conducteur = models.ForeignKey(
+        'Conducteur',
+        on_delete=models.CASCADE,
+        related_name='flotte_accuses_charte',
+        verbose_name='Conducteur',
+    )
+    version = models.PositiveIntegerField(
+        verbose_name='Version de la charte accusée')
+    date_accuse = models.DateTimeField(
+        auto_now_add=True, verbose_name="Date de l'accusé")
+
+    class Meta:
+        verbose_name = 'Accusé de charte véhicule'
+        verbose_name_plural = 'Accusés de charte véhicule'
+        unique_together = [('company', 'conducteur', 'version')]
+        ordering = ['-date_accuse']
+
+    def clean(self):
+        """Valide l'appartenance société du conducteur lié."""
+        if self.conducteur_id is not None \
+                and self.conducteur.company_id != self.company_id:
+            raise ValidationError(
+                "Le conducteur n'appartient pas à la même société.")
+
+    def __str__(self):
+        return f'Accusé charte v{self.version} — {self.conducteur}'
+
+
+# ── XFLT18 — Budget flotte annuel vs réalisé ────────────────────────────────────
+
+class BudgetFlotte(models.Model):
+    """Budget flotte annuel par catégorie de coût (XFLT18).
+
+    Une ligne budgétaire par ``(company, annee, categorie)`` — mêmes clés de
+    catégorie que le ledger unifié (XFLT3, ``CoutVehicule.Categorie``), le
+    variance vs réalisé est calculé par
+    ``selectors.variance_budget_flotte`` (agrégat du ledger, jamais
+    dupliqué ici).
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête).
+    """
+
+    class Categorie(models.TextChoices):
+        CARBURANT = 'carburant', 'Carburant'
+        ENTRETIEN = 'entretien', 'Entretien'
+        ASSURANCE = 'assurance', 'Assurance'
+        VIGNETTE = 'vignette', 'Vignette'
+        CONTRAT = 'contrat', 'Contrat'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_budgets',
+        verbose_name='Société',
+    )
+    annee = models.PositiveSmallIntegerField(verbose_name='Année')
+    categorie = models.CharField(
+        max_length=10, choices=Categorie.choices, default=Categorie.AUTRE,
+        verbose_name='Catégorie')
+    montant_budgete = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name='Montant budgété (MAD)')
+    # XFLT18 — Trace qu'une alerte de dépassement (>100 %) a déjà été
+    # notifiée pour CETTE ligne budgétaire (idempotence : une seule
+    # notification par (société, année, catégorie), jamais renvoyée en
+    # boucle par un cron/appel répété de ``services.verifier_depassements``).
+    notifie_depassement = models.BooleanField(
+        default=False, verbose_name='Dépassement déjà notifié')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Budget flotte'
+        verbose_name_plural = 'Budgets flotte'
+        unique_together = [('company', 'annee', 'categorie')]
+        ordering = ['-annee', 'categorie']
+
+    def clean(self):
+        """Valide que le montant budgété n'est pas négatif."""
+        if self.montant_budgete is not None and self.montant_budgete < 0:
+            raise ValidationError(
+                "Le montant budgété ne peut pas être négatif.")
+
+    def __str__(self):
+        return (f'Budget {self.get_categorie_display()} {self.annee} — '
+                f'{self.montant_budgete} MAD')
+
+
+# ── XFLT19 — Approbation des devis de réparation externe ───────────────────────
+
+class ParametreApprobationOR(models.Model):
+    """Seuil société d'approbation des devis de réparation (XFLT19).
+
+    Un seul enregistrement par société (comme ``ParametreAmortissementCGI``) :
+    un ``OrdreReparation`` dont ``montant_devis`` dépasse ``seuil_approbation``
+    exige l'action ``approuver/`` (rôle gestionnaire — réutilise la mécanique
+    rôles existante de ``DemandeVehicule``) avant de pouvoir passer en
+    ``en_cours``.
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête).
+    """
+
+    SEUIL_APPROBATION_DEFAUT = 5000
+    ECART_ALERTE_PCT_DEFAUT = 10
+
+    company = models.OneToOneField(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_parametre_approbation_or',
+        verbose_name='Société',
+    )
+    seuil_approbation = models.DecimalField(
+        max_digits=12, decimal_places=2, default=SEUIL_APPROBATION_DEFAUT,
+        verbose_name='Seuil d’approbation (MAD)')
+    ecart_alerte_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=ECART_ALERTE_PCT_DEFAUT,
+        verbose_name='Écart facture/devis alerte (%)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Paramètre d'approbation OR"
+        verbose_name_plural = "Paramètres d'approbation OR"
+
+    def __str__(self):
+        return f'Seuil approbation OR {self.company} : {self.seuil_approbation} MAD'
+
+    @classmethod
+    def pour(cls, company):
+        """XFLT19 — Paramètre de la société, ou les valeurs par défaut si
+        non paramétré. Lecture seule."""
+        param = cls.objects.filter(company=company).first()
+        if param is not None:
+            return param
+        return cls(
+            company=company,
+            seuil_approbation=cls.SEUIL_APPROBATION_DEFAUT,
+            ecart_alerte_pct=cls.ECART_ALERTE_PCT_DEFAUT)
+
+
+# ── XFLT20 — Registre de remise clés / carte / badge / tag Jawaz ───────────────
+
+class RemiseAccessoire(models.Model):
+    """Journal de custody des accessoires d'un actif (XFLT20).
+
+    Répond à « qui a les clés du L-4523 ? » : trace chaque remise d'un
+    accessoire (clé, double de clé, carte carburant, tag Jawaz, badge) à un
+    conducteur, avec date de remise et — une fois restitué — date de retour.
+    Le détenteur COURANT d'un accessoire est celui dont la ligne la plus
+    récente n'a pas de ``date_retour`` (voir ``services.detenteurs_courants``).
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête). L'actif et le conducteur liés doivent appartenir à la MÊME
+    société (validé dans ``clean``).
+    """
+
+    class Type(models.TextChoices):
+        CLE = 'cle', 'Clé'
+        DOUBLE_CLE = 'double_cle', 'Double de clé'
+        CARTE_CARBURANT = 'carte_carburant', 'Carte carburant'
+        TAG_JAWAZ = 'tag_jawaz', 'Tag Jawaz'
+        BADGE = 'badge', 'Badge'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_remises_accessoire',
+        verbose_name='Société',
+    )
+    actif_flotte = models.ForeignKey(
+        'ActifFlotte',
+        on_delete=models.CASCADE,
+        related_name='flotte_remises_accessoire',
+        verbose_name='Actif (véhicule ou engin)',
+    )
+    # 'carte_carburant' (15) est le plus long code de type.
+    type_accessoire = models.CharField(
+        max_length=16, choices=Type.choices, verbose_name='Type')
+    conducteur = models.ForeignKey(
+        'Conducteur',
+        on_delete=models.CASCADE,
+        related_name='flotte_remises_accessoire',
+        verbose_name='Détenteur',
+    )
+    date_remise = models.DateField(verbose_name='Date de remise')
+    date_retour = models.DateField(
+        null=True, blank=True, verbose_name='Date de retour')
+    commentaire = models.TextField(blank=True, verbose_name='Commentaire')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Remise d'accessoire"
+        verbose_name_plural = "Remises d'accessoire"
+        ordering = ['-date_remise', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'actif_flotte'],
+                name='flotte_rem_co_actif_idx',
+            ),
+            models.Index(
+                fields=['company', 'conducteur'],
+                name='flotte_rem_co_cond_idx',
+            ),
+        ]
+
+    def clean(self):
+        """Valide l'appartenance société de l'actif et du conducteur liés,
+        et la cohérence des dates."""
+        if self.actif_flotte_id is not None \
+                and self.actif_flotte.company_id != self.company_id:
+            raise ValidationError(
+                "L'actif n'appartient pas à la même société.")
+        if self.conducteur_id is not None \
+                and self.conducteur.company_id != self.company_id:
+            raise ValidationError(
+                "Le conducteur n'appartient pas à la même société.")
+        if self.date_remise is not None and self.date_retour is not None \
+                and self.date_retour < self.date_remise:
+            raise ValidationError(
+                "La date de retour ne peut pas précéder la remise.")
+
+    def __str__(self):
+        return (f'{self.get_type_accessoire_display()} — '
+                f'{self.actif_flotte} → {self.conducteur}')
+
+
+# ── XFLT21 — Journal d'audit flotte ─────────────────────────────────────────────
+
+class ActiviteFlotte(models.Model):
+    """Historique immuable des changements sur véhicule/affectation/statut
+    (XFLT21).
+
+    Modèle maison sur le principe du chatter CRM (``crm.LeadActivity`` COMME
+    RÉFÉRENCE DE CONCEPTION — jamais importé, aucun couplage cross-app) :
+    une entrée par changement RÉEL (ancien→nouveau), alimentée dans
+    ``perform_update`` des viewsets concernés (``VehiculeViewSet``,
+    ``AffectationConducteurViewSet``) — utilisateur et société TOUJOURS
+    posés côté serveur. Immuable : aucune suppression/édition possible
+    (lecture + création seules, jamais d'update/delete depuis l'API).
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête).
+    """
+
+    class TypeObjet(models.TextChoices):
+        VEHICULE = 'vehicule', 'Véhicule'
+        AFFECTATION = 'affectation', 'Affectation conducteur'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_activites',
+        verbose_name='Société',
+    )
+    type_objet = models.CharField(
+        max_length=11, choices=TypeObjet.choices, verbose_name="Type d'objet")
+    objet_id = models.PositiveIntegerField(verbose_name="ID de l'objet")
+    # Rattachement direct au véhicule pour lister l'historique sur la fiche
+    # véhicule même quand type_objet='affectation' (l'affectation porte un
+    # véhicule) — évite un JOIN cross-modèle pour l'action ``historique/``.
+    vehicule = models.ForeignKey(
+        'Vehicule',
+        on_delete=models.CASCADE,
+        related_name='flotte_activites',
+        verbose_name='Véhicule',
+    )
+    champ = models.CharField(max_length=60, verbose_name='Champ modifié')
+    ancienne_valeur = models.CharField(
+        max_length=255, blank=True, verbose_name='Ancienne valeur')
+    nouvelle_valeur = models.CharField(
+        max_length=255, blank=True, verbose_name='Nouvelle valeur')
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='flotte_activites',
+        verbose_name='Utilisateur',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Activité flotte (journal d'audit)"
+        verbose_name_plural = "Activités flotte (journal d'audit)"
+        ordering = ['-date_creation', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'vehicule'],
+                name='flotte_act_co_veh_idx',
+            ),
+            models.Index(
+                fields=['company', 'type_objet', 'objet_id'],
+                name='flotte_act_co_type_obj_idx',
+            ),
+        ]
+
+    def __str__(self):
+        return (f'{self.get_type_objet_display()} #{self.objet_id} — '
+                f'{self.champ} : {self.ancienne_valeur} → {self.nouvelle_valeur}')

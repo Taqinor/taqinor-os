@@ -128,7 +128,11 @@ const galleryPhotos = rest;
         {r.production && (
           <div class="v2-rise" style="--v2-i:1">
             <dd class="fig lum text-3xl sm:text-4xl" data-tally>{r.production}</dd>
-            <dt class="tech-label mt-2 text-lune-faint">Measured production — Deye Cloud</dt>
+            <dt class="tech-label mt-2 text-lune-faint">
+              {r.productionEstimated
+                ? 'Estimated production — measured yield of our projects'
+                : 'Measured production — Deye Cloud'}
+            </dt>
           </div>
         )}
         <div class="v2-rise" style="--v2-i:2">

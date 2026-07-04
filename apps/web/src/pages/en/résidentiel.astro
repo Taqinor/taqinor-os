@@ -2,7 +2,7 @@
 /**
  * EN — Residential solar (W67). Faithful translation of /résidentiel ; EVERY
  * figure kept EXACT in Latin digits (11,36 kWc, 14 271 kWh/an, 60–90 %, 3–7 years,
- * 25 years, < 11 kW, 1 000 / 2 000 / 10 000 MAD, ref. 400/236/468/NC-10/25,
+ * 30 years, < 11 kW, 1 000 / 2 000 / 10 000 MAD, ref. 400/236/468/NC-10/25,
  * Canadian Solar 710 Wc, Deye, Dyness LFP, Deye Cloud, ONEE, law 82-21). The
  * price-bracket data + solar math (BILL_RANGES / localEstimateBand / formatMAD)
  * are reused UNCHANGED — only visible labels are translated. Internal links via
@@ -69,10 +69,17 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
     bill: r.label,
     kwc: band.kwcLabel,
     payback: band.paybackLabel,
+    investLow: arrondi5k(band.kwcMin * PRIX_PAR_KWC.bas),
+    investHigh: arrondi5k(band.kwcMax * PRIX_PAR_KWC.haut),
     invest: `${formatMAD(arrondi5k(band.kwcMin * PRIX_PAR_KWC.bas))} – ${formatMAD(arrondi5k(band.kwcMax * PRIX_PAR_KWC.haut))}`,
     exemple: EXEMPLES_REELS[r.id] ?? null,
   };
 });
+
+// WB14 (2026-07-04) — bounds DERIVED from the brackets table above (already
+// published) for the extractable AEO answer; no new figure.
+const investRangeLow = formatMAD(Math.min(...brackets.map((b) => b.investLow)));
+const investRangeHigh = formatMAD(Math.max(...brackets.map((b) => b.investHigh)));
 ---
 
 <Layout
@@ -152,7 +159,13 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
       {/* W274 — chapter-numbering system (01/02…), same device as index.astro:
           extended here so the editorial device is consistent site-wide. */}
       <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">01</span>Price transparency</p>
-      <h2 class="display v2-section-title mt-5 text-white">Your bill already places you in a range</h2>
+      <h2 class="display v2-section-title mt-5 text-white">How much does solar cost for a villa, and how long does it take to pay back?</h2>
+      <p class="v2-lead mt-4 max-w-2xl font-semibold text-white">
+        For a typical residential bill (1,000 to 10,000 MAD/month), an installation typically costs
+        between {investRangeLow} and {investRangeHigh} and pays back in 3 to 7 years, for the
+        self-consumed share — beyond that, the electricity produced costs almost nothing for the
+        rest of the 30-year performance warranty.
+      </p>
       <p class="v2-lead mt-4 max-w-2xl text-lune-soft">
         Here are the orders of magnitude recorded on our residential sites — <strong class="text-lune">never a
         quote</strong>. The exact figure comes after the technical visit; and if your profile doesn't
@@ -190,18 +203,18 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
         <div class="v2-rise">
           {/* W274 — chapter 02, same device. */}
           <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">02</span>The investment horizon</p>
-          <h2 class="display v2-section-title mt-5 text-white">What the 25 years deliver, year by year</h2>
+          <h2 class="display v2-section-title mt-5 text-white">What the 30 years deliver, year by year</h2>
           <p class="v2-lead mt-5 text-lune-soft">
-            The manufacturer guarantees panel performance over 25 years. Take a villa with a
+            The manufacturer guarantees panel performance over 30 years (a linear warranty). Take a villa with a
             2 000 MAD monthly bill: 6 kWc come to around 60 000 to 75 000 MAD and
             wipe out some 12 000 to 16 000 MAD of electricity every year (at the ONEE utility tariff).
-            Four to six years to pay it back; then, over the nineteen to twenty-one years that
+            Four to six years to pay it back; then, over the twenty-four to twenty-six years that
             remain, the kilowatt-hour costs almost nothing — there's just one inverter to
             replace once over the lifetime.
           </p>
           <dl class="mt-10 grid grid-cols-3 gap-4 border-l-2 border-brass-400/60 pl-6" data-stagger>
             <div class="v2-rise" style="--v2-i:0">
-              <dd class="fig lum whitespace-nowrap text-2xl sm:text-4xl" data-tally>25 years</dd>
+              <dd class="fig lum whitespace-nowrap text-2xl sm:text-4xl" data-tally>30 years</dd>
               <dt class="tech-label mt-1.5 text-lune-faint">Panel warranty</dt>
             </div>
             <div class="v2-rise" style="--v2-i:1">

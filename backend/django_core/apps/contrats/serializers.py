@@ -15,6 +15,7 @@ from .models import (
     Contrat,
     ContratActivity,
     ContratLien,
+    CycleFacturationLog,
     EcheancierContrat,
     EngagementSLA,
     EtapeApprobation,
@@ -72,12 +73,12 @@ class ContratSerializer(serializers.ModelSerializer):
     """Sérialiseur d'un ``Contrat``.
 
     ``sav_contrat_maintenance_id`` est un lien LÂCHE (id seul) vers un contrat
-    de maintenance SAV (``sav.ContratMaintenance``) : il est STOCKÉ tel quel,
-    sans validation cross-app — l'app ``sav`` n'expose pas de ``selectors.py``
-    aujourd'hui, donc on ne vérifie pas l'existence/la société de la cible et on
-    n'importe JAMAIS ``apps.sav``. Quand un sélecteur SAV de lecture existera,
-    l'enrichissement/validation pourra s'y brancher (même schéma que les
-    ``ContratLien`` enrichis dans ``selectors.py``).
+    de maintenance SAV (``sav.ContratMaintenance``) — jamais un FK dur ni un
+    import de ``apps.sav.models``. Depuis XCTR13, l'ÉCRITURE de ce champ est
+    VALIDÉE via le sélecteur cross-app ``sav.selectors.contrat_maintenance_
+    existe`` (frontière cross-app, CLAUDE.md) : un id inexistant OU d'une
+    AUTRE société est refusé (400). ``None``/vide reste toujours accepté
+    (aucun contrat de maintenance rattaché).
     """
     type_contrat_display = serializers.CharField(
         source='get_type_contrat_display', read_only=True)
@@ -109,12 +110,18 @@ class ContratSerializer(serializers.ModelSerializer):
             'jours_avant_echeance',
             'montant', 'devise',
             'confidentialite', 'confidentialite_display',
+            'responsable', 'responsable_nom',
             'created_by', 'date_creation',
         ]
         read_only_fields = [
             'created_by', 'date_creation',
             'date_dernier_renouvellement', 'nb_renouvellements',
         ]
+
+    responsable_nom = serializers.SerializerMethodField()
+
+    def get_responsable_nom(self, obj):
+        return getattr(obj.responsable, 'username', None)
 
     def get_echeance_preavis(self, obj):
         echeance = obj.echeance_preavis()
@@ -135,6 +142,39 @@ class ContratSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Ce modèle n'appartient pas à votre société.")
         return modele
+
+    def validate_responsable(self, responsable):
+        """Le responsable (optionnel) doit appartenir à la société — XCTR10."""
+        if responsable is None:
+            return responsable
+        request = self.context.get('request')
+        if request is not None and \
+                responsable.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Ce responsable n'appartient pas à votre société.")
+        return responsable
+
+    def validate_sav_contrat_maintenance_id(self, pk):
+        """L'id, s'il est fourni, doit exister DANS la société — XCTR13.
+
+        Frontière cross-app : délègue à ``sav.selectors.contrat_maintenance_
+        existe`` (import fonction-local, jamais ``sav.models``). ``None``
+        reste toujours accepté (aucun rattachement).
+        """
+        if not pk:
+            return pk
+        request = self.context.get('request')
+        company = getattr(request, 'user', None) and request.user.company \
+            if request is not None else None
+        if company is None:
+            return pk
+        from apps.sav.selectors import contrat_maintenance_existe
+
+        if not contrat_maintenance_existe(pk, company):
+            raise serializers.ValidationError(
+                "Ce contrat de maintenance SAV est introuvable dans votre "
+                "société.")
+        return pk
 
 
 class PartieContratSerializer(serializers.ModelSerializer):
@@ -741,6 +781,19 @@ class ResilierContratSerializer(serializers.Serializer):
         max_digits=14, decimal_places=2, required=False, allow_null=True)
 
 
+class GenererDevisRenouvellementSerializer(serializers.Serializer):
+    """Corps de POST /contrats/<id>/generer-devis-renouvellement/ (XCTR12).
+
+    ``valeur_indice`` (optionnel) : valeur COURANTE de l'indice de référence
+    de la première ``IndexationPrix`` active du contrat — si fournie, le
+    montant proposé est révisé par la formule d'indexation (CONTRAT32) ; sinon
+    le montant courant du contrat est repris tel quel.
+    """
+    valeur_indice = serializers.DecimalField(
+        max_digits=14, decimal_places=4, required=False, allow_null=True,
+        min_value=0)
+
+
 class JalonContratSerializer(serializers.ModelSerializer):
     """Jalon / étape clé d'un contrat (CONTRAT26).
 
@@ -1002,6 +1055,31 @@ class IndexationActionSerializer(serializers.Serializer):
         min_value=0)
 
 
+class CampagneRevisionSerializer(serializers.Serializer):
+    """Corps de POST /contrats/campagne-revision/ (XCTR11).
+
+    ``filtres`` (optionnel) : ``{type_contrat, statut, responsable_id}``.
+    ``pct`` (requis) : pourcentage de révision (ex. 5 = +5 %, -3 = -3 %).
+    ``date_effet`` (optionnel, application seulement) : défaut aujourd'hui.
+    ``preview`` (défaut ``True``) : aucune écriture tant que ``False`` n'est
+    pas explicitement passé.
+    """
+    filtres = serializers.DictField(required=False, allow_null=True)
+    pct = serializers.DecimalField(max_digits=6, decimal_places=2)
+    date_effet = serializers.DateField(required=False, allow_null=True)
+    preview = serializers.BooleanField(required=False, default=True)
+
+
+class RollbackCampagneRevisionSerializer(serializers.Serializer):
+    """Corps de POST /contrats/campagne-revision-rollback/ (XCTR11).
+
+    ``avenant_ids`` : liste des ids d'avenants à compenser (retournés par
+    l'application de la campagne — ``rollback_ids``).
+    """
+    avenant_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), allow_empty=False)
+
+
 class PenaliteSLASerializer(serializers.Serializer):
     """Corps de POST /sla/<id>/penalite/ (CONTRAT27).
 
@@ -1135,3 +1213,26 @@ class MarquerPieceFournieSerializer(serializers.Serializer):
     ged_document_id = serializers.IntegerField(
         required=False, allow_null=True, min_value=1)
     date_expiration = serializers.DateField(required=False, allow_null=True)
+
+
+class CycleFacturationLogSerializer(serializers.ModelSerializer):
+    """Entrée du journal de facturation récurrente — XCTR5.
+
+    TOUS les champs sont en LECTURE SEULE côté API : les entrées sont créées
+    exclusivement côté serveur par les services de facturation récurrente
+    (``services.enregistrer_cycle``). ``company`` n'est jamais lue du corps de
+    requête.
+    """
+    source_type_display = serializers.CharField(
+        source='get_source_type_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = CycleFacturationLog
+        fields = [
+            'id', 'source_type', 'source_type_display', 'source_id',
+            'periode', 'statut', 'statut_display', 'motif', 'facture_id',
+            'nb_tentatives', 'date_creation',
+        ]
+        read_only_fields = fields

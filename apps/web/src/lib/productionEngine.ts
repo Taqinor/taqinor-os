@@ -292,8 +292,14 @@ export function fallbackPerKwc(specificYieldKwhPerKwc = 1600): PerKwcProduction 
   // Saisonnalité Maroc plausible (poids relatifs, normalisés ensuite).
   const seasonWeights = [0.72, 0.8, 0.95, 1.05, 1.15, 1.2, 1.22, 1.18, 1.05, 0.92, 0.78, 0.68];
   const wTotal = sum(seasonWeights);
-  const monthlyKwh = seasonWeights.map((w, m) => (annualKwh * w * DAYS_IN_MONTH[m]) / (wTotal * 30.4375));
-  // Re-normalise pour que la somme mensuelle = annuel exactement.
+  // WB21 — poids saisonnier SEUL (pas de terme jours/mois ici : `seasonWeights` porte
+  // déjà toute la saisonnalité voulue). Un ×DAYS_IN_MONTH[m]/30.4375 en plus pondérait
+  // deux fois la durée du mois — un mois court (février) se retrouvait pénalisé par
+  // son poids saisonnier ET par sa longueur, ce qui écrasait sa part réelle d'environ
+  // 8 % de plus que voulu (repéré en reproduisant l'écart vs poids saisonnier seul).
+  const monthlyKwh = seasonWeights.map((w) => (annualKwh * w) / wTotal);
+  // Re-normalise (garde-fou arrondi flottant) pour que la somme mensuelle = annuel
+  // exactement — no-op en pratique puisque seasonWeights/wTotal somme déjà à 1.
   const got = sum(monthlyKwh);
   const corr = got > 0 ? annualKwh / got : 1;
   const monthly = monthlyKwh.map((v) => v * corr);

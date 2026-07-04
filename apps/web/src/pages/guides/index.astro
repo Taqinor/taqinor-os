@@ -13,11 +13,13 @@ import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { estimateReadingTime } from '../../lib/readingTime';
+import { getGuideVerifiedDate } from '../../lib/guideMeta';
 
-// W303 — date de vérification commune aux guides rédactionnels de ce pass (badge de
-// fraîcheur sur les cartes) + estimation de temps de lecture à partir du résumé affiché
-// (repère indicatif pour la carte ; le temps de lecture précis vit sur la page du guide).
-const verifiedDate = new Date('2026-07-03');
+// W303 — date de vérification (badge de fraîcheur sur les cartes) + estimation de
+// temps de lecture à partir du résumé affiché (repère indicatif pour la carte ; le
+// temps de lecture précis vit sur la page du guide). WB12 — chaque carte lit
+// désormais sa propre date via guideMeta.ts (source unique par slug) au lieu d'une
+// constante globale partagée entre les 12 guides.
 const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 
 const groups = [
@@ -173,10 +175,11 @@ const jsonLd = {
                 <a href={g.href} class="v2-rise cine-card guide-card flex flex-col p-7" style={`--v2-i:${i}`}>
                   <p class="tech-label text-lune">{group.theme === 'Voiture électrique' ? 'Pilier' : 'Guide'}</p>
                   <h3 class="display mt-2 text-xl text-white">{g.title}</h3>
-                  {/* W303 — badge de fraîcheur + temps de lecture indicatif (estimé sur le résumé affiché) */}
+                  {/* W303 — badge de fraîcheur + temps de lecture indicatif (estimé sur le résumé affiché).
+                      WB12 — la date vient de guideMeta.ts, par slug (dernier segment du href). */}
                   {g.verified && (
                     <p class="guide-freshness mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-lune-faint">
-                      <span>Vérifié le {dateFmt.format(verifiedDate)}</span>
+                      <span>Vérifié le {dateFmt.format(getGuideVerifiedDate(g.href.replace(/^\/(guides\/)?/, '')))}</span>
                       <span aria-hidden="true">·</span>
                       <span>{estimateReadingTime(g.summary)} min</span>
                     </p>

@@ -23,14 +23,22 @@ import { NAP } from '../lib/nap';
 
 /**
  * W345 — Presse & partenaires : factsheet DÉRIVÉE, aucun chiffre saisi à la
- * main. Le nombre d'installations et la ville viennent de realisations.ts
- * (déjà la source unique de vérité utilisée par impact-taqinor.astro) ;
- * RC/ICE sont les valeurs déjà publiées sur mentions-legales.astro. Aucune
- * date de création d'entreprise n'est publiée nulle part sur le site — on ne
+ * main. Le kWc installé et la ville viennent de realisations.ts (déjà la
+ * source unique de vérité utilisée par impact-taqinor.astro) ; RC/ICE sont
+ * les valeurs déjà publiées sur mentions-legales.astro. Aucune date de
+ * création d'entreprise n'est publiée nulle part sur le site — on ne
  * l'invente donc pas ici ; le plus ancien chantier documenté (realisations.ts)
  * sert d'ancrage factuel à sa place.
+ *
+ * RULE B (2026-07-04) : le compte brut d'installations n'est plus une
+ * statistique publique mise en avant — remplacé par le kWc installé, déjà
+ * la mesure de référence ailleurs sur le site (supersède partiellement
+ * l'ancien chiffre "{installCount} installations").
  */
-const installCount = REALISATIONS.length;
+const totalKwc = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
+const totalKwcLabel = totalKwc
+  .toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  .replace('.', ',');
 // realisations.ts liste aujourd'hui les chantiers du plus récent au plus
 // ancien (avril 2026 → octobre 2025) : le dernier élément est le plus ancien
 // documenté. Sert d'ancrage factuel — aucune date de création d'entreprise
@@ -232,8 +240,8 @@ const etapes = [
               <dt class="tech-label mt-2 text-encre-faint">Registre de commerce (RC 691213)</dt>
             </div>
             <div>
-              <dd class="font-display text-2xl font-bold">{installCount} installations</dd>
-              <dt class="tech-label mt-2 text-encre-faint">Réalisations documentées publiquement</dt>
+              <dd class="font-display text-2xl font-bold">{totalKwcLabel} kWc</dd>
+              <dt class="tech-label mt-2 text-encre-faint">Installés, réalisations documentées publiquement</dt>
             </div>
             <div>
               <dd class="font-display text-2xl font-bold">{earliestRealisation.date}</dd>

@@ -282,3 +282,74 @@ def unread_summary(user, company):
         per_conv[m.conversation_id] = c
         total += c
     return {'per_conversation': per_conv, 'total': total}
+
+
+# ── XKB33 — Conversation dédiée « WhatsApp — <contact> » ────────────────────
+
+def get_or_create_whatsapp_conversation(company, contact_label):
+    """Canal dédié « WhatsApp — <contact> » pour un numéro entrant (XKB33).
+
+    Point d'entrée cross-app sanctionné pour `apps.notifications` (webhook BSP
+    WhatsApp) : jamais d'import direct des modèles chat depuis notifications.
+    Idempotent PAR (company, nom) : un même contact reste dans le même canal.
+    Tous les managers actifs (admin/responsable) de la société sont membres,
+    pour que l'équipe voie la conversation. Best-effort : renvoie None en cas
+    d'erreur, ne lève jamais."""
+    from django.contrib.auth import get_user_model
+
+    from .models import Conversation, ConversationMember
+
+    try:
+        name = f'WhatsApp — {contact_label}'[:255]
+        conv, created = Conversation.objects.get_or_create(
+            company=company, kind=Conversation.Kind.CHANNEL, name=name)
+        if created:
+            User = get_user_model()
+            managers = User.objects.filter(
+                company=company, is_active=True,
+                role_legacy__in=['admin', 'responsable'])
+            for user in managers:
+                ConversationMember.objects.get_or_create(
+                    conversation=conv, user=user)
+        return conv
+    except Exception:  # noqa: BLE001 — jamais bloquant pour le webhook
+        return None
+
+
+def post_system_message(conversation, body, *, record_type=None, record_id=None):
+    """Poste un message SYSTÈME (sender=None) dans une conversation (XKB33).
+
+    Utilisé par le webhook WhatsApp entrant pour surfacer le message reçu dans
+    la conversation dédiée sans auteur ERP. Best-effort, jamais bloquant.
+    `record_type`/`record_id` permettent d'attacher la carte lead partagée."""
+    from .models import Message
+
+    if conversation is None:
+        return None
+    try:
+        shared_ct = None
+        shared_label = ''
+        if record_type and record_id:
+            company = conversation.company
+            card = _record_card(record_type, record_id, company)
+            if card is not None:
+                shared_ct = _content_type_for(record_type)
+                subtitle = card.get('subtitle') or ''
+                shared_label = (
+                    f"{card.get('label', '')} — {subtitle}".strip(' —')
+                    if subtitle else card.get('label', ''))
+        msg = Message.objects.create(
+            company=conversation.company,
+            conversation=conversation,
+            sender=None,
+            body=body or '',
+            kind=Message.Kind.SYSTEM,
+            shared_content_type=shared_ct,
+            shared_object_id=(int(record_id) if (shared_ct and record_id) else None),
+            shared_label=shared_label,
+        )
+        conversation.updated_at = timezone.now()
+        conversation.save(update_fields=['updated_at'])
+        return msg
+    except Exception:  # noqa: BLE001 — jamais bloquant pour le webhook
+        return None

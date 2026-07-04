@@ -8,6 +8,8 @@ Helpers SAV — arithmétique de garantie (sans dépendance externe).
 import calendar
 from datetime import date
 
+from django.utils import timezone
+
 
 def add_months(d: date, months: int) -> date:
     """Retourne `d` décalée de `months` mois (jour recadré sur la fin de mois)."""
@@ -110,6 +112,64 @@ def sweep_bom_to_parc(*, installation, company, date_pose, created_by,
         else:
             existants += 1
     return {'crees': crees, 'existants': existants, 'lignes': lignes}
+
+
+def _technicien_indisponible(company, user, jour):
+    """XSAV9 — Vrai si `user` a un dossier RH avec une absence VALIDÉE ce
+    jour-là (lu via les selectors rh — jamais un import direct des modèles
+    rh). Sans dossier RH rattaché à l'utilisateur, ou si le module rh est
+    indisponible/erreur, on considère l'utilisateur DISPONIBLE (repli sûr —
+    l'affectation auto ne doit jamais bloquer faute de données RH)."""
+    try:
+        from apps.rh.selectors import employe_absent_le
+        from apps.rh.models import DossierEmploye
+        dossier = DossierEmploye.objects.filter(
+            company=company, user=user).first()
+        if dossier is None:
+            return False
+        return employe_absent_le(company, dossier.id, jour)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        return False
+
+
+def assign_technicien_auto(*, company, jour=None):
+    """XSAV9 — Choisit le technicien actif le MOINS chargé (nb de tickets
+    ouverts assignés) pour une affectation automatique, en excluant les
+    indisponibilités RH (lues via les selectors rh — jamais un import direct
+    des modèles rh) quand elles sont disponibles.
+
+    Renvoie l'utilisateur choisi, ou None si aucun technicien actif éligible
+    (repli : le ticket reste sans affectation — comportement OFF inchangé).
+    Un technicien = tout utilisateur ACTIF de la société ayant déjà été
+    assigné à au moins un ticket (participe au pool de charge) — ce périmètre
+    évite d'affecter un compte administratif jamais destiné au terrain.
+    """
+    from django.contrib.auth import get_user_model
+    from django.db.models import Count, Q
+    from .models import Ticket
+
+    User = get_user_model()
+    jour = jour or timezone.localdate()
+
+    candidats = list(
+        User.objects.filter(
+            company=company, is_active=True,
+            tickets_techniques__isnull=False,
+        ).distinct()
+        .annotate(
+            nb_ouverts=Count(
+                'tickets_techniques',
+                filter=Q(
+                    tickets_techniques__statut__in=Ticket.OPEN_STATUTS,
+                    tickets_techniques__annule=False),
+            ),
+        )
+        .order_by('nb_ouverts', 'id'))
+
+    for user in candidats:
+        if not _technicien_indisponible(company, user, jour):
+            return user
+    return None
 
 
 def create_corrective_ticket(*, company, client, installation, description,

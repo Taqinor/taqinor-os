@@ -66,7 +66,15 @@ _stages = _load_stages_module()
 # Re-exported canonical values.
 STAGES = list(_stages.STAGES)
 STAGE_LABELS = dict(_stages.STAGE_LABELS)
+# Per-stage constants, re-exported from the canonical STAGES.py (rule #2 — never
+# hardcode stage keys; import them from here).
 NEW = _stages.NEW
+CONTACTED = _stages.CONTACTED
+QUOTE_SENT = _stages.QUOTE_SENT
+FOLLOW_UP = _stages.FOLLOW_UP
+SIGNED = _stages.SIGNED
+COLD = _stages.COLD
+CONVERSION_STAGE = _stages.CONVERSION_STAGE
 
 # Ready-made (key, French label) pairs for Django model `choices`.
 STAGE_CHOICES = [(key, STAGE_LABELS[key]) for key in STAGES]

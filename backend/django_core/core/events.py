@@ -58,6 +58,40 @@ importe ``apps.audit``.
 
     * ``instance`` — l'objet ``Devis`` ou ``Facture`` concerné ;
     * ``kind`` — ``'devis'`` ou ``'facture'`` (sert au libellé d'audit).
+
+``reception_fournisseur_confirmee``
+    Émis à la CONFIRMATION d'une réception fournisseur (fin de
+    ``stock.services.confirm_reception_fournisseur``). Arguments du signal :
+
+    * ``reception`` — l'instance ``stock.ReceptionFournisseur`` confirmée ;
+    * ``company`` — la société (posée côté serveur) ;
+    * ``user`` — l'utilisateur qui confirme (peut être ``None``).
+
+    DEUX abonnés indépendants sont attendus sur ce même événement (documentés
+    ici pour éviter toute re-création accidentelle d'un événement jumeau) :
+
+    * ``qhse`` (XQHS3) — ouvre un ``ControleReception`` si un
+      ``PlanControleReception`` couvre le produit/catégorie reçu (contrôle
+      qualité à réception + quarantaine) ;
+    * ``installations`` (YPROC3, à construire séparément) — crée la provision
+      GR/IR (``ReceptionNonFacturee``).
+
+    ``stock`` n'importe ni ``qhse`` ni ``installations`` : chaque abonné se
+    câble dans son propre ``apps.py`` ``ready()``.
+
+``conge_approuve``
+    Émis quand une ``rh.DemandeConge`` passe à VALIDÉE (FG163,
+    ``rh.services.valider_demande``) OU est annulée après validation
+    (``rh.services.annuler_demande``) — XPRJ9. Abonné par ``gestion_projet``
+    (crée/ferme automatiquement l'``Indisponibilite`` de type congé de la
+    ``RessourceProfil`` liée au même utilisateur, sans que ``rh`` importe
+    ``gestion_projet``). Arguments du signal :
+
+    * ``demande`` — l'instance ``rh.DemandeConge`` concernée ;
+    * ``user`` — l'utilisateur qui décide (peut être ``None``) ;
+    * ``annule`` — ``True`` si l'événement correspond à une ANNULATION d'une
+      demande précédemment validée (ferme l'indisponibilité), ``False`` pour
+      une validation (crée/étend l'indisponibilité).
 """
 import django.dispatch
 
@@ -87,3 +121,15 @@ document_pdf_generated = django.dispatch.Signal()
 # Destiné à être abonné par l'app comptable pour matérialiser un ``Paiement``
 # et rapprocher la facture — core n'importe jamais l'app comptable lui-même.
 payment_captured = django.dispatch.Signal()
+
+# Émis à la CONFIRMATION d'une réception fournisseur (XQHS3 / YPROC3).
+# Arguments : reception (stock.ReceptionFournisseur), company, user.
+# cf. docstring du module ci-dessus pour la carte des deux abonnés attendus.
+reception_fournisseur_confirmee = django.dispatch.Signal()
+
+# Émis à la validation (ou l'annulation d'une validation) d'une demande de
+# congé RH (FG163) — XPRJ9. Arguments : demande, user, annule.
+# Abonné dans ce repo : gestion_projet (crée/ferme l'Indisponibilite de la
+# RessourceProfil liée au même utilisateur), pour que rh n'importe jamais
+# gestion_projet directement.
+conge_approuve = django.dispatch.Signal()

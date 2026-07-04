@@ -30,8 +30,9 @@ const L = (href: string) => localizeNavHref(href, locale);
 const devisHref = L('/devis/mon-toit');
 
 // ── Derived figures — nothing hand-typed ─────────────────────────────────────
-const installCount = REALISATIONS.length;
-
+// RULE B (2026-07-04): the raw install count is no longer featured in user
+// copy (lead, h2, denominators) — the page leads with cumulative kWc /
+// measured kWh / CO2 avoided instead (partially supersedes W279).
 const kwcTotal = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
 const kwcTotalLabel = kwcTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -81,9 +82,10 @@ const jsonLd = {
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">Accountability</p>
         <h1 class="display v2-page-title cine-in cine-in-1 mt-6">Taqinor Impact</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
-          Not a projection, not a target: what our {installCount} published installations actually
-          produce, added up. This page grows project by project — today it is small, on purpose,
-          because it only states what we can prove.
+          Not a projection, not a target: {kwcTotalLabel} kWc installed, {productionTotalLabel} kWh
+          measured, {co2TonnesLabel} t of CO2 avoided every year — what our published installations
+          actually produce, added up. This page grows project by project; it only states what we
+          can prove.
         </p>
       </div>
     </section>
@@ -92,13 +94,13 @@ const jsonLd = {
     <section class="section px-4">
       <div class="mx-auto max-w-6xl">
         <p class="tech-label v2-kicker rule-brass text-lune">The tally today</p>
-        <h2 class="display v2-section-title mt-5 text-white">{installCount} installations, one tally</h2>
+        <h2 class="display v2-section-title mt-5 text-white">{kwcTotalLabel} kWc, one tally</h2>
         <div class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
           <KeyFigure value={kwcTotalLabel} unit="kWc" label="Installed capacity">
-            Cumulative total across {installCount} installations in {villesUniques.join(', ')}.
+            Cumulative total across published installations in {villesUniques.join(', ')}.
           </KeyFigure>
           <KeyFigure value={productionTotalLabel} unit="kWh/yr" label="Measured production">
-            Across {withMeasuredProduction.length} monitored installations (Deye Cloud) — projects
+            Across the monitored installations (Deye Cloud) — projects
             with no published production figure aren't counted.
           </KeyFigure>
           <KeyFigure value={co2TonnesLabel} unit="t CO2/yr" label="CO2 avoided">
@@ -106,7 +108,7 @@ const jsonLd = {
             used in our quoted studies.
           </KeyFigure>
           <KeyFigure value={String(batteryKwhTotal).replace('.', ',')} unit="kWh" label="Cumulative storage">
-            Battery capacity installed across {battersInstalls.length} of the {installCount} projects.
+            Battery capacity installed across {battersInstalls.length} of the projects.
           </KeyFigure>
         </div>
         <Callout type="info" title="How this figure is calculated">
@@ -149,17 +151,16 @@ const jsonLd = {
       </div>
     </section>
 
-    <!-- Why this page stays small -->
+    <!-- Why this tally stays honest -->
     <section class="section px-4 text-white">
       <div class="mx-auto max-w-3xl">
-        <p class="tech-label v2-kicker rule-brass text-lune">Why so little</p>
-        <h2 class="display v2-section-title mt-5 text-white">Small for now, honest always</h2>
+        <p class="tech-label v2-kicker rule-brass text-lune">Our method</p>
+        <h2 class="display v2-section-title mt-5 text-white">Measured, never padded</h2>
         <p class="v2-lead mt-5 text-lune-soft">
           We could pad this tally with theoretical estimates, catalogue yields, or five-year
           projections. We'd rather count only what's already installed, monitored, and published
-          — which makes this figure smaller than it could look, but verifiable line by line on our
-          projects page. Every newly documented project moves this total forward; that's the only
-          way it will grow.
+          — verifiable line by line on our projects page. Every newly documented project moves
+          this total forward.
         </p>
       </div>
     </section>

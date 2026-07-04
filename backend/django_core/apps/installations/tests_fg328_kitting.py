@@ -117,8 +117,13 @@ class TestOrdreAssemblage(TestCase):
         self.assertEqual(resp.status_code, 400, resp.content)
 
     def test_cycle_demarrer_terminer(self):
+        # `terminer` backflush produit le composite (XMFG1) : le kit doit
+        # référencer un `produit_compose` catalogué pour être clôturable.
+        composite = make_produit(self.company, nom='Coffret assemblé')
+        kit = Kit.objects.create(
+            company=self.company, nom='Coffret prêt', produit_compose=composite)
         ordre = OrdreAssemblage.objects.create(
-            company=self.company, reference='ASM-X', kit=self.kit, quantite=2)
+            company=self.company, reference='ASM-X', kit=kit, quantite=2)
         r1 = self.api.post(
             f'{BASE}/ordres-assemblage/{ordre.id}/demarrer/', {}, format='json')
         self.assertEqual(r1.status_code, 200, r1.content)

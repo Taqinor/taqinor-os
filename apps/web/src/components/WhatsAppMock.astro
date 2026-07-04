@@ -34,7 +34,7 @@ const locale = getLocaleFromPath(Astro.url.pathname);
 
 const STR: Record<
   Locale,
-  { subtitle: string; cta: string; photo: string; msgs: string[] }
+  { subtitle: string; cta: string; photo: string; msgs: string[]; online: string; read: string }
 > = {
   fr: {
     subtitle: 'répond généralement en quelques minutes',
@@ -45,6 +45,8 @@ const STR: Record<
       'Bonjour ! Merci pour votre diagnostic. Avec ce profil, on part sur 5 à 9 kWc. Quelques photos de votre toiture et je peux affiner avant la visite technique.',
       'Parfait, belle exposition sud. Je vous propose un passage jeudi pour la visite — l’étude complète est gratuite et sans engagement.',
     ],
+    online: 'en ligne',
+    read: 'lu',
   },
   en: {
     subtitle: 'usually replies within a few minutes',
@@ -55,6 +57,8 @@ const STR: Record<
       'Hello! Thanks for your diagnostic. With this profile, we’re looking at 5 à 9 kWc. A few photos of your roof and I can refine before the technical visit.',
       'Perfect, lovely south exposure. I can come by on Thursday for the visit — the full study is free and with no commitment.',
     ],
+    online: 'online',
+    read: 'read',
   },
   ar: {
     subtitle: 'يردّ عادةً خلال بضع دقائق',
@@ -65,6 +69,8 @@ const STR: Record<
       'مرحبًا! شكرًا على تشخيصك. مع هذا الملف، نتّجه نحو 5 à 9 kWc. بعض الصور لسطحك وأستطيع الضبط قبل الزيارة التقنية.',
       'ممتاز، تعرّض جنوبي جميل. أقترح المرور يوم الخميس للزيارة — الدراسة الكاملة مجانية ودون أي التزام.',
     ],
+    online: 'متصل الآن',
+    read: 'تمت القراءة',
   },
 };
 const s = STR[locale] ?? STR.fr;
@@ -93,8 +99,10 @@ const exchange = [
       </div>
       <div class="min-w-0 flex-1 leading-tight">
         <p class="text-sm font-bold text-white">Taqinor</p>
-        <!-- Statut « en ligne » (aria) + sous-titre -->
-        <p class="text-[11px] text-azur-200" aria-label="en ligne">{s.subtitle}</p>
+        <!-- Statut « en ligne » : le sous-titre traduit EST déjà l'annonce
+             (W67) — aucun aria-label redondant qui remplacerait ce texte
+             visible par une chaîne française figée (WCAG 2.5.3). -->
+        <p class="text-[11px] text-azur-200">{s.subtitle}</p>
       </div>
       <!-- Icônes de barre (décoratif) -->
       <div class="flex shrink-0 items-center gap-3" aria-hidden="true">
@@ -151,12 +159,14 @@ const exchange = [
             <span class="text-[10px] text-encre-faint">{m.time}</span>
             {/* Double coche : lu (bleu) pour les messages client, envoyé (gris) pour Taqinor */}
             {m.from === 'client' && (
-              <span aria-label="lu" class="wa-ticks wa-ticks--read">
-                {/* ✓✓ double coche SVG */}
+              <span class="wa-ticks wa-ticks--read">
+                {/* ✓✓ double coche SVG — libellé localisé via sr-only plutôt
+                    qu'un aria-label figé en français (W67 / WCAG 2.5.3). */}
                 <svg width="14" height="9" viewBox="0 0 14 9" fill="none" aria-hidden="true">
                   <path d="M1 4.5L4.5 8L9 1" stroke="#53bdeb" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
                   <path d="M5 4.5L8.5 8L13 1" stroke="#53bdeb" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
+                <span class="sr-only">{s.read}</span>
               </span>
             )}
           </span>

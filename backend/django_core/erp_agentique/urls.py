@@ -50,6 +50,8 @@ urlpatterns = [
     path('api/django/public/', include('apps.ventes.public_urls')),
     # FG86 — Suivi client ticket SAV — sans login.
     path('api/django/public/sav/', include('apps.sav.public_urls')),
+    # XPLT4 — Webhook entrant générique (token dans l'URL) — sans login.
+    path('api/django/public/', include('apps.automation.public_urls')),
     # N89 — API publique REST par clé d'API (données read-only).
     path('api/public/', include('apps.publicapi.public_urls')),
     # N89 — gestion des clés API & webhooks (session admin, Paramètres).
@@ -70,6 +72,10 @@ urlpatterns = [
     path('api/django/qhse/', include('apps.qhse.urls')),
     path('api/django/kb/', include('apps.kb.urls')),
     path('api/django/litiges/', include('apps.litiges.urls')),
+    # XPOS1 — Vente comptoir (point of sale).
+    path('api/django/pos/', include('apps.pos.urls')),
+    # XPOS3 — Lien public tokenisé vers le PDF du ticket de caisse.
+    path('api/django/public/pos/', include('apps.pos.public_urls')),
 ]
 
 # En production (DEBUG off + gunicorn), les statiques (admin Django) sont

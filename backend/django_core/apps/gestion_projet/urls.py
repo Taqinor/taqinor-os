@@ -6,26 +6,33 @@ from .views import (
     ActionProjetViewSet,
     AffectationRessourceViewSet,
     BaselinePlanningViewSet,
+    ChronoActifViewSet,
     ClotureProjetViewSet,
     CommentaireProjetViewSet,
     CompteRenduReunionViewSet,
     DocumentProjetViewSet,
+    LigneSituationViewSet,
     LotSousTraitanceViewSet,
+    SituationTravauxViewSet,
     BudgetProjetViewSet,
     CalendrierProjetViewSet,
     DependanceTacheViewSet,
     EquipeViewSet,
     IndisponibiliteViewSet,
+    ItemChecklistTacheViewSet,
     JalonViewSet,
     JourFerieViewSet,
+    PointAvancementViewSet,
     LigneBudgetProjetViewSet,
     ModeleProjetViewSet,
     ModeleTacheViewSet,
+    PeriodeVerrouilleeTempsViewSet,
     PhaseProjetViewSet,
     PortailProjetTokenViewSet,
     ProjetChantierViewSet,
     ProjetLienViewSet,
     ProjetViewSet,
+    RecurrenceTacheViewSet,
     RessourceProfilViewSet,
     RisqueViewSet,
     SousTraitantViewSet,
@@ -39,6 +46,9 @@ router.register(r'projet-chantiers', ProjetChantierViewSet)
 router.register(r'projet-liens', ProjetLienViewSet)
 router.register(r'phases', PhaseProjetViewSet)
 router.register(r'taches', TacheViewSet)
+router.register(r'recurrences-tache', RecurrenceTacheViewSet)
+router.register(r'items-checklist', ItemChecklistTacheViewSet)
+router.register(r'points-avancement', PointAvancementViewSet)
 router.register(r'dependances', DependanceTacheViewSet)
 router.register(r'jalons', JalonViewSet)
 router.register(r'calendriers', CalendrierProjetViewSet)
@@ -51,6 +61,7 @@ router.register(r'indisponibilites', IndisponibiliteViewSet)
 router.register(r'budgets', BudgetProjetViewSet)
 router.register(r'lignes-budget', LigneBudgetProjetViewSet)
 router.register(r'timesheets', TimesheetViewSet)
+router.register(r'periodes-verrouillees-temps', PeriodeVerrouilleeTempsViewSet)
 router.register(r'risques', RisqueViewSet)
 router.register(r'actions', ActionProjetViewSet)
 router.register(r'comptes-rendus', CompteRenduReunionViewSet)
@@ -62,6 +73,9 @@ router.register(r'portail-tokens', PortailProjetTokenViewSet)
 router.register(r'sous-traitants', SousTraitantViewSet)
 router.register(r'lots-sous-traitance', LotSousTraitanceViewSet)
 router.register(r'clotures', ClotureProjetViewSet)
+router.register(r'situations', SituationTravauxViewSet)
+router.register(r'lignes-situation', LigneSituationViewSet)
+router.register(r'chrono-actif', ChronoActifViewSet, basename='chrono-actif')
 
 urlpatterns = [
     # Portail PUBLIC (non authentifié) — placé AVANT le routeur pour éviter

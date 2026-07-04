@@ -49,16 +49,21 @@ from core.ai.schemas import (
 )
 from core.ai.services import (
     DEFAULT_PHOTO_QA_CHECKLIST,
+    LIVECHAT_FORBIDDEN_TERMS,
+    LIVECHAT_QUALIFICATION_SYSTEM_PROMPT,
     REPLY_CHANNELS,
+    LivechatQualificationExtract,
     MatchedLine,
     NextBestAction,
     ReplyDraft,
     ThreadSummary,
     draft_reply,
     extract_document,
+    extract_livechat_qualification,
     format_thread,
     inspect_photo,
     match_ocr_lines,
+    qualify_livechat_reply,
     recommend_next_action,
     recommend_next_action_ai,
     summarize_thread,
@@ -103,4 +108,10 @@ __all__ = [
     'draft_reply',
     'ReplyDraft',
     'REPLY_CHANNELS',
+    # Livechat de qualification (XMKT37)
+    'LIVECHAT_QUALIFICATION_SYSTEM_PROMPT',
+    'LIVECHAT_FORBIDDEN_TERMS',
+    'LivechatQualificationExtract',
+    'qualify_livechat_reply',
+    'extract_livechat_qualification',
 ]

@@ -2,6 +2,7 @@ from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.db import transaction, IntegrityError
+from django.db.models import Q
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import viewsets, filters, status
@@ -21,6 +22,7 @@ from .models import (
     SavSlaSettings, MaintenanceChecklistTemplate, TicketChecklistItem,
     WarrantyClaim, KbArticle, AlarmeOnduleur,
 )
+from .services import add_months
 from .pdf import rapport_intervention_pdf
 from .serializers import (
     EquipementSerializer, TicketSerializer, TicketActivitySerializer,
@@ -84,6 +86,18 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
                     date_fin_garantie__gte=today, date_fin_garantie__lte=soon)
             elif garantie == 'sous_garantie':
                 qs = qs.filter(date_fin_garantie__gt=soon)
+            elif garantie == 'legale_uniquement':
+                # XSAV13 — SEULE la garantie légale (loi 31-08, 12 mois à
+                # compter de la pose) couvre encore l'équipement : commerciale
+                # absente/expirée, mais date_pose < 12 mois (donc légale
+                # toujours active). Seuil calculé via le même helper de date
+                # (add_months, -12) que les autres horloges de garantie.
+                seuil_legal = add_months(today, -Equipement.GARANTIE_LEGALE_MOIS)
+                qs = qs.filter(
+                    date_pose__isnull=False, date_pose__gt=seuil_legal,
+                ).filter(
+                    Q(date_fin_garantie__isnull=True)
+                    | Q(date_fin_garantie__lt=today))
         return qs
 
     def get_permissions(self):
@@ -269,7 +283,9 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['historique', 'rapport_pdf', 'lien_client']:
             return [HasPermissionOrLegacy('sav_voir')()]
-        elif self.action in WRITE_ACTIONS + ['noter', 'annuler', 'reactiver']:
+        elif self.action in WRITE_ACTIONS + [
+                'noter', 'annuler', 'reactiver', 'creer_devis',
+                'attente_client', 'reprendre', 'fusionner']:
             return [HasPermissionOrLegacy('sav_gerer')()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
@@ -300,12 +316,37 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             if client is not None:
                 serializer.validated_data['client'] = client
 
-    def _compute_sla_due_at(self, company, priorite, date_ouverture):
-        """FG81 — Calcule sla_due_at depuis les réglages société (ou None)."""
+    def _resolve_resolution_days(self, company, client, priorite):
+        """XSAV7 — Résout le délai de résolution (jours) avec précédence :
+        contrat de maintenance ACTIF du client avec override > sla_par_priorite
+        > défauts société (premier match gagne). Sans contrat/override, la
+        résolution retombe exactement sur le comportement FG81 d'origine."""
+        from .models import ContratMaintenance
+        sla = SavSlaSettings.get(company)
+        contrat = ContratMaintenance.actif_pour_client(client)
+        if contrat is not None and contrat.sla_resolution_days is not None:
+            return contrat.sla_resolution_days
+        _, resolution_days = sla.days_for(priorite)
+        return resolution_days
+
+    def _compute_sla_due_at(self, company, client, priorite, date_ouverture):
+        """FG81 — Calcule sla_due_at depuis les réglages société (ou None).
+
+        XSAV5 — quand ``sla_jours_ouvres`` est activé, l'échéance avance de
+        ``resolution_days`` JOURS OUVRÉS (via ``core.calendar``, jours ouvrés +
+        fériés marocains) plutôt qu'en jours calendaires. OFF (défaut) =
+        comportement calendaire byte-identique à avant XSAV5.
+
+        XSAV7 — ``resolution_days`` peut venir d'un contrat de maintenance actif
+        du client (override), avant repli sur ``sla_par_priorite``/défauts."""
         sla = SavSlaSettings.get(company)
         if not sla.sla_breach_enabled:
             return None
-        _, resolution_days = sla.days_for(priorite)
+        resolution_days = self._resolve_resolution_days(
+            company, client, priorite)
+        if sla.sla_jours_ouvres:
+            from core.calendar import add_working_days
+            return add_working_days(date_ouverture, resolution_days)
         return date_ouverture + timedelta(days=resolution_days)
 
     def perform_create(self, serializer):
@@ -320,8 +361,11 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             serializer.validated_data.get('date_ouverture')
             or timezone.localdate())
         # FG81 — SLA : calcul de l'échéance cible à la création.
+        # XSAV7 — le client résolu alimente l'override contrat éventuel.
         priorite = serializer.validated_data.get('priorite', 'normale')
-        sla_due_at = self._compute_sla_due_at(company, priorite, date_ouverture)
+        client = serializer.validated_data.get('client')
+        sla_due_at = self._compute_sla_due_at(
+            company, client, priorite, date_ouverture)
         create_with_reference(
             Ticket, 'SAV', company,
             lambda ref: serializer.save(
@@ -330,7 +374,23 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
                 date_ouverture=date_ouverture,
                 sla_due_at=sla_due_at),
         )
+        # XSAV9 — affectation automatique si aucun technicien n'a été choisi
+        # à la création et que la société l'a activée (défaut OFF = inchangé).
+        inst = serializer.instance
+        if not inst.technicien_responsable_id:
+            sla = SavSlaSettings.get(company)
+            if sla.affectation_auto_sav:
+                from .services import assign_technicien_auto
+                technicien = assign_technicien_auto(
+                    company=company, jour=date_ouverture)
+                if technicien is not None:
+                    inst.technicien_responsable = technicien
+                    inst.save(update_fields=['technicien_responsable'])
         activity.log_creation(serializer.instance, self.request.user)
+
+    # XSAV11 — statuts « clos » depuis lesquels revenir à un statut ouvert
+    # compte comme une réouverture.
+    _CLOTURE_STATUTS = (Ticket.Statut.RESOLU, Ticket.Statut.CLOTURE)
 
     def perform_update(self, serializer):
         self._check_tenant(serializer)
@@ -339,8 +399,21 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         # FG81 — recalcule sla_breach après toute mise à jour de statut.
         inst = serializer.instance
         inst.recompute_sla_breach()
-        inst.save(update_fields=['sla_breach'])
+        update_fields = ['sla_breach']
+        # XSAV11 — réouverture : résolu/clôturé → statut OUVERT. Compté côté
+        # serveur, jamais décrémenté. La transition est déjà tracée par
+        # TicketActivity (activity.log_changes ci-dessous).
+        if (old.statut in self._CLOTURE_STATUTS
+                and inst.statut in Ticket.OPEN_STATUTS):
+            inst.reopen_count += 1
+            update_fields.append('reopen_count')
+        inst.save(update_fields=update_fields)
         activity.log_changes(old, inst, self.request.user)
+        # XSAV4 — notification client best-effort sur transition de statut
+        # (reçu/planifié/résolu). Toggle OFF par défaut = aucun effet.
+        if old.statut != inst.statut:
+            from .notifications_client import notify_ticket_transition
+            notify_ticket_transition(inst, inst.statut, request=self.request)
 
     @action(detail=True, methods=['get'], url_path='historique',
             permission_classes=[HasPermissionOrLegacy('sav_voir')])
@@ -589,6 +662,164 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             item.note = request.data['note'] or ''
         item.save()
         return Response(TicketChecklistItemSerializer(item).data)
+
+    @action(detail=True, methods=['post'], url_path='attente-client',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def attente_client(self, request, pk=None):
+        """XSAV5 — Démarre la pause « en attente client » (idempotent).
+
+        Pendant la pause, l'échéance SLA effective (``sla_due_at_effectif``)
+        avance d'autant de jours — l'horloge SLA ignore le temps d'attente."""
+        ticket = self.get_object()
+        if not ticket.en_attente_client:
+            ticket.mettre_en_attente_client()
+            ticket.save(update_fields=['en_attente_client', 'attente_depuis'])
+            activity.log_note(ticket, request.user, 'Mis en attente client')
+        return Response(
+            TicketSerializer(ticket, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='reprendre',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def reprendre(self, request, pk=None):
+        """XSAV5 — Clôt la pause « en attente client » (idempotent).
+
+        Cumule la durée de la pause dans ``jours_pause`` puis recalcule
+        ``sla_breach`` avec la nouvelle échéance effective."""
+        ticket = self.get_object()
+        if ticket.en_attente_client:
+            ticket.reprendre_apres_attente()
+            ticket.save(update_fields=[
+                'en_attente_client', 'attente_depuis', 'jours_pause'])
+            ticket.recompute_sla_breach()
+            ticket.save(update_fields=['sla_breach'])
+            activity.log_note(ticket, request.user, "Reprise après attente client")
+        return Response(
+            TicketSerializer(ticket, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='fusionner',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def fusionner(self, request, pk=None):
+        """XSAV12 — Fusionne un ticket doublon dans ce ticket (principal).
+
+        Body : ``{'doublon_id': N}`` — même société obligatoire (cross-tenant
+        → 404 comme le reste de l'API, via ``get_object``/filtre société).
+        Déplace vers le PRINCIPAL : activités (TicketActivity), pièces
+        consommées (PieceConsommee), items de checklist (TicketChecklistItem)
+        et pièces jointes (records.Attachment via ContentType). Le doublon
+        est marqué ``annule`` avec motif « Doublon de {reference} » et des
+        notes croisées sont ajoutées aux DEUX chatters : celle du principal
+        avant le déplacement, celle du doublon APRÈS (sinon elle repartirait
+        elle-même vers le principal avec le reste de ses activités
+        déplacées, et le chatter du doublon perdrait toute trace de la
+        fusion)."""
+        principal = self.get_object()
+        doublon_id = request.data.get('doublon_id')
+        if not doublon_id:
+            return Response({'detail': 'doublon_id requis.'}, status=400)
+        try:
+            doublon_id = int(doublon_id)
+        except (TypeError, ValueError):
+            return Response({'detail': 'doublon_id invalide.'}, status=400)
+        if doublon_id == principal.pk:
+            return Response(
+                {'detail': "Un ticket ne peut pas être fusionné avec lui-même."},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        doublon = Ticket.objects.filter(
+            pk=doublon_id, company=principal.company).first()
+        if doublon is None:
+            return Response({'detail': 'Ticket doublon introuvable.'}, status=404)
+
+        from django.contrib.contenttypes.models import ContentType
+        from apps.records.models import Attachment
+        from .models import TicketChecklistItem
+
+        with transaction.atomic():
+            # Note sur le principal AVANT le déplacement (elle doit rester
+            # dans le chatter du principal, ce qui est trivialement le cas).
+            activity.log_note(
+                principal, request.user,
+                f'Fusion : ticket {doublon.reference} fusionné dans celui-ci')
+
+            doublon.activites.update(ticket=principal, company=principal.company)
+            doublon.pieces.update(ticket=principal, company=principal.company)
+            TicketChecklistItem.objects.filter(ticket=doublon).update(
+                ticket=principal, company=principal.company)
+            ct = ContentType.objects.get_for_model(Ticket)
+            Attachment.objects.filter(
+                content_type=ct, object_id=doublon.pk,
+            ).update(object_id=principal.pk, company=principal.company)
+
+            # Note sur le doublon APRÈS le déplacement de ses activités
+            # (sinon elle partirait elle-même vers le principal et le
+            # chatter du doublon perdrait toute trace de la fusion).
+            activity.log_note(
+                doublon, request.user,
+                f'Ce ticket a été fusionné dans {principal.reference}')
+
+            doublon.annule = True
+            doublon.motif_annulation = f'Doublon de {principal.reference}'
+            doublon.save(update_fields=['annule', 'motif_annulation'])
+
+        return Response(
+            TicketSerializer(principal, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='creer-devis',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def creer_devis(self, request, pk=None):
+        """XSAV3 — Crée un devis de réparation hors garantie depuis le ticket.
+
+        Refusé si le ticket est sous garantie (constructeur/légale calculée)
+        ou couvert par un contrat de maintenance actif — le travail couvert
+        ne se facture pas. Pré-rempli depuis les PieceConsommee du ticket,
+        valorisées au prix de VENTE catalogue (jamais prix_achat). Écrit via
+        ``apps.ventes.services.create_devis_pour_ticket`` (cross-app write,
+        jamais d'import direct du modèle ventes)."""
+        ticket = self.get_object()
+        if ticket.sous_garantie_calcule == Ticket.SousGarantie.OUI:
+            return Response(
+                {'detail': 'Ticket sous garantie : aucun devis de '
+                           "réparation n'est nécessaire."},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        from apps.ventes.services import create_devis_pour_ticket
+
+        client_id = request.data.get('client_id') or ticket.client_id
+        if not client_id:
+            return Response({'detail': 'client_id requis.'}, status=400)
+
+        lignes = request.data.get('lignes')
+        if lignes is None:
+            # Pré-remplissage depuis les pièces consommées du ticket,
+            # valorisées au prix de VENTE catalogue (jamais prix_achat).
+            lignes = []
+            for piece in ticket.pieces.select_related('produit'):
+                produit = piece.produit
+                lignes.append({
+                    'produit_id': produit.id,
+                    'designation': produit.nom,
+                    'quantite': piece.quantite,
+                    'prix_unitaire': produit.prix_vente,
+                })
+
+        try:
+            devis = create_devis_pour_ticket(
+                company=ticket.company, user=request.user,
+                client_id=client_id, lignes=lignes,
+                note=f'Devis de réparation SAV — ticket {ticket.reference}')
+        except Exception:
+            return Response(
+                {'detail': 'Client introuvable pour votre société.'},
+                status=status.HTTP_404_NOT_FOUND)
+
+        ticket.devis_id_ext = devis.id
+        ticket.save(update_fields=['devis_id_ext'])
+        activity.log_note(
+            ticket, request.user,
+            f'Devis de réparation {devis.reference} créé (brouillon)')
+        return Response(
+            {'devis_id': devis.id, 'devis_reference': devis.reference},
+            status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['get'], url_path='lien-client',
             permission_classes=[HasPermissionOrLegacy('sav_voir')])
@@ -971,3 +1202,82 @@ def scan_sla_breaches():
                 company=ticket.company,
             )
     return updated
+
+
+# ── XSAV6 — Pré-alerte SLA (J-x) + escalade à la violation ────────────────────
+
+def scan_sla_pre_alerts_and_escalations():
+    """XSAV6 — Pré-alerte à J-x + escalade au tier responsable à la violation.
+
+    DISTINCT de ``scan_sla_breaches`` (FG81, notifie le technicien À la
+    violation) et de ``notifications.sweeps._sweep_sav_breaching`` (âge du
+    ticket, repli managers). Ici : pré-alerte configurable AVANT l'échéance
+    (``sla_warning_days`` jours avant ``sla_due_at_effectif``), puis escalade
+    au tier responsable/direction (``resolve_recipients``, mute-aware via
+    ``notify()``) une fois l'échéance dépassée — si ``escalade_activee``.
+
+    IDEMPOTENT : un ticket déjà notifié pour un niveau (pré-alerte ou
+    escalade) ne l'est plus les jours suivants — flag posé sur le ticket.
+    OFF par défaut (``sla_warning_days=0`` et ``escalade_activee=False``) :
+    aucun effet, aucune notification supplémentaire.
+    """
+    from apps.notifications.services import notify, resolve_recipients
+    from apps.notifications.models import EventType
+
+    today = timezone.localdate()
+    qs = Ticket.objects.filter(
+        statut__in=Ticket.OPEN_STATUTS,
+        annule=False,
+        sla_due_at__isnull=False,
+    ).select_related('company', 'technicien_responsable')
+
+    pre_alerts = 0
+    escalations = 0
+    for ticket in qs:
+        sla = SavSlaSettings.get(ticket.company)
+        due_effectif = ticket.sla_due_at_effectif(today=today)
+
+        # ── Pré-alerte J-x au technicien assigné ──
+        if (sla.sla_warning_days > 0
+                and not ticket.sla_pre_alert_notifiee
+                and not ticket.sla_escalade_notifiee
+                and ticket.technicien_responsable_id
+                and due_effectif is not None):
+            seuil = due_effectif - timedelta(days=sla.sla_warning_days)
+            if today >= seuil and today <= due_effectif:
+                notify(
+                    user=ticket.technicien_responsable,
+                    event_type=EventType.SAV_TICKET_BREACHING,
+                    title=f'SLA bientôt dépassé — {ticket.reference}',
+                    body=(f'Le ticket {ticket.reference} approche son '
+                          f'échéance SLA ({due_effectif.strftime("%d/%m/%Y")}).'),
+                    link=f'/sav/tickets/{ticket.pk}',
+                    company=ticket.company,
+                )
+                ticket.sla_pre_alert_notifiee = True
+                ticket.save(update_fields=['sla_pre_alert_notifiee'])
+                pre_alerts += 1
+
+        # ── Escalade au tier responsable/direction à la violation ──
+        if (sla.escalade_activee
+                and not ticket.sla_escalade_notifiee
+                and due_effectif is not None
+                and today > due_effectif):
+            recipients = resolve_recipients(
+                ticket.company, EventType.SAV_TICKET_BREACHING)
+            for user in recipients:
+                notify(
+                    user=user,
+                    event_type=EventType.SAV_TICKET_BREACHING,
+                    title=f'Escalade SLA — {ticket.reference}',
+                    body=(f'Le ticket {ticket.reference} a dépassé son '
+                          f'échéance SLA ({due_effectif.strftime("%d/%m/%Y")}) '
+                          'et requiert une attention immédiate.'),
+                    link=f'/sav/tickets/{ticket.pk}',
+                    company=ticket.company,
+                )
+            ticket.sla_escalade_notifiee = True
+            ticket.save(update_fields=['sla_escalade_notifiee'])
+            escalations += 1
+
+    return {'pre_alerts': pre_alerts, 'escalations': escalations}

@@ -1,8 +1,8 @@
 ---
 /**
  * AR — Financing & returns (W67, RTL). Faithful Arabic translation of
- * /financement ; EVERY figure (≈80 000 MAD, 3–7 yrs, 25 yrs, 60–90 %, 0 MAD,
- * 4–6 yrs, 3–5 yrs, 1 000 MAD, 84.8 %, ONEE) kept EXACT in Latin digits, and
+ * /financement ; EVERY figure (≈80 000 MAD, 3–7 yrs, 30 yrs, 60–90 %, 0 MAD,
+ * 4–6 yrs, 3–5 yrs, 1 000 MAD, 87.4 %, ONEE) kept EXACT in Latin digits, and
  * the hard honesty constraints preserved: not a lender, no residential subsidy,
  * no residential VAT exemption, no bank named. Internal links via
  * localizeNavHref. FR untouched.
@@ -23,7 +23,7 @@ const devisHref = L('/devis/mon-toit');
 
 const chiffres = [
   { v: '3–7 سنوات', label: 'العائد على الاستثمار النموذجي' },
-  { v: '25 سنة', label: 'ضمان أداء الألواح' },
+  { v: '30 سنة', label: 'ضمان أداء الألواح' },
   { v: '60–90 %', label: 'من الفاتورة مُغطّاة' },
   { v: '0 MAD', label: 'الدراسة والتشخيص' },
 ];
@@ -94,7 +94,7 @@ const mecanismes = [
 
 <Layout
   title="مردودية وتمويل الطاقة الشمسية بالمغرب: عائد في 3–7 سنوات | Taqinor"
-  description="ما تدرّه فعلاً تركيبة شمسية بالمغرب: تُسدَّد تقريباً في 3 إلى 7 سنوات بفضل الكهرباء التي تتوقف عن شرائها (تعريفة ONEE)، ثم 25 سنة من الأداء المضمون و60 إلى 90 % من الفاتورة مغطّاة. كيف تموّلها دون التواء — تاكينور تركّب وتضمن، لكنها ليست مُقرضاً."
+  description="ما تدرّه فعلاً تركيبة شمسية بالمغرب: تُسدَّد تقريباً في 3 إلى 7 سنوات بفضل الكهرباء التي تتوقف عن شرائها (تعريفة ONEE)، ثم 30 سنة من الأداء المضمون و60 إلى 90 % من الفاتورة مغطّاة. كيف تموّلها دون التواء — تاكينور تركّب وتضمن، لكنها ليست مُقرضاً."
   ogSlug="financement"
 >
   <div class="v2">
@@ -111,8 +111,8 @@ const mecanismes = [
         <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
           التركيبة في حدود 80 000 درهم لفيلا — استثمار حقيقي، لا أداة ترفيه. حين تُحدَّد بدقة،
           <strong class="text-white">تُستهلَك تقريباً في 3 إلى 7 سنوات</strong> بفضل الكهرباء التي
-          تتوقف عن شرائها من الشبكة، مُقيَّمة بتعريفة المكتب الوطني ONEE. بعد هذه النقطة، تبقى خمس عشرة
-          سنة تقريباً من أصل 25 سنة مضمونة يكون فيها تيارك <strong class="text-white">شبه مجاني</strong>.
+          تتوقف عن شرائها من الشبكة، مُقيَّمة بتعريفة المكتب الوطني ONEE. بعد هذه النقطة، تبقى أكثر من عشرين
+          سنة من أصل 30 سنة مضمونة يكون فيها تيارك <strong class="text-white">شبه مجاني</strong>.
         </p>
       </div>
     </section>
@@ -307,8 +307,8 @@ const mecanismes = [
             <dt class="tech-label mt-2 text-lune-faint">الدراسة والتشخيص</dt>
           </div>
           <div class="v2-rise" style="--v2-i:1">
-            <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl" dir="ltr" data-tally>25 سنة</dd>
-            <dt class="tech-label mt-2 text-lune-faint">أداء مضمون (≥ 84.8 %)</dt>
+            <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl" dir="ltr" data-tally>30 سنة</dd>
+            <dt class="tech-label mt-2 text-lune-faint">أداء مضمون (≥ 87.4 %)</dt>
           </div>
           <div class="v2-rise" style="--v2-i:2">
             <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl" dir="ltr" data-tally>3–7 سنوات</dd>
@@ -330,7 +330,7 @@ const mecanismes = [
           { href: L('/professionnel'), label: 'المردودية المهنية' },
           { href: L('/pompage-solaire'), label: 'الضخ الشمسي الفلاحي' },
           { href: L('/prix-panneaux-solaires-maroc'), label: 'أسعار الألواح الشمسية بالمغرب' },
-          { href: L('/garanties'), label: 'ضماناتنا (25 سنة)' },
+          { href: L('/garanties'), label: 'ضماناتنا (30 سنة)' },
           { href: devisHref, label: 'ابدأ تشخيصي' },
         ]} />
       </div>

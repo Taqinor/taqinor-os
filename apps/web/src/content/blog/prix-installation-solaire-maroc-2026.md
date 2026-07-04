@@ -53,7 +53,7 @@ Une terrasse en béton avec accès facile reste la configuration la moins onére
 
 ## Le cas de la batterie : utile, mais pas neutre sur le coût
 
-Une installation **sans batterie** (raccordée au réseau) reste la solution la plus courante et la plus rentable pour ~80 % des maisons urbaines. Avec la loi 82-21 désormais en vigueur (décret 2-25-100, juin 2026), le surplus que vous n'autoconsommez pas peut être injecté dans le réseau — mais seulement à hauteur de **20 % de votre production annuelle**, rachetée au tarif ANRE de **0,21 DH/kWh peak / 0,18 DH/kWh heures creuses** — bien en dessous de ce que vous payez pour consommer (0,90 – 1,66 DH/kWh selon votre tranche ONEE). La valeur du solaire est donc avant tout dans **l'autoconsommation directe**.
+Une installation **sans batterie** (raccordée au réseau) reste la solution la plus courante et la plus rentable pour ~80 % des maisons urbaines. Avec la loi 82-21 désormais en vigueur (décret 2-25-100, juin 2026), l'autoproduction basse tension est organisée — mais **aucun tarif de rachat résidentiel (BT) n'est publié à ce jour** : l'ANRE n'a publié un tarif de rachat de surplus (0,18–0,21 DH/kWh) que pour le moyen/haut/très haute tension, pas pour les maisons de moins de 11 kW. Tant que ce tarif BT n'existe pas noir sur blanc, nous ne chiffrons **aucun revenu d'export** — la valeur du solaire est donc avant tout dans **l'autoconsommation directe**, au tarif que vous payez déjà (0,9010 – 1,5958 DH/kWh selon votre tranche ONEE/régie).
 
 Si vous souhaitez stocker l'énergie pour la soirée ou vous protéger des coupures, une batterie LFP ajoute un coût significatif :
 
@@ -76,7 +76,7 @@ Si vous êtes une entreprise ou un investisseur, faites vérifier votre situatio
 
 Le payback le plus souvent cité par les installateurs marocains pour une installation résidentielle standard (sans batterie) est de **5 à 7 ans** — fourchette indicative 2026, cohérente avec plusieurs sources (solaropeak.com, ecovolt.ma, fnh.ma). Avec une batterie, comptez **1 à 3 ans de plus**.
 
-Ce calcul dépend fortement de votre consommation réelle et de votre tranche tarifaire ONEE. Un foyer consommant plus de 300 kWh/mois (tranche à 1,45 DH/kWh, ou au-delà de 500 kWh à 1,66 DH/kWh) rentabilise son installation plus vite qu'un faible consommateur — le solaire est d'autant plus rentable que votre facture actuelle est élevée.
+Ce calcul dépend fortement de votre consommation réelle et de votre tranche tarifaire ONEE/régie. Un foyer consommant plus de 310 kWh/mois (tranche à 1,3817 DH/kWh, ou au-delà de 510 kWh à 1,5958 DH/kWh) rentabilise son installation plus vite qu'un faible consommateur — le solaire est d'autant plus rentable que votre facture actuelle est élevée. (Grille tarifaire à jour : voir [notre article sur la rentabilité par ville](/blog/rentabilite-solaire-par-ville-maroc).)
 
 Pour aller plus loin sur les économies réelles par ville et les simulations de rentabilité, consultez notre article [Rentabilité solaire par ville au Maroc](/blog/rentabilite-solaire-par-ville-maroc).
 

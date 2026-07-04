@@ -9,6 +9,10 @@ from .models import (
     InventaireSession, LigneInventaire,
     KitProduit, KitComposant,
     FicheTechnique,
+    DocumentConformiteFournisseur, AchatsParametres,
+    CategorieFournisseur, ContactFournisseur,
+    EcheanceFactureFournisseur, AcompteFournisseur,
+    AvoirFournisseur, ImputationAvoirFournisseur,
 )
 
 
@@ -29,6 +33,28 @@ class CategorieSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class ContactFournisseurSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ContactFournisseur
+        fields = [
+            'id', 'fournisseur', 'nom', 'fonction', 'email', 'telephone',
+        ]
+
+    def validate_fournisseur(self, value):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is not None and value.company_id != company.id:
+            raise serializers.ValidationError(
+                'Fournisseur hors de votre entreprise.')
+        return value
+
+
+class CategorieFournisseurSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CategorieFournisseur
+        fields = ['id', 'nom', 'archived']
+
+
 class FournisseurSerializer(serializers.ModelSerializer):
     # L699 — compteurs LECTURE SEULE : nombre de produits liés et de bons de
     # commande fournisseur associés. Affichés « X produits · Y bons de
@@ -41,6 +67,11 @@ class FournisseurSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(
         required=False, allow_null=True, allow_blank=True,
         error_messages={'invalid': 'Adresse email invalide.'})
+    # XPUR5 — contacts multiples (lecture) + catégorie affichée + doublon ICE
+    # (warning non bloquant, ajouté dynamiquement à la réponse par la vue).
+    contacts = ContactFournisseurSerializer(many=True, read_only=True)
+    categorie_nom = serializers.CharField(
+        source='categorie.nom', read_only=True, default=None)
 
     class Meta:
         model = Fournisseur
@@ -57,6 +88,14 @@ class FournisseurSerializer(serializers.ModelSerializer):
         if annotated is not None:
             return annotated
         return obj.bons_commande.count()
+
+    def validate_ice(self, value):
+        from .services import validate_ice_format
+        if value and not validate_ice_format(value):
+            raise serializers.ValidationError(
+                "Format ICE invalide : l'ICE doit comporter exactement 15 "
+                'chiffres.')
+        return value
 
 
 class MouvementStockSerializer(serializers.ModelSerializer):
@@ -372,7 +411,7 @@ class PrixFournisseurSerializer(serializers.ModelSerializer):
         model = PrixFournisseur
         fields = [
             'id', 'produit', 'produit_nom', 'fournisseur', 'fournisseur_nom',
-            'prix_achat', 'date_dernier_achat',
+            'prix_achat', 'date_dernier_achat', 'delai_livraison_jours',
         ]
         # company posé côté serveur.
 
@@ -388,7 +427,8 @@ class LigneBonCommandeFournisseurSerializer(serializers.ModelSerializer):
         model = LigneBonCommandeFournisseur
         fields = [
             'id', 'produit', 'produit_nom', 'produit_sku', 'quantite',
-            'prix_achat_unitaire', 'frais_annexes', 'quantite_recue',
+            'prix_achat_unitaire', 'prix_achat_unitaire_devise',
+            'frais_annexes', 'quantite_recue',
             'quantite_restante', 'total_achat',
         ]
         # quantite_recue n'est jamais posée librement : elle évolue uniquement
@@ -412,19 +452,33 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
     total_achat = serializers.DecimalField(
         max_digits=14, decimal_places=2, read_only=True)
     est_entierement_recu = serializers.BooleanField(read_only=True)
+    # XPUR8 — acomptes versés sur ce BCF (SerializerMethodField : évite une
+    # dépendance d'ordre de classe vers AcompteFournisseurSerializer, défini
+    # plus bas dans ce module).
+    acomptes = serializers.SerializerMethodField()
 
     class Meta:
         model = BonCommandeFournisseur
         fields = [
             'id', 'reference', 'fournisseur', 'fournisseur_nom', 'statut',
-            'statut_display', 'date_commande', 'note', 'created_by',
+            'statut_display', 'date_commande', 'note', 'devise',
+            'taux_change', 'date_livraison_prevue',
+            'date_confirmee_fournisseur', 'numero_confirmation_fournisseur',
+            'created_by',
             'created_by_username', 'date_creation', 'date_mise_a_jour',
-            'lignes', 'total_achat', 'est_entierement_recu',
+            'lignes', 'total_achat', 'est_entierement_recu', 'acomptes',
         ]
-        # company + reference + created_by sont posés côté serveur.
+        # company + reference + created_by sont posés côté serveur. La date
+        # confirmée/numéro d'accusé n'est modifiable QUE via l'action
+        # `confirmer` (XPUR7) — jamais en écriture libre sur le document.
         read_only_fields = [
             'reference', 'created_by', 'date_creation', 'date_mise_a_jour',
+            'date_confirmee_fournisseur', 'numero_confirmation_fournisseur',
         ]
+
+    def get_acomptes(self, obj):
+        return AcompteFournisseurSerializer(
+            obj.acomptes.all(), many=True).data
 
     def validate_lignes(self, value):
         if not value:
@@ -451,15 +505,31 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
                     {'lignes': 'Produit hors de votre entreprise.'})
 
     def create(self, validated_data):
+        from .services import apply_devise_ligne_bcf, compute_date_livraison_prevue
         lignes_data = validated_data.pop('lignes')
         self._validate_company_produits(lignes_data)
+        devise = validated_data.get('devise')
+        taux = validated_data.get('taux_change')
+        # XPUR7 — pré-calcule date_livraison_prevue QUAND elle n'est pas
+        # explicitement fournie et qu'un délai est connu (reste modifiable
+        # ensuite). No-op sinon (comportement historique).
+        if not validated_data.get('date_livraison_prevue'):
+            request = self.context.get('request')
+            company = getattr(getattr(request, 'user', None), 'company', None)
+            derived = compute_date_livraison_prevue(
+                company, validated_data.get('fournisseur'),
+                validated_data.get('date_commande'), lignes_data)
+            if derived:
+                validated_data['date_livraison_prevue'] = derived
         bon = BonCommandeFournisseur.objects.create(**validated_data)
         for ligne in lignes_data:
+            apply_devise_ligne_bcf(ligne, devise, taux)
             LigneBonCommandeFournisseur.objects.create(
                 bon_commande=bon, **ligne)
         return bon
 
     def update(self, instance, validated_data):
+        from .services import apply_devise_ligne_bcf
         # Les écritures sur les lignes ne sont permises qu'en BROUILLON :
         # une fois envoyé/reçu, le contenu commandé est figé.
         lignes_data = validated_data.pop('lignes', None)
@@ -473,6 +543,8 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
             self._validate_company_produits(lignes_data)
             instance.lignes.all().delete()
             for ligne in lignes_data:
+                apply_devise_ligne_bcf(
+                    ligne, instance.devise, instance.taux_change)
                 LigneBonCommandeFournisseur.objects.create(
                     bon_commande=instance, **ligne)
         return instance
@@ -516,6 +588,10 @@ class ReceptionFournisseurSerializer(serializers.ModelSerializer):
     created_by_username = serializers.CharField(
         source='created_by.username', read_only=True)
     total_recu = serializers.IntegerField(read_only=True)
+    # XQHS3 — badge ADVISORY « contrôle qualité en attente » (qhse). Best-effort
+    # : lu via apps.qhse.selectors (jamais un import de apps.qhse.models), ne
+    # bloque jamais l'affichage de la réception si qhse échoue/est absent.
+    controle_qhse_ouvert = serializers.SerializerMethodField()
 
     class Meta:
         model = ReceptionFournisseur
@@ -524,11 +600,20 @@ class ReceptionFournisseurSerializer(serializers.ModelSerializer):
             'fournisseur_nom', 'statut', 'statut_display', 'date_reception',
             'note', 'recu_par', 'recu_par_username', 'created_by',
             'created_by_username', 'date_creation', 'lignes', 'total_recu',
+            'controle_qhse_ouvert',
         ]
         # company + reference + statut + created_by sont posés côté serveur.
         read_only_fields = [
             'reference', 'statut', 'created_by', 'date_creation',
         ]
+
+    def get_controle_qhse_ouvert(self, obj):
+        """XQHS3 — badge advisory, jamais bloquant. ``False`` si qhse échoue."""
+        try:
+            from apps.qhse.selectors import reception_controle_ouvert
+            return reception_controle_ouvert(obj.id)
+        except Exception:  # pragma: no cover - défensif, best-effort
+            return False
 
     def validate_lignes(self, value):
         if not value:
@@ -586,16 +671,22 @@ class PaiementFournisseurSerializer(serializers.ModelSerializer):
         source='facture.reference', read_only=True)
     created_by_username = serializers.CharField(
         source='created_by.username', read_only=True)
+    # XPUR2 — RAS-TVA : calculée côté serveur (jamais depuis le corps de
+    # requête), exposée en lecture pour affichage du net payé.
+    montant_net_paye = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
 
     class Meta:
         model = PaiementFournisseur
         fields = [
             'id', 'facture', 'facture_reference', 'montant', 'date_paiement',
             'mode', 'mode_display', 'note', 'created_by', 'created_by_username',
-            'date_creation',
+            'date_creation', 'montant_ras_tva', 'taux_ras', 'montant_net_paye',
         ]
-        # company + created_by posés côté serveur.
-        read_only_fields = ['created_by', 'date_creation']
+        # company + created_by + RAS-TVA posés côté serveur (jamais du corps).
+        read_only_fields = [
+            'created_by', 'date_creation', 'montant_ras_tva', 'taux_ras',
+        ]
 
     def validate_montant(self, value):
         if value is None or value <= 0:
@@ -611,9 +702,18 @@ class PaiementFournisseurSerializer(serializers.ModelSerializer):
         return value
 
 
+class EcheanceFactureFournisseurSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EcheanceFactureFournisseur
+        fields = ['id', 'facture', 'pourcentage', 'montant', 'date_echeance',
+                  'date_creation']
+        read_only_fields = ['date_creation']
+
+
 class FactureFournisseurSerializer(serializers.ModelSerializer):
     lignes = LigneFactureFournisseurSerializer(many=True, required=False)
     paiements = PaiementFournisseurSerializer(many=True, read_only=True)
+    echeances = EcheanceFactureFournisseurSerializer(many=True, read_only=True)
     fournisseur_nom = serializers.CharField(
         source='fournisseur.nom', read_only=True)
     bon_commande_reference = serializers.CharField(
@@ -626,6 +726,17 @@ class FactureFournisseurSerializer(serializers.ModelSerializer):
         max_digits=14, decimal_places=2, read_only=True)
     solde_du = serializers.DecimalField(
         max_digits=14, decimal_places=2, read_only=True)
+    # XPUR8 — acomptes fournisseur imputés sur cette facture (0 par défaut).
+    total_acomptes_imputes = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+    # XPUR9 — avoirs fournisseur imputés sur cette facture (0 par défaut).
+    total_avoirs_imputes = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+    # XPUR10 — file d'exceptions du rapprochement 3 voies.
+    statut_controle_display = serializers.CharField(
+        source='get_statut_controle_display', read_only=True)
+    resolu_par_username = serializers.CharField(
+        source='resolu_par.username', read_only=True)
 
     class Meta:
         model = FactureFournisseur
@@ -633,15 +744,23 @@ class FactureFournisseurSerializer(serializers.ModelSerializer):
             'id', 'reference', 'fournisseur', 'fournisseur_nom', 'bon_commande',
             'bon_commande_reference', 'ref_fournisseur', 'date_facture',
             'date_echeance', 'montant_ht', 'montant_tva', 'montant_ttc',
-            'statut', 'statut_display', 'note', 'created_by',
+            'devise', 'taux_change', 'montant_ttc_devise',
+            'type_achat', 'statut', 'statut_display', 'note', 'created_by',
             'created_by_username', 'date_creation', 'date_mise_a_jour',
-            'lignes', 'paiements', 'total_paye', 'solde_du',
+            'total_acomptes_imputes', 'total_avoirs_imputes',
+            'statut_controle', 'statut_controle_display', 'motif_ecart',
+            'resolu_par', 'resolu_par_username', 'resolu_le',
+            'lignes', 'paiements', 'echeances', 'total_paye', 'solde_du',
         ]
         # company + reference + statut + created_by sont posés côté serveur.
         # Le statut découle des paiements (recompute_facture_fournisseur_statut).
+        # statut_controle/motif_ecart/resolu_par/resolu_le sont posés
+        # UNIQUEMENT par evaluate_facture_exception / resoudre_exception_facture
+        # (XPUR10) — jamais en écriture libre sur le document.
         read_only_fields = [
             'reference', 'statut', 'created_by', 'date_creation',
-            'date_mise_a_jour',
+            'date_mise_a_jour', 'statut_controle', 'motif_ecart',
+            'resolu_par', 'resolu_le',
         ]
 
     def validate_fournisseur(self, value):
@@ -677,7 +796,27 @@ class FactureFournisseurSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         if validated_data.get('bon_commande'):
             raise serializers.ValidationError({'bon_commande': self._MSG_DC16_CREATE})
+        from .services import apply_devise_facture
         lignes_data = validated_data.pop('lignes', [])
+        # XPUR3 — si un montant TTC en devise est fourni, sa contre-valeur
+        # MAD ÉCRASE montant_ttc (comportement historique inchangé quand la
+        # facture est en MAD / le champ devise n'est pas renseigné).
+        mad = apply_devise_facture(
+            validated_data.get('montant_ttc_devise'),
+            validated_data.get('devise'), validated_data.get('taux_change'))
+        if mad is not None:
+            validated_data['montant_ttc'] = mad
+        # XPUR6 — auto-dérive date_echeance depuis les conditions de paiement
+        # du fournisseur QUAND elle n'est pas explicitement fournie (reste
+        # modifiable ensuite). No-op si le fournisseur n'a pas de délai
+        # configuré (comportement historique).
+        if not validated_data.get('date_echeance'):
+            from .services import derive_date_echeance
+            fournisseur = validated_data.get('fournisseur')
+            date_facture = validated_data.get('date_facture')
+            derived = derive_date_echeance(fournisseur, date_facture)
+            if derived:
+                validated_data['date_echeance'] = derived
         facture = FactureFournisseur.objects.create(**validated_data)
         for ligne in lignes_data:
             LigneFactureFournisseur.objects.create(facture=facture, **ligne)
@@ -855,4 +994,135 @@ class FicheTechniqueSerializer(serializers.ModelSerializer):
         if company is not None and value.company_id != company.id:
             raise serializers.ValidationError(
                 'Produit hors de votre entreprise.')
+        return value
+
+
+# ── XPUR1 — conformité fournisseur & paramètres achats ──────────────────────
+
+class DocumentConformiteFournisseurSerializer(serializers.ModelSerializer):
+    type_document_display = serializers.CharField(
+        source='get_type_document_display', read_only=True)
+    fournisseur_nom = serializers.CharField(
+        source='fournisseur.nom', read_only=True)
+    est_valide = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DocumentConformiteFournisseur
+        fields = [
+            'id', 'fournisseur', 'fournisseur_nom', 'type_document',
+            'type_document_display', 'reference', 'date_emission',
+            'date_expiration', 'obligatoire', 'note', 'est_valide',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'created_by', 'date_creation', 'date_modification',
+        ]
+
+    def get_est_valide(self, obj):
+        return obj.est_valide()
+
+    def validate_fournisseur(self, value):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is not None and value.company_id != company.id:
+            raise serializers.ValidationError(
+                'Fournisseur hors de votre entreprise.')
+        return value
+
+
+class AchatsParametresSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AchatsParametres
+        fields = [
+            'id', 'bloquer_paiement_conformite_expiree',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+
+# ── XPUR8 — acomptes fournisseur ─────────────────────────────────────────────
+
+class AcompteFournisseurSerializer(serializers.ModelSerializer):
+    mode_display = serializers.CharField(
+        source='get_mode_display', read_only=True)
+    bon_commande_reference = serializers.CharField(
+        source='bon_commande.reference', read_only=True)
+    montant_non_consomme = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = AcompteFournisseur
+        fields = [
+            'id', 'bon_commande', 'bon_commande_reference', 'montant',
+            'date_versement', 'mode', 'mode_display', 'montant_consomme',
+            'montant_non_consomme', 'facture_imputee', 'note', 'created_by',
+            'date_creation',
+        ]
+        # company + created_by + imputation posés côté serveur.
+        read_only_fields = [
+            'created_by', 'date_creation', 'montant_consomme',
+            'facture_imputee',
+        ]
+
+    def validate_montant(self, value):
+        if value is None or value <= 0:
+            raise serializers.ValidationError('Le montant doit être positif.')
+        return value
+
+    def validate_bon_commande(self, value):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is not None and value.company_id != company.id:
+            raise serializers.ValidationError(
+                'Bon de commande hors de votre entreprise.')
+        return value
+
+
+# ── XPUR9 — avoir fournisseur (note de crédit AP) ────────────────────────────
+
+class ImputationAvoirFournisseurSerializer(serializers.ModelSerializer):
+    facture_reference = serializers.CharField(
+        source='facture.reference', read_only=True)
+
+    class Meta:
+        model = ImputationAvoirFournisseur
+        fields = ['id', 'avoir', 'facture', 'facture_reference', 'montant',
+                  'date_creation']
+        read_only_fields = ['date_creation']
+
+
+class AvoirFournisseurSerializer(serializers.ModelSerializer):
+    fournisseur_nom = serializers.CharField(
+        source='fournisseur.nom', read_only=True)
+    retour_reference = serializers.CharField(
+        source='retour.reference', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    montant_disponible = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+    imputations = ImputationAvoirFournisseurSerializer(
+        many=True, read_only=True)
+
+    class Meta:
+        model = AvoirFournisseur
+        fields = [
+            'id', 'reference', 'fournisseur', 'fournisseur_nom',
+            'facture_origine', 'retour', 'retour_reference', 'montant_ht',
+            'montant_tva', 'montant_ttc', 'statut', 'statut_display',
+            'montant_impute', 'montant_disponible', 'note', 'created_by',
+            'date_creation', 'date_mise_a_jour', 'imputations',
+        ]
+        # company + reference + montant_impute + statut posés côté serveur
+        # (l'imputation avance le statut, jamais une écriture libre).
+        read_only_fields = [
+            'reference', 'created_by', 'date_creation', 'date_mise_a_jour',
+            'montant_impute',
+        ]
+
+    def validate_fournisseur(self, value):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is not None and value.company_id != company.id:
+            raise serializers.ValidationError(
+                'Fournisseur hors de votre entreprise.')
         return value

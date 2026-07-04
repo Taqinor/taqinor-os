@@ -28,8 +28,9 @@ const L = (href: string) => localizeNavHref(href, locale);
 const devisHref = L('/devis/mon-toit');
 
 // ── أرقام مُشتَقّة — لا شيء مكتوب يدوياً ─────────────────────────────────────
-const installCount = REALISATIONS.length;
-
+// القاعدة ب (2026-07-04): العدد الخام للتركيبات لم يعد يُبرَز في نص المستخدم
+// (المقدمة، h2، المقامات) — تقود الصفحة بكيلوواط الذروة التراكمية / الكيلوواط
+// ساعة المقيسة / CO₂ المتجنَّب (يحلّ جزئياً محلّ W279).
 const kwcTotal = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
 const kwcTotalLabel = kwcTotal.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -79,9 +80,9 @@ const jsonLd = {
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">مساءلة وشفافية</p>
         <h1 class="display v2-page-title cine-in cine-in-1 mt-6">أثر Taqinor</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
-          ليست توقّعاً ولا هدفاً: ما تنتجه فعلاً تركيباتنا الـ{installCount} المنشورة، مجموعةً.
-          هذه الصفحة تكبر مشروعاً بعد مشروع — اليوم هي صغيرة، عن قصد، لأنها لا تقول إلا ما
-          يمكننا إثباته.
+          ليست توقّعاً ولا هدفاً: {kwcTotalLabel} kWc مركَّبة، {productionTotalLabel} kWh مقيسة،
+          {co2TonnesLabel} طن CO₂ متجنَّبة كل سنة — ما تنتجه فعلاً تركيباتنا المنشورة، مجموعةً.
+          هذه الصفحة تكبر مشروعاً بعد مشروع؛ لا تقول إلا ما يمكننا إثباته.
         </p>
       </div>
     </section>
@@ -90,13 +91,13 @@ const jsonLd = {
     <section class="section px-4">
       <div class="mx-auto max-w-6xl">
         <p class="tech-label v2-kicker rule-brass text-lune">الحصيلة اليوم</p>
-        <h2 class="display v2-section-title mt-5 text-white">{installCount} تركيبات، حصيلة واحدة</h2>
+        <h2 class="display v2-section-title mt-5 text-white">{kwcTotalLabel} kWc، حصيلة واحدة</h2>
         <div class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
           <KeyFigure value={kwcTotalLabel} unit="kWc" label="القدرة المركَّبة">
-            مجموع {installCount} تركيبات في {villesUniques.join('، ')}.
+            مجموع التركيبات المنشورة في {villesUniques.join('، ')}.
           </KeyFigure>
           <KeyFigure value={productionTotalLabel} unit="kWh/سنة" label="الإنتاج المقيس">
-            على {withMeasuredProduction.length} تركيبات متابَعة (Deye Cloud) — المشاريع التي لا
+            على التركيبات المتابَعة (Deye Cloud) — المشاريع التي لا
             إنتاج منشوراً لها لا تُحتسَب.
           </KeyFigure>
           <KeyFigure value={co2TonnesLabel} unit="طن CO₂/سنة" label="CO₂ متجنَّب">
@@ -104,7 +105,7 @@ const jsonLd = {
             بالفعل في دراساتنا المُسعَّرة.
           </KeyFigure>
           <KeyFigure value={String(batteryKwhTotal).replace('.', ',')} unit="kWh" label="التخزين التراكمي">
-            سعة بطاريات مركَّبة على {battersInstalls.length} من أصل {installCount} مشاريع.
+            سعة بطاريات مركَّبة على {battersInstalls.length} من أصل المشاريع.
           </KeyFigure>
         </div>
         <Callout type="info" title="كيف يُحسَب هذا الرقم">
@@ -145,16 +146,15 @@ const jsonLd = {
       </div>
     </section>
 
-    <!-- لماذا تبقى هذه الصفحة صغيرة -->
+    <!-- لماذا تبقى هذه الحصيلة صادقة -->
     <section class="section px-4 text-white">
       <div class="mx-auto max-w-3xl">
-        <p class="tech-label v2-kicker rule-brass text-lune">لماذا القليل فقط</p>
-        <h2 class="display v2-section-title mt-5 text-white">صغيرة الآن، صادقة دائماً</h2>
+        <p class="tech-label v2-kicker rule-brass text-lune">منهجيتنا</p>
+        <h2 class="display v2-section-title mt-5 text-white">مقيسة، لا مُضخَّمة أبداً</h2>
         <p class="v2-lead mt-5 text-lune-soft">
           كان بإمكاننا تضخيم هذه الحصيلة بتقديرات نظرية أو مردوديات الكتالوج أو توقّعات على خمس
-          سنوات. نفضّل أن نحتسب فقط ما هو مركَّب ومتابَع ومنشور بالفعل — ما يجعل هذا الرقم أصغر
-          مما قد يبدو، لكنه قابل للتحقّق سطراً بسطر على صفحة إنجازاتنا. كل مشروع جديد موثَّق يدفع
-          هذا المجموع قُدُماً؛ هذه هي الطريقة الوحيدة التي سينمو بها.
+          سنوات. نفضّل أن نحتسب فقط ما هو مركَّب ومتابَع ومنشور بالفعل — قابل للتحقّق سطراً بسطر
+          على صفحة إنجازاتنا. كل مشروع جديد موثَّق يدفع هذا المجموع قُدُماً.
         </p>
       </div>
     </section>

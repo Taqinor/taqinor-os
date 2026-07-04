@@ -3,7 +3,10 @@
  * Étude de cas — une page par installation réelle (W3). Données 100 % issues
  * de `src/lib/realisations.ts` (elles-mêmes reprises des pages publiques
  * existantes) : aucun chiffre inventé. La carte production est OMISE quand la
- * production mesurée n'est pas publiée (ex. Nouaceur). Page publique, indexée.
+ * production n'est pas publiée (ex. Nouaceur) ; quand `productionEstimated`
+ * est vrai (WB1, 2026-07-04), le libellé lit « estimée » — jamais « mesurée »
+ * tant qu'un relevé Deye Cloud distinct par chantier n'existe pas. Page
+ * publique, indexée.
  *
  * W171 — caption scrim via PhotoCaption.astro
  * W178 — lightbox accessible sur les photos de la galerie
@@ -171,7 +174,11 @@ const waCaseStudy = whatsappLink(
         {r.production && (
           <div class="v2-rise" style="--v2-i:1">
             <dd class="fig lum text-3xl sm:text-4xl" data-tally>{r.production}</dd>
-            <dt class="tech-label mt-2 text-lune-faint">Production mesurée — Deye Cloud</dt>
+            <dt class="tech-label mt-2 text-lune-faint">
+              {r.productionEstimated
+                ? 'Production estimée — rendement mesuré de nos chantiers'
+                : 'Production mesurée — Deye Cloud'}
+            </dt>
           </div>
         )}
         <div class="v2-rise" style="--v2-i:2">
@@ -474,8 +481,8 @@ const waCaseStudy = whatsappLink(
   }
   .slug-lightbox-close {
     position: fixed;
-    top: 1.25rem;
-    right: 1.25rem;
+    top: max(1.25rem, env(safe-area-inset-top));
+    inset-inline-end: max(1.25rem, env(safe-area-inset-right));
     z-index: 9001;
     display: flex;
     align-items: center;
@@ -510,8 +517,8 @@ const waCaseStudy = whatsappLink(
     cursor: pointer;
     transition: color 200ms, border-color 200ms;
   }
-  .slug-lightbox-arrow--prev { left: 1rem; }
-  .slug-lightbox-arrow--next { right: 1rem; }
+  .slug-lightbox-arrow--prev { inset-inline-start: max(1rem, env(safe-area-inset-left)); }
+  .slug-lightbox-arrow--next { inset-inline-end: max(1rem, env(safe-area-inset-right)); }
   .slug-lightbox-arrow:hover,
   .slug-lightbox-arrow:focus-visible {
     color: var(--color-brass-300);

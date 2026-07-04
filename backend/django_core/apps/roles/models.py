@@ -50,6 +50,15 @@ ALL_PERMISSIONS = [
     'compta_saisir',
     'compta_valider',
     'compta_cloturer',
+    # ── Paie (XPAI7) — follow-up explicite noté au DONE de PAIE1 ──
+    # L'app ``paie`` était gatée uniquement par le grossier
+    # ``IsResponsableOrAdmin`` (tout porteur de rôle passe). Deux codes
+    # DISJOINTS : ``paie_voir`` (lecture bulletins/périodes/déclarations) et
+    # ``paie_gerer`` (calcul/validation/clôture/paramètres/tout le reste en
+    # écriture). Le coffre-fort employé (``CoffreFortBulletinViewSet``,
+    # ``IsAnyRole``) reste scopé utilisateur, inchangé — hors périmètre.
+    'paie_voir',
+    'paie_gerer',
     # ── Données sensibles & gouvernance (Feature D, 2026-06) ──
     # Voir les prix d'achat et la marge interne (générateur, stock). Accordée à
     # Directeur + Administrateur par défaut ; jamais sur un document client.
@@ -138,6 +147,10 @@ RESPONSABLE_PERMISSIONS = [
     # clôture reste au palier direction/admin.
     'compta_saisir',
     'compta_valider',
+    # XPAI7 — comportement historique préservé : le Responsable avait accès
+    # complet à la paie via le grossier IsResponsableOrAdmin.
+    'paie_voir',
+    'paie_gerer',
     # FG20 — la Commerciale/Responsable voit les coordonnées client (besoin
     # opérationnel) ; comportement historique préservé.
     'client_pii_voir',

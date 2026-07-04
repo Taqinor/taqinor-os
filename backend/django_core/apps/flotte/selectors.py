@@ -13,9 +13,12 @@ from .models import (
     AffectationConducteur,
     AssuranceVehicule,
     BaremeVignette,
+    BudgetFlotte,
     CarteCarburant,
     CarteGriseVehicule,
     Conducteur,
+    ContratVehicule,
+    CoutVehicule,
     DemandeVehicule,
     EcheanceEntretien,
     EcheanceReglementaire,
@@ -24,11 +27,14 @@ from .models import (
     Garage,
     Infraction,
     OrdreReparation,
+    ParametreAmortissementCGI,
+    ParametreRemplacementFlotte,
     PieceFlotte,
     PlanEntretien,
     Pneumatique,
     PleinCarburant,
     ReleveTelematique,
+    RemiseAccessoire,
     ReservationVehicule,
     Sinistre,
     TrajetChantier,
@@ -363,6 +369,14 @@ def anomalies_pleins(company, vehicule_id=None, saut_km_max=ANOMALIE_SAUT_KM_MAX
                 'prix_total', 'date_plein')
     )
 
+    # XFLT12 — Capacité réservoir (L) par véhicule, via le modèle catalogue
+    # (``ModeleVehicule``, si rattaché). Sert la détection « plein > réservoir ».
+    capacite_reservoir_par_vehicule = dict(
+        Vehicule.objects.filter(
+            company=company, modele_ref__capacite_reservoir_l__isnull=False,
+        ).values_list('id', 'modele_ref__capacite_reservoir_l')
+    )
+
     # Regroupe par véhicule pour comparer des pleins comparables.
     par_vehicule = {}
     for plein in pleins:
@@ -445,6 +459,19 @@ def anomalies_pleins(company, vehicule_id=None, saut_km_max=ANOMALIE_SAUT_KM_MAX
                     plein, 'plafond_depasse', 'moyenne',
                     f"Montant du plein ({float(plein['prix_total'] or 0):.2f} "
                     f"MAD) supérieur au plafond de la carte ({plafond:.2f} MAD).",
+                )
+
+            # 5) XFLT12 — Plein > capacité réservoir du modèle catalogue
+            # (litres uniquement — un plein électrique se mesure en kWh, sans
+            # rapport avec un réservoir carburant).
+            capacite = capacite_reservoir_par_vehicule.get(veh_id)
+            if capacite is not None and plein['unite'] == 'litre' \
+                    and float(plein['quantite'] or 0) > capacite:
+                _ajoute(
+                    plein, 'plein_superieur_reservoir', 'haute',
+                    f"Quantité du plein ({float(plein['quantite'] or 0):.1f} L) "
+                    f"supérieure à la capacité du réservoir ({capacite} L) — "
+                    "fraude probable.",
                 )
 
         # 3) Consommation aberrante vs la ligne de base du véhicule.
@@ -1242,6 +1269,420 @@ def cartes_grises_expirantes(company, within=30, today=None):
     ).order_by('autorisation_date_validite', 'id')
 
 
+# ── XFLT1 — Contrats véhicule (leasing/LLD/location/entretien) ────────────────
+
+def contrats_vehicule_de_la_societe(company, statut=None, vehicule_id=None):
+    """XFLT1 — Contrats véhicule d'une société (queryset scopé).
+
+    Filtres facultatifs : ``statut`` (STOCKÉ, pas le statut calculé) et
+    ``vehicule_id`` (un véhicule précis). Lecture seule, scopée société.
+    """
+    qs = ContratVehicule.objects.filter(company=company).select_related(
+        'vehicule', 'garage')
+    if statut is not None:
+        qs = qs.filter(statut=statut)
+    if vehicule_id is not None:
+        qs = qs.filter(vehicule_id=vehicule_id)
+    return qs
+
+
+def contrats_vehicule_expirants(company, within=30, today=None):
+    """XFLT1 — Contrats véhicule DUS/EXPIRÉS sous ``within`` jours.
+
+    Retourne les ``ContratVehicule`` de la société dont ``date_fin`` est déjà
+    passée OU tombe dans les ``within`` prochains jours (inclusif), du plus
+    urgent au moins urgent. Les contrats sans ``date_fin`` (durée
+    indéterminée) ne remontent jamais. ``today`` est INJECTABLE (date du jour
+    par défaut). Lecture seule, scopée société.
+    """
+    if today is None:
+        today = datetime.date.today()
+    horizon = today + datetime.timedelta(days=within)
+    return contrats_vehicule_de_la_societe(company).filter(
+        date_fin__isnull=False,
+        date_fin__lte=horizon,
+    ).order_by('date_fin', 'id')
+
+
+# ── XFLT3 — Grand livre des coûts par véhicule ──────────────────────────────────
+
+def couts_vehicule_de_la_societe(company, actif_flotte_id=None,
+                                 categorie=None):
+    """XFLT3 — Coûts véhicule divers d'une société (queryset scopé).
+
+    Filtres facultatifs : ``actif_flotte_id`` (un actif précis) et
+    ``categorie``. Lecture seule, scopée société, du plus récent au plus
+    ancien.
+    """
+    qs = CoutVehicule.objects.filter(company=company).select_related(
+        'actif_flotte', 'actif_flotte__vehicule', 'actif_flotte__engin',
+        'conducteur')
+    if actif_flotte_id is not None:
+        qs = qs.filter(actif_flotte_id=actif_flotte_id)
+    if categorie is not None:
+        qs = qs.filter(categorie=categorie)
+    return qs
+
+
+def ledger_vehicule(company, vehicule_id, periode=None):
+    """XFLT3 — Grand livre unifié des coûts d'un véhicule (lecture seule).
+
+    Fusionne, pour un véhicule de la société, TOUTES les sources de coûts déjà
+    saisies dans le module flotte en une vue chronologique UNIQUE, triée par
+    date décroissante :
+
+    * ``carburant``   — chaque ``PleinCarburant`` (FLOTTE12), montant =
+      ``prix_total`` ;
+    * ``reparation``  — chaque ``OrdreReparation`` (FLOTTE17) de l'actif,
+      montant = ``cout_total`` (daté à l'ouverture) ;
+    * ``assurance``   — chaque ``AssuranceVehicule`` (FLOTTE21) de l'actif,
+      montant = ``franchise`` (datée au début de couverture, ou à l'échéance
+      si le début est absent) ;
+    * ``tsav``        — la TSAV annuelle calculée (FLOTTE20, via
+      ``calcul_tsav``) pour l'année courante, datée au 1er janvier — omise si
+      aucun montant n'est calculable (puissance fiscale inconnue) ;
+    * ``infraction``  — chaque ``Infraction`` (FLOTTE26) de l'actif, montant =
+      ``montant_amende`` ;
+    * ``cout_divers`` — chaque ``CoutVehicule`` (XFLT3) de l'actif (péage,
+      parking, lavage, contrat, autre…).
+
+    ``periode`` (optionnel) est un tuple ``(date_debut, date_fin)`` inclusif
+    qui borne toutes les sources DATÉES (la TSAV, sans date propre, suit sa
+    date d'ancrage au 1er janvier).
+
+    Retourne un dict LECTURE SEULE ::
+
+        {
+          'vehicule_id', 'actif_flotte_id', 'nb_lignes',
+          'lignes': [ {'source', 'categorie', 'date', 'montant',
+                       'libelle', 'conducteur_id', 'objet_id'}, … ],
+        }
+
+    Le TCO (FLOTTE31, ``tco_vehicule``) reste intact — ce sélecteur est une
+    vue chronologique complémentaire, pas un remplacement de l'agrégat. Aucune
+    écriture, aucun effet de bord.
+    """
+    vehicule = (Vehicule.objects
+                .filter(company=company, id=vehicule_id)
+                .select_related('actif_flotte')
+                .first())
+    if vehicule is None:
+        return {
+            'vehicule_id': vehicule_id, 'actif_flotte_id': None,
+            'nb_lignes': 0, 'lignes': [],
+        }
+
+    actif_flotte_id = getattr(
+        getattr(vehicule, 'actif_flotte', None), 'id', None)
+
+    lignes = []
+
+    def _dans_periode(date_):
+        if periode is None or date_ is None:
+            return True
+        debut, fin = periode
+        if debut is not None and date_ < debut:
+            return False
+        if fin is not None and date_ > fin:
+            return False
+        return True
+
+    # 1) Carburant.
+    for plein in PleinCarburant.objects.filter(
+            company=company, vehicule_id=vehicule_id):
+        if not _dans_periode(plein.date_plein):
+            continue
+        lignes.append({
+            'source': 'carburant', 'categorie': 'carburant',
+            'date': plein.date_plein, 'montant': float(plein.prix_total or 0),
+            'libelle': f'Plein — {plein.station}'.strip(' —'),
+            'conducteur_id': plein.conducteur_id, 'objet_id': plein.id,
+        })
+
+    if actif_flotte_id is not None:
+        # 2) Réparations.
+        for ordre in OrdreReparation.objects.filter(
+                company=company, actif_flotte_id=actif_flotte_id):
+            if not _dans_periode(ordre.date_ouverture):
+                continue
+            lignes.append({
+                'source': 'reparation', 'categorie': 'entretien',
+                'date': ordre.date_ouverture,
+                'montant': float(ordre.cout_total or 0),
+                'libelle': f'OR — {ordre.garage}'.strip(' —') if
+                ordre.garage_id else 'Ordre de réparation',
+                'conducteur_id': None, 'objet_id': ordre.id,
+            })
+
+        # 3) Assurances (franchise, datée au début de couverture).
+        for assur in AssuranceVehicule.objects.filter(
+                company=company, actif_flotte_id=actif_flotte_id):
+            date_ = assur.date_debut or assur.date_echeance
+            if not _dans_periode(date_):
+                continue
+            lignes.append({
+                'source': 'assurance', 'categorie': 'assurance',
+                'date': date_, 'montant': float(assur.franchise or 0),
+                'libelle': f'Assurance — {assur.assureur}'.strip(' —'),
+                'conducteur_id': None, 'objet_id': assur.id,
+            })
+
+        # 4) Infractions.
+        for inf in Infraction.objects.filter(
+                company=company, actif_flotte_id=actif_flotte_id):
+            if not _dans_periode(inf.date_infraction):
+                continue
+            lignes.append({
+                'source': 'infraction', 'categorie': 'amende',
+                'date': inf.date_infraction,
+                'montant': float(inf.montant_amende or 0),
+                'libelle': f'Infraction — {inf.get_type_infraction_display()}',
+                'conducteur_id': inf.conducteur_id, 'objet_id': inf.id,
+            })
+
+        # 6) Coûts divers.
+        for cout in CoutVehicule.objects.filter(
+                company=company, actif_flotte_id=actif_flotte_id):
+            if not _dans_periode(cout.date):
+                continue
+            lignes.append({
+                'source': 'cout_divers', 'categorie': cout.categorie,
+                'date': cout.date, 'montant': float(cout.montant or 0),
+                'libelle': (f'{cout.get_categorie_display()} — '
+                            f'{cout.fournisseur}').strip(' —'),
+                'conducteur_id': cout.conducteur_id, 'objet_id': cout.id,
+            })
+
+    # 5) TSAV (annuelle, ancrée au 1er janvier de l'année courante).
+    tsav_annee = datetime.date.today().year
+    tsav_date = datetime.date(tsav_annee, 1, 1)
+    if _dans_periode(tsav_date):
+        tsav = calcul_tsav(vehicule, annee=tsav_annee)
+        if tsav.get('montant') is not None:
+            lignes.append({
+                'source': 'tsav', 'categorie': 'vignette',
+                'date': tsav_date, 'montant': float(tsav['montant']),
+                'libelle': f'TSAV {tsav_annee}',
+                'conducteur_id': None, 'objet_id': None,
+            })
+
+    lignes.sort(key=lambda x: (x['date'] is None, x['date']), reverse=True)
+
+    return {
+        'vehicule_id': vehicule_id,
+        'actif_flotte_id': actif_flotte_id,
+        'nb_lignes': len(lignes),
+        'lignes': lignes,
+    }
+
+
+# ── XFLT7 — Rapport d'analyse des coûts (pivot + benchmark) ────────────────────
+
+def analyse_couts_report(company, group_by='vehicule', periode=None):
+    """XFLT7 — Rapport pivot des coûts par véhicule × catégorie × mois
+    (lecture seule).
+
+    Construit, pour CHAQUE véhicule de la société, son ``ledger_vehicule``
+    (XFLT3, toutes sources unifiées) puis agrège selon ``group_by`` :
+
+    * ``'vehicule'``  — total par véhicule (label + immatriculation) ;
+    * ``'categorie'`` — total par catégorie de coût ;
+    * ``'mois'``      — total par mois (``'YYYY-MM'``) ;
+    * ``'conducteur'``— total par conducteur (lignes sans conducteur exclues) ;
+    * ``'garage'``    — total par garage des ``OrdreReparation`` (lignes hors
+      réparation exclues).
+
+    ``periode`` (optionnel) est un tuple ``(date_debut, date_fin)`` transmis
+    tel quel à ``ledger_vehicule``.
+
+    Calcule aussi, par véhicule : ``cout_par_km`` (coût total / distance
+    parcourue, réutilise l'odomètre courant du véhicule — ``None`` si
+    kilométrage nul) et signale un OUTLIER de consommation quand la
+    consommation moyenne du véhicule (L/100km ou kWh/100km, FLOTTE13) dépasse
+    de plus de 20 % la MÉDIANE des véhicules de MÊME modèle
+    (``marque``+``modele`` identiques ; un modèle seul dans le parc n'est
+    jamais outlier — pas de comparaison possible).
+
+    Retourne un dict LECTURE SEULE ::
+
+        {
+          'group_by', 'pivot': [ {'cle', 'libelle', 'total'}, … ],
+          'par_vehicule': [ {'vehicule_id', 'label', 'cout_total',
+                             'cout_par_km', 'distance_km'}, … ],
+          'par_garage': [ {'garage_id', 'garage_nom', 'total'}, … ],
+          'outliers': [ {'vehicule_id', 'label', 'conso', 'mediane_modele',
+                         'ecart_pct'}, … ],
+        }
+
+    Aucune écriture, aucun effet de bord.
+    """
+    vehicules = list(Vehicule.objects.filter(company=company))
+
+    pivot_totaux = {}
+    par_vehicule = []
+    par_garage_totaux = {}
+
+    for vehicule in vehicules:
+        ledger = ledger_vehicule(company, vehicule.id, periode=periode)
+        cout_total = 0.0
+        for ligne in ledger['lignes']:
+            montant = ligne['montant']
+            cout_total += montant
+
+            if group_by == 'categorie':
+                cle = ligne['categorie']
+                pivot_totaux[cle] = pivot_totaux.get(cle, 0.0) + montant
+            elif group_by == 'mois':
+                date_ = ligne['date']
+                cle = date_.strftime('%Y-%m') if date_ else 'inconnu'
+                pivot_totaux[cle] = pivot_totaux.get(cle, 0.0) + montant
+            elif group_by == 'conducteur':
+                if ligne['conducteur_id'] is not None:
+                    cle = ligne['conducteur_id']
+                    pivot_totaux[cle] = pivot_totaux.get(cle, 0.0) + montant
+
+            if ligne['source'] == 'reparation' and ligne['objet_id']:
+                ordre = OrdreReparation.objects.filter(
+                    id=ligne['objet_id']).select_related('garage').first()
+                if ordre is not None and ordre.garage_id is not None:
+                    nom = ordre.garage.nom
+                    par_garage_totaux[nom] = (
+                        par_garage_totaux.get(nom, 0.0) + montant)
+
+        if group_by == 'vehicule':
+            pivot_totaux[vehicule.id] = cout_total
+
+        distance = vehicule.kilometrage or 0
+        cout_par_km = round(cout_total / distance, 3) if distance > 0 \
+            else None
+        par_vehicule.append({
+            'vehicule_id': vehicule.id,
+            'label': str(vehicule),
+            'cout_total': round(cout_total, 2),
+            'cout_par_km': cout_par_km,
+            'distance_km': distance,
+        })
+
+    # Pivot en liste triée par total décroissant.
+    pivot = [
+        {'cle': cle, 'libelle': str(cle), 'total': round(total, 2)}
+        for cle, total in sorted(
+            pivot_totaux.items(), key=lambda kv: kv[1], reverse=True)
+    ]
+
+    par_garage = [
+        {'garage_nom': nom, 'total': round(total, 2)}
+        for nom, total in sorted(
+            par_garage_totaux.items(), key=lambda kv: kv[1], reverse=True)
+    ]
+
+    # ── Outliers de consommation (>20% au-dessus de la médiane du modèle) ──
+    par_modele = {}
+    conso_par_vehicule = {}
+    for vehicule in vehicules:
+        conso = consommation_vehicule(company, vehicule.id)
+        valeur = None
+        bloc_litres = conso.get('litres')
+        bloc_kwh = conso.get('kwh')
+        if bloc_litres:
+            valeur = bloc_litres['conso_l_100km']
+        elif bloc_kwh:
+            valeur = bloc_kwh['conso_kwh_100km']
+        if valeur is None:
+            continue
+        conso_par_vehicule[vehicule.id] = valeur
+        cle_modele = (vehicule.marque, vehicule.modele)
+        par_modele.setdefault(cle_modele, []).append(valeur)
+
+    outliers = []
+    for vehicule in vehicules:
+        valeur = conso_par_vehicule.get(vehicule.id)
+        if valeur is None:
+            continue
+        cle_modele = (vehicule.marque, vehicule.modele)
+        groupe = par_modele.get(cle_modele, [])
+        if len(groupe) < 2:
+            continue  # Seul de son modèle : pas de comparaison possible.
+        mediane = _mediane(groupe)
+        if mediane is None or mediane <= 0:
+            continue
+        ecart_pct = round((valeur - mediane) / mediane * 100, 1)
+        if ecart_pct > 20:
+            outliers.append({
+                'vehicule_id': vehicule.id,
+                'label': str(vehicule),
+                'conso': valeur,
+                'mediane_modele': round(mediane, 2),
+                'ecart_pct': ecart_pct,
+            })
+
+    return {
+        'group_by': group_by,
+        'pivot': pivot,
+        'par_vehicule': par_vehicule,
+        'par_garage': par_garage,
+        'outliers': outliers,
+    }
+
+
+# ── XFLT8 — TVA carburant : récupérable vs non déductible ──────────────────────
+
+def synthese_tva_carburant(company, periode):
+    """XFLT8 — Synthèse mensuelle TVA carburant récupérable / non déductible
+    (lecture seule).
+
+    ``periode`` est un tuple ``(date_debut, date_fin)`` bornant
+    ``PleinCarburant.date_plein`` (inclusif — ``None`` de part et d'autre =
+    aucune borne). Agrège, pour la société, le total ``montant_tva`` des
+    pleins RÉCUPÉRABLES et NON DÉDUCTIBLES, PAR MOIS (``'YYYY-MM'``), pour
+    alimenter la déclaration TVA (compta LIT ce sélecteur — jamais l'inverse,
+    voir CLAUDE.md).
+
+    Retourne un dict LECTURE SEULE ::
+
+        {
+          'periode': [<date_debut>, <date_fin>],
+          'par_mois': [
+            {'mois': 'YYYY-MM', 'tva_recuperable': <float>,
+             'tva_non_deductible': <float>}, …
+          ],
+          'total_recuperable': <float>, 'total_non_deductible': <float>,
+        }
+
+    Aucune écriture, aucun effet de bord.
+    """
+    debut, fin = periode if periode else (None, None)
+    qs = PleinCarburant.objects.filter(company=company)
+    if debut is not None:
+        qs = qs.filter(date_plein__gte=debut)
+    if fin is not None:
+        qs = qs.filter(date_plein__lte=fin)
+
+    par_mois = {}
+    total_recuperable = 0.0
+    total_non_deductible = 0.0
+
+    for plein in qs.values('date_plein', 'montant_tva', 'tva_recuperable'):
+        mois = plein['date_plein'].strftime('%Y-%m')
+        montant = float(plein['montant_tva'] or 0)
+        bloc = par_mois.setdefault(
+            mois, {'mois': mois, 'tva_recuperable': 0.0,
+                   'tva_non_deductible': 0.0})
+        if plein['tva_recuperable']:
+            bloc['tva_recuperable'] += montant
+            total_recuperable += montant
+        else:
+            bloc['tva_non_deductible'] += montant
+            total_non_deductible += montant
+
+    return {
+        'periode': [debut, fin],
+        'par_mois': sorted(par_mois.values(), key=lambda b: b['mois']),
+        'total_recuperable': round(total_recuperable, 2),
+        'total_non_deductible': round(total_non_deductible, 2),
+    }
+
+
 # ── FLOTTE24 — Moteur d'alertes d'échéances réglementaires (J-30/15/7/échu) ────
 
 # Fenêtre maximale de l'alerteur : on ne remonte que les échéances déjà
@@ -1298,7 +1739,11 @@ def alertes_echeances_reglementaires(company, today=None):
     * ``carte_grise`` — ``CarteGriseVehicule.autorisation_date_validite``
       (FLOTTE23, via ``cartes_grises_expirantes``) ;
     * ``entretien`` — ``EcheanceEntretien.due_le`` des échéances OUVERTES
-      (FLOTTE16) — l'échéance de MAINTENANCE datée encore à traiter.
+      (FLOTTE16) — l'échéance de MAINTENANCE datée encore à traiter ;
+    * ``contrat_vehicule`` — ``ContratVehicule.date_fin`` (XFLT1, via
+      ``contrats_vehicule_expirants``) — contrat de leasing/LLD/location/
+      entretien arrivant à échéance. Distinct de ``assurance`` (jamais de
+      doublon : le contrat d'assurance reste sur ``AssuranceVehicule`` seul).
 
     ``today`` est INJECTABLE (date du jour par défaut). Tout est scopé société.
 
@@ -1404,6 +1849,33 @@ def alertes_echeances_reglementaires(company, today=None):
             ee.type_entretien,
             f'Entretien : {ee.type_entretien}'.strip(),
             ee.due_le)
+
+    # 6) Contrats véhicule (leasing/LLD/location/entretien) — XFLT1. Rattachés
+    # au véhicule directement (pas d'ActifFlotte sur ce modèle) : on résout
+    # l'actif_flotte_id via la reverse-relation si elle existe.
+    for ctr in contrats_vehicule_expirants(company, within=horizon,
+                                           today=today):
+        actif = getattr(ctr.vehicule, 'actif_flotte', None)
+        _ajoute(
+            'contrat_vehicule', ctr.id, actif.id if actif else None,
+            str(ctr.vehicule),
+            ctr.type_contrat,
+            f'Contrat {ctr.get_type_contrat_display()} — '
+            f'{ctr.fournisseur}'.strip(' —'),
+            ctr.date_fin)
+
+    # XFLT16 — Exclut les alertes portant sur un véhicule vendu/réformé (sortie
+    # de parc) : l'historique reste consultable ailleurs, mais ces véhicules ne
+    # doivent plus générer d'échéance à traiter.
+    actifs_exclus = set(
+        ActifFlotte.objects.filter(
+            company=company,
+            vehicule__statut__in=[Vehicule.Statut.VENDU, Vehicule.Statut.REFORME],
+        ).values_list('id', flat=True)
+    )
+    if actifs_exclus:
+        alertes = [
+            a for a in alertes if a['actif_flotte_id'] not in actifs_exclus]
 
     # Tri du plus urgent au moins urgent : par date d'échéance croissante (les
     # échéances déjà passées, donc les plus anciennes, remontent naturellement
@@ -1605,6 +2077,67 @@ def amortissement_vehicule(company, vehicule_id):
         'valeur_nette_comptable': round(vnc, 2),
         'derniere_annee': derniere_annee,
         'amortissable': True,
+    }
+
+
+# ── XFLT9 — Plafond CGI d'amortissement des véhicules de tourisme ──────────────
+
+def part_non_deductible_amortissement(company, vehicule_id):
+    """XFLT9 — Part d'amortissement NON déductible fiscalement (plafond CGI)
+    (lecture seule).
+
+    Pour un véhicule ``type_fiscal='tourisme'`` (XFLT4) rattaché à une
+    ``compta.Immobilisation`` (FLOTTE30, via ``amortissement_vehicule``) :
+    quand la valeur d'acquisition TTC dépasse le plafond CGI de la société
+    (``ParametreAmortissementCGI``, défaut 400 000 DH TTC, LF 2025), la part
+    de l'amortissement CUMULÉ correspondant à l'excédent n'est pas déductible
+    fiscalement — ``part_non_deductible = cumul_amortissements ×
+    (valeur_origine − plafond) / valeur_origine``.
+
+    Les véhicules ``type_fiscal='utilitaire'`` (ou sans type fiscal renseigné)
+    sont EXONÉRÉS du plafond → ``part_non_deductible = 0``. Un véhicule sans
+    immobilisation liée (``amortissable=False``) renvoie aussi 0. La flotte
+    LIT compta par sélecteurs (``amortissement_vehicule``) — elle n'écrit
+    JAMAIS le module comptable.
+
+    Retourne un dict LECTURE SEULE ::
+
+        {
+          'vehicule_id', 'type_fiscal', 'plafond_ttc',
+          'valeur_origine', 'cumul_amortissements', 'part_non_deductible',
+          'assujetti',   # True si le plafond s'applique (tourisme + amortissable)
+        }
+
+    Aucune écriture, aucun effet de bord.
+    """
+    vehicule = Vehicule.objects.filter(
+        company=company, id=vehicule_id).first()
+    type_fiscal = getattr(vehicule, 'type_fiscal', '') or ''
+    plafond = ParametreAmortissementCGI.plafond_pour(company)
+
+    amort = amortissement_vehicule(company, vehicule_id)
+    valeur_origine = amort.get('valeur_origine') or 0.0
+    cumul = amort.get('cumul_amortissements') or 0.0
+
+    assujetti = (
+        vehicule is not None
+        and type_fiscal == Vehicule.TypeFiscal.TOURISME
+        and amort.get('amortissable')
+    )
+
+    part_non_deductible = 0.0
+    if assujetti and valeur_origine > plafond and valeur_origine > 0:
+        part_non_deductible = round(
+            cumul * (valeur_origine - plafond) / valeur_origine, 2)
+
+    return {
+        'vehicule_id': vehicule_id,
+        'type_fiscal': type_fiscal,
+        'plafond_ttc': plafond,
+        'valeur_origine': valeur_origine,
+        'cumul_amortissements': cumul,
+        'part_non_deductible': part_non_deductible,
+        'assujetti': bool(assujetti),
     }
 
 
@@ -1835,6 +2368,12 @@ def tableau_bord_flotte(company, today=None):
     }
     nb_vehicules = sum(veh_par_statut.values())
     disponibles = veh_par_statut.get(Vehicule.Statut.ACTIF, 0)
+    # XFLT16 — KPI « actifs » du parc, EXCLUANT les véhicules vendus/réformés
+    # (sortie de parc) : leur historique reste consultable, mais ils ne comptent
+    # plus dans le parc opérationnel.
+    statuts_sortie = {Vehicule.Statut.VENDU, Vehicule.Statut.REFORME}
+    nb_vehicules_actifs = sum(
+        n for statut, n in veh_par_statut.items() if statut not in statuts_sortie)
 
     # Engins par statut.
     eng_par_statut = {
@@ -1866,6 +2405,7 @@ def tableau_bord_flotte(company, today=None):
         'today': today,
         'vehicules': {
             'total': nb_vehicules,
+            'total_actifs': nb_vehicules_actifs,
             'disponibles': disponibles,
             'par_statut': veh_par_statut,
         },
@@ -1909,3 +2449,304 @@ def demandes_vehicule_de_la_societe(company, statut=None, demandeur_id=None):
     if demandeur_id is not None:
         qs = qs.filter(demandeur_id=demandeur_id)
     return qs
+
+
+# ── XFLT10 — Périodicité visite technique NARSA auto-calculée ──────────────────
+
+def date_mise_circulation_vehicule(vehicule):
+    """XFLT10 — Date de mise en circulation d'un véhicule, lecture seule.
+
+    Lit ``CarteGriseVehicule.date_mise_circulation`` (FLOTTE23) via l'actif
+    flotte du véhicule — n'est JAMAIS dupliquée sur ``Vehicule`` (XFLT4).
+    Retourne ``None`` si aucune carte grise n'est saisie ou si la date n'est
+    pas renseignée. Prend la carte grise la plus récente en cas de multiples
+    enregistrements pour le même actif.
+    """
+    actif = getattr(vehicule, 'actif_flotte', None)
+    if actif is None:
+        return None
+    carte = CarteGriseVehicule.objects.filter(
+        actif_flotte=actif, date_mise_circulation__isnull=False,
+    ).order_by('-date_mise_circulation', '-id').first()
+    if carte is None:
+        return None
+    return carte.date_mise_circulation
+
+
+# ── XFLT15 — Analyse de remplacement (fin de vie économique) ───────────────────
+
+def _cout_reparations_12_mois(company, actif_flotte_id, today):
+    """XFLT15 — Somme des ``OrdreReparation.cout_total`` des 12 derniers mois
+    glissants pour un actif. Lecture seule."""
+    depuis = today - datetime.timedelta(days=365)
+    return float(
+        OrdreReparation.objects
+        .filter(company=company, actif_flotte_id=actif_flotte_id,
+                date_ouverture__gte=depuis, date_ouverture__lte=today)
+        .aggregate(s=models.Sum('cout_total'))['s'] or 0)
+
+
+def analyse_remplacement(company, today=None):
+    """XFLT15 — Analyse de remplacement (fin de vie économique), lecture seule.
+
+    Pour chaque véhicule ACTIF de la société (exclut vendu/réformé — XFLT16),
+    évalue 3 règles paramétrables (``ParametreRemplacementFlotte.pour``,
+    style « 50/30/20 ») :
+
+    1. ``age`` — âge (années, depuis la mise en circulation XFLT10, ou
+       ``date_acquisition`` à défaut) > ``age_max_ans`` ;
+    2. ``kilometrage`` — ``Vehicule.kilometrage`` > ``km_max`` ;
+    3. ``cout_reparation`` — coût réparations des 12 derniers mois glissants
+       (``OrdreReparation``) / valeur vénale (``Vehicule.valeur``) >
+       ``ratio_cout_reparation_max``.
+
+    Un véhicule dépassant AU MOINS 2 règles est flaggé ``a_remplacer=True``
+    avec la liste des règles déclenchées. Le budget estimé de remplacement =
+    ``ModeleVehicule.valeur_catalogue`` du véhicule (via ``modele_ref``, XFLT12)
+    si connu, sinon ``None``. Retourne ::
+
+        {
+          'seuils': {'age_max_ans', 'km_max', 'ratio_cout_reparation_max'},
+          'vehicules': [
+            {'vehicule_id', 'immatriculation', 'age_ans', 'kilometrage',
+             'cout_reparation_12_mois', 'valeur_venale', 'ratio_cout_reparation',
+             'regles_declenchees': [...], 'nb_regles': int,
+             'a_remplacer': bool, 'budget_remplacement_estime'}, …
+          ],
+          'a_remplacer': [ … sous-liste flaggée, triée par nb_regles desc ],
+          'budget_annuel_estime': <float>,
+        }
+
+    Aucune écriture. ``today`` injectable.
+    """
+    if today is None:
+        today = datetime.date.today()
+
+    parametre = ParametreRemplacementFlotte.pour(company)
+    age_max_ans = parametre.age_max_ans
+    km_max = parametre.km_max
+    ratio_max = float(parametre.ratio_cout_reparation_max)
+
+    vehicules = (
+        Vehicule.objects.filter(company=company)
+        .exclude(statut__in=[Vehicule.Statut.VENDU, Vehicule.Statut.REFORME])
+        .select_related('actif_flotte', 'modele_ref')
+    )
+
+    lignes = []
+    for vehicule in vehicules:
+        regles = []
+
+        mise_en_circulation = date_mise_circulation_vehicule(vehicule) \
+            or vehicule.date_acquisition
+        age_ans = None
+        if mise_en_circulation is not None:
+            age_ans = round((today - mise_en_circulation).days / 365.25, 1)
+            if age_ans > age_max_ans:
+                regles.append('age')
+
+        kilometrage = vehicule.kilometrage or 0
+        if kilometrage > km_max:
+            regles.append('kilometrage')
+
+        actif_flotte_id = getattr(
+            getattr(vehicule, 'actif_flotte', None), 'id', None)
+        cout_reparation_12m = 0.0
+        ratio_cout_reparation = None
+        valeur_venale = float(vehicule.valeur or 0)
+        if actif_flotte_id is not None:
+            cout_reparation_12m = _cout_reparations_12_mois(
+                company, actif_flotte_id, today)
+            if valeur_venale > 0:
+                ratio_cout_reparation = round(
+                    cout_reparation_12m / valeur_venale, 3)
+                if ratio_cout_reparation > ratio_max:
+                    regles.append('cout_reparation')
+
+        budget_estime = None
+        if vehicule.modele_ref_id is not None \
+                and vehicule.modele_ref.valeur_catalogue is not None:
+            budget_estime = float(vehicule.modele_ref.valeur_catalogue)
+
+        lignes.append({
+            'vehicule_id': vehicule.id,
+            'immatriculation': vehicule.immatriculation,
+            'age_ans': age_ans,
+            'kilometrage': kilometrage,
+            'cout_reparation_12_mois': round(cout_reparation_12m, 2),
+            'valeur_venale': valeur_venale,
+            'ratio_cout_reparation': ratio_cout_reparation,
+            'regles_declenchees': regles,
+            'nb_regles': len(regles),
+            'a_remplacer': len(regles) >= 2,
+            'budget_remplacement_estime': budget_estime,
+        })
+
+    a_remplacer = sorted(
+        (ligne for ligne in lignes if ligne['a_remplacer']),
+        key=lambda ligne: -ligne['nb_regles'])
+    budget_annuel_estime = sum(
+        ligne['budget_remplacement_estime'] or 0 for ligne in a_remplacer)
+
+    return {
+        'seuils': {
+            'age_max_ans': age_max_ans,
+            'km_max': km_max,
+            'ratio_cout_reparation_max': ratio_max,
+        },
+        'vehicules': lignes,
+        'a_remplacer': a_remplacer,
+        'budget_annuel_estime': round(budget_annuel_estime, 2),
+    }
+
+
+# ── XFLT18 — Budget flotte annuel vs réalisé ────────────────────────────────────
+
+# Catégories du ledger (XFLT3 ``CoutVehicule.Categorie`` + sources
+# ``ledger_vehicule``) qui ne sont PAS des clés budgétaires (XFLT18) —
+# regroupées sous 'autre' pour le calcul de variance (jamais perdues, juste
+# reclassées côté budget).
+_CATEGORIES_LEDGER_VERS_AUTRE = {'amende', 'peage', 'parking', 'lavage'}
+
+
+def variance_budget_flotte(company, annee):
+    """XFLT18 — Variance budget vs réalisé par catégorie, pour une année
+    (lecture seule).
+
+    ``réalisé`` = agrégat du ledger unifié (XFLT3, un ``ledger_vehicule`` par
+    véhicule de la société, borné à l'année via ``periode``), reclassé sur
+    les 6 clés budgétaires (``BudgetFlotte.Categorie`` : carburant|entretien|
+    assurance|vignette|contrat|autre — les catégories hors périmètre budget
+    comme amende/péage/parking/lavage sont regroupées sous 'autre').
+    ``budgété`` = ``BudgetFlotte`` de l'année (0 si aucune ligne saisie pour
+    la catégorie). ``pct`` = réalisé/budgété × 100 (``None`` si budgété nul).
+    ``niveau`` = ``'rouge'`` si pct > 100, ``'orange'`` si pct > 85, sinon
+    ``'ok'`` (``None`` si aucun budget saisi — rien à comparer).
+
+    Retourne ``{'annee', 'categories': [{'categorie', 'categorie_display',
+    'budgete', 'realise', 'pct', 'niveau'}, …], 'total_budgete',
+    'total_realise'}``. Aucune écriture.
+    """
+    from .models import Vehicule as _Vehicule
+
+    periode = (datetime.date(annee, 1, 1), datetime.date(annee, 12, 31))
+
+    realise_par_categorie = {}
+    for vehicule in _Vehicule.objects.filter(company=company):
+        ledger = ledger_vehicule(company, vehicule.id, periode=periode)
+        for ligne in ledger['lignes']:
+            cle = ligne['categorie']
+            if cle in _CATEGORIES_LEDGER_VERS_AUTRE:
+                cle = 'autre'
+            elif cle not in dict(BudgetFlotte.Categorie.choices):
+                cle = 'autre'
+            realise_par_categorie[cle] = (
+                realise_par_categorie.get(cle, 0.0) + ligne['montant'])
+
+    budgets = {
+        b.categorie: float(b.montant_budgete)
+        for b in BudgetFlotte.objects.filter(company=company, annee=annee)
+    }
+
+    categories = []
+    total_budgete = 0.0
+    total_realise = 0.0
+    for cle, libelle in BudgetFlotte.Categorie.choices:
+        budgete = budgets.get(cle, 0.0)
+        realise = round(realise_par_categorie.get(cle, 0.0), 2)
+        total_budgete += budgete
+        total_realise += realise
+
+        pct = round(realise / budgete * 100, 1) if budgete > 0 else None
+        niveau = None
+        if budgete > 0:
+            if pct > 100:
+                niveau = 'rouge'
+            elif pct > 85:
+                niveau = 'orange'
+            else:
+                niveau = 'ok'
+
+        categories.append({
+            'categorie': cle,
+            'categorie_display': libelle,
+            'budgete': round(budgete, 2),
+            'realise': realise,
+            'pct': pct,
+            'niveau': niveau,
+        })
+
+    return {
+        'annee': annee,
+        'categories': categories,
+        'total_budgete': round(total_budgete, 2),
+        'total_realise': round(total_realise, 2),
+    }
+
+
+# ── XFLT20 — Registre de remise clés / carte / badge / tag Jawaz ───────────────
+
+def detenteurs_courants(company, actif_flotte_id):
+    """XFLT20 — Détenteur COURANT de chaque type d'accessoire d'un actif.
+
+    Pour un actif de la société, la ligne la plus récente (par
+    ``date_remise``) SANS ``date_retour`` pour chaque ``type_accessoire`` est
+    considérée « en cours de détention ». Retourne une liste ``[{'type',
+    'type_display', 'conducteur_id', 'conducteur_nom', 'date_remise'}, …]``
+    (un accessoire restitué — dernière ligne avec ``date_retour`` — n'est
+    PAS listé). Lecture seule.
+    """
+    remises = (
+        RemiseAccessoire.objects
+        .filter(company=company, actif_flotte_id=actif_flotte_id)
+        .select_related('conducteur')
+        .order_by('type_accessoire', '-date_remise', '-id')
+    )
+
+    detenteurs = {}
+    for remise in remises:
+        # La première ligne rencontrée par type (tri décroissant) est la
+        # plus récente : si elle n'a pas de retour, l'accessoire est détenu.
+        if remise.type_accessoire in detenteurs:
+            continue
+        if remise.date_retour is not None:
+            detenteurs[remise.type_accessoire] = None  # restitué, rien.
+            continue
+        detenteurs[remise.type_accessoire] = {
+            'type': remise.type_accessoire,
+            'type_display': remise.get_type_accessoire_display(),
+            'conducteur_id': remise.conducteur_id,
+            'conducteur_nom': remise.conducteur.nom,
+            'date_remise': remise.date_remise,
+        }
+
+    return [v for v in detenteurs.values() if v is not None]
+
+
+def accessoires_non_rendus(company, conducteur_id):
+    """XFLT20 — Accessoires actuellement détenus par un conducteur (aucune
+    ``date_retour``), tous actifs confondus. Lecture seule, sert au warning
+    de fin d'affectation (``services.avertissement_accessoires_non_rendus``).
+    """
+    remises_ouvertes = (
+        RemiseAccessoire.objects
+        .filter(company=company, conducteur_id=conducteur_id)
+        .order_by('actif_flotte_id', 'type_accessoire', '-date_remise', '-id')
+    )
+
+    vus = set()
+    resultat = []
+    for remise in remises_ouvertes:
+        cle = (remise.actif_flotte_id, remise.type_accessoire)
+        if cle in vus:
+            continue
+        vus.add(cle)
+        if remise.date_retour is None:
+            resultat.append({
+                'actif_flotte_id': remise.actif_flotte_id,
+                'type': remise.type_accessoire,
+                'type_display': remise.get_type_accessoire_display(),
+                'date_remise': remise.date_remise,
+            })
+
+    return resultat

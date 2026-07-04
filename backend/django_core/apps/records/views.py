@@ -182,7 +182,10 @@ def _log_done_to_chatter(activity, user):
 # ── Commentaires (FG7) ──────────────────────────────────────────────
 import re as _re  # noqa: E402
 
-_MENTION_RE = _re.compile(r'@(\w+)')
+# Les identifiants Django autorisent `-`, `.`, `_`, `+`, `@` : le motif de
+# mention doit donc couvrir un username comme « prenom-nom » (sinon `\w+`
+# s'arrête au tiret et la mention n'est jamais résolue → aucune notification).
+_MENTION_RE = _re.compile(r'@([\w][\w.+-]*)')
 
 
 def _parse_mentions(body):
@@ -242,6 +245,11 @@ class CommentViewSet(viewsets.ModelViewSet):
             except ValueError:
                 return qs.none()
             qs = qs.filter(content_type=ct, object_id=oid)
+        # XKB13 — ?resolved=true|false : masque/affiche les fils résolus
+        # (le frontend masque les fils résolus par défaut).
+        resolved = self.request.query_params.get('resolved')
+        if resolved is not None:
+            qs = qs.filter(resolved=resolved.lower() in ('1', 'true', 'yes'))
         return qs
 
     def create(self, request, *args, **kwargs):

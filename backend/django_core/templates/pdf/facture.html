@@ -199,6 +199,15 @@
     </div>
   </div>
 
+  <!-- XFAC12 — Escompte pour règlement anticipé -->
+  {% if facture.escompte_mention %}
+  <div class="note-block">
+    Escompte {{ facture.escompte_mention.pct }} % si règlement sous
+    {{ facture.escompte_mention.jours }} jours, soit
+    {{ "%.2f"|format(facture.escompte_mention.montant) }} MAD.
+  </div>
+  {% endif %}
+
   <!-- Coordonnées bancaires -->
   {% if rib %}
   <div class="rib-block">

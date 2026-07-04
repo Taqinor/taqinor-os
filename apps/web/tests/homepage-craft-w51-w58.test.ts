@@ -60,8 +60,8 @@ describe('W54 — plus de double listing des installations', () => {
 });
 
 describe('W55/W64 — bande de crédibilité du fondateur (composant FounderPortrait)', () => {
-  it("l'accueil monte le portrait du fondateur (W266, 2026-07-02 « le moment fondateur » — remplace la décision 2026-06-22 « accueil épuré » : Reda a explicitement redemandé une présence humaine, la copie promettant des études signées par le fondateur)", () => {
-    expect(index).toContain('FounderPortrait');
+  it("l'accueil NE monte PAS le portrait du fondateur (WA1 / RÈGLE A, 2026-07-04 — pas de visage ni de signature à la première personne sur l'accueil dans aucune locale ; le portrait vit uniquement sur /à-propos ; SUPERSEDE la décision W266 du 2026-07-02)", () => {
+    expect(index).not.toContain('FounderPortrait');
   });
 
   it('nomme le parcours approuvé (docteur-ingénieur + 3 maisons) et lie /à-propos', () => {

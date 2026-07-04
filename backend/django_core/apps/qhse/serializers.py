@@ -8,15 +8,19 @@ from rest_framework import serializers
 
 from .models import (
     ActionCorrectivePreventive, AnalyseIncident, Audit, CauseIncident,
-    ConsignationLoto, ContactUrgence,
+    CodeDefaut,
+    ConsignationLoto, ContactUrgence, ControleReception,
     BilanCarbone, BordereauSuiviDechet, ConformiteEnvironnementale,
-    CritereAudit, Dechet, DeclarationCnss, EvaluationRisque, GrilleAudit,
+    CritereAudit, Dechet, DeclarationCnss, Derogation, EtapeDeclarationAt,
+    EvaluationRisque, GrilleAudit,
     InductionSecurite, IndicateurESG,
     LigneBilanCarbone,
     Incident, InspectionSecurite,
     ItemNotation, LigneEvaluationRisque, NonConformite, NotationFinChantier,
-    PermisTravail, PlanInspectionChantier, PlanInspectionModele, PlanUrgence,
-    PointControleModele, ProcedureQualite, QhseChatterEntry,
+    PermisTravail, PlanControleReception, PlanInspectionChantier,
+    PlanInspectionModele, PlanUrgence,
+    PointControleModele, PointControleReception, ProcedureQualite,
+    QhseChatterEntry,
     RecyclageModule, ReleveControle,
     ReleveCourbeIV, ReponseCritere, RetourClientQualite, Secouriste,
 )
@@ -31,11 +35,28 @@ def _meme_societe(serializer, value, label):
     return value
 
 
+class CodeDefautSerializer(serializers.ModelSerializer):
+    """Code de défaut normalisé (référentiel, XQHS4). ``company`` posée côté
+    serveur."""
+    famille_display = serializers.CharField(
+        source='get_famille_display', read_only=True)
+
+    class Meta:
+        model = CodeDefaut
+        fields = [
+            'id', 'code', 'libelle', 'famille', 'famille_display', 'actif',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
 class NonConformiteSerializer(serializers.ModelSerializer):
     gravite_display = serializers.CharField(
         source='get_gravite_display', read_only=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
+    disposition_display = serializers.CharField(
+        source='get_disposition_display', read_only=True)
 
     class Meta:
         model = NonConformite
@@ -43,9 +64,24 @@ class NonConformiteSerializer(serializers.ModelSerializer):
             'id', 'reference', 'titre', 'description', 'gravite',
             'gravite_display', 'origine', 'statut', 'statut_display',
             'chantier_id', 'reserve', 'signale_par', 'date_detection',
+            # XQHS2 — disposition tracée (qui/quand) + coût interne + retour
+            # fournisseur.
+            'disposition', 'disposition_display', 'disposition_par',
+            'disposition_le', 'cout_disposition', 'fournisseur',
+            # XQHS4 — code de défaut normalisé (Pareto).
+            'code_defaut',
             'date_creation',
         ]
-        read_only_fields = ['reserve', 'signale_par', 'date_creation']
+        read_only_fields = [
+            'reserve', 'signale_par', 'disposition_par', 'disposition_le',
+            'date_creation',
+        ]
+
+    def validate_fournisseur(self, value):
+        return _meme_societe(self, value, 'Fournisseur')
+
+    def validate_code_defaut(self, value):
+        return _meme_societe(self, value, 'Code de défaut')
 
 
 class ActionCorrectivePreventiveSerializer(serializers.ModelSerializer):
@@ -66,6 +102,33 @@ class ActionCorrectivePreventiveSerializer(serializers.ModelSerializer):
             'efficace', 'commentaire_verification', 'date_verification',
             'verifiee_par', 'date_creation',
         ]
+
+    def validate_non_conformite(self, value):
+        return _meme_societe(self, value, 'Non-conformité')
+
+
+class DerogationSerializer(serializers.ModelSerializer):
+    """Acceptation en l'état bornée (dérogation) liée à une NCR (XQHS2).
+
+    ``company`` posée côté serveur ; le ``statut`` bascule sur ``expiree``
+    côté modèle (jamais lu du corps).
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    statut_courant = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Derogation
+        fields = [
+            'id', 'non_conformite', 'justification', 'evaluation_risque',
+            'quantite_max', 'date_debut', 'date_expiration',
+            'prealerte_jours', 'approbateur', 'statut', 'statut_display',
+            'statut_courant', 'date_creation',
+        ]
+        read_only_fields = ['statut', 'date_creation']
+
+    def get_statut_courant(self, obj):
+        return obj.statut_calcule()
 
     def validate_non_conformite(self, value):
         return _meme_societe(self, value, 'Non-conformité')
@@ -154,7 +217,7 @@ class ReleveControleSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'plan_chantier', 'point', 'point_intitule', 'point_phase',
             'point_hold_point', 'point_valeur_min', 'point_valeur_max',
-            'valeur', 'conforme', 'photo_key',
+            'valeur', 'conforme', 'photo_key', 'code_defaut',
             'date_releve', 'releve_par', 'date_creation',
         ]
         read_only_fields = ['date_creation']
@@ -164,6 +227,9 @@ class ReleveControleSerializer(serializers.ModelSerializer):
 
     def validate_point(self, value):
         return _meme_societe(self, value, 'Point de contrôle')
+
+    def validate_code_defaut(self, value):
+        return _meme_societe(self, value, 'Code de défaut')
 
 
 class ReleveCourbeIVSerializer(serializers.ModelSerializer):
@@ -653,9 +719,12 @@ class IncidentSerializer(serializers.ModelSerializer):
             'type_incident_display', 'gravite', 'gravite_display', 'statut',
             'statut_display', 'chantier_id', 'date_incident', 'description',
             'action_immediate', 'declare_par', 'declare_par_nom',
-            'date_creation',
+            'code_defaut', 'date_creation',
         ]
         read_only_fields = ['reference', 'declare_par', 'date_creation']
+
+    def validate_code_defaut(self, value):
+        return _meme_societe(self, value, 'Code de défaut')
 
 
 class CauseIncidentSerializer(serializers.ModelSerializer):
@@ -761,6 +830,10 @@ class DeclarationCnssSerializer(serializers.ModelSerializer):
             'id', 'accident_travail', 'date_accident', 'delai_jours',
             'date_limite', 'date_declaration', 'numero_declaration',
             'statut', 'statut_display', 'statut_courant', 'notes',
+            # XQHS1 — ITT + certificat/consolidation/conciliation + volet MP.
+            'jours_itt', 'date_certificat_initial', 'date_consolidation',
+            'conciliation_statut', 'est_maladie_professionnelle',
+            'type_maladie_professionnelle', 'exposition_mp',
             'date_creation', 'date_modification',
         ]
         read_only_fields = [
@@ -777,6 +850,32 @@ class DeclarationCnssSerializer(serializers.ModelSerializer):
         l'instance résolue par DRF, sans importer ``rh.models``.
         """
         return _meme_societe(self, value, 'Accident du travail')
+
+
+class EtapeDeclarationAtSerializer(serializers.ModelSerializer):
+    """Étape légale datée de la chaîne AT/MP (loi 18-12, XQHS1).
+
+    ``company`` posée côté serveur ; ``echeance``/``statut`` calculés côté
+    serveur (jamais lus du corps). ``fait_le`` se pose via l'action
+    ``marquer-fait`` du viewset plutôt qu'un PATCH direct, pour garder le
+    recalcul de ``statut`` centralisé côté service.
+    """
+    type_etape_display = serializers.CharField(
+        source='get_type_etape_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = EtapeDeclarationAt
+        fields = [
+            'id', 'declaration', 'type_etape', 'type_etape_display',
+            'echeance', 'fait_le', 'statut', 'statut_display', 'notes',
+            'date_creation',
+        ]
+        read_only_fields = ['echeance', 'statut', 'date_creation']
+
+    def validate_declaration(self, value):
+        return _meme_societe(self, value, 'Déclaration CNSS')
 
 
 class InspectionSecuriteSerializer(serializers.ModelSerializer):
@@ -990,3 +1089,71 @@ class IndicateurESGSerializer(serializers.ModelSerializer):
 
     def validate_bilan_carbone(self, value):
         return _meme_societe(self, value, 'Bilan carbone')
+
+
+# ── XQHS3 — Contrôle qualité à la réception fournisseur ─────────────────────
+
+class PointControleReceptionSerializer(serializers.ModelSerializer):
+    type_releve_display = serializers.CharField(
+        source='get_type_releve_display', read_only=True)
+
+    class Meta:
+        model = PointControleReception
+        fields = [
+            'id', 'plan', 'ordre', 'intitule', 'type_releve',
+            'type_releve_display', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_plan(self, value):
+        return _meme_societe(self, value, 'Plan de contrôle réception')
+
+
+class PlanControleReceptionSerializer(serializers.ModelSerializer):
+    """Plan de contrôle qualité à la réception fournisseur (XQHS3).
+
+    ``company`` posée côté serveur. Les FK ``produit``/``categorie`` pointent
+    vers ``stock`` (FK-chaîne) : validés même-société par le sérialiseur.
+    """
+    points = PointControleReceptionSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = PlanControleReception
+        fields = [
+            'id', 'nom', 'produit', 'categorie', 'taux_echantillonnage',
+            'actif', 'points', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_produit(self, value):
+        return _meme_societe(self, value, 'Produit')
+
+    def validate_categorie(self, value):
+        return _meme_societe(self, value, 'Catégorie')
+
+
+class ControleReceptionSerializer(serializers.ModelSerializer):
+    """Exécution d'un contrôle qualité à la réception fournisseur (XQHS3).
+
+    ``company``/``controleur``/``date_controle`` posés côté serveur. Le
+    ``verdict`` se pose via l'action ``statuer`` du viewset (jamais un PATCH
+    direct), pour garder centralisée la levée automatique de NCR sur refus.
+    """
+    verdict_display = serializers.CharField(
+        source='get_verdict_display', read_only=True)
+    plan_nom = serializers.CharField(source='plan.nom', read_only=True)
+
+    class Meta:
+        model = ControleReception
+        fields = [
+            'id', 'plan', 'plan_nom', 'reception_id', 'produit_id', 'verdict',
+            'verdict_display', 'controleur', 'notes', 'non_conformite',
+            'date_controle', 'date_creation',
+        ]
+        read_only_fields = [
+            'verdict', 'controleur', 'non_conformite', 'date_controle',
+            'date_creation',
+        ]
+
+    def validate_plan(self, value):
+        return _meme_societe(self, value, 'Plan de contrôle réception')

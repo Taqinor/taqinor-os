@@ -55,6 +55,14 @@ source_modules =
     apps.ventes
 forbidden_modules =
     apps.audit
+# YEVNT5 — the notifications satellite writes a best-effort audit line per
+# `notify()` channel (lazy `from apps.audit import recorder` inside
+# `_audit_notify`). That is notifications' OWN cross-cutting logging, not ventes
+# coupling to audit: the M4 intent (ventes must not DIRECTLY reach audit) holds.
+# Ignore only this one satellite→satellite edge so the transitive
+# ventes→notifications→audit path does not trip the forbidden contract.
+ignore_imports =
+    apps.notifications.services -> apps.audit.recorder
 
 [importlinter:contract:ged-models-decoupled]
 name = GED models never import a business-core domain's models (string FKs only — GED38)

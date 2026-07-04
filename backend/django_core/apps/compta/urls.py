@@ -41,6 +41,11 @@ from .views import (
     MappingCompteViewSet, CompteAuxiliaireViewSet,
     PieceJustificativeViewSet,
     PisteAuditComptableViewSet,
+    BalanceOuvertureViewSet,
+    ModeleRapprochementViewSet,
+    ProvisionsPeriodeViewSet,
+    ObligationFiscaleViewSet,
+    FamilleTvaNonDeductibleViewSet,
 )
 
 router = DefaultRouter()
@@ -55,6 +60,7 @@ router.register(r'immobilisations', ImmobilisationViewSet)
 router.register(r'dotations', DotationAmortissementViewSet)
 router.register(r'cessions', CessionImmobilisationViewSet)
 router.register(r'rapprochements', RapprochementBancaireViewSet)
+router.register(r'modeles-rapprochement', ModeleRapprochementViewSet)
 router.register(r'rapprochements-3voies', RapprochementViewSet,
                 basename='rapprochement-3voies')
 router.register(r'caisses', CaisseViewSet)
@@ -80,6 +86,12 @@ router.register(r'provisions-creances', ProvisionCreanceViewSet)
 router.register(r'entites-consolidation', EntiteConsolidationViewSet)
 router.register(r'pilotage', PilotageViewSet, basename='pilotage')
 router.register(r'etats', EtatsComptablesViewSet, basename='etats')
+router.register(r'balance-ouverture', BalanceOuvertureViewSet,
+                basename='balance-ouverture')
+router.register(r'provisions-periode', ProvisionsPeriodeViewSet,
+                basename='provisions-periode')
+router.register(r'obligations-fiscales', ObligationFiscaleViewSet)
+router.register(r'familles-tva-non-deductibles', FamilleTvaNonDeductibleViewSet)
 # ── Croissance commerciale / marketing / CPQ (FG201–FG214) ──────────────────
 router.register(r'campagnes', CampagneViewSet)
 router.register(r'sequences-relance', SequenceRelanceViewSet)

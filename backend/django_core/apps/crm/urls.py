@@ -7,8 +7,11 @@ from .views import (
     MessageTemplateViewSet, ObjectifCommercialViewSet, PointContactViewSet,
     SiteProfileViewSet,
 )
-from .webhooks import website_lead_webhook
+from .webhooks import website_lead_webhook, meta_lead_ads_webhook
 from .roof_views import lead_roof_footprint
+from .public_chat_views import (
+    open_chat_session, post_chat_message, get_chat_session,
+)
 
 router = DefaultRouter()
 router.register(r'clients', ClientViewSet)
@@ -27,9 +30,17 @@ router.register(r'site-profiles', SiteProfileViewSet)  # DC12
 urlpatterns = [
     # Récepteur des leads du site public (secret statique, voir webhooks.py)
     path('webhooks/website-leads/', website_lead_webhook, name='website-lead-webhook'),
+    # XMKT32 — Sync Meta Lead Ads (gated, no-op sans jeton — voir webhooks.py)
+    path('webhooks/meta-lead-ads/', meta_lead_ads_webhook, name='meta-lead-ads-webhook'),
     # Employés assignables (sélecteur de responsable) — ouvert à la Commerciale.
     path('assignable-users/', assignable_users, name='assignable-users'),
     # QJ25 — Contour OSM du bâtiment épinglé (free, sans clé API)
     path('leads/<int:lead_id>/roof-footprint/', lead_roof_footprint, name='lead-roof-footprint'),
+    # XMKT37 — Livechat public tokenisé (voir public_chat_views.py)
+    path('public/chat/sessions/', open_chat_session, name='public-chat-open'),
+    path('public/chat/sessions/<str:token>/messages/', post_chat_message,
+         name='public-chat-post'),
+    path('public/chat/sessions/<str:token>/', get_chat_session,
+         name='public-chat-get'),
     path('', include(router.urls)),
 ]

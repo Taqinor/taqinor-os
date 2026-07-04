@@ -428,3 +428,119 @@ def draft_reply(messages: list[dict], *, channel: str = 'email',
                           channel=channel, source=res.provider)
     return ReplyDraft(ok=False, configured=True, draft='',
                       channel=channel, source=res.provider)
+
+
+# --- XMKT37 — Qualification livechat visiteur (site public) -----------------
+#
+# Prompt de qualification solaire pour un visiteur ANONYME du site public.
+# GARDE STRICTE : le prompt système n'expose JAMAIS de donnée interne
+# (prix_achat/marges) — il n'a d'ailleurs accès à AUCUNE donnée interne, sa
+# seule entrée est le fil de conversation du visiteur (aucun modèle métier
+# importé ici, `core` reste pur fondation).
+
+LIVECHAT_QUALIFICATION_SYSTEM_PROMPT = (
+    "Tu es l'assistant d'accueil du site TAQINOR (installateur solaire au "
+    "Maroc). Réponds en français, de façon brève, chaleureuse et concrète. "
+    "Ton seul objectif : qualifier le besoin du visiteur puis recueillir son "
+    "nom et un moyen de contact (téléphone ou email) pour qu'un commercial le "
+    "recontacte. Pose UNE question à la fois, dans cet ordre si l'info manque : "
+    "1) sa ville, 2) le montant approximatif de sa facture d'électricité, "
+    "3) le type de projet (résidentiel / professionnel / agricole - pompage), "
+    "4) son nom, 5) son téléphone ou email. "
+    "N'invente JAMAIS de prix, de délai, de remise ni de disponibilité produit. "
+    "Ne mentionne JAMAIS aucune donnée commerciale interne ou confidentielle "
+    "de l'entreprise (coûts, chiffres internes, partenaires ou origine des "
+    "produits) — ces informations ne te sont de toute façon jamais fournies. "
+    "Si le visiteur pose une question hors sujet solaire, réponds brièvement "
+    "puis reviens à la qualification."
+)
+
+#: Champs interdits — sert de garde-fou testable : le prompt ne doit JAMAIS
+#: contenir ces mots-clés (fuite de donnée interne).
+LIVECHAT_FORBIDDEN_TERMS = ('prix_achat', 'marge', 'coût interne', 'fournisseur')
+
+
+@dataclass
+class LivechatQualificationExtract:
+    """Champs de qualification extraits d'une conversation livechat."""
+
+    ville: str = ''
+    facture_estimee: str = ''
+    type_projet: str = ''
+    nom: str = ''
+    telephone: str = ''
+    email: str = ''
+
+    @property
+    def has_contact(self) -> bool:
+        """True dès que nom + (téléphone OU email) sont capturés — le seuil
+        déclenchant la création du Lead (XMKT37)."""
+        return bool(self.nom) and bool(self.telephone or self.email)
+
+
+def qualify_livechat_reply(messages: list[dict], *, instruction: str = '',
+                           max_tokens: int = 300) -> ReplyDraft:
+    """Prochaine réponse de l'assistant de qualification livechat.
+
+    ``messages`` : fil du visiteur (voir :func:`format_thread` — clés
+    ``auteur``/``texte``/``date``). NO-OP-safe : sans LLM configuré, renvoie
+    ``configured=False`` — l'appelant (apps.crm.public_chat_views) bascule
+    alors en mode capture seule (formulaire de rappel), jamais d'exception.
+    """
+    provider = get_provider('llm')
+    if getattr(provider, 'key', 'noop') == 'noop':
+        return ReplyDraft(ok=False, configured=False, draft='',
+                          channel='livechat', source='noop')
+
+    thread = format_thread(messages)
+    prompt = thread if not instruction else f"Consigne : {instruction}\n\n{thread}"
+    res = provider.complete(
+        prompt=prompt, system=LIVECHAT_QUALIFICATION_SYSTEM_PROMPT,
+        max_tokens=max_tokens)
+    if res.ok and res.data.get('text'):
+        return ReplyDraft(ok=True, configured=True,
+                          draft=res.data['text'].strip(),
+                          channel='livechat', source=res.provider)
+    return ReplyDraft(ok=False, configured=True, draft='',
+                      channel='livechat', source=res.provider)
+
+
+def extract_livechat_qualification(
+        messages: list[dict]) -> LivechatQualificationExtract:
+    """Extrait les champs de qualification depuis le texte du VISITEUR.
+
+    Heuristique légère (regex/mots-clés), toujours disponible — aucune
+    dépendance LLM : c'est ce qui décide, côté appelant, quand créer le Lead
+    (nom + téléphone/email capturés), y compris en mode dégradé sans clé LLM.
+    """
+    extract = LivechatQualificationExtract()
+    visitor_text = ' '.join(
+        str(m.get('texte') or m.get('message') or m.get('contenu') or '')
+        for m in (messages or [])
+        if isinstance(m, dict)
+        and str(m.get('auteur') or '').lower() in ('visiteur', 'visitor', '')
+    )
+    if not visitor_text:
+        return extract
+
+    phone_match = re.search(
+        r'(?:\+?212|0)[\s.-]?[5-7](?:[\s.-]?\d{2}){4}', visitor_text)
+    if phone_match:
+        extract.telephone = phone_match.group(0).strip()
+
+    email_match = re.search(
+        r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', visitor_text)
+    if email_match:
+        extract.email = email_match.group(0).strip()
+
+    # Nom : heuristique légère sur les tournures de présentation courantes en
+    # français ("je m'appelle X", "je suis X", "mon nom est X", "c'est X").
+    # Capture 1 à 3 mots (prénom [+ nom de famille]) jusqu'à la ponctuation.
+    name_match = re.search(
+        r"(?:je\s+m['’]appelle|je\s+suis|mon\s+nom\s+est|c['’]est)\s+"
+        r"([A-ZÀ-Ý][\wÀ-ÿ'’-]*(?:\s+[A-ZÀ-Ý][\wÀ-ÿ'’-]*){0,2})",
+        visitor_text, re.IGNORECASE)
+    if name_match:
+        extract.nom = name_match.group(1).strip(' ,.;:').title()
+
+    return extract

@@ -14,6 +14,7 @@ from django.http import HttpResponse
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
@@ -49,6 +50,9 @@ from .models import (
     AbonnementMonitoring,
     MappingCompte, CompteAuxiliaire, PieceJustificative,
     PisteAuditComptable,
+    ModeleRapprochement,
+    ObligationFiscale,
+    FamilleTvaNonDeductible,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -96,6 +100,9 @@ from .serializers import (
     MappingCompteSerializer, CompteAuxiliaireSerializer,
     PieceJustificativeSerializer,
     PisteAuditComptableSerializer,
+    ModeleRapprochementSerializer,
+    ObligationFiscaleSerializer,
+    FamilleTvaNonDeductibleSerializer,
 )
 
 
@@ -438,17 +445,18 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
         writer.writerow([])
         writer.writerow(
             ['Date', 'Référence', 'Journal', 'Libellé', 'Tiers',
-             'Base HT', 'TVA', 'Taux %'])
+             'Base HT', 'TVA', 'Taux %', 'Prorata'])
         for ligne in data['lignes']:
             taux = ligne['taux']
             writer.writerow([
                 ligne['date'], ligne['reference'], ligne['journal'],
                 ligne['libelle'], ligne['tiers'], ligne['base_ht'],
-                ligne['tva'], '' if taux is None else taux])
+                ligne['tva'], '' if taux is None else taux,
+                'Oui' if ligne.get('prorata_applique') else ''])
         writer.writerow([])
         writer.writerow(
             ['Totaux', '', '', '', '', data['totaux']['base_ht'],
-             data['totaux']['tva'], ''])
+             data['totaux']['tva'], '', ''])
         resp = HttpResponse(
             buffer.getvalue(), content_type='text/csv; charset=utf-8')
         resp['Content-Disposition'] = (
@@ -872,6 +880,33 @@ class PeriodeComptableViewSet(_ComptaBaseViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(periode).data)
 
+    @action(detail=True, methods=['get'])
+    def checklist(self, request, pk=None):
+        """Checklist de clôture calculée depuis les données réelles (XACC10).
+
+        INFORMATIF SEULEMENT : n'empêche jamais ``cloturer`` (warning, pas de
+        blocage dur — cf. ``cloturer`` ci-dessus, inchangée).
+        """
+        periode = self.get_object()  # scopé société par TenantMixin.
+        return Response(selectors.checklist_cloture_periode(periode))
+
+    @action(detail=True, methods=['post'], url_path='solder-tva')
+    def solder_tva(self, request, pk=None):
+        """Poste l'écriture de solde TVA de la période (XACC10)."""
+        periode = self.get_object()  # scopé société par TenantMixin.
+        try:
+            ecriture = services.solder_tva_periode(periode, user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        if ecriture is None:
+            return Response(
+                {'detail': 'Rien à solder (pas de TVA nette due sur la '
+                           'période).', 'ecriture_id': None})
+        return Response({'ecriture_id': ecriture.id,
+                         'reference': ecriture.reference})
+
 
 # ── FG116 / FG117 — Exercices comptables (clôture, OD, à-nouveaux) ──────────
 
@@ -1242,6 +1277,24 @@ class RapprochementBancaireViewSet(_ComptaBaseViewSet):
                 {'detail': exc.messages[0] if exc.messages else str(exc)},
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(LigneReleveSerializer(ligne).data)
+
+    @action(detail=True, methods=['get'])
+    def suggestions(self, request, pk=None):
+        """Suggestions d'appariement relevé↔GL, notées par confiance (XACC3)."""
+        rapprochement = self.get_object()  # scopé société par TenantMixin.
+        return Response(selectors.suggestions_rapprochement(rapprochement))
+
+    @action(detail=True, methods=['post'], url_path='accepter-suggestions')
+    def accepter_suggestions(self, request, pk=None):
+        """Pointe en un clic les suggestions non ambiguës (XACC3).
+
+        Ne pointe JAMAIS silencieusement une ligne ambiguë (≥2 candidats au
+        même score) — celles-ci restent listées dans ``ignorees`` pour
+        arbitrage manuel via l'action ``pointer`` existante.
+        """
+        rapprochement = self.get_object()  # scopé société par TenantMixin.
+        resultat = services.accepter_suggestions_rapprochement(rapprochement)
+        return Response(resultat)
 
     @action(detail=True, methods=['post'])
     def cloturer(self, request, pk=None):
@@ -2227,6 +2280,13 @@ class DeclarationTVAViewSet(_ComptaBaseViewSet):
             f'attachment; filename="declaration_tva_'
             f'{decl.reference or decl.id}.csv"')
         return resp
+
+    @action(detail=True, methods=['post'])
+    def deposer(self, request, pk=None):
+        """Dépose la déclaration : DEPOSEE + son obligation fiscale (XACC9)."""
+        decl = self.get_object()  # scopée société par TenantMixin.
+        decl = services.deposer_declaration_tva(decl)
+        return Response(self.get_serializer(decl).data)
 
 
 class RetenueSourceViewSet(_ComptaBaseViewSet):
@@ -4076,6 +4136,38 @@ class MappingCompteViewSet(_ComptaBaseViewSet):
             MappingCompteSerializer(mappings, many=True).data)
 
 
+# ── XACC4 — Modèles de rapprochement (règles de contrepartie automatique) ──
+
+class ModeleRapprochementViewSet(_ComptaBaseViewSet):
+    """Règles de contrepartie automatique pour le rapprochement bancaire
+    (XACC4). CRUD company-scopé + action ``appliquer`` (bouton un-clic)."""
+    queryset = ModeleRapprochement.objects.select_related(
+        'compte_contrepartie').all()
+    serializer_class = ModeleRapprochementSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['priorite', 'libelle']
+
+    @action(detail=True, methods=['post'])
+    def appliquer(self, request, pk=None):
+        """Applique CE modèle à une ligne de relevé (corps : ``ligne_releve``)."""
+        modele = self.get_object()  # scopé société par TenantMixin.
+        ligne = LigneReleve.objects.filter(
+            company=request.user.company,
+            id=request.data.get('ligne_releve')).first()
+        if ligne is None:
+            return Response(
+                {'detail': 'Ligne de relevé inconnue.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            ecriture = services.appliquer_modele_rapprochement(ligne, modele)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {'ecriture_id': ecriture.id, 'reference': ecriture.reference})
+
+
 # ── COMPTA3 — Comptes auxiliaires tiers ────────────────────────────────────
 
 class CompteAuxiliaireViewSet(_ComptaBaseViewSet):
@@ -4186,3 +4278,194 @@ class PisteAuditComptableViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         return Response(
             PisteAuditComptableSerializer(maillon).data,
             status=status.HTTP_201_CREATED)
+
+
+# ── XACC2 — Import de la balance d'ouverture (reprise des existants) ────────
+
+class BalanceOuvertureViewSet(viewsets.ViewSet):
+    """Import guidé de la balance d'ouverture (COMPTA3, migration tooling).
+
+    ``gabarit`` télécharge le fichier modèle CSV ; ``importer`` valide puis
+    poste une écriture AN unique équilibrée (rejet détaillé ligne à ligne si
+    invalide, idempotent par exercice). Admin/Responsable, scopé société."""
+    permission_classes = [IsResponsableOrAdmin]
+
+    @action(detail=False, methods=['get'])
+    def gabarit(self, request):
+        data = services.gabarit_import_balance_ouverture()
+        resp = HttpResponse(data, content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = (
+            'attachment; filename="gabarit_balance_ouverture.csv"')
+        return resp
+
+    @action(detail=False, methods=['post'],
+            parser_classes=[MultiPartParser, FormParser])
+    def importer(self, request):
+        company = request.user.company
+        f = request.FILES.get('file')
+        exercice_id = request.data.get('exercice')
+        if f is None:
+            return Response(
+                {'detail': 'Aucun fichier fourni.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if not exercice_id:
+            return Response(
+                {'detail': "Le champ 'exercice' est requis."},
+                status=status.HTTP_400_BAD_REQUEST)
+        exercice = ExerciceComptable.objects.filter(
+            company=company, pk=exercice_id).first()
+        if exercice is None:
+            return Response(
+                {'detail': 'Exercice introuvable pour cette société.'},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            text = f.read().decode('utf-8-sig', errors='replace')
+        except Exception:
+            return Response(
+                {'detail': 'Fichier illisible (encodage invalide).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        sample = text[:2000]
+        delim = ';' if sample.count(';') > sample.count(',') else ','
+        reader = csv.DictReader(io.StringIO(text), delimiter=delim)
+        rows = list(reader)
+        result = services.importer_balance_ouverture(
+            company, rows, exercice=exercice, user=request.user)
+        if not result['ok']:
+            return Response(
+                {'detail': 'Fichier invalide.', 'erreurs': result['erreurs']},
+                status=status.HTTP_400_BAD_REQUEST)
+        ecriture = result['ecriture']
+        return Response({
+            'ok': True,
+            'deja_importee': result['deja_importee'],
+            'ecriture_id': ecriture.id if ecriture else None,
+            'reference': ecriture.reference if ecriture else '',
+            'total': str(ecriture.total_debit) if ecriture else '0',
+        }, status=status.HTTP_201_CREATED)
+
+
+# ── XACC7 — Provisions FNP / FAE de fin de période ──────────────────────────
+
+class ProvisionsPeriodeViewSet(viewsets.ViewSet):
+    """Provisions de fin de période FNP/FAE (XACC7). ``items`` (corps :
+    réceptions/avancements non facturés déjà résolus côté appelant) est posté
+    en une écriture OD par item + extourne automatique. Admin/Responsable,
+    scopé société côté serveur."""
+    permission_classes = [IsResponsableOrAdmin]
+
+    @action(detail=False, methods=['post'], url_path='generer-fnp')
+    def generer_fnp(self, request):
+        data = request.data
+        try:
+            resultats = services.generer_provisions_fnp(
+                request.user.company,
+                date_periode=data.get('date_periode'),
+                items=data.get('items') or [],
+                date_extourne=data.get('date_extourne'),
+                user=request.user,
+            )
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response({'postees': resultats}, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'], url_path='generer-fae')
+    def generer_fae(self, request):
+        data = request.data
+        try:
+            resultats = services.generer_provisions_fae(
+                request.user.company,
+                date_periode=data.get('date_periode'),
+                items=data.get('items') or [],
+                date_extourne=data.get('date_extourne'),
+                user=request.user,
+            )
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response({'postees': resultats}, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'])
+    def rapport(self, request):
+        params = request.query_params
+        data = services.rapport_provisions_periode(
+            request.user.company,
+            date_debut=params.get('date_debut'),
+            date_fin=params.get('date_fin'),
+            type_provision=params.get('type') or None,
+        )
+        return Response(data)
+
+    @action(detail=False, methods=['get'], url_path='export-csv')
+    def export_csv(self, request):
+        params = request.query_params
+        data = services.export_provisions_periode_csv(
+            request.user.company,
+            date_debut=params.get('date_debut'),
+            date_fin=params.get('date_fin'),
+            type_provision=params.get('type') or None,
+        )
+        resp = HttpResponse(data, content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = (
+            'attachment; filename="provisions_fnp_fae.csv"')
+        return resp
+
+
+# ── XACC9 — Calendrier des obligations fiscales ─────────────────────────────
+
+class ObligationFiscaleViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+    """Calendrier des échéances fiscales de l'exercice (XACC9). LECTURE
+    SEULE (générées par ``generer``) + action ``rappels`` (J-7). Admin/
+    Responsable, scopé société."""
+    queryset = ObligationFiscale.objects.all()
+    serializer_class = ObligationFiscaleSerializer
+    permission_classes = [IsResponsableOrAdmin]
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_limite', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    @action(detail=False, methods=['post'])
+    def generer(self, request):
+        """Génère (idempotent) le calendrier fiscal d'un exercice (XACC9).
+
+        Corps : ``{exercice: <id>, regime_tva?}``.
+        """
+        exercice_id = request.data.get('exercice')
+        exercice = ExerciceComptable.objects.filter(
+            company=request.user.company, pk=exercice_id).first()
+        if exercice is None:
+            return Response(
+                {'detail': 'Exercice introuvable pour cette société.'},
+                status=status.HTTP_404_NOT_FOUND)
+        obligations = services.generer_calendrier_fiscal(
+            request.user.company, exercice,
+            regime_tva=request.data.get('regime_tva') or None)
+        return Response(
+            ObligationFiscaleSerializer(obligations, many=True).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'])
+    def rappels(self, request):
+        """Envoie les rappels J-7 des obligations « à préparer » (XACC9)."""
+        notifiees = services.envoyer_rappels_j7(request.user.company)
+        return Response(
+            ObligationFiscaleSerializer(notifiees, many=True).data)
+
+
+# ── XACC11 — Référentiel des familles de charge à TVA non déductible ───────
+
+class FamilleTvaNonDeductibleViewSet(_ComptaBaseViewSet):
+    """CRUD du référentiel des familles à TVA non déductible (XACC11,
+    véhicules de tourisme, missions/réceptions…). Company-scopé."""
+    queryset = FamilleTvaNonDeductible.objects.all()
+    serializer_class = FamilleTvaNonDeductibleSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['famille']

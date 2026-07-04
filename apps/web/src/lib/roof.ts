@@ -1,4 +1,8 @@
 /**
+ * WB22 — LABO SEULEMENT, PAS le moteur public : layout panneau générique 550 W,
+ * ne jamais brancher ce fichier sur une page cliente (le chemin public pave
+ * avec le vrai panneau catalogue via estimatorBrainV2.ts).
+ *
  * Géométrie pure de l'estimateur de toiture (preview privé).
  *
  * Le visiteur trace son toit sur une carte satellite ; ce module convertit ce

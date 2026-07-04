@@ -30,8 +30,9 @@ const L = (href: string) => localizeNavHref(href, locale);
 const devisHref = L('/devis/mon-toit');
 
 // ── Derived figures — nothing hand-typed ─────────────────────────────────────
-const installCount = REALISATIONS.length;
-
+// RULE B (2026-07-04): the raw install count is no longer featured in user
+// copy (h2, denominators) — the page leads with installed kWc and measured
+// kWh instead (partially supersedes W354).
 const kwcTotal = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
 const kwcTotalLabel = kwcTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -41,22 +42,29 @@ const productionTotalLabel = productionTotal.toLocaleString('en-US');
 
 const notYetPublished = REALISATIONS.filter((r) => r.productionNum === null);
 
+// WB1 (2026-07-04) — some published production figures are ESTIMATED from
+// the measured yield of our installations (not a per-site Deye Cloud reading
+// — see the integrity note in realisations.ts). This page can no longer say
+// "nothing estimated" until those distinct readings are published; the
+// callout below states it honestly.
+const anyEstimated = withMeasuredProduction.some((r) => r.productionEstimated);
+
 const dateFmt = new Intl.DateTimeFormat('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
 const generatedDateLabel = dateFmt.format(new Date(FACTS_GENERATED_AT));
 
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Dataset',
-  name: 'Measured solar production — Taqinor fleet',
-  description: `Cumulative measured production (Deye Cloud) across ${withMeasuredProduction.length} monitored Taqinor installations, as of ${generatedDateLabel}: ${productionTotalLabel} kWh/year.`,
+  name: 'Tracked solar production — Taqinor fleet',
+  description: `Cumulative production (measured or, absent a distinct reading, estimated from measured yield) across ${withMeasuredProduction.length} monitored Taqinor installations, as of ${generatedDateLabel}: ${productionTotalLabel} kWh/year.`,
   temporalCoverage: FACTS_GENERATED_AT,
   creator: { '@type': 'Organization', name: 'Taqinor', url: 'https://taqinor.ma' },
 };
 ---
 
 <Layout
-  title="Measured solar production — our fleet's real cumulative tally | Taqinor"
-  description={`${productionTotalLabel} kWh/year measured across ${withMeasuredProduction.length} monitored Taqinor installations (Deye Cloud), as of ${generatedDateLabel} — nothing estimated, nothing rounded up.`}
+  title="Tracked solar production — our fleet's real cumulative tally | Taqinor"
+  description={`${productionTotalLabel} kWh/year tallied across ${withMeasuredProduction.length} monitored Taqinor installations, as of ${generatedDateLabel} — nothing rounded up, nothing padded.`}
   ogSlug="equipement"
 >
   <div class="v2">
@@ -65,15 +73,15 @@ const jsonLd = {
 
     <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
 
-    <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'Measured production' }]} />
+    <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'Tracked production' }]} />
 
     <section class="section-lg px-4 pb-10 text-white">
       <div class="mx-auto max-w-3xl">
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">Ongoing transparency</p>
-        <h1 class="display v2-page-title cine-in cine-in-1 mt-6">Measured production</h1>
+        <h1 class="display v2-page-title cine-in cine-in-1 mt-6">Tracked production</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
-          Not a brochure: a counter that keeps rolling. What our installations actually produce,
-          measured by their own monitoring, added up as new projects get documented — as of{' '}
+          Not a brochure: a counter that keeps rolling. What our installations produce,
+          tracked by their own monitoring, added up as new projects get documented — as of{' '}
           <strong class="text-white">{generatedDateLabel}</strong>.
         </p>
       </div>
@@ -82,16 +90,16 @@ const jsonLd = {
     <!-- Key figures — derived live from realisations.ts -->
     <section class="section px-4">
       <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass text-lune">Measured tally as of {generatedDateLabel}</p>
-        <h2 class="display v2-section-title mt-5 text-white">{installCount} installations, one counter</h2>
+        <p class="tech-label v2-kicker rule-brass text-lune">Tracked tally as of {generatedDateLabel}</p>
+        <h2 class="display v2-section-title mt-5 text-white">{kwcTotalLabel} kWc, one counter</h2>
         <div class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
           <KeyFigure value={kwcTotalLabel} unit="kWc" label="Installed capacity">
-            Cumulative total across {installCount} published installations.
+            Cumulative total across published installations.
           </KeyFigure>
-          <KeyFigure value={productionTotalLabel} unit="kWh/yr" label="Measured production">
-            Across {withMeasuredProduction.length} monitored installations (Deye Cloud).
+          <KeyFigure value={productionTotalLabel} unit="kWh/yr" label="Tracked production">
+            Across the monitored installations (measured or estimated from measured yield).
           </KeyFigure>
-          <KeyFigure value={String(withMeasuredProduction.length)} unit={`/ ${installCount}`} label="Projects with published monitoring">
+          <KeyFigure value={String(withMeasuredProduction.length)} unit="monitored projects" label="Published monitoring">
             Projects with no published production figure are never counted as zero.
           </KeyFigure>
         </div>
@@ -105,6 +113,13 @@ const jsonLd = {
                 {' '}Today, {notYetPublished.length} project{notYetPublished.length > 1 ? 's' : ''} on the site{' '}
                 {notYetPublished.length > 1 ? "don't" : "doesn't"} have published production yet — {' '}
                 {notYetPublished.length > 1 ? 'they are' : 'it is'} not counted in the tally above.
+              </>
+            )}
+            {anyEstimated && (
+              <>
+                {' '}Some figures above are estimated from the measured yield of our monitored
+                installations rather than a distinct Deye Cloud reading per site — never a catalogue
+                figure, never padded, but not yet an individual reading. Each case study states which.
               </>
             )}
           </p>
@@ -126,7 +141,9 @@ const jsonLd = {
             <div class="v2-rise flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-azur-900/15 px-5 py-4" style={`--v2-i:${i}`}>
               <span class="text-sm font-semibold">{r.ville} · {r.kwc} · ref. {r.ref} · {r.date}</span>
               <span class="whitespace-normal text-right text-sm text-azur-600">
-                {r.production ? `${r.production} measured` : 'production not yet published'}
+                {r.production
+                  ? `${r.production} ${r.productionEstimated ? 'estimated' : 'measured'}`
+                  : 'production not yet published'}
               </span>
             </div>
           ))}

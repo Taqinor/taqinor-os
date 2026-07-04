@@ -37,6 +37,12 @@
  * - id : id DOM optionnel de la racine (sinon un id généré est utilisé) —
  *   permet à un composant appelant de cibler cette instance précise (ex.
  *   VideoChantier écoute `litevideo:play` sur son id connu).
+ *
+ * WB24 — captionsSrc/captionsLang (optionnels, WCAG 1.2.2) : quand fournis,
+ *   un <track kind="captions" default> est rendu sur le <video> réel monté
+ *   au clic. Aucun fichier VTT n'existe encore pour les clips actuels
+ *   (chantier/compteur) — ce sont de purs props de plomberie, prêts à
+ *   recevoir une vraie source de sous-titres sans changement de composant.
  */
 interface Props {
   id?: string;
@@ -47,6 +53,10 @@ interface Props {
   aspectRatio?: string;
   posterWidth?: number;
   posterHeight?: number;
+  /** WB24 — chemin du fichier VTT de sous-titres (optionnel). */
+  captionsSrc?: string;
+  /** WB24 — langue BCP47 du fichier VTT (ex. "fr"), requise par <track> quand captionsSrc est fourni. */
+  captionsLang?: string;
   class?: string;
 }
 
@@ -59,6 +69,8 @@ const {
   aspectRatio = '16/9',
   posterWidth = 1600,
   posterHeight = 900,
+  captionsSrc,
+  captionsLang,
   class: className,
 } = Astro.props;
 
@@ -79,6 +91,8 @@ const uid = id ?? `lv-${Math.random().toString(36).slice(2, 9)}`;
   data-lite-video
   data-src={src}
   data-poster={`${poster}.webp`}
+  {captionsSrc ? { 'data-captions-src': captionsSrc } : {}}
+  {captionsLang ? { 'data-captions-lang': captionsLang } : {}}
 >
   <div class="relative" style={`padding-bottom: ${paddingBottomPct}%;`}>
     <picture class="absolute inset-0">
@@ -126,6 +140,11 @@ const uid = id ?? `lv-${Math.random().toString(36).slice(2, 9)}`;
     const playBtn = wrap.querySelector<HTMLButtonElement>('.lite-video-play');
     const src = wrap.dataset.src ?? '';
     const poster = wrap.dataset.poster ?? '';
+    // WB24 — sous-titres optionnels (WCAG 1.2.2) : aucun fichier VTT n'existe
+    // encore pour les clips actuels ; ces data-attrs restent absents tant
+    // qu'un composant appelant ne fournit pas captionsSrc/captionsLang.
+    const captionsSrc = wrap.dataset.captionsSrc ?? '';
+    const captionsLang = wrap.dataset.captionsLang ?? '';
     const inner = wrap.querySelector<HTMLElement>('div[style]');
 
     playBtn?.addEventListener('click', () => {
@@ -145,6 +164,15 @@ const uid = id ?? `lv-${Math.random().toString(36).slice(2, 9)}`;
       video.playsInline = true;
       video.style.cssText =
         'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#070b1d';
+
+      if (captionsSrc) {
+        const track = document.createElement('track');
+        track.kind = 'captions';
+        track.src = captionsSrc;
+        track.srclang = captionsLang || 'fr';
+        track.default = true;
+        video.appendChild(track);
+      }
 
       inner.innerHTML = '';
       inner.appendChild(video);

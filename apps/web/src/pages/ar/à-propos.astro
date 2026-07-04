@@ -25,11 +25,18 @@ const devisHref = L('/devis/mon-toit');
 
 /**
  * W345 — فيشة صحفية/شراكات مُشتقة (لا رقم مُدخَل يدوياً). انظر النسخة
- * الفرنسية (src/pages/à-propos.astro) للمنطق الكامل: عدد الإنجازات وأقدم
- * ورش موثَّق يأتيان من realisations.ts؛ لا تاريخ تأسيس للشركة منشور في أي
- * مكان بالموقع، لذا لا نخترعه هنا.
+ * الفرنسية (src/pages/à-propos.astro) للمنطق الكامل: كيلوواط الذروة
+ * المركّبة وأقدم ورش موثَّق يأتيان من realisations.ts؛ لا تاريخ تأسيس
+ * للشركة منشور في أي مكان بالموقع، لذا لا نخترعه هنا.
+ *
+ * القاعدة ب (2026-07-04): لم يعد العدد الخام للتركيبات رقمًا عامًا
+ * يُبرَز — استُبدل بكيلوواط الذروة المركّبة، وهو المقياس المرجعي أصلاً في
+ * بقية الموقع.
  */
-const installCount = REALISATIONS.length;
+const totalKwc = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
+const totalKwcLabel = totalKwc
+  .toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  .replace('.', ',');
 const earliestRealisation = REALISATIONS[REALISATIONS.length - 1];
 
 const etapes = [
@@ -214,8 +221,8 @@ const etapes = [
               <dt class="tech-label mt-2 text-encre-faint">السجل التجاري (RC 691213)</dt>
             </div>
             <div>
-              <dd class="font-display text-2xl font-bold">{installCount} تركيبات</dd>
-              <dt class="tech-label mt-2 text-encre-faint">إنجازات موثَّقة علناً</dt>
+              <dd class="font-display text-2xl font-bold">{totalKwcLabel} kWc</dd>
+              <dt class="tech-label mt-2 text-encre-faint">مركّبة، إنجازات موثَّقة علناً</dt>
             </div>
             <div>
               <dd class="font-display text-2xl font-bold">{earliestRealisation.date}</dd>
