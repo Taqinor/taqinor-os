@@ -1322,6 +1322,52 @@ def mouvement_type_rebut():
     return MouvementStock.TypeMouvement.REBUT
 
 
+# ── YSTCK1 — comptage cyclique (installations.SessionComptage/ComptageLigne)
+# poste l'écart en AJUSTEMENT à la clôture. Appelé DEPUIS installations
+# (jamais l'inverse) : le service reste ici (comme `apply_inventory_count`,
+# FG63, le comptage one-shot) — la diff EST le mouvement.
+
+def appliquer_ecarts_comptage(*, company, lignes, user, reference):
+    """YSTCK1 — poste UN `MouvementStock` AJUSTEMENT par ligne dont
+    `quantite_comptee != quantite_theorique` (attribut ``ecart`` non nul, non
+    None), cale `Produit.quantite_stock` sur le compté.
+
+    ``lignes`` : itérable de ``ComptageLigne`` (ou tout objet portant
+    ``produit_id``/``quantite_theorique``/``quantite_comptee``/``ecart``).
+    Une ligne sans produit catalogue (désignation libre) ou pas encore
+    comptée (``quantite_comptee`` None) est ignorée. Renvoie le nombre de
+    mouvements postés. Scopé société ; verrouille le produit (select_for_update)
+    pour éviter une course avec un mouvement concurrent."""
+    from django.db import transaction
+    from .models import MouvementStock, Produit
+
+    count = 0
+    with transaction.atomic():
+        for ligne in lignes:
+            if ligne.produit_id is None:
+                continue
+            if ligne.quantite_comptee is None:
+                continue
+            ecart = ligne.quantite_comptee - (ligne.quantite_theorique or 0)
+            if ecart == 0:
+                continue
+            produit = Produit.objects.select_for_update().filter(
+                id=ligne.produit_id, company=company).first()
+            if produit is None:
+                continue
+            avant = produit.quantite_stock
+            apres = ligne.quantite_comptee
+            record_stock_movement(
+                company=company, produit=produit,
+                type_mouvement=MouvementStock.TypeMouvement.AJUSTEMENT,
+                quantite=abs(ecart), quantite_avant=avant,
+                quantite_apres=apres, reference=f'CYC-{reference}',
+                note=f'Comptage cyclique {reference} — écart {ecart}',
+                created_by=user)
+            count += 1
+    return count
+
+
 def declarer_rebut(*, company, produit, quantite, motif, reference, note,
                    user):
     """XMFG11 — déclare un rebut de production : SORTIE typée REBUT, motivée,
