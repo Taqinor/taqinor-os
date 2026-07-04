@@ -246,6 +246,8 @@ class ProduitSerializer(serializers.ModelSerializer):
             'id', 'company', 'nom', 'description', 'sku', 'marque',
             # XSTK3 — code-barres fabricant (EAN/UPC/GTIN)
             'code_barres',
+            # XSTK19 — code SH (HS) + pays d'origine (dossier d'import ADII)
+            'code_sh', 'pays_origine',
             # Prix (prix_achat gardé par permission, cf. get_fields)
             'prix_achat', 'prix_vente', 'tva',
             # Stock

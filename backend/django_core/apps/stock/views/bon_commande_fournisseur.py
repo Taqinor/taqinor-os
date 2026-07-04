@@ -64,7 +64,7 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
         # données que `retrieve` expose déjà à tout rôle authentifié. Le
         # laisser en IsResponsableOrAdmin faisait échouer (403) le bouton
         # « PDF (interne) » pour les rôles normaux qui voient pourtant le BCF.
-        if self.action in READ_ACTIONS + ['generer_pdf']:
+        if self.action in READ_ACTIONS + ['generer_pdf', 'lignes_import']:
             return [IsAnyRole()]
         elif self.action in ('whatsapp', 'envoyer_email'):
             # QS3 — envois fournisseur : permission fine stock_modifier (repli
@@ -559,3 +559,11 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
         response['Content-Disposition'] = (
             f'inline; filename="{filename}"')
         return response
+
+    @action(detail=True, methods=['get'], url_path='lignes-import')
+    def lignes_import(self, request, pk=None):
+        """XSTK19 — lignes candidates pour un dossier d'import ADII,
+        pré-remplies (code SH + pays d'origine) depuis les SKUs de ce BCF."""
+        from ..selectors import lignes_import_depuis_bcf
+        bc = self.get_object()
+        return Response(lignes_import_depuis_bcf(request.user.company, bc.pk))

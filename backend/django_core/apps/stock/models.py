@@ -588,6 +588,21 @@ class Produit(models.Model):
         help_text='Code-barres imprimé par le fabricant (EAN-13, UPC, '
                   'GTIN…) — distinct du jeton interne de scan.')
 
+    # ── XSTK19 — Code SH (HS) + pays d'origine → dossier d'import (ADII) ────
+    # Nullables : un produit sans ces champs garde le comportement historique
+    # (saisie manuelle du dossier d'import). Pré-remplit les lignes du
+    # dossier d'import (`installations.DossierImport`) depuis le BCF lié.
+    code_sh = models.CharField(
+        max_length=20, blank=True, null=True,
+        verbose_name='Code SH (HS)',
+        help_text="Code du Système Harmonisé (nomenclature douanière) — "
+                  'utilisé pour pré-remplir le dossier d\'import ADII.')
+    pays_origine = models.CharField(
+        max_length=100, blank=True, null=True,
+        verbose_name="Pays d'origine",
+        help_text="Pays d'origine du produit — utilisé pour pré-remplir le "
+                  'dossier d\'import ADII.')
+
     class Meta:
         verbose_name = "Produit"
         verbose_name_plural = "Produits"
