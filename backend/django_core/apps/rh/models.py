@@ -853,6 +853,16 @@ class SoldeConge(models.Model):
     pris = models.DecimalField(
         max_digits=6, decimal_places=2, default=Decimal('0'),
         verbose_name='Jours pris')
+    # ZRH2 — garde d'idempotence de l'acquisition mensuelle automatique
+    # (``accruer_conges``) : nombre de mois DÉJÀ crédités pour cette année,
+    # jamais > 12. NULL/0 = comportement historique inchangé (acquisition
+    # manuelle uniquement, comme avant ZRH2).
+    mois_acquis = models.PositiveSmallIntegerField(
+        default=0, verbose_name='Mois déjà crédités (acquisition auto)')
+    # ZRH2 — le report janvier de N-1 vers N ne s'applique qu'une fois par
+    # année (garde séparée du décompte des mois).
+    report_applique = models.BooleanField(
+        default=False, verbose_name='Report N-1 déjà appliqué')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
     date_modification = models.DateTimeField(

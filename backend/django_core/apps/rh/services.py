@@ -82,6 +82,87 @@ def feries_periode(company, date_debut, date_fin):
     return feries_entre(company, date_debut, date_fin)
 
 
+def annees_service(date_embauche, reference=None):
+    """Années de service pleines à ``reference`` (aujourd'hui par défaut).
+
+    ``None`` si ``date_embauche`` est absente (ancienneté non calculable).
+    """
+    if date_embauche is None:
+        return 0
+    ref = reference or timezone.localdate()
+    annees = ref.year - date_embauche.year
+    if (ref.month, ref.day) < (date_embauche.month, date_embauche.day):
+        annees -= 1
+    return max(annees, 0)
+
+
+@transaction.atomic
+def accruer_conges_mensuel(dossier, *, annee, mois, apply=False):
+    """ZRH2 — acquisition mensuelle automatique pour UN employé/mois.
+
+    Odoo « Accrual Time Off » : crédite ``SoldeConge.acquis`` du droit du mois
+    (``acquisition_mensuelle``, ancienneté dérivée de ``date_embauche``) pour
+    l'année ``annee``, SANS jamais dépasser 12 crédits/an (garde
+    ``mois_acquis``). Idempotent : un second appel pour le MÊME mois ne
+    crédite pas deux fois. ``apply=False`` (dry-run) ne modifie rien et
+    renvoie le montant qui SERAIT crédité. Renvoie un dict
+    ``{'credite': Decimal, 'deja_acquis': bool}``.
+    """
+    from .models import SoldeConge
+
+    solde, _ = SoldeConge.objects.select_for_update().get_or_create(
+        company=dossier.company, employe=dossier, annee=annee)
+    if solde.mois_acquis >= 12 or solde.mois_acquis >= mois:
+        # Déjà crédité pour ce mois (ou l'année est déjà pleinement créditée).
+        return {'credite': Decimal('0'), 'deja_acquis': True}
+
+    service = annees_service(dossier.date_embauche)
+    montant = acquisition_mensuelle(service)
+    if apply:
+        solde.acquis = (solde.acquis or Decimal('0')) + montant
+        solde.mois_acquis = mois
+        solde.save(update_fields=[
+            'acquis', 'mois_acquis', 'date_modification'])
+    return {'credite': montant, 'deja_acquis': False}
+
+
+@transaction.atomic
+def reporter_solde_janvier(dossier, *, annee_precedente, annee_cible,
+                           plafond=None, apply=False):
+    """ZRH2 — report janvier : transfère le ``disponible`` restant de
+    ``annee_precedente`` vers ``report`` de ``annee_cible`` (Odoo « Time Off
+    accrual carry-over »).
+
+    Idempotent (``report_applique`` sur le solde CIBLE) : un second appel ne
+    re-crédite pas. ``plafond`` borne le montant reporté (``None`` =
+    illimité, comportement par défaut). ``apply=False`` ne modifie rien.
+    Renvoie un dict ``{'reporte': Decimal, 'deja_applique': bool}``.
+    """
+    from .models import SoldeConge
+
+    cible, _ = SoldeConge.objects.select_for_update().get_or_create(
+        company=dossier.company, employe=dossier, annee=annee_cible)
+    if cible.report_applique:
+        return {'reporte': Decimal('0'), 'deja_applique': True}
+
+    precedent = SoldeConge.objects.filter(
+        company=dossier.company, employe=dossier,
+        annee=annee_precedente).first()
+    disponible = precedent.disponible if precedent else Decimal('0')
+    if disponible < 0:
+        disponible = Decimal('0')
+    montant = disponible
+    if plafond is not None and montant > plafond:
+        montant = Decimal(str(plafond))
+
+    if apply:
+        cible.report = (cible.report or Decimal('0')) + montant
+        cible.report_applique = True
+        cible.save(update_fields=[
+            'report', 'report_applique', 'date_modification'])
+    return {'reporte': montant, 'deja_applique': False}
+
+
 def calculer_jours_demande(type_absence, date_debut, date_fin,
                            extra_holidays=None,
                            demi_journee_debut=False, demi_journee_fin=False):
