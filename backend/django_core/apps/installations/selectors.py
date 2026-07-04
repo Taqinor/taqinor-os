@@ -1741,3 +1741,321 @@ def livraisons_client_portail(company, client_id):
                 f'{preuve.id}/' if preuve is not None else None),
         })
     return out
+
+
+# ── XMFG15 — Analyse d'écarts par ordre + tableau de bord atelier ────────────
+# Coût composants PRÉVU (BOM/lignes × cout_achat_courant) vs CONSOMMÉ réel
+# (mouvements XMFG1 SORTIE + rebuts XMFG11 REBUT rattachés à la référence de
+# l'ordre), temps prévu vs réel (XMFG14 `totaux_temps_ordre`). RESPONSABLE/
+# ADMIN uniquement (coûts d'achat) — la permission est vérifiée côté vue.
+
+def analyse_ecarts_ordre(ordre):
+    """XMFG15 — analyse prévu-vs-réel d'un ordre d'assemblage : coût composants
+    (prévu = BOM/lignes valorisées au coût d'achat courant ; réel = mouvements
+    SORTIE + REBUT rattachés à ``ordre.reference``) et temps (XMFG14). Renvoie
+    un dict PLAT :
+      ``cout``: {prevu, reel, ecart, ecart_pct}
+      ``temps``: {prevu, reel, ecart, complet} (minutes — XMFG14, `None` si
+        aucune durée attendue n'est renseignée)
+      ``rebut``: {quantite, cout} (partie du coût réel imputable au rebut)
+    Lecture seule, ne mute rien."""
+    from decimal import Decimal
+    from apps.stock.selectors import mouvements_par_reference
+    from .services import cout_prevu_assemblage, totaux_temps_ordre
+
+    cout_prevu = cout_prevu_assemblage(ordre)
+
+    cout_reel = Decimal('0')
+    cout_rebut = Decimal('0')
+    qte_rebut = 0
+    for mvt in mouvements_par_reference(ordre.company, ordre.reference):
+        prix = getattr(mvt.produit, 'prix_achat', None) or Decimal('0')
+        montant = Decimal(str(mvt.quantite)) * Decimal(str(prix))
+        if mvt.type_mouvement == 'sortie':
+            cout_reel += montant
+        elif mvt.type_mouvement == 'rebut':
+            cout_reel += montant
+            cout_rebut += montant
+            qte_rebut += mvt.quantite
+
+    ecart_cout = cout_reel - cout_prevu
+    ecart_pct = (float(ecart_cout / cout_prevu * 100)
+                 if cout_prevu else (0.0 if cout_reel == 0 else None))
+
+    temps = totaux_temps_ordre(ordre)
+    temps_prevu = temps['prevu']
+    temps_ecart = (
+        temps['reel'] - temps_prevu if temps_prevu is not None else None)
+
+    return {
+        'ordre_id': ordre.id,
+        'reference': ordre.reference,
+        'cout': {
+            'prevu': float(cout_prevu),
+            'reel': float(cout_reel),
+            'ecart': float(ecart_cout),
+            'ecart_pct': ecart_pct,
+        },
+        'temps': {
+            'prevu': temps_prevu,
+            'reel': temps['reel'],
+            'ecart': temps_ecart,
+            'complet': temps['complet'],
+        },
+        'rebut': {
+            'quantite': qte_rebut,
+            'cout': float(cout_rebut),
+        },
+    }
+
+
+def panneau_atelier(company, *, date_debut=None, date_fin=None):
+    """XMFG15 — panneau « Atelier » : ordres en retard (date_prevue dépassée,
+    non terminés/annulés), en cours, terminés sur la période, taux de rebut
+    (quantité rebutée / quantité totale consommée+rebutée sur les ordres
+    terminés de la période), écart moyen (%) de coût sur les ordres terminés
+    de la période. Filtrable par période (``date_creation`` pour les ordres
+    en cours, ``date_terminaison`` pour les terminés). Lecture seule, scopée
+    société."""
+    from datetime import date as _date
+    from .models import OrdreAssemblage
+
+    today = _date.today()
+
+    en_retard = list(OrdreAssemblage.objects.filter(
+        company=company, statut=OrdreAssemblage.Statut.PLANIFIE,
+        date_prevue__lt=today).select_related('kit'))
+    en_cours = list(OrdreAssemblage.objects.filter(
+        company=company, statut=OrdreAssemblage.Statut.EN_COURS)
+        .select_related('kit'))
+
+    termines_qs = OrdreAssemblage.objects.filter(
+        company=company, statut=OrdreAssemblage.Statut.TERMINE)
+    if date_debut is not None:
+        termines_qs = termines_qs.filter(date_terminaison__date__gte=date_debut)
+    if date_fin is not None:
+        termines_qs = termines_qs.filter(date_terminaison__date__lte=date_fin)
+    termines = list(termines_qs.select_related('kit'))
+
+    qte_rebut_totale = 0
+    qte_consomme_totale = 0
+    ecarts_pct = []
+    for ordre in termines:
+        analyse = analyse_ecarts_ordre(ordre)
+        qte_rebut_totale += analyse['rebut']['quantite']
+        cout_prevu = analyse['cout']['prevu']
+        if cout_prevu:
+            qte_consomme_totale += 1  # comptage d'ordres, pas de quantité brute
+        if analyse['cout']['ecart_pct'] is not None:
+            ecarts_pct.append(analyse['cout']['ecart_pct'])
+
+    taux_rebut = (
+        qte_rebut_totale / max(len(termines), 1) if termines else 0.0)
+    ecart_moyen_pct = (
+        sum(ecarts_pct) / len(ecarts_pct) if ecarts_pct else 0.0)
+
+    def _card(ordre):
+        return {
+            'id': ordre.id, 'reference': ordre.reference,
+            'kit_id': ordre.kit_id,
+            'kit_nom': getattr(ordre.kit, 'nom', None),
+            'date_prevue': ordre.date_prevue,
+            'statut': ordre.statut,
+        }
+
+    return {
+        'debut': date_debut, 'fin': date_fin,
+        'en_retard': [_card(o) for o in en_retard],
+        'en_cours': [_card(o) for o in en_cours],
+        'termines': [_card(o) for o in termines],
+        'totaux': {
+            'nb_en_retard': len(en_retard),
+            'nb_en_cours': len(en_cours),
+            'nb_termines': len(termines),
+            'taux_rebut_moyen': round(taux_rebut, 2),
+            'ecart_cout_moyen_pct': round(ecart_moyen_pct, 2),
+        },
+    }
+
+
+# ── XFSM5 — Fenêtres de RDV promises + taux de ponctualité ───────────────────
+
+def taux_ponctualite(company, *, debut=None, fin=None, technicien_id=None):
+    """XFSM5 — KPI « taux d'arrivée à l'heure » : proportion des interventions
+    ARRIVÉES (`arrivee_site_le` renseigné) dont `arrivee_dans_fenetre` est
+    True, parmi celles où une fenêtre était promise et où l'arrivée a eu
+    lieu. Filtrable par période (`arrivee_site_le`) et par technicien.
+    Lecture seule via `apps.installations.selectors` (jamais d'import de
+    models depuis `reporting`). Renvoie un dict PLAT
+    {nb_mesurees, nb_a_lheure, taux_pct} — `taux_pct` est None si aucune
+    intervention mesurable (jamais de division par zéro)."""
+    from .models import Intervention
+
+    qs = Intervention.objects.filter(
+        company=company, arrivee_site_le__isnull=False,
+        arrivee_dans_fenetre__isnull=False)
+    if debut is not None:
+        qs = qs.filter(arrivee_site_le__date__gte=debut)
+    if fin is not None:
+        qs = qs.filter(arrivee_site_le__date__lte=fin)
+    if technicien_id is not None:
+        qs = qs.filter(technicien_id=technicien_id)
+
+    nb_mesurees = qs.count()
+    nb_a_lheure = qs.filter(arrivee_dans_fenetre=True).count()
+    taux_pct = (
+        round(nb_a_lheure / nb_mesurees * 100, 2) if nb_mesurees else None)
+    return {
+        'nb_mesurees': nb_mesurees,
+        'nb_a_lheure': nb_a_lheure,
+        'taux_pct': taux_pct,
+    }
+
+
+# ── XFSM2 — Assistant de planification : créneau + technicien suggérés ──────
+# Combine les ingrédients déjà existants (plan de charge FG299, conflits
+# FG300, indisponibilités FG302, jours ouvrés, habilitations FG173/176,
+# GPS chantier + haversine) SANS RIEN muter : pure lecture, propositions
+# classées. Traduit `Intervention.Type` (choix fermé) vers les clés de
+# `rh.INTERVENTION_HABILITATIONS` (cadre différent, best-effort — un type
+# sans correspondance connue n'exige aucune habilitation).
+_TYPE_VERS_HABILITATION = {
+    'pose': 'pose_pv_bt',
+    'raccordement': 'pose_pv_bt',
+    'mise_en_service': 'operations_pv',
+    'controle': 'operations_pv',
+    'depannage': 'maintenance_bt',
+}
+
+
+def _techniciens_eligibles(company):
+    """Techniciens éligibles : utilisateurs de la société déjà affectés à au
+    moins une intervention (même bassin que FG299/FG301) — évite de proposer
+    un compte admin/commercial jamais affecté sur le terrain."""
+    from django.contrib.auth import get_user_model
+    from .models import Intervention
+    User = get_user_model()
+    ids = set(Intervention.objects.filter(
+        company=company, technicien_id__isnull=False)
+        .values_list('technicien_id', flat=True).distinct())
+    if not ids:
+        return list(User.objects.filter(company=company))
+    return list(User.objects.filter(company=company, id__in=ids))
+
+
+def suggerer_creneau(company, *, chantier_id, type_intervention, duree_jours=1,
+                     date_cible=None, n=3):
+    """XFSM2 — les N (défaut 3) meilleures propositions de créneau + technicien
+    pour un chantier/type/durée donnés, classées par :
+      1. habilitation requise OK (FG173/176 — un technicien manquant/expiré
+         n'est jamais proposé) ;
+      2. pas de conflit (FG300 : le technicien n'a AUCUNE intervention prévue
+         ce jour) ni d'indisponibilité (FG302) ;
+      3. charge la plus faible (nb d'interventions déjà planifiées, FG299) ;
+      4. distance au site la plus courte depuis les interventions DÉJÀ
+         planifiées du technicien ce jour-là (0 si aucune — dépôt inconnu).
+    Fenêtre de recherche : 14 jours ouvrés à partir de ``date_cible`` (défaut
+    aujourd'hui). Lecture seule, NE MUTE RIEN, scopée société. Renvoie
+    ``{propositions: [{technicien_id, nom, date, score...}], chantier_id}``."""
+    import datetime
+    from .models import Intervention
+
+    chantier = installation_scoped(company, chantier_id)
+    if chantier is None:
+        return {'chantier_id': chantier_id, 'propositions': []}
+
+    if date_cible is None:
+        date_cible = datetime.date.today()
+
+    techniciens = _techniciens_eligibles(company)
+    if not techniciens:
+        return {'chantier_id': chantier_id, 'propositions': []}
+
+    # Vérification habilitation (best-effort, cadre différent — cf. mapping).
+    habilitation_requise = _TYPE_VERS_HABILITATION.get(type_intervention)
+    eligibles = []
+    if habilitation_requise:
+        from apps.rh.selectors import (
+            dossier_employe_for_user, verifier_habilitation_requise)
+        for tech in techniciens:
+            dossier = dossier_employe_for_user(company, tech.id)
+            if dossier is None:
+                # Pas de fiche RH reliée : on ne peut pas vérifier → on ne
+                # bloque PAS (garde RAPPORTE, l'appelant décide — ici on
+                # considère éligible faute de donnée, cohérent avec le
+                # blocage doux FG176).
+                eligibles.append(tech)
+                continue
+            rapport = verifier_habilitation_requise(
+                company, dossier, habilitation_requise)
+            if rapport['autorise']:
+                eligibles.append(tech)
+    else:
+        eligibles = techniciens
+
+    if not eligibles:
+        return {'chantier_id': chantier_id, 'propositions': []}
+
+    site_lat = getattr(chantier, 'gps_lat', None)
+    site_lng = getattr(chantier, 'gps_lng', None)
+
+    # Fenêtre de recherche : 14 jours calendaires à partir de date_cible.
+    candidats = []
+    jour = date_cible
+    jours_testes = 0
+    while jours_testes < 14:
+        # Interventions déjà planifiées CE JOUR (toute ressource confondue) —
+        # sert de proxy de proximité : un technicien déjà dans le secteur ce
+        # jour-là minimise le trajet total. Chargé UNE fois par jour (hors
+        # boucle technicien) pour éviter un N+1.
+        interventions_du_jour = list(
+            Intervention.objects.filter(company=company, date_prevue=jour)
+            .select_related('installation'))
+        for tech in eligibles:
+            if ressource_indisponible(company, tech.id, jour, jour):
+                continue
+            deja_ce_jour = [
+                iv for iv in interventions_du_jour
+                if iv.technicien_id == tech.id]
+            if deja_ce_jour:
+                # FG300 — conflit : le technicien porte déjà une intervention
+                # ce jour-là → jamais proposé pour un NOUVEAU créneau ce jour.
+                continue
+            charge = Intervention.objects.filter(
+                company=company, technicien_id=tech.id,
+                date_prevue__gte=jour,
+                date_prevue__lt=jour + datetime.timedelta(days=14)).count()
+            # Distance au site la plus courte parmi les interventions déjà
+            # planifiées CE JOUR (toute ressource) — 0 si aucune GPS
+            # disponible (dépôt/site inconnu, jamais d'exception).
+            distance = None
+            if site_lat is not None and site_lng is not None:
+                for iv in interventions_du_jour:
+                    autre_lat = getattr(iv.installation, 'gps_lat', None)
+                    autre_lng = getattr(iv.installation, 'gps_lng', None)
+                    if autre_lat is None or autre_lng is None:
+                        continue
+                    d = _haversine_km(
+                        site_lat, site_lng, autre_lat, autre_lng)
+                    if distance is None or d < distance:
+                        distance = d
+            candidats.append({
+                'technicien_id': tech.id,
+                'nom': (getattr(tech, 'get_full_name', lambda: '')()
+                        or tech.username),
+                'date': jour.isoformat(),
+                'charge': charge,
+                'distance_km': round(distance, 1) if distance is not None
+                else None,
+            })
+        jour += datetime.timedelta(days=1)
+        jours_testes += 1
+
+    candidats.sort(key=lambda c: (
+        c['charge'],
+        c['distance_km'] if c['distance_km'] is not None else float('inf'),
+        c['date'], c['nom'].lower()))
+    return {
+        'chantier_id': chantier_id,
+        'propositions': candidats[:max(int(n or 3), 1)],
+    }

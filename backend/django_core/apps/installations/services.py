@@ -1772,3 +1772,228 @@ def decider_demande_achat(demande_achat, *, approuver, user, motif_refus=''):
         'statut', 'approuvee_par', 'date_decision', 'motif_refus',
         'date_modification'])
     return demande_achat
+
+
+# ── XFSM3 — Replanification en masse d'une journée ───────────────────────────
+# Construit sur XFSM2 (meilleur créneau) / FG301 (nivellement) : entrée = un
+# jour + (optionnellement) un technicien absent ou une liste d'IDs. Sortie =
+# propositions de nouveaux créneaux/techniciens (réutilise la même logique
+# de scoring que XFSM2, respecte FG300/FG302), puis application en un appel.
+# `?simuler=1` (dry-run) ne mute rien — jamais de conflit créé (les créneaux
+# proposés excluent déjà les techniciens en conflit/indisponibles ce jour-là,
+# héritage direct de XFSM2).
+
+def previsualiser_replanification_masse(company, *, jour, technicien_id=None,
+                                        intervention_ids=None):
+    """XFSM3 — propositions de re-slot pour un jour donné (dry-run, NE MUTE
+    RIEN). Cible soit toutes les interventions du `technicien_id` donné ce
+    jour-là, soit une liste explicite `intervention_ids` (les deux
+    combinables : filtre supplémentaire). Chaque proposition réutilise
+    ``selectors.suggerer_creneau`` (habilitation/conflit/indispo/charge/
+    distance) — le créneau proposé ne recrée jamais de conflit FG300. Renvoie
+    ``{jour, propositions: [{intervention_id, installation_id,
+    type_intervention, technicien_actuel_id, proposition}]}``."""
+    from .models import Intervention
+    from . import selectors
+
+    qs = Intervention.objects.filter(company=company, date_prevue=jour)
+    if technicien_id is not None:
+        qs = qs.filter(technicien_id=technicien_id)
+    if intervention_ids:
+        qs = qs.filter(id__in=intervention_ids)
+
+    propositions = []
+    for interv in qs.select_related('installation'):
+        suggestions = selectors.suggerer_creneau(
+            company, chantier_id=interv.installation_id,
+            type_intervention=interv.type_intervention, n=1)
+        proposition = (
+            suggestions['propositions'][0]
+            if suggestions['propositions'] else None)
+        propositions.append({
+            'intervention_id': interv.id,
+            'installation_id': interv.installation_id,
+            'type_intervention': interv.type_intervention,
+            'technicien_actuel_id': interv.technicien_id,
+            'proposition': proposition,
+        })
+    return {'jour': str(jour), 'propositions': propositions}
+
+
+def appliquer_replanification_masse(company, *, jour, motif, user,
+                                    technicien_id=None, intervention_ids=None):
+    """XFSM3 — applique en UN appel les propositions de
+    ``previsualiser_replanification_masse`` : chaque intervention resolvable
+    (une proposition existe) est déplacée vers le technicien + date proposés,
+    le compteur `rdv_reschedule_count` (FG78) est incrémenté et un chatter
+    (motif) est posé, et le technicien réassigné est notifié (best-effort,
+    `apps.notifications`). Les interventions SANS proposition (aucun
+    créneau disponible dans la fenêtre XFSM2) sont laissées INTACTES et
+    listées à part. Renvoie
+    ``{jour, deplacees: [...], non_resolues: [intervention_id...]}``."""
+    from django.db import transaction
+    from . import intervention_activity
+    from .models import Intervention
+
+    motif = (motif or '').strip()
+    preview = previsualiser_replanification_masse(
+        company, jour=jour, technicien_id=technicien_id,
+        intervention_ids=intervention_ids)
+
+    deplacees = []
+    non_resolues = []
+    with transaction.atomic():
+        for entry in preview['propositions']:
+            proposition = entry['proposition']
+            if proposition is None:
+                non_resolues.append(entry['intervention_id'])
+                continue
+            interv = Intervention.objects.select_for_update().get(
+                id=entry['intervention_id'], company=company)
+            ancien_tech_id = interv.technicien_id
+            nouvelle_date = proposition['date']
+            nouveau_tech_id = proposition['technicien_id']
+            interv.technicien_id = nouveau_tech_id
+            if str(interv.date_prevue) != nouvelle_date:
+                interv.rdv_reschedule_count = (
+                    interv.rdv_reschedule_count or 0) + 1
+            interv.date_prevue = nouvelle_date
+            interv.save(update_fields=[
+                'technicien_id', 'date_prevue', 'rdv_reschedule_count'])
+            intervention_activity.log_note(
+                interv, user,
+                f"Replanification en masse ({motif or 'sans motif'}) : "
+                f"{ancien_tech_id or 'non assigné'} → {nouveau_tech_id}, "
+                f"nouvelle date {nouvelle_date}.")
+            _notifier_reassignation(interv, user)
+            deplacees.append({
+                'intervention_id': interv.id,
+                'ancien_technicien_id': ancien_tech_id,
+                'nouveau_technicien_id': nouveau_tech_id,
+                'nouvelle_date': nouvelle_date,
+            })
+    return {
+        'jour': str(jour), 'deplacees': deplacees,
+        'non_resolues': non_resolues,
+    }
+
+
+def _notifier_reassignation(interv, user):
+    """XFSM3 — notifie (best-effort, ne lève jamais) le technicien réassigné
+    d'un changement de créneau."""
+    try:
+        from apps.notifications.services import notify
+        from apps.notifications.models import EventType
+    except Exception:  # pragma: no cover - défensif
+        return
+    if not interv.technicien_id:
+        return
+    try:
+        titre = f"Intervention replanifiée — #{interv.id}"
+        notify(
+            interv.technicien, EventType.CHANTIER_DUE, titre,
+            body=f"Nouvelle date : {interv.date_prevue}.",
+            company=interv.company)
+    except Exception:  # pragma: no cover - défensif
+        pass
+
+
+# ── XMFG16 — Assemblage sous-traité (façon) avec suivi des composants confiés
+# Cycle : à la CONFIRMATION d'un ordre lié à un sous-traitant, les composants
+# de sa BOM/lignes sont transférés (TransfertStock, `apps.stock.services`)
+# vers un emplacement dédié « chez {sous-traitant} » (créé à la volée). À la
+# RÉCEPTION du composite, le backflush XMFG1 consomme les composants DEPUIS
+# cet emplacement (`emplacement_source` forcé) et le composite est valorisé
+# coût composants + montant façon de l'OST (INTERNE — jamais client-facing,
+# jamais dans un PDF).
+
+def confier_composants_soustraitance(ordre):
+    """XMFG16 — transfère les composants de l'ordre (lignes XMFG6, repli BOM
+    du kit) vers l'emplacement dédié du sous-traitant lié, et POSE cet
+    emplacement comme `emplacement_source` de l'ordre (le backflush XMFG1 à la
+    clôture consommera DEPUIS cet emplacement). No-op si l'ordre n'a pas de
+    `sous_traitant`. Idempotent : ne retransfère pas si `emplacement_source`
+    pointe déjà vers l'emplacement du sous-traitant."""
+    from apps.stock.services import (
+        get_or_create_emplacement_soustraitant, transfer_stock,
+        ensure_emplacements)
+
+    if ordre.sous_traitant_id is None:
+        return ordre
+
+    emplacement = get_or_create_emplacement_soustraitant(
+        ordre.company, ordre.sous_traitant.nom)
+    if ordre.emplacement_source_id == emplacement.id:
+        return ordre  # déjà confié — idempotent.
+
+    depot_principal = ensure_emplacements(ordre.company)
+    lignes = list(ordre.lignes.select_related('produit').all())
+    composants = (
+        [(ligne.produit, ligne.quantite) for ligne in lignes] if lignes
+        else [(c.produit, (c.quantite or 0) * ordre.quantite)
+              for c in ordre.kit.composants.select_related('produit').all()])
+    for produit, quantite in composants:
+        if produit is None or not quantite:
+            continue
+        try:
+            transfer_stock(
+                company=ordre.company, user=ordre.created_by,
+                produit_id=produit.id, source_id=depot_principal.id,
+                destination_id=emplacement.id, quantite=quantite,
+                note=f'Confié sous-traitant — ordre {ordre.reference}')
+        except ValueError:
+            # Stock insuffisant au dépôt principal : best-effort, le rapport
+            # de reliquat (ci-dessous) restera visible à l'appelant — on ne
+            # bloque jamais la confirmation d'ordre pour cette raison.
+            continue
+
+    ordre.emplacement_source = emplacement
+    ordre.save(update_fields=['emplacement_source'])
+    return ordre
+
+
+def cout_composite_soustraite(ordre):
+    """XMFG16 — coût du composite reçu d'un sous-traitant : coût composants
+    (``cout_prevu_assemblage``, INTERNE) + montant façon de l'OST lié
+    (``montant_realise`` si posé, sinon ``montant`` engagé). None si l'ordre
+    n'a pas d'``ordre_sous_traitance``. JAMAIS client-facing ni dans un PDF."""
+    from decimal import Decimal
+    if ordre.ordre_sous_traitance_id is None:
+        return None
+    ost = ordre.ordre_sous_traitance
+    montant_facon = (
+        ost.montant_realise if ost.montant_realise is not None
+        else ost.montant) or Decimal('0')
+    return cout_prevu_assemblage(ordre) + Decimal(str(montant_facon))
+
+
+def rapport_composants_chez_soustraitants(company):
+    """XMFG16 — reliquat des composants restant CHEZ CHAQUE sous-traitant
+    (emplacements « Chez {nom} » avec du stock ventilé non encore consommé —
+    un ordre déjà backflushé, ``stock_mouvemente=True``, n'a plus de reliquat).
+    Renvoie une liste [{sous_traitant_id, sous_traitant_nom, emplacement_id,
+    lignes: [{produit_id, produit_nom, quantite}]}]. Lecture seule."""
+    from .models import OrdreAssemblage
+
+    ordres = (OrdreAssemblage.objects
+              .filter(company=company, sous_traitant__isnull=False,
+                      emplacement_source__isnull=False,
+                      stock_mouvemente=False)
+              .exclude(statut=OrdreAssemblage.Statut.ANNULE)
+              .select_related('sous_traitant', 'emplacement_source'))
+    par_emplacement = {}
+    for ordre in ordres:
+        emp = ordre.emplacement_source
+        entry = par_emplacement.setdefault(emp.id, {
+            'sous_traitant_id': ordre.sous_traitant_id,
+            'sous_traitant_nom': ordre.sous_traitant.nom,
+            'emplacement_id': emp.id,
+            'lignes': [],
+        })
+        for se in emp.stocks.select_related('produit').all():
+            entry['lignes'].append({
+                'produit_id': se.produit_id,
+                'produit_nom': se.produit.nom,
+                'quantite': se.quantite,
+            })
+    return list(par_emplacement.values())
