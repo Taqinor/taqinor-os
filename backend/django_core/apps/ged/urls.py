@@ -4,7 +4,8 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     AnnotationDocumentViewSet, ArchivageLegalViewSet, CabinetViewSet,
     ChampSignatureViewSet, CoffreViewSet, DemandeApprobationViewSet,
-    DemandeDocumentViewSet, DemandeSignatureDocumentViewSet,
+    DemandeDispositionViewSet, DemandeDocumentViewSet,
+    DemandeSignatureDocumentViewSet,
     DepotPublicViewSet, DocumentLienViewSet, DocumentTagAssignmentViewSet,
     DocumentTagViewSet, DocumentVersionViewSet, DocumentViewSet,
     ExigenceDossierViewSet, FolderViewSet, JournalAccesViewSet,
@@ -44,6 +45,7 @@ router.register(r'annotations', AnnotationDocumentViewSet)
 router.register(r'regles-dossier', RegleDossierViewSet)
 router.register(r'regles-approbation', RegleApprobationGedViewSet)
 router.register(r'regles-acl-metadonnee', RegleAclMetadonneeViewSet)
+router.register(r'demandes-disposition', DemandeDispositionViewSet)
 router.register(r'planifications', PlanificationDocumentViewSet)
 
 urlpatterns = [

@@ -1,8 +1,9 @@
 from rest_framework import serializers
 
 from .models import (
-    AnnotationDocument, ArchivageLegal, Cabinet, ChampSignature, Coffre,
-    DemandeApprobation, DemandeDocument, DemandeSignatureDocument, DepotPublic,
+    AnnotationDocument, ArchivageLegal, Cabinet, CertificatDestruction,
+    ChampSignature, Coffre, DemandeApprobation, DemandeDisposition,
+    DemandeDocument, DemandeSignatureDocument, DepotPublic,
     Document, DocumentLien, DocumentTag, DocumentTagAssignment, DocumentVersion,
     ExigenceDossier, Folder, JournalAcces, LegalHold, ModeleDocument,
     PartageGed, PlanificationDocument, PolitiqueRetention,
@@ -873,6 +874,46 @@ class RegleAclMetadonneeSerializer(serializers.ModelSerializer):
             'priorite', 'actif', 'created_by', 'created_at', 'updated_at',
         ]
         read_only_fields = ['created_by', 'created_at', 'updated_at']
+
+
+class CertificatDestructionSerializer(serializers.ModelSerializer):
+    """XGED23 — Certificat immuable de destruction (lecture seule)."""
+    detruit_par_nom = serializers.CharField(
+        source='detruit_par.username', read_only=True, default=None)
+
+    class Meta:
+        model = CertificatDestruction
+        fields = [
+            'id', 'demande', 'document_id_origine', 'document_nom',
+            'politique_appliquee', 'hash_metadonnees', 'detruit_le',
+            'detruit_par', 'detruit_par_nom',
+        ]
+        read_only_fields = fields
+
+
+class DemandeDispositionSerializer(serializers.ModelSerializer):
+    """XGED23 — Demande de disposition fin de rétention (revue humaine).
+
+    `documents` porte les ids proposés (résolus/filtrés côté serveur à la
+    création — jamais lus tels quels sans validation)."""
+    demandeur_nom = serializers.CharField(
+        source='demandeur.username', read_only=True, default=None)
+    approbateur_nom = serializers.CharField(
+        source='approbateur.username', read_only=True, default=None)
+    certificats = CertificatDestructionSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = DemandeDisposition
+        fields = [
+            'id', 'libelle', 'action', 'documents', 'statut',
+            'demandeur', 'demandeur_nom', 'approbateur', 'approbateur_nom',
+            'commentaire', 'decision_le', 'executee_le', 'certificats',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'statut', 'demandeur', 'approbateur', 'decision_le',
+            'executee_le', 'certificats', 'created_at', 'updated_at',
+        ]
 
 
 class PlanificationDocumentSerializer(serializers.ModelSerializer):

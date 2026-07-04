@@ -31,7 +31,8 @@ from apps.records.serializers import resolve_target
 from . import selectors, services
 from .models import (
     AnnotationDocument, ArchivageLegal, ArchivageLegalError, Cabinet,
-    ChampSignature, Coffre, DemandeApprobation, DemandeDocument,
+    ChampSignature, Coffre, DemandeApprobation, DemandeDisposition,
+    DemandeDispositionError, DemandeDocument,
     DemandeSignatureDocument, DepotPublic, Document, DocumentLien,
     DocumentTag, DocumentTagAssignment, DocumentVersion, ExigenceDossier,
     Folder, JournalAcces, LegalHold, LegalHoldError, ModeleDocument,
@@ -43,7 +44,8 @@ from .models import (
 from .serializers import (
     AnnotationDocumentSerializer, ArchivageLegalSerializer, CabinetSerializer,
     ChampSignatureSerializer, CoffreSerializer, DemandeApprobationSerializer,
-    DemandeDocumentSerializer, DemandeSignatureDocumentSerializer,
+    DemandeDispositionSerializer, DemandeDocumentSerializer,
+    DemandeSignatureDocumentSerializer,
     DepotPublicSerializer, DocumentLienSerializer, DocumentSerializer,
     DocumentTagAssignmentSerializer, DocumentTagSerializer,
     DocumentVersionSerializer, ExigenceDossierSerializer, FolderSerializer,
@@ -2748,6 +2750,123 @@ class RegleAclMetadonneeViewSet(TenantMixin, viewsets.ModelViewSet):
             raise ValidationError({'condition_group': errors})
         serializer.save(
             company=self.request.user.company, created_by=self.request.user)
+
+
+class DemandeDispositionViewSet(TenantMixin,
+                                mixins.ListModelMixin,
+                                mixins.RetrieveModelMixin,
+                                mixins.CreateModelMixin,
+                                viewsets.GenericViewSet):
+    """XGED23 — Workflow de disposition fin de rétention (revue + certificat).
+
+    Lecture + création (proposition d'un lot). La décision passe par les
+    actions dédiées `approuver`/`rejeter`, l'exécution par `executer` (jamais
+    un PATCH brut du statut). Lecture : tout rôle authentifié. Écriture :
+    responsable/admin."""
+    queryset = DemandeDisposition.objects.select_related(
+        'demandeur', 'approbateur').prefetch_related('certificats').all()
+    serializer_class = DemandeDispositionSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['created_at', 'statut']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset().filter(company=self.request.user.company)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        """Propose un lot de disposition à partir d'ids de documents.
+
+        Body : `{"libelle": "<str>", "action": "detruire|archiver",
+        "documents": [<id>, …]}`. Les holds actifs (GED24) sont exclus
+        d'office ; `company`/`demandeur` posés côté serveur."""
+        libelle = (request.data.get('libelle') or '').strip()
+        action_disp = request.data.get('action') or 'detruire'
+        document_ids = request.data.get('documents') or []
+        if not libelle or not document_ids:
+            return Response(
+                {'detail': 'libelle et documents (liste) sont requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            demande = services.creer_demande_disposition(
+                request.user.company, libelle=libelle,
+                document_ids=document_ids, action=action_disp,
+                user=request.user)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            DemandeDispositionSerializer(
+                demande, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='approuver')
+    def approuver(self, request, pk=None):
+        """XGED23 — Approuve cette demande (ne détruit pas encore).
+
+        Corps optionnel `{"commentaire": "<str?>"}`. Écriture : responsable/
+        admin."""
+        demande = self.get_object()
+        try:
+            demande = services.approuver_demande_disposition(
+                demande, user=request.user,
+                commentaire=(request.data.get('commentaire') or '').strip())
+        except DemandeDispositionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except PermissionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        return Response(
+            DemandeDispositionSerializer(
+                demande, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='rejeter')
+    def rejeter(self, request, pk=None):
+        """XGED23 — Rejette cette demande : CONSERVE tous les documents du lot.
+
+        Corps optionnel `{"commentaire": "<str?>"}`. Écriture : responsable/
+        admin."""
+        demande = self.get_object()
+        try:
+            demande = services.rejeter_demande_disposition(
+                demande, user=request.user,
+                commentaire=(request.data.get('commentaire') or '').strip())
+        except DemandeDispositionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except PermissionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        return Response(
+            DemandeDispositionSerializer(
+                demande, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='executer')
+    def executer(self, request, pk=None):
+        """XGED23 — Exécute une demande APPROUVÉE : détruit (ou archive) le
+        lot et émet un `CertificatDestruction` par document réellement
+        détruit. Écriture : responsable/admin."""
+        demande = self.get_object()
+        try:
+            services.executer_demande_disposition(demande, user=request.user)
+        except DemandeDispositionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except PermissionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        demande.refresh_from_db()
+        return Response(
+            DemandeDispositionSerializer(
+                demande, context={'request': request}).data)
 
 
 class PlanificationDocumentViewSet(TenantMixin, viewsets.ModelViewSet):

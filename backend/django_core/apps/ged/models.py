@@ -2631,3 +2631,158 @@ class RegleAclMetadonnee(models.Model):
 
     def __str__(self):
         return self.nom
+
+
+# ── XGED23 — Disposition fin de rétention (revue humaine + certificat) ──────
+
+DISPOSITION_EN_ATTENTE = 'en_attente'
+DISPOSITION_APPROUVEE = 'approuvee'
+DISPOSITION_REJETEE = 'rejetee'
+DISPOSITION_EXECUTEE = 'executee'
+
+DISPOSITION_STATUT_CHOICES = [
+    (DISPOSITION_EN_ATTENTE, 'En attente'),
+    (DISPOSITION_APPROUVEE, 'Approuvée'),
+    (DISPOSITION_REJETEE, 'Rejetée'),
+    (DISPOSITION_EXECUTEE, 'Exécutée'),
+]
+
+DISPOSITION_ACTION_DETRUIRE = 'detruire'
+DISPOSITION_ACTION_ARCHIVER = 'archiver'
+
+DISPOSITION_ACTION_CHOICES = [
+    (DISPOSITION_ACTION_DETRUIRE, 'Détruire'),
+    (DISPOSITION_ACTION_ARCHIVER, 'Archiver'),
+]
+
+
+class DemandeDispositionError(Exception):
+    """XGED23 — Levée quand une opération de disposition est invalide (déjà
+    décidée, document sous legal hold…). Traduite en 400/403 côté vue."""
+
+
+class DemandeDisposition(models.Model):
+    """XGED23 — Revue humaine entre l'échéance de rétention (GED22) et la
+    purge (GED25).
+
+    Regroupe un LOT de documents ÉCHUS (`selectors.documents_echus`)
+    proposés à disposition (destruction ou archivage) et les fait passer par
+    un circuit approuver/rejeter — RÉUTILISE le pattern `DemandeApprobation`
+    (GED18) : un `demandeur` propose, un `approbateur` décide. L'EXÉCUTION
+    (après approbation) produit un `CertificatDestruction` immuable par
+    document réellement détruit ; le rejet CONSERVE tous les documents du
+    lot (aucun effacement). Les documents sous `LegalHold` (GED24) ACTIF sont
+    exclus D'OFFICE du lot à la création (jamais proposés à destruction).
+
+    `documents` porte la liste des ids de documents proposés (résolue et
+    bornée à la société à la création — jamais lue telle quelle du corps de
+    requête sans validation). Company/demandeur posés côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='ged_demandes_disposition')
+    libelle = models.CharField(max_length=200)
+    action = models.CharField(
+        max_length=10, choices=DISPOSITION_ACTION_CHOICES,
+        default=DISPOSITION_ACTION_DETRUIRE)
+    documents = models.JSONField(
+        default=list, blank=True,
+        verbose_name='ids des documents proposés')
+    statut = models.CharField(
+        max_length=10, choices=DISPOSITION_STATUT_CHOICES,
+        default=DISPOSITION_EN_ATTENTE)
+    demandeur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='ged_demandes_disposition_emises')
+    approbateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='ged_demandes_disposition_recues')
+    commentaire = models.TextField(blank=True, default='')
+    decision_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='décidée le')
+    executee_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='exécutée le')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        verbose_name = 'Demande de disposition'
+        verbose_name_plural = 'Demandes de disposition'
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='ged_dispo_co_statut_idx'),
+        ]
+
+    @property
+    def is_pending(self):
+        return self.statut == DISPOSITION_EN_ATTENTE
+
+    def __str__(self):
+        return f'Disposition {self.libelle} ({self.statut})'
+
+
+class CertificatDestruction(models.Model):
+    """XGED23 — Certificat IMMUABLE de destruction d'un document (write-once,
+    pattern `ArchivageLegal` GED23).
+
+    Émis à L'EXÉCUTION d'une `DemandeDisposition` approuvée, un par document
+    réellement détruit : trace QUOI (référence document — le document lui-même
+    est déjà supprimé à ce stade, on n'en garde que le libellé/l'id d'origine),
+    QUAND, PAR QUI (l'exécutant, posé côté serveur), la POLITIQUE appliquée
+    (libellé de la `PolitiqueRetention` GED22 résolue) et le HASH des
+    métadonnées détruites (SHA-256 hexadécimal — preuve que CES métadonnées
+    précises ont bien été celles détruites, sans conserver le contenu). Classé
+    en GED via un `Document` de type texte généré à la volée par l'appelant
+    (hors modèle — cette table ne fait que porter la preuve structurée).
+
+    Write-once : `save()` refuse toute mise à jour, `delete()` toute
+    suppression (même motif qu'`ArchivageLegal`). Company posée côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='ged_certificats_destruction')
+    demande = models.ForeignKey(
+        DemandeDisposition, on_delete=models.CASCADE,
+        related_name='certificats')
+    document_id_origine = models.PositiveBigIntegerField(
+        verbose_name="id d'origine du document détruit")
+    document_nom = models.CharField(max_length=255)
+    politique_appliquee = models.CharField(max_length=255, blank=True, default='')
+    hash_metadonnees = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='hash des métadonnées détruites (SHA-256)')
+    detruit_le = models.DateTimeField(auto_now_add=True)
+    detruit_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='ged_certificats_destruction_emis')
+
+    class Meta:
+        ordering = ['-detruit_le', '-id']
+        verbose_name = 'Certificat de destruction'
+        verbose_name_plural = 'Certificats de destruction'
+        indexes = [
+            models.Index(fields=['company', 'demande'],
+                         name='ged_certif_co_demande_idx'),
+        ]
+
+    def save(self, *args, **kwargs):
+        """XGED23 — Création SEULE : refuse toute mise à jour (immuable),
+        même motif qu'`ArchivageLegal.save`."""
+        if self.pk is not None:
+            raise DemandeDispositionError(
+                "Un certificat de destruction est immuable (création seule) : "
+                "il ne peut pas être modifié.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        """XGED23 — Refuse la suppression d'un certificat (immuable)."""
+        raise DemandeDispositionError(
+            "Un certificat de destruction est immuable : il ne peut pas être "
+            "supprimé.")
+
+    def __str__(self):
+        return f'Certificat destruction — {self.document_nom} ({self.detruit_le:%Y-%m-%d})'

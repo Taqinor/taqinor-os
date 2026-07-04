@@ -4662,3 +4662,167 @@ def avancer_chaine_approbation_ged(demande, *, user, commentaire=''):
     chaine.etapes = etapes
     chaine.save(update_fields=['etapes', 'updated_at'])
     return approve_demande(demande, user=user, commentaire=commentaire)
+
+
+# ── XGED23 — Disposition fin de rétention (revue + certificat) ─────────────
+
+def creer_demande_disposition(
+        company, *, libelle, document_ids, action='detruire', user=None):
+    """XGED23 — Crée une `DemandeDisposition` à partir d'un lot d'ids de
+    documents ÉCHUS proposés (typiquement issus de `selectors.documents_echus`).
+
+    Les documents sous `LegalHold` (GED24) ACTIF sont EXCLUS D'OFFICE du lot
+    (jamais proposés à destruction/archivage) — filtrage silencieux, jamais
+    une erreur. Les ids sont bornés à `company` (un id d'une autre société —
+    ou inexistant — est simplement écarté, jamais une fuite cross-société).
+    `company`/`demandeur` posés côté serveur. Lève `ValueError` si le lot
+    filtré est vide (rien à proposer)."""
+    from .models import DemandeDisposition, Document
+
+    valides = list(
+        Document.objects.filter(company=company, pk__in=document_ids or [])
+        .values_list('pk', flat=True))
+    exclus_hold = _pks_sous_legal_hold(valides)
+    retenus = [pk for pk in valides if pk not in exclus_hold]
+    if not retenus:
+        raise ValueError(
+            "Aucun document éligible : tous exclus (introuvables ou sous "
+            "legal hold actif).")
+    return DemandeDisposition.objects.create(
+        company=company, libelle=libelle, action=action,
+        documents=retenus, demandeur=user)
+
+
+def _pks_sous_legal_hold(document_ids):
+    """XGED23 — pk des documents (parmi `document_ids`) sous `LegalHold` actif.
+
+    Helper interne factorisant l'exclusion d'office des documents gelés hors
+    de tout lot de disposition. Import paresseux (évite un cycle)."""
+    from .models import LegalHold
+    if not document_ids:
+        return set()
+    return set(
+        LegalHold.objects
+        .filter(document_id__in=document_ids, actif=True)
+        .values_list('document_id', flat=True))
+
+
+def approuver_demande_disposition(demande, *, user, commentaire=''):
+    """XGED23 — Approuve une `DemandeDisposition` (ne détruit PAS encore —
+    l'exécution est une étape séparée et explicite, `executer_demande_disposition`).
+
+    Idempotence : une demande déjà décidée lève `DemandeDispositionError`
+    (jamais de double décision silencieuse). `PermissionError` hors société."""
+    from django.utils import timezone
+
+    from .models import DISPOSITION_APPROUVEE, DemandeDispositionError
+
+    if demande.company_id != getattr(user, 'company_id', None):
+        raise PermissionError("Demande de disposition inaccessible.")
+    if not demande.is_pending:
+        raise DemandeDispositionError(
+            "Cette demande de disposition a déjà été décidée.")
+    demande.statut = DISPOSITION_APPROUVEE
+    demande.approbateur = user
+    demande.commentaire = commentaire or demande.commentaire
+    demande.decision_le = timezone.now()
+    demande.save(update_fields=[
+        'statut', 'approbateur', 'commentaire', 'decision_le', 'updated_at'])
+    return demande
+
+
+def rejeter_demande_disposition(demande, *, user, commentaire=''):
+    """XGED23 — Rejette une `DemandeDisposition` : CONSERVE tous les documents
+    du lot (aucun effacement, jamais). Idempotence : demande déjà décidée →
+    `DemandeDispositionError`."""
+    from django.utils import timezone
+
+    from .models import DISPOSITION_REJETEE, DemandeDispositionError
+
+    if demande.company_id != getattr(user, 'company_id', None):
+        raise PermissionError("Demande de disposition inaccessible.")
+    if not demande.is_pending:
+        raise DemandeDispositionError(
+            "Cette demande de disposition a déjà été décidée.")
+    demande.statut = DISPOSITION_REJETEE
+    demande.approbateur = user
+    demande.commentaire = commentaire or demande.commentaire
+    demande.decision_le = timezone.now()
+    demande.save(update_fields=[
+        'statut', 'approbateur', 'commentaire', 'decision_le', 'updated_at'])
+    return demande
+
+
+def executer_demande_disposition(demande, *, user):
+    """XGED23 — Exécute une `DemandeDisposition` APPROUVÉE : pour l'action
+    `detruire`, chaque document du lot ENCORE existant et NON sous legal hold
+    (re-vérifié à l'exécution — un hold posé entre la proposition et
+    l'exécution protège toujours le document, exclusion silencieuse) est
+    supprimé DÉFINITIVEMENT (`Document.delete()`, réel, irréversible), et un
+    `CertificatDestruction` immuable est émis pour CHAQUE document
+    effectivement détruit (hash des métadonnées figé avant suppression).
+    Pour l'action `archiver`, délègue à `archiver_legalement` (GED23 existant,
+    jamais dupliqué) — aucune destruction.
+
+    Lève `DemandeDispositionError` si la demande n'est pas approuvée ou déjà
+    exécutée. `PermissionError` hors société. Renvoie la liste des
+    `CertificatDestruction` créés (vide pour l'action `archiver`)."""
+    import json
+
+    from django.utils import timezone
+
+    from .models import (
+        DISPOSITION_ACTION_ARCHIVER, DISPOSITION_APPROUVEE,
+        DISPOSITION_EXECUTEE, CertificatDestruction, Document,
+        DemandeDispositionError,
+    )
+
+    if demande.company_id != getattr(user, 'company_id', None):
+        raise PermissionError("Demande de disposition inaccessible.")
+    if demande.statut != DISPOSITION_APPROUVEE:
+        raise DemandeDispositionError(
+            "Seule une demande APPROUVÉE peut être exécutée.")
+
+    certificats = []
+    with transaction.atomic():
+        for doc_id in (demande.documents or []):
+            document = Document.objects.filter(
+                company=demande.company, pk=doc_id).first()
+            if document is None:
+                continue  # déjà supprimé/introuvable — silencieux.
+            if _document_sous_legal_hold(document):
+                continue  # protégé entre-temps — exclusion silencieuse.
+            if demande.action == DISPOSITION_ACTION_ARCHIVER:
+                archiver_legalement(document, user=user)
+                continue
+            # Action « detruire » : fige le hash des métadonnées AVANT
+            # suppression réelle (preuve — le contenu n'est jamais conservé).
+            meta_snapshot = {
+                'nom': document.nom,
+                'description': document.description,
+                'custom_data': document.custom_data,
+                'created_at': document.created_at.isoformat()
+                if document.created_at else None,
+            }
+            hash_meta = hashlib.sha256(
+                json.dumps(meta_snapshot, sort_keys=True, default=str)
+                .encode('utf-8')).hexdigest()
+            politique = None
+            try:
+                from . import selectors
+                politique = selectors.politique_applicable(document)
+            except Exception:  # pragma: no cover - défensif.
+                politique = None
+            nom_doc = document.nom
+            doc_pk = document.pk
+            document.delete()
+            certificats.append(CertificatDestruction.objects.create(
+                company=demande.company, demande=demande,
+                document_id_origine=doc_pk, document_nom=nom_doc,
+                politique_appliquee=(politique.nom if politique else ''),
+                hash_metadonnees=hash_meta, detruit_par=user,
+            ))
+        demande.statut = DISPOSITION_EXECUTEE
+        demande.executee_le = timezone.now()
+        demande.save(update_fields=['statut', 'executee_le', 'updated_at'])
+    return certificats
