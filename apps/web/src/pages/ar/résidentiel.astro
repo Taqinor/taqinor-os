@@ -89,10 +89,17 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
     bill: r.label,
     kwc: band.kwcLabel,
     payback: band.paybackLabel,
+    investLow: arrondi5k(band.kwcMin * PRIX_PAR_KWC.bas),
+    investHigh: arrondi5k(band.kwcMax * PRIX_PAR_KWC.haut),
     invest: `${formatMAD(arrondi5k(band.kwcMin * PRIX_PAR_KWC.bas))} – ${formatMAD(arrondi5k(band.kwcMax * PRIX_PAR_KWC.haut))}`,
     exemple: EXEMPLES_REELS[r.id] ?? null,
   };
 });
+
+// القاعدة ب14 (2026-07-04) — الحدود مُشتقّة من جدول brackets أعلاه (منشور
+// أصلاً) للإجابة القابلة للاستخراج (AEO)؛ لا رقم جديد.
+const investRangeLow = formatMAD(Math.min(...brackets.map((b) => b.investLow)));
+const investRangeHigh = formatMAD(Math.max(...brackets.map((b) => b.investHigh)));
 ---
 
 <Layout
@@ -167,7 +174,12 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
         ms-2 (منطقي) مثل ar/index.astro — لا mr-2 فيزيائي. */}
     <section class="section mx-auto max-w-4xl px-4">
       <p class="tech-label v2-kicker rule-brass text-lune"><span class="ms-2 font-display text-xs text-azur-200/80" aria-hidden="true">01</span>شفافية الأسعار</p>
-      <h2 class="display v2-section-title mt-5 text-white">فاتورتك تضعك أصلاً ضمن مجال</h2>
+      <h2 class="display v2-section-title mt-5 text-white">كم تكلّف الطاقة الشمسية لفيلا، وفي كم من الوقت تُسترجع كلفتها؟</h2>
+      <p class="v2-lead mt-4 max-w-2xl font-bold text-white">
+        بالنسبة لفاتورة سكنية نموذجية (1 000 إلى 10 000 درهم/شهرياً)، تتكلّف التركيبة عادةً بين
+        {investRangeLow} و{investRangeHigh} وتُسترجع كلفتها خلال 3 إلى 7 سنوات، للجزء المُستهلَك
+        ذاتياً — بعدها، لا تكاد الكهرباء المُنتَجة تكلّف شيئاً طوال باقي سنوات ضمان الأداء الثلاثين.
+      </p>
       <p class="v2-lead mt-4 max-w-2xl text-lune-soft">
         إليك أوامر المقدار المسجَّلة على أوراشنا السكنية — <strong class="text-lune">لا تكون أبداً
         ثمناً نهائياً</strong>. الرقم الدقيق يأتي بعد الزيارة التقنية؛ وإن كان ملفك لا
