@@ -150,6 +150,24 @@ importe ``apps.audit``.
     ``LigneEcheance`` futures non facturées à ``annulee`` (pas besoin d'un
     abonné pour ça — même module, pas de cross-app).
 
+``facture_paid``
+    Émis EXACTEMENT une fois quand une ``ventes.Facture`` passe résiduel→0
+    (intégralement réglée) — YDOCF4. DISTINCT de ``payment_captured`` (FG370,
+    core/payment.py) : celui-ci ne se déclenche qu'à la capture d'une
+    transaction carte EN LIGNE (``core.PaymentTransaction``) ; ``facture_paid``
+    couvre TOUT encaissement qui solde la facture, y compris un encaissement
+    MANUEL (``enregistrer-paiement``), un webhook de lien de paiement
+    (``record_payment_from_link``) ou un passage manuel « marquer payée ».
+    Émis par ``apps/ventes/views/facture.py`` et ``apps/ventes/services.py``
+    UNIQUEMENT au moment où le résiduel atteint zéro (un paiement partiel
+    n'émet rien) ; jamais posé deux fois pour le même règlement. Contrat :
+    émetteur ``ventes``, abonnés futurs ``compta`` (XACC1 transfert TVA à
+    l'encaissement) / ``notifications``. Arguments du signal :
+
+    * ``facture`` — l'instance ``ventes.Facture`` désormais soldée ;
+    * ``montant`` — montant du DERNIER paiement qui a soldé la facture ;
+    * ``company`` — la société (posée côté serveur).
+
 ``document_produit``
     Émis par une app métier/satellite quand elle produit un fichier destiné à
     être centralisé dans la GED (ZGED6 — pattern Odoo « File centralization »).
@@ -243,3 +261,8 @@ contrat_resilie = django.dispatch.Signal()
 # no-op silencieux si aucun RoutageDocumentaire pour la source — voir
 # docstring du module ci-dessus.
 document_produit = django.dispatch.Signal()
+
+# Émis EXACTEMENT une fois quand une Facture passe résiduel→0 (YDOCF4).
+# Arguments : facture, montant, company. DISTINCT de payment_captured (capture
+# carte en ligne uniquement) — voir docstring du module ci-dessus.
+facture_paid = django.dispatch.Signal()

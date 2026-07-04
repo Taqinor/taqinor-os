@@ -264,6 +264,16 @@ class FactureViewSet(viewsets.ModelViewSet):
             )
         facture.statut = Facture.Statut.PAYEE
         facture.save()
+        # YDOCF4 — facture_paid, exactement une fois. Un passage manuel
+        # « marquer payée » ne porte pas de montant de paiement propre : on
+        # transmet le résiduel qui vient d'être annulé (montant_du AVANT ce
+        # passage, ici recalculé à 0 côté document — le montant informatif
+        # posé est donc le solde figé de la facture, cohérent avec les autres
+        # sites d'émission qui portent le montant réglé).
+        from core.events import facture_paid
+        facture_paid.send(
+            sender=Facture, facture=facture, montant=facture.total_ttc,
+            company=facture.company)
         return Response(FactureSerializer(facture).data)
 
     @action(detail=True, methods=['post'], url_path='annuler',
@@ -536,6 +546,12 @@ class FactureViewSet(viewsets.ModelViewSet):
                 # niveau) pour qu'une facture payée cesse d'afficher un retard.
                 from ..services import reset_relance_escalation
                 reset_relance_escalation(locked)
+                # YDOCF4 — facture_paid, exactement une fois au passage
+                # résiduel→0 (jamais à un règlement partiel).
+                from core.events import facture_paid
+                facture_paid.send(
+                    sender=Facture, facture=locked, montant=montant,
+                    company=locked.company)
             elif locked.statut != Facture.Statut.ANNULEE:
                 # XFAC13 — tolérance société : un résiduel sous le seuil
                 # (défaut 0 = désactivé, comportement inchangé) est abandonné
