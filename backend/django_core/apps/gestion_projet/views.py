@@ -457,6 +457,20 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
                 seuil = None
         return Response(selectors.retards_projet(projet, seuil_jours=seuil))
 
+    @action(detail=True, methods=['get'], url_path='penalites-retard')
+    def penalites_retard(self, request, pk=None):
+        """Exposition COURANTE aux pénalités de retard d'un marché public
+        (XPRJ27) — donnée INTERNE de pilotage, jamais dans un document client.
+
+        La société est garantie par ``get_object`` (queryset scopé société) :
+        un projet d'une autre société → 404. Délègue au sélecteur
+        ``penalites_retard`` (lecture seule) : avant le délai contractuel →
+        exposition nulle ; un projet PRIVÉ (champs marché-public absents) →
+        ``applicable=False`` sans erreur.
+        """
+        projet = self.get_object()
+        return Response(selectors.penalites_retard(projet))
+
     @action(detail=True, methods=['get'], url_path='couts-engages-reels')
     def couts_engages_reels(self, request, pk=None):
         """Coûts ENGAGÉS/RÉELS vs BUDGET (PROJ21) par catégorie (PROJ22).

@@ -66,7 +66,13 @@ class ProjetSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'code', 'nom', 'description', 'statut', 'statut_display',
             'client_id', 'date_debut', 'date_fin_prevue', 'responsable',
-            'budget_total', 'date_creation',
+            'budget_total',
+            # Volet marchés publics (XPRJ27) — FACULTATIF, sans impact sur les
+            # projets privés (aucun champ obligatoire).
+            'numero_marche', 'maitre_ouvrage', 'delai_execution_jours',
+            'taux_penalite_retard', 'plafond_penalite_pct', 'montant_marche',
+            'contrat_id',
+            'date_creation',
         ]
         # ``statut`` est piloté UNIQUEMENT par les actions de transition
         # (machine à états côté serveur) — jamais écrit depuis le corps de

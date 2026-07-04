@@ -2687,3 +2687,85 @@ def mes_taches(user, aujourd_hui=None):
     for r in resultats:
         del r['_urgence']
     return resultats
+
+
+# ── Marché public : exposition aux pénalités de retard (XPRJ27) ─────────────
+def penalites_retard(projet, date_reference=None):
+    """Exposition COURANTE aux pénalités de retard d'un marché public (XPRJ27).
+
+    Donnée INTERNE de pilotage — jamais dans un document client. Calcule le
+    nombre de jours de DÉPASSEMENT du délai contractuel d'exécution
+    (``delai_execution_jours`` compté depuis ``projet.date_debut``) à
+    ``date_reference`` (défaut aujourd'hui), puis l'exposition brute :
+
+        jours_depassement × (taux_penalite_retard / 1000) × montant_marche
+
+    plafonnée à ``plafond_penalite_pct`` % du ``montant_marche`` quand ce
+    plafond est renseigné. AVANT le délai (pas de dépassement) → exposition
+    NULLE (jamais négative). Un projet sans champs marché-public renseignés
+    (cas des projets PRIVÉS, majoritaires) renvoie une exposition nulle avec
+    ``applicable=False`` — sans jamais lever d'erreur, pour rester appelable
+    sans condition depuis n'importe quel projet. Le décompte DÉFINITIF reste à
+    établir à la CLÔTURE du marché (ce sélecteur ne fige rien, lecture seule).
+
+    Renvoie un dict ``{applicable, jours_depassement, taux_penalite_retard,
+    montant_marche, plafond_penalite_pct, exposition_brute, plafond_montant,
+    exposition, plafonnee, decompte_definitif_a_etablir}``.
+    """
+    if date_reference is None:
+        date_reference = _date.today()
+
+    applicable = bool(
+        projet.numero_marche
+        and projet.delai_execution_jours is not None
+        and projet.taux_penalite_retard is not None
+        and projet.montant_marche is not None
+        and projet.date_debut is not None
+    )
+    if not applicable:
+        return {
+            'applicable': False,
+            'jours_depassement': 0,
+            'taux_penalite_retard': None,
+            'montant_marche': None,
+            'plafond_penalite_pct': None,
+            'exposition_brute': Decimal('0'),
+            'plafond_montant': None,
+            'exposition': Decimal('0'),
+            'plafonnee': False,
+            'decompte_definitif_a_etablir': False,
+        }
+
+    date_limite = projet.date_debut + timedelta(
+        days=projet.delai_execution_jours)
+    jours_depassement = max((date_reference - date_limite).days, 0)
+
+    taux = projet.taux_penalite_retard
+    montant_marche = projet.montant_marche
+    exposition_brute = (
+        Decimal(jours_depassement) * (taux / Decimal('1000')) * montant_marche
+    ).quantize(Decimal('0.01'))
+
+    plafond_montant = None
+    exposition = exposition_brute
+    plafonnee = False
+    if projet.plafond_penalite_pct is not None:
+        plafond_montant = (
+            montant_marche * projet.plafond_penalite_pct / Decimal('100')
+        ).quantize(Decimal('0.01'))
+        if exposition_brute > plafond_montant:
+            exposition = plafond_montant
+            plafonnee = True
+
+    return {
+        'applicable': True,
+        'jours_depassement': jours_depassement,
+        'taux_penalite_retard': taux,
+        'montant_marche': montant_marche,
+        'plafond_penalite_pct': projet.plafond_penalite_pct,
+        'exposition_brute': exposition_brute,
+        'plafond_montant': plafond_montant,
+        'exposition': exposition,
+        'plafonnee': plafonnee,
+        'decompte_definitif_a_etablir': jours_depassement > 0,
+    }

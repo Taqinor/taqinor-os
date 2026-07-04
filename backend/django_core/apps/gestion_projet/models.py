@@ -74,6 +74,32 @@ class Projet(models.Model):
     budget_total = models.DecimalField(
         max_digits=14, decimal_places=2, default=Decimal('0'),
         verbose_name='Budget total')
+    # ── Volet marchés publics (XPRJ27) — FACULTATIF, sans impact sur les
+    # projets privés (aucun champ obligatoire, tous par défaut vide/0/None).
+    # Les cautions provisoire/définitive vivent déjà dans FG145/contrats —
+    # référence LÂCHE ``contrat_id`` (aucun FK dur, frontière cross-app).
+    numero_marche = models.CharField(
+        max_length=100, blank=True, default='', verbose_name='N° de marché')
+    maitre_ouvrage = models.CharField(
+        max_length=200, blank=True, default='', verbose_name="Maître d'ouvrage")
+    delai_execution_jours = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="Délai d'exécution (jours)")
+    # Taux de pénalité de retard en ‰ (pour mille) par jour de dépassement.
+    taux_penalite_retard = models.DecimalField(
+        max_digits=6, decimal_places=3, null=True, blank=True,
+        verbose_name='Taux de pénalité de retard (‰/jour)')
+    # Plafond de pénalité en % du montant du marché (souvent 10 % au Maroc).
+    plafond_penalite_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        verbose_name='Plafond de pénalité (%)')
+    # Montant du marché — distinct du ``budget_total`` INTERNE de pilotage :
+    # sert d'assiette au calcul de l'exposition aux pénalités.
+    montant_marche = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Montant du marché')
+    # Référence LÂCHE vers un ``contrats.Contrat`` (cautions) — jamais de FK dur.
+    contrat_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du contrat (cautions)')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
