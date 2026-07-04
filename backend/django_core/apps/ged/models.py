@@ -2573,3 +2573,61 @@ class PlanificationDocument(models.Model):
 
     def __str__(self):
         return f'{self.libelle} ({self.echeance})'
+
+
+class RegleAclMetadonnee(models.Model):
+    """XGED21 — ACL automatique pilotée par métadonnées (couche dynamique).
+
+    Étend GED19 (`AclGed`) sans matérialiser de lignes : une règle décrit une
+    CONDITION (`condition_group`, format `core.rules` — groupe ET/OU/NON validé
+    côté serveur, jamais d'exécution de code) évaluée contre les métadonnées
+    d'un document (tags/type/custom_data — même contexte que `RegleDossier`
+    XGED19 via `_document_contexte_regle`) et un `niveau` d'accès octroyé à un
+    `role` UNIQUEMENT (jamais un utilisateur nommé — la règle cible une
+    population, pas un individu) SI la condition matche.
+
+    `selectors.acl_effective` (GED19) consulte ces règles APRÈS les entrées
+    `AclGed` matérialisées : si une règle matche pour le rôle de l'utilisateur,
+    son niveau participe à la résolution du meilleur rang au même titre qu'une
+    entrée directe sur le document (recalcul IMMÉDIAT à chaque lecture — poser
+    ou retirer un tag change l'accès sans aucune ligne à mettre à jour).
+    L'admin/superuser reste TOUJOURS non affecté (contournement GED19 déjà
+    inconditionnel). RÉTROCOMPATIBLE : aucune règle active ⇒ comportement
+    GED19 strictement inchangé.
+
+    Company posée côté serveur. Couche LOCALE à la GED (séparée du funnel
+    commercial STAGES.py, rule #2).
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='ged_regles_acl_metadonnee')
+    nom = models.CharField(max_length=200)
+    condition_group = models.JSONField(default=dict, blank=True)
+    role = models.ForeignKey(
+        'roles.Role', on_delete=models.CASCADE,
+        related_name='ged_regles_acl_metadonnee',
+        verbose_name='rôle')
+    niveau = models.CharField(
+        max_length=8, choices=ACL_CHOICES, default=ACL_LECTURE,
+        verbose_name="niveau d'accès")
+    priorite = models.PositiveIntegerField(default=0)
+    actif = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='ged_regles_acl_metadonnee_creees')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-priorite', '-id']
+        verbose_name = 'Règle ACL par métadonnée'
+        verbose_name_plural = 'Règles ACL par métadonnée'
+        indexes = [
+            models.Index(fields=['company', 'actif'],
+                         name='ged_reglecl_co_actif_idx'),
+            models.Index(fields=['role'], name='ged_reglecl_role_idx'),
+        ]
+
+    def __str__(self):
+        return self.nom

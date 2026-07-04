@@ -7,7 +7,7 @@ Toutes les lectures sont bornées à une société.
 from .models import (
     ACL_RANK, AclGed, ArchivageLegal, Cabinet, Coffre, DemandeApprobation,
     Document, DocumentLien, DocumentTag, DocumentVersion, Folder, LegalHold,
-    PartageGed, PolitiqueRetention,
+    PartageGed, PolitiqueRetention, RegleAclMetadonnee,
 )
 
 
@@ -397,7 +397,13 @@ def acl_effective(document_or_folder, user):
         chain = _folder_chain_ids(document_or_folder)
 
     entries = list(acl_entries_for_target(document_or_folder))
-    if not entries:
+    # XGED21 — une règle ACL par métadonnée qui matche compte comme une entrée
+    # DIRECTE sur la cible (proximité 0) : elle ne fait qu'AJOUTER une
+    # candidate au calcul du meilleur rang, jamais un court-circuit — un
+    # override direct plus spécifique reste possible au même scope.
+    metadonnee_rank = (
+        _acl_metadonnee_rank(document_or_folder, user) if is_document else None)
+    if not entries and metadonnee_rank is None:
         return None
 
     # Rang de proximité de chaque scope : 0 = override direct (le plus proche),
@@ -413,6 +419,9 @@ def acl_effective(document_or_folder, user):
 
     best_scope = None       # rang de proximité le plus petit qui statue
     best_rank = 0           # niveau le plus permissif à ce scope
+    if metadonnee_rank is not None:
+        best_scope = 0
+        best_rank = metadonnee_rank
     for entry in entries:
         if not _principal_matches(entry, user):
             continue
@@ -439,6 +448,42 @@ def acl_effective(document_or_folder, user):
         if r == best_rank:
             return code
     return None
+
+
+def _acl_metadonnee_rank(document, user):
+    """XGED21 — Rang ACL le plus permissif qu'une `RegleAclMetadonnee` ACTIVE
+    octroie à `user` (via son rôle) sur `document`, ou ``None`` si aucune règle
+    active ne matche/ne cible son rôle.
+
+    Recalcul IMMÉDIAT à chaque appel (aucune ligne matérialisée) : poser ou
+    retirer un tag/une métadonnée change instantanément le résultat. Réutilise
+    le même contexte plat que `RegleDossier`/`RegleApprobationGed` (XGED19/20)
+    pour rester cohérent avec le reste du moteur de règles GED."""
+    role_id = getattr(user, 'role_id', None)
+    if not role_id:
+        return None
+    regles = list(
+        RegleAclMetadonnee.objects
+        .filter(company_id=document.company_id, actif=True, role_id=role_id)
+        .order_by('-priorite', '-id'))
+    if not regles:
+        return None
+    from core.rules import evaluate_condition_group
+
+    from . import services
+    contexte = services._document_contexte_regle(document)
+    best_rank = None
+    for regle in regles:
+        try:
+            matched = evaluate_condition_group(regle.condition_group, contexte)
+        except Exception:  # pragma: no cover - défensif, jamais bloquant.
+            matched = False
+        if not matched:
+            continue
+        rank = ACL_RANK.get(regle.niveau, 0)
+        if best_rank is None or rank > best_rank:
+            best_rank = rank
+    return best_rank
 
 
 def acl_governs_target(target):
@@ -766,3 +811,12 @@ def timeline_document(document):
         pass
     entries.sort(key=lambda e: e['created_at'], reverse=True)
     return entries
+
+
+def regles_acl_metadonnee_for_company(company):
+    """XGED21 — Règles ACL par métadonnée d'une société (QuerySet).
+
+    Lecture bornée à la société — jamais de fuite cross-société."""
+    return (RegleAclMetadonnee.objects
+            .filter(company=company)
+            .select_related('role', 'created_by'))

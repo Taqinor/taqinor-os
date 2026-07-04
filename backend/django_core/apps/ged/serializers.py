@@ -6,8 +6,8 @@ from .models import (
     Document, DocumentLien, DocumentTag, DocumentTagAssignment, DocumentVersion,
     ExigenceDossier, Folder, JournalAcces, LegalHold, ModeleDocument,
     PartageGed, PlanificationDocument, PolitiqueRetention,
-    RegleApprobationGed, RegleDossier, QuotaStockage, SignataireDemande,
-    ValidationOcrDocument,
+    RegleAclMetadonnee, RegleApprobationGed, RegleDossier, QuotaStockage,
+    SignataireDemande, ValidationOcrDocument,
 )
 from . import services
 
@@ -855,6 +855,22 @@ class RegleApprobationGedSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'libelle', 'condition_group', 'approbateurs', 'priorite',
             'actif', 'created_by', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_by', 'created_at', 'updated_at']
+
+
+class RegleAclMetadonneeSerializer(serializers.ModelSerializer):
+    """XGED21 — ACL automatique pilotée par métadonnées (couche dynamique,
+    évaluée à chaque lecture par `selectors.acl_effective` — jamais de ligne
+    `AclGed` matérialisée)."""
+    role_nom = serializers.CharField(
+        source='role.nom', read_only=True, default=None)
+
+    class Meta:
+        model = RegleAclMetadonnee
+        fields = [
+            'id', 'nom', 'condition_group', 'role', 'role_nom', 'niveau',
+            'priorite', 'actif', 'created_by', 'created_at', 'updated_at',
         ]
         read_only_fields = ['created_by', 'created_at', 'updated_at']
 

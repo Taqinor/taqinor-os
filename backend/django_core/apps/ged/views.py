@@ -36,8 +36,9 @@ from .models import (
     DocumentTag, DocumentTagAssignment, DocumentVersion, ExigenceDossier,
     Folder, JournalAcces, LegalHold, LegalHoldError, ModeleDocument,
     PartageGed, PlanificationDocument, PolitiqueRetention,
-    QuotaDepasseError, QuotaStockage, RegleApprobationGed, RegleDossier,
-    SignataireDemande, ValidationOcrDocument,
+    QuotaDepasseError, QuotaStockage, RegleAclMetadonnee,
+    RegleApprobationGed, RegleDossier, SignataireDemande,
+    ValidationOcrDocument,
 )
 from .serializers import (
     AnnotationDocumentSerializer, ArchivageLegalSerializer, CabinetSerializer,
@@ -49,8 +50,9 @@ from .serializers import (
     JournalAccesSerializer, LegalHoldSerializer, ModeleDocumentSerializer,
     PartageGedSerializer, PlanificationDocumentSerializer,
     PolitiqueRetentionSerializer, QuotaStockageSerializer,
-    RegleApprobationGedSerializer, RegleDossierSerializer,
-    SignataireDemandeSerializer, ValidationOcrDocumentSerializer,
+    RegleAclMetadonneeSerializer, RegleApprobationGedSerializer,
+    RegleDossierSerializer, SignataireDemandeSerializer,
+    ValidationOcrDocumentSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -2651,6 +2653,38 @@ class RegleApprobationGedViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         return super().get_queryset().filter(company=self.request.user.company)
+
+    def perform_create(self, serializer):
+        from core.rules import validate_condition_group
+        errors = validate_condition_group(
+            serializer.validated_data.get('condition_group') or {})
+        if errors:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({'condition_group': errors})
+        serializer.save(
+            company=self.request.user.company, created_by=self.request.user)
+
+
+class RegleAclMetadonneeViewSet(TenantMixin, viewsets.ModelViewSet):
+    """XGED21 — ACL automatiques pilotées par métadonnées (couche dynamique).
+
+    CRUD des règles ; l'admin voit toujours tout (résolution `acl_effective`
+    inconditionnelle pour lui). Lecture : tout rôle authentifié. Écriture :
+    responsable/admin."""
+    queryset = RegleAclMetadonnee.objects.select_related(
+        'role', 'created_by').all()
+    serializer_class = RegleAclMetadonneeSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['priorite', 'created_at']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        return selectors.regles_acl_metadonnee_for_company(
+            self.request.user.company)
 
     def perform_create(self, serializer):
         from core.rules import validate_condition_group

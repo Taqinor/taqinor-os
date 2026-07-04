@@ -10,7 +10,8 @@ from .views import (
     ExigenceDossierViewSet, FolderViewSet, JournalAccesViewSet,
     LegalHoldViewSet, ModeleDocumentViewSet, PartageGedViewSet,
     PlanificationDocumentViewSet, PolitiqueRetentionViewSet,
-    QuotaStockageViewSet, RegleApprobationGedViewSet, RegleDossierViewSet,
+    QuotaStockageViewSet, RegleAclMetadonneeViewSet,
+    RegleApprobationGedViewSet, RegleDossierViewSet,
     SignataireDemandeViewSet, ValidationOcrDocumentViewSet,
     public_depot, public_partage, public_signataire, public_signature,
 )
@@ -42,6 +43,7 @@ router.register(r'validations-ocr', ValidationOcrDocumentViewSet)
 router.register(r'annotations', AnnotationDocumentViewSet)
 router.register(r'regles-dossier', RegleDossierViewSet)
 router.register(r'regles-approbation', RegleApprobationGedViewSet)
+router.register(r'regles-acl-metadonnee', RegleAclMetadonneeViewSet)
 router.register(r'planifications', PlanificationDocumentViewSet)
 
 urlpatterns = [
