@@ -64,3 +64,4 @@ logs/
 # brain) so cloud sessions / routines get them in a fresh clone.
 !.claude/skills/
 !.claude/skills/**
+.serena/
