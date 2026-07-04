@@ -306,6 +306,35 @@ class DossierEmployeViewSet(_RhBaseViewSet):
             or timezone.localdate().year)
         return Response(selectors.rapport_turnover(request.user.company, annee))
 
+    @action(detail=True, methods=['get'], url_path='certificat-travail')
+    def certificat_travail(self, request, pk=None):
+        """ZRH12 — certificat de travail légal (art. 72) — PDF.
+
+        DISTINCT de l'attestation de travail (PAIE34) et du reçu STC
+        (XPAI1) — ne les duplique pas. 404 si l'employé n'est pas sorti
+        (aucun sens pour un actif). Gaté ``IsResponsableOrAdmin`` (gate de
+        classe par défaut)."""
+        from django.http import HttpResponse
+
+        from .pdf_sortie import render_certificat_travail_pdf
+
+        employe = self.get_object()
+        if employe.statut != DossierEmploye.Statut.SORTI or not employe.date_sortie:
+            return Response(
+                {'detail': "Certificat de travail indisponible : "
+                           "l'employé n'est pas sorti."},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            pdf_bytes = render_certificat_travail_pdf(employe)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'attachment; filename="certificat-travail-{employe.pk}.pdf"')
+        return response
+
     @action(detail=True, methods=['get'], url_path='compa-ratio')
     def compa_ratio(self, request, pk=None):
         """XRH16 — compa-ratio de l'employé (salaire vs bande de son poste).
