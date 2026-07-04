@@ -91,7 +91,11 @@ const heroTariffLowRate = REGIE_MARGINAL_RATE_SECOND; // 1.3817 MAD/kWh
 const heroTariffHighRate = REGIE_MARGINAL_RATE_HIGH; // 1.5958 MAD/kWh
 const heroMoneyLow = Math.round((heroProductionKwh * heroTariffLowRate) / 100) * 100;
 const heroMoneyHigh = Math.round((heroProductionKwh * heroTariffHighRate) / 100) * 100;
-const heroMoneyLine = `≈ ${heroMoneyLow.toLocaleString('en-US')} to ${heroMoneyHigh.toLocaleString('en-US')} MAD wiped off the bill every year`;
+// WB2 (2026-07-04) — self-consumption qualifier added: with no published
+// residential (BT) net-billing tariff, only the self-consumed share actually
+// offsets the bill; exported surplus is worth 0 MAD until a tariff exists.
+// See /loi-82-21 (ANRE 04/26: MT/HT/THT published, BT unpublished).
+const heroMoneyLine = `≈ ${heroMoneyLow.toLocaleString('en-US')} to ${heroMoneyHigh.toLocaleString('en-US')} MAD wiped off the bill every year, if self-consumed`;
 
 // PLACEHOLDER(MERYEM): provisional FAQ.
 const faq = [

@@ -86,7 +86,12 @@ const heroTariffLowRate = REGIE_MARGINAL_RATE_SECOND; // 1,3817 MAD/kWh
 const heroTariffHighRate = REGIE_MARGINAL_RATE_HIGH; // 1,5958 MAD/kWh
 const heroMoneyLow = Math.round((heroProductionKwh * heroTariffLowRate) / 100) * 100;
 const heroMoneyHigh = Math.round((heroProductionKwh * heroTariffHighRate) / 100) * 100;
-const heroMoneyLine = `≈ ${heroMoneyLow.toLocaleString('fr-FR')} à ${heroMoneyHigh.toLocaleString('fr-FR')} MAD effacés de la facture chaque année`;
+// WB2 (2026-07-04) — qualificatif d'autoconsommation ajouté : sans tarif de
+// rachat BT (résidentiel) publié, seule la part autoconsommée efface
+// réellement la facture ; le surplus injecté ne vaut 0 MAD tant qu'aucun
+// barème n'existe. Voir /loi-82-21 (ANRE 04/26 : MT/HT/THT publié, BT non
+// publié).
+const heroMoneyLine = `≈ ${heroMoneyLow.toLocaleString('fr-FR')} à ${heroMoneyHigh.toLocaleString('fr-FR')} MAD effacés de la facture chaque année, pour la part autoconsommée`;
 
 // W54 — L'ancien tableau de données (variable `cases`) a été retiré : les
 // mêmes installations vivaient en double (cartes photo + cartes données). La

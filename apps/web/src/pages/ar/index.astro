@@ -90,7 +90,11 @@ const heroTariffLowRate = REGIE_MARGINAL_RATE_SECOND; // 1,3817 MAD/kWh
 const heroTariffHighRate = REGIE_MARGINAL_RATE_HIGH; // 1,5958 MAD/kWh
 const heroMoneyLow = Math.round((heroProductionKwh * heroTariffLowRate) / 100) * 100;
 const heroMoneyHigh = Math.round((heroProductionKwh * heroTariffHighRate) / 100) * 100;
-const heroMoneyLine = `≈ ${heroMoneyLow.toLocaleString('fr-FR')} إلى ${heroMoneyHigh.toLocaleString('fr-FR')} MAD تُمحى من الفاتورة كل سنة`;
+// القاعدة ب2 (2026-07-04) — أُضيف شرط الاستهلاك الذاتي: في غياب تعريفة إعادة
+// شراء منزلية (BT) منشورة، الجزء المُستهلَك ذاتياً وحده يمحو الفاتورة فعلاً؛
+// الفائض المُصدَّر يساوي 0 درهم ما دامت التعريفة غير موجودة. انظر /loi-82-21
+// (قرار ANRE 04/26: المتوسط/العالي/العالي جداً منشور، BT غير منشور).
+const heroMoneyLine = `≈ ${heroMoneyLow.toLocaleString('fr-FR')} إلى ${heroMoneyHigh.toLocaleString('fr-FR')} MAD تُمحى من الفاتورة كل سنة، للجزء المُستهلَك ذاتياً`;
 
 // PLACEHOLDER(MERYEM): FAQ مؤقتة.
 const faq = [
