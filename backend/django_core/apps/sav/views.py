@@ -21,6 +21,8 @@ from .models import (
     Equipement, Ticket, PieceConsommee,
     SavSlaSettings, MaintenanceChecklistTemplate, TicketChecklistItem,
     WarrantyClaim, KbArticle, AlarmeOnduleur,
+    CauseDefaillance, RemedeDefaillance, EquipementDowntime,
+    ReleveCompteurEquipement, ReponseType, CompatibilitePiece,
 )
 from .services import add_months
 from .pdf import rapport_intervention_pdf
@@ -32,6 +34,11 @@ from .serializers import (
     WarrantyClaimSerializer,
     KbArticleSerializer,
     AlarmeOnduleurSerializer,
+    CauseDefaillanceSerializer, RemedeDefaillanceSerializer,
+    EquipementDowntimeSerializer,
+    ReleveCompteurEquipementSerializer,
+    ReponseTypeSerializer,
+    CompatibilitePieceSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -180,10 +187,19 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
             qs = qs.filter(pk__in=ids)
         qs = qs[:200]
 
+        # XSAV19 — ?public=1 encode l'URL publique « Signaler un problème »
+        # (/e/<public_token>) au lieu du jeton interne EQUIP:<id> (scan
+        # interne inchangé par défaut). Le jeton public est généré lazily.
+        public = request.query_params.get('public') in ('1', 'true')
+
         items = []
         for eq in qs:
-            # Assure le jeton présent (rétro-compat équipements sans token).
-            token = eq.equipement_token or f'EQUIP:{eq.pk}'
+            if public:
+                token = request.build_absolute_uri(
+                    f'/e/{eq.ensure_public_token()}')
+            else:
+                # Assure le jeton présent (rétro-compat équipements sans token).
+                token = eq.equipement_token or f'EQUIP:{eq.pk}'
             titre = eq.produit.nom if eq.produit_id else '—'
             sous_titre = eq.numero_serie or '(sans série)'
             items.append({'token': token, 'titre': titre, 'sous_titre': sous_titre})
@@ -215,6 +231,163 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
         jours = max(0, jours)
         data = warranty_registry(self.get_queryset(), expiring_soon_days=jours)
         return Response(data)
+
+    @action(detail=True, methods=['get'], url_path='fiabilite',
+            permission_classes=[HasPermissionOrLegacy('equipement_voir')])
+    def fiabilite(self, request, pk=None):
+        """XSAV15 — MTBF / MTTR / coût cumulé de CET équipement.
+
+        Le coût cumulé (Ticket.cout + pièces valorisées prix d'achat) et
+        l'indicateur réparer-vs-remplacer ne sont inclus QUE si l'utilisateur
+        porte la permission `prix_achat_voir` — jamais exposés autrement
+        (admin-only, jamais client-facing ni dans un PDF)."""
+        from .selectors import fiabilite_equipement
+        equipement = self.get_object()
+        include_couts = bool(request.user.can_view_buy_prices)
+        data = fiabilite_equipement(equipement, include_couts=include_couts)
+        return Response(data)
+
+    @action(detail=True, methods=['get', 'post'], url_path='downtime',
+            permission_classes=[HasPermissionOrLegacy('equipement_gerer')])
+    def downtime(self, request, pk=None):
+        """XSAV16 — Journal d'immobilisation de cet équipement.
+
+        GET : liste les fenêtres (en cours + closes). POST : ouvre une
+        nouvelle fenêtre (body : ``debut`` ISO8601 optionnel — défaut
+        maintenant, ``ticket`` id optionnel, ``motif`` optionnel). Refuse tout
+        chevauchement avec une fenêtre existante (400 explicite, jamais une
+        seconde fenêtre concurrente créée par erreur)."""
+        equipement = self.get_object()
+        if request.method == 'GET':
+            qs = equipement.downtimes.select_related('ticket')
+            return Response(EquipementDowntimeSerializer(qs, many=True).data)
+
+        from .services import DowntimeOverlapError, ouvrir_downtime
+
+        debut_raw = request.data.get('debut')
+        if debut_raw:
+            from django.utils.dateparse import parse_datetime
+            debut = parse_datetime(debut_raw)
+            if debut is None:
+                return Response({'detail': 'Date invalide.'}, status=400)
+        else:
+            debut = timezone.now()
+
+        ticket = None
+        ticket_id = request.data.get('ticket')
+        if ticket_id:
+            ticket = Ticket.objects.filter(
+                id=ticket_id, company=equipement.company_id).first()
+            if ticket is None:
+                return Response({'detail': 'Ticket inconnu.'}, status=400)
+
+        try:
+            dt = ouvrir_downtime(
+                company=equipement.company, equipement=equipement,
+                debut=debut, ticket=ticket,
+                motif=(request.data.get('motif') or '').strip(),
+                created_by=request.user)
+        except DowntimeOverlapError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(
+            EquipementDowntimeSerializer(dt).data, status=201)
+
+    @action(detail=True, methods=['post'],
+            url_path=r'downtime/(?P<downtime_id>[^/.]+)/cloturer',
+            permission_classes=[HasPermissionOrLegacy('equipement_gerer')])
+    def cloturer_downtime(self, request, pk=None, downtime_id=None):
+        """XSAV16 — Ferme une fenêtre d'immobilisation en cours (idempotent)."""
+        equipement = self.get_object()
+        try:
+            dt = equipement.downtimes.get(pk=downtime_id)
+        except (EquipementDowntime.DoesNotExist, ValueError):
+            return Response({'detail': 'Immobilisation introuvable.'}, status=404)
+        fin_raw = request.data.get('fin')
+        fin = None
+        if fin_raw:
+            from django.utils.dateparse import parse_datetime
+            fin = parse_datetime(fin_raw)
+        dt.clore(fin=fin)
+        return Response(EquipementDowntimeSerializer(dt).data)
+
+    @action(detail=True, methods=['get'], url_path='disponibilite',
+            permission_classes=[HasPermissionOrLegacy('equipement_voir')])
+    def disponibilite(self, request, pk=None):
+        """XSAV16 — Disponibilité % de cet équipement sur une période.
+
+        ``?debut=AAAA-MM-JJ&fin=AAAA-MM-JJ`` (défaut : les 30 derniers jours).
+        """
+        from datetime import datetime as _dt, timedelta as _td
+        from .services import disponibilite_equipement
+
+        equipement = self.get_object()
+
+        def _parse_date(name, default):
+            raw = (request.query_params.get(name) or '').strip()
+            if not raw:
+                return default
+            try:
+                from datetime import date as _date
+                d = _date.fromisoformat(raw)
+                return timezone.make_aware(_dt(d.year, d.month, d.day))
+            except ValueError:
+                return default
+
+        fin_periode = _parse_date('fin', timezone.now())
+        debut_periode = _parse_date(
+            'debut', fin_periode - _td(days=30))
+
+        data = disponibilite_equipement(
+            equipement, debut_periode=debut_periode, fin_periode=fin_periode)
+        return Response(data)
+
+    @action(detail=True, methods=['get', 'post'], url_path='releves-compteur',
+            permission_classes=[HasPermissionOrLegacy('equipement_gerer')])
+    def releves_compteur(self, request, pk=None):
+        """XSAV17 — Relevés compteur (heures/kWh) de cet équipement.
+
+        GET : historique des relevés (plus récent d'abord). POST : enregistre
+        un relevé (body : ``type`` heures|kwh, ``valeur``, ``date`` AAAA-MM-JJ
+        optionnel — défaut aujourd'hui). Au franchissement du seuil
+        (`entretien_toutes_les_heures`), génère idempotemment UN ticket
+        préventif — renvoyé dans la réponse (``ticket_genere``)."""
+        equipement = self.get_object()
+        if request.method == 'GET':
+            qs = equipement.releves_compteur.all()
+            return Response(ReleveCompteurEquipementSerializer(qs, many=True).data)
+
+        from datetime import date as _date
+        from .services import ReleveDecroissantError, enregistrer_releve_compteur
+
+        type_releve = request.data.get('type')
+        if type_releve not in (
+                ReleveCompteurEquipement.Type.HEURES,
+                ReleveCompteurEquipement.Type.KWH):
+            return Response({'detail': 'type invalide (heures|kwh).'}, status=400)
+        try:
+            valeur = Decimal(str(request.data.get('valeur')))
+        except (InvalidOperation, TypeError):
+            return Response({'detail': 'valeur invalide.'}, status=400)
+
+        date_raw = (request.data.get('date') or '').strip()
+        try:
+            date_releve = _date.fromisoformat(date_raw) if date_raw else timezone.localdate()
+        except ValueError:
+            return Response({'detail': 'date invalide.'}, status=400)
+
+        try:
+            releve, ticket = enregistrer_releve_compteur(
+                company=equipement.company, equipement=equipement,
+                type_releve=type_releve, valeur=valeur,
+                date_releve=date_releve, created_by=request.user)
+        except ReleveDecroissantError as exc:
+            return Response({'detail': str(exc)}, status=400)
+
+        payload = ReleveCompteurEquipementSerializer(releve).data
+        payload['ticket_genere'] = (
+            {'id': ticket.id, 'reference': ticket.reference}
+            if ticket is not None else None)
+        return Response(payload, status=201)
 
 
 class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -281,7 +454,8 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         return qs
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['historique', 'rapport_pdf', 'lien_client']:
+        if self.action in READ_ACTIONS + [
+                'historique', 'rapport_pdf', 'lien_client', 'similaires']:
             return [HasPermissionOrLegacy('sav_voir')()]
         elif self.action in WRITE_ACTIONS + [
                 'noter', 'annuler', 'reactiver', 'creer_devis',
@@ -293,7 +467,7 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def _check_tenant(self, serializer):
         company = self.request.user.company
-        for field in ('client', 'installation', 'equipement'):
+        for field in ('client', 'installation', 'equipement', 'cause', 'remede'):
             obj = serializer.validated_data.get(field)
             if obj is not None and obj.company_id != company.id:
                 raise ValidationError({field: 'Référence inconnue.'})
@@ -414,6 +588,15 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         if old.statut != inst.statut:
             from .notifications_client import notify_ticket_transition
             notify_ticket_transition(inst, inst.statut, request=self.request)
+        # XSAV16 — la clôture du ticket propose (= referme automatiquement,
+        # idempotent) toute immobilisation EN COURS liée à ce ticket. Ne
+        # ferme jamais une fenêtre déjà close, et n'affecte que les
+        # downtimes du même ticket (pas ceux d'autres tickets sur le même
+        # équipement).
+        if (old.statut != inst.statut
+                and inst.statut in self._CLOTURE_STATUTS):
+            for dt in inst.downtimes.filter(fin__isnull=True):
+                dt.clore()
 
     @action(detail=True, methods=['get'], url_path='historique',
             permission_classes=[HasPermissionOrLegacy('sav_voir')])
@@ -422,11 +605,72 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(
             TicketActivitySerializer(ticket.activites.all(), many=True).data)
 
+    @action(detail=True, methods=['get'], url_path='similaires',
+            permission_classes=[HasPermissionOrLegacy('sav_voir')])
+    def similaires(self, request, pk=None):
+        """XSAV21 — Tickets RÉSOLUS similaires (même produit > même cause >
+        similarité texte), pour le panneau « Résolutions similaires »."""
+        from .selectors import tickets_similaires
+        ticket = self.get_object()
+        try:
+            limit = int(request.query_params.get('limit', 5))
+        except (TypeError, ValueError):
+            limit = 5
+        data = tickets_similaires(ticket, limit=max(1, limit))
+        return Response({'results': data})
+
+    @action(detail=True, methods=['get'], url_path='pieces-compatibles',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def pieces_compatibles(self, request, pk=None):
+        """XSAV25 — Pièces catalogue compatibles avec le produit de
+        l'équipement lié à ce ticket, pour que le picker de pièces les
+        propose EN PREMIER. Liste vide (jamais une erreur) si le ticket
+        n'a pas d'équipement lié ou si aucune compatibilité n'est mappée."""
+        from .selectors import pieces_compatibles as _pieces_compatibles
+        ticket = self.get_object()
+        if not ticket.equipement_id or not ticket.equipement.produit_id:
+            return Response({'results': []})
+        data = _pieces_compatibles(
+            ticket.company, ticket.equipement.produit_id)
+        return Response({'results': data})
+
     @action(detail=True, methods=['post'], url_path='noter',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def noter(self, request, pk=None):
+        """Ajoute une note au chatter du ticket.
+
+        XSAV23 — ``reponse_type_id`` (optionnel) insère en un clic le corps
+        d'une réponse type (macro), placeholders whitelistés rendus
+        (``{client}{reference}{technicien}{date}``) ; ``body`` explicite,
+        s'il est fourni, est utilisé TEL QUEL en plus/à la place (le body
+        gagne si les deux sont fournis — la macro reste une aide au
+        pré-remplissage, pas une contrainte). Si la macro porte un
+        ``nouveau_statut``, il est appliqué au ticket (idempotent : ignoré
+        si le ticket est déjà dans ce statut)."""
         ticket = self.get_object()
         body = (request.data.get('body') or '').strip()
+        reponse_type_id = request.data.get('reponse_type_id')
+
+        if not body and reponse_type_id:
+            try:
+                macro = ReponseType.objects.get(
+                    pk=reponse_type_id, company=ticket.company)
+            except (ReponseType.DoesNotExist, ValueError):
+                return Response(
+                    {'detail': 'Réponse type introuvable.'}, status=400)
+            body = macro.rendu(
+                client=str(ticket.client) if ticket.client_id else '',
+                reference=ticket.reference,
+                technicien=getattr(
+                    ticket.technicien_responsable, 'username', ''),
+                date=timezone.localdate().strftime('%d/%m/%Y'),
+            ).strip()
+            if macro.nouveau_statut and ticket.statut != macro.nouveau_statut:
+                old = Ticket.objects.get(pk=ticket.pk)
+                ticket.statut = macro.nouveau_statut
+                ticket.save(update_fields=['statut'])
+                activity.log_changes(old, ticket, request.user)
+
         if not body:
             return Response({'body': 'Note vide.'},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -1123,6 +1367,159 @@ class AlarmeOnduleurViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(AlarmeOnduleurSerializer(alarme).data)
 
 
+# ── XSAV14 — Taxonomie panne / cause / remède ─────────────────────────────────
+
+class CauseDefaillanceViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Référentiel des causes de panne (XSAV14). Lecture tout rôle, écriture
+    responsable/admin (édité dans Paramètres)."""
+    queryset = CauseDefaillance.objects.all()
+    serializer_class = CauseDefaillanceSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.action == 'list' and self.request.query_params.get(
+                'archived') != '1':
+            qs = qs.filter(archived=False)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+
+class RemedeDefaillanceViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Référentiel des remèdes de panne (XSAV14). Lecture tout rôle, écriture
+    responsable/admin (édité dans Paramètres)."""
+    queryset = RemedeDefaillance.objects.all()
+    serializer_class = RemedeDefaillanceSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.action == 'list' and self.request.query_params.get(
+                'archived') != '1':
+            qs = qs.filter(archived=False)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+
+# ── XSAV23 — Réponses types (macros) SAV ──────────────────────────────────────
+
+class ReponseTypeViewSet(TenantMixin, viewsets.ModelViewSet):
+    """CRUD des réponses types (macros) SAV, company-scoped (Paramètres)."""
+    queryset = ReponseType.objects.all()
+    serializer_class = ReponseTypeSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.action == 'list' and self.request.query_params.get(
+                'archived') != '1':
+            qs = qs.filter(archived=False)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+
+# ── XSAV25 — Compatibilité pièces ─────────────────────────────────────────────
+
+class CompatibilitePieceViewSet(TenantMixin, viewsets.ModelViewSet):
+    """CRUD du mapping pièce compatible <-> modèle d'équipement (XSAV25)."""
+    queryset = CompatibilitePiece.objects.select_related(
+        'produit_equipement', 'piece', 'remplace_par').all()
+    serializer_class = CompatibilitePieceSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        produit_equipement = self.request.query_params.get('produit_equipement')
+        if produit_equipement:
+            qs = qs.filter(produit_equipement_id=produit_equipement)
+        return qs
+
+    def _check_tenant(self, serializer):
+        company = self.request.user.company
+        for field in ('produit_equipement', 'piece', 'remplace_par'):
+            obj = serializer.validated_data.get(field)
+            if obj is not None and obj.company_id not in (company.id, None):
+                raise ValidationError({field: 'Produit inconnu.'})
+
+    def perform_create(self, serializer):
+        self._check_tenant(serializer)
+        serializer.save(company=self.request.user.company)
+
+    def perform_update(self, serializer):
+        self._check_tenant(serializer)
+        super().perform_update(serializer)
+
+
+def sav_pareto_pannes(request):
+    """XSAV14 — Pareto des pannes par modèle de produit (ou fournisseur).
+
+    ``?group_by=produit`` (défaut) ou ``?group_by=fournisseur`` ;
+    ``?date_debut=AAAA-MM-JJ&date_fin=AAAA-MM-JJ`` optionnels. Alimente les
+    réclamations garantie FG83 avec des preuves chiffrées (récurrence par
+    modèle/fournisseur)."""
+    from datetime import date as _date
+    from .selectors import pareto_pannes
+
+    company = request.user.company
+    group_by = request.query_params.get('group_by', 'produit')
+    if group_by not in ('produit', 'fournisseur'):
+        group_by = 'produit'
+
+    def _parse(name):
+        raw = (request.query_params.get(name) or '').strip()
+        if not raw:
+            return None
+        try:
+            return _date.fromisoformat(raw)
+        except ValueError:
+            return None
+
+    data = pareto_pannes(
+        company, group_by=group_by,
+        date_debut=_parse('date_debut'), date_fin=_parse('date_fin'))
+    return Response({'group_by': group_by, 'results': data})
+
+
+# ── XSAV15 — MTBF/MTTR/coût cumulé — vue d'ensemble parc ──────────────────────
+
+def sav_fiabilite_insight(request):
+    """XSAV15 — Fiabilité (MTBF/MTTR/coût) de tout le parc, triée pour
+    identifier les « citrons ». Le coût cumulé n'est inclus que pour les
+    utilisateurs avec `prix_achat_voir` (jamais exposé sinon)."""
+    from .selectors import fiabilite_equipements
+    company = request.user.company
+    include_couts = bool(request.user.can_view_buy_prices)
+    try:
+        limit = int(request.query_params.get('limit', 50))
+    except (TypeError, ValueError):
+        limit = 50
+    data = fiabilite_equipements(
+        company, include_couts=include_couts, limit=max(1, limit))
+    return Response({'results': data, 'couts_inclus': include_couts})
+
+
 # ── FG89 — Prévision pièces SAV ───────────────────────────────────────────────
 
 def sav_parts_forecast(request):
@@ -1281,3 +1678,65 @@ def scan_sla_pre_alerts_and_escalations():
             escalations += 1
 
     return {'pre_alerts': pre_alerts, 'escalations': escalations}
+
+
+# ── XSAV24 — Auto-clôture des tickets résolus dormants ───────────────────────
+
+def scan_auto_cloture_tickets_resolus():
+    """XSAV24 — Clôture automatiquement les tickets RÉSOLU sans activité
+    depuis ``SavSlaSettings.auto_cloture_jours`` jours (0 = OFF, comportement
+    actuel inchangé — AUCUN ticket n'est jamais touché tant qu'une société ne
+    fixe pas explicitement une valeur > 0).
+
+    « Sans activité » = aucun ``TicketActivity`` (note ou changement de champ
+    suivi, y compris le passage à RÉSOLU lui-même) depuis N jours — donc un
+    ticket tout juste résolu, ou avec un échange récent, n'est jamais fermé
+    par erreur. IDEMPOTENT : un ticket déjà CLÔTURÉ n'est plus repris par le
+    sweep suivant (il ne filtre que sur ``statut=RESOLU``).
+
+    Notification client optionnelle réutilisée via XSAV4
+    (``notify_ticket_transition``, best-effort, n'envoie rien sans le toggle
+    société ``notifications_client_sav`` — indépendant du toggle
+    ``auto_cloture_jours``)."""
+    from .models import SavSlaSettings, TicketActivity
+
+    today = timezone.localdate()
+    cloture = 0
+
+    tickets = (Ticket.objects
+               .filter(statut=Ticket.Statut.RESOLU, annule=False)
+               .select_related('company'))
+
+    for ticket in tickets:
+        sla = SavSlaSettings.get(ticket.company)
+        if not sla.auto_cloture_jours:
+            continue
+
+        derniere_activite = (
+            TicketActivity.objects.filter(ticket=ticket)
+            .order_by('-created_at').values_list('created_at', flat=True)
+            .first())
+        reference_dt = derniere_activite or ticket.date_modification
+        if reference_dt is None:
+            continue
+        jours_ecoules = (today - timezone.localtime(reference_dt).date()).days
+        if jours_ecoules < sla.auto_cloture_jours:
+            continue
+
+        old = Ticket.objects.get(pk=ticket.pk)
+        ticket.statut = Ticket.Statut.CLOTURE
+        ticket.save(update_fields=['statut'])
+        activity.log_changes(old, ticket, None)
+        activity.log_note(
+            ticket, None,
+            f'Clôturé automatiquement après {sla.auto_cloture_jours} jours '
+            "sans activité.")
+        cloture += 1
+
+        try:
+            from .notifications_client import notify_ticket_transition
+            notify_ticket_transition(ticket, Ticket.Statut.CLOTURE)
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            pass
+
+    return cloture

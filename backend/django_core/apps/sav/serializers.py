@@ -7,7 +7,9 @@ from .models import (
     Equipement, Ticket, TicketActivity, PieceConsommee,
     SavSlaSettings, MaintenanceChecklistTemplate, MaintenanceChecklistItem,
     TicketChecklistItem, WarrantyClaim, KbArticle, AlarmeOnduleur,
-    TicketSatisfaction,
+    TicketSatisfaction, CauseDefaillance, RemedeDefaillance,
+    EquipementDowntime, ReleveCompteurEquipement, ReponseType,
+    CompatibilitePiece,
 )
 
 # Fenêtre « garantie expirant bientôt » (jours).
@@ -46,7 +48,7 @@ class EquipementSerializer(serializers.ModelSerializer):
         # company / dates de garantie / created_by posés côté serveur — jamais
         # depuis le corps. Les dates de garantie sont CALCULÉES (read-only).
         read_only_fields = [
-            'company', 'created_by', 'equipement_token',
+            'company', 'created_by', 'equipement_token', 'public_token',
             'date_fin_garantie', 'date_fin_garantie_production',
             'date_creation', 'date_modification',
         ]
@@ -210,6 +212,11 @@ class TicketSerializer(serializers.ModelSerializer):
     jours_pause = serializers.IntegerField(read_only=True)
     # XSAV11 — compteur de réouvertures (côté serveur uniquement).
     reopen_count = serializers.IntegerField(read_only=True)
+    # XSAV14 — taxonomie panne / cause / remède (libellés lecture).
+    cause_nom = serializers.CharField(
+        source='cause.nom', read_only=True, default=None)
+    remede_nom = serializers.CharField(
+        source='remede.nom', read_only=True, default=None)
 
     class Meta:
         model = Ticket
@@ -274,7 +281,7 @@ class SavSlaSettingsSerializer(serializers.ModelSerializer):
             'sla_par_priorite', 'sla_breach_enabled',
             'notifications_client_sav', 'sla_jours_ouvres',
             'sla_warning_days', 'escalade_activee', 'affectation_auto_sav',
-            'date_modification',
+            'auto_cloture_jours', 'date_modification',
         ]
         read_only_fields = ['date_modification']
 
@@ -368,3 +375,81 @@ class AlarmeOnduleurSerializer(serializers.ModelSerializer):
             'acquittee_par', 'date_acquittement', 'ticket',
             'date_creation', 'date_modification',
         ]
+
+
+# ── XSAV14 — Taxonomie panne / cause / remède ─────────────────────────────────
+
+class CauseDefaillanceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CauseDefaillance
+        fields = ['id', 'nom', 'ordre', 'archived']
+        read_only_fields = ['id']
+
+
+class RemedeDefaillanceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = RemedeDefaillance
+        fields = ['id', 'nom', 'ordre', 'archived']
+        read_only_fields = ['id']
+
+
+# ── XSAV16 — Journal d'immobilisation (downtime) ──────────────────────────────
+
+class EquipementDowntimeSerializer(serializers.ModelSerializer):
+    ticket_reference = serializers.CharField(
+        source='ticket.reference', read_only=True, default=None)
+    en_cours = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EquipementDowntime
+        fields = [
+            'id', 'equipement', 'debut', 'fin', 'ticket', 'ticket_reference',
+            'motif', 'en_cours', 'date_creation',
+        ]
+        read_only_fields = [
+            'id', 'company', 'created_by', 'date_creation',
+        ]
+
+    def get_en_cours(self, obj):
+        return obj.fin is None
+
+
+# ── XSAV17 — Relevés compteur (heures / kWh) ──────────────────────────────────
+
+class ReleveCompteurEquipementSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ReleveCompteurEquipement
+        fields = ['id', 'equipement', 'type', 'valeur', 'date', 'date_creation']
+        read_only_fields = ['id', 'company', 'created_by', 'date_creation']
+
+
+# ── XSAV23 — Réponses types (macros) SAV ──────────────────────────────────────
+
+class ReponseTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ReponseType
+        fields = [
+            'id', 'titre', 'corps', 'nouveau_statut', 'archived',
+            'date_creation',
+        ]
+        read_only_fields = ['id', 'company', 'date_creation']
+
+
+# ── XSAV25 — Compatibilité pièces ─────────────────────────────────────────────
+
+class CompatibilitePieceSerializer(serializers.ModelSerializer):
+    produit_equipement_nom = serializers.CharField(
+        source='produit_equipement.nom', read_only=True, default=None)
+    piece_nom = serializers.CharField(
+        source='piece.nom', read_only=True, default=None)
+    remplace_par_nom = serializers.CharField(
+        source='remplace_par.nom', read_only=True, default=None)
+
+    class Meta:
+        model = CompatibilitePiece
+        fields = [
+            'id', 'produit_equipement', 'produit_equipement_nom',
+            'piece', 'piece_nom', 'note', 'remplace_par',
+            'remplace_par_nom', 'date_creation',
+        ]
+        read_only_fields = ['id', 'company', 'date_creation']

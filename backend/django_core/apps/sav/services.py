@@ -185,3 +185,155 @@ def create_corrective_ticket(*, company, client, installation, description,
             installation=installation, type=Ticket.Type.CORRECTIF,
             description=description, created_by=created_by)
     return create_with_reference(Ticket, 'SAV', company, _create)
+
+
+# ── XSAV16 — Journal d'immobilisation (downtime) + disponibilité % ──────────
+
+class DowntimeOverlapError(Exception):
+    """XSAV16 — Levée quand une nouvelle fenêtre de downtime chevauche une
+    fenêtre existante du MÊME équipement (une immobilisation double compterait
+    la disponibilité %)."""
+
+
+def ouvrir_downtime(*, company, equipement, debut, ticket=None, motif='',
+                    created_by=None):
+    """XSAV16 — Ouvre une immobilisation pour ``equipement`` à partir de
+    ``debut``. Refuse tout chevauchement avec une fenêtre existante du même
+    équipement : une fenêtre EN COURS (fin=None) chevauche toujours toute
+    nouvelle ouverture (on ne peut pas ouvrir une seconde panne pendant que la
+    première n'est pas close) ; une fenêtre déjà close chevauche si
+    ``debut`` tombe dans son intervalle [debut, fin]. Lève
+    ``DowntimeOverlapError`` en cas de chevauchement — jamais une seconde
+    fenêtre concurrente créée par erreur."""
+    from .models import EquipementDowntime
+
+    en_cours = EquipementDowntime.objects.filter(
+        equipement=equipement, fin__isnull=True).exists()
+    if en_cours:
+        raise DowntimeOverlapError(
+            'Une immobilisation est déjà en cours pour cet équipement.')
+
+    chevauche = EquipementDowntime.objects.filter(
+        equipement=equipement, debut__lte=debut, fin__gte=debut).exists()
+    if chevauche:
+        raise DowntimeOverlapError(
+            'Cette période chevauche une immobilisation existante.')
+
+    return EquipementDowntime.objects.create(
+        company=company, equipement=equipement, debut=debut,
+        ticket=ticket, motif=motif or '', created_by=created_by)
+
+
+def disponibilite_equipement(equipement, *, debut_periode, fin_periode):
+    """XSAV16 — Disponibilité % d'un équipement sur ``[debut_periode,
+    fin_periode]`` (bornes datetime timezone-aware, inclusives).
+
+    Calcule le temps cumulé d'immobilisation qui INTERSECTE la période
+    demandée (une fenêtre en cours utilise ``fin_periode`` comme borne haute
+    provisoire), puis renvoie :
+      {'duree_periode_heures': float, 'duree_downtime_heures': float,
+       'disponibilite_pct': float}
+    ``disponibilite_pct`` = 100 si la période est nulle/négative (repli sûr,
+    aucune division par zéro)."""
+    from django.db.models import Q
+    from .models import EquipementDowntime
+
+    duree_periode = (fin_periode - debut_periode).total_seconds() / 3600
+    if duree_periode <= 0:
+        return {
+            'duree_periode_heures': 0.0, 'duree_downtime_heures': 0.0,
+            'disponibilite_pct': 100.0,
+        }
+
+    qs = EquipementDowntime.objects.filter(
+        equipement=equipement, debut__lte=fin_periode,
+    ).filter(Q(fin__gte=debut_periode) | Q(fin__isnull=True))
+
+    downtime_heures = 0.0
+    for dt in qs:
+        fin = dt.fin or fin_periode
+        seg_debut = max(dt.debut, debut_periode)
+        seg_fin = min(fin, fin_periode)
+        if seg_fin > seg_debut:
+            downtime_heures += (seg_fin - seg_debut).total_seconds() / 3600
+
+    downtime_heures = min(downtime_heures, duree_periode)
+    disponibilite_pct = round(
+        (1 - downtime_heures / duree_periode) * 100, 2)
+    return {
+        'duree_periode_heures': round(duree_periode, 2),
+        'duree_downtime_heures': round(downtime_heures, 2),
+        'disponibilite_pct': disponibilite_pct,
+    }
+
+
+# ── XSAV17 — Relevés compteur (heures / kWh) + entretien conditionnel ────────
+
+class ReleveDecroissantError(Exception):
+    """XSAV17 — Levée quand un relevé est INFÉRIEUR au dernier relevé du même
+    équipement (le compteur est cumulatif, jamais décroissant)."""
+
+
+def enregistrer_releve_compteur(*, company, equipement, type_releve, valeur,
+                                date_releve, created_by=None):
+    """XSAV17 — Enregistre un relevé de compteur et, si un seuil
+    (`Equipement.entretien_toutes_les_heures`) est configuré et franchi
+    depuis le dernier entretien généré, matérialise EXACTEMENT UN ticket
+    préventif (idempotent : `dernier_entretien_compteur_valeur` avance
+    aussitôt qu'un ticket est généré, donc un second relevé au-dessus du
+    même seuil — avant le prochain entretien — n'en recrée pas un second).
+
+    Refuse (``ReleveDecroissantError``) un relevé strictement inférieur au
+    dernier relevé DU MÊME TYPE pour cet équipement — le compteur est
+    cumulatif, jamais décroissant. Renvoie ``(releve, ticket_ou_None)``.
+    """
+    from decimal import Decimal
+    from .models import ReleveCompteurEquipement
+
+    valeur = Decimal(str(valeur))
+    dernier = (ReleveCompteurEquipement.objects
+               .filter(equipement=equipement, type=type_releve)
+               .order_by('-valeur').first())
+    if dernier is not None and valeur < dernier.valeur:
+        raise ReleveDecroissantError(
+            'Ce relevé est inférieur au dernier relevé enregistré '
+            f'({dernier.valeur}) — le compteur ne peut pas reculer.')
+
+    releve = ReleveCompteurEquipement.objects.create(
+        company=company, equipement=equipement, type=type_releve,
+        valeur=valeur, date=date_releve, created_by=created_by)
+
+    seuil = equipement.entretien_toutes_les_heures
+    ticket = None
+    if seuil:
+        reference_base = equipement.dernier_entretien_compteur_valeur or Decimal('0')
+        if valeur - reference_base >= seuil:
+            ticket = _generer_ticket_preventif_compteur(
+                company, equipement, type_releve, valeur, created_by)
+            equipement.dernier_entretien_compteur_valeur = valeur
+            equipement.save(
+                update_fields=['dernier_entretien_compteur_valeur'])
+    return releve, ticket
+
+
+def _generer_ticket_preventif_compteur(company, equipement, type_releve,
+                                       valeur, created_by):
+    """XSAV17 — Matérialise le ticket préventif de franchissement de seuil."""
+    from apps.ventes.utils.references import create_with_reference
+    from .models import Ticket
+
+    installation = equipement.installation
+    client = getattr(installation, 'client', None)
+    label = 'heures' if type_releve == 'heures' else 'kWh'
+    description = (
+        f'Entretien préventif dû (seuil de {label} franchi — '
+        f'compteur à {valeur} {label}).')
+
+    def _create(ref):
+        return Ticket.objects.create(
+            reference=ref, company=company, client=client,
+            installation=installation, equipement=equipement,
+            type=Ticket.Type.PREVENTIF, statut=Ticket.Statut.NOUVEAU,
+            date_ouverture=timezone.localdate(), description=description,
+            created_by=created_by)
+    return create_with_reference(Ticket, 'SAV', company, _create)

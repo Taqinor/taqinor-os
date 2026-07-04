@@ -8,7 +8,9 @@ from .views import (
     EquipementViewSet, TicketViewSet,
     SavSlaSettingsViewSet, MaintenanceChecklistTemplateViewSet,
     WarrantyClaimViewSet, KbArticleViewSet, AlarmeOnduleurViewSet,
-    sav_parts_forecast,
+    CauseDefaillanceViewSet, RemedeDefaillanceViewSet, ReponseTypeViewSet,
+    CompatibilitePieceViewSet,
+    sav_parts_forecast, sav_pareto_pannes, sav_fiabilite_insight,
 )
 from .maintenance import ContratMaintenanceViewSet
 
@@ -21,6 +23,10 @@ router.register(r'checklist-templates', MaintenanceChecklistTemplateViewSet)
 router.register(r'warranty-claims', WarrantyClaimViewSet)
 router.register(r'kb-articles', KbArticleViewSet)
 router.register(r'alarmes-onduleur', AlarmeOnduleurViewSet)
+router.register(r'causes-defaillance', CauseDefaillanceViewSet)
+router.register(r'remedes-defaillance', RemedeDefaillanceViewSet)
+router.register(r'reponses-type', ReponseTypeViewSet)
+router.register(r'compatibilites-piece', CompatibilitePieceViewSet)
 
 
 @api_view(['GET'])
@@ -30,8 +36,26 @@ def parts_forecast_view(request):
     return sav_parts_forecast(request)
 
 
+@api_view(['GET'])
+@permission_classes([IsAnyRole])
+def pareto_pannes_view(request):
+    """XSAV14 — Pareto des pannes par modèle de produit / fournisseur."""
+    return sav_pareto_pannes(request)
+
+
+@api_view(['GET'])
+@permission_classes([IsAnyRole])
+def fiabilite_insight_view(request):
+    """XSAV15 — MTBF/MTTR/coût cumulé, vue d'ensemble du parc."""
+    return sav_fiabilite_insight(request)
+
+
 urlpatterns = [
     path('', include(router.urls)),
     path('insights/sav-parts-forecast/', parts_forecast_view,
          name='sav-parts-forecast'),
+    path('insights/sav-pannes/', pareto_pannes_view,
+         name='sav-pareto-pannes'),
+    path('insights/sav-fiabilite/', fiabilite_insight_view,
+         name='sav-fiabilite'),
 ]

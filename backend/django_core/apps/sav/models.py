@@ -80,6 +80,11 @@ class SavSlaSettings(models.Model):
     # équilibrage de charge). Défaut OFF : comportement actuel inchangé (tout
     # ticket reste affecté à la main tant que la société ne l'active pas).
     affectation_auto_sav = models.BooleanField(default=False)
+    # XSAV24 — auto-clôture des tickets RÉSOLU dormants (sans activité depuis
+    # N jours). 0 (défaut) = OFF, comportement actuel inchangé : un ticket
+    # résolu reste RÉSOLU indéfiniment tant que la société n'active pas ce
+    # réglage explicitement.
+    auto_cloture_jours = models.PositiveIntegerField(default=0)
     date_modification = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -174,6 +179,15 @@ class Equipement(models.Model):
     equipement_token = models.CharField(
         max_length=30, blank=True, default='',
         help_text="Jeton QR pour le scan de l'équipement (EQUIP:<id>).")
+    # XSAV19 — jeton public opaque pour la page « Signaler un problème » sans
+    # login (`/e/<public_token>`). DISTINCT de `equipement_token` (EQUIP:<id>
+    # est devinable — jamais exposé sur une page publique). Généré LAZILY
+    # via `ensure_public_token()` — nullable/blank : NULL tant que l'étiquette
+    # publique n'a jamais été demandée (comportement actuel inchangé).
+    public_token = models.CharField(
+        max_length=64, unique=True, null=True, blank=True, editable=False,
+        help_text=('Jeton public (XSAV19) pour la page de signalement sans '
+                   'login. Généré via ensure_public_token().'))
     # Le chantier auquel l'appareil appartient (objet pivot de l'après-vente).
     installation = models.ForeignKey(
         'installations.Installation', on_delete=models.CASCADE,
@@ -201,6 +215,23 @@ class Equipement(models.Model):
     )
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
+
+    # ── XSAV17 — entretien conditionnel à l'usage (heures/kWh) ──────────────
+    # Seuil d'usage (heures de pompage OU kWh produits, selon le type de
+    # relevé courant de l'équipement) entre deux entretiens préventifs. NULL
+    # (défaut) = comportement actuel inchangé : l'entretien reste déclenché
+    # UNIQUEMENT par le temps (ContratMaintenance).
+    entretien_toutes_les_heures = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text=('Seuil de compteur (heures ou kWh) entre deux entretiens '
+                   "préventifs. Vide = entretien déclenché par le temps "
+                   "uniquement (comportement actuel)."))
+    # Valeur du compteur au dernier entretien préventif généré par
+    # franchissement de seuil (XSAV17) — sert de référence pour détecter le
+    # PROCHAIN franchissement (anti-doublon, même esprit que
+    # ContratMaintenance.derniere_visite / UnderperformanceFlag.is_open).
+    dernier_entretien_compteur_valeur = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True)
 
     class Meta:
         verbose_name = 'Équipement'
@@ -289,6 +320,62 @@ class Equipement(models.Model):
             self.equipement_token = token
             self.save(update_fields=['equipement_token'])
 
+    def ensure_public_token(self):
+        """XSAV19 — Génère (lazily) et renvoie le jeton public opaque.
+
+        Idempotent : si déjà présent, le renvoie tel quel sans écriture.
+        ``secrets.token_urlsafe(32)`` — espace de collision négligeable
+        (2^192), même patron que ``Ticket.ensure_share_token`` (FG86)."""
+        if self.public_token:
+            return self.public_token
+        token = secrets.token_urlsafe(32)
+        self.public_token = token
+        self.save(update_fields=['public_token'])
+        return self.public_token
+
+
+# ── XSAV17 — Relevés compteur (heures / kWh) ──────────────────────────────────
+
+class ReleveCompteurEquipement(models.Model):
+    """XSAV17 — Relevé de compteur d'usage d'un équipement client, saisi
+    manuellement (heures de pompage ou kWh produits — décisif pour pompes et
+    onduleurs, contrairement au parc entreprise FG341 qui a son propre
+    compteur horaire machine).
+
+    La valeur est CROISSANTE (compteur cumulatif, jamais un delta) : un
+    relevé inférieur au dernier relevé enregistré pour le même équipement
+    est refusé (protection contre une saisie erronée qui ferait « reculer »
+    le compteur et fausserait la détection de franchissement de seuil)."""
+    class Type(models.TextChoices):
+        HEURES = 'heures', 'Heures'
+        KWH = 'kwh', 'kWh'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='releves_compteur_equipement')
+    equipement = models.ForeignKey(
+        'sav.Equipement', on_delete=models.CASCADE,
+        related_name='releves_compteur')
+    type = models.CharField(max_length=10, choices=Type.choices)
+    valeur = models.DecimalField(max_digits=12, decimal_places=2)
+    date = models.DateField()
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Relevé compteur équipement'
+        verbose_name_plural = 'Relevés compteur équipement'
+        ordering = ['-date', '-date_creation']
+        indexes = [
+            models.Index(fields=['company', 'equipement'],
+                         name='sav_releve_co_equip_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.equipement_id} — {self.valeur} {self.type}'
+
 
 # ── Modèle Ticket ─────────────────────────────────────────────────────────────
 
@@ -374,6 +461,17 @@ class Ticket(models.Model):
     # Coût interne (jamais affiché côté client).
     cout = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)
+
+    # ── XSAV14 — taxonomie panne / cause / remède (codifiés à la résolution) ──
+    # Optionnels : NULL tant qu'un technicien ne les a pas saisis (comportement
+    # actuel inchangé). SET_NULL : la suppression d'un référentiel ne casse pas
+    # l'historique des tickets déjà codifiés.
+    cause = models.ForeignKey(
+        'sav.CauseDefaillance', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='tickets')
+    remede = models.ForeignKey(
+        'sav.RemedeDefaillance', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='tickets')
 
     # ── Annulation : un DRAPEAU avec motif, pas une étape (comme « Perdu »). ──
     annule = models.BooleanField(default=False)
@@ -999,6 +1097,107 @@ class TicketSatisfaction(models.Model):
         return f'CSAT ticket {self.ticket_id} = {self.note}/5'
 
 
+# ── XSAV14 — Taxonomie panne / cause / remède ────────────────────────────────
+
+class CauseDefaillance(models.Model):
+    """XSAV14 — Référentiel configurable des causes de panne (Paramètres SAV).
+
+    Codifie la CAUSE d'une panne (ex. « Défaut composant », « Erreur
+    d'installation », « Usure normale ») pour permettre l'analyse Pareto des
+    modes de défaillance. Même patron que `crm.Canal`/`crm.MotifPerte` :
+    liste plate, scopée société, éditable dans Paramètres, additive."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='causes_defaillance')
+    nom = models.CharField(max_length=150)
+    ordre = models.PositiveIntegerField(default=0)
+    archived = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['ordre', 'nom']
+        unique_together = [('company', 'nom')]
+        verbose_name = 'Cause de défaillance'
+        verbose_name_plural = 'Causes de défaillance'
+
+    def __str__(self):
+        return self.nom
+
+
+class RemedeDefaillance(models.Model):
+    """XSAV14 — Référentiel configurable des remèdes appliqués (Paramètres SAV).
+
+    Codifie le REMÈDE apporté à la résolution (ex. « Remplacement pièce »,
+    « Reparamétrage », « Nettoyage »). Même patron que `CauseDefaillance`."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='remedes_defaillance')
+    nom = models.CharField(max_length=150)
+    ordre = models.PositiveIntegerField(default=0)
+    archived = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['ordre', 'nom']
+        unique_together = [('company', 'nom')]
+        verbose_name = 'Remède de défaillance'
+        verbose_name_plural = 'Remèdes de défaillance'
+
+    def __str__(self):
+        return self.nom
+
+
+# ── XSAV23 — Réponses types (macros) SAV ──────────────────────────────────────
+
+class ReponseType(models.Model):
+    """XSAV23 — Réponse type (macro) SAV, insérable en un clic dans une note
+    de ticket (endpoint ``noter`` existant).
+
+    ``corps`` contient des placeholders WHITELIST (défense en profondeur —
+    jamais de f-string/format libre sur du texte utilisateur) :
+    ``{client}``, ``{reference}``, ``{technicien}``, ``{date}``. Tout autre
+    ``{...}`` non whitelisté est laissé TEL QUEL dans le rendu (jamais une
+    KeyError qui casserait l'insertion). ``nouveau_statut`` optionnel :
+    quand posé, l'insertion applique aussi ce changement de statut sur le
+    ticket (aucun changement si vide — comportement actuel inchangé)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='reponses_type')
+    titre = models.CharField(max_length=150)
+    corps = models.TextField()
+    nouveau_statut = models.CharField(
+        max_length=12, blank=True, default='',
+        help_text='Statut optionnel appliqué au ticket à l\'insertion.')
+    archived = models.BooleanField(default=False)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['titre']
+        unique_together = [('company', 'titre')]
+        verbose_name = 'Réponse type SAV'
+        verbose_name_plural = 'Réponses types SAV'
+
+    def __str__(self):
+        return self.titre
+
+    # Placeholders whitelistés — tout autre `{...}` reste tel quel.
+    PLACEHOLDERS = ('client', 'reference', 'technicien', 'date')
+
+    def rendu(self, *, client='', reference='', technicien='', date=''):
+        """Rend le corps avec les placeholders whitelistés substitués.
+
+        Utilise un remplacement littéral (``str.replace``), jamais
+        ``str.format``/f-string sur le corps utilisateur — un ``{quelque_chose}``
+        non whitelisté (ou même un ``{`` isolé) ne lève jamais d'exception,
+        contrairement à ``str.format`` qui exigerait TOUTES les clés."""
+        valeurs = {
+            'client': client or '', 'reference': reference or '',
+            'technicien': technicien or '', 'date': date or '',
+        }
+        out = self.corps
+        for cle in self.PLACEHOLDERS:
+            out = out.replace('{' + cle + '}', str(valeurs.get(cle, '')))
+        return out
+
+
 class PieceConsommee(models.Model):
     """N46 — pièce consommée sur un ticket SAV.
 
@@ -1029,3 +1228,103 @@ class PieceConsommee(models.Model):
 
     def __str__(self):
         return f'{self.produit_id} ×{self.quantite} (ticket {self.ticket_id})'
+
+
+# ── XSAV16 — Journal d'immobilisation (downtime) + disponibilité % ──────────
+
+class EquipementDowntime(models.Model):
+    """XSAV16 — Période d'immobilisation d'un équipement client.
+
+    Ouverte depuis un ticket (panne bloquante) ou l'escalade d'une alarme
+    onduleur critique (FG280) ; fermée à la résolution. ``fin`` NULL = encore
+    en panne (immobilisation en cours). Le lien ``ticket`` est optionnel
+    (SET_NULL) — l'historique de downtime survit à la suppression du ticket.
+
+    Les fenêtres NE PEUVENT PAS se chevaucher pour un même équipement — la
+    disponibilité % dérivée serait autrement faussée (double comptage). La
+    garde anti-chevauchement est appliquée côté service (`services.py`), pas
+    en contrainte DB (Django ne supporte pas nativement les contraintes
+    d'exclusion de plage sans une extension Postgres dédiée)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='downtimes_equipement')
+    equipement = models.ForeignKey(
+        'sav.Equipement', on_delete=models.CASCADE, related_name='downtimes')
+    debut = models.DateTimeField()
+    fin = models.DateTimeField(null=True, blank=True)
+    ticket = models.ForeignKey(
+        'sav.Ticket', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='downtimes')
+    motif = models.CharField(max_length=255, blank=True, default='')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Immobilisation équipement'
+        verbose_name_plural = 'Immobilisations équipement'
+        ordering = ['-debut']
+        indexes = [
+            models.Index(fields=['company', 'equipement'],
+                         name='sav_eqdown_co_equip_idx'),
+            models.Index(fields=['equipement', 'fin'],
+                         name='sav_eqdown_equip_fin_idx'),
+        ]
+
+    def __str__(self):
+        etat = 'en cours' if self.fin is None else 'clos'
+        return f'Downtime équipement {self.equipement_id} ({etat})'
+
+    def clore(self, fin=None):
+        """Ferme l'immobilisation (idempotent : ne réécrit pas si déjà close)."""
+        if self.fin is not None:
+            return
+        self.fin = fin or timezone.now()
+        self.save(update_fields=['fin'])
+
+
+# ── XSAV25 — Catalogue de pièces compatibles par modèle d'équipement ────────
+
+class CompatibilitePiece(models.Model):
+    """XSAV25 — Mapping « pièce compatible » entre un modèle d'équipement
+    catalogue (``produit_equipement``, ex. un onduleur) et une pièce
+    catalogue (``piece``, ex. un fusible/une carte) — décide quelles pièces
+    le picker du ticket propose EN PREMIER pour l'équipement lié.
+
+    Les deux FK pointent vers ``stock.Produit`` en référence STRING (comme
+    ``Equipement.produit``) — jamais un import direct de ``apps.stock.models``
+    (contrat import-linter M1 : les 5 modèles core-domain restent
+    mutuellement découplés). ``remplace_par`` optionnel permet une CHAÎNE de
+    supersession (pièce A remplacée par B, elle-même par C…) quand un
+    fournisseur discontinue une référence."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='compatibilites_piece')
+    produit_equipement = models.ForeignKey(
+        'stock.Produit', on_delete=models.CASCADE,
+        related_name='pieces_compatibles')
+    piece = models.ForeignKey(
+        'stock.Produit', on_delete=models.CASCADE,
+        related_name='equipements_compatibles')
+    note = models.CharField(max_length=255, blank=True, default='')
+    # Chaîne de supersession : la pièce qui remplace CETTE pièce (référence
+    # discontinuée par le fournisseur). SET_NULL : la suppression d'une pièce
+    # de remplacement ne casse pas le mapping existant.
+    remplace_par = models.ForeignKey(
+        'stock.Produit', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Compatibilité pièce'
+        verbose_name_plural = 'Compatibilités pièce'
+        ordering = ['produit_equipement_id', 'piece_id']
+        unique_together = [('company', 'produit_equipement', 'piece')]
+        indexes = [
+            models.Index(fields=['company', 'produit_equipement'],
+                         name='sav_compat_co_equip_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.produit_equipement_id} <-> {self.piece_id}'
