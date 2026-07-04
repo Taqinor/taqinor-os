@@ -15,7 +15,9 @@ from .models import (
     AuditPlanifie,
     CampagneRappel, CauseIncident,
     CheckinSecurite, ControleReception,
-    DeclarationCnss, DemandeActionFournisseur, Derogation, DiffusionProcedure,
+    DeclarationCnss, DemandeActionFournisseur, DemandeChangement,
+    DemandeChangementCapa,
+    Derogation, DiffusionProcedure,
     ElementRappel,
     EtapeDeclarationAt, ExerciceUrgence, LienSignalementPublic, NonConformite,
     NotationFinChantier, ObservationSecurite, PlanControleReception,
@@ -2297,3 +2299,121 @@ def creer_intervention_depuis_ncr(ncr, description=None):
         ncr_reference=ncr.reference or ncr.pk,
     )
     return ticket, created
+
+
+# ── XQHS24 — Gestion du changement (MOC léger) ──────────────────────────────
+
+# Transitions valides du cycle de vie MOC. Un changement suit son cycle :
+# une approbation (statut APPROUVE) est requise AVANT tout déploiement.
+_MOC_TRANSITIONS = {
+    DemandeChangement.Statut.BROUILLON: {
+        DemandeChangement.Statut.EN_REVUE, DemandeChangement.Statut.ANNULE},
+    DemandeChangement.Statut.EN_REVUE: {
+        DemandeChangement.Statut.APPROUVE, DemandeChangement.Statut.ANNULE,
+        DemandeChangement.Statut.BROUILLON},
+    DemandeChangement.Statut.APPROUVE: {
+        DemandeChangement.Statut.DEPLOYE, DemandeChangement.Statut.ANNULE},
+    DemandeChangement.Statut.DEPLOYE: {DemandeChangement.Statut.CLOS},
+    DemandeChangement.Statut.CLOS: set(),
+    DemandeChangement.Statut.ANNULE: set(),
+}
+
+
+@transaction.atomic
+def transitionner_demande_changement(demande, nouveau_statut, *, approbateur=None):
+    """Fait avancer le cycle de vie d'une ``DemandeChangement`` (XQHS24).
+
+    Le passage à ``DEPLOYE`` EXIGE que le changement soit passé par
+    ``APPROUVE`` d'abord (gate — la mise en œuvre avant approbation est le
+    risque même que le MOC existe pour prévenir). Toute autre transition non
+    listée dans ``_MOC_TRANSITIONS`` lève ``ValueError``. Pose
+    ``approbateur``/``date_approbation`` au passage à ``APPROUVE``."""
+    permis = _MOC_TRANSITIONS.get(demande.statut, set())
+    if nouveau_statut not in permis:
+        raise ValueError(
+            f'Transition {demande.statut} → {nouveau_statut} non autorisée.')
+
+    demande.statut = nouveau_statut
+    if nouveau_statut == DemandeChangement.Statut.APPROUVE:
+        from django.utils import timezone
+        demande.approbateur = approbateur
+        demande.date_approbation = timezone.now()
+    demande.save()
+    return demande
+
+
+@transaction.atomic
+def creer_capa_mise_en_oeuvre_moc(
+        demande, *, description, responsable_id=None, echeance=None):
+    """Crée une CAPA de mise en œuvre liée à une ``DemandeChangement``
+    (XQHS24). Réutilise une NCR support minimale (pattern
+    ``convertir_observation_en_capa`` XQHS17) car CAPA exige une NCR
+    parente."""
+    ncr = NonConformite.objects.create(
+        company=demande.company,
+        titre=f'MOC · {demande.get_type_changement_display()}',
+        description=demande.description,
+        origine='Gestion du changement (MOC)',
+        gravite=NonConformite.Gravite.MINEURE,
+    )
+    capa = ActionCorrectivePreventive.objects.create(
+        company=demande.company,
+        non_conformite=ncr,
+        type_action=ActionCorrectivePreventive.Type.PREVENTIVE,
+        description=description,
+        responsable_id=responsable_id,
+        echeance=echeance,
+    )
+    DemandeChangementCapa.objects.get_or_create(
+        company=demande.company, demande_changement=demande, capa=capa)
+    return capa
+
+
+def demandes_changement_a_reverser(company, today=None):
+    """Changements temporaires dont la date de réversion est due (XQHS24,
+    pattern ``derogations_a_relancer``/QHSE38). Agrégation PURE."""
+    from django.utils import timezone
+
+    if today is None:
+        today = timezone.localdate()
+    qs = DemandeChangement.objects.filter(
+        company=company, est_temporaire=True,
+        date_expiration__isnull=False,
+        date_expiration__lte=today,
+    ).exclude(statut__in=[
+        DemandeChangement.Statut.CLOS, DemandeChangement.Statut.ANNULE])
+    return list(qs)
+
+
+def _notifier_reversion_due(demande):
+    """Notifie (best-effort) qu'un changement temporaire doit être reversé."""
+    try:
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+
+        if demande.approbateur_id is None:
+            return
+        notify(demande.approbateur, EventType.MAINTENANCE_DUE,
+               'Réversion de changement temporaire due',
+               body=f'Le changement « {demande.description[:80]} » devait '
+                    f'être reversé le {demande.date_expiration}.',
+               link='/qhse/gestion-changement', company=demande.company)
+    except Exception:  # pragma: no cover - défensif
+        pass
+
+
+def relancer_demandes_changement(company=None):
+    """Relance TOUS les changements temporaires en retard de réversion
+    (XQHS24, pattern ``relancer_derogations``). Ne mute rien. Renvoie les
+    demandes relancées."""
+    if company is not None:
+        demandes = demandes_changement_a_reverser(company)
+    else:
+        demandes = []
+        for co in {d.company for d in DemandeChangement.objects.filter(
+                est_temporaire=True)}:
+            demandes.extend(demandes_changement_a_reverser(co))
+
+    for demande in demandes:
+        _notifier_reversion_due(demande)
+    return demandes

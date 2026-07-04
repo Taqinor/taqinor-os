@@ -10,7 +10,8 @@ from .views import (
     ConsignationLotoViewSet,
     CodeDefautViewSet,
     ContactUrgenceViewSet, ControleReceptionViewSet, DechetViewSet,
-    CritereAuditViewSet, DeclarationCnssViewSet, DerogationViewSet,
+    CritereAuditViewSet, DeclarationCnssViewSet, DemandeChangementViewSet,
+    DerogationViewSet,
     EtapeDeclarationAtViewSet,
     CoutNonQualiteViewSet,
     EvaluationRisqueViewSet, ExerciceUrgenceViewSet, GrilleAuditViewSet,
@@ -97,6 +98,7 @@ router.register(r'aspects-environnementaux', AspectEnvironnementalViewSet)
 router.register(r'releves-consommation', ReleveConsommationViewSet)
 router.register(
     r'cout-non-qualite', CoutNonQualiteViewSet, basename='cout-non-qualite')
+router.register(r'demandes-changement', DemandeChangementViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

@@ -25,7 +25,8 @@ from .models import (
     CodeDefaut,
     ConformiteEnvironnementale, ConsignationLoto, ContactUrgence,
     ControleReception,
-    CritereAudit, Dechet, DeclarationCnss, Derogation, EtapeDeclarationAt,
+    CritereAudit, Dechet, DeclarationCnss, DemandeChangement, Derogation,
+    EtapeDeclarationAt,
     EvaluationRisque, ExerciceUrgence, GrilleAudit,
     Incident, IndicateurESG,
     InductionSecurite, InspectionSecurite,
@@ -50,6 +51,7 @@ from .serializers import (
     ConsignationLotoSerializer, ContactUrgenceSerializer,
     ControleReceptionSerializer,
     CritereAuditSerializer, DechetSerializer, DeclarationCnssSerializer,
+    DemandeChangementSerializer,
     DerogationSerializer, EtapeDeclarationAtSerializer,
     EvaluationRisqueSerializer, ExerciceUrgenceSerializer, GrilleAuditSerializer,
     IncidentSerializer,
@@ -92,20 +94,24 @@ from .selectors import (
 from .services import (
     activer_procedure, calculer_score_audit, calculer_score_notation,
     cloturer_incident, cloturer_ncr, compteurs_observations_securite,
+    creer_capa_mise_en_oeuvre_moc,
     creer_intervention_depuis_ncr, creer_ncr_depuis_reserve,
     creer_ncr_depuis_ticket,
     convertir_observation_en_capa, convertir_observation_en_ncr,
     creer_capa_depuis_ecart_exercice,
+    demandes_changement_a_reverser,
     generer_capa_depuis_analyse, generer_lignes_bilan,
     creer_signalement_public, generer_qr_signalement,
     incidents_notification_en_retard, instancier_plan_chantier,
     lever_ncr_audit, lever_ncr_inspection, nouvelle_version_procedure,
     plans_exercices_dus, poser_disposition,
     realiser_exercice_urgence,
-    relancer_capa_en_retard, relancer_conformites, relancer_exercices_urgence,
+    relancer_capa_en_retard, relancer_conformites, relancer_demandes_changement,
+    relancer_exercices_urgence,
     relancer_notifications_environnement,
     resolve_lien_signalement_public,
     statuer_controle_reception,
+    transitionner_demande_changement,
     SIGNALEMENT_OK,
     verifier_efficacite_capa,
 )
@@ -2571,3 +2577,69 @@ class CoutNonQualiteViewSet(viewsets.ViewSet):
                 for m in rollup['par_mois']
             ]
         return Response(rollup)
+
+
+# ── XQHS24 — Gestion du changement (MOC léger) ─────────────────────────────
+
+class DemandeChangementViewSet(_QhseBaseViewSet):
+    """CRUD des demandes de changement (MOC). ``company`` posée côté serveur.
+    Le cycle de vie avance via ``transitionner`` (jamais un PATCH direct du
+    ``statut``) pour garder le gate d'approbation-avant-déploiement
+    centralisé côté serveur."""
+    queryset = DemandeChangement.objects.all()
+    serializer_class = DemandeChangementSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['description', 'justification']
+    ordering_fields = ['id', 'date_creation', 'date_expiration']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=True, methods=['post'])
+    def transitionner(self, request, pk=None):
+        demande = self.get_object()
+        nouveau_statut = request.data.get('statut')
+        if not nouveau_statut:
+            return Response(
+                {'detail': 'statut est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            demande = transitionner_demande_changement(
+                demande, nouveau_statut, approbateur=request.user)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(demande).data)
+
+    @action(detail=True, methods=['post'], url_path='creer-capa')
+    def creer_capa(self, request, pk=None):
+        demande = self.get_object()
+        description = request.data.get('description')
+        if not description:
+            return Response(
+                {'detail': 'description est requise.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        capa = creer_capa_mise_en_oeuvre_moc(
+            demande, description=description,
+            responsable_id=request.data.get('responsable'),
+            echeance=request.data.get('echeance'))
+        return Response(
+            ActionCorrectivePreventiveSerializer(capa).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'], url_path='a-reverser')
+    def a_reverser(self, request):
+        demandes = demandes_changement_a_reverser(request.user.company)
+        return Response(self.get_serializer(demandes, many=True).data)
+
+    @action(detail=False, methods=['post'])
+    def relancer(self, request):
+        demandes = relancer_demandes_changement(request.user.company)
+        return Response({'relances': len(demandes)})

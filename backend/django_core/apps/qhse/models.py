@@ -5387,3 +5387,144 @@ class ReleveConsommation(models.Model):
     def __str__(self):
         return (f'{self.site_libelle} — {self.get_type_energie_display()} '
                 f'({self.periode:%Y-%m})')
+
+
+# ── XQHS24 — Gestion du changement (MOC léger) ──────────────────────────────
+
+class DemandeChangement(models.Model):
+    """Demande de gestion du changement (MOC — Management Of Change léger,
+    XQHS24) : trace un changement de procédé/équipement/organisation/document
+    AVEC revue des risques avant mise en œuvre.
+
+    Cycle de vie : ``brouillon`` → ``en_revue`` → ``approuve`` → ``deploye`` /
+    (``clos`` | ``annule``). Un changement TEMPORAIRE porte
+    ``date_expiration`` + relance de réversion (pattern
+    ``Derogation``/``ConformiteEnvironnementale`` QHSE38). Les actions de mise
+    en œuvre = CAPA liées (voir ``services.creer_capa_mise_en_oeuvre_moc``).
+
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    class Type(models.TextChoices):
+        PROCEDE = 'procede', 'Procédé'
+        EQUIPEMENT = 'equipement', 'Équipement'
+        ORGANISATION = 'organisation', 'Organisation'
+        DOCUMENT = 'document', 'Document'
+
+    class Impact(models.TextChoices):
+        FAIBLE = 'faible', 'Faible'
+        MOYEN = 'moyen', 'Moyen'
+        FORT = 'fort', 'Fort'
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        EN_REVUE = 'en_revue', 'En revue'
+        APPROUVE = 'approuve', 'Approuvé'
+        DEPLOYE = 'deploye', 'Déployé'
+        CLOS = 'clos', 'Clos'
+        ANNULE = 'annule', 'Annulé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_demandes_changement',
+        verbose_name='Société',
+    )
+    type_changement = models.CharField(
+        max_length=15, choices=Type.choices,
+        default=Type.PROCEDE, verbose_name='Type de changement')
+    description = models.TextField(verbose_name='Description')
+    justification = models.TextField(
+        blank=True, default='', verbose_name='Justification')
+    classification_impact = models.CharField(
+        max_length=10, choices=Impact.choices,
+        default=Impact.FAIBLE, verbose_name="Classification d'impact")
+    # Revue des risques : texte libre + lien optionnel vers un DUERP existant
+    # (même app, FK directe).
+    revue_risques = models.TextField(
+        blank=True, default='', verbose_name='Revue des risques')
+    evaluation_risque = models.ForeignKey(
+        'EvaluationRisque',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='demandes_changement',
+        verbose_name='Évaluation des risques liée',
+    )
+    documents_formations_impactes = models.TextField(
+        blank=True, default='', verbose_name='Documents/formations impactés')
+    approbateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_demandes_changement_approuvees',
+        verbose_name='Approbateur',
+    )
+    date_approbation = models.DateTimeField(
+        null=True, blank=True, verbose_name="Date d'approbation")
+    checklist_verification = models.TextField(
+        blank=True, default='',
+        verbose_name='Checklist de vérification avant déploiement')
+    statut = models.CharField(
+        max_length=15, choices=Statut.choices,
+        default=Statut.BROUILLON, verbose_name='Statut')
+    # Changement TEMPORAIRE : date de retour à l'état antérieur + relance
+    # (pattern Derogation/ConformiteEnvironnementale, QHSE38). NULL = permanent.
+    est_temporaire = models.BooleanField(
+        default=False, verbose_name='Changement temporaire')
+    date_expiration = models.DateField(
+        null=True, blank=True, verbose_name='Date de réversion prévue')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Demande de changement (MOC)'
+        verbose_name_plural = 'Demandes de changement (MOC)'
+        ordering = ['-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='qhse_demchang_co_statut',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.get_type_changement_display()} — {self.description[:40]}'
+
+
+class DemandeChangementCapa(models.Model):
+    """Lien (M2M explicite) entre une ``DemandeChangement`` et une CAPA
+    (action de mise en œuvre — un même changement peut avoir plusieurs
+    actions, pattern ``RisqueOpportuniteCapa``)."""
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_demande_changement_capa',
+        verbose_name='Société',
+    )
+    demande_changement = models.ForeignKey(
+        DemandeChangement,
+        on_delete=models.CASCADE,
+        related_name='capa_liees',
+        verbose_name='Demande de changement',
+    )
+    capa = models.ForeignKey(
+        'ActionCorrectivePreventive',
+        on_delete=models.CASCADE,
+        related_name='demandes_changement_liees',
+        verbose_name='CAPA',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'CAPA liée à une demande de changement'
+        verbose_name_plural = 'CAPA liées à une demande de changement'
+        ordering = ['-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['demande_changement', 'capa'],
+                name='qhse_demchangcapa_dem_capa_uniq',
+            )
+        ]
+
+    def __str__(self):
+        return f'{self.demande_changement_id} ↔ CAPA {self.capa_id}'

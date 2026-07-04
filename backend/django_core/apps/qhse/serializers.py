@@ -12,7 +12,8 @@ from .models import (
     CodeDefaut,
     ConsignationLoto, ContactUrgence, ControleReception,
     BilanCarbone, BordereauSuiviDechet, ConformiteEnvironnementale,
-    CritereAudit, Dechet, DeclarationCnss, Derogation, EtapeDeclarationAt,
+    CritereAudit, Dechet, DeclarationCnss, DemandeChangement, Derogation,
+    EtapeDeclarationAt,
     EvaluationRisque, GrilleAudit,
     ExerciceUrgence,
     InductionSecurite, IndicateurESG,
@@ -1346,3 +1347,35 @@ class ReleveConsommationSerializer(serializers.ModelSerializer):
             'piece_jointe_url', 'date_creation',
         ]
         read_only_fields = ['date_creation']
+
+
+class DemandeChangementSerializer(serializers.ModelSerializer):
+    """Demande de gestion du changement (MOC, XQHS24). ``company`` posée côté
+    serveur. Le ``statut`` avance via l'action ``transitionner`` du viewset
+    (jamais un PATCH direct) pour garder le gate d'approbation centralisé."""
+    type_changement_display = serializers.CharField(
+        source='get_type_changement_display', read_only=True)
+    classification_impact_display = serializers.CharField(
+        source='get_classification_impact_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    nb_capa_liees = serializers.IntegerField(
+        source='capa_liees.count', read_only=True)
+
+    class Meta:
+        model = DemandeChangement
+        fields = [
+            'id', 'type_changement', 'type_changement_display', 'description',
+            'justification', 'classification_impact',
+            'classification_impact_display', 'revue_risques',
+            'evaluation_risque', 'documents_formations_impactes',
+            'approbateur', 'date_approbation', 'checklist_verification',
+            'statut', 'statut_display', 'est_temporaire', 'date_expiration',
+            'nb_capa_liees', 'date_creation',
+        ]
+        read_only_fields = [
+            'approbateur', 'date_approbation', 'statut', 'date_creation',
+        ]
+
+    def validate_evaluation_risque(self, value):
+        return _meme_societe(self, value, 'Évaluation des risques')
