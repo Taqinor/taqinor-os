@@ -375,6 +375,17 @@ class Ticket(models.Model):
     cout = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)
 
+    # ── XSAV14 — taxonomie panne / cause / remède (codifiés à la résolution) ──
+    # Optionnels : NULL tant qu'un technicien ne les a pas saisis (comportement
+    # actuel inchangé). SET_NULL : la suppression d'un référentiel ne casse pas
+    # l'historique des tickets déjà codifiés.
+    cause = models.ForeignKey(
+        'sav.CauseDefaillance', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='tickets')
+    remede = models.ForeignKey(
+        'sav.RemedeDefaillance', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='tickets')
+
     # ── Annulation : un DRAPEAU avec motif, pas une étape (comme « Perdu »). ──
     annule = models.BooleanField(default=False)
     motif_annulation = models.CharField(max_length=255, blank=True, null=True)
@@ -997,6 +1008,54 @@ class TicketSatisfaction(models.Model):
 
     def __str__(self):
         return f'CSAT ticket {self.ticket_id} = {self.note}/5'
+
+
+# ── XSAV14 — Taxonomie panne / cause / remède ────────────────────────────────
+
+class CauseDefaillance(models.Model):
+    """XSAV14 — Référentiel configurable des causes de panne (Paramètres SAV).
+
+    Codifie la CAUSE d'une panne (ex. « Défaut composant », « Erreur
+    d'installation », « Usure normale ») pour permettre l'analyse Pareto des
+    modes de défaillance. Même patron que `crm.Canal`/`crm.MotifPerte` :
+    liste plate, scopée société, éditable dans Paramètres, additive."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='causes_defaillance')
+    nom = models.CharField(max_length=150)
+    ordre = models.PositiveIntegerField(default=0)
+    archived = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['ordre', 'nom']
+        unique_together = [('company', 'nom')]
+        verbose_name = 'Cause de défaillance'
+        verbose_name_plural = 'Causes de défaillance'
+
+    def __str__(self):
+        return self.nom
+
+
+class RemedeDefaillance(models.Model):
+    """XSAV14 — Référentiel configurable des remèdes appliqués (Paramètres SAV).
+
+    Codifie le REMÈDE apporté à la résolution (ex. « Remplacement pièce »,
+    « Reparamétrage », « Nettoyage »). Même patron que `CauseDefaillance`."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='remedes_defaillance')
+    nom = models.CharField(max_length=150)
+    ordre = models.PositiveIntegerField(default=0)
+    archived = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['ordre', 'nom']
+        unique_together = [('company', 'nom')]
+        verbose_name = 'Remède de défaillance'
+        verbose_name_plural = 'Remèdes de défaillance'
+
+    def __str__(self):
+        return self.nom
 
 
 class PieceConsommee(models.Model):

@@ -352,3 +352,90 @@ def taux_reouverture(company, *, group_by='technicien', date_debut=None,
         })
     out.sort(key=lambda r: r['taux'], reverse=True)
     return out
+
+
+def pareto_pannes(company, *, group_by='produit', date_debut=None,
+                  date_fin=None):
+    """XSAV14 — Pareto des pannes par MODÈLE DE PRODUIT ou par FOURNISSEUR.
+
+    ``group_by`` ∈ {'produit', 'fournisseur'}. Compte les tickets CORRECTIFS
+    de la société (annulés exclus) portant une ``cause`` codifiée, groupés par
+    le produit de l'équipement lié (ou son fournisseur, lu via
+    ``stock.selectors`` — jamais un import direct de ``stock.models``).
+    Filtre optionnel sur ``date_creation`` (bornes inclusives).
+
+    Renvoie une liste de dicts triée par nombre décroissant (Pareto), chacun
+    avec le compte cumulé % (colonne Pareto classique) :
+      [{'cle': int|str|None, 'libelle': str, 'nb_tickets': int,
+        'pct': float, 'pct_cumule': float,
+        'causes': [{'cause': str, 'nb': int}, …]}, …]
+
+    Un ticket sans équipement lié, ou dont l'équipement n'a pas de produit
+    résolu, est ignoré (pas de bucket « Inconnu » — un Pareto sans donnée
+    fiable ne serait pas exploitable pour une réclamation garantie FG83)."""
+    qs = (Ticket.objects
+          .filter(company=company, type=Ticket.Type.CORRECTIF, annule=False,
+                  equipement__isnull=False, cause__isnull=False)
+          .select_related('equipement', 'equipement__produit', 'cause'))
+    if date_debut is not None:
+        qs = qs.filter(date_creation__date__gte=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(date_creation__date__lte=date_fin)
+
+    fournisseur_cache = {}
+
+    def _fournisseur_for(produit):
+        pid = getattr(produit, 'id', None)
+        if pid is None:
+            return None, None
+        if pid in fournisseur_cache:
+            return fournisseur_cache[pid]
+        fid = getattr(produit, 'fournisseur_id', None)
+        nom = None
+        if fid:
+            try:
+                from apps.stock.selectors import get_fournisseur_by_id
+                f = get_fournisseur_by_id(company, fid)
+                nom = getattr(f, 'nom', None) if f else None
+            except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+                nom = None
+        fournisseur_cache[pid] = (fid, nom)
+        return fid, nom
+
+    buckets = {}
+    total = 0
+    for t in qs:
+        produit = getattr(t.equipement, 'produit', None)
+        if produit is None:
+            continue
+        if group_by == 'fournisseur':
+            fid, fnom = _fournisseur_for(produit)
+            if fid is None:
+                continue
+            cle, libelle = fid, (fnom or f'Fournisseur #{fid}')
+        else:
+            cle, libelle = produit.id, (getattr(produit, 'nom', '') or '—')
+        bucket = buckets.setdefault(
+            cle, {'cle': cle, 'libelle': libelle, 'nb_tickets': 0,
+                  '_causes': {}})
+        bucket['nb_tickets'] += 1
+        cause_nom = t.cause.nom
+        bucket['_causes'][cause_nom] = bucket['_causes'].get(cause_nom, 0) + 1
+        total += 1
+
+    rows = sorted(buckets.values(), key=lambda b: b['nb_tickets'], reverse=True)
+    cumule = 0
+    out = []
+    for row in rows:
+        nb = row['nb_tickets']
+        pct = round((nb / total) * 100, 2) if total else 0.0
+        cumule += nb
+        pct_cumule = round((cumule / total) * 100, 2) if total else 0.0
+        causes = sorted(
+            ({'cause': c, 'nb': n} for c, n in row['_causes'].items()),
+            key=lambda c: c['nb'], reverse=True)
+        out.append({
+            'cle': row['cle'], 'libelle': row['libelle'], 'nb_tickets': nb,
+            'pct': pct, 'pct_cumule': pct_cumule, 'causes': causes,
+        })
+    return out

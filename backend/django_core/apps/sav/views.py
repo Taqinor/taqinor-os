@@ -21,6 +21,7 @@ from .models import (
     Equipement, Ticket, PieceConsommee,
     SavSlaSettings, MaintenanceChecklistTemplate, TicketChecklistItem,
     WarrantyClaim, KbArticle, AlarmeOnduleur,
+    CauseDefaillance, RemedeDefaillance,
 )
 from .services import add_months
 from .pdf import rapport_intervention_pdf
@@ -32,6 +33,7 @@ from .serializers import (
     WarrantyClaimSerializer,
     KbArticleSerializer,
     AlarmeOnduleurSerializer,
+    CauseDefaillanceSerializer, RemedeDefaillanceSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -293,7 +295,7 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def _check_tenant(self, serializer):
         company = self.request.user.company
-        for field in ('client', 'installation', 'equipement'):
+        for field in ('client', 'installation', 'equipement', 'cause', 'remede'):
             obj = serializer.validated_data.get(field)
             if obj is not None and obj.company_id != company.id:
                 raise ValidationError({field: 'Référence inconnue.'})
@@ -1121,6 +1123,82 @@ class AlarmeOnduleurViewSet(TenantMixin, viewsets.ModelViewSet):
         alarme.statut = AlarmeOnduleur.Statut.ESCALADEE
         alarme.save(update_fields=['ticket', 'statut', 'date_modification'])
         return Response(AlarmeOnduleurSerializer(alarme).data)
+
+
+# ── XSAV14 — Taxonomie panne / cause / remède ─────────────────────────────────
+
+class CauseDefaillanceViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Référentiel des causes de panne (XSAV14). Lecture tout rôle, écriture
+    responsable/admin (édité dans Paramètres)."""
+    queryset = CauseDefaillance.objects.all()
+    serializer_class = CauseDefaillanceSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.action == 'list' and self.request.query_params.get(
+                'archived') != '1':
+            qs = qs.filter(archived=False)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+
+class RemedeDefaillanceViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Référentiel des remèdes de panne (XSAV14). Lecture tout rôle, écriture
+    responsable/admin (édité dans Paramètres)."""
+    queryset = RemedeDefaillance.objects.all()
+    serializer_class = RemedeDefaillanceSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.action == 'list' and self.request.query_params.get(
+                'archived') != '1':
+            qs = qs.filter(archived=False)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+
+def sav_pareto_pannes(request):
+    """XSAV14 — Pareto des pannes par modèle de produit (ou fournisseur).
+
+    ``?group_by=produit`` (défaut) ou ``?group_by=fournisseur`` ;
+    ``?date_debut=AAAA-MM-JJ&date_fin=AAAA-MM-JJ`` optionnels. Alimente les
+    réclamations garantie FG83 avec des preuves chiffrées (récurrence par
+    modèle/fournisseur)."""
+    from datetime import date as _date
+    from .selectors import pareto_pannes
+
+    company = request.user.company
+    group_by = request.query_params.get('group_by', 'produit')
+    if group_by not in ('produit', 'fournisseur'):
+        group_by = 'produit'
+
+    def _parse(name):
+        raw = (request.query_params.get(name) or '').strip()
+        if not raw:
+            return None
+        try:
+            return _date.fromisoformat(raw)
+        except ValueError:
+            return None
+
+    data = pareto_pannes(
+        company, group_by=group_by,
+        date_debut=_parse('date_debut'), date_fin=_parse('date_fin'))
+    return Response({'group_by': group_by, 'results': data})
 
 
 # ── FG89 — Prévision pièces SAV ───────────────────────────────────────────────

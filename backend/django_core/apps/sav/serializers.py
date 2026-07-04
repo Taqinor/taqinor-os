@@ -7,7 +7,7 @@ from .models import (
     Equipement, Ticket, TicketActivity, PieceConsommee,
     SavSlaSettings, MaintenanceChecklistTemplate, MaintenanceChecklistItem,
     TicketChecklistItem, WarrantyClaim, KbArticle, AlarmeOnduleur,
-    TicketSatisfaction,
+    TicketSatisfaction, CauseDefaillance, RemedeDefaillance,
 )
 
 # Fenêtre « garantie expirant bientôt » (jours).
@@ -210,6 +210,11 @@ class TicketSerializer(serializers.ModelSerializer):
     jours_pause = serializers.IntegerField(read_only=True)
     # XSAV11 — compteur de réouvertures (côté serveur uniquement).
     reopen_count = serializers.IntegerField(read_only=True)
+    # XSAV14 — taxonomie panne / cause / remède (libellés lecture).
+    cause_nom = serializers.CharField(
+        source='cause.nom', read_only=True, default=None)
+    remede_nom = serializers.CharField(
+        source='remede.nom', read_only=True, default=None)
 
     class Meta:
         model = Ticket
@@ -368,3 +373,19 @@ class AlarmeOnduleurSerializer(serializers.ModelSerializer):
             'acquittee_par', 'date_acquittement', 'ticket',
             'date_creation', 'date_modification',
         ]
+
+
+# ── XSAV14 — Taxonomie panne / cause / remède ─────────────────────────────────
+
+class CauseDefaillanceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CauseDefaillance
+        fields = ['id', 'nom', 'ordre', 'archived']
+        read_only_fields = ['id']
+
+
+class RemedeDefaillanceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = RemedeDefaillance
+        fields = ['id', 'nom', 'ordre', 'archived']
+        read_only_fields = ['id']
