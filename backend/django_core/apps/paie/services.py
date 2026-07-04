@@ -4340,3 +4340,229 @@ def appliquer_structure_a_profil(profil, structure):
         profil.structure = structure
         profil.save(update_fields=['structure'])
     return cree
+
+
+# ── XPAI17 — Ventilation analytique de la masse salariale + coût employé ───
+
+def _bornes_periode(periode):
+    """(date_debut, date_fin) civiles du mois d'une ``PeriodePaie``."""
+    import calendar
+
+    dernier_jour = calendar.monthrange(periode.annee, periode.mois)[1]
+    return (date(periode.annee, periode.mois, 1),
+            date(periode.annee, periode.mois, dernier_jour))
+
+
+def cout_employeur_bulletin(bulletin):
+    """Coût employeur total d'un bulletin (brut + patronales + provisions).
+
+    Base de la ventilation analytique (XPAI17) : brut + charges patronales
+    (CNSS/AMO/allocations/formation pro/mutuelle patronale) + provision congés.
+    Renvoie un ``Decimal`` au centime.
+    """
+    total = (
+        Decimal(bulletin.brut or 0)
+        + Decimal(bulletin.charges_patronales or 0)
+        + Decimal(bulletin.provision_conges or 0)
+    )
+    return _q(total)
+
+
+def ventilation_analytique_bulletin(bulletin):
+    """Ventile le coût employeur d'un bulletin sur l'axe analytique (XPAI17).
+
+    Ordre de résolution :
+
+    1. **Heures réelles** — si des heures ``rh.FeuilleTemps`` existent pour
+       l'employé sur le mois du bulletin (lues via
+       ``rh.selectors.labour_hours_par_installation_pour_employe``), le coût
+       employeur est réparti AU PRORATA de ces heures entre les chantiers
+       (un ``compta.CentreCout`` est résolu/créé par installation,
+       ``compta.services.creer_centre_cout`` — jamais ``compta.models``
+       direct).
+    2. **Clé % fixe** — à défaut, les ``VentilationAnalytiquePaie`` actives du
+       profil (centre_cout_id + pourcentage) sont appliquées. Un reliquat
+       (100 % − Σ pourcentages) reste NON VENTILÉ (``centre_cout_id=None``).
+    3. **Aucune clé** — tout le coût est NON VENTILÉ.
+
+    Renvoie une liste de dicts ``{'centre_cout_id': int|None, 'montant':
+    Decimal}`` dont la somme des montants == ``cout_employeur_bulletin``
+    (au centime près, l'arrondi est absorbé sur la dernière ligne).
+    """
+    from apps.rh import selectors as rh_selectors  # cross-app, lecture seule
+
+    from .models import VentilationAnalytiquePaie
+
+    total = cout_employeur_bulletin(bulletin)
+    if total <= 0:
+        return []
+
+    profil = bulletin.profil
+    date_debut, date_fin = _bornes_periode(bulletin.periode)
+    heures_par_installation = rh_selectors.labour_hours_par_installation_pour_employe(
+        profil.company, profil.employe_id, date_debut, date_fin)
+
+    if heures_par_installation:
+        from apps.compta import services as compta_services  # cross-app WRITE
+
+        total_heures = sum(
+            (Decimal(h['total_heures']) for h in heures_par_installation),
+            Decimal('0'))
+        lignes = []
+        cumul = Decimal('0')
+        for i, entree in enumerate(heures_par_installation):
+            centre = compta_services.creer_centre_cout(
+                profil.company,
+                code=f"CHANTIER-{entree['installation_id']}",
+                libelle=f"Chantier #{entree['installation_id']}",
+                axe='chantier')
+            if i == len(heures_par_installation) - 1:
+                montant = _q(total - cumul)
+            else:
+                part = Decimal(entree['total_heures']) / total_heures
+                montant = _q(total * part)
+                cumul += montant
+            lignes.append({'centre_cout_id': centre.id, 'montant': montant})
+        return lignes
+
+    cles = list(
+        VentilationAnalytiquePaie.objects
+        .filter(company=profil.company, profil=profil, actif=True)
+        .order_by('id'))
+    if not cles:
+        return [{'centre_cout_id': None, 'montant': total}]
+
+    lignes = []
+    cumul_pct = Decimal('0')
+    cumul_montant = Decimal('0')
+    for cle in cles:
+        pct = Decimal(cle.pourcentage or 0)
+        montant = _q(total * pct / Decimal('100'))
+        lignes.append({'centre_cout_id': cle.centre_cout_id, 'montant': montant})
+        cumul_pct += pct
+        cumul_montant += montant
+    if cumul_pct < Decimal('100'):
+        reliquat = _q(total - cumul_montant)
+        if reliquat > 0:
+            lignes.append({'centre_cout_id': None, 'montant': reliquat})
+    return lignes
+
+
+def cout_global_par_profil(periode):
+    """Coût global employeur PAR EMPLOYÉ de la période (XPAI17), interne.
+
+    JAMAIS client-facing. Agrège, pour chaque bulletin VALIDÉ de la
+    ``periode``, le coût employeur total et sa ventilation analytique.
+    Renvoie une liste de dicts ``{'profil_id', 'matricule', 'nom',
+    'cout_global', 'ventilation': [...]}``.
+    """
+    from .models import BulletinPaie
+
+    bulletins = (
+        BulletinPaie.objects
+        .filter(company=periode.company, periode=periode,
+                statut=BulletinPaie.STATUT_VALIDE)
+        .select_related('profil', 'profil__employe')
+    )
+    resultat = []
+    for bulletin in bulletins:
+        employe = bulletin.profil.employe
+        resultat.append({
+            'profil_id': bulletin.profil_id,
+            'matricule': getattr(employe, 'matricule', '') if employe else '',
+            'nom': f'{employe.nom} {employe.prenom}'.strip() if employe else '',
+            'cout_global': cout_employeur_bulletin(bulletin),
+            'ventilation': ventilation_analytique_bulletin(bulletin),
+        })
+    return resultat
+
+
+def journal_de_paie_ventile(periode, *, created_by=None):
+    """Écriture du journal de paie AVEC ventilation analytique (XPAI17).
+
+    Même schéma comptable que ``journal_de_paie`` (PAIE33), mais les lignes de
+    débit RÉMUNÉRATION/CHARGES SOCIALES sont ÉCLATÉES par ``centre_cout``
+    (proportionnellement au coût employeur ventilé de chaque bulletin, cf.
+    ``ventilation_analytique_bulletin``) au lieu d'une ligne agrégée unique.
+    Le reste de l'écriture (CNSS/IR/CIMR/net à payer) est inchangé. Renvoie
+    l'écriture créée, ou ``None`` s'il n'y a aucun bulletin validé.
+    """
+    from apps.compta import services as compta_services  # cross-app via services
+
+    from .models import BulletinPaie
+
+    bulletins = list(
+        BulletinPaie.objects
+        .filter(company=periode.company, periode=periode,
+                statut=BulletinPaie.STATUT_VALIDE)
+        .select_related('profil'))
+    if not bulletins:
+        return None
+
+    company = periode.company
+    requis = [
+        _COMPTE_REMUNERATION, _COMPTE_CHARGES_SOCIALES, _COMPTE_CNSS,
+        _COMPTE_IR, _COMPTE_CIMR, _COMPTE_NET,
+    ]
+    if any(compta_services.get_compte(company, num) is None for num in requis):
+        compta_services.seed_plan_comptable(company)
+
+    def compte(numero):
+        return compta_services.get_compte(company, numero)
+
+    # Ventile le coût employeur (rémunération + charges patronales) par
+    # centre de coût, agrégé sur TOUS les bulletins de la période.
+    ventilation_par_centre = {}
+    for bulletin in bulletins:
+        for ligne in ventilation_analytique_bulletin(bulletin):
+            cle = ligne['centre_cout_id']
+            ventilation_par_centre[cle] = (
+                ventilation_par_centre.get(cle, Decimal('0')) + ligne['montant'])
+
+    registre = livre_de_paie(periode)
+    totaux = registre['totaux']
+    cnss_amo = (
+        totaux['cnss_salariale'] + totaux['cnss_patronale']
+        + totaux['amo_salariale'] + totaux['amo_patronale']
+    )
+    ir = totaux['ir']
+    cimr = totaux['cimr_salariale']
+
+    lignes = []
+    for centre_id, montant in sorted(
+            ventilation_par_centre.items(), key=lambda kv: (kv[0] is None, kv[0] or 0)):
+        libelle = ('Rémunération + charges patronales'
+                   + (f' — centre #{centre_id}' if centre_id else ' — non ventilé'))
+        lignes.append({
+            'compte': compte(_COMPTE_REMUNERATION),
+            'libelle': libelle, 'debit': montant, 'credit': 0,
+            'centre_cout': centre_id,
+        })
+    if cnss_amo > 0:
+        lignes.append({
+            'compte': compte(_COMPTE_CNSS),
+            'libelle': 'CNSS / AMO à payer', 'debit': 0, 'credit': cnss_amo})
+    if ir > 0:
+        lignes.append({
+            'compte': compte(_COMPTE_IR),
+            'libelle': 'IR retenu à la source', 'debit': 0, 'credit': ir})
+    if cimr > 0:
+        lignes.append({
+            'compte': compte(_COMPTE_CIMR),
+            'libelle': 'CIMR à payer', 'debit': 0, 'credit': cimr})
+
+    total_debit = sum((Decimal(lig['debit']) for lig in lignes), Decimal('0'))
+    total_credit_hors_net = sum(
+        (Decimal(lig['credit']) for lig in lignes), Decimal('0'))
+    net_equilibrant = _q(total_debit - total_credit_hors_net)
+    lignes.append({
+        'compte': compte(_COMPTE_NET),
+        'libelle': 'Rémunérations dues au personnel (net)',
+        'debit': 0, 'credit': net_equilibrant})
+
+    date_ecriture = date(periode.annee, periode.mois, 28)
+    libelle = f'Journal de paie ventilé {periode.mois:02d}/{periode.annee}'
+    reference = f'PAIE-VENTILE-{periode.annee}-{periode.mois:02d}'
+    return compta_services.creer_ecriture_od(
+        company, date_ecriture, libelle, lignes,
+        reference=reference, created_by=created_by)

@@ -1789,3 +1789,51 @@ class StructurePaieRubrique(models.Model):
 
     def __str__(self):
         return f'{self.rubrique.code} → {self.structure.code}'
+
+
+# ── XPAI17 — Ventilation analytique de la masse salariale ──────────────────
+
+class VentilationAnalytiquePaie(models.Model):
+    """Clé de ventilation analytique FIXE par profil (XPAI17), company-scoped.
+
+    Repli quand aucune heure ``rh.FeuilleTemps`` n'est disponible pour la
+    période : répartit le coût employeur du profil sur un ``centre_cout``
+    (``compta.CentreCout``, référencé en STRING-FK — la paie n'importe jamais
+    ``compta.models``) au ``pourcentage`` indiqué. Plusieurs clés peuvent
+    coexister pour un même profil (ex. 60 % chantier A / 40 % chantier B) ;
+    aucune contrainte de somme à 100 % n'est imposée en base (validée côté
+    service au moment de l'usage — un total ≠ 100 % laisse un reliquat non
+    ventilé, jamais une erreur bloquante).
+
+    Multi-société : ``company`` posée côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paie_ventilations_analytiques',
+        verbose_name='Société',
+    )
+    profil = models.ForeignKey(
+        ProfilPaie,
+        on_delete=models.CASCADE,
+        related_name='ventilations_analytiques',
+        verbose_name='Profil de paie',
+    )
+    # STRING-FK cross-app vers compta.CentreCout — jamais compta.models direct.
+    centre_cout_id = models.PositiveIntegerField(
+        verbose_name='Centre de coût (ID, compta.CentreCout)')
+    pourcentage = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('100'),
+        verbose_name='Pourcentage')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Ventilation analytique (clé fixe)'
+        verbose_name_plural = 'Ventilations analytiques (clés fixes)'
+        ordering = ['profil', 'id']
+
+    def __str__(self):
+        return (f'Profil #{self.profil_id} → '
+                f'centre#{self.centre_cout_id} ({self.pourcentage}%)')

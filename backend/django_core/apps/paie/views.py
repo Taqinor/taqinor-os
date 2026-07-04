@@ -70,6 +70,7 @@ from .services import (
     changer_statut,
     cloturer_periode_paie,
     controle_ecarts,
+    cout_global_par_profil,
     creer_bulletin_rectificatif,
     declaration_cimr,
     declaration_cnss,
@@ -96,6 +97,7 @@ from .services import (
     generer_run_gratification,
     importer_elements_rh,
     journal_de_paie,
+    journal_de_paie_ventile,
     livre_de_paie,
     marquer_bulletin_paye,
     mouvements_cnss_periode,
@@ -708,6 +710,30 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
         """Livre de paie (registre récapitulatif) de la période (PAIE33)."""
         periode = self.get_object()
         return Response(livre_de_paie(periode), status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='cout-global')
+    def cout_global(self, request, pk=None):
+        """Coût global employeur PAR EMPLOYÉ de la période (XPAI17).
+
+        Donnée INTERNE (jamais client-facing) : brut + charges patronales +
+        provisions par employé, plus la ventilation analytique appliquée.
+        """
+        periode = self.get_object()
+        return Response(
+            cout_global_par_profil(periode), status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='journal-ventile')
+    def journal_ventile(self, request, pk=None):
+        """Passe l'écriture du journal de paie AVEC ventilation analytique (XPAI17)."""
+        periode = self.get_object()
+        ecriture = journal_de_paie_ventile(periode, created_by=request.user)
+        if ecriture is None:
+            return Response(
+                {'detail': 'Aucun bulletin validé pour cette période.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {'id': ecriture.id, 'reference': ecriture.reference},
+            status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['get'], url_path='hors-virement')
     def hors_virement(self, request, pk=None):
