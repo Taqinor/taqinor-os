@@ -45,8 +45,10 @@ export const STRICT_TRANSPORT_SECURITY = 'max-age=31536000; includeSubDomains';
 export const REFERRER_POLICY = 'strict-origin-when-cross-origin';
 
 /** Permissions-Policy : géolocalisation autorisée en self uniquement (outil
- * toiture), tout le reste des API sensibles désactivé par défaut du navigateur. */
-export const PERMISSIONS_POLICY = 'geolocation=(self)';
+ * toiture) ; caméra/micro/paiement explicitement désactivés (WB35 — le site
+ * n'utilise aucune de ces API), le reste des API sensibles reste désactivé par
+ * défaut du navigateur. */
+export const PERMISSIONS_POLICY = 'geolocation=(self), camera=(), microphone=(), payment=()';
 
 /**
  * Applique l'ensemble des en-têtes de sécurité à une réponse HTML (GET/HEAD
@@ -66,6 +68,9 @@ export function applySecurityHeaders(request, response) {
   headers.set('Referrer-Policy', REFERRER_POLICY);
   headers.set('Permissions-Policy', PERMISSIONS_POLICY);
   headers.set('X-Content-Type-Options', 'nosniff');
+  // WB34 — défense en profondeur clickjacking pour les anciens agents/scanners
+  // qui n'honorent pas `frame-ancestors` (CSP) : DENY reflète la même politique.
+  headers.set('X-Frame-Options', 'DENY');
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
