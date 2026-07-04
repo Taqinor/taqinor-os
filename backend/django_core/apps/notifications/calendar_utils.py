@@ -1,9 +1,15 @@
 """FG5 — Utilitaires de calendrier ouvré, par société.
 
-Trois helpers publics :
+Quatre helpers publics :
   - is_jour_ouvre(date, company)         → bool
   - prochain_jour_ouvre(date, company)   → date (premier jour ouvré ≥ date)
   - ajouter_jours_ouvres(date, n, company) → date après n jours ouvrés
+  - feries_entre(company, debut, fin)    → liste de `date` fériées (ZRH1) —
+    surface de LECTURE réutilisée par ``rh.services`` (cross-app-safe, jamais
+    d'import de ``notifications.models`` en dehors de ce module) pour
+    alimenter le décompte de congés avec les fêtes MOBILES (Aïd, Mawlid…)
+    saisies dans `Holiday`, en plus des 9 fêtes fixes déjà gérées par
+    ``rh.holidays.JOURS_FERIES_FIXES_MA``.
 
 Un « jour ouvré » = un jour de la semaine marqué comme ouvré dans la
 `WorkingHoursConfig` de la société ET non présent dans sa table `Holiday`
@@ -164,3 +170,39 @@ def ajouter_jours_ouvres(d: datetime.date, n: int, company) -> datetime.date:
             remaining, _MAX_ITERATIONS)
 
     return current
+
+
+def feries_entre(
+        company, date_debut: datetime.date,
+        date_fin: datetime.date) -> list[datetime.date]:
+    """ZRH1 — liste les dates FÉRIÉES de la société dans ``[date_debut,
+    date_fin]`` (inclusif), fixes ET mobiles (Aïd, Mawlid, 1er Moharram…)
+    saisies dans `Holiday`.
+
+    Résout les jours récurrents annuels (mois/jour) sur CHAQUE année couverte
+    par la fenêtre, et les jours non récurrents uniquement pour leur année
+    exacte. Renvoie une liste de ``date`` triée, sans doublon. Sans
+    `Holiday` configuré pour la société : liste vide (comportement sûr,
+    n'affecte aucun décompte existant).
+    """
+    if date_debut is None or date_fin is None or date_debut > date_fin:
+        return []
+    try:
+        from .models import Holiday
+        qs = Holiday.objects.filter(company=company)
+        resultats: set[datetime.date] = set()
+        for h in qs:
+            if h.recurrent_annuel:
+                for year in range(date_debut.year, date_fin.year + 1):
+                    try:
+                        candidate = datetime.date(year, h.date.month, h.date.day)
+                    except ValueError:
+                        continue  # 29 février sur année non bissextile.
+                    if date_debut <= candidate <= date_fin:
+                        resultats.add(candidate)
+            elif date_debut <= h.date <= date_fin:
+                resultats.add(h.date)
+        return sorted(resultats)
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.warning('calendar_utils: feries_entre échoué : %s', exc)
+        return []

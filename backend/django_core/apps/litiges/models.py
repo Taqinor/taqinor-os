@@ -19,6 +19,10 @@ class Reclamation(models.Model):
         QUALITE = 'qualite', 'Qualité'
         DELAI = 'delai', 'Délai'
         COMMERCIAL = 'commercial', 'Commercial'
+        # XFAC21 — dossier contentieux / passage en recouvrement externe
+        # (avocat / société de recouvrement), distinct d'un simple litige
+        # financier en cours de discussion amiable.
+        RECOUVREMENT = 'recouvrement', 'Recouvrement'
         AUTRE = 'autre', 'Autre'
 
     class Gravite(models.TextChoices):

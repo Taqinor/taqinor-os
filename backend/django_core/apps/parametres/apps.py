@@ -5,6 +5,15 @@ class ParametresConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'apps.parametres'
     verbose_name = 'Paramètres'
+    module_manifest = {
+        'key': 'parametres',
+        'label': 'Paramètres',
+        'icone': 'settings',
+        'depends': [],
+        'installable': False,
+        'description': 'Paramétrage de la société.',
+        'categorie': 'Technique',
+    }
 
     def ready(self):
         import apps.parametres.signals  # noqa: F401

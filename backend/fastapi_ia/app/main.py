@@ -2,7 +2,7 @@ import os
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.endpoints import ocr, sql_agent, transcription, voice
+from app.api.endpoints import ocr, projets, sql_agent, transcription, voice
 from app.core.database import create_tables
 from app.core.security import verify_token
 
@@ -79,5 +79,12 @@ app.include_router(
     voice.router,
     prefix="/sql-agent",
     tags=["Voice"],
+    dependencies=[Depends(verify_token)],
+)
+# XPRJ29 — Génération IA d'un brouillon de plan de tâches depuis un devis.
+app.include_router(
+    projets.router,
+    prefix="/projets",
+    tags=["Projets"],
     dependencies=[Depends(verify_token)],
 )

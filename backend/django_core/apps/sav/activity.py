@@ -18,6 +18,9 @@ TRACKED_FIELDS = {
     'description': 'Description',
     'annule': 'Annulé',
     'motif_annulation': "Motif d'annulation",
+    # XSAV14 — taxonomie panne / cause / remède, codifiés à la résolution.
+    'cause': 'Cause',
+    'remede': 'Remède',
 }
 
 _CHOICE_FIELDS = {'statut', 'type', 'priorite', 'sous_garantie'}
@@ -37,6 +40,8 @@ def _display(ticket: Ticket, field: str, value):
         return getattr(value, 'username', str(value))
     if field == 'equipement':
         return getattr(value, 'numero_serie', None) or str(value)
+    if field in ('cause', 'remede'):
+        return getattr(value, 'nom', str(value))
     return str(value)
 
 

@@ -4,8 +4,11 @@ Référentiel d'articles internes (procédures, fiches techniques, FAQ) destiné
 aux équipes. Multi-société : chaque modèle porte un FK ``company`` posé côté
 serveur (jamais lu du corps de requête). Entièrement additif.
 """
+import secrets
+
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 from pgvector.django import VectorField
 
 # KB6 — dimension du vecteur d'embedding RAG/DocQA. Alignée 1:1 sur
@@ -115,6 +118,53 @@ class KbArticle(models.Model):
     # alors que KbLecture est un « lu/pas lu » idempotent par utilisateur.
     # Posé côté serveur (jamais du corps de requête) via l'action de détail.
     vues = models.PositiveIntegerField(default=0, verbose_name='Vues')
+    # XKB18 — langue de CET article. Défaut ``fr`` = comportement historique
+    # inchangé (tout article existant reste un article français ordinaire).
+    LANGUE_CHOICES = [('fr', 'Français'), ('ar', 'العربية'), ('en', 'English')]
+    langue = models.CharField(
+        max_length=5, choices=LANGUE_CHOICES,
+        default='fr', verbose_name='Langue')
+    # XKB18 — groupe de traduction : pointe vers l'article SOURCE dont celui-ci
+    # est la traduction (self-FK, NULL = article racine/source, pas encore
+    # traduit). Toutes les traductions d'un même contenu partagent la MÊME
+    # source (jamais une chaîne de traductions de traductions) — validé côté
+    # serializer. RÉTRO-COMPATIBLE : NULL par défaut, aucun article existant
+    # n'est affecté.
+    traduction_de = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='traductions',
+        verbose_name='Traduction de',
+    )
+    # XKB18 — la traduction est-elle PÉRIMÉE (la source a été modifiée depuis)?
+    # Posé côté serveur : à chaque modification de l'article SOURCE, toutes ses
+    # traductions sont marquées périmées (services.marquer_traductions_perimees).
+    # Une traduction elle-même modifiée redevient à jour (remis à False).
+    traduction_perimee = models.BooleanField(
+        default=False, verbose_name='Traduction à mettre à jour')
+    # ZGED10 — emoji/icône court affiché dans l'arbre + en tête de fiche (ex.
+    # « 📘 »). Simple CharField court : aucun rendu serveur, le frontend
+    # affiche la chaîne telle quelle. Vide par défaut = pas d'icône (comme
+    # aujourd'hui, comportement inchangé).
+    emoji = models.CharField(
+        max_length=8, blank=True, default='', verbose_name='Emoji')
+    # ZGED10 — clé MinIO (bucket erp-uploads) de l'image de couverture, posée
+    # via l'action ``couverture`` (upload validé type/taille — même pipeline
+    # que les pièces jointes, ``records.storage.store_attachment``). Le
+    # fichier ne vit JAMAIS en base — seule la clé objet est stockée ici.
+    # Vide = pas de couverture (comportement historique inchangé).
+    couverture_file_key = models.CharField(
+        max_length=500, blank=True, default='', verbose_name='Couverture')
+    # ZGED11 — propriétés typées (module ``kb_article`` de `customfields`,
+    # réutilise l'infrastructure existante — comme GED10 pour les documents).
+    # Les définitions posées sur un article PARENT sont héritées par ses
+    # sous-articles (résolution côté selector/serializer, jamais dupliquées
+    # en base). Validé contre les `CustomFieldDef` actives via
+    # `customfields.serializers.validate_custom_data`. Vide par défaut =
+    # comportement historique inchangé (aucun article existant affecté).
+    proprietes = models.JSONField(
+        null=True, blank=True, default=dict, verbose_name='Propriétés')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
     date_modification = models.DateTimeField(
@@ -128,6 +178,11 @@ class KbArticle(models.Model):
             models.Index(
                 fields=['company', 'parent', 'ordre'],
                 name='kb_article_parent_ordre_idx'),
+            # XKB18 — nom EXPLICITE (≤30 car.) pour éviter toute divergence
+            # avec le nom haché déterministe de Django.
+            models.Index(
+                fields=['company', 'traduction_de'],
+                name='kb_article_traduction_idx'),
         ]
 
     def __str__(self):
@@ -583,3 +638,300 @@ class KbRechercheVide(models.Model):
 
     def __str__(self):
         return f'« {self.terme} » (0 résultat)'
+
+
+def _default_partage_token():
+    """XKB19 — Jeton de partage public long, imprévisible et URL-safe.
+
+    Réutilise EXACTEMENT le même générateur que ``ged.PartageGed.token``
+    (``secrets.token_urlsafe``, 32 octets → ~43 caractères) : le jeton est le
+    SEUL secret qui authentifie l'accès public à un article partagé.
+    """
+    return secrets.token_urlsafe(32)
+
+
+class PartageArticleKb(models.Model):
+    """XKB19 — Partage public d'un article KB par lien tokenisé.
+
+    Donne une SOP/FAQ à un client ou sous-traitant SANS compte ERP, via un lien
+    public authentifié par le SEUL jeton (``token``) — jamais par une identité
+    ou une société lue de la requête (voir ``services.resolve_partage_public``,
+    calqué sur ``ged.services.resolve_partage_public``/GED20). Opt-in PAR
+    article : un article n'est jamais exposé sans qu'on crée explicitement ce
+    partage. Aucun contenu sensible par défaut — ``prix_achat`` n'existe pas
+    dans ce module.
+
+    ``expires_at`` optionnel (NULL = jamais expiré). ``actif=False`` est une
+    dépublication immédiate (kill-switch) : un jeton révoqué/inconnu répond
+    404 ; un jeton expiré répond 410 — jamais de fuite distinguant les deux
+    côté « ce jeton existe ».
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='kb_app_partages',
+        verbose_name='Société',
+    )
+    article = models.ForeignKey(
+        KbArticle,
+        on_delete=models.CASCADE,
+        related_name='partages',
+        verbose_name='Article',
+    )
+    # Jeton long, imprévisible, URL-safe — l'UNIQUE secret d'accès public.
+    token = models.CharField(
+        max_length=64, unique=True, default=_default_partage_token,
+        editable=False, verbose_name='Jeton')
+    expires_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Expire le')
+    # Kill-switch : dépublier rend le lien immédiatement 404 (indistinct d'un
+    # jeton inconnu — pas de fuite « ce jeton a existé »).
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    consultations = models.PositiveIntegerField(
+        default=0, verbose_name='Consultations')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='kb_app_partages_crees',
+        verbose_name='Créé par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Partage public de l'article"
+        verbose_name_plural = "Partages publics d'article"
+        ordering = ['-date_creation', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'article'], name='kb_partage_co_art_idx'),
+        ]
+
+    def __str__(self):
+        return f'Partage {self.token[:8]}… → {self.article_id}'
+
+    @property
+    def is_expired(self):
+        """True si le partage a une expiration DÉPASSÉE."""
+        return self.expires_at is not None and self.expires_at <= timezone.now()
+
+    @property
+    def is_accessible(self):
+        """True si le partage est actuellement servable publiquement (actif
+        ET non expiré)."""
+        return self.actif and not self.is_expired
+
+
+class KbParcours(models.Model):
+    """XKB22 — Séquence ORDONNÉE d'articles (« parcours » d'intégration).
+
+    Un parcours porte un ``nom`` (ex. « Onboarding poseur ») et une cible
+    optionnelle par palier de rôle (``role_cible`` — mêmes paliers canoniques
+    que :class:`KbArticleAcl` : admin/responsable/normal) OU par métier libre
+    (``metier`` — texte libre, ex. « poseur », « commercial », car aucun
+    référentiel métier canonique n'existe dans ce module). Les deux champs
+    sont de simples FILTRES d'affichage/suggestion (« parcours suggérés pour
+    ce rôle/métier ») — l'assignation RÉELLE à un individu se fait via
+    :class:`KbParcoursAssignation`, jamais automatiquement.
+
+    Les articles ordonnés du parcours vivent dans
+    :class:`KbParcoursArticle` (through table avec ``ordre``).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='kb_app_parcours',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=200, verbose_name='Nom du parcours')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    # Palier de rôle ciblé (mêmes choix que KbArticleAcl.ROLE_CHOICES) — vide
+    # = tous paliers. Simple filtre d'affichage, pas une ACL.
+    role_cible = models.CharField(
+        max_length=20, choices=KbArticleAcl.ROLE_CHOICES, blank=True,
+        default='', verbose_name='Palier de rôle ciblé')
+    # Métier libre (ex. "poseur", "commercial") — aucun référentiel métier
+    # canonique n'existe : texte libre, comme KbArticle.categorie.
+    metier = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Métier ciblé')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='kb_app_parcours_crees',
+        verbose_name='Créé par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Parcours de lecture'
+        verbose_name_plural = 'Parcours de lecture'
+        ordering = ['nom', '-id']
+        indexes = [
+            models.Index(fields=['company', 'actif'], name='kb_parcours_co_act_idx'),
+        ]
+
+    def __str__(self):
+        return self.nom
+
+
+class KbParcoursArticle(models.Model):
+    """XKB22 — Article ORDONNÉ appartenant à un :class:`KbParcours`.
+
+    ``ordre`` détermine la séquence de lecture (posé côté serveur, jamais
+    recalculé par ``count()`` — un simple entier libre, pas une contrainte
+    d'unicité forte). Un même article ne peut apparaître deux fois dans le
+    même parcours (``unique_together``).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='kb_app_parcours_articles',
+        verbose_name='Société',
+    )
+    parcours = models.ForeignKey(
+        KbParcours,
+        on_delete=models.CASCADE,
+        related_name='articles_ordonnes',
+        verbose_name='Parcours',
+    )
+    article = models.ForeignKey(
+        KbArticle,
+        on_delete=models.CASCADE,
+        related_name='parcours_membres',
+        verbose_name='Article',
+    )
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+
+    class Meta:
+        verbose_name = 'Article du parcours'
+        verbose_name_plural = 'Articles du parcours'
+        ordering = ['parcours', 'ordre', 'id']
+        unique_together = [('parcours', 'article')]
+        indexes = [
+            models.Index(
+                fields=['company', 'parcours'], name='kb_parcours_art_co_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.parcours_id} · #{self.ordre} → {self.article_id}'
+
+
+class KbParcoursAssignation(models.Model):
+    """XKB22 — Assignation d'un :class:`KbParcours` à UN utilisateur précis.
+
+    Une ligne par (parcours, utilisateur) — assignation nominative (contraire
+    à ``KbLectureObligatoire`` qui accepte aussi un palier de rôle : un
+    parcours d'intégration cible toujours une PERSONNE précise, ex. un
+    nouvel embauché). La progression et la complétion se DÉDUISENT en
+    lecture seule des ``KbLecture`` DÉJÀ existantes de l'utilisateur sur
+    chaque article du parcours (``selectors.progression_parcours``) — aucun
+    second mécanisme de suivi n'est réimplémenté ici.
+
+    Société posée côté serveur (jamais du corps de requête) et cohérente
+    avec celle du parcours.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='kb_app_parcours_assignations',
+        verbose_name='Société',
+    )
+    parcours = models.ForeignKey(
+        KbParcours,
+        on_delete=models.CASCADE,
+        related_name='assignations',
+        verbose_name='Parcours',
+    )
+    utilisateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='kb_app_parcours_assignations',
+        verbose_name='Utilisateur assigné',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Assigné le')
+
+    class Meta:
+        verbose_name = 'Assignation de parcours'
+        verbose_name_plural = 'Assignations de parcours'
+        ordering = ['-date_creation', '-id']
+        unique_together = [('parcours', 'utilisateur')]
+        indexes = [
+            models.Index(
+                fields=['company', 'utilisateur'],
+                name='kb_parcours_assign_user_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.utilisateur_id} → parcours {self.parcours_id}'
+
+
+class BlocReutilisable(models.Model):
+    """ZGED12 — Bloc de texte RÉUTILISABLE, insérable dans un article/une note.
+
+    Distinct des snippets de chat (XKB28, dans le composer chat) et des
+    gabarits d'article (XKB12, article ENTIER) : ici des FRAGMENTS courts
+    (« Signature standard », « Réponse type SAV »…) insérables dans un
+    article KB ou une note chatter partagée — pas un article complet.
+
+    ``portee`` distingue un bloc PERSONNEL (visible du seul créateur, comme
+    ``KbFavori``) d'un bloc SOCIÉTÉ (visible de tous, comme le reste de la
+    base). Suppression réservée au créateur ou à un admin (appliqué côté
+    vue/permission, pas ici). Société posée côté serveur (jamais du corps de
+    requête).
+    """
+    class Portee(models.TextChoices):
+        PERSONNEL = 'personnel', 'Personnel'
+        SOCIETE = 'societe', 'Société'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='kb_app_blocs',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=200, verbose_name='Nom du bloc')
+    corps = models.TextField(
+        blank=True, default='', verbose_name='Corps (texte/markdown léger)')
+    portee = models.CharField(
+        max_length=10, choices=Portee.choices,
+        default=Portee.PERSONNEL, verbose_name='Portée')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='kb_app_blocs_crees',
+        verbose_name='Créé par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Bloc réutilisable'
+        verbose_name_plural = 'Blocs réutilisables'
+        ordering = ['nom', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'portee'], name='kb_bloc_co_portee_idx'),
+        ]
+
+    def __str__(self):
+        return self.nom
+
+    def is_visible_par(self, user):
+        """ZGED12 — un bloc SOCIÉTÉ est visible de tous ; un bloc PERSONNEL
+        n'est visible que de son créateur (ou d'un admin — voir
+        ``selectors.blocs_visibles``, qui applique cette même règle en
+        filtrage de queryset)."""
+        if self.portee == self.Portee.SOCIETE:
+            return True
+        user_id = getattr(user, 'id', None)
+        return user_id is not None and user_id == self.created_by_id

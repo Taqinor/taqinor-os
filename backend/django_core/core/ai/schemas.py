@@ -78,7 +78,26 @@ BON_LIVRAISON_SCHEMA = OCRSchema(
     ),
 )
 
-_SCHEMAS = {s.name: s for s in (CIN_SCHEMA, CONTRAT_SCHEMA, BON_LIVRAISON_SCHEMA)}
+# XRH23 — CV candidat (RH/ATS) : identité + parcours pour pré-remplissage.
+CV_SCHEMA = OCRSchema(
+    name='cv',
+    label='CV candidat',
+    fields=(
+        OCRField('nom', 'Nom'),
+        OCRField('prenom', 'Prénom'),
+        OCRField('email', 'E-mail'),
+        OCRField('telephone', 'Téléphone'),
+        OCRField('diplome', 'Diplôme'),
+        # `competences` : liste de str (mots-clés courts) — suggère les tags
+        # vivier (XRH21 ``tags_vivier``), jamais écrit tel quel sans revue.
+        OCRField('competences', 'Compétences'),
+    ),
+)
+
+_SCHEMAS = {
+    s.name: s for s in
+    (CIN_SCHEMA, CONTRAT_SCHEMA, BON_LIVRAISON_SCHEMA, CV_SCHEMA)
+}
 
 
 def get_schema(name: str) -> OCRSchema:

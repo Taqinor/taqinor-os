@@ -83,8 +83,19 @@ def traiter_demande(request):
     subject = request.subject_identifier
     if request.kind == DataSubjectRequest.KIND_ACCESS:
         request.resultat = exporter(company, subject)
-    else:
+    elif request.kind == DataSubjectRequest.KIND_ERASURE:
         request.resultat = effacer(company, subject)
+    else:
+        # XPLT23 — rectification : workflow MANUEL. On n'exécute aucune
+        # opération automatique ; on renvoie l'export des données actuelles
+        # comme contexte de correction et on laisse le traitement au responsable
+        # (champs demandés + trace). La demande reste « traitée » (contexte
+        # fourni) mais aucune donnée n'est modifiée automatiquement.
+        request.resultat = {
+            'rectification': True,
+            'donnees_actuelles': exporter(company, subject),
+            'note': 'Correction à traiter manuellement par le responsable.',
+        }
     request.statut = DataSubjectRequest.STATUT_TRAITEE
     request.traitee_le = timezone.now()
     request.save(update_fields=['resultat', 'statut', 'traitee_le',

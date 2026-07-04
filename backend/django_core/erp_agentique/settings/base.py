@@ -127,6 +127,10 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # ODX4 — 404 sur les endpoints d'un module désactivé pour la société.
+    # Défaut = actif (aucun 404 nouveau sans toggle). Placé après l'auth Django ;
+    # résout lui-même le JWT DRF best-effort (aucun blocage sans jeton valide).
+    'core.permissions.DisabledModuleMiddleware',
     # Porte la requête courante pour la capture du Journal d'activité (Feature G).
     'apps.audit.middleware.AuditActorMiddleware',
 ]
@@ -216,6 +220,13 @@ REST_FRAMEWORK = {
         # XPLT4 — webhook entrant automatisation, par jeton.
         'automation_webhook': '60/minute',
     },
+    # YDATA9 — DRF sérialise déjà les `Decimal` en string par défaut (c'est
+    # la valeur par défaut de DRF), mais rien ne le VERROUILLAIT explicitement
+    # dans ce repo : un changement accidentel de ce réglage romprait la
+    # précision des montants à la frontière API (un float JSON perd des
+    # décimales). Posé explicitement pour que ce comportement soit un choix
+    # documenté, testé, jamais un défaut implicite qui pourrait dériver.
+    'COERCE_DECIMAL_TO_STRING': True,
 }
 
 # Simple JWT Configuration
@@ -306,6 +317,12 @@ INBOUND_EMAIL_HOST = os.environ.get('INBOUND_EMAIL_HOST', '')
 # endpoint returns 404 and sends no email. Flip to '1' to re-enable (see CLAUDE.md).
 CONTACT_FORM_ENABLED = os.environ.get('CONTACT_FORM_ENABLED', '0') == '1'
 
+# XRH33 — public careers/recruitment page, PARKED (OFF) by default (same
+# pattern as CONTACT_FORM_ENABLED). When off, both public rh careers
+# endpoints (list + apply) return 404. Founder decision to expose (or not)
+# recruitment publicly. Flip to '1' to re-enable.
+CAREERS_ENABLED = os.environ.get('CAREERS_ENABLED', '0') == '1'
+
 # Récepteur des leads du site public taqinor.ma (apps/crm/webhooks.py).
 # Sans secret configuré, le endpoint répond 401 à tout — fermé par défaut.
 WEBSITE_LEAD_WEBHOOK_SECRET = os.environ.get('WEBSITE_LEAD_WEBHOOK_SECRET', '')
@@ -341,6 +358,15 @@ ENTREPRISE_COULEUR = os.environ.get('ENTREPRISE_COULEUR', '#2563EB')
 # vendored premium engine (apps.ventes.quote_engine). Set to '0' to fall back to
 # the legacy ventes WeasyPrint quote PDF. Only affects QUOTES, never invoices.
 USE_PREMIUM_QUOTE_ENGINE = os.environ.get('USE_PREMIUM_QUOTE_ENGINE', '1') != '0'
+
+# XFSM12 — trace d'étalonnage de l'instrument sur la fiche de recette IEC
+# 62446-1 (CommissioningRecord.instrument_id). Paramétrable warn/block (défaut
+# warn) : quand True, enregistrer une fiche référençant un instrument dont
+# l'étalonnage FG80 est expiré est REFUSÉ (400) ; par défaut ce n'est qu'un
+# avertissement non-bloquant côté client (le payload API le signale quand
+# même via `instrument_etalonnage_expire`).
+INSTRUMENT_ETALONNAGE_BLOQUANT = (
+    os.environ.get('INSTRUMENT_ETALONNAGE_BLOQUANT', '0') == '1')
 
 # GED12 — recherche sémantique documentaire (pgvector). KEY-GATED : OFF par
 # défaut, donc l'indexation d'embeddings est un no-op (aucun appel/coût) et la

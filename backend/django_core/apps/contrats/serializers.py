@@ -25,8 +25,10 @@ from .models import (
     ModeleContrat,
     ModeleContratClause,
     Obligation,
+    OrdreLocation,
     PartieContrat,
     PieceConformite,
+    PlanRecurrent,
     RegleApprobation,
     Resiliation,
     RetenueGarantie,
@@ -108,7 +110,7 @@ class ContratSerializer(serializers.ModelSerializer):
             'date_dernier_renouvellement', 'nb_renouvellements',
             'echeance_preavis', 'jours_avant_preavis',
             'jours_avant_echeance',
-            'montant', 'devise',
+            'montant', 'devise', 'plan_recurrent',
             'confidentialite', 'confidentialite_display',
             'responsable', 'responsable_nom',
             'created_by', 'date_creation',
@@ -142,6 +144,18 @@ class ContratSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Ce modèle n'appartient pas à votre société.")
         return modele
+
+    def validate_plan_recurrent(self, plan):
+        """Le plan de facturation récurrente (optionnel) doit appartenir à la
+        société — ZCTR1."""
+        if plan is None:
+            return plan
+        request = self.context.get('request')
+        if request is not None and plan.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Ce plan de facturation récurrente n'appartient pas à "
+                "votre société.")
+        return plan
 
     def validate_responsable(self, responsable):
         """Le responsable (optionnel) doit appartenir à la société — XCTR10."""
@@ -1236,3 +1250,90 @@ class CycleFacturationLogSerializer(serializers.ModelSerializer):
             'nb_tentatives', 'date_creation',
         ]
         read_only_fields = fields
+
+
+# ---------------------------------------------------------------------------
+# XCTR17 — Location de matériel SORTANTE (aux clients)
+# ---------------------------------------------------------------------------
+
+
+class OrdreLocationSerializer(serializers.ModelSerializer):
+    """``OrdreLocation`` (XCTR17). ``company`` posée côté serveur ; le produit
+    doit être ``louable`` (vérifié en vue, jamais ici, pour garder ce
+    sérialiseur réutilisable en lecture comme en écriture)."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True)
+
+    caution_statut_display = serializers.CharField(
+        source='get_caution_statut_display', read_only=True)
+
+    class Meta:
+        model = OrdreLocation
+        fields = [
+            'id', 'client_id', 'produit', 'produit_nom', 'numero_serie',
+            'date_reservation', 'date_enlevement_prevue',
+            'date_retour_prevue', 'date_enlevement_reelle',
+            'date_retour_reelle', 'statut', 'statut_display', 'tarif_jour',
+            'montant_estime', 'note', 'date_creation',
+            'caution_montant', 'caution_statut', 'caution_statut_display',
+            'caution_retenue', 'caution_motif_retenue',
+            'frais_retard_jour', 'frais_retard_montant',
+            'frais_retard_facture_id', 'inspection_checklist',
+            'inspection_releve_compteur', 'inspection_dommages_montant',
+            'inspection_facture_id', 'inspection_ticket_sav_id',
+            'inspection_date', 'facturation_recurrente_active',
+            'facturation_periodicite', 'facturation_moment',
+            'derniere_facturation',
+        ]
+        read_only_fields = [
+            'id', 'statut', 'date_enlevement_reelle', 'date_retour_reelle',
+            'montant_estime', 'date_creation',
+            'caution_montant', 'caution_statut', 'caution_retenue',
+            'caution_motif_retenue',
+            'frais_retard_montant', 'frais_retard_facture_id',
+            'inspection_dommages_montant', 'inspection_facture_id',
+            'inspection_ticket_sav_id', 'inspection_date',
+            'derniere_facturation',
+        ]
+
+
+class ChangerStatutOrdreLocationSerializer(serializers.Serializer):
+    """Corps de POST /ordres-location/<id>/changer-statut/ (XCTR17)."""
+    statut = serializers.ChoiceField(choices=OrdreLocation.Statut.choices)
+
+
+class ProlongerOrdreLocationSerializer(serializers.Serializer):
+    """Corps de POST /ordres-location/<id>/prolonger/ (XCTR20)."""
+    nouvelle_date_retour = serializers.DateField()
+
+
+class EcourterOrdreLocationSerializer(serializers.Serializer):
+    """Corps de POST /ordres-location/<id>/ecourter/ (XCTR20)."""
+    nouvelle_date_retour = serializers.DateField()
+
+
+class PlanRecurrentSerializer(serializers.ModelSerializer):
+    """Plan de facturation récurrente réutilisable (nommé) — ZCTR1.
+
+    ``company`` n'est jamais exposée en écriture (posée côté serveur par le
+    ``TenantMixin``). ``intervalle`` doit être ≥ 1.
+    """
+    unite_display = serializers.CharField(
+        source='get_unite_display', read_only=True)
+
+    class Meta:
+        model = PlanRecurrent
+        fields = [
+            'id', 'nom', 'unite', 'unite_display', 'intervalle',
+            'delai_cloture_auto_jours', 'aligner_debut_periode', 'actif',
+            'date_creation',
+        ]
+        read_only_fields = ['id', 'date_creation']
+
+    def validate_intervalle(self, value):
+        if value < 1:
+            raise serializers.ValidationError(
+                "L'intervalle doit être un entier positif (≥ 1).")
+        return value

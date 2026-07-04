@@ -56,6 +56,15 @@ ALLOWED_TARGETS = {
 
 class ActivityType(models.Model):
     """Type d'activité configurable (Appel, Email, Réunion, Relance, À faire)."""
+
+    # ZSAL1 — enchaînement Odoo-style : à la clôture d'une activité de ce
+    # type, on peut ne rien faire (AUCUN), juste PROPOSER une activité de
+    # suivi au front (SUGGERER), ou la CRÉER automatiquement (DECLENCHER).
+    class ModeEnchainement(models.TextChoices):
+        AUCUN = 'aucun', 'Aucun'
+        SUGGERER = 'suggerer', 'Suggérer'
+        DECLENCHER = 'declencher', 'Déclencher'
+
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='activity_types')
@@ -65,6 +74,18 @@ class ActivityType(models.Model):
     # Décalage par défaut (jours) proposé quand on planifie la suite.
     delai_defaut_jours = models.PositiveIntegerField(default=0)
     est_systeme = models.BooleanField(default=False)
+
+    # ZSAL1 — chaînage additif, tous par défaut inertes (mode=aucun) donc
+    # aucun changement de comportement pour les types existants.
+    type_suivant = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='types_precedents',
+        verbose_name='Type suivant suggéré/déclenché')
+    mode_enchainement = models.CharField(
+        max_length=10, choices=ModeEnchainement.choices,
+        default=ModeEnchainement.AUCUN, verbose_name="Mode d'enchaînement")
+    delai_jours = models.PositiveIntegerField(
+        default=0, verbose_name='Délai (jours) avant la suite')
 
     class Meta:
         ordering = ['ordre', 'nom']
@@ -80,9 +101,16 @@ class Activity(models.Model):
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='activities')
 
-    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
-    object_id = models.PositiveIntegerField()
+    # XKB4 — un « à-faire personnel » n'a PAS de cible métier : content_type/
+    # object_id sont donc nullable (additif, rétro-compatible — toute activité
+    # existante garde sa cible). `personnelle=True` marque ce cas et rend
+    # l'activité visible du SEUL créateur (jamais listée pour un collègue).
+    content_type = models.ForeignKey(
+        ContentType, on_delete=models.CASCADE, null=True, blank=True)
+    object_id = models.PositiveIntegerField(null=True, blank=True)
     content_object = GenericForeignKey('content_type', 'object_id')
+    personnelle = models.BooleanField(
+        default=False, verbose_name='À-faire personnel')
 
     activity_type = models.ForeignKey(
         ActivityType, on_delete=models.PROTECT, related_name='activities')
@@ -249,3 +277,44 @@ class Attachment(models.Model):
 
     def __str__(self):
         return self.filename
+
+
+class Follower(models.Model):
+    """XKB34 — abonnement d'un utilisateur à un enregistrement (générique).
+
+    Même mécanisme ContentType que Activity/Comment/Attachment (bornée aux
+    mêmes ``ALLOWED_TARGETS``). ``sous_type`` est un filtre OPTIONNEL et
+    purement déclaratif (ex. ``'etape'`` pour ne recevoir que les changements
+    d'étape) — vide = tout notifier. Company posée côté serveur, jamais lue du
+    corps de requête. Purement additif : ne modifie aucun comportement
+    existant tant que personne ne suit rien."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='followers')
+
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    object_id = models.PositiveIntegerField()
+    content_object = GenericForeignKey('content_type', 'object_id')
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='enregistrements_suivis')
+    # Filtre déclaratif optionnel, ex. 'etape' = notifier seulement les
+    # changements d'étape. Vide = tous les événements du chatter.
+    sous_type = models.CharField(max_length=40, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [('user', 'content_type', 'object_id', 'sous_type')]
+        ordering = ['-created_at', 'id']
+        indexes = [
+            models.Index(fields=['content_type', 'object_id'],
+                         name='records_follower_ct_oid_idx'),
+            models.Index(fields=['user'], name='records_follower_user_idx'),
+        ]
+        verbose_name = 'Abonné (follower)'
+        verbose_name_plural = 'Abonnés (followers)'
+
+    def __str__(self):
+        return f'{self.user_id} suit {self.content_type.model}:{self.object_id}'
