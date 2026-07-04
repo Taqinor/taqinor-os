@@ -32,6 +32,7 @@ from .views import (
     ElementSortieViewSet,
     ElementsVariablesPaieViewSet,
     EntretienRecrutementViewSet,
+    EntretienSortieViewSet,
     EpiCatalogueViewSet,
     GabaritEmailRecrutementViewSet,
     GrilleSalarialeViewSet,
@@ -76,6 +77,7 @@ router.register(r'remunerations', RemunerationViewSet)
 router.register(r'grilles-salariales', GrilleSalarialeViewSet)
 router.register(r'documents', DocumentEmployeViewSet)
 router.register(r'elements-sortie', ElementSortieViewSet)
+router.register(r'entretiens-sortie', EntretienSortieViewSet)
 router.register(r'modeles-integration', ModeleIntegrationViewSet)
 router.register(r'elements-integration', ElementIntegrationViewSet)
 router.register(

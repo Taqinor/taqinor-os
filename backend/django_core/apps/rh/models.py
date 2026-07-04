@@ -5018,3 +5018,71 @@ class PromesseEmbauche(models.Model):
 
     def __str__(self):
         return f'Promesse — {self.candidature} ({self.statut})'
+
+
+class EntretienSortie(models.Model):
+    """Entretien de sortie / exit interview (XRH25) — turnover structuré.
+
+    L'offboarding (FG161) ne stocke qu'un ``DossierEmploye.motif_sortie``
+    (coarse, obligatoire à la sortie). ``EntretienSortie`` ajoute un
+    entretien STRUCTURÉ, optionnel, mené après la sortie : un
+    ``motif_principal`` plus fin (RH), un questionnaire libre en JSON
+    (``{question: réponse}``), un ``recommanderait`` (l'employé
+    recommanderait-il l'entreprise, nullable — pas toujours demandé/répondu)
+    et un commentaire libre.
+
+    Un seul entretien par employé sorti (``OneToOneField`` — un second essai
+    d'ajout échoue naturellement à la contrainte unique plutôt que dupliquer).
+    Multi-société : ``company`` posée CÔTÉ SERVEUR ; ``employe`` doit
+    appartenir à la société. Entièrement additif.
+    """
+
+    class MotifPrincipal(models.TextChoices):
+        SALAIRE = 'salaire', 'Salaire'
+        MANAGEMENT = 'management', 'Management'
+        CONDITIONS = 'conditions', 'Conditions de travail'
+        DISTANCE = 'distance', 'Distance / trajet'
+        OPPORTUNITE = 'opportunite', "Opportunité ailleurs"
+        SANTE = 'sante', 'Santé'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_entretiens_sortie',
+        verbose_name='Société',
+    )
+    employe = models.OneToOneField(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='entretien_sortie',
+        verbose_name='Employé',
+    )
+    date = models.DateField(
+        null=True, blank=True, verbose_name="Date de l'entretien")
+    motif_principal = models.CharField(
+        max_length=20, choices=MotifPrincipal.choices,
+        blank=True, default='', verbose_name='Motif principal')
+    questionnaire = models.JSONField(
+        default=dict, blank=True, verbose_name='Questionnaire (réponses)')
+    recommanderait = models.BooleanField(
+        null=True, blank=True, verbose_name='Recommanderait l’entreprise')
+    commentaire = models.TextField(
+        blank=True, default='', verbose_name='Commentaire')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Entretien de sortie'
+        verbose_name_plural = 'Entretiens de sortie'
+        ordering = ['-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'motif_principal'],
+                name='rh_ent_sortie_comp_motif_idx'),
+        ]
+
+    def __str__(self):
+        return f'Entretien de sortie — {self.employe}'

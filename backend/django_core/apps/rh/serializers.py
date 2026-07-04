@@ -31,6 +31,7 @@ from .models import (
     DocumentEmploye,
     EmployeDeviceMap,
     EntretienRecrutement,
+    EntretienSortie,
     GabaritEmailRecrutement,
     GrilleSalariale,
     NoteEntretien,
@@ -265,6 +266,29 @@ class ElementSortieSerializer(serializers.ModelSerializer):
 
     def validate_employe(self, value):
         return _meme_societe(self, value, 'Employé')
+
+
+class EntretienSortieSerializer(serializers.ModelSerializer):
+    """Entretien de sortie / exit interview (XRH25). ``employe`` même
+    société ; un seul entretien par employé (contrainte ``OneToOne``)."""
+    motif_principal_display = serializers.CharField(
+        source='get_motif_principal_display', read_only=True)
+    employe_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EntretienSortie
+        fields = [
+            'id', 'employe', 'employe_nom', 'date', 'motif_principal',
+            'motif_principal_display', 'questionnaire', 'recommanderait',
+            'commentaire', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def get_employe_nom(self, obj):
+        return f'{obj.employe.nom} {obj.employe.prenom}' if obj.employe_id else ''
 
 
 class ElementIntegrationSerializer(serializers.ModelSerializer):

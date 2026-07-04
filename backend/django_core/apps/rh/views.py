@@ -50,6 +50,7 @@ from .models import (
     DeviceKiosque,
     EmployeDeviceMap,
     EntretienRecrutement,
+    EntretienSortie,
     GabaritEmailRecrutement,
     GrilleSalariale,
     NoteEntretien,
@@ -113,6 +114,7 @@ from .serializers import (
     DeviceKiosqueSerializer,
     EmployeDeviceMapSerializer,
     EntretienRecrutementSerializer,
+    EntretienSortieSerializer,
     GabaritEmailRecrutementSerializer,
     GrilleSalarialeSerializer,
     NoteEntretienSerializer,
@@ -666,6 +668,27 @@ class ElementSortieViewSet(_RhBaseViewSet):
             qs = qs.filter(recupere=False)
         elif recupere in ('1', 'true', 'True'):
             qs = qs.filter(recupere=True)
+        return qs
+
+
+class EntretienSortieViewSet(_RhBaseViewSet):
+    """Entretiens de sortie / exit interview (XRH25).
+
+    Société scopée + Administrateur/Responsable. ``employe`` doit appartenir
+    à la société ; un seul entretien par employé (``OneToOne`` — un second
+    ``POST`` sur le même employé échoue à la contrainte d'unicité plutôt que
+    de dupliquer). Filtre ``?employe=<id>``.
+    """
+    queryset = EntretienSortie.objects.select_related('employe').all()
+    serializer_class = EntretienSortieSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
         return qs
 
 

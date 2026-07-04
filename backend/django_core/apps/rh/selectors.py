@@ -1519,6 +1519,31 @@ def _masse_salariale_mensuelle(company):
     return total
 
 
+def motifs_depart(company, debut, fin):
+    """XRH25 — répartition des motifs de départ sur ``[debut, fin]``.
+
+    Agrège les ``EntretienSortie.motif_principal`` des employés SORTIS de la
+    société dont ``date_sortie`` tombe dans la période (bornes incluses).
+    Renvoie un dict ``{motif: nb}`` (motifs sans entretien de sortie renseigné
+    ne sont PAS comptés — distinct du ``DossierEmploye.motif_sortie`` coarse,
+    toujours disponible via le cockpit ``par_statut``). Lecture seule, société
+    scopée.
+    """
+    from .models import EntretienSortie
+
+    entretiens = EntretienSortie.objects.filter(
+        company=company,
+        employe__date_sortie__gte=debut,
+        employe__date_sortie__lte=fin,
+    ).exclude(motif_principal='')
+
+    counts = {}
+    for entretien in entretiens:
+        counts[entretien.motif_principal] = (
+            counts.get(entretien.motif_principal, 0) + 1)
+    return counts
+
+
 def cockpit_rh(company, *, inclure_masse_salariale=False):
     """Cockpit RH — effectifs & coûts (FG200), agrégation scopée société.
 
@@ -1617,6 +1642,11 @@ def cockpit_rh(company, *, inclure_masse_salariale=False):
             'entrees_12m': entrees,
             'sorties_12m': sorties,
             'taux_pct': taux_turnover,
+            # XRH25 — répartition des motifs de départ (12 mois glissants),
+            # depuis les entretiens de sortie structurés (distincts du
+            # ``motif_sortie`` coarse posé à l'offboarding FG161).
+            'motifs_depart': motifs_depart(
+                company, debut_periode, today),
         },
         'alertes': alertes,
     }
