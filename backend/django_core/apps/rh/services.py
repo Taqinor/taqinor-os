@@ -1647,6 +1647,129 @@ def sortir_employe(dossier, *, date_sortie, motif, notes_avances=''):
     return dossier
 
 
+# ── YHIRE7 — propagation des effets des sanctions disciplinaires ──────────
+
+# Code stable du TypeAbsence de mise à pied (seedé par ``seed_types_absence``,
+# NON rémunéré, NE déduit PAS le solde de congés — compteur distinct d'une
+# sanction). Un motif reprenant le n° de sanction sert de clé d'idempotence.
+_CODE_TYPE_ABSENCE_MISE_A_PIED = 'MAP'
+
+
+def _motif_absence_mise_a_pied(sanction):
+    """Clé stable (dans ``motif``) reliant une ``DemandeConge`` générée à SA
+    sanction d'origine — sert de garde d'idempotence (une sanction ne génère
+    jamais deux absences)."""
+    return f'Mise à pied — Sanction #{sanction.pk}'
+
+
+@transaction.atomic
+def propager_effets_sanction_notification(sanction):
+    """YHIRE7(a) — à la NOTIFICATION d'une sanction (statut NOTIFIEE), propage
+    son effet métier :
+
+    * ``MISE_A_PIED`` avec ``duree_jours`` > 0 — crée (idempotent : une seule
+      fois par sanction, clé = motif stable) une ``DemandeConge`` déjà
+      VALIDÉE du type ``TypeAbsence`` seedé « Mise à pied » (non rémunéré, ne
+      déduit pas le solde de congés), couvrant
+      ``date_notification`` → ``date_notification + duree_jours - 1`` (ou
+      ``date_faits`` si la notification est absente). Le bulletin de paie
+      exclut cette période via l'import RH→paie (YHIRE1, absence non
+      rémunérée).
+    * tout autre type de sanction — aucun effet (no-op silencieux).
+
+    Ne lève JAMAIS d'exception si le type d'absence n'est pas seedé pour la
+    société (défensif — journalise et ne bloque pas la création/notification
+    de la sanction).
+    """
+    from datetime import timedelta
+
+    from .models import DemandeConge, Sanction, TypeAbsence
+
+    if sanction.type_sanction != Sanction.TypeSanction.MISE_A_PIED:
+        return None
+    if not sanction.duree_jours:
+        return None
+
+    motif = _motif_absence_mise_a_pied(sanction)
+    if DemandeConge.objects.filter(
+            company=sanction.company, employe=sanction.employe,
+            motif=motif).exists():
+        return None  # déjà propagé (idempotence)
+
+    type_absence = TypeAbsence.objects.filter(
+        company=sanction.company, code=_CODE_TYPE_ABSENCE_MISE_A_PIED).first()
+    if type_absence is None:
+        return None  # type non seedé pour cette société — no-op défensif
+
+    date_debut = sanction.date_notification or sanction.date_faits
+    if date_debut is None:
+        return None
+    date_fin = date_debut + timedelta(days=sanction.duree_jours - 1)
+
+    return DemandeConge.objects.create(
+        company=sanction.company,
+        employe=sanction.employe,
+        type_absence=type_absence,
+        date_debut=date_debut,
+        date_fin=date_fin,
+        jours=Decimal(sanction.duree_jours),
+        statut=DemandeConge.Statut.VALIDEE,
+        date_decision=timezone.now(),
+        motif=motif,
+    )
+
+
+@transaction.atomic
+def propager_effets_sanction_annulation(sanction):
+    """YHIRE7(a) — à l'ANNULATION d'une sanction (contestation gagnée),
+    retire l'effet propagé : annule la ``DemandeConge`` de mise à pied liée
+    (créée par ``propager_effets_sanction_notification``) si elle existe et
+    n'est pas déjà annulée. No-op si aucune absence n'avait été générée."""
+    from .models import DemandeConge
+
+    motif = _motif_absence_mise_a_pied(sanction)
+    demande = DemandeConge.objects.filter(
+        company=sanction.company, employe=sanction.employe,
+        motif=motif).exclude(statut=DemandeConge.Statut.ANNULEE).first()
+    if demande is None:
+        return None
+    return annuler_demande(demande)
+
+
+class SortieNonConfirmeeError(Exception):
+    """YHIRE7(b) — levée quand une sanction LICENCIEMENT propose la sortie
+    sans confirmation explicite (jamais automatique silencieux)."""
+
+
+def proposer_sortie_pour_licenciement(
+        sanction, *, confirmer=False, date_sortie=None):
+    """YHIRE7(b) — une sanction ``LICENCIEMENT`` PROPOSE la sortie de
+    l'employé (``sortir_employe``, YHIRE2) — JAMAIS automatique et silencieux :
+    sans ``confirmer=True`` explicite, lève :class:`SortieNonConfirmeeError`
+    (l'appelant — la vue — répond avec les infos pré-remplies pour que
+    l'utilisateur confirme).
+
+    Avec confirmation, appelle ``sortir_employe`` avec
+    ``motif=DossierEmploye.MotifSortie.LICENCIEMENT`` et
+    ``date_sortie`` (par défaut ``date_notification`` de la sanction, sinon
+    aujourd'hui). Un dossier déjà SORTI lève ``ValueError`` (propagé tel
+    quel — même garde d'idempotence que ``sortir_employe``).
+    """
+    from .models import DossierEmploye, Sanction
+
+    if sanction.type_sanction != Sanction.TypeSanction.LICENCIEMENT:
+        return None
+    if not confirmer:
+        raise SortieNonConfirmeeError(
+            'Confirmation explicite requise pour déclencher la sortie '
+            "suite à un licenciement (jamais automatique).")
+    effective_date = (
+        date_sortie or sanction.date_notification or timezone.localdate())
+    return sortir_employe(
+        sanction.employe, date_sortie=effective_date,
+        motif=DossierEmploye.MotifSortie.LICENCIEMENT)
+
+
 def comptes_actifs_employes_sortis(company):
     """YHIRE2 — rapport de sécurité PERMANENT : comptes utilisateur restés
     ACTIFS alors que leur dossier employé est SORTI. Doit toujours être VIDE

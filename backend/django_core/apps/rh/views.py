@@ -3556,8 +3556,23 @@ class SanctionViewSet(_RhBaseViewSet):
         return qs
 
     def perform_create(self, serializer):
-        """Company posée côté serveur ; FK validés via le sérialiseur."""
-        serializer.save(company=self.request.user.company)
+        """Company posée côté serveur ; FK validés via le sérialiseur.
+
+        YHIRE7(a) — une sanction créée directement ``NOTIFIEE`` (défaut) avec
+        une MISE_A_PIED propage aussitôt son effet (absence non rémunérée).
+        """
+        sanction = serializer.save(company=self.request.user.company)
+        if sanction.statut == Sanction.Statut.NOTIFIEE:
+            services.propager_effets_sanction_notification(sanction)
+
+    def perform_update(self, serializer):
+        """YHIRE7(a) — si la mise à jour fait TRANSITIONNER la sanction vers
+        NOTIFIEE (elle ne l'était pas avant), propage l'effet à ce moment-là
+        (une sanction créée en brouillon puis notifiée plus tard)."""
+        etait_notifiee = serializer.instance.statut == Sanction.Statut.NOTIFIEE
+        sanction = serializer.save()
+        if sanction.statut == Sanction.Statut.NOTIFIEE and not etait_notifiee:
+            services.propager_effets_sanction_notification(sanction)
 
     @action(detail=True, methods=['post'], url_path='annuler')
     def annuler(self, request, pk=None):
@@ -3565,13 +3580,64 @@ class SanctionViewSet(_RhBaseViewSet):
 
         La société est garantie par ``get_object`` (un autre tenant reçoit
         404). Idempotent : ré-annuler renvoie la même sanction sans erreur.
+
+        YHIRE7(a) — si une MISE_A_PIED avait propagé une absence, l'annulation
+        de la sanction (contestation gagnée) retire l'effet (annule
+        l'absence liée).
         """
         sanction = self.get_object()
         if sanction.statut != Sanction.Statut.ANNULEE:
             sanction.statut = Sanction.Statut.ANNULEE
             sanction.save(update_fields=['statut', 'date_modification'])
+            services.propager_effets_sanction_annulation(sanction)
         return Response(
             self.get_serializer(sanction).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='declencher-sortie')
+    def declencher_sortie(self, request, pk=None):
+        """YHIRE7(b) — une sanction LICENCIEMENT PROPOSE la sortie de
+        l'employé (jamais automatique) : sans ``confirmer: true`` dans le
+        corps, renvoie 409 avec les infos pré-remplies pour confirmation ;
+        avec confirmation, déclenche ``sortir_employe`` (YHIRE2).
+
+        Corps : ``confirmer`` (bool), ``date_sortie`` (ISO, optionnel —
+        défaut ``date_notification`` de la sanction).
+        """
+        sanction = self.get_object()
+        if sanction.type_sanction != Sanction.TypeSanction.LICENCIEMENT:
+            return Response(
+                {'detail': "Cette action ne s'applique qu'à un licenciement."},
+                status=status.HTTP_400_BAD_REQUEST)
+        confirmer = bool(request.data.get('confirmer'))
+        date_sortie = None
+        raw = request.data.get('date_sortie')
+        if raw:
+            try:
+                from datetime import date as _date
+                date_sortie = _date.fromisoformat(str(raw))
+            except (TypeError, ValueError):
+                date_sortie = None
+        try:
+            resultat = services.proposer_sortie_pour_licenciement(
+                sanction, confirmer=confirmer, date_sortie=date_sortie)
+        except services.SortieNonConfirmeeError as exc:
+            return Response(
+                {
+                    'detail': str(exc),
+                    'employe_id': sanction.employe_id,
+                    'date_sortie_proposee': (
+                        (date_sortie or sanction.date_notification)
+                        and (date_sortie or sanction.date_notification)
+                        .isoformat()),
+                },
+                status=status.HTTP_409_CONFLICT)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            DossierEmployeSerializer(resultat).data
+            if resultat is not None else {'detail': 'Aucun effet.'},
+            status=status.HTTP_200_OK)
 
 
 class ElementsVariablesPaieViewSet(_RhBaseViewSet):
