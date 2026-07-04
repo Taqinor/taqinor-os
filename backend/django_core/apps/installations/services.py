@@ -1772,3 +1772,22 @@ def decider_demande_achat(demande_achat, *, approuver, user, motif_refus=''):
         'statut', 'approuvee_par', 'date_decision', 'motif_refus',
         'date_modification'])
     return demande_achat
+
+
+def marquer_serie_entrepot_sortie(*, company, produit_id, numero_serie):
+    """XPOS9 — si `numero_serie` est déjà enregistré au registre entrepôt
+    (`SerieEntrepot`, FG323) pour ce produit/société, le marque SORTI (vente
+    comptoir). No-op silencieux si la série n'y est pas enregistrée — un
+    produit sérialisé peut très bien être vendu sans être jamais passé par
+    l'entrepôt tracé. Renvoie l'objet mis à jour, ou None si non trouvé."""
+    from .models_serie_entrepot import SerieEntrepot
+
+    entry = SerieEntrepot.objects.filter(
+        company=company, produit_id=produit_id,
+        numero_serie=numero_serie).first()
+    if entry is None:
+        return None
+    if entry.statut != SerieEntrepot.Statut.SORTI:
+        entry.statut = SerieEntrepot.Statut.SORTI
+        entry.save(update_fields=['statut', 'date_modification'])
+    return entry

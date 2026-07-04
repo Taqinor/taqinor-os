@@ -519,3 +519,53 @@ def retirer_piece(*, company, ticket, produit, quantite, numero_serie,
             piece.save(update_fields=['warranty_claim'])
 
     return piece
+
+
+# ── XPOS9 — Capture n° de série à la vente comptoir → garantie SAV auto ─────
+
+class SerieDejaEnregistreeError(Exception):
+    """Le n° de série est déjà rattaché à un équipement de la société."""
+
+
+def creer_equipement_depuis_vente_pos(*, company, produit, client,
+                                      numero_serie, date_vente, created_by):
+    """XPOS9 — pendant « vente au détail » de `create_equipement_from_serial`
+    (le pendant chantier existant, FG70) : crée l'Equipement SAV garanti pour
+    un produit sérialisé vendu au comptoir SANS chantier (`installation=None`,
+    `client_vente=client`), garantie courant depuis `date_vente`.
+
+    No-op côté appelant si `produit.suivi_serie` est faux ou `numero_serie`
+    est vide — c'est à l'appelant (`apps.pos.services`) de ne PAS invoquer
+    cette fonction dans ce cas (flag additif, comportement inchangé par
+    défaut). Lève `SerieDejaEnregistreeError` si la série existe déjà dans la
+    société (contrainte `uniq_equipement_serie_par_societe`).
+
+    Si la série est déjà enregistrée au registre entrepôt (`SerieEntrepot`,
+    FG323), la marque SORTI (best-effort, jamais bloquant) via
+    `installations.services.marquer_serie_entrepot_sortie`."""
+    from .models import Equipement
+
+    serie = (numero_serie or '').strip()
+    if not serie:
+        raise ValueError('numero_serie requis.')
+    if Equipement.objects.filter(
+            company=company, numero_serie=serie).exists():
+        raise SerieDejaEnregistreeError(
+            f'Le n° de série {serie} est déjà enregistré dans votre société.')
+
+    equip = Equipement.objects.create(
+        company=company, produit=produit, installation=None,
+        client_vente=client, numero_serie=serie, date_pose=date_vente,
+        created_by=created_by)
+    equip.recompute_garanties()
+    equip.save(update_fields=[
+        'date_fin_garantie', 'date_fin_garantie_production'])
+
+    try:
+        from apps.installations.services import marquer_serie_entrepot_sortie
+        marquer_serie_entrepot_sortie(
+            company=company, produit_id=produit.id, numero_serie=serie)
+    except Exception:  # pragma: no cover - défensif (best-effort)
+        pass
+
+    return equip

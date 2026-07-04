@@ -49,7 +49,7 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
     """Parc d'équipements (n° de série + horloges de garantie). Tout est scopé
     à la société ; les dates de fin de garantie sont CALCULÉES côté serveur."""
     queryset = Equipement.objects.select_related(
-        'produit', 'installation', 'installation__client',
+        'produit', 'installation', 'installation__client', 'client_vente',
     ).all()
     serializer_class = EquipementSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -78,7 +78,11 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
         if installation:
             qs = qs.filter(installation_id=installation)
         if client:
-            qs = qs.filter(installation__client_id=client)
+            # XPOS9 — un équipement vendu au comptoir (sans chantier) est
+            # rattaché via `client_vente` plutôt que `installation__client`.
+            qs = qs.filter(
+                Q(installation__client_id=client)
+                | Q(client_vente_id=client))
         if statut:
             qs = qs.filter(statut=statut)
         if garantie:

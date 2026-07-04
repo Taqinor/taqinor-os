@@ -93,7 +93,9 @@ class EquipementSerializer(serializers.ModelSerializer):
         ).count()
 
     def get_client_nom(self, obj):
-        c = getattr(obj.installation, 'client', None)
+        # XPOS9 — un équipement vendu au comptoir (sans chantier) porte son
+        # client directement via `client_vente` ; sinon dérivé du chantier.
+        c = getattr(obj.installation, 'client', None) or obj.client_vente
         if not c:
             return None
         return f"{c.nom} {c.prenom or ''}".strip()

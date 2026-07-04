@@ -233,6 +233,8 @@ class ProduitSerializer(serializers.ModelSerializer):
             'categorie', 'categorie_id', 'fournisseur', 'fournisseur_id',
             # Garanties
             'garantie', 'garantie_mois', 'garantie_production_mois',
+            # XPOS9 — suivi par n° de série à la vente comptoir
+            'suivi_serie',
             # Spécifications pompage
             'pompe_cv', 'hmt_m', 'debit_m3j', 'pompe_kw', 'tension_v',
             'courbe_pompe',

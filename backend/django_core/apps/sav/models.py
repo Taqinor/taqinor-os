@@ -189,10 +189,20 @@ class Equipement(models.Model):
         help_text=('Jeton public (XSAV19) pour la page de signalement sans '
                    'login. Généré via ensure_public_token().'))
     # Le chantier auquel l'appareil appartient (objet pivot de l'après-vente).
+    # XPOS9 — NULLABLE : un équipement vendu au comptoir (POS, sans chantier)
+    # n'a pas d'Installation ; `client_vente` porte alors le lien client.
     installation = models.ForeignKey(
         'installations.Installation', on_delete=models.CASCADE,
-        related_name='equipements',
+        null=True, blank=True, related_name='equipements',
     )
+    # XPOS9 — client direct (vente comptoir SANS chantier). Renseigné
+    # UNIQUEMENT quand `installation` est vide ; sinon le client se dérive de
+    # `installation.client` comme avant (comportement inchangé).
+    client_vente = models.ForeignKey(
+        'crm.Client', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='equipements_vente_directe',
+        help_text=('Client direct pour un équipement vendu au comptoir '
+                   '(sans chantier). Vide si `installation` est renseignée.'))
     date_pose = models.DateField(null=True, blank=True)
 
     # ── Horloges de garantie — CALCULÉES (date_pose + durée du produit). ──
