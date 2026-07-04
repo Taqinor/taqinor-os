@@ -11,7 +11,8 @@ from django.db.models import Q, Sum
 from django.utils import timezone
 
 from .models import (
-    Caisse, CautionBancaire, CompteComptable, CompteTresorerie, Effet,
+    Caisse, CautionBancaire, CompteComptable, CompteTresorerie, EcheanceEmprunt,
+    Effet, Emprunt,
     EntiteConsolidation, LigneEcriture, LignePrevisionnelTresorerie,
     MouvementCaisse, Rapprochement, RetenueGarantie, RetenueSource,
     TimbreFiscal,
@@ -616,9 +617,12 @@ def position_tresorerie(company, *, date_fin=None, validees_seulement=False):
 
     Pour chaque ``CompteTresorerie`` actif de la société, le solde courant =
     ``solde_initial`` + mouvements du grand livre sur son compte comptable
-    (classe 5). Renvoie ``{'comptes': [...], 'total': Decimal}`` où chaque entrée
-    porte ``{'id', 'libelle', 'type_compte', 'banque', 'devise', 'solde_initial',
-    'mouvements', 'solde'}``. Lecture seule, scopée société.
+    (classe 5). Renvoie ``{'comptes': [...], 'total': Decimal,
+    'encours_emprunts': Decimal}`` où chaque entrée de ``comptes`` porte
+    ``{'id', 'libelle', 'type_compte', 'banque', 'devise', 'solde_initial',
+    'mouvements', 'solde'}``. ``encours_emprunts`` (XACC14) est le capital
+    restant dû cumulé de TOUS les emprunts/leasings de la société — ajouté en
+    lecture seule, n'affecte pas ``total``. Lecture seule, scopée société.
     """
     comptes = []
     total = Decimal('0')
@@ -641,7 +645,10 @@ def position_tresorerie(company, *, date_fin=None, validees_seulement=False):
             'mouvements': mouvements,
             'solde': solde,
         })
-    return {'comptes': comptes, 'total': total}
+    encours_emprunts = sum(
+        (e.encours_restant_du for e in Emprunt.objects.filter(company=company)),
+        Decimal('0'))
+    return {'comptes': comptes, 'total': total, 'encours_emprunts': encours_emprunts}
 
 
 def projection_tresorerie(company, *, date_fin=None, validees_seulement=False):
@@ -1136,6 +1143,11 @@ def previsionnel_tresorerie(company, *, date_debut=None, nb_semaines=13):
         date_echeance__lt=fin_horizon,
         statut__in=[Effet.Statut.PORTEFEUILLE, Effet.Statut.REMIS]
     ).order_by('date_echeance', 'id'))
+    # XACC14 — échéances d'emprunt FUTURES non postées : décaissement prévu.
+    echeances_emprunt = list(EcheanceEmprunt.objects.filter(
+        company=company, date_echeance__gte=debut,
+        date_echeance__lt=fin_horizon, posted=False,
+    ).select_related('emprunt').order_by('date_echeance', 'id'))
 
     semaines = []
     for i in range(nb_semaines):
@@ -1174,6 +1186,18 @@ def previsionnel_tresorerie(company, *, date_debut=None, nb_semaines=13):
                     'categorie': ef.sens,
                     'date': ef.date_echeance,
                     'montant': signe,
+                })
+        for ee in echeances_emprunt:
+            if s_debut <= ee.date_echeance <= s_fin:
+                montant = ee.mensualite or Decimal('0')
+                sorties += montant
+                lignes.append({
+                    'type': 'echeance_emprunt',
+                    'libelle': (
+                        f'Échéance emprunt {ee.emprunt.banque or ee.emprunt.reference}'),
+                    'categorie': 'decaissement',
+                    'date': ee.date_echeance,
+                    'montant': -montant,
                 })
         flux_net = entrees - sorties
         solde += flux_net

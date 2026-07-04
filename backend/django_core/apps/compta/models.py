@@ -6455,3 +6455,169 @@ class PisteAuditComptable(models.Model):
                 "La piste d'audit est inaltérable : un maillon déjà scellé "
                 "ne peut pas être modifié.")
         super().save(*args, **kwargs)
+
+
+# ── XACC14 — Emprunts & crédits-bails (financements de la société) ─────────
+
+class Emprunt(models.Model):
+    """Financement CONTRACTÉ par la société (emprunt bancaire ou leasing) — XACC14.
+
+    À distinguer de ``SimulationFinancement`` (FG217, financement affiché au
+    CLIENT sur un devis) : ici c'est la société elle-même qui emprunte. Le
+    tableau d'amortissement complet (une ``EcheanceEmprunt`` par mois) est
+    généré côté serveur par ``services.generer_tableau_amortissement`` en
+    réutilisant la même maths d'annuité que FG217
+    (``services.calcul_mensualite``). Chaque échéance est postable au grand
+    livre (principal 1481/1671, intérêts 6311, banque 5141) et respecte le
+    verrou de période (FG115). ``company`` posée côté serveur ; strictement
+    additif.
+    """
+    class Type(models.TextChoices):
+        EMPRUNT = 'emprunt', 'Emprunt bancaire'
+        LEASING = 'leasing', 'Crédit-bail / leasing'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='emprunts',
+        verbose_name='Société',
+    )
+    reference = models.CharField(
+        max_length=80, blank=True, default='', verbose_name='Référence')
+    banque = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Banque / bailleur')
+    type_financement = models.CharField(
+        max_length=10, choices=Type.choices, default=Type.EMPRUNT,
+        verbose_name='Type')
+    capital = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0.00'),
+        verbose_name='Capital emprunté (MAD)')
+    taux_annuel = models.DecimalField(
+        max_digits=6, decimal_places=3, default=Decimal('0.000'),
+        verbose_name='Taux annuel (%)')
+    duree_mois = models.PositiveIntegerField(
+        default=12, verbose_name='Durée (mois)')
+    date_debut = models.DateField(verbose_name='Date de départ')
+    # Comptes GL : classe 1 (capital restant dû) et classe 6 (intérêts). Le
+    # compte de capital diffère selon le type (1481 emprunt / 1671 leasing) ;
+    # optionnels : un défaut est déterminé côté service selon le type.
+    compte_capital = models.ForeignKey(
+        CompteComptable,
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='emprunts_capital',
+        verbose_name='Compte de capital restant dû (classe 1)',
+    )
+    compte_interets = models.ForeignKey(
+        CompteComptable,
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='emprunts_interets',
+        verbose_name='Compte de charges financières (classe 6)',
+    )
+    compte_tresorerie = models.ForeignKey(
+        CompteTresorerie,
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='emprunts',
+        verbose_name='Compte de trésorerie (payeur)',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Emprunt / crédit-bail'
+        verbose_name_plural = 'Emprunts / crédits-bails'
+        ordering = ['-date_debut', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                condition=models.Q(reference__gt=''),
+                name='uniq_emprunt_reference',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.reference or "EMPRUNT"} — {self.banque} ({self.capital})'
+
+    def clean(self):
+        super().clean()
+        if self.capital is not None and self.capital <= 0:
+            raise ValidationError(
+                "Le capital emprunté doit être strictement positif.")
+        if self.duree_mois is not None and self.duree_mois <= 0:
+            raise ValidationError("La durée doit être strictement positive.")
+        if self.taux_annuel is not None and self.taux_annuel < 0:
+            raise ValidationError("Le taux annuel ne peut pas être négatif.")
+
+    @property
+    def encours_restant_du(self):
+        """Capital restant dû = capital initial − Σ principal des échéances DÉJÀ
+        POSTÉES au grand livre (un remboursement non postée n'a pas encore
+        réduit la dette réelle). Source pour la liasse / position de
+        trésorerie."""
+        rembourse = self.echeances.filter(posted=True).aggregate(
+            s=models.Sum('principal'))['s'] or Decimal('0')
+        reste = (self.capital or Decimal('0')) - rembourse
+        return reste if reste > 0 else Decimal('0.00')
+
+
+class EcheanceEmprunt(models.Model):
+    """Échéance mensuelle du tableau d'amortissement d'un ``Emprunt`` (XACC14).
+
+    Une ligne par mois : mensualité = principal + intérêts (calcul d'annuité
+    constante, cf. ``services.generer_tableau_amortissement``). ``posted``
+    + ``ecriture`` tracent le posting au grand livre (idempotent). Unicité
+    ``(emprunt, numero)`` : un rang du tableau n'a qu'une échéance.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='echeances_emprunt',
+        verbose_name='Société',
+    )
+    emprunt = models.ForeignKey(
+        Emprunt,
+        on_delete=models.CASCADE,
+        related_name='echeances',
+        verbose_name='Emprunt',
+    )
+    numero = models.PositiveIntegerField(verbose_name='Rang (1..N)')
+    date_echeance = models.DateField(verbose_name="Date d'échéance")
+    principal = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0.00'),
+        verbose_name='Part de principal')
+    interets = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0.00'),
+        verbose_name="Part d'intérêts")
+    mensualite = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0.00'),
+        verbose_name='Mensualité')
+    capital_restant_du = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0.00'),
+        verbose_name='Capital restant dû après échéance')
+    posted = models.BooleanField(
+        default=False, verbose_name='Postée au grand livre')
+    ecriture = models.ForeignKey(
+        EcritureComptable,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='echeances_emprunt',
+        verbose_name='Écriture comptable',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Échéance d'emprunt"
+        verbose_name_plural = "Échéances d'emprunt"
+        ordering = ['emprunt_id', 'numero']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['emprunt', 'numero'],
+                name='uniq_echeance_emprunt_numero',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Échéance {self.numero} — {self.mensualite}'

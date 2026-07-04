@@ -41,6 +41,7 @@ from .models import (
     DemandeApprobationConfig, DotationAmortissement,
     ECatalogue, EcritureComptable, Effet, EntiteConsolidation,
     ExerciceComptable, MessageWhatsAppEntrant,
+    Emprunt, EcheanceEmprunt,
     Immobilisation, IndemniteChantier, Journal, LigneEcriture,
     LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, NoteFrais,
     OuverturePartage,
@@ -6062,3 +6063,168 @@ def construire_dossier_cgnc(company):
         'controles': anomalies,
         'a_valider_fiduciaire': a_valider_fiduciaire,
     }
+
+
+# ── XACC14 — Emprunts & crédits-bails (financements de la société) ─────────
+
+_COMPTE_CAPITAL_PAR_TYPE = {
+    Emprunt.Type.EMPRUNT: '1481',
+    Emprunt.Type.LEASING: '1671',
+}
+
+
+def _mois_suivant(une_date, n):
+    """Ajoute ``n`` mois à ``une_date`` (jour conservé, borné à fin de mois)."""
+    import calendar
+    mois_total = une_date.month - 1 + n
+    annee = une_date.year + mois_total // 12
+    mois = mois_total % 12 + 1
+    jour = min(une_date.day, calendar.monthrange(annee, mois)[1])
+    return une_date.replace(year=annee, month=mois, day=jour)
+
+
+def generer_tableau_amortissement(emprunt):
+    """Génère (persiste) le tableau d'amortissement complet d'un emprunt (XACC14).
+
+    Réutilise la maths d'annuité constante de FG217 (``calcul_mensualite``)
+    pour obtenir la mensualité, puis ventile chaque échéance en part de
+    principal / intérêts (intérêts = capital restant dû × taux mensuel ;
+    principal = mensualité − intérêts) — méthode classique d'un tableau
+    d'amortissement français/marocain. La DERNIÈRE échéance absorbe l'écart
+    d'arrondi pour que la somme des principaux soit EXACTEMENT le capital.
+    Idempotent : si des échéances existent déjà, elles sont supprimées et
+    régénérées (seulement pour celles NON postées ; refuse si une échéance
+    déjà postée existerait — on ne régénère jamais un historique posté).
+    Renvoie la liste des échéances créées.
+    """
+    if emprunt.echeances.filter(posted=True).exists():
+        raise ValidationError(
+            "Impossible de régénérer le tableau : des échéances sont déjà "
+            "postées au grand livre.")
+    emprunt.echeances.all().delete()
+
+    capital = Decimal(emprunt.capital or 0)
+    n = int(emprunt.duree_mois or 0)
+    taux_annuel = Decimal(emprunt.taux_annuel or 0)
+    mensualite, _ = calcul_mensualite(capital, n, taux_annuel)
+    taux_mensuel = taux_annuel / Decimal('100') / Decimal('12')
+
+    echeances = []
+    solde = capital
+    for i in range(1, n + 1):
+        interets = (solde * taux_mensuel).quantize(
+            Decimal('0.01'), rounding=ROUND_HALF_UP) if taux_mensuel else Decimal('0.00')
+        if i == n:
+            # Dernière échéance : absorbe l'écart d'arrondi pour solder EXACTEMENT.
+            principal = solde
+        else:
+            principal = (mensualite - interets).quantize(
+                Decimal('0.01'), rounding=ROUND_HALF_UP)
+            if principal > solde:
+                principal = solde
+        solde = (solde - principal).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        echeances.append(EcheanceEmprunt(
+            company=emprunt.company,
+            emprunt=emprunt,
+            numero=i,
+            date_echeance=_mois_suivant(emprunt.date_debut, i),
+            principal=principal,
+            interets=interets,
+            mensualite=(principal + interets).quantize(
+                Decimal('0.01'), rounding=ROUND_HALF_UP),
+            capital_restant_du=solde,
+        ))
+    EcheanceEmprunt.objects.bulk_create(echeances)
+    return list(emprunt.echeances.order_by('numero'))
+
+
+def _compte_capital_emprunt(company, emprunt):
+    if emprunt.compte_capital_id:
+        return emprunt.compte_capital
+    numero = _COMPTE_CAPITAL_PAR_TYPE.get(emprunt.type_financement, '1481')
+    return _assurer_compte(company, numero)
+
+
+def _compte_interets_emprunt(company, emprunt):
+    if emprunt.compte_interets_id:
+        return emprunt.compte_interets
+    return _assurer_compte(company, '6311')
+
+
+@transaction.atomic
+def poster_echeance_emprunt(echeance, *, user=None):
+    """Poste une échéance d'emprunt au grand livre (XACC14).
+
+    Écriture ÉQUILIBRÉE (journal OD) : débit du compte de capital restant dû
+    (part de principal) + débit du compte de charges financières (part
+    d'intérêts) / crédit banque (5141, mensualité totale). Idempotente
+    (renvoie l'écriture existante si déjà postée). RESPECTE LE VERROU DE
+    PÉRIODE (FG115) : refuse si la date d'échéance tombe dans une période
+    verrouillée.
+    """
+    emprunt = echeance.emprunt
+    company = echeance.company
+    if echeance.posted and echeance.ecriture_id:
+        return echeance.ecriture
+    mensualite = Decimal(echeance.mensualite)
+    if mensualite <= 0:
+        raise ValidationError("Impossible de poster une échéance nulle.")
+    if PeriodeComptable.date_verrouillee(company.id, echeance.date_echeance):
+        raise ValidationError(
+            "Période comptable clôturée : impossible de poster l'échéance "
+            f"du {echeance.date_echeance}.")
+    compte_capital = _compte_capital_emprunt(company, emprunt)
+    compte_interets = _compte_interets_emprunt(company, emprunt)
+    compte_banque = _assurer_compte(company, '5141')
+    journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+    if journal is None:
+        seed_journaux(company)
+        journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+    libelle = (
+        f"Échéance {echeance.numero} — {emprunt.banque or emprunt.reference}")
+    lignes = [
+        {'compte': compte_capital, 'debit': echeance.principal,
+         'credit': Decimal('0'), 'libelle': libelle},
+    ]
+    if echeance.interets and echeance.interets > 0:
+        lignes.append({
+            'compte': compte_interets, 'debit': echeance.interets,
+            'credit': Decimal('0'), 'libelle': libelle,
+        })
+    lignes.append({
+        'compte': compte_banque, 'debit': Decimal('0'),
+        'credit': mensualite, 'libelle': libelle,
+    })
+    ecriture = creer_ecriture(
+        company, journal, echeance.date_echeance, libelle, lignes,
+        reference=f'EMPR-{emprunt.id}-{echeance.numero}',
+        source_type='echeance_emprunt', source_id=echeance.id,
+        created_by=user, statut=EcritureComptable.Statut.VALIDEE,
+    )
+    echeance.posted = True
+    echeance.ecriture = ecriture
+    echeance.save(update_fields=['posted', 'ecriture'])
+    return ecriture
+
+
+def injecter_echeances_previsionnel(company, *, date_debut=None, nb_semaines=13):
+    """Échéances d'emprunt FUTURES à injecter dans le prévisionnel 13 semaines
+    (FG126) — lecture seule, pure. Renvoie une liste de dicts compatibles avec
+    les lignes du prévisionnel : ``{'libelle', 'date_prevue', 'montant'}``
+    (montant NÉGATIF = décaissement). Ne persiste rien : c'est
+    ``selectors.previsionnel_tresorerie`` qui les agrège à l'existant.
+    """
+    from datetime import timedelta
+    debut = date_debut or timezone.now().date()
+    fin = debut + timedelta(weeks=nb_semaines)
+    qs = EcheanceEmprunt.objects.filter(
+        company=company, date_echeance__gte=debut, date_echeance__lte=fin,
+    ).select_related('emprunt').order_by('date_echeance')
+    return [
+        {
+            'libelle': f'Échéance emprunt {e.emprunt.banque or e.emprunt.reference}',
+            'date_prevue': e.date_echeance,
+            'montant': -Decimal(e.mensualite),
+        }
+        for e in qs
+    ]
