@@ -5,6 +5,14 @@ class StockConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'apps.stock'
     verbose_name = 'Gestion de Stock'
+    module_manifest = {
+        'key': 'stock',
+        'label': 'Stock',
+        'icone': 'package',
+        'depends': [],
+        'description': 'Gestion des stocks, mouvements et fournisseurs.',
+        'categorie': 'Stock',
+    }
 
     def ready(self):
         # AG7 — enregistre les actions agentiques Stock dans le registre AG1.
