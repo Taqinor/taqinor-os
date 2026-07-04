@@ -9,7 +9,7 @@ from .models import (
     TicketChecklistItem, WarrantyClaim, KbArticle, AlarmeOnduleur,
     TicketSatisfaction, CauseDefaillance, RemedeDefaillance,
     EquipementDowntime, ReleveCompteurEquipement, ReponseType,
-    CompatibilitePiece, PieceRetiree,
+    CompatibilitePiece, PieceRetiree, PretEquipement,
 )
 
 # Fenêtre « garantie expirant bientôt » (jours).
@@ -154,6 +154,31 @@ class PieceRetireeSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'restockee', 'warranty_claim', 'equipement_remplace',
             'date_creation',
+        ]
+
+
+class PretEquipementSerializer(serializers.ModelSerializer):
+    """XSAV27 — prêt d'équipement (loaner). Statut/mouvements posés par les
+    actions dédiées du service (jamais en écriture directe du corps)."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+    produit_marque = serializers.CharField(
+        source='produit.marque', read_only=True, default=None)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    en_retard = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = PretEquipement
+        fields = [
+            'id', 'ticket', 'produit', 'produit_nom', 'produit_marque',
+            'numero_serie', 'statut', 'statut_display', 'date_sortie',
+            'date_retour_prevue', 'date_retour_reelle', 'stock_sorti',
+            'stock_reintegre', 'en_retard', 'date_creation',
+        ]
+        read_only_fields = [
+            'statut', 'date_sortie', 'date_retour_reelle', 'stock_sorti',
+            'stock_reintegre', 'date_creation',
         ]
 
 

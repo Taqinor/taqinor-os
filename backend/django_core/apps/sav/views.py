@@ -28,7 +28,8 @@ from .services import add_months
 from .pdf import rapport_intervention_pdf
 from .serializers import (
     EquipementSerializer, TicketSerializer, TicketActivitySerializer,
-    PieceConsommeeSerializer, PieceRetireeSerializer, EXPIRING_SOON_DAYS,
+    PieceConsommeeSerializer, PieceRetireeSerializer, PretEquipementSerializer,
+    EXPIRING_SOON_DAYS,
     SavSlaSettingsSerializer,
     MaintenanceChecklistTemplateSerializer, TicketChecklistItemSerializer,
     WarrantyClaimSerializer,
@@ -954,6 +955,65 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             'facture_reference': facture.reference,
             'sous_garantie': sous_garantie,
         }, status=201)
+
+    @action(detail=True, methods=['get', 'post'], url_path='prets-equipement',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def prets_equipement(self, request, pk=None):
+        """XSAV27 — prêt/échange anticipé d'équipement (loaner). GET liste,
+        POST sort une unité du stock immédiatement (`services.
+        creer_pret_equipement`, jamais de stock négatif)."""
+        ticket = self.get_object()
+        if request.method == 'GET':
+            qs = ticket.prets_equipement.select_related('produit')
+            return Response(PretEquipementSerializer(qs, many=True).data)
+        from apps.stock.selectors import (
+            get_produit_or_raise, produit_does_not_exist,
+        )
+        from .services import PretEquipementError, creer_pret_equipement
+        try:
+            produit = get_produit_or_raise(
+                ticket.company, request.data.get('produit'))
+        except (produit_does_not_exist(), ValueError, TypeError):
+            return Response({'detail': 'Produit inconnu.'}, status=404)
+        date_sortie = request.data.get('date_sortie') or timezone.localdate()
+        date_retour_prevue = request.data.get('date_retour_prevue') or None
+        numero_serie = (request.data.get('numero_serie') or '').strip()
+        try:
+            with transaction.atomic():
+                pret = creer_pret_equipement(
+                    company=ticket.company, ticket=ticket, produit=produit,
+                    numero_serie=numero_serie, date_sortie=date_sortie,
+                    date_retour_prevue=date_retour_prevue, user=request.user)
+        except PretEquipementError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        activity.log_note(
+            ticket, request.user,
+            f'Prêt équipement {produit.nom} sorti (retour prévu : '
+            f'{date_retour_prevue or "non renseigné"}).')
+        return Response(PretEquipementSerializer(pret).data, status=201)
+
+    @action(detail=True, methods=['post'],
+            url_path=r'prets-equipement/(?P<pret_id>[^/.]+)/retourner',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def retourner_pret(self, request, pk=None, pret_id=None):
+        """XSAV27 — clôture un prêt : réintègre le stock (idempotent)."""
+        ticket = self.get_object()
+        from .models import PretEquipement
+        from .services import retourner_pret_equipement
+        try:
+            pret = ticket.prets_equipement.select_related('produit').get(
+                pk=pret_id)
+        except (PretEquipement.DoesNotExist, ValueError, TypeError):
+            return Response({'detail': 'Introuvable.'}, status=404)
+        date_retour = (
+            request.data.get('date_retour_reelle') or timezone.localdate())
+        with transaction.atomic():
+            pret = retourner_pret_equipement(
+                pret=pret, date_retour_reelle=date_retour, user=request.user)
+        activity.log_note(
+            ticket, request.user,
+            f'Prêt équipement {pret.produit.nom} retourné.')
+        return Response(PretEquipementSerializer(pret).data, status=200)
 
     @action(detail=True, methods=['get', 'post', 'patch'],
             url_path='checklist',

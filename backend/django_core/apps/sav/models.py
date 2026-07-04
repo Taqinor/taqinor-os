@@ -1441,3 +1441,66 @@ class PieceRetiree(models.Model):
 
     def __str__(self):
         return f'{self.produit_id} ×{self.quantite} retirée (ticket {self.ticket_id})'
+
+
+# ── XSAV27 — Prêt / échange anticipé d'équipement (loaner) ──────────────────
+
+class PretEquipement(models.Model):
+    """XSAV27 — unité de prêt (loaner) sortie du stock vers le client pendant
+    qu'un onduleur/une pompe part en réparation fournisseur.
+
+    Mouvement de stock SORTIE à l'émission (``sortir``) et réintégration
+    ENTRÉE au retour (``retourner``), via ``apps.stock.services`` — jamais un
+    accès direct au grand livre depuis un autre chemin. ``date_retour_prevue``
+    pilote l'alerte de dépassement (``en_retard``)."""
+    class Statut(models.TextChoices):
+        EN_COURS = 'en_cours', 'En cours'
+        RETOURNE = 'retourne', 'Retourné'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='prets_equipement')
+    ticket = models.ForeignKey(
+        Ticket, on_delete=models.CASCADE, related_name='prets_equipement')
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.PROTECT,
+        related_name='prets_equipement_sav')
+    numero_serie = models.CharField(max_length=120, blank=True, default='')
+    statut = models.CharField(
+        max_length=15, choices=Statut.choices, default=Statut.EN_COURS)
+    date_sortie = models.DateField(null=True, blank=True)
+    date_retour_prevue = models.DateField(null=True, blank=True)
+    date_retour_reelle = models.DateField(null=True, blank=True)
+    # Idempotence des mouvements de stock (même patron que
+    # PieceConsommee.stock_decremente / PieceRetiree.restockee).
+    stock_sorti = models.BooleanField(default=False)
+    stock_reintegre = models.BooleanField(default=False)
+    # Alerte dépassement déjà notifiée (évite un rappel à chaque scan — même
+    # patron d'idempotence que SLA XSAV6).
+    alerte_depassement_notifiee = models.BooleanField(default=False)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Prêt équipement'
+        verbose_name_plural = 'Prêts équipement'
+        ordering = ['-date_creation']
+        indexes = [
+            models.Index(fields=['company', 'ticket'],
+                         name='sav_pret_equip_co_tick_idx'),
+            models.Index(fields=['company', 'statut'],
+                         name='sav_pret_equip_co_statut_idx'),
+        ]
+
+    def __str__(self):
+        return f'Prêt {self.produit_id} (ticket {self.ticket_id}, {self.statut})'
+
+    @property
+    def en_retard(self):
+        """True si le prêt est encore EN_COURS et la date de retour prévue
+        est dépassée (aujourd'hui). Pas de date prévue = jamais en retard."""
+        if self.statut != self.Statut.EN_COURS or not self.date_retour_prevue:
+            return False
+        return timezone.localdate() > self.date_retour_prevue

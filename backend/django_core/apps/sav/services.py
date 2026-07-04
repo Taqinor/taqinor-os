@@ -650,3 +650,89 @@ def router_whatsapp_entrant_vers_ticket(*, company, expediteur, texte):
     ticket = create_with_reference(Ticket, 'SAV', company, _create)
     activity.log_creation(ticket, None)
     return 'ticket_cree', ticket
+
+
+# ── XSAV27 — Prêt / échange anticipé d'équipement (loaner) ─────────────────
+
+class PretEquipementError(Exception):
+    """Erreur métier sur un prêt d'équipement (statut incohérent, stock…)."""
+
+
+def creer_pret_equipement(*, company, ticket, produit, numero_serie,
+                          date_sortie, date_retour_prevue, user):
+    """XSAV27 — crée un `PretEquipement` et sort IMMÉDIATEMENT l'unité du
+    stock (MouvementStock SORTIE, idempotent via `stock_sorti`). Lève
+    `PretEquipementError` si le stock est insuffisant (jamais négatif —
+    même garde que `TicketViewSet.pieces`)."""
+    from apps.stock.services import mouvement_type_sortie, record_stock_movement
+    from .models import PretEquipement
+
+    produit.refresh_from_db()
+    if produit.quantite_stock < 1:
+        raise PretEquipementError(
+            f'Stock insuffisant pour prêter {produit.nom} '
+            f'({produit.quantite_stock} en main).')
+
+    pret = PretEquipement.objects.create(
+        company=company, ticket=ticket, produit=produit,
+        numero_serie=numero_serie or '', date_sortie=date_sortie,
+        date_retour_prevue=date_retour_prevue, created_by=user)
+
+    qte_avant = produit.quantite_stock
+    qte_apres = qte_avant - 1
+    record_stock_movement(
+        company=company, produit=produit,
+        type_mouvement=mouvement_type_sortie(),
+        quantite=1, quantite_avant=qte_avant, quantite_apres=qte_apres,
+        reference=ticket.reference,
+        note=f'Prêt équipement SAV {ticket.reference}', created_by=user)
+    pret.stock_sorti = True
+    pret.save(update_fields=['stock_sorti'])
+    return pret
+
+
+def retourner_pret_equipement(*, pret, date_retour_reelle, user):
+    """XSAV27 — clôt un prêt EN_COURS : réintègre le stock (MouvementStock
+    ENTRÉE, idempotent via `stock_reintegre`) et marque RETOURNE.
+    Idempotent : un second appel sur un prêt déjà retourné ne fait rien
+    (renvoie le prêt tel quel)."""
+    from .models import PretEquipement
+
+    if pret.statut == PretEquipement.Statut.RETOURNE:
+        return pret
+
+    if pret.stock_sorti and not pret.stock_reintegre:
+        from apps.stock.services import (
+            mouvement_type_entree, record_stock_movement,
+        )
+        produit = pret.produit
+        produit.refresh_from_db()
+        qte_avant = produit.quantite_stock
+        qte_apres = qte_avant + 1
+        record_stock_movement(
+            company=pret.company, produit=produit,
+            type_mouvement=mouvement_type_entree(),
+            quantite=1, quantite_avant=qte_avant, quantite_apres=qte_apres,
+            reference=pret.ticket.reference,
+            note=f'Retour prêt équipement SAV {pret.ticket.reference}',
+            created_by=user)
+        pret.stock_reintegre = True
+
+    pret.statut = PretEquipement.Statut.RETOURNE
+    pret.date_retour_reelle = date_retour_reelle
+    pret.save(update_fields=[
+        'statut', 'date_retour_reelle', 'stock_reintegre'])
+    return pret
+
+
+def prets_en_retard(company):
+    """XSAV27 — liste des prêts EN_COURS dont `date_retour_prevue` est
+    dépassée aujourd'hui. Utilisé par le scan d'alerte (idempotent via
+    `alerte_depassement_notifiee`)."""
+    from .models import PretEquipement
+
+    today = timezone.localdate()
+    return list(PretEquipement.objects.filter(
+        company=company, statut=PretEquipement.Statut.EN_COURS,
+        date_retour_prevue__isnull=False,
+        date_retour_prevue__lt=today))
