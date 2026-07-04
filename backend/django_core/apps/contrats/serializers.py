@@ -1266,12 +1266,20 @@ class OrdreLocationSerializer(serializers.ModelSerializer):
             'montant_estime', 'note', 'date_creation',
             'caution_montant', 'caution_statut', 'caution_statut_display',
             'caution_retenue', 'caution_motif_retenue',
+            'frais_retard_jour', 'frais_retard_montant',
+            'frais_retard_facture_id', 'inspection_checklist',
+            'inspection_releve_compteur', 'inspection_dommages_montant',
+            'inspection_facture_id', 'inspection_ticket_sav_id',
+            'inspection_date',
         ]
         read_only_fields = [
             'id', 'statut', 'date_enlevement_reelle', 'date_retour_reelle',
             'montant_estime', 'date_creation',
             'caution_montant', 'caution_statut', 'caution_retenue',
             'caution_motif_retenue',
+            'frais_retard_montant', 'frais_retard_facture_id',
+            'inspection_dommages_montant', 'inspection_facture_id',
+            'inspection_ticket_sav_id', 'inspection_date',
         ]
 
 

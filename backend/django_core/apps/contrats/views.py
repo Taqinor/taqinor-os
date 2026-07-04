@@ -2172,3 +2172,53 @@ class OrdreLocationViewSet(_ContratsBaseViewSet):
             },
             status=status.HTTP_201_CREATED,
         )
+
+    # ── XCTR19 — Retour de location : retards, frais, inspection ────────────
+
+    @action(detail=False, methods=['get'], url_path='en-retard')
+    def en_retard(self, request):
+        """GET /ordres-location/en-retard/ (XCTR19) — ordres enlevés dont le
+        retour prévu est dépassé sans retour effectif."""
+        ordres = selectors.ordres_location_en_retard(request.user.company)
+        page = self.paginate_queryset(ordres)
+        serializer = OrdreLocationSerializer(
+            page if page is not None else ordres, many=True,
+            context={'request': request})
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], url_path='cloturer')
+    def cloturer(self, request, pk=None):
+        """Clôture l'ordre RETOURNÉ, facture les frais de retard éventuels."""
+        ordre = self.get_object()
+        try:
+            services.cloturer_ordre_location(ordre, user=request.user)
+        except services.RetourLocationError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            OrdreLocationSerializer(
+                ordre, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='inspecter')
+    def inspecter(self, request, pk=None):
+        """Enregistre l'inspection de retour (checklist + relevé + dommages
+        chiffrés éventuels → ligne de facture + ticket SAV)."""
+        ordre = self.get_object()
+        try:
+            resultat = services.inspecter_retour(
+                ordre,
+                checklist=request.data.get('checklist'),
+                releve_compteur=request.data.get('releve_compteur', ''),
+                dommages_montant=request.data.get('dommages_montant'),
+                motif_dommages=request.data.get('motif_dommages', ''),
+                user=request.user)
+        except services.RetourLocationError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        payload = OrdreLocationSerializer(
+            resultat['ordre'], context={'request': request}).data
+        payload['ticket_id'] = resultat['ticket_id']
+        return Response(payload)

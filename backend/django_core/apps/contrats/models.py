@@ -17,6 +17,7 @@ from decimal import Decimal
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils import timezone
 
 
 class Contrat(models.Model):
@@ -2619,6 +2620,40 @@ class OrdreLocation(models.Model):
     caution_motif_retenue = models.TextField(
         blank=True, default='', verbose_name='Motif de la retenue')
 
+    # ── XCTR19 — Retour de location : retards, frais, inspection ────────────
+    # Frais de retard par jour, configurable PAR ordre. NULL = aucun frais de
+    # retard appliqué (comportement inchangé).
+    frais_retard_jour = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name='Frais de retard / jour')
+    # Montant de frais de retard EFFECTIVEMENT facturé à la clôture — posé
+    # côté serveur, NULL tant qu'aucune clôture en retard n'a eu lieu.
+    frais_retard_montant = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Frais de retard facturés')
+    frais_retard_facture_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='ID de la facture (frais de retard)')
+    # Checklist d'inspection de retour (JSON libre : {"item": "ok"/"endommage",
+    # ...}) + relevé compteur (heures moteur, km…). Vide/NULL tant que le
+    # matériel n'est pas encore inspecté.
+    inspection_checklist = models.JSONField(
+        null=True, blank=True, verbose_name="Checklist d'inspection")
+    inspection_releve_compteur = models.CharField(
+        max_length=50, blank=True, default='',
+        verbose_name='Relevé compteur')
+    inspection_dommages_montant = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Montant des dommages chiffrés')
+    inspection_facture_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='ID de la facture (dommages)')
+    inspection_ticket_sav_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='ID du ticket SAV de remise en état')
+    inspection_date = models.DateTimeField(
+        null=True, blank=True, verbose_name="Date de l'inspection")
+
     class Meta:
         verbose_name = 'Ordre de location'
         verbose_name_plural = 'Ordres de location'
@@ -2647,6 +2682,23 @@ class OrdreLocation(models.Model):
             self.date_enlevement_prevue <= autre_fin
             and autre_debut <= self.date_retour_prevue
         )
+
+    def est_en_retard(self, today=None):
+        """``True`` si l'ordre est ENLEVÉ et que le retour prévu est dépassé
+        SANS retour effectif — XCTR19. ``today`` injectable pour les tests."""
+        if self.statut != OrdreLocation.Statut.ENLEVEE:
+            return False
+        if today is None:
+            today = timezone.localdate()
+        return today > self.date_retour_prevue
+
+    def jours_de_retard(self, today=None):
+        """Nombre de jours de retard (0 si pas en retard) — XCTR19."""
+        if not self.est_en_retard(today=today):
+            return 0
+        if today is None:
+            today = timezone.localdate()
+        return (today - self.date_retour_prevue).days
 
 
 class CautionLocationLog(models.Model):

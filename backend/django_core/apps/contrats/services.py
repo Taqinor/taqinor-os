@@ -3153,3 +3153,183 @@ def retenir_caution_partielle(ordre, *, montant_retenu, motif, user=None,
         montant=montant_retenu, motif=motif, auteur=auteur)
 
     return {'ordre': ordre, 'facture': facture}
+
+
+# ---------------------------------------------------------------------------
+# XCTR19 — Retour de location : retards, frais automatiques, inspection
+# ---------------------------------------------------------------------------
+
+
+class RetourLocationError(Exception):
+    """Levée quand une opération de retour de location n'est pas permise."""
+
+
+def _resoudre_client_ordre(ordre):
+    """Résout le ``crm.Client`` d'un ordre de location — frontière cross-app
+    (sélecteur, jamais un import du modèle ``crm``)."""
+    from apps.crm.selectors import get_company_client
+
+    client = get_company_client(ordre.company, ordre.client_id)
+    if client is None:
+        raise RetourLocationError(
+            'Le client de la location est introuvable dans votre société.')
+    return client
+
+
+def _notifier_retard_ordre(ordre, jours_retard):
+    """Notifie le responsable du retard détecté — XCTR19. Best-effort, jamais
+    bloquant (frontière cross-app : ``apps.notifications.services`` seulement)."""
+    try:
+        from apps.notifications.services import notify_many, resolve_recipients
+    except Exception:  # pragma: no cover - app notifications absente
+        return
+    try:
+        recipients = resolve_recipients(ordre.company, 'digest')
+        notify_many(
+            recipients, 'digest', 'Location en retard',
+            body=(
+                f'Ordre de location #{ordre.id} en retard de '
+                f'{jours_retard} jour(s) (retour prévu '
+                f'{ordre.date_retour_prevue.isoformat()}).'
+            ),
+            link='/contrats', company=ordre.company)
+    except Exception:  # pragma: no cover - défensif (best-effort)
+        pass
+
+
+@transaction.atomic
+def cloturer_ordre_location(ordre, *, user=None, today=None):
+    """Clôture un ordre RETOURNÉ, calcule et facture les frais de retard
+    éventuels avant de basculer au statut ``cloturee`` — XCTR19.
+
+    Le retard se mesure entre ``date_retour_prevue`` et
+    ``date_retour_reelle`` (posée par la transition ``→ retournee``) — jamais
+    la date du jour (une clôture tardive après un retour ponctuel ne doit pas
+    inventer un retard qui n'existe pas). Si ``frais_retard_jour`` est posé ET
+    qu'un retard existe, une facture (``ventes.creer_facture_regie``) est
+    émise pour ``frais_retard_jour × jours_de_retard`` et le client est
+    notifié AVANT facturation (best-effort). Sans retard ou sans
+    ``frais_retard_jour`` : aucun frais, comportement inchangé.
+
+    GARDE : l'ordre doit être ``retournee`` (sinon ``RetourLocationError`` —
+    on ne clôture pas un ordre pas encore rendu). Renvoie l'``OrdreLocation``.
+    """
+    from .models import OrdreLocation
+
+    if ordre.statut != OrdreLocation.Statut.RETOURNEE:
+        raise RetourLocationError(
+            "Seul un ordre « retournée » peut être clôturé.")
+
+    if ordre.date_retour_reelle and ordre.frais_retard_jour:
+        jours_retard = max(
+            0, (ordre.date_retour_reelle - ordre.date_retour_prevue).days)
+        if jours_retard > 0:
+            montant = (
+                Decimal(str(ordre.frais_retard_jour)) * jours_retard)
+            client = _resoudre_client_ordre(ordre)
+
+            # Notification client AVANT facturation (best-effort).
+            try:
+                from apps.notifications.services import notify_many, resolve_recipients
+                recipients = resolve_recipients(ordre.company, 'digest')
+                notify_many(
+                    recipients, 'digest',
+                    'Frais de retard — location',
+                    body=(
+                        f'Des frais de retard de {montant} MAD seront '
+                        f'facturés (ordre #{ordre.id}, {jours_retard} '
+                        'jour(s) de retard).'),
+                    link='/contrats', company=ordre.company)
+            except Exception:  # pragma: no cover - défensif (best-effort)
+                pass
+
+            from apps.ventes.services import creer_facture_regie
+
+            montant_ht = (montant / Decimal('1.2')).quantize(Decimal('0.01'))
+            facture = creer_facture_regie(
+                company=ordre.company, client=client, user=user,
+                libelle=(
+                    f'Frais de retard — ordre de location #{ordre.id} '
+                    f'({jours_retard} jour(s))'),
+                montant_ht=montant_ht)
+
+            ordre.frais_retard_montant = montant
+            ordre.frais_retard_facture_id = facture.id
+            ordre.save(update_fields=[
+                'frais_retard_montant', 'frais_retard_facture_id'])
+
+    try:
+        changer_statut_ordre_location(ordre, OrdreLocation.Statut.CLOTUREE)
+    except OrdreLocationError as exc:
+        raise RetourLocationError(str(exc))
+
+    return ordre
+
+
+@transaction.atomic
+def inspecter_retour(ordre, *, checklist=None, releve_compteur='',
+                     dommages_montant=None, motif_dommages='', user=None):
+    """Enregistre l'inspection de retour d'un ordre — XCTR19.
+
+    ``checklist`` : dict JSON libre (ex. ``{"pneus": "ok", "moteur":
+    "endommage"}``). ``dommages_montant`` : montant chiffré des dommages
+    constatés (``None``/0 = aucun dommage — rien n'est facturé ni ouvert).
+
+    Si des dommages sont chiffrés (> 0) :
+    - une ligne facturable est créée (``ventes.creer_facture_regie``) pour le
+      montant des dommages ;
+    - un ticket SAV de remise en état est ouvert
+      (``sav.services.create_corrective_ticket``, frontière cross-app —
+      jamais un import de ses modèles/vues) — BEST-EFFORT : un échec
+      d'ouverture du ticket n'empêche jamais l'enregistrement de
+      l'inspection ni la facturation, déjà actées.
+
+    Sans dommage chiffré : la checklist/relevé sont enregistrés et RIEN
+    d'autre ne se produit (pas de facture, pas de ticket). Renvoie un dict
+    ``{'ordre', 'facture', 'ticket_id'}`` (``facture``/``ticket_id`` = ``None``
+    si aucun dommage)."""
+    ordre.inspection_checklist = checklist or {}
+    ordre.inspection_releve_compteur = releve_compteur or ''
+    ordre.inspection_date = timezone.now()
+
+    facture = None
+    ticket_id = None
+
+    montant = Decimal(str(dommages_montant)) if dommages_montant else Decimal('0')
+    if montant > 0:
+        ordre.inspection_dommages_montant = montant
+
+        client = _resoudre_client_ordre(ordre)
+        from apps.ventes.services import creer_facture_regie
+
+        montant_ht = (montant / Decimal('1.2')).quantize(Decimal('0.01'))
+        facture = creer_facture_regie(
+            company=ordre.company, client=client, user=user,
+            libelle=(
+                f'Dommages constatés au retour — ordre de location #{ordre.id}'
+                + (f' — {motif_dommages.strip()}' if motif_dommages else '')),
+            montant_ht=montant_ht)
+        ordre.inspection_facture_id = facture.id
+
+        try:
+            from apps.sav.services import create_corrective_ticket
+
+            ticket = create_corrective_ticket(
+                company=ordre.company, client=client, installation=None,
+                description=(
+                    f'Remise en état après location #{ordre.id} — '
+                    f'dommages constatés à l\'inspection de retour.'
+                    + (f' Motif : {motif_dommages.strip()}'
+                       if motif_dommages else '')),
+                created_by=user)
+            ticket_id = ticket.id
+            ordre.inspection_ticket_sav_id = ticket_id
+        except Exception:  # pragma: no cover - défensif (best-effort)
+            pass
+
+    ordre.save(update_fields=[
+        'inspection_checklist', 'inspection_releve_compteur',
+        'inspection_date', 'inspection_dommages_montant',
+        'inspection_facture_id', 'inspection_ticket_sav_id'])
+
+    return {'ordre': ordre, 'facture': facture, 'ticket_id': ticket_id}

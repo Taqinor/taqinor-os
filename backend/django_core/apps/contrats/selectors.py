@@ -1267,3 +1267,23 @@ def disponibilite_produit(company, produit_id, *, numero_serie=None,
         result['date_debut'] = date_debut
         result['date_fin'] = date_fin
     return result
+
+
+# ---------------------------------------------------------------------------
+# XCTR19 — Retour de location : ordres en retard
+# ---------------------------------------------------------------------------
+
+
+def ordres_location_en_retard(company, today=None):
+    """Ordres de location ENLEVÉS dont le retour prévu est dépassé sans
+    retour effectif — XCTR19. Lecture seule, scopée société."""
+    from .models import OrdreLocation
+
+    if today is None:
+        today = timezone.localdate()
+    return (
+        OrdreLocation.objects
+        .filter(company=company, statut=OrdreLocation.Statut.ENLEVEE,
+                date_retour_prevue__lt=today)
+        .order_by('date_retour_prevue', 'id')
+    )
