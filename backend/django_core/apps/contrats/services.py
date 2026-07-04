@@ -3333,3 +3333,192 @@ def inspecter_retour(ordre, *, checklist=None, releve_compteur='',
         'inspection_facture_id', 'inspection_ticket_sav_id'])
 
     return {'ordre': ordre, 'facture': facture, 'ticket_id': ticket_id}
+
+
+# ---------------------------------------------------------------------------
+# XCTR20 — Location longue durée : facturation récurrente + prolongation/
+# écourtage
+# ---------------------------------------------------------------------------
+
+
+def facturer_ordre_location_recurrent(ordre, *, user=None, periode=None):
+    """Émet UNE facture de cycle pour un ordre de location longue durée —
+    XCTR20. Réutilise le patron XCTR5 (``enregistrer_cycle`` — même garde
+    anti double-facturation par ``(source_type, source_id, periode)``).
+
+    GARDES (lèvent ``RetourLocationError`` sans rien écrire, RIEN journalisé
+    en cas de garde AMONT — mais une ``FacturationError`` du référentiel de
+    cycle EST journalisée en échec, cohérent avec le patron XCTR5) :
+    - ``facturation_recurrente_active`` doit être vrai ;
+    - ``tarif_jour`` doit être renseigné et positif.
+
+    ``periode`` par défaut = mois courant (``AAAA-MM``, 1 facture par mois
+    max — la garde anti-doublon d'``enregistrer_cycle`` l'assure). Avance
+    ``derniere_facturation`` à la date du jour. Renvoie la ``Facture`` créée.
+    """
+    from .models import CycleFacturationLog
+
+    if not ordre.facturation_recurrente_active:
+        raise RetourLocationError(
+            "La facturation récurrente n'est pas activée sur cet ordre.")
+    if not ordre.tarif_jour or ordre.tarif_jour <= 0:
+        raise RetourLocationError(
+            'Un tarif journalier positif est requis pour facturer.')
+
+    today = timezone.localdate()
+    if periode is None:
+        periode = today.strftime('%Y-%m')
+
+    # 30 jours de location par cycle mensuel (patron simple, cohérent avec le
+    # calcul de ``montant_estime`` à la création — pas de calendrier tiers).
+    montant_ttc = Decimal(str(ordre.tarif_jour)) * 30
+
+    client = _resoudre_client_ordre(ordre)
+    from apps.ventes.services import creer_facture_regie
+
+    montant_ht = (montant_ttc / Decimal('1.2')).quantize(Decimal('0.01'))
+
+    try:
+        facture = creer_facture_regie(
+            company=ordre.company, client=client, user=user,
+            libelle=(
+                f'Location longue durée — ordre #{ordre.id} '
+                f'({ordre.get_facturation_moment_display()}, {periode})'),
+            montant_ht=montant_ht)
+    except Exception as exc:  # pragma: no cover - défensif
+        enregistrer_cycle(
+            ordre.company,
+            source_type=CycleFacturationLog.SourceType.ORDRE_LOCATION,
+            source_id=ordre.id, periode=periode,
+            statut=CycleFacturationLog.Statut.ECHEC, motif=str(exc))
+        raise
+
+    enregistrer_cycle(
+        ordre.company,
+        source_type=CycleFacturationLog.SourceType.ORDRE_LOCATION,
+        source_id=ordre.id, periode=periode,
+        statut=CycleFacturationLog.Statut.GENERE, facture_id=facture.id)
+
+    ordre.derniere_facturation = today
+    ordre.save(update_fields=['derniere_facturation'])
+
+    return facture
+
+
+@transaction.atomic
+def prolonger_ordre_location(ordre, *, nouvelle_date_retour):
+    """Prolonge un ordre de location — XCTR20.
+
+    Re-vérifie la disponibilité (``_verifier_disponibilite``) sur la NOUVELLE
+    fenêtre ``[date_enlevement_prevue, nouvelle_date_retour]`` en EXCLUANT
+    l'ordre lui-même de la détection de conflit — 400 (``OrdreLocationError``)
+    si un autre ordre actif chevauche la prolongation. Recalcule
+    ``montant_estime`` sur la nouvelle durée totale. Renvoie l'``OrdreLocation``.
+    """
+    if nouvelle_date_retour <= ordre.date_retour_prevue:
+        raise OrdreLocationError(
+            'La nouvelle date de retour doit être postérieure à la date '
+            'actuelle.')
+
+    _verifier_disponibilite(
+        ordre.produit, ordre.numero_serie, ordre.date_enlevement_prevue,
+        nouvelle_date_retour, exclure_id=ordre.id)
+
+    ordre.date_retour_prevue = nouvelle_date_retour
+    if ordre.tarif_jour:
+        nb_jours = (
+            nouvelle_date_retour - ordre.date_enlevement_prevue).days + 1
+        ordre.montant_estime = Decimal(str(ordre.tarif_jour)) * nb_jours
+    ordre.save(update_fields=['date_retour_prevue', 'montant_estime'])
+    return ordre
+
+
+@transaction.atomic
+def ecourter_ordre_location(ordre, *, nouvelle_date_retour, user=None):
+    """Écourte un ordre de location : delta → avoir — XCTR20.
+
+    Le delta (jours retranchés × ``tarif_jour``) devient un ``ventes.Avoir``
+    lié à la DERNIÈRE facture émise pour cet ordre (via
+    ``CycleFacturationLog``, patron XCTR6 ``_creer_avoir_prorata``) — sans
+    facture antérieure, l'écourtage recalcule seulement ``montant_estime``
+    (rien à créditer). Renvoie un dict ``{'ordre', 'avoir'}`` (``avoir`` =
+    ``None`` si aucune facture à créditer ou aucun tarif renseigné)."""
+    from .models import CycleFacturationLog
+
+    if nouvelle_date_retour >= ordre.date_retour_prevue:
+        raise OrdreLocationError(
+            'La nouvelle date de retour doit être antérieure à la date '
+            'actuelle pour un écourtage.')
+    if nouvelle_date_retour < ordre.date_enlevement_prevue:
+        raise OrdreLocationError(
+            "La nouvelle date de retour ne peut précéder l'enlèvement.")
+
+    ancien_nb_jours = (
+        ordre.date_retour_prevue - ordre.date_enlevement_prevue).days + 1
+    nouveau_nb_jours = (
+        nouvelle_date_retour - ordre.date_enlevement_prevue).days + 1
+    delta_jours = ancien_nb_jours - nouveau_nb_jours
+
+    avoir = None
+    if ordre.tarif_jour and delta_jours > 0:
+        montant_delta = Decimal(str(ordre.tarif_jour)) * delta_jours
+        facture_id = (
+            CycleFacturationLog.objects
+            .filter(
+                company=ordre.company,
+                source_type=CycleFacturationLog.SourceType.ORDRE_LOCATION,
+                source_id=ordre.id,
+                statut=CycleFacturationLog.Statut.GENERE,
+                facture_id__isnull=False,
+            )
+            .order_by('-date_creation', '-id')
+            .values_list('facture_id', flat=True)
+            .first()
+        )
+        if facture_id:
+            avoir = _creer_avoir_location(
+                ordre, facture_id, montant_delta, user=user)
+
+    ordre.date_retour_prevue = nouvelle_date_retour
+    if ordre.tarif_jour:
+        ordre.montant_estime = Decimal(str(ordre.tarif_jour)) * nouveau_nb_jours
+    ordre.save(update_fields=['date_retour_prevue', 'montant_estime'])
+
+    return {'ordre': ordre, 'avoir': avoir}
+
+
+def _creer_avoir_location(ordre, facture_id, montant_abs, *, user=None):
+    """Crée un ``ventes.Avoir`` lié à une facture de l'ordre — XCTR20 (même
+    patron que ``_creer_avoir_prorata`` XCTR6). Renvoie ``None`` si la
+    facture n'est plus trouvable dans la société (défensif)."""
+    from decimal import ROUND_HALF_UP
+
+    from apps.ventes.models import Avoir, Facture
+    from apps.ventes.utils.references import create_with_reference
+
+    try:
+        facture = Facture.objects.get(pk=facture_id, company=ordre.company)
+    except Facture.DoesNotExist:  # pragma: no cover - défensif
+        return None
+
+    tva_pct = facture.taux_tva or Decimal('20')
+    montant_ttc = Decimal(str(montant_abs))
+    montant_ht = (montant_ttc / (1 + tva_pct / 100)).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+    montant_tva = (montant_ttc - montant_ht).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+    def _create(ref):
+        return Avoir.objects.create(
+            reference=ref,
+            company=ordre.company,
+            facture=facture,
+            client=facture.client,
+            taux_tva=tva_pct,
+            montant_ht=montant_ht,
+            montant_tva=montant_tva,
+            montant_ttc=montant_ttc,
+            motif=f'Écourtage de location — ordre #{ordre.id}',
+        )
+
+    return create_with_reference(Avoir, 'AV', ordre.company, _create)

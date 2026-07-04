@@ -63,6 +63,7 @@ from .serializers import (
     CautionSerializer,
     ChangerStatutOrdreLocationSerializer,
     ChangerStatutSerializer,
+    EcourterOrdreLocationSerializer,
     ClauseContratSerializer,
     ClauseSerializer,
     ContratActivitySerializer,
@@ -91,6 +92,7 @@ from .serializers import (
     PartieContratSerializer,
     PenaliteSLASerializer,
     PieceConformiteSerializer,
+    ProlongerOrdreLocationSerializer,
     RegleApprobationSerializer,
     RendreContratSerializer,
     RenouvelerContratSerializer,
@@ -2221,4 +2223,69 @@ class OrdreLocationViewSet(_ContratsBaseViewSet):
         payload = OrdreLocationSerializer(
             resultat['ordre'], context={'request': request}).data
         payload['ticket_id'] = resultat['ticket_id']
+        return Response(payload)
+
+    # ── XCTR20 — Location longue durée : récurrence + prolongation/écourtage
+
+    @action(detail=True, methods=['post'], url_path='facturer-cycle')
+    def facturer_cycle(self, request, pk=None):
+        """Émet UNE facture de cycle récurrent (XCTR20)."""
+        ordre = self.get_object()
+        try:
+            facture = services.facturer_ordre_location_recurrent(
+                ordre, user=request.user,
+                periode=request.data.get('periode'))
+        except services.RetourLocationError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                'facture_id': facture.id,
+                'facture_reference': facture.reference,
+                'ordre': OrdreLocationSerializer(
+                    ordre, context={'request': request}).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=['post'])
+    def prolonger(self, request, pk=None):
+        """Prolonge l'ordre (nouvelle date de retour, re-vérifie la
+        disponibilité) — XCTR20."""
+        ordre = self.get_object()
+        serializer = ProlongerOrdreLocationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            services.prolonger_ordre_location(
+                ordre,
+                nouvelle_date_retour=serializer.validated_data[
+                    'nouvelle_date_retour'])
+        except services.OrdreLocationError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            OrdreLocationSerializer(
+                ordre, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'])
+    def ecourter(self, request, pk=None):
+        """Écourte l'ordre : delta → avoir — XCTR20."""
+        ordre = self.get_object()
+        serializer = EcourterOrdreLocationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            resultat = services.ecourter_ordre_location(
+                ordre,
+                nouvelle_date_retour=serializer.validated_data[
+                    'nouvelle_date_retour'],
+                user=request.user)
+        except services.OrdreLocationError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        payload = OrdreLocationSerializer(
+            resultat['ordre'], context={'request': request}).data
+        avoir = resultat['avoir']
+        payload['avoir_id'] = avoir.id if avoir is not None else None
+        payload['avoir_reference'] = avoir.reference if avoir is not None else None
         return Response(payload)

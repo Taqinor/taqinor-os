@@ -2451,6 +2451,9 @@ class CycleFacturationLog(models.Model):
     class SourceType(models.TextChoices):
         CONTRAT = 'contrat', 'Contrat (échéancier)'
         SAV_MAINTENANCE = 'sav_maintenance', 'Maintenance SAV'
+        # XCTR20 — cycle de facturation récurrente d'un OrdreLocation longue
+        # durée. Choix additif (CharField, aucune migration de schéma requise).
+        ORDRE_LOCATION = 'ordre_location', 'Location longue durée'
 
     class Statut(models.TextChoices):
         GENERE = 'genere', 'Générée'
@@ -2654,6 +2657,28 @@ class OrdreLocation(models.Model):
     inspection_date = models.DateTimeField(
         null=True, blank=True, verbose_name="Date de l'inspection")
 
+    # ── XCTR20 — Location longue durée : facturation récurrente ─────────────
+    class CyclePeriodicite(models.TextChoices):
+        MENSUELLE = 'mensuelle', 'Mensuelle'
+
+    class CycleMoment(models.TextChoices):
+        AVANCE = 'avance', "D'avance"
+        ECHU = 'echu', 'À terme échu'
+
+    # False par défaut : un ordre reste facturé UNE fois (montant_estime, à la
+    # clôture) tant que ce drapeau n'est pas explicitement activé —
+    # comportement XCTR17/18/19 inchangé.
+    facturation_recurrente_active = models.BooleanField(
+        default=False, verbose_name='Facturation récurrente active')
+    facturation_periodicite = models.CharField(
+        max_length=20, choices=CyclePeriodicite.choices,
+        default=CyclePeriodicite.MENSUELLE, verbose_name='Périodicité')
+    facturation_moment = models.CharField(
+        max_length=10, choices=CycleMoment.choices,
+        default=CycleMoment.AVANCE, verbose_name='Facturé')
+    derniere_facturation = models.DateField(
+        null=True, blank=True, verbose_name='Dernière facturation')
+
     class Meta:
         verbose_name = 'Ordre de location'
         verbose_name_plural = 'Ordres de location'
@@ -2699,6 +2724,23 @@ class OrdreLocation(models.Model):
         if today is None:
             today = timezone.localdate()
         return (today - self.date_retour_prevue).days
+
+    def prochaine_facturation(self):
+        """Date du prochain cycle de facturation récurrente — XCTR20.
+
+        Basée sur ``derniere_facturation`` (si posée) ou
+        ``date_enlevement_prevue``, avancée d'un mois (seule périodicité
+        supportée aujourd'hui — ``CyclePeriodicite.MENSUELLE``)."""
+        base = self.derniere_facturation or self.date_enlevement_prevue
+        return Contrat.ajouter_mois(base, 1)
+
+    def facturation_recurrente_due(self, today=None):
+        """``True`` si la facturation récurrente est active et due — XCTR20."""
+        if not self.facturation_recurrente_active:
+            return False
+        if today is None:
+            today = timezone.localdate()
+        return today >= self.prochaine_facturation()
 
 
 class CautionLocationLog(models.Model):

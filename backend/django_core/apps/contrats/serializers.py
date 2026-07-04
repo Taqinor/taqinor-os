@@ -1270,7 +1270,9 @@ class OrdreLocationSerializer(serializers.ModelSerializer):
             'frais_retard_facture_id', 'inspection_checklist',
             'inspection_releve_compteur', 'inspection_dommages_montant',
             'inspection_facture_id', 'inspection_ticket_sav_id',
-            'inspection_date',
+            'inspection_date', 'facturation_recurrente_active',
+            'facturation_periodicite', 'facturation_moment',
+            'derniere_facturation',
         ]
         read_only_fields = [
             'id', 'statut', 'date_enlevement_reelle', 'date_retour_reelle',
@@ -1280,9 +1282,20 @@ class OrdreLocationSerializer(serializers.ModelSerializer):
             'frais_retard_montant', 'frais_retard_facture_id',
             'inspection_dommages_montant', 'inspection_facture_id',
             'inspection_ticket_sav_id', 'inspection_date',
+            'derniere_facturation',
         ]
 
 
 class ChangerStatutOrdreLocationSerializer(serializers.Serializer):
     """Corps de POST /ordres-location/<id>/changer-statut/ (XCTR17)."""
     statut = serializers.ChoiceField(choices=OrdreLocation.Statut.choices)
+
+
+class ProlongerOrdreLocationSerializer(serializers.Serializer):
+    """Corps de POST /ordres-location/<id>/prolonger/ (XCTR20)."""
+    nouvelle_date_retour = serializers.DateField()
+
+
+class EcourterOrdreLocationSerializer(serializers.Serializer):
+    """Corps de POST /ordres-location/<id>/ecourter/ (XCTR20)."""
+    nouvelle_date_retour = serializers.DateField()
