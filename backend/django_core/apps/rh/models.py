@@ -949,6 +949,11 @@ class Pointage(models.Model):
         verbose_name='GPS départ — longitude')
     note = models.CharField(
         max_length=255, blank=True, default='', verbose_name='Note')
+    # ZRH5 — clôture automatique (« Automatic check-out » Odoo) : ``True`` si
+    # ``heure_depart`` a été posée par ``manage.py clore_pointages_ouverts``
+    # (jamais écrasé si le pointage était déjà fermé manuellement).
+    depart_auto = models.BooleanField(
+        default=False, verbose_name='Départ clôturé automatiquement')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
     date_modification = models.DateTimeField(
@@ -4638,6 +4643,12 @@ class ReglageRH(models.Model):
     # anonymisation par ``manage.py purger_candidatures``. Défaut 24 mois.
     retention_candidatures_mois = models.PositiveIntegerField(
         default=24, verbose_name='Rétention candidatures (mois)')
+    # ZRH5 — seuil (heures) après lequel un pointage ARRIVÉE sans DÉPART est
+    # clôturé automatiquement par ``manage.py clore_pointages_ouverts``.
+    # ``None`` = désactivé (comportement par défaut, aucune clôture auto).
+    pointage_auto_depart_apres_h = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Clôture auto pointage après (heures)')
     date_modification = models.DateTimeField(
         auto_now=True, verbose_name='Modifié le')
 

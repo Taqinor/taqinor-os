@@ -1159,6 +1159,55 @@ def controler_geofence_presence(presence, gps_lat, gps_lng):
     return presence
 
 
+# ── ZRH5 — clôture automatique des pointages oubliés ───────────────────────
+
+def clore_pointages_ouverts(company, *, apply=False):
+    """ZRH5 — clôture les pointages OUVERTS (arrivée sans départ) au-delà du
+    seuil société (« Automatic check-out » Odoo).
+
+    Seuil désactivé (``ReglageRH.pointage_auto_depart_apres_h`` NULL) → no-op
+    (liste vide). Un pointage ouvert depuis > seuil est clôturé UNE fois :
+    ``heure_depart = heure_arrivee + seuil``, ``depart_auto = True`` (jamais
+    écrasé si déjà fermé — la requête ne cible que
+    ``heure_depart__isnull=True``), et un ``IncidentPresence`` « départ
+    automatique » est créé pour traçabilité. ``apply=False`` (dry-run) ne
+    modifie rien. Renvoie la liste des pointages (dry-run) ou clôturés
+    (apply), pour rapport.
+    """
+    from datetime import timedelta
+
+    from .models import IncidentPresence, Pointage, ReglageRH
+
+    reglage = ReglageRH.objects.filter(company=company).first()
+    seuil_h = reglage.pointage_auto_depart_apres_h if reglage else None
+    if not seuil_h:
+        return []
+
+    seuil = timedelta(hours=seuil_h)
+    limite = timezone.now() - seuil
+    ouverts = Pointage.objects.filter(
+        company=company, heure_depart__isnull=True,
+        heure_arrivee__isnull=False, heure_arrivee__lte=limite,
+    ).select_related('employe')
+
+    traites = []
+    for pointage in ouverts:
+        depart_calcule = pointage.heure_arrivee + seuil
+        traites.append(pointage)
+        if apply:
+            pointage.heure_depart = depart_calcule
+            pointage.depart_auto = True
+            pointage.save(update_fields=[
+                'heure_depart', 'depart_auto', 'date_modification'])
+            IncidentPresence.objects.create(
+                company=company, employe=pointage.employe,
+                type_incident=IncidentPresence.TypeIncident.DEPART_ANTICIPE,
+                date=pointage.heure_arrivee.date(),
+                motif='Départ automatique (pointage oublié)',
+                note=f'Clôturé après {seuil_h} h sans départ pointé.')
+    return traites
+
+
 # ── XRH13 — import de pointages externes (pointeuse biométrique, CSV) ──────
 
 def importer_pointages_csv(company, rows):
