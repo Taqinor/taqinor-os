@@ -907,3 +907,127 @@ class XKB26StatusDndTests(TestCase):
         st = services.get_or_create_status(self.bob, self.company)
         self.assertEqual(st.status_text, '')
         self.assertEqual(st.status_emoji, '')
+
+
+class XKB27ScheduledRemindersBookmarksTests(TestCase):
+    """XKB27 — messages programmés, rappels & signets."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.alice = make_user(self.company, 'alice')
+        self.bob = make_user(self.company, 'bob')
+        self.conv = make_channel(self.company, self.alice, members=[self.bob])
+        self.msg = Message.objects.create(
+            company=self.company, conversation=self.conv, sender=self.alice,
+            body='Message à enregistrer')
+
+    def test_schedule_message_not_sent_before_time(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        future = timezone.now() + timedelta(hours=1)
+        sched = services.schedule_message(
+            conversation=self.conv, sender=self.alice, company=self.company,
+            body='Plus tard', scheduled_at=future)
+        sent = services.sweep_scheduled_messages(now=timezone.now())
+        self.assertEqual(sent, 0)
+        sched.refresh_from_db()
+        self.assertEqual(sched.status, 'pending')
+        self.assertEqual(
+            self.conv.messages.filter(body='Plus tard').count(), 0)
+
+    def test_schedule_message_sent_at_due_time(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        future = timezone.now() + timedelta(minutes=1)
+        sched = services.schedule_message(
+            conversation=self.conv, sender=self.alice, company=self.company,
+            body='Plus tard', scheduled_at=future)
+        sent = services.sweep_scheduled_messages(
+            now=future + timedelta(seconds=1))
+        self.assertEqual(sent, 1)
+        sched.refresh_from_db()
+        self.assertEqual(sched.status, 'sent')
+        self.assertIsNotNone(sched.sent_message)
+        self.assertEqual(sched.sent_message.body, 'Plus tard')
+
+    def test_schedule_rejects_past_time(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        with self.assertRaises(ValueError):
+            services.schedule_message(
+                conversation=self.conv, sender=self.alice,
+                company=self.company, body='x',
+                scheduled_at=timezone.now() - timedelta(hours=1))
+
+    def test_cancel_scheduled_message_before_time(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        future = timezone.now() + timedelta(hours=1)
+        sched = services.schedule_message(
+            conversation=self.conv, sender=self.alice, company=self.company,
+            body='Annule-moi', scheduled_at=future)
+        services.cancel_scheduled_message(sched, self.alice)
+        sched.refresh_from_db()
+        self.assertEqual(sched.status, 'cancelled')
+        sent = services.sweep_scheduled_messages(
+            now=future + timedelta(seconds=1))
+        self.assertEqual(sent, 0)
+
+    def test_cancel_scheduled_message_wrong_user_forbidden(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        sched = services.schedule_message(
+            conversation=self.conv, sender=self.alice, company=self.company,
+            body='x', scheduled_at=timezone.now() + timedelta(hours=1))
+        with self.assertRaises(PermissionError):
+            services.cancel_scheduled_message(sched, self.bob)
+
+    def test_api_scheduled_message_create_and_cancel(self):
+        api = auth(self.alice)
+        r = api.post('/api/django/chat/scheduled-messages/', {
+            'conversation': self.conv.id,
+            'body': 'via API',
+            'scheduled_at': '2099-01-01T10:00:00Z',
+        }, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        sched_id = r.data['id']
+        r2 = api.delete(f'/api/django/chat/scheduled-messages/{sched_id}/')
+        self.assertEqual(r2.status_code, 200)
+        self.assertEqual(r2.data['status'], 'cancelled')
+
+    @patch('apps.notifications.services.notify')
+    def test_reminder_notifies_at_due_time_not_before(self, mock_notify):
+        from django.utils import timezone
+        from datetime import timedelta
+        future = timezone.now() + timedelta(minutes=30)
+        services.remind_me(self.msg, self.bob, future)
+        sent = services.sweep_reminders(now=timezone.now())
+        self.assertEqual(sent, 0)
+        mock_notify.assert_not_called()
+
+        sent2 = services.sweep_reminders(now=future + timedelta(seconds=1))
+        self.assertEqual(sent2, 1)
+        mock_notify.assert_called_once()
+
+    def test_reminder_rejects_past_time(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        with self.assertRaises(ValueError):
+            services.remind_me(
+                self.msg, self.bob, timezone.now() - timedelta(hours=1))
+
+    def test_bookmark_toggle_list_remove(self):
+        api = auth(self.bob)
+        r = api.post(f'/api/django/chat/messages/{self.msg.id}/bookmark/')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data['status'], 'added')
+
+        r2 = api.get('/api/django/chat/messages/bookmarks/')
+        self.assertEqual(r2.status_code, 200)
+        self.assertEqual(len(r2.data), 1)
+        self.assertEqual(r2.data[0]['message'], self.msg.id)
+
+        r3 = api.post(f'/api/django/chat/messages/{self.msg.id}/bookmark/')
+        self.assertEqual(r3.data['status'], 'removed')
+        r4 = api.get('/api/django/chat/messages/bookmarks/')
+        self.assertEqual(len(r4.data), 0)

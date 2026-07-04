@@ -334,3 +334,102 @@ class UserChatStatus(models.Model):
 
     def __str__(self):
         return f'Statut de {self.user_id}'
+
+
+class ScheduledMessage(models.Model):
+    """XKB27 — « Envoyer plus tard » : message différé, expédié par le sweep
+    Celery beat à `scheduled_at`, annulable avant l'heure (`cancelled_at`).
+
+    Le message réel n'est créé qu'AU MOMENT de l'envoi (jamais avant) —
+    `sent_message` pointe alors vers le `Message` produit."""
+
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'En attente'
+        SENT = 'sent', 'Envoyé'
+        CANCELLED = 'cancelled', 'Annulé'
+        FAILED = 'failed', 'Échec'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='chat_scheduled_messages')
+    conversation = models.ForeignKey(
+        Conversation, on_delete=models.CASCADE,
+        related_name='scheduled_messages')
+    sender = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='chat_scheduled_messages')
+    body = models.TextField(blank=True, default='')
+    scheduled_at = models.DateTimeField()
+    status = models.CharField(
+        max_length=10, choices=Status.choices, default=Status.PENDING)
+    sent_message = models.ForeignKey(
+        Message, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Message programmé'
+        verbose_name_plural = 'Messages programmés'
+        ordering = ['scheduled_at', 'id']
+        indexes = [
+            models.Index(fields=['status', 'scheduled_at']),
+            models.Index(fields=['company', 'sender']),
+        ]
+
+    def __str__(self):
+        return f'Programmé {self.pk} @ {self.scheduled_at}'
+
+
+class MessageReminder(models.Model):
+    """XKB27 — « me rappeler ce message » : re-surface un message dans l'inbox
+    notifications de l'utilisateur à l'heure choisie."""
+
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'En attente'
+        SENT = 'sent', 'Envoyé'
+        CANCELLED = 'cancelled', 'Annulé'
+
+    message = models.ForeignKey(
+        Message, on_delete=models.CASCADE, related_name='reminders')
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='chat_message_reminders')
+    remind_at = models.DateTimeField()
+    status = models.CharField(
+        max_length=10, choices=Status.choices, default=Status.PENDING)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Rappel de message'
+        verbose_name_plural = 'Rappels de message'
+        ordering = ['remind_at', 'id']
+        indexes = [
+            models.Index(fields=['status', 'remind_at']),
+            models.Index(fields=['user', 'message']),
+        ]
+
+    def __str__(self):
+        return f'Rappel {self.pk} @ {self.remind_at}'
+
+
+class MessageBookmark(models.Model):
+    """XKB27 — signet personnel (« messages enregistrés ») par utilisateur."""
+
+    message = models.ForeignKey(
+        Message, on_delete=models.CASCADE, related_name='bookmarks')
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='chat_bookmarks')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Signet de message'
+        verbose_name_plural = 'Signets de message'
+        ordering = ['-created_at', '-id']
+        unique_together = [('message', 'user')]
+        indexes = [
+            models.Index(fields=['user', 'message']),
+        ]
+
+    def __str__(self):
+        return f'Signet {self.user_id} → {self.message_id}'

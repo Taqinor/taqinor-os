@@ -19,12 +19,13 @@ from apps.records.storage import (
 from . import services
 from .models import (
     Conversation, ConversationMember, Message, MessageAttachment,
-    MessageReaction, UserChatStatus,
+    MessageReaction, UserChatStatus, ScheduledMessage,
 )
 from .permissions import IsConversationMember, is_member
 from .selectors import member_conversation_ids, search_messages
 from .serializers import (
     ConversationSerializer, MessageSerializer, UserChatStatusSerializer,
+    ScheduledMessageSerializer, MessageBookmarkSerializer,
 )
 
 
@@ -467,14 +468,95 @@ class MessageViewSet(viewsets.ModelViewSet):
         company = _company(request)
         return Response(services.followed_threads(request.user, company))
 
+    # ── XKB27 — rappels & signets ──────────────────────────────────────
+    @action(detail=True, methods=['post'], url_path='remind-me')
+    def remind_me(self, request, pk=None):
+        """Body: {remind_at: iso}. Re-surface ce message dans l'inbox
+        notifications à l'heure choisie."""
+        msg = self.get_object()
+        from django.utils.dateparse import parse_datetime
+        remind_at = parse_datetime(request.data.get('remind_at') or '')
+        try:
+            rem = services.remind_me(msg, request.user, remind_at)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        from .serializers import MessageReminderSerializer
+        return Response(MessageReminderSerializer(rem).data,
+                        status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='bookmark')
+    def bookmark(self, request, pk=None):
+        """Bascule un signet personnel sur ce message."""
+        msg = self.get_object()
+        toggled = services.toggle_bookmark(msg, request.user)
+        return Response({'status': toggled})
+
+    @action(detail=False, methods=['get'], url_path='bookmarks')
+    def bookmarks(self, request):
+        """Liste des messages enregistrés (signets) de l'utilisateur."""
+        company = _company(request)
+        rows = services.list_bookmarks(request.user, company)
+        return Response(MessageBookmarkSerializer(rows, many=True).data)
+
     def get_permissions(self):
         # Les actions au niveau objet exigent l'appartenance.
         if self.action in ('partial_update', 'update', 'destroy', 'react',
                            'pin', 'unpin', 'download_attachment', 'retrieve',
                            'reply', 'thread', 'thread_follow',
-                           'thread_unfollow', 'thread_read'):
+                           'thread_unfollow', 'thread_read', 'remind_me',
+                           'bookmark'):
             return [IsAuthenticated(), IsConversationMember()]
         return [IsAuthenticated()]
+
+
+class ScheduledMessageViewSet(viewsets.ModelViewSet):
+    """XKB27 — « Envoyer plus tard ». Un utilisateur ne voit/annule que SES
+    propres messages programmés (scopés société)."""
+    serializer_class = ScheduledMessageSerializer
+    permission_classes = [IsAuthenticated]
+    http_method_names = ['get', 'post', 'delete', 'head', 'options']
+
+    def get_queryset(self):
+        company = _company(self.request)
+        if company is None:
+            return ScheduledMessage.objects.none()
+        return ScheduledMessage.objects.filter(
+            company=company, sender=self.request.user
+        ).select_related('conversation').order_by('scheduled_at', 'id')
+
+    def create(self, request, *args, **kwargs):
+        company = _company(request)
+        conv = Conversation.objects.filter(
+            pk=request.data.get('conversation'), company=company).first()
+        if conv is None:
+            return Response({'detail': 'Conversation introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        if not is_member(request.user, conv):
+            return Response(
+                {'detail': "Vous n'êtes pas membre de cette conversation."},
+                status=status.HTTP_403_FORBIDDEN)
+        from django.utils.dateparse import parse_datetime
+        scheduled_at = parse_datetime(request.data.get('scheduled_at') or '')
+        try:
+            sched = services.schedule_message(
+                conversation=conv, sender=request.user, company=company,
+                body=request.data.get('body', ''), scheduled_at=scheduled_at)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(sched).data,
+                        status=status.HTTP_201_CREATED)
+
+    def destroy(self, request, *args, **kwargs):
+        """Annule le message programmé (pas de suppression physique)."""
+        sched = self.get_object()
+        try:
+            services.cancel_scheduled_message(sched, request.user)
+        except (ValueError, PermissionError) as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(sched).data)
 
 
 class UserChatStatusViewSet(viewsets.GenericViewSet):

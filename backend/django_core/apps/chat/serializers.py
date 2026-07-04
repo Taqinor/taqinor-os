@@ -8,6 +8,7 @@ from rest_framework import serializers
 from .models import (
     Conversation, ConversationMember, Message, MessageAttachment,
     MessageReaction, MessageMention, UserChatStatus,
+    ScheduledMessage, MessageReminder, MessageBookmark,
 )
 
 
@@ -185,3 +186,32 @@ class ConversationSerializer(serializers.ModelSerializer):
             return 0
         from .services import unread_count
         return unread_count(obj, member)
+
+
+class ScheduledMessageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ScheduledMessage
+        fields = [
+            'id', 'conversation', 'sender', 'body', 'scheduled_at',
+            'status', 'sent_message', 'created_at',
+        ]
+        read_only_fields = ['id', 'sender', 'status', 'sent_message', 'created_at']
+
+
+class MessageReminderSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MessageReminder
+        fields = ['id', 'message', 'user', 'remind_at', 'status', 'created_at']
+        read_only_fields = ['id', 'user', 'status', 'created_at']
+
+
+class MessageBookmarkSerializer(serializers.ModelSerializer):
+    message_detail = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MessageBookmark
+        fields = ['id', 'message', 'message_detail', 'user', 'created_at']
+        read_only_fields = fields
+
+    def get_message_detail(self, obj):
+        return MessageSerializer(obj.message).data

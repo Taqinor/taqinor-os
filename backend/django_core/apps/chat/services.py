@@ -574,3 +574,129 @@ def post_system_message(conversation, body, *, record_type=None, record_id=None)
         return msg
     except Exception:  # noqa: BLE001 — jamais bloquant pour le webhook
         return None
+
+
+# ── XKB27 — messages programmés, rappels & signets ────────────────────
+
+def schedule_message(*, conversation, sender, company, body, scheduled_at):
+    """« Envoyer plus tard » : crée un `ScheduledMessage` PENDING. Le message
+    réel n'est créé qu'au sweep, à `scheduled_at` (jamais avant)."""
+    from .models import ScheduledMessage
+    if scheduled_at is None or scheduled_at <= timezone.now():
+        raise ValueError("L'heure programmée doit être dans le futur.")
+    return ScheduledMessage.objects.create(
+        company=company, conversation=conversation, sender=sender,
+        body=body or '', scheduled_at=scheduled_at)
+
+
+def cancel_scheduled_message(scheduled, user):
+    """Annule un message programmé avant son heure — auteur seulement."""
+    from .models import ScheduledMessage
+    if scheduled.sender_id != getattr(user, 'pk', None):
+        raise PermissionError('Seul l\'auteur peut annuler ce message.')
+    if scheduled.status != ScheduledMessage.Status.PENDING:
+        raise ValueError('Ce message a déjà été envoyé ou annulé.')
+    scheduled.status = ScheduledMessage.Status.CANCELLED
+    scheduled.save(update_fields=['status'])
+    return scheduled
+
+
+def sweep_scheduled_messages(now=None):
+    """Sweep Celery beat : envoie tout `ScheduledMessage` PENDING dû (à
+    `scheduled_at` ou avant), jamais avant l'heure. Best-effort par ligne :
+    une panne isolée passe la ligne suivante à `failed` sans interrompre le
+    sweep. Retourne le nombre envoyé."""
+    from .models import ScheduledMessage
+    now = now or timezone.now()
+    due = ScheduledMessage.objects.filter(
+        status=ScheduledMessage.Status.PENDING, scheduled_at__lte=now)
+    sent = 0
+    for sched in due:
+        try:
+            msg = create_message(
+                conversation=sched.conversation, sender=sched.sender,
+                company=sched.company, body=sched.body)
+            sched.status = ScheduledMessage.Status.SENT
+            sched.sent_message = msg
+            sched.save(update_fields=['status', 'sent_message'])
+            sent += 1
+        except Exception:  # pragma: no cover - défensif
+            sched.status = ScheduledMessage.Status.FAILED
+            sched.save(update_fields=['status'])
+    return sent
+
+
+def remind_me(message, user, remind_at):
+    """« Me rappeler ce message » : re-surface le message dans l'inbox
+    notifications de l'utilisateur à l'heure choisie."""
+    from .models import MessageReminder
+    if remind_at is None or remind_at <= timezone.now():
+        raise ValueError("L'heure de rappel doit être dans le futur.")
+    return MessageReminder.objects.create(
+        message=message, user=user, remind_at=remind_at)
+
+
+def cancel_reminder(reminder, user):
+    from .models import MessageReminder
+    if reminder.user_id != getattr(user, 'pk', None):
+        raise PermissionError('Seul le créateur peut annuler ce rappel.')
+    if reminder.status != MessageReminder.Status.PENDING:
+        raise ValueError('Ce rappel a déjà été envoyé ou annulé.')
+    reminder.status = MessageReminder.Status.CANCELLED
+    reminder.save(update_fields=['status'])
+    return reminder
+
+
+def sweep_reminders(now=None):
+    """Sweep Celery beat : notifie chaque rappel PENDING dû, via le point
+    d'entrée `notify()` (in-app + Web Push), best-effort par ligne."""
+    from .models import MessageReminder
+    now = now or timezone.now()
+    due = (MessageReminder.objects
+           .filter(status=MessageReminder.Status.PENDING, remind_at__lte=now)
+           .select_related('message', 'user', 'message__conversation'))
+    sent = 0
+    for rem in due:
+        try:
+            _notify_reminder(rem)
+            rem.status = MessageReminder.Status.SENT
+            rem.save(update_fields=['status'])
+            sent += 1
+        except Exception:  # pragma: no cover - défensif
+            continue
+    return sent
+
+
+def _notify_reminder(reminder):
+    try:
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+    except Exception:  # pragma: no cover - défensif
+        return
+    msg = reminder.message
+    link = f'/messages/{msg.conversation_id}'
+    notify(reminder.user, EventType.CHAT_MESSAGE,
+           'Rappel : message enregistré', body=_preview(msg), link=link,
+           company=msg.company)
+
+
+def toggle_bookmark(message, user):
+    """Bascule un signet personnel sur `message` pour `user`."""
+    from .models import MessageBookmark
+    existing = MessageBookmark.objects.filter(
+        message=message, user=user).first()
+    if existing is not None:
+        existing.delete()
+        return 'removed'
+    MessageBookmark.objects.create(message=message, user=user)
+    return 'added'
+
+
+def list_bookmarks(user, company):
+    """Messages enregistrés par `user`, scopés société, plus récents d'abord."""
+    from .models import MessageBookmark
+    return list(
+        MessageBookmark.objects
+        .filter(user=user, message__company=company)
+        .select_related('message', 'message__conversation')
+        .order_by('-created_at', '-id'))
