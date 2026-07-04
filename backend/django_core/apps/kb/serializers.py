@@ -14,6 +14,7 @@ from .models import (
     KbLecture,
     KbLectureObligatoire,
     KbRechercheVide,
+    PartageArticleKb,
 )
 
 
@@ -277,6 +278,33 @@ class KbRechercheVideSerializer(serializers.ModelSerializer):
         model = KbRechercheVide
         fields = ['id', 'terme', 'utilisateur', 'date_creation']
         read_only_fields = fields
+
+
+class PartageArticleKbSerializer(serializers.ModelSerializer):
+    """XKB19 — Partage public d'un article (lien tokenisé, opt-in).
+
+    ``token`` est en LECTURE SEULE (généré côté serveur, ``editable=False``
+    sur le modèle) ; ``company``/``created_by`` sont posés côté serveur.
+    """
+    article_titre = serializers.CharField(
+        source='article.titre', read_only=True)
+    is_expired = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = PartageArticleKb
+        fields = [
+            'id', 'article', 'article_titre', 'token', 'expires_at', 'actif',
+            'consultations', 'is_expired', 'created_by', 'date_creation',
+        ]
+        read_only_fields = [
+            'token', 'consultations', 'created_by', 'date_creation']
+
+    def validate_article(self, article):
+        request = self.context.get('request')
+        if request is not None and article.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Cet article n'appartient pas à votre société.")
+        return article
 
 
 class KbFavoriSerializer(serializers.ModelSerializer):

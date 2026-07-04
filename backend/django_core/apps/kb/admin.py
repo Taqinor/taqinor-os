@@ -9,6 +9,7 @@ from .models import (
     KbLecture,
     KbLectureObligatoire,
     KbRechercheVide,
+    PartageArticleKb,
 )
 
 
@@ -67,3 +68,10 @@ class KbRechercheVideAdmin(admin.ModelAdmin):
     list_display = ('id', 'terme', 'utilisateur', 'company', 'date_creation')
     list_filter = ('company',)
     search_fields = ('terme',)
+
+
+@admin.register(PartageArticleKb)
+class PartageArticleKbAdmin(admin.ModelAdmin):
+    list_display = ('id', 'article', 'actif', 'expires_at', 'consultations',
+                    'company', 'date_creation')
+    list_filter = ('actif', 'company')

@@ -7,9 +7,13 @@ requête). Les versions d'article sont des instantanés numérotés côté serve
 """
 from django.http import HttpResponse
 from rest_framework import filters, viewsets
-from rest_framework.decorators import action
+from rest_framework.decorators import (
+    action, api_view, permission_classes, throttle_classes,
+)
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework.throttling import SimpleRateThrottle
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsResponsableOrAdmin
@@ -22,6 +26,7 @@ from .models import (
     KbArticleVersion,
     KbFavori,
     KbLectureObligatoire,
+    PartageArticleKb,
 )
 from .serializers import (
     KbArticleAclSerializer,
@@ -30,6 +35,7 @@ from .serializers import (
     KbArticleVersionSerializer,
     KbFavoriSerializer,
     KbLectureObligatoireSerializer,
+    PartageArticleKbSerializer,
 )
 
 
@@ -507,3 +513,99 @@ class KbFavoriViewSet(_KbBaseViewSet):
     def perform_create(self, serializer):
         serializer.save(
             company=self.request.user.company, utilisateur=self.request.user)
+
+
+class PartageArticleKbViewSet(_KbBaseViewSet):
+    """XKB19 — Gestion des partages publics d'article (lien tokenisé, opt-in).
+
+    ``company``/``created_by`` posés côté serveur ; l'``article`` reçu est
+    validé même-société par le sérialiseur. Filtre optionnel ``?article=<id>``.
+    """
+    queryset = PartageArticleKb.objects.select_related('article').all()
+    serializer_class = PartageArticleKbSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        article = self.request.query_params.get('article')
+        if article:
+            qs = qs.filter(article_id=article)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, created_by=self.request.user)
+
+    @action(detail=True, methods=['post'], url_path='depublier')
+    def depublier(self, request, pk=None):
+        """XKB19 — Dépublication IMMÉDIATE (kill-switch) : le lien répond
+        404 dès cet appel (indistinct d'un jeton inconnu)."""
+        partage = self.get_object()
+        partage.actif = False
+        partage.save(update_fields=['actif'])
+        return Response(self.get_serializer(partage).data)
+
+
+# ── XKB19 — Endpoint PUBLIC (sans login) servant un article par jeton ───────
+# AUTHENTIFIÉ UNIQUEMENT PAR LE JETON : aucune identité/société n'est lue de la
+# requête (même motif que ``ged.views.public_partage`` — GED20). Révoqué/
+# inconnu → 404 ; expiré → 410. Aucune autre donnée n'est atteignable.
+
+class PublicPartageArticleRateThrottle(SimpleRateThrottle):
+    """Limite le débit de l'accès public par IP + jeton (même motif que
+    ``ged.views.PublicPartageRateThrottle``)."""
+    scope = 'public_kb_partage'
+    rate = '30/minute'
+
+    def get_rate(self):
+        return self.rate
+
+    def get_cache_key(self, request, view):
+        token = (getattr(view, 'kwargs', None) or {}).get('token', '')
+        ident = self.get_ident(request)
+        return self.cache_format % {
+            'scope': self.scope,
+            'ident': f'{ident}:{token}',
+        }
+
+
+def _kb_noindex(response):
+    """Marque une réponse publique comme non-indexable par les moteurs."""
+    response['X-Robots-Tag'] = 'noindex, nofollow, noarchive'
+    return response
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicPartageArticleRateThrottle])
+def public_article(request, token):
+    """XKB19 — Sert un article partagé par jeton (PUBLIC, sans login).
+
+    `GET /api/django/kb/public/<token>/`. Le jeton est l'UNIQUE secret
+    d'accès ; aucune identité/société n'est lue de la requête — tout est
+    résolu DEPUIS le jeton (``services.resolve_partage_public``).
+
+    Codes :
+      - 404 : jeton inconnu OU partage dépublié (indistinct, pas de fuite).
+      - 410 : partage expiré.
+      - 200 : titre + corps de l'article (lecture seule), et le compteur
+        ``consultations`` est incrémenté atomiquement.
+    """
+    statut, partage = services.resolve_partage_public(token)
+    if statut == services.PARTAGE_INTROUVABLE:
+        return _kb_noindex(Response(
+            {'detail': "Ce lien est introuvable ou n'est plus disponible."},
+            status=404))
+    if statut == services.PARTAGE_EXPIRE:
+        return _kb_noindex(Response(
+            {'detail': "Ce lien a expiré."}, status=410))
+
+    services.consume_partage_consultation(partage)
+    article = partage.article
+    return _kb_noindex(Response({
+        'titre': article.titre,
+        'corps': article.corps,
+        'corps_format': article.corps_format,
+        'categorie': article.categorie,
+    }))

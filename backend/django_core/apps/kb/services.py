@@ -16,6 +16,7 @@ from .models import (
     KbFavori,
     KbLecture,
     KbRechercheVide,
+    PartageArticleKb,
 )
 
 logger = logging.getLogger(__name__)
@@ -315,6 +316,46 @@ def marquer_traductions_perimees(article):
     idempotent (un ``update()`` en masse, pas de N+1).
     """
     article.traductions.update(traduction_perimee=True)
+
+
+# ── XKB19 — Partage web public d'article (lien tokenisé) ────────────────────
+
+PARTAGE_OK = 'ok'
+PARTAGE_INTROUVABLE = 'introuvable'  # jeton inconnu ou révoqué → 404
+PARTAGE_EXPIRE = 'expire'            # expiré → 410
+
+
+def resolve_partage_public(token):
+    """XKB19 — Résout un partage public d'article DEPUIS le seul jeton.
+
+    Calqué sur ``ged.services.resolve_partage_public`` (GED20) : aucune
+    identité/société n'est jamais lue de la requête, tout est résolu à partir
+    du ``token`` (qui ne référence qu'un seul article d'une seule société).
+    Renvoie ``(statut, partage_ou_None)`` :
+
+      - PARTAGE_INTROUVABLE : jeton inconnu OU partage dépublié
+        (``actif=False``) → 404, indistinct (pas de fuite « ce jeton a
+        existé »).
+      - PARTAGE_EXPIRE : partage expiré (``expires_at`` dépassé) → 410.
+      - PARTAGE_OK : accès autorisé, ``partage.article`` est servable.
+    """
+    partage = (PartageArticleKb.objects
+               .select_related('article', 'company')
+               .filter(token=token)
+               .first())
+    if partage is None or not partage.actif:
+        return PARTAGE_INTROUVABLE, None
+    if partage.is_expired:
+        return PARTAGE_EXPIRE, partage
+    return PARTAGE_OK, partage
+
+
+def consume_partage_consultation(partage):
+    """XKB19 — Incrémente atomiquement le compteur de consultations publiques
+    (F-expression : pas de race condition en écriture concurrente)."""
+    from django.db.models import F
+    PartageArticleKb.objects.filter(id=partage.id).update(
+        consultations=F('consultations') + 1)
 
 
 def exporter_zip_company(company):

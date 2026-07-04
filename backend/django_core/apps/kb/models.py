@@ -4,8 +4,11 @@ Référentiel d'articles internes (procédures, fiches techniques, FAQ) destiné
 aux équipes. Multi-société : chaque modèle porte un FK ``company`` posé côté
 serveur (jamais lu du corps de requête). Entièrement additif.
 """
+import secrets
+
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 from pgvector.django import VectorField
 
 # KB6 — dimension du vecteur d'embedding RAG/DocQA. Alignée 1:1 sur
@@ -613,3 +616,87 @@ class KbRechercheVide(models.Model):
 
     def __str__(self):
         return f'« {self.terme} » (0 résultat)'
+
+
+def _default_partage_token():
+    """XKB19 — Jeton de partage public long, imprévisible et URL-safe.
+
+    Réutilise EXACTEMENT le même générateur que ``ged.PartageGed.token``
+    (``secrets.token_urlsafe``, 32 octets → ~43 caractères) : le jeton est le
+    SEUL secret qui authentifie l'accès public à un article partagé.
+    """
+    return secrets.token_urlsafe(32)
+
+
+class PartageArticleKb(models.Model):
+    """XKB19 — Partage public d'un article KB par lien tokenisé.
+
+    Donne une SOP/FAQ à un client ou sous-traitant SANS compte ERP, via un lien
+    public authentifié par le SEUL jeton (``token``) — jamais par une identité
+    ou une société lue de la requête (voir ``services.resolve_partage_public``,
+    calqué sur ``ged.services.resolve_partage_public``/GED20). Opt-in PAR
+    article : un article n'est jamais exposé sans qu'on crée explicitement ce
+    partage. Aucun contenu sensible par défaut — ``prix_achat`` n'existe pas
+    dans ce module.
+
+    ``expires_at`` optionnel (NULL = jamais expiré). ``actif=False`` est une
+    dépublication immédiate (kill-switch) : un jeton révoqué/inconnu répond
+    404 ; un jeton expiré répond 410 — jamais de fuite distinguant les deux
+    côté « ce jeton existe ».
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='kb_app_partages',
+        verbose_name='Société',
+    )
+    article = models.ForeignKey(
+        KbArticle,
+        on_delete=models.CASCADE,
+        related_name='partages',
+        verbose_name='Article',
+    )
+    # Jeton long, imprévisible, URL-safe — l'UNIQUE secret d'accès public.
+    token = models.CharField(
+        max_length=64, unique=True, default=_default_partage_token,
+        editable=False, verbose_name='Jeton')
+    expires_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Expire le')
+    # Kill-switch : dépublier rend le lien immédiatement 404 (indistinct d'un
+    # jeton inconnu — pas de fuite « ce jeton a existé »).
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    consultations = models.PositiveIntegerField(
+        default=0, verbose_name='Consultations')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='kb_app_partages_crees',
+        verbose_name='Créé par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Partage public de l'article"
+        verbose_name_plural = "Partages publics d'article"
+        ordering = ['-date_creation', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'article'], name='kb_partage_co_art_idx'),
+        ]
+
+    def __str__(self):
+        return f'Partage {self.token[:8]}… → {self.article_id}'
+
+    @property
+    def is_expired(self):
+        """True si le partage a une expiration DÉPASSÉE."""
+        return self.expires_at is not None and self.expires_at <= timezone.now()
+
+    @property
+    def is_accessible(self):
+        """True si le partage est actuellement servable publiquement (actif
+        ET non expiré)."""
+        return self.actif and not self.is_expired
