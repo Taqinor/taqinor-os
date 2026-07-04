@@ -13,9 +13,10 @@ from django.db import IntegrityError
 from django.http import HttpResponse
 
 from rest_framework import filters, status, viewsets
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
@@ -26,11 +27,12 @@ from .models import (
     AppelTelephonique,
     BaremeIndemnite, BordereauRemise, Budget, BudgetLigne, Caisse,
     Campagne, CautionBancaire, CentreCout, CessionImmobilisation, CodePromotion,
-    CommissionPayoutRun,
+    CommissionPayoutRun, EnvoiCampagne,
     CompteComptable, CompteTresorerie, ContratAvancement, DeclarationTVA,
     DemandeApprobationConfig,
     DotationAmortissement, ECatalogue, EcritureComptable, Effet,
-    EntiteConsolidation, EtapeSequence,
+    EntiteConsolidation, EtapeSequence, InscriptionSequence,
+    ListeDiffusion, AbonnementListe, SegmentMarketing,
     ExerciceComptable, FormulaireIntake, Immobilisation, IndemniteChantier,
     Journal,
     LignePrevisionnelTresorerie, LigneReleve, MessageWhatsAppEntrant,
@@ -62,13 +64,15 @@ from .serializers import (
     BordereauRemiseSerializer, BudgetSerializer, CaisseSerializer,
     CampagneSerializer, CautionBancaireSerializer, CentreCoutSerializer,
     CessionImmobilisationSerializer, ClotureCaisseSerializer,
-    CodePromotionSerializer,
+    CodePromotionSerializer, EnvoiCampagneSerializer,
     CommissionPayoutRunSerializer, CompteComptableSerializer,
     CompteTresorerieSerializer, ContratAvancementSerializer,
     DeclarationTVASerializer, DemandeApprobationConfigSerializer,
     DotationAmortissementSerializer, ECatalogueSerializer,
     EcritureComptableSerializer, EffetSerializer, EntiteConsolidationSerializer,
-    EtapeSequenceSerializer,
+    EtapeSequenceSerializer, InscriptionSequenceSerializer,
+    ListeDiffusionSerializer, AbonnementListeSerializer,
+    SegmentMarketingSerializer,
     ExerciceComptableSerializer, FormulaireIntakeSerializer,
     ImmobilisationSerializer,
     IndemniteChantierSerializer, JournalSerializer,
@@ -3637,6 +3641,141 @@ class CampagneViewSet(_ComptaBaseViewSet):
         services.envoyer_campagne(campagne, destinataires=destinataires)
         return Response(CampagneSerializer(campagne).data)
 
+    @action(detail=True, methods=['get'])
+    def apercu_fusion(self, request, pk=None):
+        """XMKT8 — Aperçu du corps fusionné pour un lead d'exemple
+        (``?lead_id=``), fallback appliqué par variable si le champ est vide."""
+        campagne = self.get_object()
+        lead_id = request.query_params.get('lead_id')
+        if not lead_id:
+            return Response({'detail': 'lead_id requis.'}, status=400)
+        try:
+            rendu = services.rendre_variables_fusion(
+                campagne.corps, request.user.company, lead_id)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response({'corps_fusionne': rendu})
+
+    @action(detail=True, methods=['post'], url_path='envoyer-test')
+    def envoyer_test(self, request, pk=None):
+        """XMKT13 — Envoi de test (jamais vers de vrais destinataires)."""
+        campagne = self.get_object()
+        adresses_seed = request.data.get('adresses_seed') or []
+        lead_id_exemple = request.data.get('lead_id_exemple')
+        resultat = services.envoyer_test_campagne(
+            campagne, adresses_seed=adresses_seed,
+            lead_id_exemple=lead_id_exemple)
+        return Response(resultat)
+
+    @action(detail=True, methods=['get'], url_path='precheck')
+    def precheck(self, request, pk=None):
+        """XMKT13 — Pré-check bloquant/avertissant avant l'envoi de masse."""
+        campagne = self.get_object()
+        verifier_liens = request.query_params.get('verifier_liens') == '1'
+        rapport = services.precheck_sante_campagne(
+            campagne, verifier_liens=verifier_liens)
+        return Response(rapport)
+
+    @action(detail=True, methods=['get'], url_path='cout-sms')
+    def cout_sms(self, request, pk=None):
+        """XMKT15 — Segments GSM-7/UCS-2 + coût multi-part en direct."""
+        campagne = self.get_object()
+        prix_unitaire = request.query_params.get('prix_unitaire_mad')
+        kwargs = {}
+        if prix_unitaire:
+            kwargs['prix_unitaire_mad'] = prix_unitaire
+        nb_destinataires = int(
+            request.query_params.get('nb_destinataires') or 1)
+        estimation = services.estimer_cout_sms(
+            campagne.corps, nb_destinataires=nb_destinataires, **kwargs)
+        return Response(estimation)
+
+
+# ── XMKT2 — Journal d'envoi par destinataire (drill-down) ───────────────────
+
+class EnvoiCampagneViewSet(_ComptaBaseViewSet):
+    """Trace d'envoi par destinataire (XMKT2), lecture seule pour le
+    drill-down depuis un KPI de campagne. Filtrable par ``campagne`` et
+    ``statut``."""
+    http_method_names = ['get', 'head', 'options']
+    queryset = EnvoiCampagne.objects.select_related('campagne').all()
+    serializer_class = EnvoiCampagneSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        campagne_id = self.request.query_params.get('campagne')
+        if campagne_id:
+            qs = qs.filter(campagne_id=campagne_id)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+
+# ── XMKT5 — Listes de diffusion nommées + abonnements ───────────────────────
+
+class ListeDiffusionViewSet(_ComptaBaseViewSet):
+    """CRUD des listes de diffusion nommées (XMKT5)."""
+    queryset = ListeDiffusion.objects.all()
+    serializer_class = ListeDiffusionSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom']
+    ordering_fields = ['nom', 'date_creation']
+
+    @action(detail=True, methods=['post'])
+    def importer(self, request, pk=None):
+        """Import CSV/XLSX déjà mappé côté client : ``lignes`` = liste de
+        ``{'destinataire': ..., 'contact_ref': ...}``."""
+        liste = self.get_object()
+        lignes = request.data.get('lignes') or []
+        rapport = services.importer_abonnements_liste(liste, lignes)
+        return Response(rapport)
+
+    @action(detail=True, methods=['get'])
+    def abonnes(self, request, pk=None):
+        liste = self.get_object()
+        qs = liste.abonnements.all()
+        statut = request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return Response(AbonnementListeSerializer(qs, many=True).data)
+
+
+class AbonnementListeViewSet(_ComptaBaseViewSet):
+    """Abonnements individuels à une liste (XMKT5)."""
+    queryset = AbonnementListe.objects.select_related('liste').all()
+    serializer_class = AbonnementListeSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        liste_id = self.request.query_params.get('liste')
+        if liste_id:
+            qs = qs.filter(liste_id=liste_id)
+        return qs
+
+
+# ── XMKT6 — Segments dynamiques enregistrés et réutilisables ────────────────
+
+class SegmentMarketingViewSet(_ComptaBaseViewSet):
+    """Segments nommés réutilisables (XMKT6), auto-actualisés à chaque
+    usage — ``previsualiser`` renvoie le compte exact + un échantillon."""
+    queryset = SegmentMarketing.objects.all()
+    serializer_class = SegmentMarketingSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom']
+    ordering_fields = ['nom', 'date_creation']
+
+    @action(detail=True, methods=['get'])
+    def previsualiser(self, request, pk=None):
+        segment = self.get_object()
+        try:
+            data = services.previsualiser_segment(segment)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(data)
+
 
 # ── FG202 — Séquences de relance automatisées ──────────────────────────────
 
@@ -3657,6 +3796,127 @@ class EtapeSequenceViewSet(_ComptaBaseViewSet):
     """Étapes d'une séquence de relance (FG202)."""
     queryset = EtapeSequence.objects.select_related('sequence').all()
     serializer_class = EtapeSequenceSerializer
+
+
+# ── XMKT1 — Inscriptions & exécution réelle des séquences ──────────────────
+
+class InscriptionSequenceViewSet(_ComptaBaseViewSet):
+    """Inscriptions de leads dans une séquence de relance (XMKT1) : trace par
+    participant (quel nœud, quand, quoi exécuté) via ``executions``."""
+    queryset = InscriptionSequence.objects.select_related(
+        'sequence', 'etape_courante').prefetch_related('executions').all()
+    serializer_class = InscriptionSequenceSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['declenchee_le']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        sequence_id = self.request.query_params.get('sequence')
+        if sequence_id:
+            qs = qs.filter(sequence_id=sequence_id)
+        lead_id = self.request.query_params.get('lead_id')
+        if lead_id:
+            qs = qs.filter(lead_id=lead_id)
+        return qs
+
+    @action(detail=False, methods=['post'])
+    def inscrire(self, request):
+        sequence_id = request.data.get('sequence')
+        lead_id = request.data.get('lead_id')
+        if not sequence_id or not lead_id:
+            return Response(
+                {'detail': 'sequence et lead_id requis.'}, status=400)
+        sequence = SequenceRelance.objects.filter(
+            id=sequence_id, company=request.user.company).first()
+        if not sequence:
+            return Response({'detail': 'Séquence introuvable.'}, status=404)
+        inscription = services.inscrire_lead_sequence(
+            request.user.company, sequence, lead_id=lead_id,
+            lead_reference=request.data.get('lead_reference', ''))
+        return Response(
+            InscriptionSequenceSerializer(inscription).data, status=201)
+
+    @action(detail=True, methods=['post'])
+    def sortir(self, request, pk=None):
+        inscription = self.get_object()
+        services.sortir_inscription(
+            inscription, motif=request.data.get('motif', 'manuel'))
+        inscription.refresh_from_db()
+        return Response(InscriptionSequenceSerializer(inscription).data)
+
+
+# ── XMKT2 — Webhook Brevo (gated, public, aucune auth) ──────────────────────
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def webhook_brevo_campagne(request):
+    """Réception d'un événement webhook Brevo (XMKT2/XMKT12) : delivered/
+    opened/click/bounce/unsubscribed/complaint. Résout la société depuis la
+    ``Campagne`` référencée (aucune session utilisateur côté webhook
+    externe). Payload minimal attendu : ``campagne_id``, ``destinataire``,
+    ``event``, et optionnellement ``reason`` (raison SMTP) + ``bounce_type``
+    (``hard``/``soft``, XMKT12).
+    """
+    data = request.data or {}
+    campagne_id = data.get('campagne_id')
+    destinataire = (data.get('destinataire') or '').strip()
+    evenement = data.get('event') or ''
+    if not campagne_id or not destinataire or not evenement:
+        return Response({'detail': 'payload incomplet'}, status=400)
+    campagne = Campagne.objects.filter(id=campagne_id).first()
+    if not campagne:
+        return Response({'detail': 'campagne introuvable'}, status=404)
+    envoi = services.webhook_brevo_evenement(
+        campagne.company, campagne_id=campagne.id,
+        destinataire=destinataire, evenement=evenement,
+        raison_smtp=data.get('reason', ''),
+        bounce_type=data.get('bounce_type', ''))
+    if not envoi:
+        return Response({'detail': 'destinataire introuvable'}, status=404)
+    return Response({'statut': envoi.statut})
+
+
+# ── XMKT15 — Webhook agrégateur SMS : mot-clé STOP entrant (gated, public) ──
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def webhook_sms_stop(request):
+    """Réception d'un SMS entrant STOP (XMKT15, gated/no-op sans intégration
+    d'agrégateur active). Payload minimal attendu : ``company_id``,
+    ``numero``. Désinscrit immédiatement le numéro (XMKT3).
+    """
+    from authentication.models import Company
+
+    data = request.data or {}
+    company_id = data.get('company_id')
+    numero = (data.get('numero') or '').strip()
+    if not company_id or not numero:
+        return Response({'detail': 'payload incomplet'}, status=400)
+    company = Company.objects.filter(id=company_id).first()
+    if not company:
+        return Response({'detail': 'société introuvable'}, status=404)
+    supprime = services.traiter_stop_entrant(company, numero)
+    if not supprime:
+        return Response({'detail': 'numéro invalide'}, status=400)
+    return Response({'desinscrit': True, 'destinataire': supprime.destinataire})
+
+
+# ── XMKT3 — Désinscription un clic (public, tokenisé, aucune auth) ─────────
+
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+def desinscription_publique(request, token):
+    """Page/endpoint public de désinscription un clic (XMKT3, RFC 8058).
+
+    Un jeton signé (``services.generer_token_desinscription``) porte la
+    société + le destinataire — aucune authentification requise. GET et POST
+    font la même chose (RFC 8058 recommande un POST simple sans confirmation
+    pour les clients mail qui suivent ``List-Unsubscribe``).
+    """
+    ok, resultat = services.desinscrire_via_token(token)
+    if not ok:
+        return Response({'detail': resultat}, status=400)
+    return Response({'desinscrit': True, 'destinataire': resultat})
 
 
 # ── FG203 — Récupération des devis abandonnés ──────────────────────────────

@@ -2,16 +2,19 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    desinscription_publique, webhook_brevo_campagne, webhook_sms_stop,
     AppelTelephoniqueViewSet,
     BaremeIndemniteViewSet, BordereauRemiseViewSet, BudgetViewSet,
     CaisseViewSet, CampagneViewSet, CautionBancaireViewSet, CentreCoutViewSet,
+    EnvoiCampagneViewSet, ListeDiffusionViewSet, AbonnementListeViewSet,
+    SegmentMarketingViewSet,
     CessionImmobilisationViewSet, CodePromotionViewSet,
     CommissionPayoutRunViewSet, ComparateurDevisViewSet,
     CompteComptableViewSet, CompteTresorerieViewSet, ContratAvancementViewSet,
     DeclarationTVAViewSet, DemandeApprobationConfigViewSet,
     DotationAmortissementViewSet, ECatalogueViewSet,
     EcritureComptableViewSet, EffetViewSet, EntiteConsolidationViewSet,
-    EtapeSequenceViewSet,
+    EtapeSequenceViewSet, InscriptionSequenceViewSet,
     EtatsComptablesViewSet, ExerciceComptableViewSet, FormulaireIntakeViewSet,
     ImmobilisationViewSet,
     IndemniteChantierViewSet, JournalViewSet,
@@ -98,8 +101,13 @@ router.register(r'obligations-fiscales', ObligationFiscaleViewSet)
 router.register(r'familles-tva-non-deductibles', FamilleTvaNonDeductibleViewSet)
 # ── Croissance commerciale / marketing / CPQ (FG201–FG214) ──────────────────
 router.register(r'campagnes', CampagneViewSet)
+router.register(r'envois-campagne', EnvoiCampagneViewSet)
+router.register(r'listes-diffusion', ListeDiffusionViewSet)
+router.register(r'abonnements-liste', AbonnementListeViewSet)
+router.register(r'segments-marketing', SegmentMarketingViewSet)
 router.register(r'sequences-relance', SequenceRelanceViewSet)
 router.register(r'etapes-sequence', EtapeSequenceViewSet)
+router.register(r'inscriptions-sequence', InscriptionSequenceViewSet)
 router.register(r'relances-devis-abandonnes', RelanceDevisAbandonneViewSet)
 router.register(r'ouvertures-partage', OuverturePartageViewSet)
 router.register(r'formulaires-intake', FormulaireIntakeViewSet)
@@ -156,5 +164,9 @@ router.register(r'pistes-audit', PisteAuditComptableViewSet,
                 basename='pisteaudit')
 
 urlpatterns = [
+    path('webhooks/brevo/', webhook_brevo_campagne, name='webhook-brevo-campagne'),
+    path('webhooks/sms-stop/', webhook_sms_stop, name='webhook-sms-stop'),
+    path('desinscription/<str:token>/', desinscription_publique,
+         name='desinscription-publique'),
     path('', include(router.urls)),
 ]

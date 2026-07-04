@@ -23,10 +23,13 @@ Trois blocs :
 import csv
 import hashlib
 import io
+import re
+import urllib.request
 from decimal import ROUND_HALF_UP, Decimal
 from math import asin, cos, radians, sin, sqrt
 
 from django.conf import settings
+from django.core import signing
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Sum
@@ -63,6 +66,9 @@ from .models import (
     AbonnementEcriture,
     ObligationFiscale,
     FamilleTvaNonDeductible,
+    EtapeSequence, ExecutionEtapeSequence, InscriptionSequence,
+    SequenceRelance, EnvoiCampagne, SuppressionMarketing,
+    ListeDiffusion, AbonnementListe, RebondSoft,
 )
 
 
@@ -5492,15 +5498,31 @@ def brevo_actif():
 def envoyer_campagne(campagne, *, destinataires=None):
     """Déclenche l'envoi groupé d'une campagne (FG201), idempotent.
 
-    ``destinataires`` = liste d'adresses/numéros (optionnelle, sinon 0). Si
-    l'intégration Brevo est inactive (défaut), c'est un NO-OP : on marque la
-    campagne ``envoyee`` et on enregistre le nombre de destinataires SANS
-    aucun appel réseau. Renvoie la campagne. Une campagne déjà envoyée ou
-    annulée n'est pas ré-envoyée.
+    ``destinataires`` = liste d'adresses/numéros (optionnelle, sinon 0), ou de
+    dicts ``{'destinataire': ..., 'contact_ref': ...}`` pour porter la
+    référence contact opaque (XMKT2). Si l'intégration Brevo est inactive
+    (défaut), c'est un NO-OP : on marque la campagne ``envoyee`` et on
+    enregistre le nombre de destinataires SANS aucun appel réseau. Renvoie la
+    campagne. Une campagne déjà envoyée ou annulée n'est pas ré-envoyée.
+
+    Un destinataire présent sur la liste de suppression marketing (XMKT3,
+    ``SuppressionMarketing``) est filtré AVANT l'envoi — jamais ciblé, même
+    après ré-import de contacts. Chaque destinataire restant obtient sa ligne
+    ``EnvoiCampagne`` (XMKT2), point de départ du drill-down par KPI et du
+    suivi webhook Brevo.
     """
     if campagne.statut != Campagne.Statut.BROUILLON:
         return campagne
-    cibles = list(destinataires or [])
+    brutes = list(destinataires or [])
+
+    def _adresse(cible):
+        brute = cible.get('destinataire') if isinstance(cible, dict) else cible
+        return (brute or '').strip()
+
+    cibles = [
+        cible for cible in brutes
+        if not est_supprime(campagne.company, _adresse(cible))
+    ]
     campagne.nb_destinataires = len(cibles)
     if brevo_actif() and cibles:
         # Intégration réelle (future) — jamais appelée tant que le flag est OFF.
@@ -5511,7 +5533,656 @@ def envoyer_campagne(campagne, *, destinataires=None):
     campagne.envoyee_le = timezone.now()
     campagne.save(update_fields=[
         'nb_destinataires', 'nb_envois', 'statut', 'envoyee_le'])
+    maintenant = timezone.now() if campagne.nb_envois else None
+    for cible in cibles:
+        if isinstance(cible, dict):
+            destinataire = (cible.get('destinataire') or '').strip()
+            contact_ref = cible.get('contact_ref') or ''
+        else:
+            destinataire = (cible or '').strip()
+            contact_ref = ''
+        if not destinataire:
+            continue
+        EnvoiCampagne.objects.create(
+            company=campagne.company,
+            campagne=campagne,
+            destinataire=destinataire,
+            contact_ref=contact_ref,
+            statut=(EnvoiCampagne.Statut.ENVOYE if maintenant
+                    else EnvoiCampagne.Statut.QUEUED),
+            envoye_le=maintenant,
+        )
+        # XMKT16 — une ligne de chatter par lead ciblé, jamais par batch.
+        noter_touche_marketing_pour_lead(
+            campagne.company, contact_ref,
+            f'Campagne « {campagne.nom} » envoyée')
     return campagne
+
+
+def webhook_brevo_evenement(company, *, campagne_id, destinataire, evenement,
+                            raison_smtp='', bounce_type='', max_rebonds_soft=3):
+    """Traite un événement webhook Brevo (XMKT2/XMKT12), gated/no-op sans clé.
+
+    ``evenement`` ∈ delivered/opened/click/bounce/unsubscribed/complaint. Met
+    à jour LA ligne ``EnvoiCampagne`` correspondante (company+campagne+
+    destinataire) et laisse les compteurs agrégés de ``Campagne`` dérivables
+    (recalculés par ``recalculer_compteurs_campagne``). Idempotent : rejouer
+    le même événement ne fait qu'écraser l'horodatage, jamais dupliquer de
+    ligne.
+
+    XMKT12 — classification des rebonds : ``bounce_type='hard'`` supprime
+    IMMÉDIATEMENT le destinataire (XMKT3, motif rebond_dur, raison SMTP
+    stockée sur la trace) ; ``bounce_type='soft'`` incrémente un compteur
+    persistant (``RebondSoft``, à travers toutes les campagnes) et ne
+    supprime qu'après ``max_rebonds_soft`` occurrences (paramètre société,
+    défaut 3) ; ``evenement='complaint'`` (plainte spam) supprime
+    immédiatement, comme un rebond dur.
+    """
+    envoi = EnvoiCampagne.objects.filter(
+        company=company, campagne_id=campagne_id,
+        destinataire=destinataire).order_by('-date_creation').first()
+    if not envoi:
+        return None
+    maintenant = timezone.now()
+    mapping = {
+        'delivered': EnvoiCampagne.Statut.DELIVRE,
+        'opened': EnvoiCampagne.Statut.OUVERT,
+        'click': EnvoiCampagne.Statut.CLIQUE,
+        'bounce': EnvoiCampagne.Statut.REBOND,
+        'unsubscribed': EnvoiCampagne.Statut.DESINSCRIT,
+        'complaint': EnvoiCampagne.Statut.DESINSCRIT,
+    }
+    nouveau_statut = mapping.get(evenement)
+    if not nouveau_statut:
+        return envoi
+    envoi.statut = nouveau_statut
+    update_fields = ['statut']
+    if evenement == 'opened' and not envoi.ouvert_le:
+        envoi.ouvert_le = maintenant
+        update_fields.append('ouvert_le')
+        # XMKT16 — chatter uniquement à la PREMIÈRE ouverture (pas par rejeu).
+        noter_touche_marketing_pour_lead(
+            company, envoi.contact_ref,
+            f'Campagne « {envoi.campagne.nom} » ouverte')
+    if evenement == 'click' and not envoi.clique_le:
+        envoi.clique_le = maintenant
+        update_fields.append('clique_le')
+        noter_touche_marketing_pour_lead(
+            company, envoi.contact_ref,
+            f'Campagne « {envoi.campagne.nom} » cliquée')
+    if evenement in ('bounce', 'complaint') and raison_smtp:
+        envoi.raison_smtp = raison_smtp[:255]
+        update_fields.append('raison_smtp')
+    envoi.save(update_fields=update_fields)
+    recalculer_compteurs_campagne(envoi.campagne)
+
+    if evenement == 'complaint':
+        supprimer_destinataire(
+            company, destinataire, motif=SuppressionMarketing.Motif.PLAINTE,
+            source='webhook_brevo')
+    elif evenement == 'bounce' and bounce_type == 'hard':
+        supprimer_destinataire(
+            company, destinataire, motif=SuppressionMarketing.Motif.REBOND_DUR,
+            source=raison_smtp or 'webhook_brevo')
+    elif evenement == 'bounce' and bounce_type == 'soft':
+        compteur, _cree = RebondSoft.objects.get_or_create(
+            company=company, destinataire=destinataire)
+        compteur.compte += 1
+        compteur.save(update_fields=['compte', 'date_maj'])
+        if compteur.compte >= max_rebonds_soft:
+            supprimer_destinataire(
+                company, destinataire,
+                motif=SuppressionMarketing.Motif.REBOND_DUR,
+                source=raison_smtp or 'webhook_brevo_soft_repete')
+    return envoi
+
+
+def recalculer_compteurs_campagne(campagne):
+    """Recalcule ``nb_ouvertures``/``nb_clics`` d'une ``Campagne`` (XMKT2) à
+    partir des lignes ``EnvoiCampagne`` — les compteurs deviennent dérivés.
+    """
+    envois = campagne.envois.all()
+    campagne.nb_ouvertures = envois.filter(
+        ouvert_le__isnull=False).count()
+    campagne.nb_clics = envois.filter(clique_le__isnull=False).count()
+    campagne.save(update_fields=['nb_ouvertures', 'nb_clics'])
+    return campagne
+
+
+# ── XMKT3 — Désinscription un clic + liste de suppression globale ──────────
+
+_DESINSCRIPTION_SALT = 'compta.xmkt3.desinscription'
+
+
+def est_supprime(company, destinataire):
+    """Le destinataire est-il sur la liste de suppression marketing (XMKT3) ?
+    Vérifiée AU MOMENT DE L'ENVOI — jamais pour un message transactionnel.
+    """
+    return SuppressionMarketing.objects.filter(
+        company=company, destinataire=destinataire).exists()
+
+
+def supprimer_destinataire(company, destinataire, *, motif=SuppressionMarketing.Motif.DESINSCRIT,
+                           source=''):
+    """Ajoute (idempotent) un destinataire à la liste de suppression (XMKT3).
+
+    Immune au ré-import de contacts : une fois supprimé, un destinataire le
+    reste tant qu'il n'est pas retiré manuellement — aucun import ne
+    l'écrase.
+    """
+    obj, _cree = SuppressionMarketing.objects.get_or_create(
+        company=company, destinataire=destinataire,
+        defaults={'motif': motif, 'source': source or ''},
+    )
+    return obj
+
+
+def generer_token_desinscription(company_id, destinataire):
+    """Jeton signé (XMKT3) pour le lien public de désinscription un clic —
+    non expirant (comme le pattern ``reporting.calendar``), signé par
+    destinataire donc invalidable en changeant le sel serait excessif ; la
+    sécurité repose sur la clé secrète Django (``SECRET_KEY``).
+    """
+    return signing.dumps(
+        {'company_id': company_id, 'destinataire': destinataire},
+        salt=_DESINSCRIPTION_SALT)
+
+
+def desinscrire_via_token(token, *, source='desinscription_publique'):
+    """Traite un clic sur le lien public de désinscription (XMKT3).
+
+    Renvoie ``(ok, destinataire_ou_message_erreur)``. Un jeton invalide/
+    corrompu ne fait rien (pas d'exception, pas de suppression).
+    """
+    try:
+        payload = signing.loads(token, salt=_DESINSCRIPTION_SALT)
+    except signing.BadSignature:
+        return False, 'Lien invalide.'
+    from authentication.models import Company
+    company = Company.objects.filter(id=payload.get('company_id')).first()
+    if not company:
+        return False, 'Lien invalide.'
+    destinataire = payload.get('destinataire') or ''
+    if not destinataire:
+        return False, 'Lien invalide.'
+    supprimer_destinataire(
+        company, destinataire, motif=SuppressionMarketing.Motif.DESINSCRIT,
+        source=source)
+    return True, destinataire
+
+
+def importer_liste_opposition(company, destinataires, *, source='import_csv'):
+    """Importe une liste d'opposition externe (XMKT3), idempotent : les
+    entrées déjà supprimées ne sont jamais écrasées (get_or_create).
+    """
+    ajoutes = 0
+    for destinataire in destinataires:
+        destinataire = (destinataire or '').strip()
+        if not destinataire:
+            continue
+        _obj, cree = SuppressionMarketing.objects.get_or_create(
+            company=company, destinataire=destinataire,
+            defaults={
+                'motif': SuppressionMarketing.Motif.IMPORT,
+                'source': source,
+            },
+        )
+        if cree:
+            ajoutes += 1
+    return ajoutes
+
+
+# ── XMKT5 — Listes de diffusion nommées + abonnements ───────────────────────
+
+def _normaliser_destinataire(brut):
+    """Normalise un destinataire (XMKT5) : email en minuscules, téléphone
+    marocain en ``212XXXXXXXXX`` (même convention que le lien wa.me
+    ``ventes.utils.phone.normalize_ma_phone`` — dupliqué ici pour garder
+    ``apps.compta`` autonome, sans import cross-app).
+    """
+    brut = (brut or '').strip()
+    if not brut:
+        return ''
+    if '@' in brut:
+        return brut.lower()
+    digits = re.sub(r'\D', '', brut)
+    if not digits:
+        return brut
+    if digits.startswith('00'):
+        digits = digits[2:]
+    if digits.startswith('212'):
+        local = digits[3:]
+    elif digits.startswith('0'):
+        local = digits[1:]
+    else:
+        local = digits
+    local = local.lstrip('0')
+    if not local:
+        return brut
+    return '212' + local
+
+
+def creer_liste_diffusion(company, *, nom, description=''):
+    """Crée une liste de diffusion nommée (XMKT5)."""
+    return ListeDiffusion.objects.create(
+        company=company, nom=nom, description=description or '')
+
+
+def inscrire_dans_liste(liste, destinataire, *, contact_ref=''):
+    """Inscrit (idempotent) un destinataire dans une liste (XMKT5).
+
+    Dédoublonne par destinataire NORMALISÉ. Un destinataire déjà désinscrit
+    de CETTE liste n'est jamais ré-inscrit silencieusement par un import — un
+    import qui referait `get_or_create` laisserait le statut existant intact
+    (voir ``importer_abonnements_liste``) ; cette fonction, elle, réinscrit
+    explicitement à la demande (action manuelle).
+    """
+    destinataire = _normaliser_destinataire(destinataire)
+    if not destinataire:
+        return None
+    obj, cree = AbonnementListe.objects.get_or_create(
+        liste=liste, destinataire=destinataire,
+        defaults={
+            'company': liste.company,
+            'contact_ref': contact_ref or '',
+            'statut': AbonnementListe.Statut.INSCRIT,
+        },
+    )
+    if not cree and obj.statut != AbonnementListe.Statut.INSCRIT:
+        obj.statut = AbonnementListe.Statut.INSCRIT
+        obj.save(update_fields=['statut'])
+    return obj
+
+
+def desinscrire_de_liste(liste, destinataire):
+    """Désinscrit un destinataire d'UNE liste (XMKT5), sans toucher la liste
+    globale de suppression (XMKT3, portée différente)."""
+    destinataire = _normaliser_destinataire(destinataire)
+    abonnement = AbonnementListe.objects.filter(
+        liste=liste, destinataire=destinataire).first()
+    if not abonnement:
+        return None
+    abonnement.statut = AbonnementListe.Statut.DESINSCRIT
+    abonnement.save(update_fields=['statut'])
+    return abonnement
+
+
+def importer_abonnements_liste(liste, lignes, *, colonne_destinataire='destinataire',
+                               colonne_contact_ref='contact_ref'):
+    """Importe des abonnements dans une liste depuis des lignes CSV/XLSX déjà
+    parsées (XMKT5) : ``lignes`` = liste de dicts (mapping de colonnes fait
+    par l'appelant). Renvoie un rapport ``{ajoutes, doublons, ignores_supprimes}``.
+
+    Ne réinscrit JAMAIS un destinataire déjà désinscrit de cette liste (les
+    doublons sont comptés, pas les lignes qui matchent un désinscrit — celles-
+    ci sont comptées séparément dans ``ignores_supprimes``).
+    """
+    rapport = {'ajoutes': 0, 'doublons': 0, 'ignores_supprimes': 0}
+    vus = set()
+    for ligne in lignes:
+        brut = ligne.get(colonne_destinataire) if isinstance(ligne, dict) else ligne
+        destinataire = _normaliser_destinataire(brut)
+        if not destinataire:
+            continue
+        if destinataire in vus:
+            rapport['doublons'] += 1
+            continue
+        vus.add(destinataire)
+        existant = AbonnementListe.objects.filter(
+            liste=liste, destinataire=destinataire).first()
+        if existant:
+            if existant.statut == AbonnementListe.Statut.DESINSCRIT:
+                rapport['ignores_supprimes'] += 1
+            else:
+                rapport['doublons'] += 1
+            continue
+        contact_ref = (
+            ligne.get(colonne_contact_ref, '') if isinstance(ligne, dict) else '')
+        AbonnementListe.objects.create(
+            company=liste.company, liste=liste, destinataire=destinataire,
+            contact_ref=contact_ref or '',
+            statut=AbonnementListe.Statut.INSCRIT,
+        )
+        rapport['ajoutes'] += 1
+    return rapport
+
+
+# ── XMKT6 — Segments dynamiques enregistrés et réutilisables ────────────────
+
+_SEGMENT_ACTIVITE_CHOICES = ('a_ouvert', 'a_clique', 'jamais_ouvert')
+
+
+def valider_regles_segment(regles):
+    """Valide les règles JSON d'un segment (XMKT6) : lève ``ValueError`` sur
+    une clé inconnue (champ lead OU clé d'activité marketing). Ne touche
+    jamais à la base — appelée avant la sauvegarde ET avant l'évaluation.
+    """
+    from apps.crm.selectors import LEAD_SEGMENT_FIELDS
+
+    regles = regles or {}
+    cles_activite = {'activite'}
+    cles_connues = set(LEAD_SEGMENT_FIELDS) | cles_activite
+    inconnues = set(regles) - cles_connues
+    if inconnues:
+        raise ValueError(f"Règle(s) de segment inconnue(s) : {sorted(inconnues)}")
+    activite = regles.get('activite')
+    if activite and activite not in _SEGMENT_ACTIVITE_CHOICES:
+        raise ValueError(f"Activité de segment inconnue : {activite}")
+    return regles
+
+
+def _filtrer_par_activite(company, lead_ids, activite):
+    """Filtre une liste d'IDs de lead par activité marketing (XMKT6),
+    évaluée sur les traces ``EnvoiCampagne`` (XMKT2) via ``contact_ref``.
+    """
+    if not activite or not lead_ids:
+        return lead_ids
+    refs = {f'lead:{lid}' for lid in lead_ids}
+    if activite == 'a_ouvert':
+        matches = EnvoiCampagne.objects.filter(
+            company=company, contact_ref__in=refs,
+            ouvert_le__isnull=False).values_list('contact_ref', flat=True)
+    elif activite == 'a_clique':
+        matches = EnvoiCampagne.objects.filter(
+            company=company, contact_ref__in=refs,
+            clique_le__isnull=False).values_list('contact_ref', flat=True)
+    elif activite == 'jamais_ouvert':
+        ont_ouvert = set(EnvoiCampagne.objects.filter(
+            company=company, contact_ref__in=refs,
+            ouvert_le__isnull=False).values_list('contact_ref', flat=True))
+        return [lid for lid in lead_ids if f'lead:{lid}' not in ont_ouvert]
+    else:
+        return lead_ids
+    matches = set(matches)
+    return [lid for lid in lead_ids if f'lead:{lid}' in matches]
+
+
+def evaluer_segment(segment):
+    """Ré-évalue un ``SegmentMarketing`` AU MOMENT DE L'APPEL (XMKT6) — jamais
+    mis en cache : une campagne/séquence ciblant le segment prend toujours
+    les contacts du moment. Renvoie la liste des IDs de lead correspondants.
+    """
+    from apps.crm.selectors import leads_matching_regles
+
+    regles = valider_regles_segment(segment.regles)
+    regles_lead = {k: v for k, v in regles.items() if k != 'activite'}
+    lead_ids = list(
+        leads_matching_regles(segment.company, regles_lead)
+        .values_list('id', flat=True))
+    return _filtrer_par_activite(segment.company, lead_ids, regles.get('activite'))
+
+
+def previsualiser_segment(segment, *, taille_echantillon=10):
+    """Prévisualisation d'un segment (XMKT6) : compte exact + échantillon
+    d'IDs de lead (pas de données PII fabriquées ici — l'appelant résout
+    l'affichage via les selectors crm existants)."""
+    lead_ids = evaluer_segment(segment)
+    return {
+        'count': len(lead_ids),
+        'echantillon': lead_ids[:taille_echantillon],
+    }
+
+
+# ── XMKT8 — Variables de fusion dans les campagnes avec fallback ───────────
+
+# Variables disponibles au rendu — jamais ``prix_achat`` ni aucune donnée
+# interne (règle explicite de la tâche). Whitelist stricte : une variable
+# ``{inconnue}`` dans un corps de campagne est une ERREUR de validation.
+MERGE_VARIABLES = (
+    'prenom', 'nom', 'ville', 'societe', 'proprietaire_lead',
+)
+
+_MERGE_VAR_RE = re.compile(r'\{([a-zA-Z_]+)\}')
+
+
+def variables_du_corps(corps):
+    """Renvoie l'ensemble des noms de variables ``{xxx}`` présentes dans un
+    corps de campagne (XMKT8), pour la validation à l'édition."""
+    return set(_MERGE_VAR_RE.findall(corps or ''))
+
+
+def valider_variables_fusion(corps):
+    """Lève ``ValueError`` si ``corps`` référence une variable de fusion
+    inconnue (XMKT8) — erreur claire à la validation, comme demandé."""
+    inconnues = variables_du_corps(corps) - set(MERGE_VARIABLES)
+    if inconnues:
+        raise ValueError(
+            f"Variable(s) de fusion inconnue(s) : {sorted(inconnues)}")
+    return corps
+
+
+def rendre_variables_fusion(corps, company, lead_id, *, fallback=''):
+    """Substitue les variables de fusion d'un corps de campagne (XMKT8) avec
+    les champs du lead ciblé (lus via ``apps.crm.selectors.lead_merge_fields``
+    — jamais d'import direct de ``apps.crm.models``). Une variable vide sur
+    le contact retombe sur ``fallback`` (par variable, comme
+    ``crm.MessageTemplate.render``).
+    """
+    from apps.crm.selectors import lead_merge_fields
+
+    valider_variables_fusion(corps)
+    champs = lead_merge_fields(company, lead_id) or {}
+    rendu = corps or ''
+    for variable in MERGE_VARIABLES:
+        valeur = champs.get(variable) or fallback
+        rendu = rendu.replace('{' + variable + '}', valeur)
+    return rendu
+
+
+# ── XMKT13 — Envoi test + aperçu fusionné + pré-check santé ─────────────────
+
+_URL_RE = re.compile(r'https?://[^\s<>"\')]+')
+_IMG_URL_RE = re.compile(r'\.(?:jpg|jpeg|png|gif|webp)(?:\?\S*)?$', re.IGNORECASE)
+
+
+def envoyer_test_campagne(campagne, *, adresses_seed, lead_id_exemple=None):
+    """XMKT13 — Envoi de test d'une campagne (jamais vers de vrais
+    destinataires) : corps fusionné pour un contact d'exemple si fourni, sinon
+    le corps brut. NE modifie ni le statut ni les compteurs de la campagne
+    (contrairement à ``envoyer_campagne``) — c'est un test, pas un envoi réel.
+    Renvoie ``{'seeds': [...], 'corps_fusionne': ...}``.
+    """
+    corps = campagne.corps
+    if lead_id_exemple:
+        corps = rendre_variables_fusion(
+            campagne.corps, campagne.company, lead_id_exemple)
+    return {
+        'seeds': [a for a in (adresses_seed or []) if a],
+        'corps_fusionne': corps,
+    }
+
+
+def _lien_casse(url, timeout=3):
+    """HEAD best-effort (XMKT13) : renvoie True si le lien semble cassé.
+    Toute erreur réseau/timeout est traitée comme "on ne sait pas" (False) —
+    un pré-check ne doit jamais planter sur un problème réseau transitoire.
+    """
+    try:
+        req = urllib.request.Request(url, method='HEAD')
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status >= 400
+    except Exception:
+        return False
+
+
+def precheck_sante_campagne(campagne, *, verifier_liens=False):
+    """Pré-check bloquant/avertissant avant l'envoi de masse d'une campagne
+    (XMKT13). Renvoie ``{'bloque': bool, 'avertissements': [...]}``.
+
+    BLOQUE (email marketing) si le lien de désinscription (XMKT3) est absent
+    du corps. Le reste (liens cassés, poids d'images, segment vide) est un
+    AVERTISSEMENT non bloquant. ``verifier_liens`` est OFF par défaut (le HEAD
+    réseau n'est fait qu'à la demande explicite, jamais en arrière-plan).
+    """
+    avertissements = []
+    bloque = False
+    corps = campagne.corps or ''
+    urls = _URL_RE.findall(corps)
+
+    if campagne.canal == Campagne.Canal.EMAIL:
+        a_lien_desinscription = (
+            '/desinscription/' in corps or '{lien_desinscription}' in corps)
+        if not a_lien_desinscription:
+            bloque = True
+            avertissements.append(
+                'Lien de désinscription manquant — envoi email bloqué (loi 09-08).')
+
+    if verifier_liens:
+        for url in urls:
+            if _lien_casse(url):
+                avertissements.append(f'Lien possiblement cassé : {url}')
+
+    for url in urls:
+        if _IMG_URL_RE.search(url):
+            avertissements.append(f"Image dans le corps : {url} (vérifier le poids).")
+
+    segment_vide = not (campagne.segment or {}) and not campagne.listes.exists()
+    if segment_vide:
+        avertissements.append('Aucun segment ni liste ciblée — 0 destinataire prévu.')
+
+    return {'bloque': bloque, 'avertissements': avertissements}
+
+
+# ── XMKT15 — Conformité SMS Maroc : comptage, coût, sender-ID, STOP ─────────
+
+_GSM7_BASIC = (
+    "@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞ\x1bÆæßÉ"
+    " !\"#¤%&'()*+,-./0123456789:;<=>?"
+    "¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§"
+    "¿abcdefghijklmnopqrstuvwxyzäöñüà"
+)
+_GSM7_EXTENDED = '^{}\\[~]|€'
+
+SMS_STOP_SUFFIX = ' STOP au 00000'
+SMS_PRIX_MAD_DEFAUT = Decimal('0.35')
+
+
+def _est_gsm7(texte):
+    """Un caractère hors du jeu GSM-7 (de base + étendu) force l'encodage
+    UCS-2 (XMKT15) — chaque caractère spécial étendu compte pour 2 dans un
+    SMS GSM-7 mais on reste en GSM-7 tant que TOUS les caractères y sont."""
+    jeu = set(_GSM7_BASIC) | set(_GSM7_EXTENDED)
+    return all(c in jeu for c in (texte or ''))
+
+
+def compter_segments_sms(texte):
+    """XMKT15 — Compte les segments SMS d'un corps (GSM-7 vs UCS-2).
+
+    Limites usuelles opérateur : GSM-7 = 160 caractères (1 segment) / 153 par
+    segment au-delà (en-tête UDH multi-part) ; UCS-2 = 70 / 67. Renvoie
+    ``{'encodage': 'gsm7'|'ucs2', 'nb_caracteres': int, 'nb_segments': int}``.
+    """
+    texte = texte or ''
+    nb = len(texte)
+    if nb == 0:
+        return {'encodage': 'gsm7', 'nb_caracteres': 0, 'nb_segments': 0}
+    if _est_gsm7(texte):
+        encodage = 'gsm7'
+        limite_seul, limite_multi = 160, 153
+    else:
+        encodage = 'ucs2'
+        limite_seul, limite_multi = 70, 67
+    if nb <= limite_seul:
+        segments = 1
+    else:
+        segments = -(-nb // limite_multi)  # ceil division
+    return {'encodage': encodage, 'nb_caracteres': nb, 'nb_segments': segments}
+
+
+def estimer_cout_sms(texte, *, prix_unitaire_mad=SMS_PRIX_MAD_DEFAUT,
+                     nb_destinataires=1):
+    """XMKT15 — Aperçu du coût multi-part avant envoi (MAD), prix unitaire
+    paramétrable société (défaut ``SMS_PRIX_MAD_DEFAUT``)."""
+    info = compter_segments_sms(texte)
+    prix_unitaire_mad = Decimal(str(prix_unitaire_mad))
+    cout_par_destinataire = info['nb_segments'] * prix_unitaire_mad
+    return {
+        **info,
+        'prix_unitaire_mad': prix_unitaire_mad,
+        'cout_par_destinataire_mad': cout_par_destinataire,
+        'cout_total_mad': cout_par_destinataire * nb_destinataires,
+    }
+
+
+def ajouter_mention_stop(corps):
+    """XMKT15 — Ajoute la mention STOP obligatoire si absente (idempotent)."""
+    corps = corps or ''
+    if 'stop' in corps.lower():
+        return corps
+    return corps + SMS_STOP_SUFFIX
+
+
+def valider_numero_sms(numero):
+    """XMKT15 — Valide un numéro mobile marocain E.164 avant envoi SMS
+    (préfixes 06/07 uniquement — un fixe/invalide est exclu pour ne pas payer
+    un SMS mort). Renvoie ``(numero_normalise_ou_None, motif_si_exclu)``.
+    """
+    normalise = _normaliser_destinataire(numero)
+    if not normalise or '@' in normalise:
+        return None, 'Non un numéro de téléphone.'
+    if not normalise.startswith('212'):
+        return None, 'Préfixe international inattendu.'
+    local = normalise[3:]
+    if not (local.startswith('6') or local.startswith('7')):
+        return None, 'Numéro fixe (préfixe 05) exclu — mobile requis.'
+    if len(local) != 9:
+        return None, 'Longueur de numéro invalide.'
+    return normalise, ''
+
+
+def filtrer_destinataires_sms(numeros):
+    """XMKT15 — Filtre une liste de numéros pour un envoi SMS. Renvoie
+    ``{'valides': [...], 'exclus': [{'numero':..., 'motif':...}]}``."""
+    valides, exclus = [], []
+    for numero in numeros or []:
+        normalise, motif = valider_numero_sms(numero)
+        if normalise:
+            valides.append(normalise)
+        else:
+            exclus.append({'numero': numero, 'motif': motif})
+    return {'valides': valides, 'exclus': exclus}
+
+
+def traiter_stop_entrant(company, numero, *, source='webhook_agregateur_sms'):
+    """XMKT15 — Traite le mot-clé STOP entrant (webhook agrégateur, gated) :
+    désinscrit immédiatement le numéro (XMKT3)."""
+    normalise, _motif = valider_numero_sms(numero)
+    destinataire = normalise or (numero or '').strip()
+    if not destinataire:
+        return None
+    return supprimer_destinataire(
+        company, destinataire, motif=SuppressionMarketing.Motif.DESINSCRIT,
+        source=source)
+
+
+# ── XMKT16 — Touches marketing sur le chatter du lead (vue 360°) ───────────
+
+def _lead_id_depuis_contact_ref(contact_ref):
+    """``contact_ref`` porte la convention ``lead:<id>`` utilisée par
+    l'attribution segment (XMKT6). Renvoie l'ID ou ``None`` si le format ne
+    correspond pas (contact_ref d'un client, ou vide)."""
+    if not contact_ref or not contact_ref.startswith('lead:'):
+        return None
+    suffixe = contact_ref[len('lead:'):]
+    return int(suffixe) if suffixe.isdigit() else None
+
+
+def noter_touche_marketing_pour_lead(company, contact_ref, message, *, ordre=0):
+    """XMKT16 — Écrit une touche marketing sur le chatter d'un lead (via
+    ``apps.crm.services.noter_touche_marketing`` — jamais d'import du modèle
+    CRM depuis compta). No-op silencieux si ``contact_ref`` ne pointe pas un
+    lead (ex. contact_ref vide ou format client) — une ligne par événement
+    clé, jamais par batch.
+    """
+    lead_id = _lead_id_depuis_contact_ref(contact_ref)
+    if not lead_id:
+        return None
+    from apps.crm.selectors import get_company_lead
+    from apps.crm.services import noter_touche_marketing
+    lead = get_company_lead(company, lead_id)
+    if not lead:
+        return None
+    return noter_touche_marketing(lead, message, ordre=ordre)
 
 
 # ── FG202 — Déclenchement d'une séquence de relance (GATED, NO-OP) ──────────
@@ -5549,6 +6220,140 @@ def planifier_etapes_sequence(sequence, *, declenchee_le=None):
             'envoye': False,  # gated : jamais d'envoi réel ici
         })
     return plan
+
+
+# ── XMKT1 — Inscription + exécution réelle des séquences de relance ────────
+
+def inscrire_lead_sequence(company, sequence, *, lead_id, lead_reference=''):
+    """Inscrit un lead dans une séquence (XMKT1), idempotent.
+
+    Si le lead a déjà une inscription ACTIVE pour cette séquence, la renvoie
+    sans en créer une seconde (contrainte d'unicité en base). Pointe
+    ``etape_courante`` sur la première étape (ordre le plus bas) si la
+    séquence en a au moins une.
+    """
+    existante = InscriptionSequence.objects.filter(
+        company=company, sequence=sequence, lead_id=lead_id,
+        statut=InscriptionSequence.Statut.ACTIF,
+    ).first()
+    if existante:
+        return existante
+    premiere_etape = sequence.etapes.order_by('ordre').first()
+    return InscriptionSequence.objects.create(
+        company=company,
+        sequence=sequence,
+        lead_id=lead_id,
+        lead_reference=lead_reference or '',
+        etape_courante=premiere_etape,
+        statut=InscriptionSequence.Statut.ACTIF,
+    )
+
+
+def inscrire_leads_pour_stage(company, stage_key, *, lead_id, lead_reference=''):
+    """Inscrit un lead entrant dans ``stage_key`` sur toute séquence active
+    déclenchée par cette étape (XMKT1). ``stage_key`` vient de ``STAGES.py``
+    côté appelant — jamais recalculé/hardcodé ici.
+    """
+    sequences = SequenceRelance.objects.filter(
+        company=company, actif=True, stage_declencheur=stage_key)
+    return [
+        inscrire_lead_sequence(
+            company, seq, lead_id=lead_id, lead_reference=lead_reference)
+        for seq in sequences
+    ]
+
+
+def _executer_une_etape(inscription, etape):
+    """Exécute (ou planifie, gated) une étape pour une inscription et trace
+    le résultat. N'envoie jamais réellement ici : réutilise le comportement
+    NO-OP existant des intégrations (FG31 — file de relance manuelle quand
+    aucune intégration n'est active).
+    """
+    resultat = 'planifie'
+    erreur = ''
+    canal = etape.canal
+    if canal == EtapeSequence.Canal.WHATSAPP and not whatsapp_actif():
+        resultat = 'planifie'  # file manuelle FG31, aucun appel réseau
+    elif canal == EtapeSequence.Canal.EMAIL and not email_marketing_actif():
+        resultat = 'planifie'
+    else:
+        resultat = 'planifie'  # gated par défaut, tant qu'aucune clé n'existe
+    execution = ExecutionEtapeSequence.objects.create(
+        company=inscription.company,
+        inscription=inscription,
+        etape=etape,
+        canal=canal,
+        resultat=resultat,
+        erreur=erreur,
+    )
+    # XMKT16 — une ligne de chatter par étape exécutée (pas par batch).
+    noter_touche_marketing_pour_lead(
+        inscription.company, f'lead:{inscription.lead_id}',
+        f'Séquence « {inscription.sequence.nom} » — étape {etape.ordre} exécutée')
+    return execution
+
+
+def email_marketing_actif():
+    """Alias explicite de ``brevo_actif`` pour les séquences (XMKT1)."""
+    return brevo_actif()
+
+
+def sortir_inscription(inscription, *, motif=''):
+    """Sort une inscription de sa séquence (XMKT1) : refus/acceptation devis,
+    désinscription. Idempotent — une inscription déjà sortie/terminée n'est
+    pas re-modifiée.
+    """
+    if inscription.statut != InscriptionSequence.Statut.ACTIF:
+        return inscription
+    inscription.statut = InscriptionSequence.Statut.SORTI
+    inscription.motif_sortie = (motif or '')[:255]
+    inscription.sortie_le = timezone.now()
+    inscription.save(update_fields=['statut', 'motif_sortie', 'sortie_le'])
+    return inscription
+
+
+def sortir_inscriptions_pour_lead(company, lead_id, *, motif=''):
+    """Sort TOUTES les inscriptions actives d'un lead (tous séquences), p.ex.
+    à l'acceptation/refus d'un devis (XMKT1, câblé via ``receivers.py``).
+    """
+    inscriptions = InscriptionSequence.objects.filter(
+        company=company, lead_id=lead_id,
+        statut=InscriptionSequence.Statut.ACTIF)
+    return [sortir_inscription(insc, motif=motif) for insc in inscriptions]
+
+
+def executer_etapes_dues(company, *, maintenant=None):
+    """Exécute, pour toute inscription ACTIVE de la société, l'étape courante
+    si son échéance (J+delai depuis ``declenchee_le``) est atteinte (XMKT1).
+
+    Appelée par la tâche Celery beat ``compta.executer_sequences_relance``.
+    Après exécution, avance ``etape_courante`` vers la prochaine étape (par
+    ``ordre``) ou termine l'inscription si c'était la dernière. Renvoie la
+    liste des ``ExecutionEtapeSequence`` créées.
+    """
+    maintenant = maintenant or timezone.now()
+    executions = []
+    qs = InscriptionSequence.objects.filter(
+        company=company, statut=InscriptionSequence.Statut.ACTIF,
+        etape_courante__isnull=False,
+    ).select_related('etape_courante', 'sequence')
+    for inscription in qs:
+        etape = inscription.etape_courante
+        echeance = inscription.declenchee_le + timezone.timedelta(
+            days=etape.delai_jours)
+        if maintenant < echeance:
+            continue
+        executions.append(_executer_une_etape(inscription, etape))
+        suivante = inscription.sequence.etapes.filter(
+            ordre__gt=etape.ordre).order_by('ordre').first()
+        if suivante:
+            inscription.etape_courante = suivante
+            inscription.save(update_fields=['etape_courante'])
+        else:
+            inscription.etape_courante = None
+            inscription.statut = InscriptionSequence.Statut.TERMINE
+            inscription.save(update_fields=['etape_courante', 'statut'])
+    return executions
 
 
 # ── FG203 — Relance d'un devis abandonné ───────────────────────────────────

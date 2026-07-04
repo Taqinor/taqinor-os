@@ -13,3 +13,8 @@ class ComptaConfig(AppConfig):
         'description': 'Comptabilité générale CGNC et fiscalité.',
         'categorie': 'Finance',
     }
+
+    def ready(self):
+        # XMKT1 — abonne la sortie automatique des séquences de relance aux
+        # événements devis_accepted/devis_refused (core.events, M6).
+        from . import receivers  # noqa: F401

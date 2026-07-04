@@ -865,3 +865,86 @@ def site_location_for_devis(devis):
         'gps_lat': None,
         'gps_lng': None,
     }
+
+
+# Champs Lead autorisés dans les règles JSON d'un segment marketing (XMKT6,
+# apps.compta). Whitelist stricte — toute clé inconnue est rejetée côté
+# validation, jamais évaluée à l'aveugle.
+LEAD_SEGMENT_FIELDS = (
+    'ville', 'type_installation', 'tags', 'canal', 'score', 'facture_energie',
+)
+
+
+def leads_matching_regles(company, regles):
+    """XMKT6 — Renvoie le queryset de ``Lead`` correspondant aux règles JSON
+    d'un segment marketing. LECTURE SEULE, point d'entrée cross-app pour
+    ``apps.compta`` (jamais d'import direct de ``apps.crm.models`` ailleurs).
+
+    ``regles`` est un dict dont les clés viennent de ``LEAD_SEGMENT_FIELDS`` :
+
+    * ``ville`` — égalité insensible à la casse ;
+    * ``type_installation`` — égalité (valeur de choix) ;
+    * ``tags`` — le tag apparaît dans la liste séparée par virgules ;
+    * ``canal`` — égalité (valeur de choix) ;
+    * ``score`` — dict ``{'gte': int, 'lte': int}`` (au moins une borne) ;
+    * ``facture_energie`` — dict ``{'gte': num, 'lte': num}`` (sur
+      ``facture_hiver``, la facture de référence du lead).
+
+    Une clé absente de ``LEAD_SEGMENT_FIELDS`` lève ``ValueError`` — la
+    validation stricte vit ici, appelée par ``apps.compta.services`` avant
+    tout enregistrement/évaluation.
+    """
+    from .models import Lead
+
+    inconnues = set(regles or {}) - set(LEAD_SEGMENT_FIELDS)
+    if inconnues:
+        raise ValueError(f"Règle(s) de segment inconnue(s) : {sorted(inconnues)}")
+
+    qs = Lead.objects.filter(company=company, is_archived=False, perdu=False)
+    if 'ville' in regles and regles['ville']:
+        qs = qs.filter(ville__iexact=regles['ville'])
+    if 'type_installation' in regles and regles['type_installation']:
+        qs = qs.filter(type_installation=regles['type_installation'])
+    if 'tags' in regles and regles['tags']:
+        qs = qs.filter(tags__icontains=regles['tags'])
+    if 'canal' in regles and regles['canal']:
+        qs = qs.filter(canal=regles['canal'])
+    if 'score' in regles and isinstance(regles['score'], dict):
+        borne = regles['score']
+        if borne.get('gte') is not None:
+            qs = qs.filter(score__gte=borne['gte'])
+        if borne.get('lte') is not None:
+            qs = qs.filter(score__lte=borne['lte'])
+    if 'facture_energie' in regles and isinstance(regles['facture_energie'], dict):
+        borne = regles['facture_energie']
+        if borne.get('gte') is not None:
+            qs = qs.filter(facture_hiver__gte=borne['gte'])
+        if borne.get('lte') is not None:
+            qs = qs.filter(facture_hiver__lte=borne['lte'])
+    return qs
+
+
+def lead_merge_fields(company, lead_id):
+    """XMKT8 — Champs LECTURE SEULE d'un lead pour la substitution de
+    variables de fusion dans une campagne marketing (``apps.compta``, jamais
+    d'import direct de ``apps.crm.models``). Renvoie ``None`` si le lead
+    n'appartient pas à la société (jamais d'accès cross-tenant).
+
+    Ne renvoie JAMAIS ``prix_achat`` ni aucune donnée interne — uniquement
+    les champs de contact/adresse déjà publics dans la fiche lead.
+    """
+    from .models import Lead
+    lead = Lead.objects.select_related('owner').filter(
+        pk=lead_id, company=company).first()
+    if lead is None:
+        return None
+    proprietaire = ''
+    if lead.owner_id:
+        proprietaire = lead.owner.get_full_name() or lead.owner.username
+    return {
+        'prenom': lead.prenom or '',
+        'nom': lead.nom or '',
+        'ville': lead.ville or '',
+        'societe': lead.societe or '',
+        'proprietaire_lead': proprietaire,
+    }

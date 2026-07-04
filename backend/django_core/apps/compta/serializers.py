@@ -12,11 +12,14 @@ from .models import (
     AppelTelephonique, AvancementRevenu, BaremeIndemnite, BordereauRemise,
     Budget, BudgetLigne,
     Caisse, Campagne, CautionBancaire, CentreCout, CessionImmobilisation,
+    EnvoiCampagne,
     ClotureCaisse, CodePromotion,
     CommissionPayoutLine, CommissionPayoutRun, CompteComptable,
     CompteTresorerie, ContratAvancement, DeclarationTVA,
     DemandeApprobationConfig, DotationAmortissement,
     ECatalogue, EcritureComptable, Effet, EntiteConsolidation, EtapeSequence,
+    ExecutionEtapeSequence, InscriptionSequence,
+    ListeDiffusion, AbonnementListe, SegmentMarketing,
     ExerciceComptable, FormulaireIntake,
     Immobilisation, IndemniteChantier, Journal, LigneEcriture,
     LignePrevisionnelTresorerie, LigneReleve, MessageWhatsAppEntrant,
@@ -1428,13 +1431,98 @@ class CampagneSerializer(serializers.ModelSerializer):
         model = Campagne
         fields = [
             'id', 'nom', 'canal', 'canal_display', 'objet', 'corps', 'segment',
-            'statut', 'statut_display', 'nb_destinataires', 'nb_envois',
-            'nb_ouvertures', 'nb_clics', 'envoyee_le', 'date_creation',
+            'listes', 'sms_sender_id', 'statut', 'statut_display',
+            'nb_destinataires', 'nb_envois', 'nb_ouvertures', 'nb_clics',
+            'envoyee_le', 'date_creation',
         ]
         read_only_fields = [
             'statut', 'nb_destinataires', 'nb_envois', 'nb_ouvertures',
             'nb_clics', 'envoyee_le', 'date_creation',
         ]
+
+    def validate_listes(self, value):
+        request = self.context.get('request')
+        if request is not None:
+            for liste in value:
+                if liste.company_id != request.user.company_id:
+                    raise serializers.ValidationError('Liste inconnue.')
+        return value
+
+    def validate_corps(self, value):
+        from apps.compta.services import valider_variables_fusion
+        try:
+            valider_variables_fusion(value)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc))
+        return value
+
+
+# ── XMKT2 — Journal d'envoi par destinataire ────────────────────────────────
+
+class EnvoiCampagneSerializer(serializers.ModelSerializer):
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = EnvoiCampagne
+        fields = [
+            'id', 'campagne', 'destinataire', 'contact_ref', 'statut',
+            'statut_display', 'raison_smtp', 'envoye_le', 'ouvert_le',
+            'clique_le', 'date_creation',
+        ]
+        read_only_fields = [
+            'statut', 'raison_smtp', 'envoye_le', 'ouvert_le', 'clique_le',
+            'date_creation',
+        ]
+
+
+# ── XMKT5 — Listes de diffusion nommées + abonnements ───────────────────────
+
+class AbonnementListeSerializer(serializers.ModelSerializer):
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = AbonnementListe
+        fields = [
+            'id', 'liste', 'destinataire', 'contact_ref', 'statut',
+            'statut_display', 'date_creation', 'date_maj',
+        ]
+        read_only_fields = ['date_creation', 'date_maj']
+
+    def validate_liste(self, value):
+        return _meme_societe(self, value, 'liste')
+
+
+class ListeDiffusionSerializer(serializers.ModelSerializer):
+    nb_abonnes = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ListeDiffusion
+        fields = [
+            'id', 'nom', 'description', 'nb_abonnes', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_nb_abonnes(self, obj):
+        return obj.abonnements.filter(statut='inscrit').count()
+
+
+# ── XMKT6 — Segments dynamiques enregistrés et réutilisables ────────────────
+
+class SegmentMarketingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SegmentMarketing
+        fields = ['id', 'nom', 'regles', 'date_creation']
+        read_only_fields = ['date_creation']
+
+    def validate_regles(self, value):
+        from apps.compta.services import valider_regles_segment
+        try:
+            valider_regles_segment(value)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc))
+        return value
 
 
 # ── FG202 — Séquences de relance automatisées ──────────────────────────────
@@ -1464,6 +1552,34 @@ class SequenceRelanceSerializer(serializers.ModelSerializer):
             'etapes',
         ]
         read_only_fields = ['date_creation']
+
+
+# ── XMKT1 — Inscriptions & exécution réelle des séquences ──────────────────
+
+class ExecutionEtapeSequenceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ExecutionEtapeSequence
+        fields = [
+            'id', 'inscription', 'etape', 'execute_le', 'canal', 'resultat',
+            'erreur',
+        ]
+        read_only_fields = ['execute_le']
+
+
+class InscriptionSequenceSerializer(serializers.ModelSerializer):
+    executions = ExecutionEtapeSequenceSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = InscriptionSequence
+        fields = [
+            'id', 'sequence', 'lead_id', 'lead_reference', 'etape_courante',
+            'statut', 'motif_sortie', 'declenchee_le', 'sortie_le',
+            'executions',
+        ]
+        read_only_fields = ['declenchee_le', 'sortie_le']
+
+    def validate_sequence(self, value):
+        return _meme_societe(self, value, 'séquence')
 
 
 # ── FG203 — Récupération des devis abandonnés ──────────────────────────────

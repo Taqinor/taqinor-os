@@ -4390,6 +4390,12 @@ class Campagne(models.Model):
     segment = models.JSONField(
         default=dict, blank=True,
         verbose_name='Critères de segment (JSON)')
+    listes = models.ManyToManyField(
+        'compta.ListeDiffusion', blank=True, related_name='campagnes',
+        verbose_name='Listes de diffusion ciblées (XMKT5)')
+    sms_sender_id = models.CharField(
+        max_length=11, blank=True, default='',
+        verbose_name="Sender-ID SMS déclaré (XMKT15)")
     statut = models.CharField(
         max_length=12, choices=Statut.choices, default=Statut.BROUILLON,
         verbose_name='Statut')
@@ -4412,6 +4418,252 @@ class Campagne(models.Model):
 
     def __str__(self):
         return f'{self.nom} ({self.canal})'
+
+
+# ── XMKT2 — Journal d'envoi par destinataire (trace de campagne) ───────────
+
+class EnvoiCampagne(models.Model):
+    """Une ligne par destinataire réel d'une campagne (XMKT2).
+
+    Les compteurs agrégés de ``Campagne`` (FG201) sont dérivés de ces lignes ;
+    permet le drill-down depuis chaque KPI vers la liste exacte des
+    destinataires, et alimente les webhooks Brevo (gated).
+    """
+    class Statut(models.TextChoices):
+        QUEUED = 'queued', 'En file'
+        ENVOYE = 'envoye', 'Envoyé'
+        DELIVRE = 'delivre', 'Délivré'
+        OUVERT = 'ouvert', 'Ouvert'
+        CLIQUE = 'clique', 'Cliqué'
+        REBOND = 'rebond', 'Rebond'
+        DESINSCRIT = 'desinscrit', 'Désinscrit'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='envois_campagne',
+        verbose_name='Société',
+    )
+    campagne = models.ForeignKey(
+        Campagne,
+        on_delete=models.CASCADE,
+        related_name='envois',
+        verbose_name='Campagne',
+    )
+    destinataire = models.CharField(
+        max_length=255, verbose_name='Destinataire (email/téléphone)')
+    contact_ref = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Référence contact (lead/client, opaque)')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices, default=Statut.QUEUED,
+        db_index=True, verbose_name='Statut')
+    raison_smtp = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Raison SMTP')
+    envoye_le = models.DateTimeField(null=True, blank=True,
+                                     verbose_name='Envoyé le')
+    ouvert_le = models.DateTimeField(null=True, blank=True,
+                                     verbose_name='Ouvert le')
+    clique_le = models.DateTimeField(null=True, blank=True,
+                                     verbose_name='Cliqué le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = "Envoi de campagne (destinataire)"
+        verbose_name_plural = "Envois de campagne (destinataires)"
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'{self.campagne_id} → {self.destinataire} ({self.statut})'
+
+
+# ── XMKT3 — Désinscription un clic + liste de suppression globale ──────────
+
+class SuppressionMarketing(models.Model):
+    """Un destinataire jamais ciblé par une campagne/séquence (XMKT3, preuve
+    loi 09-08). Vérifiée AU MOMENT DE L'ENVOI — jamais appliquée aux messages
+    transactionnels (devis/factures/tickets, canal inchangé).
+    """
+    class Motif(models.TextChoices):
+        DESINSCRIT = 'desinscrit', 'Désinscription volontaire'
+        REBOND_DUR = 'rebond_dur', 'Rebond dur'
+        PLAINTE = 'plainte', 'Plainte spam'
+        IMPORT = 'import', "Liste d'opposition importée"
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='suppressions_marketing',
+        verbose_name='Société',
+    )
+    destinataire = models.CharField(
+        max_length=255, verbose_name='Destinataire (email/téléphone normalisé)')
+    motif = models.CharField(
+        max_length=12, choices=Motif.choices, default=Motif.DESINSCRIT,
+        verbose_name='Motif')
+    source = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Source')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Suppression marketing'
+        verbose_name_plural = 'Suppressions marketing'
+        ordering = ['-date_creation']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'destinataire'],
+                name='uniq_suppression_marketing_par_destinataire',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.destinataire} ({self.motif})'
+
+
+# ── XMKT5 — Listes de diffusion nommées + abonnements ───────────────────────
+
+class ListeDiffusion(models.Model):
+    """Liste de diffusion nommée et réutilisable (XMKT5), cible additionnelle
+    d'une ``Campagne`` en plus du segment JSON libre.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='listes_diffusion',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=200, verbose_name='Nom de la liste')
+    description = models.TextField(blank=True, default='',
+                                   verbose_name='Description')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Liste de diffusion'
+        verbose_name_plural = 'Listes de diffusion'
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
+class AbonnementListe(models.Model):
+    """Abonnement d'un contact à une ``ListeDiffusion`` (XMKT5).
+
+    ``contact_ref`` est une référence OPAQUE lead/client (jamais d'import des
+    modèles crm/ventes). Dédoublonnage par destinataire normalisé à
+    l'import ; l'historique d'adhésion horodaté vit sur ce même enregistrement
+    (``date_creation``/``date_maj``).
+    """
+    class Statut(models.TextChoices):
+        INSCRIT = 'inscrit', 'Inscrit'
+        DESINSCRIT = 'desinscrit', 'Désinscrit'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='abonnements_liste',
+        verbose_name='Société',
+    )
+    liste = models.ForeignKey(
+        ListeDiffusion,
+        on_delete=models.CASCADE,
+        related_name='abonnements',
+        verbose_name='Liste',
+    )
+    destinataire = models.CharField(
+        max_length=255, verbose_name='Destinataire (email/téléphone normalisé)')
+    contact_ref = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Référence contact (lead/client, opaque)')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.INSCRIT,
+        verbose_name='Statut')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+    date_maj = models.DateTimeField(
+        auto_now=True, verbose_name='Mis à jour le')
+
+    class Meta:
+        verbose_name = 'Abonnement à une liste'
+        verbose_name_plural = 'Abonnements à une liste'
+        ordering = ['-date_creation']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['liste', 'destinataire'],
+                name='uniq_abonnement_par_destinataire_liste',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.destinataire} → {self.liste_id} ({self.statut})'
+
+
+# ── XMKT6 — Segments dynamiques enregistrés et réutilisables ────────────────
+
+class SegmentMarketing(models.Model):
+    """Segment NOMMÉ et réutilisable, auto-actualisé à chaque usage (XMKT6).
+
+    ``regles`` est un JSON validé (champs lead whitelistés, lus via
+    ``apps.crm.selectors.leads_matching_regles`` — jamais d'import du modèle
+    CRM) + des règles d'activité marketing optionnelles évaluées sur
+    ``EnvoiCampagne`` (XMKT2) : ``activite: 'a_ouvert' | 'a_clique' |
+    'jamais_ouvert'``. Utilisable par les campagnes ET les séquences.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='segments_marketing',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=200, verbose_name='Nom du segment')
+    regles = models.JSONField(
+        default=dict, blank=True, verbose_name='Règles (JSON)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Segment marketing'
+        verbose_name_plural = 'Segments marketing'
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
+# ── XMKT12 — Gestion des rebonds hard/soft ──────────────────────────────────
+
+class RebondSoft(models.Model):
+    """Compteur de rebonds SOFT par destinataire (XMKT12), à travers TOUTES
+    les campagnes — un rebond soft persiste au-delà d'un seul envoi. Une fois
+    ``compte`` >= au seuil société (défaut 3, paramétrable par l'appelant),
+    le destinataire est supprimé (XMKT3) comme un rebond dur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rebonds_soft',
+        verbose_name='Société',
+    )
+    destinataire = models.CharField(max_length=255, verbose_name='Destinataire')
+    compte = models.PositiveIntegerField(default=0, verbose_name='Nombre de rebonds soft')
+    date_maj = models.DateTimeField(auto_now=True, verbose_name='Mis à jour le')
+
+    class Meta:
+        verbose_name = 'Rebond soft'
+        verbose_name_plural = 'Rebonds soft'
+        ordering = ['-date_maj']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'destinataire'],
+                name='uniq_rebond_soft_par_destinataire',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.destinataire} ({self.compte})'
 
 
 # ── FG202 — Séquences de relance automatisées (drip / nurture) ─────────────
@@ -4496,6 +4748,114 @@ class EtapeSequence(models.Model):
 
     def __str__(self):
         return f'{self.sequence_id} #{self.ordre} ({self.canal}, J+{self.delai_jours})'
+
+
+# ── XMKT1 — Moteur d'exécution réel des séquences de relance ───────────────
+
+class InscriptionSequence(models.Model):
+    """Un lead inscrit dans une séquence de relance (FG202), en cours d'exécution.
+
+    ``lead_id`` est une référence OPAQUE vers ``crm.Lead`` (jamais d'import du
+    modèle CRM — lu via ``apps/crm/selectors.get_company_lead``). L'inscription
+    avance étape par étape ; ``etape_courante`` pointe la prochaine étape à
+    exécuter (``None`` = toutes les étapes sont passées → statut ``termine``).
+    """
+    class Statut(models.TextChoices):
+        ACTIF = 'actif', 'Actif'
+        SORTI = 'sorti', 'Sorti'
+        TERMINE = 'termine', 'Terminé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='inscriptions_sequence',
+        verbose_name='Société',
+    )
+    sequence = models.ForeignKey(
+        SequenceRelance,
+        on_delete=models.CASCADE,
+        related_name='inscriptions',
+        verbose_name='Séquence',
+    )
+    lead_id = models.PositiveIntegerField(verbose_name='Lead (référence opaque)')
+    lead_reference = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Référence lisible du lead')
+    etape_courante = models.ForeignKey(
+        EtapeSequence,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='inscriptions_en_cours',
+        verbose_name='Étape courante',
+    )
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.ACTIF,
+        verbose_name='Statut')
+    motif_sortie = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Motif de sortie')
+    declenchee_le = models.DateTimeField(
+        auto_now_add=True, verbose_name="Déclenchée le")
+    sortie_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Sortie le')
+
+    class Meta:
+        verbose_name = 'Inscription à une séquence'
+        verbose_name_plural = 'Inscriptions à une séquence'
+        ordering = ['-declenchee_le']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['sequence', 'lead_id'],
+                condition=models.Q(statut='actif'),
+                name='uniq_inscription_active_par_lead',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Lead {self.lead_id} → {self.sequence_id} ({self.statut})'
+
+
+class ExecutionEtapeSequence(models.Model):
+    """Trace d'une exécution d'étape pour une inscription (XMKT1).
+
+    Une ligne par étape effectivement traitée (envoyée ou planifiée en manuel
+    faute de clé d'intégration — cf. FG31), pour un journal lisible par
+    participant : quel nœud, quand, quoi envoyé, erreur éventuelle.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='executions_etape_sequence',
+        verbose_name='Société',
+    )
+    inscription = models.ForeignKey(
+        InscriptionSequence,
+        on_delete=models.CASCADE,
+        related_name='executions',
+        verbose_name='Inscription',
+    )
+    etape = models.ForeignKey(
+        EtapeSequence,
+        on_delete=models.CASCADE,
+        related_name='executions',
+        verbose_name='Étape',
+    )
+    execute_le = models.DateTimeField(
+        auto_now_add=True, verbose_name='Exécutée le')
+    canal = models.CharField(max_length=10, blank=True, default='',
+                             verbose_name='Canal')
+    resultat = models.CharField(
+        max_length=20, default='planifie',
+        verbose_name='Résultat (planifie/envoye/erreur)')
+    erreur = models.CharField(max_length=500, blank=True, default='',
+                              verbose_name='Erreur')
+
+    class Meta:
+        verbose_name = "Exécution d'étape de séquence"
+        verbose_name_plural = "Exécutions d'étape de séquence"
+        ordering = ['-execute_le']
+
+    def __str__(self):
+        return f'{self.inscription_id} · étape {self.etape_id} ({self.resultat})'
 
 
 # ── FG203 — Récupération des devis abandonnés ──────────────────────────────
