@@ -272,6 +272,15 @@ payment_captured = django.dispatch.Signal()
 # cf. docstring du module ci-dessus pour la carte des deux abonnés attendus.
 reception_fournisseur_confirmee = django.dispatch.Signal()
 
+# Émis à la CRÉATION d'une facture fournisseur (YPROC3) — notamment celle
+# construite par ``stock.services.facturer_reception`` depuis une réception
+# confirmée. Arguments : facture (stock.FactureFournisseur), company, user.
+# Abonné dans ce repo : installations (``apps/installations/receivers.py``)
+# lettre automatiquement les provisions GR/IR ouvertes (``ReceptionNonFacturee``)
+# du bon de commande de la facture, à hauteur du montant facturé. ``stock``
+# n'importe jamais ``installations`` — même patron que ``devis_accepted``.
+facture_fournisseur_creee = django.dispatch.Signal()
+
 # Émis à la fin de l'orchestration de sortie d'un employé (YHIRE2).
 # Arguments : dossier (rh.DossierEmploye), user, motif.
 # Abonné dans ce repo : paie (coupe ProfilPaie.actif) — voir docstring du

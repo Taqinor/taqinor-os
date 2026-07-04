@@ -2139,3 +2139,87 @@ def creer_intervention_depuis_ticket(*, ticket, user, company,
         created_by=user,
     )
     return interv
+
+
+# ── YPROC3 — GR/IR automatique (provision à réception, lettrage à facture) ──
+# Consommateurs des événements ``core.events.reception_fournisseur_confirmee``
+# et ``core.events.facture_fournisseur_creee`` (abonnés dans receivers.py).
+# Montants INTERNES (jamais client-facing).
+
+def provisionner_gr_ir_reception(*, reception, company, user):
+    """YPROC3 — crée la provision GR/IR (`ReceptionNonFacturee`) pour une
+    réception fournisseur venant d'être CONFIRMÉE.
+
+    Montant = Σ (quantité de la ligne de réception × `prix_achat_unitaire` de
+    sa ligne de BCF). IDEMPOTENTE : une réception déjà provisionnée (à la main
+    ou automatiquement) n'est jamais doublée — renvoie la provision existante.
+    Sans BCF lié (réception hors flux normal), no-op (rien à provisionner).
+    """
+    from decimal import Decimal
+    from .models_gr_ir import ReceptionNonFacturee
+
+    if company is None or reception is None:
+        return None
+    bc = reception.bon_commande
+    if bc is None:
+        return None
+
+    existante = ReceptionNonFacturee.objects.filter(
+        company=company, reception=reception).first()
+    if existante is not None:
+        return existante
+
+    montant = Decimal('0')
+    for ligne in reception.lignes.select_related('ligne_commande').all():
+        pu = (ligne.ligne_commande.prix_achat_unitaire
+              if ligne.ligne_commande else Decimal('0')) or Decimal('0')
+        montant += Decimal(str(ligne.quantite or 0)) * pu
+
+    date_reception = reception.date_reception
+    if date_reception is None and reception.date_creation:
+        date_reception = reception.date_creation.date()
+
+    return ReceptionNonFacturee.objects.create(
+        company=company, reception=reception, bon_commande=bc,
+        libelle=f'Réception {reception.reference}',
+        montant_provision=montant,
+        date_reception=date_reception,
+        created_by=user,
+    )
+
+
+def lettrer_gr_ir_facture(*, facture, company, user):
+    """YPROC3 — lettre AUTOMATIQUEMENT les provisions GR/IR ouvertes du bon de
+    commande d'une facture fournisseur venant d'être CRÉÉE.
+
+    Solde (`lettre=True`, `facture` posée, `date_lettrage`) les provisions non
+    encore lettrées de ce BCF, à hauteur du montant facturé (HT) — ne touche
+    jamais une provision d'un autre bon de commande. IDEMPOTENTE : une
+    provision déjà lettrée est ignorée (jamais re-lettrée / re-décrémentée).
+    Sans bon de commande sur la facture, no-op.
+    """
+    from django.utils import timezone
+    from .models_gr_ir import ReceptionNonFacturee
+
+    if company is None or facture is None:
+        return []
+    bc = getattr(facture, 'bon_commande', None)
+    if bc is None:
+        return []
+
+    montant_restant = facture.montant_ht or 0
+    lettres = []
+    provisions = ReceptionNonFacturee.objects.filter(
+        company=company, bon_commande=bc, lettre=False).order_by(
+        'date_creation')
+    for prov in provisions:
+        if montant_restant <= 0:
+            break
+        prov.facture = facture
+        prov.lettre = True
+        prov.date_lettrage = timezone.now().date()
+        prov.save(update_fields=['facture', 'lettre', 'date_lettrage',
+                                 'date_modification'])
+        lettres.append(prov)
+        montant_restant -= (prov.montant_provision or 0)
+    return lettres

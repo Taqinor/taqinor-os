@@ -1825,6 +1825,16 @@ def facturer_reception(company, user, reception):
     # XPUR8 — impute automatiquement les acomptes non consommés du BCF sur
     # cette première facture (idempotent, no-op si aucun acompte).
     imputer_acomptes_bcf(reception.bon_commande)
+    # YPROC3 — émet l'événement de création de facture fournisseur (best-effort,
+    # ne casse jamais la facturation) : installations peut lettrer sa provision
+    # GR/IR ouverte pour ce bon de commande. stock n'importe jamais installations.
+    try:
+        from core.events import facture_fournisseur_creee
+        facture_fournisseur_creee.send(
+            sender=FactureFournisseur, facture=created['ff'],
+            company=company, user=user)
+    except Exception:  # pragma: no cover - défensif, best-effort
+        pass
     return created['ff']
 
 
