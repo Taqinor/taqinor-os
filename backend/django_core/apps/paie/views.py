@@ -121,6 +121,7 @@ from .services import (
     registre_conges,
     rejeter_ligne_virement,
     simuler_bulletin,
+    synchroniser_salaire,
     valider_bulletin,
 )
 
@@ -246,6 +247,28 @@ class ProfilPaieViewSet(_PaieBaseViewSet):
         bascules = expirer_regimes_echus(request.user.company)
         return Response(
             {'bascules': [p.id for p in bascules]}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='synchroniser-salaire')
+    def synchroniser_salaire_action(self, request, pk=None):
+        """Aligne le salaire du profil sur la rémunération RH en vigueur
+
+        (YHIRE6). Gatée EXPLICITEMENT ``salaires_voir`` (donnée sensible,
+        au-delà de ``paie_gerer``) : un compte sans cette permission fine
+        obtient 403 même s'il gère la paie. Jamais de synchronisation
+        silencieuse — appelée volontairement depuis l'écran de contrôle.
+        """
+        from authentication.permissions import HasPermission
+
+        if not HasPermission('salaires_voir')().has_permission(
+                request, self):
+            return Response(
+                {'detail': 'Permission "salaires_voir" requise.'},
+                status=status.HTTP_403_FORBIDDEN)
+        profil = self.get_object()
+        synchroniser_salaire(profil)
+        profil.refresh_from_db()
+        return Response(
+            self.get_serializer(profil).data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'], url_path='attestation')
     def attestation(self, request, pk=None):

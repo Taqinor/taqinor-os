@@ -3658,10 +3658,19 @@ def controle_completude(periode):
     la paie). Distinct de ``controle_ecarts`` (XPAI15, comparaison des
     MONTANTS M vs M-1) : ici ce sont des trous STRUCTURELS.
 
+    YHIRE6 — inclut aussi ``ecarts_remuneration`` : profils actifs dont le
+    ``salaire_base`` DIVERGE de la ``rh.Remuneration`` EN VIGUEUR (FG157,
+    ``rh.selectors.remuneration_en_vigueur``) à la fin de la période —
+    l'historisation par ``date_effet`` promet la reproductibilité, mais
+    RIEN ne remontait jamais l'écart avant. Jamais de montant dans les
+    notifications (donnée sensible) : uniquement dans ce contrôle gaté
+    ``salaires_voir`` côté vue.
+
     Renvoie ``{'actifs_sans_profil': [...], 'profils_sans_cnss': [...],
     'profils_sans_rib': [...], 'profils_actifs_dossiers_non_actifs': [...],
-    'contrats_expires': [...]}`` — chaque item porte assez de contexte pour
-    l'écran de contrôle (dossier/profil id, matricule, nom).
+    'contrats_expires': [...], 'ecarts_remuneration': [...]}`` — chaque item
+    porte assez de contexte pour l'écran de contrôle (dossier/profil id,
+    matricule, nom).
     """
     import calendar
 
@@ -3734,13 +3743,56 @@ def controle_completude(periode):
         and profil.employe.contrat_date_fin < date_fin_periode
     ]
 
+    # YHIRE6 — écart salaire profil (paie) vs rémunération en vigueur (RH).
+    ecarts_remuneration = []
+    for profil in profils:
+        if not profil.actif:
+            continue
+        dossier = profil.employe
+        ref = rh_selectors.remuneration_en_vigueur(
+            company, dossier.id, date_fin_periode)
+        if ref is None:
+            continue
+        if _q(profil.salaire_base) != _q(ref['montant_mensuel']):
+            ecarts_remuneration.append({
+                'profil_id': profil.id, 'dossier_id': dossier.id,
+                'matricule': dossier.matricule, 'nom': _libelle(dossier),
+                'salaire_profil': _q(profil.salaire_base),
+                'remuneration_en_vigueur': ref['montant_mensuel'],
+                'date_effet': ref['date_effet'],
+            })
+
     return {
         'actifs_sans_profil': actifs_sans_profil,
         'profils_sans_cnss': profils_sans_cnss,
         'profils_sans_rib': profils_sans_rib,
         'profils_actifs_dossiers_non_actifs': profils_actifs_dossiers_non_actifs,
         'contrats_expires': contrats_expires,
+        'ecarts_remuneration': ecarts_remuneration,
     }
+
+
+def synchroniser_salaire(profil, le_jour=None):
+    """Aligne ``ProfilPaie.salaire_base`` sur la rémunération RH en vigueur
+    (YHIRE6). Jamais de sync silencieuse : appelée EXPLICITEMENT (action
+    ``synchroniser-salaire``, gatée ``salaires_voir`` côté vue) après que
+    l'écart a été vu au contrôle de complétude.
+
+    Lit ``rh.selectors.remuneration_en_vigueur`` (jamais ``rh.models``
+    directement, hormis le FK ``ProfilPaie.employe`` déjà propriété de la
+    paie). Renvoie le profil mis à jour, ou le renvoie inchangé si aucune
+    rémunération RH n'est en vigueur à cette date (rien à synchroniser).
+    """
+    from apps.rh import selectors as rh_selectors
+
+    jour = le_jour or timezone.localdate()
+    ref = rh_selectors.remuneration_en_vigueur(
+        profil.company, profil.employe_id, jour)
+    if ref is None:
+        return profil
+    profil.salaire_base = ref['montant_mensuel']
+    profil.save(update_fields=['salaire_base'])
+    return profil
 
 
 # ── PAIE33 — Livre de paie + journal de paie → écritures (via compta) ───────

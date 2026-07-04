@@ -28,6 +28,7 @@ from .models import (
     PresenceChantier,
     PresquAccident,
     PrimeAttribuee,
+    Remuneration,
     SessionFormation,
     VisiteMedicale,
 )
@@ -473,6 +474,58 @@ def primes_validees_pour_paie(company, annee, mois, employe_id=None):
         }
         for prime in qs.order_by('employe_id', 'id')
     ]
+
+
+# Facteurs (numérateur, dénominateur) de normalisation vers un montant
+# MENSUEL (YHIRE6). L'horaire est approximé via la norme paie standard
+# (191 h/mois) faute d'un taux horaire contractuel dédié sur ``Remuneration``
+# — write-up assumé, cohérent avec ``ProfilPaie.heures_travail_mensuel`` par
+# défaut.
+_FACTEUR_MENSUALISATION = {
+    Remuneration.Periodicite.MENSUEL: (1, 1),
+    Remuneration.Periodicite.ANNUEL: (1, 12),
+    Remuneration.Periodicite.JOURNALIER: (26, 1),
+    Remuneration.Periodicite.HORAIRE: (191, 1),
+}
+
+
+def remuneration_en_vigueur(company, employe_id, le_jour=None):
+    """Rémunération EN VIGUEUR d'un employé à une date (YHIRE6, FG157).
+
+    La ligne ``Remuneration`` dont ``date_effet`` est la plus récente ≤
+    ``le_jour`` (aujourd'hui par défaut). Sélecteur cross-app : la paie lit
+    la rémunération de référence SANS jamais importer ``rh.models``
+    directement — donnée SENSIBLE (paie), à gater ``salaires_voir`` côté
+    appelant.
+
+    Renvoie ``{'montant_mensuel', 'montant', 'devise', 'periodicite',
+    'date_effet'}`` normalisé en équivalent MENSUEL (pour comparaison directe
+    à ``ProfilPaie.salaire_base``), ou ``None`` si aucune ligne n'est en
+    vigueur à cette date.
+    """
+    from decimal import Decimal
+    if company is None or employe_id is None:
+        return None
+    jour = le_jour or timezone.localdate()
+    ligne = (
+        Remuneration.objects
+        .filter(company=company, employe_id=employe_id, date_effet__lte=jour)
+        .order_by('-date_effet', '-date_creation')
+        .first()
+    )
+    if ligne is None:
+        return None
+    numerateur, denominateur = _FACTEUR_MENSUALISATION.get(
+        ligne.periodicite, (1, 1))
+    montant_mensuel = (
+        Decimal(ligne.montant) * Decimal(numerateur) / Decimal(denominateur))
+    return {
+        'montant_mensuel': montant_mensuel.quantize(Decimal('0.01')),
+        'montant': ligne.montant,
+        'devise': ligne.devise,
+        'periodicite': ligne.periodicite,
+        'date_effet': ligne.date_effet,
+    }
 
 
 def employes_assignables(company, jour):
