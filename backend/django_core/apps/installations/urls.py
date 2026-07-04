@@ -24,6 +24,7 @@ from .views import (
     DemandeAchatLigneViewSet,
     RFQViewSet,
     RFQOffreViewSet,
+    RFQConsultationViewSet,
     SeuilApprobationBCFViewSet,
     ApprobationBCFViewSet,
     ControleBudgetaireCommandeView,
@@ -105,6 +106,7 @@ router.register(r'demandes-achat', DemandeAchatViewSet)
 router.register(r'demandes-achat-lignes', DemandeAchatLigneViewSet)
 router.register(r'rfq', RFQViewSet)
 router.register(r'rfq-offres', RFQOffreViewSet)
+router.register(r'rfq-consultations', RFQConsultationViewSet)
 router.register(r'seuils-approbation-bcf', SeuilApprobationBCFViewSet)
 router.register(r'approbations-bcf', ApprobationBCFViewSet)
 router.register(r'commandes-cadre', CommandeCadreViewSet)

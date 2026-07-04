@@ -34,7 +34,7 @@ from .attestation_soustraitant import AttestationSousTraitantViewSet
 from .evaluation_soustraitant import EvaluationSousTraitantViewSet
 from .retenue_garantie import RetenueGarantieSousTraitantViewSet
 from .demande_achat import DemandeAchatViewSet, DemandeAchatLigneViewSet
-from .rfq import RFQViewSet, RFQOffreViewSet
+from .rfq import RFQViewSet, RFQOffreViewSet, RFQConsultationViewSet
 from .approbation_bcf import (
     SeuilApprobationBCFViewSet, ApprobationBCFViewSet,
 )
@@ -105,6 +105,7 @@ __all__ = [
     'DemandeAchatLigneViewSet',
     'RFQViewSet',
     'RFQOffreViewSet',
+    'RFQConsultationViewSet',
     'SeuilApprobationBCFViewSet',
     'ApprobationBCFViewSet',
     'ControleBudgetaireCommandeView',
