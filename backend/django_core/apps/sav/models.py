@@ -85,6 +85,10 @@ class SavSlaSettings(models.Model):
     # résolu reste RÉSOLU indéfiniment tant que la société n'active pas ce
     # réglage explicitement.
     auto_cloture_jours = models.PositiveIntegerField(default=0)
+    # XFSM15 — fenêtre (jours) dans laquelle une intervention TERMINÉE/VALIDÉE
+    # sur le MÊME chantier suggère une récidive à la création d'un nouveau
+    # ticket. Paramétrable, défaut 30.
+    recidive_fenetre_jours = models.PositiveIntegerField(default=30)
     date_modification = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -189,10 +193,20 @@ class Equipement(models.Model):
         help_text=('Jeton public (XSAV19) pour la page de signalement sans '
                    'login. Généré via ensure_public_token().'))
     # Le chantier auquel l'appareil appartient (objet pivot de l'après-vente).
+    # XPOS9 — NULLABLE : un équipement vendu au comptoir (POS, sans chantier)
+    # n'a pas d'Installation ; `client_vente` porte alors le lien client.
     installation = models.ForeignKey(
         'installations.Installation', on_delete=models.CASCADE,
-        related_name='equipements',
+        null=True, blank=True, related_name='equipements',
     )
+    # XPOS9 — client direct (vente comptoir SANS chantier). Renseigné
+    # UNIQUEMENT quand `installation` est vide ; sinon le client se dérive de
+    # `installation.client` comme avant (comportement inchangé).
+    client_vente = models.ForeignKey(
+        'crm.Client', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='equipements_vente_directe',
+        help_text=('Client direct pour un équipement vendu au comptoir '
+                   '(sans chantier). Vide si `installation` est renseignée.'))
     date_pose = models.DateField(null=True, blank=True)
 
     # ── Horloges de garantie — CALCULÉES (date_pose + durée du produit). ──
@@ -473,6 +487,14 @@ class Ticket(models.Model):
         'sav.RemedeDefaillance', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='tickets')
 
+    # ── ZSAV2 — Catégorie de ticket configurable (au-delà de correctif/
+    # préventif) — optionnelle, n'affecte JAMAIS `type` (qui pilote le
+    # préventif). SET_NULL : la suppression d'une catégorie ne casse pas
+    # l'historique des tickets déjà catégorisés.
+    categorie = models.ForeignKey(
+        'sav.CategorieTicket', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='tickets')
+
     # ── Annulation : un DRAPEAU avec motif, pas une étape (comme « Perdu »). ──
     annule = models.BooleanField(default=False)
     motif_annulation = models.CharField(max_length=255, blank=True, null=True)
@@ -531,6 +553,45 @@ class Ticket(models.Model):
     devis_id_ext = models.IntegerField(
         null=True, blank=True,
         help_text='ID du Devis ventes créé depuis ce ticket (XSAV3).')
+
+    # ── XFSM1 — Facturation SAV hors garantie depuis le ticket ───────────────
+    # Temps passé saisi par le technicien (heures), sert de base à la ligne
+    # main-d'œuvre de la facture générée par `generer-facture`. NULL/0 = pas
+    # de ligne MO (comportement inchangé, aucune heure inventée).
+    heures_main_oeuvre = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        help_text="Temps passé (heures) — base de la ligne main-d'œuvre "
+                  'facturée (XFSM1).')
+    # ID externe de la Facture ventes générée depuis ce ticket (même pattern
+    # que devis_id_ext) — idempotence : un second appel réutilise la facture.
+    facture_id_ext = models.IntegerField(
+        null=True, blank=True,
+        help_text='ID de la Facture ventes générée depuis ce ticket (XFSM1).')
+
+    # ── XFSM15 — Suivi des récidives (callbacks / retour sur panne) ─────────
+    # Un ticket causé par une intervention ratée récente sur le MÊME chantier.
+    # `intervention_origine_id` référence `installations.Intervention` en
+    # LOOSE FK entier (résolu via `installations.selectors`, jamais un import
+    # direct — règle de modularité). False/NULL par défaut = comportement
+    # actuel inchangé.
+    est_recidive = models.BooleanField(default=False)
+    intervention_origine_id = models.IntegerField(
+        null=True, blank=True,
+        help_text="ID de l'installations.Intervention d'origine suspectée "
+                  '(récidive), résolu via installations.selectors.')
+    motif_recidive = models.CharField(max_length=255, blank=True, default='')
+    # Un ticket récidive est non-facturable PAR DÉFAUT (bloque la ligne
+    # correspondante côté XFSM1) — un responsable peut lever l'exclusion
+    # explicitement (override).
+    non_facturable = models.BooleanField(default=False)
+
+    # ── ZSAV8 — Convertir un ticket en opportunité CRM ──────────────────────
+    # Référence par ID externe (jamais un FK vers apps.crm.Lead — même patron
+    # que devis_id_ext/facture_id_ext). NULL = aucun lead créé depuis ce
+    # ticket.
+    lead_id_ext = models.IntegerField(
+        null=True, blank=True,
+        help_text='ID du Lead crm créé/réutilisé depuis ce ticket (ZSAV8).')
 
     class Meta:
         verbose_name = 'Ticket SAV'
@@ -1328,3 +1389,160 @@ class CompatibilitePiece(models.Model):
 
     def __str__(self):
         return f'{self.produit_equipement_id} <-> {self.piece_id}'
+
+
+# ── XMFG10 — Pièces retirées / récupérées sur ticket SAV ─────────────────────
+
+class PieceRetiree(models.Model):
+    """XMFG10 — pièce défectueuse RETIRÉE sur un ticket SAV (onduleur
+    remplacé, pompe HS…) — le pendant « retrait » de `PieceConsommee`
+    (qui ne couvre que l'ajout).
+
+    ``destination`` pilote ce qui arrive à la pièce retirée :
+      * ``stock_occasion`` — remise en stock (MouvementStock ENTRÉE), une
+        seule fois (`restockee` évite tout double mouvement) ;
+      * ``retour_fournisseur`` — pièce destinée à un RMA fournisseur, lien
+        `warranty_claim` proposé/créé (FG83) ;
+      * ``rebut`` — mise au rebut, aucun mouvement de restock.
+
+    Si `numero_serie` correspond à un `sav.Equipement` existant (même
+    société), celui-ci est marqué REMPLACÉ (`statut=REMPLACE`,
+    `remplace_par_ticket=ticket`)."""
+    class Destination(models.TextChoices):
+        REBUT = 'rebut', 'Rebut'
+        RETOUR_FOURNISSEUR = 'retour_fournisseur', 'Retour fournisseur'
+        STOCK_OCCASION = 'stock_occasion', 'Stock occasion'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='pieces_retirees_sav')
+    ticket = models.ForeignKey(
+        Ticket, on_delete=models.CASCADE, related_name='pieces_retirees')
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.PROTECT,
+        related_name='pieces_retirees_sav')
+    quantite = models.DecimalField(
+        max_digits=10, decimal_places=2, default=1)
+    numero_serie = models.CharField(max_length=120, blank=True, default='')
+    destination = models.CharField(
+        max_length=20, choices=Destination.choices, default=Destination.REBUT)
+    restockee = models.BooleanField(
+        default=False,
+        help_text=('True une fois le MouvementStock ENTRÉE (stock_occasion) '
+                   'appliqué — évite tout double restock.'))
+    # Lien optionnel vers la réclamation garantie créée/associée (FG83) quand
+    # destination = retour_fournisseur. SET_NULL : la suppression du RMA ne
+    # casse pas l'historique de la pièce retirée.
+    warranty_claim = models.ForeignKey(
+        'sav.WarrantyClaim', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='pieces_retirees')
+    # Équipement client marqué REMPLACÉ par ce retrait (si numero_serie a
+    # matché un Equipement de la société).
+    equipement_remplace = models.ForeignKey(
+        'sav.Equipement', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='retraits_pieces')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Pièce retirée'
+        verbose_name_plural = 'Pièces retirées'
+        ordering = ['-date_creation']
+        indexes = [
+            models.Index(fields=['company', 'ticket'],
+                         name='sav_piece_ret_co_tick_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.produit_id} ×{self.quantite} retirée (ticket {self.ticket_id})'
+
+
+# ── XSAV27 — Prêt / échange anticipé d'équipement (loaner) ──────────────────
+
+class PretEquipement(models.Model):
+    """XSAV27 — unité de prêt (loaner) sortie du stock vers le client pendant
+    qu'un onduleur/une pompe part en réparation fournisseur.
+
+    Mouvement de stock SORTIE à l'émission (``sortir``) et réintégration
+    ENTRÉE au retour (``retourner``), via ``apps.stock.services`` — jamais un
+    accès direct au grand livre depuis un autre chemin. ``date_retour_prevue``
+    pilote l'alerte de dépassement (``en_retard``)."""
+    class Statut(models.TextChoices):
+        EN_COURS = 'en_cours', 'En cours'
+        RETOURNE = 'retourne', 'Retourné'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='prets_equipement')
+    ticket = models.ForeignKey(
+        Ticket, on_delete=models.CASCADE, related_name='prets_equipement')
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.PROTECT,
+        related_name='prets_equipement_sav')
+    numero_serie = models.CharField(max_length=120, blank=True, default='')
+    statut = models.CharField(
+        max_length=15, choices=Statut.choices, default=Statut.EN_COURS)
+    date_sortie = models.DateField(null=True, blank=True)
+    date_retour_prevue = models.DateField(null=True, blank=True)
+    date_retour_reelle = models.DateField(null=True, blank=True)
+    # Idempotence des mouvements de stock (même patron que
+    # PieceConsommee.stock_decremente / PieceRetiree.restockee).
+    stock_sorti = models.BooleanField(default=False)
+    stock_reintegre = models.BooleanField(default=False)
+    # Alerte dépassement déjà notifiée (évite un rappel à chaque scan — même
+    # patron d'idempotence que SLA XSAV6).
+    alerte_depassement_notifiee = models.BooleanField(default=False)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Prêt équipement'
+        verbose_name_plural = 'Prêts équipement'
+        ordering = ['-date_creation']
+        indexes = [
+            models.Index(fields=['company', 'ticket'],
+                         name='sav_pret_equip_co_tick_idx'),
+            models.Index(fields=['company', 'statut'],
+                         name='sav_pret_equip_co_statut_idx'),
+        ]
+
+    def __str__(self):
+        return f'Prêt {self.produit_id} (ticket {self.ticket_id}, {self.statut})'
+
+    @property
+    def en_retard(self):
+        """True si le prêt est encore EN_COURS et la date de retour prévue
+        est dépassée (aujourd'hui). Pas de date prévue = jamais en retard."""
+        if self.statut != self.Statut.EN_COURS or not self.date_retour_prevue:
+            return False
+        return timezone.localdate() > self.date_retour_prevue
+
+
+# ── ZSAV2 — Types de ticket configurables ────────────────────────────────────
+
+class CategorieTicket(models.Model):
+    """ZSAV2 — Référentiel configurable de catégorie de ticket (Question,
+    Panne matérielle, Demande d'information, Réclamation…), AU-DELÀ du
+    ``Ticket.type`` correctif/préventif figé (qui continue de piloter le
+    préventif — inchangé). Même patron que ``CauseDefaillance``/
+    ``RemedeDefaillance`` (XSAV14) : liste plate, scopée société, éditable
+    dans Paramètres, additive."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='categories_ticket')
+    libelle = models.CharField(max_length=150)
+    ordre = models.PositiveIntegerField(default=0)
+    actif = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['ordre', 'libelle']
+        unique_together = [('company', 'libelle')]
+        verbose_name = 'Catégorie de ticket'
+        verbose_name_plural = 'Catégories de ticket'
+
+    def __str__(self):
+        return self.libelle

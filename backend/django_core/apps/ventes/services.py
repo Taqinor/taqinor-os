@@ -2949,3 +2949,107 @@ def consolider_factures(*, company, devis_ids, user, created_by=None):
             )
 
     return facture
+
+
+# ── XFSM1 — Facturation SAV hors garantie depuis le ticket ──────────────────
+# apps.sav ne peut PAS importer apps.ventes.models directement (règle de
+# modularité CLAUDE.md) : cette fonction est son unique porte d'entrée pour
+# générer une facture brouillon depuis un ticket SAV.
+
+def _main_oeuvre_produit(company):
+    """Produit catalogue (service, non stocké) porteur de la ligne
+    main-d'œuvre SAV — get-or-create idempotent, un seul par société.
+    Jamais décrémenté (aucun mouvement de stock ne le référence)."""
+    from apps.stock.models import Produit
+    produit, _created = Produit.objects.get_or_create(
+        company=company, sku='SAV-MO', defaults={
+            'nom': "Main-d'œuvre SAV",
+            'prix_vente': Decimal('0'),
+            'quantite_stock': 0,
+        })
+    return produit
+
+
+def generer_facture_ticket_sav(*, ticket, sous_garantie, pieces, user):
+    """XFSM1 — construit une ``Facture`` BROUILLON pour un ticket SAV hors
+    garantie (réels → facture) : lignes pièces (prix de VENTE catalogue,
+    jamais ``prix_achat``) + ligne main-d'œuvre (taux horaire
+    ``CompanyProfile.taux_horaire_sav`` × ``ticket.heures_main_oeuvre``).
+
+    Quand ``sous_garantie`` est vrai (ticket sous garantie ou contrat actif
+    couvrant), TOUTES les lignes sont posées à 0 DH avec la mention
+    « couvert garantie/contrat » dans leur désignation — le document reste
+    traçable sans jamais facturer un client couvert.
+
+    ``pieces`` : itérable d'objets exposant ``produit`` (stock.Produit) et
+    ``quantite`` (déjà scopés société par l'appelant — sav.views). Référence
+    via ``apps.ventes.utils.references`` (jamais count()+1).
+
+    IDEMPOTENT : si ``ticket.facture_id_ext`` pointe déjà vers une facture
+    non annulée, la renvoie telle quelle plutôt que d'en créer une seconde.
+    Renvoie la ``Facture`` créée (ou réutilisée)."""
+    from .models import Facture, LigneFacture
+    from .utils.company_settings import tva_standard
+    from .utils.references import create_with_reference
+
+    if ticket.facture_id_ext:
+        existante = Facture.objects.filter(
+            pk=ticket.facture_id_ext, company=ticket.company
+        ).exclude(statut=Facture.Statut.ANNULEE).first()
+        if existante is not None:
+            return existante
+
+    company = ticket.company
+    taux_tva_defaut = tva_standard(company)
+
+    def _create(ref):
+        return Facture.objects.create(
+            reference=ref, company=company, client=ticket.client,
+            statut=Facture.Statut.BROUILLON,
+            type_facture=Facture.TypeFacture.COMPLETE,
+            libelle=f'SAV {ticket.reference} — hors garantie',
+            created_by=user,
+        )
+
+    facture = create_with_reference(Facture, 'FAC', company, _create)
+
+    suffixe_couvert = ' (couvert garantie/contrat)' if sous_garantie else ''
+
+    for piece in pieces:
+        produit = piece.produit
+        quantite = piece.quantite
+        prix_unitaire = (
+            Decimal('0') if sous_garantie
+            else Decimal(str(produit.prix_vente or 0)))
+        LigneFacture.objects.create(
+            facture=facture, produit=produit,
+            designation=f'{produit.nom}{suffixe_couvert}',
+            quantite=quantite, prix_unitaire=prix_unitaire,
+            taux_tva=(produit.tva if produit.tva is not None
+                      else taux_tva_defaut),
+        )
+
+    heures = ticket.heures_main_oeuvre
+    if heures:
+        profile_taux = None
+        try:
+            from apps.parametres.models import CompanyProfile
+            profile_taux = CompanyProfile.get(company).taux_horaire_sav
+        except Exception:  # pragma: no cover - défensif
+            profile_taux = None
+        taux_horaire = (
+            Decimal('0') if sous_garantie
+            else Decimal(str(profile_taux)) if profile_taux is not None
+            else None)
+        if taux_horaire is not None:
+            mo_produit = _main_oeuvre_produit(company)
+            LigneFacture.objects.create(
+                facture=facture, produit=mo_produit,
+                designation=f"Main-d'œuvre{suffixe_couvert}",
+                quantite=heures, prix_unitaire=taux_horaire,
+                taux_tva=taux_tva_defaut,
+            )
+
+    ticket.facture_id_ext = facture.id
+    ticket.save(update_fields=['facture_id_ext'])
+    return facture

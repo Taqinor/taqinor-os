@@ -9,7 +9,7 @@ from .models import (
     TicketChecklistItem, WarrantyClaim, KbArticle, AlarmeOnduleur,
     TicketSatisfaction, CauseDefaillance, RemedeDefaillance,
     EquipementDowntime, ReleveCompteurEquipement, ReponseType,
-    CompatibilitePiece,
+    CompatibilitePiece, PieceRetiree, PretEquipement, CategorieTicket,
 )
 
 # Fenêtre « garantie expirant bientôt » (jours).
@@ -93,7 +93,9 @@ class EquipementSerializer(serializers.ModelSerializer):
         ).count()
 
     def get_client_nom(self, obj):
-        c = getattr(obj.installation, 'client', None)
+        # XPOS9 — un équipement vendu au comptoir (sans chantier) porte son
+        # client directement via `client_vente` ; sinon dérivé du chantier.
+        c = getattr(obj.installation, 'client', None) or obj.client_vente
         if not c:
             return None
         return f"{c.nom} {c.prenom or ''}".strip()
@@ -128,6 +130,56 @@ class TicketActivitySerializer(serializers.ModelSerializer):
 
     def get_user_nom(self, obj):
         return getattr(obj.user, 'username', None)
+
+
+class PieceRetireeSerializer(serializers.ModelSerializer):
+    """XMFG10 — pièce retirée (lecture). Aucun prix d'achat exposé côté client."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+    produit_marque = serializers.CharField(
+        source='produit.marque', read_only=True, default=None)
+    produit_sku = serializers.CharField(
+        source='produit.sku', read_only=True, default=None)
+    destination_display = serializers.CharField(
+        source='get_destination_display', read_only=True)
+
+    class Meta:
+        model = PieceRetiree
+        fields = [
+            'id', 'produit', 'produit_nom', 'produit_marque', 'produit_sku',
+            'quantite', 'numero_serie', 'destination', 'destination_display',
+            'restockee', 'warranty_claim', 'equipement_remplace',
+            'date_creation',
+        ]
+        read_only_fields = [
+            'restockee', 'warranty_claim', 'equipement_remplace',
+            'date_creation',
+        ]
+
+
+class PretEquipementSerializer(serializers.ModelSerializer):
+    """XSAV27 — prêt d'équipement (loaner). Statut/mouvements posés par les
+    actions dédiées du service (jamais en écriture directe du corps)."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+    produit_marque = serializers.CharField(
+        source='produit.marque', read_only=True, default=None)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    en_retard = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = PretEquipement
+        fields = [
+            'id', 'ticket', 'produit', 'produit_nom', 'produit_marque',
+            'numero_serie', 'statut', 'statut_display', 'date_sortie',
+            'date_retour_prevue', 'date_retour_reelle', 'stock_sorti',
+            'stock_reintegre', 'en_retard', 'date_creation',
+        ]
+        read_only_fields = [
+            'statut', 'date_sortie', 'date_retour_reelle', 'stock_sorti',
+            'stock_reintegre', 'date_creation',
+        ]
 
 
 class PieceConsommeeSerializer(serializers.ModelSerializer):
@@ -217,6 +269,9 @@ class TicketSerializer(serializers.ModelSerializer):
         source='cause.nom', read_only=True, default=None)
     remede_nom = serializers.CharField(
         source='remede.nom', read_only=True, default=None)
+    # ZSAV2 — catégorie de ticket configurable (libellé lecture).
+    categorie_nom = serializers.CharField(
+        source='categorie.libelle', read_only=True, default=None)
 
     class Meta:
         model = Ticket
@@ -281,7 +336,7 @@ class SavSlaSettingsSerializer(serializers.ModelSerializer):
             'sla_par_priorite', 'sla_breach_enabled',
             'notifications_client_sav', 'sla_jours_ouvres',
             'sla_warning_days', 'escalade_activee', 'affectation_auto_sav',
-            'auto_cloture_jours', 'date_modification',
+            'auto_cloture_jours', 'recidive_fenetre_jours', 'date_modification',
         ]
         read_only_fields = ['date_modification']
 
@@ -390,6 +445,13 @@ class RemedeDefaillanceSerializer(serializers.ModelSerializer):
     class Meta:
         model = RemedeDefaillance
         fields = ['id', 'nom', 'ordre', 'archived']
+        read_only_fields = ['id']
+
+
+class CategorieTicketSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CategorieTicket
+        fields = ['id', 'libelle', 'ordre', 'actif']
         read_only_fields = ['id']
 
 

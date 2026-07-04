@@ -22,13 +22,15 @@ from .models import (
     SavSlaSettings, MaintenanceChecklistTemplate, TicketChecklistItem,
     WarrantyClaim, KbArticle, AlarmeOnduleur,
     CauseDefaillance, RemedeDefaillance, EquipementDowntime,
-    ReleveCompteurEquipement, ReponseType, CompatibilitePiece,
+    ReleveCompteurEquipement, ReponseType, CompatibilitePiece, PieceRetiree,
+    CategorieTicket,
 )
 from .services import add_months
 from .pdf import rapport_intervention_pdf
 from .serializers import (
     EquipementSerializer, TicketSerializer, TicketActivitySerializer,
-    PieceConsommeeSerializer, EXPIRING_SOON_DAYS,
+    PieceConsommeeSerializer, PieceRetireeSerializer, PretEquipementSerializer,
+    EXPIRING_SOON_DAYS,
     SavSlaSettingsSerializer,
     MaintenanceChecklistTemplateSerializer, TicketChecklistItemSerializer,
     WarrantyClaimSerializer,
@@ -39,6 +41,7 @@ from .serializers import (
     ReleveCompteurEquipementSerializer,
     ReponseTypeSerializer,
     CompatibilitePieceSerializer,
+    CategorieTicketSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -49,7 +52,7 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
     """Parc d'équipements (n° de série + horloges de garantie). Tout est scopé
     à la société ; les dates de fin de garantie sont CALCULÉES côté serveur."""
     queryset = Equipement.objects.select_related(
-        'produit', 'installation', 'installation__client',
+        'produit', 'installation', 'installation__client', 'client_vente',
     ).all()
     serializer_class = EquipementSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -78,7 +81,11 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
         if installation:
             qs = qs.filter(installation_id=installation)
         if client:
-            qs = qs.filter(installation__client_id=client)
+            # XPOS9 — un équipement vendu au comptoir (sans chantier) est
+            # rattaché via `client_vente` plutôt que `installation__client`.
+            qs = qs.filter(
+                Q(installation__client_id=client)
+                | Q(client_vente_id=client))
         if statut:
             qs = qs.filter(statut=statut)
         if garantie:
@@ -424,6 +431,7 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         client = params.get('client')
         installation = params.get('installation')
         equipement = params.get('equipement')
+        categorie = params.get('categorie')
         if statut:
             qs = qs.filter(statut=statut)
         if type_:
@@ -438,6 +446,8 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             qs = qs.filter(installation_id=installation)
         if equipement:
             qs = qs.filter(equipement_id=equipement)
+        if categorie:
+            qs = qs.filter(categorie_id=categorie)
         # File de service par défaut = tickets OUVERTS non annulés. ?ouvert=tous
         # pour tout voir ; un filtre ?statut explicite l'emporte.
         if self.action == 'list' and not statut:
@@ -560,6 +570,22 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
                 if technicien is not None:
                     inst.technicien_responsable = technicien
                     inst.save(update_fields=['technicien_responsable'])
+        # XFSM15 — suggestion de récidive : une intervention TERMINÉE/VALIDÉE
+        # récente sur le MÊME chantier marque le ticket récidive + non
+        # facturable par défaut (override responsable possible ensuite).
+        if inst.installation_id and not inst.est_recidive:
+            from .services import suggerer_recidive
+            interv_id, motif = suggerer_recidive(
+                company=company, installation_id=inst.installation_id,
+                exclure_ticket_id=inst.id, a_la_date=date_ouverture)
+            if interv_id is not None:
+                inst.est_recidive = True
+                inst.intervention_origine_id = interv_id
+                inst.motif_recidive = motif
+                inst.non_facturable = True
+                inst.save(update_fields=[
+                    'est_recidive', 'intervention_origine_id',
+                    'motif_recidive', 'non_facturable'])
         activity.log_creation(serializer.instance, self.request.user)
 
     # XSAV11 — statuts « clos » depuis lesquels revenir à un statut ouvert
@@ -845,6 +871,192 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
                 f'Pièce {nom} ×{qte} retirée{suffixe}')
             piece.delete()
         return Response(status=204)
+
+    @action(detail=True, methods=['get', 'post'], url_path='pieces-retirees',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def pieces_retirees(self, request, pk=None):
+        """XMFG10 — pièces RETIRÉES du ticket (onduleur remplacé, pompe HS…).
+
+        GET liste, POST trace un retrait avec sa `destination` (rebut /
+        retour_fournisseur / stock_occasion) via `services.retirer_piece`."""
+        ticket = self.get_object()
+        if request.method == 'GET':
+            qs = ticket.pieces_retirees.select_related('produit')
+            return Response(PieceRetireeSerializer(qs, many=True).data)
+        from apps.stock.selectors import (
+            get_produit_or_raise, produit_does_not_exist,
+        )
+        from .services import retirer_piece
+        try:
+            quantite = Decimal(str(request.data.get('quantite') or '1'))
+        except (InvalidOperation, TypeError):
+            return Response({'detail': 'Quantité invalide.'}, status=400)
+        if quantite <= 0:
+            return Response({'detail': 'Quantité invalide.'}, status=400)
+        try:
+            produit = get_produit_or_raise(
+                ticket.company, request.data.get('produit'))
+        except (produit_does_not_exist(), ValueError, TypeError):
+            return Response({'detail': 'Produit inconnu.'}, status=404)
+        destination = request.data.get('destination') or PieceRetiree.Destination.REBUT
+        if destination not in PieceRetiree.Destination.values:
+            return Response({'detail': 'Destination invalide.'}, status=400)
+        numero_serie = (request.data.get('numero_serie') or '').strip()
+        with transaction.atomic():
+            piece = retirer_piece(
+                company=ticket.company, ticket=ticket, produit=produit,
+                quantite=quantite, numero_serie=numero_serie,
+                destination=destination, user=request.user)
+            suffixe = {
+                PieceRetiree.Destination.STOCK_OCCASION: ' (stock occasion +)',
+                PieceRetiree.Destination.RETOUR_FOURNISSEUR: ' (RMA)',
+                PieceRetiree.Destination.REBUT: ' (rebut)',
+            }.get(destination, '')
+            activity.log_note(
+                ticket, request.user,
+                f'Pièce {produit.nom} ×{quantite} retirée{suffixe}')
+        return Response(PieceRetireeSerializer(piece).data, status=201)
+
+    @action(detail=True, methods=['post'], url_path='generer-facture',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def generer_facture(self, request, pk=None):
+        """XFSM1 — génère une facture BROUILLON depuis un ticket SAV hors
+        garantie : lignes pièces (PieceConsommee, prix de vente catalogue) +
+        ligne main-d'œuvre (heures_main_oeuvre × taux_horaire_sav société).
+
+        Un ticket sous garantie (calculé ou couvert par un contrat actif)
+        génère les mêmes lignes mais à 0 DH, marquées « couvert ». Idempotent
+        (réutilise ``facture_id_ext`` si déjà posé) — jamais de double
+        facture. Facture = PDF legacy (jamais /proposal, réservé aux devis
+        client-facing — règle #4 CLAUDE.md)."""
+        ticket = self.get_object()
+        from apps.ventes.services import generer_facture_ticket_sav
+
+        # XFSM15 — un ticket récidive est non-facturable PAR DÉFAUT ; un
+        # responsable/admin peut lever l'exclusion via `override=true`.
+        override = str(request.data.get('override') or '') in (
+            '1', 'true', 'True', 'on')
+        if ticket.non_facturable and not override:
+            is_responsable = (
+                getattr(request.user, 'is_admin_role', False)
+                or getattr(request.user, 'is_responsable', False))
+            if not is_responsable:
+                return Response({
+                    'detail': ('Ticket récidive marqué non-facturable — '
+                               'override responsable requis.'),
+                }, status=403)
+
+        sous_garantie = ticket.sous_garantie_calcule == Ticket.SousGarantie.OUI
+        pieces = list(ticket.pieces.select_related('produit'))
+        facture = generer_facture_ticket_sav(
+            ticket=ticket, sous_garantie=sous_garantie, pieces=pieces,
+            user=request.user)
+        activity.log_note(
+            ticket, request.user,
+            f'Facture {facture.reference} générée depuis le ticket '
+            f'(hors garantie : {not sous_garantie}).')
+        return Response({
+            'facture_id': facture.id,
+            'facture_reference': facture.reference,
+            'sous_garantie': sous_garantie,
+        }, status=201)
+
+    @action(detail=True, methods=['get', 'post'], url_path='prets-equipement',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def prets_equipement(self, request, pk=None):
+        """XSAV27 — prêt/échange anticipé d'équipement (loaner). GET liste,
+        POST sort une unité du stock immédiatement (`services.
+        creer_pret_equipement`, jamais de stock négatif)."""
+        ticket = self.get_object()
+        if request.method == 'GET':
+            qs = ticket.prets_equipement.select_related('produit')
+            return Response(PretEquipementSerializer(qs, many=True).data)
+        from apps.stock.selectors import (
+            get_produit_or_raise, produit_does_not_exist,
+        )
+        from .services import PretEquipementError, creer_pret_equipement
+        try:
+            produit = get_produit_or_raise(
+                ticket.company, request.data.get('produit'))
+        except (produit_does_not_exist(), ValueError, TypeError):
+            return Response({'detail': 'Produit inconnu.'}, status=404)
+        date_sortie = request.data.get('date_sortie') or timezone.localdate()
+        date_retour_prevue = request.data.get('date_retour_prevue') or None
+        numero_serie = (request.data.get('numero_serie') or '').strip()
+        try:
+            with transaction.atomic():
+                pret = creer_pret_equipement(
+                    company=ticket.company, ticket=ticket, produit=produit,
+                    numero_serie=numero_serie, date_sortie=date_sortie,
+                    date_retour_prevue=date_retour_prevue, user=request.user)
+        except PretEquipementError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        activity.log_note(
+            ticket, request.user,
+            f'Prêt équipement {produit.nom} sorti (retour prévu : '
+            f'{date_retour_prevue or "non renseigné"}).')
+        return Response(PretEquipementSerializer(pret).data, status=201)
+
+    @action(detail=True, methods=['post'],
+            url_path=r'prets-equipement/(?P<pret_id>[^/.]+)/retourner',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def retourner_pret(self, request, pk=None, pret_id=None):
+        """XSAV27 — clôture un prêt : réintègre le stock (idempotent)."""
+        ticket = self.get_object()
+        from .models import PretEquipement
+        from .services import retourner_pret_equipement
+        try:
+            pret = ticket.prets_equipement.select_related('produit').get(
+                pk=pret_id)
+        except (PretEquipement.DoesNotExist, ValueError, TypeError):
+            return Response({'detail': 'Introuvable.'}, status=404)
+        date_retour = (
+            request.data.get('date_retour_reelle') or timezone.localdate())
+        with transaction.atomic():
+            pret = retourner_pret_equipement(
+                pret=pret, date_retour_reelle=date_retour, user=request.user)
+        activity.log_note(
+            ticket, request.user,
+            f'Prêt équipement {pret.produit.nom} retourné.')
+        return Response(PretEquipementSerializer(pret).data, status=200)
+
+    @action(detail=True, methods=['get'], url_path='triage-ia',
+            permission_classes=[HasPermissionOrLegacy('sav_voir')])
+    def triage_ia(self, request, pk=None):
+        """XSAV28 — triage IA du ticket (clé-gated, propose→confirme).
+        Suggestions JAMAIS auto-appliquées : GET pur, rien n'est écrit sur le
+        ticket. Sans GROQ_API_KEY, renvoie ``{'disponible': False}`` (200,
+        comportement actuel byte-identique)."""
+        ticket = self.get_object()
+        from .services import suggerer_triage_ticket
+        result = suggerer_triage_ticket(
+            company=ticket.company, description=ticket.description)
+        return Response(result)
+
+    @action(detail=True, methods=['post'], url_path='creer-lead',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def creer_lead(self, request, pk=None):
+        """ZSAV8 — convertit un ticket en opportunité CRM (upsell/
+        remplacement). Écrit via `apps.crm.services.create_lead_depuis_ticket`
+        (jamais un import direct des modèles crm). Idempotent : réutilise un
+        lead OUVERT existant du même client plutôt que d'en créer un second."""
+        ticket = self.get_object()
+        from apps.crm.services import create_lead_depuis_ticket
+        contexte = (
+            f'Créé depuis le ticket SAV {ticket.reference} : '
+            f'{(ticket.description or "").strip()}').strip()
+        lead, created = create_lead_depuis_ticket(
+            company=ticket.company, user=request.user, client=ticket.client,
+            contexte=contexte)
+        if ticket.lead_id_ext != lead.id:
+            ticket.lead_id_ext = lead.id
+            ticket.save(update_fields=['lead_id_ext'])
+        suffixe = 'créé' if created else 'existant réutilisé'
+        activity.log_note(
+            ticket, request.user, f'Lead CRM #{lead.id} {suffixe}.')
+        return Response(
+            {'lead_id': lead.id, 'created': created},
+            status=201 if created else 200)
 
     @action(detail=True, methods=['get', 'post', 'patch'],
             url_path='checklist',
@@ -1407,6 +1619,31 @@ class RemedeDefaillanceViewSet(TenantMixin, viewsets.ModelViewSet):
         if self.action == 'list' and self.request.query_params.get(
                 'archived') != '1':
             qs = qs.filter(archived=False)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+
+class CategorieTicketViewSet(TenantMixin, viewsets.ModelViewSet):
+    """ZSAV2 — Référentiel de catégorie de ticket (au-delà de correctif/
+    préventif). Lecture tout rôle, écriture responsable/admin (édité dans
+    Paramètres). Même patron que CauseDefaillance/RemedeDefaillance."""
+    queryset = CategorieTicket.objects.all()
+    serializer_class = CategorieTicketSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.action == 'list' and self.request.query_params.get(
+                'actif') == '0':
+            qs = qs.filter(actif=False)
+        elif self.action == 'list':
+            qs = qs.filter(actif=True)
         return qs
 
     def perform_create(self, serializer):

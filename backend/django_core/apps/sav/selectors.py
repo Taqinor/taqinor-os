@@ -16,7 +16,7 @@ le stock passe l'``id`` de produit et la liste de séries reçues en arguments
 bruts ; ce module lit uniquement `sav.Equipement` (règle de modularité
 CLAUDE.md — les lectures cross-app passent par les selectors de l'app cible).
 """
-from .models import Equipement, Ticket, TicketSatisfaction
+from .models import Equipement, KbArticle, Ticket, TicketSatisfaction
 
 
 def reconcile_serials_to_equipements(company, produit_id, serials):
@@ -805,3 +805,33 @@ def produits_par_tickets(company, ticket_ids):
         else:
             out[ticket.id] = {'produit_id': None, 'produit_nom': None}
     return out
+
+
+# ── XSAV28 — Triage IA du ticket : articles KB pertinents ───────────────────
+
+def kb_articles_pertinents(company, texte, *, limit=3):
+    """XSAV28 — articles KB (FG87) les plus pertinents pour ``texte`` (mots-
+    clés recoupés — même technique déterministe que ``tickets_similaires``,
+    stdlib pure). Sert de contexte au brouillon de réponse IA : jamais
+    utilisé pour appliquer quoi que ce soit automatiquement."""
+    mots_ref = _mots_cles(texte)
+    if not mots_ref:
+        return []
+    qs = KbArticle.objects.filter(company=company)
+    scored = []
+    for art in qs:
+        mots_art = _mots_cles(f'{art.titre} {art.corps}')
+        if not mots_art:
+            continue
+        inter = len(mots_ref & mots_art)
+        if inter <= 0:
+            continue
+        union = len(mots_ref | mots_art)
+        jaccard = inter / union if union else 0.0
+        scored.append((jaccard, art))
+    scored.sort(key=lambda pair: (-pair[0], -pair[1].pk))
+    return [
+        {'id': art.id, 'titre': art.titre,
+         'extrait': (art.corps or '')[:300]}
+        for _score, art in scored[:limit]
+    ]

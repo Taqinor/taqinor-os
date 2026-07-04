@@ -550,6 +550,17 @@ class Produit(models.Model):
         max_digits=10, decimal_places=2, null=True, blank=True,
         verbose_name='Tarif location / mois')
 
+    # ── XPOS9 — Capture n° de série à la vente → garantie SAV automatique ───
+    # Flag additif : off par défaut, rien ne change pour un produit existant.
+    # Quand actif, la vente comptoir (apps.pos) invite à saisir/scanner le(s)
+    # n° de série vendu(s) et crée automatiquement l'Equipement SAV garanti
+    # (apps.sav.services.creer_equipement_depuis_vente_pos).
+    suivi_serie = models.BooleanField(
+        default=False, verbose_name='Suivi par n° de série',
+        help_text="Active la saisie du n° de série à la vente comptoir et "
+                  "la création automatique de l'équipement SAV garanti "
+                  '(onduleur, batterie…).')
+
     class Meta:
         verbose_name = "Produit"
         verbose_name_plural = "Produits"
