@@ -2328,14 +2328,11 @@ def passer_tentative_quiz(quiz, employe, *, reponses, session=None):
         return tentative
 
     if quiz.competence_id:
-        CompetenceEmploye.objects.update_or_create(
-            employe=employe, competence_id=quiz.competence_id,
-            defaults={
-                'company': quiz.company,
-                'niveau': CompetenceEmploye.Niveau.CONFIRME,
-                'evalue_le': timezone.now(),
-            },
-        )
+        # ZRH10 — passe par le point d'entrée unique : historise le
+        # changement de niveau (source='quiz') si le niveau change réellement.
+        enregistrer_niveau_competence(
+            employe, quiz.competence_id, CompetenceEmploye.Niveau.CONFIRME,
+            company=quiz.company, evalue_le=timezone.now(), source='quiz')
 
     if session is not None:
         InscriptionFormation.objects.update_or_create(
@@ -2456,3 +2453,51 @@ def refuser_allocation(demande, decide_par=None):
     demande.date_decision = timezone.now()
     demande.save(update_fields=['statut', 'decide_par', 'date_decision'])
     return demande
+
+
+@transaction.atomic
+def enregistrer_niveau_competence(
+        employe, competence_id, niveau, *, company=None, evalue_par=None,
+        evalue_le=None, source='manuelle'):
+    """ZRH10 — point d'entrée UNIQUE pour écrire le niveau d'une
+    ``CompetenceEmploye`` : upsert le niveau ET, si le niveau CHANGE
+    (création avec niveau > 0, ou changement réel sur une ligne existante),
+    écrit une ligne ``HistoriqueCompetence`` (ancien -> nouveau, horodatée,
+    ``source`` ∈ {manuelle, quiz, formation}).
+
+    Appelé par les TROIS chemins d'écriture du niveau : la matrice manuelle
+    (``CompetenceEmployeViewSet``), la session de formation réalisée (FG187,
+    ``marquer_realisee``) et la réussite de quiz (XRH34,
+    ``passer_tentative_quiz``) — aucun n'écrit plus ``CompetenceEmploye``
+    directement, ils passent tous par ici, garantissant qu'AUCUN changement
+    de niveau n'échappe à l'historique.
+
+    Renvoie l'instance ``CompetenceEmploye`` à jour.
+    """
+    from .models import CompetenceEmploye, HistoriqueCompetence
+
+    company = company or employe.company
+    if evalue_le is None:
+        evalue_le = timezone.now()
+
+    existante = CompetenceEmploye.objects.filter(
+        company=company, employe=employe,
+        competence_id=competence_id).first()
+    ancien_niveau = existante.niveau if existante else 0
+
+    obj, _created = CompetenceEmploye.objects.update_or_create(
+        company=company, employe=employe, competence_id=competence_id,
+        defaults={
+            'niveau': niveau,
+            'evalue_le': evalue_le,
+            'evalue_par': evalue_par,
+        },
+    )
+
+    if niveau != ancien_niveau:
+        HistoriqueCompetence.objects.create(
+            company=company, employe=employe, competence_id=competence_id,
+            ancien_niveau=ancien_niveau, nouveau_niveau=niveau,
+            source=source,
+        )
+    return obj

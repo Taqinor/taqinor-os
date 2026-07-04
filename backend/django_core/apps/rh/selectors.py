@@ -2774,3 +2774,46 @@ def localisation_du_jour(company, jour):
             'localisation': lieu,
         })
     return resultat
+
+
+def evolution_competences(
+        company, *, employe_id=None, competence_id=None, debut=None,
+        fin=None):
+    """ZRH10 — rapport d'évolution des compétences (« Skills Evolution »
+    Odoo) : rejoue les changements de niveau (:class:`HistoriqueCompetence`,
+    écrits automatiquement à chaque upsert du niveau — voir
+    ``services.enregistrer_niveau_competence``) sur une période, société
+    scopée, filtrable par employé/compétence.
+
+    Renvoie une liste de dicts ``{employe_id, employe_nom, competence_id,
+    competence_libelle, ancien_niveau, nouveau_niveau, progression (bool),
+    source, date}`` triée la plus récente d'abord. ``progression`` distingue
+    une PROGRESSION (nouveau > ancien) d'une RÉGRESSION.
+    """
+    from .models import HistoriqueCompetence
+
+    qs = HistoriqueCompetence.objects.filter(
+        company=company).select_related('employe', 'competence')
+    if employe_id:
+        qs = qs.filter(employe_id=employe_id)
+    if competence_id:
+        qs = qs.filter(competence_id=competence_id)
+    if debut:
+        qs = qs.filter(date_creation__date__gte=debut)
+    if fin:
+        qs = qs.filter(date_creation__date__lte=fin)
+
+    return [
+        {
+            'employe_id': h.employe_id,
+            'employe_nom': f'{h.employe.nom} {h.employe.prenom}',
+            'competence_id': h.competence_id,
+            'competence_libelle': h.competence.libelle,
+            'ancien_niveau': h.ancien_niveau,
+            'nouveau_niveau': h.nouveau_niveau,
+            'progression': h.nouveau_niveau > h.ancien_niveau,
+            'source': h.source,
+            'date': h.date_creation,
+        }
+        for h in qs
+    ]

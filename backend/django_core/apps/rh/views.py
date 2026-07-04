@@ -59,6 +59,7 @@ from .models import (
     EntretienSortie,
     GabaritEmailRecrutement,
     GrilleSalariale,
+    HistoriqueCompetence,
     LigneParcours,
     NoteEntretien,
     PeriodeFermeture,
@@ -2212,6 +2213,29 @@ class CompetenceViewSet(_RhBaseViewSet):
         return Response(
             AnnuaireEmployeSerializer(employes, many=True).data)
 
+    @action(detail=False, methods=['get'], url_path='evolution')
+    def evolution(self, request):
+        """ZRH10 — rapport d'évolution des compétences (« Skills Evolution »
+        Odoo). ``?employe=&competence=&debut=&fin=`` optionnels (YYYY-MM-DD).
+        Gaté ``IsResponsableOrAdmin`` (gate de classe par défaut)."""
+        from datetime import datetime
+
+        def _parse(name):
+            raw = request.query_params.get(name)
+            if not raw:
+                return None
+            try:
+                return datetime.strptime(raw, '%Y-%m-%d').date()
+            except (TypeError, ValueError):
+                return None
+
+        data = selectors.evolution_competences(
+            request.user.company,
+            employe_id=request.query_params.get('employe'),
+            competence_id=request.query_params.get('competence'),
+            debut=_parse('debut'), fin=_parse('fin'))
+        return Response(data)
+
 
 class CompetenceEmployeViewSet(_RhBaseViewSet):
     """Matrice de compétences — niveau par employé (FG172).
@@ -2251,17 +2275,37 @@ class CompetenceEmployeViewSet(_RhBaseViewSet):
         return qs
 
     def perform_create(self, serializer):
-        """Company + traçabilité d'évaluation posées côté serveur."""
-        serializer.save(
+        """Company + traçabilité d'évaluation posées côté serveur.
+
+        ZRH10 — une CRÉATION avec niveau > 0 est un changement (0 -> niveau)
+        et écrit une ligne ``HistoriqueCompetence`` (source='manuelle').
+        """
+        instance = serializer.save(
             company=self.request.user.company,
             evalue_par=self.request.user,
             evalue_le=timezone.now())
+        if instance.niveau:
+            HistoriqueCompetence.objects.create(
+                company=instance.company, employe=instance.employe,
+                competence=instance.competence,
+                ancien_niveau=0, nouveau_niveau=instance.niveau,
+                source=HistoriqueCompetence.Source.MANUELLE)
 
     def perform_update(self, serializer):
-        """Réévaluation : on retrace l'auteur/date côté serveur."""
-        serializer.save(
+        """Réévaluation : on retrace l'auteur/date côté serveur.
+
+        ZRH10 — écrit ``HistoriqueCompetence`` (source='manuelle') si le
+        niveau change réellement."""
+        ancien_niveau = serializer.instance.niveau
+        instance = serializer.save(
             evalue_par=self.request.user,
             evalue_le=timezone.now())
+        if instance.niveau != ancien_niveau:
+            HistoriqueCompetence.objects.create(
+                company=instance.company, employe=instance.employe,
+                competence=instance.competence,
+                ancien_niveau=ancien_niveau, nouveau_niveau=instance.niveau,
+                source=HistoriqueCompetence.Source.MANUELLE)
 
     @action(detail=False, methods=['get'])
     def matrice(self, request):
@@ -3330,16 +3374,12 @@ class SessionFormationViewSet(_RhBaseViewSet):
             niveau = max(0, min(4, niveau))
             now = timezone.now()
             for inscr in session.inscriptions.filter(present=True):
-                CompetenceEmploye.objects.update_or_create(
-                    employe_id=inscr.participant_id,
-                    competence_id=session.competence_visee_id,
-                    defaults={
-                        'company': session.company,
-                        'niveau': niveau,
-                        'evalue_le': now,
-                        'evalue_par': request.user,
-                    },
-                )
+                # ZRH10 — passe par le point d'entrée unique (historise le
+                # changement de niveau, source='formation').
+                services.enregistrer_niveau_competence(
+                    inscr.participant, session.competence_visee_id, niveau,
+                    company=session.company, evalue_par=request.user,
+                    evalue_le=now, source='formation')
         return Response(
             self.get_serializer(session).data, status=status.HTTP_200_OK)
 

@@ -5989,3 +5989,64 @@ class LigneParcours(models.Model):
 
     def __str__(self):
         return f'{self.employe.matricule} — {self.intitule}'
+
+
+class HistoriqueCompetence(models.Model):
+    """Historique des changements de niveau de compétence (ZRH10, « Skills
+    Evolution » Odoo).
+
+    Écrit AUTOMATIQUEMENT (jamais manuellement) à chaque changement de
+    ``CompetenceEmploye.niveau`` — via
+    ``services.enregistrer_niveau_competence``, appelé par TOUS les chemins
+    d'écriture du niveau : matrice manuelle (``CompetenceEmployeViewSet``),
+    session de formation réalisée (FG187,
+    ``SessionFormationViewSet.marquer_realisee``) et réussite de quiz
+    (XRH34, ``services.passer_tentative_quiz``). ``source`` distingue
+    l'origine. Multi-société : ``company`` posée côté serveur.
+    """
+    class Source(models.TextChoices):
+        MANUELLE = 'manuelle', 'Manuelle'
+        QUIZ = 'quiz', 'Quiz de formation'
+        FORMATION = 'formation', 'Session de formation'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_historiques_competence',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='historique_competences',
+        verbose_name='Employé',
+    )
+    competence = models.ForeignKey(
+        Competence,
+        on_delete=models.CASCADE,
+        related_name='historique',
+        verbose_name='Compétence',
+    )
+    ancien_niveau = models.PositiveSmallIntegerField(
+        verbose_name='Ancien niveau')
+    nouveau_niveau = models.PositiveSmallIntegerField(
+        verbose_name='Nouveau niveau')
+    source = models.CharField(
+        max_length=12, choices=Source.choices, default=Source.MANUELLE,
+        verbose_name='Source')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Historique de compétence'
+        verbose_name_plural = 'Historiques de compétence'
+        ordering = ['-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'employe', 'competence'],
+                name='rh_hist_comp_emp_comp_idx'),
+        ]
+
+    def __str__(self):
+        return (f'{self.employe.matricule} — {self.competence.code} : '
+                f'{self.ancien_niveau} → {self.nouveau_niveau}')
