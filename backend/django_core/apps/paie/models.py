@@ -459,6 +459,31 @@ class ProfilPaie(models.Model):
         related_name='profils',
         verbose_name='Structure de paie appliquée',
     )
+    # XPAI18 — Régime d'exonération IR (stagiaire / ANAPEC / TAHFIZ), fenêtre
+    # d'éligibilité et plafond mensuel exonéré. ``REGIME_AUCUN`` (défaut) =
+    # comportement historique inchangé (aucune exonération). La bascule
+    # automatique au régime normal à l'expiration est faite par
+    # ``services.expirer_regimes_echus`` (jamais en lecture — un cron/action).
+    REGIME_AUCUN = 'aucun'
+    REGIME_STAGIAIRE = 'stagiaire'
+    REGIME_ANAPEC = 'anapec'
+    REGIME_TAHFIZ = 'tahfiz'
+    REGIME_EXONERATION_CHOICES = [
+        (REGIME_AUCUN, 'Aucun'),
+        (REGIME_STAGIAIRE, 'Stagiaire'),
+        (REGIME_ANAPEC, 'ANAPEC'),
+        (REGIME_TAHFIZ, 'TAHFIZ'),
+    ]
+    regime_exoneration = models.CharField(
+        max_length=10, choices=REGIME_EXONERATION_CHOICES,
+        default=REGIME_AUCUN, verbose_name="Régime d'exonération IR")
+    regime_date_debut = models.DateField(
+        null=True, blank=True, verbose_name="Régime — date de début")
+    regime_date_fin = models.DateField(
+        null=True, blank=True, verbose_name="Régime — date de fin (fenêtre)")
+    regime_plafond_mensuel = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('6000'),
+        verbose_name="Régime — plafond mensuel exonéré")
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -914,7 +939,7 @@ class BulletinPaie(models.Model):
         'formation_professionnelle',
         'cimr_salariale', 'frais_professionnels', 'net_imposable', 'ir',
         'retenues', 'prime_anciennete', 'charges_patronales', 'net_a_payer',
-        'personnes_a_charge', 'provision_conges',
+        'personnes_a_charge', 'provision_conges', 'montant_exonere_regime',
     ]
 
     class BulletinVerrouille(Exception):
@@ -1005,6 +1030,12 @@ class BulletinPaie(models.Model):
     ir = models.DecimalField(
         max_digits=14, decimal_places=2, default=Decimal('0'),
         verbose_name='IR')
+    # XPAI18 — Montant EXONÉRÉ d'IR au titre du régime stagiaire/ANAPEC/TAHFIZ
+    # du profil (fraction du net imposable sous le plafond mensuel, dans la
+    # fenêtre d'éligibilité). 0 par défaut (régime normal). Tracé pour le 9421.
+    montant_exonere_regime = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name="Montant exonéré (régime stagiaire/ANAPEC/TAHFIZ)")
     retenues = models.DecimalField(
         max_digits=14, decimal_places=2, default=Decimal('0'),
         verbose_name='Retenues')

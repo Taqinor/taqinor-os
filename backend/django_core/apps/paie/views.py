@@ -82,6 +82,7 @@ from .services import (
     ensure_rubriques_standard,
     ensure_structures_standard,
     etat_des_charges,
+    expirer_regimes_echus,
     etat_ir_9421,
     etat_ir_9421_annuel,
     export_xml_simpl_ir_9421,
@@ -228,6 +229,13 @@ class ProfilPaieViewSet(_PaieBaseViewSet):
         profil = serializer.save(company=self.request.user.company)
         if profil.structure_id:
             appliquer_structure_a_profil(profil, profil.structure)
+
+    @action(detail=False, methods=['post'], url_path='expirer-regimes')
+    def expirer_regimes(self, request):
+        """Bascule au régime normal les profils dont la fenêtre est expirée (XPAI18)."""
+        bascules = expirer_regimes_echus(request.user.company)
+        return Response(
+            {'bascules': [p.id for p in bascules]}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'], url_path='attestation')
     def attestation(self, request, pk=None):

@@ -1269,6 +1269,89 @@ def mutuelle_du_profil(profil, brut):
     return _q(salariale), _q(patronale), bool(regime.deductible_net_imposable)
 
 
+# ── XPAI18 — Régimes stagiaire / ANAPEC / TAHFIZ (exonération IR) ──────────
+
+def regime_actif_a_la_date(profil, le_jour):
+    """Vrai si le profil a un régime d'exonération ACTIF à ``le_jour`` (XPAI18).
+
+    Un régime est actif quand ``regime_exoneration != aucun`` ET que
+    ``le_jour`` tombe dans la fenêtre ``[regime_date_debut, regime_date_fin]``
+    (bornes incluses ; une borne ``None`` est considérée ouverte de ce côté).
+    """
+    from .models import ProfilPaie
+
+    if profil.regime_exoneration == ProfilPaie.REGIME_AUCUN:
+        return False
+    if profil.regime_date_debut and le_jour < profil.regime_date_debut:
+        return False
+    if profil.regime_date_fin and le_jour > profil.regime_date_fin:
+        return False
+    return True
+
+
+def montant_exonere_regime_profil(profil, le_jour, net_imposable):
+    """Fraction EXONÉRÉE d'IR du net imposable au titre du régime (XPAI18).
+
+    ``min(net_imposable, regime_plafond_mensuel)`` si le régime est actif à
+    ``le_jour`` (cf. ``regime_actif_a_la_date``), sinon 0. L'excédent au-delà
+    du plafond reste imposable (géré par l'appelant, jamais ici).
+    """
+    if not regime_actif_a_la_date(profil, le_jour):
+        return Decimal('0.00')
+    plafond = Decimal(profil.regime_plafond_mensuel or 0)
+    base = Decimal(net_imposable or 0)
+    if base <= 0 or plafond <= 0:
+        return Decimal('0.00')
+    return _q(min(base, plafond))
+
+
+def expirer_regimes_echus(company, *, today=None):
+    """Bascule au régime NORMAL les profils dont la fenêtre est EXPIRÉE (XPAI18).
+
+    Un profil avec ``regime_exoneration != aucun`` dont ``regime_date_fin`` est
+    dépassée (strictement avant ``today``) repasse à ``REGIME_AUCUN`` — la
+    réintégration au régime normal est IMMÉDIATE (le prochain bulletin calculé
+    n'aura plus d'exonération) — et une notification best-effort est envoyée
+    (rôle ``paie_gerer``, repli Responsable/Admin). Idempotent : un profil déjà
+    ``aucun`` n'est jamais retraité. Renvoie la liste des profils basculés.
+    """
+    from .models import ProfilPaie
+
+    if today is None:
+        today = timezone.localdate()
+
+    profils = ProfilPaie.objects.filter(
+        company=company,
+        regime_date_fin__lt=today,
+    ).exclude(regime_exoneration=ProfilPaie.REGIME_AUCUN)
+
+    bascules = []
+    for profil in profils:
+        ancien_regime = profil.get_regime_exoneration_display()
+        profil.regime_exoneration = ProfilPaie.REGIME_AUCUN
+        profil.save(update_fields=['regime_exoneration'])
+        try:
+            from apps.notifications import services as notif_services
+
+            recipients = notif_services.resolve_recipients(
+                company, 'paie_regime_expire')
+            nom = ''
+            if profil.employe_id:
+                emp = profil.employe
+                nom = f'{emp.nom} {emp.prenom}'.strip()
+            notif_services.notify_many(
+                recipients, 'paie_regime_expire',
+                title=f'Régime {ancien_regime} expiré',
+                body=(f'{nom or "Profil #" + str(profil.id)} — le régime '
+                      f'{ancien_regime} a expiré et a été réintégré au '
+                      'régime normal.'),
+                company=company)
+        except Exception:  # pragma: no cover - défensif, best-effort
+            pass
+        bascules.append(profil)
+    return bascules
+
+
 def calculer_bulletin(profil, periode, personnes_a_charge=0):
     """Calcule le bulletin de paie d'un employé pour une période (PAIE12).
 
@@ -1447,10 +1530,18 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
         net_imposable = Decimal('0')
     net_imposable = _q(net_imposable)
 
-    # 7. IR.
+    # 7. IR — XPAI18 : exonération régime stagiaire/ANAPEC/TAHFIZ. La fraction
+    # du net imposable SOUS le plafond mensuel du régime (dans sa fenêtre
+    # d'éligibilité) est retirée de la base IR avant application du barème ;
+    # l'excédent reste imposable normalement. Régime normal → 0 (inchangé).
+    montant_exonere_regime = montant_exonere_regime_profil(
+        profil, le_jour, net_imposable)
+    base_ir = net_imposable - montant_exonere_regime
+    if base_ir < 0:
+        base_ir = Decimal('0')
     ir = Decimal('0')
     if bareme and parametre:
-        ir = compute_ir(net_imposable, bareme, parametre, personnes_a_charge)
+        ir = compute_ir(base_ir, bareme, parametre, personnes_a_charge)
     ir = _q(ir)
 
     # PAIE28 — Échéances d'avances/prêts salariés du mois : retenues nettes
@@ -1553,6 +1644,7 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
         'frais_professionnels': frais_pro,
         'net_imposable': net_imposable,
         'ir': ir,
+        'montant_exonere_regime': _q(montant_exonere_regime),
         'retenues': _q(retenues_variables),
         'net_a_payer': net_a_payer,
         'prime_anciennete': prime_anciennete,
@@ -2926,6 +3018,7 @@ def etat_ir_9421(periode):
     total_brut_imp = Decimal('0')
     total_net_imp = Decimal('0')
     total_ir = Decimal('0')
+    total_exonere = Decimal('0')
     for bulletin in bulletins:
         profil = bulletin.profil
         employe = profil.employe
@@ -2933,18 +3026,22 @@ def etat_ir_9421(periode):
         brut_imp = Decimal(bulletin.brut_imposable or 0)
         net_imp = Decimal(bulletin.net_imposable or 0)
         ir = Decimal(bulletin.ir or 0)
+        # XPAI18 — montant exonéré au titre du régime stagiaire/ANAPEC/TAHFIZ.
+        exonere = Decimal(getattr(bulletin, 'montant_exonere_regime', 0) or 0)
         lignes.append({
             'matricule': getattr(employe, 'matricule', '') if employe else '',
             'nom': nom,
             'brut_imposable': _q(brut_imp),
             'net_imposable': _q(net_imp),
             'ir': _q(ir),
+            'montant_exonere_regime': _q(exonere),
             'personnes_a_charge': bulletin.personnes_a_charge,
             'frais_professionnels': _q(bulletin.frais_professionnels),
         })
         total_brut_imp += brut_imp
         total_net_imp += net_imp
         total_ir += ir
+        total_exonere += exonere
 
     return {
         'annee': periode.annee,
@@ -2953,6 +3050,7 @@ def etat_ir_9421(periode):
         'total_brut_imposable': _q(total_brut_imp),
         'total_net_imposable': _q(total_net_imp),
         'total_ir': _q(total_ir),
+        'total_exonere_regime': _q(total_exonere),
         'nombre_salaries': len(lignes),
     }
 

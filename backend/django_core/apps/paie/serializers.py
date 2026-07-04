@@ -153,7 +153,11 @@ class ProfilPaieSerializer(serializers.ModelSerializer):
             'jours_travail_mensuel', 'heures_travail_mensuel',
             'affilie_cnss', 'affilie_amo', 'affilie_cimr', 'taux_cimr_salarial',
             'numero_cnss', 'numero_amo', 'numero_cimr', 'rib', 'banque',
-            'mode_paiement', 'structure', 'actif', 'date_creation',
+            'mode_paiement', 'structure',
+            # XPAI18 — régime d'exonération IR (stagiaire/ANAPEC/TAHFIZ).
+            'regime_exoneration', 'regime_date_debut', 'regime_date_fin',
+            'regime_plafond_mensuel',
+            'actif', 'date_creation',
         ]
         read_only_fields = ['date_creation']
 
