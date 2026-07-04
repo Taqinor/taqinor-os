@@ -1315,6 +1315,90 @@ def declarer_rebut(*, company, produit, quantite, motif, reference, note,
     return mouvement
 
 
+def rebuter_produit(
+        *, company, produit, quantite, motif, user, emplacement=None,
+        reference_chantier=None):
+    """XSTK10 — met au rebut une quantité d'un produit (motif obligatoire :
+    casse/obsolète/périmé/vol/défaut/erreur/autre), décrémente l'emplacement
+    source (si fourni, N15) en plus du total canonique, respecte le garde
+    XSTK8 (stock négatif) et journalise la VALEUR perdue au coût moyen
+    (`average_cost_with_source`). Renvoie {mouvement, valeur_perdue}."""
+    from django.db import transaction
+    from .models import MouvementStock, Produit, StockEmplacement
+
+    if quantite is None or quantite <= 0:
+        raise ValueError('La quantité de rebut doit être positive.')
+    valeurs_motif = {c for c, _ in MouvementStock.MotifRebut.choices}
+    if motif not in valeurs_motif:
+        raise ValueError('Motif de rebut invalide.')
+
+    cout_moyen, _source = average_cost_with_source(produit)
+    valeur_perdue = (cout_moyen or Decimal('0')) * Decimal(quantite)
+
+    note = f'Rebut ({dict(MouvementStock.MotifRebut.choices).get(motif, motif)})'
+    if reference_chantier:
+        note += f' — chantier {reference_chantier}'
+
+    with transaction.atomic():
+        p = Produit.objects.select_for_update().get(id=produit.id)
+        avant = p.quantite_stock
+        apres = avant - quantite
+        check_negative_stock_guard(company, avant, apres)
+        mouvement = MouvementStock.objects.create(
+            company=company, produit=p,
+            type_mouvement=MouvementStock.TypeMouvement.REBUT,
+            quantite=quantite, quantite_avant=avant, quantite_apres=apres,
+            reference=reference_chantier or 'REBUT', note=note,
+            motif_rebut=motif, created_by=user)
+        p.quantite_stock = apres
+        p.save(update_fields=['quantite_stock'])
+        if emplacement is not None and not emplacement.is_principal:
+            se, _ = StockEmplacement.objects.select_for_update().get_or_create(
+                produit=p, emplacement=emplacement,
+                defaults={'company': company, 'quantite': 0})
+            se.quantite = max(se.quantite - quantite, 0)
+            se.save(update_fields=['quantite'])
+    return {'mouvement': mouvement, 'valeur_perdue': valeur_perdue}
+
+
+def rapport_pertes(company, *, date_debut=None, date_fin=None):
+    """XSTK10 — rapport « pertes de la période » : quantités ET valeur (coût
+    moyen au moment du calcul) par motif de rebut. Admin-only, JAMAIS
+    client-facing (prix_achat interne). Renvoie une liste de dicts
+    {produit_id, produit_nom, quantite_totale, valeur_totale,
+    par_motif: {motif: {quantite, valeur}}}, triée par valeur décroissante.
+    """
+    from .models import MouvementStock
+
+    qs = MouvementStock.objects.filter(
+        company=company, type_mouvement=MouvementStock.TypeMouvement.REBUT)
+    if date_debut is not None:
+        qs = qs.filter(date__gte=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(date__lte=date_fin)
+
+    par_produit = {}
+    for mvt in qs.select_related('produit'):
+        entry = par_produit.setdefault(mvt.produit_id, {
+            'produit_id': mvt.produit_id,
+            'produit_nom': mvt.produit.nom,
+            'quantite_totale': 0,
+            'valeur_totale': Decimal('0'),
+            'par_motif': {},
+        })
+        cout_moyen, _source = average_cost_with_source(mvt.produit)
+        valeur = (cout_moyen or Decimal('0')) * Decimal(mvt.quantite)
+        motif = mvt.motif_rebut or 'autre'
+        entry['quantite_totale'] += mvt.quantite
+        entry['valeur_totale'] += valeur
+        motif_entry = entry['par_motif'].setdefault(
+            motif, {'quantite': 0, 'valeur': Decimal('0')})
+        motif_entry['quantite'] += mvt.quantite
+        motif_entry['valeur'] += valeur
+    return sorted(
+        par_produit.values(), key=lambda e: -e['valeur_totale'])
+
+
 def rapport_rebuts(company, *, date_debut=None, date_fin=None):
     """XMFG11 — mini-rapport rebuts agrégé par produit sur une période
     (bornes optionnelles). Renvoie une liste de dicts {produit_id, produit_nom,

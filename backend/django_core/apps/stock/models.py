@@ -678,6 +678,11 @@ class MouvementStock(models.Model):
         CASSE = 'casse', 'Casse'
         DEFAUT = 'defaut', 'Défaut'
         ERREUR = 'erreur', 'Erreur'
+        # XSTK10 — motifs additionnels pour la mise au rebut manuelle
+        # (`produits/{id}/rebuter/`), en plus des motifs XMFG11 existants.
+        OBSOLETE = 'obsolete', 'Obsolète'
+        PERIME = 'perime', 'Périmé'
+        VOL = 'vol', 'Vol'
         AUTRE = 'autre', 'Autre'
 
     company = models.ForeignKey(
