@@ -14,6 +14,7 @@ from .models import (
     CritereAudit, Dechet, DeclarationCnss, Derogation, EtapeDeclarationAt,
     EvaluationRisque, GrilleAudit,
     InductionSecurite, IndicateurESG,
+    LienSignalementPublic,
     LigneBilanCarbone,
     Incident, InspectionSecurite,
     ItemNotation, LigneEvaluationRisque, NonConformite, NotationFinChantier,
@@ -23,6 +24,7 @@ from .models import (
     QhseChatterEntry,
     RecyclageModule, ReleveControle,
     ReleveCourbeIV, ReponseCritere, RetourClientQualite, Secouriste,
+    SignalementPublic,
 )
 
 
@@ -1157,3 +1159,37 @@ class ControleReceptionSerializer(serializers.ModelSerializer):
 
     def validate_plan(self, value):
         return _meme_societe(self, value, 'Plan de contrôle réception')
+
+
+class LienSignalementPublicSerializer(serializers.ModelSerializer):
+    """Lien public tokenisé (QR) par chantier (XQHS16). ``token`` en lecture
+    seule (posé côté serveur, jamais choisi par le client)."""
+
+    class Meta:
+        model = LienSignalementPublic
+        fields = [
+            'id', 'chantier_id', 'token', 'libelle', 'actif',
+            'responsable_hse', 'created_by', 'date_creation',
+        ]
+        read_only_fields = ['token', 'created_by', 'date_creation']
+
+    def validate_responsable_hse(self, value):
+        return _meme_societe(self, value, 'Responsable HSE')
+
+
+class SignalementPublicSerializer(serializers.ModelSerializer):
+    """Signalement reçu via un lien public tokenisé (XQHS16). Lecture interne
+    (liste/détail côté ERP) — la CRÉATION publique passe par la vue dédiée
+    ``public_signalement`` (jamais par ce viewset authentifié)."""
+    anonyme = serializers.BooleanField(read_only=True)
+    type_signalement_display = serializers.CharField(
+        source='get_type_signalement_display', read_only=True)
+
+    class Meta:
+        model = SignalementPublic
+        fields = [
+            'id', 'lien', 'type_signalement', 'type_signalement_display',
+            'description', 'photo_url', 'nom', 'telephone', 'source',
+            'anonyme', 'incident', 'date_creation',
+        ]
+        read_only_fields = ['source', 'date_creation']

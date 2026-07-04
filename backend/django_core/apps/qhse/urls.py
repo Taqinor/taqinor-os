@@ -15,7 +15,8 @@ from .views import (
     IndicateurESGViewSet,
     InductionSecuriteViewSet, InspectionSecuriteViewSet,
     Iso9001ReadinessViewSet,
-    ItemNotationViewSet, LigneEvaluationRisqueViewSet,
+    ItemNotationViewSet, LienSignalementPublicViewSet,
+    LigneEvaluationRisqueViewSet,
     NonConformiteViewSet, NotationFinChantierViewSet,
     ParetoDefautsViewSet, PermisTravailViewSet,
     PlanControleReceptionViewSet, PlanInspectionChantierViewSet,
@@ -23,10 +24,10 @@ from .views import (
     PlanUrgenceViewSet,
     LigneBilanCarboneViewSet,
     PointControleModeleViewSet, PointControleReceptionViewSet,
-    ProcedureQualiteViewSet,
+    ProcedureQualiteViewSet, public_signalement,
     QhseChatterEntryViewSet, RecyclageModuleViewSet,
     ReleveControleViewSet, ReleveCourbeIVViewSet, ReponseCritereViewSet,
-    RetourClientQualiteViewSet, SecouristeViewSet,
+    RetourClientQualiteViewSet, SecouristeViewSet, SignalementPublicViewSet,
 )
 
 router = DefaultRouter()
@@ -82,7 +83,15 @@ router.register(r'controles-reception', ControleReceptionViewSet)
 router.register(r'codes-defaut', CodeDefautViewSet)
 router.register(
     r'pareto-defauts', ParetoDefautsViewSet, basename='pareto-defauts')
+router.register(
+    r'liens-signalement', LienSignalementPublicViewSet)
+router.register(r'signalements-publics', SignalementPublicViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
+    # XQHS16 — endpoint PUBLIC tokenisé (sans login), en dehors du router
+    # authentifié. Le préfixe `public/` ne doit jamais être capté par une
+    # route authentifiée (même motif que ged.urls `public/<token>/`).
+    path('public/signalement/<str:token>/', public_signalement,
+         name='qhse-public-signalement'),
 ]

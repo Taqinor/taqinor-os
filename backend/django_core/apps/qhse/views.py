@@ -7,8 +7,12 @@ société côté serveur ; la non-conformité enregistre aussi son signaleur
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import filters, status, viewsets
-from rest_framework.decorators import action
+from rest_framework.decorators import (
+    action, api_view, permission_classes, throttle_classes,
+)
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework.throttling import SimpleRateThrottle
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsResponsableOrAdmin
@@ -25,7 +29,7 @@ from .models import (
     EvaluationRisque, GrilleAudit,
     Incident, IndicateurESG,
     InductionSecurite, InspectionSecurite,
-    ItemNotation, LigneBilanCarbone,
+    ItemNotation, LienSignalementPublic, LigneBilanCarbone,
     LigneEvaluationRisque, NonConformite, NotationFinChantier,
     PermisTravail, PlanControleReception, PlanInspectionChantier,
     PlanInspectionModele, PlanUrgence,
@@ -33,6 +37,7 @@ from .models import (
     QhseChatterEntry,
     RecyclageModule, ReleveControle,
     ReleveCourbeIV, ReponseCritere, RetourClientQualite, Secouriste,
+    SignalementPublic,
 )
 from .serializers import (
     ActionCorrectivePreventiveSerializer, AnalyseIncidentSerializer,
@@ -49,6 +54,7 @@ from .serializers import (
     IndicateurESGSerializer,
     InductionSecuriteSerializer, InspectionSecuriteSerializer,
     ItemNotationSerializer,
+    LienSignalementPublicSerializer,
     LigneBilanCarboneSerializer,
     LigneEvaluationRisqueSerializer,
     NonConformiteSerializer, NotationFinChantierSerializer,
@@ -60,7 +66,7 @@ from .serializers import (
     RecyclageModuleSerializer,
     ReleveControleSerializer, ReleveCourbeIVSerializer,
     ReponseCritereSerializer, RetourClientQualiteSerializer,
-    SecouristeSerializer,
+    SecouristeSerializer, SignalementPublicSerializer,
 )
 from . import chatter
 from .selectors import (
@@ -80,11 +86,13 @@ from .selectors import (
 from .services import (
     activer_procedure, calculer_score_audit, calculer_score_notation,
     cloturer_ncr, creer_ncr_depuis_reserve, generer_capa_depuis_analyse,
-    instancier_plan_chantier,
+    creer_signalement_public, generer_qr_signalement, instancier_plan_chantier,
     lever_ncr_audit, lever_ncr_inspection, nouvelle_version_procedure,
     poser_disposition,
     relancer_capa_en_retard, relancer_conformites,
+    resolve_lien_signalement_public,
     statuer_controle_reception,
+    SIGNALEMENT_OK,
     verifier_efficacite_capa,
 )
 
@@ -2139,3 +2147,117 @@ class ParetoDefautsViewSet(viewsets.ViewSet):
             'premier_passage': taux_conformite_premier_passage(
                 request.user.company, chantier_id=chantier),
         })
+
+
+# ── XQHS16 — Signalement QR public sans compte (danger/incident chantier) ──
+
+class LienSignalementPublicViewSet(_QhseBaseViewSet):
+    """CRUD (Responsable/Admin) des liens publics tokenisés par chantier.
+
+    ``token`` est posé côté serveur (défaut du modèle) — jamais accepté en
+    écriture. L'action ``qr`` sert le PNG du QR à imprimer.
+    """
+    queryset = LienSignalementPublic.objects.all()
+    serializer_class = LienSignalementPublicSerializer
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company,
+            created_by=self.request.user)
+
+    @action(detail=True, methods=['get'])
+    def qr(self, request, pk=None):
+        lien = self.get_object()
+        base_url = request.build_absolute_uri('/').rstrip('/')
+        png = generer_qr_signalement(lien, base_url=base_url)
+        if png is None:
+            return Response(
+                {'detail': 'Génération QR indisponible (dépendance manquante).'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        from django.http import HttpResponse
+        resp = HttpResponse(png, content_type='image/png')
+        resp['Content-Disposition'] = (
+            f'attachment; filename="signalement-qr-{lien.token[:8]}.png"')
+        return resp
+
+
+class SignalementPublicViewSet(viewsets.ReadOnlyModelViewSet):
+    """Lecture interne (Responsable/Admin) des signalements reçus (XQHS16).
+
+    Scopé société. La création publique passe EXCLUSIVEMENT par la vue
+    tokenisée ``public_signalement`` (jamais par ce viewset authentifié).
+    """
+    queryset = SignalementPublic.objects.all()
+    serializer_class = SignalementPublicSerializer
+    permission_classes = [IsResponsableOrAdmin]
+
+    def get_queryset(self):
+        return super().get_queryset().filter(
+            company=self.request.user.company)
+
+
+class PublicSignalementRateThrottle(SimpleRateThrottle):
+    """Limite le débit du signalement public par IP + jeton (cache-based).
+
+    Même motif que ``ventes.public_views.PublicLinkRateThrottle`` / GED20 :
+    décourage l'abus/spam sans jamais bloquer un signalement légitime."""
+    scope = 'public_qhse_signalement'
+    rate = '20/minute'
+
+    def get_rate(self):
+        return self.rate
+
+    def get_cache_key(self, request, view):
+        token = (getattr(view, 'kwargs', None) or {}).get('token', '')
+        ident = self.get_ident(request)
+        return self.cache_format % {
+            'scope': self.scope,
+            'ident': f'{ident}:{token}',
+        }
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicSignalementRateThrottle])
+def public_signalement(request, token):
+    """XQHS16 — Signalement PUBLIC (sans login) via QR chantier.
+
+    `GET /api/django/qhse/public/signalement/<token>/` : vérifie la validité
+    du lien (pour l'UI publique, sans exposer de données internes).
+    `POST` avec `{"type_signalement": "danger"|"incident", "description": str,
+    "photo_url"?: str, "nom"?: str, "telephone"?: str}` — nom/téléphone
+    facultatifs (anonyme si absents).
+
+    Codes : 404 (jeton inconnu ou lien révoqué — indistinct, pas de fuite) ;
+    400 (description manquante) ; 200/201 sinon. La société est TOUJOURS
+    résolue depuis le jeton, jamais depuis le corps de requête."""
+    statut, lien = resolve_lien_signalement_public(token)
+    if statut != SIGNALEMENT_OK:
+        return Response(
+            {'detail': 'Ce lien de signalement est introuvable ou a été révoqué.'},
+            status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        return Response({'valide': True, 'libelle': lien.libelle})
+
+    description = (request.data.get('description') or '').strip()
+    if not description:
+        return Response(
+            {'description': 'La description est requise.'},
+            status=status.HTTP_400_BAD_REQUEST)
+    type_signalement = request.data.get('type_signalement') or \
+        SignalementPublic.Type.DANGER
+    if type_signalement not in SignalementPublic.Type.values:
+        type_signalement = SignalementPublic.Type.DANGER
+
+    signalement = creer_signalement_public(
+        lien,
+        type_signalement=type_signalement,
+        description=description,
+        photo_url=(request.data.get('photo_url') or '').strip(),
+        nom=request.data.get('nom') or '',
+        telephone=request.data.get('telephone') or '',
+    )
+    return Response(
+        {'detail': 'Signalement envoyé avec succès.', 'id': signalement.pk},
+        status=status.HTTP_201_CREATED)

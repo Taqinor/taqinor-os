@@ -4804,3 +4804,151 @@ class AccuseLecture(models.Model):
     def __str__(self):
         statut = 'lu' if self.lu_le else 'en attente'
         return f'{self.user_id} — {statut}'
+
+
+# ── XQHS16 — Signalement QR public sans compte (danger/incident chantier) ──
+
+def _default_qr_token():
+    import secrets
+    return secrets.token_urlsafe(24)
+
+
+class LienSignalementPublic(models.Model):
+    """Lien public tokenisé (QR) par chantier pour un signalement anonyme
+    (danger/incident) SANS compte ERP (XQHS16).
+
+    Pattern des liens publics tokenisés déjà en place (``ventes.ShareLink``,
+    ``ged`` partage/dépôt) : le jeton (long, imprévisible) est l'UNIQUE secret
+    d'accès — la société et le chantier sont résolus DEPUIS le jeton, JAMAIS
+    depuis le corps de requête. Révocable (``actif=False``) ; pas d'expiration
+    fixe (un QR imprimé reste valable tant que le chantier est actif) sauf si
+    l'utilisateur le révoque manuellement.
+
+    ``responsable_hse`` optionnel : notifié (best-effort) à chaque
+    signalement reçu via ce lien.
+
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_liens_signalement',
+        verbose_name='Société',
+    )
+    # Référence LÂCHE au chantier (installations.Chantier) par id : jamais un
+    # import cross-app de modèle.
+    chantier_id = models.PositiveIntegerField(
+        verbose_name='ID du chantier')
+    token = models.CharField(
+        max_length=64, unique=True, default=_default_qr_token,
+        editable=False, verbose_name='Jeton')
+    libelle = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Libellé (ex. nom du chantier)')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    responsable_hse = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_liens_signalement_responsable',
+        verbose_name='Responsable HSE à notifier',
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_liens_signalement_crees',
+        verbose_name='Créé par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Lien de signalement public (QR)'
+        verbose_name_plural = 'Liens de signalement public (QR)'
+        ordering = ['-id']
+        indexes = [
+            models.Index(fields=['token'], name='qhse_liensig_token'),
+            models.Index(
+                fields=['company', 'chantier_id'],
+                name='qhse_liensig_co_chant',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Lien signalement — {self.libelle or self.chantier_id}'
+
+
+class SignalementPublic(models.Model):
+    """Signalement reçu via un ``LienSignalementPublic`` (XQHS16).
+
+    Créé par un tiers SANS compte ERP (sous-traitant, riverain). L'auteur est
+    facultatif (``nom``/``telephone`` vides = anonyme). ``source`` reste
+    toujours ``qr_public`` pour distinguer ces entrées des signalements
+    internes classiques (registre ``Incident``).
+
+    Multi-société via ``company`` posée côté serveur (résolue depuis le lien,
+    jamais depuis le corps de requête). Entièrement additif.
+    """
+    class Type(models.TextChoices):
+        DANGER = 'danger', 'Danger'
+        INCIDENT = 'incident', 'Incident'
+
+    class Source(models.TextChoices):
+        QR_PUBLIC = 'qr_public', 'QR public'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_signalements_publics',
+        verbose_name='Société',
+    )
+    lien = models.ForeignKey(
+        LienSignalementPublic,
+        on_delete=models.CASCADE,
+        related_name='signalements',
+        verbose_name='Lien',
+    )
+    type_signalement = models.CharField(
+        max_length=10, choices=Type.choices,
+        default=Type.DANGER, verbose_name='Type')
+    description = models.TextField(verbose_name='Description')
+    photo_url = models.CharField(
+        max_length=500, blank=True, default='', verbose_name='Photo (URL)')
+    nom = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Nom (facultatif)')
+    telephone = models.CharField(
+        max_length=40, blank=True, default='',
+        verbose_name='Téléphone (facultatif)')
+    source = models.CharField(
+        max_length=15, choices=Source.choices,
+        default=Source.QR_PUBLIC, verbose_name='Source')
+    # Référence lâche : l'incident QHSE créé à partir de ce signalement, une
+    # fois traité côté HSE (intra-app, FK directe possible).
+    incident = models.ForeignKey(
+        'Incident',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='signalements_publics',
+        verbose_name='Incident lié',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Signalement public (QR)'
+        verbose_name_plural = 'Signalements publics (QR)'
+        ordering = ['-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'type_signalement'],
+                name='qhse_sigpub_co_type',
+            ),
+        ]
+
+    @property
+    def anonyme(self):
+        return not self.nom and not self.telephone
+
+    def __str__(self):
+        return f'Signalement {self.get_type_signalement_display()} ({self.lien_id})'

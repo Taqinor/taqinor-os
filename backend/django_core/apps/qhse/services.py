@@ -17,11 +17,11 @@ from .models import (
     CheckinSecurite, ControleReception,
     DeclarationCnss, DemandeActionFournisseur, Derogation, DiffusionProcedure,
     ElementRappel,
-    EtapeDeclarationAt, NonConformite,
+    EtapeDeclarationAt, LienSignalementPublic, NonConformite,
     NotationFinChantier, PlanControleReception, PlanInspectionChantier,
     PointControleModele,
     ProcedureQualite, ReleveThermographie, ReponseCritere, ReleveControle,
-    ReunionQhse, RisqueOpportunite, RisqueOpportuniteCapa,
+    ReunionQhse, RisqueOpportunite, RisqueOpportuniteCapa, SignalementPublic,
 )
 
 
@@ -1781,3 +1781,91 @@ def rediffuser_nouvelle_version(procedure_precedente, procedure_nouvelle):
     if not users:
         return None
     return diffuser_procedure(procedure_nouvelle, users)
+
+
+# ── XQHS16 — Signalement QR public sans compte (danger/incident chantier) ──
+
+SIGNALEMENT_INTROUVABLE = 'introuvable'
+SIGNALEMENT_OK = 'ok'
+
+
+def resolve_lien_signalement_public(token):
+    """Résout un ``LienSignalementPublic`` depuis son jeton (XQHS16).
+
+    JAMAIS de société/chantier lus de la requête publique : tout vient du
+    jeton. Un jeton inconnu OU un lien révoqué (``actif=False``) renvoient le
+    même statut (pas de fuite entre « inconnu » et « révoqué »).
+
+    Renvoie ``(statut, lien|None)``.
+    """
+    lien = (LienSignalementPublic.objects
+            .filter(token=token, actif=True)
+            .select_related('company')
+            .first())
+    if lien is None:
+        return SIGNALEMENT_INTROUVABLE, None
+    return SIGNALEMENT_OK, lien
+
+
+def _notifier_signalement_public(signalement):
+    """Notifie le responsable HSE du lien (best-effort, jamais bloquant)."""
+    try:
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+
+        lien = signalement.lien
+        if lien.responsable_hse_id is None:
+            return
+        notify(lien.responsable_hse, EventType.MAINTENANCE_DUE,
+               'Nouveau signalement QR chantier',
+               body=f'{signalement.get_type_signalement_display()} signalé '
+                    f'via QR public sur le chantier #{lien.chantier_id}.',
+               link='/qhse/incidents', company=signalement.company)
+    except Exception:  # pragma: no cover - défensif
+        pass
+
+
+@transaction.atomic
+def creer_signalement_public(
+        lien, *, type_signalement, description,
+        photo_url='', nom='', telephone=''):
+    """Crée un ``SignalementPublic`` à partir d'un lien tokenisé résolu
+    (XQHS16). La société vient TOUJOURS du lien (jamais de la requête). Notifie
+    (best-effort) le responsable HSE du lien s'il en porte un."""
+    signalement = SignalementPublic.objects.create(
+        company=lien.company,
+        lien=lien,
+        type_signalement=type_signalement,
+        description=description,
+        photo_url=photo_url or '',
+        nom=(nom or '').strip(),
+        telephone=(telephone or '').strip(),
+    )
+    _notifier_signalement_public(signalement)
+    return signalement
+
+
+def generer_qr_signalement(lien, base_url=''):
+    """Génère le QR (PNG bytes) du lien de signalement public (XQHS16).
+
+    Réutilise la lib déjà pinnée pour le QR de la cérémonie de signature devis
+    (``qrcode``, cf. ``apps.ventes.quote_engine``) — aucune nouvelle
+    dépendance. Dégrade proprement (``None``) si la lib est absente : ce n'est
+    PAS un chemin bloquant, seulement l'aperçu imprimable."""
+    try:
+        import qrcode
+    except ImportError:  # pragma: no cover - défensif
+        return None
+    import io
+
+    target = f'{base_url.rstrip("/")}/qhse/signalement/{lien.token}/' \
+        if base_url else lien.token
+    qr = qrcode.QRCode(
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=10, border=2)
+    qr.add_data(target)
+    qr.make(fit=True)
+    img = qr.make_image()
+    buf = io.BytesIO()
+    img.save(buf, 'PNG')
+    return buf.getvalue()
