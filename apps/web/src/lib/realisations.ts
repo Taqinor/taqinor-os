@@ -11,6 +11,18 @@
  *
  * Total installé : 17,04 + 11,36 + 5,68 + 5,68 + 3,72 = 43,48 kWc (= le chiffre
  * « 43,48 kWc installés » de l'accueil).
+ *
+ * WB1 (2026-07-04) — INTÉGRITÉ DES 4 CHIFFRES DE PRODUCTION NON NULS : les
+ * quatre `productionNum` ci-dessous (21406, 14271, 7135, 7135) partagent
+ * exactement le même facteur kWh/kWc (≈1256,2), ce qui n'est pas plausible pour
+ * de vrais relevés Deye Cloud sur des sites différents (orientation/ombrage/
+ * ville distincts). ATTENDU DU FONDATEUR : les relevés Deye Cloud RÉELS et
+ * distincts par chantier — tant qu'ils ne sont pas fournis, chaque
+ * `production`/`productionNum` ci-dessous est étiqueté « estimée à partir du
+ * rendement mesuré » (jamais "mesurée"/"suivie sur Deye Cloud" tel quel) sur
+ * cette page ET sur toutes les pages consommatrices (voir @files de WB1 dans
+ * docs/WEB_PLAN.md). Ne PAS regénérer un autre facteur unique par erreur lors
+ * d'une future édition — la bonne correction est le vrai relevé par site.
  */
 
 export interface RealisationPhoto {
@@ -48,6 +60,15 @@ export interface Realisation {
   /** Production mesurée (Deye Cloud) — `null` si non publiée sur le site. */
   production: string | null;
   productionNum: number | null;
+  /**
+   * WB1 (2026-07-04) — `true` quand `production`/`productionNum` sont DÉRIVÉS
+   * d'un rendement kWh/kWc mesuré (et non d'un relevé Deye Cloud distinct pour
+   * CE chantier). Toute page consommatrice doit alors dire « estimée à partir
+   * du rendement mesuré », jamais « mesurée »/« suivie sur Deye Cloud ». `false`
+   * ou absent = relevé publié tel quel. Ne jamais définir sur `true` sans
+   * ajouter la nuance correspondante partout où ce chantier est cité.
+   */
+  productionEstimated?: boolean;
   /** Nombre + modèle de panneaux, tel que publié. */
   panneaux: string;
   /** Onduleur tel que publié — `null` si non détaillé sur le site. */
@@ -73,6 +94,7 @@ export const REALISATIONS: Realisation[] = [
     date: 'avril 2026',
     production: '21 406 kWh/an',
     productionNum: 21406,
+    productionEstimated: true,
     panneaux: '24 × Canadian Solar 710 Wc',
     onduleur: 'Deye 15 kW (triphasé)',
     batterie: '15 kWh Dyness',
@@ -97,12 +119,13 @@ export const REALISATIONS: Realisation[] = [
     date: 'avril 2026',
     production: '14 271 kWh/an',
     productionNum: 14271,
+    productionEstimated: true,
     panneaux: '16 × Canadian Solar 710 Wc',
     onduleur: 'Deye 10 kW',
     batterie: '10 kWh Dyness (2 × DL5.0C)',
     segment: 'residentiel',
     resume:
-      'Une villa de Casablanca face à la skyline : 16 panneaux, onduleur hybride Deye et deux batteries Dyness, avec borne de recharge — production suivie sur Deye Cloud.',
+      'Une villa de Casablanca face à la skyline : 16 panneaux, onduleur hybride Deye et deux batteries Dyness, avec borne de recharge — production estimée à partir du rendement mesuré de nos chantiers.',
     photos: [
       { name: 'hero-skyline', alt: 'Rangée de panneaux solaires devant la skyline de Casablanca et un minaret, lumière dorée', ratio: 16 / 9, widths: [2000, 1280, 768, 480], phase: 'after' as const },
       { name: 'portrait-400', alt: "L'ingénieur devant le champ de panneaux, skyline de Casablanca", ratio: 4 / 3, widths: [1600, 1024, 640], phase: 'after' as const },
@@ -121,6 +144,7 @@ export const REALISATIONS: Realisation[] = [
     date: 'mars 2026',
     production: '7 135 kWh/an',
     productionNum: 7135,
+    productionEstimated: true,
     panneaux: '8 × Canadian Solar 710 Wc',
     onduleur: 'Deye 5 kW',
     batterie: '5 kWh Dyness',
@@ -143,6 +167,7 @@ export const REALISATIONS: Realisation[] = [
     date: 'mars 2026',
     production: '7 135 kWh/an',
     productionNum: 7135,
+    productionEstimated: true,
     panneaux: '8 × Canadian Solar 710 Wc',
     onduleur: null,
     batterie: null,
@@ -258,20 +283,25 @@ export function nearestRealisationByCityText(addressText: string): Realisation |
  *     jours inventé.
  *   - production : uniquement quand `r.production` est renseignée (non
  *     `null`) ; sinon ce segment est omis intégralement plutôt que réduit à
- *     un tiret ou un zéro.
+ *     un tiret ou un zéro. WB1 (2026-07-04) : quand `r.productionEstimated`
+ *     est vrai, le segment lit « estimés » au lieu de « mesurés » (voir la
+ *     note d'intégrité en tête de fichier).
  * Locale-aware (FR par défaut) : seuls les connecteurs sont traduits, aucun
  * chiffre n'est reformulé (mêmes chiffres latins dans les trois locales).
  */
-const CAPTION_STR: Record<'fr' | 'en' | 'ar', { installed: string; measured: string }> = {
-  fr: { installed: 'installé en', measured: 'kWh mesurés' },
-  en: { installed: 'installed in', measured: 'kWh measured' },
-  ar: { installed: 'رُكِّبت في', measured: 'kWh مقيسة' },
+const CAPTION_STR: Record<'fr' | 'en' | 'ar', { installed: string; measured: string; estimated: string }> = {
+  fr: { installed: 'installé en', measured: 'kWh mesurés', estimated: 'kWh estimés' },
+  en: { installed: 'installed in', measured: 'kWh measured', estimated: 'kWh estimated' },
+  ar: { installed: 'رُكِّبت في', measured: 'kWh مقيسة', estimated: 'kWh مقدَّرة' },
 };
 
 export const standardCaption = (r: Realisation, locale: 'fr' | 'en' | 'ar' = 'fr'): string => {
   const s = CAPTION_STR[locale] ?? CAPTION_STR.fr;
   const parts = [r.ville, r.kwc, `${s.installed} ${r.date}`];
-  if (r.production) parts.push(`${r.production.replace(/\/an$/, '')} ${s.measured}`);
+  if (r.production) {
+    const unitLabel = r.productionEstimated ? s.estimated : s.measured;
+    parts.push(`${r.production.replace(/\/an$/, '')} ${unitLabel}`);
+  }
   return parts.join(' — ');
 };
 

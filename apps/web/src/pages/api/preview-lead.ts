@@ -22,6 +22,7 @@ import {
   crossSiteRejection,
   fireCapi,
   forwardLead,
+  isHoneypotTripped,
   isSameOriginRequest,
   redactLeadForLog,
   runSimulation,
@@ -60,6 +61,10 @@ export const POST: APIRoute = async ({ request }) => {
   } catch {
     return json({ ok: false, errors: { body: 'JSON invalide' } }, 400);
   }
+
+  // WB32 — même garde-fou anti-spam que /api/capture-lead (miroir strict) :
+  // rejeté en silence côté serveur avec une réponse de succès factice.
+  if (isHoneypotTripped(body)) return json({ ok: true, qualified: false });
 
   const validation = validateLead(body);
   if (!validation.ok) return json({ ok: false, errors: validation.errors }, 400);

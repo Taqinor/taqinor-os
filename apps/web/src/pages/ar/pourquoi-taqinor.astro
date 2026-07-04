@@ -1,7 +1,7 @@
 ---
 /**
  * AR — Why Taqinor (W67, RTL). Faithful Arabic translation of /pourquoi-taqinor ;
- * no new figure or claim (43.48 kWc, 25 years, 0 MAD, 11 kW, 10–25 years,
+ * no new figure or claim (43.48 kWc, 30 years, 0 MAD, 11 kW, 10–30 years,
  * 9 June 2026 exact, Latin digits). Internal links via localizeNavHref. FR
  * untouched.
  */
@@ -11,12 +11,20 @@ import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
+import RelatedLinks from '../../components/RelatedLinks.astro';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
+import { REALISATIONS } from '../../lib/realisations';
+import { PANEL_PERFORMANCE_WARRANTY_YEARS } from '../../lib/warranty';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 const devisHref = L('/devis/mon-toit');
+
+// القاعدة ب4 (2026-07-04) — مُشتقّة بدل أرقام مكتوبة يدوياً، كما في FR.
+const totalKwc = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
+const totalKwcLabel = totalKwc.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const panelWarrantyLabel = `${PANEL_PERFORMANCE_WARRANTY_YEARS} سنة`;
 
 const piliers = [
   {
@@ -30,7 +38,7 @@ const piliers = [
   {
     k: '02',
     title: 'أرقام مقروءة من العدّاد، لا من مطوية',
-    body: 'كل تركيبة موصولة بـ Deye Cloud: إنتاج في الزمن الحقيقي، تنبيهات تلقائية، ولوج للزبون مُضمَّن. حين نذكر رقم إنتاج، فهو من عدّاد حقيقي — لا من إسقاط مطوية.',
+    body: 'كل تركيبة موصولة بـ Deye Cloud: إنتاج في الزمن الحقيقي، تنبيهات تلقائية، ولوج للزبون مُضمَّن. حين نذكر رقم إنتاج، فهو مُتابَع على أوراشنا — لا إسقاط مطوية أبداً؛ وما دامت قراءة مستقلة لكل موقع غير منشورة، نسمّيه «مُقدَّر».',
     contrast: 'كثير من المركّبين يُقدّرون التوفير الموعود انطلاقاً من محاكاة نظرية لا تُقارَن أبداً بعدّاد حقيقي — أرقامنا تُقارَن به باستمرار.',
     href: '/realisations',
     link: 'انظر إنجازاتنا',
@@ -46,7 +54,7 @@ const piliers = [
   {
     k: '04',
     title: 'لائحة قصيرة من علامات الصف الأول',
-    body: 'Canadian Solar، JA Solar، Deye، Huawei، Dyness — مصدرها موزّعون رسميون بالمغرب، ضمانات قابلة للتفعيل محلياً. خمسة أسماء، لا معدات مجهولة: يغطّي الضمان من 10 إلى 25 سنة حسب المكوّن.',
+    body: 'Canadian Solar، JA Solar، Deye، Huawei، Dyness — مصدرها موزّعون رسميون بالمغرب، ضمانات قابلة للتفعيل محلياً. خمسة أسماء، لا معدات مجهولة: يغطّي الضمان من 10 إلى 30 سنة حسب المكوّن.',
     contrast: 'لوح مستورَد دون فيشة صانع أو موزّع رسمي لا يمكنه إثبات ضمانه يوم الحاجة إليه — ألواحنا تستطيع ذلك، علامةً بعلامة.',
     href: '/équipement',
     link: 'انظر المعدات',
@@ -56,7 +64,7 @@ const piliers = [
 
 <Layout
   title="لماذا تاكينور — ما يميّزنا، نقطة بنقطة | Taqinor"
-  description="أربعة فروق ملموسة: تحديد المقاس مستنتَج من فاتورتك، إنتاج مقروء على Deye Cloud، ملف القانون 82-21 مُعدّ ومُودَع، ولائحة قصيرة من علامات الصف الأول مضمونة من 10 إلى 25 سنة. تركيبات حقيقية، يمكن زيارتها عند الطلب."
+  description="أربعة فروق ملموسة: تحديد المقاس مستنتَج من فاتورتك، إنتاج مقروء على Deye Cloud، ملف القانون 82-21 مُعدّ ومُودَع، ولائحة قصيرة من علامات الصف الأول مضمونة من 10 إلى 30 سنة. تركيبات حقيقية، يمكن زيارتها عند الطلب."
   ogSlug="accueil"
 >
   <div class="v2">
@@ -129,11 +137,11 @@ const piliers = [
         </div>
         <dl class="grid grid-cols-2 gap-x-6 gap-y-10 border-s-2 border-brass-400/60 ps-6 sm:ps-10" data-stagger>
           <div class="v2-rise" style="--v2-i:0">
-            <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl" dir="ltr" data-tally>43,48 kWc</dd>
+            <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl" dir="ltr" data-tally>{totalKwcLabel} kWc</dd>
             <dt class="tech-label mt-2 text-lune-faint">مركَّبة — الدار البيضاء، الجديدة، النواصر</dt>
           </div>
           <div class="v2-rise" style="--v2-i:1">
-            <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl" dir="ltr" data-tally>25 سنة</dd>
+            <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl" dir="ltr" data-tally>{panelWarrantyLabel}</dd>
             <dt class="tech-label mt-2 text-lune-faint">ضمان الأداء</dt>
           </div>
           <div class="v2-rise" style="--v2-i:2">
@@ -142,9 +150,21 @@ const piliers = [
           </div>
           <div class="v2-rise" style="--v2-i:3">
             <dd class="font-display text-xl font-bold text-white">Deye Cloud</dd>
-            <dt class="tech-label mt-2 text-lune-faint">إنتاج مقيس، ولوج للزبون مُضمَّن</dt>
+            <dt class="tech-label mt-2 text-lune-faint">إنتاج مُتابَع، ولوج للزبون مُضمَّن</dt>
           </div>
         </dl>
+      </div>
+    </section>
+
+    {/* القاعدة ب17 (2026-07-04) — روابط سياقية نحو صفحتَي الإثبات الرقمي
+        المستمر، ضعيفتَي الاكتشاف (غائبتان عن الترويسة/التذييل). */}
+    <section class="section-tight px-4 text-white">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">للتحقّق من هذه الأرقام</p>
+        <RelatedLinks links={[
+          { href: L('/production-mesuree'), label: 'إنتاجنا المتابَع باستمرار' },
+          { href: L('/impact-taqinor'), label: 'أثر Taqinor (kWc وkWh وCO2 المتجنَّب)' },
+        ]} />
       </div>
     </section>
 

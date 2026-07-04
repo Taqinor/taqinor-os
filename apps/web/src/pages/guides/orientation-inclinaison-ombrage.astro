@@ -12,9 +12,11 @@ import StickyCta from '../../components/StickyCta.astro';
 import { NAP } from '../../lib/nap';
 import RelatedLinks from '../../components/RelatedLinks.astro';
 import { estimateReadingTime } from '../../lib/readingTime';
+import { getGuideVerifiedDate } from '../../lib/guideMeta';
 
-// W303 — date de vérification + auteur + temps de lecture.
-const verifiedDate = new Date('2026-07-03');
+// W303 — date de vérification + auteur + temps de lecture. WB12 — la date
+// vient du module partagé guideMeta.ts (source unique par slug).
+const verifiedDate = getGuideVerifiedDate('orientation-inclinaison-ombrage');
 const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 const guideBodyText = `
   Avant même de parler de marques ou de puissance, trois paramètres physiques décident d'une bonne part
@@ -22,8 +24,9 @@ const guideBodyText = `
   regardent, l'angle auquel ils sont posés, et l'ombre qui passe sur eux au fil de la journée. Au Maroc,
   le soleil décrit son arc au sud. Les panneaux orientés plein sud récoltent le maximum de rayonnement.
   Une orientation est ou ouest n'est pas un obstacle rédhibitoire : on estime la perte à environ 10 à
-  15 % par rapport au plein sud. L'angle idéal d'inclinaison d'un panneau correspond grossièrement à la
-  latitude du site, entre 27° et 31° selon la ville. L'ombrage est le facteur le plus sous-estimé, et
+  15 % par rapport au plein sud. L'angle idéal d'inclinaison d'un panneau tourne autour de 30° pour la
+  production annuelle, un optimum étonnamment stable d'une ville marocaine à l'autre. L'ombrage est le
+  facteur le plus sous-estimé, et
   souvent le plus coûteux : une installation standard câble ses panneaux en série, si un seul panneau
   est à l'ombre, toute la chaîne est pénalisée. Les optimiseurs de puissance et les micro-onduleurs
   permettent de limiter cet impact quand l'ombre est inévitable. Une étude de site sérieuse part
@@ -38,7 +41,7 @@ const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Article',
   headline: 'Orientation, inclinaison et ombrage : maximiser la production sur un toit marocain',
-  description: 'Plein sud, inclinaison proche de la latitude, et zéro ombre : les trois règles qui font vraiment la différence sur un toit marocain, expliquées sans jargon.',
+  description: 'Plein sud, inclinaison optimale autour de 30°, et zéro ombre : les trois règles qui font vraiment la différence sur un toit marocain, expliquées sans jargon.',
   image: schemaImageUrl,
   about: { '@type': 'Thing', name: 'Installation solaire photovoltaïque' },
   author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
@@ -49,7 +52,7 @@ const jsonLd = {
 
 <Layout
   title="Orientation, inclinaison et ombrage : maximiser la production sur un toit marocain | Taqinor"
-  description="Plein sud optimal, est/ouest acceptable (−10 à 15 %), inclinaison ≈ latitude (27–31° selon la ville) : les trois règles qui font vraiment la différence — et pourquoi une seule cheminée peut pénaliser toute votre installation."
+  description="Plein sud optimal, est/ouest acceptable (−10 à 15 %), inclinaison optimale autour de 30° : les trois règles qui font vraiment la différence — et pourquoi une seule cheminée peut pénaliser toute votre installation."
   ogSlug="guides"
 >
   <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
@@ -98,16 +101,12 @@ const jsonLd = {
       <h2 class="display v2-section-title mt-12 text-white">L'inclinaison : ni à plat, ni trop penché</h2>
       <p class="v2-lead mt-5 text-lune-soft">
         L'angle idéal d'inclinaison d'un panneau correspond grossièrement à la latitude du site,
-        puis on le rabaisse un peu pour favoriser la production annuelle. La majeure partie du
-        Maroc habité se situe entre ~28° et 36° de latitude nord (Agadir est à ~30,4°N), ce qui
-        donne les repères suivants pour les principales villes :
+        puis on le rabaisse un peu pour favoriser la production annuelle. Nos propres données
+        d'irradiation (PVGIS, optimisées sur la production annuelle) donnent un optimum
+        remarquablement stable d'une ville à l'autre, malgré des latitudes qui vont de ~28° à 36°
+        nord : Agadir, Marrakech, Casablanca, Rabat et Tanger pointent toutes vers
+        <strong class="text-white"> environ 30°</strong>.
       </p>
-      <ul class="v2-lead mt-5 list-inside list-disc space-y-2 text-lune-soft">
-        <li><strong class="text-white">Agadir</strong> — environ <strong class="text-white">27°</strong></li>
-        <li><strong class="text-white">Marrakech</strong> — environ <strong class="text-white">28°</strong></li>
-        <li><strong class="text-white">Casablanca &amp; Rabat</strong> — environ <strong class="text-white">29°</strong></li>
-        <li><strong class="text-white">Tanger</strong> — environ <strong class="text-white">31°</strong></li>
-      </ul>
       <p class="v2-lead mt-5 text-lune-soft">
         Ces valeurs sont issues de données d'irradiation satellitaires (PVGIS / Global Solar Atlas)
         et optimisées pour la production annuelle totale, pas pour un seul mois. En pratique, la
@@ -174,8 +173,8 @@ const jsonLd = {
       <p class="v2-lead mt-5 text-lune-soft">
         Pour l'orientation, visez le plein sud quand c'est possible ; une face est ou ouest coûte
         environ 10 à 15 % de production et reste rentable, une face nord est à écarter. Pour
-        l'inclinaison, un angle de 27 à 31° selon votre ville convient, et la plupart des toits
-        marocains tombent déjà dans une plage acceptable, donc inutile de s'y attarder. Le vrai
+        l'inclinaison, un angle autour de 30° convient quelle que soit votre ville, et la plupart des
+        toits marocains tombent déjà dans une plage acceptable, donc inutile de s'y attarder. Le vrai
         sujet, celui qui mérite qu'on monte sur le toit à plusieurs heures de la journée, c'est
         l'ombre : une cheminée, un mur ou un arbre mal placé pénalise toute une chaîne de panneaux,
         bien davantage qu'une orientation un peu de travers. Une étude de site sérieuse part

@@ -13,10 +13,12 @@ import StickyCta from '../../components/StickyCta.astro';
 import { NAP } from '../../lib/nap';
 import RelatedLinks from '../../components/RelatedLinks.astro';
 import { estimateReadingTime } from '../../lib/readingTime';
+import { getGuideVerifiedDate } from '../../lib/guideMeta';
 
 // W303 — date de vérification + auteur + temps de lecture (le blog a déjà ce mécanisme ;
 // les guides n'étant pas une content collection, la date/le texte sont posés ici en dur).
-const verifiedDate = new Date('2026-07-03');
+// WB12 — la date vient du module partagé guideMeta.ts (source unique par slug).
+const verifiedDate = getGuideVerifiedDate('combien-de-panneaux-pour-ma-maison');
 const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 const guideBodyText = `
   La question revient à chaque premier contact : combien de panneaux il me faut. La réponse ne se lit
@@ -35,7 +37,7 @@ const guideBodyText = `
   kWh divisés par environ 1 600 kWh/kWc donnent à peu près 4 kWc. Étape 3 — du kWc au nombre de
   panneaux. Les modules que nous posons aujourd'hui sont des panneaux haute puissance d'environ 700 Wc.
   À cette puissance, un kWc correspond à environ 1,4 à 1,5 panneau. Sur le toit, chaque panneau occupe
-  environ 2,2 à 2,3 m², ce qui revient toujours au même repère de surface, autour de 5 à 6 m² de
+  environ 3,1 m², ce qui revient toujours au même repère de surface, autour de 4,3 à 4,4 m² de
   toiture par kWc installé. Là où votre facture ne suffit plus : ce chemin donne un ordre de grandeur
   fiable, mais il s'arrête à la porte de votre toit. L'orientation, l'ombrage et le taux
   d'autoconsommation visé déplacent la taille optimale.
@@ -82,7 +84,7 @@ const howToLd = {
       '@type': 'HowToStep',
       position: 3,
       name: 'Du kWc au nombre de panneaux',
-      text: 'Divisez la puissance en kWc par la puissance d’un panneau (environ 700 Wc pour les modules haute puissance actuels) pour obtenir le nombre de panneaux, à raison d’environ 5 à 6 m² de toiture par kWc.',
+      text: 'Divisez la puissance en kWc par la puissance d’un panneau (environ 700 Wc pour les modules haute puissance actuels) pour obtenir le nombre de panneaux, à raison d’environ 4,3 à 4,4 m² de toiture par kWc.',
       url: `${url}#etape-3`,
     },
   ],
@@ -165,11 +167,12 @@ const howToLd = {
         3 kWc en demande 4 à 5.
       </p>
       <p class="v2-lead mt-5 text-lune-soft">
-        Sur le toit, chaque panneau occupe environ <strong class="text-white">2,2 à 2,3 m²</strong>,
-        ce qui revient toujours au même repère de surface, autour de <strong class="text-white">5 à 6 m²
-        de toiture par kWc</strong> installé (source : §4 des notes de contenu) : la montée en puissance
-        des modules réduit leur nombre, pas la place totale qu'ils prennent. Notre villa de 4 kWc demande
-        ainsi de l'ordre de 22 à 24 m² de surface dégagée, bien orientée et sans ombrage marqué.
+        Sur le toit, chaque panneau occupe environ <strong class="text-white">3,1 m²</strong>
+        (module 710 Wc, 2 384 × 1 303 mm), ce qui revient toujours au même repère de surface, autour de
+        <strong class="text-white"> 4,3 à 4,4 m² de toiture par kWc</strong> installé (source : §4 des
+        notes de contenu) : la montée en puissance des modules réduit leur nombre, pas la place totale
+        qu'ils prennent. Notre villa de 4 kWc demande ainsi de l'ordre de 17 à 18 m² de surface dégagée,
+        bien orientée et sans ombrage marqué.
       </p>
 
       <h2 class="display v2-section-title mt-12 text-white">Là où votre facture ne suffit plus</h2>

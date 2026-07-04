@@ -29,6 +29,10 @@
  *         `absolute inset-0` par-dessus LiteVideo) — la boucle s'accroche à
  *         l'événement `litevideo:play` de LiteVideo pour se couper avant que
  *         la lecture complète ne démarre. Rendu FR inchangé.
+ * WB24 — captionsSrc/captionsLang passés à LiteVideo dès qu'un vrai fichier
+ *         VTT existe pour chantier-a.mp4 (WCAG 1.2.2). Aucun fichier n'est
+ *         disponible aujourd'hui : les props restent `undefined`, donc aucun
+ *         <track> n'est rendu — plomberie prête, rendu inchangé.
  */
 import { getLocaleFromPath } from '../i18n/utils';
 import type { Locale } from '../i18n/config';
@@ -105,6 +109,8 @@ const s = STR[locale] ?? STR.fr;
         aspectRatio="16/9"
         posterWidth={1600}
         posterHeight={900}
+        captionsSrc={undefined}
+        captionsLang={undefined}
       />
       {/* W269 — boucle teaser muette (3–6 s), jamais préchargée : `src` posé
           uniquement par le script au moment de l'intersection. Fondu depuis

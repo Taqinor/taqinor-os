@@ -1,9 +1,9 @@
 ---
 /**
- * EN — /parrainage (W338). Faithful English translation; FR untouched. Not
- * registered in i18n/pages.ts STATIC_TRANSLATED per the task's explicit
- * instruction (hreflang skipped for this new page) — this route exists and
- * renders standalone, it simply has no automatic language-switcher entry yet.
+ * EN — /parrainage (W338). Faithful English translation; FR untouched.
+ * Registered in i18n/pages.ts STATIC_TRANSLATED (hreflang + language switcher
+ * both surface this page). Internal links use L()/localizeNavHref (WB18) —
+ * never a hardcoded '/en/...' literal.
  *
  * Same referral mechanic as the FR page: personal link rides the EXISTING
  * utm_campaign passthrough (zero backend change). WG14 (reward amount +
@@ -18,6 +18,13 @@ import RelatedLinks from '../../components/RelatedLinks.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { NAP, WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink } from '../../lib/whatsapp';
+import { getLocaleFromPath } from '../../i18n/utils';
+import { localizeNavHref } from '../../i18n/pages';
+
+// WB18 — same anti-dead-link helper as the rest of the EN/AR tree (this page
+// hardcoded `/en/...` literals instead, the only one to do so).
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
 
 // GATE WG14 — not yet set by the founder: never invent a figure. Once WG14
 // is decided, these two constants carry the real value and the rest of the
@@ -78,7 +85,7 @@ const jsonLd = {
 
     <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
 
-    <Breadcrumb items={[{ label: 'Home', href: '/en' }, { label: 'Referral' }]} />
+    <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'Referral' }]} />
 
     <section class="section-lg px-4 pb-10 text-white">
       <div class="mx-auto max-w-3xl">
@@ -198,9 +205,9 @@ const jsonLd = {
       <div class="mx-auto max-w-6xl">
         <p class="tech-label v2-kicker rule-brass text-lune">Go further</p>
         <RelatedLinks links={[
-          { href: '/en/devis/mon-toit', label: 'Start a diagnostic' },
-          { href: '/en/realisations', label: 'Our installations' },
-          { href: '/en/à-propos', label: 'About Taqinor' },
+          { href: L('/devis/mon-toit'), label: 'Start a diagnostic' },
+          { href: L('/realisations'), label: 'Our installations' },
+          { href: L('/à-propos'), label: 'About Taqinor' },
         ]} />
       </div>
     </section>

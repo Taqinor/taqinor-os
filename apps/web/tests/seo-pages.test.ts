@@ -241,10 +241,10 @@ describe('teaser garanties (W16)', () => {
   const body = teaser.split('---').slice(2).join('---');
 
   it('reprend les chiffres déjà publiés sur /garanties et y renvoie', () => {
-    for (const fig of ['12 ans', '25 ans', '10 ans', '20 ans', '2 ans']) {
+    for (const fig of ['12 ans', '30 ans', '10 ans', '20 ans', '2 ans']) {
       expect(teaser, fig).toContain(fig);
     }
-    expect(teaser).toContain('84,8');
+    expect(teaser).toContain('87,4');
     expect(body).toContain('Deye Cloud');
     // W67 : le lien est désormais localisé via localizeNavHref('/garanties', locale)
     // (FR inchangé : localizeNavHref('/garanties','fr') === '/garanties'). On vérifie

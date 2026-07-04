@@ -12,9 +12,11 @@ import StickyCta from '../../components/StickyCta.astro';
 import { NAP } from '../../lib/nap';
 import RelatedLinks from '../../components/RelatedLinks.astro';
 import { estimateReadingTime } from '../../lib/readingTime';
+import { getGuideVerifiedDate } from '../../lib/guideMeta';
 
-// W303 — date de vérification + auteur + temps de lecture.
-const verifiedDate = new Date('2026-07-03');
+// W303 — date de vérification + auteur + temps de lecture. WB12 — la date
+// vient du module partagé guideMeta.ts (source unique par slug).
+const verifiedDate = getGuideVerifiedDate('batterie-lithium-ou-gel');
 const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 const guideBodyText = `
   Pour un stockage solaire résidentiel sous le climat marocain, nous installons du lithium fer
@@ -206,13 +208,36 @@ const jsonLd = {
         de défaillance de chaque chimie.
       </p>
 
+      <h2 class="display v2-section-title mt-12 text-white">Le vrai chiffre qui compte : le coût par kWh réellement utile sur la durée de vie</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Le prix d'achat au kWh nominal raconte une histoire incomplète. Sur la durée de vie d'une
+        seule batterie LFP, un système gel/plomb équivalent doit être remplacé environ
+        <strong class="text-white"> 4 à 5 fois</strong> (500 à 1 000 cycles contre 3 000 à 6 000),
+        et chaque exemplaire ne restitue que <strong class="text-white">~50 % de décharge utile</strong>
+        contre <strong class="text-white">80 à 90 %</strong> en LFP — soit environ deux fois moins
+        d'énergie exploitable par kWh nominal acheté, à chaque remplacement. En cumulant le nombre
+        de remplacements et le kWh utile par cycle, le coût par kWh réellement utile sur la durée de
+        vie d'un pack gel/plomb ressort typiquement à plusieurs fois celui d'un pack LFP équivalent,
+        malgré son ticket d'entrée plus bas. Pour donner un ordre de grandeur du prix de départ
+        (fourchette de marché indicative, à vérifier au moment du devis) : le LFP se situe autour de
+        <strong class="text-white"> 3 000 à 4 000 DH/kWh</strong> de capacité installée. Des études
+        indépendantes de coût total de possession sur le stockage résidentiel arrivent à la même
+        conclusion : ramené au kWh réellement livré sur toute la vie du système, l'écart entre gel et
+        LFP se creuse plutôt qu'il ne se referme.
+      </p>
+
       <p class="v2-lead mt-10 text-lune-soft">
         Le NMC garde sa place dans les véhicules électriques et les systèmes portables, là où la
         densité énergétique prime sur tout le reste. Pour une batterie fixe accrochée au mur d'une
         maison ou d'un local technique, le calcul penche vers le LFP : il vit plus longtemps,
         livre plus d'énergie par kWh acheté, supporte la chaleur marocaine et porte des garanties
         constructeur plus longues. Le gel reste une option d'entrée de gamme, mais dès qu'on
-        ramène son prix au kWh réellement livré sur toute sa vie, l'écart se referme vite.
+        ramène son prix au kWh réellement livré sur toute sa vie, l'écart se referme vite. L'exception
+        reste étroite : pour un usage strictement de secours occasionnel, à décharge faible et peu
+        fréquente (une coupure de temps en temps, pas un cycle quotidien d'autoconsommation), c'est la
+        durée calendaire plutôt que le nombre de cycles qui limite la batterie — et le faible coût
+        d'entrée du gel n'est alors pas puni par des remplacements fréquents. Ce n'est pas notre cas
+        d'usage principal, mais c'est le seul où le gel reste un choix défendable.
       </p>
 
       <RelatedLinks links={[

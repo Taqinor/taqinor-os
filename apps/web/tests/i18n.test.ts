@@ -35,7 +35,11 @@ describe('déduction & préfixage de chemin', () => {
     expect(localizePath('/contact', 'fr')).toBe('/contact');
     expect(localizePath('/contact', 'en')).toBe('/en/contact');
     expect(localizePath('/contact', 'ar')).toBe('/ar/contact');
-    expect(localizePath('/', 'ar')).toBe('/ar');
+    // WB16 — la racine préfixée garde sa barre finale : `/ar` (sans barre)
+    // serait 301-redirigé vers `/ar/` par trailingSlashRedirect
+    // (worker/redirects.mjs), donc un hreflang/switcher ne doit jamais cibler
+    // la forme sans barre.
+    expect(localizePath('/', 'ar')).toBe('/ar/');
   });
 
   it('stripLocale enlève le préfixe', () => {

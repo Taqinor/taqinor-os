@@ -1,8 +1,8 @@
 ---
 /**
  * Teaser de réassurance « garanties » (W16) — bloc compact repris UNIQUEMENT
- * des chiffres déjà publiés sur /garanties : 12 ans produit, 25 ans de
- * performance (≥ 84,8 %), 10 ans onduleur & batterie, 20 ans structure, 2 ans
+ * des chiffres déjà publiés sur /garanties : 12 ans produit, 30 ans de
+ * performance linéaire (≥ 87,4 %), 10 ans onduleur & batterie, 20 ans structure, 2 ans
  * main-d'œuvre, + monitoring Deye Cloud avec accès client. AUCUN délai de
  * réponse (SLA) ni politique de sous-performance inventés. Renvoie vers
  * /garanties. Pensé pour les sections sombres (accueil, résidentiel,
@@ -10,7 +10,7 @@
  * elle aussi sombre.
  *
  * W67 — i18n : prose/labels traduits (FR/EN/AR), CHIFFRES (les nombres, les
- * pourcentages) identiques dans toutes les langues (12 / 25 / 84,8 % / Deye
+ * pourcentages) identiques dans toutes les langues (12 / 30 / 87,4 % / Deye
  * Cloud restent à l'identique) — seul le MOT d'unité localise (« ans » →
  * « years » / « سنة »/« سنوات »/« سنتان »), même règle que /garanties. Le
  * rendu FR reste byte-identique (branche `fr` = strings actuels mot pour mot ;
@@ -30,7 +30,7 @@ const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 
 // Chiffres STRICTEMENT identiques au tableau de /garanties (source publiée) —
-// les valeurs (« 12 ans », « 84,8 % »…) ne sont JAMAIS traduites, seuls les
+// les valeurs (« 12 ans », « 87,4 % »…) ne sont JAMAIS traduites, seuls les
 // libellés le sont.
 // `monitoring` est scindé autour du nom de marque « Deye Cloud » (invariant
 // dans toutes les locales) : seuls les mots autour sont traduits, le littéral
@@ -48,13 +48,13 @@ const STR: Record<
 > = {
   fr: {
     eyebrow: 'Garanties écrites',
-    title: 'De 2 à 25 ans, noir sur blanc',
+    title: 'De 2 à 30 ans, noir sur blanc',
     monitoringBefore: 'Et un monitoring',
     monitoringAfter: 'avec accès client inclus sur chaque installation.',
     cta: 'Voir toutes nos garanties →',
     labels: [
       'Produit panneaux',
-      'Performance ≥ 84,8 %',
+      'Performance ≥ 87,4 %',
       'Onduleur & batterie',
       'Structure acier',
       'Main-d’œuvre Taqinor',
@@ -62,13 +62,13 @@ const STR: Record<
   },
   en: {
     eyebrow: 'Written warranties',
-    title: 'From 2 to 25 years, in black and white',
+    title: 'From 2 to 30 years, in black and white',
     monitoringBefore: 'Plus',
     monitoringAfter: 'monitoring with client access included on every installation.',
     cta: 'See all our warranties →',
     labels: [
       'Panel product',
-      'Performance ≥ 84.8 %',
+      'Performance ≥ 87.4 %',
       'Inverter & battery',
       'Steel structure',
       'Taqinor labour',
@@ -76,13 +76,13 @@ const STR: Record<
   },
   ar: {
     eyebrow: 'ضمانات مكتوبة',
-    title: 'من سنتين إلى 25 سنة، مكتوبة بوضوح',
+    title: 'من سنتين إلى 30 سنة، مكتوبة بوضوح',
     monitoringBefore: 'بالإضافة إلى مراقبة',
     monitoringAfter: 'مع وصول العميل المضمَّن في كل تركيب.',
     cta: 'اطّلع على جميع ضماناتنا →',
     labels: [
       'منتج الألواح',
-      'الأداء ≥ 84.8 %',
+      'الأداء ≥ 87.4 %',
       'العاكس والبطارية',
       'الهيكل الفولاذي',
       'يد عاملة Taqinor',
@@ -94,9 +94,9 @@ const s = STR[locale] ?? STR.fr;
 // Les NOMBRES sont identiques dans toutes les locales : seul le mot d'unité
 // localise (même règle que /garanties : « ans » → « years » / AR).
 const YEARS_BY_LOCALE: Record<Locale, string[]> = {
-  fr: ['12 ans', '25 ans', '10 ans', '20 ans', '2 ans'],
-  en: ['12 years', '25 years', '10 years', '20 years', '2 years'],
-  ar: ['12 سنة', '25 سنة', '10 سنوات', '20 سنة', 'سنتان'],
+  fr: ['12 ans', '30 ans', '10 ans', '20 ans', '2 ans'],
+  en: ['12 years', '30 years', '10 years', '20 years', '2 years'],
+  ar: ['12 سنة', '30 سنة', '10 سنوات', '20 سنة', 'سنتان'],
 };
 const years = YEARS_BY_LOCALE[locale] ?? YEARS_BY_LOCALE.fr;
 const items = years.map((yrs, i) => ({ years: yrs, label: s.labels[i] }));

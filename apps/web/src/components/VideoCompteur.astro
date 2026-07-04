@@ -11,6 +11,11 @@
  * Placé « near the savings figures » (accueil : après la bande rupture tonale
  * « L'investissement » ; proposition : près des chiffres de chantier/économies)
  * — le contexte le plus persuasif pour ce genre de clip.
+ *
+ * WB24 — captionsSrc/captionsLang transmis à LiteVideo dès qu'un vrai fichier
+ * VTT existe pour le futur clip (WCAG 1.2.2) ; le clip lui-même reste `null`
+ * (COMPTEUR_VIDEO) tant que le fondateur ne l'a pas fourni — plomberie prête,
+ * rendu inchangé.
  */
 import LiteVideo from './LiteVideo.astro';
 import { COMPTEUR_VIDEO, hasCompteurVideo } from '../lib/compteurVideo';
@@ -56,6 +61,8 @@ const video = COMPTEUR_VIDEO;
           alt={video.alt}
           playLabel={s.playLabel}
           aspectRatio={video.aspectRatio ?? '16/9'}
+          captionsSrc={undefined}
+          captionsLang={undefined}
         />
       </div>
     </div>
