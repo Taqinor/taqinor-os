@@ -161,6 +161,16 @@ class Intervention(models.Model):
     rdv_confirme_le = models.DateTimeField(null=True, blank=True)
     rdv_reschedule_count = models.PositiveIntegerField(default=0)
 
+    # ── XFSM5 — fenêtre de RDV promise (ex. 8h–10h) + ponctualité ────────────
+    # Affichées sur la confirmation client et « Ma journée » F22. Nullable :
+    # une intervention sans fenêtre garde le comportement actuel (heure exacte
+    # implicite, pas de mesure de ponctualité). `arrivee_dans_fenetre` est
+    # dérivé au check-in GPS (F6) : True/False une fois calculé, None tant que
+    # l'arrivée n'a pas eu lieu ou qu'aucune fenêtre n'est promise.
+    fenetre_debut = models.TimeField(null=True, blank=True)
+    fenetre_fin = models.TimeField(null=True, blank=True)
+    arrivee_dans_fenetre = models.BooleanField(null=True, blank=True)
+
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, related_name='interventions_creees',

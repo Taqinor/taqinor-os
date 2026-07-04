@@ -185,6 +185,8 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             'conflits_affectation',
             # FG301 — nivellement de charge (resource levelling).
             'nivellement_charge',
+            # XFSM5 — KPI taux d'arrivée à l'heure.
+            'taux_ponctualite',
             # FG303 — planning des camionnettes (capacité véhicule).
             'planning_camionnettes',
             # FG69 — signature client.
@@ -484,7 +486,8 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         interv = self.get_object()
         lat = request.data.get('lat')
         lng = request.data.get('lng')
-        interv.arrivee_site_le = timezone.now()
+        now = timezone.now()
+        interv.arrivee_site_le = now
         fields = ['arrivee_site_le']
         if lat not in (None, '') and lng not in (None, ''):
             try:
@@ -494,6 +497,14 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             except (TypeError, ValueError):
                 return Response({'detail': 'Coordonnées invalides.'},
                                 status=status.HTTP_400_BAD_REQUEST)
+        # XFSM5 — ponctualité : dérivée de l'arrivée réelle vs la fenêtre
+        # promise (heure locale du serveur — cohérent avec `date_prevue`).
+        # None si aucune fenêtre n'est promise (comportement actuel inchangé).
+        if interv.fenetre_debut is not None and interv.fenetre_fin is not None:
+            heure_arrivee = timezone.localtime(now).time()
+            interv.arrivee_dans_fenetre = (
+                interv.fenetre_debut <= heure_arrivee <= interv.fenetre_fin)
+            fields.append('arrivee_dans_fenetre')
         interv.save(update_fields=fields)
         dist = field_services.distance_to_site(interv)
         intervention_activity.log_note(
@@ -1629,6 +1640,30 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             heures = 8.0
         data = selectors.nivellement_charge(
             request.user.company, debut, fin, heures_par_jour=heures)
+        return Response(data)
+
+    # ── XFSM5 — KPI taux d'arrivée à l'heure (fenêtres de RDV promises) ──────
+    @action(detail=False, methods=['get'], url_path='taux-ponctualite',
+            permission_classes=[IsAnyRole])
+    def taux_ponctualite(self, request):
+        """XFSM5 — proportion des arrivées dans la fenêtre promise
+        (`fenetre_debut`/`fenetre_fin`), calculée au check-in GPS F6. Filtrable
+        par `debut`/`fin` (bornes de `arrivee_site_le`) et `technicien`."""
+        from datetime import datetime
+        from .. import selectors
+
+        def _parse(value):
+            try:
+                return datetime.strptime(value, '%Y-%m-%d').date()
+            except (TypeError, ValueError):
+                return None
+
+        params = request.query_params
+        data = selectors.taux_ponctualite(
+            request.user.company,
+            debut=_parse(params.get('debut')),
+            fin=_parse(params.get('fin')),
+            technicien_id=params.get('technicien'))
         return Response(data)
 
     # ── FG303 — planning des camionnettes (capacité véhicule) ────────────────

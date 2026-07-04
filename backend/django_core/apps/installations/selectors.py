@@ -1876,3 +1876,37 @@ def panneau_atelier(company, *, date_debut=None, date_fin=None):
             'ecart_cout_moyen_pct': round(ecart_moyen_pct, 2),
         },
     }
+
+
+# ── XFSM5 — Fenêtres de RDV promises + taux de ponctualité ───────────────────
+
+def taux_ponctualite(company, *, debut=None, fin=None, technicien_id=None):
+    """XFSM5 — KPI « taux d'arrivée à l'heure » : proportion des interventions
+    ARRIVÉES (`arrivee_site_le` renseigné) dont `arrivee_dans_fenetre` est
+    True, parmi celles où une fenêtre était promise et où l'arrivée a eu
+    lieu. Filtrable par période (`arrivee_site_le`) et par technicien.
+    Lecture seule via `apps.installations.selectors` (jamais d'import de
+    models depuis `reporting`). Renvoie un dict PLAT
+    {nb_mesurees, nb_a_lheure, taux_pct} — `taux_pct` est None si aucune
+    intervention mesurable (jamais de division par zéro)."""
+    from .models import Intervention
+
+    qs = Intervention.objects.filter(
+        company=company, arrivee_site_le__isnull=False,
+        arrivee_dans_fenetre__isnull=False)
+    if debut is not None:
+        qs = qs.filter(arrivee_site_le__date__gte=debut)
+    if fin is not None:
+        qs = qs.filter(arrivee_site_le__date__lte=fin)
+    if technicien_id is not None:
+        qs = qs.filter(technicien_id=technicien_id)
+
+    nb_mesurees = qs.count()
+    nb_a_lheure = qs.filter(arrivee_dans_fenetre=True).count()
+    taux_pct = (
+        round(nb_a_lheure / nb_mesurees * 100, 2) if nb_mesurees else None)
+    return {
+        'nb_mesurees': nb_mesurees,
+        'nb_a_lheure': nb_a_lheure,
+        'taux_pct': taux_pct,
+    }
