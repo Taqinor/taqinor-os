@@ -860,6 +860,31 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
         # via son encoder, mais les clés dict (nature enum) doivent rester str.
         return Response({str(k): v for k, v in data.items()})
 
+    @action(detail=False, methods=['get'], url_path='continuite-sequences')
+    def continuite_sequences(self, request):
+        """XACC29 — Rapport de continuité des séquences (gap detection).
+
+        Balaie factures/avoirs/pièces comptables et liste les trous de
+        numérotation par radical. ``?export=csv`` télécharge le rapport ;
+        sans le paramètre, renvoie le JSON (liste vide = tout continu)."""
+        rapport = selectors.trous_sequences(request.user.company)
+        if request.query_params.get('export') == 'csv':
+            buffer = io.StringIO()
+            writer = csv.writer(buffer, delimiter=';', lineterminator='\r\n')
+            writer.writerow(['source', 'journal', 'de', 'a', 'manquants'])
+            for entree in rapport:
+                writer.writerow([
+                    entree['source'], entree['journal'],
+                    entree['plage'][0], entree['plage'][1],
+                    ' '.join(str(n) for n in entree['manquants']),
+                ])
+            resp = HttpResponse(
+                buffer.getvalue(), content_type='text/csv; charset=utf-8')
+            resp['Content-Disposition'] = (
+                'attachment; filename="continuite_sequences.csv"')
+            return resp
+        return Response(rapport)
+
 
 # ── FG115 — Périodes comptables verrouillables ─────────────────────────────
 

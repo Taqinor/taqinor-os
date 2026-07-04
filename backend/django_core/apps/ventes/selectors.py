@@ -432,3 +432,29 @@ def date_encaissement_prevue(facture, retard_moyen_jours=None):
     if not retard_moyen_jours:
         return facture.date_echeance
     return facture.date_echeance + timedelta(days=round(retard_moyen_jours))
+
+
+# ── XACC29 — Références (pour rapport de continuité des séquences) ────────
+
+def references_factures(company):
+    """XACC29 — Références de toutes les ``Facture`` (hors annulées) d'une
+    société, pour la détection de trous de séquence côté ``compta`` (jamais un
+    import de ``ventes.models`` en dehors de ce module). Lecture seule."""
+    from .models import Facture
+    return list(
+        Facture.objects
+        .exclude(statut=Facture.Statut.ANNULEE)
+        .filter(company=company)
+        .exclude(reference='')
+        .values_list('reference', flat=True)
+    )
+
+
+def references_avoirs(company):
+    """XACC29 — Références de tous les ``Avoir`` d'une société. Lecture seule."""
+    from .models import Avoir
+    return list(
+        Avoir.objects.filter(company=company)
+        .exclude(reference='')
+        .values_list('reference', flat=True)
+    )

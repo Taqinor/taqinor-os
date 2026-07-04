@@ -4,6 +4,7 @@ Grand livre (FG110), balance générale (FG111), lettrage (FG112), CPC (FG113) e
 bilan (FG114) se déduisent tous des ``LigneEcriture`` du grand livre. Aucune
 écriture n'est modifiée ici. Toutes les fonctions sont scopées par société.
 """
+import re
 from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -3079,3 +3080,84 @@ def frais_refacturables_non_factures(company, *, client_id=None):
     if client_id:
         qs = qs.filter(client_refacturation_id=client_id)
     return qs.order_by('date_frais', 'id')
+
+
+# ── XACC29 — Rapport de continuité des séquences (gap detection) ──────────
+
+_SEQ_SUFFIX_RE = re.compile(r'^(.*?)-(\d+)$')
+
+
+def _extraire_bucket_numero(reference):
+    """Sépare ``reference`` en (radical, numéro) via le suffixe ``-NNNN``.
+
+    Renvoie ``(None, None)`` si la référence n'a pas de suffixe numérique
+    reconnaissable (jamais bloquant : la référence est alors simplement
+    ignorée du contrôle de continuité)."""
+    if not reference:
+        return None, None
+    m = _SEQ_SUFFIX_RE.match(reference)
+    if not m:
+        return None, None
+    radical, numero = m.group(1), m.group(2)
+    try:
+        return radical, int(numero)
+    except ValueError:
+        return None, None
+
+
+def _trous_pour_references(references, *, source_label):
+    """Groupe ``references`` par radical (préfixe + éventuel segment période)
+    et liste les numéros MANQUANTS entre le min et le max observés par
+    groupe. Renvoie une liste de dicts ``{source, radical, plage, manquants}``
+    — une entrée par radical avec au moins un trou (radical continu = omis)."""
+    buckets = {}
+    for ref in references:
+        radical, numero = _extraire_bucket_numero(ref)
+        if radical is None:
+            continue
+        buckets.setdefault(radical, set()).add(numero)
+    rapport = []
+    for radical, numeros in sorted(buckets.items()):
+        lo, hi = min(numeros), max(numeros)
+        manquants = sorted(set(range(lo, hi + 1)) - numeros)
+        if manquants:
+            rapport.append({
+                'source': source_label,
+                'journal': radical,
+                'plage': [lo, hi],
+                'manquants': manquants,
+            })
+    return rapport
+
+
+def trous_sequences(company, *, exercice=None):
+    """XACC29 — Rapport de continuité des numéros de pièces (audit marocain).
+
+    Balaie les factures ventes (``ventes.selectors.references_factures``), les
+    pièces comptables par journal (``EcritureComptable.reference`` de cette
+    société — même app, lecture directe) et les avoirs
+    (``ventes.selectors.references_avoirs``) — jamais un import de
+    ``ventes.models``. Extrait le compteur final de chaque référence
+    (suffixe ``-NNNN``) et liste, par radical (préfixe + période), les
+    numéros manquants entre le plus petit et le plus grand observés. Une
+    séquence sans trou n'apparaît pas dans le rapport (rapport vide = tout
+    continu). ``exercice`` est actuellement ignoré (réservé, toutes les
+    pièces de la société sont balayées — filtrage par exercice non câblé
+    faute de champ d'exercice direct sur ``EcritureComptable``). Lecture
+    seule ; company-scopé (jamais de fuite cross-company, les sélecteurs
+    sous-jacents filtrent déjà par société)."""
+    from apps.ventes import selectors as ventes_selectors
+
+    rapport = []
+    rapport += _trous_pour_references(
+        ventes_selectors.references_factures(company), source_label='factures')
+    rapport += _trous_pour_references(
+        ventes_selectors.references_avoirs(company), source_label='avoirs')
+    references_pieces = list(
+        EcritureComptable.objects.filter(company=company)
+        .exclude(reference='')
+        .values_list('reference', flat=True)
+    )
+    rapport += _trous_pour_references(
+        references_pieces, source_label='pieces_comptables')
+    return rapport
