@@ -152,6 +152,21 @@ def get_company_client(company, client_id):
     return client_base_qs(company).filter(pk=client_id).first()
 
 
+def client_label(company, client_id):
+    """ZGED5 — Libellé lisible d'un client borné société, ou None.
+
+    Point d'entrée cross-app LECTURE SEULE pour qu'une autre app (ex. `ged`
+    « contact assigné » sur un document) affiche un nom sans jamais importer
+    `apps.crm.models` ni faire de FK dure. Dégrade proprement (None) si le
+    client n'existe pas ou appartient à une autre société."""
+    client = get_company_client(company, client_id)
+    if client is None:
+        return None
+    if client.prenom:
+        return f'{client.prenom} {client.nom}'.strip()
+    return client.nom
+
+
 def get_latest_lead_for_client(company, client_id):
     """Lead le plus récent rattaché à un client (borné société), ou None.
 

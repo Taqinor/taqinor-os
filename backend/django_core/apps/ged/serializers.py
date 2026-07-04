@@ -224,6 +224,10 @@ class DocumentSerializer(serializers.ModelSerializer):
     # seule (dérivé de `url_externe`) pour que le frontend adapte l'aperçu et
     # désactive les actions fichier sans devoir réimplémenter la règle.
     est_document_lien = serializers.BooleanField(read_only=True)
+    # ZGED5 — panneau d'informations : propriétaire + contact assigné.
+    proprietaire_nom = serializers.CharField(
+        source='proprietaire.username', read_only=True, default=None)
+    contact_label = serializers.SerializerMethodField()
 
     class Meta:
         model = Document
@@ -241,6 +245,9 @@ class DocumentSerializer(serializers.ModelSerializer):
             'est_dans_corbeille',
             # XGED18 — document-lien.
             'url_externe', 'est_document_lien',
+            # ZGED5 — propriétaire + contact assigné (réassignables via
+            # l'action `assigner`, jamais un PATCH direct sur `proprietaire`).
+            'proprietaire', 'proprietaire_nom', 'contact_id', 'contact_label',
             'created_at', 'updated_at',
         ]
         read_only_fields = [
@@ -249,7 +256,18 @@ class DocumentSerializer(serializers.ModelSerializer):
             'statut', 'transitions_autorisees',
             'supprime_le', 'supprime_par', 'est_dans_corbeille',
             'est_document_lien',
+            'proprietaire', 'contact_id',
         ]
+
+    def get_contact_label(self, obj):
+        if not obj.contact_id:
+            return None
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is None:
+            return None
+        from apps.crm.selectors import client_label
+        return client_label(company, obj.contact_id)
 
     def get_version_count(self, obj):
         return obj.versions.count()

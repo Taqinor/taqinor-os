@@ -289,6 +289,13 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         statut = self.request.query_params.get('statut')
         if statut:
             qs = qs.filter(statut=statut)
+        # ZGED5 — filtres par propriétaire/contact assigné.
+        proprietaire = self.request.query_params.get('proprietaire')
+        if proprietaire:
+            qs = qs.filter(proprietaire_id=proprietaire)
+        contact = self.request.query_params.get('contact')
+        if contact:
+            qs = qs.filter(contact_id=contact)
         return qs
 
     @action(detail=True, methods=['post'], url_path='tagger')
@@ -321,6 +328,47 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         DocumentTagAssignment.objects.filter(
             company=request.user.company, document=document, tag_id=tag_id
         ).delete()
+        return Response(
+            DocumentSerializer(document, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='assigner')
+    def assigner(self, request, pk=None):
+        """ZGED5 — Réassigne propriétaire et/ou contact métier (panneau
+        d'informations). Body optionnel : `{"proprietaire": <user_id>|null,
+        "contact": <client_id>|null}` — un champ absent du body reste
+        inchangé ; `null` explicite l'efface. `proprietaire` doit être un
+        utilisateur de la MÊME société (404 sinon) ; `contact` est résolu via
+        `apps.crm.selectors` (dégrade proprement si absent/autre société —
+        aucun import du modèle crm)."""
+        document = self.get_object()
+        data = request.data
+        if 'proprietaire' in data:
+            proprietaire_id = data.get('proprietaire')
+            if proprietaire_id in (None, '', 'null'):
+                document.proprietaire = None
+            else:
+                from django.contrib.auth import get_user_model
+                User = get_user_model()
+                user = User.objects.filter(
+                    pk=proprietaire_id, company=request.user.company).first()
+                if user is None:
+                    return Response(
+                        {'proprietaire': 'Utilisateur inconnu.'},
+                        status=status.HTTP_404_NOT_FOUND)
+                document.proprietaire = user
+        if 'contact' in data:
+            contact_id = data.get('contact')
+            if contact_id in (None, '', 'null'):
+                document.contact_id = None
+            else:
+                from apps.crm.selectors import get_company_client
+                client = get_company_client(request.user.company, contact_id)
+                if client is None:
+                    return Response(
+                        {'contact': 'Client inconnu.'},
+                        status=status.HTTP_404_NOT_FOUND)
+                document.contact_id = client.pk
+        document.save(update_fields=['proprietaire', 'contact_id', 'updated_at'])
         return Response(
             DocumentSerializer(document, context={'request': request}).data)
 

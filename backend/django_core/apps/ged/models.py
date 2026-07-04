@@ -469,6 +469,20 @@ class Document(models.Model):
         verbose_name="verrouille par")
     locked_at = models.DateTimeField(null=True, blank=True,
                                      verbose_name="verrouille le")
+    # ZGED5 — panneau d'informations : propriétaire/responsable + contact
+    # métier assigné, distincts de `created_by` (immuable, historique) et des
+    # `DocumentLien` (liaisons polymorphes). `proprietaire` est réassignable
+    # par un gestionnaire (posé côté serveur via l'action `assigner`).
+    # `contact_id` référence un `crm.Client` par STRING-FK (cross-app —
+    # jamais un import du modèle `crm`, résolu en lecture via
+    # `apps.crm.selectors`, pattern déjà utilisé ailleurs dans ce repo).
+    # Les deux nullables — rétrocompatible, comportement inchangé par défaut.
+    proprietaire = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_documents_possedes',
+        verbose_name='propriétaire')
+    contact_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='contact assigné (crm.Client)')
     # GED17 — cycle de vie documentaire (statut LOCAL à la GED, séparé du
     # funnel STAGES.py). Tout document naît « brouillon » ; les transitions
     # sont gardées côté serveur par `services.change_lifecycle_status` selon la
@@ -525,6 +539,10 @@ class Document(models.Model):
             # GED17 — filtre rapide par statut du cycle de vie (par société).
             models.Index(fields=['company', 'statut'],
                          name='ged_doc_co_statut_idx'),
+            # ZGED5 — filtres rapides par propriétaire/contact assigné.
+            models.Index(fields=['proprietaire'], name='ged_doc_proprio_idx'),
+            models.Index(fields=['company', 'contact_id'],
+                         name='ged_doc_co_contact_idx'),
         ]
 
     @property
