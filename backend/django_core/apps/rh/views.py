@@ -405,6 +405,53 @@ class DossierEmployeViewSet(_RhBaseViewSet):
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
 
+    @action(detail=True, methods=['post'], url_path='sortir')
+    def sortir(self, request, pk=None):
+        """YHIRE2 — orchestre la sortie de l'employé (``services.sortir_employe``) :
+        checklist ``ElementSortie`` générée depuis les dotations/affectations
+        réelles, compte utilisateur désactivé, ``ProfilPaie`` coupé (via le
+        bus d'événements, sans import croisé).
+
+        Corps : ``date_sortie`` (ISO, obligatoire), ``motif``
+        (``DossierEmploye.MotifSortie``, obligatoire), ``notes_avances``
+        (optionnel). Refuse (400) un dossier déjà SORTI (idempotence :
+        rejouer l'action ne re-génère pas la checklist).
+        """
+        employe = self.get_object()
+        date_sortie_raw = request.data.get('date_sortie')
+        motif = (request.data.get('motif') or '').strip()
+        try:
+            from datetime import date as _date
+            date_sortie = _date.fromisoformat(str(date_sortie_raw))
+        except (TypeError, ValueError):
+            date_sortie = None
+        if date_sortie is None:
+            return Response(
+                {'date_sortie': 'Date de sortie invalide ou manquante.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if motif not in DossierEmploye.MotifSortie.values:
+            return Response(
+                {'motif': 'Motif de sortie invalide ou manquant.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            services.sortir_employe(
+                employe, date_sortie=date_sortie, motif=motif,
+                notes_avances=(request.data.get('notes_avances') or ''))
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            DossierEmployeSerializer(employe).data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'], url_path='comptes-actifs-sortis')
+    def comptes_actifs_sortis(self, request):
+        """YHIRE2 — rapport de sécurité PERMANENT : comptes utilisateur restés
+        ACTIFS alors que leur dossier est SORTI (doit rester vide en
+        fonctionnement normal ; utile pour détecter des sorties faites hors
+        de ce chemin, p. ex. données historiques)."""
+        rows = services.comptes_actifs_employes_sortis(request.user.company)
+        return Response(rows)
+
     @action(detail=False, methods=['get'], url_path='a-declarer')
     def a_declarer(self, request):
         """Embauchés sans déclaration d'entrée CNSS/AMO (XRH5), scopés société.

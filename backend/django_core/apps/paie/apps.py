@@ -13,3 +13,9 @@ class PaieConfig(AppConfig):
         'description': 'Paramètres CNSS/AMO/IR et bulletins.',
         'categorie': 'RH',
     }
+
+    def ready(self):
+        # YHIRE2 — abonne paie à l'événement métier employe_sorti (rh) :
+        # coupe ProfilPaie.actif sans que paie importe rh directement ni
+        # l'inverse (pattern M6, comme devis_accepted → crm).
+        from . import receivers  # noqa: F401

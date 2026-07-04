@@ -1536,3 +1536,143 @@ def repondre_pulse(campagne, user, *, score, commentaire=''):
     return ReponsePulse.objects.create(
         company=campagne.company, campagne=campagne,
         score=score, commentaire=commentaire or '')
+
+
+# ── YHIRE2 — orchestration de sortie (employe_sorti) ───────────────────────
+
+@transaction.atomic
+def sortir_employe(dossier, *, date_sortie, motif, notes_avances=''):
+    """YHIRE2 — orchestre la sortie d'un ``DossierEmploye`` : jusqu'ici,
+    passer ``statut`` à SORTI était un simple PATCH sans aucun effet — la
+    checklist de restitution restait à saisir à la main, le compte
+    utilisateur lié restait ACTIF et le profil de paie n'était jamais coupé
+    (un sorti pouvait encore recevoir un bulletin normal).
+
+    Dans UNE transaction :
+
+    1. pose ``statut=SORTI`` + ``date_sortie`` + ``motif_sortie`` ;
+    2. GÉNÈRE les ``ElementSortie`` (FG161) depuis les affectations OUVERTES
+       réelles :
+       - une ligne EPI par ``DotationEpi`` de l'employé non encore restituée
+         (``recupere=False``) ;
+       - une ligne VÉHICULE par ``AffectationVehicule`` ACTIVE, close à
+         ``date_sortie`` (``statut=TERMINEE``, ``date_fin=date_sortie``) ;
+       - une note (ligne AUTRE) listant les ``AvanceSalaire`` non soldées
+         (statut demandée/approuvée) si elles existent ;
+    3. désactive le compte utilisateur lié (``user.is_active=False``,
+       horodaté sur le dossier via le chatter XRH6) ;
+    4. émet ``employe_sorti`` sur le bus d'événements (``core.events``) —
+       ``paie`` s'y abonne (``apps/paie/receivers.py``) pour couper
+       ``ProfilPaie.actif``, SANS que ``rh`` importe jamais ``apps.paie``.
+
+    Idempotent : ré-appeler sur un dossier DÉJÀ ``SORTI`` ne RE-génère pas la
+    checklist ni ne ré-émet l'événement (lève ``ValueError``) — évite un
+    doublon d'``ElementSortie``/de désactivation si l'action est rejouée.
+
+    ``dossier``/``motif`` sont déjà scopés/validés par l'appelant (vue) ;
+    aucune lecture de société depuis le corps de requête.
+    """
+    from .models import (
+        AffectationVehicule, AvanceSalaire, DossierEmploye, DotationEpi,
+        ElementSortie,
+    )
+
+    if dossier.statut == DossierEmploye.Statut.SORTI:
+        raise ValueError('Ce dossier est déjà marqué sorti.')
+
+    dossier.statut = DossierEmploye.Statut.SORTI
+    dossier.date_sortie = date_sortie
+    dossier.motif_sortie = motif
+    dossier.save(update_fields=['statut', 'date_sortie', 'motif_sortie'])
+
+    # (b) EPI non restitués → une ligne de checklist par dotation ouverte.
+    dotations_ouvertes = DotationEpi.objects.filter(
+        company=dossier.company, employe=dossier, recupere=False)
+    for dotation in dotations_ouvertes:
+        ElementSortie.objects.create(
+            company=dossier.company,
+            employe=dossier,
+            libelle=f'EPI — {dotation.epi.designation}'[:160],
+            type_element=ElementSortie.TypeElement.EPI,
+        )
+
+    # Véhicules affectés ACTIFS → clôturés à la date de sortie + checklist.
+    affectations_ouvertes = AffectationVehicule.objects.filter(
+        company=dossier.company, employe=dossier,
+        statut=AffectationVehicule.Statut.ACTIVE)
+    for affectation in affectations_ouvertes:
+        ElementSortie.objects.create(
+            company=dossier.company,
+            employe=dossier,
+            libelle=f'Véhicule #{affectation.vehicule_id}'[:160],
+            type_element=ElementSortie.TypeElement.VEHICULE,
+        )
+        affectation.statut = AffectationVehicule.Statut.TERMINEE
+        affectation.date_fin = date_sortie
+        affectation.save(update_fields=['statut', 'date_fin', 'date_modification'])
+
+    # Avances non soldées → note informative (pas de mouvement financier ici,
+    # le solde reste porté par le module concerné — RH ou paie).
+    avances_ouvertes = AvanceSalaire.objects.filter(
+        company=dossier.company, employe=dossier,
+        statut__in=[
+            AvanceSalaire.Statut.DEMANDEE, AvanceSalaire.Statut.APPROUVEE])
+    if avances_ouvertes.exists():
+        total = sum((a.montant or 0) for a in avances_ouvertes)
+        note = (
+            f'{avances_ouvertes.count()} avance(s) non soldée(s) '
+            f'(total {total}).')
+        if notes_avances:
+            note = f'{note} {notes_avances}'.strip()
+        ElementSortie.objects.create(
+            company=dossier.company,
+            employe=dossier,
+            libelle='Avances sur salaire non soldées'[:160],
+            type_element=ElementSortie.TypeElement.AUTRE,
+            note=note[:255],
+        )
+
+    # (c) Compte utilisateur lié désactivé — journalisé.
+    if dossier.user_id and dossier.user.is_active:
+        dossier.user.is_active = False
+        dossier.user.save(update_fields=['is_active'])
+
+    # (d) Bus d'événements — paie s'abonne dans son propre apps.py ready(),
+    # rh n'importe jamais apps.paie.
+    from core.events import employe_sorti
+    employe_sorti.send(
+        sender=DossierEmploye, dossier=dossier, user=dossier.user,
+        motif=motif)
+
+    return dossier
+
+
+def comptes_actifs_employes_sortis(company):
+    """YHIRE2 — rapport de sécurité PERMANENT : comptes utilisateur restés
+    ACTIFS alors que leur dossier employé est SORTI. Doit toujours être VIDE
+    en fonctionnement normal (un dossier sorti désactive son compte via
+    ``sortir_employe`` — cette liste ne détecte que les cas hors chemin,
+    ex. données historiques ou sortie faite avant ce câblage).
+
+    Sélecteur pur, scopé société. Renvoie une liste de dicts
+    ``{'employe_id', 'matricule', 'nom', 'prenom', 'user_id', 'username'}``.
+    """
+    from .models import DossierEmploye
+
+    qs = (
+        DossierEmploye.objects
+        .filter(
+            company=company, statut=DossierEmploye.Statut.SORTI,
+            user__isnull=False, user__is_active=True)
+        .select_related('user'))
+    return [
+        {
+            'employe_id': d.pk,
+            'matricule': d.matricule,
+            'nom': d.nom,
+            'prenom': d.prenom,
+            'user_id': d.user_id,
+            'username': getattr(d.user, 'username', ''),
+        }
+        for d in qs
+    ]
