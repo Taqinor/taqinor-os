@@ -225,6 +225,21 @@ importe ``apps.audit``.
     * ``instance`` — l'objet ``Paiement`` ou ``Avoir`` concerné ;
     * ``company`` — la société (posée côté serveur).
 
+``facture_fournisseur_creee`` / ``paiement_fournisseur_enregistre``
+    Symétrique achat de ``facture_emise``/``paiement_enregistre`` — YLEDG2.
+    Émis SYNCHRONE, best-effort, au point de création canonique :
+    ``stock.views.facture_fournisseur.FactureFournisseurViewSet.
+    perform_create`` et ``stock.views.paiement_fournisseur.
+    PaiementFournisseurViewSet.perform_create`` (couvre la saisie manuelle ;
+    les créations programmatiques OCR/UBL/réception/sous-traitant restent
+    hors de ce lot). Abonné dans ce repo : ``compta`` (YLEDG2, appelle
+    ``ecriture_pour_facture_fournisseur``/``ecriture_pour_paiement_
+    fournisseur`` quand ``COMPTA_AUTO_ECRITURES`` est actif). Arguments :
+
+    * ``instance`` — l'objet ``FactureFournisseur`` ou ``PaiementFournisseur``
+      concerné ;
+    * ``company`` — la société (posée côté serveur).
+
 ``document_produit``
     Émis par une app métier/satellite quand elle produit un fichier destiné à
     être centralisé dans la GED (ZGED6 — pattern Odoo « File centralization »).
@@ -358,3 +373,9 @@ bon_commande_cree = django.dispatch.Signal()
 # l'écriture GL correspondante, cf. docstring du module ci-dessus).
 paiement_enregistre = django.dispatch.Signal()
 avoir_cree = django.dispatch.Signal()
+
+# YLEDG2 — symétrique achat : chaque création (saisie manuelle) d'une
+# stock.FactureFournisseur / stock.PaiementFournisseur. Arguments communs :
+# instance, company. Abonné dans ce repo : compta (cf. docstring ci-dessus).
+facture_fournisseur_creee = django.dispatch.Signal()
+paiement_fournisseur_enregistre = django.dispatch.Signal()

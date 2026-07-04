@@ -22,7 +22,9 @@ from core.events import (
     devis_accepted,
     devis_refused,
     facture_emise,
+    facture_fournisseur_creee,
     paiement_enregistre,
+    paiement_fournisseur_enregistre,
 )
 
 from .services import (  # noqa: F401  (ré-export du point d'intégration)
@@ -61,6 +63,22 @@ def _ecriture_pour_paiement_enregistre(sender, instance, company, **kwargs):
 @receiver(avoir_cree, dispatch_uid="compta_ecriture_pour_avoir")
 def _ecriture_pour_avoir_cree(sender, instance, company, **kwargs):
     ecriture_pour_avoir(instance)
+
+
+# ── YLEDG2 — auto-génération des écritures d'achat sur le bus d'événements ──
+
+@receiver(facture_fournisseur_creee,
+          dispatch_uid="compta_ecriture_pour_facture_fournisseur")
+def _ecriture_pour_facture_fournisseur_creee(sender, instance, company,
+                                             **kwargs):
+    ecriture_pour_facture_fournisseur(instance)
+
+
+@receiver(paiement_fournisseur_enregistre,
+          dispatch_uid="compta_ecriture_pour_paiement_fournisseur")
+def _ecriture_pour_paiement_fournisseur_enregistre(sender, instance, company,
+                                                    **kwargs):
+    ecriture_pour_paiement_fournisseur(instance)
 
 
 # ── XMKT1 — sortie automatique des séquences de relance ────────────────────

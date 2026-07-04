@@ -97,7 +97,14 @@ class FactureFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
                 reference=ref, company=company,
                 created_by=self.request.user,
             )
-        create_with_reference(FactureFournisseur, 'FF', company, _save)
+        facture = create_with_reference(
+            FactureFournisseur, 'FF', company, _save)
+        # YLEDG2 — événement documentaire générique (pose du seam pour
+        # compta.ecriture_pour_facture_fournisseur, jamais d'import de son
+        # service ici).
+        from core.events import facture_fournisseur_creee
+        facture_fournisseur_creee.send(
+            sender=FactureFournisseur, instance=facture, company=company)
 
     def create(self, request, *args, **kwargs):
         # XPUR11 — WARNING (non bloquant) de doublon : même fournisseur +
