@@ -20,7 +20,7 @@ import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
-import { REALISATIONS } from '../../lib/realisations';
+import { REALISATIONS, MEASURED_FLEET_LIFETIME_MWH } from '../../lib/realisations';
 import { CO2_KG_PER_KWH, CO2_KG_PER_TREE_YEAR } from '../../lib/proposition';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
@@ -34,8 +34,11 @@ const devisHref = L('/devis/mon-toit');
 const kwcTotal = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
 const kwcTotalLabel = kwcTotal.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-const withMeasuredProduction = REALISATIONS.filter((r) => r.productionNum !== null);
-const productionTotal = withMeasuredProduction.reduce((sum, r) => sum + (r.productionNum ?? 0), 0);
+// القاعدة ب1 (2026-07-04): تمت إزالة الإنتاج السنوي المُلفَّق لكل تركيبة (نفس
+// معامل المردود عبر 4 مواقع — مستحيل). الرقم الحقيقي الوحيد للإنتاج هو الحصيلة
+// التراكمية للأسطول المتابَع عبر Deye Cloud (MEASURED_FLEET، realisations.ts)
+// — تراكمي "منذ التشغيل"، أبداً سنوي. CO₂ المتجنَّب ومعادل الأشجار يُشتقّان منه.
+const productionTotal = Math.round(MEASURED_FLEET_LIFETIME_MWH * 1000); // 6.56 MWh → 6560 kWh
 const productionTotalLabel = productionTotal.toLocaleString('fr-FR');
 
 const co2KgTotal = productionTotal * CO2_KG_PER_KWH;
@@ -57,14 +60,14 @@ const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'WebPage',
   name: 'أثر Taqinor',
-  description: `أثر Taqinor التراكمي، المقيس والصادق: ${kwcTotalLabel} kWc مركَّبة، ${productionTotalLabel} kWh/سنة إنتاج مقيس، ${co2TonnesLabel} طن CO₂ متجنَّبة سنوياً.`,
+  description: `أثر Taqinor التراكمي، المقيس والصادق: ${kwcTotalLabel} kWc مركَّبة، ${productionTotalLabel} kWh مقيسة تراكمياً على الأسطول المتابَع (Deye Cloud)، ${co2TonnesLabel} طن CO₂ متجنَّبة حتى الآن.`,
   isPartOf: { '@type': 'WebSite', name: 'Taqinor', url: 'https://taqinor.ma' },
 };
 ---
 
 <Layout
   title="أثر Taqinor: أرقامنا الحقيقية، التراكمية والقابلة للتحقّق | Taqinor"
-  description={`${kwcTotalLabel} kWc مركَّبة، ${productionTotalLabel} kWh/سنة مقيسة، ${co2TonnesLabel} طن CO₂ متجنَّبة: الحصيلة الصادقة لتركيباتنا، مُشتقّة من إنجازاتنا المنشورة — لا شيء مُقدَّر أو مُقرَّب نحو الأعلى.`}
+  description={`${kwcTotalLabel} kWc مركَّبة، ${productionTotalLabel} kWh مقيسة تراكمياً (أسطول متابَع عبر Deye Cloud)، ${co2TonnesLabel} طن CO₂ متجنَّبة حتى الآن: الحصيلة الصادقة لتركيباتنا — لا شيء مُقدَّر أو مُقرَّب نحو الأعلى.`}
   ogSlug="equipement"
 >
   <div class="v2">
@@ -80,9 +83,10 @@ const jsonLd = {
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">مساءلة وشفافية</p>
         <h1 class="display v2-page-title cine-in cine-in-1 mt-6">أثر Taqinor</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
-          ليست توقّعاً ولا هدفاً: {kwcTotalLabel} kWc مركَّبة، {productionTotalLabel} kWh مقيسة،
-          {co2TonnesLabel} طن CO₂ متجنَّبة كل سنة — ما تنتجه فعلاً تركيباتنا المنشورة، مجموعةً.
-          هذه الصفحة تكبر مشروعاً بعد مشروع؛ لا تقول إلا ما يمكننا إثباته.
+          ليست توقّعاً ولا هدفاً: {kwcTotalLabel} kWc مركَّبة، {productionTotalLabel} kWh مقيسة
+          تراكمياً، {co2TonnesLabel} طن CO₂ متجنَّبة حتى الآن — ما أنتجه فعلاً الأسطول المتابَع
+          عبر Deye Cloud منذ التشغيل. هذه الصفحة تكبر مشروعاً بعد مشروع؛ لا تقول إلا ما يمكننا
+          إثباته.
         </p>
       </div>
     </section>
@@ -96,11 +100,10 @@ const jsonLd = {
           <KeyFigure value={kwcTotalLabel} unit="kWc" label="القدرة المركَّبة">
             مجموع التركيبات المنشورة في {villesUniques.join('، ')}.
           </KeyFigure>
-          <KeyFigure value={productionTotalLabel} unit="kWh/سنة" label="الإنتاج المقيس">
-            على التركيبات المتابَعة (Deye Cloud) — المشاريع التي لا
-            إنتاج منشوراً لها لا تُحتسَب.
+          <KeyFigure value={productionTotalLabel} unit="kWh تراكمية" label="الإنتاج المقيس">
+            حصيلة تراكمية من الأسطول المتابَع (Deye Cloud) منذ التشغيل.
           </KeyFigure>
-          <KeyFigure value={co2TonnesLabel} unit="طن CO₂/سنة" label="CO₂ متجنَّب">
+          <KeyFigure value={co2TonnesLabel} unit="طن CO₂" label="CO₂ متجنَّب (تراكمي)">
             محسوب بمعدَّل {CO2_KG_PER_KWH} كلغ CO₂/kWh، عامل انبعاث الشبكة المغربية المستخدَم
             بالفعل في دراساتنا المُسعَّرة.
           </KeyFigure>
@@ -110,11 +113,11 @@ const jsonLd = {
         </div>
         <Callout type="info" title="كيف يُحسَب هذا الرقم">
           <p>
-            CO₂ المتجنَّب = الإنتاج السنوي المقيس × {CO2_KG_PER_KWH} كلغ/kWh (متوسط عامل انبعاث
+            CO₂ المتجنَّب = الإنتاج التراكمي المقيس × {CO2_KG_PER_KWH} كلغ/kWh (متوسط عامل انبعاث
             شبكة الكهرباء المغربية، مزيج كربوني كثيف — نفس الثابت المعروض في كل دراسة مُسعَّرة لدى
             Taqinor). المعادل بالأشجار: تمتصّ الشجرة الناضجة نحو {CO2_KG_PER_TREE_YEAR} كلغ من
-            CO₂ سنوياً، أي ما يعادل هنا نحو <strong>{treesLabel} شجرة</strong> تُغرَس كل سنة. لا
-            رقم هنا مُقرَّب نحو الأعلى أو مُستقرَأ أو مُقدَّر خارج التركيبات المنشورة فعلاً.
+            CO₂ سنوياً، أي ما يعادل هنا نحو <strong>{treesLabel} شجرة</strong> على مدى سنة. لا
+            رقم هنا مُقرَّب نحو الأعلى أو مُستقرَأ أو مُقدَّر خارج الإنتاج المقيس فعلاً.
           </p>
         </Callout>
       </div>
@@ -127,15 +130,15 @@ const jsonLd = {
         <p class="tech-label v2-kicker rule-brass text-azur-600">التفصيل</p>
         <h2 class="display v2-section-title mt-5">مشروعاً بمشروع</h2>
         <p class="v2-lead mt-4 text-encre-soft">
-          كل سطر في الحصيلة أعلاه يقابل تركيبة حقيقية، موثَّقة على صفحة إنجازاتنا.
+          كل سطر يقابل تركيبة حقيقية، موثَّقة على صفحة إنجازاتنا. الرقم التراكمي أعلاه يُرصَد باستمرار
+          عبر Deye Cloud.
         </p>
         <div class="mt-10 border-t-2 border-azur-900 bg-blanc" data-stagger>
           {REALISATIONS.map((r, i) => (
             <div class="v2-rise flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-azur-900/15 px-5 py-4" style={`--v2-i:${i}`}>
               <span class="text-sm font-semibold" dir="ltr">{r.ville} · {r.kwc} · réf. {r.ref}</span>
               <span class="whitespace-normal text-end text-sm text-azur-600" dir="ltr">
-                {r.production ? `${r.production} مقيسة` : 'إنتاج غير منشور'}
-                {r.batterie ? ` · ${r.batterie}` : ''}
+                {[r.onduleur, r.batterie].filter(Boolean).join(' · ') || r.panneaux}
               </span>
             </div>
           ))}

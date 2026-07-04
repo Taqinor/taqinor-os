@@ -149,3 +149,18 @@
     sepia(0.18)
     brightness(1.01);
 }
+
+/* ─── Perf (2026-07-04) — Ken Burns héros COUPÉ sous 1024px ──────────────────
+   L'animation infinie (25 s) sur l'image/vidéo LCP plein écran gardait le
+   compositeur GPU actif EN PERMANENCE — coûteux en batterie et source de jank
+   sur iPhone, précisément là où la parallaxe est déjà désactivée (< 1024px).
+   On la réserve donc au desktop : sur mobile/tablette l'affiche LCP reste
+   parfaitement nette et immobile (aucune perte de contenu, gain de fluidité).
+   Placé APRÈS la règle Ken Burns → même sélecteur, source plus tardive : gagne.
+   Ne touche PAS le desktop (≥1024px) ni le reveal .v2-rise des photos. */
+@media (max-width: 1023px) {
+  .v2-js .v2-hero-media > picture > img,
+  .v2-js .v2-hero-media > video {
+    animation: none;
+  }
+}

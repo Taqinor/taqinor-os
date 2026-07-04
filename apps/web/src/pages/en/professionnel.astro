@@ -2,8 +2,10 @@
 /**
  * EN — Business & industrial solar (W67). Faithful translation of /professionnel ;
  * EVERY figure kept EXACT in Latin digits (3–5 years, +20 years, 5 MW, 17,04 kWc,
- * 21 406 kWh/an, 3,72 kWc, ref. 468, Canadian Solar 710 Wc, Deye 15 kW, law
- * 82-21) — UK spelling (authorisation). Price-bracket data + solar math (localEstimateBand / formatMAD) reused
+ * 3,72 kWc, ref. 468, Canadian Solar 710 Wc, Deye 15 kW, law
+ * 82-21) — UK spelling (authorisation). WB — fabricated annual kWh production
+ * figures removed (no real Deye reading backed them); production is monitored
+ * on Deye Cloud, never promised. Price-bracket data + solar math (localEstimateBand / formatMAD) reused
  * UNCHANGED — only visible labels translated. Internal links via localizeNavHref.
  * Shared components (GarantiesTeaser, Testimonials) auto-detect locale. FR untouched.
  *
@@ -69,7 +71,7 @@ const segments = [
   {
     n: '01', title: 'Warehouse / plant',
     body: "Every kWh enters the cost price of a manufactured part. A wide, flat roof pays for itself in 3 to 5 years and produces exactly when the machines are running — production lands when demand is there.",
-    proof: 'Proof: El Jadida, 17,04 kWc, 21 406 kWh/year',
+    proof: 'Proof: El Jadida, 17,04 kWc, tracked on Deye Cloud',
     financial: 'An operating cost that becomes an asset paid off in 3 to 5 years',
     technical: 'Wide, flat roof · install with no production stoppage',
   },
@@ -160,7 +162,7 @@ const capexOpex = [
 
 <Layout
   title="Industrial, hotel and clinic solar in Morocco — paid off in 3 to 5 years | Taqinor"
-  description="17,04 kWc in El Jadida, 21 406 kWh a year: medium-voltage solar installations sized on your load curves, surplus valued under law 82-21, from grid connection (≤ 5 MW) to authorisation."
+  description="17,04 kWc in El Jadida, tracked on Deye Cloud: medium-voltage solar installations sized on your load curves, surplus valued under law 82-21, from grid connection (≤ 5 MW) to authorisation."
   ogSlug="professionnel"
 >
   <div class="v2">
@@ -195,8 +197,8 @@ const capexOpex = [
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
           On a business site, solar isn't a showpiece: it's a production asset, paid back in 3 to
           5 years, that then delivers for more than twenty years. In El Jadida,
-          17,04 kWc supply 21 406 kWh a year. The sizing, though, starts from your load
-          curves — not from a template.
+          17,04 kWc are tracked continuously on Deye Cloud. The sizing, though, starts from your
+          load curves — not from a template.
         </p>
         <div class="cine-in cine-in-3 mt-10 flex flex-wrap items-center gap-3">
           {/* ONE brass CTA (brass discipline) — gold is authorised here.
@@ -364,7 +366,7 @@ const capexOpex = [
             widths={[1600, 1024, 640]} ratio={3 / 2} sizes="(min-width: 640px) 50vw, 100vw"
             class="v3-grade w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
           <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
-            <span class="tech-label block text-brass-300">El Jadida · 17,04 kWc · 21 406 kWh/an</span>
+            <span class="tech-label block text-brass-300">El Jadida · 17,04 kWc</span>
             <span class="mt-0.5 block text-xs text-lune">End of install · 24 × Canadian Solar 710 Wc · Deye 15 kW three-phase</span>
           </figcaption>
         </figure>

@@ -20,7 +20,7 @@ import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
-import { REALISATIONS } from '../../lib/realisations';
+import { REALISATIONS, MEASURED_FLEET, MEASURED_FLEET_LIFETIME_MWH } from '../../lib/realisations';
 import { FACTS_GENERATED_AT } from '../../lib/facts';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
@@ -34,18 +34,12 @@ const devisHref = L('/devis/mon-toit');
 const kwcTotal = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
 const kwcTotalLabel = kwcTotal.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-const withMeasuredProduction = REALISATIONS.filter((r) => r.productionNum !== null);
-const productionTotal = withMeasuredProduction.reduce((sum, r) => sum + (r.productionNum ?? 0), 0);
+// القاعدة ب1 (2026-07-04): تمت إزالة الإنتاج السنوي المُلفَّق لكل تركيبة (نفس
+// معامل المردود عبر 4 مواقع — مستحيل). الرقم الحقيقي الوحيد للإنتاج هو الحصيلة
+// التراكمية للأسطول المتابَع عبر Deye Cloud (MEASURED_FLEET، realisations.ts)
+// — تراكمي "منذ التشغيل"، أبداً سنوي.
+const productionTotal = Math.round(MEASURED_FLEET_LIFETIME_MWH * 1000); // 6.56 MWh → 6560 kWh
 const productionTotalLabel = productionTotal.toLocaleString('fr-FR');
-
-const notYetPublished = REALISATIONS.filter((r) => r.productionNum === null);
-
-// القاعدة ب1 (2026-07-04) — بعض أرقام الإنتاج المنشورة مُقدَّرة انطلاقاً من
-// العائد المقاس على تركيباتنا (وليست قراءة Deye Cloud مستقلة لكل موقع — انظر
-// ملاحظة النزاهة في realisations.ts). لا يمكن لهذه الصفحة أن تقول "لا شيء
-// مُقدَّر" ما دامت هذه القراءات المستقلة غير منشورة بعد؛ التنبيه أدناه يقولها
-// بصدق.
-const anyEstimated = withMeasuredProduction.some((r) => r.productionEstimated);
 
 const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 const generatedDateLabel = dateFmt.format(new Date(FACTS_GENERATED_AT));
@@ -54,7 +48,7 @@ const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Dataset',
   name: 'الإنتاج الشمسي المتابَع — أسطول Taqinor',
-  description: `حصيلة الإنتاج (مقاس أو، عند غياب قراءة مستقلة، مُقدَّر انطلاقاً من العائد المقاس) تراكمياً على ${withMeasuredProduction.length} تركيبات Taqinor متابَعة، حتى ${generatedDateLabel}: ${productionTotalLabel} kWh/سنة.`,
+  description: `حصيلة الإنتاج المقاسة تراكمياً على الأسطول المتابَع (Deye Cloud، ${MEASURED_FLEET.length} محطات)، حتى ${generatedDateLabel}: ${productionTotalLabel} kWh تراكمية.`,
   temporalCoverage: FACTS_GENERATED_AT,
   creator: { '@type': 'Organization', name: 'Taqinor', url: 'https://taqinor.ma' },
 };
@@ -62,7 +56,7 @@ const jsonLd = {
 
 <Layout
   title="الإنتاج الشمسي المتابَع — الحصيلة التراكمية الحقيقية لأسطولنا | Taqinor"
-  description={`${productionTotalLabel} kWh/سنة مجمَّعة على ${withMeasuredProduction.length} تركيبات Taqinor متابَعة، حتى ${generatedDateLabel} — لا شيء مُقرَّب نحو الأعلى أو مُضخَّم.`}
+  description={`${productionTotalLabel} kWh مجمَّعة تراكمياً على الأسطول المتابَع (Deye Cloud)، حتى ${generatedDateLabel} — لا شيء مُقرَّب نحو الأعلى أو مُضخَّم.`}
   ogSlug="equipement"
 >
   <div class="v2">
@@ -78,8 +72,8 @@ const jsonLd = {
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">شفافية مستمرة</p>
         <h1 class="display v2-page-title cine-in cine-in-1 mt-6">الإنتاج المتابَع</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
-          ليست كتيّباً دعائياً: عدّاد يستمر في الدوران. ما تنتجه تركيباتنا، مُتابَعاً بواسطة
-          نظام المتابعة الخاص بها، متراكماً مع كل مشروع موثَّق — حتى تاريخ{' '}
+          ليست كتيّباً دعائياً: عدّاد يستمر في الدوران. ما أنتجه فعلاً الأسطول المتابَع عبر
+          Deye Cloud منذ التشغيل، تراكمياً — حتى تاريخ{' '}
           <strong class="text-white">{generatedDateLabel}</strong>.
         </p>
       </div>
@@ -94,30 +88,19 @@ const jsonLd = {
           <KeyFigure value={kwcTotalLabel} unit="kWc" label="القدرة المركَّبة">
             مجموع التركيبات المنشورة.
           </KeyFigure>
-          <KeyFigure value={productionTotalLabel} unit="kWh/سنة" label="الإنتاج المتابَع">
-            على التركيبات المتابَعة (مقاس أو مُقدَّر انطلاقاً من العائد المقاس).
+          <KeyFigure value={productionTotalLabel} unit="kWh تراكمية" label="الإنتاج المتابَع">
+            حصيلة تراكمية من الأسطول المتابَع (Deye Cloud) منذ التشغيل — أبداً سنوية.
           </KeyFigure>
-          <KeyFigure value={String(withMeasuredProduction.length)} unit="مشاريع متابَعة" label="متابعة منشورة">
-            المشاريع بلا إنتاج منشور لا تُحتسَب أبداً كصفر.
+          <KeyFigure value={String(MEASURED_FLEET.length)} unit="محطات متابَعة" label="متابعة منشورة">
+            أسطول متابَع مباشرة عبر Deye Cloud.
           </KeyFigure>
         </div>
         <Callout type="info" title="كيف يُحدَّث هذا الرقم">
           <p>
-            تُعاد حساب هذه الحصيلة كلما نُشر تصدير جديد من Deye Cloud ضمن إنجازاتنا (تقريباً: مع
-            كل مشروع جديد موثَّق). التاريخ أعلاه هو آخر لقطة — أبداً متوسط متحرك، أبداً توقّع.
-            {notYetPublished.length > 0 && (
-              <>
-                {' '}اليوم، {notYetPublished.length} مشروع على الموقع ليس له إنتاج منشور بعد —
-                لا يُحتسَب ضمن الحصيلة أعلاه.
-              </>
-            )}
-            {anyEstimated && (
-              <>
-                {' '}بعض الأرقام أعلاه مُقدَّرة انطلاقاً من العائد المقاس على تركيباتنا المتابَعة
-                بدل قراءة Deye Cloud مستقلة لكل موقع — ليست أبداً رقم كتالوج ولا مُضخَّمة، لكنها
-                ليست بعد قراءة فردية. كل دراسة حالة تُوضّح ذلك.
-              </>
-            )}
+            تُعاد حساب هذه الحصيلة كلما نُشر تصدير جديد من Deye Cloud (تقريباً: مع كل محطة جديدة
+            تُضاف إلى الأسطول المتابَع). التاريخ أعلاه هو آخر لقطة — أبداً متوسط متحرك، أبداً توقّع.
+            الحصيلة التراكمية المقاسة تُرصَد باستمرار عبر Deye Cloud، وتُعاد حسابها مع كل مشروع
+            جديد موثَّق.
           </p>
         </Callout>
       </div>
@@ -137,9 +120,7 @@ const jsonLd = {
             <div class="v2-rise flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-azur-900/15 px-5 py-4" style={`--v2-i:${i}`}>
               <span class="text-sm font-semibold" dir="ltr">{r.ville} · {r.kwc} · réf. {r.ref} · {r.date}</span>
               <span class="whitespace-normal text-end text-sm text-azur-600" dir="ltr">
-                {r.production
-                  ? `${r.production} ${r.productionEstimated ? 'مقدَّرة' : 'مقيسة'}`
-                  : 'إنتاج غير منشور بعد'}
+                {[r.onduleur, r.batterie].filter(Boolean).join(' · ') || r.panneaux}
               </span>
             </div>
           ))}

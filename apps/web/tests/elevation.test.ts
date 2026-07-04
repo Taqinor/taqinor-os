@@ -59,7 +59,10 @@ describe('élévation — mouvement photo global et sûr', () => {
     expect(css).toContain('.v2-js .v2-hero-media'); // Ken Burns
     expect(css).toContain('.v2-js .v2-rise > picture'); // montée d'échelle
     // transform/opacity uniquement → zéro CLS (aucune propriété de reflow).
-    expect(css).not.toMatch(/\b(top|left|width|height|margin)\s*:/);
+    // On ignore les préludes de media-query (ex. « @media (max-width: 1023px) »)
+    // qui ne sont pas des déclarations de style et ne causent aucun reflow.
+    const declarations = css.replace(/@media[^{]*/g, '');
+    expect(declarations).not.toMatch(/\b(top|left|width|height|margin)\s*:/);
   });
 });
 

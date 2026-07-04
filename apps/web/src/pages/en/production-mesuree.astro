@@ -22,7 +22,7 @@ import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
-import { REALISATIONS } from '../../lib/realisations';
+import { REALISATIONS, MEASURED_FLEET, MEASURED_FLEET_LIFETIME_MWH } from '../../lib/realisations';
 import { FACTS_GENERATED_AT } from '../../lib/facts';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
@@ -36,18 +36,13 @@ const devisHref = L('/devis/mon-toit');
 const kwcTotal = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
 const kwcTotalLabel = kwcTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-const withMeasuredProduction = REALISATIONS.filter((r) => r.productionNum !== null);
-const productionTotal = withMeasuredProduction.reduce((sum, r) => sum + (r.productionNum ?? 0), 0);
+// WB1 (2026-07-04): the fabricated per-installation ANNUAL production was
+// removed (identical yield factor across 4 sites — impossible). The only
+// real production figure is the CUMULATIVE tally of the Deye-Cloud-monitored
+// fleet (MEASURED_FLEET, realisations.ts) — cumulative "since commissioning",
+// NEVER annualized.
+const productionTotal = Math.round(MEASURED_FLEET_LIFETIME_MWH * 1000); // 6.56 MWh -> 6,560 kWh
 const productionTotalLabel = productionTotal.toLocaleString('en-US');
-
-const notYetPublished = REALISATIONS.filter((r) => r.productionNum === null);
-
-// WB1 (2026-07-04) — some published production figures are ESTIMATED from
-// the measured yield of our installations (not a per-site Deye Cloud reading
-// — see the integrity note in realisations.ts). This page can no longer say
-// "nothing estimated" until those distinct readings are published; the
-// callout below states it honestly.
-const anyEstimated = withMeasuredProduction.some((r) => r.productionEstimated);
 
 const dateFmt = new Intl.DateTimeFormat('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
 const generatedDateLabel = dateFmt.format(new Date(FACTS_GENERATED_AT));
@@ -56,7 +51,7 @@ const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Dataset',
   name: 'Tracked solar production — Taqinor fleet',
-  description: `Cumulative production (measured or, absent a distinct reading, estimated from measured yield) across ${withMeasuredProduction.length} monitored Taqinor installations, as of ${generatedDateLabel}: ${productionTotalLabel} kWh/year.`,
+  description: `Cumulative production measured across the monitored fleet (Deye Cloud, ${MEASURED_FLEET.length} plants), as of ${generatedDateLabel}: ${productionTotalLabel} kWh cumulative.`,
   temporalCoverage: FACTS_GENERATED_AT,
   creator: { '@type': 'Organization', name: 'Taqinor', url: 'https://taqinor.ma' },
 };
@@ -64,7 +59,7 @@ const jsonLd = {
 
 <Layout
   title="Tracked solar production — our fleet's real cumulative tally | Taqinor"
-  description={`${productionTotalLabel} kWh/year tallied across ${withMeasuredProduction.length} monitored Taqinor installations, as of ${generatedDateLabel} — nothing rounded up, nothing padded.`}
+  description={`${productionTotalLabel} kWh tallied cumulatively across the monitored fleet (Deye Cloud), as of ${generatedDateLabel} — nothing rounded up, nothing padded.`}
   ogSlug="equipement"
 >
   <div class="v2">
@@ -80,8 +75,8 @@ const jsonLd = {
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">Ongoing transparency</p>
         <h1 class="display v2-page-title cine-in cine-in-1 mt-6">Tracked production</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
-          Not a brochure: a counter that keeps rolling. What our installations produce,
-          tracked by their own monitoring, added up as new projects get documented — as of{' '}
+          Not a brochure: a counter that keeps rolling. What the fleet monitored on Deye Cloud
+          has actually produced since commissioning, cumulatively — as of{' '}
           <strong class="text-white">{generatedDateLabel}</strong>.
         </p>
       </div>
@@ -96,32 +91,20 @@ const jsonLd = {
           <KeyFigure value={kwcTotalLabel} unit="kWc" label="Installed capacity">
             Cumulative total across published installations.
           </KeyFigure>
-          <KeyFigure value={productionTotalLabel} unit="kWh/yr" label="Tracked production">
-            Across the monitored installations (measured or estimated from measured yield).
+          <KeyFigure value={productionTotalLabel} unit="kWh cumulative" label="Tracked production">
+            Cumulative tally from the monitored fleet (Deye Cloud) since commissioning — never
+            annualized.
           </KeyFigure>
-          <KeyFigure value={String(withMeasuredProduction.length)} unit="monitored projects" label="Published monitoring">
-            Projects with no published production figure are never counted as zero.
+          <KeyFigure value={String(MEASURED_FLEET.length)} unit="monitored plants" label="Published monitoring">
+            Fleet tracked live on Deye Cloud.
           </KeyFigure>
         </div>
         <Callout type="info" title="How this figure gets refreshed">
           <p>
-            This tally is recalculated each time a Deye Cloud export is republished in our
-            projects (roughly: with every newly documented site). The date above is the latest
-            snapshot — never a rolling average, never a projection.
-            {notYetPublished.length > 0 && (
-              <>
-                {' '}Today, {notYetPublished.length} project{notYetPublished.length > 1 ? 's' : ''} on the site{' '}
-                {notYetPublished.length > 1 ? "don't" : "doesn't"} have published production yet — {' '}
-                {notYetPublished.length > 1 ? 'they are' : 'it is'} not counted in the tally above.
-              </>
-            )}
-            {anyEstimated && (
-              <>
-                {' '}Some figures above are estimated from the measured yield of our monitored
-                installations rather than a distinct Deye Cloud reading per site — never a catalogue
-                figure, never padded, but not yet an individual reading. Each case study states which.
-              </>
-            )}
+            This tally is recalculated each time a Deye Cloud export is republished (roughly:
+            with every newly monitored site added to the fleet). The date above is the latest
+            snapshot — never a rolling average, never a projection. The measured cumulative is
+            tracked continuously on Deye Cloud, recalculated with every newly documented project.
           </p>
         </Callout>
       </div>
@@ -141,9 +124,7 @@ const jsonLd = {
             <div class="v2-rise flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-azur-900/15 px-5 py-4" style={`--v2-i:${i}`}>
               <span class="text-sm font-semibold">{r.ville} · {r.kwc} · ref. {r.ref} · {r.date}</span>
               <span class="whitespace-normal text-right text-sm text-azur-600">
-                {r.production
-                  ? `${r.production} ${r.productionEstimated ? 'estimated' : 'measured'}`
-                  : 'production not yet published'}
+                {[r.onduleur, r.batterie].filter(Boolean).join(' · ') || r.panneaux}
               </span>
             </div>
           ))}
