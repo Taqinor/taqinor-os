@@ -2653,3 +2653,60 @@ class ReglageTemps(models.Model):
 
     def __str__(self):
         return f'Réglages temps — {self.company_id}'
+
+
+class EvaluationProjet(models.Model):
+    """Enquête de satisfaction client (CSAT) par ``Projet`` (ZPRJ7).
+
+    Odoo Project agrège une note de satisfaction client par tâche/projet ;
+    rien d'équivalent ne existait côté ``gestion_projet`` (le SAV a son CSAT
+    séparé). Relation 1–1 avec le projet : un seul dépôt possible (le
+    ``token`` est régénéré/récupéré via ``projets/<id>/lien-evaluation/`` mais
+    la NOTE ne peut être soumise qu'UNE FOIS — un second POST public est
+    refusé, voir ``public_views.evaluation_projet``).
+
+    Le ``token`` (256 bits URL-safe, généré côté serveur — même génération que
+    ``PortailProjetToken``) donne accès à une vue PUBLIQUE non authentifiée
+    (``portail/evaluation/<token>/``) : AUCUN coût/budget/marge n'y est jamais
+    exposé (formulaire de notation pur). Tout est multi-société : ``company``
+    est posée côté serveur, jamais lue du corps de requête. Modèle entièrement
+    additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_evaluations',
+        verbose_name='Société',
+    )
+    projet = models.OneToOneField(
+        Projet,
+        on_delete=models.CASCADE,
+        related_name='evaluation',
+        verbose_name='Projet',
+    )
+    token = models.CharField(
+        max_length=64, unique=True, default=_generer_token_portail,
+        verbose_name='Jeton')
+    # Note posée par le CLIENT via le portail public — nullable tant qu'aucun
+    # dépôt n'a eu lieu (le lien peut être créé/envoyé avant la clôture).
+    note = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+        verbose_name='Note (1-5)')
+    commentaire = models.TextField(
+        blank=True, default='', verbose_name='Commentaire')
+    soumis_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Soumis le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Évaluation projet (CSAT)'
+        verbose_name_plural = 'Évaluations projet (CSAT)'
+        ordering = ['-id']
+        indexes = [
+            models.Index(fields=['token'], name='gp_eval_token_idx'),
+        ]
+
+    def __str__(self):
+        return f'Évaluation {self.projet_id} — {self.note or "en attente"}'

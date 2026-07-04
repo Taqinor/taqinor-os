@@ -2625,7 +2625,8 @@ def tableau_portefeuille(company, statut=None, seuil_jours=None):
     réelle cumulée, charge totale). Donnée 100 % INTERNE de pilotage — jamais
     exposée au client. Tout est scopé société. Lecture seule (aucune écriture).
     """
-    projets = Projet.objects.filter(company=company)
+    projets = Projet.objects.filter(company=company).select_related(
+        'evaluation')
     if statut:
         projets = projets.filter(statut=statut)
     projets = projets.order_by('-id')
@@ -2635,6 +2636,7 @@ def tableau_portefeuille(company, statut=None, seuil_jours=None):
     total_charge = Decimal('0')
     total_retards = 0
     total_risques = 0
+    notes_satisfaction = []
     for projet in projets:
         avancement = rollup_avancement(projet)
         retards = retards_projet(projet, seuil_jours=seuil_jours)
@@ -2661,6 +2663,16 @@ def tableau_portefeuille(company, statut=None, seuil_jours=None):
             company=company, projet=projet).order_by(
                 '-date_point', '-id').first()
 
+        # Note CSAT client (ZPRJ7) — None tant qu'aucune évaluation n'a été
+        # soumise (le lien peut exister sans dépôt).
+        evaluation = getattr(projet, 'evaluation', None)
+        note_satisfaction = (
+            evaluation.note
+            if evaluation is not None and evaluation.note is not None
+            else None)
+        if note_satisfaction is not None:
+            notes_satisfaction.append(note_satisfaction)
+
         lignes.append({
             'projet_id': projet.id,
             'code': projet.code,
@@ -2673,7 +2685,12 @@ def tableau_portefeuille(company, statut=None, seuil_jours=None):
             'charge_totale': charge,
             'derniere_sante': (
                 dernier_point.sante if dernier_point else None),
+            'note_satisfaction': note_satisfaction,
         })
+
+    note_satisfaction_moyenne = (
+        round(sum(notes_satisfaction) / len(notes_satisfaction), 2)
+        if notes_satisfaction else None)
 
     return {
         'nb_projets': len(lignes),
@@ -2681,6 +2698,7 @@ def tableau_portefeuille(company, statut=None, seuil_jours=None):
         'total_charge': total_charge,
         'total_retards': total_retards,
         'total_risques': total_risques,
+        'note_satisfaction_moyenne': note_satisfaction_moyenne,
         'projets': lignes,
     }
 

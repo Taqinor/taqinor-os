@@ -1,7 +1,7 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from .public_views import portail_avancement
+from .public_views import evaluation_projet, portail_avancement
 from .views import (
     ActionProjetViewSet,
     AffectationRessourceViewSet,
@@ -85,5 +85,8 @@ urlpatterns = [
     # toute capture par un viewset ; expose uniquement l'avancement non
     # financier d'un projet (PROJ37).
     path('portail/<str:token>/', portail_avancement, name='portail-avancement'),
+    # Enquête de satisfaction client (CSAT, ZPRJ7) — public, GET+POST par jeton.
+    path('portail/evaluation/<str:token>/', evaluation_projet,
+         name='portail-evaluation'),
     path('', include(router.urls)),
 ]

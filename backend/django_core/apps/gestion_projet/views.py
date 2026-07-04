@@ -28,6 +28,7 @@ from .models import (
     CalendrierProjet,
     DependanceTache,
     Equipe,
+    EvaluationProjet,
     Indisponibilite,
     ItemChecklistTache,
     Jalon,
@@ -537,6 +538,24 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
         """
         projet = self.get_object()
         return Response(selectors.penalites_retard(projet))
+
+    @action(detail=True, methods=['post'], url_path='lien-evaluation')
+    def lien_evaluation(self, request, pk=None):
+        """Crée/renvoie le lien tokenisé d'évaluation CSAT du projet (ZPRJ7).
+
+        IDEMPOTENT (relation 1–1 — ``get_or_create``) : un second appel
+        renvoie le MÊME lien (jamais de nouveau jeton, jamais de doublon). À
+        envoyer au client à la CLÔTURE du projet. La société est garantie par
+        ``get_object`` : un projet d'une autre société → 404.
+        """
+        projet = self.get_object()
+        evaluation, _ = EvaluationProjet.objects.get_or_create(
+            company=projet.company, projet=projet)
+        return Response({
+            'projet_id': projet.id,
+            'token': evaluation.token,
+            'deja_soumis': evaluation.soumis_le is not None,
+        })
 
     @action(detail=True, methods=['get'], url_path='couts-engages-reels')
     def couts_engages_reels(self, request, pk=None):
