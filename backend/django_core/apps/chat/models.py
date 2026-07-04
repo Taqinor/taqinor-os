@@ -44,6 +44,11 @@ class Conversation(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='chat_conversations_created')
     is_archived = models.BooleanField(default=False)
+    # ZCTR12 — canal comme liste de diffusion e-mail : optionnel, unique par
+    # société quand renseigné. Sans clé mail configurée (SENDGRID/inbound),
+    # ce champ est un simple libellé sans effet — comportement inchangé.
+    alias_email = models.CharField(
+        max_length=254, blank=True, default='', null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -54,6 +59,12 @@ class Conversation(models.Model):
         indexes = [
             models.Index(fields=['company', 'kind']),
             models.Index(fields=['company', 'is_archived']),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'alias_email'],
+                condition=~models.Q(alias_email__in=['', None]),
+                name='chat_conv_alias_email_uniq'),
         ]
 
     def __str__(self):

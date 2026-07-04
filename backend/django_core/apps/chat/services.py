@@ -150,6 +150,9 @@ def create_message(*, conversation, sender, company, body='', kind=None,
 
     # Notifications (in-app + Web Push), best-effort, après commit.
     transaction.on_commit(lambda: _notify_new_message(msg, mentioned))
+    # ZCTR12 — canal aliasé -> fan-out email aux membres opt-in (NO-OP sans
+    # alias/config email, jamais bloquant).
+    transaction.on_commit(lambda: notify_channel_alias_email(msg))
     return msg
 
 
@@ -936,6 +939,121 @@ def export_conversation(conversation, fmt='json'):
         'kind': conversation.kind,
         'messages': rows,
     }
+
+
+# ── ZCTR12 — canal comme liste de diffusion e-mail ─────────────────────
+
+def set_channel_alias(conversation, alias_email, user):
+    """Pose (ou lève, si vide) l'alias e-mail d'un canal. Unique par société
+    (contrainte DB `chat_conv_alias_email_uniq`) — une violation remonte en
+    `ValueError` lisible côté vue plutôt qu'une `IntegrityError` brute."""
+    from django.db import IntegrityError
+
+    alias = (alias_email or '').strip().lower() or None
+    conversation.alias_email = alias
+    try:
+        conversation.save(update_fields=['alias_email'])
+    except IntegrityError:
+        raise ValueError(
+            'Cet alias e-mail est déjà utilisé par un autre canal de la '
+            'société.')
+    return conversation
+
+
+def _email_gated():
+    """Vrai si l'email sortant est réellement configuré (SENDGRID/SMTP).
+    Sans configuration : NO-OP complet, comportement du canal interne
+    inchangé — jamais d'exception."""
+    try:
+        from apps.ventes.email_service import is_email_configured
+        return bool(is_email_configured())
+    except Exception:  # pragma: no cover - défensif
+        return False
+
+
+def notify_channel_alias_email(message):
+    """(a) — Un message posté dans un canal ALIASÉ est aussi envoyé par
+    e-mail aux membres ayant opté (préférence `notifications` existante,
+    canal email de `CHAT_MESSAGE`). NO-OP complet si l'email n'est pas
+    configuré OU si la conversation n'a pas d'alias — jamais bloquant,
+    jamais d'exception vers l'appelant."""
+    conv = message.conversation
+    if not conv.alias_email or not _email_gated():
+        return 0
+    try:
+        from apps.notifications.services import _dispatch_email, resolve_prefs
+        from apps.notifications.models import EventType
+    except Exception:  # pragma: no cover - défensif
+        return 0
+
+    from .models import ConversationMember
+
+    sent = 0
+    title = f'[{conv.name or conv.alias_email}] Nouveau message'
+    body = _preview(message)
+    members = (ConversationMember.objects
+               .filter(conversation=conv)
+               .exclude(is_muted=True)
+               .select_related('user'))
+    for m in members:
+        u = m.user
+        if u is None or (message.sender_id and u.pk == message.sender_id):
+            continue
+        try:
+            prefs = resolve_prefs(u, EventType.CHAT_MESSAGE)
+            if not prefs.get('email'):
+                continue  # opt-in requis — jamais un envoi non consenti.
+            if _dispatch_email(u, title, body):
+                sent += 1
+        except Exception:  # pragma: no cover - défensif
+            continue
+    return sent
+
+
+def receive_channel_alias_email(company, *, to_alias, from_email, subject='',
+                                body=''):
+    """(b) — E-mail entrant vers un alias (webhook inbound GATED, complet
+    NO-OP sans configuration) : crée un `Message` dans le canal attribué à
+    l'expéditeur SI reconnu (via l'adresse e-mail d'un utilisateur de la
+    société), sinon en SYSTÈME (jamais un message anonyme attribué à
+    quelqu'un d'autre). Toujours scopé société ; alias introuvable -> None."""
+    from django.contrib.auth import get_user_model
+
+    from .models import Conversation
+
+    alias = (to_alias or '').strip().lower()
+    if not alias:
+        return None
+    conv = Conversation.objects.filter(
+        company=company, alias_email=alias,
+        kind=Conversation.Kind.CHANNEL).first()
+    if conv is None:
+        return None
+
+    text = (body or subject or '').strip()
+    User = get_user_model()
+    sender_email = (from_email or '').strip().lower()
+    sender = (User.objects.filter(
+        company=company, email__iexact=sender_email).first()
+        if sender_email else None)
+
+    if sender is not None and _is_conversation_member(sender, conv):
+        return create_message(
+            conversation=conv, sender=sender, company=company, body=text)
+    label = f'E-mail entrant de {sender_email or "expéditeur inconnu"}'
+    return post_system_message(conv, f'{label} : {text}'[:2000])
+
+
+def _is_conversation_member(user, conversation):
+    """Mini-doublure locale de `permissions.is_member` (évite un import
+    circulaire `services.py` <-> `permissions.py`) pour
+    `receive_channel_alias_email`."""
+    if user is None or not getattr(user, 'pk', None):
+        return False
+    if getattr(conversation, 'company_id', None) != getattr(
+            user, 'company_id', None):
+        return False
+    return conversation.members.filter(user=user).exists()
 
 
 def delete_canned_response(canned, user):

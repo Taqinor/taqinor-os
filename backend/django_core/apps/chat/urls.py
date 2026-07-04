@@ -1,8 +1,10 @@
+from django.urls import path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
     ConversationViewSet, MessageViewSet, UserChatStatusViewSet,
     ScheduledMessageViewSet, CannedResponseViewSet, RetentionPolicyViewSet,
+    inbound_email_webhook,
 )
 
 router = DefaultRouter()
@@ -17,4 +19,7 @@ router.register(r'canned-responses', CannedResponseViewSet,
 router.register(r'retention-policies', RetentionPolicyViewSet,
                 basename='chat-retention-policy')
 
-urlpatterns = router.urls
+urlpatterns = router.urls + [
+    path('inbound-email/', inbound_email_webhook,
+         name='chat-inbound-email-webhook'),
+]

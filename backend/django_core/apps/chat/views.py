@@ -4,8 +4,12 @@ MULTI-TENANT STRICT : tout queryset est filtré à `request.user.company` ET aux
 conversations dont l'utilisateur est membre. Cross-tenant → 404 (jamais révélé) ;
 non-membre d'une conversation de sa société → 403.
 """
+import json
+
 from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import JSONParser, MultiPartParser
@@ -187,6 +191,24 @@ class ConversationViewSet(viewsets.ModelViewSet):
         ConversationMember.objects.filter(
             conversation=conv, user=request.user).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    # ── ZCTR12 — alias e-mail du canal ─────────────────────────────────
+    @action(detail=True, methods=['post'], url_path='alias-email')
+    def alias_email(self, request, pk=None):
+        """Pose/lève l'alias e-mail du canal (admin du canal uniquement).
+        Body: {alias_email: '...'} — vide/absent lève l'alias."""
+        conv = self.get_object()
+        if self._require_admin(conv) is None:
+            return Response(
+                {'detail': 'Action réservée aux administrateurs du canal.'},
+                status=status.HTTP_403_FORBIDDEN)
+        try:
+            services.set_channel_alias(
+                conv, request.data.get('alias_email', ''), request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(conv).data)
 
     # ── XKB32 — export d'une conversation (audit/conformité CNDP) ──────
     @action(detail=True, methods=['get'], url_path='export')
@@ -800,3 +822,49 @@ class RetentionPolicyViewSet(viewsets.ModelViewSet):
             (int(months) if months not in (None, '') else None),
             request.user)
         return Response(self.get_serializer(updated).data)
+
+
+# ── ZCTR12 — webhook e-mail entrant (canal-comme-liste-de-diffusion) ───
+#
+# GATED, complet NO-OP sans configuration : `CHAT_INBOUND_EMAIL_SECRET` (env)
+# doit être défini ET le header `X-Inbound-Secret` doit correspondre, sinon
+# 403. La société cible est résolue par `CHAT_INBOUND_EMAIL_COMPANY_ID` (env,
+# scaffold mono-société tant qu'aucun routage multi-société par domaine
+# d'alias n'est fourni) — sans elle, 404 (rien n'est traité). Aucun appel
+# réseau sortant depuis cette vue.
+
+def _inbound_email_secret():
+    import os
+    return os.getenv('CHAT_INBOUND_EMAIL_SECRET', '').strip()
+
+
+def _inbound_email_company():
+    import os
+    from authentication.models import Company
+    raw = os.getenv('CHAT_INBOUND_EMAIL_COMPANY_ID', '').strip()
+    if not raw.isdigit():
+        return None
+    return Company.objects.filter(pk=int(raw)).first()
+
+
+@csrf_exempt
+@require_POST
+def inbound_email_webhook(request):
+    """(b) — E-mail entrant vers un alias de canal. NO-OP complet (403) sans
+    `CHAT_INBOUND_EMAIL_SECRET` configuré ou header incorrect. Payload JSON
+    attendu : {"to": "...", "from": "...", "subject": "...", "text": "..."}."""
+    secret = _inbound_email_secret()
+    if not secret or request.headers.get('X-Inbound-Secret') != secret:
+        return HttpResponse(status=403)
+    company = _inbound_email_company()
+    if company is None:
+        return HttpResponse(status=404)
+    try:
+        payload = json.loads(request.body or b'{}')
+    except ValueError:
+        return HttpResponse(status=400)
+    msg = services.receive_channel_alias_email(
+        company, to_alias=payload.get('to', ''),
+        from_email=payload.get('from', ''),
+        subject=payload.get('subject', ''), body=payload.get('text', ''))
+    return JsonResponse({'created': msg is not None})

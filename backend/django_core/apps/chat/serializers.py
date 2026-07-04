@@ -157,8 +157,8 @@ class ConversationSerializer(serializers.ModelSerializer):
         model = Conversation
         fields = [
             'id', 'kind', 'name', 'created_by', 'is_archived',
-            'created_at', 'updated_at', 'members', 'member_ids',
-            'last_message', 'unread_count',
+            'alias_email', 'created_at', 'updated_at', 'members',
+            'member_ids', 'last_message', 'unread_count',
         ]
         read_only_fields = [
             'id', 'created_by', 'created_at', 'updated_at', 'members',

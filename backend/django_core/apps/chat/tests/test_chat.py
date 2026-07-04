@@ -1318,3 +1318,146 @@ class XKB32RetentionExportTests(TestCase):
             'conversation_kind': 'channel', 'retention_months': 12,
         }, format='json')
         self.assertEqual(r2.status_code, 201, r2.data)
+
+
+class ZCTR12ChannelEmailAliasTests(TestCase):
+    """ZCTR12 — canal comme liste de diffusion e-mail (sans clé mail = no-op
+    complet ; alias dupliqué refusé ; envoi/réception stubbés ; tenant)."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.alice = make_user(self.company, 'alice_ctr12')  # admin canal
+        self.bob = make_user(self.company, 'bob_ctr12')
+        self.conv = make_channel(
+            self.company, self.alice, name='support', members=[self.bob])
+
+    def test_set_alias_via_api_admin_only(self):
+        bob_api = auth(self.bob)
+        r = bob_api.post(
+            f'/api/django/chat/conversations/{self.conv.id}/alias-email/',
+            {'alias_email': 'support@taqinor.ma'}, format='json')
+        self.assertEqual(r.status_code, 403)
+
+        admin_api = auth(self.alice)
+        r2 = admin_api.post(
+            f'/api/django/chat/conversations/{self.conv.id}/alias-email/',
+            {'alias_email': 'Support@Taqinor.ma'}, format='json')
+        self.assertEqual(r2.status_code, 200, r2.data)
+        self.conv.refresh_from_db()
+        self.assertEqual(self.conv.alias_email, 'support@taqinor.ma')
+
+    def test_duplicate_alias_same_company_rejected(self):
+        services.set_channel_alias(self.conv, 'support@taqinor.ma', self.alice)
+        other_channel = make_channel(self.company, self.alice, name='sav')
+        with self.assertRaises(ValueError):
+            services.set_channel_alias(
+                other_channel, 'support@taqinor.ma', self.alice)
+
+    def test_same_alias_different_company_allowed(self):
+        services.set_channel_alias(self.conv, 'support@taqinor.ma', self.alice)
+        other_co = make_company(slug='ctr12-other', nom='Other')
+        other_owner = make_user(other_co, 'owner-ctr12')
+        other_conv = make_channel(other_co, other_owner, name='support-other')
+        # Ne lève pas : unique PAR société.
+        services.set_channel_alias(
+            other_conv, 'support@taqinor.ma', other_owner)
+
+    @patch('apps.ventes.email_service.is_email_configured', return_value=False)
+    def test_no_email_config_is_full_noop(self, _mock_cfg):
+        services.set_channel_alias(self.conv, 'support@taqinor.ma', self.alice)
+        with patch('apps.notifications.services._dispatch_email') as mock_send:
+            services.create_message(
+                conversation=self.conv, sender=self.alice,
+                company=self.company, body='Bonjour aliasé')
+            mock_send.assert_not_called()
+
+    @patch('apps.ventes.email_service.is_email_configured', return_value=True)
+    def test_email_configured_sends_to_opted_in_members(self, _mock_cfg):
+        from apps.notifications.models import NotificationPreference, EventType
+        services.set_channel_alias(self.conv, 'support@taqinor.ma', self.alice)
+        NotificationPreference.objects.create(
+            user=self.bob, event_type=EventType.CHAT_MESSAGE,
+            in_app=True, email=True)
+        with patch('apps.notifications.services._dispatch_email',
+                   return_value=True) as mock_send:
+            services.create_message(
+                conversation=self.conv, sender=self.alice,
+                company=self.company, body='Bonjour aliasé')
+            mock_send.assert_called_once()
+            self.assertEqual(mock_send.call_args.args[0], self.bob)
+
+    @patch('apps.ventes.email_service.is_email_configured', return_value=True)
+    def test_non_opted_in_member_not_emailed(self, _mock_cfg):
+        services.set_channel_alias(self.conv, 'support@taqinor.ma', self.alice)
+        # bob n'a PAS de préférence email=True -> défaut désactivé.
+        with patch('apps.notifications.services._dispatch_email') as mock_send:
+            services.create_message(
+                conversation=self.conv, sender=self.alice,
+                company=self.company, body='Bonjour aliasé')
+            mock_send.assert_not_called()
+
+    def test_inbound_email_creates_message_for_recognized_sender(self):
+        services.set_channel_alias(self.conv, 'support@taqinor.ma', self.alice)
+        # create_user (helper make_user) ne pose pas d'email par défaut ; on
+        # force un email exploitable pour simuler un expéditeur reconnu.
+        self.bob.email = 'bob_ctr12@example.com'
+        self.bob.save(update_fields=['email'])
+        ConversationMember.objects.get_or_create(
+            conversation=self.conv, user=self.bob)
+        msg = services.receive_channel_alias_email(
+            self.company, to_alias='support@taqinor.ma',
+            from_email='bob_ctr12@example.com',
+            subject='Question', body='Un souci avec ma commande')
+        self.assertIsNotNone(msg)
+        self.assertEqual(msg.sender_id, self.bob.pk)
+        self.assertIn('souci', msg.body)
+
+    def test_inbound_email_unknown_sender_falls_back_to_system_message(self):
+        services.set_channel_alias(self.conv, 'support@taqinor.ma', self.alice)
+        msg = services.receive_channel_alias_email(
+            self.company, to_alias='support@taqinor.ma',
+            from_email='inconnu@exterieur.com',
+            subject='Bonjour', body='Message externe')
+        self.assertIsNotNone(msg)
+        self.assertIsNone(msg.sender_id)
+        self.assertIn('inconnu@exterieur.com', msg.body)
+
+    def test_inbound_email_unknown_alias_returns_none(self):
+        result = services.receive_channel_alias_email(
+            self.company, to_alias='ghost@taqinor.ma',
+            from_email='x@x.com', body='x')
+        self.assertIsNone(result)
+
+    def test_inbound_email_cross_tenant_alias_not_matched(self):
+        services.set_channel_alias(self.conv, 'support@taqinor.ma', self.alice)
+        other_co = make_company(slug='ctr12-other2', nom='Other2')
+        result = services.receive_channel_alias_email(
+            other_co, to_alias='support@taqinor.ma',
+            from_email='x@x.com', body='x')
+        self.assertIsNone(result)
+
+    def test_webhook_noop_without_secret_configured(self):
+        api = APIClient()
+        r = api.post('/api/django/chat/inbound-email/',
+                     {'to': 'support@taqinor.ma', 'from': 'x@x.com',
+                      'text': 'hop'}, format='json')
+        self.assertEqual(r.status_code, 403)
+
+    @override_settings()
+    def test_webhook_with_secret_creates_system_message(self):
+        import os
+        services.set_channel_alias(self.conv, 'support@taqinor.ma', self.alice)
+        os.environ['CHAT_INBOUND_EMAIL_SECRET'] = 'test-secret'
+        os.environ['CHAT_INBOUND_EMAIL_COMPANY_ID'] = str(self.company.pk)
+        try:
+            api = APIClient()
+            r = api.post(
+                '/api/django/chat/inbound-email/',
+                {'to': 'support@taqinor.ma', 'from': 'ghost@ext.com',
+                 'subject': 'Salut', 'text': 'Un message externe'},
+                format='json', HTTP_X_INBOUND_SECRET='test-secret')
+            self.assertEqual(r.status_code, 200, r.content)
+            self.assertTrue(r.json()['created'])
+        finally:
+            os.environ.pop('CHAT_INBOUND_EMAIL_SECRET', None)
+            os.environ.pop('CHAT_INBOUND_EMAIL_COMPANY_ID', None)
