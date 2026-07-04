@@ -65,11 +65,12 @@ export interface CityContent {
    */
   roiNuance: string;
   /**
-   * W328 — ligne de prudence tarifaire, présente UNIQUEMENT pour les 3 villes
-   * à délégataire de distribution (Casablanca/Lydec, Rabat/Redal,
-   * Tanger/Amendis — mapping verrouillé dans `CONTENT_SEO_NOTES.md` §2).
-   * `undefined` pour Marrakech/Agadir (régie locale, pas de délégataire
-   * nommé/vérifié dans ce dépôt — on n'invente pas le nom).
+   * W328 — ligne de prudence tarifaire pour la ville : qui distribue, et un
+   * rappel qu'on vérifie la tranche sur le relevé plutôt que d'affirmer un
+   * barème. Couvre les 3 villes à délégataire historique (Casablanca/Lydec,
+   * Rabat/Redal, Tanger/Amendis — mapping verrouillé dans
+   * `CONTENT_SEO_NOTES.md` §2) ainsi que Marrakech (RADEEMA) et Agadir (SRM
+   * Souss-Massa, régies publiques sourcées, WB9).
    */
   delegataireNote?: string;
   /**
@@ -248,8 +249,8 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         'gisement, ce qui place la plupart des toitures casablancaises au centre de la bande 3–7 ans — le dimensionnement ' +
         'sur votre facture reste ce qui la resserre vraiment.',
       delegataireNote:
-        'Casablanca est distribuée par Lydec : votre facture porte son barème, pas un tarif générique — ' +
-        'nous le confirmons sur votre relevé avant de chiffrer quoi que ce soit.',
+        'Casablanca est distribuée par Lydec : nous vérifions votre tranche sur votre relevé ' +
+        'avant de chiffrer quoi que ce soit.',
     },
     en: {
       heroLead:
@@ -286,8 +287,8 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         'At ≈ 2,950 h a year, Casablanca sits mid-pack among our five cities: neither the best nor the weakest resource, ' +
         'which puts most Casablanca roofs near the centre of the 3–7 year band — sizing on your bill is what really narrows it.',
       delegataireNote:
-        'Casablanca is served by Lydec: your bill carries its own tariff schedule, not a generic rate — ' +
-        'we confirm it on your statement before pricing anything.',
+        'Casablanca is served by Lydec: we check your tariff bracket on your statement ' +
+        'before pricing anything.',
     },
     ar: {
       heroLead:
@@ -324,8 +325,8 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         'بـ ≈ 2 950 ساعة في السنة، تقع الدار البيضاء في الوسط بين مدننا الخمس: لا الأفضل ولا الأضعف مخزوناً، ' +
         'ما يضع معظم أسطح الدار البيضاء قرب مركز بند 3–7 سنوات — والمقاس المحسوب على فاتورتك هو ما يضيّقه فعلاً.',
       delegataireNote:
-        'الدار البيضاء توزّعها Lydec: فاتورتك تحمل بارِمها الخاص، لا تعريفة عامة — ' +
-        'نتأكّد منه على كشف حسابك قبل تقدير أي ثمن.',
+        'الدار البيضاء توزّعها Lydec: نتحقّق من شطرك التعريفي على كشف حسابك ' +
+        'قبل تقدير أي ثمن.',
     },
   },
 
@@ -362,11 +363,11 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       description:
         'Installation solaire à Rabat : Taqinor dimensionne sur votre facture, pose et déclare au titre de la loi 82-21. Monitoring Deye Cloud, chantiers réels mesurés dans la région.',
       roiNuance:
-        'Avec ≈ 2 900 h par an, Rabat a le deuxième gisement le plus mesuré de nos cinq villes : de quoi tenir dans la ' +
+        'Avec ≈ 2 900 h par an, Rabat a le deuxième gisement le plus faible de nos cinq villes : de quoi tenir dans la ' +
         'bande 3–7 ans, plutôt vers sa partie haute pour un dimensionnement identique — l’étude sur votre facture reste ' +
         'ce qui la précise réellement.',
       delegataireNote:
-        'Rabat est distribuée par Redal : votre facture porte son barème propre — nous le vérifions sur votre relevé ' +
+        'Rabat est distribuée par Redal : nous vérifions votre tranche sur votre relevé ' +
         'avant de chiffrer votre installation.',
       nearestInstallNote:
         'Rabat partage le même littoral atlantique que la région Casablanca-Settat, juste au sud, où se trouvent tous ' +
@@ -407,7 +408,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         'At ≈ 2,900 h a year, Rabat has the second-lightest resource of our five cities: still well within the 3–7 year ' +
         'band, typically toward its upper half for an identical system size — the assessment on your bill is what really pins it down.',
       delegataireNote:
-        'Rabat is served by Redal: your bill carries its own tariff schedule — we check it on your statement before pricing your installation.',
+        'Rabat is served by Redal: we check your tariff bracket on your statement before pricing your installation.',
       nearestInstallNote:
         'Rabat shares the same Atlantic coastline as the Casablanca-Settat region, just to the south, where all our ' +
         'already-serviced installations are — same assessment methods, same tier-1 equipment, same Deye Cloud monitoring.',
@@ -447,7 +448,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         'بـ ≈ 2 900 ساعة في السنة، تملك الرباط ثاني أخفّ مخزون بين مدننا الخمس: يبقى ضمن بند 3–7 سنوات، ' +
         'غالباً في نصفه الأعلى لمقاس مماثل — والدراسة على فاتورتك هي ما يحدّده فعلاً.',
       delegataireNote:
-        'الرباط توزّعها Redal: فاتورتك تحمل بارِمها الخاص — نتحقّق منه على كشف حسابك قبل تقدير تركيبتك.',
+        'الرباط توزّعها Redal: نتحقّق من شطرك التعريفي على كشف حسابك قبل تقدير تركيبتك.',
       nearestInstallNote:
         'تشترك الرباط في الساحل الأطلسي نفسه مع جهة الدار البيضاء سطات، جنوباً مباشرة، حيث توجد كل تركيباتنا العاملة ' +
         'فعلاً — نفس مناهج الدراسة، نفس العتاد من الفئة الأولى، نفس مراقبة Deye Cloud.',
@@ -489,6 +490,9 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       roiNuance:
         'Avec ≈ 3 000 h par an, Marrakech se classe au-dessus de la moyenne de nos cinq villes : un gisement qui tend la ' +
         'bande 3–7 ans vers sa partie basse pour un dimensionnement comparable — sans jamais dispenser l’étude de vérifier votre toiture.',
+      delegataireNote:
+        'Marrakech est distribuée par la régie RADEEMA : nous vérifions votre tranche sur votre relevé ' +
+        'avant de chiffrer votre installation.',
       nearestInstallNote:
         'Marrakech se trouve au sud-est de la région Casablanca-Settat, où sont concentrés tous nos chantiers déjà en ' +
         'service : mêmes méthodes d’étude, même matériel tier-1, même monitoring Deye Cloud, quelle que soit la distance.',
@@ -527,6 +531,9 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       roiNuance:
         'At ≈ 3,000 h a year, Marrakech ranks above the average of our five cities: a resource that pulls the 3–7 year ' +
         'band toward its lower half for a comparable system size — never a substitute for checking your actual roof.',
+      delegataireNote:
+        'Marrakech is served by the public utility RADEEMA: we check your tariff bracket on your statement ' +
+        'before pricing your installation.',
       nearestInstallNote:
         'Marrakech lies south-east of the Casablanca-Settat region, where all our already-serviced installations are ' +
         'concentrated — same assessment methods, same tier-1 equipment, same Deye Cloud monitoring, whatever the distance.',
@@ -565,6 +572,8 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       roiNuance:
         'بـ ≈ 3 000 ساعة في السنة، تُصنَّف مراكش فوق متوسط مدننا الخمس: مخزون يشدّ بند 3–7 سنوات نحو نصفه الأدنى ' +
         'لمقاس مماثل — دون أن يعفي ذلك أبداً من فحص سطحك فعلياً.',
+      delegataireNote:
+        'مراكش توزّعها الوكالة الجهوية RADEEMA: نتحقّق من شطرك التعريفي على كشف حسابك قبل تقدير تركيبتك.',
       nearestInstallNote:
         'تقع مراكش جنوب شرق جهة الدار البيضاء سطات، حيث تتركّز كل تركيباتنا العاملة فعلاً — نفس مناهج الدراسة، ' +
         'نفس العتاد من الفئة الأولى، نفس مراقبة Deye Cloud، مهما كانت المسافة.',
@@ -604,12 +613,12 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       description:
         'Installation solaire à Tanger : ≈ 2 800 h de soleil et un détroit venté — d’où un dimensionnement calculé au degré près sur votre facture. Pose, Deye Cloud et loi 82-21.',
       roiNuance:
-        'Avec ≈ 2 800 h par an, Tanger a le gisement le plus mesuré de nos cinq villes : à dimensionnement égal, cela ' +
+        'Avec ≈ 2 800 h par an, Tanger a le gisement le plus faible de nos cinq villes : à dimensionnement égal, cela ' +
         'pousse plutôt vers la partie haute de la bande 3–7 ans — raison de plus pour caler l’orientation et l’inclinaison ' +
         'au lieu de compter sur la seule météo.',
       delegataireNote:
-        'Tanger est distribuée par Amendis : votre facture porte son barème propre — nous le confirmons sur votre relevé ' +
-        'avant de chiffrer votre installation.',
+        'Tanger est distribuée par Amendis (en cours de reprise progressive par la SRM régionale, 2025–2027) : ' +
+        'nous vérifions votre tranche sur votre relevé avant de chiffrer votre installation.',
       nearestInstallNote:
         'Tanger se trouve au nord de la région Casablanca-Settat, où sont concentrés tous nos chantiers déjà en service : ' +
         'mêmes méthodes d’étude, même matériel tier-1, même monitoring Deye Cloud, quelle que soit la distance.',
@@ -650,7 +659,8 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         'leans toward the upper end of the 3–7 year band — one more reason to get the tilt and orientation right instead ' +
         'of counting on the weather alone.',
       delegataireNote:
-        'Tangier is served by Amendis: your bill carries its own tariff schedule — we confirm it on your statement before pricing your installation.',
+        'Tangier is served by Amendis (progressively being taken over by the regional SRM, 2025–2027): ' +
+        'we check your tariff bracket on your statement before pricing your installation.',
       nearestInstallNote:
         'Tangier lies north of the Casablanca-Settat region, where all our already-serviced installations are ' +
         'concentrated — same assessment methods, same tier-1 equipment, same Deye Cloud monitoring, whatever the distance.',
@@ -690,7 +700,8 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         'بـ ≈ 2 800 ساعة في السنة، تملك طنجة أخفّ مخزون بين مدننا الخمس: لمقاس مماثل، يميل ذلك نحو الطرف الأعلى ' +
         'من بند 3–7 سنوات — سبب إضافي لضبط الميل والتوجيه بدل الاعتماد على الطقس وحده.',
       delegataireNote:
-        'طنجة توزّعها Amendis: فاتورتك تحمل بارِمها الخاص — نتأكّد منه على كشف حسابك قبل تقدير تركيبتك.',
+        'طنجة توزّعها Amendis (في طور التسليم التدريجي للشركة الجهوية متعددة الخدمات SRM، 2025–2027): ' +
+        'نتحقّق من شطرك التعريفي على كشف حسابك قبل تقدير تركيبتك.',
       nearestInstallNote:
         'تقع طنجة شمال جهة الدار البيضاء سطات، حيث تتركّز كل تركيباتنا العاملة فعلاً — نفس مناهج الدراسة، ' +
         'نفس العتاد من الفئة الأولى، نفس مراقبة Deye Cloud، مهما كانت المسافة.',
@@ -700,14 +711,14 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
   agadir: {
     fr: {
       heroLead:
-        'Agadir est la plus ensoleillée de nos cinq villes : ≈ 3 400 h par an sur le Souss. ' +
-        'Le gisement est exceptionnel pour le pays — mais une installation se juge à ce qu’elle produit chez vous, pas au soleil de la baie. On dimensionne sur votre facture.',
+        'Agadir affiche l’un des meilleurs gisements de nos cinq villes : ≈ 3 400 h par an sur le Souss. ' +
+        'Le gisement est solide pour le pays — mais une installation se juge à ce qu’elle produit chez vous, pas au soleil de la baie. On dimensionne sur votre facture.',
       sunshineContext:
-        'Climat semi-aride, ciel dégagé une grande partie de l’année : ces ≈ 3 400 h placent Agadir en tête sur le littoral. ' +
+        'Climat semi-aride, ciel dégagé une grande partie de l’année : ces ≈ 3 400 h placent Agadir parmi les mieux exposées du littoral. ' +
         'Reste que votre toiture, son orientation et son ombrage déterminent la production réelle — c’est ce que l’étude chiffre, le soleil ne suffit pas.',
       pillars: {
         study: {
-          heading: 'Le meilleur gisement ne dispense pas de calculer',
+          heading: 'Un fort gisement ne dispense pas de calculer',
           body:
             'Sous les ≈ 3 400 h du Souss, on pourrait être tenté de poser sans réfléchir. On dimensionne quand même sur votre consommation, ' +
             'pas sur le climat — étude validée par le fondateur, docteur-ingénieur.',
@@ -728,24 +739,27 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       closer: 'À Agadir, le soleil est acquis ; ce qui compte, c’est le dimensionnement. Faites étudier votre toiture.',
       title: 'Installation solaire à Agadir — étude, pose et loi 82-21 | Taqinor',
       description:
-        'Installation solaire à Agadir : ≈ 3 400 h de soleil par an, le meilleur gisement de nos villes — mais on dimensionne sur votre facture. Pose, monitoring Deye Cloud et loi 82-21.',
+        'Installation solaire à Agadir : ≈ 3 400 h de soleil par an, l’un des meilleurs gisements de nos villes — mais on dimensionne sur votre facture. Pose, monitoring Deye Cloud et loi 82-21.',
       roiNuance:
-        'Avec ≈ 3 400 h par an, Agadir a le meilleur gisement de nos cinq villes : à dimensionnement égal, cela pousse ' +
+        'Avec ≈ 3 400 h par an, Agadir affiche l’un des meilleurs gisements de nos cinq villes : à dimensionnement égal, cela pousse ' +
         'la bande 3–7 ans vers sa partie basse — un avantage réel, que seule l’étude sur votre facture transforme en chiffre exact.',
+      delegataireNote:
+        'Agadir est distribuée par la SRM Souss-Massa (régie régionale, succède à la RAMSA) : nous vérifions votre ' +
+        'tranche sur votre relevé avant de chiffrer votre installation.',
       nearestInstallNote:
         'Agadir se trouve au sud de la région Casablanca-Settat, où sont concentrés tous nos chantiers déjà en service : ' +
         'mêmes méthodes d’étude, même matériel tier-1, même monitoring Deye Cloud, quelle que soit la distance.',
     },
     en: {
       heroLead:
-        'Agadir is the sunniest of our five cities: ≈ 3,400 h a year over the Souss. ' +
-        'The resource is exceptional for the country — but an installation is judged by what it produces at your place, not by the sun over the bay. We size on your bill.',
+        'Agadir has one of the best resources of our five cities: ≈ 3,400 h a year over the Souss. ' +
+        'The resource is strong for the country — but an installation is judged by what it produces at your place, not by the sun over the bay. We size on your bill.',
       sunshineContext:
-        'Semi-arid climate, clear sky for much of the year: those ≈ 3,400 h put Agadir at the top of the coast. ' +
+        'Semi-arid climate, clear sky for much of the year: those ≈ 3,400 h put Agadir among the best-exposed spots on the coast. ' +
         'Still, your roof, its orientation and its shading determine the real output — that is what the assessment quantifies; the sun is not enough.',
       pillars: {
         study: {
-          heading: 'The best resource does not excuse you from calculating',
+          heading: 'A strong resource does not excuse you from calculating',
           body:
             'Under the ≈ 3,400 h of the Souss, one could be tempted to install without thinking. We still size on your consumption, ' +
             'not on the climate — assessment validated by the founder, a doctor-engineer.',
@@ -766,24 +780,27 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       closer: 'In Agadir, the sun is a given; what counts is the sizing. Have your roof assessed.',
       title: 'Solar installation in Agadir — assessment, install and Law 82-21 | Taqinor',
       description:
-        'Solar installation in Agadir: ≈ 3,400 h of sun a year, the best resource of our cities — but we size on your bill. Install, Deye Cloud monitoring and Law 82-21.',
+        'Solar installation in Agadir: ≈ 3,400 h of sun a year, one of the best resources of our cities — but we size on your bill. Install, Deye Cloud monitoring and Law 82-21.',
       roiNuance:
-        'At ≈ 3,400 h a year, Agadir has the best resource of our five cities: for an identical system size, that pulls ' +
+        'At ≈ 3,400 h a year, Agadir has one of the best resources of our five cities: for an identical system size, that pulls ' +
         'the 3–7 year band toward its lower end — a real edge that only the assessment on your bill turns into an exact figure.',
+      delegataireNote:
+        'Agadir is served by the regional utility SRM Souss-Massa (successor to RAMSA): we check your tariff bracket ' +
+        'on your statement before pricing your installation.',
       nearestInstallNote:
         'Agadir lies south of the Casablanca-Settat region, where all our already-serviced installations are ' +
         'concentrated — same assessment methods, same tier-1 equipment, same Deye Cloud monitoring, whatever the distance.',
     },
     ar: {
       heroLead:
-        'أكادير هي الأكثر إشعاعاً بين مدننا الخمس: ≈ 3 400 ساعة في السنة فوق سوس. ' +
-        'المخزون استثنائي بالنسبة للبلاد — لكن التركيبة تُحكَم بما تنتجه عندك، لا بشمس الخليج. نحدّد المقاس على فاتورتك.',
+        'أكادير من بين المدن ذات أفضل مخزون شمسي في مدننا الخمس: ≈ 3 400 ساعة في السنة فوق سوس. ' +
+        'المخزون قوي بالنسبة للبلاد — لكن التركيبة تُحكَم بما تنتجه عندك، لا بشمس الخليج. نحدّد المقاس على فاتورتك.',
       sunshineContext:
-        'مناخ شبه قاحل، سماء صافية جزءاً كبيراً من السنة: هذه الـ ≈ 3 400 ساعة تضع أكادير في صدارة الساحل. ' +
+        'مناخ شبه قاحل، سماء صافية جزءاً كبيراً من السنة: هذه الـ ≈ 3 400 ساعة تضع أكادير من بين الأفضل تعرّضاً على الساحل. ' +
         'يبقى أنّ سطحك وتوجيهه وتظليله هي التي تحدّد الإنتاج الحقيقي — وهذا ما تقدّره الدراسة؛ الشمس وحدها لا تكفي.',
       pillars: {
         study: {
-          heading: 'أفضل مخزون لا يعفي من الحساب',
+          heading: 'مخزون قوي لا يعفي من الحساب',
           body:
             'تحت الـ ≈ 3 400 ساعة لسوس، قد يُغري المرءُ بالتركيب دون تفكير. ومع ذلك نحدّد المقاس على استهلاكك، ' +
             'لا على المناخ — دراسة يصادق عليها المؤسّس، دكتور-مهندس.',
@@ -804,10 +821,12 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       closer: 'في أكادير، الشمس مضمونة؛ المهمّ هو المقاس. ادرس سطحك.',
       title: 'تركيب شمسي في أكادير — دراسة وتركيب والقانون 82-21 | Taqinor',
       description:
-        'تركيب شمسي في أكادير: ≈ 3 400 ساعة شمس في السنة، أفضل مخزون بين مدننا — لكننا نحدّد المقاس على فاتورتك. تركيب، مراقبة Deye Cloud والقانون 82-21.',
+        'تركيب شمسي في أكادير: ≈ 3 400 ساعة شمس في السنة، من بين أفضل المخزونات لدينا — لكننا نحدّد المقاس على فاتورتك. تركيب، مراقبة Deye Cloud والقانون 82-21.',
       roiNuance:
-        'بـ ≈ 3 400 ساعة في السنة، تملك أكادير أفضل مخزون بين مدننا الخمس: لمقاس مماثل، يشدّ ذلك بند 3–7 سنوات ' +
+        'بـ ≈ 3 400 ساعة في السنة، تملك أكادير واحداً من أفضل المخزونات بين مدننا الخمس: لمقاس مماثل، يشدّ ذلك بند 3–7 سنوات ' +
         'نحو طرفه الأدنى — ميزة حقيقية لا تتحوّل إلى رقم دقيق إلا بالدراسة على فاتورتك.',
+      delegataireNote:
+        'أكادير توزّعها الوكالة الجهوية SRM سوس-ماسة (خلفاً لـRAMSA): نتحقّق من شطرك التعريفي على كشف حسابك قبل تقدير تركيبتك.',
       nearestInstallNote:
         'تقع أكادير جنوب جهة الدار البيضاء سطات، حيث تتركّز كل تركيباتنا العاملة فعلاً — نفس مناهج الدراسة، ' +
         'نفس العتاد من الفئة الأولى، نفس مراقبة Deye Cloud، مهما كانت المسافة.',
