@@ -249,8 +249,8 @@ const itemListJsonLd = {
   }
   .lightbox-close {
     position: fixed;
-    top: 1.25rem;
-    right: 1.25rem;
+    top: max(1.25rem, env(safe-area-inset-top));
+    inset-inline-end: max(1.25rem, env(safe-area-inset-right));
     z-index: 9001;
     display: flex;
     align-items: center;
@@ -285,8 +285,17 @@ const itemListJsonLd = {
     cursor: pointer;
     transition: color 200ms, border-color 200ms;
   }
-  .lightbox-arrow--prev { left: 1rem; }
-  .lightbox-arrow--next { right: 1rem; }
+  /* WA23 — RTL : « précédent » reste à droite visuellement (sens de lecture
+     arabe), « suivant » à gauche ; logical properties + chevrons SVG retournés
+     (dessinés pour la sémantique LTR à l'origine). */
+  .lightbox-arrow--prev {
+    inset-inline-start: max(1rem, env(safe-area-inset-left));
+    transform: translateY(-50%) scaleX(-1);
+  }
+  .lightbox-arrow--next {
+    inset-inline-end: max(1rem, env(safe-area-inset-right));
+    transform: translateY(-50%) scaleX(-1);
+  }
   .lightbox-arrow:hover,
   .lightbox-arrow:focus-visible {
     color: var(--color-brass-300);
