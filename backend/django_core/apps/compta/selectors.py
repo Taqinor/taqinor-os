@@ -2773,7 +2773,6 @@ def export_fiduciaire(company, exercice, *, validees_seulement=False):
     }
 
 
-<<<<<<< HEAD
 # ── XACC15 — Charges constatées d'avance : solde restant à étaler ─────────
 
 def solde_charges_constatees_avance(company, *, date_fin=None):
