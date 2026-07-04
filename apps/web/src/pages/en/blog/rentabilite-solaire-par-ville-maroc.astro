@@ -74,12 +74,12 @@ const pvout = [
 ];
 
 const tariffs = [
-  { range: '0 – 100 kWh', tariff: '0.90', mode: 'progressive' },
-  { range: '101 – 150 kWh', tariff: '1.07', mode: 'progressive' },
-  { range: '151 – 200 kWh', tariff: '1.18', mode: 'selective' },
-  { range: '201 – 300 kWh', tariff: '~1.18 → 1.45', mode: 'selective' },
-  { range: '301 – 500 kWh', tariff: '1.45', mode: 'selective' },
-  { range: '> 500 kWh', tariff: '1.66', mode: 'selective' },
+  { range: '0 – 100 kWh', tariff: '0.9010', mode: 'progressive' },
+  { range: '101 – 150 kWh', tariff: '1.0732', mode: 'progressive' },
+  { range: '151 – 210 kWh', tariff: '1.0732', mode: 'selective' },
+  { range: '211 – 310 kWh', tariff: '1.1676', mode: 'selective' },
+  { range: '311 – 510 kWh', tariff: '1.3817', mode: 'selective' },
+  { range: '> 510 kWh', tariff: '1.5958', mode: 'selective' },
 ];
 ---
 
@@ -150,7 +150,8 @@ const tariffs = [
             </tbody>
           </table>
         </div>
-        <p><em>Sources: PVGIS (European Commission); Global Solar Atlas (World Bank / Solargis); MDPI Resources 2024 13(10):140 (Marrakech). Other cities' brackets are estimates recalibrated on the Marrakech point — not a substitute for a PVGIS simulation at your exact address.</em></p>
+        <p><em>Sources: PVGIS (European Commission); Global Solar Atlas (World Bank / Solargis); MDPI Resources 2024 13(10):140 (Marrakech, PR 78%). Other cities' brackets are estimates recalibrated on the Marrakech point — not a substitute for a PVGIS simulation at your exact address.</em></p>
+        <blockquote><p><strong>Consistency note:</strong> our <a href={L('/ensoleillement-maroc')}>yield-by-city page</a>, drawn directly from our own PVGIS TMY 2005–2020 extraction (14% system losses, PR 86%), gives lower values for these same cities (Marrakech ~1,650, Casablanca ~1,650, Agadir ~1,686 kWh/kWc/yr) — an ~8% gap versus the Marrakech point above. This isn't a contradiction: the MDPI study measures GTI (plane-of-array irradiation) and applies its own performance-ratio assumption (PR 78%), different from our own PVGIS extraction (PR 86%) — two distinct methodologies applied to the same solar resource don't yield the same final PVOUT. For an estimate that exactly reflects our sizing method, see <a href={L('/ensoleillement-maroc')}>yield by city</a> and <a href={L('/methodologie-estimation')}>our estimation methodology</a>.</p></blockquote>
         <p>
           <strong>National benchmark:</strong> Morocco's PVOUT band sits between
           <strong> 1,600 and 1,900 kWh/kWc/yr</strong> (GSA). Installers often use the rule of thumb
@@ -158,8 +159,8 @@ const tariffs = [
         </p>
 
         <h2>Why is solar profitable in Morocco? The ONEE tariff mechanism</h2>
-        <h3>The tariff grid (verified 2026-06)</h3>
-        <p>Current ONEE residential low-voltage tariffs are as follows (rounded, incl. VAT):</p>
+        <h3>The tariff grid (verified by the founder, June 2026)</h3>
+        <p>Current ONEE/régie residential low-voltage tariffs are as follows (incl. VAT, the <code>REGIE_TARIFF</code> grid — the same one our online estimator uses):</p>
         <div class="table-wrap">
           <table>
             <thead>
@@ -180,7 +181,7 @@ const tariffs = [
             </tbody>
           </table>
         </div>
-        <p><em>Sources: kherba.com/tarifs; calculateur.ma (ONEE simulator); electrosolarplus.ma; bati.ma. Last known official revision: ~2015. An ANRE tariff reform is expected by March 2027. Distributors (Lydec/Casablanca, Redal/Rabat, Amendis/Tangier): same structure, similar tariffs — exact per-bracket decimals not verified (portals 403).</em></p>
+        <p><em>Grid verified by the founder (June 2026), identical to the one our online estimator applies — see <a href={L('/methodologie-estimation')}>our estimation methodology</a> and <a href={L('/ensoleillement-maroc')}>yield by city</a> for the live source. Lydec/Casablanca and Redal/Rabat are currently matched to this same grid (a conservative posture pending a reference bill from each utility); Amendis/Tangier follows the same bracket structure. An older grid (0.90/1.07/1.18/1.45/1.66 DH/kWh, sourced ~2015 via aggregators like kherba.com and calculateur.ma) previously appeared on this article — it is <strong>replaced</strong> by the grid above, more precise and aligned with the estimator.</em></p>
         <blockquote><p><strong>Freshness note:</strong> these tariffs have been stable for several years. Check <a href="https://calculateur.ma">calculateur.ma</a> or with your distributor if you're reading this article after 2026.</p></blockquote>
 
         <h3>The "selective" mechanism: solar's leverage effect</h3>
@@ -191,14 +192,14 @@ const tariffs = [
         </ul>
         <p>
           <strong>Concrete example:</strong> a household consuming 250 kWh in July doesn't pay the
-          first 100 kWh at 0.90 DH then the rest at 1.07, 1.18… It pays the <em>entire</em> 250 kWh at
-          the 201–300 kWh bracket rate, about 1.45 DH/kWh (a 10 kWh tolerance per bracket softens
+          first 100 kWh at 0.9010 DH then the rest at 1.0732… It pays the <em>entire</em> 250 kWh at
+          the 211–310 kWh bracket rate, 1.1676 DH/kWh (a 10 kWh tolerance per bracket softens
           narrow overshoots).
         </p>
         <p>
           What solar removes is precisely this high marginal rate applied to the whole bill. Take a
-          household in the 301–500 kWh bracket that pulls 200 kWh a month off the grid thanks to its
-          panels: it saves those 200 kWh at the <em>marginal</em> rate of 1.45 DH, not at the apparent
+          household in the 311–510 kWh bracket that pulls 200 kWh a month off the grid thanks to its
+          panels: it saves those 200 kWh at the <em>marginal</em> rate of 1.3817 DH, not at the apparent
           average rate of its old bill. That's the whole reason profitability climbs for heavy
           consumers, and it's also what I check first on a bill before pricing anything.
         </p>
@@ -211,9 +212,9 @@ const tariffs = [
         </p>
         <p><strong>What influences payback:</strong></p>
         <ul>
-          <li><strong>Your current tariff bracket</strong>: the higher your bracket (≥ 1.45 DH/kWh), the greater the annual savings and the faster the payback.</li>
+          <li><strong>Your current tariff bracket</strong>: the higher your bracket (≥ 1.3817 DH/kWh), the greater the annual savings and the faster the payback.</li>
           <li><strong>Installation cost</strong>: indicative 2026 bracket of ~10,000 to 14,000 DH/kWc (equipment + install, installer sources — unaudited). See <a href={L('/blog/prix-installation-solaire-maroc-2026')}>our pricing guide</a>.</li>
-          <li><strong>Your self-consumption rate</strong>: under <a href={L('/loi-82-21')}>Law 82-21</a>, surplus injected into the grid is bought back at only 0.18–0.21 DH/kWh for medium/high voltage — well below the retail rate (the low-voltage declaration-regime tariff, for homes under 11 kW, isn't published yet, but nothing suggests it changes this logic). Solar's real value is in immediate consumption, not export.</li>
+          <li><strong>Your self-consumption rate</strong>: <a href={L('/loi-82-21')}>Law 82-21</a> organises low-voltage self-generation, but no residential (BT) buy-back tariff is published yet — the ANRE has only published a buy-back tariff for medium/high/very-high voltage (0.18–0.21 DH/kWh), not for homes under 11 kW. Until that BT tariff exists in black and white, we don't price in <strong>any export revenue</strong>: solar's real value is in immediate consumption, not in reselling an unvalued surplus (see <a href={L('/methodologie-estimation')}>our estimation methodology</a>).</li>
           <li><strong>The battery</strong>: adding storage stretches payback by <strong>1 to 3 years</strong> but increases the evening self-consumption rate.</li>
         </ul>
         <p>
@@ -230,7 +231,7 @@ const tariffs = [
           <a href={L('/devis/mon-toit')}>Get a personalised quote</a> for a precise estimate.
         </p>
         <hr />
-        <p><em>ONEE tariffs verified 2026-06. Yields by city: PVGIS/Global Solar Atlas/Solargis estimates recalibrated on the Marrakech measurement of 1,779 kWh/kWc/yr (MDPI Resources 2024). Payback 5–7 years: consensus of 2026 Moroccan installer sources.</em></p>
+        <p><em>ONEE/régie tariffs (<code>REGIE_TARIFF</code> grid) verified by the founder, June 2026. Yields by city: PVGIS/Global Solar Atlas/Solargis estimates recalibrated on the Marrakech measurement of 1,779 kWh/kWc/yr (MDPI Resources 2024, PR 78%) — this field study uses a performance-ratio assumption different from Taqinor's own PVGIS TMY extraction (PR 86%, see <a href={L('/ensoleillement-maroc')}>/ensoleillement-maroc</a>), which explains the ~8% gap versus the site's own yield table: the two figures don't contradict each other, they apply different methodologies. Payback 5–7 years: consensus of 2026 Moroccan installer sources.</em></p>
       </div>
 
       <RelatedLinks
