@@ -2127,3 +2127,43 @@ def log_whatsapp_message_on_lead(lead, *, texte, expediteur, nom_profil=''):
         return activity.log_note(lead, None, body)
     except Exception:  # noqa: BLE001 — jamais bloquant pour le webhook
         return None
+
+
+# ── ZSAV8 — Convertir un ticket SAV en opportunité CRM ──────────────────────
+# apps.sav ne peut PAS importer apps.crm.models directement (règle de
+# modularité CLAUDE.md) : cette fonction est son unique porte d'entrée pour
+# créer un lead depuis un ticket (upsell/remplacement).
+
+def create_lead_depuis_ticket(*, company, user, client, contexte=''):
+    """ZSAV8 — Crée (ou réutilise) un lead CRM depuis un ticket SAV.
+
+    Réutilise un lead OUVERT (stage != COLD, non archivé) déjà lié à ce
+    ``client`` plutôt que d'en créer un doublon. Sinon, crée un nouveau lead
+    au stade ``NEW`` (STAGES.py, jamais codé en dur), pré-rempli avec
+    l'identité du client + ``contexte`` en description.
+
+    Renvoie ``(lead, created)``."""
+    existant = (
+        Lead.objects
+        .filter(company=company, client=client)
+        .exclude(stage=stages.COLD)
+        .order_by('-date_creation')
+        .first())
+    if existant is not None:
+        return existant, False
+
+    lead = Lead.objects.create(
+        company=company,
+        nom=f'{client.nom} {client.prenom or ""}'.strip() or client.nom,
+        prenom=client.prenom or None,
+        email=client.email or None,
+        telephone=client.telephone or None,
+        client=client,
+        canal=Lead.Canal.AUTRE,
+        stage=stages.NEW,
+    )
+    activity.log_creation(lead, user)
+    contexte = (contexte or '').strip()
+    if contexte:
+        activity.log_note(lead, user, contexte)
+    return lead, True

@@ -1033,6 +1033,31 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             company=ticket.company, description=ticket.description)
         return Response(result)
 
+    @action(detail=True, methods=['post'], url_path='creer-lead',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def creer_lead(self, request, pk=None):
+        """ZSAV8 — convertit un ticket en opportunité CRM (upsell/
+        remplacement). Écrit via `apps.crm.services.create_lead_depuis_ticket`
+        (jamais un import direct des modèles crm). Idempotent : réutilise un
+        lead OUVERT existant du même client plutôt que d'en créer un second."""
+        ticket = self.get_object()
+        from apps.crm.services import create_lead_depuis_ticket
+        contexte = (
+            f'Créé depuis le ticket SAV {ticket.reference} : '
+            f'{(ticket.description or "").strip()}').strip()
+        lead, created = create_lead_depuis_ticket(
+            company=ticket.company, user=request.user, client=ticket.client,
+            contexte=contexte)
+        if ticket.lead_id_ext != lead.id:
+            ticket.lead_id_ext = lead.id
+            ticket.save(update_fields=['lead_id_ext'])
+        suffixe = 'créé' if created else 'existant réutilisé'
+        activity.log_note(
+            ticket, request.user, f'Lead CRM #{lead.id} {suffixe}.')
+        return Response(
+            {'lead_id': lead.id, 'created': created},
+            status=201 if created else 200)
+
     @action(detail=True, methods=['get', 'post', 'patch'],
             url_path='checklist',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])

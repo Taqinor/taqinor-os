@@ -585,6 +585,14 @@ class Ticket(models.Model):
     # explicitement (override).
     non_facturable = models.BooleanField(default=False)
 
+    # ── ZSAV8 — Convertir un ticket en opportunité CRM ──────────────────────
+    # Référence par ID externe (jamais un FK vers apps.crm.Lead — même patron
+    # que devis_id_ext/facture_id_ext). NULL = aucun lead créé depuis ce
+    # ticket.
+    lead_id_ext = models.IntegerField(
+        null=True, blank=True,
+        help_text='ID du Lead crm créé/réutilisé depuis ce ticket (ZSAV8).')
+
     class Meta:
         verbose_name = 'Ticket SAV'
         verbose_name_plural = 'Tickets SAV'
