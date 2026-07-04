@@ -117,11 +117,28 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         'technicien', 'camionnette').prefetch_related('equipe').all()
     serializer_class = InterventionSerializer
     filter_backends = [filters.OrderingFilter]
-    ordering_fields = ['date_prevue', 'date_realisee', 'date_creation', 'statut']
-    ordering = ['-date_prevue']
+    ordering_fields = [
+        'date_prevue', 'date_realisee', 'date_creation', 'statut',
+        'priorite_rang']
+    # XFSM4 — tri par défaut : priorité (urgente d'abord) PUIS date.
+    ordering = ['priorite_rang', '-date_prevue']
+
+    # XFSM4 — rang numérique de tri (urgente < haute < normale) pour trier
+    # les 3 vues (kanban F4, calendrier FG68, « Ma journée » F22) par priorité
+    # PUIS date, sans dépendre de l'ordre alphabétique des choix.
+    _PRIORITE_RANG = {
+        Intervention.Priorite.URGENTE: 0,
+        Intervention.Priorite.HAUTE: 1,
+        Intervention.Priorite.NORMALE: 2,
+    }
 
     def get_queryset(self):
+        from django.db.models import Case, When, IntegerField
         qs = super().get_queryset()
+        qs = qs.annotate(priorite_rang=Case(
+            *[When(priorite=val, then=rang)
+              for val, rang in self._PRIORITE_RANG.items()],
+            default=2, output_field=IntegerField()))
         # Portée de visibilité (Feature F) — interventions du technicien / de
         # son équipe. 'all' → inchangé.
         from authentication.scoping import scope_queryset
@@ -131,6 +148,7 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         ticket = params.get('ticket')
         statut = params.get('statut')
         type_interv = params.get('type_intervention')
+        priorite = params.get('priorite')
         if installation:
             qs = qs.filter(installation_id=installation)
         if ticket:
@@ -139,6 +157,8 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             qs = qs.filter(statut=statut)
         if type_interv:
             qs = qs.filter(type_intervention=type_interv)
+        if priorite:
+            qs = qs.filter(priorite=priorite)
         # FG68 — filtre plage de dates sur date_prevue (calendrier dispatch).
         date_from = params.get('date_from')
         date_to = params.get('date_to')
@@ -213,6 +233,19 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         company = self.request.user.company
         installation = serializer.validated_data.get('installation')
         interv = serializer.save(company=company, created_by=self.request.user)
+        # XFSM4 — priorité héritée du ticket SAV lié quand fournie explicitement
+        # aucune priorité (défaut NORMALE côté modèle = « non fournie » ici).
+        # sav.Ticket.Priorite a une valeur BASSE que Intervention n'a pas :
+        # repli sur NORMALE (comportement le plus proche de l'existant).
+        if interv.ticket_id is not None and \
+                'priorite' not in serializer.validated_data:
+            ticket_priorite = getattr(interv.ticket, 'priorite', None)
+            mapped = ticket_priorite if ticket_priorite in (
+                Intervention.Priorite.URGENTE, Intervention.Priorite.HAUTE,
+                Intervention.Priorite.NORMALE) else Intervention.Priorite.NORMALE
+            if mapped != interv.priorite:
+                interv.priorite = mapped
+                interv.save(update_fields=['priorite'])
         # Auto-tampon date_realisee : un compte rendu rempli (ou un statut
         # « Terminée »/« Validée ») sans date réalisée la pose à aujourd'hui,
         # côté serveur (miroir de _stamp_statut_dates du chantier).
@@ -1364,6 +1397,13 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         for interv in qs:
             key = interv.technicien_id or 'non_assigne'
             by_tech[key].append(interv)
+        # XFSM4 — au sein d'un même technicien, priorité (urgente d'abord)
+        # PUIS date (le regroupement ci-dessus est déjà trié par date).
+        from datetime import date as _date
+        for intervs in by_tech.values():
+            intervs.sort(key=lambda iv: (
+                self._PRIORITE_RANG.get(iv.priorite, 2),
+                iv.date_prevue or _date.min))
         result = []
         # Techniciens assignés
         tech_ids = [k for k in by_tech if k != 'non_assigne']

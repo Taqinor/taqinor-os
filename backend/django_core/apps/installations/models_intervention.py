@@ -55,6 +55,14 @@ class Intervention(models.Model):
         CONTROLE = 'controle', 'Contrôle'
         DEPANNAGE = 'depannage', 'Dépannage'
 
+    class Priorite(models.TextChoices):
+        # XFSM4 — priorité pilotant le tri dispatch (kanban F4, calendrier
+        # FG68, « Ma journée » F22). Sans lien avec STAGES.py ni le statut
+        # chantier/intervention. Défaut NORMALE = comportement actuel inchangé.
+        URGENTE = 'urgente', 'Urgente'
+        HAUTE = 'haute', 'Haute'
+        NORMALE = 'normale', 'Normale'
+
     class Statut(models.TextChoices):
         # F3 — machine à états PROPRE à l'intervention (sortie chantier).
         # TOTALEMENT séparée du statut chantier (Installation.Statut) et du
@@ -93,6 +101,11 @@ class Intervention(models.Model):
     # intervention existante migrée prend ce statut (additif, non destructif).
     statut = models.CharField(
         max_length=20, choices=Statut.choices, default=Statut.A_PREPARER)
+    # XFSM4 — priorité (héritée du ticket SAV lié quand il existe, sinon
+    # NORMALE) : pilote le tri dans le kanban F4, le calendrier FG68 et « Ma
+    # journée » F22. Additif — ne touche ni le statut chantier ni STAGES.py.
+    priorite = models.CharField(
+        max_length=10, choices=Priorite.choices, default=Priorite.NORMALE)
     date_prevue = models.DateField(null=True, blank=True)
     date_realisee = models.DateField(null=True, blank=True)
     technicien = models.ForeignKey(
