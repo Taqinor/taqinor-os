@@ -1012,11 +1012,16 @@ class DemandeCongeViewSet(_RhBaseViewSet):
     def perform_create(self, serializer):
         # ``jours`` calculé côté serveur selon la règle de décompte du type
         # (XRH3 : les drapeaux demi-journée retranchent chacun 0,5 j).
+        # ZRH1 — ``extra_holidays`` renseigné (Aïd/Mawlid/1er Moharram/férié
+        # société via notifications.Holiday) : sans cela le décompte n'utilise
+        # que la table FIXE des 9 fêtes grégoriennes.
         type_absence = serializer.validated_data['type_absence']
+        date_debut = serializer.validated_data['date_debut']
+        date_fin = serializer.validated_data['date_fin']
         jours = services.calculer_jours_demande(
-            type_absence,
-            serializer.validated_data['date_debut'],
-            serializer.validated_data['date_fin'],
+            type_absence, date_debut, date_fin,
+            extra_holidays=services.feries_periode(
+                self.request.user.company, date_debut, date_fin),
             demi_journee_debut=serializer.validated_data.get(
                 'demi_journee_debut', False),
             demi_journee_fin=serializer.validated_data.get(
@@ -4651,10 +4656,13 @@ class PortailSelfServiceViewSet(viewsets.ViewSet):
         ser.is_valid(raise_exception=True)
         # ``jours`` calculé côté serveur selon la règle de décompte du type
         # (XRH3 : les drapeaux demi-journée retranchent chacun 0,5 j).
+        # ZRH1 — même fériés mobiles société que le viewset direct.
+        date_debut = ser.validated_data['date_debut']
+        date_fin = ser.validated_data['date_fin']
         jours = services.calculer_jours_demande(
-            ser.validated_data['type_absence'],
-            ser.validated_data['date_debut'],
-            ser.validated_data['date_fin'],
+            ser.validated_data['type_absence'], date_debut, date_fin,
+            extra_holidays=services.feries_periode(
+                request.user.company, date_debut, date_fin),
             demi_journee_debut=ser.validated_data.get(
                 'demi_journee_debut', False),
             demi_journee_fin=ser.validated_data.get(

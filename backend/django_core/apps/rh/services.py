@@ -65,6 +65,23 @@ def droit_annuel(annees_service=0):
         .quantize(Decimal('0.01'))
 
 
+def feries_periode(company, date_debut, date_fin):
+    """ZRH1 — fériés (fixes ET mobiles société) d'une période, cross-app-safe.
+
+    Réutilise ``notifications.calendar_utils.feries_entre`` (jamais
+    ``notifications.models`` importé directement dans ``rh``) pour ajouter
+    les fêtes MOBILES hégiriennes (Aïd el-Fitr, Aïd el-Adha, 1er Moharram,
+    Mawlid…) et tout férié société saisi dans ``notifications.Holiday`` au
+    décompte, en plus de la table FIXE ``holidays.JOURS_FERIES_FIXES_MA``.
+    Renvoie une liste de ``date`` (vide si rien de configuré, ou dates
+    invalides).
+    """
+    if date_debut is None or date_fin is None:
+        return []
+    from apps.notifications.calendar_utils import feries_entre
+    return feries_entre(company, date_debut, date_fin)
+
+
 def calculer_jours_demande(type_absence, date_debut, date_fin,
                            extra_holidays=None,
                            demi_journee_debut=False, demi_journee_fin=False):
