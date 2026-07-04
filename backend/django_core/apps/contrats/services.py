@@ -565,6 +565,20 @@ def activer_si_eligible(contrat, *, today=None, auteur=None):
         message='Activation automatique à la signature.',
         auteur=auteur)
 
+    # YSUBS8 — dérive le plan de facturation des dates du contrat dès
+    # l'activation, pour CHAQUE échéancier récurrent (facturation_active)
+    # existant. Best-effort : un échec de génération ne doit jamais annuler
+    # l'activation déjà actée (le statut a déjà basculé ci-dessus).
+    try:
+        from .models import EcheancierContrat
+
+        for echeancier in EcheancierContrat.objects.filter(
+                contrat=contrat, facturation_active=True):
+            generer_echeancier_depuis_dates(
+                contrat, echeancier, auteur=auteur)
+    except Exception:  # pragma: no cover - défensif (best-effort)
+        pass
+
     # YDOCF5 — émet l'événement métier EXACTEMENT une fois (une seule
     # bascule → actif par appel, garantie par la garde de transition
     # ci-dessus). Best-effort : un abonné qui échoue ne doit jamais faire
@@ -2079,6 +2093,107 @@ def ajouter_ligne_echeance(echeancier, *, date_echeance, montant=None,
 
     recalculer_total_echeancier(echeancier)
     return ligne
+
+
+# Nombre de mois par pas de périodicité — utilisé par
+# ``generer_echeancier_depuis_dates`` (YSUBS8) pour dériver le jeu de dates de
+# facturation. ``unique``/``personnalisee`` ne sont PAS matérialisables
+# automatiquement (aucun pas défini) : ``generer_echeancier_depuis_dates`` les
+# ignore (no-op, comportement actuel préservé).
+_MOIS_PAR_PERIODICITE = {
+    'mensuelle': 1,
+    'trimestrielle': 3,
+    'semestrielle': 6,
+    'annuelle': 12,
+}
+
+
+@transaction.atomic
+def generer_echeancier_depuis_dates(contrat, echeancier, *, avance=True,
+                                    auteur=None):
+    """Matérialise le plan de facturation à l'ACTIVATION du contrat — YSUBS8.
+
+    `signer_contrat` → `activer_si_eligible` (CONTRAT17) fait passer le contrat
+    à ``actif`` mais ne générait AUCUNE ``LigneEcheance`` : l'échéancier restait
+    vide et les lignes devaient être ajoutées à la main
+    (``ajouter_ligne_echeance``). Le blueprint exige que le jeu de dates de
+    facturation soit DÉRIVÉ des dates du contrat dès l'activation (visible
+    d'avance, jamais calculé paresseusement).
+
+    Sur un ``EcheancierContrat`` ``facturation_active`` dont la ``periodicite``
+    a un pas connu (mensuelle/trimestrielle/semestrielle/annuelle —
+    ``unique``/``personnalisee`` n'ont pas de pas et sont laissés inchangés),
+    matérialise une ``LigneEcheance`` par période entre ``contrat.date_debut``
+    (ou ``contrat.date_fin`` si absent, garde) et ``contrat.date_fin``, au
+    montant du ``Contrat.montant`` (échéance UNIQUE = tout le montant à
+    ``date_debut`` — pas de découpage). ``avance=True`` (par défaut) date
+    chaque échéance en DÉBUT de période ; ``avance=False`` la date en FIN de
+    période (échu).
+
+    IDEMPOTENT : une ligne dont la ``date_echeance`` coïncide avec une période
+    déjà présente n'est PAS recréée (comparaison par ensemble des
+    ``date_echeance`` déjà matérialisées). ``montant_total`` est recalculé une
+    fois à la fin. Renvoie la liste des ``LigneEcheance`` créées lors de CET
+    appel (liste vide si rien à faire ou déjà matérialisé).
+
+    Aucune écriture cross-app, aucun changement de ``Contrat.statut``.
+    """
+    from .models import Contrat, EcheancierContrat, LigneEcheance
+
+    if not echeancier.facturation_active:
+        return []
+    if contrat.date_debut is None or contrat.date_fin is None:
+        # Sans les deux bornes, pas de plan dérivable — comportement actuel
+        # préservé (aucune ligne générée).
+        return []
+
+    pas_mois = _MOIS_PAR_PERIODICITE.get(echeancier.periodicite)
+    dates_a_generer = []
+    if pas_mois is None:
+        if echeancier.periodicite == EcheancierContrat.Periodicite.UNIQUE:
+            dates_a_generer = [contrat.date_debut]
+        else:
+            # ``personnalisee`` : aucun pas standard, laissé à la main
+            # (no-op — comportement actuel préservé).
+            return []
+    else:
+        from datetime import timedelta
+
+        curseur = contrat.date_debut
+        while curseur <= contrat.date_fin:
+            fin_periode = min(
+                Contrat.ajouter_mois(curseur, pas_mois) - timedelta(days=1),
+                contrat.date_fin)
+            dates_a_generer.append(curseur if avance else fin_periode)
+            curseur = Contrat.ajouter_mois(curseur, pas_mois)
+
+    deja_presentes = set(
+        LigneEcheance.objects
+        .filter(echeancier=echeancier, company=echeancier.company)
+        .values_list('date_echeance', flat=True)
+    )
+
+    lignes_creees = []
+    for date_echeance in dates_a_generer:
+        if date_echeance in deja_presentes:
+            continue
+        ligne = ajouter_ligne_echeance(
+            echeancier, date_echeance=date_echeance,
+            montant=contrat.montant,
+            libelle=f'Échéance {contrat.objet}')
+        lignes_creees.append(ligne)
+        deja_presentes.add(date_echeance)
+
+    if lignes_creees:
+        journaliser_transition(
+            contrat, field='echeancier_genere', old_value='',
+            new_value=str(len(lignes_creees)),
+            message=(
+                f'Échéancier de facturation généré à l\'activation : '
+                f'{len(lignes_creees)} échéance(s) créée(s).'),
+            auteur=auteur)
+
+    return lignes_creees
 
 
 def pointer_paiement_echeance(ligne, *, today=None):
