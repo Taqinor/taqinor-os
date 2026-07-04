@@ -1451,6 +1451,58 @@ class PointageViewSet(_RhBaseViewSet):
         pointage.save()
         return Response(self.get_serializer(pointage).data)
 
+    @action(detail=False, methods=['get'], url_path='absents-non-justifies')
+    def absents_non_justifies(self, request):
+        """ZRH6 — employés attendus le jour sans pointage NI congé validé
+        (« Absence management » Odoo). ``?jour=YYYY-MM-DD`` (défaut
+        aujourd'hui). Chaque ligne peut générer un ``IncidentPresence`` via
+        ``POST .../generer-incident/``.
+        """
+        from datetime import datetime
+        jour_str = request.query_params.get('jour')
+        if jour_str:
+            try:
+                jour = datetime.strptime(jour_str, '%Y-%m-%d').date()
+            except (TypeError, ValueError):
+                jour = timezone.localdate()
+        else:
+            jour = timezone.localdate()
+        data = selectors.absents_non_justifies(request.user.company, jour)
+        return Response(data)
+
+    @action(detail=False, methods=['post'], url_path='generer-incident-absence')
+    def generer_incident_absence(self, request):
+        """ZRH6 — crée un ``IncidentPresence`` ABSENCE_INJUSTIFIEE pour un
+        employé/jour (depuis la liste des absents non justifiés). Corps :
+        ``employe`` (id), ``jour`` (YYYY-MM-DD, défaut aujourd'hui)."""
+        from datetime import datetime
+        employe_id = request.data.get('employe')
+        if not employe_id:
+            return Response(
+                {'detail': "Le champ 'employe' est requis."},
+                status=status.HTTP_400_BAD_REQUEST)
+        jour_str = request.data.get('jour')
+        if jour_str:
+            try:
+                jour = datetime.strptime(jour_str, '%Y-%m-%d').date()
+            except (TypeError, ValueError):
+                jour = timezone.localdate()
+        else:
+            jour = timezone.localdate()
+        employe = DossierEmploye.objects.filter(
+            company=request.user.company, pk=employe_id).first()
+        if employe is None:
+            return Response(
+                {'detail': 'Employé introuvable.'},
+                status=status.HTTP_404_NOT_FOUND)
+        incident = IncidentPresence.objects.create(
+            company=request.user.company, employe=employe,
+            type_incident=IncidentPresence.TypeIncident.ABSENCE_INJUSTIFIEE,
+            date=jour)
+        return Response(
+            IncidentPresenceSerializer(incident).data,
+            status=status.HTTP_201_CREATED)
+
 
 class PeriodeFermetureViewSet(_RhBaseViewSet):
     """Fermetures collectives / congés imposés (XRH14).

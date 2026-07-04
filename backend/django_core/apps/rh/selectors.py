@@ -586,6 +586,38 @@ def employes_assignables(company, jour):
     )
 
 
+def absents_non_justifies(company, jour):
+    """ZRH6 — employés ATTENDUS le ``jour`` sans pointage NI congé validé.
+
+    Odoo « Absence management » : signale l'employé actif assignable ce
+    jour-là (``employes_assignables``) qui n'a NI pointé d'arrivée NI de
+    congé validé le couvrant (réutilise ``employe_absent_le``). Renvoie une
+    liste de dicts ``{employe_id, matricule, nom}``. Toujours scopé société.
+    """
+    from .models import Pointage
+
+    if company is None or jour is None:
+        return []
+    attendus = employes_assignables(company, jour)
+    ont_pointe = set(
+        Pointage.objects.filter(
+            company=company, heure_arrivee__date=jour,
+        ).values_list('employe_id', flat=True))
+
+    resultats = []
+    for employe in attendus:
+        if employe.id in ont_pointe:
+            continue
+        if employe_absent_le(company, employe.id, jour):
+            continue  # déjà exclu par employes_assignables, garde défensive.
+        resultats.append({
+            'employe_id': employe.id,
+            'matricule': employe.matricule,
+            'nom': f'{employe.nom} {employe.prenom}',
+        })
+    return resultats
+
+
 def roster_semaine(company, lundi):
     """Affectations roster (FG169) d'une semaine donnée (du lundi au dimanche).
 
