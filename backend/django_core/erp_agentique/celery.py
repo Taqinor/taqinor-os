@@ -42,6 +42,8 @@ app.conf.enable_utc = False
 #   - YLEAD14 : recyclage des leads non travaillés (SLA dépassé → escalade,
 #     désassignation optionnelle au 2e seuil), toutes les heures — apps/crm/tasks.py
 #     (best-effort, no-op société par société tant que lead_sla_hours=0).
+#   - YSUBS1 : facturation récurrente auto (échéanciers contrats +
+#     maintenance SAV dus), quotidien (02:00) — apps/contrats/scheduled.py.
 app.conf.beat_schedule = {
     'ventes-check-overdue-factures': {
         'task': 'ventes.check_overdue_factures',
@@ -117,5 +119,11 @@ app.conf.beat_schedule = {
     'reporting-controle-integrite-hebdo': {
         'task': 'reporting.controle_integrite',
         'schedule': crontab(hour=3, minute=0, day_of_week=1),
+    },
+    # YSUBS1 — facturation récurrente auto (échéanciers contrats +
+    # maintenance SAV dus), quotidien (heure creuse).
+    'contrats-generer-factures-recurrentes-dues': {
+        'task': 'contrats.generer_factures_recurrentes_dues',
+        'schedule': crontab(hour=2, minute=0),
     },
 }

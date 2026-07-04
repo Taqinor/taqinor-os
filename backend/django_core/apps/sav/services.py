@@ -185,3 +185,80 @@ def create_corrective_ticket(*, company, client, installation, description,
             installation=installation, type=Ticket.Type.CORRECTIF,
             description=description, created_by=created_by)
     return create_with_reference(Ticket, 'SAV', company, _create)
+
+
+# ── YSUBS1 — Sélection des contrats de maintenance dus à facturation ────────
+# (helper de sélection pour le beat quotidien de facturation récurrente de
+# ``apps.contrats.scheduled`` — jamais l'inverse, ``sav`` ne dépend PAS de
+# ``contrats``.)
+
+def contrats_maintenance_dus_facturation(company, today=None):
+    """Contrats de maintenance ACTIFS dont la facturation récurrente est due
+    aujourd'hui (ou en retard) — YSUBS1. Lecture seule, scopée société.
+
+    Réutilise ``ContratMaintenance.facturation_due`` (FG40, déjà idempotent :
+    vrai seulement si ``facturation_active`` et la prochaine échéance calculée
+    depuis ``derniere_facturation``/``date_debut`` est atteinte)."""
+    from .models import ContratMaintenance
+
+    return [
+        c for c in ContratMaintenance.objects.filter(
+            company=company, actif=True, facturation_active=True)
+        if c.facturation_due(today=today)
+    ]
+
+
+def facturer_contrat_maintenance_beat(contrat, *, user=None):
+    """Facture UN ``ContratMaintenance`` dû, pour le beat quotidien — YSUBS1.
+
+    Même effet que l'action ``facturer`` de ``ContratMaintenanceViewSet``
+    (``maintenance.py``) : émet la ``Facture`` via
+    ``apps.ventes.services.creer_facture_contrat`` puis avance
+    ``derniere_facturation``, et journalise le cycle dans
+    ``apps.contrats.services.enregistrer_cycle`` (best-effort, jamais
+    bloquant). Renvoie la ``Facture`` créée ; lève ``ValueError`` si la
+    facturation échoue (prix manquant…) — l'appelant (le beat) capture
+    l'exception PAR contrat pour ne jamais bloquer les suivants.
+    """
+    from django.utils import timezone as _timezone
+
+    from apps.ventes.services import creer_facture_contrat
+
+    periode = _timezone.localdate().strftime('%Y-%m')
+    try:
+        facture = creer_facture_contrat(
+            contrat=contrat, user=user, company=contrat.company)
+    except ValueError:
+        _journaliser_cycle_maintenance_beat(
+            contrat.company, contrat.pk, periode, statut_echec=True)
+        raise
+
+    _journaliser_cycle_maintenance_beat(
+        contrat.company, contrat.pk, periode, statut_echec=False,
+        facture_id=facture.id)
+    return facture
+
+
+def _journaliser_cycle_maintenance_beat(company, contrat_id, periode, *,
+                                        statut_echec, facture_id=None):
+    """Journalise un cycle de facturation SAV dans le journal contrats —
+    XCTR5/YSUBS1. Même patron que
+    ``maintenance.ContratMaintenanceViewSet._journaliser_cycle_best_effort``
+    (frontière cross-app : import fonction-local, best-effort)."""
+    try:
+        from apps.contrats import services as contrats_services
+        from apps.contrats.models import CycleFacturationLog
+
+        statut = (
+            CycleFacturationLog.Statut.ECHEC if statut_echec
+            else CycleFacturationLog.Statut.GENERE)
+        contrats_services.enregistrer_cycle(
+            company,
+            source_type=CycleFacturationLog.SourceType.SAV_MAINTENANCE,
+            source_id=contrat_id,
+            periode=periode,
+            statut=statut,
+            facture_id=facture_id,
+        )
+    except Exception:  # pragma: no cover - défensif (best-effort)
+        pass
