@@ -54,6 +54,10 @@ class Intervention(models.Model):
         MISE_EN_SERVICE = 'mise_en_service', 'Mise en service'
         CONTROLE = 'controle', 'Contrôle'
         DEPANNAGE = 'depannage', 'Dépannage'
+        # XFSM13 — re-vérification périodique IEC 62446-2 : reprend les points
+        # électriques de la recette (Riso, continuité, Voc/string) et compare
+        # à la baseline du chantier. Additif — n'affecte aucun type existant.
+        REVERIFICATION_62446 = 'reverification_62446', 'Re-vérification IEC 62446-2'
 
     class Priorite(models.TextChoices):
         # XFSM4 — priorité pilotant le tri dispatch (kanban F4, calendrier

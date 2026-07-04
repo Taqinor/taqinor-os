@@ -8,6 +8,7 @@ from .models import (
     PreparationMaterielLigne, PreparationOutilLigne,
     ComponentSerial, PhotoAnnotation, MaterielConsommation, ConsommationLigne,
     VoiceMemo, Reserve, ToolReturn, SafetyChecklistSlot, SafetySignoff,
+    ReverificationMesure,
     SafetyCheckItem,
     TypeInterventionPlan,
     JalonProjet, ModeleProjet, ModeleProjetJalon, ModeleProjetBomLigne,
@@ -586,6 +587,23 @@ class ReserveSerializer(serializers.ModelSerializer):
         if not obj.photo_id:
             return None
         return f'/api/django/records/attachments/{obj.photo_id}/download/'
+
+
+# ── XFSM13 — re-vérification IEC 62446-2 vs baseline ────────────────────────
+class ReverificationMesureSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ReverificationMesure
+        fields = [
+            'id', 'intervention_id', 'record_baseline',
+            'isolement_mohm', 'continuite_terre_ohm', 'voc_comparaison',
+            'isolement_ecart_pct', 'seuil_alerte_pct', 'depassement_detecte',
+            'reserve_id', 'observations', 'date_creation',
+        ]
+        read_only_fields = [
+            'intervention_id', 'record_baseline', 'voc_comparaison',
+            'isolement_ecart_pct', 'depassement_detecte', 'reserve_id',
+            'date_creation',
+        ]
 
 
 # ── F17 — retour d'outil ─────────────────────────────────────────────────────

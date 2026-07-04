@@ -322,6 +322,58 @@ class CommissioningIVReading(models.Model):
         return f'I-V {self.string_label} (recette {self.record_id})'
 
 
+class ReverificationMesure(models.Model):
+    """XFSM13 — re-vérification périodique IEC 62446-2 : reprend les points
+    électriques de la RECETTE (``CommissioningRecord`` : Riso, continuité de
+    terre, Voc par string via ``CommissioningIVReading``) et calcule
+    automatiquement l'écart (dérive %) vs cette baseline du chantier.
+
+    Rattachée à une ``Intervention`` de type
+    ``Intervention.Type.REVERIFICATION_62446`` (string-FK par id — le modèle
+    ``Intervention`` n'est jamais importé ici pour éviter tout couplage inutile
+    entre les deux modules de ``models_*``, cf. le même patron déjà en place
+    pour ``StageModele``/``Installation.etape``). Un dépassement du seuil de
+    dérive (paramétrable, défaut 20 %) crée automatiquement une ``Reserve``
+    sur l'intervention (service `services.py`, jamais ici — modèle = données
+    pures). Additif — company posée côté serveur."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='reverifications')
+    intervention_id = models.PositiveIntegerField()
+    record_baseline = models.ForeignKey(
+        CommissioningRecord, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='reverifications')
+    # ── Points électriques repris de la recette (IEC 62446-1 §6) ──
+    isolement_mohm = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True)
+    continuite_terre_ohm = models.DecimalField(
+        max_digits=8, decimal_places=3, null=True, blank=True)
+    # ── Résultat de la comparaison, calculé côté serveur ──
+    # {"string_label": ..., "voc_baseline_v": ..., "voc_mesure_v": ...,
+    #  "ecart_pct": ...} par string.
+    voc_comparaison = models.JSONField(default=list, blank=True)
+    isolement_ecart_pct = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True)
+    seuil_alerte_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=20)
+    depassement_detecte = models.BooleanField(default=False)
+    reserve_id = models.PositiveIntegerField(null=True, blank=True)
+    observations = models.TextField(blank=True, null=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='reverifications_creees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Re-vérification IEC 62446-2'
+        verbose_name_plural = 'Re-vérifications IEC 62446-2'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'Re-vérification #{self.intervention_id}'
+
+
 class HandoverPack(models.Model):
     """CH4 — PACK DE REMISE client assemblé au franchissement du gate « Remise
     au client » (handover).

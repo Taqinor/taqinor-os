@@ -1191,6 +1191,88 @@ def compute_iv_ecart(reading):
     return reading
 
 
+# ── XFSM13 — re-vérification périodique IEC 62446-2 vs baseline de recette ──
+def _pct_ecart(mesure, baseline):
+    """Écart relatif (%) mesuré vs baseline, ou None si une valeur manque ou
+    que la baseline est nulle (division impossible)."""
+    from decimal import Decimal
+    if mesure is None or baseline in (None, 0):
+        return None
+    ecart = (Decimal(mesure) - Decimal(baseline)) / Decimal(baseline) * 100
+    return ecart.quantize(Decimal('0.01'))
+
+
+def enregistrer_reverification(
+        intervention, mesures, user=None, seuil_alerte_pct=20):
+    """XFSM13 — enregistre une re-vérification IEC 62446-2 pour
+    ``intervention`` (de type ``Intervention.Type.REVERIFICATION_62446``),
+    compare ses mesures ``{isolement_mohm, continuite_terre_ohm,
+    voc_par_string: {label: valeur}}`` à la baseline du chantier (la fiche de
+    recette ``CommissioningRecord`` du chantier + ses ``CommissioningIVReading``),
+    calcule la dérive, et crée une ``Reserve`` sur l'intervention si la dérive
+    dépasse ``seuil_alerte_pct`` (défaut 20 %) sur au moins un point.
+
+    Silencieux (dérive = None) sur tout point sans baseline correspondante —
+    ne bloque jamais l'enregistrement. Idempotent au niveau caller : chaque
+    appel crée une NOUVELLE re-vérification (l'historique de dérive dans le
+    temps est la valeur du contrôle)."""
+    from .models import CommissioningIVReading, Reserve, ReverificationMesure
+
+    company = intervention.company
+    installation = intervention.installation
+    baseline = getattr(installation, 'commissioning_record', None)
+
+    isolement_mesure = mesures.get('isolement_mohm')
+    continuite_mesure = mesures.get('continuite_terre_ohm')
+    isolement_ecart = _pct_ecart(
+        isolement_mesure, getattr(baseline, 'isolement_mohm', None))
+
+    voc_comparaison = []
+    depassement = False
+    if isolement_ecart is not None and abs(isolement_ecart) > seuil_alerte_pct:
+        depassement = True
+
+    if baseline is not None:
+        baseline_iv = {
+            r.string_label: r.voc_mesure_v
+            for r in CommissioningIVReading.objects.filter(record=baseline)}
+        for label, voc_mesure in (mesures.get('voc_par_string') or {}).items():
+            voc_baseline = baseline_iv.get(label)
+            ecart = _pct_ecart(voc_mesure, voc_baseline)
+            voc_comparaison.append({
+                'string_label': label,
+                'voc_baseline_v': str(voc_baseline) if voc_baseline is not None else None,
+                'voc_mesure_v': str(voc_mesure) if voc_mesure is not None else None,
+                'ecart_pct': str(ecart) if ecart is not None else None,
+            })
+            if ecart is not None and abs(ecart) > seuil_alerte_pct:
+                depassement = True
+
+    reverif = ReverificationMesure.objects.create(
+        company=company, intervention_id=intervention.id,
+        record_baseline=baseline,
+        isolement_mohm=isolement_mesure,
+        continuite_terre_ohm=continuite_mesure,
+        voc_comparaison=voc_comparaison,
+        isolement_ecart_pct=isolement_ecart,
+        seuil_alerte_pct=seuil_alerte_pct,
+        depassement_detecte=depassement,
+        observations=mesures.get('observations') or '',
+        created_by=user)
+
+    if depassement:
+        reserve = Reserve.objects.create(
+            company=company, intervention=intervention,
+            description=(
+                "Re-vérification IEC 62446-2 : dérive au-delà du seuil "
+                f"({seuil_alerte_pct} %) détectée vs la recette initiale."),
+            created_by=user)
+        reverif.reserve_id = reserve.id
+        reverif.save(update_fields=['reserve_id'])
+
+    return reverif
+
+
 # ── CH4 — Pack de remise client (handover) ───────────────────────────────────
 # Le pack assemble les pièces du dossier remis au client + au vendeur en
 # RÉFÉRENÇANT l'état réel du chantier (jamais de binaire stocké). Chaque pièce

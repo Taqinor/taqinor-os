@@ -24,10 +24,12 @@ from ..serializers import (  # noqa: F401
     ComponentSerialSerializer, MaterielConsommationSerializer,
     ConsommationLigneSerializer, VoiceMemoSerializer, ReserveSerializer,
     ToolReturnSerializer, SafetyChecklistSlotSerializer, SafetySignoffSerializer,
+    ReverificationMesureSerializer,
 )
 from ..services import (  # noqa: F401
     create_installation_from_devis, seed_checklist_etapes,
     ensure_checklist_items, ensure_default_template,
+    enregistrer_reverification,
 )
 from .. import field_services  # noqa: F401
 from .. import field_capture  # noqa: F401
@@ -1121,6 +1123,37 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             company=company, client=inst.client, installation=inst,
             description=reserve.description or 'Réserve d\'intervention',
             created_by=user)
+
+    # ── XFSM13 — re-vérification IEC 62446-2 vs baseline de recette ─────────
+    @action(detail=True, methods=['post'], url_path='enregistrer-reverification',
+            permission_classes=[IsResponsableOrAdmin])
+    def enregistrer_reverification_view(self, request, pk=None):
+        """XFSM13 — enregistre une re-vérification IEC 62446-2 (points
+        électriques comparés à la baseline de recette du chantier). Corps :
+        {"isolement_mohm": ..., "continuite_terre_ohm": ...,
+        "voc_par_string": {"A": 620.5, ...}, "observations": ...,
+        ["seuil_alerte_pct"]}. Un dépassement du seuil crée une Reserve."""
+        interv = self.get_object()
+        seuil = request.data.get('seuil_alerte_pct', 20)
+        try:
+            seuil = float(seuil)
+        except (TypeError, ValueError):
+            seuil = 20
+        reverif = enregistrer_reverification(
+            interv, request.data, user=request.user, seuil_alerte_pct=seuil)
+        return Response(
+            ReverificationMesureSerializer(reverif).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], url_path='reverifications',
+            permission_classes=[IsAnyRole])
+    def reverifications(self, request, pk=None):
+        """XFSM13 — historique des re-vérifications de l'intervention."""
+        interv = self.get_object()
+        from ..models import ReverificationMesure
+        qs = ReverificationMesure.objects.filter(
+            intervention_id=interv.id).order_by('-date_creation')
+        return Response(ReverificationMesureSerializer(qs, many=True).data)
 
     @action(detail=True, methods=['post'], url_path='modifier-reserve',
             permission_classes=[IsResponsableOrAdmin])
