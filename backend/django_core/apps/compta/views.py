@@ -9,6 +9,7 @@ import csv
 import io
 
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import IntegrityError
 from django.http import HttpResponse
 
 from rest_framework import filters, status, viewsets
@@ -34,7 +35,8 @@ from .models import (
     Journal,
     LignePrevisionnelTresorerie, LigneReleve, MessageWhatsAppEntrant,
     ModeleDevis, MouvementCaisse, NoteFrais, OuverturePartage,
-    PaymentRun, PeriodeComptable, PlanComptable, Provision, ProvisionCreance,
+    PaymentRun, PeriodeComptable, PlafondNoteFrais, PlanComptable, Provision,
+    ProvisionCreance,
     Rapprochement, RapprochementBancaire, RelanceDevisAbandonne,
     RetenueGarantie, RetenueSource, SequenceRelance, SessionGuidedSelling,
     TimbreFiscal, TravauxEnCours, VirementInterne,
@@ -75,6 +77,7 @@ from .serializers import (
     MouvementCaisseSerializer, NoteFraisSerializer, OuverturePartageSerializer,
     PaymentRunSerializer,
     PeriodeComptableSerializer, PlanAmortissementSerializer,
+    PlafondNoteFraisSerializer,
     PlanComptableSerializer, ProvisionSerializer, ProvisionCreanceSerializer,
     RapprochementBancaireSerializer, RapprochementSerializer,
     RelanceDevisAbandonneSerializer,
@@ -1914,6 +1917,11 @@ class NoteFraisViewSet(_ComptaBaseViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         vd = serializer.validated_data
+        # XACC27 — doublon (même employé + date + montant) : WARNING joint à
+        # la réponse, jamais bloquant (l'utilisateur peut confirmer volontairement).
+        doublon = services.note_frais_doublon_possible(
+            request.user.company, employe=vd['employe'],
+            date_frais=vd['date_frais'], montant=vd['montant']).exists()
         try:
             note = services.creer_note_frais(
                 request.user.company,
@@ -1929,8 +1937,39 @@ class NoteFraisViewSet(_ComptaBaseViewSet):
             return Response(
                 {'detail': exc.messages[0] if exc.messages else str(exc)},
                 status=status.HTTP_400_BAD_REQUEST)
+        data = self.get_serializer(note).data
+        data['doublon_possible'] = doublon
+        return Response(data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'])
+    def ocr(self, request):
+        """XACC27 — OCR du justificatif → champs pré-remplis (gated).
+
+        Accepte une photo (``request.FILES['justificatif']``, multipart) et
+        renvoie les champs extraits (``montant``, ``date_frais``, ``motif``)
+        pour pré-remplir le formulaire — ne crée JAMAIS de note de frais et
+        n'écrase JAMAIS une saisie manuelle déjà présente (fusion côté
+        frontend). Sans clé OCR configurée : 503 explicite, la saisie
+        manuelle reste intacte.
+        """
+        from .services import (
+            extraire_justificatif_note_frais,
+            mapper_justificatif_vers_note_frais,
+        )
+
+        photo = request.FILES.get('justificatif')
+        if photo is None:
+            return Response(
+                {'justificatif': "Le fichier 'justificatif' est obligatoire."},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            champs_bruts = extraire_justificatif_note_frais(
+                photo.read(), mime=getattr(photo, 'content_type', '') or '')
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         return Response(
-            self.get_serializer(note).data, status=status.HTTP_201_CREATED)
+            {'champs': mapper_justificatif_vers_note_frais(champs_bruts)})
 
     @action(detail=True, methods=['post'])
     def soumettre(self, request, pk=None):
@@ -2012,6 +2051,26 @@ class NoteFraisViewSet(_ComptaBaseViewSet):
                 {'detail': exc.messages[0] if exc.messages else str(exc)},
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(note).data)
+
+
+class PlafondNoteFraisViewSet(_ComptaBaseViewSet):
+    """Plafonds de notes de frais par catégorie (XACC27).
+
+    ``company`` posée côté serveur ; une seule ligne par catégorie
+    (``get_or_create`` implicite via la contrainte d'unicité, 400 explicite
+    en cas de doublon) ; Admin/Responsable uniquement."""
+    queryset = PlafondNoteFrais.objects.all()
+    serializer_class = PlafondNoteFraisSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['categorie', 'montant_max', 'id']
+
+    def create(self, request, *args, **kwargs):
+        try:
+            return super().create(request, *args, **kwargs)
+        except IntegrityError:
+            return Response(
+                {'detail': 'Un plafond existe déjà pour cette catégorie.'},
+                status=status.HTTP_400_BAD_REQUEST)
 
 
 class BaremeIndemniteViewSet(_ComptaBaseViewSet):

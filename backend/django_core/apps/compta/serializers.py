@@ -21,7 +21,8 @@ from .models import (
     Immobilisation, IndemniteChantier, Journal, LigneEcriture,
     LignePrevisionnelTresorerie, LigneReleve, MessageWhatsAppEntrant,
     ModeleDevis, MouvementCaisse, NoteFrais, OuverturePartage,
-    PaymentRun, PaymentRunLine, PeriodeComptable, PlanAmortissement,
+    PaymentRun, PaymentRunLine, PeriodeComptable, PlafondNoteFrais,
+    PlanAmortissement,
     PlanComptable, Provision, ProvisionCreance, Rapprochement, RapprochementBancaire,
     RelanceDevisAbandonne, RetenueGarantie, RetenueSource, SequenceRelance,
     SessionGuidedSelling, TimbreFiscal, TravauxEnCours,
@@ -793,12 +794,13 @@ class NoteFraisSerializer(serializers.ModelSerializer):
             'valide_par', 'date_validation', 'ecriture_charge', 'motif_rejet',
             'mode_remboursement', 'compte_tresorerie', 'date_remboursement',
             'rembourse_par', 'ecriture_remboursement', 'date_creation',
+            'hors_politique',
         ]
         read_only_fields = [
             'reference', 'statut', 'valide_par', 'date_validation',
             'ecriture_charge', 'motif_rejet', 'compte_tresorerie',
             'date_remboursement', 'rembourse_par', 'ecriture_remboursement',
-            'date_creation',
+            'date_creation', 'hors_politique',
         ]
 
     def validate_employe(self, value):
@@ -811,6 +813,29 @@ class NoteFraisSerializer(serializers.ModelSerializer):
         if value is not None and value <= 0:
             raise serializers.ValidationError(
                 "Le montant d'une note de frais doit être strictement positif.")
+        return value
+
+
+# ── XACC27 — Plafonds de notes de frais par catégorie ──────────────────────
+
+class PlafondNoteFraisSerializer(serializers.ModelSerializer):
+    """Plafond par catégorie de note de frais (XACC27). ``company`` posée
+    côté serveur."""
+    categorie_display = serializers.CharField(
+        source='get_categorie_display', read_only=True)
+
+    class Meta:
+        model = PlafondNoteFrais
+        fields = [
+            'id', 'categorie', 'categorie_display', 'montant_max',
+            'seuil_justificatif_obligatoire', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_montant_max(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "Le plafond ne peut pas être négatif.")
         return value
 
 

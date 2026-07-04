@@ -2414,6 +2414,10 @@ class NoteFrais(models.Model):
     )
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
+    # ── XACC27 — Politique de plafonds par catégorie ──
+    hors_politique = models.BooleanField(
+        default=False,
+        verbose_name='Hors politique (dépasse le plafond)')
 
     class Meta:
         verbose_name = 'Note de frais'
@@ -2446,6 +2450,59 @@ class NoteFrais(models.Model):
     def est_terminee(self):
         """Vrai si la note est dans un état terminal (remboursée ou rejetée)."""
         return self.statut in (self.Statut.REMBOURSEE, self.Statut.REJETEE)
+
+
+# ── XACC27 — Plafonds de notes de frais par catégorie ──────────────────────
+
+class PlafondNoteFrais(models.Model):
+    """Plafond de dépense par catégorie de note de frais (XACC27).
+
+    Référentiel company-scopé adossé au champ ``NoteFrais.categorie``
+    EXISTANT : au-delà de ``montant_max``, la note est flaggée
+    ``hors_politique`` (warning visible au valideur, jamais de blocage). Au-delà
+    de ``seuil_justificatif_obligatoire`` (optionnel), un justificatif devient
+    obligatoire pour valider. Une catégorie sans plafond configuré n'est jamais
+    flaggée. ``company`` posée côté serveur ; purement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='plafonds_notes_frais',
+        verbose_name='Société',
+    )
+    categorie = models.CharField(
+        max_length=15, choices=NoteFrais.Categorie.choices,
+        verbose_name='Catégorie')
+    montant_max = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Plafond (montant max)')
+    seuil_justificatif_obligatoire = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Seuil au-delà duquel le justificatif est obligatoire')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Plafond de note de frais'
+        verbose_name_plural = 'Plafonds de notes de frais'
+        ordering = ['categorie']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'categorie'],
+                name='uniq_plafond_notefrais_categorie',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.get_categorie_display()} ≤ {self.montant_max}'
+
+    def clean(self):
+        super().clean()
+        if self.montant_max is not None and self.montant_max < 0:
+            raise ValidationError("Le plafond ne peut pas être négatif.")
+        if (self.seuil_justificatif_obligatoire is not None
+                and self.seuil_justificatif_obligatoire < 0):
+            raise ValidationError("Le seuil ne peut pas être négatif.")
 
 
 # ── FG136 — Indemnités kilométriques & per-diem chantier ───────────────────

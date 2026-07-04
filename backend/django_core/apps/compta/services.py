@@ -49,7 +49,7 @@ from .models import (
     LigneRegleImputation, DemandeApprobationRib,
     Immobilisation, IndemniteChantier, Journal, LigneEcriture,
     LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, NoteFrais,
-    OuverturePartage,
+    OuverturePartage, PlafondNoteFrais,
     PaymentRun, PaymentRunLine, PeriodeComptable, PlanAmortissement,
     PlanComptable, PointageReleve, Provision, ProvisionCreance, Rapprochement,
     RapprochementBancaire, RelanceDevisAbandonne, RetenueSource,
@@ -3226,6 +3226,100 @@ _COMPTE_NOTE_FRAIS_DEFAUT = '6143'
 _COMPTE_PERSONNEL_CREDITEUR = '4432'
 
 
+def plafond_note_frais_pour(company, categorie):
+    """Plafond configuré (XACC27) pour ``categorie``, ou ``None`` si absent."""
+    return PlafondNoteFrais.objects.filter(
+        company=company, categorie=categorie).first()
+
+
+def note_frais_hors_politique(company, *, categorie, montant):
+    """XACC27 — Vrai si ``montant`` dépasse le plafond de ``categorie``.
+
+    Une catégorie sans plafond configuré n'est jamais hors politique (pas de
+    référentiel = pas de contrôle, jamais bloquant)."""
+    plafond = plafond_note_frais_pour(company, categorie)
+    if plafond is None or not plafond.montant_max:
+        return False
+    return Decimal(montant or 0) > plafond.montant_max
+
+
+def note_frais_doublon_possible(company, *, employe, date_frais, montant,
+                                exclude_id=None):
+    """XACC27 — Notes existantes du même employé/date/montant (doublon).
+
+    Renvoie le queryset des notes candidates (jamais bloquant : l'appelant
+    décide d'afficher un warning). Exclut la note ``exclude_id`` elle-même
+    (utile lors d'une mise à jour)."""
+    qs = NoteFrais.objects.filter(
+        company=company, employe=employe, date_frais=date_frais,
+        montant=Decimal(montant or 0))
+    if exclude_id:
+        qs = qs.exclude(id=exclude_id)
+    return qs
+
+
+# ── XACC27 — OCR du justificatif → pré-remplissage (KEY-GATED) ─────────────
+#
+# Réutilise le SERVICE OCR existant (``backend/fastapi_ia``, Zhipu AI, no-op
+# tant que sans clé), à l'image de ``apps.flotte.services.extraire_recu_carburant``
+# (XFLT23). Ne crée JAMAIS de note de frais : ne fait QUE lire/renvoyer des
+# champs pour pré-remplir le formulaire — l'utilisateur valide toujours.
+
+def ocr_notes_frais_active():
+    """XACC27 — True si l'OCR du justificatif de note de frais est activé.
+
+    KEY-GATED : sans ``settings.COMPTA_OCR_NOTES_FRAIS_ENABLED`` (posé par le
+    founder aux côtés de ``ZHIPU_API_KEY``), reste désactivé. Ne lève jamais.
+    """
+    from django.conf import settings
+    return bool(getattr(settings, 'COMPTA_OCR_NOTES_FRAIS_ENABLED', False))
+
+
+def extraire_justificatif_note_frais(file_bytes, *, mime=''):
+    """XACC27 — Extrait montant/date/fournisseur d'un justificatif (photo).
+
+    NO-OP tant que ``ocr_notes_frais_active()`` est faux : lève
+    ``RuntimeError`` (la vue traduit en 503, message FR clair). Une fois
+    activé, délègue à un module fournisseur isolé (``notes_frais_ocr_provider``,
+    non câblé dans ce dépôt) qui appelle le service OCR ``backend/fastapi_ia``.
+    Toute erreur provider est avalée (dict vide) — jamais de crash de l'écran
+    de saisie.
+    """
+    if not ocr_notes_frais_active():
+        raise RuntimeError('OCR indisponible (configuration manquante).')
+    if not file_bytes:
+        return {}
+    try:  # pragma: no cover - dépend d'un provider externe non câblé ici.
+        from . import notes_frais_ocr_provider as provider  # noqa: F401
+    except ImportError:  # pragma: no cover
+        return {}
+    try:  # pragma: no cover
+        return provider.extraire_justificatif(file_bytes, mime=mime) or {}
+    except Exception:  # pragma: no cover - jamais casser l'écran de saisie.
+        return {}
+
+
+def mapper_justificatif_vers_note_frais(champs_bruts):
+    """XACC27 — Normalise les champs OCR bruts vers les clés du formulaire
+    ``NoteFrais`` (lecture seule, aucun effet de bord).
+
+    Accepte ``montant``/``date``/``fournisseur`` (clés FR du provider) et
+    projette vers ``montant``/``date_frais``/``motif``. Une clé absente est
+    omise (l'utilisateur complète le reste à la main) ; NE remplace JAMAIS une
+    saisie manuelle déjà présente — c'est l'appelant (vue/frontend) qui décide
+    de fusionner sans écraser."""
+    if not champs_bruts:
+        return {}
+    resultat = {}
+    if champs_bruts.get('montant') is not None:
+        resultat['montant'] = champs_bruts['montant']
+    if champs_bruts.get('date'):
+        resultat['date_frais'] = champs_bruts['date']
+    if champs_bruts.get('fournisseur'):
+        resultat['motif'] = champs_bruts['fournisseur']
+    return resultat
+
+
 def creer_note_frais(company, *, employe, date_frais, montant, motif,
                      categorie=None, justificatif=None, compte_charge=None,
                      user=None):
@@ -3233,18 +3327,24 @@ def creer_note_frais(company, *, employe, date_frais, montant, motif,
 
     ``montant`` doit être strictement positif (validé par ``clean``). La
     ``reference`` (NDF-YYYYMM-NNNN) est attribuée via la fabrique gap-free
-    race-safe (``apps.ventes.utils.references`` — jamais count()+1). ``company``
-    posée côté serveur. Renvoie la note.
+    race-safe (``apps.ventes.utils.references`` — jamais count()+1). XACC27 :
+    ``hors_politique`` est calculé côté serveur (jamais imposable) depuis le
+    plafond de la catégorie — c'est un warning affiché au valideur, jamais un
+    blocage à la création. ``company`` posée côté serveur. Renvoie la note.
     """
+    categorie = categorie or NoteFrais.Categorie.AUTRE
+    montant_dec = Decimal(montant or 0)
     note = NoteFrais(
         company=company,
         employe=employe,
         date_frais=date_frais,
-        montant=Decimal(montant or 0),
+        montant=montant_dec,
         motif=motif or '',
-        categorie=categorie or NoteFrais.Categorie.AUTRE,
+        categorie=categorie,
         compte_charge=compte_charge,
         created_by=user,
+        hors_politique=note_frais_hors_politique(
+            company, categorie=categorie, montant=montant_dec),
     )
     if justificatif is not None:
         note.justificatif = justificatif
@@ -3298,6 +3398,15 @@ def valider_note_frais(note, *, user=None, compte_charge=None):
         raise ValidationError(
             "Période comptable clôturée : impossible de valider la note de "
             f"frais du {note.date_frais}.")
+    # XACC27 — au-delà du seuil configuré, le justificatif devient obligatoire.
+    plafond = plafond_note_frais_pour(company, note.categorie)
+    if (plafond is not None
+            and plafond.seuil_justificatif_obligatoire is not None
+            and montant > plafond.seuil_justificatif_obligatoire
+            and not note.justificatif):
+        raise ValidationError(
+            "Justificatif obligatoire : le montant dépasse le seuil de "
+            f"{plafond.seuil_justificatif_obligatoire} pour cette catégorie.")
     charge = compte_charge or note.compte_charge or _assurer_compte(
         company, _COMPTE_NOTE_FRAIS_DEFAUT)
     personnel = _assurer_compte(company, _COMPTE_PERSONNEL_CREDITEUR)
