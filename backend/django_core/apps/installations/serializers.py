@@ -16,6 +16,7 @@ from .models import (
     Projet, ProjetTache, ProjetChantier, ProjetDevis, ProjetTicket,
     BudgetProjet, BudgetEngagement,
     IndisponibiliteRessource,
+    Astreinte,
     OrdreSousTraitance,
     AttestationSousTraitant,
     EvaluationSousTraitant,
@@ -1071,6 +1072,42 @@ class IndisponibiliteRessourceSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'date_fin': 'La date de fin doit être postérieure ou égale à '
                              'la date de début.'})
+        return attrs
+
+
+class AstreinteSerializer(serializers.ModelSerializer):
+    """XFSM10 — période d'astreinte d'un technicien. Société + `created_by`
+    posés côté serveur ; le chevauchement de périodes est validé au niveau
+    modèle (`clean()`, remonté en 400 par la vue)."""
+    technicien_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Astreinte
+        fields = [
+            'id', 'technicien', 'technicien_nom', 'date_debut', 'date_fin',
+            'telephone_astreinte', 'created_by', 'date_creation',
+        ]
+        read_only_fields = ['created_by', 'date_creation']
+
+    def get_technicien_nom(self, obj):
+        user = getattr(obj, 'technicien', None)
+        if user is None:
+            return None
+        getter = getattr(user, 'get_full_name', None)
+        nom = (getter() or '').strip() if callable(getter) else ''
+        return nom or getattr(user, 'username', None)
+
+    def validate(self, attrs):
+        def _resolved(field):
+            if field in attrs:
+                return attrs[field]
+            return getattr(self.instance, field, None)
+
+        debut = _resolved('date_debut')
+        fin = _resolved('date_fin')
+        if debut is not None and fin is not None and fin <= debut:
+            raise serializers.ValidationError(
+                {'date_fin': "La date de fin doit être après la date de début."})
         return attrs
 
 

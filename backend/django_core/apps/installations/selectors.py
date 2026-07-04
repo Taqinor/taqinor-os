@@ -2143,3 +2143,35 @@ def intervention_public_payload(interv):
         'eta_minutes': eta_minutes,
         'site_ville': getattr(inst, 'site_ville', None),
     }
+
+
+# ── XFSM10 — astreinte / rotation après-heures ────────────────────────────────
+def technicien_astreinte(company, dt):
+    """XFSM10 — technicien d'astreinte couvrant l'instant ``dt`` (datetime
+    aware) pour ``company``, ou None si aucune astreinte ne couvre ce moment.
+    Lecture seule — consommable par d'autres apps (SAV pour le routage des
+    urgences hors heures, paie pour la prime d'astreinte)."""
+    from .models import Astreinte
+    if company is None or dt is None:
+        return None
+    a = (Astreinte.objects
+         .filter(company=company, date_debut__lte=dt, date_fin__gt=dt)
+         .select_related('technicien')
+         .order_by('-date_debut')
+         .first())
+    return a.technicien if a else None
+
+
+def astreintes_periode(company, date_debut, date_fin):
+    """XFSM10 — astreintes de ``company`` chevauchant [date_debut, date_fin)
+    (bornes datetime aware). Lecture seule — consommable par la paie pour la
+    prime d'astreinte (jamais d'import de ``apps.paie.models`` ici)."""
+    from .models import Astreinte
+    if company is None:
+        return Astreinte.objects.none()
+    qs = Astreinte.objects.filter(company=company)
+    if date_debut is not None:
+        qs = qs.filter(date_fin__gt=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(date_debut__lt=date_fin)
+    return qs.select_related('technicien').order_by('date_debut')

@@ -12,6 +12,7 @@ from .views import (
     ProjetDevisViewSet, ProjetTicketViewSet,
     BudgetProjetViewSet, BudgetEngagementViewSet,
     IndisponibiliteRessourceViewSet,
+    AstreinteViewSet,
     EquipeViewSet,
     SousTraitantViewSet,
     OrdreSousTraitanceViewSet,
@@ -88,6 +89,7 @@ router.register(r'programme-tickets', ProjetTicketViewSet)
 router.register(r'programme-budgets', BudgetProjetViewSet)
 router.register(r'programme-engagements', BudgetEngagementViewSet)
 router.register(r'indisponibilites-ressource', IndisponibiliteRessourceViewSet)
+router.register(r'astreintes', AstreinteViewSet)
 router.register(r'equipes', EquipeViewSet)
 # DC34 — sous-traitants / AP sous-traitant sont des ViewSet façade au-dessus de
 # stock (Fournisseur type=service + chaîne FactureFournisseur/PaiementFournisseur)
