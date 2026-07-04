@@ -342,6 +342,28 @@ that fits the job:
   `/model fable` at the session start -- the floor keeps the scouts cheap while the orchestrator
   + the tagged frontier passes use Fable.
 
+**Token discipline -- read the MAP before grepping the territory (founder rule, Reda --
+2026-07-04).** `docs/CODEMAP.md` is the curated, always-current map of the whole codebase
+(§3 repository map + §4 app-by-app: every app's models/endpoints/routes). It exists so an
+agent spends a few thousand tokens reading ONE map instead of grepping hundreds of files --
+it is YOUR "read-once" index (better than any third-party code-graph tool because you curate
+it, so there are no wrong AI-inferred edges) and it is the biggest free token lever after
+model selection. On any task that needs to LOCATE code:
+  1. Consult `docs/CODEMAP.md` §3/§4 FIRST to find the owning app + file.
+  2. Jump straight there with a TARGETED `Grep`/`Glob` or a line-ranged `Read` -- NEVER a
+     repo-wide grep or a blanket whole-file read when the map already says where to look
+     ("file reads dominate context usage").
+  3. Delegate broad exploration / log-reading / verbose-output tasks to a subagent that
+     returns a SHORT CONCLUSION, not the raw files -- only its summary enters the
+     orchestrator's context (an agent can read 6k tokens of files and hand back 400).
+  Keep CODEMAP LEAN (§4 is an index, not a knowledge dump) so it stays cheap to load every
+  session. Optional accelerator: the **Serena code-index MCP** (config in `.mcp.json`) gives
+  symbol-level `find_symbol` / `find_referencing_symbols` retrieval instead of whole-file
+  reads -- approve it in `/mcp` when you want it; everything above still works (degrades to
+  CODEMAP + targeted Grep) when it is absent or unapproved. No tool grants free cross-session
+  memory: every session starts with a fresh context window, so savings always come from
+  loading LESS (the map / a targeted read / a subagent summary), never from magic recall.
+
 **Always merge to `main` (founder standing instruction, Reda).** Every run -- local,
 remote/cloud, or phone -- must land the single `dev` -> `main` self-merge; never
 stop at a feature branch and never wait to be asked. The only gate is the Safety
