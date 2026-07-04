@@ -472,13 +472,13 @@ const signConfig = ok
            reste TOUJOURS lisible FR sans JS (pas de gate v2-js ici, page déjà
            rendue serveur). WJ43 — EN ajouté comme 3ᵉ langue (segment
            marocains-du-monde), au même niveau que FR/AR, jamais un repli dégradé. -->
-      <div class="prop-lang-switch fixed right-3 top-3 z-50 flex gap-1 rounded-sm border border-white/15 bg-nuit/80 p-0.5 backdrop-blur" role="group" aria-label="Langue / Language / اللغة">
+      <div class="prop-lang-switch fixed right-3 z-50 flex gap-1 rounded-sm border border-white/15 bg-nuit/80 p-0.5 backdrop-blur" style="top: calc(0.75rem + env(safe-area-inset-top));" role="group" aria-label="Langue / Language / اللغة">
         <button type="button" id="prop-lang-fr" aria-pressed="true"
-          class="px-2.5 py-1 text-xs font-semibold text-azur-950 bg-brass-400 transition-colors">FR</button>
+          class="min-h-11 px-2.5 py-2.5 text-xs font-semibold text-azur-950 bg-brass-400 transition-colors">FR</button>
         <button type="button" id="prop-lang-en" aria-pressed="false"
-          class="px-2.5 py-1 text-xs font-semibold text-lune-soft transition-colors hover:text-white">EN</button>
+          class="min-h-11 px-2.5 py-2.5 text-xs font-semibold text-lune-soft transition-colors hover:text-white">EN</button>
         <button type="button" id="prop-lang-ar" aria-pressed="false"
-          class="px-2.5 py-1 text-xs font-semibold text-lune-soft transition-colors hover:text-white">عربي</button>
+          class="min-h-11 px-2.5 py-2.5 text-xs font-semibold text-lune-soft transition-colors hover:text-white">عربي</button>
       </div>
 
       <!-- ── HÉRO (WJ28 — cinéma du chantier : ancré bas, entrée cine-in ; WJ35 —
