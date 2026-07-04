@@ -319,6 +319,29 @@ session was started on Opus (downgrade the builders, keep orchestration on Opus)
   ever started on Sonnet/Haiku the driver can't be upgraded -- orchestration judgment is
   then bounded by that model; per-task build-model choice still applies.)
 
+**The SAME per-task rule applies to RESEARCH / AUDIT / any multi-agent workflow, not just
+plan-build runs (founder rule, Reda — added 2026-07-04 after an all-Fable audit burned ~4x
+the tokens it needed to).** NEVER let subagents silently inherit the session model -- ALWAYS
+set the model on every `Agent` call / `Workflow` `agent()` `opts.model`, picking the cheapest
+that fits the job:
+  - **haiku** -- scouting: web search / WebFetch, file reads, greps, "verify-and-skip",
+    mechanical extraction. Googling docs and grepping the repo needs zero frontier reasoning.
+  - **sonnet** (DEFAULT for subagents) -- research synthesis, gap analysis, feature/task
+    drafting, standard per-domain audit lanes. Bulk of the work.
+  - **opus** -- adversarial verification, cross-domain dedupe, completeness synthesis,
+    security/architecture judgment, the merge/report gate (the orchestrator itself).
+  - **fable** -- RESERVED for the 1-3 passes per run where frontier reasoning materially
+    changes the outcome (a final completeness critic; a decisive synthesis) AND only when Reda
+    asked for a "full checkup / go deep". NEVER the default for a fleet of scouts/verifiers.
+    Fable is the MOST capable AND MOST EXPENSIVE model ($10/$50 per 1M -- 2x Opus, 10x Haiku);
+    treat it like a scalpel, not the house model.
+  Config backstop (already set in `.claude/settings.json`): `"model": "opus"` runs the
+  orchestrator on Opus, and `env.CLAUDE_CODE_SUBAGENT_MODEL=sonnet` floors EVERY untagged
+  subagent at Sonnet -- so a forgotten tag can never inherit Fable again. Per-call `model:`
+  still overrides the floor (haiku down / opus-fable up). To run a deliberate Fable deep-dive,
+  `/model fable` at the session start -- the floor keeps the scouts cheap while the orchestrator
+  + the tagged frontier passes use Fable.
+
 **Always merge to `main` (founder standing instruction, Reda).** Every run -- local,
 remote/cloud, or phone -- must land the single `dev` -> `main` self-merge; never
 stop at a feature branch and never wait to be asked. The only gate is the Safety
