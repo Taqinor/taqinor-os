@@ -333,6 +333,28 @@ class CompanyProfile(models.Model):
         help_text="Interdit la modification des champs financiers d'une "
                   "facture non-brouillon (correction par avoir uniquement).")
 
+    # ── XFAC28 — blocage crédit dur configurable (étend FG41) ──
+    # Défaut OFF = comportement FG41 intact (avertissement seul, jamais de
+    # blocage). ON : un client en dépassement de plafond (ou en retard au-delà
+    # du seuil configuré) voit ``devis/{id}/accepter`` et
+    # ``devis/{id}/generer-facture`` refusés (403), sauf override explicite
+    # d'un responsable/admin. DECISION founder (2026) : seuils par défaut
+    # prudents (0 jour = le critère retard est ignoré tant qu'il n'est pas
+    # explicitement configuré ; le critère plafond utilise TOUJOURS
+    # ``Client.plafond_credit`` déjà existant — FG41) ; le founder ajuste
+    # ``credit_hold_retard_jours`` selon sa politique de recouvrement.
+    credit_hold_actif = models.BooleanField(
+        default=False,
+        help_text="Bloque (403) les nouveaux devis acceptés/factures d'un "
+                  "client en dépassement de crédit, au lieu du seul "
+                  "avertissement FG41. Désactivé par défaut.")
+    credit_hold_retard_jours = models.PositiveIntegerField(
+        default=0,
+        help_text="Jours de retard sur facture(s) ouvertes au-delà desquels "
+                  "le hold s'applique aussi (indépendamment du plafond). "
+                  "0 = ce critère est ignoré (seul le dépassement de "
+                  "plafond FG41 déclenche le hold).")
+
     class Meta:
         verbose_name = 'Profil entreprise'
 

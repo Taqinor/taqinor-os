@@ -92,6 +92,49 @@ def client_credit_warning(client, montant_ttc_nouveau=None):
     }
 
 
+def credit_hold_check(client, *, retard_jours_seuil=0):
+    """XFAC28 — blocage crédit DUR (étend FG41, qui reste un simple warning).
+
+    Réutilise ``client_credit_warning`` pour le critère plafond (jamais de
+    logique dupliquée) et ajoute le critère retard : au moins une facture
+    ouverte (émise/en_retard, non annulée) en retard de plus de
+    ``retard_jours_seuil`` jours (0 = ce critère est ignoré). Renvoie
+    ``{'bloque': bool, 'motif': str, 'encours': Decimal, 'plafond': Decimal|
+    None, 'jours_retard_max': int}``. Lecture seule ; ne bloque RIEN par
+    elle-même — c'est l'appelant (ventes) qui décide de refuser l'action
+    selon ``CompanyProfile.credit_hold_actif``."""
+    from apps.ventes.models import Facture
+    warning = client_credit_warning(client)
+
+    jours_retard_max = 0
+    if retard_jours_seuil and retard_jours_seuil > 0:
+        ouvertes = Facture.objects.filter(
+            client=client,
+            statut__in=(Facture.Statut.EMISE, Facture.Statut.EN_RETARD),
+        ).prefetch_related('paiements', 'avoirs')
+        for f in ouvertes:
+            if f.montant_du > 0:
+                jours_retard_max = max(jours_retard_max, f.jours_retard)
+
+    motifs = []
+    if warning['depasse']:
+        motifs.append(
+            f"encours {warning['encours']:.2f} MAD > plafond "
+            f"{warning['plafond']:.2f} MAD")
+    if retard_jours_seuil and jours_retard_max > retard_jours_seuil:
+        motifs.append(
+            f'{jours_retard_max} jour(s) de retard '
+            f'(seuil {retard_jours_seuil})')
+
+    return {
+        'bloque': bool(motifs),
+        'motif': ' ; '.join(motifs),
+        'encours': warning['encours'],
+        'plafond': warning['plafond'],
+        'jours_retard_max': jours_retard_max,
+    }
+
+
 def get_company_lead(company, lead_id):
     """B1 — Lead borné à la société, ou None. Point d'entrée cross-app pour que
     ventes résolve un lead par id sans importer ``apps.crm.models`` (un id d'une

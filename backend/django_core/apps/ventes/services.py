@@ -1446,6 +1446,56 @@ def anomalies_emission_facture(facture):
     return anomalies
 
 
+class CreditHoldError(Exception):
+    """XFAC28 — levée quand un client est en hold crédit dur (sans override).
+
+    Porte le détail chiffré (``motif``) pour un message 403 explicite."""
+
+    def __init__(self, motif):
+        super().__init__(motif)
+        self.motif = motif
+
+
+def verifier_credit_hold(client, *, override=False, user=None,
+                         chatter_target=None, contexte=''):
+    """XFAC28 — vérifie le hold crédit dur (étend FG41) avant une action
+    sensible (accepter un devis, générer une facture).
+
+    Flag OFF (``CompanyProfile.credit_hold_actif``) → no-op, comportement FG41
+    intact (avertissement seul, jamais consulté ici). Flag ON et le client est
+    en dépassement (plafond et/ou retard, voir
+    ``apps.crm.selectors.credit_hold_check``) : lève ``CreditHoldError`` SAUF
+    si ``override=True`` (responsable/admin explicite) — l'override est
+    journalisé (chatter du devis si fourni + audit) mais laisse passer
+    l'action. Ne renvoie rien ; lève ou passe silencieusement."""
+    from apps.parametres.models import CompanyProfile
+    profile = CompanyProfile.get(company=client.company)
+    if not getattr(profile, 'credit_hold_actif', False):
+        return
+
+    from apps.crm.selectors import credit_hold_check
+    seuil = getattr(profile, 'credit_hold_retard_jours', 0) or 0
+    result = credit_hold_check(client, retard_jours_seuil=seuil)
+    if not result['bloque']:
+        return
+
+    if not override:
+        raise CreditHoldError(result['motif'])
+
+    # Override responsable/admin : journalise (chatter + audit société).
+    from apps.parametres.models_audit import SettingsAuditLog
+    qui = getattr(user, 'username', '?') if user else '?'
+    SettingsAuditLog.log_change(
+        company=client.company, user=user, section='credit_hold',
+        field='override', field_label='Blocage crédit — override',
+        old='bloque', new=f'débloqué par {qui} ({contexte})',
+    )
+    if chatter_target is not None:
+        from . import activity
+        activity.log_devis_credit_hold_override(
+            chatter_target, user, result['motif'])
+
+
 def _s2(x):
     from decimal import Decimal
     return str(Decimal(x or 0).quantize(Decimal('0.01')))

@@ -13,6 +13,19 @@ def log_devis_note(devis, user, body):
     )
 
 
+def log_devis_credit_hold_override(devis, user, motif):
+    """XFAC28 — chatter du devis : un responsable/admin a débloqué un client
+    en hold crédit dur pour laisser passer cette action (accepter/facturer)."""
+    qui = getattr(user, 'username', '?') if user else '?'
+    return DevisActivity.objects.create(
+        company=devis.company, devis=devis, user=user,
+        kind=DevisActivity.Kind.MODIFICATION,
+        field='credit_hold', field_label='Blocage crédit',
+        new_value='override',
+        body=f'Blocage crédit débloqué par {qui} — {motif}.',
+    )
+
+
 def log_devis_acceptance(devis, user, nom, date_acceptation, option=''):
     """Consigne l'acceptation du devis (qui + quand + option) dans son chatter.
 
