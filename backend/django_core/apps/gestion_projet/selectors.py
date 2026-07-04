@@ -28,6 +28,7 @@ from .models import (
     Projet,
     ProjetLien,
     RessourceProfil,
+    Risque,
     Tache,
     Timesheet,
 )
@@ -2949,4 +2950,60 @@ def penalites_retard(projet, date_reference=None):
         'exposition': exposition,
         'plafonnee': plafonnee,
         'decompte_definitif_a_etablir': jours_depassement > 0,
+    }
+
+
+def matrice_risques(projet):
+    """Matrice des risques P × I (grille 5×5) d'un projet (ZPRJ8).
+
+    Compte, par cellule ``(probabilite, impact)`` (1–5 chacun), les
+    ``Risque`` du projet dont le ``statut`` est OUVERT ou SURVEILLÉ — les
+    risques MAÎTRISÉS/CLOS sont EXCLUS de la grille (comptage courant, pas
+    historique). Renvoie aussi le TOP risques par criticité décroissante
+    (mêmes risques ouverts/surveillés) pour affichage à côté de la heatmap.
+
+    Un projet sans risque ouvert/surveillé renvoie une grille entièrement à
+    zéro et un top vide — jamais d'erreur.
+
+    Renvoie un dict ``{grille: [{probabilite, impact, nombre}, ...25],
+    total_ouverts_surveilles, top_risques: [{id, libelle, probabilite,
+    impact, criticite, statut}, ...]}``.
+    """
+    risques_actifs = list(
+        Risque.objects.filter(
+            projet=projet,
+            statut__in=[Risque.Statut.OUVERT, Risque.Statut.SURVEILLE],
+        ).order_by('-criticite', '-id')
+    )
+
+    comptes = {}
+    for r in risques_actifs:
+        cle = (r.probabilite, r.impact)
+        comptes[cle] = comptes.get(cle, 0) + 1
+
+    grille = []
+    for probabilite in range(1, 6):
+        for impact in range(1, 6):
+            grille.append({
+                'probabilite': probabilite,
+                'impact': impact,
+                'nombre': comptes.get((probabilite, impact), 0),
+            })
+
+    top_risques = [
+        {
+            'id': r.id,
+            'libelle': r.libelle,
+            'probabilite': r.probabilite,
+            'impact': r.impact,
+            'criticite': r.criticite,
+            'statut': r.statut,
+        }
+        for r in risques_actifs[:10]
+    ]
+
+    return {
+        'grille': grille,
+        'total_ouverts_surveilles': len(risques_actifs),
+        'top_risques': top_risques,
     }

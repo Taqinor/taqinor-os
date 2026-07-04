@@ -557,6 +557,20 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
             'deja_soumis': evaluation.soumis_le is not None,
         })
 
+    @action(detail=True, methods=['get'], url_path='matrice-risques')
+    def matrice_risques(self, request, pk=None):
+        """Matrice des risques P × I (heatmap 5×5) du projet (ZPRJ8).
+
+        La société est garantie par ``get_object`` (queryset scopé société) :
+        un projet d'une autre société → 404. Délègue au sélecteur
+        ``matrice_risques`` (lecture seule) : seuls les risques
+        ouverts/surveillés comptent dans la grille, les clos/maîtrisés sont
+        exclus ; un projet sans risque actif renvoie une grille vide propre.
+        Réservé aux données internes (responsable/admin).
+        """
+        projet = self.get_object()
+        return Response(selectors.matrice_risques(projet))
+
     @action(detail=True, methods=['get'], url_path='couts-engages-reels')
     def couts_engages_reels(self, request, pk=None):
         """Coûts ENGAGÉS/RÉELS vs BUDGET (PROJ21) par catégorie (PROJ22).
