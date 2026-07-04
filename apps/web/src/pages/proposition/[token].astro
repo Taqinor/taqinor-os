@@ -407,7 +407,7 @@ const signConfig = ok
          proposés, plutôt que le seul lien « Retour à l'accueil ». W316 — un
          429 (rate-limit) est tout aussi RETRYABLE (relire dans un instant) :
          même bouton « Réessayer », jamais un cul-de-sac. -->
-    <section class="mx-auto flex min-h-[60vh] max-w-2xl flex-col items-center justify-center px-5 py-24 text-center">
+    <section class="mx-auto flex min-h-[60dvh] max-w-2xl flex-col items-center justify-center px-5 py-24 text-center">
       <div class="rule-brass mx-auto text-brass-300" aria-hidden="true"></div>
       <h1 class="display mt-6 text-3xl text-lune sm:text-4xl">Proposition indisponible</h1>
       <p class="v2-body mt-4 max-w-md">{errorDetail}</p>
@@ -483,7 +483,7 @@ const signConfig = ok
 
       <!-- ── HÉRO (WJ28 — cinéma du chantier : ancré bas, entrée cine-in ; WJ35 —
            rythme rehaussé, cohérent avec l'accueil élevé v3, zéro CLS : min-h). -->
-      <section class="relative min-h-[72vh] overflow-hidden sm:min-h-[78vh]">
+      <section class="relative min-h-[72dvh] overflow-hidden sm:min-h-[78dvh]">
         {roofImg ? (
           <>
             <!-- WJ34 — poster blur-up : la photo backend (URL dynamique, pas de
@@ -512,7 +512,7 @@ const signConfig = ok
         )}
         <!-- Scrim pour garantir le contraste AA du texte par-dessus la photo. -->
         <div class="hero-scrim absolute inset-0" aria-hidden="true"></div>
-        <div class="relative mx-auto flex min-h-[72vh] w-full max-w-4xl flex-col justify-end px-5 pb-12 pt-24 sm:min-h-[78vh] sm:px-8 sm:pb-16 sm:pt-32">
+        <div class="relative mx-auto flex min-h-[72dvh] w-full max-w-4xl flex-col justify-end px-5 pb-12 pt-24 sm:min-h-[78dvh] sm:px-8 sm:pb-16 sm:pt-32">
           <p class="tech-label rule-brass cine-in text-brass-300" data-i18n
             data-fr={`${roofImg ? 'Votre installation · ' : 'Proposition · '}${instLabel}`}
             data-en={`${roofImg ? 'Your installation · ' : 'Proposal · '}${instLabel}`}
