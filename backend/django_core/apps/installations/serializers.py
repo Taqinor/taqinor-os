@@ -2415,8 +2415,8 @@ class LivraisonSerializer(serializers.ModelSerializer):
             'id', 'reference', 'installation', 'installation_reference',
             'depot', 'depot_nom', 'transporteur_nom', 'transporteur',
             'transporteur_obj_nom', 'cout_transport', 'mode_acheminement',
-            'mode_acheminement_display', 'date_prevue', 'statut',
-            'statut_display', 'adresse_site', 'note', 'lignes',
+            'mode_acheminement_display', 'date_prevue', 'numero_suivi',
+            'statut', 'statut_display', 'adresse_site', 'note', 'lignes',
             'created_by', 'date_creation', 'date_modification',
         ]
         read_only_fields = [
