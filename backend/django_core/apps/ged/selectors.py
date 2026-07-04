@@ -6,8 +6,9 @@ Toutes les lectures sont bornées à une société.
 """
 from .models import (
     ACL_RANK, AclGed, ArchivageLegal, Cabinet, Coffre, DemandeApprobation,
-    Document, DocumentLien, DocumentTag, DocumentVersion, Folder, LegalHold,
-    PartageGed, PolitiqueRetention,
+    DemandeSignatureDocument, Document, DocumentLien, DocumentTag,
+    DocumentVersion, Folder, LegalHold, PartageGed, PolitiqueRetention,
+    RegleAclMetadonnee,
 )
 
 
@@ -397,7 +398,13 @@ def acl_effective(document_or_folder, user):
         chain = _folder_chain_ids(document_or_folder)
 
     entries = list(acl_entries_for_target(document_or_folder))
-    if not entries:
+    # XGED21 — une règle ACL par métadonnée qui matche compte comme une entrée
+    # DIRECTE sur la cible (proximité 0) : elle ne fait qu'AJOUTER une
+    # candidate au calcul du meilleur rang, jamais un court-circuit — un
+    # override direct plus spécifique reste possible au même scope.
+    metadonnee_rank = (
+        _acl_metadonnee_rank(document_or_folder, user) if is_document else None)
+    if not entries and metadonnee_rank is None:
         return None
 
     # Rang de proximité de chaque scope : 0 = override direct (le plus proche),
@@ -413,6 +420,9 @@ def acl_effective(document_or_folder, user):
 
     best_scope = None       # rang de proximité le plus petit qui statue
     best_rank = 0           # niveau le plus permissif à ce scope
+    if metadonnee_rank is not None:
+        best_scope = 0
+        best_rank = metadonnee_rank
     for entry in entries:
         if not _principal_matches(entry, user):
             continue
@@ -441,6 +451,42 @@ def acl_effective(document_or_folder, user):
     return None
 
 
+def _acl_metadonnee_rank(document, user):
+    """XGED21 — Rang ACL le plus permissif qu'une `RegleAclMetadonnee` ACTIVE
+    octroie à `user` (via son rôle) sur `document`, ou ``None`` si aucune règle
+    active ne matche/ne cible son rôle.
+
+    Recalcul IMMÉDIAT à chaque appel (aucune ligne matérialisée) : poser ou
+    retirer un tag/une métadonnée change instantanément le résultat. Réutilise
+    le même contexte plat que `RegleDossier`/`RegleApprobationGed` (XGED19/20)
+    pour rester cohérent avec le reste du moteur de règles GED."""
+    role_id = getattr(user, 'role_id', None)
+    if not role_id:
+        return None
+    regles = list(
+        RegleAclMetadonnee.objects
+        .filter(company_id=document.company_id, actif=True, role_id=role_id)
+        .order_by('-priorite', '-id'))
+    if not regles:
+        return None
+    from core.rules import evaluate_condition_group
+
+    from . import services
+    contexte = services._document_contexte_regle(document)
+    best_rank = None
+    for regle in regles:
+        try:
+            matched = evaluate_condition_group(regle.condition_group, contexte)
+        except Exception:  # pragma: no cover - défensif, jamais bloquant.
+            matched = False
+        if not matched:
+            continue
+        rank = ACL_RANK.get(regle.niveau, 0)
+        if best_rank is None or rank > best_rank:
+            best_rank = rank
+    return best_rank
+
+
 def acl_governs_target(target):
     """GED19 — True si AU MOINS une entrée ACL couvre la cible (override/héritage).
 
@@ -459,6 +505,86 @@ def acls_for_document(document):
 def acls_for_folder(folder):
     """GED19 — Entrées ACL posées DIRECTEMENT sur un dossier (QuerySet)."""
     return AclGed.objects.filter(company=folder.company, folder=folder)
+
+
+# ── XGED22 — Rapport de permissions effectives ──────────────────────────────
+
+def permissions_effectives(document_or_folder):
+    """XGED22 — Niveau effectif de CHAQUE utilisateur/rôle de la société sur
+    une cible (document OU dossier), avec la JUSTIFICATION de la résolution.
+
+    Pour chaque `CustomUser` de la société (admin ET non-admin) renvoie un
+    dict ``{'type': 'utilisateur', 'id', 'label', 'niveau', 'source'}`` où
+    `source` est l'une de : ``admin`` (contournement inconditionnel GED19),
+    ``override_document``/``override_dossier`` (entrée ACL DIRECTE sur la
+    cible), ``heritage_dossier`` (entrée ACL héritée d'un ancêtre — le libellé
+    précise le dossier d'où elle vient), ``regle_metadonnee`` (XGED21),
+    ``aucune`` (non gouverné — comportement GED19 par défaut). Le rang le PLUS
+    PERMISSIF gagne quand plusieurs sources s'appliquent au même utilisateur
+    (même règle que `acl_effective`), mais on conserve ici la source qui a
+    PRODUIT ce rang pour l'audit. Ne modifie jamais rien (lecture seule).
+
+    Toujours bornée à la société de la cible (aucune fuite cross-société).
+    """
+    from django.contrib.auth import get_user_model
+
+    company = document_or_folder.company
+    User = get_user_model()
+
+    lignes = []
+    for user in (User.objects.filter(company=company)
+                 .select_related('role').order_by('username')):
+        niveau = acl_effective(document_or_folder, user)
+        source = _justifie_acl_effective(document_or_folder, user, niveau)
+        lignes.append({
+            'type': 'utilisateur',
+            'id': user.pk,
+            'label': user.username,
+            'niveau': niveau,
+            'source': source,
+        })
+    return lignes
+
+
+def _justifie_acl_effective(document_or_folder, user, niveau):
+    """XGED22 — Détermine la SOURCE du niveau résolu par `acl_effective` pour
+    `user` sur `document_or_folder` (audit — jamais de second calcul du
+    niveau lui-même, uniquement de sa provenance)."""
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return 'aucune'
+    target_company_id = getattr(document_or_folder, 'company_id', None)
+    if not user.is_superuser and user.company_id != target_company_id:
+        return 'aucune'
+    if getattr(user, 'is_admin_role', False) or user.is_superuser:
+        return 'admin'
+    if niveau is None:
+        return 'aucune'
+
+    is_document = isinstance(document_or_folder, Document)
+    direct_folder = (
+        document_or_folder.folder if is_document else document_or_folder)
+
+    # Override direct sur la cible elle-même (document ou dossier lui-même).
+    direct_entries = (
+        acls_for_document(document_or_folder) if is_document
+        else acls_for_folder(document_or_folder))
+    for entry in direct_entries:
+        if _principal_matches(entry, user) and entry.niveau == niveau:
+            return 'override_document' if is_document else 'override_dossier'
+
+    # Règle XGED21 par métadonnée (documents uniquement).
+    if is_document and _acl_metadonnee_rank(document_or_folder, user) == \
+            ACL_RANK.get(niveau, 0):
+        return 'regle_metadonnee'
+
+    # Héritage d'un dossier ancêtre.
+    chain = _folder_chain_ids(direct_folder)
+    for fid in chain:
+        for entry in AclGed.objects.filter(
+                company=target_company_id, folder_id=fid, herite=True):
+            if _principal_matches(entry, user) and entry.niveau == niveau:
+                return 'heritage_dossier'
+    return 'aucune'
 
 
 # ── GED22 — Politiques de rétention (durée de conservation + échéance) ─────
@@ -766,3 +892,217 @@ def timeline_document(document):
         pass
     entries.sort(key=lambda e: e['created_at'], reverse=True)
     return entries
+
+
+def regles_acl_metadonnee_for_company(company):
+    """XGED21 — Règles ACL par métadonnée d'une société (QuerySet).
+
+    Lecture bornée à la société — jamais de fuite cross-société."""
+    return (RegleAclMetadonnee.objects
+            .filter(company=company)
+            .select_related('role', 'created_by'))
+
+
+# ── XGED26 — Analytique workflow & signature ────────────────────────────────
+
+def _duree_moyenne_jours(paires):
+    """Moyenne (en JOURS, float) des écarts `(fin - debut)` d'une liste de
+    tuples `(debut, fin)` — DIVIDE-BY-ZERO gardé (liste vide → None, jamais
+    une ZeroDivisionError)."""
+    ecarts = [
+        (fin - debut).total_seconds() / 86400.0
+        for debut, fin in paires if debut is not None and fin is not None
+    ]
+    if not ecarts:
+        return None
+    return round(sum(ecarts) / len(ecarts), 2)
+
+
+def analytique_approbations(company, *, date_debut=None, date_fin=None):
+    """XGED26 — KPIs d'approbation documentaire (GED18/XGED20) sur une période.
+
+    Renvoie un dict :
+      * ``temps_cycle_moyen_jours`` — délai moyen création → décision
+        (`en_attente`→`approuve`/`rejete`), toutes demandes DÉCIDÉES de la
+        période ;
+      * ``par_statut`` — compte de demandes par statut ;
+      * ``par_emetteur`` — compte de demandes par demandeur (username) ;
+      * ``goulots`` — pour les demandes routées via `RegleApprobationGed`
+        (XGED20, `ChaineApprobationGed`), le délai moyen PAR RANG d'étape
+        (rang → jours moyens jusqu'à approbation de ce rang) — l'étape la
+        plus lente ressort en tête (triée décroissant).
+
+    DIVIDE-BY-ZERO gardé (aucune donnée → moyennes `None`, compteurs `0`).
+    Bornée à la société — jamais de fuite cross-société."""
+    from django.db.models import Count
+
+    qs = DemandeApprobation.objects.filter(company=company)
+    if date_debut is not None:
+        qs = qs.filter(created_at__gte=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(created_at__lte=date_fin)
+
+    decidees = qs.exclude(decision_le__isnull=True)
+    temps_cycle_moyen = _duree_moyenne_jours(
+        [(d.created_at, d.decision_le) for d in decidees])
+
+    par_statut = {
+        row['statut']: row['n']
+        for row in qs.values('statut').annotate(n=Count('id'))
+    }
+    par_emetteur = {
+        (row['demandeur__username'] or '—'): row['n']
+        for row in qs.values('demandeur__username').annotate(n=Count('id'))
+    }
+
+    # Goulots — délai moyen par rang d'étape des chaînes séquentielles XGED20.
+    from .models import ChaineApprobationGed
+    delais_par_rang = {}
+    chaines = (ChaineApprobationGed.objects
+               .filter(company=company, demande__in=qs)
+               .select_related('demande'))
+    for chaine in chaines:
+        debut = chaine.demande.created_at
+        for rang, etape in enumerate(chaine.etapes or []):
+            decision_iso = etape.get('decision_le')
+            if not decision_iso:
+                continue
+            try:
+                from django.utils.dateparse import parse_datetime
+                fin = parse_datetime(decision_iso)
+            except Exception:  # pragma: no cover - défensif.
+                fin = None
+            if fin is None:
+                continue
+            delais_par_rang.setdefault(rang, []).append((debut, fin))
+    goulots = [
+        {'rang': rang, 'delai_moyen_jours': _duree_moyenne_jours(paires)}
+        for rang, paires in delais_par_rang.items()
+    ]
+    goulots.sort(
+        key=lambda g: (g['delai_moyen_jours'] is None, -(g['delai_moyen_jours'] or 0)))
+
+    return {
+        'temps_cycle_moyen_jours': temps_cycle_moyen,
+        'par_statut': par_statut,
+        'par_emetteur': par_emetteur,
+        'goulots': goulots,
+        'total': qs.count(),
+    }
+
+
+def analytique_signatures(company, *, date_debut=None, date_fin=None):
+    """XGED26 — KPIs de signature électronique (GED30/XGED1/XGED2) sur une
+    période.
+
+    Renvoie un dict :
+      * ``taux_completion`` — pourcentage (0-100) de demandes SIGNÉES parmi
+        toutes les demandes de la période (None si aucune demande) ;
+      * ``delai_moyen_envoi_signature_jours`` — délai moyen entre
+        `date_demande` et `date_signature` pour les demandes SIGNÉES ;
+      * ``par_statut`` — compte de demandes par statut ;
+      * ``par_emetteur`` — compte de demandes par créateur (username).
+
+    DIVIDE-BY-ZERO gardé. Bornée à la société — jamais de fuite cross-société."""
+    from django.db.models import Count
+
+    qs = DemandeSignatureDocument.objects.filter(company=company)
+    if date_debut is not None:
+        qs = qs.filter(date_demande__gte=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(date_demande__lte=date_fin)
+
+    total = qs.count()
+    signees = qs.filter(statut='signe')
+    taux_completion = (
+        round((signees.count() / total) * 100, 2) if total else None)
+    delai_moyen = _duree_moyenne_jours(
+        [(d.date_demande, d.date_signature) for d in signees])
+
+    par_statut = {
+        row['statut']: row['n']
+        for row in qs.values('statut').annotate(n=Count('id'))
+    }
+    par_emetteur = {
+        (row['created_by__username'] or '—'): row['n']
+        for row in qs.values('created_by__username').annotate(n=Count('id'))
+    }
+
+    return {
+        'taux_completion': taux_completion,
+        'delai_moyen_envoi_signature_jours': delai_moyen,
+        'par_statut': par_statut,
+        'par_emetteur': par_emetteur,
+        'total': total,
+    }
+
+
+# ── ZGED3 — Tableau de bord des demandes de signature (kanban + suivi) ─────
+
+def tableau_bord_signatures(company, *, emetteur=None, date_debut=None,
+                            date_fin=None):
+    """ZGED3 — Demandes de signature (GED30) GROUPÉES par statut, avec pour
+    chacune : document, signataires + leur statut individuel (XGED2), %
+    complétion, date d'envoi, échéance/expiration, dernier événement.
+
+    Contrairement à XGED26 (agrégats analytiques purs), ce tableau est une
+    liste OPÉRATIONNELLE par statut avec DRILL-DOWN par demande — pensé pour
+    un affichage kanban (colonnes = statuts). Filtrable par `emetteur` (id
+    utilisateur) et par période d'ENVOI (`date_debut`/`date_fin` sur
+    `date_demande`). Bornée à la société — jamais de fuite cross-société.
+
+    Renvoie `{"colonnes": {statut: [ligne, ...]}, "total": <int>}` où chaque
+    `ligne` = `{id, document_id, document_nom, statut, emetteur, date_demande,
+    expires_at, pourcentage_completion, signataires: [...], dernier_evenement}`.
+    """
+    qs = demandes_signature_for_company(company).prefetch_related(
+        'signataires')
+    if emetteur is not None:
+        qs = qs.filter(created_by_id=emetteur)
+    if date_debut is not None:
+        qs = qs.filter(date_demande__gte=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(date_demande__lte=date_fin)
+
+    colonnes = {}
+    total = 0
+    for demande in qs:
+        signataires = list(demande.signataires.all())
+        if signataires:
+            signes = sum(1 for s in signataires if s.statut == 'signe')
+            pourcentage = round((signes / len(signataires)) * 100, 2)
+            signataires_data = [
+                {'id': s.pk, 'nom': s.nom, 'ordre': s.ordre, 'role': s.role,
+                 'statut': s.statut}
+                for s in signataires
+            ]
+            dernier_evt = max(
+                (s.date_action for s in signataires if s.date_action),
+                default=demande.date_demande)
+        else:
+            # Rétrocompatible : demande mono-signataire (XGED1, aucun
+            # SignataireDemande) — 0/1 ou 1/1 selon le statut global.
+            signes = 1 if demande.statut == 'signe' else 0
+            pourcentage = 100.0 if demande.statut == 'signe' else 0.0
+            signataires_data = [{
+                'id': None, 'nom': demande.signataire_nom, 'ordre': 1,
+                'role': 'signataire', 'statut': demande.statut,
+            }]
+            dernier_evt = demande.date_signature or demande.date_demande
+
+        ligne = {
+            'id': demande.pk,
+            'document_id': demande.document_id,
+            'document_nom': demande.document.nom,
+            'statut': demande.statut,
+            'emetteur': getattr(demande.created_by, 'username', None),
+            'date_demande': demande.date_demande,
+            'expires_at': demande.expires_at,
+            'pourcentage_completion': pourcentage,
+            'signataires': signataires_data,
+            'dernier_evenement': dernier_evt,
+        }
+        colonnes.setdefault(demande.statut, []).append(ligne)
+        total += 1
+
+    return {'colonnes': colonnes, 'total': total}

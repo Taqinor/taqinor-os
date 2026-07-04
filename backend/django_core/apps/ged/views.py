@@ -31,26 +31,32 @@ from apps.records.serializers import resolve_target
 from . import selectors, services
 from .models import (
     AnnotationDocument, ArchivageLegal, ArchivageLegalError, Cabinet,
-    ChampSignature, Coffre, DemandeApprobation, DemandeDocument,
+    ChampSignature, Coffre, DemandeApprobation, DemandeDisposition,
+    DemandeDispositionError, DemandeDocument,
     DemandeSignatureDocument, DepotPublic, Document, DocumentLien,
     DocumentTag, DocumentTagAssignment, DocumentVersion, ExigenceDossier,
-    Folder, JournalAcces, LegalHold, LegalHoldError, ModeleDocument,
+    Folder, JournalAcces, LegalHold, LegalHoldError, LotEnvoi, ModeleDocument,
     PartageGed, PlanificationDocument, PolitiqueRetention,
-    QuotaDepasseError, QuotaStockage, RegleApprobationGed, RegleDossier,
-    SignataireDemande, ValidationOcrDocument,
+    QuotaDepasseError, QuotaStockage, RegleAclMetadonnee,
+    RegleApprobationGed, RegleDossier, RoleSignataire, SignataireDemande,
+    ValidationOcrDocument,
 )
 from .serializers import (
     AnnotationDocumentSerializer, ArchivageLegalSerializer, CabinetSerializer,
     ChampSignatureSerializer, CoffreSerializer, DemandeApprobationSerializer,
-    DemandeDocumentSerializer, DemandeSignatureDocumentSerializer,
+    DemandeDispositionSerializer, DemandeDocumentSerializer,
+    DemandeSignatureDocumentSerializer,
     DepotPublicSerializer, DocumentLienSerializer, DocumentSerializer,
     DocumentTagAssignmentSerializer, DocumentTagSerializer,
     DocumentVersionSerializer, ExigenceDossierSerializer, FolderSerializer,
-    JournalAccesSerializer, LegalHoldSerializer, ModeleDocumentSerializer,
+    JournalAccesSerializer, LegalHoldSerializer, LotEnvoiSerializer,
+    ModeleDocumentSerializer,
     PartageGedSerializer, PlanificationDocumentSerializer,
     PolitiqueRetentionSerializer, QuotaStockageSerializer,
-    RegleApprobationGedSerializer, RegleDossierSerializer,
-    SignataireDemandeSerializer, ValidationOcrDocumentSerializer,
+    RegleAclMetadonneeSerializer, RegleApprobationGedSerializer,
+    RegleDossierSerializer, RoleSignataireSerializer,
+    SignataireDemandeSerializer,
+    ValidationOcrDocumentSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -63,6 +69,27 @@ _INLINE_MIMES = {
     'image/png', 'image/jpeg', 'image/webp', 'image/gif',
     'text/plain', 'text/csv', 'text/html',
 }
+
+
+def _permissions_effectives_csv(lignes, filename_suffix):
+    """XGED22 — Sérialise le rapport de permissions effectives en CSV
+    (utilisateur/rôle, niveau, source de justification) pour l'export
+    d'audit."""
+    import csv
+    import io
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(['type', 'principal', 'niveau', 'source'])
+    for ligne in lignes:
+        writer.writerow([
+            ligne['type'], ligne['label'],
+            ligne['niveau'] or '', ligne['source'],
+        ])
+    response = HttpResponse(buf.getvalue(), content_type='text/csv; charset=utf-8')
+    response['Content-Disposition'] = (
+        f'attachment; filename="permissions-{filename_suffix}.csv"')
+    return response
 
 
 class CabinetViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -154,6 +181,21 @@ class FolderViewSet(TenantMixin, viewsets.ModelViewSet):
         folder.refresh_from_db()
         data = FolderSerializer(folder, context={'request': request}).data
         return Response(data)
+
+    @action(detail=True, methods=['get'], url_path='permissions-effectives')
+    def permissions_effectives(self, request, pk=None):
+        """XGED22 — Rapport de permissions effectives sur ce DOSSIER.
+
+        `GET dossiers/<id>/permissions-effectives/` — pour chaque
+        utilisateur de la société, le niveau résolu par `acl_effective` avec
+        sa justification (override / héritage / règle métadonnée / admin).
+        `?format=csv` exporte le même rapport en CSV. Gestion/admin
+        uniquement (403 sinon)."""
+        folder = self.get_object()
+        lignes = selectors.permissions_effectives(folder)
+        if request.query_params.get('format') == 'csv':
+            return _permissions_effectives_csv(lignes, f'dossier-{folder.pk}')
+        return Response({'lignes': lignes})
 
 
 class CoffreViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -941,6 +983,64 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(
             DocumentSerializer(doc, context={'request': request}).data)
 
+    @action(detail=True, methods=['post'], url_path='office-ouvrir')
+    def office_ouvrir(self, request, pk=None):
+        """XGED30 — Ouvre ce document Office dans l'éditeur embarqué (slot
+        Collabora/OnlyOffice, key-gated).
+
+        `POST …/documents/<id>/office-ouvrir/` — sans `GED_OFFICE_URL`
+        configuré : 400 explicite (aucune UI, aucun appel). Avec l'URL posée :
+        pose le check-out (GED16) et renvoie `{"editor_url", "document_id"}`.
+        Gardes GED23/24 respectées (403). Écriture : responsable/admin (même
+        motif que check-out — ouvrir en édition verrouille le document)."""
+        document = self.get_object()
+        try:
+            data = services.ouvrir_dans_editeur_office(
+                document, user=request.user)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except (ArchivageLegalError, LegalHoldError) as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        except PermissionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
+        return Response(data)
+
+    @action(detail=True, methods=['post'], url_path='office-sauvegarder',
+            parser_classes=[MultiPartParser, FormParser, JSONParser])
+    def office_sauvegarder(self, request, pk=None):
+        """XGED30 — Callback de sauvegarde de l'éditeur Office : crée une
+        NOUVELLE version depuis le contenu édité.
+
+        `POST …/documents/<id>/office-sauvegarder/` — corps multipart
+        `{"file": <fichier>}`. Sans `GED_OFFICE_URL` : 400 explicite. Respecte
+        le check-out (un tiers ne peut pas écraser la session d'un autre —
+        409) et les gardes GED23/24 (403). Écriture : responsable/admin."""
+        document = self.get_object()
+        upload = request.FILES.get('file')
+        if upload is None:
+            return Response(
+                {'file': 'Un fichier est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            version = services.sauvegarder_depuis_editeur_office(
+                document, contenu_bytes=upload.read(), user=request.user,
+                filename=upload.name, mime=upload.content_type or '')
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except (ArchivageLegalError, LegalHoldError) as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        except PermissionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
+        data = DocumentVersionSerializer(
+            version, context={'request': request}).data
+        return Response(data, status=status.HTTP_201_CREATED)
+
     @action(detail=True, methods=['post'], url_path='cycle-vie')
     def cycle_vie(self, request, pk=None):
         """GED17 — Fait avancer le document dans son cycle de vie documentaire.
@@ -1120,6 +1220,36 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
         return Response({'leves': leves}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='caviarder')
+    def caviarder(self, request, pk=None):
+        """XGED24 — Caviarde des zones du document sur une COPIE publiée
+        (l'original reste intact).
+
+        Corps : `{"zones": [{"page": <int 0-based>, "x0", "y0", "x1", "y1"
+        (%)}], "version": <id?>}`. Le texte sous les zones est SUPPRIMÉ (pas
+        un simple rectangle) via PyMuPDF (import gardé — 400 explicite sans
+        la lib). La copie devient un nouveau document lié à l'original via
+        `custom_data.caviarde_depuis`. Écriture : responsable/admin."""
+        document = self.get_object()
+        version_id = request.data.get('version')
+        version = (selectors.latest_version(document) if not version_id else
+                   DocumentVersion.objects.filter(
+                       company=request.user.company, document=document,
+                       pk=version_id).first())
+        if version is None:
+            return Response(
+                {'detail': 'Aucune version disponible pour le caviardage.'},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            new_doc = services.caviarder_document(
+                version, request.data.get('zones') or [],
+                created_by=request.user)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        data = DocumentSerializer(new_doc, context={'request': request}).data
+        return Response(data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'], url_path='scinder')
     def scinder(self, request, pk=None):
@@ -1303,6 +1433,23 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         document = self.get_object()
         data = selectors.timeline_document(document)
         return Response(data)
+
+    @action(detail=True, methods=['get'], url_path='permissions-effectives')
+    def permissions_effectives(self, request, pk=None):
+        """XGED22 — Rapport de permissions effectives (« qui voit ce document
+        et pourquoi »).
+
+        `GET documents/<id>/permissions-effectives/` — pour chaque
+        utilisateur de la société, le niveau résolu par `acl_effective`
+        (GED19) avec sa JUSTIFICATION : override direct sur le document,
+        héritage d'un dossier ancêtre, règle par métadonnée (XGED21) ou
+        admin. `?format=csv` exporte le même rapport en CSV pour audit.
+        Gestion/admin uniquement (403 pour tout autre rôle)."""
+        document = self.get_object()
+        lignes = selectors.permissions_effectives(document)
+        if request.query_params.get('format') == 'csv':
+            return _permissions_effectives_csv(lignes, f'document-{document.pk}')
+        return Response({'lignes': lignes})
 
 
 class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -2246,6 +2393,52 @@ class DemandeSignatureDocumentViewSet(TenantMixin,
                 demande, context={'request': request}).data,
             status=status.HTTP_200_OK)
 
+    @action(detail=False, methods=['get'], url_path='tableau-bord')
+    def tableau_bord(self, request):
+        """ZGED3 — Tableau de bord des demandes de signature (kanban par
+        statut + suivi de progression).
+
+        `GET …/demandes-signature/tableau-bord/?emetteur=<id>&
+        date_debut=AAAA-MM-JJ&date_fin=AAAA-MM-JJ` — pour chaque statut, la
+        liste des demandes avec document, signataires + leur statut
+        individuel (XGED2), % de complétion, date d'envoi, échéance/
+        expiration, dernier événement ; drill-down = l'id de la demande
+        (`GET demandes-signature/<id>/`). Filtrable par émetteur/période.
+        Gestion/admin uniquement (403 sinon)."""
+        from django.utils.dateparse import parse_date
+
+        emetteur = request.query_params.get('emetteur')
+        data = selectors.tableau_bord_signatures(
+            request.user.company,
+            emetteur=int(emetteur) if emetteur else None,
+            date_debut=parse_date(request.query_params.get('date_debut') or ''),
+            date_fin=parse_date(request.query_params.get('date_fin') or ''))
+        return Response(data)
+
+
+class RoleSignataireViewSet(TenantMixin, viewsets.ModelViewSet):
+    """ZGED1 — Catalogue de rôles signataires réutilisables (couleur + auth
+    extra + peut changer de signataire).
+
+    CRUD scopé société ; `company`/`created_by` posés côté serveur. Lecture :
+    tout rôle authentifié. Écriture : responsable/admin."""
+    queryset = RoleSignataire.objects.select_related('created_by').all()
+    serializer_class = RoleSignataireSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['nom', 'created_at']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        return super().get_queryset().filter(company=self.request.user.company)
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, created_by=self.request.user)
+
 
 class SignataireDemandeViewSet(TenantMixin, mixins.ListModelMixin,
                                mixins.RetrieveModelMixin,
@@ -2253,7 +2446,8 @@ class SignataireDemandeViewSet(TenantMixin, mixins.ListModelMixin,
     """XGED2 — Destinataires d'une demande de signature (LECTURE SEULE via
     l'API authentifiée). Créés/mutés uniquement via `services` (création
     groupée, cérémonie publique par jeton, notifications/relances)."""
-    queryset = SignataireDemande.objects.select_related('demande').all()
+    queryset = SignataireDemande.objects.select_related(
+        'demande', 'role_signataire').all()
     serializer_class = SignataireDemandeSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['ordre', 'id']
@@ -2261,7 +2455,8 @@ class SignataireDemandeViewSet(TenantMixin, mixins.ListModelMixin,
 
     def get_queryset(self):
         qs = SignataireDemande.objects.filter(
-            company=self.request.user.company).select_related('demande')
+            company=self.request.user.company).select_related(
+            'demande', 'role_signataire')
         demande = self.request.query_params.get('demande')
         if demande:
             qs = qs.filter(demande_id=demande)
@@ -2663,6 +2858,242 @@ class RegleApprobationGedViewSet(TenantMixin, viewsets.ModelViewSet):
             company=self.request.user.company, created_by=self.request.user)
 
 
+class RegleAclMetadonneeViewSet(TenantMixin, viewsets.ModelViewSet):
+    """XGED21 — ACL automatiques pilotées par métadonnées (couche dynamique).
+
+    CRUD des règles ; l'admin voit toujours tout (résolution `acl_effective`
+    inconditionnelle pour lui). Lecture : tout rôle authentifié. Écriture :
+    responsable/admin."""
+    queryset = RegleAclMetadonnee.objects.select_related(
+        'role', 'created_by').all()
+    serializer_class = RegleAclMetadonneeSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['priorite', 'created_at']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        return selectors.regles_acl_metadonnee_for_company(
+            self.request.user.company)
+
+    def perform_create(self, serializer):
+        from core.rules import validate_condition_group
+        errors = validate_condition_group(
+            serializer.validated_data.get('condition_group') or {})
+        if errors:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({'condition_group': errors})
+        serializer.save(
+            company=self.request.user.company, created_by=self.request.user)
+
+
+class DemandeDispositionViewSet(TenantMixin,
+                                mixins.ListModelMixin,
+                                mixins.RetrieveModelMixin,
+                                mixins.CreateModelMixin,
+                                viewsets.GenericViewSet):
+    """XGED23 — Workflow de disposition fin de rétention (revue + certificat).
+
+    Lecture + création (proposition d'un lot). La décision passe par les
+    actions dédiées `approuver`/`rejeter`, l'exécution par `executer` (jamais
+    un PATCH brut du statut). Lecture : tout rôle authentifié. Écriture :
+    responsable/admin."""
+    queryset = DemandeDisposition.objects.select_related(
+        'demandeur', 'approbateur').prefetch_related('certificats').all()
+    serializer_class = DemandeDispositionSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['created_at', 'statut']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset().filter(company=self.request.user.company)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        """Propose un lot de disposition à partir d'ids de documents.
+
+        Body : `{"libelle": "<str>", "action": "detruire|archiver",
+        "documents": [<id>, …]}`. Les holds actifs (GED24) sont exclus
+        d'office ; `company`/`demandeur` posés côté serveur."""
+        libelle = (request.data.get('libelle') or '').strip()
+        action_disp = request.data.get('action') or 'detruire'
+        document_ids = request.data.get('documents') or []
+        if not libelle or not document_ids:
+            return Response(
+                {'detail': 'libelle et documents (liste) sont requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            demande = services.creer_demande_disposition(
+                request.user.company, libelle=libelle,
+                document_ids=document_ids, action=action_disp,
+                user=request.user)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            DemandeDispositionSerializer(
+                demande, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='approuver')
+    def approuver(self, request, pk=None):
+        """XGED23 — Approuve cette demande (ne détruit pas encore).
+
+        Corps optionnel `{"commentaire": "<str?>"}`. Écriture : responsable/
+        admin."""
+        demande = self.get_object()
+        try:
+            demande = services.approuver_demande_disposition(
+                demande, user=request.user,
+                commentaire=(request.data.get('commentaire') or '').strip())
+        except DemandeDispositionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except PermissionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        return Response(
+            DemandeDispositionSerializer(
+                demande, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='rejeter')
+    def rejeter(self, request, pk=None):
+        """XGED23 — Rejette cette demande : CONSERVE tous les documents du lot.
+
+        Corps optionnel `{"commentaire": "<str?>"}`. Écriture : responsable/
+        admin."""
+        demande = self.get_object()
+        try:
+            demande = services.rejeter_demande_disposition(
+                demande, user=request.user,
+                commentaire=(request.data.get('commentaire') or '').strip())
+        except DemandeDispositionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except PermissionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        return Response(
+            DemandeDispositionSerializer(
+                demande, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='executer')
+    def executer(self, request, pk=None):
+        """XGED23 — Exécute une demande APPROUVÉE : détruit (ou archive) le
+        lot et émet un `CertificatDestruction` par document réellement
+        détruit. Écriture : responsable/admin."""
+        demande = self.get_object()
+        try:
+            services.executer_demande_disposition(demande, user=request.user)
+        except DemandeDispositionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except PermissionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        demande.refresh_from_db()
+        return Response(
+            DemandeDispositionSerializer(
+                demande, context={'request': request}).data)
+
+
+class LotEnvoiViewSet(TenantMixin,
+                      mixins.ListModelMixin,
+                      mixins.RetrieveModelMixin,
+                      viewsets.GenericViewSet):
+    """XGED27 — Lots d'envoi en masse de demandes de signature (lecture +
+    action de création dédiée `envoi-masse`).
+
+    Lecture : tout rôle authentifié. Création du lot (envoi en masse) :
+    responsable/admin."""
+    queryset = LotEnvoi.objects.select_related('modele', 'created_by').all()
+    serializer_class = LotEnvoiSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['created_at']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        return super().get_queryset().filter(company=self.request.user.company)
+
+    @action(detail=False, methods=['post'], url_path='envoi-masse',
+            parser_classes=[MultiPartParser, FormParser, JSONParser])
+    def envoi_masse(self, request):
+        """XGED27 — Envoi en masse : un `ModeleDocument` + une liste de
+        destinataires → un document personnalisé + une demande de signature
+        PAR destinataire, suivis sous un `LotEnvoi`.
+
+        Corps (multipart ou JSON) : `{"modele": <id>, "libelle": "<str?>"}`
+        et SOIT un fichier `csv` (colonnes `nom`,`email`,+champs de fusion
+        libres), SOIT `clients: [<id>, ...]` (résolus en lecture seule via
+        `crm.selectors.client_base_qs` — jamais un import de `crm.models`).
+        Les erreurs par ligne sont rapportées dans `resultats` sans bloquer
+        le lot. Écriture : responsable/admin."""
+        modele_id = request.data.get('modele')
+        if not modele_id:
+            return Response(
+                {'modele': 'Le modèle de document est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        modele = ModeleDocument.objects.filter(
+            company=request.user.company, pk=modele_id).first()
+        if modele is None:
+            return Response(
+                {'modele': 'Modèle inconnu.'}, status=status.HTTP_404_NOT_FOUND)
+
+        destinataires = []
+        csv_file = request.FILES.get('csv')
+        if csv_file is not None:
+            try:
+                csv_text = csv_file.read().decode('utf-8-sig')
+            except Exception:
+                return Response(
+                    {'csv': 'CSV illisible (encodage attendu : UTF-8).'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            destinataires = services.parser_csv_metadonnees(csv_text)
+        else:
+            client_ids = (request.data.getlist('clients')
+                          if hasattr(request.data, 'getlist')
+                          else request.data.get('clients')) or []
+            if client_ids:
+                from apps.crm import selectors as crm_selectors
+                clients = crm_selectors.client_base_qs(
+                    request.user.company).filter(pk__in=client_ids)
+                for client in clients:
+                    nom_complet = ' '.join(
+                        p for p in [client.nom, getattr(client, 'prenom', '')]
+                        if p).strip() or client.nom
+                    destinataires.append({
+                        'nom': nom_complet, 'email': client.email or '',
+                    })
+        if not destinataires:
+            return Response(
+                {'detail': 'Aucun destinataire : fournir un CSV ou une '
+                           'sélection de clients.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        lot = services.creer_lot_envoi_signature(
+            company=request.user.company, modele=modele,
+            destinataires=destinataires,
+            libelle=(request.data.get('libelle') or '').strip(),
+            created_by=request.user)
+        return Response(
+            LotEnvoiSerializer(lot, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)
+
+
 class PlanificationDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
     """XGED15 — Activités planifiées sur un document."""
     queryset = PlanificationDocument.objects.select_related(
@@ -2686,6 +3117,30 @@ class PlanificationDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(
             company=self.request.user.company, created_by=self.request.user)
+
+
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def analytique_ged(request):
+    """XGED26 — Analytique workflow d'approbation & signature (KPIs réels).
+
+    `GET ged/analytique/?date_debut=AAAA-MM-JJ&date_fin=AAAA-MM-JJ` — responsable/
+    admin uniquement. Renvoie `{"approbations": {...}, "signatures": {...}}`
+    (voir `selectors.analytique_approbations`/`analytique_signatures` pour le
+    détail des clés) sur des données RÉELLES de la société courante, période
+    filtrable, divide-by-zero gardé (aucune donnée → moyennes `None`, jamais
+    une 500)."""
+    from django.utils.dateparse import parse_date
+
+    date_debut = parse_date(request.query_params.get('date_debut') or '')
+    date_fin = parse_date(request.query_params.get('date_fin') or '')
+    company = request.user.company
+    return Response({
+        'approbations': selectors.analytique_approbations(
+            company, date_debut=date_debut, date_fin=date_fin),
+        'signatures': selectors.analytique_signatures(
+            company, date_debut=date_debut, date_fin=date_fin),
+    })
 
 
 # ── GED20 — Endpoint PUBLIC (sans login) servant un document par jeton ───────
@@ -3010,7 +3465,11 @@ class PublicSignataireRateThrottle(PublicSignatureRateThrottle):
 
 def _signataire_publique_payload(signataire):
     """XGED2 — Représentation JSON publique d'un destinataire (jamais de
-    données d'une autre société ; ne révèle jamais les AUTRES destinataires)."""
+    données d'une autre société ; ne révèle jamais les AUTRES destinataires).
+
+    ZGED2 — expose `auth_extra`/`otp_requis` (jamais le code ni son hash) pour
+    que l'écran public sache s'il doit demander un code avant de débloquer la
+    signature."""
     demande = signataire.demande
     return {
         'document_nom': demande.document.nom,
@@ -3020,6 +3479,8 @@ def _signataire_publique_payload(signataire):
         'ordre': signataire.ordre,
         'statut': signataire.statut,
         'demande_statut': demande.statut,
+        'auth_extra': signataire.auth_extra_effective,
+        'otp_requis': signataire.otp_requis_et_non_valide,
     }
 
 
@@ -3082,6 +3543,23 @@ def public_signataire(request, token):
             Response(_signataire_publique_payload(signataire),
                      status=status.HTTP_200_OK))
 
+    if action_demandee == 'envoyer-code':
+        # ZGED2 — envoie (ou dégrade proprement) le code d'authentification
+        # extra de CE destinataire avant qu'il ne débloque la signature.
+        resultat = services.envoyer_code_otp_signataire(signataire)
+        return _ged_noindex(Response(resultat, status=status.HTTP_200_OK))
+
+    if action_demandee == 'valider-code':
+        try:
+            signataire = services.valider_code_otp_signataire(
+                signataire, request.data.get('code'))
+        except ValueError as exc:
+            return _ged_noindex(Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST))
+        return _ged_noindex(
+            Response(_signataire_publique_payload(signataire),
+                     status=status.HTTP_200_OK))
+
     if action_demandee == 'signer':
         try:
             signataire = services.signer_signataire(
@@ -3099,5 +3577,6 @@ def public_signataire(request, token):
                      status=status.HTTP_200_OK))
 
     return _ged_noindex(Response(
-        {'detail': "Action inconnue : 'signer' ou 'refuser' attendu."},
+        {'detail': "Action inconnue : 'signer', 'refuser', 'envoyer-code' ou "
+                   "'valider-code' attendu."},
         status=status.HTTP_400_BAD_REQUEST))

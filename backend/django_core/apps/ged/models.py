@@ -1715,6 +1715,67 @@ ROLE_DESTINATAIRE_CHOICES = [
 ]
 
 
+# ZGED1 — Authentification extra optionnelle d'un rôle signataire réutilisable.
+ROLE_AUTH_EXTRA_AUCUNE = 'aucune'
+ROLE_AUTH_EXTRA_SMS = 'sms'
+ROLE_AUTH_EXTRA_EMAIL_OTP = 'email_otp'
+
+ROLE_AUTH_EXTRA_CHOICES = [
+    (ROLE_AUTH_EXTRA_AUCUNE, 'Aucune'),
+    (ROLE_AUTH_EXTRA_SMS, 'Code SMS'),
+    (ROLE_AUTH_EXTRA_EMAIL_OTP, 'Code par email (OTP)'),
+]
+
+
+class RoleSignataire(models.Model):
+    """ZGED1 — Catalogue de rôles signataires RÉUTILISABLES (pattern Odoo Sign
+    « Rôle »).
+
+    Une entité PARTAGÉE (« Client », « Employé »…) portant une `couleur`
+    (#hex, cohérence visuelle du champ de signature dans l'éditeur XGED3), une
+    étape d'authentification supplémentaire optionnelle (`auth_extra` —
+    aucune/sms/email_otp, exploitée par ZGED2) et un drapeau
+    `peut_changer_signataire` (le destinataire peut réassigner sa propre
+    signature à un tiers). Réutilisable à travers les `ModeleDocument` (GED27)
+    et les demandes (XGED1/XGED2) — un même rôle est référencé par N
+    `SignataireDemande` sans duplication.
+
+    RÉTROCOMPATIBLE : `SignataireDemande.role` (texte libre
+    signataire/copie/approbateur) reste la valeur DE FAIT quand aucun
+    `role_signataire` n'est référencé — ce catalogue est un ENRICHISSEMENT
+    optionnel, jamais un remplacement du champ existant. Company posée côté
+    serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='ged_roles_signataire')
+    nom = models.CharField(max_length=100)
+    couleur = models.CharField(
+        max_length=7, default='#2b5cab', verbose_name='couleur (#hex)')
+    auth_extra = models.CharField(
+        max_length=10, choices=ROLE_AUTH_EXTRA_CHOICES,
+        default=ROLE_AUTH_EXTRA_AUCUNE,
+        verbose_name='authentification supplémentaire')
+    peut_changer_signataire = models.BooleanField(
+        default=False, verbose_name='peut changer de signataire')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_roles_signataire_crees')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['nom', 'id']
+        verbose_name = 'Rôle signataire'
+        verbose_name_plural = 'Rôles signataires'
+        indexes = [
+            models.Index(fields=['company'], name='ged_rolesign_co_idx'),
+        ]
+
+    def __str__(self):
+        return self.nom
+
+
 class SignataireDemande(models.Model):
     """XGED2 — Un destinataire (signataire/copie/approbateur) d'une demande de
     signature multi-parties.
@@ -1757,6 +1818,13 @@ class SignataireDemande(models.Model):
     role = models.CharField(
         max_length=12, choices=ROLE_DESTINATAIRE_CHOICES,
         default=ROLE_SIGNATAIRE, verbose_name='rôle')
+    # ZGED1 — référence OPTIONNELLE au catalogue de rôles réutilisables : quand
+    # renseigné, préremplit couleur/auth_extra depuis `RoleSignataire`.
+    # RÉTROCOMPATIBLE : sans référence, le `role` texte ci-dessus reste la
+    # seule valeur (comportement XGED2 strictement inchangé).
+    role_signataire = models.ForeignKey(
+        RoleSignataire, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='signataires_demande', verbose_name='rôle réutilisable')
     statut = models.CharField(
         max_length=10, choices=SIGNATAIRE_STATUT_CHOICES,
         default=SIGNATAIRE_EN_ATTENTE, verbose_name='statut')
@@ -1775,6 +1843,29 @@ class SignataireDemande(models.Model):
     date_action = models.DateTimeField(
         null=True, blank=True, verbose_name='signé/refusé le')
     motif_refus = models.TextField(blank=True, default='', verbose_name='motif de refus')
+    # ZGED2 — Authentification extra AVANT signature (SMS/OTP email, key-gated).
+    #
+    # `auth_extra` : mode effectif pour CE destinataire. Vide (défaut) = hérite
+    # du `role_signataire.auth_extra` (ZGED1) s'il y en a un, sinon « aucune ».
+    # Le code/hash/expiration/essais sont posés CÔTÉ SERVEUR uniquement — jamais
+    # lus d'un corps de requête. `otp_code_hash` : SHA-256 du code à 6 chiffres
+    # (jamais le code en clair en base). `otp_valide` : True une fois le bon
+    # code saisi (débloque la signature). Tout est journalisé dans les preuves
+    # (pattern QJ10) via `DocumentActivity`/preuves existantes.
+    auth_extra = models.CharField(
+        max_length=10, choices=ROLE_AUTH_EXTRA_CHOICES,
+        blank=True, default='', verbose_name='authentification extra (effective)')
+    otp_code_hash = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='hash du code OTP (SHA-256)')
+    otp_expires_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='code OTP expire le')
+    otp_essais = models.PositiveIntegerField(
+        default=0, verbose_name="essais de code OTP")
+    otp_valide = models.BooleanField(
+        default=False, verbose_name='authentification extra validée')
+    otp_valide_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='authentification extra validée le')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -1797,6 +1888,27 @@ class SignataireDemande(models.Model):
         notifié et n'a pas encore agi)."""
         return self.statut in (SIGNATAIRE_EN_ATTENTE, SIGNATAIRE_NOTIFIE) \
             and self.role == ROLE_SIGNATAIRE
+
+    @property
+    def auth_extra_effective(self):
+        """ZGED2 — Mode d'authentification extra EFFECTIF de ce destinataire.
+
+        `self.auth_extra` (posé explicitement sur ce destinataire) prime ;
+        sinon hérite du `role_signataire.auth_extra` (ZGED1) s'il y en a un ;
+        sinon « aucune » (comportement XGED1 inchangé — simple consentement +
+        signature)."""
+        if self.auth_extra:
+            return self.auth_extra
+        if self.role_signataire_id:
+            return self.role_signataire.auth_extra
+        return ROLE_AUTH_EXTRA_AUCUNE
+
+    @property
+    def otp_requis_et_non_valide(self):
+        """ZGED2 — True si une authentification extra est requise pour CE
+        destinataire et n'a pas encore été validée (bloque la signature)."""
+        return self.auth_extra_effective != ROLE_AUTH_EXTRA_AUCUNE \
+            and not self.otp_valide
 
     def __str__(self):
         return f'{self.nom} (#{self.ordre}) → {self.demande_id} ({self.statut})'
@@ -2573,3 +2685,267 @@ class PlanificationDocument(models.Model):
 
     def __str__(self):
         return f'{self.libelle} ({self.echeance})'
+
+
+class RegleAclMetadonnee(models.Model):
+    """XGED21 — ACL automatique pilotée par métadonnées (couche dynamique).
+
+    Étend GED19 (`AclGed`) sans matérialiser de lignes : une règle décrit une
+    CONDITION (`condition_group`, format `core.rules` — groupe ET/OU/NON validé
+    côté serveur, jamais d'exécution de code) évaluée contre les métadonnées
+    d'un document (tags/type/custom_data — même contexte que `RegleDossier`
+    XGED19 via `_document_contexte_regle`) et un `niveau` d'accès octroyé à un
+    `role` UNIQUEMENT (jamais un utilisateur nommé — la règle cible une
+    population, pas un individu) SI la condition matche.
+
+    `selectors.acl_effective` (GED19) consulte ces règles APRÈS les entrées
+    `AclGed` matérialisées : si une règle matche pour le rôle de l'utilisateur,
+    son niveau participe à la résolution du meilleur rang au même titre qu'une
+    entrée directe sur le document (recalcul IMMÉDIAT à chaque lecture — poser
+    ou retirer un tag change l'accès sans aucune ligne à mettre à jour).
+    L'admin/superuser reste TOUJOURS non affecté (contournement GED19 déjà
+    inconditionnel). RÉTROCOMPATIBLE : aucune règle active ⇒ comportement
+    GED19 strictement inchangé.
+
+    Company posée côté serveur. Couche LOCALE à la GED (séparée du funnel
+    commercial STAGES.py, rule #2).
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='ged_regles_acl_metadonnee')
+    nom = models.CharField(max_length=200)
+    condition_group = models.JSONField(default=dict, blank=True)
+    role = models.ForeignKey(
+        'roles.Role', on_delete=models.CASCADE,
+        related_name='ged_regles_acl_metadonnee',
+        verbose_name='rôle')
+    niveau = models.CharField(
+        max_length=8, choices=ACL_CHOICES, default=ACL_LECTURE,
+        verbose_name="niveau d'accès")
+    priorite = models.PositiveIntegerField(default=0)
+    actif = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='ged_regles_acl_metadonnee_creees')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-priorite', '-id']
+        verbose_name = 'Règle ACL par métadonnée'
+        verbose_name_plural = 'Règles ACL par métadonnée'
+        indexes = [
+            models.Index(fields=['company', 'actif'],
+                         name='ged_reglecl_co_actif_idx'),
+            models.Index(fields=['role'], name='ged_reglecl_role_idx'),
+        ]
+
+    def __str__(self):
+        return self.nom
+
+
+# ── XGED23 — Disposition fin de rétention (revue humaine + certificat) ──────
+
+DISPOSITION_EN_ATTENTE = 'en_attente'
+DISPOSITION_APPROUVEE = 'approuvee'
+DISPOSITION_REJETEE = 'rejetee'
+DISPOSITION_EXECUTEE = 'executee'
+
+DISPOSITION_STATUT_CHOICES = [
+    (DISPOSITION_EN_ATTENTE, 'En attente'),
+    (DISPOSITION_APPROUVEE, 'Approuvée'),
+    (DISPOSITION_REJETEE, 'Rejetée'),
+    (DISPOSITION_EXECUTEE, 'Exécutée'),
+]
+
+DISPOSITION_ACTION_DETRUIRE = 'detruire'
+DISPOSITION_ACTION_ARCHIVER = 'archiver'
+
+DISPOSITION_ACTION_CHOICES = [
+    (DISPOSITION_ACTION_DETRUIRE, 'Détruire'),
+    (DISPOSITION_ACTION_ARCHIVER, 'Archiver'),
+]
+
+
+class DemandeDispositionError(Exception):
+    """XGED23 — Levée quand une opération de disposition est invalide (déjà
+    décidée, document sous legal hold…). Traduite en 400/403 côté vue."""
+
+
+class DemandeDisposition(models.Model):
+    """XGED23 — Revue humaine entre l'échéance de rétention (GED22) et la
+    purge (GED25).
+
+    Regroupe un LOT de documents ÉCHUS (`selectors.documents_echus`)
+    proposés à disposition (destruction ou archivage) et les fait passer par
+    un circuit approuver/rejeter — RÉUTILISE le pattern `DemandeApprobation`
+    (GED18) : un `demandeur` propose, un `approbateur` décide. L'EXÉCUTION
+    (après approbation) produit un `CertificatDestruction` immuable par
+    document réellement détruit ; le rejet CONSERVE tous les documents du
+    lot (aucun effacement). Les documents sous `LegalHold` (GED24) ACTIF sont
+    exclus D'OFFICE du lot à la création (jamais proposés à destruction).
+
+    `documents` porte la liste des ids de documents proposés (résolue et
+    bornée à la société à la création — jamais lue telle quelle du corps de
+    requête sans validation). Company/demandeur posés côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='ged_demandes_disposition')
+    libelle = models.CharField(max_length=200)
+    action = models.CharField(
+        max_length=10, choices=DISPOSITION_ACTION_CHOICES,
+        default=DISPOSITION_ACTION_DETRUIRE)
+    documents = models.JSONField(
+        default=list, blank=True,
+        verbose_name='ids des documents proposés')
+    statut = models.CharField(
+        max_length=10, choices=DISPOSITION_STATUT_CHOICES,
+        default=DISPOSITION_EN_ATTENTE)
+    demandeur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='ged_demandes_disposition_emises')
+    approbateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='ged_demandes_disposition_recues')
+    commentaire = models.TextField(blank=True, default='')
+    decision_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='décidée le')
+    executee_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='exécutée le')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        verbose_name = 'Demande de disposition'
+        verbose_name_plural = 'Demandes de disposition'
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='ged_dispo_co_statut_idx'),
+        ]
+
+    @property
+    def is_pending(self):
+        return self.statut == DISPOSITION_EN_ATTENTE
+
+    def __str__(self):
+        return f'Disposition {self.libelle} ({self.statut})'
+
+
+class CertificatDestruction(models.Model):
+    """XGED23 — Certificat IMMUABLE de destruction d'un document (write-once,
+    pattern `ArchivageLegal` GED23).
+
+    Émis à L'EXÉCUTION d'une `DemandeDisposition` approuvée, un par document
+    réellement détruit : trace QUOI (référence document — le document lui-même
+    est déjà supprimé à ce stade, on n'en garde que le libellé/l'id d'origine),
+    QUAND, PAR QUI (l'exécutant, posé côté serveur), la POLITIQUE appliquée
+    (libellé de la `PolitiqueRetention` GED22 résolue) et le HASH des
+    métadonnées détruites (SHA-256 hexadécimal — preuve que CES métadonnées
+    précises ont bien été celles détruites, sans conserver le contenu). Classé
+    en GED via un `Document` de type texte généré à la volée par l'appelant
+    (hors modèle — cette table ne fait que porter la preuve structurée).
+
+    Write-once : `save()` refuse toute mise à jour, `delete()` toute
+    suppression (même motif qu'`ArchivageLegal`). Company posée côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='ged_certificats_destruction')
+    demande = models.ForeignKey(
+        DemandeDisposition, on_delete=models.CASCADE,
+        related_name='certificats')
+    document_id_origine = models.PositiveBigIntegerField(
+        verbose_name="id d'origine du document détruit")
+    document_nom = models.CharField(max_length=255)
+    politique_appliquee = models.CharField(max_length=255, blank=True, default='')
+    hash_metadonnees = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='hash des métadonnées détruites (SHA-256)')
+    detruit_le = models.DateTimeField(auto_now_add=True)
+    detruit_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='ged_certificats_destruction_emis')
+
+    class Meta:
+        ordering = ['-detruit_le', '-id']
+        verbose_name = 'Certificat de destruction'
+        verbose_name_plural = 'Certificats de destruction'
+        indexes = [
+            models.Index(fields=['company', 'demande'],
+                         name='ged_certif_co_demande_idx'),
+        ]
+
+    def save(self, *args, **kwargs):
+        """XGED23 — Création SEULE : refuse toute mise à jour (immuable),
+        même motif qu'`ArchivageLegal.save`."""
+        if self.pk is not None:
+            raise DemandeDispositionError(
+                "Un certificat de destruction est immuable (création seule) : "
+                "il ne peut pas être modifié.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        """XGED23 — Refuse la suppression d'un certificat (immuable)."""
+        raise DemandeDispositionError(
+            "Un certificat de destruction est immuable : il ne peut pas être "
+            "supprimé.")
+
+    def __str__(self):
+        return f'Certificat destruction — {self.document_nom} ({self.detruit_le:%Y-%m-%d})'
+
+
+# ── XGED27 — Envoi en masse de demandes de signature ────────────────────────
+
+class LotEnvoi(models.Model):
+    """XGED27 — Suivi GROUPÉ d'un envoi en masse de demandes de signature.
+
+    Un `ModeleDocument` (GED27) fusionné avec N destinataires (CSV nom/email/
+    champs de fusion, ou une sélection de clients CRM via `crm.selectors` —
+    cross-app en LECTURE SEULE, jamais d'import de `crm.models`) produit UN
+    document personnalisé PAR destinataire + SA demande de signature
+    individuelle (XGED1/2) ; ce lot les regroupe pour un suivi consolidé
+    (compteurs envoyé/vu/signé/refusé). Cas d'usage : renouvellements annuels
+    de contrats de maintenance.
+
+    `resultats` porte le détail par ligne (succès avec l'id de la
+    `DemandeSignatureDocument` créée, ou erreur — jamais tout-ou-rien : une
+    ligne en échec ne bloque jamais les autres). Company/créateur posés côté
+    serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='ged_lots_envoi')
+    modele = models.ForeignKey(
+        ModeleDocument, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='lots_envoi')
+    libelle = models.CharField(max_length=200)
+    resultats = models.JSONField(default=list, blank=True)
+    total = models.PositiveIntegerField(default=0)
+    nb_envoyes = models.PositiveIntegerField(default=0)
+    nb_vus = models.PositiveIntegerField(default=0)
+    nb_signes = models.PositiveIntegerField(default=0)
+    nb_refuses = models.PositiveIntegerField(default=0)
+    nb_erreurs = models.PositiveIntegerField(default=0)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_lots_envoi_crees')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        verbose_name = "Lot d'envoi de signature"
+        verbose_name_plural = "Lots d'envoi de signature"
+        indexes = [
+            models.Index(fields=['company', 'created_at'],
+                         name='ged_lotenvoi_co_created_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.libelle} ({self.nb_envoyes}/{self.total})'

@@ -1,13 +1,14 @@
 from rest_framework import serializers
 
 from .models import (
-    AnnotationDocument, ArchivageLegal, Cabinet, ChampSignature, Coffre,
-    DemandeApprobation, DemandeDocument, DemandeSignatureDocument, DepotPublic,
+    AnnotationDocument, ArchivageLegal, Cabinet, CertificatDestruction,
+    ChampSignature, Coffre, DemandeApprobation, DemandeDisposition,
+    DemandeDocument, DemandeSignatureDocument, DepotPublic,
     Document, DocumentLien, DocumentTag, DocumentTagAssignment, DocumentVersion,
-    ExigenceDossier, Folder, JournalAcces, LegalHold, ModeleDocument,
+    ExigenceDossier, Folder, JournalAcces, LegalHold, LotEnvoi, ModeleDocument,
     PartageGed, PlanificationDocument, PolitiqueRetention,
-    RegleApprobationGed, RegleDossier, QuotaStockage, SignataireDemande,
-    ValidationOcrDocument,
+    RegleAclMetadonnee, RegleApprobationGed, RegleDossier, RoleSignataire,
+    QuotaStockage, SignataireDemande, ValidationOcrDocument,
 )
 from . import services
 
@@ -661,17 +662,43 @@ class ChampSignatureSerializer(serializers.ModelSerializer):
         return attrs
 
 
+class RoleSignataireSerializer(serializers.ModelSerializer):
+    """ZGED1 — Rôle signataire réutilisable (couleur + auth extra + peut
+    changer de signataire). `company`/`created_by` posés côté serveur."""
+    class Meta:
+        model = RoleSignataire
+        fields = [
+            'id', 'nom', 'couleur', 'auth_extra', 'peut_changer_signataire',
+            'created_by', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_by', 'created_at', 'updated_at']
+
+
 class SignataireDemandeSerializer(serializers.ModelSerializer):
     """XGED2 — Destinataire (signataire/copie/approbateur) d'une demande de
     signature multi-parties. LECTURE SEULE via l'API — créé/muté uniquement
     par `services` (création groupée, signature/refus par jeton public,
-    notifications/relances)."""
+    notifications/relances).
+
+    ZGED1 — `role_signataire` (optionnel) référence le catalogue de rôles
+    réutilisables ; `role_couleur`/`role_auth_extra` exposent les valeurs
+    HÉRITÉES du rôle référencé pour préremplir l'UI (couleur du champ de
+    signature, authentification extra ZGED2)."""
+    role_signataire_nom = serializers.CharField(
+        source='role_signataire.nom', read_only=True, default=None)
+    role_couleur = serializers.CharField(
+        source='role_signataire.couleur', read_only=True, default=None)
+    role_auth_extra = serializers.CharField(
+        source='role_signataire.auth_extra', read_only=True, default=None)
+
     class Meta:
         model = SignataireDemande
         fields = [
             'id', 'demande', 'nom', 'email', 'telephone', 'ordre', 'role',
-            'statut', 'notifie_le', 'derniere_relance_le', 'nb_relances',
-            'date_action', 'motif_refus', 'created_at', 'updated_at',
+            'role_signataire', 'role_signataire_nom', 'role_couleur',
+            'role_auth_extra', 'statut', 'notifie_le', 'derniere_relance_le',
+            'nb_relances', 'date_action', 'motif_refus', 'created_at',
+            'updated_at',
         ]
         read_only_fields = fields
 
@@ -857,6 +884,78 @@ class RegleApprobationGedSerializer(serializers.ModelSerializer):
             'actif', 'created_by', 'created_at', 'updated_at',
         ]
         read_only_fields = ['created_by', 'created_at', 'updated_at']
+
+
+class RegleAclMetadonneeSerializer(serializers.ModelSerializer):
+    """XGED21 — ACL automatique pilotée par métadonnées (couche dynamique,
+    évaluée à chaque lecture par `selectors.acl_effective` — jamais de ligne
+    `AclGed` matérialisée)."""
+    role_nom = serializers.CharField(
+        source='role.nom', read_only=True, default=None)
+
+    class Meta:
+        model = RegleAclMetadonnee
+        fields = [
+            'id', 'nom', 'condition_group', 'role', 'role_nom', 'niveau',
+            'priorite', 'actif', 'created_by', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_by', 'created_at', 'updated_at']
+
+
+class CertificatDestructionSerializer(serializers.ModelSerializer):
+    """XGED23 — Certificat immuable de destruction (lecture seule)."""
+    detruit_par_nom = serializers.CharField(
+        source='detruit_par.username', read_only=True, default=None)
+
+    class Meta:
+        model = CertificatDestruction
+        fields = [
+            'id', 'demande', 'document_id_origine', 'document_nom',
+            'politique_appliquee', 'hash_metadonnees', 'detruit_le',
+            'detruit_par', 'detruit_par_nom',
+        ]
+        read_only_fields = fields
+
+
+class DemandeDispositionSerializer(serializers.ModelSerializer):
+    """XGED23 — Demande de disposition fin de rétention (revue humaine).
+
+    `documents` porte les ids proposés (résolus/filtrés côté serveur à la
+    création — jamais lus tels quels sans validation)."""
+    demandeur_nom = serializers.CharField(
+        source='demandeur.username', read_only=True, default=None)
+    approbateur_nom = serializers.CharField(
+        source='approbateur.username', read_only=True, default=None)
+    certificats = CertificatDestructionSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = DemandeDisposition
+        fields = [
+            'id', 'libelle', 'action', 'documents', 'statut',
+            'demandeur', 'demandeur_nom', 'approbateur', 'approbateur_nom',
+            'commentaire', 'decision_le', 'executee_le', 'certificats',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'statut', 'demandeur', 'approbateur', 'decision_le',
+            'executee_le', 'certificats', 'created_at', 'updated_at',
+        ]
+
+
+class LotEnvoiSerializer(serializers.ModelSerializer):
+    """XGED27 — Lot d'envoi en masse de demandes de signature (suivi groupé,
+    lecture seule côté API — créé uniquement via l'action dédiée)."""
+    modele_nom = serializers.CharField(
+        source='modele.nom', read_only=True, default=None)
+
+    class Meta:
+        model = LotEnvoi
+        fields = [
+            'id', 'modele', 'modele_nom', 'libelle', 'resultats', 'total',
+            'nb_envoyes', 'nb_vus', 'nb_signes', 'nb_refuses', 'nb_erreurs',
+            'created_by', 'created_at', 'updated_at',
+        ]
+        read_only_fields = fields
 
 
 class PlanificationDocumentSerializer(serializers.ModelSerializer):
