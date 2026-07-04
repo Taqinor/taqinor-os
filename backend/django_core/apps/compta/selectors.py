@@ -20,7 +20,7 @@ from .models import (
     MouvementCaisse, Rapprochement, RetenueGarantie, RetenueSource,
     TauxDevise, TimbreFiscal,
     ClotureCaisse, DotationAmortissement, EcritureComptable,
-    RapprochementBancaire,
+    Provision, RapprochementBancaire,
 )
 
 
@@ -3013,3 +3013,51 @@ def compte_portail_par_token(token):
         .select_related('client')
         .first()
     )
+
+
+# ── XACC26 — État récapitulatif des provisions (dotations/reprises) ────────
+
+def etat_provisions(company, *, date_debut=None, date_fin=None, nature=None):
+    """Mouvements de provisions (XACC26) de la période, groupés par nature.
+
+    Liste chaque ``Provision`` dont la dotation OU la dernière reprise tombe
+    dans ``[date_debut, date_fin]`` (bornes optionnelles), avec son solde
+    courant. Renvoie un dict ``{nature: {'label', 'lignes': [...], 'total_dotation',
+    'total_repris', 'total_solde'}}``. Lecture seule ; company-scopé.
+    """
+    date_debut = _as_date(date_debut)
+    date_fin = _as_date(date_fin)
+    qs = Provision.objects.filter(company=company)
+    if nature:
+        qs = qs.filter(nature=nature)
+    if date_debut:
+        qs = qs.filter(
+            Q(date_dotation__gte=date_debut) |
+            Q(date_derniere_reprise__gte=date_debut))
+    if date_fin:
+        qs = qs.filter(
+            Q(date_dotation__lte=date_fin) |
+            Q(date_derniere_reprise__lte=date_fin))
+    result = {}
+    for prov in qs.order_by('nature', 'date_dotation', 'id'):
+        bucket = result.setdefault(prov.nature, {
+            'label': prov.get_nature_display(),
+            'lignes': [],
+            'total_dotation': Decimal('0'),
+            'total_repris': Decimal('0'),
+            'total_solde': Decimal('0'),
+        })
+        bucket['lignes'].append({
+            'id': prov.id,
+            'reference': prov.reference,
+            'motif': prov.motif,
+            'date_dotation': prov.date_dotation,
+            'montant_dotation': prov.montant_dotation,
+            'montant_repris': prov.montant_repris,
+            'solde': prov.solde,
+            'date_derniere_reprise': prov.date_derniere_reprise,
+        })
+        bucket['total_dotation'] += prov.montant_dotation or Decimal('0')
+        bucket['total_repris'] += prov.montant_repris or Decimal('0')
+        bucket['total_solde'] += prov.solde
+    return result

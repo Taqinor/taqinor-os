@@ -34,7 +34,7 @@ from .models import (
     Journal,
     LignePrevisionnelTresorerie, LigneReleve, MessageWhatsAppEntrant,
     ModeleDevis, MouvementCaisse, NoteFrais, OuverturePartage,
-    PaymentRun, PeriodeComptable, PlanComptable, ProvisionCreance,
+    PaymentRun, PeriodeComptable, PlanComptable, Provision, ProvisionCreance,
     Rapprochement, RapprochementBancaire, RelanceDevisAbandonne,
     RetenueGarantie, RetenueSource, SequenceRelance, SessionGuidedSelling,
     TimbreFiscal, TravauxEnCours, VirementInterne,
@@ -75,7 +75,7 @@ from .serializers import (
     MouvementCaisseSerializer, NoteFraisSerializer, OuverturePartageSerializer,
     PaymentRunSerializer,
     PeriodeComptableSerializer, PlanAmortissementSerializer,
-    PlanComptableSerializer, ProvisionCreanceSerializer,
+    PlanComptableSerializer, ProvisionSerializer, ProvisionCreanceSerializer,
     RapprochementBancaireSerializer, RapprochementSerializer,
     RelanceDevisAbandonneSerializer,
     RetenueGarantieSerializer, RetenueSourceSerializer,
@@ -843,6 +843,19 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             f'"fiduciaire_sage_cegid_exercice_{exercice.pk}'
             f'_{exercice.date_debut}_{exercice.date_fin}.csv"')
         return resp
+
+    @action(detail=False, methods=['get'], url_path='provisions')
+    def provisions(self, request):
+        """État récapitulatif des dotations/reprises de provisions (XACC26)."""
+        params = request.query_params
+        data = selectors.etat_provisions(
+            request.user.company,
+            date_debut=params.get('date_debut') or None,
+            date_fin=params.get('date_fin') or None,
+            nature=params.get('nature') or None)
+        # Decimal n'est pas JSON-sérialisable nativement ; DRF Response le gère
+        # via son encoder, mais les clés dict (nature enum) doivent rester str.
+        return Response({str(k): v for k, v in data.items()})
 
 
 # ── FG115 — Périodes comptables verrouillables ─────────────────────────────
@@ -3157,6 +3170,67 @@ class ProvisionCreanceViewSet(_ComptaBaseViewSet):
         date_reprise = request.data.get('date_reprise') or None
         services.reprendre_provision_creance(
             prov, date_reprise=date_reprise, user=request.user)
+        return Response(self.get_serializer(prov).data)
+
+
+class ProvisionViewSet(_ComptaBaseViewSet):
+    """Provisions risques & charges / dépréciation stock / immo (XACC26).
+
+    La création poste l'écriture OD de dotation (sauf ``poster=false``).
+    ``reprendre`` (POST, ``montant`` optionnel = solde) reprend tout ou partie
+    de la provision. ``company`` / ``reference`` / ``montant_repris`` posés
+    côté serveur ; filtre ``nature`` ; société scopée ; Admin/Responsable.
+    """
+    queryset = Provision.objects.select_related('created_by').all()
+    serializer_class = ProvisionSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'motif']
+    ordering_fields = ['date_dotation', 'montant_dotation', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        nature = self.request.query_params.get('nature')
+        if nature:
+            qs = qs.filter(nature=nature)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        vd = serializer.validated_data
+        poster = request.data.get('poster', True)
+        if isinstance(poster, str):
+            poster = poster.lower() not in ('false', '0', 'no', '')
+        try:
+            prov = services.enregistrer_provision(
+                request.user.company,
+                nature=vd['nature'],
+                date_dotation=vd['date_dotation'],
+                montant=vd.get('montant_dotation') or 0,
+                motif=vd.get('motif', '') or '',
+                date_echeance_revue=vd.get('date_echeance_revue'),
+                poster=bool(poster), user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(prov).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def reprendre(self, request, pk=None):
+        """Reprend tout ou partie de la provision (``montant`` optionnel)."""
+        prov = self.get_object()
+        montant = request.data.get('montant')
+        date_reprise = request.data.get('date_reprise') or None
+        try:
+            services.reprendre_provision(
+                prov, montant=montant, date_reprise=date_reprise,
+                user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(prov).data)
 
 

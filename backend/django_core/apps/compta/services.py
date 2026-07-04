@@ -51,7 +51,7 @@ from .models import (
     LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, NoteFrais,
     OuverturePartage,
     PaymentRun, PaymentRunLine, PeriodeComptable, PlanAmortissement,
-    PlanComptable, PointageReleve, ProvisionCreance, Rapprochement,
+    PlanComptable, PointageReleve, Provision, ProvisionCreance, Rapprochement,
     RapprochementBancaire, RelanceDevisAbandonne, RetenueSource,
     RetenueGarantie, TimbreFiscal,
     TravauxEnCours, VirementInterne,
@@ -4757,6 +4757,116 @@ def reprendre_provision_creance(prov, *, date_reprise=None, poster=True,
     prov.date_reprise = date_reprise
     prov.save(update_fields=[
         'statut', 'date_reprise', 'ecriture_reprise_id'])
+    return prov
+
+
+# ── XACC26 — Provisions risques & charges / dépréciation stock / immo ─────
+
+_COMPTES_PROVISION_PAR_NATURE = {
+    Provision.Nature.RISQUES_CHARGES: {
+        'passif': '1516', 'charge': '6195', 'produit': '7195',
+    },
+    Provision.Nature.DEPRECIATION_STOCK: {
+        'passif': '3910', 'charge': '6196', 'produit': '7196',
+    },
+    Provision.Nature.DEPRECIATION_IMMO: {
+        'passif': '2911', 'charge': '6392', 'produit': '7392',
+    },
+}
+
+
+def _comptes_provision(company, nature):
+    numeros = _COMPTES_PROVISION_PAR_NATURE.get(
+        nature, _COMPTES_PROVISION_PAR_NATURE[Provision.Nature.RISQUES_CHARGES])
+    return {
+        key: _assurer_compte(company, numero)
+        for key, numero in numeros.items()
+    }
+
+
+@transaction.atomic
+def enregistrer_provision(company, *, nature, date_dotation, montant, motif='',
+                          date_echeance_revue=None, poster=True, user=None):
+    """Enregistre une dotation de provision risques/charges/stock/immo (XACC26).
+
+    Poste (sauf ``poster=false``) l'écriture OD : débit compte de charge (6195
+    risques&charges / 6196 dépréciation stock / 6392 dépréciation immo) / crédit
+    compte de passif (1516 / 3910 / 2911 selon ``nature``). ``reference``
+    (PROV-YYYYMM-NNNN) et ``company`` posées côté serveur. Renvoie la provision.
+    """
+    from apps.ventes.utils.references import create_with_reference
+
+    montant = Decimal(montant or 0)
+    prov = Provision(
+        company=company,
+        nature=nature,
+        date_dotation=date_dotation,
+        montant_dotation=montant,
+        motif=motif or '',
+        date_echeance_revue=date_echeance_revue,
+        created_by=user,
+    )
+    prov.full_clean(exclude=['reference', 'created_by'])
+
+    def _save(reference):
+        prov.reference = reference
+        prov.save()
+        return prov
+
+    prov = create_with_reference(Provision, 'PROV', company, _save)
+    if poster and prov.montant_dotation > 0:
+        comptes = _comptes_provision(company, prov.nature)
+        ecriture = creer_ecriture_od(
+            company, date_dotation,
+            f'Dotation provision {prov.get_nature_display()} {prov.reference}',
+            [
+                {'compte': comptes['charge'], 'debit': prov.montant_dotation,
+                 'credit': Decimal('0'), 'libelle': prov.motif or prov.reference},
+                {'compte': comptes['passif'], 'debit': Decimal('0'),
+                 'credit': prov.montant_dotation,
+                 'libelle': prov.motif or prov.reference},
+            ],
+            created_by=user)
+        prov.ecriture_dotation_id = ecriture.id
+        prov.save(update_fields=['ecriture_dotation_id'])
+    return prov
+
+
+@transaction.atomic
+def reprendre_provision(prov, *, montant=None, date_reprise=None, poster=True,
+                        user=None):
+    """Reprend (partiellement ou totalement) une provision XACC26.
+
+    ``montant`` par défaut = solde restant (reprise totale). Poste l'écriture
+    OD inverse (débit passif / crédit produit de reprise) et cumule
+    ``montant_repris``. Refuse une reprise qui dépasserait le solde. Idempotent
+    au sens où une provision déjà soldée ne peut plus être reprise (400 côté
+    vue). Renvoie la provision.
+    """
+    if prov.est_soldee:
+        raise ValidationError("Cette provision est déjà entièrement reprise.")
+    solde = prov.solde
+    montant = Decimal(montant) if montant is not None else solde
+    if montant <= 0 or montant > solde:
+        raise ValidationError(
+            f"Le montant de reprise doit être compris entre 0 et le solde "
+            f"({solde}).")
+    date_reprise = date_reprise or timezone.now().date()
+    if poster:
+        comptes = _comptes_provision(prov.company, prov.nature)
+        creer_ecriture_od(
+            prov.company, date_reprise,
+            f'Reprise provision {prov.get_nature_display()} {prov.reference}',
+            [
+                {'compte': comptes['passif'], 'debit': montant,
+                 'credit': Decimal('0'), 'libelle': prov.motif or prov.reference},
+                {'compte': comptes['produit'], 'debit': Decimal('0'),
+                 'credit': montant, 'libelle': prov.motif or prov.reference},
+            ],
+            created_by=user)
+    prov.montant_repris = (prov.montant_repris or Decimal('0')) + montant
+    prov.date_derniere_reprise = date_reprise
+    prov.save(update_fields=['montant_repris', 'date_derniere_reprise'])
     return prov
 
 

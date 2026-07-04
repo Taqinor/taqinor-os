@@ -22,7 +22,7 @@ from .models import (
     LignePrevisionnelTresorerie, LigneReleve, MessageWhatsAppEntrant,
     ModeleDevis, MouvementCaisse, NoteFrais, OuverturePartage,
     PaymentRun, PaymentRunLine, PeriodeComptable, PlanAmortissement,
-    PlanComptable, ProvisionCreance, Rapprochement, RapprochementBancaire,
+    PlanComptable, Provision, ProvisionCreance, Rapprochement, RapprochementBancaire,
     RelanceDevisAbandonne, RetenueGarantie, RetenueSource, SequenceRelance,
     SessionGuidedSelling, TimbreFiscal, TravauxEnCours,
     VirementInterne,
@@ -1318,6 +1318,39 @@ class ProvisionCreanceSerializer(serializers.ModelSerializer):
         if value is not None and (value < 0 or value > 100):
             raise serializers.ValidationError(
                 "Le taux de provision doit être compris entre 0 et 100 %.")
+        return value
+
+
+# ── XACC26 — Provisions risques & charges / dépréciation stock / immo ─────
+
+class ProvisionSerializer(serializers.ModelSerializer):
+    """Provision générique risques/charges/stock/immo (XACC26).
+
+    ``company`` / ``reference`` / ``montant_repris`` / écriture(s) restent en
+    lecture seule (posés côté service).
+    """
+    nature_display = serializers.CharField(
+        source='get_nature_display', read_only=True)
+    solde = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = Provision
+        fields = [
+            'id', 'reference', 'nature', 'nature_display', 'motif',
+            'montant_dotation', 'montant_repris', 'solde',
+            'date_echeance_revue', 'date_dotation', 'ecriture_dotation_id',
+            'date_derniere_reprise', 'created_by', 'date_creation',
+        ]
+        read_only_fields = [
+            'reference', 'montant_repris', 'ecriture_dotation_id',
+            'date_derniere_reprise', 'created_by', 'date_creation',
+        ]
+
+    def validate_montant_dotation(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "Le montant de la dotation ne peut pas être négatif.")
         return value
 
 

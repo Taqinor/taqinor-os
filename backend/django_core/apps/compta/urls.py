@@ -19,7 +19,8 @@ from .views import (
     ModeleDevisViewSet, NoteFraisViewSet, OuverturePartageViewSet,
     PaymentRunViewSet,
     PeriodeComptableViewSet, PilotageViewSet, PlanComptableViewSet,
-    ProvisionCreanceViewSet, RapprochementBancaireViewSet, RapprochementViewSet,
+    ProvisionCreanceViewSet, ProvisionViewSet,
+    RapprochementBancaireViewSet, RapprochementViewSet,
     RelanceDevisAbandonneViewSet,
     RetenueGarantieViewSet, RetenueSourceViewSet, SequenceRelanceViewSet,
     SessionGuidedSellingViewSet, TimbreFiscalViewSet,
@@ -83,6 +84,7 @@ router.register(r'commission-payout-runs', CommissionPayoutRunViewSet)
 router.register(r'budgets', BudgetViewSet)
 router.register(r'centres-cout', CentreCoutViewSet)
 router.register(r'provisions-creances', ProvisionCreanceViewSet)
+router.register(r'provisions', ProvisionViewSet)
 router.register(r'entites-consolidation', EntiteConsolidationViewSet)
 router.register(r'pilotage', PilotageViewSet, basename='pilotage')
 router.register(r'etats', EtatsComptablesViewSet, basename='etats')

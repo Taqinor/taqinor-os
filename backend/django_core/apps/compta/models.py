@@ -4076,6 +4076,97 @@ class ProvisionCreance(models.Model):
         return self
 
 
+# ── XACC26 — Provisions pour risques & charges + dépréciation des stocks ───
+
+class Provision(models.Model):
+    """Provision générique risques/charges ou dépréciation stock/immo (XACC26).
+
+    ``ProvisionCreance`` (FG152) ne couvre que les créances clients (39x). Ce
+    modèle couvre les AUTRES natures de provisions marocaines : risques &
+    charges (15x — litiges, garanties…), dépréciation des stocks (39x hors
+    créances) et dépréciation d'immobilisations (29x). Une dotation puis une
+    reprise (partielle ou totale) postent chacune une écriture OD équilibrée
+    liée (``ecriture_dotation_id`` / lignes de reprise cumulées via
+    ``ReprisesProvision`` — ici simplifiée en compteur ``montant_repris`` +
+    horodatage de la dernière reprise, une provision pouvant être reprise en
+    plusieurs fois). ``company`` posée côté serveur ; purement additif.
+    """
+    class Nature(models.TextChoices):
+        RISQUES_CHARGES = 'risques_charges', 'Provisions pour risques & charges (15x)'
+        DEPRECIATION_STOCK = 'depreciation_stock', 'Dépréciation des stocks (39x)'
+        DEPRECIATION_IMMO = 'depreciation_immo', 'Dépréciation des immobilisations (29x)'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='provisions',
+        verbose_name='Société',
+    )
+    reference = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Référence')
+    nature = models.CharField(
+        max_length=20, choices=Nature.choices, verbose_name='Nature')
+    motif = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Motif')
+    montant_dotation = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant de la dotation')
+    montant_repris = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant déjà repris')
+    date_echeance_revue = models.DateField(
+        null=True, blank=True, verbose_name="Échéance de revue")
+    date_dotation = models.DateField(verbose_name='Date de dotation')
+    ecriture_dotation_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="ID de l'écriture de dotation")
+    date_derniere_reprise = models.DateField(
+        null=True, blank=True, verbose_name='Date de la dernière reprise')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='provisions_creees',
+        verbose_name='Créé par')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Provision (risques/charges/stock/immo)'
+        verbose_name_plural = 'Provisions (risques/charges/stock/immo)'
+        ordering = ['-date_dotation', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                condition=models.Q(reference__gt=''),
+                name='uniq_provision_ref',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.reference or "PROV"} — {self.get_nature_display()} ({self.montant_dotation})'
+
+    def clean(self):
+        super().clean()
+        if self.montant_dotation is not None and self.montant_dotation < 0:
+            raise ValidationError(
+                "Le montant de la dotation ne peut pas être négatif.")
+        if self.montant_repris is not None and self.montant_repris < 0:
+            raise ValidationError(
+                "Le montant repris ne peut pas être négatif.")
+        if (self.montant_repris or Decimal('0')) > (
+                self.montant_dotation or Decimal('0')):
+            raise ValidationError(
+                "Le montant repris ne peut pas dépasser la dotation.")
+
+    @property
+    def solde(self):
+        return (self.montant_dotation or Decimal('0')) - (
+            self.montant_repris or Decimal('0'))
+
+    @property
+    def est_soldee(self):
+        return self.solde <= 0
+
+
 # ── FG153 — Inter-sociétés / consolidation multi-entités ───────────────────
 
 class EntiteConsolidation(models.Model):
