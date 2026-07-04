@@ -1431,9 +1431,9 @@ class CampagneSerializer(serializers.ModelSerializer):
         model = Campagne
         fields = [
             'id', 'nom', 'canal', 'canal_display', 'objet', 'corps', 'segment',
-            'listes', 'statut', 'statut_display', 'nb_destinataires',
-            'nb_envois', 'nb_ouvertures', 'nb_clics', 'envoyee_le',
-            'date_creation',
+            'listes', 'sms_sender_id', 'statut', 'statut_display',
+            'nb_destinataires', 'nb_envois', 'nb_ouvertures', 'nb_clics',
+            'envoyee_le', 'date_creation',
         ]
         read_only_fields = [
             'statut', 'nb_destinataires', 'nb_envois', 'nb_ouvertures',

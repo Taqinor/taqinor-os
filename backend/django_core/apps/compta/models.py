@@ -4393,6 +4393,9 @@ class Campagne(models.Model):
     listes = models.ManyToManyField(
         'compta.ListeDiffusion', blank=True, related_name='campagnes',
         verbose_name='Listes de diffusion ciblées (XMKT5)')
+    sms_sender_id = models.CharField(
+        max_length=11, blank=True, default='',
+        verbose_name="Sender-ID SMS déclaré (XMKT15)")
     statut = models.CharField(
         max_length=12, choices=Statut.choices, default=Statut.BROUILLON,
         verbose_name='Statut')

@@ -6032,6 +6032,118 @@ def precheck_sante_campagne(campagne, *, verifier_liens=False):
     return {'bloque': bloque, 'avertissements': avertissements}
 
 
+# ── XMKT15 — Conformité SMS Maroc : comptage, coût, sender-ID, STOP ─────────
+
+_GSM7_BASIC = (
+    "@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞ\x1bÆæßÉ"
+    " !\"#¤%&'()*+,-./0123456789:;<=>?"
+    "¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§"
+    "¿abcdefghijklmnopqrstuvwxyzäöñüà"
+)
+_GSM7_EXTENDED = '^{}\\[~]|€'
+
+SMS_STOP_SUFFIX = ' STOP au 00000'
+SMS_PRIX_MAD_DEFAUT = Decimal('0.35')
+
+
+def _est_gsm7(texte):
+    """Un caractère hors du jeu GSM-7 (de base + étendu) force l'encodage
+    UCS-2 (XMKT15) — chaque caractère spécial étendu compte pour 2 dans un
+    SMS GSM-7 mais on reste en GSM-7 tant que TOUS les caractères y sont."""
+    jeu = set(_GSM7_BASIC) | set(_GSM7_EXTENDED)
+    return all(c in jeu for c in (texte or ''))
+
+
+def compter_segments_sms(texte):
+    """XMKT15 — Compte les segments SMS d'un corps (GSM-7 vs UCS-2).
+
+    Limites usuelles opérateur : GSM-7 = 160 caractères (1 segment) / 153 par
+    segment au-delà (en-tête UDH multi-part) ; UCS-2 = 70 / 67. Renvoie
+    ``{'encodage': 'gsm7'|'ucs2', 'nb_caracteres': int, 'nb_segments': int}``.
+    """
+    texte = texte or ''
+    nb = len(texte)
+    if nb == 0:
+        return {'encodage': 'gsm7', 'nb_caracteres': 0, 'nb_segments': 0}
+    if _est_gsm7(texte):
+        encodage = 'gsm7'
+        limite_seul, limite_multi = 160, 153
+    else:
+        encodage = 'ucs2'
+        limite_seul, limite_multi = 70, 67
+    if nb <= limite_seul:
+        segments = 1
+    else:
+        segments = -(-nb // limite_multi)  # ceil division
+    return {'encodage': encodage, 'nb_caracteres': nb, 'nb_segments': segments}
+
+
+def estimer_cout_sms(texte, *, prix_unitaire_mad=SMS_PRIX_MAD_DEFAUT,
+                     nb_destinataires=1):
+    """XMKT15 — Aperçu du coût multi-part avant envoi (MAD), prix unitaire
+    paramétrable société (défaut ``SMS_PRIX_MAD_DEFAUT``)."""
+    info = compter_segments_sms(texte)
+    prix_unitaire_mad = Decimal(str(prix_unitaire_mad))
+    cout_par_destinataire = info['nb_segments'] * prix_unitaire_mad
+    return {
+        **info,
+        'prix_unitaire_mad': prix_unitaire_mad,
+        'cout_par_destinataire_mad': cout_par_destinataire,
+        'cout_total_mad': cout_par_destinataire * nb_destinataires,
+    }
+
+
+def ajouter_mention_stop(corps):
+    """XMKT15 — Ajoute la mention STOP obligatoire si absente (idempotent)."""
+    corps = corps or ''
+    if 'stop' in corps.lower():
+        return corps
+    return corps + SMS_STOP_SUFFIX
+
+
+def valider_numero_sms(numero):
+    """XMKT15 — Valide un numéro mobile marocain E.164 avant envoi SMS
+    (préfixes 06/07 uniquement — un fixe/invalide est exclu pour ne pas payer
+    un SMS mort). Renvoie ``(numero_normalise_ou_None, motif_si_exclu)``.
+    """
+    normalise = _normaliser_destinataire(numero)
+    if not normalise or '@' in normalise:
+        return None, 'Non un numéro de téléphone.'
+    if not normalise.startswith('212'):
+        return None, 'Préfixe international inattendu.'
+    local = normalise[3:]
+    if not (local.startswith('6') or local.startswith('7')):
+        return None, 'Numéro fixe (préfixe 05) exclu — mobile requis.'
+    if len(local) != 9:
+        return None, 'Longueur de numéro invalide.'
+    return normalise, ''
+
+
+def filtrer_destinataires_sms(numeros):
+    """XMKT15 — Filtre une liste de numéros pour un envoi SMS. Renvoie
+    ``{'valides': [...], 'exclus': [{'numero':..., 'motif':...}]}``."""
+    valides, exclus = [], []
+    for numero in numeros or []:
+        normalise, motif = valider_numero_sms(numero)
+        if normalise:
+            valides.append(normalise)
+        else:
+            exclus.append({'numero': numero, 'motif': motif})
+    return {'valides': valides, 'exclus': exclus}
+
+
+def traiter_stop_entrant(company, numero, *, source='webhook_agregateur_sms'):
+    """XMKT15 — Traite le mot-clé STOP entrant (webhook agrégateur, gated) :
+    désinscrit immédiatement le numéro (XMKT3)."""
+    normalise, _motif = valider_numero_sms(numero)
+    destinataire = normalise or (numero or '').strip()
+    if not destinataire:
+        return None
+    return supprimer_destinataire(
+        company, destinataire, motif=SuppressionMarketing.Motif.DESINSCRIT,
+        source=source)
+
+
 # ── FG202 — Déclenchement d'une séquence de relance (GATED, NO-OP) ──────────
 
 def whatsapp_actif():

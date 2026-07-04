@@ -2,7 +2,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    desinscription_publique, webhook_brevo_campagne,
+    desinscription_publique, webhook_brevo_campagne, webhook_sms_stop,
     AppelTelephoniqueViewSet,
     BaremeIndemniteViewSet, BordereauRemiseViewSet, BudgetViewSet,
     CaisseViewSet, CampagneViewSet, CautionBancaireViewSet, CentreCoutViewSet,
@@ -165,6 +165,7 @@ router.register(r'pistes-audit', PisteAuditComptableViewSet,
 
 urlpatterns = [
     path('webhooks/brevo/', webhook_brevo_campagne, name='webhook-brevo-campagne'),
+    path('webhooks/sms-stop/', webhook_sms_stop, name='webhook-sms-stop'),
     path('desinscription/<str:token>/', desinscription_publique,
          name='desinscription-publique'),
     path('', include(router.urls)),

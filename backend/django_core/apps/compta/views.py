@@ -3676,6 +3676,20 @@ class CampagneViewSet(_ComptaBaseViewSet):
             campagne, verifier_liens=verifier_liens)
         return Response(rapport)
 
+    @action(detail=True, methods=['get'], url_path='cout-sms')
+    def cout_sms(self, request, pk=None):
+        """XMKT15 — Segments GSM-7/UCS-2 + coût multi-part en direct."""
+        campagne = self.get_object()
+        prix_unitaire = request.query_params.get('prix_unitaire_mad')
+        kwargs = {}
+        if prix_unitaire:
+            kwargs['prix_unitaire_mad'] = prix_unitaire
+        nb_destinataires = int(
+            request.query_params.get('nb_destinataires') or 1)
+        estimation = services.estimer_cout_sms(
+            campagne.corps, nb_destinataires=nb_destinataires, **kwargs)
+        return Response(estimation)
+
 
 # ── XMKT2 — Journal d'envoi par destinataire (drill-down) ───────────────────
 
@@ -3860,6 +3874,31 @@ def webhook_brevo_campagne(request):
     if not envoi:
         return Response({'detail': 'destinataire introuvable'}, status=404)
     return Response({'statut': envoi.statut})
+
+
+# ── XMKT15 — Webhook agrégateur SMS : mot-clé STOP entrant (gated, public) ──
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def webhook_sms_stop(request):
+    """Réception d'un SMS entrant STOP (XMKT15, gated/no-op sans intégration
+    d'agrégateur active). Payload minimal attendu : ``company_id``,
+    ``numero``. Désinscrit immédiatement le numéro (XMKT3).
+    """
+    from authentication.models import Company
+
+    data = request.data or {}
+    company_id = data.get('company_id')
+    numero = (data.get('numero') or '').strip()
+    if not company_id or not numero:
+        return Response({'detail': 'payload incomplet'}, status=400)
+    company = Company.objects.filter(id=company_id).first()
+    if not company:
+        return Response({'detail': 'société introuvable'}, status=404)
+    supprime = services.traiter_stop_entrant(company, numero)
+    if not supprime:
+        return Response({'detail': 'numéro invalide'}, status=400)
+    return Response({'desinscrit': True, 'destinataire': supprime.destinataire})
 
 
 # ── XMKT3 — Désinscription un clic (public, tokenisé, aucune auth) ─────────
