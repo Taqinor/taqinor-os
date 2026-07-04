@@ -1564,3 +1564,42 @@ def cout_non_qualite(company, annee):
         'par_mois': [par_mois[k] for k in sorted(par_mois)],
         'total': interne + externe,
     }
+
+
+# ── XQHS23 — Pont SAV ↔ NCR : taux de défaillance par produit ──────────────
+
+def taux_defaillance_par_produit(company):
+    """NCR d'origine SAV (``ticket_sav`` posé) groupées par produit, via les
+    équipements du parc lus par ``sav.selectors.produits_par_tickets`` (jamais
+    un import direct de ``sav.models``/``stock.models``).
+
+    Renvoie une liste triée par nombre de NCR décroissant ::
+
+        [{'produit_id': int|None, 'produit_nom': str|None, 'nb_ncr': int}, …]
+
+    Une entrée ``produit_id=None`` regroupe les NCR dont le ticket n'a pas
+    d'équipement identifié (ticket sans appareil précis)."""
+    from .models import NonConformite
+
+    ncrs = NonConformite.objects.filter(
+        company=company, ticket_sav_id__isnull=False)
+    ticket_ids = list(ncrs.values_list('ticket_sav_id', flat=True))
+    if not ticket_ids:
+        return []
+
+    from apps.sav.selectors import produits_par_tickets
+
+    mapping = produits_par_tickets(company, ticket_ids)
+
+    comptes = {}
+    for ncr in ncrs:
+        info = mapping.get(ncr.ticket_sav_id) or {
+            'produit_id': None, 'produit_nom': None}
+        cle = info['produit_id']
+        bucket = comptes.setdefault(
+            cle, {'produit_id': cle, 'produit_nom': info['produit_nom'],
+                  'nb_ncr': 0})
+        bucket['nb_ncr'] += 1
+
+    return sorted(
+        comptes.values(), key=lambda b: b['nb_ncr'], reverse=True)

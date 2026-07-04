@@ -87,12 +87,13 @@ from .selectors import (
     photos_controle_par_phase,
     procedure_qualite_courante, procedure_qualite_versions,
     procedures_qualite_courantes, satisfaction_moyenne, statistiques_tf_tg,
-    taux_conformite_premier_passage,
+    taux_conformite_premier_passage, taux_defaillance_par_produit,
 )
 from .services import (
     activer_procedure, calculer_score_audit, calculer_score_notation,
     cloturer_incident, cloturer_ncr, compteurs_observations_securite,
-    creer_ncr_depuis_reserve,
+    creer_intervention_depuis_ncr, creer_ncr_depuis_reserve,
+    creer_ncr_depuis_ticket,
     convertir_observation_en_capa, convertir_observation_en_ncr,
     creer_capa_depuis_ecart_exercice,
     generer_capa_depuis_analyse, generer_lignes_bilan,
@@ -219,6 +220,46 @@ class NonConformiteViewSet(_ChatterMixin, _QhseBaseViewSet):
         code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
         return Response(self.get_serializer(ncr).data, status=code)
 
+    @action(detail=False, methods=['post'], url_path='depuis-ticket-sav')
+    def depuis_ticket_sav(self, request):
+        """XQHS23 — crée une NCR à partir d'un ticket SAV (pont ticket→NCR).
+
+        Corps : ``ticket`` (id du ``sav.Ticket``), ``gravite`` optionnelle.
+        Idempotent : une seule NCR par ticket. 404 si le ticket n'appartient
+        pas à la société."""
+        ticket_id = request.data.get('ticket')
+        if ticket_id in (None, ''):
+            return Response(
+                {'detail': 'ticket est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            ncr, created = creer_ncr_depuis_ticket(
+                ticket_id, request.user.company,
+                signale_par=request.user,
+                gravite=request.data.get('gravite') or None)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_404_NOT_FOUND)
+        code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+        return Response(self.get_serializer(ncr).data, status=code)
+
+    @action(detail=True, methods=['post'], url_path='creer-intervention')
+    def creer_intervention(self, request, pk=None):
+        """XQHS23 — ouvre une intervention corrective SAV depuis cette NCR
+        (pont inverse NCR→ticket). 400 si la NCR n'a pas de chantier
+        rattaché."""
+        ncr = self.get_object()
+        try:
+            ticket, created = creer_intervention_depuis_ncr(
+                ncr, description=request.data.get('description'))
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {'ticket_id': ticket.pk, 'ticket_reference': ticket.reference,
+             'created': created},
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
     @action(detail=True, methods=['post'])
     def cloturer(self, request, pk=None):
         """Clôture une NCR — conditionnée à l'efficacité des CAPA (QHSE13).
@@ -233,6 +274,12 @@ class NonConformiteViewSet(_ChatterMixin, _QhseBaseViewSet):
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(ncr).data)
+
+    @action(detail=False, methods=['get'], url_path='taux-defaillance-produit')
+    def taux_defaillance_produit(self, request):
+        """XQHS23 — taux de défaillance par produit (NCR d'origine SAV,
+        cockpit qualité)."""
+        return Response(taux_defaillance_par_produit(request.user.company))
 
     @action(detail=True, methods=['post'], url_path='poser-disposition')
     def poser_disposition_action(self, request, pk=None):

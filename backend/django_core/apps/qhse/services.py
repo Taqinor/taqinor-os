@@ -2235,3 +2235,65 @@ def generer_lignes_bilan(bilan, annee):
         )
         lignes.append(ligne)
     return lignes
+
+
+# ── XQHS23 — Pont SAV ↔ NCR (boucle défaillances terrain/garantie) ─────────
+
+@transaction.atomic
+def creer_ncr_depuis_ticket(ticket_id, company, signale_par=None, gravite=None):
+    """Crée une NCR à partir d'un ticket SAV (XQHS23, pont ticket → NCR).
+
+    Le ticket est lu via le sélecteur LECTURE SEULE
+    ``sav.selectors.ticket_scoped`` (jamais un import de ``apps.sav.models``,
+    règle de modularité cross-app CLAUDE.md) et rattaché en FK-chaîne
+    ``'sav.Ticket'`` nullable (``ticket_sav``, string-FK Django standard).
+    Idempotent : une seule NCR par ticket — ré-appeler renvoie la NCR
+    existante. Lève ``ValueError`` si le ticket n'existe pas dans la
+    société."""
+    existante = NonConformite.objects.filter(
+        company=company, ticket_sav_id=ticket_id).first()
+    if existante is not None:
+        return existante, False
+
+    from apps.sav.selectors import ticket_scoped
+
+    ticket = ticket_scoped(company, ticket_id)
+    if ticket is None:
+        raise ValueError("Ticket SAV introuvable dans votre société.")
+
+    ncr = NonConformite.objects.create(
+        company=company,
+        titre=f'SAV · {ticket.reference}',
+        description=ticket.description or '',
+        origine='Ticket SAV',
+        gravite=gravite or NonConformite.Gravite.MINEURE,
+        chantier_id=ticket.installation_id,
+        signale_par=signale_par,
+        ticket_sav_id=ticket_id,
+    )
+    return ncr, True
+
+
+@transaction.atomic
+def creer_intervention_depuis_ncr(ncr, description=None):
+    """Ouvre une intervention corrective SAV depuis une NCR chantier (XQHS23,
+    pont inverse NCR → ticket). Appelle la fonction FINE
+    ``sav.services.creer_intervention_depuis_installation`` — QHSE n'importe
+    jamais ``sav.models`` directement. Idempotent (même marqueur
+    ``[NCR:<reference>]``). Lève ``ValueError`` si la NCR n'a pas de chantier
+    rattaché."""
+    from apps.sav.services import creer_intervention_depuis_installation
+
+    if ncr.chantier_id is None:
+        raise ValueError(
+            "Impossible d'ouvrir une intervention : la non-conformité n'a "
+            "pas de chantier rattaché.")
+
+    ticket, created = creer_intervention_depuis_installation(
+        company=ncr.company,
+        installation_id=ncr.chantier_id,
+        description=description or (
+            f'Intervention corrective suite NCR : {ncr.titre}'),
+        ncr_reference=ncr.reference or ncr.pk,
+    )
+    return ticket, created

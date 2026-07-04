@@ -185,3 +185,45 @@ def create_corrective_ticket(*, company, client, installation, description,
             installation=installation, type=Ticket.Type.CORRECTIF,
             description=description, created_by=created_by)
     return create_with_reference(Ticket, 'SAV', company, _create)
+
+
+def creer_intervention_depuis_installation(
+        *, company, installation_id, description, ncr_reference=None):
+    """XQHS23 — fonction FINE appelée par QHSE pour ouvrir une intervention
+    corrective depuis une non-conformité (pont NCR → SAV, sens inverse de
+    ``qhse.services.creer_ncr_depuis_ticket``). QHSE ne lit/écrit jamais
+    ``sav.models`` directement — cette fonction est le seul point d'entrée.
+
+    Le ``client`` est dérivé de l'``Installation`` (via le sélecteur LECTURE
+    SEULE ``installations.selectors.installation_scoped`` — jamais un import
+    direct du modèle). Lève ``ValueError`` si l'installation est introuvable
+    dans la société.
+
+    Idempotent : si un ticket correctif porte déjà le marqueur
+    ``[NCR:<ncr_reference>]`` pour la même installation, le ticket existant
+    est réutilisé plutôt que dupliqué. Renvoie ``(ticket, created)``."""
+    from apps.installations.selectors import installation_scoped
+    from apps.ventes.utils.references import create_with_reference
+    from .models import Ticket
+
+    installation = installation_scoped(company, installation_id)
+    if installation is None:
+        raise ValueError("Installation introuvable dans votre société.")
+
+    marqueur = f'[NCR:{ncr_reference}]' if ncr_reference else None
+    if marqueur:
+        existant = Ticket.objects.filter(
+            company=company, installation_id=installation_id,
+            description__startswith=marqueur).first()
+        if existant is not None:
+            return existant, False
+
+    full_description = f'{marqueur} {description}' if marqueur else description
+
+    def _create(ref):
+        return Ticket.objects.create(
+            company=company, reference=ref, client=installation.client,
+            installation=installation, type=Ticket.Type.CORRECTIF,
+            description=full_description)
+    ticket = create_with_reference(Ticket, 'SAV', company, _create)
+    return ticket, True

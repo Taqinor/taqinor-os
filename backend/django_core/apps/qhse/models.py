@@ -92,6 +92,16 @@ class NonConformite(models.Model):
         related_name='qhse_ncr',
         verbose_name="Ordre d'assemblage d'origine",
     )
+    # XQHS23 — pont SAV → NCR (boucle défaillances terrain/garantie). Lien
+    # optionnel via FK-chaîne (jamais un import cross-app de modèle, pattern
+    # QHSE11/XMFG13) : une NCR peut naître d'un ticket SAV (panne/garantie).
+    ticket_sav = models.ForeignKey(
+        'sav.Ticket',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_ncr',
+        verbose_name="Ticket SAV d'origine",
+    )
     signale_par = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

@@ -91,11 +91,13 @@ class NonConformiteSerializer(serializers.ModelSerializer):
             'code_defaut',
             # XQHS22 — coût de la non-qualité (interne, gardé par permission).
             'cout_estime', 'cout_reel',
+            # XQHS23 — pont SAV (ticket d'origine, FK-chaîne).
+            'ticket_sav',
             'date_creation',
         ]
         read_only_fields = [
             'reserve', 'signale_par', 'disposition_par', 'disposition_le',
-            'date_creation',
+            'ticket_sav', 'date_creation',
         ]
 
     def validate_fournisseur(self, value):

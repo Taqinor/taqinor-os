@@ -352,3 +352,39 @@ def taux_reouverture(company, *, group_by='technicien', date_debut=None,
         })
     out.sort(key=lambda r: r['taux'], reverse=True)
     return out
+
+
+def ticket_scoped(company, ticket_id):
+    """XQHS23 — un ``sav.Ticket`` scopé société, par id (lecture seule).
+
+    Point d'entrée pour le pont QHSE (``qhse.services.creer_ncr_depuis_ticket``) :
+    QHSE lit le ticket via CE sélecteur plutôt que d'importer
+    ``apps.sav.models`` directement (règle de modularité cross-app,
+    CLAUDE.md). Renvoie ``None`` si le ticket n'existe pas dans la société."""
+    return Ticket.objects.filter(company=company, id=ticket_id).first()
+
+
+def produits_par_tickets(company, ticket_ids):
+    """XQHS23 — map ``{ticket_id: {'produit_id': int|None, 'produit_nom':
+    str|None}}`` pour un lot de tickets SAV, via leur équipement lié.
+
+    Point d'entrée LECTURE SEULE pour QHSE (``taux_defaillance_par_produit``) :
+    QHSE ne lit jamais ``sav.models``/``stock.models`` directement — cette
+    fonction lit ``sav.Ticket``/``sav.Equipement`` (même app) + le nom du
+    produit (FK intra-app vers ``stock.Produit``, lecture seule ici)."""
+    tickets = (
+        Ticket.objects
+        .filter(company=company, id__in=list(ticket_ids))
+        .select_related('equipement__produit')
+    )
+    out = {}
+    for ticket in tickets:
+        equipement = ticket.equipement
+        if equipement is not None and equipement.produit_id:
+            out[ticket.id] = {
+                'produit_id': equipement.produit_id,
+                'produit_nom': equipement.produit.nom,
+            }
+        else:
+            out[ticket.id] = {'produit_id': None, 'produit_nom': None}
+    return out
