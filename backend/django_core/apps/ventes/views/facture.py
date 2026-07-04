@@ -36,6 +36,16 @@ from ..utils.company_settings import create_numbered  # noqa: F401
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
+# XFAC24 — champs FINANCIERS d'une facture, verrouillés en écriture quand
+# CompanyProfile.factures_immuables est ON et que la facture n'est plus
+# brouillon (correction par avoir + nouvelle facture uniquement). Le client
+# est inclus (changer le tiers facturé revient à réécrire le document).
+FACTURE_CHAMPS_FINANCIERS = frozenset([
+    'client', 'montant_ht', 'montant_tva', 'montant_ttc', 'remise_globale',
+    'taux_tva', 'escompte_pct', 'escompte_jours', 'pourcentage',
+    'type_facture',
+])
+
 
 from authentication.scoping import scope_queryset  # noqa: E402,F401
 
@@ -153,6 +163,34 @@ class FactureViewSet(viewsets.ModelViewSet):
             Facture, company, 'facture',
             lambda ref: serializer.save(reference=ref, **save_kwargs),
         )
+
+    def perform_update(self, serializer):
+        # XFAC24 — immutabilité de la facture émise (opt-in). Flag OFF
+        # (défaut) → comportement actuel byte-identique. Flag ON et facture
+        # non-brouillon : tout champ FINANCIER dans le corps est refusé (la
+        # correction passe par un avoir + une nouvelle facture) ; les champs
+        # non financiers (conditions, notes, dates de livraison…) restent
+        # modifiables.
+        facture = self.get_object()
+        if facture.statut != Facture.Statut.BROUILLON:
+            from apps.parametres.models import CompanyProfile
+            profile = CompanyProfile.get(company=facture.company)
+            if getattr(profile, 'factures_immuables', False):
+                champs_touches = (
+                    set(serializer.validated_data.keys())
+                    & FACTURE_CHAMPS_FINANCIERS)
+                if champs_touches:
+                    from rest_framework.exceptions import ValidationError
+                    raise ValidationError({
+                        'detail': (
+                            "Facture immuable : les champs financiers d'une "
+                            "facture émise ne peuvent plus être modifiés. "
+                            "Corrigez par un avoir puis une nouvelle "
+                            "facture."
+                        ),
+                        'champs_refuses': sorted(champs_touches),
+                    })
+        serializer.save()
 
     @action(detail=True, methods=['post'], url_path='emettre',
             permission_classes=[IsResponsableOrAdmin])

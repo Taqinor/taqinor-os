@@ -322,6 +322,17 @@ class CompanyProfile(models.Model):
         help_text="Active le contrôle 4-yeux à l'émission des factures "
                   "(désactivé par défaut).")
 
+    # ── XFAC24 — immutabilité de la facture émise (opt-in) ──
+    # Défaut OFF = comportement actuel byte-identique (une facture émise reste
+    # librement modifiable, hors verrou de PÉRIODE compta FG115). ON : les
+    # champs financiers d'une facture non-brouillon deviennent en lecture
+    # seule (correction par avoir + nouvelle facture uniquement) — prépare la
+    # facturation électronique DGI (mandat 2026).
+    factures_immuables = models.BooleanField(
+        default=False,
+        help_text="Interdit la modification des champs financiers d'une "
+                  "facture non-brouillon (correction par avoir uniquement).")
+
     class Meta:
         verbose_name = 'Profil entreprise'
 
