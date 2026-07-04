@@ -137,6 +137,16 @@ class NonConformite(models.Model):
         related_name='non_conformites',
         verbose_name='Code de défaut',
     )
+    # ── XQHS22 — Coût de la non-qualité (CoQ), INTERNE uniquement ───────────
+    # JAMAIS dans un PDF ni une sortie client — même règle que `prix_achat`.
+    # Distinct de `cout_disposition` (XQHS2, coût de la disposition précise) :
+    # ``cout_estime``/``cout_reel`` couvrent le coût GLOBAL de la NCR.
+    cout_estime = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        null=True, blank=True, verbose_name='Coût estimé (interne)')
+    cout_reel = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        null=True, blank=True, verbose_name='Coût réel (interne)')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -214,6 +224,10 @@ class ActionCorrectivePreventive(models.Model):
         related_name='qhse_capa_verifiees',
         verbose_name='Vérifiée par',
     )
+    # XQHS22 — coût interne de l'action (JAMAIS client-facing).
+    cout = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        null=True, blank=True, verbose_name='Coût (interne)')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -2003,6 +2017,10 @@ class Incident(models.Model):
         null=True, blank=True, verbose_name='Date de notification')
     date_limite_notification = models.DateField(
         null=True, blank=True, verbose_name='Date limite de notification')
+    # XQHS22 — coût interne de l'incident (JAMAIS client-facing).
+    cout = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        null=True, blank=True, verbose_name='Coût (interne)')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 

@@ -77,6 +77,7 @@ from .selectors import (
     aspects_environnementaux_a_revoir,
     calendrier_qhse,
     capa_en_retard, chantier_peut_cloturer, conformites_a_relancer,
+    cout_non_qualite,
     courbes_iv_for_chantier,
     criticite_summary, declarations_cnss_a_echeance, document_unique_valide,
     export_esg,
@@ -2483,3 +2484,43 @@ class ReleveConsommationViewSet(_QhseBaseViewSet):
 
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)
+
+
+# ── XQHS22 — Coût de la non-qualité (CoQ) — interne uniquement ────────────
+
+class CoutNonQualiteViewSet(viewsets.ViewSet):
+    """Rollup du coût de la non-qualité en lecture seule (XQHS22).
+
+    ``GET …/cout-non-qualite/?annee=YYYY``. Palier Responsable/Admin ; les
+    MONTANTS sont en plus gardés par la permission ``cout_non_qualite_voir``
+    (même palier que ``marge_voir``/``prix_achat_voir``) — sans la
+    permission, les montants reviennent ``None`` (structure identique,
+    jamais d'erreur, jamais de fuite dans un rendu client)."""
+    permission_classes = [IsResponsableOrAdmin]
+
+    def list(self, request):
+        annee = request.query_params.get('annee')
+        try:
+            annee = int(annee) if annee else timezone.now().year
+        except (TypeError, ValueError):
+            annee = timezone.now().year
+
+        rollup = dict(cout_non_qualite(request.user.company, annee))
+        if not getattr(request.user, 'can_view_cout_non_qualite', True):
+            rollup['interne'] = None
+            rollup['externe'] = None
+            rollup['total'] = None
+            rollup['par_mois'] = [
+                {'mois': m['mois'], 'interne': None, 'externe': None}
+                for m in rollup['par_mois']
+            ]
+        else:
+            rollup['interne'] = str(rollup['interne'])
+            rollup['externe'] = str(rollup['externe'])
+            rollup['total'] = str(rollup['total'])
+            rollup['par_mois'] = [
+                {'mois': m['mois'], 'interne': str(m['interne']),
+                 'externe': str(m['externe'])}
+                for m in rollup['par_mois']
+            ]
+        return Response(rollup)

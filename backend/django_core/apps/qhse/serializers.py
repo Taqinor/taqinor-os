@@ -63,6 +63,20 @@ class NonConformiteSerializer(serializers.ModelSerializer):
     disposition_display = serializers.CharField(
         source='get_disposition_display', read_only=True)
 
+    def get_fields(self):
+        fields = super().get_fields()
+        # XQHS22 — les montants de coût de la non-qualité sont une donnée
+        # interne sensible (même règle que `prix_achat`/`marge_pct`) : retirés
+        # complètement pour les rôles sans `cout_non_qualite_voir`.
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if user is not None and not getattr(
+                user, 'can_view_cout_non_qualite', True):
+            fields.pop('cout_disposition', None)
+            fields.pop('cout_estime', None)
+            fields.pop('cout_reel', None)
+        return fields
+
     class Meta:
         model = NonConformite
         fields = [
@@ -75,6 +89,8 @@ class NonConformiteSerializer(serializers.ModelSerializer):
             'disposition_le', 'cout_disposition', 'fournisseur',
             # XQHS4 — code de défaut normalisé (Pareto).
             'code_defaut',
+            # XQHS22 — coût de la non-qualité (interne, gardé par permission).
+            'cout_estime', 'cout_reel',
             'date_creation',
         ]
         read_only_fields = [
@@ -95,13 +111,25 @@ class ActionCorrectivePreventiveSerializer(serializers.ModelSerializer):
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
 
+    def get_fields(self):
+        fields = super().get_fields()
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if user is not None and not getattr(
+                user, 'can_view_cout_non_qualite', True):
+            fields.pop('cout', None)
+        return fields
+
     class Meta:
         model = ActionCorrectivePreventive
         fields = [
             'id', 'non_conformite', 'type_action', 'type_action_display',
             'description', 'cause_racine', 'responsable', 'echeance',
             'statut', 'statut_display', 'efficace', 'commentaire_verification',
-            'date_verification', 'verifiee_par', 'date_creation',
+            'date_verification', 'verifiee_par',
+            # XQHS22 — coût interne (gardé par permission).
+            'cout',
+            'date_creation',
         ]
         read_only_fields = [
             'efficace', 'commentaire_verification', 'date_verification',
@@ -724,6 +752,15 @@ class IncidentSerializer(serializers.ModelSerializer):
         source='declare_par.username', read_only=True, default=None)
     notification_en_retard = serializers.BooleanField(read_only=True)
 
+    def get_fields(self):
+        fields = super().get_fields()
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if user is not None and not getattr(
+                user, 'can_view_cout_non_qualite', True):
+            fields.pop('cout', None)
+        return fields
+
     class Meta:
         model = Incident
         fields = [
@@ -735,6 +772,8 @@ class IncidentSerializer(serializers.ModelSerializer):
             'milieu_touche', 'milieu_touche_display', 'notification_requise',
             'autorite_notifiee', 'date_notification',
             'date_limite_notification', 'notification_en_retard',
+            # XQHS22 — coût interne (gardé par permission).
+            'cout',
             'date_creation',
         ]
         read_only_fields = ['reference', 'declare_par', 'date_creation']

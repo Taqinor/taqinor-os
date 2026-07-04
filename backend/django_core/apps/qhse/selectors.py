@@ -1487,3 +1487,80 @@ def aspects_environnementaux_a_revoir(company, today=None):
         aspect for aspect in qs
         if aspect.date_revue is None or aspect.date_revue <= today
     ]
+
+
+# ── XQHS22 — Coût de la non-qualité (CoQ), interne uniquement ──────────────
+
+def cout_non_qualite(company, annee):
+    """Rollup du coût de la non-qualité (XQHS22), ventilé par catégorie
+    (défaillance interne / défaillance externe / prévention-évaluation) et par
+    mois. Agrégation PURE — aucune mutation. Montants INTERNES uniquement
+    (jamais exposés côté client — gardé par ``cout_non_qualite_voir`` côté vue).
+
+    Catégorisation :
+      * défaillance INTERNE — NCR sans ticket SAV d'origine (chantier/retouche).
+      * défaillance EXTERNE — NCR nées d'un ticket SAV (garantie/panne client)
+        + incidents (déjà survenus, coût de correction).
+      * prévention-évaluation — comptage simple des audits/inspections (pas de
+        coût direct saisi ici : indicateur d'effort, pas un montant).
+
+    Renvoie ``{'annee': int, 'interne': Decimal, 'externe': Decimal,
+    'prevention_evaluation_count': int, 'par_mois': [...], 'total': Decimal}``.
+    """
+    from decimal import Decimal
+
+    from .models import ActionCorrectivePreventive, Audit, Incident, \
+        InspectionSecurite, NonConformite
+
+    interne = Decimal('0')
+    externe = Decimal('0')
+    par_mois = {}
+
+    def _bucket(mois):
+        return par_mois.setdefault(
+            mois, {'mois': mois, 'interne': Decimal('0'), 'externe': Decimal('0')})
+
+    ncrs = NonConformite.objects.filter(
+        company=company, date_creation__year=annee)
+    for ncr in ncrs:
+        cout = ncr.cout_reel if ncr.cout_reel is not None else ncr.cout_estime
+        cout = cout or Decimal('0')
+        est_externe = bool(getattr(ncr, 'ticket_sav_id', None))
+        if est_externe:
+            externe += cout
+        else:
+            interne += cout
+        mois = ncr.date_creation.strftime('%Y-%m')
+        bucket = _bucket(mois)
+        bucket['externe' if est_externe else 'interne'] += cout
+
+    capas = ActionCorrectivePreventive.objects.filter(
+        company=company, date_creation__year=annee)
+    for capa in capas:
+        cout = capa.cout or Decimal('0')
+        interne += cout
+        mois = capa.date_creation.strftime('%Y-%m')
+        _bucket(mois)['interne'] += cout
+
+    incidents = Incident.objects.filter(
+        company=company, date_creation__year=annee)
+    for incident in incidents:
+        cout = incident.cout or Decimal('0')
+        externe += cout
+        mois = incident.date_creation.strftime('%Y-%m')
+        _bucket(mois)['externe'] += cout
+
+    prevention_evaluation_count = (
+        Audit.objects.filter(company=company, date_creation__year=annee).count()
+        + InspectionSecurite.objects.filter(
+            company=company, date_creation__year=annee).count()
+    )
+
+    return {
+        'annee': annee,
+        'interne': interne,
+        'externe': externe,
+        'prevention_evaluation_count': prevention_evaluation_count,
+        'par_mois': [par_mois[k] for k in sorted(par_mois)],
+        'total': interne + externe,
+    }
