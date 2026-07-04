@@ -202,6 +202,23 @@ class Equipement(models.Model):
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
 
+    # ── XSAV17 — entretien conditionnel à l'usage (heures/kWh) ──────────────
+    # Seuil d'usage (heures de pompage OU kWh produits, selon le type de
+    # relevé courant de l'équipement) entre deux entretiens préventifs. NULL
+    # (défaut) = comportement actuel inchangé : l'entretien reste déclenché
+    # UNIQUEMENT par le temps (ContratMaintenance).
+    entretien_toutes_les_heures = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text=('Seuil de compteur (heures ou kWh) entre deux entretiens '
+                   "préventifs. Vide = entretien déclenché par le temps "
+                   "uniquement (comportement actuel)."))
+    # Valeur du compteur au dernier entretien préventif généré par
+    # franchissement de seuil (XSAV17) — sert de référence pour détecter le
+    # PROCHAIN franchissement (anti-doublon, même esprit que
+    # ContratMaintenance.derniere_visite / UnderperformanceFlag.is_open).
+    dernier_entretien_compteur_valeur = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True)
+
     class Meta:
         verbose_name = 'Équipement'
         verbose_name_plural = 'Équipements'
@@ -288,6 +305,49 @@ class Equipement(models.Model):
         if self.equipement_token != token:
             self.equipement_token = token
             self.save(update_fields=['equipement_token'])
+
+
+# ── XSAV17 — Relevés compteur (heures / kWh) ──────────────────────────────────
+
+class ReleveCompteurEquipement(models.Model):
+    """XSAV17 — Relevé de compteur d'usage d'un équipement client, saisi
+    manuellement (heures de pompage ou kWh produits — décisif pour pompes et
+    onduleurs, contrairement au parc entreprise FG341 qui a son propre
+    compteur horaire machine).
+
+    La valeur est CROISSANTE (compteur cumulatif, jamais un delta) : un
+    relevé inférieur au dernier relevé enregistré pour le même équipement
+    est refusé (protection contre une saisie erronée qui ferait « reculer »
+    le compteur et fausserait la détection de franchissement de seuil)."""
+    class Type(models.TextChoices):
+        HEURES = 'heures', 'Heures'
+        KWH = 'kwh', 'kWh'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='releves_compteur_equipement')
+    equipement = models.ForeignKey(
+        'sav.Equipement', on_delete=models.CASCADE,
+        related_name='releves_compteur')
+    type = models.CharField(max_length=10, choices=Type.choices)
+    valeur = models.DecimalField(max_digits=12, decimal_places=2)
+    date = models.DateField()
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Relevé compteur équipement'
+        verbose_name_plural = 'Relevés compteur équipement'
+        ordering = ['-date', '-date_creation']
+        indexes = [
+            models.Index(fields=['company', 'equipement'],
+                         name='sav_releve_co_equip_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.equipement_id} — {self.valeur} {self.type}'
 
 
 # ── Modèle Ticket ─────────────────────────────────────────────────────────────

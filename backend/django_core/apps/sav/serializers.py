@@ -8,7 +8,7 @@ from .models import (
     SavSlaSettings, MaintenanceChecklistTemplate, MaintenanceChecklistItem,
     TicketChecklistItem, WarrantyClaim, KbArticle, AlarmeOnduleur,
     TicketSatisfaction, CauseDefaillance, RemedeDefaillance,
-    EquipementDowntime,
+    EquipementDowntime, ReleveCompteurEquipement,
 )
 
 # Fenêtre « garantie expirant bientôt » (jours).
@@ -411,3 +411,12 @@ class EquipementDowntimeSerializer(serializers.ModelSerializer):
 
     def get_en_cours(self, obj):
         return obj.fin is None
+
+
+# ── XSAV17 — Relevés compteur (heures / kWh) ──────────────────────────────────
+
+class ReleveCompteurEquipementSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ReleveCompteurEquipement
+        fields = ['id', 'equipement', 'type', 'valeur', 'date', 'date_creation']
+        read_only_fields = ['id', 'company', 'created_by', 'date_creation']

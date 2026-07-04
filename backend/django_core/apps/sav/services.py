@@ -265,3 +265,75 @@ def disponibilite_equipement(equipement, *, debut_periode, fin_periode):
         'duree_downtime_heures': round(downtime_heures, 2),
         'disponibilite_pct': disponibilite_pct,
     }
+
+
+# ── XSAV17 — Relevés compteur (heures / kWh) + entretien conditionnel ────────
+
+class ReleveDecroissantError(Exception):
+    """XSAV17 — Levée quand un relevé est INFÉRIEUR au dernier relevé du même
+    équipement (le compteur est cumulatif, jamais décroissant)."""
+
+
+def enregistrer_releve_compteur(*, company, equipement, type_releve, valeur,
+                                date_releve, created_by=None):
+    """XSAV17 — Enregistre un relevé de compteur et, si un seuil
+    (`Equipement.entretien_toutes_les_heures`) est configuré et franchi
+    depuis le dernier entretien généré, matérialise EXACTEMENT UN ticket
+    préventif (idempotent : `dernier_entretien_compteur_valeur` avance
+    aussitôt qu'un ticket est généré, donc un second relevé au-dessus du
+    même seuil — avant le prochain entretien — n'en recrée pas un second).
+
+    Refuse (``ReleveDecroissantError``) un relevé strictement inférieur au
+    dernier relevé DU MÊME TYPE pour cet équipement — le compteur est
+    cumulatif, jamais décroissant. Renvoie ``(releve, ticket_ou_None)``.
+    """
+    from decimal import Decimal
+    from .models import ReleveCompteurEquipement
+
+    valeur = Decimal(str(valeur))
+    dernier = (ReleveCompteurEquipement.objects
+               .filter(equipement=equipement, type=type_releve)
+               .order_by('-valeur').first())
+    if dernier is not None and valeur < dernier.valeur:
+        raise ReleveDecroissantError(
+            'Ce relevé est inférieur au dernier relevé enregistré '
+            f'({dernier.valeur}) — le compteur ne peut pas reculer.')
+
+    releve = ReleveCompteurEquipement.objects.create(
+        company=company, equipement=equipement, type=type_releve,
+        valeur=valeur, date=date_releve, created_by=created_by)
+
+    seuil = equipement.entretien_toutes_les_heures
+    ticket = None
+    if seuil:
+        reference_base = equipement.dernier_entretien_compteur_valeur or Decimal('0')
+        if valeur - reference_base >= seuil:
+            ticket = _generer_ticket_preventif_compteur(
+                company, equipement, type_releve, valeur, created_by)
+            equipement.dernier_entretien_compteur_valeur = valeur
+            equipement.save(
+                update_fields=['dernier_entretien_compteur_valeur'])
+    return releve, ticket
+
+
+def _generer_ticket_preventif_compteur(company, equipement, type_releve,
+                                       valeur, created_by):
+    """XSAV17 — Matérialise le ticket préventif de franchissement de seuil."""
+    from apps.ventes.utils.references import create_with_reference
+    from .models import Ticket
+
+    installation = equipement.installation
+    client = getattr(installation, 'client', None)
+    label = 'heures' if type_releve == 'heures' else 'kWh'
+    description = (
+        f'Entretien préventif dû (seuil de {label} franchi — '
+        f'compteur à {valeur} {label}).')
+
+    def _create(ref):
+        return Ticket.objects.create(
+            reference=ref, company=company, client=client,
+            installation=installation, equipement=equipement,
+            type=Ticket.Type.PREVENTIF, statut=Ticket.Statut.NOUVEAU,
+            date_ouverture=timezone.localdate(), description=description,
+            created_by=created_by)
+    return create_with_reference(Ticket, 'SAV', company, _create)

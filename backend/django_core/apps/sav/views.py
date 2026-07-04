@@ -22,6 +22,7 @@ from .models import (
     SavSlaSettings, MaintenanceChecklistTemplate, TicketChecklistItem,
     WarrantyClaim, KbArticle, AlarmeOnduleur,
     CauseDefaillance, RemedeDefaillance, EquipementDowntime,
+    ReleveCompteurEquipement,
 )
 from .services import add_months
 from .pdf import rapport_intervention_pdf
@@ -35,6 +36,7 @@ from .serializers import (
     AlarmeOnduleurSerializer,
     CauseDefaillanceSerializer, RemedeDefaillanceSerializer,
     EquipementDowntimeSerializer,
+    ReleveCompteurEquipementSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -327,6 +329,54 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
         data = disponibilite_equipement(
             equipement, debut_periode=debut_periode, fin_periode=fin_periode)
         return Response(data)
+
+    @action(detail=True, methods=['get', 'post'], url_path='releves-compteur',
+            permission_classes=[HasPermissionOrLegacy('equipement_gerer')])
+    def releves_compteur(self, request, pk=None):
+        """XSAV17 — Relevés compteur (heures/kWh) de cet équipement.
+
+        GET : historique des relevés (plus récent d'abord). POST : enregistre
+        un relevé (body : ``type`` heures|kwh, ``valeur``, ``date`` AAAA-MM-JJ
+        optionnel — défaut aujourd'hui). Au franchissement du seuil
+        (`entretien_toutes_les_heures`), génère idempotemment UN ticket
+        préventif — renvoyé dans la réponse (``ticket_genere``)."""
+        equipement = self.get_object()
+        if request.method == 'GET':
+            qs = equipement.releves_compteur.all()
+            return Response(ReleveCompteurEquipementSerializer(qs, many=True).data)
+
+        from datetime import date as _date
+        from .services import ReleveDecroissantError, enregistrer_releve_compteur
+
+        type_releve = request.data.get('type')
+        if type_releve not in (
+                ReleveCompteurEquipement.Type.HEURES,
+                ReleveCompteurEquipement.Type.KWH):
+            return Response({'detail': 'type invalide (heures|kwh).'}, status=400)
+        try:
+            valeur = Decimal(str(request.data.get('valeur')))
+        except (InvalidOperation, TypeError):
+            return Response({'detail': 'valeur invalide.'}, status=400)
+
+        date_raw = (request.data.get('date') or '').strip()
+        try:
+            date_releve = _date.fromisoformat(date_raw) if date_raw else timezone.localdate()
+        except ValueError:
+            return Response({'detail': 'date invalide.'}, status=400)
+
+        try:
+            releve, ticket = enregistrer_releve_compteur(
+                company=equipement.company, equipement=equipement,
+                type_releve=type_releve, valeur=valeur,
+                date_releve=date_releve, created_by=request.user)
+        except ReleveDecroissantError as exc:
+            return Response({'detail': str(exc)}, status=400)
+
+        payload = ReleveCompteurEquipementSerializer(releve).data
+        payload['ticket_genere'] = (
+            {'id': ticket.id, 'reference': ticket.reference}
+            if ticket is not None else None)
+        return Response(payload, status=201)
 
 
 class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
