@@ -76,6 +76,8 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
             return [IsResponsableOrAdmin()]
         elif self.action == 'en_retard':
             return [IsAnyRole()]
+        elif self.action == 'bcf_similaires':
+            return [IsAnyRole()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
         return [IsAdminRole()]
@@ -282,6 +284,27 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
         bc.save(update_fields=[
             'date_confirmee_fournisseur', 'numero_confirmation_fournisseur'])
         return Response(self.get_serializer(bc).data)
+
+    @action(detail=False, methods=['get'], url_path='bcf-similaires')
+    def bcf_similaires(self, request):
+        """XPUR11 — panneau « BCF ouverts similaires » : BCF brouillon/envoyé
+        du même fournisseur (optionnellement filtrés aux produits communs).
+        Query params : ``fournisseur`` (requis), ``produits`` (ids séparés
+        par virgule, optionnel). LECTURE SEULE, jamais bloquant."""
+        from ..services import bcf_similaires_ouverts
+        fournisseur_id = request.query_params.get('fournisseur')
+        if not fournisseur_id:
+            return Response(
+                {'detail': 'Le paramètre fournisseur est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        produits_param = request.query_params.get('produits') or ''
+        produit_ids = [
+            int(p) for p in produits_param.split(',') if p.strip().isdigit()
+        ]
+        similaires = bcf_similaires_ouverts(
+            request.user.company, fournisseur_id=fournisseur_id,
+            produit_ids=produit_ids)
+        return Response(similaires)
 
     @action(detail=False, methods=['get'], url_path='en-retard')
     def en_retard(self, request):

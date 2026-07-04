@@ -2570,3 +2570,114 @@ def factures_en_exception(company):
         company=company,
         statut_controle=FactureFournisseur.StatutControle.EXCEPTION,
     ).select_related('fournisseur', 'bon_commande').order_by('-date_creation'))
+
+
+# ── XPUR11 — Détection de doublons facture fournisseur & BCF ────────────────
+# Rien ne détectait une facture saisie deux fois (même référence fournisseur),
+# ni deux BCF ouverts pour le même besoin. Ces fonctions sont des WARNINGS
+# (jamais bloquants) : elles n'empêchent aucune création, elles enrichissent
+# la réponse pour que l'utilisateur puisse voir et confirmer (override tracé
+# en note). Comportement historique inchangé quand rien ne matche.
+
+def detect_facture_fournisseur_doublon(
+        company, *, fournisseur_id, ref_fournisseur=None,
+        montant_ttc=None, date_facture=None, exclude_id=None):
+    """XPUR11 — détecte une facture fournisseur potentiellement déjà saisie.
+
+    Deux règles, en OR (whichever matches) :
+    1. Même (fournisseur, ref_fournisseur non vide) déjà en base.
+    2. Même fournisseur + même montant TTC + date_facture à ±7 jours.
+
+    Renvoie une liste de dicts (matches) — vide si rien ne matche (défaut,
+    comportement historique). LECTURE SEULE, jamais bloquant."""
+    from datetime import timedelta
+    from .models import FactureFournisseur
+
+    if not fournisseur_id:
+        return []
+    qs = FactureFournisseur.objects.filter(
+        company=company, fournisseur_id=fournisseur_id)
+    if exclude_id:
+        qs = qs.exclude(pk=exclude_id)
+
+    matches = {}
+
+    ref = (ref_fournisseur or '').strip()
+    if ref:
+        for f in qs.filter(ref_fournisseur__iexact=ref):
+            matches[f.id] = f
+
+    if montant_ttc is not None and date_facture is not None:
+        try:
+            montant = Decimal(str(montant_ttc))
+        except (InvalidOperation, TypeError, ValueError):
+            montant = None
+        if montant is not None:
+            date_min = date_facture - timedelta(days=7)
+            date_max = date_facture + timedelta(days=7)
+            for f in qs.filter(
+                montant_ttc=montant,
+                date_facture__gte=date_min, date_facture__lte=date_max,
+            ):
+                matches[f.id] = f
+
+    return [
+        {
+            'id': f.id,
+            'reference': f.reference,
+            'ref_fournisseur': f.ref_fournisseur,
+            'montant_ttc': f.montant_ttc,
+            'date_facture': f.date_facture,
+            'statut': f.statut,
+        }
+        for f in matches.values()
+    ]
+
+
+def bcf_similaires_ouverts(company, *, fournisseur_id, produit_ids=None):
+    """XPUR11 — panneau « BCF ouverts similaires » : bons de commande
+    fournisseur BROUILLON/ENVOYE du même fournisseur, éventuellement filtrés
+    aux BCF qui partagent au moins un produit avec ``produit_ids``. LECTURE
+    SEULE, jamais bloquant (aide à la décision avant de créer un nouveau BCF).
+    """
+    from .models import BonCommandeFournisseur
+
+    if not fournisseur_id:
+        return []
+    qs = (BonCommandeFournisseur.objects
+          .filter(company=company, fournisseur_id=fournisseur_id,
+                  statut__in=[BonCommandeFournisseur.Statut.BROUILLON,
+                              BonCommandeFournisseur.Statut.ENVOYE])
+          .prefetch_related('lignes__produit')
+          .order_by('-date_creation'))
+    produit_ids = set(produit_ids or [])
+    out = []
+    for bc in qs:
+        lignes = list(bc.lignes.all())
+        bc_produit_ids = {ligne.produit_id for ligne in lignes}
+        if produit_ids and not (bc_produit_ids & produit_ids):
+            continue
+        out.append({
+            'id': bc.id,
+            'reference': bc.reference,
+            'statut': bc.statut,
+            'date_creation': bc.date_creation,
+            'produits_communs': len(bc_produit_ids & produit_ids)
+            if produit_ids else 0,
+            'nombre_lignes': len(lignes),
+        })
+    return out
+
+
+def log_doublon_override(*, user, instance, detail):
+    """XPUR11 — trace (best-effort, jamais bloquant) qu'un utilisateur a
+    confirmé la création malgré un warning de doublon. Utilise l'audit
+    logger existant (apps.audit) ; un échec de journalisation ne casse
+    jamais la création elle-même."""
+    try:
+        from apps.audit.recorder import record
+        from apps.audit.models import AuditLog
+        record(AuditLog.Action.CREATE, instance=instance,
+               user=user, detail=detail)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.info('doublon override (audit indisponible): %s', detail)

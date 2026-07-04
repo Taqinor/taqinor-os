@@ -95,6 +95,48 @@ class FactureFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
             )
         create_with_reference(FactureFournisseur, 'FF', company, _save)
 
+    def create(self, request, *args, **kwargs):
+        # XPUR11 — WARNING (non bloquant) de doublon : même fournisseur +
+        # même ref_fournisseur, ou même montant TTC ± 7 jours. La création
+        # n'est jamais empêchée ; un override est journalisé (best-effort)
+        # quand le corps porte `confirmer_malgre_doublon`.
+        from ..services import (
+            detect_facture_fournisseur_doublon, log_doublon_override,
+        )
+        doublons = []
+        fournisseur_id = request.data.get('fournisseur')
+        if fournisseur_id:
+            from datetime import date as _date
+            date_facture = request.data.get('date_facture')
+            if isinstance(date_facture, str):
+                try:
+                    date_facture = _date.fromisoformat(date_facture)
+                except ValueError:
+                    date_facture = None
+            doublons = detect_facture_fournisseur_doublon(
+                request.user.company,
+                fournisseur_id=fournisseur_id,
+                ref_fournisseur=request.data.get('ref_fournisseur'),
+                montant_ttc=request.data.get('montant_ttc'),
+                date_facture=date_facture,
+            )
+        response = super().create(request, *args, **kwargs)
+        if response.status_code == status.HTTP_201_CREATED and doublons:
+            response.data['doublon_warning'] = doublons
+            if request.data.get('confirmer_malgre_doublon'):
+                try:
+                    facture = FactureFournisseur.objects.get(
+                        pk=response.data['id'])
+                    log_doublon_override(
+                        user=request.user, instance=facture,
+                        detail=(
+                            f'Facture fournisseur {facture.reference} créée '
+                            f'malgré {len(doublons)} doublon(s) potentiel(s) '
+                            '(override confirmé).'))
+                except Exception:  # noqa: BLE001 — best-effort
+                    pass
+        return response
+
     @action(detail=False, methods=['get'], url_path='comptes-a-payer')
     def comptes_a_payer(self, request):
         """Liste des factures fournisseur NON soldées (à payer ou
