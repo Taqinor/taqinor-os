@@ -846,6 +846,9 @@ class FactureFournisseurSerializer(serializers.ModelSerializer):
     # lignes. Vide si la facture n'a pas de lignes ventilées (comportement
     # historique inchangé : montant_tva global reste la source de vérité).
     sous_totaux_par_taux = serializers.SerializerMethodField()
+    # XPUR26 — e-facturation DGI 2026 (entrant, préparation mandat).
+    statut_conformite_dgi_display = serializers.CharField(
+        source='get_statut_conformite_dgi_display', read_only=True)
 
     class Meta:
         model = FactureFournisseur
@@ -861,16 +864,21 @@ class FactureFournisseurSerializer(serializers.ModelSerializer):
             'resolu_par', 'resolu_par_username', 'resolu_le',
             'lignes', 'paiements', 'echeances', 'total_paye', 'solde_du',
             'sous_totaux_par_taux',
+            'numero_clearance_dgi', 'statut_conformite_dgi',
+            'statut_conformite_dgi_display',
         ]
         # company + reference + statut + created_by sont posés côté serveur.
         # Le statut découle des paiements (recompute_facture_fournisseur_statut).
         # statut_controle/motif_ecart/resolu_par/resolu_le sont posés
         # UNIQUEMENT par evaluate_facture_exception / resoudre_exception_facture
         # (XPUR10) — jamais en écriture libre sur le document.
+        # numero_clearance_dgi/statut_conformite_dgi (XPUR26) sont posés
+        # UNIQUEMENT par l'import UBL — jamais en écriture libre.
         read_only_fields = [
             'reference', 'statut', 'created_by', 'date_creation',
             'date_mise_a_jour', 'statut_controle', 'motif_ecart',
             'resolu_par', 'resolu_le',
+            'numero_clearance_dgi', 'statut_conformite_dgi',
         ]
 
     def get_sous_totaux_par_taux(self, obj):

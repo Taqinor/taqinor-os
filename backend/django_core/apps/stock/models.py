@@ -340,6 +340,11 @@ class AchatsParametres(models.Model):
         max_digits=5, decimal_places=2, default=0,
         help_text='Écart %% (vs dernier prix/prix moyen) déclenchant un '
                   'warning sur une ligne de BCF. 0 = désactivé.')
+    # XPUR26 — préparation mandat e-facturation DGI 2026 (ENTRANT). Quand
+    # actif, l'import d'un fichier UBL 2.1 crée une FactureFournisseur
+    # BROUILLON pré-remplie. OFF par défaut = total no-op, aucun appel
+    # externe (la validation plateforme DGI réelle attendra le mandat).
+    einvoicing_entrant_actif = models.BooleanField(default=False)
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
 
@@ -1283,6 +1288,23 @@ class FactureFournisseur(models.Model):
         max_length=12, choices=StatutControle.choices,
         default=StatutControle.NORMALE)
     motif_ecart = models.TextField(blank=True, null=True)
+
+    # ── XPUR26 — e-facturation DGI 2026 (ENTRANT, préparation mandat) ───────
+    # Un import UBL 2.1 pré-remplit ces champs ; une facture saisie
+    # manuellement reste `non_applicable` (comportement historique). AUCUN
+    # appel externe ici — la validation plateforme réelle attendra le mandat.
+    class StatutConformiteDgi(models.TextChoices):
+        NON_APPLICABLE = 'non_applicable', 'Non applicable'
+        CLEARED = 'cleared', 'Validée (clearance DGI)'
+        NON_CLEARED = 'non_cleared', 'Non validée'
+
+    numero_clearance_dgi = models.CharField(
+        max_length=100, blank=True, null=True,
+        help_text="Numéro de clearance DGI (e-invoicing entrant, si fourni "
+                  'par le document UBL).')
+    statut_conformite_dgi = models.CharField(
+        max_length=20, choices=StatutConformiteDgi.choices,
+        default=StatutConformiteDgi.NON_APPLICABLE)
     resolu_par = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
         blank=True, related_name='factures_fournisseur_resolues')

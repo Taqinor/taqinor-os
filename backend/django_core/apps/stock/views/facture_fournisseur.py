@@ -70,7 +70,7 @@ class FactureFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'paiements', 'echeancier', 'resoudre_exception',
-            'depuis_ocr',
+            'depuis_ocr', 'depuis_ubl',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'releve_deductions_tva':
@@ -190,6 +190,43 @@ class FactureFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
         if doublons:
             data['doublon_warning'] = doublons
         return Response(data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'], url_path='depuis-ubl',
+            parser_classes=[MultiPartParser, JSONParser])
+    def depuis_ubl(self, request):
+        """XPUR26 — préparation mandat DGI 2026 (e-facturation ENTRANTE) :
+        parse un fichier UBL 2.1 (corps multipart, clé ``file``) et crée une
+        `FactureFournisseur` BROUILLON pré-remplie (fournisseur matché par
+        ICE, lignes, TVA, numéro de clearance DGI). Total no-op (400) tant
+        que ``AchatsParametres.einvoicing_entrant_actif`` est OFF (défaut) —
+        aucune régression pour les sociétés qui n'ont pas activé le flag."""
+        from ..models import AchatsParametres
+        from ..services import creer_facture_fournisseur_depuis_ubl
+
+        parametres = AchatsParametres.for_company(request.user.company)
+        if not parametres.einvoicing_entrant_actif:
+            return Response(
+                {'detail': "L'e-facturation entrante (UBL) n'est pas "
+                           'activée pour cette société.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        upload = request.FILES.get('file')
+        if upload is None:
+            return Response(
+                {'detail': 'Fichier UBL manquant (champ « file »).'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            facture = creer_facture_fournisseur_depuis_ubl(
+                company=request.user.company, user=request.user,
+                xml_bytes=upload.read())
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(
+            self.get_serializer(facture).data,
+            status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['get'], url_path='releve-deductions-tva')
     def releve_deductions_tva(self, request):

@@ -3879,3 +3879,186 @@ def export_analyse_achats_xlsx(
 
     return build_xlsx_response(
         'analyse-achats.xlsx', headers, rows, sheet_title='Analyse achats')
+
+
+# ── XPUR26 — e-facturation DGI 2026, réception ENTRANTE (préparation mandat)
+# Parseur stdlib (xml.etree) d'un fichier UBL 2.1 Invoice : AUCUN appel
+# externe, AUCUNE dépendance nouvelle. La validation plateforme DGI réelle
+# attendra le mandat — ici on ne fait que produire une FactureFournisseur
+# BROUILLON pré-remplie. Total no-op quand
+# `AchatsParametres.einvoicing_entrant_actif` est OFF (défaut).
+_UBL_NS = {
+    'inv': 'urn:oasis:names:specification:ubl:schema:xsd:Invoice-2',
+    'cac': 'urn:oasis:names:specification:ubl:schema:xsd:'
+           'CommonAggregateComponents-2',
+    'cbc': 'urn:oasis:names:specification:ubl:schema:xsd:'
+           'CommonBasicComponents-2',
+}
+
+
+def parse_ubl_invoice(xml_bytes):
+    """XPUR26 — parse un fichier UBL 2.1 Invoice (stdlib xml.etree, jamais
+    d'appel réseau). Renvoie un dict de champs :
+    ``numero``, ``date_facture``, ``date_echeance``, ``ice_fournisseur``,
+    ``nom_fournisseur``, ``montant_ht``, ``montant_tva``, ``montant_ttc``,
+    ``numero_clearance_dgi``, ``lignes`` (liste de
+    ``{designation, quantite, prix_unitaire_ht, taux_tva}``).
+    Lève ``ValueError`` si le XML est illisible ou n'est pas une facture UBL
+    reconnaissable (jamais de valeur inventée pour un champ absent)."""
+    import xml.etree.ElementTree as ET
+
+    try:
+        root = ET.fromstring(xml_bytes)
+    except ET.ParseError as exc:
+        raise ValueError(f'Fichier UBL illisible : {exc}') from exc
+
+    def _find(elem, path):
+        return elem.find(path, _UBL_NS)
+
+    def _text(elem, path):
+        node = _find(elem, path)
+        return node.text.strip() if node is not None and node.text else None
+
+    numero = _text(root, 'cbc:ID')
+    if not numero:
+        raise ValueError(
+            "Fichier UBL invalide : identifiant de facture (cbc:ID) absent.")
+    date_facture = _text(root, 'cbc:IssueDate')
+    date_echeance = _text(root, 'cbc:DueDate')
+    numero_clearance_dgi = (
+        _text(root, 'cbc:UUID') or _text(root, 'cbc:LineID'))
+
+    supplier_party = _find(
+        root, 'cac:AccountingSupplierParty/cac:Party')
+    ice_fournisseur = None
+    nom_fournisseur = None
+    if supplier_party is not None:
+        nom_fournisseur = _text(
+            supplier_party, 'cac:PartyName/cbc:Name') or _text(
+            supplier_party,
+            'cac:PartyLegalEntity/cbc:RegistrationName')
+        for scheme in supplier_party.findall(
+                'cac:PartyTaxScheme', _UBL_NS) or []:
+            company_id = _text(scheme, 'cbc:CompanyID')
+            if company_id:
+                ice_fournisseur = company_id
+                break
+        if not ice_fournisseur:
+            ice_fournisseur = _text(
+                supplier_party,
+                'cac:PartyLegalEntity/cbc:CompanyID')
+
+    def _dec_text(elem, path):
+        val = _text(elem, path)
+        if val is None:
+            return None
+        try:
+            return Decimal(val)
+        except (InvalidOperation, TypeError, ValueError):
+            return None
+
+    montant_ht = _dec_text(
+        root, 'cac:LegalMonetaryTotal/cbc:TaxExclusiveAmount')
+    montant_ttc = _dec_text(
+        root, 'cac:LegalMonetaryTotal/cbc:TaxInclusiveAmount')
+    montant_tva = _dec_text(root, 'cac:TaxTotal/cbc:TaxAmount')
+    if montant_tva is None and montant_ht is not None \
+            and montant_ttc is not None:
+        montant_tva = montant_ttc - montant_ht
+
+    lignes = []
+    for line in root.findall('cac:InvoiceLine', _UBL_NS) or []:
+        designation = _text(
+            line, 'cac:Item/cbc:Name') or _text(line, 'cbc:Note') or ''
+        quantite = _dec_text(line, 'cbc:InvoicedQuantity') or Decimal('1')
+        prix_unitaire_ht = _dec_text(line, 'cac:Price/cbc:PriceAmount')
+        if prix_unitaire_ht is None:
+            total_ligne = _dec_text(line, 'cbc:LineExtensionAmount')
+            prix_unitaire_ht = (
+                (total_ligne / quantite)
+                if total_ligne is not None and quantite else Decimal('0'))
+        taux_tva = _dec_text(
+            line, 'cac:Item/cac:ClassifiedTaxCategory/cbc:Percent')
+        lignes.append({
+            'designation': designation,
+            'quantite': quantite,
+            'prix_unitaire_ht': prix_unitaire_ht or Decimal('0'),
+            'taux_tva': taux_tva,
+        })
+
+    return {
+        'numero': numero,
+        'date_facture': date_facture,
+        'date_echeance': date_echeance,
+        'ice_fournisseur': ice_fournisseur,
+        'nom_fournisseur': nom_fournisseur,
+        'montant_ht': montant_ht,
+        'montant_tva': montant_tva,
+        'montant_ttc': montant_ttc,
+        'numero_clearance_dgi': numero_clearance_dgi,
+        'lignes': lignes,
+    }
+
+
+def creer_facture_fournisseur_depuis_ubl(*, company, user, xml_bytes):
+    """XPUR26 — crée une `FactureFournisseur` BROUILLON depuis un fichier UBL
+    2.1 (fournisseur matché par ICE — réutilise `match_fournisseur_from_ocr`
+    XACC36 —, lignes, taux TVA, référence). Statut de conformité DGI posé à
+    `cleared` si un numéro de clearance est présent dans le document, sinon
+    `non_cleared` (aucune validation plateforme réelle : préparation mandat
+    uniquement). Lève ValueError si aucun fournisseur ne matche ou le XML est
+    invalide. Renvoie la facture créée."""
+    from datetime import date as _date
+    from .models import FactureFournisseur, LigneFactureFournisseur
+
+    fields = parse_ubl_invoice(xml_bytes)
+
+    fournisseur = match_fournisseur_from_ocr(company, {
+        'ice': fields.get('ice_fournisseur'),
+        'fournisseur': fields.get('nom_fournisseur'),
+    })
+    if fournisseur is None:
+        raise ValueError(
+            'Aucun fournisseur trouvé pour ce document UBL (ICE ou nom) — '
+            'saisie manuelle requise.')
+
+    def _parsed_date(val):
+        if not val:
+            return None
+        try:
+            return _date.fromisoformat(str(val)[:10])
+        except ValueError:
+            return None
+
+    numero_clearance = fields.get('numero_clearance_dgi')
+    statut_dgi = (
+        FactureFournisseur.StatutConformiteDgi.CLEARED if numero_clearance
+        else FactureFournisseur.StatutConformiteDgi.NON_CLEARED)
+
+    def _save(ref):
+        facture = FactureFournisseur.objects.create(
+            company=company, reference=ref, fournisseur=fournisseur,
+            ref_fournisseur=fields.get('numero'),
+            date_facture=_parsed_date(fields.get('date_facture')),
+            date_echeance=_parsed_date(fields.get('date_echeance')),
+            montant_ht=fields.get('montant_ht') or Decimal('0'),
+            montant_tva=fields.get('montant_tva') or Decimal('0'),
+            montant_ttc=fields.get('montant_ttc') or Decimal('0'),
+            numero_clearance_dgi=numero_clearance,
+            statut_conformite_dgi=statut_dgi,
+            created_by=user,
+            note='Brouillon créé automatiquement depuis un import UBL '
+                 '2.1 (e-facturation entrante).',
+        )
+        for ligne in fields.get('lignes') or []:
+            LigneFactureFournisseur.objects.create(
+                facture=facture,
+                designation=ligne['designation'] or 'Ligne UBL',
+                quantite=ligne['quantite'],
+                prix_unitaire_ht=ligne['prix_unitaire_ht'],
+                taux_tva=ligne.get('taux_tva'),
+            )
+        return facture
+
+    from apps.ventes.utils.references import create_with_reference
+    return create_with_reference(FactureFournisseur, 'FF', company, _save)
