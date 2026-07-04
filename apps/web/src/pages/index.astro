@@ -435,7 +435,7 @@ const engineeringPillars = [
                   z-index au-dessus du lien étiré. */}
               <button
                 type="button"
-                class="gallery-zoom-btn absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-nuit/70 text-white backdrop-blur-sm transition-colors hover:bg-nuit/90"
+                class="gallery-zoom-btn absolute end-3 top-3 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-nuit/70 text-white backdrop-blur-sm transition-colors hover:bg-nuit/90"
                 aria-label={`Agrandir la photo : ${g.ville}, ${g.kwc}${g.prod ? `, ${g.prod}` : ''}`}
                 data-lightbox-open
                 data-name={g.name}
@@ -768,7 +768,7 @@ const engineeringPillars = [
         production). Reduced-motion : la transition CSS est gated ci-dessous. */}
     <dialog id="gallery-lightbox" class="gallery-lightbox" aria-label="Photo agrandie">
       <button type="button" class="gallery-lightbox-close" data-lightbox-close aria-label="Fermer">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M6 6l12 12M18 6 6 18" />
         </svg>
       </button>
@@ -872,12 +872,12 @@ const engineeringPillars = [
   }
   .gallery-lightbox-close {
     position: absolute;
-    top: 0.6rem;
-    right: 0.6rem;
+    top: max(0.6rem, env(safe-area-inset-top));
+    inset-inline-end: max(0.6rem, env(safe-area-inset-right));
     z-index: 1;
     display: flex;
-    height: 2.25rem;
-    width: 2.25rem;
+    height: 2.75rem;
+    width: 2.75rem;
     align-items: center;
     justify-content: center;
     border-radius: 9999px;
