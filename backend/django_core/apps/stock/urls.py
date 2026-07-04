@@ -11,7 +11,7 @@ from .views import (
     DocumentConformiteFournisseurViewSet, AchatsParametresViewSet,
     ContactFournisseurViewSet, CategorieFournisseurViewSet,
     AcompteFournisseurViewSet, AvoirFournisseurViewSet,
-    LotEntrepotViewSet,
+    LotEntrepotViewSet, InventaireAnnuelViewSet,
 )
 
 router = DefaultRouter()
@@ -41,6 +41,7 @@ router.register(r'categories-fournisseur', CategorieFournisseurViewSet)
 router.register(r'acomptes-fournisseur', AcompteFournisseurViewSet)
 router.register(r'avoirs-fournisseur', AvoirFournisseurViewSet)
 router.register(r'lots-entrepot', LotEntrepotViewSet)
+router.register(r'inventaires-annuels', InventaireAnnuelViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

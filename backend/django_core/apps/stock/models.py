@@ -1868,6 +1868,43 @@ class LigneInventaire(models.Model):
         return self.quantite_comptee - self.quantite_theorique
 
 
+# ── XSTK13 — Inventaire annuel légal (CGNC), figé et immuable ────────────────
+
+class InventaireAnnuel(models.Model):
+    """XSTK13 — snapshot IMMUABLE de la valorisation du stock au 31/12 d'un
+    exercice comptable (CGNC : support du bilan, contrôle fiscal).
+
+    ``donnees`` porte le snapshot complet (même forme que
+    ``services.valorisation_a_date``) : une fois créé, un enregistrement
+    n'est plus jamais modifié (le service refuse un second figement pour le
+    même exercice+société). INTERNE — jamais client-facing."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='inventaires_annuels')
+    exercice = models.PositiveIntegerField(
+        help_text='Année de l\'exercice comptable (ex. 2026).')
+    date_reference = models.DateField(
+        help_text='Date de référence du figement (31/12 de l\'exercice).')
+    total_valeur = models.DecimalField(max_digits=16, decimal_places=2)
+    nb_lignes = models.PositiveIntegerField(default=0)
+    donnees = models.JSONField(
+        help_text='Snapshot complet et immuable de la valorisation.')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='inventaires_annuels_crees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Inventaire annuel'
+        verbose_name_plural = 'Inventaires annuels'
+        ordering = ['-exercice']
+        unique_together = [('company', 'exercice')]
+
+    def __str__(self):
+        return f'Inventaire {self.exercice} ({self.company_id})'
+
+
 # ── FG66 / DC36 — Kit / nomenclature (BOM) vendable ───────────────────────────
 
 class KitProduit(models.Model):

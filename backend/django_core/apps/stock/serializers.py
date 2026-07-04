@@ -14,7 +14,7 @@ from .models import (
     EcheanceFactureFournisseur, AcompteFournisseur,
     AvoirFournisseur, ImputationAvoirFournisseur,
     PalierPrixFournisseur, PortailFournisseurToken,
-    LotEntrepot,
+    LotEntrepot, InventaireAnnuel,
 )
 
 
@@ -1290,5 +1290,18 @@ class LotEntrepotSerializer(serializers.ModelSerializer):
             'emplacement', 'emplacement_nom', 'quantite_recue',
             'quantite_restante', 'reference_reception', 'est_perime',
             'date_creation', 'date_modification',
+        ]
+        read_only_fields = fields
+
+
+class InventaireAnnuelSerializer(serializers.ModelSerializer):
+    """XSTK13 — inventaire annuel légal FIGÉ (LECTURE SEULE — créé
+    uniquement par l'action `figer`, jamais modifié ensuite)."""
+
+    class Meta:
+        model = InventaireAnnuel
+        fields = [
+            'id', 'exercice', 'date_reference', 'total_valeur', 'nb_lignes',
+            'donnees', 'date_creation',
         ]
         read_only_fields = fields

@@ -638,6 +638,119 @@ def export_valorisation_xlsx(company):
         sheet_title='Valorisation')
 
 
+# ── XSTK13 — Valorisation À DATE (as-of) + inventaire annuel légal (CGNC) ────
+# `stock_valuation_by_location` valorise l'INSTANT présent. Le CGNC exige un
+# état d'inventaire valorisé PAR EXERCICE (support du bilan, contrôle fiscal) :
+# on reconstruit la quantité de chaque produit à une date passée depuis
+# l'historique des `MouvementStock` (dernier `quantite_apres` <= date), et le
+# coût moyen d'achat AVEC LES SEULES réceptions antérieures ou égales à cette
+# date (même formule débarquée que `average_cost_with_source`, bornée dans le
+# temps). INTERNE — jamais client-facing.
+
+def _quantite_produit_a_date(produit, date):
+    """Dernière `quantite_apres` connue du produit à la date donnée (incluse).
+
+    Aucun mouvement <= date -> 0 (le produit n'existait pas encore en stock à
+    cette date, comportement conservateur)."""
+    from .models import MouvementStock
+    mvt = (MouvementStock.objects
+           .filter(produit=produit, date__date__lte=date)
+           .order_by('-date', '-id').first())
+    return mvt.quantite_apres if mvt is not None else 0
+
+
+def _cout_moyen_produit_a_date(produit, date):
+    """Coût moyen d'achat débarqué du produit, en ne comptant QUE les
+    réceptions de BCF dont le bon de commande est daté <= date (cf.
+    `average_cost_with_source`, borné dans le temps). Repli catalogue si
+    aucun achat reçu avant cette date."""
+    from .models import LigneBonCommandeFournisseur
+    lignes = (LigneBonCommandeFournisseur.objects
+              .filter(produit=produit, quantite_recue__gt=0,
+                      bon_commande__date_creation__date__lte=date)
+              .values_list('quantite_recue', 'prix_achat_unitaire',
+                           'quantite', 'frais_annexes'))
+    total_q, total_v = 0, Decimal('0')
+    for q_recue, pu, q_ligne, frais in lignes:
+        pu = pu or Decimal('0')
+        frais = frais or Decimal('0')
+        if q_ligne and frais:
+            pu = pu + (frais / Decimal(str(q_ligne)))
+        total_q += q_recue
+        total_v += q_recue * pu
+    if total_q:
+        return (total_v / total_q).quantize(Decimal('0.01')), 'achats'
+    return (produit.prix_achat or Decimal('0')), 'catalogue'
+
+
+def valorisation_a_date(company, date):
+    """XSTK13 — valorisation du stock reconstruite À UNE DATE PASSÉE.
+
+    Renvoie {date, total, lignes:[{produit_id, sku, designation, quantite,
+    cout_moyen, valeur, source}]} — une ligne par produit dont la quantité
+    reconstruite à `date` est non nulle. INTERNE (admin) — jamais
+    client-facing."""
+    from .models import Produit
+    produits = Produit.objects.filter(company=company)
+    lignes = []
+    total = Decimal('0')
+    for p in produits:
+        quantite = _quantite_produit_a_date(p, date)
+        if quantite == 0:
+            continue
+        cout, source = _cout_moyen_produit_a_date(p, date)
+        valeur = (cout * quantite).quantize(Decimal('0.01'))
+        total += valeur
+        lignes.append({
+            'produit_id': p.id, 'sku': p.sku or '', 'designation': p.nom,
+            'quantite': quantite, 'cout_moyen': cout, 'valeur': valeur,
+            'source': source,
+        })
+    lignes.sort(key=lambda x: x['designation'].lower())
+    return {'date': date.isoformat() if hasattr(date, 'isoformat') else str(date),
+            'total': total, 'lignes': lignes}
+
+
+def figer_inventaire_annuel(company, exercice, user):
+    """XSTK13 — fige l'inventaire de l'exercice : archive un snapshot complet
+    et IMMUABLE de la valorisation au dernier jour de l'exercice (31/12).
+
+    Un `InventaireAnnuel` déjà figé pour cet exercice+société lève ValueError
+    (jamais deux figements pour le même exercice, jamais de ré-écriture)."""
+    import datetime
+    from .models import InventaireAnnuel
+    if InventaireAnnuel.objects.filter(
+            company=company, exercice=exercice).exists():
+        raise ValueError(
+            f"L'exercice {exercice} est déjà figé pour cette société.")
+    date_fin = datetime.date(exercice, 12, 31)
+    data = valorisation_a_date(company, date_fin)
+    return InventaireAnnuel.objects.create(
+        company=company, exercice=exercice,
+        date_reference=date_fin,
+        total_valeur=data['total'],
+        nb_lignes=len(data['lignes']),
+        donnees=data,
+        created_by=user,
+    )
+
+
+def export_inventaire_annuel_xlsx(inventaire):
+    """Export .xlsx de l'inventaire annuel FIGÉ (relit son snapshot JSON
+    immuable — jamais recalculé après figement). INTERNE."""
+    from apps.records.xlsx import build_xlsx_response
+    rows = [[
+        ligne['designation'], ligne['sku'], ligne['quantite'],
+        str(ligne['cout_moyen']), str(ligne['valeur']),
+        _SOURCE_LABELS.get(ligne.get('source'), ''),
+    ] for ligne in inventaire.donnees.get('lignes', [])]
+    return build_xlsx_response(
+        f'inventaire-{inventaire.exercice}.xlsx',
+        ['Produit', 'SKU', 'Quantité', 'Coût moyen (HT)', 'Valeur (HT)',
+         'Source du coût'],
+        rows, sheet_title=f'Inventaire {inventaire.exercice}')
+
+
 # ── XSTK8 — Contrôle du stock négatif (garde configurable) ──────────────────
 # Seul `transfer_stock` refusait une quantité insuffisante ; les AUTRES
 # chemins d'écriture (sorties chantier assemblage, retours fournisseur) ne

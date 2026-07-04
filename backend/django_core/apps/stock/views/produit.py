@@ -185,6 +185,24 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
         from ..services import export_valorisation_xlsx
         return export_valorisation_xlsx(request.user.company)
 
+    @action(detail=False, methods=['get'], url_path='valorisation-a-date',
+            permission_classes=[IsAdminRole])
+    def valorisation_date(self, request):
+        """XSTK13 — valorisation du stock reconstruite à une date passée
+        (CGNC). Paramètre requis : ``date`` (YYYY-MM-DD). INTERNE (admin)."""
+        from datetime import datetime
+        from ..services import valorisation_a_date
+        raw = request.query_params.get('date')
+        if not raw:
+            return Response({'detail': 'Paramètre "date" requis (YYYY-MM-DD).'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            date = datetime.strptime(raw, '%Y-%m-%d').date()
+        except ValueError:
+            return Response({'detail': 'Date invalide (attendu YYYY-MM-DD).'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(valorisation_a_date(request.user.company, date))
+
     @action(detail=True, methods=['get'], url_path='prix-fournisseurs',
             permission_classes=[IsAnyRole])
     def prix_fournisseurs(self, request, *args, **kwargs):

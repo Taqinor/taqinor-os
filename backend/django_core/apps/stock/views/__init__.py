@@ -29,6 +29,7 @@ from .conformite_fournisseur import (
 from .acompte_fournisseur import AcompteFournisseurViewSet
 from .avoir_fournisseur import AvoirFournisseurViewSet
 from .lot_entrepot import LotEntrepotViewSet
+from .inventaire_annuel import InventaireAnnuelViewSet
 
 __all__ = [
     'ProduitViewSet',
@@ -55,4 +56,5 @@ __all__ = [
     'AcompteFournisseurViewSet',
     'AvoirFournisseurViewSet',
     'LotEntrepotViewSet',
+    'InventaireAnnuelViewSet',
 ]
