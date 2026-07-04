@@ -197,6 +197,72 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
             ProjetSerializer(resultat['projet']).data,
             status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=['post'], url_path='generer-plan-ia')
+    def generer_plan_ia(self, request, pk=None):
+        """Propose un brouillon de WBS via l'IA depuis un devis lié (XPRJ29).
+
+        Corps : ``devis_id`` (obligatoire), ``type_installation`` (optionnel,
+        défaut ``residentiel``). Key-gated sur la clé LLM existante
+        (``GROQ_API_KEY``/provider) — SANS clé, réponse 503 propre (aucune
+        écriture). Ne matérialise RIEN : renvoie la PROPOSITION JSON, à
+        matérialiser via ``confirmer-plan-ia`` après relecture utilisateur.
+        La société est garantie par ``get_object`` (queryset scopé société) :
+        un projet d'une autre société → 404. Un devis d'une autre société,
+        inexistant ou non ACCEPTÉ → 404.
+        """
+        from apps.ventes.selectors import devis_pour_projet
+
+        projet = self.get_object()
+        devis_id = request.data.get('devis_id')
+        if not devis_id:
+            return Response(
+                {'devis_id': 'devis_id est obligatoire.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        devis_data = devis_pour_projet(devis_id, projet.company)
+        if devis_data is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        type_installation = request.data.get(
+            'type_installation', 'residentiel')
+        try:
+            plan = services.proposer_plan_taches_ia(
+                devis_data, type_installation, user=request.user)
+        except services.PlanTachesIAIndisponible as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        except services.PlanTachesIAError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(plan)
+
+    @action(detail=True, methods=['post'], url_path='confirmer-plan-ia')
+    def confirmer_plan_ia(self, request, pk=None):
+        """Matérialise un plan de tâches PROPOSÉ après confirmation (XPRJ29).
+
+        Corps : ``taches`` (liste, forme ``{code, libelle, phase,
+        duree_jours, dependances_fs}`` — celle renvoyée par
+        ``generer-plan-ia``, éventuellement éditée par l'utilisateur avant
+        confirmation). Action EXPLICITE utilisateur : jamais automatique.
+        Crée phases/tâches/dépendances (voir ``services.
+        materialiser_plan_taches``). La société est garantie par
+        ``get_object`` : un projet d'une autre société → 404.
+        """
+        projet = self.get_object()
+        taches = request.data.get('taches')
+        if not isinstance(taches, list) or not taches:
+            return Response(
+                {'taches': 'Une liste de tâches non vide est obligatoire.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            creees = services.materialiser_plan_taches(
+                projet, {'taches': taches})
+        except services.PlanTachesIAError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            TacheSerializer(creees, many=True).data,
+            status=status.HTTP_201_CREATED)
+
     # ── Machine à états (PROPRE au projet, jamais STAGES.py) ─────────────────
     def _transition(self, request, *, allowed_from, target):
         """Applique une transition de statut si elle est légale, sinon 400.

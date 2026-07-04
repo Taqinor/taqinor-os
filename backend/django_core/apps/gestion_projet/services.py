@@ -1672,3 +1672,197 @@ def journaliser_modification_jalon(jalon, anciennes_valeurs, *, auteur):
             new_value=_valeur_str(apres),
             auteur=auteur,
         )
+
+
+# ── Génération IA d'un plan de tâches depuis le devis (XPRJ29) ──────────────
+class PlanTachesIAError(Exception):
+    """Erreur métier lors de la génération/matérialisation du plan IA."""
+
+
+class PlanTachesIAIndisponible(PlanTachesIAError):
+    """Levée quand le service IA (FastAPI, key-gated) est indisponible."""
+
+
+def _fastapi_internal_url():
+    """URL interne du service FastAPI IA (même convention que ``apps.chat``/
+    ``apps.crm.intake_photo``)."""
+    import os
+
+    from django.conf import settings
+
+    base = (getattr(settings, 'FASTAPI_INTERNAL_URL', '')
+            or os.environ.get('FASTAPI_INTERNAL_URL', '')
+            or 'http://fastapi_ia:8001/api/fastapi')
+    return base.rstrip('/') + '/projets/generer-plan'
+
+
+def _service_token_for(user):
+    """Jeton JWT court pour relayer l'auth vers FastAPI (même motif que
+    ``apps.crm.intake_photo._service_token_for``)."""
+    if user is None:
+        return ''
+    try:
+        from rest_framework_simplejwt.tokens import AccessToken
+        return str(AccessToken.for_user(user))
+    except Exception:  # pragma: no cover - défensif
+        return ''
+
+
+def proposer_plan_taches_ia(devis_data, type_installation, *, user=None):
+    """Propose un brouillon de plan de tâches (WBS) via le service IA (XPRJ29).
+
+    ``devis_data`` provient EXCLUSIVEMENT de ``apps.ventes.selectors.
+    devis_pour_projet`` (jamais un import de ``ventes.models`` — frontière
+    cross-app). Délègue au service FastAPI ``POST /projets/generer-plan``
+    (key-gated sur ``GROQ_API_KEY``/provider équivalent). AUCUNE écriture :
+    pure proposition JSON, à matérialiser explicitement APRÈS confirmation
+    utilisateur via ``materialiser_plan_taches``.
+
+    Lève ``PlanTachesIAIndisponible`` (503 côté vue) si le service IA renvoie
+    503 (clé absente) ou est injoignable ; ``PlanTachesIAError`` (400 côté vue)
+    si la réponse est invalide (502 FastAPI ou payload inattendu).
+    """
+    import requests
+
+    url = _fastapi_internal_url()
+    token = _service_token_for(user)
+    headers = {'Authorization': f'Bearer {token}'} if token else {}
+    payload = {
+        'devis': {
+            'id': devis_data.get('id'),
+            'montant_materiel': float(devis_data.get('montant_materiel') or 0),
+            'montant_main_oeuvre': float(
+                devis_data.get('montant_main_oeuvre') or 0),
+            'nb_lignes_materiel': devis_data.get('nb_lignes_materiel') or 0,
+            'nb_lignes_main_oeuvre': devis_data.get(
+                'nb_lignes_main_oeuvre') or 0,
+        },
+        'type_installation': type_installation or 'residentiel',
+    }
+    try:
+        resp = requests.post(url, json=payload, headers=headers, timeout=30)
+    except requests.RequestException as exc:
+        raise PlanTachesIAIndisponible(
+            "Le service de génération IA est injoignable.") from exc
+
+    if resp.status_code == 503:
+        raise PlanTachesIAIndisponible(
+            "Le service de génération IA n'est pas configuré (clé LLM "
+            "absente).")
+    if resp.status_code != 200:
+        raise PlanTachesIAError(
+            "Le service IA n'a pas pu proposer de plan exploitable.")
+    try:
+        data = resp.json()
+    except ValueError as exc:
+        raise PlanTachesIAError(
+            "Réponse du service IA illisible.") from exc
+    taches = data.get('taches') if isinstance(data, dict) else None
+    if not isinstance(taches, list) or not taches:
+        raise PlanTachesIAError("Le plan proposé est vide ou invalide.")
+    return {'taches': taches}
+
+
+@transaction.atomic
+def materialiser_plan_taches(projet, plan):
+    """Matérialise un plan de tâches PROPOSÉ (XPRJ29) — APRÈS confirmation.
+
+    ``plan`` est le dict ``{'taches': [{code, libelle, phase, duree_jours,
+    dependances_fs}, ...]}`` renvoyé par ``proposer_plan_taches_ia`` (ou
+    modifié par l'utilisateur avant confirmation — aucune re-validation
+    contre le LLM, seulement contre la forme attendue). Crée, pour chaque
+    tâche : la ``PhaseProjet`` si absente (même logique idempotente
+    qu'``instancier_modele``), la ``Tache`` (dates dérivées de
+    ``duree_jours`` en jours calendaires depuis ``projet.date_debut`` — ou
+    aujourd'hui si absent — de façon SÉQUENTIELLE dans l'ordre des tâches),
+    puis les ``DependanceTache`` FS déclarées (codes inconnus ignorés,
+    silencieusement — la proposition a déjà été nettoyée côté IA mais on ne
+    fait jamais confiance en écriture). ``company`` est TOUJOURS celle du
+    ``projet``. Écritures atomiques. Renvoie la liste des ``Tache`` créées.
+    """
+    from datetime import date as _date
+    from datetime import timedelta
+
+    from .models import PhaseProjet
+
+    taches_brutes = (plan or {}).get('taches') or []
+    if not isinstance(taches_brutes, list) or not taches_brutes:
+        raise PlanTachesIAError("Le plan à matérialiser est vide.")
+
+    libelles_phase = {tp: lib for tp, lib in PHASES_STANDARD}
+    ordres_phase = {
+        tp: i for i, (tp, _) in enumerate(PHASES_STANDARD, start=1)}
+    phases_par_type = {
+        p.type_phase: p for p in projet.phases.all()}
+
+    def _phase_pour(type_phase):
+        phase = phases_par_type.get(type_phase)
+        if phase is None:
+            phase = PhaseProjet.objects.create(
+                company=projet.company,
+                projet=projet,
+                type_phase=type_phase,
+                libelle=libelles_phase.get(type_phase, ''),
+                ordre=ordres_phase.get(type_phase, 0),
+            )
+            phases_par_type[type_phase] = phase
+        return phase
+
+    types_phase_valides = {tp for tp, _ in PHASES_STANDARD}
+    curseur = projet.date_debut or _date.today()
+    taches_par_code = {}
+    creees = []
+    for ordre, brut in enumerate(taches_brutes, start=1):
+        if not isinstance(brut, dict):
+            continue
+        code = str(brut.get('code', '')).strip()
+        libelle = str(brut.get('libelle', '')).strip()
+        if not libelle:
+            continue
+        type_phase = str(brut.get('phase', '')).strip().lower()
+        if type_phase not in types_phase_valides:
+            type_phase = PhaseProjet.TypePhase.ETUDE
+        phase = _phase_pour(type_phase)
+        try:
+            duree = max(1, int(brut.get('duree_jours', 1) or 1))
+        except (TypeError, ValueError):
+            duree = 1
+        date_debut_prevue = curseur
+        date_fin_prevue = curseur + timedelta(days=duree - 1)
+        curseur = date_fin_prevue + timedelta(days=1)
+        tache = Tache.objects.create(
+            company=projet.company,
+            projet=projet,
+            phase=phase,
+            libelle=libelle,
+            code_wbs=code,
+            ordre=ordre,
+            date_debut_prevue=date_debut_prevue,
+            date_fin_prevue=date_fin_prevue,
+        )
+        creees.append(tache)
+        if code:
+            taches_par_code[code] = tache
+
+    for brut in taches_brutes:
+        if not isinstance(brut, dict):
+            continue
+        code = str(brut.get('code', '')).strip()
+        successeur = taches_par_code.get(code)
+        if successeur is None:
+            continue
+        for dep_code in (brut.get('dependances_fs') or []):
+            predecesseur = taches_par_code.get(str(dep_code).strip())
+            if predecesseur is None or predecesseur.id == successeur.id:
+                continue
+            DependanceTache.objects.create(
+                company=projet.company,
+                predecesseur=predecesseur,
+                successeur=successeur,
+                type_dependance=DependanceTache.TypeDependance.FS,
+            )
+
+    if not creees:
+        raise PlanTachesIAError(
+            "Aucune tâche exploitable dans le plan à matérialiser.")
+    return creees
