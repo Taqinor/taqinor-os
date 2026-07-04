@@ -5,6 +5,14 @@ class CrmConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'apps.crm'
     verbose_name = 'CRM'
+    module_manifest = {
+        'key': 'crm',
+        'label': 'CRM',
+        'icone': 'users',
+        'depends': [],
+        'description': 'Pistes, opportunités et clients.',
+        'categorie': 'Ventes',
+    }
 
     def ready(self):
         # M6 — abonne le CRM aux événements métier (core.events) : avance

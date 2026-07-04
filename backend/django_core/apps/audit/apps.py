@@ -6,6 +6,15 @@ class AuditConfig(AppConfig):
     name = 'apps.audit'
     label = 'audit'
     verbose_name = "Journal d'activité"
+    module_manifest = {
+        'key': 'audit',
+        'label': "Journal d'activité",
+        'icone': 'history',
+        'depends': [],
+        'installable': False,
+        'description': "Journal d'audit des actions.",
+        'categorie': 'Technique',
+    }
 
     def ready(self):
         from . import signals

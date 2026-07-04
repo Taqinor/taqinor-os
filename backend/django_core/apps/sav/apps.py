@@ -5,6 +5,14 @@ class SavConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'apps.sav'
     verbose_name = 'Après-vente (parc équipements & SAV)'
+    module_manifest = {
+        'key': 'sav',
+        'label': 'Après-vente',
+        'icone': 'wrench',
+        'depends': ['crm'],
+        'description': 'Parc équipements clients, tickets SAV et O&M.',
+        'categorie': 'Services',
+    }
 
     def ready(self):
         # AG8 — enregistre les actions agentiques SAV dans le registre AG1.

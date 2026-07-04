@@ -5,3 +5,11 @@ class RhConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'apps.rh'
     verbose_name = 'Ressources humaines'
+    module_manifest = {
+        'key': 'rh',
+        'label': 'Ressources humaines',
+        'icone': 'id-card',
+        'depends': [],
+        'description': 'Dossier employé, congés et présences.',
+        'categorie': 'RH',
+    }

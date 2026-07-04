@@ -5,6 +5,14 @@ class VentesConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'apps.ventes'
     verbose_name = 'Ventes'
+    module_manifest = {
+        'key': 'ventes',
+        'label': 'Ventes',
+        'icone': 'file-text',
+        'depends': ['crm'],
+        'description': 'Devis, bons de commande et facturation.',
+        'categorie': 'Ventes',
+    }
 
     def ready(self):
         # AG4/AG5 — enregistre les actions agentiques Ventes (flux devis →
