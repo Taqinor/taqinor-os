@@ -561,7 +561,7 @@ def plan_de_charge_equipes(company, debut, fin, heures_par_jour=8):
     # (``equipe_ref``) quand elle est posée, sinon via le M2M ad-hoc historique.
     # On prefetch les DEUX pour éviter tout N+1 (``membres_intervention``).
     qs = (Intervention.objects
-          .filter(company=company)
+          .filter(company=company, annulee=False)
           .filter(date_prevue__gte=debut, date_prevue__lte=fin)
           .prefetch_related('equipe', 'equipe_ref__membres')
           .only('id', 'technicien_id', 'date_prevue', 'equipe_ref_id'))

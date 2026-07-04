@@ -219,6 +219,9 @@ class InterventionSerializer(serializers.ModelSerializer):
             'arrivee_gps_lat', 'arrivee_gps_lng',
             # XFSM21 — posé uniquement par le sweep Beat météo, jamais du corps.
             'meteo_risque', 'meteo_verifie_le',
+            # YSERV6 — posés uniquement par le chemin d'annulation chantier
+            # (annuler/reactiver), jamais par un PATCH générique.
+            'annulee', 'motif_annulation',
         ]
 
     def get_statut_ordre(self, obj):

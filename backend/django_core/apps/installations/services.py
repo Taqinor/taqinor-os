@@ -2255,3 +2255,80 @@ def verifier_gate_acompte_planification(installation):
     return ("Planification refusée : l'acompte de ce devis n'est pas "
             'encore encaissé (réglage société « acompte avant '
             'planification »).')
+
+
+# ── YSERV6 — annulation de chantier : solder les interventions ouvertes ────
+
+def annuler_interventions_ouvertes(installation, user):
+    """YSERV6 — à l'annulation d'un chantier, marque `annulee=True` (drapeau
+    ORTHOGONAL, la state machine F3 `STATUT_ORDER` reste intacte) toutes ses
+    interventions NON terminées (statut hors TERMINEE/VALIDEE, pas déjà
+    annulée), journalise une note par intervention et notifie les
+    techniciens/équipe assignés (best-effort). Renvoie le nombre marquées.
+    """
+    from .models_intervention import Intervention
+
+    qs = installation.interventions.exclude(
+        statut__in=[Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE]
+    ).filter(annulee=False)
+    count = 0
+    for interv in qs:
+        interv.annulee = True
+        interv.motif_annulation = (
+            f'Chantier {installation.reference} annulé')
+        interv.save(update_fields=['annulee', 'motif_annulation'])
+        from . import intervention_activity
+        intervention_activity.log_note(
+            interv, user,
+            'Intervention annulée automatiquement — chantier annulé.')
+        _notifier_intervention_annulee(interv, user)
+        count += 1
+    return count
+
+
+def _notifier_intervention_annulee(interv, user):
+    """YSERV6 — notifie (best-effort, ne lève jamais) le technicien principal
+    et les membres d'équipe d'une intervention annulée."""
+    try:
+        from apps.notifications.services import notify
+        from apps.notifications.models import EventType
+    except Exception:  # pragma: no cover - défensif
+        return
+    destinataires = set()
+    if interv.technicien_id:
+        destinataires.add(interv.technicien)
+    try:
+        destinataires.update(interv.equipe.all())
+    except Exception:  # pragma: no cover - défensif
+        pass
+    titre = f"Intervention annulée — chantier {interv.installation.reference}"
+    for dest in destinataires:
+        try:
+            notify(
+                dest, EventType.CHANTIER_DUE, titre,
+                body='Le chantier a été annulé, cette intervention ne '
+                     'sera pas réalisée.',
+                company=interv.company)
+        except Exception:  # pragma: no cover - défensif
+            pass
+
+
+def reactiver_interventions_annulees(installation, user):
+    """YSERV6 — à la réactivation d'un chantier, lève UNIQUEMENT le drapeau
+    `annulee` des interventions qui l'ont reçu PAR CETTE annulation (motif
+    traçant la provenance) — jamais une intervention annulée pour une autre
+    raison. Renvoie le nombre réactivé."""
+    marker = f'Chantier {installation.reference} annulé'
+    qs = installation.interventions.filter(
+        annulee=True, motif_annulation=marker)
+    count = 0
+    for interv in qs:
+        interv.annulee = False
+        interv.motif_annulation = None
+        interv.save(update_fields=['annulee', 'motif_annulation'])
+        from . import intervention_activity
+        intervention_activity.log_note(
+            interv, user,
+            'Intervention réactivée — chantier réactivé.')
+        count += 1
+    return count

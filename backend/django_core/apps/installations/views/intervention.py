@@ -168,6 +168,18 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             qs = qs.filter(date_prevue__gte=date_from)
         if date_to:
             qs = qs.filter(date_prevue__lte=date_to)
+        # YSERV6 — une intervention annulée (chantier annulé) sort des vues
+        # kanban/calendrier/charge (list) par défaut ; `?annulee=true` la
+        # réaffiche (audit/historique). Ne s'applique jamais aux actions
+        # détail (retrieve/actions) — une intervention déjà annulée reste
+        # consultable/gérable individuellement par son id.
+        if self.action == 'list':
+            annulee_param = params.get('annulee')
+            if annulee_param is not None and annulee_param.lower() in (
+                    '1', 'true', 'vrai', 'oui'):
+                qs = qs.filter(annulee=True)
+            else:
+                qs = qs.filter(annulee=False)
         return qs
 
     def get_permissions(self):
@@ -240,6 +252,12 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         self._check_tenant(serializer)
         company = self.request.user.company
         installation = serializer.validated_data.get('installation')
+        # YSERV6 — un chantier annulé refuse toute nouvelle intervention.
+        if installation is not None and installation.annule:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError(
+                {'installation': 'Ce chantier est annulé — impossible de '
+                                 'créer une nouvelle intervention.'})
         # YSERV1 — Gate « acompte encaissé » avant planification : une
         # Intervention de type POSE DATÉE sur un chantier dont l'acompte
         # n'est pas encaissé (toggle société ON) est refusée, sauf override
@@ -1545,7 +1563,7 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         params = request.query_params
         date_from = params.get('date_from')
         date_to = params.get('date_to')
-        qs = Intervention.objects.filter(company=company)
+        qs = Intervention.objects.filter(company=company, annulee=False)
         if date_from:
             qs = qs.filter(date_prevue__gte=date_from)
         if date_to:

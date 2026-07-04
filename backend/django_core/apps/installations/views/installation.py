@@ -490,6 +490,16 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
                     inst, request.user,
                     f"Réservation de stock libérée — {nb} référence(s) "
                     f"(chantier annulé).")
+            # YSERV6 — solde les interventions non terminées (drapeau
+            # orthogonal, jamais un statut supplémentaire), notifie les
+            # techniciens assignés et les sort des vues kanban/calendrier.
+            from ..services import annuler_interventions_ouvertes
+            nb_interv = annuler_interventions_ouvertes(inst, request.user)
+            if nb_interv:
+                activity.log_note(
+                    inst, request.user,
+                    f"{nb_interv} intervention(s) ouverte(s) annulée(s) "
+                    "(chantier annulé).")
         return Response(
             InstallationSerializer(inst, context={'request': request}).data)
 
@@ -502,6 +512,10 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
             inst.motif_annulation = None
             inst.save(update_fields=['annule', 'motif_annulation'])
             activity.log_note(inst, request.user, "Chantier réactivé")
+            # YSERV6 — lève le drapeau uniquement sur les interventions
+            # annulées PAR cette annulation (traçabilité de provenance).
+            from ..services import reactiver_interventions_annulees
+            reactiver_interventions_annulees(inst, request.user)
         return Response(
             InstallationSerializer(inst, context={'request': request}).data)
 
