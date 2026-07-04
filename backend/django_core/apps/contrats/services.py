@@ -2297,6 +2297,24 @@ def facturer_ligne_echeance(ligne, *, user=None, taux_tva=Decimal('20')):
         f'({echeancier.get_periodicite_display()})'
     )
 
+    # YSUBS9 — période de service couverte par CETTE échéance : de l'échéance
+    # PRÉCÉDENTE (numéro le plus proche en-dessous) à celle-ci, ou de
+    # `Contrat.date_debut` pour la toute première ligne. Best-effort : une
+    # date de début de contrat absente laisse `periode_service_debut` à NULL
+    # (comportement actuel intact), `periode_service_fin` reste toujours la
+    # date d'échéance de cette ligne.
+    ligne_precedente = (
+        LigneEcheance.objects
+        .filter(echeancier=echeancier, numero__lt=ligne.numero)
+        .order_by('-numero')
+        .first()
+    )
+    periode_debut = (
+        ligne_precedente.date_echeance if ligne_precedente is not None
+        else getattr(contrat, 'date_debut', None)
+    )
+    periode_fin = ligne.date_echeance
+
     # Frontière cross-app : création de la Facture via le référentiel de
     # numérotation de ventes (même point d'entrée qu'utilise sav), sans importer
     # de view d'une autre app.
@@ -2315,6 +2333,8 @@ def facturer_ligne_echeance(ligne, *, user=None, taux_tva=Decimal('20')):
             montant_ttc=montant_ttc,
             libelle=libelle,
             created_by=user,
+            periode_service_debut=periode_debut,
+            periode_service_fin=periode_fin,
         )
 
     facture = create_with_reference(Facture, 'FAC', echeancier.company, _create)

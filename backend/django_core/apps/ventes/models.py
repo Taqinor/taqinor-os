@@ -749,6 +749,17 @@ class Facture(models.Model):
         verbose_name='Motif de rejet DGI',
     )
 
+    # ── YSUBS9 — Période de service (du/au) des factures récurrentes ──
+    # NULL = comportement actuel (facture non récurrente ou pré-existante).
+    # Renseignés par `creer_facture_contrat` (ventes) et
+    # `facturer_ligne_echeance` (contrats) à partir de la période facturée —
+    # permet le calcul du revenu différé au prorata et prouve l'unicité
+    # (une facture par ligne par période).
+    periode_service_debut = models.DateField(
+        null=True, blank=True, verbose_name='Période de service — début')
+    periode_service_fin = models.DateField(
+        null=True, blank=True, verbose_name='Période de service — fin')
+
     class Meta:
         verbose_name = 'Facture'
         verbose_name_plural = 'Factures'

@@ -11,6 +11,23 @@ import re
 logger = logging.getLogger(__name__)
 
 
+def _add_months(d, months):
+    """YSUBS9 — `d` décalée de `months` mois (jour recadré fin de mois).
+
+    Fonction pure stdlib (pas de dépendance ajoutée), même calcul que
+    `apps.sav.dateutils.add_months` mais gardée locale pour ne pas coupler
+    `ventes` à `sav` pour une simple arithmétique de date."""
+    if d is None or months is None:
+        return None
+    import calendar
+    total = d.month - 1 + int(months)
+    year = d.year + total // 12
+    month = total % 12 + 1
+    day = min(d.day, calendar.monthrange(year, month)[1])
+    from datetime import date
+    return date(year, month, day)
+
+
 def create_draft_devis_from_ocr(*, company, user, lead, fields):
     """FG106 — crée un DEVIS brouillon (sans lignes) à partir d'un document OCR.
 
@@ -1880,6 +1897,18 @@ def creer_facture_contrat(*, contrat, user, company):
     )
     libelle = f'Maintenance — contrat #{contrat.pk} ({periodicite_label})'
 
+    # YSUBS9 — période de service couverte par CETTE facture : du dernier
+    # cycle facturé (ou date_debut si jamais facturé) à aujourd'hui + la
+    # durée de la périodicité (mois, table MONTHS déjà utilisée pour les
+    # visites). Best-effort : une périodicité/date absente laisse les deux
+    # champs à NULL (comportement actuel intact).
+    periode_debut = contrat.derniere_facturation or contrat.date_debut
+    periode_fin = None
+    if periode_debut is not None:
+        mois = getattr(contrat, 'MONTHS', {}).get(contrat.periodicite)
+        if mois:
+            periode_fin = _add_months(periode_debut, mois)
+
     def _create(ref):
         return Facture.objects.create(
             reference=ref,
@@ -1892,6 +1921,8 @@ def creer_facture_contrat(*, contrat, user, company):
             montant_ttc=prix_ttc,
             libelle=libelle,
             created_by=user,
+            periode_service_debut=periode_debut,
+            periode_service_fin=periode_fin,
         )
 
     facture = create_with_reference(Facture, 'FAC', company, _create)
