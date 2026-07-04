@@ -467,6 +467,40 @@ def lead_values_changed_since(stamp, company=None):
 
 # DC13 — localisation chantier : lead d'abord, sinon repli sur le client ──────
 
+# YLEAD14 — Recyclage des leads non travaillés (SLA speed-to-lead) ───────────
+
+def leads_sla_depasse(company, now=None, seuil_heures=None):
+    """YLEAD14 — Leads NEW non contactés au-delà du SLA (réutilise FG28).
+
+    Même logique que l'action LECTURE-SEULE ``LeadViewSet.sla_breach`` :
+    ``stage=NEW``, ``first_contacted_at`` NULL, créés il y a plus de
+    ``seuil_heures`` heures (le seuil configuré société, ``services.
+    lead_sla_hours``, si non fourni). ``now`` est injectable (tests
+    déterministes) ; ``seuil_heures=0`` (SLA désactivé) renvoie un queryset
+    vide — comportement identique au filtre existant. Lecture seule.
+    """
+    from django.utils import timezone as _timezone
+    import datetime as _dt
+
+    from .models import Lead
+    from .services import lead_sla_hours as _get_sla_hours
+
+    now = now or _timezone.now()
+    if seuil_heures is None:
+        seuil_heures = _get_sla_hours(company)
+    if not seuil_heures:
+        return Lead.objects.none()
+
+    cutoff = now - _dt.timedelta(hours=seuil_heures)
+    return Lead.objects.filter(
+        company=company,
+        is_archived=False,
+        stage='NEW',
+        first_contacted_at__isnull=True,
+        date_creation__lte=cutoff,
+    ).order_by('date_creation')
+
+
 def site_location_for_devis(devis):
     """DC13 — localisation du chantier à créer depuis un devis.
 

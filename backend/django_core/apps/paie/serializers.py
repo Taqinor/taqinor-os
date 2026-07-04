@@ -7,10 +7,12 @@ appartenant à la société de l'utilisateur.
 from rest_framework import serializers
 
 from .models import (
+    AdhesionMutuelle,
     AvanceSalarie,
     BaremeIR,
     BulletinPaie,
     CumulAnnuel,
+    EcheanceDeclarative,
     ElementVariable,
     LigneBulletin,
     LigneVirement,
@@ -18,6 +20,7 @@ from .models import (
     ParametrePaie,
     PeriodePaie,
     ProfilPaie,
+    RegimeMutuelle,
     Rubrique,
     RubriqueEmploye,
     SaisieArret,
@@ -148,7 +151,7 @@ class ProfilPaieSerializer(serializers.ModelSerializer):
             'jours_travail_mensuel', 'heures_travail_mensuel',
             'affilie_cnss', 'affilie_amo', 'affilie_cimr', 'taux_cimr_salarial',
             'numero_cnss', 'numero_amo', 'numero_cimr', 'rib', 'banque',
-            'actif', 'date_creation',
+            'mode_paiement', 'actif', 'date_creation',
         ]
         read_only_fields = ['date_creation']
 
@@ -166,6 +169,43 @@ class ProfilPaieSerializer(serializers.ModelSerializer):
                     request.user.company, value.id):
                 raise serializers.ValidationError('Employé inconnu.')
         return value
+
+
+class RegimeMutuelleSerializer(serializers.ModelSerializer):
+    """Régime de mutuelle/prévoyance/assurance groupe (XPAI3)."""
+
+    class Meta:
+        model = RegimeMutuelle
+        fields = [
+            'id', 'libelle', 'mode', 'palier', 'part_salariale',
+            'part_patronale', 'deductible_net_imposable', 'actif',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class AdhesionMutuelleSerializer(serializers.ModelSerializer):
+    """Adhésion d'un profil à un régime de mutuelle (XPAI3).
+
+    ``company`` posée côté serveur ; ``profil`` et ``regime`` validés comme
+    appartenant à la société de l'utilisateur.
+    """
+    regime_libelle = serializers.CharField(
+        source='regime.libelle', read_only=True)
+
+    class Meta:
+        model = AdhesionMutuelle
+        fields = [
+            'id', 'profil', 'regime', 'regime_libelle', 'date_debut',
+            'actif', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_profil(self, value):
+        return _meme_societe(self, value, 'Profil')
+
+    def validate_regime(self, value):
+        return _meme_societe(self, value, 'Régime')
 
 
 class RubriqueEmployeSerializer(serializers.ModelSerializer):
@@ -201,30 +241,55 @@ class PeriodePaieSerializer(serializers.ModelSerializer):
     class Meta:
         model = PeriodePaie
         fields = [
-            'id', 'annee', 'mois', 'libelle', 'statut', 'date_paiement',
-            'date_cloture', 'date_creation',
+            'id', 'annee', 'mois', 'type_run', 'libelle', 'statut',
+            'date_paiement', 'date_cloture', 'date_creation',
         ]
         read_only_fields = ['statut', 'date_cloture', 'date_creation']
 
     def validate(self, attrs):
-        """Unicité ``(company, annee, mois)`` — ``company`` posée côté serveur.
+        """Unicité ``(company, annee, mois, type_run)`` — ``company`` côté serveur.
 
         ``company`` n'étant pas un champ du sérialiseur, DRF ne pose pas de
         ``UniqueTogetherValidator`` ; on vérifie ici pour renvoyer un 400 propre
-        plutôt qu'une ``IntegrityError`` 500.
+        plutôt qu'une ``IntegrityError`` 500. XPAI4 — un run hors-cycle peut
+        coexister avec le run mensuel du même (année, mois) : le
+        ``type_run`` fait partie de la clé.
         """
         request = self.context.get('request')
         annee = attrs.get('annee', getattr(self.instance, 'annee', None))
         mois = attrs.get('mois', getattr(self.instance, 'mois', None))
+        type_run = attrs.get(
+            'type_run', getattr(self.instance, 'type_run', PeriodePaie.TYPE_RUN_MENSUEL))
         if request is not None and annee is not None and mois is not None:
             qs = PeriodePaie.objects.filter(
-                company=request.user.company_id, annee=annee, mois=mois)
+                company=request.user.company_id, annee=annee, mois=mois,
+                type_run=type_run)
             if self.instance is not None:
                 qs = qs.exclude(pk=self.instance.pk)
             if qs.exists():
                 raise serializers.ValidationError(
-                    'Une période existe déjà pour cette année et ce mois.')
+                    'Une période existe déjà pour cette année, ce mois et ce type de run.')
         return attrs
+
+
+class EcheanceDeclarativeSerializer(serializers.ModelSerializer):
+    """Échéance déclarative (XPAI6) — générée automatiquement, lecture
+
+    principale ; ``statut`` reste modifiable (progression manuelle du
+    traitement réel de la déclaration).
+    """
+    en_retard = serializers.ReadOnlyField()
+
+    class Meta:
+        model = EcheanceDeclarative
+        fields = [
+            'id', 'periode', 'type_echeance', 'date_limite', 'statut',
+            'date_notification', 'date_creation', 'en_retard',
+        ]
+        read_only_fields = [
+            'periode', 'type_echeance', 'date_limite', 'date_notification',
+            'date_creation',
+        ]
 
 
 class ElementVariableSerializer(serializers.ModelSerializer):
@@ -241,6 +306,9 @@ class ElementVariableSerializer(serializers.ModelSerializer):
             'quantite', 'categorie_hs', 'montant',
             # PAIE26 — drapeaux d'absence (rémunérée / décompte du solde).
             'remunere', 'deduit_solde',
+            # XPAI14 — catégorie d'absence : aucune/maladie/maternite (arrêt
+            # CNSS, ignoré hors absence).
+            'categorie_absence',
             'source', 'date_creation',
         ]
         read_only_fields = ['date_creation']
@@ -286,6 +354,7 @@ class BulletinPaieSerializer(serializers.ModelSerializer):
             'prime_anciennete', 'charges_patronales', 'net_a_payer',
             'provision_conges',
             'date_validation', 'date_creation', 'lignes',
+            'paye', 'date_paiement',
         ]
         read_only_fields = fields
 
@@ -323,6 +392,7 @@ class LigneVirementSerializer(serializers.ModelSerializer):
         model = LigneVirement
         fields = [
             'id', 'bulletin', 'beneficiaire', 'rib', 'montant', 'reference',
+            'rejetee', 'motif_rejet', 'date_rejet', 'ligne_correction',
         ]
         read_only_fields = fields
 

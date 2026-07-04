@@ -85,7 +85,7 @@ class DevisViewSet(viewsets.ModelViewSet):
             'layout', 'roof_image', 'from_layout', 'auto', 'share_link',
             'envoyer_email', 'dupliquer_variante', 'variantes',
             'save_preset', 'apply_preset', 'contacter_superieur',
-            'whatsapp',
+            'whatsapp', 'proforma_pdf',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -1388,3 +1388,46 @@ class DevisViewSet(viewsets.ModelViewSet):
         return Response(
             FactureSerializer(facture).data, status=status.HTTP_201_CREATED,
         )
+
+    @action(
+        detail=True,
+        methods=['post'],
+        url_path='proforma-pdf',
+        permission_classes=[IsResponsableOrAdmin],
+    )
+    def proforma_pdf(self, request, pk=None):
+        """XFAC10 — facture PRO-FORMA NON comptabilisée : layout facture
+        legacy filigrané « PRO-FORMA — ne constitue pas une facture »,
+        numérotation propre PF- (utils/references.py), AUCUN impact sur les
+        statuts/GL/numérotation des vraies factures. Trace au chatter."""
+        from ..models import ProformaDocument
+        from ..utils.pdf import generate_proforma_pdf
+
+        devis = self.get_object()
+        company = request.user.company
+
+        def _create(ref):
+            return ProformaDocument.objects.create(
+                company=company, devis=devis, reference=ref,
+                created_by=request.user,
+            )
+
+        proforma = create_with_reference(
+            ProformaDocument, 'PF', company, _create, period='monthly')
+
+        try:
+            pdf_bytes = generate_proforma_pdf(devis, proforma.reference)
+        except Exception as exc:
+            return Response({'detail': f'PDF indisponible : {exc}'},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        from .. import activity
+        activity.log_devis_note(
+            devis, request.user,
+            f'Facture pro-forma {proforma.reference} générée par '
+            f'{getattr(request.user, "username", "?")}.')
+
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'inline; filename="{proforma.reference}.pdf"')
+        return resp

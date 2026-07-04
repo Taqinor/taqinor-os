@@ -3,6 +3,7 @@ from django.http import HttpResponse  # noqa: F401
 from django.utils import timezone  # noqa: F401
 from rest_framework import viewsets, status, filters  # noqa: F401
 from rest_framework.decorators import action, api_view, permission_classes  # noqa: F401
+from rest_framework.exceptions import ValidationError  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
 from apps.stock.services import (  # noqa: F401
     mouvement_type_sortie, record_stock_movement,
@@ -83,6 +84,7 @@ class FactureViewSet(viewsets.ModelViewSet):
             'generer_pdf', 'telecharger_pdf', 'envoyer_email',
             'relancer', 'exclure_relance', 'whatsapp', 'ubl',
             'dgi_export', 'dgi_conformite', 'bulk', 'lien_paiement',
+            'facturer_penalites', 'consolider',
         ]:
             return [IsResponsableOrAdmin()]
         # Annuler une facture = réservé à l'admin/propriétaire (geste comptable).
@@ -120,6 +122,19 @@ class FactureViewSet(viewsets.ModelViewSet):
             save_kwargs['devise'] = (
                 getattr(CompanyProfile.get(company=company), 'devise_defaut', '')
                 or 'MAD')
+
+        # XFAC12 — escompte : si le corps n'en fournit pas, proposer les
+        # défauts société (surchargeables — un devis explicite dans le corps
+        # reste prioritaire). NULL/absent des deux côtés = comportement actuel
+        # inchangé (aucun escompte).
+        from apps.parametres.models import CompanyProfile
+        profile = CompanyProfile.get(company=company)
+        if 'escompte_pct' not in serializer.validated_data and \
+                getattr(profile, 'escompte_pct_defaut', None) is not None:
+            save_kwargs['escompte_pct'] = profile.escompte_pct_defaut
+        if 'escompte_jours' not in serializer.validated_data and \
+                getattr(profile, 'escompte_jours_defaut', None) is not None:
+            save_kwargs['escompte_jours'] = profile.escompte_jours_defaut
 
         create_numbered(
             Facture, company, 'facture',
@@ -391,6 +406,20 @@ class FactureViewSet(viewsets.ModelViewSet):
             # à payer (TTC − déjà payé − avoirs). Tolérance d'un centime pour
             # les arrondis ; un montant égal au reste passe (solde la facture).
             reste = locked.montant_du
+            # XFAC12 — escompte pour règlement anticipé : si la fenêtre est
+            # atteinte (date_paiement <= émission + escompte_jours) ET que le
+            # montant réglé correspond au NET après escompte (reste − escompte,
+            # tolérance 1 centime), l'escompte se calcule automatiquement et
+            # SOLDE la facture avec le règlement — jamais hors fenêtre (plein
+            # tarif reste dû, comportement actuel inchangé).
+            date_paiement = serializer.validated_data.get('date_paiement')
+            escompte_montant = Decimal('0')
+            if locked.escompte_applicable(date_paiement):
+                escompte_potentiel = locked.calcul_escompte(reste, date_paiement)
+                net_attendu = reste - escompte_potentiel
+                if abs(montant - net_attendu) <= Decimal('0.01'):
+                    escompte_montant = escompte_potentiel
+                    reste = net_attendu
             if montant - reste > Decimal('0.01'):
                 return Response(
                     {'detail': (
@@ -403,6 +432,7 @@ class FactureViewSet(viewsets.ModelViewSet):
                 facture=locked,
                 company=locked.company,
                 created_by=request.user,
+                escompte_montant=escompte_montant,
             )
             # Chatter facture : trace l'encaissement (acteur côté serveur,
             # jamais lu du corps de la requête).
@@ -821,6 +851,60 @@ class FactureViewSet(viewsets.ModelViewSet):
         facture.save(update_fields=['exclu_relances'])
         return Response(FactureSerializer(facture).data)
 
+    @action(detail=True, methods=['post'], url_path='facturer-penalites',
+            permission_classes=[IsResponsableOrAdmin])
+    def facturer_penalites(self, request, pk=None):
+        """XFAC6 — action OPTIONNELLE : crée une facture de frais dédiée pour
+        la pénalité de retard calculée au niveau de relance courant. Ne
+        modifie JAMAIS ``montant_du`` de la facture d'origine (la pénalité
+        reste indicative tant que non facturée — cette action la matérialise
+        volontairement en un nouveau document, séparé)."""
+        from decimal import Decimal
+        from ..utils.company_settings import create_numbered
+
+        facture = self.get_object()
+        levels = list(FollowupLevel.objects.filter(
+            company=facture.company).order_by('delai_jours', 'ordre'))
+        jr = facture.jours_retard
+        niveau = None
+        for lvl in levels:
+            if jr >= lvl.delai_jours:
+                niveau = lvl
+        if niveau is None:
+            return Response(
+                {'detail': "Aucun niveau de relance atteint pour "
+                           "cette facture."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        penalite = niveau.calcul_penalite(facture.montant_du, jr)
+        if penalite <= 0:
+            return Response(
+                {'detail': "Aucune pénalité à facturer (taux/frais à 0)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        libelle = (
+            f"Pénalités de retard — facture {facture.reference} "
+            f"({jr} jour(s) de retard, {niveau.nom})")
+
+        def _create(ref):
+            return Facture.objects.create(
+                reference=ref, company=facture.company,
+                client=facture.client, statut=Facture.Statut.EMISE,
+                libelle=libelle, montant_ht=penalite,
+                montant_tva=Decimal('0'), montant_ttc=penalite,
+                taux_tva=Decimal('0'), created_by=request.user,
+            )
+
+        facture_penalite = create_numbered(
+            Facture, facture.company, 'facture', _create)
+        from .. import activity
+        activity.log_facture_penalite_facturee(
+            facture, request.user, facture_penalite, penalite)
+        return Response(
+            FactureSerializer(facture_penalite).data,
+            status=status.HTTP_201_CREATED,
+        )
+
     @action(detail=True, methods=['get'], url_path='relances',
             permission_classes=[IsAnyRole])
     def relances(self, request, pk=None):
@@ -848,6 +932,29 @@ class FactureViewSet(viewsets.ModelViewSet):
         return Response(
             FactureActivitySerializer(
                 facture.activites.all(), many=True).data)
+
+    @action(detail=False, methods=['post'], url_path='consolider',
+            permission_classes=[IsResponsableOrAdmin])
+    def consolider(self, request):
+        """XFAC11 — crée UNE facture consolidée à partir de plusieurs devis
+        acceptés du MÊME client. Body : ``{devis_ids: [...]}``."""
+        from ..services import consolider_factures
+
+        devis_ids = request.data.get('devis_ids') or []
+        try:
+            devis_ids = [int(x) for x in devis_ids]
+        except (TypeError, ValueError):
+            return Response({'detail': 'devis_ids invalide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            facture = consolider_factures(
+                company=request.user.company, devis_ids=devis_ids,
+                user=request.user, created_by=request.user,
+            )
+        except ValidationError as exc:
+            return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            FactureSerializer(facture).data, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['post'], url_path='bulk',
             permission_classes=[IsResponsableOrAdmin])

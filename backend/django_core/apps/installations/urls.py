@@ -52,6 +52,11 @@ from .views import (
     KitViewSet,
     KitComposantViewSet,
     OrdreAssemblageViewSet,
+    OrdreAssemblageLigneViewSet,
+    OrdreDemontageViewSet,
+    OrdreDemontageLigneViewSet,
+    ControleQualiteModeleViewSet,
+    EtapeAssemblageViewSet,
     LivraisonViewSet,
     LivraisonLigneViewSet,
     PreuveLivraisonViewSet,
@@ -127,6 +132,11 @@ router.register(r'materiels-consignes', MaterielConsigneViewSet)
 router.register(r'kits', KitViewSet)
 router.register(r'kit-composants', KitComposantViewSet)
 router.register(r'ordres-assemblage', OrdreAssemblageViewSet)
+router.register(r'ordre-assemblage-lignes', OrdreAssemblageLigneViewSet)
+router.register(r'ordres-demontage', OrdreDemontageViewSet)
+router.register(r'ordre-demontage-lignes', OrdreDemontageLigneViewSet)
+router.register(r'controle-qualite-modeles', ControleQualiteModeleViewSet)
+router.register(r'etapes-assemblage', EtapeAssemblageViewSet)
 router.register(r'livraisons', LivraisonViewSet)
 router.register(r'livraison-lignes', LivraisonLigneViewSet)
 router.register(r'preuves-livraison', PreuveLivraisonViewSet)

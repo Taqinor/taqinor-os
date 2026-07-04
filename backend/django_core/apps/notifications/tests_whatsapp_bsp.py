@@ -487,3 +487,170 @@ class WhatsAppModelsTests(TestCase):
         self.assertEqual(
             WhatsAppMessageLog.objects.filter(company=self.company2).count(), 1
         )
+
+
+# ---------------------------------------------------------------------------
+# XMKT25 — Cycle d'approbation Meta des gabarits WhatsApp + variantes langue
+# ---------------------------------------------------------------------------
+
+class TemplateApprovalCycleTests(TestCase):
+    """Statut par gabarit+langue, sélection restreinte aux approuvés,
+    soumission gated (no-op sans jeton BSP)."""
+
+    def setUp(self):
+        self.company = _make_company("ApprovalCo")
+
+    def test_default_statut_is_brouillon(self):
+        tpl = WhatsAppTemplate.objects.create(
+            company=self.company, name="devis_envoye", language="fr")
+        self.assertEqual(
+            tpl.statut_approbation, WhatsAppTemplate.StatutApprobation.BROUILLON)
+        self.assertFalse(tpl.is_approuve)
+
+    def test_language_variants_of_same_name_tracked_independently(self):
+        """fr/ar du même nom logique : statuts indépendants par langue."""
+        from .services import set_template_approval_status
+
+        fr = WhatsAppTemplate.objects.create(
+            company=self.company, name="devis_envoye", language="fr",
+            groupe="devis_envoye")
+        ar = WhatsAppTemplate.objects.create(
+            company=self.company, name="devis_envoye", language="ar",
+            groupe="devis_envoye")
+        set_template_approval_status(
+            fr, WhatsAppTemplate.StatutApprobation.APPROUVE)
+        fr.refresh_from_db()
+        ar.refresh_from_db()
+        self.assertTrue(fr.is_approuve)
+        self.assertFalse(ar.is_approuve)
+
+    def test_submit_is_noop_without_bsp_credentials(self):
+        """Sans WHATSAPP_BSP_ENABLED/credentials, submit reste fonctionnel
+        (statut posé à 'soumis' pour saisie manuelle) mais AUCUN appel réseau."""
+        from .services import submit_template_for_approval
+
+        tpl = WhatsAppTemplate.objects.create(
+            company=self.company, name="relance_devis", language="fr")
+        with mock.patch.dict("os.environ", {}, clear=False):
+            import os
+            os.environ.pop("WHATSAPP_BSP_ENABLED", None)
+            result = submit_template_for_approval(tpl)
+        self.assertEqual(
+            result.statut_approbation, WhatsAppTemplate.StatutApprobation.SOUMIS)
+
+    def test_submit_idempotent_when_already_decided(self):
+        """Un gabarit déjà approuvé/rejeté n'est pas re-soumis."""
+        from .services import submit_template_for_approval
+
+        tpl = WhatsAppTemplate.objects.create(
+            company=self.company, name="devis_envoye2", language="fr",
+            statut_approbation=WhatsAppTemplate.StatutApprobation.APPROUVE)
+        result = submit_template_for_approval(tpl)
+        self.assertEqual(
+            result.statut_approbation, WhatsAppTemplate.StatutApprobation.APPROUVE)
+
+    def test_set_template_approval_status_rejete_records_motif(self):
+        from .services import set_template_approval_status
+
+        tpl = WhatsAppTemplate.objects.create(
+            company=self.company, name="devis_envoye3", language="fr")
+        set_template_approval_status(
+            tpl, WhatsAppTemplate.StatutApprobation.REJETE,
+            motif_rejet="Corps du message non conforme.")
+        tpl.refresh_from_db()
+        self.assertEqual(
+            tpl.statut_approbation, WhatsAppTemplate.StatutApprobation.REJETE)
+        self.assertEqual(tpl.motif_rejet, "Corps du message non conforme.")
+
+    def test_set_template_approval_status_rejects_unknown_statut(self):
+        from .services import set_template_approval_status
+
+        tpl = WhatsAppTemplate.objects.create(
+            company=self.company, name="devis_envoye4", language="fr")
+        result = set_template_approval_status(tpl, "invalide")
+        self.assertEqual(
+            result.statut_approbation, WhatsAppTemplate.StatutApprobation.BROUILLON)
+
+    def test_approved_templates_for_only_returns_approved_active(self):
+        """Une campagne ne peut choisir qu'un gabarit approuvé — le sélecteur
+        service ne renvoie QUE statut=approuve ET active=True."""
+        from .services import approved_templates_for
+
+        WhatsAppTemplate.objects.create(
+            company=self.company, name="draft_tpl", language="fr")
+        WhatsAppTemplate.objects.create(
+            company=self.company, name="rejected_tpl", language="fr",
+            statut_approbation=WhatsAppTemplate.StatutApprobation.REJETE)
+        approved = WhatsAppTemplate.objects.create(
+            company=self.company, name="approved_tpl", language="fr",
+            statut_approbation=WhatsAppTemplate.StatutApprobation.APPROUVE)
+        inactive_approved = WhatsAppTemplate.objects.create(
+            company=self.company, name="inactive_approved_tpl", language="fr",
+            statut_approbation=WhatsAppTemplate.StatutApprobation.APPROUVE,
+            active=False)
+
+        selectable = list(approved_templates_for(self.company))
+        self.assertIn(approved, selectable)
+        self.assertNotIn(inactive_approved, selectable)
+        self.assertEqual(len(selectable), 1)
+
+    def test_approved_templates_for_filters_by_groupe(self):
+        from .services import approved_templates_for
+
+        fr = WhatsAppTemplate.objects.create(
+            company=self.company, name="devis_envoye5", language="fr",
+            groupe="devis_envoye5",
+            statut_approbation=WhatsAppTemplate.StatutApprobation.APPROUVE)
+        WhatsAppTemplate.objects.create(
+            company=self.company, name="autre_tpl", language="fr",
+            groupe="autre_groupe",
+            statut_approbation=WhatsAppTemplate.StatutApprobation.APPROUVE)
+
+        selectable = list(approved_templates_for(
+            self.company, event_key="devis_envoye5"))
+        self.assertEqual(selectable, [fr])
+
+    def test_approved_templates_scoped_per_company(self):
+        from .services import approved_templates_for
+
+        other = _make_company("OtherApprovalCo")
+        WhatsAppTemplate.objects.create(
+            company=other, name="cross_tenant_tpl", language="fr",
+            statut_approbation=WhatsAppTemplate.StatutApprobation.APPROUVE)
+        self.assertEqual(list(approved_templates_for(self.company)), [])
+
+
+class WhatsAppTemplateViewSetApiTests(TestCase):
+    """Endpoints submit/decision : gated côté service, admin only en écriture."""
+
+    def setUp(self):
+        self.company = _make_company("ApiApprovalCo")
+        self.admin = User.objects.create_user(
+            username="admin1", password="pw", company=self.company,
+            role_legacy="admin")
+
+    def test_submit_action_moves_to_soumis(self):
+        from rest_framework.test import APIClient
+
+        tpl = WhatsAppTemplate.objects.create(
+            company=self.company, name="api_submit_tpl", language="fr")
+        client = APIClient()
+        client.force_authenticate(self.admin)
+        resp = client.post(
+            f"/api/django/notifications/whatsapp-templates/{tpl.pk}/submit/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data["statut_approbation"], "soumis")
+
+    def test_decision_action_sets_approved(self):
+        from rest_framework.test import APIClient
+
+        tpl = WhatsAppTemplate.objects.create(
+            company=self.company, name="api_decision_tpl", language="fr",
+            statut_approbation=WhatsAppTemplate.StatutApprobation.SOUMIS)
+        client = APIClient()
+        client.force_authenticate(self.admin)
+        resp = client.post(
+            f"/api/django/notifications/whatsapp-templates/{tpl.pk}/decision/",
+            {"statut_approbation": "approuve"}, format="json")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data["statut_approbation"], "approuve")

@@ -268,6 +268,12 @@ class Tache(models.Model):
         TERMINE = 'termine', 'Terminée'
         BLOQUE = 'bloque', 'Bloquée'
 
+    class Priorite(models.TextChoices):
+        BASSE = 'basse', 'Basse'
+        NORMALE = 'normale', 'Normale'
+        HAUTE = 'haute', 'Haute'
+        URGENTE = 'urgente', 'Urgente'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -288,6 +294,22 @@ class Tache(models.Model):
         related_name='taches',
         verbose_name='Phase',
     )
+    # Assigné (XPRJ10) : une ressource UNIQUE porteuse de la tâche — distinct
+    # de ``AffectationRessource`` qui gère l'affectation fine multi-ressources
+    # (charge, période). ``assigne`` est le raccourci "qui fait cette tâche".
+    assigne = models.ForeignKey(
+        'RessourceProfil',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='taches_assignees',
+        verbose_name='Assigné',
+    )
+    priorite = models.CharField(
+        max_length=10, choices=Priorite.choices,
+        default=Priorite.NORMALE, verbose_name='Priorité')
+    # Tags légers en CSV (ex. "toiture,urgent") — filtrables via ?etiquette=.
+    etiquettes = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Étiquettes')
     # FK auto-référent : porte les SOUS-TÂCHES (arborescence WBS, profondeur
     # arbitraire). Supprimer une tâche supprime ses descendants (CASCADE).
     parent = models.ForeignKey(
@@ -317,6 +339,12 @@ class Tache(models.Model):
         null=True, blank=True, verbose_name='Date de début prévue')
     date_fin_prevue = models.DateField(
         null=True, blank=True, verbose_name='Date de fin prévue')
+    # Date de complétion RÉELLE (XPRJ17) — posée côté serveur quand ``statut``
+    # passe à TERMINE (jamais lue du corps de requête), réinitialisée si le
+    # statut repasse à un état non-terminé. Base du burndown (charge restante
+    # reconstituée à chaque date).
+    date_fin_reelle = models.DateField(
+        null=True, blank=True, verbose_name='Date de fin réelle')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -1196,7 +1224,35 @@ class Timesheet(models.Model):
     corps de requête. La ressource / la tâche / la phase doivent appartenir au
     MÊME projet et à la MÊME société (validé au sérialiseur). Modèle entièrement
     additif.
+
+    Cycle de vie ``statut`` (XPRJ1) — machine à états PROPRE à la feuille de
+    temps, JAMAIS ``STAGES.py`` (règle #2) :
+
+        brouillon ─soumettre→ soumise ─approuver→ approuvee
+                                  │
+                                  └────rejeter────→ rejetee
+
+    Le ``statut`` n'est jamais posé depuis le corps de requête (comme
+    ``Projet.statut``) : seules les actions ``soumettre``/``approuver``/
+    ``rejeter`` (voir ``views.py``) le déplacent. ``saisi_par`` est posé côté
+    serveur à la création ; ``approuve_par``/``date_approbation`` sont posés
+    par l'action ``approuver`` (palier Responsable/Admin — vérifié en vue).
     """
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        SOUMISE = 'soumise', 'Soumise'
+        APPROUVEE = 'approuvee', 'Approuvée'
+        REJETEE = 'rejetee', 'Rejetée'
+
+    class TypeActivite(models.TextChoices):
+        ETUDE = 'etude', 'Étude'
+        POSE = 'pose', 'Pose'
+        RACCORDEMENT = 'raccordement', 'Raccordement'
+        MES = 'mes', 'Mise en service'
+        DEPLACEMENT = 'deplacement', 'Déplacement'
+        SAV = 'sav', 'SAV'
+        ADMIN = 'admin', 'Administratif'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -1242,6 +1298,47 @@ class Timesheet(models.Model):
         verbose_name='Coût interne (figé)')
     commentaire = models.TextField(
         blank=True, default='', verbose_name='Commentaire')
+    # ── Classification facturable + activité (XPRJ2) ─────────────────────────
+    # Défaut True : la majorité des temps projet sont facturables en régie ;
+    # peut être ajusté par saisie (ex. temps admin interne → False).
+    facturable = models.BooleanField(
+        default=True, verbose_name='Facturable')
+    type_activite = models.CharField(
+        max_length=15, choices=TypeActivite.choices,
+        default=TypeActivite.POSE, verbose_name="Type d'activité")
+    # Taux de facturation MAD/h CLIENT (distinct du cout_horaire INTERNE de la
+    # ressource) — nullable : absent tant qu'aucun taux n'est saisi.
+    taux_facturation = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name='Taux de facturation (MAD/h)')
+    # Référence LÂCHE vers la ventes.Facture de régie qui a facturé cette
+    # ligne (XPRJ3) — posée côté serveur par ``services.facturer_temps_projet``
+    # UNIQUEMENT ; jamais lue du corps de requête. Empêche le double-facturation
+    # (une ligne déjà facturée est exclue de la sélection du prochain run).
+    facture_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID de la facture de régie')
+    # ── Cycle de vie (XPRJ1) ──────────────────────────────────────────────────
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.BROUILLON, verbose_name='Statut')
+    saisi_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='gestion_projet_timesheets_saisies',
+        verbose_name='Saisi par',
+    )
+    approuve_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='gestion_projet_timesheets_approuvees',
+        verbose_name='Approuvé par',
+    )
+    date_approbation = models.DateTimeField(
+        null=True, blank=True, verbose_name="Date d'approbation")
+    motif_rejet = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Motif de rejet')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -1254,10 +1351,57 @@ class Timesheet(models.Model):
                 fields=['projet', 'date'], name='gp_ts_proj_date_idx'),
             models.Index(
                 fields=['ressource', 'date'], name='gp_ts_res_date_idx'),
+            models.Index(
+                fields=['company', 'statut'], name='gp_ts_co_statut_idx'),
         ]
 
     def __str__(self):
         return f'{self.ressource_id} {self.date} {self.heures} h'
+
+
+class PeriodeVerrouilleeTemps(models.Model):
+    """Verrou de PÉRIODE (mois) sur les feuilles de temps d'une société (XPRJ1).
+
+    Une période verrouillée (``mois`` = 1er jour du mois, ex. 2026-01-01)
+    interdit toute création/édition/suppression de ``Timesheet`` dont la
+    ``date`` tombe dans ce mois — sauf pour un utilisateur ADMIN qui la
+    déverrouille explicitement (suppression de la ligne, tracée dans
+    ``ProjetActivity`` n'étant pas pertinent ici : le verrou n'est pas propre à
+    un projet — la trace se fait au niveau applicatif, voir ``views.py``).
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Modèle entièrement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_periodes_verrouillees',
+        verbose_name='Société',
+    )
+    mois = models.DateField(
+        verbose_name='Mois verrouillé (1er jour du mois)')
+    verrouille_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='gestion_projet_periodes_verrouillees',
+        verbose_name='Verrouillé par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Période verrouillée (temps)'
+        verbose_name_plural = 'Périodes verrouillées (temps)'
+        ordering = ['-mois']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'mois'],
+                name='gp_periode_verr_co_mois_uniq'),
+        ]
+
+    def __str__(self):
+        return f'{self.company_id} verrouillé {self.mois:%Y-%m}'
 
 
 class Risque(models.Model):
@@ -1984,3 +2128,402 @@ class ClotureProjet(models.Model):
 
     def __str__(self):
         return f'clôture {self.projet_id} ({self.date_cloture})'
+
+
+class SituationTravaux(models.Model):
+    """Un DÉCOMPTE PROGRESSIF (situation de travaux) d'un ``Projet`` (XPRJ4).
+
+    Pratique BTP marocaine : une situation facture l'avancement RÉEL des
+    travaux depuis la dernière situation (cumul antérieur → cumul période),
+    plutôt qu'un jalon fixe (complète PROJ27, facturation au %, qui ne porte
+    pas de cumul antérieur/période). Le ``numero`` est INCRÉMENTAL PAR PROJET
+    (jamais ``count()+1`` — voir ``services.prochain_numero_situation``, verrou
+    de ligne + retry sur le ``Projet``) ; ``periode`` est le mois/la période
+    couverte par le décompte.
+
+    Le ``statut`` est une machine d'état PROPRE à la situation
+    (brouillon/validee/facturee) — il ne réutilise NI n'importe AUCUNE
+    clé/étiquette de ``STAGES.py`` (règle #2), et n'altère JAMAIS le statut du
+    devis/BC/facture (couche séparée, règle #4). ``retenue_garantie_pct`` est
+    optionnelle : le POURCENTAGE déduit de la facture d'acompte générée (le
+    SUIVI de sa LIBÉRATION vit déjà dans ``contrats`` CONTRAT28 — référence
+    LÂCHE ``contrat_id``, aucun import de ``contrats``).
+
+    ``facture_id`` référence LÂCHEMENT la ``ventes.Facture`` d'acompte générée
+    à la validation (posé côté serveur, jamais lu du corps de requête) —
+    empêche une double-génération (une situation VALIDÉE/FACTURÉE ne régénère
+    jamais).
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Modèle entièrement additif.
+    """
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        VALIDEE = 'validee', 'Validée'
+        FACTUREE = 'facturee', 'Facturée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_situations',
+        verbose_name='Société',
+    )
+    projet = models.ForeignKey(
+        Projet,
+        on_delete=models.CASCADE,
+        related_name='situations',
+        verbose_name='Projet',
+    )
+    # Incrémental PAR PROJET (jamais count()+1) — posé côté serveur.
+    numero = models.PositiveIntegerField(verbose_name='N° de situation')
+    periode = models.DateField(
+        verbose_name='Période (1er jour du mois couvert)')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.BROUILLON, verbose_name='Statut')
+    # % de retenue de garantie DÉDUIT de la facture générée (optionnel).
+    retenue_garantie_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        validators=[MinValueValidator(Decimal('0')),
+                    MaxValueValidator(Decimal('100'))],
+        verbose_name='Retenue de garantie (%)')
+    # Référence LÂCHE optionnelle vers contrats.Contrat (CONTRAT28 — libération
+    # de la RG) — aucun FK dur, aucun import de ``contrats``.
+    contrat_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du contrat (RG)')
+    # Référence LÂCHE vers la ventes.Facture d'acompte générée à la validation.
+    facture_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="ID de la facture d'acompte")
+    date_validation = models.DateTimeField(
+        null=True, blank=True, verbose_name='Date de validation')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Situation de travaux'
+        verbose_name_plural = 'Situations de travaux'
+        ordering = ['projet', 'numero']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['projet', 'numero'],
+                name='gp_situation_projet_numero_uniq'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['projet', 'numero'],
+                name='gp_situation_proj_num_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.projet.code} — situation n°{self.numero}'
+
+
+class LigneSituation(models.Model):
+    """Une ligne (lot / ligne de budget) d'une ``SituationTravaux`` (XPRJ4).
+
+    ``montant_marche_ht`` est le montant HT total du marché pour ce lot ;
+    ``avancement_cumule_pct`` est le % d'avancement CUMULÉ (0–100) déclaré à
+    cette situation. Les montants sont CALCULÉS côté serveur (jamais lus du
+    corps de requête) par ``services.calculer_montants_situation`` :
+
+        montant_cumule       = montant_marche_ht × avancement_cumule_pct / 100
+        montant_cumule_anterieur = montant_cumule de la MÊME ligne (même
+                                    libellé) à la situation n°N-1 du projet
+                                    (0 si n°1 ou ligne absente avant)
+        montant_periode       = montant_cumule − montant_cumule_anterieur
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. La ``situation`` doit appartenir à la MÊME société.
+    Modèle entièrement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_lignes_situation',
+        verbose_name='Société',
+    )
+    situation = models.ForeignKey(
+        SituationTravaux,
+        on_delete=models.CASCADE,
+        related_name='lignes',
+        verbose_name='Situation',
+    )
+    libelle = models.CharField(
+        max_length=200, verbose_name='Libellé (lot / ligne de budget)')
+    montant_marche_ht = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant marché HT')
+    avancement_cumule_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('0'),
+        validators=[MinValueValidator(Decimal('0')),
+                    MaxValueValidator(Decimal('100'))],
+        verbose_name='Avancement cumulé (%)')
+    # ── Calculés côté serveur (jamais lus du corps de requête) ───────────────
+    montant_cumule_anterieur = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant cumulé antérieur')
+    montant_periode = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant de la période')
+    montant_cumule = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant cumulé')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Ligne de situation'
+        verbose_name_plural = 'Lignes de situation'
+        ordering = ['situation', 'id']
+        indexes = [
+            models.Index(
+                fields=['situation'], name='gp_lignesit_situation_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.situation_id} — {self.libelle}'
+
+
+class ChronoEnCours(models.Model):
+    """Chrono ACTIF (start/stop) d'un utilisateur sur une ``Tache`` (XPRJ5).
+
+    Modèle LÉGER : un seul enregistrement PAR UTILISATEUR peut exister à la
+    fois (``OneToOneField`` sur ``user`` — démarrer un nouveau chrono ARRÊTE
+    implicitement l'ancien, voir ``services.demarrer_chrono``). ``demarre_a``
+    est posé côté serveur (jamais lu du corps de requête). À l'arrêt
+    (``services.arreter_chrono``), l'enregistrement est SUPPRIMÉ après avoir
+    créé la ``Timesheet`` brouillon correspondante.
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Modèle entièrement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_chronos',
+        verbose_name='Société',
+    )
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_chrono_actif',
+        verbose_name='Utilisateur',
+    )
+    tache = models.ForeignKey(
+        Tache,
+        on_delete=models.CASCADE,
+        related_name='chronos',
+        verbose_name='Tâche',
+    )
+    demarre_a = models.DateTimeField(verbose_name='Démarré à')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Chrono en cours'
+        verbose_name_plural = 'Chronos en cours'
+        ordering = ['-demarre_a']
+
+    def __str__(self):
+        return f'{self.user_id} — tâche {self.tache_id} ({self.demarre_a})'
+
+
+class RecurrenceTache(models.Model):
+    """Gabarit de tâche RÉCURRENTE d'un projet (XPRJ13).
+
+    Génère la PROCHAINE ``Tache`` à échéance via
+    ``manage.py generer_taches_recurrentes`` (branchable Celery beat, pattern
+    FG1/XPRJ7). ``prochaine_echeance`` avance à chaque génération ; la
+    récurrence s'arrête à ``date_fin`` OU après ``nb_occurrences`` (l'un des
+    deux, optionnels ; aucun des deux = récurrence sans fin).
+
+    Le gabarit porte les champs minimaux d'une ``Tache`` à créer : libellé,
+    phase (optionnelle), charge estimée, assigné (XPRJ10). Tout est
+    multi-société : ``company`` est posée côté serveur, jamais lue du corps de
+    requête. Modèle entièrement additif.
+    """
+    class Regle(models.TextChoices):
+        HEBDOMADAIRE = 'hebdomadaire', 'Hebdomadaire'
+        MENSUELLE = 'mensuelle', 'Mensuelle'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gp_recurrences_tache',
+        verbose_name='Société',
+    )
+    projet = models.ForeignKey(
+        Projet,
+        on_delete=models.CASCADE,
+        related_name='recurrences_tache',
+        verbose_name='Projet',
+    )
+    # ── Gabarit de la tâche à générer ────────────────────────────────────────
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    phase = models.ForeignKey(
+        PhaseProjet,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='recurrences_tache',
+        verbose_name='Phase',
+    )
+    charge_estimee = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        verbose_name='Charge estimée (j-h)')
+    assigne = models.ForeignKey(
+        'RessourceProfil',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='recurrences_tache',
+        verbose_name='Assigné',
+    )
+    # ── Règle de récurrence ──────────────────────────────────────────────────
+    regle = models.CharField(
+        max_length=15, choices=Regle.choices, verbose_name='Règle')
+    intervalle = models.PositiveSmallIntegerField(
+        default=1, verbose_name='Intervalle')
+    prochaine_echeance = models.DateField(verbose_name='Prochaine échéance')
+    date_fin = models.DateField(
+        null=True, blank=True, verbose_name='Fin de récurrence')
+    nb_occurrences = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="Nombre d'occurrences")
+    nb_generees = models.PositiveIntegerField(
+        default=0, verbose_name='Occurrences générées')
+    actif = models.BooleanField(default=True, verbose_name='Active')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Récurrence de tâche'
+        verbose_name_plural = 'Récurrences de tâches'
+        ordering = ['prochaine_echeance', 'id']
+        indexes = [
+            models.Index(
+                fields=['actif', 'prochaine_echeance'],
+                name='gp_recur_actif_echeance_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.libelle} ({self.get_regle_display()})'
+
+
+class ItemChecklistTache(models.Model):
+    """Item de checklist d'une ``Tache`` (XPRJ14).
+
+    ``fait`` bascule côté serveur via l'action ``toggle`` du viewset : quand il
+    passe à ``True``, ``fait_par``/``fait_le`` sont posés côté serveur (jamais
+    lus du corps de requête) ; quand il repasse à ``False``, ils sont
+    réinitialisés. Le % d'items cochés d'une tâche est une SUGGESTION affichée
+    à l'``avancement_pct`` — jamais un écrasement silencieux d'un avancement
+    saisi manuellement (voir sérialiseur ``Tache``).
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Modèle entièrement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gp_items_checklist',
+        verbose_name='Société',
+    )
+    tache = models.ForeignKey(
+        Tache,
+        on_delete=models.CASCADE,
+        related_name='items_checklist',
+        verbose_name='Tâche',
+    )
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    fait = models.BooleanField(default=False, verbose_name='Fait')
+    fait_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='+',
+        verbose_name='Fait par',
+    )
+    fait_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Fait le')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Item de checklist'
+        verbose_name_plural = 'Items de checklist'
+        ordering = ['tache', 'ordre', 'id']
+        indexes = [
+            models.Index(
+                fields=['tache'], name='gp_item_checklist_tache_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.tache_id} — {self.libelle}'
+
+
+class PointAvancement(models.Model):
+    """Point d'avancement PÉRIODIQUE d'un projet — statut RAG (XPRJ15).
+
+    Historisé (une ligne par point, jamais mise à jour) : ``sante`` capture un
+    statut RAG (Rouge/Orange/Vert) PROPRE à ce module (jamais une clé de
+    ``STAGES.py``, règle #2), ``avancement_pct`` est FIGÉ au moment du point
+    (photo, distincte du roll-up temps réel PROJ9). Le DERNIER point d'un
+    projet alimente la colonne « santé » du portefeuille (``portefeuille``,
+    PROJ36) et du dashboard.
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête ; ``auteur`` est posé côté serveur. Modèle entièrement
+    additif.
+    """
+    class Sante(models.TextChoices):
+        VERT = 'vert', 'Vert'
+        ORANGE = 'orange', 'Orange'
+        ROUGE = 'rouge', 'Rouge'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gp_points_avancement',
+        verbose_name='Société',
+    )
+    projet = models.ForeignKey(
+        Projet,
+        on_delete=models.CASCADE,
+        related_name='points_avancement',
+        verbose_name='Projet',
+    )
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='+',
+        verbose_name='Auteur',
+    )
+    sante = models.CharField(
+        max_length=10, choices=Sante.choices, verbose_name='Santé')
+    # Avancement FIGÉ au moment du point (photo) — distinct du roll-up temps
+    # réel (PROJ9).
+    avancement_pct = models.PositiveSmallIntegerField(
+        default=0, validators=[MaxValueValidator(100)],
+        verbose_name='Avancement (%)')
+    realisations = models.TextField(
+        blank=True, default='', verbose_name='Réalisations')
+    risques = models.TextField(
+        blank=True, default='', verbose_name='Risques')
+    prochaines_etapes = models.TextField(
+        blank=True, default='', verbose_name='Prochaines étapes')
+    date_point = models.DateField(verbose_name='Date du point')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Point d'avancement"
+        verbose_name_plural = "Points d'avancement"
+        ordering = ['-date_point', '-id']
+        indexes = [
+            models.Index(
+                fields=['projet', '-date_point'],
+                name='gp_point_av_projet_date_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.projet_id} — {self.date_point} ({self.sante})'

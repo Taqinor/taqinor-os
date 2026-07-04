@@ -260,6 +260,48 @@ class CompanyProfile(models.Model):
         default=0,
         help_text="Rétention du journal d'audit en jours (0 = illimité).")
 
+    # ── XMKT21 — seuil de score MQL (Marketing Qualified Lead) ──
+    # NULL/0 = désactivé (défaut) : aucune assignation automatique tant que la
+    # société ne fixe pas de seuil — comportement actuel strictement inchangé.
+    # Quand le score d'un lead (QJ6/FG27) franchit ce seuil, il est assigné
+    # automatiquement (round-robin) + le responsable est notifié (XMKT21).
+    seuil_mql = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        verbose_name='Seuil de score MQL',
+        help_text='Score (0–100) au-delà duquel un lead est automatiquement '
+                  'assigné et le commercial notifié. Vide/0 = désactivé.')
+
+    # ── YLEAD14 — recyclage des leads non travaillés (2e seuil, désassignation) ──
+    # 0/NULL = désactivé (défaut) : un lead SLA-dépassé est escaladé (activité +
+    # notification) mais JAMAIS désassigné tant que ce champ n'est pas fixé —
+    # comportement actuel inchangé. Au-delà de ce délai (heures depuis la
+    # création, complémentaire au SLA de premier contact), le owner est retiré
+    # (owner→None) pour retourner le lead au pool.
+    lead_sla_deassign_hours = models.PositiveIntegerField(
+        default=0,
+        help_text='Délai (heures) au-delà duquel un lead SLA-dépassé est '
+                  'désassigné (rendu au pool). 0 = jamais désassigné (défaut).')
+    # ── XFAC7 — rappel de courtoisie PRÉ-échéance (J-N avant échéance) ──
+    # N jours AVANT date_echeance d'une facture émise, envoie un rappel amical
+    # (prouvé pour réduire les retards — Chargebee/Odoo). Défaut 5, 0 = désactivé
+    # → comportement historique inchangé tant que la société n'y touche pas.
+    rappel_pre_echeance_jours = models.PositiveIntegerField(
+        default=5,
+        help_text="Jours avant échéance pour le rappel de courtoisie "
+                  "(0 = désactivé).")
+
+    # ── XFAC12 — escompte pour règlement anticipé (ex. 2/10 net 30) ──
+    # Défauts PROPOSÉS à la création d'une facture (surchargeables par
+    # facture) ; NULL = pas de proposition automatique (comportement actuel
+    # inchangé — la société doit les activer explicitement).
+    escompte_pct_defaut = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text="Taux d'escompte (%) proposé par défaut sur les "
+                  "nouvelles factures.")
+    escompte_jours_defaut = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Délai (jours) proposé par défaut pour l'escompte.")
+
     class Meta:
         verbose_name = 'Profil entreprise'
 

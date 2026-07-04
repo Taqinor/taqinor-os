@@ -5,9 +5,20 @@ La société est TOUJOURS fournie par l'appelant (résolue côté serveur depuis
 version est incrémental PAR article et calculé côté serveur (max(version)+1,
 sous verrou — JAMAIS count()+1, qui collisionne sous concurrence).
 """
+import logging
+
 from django.db import transaction
 
-from .models import KbLecture, KbArticleVersion, KbArticleChunk
+from .models import (
+    KbArticle,
+    KbArticleChunk,
+    KbArticleVersion,
+    KbFavori,
+    KbLecture,
+    KbRechercheVide,
+)
+
+logger = logging.getLogger(__name__)
 
 
 def marquer_lu(article, *, utilisateur):
@@ -55,6 +66,193 @@ def snapshot_article(article, *, auteur=None):
             contenu=article.corps,
             auteur=auteur,
         )
+
+
+# ── XKB12 — Gabarits d'articles utilisateur ─────────────────────────────────
+
+def creer_depuis_gabarit(gabarit, *, auteur, company):
+    """XKB12 — Crée un nouvel article BROUILLON pré-rempli depuis un gabarit.
+
+    Copie titre + corps + format + catégorie/tags du gabarit ; le nouvel
+    article N'EST PAS lui-même un gabarit (``est_gabarit=False``). La société
+    et l'auteur sont fournis par l'appelant (résolus côté serveur, jamais du
+    corps de requête) — jamais celle du gabarit si elle diffère (protège
+    contre un gabarit d'une autre société, même si ce cas est déjà bloqué en
+    amont par le scoping du queryset appelant).
+    """
+    return KbArticle.objects.create(
+        company=company,
+        titre=gabarit.titre,
+        corps=gabarit.corps,
+        corps_format=gabarit.corps_format,
+        categorie=gabarit.categorie,
+        tags=gabarit.tags,
+        statut=KbArticle.Statut.BROUILLON,
+        auteur=auteur,
+        est_gabarit=False,
+    )
+
+
+# ── XKB16 — Statistiques KB & recherches infructueuses ──────────────────────
+
+def incrementer_vues(article):
+    """XKB16 — Incrémente le compteur de vues (DISTINCT de KbLecture — chaque
+    consultation compte, même une relecture par la même personne).
+
+    Utilise une expression F() pour éviter une race condition en écriture
+    concurrente (pas de read-modify-write applicatif).
+    """
+    from django.db.models import F
+    KbArticle.objects.filter(id=article.id).update(vues=F('vues') + 1)
+    article.refresh_from_db(fields=['vues'])
+    return article.vues
+
+
+def journaliser_recherche_vide(company, terme, *, utilisateur=None):
+    """XKB16 — Journalise une recherche ``?search=`` SANS RÉSULTAT.
+
+    Société posée côté serveur ; ``terme`` tronqué au ``max_length`` du champ
+    pour ne jamais lever sur une entrée trop longue. Jamais bloquant.
+    """
+    terme = (terme or '').strip()
+    if not terme:
+        return None
+    try:
+        return KbRechercheVide.objects.create(
+            company=company, terme=terme[:255], utilisateur=utilisateur)
+    except Exception:  # pragma: no cover - défensif : jamais bloquer la recherche.
+        logger.warning('journaliser_recherche_vide: échec', exc_info=True)
+        return None
+
+
+# ── XKB15 — Favoris (toggle) ─────────────────────────────────────────────────
+
+def toggler_favori(article, *, utilisateur):
+    """XKB15 — Favorise/défavorise ``article`` pour ``utilisateur`` (toggle).
+
+    Crée la ligne si absente, la supprime si présente. Société posée côté
+    serveur (celle de l'article). Renvoie ``(favori_actif, favori_ou_None)``.
+    """
+    with transaction.atomic():
+        favori = KbFavori.objects.filter(
+            article=article, utilisateur=utilisateur).first()
+        if favori is not None:
+            favori.delete()
+            return False, None
+        favori = KbFavori.objects.create(
+            company=article.company, article=article, utilisateur=utilisateur)
+        return True, favori
+
+
+# ── XKB14 — Vérification, péremption & verrou ───────────────────────────────
+
+def verifier_article(article, *, verificateur, horizon_jours=90):
+    """XKB14 — Marque l'article VÉRIFIÉ par ``verificateur`` jusqu'à
+    ``horizon_jours`` (défaut 90 j — l'appelant peut passer 7/30/90 ou tout
+    autre horizon libre). Renvoie l'article sauvegardé.
+    """
+    from django.utils import timezone
+    article.verifie_par = verificateur
+    article.verifie_jusqua = timezone.now() + timezone.timedelta(
+        days=horizon_jours)
+    article.save(update_fields=['verifie_par', 'verifie_jusqua'])
+    return article
+
+
+def relancer_revues_perimees(company=None):
+    """XKB14 — Notifie le vérificateur des articles PÉRIMÉS (re-revue due).
+
+    Best-effort et jamais bloquant. ``company`` restreint à une seule société
+    (sweep par société) ; ``None`` balaie toutes les sociétés actives.
+    Renvoie le nombre de notifications émises.
+    """
+    from apps.notifications.models import EventType
+    from apps.notifications.services import notify
+
+    from . import selectors
+
+    companies = [company] if company is not None else _companies_actives()
+    total = 0
+    for co in companies:
+        for entry in selectors.rapport_peremption(co):
+            try:
+                article = KbArticle.objects.filter(id=entry['id']).first()
+                if article is None or not article.verifie_par_id:
+                    continue
+                notify(
+                    article.verifie_par, EventType.DIGEST,
+                    f'Re-revue due : {article.titre}',
+                    body="Cet article est périmé et nécessite une re-revue.",
+                    link=f'/kb/articles/{article.id}',
+                    company=co,
+                )
+                total += 1
+            except Exception:  # pragma: no cover - défensif
+                logger.warning(
+                    'relancer_revues_perimees: article %s échoué',
+                    entry.get('id'), exc_info=True)
+    return total
+
+
+def _companies_actives():
+    try:
+        from authentication.models import Company
+        return list(Company.objects.filter(actif=True))
+    except Exception:  # pragma: no cover
+        return []
+
+
+# ── XKB7 — Relance des non-lecteurs de lecture obligatoire ─────────────────
+
+def relancer_lectures_obligatoires(company=None):
+    """Relance (notify()) tous les non-lecteurs de lecture obligatoire.
+
+    Best-effort et jamais bloquant : une notification qui échoue n'empêche pas
+    les suivantes. ``company`` restreint à une seule société (sweep par
+    société) ; ``None`` balaie toutes les sociétés actives. Import
+    fonction-local des apps notifications (lecture de service, jamais de
+    models/views directement — voir CLAUDE.md). Renvoie le nombre de relances
+    émises.
+    """
+    from apps.notifications.models import EventType
+    from apps.notifications.services import notify
+
+    from . import selectors
+    from .models import KbArticle, KbLectureObligatoire
+
+    qs = KbLectureObligatoire.objects.select_related('article')
+    if company is not None:
+        qs = qs.filter(company=company)
+    total = 0
+    for assignation in qs:
+        article = assignation.article
+        if article.statut != KbArticle.Statut.PUBLIE:
+            continue
+        try:
+            deja_lu = set(
+                KbLecture.objects.filter(article=article)
+                .values_list('utilisateur_id', flat=True))
+            for user in selectors.assignees_for_assignation(assignation):
+                if user.id in deja_lu:
+                    continue
+                try:
+                    notify(
+                        user, EventType.DIGEST,
+                        f'Lecture obligatoire : {article.titre}',
+                        body="Cet article requiert votre lecture.",
+                        link=f'/kb/articles/{article.id}',
+                        company=assignation.company,
+                    )
+                    total += 1
+                except Exception:  # pragma: no cover - défensif
+                    logger.warning(
+                        'relancer_lectures_obligatoires: notify échoué',
+                        exc_info=True)
+        except Exception:  # pragma: no cover - défensif
+            logger.warning(
+                'relancer_lectures_obligatoires: assignation %s échouée',
+                getattr(assignation, 'pk', None), exc_info=True)
+    return total
 
 
 # ── KB6 — Source de contenu pour le RAG/DocQA (FG352, pgvector, no-op sans clé) ──

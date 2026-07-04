@@ -352,18 +352,30 @@ def notify(user, event_type, title, body='', link=None, company=None):
         except Exception as exc:  # pragma: no cover - défensif
             logger.warning('Création notification in-app échouée : %s', exc)
             created = None
+        else:
+            _audit_notify(
+                user, company, event_type, channel='in_app', ok=True,
+                instance=created)
 
     # Diffusions hors-app : best-effort, chacune isolée.
     if prefs.get('email'):
+        email_ok = False
         try:
-            _dispatch_email(user, str(title), str(body or ''))
+            email_ok = _dispatch_email(user, str(title), str(body or ''))
         except Exception as exc:  # pragma: no cover - défensif
             logger.warning('Dispatch email notification échoué : %s', exc)
+        _audit_notify(
+            user, company, event_type, channel='email', ok=email_ok,
+            instance=created)
     if prefs.get('whatsapp'):
+        wa_ok = False
         try:
-            _dispatch_whatsapp(user, str(title), str(body or ''))
+            wa_ok = _dispatch_whatsapp(user, str(title), str(body or ''))
         except Exception as exc:  # pragma: no cover - défensif
             logger.warning('Dispatch WhatsApp notification échoué : %s', exc)
+        _audit_notify(
+            user, company, event_type, channel='whatsapp', ok=wa_ok,
+            instance=created)
 
     # Web push (N92) : best-effort, opt-in par APPAREIL (pas un toggle
     # d'événement). NO-OP total sans clés VAPID ni abonnement — donc aucun
@@ -374,6 +386,41 @@ def notify(user, event_type, title, body='', link=None, company=None):
         logger.warning('Dispatch web push notification échoué : %s', exc)
 
     return created
+
+
+# YEVNT5 — mapping canal → Action d'audit. 'in_app' n'a pas de valeur EMAIL/
+# WHATSAPP dédiée dans AuditLog.Action → NOTIFY générique (ajoutée pour ce
+# ticket). email/whatsapp réutilisent les actions EMAIL/WHATSAPP existantes,
+# déjà utilisées ailleurs (PDF/génération de devis) pour rester cohérent.
+_AUDIT_CHANNEL_ACTION = {
+    'in_app': 'notify',
+    'email': 'email',
+    'whatsapp': 'whatsapp',
+}
+
+
+def _audit_notify(user, company, event_type, *, channel, ok, instance=None):
+    """Écrit une ligne d'audit best-effort pour UN canal d'un envoi `notify()`.
+
+    Ne bloque JAMAIS l'envoi : toute erreur d'écriture d'audit est absorbée
+    par `audit.recorder.record` lui-même (best-effort), et on l'entoure ici
+    d'une couche supplémentaire par prudence."""
+    try:
+        from apps.audit import recorder
+        action = _AUDIT_CHANNEL_ACTION.get(channel, 'notify')
+        statut = 'envoyé' if ok else 'échoué'
+        detail = (
+            f'Notification {event_type} → {channel} ({statut}) '
+            f'destinataire={getattr(user, "username", user)}'
+        )
+        recorder.record(
+            action, instance=instance, company=company,
+            user=None,  # action système : le déclencheur n'est pas l'acteur HTTP.
+            object_repr=str(instance) if instance is not None else str(event_type),
+            detail=detail,
+        )
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.debug('audit_notify (canal %s) échoué : %s', channel, exc)
 
 
 def merged_preferences(user):
@@ -415,3 +462,420 @@ CHANNELS = [
 
 def mark_read_at():
     return timezone.now()
+
+
+# =============================================================================
+# XMKT25 — Cycle d'approbation Meta des gabarits WhatsApp BSP.
+# =============================================================================
+
+def approved_templates_for(company, *, event_key=None):
+    """Gabarits WhatsApp SÉLECTIONNABLES pour une campagne (XMKT25).
+
+    Seuls les gabarits `statut_approbation == APPROUVE` ET actifs sont
+    proposables. `event_key` (optionnel) filtre par `groupe` — permet à un
+    appelant de restreindre aux variantes fr/ar d'un même gabarit logique.
+    Renvoie un QuerySet (peut être vide)."""
+    from .models import WhatsAppTemplate
+    qs = WhatsAppTemplate.objects.filter(
+        company=company, active=True,
+        statut_approbation=WhatsAppTemplate.StatutApprobation.APPROUVE,
+    )
+    if event_key:
+        qs = qs.filter(groupe=event_key)
+    return qs.order_by('name', 'language')
+
+
+def submit_template_for_approval(template, *, user=None):
+    """Soumet un gabarit à l'approbation Meta (XMKT25), GATED sur credentials BSP.
+
+    Sans `WHATSAPP_BSP_ENABLED=1` + credentials complets (même gate que
+    `whatsapp_bsp.get_whatsapp_provider`), c'est un NO-OP FONCTIONNEL : le
+    gabarit passe simplement en statut `soumis` pour que le statut soit saisi
+    manuellement par la suite (l'ERP ne peut pas encore parler à l'API Meta).
+    Idempotent : un gabarit déjà `approuve`/`rejete` n'est pas re-soumis (il
+    faut d'abord le repasser en brouillon). Jamais d'exception remontée."""
+    from .models import WhatsAppTemplate
+    if template is None:
+        return template
+    if template.statut_approbation in (
+            WhatsAppTemplate.StatutApprobation.APPROUVE,
+            WhatsAppTemplate.StatutApprobation.REJETE):
+        return template
+    try:
+        import os
+        bsp_ready = os.getenv('WHATSAPP_BSP_ENABLED', '0') == '1' and all([
+            os.getenv('WHATSAPP_BSP_BASE_URL', '').strip(),
+            os.getenv('WHATSAPP_BSP_TOKEN', '').strip(),
+            os.getenv('WHATSAPP_BSP_PHONE_NUMBER_ID', '').strip(),
+        ])
+        if bsp_ready:
+            # SEAM : l'appel réel à l'API Meta de soumission de gabarit n'est
+            # PAS implémenté (nécessite le compte Meta Business Manager du
+            # fondateur). On marque quand même `soumis` pour que le statut
+            # réel (approuvé/rejeté) soit saisi manuellement en retour de
+            # Meta — comportement identique au chemin non-gated.
+            logger.info(
+                'submit_template_for_approval: BSP prêt mais soumission API '
+                'Meta non implémentée (gabarit %s) — statut posé à "soumis" '
+                'pour saisie manuelle du retour.', template.pk)
+        template.statut_approbation = WhatsAppTemplate.StatutApprobation.SOUMIS
+        template.save(update_fields=['statut_approbation', 'updated_at'])
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.warning('submit_template_for_approval échoué (tpl %s) : %s',
+                       getattr(template, 'pk', None), exc)
+    return template
+
+
+def set_template_approval_status(template, statut, *, motif_rejet=''):
+    """Saisie MANUELLE du statut d'approbation (retour Meta lu par un humain).
+
+    C'est le chemin normal tant que la soumission API n'est pas branchée :
+    l'admin consulte le Meta Business Manager et reporte le statut ici.
+    `statut` doit appartenir à `WhatsAppTemplate.StatutApprobation`."""
+    from .models import WhatsAppTemplate
+    if template is None:
+        return template
+    if statut not in WhatsAppTemplate.StatutApprobation.values:
+        logger.warning('set_template_approval_status: statut inconnu %r', statut)
+        return template
+    template.statut_approbation = statut
+    template.motif_rejet = (
+        motif_rejet or '') if statut == WhatsAppTemplate.StatutApprobation.REJETE else ''
+    template.save(update_fields=['statut_approbation', 'motif_rejet', 'updated_at'])
+    return template
+
+
+# =============================================================================
+# XKB5 — Annonces internes ciblées et programmées.
+# =============================================================================
+
+def _users_in_departement(company, departement_nom):
+    """Utilisateurs de `company` rattachés (via `rh.DossierEmploye`) à un
+    département dont le nom correspond (lecture seule, import function-local —
+    jamais un FK cross-app dur, cf. CLAUDE.md). Best-effort : liste vide si
+    l'app rh est indisponible ou si aucun match."""
+    if not departement_nom:
+        return []
+    try:
+        from apps.rh.models import DossierEmploye
+        dossiers = DossierEmploye.objects.filter(
+            company=company, departement__nom=departement_nom,
+            user__isnull=False, user__is_active=True,
+        ).select_related('user')
+        return [d.user for d in dossiers if d.user_id]
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.warning('_users_in_departement échoué : %s', exc)
+        return []
+
+
+def annonce_recipients(annonce):
+    """Résout les destinataires d'une annonce selon son ciblage (XKB5).
+
+    - TOUS : tous les utilisateurs actifs de la société.
+    - ROLE : utilisateurs actifs avec ce `role_legacy`.
+    - DEPARTEMENT : utilisateurs actifs rattachés (rh) à ce département.
+
+    Best-effort : renvoie toujours un QuerySet/liste (jamais d'exception)."""
+    from .models import Annonce
+    try:
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        base = User.objects.filter(company=annonce.company, is_active=True)
+        if annonce.cible_type == Annonce.Cible.ROLE:
+            if not annonce.cible_role:
+                return base.none()
+            return base.filter(role_legacy=annonce.cible_role)
+        if annonce.cible_type == Annonce.Cible.DEPARTEMENT:
+            return _users_in_departement(
+                annonce.company, annonce.cible_departement_nom)
+        return base
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.warning('annonce_recipients échoué (annonce %s) : %s',
+                       getattr(annonce, 'pk', None), exc)
+        from django.contrib.auth import get_user_model
+        return get_user_model().objects.none()
+
+
+def publish_annonce(annonce, *, now=None):
+    """Publie une annonce (idempotent) : notifie les destinataires ciblés,
+    marque `publiee=True` + `date_publication_effective`.
+
+    Sans effet si déjà publiée. Best-effort : notifier chaque destinataire est
+    isolé (une erreur n'empêche pas les suivants ni la publication elle-même)."""
+    if annonce.publiee:
+        return annonce
+    now = now or timezone.now()
+    recipients = annonce_recipients(annonce)
+    link = '/annonces/' + str(annonce.pk)
+    for user in recipients:
+        try:
+            notify(
+                user, EventType.ANNONCE_PUBLISHED, annonce.titre,
+                body=annonce.corps, link=link, company=annonce.company)
+        except Exception as exc:  # pragma: no cover - défensif
+            logger.warning('publish_annonce: notify échoué (user %s) : %s',
+                           getattr(user, 'pk', None), exc)
+    annonce.publiee = True
+    annonce.date_publication_effective = now
+    annonce.save(update_fields=['publiee', 'date_publication_effective'])
+    return annonce
+
+
+# =============================================================================
+# XKB6 — Accusé de lecture obligatoire des annonces + rapport de conformité.
+# =============================================================================
+
+def acknowledge_annonce(annonce, user):
+    """« J'ai lu et compris » : crée (idempotent) l'accusé de lecture de
+    `user` pour `annonce`. Un second clic ne duplique rien (contrainte
+    unique) et ne réinitialise pas `relances_envoyees`."""
+    from .models import AnnonceLecture
+    if annonce is None or user is None:
+        return None
+    lecture, _created = AnnonceLecture.objects.get_or_create(
+        annonce=annonce, utilisateur=user,
+        defaults={'company': annonce.company})
+    return lecture
+
+
+def annonce_compliance_report(annonce):
+    """Rapport de conformité : qui a confirmé, quand, qui manque (XKB6).
+
+    Ne s'applique qu'aux annonces `lecture_obligatoire=True` ET publiées —
+    sinon la notion de « manquant » n'a pas de sens (renvoie des listes
+    vides). `destinataires` = ceux ciblés par l'annonce au moment de l'appel
+    (recalculé — le ciblage peut avoir changé depuis la publication)."""
+    from .models import AnnonceLecture
+    if not annonce.lecture_obligatoire or not annonce.publiee:
+        return {'lus': [], 'manquants': [], 'total_cibles': 0}
+
+    destinataires = list(annonce_recipients(annonce))
+    lectures = {
+        lc.utilisateur_id: lc
+        for lc in AnnonceLecture.objects.filter(
+            annonce=annonce).select_related('utilisateur')
+    }
+    lus = []
+    manquants = []
+    for user in destinataires:
+        lecture = lectures.get(user.pk)
+        if lecture is not None:
+            lus.append({
+                'user_id': user.pk,
+                'username': getattr(user, 'username', ''),
+                'date_lecture': lecture.date_lecture,
+            })
+        else:
+            manquants.append({
+                'user_id': user.pk,
+                'username': getattr(user, 'username', ''),
+            })
+    return {
+        'lus': lus, 'manquants': manquants,
+        'total_cibles': len(destinataires),
+    }
+
+
+# Paliers de relance (jours ouvrés depuis la publication). Le premier palier
+# relance le destinataire ; le second escalade vers les managers (mécanisme
+# partagé avec YEVNT9, mais ici les « manquants » sont par LECTURE, pas par
+# approbation).
+ANNONCE_REMINDER_DELAY_DAYS = 2
+
+
+def sweep_annonce_reminders(company, *, delay_days=None, today=None):
+    """Relance les destinataires n'ayant pas confirmé une lecture obligatoire
+    (XKB6), au-delà de `delay_days` jours ouvrés depuis la publication.
+
+    Suit l'état de relance dans `AnnonceRelance` — JAMAIS dans
+    `AnnonceLecture`, qui ne doit exister que pour une lecture réellement
+    confirmée. Idempotent : au plus une relance par jour de balayage pour un
+    même destinataire (`derniere_relance_le` comparée à `today`)."""
+    from .calendar_utils import ajouter_jours_ouvres
+    from .models import Annonce, AnnonceLecture, AnnonceRelance
+    delay = delay_days if delay_days is not None else ANNONCE_REMINDER_DELAY_DAYS
+    today = today or timezone.now().date()
+
+    try:
+        qs = Annonce.objects.filter(
+            company=company, publiee=True, lecture_obligatoire=True)
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.warning('sweep_annonce_reminders: chargement annonces échoué : %s', exc)
+        return 0
+
+    count = 0
+    for annonce in qs:
+        try:
+            if not annonce.date_publication_effective:
+                continue
+            due_date = ajouter_jours_ouvres(
+                annonce.date_publication_effective.date(), delay, company)
+            if due_date > today:
+                continue
+            destinataires = list(annonce_recipients(annonce))
+            lu_ids = set(AnnonceLecture.objects.filter(
+                annonce=annonce).values_list('utilisateur_id', flat=True))
+            link = '/annonces/' + str(annonce.pk)
+            for user in destinataires:
+                if user.pk in lu_ids:
+                    continue  # déjà lu → aucune relance.
+                relance, _created = AnnonceRelance.objects.get_or_create(
+                    annonce=annonce, utilisateur=user,
+                    defaults={'company': company})
+                if (relance.derniere_relance_le
+                        and relance.derniere_relance_le.date() == today):
+                    continue  # déjà relancé aujourd'hui → idempotent.
+                notify(
+                    user, EventType.ANNONCE_READ_REMINDER,
+                    f"Lecture obligatoire en attente : {annonce.titre}",
+                    body=annonce.corps, link=link, company=company)
+                relance.relances_envoyees = (relance.relances_envoyees or 0) + 1
+                relance.derniere_relance_le = timezone.now()
+                relance.save(update_fields=[
+                    'relances_envoyees', 'derniere_relance_le'])
+                count += 1
+        except Exception:  # pragma: no cover - défensif
+            logger.warning('sweep_annonce_reminders: annonce %s échouée',
+                           getattr(annonce, 'pk', None), exc_info=True)
+    return count
+
+
+# =============================================================================
+# YEVNT9 — Relance/escalade des approbations en attente (les DEUX moteurs :
+# automation.AutomationApproval + compta.DemandeApprobationConfig).
+# =============================================================================
+
+def approval_reminder_thresholds(company):
+    """Seuils effectifs (relance_days, escalade_days) pour une société
+    (config stockée, sinon défauts de classe). Best-effort."""
+    from .models import ApprovalReminderConfig
+    try:
+        cfg = ApprovalReminderConfig.objects.filter(company=company).first()
+        if cfg is not None:
+            return (cfg.relance_days, cfg.escalade_days)
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.warning('approval_reminder_thresholds échoué : %s', exc)
+    return (
+        ApprovalReminderConfig.DEFAULT_RELANCE_DAYS,
+        ApprovalReminderConfig.DEFAULT_ESCALADE_DAYS,
+    )
+
+
+def _approval_reminder_state(company, instance):
+    """État de relance (créé si besoin) pour UNE approbation en attente,
+    générique via content-type."""
+    from django.contrib.contenttypes.models import ContentType
+
+    from .models import ApprovalReminderState
+    ct = ContentType.objects.get_for_model(instance.__class__)
+    state, _created = ApprovalReminderState.objects.get_or_create(
+        content_type=ct, object_id=instance.pk,
+        defaults={'company': company})
+    return state
+
+
+def _sweep_one_pending_approval(company, instance, *, approver, requester,
+                                link, description, relance_days,
+                                escalade_days, today):
+    """Traite UNE approbation en attente : relance au palier 1, escalade au
+    palier 2 — jamais deux fois pour le même palier (état persisté).
+
+    Renvoie 1 si une notification a été émise, 0 sinon."""
+    from .calendar_utils import ajouter_jours_ouvres
+
+    date_creation = getattr(instance, 'date_creation', None)
+    if date_creation is None:
+        return 0
+    base_date = (
+        date_creation.date() if hasattr(date_creation, 'date')
+        else date_creation)
+    relance_due = ajouter_jours_ouvres(base_date, relance_days, company)
+    escalade_due = ajouter_jours_ouvres(base_date, escalade_days, company)
+
+    state = _approval_reminder_state(company, instance)
+
+    if state.palier < 2 and today >= escalade_due:
+        from .sweeps import _managers
+        title = "Approbation escaladée"
+        body = f'{description} reste en attente depuis {escalade_days}+ jours ouvrés.'
+        for admin in _managers(company):
+            notify(admin, EventType.APPROVAL_ESCALATED, title, body=body,
+                   link=link, company=company)
+        state.palier = 2
+        state.derniere_action_le = timezone.now()
+        state.save(update_fields=['palier', 'derniere_action_le'])
+        return 1
+
+    if state.palier < 1 and today >= relance_due:
+        if approver is not None:
+            title = "Relance d'approbation"
+            body = f'{description} attend toujours votre validation.'
+            notify(approver, EventType.APPROVAL_REMINDER, title, body=body,
+                   link=link, company=company)
+        state.palier = 1
+        state.derniere_action_le = timezone.now()
+        state.save(update_fields=['palier', 'derniere_action_le'])
+        return 1
+
+    return 0
+
+
+def sweep_approval_reminders(company, *, today=None):
+    """Relance/escalade les approbations en attente au-delà des seuils
+    (YEVNT9), pour les DEUX moteurs. Idempotent (un palier n'est jamais
+    re-signalé) ; best-effort par approbation."""
+    today = today or timezone.now().date()
+    relance_days, escalade_days = approval_reminder_thresholds(company)
+    count = 0
+
+    try:
+        from apps.automation.models import AutomationApproval
+        pending = AutomationApproval.objects.filter(
+            company=company, status=AutomationApproval.Status.PENDING
+        ).select_related('rule', 'requested_by')
+        for approval in pending:
+            try:
+                from .sweeps import _managers
+                approvers = _managers(company)
+                approver = approvers[0] if approvers else None
+                count += _sweep_one_pending_approval(
+                    company, approval, approver=approver,
+                    requester=approval.requested_by,
+                    link=f'/automation/approvals/{approval.pk}',
+                    description=approval.description or 'Une action',
+                    relance_days=relance_days, escalade_days=escalade_days,
+                    today=today)
+            except Exception:  # pragma: no cover - défensif
+                logger.warning(
+                    'sweep_approval_reminders: automation approval %s échouée',
+                    approval.pk, exc_info=True)
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.warning('sweep_approval_reminders: automation échoué : %s', exc)
+
+    try:
+        from apps.compta.models import DemandeApprobationConfig
+        pending = DemandeApprobationConfig.objects.filter(
+            company=company,
+            statut=DemandeApprobationConfig.Statut.EN_ATTENTE,
+        ).select_related('demandeur')
+        for demande in pending:
+            try:
+                from .sweeps import _managers
+                approvers = _managers(company)
+                approver = approvers[0] if approvers else None
+                label = demande.devis_reference or demande.devis_id or ''
+                count += _sweep_one_pending_approval(
+                    company, demande, approver=approver,
+                    requester=demande.demandeur,
+                    link=f'/compta/approbations/{demande.pk}',
+                    description=f'La demande {label}',
+                    relance_days=relance_days, escalade_days=escalade_days,
+                    today=today)
+            except Exception:  # pragma: no cover - défensif
+                logger.warning(
+                    'sweep_approval_reminders: demande approbation %s échouée',
+                    demande.pk, exc_info=True)
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.warning('sweep_approval_reminders: compta échoué : %s', exc)
+
+    return count

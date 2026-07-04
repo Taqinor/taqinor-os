@@ -1391,6 +1391,225 @@ def creer_avenant(contrat, *, objet, description='', date_effet=None,
 
 
 # ---------------------------------------------------------------------------
+# XCTR6 — Prorata temporis sur avenant en cours de période
+# ---------------------------------------------------------------------------
+
+# Nombre de mois couverts par UNE période, par périodicité d'échéancier (même
+# table que ``selectors._MOIS_PAR_PERIODE`` — un avenant sur une périodicité
+# unique/personnalisée n'a pas de « prochaine échéance » calculable).
+_MOIS_PAR_PERIODE_PRORATA = {
+    'mensuelle': 1,
+    'trimestrielle': 3,
+    'semestrielle': 6,
+    'annuelle': 12,
+}
+
+
+class ProrataError(Exception):
+    """Levée quand un prorata d'avenant ne peut pas être calculé/appliqué.
+
+    Ex. : la ligne n'appartient pas à une périodicité prorata-able, l'avenant
+    n'a pas de ``date_effet``/``montant_delta``, ou la ligne est déjà facturée.
+    """
+
+
+def calculer_prorata_avenant(avenant, ligne, *, base_jours=None):
+    """Calcule le montant PRORATA TEMPORIS d'un avenant sur UNE échéance — XCTR6.
+
+    PUREMENT DÉCLARATIF (lecture seule) : ne crée AUCUNE écriture. La période
+    couverte par ``ligne`` est déduite de la ``periodicite`` de son échéancier :
+    ``[date_echeance − N mois, date_echeance[`` (N = 1/3/6/12 selon
+    mensuelle/trimestrielle/semestrielle/annuelle). Le calcul base « jours
+    réels » (par défaut) répartit ``avenant.montant_delta`` au prorata des
+    jours restants de la période APRÈS ``date_effet`` :
+
+        prorata = montant_delta × (jours_restants / jours_periode)
+
+    - ``date_effet`` HORS de la période (avant le début ou à/après la fin,
+      c.-à-d. à l'échéance elle-même) → prorata NUL (rien à répartir sur cette
+      échéance — l'avenant s'applique en totalité, ou ne concerne pas encore
+      cette période).
+    - ``base_jours`` : nombre de jours de la période, si fourni (permet une
+      base 30/360 conventionnelle) ; sinon les jours RÉELS calendaires
+      (défaut — ``(fin − debut).days``).
+
+    Renvoie un dict ``{'periode_debut', 'periode_fin', 'jours_periode',
+    'jours_restants', 'prorata'}`` (``Decimal`` arrondi 2 décimales). Renvoie
+    ``None`` si la périodicité de l'échéancier n'est pas prorata-able
+    (unique/personnalisée) ou si ``montant_delta`` est ``None``.
+    """
+    from .models import Contrat
+
+    if avenant.montant_delta is None or avenant.date_effet is None:
+        return None
+
+    periodicite = ligne.echeancier.periodicite
+    mois = _MOIS_PAR_PERIODE_PRORATA.get(periodicite)
+    if not mois:
+        return None
+
+    periode_fin = ligne.date_echeance
+    periode_debut = Contrat.ajouter_mois(periode_fin, -mois)
+
+    if avenant.date_effet <= periode_debut or avenant.date_effet >= periode_fin:
+        # Hors période (avant le début, ou à/après la fin = pas de prorata à
+        # appliquer sur CETTE échéance).
+        jours_periode = base_jours or (periode_fin - periode_debut).days
+        return {
+            'periode_debut': periode_debut,
+            'periode_fin': periode_fin,
+            'jours_periode': jours_periode,
+            'jours_restants': 0,
+            'prorata': Decimal('0.00'),
+        }
+
+    jours_periode = base_jours or (periode_fin - periode_debut).days
+    jours_restants = (periode_fin - avenant.date_effet).days
+    if jours_periode <= 0:
+        prorata = Decimal('0.00')
+    else:
+        prorata = (
+            avenant.montant_delta * Decimal(jours_restants)
+            / Decimal(jours_periode)
+        ).quantize(Decimal('0.01'))
+
+    return {
+        'periode_debut': periode_debut,
+        'periode_fin': periode_fin,
+        'jours_periode': jours_periode,
+        'jours_restants': jours_restants,
+        'prorata': prorata,
+    }
+
+
+@transaction.atomic
+def appliquer_prorata_avenant(avenant, ligne, *, auteur=None, base_jours=None):
+    """Applique le prorata d'un avenant sur UNE échéance à venir — XCTR6.
+
+    Calcule le prorata (``calculer_prorata_avenant``) puis, s'il est NON nul :
+
+    - HAUSSE (prorata > 0) : ajoute une ligne COMPLÉMENTAIRE à l'échéancier de
+      la ligne (``services.ajouter_ligne_echeance`` — numéro max+1 sous verrou,
+      jamais ``count()+1``), datée à ``ligne.date_echeance``, montant = prorata.
+      Cette ligne complémentaire est facturée normalement au cycle suivant
+      (CONTRAT31/XCTR5) — elle n'émet PAS de facture elle-même ici.
+    - BAISSE (prorata < 0) : crée un ``ventes.Avoir`` lié à la DERNIÈRE facture
+      émise pour le contrat (frontière cross-app, import fonction-local ;
+      ``ventes.services`` n'est pas encore requis ici — création directe du
+      modèle Avoir, cohérente avec ``ventes.services`` qui fait de même) pour
+      le montant absolu du prorata. Sans facture antérieure à créditer, l'avoir
+      n'est pas créé (rien à créditer) — le prorata reste tracé au chatter.
+    - Un avenant à date d'échéance (prorata nul) n'a AUCUN effet : ni ligne, ni
+      avoir.
+
+    Journalise le résultat dans le chatter du contrat (CONTRAT15). Lève
+    ``ProrataError`` si la ligne est déjà facturée (rien à ajuster) ou si le
+    calcul renvoie ``None`` (périodicité non prorata-able / avenant sans delta).
+
+    Renvoie un dict ``{'prorata', 'ligne_complementaire', 'avoir'}``
+    (``ligne_complementaire``/``avoir`` sont ``None`` si non applicables).
+    """
+    if ligne.facture_id:
+        raise ProrataError(
+            "Cette échéance est déjà facturée — le prorata ne peut plus être "
+            "ajusté dessus.")
+
+    calcul = calculer_prorata_avenant(avenant, ligne, base_jours=base_jours)
+    if calcul is None:
+        raise ProrataError(
+            "Le prorata n'est pas calculable pour cette échéance (périodicité "
+            "non prorata-able ou avenant sans montant_delta/date_effet).")
+
+    prorata = calcul['prorata']
+    ligne_complementaire = None
+    avoir = None
+
+    if prorata > 0:
+        ligne_complementaire = ajouter_ligne_echeance(
+            ligne.echeancier,
+            date_echeance=ligne.date_echeance,
+            montant=prorata,
+            libelle=(
+                f'Prorata avenant n°{avenant.numero} — {avenant.objet}'),
+        )
+    elif prorata < 0:
+        avoir = _creer_avoir_prorata(avenant, ligne.echeancier.contrat,
+                                     abs(prorata))
+
+    journaliser_transition(
+        avenant.contrat, field='prorata_avenant',
+        old_value='',
+        new_value=_fmt_montant(prorata, avenant.contrat.devise),
+        message=(
+            f'Prorata temporis avenant n°{avenant.numero} sur échéance '
+            f'n°{ligne.numero} (période {calcul["periode_debut"]} → '
+            f'{calcul["periode_fin"]}).'),
+        auteur=auteur)
+
+    return {
+        'prorata': prorata,
+        'ligne_complementaire': ligne_complementaire,
+        'avoir': avoir,
+    }
+
+
+def _creer_avoir_prorata(avenant, contrat, montant_abs):
+    """Crée un ``ventes.Avoir`` lié à la dernière facture du contrat — XCTR6.
+
+    Frontière cross-app (CLAUDE.md) : import FONCTION-LOCAL de
+    ``ventes.models``/``ventes.utils.references`` uniquement (jamais une vue).
+    Sans facture antérieure émise pour ce contrat, renvoie ``None`` (rien à
+    créditer — le prorata reste tracé au chatter seul).
+    """
+    from decimal import ROUND_HALF_UP
+
+    from .models import LigneEcheance
+
+    from apps.ventes.models import Avoir, Facture
+    from apps.ventes.utils.references import create_with_reference
+
+    facture_id = (
+        LigneEcheance.objects
+        .filter(echeancier__contrat=contrat, facture_id__isnull=False)
+        .exclude(statut=LigneEcheance.Statut.ANNULEE)
+        .order_by('-date_echeance', '-id')
+        .values_list('facture_id', flat=True)
+        .first()
+    )
+    if not facture_id:
+        return None
+
+    try:
+        facture = Facture.objects.get(pk=facture_id, company=contrat.company)
+    except Facture.DoesNotExist:  # pragma: no cover - défensif
+        return None
+
+    tva_pct = facture.taux_tva or Decimal('20')
+    montant_ttc = Decimal(str(montant_abs))
+    montant_ht = (montant_ttc / (1 + tva_pct / 100)).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+    montant_tva = (montant_ttc - montant_ht).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+    def _create(ref):
+        return Avoir.objects.create(
+            reference=ref,
+            company=contrat.company,
+            facture=facture,
+            client=facture.client,
+            taux_tva=tva_pct,
+            montant_ht=montant_ht,
+            montant_tva=montant_tva,
+            montant_ttc=montant_ttc,
+            motif=(
+                f'Prorata temporis avenant n°{avenant.numero} '
+                f'(baisse) — contrat #{contrat.id}'),
+        )
+
+    return create_with_reference(Avoir, 'AV', contrat.company, _create)
+
+
+# ---------------------------------------------------------------------------
 # CONTRAT25 — Résiliation (motif / préavis / solde) → statut « résilié »
 # ---------------------------------------------------------------------------
 
@@ -2042,3 +2261,553 @@ def marquer_piece_fournie(piece, *, ged_document_id=None, date_expiration=None,
         new_value=piece.statut,
         message=f'Pièce « {piece.libelle} » fournie.', auteur=auteur)
     return piece
+
+
+# ---------------------------------------------------------------------------
+# XCTR5 — Journal des cycles de facturation récurrente + file d'exceptions
+# ---------------------------------------------------------------------------
+
+
+class RejeuError(Exception):
+    """Levée quand une entrée du journal de facturation ne peut pas être rejouée.
+
+    Ex. : l'entrée n'est pas en ``echec`` (déjà générée/sautée), ou la période
+    est déjà facturée avec succès par une AUTRE entrée (garde anti double-
+    facturation — jamais deux factures pour la même période contrat).
+    """
+
+
+def _cycle_deja_genere(company, source_type, source_id, periode):
+    """``True`` si un cycle ``genere`` existe déjà pour ce triplet — XCTR5.
+
+    Garde anti double-facturation : sert de filet de sécurité applicatif
+    derrière la garde native ``LigneEcheance.facture_id`` (CONTRAT31) — jamais
+    deux factures pour la même période d'un même contrat.
+    """
+    from .models import CycleFacturationLog
+
+    return CycleFacturationLog.objects.filter(
+        company=company, source_type=source_type, source_id=source_id,
+        periode=periode, statut=CycleFacturationLog.Statut.GENERE,
+    ).exists()
+
+
+@transaction.atomic
+def enregistrer_cycle(company, *, source_type, source_id, periode,
+                      statut, motif='', facture_id=None):
+    """Écrit UNE ligne du journal de facturation récurrente — XCTR5.
+
+    Appelée par les services de facturation récurrente (``facturer_ligne_echeance``
+    ici, ``sav.services`` pour ``ContratMaintenance``) APRÈS chaque tentative
+    (succès, échec ou saut). ``company`` est TOUJOURS posée côté serveur par
+    l'appelant (jamais lue du corps de requête).
+
+    GARDE ANTI DOUBLE-FACTURATION : si ``statut='genere'`` et qu'un cycle
+    ``genere`` existe déjà pour ``(source_type, source_id, periode)``,
+    ``RejeuError`` est levée sans rien écrire — jamais deux factures pour la
+    même période contrat.
+
+    Renvoie le ``CycleFacturationLog`` créé.
+    """
+    from .models import CycleFacturationLog
+
+    if statut == CycleFacturationLog.Statut.GENERE and _cycle_deja_genere(
+            company, source_type, source_id, periode):
+        raise RejeuError(
+            "Cette période a déjà été facturée avec succès — refus de "
+            "double-facturation.")
+
+    return CycleFacturationLog.objects.create(
+        company=company,
+        source_type=source_type,
+        source_id=source_id,
+        periode=periode,
+        statut=statut,
+        motif=motif or '',
+        facture_id=facture_id,
+    )
+
+
+def facturer_ligne_echeance_journalisee(ligne, *, user=None,
+                                        taux_tva=Decimal('20'),
+                                        periode=None):
+    """Facture une échéance (CONTRAT31) ET journalise le résultat — XCTR5.
+
+    Enveloppe ``facturer_ligne_echeance`` : sur succès, écrit un
+    ``CycleFacturationLog`` ``genere`` (facture liée) ; sur ``FacturationError``,
+    écrit un ``echec`` avec le motif et RE-LÈVE l'exception (le comportement de
+    l'appelant est inchangé — seul le journal est un effet de bord additif).
+
+    ``periode`` par défaut = ``date_echeance`` ISO de la ligne (une échéance
+    datée EST sa propre période). Renvoie la ``Facture`` créée (comme
+    ``facturer_ligne_echeance``).
+    """
+    from .models import CycleFacturationLog
+
+    contrat = ligne.echeancier.contrat
+    company = ligne.echeancier.company
+    if periode is None:
+        periode = ligne.date_echeance.isoformat()
+
+    try:
+        facture = facturer_ligne_echeance(ligne, user=user, taux_tva=taux_tva)
+    except FacturationError as exc:
+        enregistrer_cycle(
+            company, source_type=CycleFacturationLog.SourceType.CONTRAT,
+            source_id=contrat.id, periode=periode,
+            statut=CycleFacturationLog.Statut.ECHEC, motif=str(exc))
+        raise
+
+    enregistrer_cycle(
+        company, source_type=CycleFacturationLog.SourceType.CONTRAT,
+        source_id=contrat.id, periode=periode,
+        statut=CycleFacturationLog.Statut.GENERE, facture_id=facture.id)
+    return facture
+
+
+@transaction.atomic
+def rejouer_cycle(log, *, user=None, taux_tva=Decimal('20')):
+    """Rejoue UN échec du journal de facturation — XCTR5.
+
+    Ne re-tente qu'une entrée ``echec`` (``RejeuError`` sinon). Pour une source
+    ``contrat`` (échéancier CONTRAT31), retrouve la ``LigneEcheance`` NON encore
+    facturée de la période et relance ``facturer_ligne_echeance_journalisee`` :
+    - succès → la ligne obtient sa facture, une NOUVELLE entrée ``genere`` est
+      journalisée, et CETTE entrée ``echec`` est marquée rejouée (incrémente
+      ``nb_tentatives``, ne change pas son ``statut`` — l'historique reste
+      fidèle) ;
+    - la garde anti double-facturation (``enregistrer_cycle``) empêche tout
+      second succès pour la même période — un échec ne se rejoue donc EXACTEMENT
+      qu'une fois avec succès.
+
+    Lève ``RejeuError`` si l'entrée n'est pas ``echec``, ou si aucune échéance
+    facturable n'est retrouvable pour la période (source disparue/déjà réglée
+    autrement).
+    """
+    from .models import CycleFacturationLog, LigneEcheance
+
+    if log.statut != CycleFacturationLog.Statut.ECHEC:
+        raise RejeuError("Seule une entrée en échec peut être rejouée.")
+
+    if log.source_type != CycleFacturationLog.SourceType.CONTRAT:
+        raise RejeuError(
+            "Le rejeu automatique n'est disponible que pour les échéanciers "
+            "de contrats (sav.ContratMaintenance se rejoue via son propre "
+            "service `facturer`).")
+
+    ligne = (
+        LigneEcheance.objects
+        .filter(
+            company=log.company,
+            echeancier__contrat_id=log.source_id,
+            date_echeance=log.periode if _est_iso_date(log.periode) else None,
+            facture_id__isnull=True,
+        )
+        .exclude(statut=LigneEcheance.Statut.ANNULEE)
+        .order_by('id')
+        .first()
+    )
+    if ligne is None:
+        raise RejeuError(
+            "Aucune échéance non facturée n'a été retrouvée pour cette "
+            "période — rien à rejouer.")
+
+    facture = facturer_ligne_echeance_journalisee(
+        ligne, user=user, taux_tva=taux_tva, periode=log.periode)
+
+    log.nb_tentatives = (log.nb_tentatives or 1) + 1
+    log.save(update_fields=['nb_tentatives'])
+
+    return facture
+
+
+def _est_iso_date(valeur):
+    """``True`` si ``valeur`` ressemble à une date ISO (``AAAA-MM-JJ``)."""
+    import re
+
+    return bool(re.match(r'^\d{4}-\d{2}-\d{2}$', valeur or ''))
+
+
+def exceptions_facturation(company):
+    """Cycles ``echec`` en file d'exceptions (QuerySet scopé société) — XCTR5.
+
+    Lecture seule : alimente la carte « Exceptions de facturation » du tableau
+    de bord contrats. Ordonné par date de création décroissante (les plus
+    récentes d'abord).
+    """
+    from .models import CycleFacturationLog
+
+    return CycleFacturationLog.objects.filter(
+        company=company, statut=CycleFacturationLog.Statut.ECHEC,
+    ).order_by('-date_creation', '-id')
+
+
+# ---------------------------------------------------------------------------
+# XCTR11 — Campagne de révision tarifaire en masse
+# ---------------------------------------------------------------------------
+
+
+def _filtrer_contrats_campagne(company, filtres):
+    """Applique les ``filtres`` (dict) d'une campagne de révision — XCTR11.
+
+    Filtres reconnus (tous optionnels) : ``type_contrat``, ``statut`` (défaut
+    ``actif`` seulement — on ne révise pas un contrat brouillon/résilié),
+    ``responsable_id``. Toujours scopé société. Renvoie un QuerySet.
+    """
+    from .models import Contrat
+
+    filtres = filtres or {}
+    qs = Contrat.objects.filter(company=company)
+    statut = filtres.get('statut')
+    if statut:
+        qs = qs.filter(statut=statut)
+    else:
+        qs = qs.filter(statut=Contrat.Statut.ACTIF)
+    type_contrat = filtres.get('type_contrat')
+    if type_contrat:
+        qs = qs.filter(type_contrat=type_contrat)
+    responsable_id = filtres.get('responsable_id')
+    if responsable_id:
+        qs = qs.filter(responsable_id=responsable_id)
+    return qs.order_by('id')
+
+
+def previsualiser_campagne_revision(company, *, filtres=None, pct):
+    """Mode PREVIEW d'une campagne de révision tarifaire — AUCUNE écriture (XCTR11).
+
+    Liste, pour chaque contrat couvert par les ``filtres``, l'ancien montant et
+    le nouveau montant (``ancien × (1 + pct/100)``, arrondi 2 décimales) —
+    purement déclaratif, ne crée ni avenant ni notification. ``pct`` est un
+    POURCENTAGE (ex. 5 = +5 %, -3 = -3 %).
+
+    Renvoie une liste de dicts ``{'contrat_id', 'objet', 'ancien_montant',
+    'nouveau_montant', 'delta'}``.
+    """
+    from decimal import ROUND_HALF_UP
+
+    pct_d = Decimal(str(pct))
+    facteur = Decimal('1') + (pct_d / Decimal('100'))
+
+    resultats = []
+    for contrat in _filtrer_contrats_campagne(company, filtres):
+        ancien = contrat.montant or Decimal('0')
+        nouveau = (ancien * facteur).quantize(
+            Decimal('0.01'), rounding=ROUND_HALF_UP)
+        resultats.append({
+            'contrat_id': contrat.id,
+            'objet': contrat.objet,
+            'ancien_montant': ancien,
+            'nouveau_montant': nouveau,
+            'delta': (nouveau - ancien).quantize(Decimal('0.01')),
+        })
+    return resultats
+
+
+@transaction.atomic
+def campagne_revision(company, *, filtres=None, pct, date_effet=None,
+                      preview=True, auteur=None):
+    """Campagne de révision tarifaire en masse (preview OU application) — XCTR11.
+
+    - ``preview=True`` (défaut) : délègue à ``previsualiser_campagne_revision``
+      — AUCUNE écriture, renvoie la liste des montants ancien/nouveau.
+    - ``preview=False`` : APPLIQUE la révision — un AVENANT d'indexation par
+      contrat couvert (réutilise ``creer_avenant``, CONTRAT24 — numérotation
+      max+1 sous verrou, instantané immuable, chatter journalisé), delta =
+      nouveau − ancien montant. IDEMPOTENT : un contrat déjà révisé par CETTE
+      campagne (même date d'effet, objet d'avenant identique) n'est PAS
+      re-révisé (0 nouvel avenant sur un re-run) — détecté via un avenant
+      existant du contrat portant l'objet ``« Révision tarifaire {pct}% —
+      {date_effet} »`` EXACT. Notifie les responsables (``notifications.
+      services``, import fonction-local, événement ``digest`` — best-effort,
+      jamais bloquant) et renvoie la liste des ids d'avenants créés
+      (``rollback_ids``) pour un rollback manuel ultérieur.
+
+    Endpoint réservé admin (vérifié côté vue). ``pct`` en pourcentage (ex. 5 =
+    +5 %). Renvoie un dict ``{'preview': bool, 'lignes'|'avenants_crees',
+    'rollback_ids'}``.
+    """
+    if preview:
+        return {
+            'preview': True,
+            'lignes': previsualiser_campagne_revision(
+                company, filtres=filtres, pct=pct),
+        }
+
+    if date_effet is None:
+        date_effet = timezone.localdate()
+
+    objet_avenant = f'Révision tarifaire {pct}% — {date_effet.isoformat()}'
+
+    avenants_crees = []
+    rollback_ids = []
+    for contrat in _filtrer_contrats_campagne(company, filtres):
+        # Garde d'idempotence : cette campagne EXACTE a déjà révisé ce contrat.
+        deja_revise = contrat.avenants.filter(
+            objet=objet_avenant, date_effet=date_effet).exists()
+        if deja_revise:
+            continue
+
+        ancien = contrat.montant or Decimal('0')
+        pct_d = Decimal(str(pct))
+        nouveau = (ancien * (Decimal('1') + pct_d / Decimal('100'))).quantize(
+            Decimal('0.01'))
+        delta = (nouveau - ancien).quantize(Decimal('0.01'))
+        if delta == Decimal('0'):
+            continue
+
+        avenant = creer_avenant(
+            contrat, objet=objet_avenant,
+            description=(
+                f'Campagne de révision tarifaire en masse : {ancien} → '
+                f'{nouveau} ({pct}%).'),
+            date_effet=date_effet, montant_delta=delta, auteur=auteur)
+        avenants_crees.append(avenant)
+        rollback_ids.append(avenant.id)
+
+    _notifier_campagne_revision(company, len(avenants_crees), pct)
+
+    return {
+        'preview': False,
+        'avenants_crees': len(avenants_crees),
+        'rollback_ids': rollback_ids,
+    }
+
+
+def _notifier_campagne_revision(company, nb_avenants, pct):
+    """Notifie les responsables du résultat d'une campagne — XCTR11.
+
+    Frontière cross-app (CLAUDE.md) : appelle EXCLUSIVEMENT
+    ``apps.notifications.services`` (jamais ses ``models``/``views``), import
+    FONCTION-LOCAL. BEST-EFFORT : une erreur de notification ne doit JAMAIS
+    faire échouer la campagne elle-même (déjà appliquée à ce stade).
+    """
+    if nb_avenants <= 0:
+        return
+    try:
+        from apps.notifications.services import notify_many, resolve_recipients
+    except Exception:  # pragma: no cover - app notifications absente
+        return
+    try:
+        recipients = resolve_recipients(company, 'digest')
+        notify_many(
+            recipients, 'digest',
+            'Campagne de révision tarifaire appliquée',
+            body=(
+                f'{nb_avenants} contrat(s) révisé(s) de {pct}% — '
+                'un avenant a été créé pour chacun.'),
+            link='/contrats', company=company)
+    except Exception:  # pragma: no cover - défensif (best-effort)
+        pass
+
+
+def rollback_campagne_revision(company, avenant_ids, *, auteur=None):
+    """Annule les avenants d'une campagne de révision (rollback manuel) — XCTR11.
+
+    Pour chaque avenant de la liste ``avenant_ids`` (scopés société) : crée un
+    avenant COMPENSATOIRE (delta inverse) via ``creer_avenant`` — on n'efface
+    JAMAIS un avenant existant (historique immuable, CONTRAT18/24), on
+    compense. Ignore silencieusement un id introuvable/hors société (best-
+    effort, l'appelant a la liste de ``rollback_ids`` retournée à
+    l'application). Renvoie la liste des avenants compensatoires créés.
+    """
+    from .models import Avenant
+
+    compensations = []
+    for avenant in Avenant.objects.filter(
+            id__in=avenant_ids, company=company).select_related('contrat'):
+        if avenant.montant_delta is None or avenant.montant_delta == 0:
+            continue
+        compensation = creer_avenant(
+            avenant.contrat,
+            objet=f'Rollback — {avenant.objet}',
+            description=(
+                f'Annulation (rollback) de l\'avenant n°{avenant.numero}.'),
+            date_effet=timezone.localdate(),
+            montant_delta=-avenant.montant_delta,
+            auteur=auteur,
+        )
+        compensations.append(compensation)
+    return compensations
+
+
+# ---------------------------------------------------------------------------
+# XCTR12 — Devis de renouvellement généré avant échéance
+# ---------------------------------------------------------------------------
+
+
+class RenouvellementDevisError(Exception):
+    """Levée quand un devis de renouvellement ne peut pas être généré.
+
+    Ex. : un devis de renouvellement OUVERT (brouillon/envoyé) existe déjà
+    pour ce contrat (garde anti-doublon — un double clic ne crée jamais deux
+    devis), ou le contrat n'a pas de client résoluble.
+    """
+
+
+_STATUTS_DEVIS_FERMES = ('accepte', 'refuse', 'expire')
+
+
+def devis_renouvellement_ouvert(contrat):
+    """``ContratLien`` DEVIS de renouvellement OUVERT du contrat, ou ``None`` — XCTR12.
+
+    « Ouvert » = un lien vers un devis dont le statut ventes (résolu via
+    ``ventes.selectors.get_devis_by_pk``, frontière cross-app — lecture seule,
+    jamais d'import de ``ventes.models`` directement) n'est ni ``accepte`` ni
+    ``refuse`` ni ``expire`` — sert de GARDE ANTI-DOUBLON : un double clic sur
+    « générer le devis de renouvellement » ne crée jamais un second devis tant
+    qu'un devis ouvert existe déjà.
+    """
+    from .models import ContratLien
+
+    try:
+        from apps.ventes import selectors as ventes_selectors
+    except Exception:  # pragma: no cover - défensif (app absente)
+        return None
+
+    liens = ContratLien.objects.filter(
+        contrat=contrat, company=contrat.company,
+        type_cible=ContratLien.TypeCible.DEVIS,
+    ).order_by('-id')
+    for lien in liens:
+        try:
+            devis = ventes_selectors.get_devis_by_pk(lien.cible_id)
+        except Exception:  # pragma: no cover - défensif
+            continue
+        if devis is None or devis.company_id != contrat.company_id:
+            continue
+        if devis.statut not in _STATUTS_DEVIS_FERMES:
+            return lien
+    return None
+
+
+@transaction.atomic
+def generer_devis_renouvellement(contrat, *, auteur=None, valeur_indice=None,
+                                 today=None):
+    """Génère un devis de renouvellement AVANT échéance — XCTR12.
+
+    Crée un ``ventes.Devis`` (frontière cross-app : import FONCTION-LOCAL de
+    ``ventes.models``/``ventes.utils.references`` — jamais une vue) reprenant
+    le montant COURANT du contrat, éventuellement révisé par l'indexation
+    active (première ``IndexationPrix`` active du contrat, si
+    ``valeur_indice`` est fournie — sinon le montant courant sans révision).
+    Le client est résolu depuis ``contrat.client_id`` via ``crm.selectors``
+    (même frontière que ``facturer_ligne_echeance`` — CONTRAT31).
+
+    Le montant proposé (avec/sans révision) est porté dans ``Devis.note`` et
+    ``Devis.etude_params`` (résumé structuré : montant courant, montant
+    proposé, indexation appliquée) — un devis de renouvellement n'a pas de
+    lignes catalogue (aucune ligne inventée) ; l'affichage détaillé du
+    récapitulatif est un raffinement PDF ultérieur, hors périmètre ici (la
+    référence/numérotation passe déjà par le chemin standard
+    ``ventes.utils.references``, jamais ``count()+1``).
+
+    GARDE ANTI-DOUBLON : refuse (``RenouvellementDevisError``) si un devis de
+    renouvellement OUVERT existe déjà pour ce contrat
+    (``devis_renouvellement_ouvert``) — un double clic ne crée jamais de
+    doublon.
+
+    Relie le devis créé au contrat via un ``ContratLien`` (type ``devis``).
+    Journalise au chatter (CONTRAT15). Le ``Contrat.statut`` n'est JAMAIS
+    modifié (préservation des statuts — CONTRAT12) et aucun funnel
+    ``STAGES.py`` n'intervient (rule #2). Renvoie le ``Devis`` créé.
+    """
+    from .models import ContratLien
+
+    if devis_renouvellement_ouvert(contrat) is not None:
+        raise RenouvellementDevisError(
+            "Un devis de renouvellement est déjà ouvert pour ce contrat.")
+
+    if not contrat.client_id:
+        raise RenouvellementDevisError(
+            "Le contrat n'a pas de client : impossible de générer un devis "
+            "de renouvellement.")
+
+    from apps.crm.selectors import get_company_client
+
+    client = get_company_client(contrat.company, contrat.client_id)
+    if client is None:
+        raise RenouvellementDevisError(
+            "Le client du contrat est introuvable dans votre société.")
+
+    montant_courant = contrat.montant or Decimal('0')
+    montant_propose = montant_courant
+    indexation_appliquee = None
+
+    if valeur_indice is not None:
+        indexation = contrat.indexations.filter(actif=True).order_by(
+            'id').first()
+        if indexation is not None:
+            calcul = calculer_prix_indexe(
+                indexation, valeur_actuelle=valeur_indice,
+                prix_base=montant_courant)
+            montant_propose = calcul['prix_revise']
+            indexation_appliquee = {
+                'indice': indexation.indice,
+                'valeur_base': str(indexation.valeur_base),
+                'valeur_actuelle': str(calcul['valeur_actuelle']),
+                'delta': str(calcul['delta']),
+            }
+
+    note = (
+        f'Renouvellement du contrat {contrat.reference or contrat.pk} — '
+        f'montant courant {_fmt_montant(montant_courant, contrat.devise)} '
+        f'→ proposé {_fmt_montant(montant_propose, contrat.devise)}.'
+    )
+    etude_params = {
+        'renouvellement_contrat_id': contrat.id,
+        'montant_courant': str(montant_courant),
+        'montant_propose': str(montant_propose),
+        'indexation_appliquee': indexation_appliquee,
+    }
+
+    from apps.ventes.models import Devis
+    from apps.ventes.utils.references import create_with_reference
+
+    def _create(ref):
+        return Devis.objects.create(
+            reference=ref,
+            company=contrat.company,
+            client=client,
+            statut=Devis.Statut.BROUILLON,
+            note=note,
+            etude_params=etude_params,
+            created_by=auteur,
+        )
+
+    devis = create_with_reference(Devis, 'DEV', contrat.company, _create)
+
+    ContratLien.objects.create(
+        company=contrat.company,
+        contrat=contrat,
+        type_cible=ContratLien.TypeCible.DEVIS,
+        cible_id=devis.id,
+        libelle=f'Renouvellement — {devis.reference}',
+    )
+
+    journaliser_transition(
+        contrat, field='devis_renouvellement', old_value='',
+        new_value=devis.reference,
+        message='Devis de renouvellement généré.', auteur=auteur)
+
+    return devis
+
+
+def marquer_renouvellement_accepte(contrat, devis, *, auteur=None,
+                                   today=None):
+    """Marque le renouvellement proposé ACCEPTÉ sur le contrat — XCTR12.
+
+    Appelé par ``receivers.py`` sur l'événement ``devis_accepted`` (core.events)
+    quand le devis accepté est lié au contrat via un ``ContratLien`` de type
+    ``devis``. Journalise l'acceptation au chatter (CONTRAT15) — NE modifie
+    JAMAIS ``Contrat.statut`` (préservation des statuts CONTRAT12) : le
+    renouvellement effectif (prolongation de ``date_fin``) reste un acte
+    SÉPARÉ et EXPLICITE (``renouveler_contrat`` — CONTRAT23), jamais déclenché
+    automatiquement par la seule acceptation du devis (décision métier : le
+    founder peut vouloir revoir les termes avant de prolonger réellement).
+    """
+    journaliser_transition(
+        contrat, field='devis_renouvellement_accepte', old_value='',
+        new_value=getattr(devis, 'reference', str(devis.pk)),
+        message='Devis de renouvellement accepté par le client.',
+        auteur=auteur)
+    return contrat

@@ -48,6 +48,28 @@ class EventType(models.TextChoices):
     CHAT_MESSAGE = 'chat_message', 'Nouveau message'
     CHAT_MENTION = 'chat_mention', 'Vous avez été mentionné'
     DIGEST = 'digest', 'Récapitulatif'
+    # XKB5 — annonce interne publiée (programmée ou immédiate).
+    ANNONCE_PUBLISHED = 'annonce_published', 'Nouvelle annonce interne'
+    # XKB6 — relance de lecture obligatoire non confirmée.
+    ANNONCE_READ_REMINDER = (
+        'annonce_read_reminder', 'Relance lecture obligatoire')
+    # YEVNT8 — demandes d'approbation (automation N73 + compta FG213).
+    APPROVAL_REQUESTED = 'approval_requested', "Approbation demandée"
+    APPROVAL_DECIDED = 'approval_decided', "Approbation décidée"
+    # YEVNT9 — relance/escalade d'une approbation restée en attente.
+    APPROVAL_REMINDER = 'approval_reminder', "Relance d'approbation"
+    APPROVAL_ESCALATED = 'approval_escalated', "Approbation escaladée"
+    # XPUR1 — document de conformité fournisseur (ARF/CNSS/RC/assurance)
+    # expiré ou bientôt expiré.
+    SUPPLIER_DOC_EXPIRING = (
+        'supplier_doc_expiring', 'Document fournisseur bientôt expiré')
+    # XPUR7 — BCF envoyé en retard (prévue/confirmée dépassée, non reçu).
+    BCF_LATE = 'bcf_late', 'Bon de commande fournisseur en retard'
+    # XPRJ22 — retard/risque de planning sur un projet (gestion_projet).
+    PROJET_RETARD = 'projet_retard', 'Retard planning projet'
+    # XFLT18 — dépassement de budget flotte annuel (par catégorie de coût).
+    FLOTTE_BUDGET_DEPASSEMENT = (
+        'flotte_budget_depassement', 'Dépassement budget flotte')
 
 
 class Channel(models.TextChoices):
@@ -423,6 +445,33 @@ class WhatsAppTemplate(models.Model):
     # Code langue IETF (ex. 'fr', 'ar', 'fr_MA') — défaut FR.
     language = models.CharField(max_length=10, default='fr', verbose_name='Langue')
     active = models.BooleanField(default=True, verbose_name='Actif')
+
+    # ── XMKT25 — Cycle d'approbation Meta ───────────────────────────────────
+    class StatutApprobation(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        SOUMIS = 'soumis', 'Soumis'
+        APPROUVE = 'approuve', 'Approuvé'
+        REJETE = 'rejete', 'Rejeté'
+
+    class Categorie(models.TextChoices):
+        MARKETING = 'marketing', 'Marketing'
+        UTILITY = 'utility', 'Utilitaire'
+
+    statut_approbation = models.CharField(
+        max_length=12, choices=StatutApprobation.choices,
+        default=StatutApprobation.BROUILLON,
+        verbose_name="Statut d'approbation Meta")
+    # Motif de rejet éventuel (renseigné manuellement ou via la réponse Meta).
+    motif_rejet = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Motif de rejet')
+    categorie = models.CharField(
+        max_length=12, choices=Categorie.choices, default=Categorie.UTILITY,
+        verbose_name='Catégorie Meta')
+    # Regroupe les variantes de langue d'un même gabarit logique (ex. fr/ar du
+    # même nom) sans dépendre du nom Meta seul. Vide = pas de groupe explicite
+    # (comportement actuel préservé).
+    groupe = models.CharField(
+        max_length=100, blank=True, default='', verbose_name='Groupe de variantes')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -438,10 +487,17 @@ class WhatsAppTemplate(models.Model):
         ]
         indexes = [
             models.Index(fields=['company', 'active'], name='nwa_tpl_company_active_idx'),
+            models.Index(
+                fields=['company', 'statut_approbation'],
+                name='nwa_tpl_company_statut_idx'),
         ]
 
     def __str__(self):
         return f'{self.company_id}:{self.name}:{self.language}'
+
+    @property
+    def is_approuve(self):
+        return self.statut_approbation == self.StatutApprobation.APPROUVE
 
 
 class WhatsAppMessageLog(models.Model):
@@ -509,3 +565,242 @@ class WhatsAppMessageLog(models.Model):
 
     def __str__(self):
         return f'WA:{self.provider}:{self.status} → {self.recipient}'
+
+
+# =============================================================================
+# XKB5 — Annonces internes ciblées et programmées.
+# =============================================================================
+
+class Annonce(models.Model):
+    """Annonce interne, publiée à l'heure dite, ciblée département/rôle/tous.
+
+    ADDITIF : nouvelle app, nouveau modèle. Une annonce non publiée n'a AUCUN
+    effet (pas de notification, pas d'affichage dashboard). La publication est
+    déclenchée par `sweep_daily` (Celery beat existant) quand
+    `date_publication <= maintenant` et `publiee=False`. Elle expire seule (le
+    front n'affiche plus une annonce dont `date_expiration` est dépassée) —
+    aucun job de suppression n'est nécessaire.
+
+    MULTI-TENANT : `company` posée côté serveur, jamais depuis le corps.
+    """
+
+    class Cible(models.TextChoices):
+        TOUS = 'tous', 'Toute la société'
+        ROLE = 'role', 'Par rôle'
+        DEPARTEMENT = 'departement', 'Par département'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='annonces', verbose_name='Société')
+    titre = models.CharField(max_length=200, verbose_name='Titre')
+    corps = models.TextField(blank=True, default='', verbose_name='Corps')
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='annonces_creees',
+        verbose_name='Auteur')
+
+    cible_type = models.CharField(
+        max_length=15, choices=Cible.choices, default=Cible.TOUS,
+        verbose_name='Type de ciblage')
+    # Utilisé quand cible_type == ROLE (valeurs de CustomUser.role_legacy).
+    cible_role = models.CharField(
+        max_length=20, blank=True, default='', verbose_name='Rôle cible')
+    # Utilisé quand cible_type == DEPARTEMENT — nom du département
+    # (`rh.Departement.nom`), comparé en lecture seule via un import
+    # function-local (jamais un FK cross-app dur, cf. CLAUDE.md).
+    cible_departement_nom = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Département cible')
+
+    # Programmation : publiée automatiquement quand date_publication est
+    # atteinte (sweep quotidien). NULL = publication immédiate (dès création,
+    # gérée côté service/vue — le modèle ne décide rien seul).
+    date_publication = models.DateTimeField(
+        null=True, blank=True, verbose_name='Publier le')
+    date_expiration = models.DateTimeField(
+        null=True, blank=True, verbose_name='Expire le')
+    publiee = models.BooleanField(default=False, verbose_name='Publiée')
+    date_publication_effective = models.DateTimeField(
+        null=True, blank=True, verbose_name='Publiée le (effectif)')
+
+    # Épinglée en tête du dashboard jusqu'à expiration.
+    epinglee = models.BooleanField(default=False, verbose_name='Épinglée')
+
+    # XKB6 — accusé de lecture obligatoire.
+    lecture_obligatoire = models.BooleanField(
+        default=False, verbose_name='Lecture obligatoire')
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Annonce'
+        verbose_name_plural = 'Annonces'
+        ordering = ['-epinglee', '-date_publication_effective', '-created_at']
+        indexes = [
+            models.Index(fields=['company', 'publiee']),
+            models.Index(fields=['company', 'date_publication']),
+            models.Index(fields=['company', 'epinglee']),
+        ]
+
+    def __str__(self):
+        return self.titre
+
+    def is_expiree(self, now=None):
+        if not self.date_expiration:
+            return False
+        from django.utils import timezone as dj_timezone
+        now = now or dj_timezone.now()
+        return self.date_expiration <= now
+
+    def is_due(self, now=None):
+        """Prête à être publiée : programmée, pas déjà publiée, heure atteinte."""
+        if self.publiee or not self.date_publication:
+            return False
+        from django.utils import timezone as dj_timezone
+        now = now or dj_timezone.now()
+        return self.date_publication <= now
+
+
+class AnnonceLecture(models.Model):
+    """XKB6 — Accusé de lecture obligatoire d'une annonce, par destinataire.
+
+    Une ligne = un destinataire a cliqué « J'ai lu et compris » pour une
+    annonce donnée. ADDITIF : l'absence de ligne = non lu (pas de blocage
+    fonctionnel, seulement du reporting + relance)."""
+
+    annonce = models.ForeignKey(
+        Annonce, on_delete=models.CASCADE, related_name='lectures')
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='annonce_lectures')
+    utilisateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='annonce_lectures')
+    date_lecture = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Accusé de lecture'
+        verbose_name_plural = 'Accusés de lecture'
+        ordering = ['-date_lecture']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['annonce', 'utilisateur'],
+                name='notif_annonce_lecture_uniq',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'annonce']),
+        ]
+
+    def __str__(self):
+        return f'{self.annonce_id}:{self.utilisateur_id}'
+
+
+class AnnonceRelance(models.Model):
+    """XKB6 — État de relance PAR DESTINATAIRE N'AYANT PAS ENCORE CONFIRMÉ.
+
+    Distinct de `AnnonceLecture` (qui ne doit exister QUE pour une lecture
+    réellement confirmée) : cette table suit uniquement l'idempotence des
+    relances envoyées à qui n'a PAS (encore) cliqué « J'ai lu ». Une ligne ici
+    ne signifie jamais une lecture confirmée."""
+
+    annonce = models.ForeignKey(
+        Annonce, on_delete=models.CASCADE, related_name='relances')
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='annonce_relances')
+    utilisateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='annonce_relances')
+    relances_envoyees = models.PositiveSmallIntegerField(default=0)
+    derniere_relance_le = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Relance de lecture'
+        verbose_name_plural = 'Relances de lecture'
+        ordering = ['-derniere_relance_le']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['annonce', 'utilisateur'],
+                name='notif_annonce_relance_uniq',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'annonce']),
+        ]
+
+    def __str__(self):
+        return f'relance {self.annonce_id}:{self.utilisateur_id}'
+
+
+# =============================================================================
+# YEVNT9 — Relance/escalade des approbations en attente.
+# =============================================================================
+
+class ApprovalReminderConfig(models.Model):
+    """YEVNT9 — Seuils (en jours ouvrés) de relance/escalade des approbations
+    en attente, par société. Singleton par société.
+
+    ADDITIF : sans ligne, les helpers du sweep retombent sur les défauts de
+    classe (2 jours ouvrés pour la relance, 6 pour l'escalade admin — un
+    écart net entre les deux paliers : 4 était trop proche de la relance et
+    pouvait se déclencher dès J+5 calendaires selon le jour de la semaine)."""
+
+    DEFAULT_RELANCE_DAYS = 2
+    DEFAULT_ESCALADE_DAYS = 6
+
+    company = models.OneToOneField(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='approval_reminder_config', verbose_name='Société')
+    relance_days = models.PositiveSmallIntegerField(
+        default=DEFAULT_RELANCE_DAYS,
+        verbose_name='Seuil relance (jours ouvrés)')
+    escalade_days = models.PositiveSmallIntegerField(
+        default=DEFAULT_ESCALADE_DAYS,
+        verbose_name='Seuil escalade admin (jours ouvrés)')
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Configuration relance approbations'
+        verbose_name_plural = 'Configurations relance approbations'
+
+    def __str__(self):
+        return f'ApprovalReminderConfig[{self.company_id}]'
+
+
+class ApprovalReminderState(models.Model):
+    """YEVNT9 — État de relance/escalade PAR approbation en attente (générique,
+    couvre `automation.AutomationApproval` ET `compta.DemandeApprobationConfig`
+    via content-type — mêmes deux moteurs que YEVNT8, jamais un FK dur vers
+    l'une ou l'autre app).
+
+    `palier` : 0 = jamais relancé, 1 = relance envoyée à l'approbateur,
+    2 = escaladé à l'admin/owner-tier. Une ligne par approbation en attente ;
+    supprimée/ignorée une fois la décision prise (le sweep ne la retrouve
+    plus dans la requête « en attente » de son moteur)."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='approval_reminder_states')
+    content_type = models.ForeignKey(
+        'contenttypes.ContentType', on_delete=models.CASCADE)
+    object_id = models.PositiveIntegerField()
+    palier = models.PositiveSmallIntegerField(default=0)
+    derniere_action_le = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'État de relance approbation'
+        verbose_name_plural = 'États de relance approbation'
+        ordering = ['-derniere_action_le']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['content_type', 'object_id'],
+                name='notif_approval_reminder_state_uniq',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'content_type']),
+        ]
+
+    def __str__(self):
+        return f'relance approbation {self.content_type_id}:{self.object_id} (palier {self.palier})'

@@ -7,6 +7,7 @@ from .models import (
     Equipement, Ticket, TicketActivity, PieceConsommee,
     SavSlaSettings, MaintenanceChecklistTemplate, MaintenanceChecklistItem,
     TicketChecklistItem, WarrantyClaim, KbArticle, AlarmeOnduleur,
+    TicketSatisfaction,
 )
 
 # Fenêtre « garantie expirant bientôt » (jours).
@@ -34,6 +35,10 @@ class EquipementSerializer(serializers.ModelSerializer):
     nb_tickets_ouverts = serializers.SerializerMethodField()
     # FG90 — nombre de tickets correctifs sur les 12 derniers mois (citron).
     nb_tickets_12m = serializers.SerializerMethodField()
+    # XSAV13 — garantie légale de conformité (loi 31-08), calculée.
+    date_fin_garantie_legale = serializers.DateField(read_only=True)
+    date_fin_garantie_effective = serializers.DateField(read_only=True)
+    sous_garantie_legale_seule = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = Equipement
@@ -198,6 +203,13 @@ class TicketSerializer(serializers.ModelSerializer):
     sla_breach = serializers.BooleanField(read_only=True)
     sla_due_at = serializers.DateField(read_only=True)
     date_premiere_reponse = serializers.DateTimeField(read_only=True)
+    # XSAV5 — échéance SLA EFFECTIVE (décalée du temps de pause), et pause.
+    sla_due_at_effectif = serializers.SerializerMethodField()
+    en_attente_client = serializers.BooleanField(read_only=True)
+    attente_depuis = serializers.DateField(read_only=True)
+    jours_pause = serializers.IntegerField(read_only=True)
+    # XSAV11 — compteur de réouvertures (côté serveur uniquement).
+    reopen_count = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = Ticket
@@ -210,6 +222,11 @@ class TicketSerializer(serializers.ModelSerializer):
             # FG88 — date_tournee est posée par l'action de planification de
             # tournée (bulk-assign), jamais directement du corps de requête.
             'date_tournee',
+            # XSAV5 — la pause se pilote via les actions dédiées, jamais en
+            # écriture directe du corps de requête.
+            'en_attente_client', 'attente_depuis', 'jours_pause',
+            # XSAV11 — incrémenté côté serveur uniquement (perform_update).
+            'reopen_count',
         ]
         # client peut être déduit côté serveur d'un équipement lié (ticket
         # ouvert depuis le parc) ; sinon il reste exigé — voir
@@ -242,6 +259,10 @@ class TicketSerializer(serializers.ModelSerializer):
     def get_nb_interventions(self, obj):
         return obj.interventions.count()
 
+    def get_sla_due_at_effectif(self, obj):
+        due = obj.sla_due_at_effectif()
+        return due.isoformat() if due else None
+
 
 # ── FG81 — Réglages SLA ────────────────────────────────────────────────────────
 
@@ -250,7 +271,10 @@ class SavSlaSettingsSerializer(serializers.ModelSerializer):
         model = SavSlaSettings
         fields = [
             'id', 'sla_response_days', 'sla_resolution_days',
-            'sla_par_priorite', 'sla_breach_enabled', 'date_modification',
+            'sla_par_priorite', 'sla_breach_enabled',
+            'notifications_client_sav', 'sla_jours_ouvres',
+            'sla_warning_days', 'escalade_activee', 'affectation_auto_sav',
+            'date_modification',
         ]
         read_only_fields = ['date_modification']
 
@@ -307,6 +331,15 @@ class KbArticleSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'company', 'created_by', 'date_creation', 'date_modification',
         ]
+
+
+# ── XSAV10 — Satisfaction (CSAT) ──────────────────────────────────────────────
+
+class TicketSatisfactionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TicketSatisfaction
+        fields = ['id', 'ticket', 'note', 'commentaire', 'date_creation']
+        read_only_fields = ['id', 'ticket', 'date_creation']
 
 
 # ── FG280 — Alarmes / défauts onduleur ────────────────────────────────────────

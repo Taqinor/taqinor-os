@@ -16,8 +16,15 @@ fichier, donc non modifié par cette tâche « core-only ») :
 
     path('api/django/core/', include('core.urls')),
 """
+from django.urls import path
 from rest_framework.routers import DefaultRouter
 
+from .dashboard_partage import (
+    DashboardPartageInterneViewSet,
+    PartageDashboardViewSet,
+    dashboard_public,
+    dashboard_tv,
+)
 from .views import (
     ApiUsagePlanViewSet,
     BackupRunViewSet,
@@ -77,5 +84,17 @@ router.register(r'status', SystemStatusViewSet, basename='system-status')
 router.register(r'api-usage', ApiUsagePlanViewSet, basename='api-usage')
 # FG399 — journal des nouveautés in-app (changelog) + suivi de lecture.
 router.register(r'changelog', ChangelogViewSet, basename='changelog')
+# XPLT10 — liens publics tokenisés + partage interne fin de dashboards.
+router.register(r'dashboards-partages', PartageDashboardViewSet,
+                basename='dashboard-partage')
+router.register(r'dashboards-partages-internes',
+                DashboardPartageInterneViewSet,
+                basename='dashboard-partage-interne')
 
-urlpatterns = router.urls
+urlpatterns = router.urls + [
+    # XPLT10 — accès public lecture seule (aucune identité de confiance,
+    # résolu depuis le seul jeton) + mode TV (rotation des dashboards partagés).
+    path('dashboards-partages/public/<str:token>/', dashboard_public,
+         name='dashboard-partage-public'),
+    path('dashboards-tv/', dashboard_tv, name='dashboard-tv'),
+]

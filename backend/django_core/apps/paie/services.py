@@ -24,7 +24,7 @@ déduction pour charges de famille — ≈ 30 MAD/mois et par personne, plafond 
 Ils servent de DÉFAUTS éditables — ``valide_par_fondateur=False`` matérialise
 qu'ils restent à confirmer.
 """
-from datetime import date
+from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
 from django.db import transaction
@@ -552,6 +552,58 @@ def calculer_salaire_base_periode(profil, periode, elements=None):
 
     # Fallback de sécurité (ne devrait pas arriver).
     return _q(salaire_base)
+
+
+# ── XPAI14 — Indemnités journalières CNSS (maladie/maternité) ──────────────
+
+LIBELLES_ARRET_CNSS = {
+    'maladie': 'arrêt maladie',
+    'maternite': 'arrêt maternité',
+}
+
+
+def arrets_cnss_periode(profil, periode, *, elements=None):
+    """Éléments d'arrêt CNSS (maladie/maternité) d'un profil/période (XPAI14).
+
+    Filtre les ``ElementVariable`` ``TYPE_ABSENCE`` dont
+    ``categorie_absence`` est ``maladie``/``maternite``. Lecture seule.
+    Renvoie une liste de dicts ``{'categorie', 'jours', 'remunere'}`` (un par
+    élément — plusieurs arrêts possibles dans le mois).
+    """
+    from .models import ElementVariable
+
+    if elements is None:
+        elements = list(
+            ElementVariable.objects.filter(periode=periode, profil=profil))
+    return [
+        {
+            'categorie': el.categorie_absence,
+            'jours': Decimal(el.quantite or 0),
+            'remunere': bool(el.remunere),
+        }
+        for el in elements
+        if el.type == ElementVariable.TYPE_ABSENCE
+        and el.categorie_absence in LIBELLES_ARRET_CNSS
+    ]
+
+
+def attestation_salaire_ij_cnss(profil, periode):
+    """Prépare le contexte de l'attestation de salaire IJ CNSS (XPAI14).
+
+    Agrège les arrêts CNSS de la période (total jours, catégorie dominante)
+    et le brut de RÉFÉRENCE (salaire de base du profil, non proraté — base
+    du calcul IJ CNSS). Lecture seule. Renvoie ``{'jours_arret',
+    'type_arret_libelle', 'brut_reference'}`` — ``jours_arret=0`` si aucun
+    arrêt CNSS sur la période.
+    """
+    arrets = arrets_cnss_periode(profil, periode)
+    total_jours = sum((a['jours'] for a in arrets), Decimal('0'))
+    categorie = arrets[0]['categorie'] if arrets else 'maladie'
+    return {
+        'jours_arret': total_jours,
+        'type_arret_libelle': LIBELLES_ARRET_CNSS.get(categorie, 'maladie'),
+        'brut_reference': _q(Decimal(profil.salaire_base or 0)),
+    }
 
 
 # ── PAIE15 — Prime d'ancienneté ───────────────────────────────────────────
@@ -1190,6 +1242,33 @@ def bareme_en_vigueur(company, le_jour):
     )
 
 
+# ── XPAI3 — Mutuelle / prévoyance / assurance groupe ────────────────────────
+
+def mutuelle_du_profil(profil, brut):
+    """Cotisations mutuelle (salariale + patronale) d'un profil (XPAI3).
+
+    Lit l'adhésion mutuelle ACTIVE du profil (``AdhesionMutuelle``, OneToOne)
+    et calcule les parts salariale/patronale selon le mode du régime :
+    ``pourcentage`` (× ``brut``) ou ``fixe`` (montant tel quel). Renvoie
+    ``(part_salariale, part_patronale, deductible)`` — deux ``Decimal`` au
+    centime et un booléen. ``(0, 0, False)`` si le profil n'est pas adhérent
+    (pas d'``AdhesionMutuelle`` active).
+    """
+    adhesion = getattr(profil, 'adhesion_mutuelle', None)
+    if adhesion is None or not adhesion.actif:
+        return Decimal('0.00'), Decimal('0.00'), False
+    regime = adhesion.regime
+    if regime is None or not regime.actif:
+        return Decimal('0.00'), Decimal('0.00'), False
+    if regime.mode == regime.MODE_POURCENTAGE:
+        salariale = Decimal(brut or 0) * Decimal(regime.part_salariale or 0) / Decimal('100')
+        patronale = Decimal(brut or 0) * Decimal(regime.part_patronale or 0) / Decimal('100')
+    else:
+        salariale = Decimal(regime.part_salariale or 0)
+        patronale = Decimal(regime.part_patronale or 0)
+    return _q(salariale), _q(patronale), bool(regime.deductible_net_imposable)
+
+
 def calculer_bulletin(profil, periode, personnes_a_charge=0):
     """Calcule le bulletin de paie d'un employé pour une période (PAIE12).
 
@@ -1339,6 +1418,14 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
     # chacun avec SON taux propre. Non adhérent → 0 (défaut).
     cimr = cimr_salariale(brut, profil.affilie_cimr, profil.taux_cimr_salarial)
 
+    # 4bis. Mutuelle / prévoyance / assurance groupe (XPAI3) — OPTIONNELLE :
+    # seuls les profils avec une adhésion active cotisent. La part salariale
+    # se déduit du net imposable AVANT IR quand le régime est déductible ; la
+    # part patronale rejoint les charges patronales (jamais le net du
+    # salarié).
+    mutuelle_sal, mutuelle_pat, mutuelle_deductible = mutuelle_du_profil(
+        profil, brut)
+
     # 5. Frais professionnels.
     frais_pro = Decimal('0')
     if parametre:
@@ -1352,8 +1439,10 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
             frais_pro = plafond
     frais_pro = _q(frais_pro)
 
-    # 6. Net imposable.
+    # 6. Net imposable (XPAI3 : − part salariale mutuelle si déductible).
     net_imposable = brut_imposable - cnss - amo - cimr - frais_pro
+    if mutuelle_deductible:
+        net_imposable -= mutuelle_sal
     if net_imposable < 0:
         net_imposable = Decimal('0')
     net_imposable = _q(net_imposable)
@@ -1378,7 +1467,17 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
             'montant': _q(montant),
         })
 
-    # 8. Net à payer (− retenues variables type avances).
+    # XPAI3 — Ligne mutuelle salariale (retenue nette, comme la CIMR).
+    if mutuelle_sal > 0:
+        retenues_variables += mutuelle_sal
+        lignes.append({
+            'code': 'MUTUELLE_SAL',
+            'libelle': 'Mutuelle (part salariale)',
+            'type': Rubrique.TYPE_RETENUE,
+            'montant': mutuelle_sal,
+        })
+
+    # 8. Net à payer (− retenues variables type avances, mutuelle incluse).
     net_a_payer = brut - cnss - amo - cimr - ir - retenues_variables
     net_a_payer = _q(net_a_payer)
     # Net AVANT saisie : base de calcul de la quotité saisissable (conservé pour
@@ -1402,10 +1501,21 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
             })
         net_a_payer = _q(net_a_payer - saisies_total)
 
-    # PAIE18/PAIE19/PAIE23/PAIE24 — Total des charges patronales (coût
+    # PAIE18/PAIE19/PAIE23/PAIE24/XPAI3 — Total des charges patronales (coût
     # employeur), informatif : CNSS + AMO + allocations familiales + taxe de
-    # formation professionnelle patronales.
-    charges_patronales = _q(cnss_pat + amo_pat + alloc_fam + formation_pro)
+    # formation professionnelle + mutuelle patronales.
+    charges_patronales = _q(
+        cnss_pat + amo_pat + alloc_fam + formation_pro + mutuelle_pat)
+
+    # XPAI3 — Ligne EMPLOYEUR informative pour la mutuelle. Type cotisation,
+    # marquée part patronale ; ne diminue jamais le net du salarié.
+    if mutuelle_pat > 0:
+        lignes.append({
+            'code': 'MUTUELLE_PAT',
+            'libelle': 'Mutuelle (part patronale)',
+            'type': Rubrique.TYPE_COTISATION,
+            'montant': mutuelle_pat,
+        })
 
     # PAIE23 — Ligne EMPLOYEUR informative pour les allocations familiales.
     # Type cotisation, marquée part patronale ; comme toute charge patronale
@@ -1447,11 +1557,155 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
         'net_a_payer': net_a_payer,
         'prime_anciennete': prime_anciennete,
         'charges_patronales': charges_patronales,
+        'mutuelle_salariale': mutuelle_sal,
+        'mutuelle_patronale': mutuelle_pat,
         'lignes': lignes,
         # Interne (PAIE29) : net avant saisie, base de la quotité saisissable.
         # Non persisté en bulletin — sert à rejouer l'imputation à la validation.
         'net_avant_saisie': net_avant_saisie,
     }
+
+
+# ── XPAI16 — Simulateur de bulletin + calcul net→brut ──────────────────────
+
+def _simuler_montant_net(brut, *, parametre, bareme, personnes_a_charge=0,
+                         affilie_cnss=True, affilie_amo=True,
+                         affilie_cimr=False, taux_cimr=Decimal('0')):
+    """Calcul PUR brut → net (XPAI16) : le cœur du simulateur, sans DB.
+
+    Réplique les étapes CNSS/AMO/CIMR/frais pro/IR de ``calculer_bulletin``
+    sur un ``brut`` DONNÉ (pas de proration, pas d'éléments variables — un
+    what-if simple). Renvoie un dict ``{'brut', 'cnss_salariale',
+    'amo_salariale', 'cimr_salariale', 'frais_professionnels',
+    'net_imposable', 'ir', 'net_a_payer'}``.
+    """
+    brut = _q(Decimal(brut or 0))
+    cnss = cnss_salariale(parametre, brut, affilie_cnss) if parametre \
+        else Decimal('0.00')
+    amo = amo_salariale(parametre, brut, affilie_amo) if parametre \
+        else Decimal('0.00')
+    cimr = cimr_salariale(brut, affilie_cimr, taux_cimr)
+
+    frais_pro = Decimal('0')
+    if parametre:
+        if brut <= Decimal(parametre.seuil_frais_pro or 0):
+            frais_pro = brut * Decimal(parametre.taux_frais_pro_bas) / Decimal('100')
+            plafond = Decimal(parametre.plafond_frais_pro_bas or 0)
+        else:
+            frais_pro = brut * Decimal(parametre.taux_frais_pro_haut) / Decimal('100')
+            plafond = Decimal(parametre.plafond_frais_pro_haut or 0)
+        if plafond and frais_pro > plafond:
+            frais_pro = plafond
+    frais_pro = _q(frais_pro)
+
+    net_imposable = brut - cnss - amo - cimr - frais_pro
+    if net_imposable < 0:
+        net_imposable = Decimal('0')
+    net_imposable = _q(net_imposable)
+
+    ir = Decimal('0')
+    if bareme and parametre:
+        ir = compute_ir(net_imposable, bareme, parametre, personnes_a_charge)
+    ir = _q(ir)
+
+    net_a_payer = _q(brut - cnss - amo - cimr - ir)
+    return {
+        'brut': brut, 'cnss_salariale': cnss, 'amo_salariale': amo,
+        'cimr_salariale': cimr, 'frais_professionnels': frais_pro,
+        'net_imposable': net_imposable, 'ir': ir, 'net_a_payer': net_a_payer,
+    }
+
+
+def simuler_bulletin(profil, periode, *, salaire=None, prime=Decimal('0'),
+                     personnes_a_charge=0):
+    """Simule un bulletin SANS PERSISTANCE (what-if, XPAI16).
+
+    Rejoue le calcul en mémoire pour un ``salaire`` hypothétique (défaut :
+    ``profil.salaire_base`` réel) + une ``prime`` ponctuelle (imposable et
+    soumise CNSS/AMO comme un gain standard) et des ``personnes_a_charge``
+    modifiées — sans jamais créer de ``BulletinPaie`` ni lire/écrire
+    d'``ElementVariable``. Le taux/affiliation CIMR et les affiliations
+    CNSS/AMO restent ceux RÉELS du profil (le what-if porte sur le montant,
+    pas le régime social). Lecture des paramètres légaux réels (barème/
+    constantes en vigueur à la date de la période). Renvoie le dict de
+    ``_simuler_montant_net`` complété de ``{'salaire_simule', 'prime'}``.
+    """
+    le_jour = date(periode.annee, periode.mois, 1)
+    parametre = parametre_en_vigueur(profil.company, le_jour)
+    bareme = bareme_en_vigueur(profil.company, le_jour)
+
+    salaire_simule = Decimal(salaire) if salaire is not None \
+        else Decimal(profil.salaire_base or 0)
+    brut = _q(salaire_simule + Decimal(prime or 0))
+
+    resultat = _simuler_montant_net(
+        brut, parametre=parametre, bareme=bareme,
+        personnes_a_charge=personnes_a_charge,
+        affilie_cnss=profil.affilie_cnss, affilie_amo=profil.affilie_amo,
+        affilie_cimr=profil.affilie_cimr,
+        taux_cimr=profil.taux_cimr_salarial)
+    resultat['salaire_simule'] = _q(salaire_simule)
+    resultat['prime'] = _q(Decimal(prime or 0))
+    return resultat
+
+
+def brut_pour_net_cible(net_cible, *, parametre, bareme,
+                        personnes_a_charge=0, affilie_cnss=True,
+                        affilie_amo=True, affilie_cimr=False,
+                        taux_cimr=Decimal('0'), tolerance=Decimal('0.01'),
+                        max_iterations=100):
+    """Calcul INVERSE « brut pour net cible » (XPAI16, lettres d'offre).
+
+    Recherche ITÉRATIVE (bissection) sur ``_simuler_montant_net`` : converge
+    au CENTIME près vers le ``brut`` dont le net à payer égale ``net_cible``.
+    Le net étant une fonction CROISSANTE et continue par morceaux du brut
+    (cotisations/IR croissants), la bissection converge de façon fiable.
+    Renvoie ``{'brut', 'net_obtenu', 'iterations', ...}`` (mêmes clés que
+    ``_simuler_montant_net`` + ``iterations``). Lève ``ValueError`` si
+    ``net_cible <= 0``.
+    """
+    net_cible = Decimal(net_cible or 0)
+    if net_cible <= 0:
+        raise ValueError('net_cible doit être strictement positif.')
+
+    # Borne haute généreuse : un brut ne dépasse jamais ~3x le net cible en
+    # pratique (cotisations + IR marocain plafonnent la ponction). Si le
+    # premier essai à cette borne ne suffit toujours pas (ecart < 0), on la
+    # DOUBLE avant même d'entrer en bissection — garde de robustesse pour un
+    # net cible extrême, sans jamais casser la monotonie lo < hi ensuite.
+    borne_basse = Decimal('0')
+    borne_haute = net_cible * Decimal('3')
+    for _ in range(10):
+        essai = _simuler_montant_net(
+            borne_haute, parametre=parametre, bareme=bareme,
+            personnes_a_charge=personnes_a_charge,
+            affilie_cnss=affilie_cnss, affilie_amo=affilie_amo,
+            affilie_cimr=affilie_cimr, taux_cimr=taux_cimr)
+        if essai['net_a_payer'] >= net_cible:
+            break
+        borne_haute *= 2
+
+    resultat = None
+    for iteration in range(1, max_iterations + 1):
+        milieu = _q((borne_basse + borne_haute) / 2)
+        resultat = _simuler_montant_net(
+            milieu, parametre=parametre, bareme=bareme,
+            personnes_a_charge=personnes_a_charge,
+            affilie_cnss=affilie_cnss, affilie_amo=affilie_amo,
+            affilie_cimr=affilie_cimr, taux_cimr=taux_cimr)
+        ecart = resultat['net_a_payer'] - net_cible
+        if abs(ecart) <= tolerance:
+            resultat['iterations'] = iteration
+            resultat['net_obtenu'] = resultat['net_a_payer']
+            return resultat
+        if ecart < 0:
+            borne_basse = milieu
+        else:
+            borne_haute = milieu
+
+    resultat['iterations'] = max_iterations
+    resultat['net_obtenu'] = resultat['net_a_payer']
+    return resultat
 
 
 # ── PAIE17 — Bulletin de paie matérialisé (snapshot immuable une fois validé) ─
@@ -1549,6 +1803,9 @@ def cloturer_periode_paie(periode, *, valider_brouillons=True):
             for bulletin in brouillons:
                 valider_bulletin(bulletin)
         changer_statut(periode, PeriodePaie.STATUT_CLOTUREE)
+        # XPAI6 — la clôture avance les échéances déclaratives encore « à
+        # générer » (les états/déclarations sont désormais calculables).
+        avancer_echeances_cloture(periode)
     return periode
 
 
@@ -1631,6 +1888,129 @@ def valider_bulletin(bulletin):
     return bulletin
 
 
+# ── XPAI6 — Échéancier déclaratif paie ──────────────────────────────────────
+
+def _mois_suivant(annee, mois):
+    """``(annee, mois)`` du mois suivant."""
+    if mois == 12:
+        return annee + 1, 1
+    return annee, mois + 1
+
+
+def echeances_attendues(periode):
+    """Types d'échéances + dates limites attendues pour une ``periode`` (XPAI6).
+
+    * BDS — avant le 10 du mois suivant (déclaration CNSS mensuelle) ;
+    * IR mensuel — versement de la retenue à la source, avant le 20 du mois
+      suivant (Code général des impôts marocain) ;
+    * CIMR — avant le 10 du mois suivant (versement de la cotisation) ;
+    * État 9421 — annuel, fin février de l'année SUIVANTE, généré une seule
+      fois par le RUN DE DÉCEMBRE (mois == 12) pour éviter 12 doublons.
+
+    Lecture pure (aucun effet de bord). Renvoie une liste de
+    ``(type_echeance, date_limite)``.
+    """
+    from .models import EcheanceDeclarative
+
+    annee_suivante, mois_suivant = _mois_suivant(periode.annee, periode.mois)
+    echeances = [
+        (EcheanceDeclarative.TYPE_BDS, date(annee_suivante, mois_suivant, 10)),
+        (EcheanceDeclarative.TYPE_IR_MENSUEL,
+         date(annee_suivante, mois_suivant, 20)),
+        (EcheanceDeclarative.TYPE_CIMR, date(annee_suivante, mois_suivant, 10)),
+    ]
+    if periode.mois == 12:
+        echeances.append(
+            (EcheanceDeclarative.TYPE_9421, date(periode.annee + 1, 2, 28)))
+    return echeances
+
+
+def generer_echeances_periode(periode):
+    """Génère (idempotent) les échéances déclaratives d'une période (XPAI6).
+
+    Crée une ``EcheanceDeclarative`` par type attendu
+    (``echeances_attendues``) si elle n'existe pas déjà (clé stable
+    ``(periode, type_echeance)``) — ne touche jamais une échéance déjà créée
+    (son ``statut`` progressé n'est jamais écrasé). Appelé automatiquement à
+    la création d'une ``PeriodePaie`` (vue) ; peut aussi être rejoué sans
+    effet sur les échéances existantes. Renvoie la liste des échéances
+    créées (nouvelles uniquement).
+    """
+    from .models import EcheanceDeclarative
+
+    creees = []
+    for type_echeance, date_limite in echeances_attendues(periode):
+        _obj, created = EcheanceDeclarative.objects.get_or_create(
+            company=periode.company, periode=periode,
+            type_echeance=type_echeance,
+            defaults={'date_limite': date_limite})
+        if created:
+            creees.append(_obj)
+    return creees
+
+
+def avancer_echeances_cloture(periode):
+    """Avance les échéances à ``generee`` à la clôture d'une période (XPAI6).
+
+    Une échéance encore ``a_generer`` passe à ``generee`` quand la période
+    est clôturée (les états/déclarations sont désormais calculables depuis
+    les bulletins figés). Une échéance déjà ``generee``/``deposee``/``payee``
+    n'est jamais rétrogradée. Best-effort, jamais bloquant pour la clôture.
+    """
+    from .models import EcheanceDeclarative
+
+    (EcheanceDeclarative.objects
+     .filter(company=periode.company, periode=periode,
+             statut=EcheanceDeclarative.STATUT_A_GENERER)
+     .update(statut=EcheanceDeclarative.STATUT_GENEREE))
+
+
+def notifier_echeances_en_retard(company):
+    """Notifie (best-effort) les échéances déclaratives EN RETARD (XPAI6).
+
+    Une échéance dont la ``date_limite`` est dépassée et qui n'est pas encore
+    ``deposee``/``payee`` déclenche une notification vers le rôle
+    ``paie_gerer`` (repli : Responsable/Admin, via
+    ``apps.notifications.resolve_recipients``) — UNE SEULE FOIS
+    (``date_notification`` posée après envoi ; un re-run ne renotifie pas la
+    même échéance). Jamais bloquant : toute erreur de notification est
+    avalée. Renvoie la liste des échéances notifiées.
+    """
+    from django.utils import timezone as dj_timezone
+
+    from .models import EcheanceDeclarative
+
+    today = dj_timezone.localdate()
+    en_retard = (
+        EcheanceDeclarative.objects
+        .filter(company=company, date_limite__lt=today,
+                date_notification__isnull=True)
+        .exclude(statut__in=[
+            EcheanceDeclarative.STATUT_DEPOSEE, EcheanceDeclarative.STATUT_PAYEE])
+        .select_related('periode')
+    )
+    notifiees = []
+    for echeance in en_retard:
+        try:
+            from apps.notifications import services as notif_services
+
+            recipients = notif_services.resolve_recipients(
+                company, 'paie_echeance_retard')
+            notif_services.notify_many(
+                recipients, 'paie_echeance_retard',
+                title=f'Échéance paie en retard : {echeance.get_type_echeance_display()}',
+                body=(
+                    f'Période {echeance.periode.mois:02d}/{echeance.periode.annee} — '
+                    f'date limite {echeance.date_limite}, non déposée.'),
+                company=company)
+        except Exception:  # pragma: no cover - défensif, best-effort
+            pass
+        echeance.date_notification = dj_timezone.now()
+        echeance.save(update_fields=['date_notification'])
+        notifiees.append(echeance)
+    return notifiees
+
+
 # ── PAIE30 — Ordre de virement + fichier de virement banque ────────────────
 
 FICHIER_VIREMENT_PAIE_HEADERS = [
@@ -1656,7 +2036,7 @@ def generer_ordre_virement(periode, *, date_execution=None, rib_emetteur='',
     texte reste un repli quand aucun compte n'est câblé.
     """
     from .models import (
-        BulletinPaie, LigneVirement, OrdreVirement,
+        BulletinPaie, LigneVirement, OrdreVirement, ProfilPaie,
     )
 
     compte = _resoudre_compte_emetteur(periode.company, compte_emetteur)
@@ -1711,6 +2091,11 @@ def generer_ordre_virement(periode, *, date_execution=None, rib_emetteur='',
             if net <= 0:
                 continue
             profil = bulletin.profil
+            # XPAI9 — Seuls les profils PAYÉS PAR VIREMENT entrent dans
+            # l'ordre. Espèces/chèque sont réglés hors virement (listés à
+            # part par ``profils_hors_virement``).
+            if profil.mode_paiement != ProfilPaie.MODE_PAIEMENT_VIREMENT:
+                continue
             employe = profil.employe
             beneficiaire = f'{employe.nom} {employe.prenom}'.strip() \
                 if employe else f'Profil #{profil.id}'
@@ -1821,6 +2206,230 @@ def fichier_virement_paie(ordre):
         'nb_lignes': len(rows),
         'emetteur': emetteur,
     }
+
+
+# ── XPAI8 — Fichier de virement bancaire marocain (SIMT / masse) ───────────
+
+# DÉCISION — gabarit SIMT STANDARD (longueurs fixes, virement de masse). Le
+# layout EXACT dépend de la banque du fondateur et reste À CONFIRMER auprès
+# d'elle avant tout dépôt réel ; ce gabarit livre le MÉCANISME (longueurs
+# fixes, ordre des champs, remplissage/troncature) + une structure standard
+# couramment utilisée (émetteur/bénéficiaire/montant en centimes/référence).
+# ``(nom_champ, longueur, remplissage)`` — remplissage 'L' (gauche, espaces,
+# texte) ou 'R' (droite, zéros, numérique).
+GABARIT_SIMT_ENTETE = [
+    ('type_enregistrement', 1, 'L'),   # 'E' = en-tête
+    ('rib_emetteur', 24, 'L'),
+    ('nom_emetteur', 26, 'L'),
+    ('date_execution', 8, 'L'),        # AAAAMMJJ
+    ('devise', 3, 'L'),
+    ('nombre_lignes', 6, 'R'),
+    ('total_centimes', 15, 'R'),
+]
+GABARIT_SIMT_LIGNE = [
+    ('type_enregistrement', 1, 'L'),   # 'D' = détail
+    ('rib_beneficiaire', 24, 'L'),
+    ('nom_beneficiaire', 26, 'L'),
+    ('montant_centimes', 15, 'R'),
+    ('reference', 16, 'L'),
+    ('motif', 30, 'L'),
+]
+
+
+def _formater_champ_simt(valeur, longueur, remplissage):
+    """Formate un champ à LONGUEUR FIXE (gabarit SIMT) : tronque si trop
+    long, complète sinon (espaces à droite pour 'L', zéros à gauche pour
+    'R')."""
+    texte = str(valeur or '')
+    if remplissage == 'R':
+        texte = texte[-longueur:] if len(texte) > longueur else texte
+        return texte.rjust(longueur, '0')
+    texte = texte[:longueur]
+    return texte.ljust(longueur, ' ')
+
+
+def _formater_enregistrement_simt(valeurs, gabarit):
+    """Concatène les champs d'un enregistrement selon ``gabarit`` (SIMT)."""
+    return ''.join(
+        _formater_champ_simt(valeurs.get(champ, ''), longueur, remplissage)
+        for champ, longueur, remplissage in gabarit)
+
+
+def fichier_virement_paie_simt(ordre):
+    """Fichier de virement au format bancaire marocain SIMT (XPAI8).
+
+    Format à LONGUEURS FIXES (virement de masse) construit depuis les mêmes
+    lignes que ``fichier_virement_paie`` — un enregistrement EN-TÊTE société
+    (``GABARIT_SIMT_ENTETE``) puis un enregistrement DÉTAIL par bénéficiaire
+    (``GABARIT_SIMT_LIGNE``), montants en CENTIMES (convention SIMT). Le
+    gabarit exact dépend de la banque du fondateur (à valider) ; ce format
+    STANDARD livre le mécanisme + une structure usuelle. Lève ``ValueError``
+    dans les mêmes cas que ``fichier_virement_paie`` (aucune ligne / RIB
+    manquant). N'affecte JAMAIS le CSV existant. Renvoie ``{'lignes': [str,
+    …] (longueur fixe), 'total', 'nb_lignes'}``.
+    """
+    base = fichier_virement_paie(ordre)  # valide + lève ValueError au besoin
+    emetteur = base['emetteur']
+    date_execution = ordre.date_execution or date.today()
+
+    total_centimes = int(_q(base['total']) * 100)
+    entete = _formater_enregistrement_simt({
+        'type_enregistrement': 'E',
+        'rib_emetteur': emetteur.get('rib', ''),
+        'nom_emetteur': emetteur.get('libelle', '') or ordre.company.nom,
+        'date_execution': date_execution.strftime('%Y%m%d'),
+        'devise': ordre.devise or 'MAD',
+        'nombre_lignes': base['nb_lignes'],
+        'total_centimes': total_centimes,
+    }, GABARIT_SIMT_ENTETE)
+
+    lignes_txt = [entete]
+    for ligne in ordre.lignes.all():
+        montant_centimes = int(_q(ligne.montant) * 100)
+        lignes_txt.append(_formater_enregistrement_simt({
+            'type_enregistrement': 'D',
+            'rib_beneficiaire': ligne.rib,
+            'nom_beneficiaire': ligne.beneficiaire,
+            'montant_centimes': montant_centimes,
+            'reference': ligne.reference or '',
+            'motif': f'Salaire {ligne.reference}'.strip(),
+        }, GABARIT_SIMT_LIGNE))
+
+    return {
+        'lignes': lignes_txt,
+        'total': base['total'],
+        'nb_lignes': base['nb_lignes'],
+    }
+
+
+# ── XPAI9 — Modes de paiement & suivi des rejets de virement ───────────────
+
+def profils_hors_virement(periode):
+    """Profils réglés HORS virement (espèces/chèque) d'une période (XPAI9).
+
+    Liste, pour les bulletins VALIDÉS de la ``periode``, les profils dont
+    ``mode_paiement`` n'est pas ``virement`` — exclus de l'ordre de virement
+    (``generer_ordre_virement``), à régler/décompter séparément. Pour le mode
+    ESPÈCES, esquisse un décompte de coupures usuel (billets/pièces MAD) sur
+    le net à payer (informatif, arrondi au multiple le plus proche — n'importe
+    pas de contrainte comptable). Lecture seule. Renvoie une liste de dicts
+    ``{'profil_id', 'nom', 'mode_paiement', 'net_a_payer', 'decompte_especes'}``.
+    """
+    from .models import BulletinPaie, ProfilPaie
+
+    bulletins = (
+        BulletinPaie.objects
+        .filter(company=periode.company, periode=periode,
+                statut=BulletinPaie.STATUT_VALIDE)
+        .exclude(profil__mode_paiement=ProfilPaie.MODE_PAIEMENT_VIREMENT)
+        .select_related('profil', 'profil__employe')
+    )
+    resultat = []
+    for bulletin in bulletins:
+        profil = bulletin.profil
+        employe = profil.employe
+        nom = f'{employe.nom} {employe.prenom}'.strip() if employe else ''
+        net = Decimal(bulletin.net_a_payer or 0)
+        item = {
+            'profil_id': profil.id,
+            'nom': nom,
+            'mode_paiement': profil.mode_paiement,
+            'net_a_payer': _q(net),
+        }
+        if profil.mode_paiement == ProfilPaie.MODE_PAIEMENT_ESPECES:
+            item['decompte_especes'] = decompte_coupures(net)
+        resultat.append(item)
+    return resultat
+
+
+# Coupures MAD usuelles (billets puis pièces), du plus grand au plus petit.
+COUPURES_MAD = [200, 100, 50, 20, 10, 5, 1]
+
+
+def decompte_coupures(montant):
+    """Décompte de coupures MAD pour un montant (XPAI9, espèces).
+
+    Glouton sur ``COUPURES_MAD`` : nombre de billets/pièces de chaque valeur
+    pour composer ``montant`` (arrondi à l'entier — les centimes ne sont pas
+    décomptés en espèces). Renvoie ``{coupure: quantite, …}`` (coupures à 0
+    omises) — purement informatif, aucun effet de bord.
+    """
+    reste = int(Decimal(montant or 0).to_integral_value())
+    decompte = {}
+    for coupure in COUPURES_MAD:
+        if reste <= 0:
+            break
+        qte, reste = divmod(reste, coupure)
+        if qte > 0:
+            decompte[coupure] = qte
+    return decompte
+
+
+def marquer_bulletin_paye(bulletin, *, date_paiement=None):
+    """Marque un bulletin comme PAYÉ (décompte espèces/chèque, XPAI9).
+
+    Horodate le paiement (``paye=True``, ``date_paiement``). Idempotent :
+    un bulletin déjà payé n'est pas re-horodaté (date d'origine conservée).
+    Renvoie le bulletin.
+    """
+    if bulletin.paye:
+        return bulletin
+    bulletin.paye = True
+    bulletin.date_paiement = date_paiement or timezone.now()
+    bulletin.save(update_fields=['paye', 'date_paiement'])
+    return bulletin
+
+
+def rejeter_ligne_virement(ligne, *, motif=''):
+    """Marque une ``LigneVirement`` comme REJETÉE (RIB invalide, XPAI9).
+
+    Ne supprime JAMAIS la ligne (trace d'audit) : pose ``rejetee=True``,
+    ``motif_rejet``, ``date_rejet``. Une ligne déjà rejetée n'est pas
+    re-rejetée (idempotent). Renvoie la ligne.
+    """
+    if ligne.rejetee:
+        return ligne
+    ligne.rejetee = True
+    ligne.motif_rejet = motif or 'RIB invalide'
+    ligne.date_rejet = timezone.now()
+    ligne.save(update_fields=['rejetee', 'motif_rejet', 'date_rejet'])
+    return ligne
+
+
+def reemettre_ligne_virement(ligne_rejetee, *, nouveau_rib):
+    """Réémet une ligne de virement REJETÉE avec un RIB corrigé (XPAI9).
+
+    Crée une NOUVELLE ``LigneVirement`` (même ordre/bulletin/bénéficiaire/
+    montant/référence, RIB corrigé) et la relie à l'originale via
+    ``ligne_correction`` — la ligne rejetée reste inchangée (jamais
+    supprimée/modifiée). Lève ``ValueError`` si la ligne n'est pas rejetée,
+    ou si l'ordre parent est déjà ÉMIS (figé — la correction se rejoue sur
+    un NOUVEL ordre). Renvoie la nouvelle ``LigneVirement``.
+    """
+    from .models import LigneVirement, OrdreVirement
+
+    if not ligne_rejetee.rejetee:
+        raise ValueError('Seule une ligne rejetée peut être réémise.')
+    if ligne_rejetee.ordre.statut == OrdreVirement.STATUT_EMIS:
+        raise ValueError(
+            "L'ordre est déjà émis : la correction doit passer par un "
+            "nouvel ordre de virement.")
+    if not nouveau_rib:
+        raise ValueError('Le nouveau RIB est requis pour la réémission.')
+
+    with transaction.atomic():
+        nouvelle = LigneVirement.objects.create(
+            company=ligne_rejetee.company,
+            ordre=ligne_rejetee.ordre,
+            bulletin=ligne_rejetee.bulletin,
+            beneficiaire=ligne_rejetee.beneficiaire,
+            rib=nouveau_rib,
+            montant=ligne_rejetee.montant,
+            reference=ligne_rejetee.reference,
+        )
+        ligne_rejetee.ligne_correction = nouvelle
+        ligne_rejetee.save(update_fields=['ligne_correction'])
+        return nouvelle
 
 
 # ── PAIE31 — Déclaration CNSS (BDS / format DAMANCOM) ──────────────────────
@@ -1941,6 +2550,354 @@ def fichier_damancom_cnss(periode):
     }
 
 
+# ── XPAI10 — Télédéclaration CIMR (fichier préétabli) ───────────────────────
+
+def _periode_precedente(periode):
+    """``PeriodePaie`` MENSUELLE précédente (même société), ou ``None``."""
+    from .models import PeriodePaie
+
+    annee, mois = periode.annee, periode.mois
+    if mois == 1:
+        annee, mois = annee - 1, 12
+    else:
+        mois -= 1
+    return PeriodePaie.objects.filter(
+        company=periode.company, annee=annee, mois=mois,
+        type_run=PeriodePaie.TYPE_RUN_MENSUEL).first()
+
+
+def declaration_cimr(periode):
+    """Déclaration CIMR de la période (XPAI10) — fichier préétabli e-CIMR.
+
+    Agrège, pour les bulletins VALIDÉS de la ``periode``, les affiliés CIMR
+    (``ProfilPaie.affilie_cimr``) : catégorie d'adhésion (taux salarial),
+    base (brut), parts salariale/patronale (CIMR patronale = même taux côté
+    salarial faute de taux patronal distinct dans ce référentiel — noté).
+    Détecte les NOUVEAUX AFFILIÉS (pas de bulletin CIMR le mois précédent) et
+    les CHANGEMENTS DE SALAIRE (brut différent du mois précédent). Format
+    exact du portail e-CIMR à confirmer par le fondateur → structure +
+    export CSV documenté par défaut (``fichier_cimr``). Lecture seule.
+    Renvoie ``{'annee', 'mois', 'lignes': [...], 'total_base',
+    'total_cimr_salariale', 'nombre_affilies'}``.
+    """
+    from .models import BulletinPaie
+
+    bulletins = (
+        BulletinPaie.objects
+        .filter(company=periode.company, periode=periode,
+                statut=BulletinPaie.STATUT_VALIDE, profil__affilie_cimr=True)
+        .select_related('profil', 'profil__employe')
+    )
+    precedente = _periode_precedente(periode)
+    brut_precedent = {}
+    profils_precedents = set()
+    if precedente is not None:
+        prec_bulletins = (
+            BulletinPaie.objects
+            .filter(company=periode.company, periode=precedente,
+                    statut=BulletinPaie.STATUT_VALIDE,
+                    profil__affilie_cimr=True)
+            .values('profil_id', 'brut')
+        )
+        for row in prec_bulletins:
+            profils_precedents.add(row['profil_id'])
+            brut_precedent[row['profil_id']] = Decimal(row['brut'] or 0)
+
+    lignes = []
+    total_base = Decimal('0')
+    total_cimr = Decimal('0')
+    for bulletin in bulletins:
+        profil = bulletin.profil
+        employe = profil.employe
+        nom = f'{employe.nom} {employe.prenom}'.strip() if employe else ''
+        brut = Decimal(bulletin.brut or 0)
+        cimr_sal = Decimal(bulletin.cimr_salariale or 0)
+        nouvel_affilie = profil.id not in profils_precedents
+        changement_salaire = (
+            not nouvel_affilie
+            and brut_precedent.get(profil.id) != brut
+        )
+        lignes.append({
+            'profil_id': profil.id,
+            'numero_cimr': profil.numero_cimr or '',
+            'nom': nom,
+            'categorie_taux': _q(Decimal(profil.taux_cimr_salarial or 0)),
+            'base': _q(brut),
+            'cimr_salariale': _q(cimr_sal),
+            'nouvel_affilie': nouvel_affilie,
+            'changement_salaire': changement_salaire,
+        })
+        total_base += brut
+        total_cimr += cimr_sal
+
+    return {
+        'annee': periode.annee,
+        'mois': periode.mois,
+        'lignes': lignes,
+        'total_base': _q(total_base),
+        'total_cimr_salariale': _q(total_cimr),
+        'nombre_affilies': len(lignes),
+    }
+
+
+def fichier_cimr(periode):
+    """Fichier de télédéclaration CIMR — format CSV documenté (XPAI10).
+
+    Format PAR DÉFAUT : le layout exact du fichier préétabli e-CIMR reste à
+    confirmer par le fondateur auprès de la CIMR — ce format CSV
+    (séparateur ``;``) documente la structure attendue (numéro CIMR, nom,
+    taux, base, cotisation, drapeaux nouvel affilié/changement de salaire)
+    en attendant la confirmation. Renvoie ``{'lignes': [str, …],
+    'nombre_affilies', 'total_base', 'total_cimr_salariale'}``. Lecture
+    seule.
+    """
+    decl = declaration_cimr(periode)
+    lignes_txt = [
+        f'E;{periode.annee};{periode.mois:02d};{decl["nombre_affilies"]};'
+        f'{decl["total_base"]};{decl["total_cimr_salariale"]}'
+    ]
+    for ligne in decl['lignes']:
+        lignes_txt.append(
+            f'S;{ligne["numero_cimr"]};{ligne["nom"]};'
+            f'{ligne["categorie_taux"]};{ligne["base"]};'
+            f'{ligne["cimr_salariale"]};'
+            f'{"N" if ligne["nouvel_affilie"] else ""};'
+            f'{"C" if ligne["changement_salaire"] else ""}'
+        )
+    return {
+        'lignes': lignes_txt,
+        'nombre_affilies': decl['nombre_affilies'],
+        'total_base': decl['total_base'],
+        'total_cimr_salariale': decl['total_cimr_salariale'],
+    }
+
+
+# ── XPAI11 — AFFEBDS + déclarations de mouvement CNSS ───────────────────────
+
+def parser_affebds(contenu):
+    """Parse un fichier AFFEBDS (CSV/texte) importé de la CNSS (XPAI11).
+
+    Format d'entrée SIMPLIFIÉ (documenté, séparateur ``;``) : une ligne par
+    salarié affilié, ``numero_cnss;nom``. Lignes vides/commentaires (``#``)
+    ignorées. Lecture pure. Renvoie une liste de dicts
+    ``{'numero_cnss', 'nom'}``.
+    """
+    lignes = []
+    for ligne in (contenu or '').splitlines():
+        ligne = ligne.strip()
+        if not ligne or ligne.startswith('#'):
+            continue
+        parts = ligne.split(';')
+        numero_cnss = parts[0].strip() if len(parts) > 0 else ''
+        nom = parts[1].strip() if len(parts) > 1 else ''
+        if not numero_cnss:
+            continue
+        lignes.append({'numero_cnss': numero_cnss, 'nom': nom})
+    return lignes
+
+
+def rapprocher_affebds(company, contenu):
+    """Rapproche un fichier AFFEBDS contre les ``ProfilPaie`` (XPAI11).
+
+    Compare les numéros CNSS du fichier importé aux ``ProfilPaie`` actifs
+    affiliés CNSS de la société : ``rapproches`` (numéro présent des deux
+    côtés), ``manquants`` (dans le fichier CNSS, absent des profils paie —
+    salarié CNSS non enregistré côté paie), ``en_trop`` (profil paie affilié
+    CNSS avec un numéro qui n'apparaît pas dans le fichier — potentiel écart
+    à investiguer). Lecture seule, AUCUN écrit sur les profils. Renvoie
+    ``{'rapproches': [...], 'manquants': [...], 'en_trop': [...]}``.
+    """
+    from .models import ProfilPaie
+
+    entrees_fichier = {
+        ligne['numero_cnss']: ligne for ligne in parser_affebds(contenu)
+    }
+    profils = (
+        ProfilPaie.objects
+        .filter(company=company, actif=True, affilie_cnss=True)
+        .exclude(numero_cnss='')
+        .select_related('employe')
+    )
+    numeros_profils = {}
+    for profil in profils:
+        numeros_profils[profil.numero_cnss] = profil
+
+    rapproches = []
+    manquants = []
+    for numero, ligne in entrees_fichier.items():
+        profil = numeros_profils.get(numero)
+        if profil is not None:
+            rapproches.append({
+                'numero_cnss': numero, 'nom_fichier': ligne['nom'],
+                'profil_id': profil.id,
+            })
+        else:
+            manquants.append(ligne)
+
+    en_trop = [
+        {'numero_cnss': numero, 'profil_id': profil.id}
+        for numero, profil in numeros_profils.items()
+        if numero not in entrees_fichier
+    ]
+    return {
+        'rapproches': rapproches,
+        'manquants': manquants,
+        'en_trop': en_trop,
+    }
+
+
+def mouvements_cnss_periode(periode):
+    """Entrées/sorties CNSS de la période (XPAI11) — alignée sur la BDS.
+
+    ENTRÉES : profils actifs de la société SANS numéro CNSS (embauchés à
+    déclarer, dossier d'immatriculation à ouvrir). SORTIES : profils dont le
+    dossier RH a une ``date_sortie`` tombant dans le mois de la ``periode``
+    (lue via ``rh.selectors.sortie_employe`` — jamais ``rh.models`` direct).
+    Lecture seule, aucun écrit sur rh. Renvoie ``{'entrees': [...],
+    'sorties': [...]}``.
+    """
+    from apps.rh import selectors as rh_selectors  # import paresseux cross-app
+
+    from .models import ProfilPaie
+
+    profils = (
+        ProfilPaie.objects
+        .filter(company=periode.company, affilie_cnss=True)
+        .select_related('employe')
+    )
+    entrees = []
+    sorties = []
+    for profil in profils:
+        if not profil.numero_cnss and profil.actif:
+            employe = profil.employe
+            nom = f'{employe.nom} {employe.prenom}'.strip() if employe else ''
+            entrees.append({'profil_id': profil.id, 'nom': nom})
+
+        date_sortie, motif_sortie = rh_selectors.sortie_employe(
+            periode.company, profil.employe_id)
+        if date_sortie and date_sortie.year == periode.annee \
+                and date_sortie.month == periode.mois:
+            employe = profil.employe
+            nom = f'{employe.nom} {employe.prenom}'.strip() if employe else ''
+            sorties.append({
+                'profil_id': profil.id, 'nom': nom,
+                'date_sortie': date_sortie, 'motif_sortie': motif_sortie or '',
+            })
+    return {'entrees': entrees, 'sorties': sorties}
+
+
+# ── XPAI12 — BDS complémentaire/rectificative + format DAMANCOM strict ─────
+
+def deposer_bds_principal(periode):
+    """Enregistre le dépôt PRINCIPAL de la BDS d'une période (XPAI12).
+
+    Un seul dépôt principal par période : rejoue (idempotent) le dépôt déjà
+    enregistré s'il existe. Couvre TOUS les salariés affiliés CNSS de la
+    déclaration (``declaration_cnss``). Renvoie le ``DepotBDS`` (créé ou
+    existant).
+    """
+    from .models import DepotBDS
+
+    existant = DepotBDS.objects.filter(
+        company=periode.company, periode=periode,
+        type_depot=DepotBDS.TYPE_PRINCIPAL).first()
+    if existant is not None:
+        return existant
+
+    decl = declaration_cnss(periode)
+    profils = [ligne.get('numero_cnss') for ligne in decl['lignes']]
+    return DepotBDS.objects.create(
+        company=periode.company, periode=periode,
+        type_depot=DepotBDS.TYPE_PRINCIPAL, profils_couverts=profils)
+
+
+def deposer_bds_complementaire(periode, profils_delta, *, depot_principal=None):
+    """Enregistre un dépôt BDS COMPLÉMENTAIRE — DELTA uniquement (XPAI12).
+
+    ``profils_delta`` est la liste des identifiants (numéros CNSS ou ids
+    ``ProfilPaie``) des salariés OMIS/CORRIGÉS — jamais l'ensemble des
+    salariés à nouveau. Référence le dépôt principal de la période
+    (``depot_principal`` fourni, sinon le dépôt principal existant — lève
+    ``ValueError`` si aucun dépôt principal n'a encore été déposé : une
+    correction suppose une déclaration principale déjà déposée). Renvoie le
+    nouveau ``DepotBDS`` complémentaire.
+    """
+    from .models import DepotBDS
+
+    principal = depot_principal or DepotBDS.objects.filter(
+        company=periode.company, periode=periode,
+        type_depot=DepotBDS.TYPE_PRINCIPAL).first()
+    if principal is None:
+        raise ValueError(
+            'Aucun dépôt BDS principal pour cette période : la BDS '
+            'complémentaire suppose une déclaration principale déjà déposée.')
+    return DepotBDS.objects.create(
+        company=periode.company, periode=periode,
+        type_depot=DepotBDS.TYPE_COMPLEMENTAIRE,
+        depot_principal=principal,
+        profils_couverts=list(profils_delta or []))
+
+
+# DÉCISION — gabarit eBDS STRICT (longueurs fixes, cahier des charges
+# DAMANCOM). Spécimen à valider fondateur/CNSS avant tout dépôt réel ; ce
+# gabarit livre le MÉCANISME + une structure standard couramment citée.
+GABARIT_EBDS_ENTETE = [
+    ('type_enregistrement', 1, 'L'),   # 'E' = en-tête
+    ('affiliation_cnss', 9, 'R'),      # n° d'affiliation employeur
+    ('periode', 6, 'L'),               # AAAAMM
+    ('nombre_salaries', 6, 'R'),
+]
+GABARIT_EBDS_LIGNE = [
+    ('type_enregistrement', 1, 'L'),   # 'S' = salarié
+    ('numero_cnss', 9, 'R'),
+    ('nom', 30, 'L'),
+    ('jours_declares', 2, 'R'),
+    ('salaire_plafonne_centimes', 12, 'R'),
+]
+
+
+def fichier_damancom_strict(periode, *, depot=None):
+    """Fichier DAMANCOM au format eBDS STRICT — longueurs fixes (XPAI12).
+
+    Reprend ``declaration_cnss`` et formate chaque enregistrement au gabarit
+    eBDS (``GABARIT_EBDS_ENTETE``/``GABARIT_EBDS_LIGNE``). Si ``depot`` est un
+    ``DepotBDS`` COMPLÉMENTAIRE, ne formate QUE les salariés de
+    ``depot.profils_couverts`` (delta) — sinon (dépôt principal / aucun
+    dépôt) formate l'ensemble de la déclaration. Le layout exact est À
+    VALIDER auprès de la CNSS avant tout dépôt réel. Renvoie ``{'lignes':
+    [str, …] (longueur fixe), 'nombre_salaries'}``.
+    """
+    from .models import DepotBDS
+
+    decl = declaration_cnss(periode)
+    lignes_decl = decl['lignes']
+    if depot is not None and depot.type_depot == DepotBDS.TYPE_COMPLEMENTAIRE:
+        delta = set(depot.profils_couverts or [])
+        lignes_decl = [
+            ligne for ligne in lignes_decl
+            if ligne.get('numero_cnss') in delta]
+
+    entete = _formater_enregistrement_simt({
+        'type_enregistrement': 'E',
+        'affiliation_cnss': periode.company_id,
+        'periode': f'{periode.annee}{periode.mois:02d}',
+        'nombre_salaries': len(lignes_decl),
+    }, GABARIT_EBDS_ENTETE)
+
+    lignes_txt = [entete]
+    for ligne in lignes_decl:
+        salaire_centimes = int(_q(ligne['plafonne']) * 100)
+        lignes_txt.append(_formater_enregistrement_simt({
+            'type_enregistrement': 'S',
+            'numero_cnss': ligne.get('numero_cnss', ''),
+            'nom': ligne.get('nom', ''),
+            'jours_declares': ligne.get('jours_declares', 26),
+            'salaire_plafonne_centimes': salaire_centimes,
+        }, GABARIT_EBDS_LIGNE))
+
+    return {'lignes': lignes_txt, 'nombre_salaries': len(lignes_decl)}
+
+
 # ── PAIE32 — État IR 9421 + retenues à la source ───────────────────────────
 
 def etat_ir_9421(periode):
@@ -2056,6 +3013,264 @@ def etat_ir_9421_annuel(company, annee):
         'total_net_imposable': _q(total_net_imp),
         'total_ir': _q(total_ir),
         'nombre_salaries': len(lignes),
+    }
+
+
+# ── XPAI13 — Export XML EDI SIMPL-IR (état 9421) ────────────────────────────
+
+# DÉCISION — schéma SIMPL-IR EMBARQUÉ (structure des éléments/attributs
+# attendus, cahier des charges état 9421 annuel). Le schéma XSD OFFICIEL de
+# la DGI n'est pas embarqué tel quel (dépendance externe) ; ce descripteur
+# STRUCTUREL (noms d'éléments, cardinalité, types simples) sert de contrat de
+# validation local — suffisant pour prouver la conformité de FORME avant tout
+# dépôt réel, qui reste soumis à validation DGI.
+XSD_SIMPL_IR_9421 = {
+    'root': 'Etat9421',
+    'children': {
+        'Entete': {'cardinalite': '1', 'attrs': ['annee', 'nombreSalaries']},
+        'Salarie': {
+            'cardinalite': '*',
+            'attrs': [
+                'matricule', 'categorie', 'brutImposable', 'netImposable',
+                'ir', 'montantExonere',
+            ],
+        },
+        'Totaux': {
+            'cardinalite': '1',
+            'attrs': ['totalBrutImposable', 'totalNetImposable', 'totalIr'],
+        },
+    },
+}
+
+# Catégories SIMPL-IR — personnel permanent/occasionnel/stagiaire.
+# ``ProfilPaie.type_remuneration`` distingue mensuel/forfait (permanent) de
+# journalier/horaire (occasionnel) ; les stagiaires (statut RH dédié) ne sont
+# pas encore distingués côté paie (limitation connue, à affiner avec le
+# statut RH stagiaire quand il existera dans ce référentiel).
+_CATEGORIE_PAR_TYPE_REMUNERATION = {
+    'mensuel': 'permanent',
+    'forfait': 'permanent',
+    'journalier': 'occasionnel',
+    'horaire': 'occasionnel',
+}
+
+
+def categorie_9421_profil(profil):
+    """Catégorie SIMPL-IR d'un profil — permanent/occasionnel (XPAI13)."""
+    return _CATEGORIE_PAR_TYPE_REMUNERATION.get(
+        profil.type_remuneration, 'permanent')
+
+
+def _xml_escape(texte):
+    return (
+        str(texte)
+        .replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        .replace('"', '&quot;'))
+
+
+def export_xml_simpl_ir_9421(company, annee):
+    """Génère le fichier XML EDI conforme SIMPL-IR de l'état 9421 (XPAI13).
+
+    Reprend ``etat_ir_9421_annuel`` (mêmes totaux, aucun recalcul) et le
+    formate en XML bien formé selon la structure ``XSD_SIMPL_IR_9421``
+    (validée par ``valider_xml_simpl_ir_9421``) : un ``<Etat9421>`` racine,
+    une ``<Entete>``, une ``<Salarie>`` par ligne (avec ``categorie``
+    permanent/occasionnel, ``montantExonere`` — 0 tant que XPAI18 n'est pas
+    câblé, champ présent pour compat future), une ``<Totaux>``. Renvoie le
+    XML (str). Lève ``ValueError`` si la validation structurelle échoue
+    (garde de non-régression — ne devrait jamais se produire, le générateur
+    et le validateur partagent le même schéma).
+    """
+    from .models import ProfilPaie
+
+    etat = etat_ir_9421_annuel(company, annee)
+    profils_par_id = {
+        p.id: p for p in ProfilPaie.objects.filter(
+            company=company,
+            id__in=[ligne['profil_id'] for ligne in etat['lignes']])
+    }
+
+    parties = ['<?xml version="1.0" encoding="UTF-8"?>', '<Etat9421>']
+    parties.append(
+        f'<Entete annee="{annee}" '
+        f'nombreSalaries="{etat["nombre_salaries"]}"/>')
+    for ligne in etat['lignes']:
+        profil = profils_par_id.get(ligne['profil_id'])
+        categorie = categorie_9421_profil(profil) if profil else 'permanent'
+        parties.append(
+            '<Salarie '
+            f'matricule="{_xml_escape(ligne["matricule"])}" '
+            f'categorie="{categorie}" '
+            f'brutImposable="{ligne["brut_imposable"]}" '
+            f'netImposable="{ligne["net_imposable"]}" '
+            f'ir="{ligne["ir"]}" '
+            'montantExonere="0.00"/>')
+    parties.append(
+        '<Totaux '
+        f'totalBrutImposable="{etat["total_brut_imposable"]}" '
+        f'totalNetImposable="{etat["total_net_imposable"]}" '
+        f'totalIr="{etat["total_ir"]}"/>')
+    parties.append('</Etat9421>')
+    xml = ''.join(parties)
+
+    valider_xml_simpl_ir_9421(xml)  # lève ValueError si non conforme
+    return xml
+
+
+def valider_xml_simpl_ir_9421(xml_str):
+    """Valide un XML SIMPL-IR contre le schéma embarqué (XPAI13).
+
+    Vérifie la BONNE FORMATION (``xml.etree.ElementTree``, lève
+    ``ValueError`` si mal formé) puis la CONFORMITÉ STRUCTURELLE au
+    descripteur ``XSD_SIMPL_IR_9421`` : élément racine, cardinalité de
+    ``Entete``/``Totaux`` (exactement 1), attributs requis présents sur
+    chaque élément. Lève ``ValueError`` avec un message explicite au premier
+    écart. Renvoie ``True`` si conforme.
+    """
+    import xml.etree.ElementTree as ET
+
+    try:
+        root = ET.fromstring(xml_str)
+    except ET.ParseError as exc:
+        raise ValueError(f'XML mal formé : {exc}') from exc
+
+    schema = XSD_SIMPL_IR_9421
+    if root.tag != schema['root']:
+        raise ValueError(
+            f'Élément racine attendu "{schema["root"]}", trouvé "{root.tag}".')
+
+    for nom, regle in schema['children'].items():
+        elements = root.findall(nom)
+        if regle['cardinalite'] == '1' and len(elements) != 1:
+            raise ValueError(
+                f'Élément "{nom}" attendu exactement 1 fois, trouvé '
+                f'{len(elements)} fois.')
+        for element in elements:
+            for attr in regle['attrs']:
+                if attr not in element.attrib:
+                    raise ValueError(
+                        f'Attribut requis "{attr}" manquant sur "{nom}".')
+    return True
+
+
+# ── XPAI15 — Contrôle des écarts avant validation (M vs M-1) ───────────────
+
+SEUIL_ECART_NET_DEFAUT = Decimal('20')  # % — seuil paramétrable (query param).
+
+
+def controle_ecarts(periode, *, seuil_pct=None):
+    """Compare le run courant au mois précédent, par salarié (XPAI15).
+
+    Garde-fou PRÉ-VALIDATION (avertissement, JAMAIS blocage) : détecte, en
+    comparant les bulletins de la ``periode`` (n'importe quel statut — le
+    contrôle a lieu AVANT validation) aux bulletins VALIDÉS du mois
+    précédent :
+
+    * salariés MANQUANTS (bulletin le mois dernier, aucun ce mois-ci) ;
+    * salariés NOUVEAUX (bulletin ce mois-ci, aucun le mois dernier) ;
+    * VARIATION DE NET > ``seuil_pct`` % (défaut ``SEUIL_ECART_NET_DEFAUT``,
+      20 %) — un net qui double, qui s'effondre, etc. ;
+    * HS ANORMALES — heures supplémentaires du mois > 2× la moyenne des HS
+      du mois précédent (ou HS ce mois alors qu'il n'y en avait aucune le
+      mois dernier, au-delà d'un seuil bas de 10 h pour éviter le bruit).
+
+    Lecture seule. Renvoie ``{'salaries_manquants': [...],
+    'salaries_nouveaux': [...], 'variations_net': [...],
+    'hs_anormales': [...]}`` — chaque item porte assez de contexte pour
+    l'écran de contrôle (profil, nom, montants comparés).
+    """
+    from .models import BulletinPaie, ElementVariable
+
+    seuil = Decimal(seuil_pct) if seuil_pct is not None \
+        else SEUIL_ECART_NET_DEFAUT
+
+    precedente = _periode_precedente(periode)
+
+    bulletins_courants = {
+        b.profil_id: b
+        for b in BulletinPaie.objects.filter(
+            company=periode.company, periode=periode)
+        .select_related('profil', 'profil__employe')
+    }
+    bulletins_precedents = {}
+    if precedente is not None:
+        bulletins_precedents = {
+            b.profil_id: b
+            for b in BulletinPaie.objects.filter(
+                company=periode.company, periode=precedente,
+                statut=BulletinPaie.STATUT_VALIDE)
+            .select_related('profil', 'profil__employe')
+        }
+
+    def _nom(bulletin):
+        employe = bulletin.profil.employe
+        return f'{employe.nom} {employe.prenom}'.strip() if employe else ''
+
+    salaries_manquants = [
+        {'profil_id': pid, 'nom': _nom(b)}
+        for pid, b in bulletins_precedents.items()
+        if pid not in bulletins_courants
+    ]
+    salaries_nouveaux = [
+        {'profil_id': pid, 'nom': _nom(b)}
+        for pid, b in bulletins_courants.items()
+        if pid not in bulletins_precedents
+    ]
+
+    variations_net = []
+    for pid, b_courant in bulletins_courants.items():
+        b_prec = bulletins_precedents.get(pid)
+        if b_prec is None:
+            continue
+        net_prec = Decimal(b_prec.net_a_payer or 0)
+        net_courant = Decimal(b_courant.net_a_payer or 0)
+        if net_prec == 0:
+            continue
+        variation_pct = abs(net_courant - net_prec) / net_prec * 100
+        if variation_pct > seuil:
+            variations_net.append({
+                'profil_id': pid, 'nom': _nom(b_courant),
+                'net_precedent': _q(net_prec), 'net_courant': _q(net_courant),
+                'variation_pct': _q(variation_pct),
+            })
+
+    # HS anormales : somme des heures TYPE_HS de la période courante vs mois
+    # précédent, par profil.
+    def _total_hs(periode_cible):
+        if periode_cible is None:
+            return {}
+        totaux = {}
+        for el in ElementVariable.objects.filter(
+                company=periode.company, periode=periode_cible,
+                type=ElementVariable.TYPE_HS):
+            totaux[el.profil_id] = totaux.get(
+                el.profil_id, Decimal('0')) + Decimal(el.quantite or 0)
+        return totaux
+
+    hs_courant = _total_hs(periode)
+    hs_precedent = _total_hs(precedente)
+    hs_anormales = []
+    for pid, heures in hs_courant.items():
+        heures_prec = hs_precedent.get(pid, Decimal('0'))
+        anormale = False
+        if heures_prec > 0 and heures > heures_prec * 2:
+            anormale = True
+        elif heures_prec == 0 and heures > Decimal('10'):
+            anormale = True
+        if anormale:
+            bulletin = bulletins_courants.get(pid)
+            hs_anormales.append({
+                'profil_id': pid,
+                'nom': _nom(bulletin) if bulletin else '',
+                'hs_precedent': _q(heures_prec), 'hs_courant': _q(heures),
+            })
+
+    return {
+        'salaries_manquants': salaries_manquants,
+        'salaries_nouveaux': salaries_nouveaux,
+        'variations_net': variations_net,
+        'hs_anormales': hs_anormales,
+        'seuil_pct': _q(seuil),
     }
 
 
@@ -2219,6 +3434,117 @@ def journal_de_paie(periode, *, created_by=None):
     return ecriture
 
 
+# ── XPAI5 — État des charges sociales + rapprochement paie↔GL ──────────────
+
+# Organismes déclaratifs, chacun mappé au compte CGNC crédité par
+# ``journal_de_paie`` (mêmes constantes ``_COMPTE_*`` que PAIE33) + le
+# libellé affiché. Le compte mutuelle n'a pas de compte CGNC dédié posté par
+# le journal de paie aujourd'hui (limitation connue, non couverte ici).
+_ORGANISMES_CHARGES = [
+    ('cnss_amo', 'CNSS / AMO', _COMPTE_CNSS),
+    ('ir', 'État — IR retenu à la source', _COMPTE_IR),
+    ('cimr', 'CIMR', _COMPTE_CIMR),
+]
+
+
+def etat_des_charges(periode):
+    """État consolidé des charges sociales par organisme (XPAI5).
+
+    Agrège, pour les bulletins VALIDÉS de la ``periode``, les montants dus par
+    organisme (CNSS+AMO, IR, CIMR) — parts salariale ET patronale, montant
+    total à payer. Renvoie un dict ``{'annee', 'mois', 'organismes': [...]
+    (chacun {'code', 'libelle', 'salarial', 'patronal', 'total',
+    'echeance'}), 'total_general'}``. Lecture seule.
+    """
+    registre = livre_de_paie(periode)
+    totaux = registre['totaux']
+
+    cnss_amo_sal = totaux['cnss_salariale'] + totaux['amo_salariale']
+    cnss_amo_pat = totaux['cnss_patronale'] + totaux['amo_patronale']
+    ir = totaux['ir']
+    cimr = totaux['cimr_salariale']
+
+    # Échéances réglementaires usuelles (jour du mois suivant) — informatif.
+    organismes = [
+        {
+            'code': 'cnss_amo', 'libelle': 'CNSS / AMO',
+            'salarial': _q(cnss_amo_sal), 'patronal': _q(cnss_amo_pat),
+            'total': _q(cnss_amo_sal + cnss_amo_pat),
+            'echeance_jour': 10,
+        },
+        {
+            'code': 'ir', 'libelle': 'État — IR retenu à la source',
+            'salarial': _q(ir), 'patronal': Decimal('0.00'),
+            'total': _q(ir), 'echeance_jour': 20,
+        },
+        {
+            'code': 'cimr', 'libelle': 'CIMR',
+            'salarial': _q(cimr), 'patronal': Decimal('0.00'),
+            'total': _q(cimr), 'echeance_jour': 10,
+        },
+    ]
+    total_general = sum((o['total'] for o in organismes), Decimal('0.00'))
+    return {
+        'annee': periode.annee,
+        'mois': periode.mois,
+        'organismes': organismes,
+        'total_general': _q(total_general),
+    }
+
+
+def rapprochement_paie_gl(periode):
+    """Rapproche le livre de paie (documentaire) au GL posté (XPAI5).
+
+    Prouve que, pour la ``periode``, les totaux du livre de paie ÉGALENT
+    l'écriture comptable postée par ``journal_de_paie`` sur chaque compte
+    organisme (4441 CNSS/AMO, 4452 IR, 4443 CIMR). Lecture compta EXCLUSIVEMENT
+    via ``compta.selectors.grand_livre`` (cross-app READ autorisé, jamais
+    ``compta.models`` direct). Fenêtre GL bornée au mois de la période (1er au
+    dernier jour du mois) pour n'attraper QUE l'écriture de cette paie.
+
+    Renvoie un dict ``{'annee', 'mois', 'lignes': [{'code', 'libelle',
+    'attendu_paie', 'poste_gl', 'ecart'}], 'ecart_total', 'coherent'}`` —
+    ``coherent`` est vrai quand tous les écarts sont nuls (aucune écriture
+    postée = écart signalé, pas un skip silencieux).
+    """
+    from apps.compta import selectors as compta_selectors  # cross-app READ
+
+    etat = etat_des_charges(periode)
+    total_par_code = {o['code']: o['total'] for o in etat['organismes']}
+
+    date_debut = date(periode.annee, periode.mois, 1)
+    if periode.mois == 12:
+        date_fin = date(periode.annee, 12, 31)
+    else:
+        date_fin = date(periode.annee, periode.mois + 1, 1) - timedelta(days=1)
+
+    gl = compta_selectors.grand_livre(
+        periode.company, date_debut=date_debut, date_fin=date_fin,
+        validees_seulement=False)
+    solde_par_numero = {bucket['numero']: bucket['solde'] for bucket in gl}
+
+    lignes = []
+    ecart_total = Decimal('0.00')
+    for code, libelle, numero in _ORGANISMES_CHARGES:
+        attendu = total_par_code.get(code, Decimal('0.00'))
+        # Le GL crédite l'organisme (dette) : solde débit-crédit est NÉGATIF
+        # pour une dette pure ; on compare en valeur absolue (montant dû).
+        poste_gl = _q(abs(solde_par_numero.get(numero, Decimal('0'))))
+        ecart = _q(attendu - poste_gl)
+        ecart_total += ecart
+        lignes.append({
+            'code': code, 'libelle': libelle, 'compte': numero,
+            'attendu_paie': attendu, 'poste_gl': poste_gl, 'ecart': ecart,
+        })
+    return {
+        'annee': periode.annee,
+        'mois': periode.mois,
+        'lignes': lignes,
+        'ecart_total': _q(ecart_total),
+        'coherent': ecart_total == 0,
+    }
+
+
 # ── PAIE27 — Cumul annuel par employé (recalcul depuis bulletins validés) ────
 
 # Champs cumulés : (champ du CumulAnnuel, champ du BulletinPaie) sommés.
@@ -2289,3 +3615,650 @@ def recalculer_cumul_annuel(profil, annee):
         cumul.date_calcul = timezone.now()
         cumul.save()
     return cumul
+
+
+# ── XPAI4 — 13e mois & gratifications + runs hors-cycle ─────────────────────
+
+CODE_GRATIFICATION_13E = 'GRATIF_13E'
+
+
+def prorata_presence_annee(date_embauche, date_sortie, annee, *,
+                           mois_reference=12):
+    """Fraction de l'année couverte par la présence de l'employé (XPAI4).
+
+    Le 13e mois/prime de bilan se calcule au prorata des MOIS de présence sur
+    ``annee`` (embauché en cours d'année → prorata ; sorti en cours d'année →
+    prorata jusqu'à la sortie). ``mois_reference`` borne la fenêtre (12 = année
+    civile complète). Renvoie ``(mois_presence, Decimal fraction 0..1)`` —
+    mois de présence comptés ENTIERS (mois d'embauche/sortie inclus).
+    """
+    debut_annee = date(annee, 1, 1)
+    fin_annee = date(annee, mois_reference, 1)
+    # Dernier jour du mois de référence.
+    if mois_reference == 12:
+        fin_annee = date(annee, 12, 31)
+    else:
+        fin_annee = date(annee, mois_reference + 1, 1) - timedelta(days=1)
+
+    debut = date_embauche if date_embauche and date_embauche > debut_annee \
+        else debut_annee
+    fin = date_sortie if date_sortie and date_sortie < fin_annee else fin_annee
+    if debut > fin:
+        return 0, Decimal('0.00')
+
+    mois_presence = (
+        (fin.year - debut.year) * 12 + (fin.month - debut.month) + 1
+    )
+    mois_presence = max(0, min(mois_reference, mois_presence))
+    fraction = (Decimal(mois_presence) / Decimal(mois_reference)) \
+        if mois_reference else Decimal('0')
+    return mois_presence, _q(fraction)
+
+
+def calculer_gratification(profil, periode, *, annee_reference=None,
+                           personnes_a_charge=0):
+    """Calcule le 13e mois / prime de bilan prorata d'un profil (XPAI4).
+
+    Moteur SANS effet de bord : le montant de base
+    (``profil.salaire_base``, une mensualité pleine) est proratisé sur la
+    présence de l'année ``annee_reference`` (défaut : l'année de la
+    ``periode``), puis soumis aux cotisations CNSS/AMO/IR standard comme un
+    gain normal (flags portés par la rubrique ``GRATIF_13E`` — soumis CNSS/AMO,
+    imposable). Renvoie un dict ``{'montant_brut', 'mois_presence',
+    'fraction_presence', 'cnss_salariale', 'amo_salariale', 'net_imposable',
+    'ir', 'net_a_payer', 'lignes'}``.
+    """
+    annee_reference = annee_reference or periode.annee
+    le_jour = date(periode.annee, periode.mois, 1)
+    parametre = parametre_en_vigueur(profil.company, le_jour)
+    bareme = bareme_en_vigueur(profil.company, le_jour)
+
+    from apps.rh import selectors as rh_selectors  # import paresseux cross-app
+
+    date_embauche = rh_selectors.date_embauche_employe(
+        profil.company, profil.employe_id)
+    date_sortie, _motif = rh_selectors.sortie_employe(
+        profil.company, profil.employe_id)
+    mois_presence, fraction = prorata_presence_annee(
+        date_embauche, date_sortie, annee_reference)
+
+    base_pleine = Decimal(profil.salaire_base or 0)
+    montant_brut = _q(base_pleine * fraction)
+
+    cnss_sal = cnss_salariale(parametre, montant_brut, profil.affilie_cnss) \
+        if parametre else Decimal('0.00')
+    amo_sal = amo_salariale(parametre, montant_brut, profil.affilie_amo) \
+        if parametre else Decimal('0.00')
+    cnss_pat = cnss_patronale(parametre, montant_brut, profil.affilie_cnss) \
+        if parametre else Decimal('0.00')
+    amo_pat = amo_patronale(parametre, montant_brut, profil.affilie_amo) \
+        if parametre else Decimal('0.00')
+
+    net_imposable = _q(montant_brut - cnss_sal - amo_sal)
+    ir = Decimal('0.00')
+    if bareme and parametre:
+        ir = compute_ir(net_imposable, bareme, parametre, personnes_a_charge)
+    ir = _q(ir)
+    net_a_payer = _q(net_imposable - ir)
+
+    lignes = []
+    if montant_brut > 0:
+        lignes.append({
+            'code': CODE_GRATIFICATION_13E,
+            'libelle': '13e mois / prime de bilan (prorata présence)',
+            'type': Rubrique.TYPE_GAIN, 'montant': montant_brut,
+        })
+    if cnss_sal > 0:
+        lignes.append({
+            'code': 'CNSS_SAL', 'libelle': 'CNSS salariale',
+            'type': Rubrique.TYPE_RETENUE, 'montant': cnss_sal,
+        })
+    if amo_sal > 0:
+        lignes.append({
+            'code': 'AMO_SAL', 'libelle': 'AMO salariale',
+            'type': Rubrique.TYPE_RETENUE, 'montant': amo_sal,
+        })
+    if ir > 0:
+        lignes.append({
+            'code': 'IR', 'libelle': 'Impôt sur le revenu',
+            'type': Rubrique.TYPE_RETENUE, 'montant': ir,
+        })
+
+    return {
+        'brut': montant_brut,
+        'brut_imposable': montant_brut,
+        'mois_presence': mois_presence,
+        'fraction_presence': fraction,
+        'cnss_salariale': cnss_sal,
+        'cnss_patronale': cnss_pat,
+        'amo_salariale': amo_sal,
+        'amo_patronale': amo_pat,
+        'allocations_familiales': Decimal('0.00'),
+        'formation_professionnelle': Decimal('0.00'),
+        'provision_conges': Decimal('0.00'),
+        'cimr_salariale': Decimal('0.00'),
+        'frais_professionnels': Decimal('0.00'),
+        'net_imposable': net_imposable,
+        'ir': ir,
+        'retenues': Decimal('0.00'),
+        'prime_anciennete': Decimal('0.00'),
+        'charges_patronales': _q(cnss_pat + amo_pat),
+        'net_a_payer': net_a_payer,
+        'lignes': lignes,
+    }
+
+
+def generer_run_gratification(periode, *, annee_reference=None):
+    """Génère les bulletins « 13e mois » de TOUS les profils actifs (XPAI4).
+
+    ``periode`` doit être une ``PeriodePaie`` de ``type_run ==
+    TYPE_RUN_HORS_CYCLE`` (une période « run 13e mois » distincte du mois
+    calendaire, cf. modèle). Itère les profils actifs de la société (lecture
+    RH via ``rh.selectors.dossiers_actifs`` — jamais ``rh.models`` direct),
+    calcule et matérialise un ``BulletinPaie`` de nature
+    ``TYPE_GRATIFICATION`` par profil (prorata de présence), consolidé ensuite
+    par ``recalculer_cumul_annuel`` (PAIE27). Opération atomique par bulletin
+    (une erreur sur un profil n'interrompt pas les suivants). Renvoie la liste
+    des bulletins générés.
+    """
+    from apps.rh import selectors as rh_selectors  # import paresseux cross-app
+
+    from .models import BulletinPaie, LigneBulletin, ProfilPaie
+
+    if periode.type_run != PeriodePaie.TYPE_RUN_HORS_CYCLE:
+        raise ValueError(
+            "generer_run_gratification exige une période hors-cycle "
+            "(type_run='hors_cycle').")
+    if periode.statut == PeriodePaie.STATUT_CLOTUREE:
+        raise BulletinPaie.BulletinVerrouille(
+            'Période clôturée : génération de run gratification interdite.')
+
+    dossiers_actifs = rh_selectors.dossiers_actifs(periode.company)
+    employe_ids_actifs = set(dossiers_actifs.values_list('id', flat=True))
+    profils = ProfilPaie.objects.filter(
+        company=periode.company, actif=True,
+        employe_id__in=employe_ids_actifs)
+
+    bulletins = []
+    for profil in profils:
+        resultat = calculer_gratification(
+            profil, periode, annee_reference=annee_reference)
+        with transaction.atomic():
+            bulletin = (
+                BulletinPaie.objects
+                .select_for_update()
+                .filter(periode=periode, profil=profil)
+                .first()
+            )
+            if bulletin is not None and bulletin.est_valide:
+                continue  # déjà validé : figé, on ne régénère pas
+            if bulletin is None:
+                bulletin = BulletinPaie(
+                    company=periode.company, periode=periode, profil=profil)
+            bulletin.type_bulletin = BulletinPaie.TYPE_GRATIFICATION
+            bulletin.motif = '13e mois / gratification'
+            for champ in BulletinPaie.SNAPSHOT_FIELDS:
+                if champ == 'personnes_a_charge':
+                    continue
+                if champ in resultat:
+                    setattr(bulletin, champ, resultat[champ])
+            bulletin.statut = BulletinPaie.STATUT_BROUILLON
+            bulletin.save()
+
+            bulletin.lignes.all().delete()
+            for ordre, ligne in enumerate(resultat.get('lignes', []), start=1):
+                LigneBulletin.objects.create(
+                    company=periode.company,
+                    bulletin=bulletin,
+                    code=ligne.get('code', ''),
+                    libelle=ligne.get('libelle', ''),
+                    type=ligne.get('type', 'gain'),
+                    montant=ligne.get('montant', Decimal('0')),
+                    ordre=ordre,
+                )
+            bulletins.append(bulletin)
+    return bulletins
+
+
+# ── XPAI1 — Solde de tout compte (STC) ──────────────────────────────────────
+
+# Barème de l'indemnité légale de licenciement (Code du travail marocain,
+# art. 53) : nombre d'heures de salaire par ANNÉE d'ancienneté, par tranche.
+# Tuples ``(borne_max_annees, heures_par_annee)`` ; la dernière tranche a une
+# ``borne_max`` à ``None`` (sans plafond). Barème standard (DÉCISION, valeurs
+# couramment citées) :
+#   * <= 5 ans     -> 96 h par année d'ancienneté ;
+#   * 6-10 ans     -> 144 h par année d'ancienneté ;
+#   * 11-15 ans    -> 192 h par année d'ancienneté ;
+#   * > 15 ans     -> 240 h par année d'ancienneté.
+BAREME_INDEMNITE_LICENCIEMENT_ART53 = [
+    (Decimal('5'), Decimal('96')),
+    (Decimal('10'), Decimal('144')),
+    (Decimal('15'), Decimal('192')),
+    (None, Decimal('240')),
+]
+
+
+def indemnite_licenciement_art53(anciennete_annees, taux_horaire_base,
+                                 bareme=None):
+    """Indemnité légale de licenciement/départ — barème art. 53 (XPAI1).
+
+    Le barème est PROGRESSIF PAR TRANCHE : chaque tranche d'ancienneté (0-5,
+    6-10, 11-15, >15 ans) contribue ses PROPRES heures de salaire par année
+    couverte par la tranche (jamais tout à un seul taux — c'est le taux
+    marginal de la tranche qui s'applique à la fraction d'années qu'elle
+    couvre). ``anciennete_annees`` peut être fractionnaire (années complètes +
+    mois) ; ``taux_horaire_base`` est le taux horaire de référence du salarié.
+
+    Renvoie un ``Decimal`` >= 0 arrondi au centime. 0 si l'ancienneté ou le
+    taux horaire sont nuls/négatifs.
+    """
+    annees = Decimal(anciennete_annees or 0)
+    taux_h = Decimal(taux_horaire_base or 0)
+    if annees <= 0 or taux_h <= 0:
+        return Decimal('0.00')
+    if bareme is None:
+        bareme = BAREME_INDEMNITE_LICENCIEMENT_ART53
+
+    total_heures = Decimal('0')
+    borne_basse = Decimal('0')
+    for borne_max, heures_par_annee in bareme:
+        if borne_max is None or annees <= borne_max:
+            total_heures += (annees - borne_basse) * heures_par_annee
+            break
+        total_heures += (borne_max - borne_basse) * heures_par_annee
+        borne_basse = borne_max
+    return _q(total_heures * taux_h)
+
+
+def indemnite_preavis(salaire_mensuel, mois_preavis=1):
+    """Indemnité de préavis — ``salaire_mensuel × mois_preavis`` (XPAI1).
+
+    ``mois_preavis`` par défaut à 1 mois (durée courante pour un cadre/agent
+    de maîtrise ; éditable par l'appelant selon la catégorie/ancienneté).
+    Renvoie un ``Decimal`` >= 0 au centime.
+    """
+    salaire = Decimal(salaire_mensuel or 0)
+    mois = Decimal(mois_preavis or 0)
+    if salaire <= 0 or mois <= 0:
+        return Decimal('0.00')
+    return _q(salaire * mois)
+
+
+def indemnite_compensatrice_conges(company, employe_id, annee, taux_journalier):
+    """Indemnité compensatrice de congés payés non pris (XPAI1).
+
+    Valorise le solde de congés DISPONIBLE (``solde_conge_disponible``) au
+    ``taux_journalier`` du salarié. Renvoie un ``Decimal`` >= 0 au centime.
+    """
+    solde = solde_conge_disponible(company, employe_id, annee)
+    taux = Decimal(taux_journalier or 0)
+    if solde <= 0 or taux <= 0:
+        return Decimal('0.00')
+    return _q(solde * taux)
+
+
+def exoneration_ir_indemnite_licenciement(indemnite, parametre):
+    """Part EXONÉRÉE d'IR de l'indemnité de licenciement (XPAI1).
+
+    Cadre marocain : l'indemnité légale de licenciement/départ est exonérée
+    d'IR dans la limite du barème légal ; au-delà d'un plafond (paramétré par
+    la Loi de Finances,
+    ``ParametrePaie.plafond_exoneration_ir_indemnite_licenciement``, défaut
+    1 000 000 MAD), l'excédent est réintégré dans la base imposable. Renvoie
+    ``(part_exoneree, part_imposable)`` — deux ``Decimal`` au centime, sommant
+    exactement à ``indemnite``.
+    """
+    indemnite = Decimal(indemnite or 0)
+    if indemnite <= 0:
+        return Decimal('0.00'), Decimal('0.00')
+    plafond = Decimal('1000000')
+    if parametre is not None:
+        plafond = Decimal(
+            parametre.plafond_exoneration_ir_indemnite_licenciement or 0)
+    if indemnite <= plafond:
+        return _q(indemnite), Decimal('0.00')
+    return _q(plafond), _q(indemnite - plafond)
+
+
+def calculer_stc(profil, periode, *, motif='', mois_preavis=1,
+                 personnes_a_charge=0):
+    """Calcule le solde de tout compte (STC) d'un profil sortant (XPAI1).
+
+    Moteur de calcul additif SANS effet de bord (renvoie un dict, ne crée
+    aucun objet) : part du bulletin normal calculé par ``calculer_bulletin``
+    (dernier salaire proraté + éléments variables de la période), puis AJOUTE
+    les indemnités de fin de contrat :
+
+    * indemnité compensatrice de congés payés non pris
+      (``indemnite_compensatrice_conges``) ;
+    * indemnité de préavis (``indemnite_preavis``, si ``mois_preavis > 0``) ;
+    * indemnité légale de licenciement (barème art. 53,
+      ``indemnite_licenciement_art53``), avec EXONÉRATION IR partielle
+      (``exoneration_ir_indemnite_licenciement``) — seule la part imposable
+      entre dans le net imposable/IR, la part exonérée est versée nette.
+
+    Le solde des ``AvanceSalarie`` et ``SaisieArret`` actifs est retenu comme
+    pour un bulletin normal (déjà couvert par ``calculer_bulletin``).
+
+    ``motif`` est informatif (tracé sur le bulletin). Renvoie un dict de même
+    forme que ``calculer_bulletin`` PLUS les clés
+    ``{'indemnite_conges', 'indemnite_preavis', 'indemnite_licenciement',
+    'indemnite_licenciement_exoneree', 'indemnite_licenciement_imposable',
+    'anciennete_annees'}``. Donnée SENSIBLE (salaires) — usage interne paie.
+    """
+    le_jour = date(periode.annee, periode.mois, 1)
+    parametre = parametre_en_vigueur(profil.company, le_jour)
+    bareme = bareme_en_vigueur(profil.company, le_jour)
+
+    from apps.rh import selectors as rh_selectors  # import paresseux cross-app
+
+    date_embauche = rh_selectors.date_embauche_employe(
+        profil.company, profil.employe_id)
+    date_sortie, motif_sortie = rh_selectors.sortie_employe(
+        profil.company, profil.employe_id)
+    jour_reference = date_sortie or le_jour
+    anciennete_annees = calculer_anciennete_annees(date_embauche, jour_reference)
+
+    # Base du calcul normal (salaire proraté, éléments variables, retenues
+    # d'avances/saisies déjà gérées par calculer_bulletin).
+    base = calculer_bulletin(profil, periode, personnes_a_charge)
+
+    taux_j = taux_journalier_profil(profil)
+    indemnite_conges = indemnite_compensatrice_conges(
+        profil.company, profil.employe_id, periode.annee, taux_j)
+
+    salaire_mensuel = Decimal(profil.salaire_base or 0)
+    indemnite_pre = (
+        indemnite_preavis(salaire_mensuel, mois_preavis)
+        if mois_preavis and Decimal(mois_preavis) > 0 else Decimal('0.00')
+    )
+
+    taux_h = taux_horaire_base_profil(profil)
+    indemnite_licenciement = indemnite_licenciement_art53(
+        anciennete_annees, taux_h)
+    exoneree, imposable = exoneration_ir_indemnite_licenciement(
+        indemnite_licenciement, parametre)
+
+    # Les indemnités s'ajoutent au NET (versées au salarié) ; seule la part
+    # IMPOSABLE de l'indemnité de licenciement rejoint la base IR — recalcul
+    # de l'IR sur le net imposable augmenté de cette fraction.
+    net_imposable_stc = _q(base['net_imposable'] + imposable)
+    ir_stc = Decimal('0')
+    if bareme and parametre:
+        ir_stc = compute_ir(net_imposable_stc, bareme, parametre,
+                            personnes_a_charge)
+    ir_stc = _q(ir_stc)
+    delta_ir = _q(ir_stc - base['ir'])
+
+    indemnites_nettes = _q(indemnite_conges + indemnite_pre + exoneree + imposable)
+    net_a_payer_stc = _q(base['net_a_payer'] + indemnites_nettes - delta_ir)
+
+    lignes = list(base['lignes'])
+    if indemnite_conges > 0:
+        lignes.append({
+            'code': 'STC_CONGES',
+            'libelle': 'Indemnité compensatrice de congés payés',
+            'type': Rubrique.TYPE_GAIN, 'montant': indemnite_conges,
+        })
+    if indemnite_pre > 0:
+        lignes.append({
+            'code': 'STC_PREAVIS',
+            'libelle': 'Indemnité de préavis',
+            'type': Rubrique.TYPE_GAIN, 'montant': indemnite_pre,
+        })
+    if indemnite_licenciement > 0:
+        lignes.append({
+            'code': 'STC_LICENCIEMENT',
+            'libelle': 'Indemnité légale de licenciement (art. 53)',
+            'type': Rubrique.TYPE_GAIN, 'montant': indemnite_licenciement,
+        })
+    if delta_ir != 0:
+        lignes.append({
+            'code': 'STC_IR_INDEMNITE',
+            'libelle': "IR sur part imposable de l'indemnité de licenciement",
+            'type': Rubrique.TYPE_RETENUE, 'montant': delta_ir,
+        })
+
+    resultat = dict(base)
+    resultat.update({
+        'ir': ir_stc,
+        'net_imposable': net_imposable_stc,
+        'net_a_payer': net_a_payer_stc,
+        'lignes': lignes,
+        'indemnite_conges': indemnite_conges,
+        'indemnite_preavis': indemnite_pre,
+        'indemnite_licenciement': indemnite_licenciement,
+        'indemnite_licenciement_exoneree': exoneree,
+        'indemnite_licenciement_imposable': imposable,
+        'anciennete_annees': anciennete_annees,
+        'motif': motif or motif_sortie or '',
+    })
+    return resultat
+
+
+def generer_bulletin_stc(profil, periode, *, motif='', mois_preavis=1,
+                         personnes_a_charge=0):
+    """Matérialise le bulletin STC d'un profil sortant (XPAI1).
+
+    Calcule via ``calculer_stc`` puis persiste un ``BulletinPaie`` de nature
+    ``TYPE_STC`` (même garde d'immuabilité que les autres bulletins — figé une
+    fois validé). Opération atomique. Renvoie le ``BulletinPaie`` STC
+    (brouillon).
+    """
+    from .models import BulletinPaie, LigneBulletin
+
+    if profil.company_id != periode.company_id:
+        raise ValueError("Profil et période de sociétés différentes.")
+    if periode.statut == PeriodePaie.STATUT_CLOTUREE:
+        raise BulletinPaie.BulletinVerrouille(
+            'Période clôturée : génération de bulletin STC interdite.')
+
+    resultat = calculer_stc(
+        profil, periode, motif=motif, mois_preavis=mois_preavis,
+        personnes_a_charge=personnes_a_charge)
+    lignes = resultat.get('lignes', [])
+
+    with transaction.atomic():
+        bulletin = (
+            BulletinPaie.objects
+            .select_for_update()
+            .filter(periode=periode, profil=profil)
+            .first()
+        )
+        if bulletin is not None and bulletin.est_valide:
+            raise BulletinPaie.BulletinVerrouille(
+                'Bulletin déjà validé pour cette période : STC impossible.')
+        if bulletin is None:
+            bulletin = BulletinPaie(
+                company=periode.company, periode=periode, profil=profil)
+
+        bulletin.type_bulletin = BulletinPaie.TYPE_STC
+        bulletin.motif = resultat.get('motif', '') or motif
+        bulletin.personnes_a_charge = max(0, int(personnes_a_charge or 0))
+        for champ in BulletinPaie.SNAPSHOT_FIELDS:
+            if champ == 'personnes_a_charge':
+                continue
+            if champ in resultat:
+                setattr(bulletin, champ, resultat[champ])
+        bulletin.statut = BulletinPaie.STATUT_BROUILLON
+        bulletin.save()
+
+        bulletin.lignes.all().delete()
+        for ordre, ligne in enumerate(lignes, start=1):
+            LigneBulletin.objects.create(
+                company=periode.company,
+                bulletin=bulletin,
+                code=ligne.get('code', ''),
+                libelle=ligne.get('libelle', ''),
+                type=ligne.get('type', 'gain'),
+                montant=ligne.get('montant', Decimal('0')),
+                ordre=ordre,
+            )
+        return bulletin
+
+
+# ── XPAI2 — Régularisation IR annuelle (12e bulletin / sortie) ─────────────
+
+def calculer_regularisation_ir(bulletin):
+    """Calcule la régularisation IR annuelle due sur un bulletin (XPAI2).
+
+    L'IR est aujourd'hui retenu MOIS PAR MOIS, sans vérifier que le cumul
+    annuel réel correspond à ce qui aurait dû être retenu (une variation de
+    salaire en cours d'année — augmentation, prime exceptionnelle, régime
+    CIMR modifié — peut faire diverger l'IR mensuel cumulé de l'IR dû sur le
+    revenu annuel réel).
+
+    DÉCISION (barème mensuel unique, pas de barème annuel séparé dans ce
+    système) : la régularisation recalcule, pour CHAQUE bulletin VALIDÉ de
+    l'année (hors celui-ci, qui n'est pas encore validé) PLUS ce bulletin,
+    l'IR dû sur le net imposable de ce mois-là selon le barème/paramètre EN
+    VIGUEUR à la date du bulletin de régularisation (barème le plus récent de
+    l'année) — reproduisant la logique légale de la retenue à la source
+    régularisée en fin d'année sur la base des mêmes règles. La différence
+    entre cet IR théorique cumulé et l'IR RÉELLEMENT retenu cumulé (tel que
+    déjà figé sur les bulletins validés + ce bulletin) est la régularisation :
+    positive = rappel dû (retenue complémentaire) ; négative = trop-perçu
+    (remboursement).
+
+    Lecture seule (aucun effet de bord). Renvoie
+    ``{'ir_du_annuel', 'ir_retenu_annuel', 'delta', 'nombre_bulletins'}`` —
+    tous ``Decimal`` sauf le compteur. ``delta > 0`` → rappel dû par le
+    salarié (retenue complémentaire) ; ``delta < 0`` → trop-perçu à
+    rembourser.
+    """
+    from .models import BulletinPaie
+
+    profil = bulletin.profil
+    annee = bulletin.periode.annee
+    le_jour = date(bulletin.periode.annee, bulletin.periode.mois, 1)
+    parametre = parametre_en_vigueur(profil.company, le_jour)
+    bareme = bareme_en_vigueur(profil.company, le_jour)
+
+    autres_bulletins = (
+        BulletinPaie.objects
+        .filter(company=profil.company, profil=profil,
+                periode__annee=annee, statut=BulletinPaie.STATUT_VALIDE)
+        .exclude(pk=bulletin.pk)
+    )
+
+    ir_du_annuel = Decimal('0')
+    ir_retenu_annuel = Decimal('0')
+    nombre = 0
+    for b in list(autres_bulletins) + [bulletin]:
+        nombre += 1
+        ir_retenu_annuel += Decimal(b.ir or 0)
+        if bareme and parametre:
+            ir_du_mois = compute_ir(
+                Decimal(b.net_imposable or 0), bareme, parametre,
+                b.personnes_a_charge)
+        else:
+            ir_du_mois = Decimal(b.ir or 0)
+        ir_du_annuel += _q(ir_du_mois)
+
+    ir_du_annuel = _q(ir_du_annuel)
+    ir_retenu_annuel = _q(ir_retenu_annuel)
+    delta = _q(ir_du_annuel - ir_retenu_annuel)
+    return {
+        'ir_du_annuel': ir_du_annuel,
+        'ir_retenu_annuel': ir_retenu_annuel,
+        'delta': delta,
+        'nombre_bulletins': nombre,
+    }
+
+
+def appliquer_regularisation_ir(bulletin):
+    """Applique la régularisation IR annuelle sur un bulletin BROUILLON (XPAI2).
+
+    Ajoute (ou remplace) une ligne ``IR-REGUL`` au bulletin : montant positif
+    = retenue complémentaire (rappel), négatif = restitution (trop-perçu).
+    Met à jour ``bulletin.ir`` et ``bulletin.net_a_payer`` en conséquence.
+    N'agit QUE sur un bulletin en BROUILLON (la garde d'immuabilité du modèle
+    empêche toute écriture sur un bulletin validé). No-op si le delta calculé
+    est nul. Renvoie le ``delta`` appliqué (``Decimal``, peut être 0).
+    """
+    from .models import BulletinPaie, LigneBulletin
+
+    if bulletin.statut == BulletinPaie.STATUT_VALIDE:
+        raise BulletinPaie.BulletinVerrouille(
+            'Bulletin validé : régularisation IR impossible (figé).')
+
+    with transaction.atomic():
+        # Idempotence : annuler l'effet d'une régularisation PRÉCÉDENTE sur
+        # ``ir``/``net_a_payer`` AVANT de recalculer. Sinon un 2ᵉ appel voit un
+        # IR déjà gonflé du 1er delta (l'IR retenu cumulé inclut ce bulletin) et
+        # calcule un delta nul — la ligne IR-REGUL disparaîtrait. Supprimer la
+        # seule ligne ne suffit pas : il faut aussi défaire son effet sur l'IR.
+        prior = bulletin.lignes.filter(code='IR-REGUL').first()
+        if prior is not None:
+            prior_delta = (
+                prior.montant if prior.type == Rubrique.TYPE_RETENUE
+                else -prior.montant)
+            bulletin.ir = _q(Decimal(bulletin.ir or 0) - prior_delta)
+            bulletin.net_a_payer = _q(
+                Decimal(bulletin.net_a_payer or 0) + prior_delta)
+            bulletin.save(update_fields=['ir', 'net_a_payer'])
+            prior.delete()
+
+        resultat = calculer_regularisation_ir(bulletin)
+        delta = resultat['delta']
+
+        if delta != 0:
+            ordre_max = (
+                bulletin.lignes.order_by('-ordre').values_list(
+                    'ordre', flat=True).first() or 0
+            )
+            LigneBulletin.objects.create(
+                company=bulletin.company,
+                bulletin=bulletin,
+                code='IR-REGUL',
+                libelle=(
+                    "Régularisation IR annuelle (rappel)" if delta > 0
+                    else "Régularisation IR annuelle (trop-perçu)"),
+                type=(
+                    Rubrique.TYPE_RETENUE if delta > 0
+                    else Rubrique.TYPE_GAIN),
+                montant=abs(delta),
+                ordre=ordre_max + 1,
+            )
+            bulletin.ir = _q(Decimal(bulletin.ir or 0) + delta)
+            bulletin.net_a_payer = _q(Decimal(bulletin.net_a_payer or 0) - delta)
+            bulletin.save(update_fields=['ir', 'net_a_payer'])
+    return delta
+
+
+# ── XRH9 — thin wrapper cross-app pour le guichet de demandes RH ───────────
+# ``apps.rh`` ne doit JAMAIS dupliquer de code PDF : il appelle CE wrapper
+# (cross-app par services uniquement) qui réutilise le renderer PAIE34
+# existant (``builders.render_attestation_pdf``).
+
+def generer_attestation_pdf_pour_dossier(dossier_employe, attestation_type):
+    """Génère le PDF d'attestation (PAIE34) pour un ``rh.DossierEmploye``.
+
+    Résout le ``ProfilPaie`` lié au dossier (``OneToOne``) — lève
+    ``ValueError`` si le dossier n'a pas encore de profil de paie. Pour
+    l'attestation de salaire, s'appuie sur le dernier ``BulletinPaie`` VALIDÉ
+    du profil (peut être ``None`` — le renderer affiche alors des tirets).
+    Retourne les octets PDF. Propage ``ValueError``/``RuntimeError`` du
+    renderer sous-jacent (type inconnu / moteur PDF indisponible).
+    """
+    from .builders import render_attestation_pdf
+    from .models import BulletinPaie, ProfilPaie
+
+    try:
+        profil = ProfilPaie.objects.get(employe=dossier_employe)
+    except ProfilPaie.DoesNotExist:
+        raise ValueError(
+            "Aucun profil de paie pour cet employé — "
+            "impossible de générer l'attestation.")
+
+    bulletin = None
+    if attestation_type == 'salaire':
+        bulletin = (
+            BulletinPaie.objects
+            .filter(company=dossier_employe.company, profil=profil,
+                    statut=BulletinPaie.STATUT_VALIDE)
+            .order_by('-periode__annee', '-periode__mois')
+            .first())
+    return render_attestation_pdf(
+        attestation_type, profil, bulletin=bulletin)

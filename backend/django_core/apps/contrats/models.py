@@ -167,6 +167,17 @@ class Contrat(models.Model):
         related_name='contrats_crees',
         verbose_name='Créé par',
     )
+    # XCTR10 — propriétaire (owner) du contrat, pour attribuer MRR/churn par
+    # commercial (commissions, redevabilité). NULLABLE (aucun changement de
+    # comportement tant qu'il n'est pas renseigné) ; validé MÊME SOCIÉTÉ au
+    # sérialiseur (jamais un utilisateur d'une autre société).
+    responsable = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='contrats_responsable',
+        verbose_name='Responsable',
+    )
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -2405,4 +2416,92 @@ class PieceConformite(models.Model):
         return (
             f'{self.libelle} ({self.get_statut_display()}) '
             f'— contrat {self.contrat_id}'
+        )
+
+
+class CycleFacturationLog(models.Model):
+    """Journal d'un run de facturation récurrente + file d'exceptions — XCTR5.
+
+    Chaque tentative de facturation d'une période récurrente (contrats
+    ``EcheancierContrat``/``LigneEcheance`` — CONTRAT31 — OU ``sav.ContratMaintenance``
+    — FG40) écrit UNE ligne ici : générée, échouée (avec motif) ou sautée (aucune
+    lecture d'usage disponible, etc.). Le SOURCE contrat est référencé en lien
+    LÂCHE par un couple typé ``(source_type, source_id)`` — jamais un FK dur ni un
+    import du modèle de l'app source (``sav`` n'expose pas de modèle importable
+    depuis ``contrats`` — frontière cross-app, CLAUDE.md).
+
+    ``periode`` identifie la PÉRIODE facturée (ex. ``2026-07`` pour un cycle
+    mensuel, ou une date ISO pour une échéance datée) — sert de GARDE ANTI
+    DOUBLE-FACTURATION : ``services.enregistrer_cycle`` refuse une seconde entrée
+    ``genere`` pour le même ``(source_type, source_id, periode)``.
+
+    ``rejouer`` (service) ne re-tente qu'une entrée ``echec`` — EXACTEMENT une
+    fois avec succès (elle passe alors à ``genere`` et ne peut plus être
+    rejouée deux fois pour la même période, la garde anti-doublon l'en empêche).
+
+    Multi-tenant : ``company`` posée CÔTÉ SERVEUR par le service appelant (jamais
+    lue du corps de requête).
+
+    RUNTIME-SAFETY (leçon FG136) : ``motif`` est un ``TextField`` (le message
+    d'erreur d'une facturation ratée peut être long) ; ``periode``/``source_type``
+    sont des ``CharField`` bornés. L'index est NOMMÉ explicitement (≤30 chars).
+    """
+
+    class SourceType(models.TextChoices):
+        CONTRAT = 'contrat', 'Contrat (échéancier)'
+        SAV_MAINTENANCE = 'sav_maintenance', 'Maintenance SAV'
+
+    class Statut(models.TextChoices):
+        GENERE = 'genere', 'Générée'
+        ECHEC = 'echec', 'Échec'
+        SAUTE = 'saute', 'Sautée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='contrats_cycles_facturation',
+        verbose_name='Société',
+    )
+    source_type = models.CharField(
+        max_length=20, choices=SourceType.choices,
+        verbose_name='Type de source')
+    # ID de la source (contrat ou ContratMaintenance SAV) — lien LÂCHE, jamais
+    # de FK dur ni d'import cross-app.
+    source_id = models.PositiveIntegerField(verbose_name='ID de la source')
+    # Période facturée (ex. « 2026-07 » mensuel, ou une date ISO). Sert de clé
+    # de garde anti double-facturation avec (source_type, source_id).
+    periode = models.CharField(max_length=20, verbose_name='Période')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, verbose_name='Statut')
+    motif = models.TextField(
+        blank=True, default='', verbose_name='Motif (échec/saut)')
+    # Lien LÂCHE vers la facture émise (ventes.Facture) — id seul, NULL si non
+    # générée.
+    facture_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID de la facture émise')
+    # Nombre de tentatives (1 à la création ; incrémenté par ``rejouer``).
+    nb_tentatives = models.PositiveIntegerField(
+        default=1, verbose_name='Nombre de tentatives')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Journal de cycle de facturation'
+        verbose_name_plural = 'Journaux de cycles de facturation'
+        ordering = ['-date_creation', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='contrats_cyclelog_co_st',
+            ),
+            models.Index(
+                fields=['source_type', 'source_id', 'periode'],
+                name='contrats_cyclelog_src_per',
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f'{self.get_source_type_display()} #{self.source_id} '
+            f'— {self.periode} ({self.get_statut_display()})'
         )

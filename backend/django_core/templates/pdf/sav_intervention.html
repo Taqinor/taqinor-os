@@ -101,6 +101,9 @@
   <div class="section">
     <div class="section-title">Équipement concerné</div>
     <div class="section-body">{{ ticket.equipement.produit.nom if ticket.equipement.produit else '' }}{% if ticket.equipement.numero_serie %} — N° série : {{ ticket.equipement.numero_serie }}{% endif %}</div>
+    {% if garantie_legale_seule %}
+    <div class="section-body" style="margin-top:6px;">Garantie légale de conformité — loi 31-08</div>
+    {% endif %}
   </div>
   {% endif %}
 

@@ -34,8 +34,10 @@ def _read(request):
     if f is None:
         return None, None, Response({'detail': 'Aucun fichier fourni.'}, status=400)
     if target not in services.TARGETS:
+        cibles = ', '.join(sorted(services.TARGETS))
         return None, None, Response(
-            {'detail': "Cible invalide (leads, clients ou products)."}, status=400)
+            {'detail': f'Cible invalide (valeurs possibles : {cibles}).'},
+            status=400)
     size = getattr(f, 'size', None)
     if size is not None and size > MAX_UPLOAD_BYTES:
         return None, None, Response(

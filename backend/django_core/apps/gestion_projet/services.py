@@ -7,14 +7,16 @@ cross-app (on reste dans ``gestion_projet``).
 from datetime import timedelta
 from decimal import Decimal
 
-from django.db import transaction
+from django.db import models, transaction
 
 from .models import (
     BaselinePlanning,
     BaselineTache,
     DependanceTache,
+    JourFerie,
     PhaseProjet,
     Projet,
+    RecurrenceTache,
     Tache,
 )
 
@@ -31,6 +33,188 @@ def cout_timesheet(ressource, heures):
         return Decimal('0.00')
     cout_horaire = ressource.cout_horaire or Decimal('0')
     return (Decimal(heures) * cout_horaire).quantize(Decimal('0.01'))
+
+
+# ── Cycle de vie & verrouillage de période (XPRJ1) ───────────────────────────
+class TimesheetTransitionError(Exception):
+    """Transition de statut illégale sur une ``Timesheet``."""
+
+
+class PeriodeVerrouilleeError(Exception):
+    """Écriture refusée : la période (mois) de la timesheet est verrouillée."""
+
+
+def mois_de(date_val):
+    """1er jour du mois d'une date (clé de ``PeriodeVerrouilleeTemps.mois``)."""
+    return date_val.replace(day=1)
+
+
+def periode_verrouillee(company, date_val):
+    """``True`` si le mois de ``date_val`` est verrouillé pour cette société."""
+    from .models import PeriodeVerrouilleeTemps
+    if date_val is None:
+        return False
+    return PeriodeVerrouilleeTemps.objects.filter(
+        company=company, mois=mois_de(date_val)).exists()
+
+
+def verifier_periode_ouverte(company, date_val, *, admin=False):
+    """Lève ``PeriodeVerrouilleeError`` si la période est verrouillée.
+
+    Un utilisateur ADMIN (``admin=True``) contourne le verrou (déverrouillage
+    implicite d'usage — la donnée reste verrouillée pour les autres tant que la
+    ligne ``PeriodeVerrouilleeTemps`` n'est pas supprimée).
+    """
+    if admin:
+        return
+    if periode_verrouillee(company, date_val):
+        raise PeriodeVerrouilleeError(
+            f"La période {mois_de(date_val):%Y-%m} est verrouillée : "
+            "aucune création/édition/suppression de feuille de temps.")
+
+
+def soumettre_timesheet(timesheet):
+    """brouillon → soumise."""
+    from .models import Timesheet
+    if timesheet.statut != Timesheet.Statut.BROUILLON:
+        raise TimesheetTransitionError(
+            "Seule une feuille de temps en brouillon peut être soumise.")
+    timesheet.statut = Timesheet.Statut.SOUMISE
+    timesheet.save(update_fields=['statut'])
+    return timesheet
+
+
+def approuver_timesheet(timesheet, approbateur):
+    """soumise → approuvee (``approuve_par``/``date_approbation`` posés serveur)."""
+    from django.utils import timezone
+
+    from .models import Timesheet
+    if timesheet.statut != Timesheet.Statut.SOUMISE:
+        raise TimesheetTransitionError(
+            "Seule une feuille de temps soumise peut être approuvée.")
+    timesheet.statut = Timesheet.Statut.APPROUVEE
+    timesheet.approuve_par = approbateur
+    timesheet.date_approbation = timezone.now()
+    timesheet.motif_rejet = ''
+    timesheet.save(update_fields=[
+        'statut', 'approuve_par', 'date_approbation', 'motif_rejet'])
+    return timesheet
+
+
+# ── Facturation en régie (T&M) depuis les temps approuvés (XPRJ3) ───────────
+class FacturationRegieError(Exception):
+    """Erreur métier au déclenchement de la facturation en régie."""
+
+
+@transaction.atomic
+def facturer_temps_projet(projet, *, debut, fin, user):
+    """Facture en régie (T&M) les temps APPROUVÉS + facturables d'une période.
+
+    Sélectionne les ``Timesheet`` du projet dont ``statut == approuvee``,
+    ``facturable == True``, ``facture_id`` est NUL (pas déjà facturées) et
+    ``date`` dans ``[debut, fin]`` (bornes inclusives) ; groupe par
+    (tâche, type d'activité) pour le libellé ; calcule le montant HT total en
+    ``heures × taux_facturation`` (une ligne sans ``taux_facturation`` compte
+    pour 0 — jamais un coût INTERNE qui n'a pas vocation à être facturé au
+    client). Lève ``FacturationRegieError`` si aucune ligne facturable.
+
+    Le CLIENT est résolu depuis ``projet.client_id`` via un sélecteur
+    ``crm.selectors`` (frontière cross-app, import fonction-local — jamais
+    ``crm.models``) ; sans client résolvable, lève ``FacturationRegieError``.
+    L'écriture de la ``Facture`` BROUILLON passe EXCLUSIVEMENT par
+    ``apps.ventes.services.creer_facture_regie`` (jamais ``ventes.models``),
+    numérotée via ``apps/ventes/utils/references.py`` (jamais ``count()+1``).
+
+    Après création, CHAQUE timesheet incluse est marquée ``facture_id`` (dans
+    la même transaction) — un RE-RUN sur la même période ne re-sélectionne donc
+    RIEN (idempotent, 0 ligne re-facturée). Renvoie un dict
+    ``{facture, montant_ht, nb_lignes, groupes}``.
+    """
+    from .models import Timesheet
+
+    qs = Timesheet.objects.filter(
+        company=projet.company, projet=projet,
+        statut=Timesheet.Statut.APPROUVEE, facturable=True,
+        facture_id__isnull=True, date__gte=debut, date__lte=fin,
+    ).select_related('tache')
+
+    lignes = list(qs)
+    if not lignes:
+        raise FacturationRegieError(
+            "Aucune feuille de temps approuvée et facturable, non encore "
+            "facturée, sur cette période.")
+
+    from apps.crm import selectors as crm_selectors
+    client = None
+    if projet.client_id:
+        client = crm_selectors.get_company_client(
+            projet.company, projet.client_id)
+    if client is None:
+        raise FacturationRegieError(
+            "Impossible de résoudre le client du projet (client_id absent ou "
+            "introuvable) — facturation en régie impossible.")
+
+    groupes = {}
+    montant_ht = Decimal('0.00')
+    for ts in lignes:
+        cle = (ts.tache_id, ts.type_activite)
+        heures = ts.heures or Decimal('0')
+        taux = ts.taux_facturation or Decimal('0')
+        montant_ligne = (heures * taux).quantize(Decimal('0.01'))
+        montant_ht += montant_ligne
+        g = groupes.setdefault(cle, {
+            'tache_id': ts.tache_id,
+            'tache_libelle': ts.tache.libelle if ts.tache_id else '',
+            'type_activite': ts.type_activite,
+            'heures': Decimal('0'),
+            'montant': Decimal('0.00'),
+        })
+        g['heures'] += heures
+        g['montant'] += montant_ligne
+
+    groupes_tries = sorted(
+        groupes.values(),
+        key=lambda g: (g['tache_id'] or 0, g['type_activite']))
+    libelle_lignes = '; '.join(
+        f"{g['tache_libelle'] or 'sans tâche'} "
+        f"({g['type_activite']}, {g['heures']} h)"
+        for g in groupes_tries
+    )
+    libelle = (
+        f'Régie (T&M) — projet {projet.code} [{debut:%d/%m/%Y}–{fin:%d/%m/%Y}] : '
+        f'{libelle_lignes}')[:255]
+
+    from apps.ventes import services as ventes_services
+    facture = ventes_services.creer_facture_regie(
+        company=projet.company, client=client, user=user,
+        libelle=libelle, montant_ht=montant_ht)
+
+    Timesheet.objects.filter(
+        id__in=[ts.id for ts in lignes]).update(facture_id=facture.id)
+
+    return {
+        'facture': facture,
+        'montant_ht': montant_ht,
+        'nb_lignes': len(lignes),
+        'groupes': groupes_tries,
+    }
+
+
+def rejeter_timesheet(timesheet, approbateur, motif=''):
+    """soumise → rejetee (``approuve_par``/``date_approbation`` posés serveur)."""
+    from django.utils import timezone
+
+    from .models import Timesheet
+    if timesheet.statut != Timesheet.Statut.SOUMISE:
+        raise TimesheetTransitionError(
+            "Seule une feuille de temps soumise peut être rejetée.")
+    timesheet.statut = Timesheet.Statut.REJETEE
+    timesheet.approuve_par = approbateur
+    timesheet.date_approbation = timezone.now()
+    timesheet.motif_rejet = motif or ''
+    timesheet.save(update_fields=[
+        'statut', 'approuve_par', 'date_approbation', 'motif_rejet'])
+    return timesheet
 
 
 # ── Jalons de facturation liés à l'avancement (PROJ27) ───────────────────────
@@ -419,6 +603,389 @@ def reprogrammer_tache(tache, nouvelle_date_debut, nouvelle_date_fin=None):
     return [taches[i] for i in ordre_modifies]
 
 
+# ── Situations de travaux — décomptes progressifs BTP (XPRJ4) ───────────────
+class SituationTravauxError(Exception):
+    """Erreur métier sur une situation de travaux."""
+
+
+def prochain_numero_situation(projet):
+    """Numéro de situation SUIVANT pour ce projet (jamais ``count()+1``).
+
+    Verrouille la ligne ``Projet`` (``select_for_update``) le temps du calcul
+    pour sérialiser des créations concurrentes de situations sur le MÊME
+    projet, puis prend le plus haut ``numero`` déjà UTILISÉ + 1 (les trous —
+    situation supprimée — ne créent jamais de collision). Doit être appelé
+    dans une transaction atomique par l'appelant (``creer_situation``).
+    """
+    from .models import Projet, SituationTravaux
+
+    Projet.objects.select_for_update().get(pk=projet.pk)
+    plus_haut = SituationTravaux.objects.filter(
+        projet=projet).aggregate(
+            models.Max('numero'))['numero__max'] or 0
+    return plus_haut + 1
+
+
+@transaction.atomic
+def creer_situation(projet, *, periode, retenue_garantie_pct=None,
+                    contrat_id=None):
+    """Crée une nouvelle ``SituationTravaux`` BROUILLON pour ``projet``.
+
+    Le ``numero`` est posé côté serveur (savepoint + verrou de ligne, jamais
+    ``count()+1`` — voir ``prochain_numero_situation``). ``company`` est
+    TOUJOURS celle du ``projet``. Renvoie la ``SituationTravaux`` créée (sans
+    lignes — ``LigneSituation`` sont ajoutées séparément, voir
+    ``ajouter_ligne_situation``).
+    """
+    from .models import SituationTravaux
+
+    numero = prochain_numero_situation(projet)
+    return SituationTravaux.objects.create(
+        company=projet.company,
+        projet=projet,
+        numero=numero,
+        periode=periode,
+        retenue_garantie_pct=retenue_garantie_pct,
+        contrat_id=contrat_id,
+    )
+
+
+def _situation_precedente_montant_cumule(situation, libelle):
+    """``montant_cumule`` de la ligne de MÊME libellé à la situation N-1.
+
+    0 si ``situation`` est la n°1 du projet, ou si aucune ligne de ce libellé
+    n'existe encore à la situation précédente (nouveau lot introduit en cours
+    de chantier).
+    """
+    from .models import LigneSituation, SituationTravaux
+
+    precedente = SituationTravaux.objects.filter(
+        projet_id=situation.projet_id, numero__lt=situation.numero,
+    ).order_by('-numero').first()
+    if precedente is None:
+        return Decimal('0')
+    ligne_prec = LigneSituation.objects.filter(
+        situation=precedente, libelle=libelle).first()
+    if ligne_prec is None:
+        return Decimal('0')
+    return ligne_prec.montant_cumule or Decimal('0')
+
+
+@transaction.atomic
+def ajouter_ligne_situation(situation, *, libelle, montant_marche_ht,
+                            avancement_cumule_pct):
+    """Ajoute (ou remplace) une ``LigneSituation`` avec montants CALCULÉS.
+
+    ``montant_cumule`` = ``montant_marche_ht`` × ``avancement_cumule_pct`` / 100
+    (arrondi 2 décimales) ; ``montant_cumule_anterieur`` = le ``montant_cumule``
+    de la MÊME ligne (même libellé) à la situation N-1 du projet (0 si absente
+    ou n°1) ; ``montant_periode`` = cumulé − antérieur. Une ``SituationTravaux``
+    déjà VALIDÉE/FACTURÉE ne peut plus recevoir de nouvelle ligne (lève
+    ``SituationTravauxError``).
+    """
+    from .models import LigneSituation, SituationTravaux
+
+    if situation.statut != SituationTravaux.Statut.BROUILLON:
+        raise SituationTravauxError(
+            "Seule une situation en brouillon peut recevoir des lignes.")
+
+    montant_marche_ht = Decimal(montant_marche_ht)
+    avancement_cumule_pct = Decimal(avancement_cumule_pct)
+    montant_cumule = (
+        montant_marche_ht * avancement_cumule_pct / Decimal('100')
+    ).quantize(Decimal('0.01'))
+    montant_cumule_anterieur = _situation_precedente_montant_cumule(
+        situation, libelle)
+    montant_periode = montant_cumule - montant_cumule_anterieur
+
+    return LigneSituation.objects.create(
+        company=situation.company,
+        situation=situation,
+        libelle=libelle,
+        montant_marche_ht=montant_marche_ht,
+        avancement_cumule_pct=avancement_cumule_pct,
+        montant_cumule_anterieur=montant_cumule_anterieur,
+        montant_periode=montant_periode,
+        montant_cumule=montant_cumule,
+    )
+
+
+@transaction.atomic
+def valider_situation(situation, *, user):
+    """Valide une ``SituationTravaux`` BROUILLON et génère la facture d'acompte.
+
+    Passe la situation à VALIDÉE puis FACTURÉE (une seule facture générée —
+    idempotent : un second appel sur une situation déjà VALIDÉE/FACTURÉE lève
+    ``SituationTravauxError``, jamais de double facturation). Le montant
+    facturé est la SOMME des ``montant_periode`` des lignes (± retenue de
+    garantie déduite, tracée sur ``retenue_garantie_pct``). Le CLIENT est
+    résolu depuis ``projet.client_id`` via ``crm.selectors`` (frontière
+    cross-app, import fonction-local). L'écriture de la ``Facture`` passe
+    EXCLUSIVEMENT par ``ventes.services.creer_facture_acompte_situation``.
+    Renvoie la ``SituationTravaux`` mise à jour.
+    """
+    from django.utils import timezone
+
+    from .models import SituationTravaux
+
+    if situation.statut != SituationTravaux.Statut.BROUILLON:
+        raise SituationTravauxError(
+            "Seule une situation en brouillon peut être validée.")
+
+    lignes = list(situation.lignes.all())
+    if not lignes:
+        raise SituationTravauxError(
+            "La situation ne porte aucune ligne — rien à facturer.")
+
+    montant_periode_total = sum(
+        (ligne.montant_periode or Decimal('0')) for ligne in lignes)
+
+    projet = situation.projet
+    from apps.crm import selectors as crm_selectors
+    client = None
+    if projet.client_id:
+        client = crm_selectors.get_company_client(
+            projet.company, projet.client_id)
+    if client is None:
+        raise SituationTravauxError(
+            "Impossible de résoudre le client du projet — validation "
+            "impossible.")
+
+    libelle = (
+        f'Situation n°{situation.numero} — projet {projet.code} '
+        f'[{situation.periode:%m/%Y}]')[:255]
+
+    from apps.ventes import services as ventes_services
+    facture = ventes_services.creer_facture_acompte_situation(
+        company=projet.company, client=client, user=user, libelle=libelle,
+        montant_periode_ht=montant_periode_total,
+        retenue_garantie_pct=situation.retenue_garantie_pct)
+
+    situation.statut = SituationTravaux.Statut.FACTUREE
+    situation.facture_id = facture.id
+    situation.date_validation = timezone.now()
+    situation.save(update_fields=[
+        'statut', 'facture_id', 'date_validation'])
+    return situation
+
+
+# ── Congés RH approuvés → indisponibilités planning (XPRJ9) ──────────────────
+def _marqueur_conge_rh(demande):
+    """Marqueur STABLE identifiant la demande RH source (idempotence).
+
+    Stocké dans ``Indisponibilite.motif`` (aucune référence lâche dédiée sur ce
+    modèle historique — additif minimal) : permet de retrouver/mettre à jour la
+    MÊME indisponibilité sur une re-validation, sans jamais dupliquer.
+    """
+    return f'conge_rh:{demande.id}'
+
+
+def synchroniser_indisponibilite_conge(demande, *, annule=False):
+    """Synchronise l'``Indisponibilite`` planning à partir d'une ``DemandeConge``.
+
+    Appelé par ``receivers.py`` (abonné à l'événement ``conge_approuve`` du bus
+    ``core/events.py``) — JAMAIS appelé directement par ``rh`` (découplage M6).
+
+    Résout la ``RessourceProfil`` liée au MÊME utilisateur que
+    ``demande.employe.user`` (dans la société du profil ressource déduite du
+    lien utilisateur — jamais lue du corps de requête). Un employé sans compte
+    utilisateur, ou un utilisateur sans profil ressource dans ce module, est
+    ignoré PROPREMENT (retourne ``None``, aucune exception).
+
+    * ``annule=False`` (validation) : ``update_or_create`` sur le marqueur
+      ``_marqueur_conge_rh`` — IDEMPOTENT : une re-validation ne duplique
+      jamais, elle met juste à jour les dates si elles ont changé.
+    * ``annule=True`` : supprime l'indisponibilité correspondante si elle
+      existe encore (aucune erreur si déjà absente).
+
+    Renvoie l'``Indisponibilite`` créée/mise à jour (validation) ou ``None``
+    (annulation, ou dégradation propre).
+    """
+    from .models import Indisponibilite, RessourceProfil
+
+    employe = getattr(demande, 'employe', None)
+    user_id = getattr(employe, 'user_id', None) if employe else None
+    if not user_id:
+        return None
+
+    ressource = RessourceProfil.objects.filter(user_id=user_id).first()
+    if ressource is None:
+        return None
+
+    marqueur = _marqueur_conge_rh(demande)
+
+    if annule:
+        Indisponibilite.objects.filter(
+            company=ressource.company, ressource=ressource,
+            motif=marqueur).delete()
+        return None
+
+    indispo, _ = Indisponibilite.objects.update_or_create(
+        company=ressource.company, ressource=ressource, motif=marqueur,
+        defaults={
+            'type_indispo': Indisponibilite.TypeIndispo.CONGE,
+            'date_debut': demande.date_debut,
+            'date_fin': demande.date_fin,
+        },
+    )
+    return indispo
+
+
+# ── Rappels des temps manquants (XPRJ7) ──────────────────────────────────────
+def rappeler_temps_manquants(company, debut, fin):
+    """Notifie CHAQUE ressource en retard de saisie sur [debut, fin] (XPRJ7).
+
+    Délègue la détection à ``selectors.temps_manquants`` puis diffuse UNE
+    notification interne par ressource via ``apps.notifications.services.
+    notify`` (import fonction-local — frontière cross-app ; événement générique
+    ``DIGEST``, réutilisé tel quel par d'autres rappels périodiques du repo).
+
+    IDEMPOTENT : une notification déjà émise AUJOURD'HUI pour cette ressource +
+    cette fenêtre exacte (marqueur dans ``Notification.link``) n'est jamais
+    re-diffusée — relancer la commande plusieurs fois le même jour ne spamme
+    pas. Best-effort par ressource : un échec de notification n'interrompt pas
+    les suivantes. Renvoie ``{nb_en_retard, nb_notifies, nb_deja_notifies}``.
+    """
+    from django.utils import timezone
+
+    from . import selectors
+
+    data = selectors.temps_manquants(company, debut, fin)
+    lignes = data['lignes']
+    if not lignes:
+        return {'nb_en_retard': 0, 'nb_notifies': 0, 'nb_deja_notifies': 0}
+
+    from apps.notifications.models import EventType, Notification
+    from apps.notifications.services import notify
+
+    today = timezone.localdate()
+    nb_notifies = 0
+    nb_deja_notifies = 0
+    for ligne in lignes:
+        marqueur = (
+            f'gestion_projet:rappel_timesheet:{ligne["ressource_id"]}:'
+            f'{debut}:{fin}:{today}')
+        deja_notifie = Notification.objects.filter(
+            company=company, recipient_id=ligne['user_id'],
+            event_type=EventType.DIGEST, link=marqueur,
+            created_at__date=today,
+        ).exists()
+        if deja_notifie:
+            nb_deja_notifies += 1
+            continue
+        try:
+            from authentication.models import CustomUser
+            user = CustomUser.objects.filter(id=ligne['user_id']).first()
+            if user is None:
+                continue
+            nb_manquants = len(ligne['jours_manquants'])
+            notify(
+                user, EventType.DIGEST,
+                title='Feuilles de temps manquantes',
+                body=(
+                    f'{nb_manquants} jour(s) sans saisie de temps entre '
+                    f'{debut} et {fin}.'),
+                link=marqueur,
+                company=company,
+            )
+            nb_notifies += 1
+        except Exception:  # pragma: no cover - défensif, best-effort
+            continue
+
+    return {
+        'nb_en_retard': len(lignes),
+        'nb_notifies': nb_notifies,
+        'nb_deja_notifies': nb_deja_notifies,
+    }
+
+
+# ── Chrono start/stop sur tâche (XPRJ5) ──────────────────────────────────────
+class ChronoError(Exception):
+    """Erreur métier sur le chrono start/stop d'une tâche."""
+
+
+def _arrondir_duree_heures(minutes, pas_minutes=15):
+    """Arrondit une durée (en minutes) au ``pas_minutes`` SUPÉRIEUR, en heures.
+
+    Ex. ``pas_minutes=15`` (quart d'heure) : 1 minute → 15 min (0.25 h) ;
+    16 minutes → 30 min (0.50 h) ; 0 minute → 0 h. Renvoie un ``Decimal``.
+    """
+    import math
+    if minutes <= 0:
+        return Decimal('0')
+    pas = max(1, int(pas_minutes))
+    paliers = math.ceil(minutes / pas)
+    minutes_arrondies = paliers * pas
+    return (Decimal(minutes_arrondies) / Decimal('60')).quantize(Decimal('0.01'))
+
+
+@transaction.atomic
+def demarrer_chrono(tache, user):
+    """Démarre un chrono sur ``tache`` pour ``user`` (XPRJ5).
+
+    Un seul chrono actif par utilisateur : démarrer un NOUVEAU chrono arrête
+    (silencieusement, sans créer de timesheet) l'ancien s'il existe — le
+    START/STOP explicite reste la seule voie qui crée une timesheet. ``company``
+    est TOUJOURS celle de la ``tache``. Renvoie le ``ChronoEnCours`` créé.
+    """
+    from django.utils import timezone
+
+    from .models import ChronoEnCours
+
+    ChronoEnCours.objects.filter(user=user).delete()
+    return ChronoEnCours.objects.create(
+        company=tache.company,
+        user=user,
+        tache=tache,
+        demarre_a=timezone.now(),
+    )
+
+
+@transaction.atomic
+def arreter_chrono(user, *, pas_minutes=15):
+    """Arrête le chrono actif de ``user`` et crée la ``Timesheet`` brouillon.
+
+    Lève ``ChronoError`` si aucun chrono actif. La durée est
+    ``maintenant − demarre_a``, arrondie au quart d'heure SUPÉRIEUR
+    (``pas_minutes``, paramétrable — défaut 15 min). La ressource est celle
+    liée à l'utilisateur (``RessourceProfil.user``) — lève ``ChronoError`` si
+    l'utilisateur n'a AUCUN profil ressource (message explicite). Supprime le
+    ``ChronoEnCours`` après création. Renvoie la ``Timesheet`` créée.
+    """
+    from django.utils import timezone
+
+    from .models import ChronoEnCours, RessourceProfil, Timesheet
+
+    chrono = ChronoEnCours.objects.filter(user=user).first()
+    if chrono is None:
+        raise ChronoError("Aucun chrono actif pour cet utilisateur.")
+
+    ressource = RessourceProfil.objects.filter(
+        company=chrono.company, user=user).first()
+    if ressource is None:
+        raise ChronoError(
+            "Aucun profil ressource lié à cet utilisateur — impossible de "
+            "créer la feuille de temps.")
+
+    maintenant = timezone.now()
+    minutes_ecoulees = max(
+        0, (maintenant - chrono.demarre_a).total_seconds() / 60)
+    heures = _arrondir_duree_heures(minutes_ecoulees, pas_minutes)
+
+    timesheet = Timesheet.objects.create(
+        company=chrono.company,
+        projet=chrono.tache.projet,
+        tache=chrono.tache,
+        ressource=ressource,
+        date=maintenant.date(),
+        heures=heures,
+        cout=cout_timesheet(ressource, heures),
+        saisi_par=user,
+    )
+    chrono.delete()
+    return timesheet
+
+
 # ── Baseline de planning (PROJ13) ────────────────────────────────────────────
 
 @transaction.atomic
@@ -457,3 +1024,571 @@ def creer_baseline(projet, libelle='', auteur=None):
     if lignes:
         BaselineTache.objects.bulk_create(lignes)
     return baseline
+
+
+# ── Tâches récurrentes (XPRJ13) ──────────────────────────────────────────────
+
+def _prochaine_echeance_suivante(echeance, regle, intervalle):
+    """Avance ``echeance`` d'un pas de la règle (hebdomadaire/mensuelle)."""
+    if regle == RecurrenceTache.Regle.HEBDOMADAIRE:
+        return echeance + timedelta(weeks=intervalle)
+    # Mensuelle : avance de ``intervalle`` mois, en clampant le jour si le
+    # mois cible est plus court (ex. 31 janvier + 1 mois → 28/29 février).
+    mois_total = echeance.month - 1 + intervalle
+    annee = echeance.year + mois_total // 12
+    mois = mois_total % 12 + 1
+    import calendar
+    dernier_jour = calendar.monthrange(annee, mois)[1]
+    jour = min(echeance.day, dernier_jour)
+    return echeance.replace(year=annee, month=mois, day=jour)
+
+
+@transaction.atomic
+def generer_taches_recurrentes(company, *, aujourd_hui=None):
+    """Génère la PROCHAINE ``Tache`` de chaque récurrence ACTIVE à échéance.
+
+    IDEMPOTENT : chaque appel avance ``prochaine_echeance`` immédiatement
+    après avoir créé la tâche, donc un re-run le même jour ne crée jamais deux
+    occurrences pour la même échéance. Respecte ``date_fin`` et
+    ``nb_occurrences`` (désactive la récurrence une fois atteinte). Renvoie la
+    liste des ``Tache`` créées.
+    """
+    if aujourd_hui is None:
+        from datetime import date as _date
+        aujourd_hui = _date.today()
+
+    crees = []
+    recurrences = RecurrenceTache.objects.select_for_update().filter(
+        company=company, actif=True, prochaine_echeance__lte=aujourd_hui)
+    for rec in recurrences:
+        # Une récurrence peut avoir plusieurs échéances en retard (ex. cron
+        # arrêté un moment) : on rattrape TOUTES les échéances passées, une
+        # tâche par échéance, jamais deux pour la même échéance (avance
+        # systématique avant la prochaine itération).
+        while rec.actif and rec.prochaine_echeance <= aujourd_hui:
+            if rec.date_fin is not None \
+                    and rec.prochaine_echeance > rec.date_fin:
+                rec.actif = False
+                rec.save(update_fields=['actif'])
+                break
+            if rec.nb_occurrences is not None \
+                    and rec.nb_generees >= rec.nb_occurrences:
+                rec.actif = False
+                rec.save(update_fields=['actif'])
+                break
+
+            tache = Tache.objects.create(
+                company=rec.company,
+                projet=rec.projet,
+                phase=rec.phase,
+                libelle=rec.libelle,
+                charge_estimee=rec.charge_estimee,
+                assigne=rec.assigne,
+                date_debut_prevue=rec.prochaine_echeance,
+                date_fin_prevue=rec.prochaine_echeance,
+            )
+            crees.append(tache)
+
+            rec.nb_generees += 1
+            rec.prochaine_echeance = _prochaine_echeance_suivante(
+                rec.prochaine_echeance, rec.regle, rec.intervalle)
+            if rec.date_fin is not None \
+                    and rec.prochaine_echeance > rec.date_fin:
+                rec.actif = False
+            if rec.nb_occurrences is not None \
+                    and rec.nb_generees >= rec.nb_occurrences:
+                rec.actif = False
+            rec.save(update_fields=[
+                'nb_generees', 'prochaine_echeance', 'actif'])
+    return crees
+
+
+# ── Jours fériés marocains pré-remplis (XPRJ20) ──────────────────────────────
+def seeder_feries_calendrier(calendrier, annee):
+    """Pré-remplit ``JourFerie`` depuis le référentiel UNIQUE ``core.calendar``.
+
+    Source EXCLUSIVE : ``core.calendar.MOROCCAN_FIXED_HOLIDAYS`` (fixes) +
+    ``MOROCCAN_MOVABLE_HOLIDAYS`` (mobiles, hégiriens) de l'année demandée —
+    JAMAIS une nouvelle liste de dates codée en dur ici (règle DC26/FG5).
+    IDEMPOTENT : ``unique (calendrier, date)`` respecté (``get_or_create``,
+    aucun doublon même en re-run). Pour une année SANS jeu de fêtes mobiles
+    codé (``MOROCCAN_MOVABLE_HOLIDAYS`` n'a pas cette année), les fêtes
+    mobiles (Aïd al-Fitr, Aïd al-Adha, Nouvel An hégirien, Aïd al-Mawlid)
+    restent à saisir MANUELLEMENT — signalé dans le résultat.
+
+    Renvoie ``{'crees': [...], 'nb_deja_presents': N, 'fetes_mobiles_manquantes': bool}``.
+    """
+    from core.calendar import MOROCCAN_MOVABLE_HOLIDAYS, moroccan_holidays
+
+    company = calendrier.company
+    dates_feriees = moroccan_holidays(annee)
+
+    # Libellés : fixes via un mapping mois/jour → libellé, mobiles via le
+    # dict de l'année (déjà date → libellé).
+    from core.calendar import MOROCCAN_FIXED_HOLIDAYS
+    libelles_fixes = {
+        _date_du_mois_jour(annee, mois, jour): libelle
+        for (mois, jour), libelle in MOROCCAN_FIXED_HOLIDAYS.items()
+    }
+    libelles_mobiles = MOROCCAN_MOVABLE_HOLIDAYS.get(annee, {})
+
+    crees = []
+    nb_deja = 0
+    for d in sorted(dates_feriees):
+        libelle = libelles_fixes.get(d) or libelles_mobiles.get(d, '')
+        _, created = JourFerie.objects.get_or_create(
+            company=company, calendrier=calendrier, date=d,
+            defaults={'libelle': libelle})
+        if created:
+            crees.append(d)
+        else:
+            nb_deja += 1
+
+    return {
+        'crees': crees,
+        'nb_deja_presents': nb_deja,
+        'fetes_mobiles_manquantes': annee not in MOROCCAN_MOVABLE_HOLIDAYS,
+    }
+
+
+def _date_du_mois_jour(annee, mois, jour):
+    from datetime import date as _date
+    return _date(annee, mois, jour)
+
+
+# ── Créer un projet depuis un devis accepté (XPRJ21) ─────────────────────────
+class DevisVersProjetError(Exception):
+    """Erreur métier lors de la création d'un projet depuis un devis."""
+
+
+def _prochain_code_projet(company):
+    """Code ``Projet`` sûr : plus haut suffixe utilisé + 1 (JAMAIS count()+1).
+
+    Radical ``PRJ-<année>-`` (reset annuel), même politique anti-collision que
+    ``apps/ventes/utils/references.py`` (pas de dépendance croisée : logique
+    dupliquée localement, modèle différent).
+    """
+    import re
+    from django.utils import timezone
+
+    annee = timezone.now().strftime('%Y')
+    prefix = f'PRJ-{annee}-'
+    refs = Projet.objects.filter(
+        company=company, code__startswith=prefix).values_list(
+            'code', flat=True)
+    highest = 0
+    suffix_re = re.compile(r'-(\d+)$')
+    for ref in refs:
+        m = suffix_re.search(ref)
+        if m:
+            highest = max(highest, int(m.group(1)))
+    return f'{prefix}{highest + 1:04d}'
+
+
+@transaction.atomic
+def creer_projet_depuis_devis(devis_data, *, company, user=None):
+    """Crée un ``Projet`` + ``ProjetLien`` + ``BudgetProjet`` v1 depuis un
+    devis ACCEPTÉ (XPRJ21) — action UTILISATEUR EXPLICITE uniquement (JAMAIS
+    automatique sur ``devis_accepted`` : le chantier auto existe déjà côté
+    ``installations``).
+
+    ``devis_data`` provient EXCLUSIVEMENT de
+    ``apps.ventes.selectors.devis_pour_projet`` (jamais un import de
+    ``ventes.models``). Refuse (``DevisVersProjetError``) si un ``ProjetLien``
+    pointant déjà ce devis existe pour la société (re-run → « déjà lié »). Le
+    ``code`` du projet est généré via une numérotation SÛRE (plus haut
+    suffixe utilisé + 1, jamais ``count()+1``).
+
+    Renvoie ``{'projet': Projet, 'lien': ProjetLien, 'budget': BudgetProjet}``.
+    """
+    from .models import BudgetProjet, LigneBudgetProjet, ProjetLien
+
+    devis_id = devis_data['id']
+    deja_lie = ProjetLien.objects.filter(
+        company=company, type_cible=ProjetLien.TypeCible.DEVIS,
+        cible_id=devis_id).exists()
+    if deja_lie:
+        raise DevisVersProjetError(
+            f'Le devis {devis_data["reference"]} est déjà lié à un projet.')
+
+    projet = Projet.objects.create(
+        company=company,
+        code=_prochain_code_projet(company),
+        nom=f'Projet — devis {devis_data["reference"]}',
+        client_id=devis_data['client_id'],
+        budget_total=(
+            devis_data['montant_materiel']
+            + devis_data['montant_main_oeuvre']),
+    )
+
+    lien = ProjetLien.objects.create(
+        company=company,
+        projet=projet,
+        type_cible=ProjetLien.TypeCible.DEVIS,
+        cible_id=devis_id,
+        libelle=devis_data['reference'],
+    )
+
+    budget = BudgetProjet.objects.create(
+        company=company, projet=projet, version=1,
+        statut=BudgetProjet.Statut.BROUILLON,
+    )
+    if devis_data['montant_materiel']:
+        LigneBudgetProjet.objects.create(
+            company=company, budget=budget,
+            categorie=LigneBudgetProjet.Categorie.MATERIEL,
+            libelle='Matériel (depuis devis)',
+            montant_prevu=devis_data['montant_materiel'],
+        )
+    if devis_data['montant_main_oeuvre']:
+        LigneBudgetProjet.objects.create(
+            company=company, budget=budget,
+            categorie=LigneBudgetProjet.Categorie.MAIN_OEUVRE,
+            libelle="Main-d'œuvre (depuis devis)",
+            montant_prevu=devis_data['montant_main_oeuvre'],
+        )
+
+    return {'projet': projet, 'lien': lien, 'budget': budget}
+
+
+# ── Alertes automatiques de retard planning (XPRJ22) ─────────────────────────
+def alertes_retards_projets(company, *, seuil_jours=None):
+    """Notifie le ``responsable`` des projets ACTIFS en retard/à risque (XPRJ22).
+
+    Balaie ``selectors.retards_projet`` (PROJ14) sur chaque projet ACTIF
+    (exclut TERMINE/ANNULE) de la société et notifie son ``responsable`` via
+    ``apps.notifications.services.notify`` (import fonction-local — frontière
+    cross-app ; événement dédié ``EventType.PROJET_RETARD``, XPRJ22).
+
+    IDEMPOTENT : UNE notification par (projet, élément, jour) — un marqueur
+    unique dans ``Notification.link`` empêche tout spam en re-run le même
+    jour. Un projet SANS responsable est ignoré silencieusement (pas de
+    destinataire). Best-effort par élément : un échec n'interrompt pas les
+    suivants. Renvoie ``{nb_projets_scannes, nb_alertes_envoyees,
+    nb_deja_notifiees}``.
+    """
+    from django.utils import timezone
+
+    from . import selectors
+
+    from apps.notifications.models import EventType, Notification
+    from apps.notifications.services import notify
+
+    today = timezone.localdate()
+    projets = Projet.objects.filter(company=company).exclude(
+        statut__in=[Projet.Statut.TERMINE, Projet.Statut.ANNULE]
+    ).select_related('responsable')
+
+    nb_envoyees = 0
+    nb_deja = 0
+    for projet in projets:
+        if projet.responsable_id is None:
+            continue
+        data = selectors.retards_projet(projet, seuil_jours=seuil_jours)
+        elements = (
+            [('tache', t) for t in data['taches_en_retard']]
+            + [('tache', t) for t in data['taches_a_risque']]
+            + [('jalon', j) for j in data['jalons_en_retard']]
+            + [('jalon', j) for j in data['jalons_a_risque']]
+        )
+        for type_elem, item in elements:
+            marqueur = (
+                f'gestion_projet:alerte_retard:{projet.id}:'
+                f'{type_elem}:{item["id"]}:{today}')
+            deja_notifiee = Notification.objects.filter(
+                company=company, recipient_id=projet.responsable_id,
+                event_type=EventType.PROJET_RETARD, link=marqueur,
+                created_at__date=today,
+            ).exists()
+            if deja_notifiee:
+                nb_deja += 1
+                continue
+            try:
+                notify(
+                    projet.responsable, EventType.PROJET_RETARD,
+                    title=f'Retard planning — {projet.code}',
+                    body=(
+                        f'{type_elem.capitalize()} « {item["libelle"]} » '
+                        f'({item["retard_jours"]} j).'),
+                    link=marqueur,
+                    company=company,
+                )
+                nb_envoyees += 1
+            except Exception:  # pragma: no cover - défensif, best-effort
+                continue
+
+    return {
+        'nb_projets_scannes': projets.count(),
+        'nb_alertes_envoyees': nb_envoyees,
+        'nb_deja_notifiees': nb_deja,
+    }
+
+
+# ── Notifications client aux étapes du projet (XPRJ23) ───────────────────────
+def notifier_transition_projet(
+        projet, *, ancien_statut, nouveau_statut, user=None):
+    """Émet ``TriggerType.PROJET_STATUS_CHANGE`` vers le moteur automation.
+
+    NE crée AUCUN modèle de notification parallèle : délègue au moteur
+    no-code EXISTANT (``apps.automation`` N72/N73, import fonction-local —
+    frontière cross-app). Config ``{'statut': …}`` avec les enums PROPRES à
+    gestion_projet (jamais ``STAGES.py``, règle #2). Best-effort ABSOLU :
+    toute exception est avalée ici (le moteur est déjà best-effort en
+    interne) — la transition de statut qui a appelé cette fonction n'est
+    JAMAIS bloquée. Variables ``{nom_projet}``/``{date}`` disponibles dans le
+    corps des modèles de message (substitution côté automation).
+    """
+    if ancien_statut == nouveau_statut:
+        return
+    try:
+        from apps.automation.engine import evaluate
+        from apps.automation.models import TriggerType
+
+        evaluate(
+            TriggerType.PROJET_STATUS_CHANGE, projet, projet.company,
+            context={
+                'new_statut': nouveau_statut,
+                'old_statut': ancien_statut,
+                'nom_projet': projet.nom,
+                'date': _date_du_jour().isoformat(),
+            },
+            user=user,
+        )
+    except Exception:  # pragma: no cover - défensif, ne bloque jamais
+        pass
+
+
+def notifier_transition_phase(
+        phase, *, ancien_statut, nouveau_statut, user=None):
+    """Émet ``TriggerType.PROJET_PHASE_CHANGE`` vers le moteur automation.
+
+    Même politique que ``notifier_transition_projet`` : moteur EXISTANT,
+    aucun modèle parallèle, best-effort ABSOLU (n'interrompt jamais la
+    transition de phase). Variables ``{nom_projet}``/``{date}`` disponibles.
+    """
+    if ancien_statut == nouveau_statut:
+        return
+    try:
+        from apps.automation.engine import evaluate
+        from apps.automation.models import TriggerType
+
+        evaluate(
+            TriggerType.PROJET_PHASE_CHANGE, phase, phase.company,
+            context={
+                'new_statut': nouveau_statut,
+                'old_statut': ancien_statut,
+                'nom_projet': phase.projet.nom,
+                'date': _date_du_jour().isoformat(),
+            },
+            user=user,
+        )
+    except Exception:  # pragma: no cover - défensif, ne bloque jamais
+        pass
+
+
+def _date_du_jour():
+    from datetime import date as _date
+    return _date.today()
+
+
+# ── Export/import du plan de tâches (XPRJ24) ─────────────────────────────────
+EXPORT_TACHES_ENTETES = [
+    'code_wbs', 'libelle', 'parent_wbs', 'date_debut_prevue',
+    'date_fin_prevue', 'charge_estimee', 'statut', 'assigne',
+    'dependances_fs',
+]
+
+
+def exporter_taches(projet):
+    """Lignes du plan de tâches (WBS) prêtes pour un export xlsx (XPRJ24).
+
+    Une ligne par ``Tache`` : ``code_wbs``, libellé, ``parent_wbs`` (code WBS
+    du parent, vide si racine), dates, charge, statut, assigné (nom de la
+    ressource), et ``dependances_fs`` (codes WBS des PRÉDÉCESSEURS FS de
+    cette tâche, séparés par ``;`` — seul le type FS est exporté/réimporté,
+    le cas courant du module). Round-trip STABLE : réimporter ce jeu de
+    lignes reconstruit le même arbre (même hiérarchie + mêmes dépendances).
+    Tout est scopé société via le projet. Lecture seule.
+    """
+    from .models import DependanceTache
+
+    taches = list(
+        Tache.objects.filter(projet=projet, company=projet.company)
+        .select_related('parent', 'assigne').order_by('ordre', 'id'))
+    par_id = {t.id: t for t in taches}
+
+    deps_par_successeur = {}
+    for dep in DependanceTache.objects.filter(
+            successeur__in=taches, type_dependance='fs'):
+        deps_par_successeur.setdefault(dep.successeur_id, []).append(
+            dep.predecesseur_id)
+
+    lignes = []
+    for t in taches:
+        parent_wbs = par_id[t.parent_id].code_wbs if t.parent_id else ''
+        deps_codes = [
+            par_id[pid].code_wbs for pid in deps_par_successeur.get(t.id, [])
+            if pid in par_id
+        ]
+        lignes.append({
+            'code_wbs': t.code_wbs,
+            'libelle': t.libelle,
+            'parent_wbs': parent_wbs,
+            'date_debut_prevue': (
+                t.date_debut_prevue.isoformat()
+                if t.date_debut_prevue else ''),
+            'date_fin_prevue': (
+                t.date_fin_prevue.isoformat() if t.date_fin_prevue else ''),
+            'charge_estimee': (
+                str(t.charge_estimee) if t.charge_estimee is not None
+                else ''),
+            'statut': t.statut,
+            'assigne': t.assigne.nom if t.assigne_id else '',
+            'dependances_fs': ';'.join(deps_codes),
+        })
+    return lignes
+
+
+class ImportTachesError(Exception):
+    """Erreur métier lors de l'import du plan de tâches."""
+
+
+def _parse_date_iso(value):
+    if not value:
+        return None
+    from datetime import date as _date
+    try:
+        return _date.fromisoformat(str(value).strip())
+    except ValueError:
+        return None
+
+
+def _parse_decimal(value):
+    if value in (None, ''):
+        return None
+    try:
+        return Decimal(str(value).strip())
+    except Exception:
+        return None
+
+
+@transaction.atomic
+def importer_taches(projet, lignes, *, confirm=False):
+    """Importe un plan de tâches (WBS) depuis des lignes (CSV/xlsx) (XPRJ24).
+
+    Chaque ligne suit ``EXPORT_TACHES_ENTETES`` (``code_wbs`` obligatoire et
+    UNIQUE dans le fichier — clé d'identité du round-trip). DEUX PASSES :
+    1) crée/rattache toutes les tâches par ``code_wbs`` (hiérarchie
+       ``parent_wbs`` résolue APRÈS que toutes les tâches existent, pour
+       accepter un ordre de lignes arbitraire) ;
+    2) recrée les dépendances FS depuis ``dependances_fs``.
+
+    ``confirm=False`` (DÉFAUT) : DRY-RUN — valide toutes les lignes, renvoie
+    le rapport d'ERREURS, N'ÉCRIT RIEN. ``confirm=True`` : écrit dans une
+    TRANSACTION ATOMIQUE (tout ou rien) — une erreur de validation est
+    rapportée SANS écrire une seule ligne, même en confirm.
+
+    Renvoie ``{'erreurs': [...], 'nb_lignes': N, 'nb_creees': N, 'nb_deps': N}``.
+    """
+    from .models import DependanceTache
+
+    erreurs = []
+    codes_vus = set()
+    for i, ligne in enumerate(lignes, start=1):
+        code = (ligne.get('code_wbs') or '').strip()
+        libelle = (ligne.get('libelle') or '').strip()
+        if not code:
+            erreurs.append(f'Ligne {i} : code_wbs obligatoire.')
+            continue
+        if code in codes_vus:
+            erreurs.append(f'Ligne {i} : code_wbs « {code} » en double.')
+            continue
+        codes_vus.add(code)
+        if not libelle:
+            erreurs.append(f'Ligne {i} ({code}) : libelle obligatoire.')
+        statut = (ligne.get('statut') or Tache.Statut.A_FAIRE).strip()
+        if statut not in Tache.Statut.values:
+            erreurs.append(
+                f'Ligne {i} ({code}) : statut « {statut} » inconnu.')
+        parent_wbs = (ligne.get('parent_wbs') or '').strip()
+        if parent_wbs and parent_wbs not in {
+                (r.get('code_wbs') or '').strip() for r in lignes}:
+            erreurs.append(
+                f'Ligne {i} ({code}) : parent_wbs « {parent_wbs} » introuvable '
+                'dans le fichier.')
+        for dep_code in _split_deps(ligne.get('dependances_fs')):
+            if dep_code not in {
+                    (r.get('code_wbs') or '').strip() for r in lignes}:
+                erreurs.append(
+                    f'Ligne {i} ({code}) : dépendance « {dep_code} » '
+                    'introuvable dans le fichier.')
+
+    if erreurs:
+        return {
+            'erreurs': erreurs, 'nb_lignes': len(lignes),
+            'nb_creees': 0, 'nb_deps': 0,
+        }
+
+    if not confirm:
+        return {
+            'erreurs': [], 'nb_lignes': len(lignes),
+            'nb_creees': 0, 'nb_deps': 0,
+        }
+
+    # Résolution des ressources par nom (best-effort : nom introuvable →
+    # assigné laissé vide, jamais bloquant).
+    from .models import RessourceProfil
+    ressources_par_nom = {
+        r.nom: r for r in RessourceProfil.objects.filter(
+            company=projet.company)
+    }
+
+    # Passe 1 : crée/rattache toutes les tâches (sans parent pour l'instant).
+    taches_par_code = {}
+    for ligne in lignes:
+        code = ligne['code_wbs'].strip()
+        taches_par_code[code] = Tache.objects.create(
+            company=projet.company,
+            projet=projet,
+            code_wbs=code,
+            libelle=ligne['libelle'].strip(),
+            date_debut_prevue=_parse_date_iso(ligne.get('date_debut_prevue')),
+            date_fin_prevue=_parse_date_iso(ligne.get('date_fin_prevue')),
+            charge_estimee=_parse_decimal(ligne.get('charge_estimee')),
+            statut=(ligne.get('statut') or Tache.Statut.A_FAIRE).strip(),
+            assigne=ressources_par_nom.get(
+                (ligne.get('assigne') or '').strip()),
+        )
+
+    # Passe 1bis : rattache la hiérarchie parent (toutes les tâches existent).
+    for ligne in lignes:
+        parent_wbs = (ligne.get('parent_wbs') or '').strip()
+        if parent_wbs:
+            tache = taches_par_code[ligne['code_wbs'].strip()]
+            tache.parent = taches_par_code[parent_wbs]
+            tache.save(update_fields=['parent'])
+
+    # Passe 2 : recrée les dépendances FS.
+    nb_deps = 0
+    for ligne in lignes:
+        successeur = taches_par_code[ligne['code_wbs'].strip()]
+        for dep_code in _split_deps(ligne.get('dependances_fs')):
+            predecesseur = taches_par_code[dep_code]
+            DependanceTache.objects.create(
+                company=projet.company,
+                predecesseur=predecesseur,
+                successeur=successeur,
+                type_dependance='fs',
+            )
+            nb_deps += 1
+
+    return {
+        'erreurs': [], 'nb_lignes': len(lignes),
+        'nb_creees': len(taches_par_code), 'nb_deps': nb_deps,
+    }
+
+
+def _split_deps(raw):
+    if not raw:
+        return []
+    return [c.strip() for c in str(raw).split(';') if c.strip()]

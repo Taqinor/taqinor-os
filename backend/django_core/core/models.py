@@ -1,3 +1,5 @@
+import secrets
+
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
@@ -1590,3 +1592,114 @@ class ChangelogRead(TimestampedModel):
 
     def __str__(self):
         return f'Note {self.entry_id} lue par utilisateur {self.user_id}'
+
+
+# ---------------------------------------------------------------------------
+# XPLT10 — Partage de dashboard : lien public tokenisé + partage interne fin.
+#
+# ``Dashboard.partage`` (FG381) reste un booléen société-entière INCHANGÉ.
+# ``PartageDashboard`` ajoute un lien PUBLIC tokenisé (calqué sur
+# ``ged.PartageGed`` / ``ventes.ShareLink`` — même schéma de sécurité : le
+# jeton est l'UNIQUE clé, jamais de confiance dans une identité venue de la
+# requête). ``DashboardPartageInterne`` ajoute un partage interne à des
+# utilisateurs/rôles CHOISIS (lecture/édition), plus fin que le booléen.
+# ---------------------------------------------------------------------------
+
+def _default_dashboard_partage_token():
+    """Jeton de partage dashboard — même générateur que ``ged.PartageGed``
+    (``secrets.token_urlsafe(32)``, cryptographiquement fort)."""
+    return secrets.token_urlsafe(32)
+
+
+class PartageDashboard(TimestampedModel):
+    """XPLT10 — Lien public tokenisé LECTURE SEULE vers un ``Dashboard``.
+
+    Ne sert JAMAIS de listes nominatives ni de ``prix_achat``/marges internes
+    — uniquement les AGRÉGATS déjà rendus par le dashboard (le layout est déjà
+    un JSON de widgets agrégés, cf. ``Dashboard.layout``). Révocation
+    immédiate via ``actif=False`` (kill-switch) ; ``expires_at`` optionnel.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='dashboard_partages', verbose_name='Société')
+    dashboard = models.ForeignKey(
+        Dashboard, on_delete=models.CASCADE, related_name='partages_publics',
+        verbose_name='Dashboard')
+    token = models.CharField(
+        max_length=64, unique=True, default=_default_dashboard_partage_token,
+        editable=False)
+    expires_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='expire le')
+    actif = models.BooleanField(default=True, verbose_name='actif')
+    created_by = models.ForeignKey(
+        'authentication.CustomUser', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='dashboard_partages_crees')
+
+    class Meta:
+        verbose_name = 'Partage public de dashboard'
+        verbose_name_plural = 'Partages publics de dashboard'
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['company', 'dashboard'],
+                         name='core_dashpartage_co_dash_idx'),
+        ]
+
+    def __str__(self):
+        return f'Partage {self.token[:8]}… → dashboard {self.dashboard_id}'
+
+    @property
+    def is_expired(self):
+        return self.expires_at is not None and self.expires_at <= timezone.now()
+
+    @property
+    def is_accessible(self):
+        """True si le lien est actuellement servable publiquement."""
+        return self.actif and not self.is_expired
+
+
+class DashboardPartageInterne(TimestampedModel):
+    """XPLT10 — Partage interne FIN d'un dashboard à des utilisateurs/rôles
+    CHOISIS, avec un niveau lecture vs édition.
+
+    Plus fin que ``Dashboard.partage`` (booléen société-entière, INCHANGÉ) :
+    un dashboard personnel (``owner`` non nul, ``partage=False``) peut quand
+    même être partagé à des tiers précis via cette table, sans devenir visible
+    à toute la société."""
+
+    class Niveau(models.TextChoices):
+        LECTURE = 'lecture', 'Lecture'
+        EDITION = 'edition', 'Édition'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='dashboard_partages_internes', verbose_name='Société')
+    dashboard = models.ForeignKey(
+        Dashboard, on_delete=models.CASCADE,
+        related_name='partages_internes', verbose_name='Dashboard')
+    utilisateur = models.ForeignKey(
+        'authentication.CustomUser', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='dashboard_partages_recus')
+    # Rôle legacy (texte libre aligné sur CustomUser.role_legacy) — SANS FK,
+    # pour rester cohérent avec le reste du partage par rôle dans le repo.
+    role = models.CharField(max_length=20, blank=True, default='')
+    niveau = models.CharField(
+        max_length=10, choices=Niveau.choices, default=Niveau.LECTURE)
+
+    class Meta:
+        verbose_name = 'Partage interne de dashboard'
+        verbose_name_plural = 'Partages internes de dashboard'
+        ordering = ['-created_at', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['dashboard', 'utilisateur'],
+                condition=models.Q(utilisateur__isnull=False),
+                name='core_dashpartage_interne_dash_user_uniq'),
+            models.UniqueConstraint(
+                fields=['dashboard', 'role'],
+                condition=~models.Q(role=''),
+                name='core_dashpartage_interne_dash_role_uniq'),
+        ]
+
+    def __str__(self):
+        cible = self.utilisateur_id or self.role or '—'
+        return f'Dashboard {self.dashboard_id} → {cible} ({self.niveau})'

@@ -94,11 +94,18 @@ jobs:
             # above still runs the FULL suite when the diff range itself is
             # unresolvable (new branch / force-push / shallow clone). The
             # `|| true` keeps a no-match (grep exit 1) from tripping `set -e`.
+            # Use here-strings (NOT `echo | grep -q`): with a large `$changed`,
+            # `grep -q` exits on first match before `echo` finishes writing, so
+            # `echo` takes SIGPIPE and (under `set -o pipefail`) the pipeline
+            # returns 141 — which made `&& backend=true` silently NOT run, so a
+            # huge backend diff was mis-detected as backend=false and skipped the
+            # required backend-tests gate. A here-string has no pipe writer to
+            # kill, so grep's real exit status drives the `&&`.
             # Shared backend<->frontend contract: exercise both sides + e2e.
-            echo "$changed" | grep -qE '^STAGES\.py$'                 && { backend=true; frontend=true; } || true
-            echo "$changed" | grep -qE '^backend/'                    && backend=true  || true
-            echo "$changed" | grep -qE '^frontend/'                   && frontend=true || true
-            echo "$changed" | grep -qE '^apps/web/'                   && web=true      || true
+            grep -qE '^STAGES\.py$'  <<< "$changed" && { backend=true; frontend=true; } || true
+            grep -qE '^backend/'     <<< "$changed" && backend=true  || true
+            grep -qE '^frontend/'    <<< "$changed" && frontend=true || true
+            grep -qE '^apps/web/'    <<< "$changed" && web=true      || true
             # Everything else (docs/**, *.md, top-level state files, etc.)
             # affects none of the heavy jobs — only the always-on stage-names
             # guard, which is not gated here.

@@ -295,6 +295,13 @@ class Folder(models.Model):
     # Chemin matérialisé : "/1/4/9/" — les pk des ancêtres puis soi, encadrés
     # de '/'. Renseigné/recalculé dans save() ; jamais lu du corps de requête.
     path = models.CharField(max_length=1000, blank=True, default='', db_index=True)
+    # XGED9 — alias d'ingestion email (ex. "compta", matché sur une adresse
+    # plus-adressée `ged+compta@…` ou un objet `[compta]`). Vide = pas de
+    # routage email vers ce dossier. Unique par société (jamais deux dossiers
+    # sur le même alias — routage sans ambiguïté).
+    alias_email = models.CharField(
+        max_length=100, blank=True, default='',
+        verbose_name="alias d'ingestion email")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -306,6 +313,12 @@ class Folder(models.Model):
             models.Index(fields=['company', 'cabinet']),
             models.Index(fields=['parent']),
             models.Index(fields=['path']),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'alias_email'],
+                condition=models.Q(~models.Q(alias_email='')),
+                name='ged_folder_unique_alias_email'),
         ]
 
     def __str__(self):
@@ -488,6 +501,14 @@ class Document(models.Model):
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='ged_documents_crees')
+    # XGED18 — Document-LIEN : quand renseigné, ce document référence une URL
+    # externe (Google Doc, fichier cloud…) au lieu de porter un fichier stocké.
+    # Une entrée GED de première classe (tags/ACL/liaison métier/cycle de vie/
+    # chatter) SANS stockage. Exclusif d'une version fichier en pratique — les
+    # actions fichier (version/OCR/signature) le refusent explicitement (400).
+    url_externe = models.URLField(
+        max_length=2000, blank=True, default='',
+        verbose_name="URL externe (document-lien)")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -543,6 +564,13 @@ class Document(models.Model):
         if self.pk is None:
             return False
         return self.legal_holds.filter(actif=True).exists()
+
+    @property
+    def est_document_lien(self):
+        """XGED18 — True si ce document est un DOCUMENT-LIEN (URL externe, pas
+        de fichier stocké). Les actions fichier (version/OCR/signature) doivent
+        se refuser explicitement (400) sur un document-lien."""
+        return bool(self.url_externe)
 
     @property
     def est_dans_corbeille(self):
@@ -1418,6 +1446,63 @@ class LegalHold(models.Model):
         return f'Legal hold — {self.document} ({etat})'
 
 
+# XGED6 — Vérification périodique d'intégrité des archives légales (loi 43-20).
+CONTROLE_RESULTAT_OK = 'ok'
+CONTROLE_RESULTAT_ALTERE = 'altere'
+CONTROLE_RESULTAT_INDISPONIBLE = 'indisponible'  # contenu introuvable/erreur
+
+CONTROLE_RESULTAT_CHOICES = [
+    (CONTROLE_RESULTAT_OK, 'Intègre'),
+    (CONTROLE_RESULTAT_ALTERE, 'Altéré'),
+    (CONTROLE_RESULTAT_INDISPONIBLE, 'Indisponible'),
+]
+
+
+class ControleIntegrite(models.Model):
+    """XGED6 — Journal d'un contrôle d'intégrité périodique d'un archivage
+    légal (GED23, loi 43-20).
+
+    `ArchivageLegal` fige un `hash_integrite` (SHA-256) AU DÉPÔT mais rien ne
+    le RE-VÉRIFIE dans le temps. Ce modèle journalise CHAQUE contrôle
+    (`verifier_integrite_archives`) : le hash CONSTATÉ au moment du contrôle,
+    le résultat (intègre / altéré / indisponible) et l'horodatage — append-only
+    par convention (aucun update/delete via l'API, comme `JournalAcces` GED35).
+
+    « Altéré » signale un écart entre `hash_integrite` (figé au dépôt) et le
+    hash recalculé maintenant — preuve d'une altération. « Indisponible »
+    signale un contenu non re-téléchargeable (stockage KO) — DISTINCT d'une
+    altération confirmée (pas d'accusation sans preuve positive).
+
+    Multi-tenant : `company` posée CÔTÉ SERVEUR (cohérente avec l'archivage) —
+    jamais lue du corps de requête."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_controles_integrite')
+    archivage = models.ForeignKey(
+        ArchivageLegal, on_delete=models.CASCADE, related_name='controles')
+    resultat = models.CharField(
+        max_length=14, choices=CONTROLE_RESULTAT_CHOICES,
+        default=CONTROLE_RESULTAT_OK, verbose_name='résultat')
+    hash_constate = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='hash constaté (SHA-256)')
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        verbose_name = "Contrôle d'intégrité"
+        verbose_name_plural = "Contrôles d'intégrité"
+        indexes = [
+            models.Index(fields=['company', 'archivage'],
+                         name='ged_ctrl_co_arch_idx'),
+            models.Index(fields=['company', 'resultat'],
+                         name='ged_ctrl_co_resultat_idx'),
+        ]
+
+    def __str__(self):
+        return f'Contrôle {self.archivage_id} — {self.resultat} @ {self.created_at}'
+
+
 # GED30 — Signature électronique (point d'intégration + stub no-op).
 #
 # Statuts LOCAUX à la GED d'une demande de signature électronique sur un
@@ -1446,6 +1531,16 @@ SIGNATURE_CHOICES = [
 
 # Provider e-sign par défaut quand aucun n'est configuré : « aucun » (stub).
 SIGNATURE_PROVIDER_AUCUN = 'aucun'
+
+# XGED2 — Mode de routage d'une demande multi-signataires (déclaré ici, avant
+# `DemandeSignatureDocument`, qui porte le champ `routage`).
+ROUTAGE_SEQUENTIEL = 'sequentiel'
+ROUTAGE_PARALLELE = 'parallele'
+
+ROUTAGE_CHOICES = [
+    (ROUTAGE_SEQUENTIEL, 'Séquentiel (par ordre)'),
+    (ROUTAGE_PARALLELE, 'Parallèle (tous en même temps)'),
+]
 
 
 class DemandeSignatureDocument(models.Model):
@@ -1499,6 +1594,63 @@ class DemandeSignatureDocument(models.Model):
     # Horodatage de la signature effective — NULL tant que non signée.
     date_signature = models.DateTimeField(
         null=True, blank=True, verbose_name='signée le')
+    # XGED1 — Cérémonie de signature in-app (lien public tokenisé, loi 53-05).
+    #
+    # `token` est le SEUL secret d'accès public — même motif que
+    # `PartageGed.token` (secrets.token_urlsafe, cryptographiquement fort,
+    # impossible à deviner/énumérer). `expires_at` optionnelle (NULL = jamais
+    # expiré) borne la validité du lien (token inconnu/expiré → 404/410 côté
+    # endpoint public, jamais de fuite distinguant les deux cas pour un jeton
+    # inconnu). Rétro-compatible : une demande GED30 pré-XGED1 reçoit un token
+    # au premier `save()` via le défaut — aucune migration de données requise.
+    token = models.CharField(
+        max_length=64, unique=True, default=_default_partage_token,
+        editable=False)
+    expires_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='expire le')
+    # Preuves IMMUABLES de la cérémonie (posées CÔTÉ SERVEUR uniquement, jamais
+    # lues du corps de requête) — pattern QJ10 (`ventes.DevisSignature`) :
+    # consentement explicite, IP, user-agent, hash SHA-256 du contenu signé
+    # (la version courante du document au moment de la signature), horodatage.
+    # En LECTURE SEULE via l'API (aucun endpoint ne les modifie après coup).
+    consentement_explicite = models.BooleanField(
+        default=False, verbose_name="consentement explicite à signer")
+    adresse_ip = models.GenericIPAddressField(
+        null=True, blank=True, verbose_name='adresse IP du signataire')
+    user_agent = models.CharField(
+        max_length=512, blank=True, default='', verbose_name='user-agent')
+    hash_contenu = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='hash du contenu signé (SHA-256)')
+    # Signature tapée (nom) ET/OU tracée (pattern FG69 `signature_client` —
+    # data-URL/vecteur base64 d'un tracé). Au moins l'un des deux est requis
+    # pour signer (garde côté service). Jamais lues du corps après signature.
+    signature_texte = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='signature tapée')
+    signature_tracee = models.TextField(
+        blank=True, default='', verbose_name='signature tracée (vecteur/data-URL)')
+    # Refus explicite avec motif obligatoire — alternative terminale à la
+    # signature. `refuse_le` horodate le refus (NULL tant que non refusée).
+    motif_refus = models.TextField(blank=True, default='', verbose_name='motif de refus')
+    refuse_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='refusée le')
+    # XGED2 — Circuit multi-signataires : mode de routage des `SignataireDemande`
+    # rattachés (séquentiel par défaut = rétrocompatible avec le mono-signataire
+    # GED30/XGED1, qui n'a qu'un seul rang de toute façon). Cadence des relances
+    # automatiques en jours (0/NULL = pas de relance auto). `annule_le`/
+    # `annule_par` tracent une annulation ÉMETTEUR (action dédiée, jamais
+    # silencieuse) — distincte du refus SIGNATAIRE.
+    routage = models.CharField(
+        max_length=10, choices=ROUTAGE_CHOICES, default=ROUTAGE_SEQUENTIEL,
+        verbose_name='mode de routage')
+    relance_cadence_jours = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='cadence de relance (jours)')
+    annule_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='annulée le')
+    annule_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_demandes_signature_annulees',
+        verbose_name='annulée par')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='ged_demandes_signature_creees')
@@ -1521,9 +1673,234 @@ class DemandeSignatureDocument(models.Model):
         """True si la demande est encore en attente de signature."""
         return self.statut == SIGNATURE_EN_ATTENTE
 
+    @property
+    def is_expired(self):
+        """XGED1 — True si le lien public de signature a une expiration dépassée."""
+        return self.expires_at is not None and self.expires_at <= timezone.now()
+
     def __str__(self):
         return f'Signature {self.document} → {self.signataire_nom} ' \
                f'({self.statut})'
+
+
+# XGED2 — Circuit multi-signataires (séquentiel/parallèle).
+#
+# Statuts LOCAUX au signataire — indépendants du statut GLOBAL de la demande
+# (`DemandeSignatureDocument.statut`). Un signataire au rang N+1 n'est notifié
+# (et donc « actionnable ») qu'une fois le rang N traité, en mode séquentiel ;
+# tous les rangs sont notifiés immédiatement en mode parallèle.
+SIGNATAIRE_EN_ATTENTE = 'en_attente'   # pas encore son tour (séquentiel) / notifié
+SIGNATAIRE_NOTIFIE = 'notifie'         # notifié, en attente de son action
+SIGNATAIRE_SIGNE = 'signe'
+SIGNATAIRE_REFUSE = 'refuse'
+
+SIGNATAIRE_STATUT_CHOICES = [
+    (SIGNATAIRE_EN_ATTENTE, 'En attente de son tour'),
+    (SIGNATAIRE_NOTIFIE, 'Notifié'),
+    (SIGNATAIRE_SIGNE, 'Signé'),
+    (SIGNATAIRE_REFUSE, 'Refusé'),
+]
+
+# Rôle du destinataire dans le circuit — un « copie » consulte sans signer,
+# un « approbateur » valide sans être juridiquement signataire du document,
+# un « signataire » signe effectivement.
+ROLE_SIGNATAIRE = 'signataire'
+ROLE_COPIE = 'copie'
+ROLE_APPROBATEUR = 'approbateur'
+
+ROLE_DESTINATAIRE_CHOICES = [
+    (ROLE_SIGNATAIRE, 'Signataire'),
+    (ROLE_COPIE, 'Copie'),
+    (ROLE_APPROBATEUR, 'Approbateur'),
+]
+
+
+class SignataireDemande(models.Model):
+    """XGED2 — Un destinataire (signataire/copie/approbateur) d'une demande de
+    signature multi-parties.
+
+    Une `DemandeSignatureDocument` (GED30/XGED1) porte désormais N destinataires
+    ordonnés via cette table — RÉTROCOMPATIBLE : le signataire historique mono-
+    partie de GED30 (`signataire_nom`/`signataire_email` sur la demande) reste
+    la valeur affichée quand AUCUN `SignataireDemande` n'existe pour la demande
+    (comportement 1:1 inchangé pour les demandes XGED1 pré-existantes) ;
+    `services.signataires_effectifs` résout cette rétrocompatibilité.
+
+    Chaque destinataire porte son PROPRE `token` public (même motif que
+    `PartageGed`/`DemandeSignatureDocument.token`) : le lien envoyé à un
+    signataire ne dévoile jamais les autres, et signer/refuser à SON rang
+    n'affecte que SON statut individuel (`statut`) — le service agrège vers le
+    statut GLOBAL de la demande.
+
+    Routage (`demande.routage`) : en séquentiel, un signataire au rang `ordre`
+    N+1 n'est notifié (`statut → notifie`) qu'après que le rang N a signé ; en
+    parallèle, tous les signataires sont notifiés dès l'envoi. Les `copie` et
+    `approbateur` ne bloquent jamais la progression séquentielle des
+    `signataire` (ils sont notifiés en parallèle du flux, informatif).
+
+    Multi-tenant : `company` posée CÔTÉ SERVEUR (cohérente avec la demande) —
+    jamais lue du corps de requête.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_signataires_demande')
+    demande = models.ForeignKey(
+        DemandeSignatureDocument, on_delete=models.CASCADE,
+        related_name='signataires')
+    nom = models.CharField(max_length=255, verbose_name='nom')
+    email = models.EmailField(blank=True, default='', verbose_name='email')
+    telephone = models.CharField(
+        max_length=32, blank=True, default='', verbose_name='téléphone')
+    # Rang dans le circuit — détermine l'ordre de notification en séquentiel ;
+    # purement informatif (tri d'affichage) en parallèle.
+    ordre = models.PositiveIntegerField(default=1, verbose_name='ordre')
+    role = models.CharField(
+        max_length=12, choices=ROLE_DESTINATAIRE_CHOICES,
+        default=ROLE_SIGNATAIRE, verbose_name='rôle')
+    statut = models.CharField(
+        max_length=10, choices=SIGNATAIRE_STATUT_CHOICES,
+        default=SIGNATAIRE_EN_ATTENTE, verbose_name='statut')
+    # Jeton public PROPRE à ce destinataire — un lien par personne.
+    token = models.CharField(
+        max_length=64, unique=True, default=_default_partage_token,
+        editable=False)
+    # Horodatage de la dernière notification/relance envoyée (sert la cadence
+    # des relances automatiques — `services.relancer_signataires_dus`).
+    notifie_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='notifié le')
+    derniere_relance_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='dernière relance le')
+    nb_relances = models.PositiveIntegerField(
+        default=0, verbose_name='nombre de relances envoyées')
+    date_action = models.DateTimeField(
+        null=True, blank=True, verbose_name='signé/refusé le')
+    motif_refus = models.TextField(blank=True, default='', verbose_name='motif de refus')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['demande', 'ordre', 'id']
+        verbose_name = 'Signataire de demande'
+        verbose_name_plural = 'Signataires de demande'
+        indexes = [
+            models.Index(fields=['company', 'demande'],
+                         name='ged_signataire_co_dem_idx'),
+            models.Index(fields=['demande', 'ordre'],
+                         name='ged_signataire_dem_ordre_idx'),
+            models.Index(fields=['company', 'statut'],
+                         name='ged_signataire_co_statut_idx'),
+        ]
+
+    @property
+    def is_actionnable(self):
+        """True si CE destinataire peut actuellement signer/refuser (a été
+        notifié et n'a pas encore agi)."""
+        return self.statut in (SIGNATAIRE_EN_ATTENTE, SIGNATAIRE_NOTIFIE) \
+            and self.role == ROLE_SIGNATAIRE
+
+    def __str__(self):
+        return f'{self.nom} (#{self.ordre}) → {self.demande_id} ({self.statut})'
+
+
+# XGED3 — Zones de champs positionnées sur le PDF à signer.
+CHAMP_TYPE_SIGNATURE = 'signature'
+CHAMP_TYPE_INITIALES = 'initiales'
+CHAMP_TYPE_DATE = 'date'
+CHAMP_TYPE_TEXTE = 'texte'
+CHAMP_TYPE_CASE = 'case'
+
+CHAMP_TYPE_CHOICES = [
+    (CHAMP_TYPE_SIGNATURE, 'Signature'),
+    (CHAMP_TYPE_INITIALES, 'Initiales'),
+    (CHAMP_TYPE_DATE, 'Date'),
+    (CHAMP_TYPE_TEXTE, 'Texte'),
+    (CHAMP_TYPE_CASE, 'Case à cocher'),
+]
+
+
+class ChampSignature(models.Model):
+    """XGED3 — Zone de champ positionnée sur le PDF à signer.
+
+    Rattaché À EXACTEMENT UNE des deux cibles (jamais les deux, jamais aucune
+    — garde `clean()` + contrainte base) : une `demande` de signature EN COURS
+    (positionnement ad-hoc pour cette cérémonie) OU un `ModeleDocument`
+    (GED27, positionnement RÉUTILISABLE — le champ se recopie à chaque demande
+    générée depuis ce modèle).
+
+    Position en POURCENTAGE de la page (`x`/`y`/`largeur`/`hauteur`, 0-100) —
+    indépendant de la résolution/taille du PDF rendu, ce qui permet un rendu
+    identique sur l'aperçu web (mobile-first) et le PDF final aplati. `page`
+    est l'index 0-based de la page portant le champ. `role` cible le
+    destinataire concerné (nom libre — aligné sur `SignataireDemande.nom` ou
+    `SignataireDemande.role` selon l'usage ; laissé libre pour rester
+    utilisable sur un `ModeleDocument` qui n'a pas encore de destinataires
+    concrets). `requis` bloque la complétion tant que non rempli ; un champ
+    optionnel peut être laissé vide.
+
+    Multi-tenant : `company` posée CÔTÉ SERVEUR (cohérente avec la cible) —
+    jamais lue du corps de requête.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_champs_signature')
+    demande = models.ForeignKey(
+        DemandeSignatureDocument, on_delete=models.CASCADE,
+        null=True, blank=True, related_name='champs')
+    modele = models.ForeignKey(
+        'ModeleDocument', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='champs_signature')
+    type_champ = models.CharField(
+        max_length=12, choices=CHAMP_TYPE_CHOICES,
+        default=CHAMP_TYPE_SIGNATURE, verbose_name='type de champ')
+    page = models.PositiveIntegerField(default=0, verbose_name='page (0-based)')
+    # Position/taille en POURCENTAGE de la page (0-100) — résolution-indépendant.
+    x = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    y = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    largeur = models.DecimalField(max_digits=5, decimal_places=2, default=20)
+    hauteur = models.DecimalField(max_digits=5, decimal_places=2, default=5)
+    # Destinataire concerné — nom/role libre (aligné XGED2 `SignataireDemande`
+    # sans FK dure : un champ sur un `ModeleDocument` n'a pas encore de
+    # destinataire concret tant qu'aucune demande n'en est générée).
+    role = models.CharField(max_length=100, blank=True, default='')
+    requis = models.BooleanField(default=True, verbose_name='requis')
+    # Valeur remplie par le signataire (texte/case/date) — vide pour les
+    # champs `signature`/`initiales` (qui utilisent la signature de la
+    # cérémonie elle-même, tapée/tracée, jamais stockée deux fois ici).
+    valeur = models.CharField(max_length=500, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['page', 'y', 'x', 'id']
+        verbose_name = 'Champ de signature'
+        verbose_name_plural = 'Champs de signature'
+        indexes = [
+            models.Index(fields=['company', 'demande'],
+                         name='ged_champ_co_demande_idx'),
+            models.Index(fields=['company', 'modele'],
+                         name='ged_champ_co_modele_idx'),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(demande__isnull=False, modele__isnull=True)
+                    | models.Q(demande__isnull=True, modele__isnull=False)
+                ),
+                name='ged_champ_exactly_one_target',
+            ),
+        ]
+
+    def clean(self):
+        """Garantit cible exactement-une (demande XOR modèle)."""
+        from django.core.exceptions import ValidationError
+        if bool(self.demande_id) == bool(self.modele_id):
+            raise ValidationError(
+                "Un champ de signature cible exactement une demande OU un "
+                "modèle de document.")
+
+    def __str__(self):
+        cible = self.demande_id or self.modele_id
+        return f'Champ {self.type_champ} p{self.page} → {cible}'
 
 
 class ModeleDocument(models.Model):
@@ -1683,3 +2060,516 @@ class QuotaStockage(models.Model):
 
     def __str__(self):
         return f'Quota {self.company_id}: {self.quota_octets} o'
+
+
+class DepotPublic(models.Model):
+    """XGED7 — Lien public de DÉPÔT (upload-request) tokenisé.
+
+    Symétrique de `PartageGed` (GED20, téléchargement) mais dans l'autre sens :
+    un tiers SANS LOGIN peut UNIQUEMENT téléverser des fichiers dans un dossier
+    cible, sans jamais voir le contenu déjà présent. `token` est l'UNIQUE secret
+    d'accès (même générateur que GED20/XGED1). Chaque dépôt crée un `Document`
+    (traçant l'uploader anonyme par nom/email saisis dans `custom_data`), incrémente
+    `depots_effectues`, et respecte la validation type/taille existante
+    (`records.storage.store_attachment`).
+
+    Company posée côté serveur (cohérente avec `folder`) — jamais lue du corps
+    de requête. `created_by` posé côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_depots_publics')
+    folder = models.ForeignKey(
+        Folder, on_delete=models.CASCADE, related_name='depots_publics')
+    token = models.CharField(
+        max_length=64, unique=True, default=_default_partage_token,
+        editable=False)
+    message = models.TextField(
+        blank=True, default='', verbose_name="message d'instruction")
+    expires_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="expire le")
+    # Quotas optionnels (NULL = illimité). Posés côté serveur.
+    quota_fichiers = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="quota de fichiers")
+    quota_octets = models.BigIntegerField(
+        null=True, blank=True, verbose_name="quota d'octets cumulés")
+    depots_effectues = models.PositiveIntegerField(
+        default=0, verbose_name="fichiers déposés")
+    octets_deposes = models.BigIntegerField(
+        default=0, verbose_name="octets déposés")
+    actif = models.BooleanField(default=True, verbose_name="actif")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_depots_publics_crees')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        verbose_name = 'Lien de dépôt public'
+        verbose_name_plural = 'Liens de dépôt public'
+        indexes = [
+            models.Index(fields=['company', 'folder'],
+                         name='ged_depot_co_folder_idx'),
+        ]
+
+    def __str__(self):
+        return f'Dépôt {self.token[:8]}… → {self.folder_id}'
+
+    @property
+    def is_expired(self):
+        return self.expires_at is not None and self.expires_at <= timezone.now()
+
+    @property
+    def quota_fichiers_exhausted(self):
+        return (self.quota_fichiers is not None
+                and self.depots_effectues >= self.quota_fichiers)
+
+    @property
+    def quota_octets_exhausted(self):
+        return (self.quota_octets is not None
+                and self.octets_deposes >= self.quota_octets)
+
+    @property
+    def is_accessible(self):
+        """True si le lien accepte encore des dépôts (actif, non expiré, quotas
+        non épuisés). Un lien plein/expiré/révoqué renvoie 410 côté vue."""
+        return (self.actif and not self.is_expired
+                and not self.quota_fichiers_exhausted
+                and not self.quota_octets_exhausted)
+
+
+class ExigenceDossier(models.Model):
+    """XGED8 — Modèle de checklist de pièces requises (par société).
+
+    Décrit un type de pièce attendue dans un dossier (libellé libre, ex.
+    « CIN », « Attestation CNSS », « Visite médicale ») — soit rattaché à un
+    dossier précis (`folder`), soit générique (applicable à un cabinet entier
+    via `cabinet`, `folder` NULL). Company posée côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_exigences')
+    cabinet = models.ForeignKey(
+        Cabinet, on_delete=models.CASCADE, null=True, blank=True,
+        related_name='exigences')
+    folder = models.ForeignKey(
+        Folder, on_delete=models.CASCADE, null=True, blank=True,
+        related_name='exigences')
+    libelle = models.CharField(max_length=200)
+    description = models.TextField(blank=True, default='')
+    obligatoire = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_exigences_creees')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['libelle', 'id']
+        verbose_name = 'Exigence de dossier'
+        verbose_name_plural = 'Exigences de dossier'
+        indexes = [
+            models.Index(fields=['company', 'folder'],
+                         name='ged_exig_co_folder_idx'),
+            models.Index(fields=['company', 'cabinet'],
+                         name='ged_exig_co_cabinet_idx'),
+        ]
+
+    def __str__(self):
+        return self.libelle
+
+
+DEMANDE_DOC_EN_ATTENTE = 'en_attente'
+DEMANDE_DOC_SOLDEE = 'soldee'
+DEMANDE_DOC_ANNULEE = 'annulee'
+DEMANDE_DOC_CHOICES = [
+    (DEMANDE_DOC_EN_ATTENTE, 'En attente'),
+    (DEMANDE_DOC_SOLDEE, 'Soldée'),
+    (DEMANDE_DOC_ANNULEE, 'Annulée'),
+]
+
+
+class DemandeDocument(models.Model):
+    """XGED8 — Demande d'une pièce nommée (interne OU contact externe).
+
+    Le destinataire est soit un `utilisateur` interne (ex. un employé pour son
+    dossier RH), soit un contact externe désigné par `destinataire_email`/
+    `destinataire_nom` (le dépôt externe passe par un `DepotPublic`, XGED7). Un
+    placeholder est visible dans le dossier tant que `statut` reste
+    `en_attente` ; il se solde AUTOMATIQUEMENT (`statut = soldee`,
+    `document` renseigné) quand un dépôt correspondant arrive — matching par
+    `folder` + `exigence` (voir `services.matcher_depot_demandes`).
+
+    Company posée côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_demandes_document')
+    folder = models.ForeignKey(
+        Folder, on_delete=models.CASCADE, related_name='demandes_document')
+    exigence = models.ForeignKey(
+        ExigenceDossier, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='demandes')
+    libelle = models.CharField(max_length=200)
+    # Destinataire interne (optionnel) — exclusif en pratique avec l'externe,
+    # mais non forcé au niveau modèle (un rappel peut viser les deux canaux).
+    utilisateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_demandes_document_recues')
+    destinataire_nom = models.CharField(max_length=200, blank=True, default='')
+    destinataire_email = models.EmailField(blank=True, default='')
+    echeance = models.DateField(null=True, blank=True)
+    statut = models.CharField(
+        max_length=10, choices=DEMANDE_DOC_CHOICES,
+        default=DEMANDE_DOC_EN_ATTENTE)
+    document = models.ForeignKey(
+        Document, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='demandes_soldees')
+    derniere_relance_le = models.DateTimeField(null=True, blank=True)
+    nombre_relances = models.PositiveIntegerField(default=0)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_demandes_document_creees')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        verbose_name = 'Demande de document'
+        verbose_name_plural = 'Demandes de document'
+        indexes = [
+            models.Index(fields=['company', 'folder'],
+                         name='ged_ddoc_co_folder_idx'),
+            models.Index(fields=['company', 'statut'],
+                         name='ged_ddoc_co_statut_idx'),
+        ]
+
+    @property
+    def is_pending(self):
+        return self.statut == DEMANDE_DOC_EN_ATTENTE
+
+    def __str__(self):
+        return f'{self.libelle} ({self.statut})'
+
+
+class ValidationOcrDocument(models.Model):
+    """XGED13 — File de validation d'extraction OCR (score de confiance).
+
+    Quand l'extraction OCR/IA d'un document produit un score de confiance sous
+    le seuil configuré, le document entre dans cette file (`statut =
+    a_valider`) : un écran dédié permet de corriger les champs avant de les
+    appliquer définitivement. `champs_extraits` porte les valeurs brutes
+    proposées (JSON, jamais appliquées telles quelles à `Document.custom_data`
+    avant validation). Company posée côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_validations_ocr')
+    document = models.OneToOneField(
+        Document, on_delete=models.CASCADE, related_name='validation_ocr')
+    score_confiance = models.FloatField(default=0.0)
+    champs_extraits = models.JSONField(null=True, blank=True, default=dict)
+    valide = models.BooleanField(default=False)
+    valide_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_validations_ocr_faites')
+    valide_le = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        verbose_name = 'Validation OCR'
+        verbose_name_plural = 'Validations OCR'
+        indexes = [
+            models.Index(fields=['company', 'valide'],
+                         name='ged_valocr_co_valide_idx'),
+        ]
+
+    def __str__(self):
+        return f'Validation OCR #{self.document_id} ({self.score_confiance:.2f})'
+
+
+ANNOTATION_TYPE_NOTE = 'note'
+ANNOTATION_TYPE_SURLIGNAGE = 'surlignage'
+ANNOTATION_TYPE_TAMPON = 'tampon'
+ANNOTATION_TYPE_CHOICES = [
+    (ANNOTATION_TYPE_NOTE, 'Note'),
+    (ANNOTATION_TYPE_SURLIGNAGE, 'Surlignage'),
+    (ANNOTATION_TYPE_TAMPON, 'Tampon'),
+]
+
+
+class AnnotationDocument(models.Model):
+    """XGED16 — Annotation/tampon sur l'image d'une version (couche séparée).
+
+    Vit en base, superposée dans l'aperçu côté frontend — le fichier original
+    (`DocumentVersion`) n'est JAMAIS modifié. `page` (0-based) + coordonnées en
+    POURCENTAGE (`x`, `y` : 0-100, indépendantes de la résolution de rendu).
+    `contenu` porte le texte de la note ou le libellé du tampon (ex. « Payé »).
+    Company + auteur posés côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_annotations')
+    version = models.ForeignKey(
+        DocumentVersion, on_delete=models.CASCADE, related_name='annotations')
+    type_annotation = models.CharField(
+        max_length=12, choices=ANNOTATION_TYPE_CHOICES,
+        default=ANNOTATION_TYPE_NOTE)
+    page = models.PositiveIntegerField(default=0)
+    x = models.FloatField(default=0.0)
+    y = models.FloatField(default=0.0)
+    contenu = models.CharField(max_length=500, blank=True, default='')
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_annotations_creees')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['page', 'created_at', 'id']
+        verbose_name = 'Annotation de document'
+        verbose_name_plural = 'Annotations de document'
+        indexes = [
+            models.Index(fields=['company', 'version'],
+                         name='ged_annot_co_version_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.type_annotation} p{self.page} @ {self.version_id}'
+
+
+class TamponSociete(models.Model):
+    """XGED16 — Tampon prédéfini par société (en plus des 3 tampons système).
+
+    Les tampons système (« Payé », « Validé », « Confidentiel ») sont une
+    constante applicative (`TAMPONS_SYSTEME`, ci-dessous) ; ce modèle permet à
+    une société d'ajouter SES propres libellés. Company posée côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='ged_tampons')
+    libelle = models.CharField(max_length=60)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['libelle', 'id']
+        unique_together = [('company', 'libelle')]
+        verbose_name = 'Tampon (société)'
+        verbose_name_plural = 'Tampons (société)'
+
+    def __str__(self):
+        return self.libelle
+
+
+# XGED16 — tampons système offerts à toutes les sociétés (constante, pas de table).
+TAMPONS_SYSTEME = ['Payé', 'Validé', 'Confidentiel']
+
+
+class RegleDossier(models.Model):
+    """XGED19 — Règle d'action automatique à l'upload dans un dossier.
+
+    Déclenchée à la création d'un `Document` dans `folder` : si
+    `condition_group` (format `core.rules`, JSON groupe ET/OU/NON validé côté
+    serveur — JAMAIS d'exécution de code) s'évalue vrai contre les métadonnées
+    du document nouvellement créé, les `actions` (liste ordonnée de
+    `{type, params}`) s'exécutent EN SÉQUENCE, best-effort (une action en échec
+    est journalisée sans jamais faire échouer l'upload lui-même). Company posée
+    côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='ged_regles_dossier')
+    folder = models.ForeignKey(
+        Folder, on_delete=models.CASCADE, related_name='regles')
+    nom = models.CharField(max_length=200)
+    condition_group = models.JSONField(default=dict, blank=True)
+    actions = models.JSONField(default=list, blank=True)
+    actif = models.BooleanField(default=True)
+    ordre = models.PositiveIntegerField(default=0)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_regles_dossier_creees')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['ordre', 'id']
+        verbose_name = 'Règle de dossier'
+        verbose_name_plural = 'Règles de dossier'
+        indexes = [
+            models.Index(fields=['company', 'folder', 'actif'],
+                         name='ged_regle_co_folder_idx'),
+        ]
+
+    def __str__(self):
+        return self.nom
+
+
+class ExecutionRegleDossier(models.Model):
+    """XGED19 — Journal d'exécution d'une `RegleDossier` sur un document.
+
+    Une ligne par exécution (déclenchée à l'upload) ; `resultats` porte le
+    détail par action (`ok`/erreur) — jamais tout-ou-rien silencieux."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='ged_executions_regle')
+    regle = models.ForeignKey(
+        RegleDossier, on_delete=models.CASCADE, related_name='executions')
+    document = models.ForeignKey(
+        Document, on_delete=models.CASCADE, related_name='executions_regle')
+    declenchee = models.BooleanField(default=False)
+    resultats = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        verbose_name = "Exécution de règle de dossier"
+        verbose_name_plural = "Exécutions de règle de dossier"
+        indexes = [
+            models.Index(fields=['company', 'regle'],
+                         name='ged_execregle_co_regle_idx'),
+        ]
+
+    def __str__(self):
+        return f'Exécution règle #{self.regle_id} @ doc #{self.document_id}'
+
+
+class RegleApprobationGed(models.Model):
+    """XGED20 — Routage conditionnel des approbations par métadonnées.
+
+    Étend GED18 (`DemandeApprobation`) : au lieu d'un approbateur unique fixe,
+    `request_review` consulte la règle la plus SPÉCIFIQUE (plus haute
+    `priorite`, puis id le plus récent) dont `condition_group` (format
+    `core.rules`) s'évalue vrai contre les métadonnées du document, et
+    instancie une chaîne SÉQUENTIELLE d'approbateurs (`approbateurs`, liste
+    ordonnée d'ids utilisateur — résolue/validée côté serveur, bornée à la
+    société). RÉTROCOMPATIBLE : aucune règle applicable ⇒ comportement GED18
+    inchangé (approbateur unique fixe, ou aucun). Company posée côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='ged_regles_approbation')
+    libelle = models.CharField(max_length=200)
+    condition_group = models.JSONField(default=dict, blank=True)
+    # Chaîne séquentielle d'ids utilisateur (ordre = ordre d'approbation).
+    approbateurs = models.JSONField(default=list, blank=True)
+    priorite = models.PositiveIntegerField(default=0)
+    actif = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_regles_approbation_creees')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-priorite', '-id']
+        verbose_name = "Règle d'approbation GED"
+        verbose_name_plural = "Règles d'approbation GED"
+        indexes = [
+            models.Index(fields=['company', 'actif'],
+                         name='ged_regleapp_co_actif_idx'),
+        ]
+
+    def __str__(self):
+        return self.libelle
+
+
+class ChaineApprobationGed(models.Model):
+    """XGED20 — Instance de chaîne séquentielle résolue pour une demande.
+
+    Rattachée 1:1 à une `DemandeApprobation` (GED18) quand une `RegleApprobationGed`
+    s'est appliquée. `etapes` porte la liste ordonnée `[{approbateur_id, statut,
+    decision_le}]` — la demande GED18 elle-même reste la source de vérité du
+    statut global (`en_attente`/`approuve`/`rejete`) ; cette table détaille les
+    étapes intermédiaires du parcours séquentiel."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='ged_chaines_approbation')
+    demande = models.OneToOneField(
+        DemandeApprobation, on_delete=models.CASCADE,
+        related_name='chaine_approbation')
+    regle = models.ForeignKey(
+        RegleApprobationGed, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='chaines')
+    etapes = models.JSONField(default=list, blank=True)
+    etape_courante = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Chaîne d'approbation GED"
+        verbose_name_plural = "Chaînes d'approbation GED"
+
+    def __str__(self):
+        return f'Chaîne #{self.demande_id}'
+
+
+class DocumentActivity(models.Model):
+    """XGED15 — Journal automatique des événements majeurs GED (pattern
+    `crm.LeadActivity`). Complète `JournalAcces` (GED35, lectures) SANS le
+    remplacer : ceci trace les événements de CYCLE DE VIE (nouvelle version,
+    changement de statut, partage créé, signature) — jamais de lecture simple.
+    Auteur et société toujours posés côté serveur."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='ged_document_activities')
+    document = models.ForeignKey(
+        Document, on_delete=models.CASCADE, related_name='activities')
+    type_evenement = models.CharField(max_length=40)
+    message = models.CharField(max_length=500, blank=True, default='')
+    utilisateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_document_activities')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        verbose_name = 'Activité de document (journal)'
+        verbose_name_plural = 'Activités de document (journal)'
+        indexes = [
+            models.Index(fields=['company', 'document'],
+                         name='ged_docact_co_doc_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.type_evenement} @ {self.document_id}'
+
+
+class PlanificationDocument(models.Model):
+    """XGED15 — Activité planifiée sur un document (« relancer le J+7 »).
+
+    Volontairement LOCALE à la GED (plutôt que de forcer `records.Activity`
+    générique dont le registre de cibles/serializer est pensé pour les objets
+    métier CRM/ventes) : porte une échéance + un assigné, notifié à échéance
+    via `notifications.notify` (best-effort). Company + créateur posés côté
+    serveur."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='ged_planifications')
+    document = models.ForeignKey(
+        Document, on_delete=models.CASCADE, related_name='planifications')
+    libelle = models.CharField(max_length=200)
+    echeance = models.DateField()
+    assigne_a = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_planifications_assignees')
+    faite = models.BooleanField(default=False)
+    notifiee = models.BooleanField(default=False)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_planifications_creees')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['echeance', 'id']
+        verbose_name = 'Planification de document'
+        verbose_name_plural = 'Planifications de document'
+        indexes = [
+            models.Index(fields=['company', 'echeance', 'faite'],
+                         name='ged_plandoc_co_echeance_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.libelle} ({self.echeance})'

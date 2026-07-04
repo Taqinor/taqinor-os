@@ -11,6 +11,9 @@ Tout est multi-société : chaque modèle porte un FK ``company`` posé côté s
 (jamais lu du corps de requête). Le ``cout_horaire`` est une donnée INTERNE qui
 n'apparaît jamais dans une sortie client. Ce module est entièrement additif.
 """
+import hashlib
+import hmac
+import secrets
 from decimal import Decimal
 
 from django.conf import settings
@@ -80,6 +83,67 @@ class Poste(models.Model):
 
     def __str__(self):
         return self.intitule
+
+
+class HoraireTravail(models.Model):
+    """Gabarit d'horaire de travail (XRH8) — 44 h standard, Ramadan, saisonnier.
+
+    Le seuil HS journalier de ``HeuresSupp`` et le décompte présence supposent
+    aujourd'hui un horaire implicite (8 h/j). Ce modèle rend l'horaire EXPLICITE
+    et périodable : une société peut activer un horaire Ramadan (ex. 6 h/j) sur
+    une fenêtre ``date_debut``→``date_fin``, avec retour automatique au standard
+    une fois la fenêtre passée (aucune ligne active à cette date-là).
+
+    ``heures_semaine``/``heures_jour_defaut`` bornent la durée normale ;
+    ``heures_jour_defaut`` alimente directement le seuil HS via
+    ``selectors.horaire_actif``. ``date_debut``/``date_fin`` NULL = horaire
+    permanent (le cas standard 44 h) ; une fenêtre bornée cible un horaire
+    temporaire (Ramadan, saison haute…).
+    """
+    class TypeHoraire(models.TextChoices):
+        STANDARD_44H = 'standard_44h', 'Standard 44h'
+        RAMADAN = 'ramadan', 'Ramadan'
+        SAISONNIER = 'saisonnier', 'Saisonnier'
+        TEMPS_PARTIEL = 'temps_partiel', 'Temps partiel'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_horaires_travail',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=120, verbose_name='Nom')
+    heures_semaine = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('44'),
+        verbose_name='Heures / semaine')
+    heures_jour_defaut = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('8'),
+        verbose_name='Heures / jour (défaut)')
+    type_horaire = models.CharField(
+        max_length=15, choices=TypeHoraire.choices,
+        default=TypeHoraire.STANDARD_44H, verbose_name="Type d'horaire")
+    date_debut = models.DateField(
+        null=True, blank=True,
+        verbose_name='Début de validité (vide = permanent)')
+    date_fin = models.DateField(
+        null=True, blank=True,
+        verbose_name='Fin de validité (vide = permanent)')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Horaire de travail'
+        verbose_name_plural = 'Horaires de travail'
+        ordering = ['nom']
+        indexes = [
+            models.Index(
+                fields=['company', 'date_debut', 'date_fin'],
+                name='rh_horaire_comp_periode_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.nom} ({self.get_type_horaire_display()})'
 
 
 class DossierEmploye(models.Model):
@@ -170,6 +234,16 @@ class DossierEmploye(models.Model):
         related_name='employes',
         verbose_name='Département',
     )
+    # XRH8 — horaire de travail assigné (nullable : le seuil HS par défaut
+    # 8 h/j s'applique tant qu'aucun horaire n'est assigné, cf.
+    # ``selectors.horaire_actif``).
+    horaire = models.ForeignKey(
+        HoraireTravail,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='employes',
+        verbose_name='Horaire de travail',
+    )
     date_embauche = models.DateField(
         null=True, blank=True, verbose_name="Date d'embauche")
     type_contrat = models.CharField(
@@ -218,17 +292,139 @@ class DossierEmploye(models.Model):
         verbose_name='Coût horaire')
     rib = models.CharField(
         max_length=40, blank=True, default='', verbose_name='RIB')
+    # XRH1 — période d'essai (Code du travail marocain : 3 mois cadres / 1,5
+    # mois employés, renouvelable UNE fois). ``essai_date_fin`` borne la
+    # période en cours (nullable : la plupart des dossiers n'ont pas d'essai
+    # en cours) ; ``essai_renouvele`` mémorise qu'un renouvellement a déjà eu
+    # lieu (le Code n'en autorise qu'un).
+    essai_date_fin = models.DateField(
+        null=True, blank=True, verbose_name="Fin de période d'essai")
+    essai_renouvele = models.BooleanField(
+        default=False, verbose_name="Période d'essai renouvelée")
+
+    # XRH5 — suivi de conformité de la déclaration d'entrée CNSS/AMO. On ne
+    # TRANSMET rien à Damancom ici — action manuelle du fondateur, on TRACE
+    # seulement (statut + date). Défaut ``a_faire`` : tout nouvel embauché en
+    # a besoin par défaut.
+    class DeclarationEntreeStatut(models.TextChoices):
+        A_FAIRE = 'a_faire', 'À faire'
+        DECLAREE = 'declaree', 'Déclarée'
+        NON_REQUIS = 'non_requis', 'Non requis'
+
+    declaration_entree_statut = models.CharField(
+        max_length=12, choices=DeclarationEntreeStatut.choices,
+        default=DeclarationEntreeStatut.A_FAIRE,
+        verbose_name="Déclaration d'entrée CNSS/AMO")
+    declaration_entree_date = models.DateField(
+        null=True, blank=True, verbose_name="Date de déclaration d'entrée")
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
+    # XPLT14 — champs personnalisés (apps.customfields, module='employe').
+    custom_data = models.JSONField(null=True, blank=True)
+    # XRH10 — PIN court du kiosque de pointage partagé (tablette dépôt).
+    # Unique par société ; JAMAIS exposé en liste (lecture-seule server-side,
+    # exclu des serializers de listing — seul le endpoint kiosque le compare).
+    code_pointage = models.CharField(
+        max_length=12, blank=True, default='', verbose_name='Code pointage (PIN)')
 
     class Meta:
         verbose_name = 'Dossier employé'
         verbose_name_plural = 'Dossiers employés'
         unique_together = [('company', 'matricule')]
         ordering = ['nom', 'prenom']
+        constraints = [
+            # XRH10 — PIN unique par société, mais SEULEMENT quand renseigné
+            # (plusieurs dossiers peuvent avoir code_pointage='').
+            models.UniqueConstraint(
+                fields=['company', 'code_pointage'],
+                condition=models.Q(~models.Q(code_pointage='')),
+                name='rh_dossier_code_pointage_uniq',
+            ),
+        ]
 
     def __str__(self):
         return f'{self.matricule} — {self.nom} {self.prenom}'
+
+
+class DossierActivity(models.Model):
+    """Chatter / journal d'un dossier employé (audit du parcours) — XRH6.
+
+    Historique « chatter » à la Odoo d'un ``DossierEmploye``, modèle maison
+    aligné sur ``contrats.ContratActivity`` / ``crm.LeadActivity``. Deux
+    familles d'entrées :
+
+      - automatiques (``type=log``) : audit des champs suivis (poste_ref,
+        departement, statut, type_contrat, dates de contrat, manager si
+        ajouté un jour) — champ touché (``field``) et son ancien → nouveau
+        état (``old_value`` → ``new_value``), écrites CÔTÉ SERVEUR au niveau
+        de l'API, jamais par le navigateur ;
+      - manuelles (``type=note``) : notes libres via
+        ``employes/{id}/noter``.
+
+    La piste d'audit exigée pour l'inspection du travail : ``Remuneration``
+    seule était historisée jusqu'ici (une nouvelle ligne par changement) — ce
+    modèle couvre le RESTE du dossier (poste, statut, contrat…).
+
+    Multi-tenant : ``company`` est posée côté serveur. ``employe`` est une
+    référence interne à l'app ``rh`` (foundation du domaine), FK dur autorisé ;
+    ``auteur`` pointe vers ``AUTH_USER_MODEL`` (app foundation), FK autorisé et
+    nullable (un changement automatisé sans utilisateur reste journalisable).
+
+    RUNTIME-SAFETY (leçon FG136) : les instantanés ``old_value``/``new_value``
+    peuvent être longs — ils sont en ``TextField`` pour ne JAMAIS dépasser une
+    longueur maximale et lever en base.
+    """
+
+    class Kind(models.TextChoices):
+        LOG = 'log', 'Transition'
+        NOTE = 'note', 'Note'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_dossier_activites',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        'DossierEmploye',
+        on_delete=models.CASCADE,
+        related_name='activites',
+        verbose_name='Employé',
+    )
+    type = models.CharField(
+        max_length=10, choices=Kind.choices, verbose_name='Type')
+    # Champ concerné par une transition automatique (ex. ``poste_ref``,
+    # ``departement``, ``statut``, ``type_contrat``). Vide pour une note.
+    field = models.CharField(
+        max_length=100, blank=True, default='', verbose_name='Champ')
+    old_value = models.TextField(
+        blank=True, default='', verbose_name='Ancienne valeur')
+    new_value = models.TextField(
+        blank=True, default='', verbose_name='Nouvelle valeur')
+    message = models.TextField(
+        blank=True, default='', verbose_name='Message')
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_dossier_activites',
+        verbose_name='Auteur',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Activité dossier employé'
+        verbose_name_plural = 'Activités dossier employé'
+        ordering = ['-date_creation', '-id']
+        indexes = [
+            models.Index(
+                fields=['employe', '-date_creation'],
+                name='rh_dossier_act_emp_date_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.employe_id} {self.type}'.strip()
 
 
 class Remuneration(models.Model):
@@ -403,6 +599,131 @@ class ElementSortie(models.Model):
         return f'{self.employe.matricule} — {self.libelle}'
 
 
+class ModeleIntegration(models.Model):
+    """Gabarit de checklist d'intégration/onboarding (XRH4).
+
+    Symétrique de la checklist de SORTIE (``ElementSortie``, FG161) côté
+    ENTRÉE : une société définit un ou plusieurs modèles d'intégration
+    (contrat signé, CIN/RIB collectés, déclaration CNSS, dotation EPI,
+    création compte, formation sécurité…) ciblés optionnellement par
+    ``poste_ref``/``departement`` — le modèle le plus spécifique applicable
+    est choisi à l'embauche (``services.embaucher``), sinon un modèle par
+    défaut (``poste_ref`` et ``departement`` tous deux vides) si présent.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_modeles_integration',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=160, verbose_name='Nom')
+    poste_ref = models.ForeignKey(
+        'Poste',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='modeles_integration',
+        verbose_name='Poste (optionnel)',
+    )
+    departement = models.ForeignKey(
+        Departement,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='modeles_integration',
+        verbose_name='Département (optionnel)',
+    )
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Modèle d'intégration"
+        verbose_name_plural = "Modèles d'intégration"
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
+class ElementIntegration(models.Model):
+    """Ligne gabarit ordonnée d'un ``ModeleIntegration`` (XRH4).
+
+    Ex. « Contrat signé », « CIN/RIB collectés », « Déclaration CNSS »,
+    « Dotation EPI », « Création compte », « Formation sécurité »… L'ordre
+    d'affichage/exécution est porté par ``ordre`` (croissant).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_elements_integration',
+        verbose_name='Société',
+    )
+    modele = models.ForeignKey(
+        ModeleIntegration,
+        on_delete=models.CASCADE,
+        related_name='elements',
+        verbose_name="Modèle d'intégration",
+    )
+    libelle = models.CharField(max_length=160, verbose_name='Libellé')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Élément d'intégration (gabarit)"
+        verbose_name_plural = "Éléments d'intégration (gabarit)"
+        ordering = ['ordre', 'libelle']
+        indexes = [models.Index(fields=['company', 'modele'])]
+
+    def __str__(self):
+        return f'{self.modele.nom} — {self.libelle}'
+
+
+class ElementIntegrationEmploye(models.Model):
+    """Instance de checklist d'intégration pour UN employé (XRH4).
+
+    Créée automatiquement à l'embauche (``services.embaucher``, FG189) à
+    partir des lignes du ``ModeleIntegration`` applicable, ou manuellement via
+    ``employes/{id}/instancier-integration``. ``fait``/``fait_par``/``date``
+    tracent la coche (jamais lue du corps pour ``fait_par``/``date`` — posés
+    côté serveur à la coche).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_elements_integration_employe',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='elements_integration',
+        verbose_name='Employé',
+    )
+    libelle = models.CharField(max_length=160, verbose_name='Libellé')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    fait = models.BooleanField(default=False, verbose_name='Fait')
+    fait_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_elements_integration_coches',
+        verbose_name='Fait par',
+    )
+    date = models.DateTimeField(
+        null=True, blank=True, verbose_name='Date de réalisation')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Élément d'intégration (employé)"
+        verbose_name_plural = "Éléments d'intégration (employé)"
+        ordering = ['ordre', 'libelle']
+        indexes = [models.Index(fields=['company', 'employe'])]
+
+    def __str__(self):
+        return f'{self.employe.matricule} — {self.libelle}'
+
+
 class TypeAbsence(models.Model):
     """Typologie d'absences (FG164) — catégorie de congé/absence + règle de
     décompte.
@@ -434,6 +755,17 @@ class TypeAbsence(models.Model):
         default=True, verbose_name='Déduit du solde de congés')
     remunere = models.BooleanField(default=True, verbose_name='Rémunéré')
     actif = models.BooleanField(default=True, verbose_name='Actif')
+    # XRH2 — plafond légal informatif (ex. 14 semaines maternité, 3 j paternité).
+    # Purement informatif : la VALIDATION ne bloque rien dessus (nullable).
+    jours_legaux = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        verbose_name='Plafond légal (jours, informatif)')
+    # XRH3 — au Maroc un certificat médical est exigé sous 48 h pour les
+    # absences dépassant ce seuil (maladie typiquement). ``None`` = jamais
+    # exigé pour ce type (comportement historique, non bloquant).
+    jours_max_sans_justificatif = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Jours max sans justificatif')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -831,6 +1163,21 @@ class DemandeConge(models.Model):
     jours = models.DecimalField(
         max_digits=6, decimal_places=2, default=Decimal('0'),
         verbose_name='Jours décomptés')
+    # XRH3 — demi-journée en début/fin de demande (décompte −0,5 j chacune via
+    # ``services.calculer_jours_demande``). Une demande d'UN jour avec les deux
+    # drapeaux à vrai reste 1 jour entier (les deux flags visent la même seule
+    # journée dans ce cas — le service les traite indépendamment sur chaque
+    # borne, ce qui a un sens dès que la plage dépasse 1 jour).
+    demi_journee_debut = models.BooleanField(
+        default=False, verbose_name='Demi-journée (début)')
+    demi_journee_fin = models.BooleanField(
+        default=False, verbose_name='Demi-journée (fin)')
+    # XRH3 — justificatif (certificat médical…) exigé au-delà de
+    # ``type_absence.jours_max_sans_justificatif`` (VALIDATION uniquement,
+    # cf. ``services.valider_demande``).
+    justificatif = models.FileField(
+        upload_to='rh/demandes_conge/justificatifs/', null=True, blank=True,
+        verbose_name='Justificatif')
     motif = models.CharField(
         max_length=255, blank=True, default='', verbose_name='Motif')
     statut = models.CharField(
@@ -1010,6 +1357,16 @@ class PresenceChantier(models.Model):
     )
     note = models.CharField(
         max_length=255, blank=True, default='', verbose_name='Note')
+    # XRH12 — géofence optionnelle : GPS capturé à l'émargement + drapeau si
+    # hors du rayon configuré (jamais bloquant — le terrain a un GPS imprécis).
+    gps_lat = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True,
+        verbose_name='GPS — latitude')
+    gps_lng = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True,
+        verbose_name='GPS — longitude')
+    hors_zone = models.BooleanField(
+        default=False, verbose_name='Hors zone (géofence)')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
     date_modification = models.DateTimeField(
@@ -2842,6 +3199,25 @@ class Candidature(models.Model):
     )
     date_candidature = models.DateField(
         null=True, blank=True, verbose_name='Date de candidature')
+    # XRH19 — opt-out des emails automatiques par étape (par défaut envoyés).
+    emails_auto = models.BooleanField(
+        default=True, verbose_name='Emails automatiques')
+    # XRH21 — vivier de candidats (talent pool) : candidats non retenus
+    # conservés pour un rattachement futur, taggés en recherche libre.
+    vivier = models.BooleanField(default=False, verbose_name='Au vivier')
+    tags_vivier = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Tags vivier (séparés par virgule)')
+    # XRH21 — origine du rattachement (candidature du vivier dont celle-ci a
+    # été clonée) — SET_NULL pour ne jamais perdre le lien si l'originale
+    # est supprimée.
+    vivier_origine = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rattachements',
+        verbose_name='Origine (vivier)',
+    )
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
     date_modification = models.DateTimeField(
@@ -3879,3 +4255,762 @@ class NoteDeFrais(models.Model):
 
     def __str__(self):
         return f'{self.libelle} — {self.montant} ({self.employe})'
+
+
+class DemandeRH(models.Model):
+    """Guichet de demandes RH self-service (XRH9) — attestations à la demande.
+
+    Les PDF d'attestations (travail / salaire / domiciliation) sont DÉJÀ
+    générés par ``apps.paie.builders.render_attestation_pdf`` (PAIE34). Ce qui
+    manquait était le GUICHET : un employé ne pouvait rien demander ni
+    télécharger lui-même. ``DemandeRH`` matérialise cette demande : le
+    ``type`` d'attestation souhaité, un ``statut`` (soumise → traitée /
+    refusée), et — au traitement — le PDF généré est stocké via
+    ``apps.records.storage`` (même mécanisme d'attachement que le reste de
+    l'ERP) et lié par ``attachment``.
+
+    Le PDF est PRODUIT en RÉUTILISANT le renderer paie existant via un thin
+    wrapper cross-app (``apps.paie.services.generer_attestation_pdf_pour_dossier``)
+    — AUCUN nouveau code PDF n'est dupliqué dans ``rh``.
+
+    Téléchargeable UNIQUEMENT par l'employé concerné (``employe.user`` ==
+    l'appelant) ou un porteur ``salaires_voir``/``IsResponsableOrAdmin`` côté
+    traitement. L'attestation de salaire est refusée au traitement si le
+    traitant ne porte pas ``salaires_voir``.
+
+    Multi-société : ``company`` posée côté serveur (jamais lue du corps).
+    ``employe`` et ``traite_par`` appartiennent à la même société.
+    """
+
+    class TypeAttestation(models.TextChoices):
+        ATTESTATION_TRAVAIL = 'attestation_travail', 'Attestation de travail'
+        ATTESTATION_SALAIRE = 'attestation_salaire', 'Attestation de salaire'
+        ATTESTATION_DOMICILIATION = (
+            'attestation_domiciliation', 'Attestation de domiciliation')
+        AUTRE = 'autre', 'Autre'
+
+    class Statut(models.TextChoices):
+        SOUMISE = 'soumise', 'Soumise'
+        TRAITEE = 'traitee', 'Traitée'
+        REFUSEE = 'refusee', 'Refusée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_demandes',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='demandes_rh',
+        verbose_name='Employé',
+    )
+    type = models.CharField(
+        max_length=30, choices=TypeAttestation.choices,
+        default=TypeAttestation.ATTESTATION_TRAVAIL, verbose_name='Type')
+    message = models.TextField(
+        blank=True, default='', verbose_name='Message (précision « autre »)')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.SOUMISE, verbose_name='Statut')
+    motif_refus = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Motif de refus')
+    attachment = models.ForeignKey(
+        'records.Attachment',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_demandes',
+        verbose_name='Pièce jointe (PDF)',
+    )
+    traite_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_demandes_traitees',
+        verbose_name='Traité par',
+    )
+    traite_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Traité le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Demande RH'
+        verbose_name_plural = 'Demandes RH'
+        ordering = ['-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'employe'],
+                name='rh_demande_comp_emp_idx'),
+            models.Index(
+                fields=['company', 'statut'],
+                name='rh_demande_comp_stat_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.get_type_display()} — {self.employe} ({self.statut})'
+
+
+# XRH10 — kiosque de pointage partagé (PIN/QR, tablette dépôt). Réutilise le
+# schéma « hash déterministe HMAC-SHA256 » de ``publicapi.ApiKey`` : le secret
+# en clair n'est montré qu'à la création/régénération, seul le hash est
+# stocké/comparé (résolution O(1) par empreinte, table exploitable hors-ligne
+# uniquement avec la SECRET_KEY serveur).
+
+KIOSQUE_TOKEN_PREFIX = 'kio_'
+
+
+def hash_device_token(raw_token):
+    """Empreinte déterministe (HMAC-SHA256) d'un token de device kiosque."""
+    return hmac.new(
+        settings.SECRET_KEY.encode('utf-8'),
+        raw_token.encode('utf-8'),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def generate_device_token():
+    """Génère un nouveau token de device en clair (préfixe + secret)."""
+    return KIOSQUE_TOKEN_PREFIX + secrets.token_urlsafe(32)
+
+
+class DeviceKiosque(models.Model):
+    """Token de device kiosque de pointage (XRH10) — une tablette dépôt.
+
+    Authentifie l'endpoint kiosque ``pointages/kiosque/`` SANS session
+    utilisateur : la tablette partagée présente ce token (jamais un compte
+    ERP). Seul le HASH (``token_hash``) est stocké — le secret en clair n'est
+    renvoyé qu'à la création/régénération (``services.emettre_device_kiosque``).
+    Révocable (``actif=False``) à tout moment depuis Paramètres.
+
+    Multi-société : ``company`` posée côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_devices_kiosque',
+        verbose_name='Société',
+    )
+    label = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Libellé')
+    token_hash = models.CharField(
+        max_length=64, unique=True, db_index=True, verbose_name='Empreinte')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    derniere_utilisation = models.DateTimeField(
+        null=True, blank=True, verbose_name='Dernière utilisation')
+
+    class Meta:
+        verbose_name = 'Device kiosque'
+        verbose_name_plural = 'Devices kiosque'
+        ordering = ['-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'actif'],
+                name='rh_kiosque_comp_actif_idx'),
+        ]
+
+    def __str__(self):
+        return self.label or f'Kiosque #{self.pk}'
+
+
+class CorrectionPointage(models.Model):
+    """Audit IMMUABLE des corrections de pointage (XRH11).
+
+    Un ``Pointage`` modifié (heures/type/GPS) sans trace est indéfendable en
+    litige prud'homal / inspection du travail. Chaque correction écrit UNE
+    ligne : le ``champ`` touché, l'ancien et le nouvel état (``ancienne_valeur``
+    / ``nouvelle_valeur``), un ``motif`` OBLIGATOIRE, et l'``auteur``/
+    ``date_creation`` posés côté serveur. JAMAIS modifiable ni supprimable :
+    aucune route update/delete n'est exposée (pattern write-once, comme
+    ``contrats.ContratActivity``).
+
+    Écrite AUTOMATIQUEMENT par la vue à toute modification d'un ``Pointage``
+    existant (jamais par le navigateur). Multi-société : ``company`` posée
+    côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_corrections_pointage',
+        verbose_name='Société',
+    )
+    pointage = models.ForeignKey(
+        Pointage,
+        on_delete=models.CASCADE,
+        related_name='corrections',
+        verbose_name='Pointage',
+    )
+    champ = models.CharField(max_length=60, verbose_name='Champ modifié')
+    ancienne_valeur = models.TextField(
+        blank=True, default='', verbose_name='Ancienne valeur')
+    nouvelle_valeur = models.TextField(
+        blank=True, default='', verbose_name='Nouvelle valeur')
+    motif = models.CharField(max_length=255, verbose_name='Motif')
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_corrections_pointage',
+        verbose_name='Auteur',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Correction de pointage'
+        verbose_name_plural = 'Corrections de pointage'
+        ordering = ['-date_creation', '-id']
+        indexes = [
+            models.Index(
+                fields=['pointage', '-date_creation'],
+                name='rh_correction_pt_date_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.pointage_id} — {self.champ}'
+
+
+class ReglageRH(models.Model):
+    """Réglages RH par société (Paramètres RH) — ``OneToOne`` company.
+
+    Regroupe les réglages fins du module RH qui n'ont pas leur propre écran
+    Paramètres dédié : ``geofence_metres`` (XRH12 — rayon de contrôle du
+    pointage chantier, désactivé par défaut/``None``). Additif, une seule
+    ligne par société (créée à la demande — ``get_or_create``).
+    """
+    company = models.OneToOneField(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_reglage',
+        verbose_name='Société',
+    )
+    # XRH12 — rayon de géofence (mètres) du pointage chantier. ``None`` =
+    # contrôle désactivé (comportement par défaut, jamais bloquant).
+    geofence_metres = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Géofence (mètres)')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Réglage RH'
+        verbose_name_plural = 'Réglages RH'
+
+    def __str__(self):
+        return f'Réglages RH — {self.company_id}'
+
+
+class EmployeDeviceMap(models.Model):
+    """Mappage pointeuse externe → employé (XRH13) — import CSV pivot.
+
+    Aucun connecteur propriétaire ni dépendance : le CSV est le format pivot
+    pour toute pointeuse badge/empreinte biométrique. ``device_user_id`` est
+    l'identifiant de l'employé TEL QUE connu par la pointeuse externe (unique
+    par société) ; il se mappe à un seul ``employe`` de l'ERP.
+
+    Multi-société : ``company`` posée côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_device_maps',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='device_maps',
+        verbose_name='Employé',
+    )
+    device_user_id = models.CharField(
+        max_length=60, verbose_name='ID employé (pointeuse)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Mappage pointeuse'
+        verbose_name_plural = 'Mappages pointeuse'
+        unique_together = [('company', 'device_user_id')]
+        ordering = ['device_user_id']
+
+    def __str__(self):
+        return f'{self.device_user_id} → {self.employe.matricule}'
+
+
+class PeriodeFermeture(models.Model):
+    """Fermeture collective / congé imposé (XRH14) — pont, fermeture annuelle.
+
+    À la VALIDATION (action ``appliquer``), génère une ``DemandeConge``
+    VALIDÉE par employé concerné (décompte via les règles existantes de
+    ``services.calculer_jours_demande`` + ``services.valider_demande``),
+    IDEMPOTENT (ré-appliquer ne duplique pas). ``departements`` (M2M
+    optionnel) restreint la fermeture : vide = TOUTE la société.
+
+    Multi-société : ``company`` posée côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_periodes_fermeture',
+        verbose_name='Société',
+    )
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    date_debut = models.DateField(verbose_name='Du')
+    date_fin = models.DateField(verbose_name='Au')
+    type_absence = models.ForeignKey(
+        TypeAbsence,
+        on_delete=models.PROTECT,
+        related_name='periodes_fermeture',
+        verbose_name="Type d'absence",
+    )
+    # Vide = toute la société (comportement par défaut).
+    departements = models.ManyToManyField(
+        Departement, blank=True, related_name='periodes_fermeture',
+        verbose_name='Départements')
+    appliquee = models.BooleanField(default=False, verbose_name='Appliquée')
+    appliquee_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Appliquée le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Fermeture collective'
+        verbose_name_plural = 'Fermetures collectives'
+        ordering = ['-date_debut']
+        indexes = [
+            models.Index(
+                fields=['company', 'date_debut', 'date_fin'],
+                name='rh_fermeture_comp_dates_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.libelle} ({self.date_debut}→{self.date_fin})'
+
+
+class CompetenceRequise(models.Model):
+    """Profil de compétences requises par poste (XRH15) — pour l'analyse
+    d'écart. Un ``niveau_requis`` (0–4, même échelle que
+    ``CompetenceEmploye.Niveau``) par (poste, compétence), unique.
+
+    Multi-société : ``company`` posée côté serveur ; ``poste`` et
+    ``competence`` doivent appartenir à la même société.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_competences_requises',
+        verbose_name='Société',
+    )
+    poste = models.ForeignKey(
+        Poste,
+        on_delete=models.CASCADE,
+        related_name='competences_requises',
+        verbose_name='Poste',
+    )
+    competence = models.ForeignKey(
+        Competence,
+        on_delete=models.CASCADE,
+        related_name='requise_pour_postes',
+        verbose_name='Compétence',
+    )
+    niveau_requis = models.PositiveSmallIntegerField(
+        choices=CompetenceEmploye.Niveau.choices,
+        default=CompetenceEmploye.Niveau.INTERMEDIAIRE,
+        verbose_name='Niveau requis')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Compétence requise'
+        verbose_name_plural = 'Compétences requises'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['poste', 'competence'],
+                name='rh_competence_requise_uniq'),
+        ]
+        ordering = ['poste', 'competence']
+
+    def __str__(self):
+        return f'{self.poste} — {self.competence} (≥{self.niveau_requis})'
+
+
+class GrilleSalariale(models.Model):
+    """Grille salariale par poste (XRH16) — bandes min/max, compa-ratio.
+
+    Une bande (``salaire_min``/``salaire_max``, MAD) par (poste, échelon
+    optionnel), datée par ``date_effet``. Gatée LECTURE+ÉCRITURE par
+    ``salaires_voir`` (donnée paie sensible, jamais dans un PDF ni une sortie
+    client). ``selectors.compa_ratio`` compare le salaire actuel d'un employé
+    au milieu de la bande de son poste.
+
+    Multi-société : ``company`` posée côté serveur ; ``poste`` doit appartenir
+    à la société.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_grilles_salariales',
+        verbose_name='Société',
+    )
+    poste = models.ForeignKey(
+        Poste,
+        on_delete=models.CASCADE,
+        related_name='grilles_salariales',
+        verbose_name='Poste',
+    )
+    echelon = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='Échelon')
+    salaire_min = models.DecimalField(
+        max_digits=14, decimal_places=2, verbose_name='Salaire minimum (MAD)')
+    salaire_max = models.DecimalField(
+        max_digits=14, decimal_places=2, verbose_name='Salaire maximum (MAD)')
+    date_effet = models.DateField(verbose_name="Date d'effet")
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Grille salariale'
+        verbose_name_plural = 'Grilles salariales'
+        ordering = ['poste', 'echelon', '-date_effet']
+        indexes = [
+            models.Index(
+                fields=['company', 'poste'],
+                name='rh_grille_comp_poste_idx'),
+        ]
+
+    def __str__(self):
+        echelon = f' [{self.echelon}]' if self.echelon else ''
+        return (f'{self.poste}{echelon} — {self.salaire_min}–'
+                f'{self.salaire_max} MAD')
+
+
+class EntretienRecrutement(models.Model):
+    """Entretien de recrutement (XRH17) — planification pour une candidature.
+
+    Le pipeline (FG189) a une étape « entretien » mais aucun objet dédié :
+    pas de date, pas d'évaluateur, pas de notation structurée. Un entretien
+    porte une ``date_heure``, un ``type`` (téléphonique/technique/RH/final),
+    des ``evaluateurs`` (M2M users) et un ``statut``. Les notes vivent dans
+    ``NoteEntretien`` (une par évaluateur).
+
+    Multi-société : ``company`` posée côté serveur ; ``candidature`` doit
+    appartenir à la société.
+    """
+    class TypeEntretien(models.TextChoices):
+        TELEPHONIQUE = 'telephonique', 'Téléphonique'
+        TECHNIQUE = 'technique', 'Technique'
+        RH = 'rh', 'RH'
+        FINAL = 'final', 'Final'
+
+    class Statut(models.TextChoices):
+        PLANIFIE = 'planifie', 'Planifié'
+        REALISE = 'realise', 'Réalisé'
+        ANNULE = 'annule', 'Annulé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_entretiens_recrutement',
+        verbose_name='Société',
+    )
+    candidature = models.ForeignKey(
+        Candidature,
+        on_delete=models.CASCADE,
+        related_name='entretiens',
+        verbose_name='Candidature',
+    )
+    date_heure = models.DateTimeField(
+        null=True, blank=True, verbose_name='Date et heure')
+    type = models.CharField(
+        max_length=15, choices=TypeEntretien.choices,
+        default=TypeEntretien.RH, verbose_name='Type')
+    evaluateurs = models.ManyToManyField(
+        settings.AUTH_USER_MODEL, blank=True,
+        related_name='rh_entretiens_a_evaluer', verbose_name='Évaluateurs')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.PLANIFIE, verbose_name='Statut')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Entretien de recrutement'
+        verbose_name_plural = 'Entretiens de recrutement'
+        ordering = ['-date_heure', '-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'candidature'],
+                name='rh_entretien_comp_cand_idx'),
+        ]
+
+    def __str__(self):
+        return f'Entretien {self.get_type_display()} — {self.candidature}'
+
+
+class NoteEntretien(models.Model):
+    """Grille d'évaluation d'un entretien (XRH17) — une note par évaluateur.
+
+    ``notes_criteres`` (JSON, {critère: note 1–5}) porte la notation par
+    critère ; ``avis`` synthétise (favorable/réservé/défavorable).
+    ``evaluateur`` est posé CÔTÉ SERVEUR (jamais lu du corps). Un même
+    évaluateur ne note qu'une fois un même entretien.
+
+    Multi-société : ``company`` posée côté serveur.
+    """
+    class Avis(models.TextChoices):
+        FAVORABLE = 'favorable', 'Favorable'
+        RESERVE = 'reserve', 'Réservé'
+        DEFAVORABLE = 'defavorable', 'Défavorable'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_notes_entretien',
+        verbose_name='Société',
+    )
+    entretien = models.ForeignKey(
+        EntretienRecrutement,
+        on_delete=models.CASCADE,
+        related_name='notes',
+        verbose_name='Entretien',
+    )
+    evaluateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='rh_notes_entretien',
+        verbose_name='Évaluateur',
+    )
+    notes_criteres = models.JSONField(
+        default=dict, blank=True, verbose_name='Notes par critère')
+    commentaire = models.TextField(
+        blank=True, default='', verbose_name='Commentaire')
+    avis = models.CharField(
+        max_length=15, choices=Avis.choices,
+        default=Avis.RESERVE, verbose_name='Avis')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Note d'entretien"
+        verbose_name_plural = "Notes d'entretien"
+        ordering = ['-date_creation']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['entretien', 'evaluateur'],
+                name='rh_note_entretien_uniq'),
+        ]
+
+    @property
+    def moyenne_criteres(self):
+        """Moyenne des notes par critère (None si aucun critère noté)."""
+        valeurs = [
+            v for v in (self.notes_criteres or {}).values()
+            if isinstance(v, (int, float))]
+        if not valeurs:
+            return None
+        return sum(valeurs) / len(valeurs)
+
+    def __str__(self):
+        return f'{self.entretien_id} — {self.evaluateur_id} ({self.avis})'
+
+
+class CandidatureActivity(models.Model):
+    """Chatter / journal d'une candidature (XRH18) — audit + collaboration.
+
+    Pattern aligné sur ``DossierActivity`` (XRH6) / ``crm.LeadActivity`` :
+    deux familles d'entrées — automatiques (``type=log``, transitions
+    d'étape old→new) écrites CÔTÉ SERVEUR à chaque changement, et manuelles
+    (``type=note``) via ``candidatures/{id}/noter``.
+
+    Multi-société : ``company`` posée côté serveur ; ``auteur`` nullable
+    (une transition automatisée sans utilisateur reste journalisable).
+    """
+    class Kind(models.TextChoices):
+        LOG = 'log', 'Transition'
+        NOTE = 'note', 'Note'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_candidature_activites',
+        verbose_name='Société',
+    )
+    candidature = models.ForeignKey(
+        Candidature,
+        on_delete=models.CASCADE,
+        related_name='activites',
+        verbose_name='Candidature',
+    )
+    type = models.CharField(
+        max_length=10, choices=Kind.choices, verbose_name='Type')
+    field = models.CharField(
+        max_length=100, blank=True, default='', verbose_name='Champ')
+    old_value = models.TextField(
+        blank=True, default='', verbose_name='Ancienne valeur')
+    new_value = models.TextField(
+        blank=True, default='', verbose_name='Nouvelle valeur')
+    message = models.TextField(
+        blank=True, default='', verbose_name='Message')
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_candidature_activites',
+        verbose_name='Auteur',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Activité candidature'
+        verbose_name_plural = 'Activités candidature'
+        ordering = ['-date_creation', '-id']
+        indexes = [
+            models.Index(
+                fields=['candidature', '-date_creation'],
+                name='rh_cand_act_cand_date_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.candidature_id} {self.type}'.strip()
+
+
+class GabaritEmailRecrutement(models.Model):
+    """Gabarit d'email automatique par étape du pipeline (XRH19).
+
+    À la transition d'une ``Candidature`` vers ``etape`` (un gabarit ACTIF
+    existe pour cette étape), un email est envoyé via l'infra existante
+    (``SENDGRID_API_KEY`` key-gated, backend console sinon — no-op propre
+    sans clé) avec ``objet``/``corps`` substitués par des placeholders sûrs
+    ``{nom}``/``{poste}``/``{date_entretien}``. Journalisé dans le chatter
+    (``CandidatureActivity``). Opt-out par candidature
+    (``Candidature.emails_auto``).
+
+    Multi-société : ``company`` posée côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_gabarits_email_recrutement',
+        verbose_name='Société',
+    )
+    etape = models.CharField(
+        max_length=20, choices=Candidature.Etape.choices,
+        verbose_name='Étape')
+    objet = models.CharField(max_length=255, verbose_name='Objet')
+    corps = models.TextField(verbose_name='Corps')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Gabarit email recrutement'
+        verbose_name_plural = 'Gabarits email recrutement'
+        ordering = ['etape']
+        indexes = [
+            models.Index(
+                fields=['company', 'etape', 'actif'],
+                name='rh_gabarit_email_etape_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.get_etape_display()} — {self.objet}'
+
+
+def _default_promesse_token():
+    return secrets.token_urlsafe(32)
+
+
+def _default_promesse_expiry():
+    from datetime import timedelta
+
+    from django.utils import timezone as dj_timezone
+    return dj_timezone.now() + timedelta(days=30)
+
+
+class PromesseEmbauche(models.Model):
+    """Promesse d'embauche / lettre d'offre PDF + e-sign interne (XRH20).
+
+    L'étape « offre » du pipeline (FG189) n'émettait rien. Génère une
+    promesse d'embauche WeasyPrint depuis la ``Candidature`` (poste, type de
+    contrat, date de début proposée, ``salaire_propose`` — nullable, gaté
+    ``salaires_voir`` — jamais dans le PDF sauf pour le candidat via son lien
+    tokenisé). Le candidat SIGNE via un lien tokenisé (pattern liens publics
+    WhatsApp FG79 — jeton long, imprévisible, expirant 30 j) : acceptation
+    e-sign loi 53-05 par NOM TAPÉ (pattern CONTRAT16, AUCUN prestataire
+    externe) avec évidence serveur ``ip_adresse``/``user_agent``/
+    ``date_signature``. Signature figée, horodatée, immuable (pas de route
+    update/delete sur la signature).
+
+    Multi-société : ``company`` posée côté serveur ; ``candidature`` doit
+    appartenir à la société.
+    """
+    class Statut(models.TextChoices):
+        ENVOYEE = 'envoyee', 'Envoyée'
+        SIGNEE = 'signee', 'Signée'
+        EXPIREE = 'expiree', 'Expirée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_promesses_embauche',
+        verbose_name='Société',
+    )
+    candidature = models.OneToOneField(
+        Candidature,
+        on_delete=models.CASCADE,
+        related_name='promesse_embauche',
+        verbose_name='Candidature',
+    )
+    poste_propose = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Poste proposé')
+    type_contrat = models.CharField(
+        max_length=10, choices=DossierEmploye.TypeContrat.choices,
+        default=DossierEmploye.TypeContrat.CDI, verbose_name='Type de contrat')
+    date_debut_proposee = models.DateField(
+        null=True, blank=True, verbose_name='Date de début proposée')
+    # Donnée SENSIBLE (salaire) — gatée salaires_voir à l'écriture/lecture
+    # interne ; visible pour le candidat via son lien tokenisé (c'est SON
+    # offre). Nullable.
+    salaire_propose = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Salaire proposé (MAD)')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.ENVOYEE, verbose_name='Statut')
+    token = models.CharField(
+        max_length=64, unique=True, default=_default_promesse_token,
+        editable=False, verbose_name='Jeton')
+    expires_at = models.DateTimeField(
+        default=_default_promesse_expiry, verbose_name='Expire le')
+    # Signature e-sign (loi 53-05) — figée dès posée, jamais éditable.
+    signataire_nom = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Nom du signataire')
+    date_signature = models.DateTimeField(
+        null=True, blank=True, verbose_name='Signé le')
+    ip_adresse = models.CharField(
+        max_length=45, blank=True, default='', verbose_name='Adresse IP')
+    user_agent = models.TextField(
+        blank=True, default='', verbose_name='User agent')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Promesse d'embauche"
+        verbose_name_plural = "Promesses d'embauche"
+        ordering = ['-date_creation']
+        indexes = [
+            models.Index(fields=['token'], name='rh_promesse_token_idx'),
+        ]
+
+    @property
+    def is_valid(self):
+        from django.utils import timezone as dj_timezone
+        return self.expires_at > dj_timezone.now()
+
+    def __str__(self):
+        return f'Promesse — {self.candidature} ({self.statut})'

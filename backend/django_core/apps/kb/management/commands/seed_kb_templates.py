@@ -300,6 +300,9 @@ class Command(BaseCommand):
                         'tags': tags,
                         'corps': corps,
                         'statut': KbArticle.Statut.PUBLIE,
+                        # XKB12 — ces 5 SOP/checklists sont les gabarits
+                        # seedés de la galerie « nouveau depuis gabarit ».
+                        'est_gabarit': True,
                     },
                 )
                 if is_new:

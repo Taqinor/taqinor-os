@@ -28,7 +28,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
-from authentication.permissions import IsResponsableOrAdmin
+from authentication.permissions import IsAdminRole, IsResponsableOrAdmin
 
 from . import selectors, services
 from .models import (
@@ -39,6 +39,7 @@ from .models import (
     ClauseContrat,
     Contrat,
     ContratLien,
+    CycleFacturationLog,
     EcheancierContrat,
     EngagementSLA,
     IndexationPrix,
@@ -64,13 +65,16 @@ from .serializers import (
     ClauseSerializer,
     ContratActivitySerializer,
     ContratLienSerializer,
+    CampagneRevisionSerializer,
     ContratSerializer,
     CreerAvenantSerializer,
+    CycleFacturationLogSerializer,
     CreerVersionSerializer,
     DeciderEtapeSerializer,
     EcheancierContratSerializer,
     EngagementSLASerializer,
     EtapeApprobationSerializer,
+    GenererDevisRenouvellementSerializer,
     IndexationActionSerializer,
     IndexationPrixSerializer,
     LigneEcheanceSerializer,
@@ -91,6 +95,7 @@ from .serializers import (
     ResiliationSerializer,
     RetenueGarantieSerializer,
     ResoudreRegleApprobationSerializer,
+    RollbackCampagneRevisionSerializer,
     SemerAlertesSerializer,
     SignatureContratSerializer,
     SignerContratSerializer,
@@ -141,11 +146,11 @@ class ContratViewSet(_ContratsBaseViewSet):
     ordering_fields = ['date_debut', 'date_fin', 'montant', 'id', 'confidentialite']
 
     def get_queryset(self):
-        """Queryset scopé société + filtre confidentialité.
+        """Queryset scopé société + filtre confidentialité/responsable.
 
         Les contrats ``CONFIDENTIEL`` sont exclus pour les non-Administrateurs.
-        Un filtre optionnel ``?confidentialite=<valeur>`` restreint
-        supplémentairement la liste.
+        Filtres optionnels : ``?confidentialite=<valeur>``,
+        ``?responsable=<id>`` (XCTR10).
         """
         qs = super().get_queryset()
         user = self.request.user
@@ -160,6 +165,10 @@ class ContratViewSet(_ContratsBaseViewSet):
         niveau = self.request.query_params.get('confidentialite')
         if niveau:
             qs = qs.filter(confidentialite=niveau)
+        # XCTR10 — filtre optionnel par responsable (owner).
+        responsable_id = self.request.query_params.get('responsable')
+        if responsable_id:
+            qs = qs.filter(responsable_id=responsable_id)
         return qs
 
     def perform_create(self, serializer):
@@ -262,7 +271,176 @@ class ContratViewSet(_ContratsBaseViewSet):
             'valeur_active': _money(data['valeur_active']),
             'valeur_totale': _money(data['valeur_totale']),
             'mrr': _money(data['mrr']),
+            'mrr_combine': _money(data['mrr_combine']),
+            'exceptions_facturation': data['exceptions_facturation'],
+            'mrr_par_responsable': {
+                str(k): _money(v)
+                for k, v in data['mrr_par_responsable'].items()},
         })
+
+    @action(detail=False, methods=['get'], url_path='mrr-mouvements')
+    def mrr_mouvements(self, request):
+        """Cascade MRR new/expansion/contraction/churn/net (XCTR7).
+
+        Filtres requis ``?debut=AAAA-MM-JJ&fin=AAAA-MM-JJ`` (défaut : le mois
+        calendaire en cours). Lecture seule, scopée société ; ventile le churn
+        par ``Resiliation.motif`` (``churn_par_motif``).
+        """
+        from datetime import date as _date
+
+        from django.utils import timezone as _tz
+
+        debut_raw = request.query_params.get('debut')
+        fin_raw = request.query_params.get('fin')
+        try:
+            debut = (
+                _date.fromisoformat(debut_raw) if debut_raw
+                else _tz.localdate().replace(day=1))
+            fin = _date.fromisoformat(fin_raw) if fin_raw else _tz.localdate()
+        except ValueError:
+            return Response(
+                {'detail': 'debut/fin invalides (AAAA-MM-JJ).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if debut > fin:
+            return Response(
+                {'detail': 'debut doit précéder fin.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        data = selectors.mouvements_mrr(request.user.company, debut, fin)
+        return Response({
+            'debut': data['debut'].isoformat(),
+            'fin': data['fin'].isoformat(),
+            'new': _money(data['new']),
+            'expansion': _money(data['expansion']),
+            'contraction': _money(data['contraction']),
+            'churn': _money(data['churn']),
+            'churn_par_motif': {
+                k: _money(v) for k, v in data['churn_par_motif'].items()},
+            'net': _money(data['net']),
+            'net_par_responsable': {
+                str(k): _money(v)
+                for k, v in data['net_par_responsable'].items()},
+        })
+
+    @action(detail=False, methods=['get'], url_path='cohortes-retention')
+    def cohortes_retention(self, request):
+        """Cohortes de rétention contrats (logo + revenu, NRR/GRR) — XCTR8.
+
+        Matrice par mois de signature × mois d'ancienneté : % contrats actifs
+        restants (``logo_pct``) et % MRR retenu (``revenu_pct`` = NRR, avenants
+        inclus ; ``revenu_grr_pct`` = GRR, plafonné à 100 % par contrat).
+        Lecture seule, scopée société. Ne change AUCUN statut.
+        """
+        data = selectors.cohortes_retention(request.user.company)
+        cohortes = {}
+        for mois, matrice in data['cohortes'].items():
+            cohortes[mois] = {
+                str(k): {
+                    'nb_contrats': v['nb_contrats'],
+                    'nb_actifs': v['nb_actifs'],
+                    'logo_pct': _money(v['logo_pct']),
+                    'revenu_pct': _money(v['revenu_pct']),
+                    'revenu_grr_pct': _money(v['revenu_grr_pct']),
+                }
+                for k, v in matrice.items()
+            }
+        return Response({'cohortes': cohortes, 'mois_max': data['mois_max']})
+
+    @action(detail=False, methods=['get'])
+    def clv(self, request):
+        """Valeur vie client (CLV) sur revenu récurrent — XCTR9.
+
+        Requiert ``?client_id=<id>`` (lien LÂCHE ``Contrat.client_id``).
+        Délègue à ``core.clv`` via ``selectors.clv_client`` (ARPC = MRR du
+        client, taux de churn observé de la société). ``clv=null`` quand le
+        calcul est impossible (churn nul/inconnu) — jamais une fausse valeur.
+        Lecture seule, scopée société.
+        """
+        client_id = request.query_params.get('client_id')
+        if not client_id:
+            return Response(
+                {'detail': 'client_id est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            client_id = int(client_id)
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': 'client_id invalide.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        resultat = selectors.clv_client(request.user.company, client_id)
+        return Response({
+            'client_id': client_id,
+            'arpc': _money(selectors.mrr_client(
+                request.user.company, client_id)),
+            'clv': _money(resultat.clv) if resultat.clv is not None else None,
+            'duree_vie_mois': (
+                str(resultat.duree_vie_mois)
+                if resultat.duree_vie_mois is not None else None),
+            'used_fallback': resultat.used_fallback,
+            'plafonnee': resultat.plafonnee,
+        })
+
+    @action(detail=False, methods=['post'], url_path='campagne-revision',
+            permission_classes=[IsAdminRole])
+    def campagne_revision(self, request):
+        """Campagne de révision tarifaire en masse — XCTR11 (admin uniquement).
+
+        Corps : ``filtres`` (optionnel), ``pct`` (requis), ``date_effet``
+        (optionnel), ``preview`` (défaut ``True``). Preview = AUCUNE écriture.
+        Application (``preview=false``) = un avenant d'indexation par contrat
+        couvert (idempotent — re-run = 0 nouvel avenant) + notification aux
+        responsables + liste de rollback (``rollback_ids``).
+        """
+        body = CampagneRevisionSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        resultat = services.campagne_revision(
+            request.user.company,
+            filtres=body.validated_data.get('filtres'),
+            pct=body.validated_data['pct'],
+            date_effet=body.validated_data.get('date_effet'),
+            preview=body.validated_data.get('preview', True),
+            auteur=request.user,
+        )
+        if resultat['preview']:
+            return Response({
+                'preview': True,
+                'lignes': [
+                    {
+                        'contrat_id': ligne['contrat_id'],
+                        'objet': ligne['objet'],
+                        'ancien_montant': _money(ligne['ancien_montant']),
+                        'nouveau_montant': _money(ligne['nouveau_montant']),
+                        'delta': _money(ligne['delta']),
+                    }
+                    for ligne in resultat['lignes']
+                ],
+            })
+        return Response({
+            'preview': False,
+            'avenants_crees': resultat['avenants_crees'],
+            'rollback_ids': resultat['rollback_ids'],
+        }, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'],
+            url_path='campagne-revision-rollback',
+            permission_classes=[IsAdminRole])
+    def campagne_revision_rollback(self, request):
+        """Rollback d'une campagne de révision tarifaire — XCTR11 (admin only).
+
+        Corps : ``avenant_ids`` (liste retournée par l'application). Crée un
+        avenant COMPENSATOIRE par avenant listé (jamais de suppression —
+        historique immuable CONTRAT18/24).
+        """
+        body = RollbackCampagneRevisionSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        compensations = services.rollback_campagne_revision(
+            request.user.company, body.validated_data['avenant_ids'],
+            auteur=request.user)
+        return Response({
+            'compensations_creees': len(compensations),
+            'avenant_ids': [c.id for c in compensations],
+        }, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['get'])
     def reporting(self, request):
@@ -729,6 +907,41 @@ class ContratViewSet(_ContratsBaseViewSet):
         return Response(
             ResiliationSerializer(
                 resiliation, context={'request': request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=['post'],
+            url_path='generer-devis-renouvellement')
+    def generer_devis_renouvellement(self, request, pk=None):
+        """Génère un devis de renouvellement AVANT échéance (XCTR12).
+
+        Corps optionnel : ``valeur_indice`` (révise le montant proposé via
+        l'indexation active du contrat). Crée un ``ventes.Devis`` (référence
+        via ``ventes.utils.references`` — jamais ``count()+1``), lié au
+        contrat via ``ContratLien``. Refuse (400) si un devis de
+        renouvellement OUVERT existe déjà (garde anti-doublon — un double clic
+        ne crée jamais deux devis) ou si le contrat n'a pas de client
+        résoluble. Le ``Contrat.statut`` n'est JAMAIS modifié. L'utilisateur
+        et la société sont posés CÔTÉ SERVEUR.
+        """
+        contrat = self.get_object()
+        body = GenererDevisRenouvellementSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        try:
+            devis = services.generer_devis_renouvellement(
+                contrat,
+                auteur=request.user,
+                valeur_indice=body.validated_data.get('valeur_indice'),
+            )
+        except services.RenouvellementDevisError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                'devis_id': devis.id,
+                'devis_reference': devis.reference,
+                'note': devis.note,
+            },
             status=status.HTTP_201_CREATED,
         )
 
@@ -1531,10 +1744,13 @@ class LigneEcheanceViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         sur l'échéancier, si l'échéance est déjà facturée/annulée, si le montant
         est nul, ou si le client est introuvable. Le ``Contrat.statut`` n'est
         JAMAIS modifié. L'utilisateur et la société sont posés CÔTÉ SERVEUR.
+
+        Chaque tentative (succès/échec) est journalisée dans le journal de
+        facturation récurrente (XCTR5 — ``services.enregistrer_cycle``).
         """
         ligne = self.get_object()
         try:
-            facture = services.facturer_ligne_echeance(
+            facture = services.facturer_ligne_echeance_journalisee(
                 ligne, user=request.user)
         except services.FacturationError as exc:
             return Response(
@@ -1699,3 +1915,70 @@ class PieceConformiteViewSet(_ContratsBaseViewSet):
         return Response(
             PieceConformiteSerializer(
                 piece, context={'request': request}).data)
+
+
+class CycleFacturationLogViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+    """Journal des cycles de facturation récurrente + file d'exceptions — XCTR5.
+
+    LECTURE SEULE : les entrées sont écrites exclusivement côté serveur par les
+    services de facturation récurrente (``services.enregistrer_cycle``). Action
+    ``rejouer`` : re-tente UN échec (garde anti double-facturation — jamais
+    deux factures pour la même période contrat). Scopé société (``TenantMixin``).
+
+    Filtres : ``?statut=<valeur>``, ``?source_type=<valeur>``.
+    """
+    permission_classes = [IsResponsableOrAdmin]
+    queryset = CycleFacturationLog.objects.all()
+    serializer_class = CycleFacturationLogSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        source_type = self.request.query_params.get('source_type')
+        if source_type:
+            qs = qs.filter(source_type=source_type)
+        return qs
+
+    @action(detail=False, methods=['get'])
+    def exceptions(self, request):
+        """Liste des cycles en échec (file d'exceptions) — XCTR5.
+
+        Raccourci en lecture seule de ``?statut=echec`` pour la carte du
+        tableau de bord contrats.
+        """
+        entries = services.exceptions_facturation(request.user.company)
+        page = self.paginate_queryset(entries)
+        serializer = CycleFacturationLogSerializer(
+            page if page is not None else entries, many=True,
+            context={'request': request})
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def rejouer(self, request, pk=None):
+        """Rejoue UN échec de facturation (XCTR5).
+
+        Refuse (400) une entrée non-échec ou si aucune échéance facturable
+        n'est retrouvable. Succès → 201 avec la nouvelle facture. L'utilisateur
+        et la société sont posés CÔTÉ SERVEUR.
+        """
+        log = self.get_object()
+        try:
+            facture = services.rejouer_cycle(log, user=request.user)
+        except services.RejeuError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                'facture_id': facture.id,
+                'facture_reference': facture.reference,
+                'log': CycleFacturationLogSerializer(
+                    log, context={'request': request}).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )

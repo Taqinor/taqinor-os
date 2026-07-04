@@ -67,22 +67,39 @@ def intervention_scoped(company, pk):
 
 
 def reserved_quantity_for_produit(produit):
-    """Quantité d'un produit ENGAGÉE par des réservations de chantier actives et
-    non encore consommées (0 si aucune). Lecture seule."""
+    """Quantité d'un produit ENGAGÉE par des réservations actives et non
+    encore consommées — chantier (N14) + ordre d'assemblage (XMFG2). Lecture
+    seule."""
     agg = (_active_reservations()
            .filter(produit=produit)
            .aggregate(total=Sum('quantite')))
-    return agg['total'] or 0
+    agg_asm = (_active_reservations_assemblage()
+               .filter(produit=produit)
+               .aggregate(total=Sum('quantite')))
+    return (agg['total'] or 0) + (agg_asm['total'] or 0)
 
 
 def reserved_quantities_for_company(company):
-    """Map {produit_id: quantité réservée active} pour toute la société — un seul
-    agrégat (évite un N+1 sur la liste produits). Lecture seule."""
+    """Map {produit_id: quantité réservée active} pour toute la société —
+    chantier (N14) + ordre d'assemblage (XMFG2), un seul agrégat par source
+    (évite un N+1 sur la liste produits). Lecture seule."""
     rows = (_active_reservations()
             .filter(company=company)
             .values('produit_id')
             .annotate(total=Sum('quantite')))
-    return {r['produit_id']: (r['total'] or 0) for r in rows}
+    out = {r['produit_id']: (r['total'] or 0) for r in rows}
+    rows_asm = (_active_reservations_assemblage()
+                .filter(company=company)
+                .values('produit_id')
+                .annotate(total=Sum('quantite')))
+    for r in rows_asm:
+        out[r['produit_id']] = out.get(r['produit_id'], 0) + (r['total'] or 0)
+    return out
+
+
+def _active_reservations_assemblage():
+    from .models import ReservationAssemblage
+    return ReservationAssemblage.objects.filter(active=True, consomme=False)
 
 
 def own_reservation_map(installation):
@@ -100,6 +117,23 @@ def update_installation_lead(absorbed_lead, survivor_lead):
     from .models import Installation
     return Installation.objects.filter(lead=absorbed_lead).update(
         lead=survivor_lead)
+
+
+# ── XMFG3 — Assembler-à-la-commande : kit actif par produit composite ────────
+
+def kit_map_for_produits_composes(company, produit_ids):
+    """XMFG3 — map {produit_id: kit_id} pour les produits qui sont l'article
+    composite (`produit_compose`) d'un KIT ACTIF de cette société. Point
+    d'entrée cross-app pour `stock` (réappro FG54/FG364 : distinguer
+    « acheter » de « assembler N »). Lecture seule."""
+    from .models import Kit
+    if not produit_ids:
+        return {}
+    rows = (Kit.objects
+            .filter(company=company, active=True,
+                    produit_compose_id__in=produit_ids)
+            .values_list('produit_compose_id', 'id'))
+    return {pid: kid for pid, kid in rows}
 
 
 def _active_reservations():
@@ -1647,3 +1681,19 @@ def emplacement_a_decrementer_livraison(livraison):
     if livraison.mode_acheminement == Livraison.ModeAcheminement.DIRECT_SITE:
         return None
     return livraison.depot
+
+
+# ── XKB1 — boîte d'approbations centralisée (lecture cross-app) ──────────────
+
+def demandes_achat_en_attente(company):
+    """XKB1 — réquisitions d'achat (FG310) SOUMISES d'une société (QuerySet).
+
+    Sélecteur company-wide LECTURE SEULE utilisé par l'agrégateur
+    d'approbations cross-app (``apps/reporting``). « En attente » = statut
+    ``SOUMISE`` (seul statut approuvable, cf. ``DemandeAchatViewSet.approuver``).
+    """
+    from .models import DemandeAchat
+    return (DemandeAchat.objects
+            .filter(company=company, statut=DemandeAchat.Statut.SOUMISE)
+            .select_related('chantier', 'programme')
+            .order_by('date_besoin', 'id'))

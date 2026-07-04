@@ -281,3 +281,37 @@ def flag_overdue_steps(company, now):
     for step in overdue:
         escalader_etape(step, now=now)
     return overdue
+
+
+# ── XKB1 — boîte d'approbations centralisée (lecture cross-app) ──────────────
+
+def pending_steps_for_company(company):
+    """XKB1 — étapes BPM ``en_attente`` d'une société (instances en cours).
+
+    Sélecteur LECTURE SEULE utilisé par l'agrégateur d'approbations
+    (``apps/reporting``) : ``core`` reste la fondation, aucune app métier
+    n'est importée ici. Triée par échéance SLA la plus proche d'abord (NULL en
+    dernier), puis id."""
+    from django.db.models import F
+    return list(
+        WorkflowStepInstance.objects.filter(
+            company=company,
+            statut=WorkflowStepInstance.STATUT_EN_ATTENTE,
+            instance__statut=WorkflowInstance.STATUT_EN_COURS,
+        ).select_related('instance', 'step_def')
+        .order_by(F('sla_echeance').asc(nulls_last=True), 'id')
+    )
+
+
+def decide_step(step, *, approve, user=None, commentaire='', now=None):
+    """XKB1 — approuve/rejette une étape BPM en attente en résolvant son
+    ``WorkflowInstance`` propriétaire (l'agrégateur ne connaît que l'étape).
+
+    ``approve=True`` → ``approuver_etape`` ; ``approve=False`` →
+    ``rejeter_etape``. Délègue entièrement à ces fonctions existantes (mêmes
+    garde-fous, même transaction atomique)."""
+    if approve:
+        return approuver_etape(
+            step.instance, user=user, commentaire=commentaire, now=now)
+    return rejeter_etape(
+        step.instance, user=user, commentaire=commentaire, now=now)

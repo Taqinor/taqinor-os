@@ -684,6 +684,18 @@ def confirm_reception_fournisseur(reception, user):
                     # passer à « envoyé » (commande engagée, partiellement reçue).
                     bc.statut = BonCommandeFournisseur.Statut.ENVOYE
                 bc.save(update_fields=['statut'])
+    # XQHS3 / YPROC3 — émet l'événement de confirmation sur le bus (core.events)
+    # APRÈS le commit de la transaction (best-effort, ne casse jamais la
+    # confirmation) : qhse peut ouvrir un contrôle qualité de réception,
+    # installations peut créer sa provision GR/IR. stock n'importe ni l'un ni
+    # l'autre — les deux s'abonnent dans leur propre apps.py ready().
+    try:
+        from core.events import reception_fournisseur_confirmee
+        reception_fournisseur_confirmee.send(
+            sender=ReceptionFournisseur, reception=reception,
+            company=reception.company, user=user)
+    except Exception:  # pragma: no cover - défensif, best-effort
+        pass
     return reception
 
 
@@ -1053,6 +1065,72 @@ def mouvement_type_entree():
     return MouvementStock.TypeMouvement.ENTREE
 
 
+def mouvement_type_rebut():
+    """XMFG11 — valeur enum REBUT (sans importer le modèle côté appelant)."""
+    from .models import MouvementStock
+    return MouvementStock.TypeMouvement.REBUT
+
+
+def declarer_rebut(*, company, produit, quantite, motif, reference, note,
+                   user):
+    """XMFG11 — déclare un rebut de production : SORTIE typée REBUT, motivée,
+    rattachée à un document source (``reference``, ex. un ordre d'assemblage).
+    ``motif`` doit être une valeur de ``MouvementStock.MotifRebut``. Lève
+    ValueError si la quantité est invalide."""
+    from django.db import transaction
+    from .models import MouvementStock, Produit
+
+    if quantite is None or quantite <= 0:
+        raise ValueError('La quantité de rebut doit être positive.')
+    valeurs_motif = {c for c, _ in MouvementStock.MotifRebut.choices}
+    if motif not in valeurs_motif:
+        raise ValueError('Motif de rebut invalide.')
+
+    with transaction.atomic():
+        p = Produit.objects.select_for_update().get(id=produit.id)
+        avant = p.quantite_stock
+        qte_sortie = min(quantite, avant) if avant > 0 else 0
+        apres = avant - qte_sortie
+        mouvement = MouvementStock.objects.create(
+            company=company, produit=p,
+            type_mouvement=MouvementStock.TypeMouvement.REBUT,
+            quantite=qte_sortie, quantite_avant=avant, quantite_apres=apres,
+            reference=reference, note=note, motif_rebut=motif,
+            created_by=user)
+        p.quantite_stock = apres
+        p.save(update_fields=['quantite_stock'])
+    return mouvement
+
+
+def rapport_rebuts(company, *, date_debut=None, date_fin=None):
+    """XMFG11 — mini-rapport rebuts agrégé par produit sur une période
+    (bornes optionnelles). Renvoie une liste de dicts {produit_id, produit_nom,
+    quantite_totale, motifs: {motif: quantite}}, triée par quantité totale
+    décroissante. INTERNE."""
+    from .models import MouvementStock
+
+    qs = MouvementStock.objects.filter(
+        company=company, type_mouvement=MouvementStock.TypeMouvement.REBUT)
+    if date_debut is not None:
+        qs = qs.filter(date__gte=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(date__lte=date_fin)
+
+    par_produit = {}
+    for mvt in qs.select_related('produit'):
+        entry = par_produit.setdefault(mvt.produit_id, {
+            'produit_id': mvt.produit_id,
+            'produit_nom': mvt.produit.nom,
+            'quantite_totale': 0,
+            'motifs': {},
+        })
+        entry['quantite_totale'] += mvt.quantite
+        motif = mvt.motif_rebut or 'autre'
+        entry['motifs'][motif] = entry['motifs'].get(motif, 0) + mvt.quantite
+    return sorted(
+        par_produit.values(), key=lambda e: -e['quantite_totale'])
+
+
 def sortie_exists_for_reference(company, reference):
     """True si un mouvement SORTIE référence déjà ``reference`` pour la société.
 
@@ -1078,9 +1156,14 @@ def produits_a_reapprovisionner(company):
     fournisseur le moins cher (PrixFournisseur). INTERNE.
 
     Chaque item : {produit_id, nom, quantite_stock, seuil_alerte,
-    quantite_suggere, fournisseur_id, fournisseur_nom, prix_achat}.
+    quantite_suggere, fournisseur_id, fournisseur_nom, prix_achat,
+    action, kit_id}. ``action`` = 'assembler' (kit_id renseigné) quand le
+    produit sous seuil est le ``produit_compose`` d'un kit ACTIF
+    (`installations.Kit`, XMFG3) — la suggestion devient « assembler N »
+    plutôt qu'un bon de commande fournisseur ; sinon 'acheter'.
     """
     from .models import Produit, PrixFournisseur
+    from apps.installations.selectors import kit_map_for_produits_composes
 
     qs = (Produit.objects
           .filter(company=company, is_archived=False)
@@ -1088,8 +1171,12 @@ def produits_a_reapprovisionner(company):
           .filter(quantite_stock__lte=models.F('seuil_alerte'))
           .prefetch_related('prix_fournisseurs__fournisseur'))
 
+    produits = list(qs)
+    kit_map = kit_map_for_produits_composes(
+        company, [p.id for p in produits])
+
     result = []
-    for p in qs:
+    for p in produits:
         # Fournisseur le moins cher parmi les prix enregistrés.
         best = (PrixFournisseur.objects
                 .filter(company=company, produit=p)
@@ -1097,6 +1184,7 @@ def produits_a_reapprovisionner(company):
                 .order_by('prix_achat')
                 .first())
         qte_suggere = p.quantite_reappro_cible if p.quantite_reappro_cible else (p.seuil_alerte * 2)
+        kit_id = kit_map.get(p.id)
         result.append({
             'produit_id': p.id,
             'nom': p.nom,
@@ -1107,6 +1195,8 @@ def produits_a_reapprovisionner(company):
             'fournisseur_id': best.fournisseur_id if best else None,
             'fournisseur_nom': best.fournisseur.nom if best else None,
             'prix_achat': str(best.prix_achat) if best else None,
+            'action': 'assembler' if kit_id else 'acheter',
+            'kit_id': kit_id,
         })
     return result
 
@@ -1241,6 +1331,9 @@ def facturer_reception(company, user, reception):
         return ff
 
     create_with_reference(FactureFournisseur, 'FF', company, _save)
+    # XPUR8 — impute automatiquement les acomptes non consommés du BCF sur
+    # cette première facture (idempotent, no-op si aucun acompte).
+    imputer_acomptes_bcf(reception.bon_commande)
     return created['ff']
 
 
@@ -1420,6 +1513,11 @@ def supplier_performance(company, fournisseur):
         company=company, fournisseur=fournisseur,
         statut='valide').count()
 
+    # XPUR7 — OTD promis-vs-reçu ajouté au scorecard existant (champs
+    # additifs ; None quand aucune date confirmée/prévue n'existe —
+    # comportement historique inchangé pour les BCF sans XPUR7 renseigné).
+    otd = otd_stats(company, fournisseur)
+
     return {
         'fournisseur_id': fournisseur.id,
         'fournisseur_nom': fournisseur.nom,
@@ -1429,6 +1527,8 @@ def supplier_performance(company, fournisseur):
         'nb_retours': nb_retours,
         'return_rate_pct': round(nb_retours / nb_bons * 100, 1) if nb_bons else None,
         'total_achats_ht': str(total_achats),
+        'otd_ecart_moyen_jours': otd['otd_ecart_moyen_jours'],
+        'otd_a_lheure_pct': otd['otd_a_lheure_pct'],
     }
 
 
@@ -1658,3 +1758,815 @@ def exploser_kit_par_id(company, kit_id, quantite_kit=1):
     if kit is None:
         return None
     return exploser_kit(kit, quantite_kit)
+
+
+# ── XMFG1 — Backflush : clôture d'un ordre d'assemblage (installations) ──────
+# `installations.OrdreAssemblage.terminer` appelle CE service (jamais de
+# MouvementStock créé côté installations) : une SORTIE par composant (quantité
+# BOM × quantite_produite) + une ENTREE du composite. Idempotent via le drapeau
+# `stock_mouvemente` posé par l'appelant dans la MÊME transaction atomique.
+
+def consommer_et_produire_assemblage(*, company, kit, composants, produit_compose,
+                                     quantite_produite, reference, user,
+                                     emplacement_source=None,
+                                     emplacement_destination=None,
+                                     per_unit=True):
+    """Consomme les composants d'un kit et produit le composite (ENTREE, qté
+    ``quantite_produite``). ``composants`` est un itérable d'objets avec
+    ``.produit`` et ``.quantite``. Si ``per_unit`` (défaut, la BOM du kit),
+    ``.quantite`` est PAR UNITÉ et la sortie = ``.quantite`` × ``quantite_produite``
+    (tolérance sur/sous-production XMFG1). Si ``per_unit=False`` (lignes d'ordre
+    personnalisées — XMFG6), ``.quantite`` est déjà le TOTAL à consommer, utilisé
+    tel quel. Ventile sur les emplacements fournis (StockEmplacement, N15) en
+    plus du total canonique. Lève ValueError si ``produit_compose`` est None
+    (kit non finalisable) — l'appelant refuse `terminer` dans ce cas."""
+    from django.db import transaction
+    from .models import Produit, StockEmplacement
+
+    if produit_compose is None:
+        raise ValueError(
+            "Le kit n'a pas de produit composite (produit_compose) : "
+            "impossible de clôturer l'ordre.")
+
+    with transaction.atomic():
+        mouvements = []
+        for ligne in composants:
+            comp_produit = ligne.produit
+            if comp_produit is None:
+                continue
+            qte_conso = ((ligne.quantite or 0) * quantite_produite if per_unit
+                         else (ligne.quantite or 0))
+            if qte_conso <= 0:
+                continue
+            p = Produit.objects.select_for_update().get(id=comp_produit.id)
+            avant = p.quantite_stock
+            apres = avant - qte_conso
+            mvt = record_stock_movement(
+                company=company, produit=p,
+                type_mouvement=mouvement_type_sortie(),
+                quantite=qte_conso, quantite_avant=avant,
+                quantite_apres=apres, reference=reference,
+                note=f'Assemblage {reference} — composant kit {kit.id}',
+                created_by=user)
+            mouvements.append(mvt)
+            if emplacement_source is not None and \
+                    not emplacement_source.is_principal:
+                se, _ = StockEmplacement.objects.select_for_update().get_or_create(
+                    produit=p, emplacement=emplacement_source,
+                    defaults={'company': company, 'quantite': 0})
+                se.quantite = max(se.quantite - qte_conso, 0)
+                se.save(update_fields=['quantite'])
+
+        composite = Produit.objects.select_for_update().get(id=produit_compose.id)
+        avant_c = composite.quantite_stock
+        apres_c = avant_c + quantite_produite
+        mvt_entree = record_stock_movement(
+            company=company, produit=composite,
+            type_mouvement=mouvement_type_entree(),
+            quantite=quantite_produite, quantite_avant=avant_c,
+            quantite_apres=apres_c, reference=reference,
+            note=f'Assemblage {reference} — composite kit {kit.id}',
+            created_by=user)
+        mouvements.append(mvt_entree)
+        if emplacement_destination is not None and \
+                not emplacement_destination.is_principal:
+            se, _ = StockEmplacement.objects.select_for_update().get_or_create(
+                produit=composite, emplacement=emplacement_destination,
+                defaults={'company': company, 'quantite': 0})
+            se.quantite += quantite_produite
+            se.save(update_fields=['quantite'])
+
+    return mouvements
+
+
+# ── XMFG12 — Démontage (unbuild) : composite → composants ────────────────────
+# Chemin INVERSE de XMFG1 : `installations.OrdreDemontage.terminer` appelle CE
+# service pour un composite de retour (annulation, kit démo cannibalisé) —
+# SORTIE du composite + ENTREE de chaque composant selon les quantités
+# RÉCUPÉRÉES (éditables ligne à ligne, jamais la BOM brute).
+
+def demonter_composite(*, company, kit, quantite_demontee, lignes_recuperation,
+                       produit_compose, reference, user,
+                       emplacement_source=None, emplacement_destination=None):
+    """Sort le composite (`quantite_demontee` unités) et restocke chaque
+    composant selon ``lignes_recuperation`` — itérable d'objets avec
+    ``.produit`` et ``.quantite_recuperee`` (déjà le TOTAL récupéré, PAS par
+    unité). Les composants cassés (récupéré < attendu) ne sont PAS restockés
+    ici — l'appelant les déclare en rebut (XMFG11) séparément. Lève ValueError
+    si ``produit_compose`` est None."""
+    from django.db import transaction
+    from .models import Produit, StockEmplacement
+
+    if produit_compose is None:
+        raise ValueError(
+            "Le kit n'a pas de produit composite (produit_compose) : "
+            "démontage impossible.")
+
+    with transaction.atomic():
+        mouvements = []
+        composite = Produit.objects.select_for_update().get(id=produit_compose.id)
+        avant_c = composite.quantite_stock
+        qte_sortie = min(quantite_demontee, avant_c) if avant_c > 0 else 0
+        apres_c = avant_c - qte_sortie
+        mvt_sortie = record_stock_movement(
+            company=company, produit=composite,
+            type_mouvement=mouvement_type_sortie(),
+            quantite=qte_sortie, quantite_avant=avant_c, quantite_apres=apres_c,
+            reference=reference,
+            note=f'Démontage {reference} — composite kit {kit.id}',
+            created_by=user)
+        mouvements.append(mvt_sortie)
+        if emplacement_source is not None and not emplacement_source.is_principal:
+            se, _ = StockEmplacement.objects.select_for_update().get_or_create(
+                produit=composite, emplacement=emplacement_source,
+                defaults={'company': company, 'quantite': 0})
+            se.quantite = max(se.quantite - qte_sortie, 0)
+            se.save(update_fields=['quantite'])
+
+        for ligne in lignes_recuperation:
+            comp_produit = ligne.produit
+            if comp_produit is None:
+                continue
+            qte_recup = ligne.quantite_recuperee or 0
+            if qte_recup <= 0:
+                continue
+            p = Produit.objects.select_for_update().get(id=comp_produit.id)
+            avant = p.quantite_stock
+            apres = avant + qte_recup
+            mvt = record_stock_movement(
+                company=company, produit=p,
+                type_mouvement=mouvement_type_entree(),
+                quantite=qte_recup, quantite_avant=avant, quantite_apres=apres,
+                reference=reference,
+                note=f'Démontage {reference} — composant récupéré kit {kit.id}',
+                created_by=user)
+            mouvements.append(mvt)
+            if emplacement_destination is not None and \
+                    not emplacement_destination.is_principal:
+                se, _ = StockEmplacement.objects.select_for_update().get_or_create(
+                    produit=p, emplacement=emplacement_destination,
+                    defaults={'company': company, 'quantite': 0})
+                se.quantite += qte_recup
+                se.save(update_fields=['quantite'])
+
+    return mouvements
+
+
+# ── XPUR1 — conformité fournisseur : warning BCF + gate paiement ───────────
+def fournisseur_conformite_manquante(fournisseur):
+    """XPUR1 — liste les documents de conformité OBLIGATOIRES manquants ou
+    expirés d'un fournisseur (liste de dicts ``{type_document, motif}``).
+    Vide = fournisseur en règle (ou sans document requis renseigné). Ne lève
+    jamais d'exception : appelé au fil de l'eau (warning + gate paiement)."""
+    problemes = []
+    docs = list(fournisseur.documents_conformite.filter(obligatoire=True))
+    for doc in docs:
+        if not doc.est_valide():
+            problemes.append({
+                'type_document': doc.type_document,
+                'type_document_display': doc.get_type_document_display(),
+                'motif': 'expiré' if doc.date_expiration else 'sans date',
+            })
+    return problemes
+
+
+def bcf_warning_conformite(fournisseur):
+    """XPUR1 — message WARNING (non bloquant) à afficher à la création d'un
+    BCF quand le fournisseur a un document de conformité manquant/expiré.
+    None si rien à signaler."""
+    problemes = fournisseur_conformite_manquante(fournisseur)
+    if not problemes:
+        return None
+    libelles = ', '.join(p['type_document_display'] for p in problemes)
+    return (f"Attention : {fournisseur.nom} a un ou plusieurs documents de "
+            f"conformité manquants/expirés ({libelles}).")
+
+
+def check_paiement_conformite_gate(company, fournisseur):
+    """XPUR1 — lève ValueError si le PARAMÈTRE société de blocage paiement
+    est actif ET que le fournisseur a un document de conformité obligatoire
+    manquant/expiré. No-op (comportement historique) si le paramètre est OFF
+    (défaut)."""
+    from .models import AchatsParametres
+    parametres = AchatsParametres.for_company(company)
+    if not parametres.bloquer_paiement_conformite_expiree:
+        return
+    problemes = fournisseur_conformite_manquante(fournisseur)
+    if problemes:
+        libelles = ', '.join(p['type_document_display'] for p in problemes)
+        raise ValueError(
+            f"Paiement bloqué : {fournisseur.nom} a un document de "
+            f"conformité manquant/expiré ({libelles}).")
+
+
+def notify_expiring_conformite_documents(company, jours=30):
+    """XPUR1 — notifie les responsables/admins des documents de conformité
+    fournisseur expirant sous ``jours`` jours (ou déjà expirés). Best-effort :
+    une erreur de notification n'interrompt jamais l'appelant. Renvoie le
+    nombre de documents notifiés."""
+    from datetime import timedelta
+    from django.utils import timezone
+    from .models import DocumentConformiteFournisseur
+    seuil = timezone.now().date() + timedelta(days=jours)
+    docs = DocumentConformiteFournisseur.objects.filter(
+        company=company, obligatoire=True,
+        date_expiration__isnull=False, date_expiration__lte=seuil,
+    ).select_related('fournisseur')
+    count = 0
+    for doc in docs:
+        try:
+            from apps.notifications.services import notify_many
+            from apps.notifications.models import EventType
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            recipients = User.objects.filter(
+                company=company, is_active=True,
+                role_legacy__in=['responsable', 'admin'])
+            titre = (f'Document fournisseur bientôt expiré '
+                     f'({doc.fournisseur.nom})')
+            corps = (f'{doc.get_type_document_display()} de '
+                     f'{doc.fournisseur.nom} expire le '
+                     f'{doc.date_expiration}.')
+            notify_many(
+                recipients, EventType.SUPPLIER_DOC_EXPIRING,
+                title=titre, body=corps, company=company)
+            count += 1
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning(
+                'notify_expiring_conformite_documents: échec pour doc %s',
+                doc.pk)
+    return count
+
+
+# ── XPUR2 — RAS-TVA sur paiements fournisseurs (LF 2024) ───────────────────
+
+def _fournisseur_a_arf_valide(fournisseur):
+    """XPUR2 — vrai si le fournisseur a une ARF (XPUR1) valide (< 6 mois,
+    non expirée). Aucune ARF renseignée = pas de couverture (retenue max)."""
+    from django.utils import timezone
+    from datetime import timedelta
+    from .models import DocumentConformiteFournisseur
+    seuil = timezone.now().date() - timedelta(days=183)  # ~6 mois
+    return fournisseur.documents_conformite.filter(
+        type_document=DocumentConformiteFournisseur.Type.ARF,
+    ).filter(
+        models.Q(date_expiration__isnull=True) |
+        models.Q(date_expiration__gte=timezone.now().date()),
+    ).filter(
+        models.Q(date_emission__isnull=True) |
+        models.Q(date_emission__gte=seuil),
+    ).exists()
+
+
+def taux_ras_tva(facture):
+    """XPUR2 — taux de RAS-TVA (0/75/100) applicable à une FactureFournisseur
+    selon son ``type_achat`` et la validité ARF (< 6 mois) du fournisseur.
+
+    - Biens & travaux : 100 % SANS ARF valide, 0 % AVEC.
+    - Prestations de services : 75 % AVEC ARF valide, 100 % SANS.
+    """
+    from .models import FactureFournisseur
+    a_arf = _fournisseur_a_arf_valide(facture.fournisseur)
+    if facture.type_achat == FactureFournisseur.TypeAchat.SERVICES:
+        return Decimal('75') if a_arf else Decimal('100')
+    # Biens & travaux.
+    return Decimal('0') if a_arf else Decimal('100')
+
+
+def compute_ras_tva(company, facture, montant_paiement):
+    """XPUR2 — calcule (taux, montant_ras) pour un paiement de
+    ``montant_paiement`` sur ``facture``, proportionnellement à la part de
+    TVA couverte par ce règlement. No-op (0, 0) si la société n'a pas activé
+    la RAS-TVA (``AchatsParametres.ras_tva_actif`` OFF par défaut) ou si la
+    facture ne porte aucune TVA."""
+    from .models import AchatsParametres
+    parametres = AchatsParametres.for_company(company)
+    if not parametres.ras_tva_actif:
+        return Decimal('0'), Decimal('0')
+    montant_tva = facture.montant_tva or Decimal('0')
+    montant_ttc = facture.montant_ttc or Decimal('0')
+    if montant_tva <= 0 or montant_ttc <= 0:
+        return Decimal('0'), Decimal('0')
+    taux = taux_ras_tva(facture)
+    if taux <= 0:
+        return Decimal('0'), Decimal('0')
+    # TVA proportionnelle à la part du TTC réglée par CE paiement.
+    montant_paiement = Decimal(montant_paiement or 0)
+    part_tva = (montant_tva * montant_paiement / montant_ttc).quantize(
+        Decimal('0.01'))
+    montant_ras = (part_tva * taux / Decimal('100')).quantize(Decimal('0.01'))
+    return taux, montant_ras
+
+
+def relevé_ras_tva(company, *, date_debut=None, date_fin=None):
+    """XPUR2 — relevé détaillé des RAS-TVA retenues sur la période, pour la
+    télédéclaration Simpl-TVA (pattern du bordereau FG139). Renvoie une liste
+    de dicts triés par date de paiement."""
+    from .models import PaiementFournisseur
+    qs = PaiementFournisseur.objects.filter(
+        company=company, montant_ras_tva__gt=0,
+    ).select_related('facture', 'facture__fournisseur')
+    if date_debut:
+        qs = qs.filter(date_paiement__gte=date_debut)
+    if date_fin:
+        qs = qs.filter(date_paiement__lte=date_fin)
+    rows = []
+    for p in qs.order_by('date_paiement'):
+        rows.append({
+            'date_paiement': p.date_paiement,
+            'fournisseur': p.facture.fournisseur.nom,
+            'facture': p.facture.reference,
+            'type_achat': p.facture.get_type_achat_display(),
+            'montant_paiement': p.montant,
+            'taux_ras': p.taux_ras,
+            'montant_ras_tva': p.montant_ras_tva,
+            'montant_net_paye': p.montant_net_paye,
+        })
+    return rows
+
+
+def export_ras_tva_xlsx(company, *, date_debut=None, date_fin=None):
+    """XPUR2 — export xlsx du relevé RAS-TVA (réutilise le helper commun)."""
+    from apps.records.xlsx import build_xlsx_response
+    rows = relevé_ras_tva(company, date_debut=date_debut, date_fin=date_fin)
+    headers = [
+        'Date paiement', 'Fournisseur', 'Facture', 'Type achat',
+        'Montant paiement', 'Taux RAS %', 'Montant RAS-TVA',
+        'Net payé',
+    ]
+    data_rows = [
+        [r['date_paiement'], r['fournisseur'], r['facture'],
+         r['type_achat'], r['montant_paiement'], r['taux_ras'],
+         r['montant_ras_tva'], r['montant_net_paye']]
+        for r in rows
+    ]
+    return build_xlsx_response(
+        'ras_tva_fournisseurs.xlsx', headers, data_rows,
+        sheet_title='RAS-TVA')
+
+
+# ── XPUR3 — Multi-devises sur les achats ────────────────────────────────────
+
+def contre_valeur_mad(montant_devise, taux_change):
+    """XPUR3 — convertit un montant en devise vers sa contre-valeur MAD au
+    taux fourni (saisi à la date du document, aucun appel externe). Renvoie
+    Decimal('0') si l'un des deux est absent."""
+    montant = _dec(montant_devise)
+    taux = _dec(taux_change)
+    if montant is None or taux is None:
+        return Decimal('0')
+    return (montant * taux).quantize(Decimal('0.01'))
+
+
+def apply_devise_ligne_bcf(ligne_data, devise, taux_change):
+    """XPUR3 — si la ligne porte un ``prix_achat_unitaire_devise``, dérive et
+    ÉCRASE ``prix_achat_unitaire`` (MAD) = devise × taux. Document en MAD
+    (devise MAD / champ non renseigné) : ``prix_achat_unitaire`` reste tel
+    quel, saisi directement en MAD (comportement historique). Modifie
+    ``ligne_data`` EN PLACE et le renvoie (pratique dans un serializer)."""
+    from .models import DeviseAchat
+    prix_devise = ligne_data.get('prix_achat_unitaire_devise')
+    if prix_devise is not None and devise and devise != DeviseAchat.MAD:
+        ligne_data['prix_achat_unitaire'] = contre_valeur_mad(
+            prix_devise, taux_change)
+    return ligne_data
+
+
+def apply_devise_facture(montant_ttc_devise, devise, taux_change):
+    """XPUR3 — contre-valeur MAD du TTC facture depuis son montant en
+    devise (None si le document est en MAD — comportement historique)."""
+    from .models import DeviseAchat
+    if montant_ttc_devise is None or not devise or devise == DeviseAchat.MAD:
+        return None
+    return contre_valeur_mad(montant_ttc_devise, taux_change)
+
+
+# ── XPUR4 — statut fournisseur : gate commande / paiement ──────────────────
+
+def check_fournisseur_statut_commande(fournisseur):
+    """XPUR4 — lève ValueError si le fournisseur est bloqué pour les
+    COMMANDES (bloque_commandes ou bloque_total). No-op pour 'actif' et
+    'bloque_paiements' (comportement historique préservé)."""
+    from .models import Fournisseur
+    if fournisseur.statut in (
+        Fournisseur.Statut.BLOQUE_COMMANDES, Fournisseur.Statut.BLOQUE_TOTAL,
+    ):
+        raise ValueError(
+            f"Impossible de créer un bon de commande : {fournisseur.nom} est "
+            f"{fournisseur.get_statut_display().lower()}"
+            f"{' (' + fournisseur.motif_blocage + ')' if fournisseur.motif_blocage else ''}.")
+
+
+def check_fournisseur_statut_paiement(fournisseur):
+    """XPUR4 — lève ValueError si le fournisseur est bloqué pour les
+    PAIEMENTS (bloque_paiements ou bloque_total). No-op pour 'actif' et
+    'bloque_commandes' (comportement historique préservé)."""
+    from .models import Fournisseur
+    if fournisseur.statut in (
+        Fournisseur.Statut.BLOQUE_PAIEMENTS, Fournisseur.Statut.BLOQUE_TOTAL,
+    ):
+        raise ValueError(
+            f"Impossible d'enregistrer un paiement : {fournisseur.nom} est "
+            f"{fournisseur.get_statut_display().lower()}"
+            f"{' (' + fournisseur.motif_blocage + ')' if fournisseur.motif_blocage else ''}.")
+
+
+# ── XPUR5 — fiche fournisseur enrichie : validation ICE ────────────────────
+
+def validate_ice_format(ice):
+    """XPUR5 — vrai si ``ice`` est un ICE marocain bien formé (15 chiffres).
+    Chaîne vide/None = pas d'ICE saisi (pas une erreur de format)."""
+    if not ice:
+        return True
+    return bool(ice.isdigit() and len(ice) == 15)
+
+
+def find_duplicate_ice(company, ice, *, exclude_id=None):
+    """XPUR5 — renvoie le premier Fournisseur de la société qui porte déjà
+    ce même ICE (hors ``exclude_id`` — mise à jour d'un fournisseur
+    existant), ou None. Détection non bloquante (warning)."""
+    from .models import Fournisseur
+    if not ice:
+        return None
+    qs = Fournisseur.objects.filter(company=company, ice=ice)
+    if exclude_id is not None:
+        qs = qs.exclude(pk=exclude_id)
+    return qs.first()
+
+
+# ── XPUR6 — conditions de paiement fournisseur & échéancier multi-tranches ──
+
+def derive_date_echeance(fournisseur, date_facture):
+    """XPUR6 — dérive la date d'échéance depuis les conditions de paiement du
+    fournisseur (délai_paiement_jours + fin_de_mois). Renvoie None quand le
+    fournisseur n'a AUCUN délai configuré (délai=0) — comportement
+    historique : la date d'échéance reste saisie à la main."""
+    if not date_facture or not fournisseur or not fournisseur.delai_paiement_jours:
+        return None
+    from datetime import timedelta
+    import calendar
+    echeance = date_facture + timedelta(days=fournisseur.delai_paiement_jours)
+    if fournisseur.fin_de_mois:
+        dernier_jour = calendar.monthrange(echeance.year, echeance.month)[1]
+        echeance = echeance.replace(day=dernier_jour)
+    return echeance
+
+
+def escompte_applicable(fournisseur, date_facture, date_paiement):
+    """XPUR6 — vrai si un paiement à ``date_paiement`` d'une facture datée
+    ``date_facture`` tombe dans la fenêtre d'escompte du fournisseur
+    (paiement anticipé type 2/10 net 30). Faux si le fournisseur n'a pas
+    d'escompte configuré (comportement historique)."""
+    if not fournisseur or not fournisseur.escompte_pct or not fournisseur.escompte_jours:
+        return False
+    if not date_facture or not date_paiement:
+        return False
+    from datetime import timedelta
+    return date_paiement <= date_facture + timedelta(
+        days=fournisseur.escompte_jours)
+
+
+def creer_echeancier_facture_fournisseur(company, facture, tranches):
+    """XPUR6 — crée l'échéancier multi-tranches d'une facture fournisseur.
+
+    ``tranches`` : liste de dicts ``{pourcentage?, montant?, date_echeance}``.
+    Si ``montant`` est absent et ``pourcentage`` fourni, le montant est
+    dérivé du TTC de la facture. Renvoie la liste des ``EcheanceFactureFournisseur``
+    créées. N'écrase jamais un échéancier existant (les tranches précédentes
+    doivent être supprimées explicitement avant un nouvel appel)."""
+    from .models import EcheanceFactureFournisseur
+    created = []
+    for t in tranches:
+        montant = t.get('montant')
+        if montant is None and t.get('pourcentage') is not None:
+            montant = (facture.montant_ttc or Decimal('0')) * Decimal(
+                str(t['pourcentage'])) / Decimal('100')
+        created.append(EcheanceFactureFournisseur.objects.create(
+            company=company, facture=facture,
+            pourcentage=t.get('pourcentage'),
+            montant=montant or Decimal('0'),
+            date_echeance=t['date_echeance']))
+    return created
+
+
+# ── XPUR7 — dates de livraison prévues, accusé fournisseur & OTD réel ──────
+
+def compute_date_livraison_prevue(company, fournisseur, date_commande,
+                                  lignes_data):
+    """XPUR7 — pré-calcule ``date_livraison_prevue`` = date_commande + le
+    plus grand ``delai_livraison_jours`` connu parmi les produits de la
+    commande (le pire cas — la commande n'est complète qu'une fois tout
+    arrivé). None si aucun délai connu OU pas de date de commande
+    (comportement historique : reste éditable à la main)."""
+    from .models import PrixFournisseur
+    if not date_commande or not fournisseur or not lignes_data:
+        return None
+    produit_ids = [
+        ligne.get('produit').id if hasattr(ligne.get('produit'), 'id')
+        else ligne.get('produit')
+        for ligne in lignes_data if ligne.get('produit')
+    ]
+    if not produit_ids:
+        return None
+    delais = PrixFournisseur.objects.filter(
+        fournisseur=fournisseur, produit_id__in=produit_ids,
+        delai_livraison_jours__isnull=False,
+    ).values_list('delai_livraison_jours', flat=True)
+    delais = [d for d in delais if d is not None]
+    if not delais:
+        return None
+    from datetime import timedelta
+    return date_commande + timedelta(days=max(delais))
+
+
+def bcf_en_retard(bon_commande, *, a_la_date=None):
+    """XPUR7 — vrai si un BCF ENVOYE est en retard : la date prévue/confirmée
+    est dépassée SANS réception complète. Jamais vrai pour un BROUILLON/
+    ANNULE/RECU (comportement historique préservé)."""
+    from django.utils import timezone
+    from .models import BonCommandeFournisseur
+    if bon_commande.statut != BonCommandeFournisseur.Statut.ENVOYE:
+        return False
+    ref_date = (bon_commande.date_confirmee_fournisseur
+                or bon_commande.date_livraison_prevue)
+    if not ref_date:
+        return False
+    today = a_la_date or timezone.now().date()
+    return today > ref_date and not bon_commande.est_entierement_recu
+
+
+def bcf_en_retard_list(company, *, a_la_date=None):
+    """XPUR7 — liste des BCF ENVOYE en retard de la société (filtrable liste
+    « BCF en retard »). LECTURE SEULE."""
+    from .models import BonCommandeFournisseur
+    qs = BonCommandeFournisseur.objects.filter(
+        company=company,
+        statut=BonCommandeFournisseur.Statut.ENVOYE,
+    ).select_related('fournisseur').prefetch_related('lignes')
+    return [bc for bc in qs if bcf_en_retard(bc, a_la_date=a_la_date)]
+
+
+def notify_bcf_en_retard(company):
+    """XPUR7 — notifie les responsables/admins des BCF ENVOYE en retard.
+    Best-effort : une erreur de notification n'interrompt jamais l'appelant.
+    Renvoie le nombre de BCF notifiés."""
+    en_retard = bcf_en_retard_list(company)
+    count = 0
+    for bc in en_retard:
+        try:
+            from apps.notifications.services import notify_many
+            from apps.notifications.models import EventType
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            recipients = User.objects.filter(
+                company=company, is_active=True,
+                role_legacy__in=['responsable', 'admin'])
+            notify_many(
+                recipients, EventType.BCF_LATE,
+                title=f'BCF en retard ({bc.reference})',
+                body=(f'{bc.reference} chez {bc.fournisseur.nom} est en '
+                      f'retard de livraison.'),
+                company=company)
+            count += 1
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning('notify_bcf_en_retard: échec pour BCF %s', bc.pk)
+    return count
+
+
+def otd_stats(company, fournisseur):
+    """XPUR7 — OTD (On-Time Delivery) promis-vs-reçu pour un fournisseur :
+    écart moyen en jours (positif = en retard) + % de BCF à l'heure. Compare
+    la date CONFIRMÉE (ou prévue si pas de confirmation) à la date de la
+    première réception CONFIRMÉE du BCF. INTERNE, LECTURE SEULE."""
+    from .models import BonCommandeFournisseur
+    bons = (BonCommandeFournisseur.objects
+            .filter(company=company, fournisseur=fournisseur)
+            .exclude(statut=BonCommandeFournisseur.Statut.ANNULE)
+            .prefetch_related('receptions'))
+    ecarts = []
+    for bc in bons:
+        ref_date = bc.date_confirmee_fournisseur or bc.date_livraison_prevue
+        if not ref_date:
+            continue
+        premiere_reception = None
+        for rec in bc.receptions.filter(statut='confirme').order_by(
+                'date_reception'):
+            if rec.date_reception:
+                premiere_reception = rec.date_reception
+                break
+        if premiere_reception is None:
+            continue
+        ecarts.append((premiere_reception - ref_date).days)
+    if not ecarts:
+        return {'otd_ecart_moyen_jours': None, 'otd_a_lheure_pct': None}
+    a_lheure = sum(1 for e in ecarts if e <= 0)
+    return {
+        'otd_ecart_moyen_jours': round(sum(ecarts) / len(ecarts), 1),
+        'otd_a_lheure_pct': round(a_lheure / len(ecarts) * 100, 1),
+    }
+
+
+# ── XPUR8 — Acomptes / avances fournisseur sur BCF ──────────────────────────
+
+def imputer_acomptes_bcf(bon_commande):
+    """XPUR8 — impute les acomptes NON CONSOMMÉS du BCF sur sa PREMIÈRE
+    ``FactureFournisseur`` (par date de création). Idempotent : un acompte
+    déjà imputé (``facture_imputee`` déjà posé) n'est jamais réimputé,
+    même si la fonction est rappelée. No-op si le BCF n'a pas encore de
+    facture. Renvoie la liste des acomptes imputés lors de CET appel."""
+    from .models import AcompteFournisseur
+    facture = (bon_commande.factures_fournisseur
+               .order_by('date_creation').first())
+    if facture is None:
+        return []
+    acomptes = AcompteFournisseur.objects.filter(
+        bon_commande=bon_commande, facture_imputee__isnull=True)
+    imputed = []
+    for acompte in acomptes:
+        acompte.facture_imputee = facture
+        acompte.montant_consomme = acompte.montant
+        acompte.save(update_fields=['facture_imputee', 'montant_consomme'])
+        imputed.append(acompte)
+    return imputed
+
+
+# ── XPUR9 — Avoir fournisseur (note de crédit AP) ───────────────────────────
+
+def _prix_ligne_retour(bon_commande, produit):
+    """XPUR9 — prix d'achat unitaire HT pour valoriser une ligne de retour :
+    priorité à la ligne du BCF d'origine (prix EXACT payé), repli sur
+    `cheapest_prix_fournisseur`, sinon 0."""
+    if bon_commande is not None:
+        ligne_bcf = bon_commande.lignes.filter(produit=produit).first()
+        if ligne_bcf is not None:
+            return ligne_bcf.prix_achat_unitaire or Decimal('0')
+    prix = cheapest_prix_fournisseur(produit)
+    return prix.prix_achat if prix is not None else Decimal('0')
+
+
+def preparer_avoir_depuis_retour(retour):
+    """XPUR9 — construit les montants HT/TVA/TTC pré-remplis d'un avoir
+    depuis un ``RetourFournisseur`` VALIDÉ (une ligne sans prix connu compte
+    pour 0 — jamais d'erreur bloquante). TVA 20 % (même taux par défaut que
+    ``facturer_reception``). Renvoie un dict ``{montant_ht, montant_tva,
+    montant_ttc}`` — NE CRÉE RIEN (pur calcul)."""
+    montant_ht = Decimal('0')
+    for ligne in retour.lignes.select_related('produit'):
+        pu = _prix_ligne_retour(retour.bon_commande, ligne.produit)
+        montant_ht += Decimal(str(ligne.quantite)) * pu
+    taux_tva = Decimal('20')
+    montant_tva = (montant_ht * taux_tva / Decimal('100')).quantize(
+        Decimal('0.01'))
+    return {
+        'montant_ht': montant_ht,
+        'montant_tva': montant_tva,
+        'montant_ttc': montant_ht + montant_tva,
+    }
+
+
+def creer_avoir_depuis_retour(company, retour, user=None):
+    """XPUR9 — génère un ``AvoirFournisseur`` BROUILLON pré-rempli en un
+    clic depuis un ``RetourFournisseur`` VALIDÉ. Lève ValueError si le
+    retour n'est pas validé ou a déjà un avoir. Référencé via
+    ``create_with_reference`` (préfixe AVF)."""
+    from apps.ventes.utils.references import create_with_reference
+    from .models import AvoirFournisseur, RetourFournisseur
+
+    if retour.statut != RetourFournisseur.Statut.VALIDE:
+        raise ValueError(
+            'Seul un retour validé peut générer un avoir (« attente '
+            "d'avoir » tant que non reçu).")
+    if AvoirFournisseur.objects.filter(retour=retour).exists():
+        raise ValueError('Ce retour a déjà un avoir associé.')
+
+    montants = preparer_avoir_depuis_retour(retour)
+    avoir = AvoirFournisseur(
+        company=company, fournisseur=retour.fournisseur,
+        facture_origine=None, retour=retour,
+        montant_ht=montants['montant_ht'], montant_tva=montants['montant_tva'],
+        montant_ttc=montants['montant_ttc'],
+        statut=AvoirFournisseur.Statut.BROUILLON, created_by=user)
+
+    def _save(ref):
+        avoir.reference = ref
+        avoir.save()
+        return avoir
+
+    return create_with_reference(AvoirFournisseur, 'AVF', company, _save)
+
+
+def imputer_avoir_fournisseur(avoir, facture, montant=None, *, user=None):
+    """XPUR9 — impute un ``AvoirFournisseur`` (VALIDÉ) sur une
+    ``FactureFournisseur`` du MÊME fournisseur ; réduit ``solde_du`` (jamais
+    sous zéro — plafonné à ``min(montant demandé, disponible avoir, solde
+    facture)``). Crée une ``ImputationAvoirFournisseur``. Lève ValueError si
+    fournisseurs différents, avoir non validé, ou rien à imputer."""
+    from .models import AvoirFournisseur, ImputationAvoirFournisseur
+
+    if avoir.fournisseur_id != facture.fournisseur_id:
+        raise ValueError(
+            "L'avoir et la facture doivent appartenir au même fournisseur.")
+    if avoir.statut not in (
+            AvoirFournisseur.Statut.VALIDE, AvoirFournisseur.Statut.IMPUTE):
+        raise ValueError('Seul un avoir validé peut être imputé.')
+
+    disponible = avoir.montant_disponible
+    solde_facture = facture.solde_du
+    plafond = min(disponible, solde_facture)
+    montant_impute = Decimal(str(montant)) if montant is not None else plafond
+    montant_impute = min(montant_impute, plafond)
+    if montant_impute <= 0:
+        raise ValueError("Rien à imputer (avoir épuisé ou facture soldée).")
+
+    imputation = ImputationAvoirFournisseur.objects.create(
+        company=avoir.company, avoir=avoir, facture=facture,
+        montant=montant_impute)
+    avoir.montant_impute = (avoir.montant_impute or Decimal('0')) + montant_impute
+    avoir.statut = (AvoirFournisseur.Statut.IMPUTE
+                    if avoir.montant_disponible <= 0
+                    else AvoirFournisseur.Statut.VALIDE)
+    avoir.save(update_fields=['montant_impute', 'statut'])
+    return imputation
+
+
+# ── XPUR10 — tolérances 3 voies & file d'exceptions ─────────────────────────
+
+def evaluate_facture_exception(company, facture):
+    """XPUR10 — compare l'écart du rapprochement 3 voies (FG131, lu via
+    ``apps.compta.selectors`` — jamais d'import de modèles compta) du BCF
+    d'origine de ``facture`` aux tolérances par défaut de la société
+    (``AchatsParametres.tolerance_prix_pct``/``tolerance_prix_absolu_mad``).
+
+    Hors tolérance → statut_controle=exception + motif_ecart(persistés).
+    Dans la tolérance (ou pas de BCF/rapprochement encore évalué) → no-op,
+    la facture reste 'normale' (comportement historique). Renvoie
+    ``(en_exception: bool, ecart_pct: Decimal|None)``."""
+    from .models import AchatsParametres, FactureFournisseur
+    if not facture.bon_commande_id:
+        return False, None
+    try:
+        from apps.compta.selectors import rapprochement_ecart_pct
+    except Exception:  # pragma: no cover - défensif (compta indisponible)
+        return False, None
+    ecart_pct = rapprochement_ecart_pct(company, facture.bon_commande_id)
+    if ecart_pct is None:
+        return False, None
+    parametres = AchatsParametres.for_company(company)
+    tolerance = parametres.tolerance_prix_pct or Decimal('0')
+    hors_tolerance = ecart_pct > tolerance
+    if hors_tolerance:
+        facture.statut_controle = FactureFournisseur.StatutControle.EXCEPTION
+        facture.motif_ecart = (
+            f'Écart de {ecart_pct:.2f} % (tolérance société : '
+            f'{tolerance:.2f} %) sur le rapprochement 3 voies.')
+        facture.save(update_fields=['statut_controle', 'motif_ecart'])
+    return hors_tolerance, ecart_pct
+
+
+def check_facture_exception_gate(company, facture):
+    """XPUR10 — (ré)évalue l'écart de rapprochement 3 voies de la facture
+    contre les tolérances société PUIS lève ValueError si elle est (ou
+    devient) EXCEPTION non résolue — bloque la CRÉATION d'un
+    PaiementFournisseur. No-op si la facture reste 'normale' (pas de BCF,
+    pas encore de rapprochement évalué, ou dans la tolérance) ou a déjà été
+    résolue (statut 'resolue' n'est jamais re-basculé en exception ici —
+    la résolution est un acte explicite du responsable)."""
+    from .models import FactureFournisseur
+    if facture.statut_controle == FactureFournisseur.StatutControle.RESOLUE:
+        return
+    evaluate_facture_exception(company, facture)
+    if facture.statut_controle == FactureFournisseur.StatutControle.EXCEPTION:
+        raise ValueError(
+            f'Paiement bloqué : facture {facture.reference} en exception '
+            f'de rapprochement 3 voies '
+            f'({facture.motif_ecart or "écart hors tolérance"}). '
+            'Résolution requise avant paiement.')
+
+
+def resoudre_exception_facture(facture, *, user, commentaire=''):
+    """XPUR10 — résout (Responsable/Admin) une facture en exception : passe
+    `statut_controle` à 'resolue', trace l'acteur/l'horodatage, débloque le
+    paiement. Lève ValueError si la facture n'est pas en exception."""
+    from django.utils import timezone
+    from .models import FactureFournisseur
+    if facture.statut_controle != FactureFournisseur.StatutControle.EXCEPTION:
+        raise ValueError("Cette facture n'est pas en exception.")
+    facture.statut_controle = FactureFournisseur.StatutControle.RESOLUE
+    facture.resolu_par = user
+    facture.resolu_le = timezone.now()
+    if commentaire:
+        facture.motif_ecart = (
+            (facture.motif_ecart or '') + f'\nRésolution : {commentaire}')
+    facture.save(update_fields=[
+        'statut_controle', 'resolu_par', 'resolu_le', 'motif_ecart'])
+    return facture
+
+
+def factures_en_exception(company):
+    """XPUR10 — file « Factures en exception » (statut_controle=exception),
+    triée de la plus récente à la plus ancienne. LECTURE SEULE."""
+    from .models import FactureFournisseur
+    return list(FactureFournisseur.objects.filter(
+        company=company,
+        statut_controle=FactureFournisseur.StatutControle.EXCEPTION,
+    ).select_related('fournisseur', 'bon_commande').order_by('-date_creation'))

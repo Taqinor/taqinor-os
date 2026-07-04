@@ -5,15 +5,18 @@ from .models import (
     KbArticleAcl,
     KbArticleLien,
     KbArticleVersion,
+    KbFavori,
     KbLecture,
+    KbLectureObligatoire,
+    KbRechercheVide,
 )
 
 
 @admin.register(KbArticle)
 class KbArticleAdmin(admin.ModelAdmin):
-    list_display = ('id', 'titre', 'categorie', 'statut', 'auteur', 'company',
-                    'date_modification')
-    list_filter = ('statut', 'categorie')
+    list_display = ('id', 'titre', 'categorie', 'statut', 'visibilite',
+                    'parent', 'auteur', 'company', 'date_modification')
+    list_filter = ('statut', 'categorie', 'visibilite')
     search_fields = ('titre', 'corps', 'categorie', 'tags')
 
 
@@ -35,8 +38,8 @@ class KbArticleLienAdmin(admin.ModelAdmin):
 
 @admin.register(KbArticleAcl)
 class KbArticleAclAdmin(admin.ModelAdmin):
-    list_display = ('id', 'article', 'role', 'niveau', 'company',
-                    'date_creation')
+    list_display = ('id', 'article', 'role', 'utilisateur', 'niveau',
+                    'company', 'date_creation')
     list_filter = ('role', 'niveau', 'company')
 
 
@@ -44,3 +47,23 @@ class KbArticleAclAdmin(admin.ModelAdmin):
 class KbLectureAdmin(admin.ModelAdmin):
     list_display = ('id', 'article', 'utilisateur', 'company', 'lu_le')
     list_filter = ('company',)
+
+
+@admin.register(KbLectureObligatoire)
+class KbLectureObligatoireAdmin(admin.ModelAdmin):
+    list_display = ('id', 'article', 'utilisateur', 'role_cible', 'echeance',
+                    'company', 'date_creation')
+    list_filter = ('role_cible', 'company')
+
+
+@admin.register(KbFavori)
+class KbFavoriAdmin(admin.ModelAdmin):
+    list_display = ('id', 'article', 'utilisateur', 'company', 'date_creation')
+    list_filter = ('company',)
+
+
+@admin.register(KbRechercheVide)
+class KbRechercheVideAdmin(admin.ModelAdmin):
+    list_display = ('id', 'terme', 'utilisateur', 'company', 'date_creation')
+    list_filter = ('company',)
+    search_fields = ('terme',)

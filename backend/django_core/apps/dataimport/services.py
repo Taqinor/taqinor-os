@@ -53,6 +53,17 @@ FIELD_MAPS = {
         'chantier': 'installation_ref', 'installation': 'installation_ref',
         'date_pose': 'date_pose',
     },
+    # XFLT22 — Import initial du parc flotte. Écriture DÉLÉGUÉE à
+    # ``apps.flotte.services.creer_vehicule_import`` (jamais les models
+    # flotte directement, contrairement aux autres cibles ci-dessus —
+    # règle explicite du plan flotte).
+    'vehicules': {
+        'immatriculation': 'immatriculation', 'immat': 'immatriculation',
+        'marque': 'marque', 'modele': 'modele', 'modèle': 'modele',
+        'energie': 'energie', 'énergie': 'energie',
+        'kilometrage': 'kilometrage', 'km': 'kilometrage',
+        'cv': 'cv', 'puissance_fiscale': 'cv',
+    },
 }
 
 TARGETS = set(FIELD_MAPS)
@@ -306,6 +317,21 @@ def commit(file_bytes, filename, target, company, user):
                     company=company, produit=produit,
                     installation=installation, created_by=user, **f)
                 created += 1
+
+        # XFLT22 — Véhicules du parc flotte : écriture déléguée à
+        # ``apps.flotte.services`` (jamais les models flotte directement).
+        elif target == 'vehicules':
+            from apps.flotte.services import creer_vehicule_import
+            for i, row in enumerate(rows, 1):
+                f = _row_to_fields(row, mapped)
+                statut, message = creer_vehicule_import(company, f)
+                if statut == 'cree':
+                    created += 1
+                elif statut == 'doublon':
+                    skipped.append(
+                        {'ligne': i, 'raison': 'doublon (immatriculation existe)'})
+                else:
+                    skipped.append({'ligne': i, 'raison': message or 'erreur'})
 
     return {'ok': True, 'target': target, 'created': created,
             'skipped': skipped, 'total': len(rows)}

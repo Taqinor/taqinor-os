@@ -40,6 +40,17 @@ ALLOWED_TARGETS = {
     # de contrôle ITP, et pièces jointes d'une non-conformité (NCR).
     ('qhse', 'relevecontrole'),
     ('qhse', 'nonconformite'),
+    # XKB10 — pièces jointes/images d'un article de la base de connaissances
+    # (éditeur Markdown : insertion d'image dans le corps). XKB13 réutilise la
+    # MÊME entrée pour les commentaires génériques (records.Comment) sur les
+    # articles KB.
+    ('kb', 'kbarticle'),
+    # XGED15 — chatter documentaire : réutilise le chatter générique @mentions
+    # (FG7, `records.Comment`) sur un document GED au lieu d'un système de
+    # mentions parallèle. N'active QUE notes+@mentions ; le journal automatique
+    # des événements majeurs (nouvelle version, statut, partage, signature) vit
+    # à part dans `ged.DocumentActivity` (couche séparée, complète GED35).
+    ('ged', 'document'),
 }
 
 
@@ -186,6 +197,10 @@ class Comment(models.Model):
         null=True, blank=True, related_name='comments')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    # XKB13 — résolution de fil (générique, réutilisable par toute app cible ;
+    # introduit pour les commentaires d'article KB). Champ additif : un
+    # commentaire non résolu (défaut) se comporte comme aujourd'hui.
+    resolved = models.BooleanField(default=False, verbose_name='Résolu')
 
     class Meta:
         ordering = ['created_at', 'id']

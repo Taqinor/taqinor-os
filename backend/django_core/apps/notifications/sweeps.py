@@ -257,6 +257,125 @@ def _sweep_chantier_due(company):
         return 0
 
 
+# ── FACTURE_OVERDUE sweep (YEVNT3) ────────────────────────────────────────────
+
+def _already_notified_today(company, event_type, link):
+    """True si une notification `event_type` avec ce `link` a déjà été émise
+    AUJOURD'HUI pour cette société — idempotence stricte (une notif/jour),
+    plus stricte que les autres sweeps de ce fichier (qui tolèrent une
+    ré-émission par exécution)."""
+    try:
+        from .models import Notification
+        today = date.today()
+        return Notification.objects.filter(
+            company=company, event_type=event_type, link=link,
+            created_at__date=today,
+        ).exists()
+    except Exception:  # pragma: no cover - défensif
+        return False
+
+
+def _sweep_facture_overdue(company):
+    """Factures en retard (échéance dépassée, non payées) → notifie
+    l'auteur (`created_by`) de la facture, sinon les managers.
+
+    Idempotence stricte : une notification par facture par jour (vérifiée via
+    `_already_notified_today` sur le lien de la facture) — contrairement aux
+    autres sweeps de ce fichier, une facture en retard ne doit pas spammer à
+    chaque exécution du sweep si celui-ci tourne plusieurs fois par jour."""
+    try:
+        from apps.ventes.selectors import factures_echues
+        today = date.today()
+        qs = factures_echues(company, today=today)
+        count = 0
+        for facture in qs:
+            try:
+                link = f'/ventes/factures/{facture.pk}'
+                if _already_notified_today(
+                        company, EventType.FACTURE_OVERDUE, link):
+                    continue
+                client_nom = (
+                    getattr(facture.client, 'nom', '')
+                    or str(facture.client_id)
+                )
+                delta = (today - facture.date_echeance).days
+                title = 'Facture en retard'
+                body = (
+                    f"La facture « {facture.reference} » "
+                    f"(client : {client_nom}) est en retard de {delta} "
+                    f"jour(s) (échéance : {facture.date_echeance})."
+                )
+                _notify_user_or_managers(
+                    facture.created_by, company, EventType.FACTURE_OVERDUE,
+                    title, body, link)
+                count += 1
+            except Exception:  # pragma: no cover
+                logger.warning('sweeps: facture_overdue %s échouée',
+                               facture.pk, exc_info=True)
+        return count
+    except Exception:  # pragma: no cover
+        logger.warning('sweeps: facture_overdue société %s échouée',
+                       getattr(company, 'pk', None), exc_info=True)
+        return 0
+
+
+# ── Annonce sweep (XKB5) ──────────────────────────────────────────────────────
+
+def _sweep_annonces_due(company):
+    """Publie les annonces programmées dont l'heure est atteinte (XKB5).
+
+    Idempotent : `publish_annonce` no-op si déjà publiée ; `Annonce.is_due`
+    exclut déjà les annonces publiées/non-programmées."""
+    try:
+        from django.utils import timezone
+        from .models import Annonce
+        from .services import publish_annonce
+        now = timezone.now()
+        qs = Annonce.objects.filter(
+            company=company, publiee=False,
+            date_publication__isnull=False, date_publication__lte=now)
+        count = 0
+        for annonce in qs:
+            try:
+                publish_annonce(annonce, now=now)
+                count += 1
+            except Exception:  # pragma: no cover
+                logger.warning('sweeps: annonce %s échouée', annonce.pk,
+                               exc_info=True)
+        return count
+    except Exception:  # pragma: no cover
+        logger.warning('sweeps: annonces_due société %s échouée',
+                       getattr(company, 'pk', None), exc_info=True)
+        return 0
+
+
+# ── Relance de lecture obligatoire (XKB6) ──────────────────────────────────────
+
+def _sweep_annonce_reminders(company):
+    """Relance les non-lecteurs d'annonces à lecture obligatoire (XKB6)."""
+    try:
+        from .services import sweep_annonce_reminders
+        return sweep_annonce_reminders(company)
+    except Exception:  # pragma: no cover
+        logger.warning('sweeps: annonce_reminders société %s échouée',
+                       getattr(company, 'pk', None), exc_info=True)
+        return 0
+
+
+# ── Relance/escalade des approbations en attente (YEVNT9) ──────────────────────
+
+def _sweep_approval_reminders(company):
+    """Relance/escalade les approbations en attente au-delà des seuils
+    (YEVNT9), pour les deux moteurs (automation + compta)."""
+    try:
+        from .services import sweep_approval_reminders
+        return sweep_approval_reminders(company)
+    except Exception:  # pragma: no cover
+        logger.warning('sweeps: approval_reminders société %s échouée',
+                       getattr(company, 'pk', None), exc_info=True)
+        return 0
+
+
 # ── Tâche Celery Beat ─────────────────────────────────────────────────────────
 
 @shared_task(name='notifications.sweep_daily')
@@ -264,7 +383,10 @@ def sweep_daily():
     """Balayage quotidien des EventTypes « morts » (FG1).
 
     Pour chaque société active : garanties expirantes, maintenances dues,
-    tickets SAV en rupture de délai, chantiers à venir.
+    tickets SAV en rupture de délai, chantiers à venir, factures en retard
+    (YEVNT3), annonces programmées à publier (XKB5), relances de lecture
+    obligatoire en retard (XKB6), relances/escalades d'approbations en
+    attente (YEVNT9).
     Best-effort par société ; renvoie le total de notifications émises."""
     total = 0
     for company in _companies():
@@ -273,6 +395,10 @@ def sweep_daily():
             total += _sweep_maintenance_due(company)
             total += _sweep_sav_breaching(company)
             total += _sweep_chantier_due(company)
+            total += _sweep_facture_overdue(company)
+            total += _sweep_annonces_due(company)
+            total += _sweep_annonce_reminders(company)
+            total += _sweep_approval_reminders(company)
         except Exception:  # pragma: no cover
             logger.warning('sweeps: société %s échouée globalement',
                            getattr(company, 'pk', None), exc_info=True)
