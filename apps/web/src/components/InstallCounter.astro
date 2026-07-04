@@ -6,6 +6,10 @@
  * fabriqué ici ; si REALISATIONS devient vide un jour, ce composant ne rend
  * rien (même discipline que <Testimonials/> / <StarRating/>).
  *
+ * RULE B (2026-07-04) : le compteur brut d'installations (count) n'est plus
+ * un chiffre public mis en avant — seul le kWc installés reste affiché
+ * (partiellement supersède W280/W284).
+ *
  * Reduced-motion : le compte-up (0 → valeur finale) est gated
  * `prefers-reduced-motion: no-preference` — sous reduced-motion la valeur
  * finale s'affiche directement (voir script). Zéro CLS : la largeur finale
@@ -13,20 +17,13 @@
  */
 import { REALISATIONS } from '../lib/realisations';
 
-const count = REALISATIONS.length;
 const totalKwc = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
 const totalKwcLabel = totalKwc.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace('.', ',');
-const hasData = count > 0 && totalKwc > 0;
+const hasData = totalKwc > 0;
 ---
 
 {hasData && (
   <div class="install-counter" data-install-counter>
-    <div class="install-counter__item">
-      <p class="install-counter__value fig lum" data-tally data-final={String(count)} aria-hidden="true">{count}</p>
-      <p class="install-counter__label tech-label" data-i18n data-fr="Installations documentées" data-ar="تركيبات موثقة">
-        Installations documentées
-      </p>
-    </div>
     <div class="install-counter__item">
       <p class="install-counter__value fig lum" data-tally data-final={totalKwcLabel} aria-hidden="true">{totalKwcLabel}</p>
       <p class="install-counter__label tech-label" data-i18n data-fr="kWc installés" data-ar="كيلوواط ذروة مركّبة">
@@ -34,7 +31,7 @@ const hasData = count > 0 && totalKwc > 0;
       </p>
     </div>
     <p class="sr-only">
-      {count} installations documentées, {totalKwcLabel} kWc installés — chiffres issus des dossiers techniques publiés.
+      {totalKwcLabel} kWc installés — chiffre issu des dossiers techniques publiés.
     </p>
   </div>
 )}
