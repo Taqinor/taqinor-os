@@ -17,6 +17,7 @@ from .views import (
     EvaluationRisqueViewSet, ExerciceUrgenceViewSet, GrilleAuditViewSet,
     IncidentViewSet,
     IndicateurESGViewSet,
+    ia_suggestion_analyse, ia_suggestion_classification,
     InductionSecuriteViewSet, InspectionSecuriteViewSet,
     Iso9001ReadinessViewSet,
     ItemNotationViewSet, LienSignalementPublicViewSet,
@@ -107,4 +108,9 @@ urlpatterns = [
     # route authentifiée (même motif que ged.urls `public/<token>/`).
     path('public/signalement/<str:token>/', public_signalement,
          name='qhse-public-signalement'),
+    # XQHS25 — assistance IA QHSE (key-gated, authentifié — pas public).
+    path('ia/suggestion-classification/', ia_suggestion_classification,
+         name='qhse-ia-suggestion-classification'),
+    path('ia/suggestion-analyse/', ia_suggestion_analyse,
+         name='qhse-ia-suggestion-analyse'),
 ]

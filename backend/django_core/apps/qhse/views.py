@@ -111,6 +111,7 @@ from .services import (
     relancer_notifications_environnement,
     resolve_lien_signalement_public,
     statuer_controle_reception,
+    suggerer_analyse_capa, suggerer_classification_incident,
     transitionner_demande_changement,
     SIGNALEMENT_OK,
     verifier_efficacite_capa,
@@ -2643,3 +2644,29 @@ class DemandeChangementViewSet(_QhseBaseViewSet):
     def relancer(self, request):
         demandes = relancer_demandes_changement(request.user.company)
         return Response({'relances': len(demandes)})
+
+
+# ── XQHS25 — Assistance IA QHSE (classification + brouillon d'analyse) ────
+# Key-gated (GROQ_API_KEY) : sans clé, 200 + `disponible=false`, jamais
+# d'erreur ni de dépendance dure. TOUJOURS une proposition éditable, jamais
+# auto-appliquée (pattern propose→confirm du groupe AG). Authentifié
+# (Responsable/Admin) — CE N'EST PAS un endpoint public.
+
+@api_view(['POST'])
+@permission_classes([IsResponsableOrAdmin])
+def ia_suggestion_classification(request):
+    """XQHS25 — `POST {"description": str}` → suggestion de classification
+    (type/gravité/code défaut) d'un incident ou d'une NCR à partir d'une
+    description libre. Aucune donnée d'une autre société n'est envoyée au
+    modèle (le prompt ne contient que le texte fourni par CET utilisateur)."""
+    description = request.data.get('description') or ''
+    return Response(suggerer_classification_incident(description))
+
+
+@api_view(['POST'])
+@permission_classes([IsResponsableOrAdmin])
+def ia_suggestion_analyse(request):
+    """XQHS25 — `POST {"recit": str}` → brouillon 5-Pourquoi + plan CAPA
+    depuis un récit d'investigation libre."""
+    recit = request.data.get('recit') or ''
+    return Response(suggerer_analyse_capa(recit))

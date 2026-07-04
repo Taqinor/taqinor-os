@@ -2417,3 +2417,122 @@ def relancer_demandes_changement(company=None):
     for demande in demandes:
         _notifier_reversion_due(demande)
     return demandes
+
+
+# ── XQHS25 — Assistance IA QHSE (classification + brouillon d'analyse) ────
+# Key-gated (GROQ_API_KEY, déjà présente en .env pour d'autres features — pas
+# de nouvelle dépendance externe/paid ajoutée ici). Sans clé, les fonctions
+# renvoient ``disponible=False`` et une structure vide — jamais d'exception,
+# jamais de no-op cassant. TOUJOURS une proposition éditable, jamais appliquée
+# automatiquement (pattern propose→confirm du groupe AG).
+
+import json  # noqa: E402
+import os  # noqa: E402
+
+import requests  # noqa: E402
+
+_GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions'
+_GROQ_MODEL_DEFAUT = 'llama-3.1-8b-instant'
+
+
+def _groq_api_key():
+    return os.environ.get('GROQ_API_KEY', '') or ''
+
+
+def ia_disponible():
+    """True si une clé IA (GROQ) est configurée. Sert de garde côté
+    vue/front (masque les boutons IA quand False)."""
+    return bool(_groq_api_key())
+
+
+def _appeler_groq(system_prompt, user_prompt, *, timeout=15):
+    """Appel HTTP direct à l'API Groq (compatible OpenAI), sans SDK
+    supplémentaire (``requests`` est déjà une dépendance du projet). Renvoie
+    le contenu texte de la réponse, ou lève une exception (capturée par
+    l'appelant) en cas d'échec réseau/clé/timeout."""
+    resp = requests.post(
+        _GROQ_CHAT_URL,
+        headers={
+            'Authorization': f'Bearer {_groq_api_key()}',
+            'Content-Type': 'application/json',
+        },
+        json={
+            'model': _GROQ_MODEL_DEFAUT,
+            'messages': [
+                {'role': 'system', 'content': system_prompt},
+                {'role': 'user', 'content': user_prompt},
+            ],
+            'temperature': 0,
+            'response_format': {'type': 'json_object'},
+        },
+        timeout=timeout,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    return data['choices'][0]['message']['content']
+
+
+_CLASSIFICATION_SYSTEM_PROMPT = (
+    "Tu es un assistant QHSE pour un installateur solaire au Maroc. À partir "
+    "d'une description libre d'incident ou de non-conformité, propose une "
+    "classification structurée. Réponds UNIQUEMENT en JSON valide avec les "
+    "clés : \"type\" (accident|presqu_accident|incident|environnement pour un "
+    "incident, ou une famille de défaut pour une NCR), \"gravite\" "
+    "(mineure|majeure|critique), \"code_defaut_suggere\" (courte étiquette "
+    "libre), \"justification\" (une phrase). Ne donne AUCUNE autre donnée que "
+    "celle décrite dans le texte fourni — aucune donnée d'une autre société "
+    "n'est disponible et ne doit être inventée."
+)
+
+_ANALYSE_SYSTEM_PROMPT = (
+    "Tu es un assistant QHSE. À partir du récit d'investigation d'un "
+    "incident/non-conformité, propose un brouillon structuré. Réponds "
+    "UNIQUEMENT en JSON valide avec les clés : \"cinq_pourquoi\" (liste de 5 "
+    "chaînes, une par niveau, vide si non déterminable), \"cause_racine\" "
+    "(une phrase), \"plan_capa\" (liste d'objets {\"description\": str, "
+    "\"type_action\": \"corrective\"|\"preventive\"}). Toujours une "
+    "PROPOSITION à éditer — jamais présentée comme définitive."
+)
+
+
+def suggerer_classification_incident(description):
+    """XQHS25 — suggère type/gravité/code défaut à partir d'une description
+    libre (incident ou NCR). Key-gated : sans ``GROQ_API_KEY``, renvoie
+    ``{'disponible': False}`` (200, jamais d'exception ni de dépendance dure).
+
+    TOUJOURS une proposition éditable — l'appelant (vue) ne l'applique jamais
+    automatiquement à un enregistrement."""
+    if not ia_disponible():
+        return {'disponible': False}
+    if not (description or '').strip():
+        return {'disponible': True, 'suggestion': None,
+                'erreur': 'description vide'}
+
+    try:
+        contenu = _appeler_groq(
+            _CLASSIFICATION_SYSTEM_PROMPT, description.strip())
+        suggestion = json.loads(contenu)
+    except Exception as exc:  # pragma: no cover - dépend d'un service externe
+        return {'disponible': True, 'suggestion': None, 'erreur': str(exc)}
+
+    return {'disponible': True, 'suggestion': suggestion}
+
+
+def suggerer_analyse_capa(recit_investigation):
+    """XQHS25 — propose un brouillon 5-Pourquoi + plan CAPA depuis un récit
+    d'investigation. Key-gated comme ``suggerer_classification_incident`` —
+    dégrade proprement sans clé. TOUJOURS éditable, jamais auto-appliqué."""
+    if not ia_disponible():
+        return {'disponible': False}
+    if not (recit_investigation or '').strip():
+        return {'disponible': True, 'suggestion': None,
+                'erreur': 'récit vide'}
+
+    try:
+        contenu = _appeler_groq(
+            _ANALYSE_SYSTEM_PROMPT, recit_investigation.strip())
+        suggestion = json.loads(contenu)
+    except Exception as exc:  # pragma: no cover - dépend d'un service externe
+        return {'disponible': True, 'suggestion': None, 'erreur': str(exc)}
+
+    return {'disponible': True, 'suggestion': suggestion}
