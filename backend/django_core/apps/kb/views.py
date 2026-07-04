@@ -307,6 +307,20 @@ class KbArticleViewSet(_KbBaseViewSet):
         ser.save(company=self.request.user.company)
         return Response(ser.data)
 
+    @action(detail=True, methods=['post'], url_path='dupliquer')
+    def dupliquer(self, request, pk=None):
+        """XKB21 — Duplique cet article en une copie BROUILLON indépendante.
+
+        Attend ``{"avec_sous_articles": true|false}`` (défaut false). Avec
+        ``avec_sous_articles=true``, clone récursivement tout le sous-arbre
+        sous la nouvelle copie (jamais sous l'original)."""
+        article = self.get_object()
+        avec_sous_articles = bool(request.data.get('avec_sous_articles', False))
+        copie = services.dupliquer_article(
+            article, auteur=request.user, company=request.user.company,
+            avec_sous_articles=avec_sous_articles)
+        return Response(self.get_serializer(copie).data, status=201)
+
     @action(detail=True, methods=['post'], url_path='traduire')
     def traduire(self, request, pk=None):
         """XKB18 — Crée la traduction ``langue`` de cet article (brouillon,

@@ -280,6 +280,77 @@ def importer_markdown(contenu, *, company, auteur=None):
     )
 
 
+# ── XKB21 — Dupliquer un article (avec ou sans sous-articles) ──────────────
+
+def dupliquer_article(article, *, auteur, company, avec_sous_articles=False):
+    """XKB21 — Duplique ``article`` en une copie BROUILLON indépendante.
+
+    Copie le contenu COURANT (titre, corps/format, catégorie/tags,
+    visibilité) ; la copie est TOUJOURS ``brouillon`` (jamais publiée
+    automatiquement) et n'est PAS elle-même un gabarit ni verrouillée, même
+    si la source l'était. ``parent`` de la copie reste celui de la source
+    (même emplacement dans l'arbre) — un ``deplacer`` explicite la
+    replace ensuite si besoin.
+
+    ``avec_sous_articles=True`` clone RÉCURSIVEMENT tout le sous-arbre : les
+    enfants de la source sont dupliqués et rattachés à la NOUVELLE copie
+    (jamais à l'original), préservant la hiérarchie relative. Société et
+    auteur posés côté serveur (jamais du corps de requête) ; la copie est
+    toujours de la MÊME société que la source (jamais celle d'un appelant
+    d'une autre société, même si le scoping amont l'empêche déjà).
+
+    Renvoie l'article copie (racine de la duplication).
+    """
+    with transaction.atomic():
+        copie = KbArticle.objects.create(
+            company=company,
+            titre=f'{article.titre} (copie)',
+            corps=article.corps,
+            corps_format=article.corps_format,
+            categorie=article.categorie,
+            tags=article.tags,
+            statut=KbArticle.Statut.BROUILLON,
+            visibilite=article.visibilite,
+            auteur=auteur,
+            parent=article.parent,
+            ordre=article.ordre,
+            est_gabarit=False,
+            est_verrouille=False,
+        )
+        if avec_sous_articles:
+            for enfant in article.enfants.all().order_by('ordre', 'id'):
+                _dupliquer_sous_arbre(
+                    enfant, nouveau_parent=copie, auteur=auteur,
+                    company=company)
+    return copie
+
+
+def _dupliquer_sous_arbre(article, *, nouveau_parent, auteur, company):
+    """XKB21 — Clone récursivement UN sous-article sous ``nouveau_parent``.
+
+    Fonction interne de ``dupliquer_article`` (avec_sous_articles=True) : ne
+    duplique JAMAIS vers l'original — toujours sous la copie."""
+    copie = KbArticle.objects.create(
+        company=company,
+        titre=article.titre,
+        corps=article.corps,
+        corps_format=article.corps_format,
+        categorie=article.categorie,
+        tags=article.tags,
+        statut=KbArticle.Statut.BROUILLON,
+        visibilite=article.visibilite,
+        auteur=auteur,
+        parent=nouveau_parent,
+        ordre=article.ordre,
+        est_gabarit=False,
+        est_verrouille=False,
+    )
+    for enfant in article.enfants.all().order_by('ordre', 'id'):
+        _dupliquer_sous_arbre(
+            enfant, nouveau_parent=copie, auteur=auteur, company=company)
+    return copie
+
+
 # ── XKB18 — Articles multilingues FR/AR/EN ──────────────────────────────────
 
 def creer_traduction(article_source, *, langue, auteur=None, company):
