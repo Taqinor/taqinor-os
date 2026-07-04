@@ -22,7 +22,7 @@ from .models import (
     SavSlaSettings, MaintenanceChecklistTemplate, TicketChecklistItem,
     WarrantyClaim, KbArticle, AlarmeOnduleur,
     CauseDefaillance, RemedeDefaillance, EquipementDowntime,
-    ReleveCompteurEquipement,
+    ReleveCompteurEquipement, ReponseType,
 )
 from .services import add_months
 from .pdf import rapport_intervention_pdf
@@ -37,6 +37,7 @@ from .serializers import (
     CauseDefaillanceSerializer, RemedeDefaillanceSerializer,
     EquipementDowntimeSerializer,
     ReleveCompteurEquipementSerializer,
+    ReponseTypeSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -620,8 +621,40 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='noter',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def noter(self, request, pk=None):
+        """Ajoute une note au chatter du ticket.
+
+        XSAV23 — ``reponse_type_id`` (optionnel) insère en un clic le corps
+        d'une réponse type (macro), placeholders whitelistés rendus
+        (``{client}{reference}{technicien}{date}``) ; ``body`` explicite,
+        s'il est fourni, est utilisé TEL QUEL en plus/à la place (le body
+        gagne si les deux sont fournis — la macro reste une aide au
+        pré-remplissage, pas une contrainte). Si la macro porte un
+        ``nouveau_statut``, il est appliqué au ticket (idempotent : ignoré
+        si le ticket est déjà dans ce statut)."""
         ticket = self.get_object()
         body = (request.data.get('body') or '').strip()
+        reponse_type_id = request.data.get('reponse_type_id')
+
+        if not body and reponse_type_id:
+            try:
+                macro = ReponseType.objects.get(
+                    pk=reponse_type_id, company=ticket.company)
+            except (ReponseType.DoesNotExist, ValueError):
+                return Response(
+                    {'detail': 'Réponse type introuvable.'}, status=400)
+            body = macro.rendu(
+                client=str(ticket.client) if ticket.client_id else '',
+                reference=ticket.reference,
+                technicien=getattr(
+                    ticket.technicien_responsable, 'username', ''),
+                date=timezone.localdate().strftime('%d/%m/%Y'),
+            ).strip()
+            if macro.nouveau_statut and ticket.statut != macro.nouveau_statut:
+                old = Ticket.objects.get(pk=ticket.pk)
+                ticket.statut = macro.nouveau_statut
+                ticket.save(update_fields=['statut'])
+                activity.log_changes(old, ticket, request.user)
+
         if not body:
             return Response({'body': 'Note vide.'},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -1347,6 +1380,29 @@ class RemedeDefaillanceViewSet(TenantMixin, viewsets.ModelViewSet):
     responsable/admin (édité dans Paramètres)."""
     queryset = RemedeDefaillance.objects.all()
     serializer_class = RemedeDefaillanceSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.action == 'list' and self.request.query_params.get(
+                'archived') != '1':
+            qs = qs.filter(archived=False)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+
+# ── XSAV23 — Réponses types (macros) SAV ──────────────────────────────────────
+
+class ReponseTypeViewSet(TenantMixin, viewsets.ModelViewSet):
+    """CRUD des réponses types (macros) SAV, company-scoped (Paramètres)."""
+    queryset = ReponseType.objects.all()
+    serializer_class = ReponseTypeSerializer
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:

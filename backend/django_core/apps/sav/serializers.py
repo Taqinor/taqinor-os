@@ -8,7 +8,7 @@ from .models import (
     SavSlaSettings, MaintenanceChecklistTemplate, MaintenanceChecklistItem,
     TicketChecklistItem, WarrantyClaim, KbArticle, AlarmeOnduleur,
     TicketSatisfaction, CauseDefaillance, RemedeDefaillance,
-    EquipementDowntime, ReleveCompteurEquipement,
+    EquipementDowntime, ReleveCompteurEquipement, ReponseType,
 )
 
 # Fenêtre « garantie expirant bientôt » (jours).
@@ -420,3 +420,15 @@ class ReleveCompteurEquipementSerializer(serializers.ModelSerializer):
         model = ReleveCompteurEquipement
         fields = ['id', 'equipement', 'type', 'valeur', 'date', 'date_creation']
         read_only_fields = ['id', 'company', 'created_by', 'date_creation']
+
+
+# ── XSAV23 — Réponses types (macros) SAV ──────────────────────────────────────
+
+class ReponseTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ReponseType
+        fields = [
+            'id', 'titre', 'corps', 'nouveau_statut', 'archived',
+            'date_creation',
+        ]
+        read_only_fields = ['id', 'company', 'date_creation']

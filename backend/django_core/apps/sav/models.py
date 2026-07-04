@@ -1140,6 +1140,59 @@ class RemedeDefaillance(models.Model):
         return self.nom
 
 
+# ── XSAV23 — Réponses types (macros) SAV ──────────────────────────────────────
+
+class ReponseType(models.Model):
+    """XSAV23 — Réponse type (macro) SAV, insérable en un clic dans une note
+    de ticket (endpoint ``noter`` existant).
+
+    ``corps`` contient des placeholders WHITELIST (défense en profondeur —
+    jamais de f-string/format libre sur du texte utilisateur) :
+    ``{client}``, ``{reference}``, ``{technicien}``, ``{date}``. Tout autre
+    ``{...}`` non whitelisté est laissé TEL QUEL dans le rendu (jamais une
+    KeyError qui casserait l'insertion). ``nouveau_statut`` optionnel :
+    quand posé, l'insertion applique aussi ce changement de statut sur le
+    ticket (aucun changement si vide — comportement actuel inchangé)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='reponses_type')
+    titre = models.CharField(max_length=150)
+    corps = models.TextField()
+    nouveau_statut = models.CharField(
+        max_length=12, blank=True, default='',
+        help_text='Statut optionnel appliqué au ticket à l\'insertion.')
+    archived = models.BooleanField(default=False)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['titre']
+        unique_together = [('company', 'titre')]
+        verbose_name = 'Réponse type SAV'
+        verbose_name_plural = 'Réponses types SAV'
+
+    def __str__(self):
+        return self.titre
+
+    # Placeholders whitelistés — tout autre `{...}` reste tel quel.
+    PLACEHOLDERS = ('client', 'reference', 'technicien', 'date')
+
+    def rendu(self, *, client='', reference='', technicien='', date=''):
+        """Rend le corps avec les placeholders whitelistés substitués.
+
+        Utilise un remplacement littéral (``str.replace``), jamais
+        ``str.format``/f-string sur le corps utilisateur — un ``{quelque_chose}``
+        non whitelisté (ou même un ``{`` isolé) ne lève jamais d'exception,
+        contrairement à ``str.format`` qui exigerait TOUTES les clés."""
+        valeurs = {
+            'client': client or '', 'reference': reference or '',
+            'technicien': technicien or '', 'date': date or '',
+        }
+        out = self.corps
+        for cle in self.PLACEHOLDERS:
+            out = out.replace('{' + cle + '}', str(valeurs.get(cle, '')))
+        return out
+
+
 class PieceConsommee(models.Model):
     """N46 — pièce consommée sur un ticket SAV.
 
