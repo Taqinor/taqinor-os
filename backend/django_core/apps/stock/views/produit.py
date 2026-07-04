@@ -370,10 +370,31 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
         from .. import labels
 
         code = (request.query_params.get('code') or '').strip()
-        if not code or ':' not in code:
+        if not code:
             return Response(
                 {'detail': 'Code illisible.'},
                 status=status.HTTP_400_BAD_REQUEST)
+
+        # XSTK3 — un EAN/UPC/GTIN imprimé par le FABRICANT n'a pas de ':'
+        # (contrairement aux jetons internes `PRODUIT:<id>`). On matche
+        # d'abord les jetons internes (ci-dessous) puis, si le code ne suit
+        # pas ce format, `Produit.code_barres` — scopé société.
+        if ':' not in code:
+            produit = (Produit.objects
+                       .filter(company=request.user.company,
+                               code_barres=code)
+                       .first())
+            if produit is None:
+                return Response(
+                    {'detail': 'Produit introuvable.'},
+                    status=status.HTTP_404_NOT_FOUND)
+            return Response({
+                'type': 'produit',
+                'id': produit.id,
+                'label': produit.nom,
+                'sku': produit.sku or '',
+                'route': '/stock',
+            })
         prefix, _, raw_id = code.partition(':')
         prefix = prefix.strip().upper()
         raw_id = raw_id.strip()

@@ -566,10 +566,28 @@ class Produit(models.Model):
                   "la création automatique de l'équipement SAV garanti "
                   '(onduleur, batterie…).')
 
+    # ── XSTK3 — code-barres FABRICANT (EAN/UPC/GTIN) ────────────────────────
+    # Distinct du jeton interne `PRODUIT:<id>` (N20/labels.py, imprimé PAR
+    # nous) : celui-ci est imprimé PAR LE FABRICANT sur l'emballage. Nullable
+    # — un produit sans code-barres garde le comportement historique (scan
+    # uniquement via le jeton interne). Unicité PAR SOCIÉTÉ quand renseigné.
+    code_barres = models.CharField(
+        max_length=64, blank=True, null=True,
+        verbose_name='Code-barres fabricant (EAN/UPC/GTIN)',
+        help_text='Code-barres imprimé par le fabricant (EAN-13, UPC, '
+                  'GTIN…) — distinct du jeton interne de scan.')
+
     class Meta:
         verbose_name = "Produit"
         verbose_name_plural = "Produits"
         unique_together = [('company', 'sku')]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code_barres'],
+                condition=~models.Q(
+                    code_barres__isnull=True) & ~models.Q(code_barres=''),
+                name='stock_produit_company_code_barres_uniq'),
+        ]
 
     def __str__(self):
         return self.nom

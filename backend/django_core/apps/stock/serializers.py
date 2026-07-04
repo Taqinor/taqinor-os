@@ -198,6 +198,24 @@ class ProduitSerializer(serializers.ModelSerializer):
     # Transfert. Map calculée UNE fois par sérialisation (pas de N+1).
     stock_par_emplacement = serializers.SerializerMethodField()
 
+    def validate_code_barres(self, value):
+        # XSTK3 — doublon PROPRE (400) même société, plutôt qu'une
+        # IntegrityError 500 sur la contrainte DB. Vide/None reste toléré
+        # (comportement historique inchangé pour un produit sans code-barres).
+        value = (value or '').strip() or None
+        if value is None:
+            return value
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is not None:
+            qs = Produit.objects.filter(company=company, code_barres=value)
+            if self.instance is not None:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    'Ce code-barres est déjà utilisé par un autre produit.')
+        return value
+
     def validate(self, attrs):
         # Champs personnalisés (T11, L808) : valider/nettoyer le custom_data du
         # produit contre les définitions du module « produit », même chemin que
@@ -225,6 +243,8 @@ class ProduitSerializer(serializers.ModelSerializer):
         fields = [
             # Identité & catalogue
             'id', 'company', 'nom', 'description', 'sku', 'marque',
+            # XSTK3 — code-barres fabricant (EAN/UPC/GTIN)
+            'code_barres',
             # Prix (prix_achat gardé par permission, cf. get_fields)
             'prix_achat', 'prix_vente', 'tva',
             # Stock
