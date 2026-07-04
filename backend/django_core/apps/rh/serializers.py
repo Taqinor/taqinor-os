@@ -70,11 +70,13 @@ from .models import (
     PresenceChantier,
     PresquAccident,
     PrimeAttribuee,
+    QuizFormation,
     Remuneration,
     ReponsePulse,
     Sanction,
     SessionFormation,
     SoldeConge,
+    TentativeQuiz,
     TypeAbsence,
     TypePrime,
     VisiteMedicale,
@@ -1699,10 +1701,13 @@ class OuverturePosteSerializer(serializers.ModelSerializer):
 
     Le client saisit ``intitule``, un ``poste_ref`` (référentiel ``rh.Poste``
     de sa société) et un ``departement`` optionnels, ``description``,
-    ``nombre_postes``, ``statut``, ``date_ouverture`` / ``date_cible``. La liste
-    imbriquée ``candidatures`` est en LECTURE SEULE (gérée via l'endpoint
-    dédié). ``company`` est posée CÔTÉ SERVEUR (jamais lue du corps) ;
-    ``poste_ref`` et ``departement`` doivent appartenir à la même société.
+    ``ville`` (XRH33 — affichée sur la page carrières publique),
+    ``nombre_postes``, ``statut``, ``publiee`` (XRH33 — expose l'ouverture sur
+    la page carrières publique flag-gated), ``date_ouverture`` /
+    ``date_cible``. La liste imbriquée ``candidatures`` est en LECTURE SEULE
+    (gérée via l'endpoint dédié). ``company`` est posée CÔTÉ SERVEUR (jamais
+    lue du corps) ; ``poste_ref`` et ``departement`` doivent appartenir à la
+    même société.
     """
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
@@ -1716,7 +1721,7 @@ class OuverturePosteSerializer(serializers.ModelSerializer):
             'id', 'intitule',
             'poste_ref', 'poste_ref_intitule',
             'departement', 'departement_nom',
-            'description', 'nombre_postes',
+            'description', 'ville', 'publiee', 'nombre_postes',
             'statut', 'statut_display',
             'date_ouverture', 'date_cible',
             'candidatures',
@@ -2536,3 +2541,71 @@ class PrimeAttribueeSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'Le mois doit être compris entre 1 et 12.')
         return value
+
+
+class QuizFormationSerializer(serializers.ModelSerializer):
+    """XRH34 — quiz de formation (gestion RH). Inclut les bonnes réponses —
+    RÉSERVÉ à la gestion (Administrateur/Responsable) ; jamais utilisé côté
+    portail employé (voir ``QuizFormationPortailSerializer``)."""
+    competence_libelle = serializers.SerializerMethodField()
+    habilitation_type_display = serializers.CharField(
+        source='get_habilitation_type_display', read_only=True)
+
+    class Meta:
+        model = QuizFormation
+        fields = [
+            'id', 'intitule', 'questions', 'score_reussite', 'validite_mois',
+            'competence', 'competence_libelle',
+            'habilitation_type', 'habilitation_type_display', 'actif',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+    def get_competence_libelle(self, obj):
+        if not obj.competence_id:
+            return ''
+        return obj.competence.libelle
+
+    def validate_competence(self, value):
+        return _meme_societe(self, value, 'Compétence')
+
+
+class QuizFormationPortailSerializer(serializers.ModelSerializer):
+    """XRH34 — quiz vu par l'EMPLOYÉ qui le passe : les bonnes réponses
+    (``bonnes_reponses``) sont RETIRÉES de chaque question — un employé ne
+    doit JAMAIS voir les réponses correctes dans le payload."""
+    questions = serializers.SerializerMethodField()
+
+    class Meta:
+        model = QuizFormation
+        fields = ['id', 'intitule', 'questions', 'score_reussite']
+
+    def get_questions(self, obj):
+        return [
+            {
+                'question': q.get('question', ''),
+                'type': q.get('type', 'unique'),
+                'choix': q.get('choix', []),
+            }
+            for q in (obj.questions or [])
+        ]
+
+
+class TentativeQuizSerializer(serializers.ModelSerializer):
+    """XRH34 — tentative de quiz (lecture — la correction passe par
+    ``services.passer_tentative_quiz``, jamais par une écriture directe du
+    ``score``/``reussi``, TOUJOURS calculés côté serveur)."""
+    quiz_intitule = serializers.CharField(
+        source='quiz.intitule', read_only=True)
+    employe_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TentativeQuiz
+        fields = [
+            'id', 'quiz', 'quiz_intitule', 'employe', 'employe_nom',
+            'session', 'score', 'reussi', 'date_creation',
+        ]
+        read_only_fields = fields
+
+    def get_employe_nom(self, obj):
+        return f'{obj.employe.nom} {obj.employe.prenom}'

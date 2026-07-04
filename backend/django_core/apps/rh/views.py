@@ -84,10 +84,12 @@ from .models import (
     PresenceChantier,
     PresquAccident,
     PrimeAttribuee,
+    QuizFormation,
     Remuneration,
     Sanction,
     SessionFormation,
     SoldeConge,
+    TentativeQuiz,
     TypeAbsence,
     TypePrime,
     VisiteMedicale,
@@ -157,10 +159,13 @@ from .serializers import (
     PresenceChantierSerializer,
     PresquAccidentSerializer,
     PrimeAttribueeSerializer,
+    QuizFormationPortailSerializer,
+    QuizFormationSerializer,
     RemunerationSerializer,
     SanctionSerializer,
     SessionFormationSerializer,
     SoldeCongeSerializer,
+    TentativeQuizSerializer,
     TypeAbsenceSerializer,
     TypePrimeSerializer,
     VisiteMedicaleSerializer,
@@ -404,6 +409,53 @@ class DossierEmployeViewSet(_RhBaseViewSet):
             return self.get_paginated_response(serializer.data)
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], url_path='sortir')
+    def sortir(self, request, pk=None):
+        """YHIRE2 — orchestre la sortie de l'employé (``services.sortir_employe``) :
+        checklist ``ElementSortie`` générée depuis les dotations/affectations
+        réelles, compte utilisateur désactivé, ``ProfilPaie`` coupé (via le
+        bus d'événements, sans import croisé).
+
+        Corps : ``date_sortie`` (ISO, obligatoire), ``motif``
+        (``DossierEmploye.MotifSortie``, obligatoire), ``notes_avances``
+        (optionnel). Refuse (400) un dossier déjà SORTI (idempotence :
+        rejouer l'action ne re-génère pas la checklist).
+        """
+        employe = self.get_object()
+        date_sortie_raw = request.data.get('date_sortie')
+        motif = (request.data.get('motif') or '').strip()
+        try:
+            from datetime import date as _date
+            date_sortie = _date.fromisoformat(str(date_sortie_raw))
+        except (TypeError, ValueError):
+            date_sortie = None
+        if date_sortie is None:
+            return Response(
+                {'date_sortie': 'Date de sortie invalide ou manquante.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if motif not in DossierEmploye.MotifSortie.values:
+            return Response(
+                {'motif': 'Motif de sortie invalide ou manquant.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            services.sortir_employe(
+                employe, date_sortie=date_sortie, motif=motif,
+                notes_avances=(request.data.get('notes_avances') or ''))
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            DossierEmployeSerializer(employe).data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'], url_path='comptes-actifs-sortis')
+    def comptes_actifs_sortis(self, request):
+        """YHIRE2 — rapport de sécurité PERMANENT : comptes utilisateur restés
+        ACTIFS alors que leur dossier est SORTI (doit rester vide en
+        fonctionnement normal ; utile pour détecter des sorties faites hors
+        de ce chemin, p. ex. données historiques)."""
+        rows = services.comptes_actifs_employes_sortis(request.user.company)
+        return Response(rows)
 
     @action(detail=False, methods=['get'], url_path='a-declarer')
     def a_declarer(self, request):
@@ -2522,8 +2574,19 @@ class AccidentTravailViewSet(_RhBaseViewSet):
             return None
 
     def perform_create(self, serializer):
-        """Company + reference (race-safe) posées côté serveur (FG181)."""
+        """Company + reference (race-safe) posées côté serveur (FG181).
+
+        YHIRE10 — un arrêt de travail déclaré à la création synchronise
+        aussitôt l'absence de présence liée (roster + import paie)."""
         services.creer_accident_travail(serializer, self.request.user.company)
+        services.synchroniser_absence_accident_travail(serializer.instance)
+
+    def perform_update(self, serializer):
+        """YHIRE10 — toute mise à jour de l'AT (prolongation/retrait de
+        l'arrêt) resynchronise l'absence liée (idempotent : même ligne
+        étendue, jamais de doublon ; arrêt retiré → absence annulée)."""
+        accident = serializer.save()
+        services.synchroniser_absence_accident_travail(accident)
 
     def list(self, request, *args, **kwargs):
         """Liste paginée OU export CSV de la déclaration CNSS (``?export=csv``).
@@ -2995,6 +3058,94 @@ class BesoinFormationViewSet(_RhBaseViewSet):
             besoin.save(update_fields=['statut', 'date_modification'])
         return Response(
             self.get_serializer(besoin).data, status=status.HTTP_200_OK)
+
+
+class QuizFormationViewSet(_RhBaseViewSet):
+    """XRH34 — quiz d'évaluation de formation (eLearning léger, gestion RH).
+
+    Société scopée + Administrateur/Responsable. Porte le CONTENU (questions
+    + bonnes réponses, seuil de réussite, validité de certification, liens
+    optionnels compétence/type d'habilitation). Un employé passe un quiz via
+    le portail (``PortailSelfServiceViewSet``), jamais directement ici (les
+    bonnes réponses ne doivent jamais atteindre son écran).
+
+    Filtres : ``?actif=1``, ``?competence=<id>``, ``?habilitation_type=...``.
+    """
+    queryset = QuizFormation.objects.select_related('competence').all()
+    serializer_class = QuizFormationSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['intitule']
+    ordering_fields = ['intitule', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        actif = self.request.query_params.get('actif')
+        if actif in ('1', 'true', 'True'):
+            qs = qs.filter(actif=True)
+        competence = self.request.query_params.get('competence')
+        if competence:
+            qs = qs.filter(competence_id=competence)
+        habilitation_type = self.request.query_params.get('habilitation_type')
+        if habilitation_type:
+            qs = qs.filter(habilitation_type=habilitation_type)
+        return qs
+
+
+class TentativeQuizViewSet(_RhBaseViewSet):
+    """XRH34 — tentatives de quiz (consultation gestion RH — un employé
+    consulte SES tentatives via le portail, pas ici).
+
+    Lecture seule côté API générale (la création passe TOUJOURS par
+    ``services.passer_tentative_quiz``, jamais par un POST direct qui
+    accepterait un ``score``/``reussi`` côté client).
+
+    Filtres : ``?employe=<id>``, ``?quiz=<id>``, ``?reussi=1``.
+
+    Action :
+    * ``GET .../{id}/attestation/`` — attestation PDF de réussite
+      (``apps.rh.pdf_attestation``, renderer RH dédié — JAMAIS ``/proposal``).
+      404 si la tentative n'est pas réussie.
+    """
+    http_method_names = ['get', 'head', 'options']
+    queryset = TentativeQuiz.objects.select_related('quiz', 'employe').all()
+    serializer_class = TentativeQuizSerializer
+    ordering_fields = ['date_creation', 'score']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        quiz = self.request.query_params.get('quiz')
+        if quiz:
+            qs = qs.filter(quiz_id=quiz)
+        reussi = self.request.query_params.get('reussi')
+        if reussi in ('1', 'true', 'True'):
+            qs = qs.filter(reussi=True)
+        return qs
+
+    @action(detail=True, methods=['get'], url_path='attestation')
+    def attestation(self, request, pk=None):
+        """PDF d'attestation de réussite — 404 si non réussie."""
+        tentative = self.get_object()
+        if not tentative.reussi:
+            return Response(
+                {'detail': 'Aucune attestation : tentative non réussie.'},
+                status=status.HTTP_404_NOT_FOUND)
+        from django.http import HttpResponse
+
+        from .pdf_attestation import render_attestation_reussite_pdf
+
+        try:
+            pdf_bytes = render_attestation_reussite_pdf(tentative)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'attachment; filename="attestation-quiz-{tentative.pk}.pdf"')
+        return response
 
 
 class OuverturePosteViewSet(_RhBaseViewSet):
@@ -3509,8 +3660,23 @@ class SanctionViewSet(_RhBaseViewSet):
         return qs
 
     def perform_create(self, serializer):
-        """Company posée côté serveur ; FK validés via le sérialiseur."""
-        serializer.save(company=self.request.user.company)
+        """Company posée côté serveur ; FK validés via le sérialiseur.
+
+        YHIRE7(a) — une sanction créée directement ``NOTIFIEE`` (défaut) avec
+        une MISE_A_PIED propage aussitôt son effet (absence non rémunérée).
+        """
+        sanction = serializer.save(company=self.request.user.company)
+        if sanction.statut == Sanction.Statut.NOTIFIEE:
+            services.propager_effets_sanction_notification(sanction)
+
+    def perform_update(self, serializer):
+        """YHIRE7(a) — si la mise à jour fait TRANSITIONNER la sanction vers
+        NOTIFIEE (elle ne l'était pas avant), propage l'effet à ce moment-là
+        (une sanction créée en brouillon puis notifiée plus tard)."""
+        etait_notifiee = serializer.instance.statut == Sanction.Statut.NOTIFIEE
+        sanction = serializer.save()
+        if sanction.statut == Sanction.Statut.NOTIFIEE and not etait_notifiee:
+            services.propager_effets_sanction_notification(sanction)
 
     @action(detail=True, methods=['post'], url_path='annuler')
     def annuler(self, request, pk=None):
@@ -3518,13 +3684,64 @@ class SanctionViewSet(_RhBaseViewSet):
 
         La société est garantie par ``get_object`` (un autre tenant reçoit
         404). Idempotent : ré-annuler renvoie la même sanction sans erreur.
+
+        YHIRE7(a) — si une MISE_A_PIED avait propagé une absence, l'annulation
+        de la sanction (contestation gagnée) retire l'effet (annule
+        l'absence liée).
         """
         sanction = self.get_object()
         if sanction.statut != Sanction.Statut.ANNULEE:
             sanction.statut = Sanction.Statut.ANNULEE
             sanction.save(update_fields=['statut', 'date_modification'])
+            services.propager_effets_sanction_annulation(sanction)
         return Response(
             self.get_serializer(sanction).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='declencher-sortie')
+    def declencher_sortie(self, request, pk=None):
+        """YHIRE7(b) — une sanction LICENCIEMENT PROPOSE la sortie de
+        l'employé (jamais automatique) : sans ``confirmer: true`` dans le
+        corps, renvoie 409 avec les infos pré-remplies pour confirmation ;
+        avec confirmation, déclenche ``sortir_employe`` (YHIRE2).
+
+        Corps : ``confirmer`` (bool), ``date_sortie`` (ISO, optionnel —
+        défaut ``date_notification`` de la sanction).
+        """
+        sanction = self.get_object()
+        if sanction.type_sanction != Sanction.TypeSanction.LICENCIEMENT:
+            return Response(
+                {'detail': "Cette action ne s'applique qu'à un licenciement."},
+                status=status.HTTP_400_BAD_REQUEST)
+        confirmer = bool(request.data.get('confirmer'))
+        date_sortie = None
+        raw = request.data.get('date_sortie')
+        if raw:
+            try:
+                from datetime import date as _date
+                date_sortie = _date.fromisoformat(str(raw))
+            except (TypeError, ValueError):
+                date_sortie = None
+        try:
+            resultat = services.proposer_sortie_pour_licenciement(
+                sanction, confirmer=confirmer, date_sortie=date_sortie)
+        except services.SortieNonConfirmeeError as exc:
+            return Response(
+                {
+                    'detail': str(exc),
+                    'employe_id': sanction.employe_id,
+                    'date_sortie_proposee': (
+                        (date_sortie or sanction.date_notification)
+                        and (date_sortie or sanction.date_notification)
+                        .isoformat()),
+                },
+                status=status.HTTP_409_CONFLICT)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            DossierEmployeSerializer(resultat).data
+            if resultat is not None else {'detail': 'Aucun effet.'},
+            status=status.HTTP_200_OK)
 
 
 class ElementsVariablesPaieViewSet(_RhBaseViewSet):
@@ -4419,6 +4636,59 @@ class PortailSelfServiceViewSet(viewsets.ViewSet):
             company=request.user.company, employe=dossier).select_related(
             'attachment')
         return Response(BulletinPaieSerializer(qs, many=True).data)
+
+    @action(detail=False, methods=['get'], url_path='quiz-disponibles')
+    def quiz_disponibles(self, request):
+        """XRH34 — quiz actifs de la société, SANS les bonnes réponses
+        (``QuizFormationPortailSerializer``)."""
+        qs = QuizFormation.objects.filter(
+            company=request.user.company, actif=True)
+        return Response(QuizFormationPortailSerializer(qs, many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='passer-quiz')
+    def passer_quiz(self, request, pk=None):
+        """XRH34 — passe (corrige côté serveur) le quiz ``pk`` pour le
+        collaborateur connecté. Corps : ``reponses`` (liste parallèle aux
+        questions), ``session`` (id ``SessionFormation`` optionnel — upsert
+        ``InscriptionFormation.resultat`` si réussi).
+
+        En cas de réussite : matrice de compétences mise à jour, habilitation
+        prolongée le cas échéant, attestation PDF téléchargeable ensuite via
+        ``GET tentatives-quiz/{id}/attestation/``.
+        """
+        dossier = self._dossier(request)
+        if dossier is None:
+            return Response(
+                {'detail': 'Aucun dossier employé lié à ce compte.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        quiz = QuizFormation.objects.filter(
+            company=request.user.company, pk=pk, actif=True).first()
+        if quiz is None:
+            return Response(
+                {'detail': 'Quiz introuvable.'},
+                status=status.HTTP_404_NOT_FOUND)
+        session = None
+        session_id = request.data.get('session')
+        if session_id:
+            session = SessionFormation.objects.filter(
+                company=request.user.company, pk=session_id).first()
+        tentative = services.passer_tentative_quiz(
+            quiz, dossier, reponses=request.data.get('reponses') or [],
+            session=session)
+        return Response(
+            TentativeQuizSerializer(tentative).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'], url_path='mes-tentatives-quiz')
+    def mes_tentatives_quiz(self, request):
+        """XRH34 — SES tentatives de quiz (autre employé → jamais visible)."""
+        dossier = self._dossier(request)
+        if dossier is None:
+            return Response([])
+        qs = TentativeQuiz.objects.filter(
+            company=request.user.company, employe=dossier).select_related(
+            'quiz')
+        return Response(TentativeQuizSerializer(qs, many=True).data)
 
     @action(detail=False, methods=['get'], url_path='mes-demandes')
     def mes_demandes(self, request):

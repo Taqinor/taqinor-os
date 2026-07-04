@@ -79,6 +79,20 @@ importe ``apps.audit``.
     ``stock`` n'importe ni ``qhse`` ni ``installations`` : chaque abonné se
     câble dans son propre ``apps.py`` ``ready()``.
 
+``employe_sorti``
+    Émis à la fin de ``rh.services.sortir_employe`` (YHIRE2) — orchestration
+    de sortie : checklist ``ElementSortie`` générée, compte utilisateur
+    désactivé, PUIS cet événement. Arguments du signal :
+
+    * ``dossier`` — l'instance ``rh.DossierEmploye`` sortie ;
+    * ``user`` — le compte utilisateur lié (peut être ``None``) ;
+    * ``motif`` — le motif de sortie (``DossierEmploye.MotifSortie``).
+
+    Abonné dans ce repo : ``paie`` (``apps/paie/receivers.py``) — passe
+    ``ProfilPaie.actif=False`` pour le dossier lié, SANS que ``rh`` importe
+    jamais ``apps.paie`` directement (même pattern que ``devis_accepted`` →
+    ``crm``).
+
 ``conge_approuve``
     Émis quand une ``rh.DemandeConge`` passe à VALIDÉE (FG163,
     ``rh.services.valider_demande``) OU est annulée après validation
@@ -193,6 +207,12 @@ payment_captured = django.dispatch.Signal()
 # Arguments : reception (stock.ReceptionFournisseur), company, user.
 # cf. docstring du module ci-dessus pour la carte des deux abonnés attendus.
 reception_fournisseur_confirmee = django.dispatch.Signal()
+
+# Émis à la fin de l'orchestration de sortie d'un employé (YHIRE2).
+# Arguments : dossier (rh.DossierEmploye), user, motif.
+# Abonné dans ce repo : paie (coupe ProfilPaie.actif) — voir docstring du
+# module ci-dessus.
+employe_sorti = django.dispatch.Signal()
 
 # Émis à la validation (ou l'annulation d'une validation) d'une demande de
 # congé RH (FG163) — XPRJ9. Arguments : demande, user, annule.

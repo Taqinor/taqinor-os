@@ -310,6 +310,12 @@ INBOUND_EMAIL_HOST = os.environ.get('INBOUND_EMAIL_HOST', '')
 # endpoint returns 404 and sends no email. Flip to '1' to re-enable (see CLAUDE.md).
 CONTACT_FORM_ENABLED = os.environ.get('CONTACT_FORM_ENABLED', '0') == '1'
 
+# XRH33 — public careers/recruitment page, PARKED (OFF) by default (same
+# pattern as CONTACT_FORM_ENABLED). When off, both public rh careers
+# endpoints (list + apply) return 404. Founder decision to expose (or not)
+# recruitment publicly. Flip to '1' to re-enable.
+CAREERS_ENABLED = os.environ.get('CAREERS_ENABLED', '0') == '1'
+
 # Récepteur des leads du site public taqinor.ma (apps/crm/webhooks.py).
 # Sans secret configuré, le endpoint répond 401 à tout — fermé par défaut.
 WEBSITE_LEAD_WEBHOOK_SECRET = os.environ.get('WEBSITE_LEAD_WEBHOOK_SECRET', '')

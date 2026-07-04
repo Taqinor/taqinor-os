@@ -1536,3 +1536,520 @@ def repondre_pulse(campagne, user, *, score, commentaire=''):
     return ReponsePulse.objects.create(
         company=campagne.company, campagne=campagne,
         score=score, commentaire=commentaire or '')
+
+
+# ── YHIRE2 — orchestration de sortie (employe_sorti) ───────────────────────
+
+@transaction.atomic
+def sortir_employe(dossier, *, date_sortie, motif, notes_avances=''):
+    """YHIRE2 — orchestre la sortie d'un ``DossierEmploye`` : jusqu'ici,
+    passer ``statut`` à SORTI était un simple PATCH sans aucun effet — la
+    checklist de restitution restait à saisir à la main, le compte
+    utilisateur lié restait ACTIF et le profil de paie n'était jamais coupé
+    (un sorti pouvait encore recevoir un bulletin normal).
+
+    Dans UNE transaction :
+
+    1. pose ``statut=SORTI`` + ``date_sortie`` + ``motif_sortie`` ;
+    2. GÉNÈRE les ``ElementSortie`` (FG161) depuis les affectations OUVERTES
+       réelles :
+       - une ligne EPI par ``DotationEpi`` de l'employé non encore restituée
+         (``recupere=False``) ;
+       - une ligne VÉHICULE par ``AffectationVehicule`` ACTIVE, close à
+         ``date_sortie`` (``statut=TERMINEE``, ``date_fin=date_sortie``) ;
+       - une note (ligne AUTRE) listant les ``AvanceSalaire`` non soldées
+         (statut demandée/approuvée) si elles existent ;
+    3. désactive le compte utilisateur lié (``user.is_active=False``,
+       horodaté sur le dossier via le chatter XRH6) ;
+    4. émet ``employe_sorti`` sur le bus d'événements (``core.events``) —
+       ``paie`` s'y abonne (``apps/paie/receivers.py``) pour couper
+       ``ProfilPaie.actif``, SANS que ``rh`` importe jamais ``apps.paie``.
+
+    Idempotent : ré-appeler sur un dossier DÉJÀ ``SORTI`` ne RE-génère pas la
+    checklist ni ne ré-émet l'événement (lève ``ValueError``) — évite un
+    doublon d'``ElementSortie``/de désactivation si l'action est rejouée.
+
+    ``dossier``/``motif`` sont déjà scopés/validés par l'appelant (vue) ;
+    aucune lecture de société depuis le corps de requête.
+    """
+    from .models import (
+        AffectationVehicule, AvanceSalaire, DossierEmploye, DotationEpi,
+        ElementSortie,
+    )
+
+    if dossier.statut == DossierEmploye.Statut.SORTI:
+        raise ValueError('Ce dossier est déjà marqué sorti.')
+
+    dossier.statut = DossierEmploye.Statut.SORTI
+    dossier.date_sortie = date_sortie
+    dossier.motif_sortie = motif
+    dossier.save(update_fields=['statut', 'date_sortie', 'motif_sortie'])
+
+    # (b) EPI non restitués → une ligne de checklist par dotation ouverte.
+    dotations_ouvertes = DotationEpi.objects.filter(
+        company=dossier.company, employe=dossier, recupere=False)
+    for dotation in dotations_ouvertes:
+        ElementSortie.objects.create(
+            company=dossier.company,
+            employe=dossier,
+            libelle=f'EPI — {dotation.epi.designation}'[:160],
+            type_element=ElementSortie.TypeElement.EPI,
+        )
+
+    # Véhicules affectés ACTIFS → clôturés à la date de sortie + checklist.
+    affectations_ouvertes = AffectationVehicule.objects.filter(
+        company=dossier.company, employe=dossier,
+        statut=AffectationVehicule.Statut.ACTIVE)
+    for affectation in affectations_ouvertes:
+        ElementSortie.objects.create(
+            company=dossier.company,
+            employe=dossier,
+            libelle=f'Véhicule #{affectation.vehicule_id}'[:160],
+            type_element=ElementSortie.TypeElement.VEHICULE,
+        )
+        affectation.statut = AffectationVehicule.Statut.TERMINEE
+        affectation.date_fin = date_sortie
+        affectation.save(update_fields=['statut', 'date_fin', 'date_modification'])
+
+    # Avances non soldées → note informative (pas de mouvement financier ici,
+    # le solde reste porté par le module concerné — RH ou paie).
+    avances_ouvertes = AvanceSalaire.objects.filter(
+        company=dossier.company, employe=dossier,
+        statut__in=[
+            AvanceSalaire.Statut.DEMANDEE, AvanceSalaire.Statut.APPROUVEE])
+    if avances_ouvertes.exists():
+        total = sum((a.montant or 0) for a in avances_ouvertes)
+        note = (
+            f'{avances_ouvertes.count()} avance(s) non soldée(s) '
+            f'(total {total}).')
+        if notes_avances:
+            note = f'{note} {notes_avances}'.strip()
+        ElementSortie.objects.create(
+            company=dossier.company,
+            employe=dossier,
+            libelle='Avances sur salaire non soldées'[:160],
+            type_element=ElementSortie.TypeElement.AUTRE,
+            note=note[:255],
+        )
+
+    # (c) Compte utilisateur lié désactivé — journalisé.
+    if dossier.user_id and dossier.user.is_active:
+        dossier.user.is_active = False
+        dossier.user.save(update_fields=['is_active'])
+
+    # (d) Bus d'événements — paie s'abonne dans son propre apps.py ready(),
+    # rh n'importe jamais apps.paie.
+    from core.events import employe_sorti
+    employe_sorti.send(
+        sender=DossierEmploye, dossier=dossier, user=dossier.user,
+        motif=motif)
+
+    return dossier
+
+
+# ── YHIRE7 — propagation des effets des sanctions disciplinaires ──────────
+
+# Code stable du TypeAbsence de mise à pied (seedé par ``seed_types_absence``,
+# NON rémunéré, NE déduit PAS le solde de congés — compteur distinct d'une
+# sanction). Un motif reprenant le n° de sanction sert de clé d'idempotence.
+_CODE_TYPE_ABSENCE_MISE_A_PIED = 'MAP'
+
+
+def _motif_absence_mise_a_pied(sanction):
+    """Clé stable (dans ``motif``) reliant une ``DemandeConge`` générée à SA
+    sanction d'origine — sert de garde d'idempotence (une sanction ne génère
+    jamais deux absences)."""
+    return f'Mise à pied — Sanction #{sanction.pk}'
+
+
+@transaction.atomic
+def propager_effets_sanction_notification(sanction):
+    """YHIRE7(a) — à la NOTIFICATION d'une sanction (statut NOTIFIEE), propage
+    son effet métier :
+
+    * ``MISE_A_PIED`` avec ``duree_jours`` > 0 — crée (idempotent : une seule
+      fois par sanction, clé = motif stable) une ``DemandeConge`` déjà
+      VALIDÉE du type ``TypeAbsence`` seedé « Mise à pied » (non rémunéré, ne
+      déduit pas le solde de congés), couvrant
+      ``date_notification`` → ``date_notification + duree_jours - 1`` (ou
+      ``date_faits`` si la notification est absente). Le bulletin de paie
+      exclut cette période via l'import RH→paie (YHIRE1, absence non
+      rémunérée).
+    * tout autre type de sanction — aucun effet (no-op silencieux).
+
+    Ne lève JAMAIS d'exception si le type d'absence n'est pas seedé pour la
+    société (défensif — journalise et ne bloque pas la création/notification
+    de la sanction).
+    """
+    from datetime import timedelta
+
+    from .models import DemandeConge, Sanction, TypeAbsence
+
+    if sanction.type_sanction != Sanction.TypeSanction.MISE_A_PIED:
+        return None
+    if not sanction.duree_jours:
+        return None
+
+    motif = _motif_absence_mise_a_pied(sanction)
+    if DemandeConge.objects.filter(
+            company=sanction.company, employe=sanction.employe,
+            motif=motif).exists():
+        return None  # déjà propagé (idempotence)
+
+    type_absence = TypeAbsence.objects.filter(
+        company=sanction.company, code=_CODE_TYPE_ABSENCE_MISE_A_PIED).first()
+    if type_absence is None:
+        return None  # type non seedé pour cette société — no-op défensif
+
+    date_debut = sanction.date_notification or sanction.date_faits
+    if date_debut is None:
+        return None
+    date_fin = date_debut + timedelta(days=sanction.duree_jours - 1)
+
+    return DemandeConge.objects.create(
+        company=sanction.company,
+        employe=sanction.employe,
+        type_absence=type_absence,
+        date_debut=date_debut,
+        date_fin=date_fin,
+        jours=Decimal(sanction.duree_jours),
+        statut=DemandeConge.Statut.VALIDEE,
+        date_decision=timezone.now(),
+        motif=motif,
+    )
+
+
+@transaction.atomic
+def propager_effets_sanction_annulation(sanction):
+    """YHIRE7(a) — à l'ANNULATION d'une sanction (contestation gagnée),
+    retire l'effet propagé : annule la ``DemandeConge`` de mise à pied liée
+    (créée par ``propager_effets_sanction_notification``) si elle existe et
+    n'est pas déjà annulée. No-op si aucune absence n'avait été générée."""
+    from .models import DemandeConge
+
+    motif = _motif_absence_mise_a_pied(sanction)
+    demande = DemandeConge.objects.filter(
+        company=sanction.company, employe=sanction.employe,
+        motif=motif).exclude(statut=DemandeConge.Statut.ANNULEE).first()
+    if demande is None:
+        return None
+    return annuler_demande(demande)
+
+
+class SortieNonConfirmeeError(Exception):
+    """YHIRE7(b) — levée quand une sanction LICENCIEMENT propose la sortie
+    sans confirmation explicite (jamais automatique silencieux)."""
+
+
+def proposer_sortie_pour_licenciement(
+        sanction, *, confirmer=False, date_sortie=None):
+    """YHIRE7(b) — une sanction ``LICENCIEMENT`` PROPOSE la sortie de
+    l'employé (``sortir_employe``, YHIRE2) — JAMAIS automatique et silencieux :
+    sans ``confirmer=True`` explicite, lève :class:`SortieNonConfirmeeError`
+    (l'appelant — la vue — répond avec les infos pré-remplies pour que
+    l'utilisateur confirme).
+
+    Avec confirmation, appelle ``sortir_employe`` avec
+    ``motif=DossierEmploye.MotifSortie.LICENCIEMENT`` et
+    ``date_sortie`` (par défaut ``date_notification`` de la sanction, sinon
+    aujourd'hui). Un dossier déjà SORTI lève ``ValueError`` (propagé tel
+    quel — même garde d'idempotence que ``sortir_employe``).
+    """
+    from .models import DossierEmploye, Sanction
+
+    if sanction.type_sanction != Sanction.TypeSanction.LICENCIEMENT:
+        return None
+    if not confirmer:
+        raise SortieNonConfirmeeError(
+            'Confirmation explicite requise pour déclencher la sortie '
+            "suite à un licenciement (jamais automatique).")
+    effective_date = (
+        date_sortie or sanction.date_notification or timezone.localdate())
+    return sortir_employe(
+        sanction.employe, date_sortie=effective_date,
+        motif=DossierEmploye.MotifSortie.LICENCIEMENT)
+
+
+# ── YHIRE10 — accident du travail avec arrêt → absence (présence) ─────────
+
+# Code stable du TypeAbsence dédié (seedé par ``seed_types_absence``). La
+# rémunération de cette absence dépend du réglage société (l'indemnisation
+# IJ CNSS reste le périmètre XPAI14 ; on câble ici SEULEMENT la présence —
+# roster + import paie via le flag ``remunere`` du type).
+_CODE_TYPE_ABSENCE_ACCIDENT_TRAVAIL = 'AT'
+
+
+def _motif_absence_accident_travail(accident):
+    """Clé stable reliant la ``DemandeConge`` générée à SON accident
+    d'origine — garde d'idempotence (jamais deux absences pour un même AT ;
+    une prolongation ÉTEND la même ligne au lieu d'en créer une seconde)."""
+    return f'Accident du travail — {accident.reference}'
+
+
+@transaction.atomic
+def synchroniser_absence_accident_travail(accident):
+    """YHIRE10 — synchronise l'absence de présence liée à un
+    ``AccidentTravail`` avec arrêt, appelée à la création ET à chaque mise à
+    jour de l'accident (idempotent) :
+
+    * ``arret_travail=True`` et ``nb_jours_arret > 0`` — crée (1er appel) ou
+      ÉTEND (appel suivant : mêmes dates recalculées depuis
+      ``date_accident``/``nb_jours_arret``, jamais de doublon — clé stable
+      par ``reference``) une ``DemandeConge`` déjà VALIDÉE du type
+      ``TypeAbsence`` seedé « Accident du travail », couvrant
+      ``date_accident`` → ``date_accident + nb_jours_arret - 1`` ;
+    * ``arret_travail=False`` (ou ``nb_jours_arret=0``) — ANNULE l'absence
+      précédemment générée si elle existe (arrêt supprimé/retiré) ;
+    * type non seedé pour la société — no-op défensif (journalisé nulle
+      part, appel silencieux : ne bloque jamais la déclaration de l'AT).
+
+    Renvoie la ``DemandeConge`` active, ou ``None`` si aucun effet.
+    """
+    from datetime import timedelta
+
+    from .models import DemandeConge, TypeAbsence
+
+    motif = _motif_absence_accident_travail(accident)
+    existante = DemandeConge.objects.filter(
+        company=accident.company, employe=accident.employe,
+        motif=motif).exclude(statut=DemandeConge.Statut.ANNULEE).first()
+
+    if not accident.arret_travail or not accident.nb_jours_arret:
+        if existante is not None:
+            annuler_demande(existante)
+        return None
+
+    type_absence = TypeAbsence.objects.filter(
+        company=accident.company,
+        code=_CODE_TYPE_ABSENCE_ACCIDENT_TRAVAIL).first()
+    if type_absence is None:
+        return None  # type non seedé pour cette société — no-op défensif
+
+    date_debut = accident.date_accident
+    date_fin = date_debut + timedelta(days=accident.nb_jours_arret - 1)
+
+    if existante is not None:
+        # Prolongation/ajustement : ÉTEND la même ligne (jamais de doublon).
+        existante.date_debut = date_debut
+        existante.date_fin = date_fin
+        existante.jours = Decimal(accident.nb_jours_arret)
+        existante.type_absence = type_absence
+        existante.save(update_fields=[
+            'date_debut', 'date_fin', 'jours', 'type_absence'])
+        return existante
+
+    return DemandeConge.objects.create(
+        company=accident.company,
+        employe=accident.employe,
+        type_absence=type_absence,
+        date_debut=date_debut,
+        date_fin=date_fin,
+        jours=Decimal(accident.nb_jours_arret),
+        statut=DemandeConge.Statut.VALIDEE,
+        date_decision=timezone.now(),
+        motif=motif,
+    )
+
+
+def comptes_actifs_employes_sortis(company):
+    """YHIRE2 — rapport de sécurité PERMANENT : comptes utilisateur restés
+    ACTIFS alors que leur dossier employé est SORTI. Doit toujours être VIDE
+    en fonctionnement normal (un dossier sorti désactive son compte via
+    ``sortir_employe`` — cette liste ne détecte que les cas hors chemin,
+    ex. données historiques ou sortie faite avant ce câblage).
+
+    Sélecteur pur, scopé société. Renvoie une liste de dicts
+    ``{'employe_id', 'matricule', 'nom', 'prenom', 'user_id', 'username'}``.
+    """
+    from .models import DossierEmploye
+
+    qs = (
+        DossierEmploye.objects
+        .filter(
+            company=company, statut=DossierEmploye.Statut.SORTI,
+            user__isnull=False, user__is_active=True)
+        .select_related('user'))
+    return [
+        {
+            'employe_id': d.pk,
+            'matricule': d.matricule,
+            'nom': d.nom,
+            'prenom': d.prenom,
+            'user_id': d.user_id,
+            'username': getattr(d.user, 'username', ''),
+        }
+        for d in qs
+    ]
+
+
+# ── XRH34 — eLearning léger : quiz + certification ─────────────────────────
+
+def _ajouter_mois(une_date, mois):
+    """Ajoute ``mois`` mois calendaires à ``une_date`` (stdlib uniquement,
+    aucune dépendance externe) — cale le jour sur le dernier jour du mois
+    cible s'il déborde (ex. 31 janvier + 1 mois → 28/29 février)."""
+    import calendar
+
+    total = une_date.month - 1 + mois
+    annee = une_date.year + total // 12
+    moiscible = total % 12 + 1
+    jour = min(une_date.day, calendar.monthrange(annee, moiscible)[1])
+    return une_date.replace(year=annee, month=moiscible, day=jour)
+
+
+def _est_reponse_correcte(question, reponse):
+    """Compare une réponse brute (int ou liste d'ints) aux bonnes réponses
+    d'UNE question — vrai UNIQUEMENT si l'ensemble complet correspond
+    (aucune bonne réponse manquante, aucune fausse en plus)."""
+    bonnes = set(question.get('bonnes_reponses') or [])
+    if isinstance(reponse, (list, tuple, set)):
+        donnees = set(reponse)
+    elif reponse is None:
+        donnees = set()
+    else:
+        donnees = {reponse}
+    return donnees == bonnes
+
+
+def corriger_tentative_quiz(quiz, reponses):
+    """XRH34 — corrige une tentative CÔTÉ SERVEUR : ``reponses`` est une
+    liste parallèle à ``quiz.questions`` (index de choix, ou liste d'index
+    pour une question à choix multiple). Renvoie ``(score_pourcent, reussi)``.
+
+    Les bonnes réponses NE SONT JAMAIS renvoyées à l'appelant — seul le
+    score agrégé l'est. Un quiz sans question renvoie ``(0, False)``
+    (jamais de division par zéro).
+    """
+    questions = quiz.questions or []
+    if not questions:
+        return 0, False
+    reponses = list(reponses or [])
+    correctes = 0
+    for i, question in enumerate(questions):
+        reponse = reponses[i] if i < len(reponses) else None
+        if _est_reponse_correcte(question, reponse):
+            correctes += 1
+    score = round(100 * correctes / len(questions))
+    reussi = score >= quiz.score_reussite
+    return score, reussi
+
+
+@transaction.atomic
+def passer_tentative_quiz(quiz, employe, *, reponses, session=None):
+    """XRH34 — enregistre + corrige une ``TentativeQuiz`` et, en cas de
+    réussite, applique TOUS les effets de certification :
+
+    * upsert du niveau ``CompetenceEmploye`` (niveau CONFIRMÉ) si
+      ``quiz.competence`` est défini (même chemin que
+      ``SessionFormationViewSet.marquer_realisee``, FG187) ;
+    * si ``session`` est fournie ET que le quiz y est explicitement lié
+      (même valeur transmise ici), upsert
+      ``InscriptionFormation.resultat = REUSSI`` du participant ;
+    * si ``quiz.habilitation_type`` est défini ET ``quiz.validite_mois``
+      renseigné : prolonge (ou crée) l'``Habilitation`` de l'employé pour ce
+      type — nouvelle échéance = ``max(aujourd'hui, échéance actuelle) +
+      validite_mois``.
+
+    Un ÉCHEC (score < seuil) N'A AUCUN EFFET (aucune mise à jour de
+    compétence/inscription/habilitation) — seule la tentative est
+    enregistrée avec son score.
+    """
+    from .models import (
+        CompetenceEmploye, Habilitation, InscriptionFormation, TentativeQuiz,
+    )
+
+    score, reussi = corriger_tentative_quiz(quiz, reponses)
+    tentative = TentativeQuiz.objects.create(
+        company=quiz.company, quiz=quiz, employe=employe, session=session,
+        reponses=reponses, score=score, reussi=reussi)
+
+    if not reussi:
+        return tentative
+
+    if quiz.competence_id:
+        CompetenceEmploye.objects.update_or_create(
+            employe=employe, competence_id=quiz.competence_id,
+            defaults={
+                'company': quiz.company,
+                'niveau': CompetenceEmploye.Niveau.CONFIRME,
+                'evalue_le': timezone.now(),
+            },
+        )
+
+    if session is not None:
+        InscriptionFormation.objects.update_or_create(
+            session=session, participant=employe,
+            defaults={'company': quiz.company,
+                      'resultat': InscriptionFormation.Resultat.REUSSI},
+        )
+
+    if quiz.habilitation_type and quiz.validite_mois:
+        today = timezone.localdate()
+        habilitation = Habilitation.objects.filter(
+            employe=employe, type_habilitation=quiz.habilitation_type).first()
+        base = today
+        if habilitation is not None and habilitation.date_validite and \
+                habilitation.date_validite > today:
+            base = habilitation.date_validite
+        nouvelle_echeance = _ajouter_mois(base, quiz.validite_mois)
+        if habilitation is None:
+            Habilitation.objects.create(
+                company=quiz.company, employe=employe,
+                type_habilitation=quiz.habilitation_type,
+                date_obtention=today, date_validite=nouvelle_echeance,
+                actif=True,
+            )
+        else:
+            habilitation.date_validite = nouvelle_echeance
+            habilitation.actif = True
+            habilitation.save(update_fields=[
+                'date_validite', 'actif', 'date_modification'])
+
+    return tentative
+
+
+def generer_besoin_recertification(habilitation):
+    """XRH34 — à l'expiration d'une habilitation LIÉE à un quiz (un
+    ``QuizFormation`` actif existe pour ce ``type_habilitation`` et cette
+    société), crée IDEMPOTENT un ``BesoinFormation`` de re-certification.
+
+    Idempotence : clé stable dans ``theme`` (type d'habilitation + employé) —
+    un ``BesoinFormation`` ``identifie``/``planifie`` déjà ouvert pour cette
+    re-certification n'est jamais dupliqué (re-run = 0 doublon). Une fois le
+    besoin ``satisfait`` (nouvelle réussite prolongeant l'habilitation), un
+    futur cycle d'expiration peut en re-créer un NOUVEAU.
+
+    No-op si aucun quiz actif ne couvre ce type d'habilitation pour la
+    société (pas de fausse alerte pour un titre sans quiz associé), ou si
+    l'habilitation n'est pas expirée.
+    """
+    from .models import BesoinFormation, QuizFormation
+
+    if habilitation.valide:
+        return None
+    quiz_couvrant = QuizFormation.objects.filter(
+        company=habilitation.company, actif=True,
+        habilitation_type=habilitation.type_habilitation).exists()
+    if not quiz_couvrant:
+        return None
+
+    theme = (
+        f'Re-certification — {habilitation.get_type_habilitation_display()} '
+        f'— {habilitation.employe.matricule}')
+    deja_ouvert = BesoinFormation.objects.filter(
+        company=habilitation.company, employe=habilitation.employe,
+        theme=theme,
+        statut__in=[
+            BesoinFormation.Statut.IDENTIFIE, BesoinFormation.Statut.PLANIFIE],
+    ).exists()
+    if deja_ouvert:
+        return None
+
+    return BesoinFormation.objects.create(
+        company=habilitation.company,
+        employe=habilitation.employe,
+        theme=theme[:200],
+        priorite=BesoinFormation.Priorite.HAUTE,
+        obligation_reglementaire=True,
+        type_obligation=BesoinFormation.TypeObligation.AUTRE,
+    )

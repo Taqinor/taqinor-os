@@ -56,6 +56,9 @@ app.conf.enable_utc = False
 #   - XFSM6 : rappel client J-1 pour les interventions non confirmées
 #     (07:45) — apps/installations/tasks.py (brouillon wa.me responsable +
 #     email client, key-gated, jamais d'envoi WhatsApp automatique).
+#   - YHIRE8 : alertes d'expiration RH (habilitations/certifs/docs/visites/EPI,
+#     07:50) et alerte fin de CDD (07:55) — apps/rh/tasks.py (idempotent par
+#     jour+échéance, jamais avant branché sur le beat).
 app.conf.beat_schedule = {
     'ventes-check-overdue-factures': {
         'task': 'ventes.check_overdue_factures',
@@ -175,9 +178,21 @@ app.conf.beat_schedule = {
         'task': 'ventes.releve_mensuel_reminders',
         'schedule': crontab(hour=8, minute=0, day_of_month=1),
     },
+<<<<<<< HEAD
     # XFSM6 — rappel client J-1 (interventions non confirmées, demain).
     'installations-rappel-rdv-j1': {
         'task': 'installations.rappel_rdv_j1',
         'schedule': crontab(hour=7, minute=45),
+    },
+    # YHIRE8 — alertes d'expiration RH (habilitations/certifs/docs/visites/
+    # EPI), quotidien, heure creuse matinale.
+    'rh-alertes-expiration': {
+        'task': 'rh.alertes_expiration',
+        'schedule': crontab(hour=7, minute=50),
+    },
+    # YHIRE8 — alerte fin de CDD (J-30 par défaut), quotidien.
+    'rh-alertes-cdd': {
+        'task': 'rh.alertes_cdd',
+        'schedule': crontab(hour=7, minute=55),
     },
 }
