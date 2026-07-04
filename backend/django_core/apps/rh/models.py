@@ -4493,6 +4493,10 @@ class ReglageRH(models.Model):
     # contrôle désactivé (comportement par défaut, jamais bloquant).
     geofence_metres = models.PositiveIntegerField(
         null=True, blank=True, verbose_name='Géofence (mètres)')
+    # XRH24 — rétention des candidatures rejetées (loi 09-08), en MOIS avant
+    # anonymisation par ``manage.py purger_candidatures``. Défaut 24 mois.
+    retention_candidatures_mois = models.PositiveIntegerField(
+        default=24, verbose_name='Rétention candidatures (mois)')
     date_modification = models.DateTimeField(
         auto_now=True, verbose_name='Modifié le')
 

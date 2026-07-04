@@ -2246,11 +2246,14 @@ class EmployeDeviceMapSerializer(serializers.ModelSerializer):
 
 
 class ReglageRHSerializer(serializers.ModelSerializer):
-    """Réglages RH (XRH12) — géofence de pointage chantier. ``company``
-    posée côté serveur (jamais lue du corps)."""
+    """Réglages RH (XRH12/XRH24) — géofence de pointage chantier + rétention
+    des candidatures (loi 09-08). ``company`` posée côté serveur (jamais lue
+    du corps)."""
     class Meta:
         model = ReglageRH
-        fields = ['id', 'geofence_metres', 'date_modification']
+        fields = [
+            'id', 'geofence_metres', 'retention_candidatures_mois',
+            'date_modification']
         read_only_fields = ['date_modification']
 
 

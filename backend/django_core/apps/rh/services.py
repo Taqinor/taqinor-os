@@ -1345,3 +1345,94 @@ def parser_cv(candidature):
         'tags_suggeres': tags_suggeres,
         'donnees_brutes': data,
     }
+
+
+# ── XRH24 — rétention & anonymisation des candidats (loi 09-08) ────────────
+
+_ANONYMISE_NOM = 'Candidat anonymisé'
+
+
+def candidatures_purgeables(company, *, retention_mois=None, now=None):
+    """XRH24 — candidatures REJETÉES éligibles à l'anonymisation.
+
+    Une candidature est éligible si : ``etape == rejete``, ``vivier`` est
+    ``False`` (jamais le vivier actif — même rejetée, un candidat au vivier
+    est délibérément conservé) et sa dernière activité (``date_modification``,
+    date du passage à ``rejete`` en pratique) dépasse ``retention_mois`` (le
+    réglage société ``ReglageRH.retention_candidatures_mois``, défaut 24, si
+    non fourni). Un candidat déjà anonymisé (``nom`` déjà marqué) est exclu —
+    idempotence. Jamais les embauchés (``etape == embauche`` exclue de fait
+    par le filtre ``rejete``).
+    """
+    from .models import Candidature, ReglageRH, _ajouter_mois
+
+    now = now or timezone.now()
+    if retention_mois is None:
+        reglage = ReglageRH.objects.filter(company=company).first()
+        retention_mois = (
+            reglage.retention_candidatures_mois if reglage else 24)
+
+    # Recule de ``retention_mois`` SANS dépendance externe (pas de dateutil),
+    # en réutilisant l'arithmétique de dates déjà éprouvée des EPI (FG179).
+    seuil_date = _ajouter_mois(now.date(), -int(retention_mois))
+    seuil = timezone.make_aware(
+        timezone.datetime.combine(seuil_date, timezone.datetime.min.time()))
+    return Candidature.objects.filter(
+        company=company,
+        etape=Candidature.Etape.REJETE,
+        vivier=False,
+        date_modification__lt=seuil,
+    ).exclude(nom=_ANONYMISE_NOM)
+
+
+@transaction.atomic
+def anonymiser_candidature(candidature):
+    """XRH24 — anonymise UNE candidature rejetée hors-vivier (irréversible) :
+    ``nom`` → « Candidat anonymisé », ``email``/``telephone`` vidés, le
+    ``cv_fichier`` est supprimé du storage (et le champ vidé), ``note``
+    purgée. La LIGNE survit (jamais de suppression) — les comptages/stats
+    XRH22 restent corrects. ``tags_vivier`` est également vidé (donnée
+    personnelle librement saisie)."""
+    if candidature.cv_fichier:
+        candidature.cv_fichier.delete(save=False)
+
+    candidature.nom = _ANONYMISE_NOM
+    candidature.email = ''
+    candidature.telephone = ''
+    candidature.note = ''
+    candidature.tags_vivier = ''
+    candidature.cv_fichier = None
+    candidature.save(update_fields=[
+        'nom', 'email', 'telephone', 'note', 'tags_vivier', 'cv_fichier',
+        'date_modification'])
+    return candidature
+
+
+def purger_candidatures(company, *, retention_mois=None, now=None,
+                        apply=False):
+    """XRH24 — purge (DRY-RUN par défaut) les candidatures rejetées hors
+    vivier au-delà de la rétention société.
+
+    ``apply=False`` (défaut) : ne modifie RIEN, renvoie seulement le compte et
+    les ids éligibles. ``apply=True`` : anonymise réellement chaque
+    candidature éligible (:func:`anonymiser_candidature`). Jamais les
+    embauchés ni le vivier actif (filtrés en amont par
+    :func:`candidatures_purgeables`). Renvoie
+    ``{'company_id', 'dry_run', 'eligibles', 'anonymisees', 'ids'}``.
+    """
+    candidats = list(candidatures_purgeables(
+        company, retention_mois=retention_mois, now=now))
+    ids = [c.id for c in candidats]
+    anonymisees = 0
+    if apply:
+        for candidature in candidats:
+            anonymiser_candidature(candidature)
+            anonymisees += 1
+
+    return {
+        'company_id': company.id,
+        'dry_run': not apply,
+        'eligibles': len(candidats),
+        'anonymisees': anonymisees,
+        'ids': ids,
+    }
