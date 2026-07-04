@@ -6621,3 +6621,144 @@ class EcheanceEmprunt(models.Model):
 
     def __str__(self):
         return f'Échéance {self.numero} — {self.mensualite}'
+
+
+# ── XACC15 — Charges constatées d'avance (étalement des charges prépayées) ──
+
+class ChargeConstateeAvance(models.Model):
+    """Charge prépayée à étaler sur plusieurs mois (symétrique du PCA, XACC15).
+
+    Une charge payée d'un coup (assurance annuelle, loyer payé d'avance…) doit
+    être rattachée au bon exercice : à l'origine, on porte le montant total au
+    compte 3491 « charges constatées d'avance » (débit 3491 / crédit 6xx —
+    neutralise la charge prématurée), puis on génère une dotation mensuelle
+    (débit 6xx / crédit 3491) pour chaque mois de la période d'étalement,
+    via ``services.etaler_charge_avance`` (idempotent). Origine : une facture
+    fournisseur ou une OD, référencée par id opaque (jamais un FK cross-app).
+    ``company`` posée côté serveur ; strictement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='charges_constatees_avance',
+        verbose_name='Société',
+    )
+    reference = models.CharField(
+        max_length=80, blank=True, default='', verbose_name='Référence')
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    facture_fournisseur_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID de la facture fournisseur')
+    montant_total = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0.00'),
+        verbose_name='Montant total à étaler')
+    date_debut = models.DateField(verbose_name="Début de l'étalement")
+    nb_mois = models.PositiveIntegerField(
+        default=12, verbose_name="Nombre de mois d'étalement")
+    # Compte de charge (classe 6) d'origine — optionnel : 61xx par défaut si
+    # non fourni côté service.
+    compte_charge = models.ForeignKey(
+        CompteComptable,
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='charges_constatees_avance',
+        verbose_name='Compte de charge (classe 6)',
+    )
+    ecriture_origine = models.ForeignKey(
+        EcritureComptable,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='charges_constatees_avance_origine',
+        verbose_name="Écriture d'origine (3491)",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='charges_constatees_avance_creees',
+        verbose_name='Créée par')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Charge constatée d'avance"
+        verbose_name_plural = "Charges constatées d'avance"
+        ordering = ['-date_debut', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                condition=models.Q(reference__gt=''),
+                name='uniq_cca_reference',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.reference or "CCA"} — {self.libelle} ({self.montant_total})'
+
+    def clean(self):
+        super().clean()
+        if self.montant_total is not None and self.montant_total <= 0:
+            raise ValidationError(
+                "Le montant à étaler doit être strictement positif.")
+        if self.nb_mois is not None and self.nb_mois < 1:
+            raise ValidationError(
+                "L'étalement doit porter sur au moins 1 mois.")
+
+    @property
+    def solde_restant_a_etaler(self):
+        """Solde 3491 restant = montant total − Σ des dotations déjà postées."""
+        dote = self.dotations.filter(posted=True).aggregate(
+            s=models.Sum('montant'))['s'] or Decimal('0')
+        reste = (self.montant_total or Decimal('0')) - dote
+        return reste if reste > 0 else Decimal('0.00')
+
+
+class DotationEtalement(models.Model):
+    """Dotation mensuelle d'étalement d'une ``ChargeConstateeAvance`` (XACC15).
+
+    Une ligne par mois : ``montant`` égal au montant total / nb_mois, la
+    DERNIÈRE ligne absorbant l'écart d'arrondi (Σ dotations = montant total,
+    exact au centime). ``posted`` + ``ecriture`` tracent le posting (débit 6xx
+    / crédit 3491), idempotent. Unicité ``(charge, numero)``.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='dotations_etalement',
+        verbose_name='Société',
+    )
+    charge = models.ForeignKey(
+        ChargeConstateeAvance,
+        on_delete=models.CASCADE,
+        related_name='dotations',
+        verbose_name='Charge constatée d\'avance',
+    )
+    numero = models.PositiveIntegerField(verbose_name='Rang (1..N)')
+    date_dotation = models.DateField(verbose_name='Date de dotation')
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0.00'),
+        verbose_name='Dotation')
+    posted = models.BooleanField(
+        default=False, verbose_name='Postée au grand livre')
+    ecriture = models.ForeignKey(
+        EcritureComptable,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='dotations_etalement',
+        verbose_name='Écriture comptable',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Dotation d'étalement"
+        verbose_name_plural = "Dotations d'étalement"
+        ordering = ['charge_id', 'numero']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['charge', 'numero'],
+                name='uniq_dotation_etalement_charge_numero',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Dotation {self.numero} — {self.montant}'

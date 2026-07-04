@@ -41,7 +41,7 @@ from .models import (
     DemandeApprobationConfig, DotationAmortissement,
     ECatalogue, EcritureComptable, Effet, EntiteConsolidation,
     ExerciceComptable, MessageWhatsAppEntrant,
-    Emprunt, EcheanceEmprunt,
+    Emprunt, EcheanceEmprunt, ChargeConstateeAvance, DotationEtalement,
     Immobilisation, IndemniteChantier, Journal, LigneEcriture,
     LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, NoteFrais,
     OuverturePartage,
@@ -6228,3 +6228,128 @@ def injecter_echeances_previsionnel(company, *, date_debut=None, nb_semaines=13)
         }
         for e in qs
     ]
+
+
+# ── XACC15 — Charges constatées d'avance (étalement des charges prépayées) ──
+
+_COMPTE_CCA = '3491'
+
+
+@transaction.atomic
+def etaler_charge_avance(company, *, montant_total, date_debut, nb_mois,
+                         libelle='', facture_fournisseur_id=None,
+                         compte_charge=None, poster_origine=True, user=None):
+    """Crée l'échéancier d'étalement d'une charge prépayée (XACC15).
+
+    Porte le montant total au débit de 3491 (crédit du compte de charge
+    d'origine, 61xx par défaut) SAUF si ``poster_origine=False`` (l'écriture
+    d'origine existe déjà, ex. saisie directe depuis une facture fournisseur
+    qui a déjà débité 3491), puis génère ``nb_mois`` ``DotationEtalement``
+    NON postées (à poster mois par mois via ``poster_dotation_etalement``).
+    La DERNIÈRE dotation absorbe l'écart d'arrondi (Σ dotations = montant
+    total, exact). ``reference`` et ``company`` posés côté serveur. Renvoie
+    la charge créée.
+    """
+    from apps.ventes.utils.references import create_with_reference
+
+    montant_total = Decimal(montant_total or 0)
+    nb_mois = int(nb_mois or 0)
+    compte = compte_charge or _assurer_compte(company, '6132')
+
+    charge = ChargeConstateeAvance(
+        company=company,
+        libelle=libelle or '',
+        facture_fournisseur_id=facture_fournisseur_id,
+        montant_total=montant_total,
+        date_debut=date_debut,
+        nb_mois=nb_mois,
+        compte_charge=compte,
+        created_by=user,
+    )
+    charge.full_clean(exclude=['reference', 'created_by', 'libelle'])
+
+    def _save(reference):
+        charge.reference = reference
+        charge.save()
+        return charge
+
+    charge = create_with_reference(ChargeConstateeAvance, 'CCA', company, _save)
+
+    if poster_origine:
+        compte_cca = _assurer_compte(company, _COMPTE_CCA)
+        journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+        if journal is None:
+            seed_journaux(company)
+            journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+        libelle_ecr = f'Constat charge à étaler {charge.reference}'
+        ecriture = creer_ecriture_od(
+            company, date_debut, libelle_ecr,
+            [
+                {'compte': compte_cca, 'debit': montant_total,
+                 'credit': Decimal('0'), 'libelle': libelle_ecr},
+                {'compte': compte, 'debit': Decimal('0'),
+                 'credit': montant_total, 'libelle': libelle_ecr},
+            ],
+            created_by=user)
+        charge.ecriture_origine = ecriture
+        charge.save(update_fields=['ecriture_origine'])
+
+    # Génère les dotations mensuelles (montants égaux, arrondi sur la dernière).
+    montant_mensuel = (montant_total / Decimal(nb_mois)).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP) if nb_mois else Decimal('0.00')
+    dotations = []
+    cumul = Decimal('0.00')
+    for i in range(1, nb_mois + 1):
+        if i == nb_mois:
+            montant = (montant_total - cumul).quantize(
+                Decimal('0.01'), rounding=ROUND_HALF_UP)
+        else:
+            montant = montant_mensuel
+        cumul += montant
+        dotations.append(DotationEtalement(
+            company=company,
+            charge=charge,
+            numero=i,
+            date_dotation=_mois_suivant(date_debut, i - 1),
+            montant=montant,
+        ))
+    DotationEtalement.objects.bulk_create(dotations)
+    return charge
+
+
+@transaction.atomic
+def poster_dotation_etalement(dotation, *, user=None):
+    """Poste une dotation d'étalement au grand livre (XACC15).
+
+    Écriture ÉQUILIBRÉE (journal OD) : débit du compte de charge (classe 6) /
+    crédit 3491 « charges constatées d'avance ». Idempotente. RESPECTE LE
+    VERROU DE PÉRIODE (FG115).
+    """
+    charge = dotation.charge
+    company = dotation.company
+    if dotation.posted and dotation.ecriture_id:
+        return dotation.ecriture
+    montant = Decimal(dotation.montant)
+    if montant <= 0:
+        raise ValidationError("Impossible de poster une dotation nulle.")
+    if PeriodeComptable.date_verrouillee(company.id, dotation.date_dotation):
+        raise ValidationError(
+            "Période comptable clôturée : impossible de poster la dotation "
+            f"d'étalement du {dotation.date_dotation}.")
+    compte_charge = charge.compte_charge or _assurer_compte(company, '6132')
+    compte_cca = _assurer_compte(company, _COMPTE_CCA)
+    libelle = f'Dotation étalement {dotation.numero} — {charge.reference}'
+    ecriture = creer_ecriture_od(
+        company, dotation.date_dotation, libelle,
+        [
+            {'compte': compte_charge, 'debit': montant,
+             'credit': Decimal('0'), 'libelle': libelle},
+            {'compte': compte_cca, 'debit': Decimal('0'),
+             'credit': montant, 'libelle': libelle},
+        ],
+        reference=f'CCA-{charge.id}-{dotation.numero}',
+        created_by=user)
+    dotation.posted = True
+    dotation.ecriture = ecriture
+    dotation.save(update_fields=['posted', 'ecriture'])
+    return ecriture

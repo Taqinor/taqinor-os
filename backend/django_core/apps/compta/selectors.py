@@ -11,7 +11,8 @@ from django.db.models import Q, Sum
 from django.utils import timezone
 
 from .models import (
-    Caisse, CautionBancaire, CompteComptable, CompteTresorerie, EcheanceEmprunt,
+    Caisse, CautionBancaire, ChargeConstateeAvance, CompteComptable,
+    CompteTresorerie, EcheanceEmprunt,
     Effet, Emprunt,
     EntiteConsolidation, LigneEcriture, LignePrevisionnelTresorerie,
     MouvementCaisse, Rapprochement, RetenueGarantie, RetenueSource,
@@ -2693,3 +2694,37 @@ def export_fiduciaire(company, exercice, *, validees_seulement=False):
             'resultat': etat_cpc['resultat'],
         },
     }
+
+
+# ── XACC15 — Charges constatées d'avance : solde restant à étaler ─────────
+
+def solde_charges_constatees_avance(company, *, date_fin=None):
+    """Rapport du solde 3491 restant à étaler par charge, à une date donnée
+    (XACC15). Pour chaque ``ChargeConstateeAvance`` de la société : montant
+    total, Σ des dotations postées jusqu'à ``date_fin`` (défaut aujourd'hui),
+    et solde restant = montant total − dotations postées. Renvoie
+    ``{'charges': [...], 'total_restant': Decimal}``. Lecture seule.
+    """
+    date_fin = date_fin or timezone.localdate()
+    charges = ChargeConstateeAvance.objects.filter(
+        company=company).prefetch_related('dotations').order_by('-date_debut', '-id')
+    resultat = []
+    total_restant = Decimal('0')
+    for charge in charges:
+        dote = sum(
+            (d.montant for d in charge.dotations.all()
+             if d.posted and d.date_dotation <= date_fin),
+            Decimal('0'))
+        restant = (charge.montant_total or Decimal('0')) - dote
+        if restant < 0:
+            restant = Decimal('0')
+        total_restant += restant
+        resultat.append({
+            'id': charge.id,
+            'reference': charge.reference,
+            'libelle': charge.libelle,
+            'montant_total': charge.montant_total,
+            'dote': dote,
+            'solde_restant': restant,
+        })
+    return {'charges': resultat, 'total_restant': total_restant}
