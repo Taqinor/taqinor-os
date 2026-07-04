@@ -35,7 +35,7 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
-from .services import add_months
+from .dateutils import add_months
 
 
 # ── FG81 — Réglages SLA par société ──────────────────────────────────────────

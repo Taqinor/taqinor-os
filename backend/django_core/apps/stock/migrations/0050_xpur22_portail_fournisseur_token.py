@@ -50,7 +50,8 @@ class Migration(migrations.Migration):
                 "verbose_name_plural": "Jetons portail fournisseur",
                 "ordering": ["-created_at"],
                 "indexes": [
-                    models.Index(fields=["token"]),
+                    models.Index(fields=["token"],
+                                 name="stock_pftoken_token_idx"),
                 ],
             },
         ),

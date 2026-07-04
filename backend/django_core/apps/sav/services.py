@@ -5,21 +5,9 @@ Helpers SAV — arithmétique de garantie (sans dépendance externe).
 (calendar), avec recadrage du jour pour les fins de mois (ex. 31 jan + 1 mois
 → 28/29 fév). Sert au calcul des dates de fin de garantie des équipements.
 """
-import calendar
-from datetime import date
-
 from django.utils import timezone
 
-
-def add_months(d: date, months: int) -> date:
-    """Retourne `d` décalée de `months` mois (jour recadré sur la fin de mois)."""
-    if d is None or months is None:
-        return None
-    total = d.month - 1 + int(months)
-    year = d.year + total // 12
-    month = total % 12 + 1
-    day = min(d.day, calendar.monthrange(year, month)[1])
-    return date(year, month, day)
+from .dateutils import add_months  # noqa: F401  (ré-export rétrocompat)
 
 
 # ── Point d'entrée cross-app : ajout au parc installé (sav.Equipement) ───────

@@ -17,7 +17,7 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.AlterField(
-            model_name="lignebondecommandefournisseur",
+            model_name="ligneboncommandefournisseur",
             name="produit",
             field=models.ForeignKey(
                 blank=True, null=True,
@@ -26,12 +26,12 @@ class Migration(migrations.Migration):
                 to="stock.produit"),
         ),
         migrations.AddField(
-            model_name="lignebondecommandefournisseur",
+            model_name="ligneboncommandefournisseur",
             name="designation",
             field=models.CharField(blank=True, default="", max_length=255),
         ),
         migrations.AddField(
-            model_name="lignebondecommandefournisseur",
+            model_name="ligneboncommandefournisseur",
             name="sans_stock",
             field=models.BooleanField(default=False),
         ),
