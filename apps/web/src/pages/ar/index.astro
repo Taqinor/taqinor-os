@@ -393,7 +393,7 @@ const engineeringPillars = [
                   داخل <a>، HTML غير صالح)؛ z-index أعلى من الرابط الممتدّ. */}
               <button
                 type="button"
-                class="gallery-zoom-btn absolute end-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-nuit/70 text-white backdrop-blur-sm transition-colors hover:bg-nuit/90"
+                class="gallery-zoom-btn absolute end-3 top-3 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-nuit/70 text-white backdrop-blur-sm transition-colors hover:bg-nuit/90"
                 aria-label={`تكبير الصورة: ${g.ville}, ${g.kwc}${g.prod ? `, ${g.prod}` : ''}`}
                 data-lightbox-open
                 data-name={g.name}
@@ -779,12 +779,12 @@ const engineeringPillars = [
   }
   .gallery-lightbox-close {
     position: absolute;
-    top: 0.6rem;
-    inset-inline-end: 0.6rem;
+    top: max(0.6rem, env(safe-area-inset-top));
+    inset-inline-end: max(0.6rem, env(safe-area-inset-right));
     z-index: 1;
     display: flex;
-    height: 2.25rem;
-    width: 2.25rem;
+    height: 2.75rem;
+    width: 2.75rem;
     align-items: center;
     justify-content: center;
     border-radius: 9999px;
