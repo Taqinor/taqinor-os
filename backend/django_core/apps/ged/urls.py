@@ -15,8 +15,8 @@ from .views import (
     RegleApprobationGedViewSet, RegleDossierViewSet, RoleSignataireViewSet,
     RoutageDocumentaireViewSet, SignataireDemandeViewSet,
     TypeChampSignatureViewSet, ValidationOcrDocumentViewSet,
-    analytique_ged, public_depot, public_partage, public_signataire,
-    public_signature,
+    analytique_ged, mes_favoris, public_depot, public_partage,
+    public_signataire, public_signature,
 )
 
 router = DefaultRouter()
@@ -74,5 +74,9 @@ urlpatterns = [
     # Déclaré avant le routeur pour ne pas être capté par une route de detail
     # DRF (ex. un futur `<pk>/`) — même précaution que les routes publiques.
     path('analytique/', analytique_ged, name='ged-analytique'),
+    # ZGED7 — favoris personnels de l'appelant, déclaré avant le routeur (même
+    # précaution que analytique/) pour ne jamais être capté par une route de
+    # détail DRF.
+    path('mes-favoris/', mes_favoris, name='ged-mes-favoris'),
     path('', include(router.urls)),
 ]

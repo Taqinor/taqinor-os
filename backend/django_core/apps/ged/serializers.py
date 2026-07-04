@@ -5,7 +5,8 @@ from .models import (
     ChampSignature, Coffre, DemandeApprobation, DemandeDisposition,
     DemandeDocument, DemandeSignatureDocument, DepotPublic,
     Document, DocumentLien, DocumentTag, DocumentTagAssignment, DocumentVersion,
-    ExigenceDossier, Folder, JournalAcces, LegalHold, LotEnvoi, ModeleDocument,
+    ExigenceDossier, FavoriGed, Folder, JournalAcces, LegalHold, LotEnvoi,
+    ModeleDocument,
     PartageGed, PlanificationDocument, PolitiqueRetention,
     RegleAclMetadonnee, RegleApprobationGed, RegleDossier, RoleSignataire,
     RoutageDocumentaire, QuotaStockage, SignataireDemande, TypeChampSignature,
@@ -774,6 +775,40 @@ class RoutageDocumentaireSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     "Un routage existe déjà pour cette source dans cette société.")
         return value
+
+
+class FavoriGedSerializer(serializers.ModelSerializer):
+    """ZGED7 — Favori d'un dossier ou document (personnel, jamais partagé).
+
+    `company`/`utilisateur` posés côté serveur — jamais lus du corps."""
+    folder_nom = serializers.CharField(
+        source='folder.nom', read_only=True, default=None)
+    document_nom = serializers.CharField(
+        source='document.nom', read_only=True, default=None)
+
+    class Meta:
+        model = FavoriGed
+        fields = [
+            'id', 'folder', 'folder_nom', 'document', 'document_nom',
+            'created_at',
+        ]
+        read_only_fields = ['created_at']
+
+    def validate(self, attrs):
+        folder = attrs.get('folder', getattr(self.instance, 'folder', None))
+        document = attrs.get('document', getattr(self.instance, 'document', None))
+        if bool(folder) == bool(document):
+            raise serializers.ValidationError(
+                "Un favori cible exactement un dossier OU un document.")
+        request = self.context.get('request')
+        if request is not None:
+            company = request.user.company
+            if folder is not None and folder.company_id != company.id:
+                raise serializers.ValidationError({'folder': 'Dossier inconnu.'})
+            if document is not None and document.company_id != company.id:
+                raise serializers.ValidationError(
+                    {'document': 'Document inconnu.'})
+        return attrs
 
 
 class RoleSignataireSerializer(serializers.ModelSerializer):

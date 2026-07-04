@@ -3149,3 +3149,69 @@ class RoutageDocumentaire(models.Model):
 
     def __str__(self):
         return f'{self.source} → {self.dossier_cible}'
+
+
+# ── ZGED7 — Favoris de dossiers/documents ────────────────────────────────────
+
+class FavoriGed(models.Model):
+    """ZGED7 — Favori d'un dossier ou document GED, PAR UTILISATEUR.
+
+    Odoo Documents permet de « marquer comme favori » un dossier (accès
+    rapide dans la barre latérale). Cible À EXACTEMENT UNE des deux cibles
+    (`folder` OU `document`, jamais les deux, jamais aucune — même garde
+    `clean()` + contrainte base que `AclGed`). Un favori est PERSONNEL à
+    l'utilisateur qui l'a posé (jamais partagé — un collègue ne le voit pas).
+    Company posée côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_favoris')
+    utilisateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='ged_favoris', verbose_name='utilisateur')
+    folder = models.ForeignKey(
+        Folder, on_delete=models.CASCADE,
+        null=True, blank=True, related_name='favoris')
+    document = models.ForeignKey(
+        Document, on_delete=models.CASCADE,
+        null=True, blank=True, related_name='favoris')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        verbose_name = 'Favori GED'
+        verbose_name_plural = 'Favoris GED'
+        indexes = [
+            models.Index(fields=['company', 'utilisateur'],
+                         name='ged_favori_co_user_idx'),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(folder__isnull=False, document__isnull=True)
+                    | models.Q(folder__isnull=True, document__isnull=False)
+                ),
+                name='ged_favori_exactly_one_target',
+            ),
+            models.UniqueConstraint(
+                fields=['utilisateur', 'folder'],
+                condition=models.Q(folder__isnull=False),
+                name='ged_favori_unique_user_folder',
+            ),
+            models.UniqueConstraint(
+                fields=['utilisateur', 'document'],
+                condition=models.Q(document__isnull=False),
+                name='ged_favori_unique_user_document',
+            ),
+        ]
+
+    def clean(self):
+        """Garantit cible exactement-une (folder XOR document)."""
+        from django.core.exceptions import ValidationError
+        if bool(self.folder_id) == bool(self.document_id):
+            raise ValidationError(
+                "Un favori cible exactement un dossier OU un document.")
+
+    def __str__(self):
+        cible = self.document or self.folder
+        return f'Favori {self.utilisateur} → {cible}'

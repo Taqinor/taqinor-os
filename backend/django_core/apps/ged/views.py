@@ -35,7 +35,8 @@ from .models import (
     DemandeDispositionError, DemandeDocument,
     DemandeSignatureDocument, DepotPublic, Document, DocumentLien,
     DocumentTag, DocumentTagAssignment, DocumentVersion, ExigenceDossier,
-    Folder, JournalAcces, LegalHold, LegalHoldError, LotEnvoi, ModeleDocument,
+    FavoriGed, Folder, JournalAcces, LegalHold, LegalHoldError, LotEnvoi,
+    ModeleDocument,
     PartageGed, PlanificationDocument, PolitiqueRetention,
     QuotaDepasseError, QuotaStockage, RegleAclMetadonnee,
     RegleApprobationGed, RegleDossier, RoleSignataire, RoutageDocumentaire,
@@ -116,7 +117,8 @@ class FolderViewSet(TenantMixin, viewsets.ModelViewSet):
     ordering_fields = ['nom', 'created_at']
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS or self.action == 'descendants':
+        if self.action in READ_ACTIONS or self.action in (
+                'descendants', 'favori'):
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
@@ -197,6 +199,23 @@ class FolderViewSet(TenantMixin, viewsets.ModelViewSet):
             return _permissions_effectives_csv(lignes, f'dossier-{folder.pk}')
         return Response({'lignes': lignes})
 
+    @action(detail=True, methods=['post'], url_path='favori')
+    def favori(self, request, pk=None):
+        """ZGED7 — Bascule (toggle) ce dossier en favori pour l'appelant.
+
+        Personnel : jamais partagé, jamais visible d'un collègue. Renvoie
+        `{"favori": true|false}` selon l'état APRÈS bascule."""
+        folder = self.get_object()
+        deleted, _ = FavoriGed.objects.filter(
+            company=request.user.company, utilisateur=request.user,
+            folder=folder).delete()
+        if deleted:
+            return Response({'favori': False})
+        FavoriGed.objects.create(
+            company=request.user.company, utilisateur=request.user,
+            folder=folder)
+        return Response({'favori': True})
+
 
 class CoffreViewSet(TenantMixin, viewsets.ModelViewSet):
     """GED8 — Coffres-forts par employé/client (ACL propriétaire + admin).
@@ -261,6 +280,9 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             return [IsAnyRole()]
         # check_out/check_in : tout rôle peut extraire/libérer ses propres docs.
         if self.action in ('check_out', 'check_in'):
+            return [IsAnyRole()]
+        # ZGED7 — favoriser/défavoriser est personnel, ouvert à tout rôle.
+        if self.action == 'favori':
             return [IsAnyRole()]
         # XGED14 — le téléchargement ZIP est une lecture (lisible par tout rôle) ;
         # les autres opérations de lot restent réservées aux responsables/admins.
@@ -371,6 +393,23 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         document.save(update_fields=['proprietaire', 'contact_id', 'updated_at'])
         return Response(
             DocumentSerializer(document, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='favori')
+    def favori(self, request, pk=None):
+        """ZGED7 — Bascule (toggle) ce document en favori pour l'appelant.
+
+        Personnel : jamais partagé, jamais visible d'un collègue. Renvoie
+        `{"favori": true|false}` selon l'état APRÈS bascule."""
+        document = self.get_object()
+        deleted, _ = FavoriGed.objects.filter(
+            company=request.user.company, utilisateur=request.user,
+            document=document).delete()
+        if deleted:
+            return Response({'favori': False})
+        FavoriGed.objects.create(
+            company=request.user.company, utilisateur=request.user,
+            document=document)
+        return Response({'favori': True})
 
     def perform_create(self, serializer):
         # company + created_by posés côté serveur.
@@ -3243,6 +3282,27 @@ class PlanificationDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(
             company=self.request.user.company, created_by=self.request.user)
+
+
+@api_view(['GET'])
+@permission_classes([IsAnyRole])
+def mes_favoris(request):
+    """ZGED7 — Dossiers et documents favoris de l'APPELANT uniquement.
+
+    `GET ged/mes-favoris/` — jamais les favoris d'un collègue (personnel).
+    Renvoie `{"dossiers": [...], "documents": [...]}`."""
+    favoris = FavoriGed.objects.filter(
+        company=request.user.company, utilisateur=request.user
+    ).select_related('folder', 'document')
+    dossiers = [
+        {'id': f.folder.pk, 'nom': f.folder.nom, 'favori_id': f.pk}
+        for f in favoris if f.folder_id
+    ]
+    documents = [
+        {'id': f.document.pk, 'nom': f.document.nom, 'favori_id': f.pk}
+        for f in favoris if f.document_id
+    ]
+    return Response({'dossiers': dossiers, 'documents': documents})
 
 
 @api_view(['GET'])
