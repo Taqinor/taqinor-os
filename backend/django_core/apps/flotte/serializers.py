@@ -914,14 +914,23 @@ class GarageSerializer(serializers.ModelSerializer):
     """FLOTTE17 — Garage / atelier de réparation de la société.
 
     ``company`` est posée côté serveur (jamais lue du corps de requête).
+    XFLT26 — ``ice``/``identifiant_fiscal`` optionnels, préparation de
+    l'e-facturation DGI ; l'ICE doit comporter exactement 15 chiffres.
     """
 
     class Meta:
         model = Garage
         fields = [
-            'id', 'nom', 'adresse', 'telephone', 'actif', 'date_creation',
+            'id', 'nom', 'adresse', 'telephone', 'ice', 'identifiant_fiscal',
+            'actif', 'date_creation',
         ]
         read_only_fields = ['date_creation']
+
+    def validate_ice(self, value):
+        if value and (len(value) != 15 or not value.isdigit()):
+            raise serializers.ValidationError(
+                "L'ICE doit comporter exactement 15 chiffres.")
+        return value
 
 
 class OrdreReparationSerializer(serializers.ModelSerializer):
@@ -1938,24 +1947,39 @@ class CoutVehiculeSerializer(serializers.ModelSerializer):
     ``company`` est posée côté serveur (jamais lue du corps de requête).
     L'actif et le conducteur liés doivent appartenir à la société courante.
 
+    XFLT26 — préparation e-facturation DGI : ``fournisseur_id_ref`` référence
+    optionnellement un ``stock.Fournisseur`` de la société (id numérique,
+    résolu en lecture via ``fournisseur_label`` sans importer les modèles de
+    l'app stock) ; ``fournisseur`` (saisie libre) reste un repli pour un
+    fournisseur ponctuel. Au-delà de ``CoutVehicule.SEUIL_REFERENCE_MAD``
+    (5 000 MAD), une ``reference_piece`` absente déclenche un AVERTISSEMENT
+    non bloquant (``reference_avertissement``) — jamais un rejet.
+
     Champs lecture seule :
-    - ``actif_label``       : désignation de l'actif (véhicule ou engin).
+    - ``actif_label``             : désignation de l'actif (véhicule/engin).
     - ``categorie_display``.
-    - ``conducteur_nom``    : nom d'utilisateur du conducteur lié.
+    - ``conducteur_nom``          : nom d'utilisateur du conducteur lié.
+    - ``fournisseur_label``       : nom du fournisseur référencé, résolu par
+      sélecteur cross-app (``apps.stock.selectors.get_fournisseur_by_id``).
+    - ``reference_avertissement`` : message si le coût dépasse le seuil sans
+      référence de pièce (``None`` sinon).
     """
 
     actif_label = serializers.SerializerMethodField()
     categorie_display = serializers.CharField(
         source='get_categorie_display', read_only=True)
     conducteur_nom = serializers.SerializerMethodField()
+    fournisseur_label = serializers.SerializerMethodField()
+    reference_avertissement = serializers.SerializerMethodField()
 
     class Meta:
         model = CoutVehicule
         fields = [
             'id', 'actif_flotte', 'actif_label', 'categorie',
             'categorie_display', 'date', 'montant', 'fournisseur',
-            'reference_piece', 'conducteur', 'conducteur_nom', 'notes',
-            'date_creation',
+            'fournisseur_id_ref', 'fournisseur_label', 'reference_piece',
+            'reference_avertissement', 'conducteur', 'conducteur_nom',
+            'notes', 'date_creation',
         ]
         read_only_fields = ['date_creation']
 
@@ -1965,10 +1989,40 @@ class CoutVehiculeSerializer(serializers.ModelSerializer):
     def get_conducteur_nom(self, obj):
         return str(obj.conducteur) if obj.conducteur_id else None
 
+    def get_fournisseur_label(self, obj):
+        if not obj.fournisseur_id_ref:
+            return None
+        from apps.stock.selectors import get_fournisseur_by_id
+        fournisseur = get_fournisseur_by_id(obj.company, obj.fournisseur_id_ref)
+        return fournisseur.nom if fournisseur is not None else None
+
+    def get_reference_avertissement(self, obj):
+        seuil = CoutVehicule.SEUIL_REFERENCE_MAD
+        if obj.montant is not None and obj.montant > seuil \
+                and not obj.reference_piece:
+            return (
+                f'Coût de {obj.montant} MAD supérieur à {seuil} MAD sans '
+                'référence de facture structurée — pensez à la renseigner '
+                'pour la réconciliation comptable.'
+            )
+        return None
+
     def validate_montant(self, value):
         if value is not None and value < 0:
             raise serializers.ValidationError(
                 "Le montant ne peut pas être négatif.")
+        return value
+
+    def validate_fournisseur_id_ref(self, value):
+        if value is None:
+            return value
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        from apps.stock.selectors import get_fournisseur_by_id
+        if company is not None \
+                and get_fournisseur_by_id(company, value) is None:
+            raise serializers.ValidationError(
+                "Ce fournisseur n'appartient pas à votre société.")
         return value
 
 

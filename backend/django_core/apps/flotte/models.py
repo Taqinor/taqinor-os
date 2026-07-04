@@ -1156,6 +1156,15 @@ class Garage(models.Model):
         max_length=255, blank=True, verbose_name='Adresse')
     telephone = models.CharField(
         max_length=30, blank=True, verbose_name='Téléphone')
+    # XFLT26 — préparation e-facturation DGI : identité légale du garage
+    # (fournisseur ponctuel non référencé dans ``stock.Fournisseur``, qui
+    # porte DÉJÀ ICE/IF/RC/RIB — DC15). Champs additifs, tous optionnels
+    # (compat ascendante). L'ICE marocain est un identifiant à 15 chiffres.
+    ice = models.CharField(
+        max_length=15, blank=True, verbose_name='ICE',
+        help_text="Identifiant Commun de l'Entreprise (15 chiffres).")
+    identifiant_fiscal = models.CharField(
+        max_length=20, blank=True, verbose_name='Identifiant fiscal (IF)')
     actif = models.BooleanField(default=True, verbose_name='Actif')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
@@ -1170,6 +1179,13 @@ class Garage(models.Model):
                 name='flotte_garage_co_act_idx',
             ),
         ]
+
+    def clean(self):
+        """XFLT26 — Valide le format de l'ICE (15 chiffres) s'il est
+        renseigné."""
+        if self.ice and (len(self.ice) != 15 or not self.ice.isdigit()):
+            raise ValidationError(
+                "L'ICE doit comporter exactement 15 chiffres.")
 
     def __str__(self):
         return self.nom
@@ -3223,7 +3239,18 @@ class CoutVehicule(models.Model):
         max_digits=12, decimal_places=2, default=0,
         verbose_name='Montant (MAD)')
     fournisseur = models.CharField(
-        max_length=150, blank=True, verbose_name='Fournisseur')
+        max_length=150, blank=True, verbose_name='Fournisseur',
+        help_text='Repli en saisie libre pour un fournisseur ponctuel — '
+                  'préférer `fournisseur_id` (référentiel stock.Fournisseur, '
+                  'qui porte déjà ICE/IF/RC/RIB) quand il existe.')
+    # XFLT26 — préparation e-facturation DGI : référence VERS un
+    # `stock.Fournisseur` (qui porte DÉJÀ ICE/IF/RC/RIB, DC15) par id
+    # NUMÉRIQUE, jamais un FK cross-app dur (modularité, voir CLAUDE.md). null
+    # = coût sans fournisseur référencé (repli sur le champ `fournisseur` en
+    # saisie libre). La validation « même société » se fait côté serveur via
+    # le sélecteur de `apps.stock`.
+    fournisseur_id_ref = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Fournisseur (référentiel stock)')
     reference_piece = models.CharField(
         max_length=80, blank=True, verbose_name='Référence pièce')
     conducteur = models.ForeignKey(
@@ -3256,6 +3283,11 @@ class CoutVehicule(models.Model):
             ),
         ]
 
+    # XFLT26 — au-delà de ce montant (MAD), une référence de facture
+    # structurée (``reference_piece``) est exigée en WARNING (non bloquant —
+    # voir ``CoutVehiculeSerializer.get_reference_avertissement``).
+    SEUIL_REFERENCE_MAD = 5000
+
     def clean(self):
         """Valide l'appartenance société de l'actif et du conducteur, et un
         montant non négatif."""
@@ -3270,6 +3302,13 @@ class CoutVehicule(models.Model):
         if self.montant is not None and self.montant < 0:
             raise ValidationError(
                 "Le montant ne peut pas être négatif.")
+        if self.fournisseur_id_ref is not None:
+            from apps.stock.selectors import get_fournisseur_by_id
+            if get_fournisseur_by_id(
+                    self.company, self.fournisseur_id_ref) is None:
+                raise ValidationError(
+                    "Le fournisseur référencé n'appartient pas à la même "
+                    "société.")
 
     def __str__(self):
         return (f'{self.get_categorie_display()} — {self.actif_flotte} '
