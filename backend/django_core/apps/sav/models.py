@@ -295,6 +295,15 @@ class Equipement(models.Model):
     dernier_entretien_compteur_valeur = models.DecimalField(
         max_digits=12, decimal_places=2, null=True, blank=True)
 
+    # ── ZMFG12 — Mise au rebut (fin de vie) ──────────────────────────────────
+    # False par défaut = comportement actuel inchangé (tout le parc existant
+    # reste actif). Une fois au rebut : figé (voir `mettre-au-rebut`), exclu
+    # du parc actif par défaut ET des générations de visites préventives
+    # (XSAV17 — la contrat ne génère plus de ticket pour cet équipement).
+    mis_au_rebut = models.BooleanField(default=False)
+    date_rebut = models.DateField(null=True, blank=True)
+    motif_rebut = models.CharField(max_length=255, blank=True, default='')
+
     class Meta:
         verbose_name = 'Équipement'
         verbose_name_plural = 'Équipements'

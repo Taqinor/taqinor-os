@@ -312,7 +312,9 @@ def enregistrer_releve_compteur(*, company, equipement, type_releve, valeur,
 
     seuil = equipement.entretien_toutes_les_heures
     ticket = None
-    if seuil:
+    # ZMFG12 — un équipement au rebut ne génère plus de ticket préventif par
+    # franchissement de seuil (le parc « au rebut » est en fin de vie).
+    if seuil and not equipement.mis_au_rebut:
         reference_base = equipement.dernier_entretien_compteur_valeur or Decimal('0')
         if valeur - reference_base >= seuil:
             ticket = _generer_ticket_preventif_compteur(

@@ -85,6 +85,14 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
             qs = qs.filter(installation_id=installation)
         if categorie:
             qs = qs.filter(categorie_id=categorie)
+        # ZMFG12 — parc actif par défaut : exclut les équipements au rebut.
+        # ?rebut=tous pour tout voir ; ?rebut=only pour ne voir que le rebut.
+        rebut = params.get('rebut')
+        if self.action == 'list':
+            if rebut == 'only':
+                qs = qs.filter(mis_au_rebut=True)
+            elif rebut != 'tous':
+                qs = qs.filter(mis_au_rebut=False)
         if client:
             # XPOS9 — un équipement vendu au comptoir (sans chantier) est
             # rattaché via `client_vente` plutôt que `installation__client`.
@@ -120,9 +128,15 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
         return qs
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
+        if self.action in READ_ACTIONS + ['etiquettes']:
             return [HasPermissionOrLegacy('equipement_voir')()]
-        elif self.action in WRITE_ACTIONS:
+        elif self.action in WRITE_ACTIONS + [
+                # ZMFG12 — mise au rebut / réactivation, réservé responsable/
+                # admin (spec : action motivée, pas une simple écriture de
+                # champ).
+                'mettre_au_rebut', 'reactiver_rebut']:
+            if self.action in ('mettre_au_rebut', 'reactiver_rebut'):
+                return [IsResponsableOrAdmin()]
             return [HasPermissionOrLegacy('equipement_gerer')()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
@@ -180,6 +194,45 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
             inst.equipement_token = token
             update_fields.append('equipement_token')
         inst.save(update_fields=update_fields)
+
+    @action(detail=True, methods=['post'], url_path='mettre-au-rebut',
+            permission_classes=[IsResponsableOrAdmin])
+    def mettre_au_rebut(self, request, pk=None):
+        """ZMFG12 — Mise au rebut motivée (motif obligatoire, réservé
+        responsable/admin). Fige les horloges de garantie (aucun recalcul
+        futur) et exclut l'équipement du parc actif ET des générations de
+        visites préventives (XSAV17 — voir `enregistrer_releve_compteur`)."""
+        equipement = self.get_object()
+        motif = (request.data.get('motif') or '').strip()
+        if not motif:
+            return Response(
+                {'motif': 'Le motif de mise au rebut est obligatoire.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if not equipement.mis_au_rebut:
+            equipement.mis_au_rebut = True
+            equipement.date_rebut = timezone.localdate()
+            equipement.motif_rebut = motif
+            equipement.save(update_fields=[
+                'mis_au_rebut', 'date_rebut', 'motif_rebut'])
+        return Response(
+            EquipementSerializer(
+                equipement, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='reactiver-rebut',
+            permission_classes=[IsResponsableOrAdmin])
+    def reactiver_rebut(self, request, pk=None):
+        """ZMFG12 — Réactivation d'un équipement au rebut (retour au parc
+        actif et aux générations de visites préventives)."""
+        equipement = self.get_object()
+        if equipement.mis_au_rebut:
+            equipement.mis_au_rebut = False
+            equipement.date_rebut = None
+            equipement.motif_rebut = ''
+            equipement.save(update_fields=[
+                'mis_au_rebut', 'date_rebut', 'motif_rebut'])
+        return Response(
+            EquipementSerializer(
+                equipement, context={'request': request}).data)
 
     @action(detail=False, methods=['get'], url_path='etiquettes',
             permission_classes=[HasPermissionOrLegacy('equipement_voir')])
