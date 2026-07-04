@@ -1184,7 +1184,7 @@ const signConfig = ok
       {variants.length > 0 && (
         <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
           <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Autres tailles proposées" data-en="Other sizes available" data-ar="أحجام أخرى مقترحة">Autres tailles proposées</p>
-          <div class="mt-5 flex gap-4 overflow-x-auto pb-2">
+          <div class="mt-5 flex gap-4 overflow-x-auto pb-2" style="overscroll-behavior-x: contain;">
             {variants.map((v) => (
               <div class="cine-card min-w-[220px] shrink-0 rounded-xl p-5">
                 <p class="tech-label text-lune-faint" dir="ltr">Réf. {v.reference}{v.version > 1 ? ` · v${v.version}` : ''}</p>
