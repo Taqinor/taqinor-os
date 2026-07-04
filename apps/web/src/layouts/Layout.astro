@@ -192,15 +192,46 @@ const jsonLd = {
     <script is:inline>
       // Capture first-touch fbclid + UTM sur toute page d'atterrissage —
       // persistés en sessionStorage, repris par le formulaire (gate CAPI).
+      //
+      // WB29 — gated par le signal de consentement (ConsentBanner/WB31,
+      // `tq_consent` en localStorage) : tant qu'aucun consentement
+      // « granted » n'existe, les paramètres captés dans l'URL restent en
+      // mémoire (variable de page, jamais persistés) plutôt que d'écrire
+      // immédiatement en sessionStorage pour TOUT visiteur avant tout
+      // consentement. Si le consentement devient « granted » plus tard sur
+      // la MÊME page (le bandeau répond à l'événement `tq:consent-change`
+      // qu'il émet lui-même), la persistance a lieu à ce moment-là — sinon
+      // rien n'est jamais écrit. Additif : ne touche ni aux champs
+      // fbclid/UTM du lead, ni au seuil 1000 MAD, ni au webhook.
       (function () {
         try {
           var p = new URLSearchParams(location.search);
           var keys = ['fbclid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
+          var captured = {};
+          var hasAny = false;
           for (var i = 0; i < keys.length; i++) {
             var v = p.get(keys[i]);
-            if (v && !sessionStorage.getItem('tq_' + keys[i])) {
-              sessionStorage.setItem('tq_' + keys[i], v);
+            if (v) {
+              captured[keys[i]] = v;
+              hasAny = true;
             }
+          }
+          if (!hasAny) return;
+
+          function persist() {
+            for (var k in captured) {
+              if (!sessionStorage.getItem('tq_' + k)) {
+                sessionStorage.setItem('tq_' + k, captured[k]);
+              }
+            }
+          }
+
+          if (localStorage.getItem('tq_consent') === 'granted') {
+            persist();
+          } else {
+            window.addEventListener('tq:consent-change', function (e) {
+              if (e && e.detail && e.detail.value === 'granted') persist();
+            });
           }
         } catch (e) {}
       })();
