@@ -4651,3 +4651,83 @@ def resoudre_conditionnement(company, *, conditionnement_id=None,
         return ConditionnementProduit.objects.filter(
             company=company, code_barres=code_barres).first()
     return None
+
+
+# ── XSTK16 — Découpe / reconditionnement (touret → coupes) ──────────────────
+# Débite le produit SOURCE (SORTIE) et crédite le produit CIBLE (ENTREE) en
+# UNE transaction, en transférant la valeur au coût moyen — aucune création
+# ni destruction de valeur. Propage numero_lot/date_peremption (XSTK6) quand
+# le lot source en porte. Référence commune sur les deux MouvementStock pour
+# la traçabilité (XMFG15 lit `reference`).
+
+def decouper_produit(*, company, produit_source, quantite_consommee,
+                     produit_cible, quantite_produite, user,
+                     emplacement=None, lot_source=None):
+    """XSTK16 — débite `quantite_consommee` unités de `produit_source` et
+    crédite `quantite_produite` unités de `produit_cible` (peut être le même
+    SKU), en transférant EXACTEMENT la valeur au coût moyen du produit
+    source (aucune création/destruction de valeur). Lève ValueError si la
+    quantité consommée dépasse le stock disponible. Si `lot_source` est
+    fourni, décrémente ce lot (XSTK6, garde péremption incluse) et propage
+    `numero_lot`/`date_peremption` sur un nouveau `LotEntrepot` du produit
+    cible quand celui-ci en a un."""
+    from django.db import transaction
+    from django.utils import timezone
+    from .models import LotEntrepot, Produit
+    if quantite_consommee <= 0 or quantite_produite <= 0:
+        raise ValueError('Les quantités doivent être positives.')
+    if quantite_consommee > (produit_source.quantite_stock or 0):
+        raise ValueError(
+            f'Stock insuffisant sur {produit_source.nom} '
+            f'({produit_source.quantite_stock} disponible).')
+    reference = f'DECOUPE-{timezone.now().strftime("%Y%m%d%H%M%S")}-{produit_source.pk}'
+    cout_unitaire, _source = average_cost_with_source(produit_source)
+    valeur_transferee = (cout_unitaire * quantite_consommee).quantize(
+        Decimal('0.01'))
+
+    with transaction.atomic():
+        avant_source = produit_source.quantite_stock
+        apres_source = avant_source - quantite_consommee
+        record_stock_movement(
+            company=company, produit=produit_source,
+            type_mouvement=mouvement_type_sortie(),
+            quantite=quantite_consommee, quantite_avant=avant_source,
+            quantite_apres=apres_source, reference=reference,
+            note=f'Découpe : consommation {produit_source.nom}',
+            created_by=user)
+
+        cible = Produit.objects.select_for_update().get(pk=produit_cible.pk)
+        avant_cible = cible.quantite_stock
+        apres_cible = avant_cible + quantite_produite
+        record_stock_movement(
+            company=company, produit=cible,
+            type_mouvement=mouvement_type_entree(),
+            quantite=quantite_produite, quantite_avant=avant_cible,
+            quantite_apres=apres_cible, reference=reference,
+            note=f'Découpe : production {cible.nom}',
+            created_by=user)
+
+        numero_lot = None
+        date_peremption = None
+        if lot_source is not None:
+            sortir_lot_entrepot(
+                company=company, lot=lot_source, quantite=quantite_consommee,
+                user=user)
+            numero_lot = lot_source.numero_lot
+            date_peremption = lot_source.date_peremption
+            LotEntrepot.objects.create(
+                company=company, produit=cible, numero_lot=numero_lot,
+                date_peremption=date_peremption,
+                emplacement=emplacement or lot_source.emplacement,
+                quantite_recue=quantite_produite,
+                quantite_restante=quantite_produite,
+                reference_reception=reference, created_by=user)
+
+    # Rafraîchit la source depuis la DB : si source == cible (même SKU), la
+    # copie mémoire de `produit_source` est stale après la 2e écriture.
+    produit_source.refresh_from_db()
+    return {
+        'reference': reference, 'valeur_transferee': valeur_transferee,
+        'cout_unitaire': cout_unitaire, 'produit_source': produit_source,
+        'produit_cible': cible, 'numero_lot': numero_lot,
+    }
