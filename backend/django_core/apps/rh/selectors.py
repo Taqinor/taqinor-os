@@ -2458,3 +2458,117 @@ def rapport_conges(company, annee, employe_id=None, departement_id=None):
         'par_employe': sorted(
             par_employe.values(), key=lambda e: -e['jours']),
     }
+
+
+def rapport_turnover(company, annee):
+    """ZRH11 — rapport de rétention / turnover ANNUEL détaillé.
+
+    DISTINCT du turnover 12 mois glissants du cockpit RH (FG200,
+    :func:`cockpit_rh`) — celui-ci reste inchangé. Pour l'année civile
+    ``annee`` (1er janvier -> 31 décembre), calcule :
+
+    * ``effectif_debut`` / ``effectif_fin`` — employés déjà embauchés
+      (``date_embauche`` <= borne) et pas encore sortis à cette date-là
+      (``date_sortie`` absente ou postérieure) ;
+    * ``par_mois`` — liste de 12 entrées ``{mois, entrees, sorties}`` ;
+    * ``taux_turnover_pct`` — sorties de l'année / effectif moyen
+      ((debut+fin)/2), 0 si effectif moyen nul ;
+    * ``anciennete_moyenne_ans`` — ancienneté moyenne (en années) des
+      employés présents à la fin de l'année (sur ``date_embauche``) ;
+    * ``retention_12m_pct`` — parmi les employés embauchés durant l'année
+      N-1, la part encore présente (non sortie) 12 mois après leur entrée
+      (ou toujours actifs si la fenêtre n'est pas encore écoulée -> exclus
+      du dénominateur tant que leurs 12 mois ne sont pas atteints à
+      aujourd'hui).
+
+    Lecture seule, société scopée, pas de migration.
+    """
+    from datetime import date
+
+    from django.utils import timezone as _tz
+
+    debut_annee = date(annee, 1, 1)
+    fin_annee = date(annee, 12, 31)
+    today = _tz.localdate()
+
+    base = DossierEmploye.objects.filter(company=company)
+
+    def present_a(d):
+        # Déjà embauché à la date ``d`` ET pas encore sorti à cette date-là
+        # (``date_sortie`` absente ou postérieure à ``d``).
+        return base.filter(
+            date_embauche__isnull=False, date_embauche__lte=d,
+        ).exclude(
+            date_sortie__isnull=False, date_sortie__lt=d,
+        )
+
+    effectif_debut = present_a(debut_annee).count()
+    effectif_fin = present_a(min(fin_annee, today)).count()
+
+    par_mois = []
+    total_entrees = 0
+    total_sorties = 0
+    for m in range(1, 13):
+        mois_debut = date(annee, m, 1)
+        mois_fin = date(annee, m, 28)
+        # Dernier jour du mois (sans dépendance externe).
+        if m == 12:
+            mois_fin = date(annee, 12, 31)
+        else:
+            mois_fin = date(annee, m + 1, 1) - timedelta(days=1)
+        entrees = base.filter(
+            date_embauche__gte=mois_debut, date_embauche__lte=mois_fin
+        ).count()
+        sorties = base.filter(
+            date_sortie__gte=mois_debut, date_sortie__lte=mois_fin
+        ).count()
+        total_entrees += entrees
+        total_sorties += sorties
+        par_mois.append({
+            'mois': m, 'entrees': entrees, 'sorties': sorties,
+        })
+
+    effectif_moyen = (effectif_debut + effectif_fin) / 2
+    taux_turnover_pct = (
+        round(total_sorties / effectif_moyen * 100, 1)
+        if effectif_moyen else 0.0)
+
+    presents_fin = present_a(min(fin_annee, today))
+    anciennetes = [
+        (min(fin_annee, today) - emp.date_embauche).days / 365.25
+        for emp in presents_fin if emp.date_embauche
+    ]
+    anciennete_moyenne_ans = (
+        round(sum(anciennetes) / len(anciennetes), 1)
+        if anciennetes else 0.0)
+
+    # Rétention 12 mois des embauchés de l'année N-1 : uniquement ceux dont
+    # les 12 mois sont déjà écoulés à aujourd'hui (sinon on ne peut pas
+    # encore juger — exclus du dénominateur).
+    annee_precedente = annee - 1
+    embauches_n1 = base.filter(
+        date_embauche__year=annee_precedente, date_embauche__isnull=False)
+    jugeables = []
+    encore_presents = 0
+    for emp in embauches_n1:
+        jalon = emp.date_embauche + timedelta(days=365)
+        if jalon > today:
+            continue
+        jugeables.append(emp)
+        if not emp.date_sortie or emp.date_sortie > jalon:
+            encore_presents += 1
+    retention_12m_pct = (
+        round(encore_presents / len(jugeables) * 100, 1)
+        if jugeables else None)
+
+    return {
+        'annee': annee,
+        'effectif_debut': effectif_debut,
+        'effectif_fin': effectif_fin,
+        'par_mois': par_mois,
+        'entrees_total': total_entrees,
+        'sorties_total': total_sorties,
+        'taux_turnover_pct': taux_turnover_pct,
+        'anciennete_moyenne_ans': anciennete_moyenne_ans,
+        'retention_12m_pct': retention_12m_pct,
+    }

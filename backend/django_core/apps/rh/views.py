@@ -295,6 +295,17 @@ class DossierEmployeViewSet(_RhBaseViewSet):
         return Response(
             {'detail': 'PIN mis à jour.'}, status=status.HTTP_200_OK)
 
+    @action(detail=False, methods=['get'], url_path='rapport-turnover')
+    def rapport_turnover(self, request):
+        """ZRH11 — rapport de rétention/turnover ANNUEL détaillé (« Employee
+        retention report » Odoo), DISTINCT du turnover 12 mois glissants du
+        cockpit RH FG200. ``?annee=`` (défaut année en cours). Gaté
+        ``IsResponsableOrAdmin`` (gate de classe par défaut)."""
+        annee = int(
+            request.query_params.get('annee')
+            or timezone.localdate().year)
+        return Response(selectors.rapport_turnover(request.user.company, annee))
+
     @action(detail=True, methods=['get'], url_path='compa-ratio')
     def compa_ratio(self, request, pk=None):
         """XRH16 — compa-ratio de l'employé (salaire vs bande de son poste).
