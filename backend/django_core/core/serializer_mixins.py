@@ -13,7 +13,14 @@ Comportement de repli conservé (comme ``HasPermissionOrLegacy`` /
 ``can_view_buy_prices``) : un compte SANS rôle fin (légacy) garde l'accès
 historique et n'est donc PAS masqué. Le superuser voit tout.
 
-``core`` reste FONDATION : ce mixin ne dépend d'aucune app métier.
+YRBAC8 — ``ServerControlledFieldsMixin``
+----------------------------------------
+
+Garde anti-mass-assignment : retire du body entrant les champs de gouvernance
+(``company``, ``created_by``, ``is_*``, ``role``…) avant validation, pour qu'un
+client ne puisse jamais forcer la société, le propriétaire ou un flag privilège.
+
+``core`` reste FONDATION : ces mixins ne dépendent d'aucune app métier.
 """
 from __future__ import annotations
 
@@ -69,3 +76,60 @@ class SensitiveFieldMaskMixin:
             if field_name in data and not _user_may_see(user, permission_code):
                 data.pop(field_name, None)
         return data
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# YRBAC8 — Champs pilotés serveur : jamais posés par le body
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Champs de gouvernance qu'un client ne doit JAMAIS pouvoir poser via le body
+# d'un POST/PATCH : ils sont toujours dérivés côté serveur. Un sérialiseur peut
+# étendre cette liste via ``server_controlled_fields``.
+DEFAULT_SERVER_CONTROLLED_FIELDS = frozenset({
+    "company",
+    "company_id",
+    "created_by",
+    "created_by_id",
+    "updated_by",
+    "owner",
+    "role",
+    "role_id",
+    "is_staff",
+    "is_superuser",
+    "is_active",
+})
+
+
+class ServerControlledFieldsMixin:
+    """Ignore les champs de gouvernance présents dans le body (YRBAC8).
+
+    Anti-mass-assignment transversal : avant validation, retire du payload
+    entrant tout champ de ``DEFAULT_SERVER_CONTROLLED_FIELDS`` (étendu par
+    ``server_controlled_fields`` sur le sérialiseur). La valeur de ces champs
+    vient TOUJOURS du serveur (``perform_create``/``TenantMixin``/défaut modèle),
+    jamais du client — injecter ``company=<autre>`` ou ``is_superuser=true`` dans
+    un POST/PATCH est simplement ignoré.
+
+    ``core`` reste FONDATION : aucune dépendance app métier.
+    """
+
+    server_controlled_fields: frozenset = frozenset()
+
+    def _server_controlled(self) -> frozenset:
+        return DEFAULT_SERVER_CONTROLLED_FIELDS | frozenset(
+            self.server_controlled_fields)
+
+    def to_internal_value(self, data):
+        blocked = self._server_controlled()
+        if hasattr(data, "keys") and any(k in blocked for k in list(data.keys())):
+            # Copie mutable (QueryDict est immuable) puis purge les champs.
+            try:
+                data = data.copy()
+            except AttributeError:
+                data = dict(data)
+            if hasattr(data, "_mutable"):
+                data._mutable = True
+            for key in list(data.keys()):
+                if key in blocked:
+                    data.pop(key, None)
+        return super().to_internal_value(data)
