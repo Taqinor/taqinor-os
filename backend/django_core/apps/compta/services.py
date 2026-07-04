@@ -64,7 +64,7 @@ from .models import (
     ObligationFiscale,
     FamilleTvaNonDeductible,
     EtapeSequence, ExecutionEtapeSequence, InscriptionSequence,
-    SequenceRelance,
+    SequenceRelance, EnvoiCampagne,
 )
 
 
@@ -5494,11 +5494,15 @@ def brevo_actif():
 def envoyer_campagne(campagne, *, destinataires=None):
     """Déclenche l'envoi groupé d'une campagne (FG201), idempotent.
 
-    ``destinataires`` = liste d'adresses/numéros (optionnelle, sinon 0). Si
-    l'intégration Brevo est inactive (défaut), c'est un NO-OP : on marque la
-    campagne ``envoyee`` et on enregistre le nombre de destinataires SANS
-    aucun appel réseau. Renvoie la campagne. Une campagne déjà envoyée ou
-    annulée n'est pas ré-envoyée.
+    ``destinataires`` = liste d'adresses/numéros (optionnelle, sinon 0), ou de
+    dicts ``{'destinataire': ..., 'contact_ref': ...}`` pour porter la
+    référence contact opaque (XMKT2). Si l'intégration Brevo est inactive
+    (défaut), c'est un NO-OP : on marque la campagne ``envoyee`` et on
+    enregistre le nombre de destinataires SANS aucun appel réseau. Renvoie la
+    campagne. Une campagne déjà envoyée ou annulée n'est pas ré-envoyée.
+
+    Chaque destinataire obtient sa ligne ``EnvoiCampagne`` (XMKT2), point de
+    départ du drill-down par KPI et du suivi webhook Brevo.
     """
     if campagne.statut != Campagne.Statut.BROUILLON:
         return campagne
@@ -5513,6 +5517,79 @@ def envoyer_campagne(campagne, *, destinataires=None):
     campagne.envoyee_le = timezone.now()
     campagne.save(update_fields=[
         'nb_destinataires', 'nb_envois', 'statut', 'envoyee_le'])
+    maintenant = timezone.now() if campagne.nb_envois else None
+    for cible in cibles:
+        if isinstance(cible, dict):
+            destinataire = (cible.get('destinataire') or '').strip()
+            contact_ref = cible.get('contact_ref') or ''
+        else:
+            destinataire = (cible or '').strip()
+            contact_ref = ''
+        if not destinataire:
+            continue
+        EnvoiCampagne.objects.create(
+            company=campagne.company,
+            campagne=campagne,
+            destinataire=destinataire,
+            contact_ref=contact_ref,
+            statut=(EnvoiCampagne.Statut.ENVOYE if maintenant
+                    else EnvoiCampagne.Statut.QUEUED),
+            envoye_le=maintenant,
+        )
+    return campagne
+
+
+def webhook_brevo_evenement(company, *, campagne_id, destinataire, evenement,
+                            raison_smtp=''):
+    """Traite un événement webhook Brevo (XMKT2), gated/no-op sans clé.
+
+    ``evenement`` ∈ delivered/opened/click/bounce/unsubscribed. Met à jour LA
+    ligne ``EnvoiCampagne`` correspondante (company+campagne+destinataire) et
+    laisse les compteurs agrégés de ``Campagne`` dérivables (recalculés par
+    ``recalculer_compteurs_campagne``). Idempotent : rejouer le même événement
+    ne fait qu'écraser l'horodatage, jamais dupliquer de ligne.
+    """
+    envoi = EnvoiCampagne.objects.filter(
+        company=company, campagne_id=campagne_id,
+        destinataire=destinataire).order_by('-date_creation').first()
+    if not envoi:
+        return None
+    maintenant = timezone.now()
+    mapping = {
+        'delivered': EnvoiCampagne.Statut.DELIVRE,
+        'opened': EnvoiCampagne.Statut.OUVERT,
+        'click': EnvoiCampagne.Statut.CLIQUE,
+        'bounce': EnvoiCampagne.Statut.REBOND,
+        'unsubscribed': EnvoiCampagne.Statut.DESINSCRIT,
+    }
+    nouveau_statut = mapping.get(evenement)
+    if not nouveau_statut:
+        return envoi
+    envoi.statut = nouveau_statut
+    update_fields = ['statut']
+    if evenement == 'opened' and not envoi.ouvert_le:
+        envoi.ouvert_le = maintenant
+        update_fields.append('ouvert_le')
+    if evenement == 'click' and not envoi.clique_le:
+        envoi.clique_le = maintenant
+        update_fields.append('clique_le')
+    if evenement == 'bounce' and raison_smtp:
+        envoi.raison_smtp = raison_smtp[:255]
+        update_fields.append('raison_smtp')
+    envoi.save(update_fields=update_fields)
+    recalculer_compteurs_campagne(envoi.campagne)
+    return envoi
+
+
+def recalculer_compteurs_campagne(campagne):
+    """Recalcule ``nb_ouvertures``/``nb_clics`` d'une ``Campagne`` (XMKT2) à
+    partir des lignes ``EnvoiCampagne`` — les compteurs deviennent dérivés.
+    """
+    envois = campagne.envois.all()
+    campagne.nb_ouvertures = envois.filter(
+        ouvert_le__isnull=False).count()
+    campagne.nb_clics = envois.filter(clique_le__isnull=False).count()
+    campagne.save(update_fields=['nb_ouvertures', 'nb_clics'])
     return campagne
 
 

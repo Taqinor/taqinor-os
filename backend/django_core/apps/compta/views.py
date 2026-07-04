@@ -13,9 +13,10 @@ from django.db import IntegrityError
 from django.http import HttpResponse
 
 from rest_framework import filters, status, viewsets
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
@@ -26,7 +27,7 @@ from .models import (
     AppelTelephonique,
     BaremeIndemnite, BordereauRemise, Budget, BudgetLigne, Caisse,
     Campagne, CautionBancaire, CentreCout, CessionImmobilisation, CodePromotion,
-    CommissionPayoutRun,
+    CommissionPayoutRun, EnvoiCampagne,
     CompteComptable, CompteTresorerie, ContratAvancement, DeclarationTVA,
     DemandeApprobationConfig,
     DotationAmortissement, ECatalogue, EcritureComptable, Effet,
@@ -62,7 +63,7 @@ from .serializers import (
     BordereauRemiseSerializer, BudgetSerializer, CaisseSerializer,
     CampagneSerializer, CautionBancaireSerializer, CentreCoutSerializer,
     CessionImmobilisationSerializer, ClotureCaisseSerializer,
-    CodePromotionSerializer,
+    CodePromotionSerializer, EnvoiCampagneSerializer,
     CommissionPayoutRunSerializer, CompteComptableSerializer,
     CompteTresorerieSerializer, ContratAvancementSerializer,
     DeclarationTVASerializer, DemandeApprobationConfigSerializer,
@@ -3638,6 +3639,29 @@ class CampagneViewSet(_ComptaBaseViewSet):
         return Response(CampagneSerializer(campagne).data)
 
 
+# ── XMKT2 — Journal d'envoi par destinataire (drill-down) ───────────────────
+
+class EnvoiCampagneViewSet(_ComptaBaseViewSet):
+    """Trace d'envoi par destinataire (XMKT2), lecture seule pour le
+    drill-down depuis un KPI de campagne. Filtrable par ``campagne`` et
+    ``statut``."""
+    http_method_names = ['get', 'head', 'options']
+    queryset = EnvoiCampagne.objects.select_related('campagne').all()
+    serializer_class = EnvoiCampagneSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        campagne_id = self.request.query_params.get('campagne')
+        if campagne_id:
+            qs = qs.filter(campagne_id=campagne_id)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+
 # ── FG202 — Séquences de relance automatisées ──────────────────────────────
 
 class SequenceRelanceViewSet(_ComptaBaseViewSet):
@@ -3704,6 +3728,35 @@ class InscriptionSequenceViewSet(_ComptaBaseViewSet):
             inscription, motif=request.data.get('motif', 'manuel'))
         inscription.refresh_from_db()
         return Response(InscriptionSequenceSerializer(inscription).data)
+
+
+# ── XMKT2 — Webhook Brevo (gated, public, aucune auth) ──────────────────────
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def webhook_brevo_campagne(request):
+    """Réception d'un événement webhook Brevo (XMKT2) : delivered/opened/
+    click/bounce/unsubscribed. Résout la société depuis la ``Campagne``
+    référencée (aucune session utilisateur côté webhook externe). Payload
+    minimal attendu : ``campagne_id``, ``destinataire``, ``event``, et
+    optionnellement ``reason`` (raison SMTP d'un rebond).
+    """
+    data = request.data or {}
+    campagne_id = data.get('campagne_id')
+    destinataire = (data.get('destinataire') or '').strip()
+    evenement = data.get('event') or ''
+    if not campagne_id or not destinataire or not evenement:
+        return Response({'detail': 'payload incomplet'}, status=400)
+    campagne = Campagne.objects.filter(id=campagne_id).first()
+    if not campagne:
+        return Response({'detail': 'campagne introuvable'}, status=404)
+    envoi = services.webhook_brevo_evenement(
+        campagne.company, campagne_id=campagne.id,
+        destinataire=destinataire, evenement=evenement,
+        raison_smtp=data.get('reason', ''))
+    if not envoi:
+        return Response({'detail': 'destinataire introuvable'}, status=404)
+    return Response({'statut': envoi.statut})
 
 
 # ── FG203 — Récupération des devis abandonnés ──────────────────────────────

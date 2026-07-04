@@ -12,6 +12,7 @@ from .models import (
     AppelTelephonique, AvancementRevenu, BaremeIndemnite, BordereauRemise,
     Budget, BudgetLigne,
     Caisse, Campagne, CautionBancaire, CentreCout, CessionImmobilisation,
+    EnvoiCampagne,
     ClotureCaisse, CodePromotion,
     CommissionPayoutLine, CommissionPayoutRun, CompteComptable,
     CompteTresorerie, ContratAvancement, DeclarationTVA,
@@ -1435,6 +1436,25 @@ class CampagneSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'statut', 'nb_destinataires', 'nb_envois', 'nb_ouvertures',
             'nb_clics', 'envoyee_le', 'date_creation',
+        ]
+
+
+# ── XMKT2 — Journal d'envoi par destinataire ────────────────────────────────
+
+class EnvoiCampagneSerializer(serializers.ModelSerializer):
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = EnvoiCampagne
+        fields = [
+            'id', 'campagne', 'destinataire', 'contact_ref', 'statut',
+            'statut_display', 'raison_smtp', 'envoye_le', 'ouvert_le',
+            'clique_le', 'date_creation',
+        ]
+        read_only_fields = [
+            'statut', 'raison_smtp', 'envoye_le', 'ouvert_le', 'clique_le',
+            'date_creation',
         ]
 
 

@@ -4414,6 +4414,64 @@ class Campagne(models.Model):
         return f'{self.nom} ({self.canal})'
 
 
+# ── XMKT2 — Journal d'envoi par destinataire (trace de campagne) ───────────
+
+class EnvoiCampagne(models.Model):
+    """Une ligne par destinataire réel d'une campagne (XMKT2).
+
+    Les compteurs agrégés de ``Campagne`` (FG201) sont dérivés de ces lignes ;
+    permet le drill-down depuis chaque KPI vers la liste exacte des
+    destinataires, et alimente les webhooks Brevo (gated).
+    """
+    class Statut(models.TextChoices):
+        QUEUED = 'queued', 'En file'
+        ENVOYE = 'envoye', 'Envoyé'
+        DELIVRE = 'delivre', 'Délivré'
+        OUVERT = 'ouvert', 'Ouvert'
+        CLIQUE = 'clique', 'Cliqué'
+        REBOND = 'rebond', 'Rebond'
+        DESINSCRIT = 'desinscrit', 'Désinscrit'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='envois_campagne',
+        verbose_name='Société',
+    )
+    campagne = models.ForeignKey(
+        Campagne,
+        on_delete=models.CASCADE,
+        related_name='envois',
+        verbose_name='Campagne',
+    )
+    destinataire = models.CharField(
+        max_length=255, verbose_name='Destinataire (email/téléphone)')
+    contact_ref = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Référence contact (lead/client, opaque)')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices, default=Statut.QUEUED,
+        db_index=True, verbose_name='Statut')
+    raison_smtp = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Raison SMTP')
+    envoye_le = models.DateTimeField(null=True, blank=True,
+                                     verbose_name='Envoyé le')
+    ouvert_le = models.DateTimeField(null=True, blank=True,
+                                     verbose_name='Ouvert le')
+    clique_le = models.DateTimeField(null=True, blank=True,
+                                     verbose_name='Cliqué le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = "Envoi de campagne (destinataire)"
+        verbose_name_plural = "Envois de campagne (destinataires)"
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'{self.campagne_id} → {self.destinataire} ({self.statut})'
+
+
 # ── FG202 — Séquences de relance automatisées (drip / nurture) ─────────────
 
 class SequenceRelance(models.Model):

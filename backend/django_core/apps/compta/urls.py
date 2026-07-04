@@ -2,9 +2,11 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    webhook_brevo_campagne,
     AppelTelephoniqueViewSet,
     BaremeIndemniteViewSet, BordereauRemiseViewSet, BudgetViewSet,
     CaisseViewSet, CampagneViewSet, CautionBancaireViewSet, CentreCoutViewSet,
+    EnvoiCampagneViewSet,
     CessionImmobilisationViewSet, CodePromotionViewSet,
     CommissionPayoutRunViewSet, ComparateurDevisViewSet,
     CompteComptableViewSet, CompteTresorerieViewSet, ContratAvancementViewSet,
@@ -98,6 +100,7 @@ router.register(r'obligations-fiscales', ObligationFiscaleViewSet)
 router.register(r'familles-tva-non-deductibles', FamilleTvaNonDeductibleViewSet)
 # ── Croissance commerciale / marketing / CPQ (FG201–FG214) ──────────────────
 router.register(r'campagnes', CampagneViewSet)
+router.register(r'envois-campagne', EnvoiCampagneViewSet)
 router.register(r'sequences-relance', SequenceRelanceViewSet)
 router.register(r'etapes-sequence', EtapeSequenceViewSet)
 router.register(r'inscriptions-sequence', InscriptionSequenceViewSet)
@@ -157,5 +160,6 @@ router.register(r'pistes-audit', PisteAuditComptableViewSet,
                 basename='pisteaudit')
 
 urlpatterns = [
+    path('webhooks/brevo/', webhook_brevo_campagne, name='webhook-brevo-campagne'),
     path('', include(router.urls)),
 ]
