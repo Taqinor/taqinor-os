@@ -218,6 +218,21 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
         data = warranty_registry(self.get_queryset(), expiring_soon_days=jours)
         return Response(data)
 
+    @action(detail=True, methods=['get'], url_path='fiabilite',
+            permission_classes=[HasPermissionOrLegacy('equipement_voir')])
+    def fiabilite(self, request, pk=None):
+        """XSAV15 — MTBF / MTTR / coût cumulé de CET équipement.
+
+        Le coût cumulé (Ticket.cout + pièces valorisées prix d'achat) et
+        l'indicateur réparer-vs-remplacer ne sont inclus QUE si l'utilisateur
+        porte la permission `prix_achat_voir` — jamais exposés autrement
+        (admin-only, jamais client-facing ni dans un PDF)."""
+        from .selectors import fiabilite_equipement
+        equipement = self.get_object()
+        include_couts = bool(request.user.can_view_buy_prices)
+        data = fiabilite_equipement(equipement, include_couts=include_couts)
+        return Response(data)
+
 
 class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
     """Tickets SAV + historique « chatter ». Cycle de vie propre (liste fermée
@@ -1199,6 +1214,24 @@ def sav_pareto_pannes(request):
         company, group_by=group_by,
         date_debut=_parse('date_debut'), date_fin=_parse('date_fin'))
     return Response({'group_by': group_by, 'results': data})
+
+
+# ── XSAV15 — MTBF/MTTR/coût cumulé — vue d'ensemble parc ──────────────────────
+
+def sav_fiabilite_insight(request):
+    """XSAV15 — Fiabilité (MTBF/MTTR/coût) de tout le parc, triée pour
+    identifier les « citrons ». Le coût cumulé n'est inclus que pour les
+    utilisateurs avec `prix_achat_voir` (jamais exposé sinon)."""
+    from .selectors import fiabilite_equipements
+    company = request.user.company
+    include_couts = bool(request.user.can_view_buy_prices)
+    try:
+        limit = int(request.query_params.get('limit', 50))
+    except (TypeError, ValueError):
+        limit = 50
+    data = fiabilite_equipements(
+        company, include_couts=include_couts, limit=max(1, limit))
+    return Response({'results': data, 'couts_inclus': include_couts})
 
 
 # ── FG89 — Prévision pièces SAV ───────────────────────────────────────────────

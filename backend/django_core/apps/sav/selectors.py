@@ -439,3 +439,108 @@ def pareto_pannes(company, *, group_by='produit', date_debut=None,
             'pct': pct, 'pct_cumule': pct_cumule, 'causes': causes,
         })
     return out
+
+
+# ── XSAV15 — MTBF / MTTR / coût cumulé par équipement ────────────────────────
+
+def fiabilite_equipement(equipement, *, include_couts=False):
+    """XSAV15 — MTBF / MTTR / coût cumulé pour UN équipement.
+
+    * MTBF (jours) = écart MOYEN entre les ``date_ouverture`` de tickets
+      CORRECTIFS successifs du même équipement (non annulés), triés
+      chronologiquement. ``None`` si moins de 2 tickets correctifs datés.
+    * MTTR (jours) = écart MOYEN ``date_resolution - date_ouverture`` sur les
+      tickets correctifs RÉSOLUS/CLÔTURÉS ayant les deux dates. ``None`` si
+      aucun ticket résolu daté.
+    * ``cout_cumule`` (Ticket.cout + PieceConsommee valorisées au prix
+      D'ACHAT interne) — calculé UNIQUEMENT si ``include_couts=True``
+      (gated ``prix_achat_voir`` côté appelant, jamais côté PDF/client).
+    * ``reparer_vs_remplacer`` : ``'remplacer'`` si le coût cumulé dépasse le
+      prix de vente catalogue de l'équipement (le remplacement serait moins
+      cher que les réparations cumulées), ``'reparer'`` sinon, ``None`` sans
+      coût calculable.
+
+    Renvoie un dict plat (jamais l'instance ORM) — sûr à sérialiser tel quel.
+    """
+    tickets = list(
+        Ticket.objects.filter(
+            equipement=equipement, type=Ticket.Type.CORRECTIF, annule=False,
+        ).order_by('date_ouverture', 'id'))
+
+    # ── MTBF : écart moyen entre ouvertures successives ──
+    ouvertures = [t.date_ouverture for t in tickets if t.date_ouverture]
+    ouvertures.sort()
+    ecarts = [
+        (ouvertures[i] - ouvertures[i - 1]).days
+        for i in range(1, len(ouvertures))
+    ]
+    mtbf_jours = round(sum(ecarts) / len(ecarts), 1) if ecarts else None
+
+    # ── MTTR : écart moyen ouverture → résolution ──
+    durees = []
+    for t in tickets:
+        if t.date_ouverture and t.date_resolution:
+            durees.append((t.date_resolution - t.date_ouverture).days)
+    mttr_jours = round(sum(durees) / len(durees), 1) if durees else None
+
+    result = {
+        'equipement_id': equipement.id,
+        'nb_tickets_correctifs': len(tickets),
+        'mtbf_jours': mtbf_jours,
+        'mttr_jours': mttr_jours,
+    }
+
+    if not include_couts:
+        return result
+
+    from decimal import Decimal
+    from .models import PieceConsommee
+
+    cout_tickets = sum(
+        (t.cout for t in tickets if t.cout is not None), Decimal('0'))
+    pieces = (PieceConsommee.objects
+              .filter(ticket__in=tickets)
+              .select_related('produit'))
+    cout_pieces = sum(
+        (p.quantite * p.produit.prix_achat for p in pieces), Decimal('0'))
+    cout_cumule = cout_tickets + cout_pieces
+
+    prix_vente = getattr(equipement.produit, 'prix_vente', None)
+    reparer_vs_remplacer = None
+    if prix_vente is not None:
+        reparer_vs_remplacer = (
+            'remplacer' if cout_cumule > prix_vente else 'reparer')
+
+    result.update({
+        'cout_cumule': float(cout_cumule),
+        'cout_tickets': float(cout_tickets),
+        'cout_pieces': float(cout_pieces),
+        'prix_catalogue': float(prix_vente) if prix_vente is not None else None,
+        'reparer_vs_remplacer': reparer_vs_remplacer,
+    })
+    return result
+
+
+def fiabilite_equipements(company, *, include_couts=False, limit=None):
+    """XSAV15 — Fiabilité (MTBF/MTTR/coût) de TOUS les équipements de la
+    société ayant au moins un ticket correctif, triée par coût cumulé
+    décroissant (si ``include_couts``) sinon par nombre de tickets
+    correctifs décroissant — la liste sert à identifier les « citrons »."""
+    qs = (Equipement.objects
+          .filter(company=company, tickets__type=Ticket.Type.CORRECTIF,
+                  tickets__annule=False)
+          .select_related('produit')
+          .distinct())
+    rows = [
+        fiabilite_equipement(eq, include_couts=include_couts) for eq in qs
+    ]
+    for row, eq in zip(rows, qs):
+        row['produit_nom'] = getattr(eq.produit, 'nom', '') or ''
+        row['numero_serie'] = eq.numero_serie or ''
+    key = (
+        (lambda r: r.get('cout_cumule') or 0) if include_couts
+        else (lambda r: r['nb_tickets_correctifs']))
+    rows.sort(key=key, reverse=True)
+    if limit:
+        rows = rows[:limit]
+    return rows

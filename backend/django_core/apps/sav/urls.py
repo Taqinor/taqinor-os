@@ -9,7 +9,7 @@ from .views import (
     SavSlaSettingsViewSet, MaintenanceChecklistTemplateViewSet,
     WarrantyClaimViewSet, KbArticleViewSet, AlarmeOnduleurViewSet,
     CauseDefaillanceViewSet, RemedeDefaillanceViewSet,
-    sav_parts_forecast, sav_pareto_pannes,
+    sav_parts_forecast, sav_pareto_pannes, sav_fiabilite_insight,
 )
 from .maintenance import ContratMaintenanceViewSet
 
@@ -40,10 +40,19 @@ def pareto_pannes_view(request):
     return sav_pareto_pannes(request)
 
 
+@api_view(['GET'])
+@permission_classes([IsAnyRole])
+def fiabilite_insight_view(request):
+    """XSAV15 — MTBF/MTTR/coût cumulé, vue d'ensemble du parc."""
+    return sav_fiabilite_insight(request)
+
+
 urlpatterns = [
     path('', include(router.urls)),
     path('insights/sav-parts-forecast/', parts_forecast_view,
          name='sav-parts-forecast'),
     path('insights/sav-pannes/', pareto_pannes_view,
          name='sav-pareto-pannes'),
+    path('insights/sav-fiabilite/', fiabilite_insight_view,
+         name='sav-fiabilite'),
 ]
