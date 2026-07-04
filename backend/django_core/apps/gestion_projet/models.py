@@ -2578,3 +2578,57 @@ class PointAvancement(models.Model):
 
     def __str__(self):
         return f'{self.projet_id} — {self.date_point} ({self.sante})'
+
+
+class ReglageTemps(models.Model):
+    """Réglages SINGLETON par société pour l'encodage des temps (ZPRJ1).
+
+    Odoo Timesheets a des « rounding rules » + « time-encoding unit » ;
+    jusqu'ici XPRJ5 (chrono) codait en dur l'arrondi au quart d'heure et rien
+    n'était paramétrable. ``arrondi_minutes`` + ``mode_arrondi`` pilotent le
+    helper ``services.arrondir_duree`` (consommé par le chrono XPRJ5 et — le
+    jour où elle existera — la grille hebdomadaire XPRJ6), ``heures_par_jour``
+    est lu par les sélecteurs ``plan_de_charge``/``nivellement_charge`` à la
+    place de la constante ``_HEURES_PAR_JOUR_DEFAUT``.
+
+    Relation 1–1 avec la société : ``get_or_create`` scopé société (jamais
+    créé plusieurs fois pour une même société). Tout est multi-société :
+    ``company`` est posée côté serveur, jamais lue du corps de requête.
+    Modèle entièrement additif.
+    """
+    class ModeArrondi(models.TextChoices):
+        INFERIEUR = 'inferieur', 'Arrondi au pas inférieur'
+        SUPERIEUR = 'superieur', 'Arrondi au pas supérieur'
+        PROCHE = 'proche', 'Arrondi au pas le plus proche'
+
+    class UniteSaisie(models.TextChoices):
+        HEURES = 'heures', 'Heures'
+        JOURS = 'jours', 'Jours'
+
+    company = models.OneToOneField(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gp_reglage_temps',
+        verbose_name='Société',
+    )
+    arrondi_minutes = models.PositiveSmallIntegerField(
+        default=15, verbose_name="Pas d'arrondi (minutes)")
+    mode_arrondi = models.CharField(
+        max_length=10, choices=ModeArrondi.choices,
+        default=ModeArrondi.SUPERIEUR, verbose_name="Mode d'arrondi")
+    unite_saisie = models.CharField(
+        max_length=10, choices=UniteSaisie.choices,
+        default=UniteSaisie.HEURES, verbose_name='Unité de saisie')
+    heures_par_jour = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal('8'),
+        verbose_name='Heures par jour')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Réglage temps'
+        verbose_name_plural = 'Réglages temps'
+        ordering = ['id']
+
+    def __str__(self):
+        return f'Réglages temps — {self.company_id}'

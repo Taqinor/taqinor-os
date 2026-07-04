@@ -36,6 +36,7 @@ from .models import (
     PointAvancement,
     ProjetLien,
     RecurrenceTache,
+    ReglageTemps,
     RessourceProfil,
     Risque,
     SituationTravaux,
@@ -1250,3 +1251,36 @@ class PointAvancementSerializer(serializers.ModelSerializer):
 
     def validate_projet(self, value):
         return _meme_societe(self, value, 'Projet')
+
+
+class ReglageTempsSerializer(serializers.ModelSerializer):
+    """Réglages société d'encodage des temps (ZPRJ1) — singleton par société.
+
+    ``company`` n'est jamais exposée en écriture : posée côté serveur (get_or_
+    create scopé société). ``arrondi_minutes`` doit être un entier positif.
+    """
+    mode_arrondi_display = serializers.CharField(
+        source='get_mode_arrondi_display', read_only=True)
+    unite_saisie_display = serializers.CharField(
+        source='get_unite_saisie_display', read_only=True)
+
+    class Meta:
+        model = ReglageTemps
+        fields = [
+            'id', 'arrondi_minutes', 'mode_arrondi', 'mode_arrondi_display',
+            'unite_saisie', 'unite_saisie_display', 'heures_par_jour',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_arrondi_minutes(self, value):
+        if value is not None and value < 1:
+            raise serializers.ValidationError(
+                "Le pas d'arrondi doit être un entier positif (minutes).")
+        return value
+
+    def validate_heures_par_jour(self, value):
+        if value is not None and value <= 0:
+            raise serializers.ValidationError(
+                'Les heures par jour doivent être strictement positives.')
+        return value

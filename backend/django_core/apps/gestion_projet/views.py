@@ -88,6 +88,7 @@ from .serializers import (
     ProjetLienSerializer,
     ProjetSerializer,
     RecurrenceTacheSerializer,
+    ReglageTempsSerializer,
     RessourceProfilSerializer,
     RisqueSerializer,
     TacheSerializer,
@@ -1269,15 +1270,20 @@ class TacheViewSet(_GestionProjetBaseViewSet):
     def arreter_chrono(self, request, pk=None):
         """Arrête le chrono actif de l'utilisateur et crée la timesheet (XPRJ5).
 
-        La durée est arrondie au quart d'heure supérieur (``pas_minutes``,
-        paramétrable via le corps de requête — défaut 15). Refuse (400) si
-        l'utilisateur n'a aucun chrono actif ou aucun profil ressource lié.
+        Par DÉFAUT, la durée est arrondie selon le réglage temps de la
+        société (``ReglageTemps`` — ZPRJ1, pas/mode paramétrables via
+        ``reglages-temps/``) ; un ``pas_minutes`` explicite dans le corps de
+        requête reste supporté (override ponctuel, arrondi au SUPÉRIEUR de ce
+        pas — compatibilité). Refuse (400) si l'utilisateur n'a aucun chrono
+        actif ou aucun profil ressource lié.
         """
-        pas_minutes = request.data.get('pas_minutes', 15)
-        try:
-            pas_minutes = int(pas_minutes)
-        except (TypeError, ValueError):
-            pas_minutes = 15
+        pas_minutes_raw = request.data.get('pas_minutes')
+        pas_minutes = None
+        if pas_minutes_raw is not None:
+            try:
+                pas_minutes = int(pas_minutes_raw)
+            except (TypeError, ValueError):
+                pas_minutes = None
         try:
             timesheet = services.arreter_chrono(
                 request.user, pas_minutes=pas_minutes)
@@ -1303,6 +1309,31 @@ class ChronoActifViewSet(viewsets.ViewSet):
         if chrono is None:
             return Response(status=status.HTTP_204_NO_CONTENT)
         return Response(ChronoEnCoursSerializer(chrono).data)
+
+
+class ReglageTempsViewSet(viewsets.ViewSet):
+    """Réglages société d'encodage des temps (ZPRJ1) — singleton par société.
+
+    ``GET reglages-temps/mon-reglage/`` / ``PATCH reglages-temps/mon-reglage/``
+    lisent/éditent le réglage de l'appelant (créé à la demande — ``get_or_
+    create``, jamais plusieurs fois pour une même société). ``company`` posée
+    CÔTÉ SERVEUR, jamais lue du corps de requête. Consommé par ``services.
+    arrondir_duree`` (chrono XPRJ5) et par les sélecteurs ``plan_de_charge``/
+    ``nivellement_charge`` (``heures_par_jour``). Même motif que
+    ``apps.rh.views.ReglageRHViewSet`` (« mon-reglage »).
+    """
+    permission_classes = [IsResponsableOrAdmin]
+
+    @action(detail=False, methods=['get', 'patch'], url_path='mon-reglage')
+    def mon_reglage(self, request):
+        reglage = services.get_or_create_reglage_temps(request.user.company)
+        if request.method == 'PATCH':
+            ser = ReglageTempsSerializer(
+                reglage, data=request.data, partial=True)
+            ser.is_valid(raise_exception=True)
+            ser.save()
+            return Response(ser.data)
+        return Response(ReglageTempsSerializer(reglage).data)
 
 
 class DependanceTacheViewSet(_GestionProjetBaseViewSet):

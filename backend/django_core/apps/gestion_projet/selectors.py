@@ -677,8 +677,21 @@ def ressource_disponible_sur_periode(ressource, debut, fin):
 # n'est donc pas rattaché au calendrier d'UN projet (relation 1-1 projet) — on
 # applique une semaine standard L-V, indépendante de tout CalendrierProjet.
 _JOURS_OUVRES_DEFAUT = frozenset({0, 1, 2, 3, 4})
-# Heures travaillées par jour ouvré (capacité d'une ressource à plein temps).
+# Heures travaillées par jour ouvré (capacité d'une ressource à plein temps) —
+# valeur de repli quand la société n'a PAS ENCORE de ``ReglageTemps`` (ZPRJ1).
 _HEURES_PAR_JOUR_DEFAUT = 8
+
+
+def _heures_par_jour_reglage(company):
+    """``heures_par_jour`` du ``ReglageTemps`` de ``company`` (ZPRJ1), LECTURE
+    SEULE : ``_HEURES_PAR_JOUR_DEFAUT`` (8) si aucun réglage n'existe encore
+    pour la société (jamais de création depuis un sélecteur)."""
+    from .models import ReglageTemps
+
+    reglage = ReglageTemps.objects.filter(company=company).first()
+    if reglage is None:
+        return _HEURES_PAR_JOUR_DEFAUT
+    return reglage.heures_par_jour
 
 
 def _jours_ouvres_periode(debut, fin, jours_ouvres):
@@ -742,7 +755,7 @@ def _charge_affectee_periode(affectation, debut, fin, jours_ouvres):
     return float(affectation.charge_jours) * _HEURES_PAR_JOUR_DEFAUT * fraction
 
 
-def plan_de_charge(company, debut, fin, heures_par_jour=_HEURES_PAR_JOUR_DEFAUT,
+def plan_de_charge(company, debut, fin, heures_par_jour=None,
                    ressource_id=None):
     """Plan de charge d'une société sur [debut, fin] : capacité vs affecté.
 
@@ -752,7 +765,9 @@ def plan_de_charge(company, debut, fin, heures_par_jour=_HEURES_PAR_JOUR_DEFAUT,
     * ``capacite_heures`` — jours OUVRÉS (semaine L-V par défaut) de la fenêtre
       INCLUSIVE [debut, fin], MOINS les jours ouvrés couverts par une
       indisponibilité (congé/formation/arrêt) chevauchant la fenêtre, × le
-      nombre d'heures par jour ouvré (``heures_par_jour``, défaut 8) ;
+      nombre d'heures par jour ouvré (``heures_par_jour`` — défaut : le
+      réglage ``heures_par_jour`` de ``ReglageTemps`` de la société, ZPRJ1,
+      lui-même par défaut 8) ;
     * ``affecte_heures`` — somme PRORATÉE des affectations (PROJ16) de la
       ressource — directes (``ressource``) ET via une ``Equipe`` dont elle est
       membre (la charge d'équipe est répartie à parts ÉGALES entre ses membres
@@ -771,6 +786,8 @@ def plan_de_charge(company, debut, fin, heures_par_jour=_HEURES_PAR_JOUR_DEFAUT,
     ``{debut, fin, heures_par_jour, lignes: [...], nb_surcharges}`` trié par nom
     de ressource.
     """
+    if heures_par_jour is None:
+        heures_par_jour = _heures_par_jour_reglage(company)
     try:
         heures_jour = float(heures_par_jour)
     except (TypeError, ValueError):
@@ -1101,8 +1118,7 @@ def _periodes_se_chevauchent(a_debut, a_fin, b_debut, b_fin):
     return a_debut <= b_fin and a_fin >= b_debut
 
 
-def nivellement_charge(company, debut, fin,
-                       heures_par_jour=_HEURES_PAR_JOUR_DEFAUT):
+def nivellement_charge(company, debut, fin, heures_par_jour=None):
     """Propose un rééquilibrage des ressources SUR-CHARGÉES vers les SOUS-CHARGÉES.
 
     PROJ20 — l'équivalent gestion-projet de FG301. S'appuie sur le plan de

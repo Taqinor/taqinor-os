@@ -5,6 +5,7 @@ dérivée du ``projet`` (jamais lue d'un corps de requête) ; aucun import
 cross-app (on reste dans ``gestion_projet``).
 """
 from datetime import timedelta
+from decimal import ROUND_HALF_UP as _ROUND_HALF_UP
 from decimal import Decimal
 
 from django.db import models, transaction
@@ -909,6 +910,10 @@ def _arrondir_duree_heures(minutes, pas_minutes=15):
 
     Ex. ``pas_minutes=15`` (quart d'heure) : 1 minute → 15 min (0.25 h) ;
     16 minutes → 30 min (0.50 h) ; 0 minute → 0 h. Renvoie un ``Decimal``.
+
+    Conservé pour compatibilité (utilisé quand un ``pas_minutes`` explicite
+    est passé, ex. override de requête) — le chemin PAR DÉFAUT passe
+    désormais par ``arrondir_duree`` (ZPRJ1, réglage par société).
     """
     import math
     if minutes <= 0:
@@ -917,6 +922,64 @@ def _arrondir_duree_heures(minutes, pas_minutes=15):
     paliers = math.ceil(minutes / pas)
     minutes_arrondies = paliers * pas
     return (Decimal(minutes_arrondies) / Decimal('60')).quantize(Decimal('0.01'))
+
+
+# ── Réglages société temps (ZPRJ1) ───────────────────────────────────────────
+def get_or_create_reglage_temps(company):
+    """Réglage temps SINGLETON de ``company`` (get_or_create, ZPRJ1).
+
+    Jamais créé plusieurs fois pour une même société (``OneToOneField``) :
+    un premier appel le crée avec les valeurs par défaut (arrondi 15 min au
+    pas supérieur, saisie en heures, 8 h/jour), les appels suivants renvoient
+    la même ligne. ``company`` est TOUJOURS l'appelant — jamais lue d'un
+    corps de requête.
+    """
+    from .models import ReglageTemps
+
+    reglage, _ = ReglageTemps.objects.get_or_create(company=company)
+    return reglage
+
+
+def arrondir_duree(company, heures):
+    """Arrondit une durée en HEURES selon le réglage temps de ``company``
+    (ZPRJ1) — remplace la constante en dur consommée par XPRJ5 (chrono) et,
+    demain, la grille hebdomadaire XPRJ6.
+
+    Applique ``arrondi_minutes`` (pas, en minutes) et ``mode_arrondi``
+    (inférieur/supérieur/proche) du ``ReglageTemps`` de la société — get_or_
+    create, jamais d'erreur si le réglage n'existe pas encore. Cas limites :
+    ``heures=0`` → ``Decimal('0')`` (jamais un pas complet à partir de rien) ;
+    une durée déjà EXACTEMENT sur un palier n'est jamais modifiée, quel que
+    soit le mode ; ``+1 minute`` au-delà d'un palier bascule le résultat
+    selon le mode (inférieur reste sur le palier en dessous, supérieur monte
+    au palier au-dessus, proche choisit le plus proche — égalité stricte
+    arrondie au SUPÉRIEUR). Renvoie un ``Decimal`` à 2 décimales.
+    """
+    import math
+
+    reglage = get_or_create_reglage_temps(company)
+    pas_minutes = max(1, int(reglage.arrondi_minutes or 15))
+    mode = reglage.mode_arrondi or 'superieur'
+
+    minutes = Decimal(str(heures or 0)) * Decimal('60')
+    if minutes <= 0:
+        return Decimal('0.00')
+
+    pas = Decimal(pas_minutes)
+    if mode == 'inferieur':
+        paliers = math.floor(minutes / pas)
+        # Une durée non nulle mais sous le premier palier arrondit à 0 pour le
+        # mode « inférieur » (comportement voulu : jamais négatif, jamais un
+        # palier créé à partir de rien) — cohérent avec l'existant XPRJ5.
+        minutes_arrondies = Decimal(paliers) * pas
+    elif mode == 'proche':
+        minutes_arrondies = (minutes / pas).to_integral_value(
+            rounding=_ROUND_HALF_UP) * pas
+    else:  # 'superieur' (défaut) — comportement historique XPRJ5 conservé.
+        paliers = math.ceil(minutes / pas)
+        minutes_arrondies = Decimal(paliers) * pas
+
+    return (minutes_arrondies / Decimal('60')).quantize(Decimal('0.01'))
 
 
 @transaction.atomic
@@ -942,13 +1005,16 @@ def demarrer_chrono(tache, user):
 
 
 @transaction.atomic
-def arreter_chrono(user, *, pas_minutes=15):
+def arreter_chrono(user, *, pas_minutes=None):
     """Arrête le chrono actif de ``user`` et crée la ``Timesheet`` brouillon.
 
-    Lève ``ChronoError`` si aucun chrono actif. La durée est
-    ``maintenant − demarre_a``, arrondie au quart d'heure SUPÉRIEUR
-    (``pas_minutes``, paramétrable — défaut 15 min). La ressource est celle
-    liée à l'utilisateur (``RessourceProfil.user``) — lève ``ChronoError`` si
+    Lève ``ChronoError`` si aucun chrono actif. La durée est ``maintenant −
+    demarre_a``. Par DÉFAUT (``pas_minutes=None``), l'arrondi suit le réglage
+    de la société (``services.arrondir_duree`` — ZPRJ1, pas/mode
+    paramétrables via ``reglages-temps/``) ; un ``pas_minutes`` explicite
+    (override de requête) garde l'ancien comportement (arrondi au SUPÉRIEUR
+    de ce pas, compatibilité XPRJ5). La ressource est celle liée à
+    l'utilisateur (``RessourceProfil.user``) — lève ``ChronoError`` si
     l'utilisateur n'a AUCUN profil ressource (message explicite). Supprime le
     ``ChronoEnCours`` après création. Renvoie la ``Timesheet`` créée.
     """
@@ -970,7 +1036,11 @@ def arreter_chrono(user, *, pas_minutes=15):
     maintenant = timezone.now()
     minutes_ecoulees = max(
         0, (maintenant - chrono.demarre_a).total_seconds() / 60)
-    heures = _arrondir_duree_heures(minutes_ecoulees, pas_minutes)
+    if pas_minutes is not None:
+        heures = _arrondir_duree_heures(minutes_ecoulees, pas_minutes)
+    else:
+        heures = arrondir_duree(
+            chrono.company, Decimal(str(minutes_ecoulees)) / Decimal('60'))
 
     timesheet = Timesheet.objects.create(
         company=chrono.company,
