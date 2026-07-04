@@ -7,8 +7,8 @@ Toutes les lectures sont bornées à une société.
 from .models import (
     ACL_RANK, AclGed, ArchivageLegal, Cabinet, Coffre, DemandeApprobation,
     DemandeSignatureDocument, Document, DocumentLien, DocumentTag,
-    DocumentVersion, Folder, LegalHold, PartageGed, PolitiqueRetention,
-    RegleAclMetadonnee,
+    DocumentVersion, Folder, JournalAcces, LegalHold, PartageGed,
+    PolitiqueRetention, RegleAclMetadonnee,
 )
 
 
@@ -109,6 +109,59 @@ def documents_visible_to_user(user):
     if refused:
         qs = qs.exclude(pk__in=refused)
     return qs
+
+
+def mes_recents(user, *, limit=10):
+    """ZGED13 — Documents récemment CONSULTÉS par l'appelant, dédupliqués et
+    ordonnés par dernier accès (le plus récent en premier).
+
+    Dérivé de `JournalAcces` (GED35, déjà tracé — aucun nouveau modèle),
+    filtré `utilisateur=user`. Exclut les documents en corbeille/hors ACL via
+    `documents_visible_to_user` (jamais un document qu'un collègue ne devrait
+    pas voir ne remonte dans ses récents). Un collègue n'a que SES PROPRES
+    accès (jamais ceux d'un autre)."""
+    visibles_ids = set(
+        documents_visible_to_user(user).values_list('pk', flat=True))
+    vus = []
+    seen = set()
+    qs = (JournalAcces.objects
+          .filter(company_id=user.company_id, utilisateur=user)
+          .exclude(document_id__isnull=True)
+          .order_by('-created_at')
+          .select_related('document')[:500])
+    for acces in qs:
+        doc_id = acces.document_id
+        if doc_id in seen or doc_id not in visibles_ids:
+            continue
+        seen.add(doc_id)
+        vus.append(acces.document)
+        if len(vus) >= limit:
+            break
+    return vus
+
+
+def mes_derniers_depots(user, *, limit=10):
+    """ZGED13 — Derniers dépôts (nouvelles versions) de l'appelant, distincts
+    par document, ordonnés par date. Optionnel (section « Récents »
+    complémentaire à `mes_recents`, dérivé de `DocumentVersion.uploaded_by`,
+    aucun nouveau modèle)."""
+    visibles_ids = set(
+        documents_visible_to_user(user).values_list('pk', flat=True))
+    vus = []
+    seen = set()
+    qs = (DocumentVersion.objects
+          .filter(company_id=user.company_id, uploaded_by=user)
+          .order_by('-created_at')
+          .select_related('document')[:500])
+    for version in qs:
+        doc_id = version.document_id
+        if doc_id in seen or doc_id not in visibles_ids:
+            continue
+        seen.add(doc_id)
+        vus.append(version.document)
+        if len(vus) >= limit:
+            break
+    return vus
 
 
 def documents_in_coffre(coffre):

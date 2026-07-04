@@ -3359,6 +3359,29 @@ class PlanificationDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
 
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
+def mes_recents(request):
+    """ZGED13 — Documents récemment consultés/déposés par l'APPELANT
+    uniquement (jamais ceux d'un collègue).
+
+    `GET ged/mes-recents/?limit=<n>` — dérivé de `JournalAcces` (GED35) et
+    `DocumentVersion.uploaded_by`, dédupliqués par document, hors
+    corbeille/ACL refusée. Renvoie `{"consultes": [...], "deposes": [...]}`."""
+    try:
+        limit = min(int(request.query_params.get('limit', 10)), 50)
+    except (TypeError, ValueError):
+        limit = 10
+    consultes = selectors.mes_recents(request.user, limit=limit)
+    deposes = selectors.mes_derniers_depots(request.user, limit=limit)
+    return Response({
+        'consultes': DocumentSerializer(
+            consultes, many=True, context={'request': request}).data,
+        'deposes': DocumentSerializer(
+            deposes, many=True, context={'request': request}).data,
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAnyRole])
 def mes_favoris(request):
     """ZGED7 — Dossiers et documents favoris de l'APPELANT uniquement.
 

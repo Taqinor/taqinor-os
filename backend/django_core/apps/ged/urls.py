@@ -16,7 +16,7 @@ from .views import (
     RoutageDocumentaireViewSet, SignataireDemandeViewSet,
     TypeChampSignatureViewSet, ValidationOcrDocumentViewSet,
     VueGedEnregistreeViewSet,
-    analytique_ged, mes_favoris, public_depot, public_partage,
+    analytique_ged, mes_favoris, mes_recents, public_depot, public_partage,
     public_signataire, public_signature,
 )
 
@@ -80,5 +80,7 @@ urlpatterns = [
     # précaution que analytique/) pour ne jamais être capté par une route de
     # détail DRF.
     path('mes-favoris/', mes_favoris, name='ged-mes-favoris'),
+    # ZGED13 — mêmes précautions (déclaré avant le routeur).
+    path('mes-recents/', mes_recents, name='ged-mes-recents'),
     path('', include(router.urls)),
 ]
