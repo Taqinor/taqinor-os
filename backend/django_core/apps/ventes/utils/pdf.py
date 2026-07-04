@@ -259,6 +259,14 @@ def generate_facture_pdf(facture_id):
 
     context = _company_context(company=facture.company)
     context['facture'] = facture
+    # XFAC19 — QR paiement/vérification (PDF facture LEGACY uniquement, jamais
+    # le moteur devis premium). Ajout silencieux : None → footer inchangé.
+    try:
+        from apps.ventes.services import qr_svg_for_facture_pdf
+        context['facture_qr_svg'] = qr_svg_for_facture_pdf(facture)
+    except Exception as exc:  # noqa: BLE001 — best-effort, jamais de crash PDF
+        logger.warning('QR facture %s indisponible : %s', facture_id, exc)
+        context['facture_qr_svg'] = None
 
     html = _render_html('facture.html', context)
     pdf_bytes = _html_to_pdf(html)

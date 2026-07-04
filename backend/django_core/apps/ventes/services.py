@@ -1814,6 +1814,50 @@ def create_payment_link(*, facture, provider=None):
     )
 
 
+def _public_url(path):
+    """Construit une URL publique absolue à partir d'un chemin ``/api/...``.
+
+    Réutilise ``settings.PUBLIC_BASE_URL`` (même pattern que
+    ``bcf_share_url``) ; sans réglage, renvoie le chemin relatif tel quel (le
+    QR reste valide une fois servi depuis le même domaine)."""
+    from django.conf import settings
+    base = getattr(settings, 'PUBLIC_BASE_URL', '') or ''
+    if base:
+        return base.rstrip('/') + path
+    return path
+
+
+def qr_svg_for_facture_pdf(facture):
+    """XFAC19 — QR de paiement/vérification pour le PDF facture LEGACY (jamais
+    le moteur devis premium — voir RULE #4).
+
+    Si un ``PaymentLink`` actif (en attente, non expiré) existe déjà pour la
+    facture, le QR pointe vers sa page « Payer en ligne » publique. Sinon, il
+    pointe vers le ``ShareLink`` public (lecture seule) du document. Ajout
+    SILENCIEUX : renvoie ``None`` si aucun lien ne peut être établi (comportement
+    actuel inchangé — pas de QR, pas d'erreur). Le rendu SVG délègue au
+    générateur QR pur de N20 via ``apps.stock.services.qr_svg_for`` (jamais
+    d'import direct de ``apps.stock.labels``)."""
+    from django.utils import timezone
+    from .models import PaymentLink, ShareLink
+    from apps.stock.services import qr_svg_for
+
+    active_link = (
+        PaymentLink.objects.filter(
+            facture=facture, statut=PaymentLink.Statut.EN_ATTENTE,
+            expires_at__gt=timezone.now(),
+        ).order_by('-created_at').first())
+    if active_link is not None:
+        url = _public_url(f'/api/django/public/pay/{active_link.token}/')
+    else:
+        share = ShareLink.for_facture(facture)
+        url = _public_url(f'/api/django/public/document/{share.token}/')
+
+    if not url:
+        return None
+    return qr_svg_for(url)
+
+
 def record_payment_from_link(*, link, payload=None):
     """FG53 — enregistre un Paiement quand un lien est confirmé payé (webhook).
 

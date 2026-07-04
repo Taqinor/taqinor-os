@@ -2570,3 +2570,13 @@ def factures_en_exception(company):
         company=company,
         statut_controle=FactureFournisseur.StatutControle.EXCEPTION,
     ).select_related('fournisseur', 'bon_commande').order_by('-date_creation'))
+
+
+def qr_svg_for(text, *, box=4, quiet=4):
+    """XFAC19 — point d'entrée cross-app sanctionné pour le générateur QR maison
+    de N20 (``apps.stock.labels.qr_svg``, zéro dépendance externe). Les autres
+    apps (ex. ``ventes`` pour le QR paiement/vérification sur le PDF facture)
+    appellent cette fonction plutôt que d'importer ``apps.stock.labels``
+    directement — pur, déterministe, renvoie un SVG inline (str)."""
+    from . import labels
+    return labels.qr_svg(text, box=box, quiet=quiet)
