@@ -132,6 +132,8 @@ def _facture_due_rows(user):
 def relances_list(request):
     """Impayés à relancer : factures dues, jours de retard, niveau courant."""
     levels = _levels(request.user.company if request.user.company_id else None)
+    from .selectors import comportement_paiement
+    scores_cache = {}
     rows = []
     for f in _facture_due_rows(request.user):
         jr = f.jours_retard
@@ -139,6 +141,12 @@ def relances_list(request):
         promesse = f.promesses_paiement.filter(
             statut__in=[PromessePaiement.Statut.EN_COURS,
                         PromessePaiement.Statut.ROMPUE]).order_by('-id').first()
+        # XFAC15 — score comportemental agrégé du client (mis en cache par
+        # client sur la durée de la requête : plusieurs factures partagent le
+        # même client).
+        if f.client_id not in scores_cache:
+            scores_cache[f.client_id] = comportement_paiement(f.client)
+        score = scores_cache[f.client_id]
         rows.append({
             'id': f.id, 'reference': f.reference,
             'client_id': f.client_id,
@@ -159,6 +167,8 @@ def relances_list(request):
                 'montant_promis': _s(promesse.montant_promis),
                 'date_promise': promesse.date_promise.isoformat(),
             } if promesse else None),
+            # XFAC15 — badge de comportement de paiement (lettre A–E).
+            'score_comportement': score['lettre'],
         })
     rows.sort(key=lambda r: (
         r['promesse'] is not None and r['promesse']['statut'] == 'rompue',
@@ -170,6 +180,7 @@ def relances_list(request):
 @permission_classes([IsAnyRole])
 def balance_agee(request):
     """Balance âgée : encours par client, bucketé 0–30/31–60/61–90/90+ jours."""
+    from .selectors import comportement_paiement
     by_client = {}
     for f in _facture_due_rows(request.user):
         cid = f.client_id
@@ -179,6 +190,9 @@ def balance_agee(request):
             'b0_30': Decimal('0'), 'b31_60': Decimal('0'),
             'b61_90': Decimal('0'), 'b90_plus': Decimal('0'),
             'total': Decimal('0'),
+            # XFAC15 — score comportemental agrégé du client (priorise les
+            # clients à risque dans la balance).
+            'score_comportement': comportement_paiement(f.client)['lettre'],
         })
         jr = f.jours_retard
         due = f.montant_du
@@ -281,6 +295,22 @@ def client_releve(request, client_id):
         return Response({'detail': 'Client introuvable.'},
                         status=status.HTTP_404_NOT_FOUND)
     return Response(_releve_data(client, request.user))
+
+
+@api_view(['GET'])
+@permission_classes([IsAnyRole])
+def client_score_comportement(request, client_id):
+    """XFAC15 — badge de comportement de paiement d'un client (fiche client).
+
+    Agrège FG365 (``core.payment_delay``) sur les factures ouvertes du client
+    + son retard moyen réel. Client sans historique → score neutre."""
+    client = _scope(client_base_qs(), request.user).filter(
+        pk=client_id).first()
+    if client is None:
+        return Response({'detail': 'Client introuvable.'},
+                        status=status.HTTP_404_NOT_FOUND)
+    from .selectors import comportement_paiement
+    return Response(comportement_paiement(client))
 
 
 @api_view(['GET'])
