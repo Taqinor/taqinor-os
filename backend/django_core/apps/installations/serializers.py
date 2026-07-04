@@ -182,6 +182,17 @@ class InterventionSerializer(serializers.ModelSerializer):
     gps_lng = serializers.DecimalField(
         source='installation.gps_lng', max_digits=9, decimal_places=6,
         read_only=True, default=None)
+    # XFSM8 — notes d'accès du chantier, reprises en lecture sur chaque
+    # intervention (jamais ressaisies) : affichées sur « Ma journée » F22 et
+    # le compte-rendu F19.
+    contact_site_nom = serializers.CharField(
+        source='installation.contact_site_nom', read_only=True, default=None)
+    contact_site_telephone = serializers.CharField(
+        source='installation.contact_site_telephone', read_only=True, default=None)
+    acces_instructions = serializers.CharField(
+        source='installation.acces_instructions', read_only=True, default=None)
+    horaires_acces = serializers.CharField(
+        source='installation.horaires_acces', read_only=True, default=None)
     # F6 — distance (km) entre la position d'arrivée et le GPS du chantier.
     distance_site_km = serializers.SerializerMethodField()
     # F5 — avancement de la préparation (0–100, ou null si pas de préparation).
