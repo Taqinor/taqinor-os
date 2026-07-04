@@ -6,13 +6,16 @@ jamais lue d'un corps de requête. Réutilise les conventions de stockage de
 `records.storage` (clé MinIO `file_key`) sans réimplémenter le stockage.
 """
 import hashlib
+import logging
 import re
 
 from django.contrib.postgres.search import SearchVector
 from django.db import models, transaction
 from django.db.models import Value
 
-from .models import Cabinet, Document, DocumentVersion, Folder
+from .models import Cabinet, Document, DocumentVersion, Folder, RoutageDocumentaire
+
+logger = logging.getLogger(__name__)
 
 
 def update_search_vector(document):
@@ -1255,6 +1258,73 @@ def assert_not_locked_by_other(document, user):
             "Le document est extrait par un autre utilisateur. "
             "Attendez le check-in avant de téléverser une nouvelle version."
         )
+
+
+def verrouiller_avertissement(document, user, *, motif=''):
+    """ZGED9 — Pose le verrou d'AVERTISSEMENT léger (« en cours d'édition »),
+    DISTINCT du check-out GED16 : n'empêche jamais la lecture, affiche
+    seulement un bandeau à tous. Idempotent si déjà posé par le MÊME
+    utilisateur (motif mis à jour) ; si posé par un AUTRE, lève
+    `PermissionError` (→ 409 côté vue).
+
+    Multi-tenant : vérifie que user.company_id == document.company_id."""
+    if document.company_id != user.company_id:
+        raise PermissionError("Document inaccessible.")
+    from django.utils import timezone
+    with transaction.atomic():
+        doc = Document.objects.select_for_update().get(pk=document.pk)
+        if (doc.verrou_avertissement_par_id is not None
+                and doc.verrou_avertissement_par_id != user.pk):
+            raise PermissionError(
+                "Ce document est déjà signalé « en cours d'édition » par un "
+                "autre utilisateur.")
+        doc.verrou_avertissement_par = user
+        doc.verrou_avertissement_le = timezone.now()
+        doc.verrou_avertissement_motif = motif or ''
+        doc.save(update_fields=[
+            'verrou_avertissement_par', 'verrou_avertissement_le',
+            'verrou_avertissement_motif', 'updated_at'])
+    journaliser_evenement(
+        doc, type_evenement='verrou_avertissement_pose',
+        message=motif or '', utilisateur=user)
+    return doc
+
+
+def deverrouiller_avertissement(document, user):
+    """ZGED9 — Lève le verrou d'AVERTISSEMENT. Le poseur OU un
+    gestionnaire/admin peut lever ; un forçage PAR UN TIERS gestionnaire est
+    journalisé distinctement (traçabilité de la levée forcée). Idempotent si
+    déjà libre.
+
+    Multi-tenant : vérifie que user.company_id == document.company_id."""
+    if document.company_id != user.company_id:
+        raise PermissionError("Document inaccessible.")
+    with transaction.atomic():
+        doc = Document.objects.select_for_update().get(pk=document.pk)
+        if doc.verrou_avertissement_par_id is None:
+            return doc  # déjà libre — idempotent.
+        is_poseur = doc.verrou_avertissement_par_id == user.pk
+        is_manager = getattr(user, 'is_admin_role', False) or user.is_superuser
+        if not is_poseur and not is_manager:
+            raise PermissionError(
+                "Seul le poseur du verrou ou un gestionnaire peut le lever.")
+        force = not is_poseur
+        poseur_id = doc.verrou_avertissement_par_id
+        doc.verrou_avertissement_par = None
+        doc.verrou_avertissement_le = None
+        doc.verrou_avertissement_motif = ''
+        doc.save(update_fields=[
+            'verrou_avertissement_par', 'verrou_avertissement_le',
+            'verrou_avertissement_motif', 'updated_at'])
+    journaliser_evenement(
+        doc,
+        type_evenement=(
+            'verrou_avertissement_force' if force else 'verrou_avertissement_leve'),
+        message=(
+            f'Levé de force par un gestionnaire (posé par #{poseur_id}).'
+            if force else ''),
+        utilisateur=user)
+    return doc
 
 
 def change_lifecycle_status(document, target_status, *, user):
@@ -3053,6 +3123,81 @@ def expirer_demandes_echues(company, *, now=None):
         demande.save(update_fields=['statut', 'annule_le', 'updated_at'])
         count += 1
     return count
+
+
+def notifier_emetteur_expiration_proche(company, *, seuil_jours=3, now=None):
+    """ZGED14 — Notifie l'ÉMETTEUR d'une demande `en_attente` dont
+    l'expiration approche (versant ÉMETTEUR — XGED2 ne couvre que le
+    SIGNATAIRE). « Approche » = `expires_at` dans les `seuil_jours` à venir
+    (et pas encore dépassée — `expirer_demandes_echues` gère l'échéance
+    dépassée séparément).
+
+    Anti-doublon : une demande déjà notifiée pour SA fenêtre d'expiration
+    courante (`emetteur_notifie_expiration_le` renseigné) n'est pas
+    re-notifiée. `prolonger_demande_signature` remet ce champ à NULL pour
+    réarmer. Une demande sans `created_by` (émetteur inconnu) est ignorée
+    silencieusement. Renvoie le nombre de notifications envoyées."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from .models import DemandeSignatureDocument, SIGNATURE_EN_ATTENTE
+
+    now = now or timezone.now()
+    seuil = now + timedelta(days=seuil_jours)
+    candidats = (DemandeSignatureDocument.objects
+                 .filter(company=company, statut=SIGNATURE_EN_ATTENTE,
+                         expires_at__isnull=False, expires_at__gt=now,
+                         expires_at__lte=seuil,
+                         emetteur_notifie_expiration_le__isnull=True)
+                 .exclude(created_by__isnull=True)
+                 .select_related('created_by', 'document'))
+    count = 0
+    for demande in candidats:
+        jours_restants = max((demande.expires_at - now).days, 0)
+        total = demande.signataires.count()
+        signes = demande.signataires.filter(statut='signe').count()
+        try:
+            from apps.notifications.services import notify
+
+            notify(
+                demande.created_by, 'ged_signature_expiration_proche',
+                title=(
+                    f'Demande de signature « {demande.document.nom} » '
+                    f'expire dans {jours_restants} jour(s)'),
+                body=f'{signes}/{total} signataire(s) ont signé.',
+                company=company,
+            )
+        except Exception:  # pragma: no cover - défensif, best-effort.
+            logger.warning(
+                'ZGED14 — échec notification émetteur demande #%s',
+                demande.pk, exc_info=True)
+        demande.emetteur_notifie_expiration_le = now
+        demande.save(update_fields=[
+            'emetteur_notifie_expiration_le', 'updated_at'])
+        count += 1
+    return count
+
+
+def prolonger_demande_signature(demande, *, expires_at, user):
+    """ZGED14 — Prolonge l'échéance d'une demande de signature `en_attente`
+    (endpoint `demandes-signature/{id}/prolonger/`). Repousse `expires_at` et
+    RÉARME la notification émetteur (remet
+    `emetteur_notifie_expiration_le` à NULL) pour que le prochain sweep puisse
+    re-notifier sur la nouvelle échéance si elle approche à nouveau.
+
+    Multi-tenant : vérifie que `user.company_id == demande.company_id`."""
+    if demande.company_id != user.company_id:
+        raise PermissionError("Demande inaccessible.")
+    demande.expires_at = expires_at
+    demande.emetteur_notifie_expiration_le = None
+    demande.save(update_fields=[
+        'expires_at', 'emetteur_notifie_expiration_le', 'updated_at'])
+    journaliser_evenement(
+        demande.document, type_evenement='signature_prolongee',
+        message=f'Demande #{demande.pk} prolongée jusqu\'au {expires_at}.',
+        utilisateur=user)
+    return demande
 
 
 def relancer_signataires_dus(company, *, now=None):
@@ -5243,3 +5388,93 @@ def sauvegarder_depuis_editeur_office(document, *, contenu_bytes, user,
         uploaded_by=user)
     update_search_vector(document)
     return version
+
+
+# ── ZGED6 — Centralisation des fichiers par module ───────────────────────────
+
+_JETON_RE = re.compile(r'\{\{\s*(\w+)\s*\}\}')
+
+
+def _resoudre_jetons(texte, contexte):
+    """ZGED6 — Remplace les jetons ``{{ champ }}`` d'un segment de chemin par
+    les valeurs du contexte fourni. Un jeton absent du contexte est rendu vide
+    (jamais une KeyError) — comportement standard, aligné sur ModeleDocument
+    (GED27) qui rend aussi les jetons inconnus vides."""
+    def _sub(match):
+        return str(contexte.get(match.group(1), ''))
+    return _JETON_RE.sub(_sub, texte)
+
+
+def _resoudre_dossier_cible(routage, contexte):
+    """ZGED6 — Résout/crée (idempotent, get_or_create par segment) le dossier
+    cible d'un `RoutageDocumentaire`, à partir de son `dossier_cible`
+    (segments séparés par '/', jetons résolus). Renvoie le `Folder` final."""
+    segments = [
+        _resoudre_jetons(seg.strip(), contexte)
+        for seg in routage.dossier_cible.split('/') if seg.strip()
+    ]
+    parent = None
+    folder = None
+    for segment in segments:
+        folder, _created = Folder.objects.get_or_create(
+            company=routage.company, cabinet=routage.cabinet_cible,
+            parent=parent, nom=segment)
+        parent = folder
+    return folder
+
+
+def router_document_module(source, *, company, file, filename='',
+                           reference='', contexte=None, uploaded_by=None):
+    """ZGED6 — Centralise un fichier produit par un AUTRE module (paie/rh/sav/
+    ventes…) vers le dossier GED configuré pour cette `source` (réglage
+    `RoutageDocumentaire`), avec ses tags par défaut.
+
+    Sans réglage ACTIF pour cette `source`+société : no-op strict, renvoie
+    `None` (comportement actuel inchangé — c'est la voie normale tant qu'un
+    admin n'a rien configuré). IDEMPOTENT par `source`+`reference` : si un
+    document du dossier résolu porte déjà cette référence (posée dans
+    `custom_data['routage_reference']`), le document existant est renvoyé sans
+    créer de doublon ni ajouter de version.
+
+    Appelé UNIQUEMENT depuis `apps/ged/receivers.py` (abonné à l'événement
+    `core.events.document_produit`) — jamais appelé directement par l'app
+    émettrice, qui ne doit jamais importer `apps.ged`.
+    """
+    routage = RoutageDocumentaire.objects.filter(
+        company=company, source=source, actif=True).first()
+    if routage is None:
+        return None
+
+    contexte = contexte or {}
+    folder = _resoudre_dossier_cible(routage, contexte)
+
+    if reference:
+        existant = Document.objects.filter(
+            company=company, folder=folder,
+            custom_data__routage_reference=reference,
+        ).first()
+        if existant is not None:
+            return existant
+
+    from apps.records.storage import store_attachment
+
+    meta, err = store_attachment(file)
+    if err:
+        raise ValueError(err)
+
+    document = Document.objects.create(
+        company=company, folder=folder,
+        nom=filename or meta.get('filename', ''),
+        custom_data={'routage_reference': reference} if reference else {},
+        created_by=uploaded_by,
+    )
+    add_version(
+        document, file_key=meta['file_key'], company=company,
+        filename=meta.get('filename', ''), size=meta.get('size', 0),
+        mime=meta.get('mime', ''), uploaded_by=uploaded_by)
+    update_search_vector(document)
+
+    for tag in routage.tags_defaut.all():
+        assign_tag(document, tag, created_by=uploaded_by)
+
+    return document

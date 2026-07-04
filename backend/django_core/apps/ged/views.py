@@ -5,6 +5,7 @@ TOUJOURS posée côté serveur (TenantMixin) — jamais lue du corps de requête
 Les dossiers (Folder) ont un chemin matérialisé recalculé côté serveur, et les
 versions de document sont numérotées + déduppées via `services`.
 """
+from django.db import models
 from django.http import HttpResponse
 from rest_framework import filters, mixins, status, viewsets
 from rest_framework.decorators import (
@@ -35,11 +36,13 @@ from .models import (
     DemandeDispositionError, DemandeDocument,
     DemandeSignatureDocument, DepotPublic, Document, DocumentLien,
     DocumentTag, DocumentTagAssignment, DocumentVersion, ExigenceDossier,
-    Folder, JournalAcces, LegalHold, LegalHoldError, LotEnvoi, ModeleDocument,
+    FavoriGed, Folder, JournalAcces, LegalHold, LegalHoldError, LotEnvoi,
+    ModeleDocument,
     PartageGed, PlanificationDocument, PolitiqueRetention,
     QuotaDepasseError, QuotaStockage, RegleAclMetadonnee,
-    RegleApprobationGed, RegleDossier, RoleSignataire, SignataireDemande,
-    ValidationOcrDocument,
+    RegleApprobationGed, RegleDossier, RoleSignataire, RoutageDocumentaire,
+    SignataireDemande, TypeChampSignature, ValidationOcrDocument,
+    VueGedEnregistree,
 )
 from .serializers import (
     AnnotationDocumentSerializer, ArchivageLegalSerializer, CabinetSerializer,
@@ -55,8 +58,9 @@ from .serializers import (
     PolitiqueRetentionSerializer, QuotaStockageSerializer,
     RegleAclMetadonneeSerializer, RegleApprobationGedSerializer,
     RegleDossierSerializer, RoleSignataireSerializer,
-    SignataireDemandeSerializer,
-    ValidationOcrDocumentSerializer,
+    RoutageDocumentaireSerializer, SignataireDemandeSerializer,
+    TypeChampSignatureSerializer, ValidationOcrDocumentSerializer,
+    VueGedEnregistreeSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -116,7 +120,8 @@ class FolderViewSet(TenantMixin, viewsets.ModelViewSet):
     ordering_fields = ['nom', 'created_at']
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS or self.action == 'descendants':
+        if self.action in READ_ACTIONS or self.action in (
+                'descendants', 'favori'):
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
@@ -197,6 +202,23 @@ class FolderViewSet(TenantMixin, viewsets.ModelViewSet):
             return _permissions_effectives_csv(lignes, f'dossier-{folder.pk}')
         return Response({'lignes': lignes})
 
+    @action(detail=True, methods=['post'], url_path='favori')
+    def favori(self, request, pk=None):
+        """ZGED7 — Bascule (toggle) ce dossier en favori pour l'appelant.
+
+        Personnel : jamais partagé, jamais visible d'un collègue. Renvoie
+        `{"favori": true|false}` selon l'état APRÈS bascule."""
+        folder = self.get_object()
+        deleted, _ = FavoriGed.objects.filter(
+            company=request.user.company, utilisateur=request.user,
+            folder=folder).delete()
+        if deleted:
+            return Response({'favori': False})
+        FavoriGed.objects.create(
+            company=request.user.company, utilisateur=request.user,
+            folder=folder)
+        return Response({'favori': True})
+
 
 class CoffreViewSet(TenantMixin, viewsets.ModelViewSet):
     """GED8 — Coffres-forts par employé/client (ACL propriétaire + admin).
@@ -262,6 +284,14 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         # check_out/check_in : tout rôle peut extraire/libérer ses propres docs.
         if self.action in ('check_out', 'check_in'):
             return [IsAnyRole()]
+        # ZGED7 — favoriser/défavoriser est personnel, ouvert à tout rôle.
+        if self.action == 'favori':
+            return [IsAnyRole()]
+        # ZGED9 — verrouiller/déverrouiller (avertissement léger) : tout rôle
+        # peut poser/lever SON PROPRE verrou ; la garde gestionnaire pour le
+        # forçage est appliquée dans `services.deverrouiller_avertissement`.
+        if self.action in ('verrouiller', 'deverrouiller'):
+            return [IsAnyRole()]
         # XGED14 — le téléchargement ZIP est une lecture (lisible par tout rôle) ;
         # les autres opérations de lot restent réservées aux responsables/admins.
         if (self.action == 'operations_lot'
@@ -289,6 +319,13 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         statut = self.request.query_params.get('statut')
         if statut:
             qs = qs.filter(statut=statut)
+        # ZGED5 — filtres par propriétaire/contact assigné.
+        proprietaire = self.request.query_params.get('proprietaire')
+        if proprietaire:
+            qs = qs.filter(proprietaire_id=proprietaire)
+        contact = self.request.query_params.get('contact')
+        if contact:
+            qs = qs.filter(contact_id=contact)
         return qs
 
     @action(detail=True, methods=['post'], url_path='tagger')
@@ -323,6 +360,64 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         ).delete()
         return Response(
             DocumentSerializer(document, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='assigner')
+    def assigner(self, request, pk=None):
+        """ZGED5 — Réassigne propriétaire et/ou contact métier (panneau
+        d'informations). Body optionnel : `{"proprietaire": <user_id>|null,
+        "contact": <client_id>|null}` — un champ absent du body reste
+        inchangé ; `null` explicite l'efface. `proprietaire` doit être un
+        utilisateur de la MÊME société (404 sinon) ; `contact` est résolu via
+        `apps.crm.selectors` (dégrade proprement si absent/autre société —
+        aucun import du modèle crm)."""
+        document = self.get_object()
+        data = request.data
+        if 'proprietaire' in data:
+            proprietaire_id = data.get('proprietaire')
+            if proprietaire_id in (None, '', 'null'):
+                document.proprietaire = None
+            else:
+                from django.contrib.auth import get_user_model
+                User = get_user_model()
+                user = User.objects.filter(
+                    pk=proprietaire_id, company=request.user.company).first()
+                if user is None:
+                    return Response(
+                        {'proprietaire': 'Utilisateur inconnu.'},
+                        status=status.HTTP_404_NOT_FOUND)
+                document.proprietaire = user
+        if 'contact' in data:
+            contact_id = data.get('contact')
+            if contact_id in (None, '', 'null'):
+                document.contact_id = None
+            else:
+                from apps.crm.selectors import get_company_client
+                client = get_company_client(request.user.company, contact_id)
+                if client is None:
+                    return Response(
+                        {'contact': 'Client inconnu.'},
+                        status=status.HTTP_404_NOT_FOUND)
+                document.contact_id = client.pk
+        document.save(update_fields=['proprietaire', 'contact_id', 'updated_at'])
+        return Response(
+            DocumentSerializer(document, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='favori')
+    def favori(self, request, pk=None):
+        """ZGED7 — Bascule (toggle) ce document en favori pour l'appelant.
+
+        Personnel : jamais partagé, jamais visible d'un collègue. Renvoie
+        `{"favori": true|false}` selon l'état APRÈS bascule."""
+        document = self.get_object()
+        deleted, _ = FavoriGed.objects.filter(
+            company=request.user.company, utilisateur=request.user,
+            document=document).delete()
+        if deleted:
+            return Response({'favori': False})
+        FavoriGed.objects.create(
+            company=request.user.company, utilisateur=request.user,
+            document=document)
+        return Response({'favori': True})
 
     def perform_create(self, serializer):
         # company + created_by posés côté serveur.
@@ -1002,6 +1097,38 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             # GED23 — document archivé légalement : write-once, save() bloqué.
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        except PermissionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        doc.refresh_from_db()
+        return Response(
+            DocumentSerializer(doc, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='verrouiller')
+    def verrouiller(self, request, pk=None):
+        """ZGED9 — Pose le verrou d'AVERTISSEMENT léger (« en cours
+        d'édition »), DISTINCT du check-out GED16 : n'empêche jamais la
+        lecture, affiche un bandeau à tous. Body optionnel :
+        `{"motif": "..."}`. 409 si déjà posé par un autre utilisateur."""
+        document = self.get_object()
+        try:
+            doc = services.verrouiller_avertissement(
+                document, request.user, motif=request.data.get('motif', ''))
+        except PermissionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
+        doc.refresh_from_db()
+        return Response(
+            DocumentSerializer(doc, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='deverrouiller')
+    def deverrouiller(self, request, pk=None):
+        """ZGED9 — Lève le verrou d'AVERTISSEMENT. Le poseur OU un
+        gestionnaire/admin peut lever (le forçage par un tiers gestionnaire
+        est journalisé). Idempotent si déjà libre."""
+        document = self.get_object()
+        try:
+            doc = services.deverrouiller_avertissement(document, request.user)
         except PermissionError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
@@ -2359,6 +2486,35 @@ class DemandeSignatureDocumentViewSet(TenantMixin,
                 demande, context={'request': request}).data,
             status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['post'], url_path='prolonger')
+    def prolonger(self, request, pk=None):
+        """ZGED14 — Prolonge l'échéance d'une demande `en_attente` (versant
+        ÉMETTEUR des relances). Body : `{"expires_at": "<iso>"}`. Réarme la
+        notification d'expiration proche (le prochain sweep peut re-notifier
+        sur la nouvelle échéance)."""
+        demande = self.get_object()
+        raw = request.data.get('expires_at')
+        if not raw:
+            return Response(
+                {'expires_at': 'La nouvelle échéance est requise.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        from django.utils.dateparse import parse_datetime
+
+        expires_at = parse_datetime(raw)
+        if expires_at is None:
+            return Response(
+                {'expires_at': 'Date invalide (format ISO attendu).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            demande = services.prolonger_demande_signature(
+                demande, expires_at=expires_at, user=request.user)
+        except PermissionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        return Response(
+            DemandeSignatureDocumentSerializer(
+                demande, context={'request': request}).data)
+
     @action(detail=False, methods=['post'], url_path='creer-multi')
     def creer_multi(self, request):
         """XGED2 — Crée une demande de signature MULTI-destinataires.
@@ -2510,7 +2666,7 @@ class ChampSignatureViewSet(TenantMixin, viewsets.ModelViewSet):
     def get_queryset(self):
         qs = ChampSignature.objects.filter(
             company=self.request.user.company).select_related(
-                'demande', 'modele')
+                'demande', 'modele', 'type_champ_ref')
         demande = self.request.query_params.get('demande')
         if demande:
             qs = qs.filter(demande_id=demande)
@@ -2518,6 +2674,91 @@ class ChampSignatureViewSet(TenantMixin, viewsets.ModelViewSet):
         if modele:
             qs = qs.filter(modele_id=modele)
         return qs
+
+
+class TypeChampSignatureViewSet(TenantMixin, viewsets.ModelViewSet):
+    """ZGED4 — Catalogue de types de champs de signature personnalisés.
+
+    CRUD scopé société ; `company`/`created_by` posés côté serveur. Lecture :
+    tout rôle authentifié. Écriture : responsable/admin. Les 5 types de base
+    sont seedés par `manage.py seed_types_champ_signature` (idempotent) —
+    jamais recréés par cette API."""
+    queryset = TypeChampSignature.objects.select_related('created_by').all()
+    serializer_class = TypeChampSignatureSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['libelle', 'code', 'created_at']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset().filter(company=self.request.user.company)
+        actif = self.request.query_params.get('actif')
+        if actif is not None:
+            qs = qs.filter(actif=actif.lower() in ('1', 'true', 'yes'))
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, created_by=self.request.user)
+
+
+class RoutageDocumentaireViewSet(TenantMixin, viewsets.ModelViewSet):
+    """ZGED6 — Réglages de centralisation des fichiers d'un autre module vers
+    un dossier GED. CRUD scopé société ; `company`/`created_by` posés côté
+    serveur. Lecture : tout rôle authentifié. Écriture : responsable/admin."""
+    queryset = RoutageDocumentaire.objects.select_related(
+        'cabinet_cible', 'created_by').prefetch_related('tags_defaut').all()
+    serializer_class = RoutageDocumentaireSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['source', 'created_at']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        return super().get_queryset().filter(company=self.request.user.company)
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, created_by=self.request.user)
+
+
+class VueGedEnregistreeViewSet(TenantMixin, viewsets.ModelViewSet):
+    """ZGED8 — Recherches/filtres GED enregistrés et partageables.
+
+    Lecture : chacun voit ses vues PRIVÉES + les vues PARTAGÉES de sa société
+    (jamais les vues privées d'un collègue). Écriture (création/édition) :
+    tout rôle authentifié, `utilisateur` posé côté serveur. Suppression :
+    réservée au créateur OU à un gestionnaire/admin."""
+    queryset = VueGedEnregistree.objects.select_related('utilisateur').all()
+    serializer_class = VueGedEnregistreeSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['nom', 'created_at']
+    permission_classes = [IsAnyRole]
+
+    def get_queryset(self):
+        company = self.request.user.company
+        return VueGedEnregistree.objects.filter(company=company).filter(
+            models.Q(utilisateur=self.request.user) | models.Q(partagee=True)
+        ).select_related('utilisateur')
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, utilisateur=self.request.user)
+
+    def perform_destroy(self, instance):
+        is_owner = instance.utilisateur_id == self.request.user.id
+        is_manager = IsResponsableOrAdmin().has_permission(self.request, self)
+        if not (is_owner or is_manager):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied(
+                "Seul le créateur ou un gestionnaire peut supprimer cette vue.")
+        instance.delete()
 
 
 class JournalAccesViewSet(TenantMixin, mixins.ListModelMixin,
@@ -3143,6 +3384,50 @@ class PlanificationDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(
             company=self.request.user.company, created_by=self.request.user)
+
+
+@api_view(['GET'])
+@permission_classes([IsAnyRole])
+def mes_recents(request):
+    """ZGED13 — Documents récemment consultés/déposés par l'APPELANT
+    uniquement (jamais ceux d'un collègue).
+
+    `GET ged/mes-recents/?limit=<n>` — dérivé de `JournalAcces` (GED35) et
+    `DocumentVersion.uploaded_by`, dédupliqués par document, hors
+    corbeille/ACL refusée. Renvoie `{"consultes": [...], "deposes": [...]}`."""
+    try:
+        limit = min(int(request.query_params.get('limit', 10)), 50)
+    except (TypeError, ValueError):
+        limit = 10
+    consultes = selectors.mes_recents(request.user, limit=limit)
+    deposes = selectors.mes_derniers_depots(request.user, limit=limit)
+    return Response({
+        'consultes': DocumentSerializer(
+            consultes, many=True, context={'request': request}).data,
+        'deposes': DocumentSerializer(
+            deposes, many=True, context={'request': request}).data,
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAnyRole])
+def mes_favoris(request):
+    """ZGED7 — Dossiers et documents favoris de l'APPELANT uniquement.
+
+    `GET ged/mes-favoris/` — jamais les favoris d'un collègue (personnel).
+    Renvoie `{"dossiers": [...], "documents": [...]}`."""
+    favoris = FavoriGed.objects.filter(
+        company=request.user.company, utilisateur=request.user
+    ).select_related('folder', 'document')
+    dossiers = [
+        {'id': f.folder.pk, 'nom': f.folder.nom, 'favori_id': f.pk}
+        for f in favoris if f.folder_id
+    ]
+    documents = [
+        {'id': f.document.pk, 'nom': f.document.nom, 'favori_id': f.pk}
+        for f in favoris if f.document_id
+    ]
+    return Response({'dossiers': dossiers, 'documents': documents})
 
 
 @api_view(['GET'])

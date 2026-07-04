@@ -114,6 +114,12 @@ app.conf.beat_schedule = {
         'task': 'ged.verifier_integrite_archives',
         'schedule': crontab(hour=3, minute=15),
     },
+    # ZGED14 — notifie les ÉMETTEURS de demandes de signature dont
+    # l'expiration approche (versant émetteur, complète XGED2 ci-dessus).
+    'ged-notifier-emetteurs-expiration-signature': {
+        'task': 'ged.notifier_emetteurs_expiration_signature',
+        'schedule': crontab(hour=8, minute=0),
+    },
     'crm-recycler-leads-non-travailles': {
         'task': 'crm.recycler_leads_non_travailles',
         'schedule': crontab(minute=0),  # every hour

@@ -13,3 +13,9 @@ class GedConfig(AppConfig):
         'description': 'Gestion électronique documentaire.',
         'categorie': 'Technique',
     }
+
+    def ready(self):
+        # ZGED6 — abonne ged aux événements métier (core.events) : centralise
+        # les fichiers d'autres apps (paie/rh/sav/ventes…) selon les réglages
+        # RoutageDocumentaire, sans jamais importer ces apps directement.
+        from . import receivers  # noqa: F401

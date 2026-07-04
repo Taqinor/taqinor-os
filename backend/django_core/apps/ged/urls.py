@@ -13,9 +13,11 @@ from .views import (
     PlanificationDocumentViewSet, PolitiqueRetentionViewSet,
     QuotaStockageViewSet, RegleAclMetadonneeViewSet,
     RegleApprobationGedViewSet, RegleDossierViewSet, RoleSignataireViewSet,
-    SignataireDemandeViewSet, ValidationOcrDocumentViewSet,
-    analytique_ged, public_depot, public_partage, public_signataire,
-    public_signature,
+    RoutageDocumentaireViewSet, SignataireDemandeViewSet,
+    TypeChampSignatureViewSet, ValidationOcrDocumentViewSet,
+    VueGedEnregistreeViewSet,
+    analytique_ged, mes_favoris, mes_recents, public_depot, public_partage,
+    public_signataire, public_signature,
 )
 
 router = DefaultRouter()
@@ -37,6 +39,9 @@ router.register(r'demandes-signature', DemandeSignatureDocumentViewSet)
 router.register(r'signataires-demande', SignataireDemandeViewSet)
 router.register(r'roles-signataire', RoleSignataireViewSet)
 router.register(r'champs-signature', ChampSignatureViewSet)
+router.register(r'types-champ-signature', TypeChampSignatureViewSet)
+router.register(r'routages-documentaires', RoutageDocumentaireViewSet)
+router.register(r'vues', VueGedEnregistreeViewSet)
 router.register(r'journal-acces', JournalAccesViewSet)
 router.register(r'quotas-stockage', QuotaStockageViewSet)
 router.register(r'depots-publics', DepotPublicViewSet)
@@ -71,5 +76,11 @@ urlpatterns = [
     # Déclaré avant le routeur pour ne pas être capté par une route de detail
     # DRF (ex. un futur `<pk>/`) — même précaution que les routes publiques.
     path('analytique/', analytique_ged, name='ged-analytique'),
+    # ZGED7 — favoris personnels de l'appelant, déclaré avant le routeur (même
+    # précaution que analytique/) pour ne jamais être capté par une route de
+    # détail DRF.
+    path('mes-favoris/', mes_favoris, name='ged-mes-favoris'),
+    # ZGED13 — mêmes précautions (déclaré avant le routeur).
+    path('mes-recents/', mes_recents, name='ged-mes-recents'),
     path('', include(router.urls)),
 ]

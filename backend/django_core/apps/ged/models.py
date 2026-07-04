@@ -469,6 +469,36 @@ class Document(models.Model):
         verbose_name="verrouille par")
     locked_at = models.DateTimeField(null=True, blank=True,
                                      verbose_name="verrouille le")
+    # ZGED5 — panneau d'informations : propriétaire/responsable + contact
+    # métier assigné, distincts de `created_by` (immuable, historique) et des
+    # `DocumentLien` (liaisons polymorphes). `proprietaire` est réassignable
+    # par un gestionnaire (posé côté serveur via l'action `assigner`).
+    # `contact_id` référence un `crm.Client` par STRING-FK (cross-app —
+    # jamais un import du modèle `crm`, résolu en lecture via
+    # `apps.crm.selectors`, pattern déjà utilisé ailleurs dans ce repo).
+    # Les deux nullables — rétrocompatible, comportement inchangé par défaut.
+    proprietaire = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_documents_possedes',
+        verbose_name='propriétaire')
+    contact_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='contact assigné (crm.Client)')
+    # ZGED9 — verrou d'AVERTISSEMENT léger (« en cours d'édition »), DISTINCT
+    # du check-out/check-in GED16 (`locked_by`/`locked_at` ci-dessus, qui
+    # gouverne le dépôt de version). Ce verrou n'empêche jamais la LECTURE —
+    # il affiche seulement un bandeau « verrouillé par X depuis Y » côté UI,
+    # levable par son poseur OU un gestionnaire (forçage journalisé via
+    # `services.deverrouiller_avertissement`). Additifs, ne changent rien au
+    # sémantique GED16.
+    verrou_avertissement_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_documents_verrou_avertissement',
+        verbose_name='verrou (avertissement) posé par')
+    verrou_avertissement_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='verrou (avertissement) posé le')
+    verrou_avertissement_motif = models.CharField(
+        max_length=300, blank=True, default='',
+        verbose_name='motif du verrou (avertissement)')
     # GED17 — cycle de vie documentaire (statut LOCAL à la GED, séparé du
     # funnel STAGES.py). Tout document naît « brouillon » ; les transitions
     # sont gardées côté serveur par `services.change_lifecycle_status` selon la
@@ -525,12 +555,22 @@ class Document(models.Model):
             # GED17 — filtre rapide par statut du cycle de vie (par société).
             models.Index(fields=['company', 'statut'],
                          name='ged_doc_co_statut_idx'),
+            # ZGED5 — filtres rapides par propriétaire/contact assigné.
+            models.Index(fields=['proprietaire'], name='ged_doc_proprio_idx'),
+            models.Index(fields=['company', 'contact_id'],
+                         name='ged_doc_co_contact_idx'),
         ]
 
     @property
     def is_locked(self):
         """True si le document est actuellement verrouillé (check-out actif)."""
         return self.locked_by_id is not None
+
+    @property
+    def est_verrouille_avertissement(self):
+        """ZGED9 — True si un verrou d'AVERTISSEMENT (léger, distinct du
+        check-out GED16) est actuellement posé sur ce document."""
+        return self.verrou_avertissement_par_id is not None
 
     @property
     def transitions_autorisees(self):
@@ -1651,6 +1691,14 @@ class DemandeSignatureDocument(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='ged_demandes_signature_annulees',
         verbose_name='annulée par')
+    # ZGED14 — versant ÉMETTEUR des relances (XGED2 ne couvre que le
+    # SIGNATAIRE). Horodatage de la DERNIÈRE notification d'expiration proche
+    # envoyée à l'émetteur pour CETTE demande — anti-doublon : une
+    # prolongation (`expires_at` repoussée) remet ce champ à NULL pour
+    # réarmer la notification sur la nouvelle échéance.
+    emetteur_notifie_expiration_le = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name="émetteur notifié de l'expiration proche le")
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='ged_demandes_signature_creees')
@@ -1929,6 +1977,117 @@ CHAMP_TYPE_CHOICES = [
     (CHAMP_TYPE_CASE, 'Case à cocher'),
 ]
 
+# ZGED4 — modes de saisie des types de champ personnalisés. Sur-ensemble des
+# 5 types de base XGED3 (signature/initiales/date/texte/case) + une sélection
+# (liste d'options JSON) pour couvrir les cas Odoo (ex. « Fonction » texte,
+# « Civilité » sélection).
+CHAMP_MODE_TEXTE = 'texte'
+CHAMP_MODE_MULTILIGNE = 'multiligne'
+CHAMP_MODE_CASE = 'case'
+CHAMP_MODE_SELECTION = 'selection'
+CHAMP_MODE_SIGNATURE = 'signature'
+CHAMP_MODE_INITIALES = 'initiales'
+CHAMP_MODE_DATE = 'date'
+
+CHAMP_MODE_CHOICES = [
+    (CHAMP_MODE_TEXTE, 'Texte'),
+    (CHAMP_MODE_MULTILIGNE, 'Texte multiligne'),
+    (CHAMP_MODE_CASE, 'Case à cocher'),
+    (CHAMP_MODE_SELECTION, 'Sélection'),
+    (CHAMP_MODE_SIGNATURE, 'Signature'),
+    (CHAMP_MODE_INITIALES, 'Initiales'),
+    (CHAMP_MODE_DATE, 'Date'),
+]
+
+# ZGED4 — options d'auto-remplissage depuis les infos du partenaire/signataire.
+CHAMP_AUTO_REMPLIR_AUCUN = ''
+CHAMP_AUTO_REMPLIR_NOM = 'nom'
+CHAMP_AUTO_REMPLIR_EMAIL = 'email'
+CHAMP_AUTO_REMPLIR_TELEPHONE = 'telephone'
+CHAMP_AUTO_REMPLIR_SOCIETE = 'societe'
+
+CHAMP_AUTO_REMPLIR_CHOICES = [
+    (CHAMP_AUTO_REMPLIR_AUCUN, 'Aucun'),
+    (CHAMP_AUTO_REMPLIR_NOM, 'Nom du partenaire'),
+    (CHAMP_AUTO_REMPLIR_EMAIL, 'Email du partenaire'),
+    (CHAMP_AUTO_REMPLIR_TELEPHONE, 'Téléphone du partenaire'),
+    (CHAMP_AUTO_REMPLIR_SOCIETE, 'Société du partenaire'),
+]
+
+# ZGED4 — codes des 5 types de base seedés pour rétrocompatibilité (recopient
+# CHAMP_TYPE_CHOICES de XGED3 en catalogue réutilisable/éditable).
+TYPE_CHAMP_SIGNATURE_SEED_DE_BASE = [
+    {'code': 'signature', 'libelle': 'Signature', 'mode_saisie': CHAMP_MODE_SIGNATURE},
+    {'code': 'initiales', 'libelle': 'Initiales', 'mode_saisie': CHAMP_MODE_INITIALES},
+    {'code': 'date', 'libelle': 'Date', 'mode_saisie': CHAMP_MODE_DATE},
+    {'code': 'texte', 'libelle': 'Texte', 'mode_saisie': CHAMP_MODE_TEXTE},
+    {'code': 'case', 'libelle': 'Case à cocher', 'mode_saisie': CHAMP_MODE_CASE},
+]
+
+
+class TypeChampSignature(models.Model):
+    """ZGED4 — Type de champ de signature personnalisé, réutilisable.
+
+    Odoo Sign → Réglages → « Modifier les types de champs » permet à un admin
+    de créer des types de champs signables au-delà des 5 défauts (signature/
+    initiales/date/texte/case, XGED3 ``CHAMP_TYPE_CHOICES``, figés en énumération).
+    Ici un catalogue ÉDITABLE par société : `ChampSignature` référence
+    (optionnellement) un `TypeChampSignature` par FK, en plus de son
+    `type_champ` texte historique (rétrocompatible — les champs déjà posés
+    restent valides sans référence).
+
+    Les 5 types de base sont SEEDÉS idempotemment (`seed_types_champ_signature`)
+    pour rester toujours disponibles même si un admin en supprime la référence
+    ailleurs. Company posée côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_types_champ_signature')
+    code = models.CharField(max_length=50, verbose_name='code')
+    libelle = models.CharField(max_length=100, verbose_name='libellé')
+    mode_saisie = models.CharField(
+        max_length=12, choices=CHAMP_MODE_CHOICES, default=CHAMP_MODE_TEXTE,
+        verbose_name='mode de saisie')
+    largeur_defaut = models.DecimalField(
+        max_digits=5, decimal_places=2, default=20,
+        verbose_name='largeur par défaut (%)')
+    hauteur_defaut = models.DecimalField(
+        max_digits=5, decimal_places=2, default=5,
+        verbose_name='hauteur par défaut (%)')
+    placeholder = models.CharField(max_length=200, blank=True, default='')
+    astuce = models.CharField(
+        max_length=300, blank=True, default='', verbose_name='astuce')
+    # Options de la liste, utilisées uniquement en mode_saisie='selection'
+    # (liste de chaînes JSON, ex. ["M.", "Mme"]).
+    options = models.JSONField(null=True, blank=True, default=list)
+    auto_remplir = models.CharField(
+        max_length=10, choices=CHAMP_AUTO_REMPLIR_CHOICES,
+        blank=True, default=CHAMP_AUTO_REMPLIR_AUCUN,
+        verbose_name='auto-remplissage partenaire')
+    lecture_seule = models.BooleanField(default=False, verbose_name='lecture seule')
+    actif = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_types_champ_signature_crees')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['libelle', 'id']
+        verbose_name = 'Type de champ de signature'
+        verbose_name_plural = 'Types de champ de signature'
+        indexes = [
+            models.Index(fields=['company', 'code'],
+                         name='ged_typechamp_co_code_idx'),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code'], name='ged_typechamp_co_code_unique'),
+        ]
+
+    def __str__(self):
+        return self.libelle
+
 
 class ChampSignature(models.Model):
     """XGED3 — Zone de champ positionnée sur le PDF à signer.
@@ -1964,6 +2123,15 @@ class ChampSignature(models.Model):
     type_champ = models.CharField(
         max_length=12, choices=CHAMP_TYPE_CHOICES,
         default=CHAMP_TYPE_SIGNATURE, verbose_name='type de champ')
+    # ZGED4 — référence optionnelle vers le catalogue de types personnalisés.
+    # Rétrocompatible : NULL = comportement XGED3 inchangé (le champ texte
+    # `type_champ` reste l'unique source pour un champ non référencé). Quand
+    # renseigné, le rendu public honore mode_saisie/largeur/hauteur/placeholder/
+    # astuce du type référencé.
+    type_champ_ref = models.ForeignKey(
+        'TypeChampSignature', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='champs_signature',
+        verbose_name='type de champ personnalisé')
     page = models.PositiveIntegerField(default=0, verbose_name='page (0-based)')
     # Position/taille en POURCENTAGE de la page (0-100) — résolution-indépendant.
     x = models.DecimalField(max_digits=5, decimal_places=2, default=0)
@@ -2949,3 +3117,172 @@ class LotEnvoi(models.Model):
 
     def __str__(self):
         return f'{self.libelle} ({self.nb_envoyes}/{self.total})'
+
+
+# ── ZGED6 — Centralisation des fichiers par module ───────────────────────────
+
+class RoutageDocumentaire(models.Model):
+    """ZGED6 — Réglage de centralisation des fichiers d'un autre module vers
+    un dossier GED cible, avec tags par défaut.
+
+    Odoo Documents « File centralization » auto-route les fichiers d'HR/Paie/
+    Compta/Sign/Projet vers un dossier configuré. Ici un `source` (code de
+    module libre, ex. ``paie_bulletin``/``rh_document``/``sav_piece_jointe``/
+    ``ventes_facture``) résout un `dossier_cible` — chemin en SEGMENTS séparés
+    par ``/``, chaque segment pouvant contenir des jetons ``{{ champ }}``
+    résolus depuis le contexte fourni par l'appelant (ex.
+    ``Paie/{{ annee }}`` → ``Paie/2026``) — créé/récupéré sous `cabinet_cible`
+    (get_or_create par segment, jamais de doublon).
+
+    Les apps émettrices (paie, rh, sav, ventes…) n'appellent JAMAIS ce module
+    directement : elles émettent un événement métier via `core/events.py`
+    (« document produit ») et `ged` s'y abonne dans son propre `apps.py
+    ready()` — jamais d'import inverse depuis `ged` vers l'app émettrice, et
+    jamais d'import de l'app émettrice PAR `ged` non plus (le contexte de
+    résolution des jetons est passé en argument par l'émetteur).
+
+    Sans réglage pour une `source` donnée : no-op strict (aucune
+    centralisation, comportement actuel inchangé) — `services.
+    router_document_module` renvoie `None` silencieusement.
+
+    Company posée côté serveur."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_routages_documentaires')
+    source = models.CharField(
+        max_length=50, verbose_name='source (code de module)')
+    cabinet_cible = models.ForeignKey(
+        Cabinet, on_delete=models.CASCADE, related_name='routages_documentaires')
+    dossier_cible = models.CharField(
+        max_length=500, verbose_name='dossier cible (segments {{ jeton }})')
+    tags_defaut = models.ManyToManyField(
+        DocumentTag, blank=True, related_name='routages_documentaires')
+    actif = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_routages_documentaires_crees')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['source', 'id']
+        verbose_name = 'Routage documentaire'
+        verbose_name_plural = 'Routages documentaires'
+        indexes = [
+            models.Index(fields=['company', 'source'],
+                         name='ged_routage_co_source_idx'),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'source'], name='ged_routage_co_source_unique'),
+        ]
+
+    def __str__(self):
+        return f'{self.source} → {self.dossier_cible}'
+
+
+# ── ZGED7 — Favoris de dossiers/documents ────────────────────────────────────
+
+class FavoriGed(models.Model):
+    """ZGED7 — Favori d'un dossier ou document GED, PAR UTILISATEUR.
+
+    Odoo Documents permet de « marquer comme favori » un dossier (accès
+    rapide dans la barre latérale). Cible À EXACTEMENT UNE des deux cibles
+    (`folder` OU `document`, jamais les deux, jamais aucune — même garde
+    `clean()` + contrainte base que `AclGed`). Un favori est PERSONNEL à
+    l'utilisateur qui l'a posé (jamais partagé — un collègue ne le voit pas).
+    Company posée côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_favoris')
+    utilisateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='ged_favoris', verbose_name='utilisateur')
+    folder = models.ForeignKey(
+        Folder, on_delete=models.CASCADE,
+        null=True, blank=True, related_name='favoris')
+    document = models.ForeignKey(
+        Document, on_delete=models.CASCADE,
+        null=True, blank=True, related_name='favoris')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        verbose_name = 'Favori GED'
+        verbose_name_plural = 'Favoris GED'
+        indexes = [
+            models.Index(fields=['company', 'utilisateur'],
+                         name='ged_favori_co_user_idx'),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(folder__isnull=False, document__isnull=True)
+                    | models.Q(folder__isnull=True, document__isnull=False)
+                ),
+                name='ged_favori_exactly_one_target',
+            ),
+            models.UniqueConstraint(
+                fields=['utilisateur', 'folder'],
+                condition=models.Q(folder__isnull=False),
+                name='ged_favori_unique_user_folder',
+            ),
+            models.UniqueConstraint(
+                fields=['utilisateur', 'document'],
+                condition=models.Q(document__isnull=False),
+                name='ged_favori_unique_user_document',
+            ),
+        ]
+
+    def clean(self):
+        """Garantit cible exactement-une (folder XOR document)."""
+        from django.core.exceptions import ValidationError
+        if bool(self.folder_id) == bool(self.document_id):
+            raise ValidationError(
+                "Un favori cible exactement un dossier OU un document.")
+
+    def __str__(self):
+        cible = self.document or self.folder
+        return f'Favori {self.utilisateur} → {cible}'
+
+
+# ── ZGED8 — Vues GED enregistrées (filtres partageables) ─────────────────────
+
+class VueGedEnregistree(models.Model):
+    """ZGED8 — Recherche/filtre GED enregistré, réutilisable et partageable.
+
+    Odoo Documents permet d'enregistrer des filtres en « favoris » réutilisables
+    et partageables. `criteres` est un JSON libre (dossier/tags/statut/type/
+    plage de dates/propriétaire — mêmes clés que les query params du
+    `DocumentViewSet`) appliqué côté frontend en rejouant les mêmes filtres.
+    `partagee=True` rend la vue visible en LECTURE de toute la société ;
+    `False` (défaut) la garde privée à son créateur. Suppression réservée au
+    créateur ou à un gestionnaire (gardée dans le viewset). Company posée
+    côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_vues_enregistrees')
+    utilisateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='ged_vues_enregistrees', verbose_name='créateur')
+    nom = models.CharField(max_length=150)
+    criteres = models.JSONField(default=dict, blank=True)
+    partagee = models.BooleanField(default=False, verbose_name='partagée')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['nom', 'id']
+        verbose_name = 'Vue GED enregistrée'
+        verbose_name_plural = 'Vues GED enregistrées'
+        indexes = [
+            models.Index(fields=['company', 'utilisateur'],
+                         name='ged_vue_co_user_idx'),
+            models.Index(fields=['company', 'partagee'],
+                         name='ged_vue_co_partagee_idx'),
+        ]
+
+    def __str__(self):
+        return self.nom
