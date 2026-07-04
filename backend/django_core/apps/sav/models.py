@@ -89,6 +89,22 @@ class SavSlaSettings(models.Model):
     # sur le MÊME chantier suggère une récidive à la création d'un nouveau
     # ticket. Paramétrable, défaut 30.
     recidive_fenetre_jours = models.PositiveIntegerField(default=30)
+    # ── YSERV5 — génération automatique planifiée des visites préventives ──
+    # OFF par défaut : comportement actuel inchangé (génération manuelle via
+    # le bouton `generer-dus` uniquement). ON → la tâche Celery quotidienne
+    # matérialise les visites dues sous `visites_avance_jours` jours.
+    generation_auto_visites = models.BooleanField(
+        default=False,
+        verbose_name='Génération automatique des visites',
+        help_text='Génère chaque nuit les visites préventives dues (beat), '
+                  'sans action manuelle.',
+    )
+    visites_avance_jours = models.PositiveIntegerField(
+        default=7,
+        verbose_name="Avance de génération (jours)",
+        help_text='Nombre de jours avant échéance où une visite due est '
+                  'matérialisée par la tâche automatique.',
+    )
     date_modification = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -593,6 +609,42 @@ class Ticket(models.Model):
         null=True, blank=True,
         help_text='ID du Lead crm créé/réutilisé depuis ce ticket (ZSAV8).')
 
+    # ── XCTR4 — Routage de couverture (garantie / contrat O&M / facturable) ─
+    # Décide qui paie l'intervention. Défaut `a_determiner` (comportement
+    # historique inchangé pour tous les tickets existants — aucune valeur
+    # n'est recalculée rétroactivement). `couverture_calculee` (propriété)
+    # propose une valeur, mais le champ stocké reste la source de vérité une
+    # fois posé explicitement (jamais réécrit en silence par la lecture).
+    class Couverture(models.TextChoices):
+        GARANTIE = 'garantie', 'Garantie'
+        CONTRAT = 'contrat', 'Contrat O&M'
+        FACTURABLE = 'facturable', 'Facturable'
+        A_DETERMINER = 'a_determiner', 'À déterminer'
+
+    couverture = models.CharField(
+        max_length=12, choices=Couverture.choices,
+        default=Couverture.A_DETERMINER,
+        verbose_name='Couverture',
+        help_text='Qui couvre cette intervention : garantie, contrat de '
+                  'maintenance, ou facturable au client.',
+    )
+
+    # ── YSERV12 — Canal de résolution (à distance / sur site) ───────────────
+    # NULL par défaut : jamais requis rétroactivement (tickets existants
+    # tolérés NULL). Proposé automatiquement à la transition RESOLU (jamais
+    # écrasé s'il a déjà été posé explicitement).
+    class CanalResolution(models.TextChoices):
+        A_DISTANCE = 'a_distance', 'À distance'
+        SUR_SITE = 'sur_site', 'Sur site'
+
+    canal_resolution = models.CharField(
+        max_length=12, choices=CanalResolution.choices,
+        null=True, blank=True,
+        verbose_name='Canal de résolution',
+        help_text='Résolu à distance (téléphone/redémarrage) ou sur site '
+                  '(déplacement). Vide = non renseigné (tickets anciens).',
+    )
+
     class Meta:
         verbose_name = 'Ticket SAV'
         verbose_name_plural = 'Tickets SAV'
@@ -625,6 +677,41 @@ class Ticket(models.Model):
                     if today < eq.date_fin_garantie_effective
                     else self.SousGarantie.NON)
         return self.sous_garantie
+
+    def couverture_calculee(self):
+        """XCTR4 — Propose une couverture (garantie / contrat / facturable)
+        SANS écraser une valeur déjà posée manuellement.
+
+        Ordre : garantie (si `sous_garantie_calcule=OUI`) → contrat (si un
+        contrat de maintenance actif du client couvre l'équipement lié — ou
+        n'a pas de registre — ET que son quota XCTR3 n'est pas épuisé pour ce
+        type de ticket) → facturable sinon."""
+        if self.sous_garantie_calcule == self.SousGarantie.OUI:
+            return self.Couverture.GARANTIE
+        contrat = (ContratMaintenance.objects
+                   .filter(client_id=self.client_id, actif=True)
+                   .order_by('-date_creation').first())
+        if contrat is not None and contrat.couvre_equipement(self.equipement):
+            from .selectors import droits_restants
+            annee = (self.date_ouverture or timezone.localdate()).year
+            droits = droits_restants(contrat, annee)
+            if self.type == self.Type.PREVENTIF:
+                restant = droits['visites_restantes']
+            else:
+                restant = droits['deplacements_restants']
+            if restant is None or restant > 0:
+                return self.Couverture.CONTRAT
+        return self.Couverture.FACTURABLE
+
+    def canal_resolution_propose(self):
+        """YSERV2 — Propose ``sur_site`` si ≥1 intervention liée à ce ticket
+        est TERMINEE/VALIDEE, sinon ``a_distance`` (aucun déplacement tracé).
+        Purement une PROPOSITION : n'écrase jamais ``canal_resolution`` déjà
+        posé explicitement (l'appelant décide s'il applique la valeur)."""
+        return (self.CanalResolution.SUR_SITE
+                if self.interventions.filter(
+                    statut__in=('terminee', 'validee')).exists()
+                else self.CanalResolution.A_DISTANCE)
 
     def recompute_sla_breach(self):
         """Recalcule sla_breach : True si sla_due_at dépassé + ticket ouvert.
@@ -959,6 +1046,37 @@ class ContratMaintenance(models.Model):
         verbose_name='SLA — délai de résolution (jours, override)',
         help_text='Vide = pas de override contrat (SLA société standard).',
     )
+    # ── XCTR2 — Registre des équipements couverts par le contrat ────────────
+    # M2M additif (jamais posé jusqu'ici malgré la mention FG40) : liste les
+    # équipements du parc couverts PAR ce contrat. Vide = comportement actuel
+    # (aucune notion de couverture matérielle — un contrat « couvre » alors
+    # tout le client, sans liste explicite).
+    equipements = models.ManyToManyField(
+        'sav.Equipement', blank=True, related_name='contrats_maintenance',
+        verbose_name='Équipements couverts',
+        help_text='Équipements du parc couverts par ce contrat (optionnel).',
+    )
+    # ── XCTR3 — Droits inclus (entitlements) du contrat ─────────────────────
+    # Tous optionnels : NULL = illimité/indéfini (comportement actuel — aucun
+    # contrat existant ne voit apparaître un quota qu'il n'avait pas).
+    visites_incluses_an = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Visites incluses / an',
+        help_text='Nombre de visites (tickets PREVENTIF) incluses par année '
+                  'civile. Vide = illimité.',
+    )
+    deplacements_inclus_an = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Déplacements inclus / an',
+        help_text='Nombre de déplacements (tickets CORRECTIF) inclus par '
+                  'année civile. Vide = illimité.',
+    )
+    pieces_couvertes_pct = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        verbose_name='Pièces couvertes (%)',
+        help_text='Pourcentage (0–100) du coût des pièces couvert par le '
+                  'contrat. Vide = indéfini.',
+    )
     date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -1043,6 +1161,17 @@ class ContratMaintenance(models.Model):
         if not self.facturation_active or not self.actif:
             return False
         return (today or timezone.localdate()) >= self.prochaine_facturation()
+
+    def couvre_equipement(self, equipement):
+        """XCTR2 — True si `equipement` fait partie du registre couvert par ce
+        contrat. Un contrat SANS équipement enregistré (M2M vide) est
+        considéré comme couvrant tout le client (comportement historique,
+        aucune régression pour les contrats existants sans registre posé)."""
+        if equipement is None:
+            return True
+        if not self.equipements.exists():
+            return True
+        return self.equipements.filter(pk=equipement.pk).exists()
 
 
 # ── FG280 — Alarmes / défauts onduleur ────────────────────────────────────────

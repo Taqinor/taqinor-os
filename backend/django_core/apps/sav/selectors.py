@@ -16,6 +16,8 @@ le stock passe l'``id`` de produit et la liste de séries reçues en arguments
 bruts ; ce module lit uniquement `sav.Equipement` (règle de modularité
 CLAUDE.md — les lectures cross-app passent par les selectors de l'app cible).
 """
+from django.utils import timezone
+
 from .models import Equipement, KbArticle, Ticket, TicketSatisfaction
 
 
@@ -254,6 +256,102 @@ def contrats_maintenance_facturables(company):
         {'id': cm.id, 'prix': cm.prix, 'periodicite': cm.periodicite}
         for cm in qs
     ]
+
+
+def droits_restants(contrat, annee=None):
+    """XCTR3 — Compteurs de droits inclus (entitlements) consommés/restants
+    pour ``contrat`` sur l'année civile ``annee`` (défaut : année courante).
+
+    Compte les tickets PREVENTIF (visites) et CORRECTIF (déplacements) ouverts
+    sur le contrat (via `installation` — même pivot que les visites générées)
+    dont ``date_ouverture`` tombe dans les bornes de l'année civile demandée.
+    Un quota NULL sur le contrat = illimité : jamais d'avertissement, le champ
+    ``restant`` renvoie ``None`` (pas de division/quota calculée).
+    """
+    from datetime import date as _date
+
+    annee = annee or timezone.localdate().year
+    debut = _date(annee, 1, 1)
+    fin = _date(annee, 12, 31)
+
+    if contrat.installation_id:
+        base_qs = Ticket.objects.filter(
+            company_id=contrat.company_id,
+            installation_id=contrat.installation_id,
+            date_ouverture__gte=debut, date_ouverture__lte=fin,
+        )
+        visites_consommees = base_qs.filter(type=Ticket.Type.PREVENTIF).count()
+        deplacements_consommes = base_qs.filter(type=Ticket.Type.CORRECTIF).count()
+    else:
+        visites_consommees = 0
+        deplacements_consommes = 0
+
+    def _restant(inclus, consomme):
+        if inclus is None:
+            return None
+        return max(0, inclus - consomme)
+
+    return {
+        'annee': annee,
+        'visites_incluses_an': contrat.visites_incluses_an,
+        'visites_consommees': visites_consommees,
+        'visites_restantes': _restant(
+            contrat.visites_incluses_an, visites_consommees),
+        'deplacements_inclus_an': contrat.deplacements_inclus_an,
+        'deplacements_consommes': deplacements_consommes,
+        'deplacements_restants': _restant(
+            contrat.deplacements_inclus_an, deplacements_consommes),
+    }
+
+
+def taux_resolution_a_distance(company, *, date_debut=None, date_fin=None,
+                               group_by_technicien=False):
+    """YSERV12 — Taux de résolution À DISTANCE (KPI d'évitement de
+    déplacement) : tickets résolus à distance / tickets résolus (statut
+    RESOLU/CLOTURE, ``canal_resolution`` renseigné), sur la fenêtre
+    ``[date_debut, date_fin]`` (bornes optionnelles, sur ``date_resolution``).
+
+    ``group_by_technicien=True`` renvoie une ventilation par technicien
+    responsable (clé ``None`` = non assigné) en plus du total. Un ticket sans
+    ``canal_resolution`` (jamais renseigné — comportement historique) est
+    EXCLU du dénominateur : le taux ne porte que sur les tickets où le canal
+    est connu. Aucune division par zéro (0 résolu → taux ``None``)."""
+    qs = Ticket.objects.filter(
+        company=company,
+        statut__in=(Ticket.Statut.RESOLU, Ticket.Statut.CLOTURE),
+        canal_resolution__isnull=False,
+    )
+    if date_debut is not None:
+        qs = qs.filter(date_resolution__gte=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(date_resolution__lte=date_fin)
+
+    def _taux(queryset):
+        total = queryset.count()
+        if not total:
+            return {'resolus': 0, 'a_distance': 0, 'taux_pct': None}
+        a_distance = queryset.filter(
+            canal_resolution=Ticket.CanalResolution.A_DISTANCE).count()
+        return {
+            'resolus': total,
+            'a_distance': a_distance,
+            'taux_pct': round((a_distance / total) * 100, 1),
+        }
+
+    result = {'global': _taux(qs)}
+    if group_by_technicien:
+        techniciens = qs.values_list(
+            'technicien_responsable_id',
+            'technicien_responsable__username').distinct()
+        par_technicien = []
+        for tech_id, tech_nom in techniciens:
+            par_technicien.append({
+                'technicien_id': tech_id,
+                'technicien_nom': tech_nom,
+                **_taux(qs.filter(technicien_responsable_id=tech_id)),
+            })
+        result['par_technicien'] = par_technicien
+    return result
 
 
 def csat_par_technicien(company, *, date_debut=None, date_fin=None):

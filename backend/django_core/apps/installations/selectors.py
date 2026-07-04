@@ -95,6 +95,25 @@ def intervention_recente_pour_chantier(company, installation_id, *,
     return qs.first()
 
 
+def interventions_ouvertes_pour_ticket(ticket_id):
+    """YSERV2 — Interventions liées à ``ticket_id`` PAS ENCORE TERMINÉE/
+    VALIDÉE. Point d'entrée cross-app en LECTURE SEULE pour la garde de
+    clôture ``apps.sav.views.TicketViewSet`` (jamais un import du modèle
+    ``Intervention`` depuis ``sav``). Renvoie une liste de dicts plats
+    (jamais l'instance ORM) — vide si aucune intervention liée."""
+    from .models import Intervention
+
+    if not ticket_id:
+        return []
+    statuts_ouverts = [
+        s for s in Intervention.Statut.values
+        if s not in (Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE)
+    ]
+    qs = Intervention.objects.filter(
+        ticket_id=ticket_id, statut__in=statuts_ouverts)
+    return [{'id': i.id, 'statut': i.statut} for i in qs]
+
+
 def reserved_quantity_for_produit(produit):
     """Quantité d'un produit ENGAGÉE par des réservations actives et non
     encore consommées — chantier (N14) + ordre d'assemblage (XMFG2). Lecture

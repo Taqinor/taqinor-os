@@ -469,7 +469,8 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             return [HasPermissionOrLegacy('sav_voir')()]
         elif self.action in WRITE_ACTIONS + [
                 'noter', 'annuler', 'reactiver', 'creer_devis',
-                'attente_client', 'reprendre', 'fusionner']:
+                'attente_client', 'reprendre', 'fusionner',
+                'facturer', 'planifier_intervention']:
             return [HasPermissionOrLegacy('sav_gerer')()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
@@ -481,6 +482,15 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             obj = serializer.validated_data.get(field)
             if obj is not None and obj.company_id != company.id:
                 raise ValidationError({field: 'Référence inconnue.'})
+
+    @staticmethod
+    def _interventions_ouvertes(ticket):
+        """YSERV2 — liste (id, statut) des interventions liées à ce ticket
+        PAS ENCORE terminées/validées. Lecture cross-app via
+        ``installations.selectors`` (jamais un import du modèle) ; liste vide
+        = comportement historique (aucune intervention liée)."""
+        from apps.installations.selectors import interventions_ouvertes_pour_ticket
+        return interventions_ouvertes_pour_ticket(ticket.id)
 
     def _resolve_from_equipement(self, serializer):
         """Quand un ticket est ouvert depuis le parc (un équipement lié) sans
@@ -587,6 +597,46 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
                     'est_recidive', 'intervention_origine_id',
                     'motif_recidive', 'non_facturable'])
         activity.log_creation(serializer.instance, self.request.user)
+        # XCTR2 — avertissement NON BLOQUANT si l'équipement lié n'est pas
+        # couvert par le contrat de maintenance actif du client (registre
+        # XCTR2). Un client sans contrat, ou un ticket sans équipement, ne
+        # déclenche rien (comportement historique inchangé).
+        if inst.equipement_id and inst.client_id:
+            from .models import ContratMaintenance
+            contrat = (ContratMaintenance.objects
+                       .filter(client_id=inst.client_id, actif=True)
+                       .order_by('-date_creation').first())
+            if contrat is not None and not contrat.couvre_equipement(inst.equipement):
+                activity.log_note(
+                    inst, self.request.user,
+                    "Avertissement : cet équipement n'est pas dans le "
+                    'registre des équipements couverts par le contrat de '
+                    f'maintenance #{contrat.pk}.')
+        # XCTR3 — avertissement NON BLOQUANT si ce ticket dépasse le quota de
+        # visites/déplacements inclus au contrat (droits_restants). NULL sur le
+        # contrat = illimité : aucun avertissement possible dans ce cas.
+        if inst.client_id and inst.type in (Ticket.Type.PREVENTIF, Ticket.Type.CORRECTIF):
+            from .models import ContratMaintenance
+            from .selectors import droits_restants
+            contrat = (ContratMaintenance.objects
+                       .filter(client_id=inst.client_id, actif=True)
+                       .order_by('-date_creation').first())
+            if contrat is not None:
+                droits = droits_restants(contrat, inst.date_ouverture.year)
+                if (inst.type == Ticket.Type.PREVENTIF
+                        and droits['visites_restantes'] == 0):
+                    activity.log_note(
+                        inst, self.request.user,
+                        'Avertissement : quota de visites incluses au '
+                        f'contrat #{contrat.pk} déjà atteint pour '
+                        f"{droits['annee']}.")
+                elif (inst.type == Ticket.Type.CORRECTIF
+                        and droits['deplacements_restants'] == 0):
+                    activity.log_note(
+                        inst, self.request.user,
+                        'Avertissement : quota de déplacements inclus au '
+                        f'contrat #{contrat.pk} déjà atteint pour '
+                        f"{droits['annee']}.")
 
     # XSAV11 — statuts « clos » depuis lesquels revenir à un statut ouvert
     # compte comme une réouverture.
@@ -595,6 +645,24 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
     def perform_update(self, serializer):
         self._check_tenant(serializer)
         old = Ticket.objects.get(pk=serializer.instance.pk)
+        # YSERV12 — à la transition vers RESOLU, propose canal_resolution si
+        # l'appelant n'en a pas fourni un explicitement (jamais écrasé sinon).
+        new_statut = serializer.validated_data.get('statut', old.statut)
+        if (new_statut == Ticket.Statut.RESOLU and old.statut != Ticket.Statut.RESOLU
+                and 'canal_resolution' not in serializer.validated_data):
+            serializer.validated_data['canal_resolution'] = (
+                old.canal_resolution_propose())
+        # YSERV2 — garde de clôture : refuse CLOTURE tant qu'une intervention
+        # liée (apps.installations) n'est pas TERMINEE/VALIDEE.
+        if new_statut == Ticket.Statut.CLOTURE and old.statut != Ticket.Statut.CLOTURE:
+            ouvertes = self._interventions_ouvertes(old)
+            if ouvertes:
+                raise ValidationError({
+                    'statut': (
+                        'Impossible de clôturer : intervention(s) encore '
+                        'ouverte(s) sur ce ticket.'),
+                    'interventions_ouvertes': ouvertes,
+                })
         super().perform_update(serializer)
         # FG81 — recalcule sla_breach après toute mise à jour de statut.
         inst = serializer.instance
@@ -959,6 +1027,77 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             'facture_id': facture.id,
             'facture_reference': facture.reference,
             'sous_garantie': sous_garantie,
+        }, status=201)
+
+    @action(detail=True, methods=['post'], url_path='facturer',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def facturer(self, request, pk=None):
+        """XCTR4 — Facture CE ticket selon le routage de couverture calculé
+        (garantie/contrat de maintenance/facturable).
+
+        POST /sav/tickets/{id}/facturer/
+
+        Réutilise EXACTEMENT ``generer_facture_ticket_sav`` (XFSM1) : garantie
+        et contrat (avec quota non épuisé) produisent une facture à 0 DH
+        (« couvert »), facturable produit la facture réelle au prix de vente
+        catalogue (jamais ``prix_achat`` — pièces au prix VENTE uniquement).
+        Idempotent (réutilise ``facture_id_ext`` si déjà posé). Renvoie aussi
+        la couverture retenue pour cette facturation."""
+        ticket = self.get_object()
+        from apps.ventes.services import generer_facture_ticket_sav
+
+        couverture = ticket.couverture
+        if couverture == Ticket.Couverture.A_DETERMINER:
+            couverture = ticket.couverture_calculee()
+
+        sous_garantie = couverture in (
+            Ticket.Couverture.GARANTIE, Ticket.Couverture.CONTRAT)
+        pieces = list(ticket.pieces.select_related('produit'))
+        facture = generer_facture_ticket_sav(
+            ticket=ticket, sous_garantie=sous_garantie, pieces=pieces,
+            user=request.user)
+        activity.log_note(
+            ticket, request.user,
+            f'Facture {facture.reference} générée depuis le ticket '
+            f'(couverture : {couverture}).')
+        return Response({
+            'facture_id': facture.id,
+            'facture_reference': facture.reference,
+            'couverture': couverture,
+        }, status=201)
+
+    @action(detail=True, methods=['post'], url_path='planifier-intervention',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def planifier_intervention(self, request, pk=None):
+        """YSERV2 — crée une Intervention pré-remplie (apps.installations)
+        depuis ce ticket, EN UN CLIC, et passe le ticket en PLANIFIE.
+
+        POST /sav/tickets/{id}/planifier-intervention/
+        body optionnel : {type_intervention: 'depanning'|'controle'|...}
+
+        Refuse proprement (400) si le ticket n'a pas de chantier lié — rien
+        à planifier sans installation. Écrit via
+        ``apps.installations.services`` (frontière cross-app, jamais un
+        import du modèle ``Intervention``)."""
+        ticket = self.get_object()
+        from apps.installations.services import (
+            TicketSansInstallationError, creer_intervention_depuis_ticket,
+        )
+        try:
+            interv = creer_intervention_depuis_ticket(
+                ticket=ticket, user=request.user, company=ticket.company,
+                type_intervention=request.data.get('type_intervention'))
+        except TicketSansInstallationError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        if ticket.statut == Ticket.Statut.NOUVEAU:
+            ticket.statut = Ticket.Statut.PLANIFIE
+            ticket.save(update_fields=['statut'])
+        activity.log_note(
+            ticket, request.user,
+            f'Intervention #{interv.id} planifiée depuis le ticket.')
+        return Response({
+            'intervention_id': interv.id,
+            'ticket_statut': ticket.statut,
         }, status=201)
 
     @action(detail=True, methods=['get', 'post'], url_path='prets-equipement',

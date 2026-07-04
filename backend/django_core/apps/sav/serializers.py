@@ -272,6 +272,15 @@ class TicketSerializer(serializers.ModelSerializer):
     # ZSAV2 — catégorie de ticket configurable (libellé lecture).
     categorie_nom = serializers.CharField(
         source='categorie.libelle', read_only=True, default=None)
+    # XCTR2 — couverture de l'équipement lié par le contrat de maintenance
+    # ACTIF du client (registre XCTR2). None si aucun contrat/équipement.
+    equipement_couvert = serializers.SerializerMethodField()
+    # XCTR4 — routage de couverture PROPOSÉ (garantie/contrat/facturable),
+    # calculé en lecture — distinct de `couverture` (valeur stockée).
+    couverture_proposee = serializers.SerializerMethodField()
+    # YSERV12 — canal de résolution PROPOSÉ (sur_site si intervention liée
+    # terminée, sinon à_distance), distinct de `canal_resolution` (stocké).
+    canal_resolution_propose = serializers.SerializerMethodField()
 
     class Meta:
         model = Ticket
@@ -325,6 +334,28 @@ class TicketSerializer(serializers.ModelSerializer):
         due = obj.sla_due_at_effectif()
         return due.isoformat() if due else None
 
+    def get_equipement_couvert(self, obj):
+        """XCTR2 — indicateur « couvert / non couvert » calculé sur le ticket :
+        None si pas d'équipement lié ou pas de contrat actif du client, sinon
+        True/False selon le registre `ContratMaintenance.equipements`."""
+        if obj.equipement_id is None:
+            return None
+        from .models import ContratMaintenance
+        contrat = ContratMaintenance.actif_pour_client(obj.client)
+        if contrat is None:
+            contrat = (ContratMaintenance.objects
+                       .filter(client=obj.client, actif=True)
+                       .order_by('-date_creation').first())
+        if contrat is None:
+            return None
+        return contrat.couvre_equipement(obj.equipement)
+
+    def get_couverture_proposee(self, obj):
+        return obj.couverture_calculee()
+
+    def get_canal_resolution_propose(self, obj):
+        return obj.canal_resolution_propose()
+
 
 # ── FG81 — Réglages SLA ────────────────────────────────────────────────────────
 
@@ -336,7 +367,10 @@ class SavSlaSettingsSerializer(serializers.ModelSerializer):
             'sla_par_priorite', 'sla_breach_enabled',
             'notifications_client_sav', 'sla_jours_ouvres',
             'sla_warning_days', 'escalade_activee', 'affectation_auto_sav',
-            'auto_cloture_jours', 'recidive_fenetre_jours', 'date_modification',
+            'auto_cloture_jours', 'recidive_fenetre_jours',
+            # YSERV5 — génération automatique planifiée des visites.
+            'generation_auto_visites', 'visites_avance_jours',
+            'date_modification',
         ]
         read_only_fields = ['date_modification']
 

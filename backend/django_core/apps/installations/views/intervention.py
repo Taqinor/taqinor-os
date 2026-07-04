@@ -296,6 +296,15 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
                 interv.installation, self.request.user,
                 f"Intervention modifiée : "
                 f"{interv.get_type_intervention_display()}")
+        # YSERV2 — passage à TERMINEE/VALIDEE (nouveau) : émet
+        # intervention_completed sur le bus (core/events.py). sav s'y abonne
+        # pour avancer un ticket lié — installations n'importe jamais sav.
+        if (old.statut not in (Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE)
+                and interv.statut in (Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE)):
+            from core.events import intervention_completed
+            intervention_completed.send(
+                sender=Intervention, intervention=interv,
+                company=self.request.user.company, user=self.request.user)
 
     def perform_destroy(self, instance):
         # Suppression d'intervention → trace au chatter du CHANTIER.
