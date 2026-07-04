@@ -873,6 +873,12 @@ class Immobilisation(models.Model):
         max_digits=5, decimal_places=2, default=Decimal('20.00'),
         verbose_name='Taux de TVA (%)')
     date_acquisition = models.DateField(verbose_name="Date d'acquisition")
+    # XACC32 — Prorata temporis (CGI marocain) : la 1re dotation linéaire se
+    # calcule au prorata des mois depuis la MISE EN SERVICE (pas
+    # l'acquisition). NULL = pas encore renseignée → défaut = date_acquisition
+    # (comportement actuel byte-identique, cf. save() ci-dessous).
+    date_mise_en_service = models.DateField(
+        null=True, blank=True, verbose_name='Date de mise en service')
     actif = models.BooleanField(default=True, verbose_name='Actif')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
@@ -893,6 +899,15 @@ class Immobilisation(models.Model):
         if self.taux_tva is not None and self.taux_tva < 0:
             raise ValidationError(
                 "Le taux de TVA doit être positif.")
+
+    @property
+    def date_mise_en_service_effective(self):
+        """XACC32 — Date de mise en service, ou ``date_acquisition`` si vide.
+
+        Utilisée par le calcul du prorata temporis : une immobilisation sans
+        date de mise en service renseignée se comporte EXACTEMENT comme avant
+        (mise en service = acquisition, prorata = 12/12 dès la 1re année)."""
+        return self.date_mise_en_service or self.date_acquisition
 
     @property
     def montant_tva(self):

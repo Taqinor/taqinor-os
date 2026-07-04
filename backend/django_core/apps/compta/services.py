@@ -1453,15 +1453,23 @@ def _arrondi(montant):
     return Decimal(montant).quantize(Decimal('0.01'))
 
 
-def _calcul_annuites(base, duree, mode, coefficient):
+def _calcul_annuites(base, duree, mode, coefficient, *, mois_premiere_annee=12):
     """Renvoie la liste des annuités (Decimal arrondies) pour ``duree`` années.
 
     * LINÉAIRE : base / durée chaque année ; la dernière année absorbe l'écart
-      d'arrondi pour solder exactement la base.
+      d'arrondi pour solder exactement la base. XACC32 — ``mois_premiere_
+      annee`` (1-12) proratise la 1re annuité (CGI marocain : prorata au mois
+      depuis la mise en service) ; la fraction non dotée en 1re année (12 −
+      mois_premiere_annee) est reportée en ANNUITÉ COMPLÉMENTAIRE ajoutée à
+      la DERNIÈRE année — la durée totale (nombre d'exercices) reste
+      ``duree``, seule la répartition change. ``mois_premiere_annee=12``
+      (défaut) reproduit EXACTEMENT le comportement historique (années
+      pleines, aucun prorata).
     * DÉGRESSIF : taux dégressif = (100/durée) × coefficient, appliqué à la
       valeur nette résiduelle ; bascule sur le linéaire du résiduel dès que
       celui-ci devient supérieur ou égal à l'annuité dégressive (règle CGI).
-      La dernière année solde le résiduel.
+      La dernière année solde le résiduel. Le prorata temporis ne s'applique
+      PAS au dégressif (garde sa règle actuelle, XACC32).
     """
     base = Decimal(base)
     if duree < 1 or base <= 0:
@@ -1469,14 +1477,28 @@ def _calcul_annuites(base, duree, mode, coefficient):
     annuites = []
     if mode == PlanAmortissement.Mode.LINEAIRE:
         annuite = _arrondi(base / Decimal(duree))
-        cumul = Decimal('0')
-        for an in range(duree):
-            if an == duree - 1:
-                montant = base - cumul  # solde exact la dernière année.
-            else:
-                montant = annuite
-            cumul += montant
-            annuites.append(_arrondi(montant))
+        mois = max(1, min(12, int(mois_premiere_annee or 12)))
+        if mois == 12 or duree == 1:
+            cumul = Decimal('0')
+            for an in range(duree):
+                if an == duree - 1:
+                    montant = base - cumul  # solde exact la dernière année.
+                else:
+                    montant = annuite
+                cumul += montant
+                annuites.append(_arrondi(montant))
+            return annuites
+        # Prorata temporis : 1re année = annuite × mois/12 ; la fraction
+        # différée est reportée en annuité complémentaire sur la dernière
+        # année (durée totale — nombre d'exercices — inchangée).
+        premiere = _arrondi(annuite * Decimal(mois) / Decimal('12'))
+        cumul = premiere
+        annuites.append(premiere)
+        for an in range(1, duree - 1):
+            cumul += annuite
+            annuites.append(_arrondi(annuite))
+        derniere = base - cumul  # absorbe pleine annuité + fraction différée.
+        annuites.append(_arrondi(derniere))
         return annuites
 
     # Dégressif : taux dégressif sur la valeur nette résiduelle.
@@ -1544,8 +1566,18 @@ def generer_plan_amortissement(immobilisation, *, mode=None, duree_annees=None,
     plan.save()
 
     coefficient = plan.coefficient_degressif or Decimal('1')
+    # XACC32 — prorata temporis LINÉAIRE uniquement : mois restants depuis la
+    # mise en service (défaut = date d'acquisition, comportement inchangé si
+    # la mise en service n'est pas renseignée). Le dégressif garde sa règle
+    # actuelle (aucun prorata).
+    mois_premiere_annee = 12
+    if plan.mode == PlanAmortissement.Mode.LINEAIRE:
+        mise_en_service = immobilisation.date_mise_en_service_effective
+        if mise_en_service and mise_en_service.year == plan.date_debut.year:
+            mois_premiere_annee = 13 - mise_en_service.month
     annuites = _calcul_annuites(
-        plan.base_amortissable, plan.duree_annees, plan.mode, coefficient)
+        plan.base_amortissable, plan.duree_annees, plan.mode, coefficient,
+        mois_premiere_annee=mois_premiere_annee)
 
     annee_debut = plan.date_debut.year
     cumul = Decimal('0')
