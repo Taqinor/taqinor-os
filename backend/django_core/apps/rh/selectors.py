@@ -1544,7 +1544,7 @@ def motifs_depart(company, debut, fin):
     return counts
 
 
-def cockpit_rh(company, *, inclure_masse_salariale=False):
+def cockpit_rh(company, *, inclure_masse_salariale=False, departement_id=None):
     """Cockpit RH — effectifs & coûts (FG200), agrégation scopée société.
 
     Renvoie un tableau de bord en lecture :
@@ -1558,12 +1558,18 @@ def cockpit_rh(company, *, inclure_masse_salariale=False):
     * ``masse_salariale_mensuelle`` — UNIQUEMENT si ``inclure_masse_salariale``
       (GATED : donnée interne paie, jamais côté client).
 
+    XRH27 — ``departement_id`` filtre le cockpit à CE département ET TOUS ses
+    descendants (arbre de hiérarchie), via :func:`departements_descendants`.
+
     Tout est cadré société (jamais d'accès hors ``company``).
     """
     from datetime import date
 
     today = timezone.localdate()
     base = DossierEmploye.objects.filter(company=company)
+    if departement_id:
+        ids = departements_descendants(company, departement_id)
+        base = base.filter(departement_id__in=ids)
     non_sortis = base.exclude(statut=DossierEmploye.Statut.SORTI)
 
     # Répartitions par statut / contrat.
@@ -1956,3 +1962,67 @@ def stats_recrutement(company, debut=None, fin=None):
         'candidatures_par_ouverture': candidatures_par_ouverture,
         'sources': sources,
     }
+
+
+def _effectif_departement(company, departement_id):
+    """Effectif NON-SORTI directement rattaché à ce département (hors
+    descendants — l'agrégation cumulée se fait dans :func:`arbre_departements`)."""
+    return DossierEmploye.objects.filter(
+        company=company, departement_id=departement_id
+    ).exclude(statut=DossierEmploye.Statut.SORTI).count()
+
+
+def arbre_departements(company):
+    """XRH27 — arbre imbriqué des départements avec effectifs par nœud.
+
+    Renvoie une liste de nœuds RACINE (``parent`` vide), chacun
+    ``{id, nom, code, effectif_propre, effectif_cumule, enfants: [...]}`` où
+    ``effectif_propre`` = employés non-sortis DIRECTEMENT rattachés à ce
+    département, et ``effectif_cumule`` = ``effectif_propre`` + la somme
+    cumulée de TOUS les descendants (récursif). Lecture seule, société
+    scopée.
+    """
+    departements = list(Departement.objects.filter(company=company))
+    enfants_de = {}
+    for d in departements:
+        enfants_de.setdefault(d.parent_id, []).append(d)
+
+    def construire(dep):
+        enfants = [
+            construire(e) for e in enfants_de.get(dep.id, [])]
+        effectif_propre = _effectif_departement(company, dep.id)
+        effectif_cumule = effectif_propre + sum(
+            e['effectif_cumule'] for e in enfants)
+        return {
+            'id': dep.id,
+            'nom': dep.nom,
+            'code': dep.code,
+            'effectif_propre': effectif_propre,
+            'effectif_cumule': effectif_cumule,
+            'enfants': enfants,
+        }
+
+    racines = enfants_de.get(None, [])
+    return [construire(d) for d in racines]
+
+
+def departements_descendants(company, departement_id):
+    """XRH27 — ids du département donné + TOUS ses descendants (récursif).
+
+    Utilisé par le filtre cockpit ``?departement=`` (descendant-inclusif).
+    Renvoie ``[]`` si ``departement_id`` est absent/invalide.
+    """
+    if not departement_id:
+        return []
+    departements = list(Departement.objects.filter(company=company))
+    enfants_de = {}
+    for d in departements:
+        enfants_de.setdefault(d.parent_id, []).append(d.id)
+
+    resultat = []
+    a_visiter = [int(departement_id)]
+    while a_visiter:
+        courant = a_visiter.pop()
+        resultat.append(courant)
+        a_visiter.extend(enfants_de.get(courant, []))
+    return resultat

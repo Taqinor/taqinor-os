@@ -21,7 +21,13 @@ from django.db import models
 
 
 class Departement(models.Model):
-    """Département d'une société (regroupe des ``DossierEmploye``)."""
+    """Département d'une société (regroupe des ``DossierEmploye``).
+
+    XRH27 — ``parent`` (FK self nullable) modélise la HIÉRARCHIE de
+    départements (ex. Direction → Pôle technique → Équipes pose), auparavant
+    plate. ``clean()`` protège contre les cycles (A→B→A) en remontant TOUTE
+    la chaîne d'ancêtres, pas seulement le lien direct.
+    """
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -31,6 +37,13 @@ class Departement(models.Model):
     nom = models.CharField(max_length=120, verbose_name='Nom')
     code = models.CharField(
         max_length=20, blank=True, default='', verbose_name='Code')
+    parent = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='enfants',
+        verbose_name='Département parent',
+    )
     actif = models.BooleanField(default=True, verbose_name='Actif')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
@@ -40,6 +53,29 @@ class Departement(models.Model):
         verbose_name_plural = 'Départements'
         unique_together = [('company', 'nom')]
         ordering = ['nom']
+
+    def clean(self):
+        """XRH27 — rejette un cycle A→B→A en remontant TOUTE la chaîne de
+        ``parent`` (pas seulement le lien direct)."""
+        from django.core.exceptions import ValidationError
+
+        if self.parent_id is None:
+            return
+        if self.pk is not None and self.parent_id == self.pk:
+            raise ValidationError(
+                'Un département ne peut pas être son propre parent.')
+
+        vus = set()
+        courant = self.parent
+        while courant is not None:
+            if self.pk is not None and courant.pk == self.pk:
+                raise ValidationError(
+                    'Cycle de hiérarchie détecté : ce département est déjà '
+                    "un ancêtre du parent choisi.")
+            if courant.pk in vus:
+                break  # cycle préexistant ailleurs — n'empêche pas CETTE sauvegarde
+            vus.add(courant.pk)
+            courant = courant.parent
 
     def __str__(self):
         return self.nom

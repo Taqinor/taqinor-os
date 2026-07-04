@@ -181,12 +181,24 @@ class _RhBaseViewSet(TenantMixin, viewsets.ModelViewSet):
 
 
 class DepartementViewSet(_RhBaseViewSet):
-    """Départements de la société. Recherche par nom/code."""
-    queryset = Departement.objects.all()
+    """Départements de la société. Recherche par nom/code.
+
+    XRH27 — ``parent`` (FK self) modélise la hiérarchie (cycle rejeté 400).
+
+    Action :
+    * ``GET .../arbre/`` — arbre imbriqué avec effectifs par nœud (propre +
+      cumulé descendants), via ``selectors.arbre_departements``.
+    """
+    queryset = Departement.objects.select_related('parent').all()
     serializer_class = DepartementSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nom', 'code']
     ordering_fields = ['nom']
+
+    @action(detail=False, methods=['get'], url_path='arbre')
+    def arbre(self, request):
+        return Response(
+            selectors.arbre_departements(request.user.company))
 
 
 class DossierEmployeViewSet(_RhBaseViewSet):
@@ -4383,7 +4395,9 @@ class CockpitRhViewSet(viewsets.ViewSet):
     def list(self, request):
         peut_voir_salaires = HasPermission('salaires_voir')().has_permission(
             request, self)
+        departement = request.query_params.get('departement')
         data = selectors.cockpit_rh(
             request.user.company,
-            inclure_masse_salariale=peut_voir_salaires)
+            inclure_masse_salariale=peut_voir_salaires,
+            departement_id=departement)
         return Response(data)

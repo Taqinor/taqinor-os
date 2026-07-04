@@ -4,6 +4,7 @@
 le ``TenantMixin`` (``perform_create``). Tous les FK reçus sont validés comme
 appartenant à la société de l'utilisateur.
 """
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
 from .models import (
@@ -86,10 +87,35 @@ def _meme_societe(serializer, value, label):
 
 
 class DepartementSerializer(serializers.ModelSerializer):
+    """Département (XRH27 — ``parent`` optionnel pour la hiérarchie).
+
+    ``parent`` doit appartenir à la même société ; un cycle (A→B→A) est
+    rejeté (``Departement.clean()``, invoqué explicitement ici — DRF n'appelle
+    pas ``full_clean()`` par défaut)."""
+
     class Meta:
         model = Departement
-        fields = ['id', 'nom', 'code', 'actif', 'date_creation']
+        fields = ['id', 'nom', 'code', 'parent', 'actif', 'date_creation']
         read_only_fields = ['date_creation']
+
+    def validate_parent(self, value):
+        return _meme_societe(self, value, 'Département parent')
+
+    def validate(self, attrs):
+        instance = Departement(
+            pk=self.instance.pk if self.instance else None,
+            company=(self.instance.company if self.instance
+                     else self.context['request'].user.company),
+            nom=attrs.get('nom', self.instance.nom if self.instance else ''),
+            parent=attrs.get(
+                'parent', self.instance.parent if self.instance else None),
+        )
+        try:
+            instance.clean()
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(
+                {'parent': exc.messages})
+        return attrs
 
 
 class DossierEmployeSerializer(serializers.ModelSerializer):
