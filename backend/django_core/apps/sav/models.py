@@ -1088,3 +1088,57 @@ class PieceConsommee(models.Model):
 
     def __str__(self):
         return f'{self.produit_id} ×{self.quantite} (ticket {self.ticket_id})'
+
+
+# ── XSAV16 — Journal d'immobilisation (downtime) + disponibilité % ──────────
+
+class EquipementDowntime(models.Model):
+    """XSAV16 — Période d'immobilisation d'un équipement client.
+
+    Ouverte depuis un ticket (panne bloquante) ou l'escalade d'une alarme
+    onduleur critique (FG280) ; fermée à la résolution. ``fin`` NULL = encore
+    en panne (immobilisation en cours). Le lien ``ticket`` est optionnel
+    (SET_NULL) — l'historique de downtime survit à la suppression du ticket.
+
+    Les fenêtres NE PEUVENT PAS se chevaucher pour un même équipement — la
+    disponibilité % dérivée serait autrement faussée (double comptage). La
+    garde anti-chevauchement est appliquée côté service (`services.py`), pas
+    en contrainte DB (Django ne supporte pas nativement les contraintes
+    d'exclusion de plage sans une extension Postgres dédiée)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='downtimes_equipement')
+    equipement = models.ForeignKey(
+        'sav.Equipement', on_delete=models.CASCADE, related_name='downtimes')
+    debut = models.DateTimeField()
+    fin = models.DateTimeField(null=True, blank=True)
+    ticket = models.ForeignKey(
+        'sav.Ticket', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='downtimes')
+    motif = models.CharField(max_length=255, blank=True, default='')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Immobilisation équipement'
+        verbose_name_plural = 'Immobilisations équipement'
+        ordering = ['-debut']
+        indexes = [
+            models.Index(fields=['company', 'equipement'],
+                         name='sav_eqdown_co_equip_idx'),
+            models.Index(fields=['equipement', 'fin'],
+                         name='sav_eqdown_equip_fin_idx'),
+        ]
+
+    def __str__(self):
+        etat = 'en cours' if self.fin is None else 'clos'
+        return f'Downtime équipement {self.equipement_id} ({etat})'
+
+    def clore(self, fin=None):
+        """Ferme l'immobilisation (idempotent : ne réécrit pas si déjà close)."""
+        if self.fin is not None:
+            return
+        self.fin = fin or timezone.now()
+        self.save(update_fields=['fin'])

@@ -185,3 +185,83 @@ def create_corrective_ticket(*, company, client, installation, description,
             installation=installation, type=Ticket.Type.CORRECTIF,
             description=description, created_by=created_by)
     return create_with_reference(Ticket, 'SAV', company, _create)
+
+
+# ── XSAV16 — Journal d'immobilisation (downtime) + disponibilité % ──────────
+
+class DowntimeOverlapError(Exception):
+    """XSAV16 — Levée quand une nouvelle fenêtre de downtime chevauche une
+    fenêtre existante du MÊME équipement (une immobilisation double compterait
+    la disponibilité %)."""
+
+
+def ouvrir_downtime(*, company, equipement, debut, ticket=None, motif='',
+                    created_by=None):
+    """XSAV16 — Ouvre une immobilisation pour ``equipement`` à partir de
+    ``debut``. Refuse tout chevauchement avec une fenêtre existante du même
+    équipement : une fenêtre EN COURS (fin=None) chevauche toujours toute
+    nouvelle ouverture (on ne peut pas ouvrir une seconde panne pendant que la
+    première n'est pas close) ; une fenêtre déjà close chevauche si
+    ``debut`` tombe dans son intervalle [debut, fin]. Lève
+    ``DowntimeOverlapError`` en cas de chevauchement — jamais une seconde
+    fenêtre concurrente créée par erreur."""
+    from .models import EquipementDowntime
+
+    en_cours = EquipementDowntime.objects.filter(
+        equipement=equipement, fin__isnull=True).exists()
+    if en_cours:
+        raise DowntimeOverlapError(
+            'Une immobilisation est déjà en cours pour cet équipement.')
+
+    chevauche = EquipementDowntime.objects.filter(
+        equipement=equipement, debut__lte=debut, fin__gte=debut).exists()
+    if chevauche:
+        raise DowntimeOverlapError(
+            'Cette période chevauche une immobilisation existante.')
+
+    return EquipementDowntime.objects.create(
+        company=company, equipement=equipement, debut=debut,
+        ticket=ticket, motif=motif or '', created_by=created_by)
+
+
+def disponibilite_equipement(equipement, *, debut_periode, fin_periode):
+    """XSAV16 — Disponibilité % d'un équipement sur ``[debut_periode,
+    fin_periode]`` (bornes datetime timezone-aware, inclusives).
+
+    Calcule le temps cumulé d'immobilisation qui INTERSECTE la période
+    demandée (une fenêtre en cours utilise ``fin_periode`` comme borne haute
+    provisoire), puis renvoie :
+      {'duree_periode_heures': float, 'duree_downtime_heures': float,
+       'disponibilite_pct': float}
+    ``disponibilite_pct`` = 100 si la période est nulle/négative (repli sûr,
+    aucune division par zéro)."""
+    from django.db.models import Q
+    from .models import EquipementDowntime
+
+    duree_periode = (fin_periode - debut_periode).total_seconds() / 3600
+    if duree_periode <= 0:
+        return {
+            'duree_periode_heures': 0.0, 'duree_downtime_heures': 0.0,
+            'disponibilite_pct': 100.0,
+        }
+
+    qs = EquipementDowntime.objects.filter(
+        equipement=equipement, debut__lte=fin_periode,
+    ).filter(Q(fin__gte=debut_periode) | Q(fin__isnull=True))
+
+    downtime_heures = 0.0
+    for dt in qs:
+        fin = dt.fin or fin_periode
+        seg_debut = max(dt.debut, debut_periode)
+        seg_fin = min(fin, fin_periode)
+        if seg_fin > seg_debut:
+            downtime_heures += (seg_fin - seg_debut).total_seconds() / 3600
+
+    downtime_heures = min(downtime_heures, duree_periode)
+    disponibilite_pct = round(
+        (1 - downtime_heures / duree_periode) * 100, 2)
+    return {
+        'duree_periode_heures': round(duree_periode, 2),
+        'duree_downtime_heures': round(downtime_heures, 2),
+        'disponibilite_pct': disponibilite_pct,
+    }

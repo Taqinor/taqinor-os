@@ -8,6 +8,7 @@ from .models import (
     SavSlaSettings, MaintenanceChecklistTemplate, MaintenanceChecklistItem,
     TicketChecklistItem, WarrantyClaim, KbArticle, AlarmeOnduleur,
     TicketSatisfaction, CauseDefaillance, RemedeDefaillance,
+    EquipementDowntime,
 )
 
 # Fenêtre « garantie expirant bientôt » (jours).
@@ -389,3 +390,24 @@ class RemedeDefaillanceSerializer(serializers.ModelSerializer):
         model = RemedeDefaillance
         fields = ['id', 'nom', 'ordre', 'archived']
         read_only_fields = ['id']
+
+
+# ── XSAV16 — Journal d'immobilisation (downtime) ──────────────────────────────
+
+class EquipementDowntimeSerializer(serializers.ModelSerializer):
+    ticket_reference = serializers.CharField(
+        source='ticket.reference', read_only=True, default=None)
+    en_cours = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EquipementDowntime
+        fields = [
+            'id', 'equipement', 'debut', 'fin', 'ticket', 'ticket_reference',
+            'motif', 'en_cours', 'date_creation',
+        ]
+        read_only_fields = [
+            'id', 'company', 'created_by', 'date_creation',
+        ]
+
+    def get_en_cours(self, obj):
+        return obj.fin is None

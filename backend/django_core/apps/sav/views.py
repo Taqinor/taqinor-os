@@ -21,7 +21,7 @@ from .models import (
     Equipement, Ticket, PieceConsommee,
     SavSlaSettings, MaintenanceChecklistTemplate, TicketChecklistItem,
     WarrantyClaim, KbArticle, AlarmeOnduleur,
-    CauseDefaillance, RemedeDefaillance,
+    CauseDefaillance, RemedeDefaillance, EquipementDowntime,
 )
 from .services import add_months
 from .pdf import rapport_intervention_pdf
@@ -34,6 +34,7 @@ from .serializers import (
     KbArticleSerializer,
     AlarmeOnduleurSerializer,
     CauseDefaillanceSerializer, RemedeDefaillanceSerializer,
+    EquipementDowntimeSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -231,6 +232,100 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
         equipement = self.get_object()
         include_couts = bool(request.user.can_view_buy_prices)
         data = fiabilite_equipement(equipement, include_couts=include_couts)
+        return Response(data)
+
+    @action(detail=True, methods=['get', 'post'], url_path='downtime',
+            permission_classes=[HasPermissionOrLegacy('equipement_gerer')])
+    def downtime(self, request, pk=None):
+        """XSAV16 — Journal d'immobilisation de cet équipement.
+
+        GET : liste les fenêtres (en cours + closes). POST : ouvre une
+        nouvelle fenêtre (body : ``debut`` ISO8601 optionnel — défaut
+        maintenant, ``ticket`` id optionnel, ``motif`` optionnel). Refuse tout
+        chevauchement avec une fenêtre existante (400 explicite, jamais une
+        seconde fenêtre concurrente créée par erreur)."""
+        equipement = self.get_object()
+        if request.method == 'GET':
+            qs = equipement.downtimes.select_related('ticket')
+            return Response(EquipementDowntimeSerializer(qs, many=True).data)
+
+        from .services import DowntimeOverlapError, ouvrir_downtime
+
+        debut_raw = request.data.get('debut')
+        if debut_raw:
+            from django.utils.dateparse import parse_datetime
+            debut = parse_datetime(debut_raw)
+            if debut is None:
+                return Response({'detail': 'Date invalide.'}, status=400)
+        else:
+            debut = timezone.now()
+
+        ticket = None
+        ticket_id = request.data.get('ticket')
+        if ticket_id:
+            ticket = Ticket.objects.filter(
+                id=ticket_id, company=equipement.company_id).first()
+            if ticket is None:
+                return Response({'detail': 'Ticket inconnu.'}, status=400)
+
+        try:
+            dt = ouvrir_downtime(
+                company=equipement.company, equipement=equipement,
+                debut=debut, ticket=ticket,
+                motif=(request.data.get('motif') or '').strip(),
+                created_by=request.user)
+        except DowntimeOverlapError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(
+            EquipementDowntimeSerializer(dt).data, status=201)
+
+    @action(detail=True, methods=['post'],
+            url_path=r'downtime/(?P<downtime_id>[^/.]+)/cloturer',
+            permission_classes=[HasPermissionOrLegacy('equipement_gerer')])
+    def cloturer_downtime(self, request, pk=None, downtime_id=None):
+        """XSAV16 — Ferme une fenêtre d'immobilisation en cours (idempotent)."""
+        equipement = self.get_object()
+        try:
+            dt = equipement.downtimes.get(pk=downtime_id)
+        except (EquipementDowntime.DoesNotExist, ValueError):
+            return Response({'detail': 'Immobilisation introuvable.'}, status=404)
+        fin_raw = request.data.get('fin')
+        fin = None
+        if fin_raw:
+            from django.utils.dateparse import parse_datetime
+            fin = parse_datetime(fin_raw)
+        dt.clore(fin=fin)
+        return Response(EquipementDowntimeSerializer(dt).data)
+
+    @action(detail=True, methods=['get'], url_path='disponibilite',
+            permission_classes=[HasPermissionOrLegacy('equipement_voir')])
+    def disponibilite(self, request, pk=None):
+        """XSAV16 — Disponibilité % de cet équipement sur une période.
+
+        ``?debut=AAAA-MM-JJ&fin=AAAA-MM-JJ`` (défaut : les 30 derniers jours).
+        """
+        from datetime import datetime as _dt, timedelta as _td
+        from .services import disponibilite_equipement
+
+        equipement = self.get_object()
+
+        def _parse_date(name, default):
+            raw = (request.query_params.get(name) or '').strip()
+            if not raw:
+                return default
+            try:
+                from datetime import date as _date
+                d = _date.fromisoformat(raw)
+                return timezone.make_aware(_dt(d.year, d.month, d.day))
+            except ValueError:
+                return default
+
+        fin_periode = _parse_date('fin', timezone.now())
+        debut_periode = _parse_date(
+            'debut', fin_periode - _td(days=30))
+
+        data = disponibilite_equipement(
+            equipement, debut_periode=debut_periode, fin_periode=fin_periode)
         return Response(data)
 
 
@@ -431,6 +526,15 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         if old.statut != inst.statut:
             from .notifications_client import notify_ticket_transition
             notify_ticket_transition(inst, inst.statut, request=self.request)
+        # XSAV16 — la clôture du ticket propose (= referme automatiquement,
+        # idempotent) toute immobilisation EN COURS liée à ce ticket. Ne
+        # ferme jamais une fenêtre déjà close, et n'affecte que les
+        # downtimes du même ticket (pas ceux d'autres tickets sur le même
+        # équipement).
+        if (old.statut != inst.statut
+                and inst.statut in self._CLOTURE_STATUTS):
+            for dt in inst.downtimes.filter(fin__isnull=True):
+                dt.clore()
 
     @action(detail=True, methods=['get'], url_path='historique',
             permission_classes=[HasPermissionOrLegacy('sav_voir')])
