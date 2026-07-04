@@ -32,7 +32,7 @@ from django.conf import settings
 from django.core import signing
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.utils import timezone
 
 from .models import (
@@ -472,6 +472,56 @@ def ecriture_pour_paiement(paiement, *, force=False, user=None):
         reference=ref, source_type='paiement', source_id=paiement.id,
         created_by=user, statut=EcritureComptable.Statut.VALIDEE,
     )
+
+
+@transaction.atomic
+def auto_lettrer_facture_soldee(facture):
+    """YLEDG6 — lettre automatiquement le compte clients (3421) d'une facture
+    INTÉGRALEMENT réglée.
+
+    Rassemble les lignes 3421 non lettrées des écritures liées à cette
+    facture (la vente elle-même, tous ses règlements, tous ses avoirs — via
+    ``source_type``/``source_id``, jamais un import du modèle ``ventes`` :
+    ``facture`` est lu par attribut/relation, comme le reste du bloc
+    ``ecriture_pour_*``) et pose un même code de lettrage SSI elles
+    s'équilibrent. No-op silencieux si le lot ne solde pas (ex. génération
+    désactivée pour une partie du dossier) — jamais d'exception qui casserait
+    le flux d'encaissement appelant.
+
+    Un paiement PARTIEL n'appelle jamais cette fonction (le receveur ne
+    l'invoque qu'au passage résiduel→0, comme YDOCF4) : le lot reste ouvert.
+    """
+    company = facture.company
+    if company is None:
+        return None
+    compte_clients = get_compte(company, '3421')
+    source_ids = {
+        'facture': [facture.id],
+        'paiement': [p.id for p in facture.paiements.all()],
+        'avoir': [a.id for a in facture.avoirs.all()],
+    }
+    q_sources = Q()
+    for source_type, ids in source_ids.items():
+        if ids:
+            q_sources |= Q(ecriture__source_type=source_type,
+                           ecriture__source_id__in=ids)
+    if not q_sources:
+        return None
+    lignes = list(
+        LigneEcriture.objects.filter(
+            q_sources, company=company, compte=compte_clients, lettrage='',
+        ).values_list('id', flat=True))
+    if len(lignes) < 2:
+        # Rien à apparier (une seule ligne, ou déjà lettré).
+        return None
+    from . import selectors
+    code = selectors.prochain_code_lettrage(company, compte_clients)
+    try:
+        return selectors.lettrer(company, lignes, code)
+    except ValueError:
+        # Lot déséquilibré (ex. génération partielle désactivée) : on laisse
+        # le lettrage manuel s'en charger, jamais d'exception ici.
+        return None
 
 
 # ── XACC1 — TVA sur encaissement : transfert du compte d'attente ───────────

@@ -285,6 +285,44 @@ def lettrer(company, ligne_ids, code):
     return qs.update(lettrage=code)
 
 
+def prochain_code_lettrage(company, compte):
+    """YLEDG6 — code de lettrage séquentiel A, B, …, Z, AA, AB… pour un
+    compte lettrable donné (jamais réutilisé, même après délettrage — le
+    prochain code repart toujours après le plus haut déjà vu)."""
+    codes = (LigneEcriture.objects
+             .filter(company=company, compte=compte)
+             .exclude(lettrage='')
+             .values_list('lettrage', flat=True).distinct())
+
+    def _rang(code):
+        rang = 0
+        for ch in code:
+            rang = rang * 26 + (ord(ch) - ord('A') + 1)
+        return rang
+
+    def _code(rang):
+        lettres = ''
+        while rang > 0:
+            rang, reste = divmod(rang - 1, 26)
+            lettres = chr(ord('A') + reste) + lettres
+        return lettres
+
+    valides = [c for c in codes if c and c.isalpha() and c.isupper()]
+    dernier_rang = max((_rang(c) for c in valides), default=0)
+    return _code(dernier_rang + 1)
+
+
+def delettrer(company, code):
+    """YLEDG6 — retire le code de lettrage ``code`` d'un lot de lignes (rouvre
+    le lot : la balance âgée / l'encours ré-incluent les lignes). Renvoie le
+    nombre de lignes délettrées. Journalisé côté appelant (jamais silencieux)
+    — cette fonction, LECTURE-ÉCRITURE ciblée, ne touche jamais aux montants
+    ni aux écritures elles-mêmes (COMPTA11 : jamais de suppression/altération
+    d'une écriture validée)."""
+    qs = LigneEcriture.objects.filter(company=company, lettrage=code)
+    return qs.update(lettrage='')
+
+
 # ── FG113 / COMPTA27 — CPC (Compte de Produits et Charges) ─────────────────
 
 def cpc(company, *, date_debut=None, date_fin=None, validees_seulement=False):

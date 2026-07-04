@@ -26,11 +26,13 @@ from core.events import (
     facture_fournisseur_creee,
     paiement_enregistre,
     paiement_fournisseur_enregistre,
+    paiement_rejete,
 )
 
 from .services import (  # noqa: F401  (ré-export du point d'intégration)
     _ecriture_existante,
     auto_ecritures_actif,
+    auto_lettrer_facture_soldee,
     ecriture_pour_avoir,
     ecriture_pour_facture,
     ecriture_pour_facture_fournisseur,
@@ -61,6 +63,13 @@ def _ecriture_pour_facture_emise(sender, instance, company, **kwargs):
 @receiver(paiement_enregistre, dispatch_uid="compta_ecriture_pour_paiement")
 def _ecriture_pour_paiement_enregistre(sender, instance, company, **kwargs):
     ecriture_pour_paiement(instance)
+    # YLEDG6 — auto-lettrage à l'encaissement : uniquement quand la facture
+    # est désormais intégralement réglée (résiduel→0, comme YDOCF4) ; un
+    # règlement partiel laisse le lot ouvert (comportement inchangé).
+    facture = getattr(instance, 'facture', None)
+    if facture is not None and getattr(facture, 'montant_du', None) is not None \
+            and facture.montant_du <= 0:
+        auto_lettrer_facture_soldee(facture)
 
 
 @receiver(avoir_cree, dispatch_uid="compta_ecriture_pour_avoir")
@@ -96,6 +105,27 @@ def _extourne_facture_annulee(sender, instance, company, **kwargs):
     if ecriture is None:
         return
     extourner_ecriture(ecriture)
+
+
+# ── YLEDG6 (suite) — un paiement rejeté délettre le lot lié automatiquement ─
+# (le rejet lui-même — statut ventes.Paiement + extourne de l'écriture
+# d'encaissement, YLEDG4/5 — est traité côté ventes ; ici on rouvre
+# uniquement le lettrage posé par ``auto_lettrer_facture_soldee``.)
+
+@receiver(paiement_rejete, dispatch_uid="compta_delettrer_paiement_rejete")
+def _delettrer_paiement_rejete(sender, paiement, facture, montant, company,
+                               **kwargs):
+    from .models import LigneEcriture
+    ecriture = _ecriture_existante(company, 'paiement', paiement.id)
+    if ecriture is None:
+        return
+    ligne_lettree = (LigneEcriture.objects
+                     .filter(ecriture=ecriture, company=company)
+                     .exclude(lettrage='').first())
+    if ligne_lettree is None:
+        return
+    from . import selectors
+    selectors.delettrer(company, ligne_lettree.lettrage)
 
 
 # ── XMKT1 — sortie automatique des séquences de relance ────────────────────
