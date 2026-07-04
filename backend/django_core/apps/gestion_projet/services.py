@@ -19,6 +19,7 @@ from .models import (
     PhaseProjet,
     Projet,
     RecurrenceTache,
+    RessourceProfil,
     Tache,
 )
 
@@ -2153,4 +2154,143 @@ def copier_semaine_precedente(company, *, semaine_source, semaine_cible,
         'nb_sautees': len(sautees),
         'copiees': copiees,
         'sautees': sautees,
+    }
+
+
+# ── Auto-affectation : appliquer les propositions de nivellement (ZPRJ4) ───
+def _taches_sans_affectation(company, debut, fin):
+    """Tâches de ``company`` chevauchant [debut, fin] SANS AUCUNE affectation
+    directe/équipe/actif (lecture seule, aide interne à ``auto_affecter``).
+
+    Une tâche sans dates prévues n'est jamais considérée (rien à comparer à
+    la fenêtre) : ce ciblage reste conservateur (jamais une tâche non datée
+    auto-affectée à l'aveugle)."""
+    return list(
+        Tache.objects.filter(
+            company=company,
+            date_debut_prevue__isnull=False, date_fin_prevue__isnull=False,
+            date_debut_prevue__lte=fin, date_fin_prevue__gte=debut,
+        ).exclude(
+            id__in=AffectationRessource.objects.filter(
+                company=company).values_list('tache_id', flat=True)
+        ).select_related('projet'))
+
+
+def auto_affecter(company, debut, fin, *, confirmer=False):
+    """Applique (ou simule) l'auto-affectation des tâches en excès (ZPRJ4).
+
+    Odoo Planning « Auto Plan » — équivalent gestion-projet. Combine deux
+    sources de candidats sur [debut, fin] :
+
+    1. les PROPOSITIONS DE DÉPLACEMENT de ``selectors.nivellement_charge``
+       (ressources sur-chargées → sous-chargées, anti-conflit déjà garanti
+       par le sélecteur) — chaque proposition RÉASSIGNE la ``ressource`` de
+       l'``AffectationRessource`` déplacée (jamais un nouveau créneau) ;
+    2. les TÂCHES SANS AUCUNE AFFECTATION dans la fenêtre — pour chacune, la
+       ressource ACTIVE disponible (``selectors.ressource_disponible_sur_
+       periode``) avec le PLUS de marge (``plan_de_charge.disponible_heures``,
+       simulée en mémoire au fil des affectations pour rester équitable) reçoit
+       une NOUVELLE ``AffectationRessource`` (période = fenêtre de la tâche,
+       statut BROUILLON) ; une tâche sans candidat valide (aucune ressource
+       disponible/avec marge) est RAPPORTÉE, jamais silencieusement ignorée.
+
+    Mode ``?simuler=1`` (``confirmer=False``, PAR DÉFAUT) : NE MUTE RIEN,
+    renvoie le plan proposé. Mode ``?confirm=1`` (``confirmer=True``) :
+    applique réellement (déplace/crée), toujours en statut BROUILLON (ZPRJ2 —
+    jamais publié directement), transaction atomique.
+
+    Renvoie ``{'simule': bool, 'deplacements': [...], 'creations': [...],
+    'non_resolues': [...]}`` — ``deplacements``/``creations`` portent la même
+    forme que confirmées ou simulées (``affectation``/``nouvelle_ressource``
+    pour un déplacement ; ``tache``/``ressource`` pour une création).
+    """
+    from . import selectors
+
+    plan = selectors.nivellement_charge(company, debut, fin)
+    deplacements = [{
+        'affectation': p['affectation'],
+        'tache': p['tache'],
+        'de_ressource': p['de_ressource'],
+        'de_nom': p['de_nom'],
+        'vers_ressource': p['vers_ressource'],
+        'vers_nom': p['vers_nom'],
+        'charge_heures': p['charge_heures'],
+    } for p in plan['propositions']]
+
+    # Marge restante simulée par ressource (réutilisée pour les créations de
+    # tâches sans affectation, à la suite des déplacements proposés).
+    marge_par_ressource = {
+        ligne['ressource']: ligne['disponible_heures']
+        for ligne in plan['sous_charges']
+    }
+    # Cache LOCAL à cet appel (jamais persistant entre requêtes) des
+    # ``RessourceProfil`` candidates, pour éviter N requêtes redondantes.
+    ressources_par_id = {
+        r.id: r for r in RessourceProfil.objects.filter(
+            company=company, id__in=list(marge_par_ressource.keys()))
+    }
+
+    creations = []
+    non_resolues = []
+    taches_sans_affectation = _taches_sans_affectation(company, debut, fin)
+    for tache in taches_sans_affectation:
+        candidats = sorted(
+            marge_par_ressource.items(), key=lambda kv: -kv[1])
+        choisi = None
+        for ressource_id, marge in candidats:
+            if marge <= 0:
+                continue
+            ressource = ressources_par_id.get(ressource_id)
+            if ressource is None or not ressource.actif:
+                continue
+            if not selectors.ressource_disponible_sur_periode(
+                    ressource, tache.date_debut_prevue,
+                    tache.date_fin_prevue):
+                continue
+            choisi = ressource_id
+            break
+        if choisi is None:
+            non_resolues.append({
+                'tache': tache.id, 'tache_libelle': tache.libelle,
+                'projet': tache.projet_id,
+            })
+            continue
+        creations.append({
+            'tache': tache.id, 'tache_libelle': tache.libelle,
+            'ressource': choisi,
+            'date_debut': tache.date_debut_prevue.isoformat(),
+            'date_fin': tache.date_fin_prevue.isoformat(),
+        })
+        marge_par_ressource[choisi] = max(
+            0.0, marge_par_ressource.get(choisi, 0.0) - 1.0)
+
+    if not confirmer:
+        return {
+            'simule': True, 'deplacements': deplacements,
+            'creations': creations, 'non_resolues': non_resolues,
+        }
+
+    with transaction.atomic():
+        for d in deplacements:
+            AffectationRessource.objects.filter(
+                id=d['affectation'], company=company).update(
+                    ressource_id=d['vers_ressource'],
+                    statut_publication=(
+                        AffectationRessource.StatutPublication.BROUILLON),
+                )
+        for c in creations:
+            tache = Tache.objects.get(id=c['tache'], company=company)
+            AffectationRessource.objects.create(
+                company=company,
+                tache=tache,
+                ressource_id=c['ressource'],
+                date_debut=tache.date_debut_prevue,
+                date_fin=tache.date_fin_prevue,
+                statut_publication=(
+                    AffectationRessource.StatutPublication.BROUILLON),
+            )
+
+    return {
+        'simule': False, 'deplacements': deplacements,
+        'creations': creations, 'non_resolues': non_resolues,
     }

@@ -1845,6 +1845,30 @@ class AffectationRessourceViewSet(_GestionProjetBaseViewSet):
             equipe_id=request.data.get('equipe'))
         return Response(resultat)
 
+    @action(detail=False, methods=['post'], url_path='auto-affecter')
+    def auto_affecter(self, request):
+        """Applique (ou simule) l'auto-affectation des tâches en excès (ZPRJ4)
+        — équivalent Odoo Planning « Auto Plan ».
+
+        Corps : ``debut``/``fin`` (``YYYY-MM-DD``, obligatoires). Query
+        ``?simuler=1`` (PAR DÉFAUT) : ne mute rien, renvoie le plan proposé.
+        ``?confirm=1`` : applique réellement (déplace les affectations
+        sur-chargées vers les moins chargées disponibles, crée des
+        affectations pour les tâches sans affectation), toujours en statut
+        BROUILLON (ZPRJ2).
+        """
+        debut = _parse_date_param(request.data.get('debut'))
+        fin = _parse_date_param(request.data.get('fin'))
+        if debut is None or fin is None:
+            return Response(
+                {'detail': "'debut' et 'fin' (YYYY-MM-DD) sont obligatoires."},
+                status=status.HTTP_400_BAD_REQUEST)
+        confirmer = request.query_params.get('confirm') in (
+            '1', 'true', 'True')
+        resultat = services.auto_affecter(
+            request.user.company, debut, fin, confirmer=confirmer)
+        return Response(resultat)
+
 
 class IndisponibiliteViewSet(_GestionProjetBaseViewSet):
     """Indisponibilites des ressources de projet (PROJ17).
