@@ -2028,3 +2028,129 @@ def publier_affectations(company, *, ids=None, ressource_id=None,
         'nb_deja_publiees': nb_deja_publiees,
         'nb_notifies': nb_notifies,
     }
+
+
+# ── Copier le plan de ressources de la semaine précédente (ZPRJ3) ──────────
+@transaction.atomic
+def copier_semaine_precedente(company, *, semaine_source, semaine_cible,
+                              ressource_id=None, equipe_id=None):
+    """Copie les affectations d'une fenêtre SOURCE vers une fenêtre CIBLE
+    décalée de 7 j × N (ZPRJ3) — équivalent « Copy previous week ».
+
+    ``semaine_source``/``semaine_cible`` sont les débuts (dates) des deux
+    fenêtres de 7 jours [``semaine_X``, ``semaine_X + 6 jours``]. Duplique
+    chaque ``AffectationRessource`` de la société (filtrée par ``ressource_id``
+    OU ``equipe_id`` si fourni — sinon toutes) dont la fenêtre est ENTIÈREMENT
+    contenue dans la semaine source, en décalant ``date_debut``/``date_fin`` du
+    même nombre de jours que l'écart entre les deux débuts de semaine, en
+    statut BROUILLON (ZPRJ2 — jamais publié directement).
+
+    SAUTE (sans écrire) toute copie qui tomberait :
+      * sur une ``Indisponibilite`` de la ressource (``selectors.
+        ressource_disponible_sur_periode``) — les affectations d'équipe/actif
+        matériel n'ont pas de ressource individuelle et ne sont jamais
+        sautées pour ce motif ;
+      * en CONFLIT avec une affectation déjà existante de la même ressource
+        sur la fenêtre cible (détection identique à ``selectors.
+        conflits_affectation`` — chevauchement calendaire, y compris via
+        équipe).
+
+    N'écrit RIEN si ``semaine_source == semaine_cible`` (fenêtre nulle,
+    éviterait un auto-doublon immédiat) — renvoie un rapport vide. AUCUN
+    doublon si ré-exécutée deux fois de suite sur la MÊME cible : la seconde
+    exécution retrouve les affectations déjà copiées sur la fenêtre cible et
+    les compte en conflit (donc sautées), jamais dupliquées deux fois.
+
+    Renvoie ``{'nb_copiees': int, 'nb_sautees': int, 'copiees': [...],
+    'sautees': [...]}`` — chaque entrée porte l'affectation source (id) et,
+    pour les sautées, le motif (``'indisponible'`` ou ``'conflit'``).
+    """
+    from . import selectors
+
+    decalage_jours = (semaine_cible - semaine_source).days
+    if decalage_jours == 0:
+        return {
+            'nb_copiees': 0, 'nb_sautees': 0, 'copiees': [], 'sautees': [],
+        }
+
+    fin_source = semaine_source + timedelta(days=6)
+
+    qs = AffectationRessource.objects.filter(
+        company=company,
+        date_debut__gte=semaine_source, date_fin__lte=fin_source,
+    ).select_related('ressource', 'equipe')
+    if ressource_id is not None:
+        qs = qs.filter(ressource_id=ressource_id)
+    if equipe_id is not None:
+        qs = qs.filter(equipe_id=equipe_id)
+
+    # Affectations EXISTANTES sur la fenêtre cible (anti-conflit ET
+    # anti-doublon sur ré-exécution), indexées par ressource.
+    fin_cible_max = fin_source + timedelta(days=decalage_jours)
+    existantes_cible = list(
+        AffectationRessource.objects.filter(
+            company=company,
+            date_debut__lte=fin_cible_max,
+            date_fin__gte=semaine_cible,
+        ))
+    existantes_par_ressource = {}
+    for existante in existantes_cible:
+        if existante.ressource_id is not None:
+            existantes_par_ressource.setdefault(
+                existante.ressource_id, []).append(existante)
+
+    copiees = []
+    sautees = []
+    for source in qs.order_by('date_debut', 'id'):
+        nouvelle_debut = source.date_debut + timedelta(days=decalage_jours)
+        nouvelle_fin = source.date_fin + timedelta(days=decalage_jours)
+
+        if source.ressource_id is not None:
+            # Indisponibilité de la ressource sur la fenêtre cible.
+            if not selectors.ressource_disponible_sur_periode(
+                    source.ressource, nouvelle_debut, nouvelle_fin):
+                sautees.append({
+                    'affectation_source': source.id, 'motif': 'indisponible',
+                })
+                continue
+            # Conflit avec une affectation déjà existante de la ressource.
+            conflit = False
+            for existante in existantes_par_ressource.get(
+                    source.ressource_id, []):
+                if (nouvelle_debut <= existante.date_fin
+                        and nouvelle_fin >= existante.date_debut):
+                    conflit = True
+                    break
+            if conflit:
+                sautees.append({
+                    'affectation_source': source.id, 'motif': 'conflit',
+                })
+                continue
+
+        nouvelle = AffectationRessource.objects.create(
+            company=company,
+            tache=source.tache,
+            ressource=source.ressource,
+            equipe=source.equipe,
+            actif_type=source.actif_type,
+            actif_id=source.actif_id,
+            date_debut=nouvelle_debut,
+            date_fin=nouvelle_fin,
+            charge_jours=source.charge_jours,
+            quantite=source.quantite,
+            note=source.note,
+            statut_publication=AffectationRessource.StatutPublication.BROUILLON,
+        )
+        if source.ressource_id is not None:
+            existantes_par_ressource.setdefault(
+                source.ressource_id, []).append(nouvelle)
+        copiees.append({
+            'affectation_source': source.id, 'affectation_creee': nouvelle.id,
+        })
+
+    return {
+        'nb_copiees': len(copiees),
+        'nb_sautees': len(sautees),
+        'copiees': copiees,
+        'sautees': sautees,
+    }

@@ -1818,6 +1818,33 @@ class AffectationRessourceViewSet(_GestionProjetBaseViewSet):
             debut=debut, fin=fin, auteur=request.user)
         return Response(resultat)
 
+    @action(detail=False, methods=['post'], url_path='copier-semaine')
+    def copier_semaine(self, request):
+        """Copie le plan de ressources d'une semaine SOURCE vers une semaine
+        CIBLE (ZPRJ3) — équivalent « Copy previous week ».
+
+        Corps : ``semaine_source``/``semaine_cible`` (``YYYY-MM-DD``,
+        obligatoires — débuts des deux fenêtres de 7 jours), ``ressource``
+        ou ``equipe`` (optionnels, filtrent la copie). Saute toute copie qui
+        tomberait sur une indisponibilité ou un conflit (rapport détaillé).
+        Les nouvelles affectations sont créées en statut BROUILLON (ZPRJ2).
+        """
+        semaine_source = _parse_date_param(
+            request.data.get('semaine_source'))
+        semaine_cible = _parse_date_param(request.data.get('semaine_cible'))
+        if semaine_source is None or semaine_cible is None:
+            return Response(
+                {'detail': (
+                    "'semaine_source' et 'semaine_cible' (YYYY-MM-DD) sont "
+                    "obligatoires.")},
+                status=status.HTTP_400_BAD_REQUEST)
+        resultat = services.copier_semaine_precedente(
+            request.user.company,
+            semaine_source=semaine_source, semaine_cible=semaine_cible,
+            ressource_id=request.data.get('ressource'),
+            equipe_id=request.data.get('equipe'))
+        return Response(resultat)
+
 
 class IndisponibiliteViewSet(_GestionProjetBaseViewSet):
     """Indisponibilites des ressources de projet (PROJ17).
