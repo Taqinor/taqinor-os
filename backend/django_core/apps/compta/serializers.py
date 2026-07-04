@@ -17,6 +17,7 @@ from .models import (
     CompteTresorerie, ContratAvancement, DeclarationTVA,
     DemandeApprobationConfig, DotationAmortissement,
     ECatalogue, EcritureComptable, Effet, EntiteConsolidation, EtapeSequence,
+    ExecutionEtapeSequence, InscriptionSequence,
     ExerciceComptable, FormulaireIntake,
     Immobilisation, IndemniteChantier, Journal, LigneEcriture,
     LignePrevisionnelTresorerie, LigneReleve, MessageWhatsAppEntrant,
@@ -1464,6 +1465,34 @@ class SequenceRelanceSerializer(serializers.ModelSerializer):
             'etapes',
         ]
         read_only_fields = ['date_creation']
+
+
+# ── XMKT1 — Inscriptions & exécution réelle des séquences ──────────────────
+
+class ExecutionEtapeSequenceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ExecutionEtapeSequence
+        fields = [
+            'id', 'inscription', 'etape', 'execute_le', 'canal', 'resultat',
+            'erreur',
+        ]
+        read_only_fields = ['execute_le']
+
+
+class InscriptionSequenceSerializer(serializers.ModelSerializer):
+    executions = ExecutionEtapeSequenceSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = InscriptionSequence
+        fields = [
+            'id', 'sequence', 'lead_id', 'lead_reference', 'etape_courante',
+            'statut', 'motif_sortie', 'declenchee_le', 'sortie_le',
+            'executions',
+        ]
+        read_only_fields = ['declenchee_le', 'sortie_le']
+
+    def validate_sequence(self, value):
+        return _meme_societe(self, value, 'séquence')
 
 
 # ── FG203 — Récupération des devis abandonnés ──────────────────────────────

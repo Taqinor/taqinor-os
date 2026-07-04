@@ -63,6 +63,8 @@ from .models import (
     AbonnementEcriture,
     ObligationFiscale,
     FamilleTvaNonDeductible,
+    EtapeSequence, ExecutionEtapeSequence, InscriptionSequence,
+    SequenceRelance,
 )
 
 
@@ -5549,6 +5551,135 @@ def planifier_etapes_sequence(sequence, *, declenchee_le=None):
             'envoye': False,  # gated : jamais d'envoi réel ici
         })
     return plan
+
+
+# ── XMKT1 — Inscription + exécution réelle des séquences de relance ────────
+
+def inscrire_lead_sequence(company, sequence, *, lead_id, lead_reference=''):
+    """Inscrit un lead dans une séquence (XMKT1), idempotent.
+
+    Si le lead a déjà une inscription ACTIVE pour cette séquence, la renvoie
+    sans en créer une seconde (contrainte d'unicité en base). Pointe
+    ``etape_courante`` sur la première étape (ordre le plus bas) si la
+    séquence en a au moins une.
+    """
+    existante = InscriptionSequence.objects.filter(
+        company=company, sequence=sequence, lead_id=lead_id,
+        statut=InscriptionSequence.Statut.ACTIF,
+    ).first()
+    if existante:
+        return existante
+    premiere_etape = sequence.etapes.order_by('ordre').first()
+    return InscriptionSequence.objects.create(
+        company=company,
+        sequence=sequence,
+        lead_id=lead_id,
+        lead_reference=lead_reference or '',
+        etape_courante=premiere_etape,
+        statut=InscriptionSequence.Statut.ACTIF,
+    )
+
+
+def inscrire_leads_pour_stage(company, stage_key, *, lead_id, lead_reference=''):
+    """Inscrit un lead entrant dans ``stage_key`` sur toute séquence active
+    déclenchée par cette étape (XMKT1). ``stage_key`` vient de ``STAGES.py``
+    côté appelant — jamais recalculé/hardcodé ici.
+    """
+    sequences = SequenceRelance.objects.filter(
+        company=company, actif=True, stage_declencheur=stage_key)
+    return [
+        inscrire_lead_sequence(
+            company, seq, lead_id=lead_id, lead_reference=lead_reference)
+        for seq in sequences
+    ]
+
+
+def _executer_une_etape(inscription, etape):
+    """Exécute (ou planifie, gated) une étape pour une inscription et trace
+    le résultat. N'envoie jamais réellement ici : réutilise le comportement
+    NO-OP existant des intégrations (FG31 — file de relance manuelle quand
+    aucune intégration n'est active).
+    """
+    resultat = 'planifie'
+    erreur = ''
+    canal = etape.canal
+    if canal == EtapeSequence.Canal.WHATSAPP and not whatsapp_actif():
+        resultat = 'planifie'  # file manuelle FG31, aucun appel réseau
+    elif canal == EtapeSequence.Canal.EMAIL and not email_marketing_actif():
+        resultat = 'planifie'
+    else:
+        resultat = 'planifie'  # gated par défaut, tant qu'aucune clé n'existe
+    return ExecutionEtapeSequence.objects.create(
+        company=inscription.company,
+        inscription=inscription,
+        etape=etape,
+        canal=canal,
+        resultat=resultat,
+        erreur=erreur,
+    )
+
+
+def email_marketing_actif():
+    """Alias explicite de ``brevo_actif`` pour les séquences (XMKT1)."""
+    return brevo_actif()
+
+
+def sortir_inscription(inscription, *, motif=''):
+    """Sort une inscription de sa séquence (XMKT1) : refus/acceptation devis,
+    désinscription. Idempotent — une inscription déjà sortie/terminée n'est
+    pas re-modifiée.
+    """
+    if inscription.statut != InscriptionSequence.Statut.ACTIF:
+        return inscription
+    inscription.statut = InscriptionSequence.Statut.SORTI
+    inscription.motif_sortie = (motif or '')[:255]
+    inscription.sortie_le = timezone.now()
+    inscription.save(update_fields=['statut', 'motif_sortie', 'sortie_le'])
+    return inscription
+
+
+def sortir_inscriptions_pour_lead(company, lead_id, *, motif=''):
+    """Sort TOUTES les inscriptions actives d'un lead (tous séquences), p.ex.
+    à l'acceptation/refus d'un devis (XMKT1, câblé via ``receivers.py``).
+    """
+    inscriptions = InscriptionSequence.objects.filter(
+        company=company, lead_id=lead_id,
+        statut=InscriptionSequence.Statut.ACTIF)
+    return [sortir_inscription(insc, motif=motif) for insc in inscriptions]
+
+
+def executer_etapes_dues(company, *, maintenant=None):
+    """Exécute, pour toute inscription ACTIVE de la société, l'étape courante
+    si son échéance (J+delai depuis ``declenchee_le``) est atteinte (XMKT1).
+
+    Appelée par la tâche Celery beat ``compta.executer_sequences_relance``.
+    Après exécution, avance ``etape_courante`` vers la prochaine étape (par
+    ``ordre``) ou termine l'inscription si c'était la dernière. Renvoie la
+    liste des ``ExecutionEtapeSequence`` créées.
+    """
+    maintenant = maintenant or timezone.now()
+    executions = []
+    qs = InscriptionSequence.objects.filter(
+        company=company, statut=InscriptionSequence.Statut.ACTIF,
+        etape_courante__isnull=False,
+    ).select_related('etape_courante', 'sequence')
+    for inscription in qs:
+        etape = inscription.etape_courante
+        echeance = inscription.declenchee_le + timezone.timedelta(
+            days=etape.delai_jours)
+        if maintenant < echeance:
+            continue
+        executions.append(_executer_une_etape(inscription, etape))
+        suivante = inscription.sequence.etapes.filter(
+            ordre__gt=etape.ordre).order_by('ordre').first()
+        if suivante:
+            inscription.etape_courante = suivante
+            inscription.save(update_fields=['etape_courante'])
+        else:
+            inscription.etape_courante = None
+            inscription.statut = InscriptionSequence.Statut.TERMINE
+            inscription.save(update_fields=['etape_courante', 'statut'])
+    return executions
 
 
 # ── FG203 — Relance d'un devis abandonné ───────────────────────────────────

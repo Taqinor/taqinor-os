@@ -11,7 +11,7 @@ from .views import (
     DeclarationTVAViewSet, DemandeApprobationConfigViewSet,
     DotationAmortissementViewSet, ECatalogueViewSet,
     EcritureComptableViewSet, EffetViewSet, EntiteConsolidationViewSet,
-    EtapeSequenceViewSet,
+    EtapeSequenceViewSet, InscriptionSequenceViewSet,
     EtatsComptablesViewSet, ExerciceComptableViewSet, FormulaireIntakeViewSet,
     ImmobilisationViewSet,
     IndemniteChantierViewSet, JournalViewSet,
@@ -100,6 +100,7 @@ router.register(r'familles-tva-non-deductibles', FamilleTvaNonDeductibleViewSet)
 router.register(r'campagnes', CampagneViewSet)
 router.register(r'sequences-relance', SequenceRelanceViewSet)
 router.register(r'etapes-sequence', EtapeSequenceViewSet)
+router.register(r'inscriptions-sequence', InscriptionSequenceViewSet)
 router.register(r'relances-devis-abandonnes', RelanceDevisAbandonneViewSet)
 router.register(r'ouvertures-partage', OuverturePartageViewSet)
 router.register(r'formulaires-intake', FormulaireIntakeViewSet)

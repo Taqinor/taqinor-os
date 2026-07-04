@@ -30,7 +30,7 @@ from .models import (
     CompteComptable, CompteTresorerie, ContratAvancement, DeclarationTVA,
     DemandeApprobationConfig,
     DotationAmortissement, ECatalogue, EcritureComptable, Effet,
-    EntiteConsolidation, EtapeSequence,
+    EntiteConsolidation, EtapeSequence, InscriptionSequence,
     ExerciceComptable, FormulaireIntake, Immobilisation, IndemniteChantier,
     Journal,
     LignePrevisionnelTresorerie, LigneReleve, MessageWhatsAppEntrant,
@@ -68,7 +68,7 @@ from .serializers import (
     DeclarationTVASerializer, DemandeApprobationConfigSerializer,
     DotationAmortissementSerializer, ECatalogueSerializer,
     EcritureComptableSerializer, EffetSerializer, EntiteConsolidationSerializer,
-    EtapeSequenceSerializer,
+    EtapeSequenceSerializer, InscriptionSequenceSerializer,
     ExerciceComptableSerializer, FormulaireIntakeSerializer,
     ImmobilisationSerializer,
     IndemniteChantierSerializer, JournalSerializer,
@@ -3657,6 +3657,53 @@ class EtapeSequenceViewSet(_ComptaBaseViewSet):
     """Étapes d'une séquence de relance (FG202)."""
     queryset = EtapeSequence.objects.select_related('sequence').all()
     serializer_class = EtapeSequenceSerializer
+
+
+# ── XMKT1 — Inscriptions & exécution réelle des séquences ──────────────────
+
+class InscriptionSequenceViewSet(_ComptaBaseViewSet):
+    """Inscriptions de leads dans une séquence de relance (XMKT1) : trace par
+    participant (quel nœud, quand, quoi exécuté) via ``executions``."""
+    queryset = InscriptionSequence.objects.select_related(
+        'sequence', 'etape_courante').prefetch_related('executions').all()
+    serializer_class = InscriptionSequenceSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['declenchee_le']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        sequence_id = self.request.query_params.get('sequence')
+        if sequence_id:
+            qs = qs.filter(sequence_id=sequence_id)
+        lead_id = self.request.query_params.get('lead_id')
+        if lead_id:
+            qs = qs.filter(lead_id=lead_id)
+        return qs
+
+    @action(detail=False, methods=['post'])
+    def inscrire(self, request):
+        sequence_id = request.data.get('sequence')
+        lead_id = request.data.get('lead_id')
+        if not sequence_id or not lead_id:
+            return Response(
+                {'detail': 'sequence et lead_id requis.'}, status=400)
+        sequence = SequenceRelance.objects.filter(
+            id=sequence_id, company=request.user.company).first()
+        if not sequence:
+            return Response({'detail': 'Séquence introuvable.'}, status=404)
+        inscription = services.inscrire_lead_sequence(
+            request.user.company, sequence, lead_id=lead_id,
+            lead_reference=request.data.get('lead_reference', ''))
+        return Response(
+            InscriptionSequenceSerializer(inscription).data, status=201)
+
+    @action(detail=True, methods=['post'])
+    def sortir(self, request, pk=None):
+        inscription = self.get_object()
+        services.sortir_inscription(
+            inscription, motif=request.data.get('motif', 'manuel'))
+        inscription.refresh_from_db()
+        return Response(InscriptionSequenceSerializer(inscription).data)
 
 
 # ── FG203 — Récupération des devis abandonnés ──────────────────────────────

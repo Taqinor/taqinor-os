@@ -4498,6 +4498,114 @@ class EtapeSequence(models.Model):
         return f'{self.sequence_id} #{self.ordre} ({self.canal}, J+{self.delai_jours})'
 
 
+# ── XMKT1 — Moteur d'exécution réel des séquences de relance ───────────────
+
+class InscriptionSequence(models.Model):
+    """Un lead inscrit dans une séquence de relance (FG202), en cours d'exécution.
+
+    ``lead_id`` est une référence OPAQUE vers ``crm.Lead`` (jamais d'import du
+    modèle CRM — lu via ``apps/crm/selectors.get_company_lead``). L'inscription
+    avance étape par étape ; ``etape_courante`` pointe la prochaine étape à
+    exécuter (``None`` = toutes les étapes sont passées → statut ``termine``).
+    """
+    class Statut(models.TextChoices):
+        ACTIF = 'actif', 'Actif'
+        SORTI = 'sorti', 'Sorti'
+        TERMINE = 'termine', 'Terminé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='inscriptions_sequence',
+        verbose_name='Société',
+    )
+    sequence = models.ForeignKey(
+        SequenceRelance,
+        on_delete=models.CASCADE,
+        related_name='inscriptions',
+        verbose_name='Séquence',
+    )
+    lead_id = models.PositiveIntegerField(verbose_name='Lead (référence opaque)')
+    lead_reference = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Référence lisible du lead')
+    etape_courante = models.ForeignKey(
+        EtapeSequence,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='inscriptions_en_cours',
+        verbose_name='Étape courante',
+    )
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.ACTIF,
+        verbose_name='Statut')
+    motif_sortie = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Motif de sortie')
+    declenchee_le = models.DateTimeField(
+        auto_now_add=True, verbose_name="Déclenchée le")
+    sortie_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Sortie le')
+
+    class Meta:
+        verbose_name = 'Inscription à une séquence'
+        verbose_name_plural = 'Inscriptions à une séquence'
+        ordering = ['-declenchee_le']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['sequence', 'lead_id'],
+                condition=models.Q(statut='actif'),
+                name='uniq_inscription_active_par_lead',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Lead {self.lead_id} → {self.sequence_id} ({self.statut})'
+
+
+class ExecutionEtapeSequence(models.Model):
+    """Trace d'une exécution d'étape pour une inscription (XMKT1).
+
+    Une ligne par étape effectivement traitée (envoyée ou planifiée en manuel
+    faute de clé d'intégration — cf. FG31), pour un journal lisible par
+    participant : quel nœud, quand, quoi envoyé, erreur éventuelle.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='executions_etape_sequence',
+        verbose_name='Société',
+    )
+    inscription = models.ForeignKey(
+        InscriptionSequence,
+        on_delete=models.CASCADE,
+        related_name='executions',
+        verbose_name='Inscription',
+    )
+    etape = models.ForeignKey(
+        EtapeSequence,
+        on_delete=models.CASCADE,
+        related_name='executions',
+        verbose_name='Étape',
+    )
+    execute_le = models.DateTimeField(
+        auto_now_add=True, verbose_name='Exécutée le')
+    canal = models.CharField(max_length=10, blank=True, default='',
+                             verbose_name='Canal')
+    resultat = models.CharField(
+        max_length=20, default='planifie',
+        verbose_name='Résultat (planifie/envoye/erreur)')
+    erreur = models.CharField(max_length=500, blank=True, default='',
+                              verbose_name='Erreur')
+
+    class Meta:
+        verbose_name = "Exécution d'étape de séquence"
+        verbose_name_plural = "Exécutions d'étape de séquence"
+        ordering = ['-execute_le']
+
+    def __str__(self):
+        return f'{self.inscription_id} · étape {self.etape_id} ({self.resultat})'
+
+
 # ── FG203 — Récupération des devis abandonnés ──────────────────────────────
 
 class RelanceDevisAbandonne(models.Model):
