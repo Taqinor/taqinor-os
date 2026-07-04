@@ -27,6 +27,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from math import asin, cos, radians, sin, sqrt
 
 from django.conf import settings
+from django.core import signing
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Sum
@@ -64,7 +65,7 @@ from .models import (
     ObligationFiscale,
     FamilleTvaNonDeductible,
     EtapeSequence, ExecutionEtapeSequence, InscriptionSequence,
-    SequenceRelance, EnvoiCampagne,
+    SequenceRelance, EnvoiCampagne, SuppressionMarketing,
 )
 
 
@@ -5501,12 +5502,24 @@ def envoyer_campagne(campagne, *, destinataires=None):
     enregistre le nombre de destinataires SANS aucun appel réseau. Renvoie la
     campagne. Une campagne déjà envoyée ou annulée n'est pas ré-envoyée.
 
-    Chaque destinataire obtient sa ligne ``EnvoiCampagne`` (XMKT2), point de
-    départ du drill-down par KPI et du suivi webhook Brevo.
+    Un destinataire présent sur la liste de suppression marketing (XMKT3,
+    ``SuppressionMarketing``) est filtré AVANT l'envoi — jamais ciblé, même
+    après ré-import de contacts. Chaque destinataire restant obtient sa ligne
+    ``EnvoiCampagne`` (XMKT2), point de départ du drill-down par KPI et du
+    suivi webhook Brevo.
     """
     if campagne.statut != Campagne.Statut.BROUILLON:
         return campagne
-    cibles = list(destinataires or [])
+    brutes = list(destinataires or [])
+
+    def _adresse(cible):
+        brute = cible.get('destinataire') if isinstance(cible, dict) else cible
+        return (brute or '').strip()
+
+    cibles = [
+        cible for cible in brutes
+        if not est_supprime(campagne.company, _adresse(cible))
+    ]
     campagne.nb_destinataires = len(cibles)
     if brevo_actif() and cibles:
         # Intégration réelle (future) — jamais appelée tant que le flag est OFF.
@@ -5591,6 +5604,89 @@ def recalculer_compteurs_campagne(campagne):
     campagne.nb_clics = envois.filter(clique_le__isnull=False).count()
     campagne.save(update_fields=['nb_ouvertures', 'nb_clics'])
     return campagne
+
+
+# ── XMKT3 — Désinscription un clic + liste de suppression globale ──────────
+
+_DESINSCRIPTION_SALT = 'compta.xmkt3.desinscription'
+
+
+def est_supprime(company, destinataire):
+    """Le destinataire est-il sur la liste de suppression marketing (XMKT3) ?
+    Vérifiée AU MOMENT DE L'ENVOI — jamais pour un message transactionnel.
+    """
+    return SuppressionMarketing.objects.filter(
+        company=company, destinataire=destinataire).exists()
+
+
+def supprimer_destinataire(company, destinataire, *, motif=SuppressionMarketing.Motif.DESINSCRIT,
+                           source=''):
+    """Ajoute (idempotent) un destinataire à la liste de suppression (XMKT3).
+
+    Immune au ré-import de contacts : une fois supprimé, un destinataire le
+    reste tant qu'il n'est pas retiré manuellement — aucun import ne
+    l'écrase.
+    """
+    obj, _cree = SuppressionMarketing.objects.get_or_create(
+        company=company, destinataire=destinataire,
+        defaults={'motif': motif, 'source': source or ''},
+    )
+    return obj
+
+
+def generer_token_desinscription(company_id, destinataire):
+    """Jeton signé (XMKT3) pour le lien public de désinscription un clic —
+    non expirant (comme le pattern ``reporting.calendar``), signé par
+    destinataire donc invalidable en changeant le sel serait excessif ; la
+    sécurité repose sur la clé secrète Django (``SECRET_KEY``).
+    """
+    return signing.dumps(
+        {'company_id': company_id, 'destinataire': destinataire},
+        salt=_DESINSCRIPTION_SALT)
+
+
+def desinscrire_via_token(token, *, source='desinscription_publique'):
+    """Traite un clic sur le lien public de désinscription (XMKT3).
+
+    Renvoie ``(ok, destinataire_ou_message_erreur)``. Un jeton invalide/
+    corrompu ne fait rien (pas d'exception, pas de suppression).
+    """
+    try:
+        payload = signing.loads(token, salt=_DESINSCRIPTION_SALT)
+    except signing.BadSignature:
+        return False, 'Lien invalide.'
+    from authentication.models import Company
+    company = Company.objects.filter(id=payload.get('company_id')).first()
+    if not company:
+        return False, 'Lien invalide.'
+    destinataire = payload.get('destinataire') or ''
+    if not destinataire:
+        return False, 'Lien invalide.'
+    supprimer_destinataire(
+        company, destinataire, motif=SuppressionMarketing.Motif.DESINSCRIT,
+        source=source)
+    return True, destinataire
+
+
+def importer_liste_opposition(company, destinataires, *, source='import_csv'):
+    """Importe une liste d'opposition externe (XMKT3), idempotent : les
+    entrées déjà supprimées ne sont jamais écrasées (get_or_create).
+    """
+    ajoutes = 0
+    for destinataire in destinataires:
+        destinataire = (destinataire or '').strip()
+        if not destinataire:
+            continue
+        _obj, cree = SuppressionMarketing.objects.get_or_create(
+            company=company, destinataire=destinataire,
+            defaults={
+                'motif': SuppressionMarketing.Motif.IMPORT,
+                'source': source,
+            },
+        )
+        if cree:
+            ajoutes += 1
+    return ajoutes
 
 
 # ── FG202 — Déclenchement d'une séquence de relance (GATED, NO-OP) ──────────

@@ -3759,6 +3759,24 @@ def webhook_brevo_campagne(request):
     return Response({'statut': envoi.statut})
 
 
+# ── XMKT3 — Désinscription un clic (public, tokenisé, aucune auth) ─────────
+
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+def desinscription_publique(request, token):
+    """Page/endpoint public de désinscription un clic (XMKT3, RFC 8058).
+
+    Un jeton signé (``services.generer_token_desinscription``) porte la
+    société + le destinataire — aucune authentification requise. GET et POST
+    font la même chose (RFC 8058 recommande un POST simple sans confirmation
+    pour les clients mail qui suivent ``List-Unsubscribe``).
+    """
+    ok, resultat = services.desinscrire_via_token(token)
+    if not ok:
+        return Response({'detail': resultat}, status=400)
+    return Response({'desinscrit': True, 'destinataire': resultat})
+
+
 # ── FG203 — Récupération des devis abandonnés ──────────────────────────────
 
 class RelanceDevisAbandonneViewSet(_ComptaBaseViewSet):

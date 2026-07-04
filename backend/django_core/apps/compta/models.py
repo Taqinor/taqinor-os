@@ -4472,6 +4472,50 @@ class EnvoiCampagne(models.Model):
         return f'{self.campagne_id} → {self.destinataire} ({self.statut})'
 
 
+# ── XMKT3 — Désinscription un clic + liste de suppression globale ──────────
+
+class SuppressionMarketing(models.Model):
+    """Un destinataire jamais ciblé par une campagne/séquence (XMKT3, preuve
+    loi 09-08). Vérifiée AU MOMENT DE L'ENVOI — jamais appliquée aux messages
+    transactionnels (devis/factures/tickets, canal inchangé).
+    """
+    class Motif(models.TextChoices):
+        DESINSCRIT = 'desinscrit', 'Désinscription volontaire'
+        REBOND_DUR = 'rebond_dur', 'Rebond dur'
+        PLAINTE = 'plainte', 'Plainte spam'
+        IMPORT = 'import', "Liste d'opposition importée"
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='suppressions_marketing',
+        verbose_name='Société',
+    )
+    destinataire = models.CharField(
+        max_length=255, verbose_name='Destinataire (email/téléphone normalisé)')
+    motif = models.CharField(
+        max_length=12, choices=Motif.choices, default=Motif.DESINSCRIT,
+        verbose_name='Motif')
+    source = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Source')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Suppression marketing'
+        verbose_name_plural = 'Suppressions marketing'
+        ordering = ['-date_creation']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'destinataire'],
+                name='uniq_suppression_marketing_par_destinataire',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.destinataire} ({self.motif})'
+
+
 # ── FG202 — Séquences de relance automatisées (drip / nurture) ─────────────
 
 class SequenceRelance(models.Model):
