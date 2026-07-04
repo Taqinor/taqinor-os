@@ -642,6 +642,10 @@ class DemandeSignatureDocumentSerializer(serializers.ModelSerializer):
             # XGED2 — circuit multi-signataires.
             'routage', 'relance_cadence_jours', 'annule_le', 'annule_par',
             'signataires',
+            # ZGED14 — traçabilité anti-doublon des notifications émetteur
+            # (posée/réarmée par le sweep/`prolonger`, jamais mutée par un
+            # PATCH direct).
+            'emetteur_notifie_expiration_le',
             'created_by', 'created_by_nom', 'created_at', 'updated_at',
         ]
         read_only_fields = [
@@ -652,6 +656,7 @@ class DemandeSignatureDocumentSerializer(serializers.ModelSerializer):
             'signature_texte', 'signature_tracee',
             'motif_refus', 'refuse_le',
             'annule_le', 'annule_par',
+            'emetteur_notifie_expiration_le',
             'created_by', 'created_at', 'updated_at',
         ]
 

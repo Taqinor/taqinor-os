@@ -1691,6 +1691,14 @@ class DemandeSignatureDocument(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='ged_demandes_signature_annulees',
         verbose_name='annulée par')
+    # ZGED14 — versant ÉMETTEUR des relances (XGED2 ne couvre que le
+    # SIGNATAIRE). Horodatage de la DERNIÈRE notification d'expiration proche
+    # envoyée à l'émetteur pour CETTE demande — anti-doublon : une
+    # prolongation (`expires_at` repoussée) remet ce champ à NULL pour
+    # réarmer la notification sur la nouvelle échéance.
+    emetteur_notifie_expiration_le = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name="émetteur notifié de l'expiration proche le")
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='ged_demandes_signature_creees')

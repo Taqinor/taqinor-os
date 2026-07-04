@@ -6,6 +6,7 @@ jamais lue d'un corps de requête. Réutilise les conventions de stockage de
 `records.storage` (clé MinIO `file_key`) sans réimplémenter le stockage.
 """
 import hashlib
+import logging
 import re
 
 from django.contrib.postgres.search import SearchVector
@@ -13,6 +14,8 @@ from django.db import models, transaction
 from django.db.models import Value
 
 from .models import Cabinet, Document, DocumentVersion, Folder, RoutageDocumentaire
+
+logger = logging.getLogger(__name__)
 
 
 def update_search_vector(document):
@@ -3120,6 +3123,81 @@ def expirer_demandes_echues(company, *, now=None):
         demande.save(update_fields=['statut', 'annule_le', 'updated_at'])
         count += 1
     return count
+
+
+def notifier_emetteur_expiration_proche(company, *, seuil_jours=3, now=None):
+    """ZGED14 — Notifie l'ÉMETTEUR d'une demande `en_attente` dont
+    l'expiration approche (versant ÉMETTEUR — XGED2 ne couvre que le
+    SIGNATAIRE). « Approche » = `expires_at` dans les `seuil_jours` à venir
+    (et pas encore dépassée — `expirer_demandes_echues` gère l'échéance
+    dépassée séparément).
+
+    Anti-doublon : une demande déjà notifiée pour SA fenêtre d'expiration
+    courante (`emetteur_notifie_expiration_le` renseigné) n'est pas
+    re-notifiée. `prolonger_demande_signature` remet ce champ à NULL pour
+    réarmer. Une demande sans `created_by` (émetteur inconnu) est ignorée
+    silencieusement. Renvoie le nombre de notifications envoyées."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from .models import DemandeSignatureDocument, SIGNATURE_EN_ATTENTE
+
+    now = now or timezone.now()
+    seuil = now + timedelta(days=seuil_jours)
+    candidats = (DemandeSignatureDocument.objects
+                 .filter(company=company, statut=SIGNATURE_EN_ATTENTE,
+                         expires_at__isnull=False, expires_at__gt=now,
+                         expires_at__lte=seuil,
+                         emetteur_notifie_expiration_le__isnull=True)
+                 .exclude(created_by__isnull=True)
+                 .select_related('created_by', 'document'))
+    count = 0
+    for demande in candidats:
+        jours_restants = max((demande.expires_at - now).days, 0)
+        total = demande.signataires.count()
+        signes = demande.signataires.filter(statut='signe').count()
+        try:
+            from apps.notifications.services import notify
+
+            notify(
+                demande.created_by, 'ged_signature_expiration_proche',
+                title=(
+                    f'Demande de signature « {demande.document.nom} » '
+                    f'expire dans {jours_restants} jour(s)'),
+                body=f'{signes}/{total} signataire(s) ont signé.',
+                company=company,
+            )
+        except Exception:  # pragma: no cover - défensif, best-effort.
+            logger.warning(
+                'ZGED14 — échec notification émetteur demande #%s',
+                demande.pk, exc_info=True)
+        demande.emetteur_notifie_expiration_le = now
+        demande.save(update_fields=[
+            'emetteur_notifie_expiration_le', 'updated_at'])
+        count += 1
+    return count
+
+
+def prolonger_demande_signature(demande, *, expires_at, user):
+    """ZGED14 — Prolonge l'échéance d'une demande de signature `en_attente`
+    (endpoint `demandes-signature/{id}/prolonger/`). Repousse `expires_at` et
+    RÉARME la notification émetteur (remet
+    `emetteur_notifie_expiration_le` à NULL) pour que le prochain sweep puisse
+    re-notifier sur la nouvelle échéance si elle approche à nouveau.
+
+    Multi-tenant : vérifie que `user.company_id == demande.company_id`."""
+    if demande.company_id != user.company_id:
+        raise PermissionError("Demande inaccessible.")
+    demande.expires_at = expires_at
+    demande.emetteur_notifie_expiration_le = None
+    demande.save(update_fields=[
+        'expires_at', 'emetteur_notifie_expiration_le', 'updated_at'])
+    journaliser_evenement(
+        demande.document, type_evenement='signature_prolongee',
+        message=f'Demande #{demande.pk} prolongée jusqu\'au {expires_at}.',
+        utilisateur=user)
+    return demande
 
 
 def relancer_signataires_dus(company, *, now=None):

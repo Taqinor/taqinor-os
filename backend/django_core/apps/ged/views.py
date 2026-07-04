@@ -2486,6 +2486,35 @@ class DemandeSignatureDocumentViewSet(TenantMixin,
                 demande, context={'request': request}).data,
             status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['post'], url_path='prolonger')
+    def prolonger(self, request, pk=None):
+        """ZGED14 — Prolonge l'échéance d'une demande `en_attente` (versant
+        ÉMETTEUR des relances). Body : `{"expires_at": "<iso>"}`. Réarme la
+        notification d'expiration proche (le prochain sweep peut re-notifier
+        sur la nouvelle échéance)."""
+        demande = self.get_object()
+        raw = request.data.get('expires_at')
+        if not raw:
+            return Response(
+                {'expires_at': 'La nouvelle échéance est requise.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        from django.utils.dateparse import parse_datetime
+
+        expires_at = parse_datetime(raw)
+        if expires_at is None:
+            return Response(
+                {'expires_at': 'Date invalide (format ISO attendu).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            demande = services.prolonger_demande_signature(
+                demande, expires_at=expires_at, user=request.user)
+        except PermissionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        return Response(
+            DemandeSignatureDocumentSerializer(
+                demande, context={'request': request}).data)
+
     @action(detail=False, methods=['post'], url_path='creer-multi')
     def creer_multi(self, request):
         """XGED2 — Crée une demande de signature MULTI-destinataires.
