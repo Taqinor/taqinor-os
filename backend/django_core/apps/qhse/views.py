@@ -31,6 +31,7 @@ from .models import (
     InductionSecurite, InspectionSecurite,
     ItemNotation, LienSignalementPublic, LigneBilanCarbone,
     LigneEvaluationRisque, NonConformite, NotationFinChantier,
+    ObservationSecurite,
     PermisTravail, PlanControleReception, PlanInspectionChantier,
     PlanInspectionModele, PlanUrgence,
     PointControleModele, PointControleReception, ProcedureQualite,
@@ -58,6 +59,7 @@ from .serializers import (
     LigneBilanCarboneSerializer,
     LigneEvaluationRisqueSerializer,
     NonConformiteSerializer, NotationFinChantierSerializer,
+    ObservationSecuriteSerializer,
     PermisTravailSerializer, PlanControleReceptionSerializer,
     PlanInspectionChantierSerializer,
     PlanInspectionModeleSerializer, PlanUrgenceSerializer,
@@ -85,7 +87,9 @@ from .selectors import (
 )
 from .services import (
     activer_procedure, calculer_score_audit, calculer_score_notation,
-    cloturer_ncr, creer_ncr_depuis_reserve, generer_capa_depuis_analyse,
+    cloturer_ncr, compteurs_observations_securite, creer_ncr_depuis_reserve,
+    convertir_observation_en_capa, convertir_observation_en_ncr,
+    generer_capa_depuis_analyse,
     creer_signalement_public, generer_qr_signalement, instancier_plan_chantier,
     lever_ncr_audit, lever_ncr_inspection, nouvelle_version_procedure,
     poser_disposition,
@@ -2261,3 +2265,67 @@ def public_signalement(request, token):
     return Response(
         {'detail': 'Signalement envoyé avec succès.', 'id': signalement.pk},
         status=status.HTTP_201_CREATED)
+
+
+# ── XQHS17 — Observations sécurité comportementales (BBS) ──────────────────
+
+class ObservationSecuriteViewSet(_QhseBaseViewSet):
+    """CRUD + conversion en un clic (CAPA/NCR) des observations BBS.
+
+    ``company``/``observateur`` posés côté serveur. Filtres optionnels
+    ``?type_observation=`` / ``?chantier=``.
+    """
+    queryset = ObservationSecurite.objects.all()
+    serializer_class = ObservationSecuriteSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'date_observation', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        type_observation = self.request.query_params.get('type_observation')
+        if type_observation:
+            qs = qs.filter(type_observation=type_observation)
+        chantier = self.request.query_params.get('chantier')
+        if chantier:
+            qs = qs.filter(chantier_id=chantier)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company,
+            observateur=self.request.user)
+
+    @action(detail=True, methods=['post'], url_path='convertir-capa')
+    def convertir_capa(self, request, pk=None):
+        observation = self.get_object()
+        try:
+            capa, created = convertir_observation_en_capa(
+                observation,
+                description=request.data.get('description'),
+                responsable_id=request.data.get('responsable'),
+                echeance=request.data.get('echeance'))
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            ActionCorrectivePreventiveSerializer(capa).data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='convertir-ncr')
+    def convertir_ncr(self, request, pk=None):
+        observation = self.get_object()
+        try:
+            ncr, created = convertir_observation_en_ncr(
+                observation, gravite=request.data.get('gravite'))
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            NonConformiteSerializer(ncr).data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'])
+    def compteurs(self, request):
+        chantier = request.query_params.get('chantier') or None
+        return Response(compteurs_observations_securite(
+            request.user.company, chantier_id=chantier))

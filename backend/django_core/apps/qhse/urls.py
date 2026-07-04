@@ -18,6 +18,7 @@ from .views import (
     ItemNotationViewSet, LienSignalementPublicViewSet,
     LigneEvaluationRisqueViewSet,
     NonConformiteViewSet, NotationFinChantierViewSet,
+    ObservationSecuriteViewSet,
     ParetoDefautsViewSet, PermisTravailViewSet,
     PlanControleReceptionViewSet, PlanInspectionChantierViewSet,
     PlanInspectionModeleViewSet,
@@ -86,6 +87,7 @@ router.register(
 router.register(
     r'liens-signalement', LienSignalementPublicViewSet)
 router.register(r'signalements-publics', SignalementPublicViewSet)
+router.register(r'observations-securite', ObservationSecuriteViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

@@ -4952,3 +4952,104 @@ class SignalementPublic(models.Model):
 
     def __str__(self):
         return f'Signalement {self.get_type_signalement_display()} ({self.lien_id})'
+
+
+# ── XQHS17 — Observations sécurité comportementales (BBS) ──────────────────
+
+class ObservationSecurite(models.Model):
+    """Observation comportementale sécurité (Behavior-Based Safety, XQHS17).
+
+    Saisie rapide (mobile-friendly) d'une observation TERRAIN — sûre ou à
+    risque — distincte du presqu'accident (``rh.PresquAccident``, RH) et du
+    registre d'incident (``qhse.Incident``, événement déjà survenu). La BBS
+    alimente la prévention EN AMONT, avant tout événement.
+
+    ``categorie`` réutilise les familles ``CodeDefaut`` là où c'est pertinent
+    (EPI/hauteur/électrique/manutention/environnement/autre) pour rester
+    cohérent avec le Pareto qualité existant, sans dépendre d'un FK vers
+    ``CodeDefaut`` (catégorie fixe, pas un référentiel éditable ici).
+
+    Une observation À RISQUE peut être convertie en un clic en CAPA (liée à
+    une NCR minimale créée pour l'occasion) ou en NCR directe — voir
+    ``services.convertir_observation_en_capa`` /
+    ``convertir_observation_en_ncr``.
+
+    Le rattachement au chantier se fait par référence LÂCHE (``chantier_id``).
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    class Categorie(models.TextChoices):
+        EPI = 'epi', 'EPI'
+        HAUTEUR = 'hauteur', 'Travail en hauteur'
+        ELECTRIQUE = 'electrique', 'Électrique'
+        MANUTENTION = 'manutention', 'Manutention'
+        ENVIRONNEMENT = 'environnement', 'Environnement'
+        AUTRE = 'autre', 'Autre'
+
+    class TypeObservation(models.TextChoices):
+        SUR = 'sur', 'Sûr'
+        A_RISQUE = 'a_risque', 'À risque'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_observations_securite',
+        verbose_name='Société',
+    )
+    date_observation = models.DateField(
+        null=True, blank=True, verbose_name="Date de l'observation")
+    # Référence LÂCHE au chantier (installations.Chantier) par id.
+    chantier_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du chantier')
+    categorie = models.CharField(
+        max_length=15, choices=Categorie.choices,
+        default=Categorie.AUTRE, verbose_name='Catégorie')
+    type_observation = models.CharField(
+        max_length=10, choices=TypeObservation.choices,
+        default=TypeObservation.SUR, verbose_name="Type d'observation")
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    feedback_donne = models.BooleanField(
+        default=False, verbose_name='Feedback donné sur place')
+    observateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_observations_securite',
+        verbose_name='Observateur',
+    )
+    # Conversion en un clic — trace vers l'action/NCR née de cette observation
+    # (intra-app, FK directe). NULL tant qu'aucune conversion n'a eu lieu.
+    action_liee = models.ForeignKey(
+        'ActionCorrectivePreventive',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='observations_origine',
+        verbose_name='CAPA liée',
+    )
+    non_conformite_liee = models.ForeignKey(
+        'NonConformite',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='observations_origine',
+        verbose_name='NCR liée',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Observation sécurité (BBS)'
+        verbose_name_plural = 'Observations sécurité (BBS)'
+        ordering = ['-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'type_observation'],
+                name='qhse_obssec_co_type',
+            ),
+            models.Index(
+                fields=['company', 'observateur'],
+                name='qhse_obssec_co_observ',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.get_type_observation_display()} — {self.get_categorie_display()}'

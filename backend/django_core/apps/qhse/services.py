@@ -18,7 +18,8 @@ from .models import (
     DeclarationCnss, DemandeActionFournisseur, Derogation, DiffusionProcedure,
     ElementRappel,
     EtapeDeclarationAt, LienSignalementPublic, NonConformite,
-    NotationFinChantier, PlanControleReception, PlanInspectionChantier,
+    NotationFinChantier, ObservationSecurite, PlanControleReception,
+    PlanInspectionChantier,
     PointControleModele,
     ProcedureQualite, ReleveThermographie, ReponseCritere, ReleveControle,
     ReunionQhse, RisqueOpportunite, RisqueOpportuniteCapa, SignalementPublic,
@@ -1869,3 +1870,92 @@ def generer_qr_signalement(lien, base_url=''):
     buf = io.BytesIO()
     img.save(buf, 'PNG')
     return buf.getvalue()
+
+
+# ── XQHS17 — Observations sécurité comportementales (BBS) ──────────────────
+
+@transaction.atomic
+def convertir_observation_en_ncr(observation, gravite=None, signale_par=None):
+    """Convertit une ``ObservationSecurite`` à risque en NCR (XQHS17).
+
+    Idempotent : une observation déjà convertie renvoie sa NCR existante
+    (jamais deux NCR pour la même observation). Lève ``ValueError`` si
+    l'observation est de type ``sur`` (rien à corriger)."""
+    if observation.type_observation != ObservationSecurite.TypeObservation.A_RISQUE:
+        raise ValueError(
+            'Seule une observation « à risque » peut être convertie en NCR.')
+    if observation.non_conformite_liee_id:
+        return observation.non_conformite_liee, False
+
+    ncr = NonConformite.objects.create(
+        company=observation.company,
+        titre=f'BBS · {observation.get_categorie_display()}',
+        description=observation.description,
+        origine='Observation sécurité (BBS)',
+        gravite=gravite or NonConformite.Gravite.MINEURE,
+        chantier_id=observation.chantier_id,
+        signale_par=signale_par or observation.observateur,
+    )
+    observation.non_conformite_liee = ncr
+    observation.save(update_fields=['non_conformite_liee'])
+    return ncr, True
+
+
+@transaction.atomic
+def convertir_observation_en_capa(
+        observation, *, description=None, responsable_id=None, echeance=None):
+    """Convertit une ``ObservationSecurite`` à risque en CAPA (XQHS17).
+
+    Crée (ou réutilise) une NCR minimale support — CAPA exige une NCR parente
+    — puis y attache la CAPA. Idempotent : une observation déjà convertie
+    renvoie sa CAPA existante."""
+    if observation.action_liee_id:
+        return observation.action_liee, False
+
+    ncr, _created = convertir_observation_en_ncr(observation)
+
+    capa = ActionCorrectivePreventive.objects.create(
+        company=observation.company,
+        non_conformite=ncr,
+        type_action=ActionCorrectivePreventive.Type.PREVENTIVE,
+        description=description or (
+            f'Action suite observation BBS : {observation.description}'),
+        responsable_id=responsable_id,
+        echeance=echeance,
+    )
+    observation.action_liee = capa
+    observation.save(update_fields=['action_liee'])
+    return capa, True
+
+
+def compteurs_observations_securite(company, chantier_id=None):
+    """Compteurs cockpit BBS (XQHS17) : ratio sûr/à-risque + observations par
+    superviseur/mois. Agrégation PURE — aucune mutation. Scopé société."""
+    from collections import defaultdict
+
+    qs = ObservationSecurite.objects.filter(company=company)
+    if chantier_id is not None:
+        qs = qs.filter(chantier_id=chantier_id)
+
+    total = qs.count()
+    sures = qs.filter(
+        type_observation=ObservationSecurite.TypeObservation.SUR).count()
+    a_risque = total - sures
+    ratio = round(sures / total * 100, 1) if total else None
+
+    par_superviseur_mois = defaultdict(int)
+    for obs in qs.exclude(observateur__isnull=True):
+        date_ref = obs.date_observation or obs.date_creation.date()
+        cle = (obs.observateur_id, date_ref.strftime('%Y-%m'))
+        par_superviseur_mois[cle] += 1
+
+    return {
+        'total': total,
+        'sures': sures,
+        'a_risque': a_risque,
+        'ratio_sur_pct': ratio,
+        'par_superviseur_mois': [
+            {'observateur_id': sup, 'mois': mois, 'count': count}
+            for (sup, mois), count in sorted(par_superviseur_mois.items())
+        ],
+    }

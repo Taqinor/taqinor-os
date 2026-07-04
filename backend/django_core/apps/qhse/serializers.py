@@ -18,6 +18,7 @@ from .models import (
     LigneBilanCarbone,
     Incident, InspectionSecurite,
     ItemNotation, LigneEvaluationRisque, NonConformite, NotationFinChantier,
+    ObservationSecurite,
     PermisTravail, PlanControleReception, PlanInspectionChantier,
     PlanInspectionModele, PlanUrgence,
     PointControleModele, PointControleReception, ProcedureQualite,
@@ -1193,3 +1194,26 @@ class SignalementPublicSerializer(serializers.ModelSerializer):
             'anonyme', 'incident', 'date_creation',
         ]
         read_only_fields = ['source', 'date_creation']
+
+
+class ObservationSecuriteSerializer(serializers.ModelSerializer):
+    """Observation sécurité comportementale (BBS, XQHS17). ``company`` et
+    ``observateur`` posés côté serveur (jamais lus du corps de requête)."""
+    categorie_display = serializers.CharField(
+        source='get_categorie_display', read_only=True)
+    type_observation_display = serializers.CharField(
+        source='get_type_observation_display', read_only=True)
+
+    class Meta:
+        model = ObservationSecurite
+        fields = [
+            'id', 'date_observation', 'chantier_id', 'categorie',
+            'categorie_display', 'type_observation',
+            'type_observation_display', 'description', 'feedback_donne',
+            'observateur', 'action_liee', 'non_conformite_liee',
+            'date_creation',
+        ]
+        read_only_fields = [
+            'observateur', 'action_liee', 'non_conformite_liee',
+            'date_creation',
+        ]
