@@ -57,12 +57,11 @@ const totalKwcLabel = totalKwc.toLocaleString('fr-FR', { minimumFractionDigits: 
 // الختامية. مُشتقّة بالفرز على kwcNum، وليست مرجعًا منسوخًا يدويًا.
 const featured = [...REALISATIONS].sort((a, b) => b.kwcNum - a.kwcNum)[0];
 
-// WJ73 — فجوة التقدير مقابل الدليل، مشروحة بصدق: التركيبة الرائدة تقيس
-// إنتاجية kWh/kWc/سنة أقل من الرقم الجنوبي الأمثل الذي يفترضه جدول الإنتاجية
-// المُنمذَج — كلا القيمتين مُشتقّة (REALISATIONS + YIELD_TABLE)، غير منسوختين يدوياً.
-const featuredYieldPerKwc = featured.productionNum && featured.kwcNum
-  ? Math.round(featured.productionNum / featured.kwcNum)
-  : null;
+// القاعدة ب1 (2026-07-04) — أُزيلت ملاحظة WJ73 القديمة: كانت تدعو الزائر لقسمة
+// الإنتاج على kWc، وهو ما يكشف أن الأرقام الأربعة غير الصفرية للإنتاج في
+// realisations.ts تتشارك نفس عامل الإنتاجية (انظر ملاحظة النزاهة في
+// realisations.ts). التركيبة الرائدة الآن مُعلَّمة `productionEstimated`
+// والملاحظة المعروضة أسفل المعرض تشرح الفارق بصدق دون دعوة للحساب.
 const casablancaSouthOptimalYield = YIELD_TABLE.casablanca.grid['0']['29'];
 // اسم المدينة بالعربية للعرض فقط (الأرقام تبقى اللاتينية من REALISATIONS) —
 // نفس أسماء المدن المستخدمة أسفله في `gallery`.
@@ -74,7 +73,7 @@ const featuredVilleAr = CITY_AR[featured.ville] ?? featured.ville;
 const heroFigure = (featured.productionNum ?? 0).toLocaleString('fr-FR');
 const heroTitleSuffix = ` kWh في السنة، منتَجة على سطح في ${featuredVilleAr}.`;
 const heroSub =
-  `تركيب رقم ${featured.ref} — ${featured.kwc}، مُحجَّم ومُركَّب ومُقاس من طرف Taqinor. تركيبكم يبدأ بتشخيص في 60 ثانية.`;
+  `تركيب رقم ${featured.ref} — ${featured.kwc}، مُحجَّم ومُركَّب من طرف Taqinor. تركيبكم يبدأ بتشخيص في 60 ثانية.`;
 
 // W267 — السطر المالي تحت البطل. بلا أي رقم مخترَع: الاستهلاك الحقيقي لأسرة
 // المرجع 468 غير منشور في أي مكان بالموقع، لذا لا يمكن استدعاء
@@ -111,7 +110,7 @@ const galleryRaw = [
   { name: 'reflet-468', alt: 'انعكاس الشمس على صف الألواح أثناء التركيب، الجديدة', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: true, type: '24 × Canadian Solar 710 Wc · Deye 15 kW', slug: 'el-jadida-17-kwc' },
   { name: 'equipe-trois', alt: 'فريق Taqinor أمام الصف الطويل من الألواح في نهاية الورش، الجديدة', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: false, type: 'نهاية الورش · فريق Taqinor', slug: 'el-jadida-17-kwc' },
   { name: 'hero-skyline', alt: 'صف من الألواح الشمسية أمام أفق الدار البيضاء ومئذنة، ضوء ذهبي', widths: [2000, 1280, 768, 480], ratio: 16 / 9, showProd: true, type: '16 × Canadian Solar 710 Wc · Deye 10 kW', slug: 'casablanca-11-kwc' },
-  { name: 'portrait-400', alt: 'المهندس أمام حقل الألواح، أفق الدار البيضاء', widths: [1600, 1024, 640], ratio: 4 / 3, showProd: false, type: 'إنتاج مقاس — Deye Cloud', slug: 'casablanca-11-kwc' },
+  { name: 'portrait-400', alt: 'المهندس أمام حقل الألواح، أفق الدار البيضاء', widths: [1600, 1024, 640], ratio: 4 / 3, showProd: false, type: 'إنتاج مُقدَّر — عائد مقاس', slug: 'casablanca-11-kwc' },
   { name: 'champ-villa', alt: 'حقل من ثمانية ألواح على سطح فيلا مسطّح، الجديدة', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: true, type: '8 × Canadian Solar 710 Wc · Deye 5 kW', slug: 'el-jadida-6-kwc' },
   { name: 'pose-134', alt: 'الفريق يميل لوحًا أثناء التركيب، الدار البيضاء', widths: [1600, 1024, 640], ratio: 4 / 3, showProd: true, type: 'تركيب جارٍ · 8 × Canadian Solar 710 Wc', slug: 'casablanca-6-kwc' },
   { name: 'equipe-gilet-taqinor', alt: 'مركّب بسترة Taqinor يضع قضبان هيكل، النواصر', widths: [1600, 1024, 640], ratio: 1, showProd: false, type: 'وضع القضبان · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
@@ -344,7 +343,7 @@ const engineeringPillars = [
       <p class="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center text-sm font-semibold text-lune sm:text-base">
         <span class="text-brass-300">30 سنة من الأداء المضمون</span>
         <span class="text-lune-faint" aria-hidden="true">·</span>
-        <span>إنتاج مُقاس لا موعود — مراقبة Deye Cloud على كل تركيب</span>
+        <span>إنتاج مُتابَع لا موعود — مراقبة Deye Cloud على كل تركيب</span>
       </p>
     </section>
 
@@ -413,12 +412,12 @@ const engineeringPillars = [
             </div>
           ))}
         </div>
-        {/* WJ73 — فجوة التقدير مقابل الدليل، مشروحة بصدق. */}
-        {featuredYieldPerKwc && (
+        {/* القاعدة ب1 (2026-07-04) — أُعيدت الصياغة، انظر index.astro الفرنسية للمنطق الكامل. */}
+        {featured.productionEstimated && (
           <p class="v2-rise mt-6 max-w-2xl text-xs leading-relaxed text-lune-faint">
-            للإشارة: هذه التركيبة تقيس ≈{featuredYieldPerKwc.toLocaleString('fr-FR')} kWh/kWc/سنة، وهو أقل من
+            للإشارة: إنتاج هذا المشروع مُقدَّر انطلاقاً من العائد المقاس على تركيباتنا المتابَعة، وهو أقل من
             ≈{casablancaSouthOptimalYield.toLocaleString('fr-FR')} kWh/kWc/سنة التي يفترضها جدول الإنتاجية
-            المُنمذَج المُستخدَم للتقديرات — التركيبات الحقيقية ليست كلها متّجهة جنوباً بميل 29°، خلافاً
+            المُنمذَج المُستخدَم للتقديرات — الأسطح الحقيقية ليست كلها متّجهة جنوباً بميل 29°، خلافاً
             لافتراض النموذج. الدراسة تُدقّق هذا الرقم على سطحك الحقيقي.
           </p>
         )}
@@ -431,7 +430,7 @@ const engineeringPillars = [
 
     {/* ── إمضاء الزليج — مرّة واحدة فقط، بين الإثبات والحلول ── */}
     <ZelligeSignature
-      line="كل رقم في هذا الموقع مقيس، لا موعود."
+      line="كل رقم في هذا الموقع مُتابَع، لا موعود."
       sub="الدراسة أولًا. ثم الورش."
     />
 
@@ -664,7 +663,9 @@ const engineeringPillars = [
             {[featured.panneaux, featured.onduleur, featured.batterie].filter(Boolean).join(' · ')}
           </p>
           <p class="mt-4 border-t border-white/10 pt-3 text-xs text-lune-faint">
-            إنتاج مُقاس — Deye Cloud. زيارات الموقع ممكنة عند الطلب.
+            {featured.productionEstimated
+              ? 'إنتاج مُقدَّر انطلاقاً من العائد المقاس على تركيباتنا. زيارات الموقع ممكنة عند الطلب.'
+              : 'إنتاج مُقاس — Deye Cloud. زيارات الموقع ممكنة عند الطلب.'}
           </p>
         </aside>
       </div>

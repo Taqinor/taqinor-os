@@ -52,20 +52,12 @@ const totalKwcLabel = totalKwc.toLocaleString('fr-FR', { minimumFractionDigits: 
 // jamais une référence recopiée à la main.
 const featured = [...REALISATIONS].sort((a, b) => b.kwcNum - a.kwcNum)[0];
 
-// WJ73 — L'écart estimation-vs-preuve, expliqué honnêtement. Le chantier
-// phare (réf. 468) mesure ≈1 256 kWh/kWc/an (21 406 kWh / 17,04 kWc) — un
-// visiteur qui divise ces deux chiffres déjà publiés sur cette page tombe sur
-// un nombre bien inférieur aux ≈1 650 kWh/kWc/an que la table de rendement
-// (yieldTable.ts, PVGIS) donne pour un plein sud à 29° à Casablanca, l'
-// hypothèse utilisée par le tableau modélisé de TOUTE estimation du site.
-// Plutôt que de laisser cet écart de 24 % sans explication (un « gotcha »
-// pour qui fait le calcul), on l'explique en une ligne, honnêtement : les
-// toits réels ne sont pas tous plein sud à l'inclinaison optimale — l'étude
-// affine. AUCUN chiffre inventé : les deux valeurs viennent de sources déjà
-// committées (REALISATIONS + YIELD_TABLE), jamais recopiées à la main.
-const featuredYieldPerKwc = featured.productionNum && featured.kwcNum
-  ? Math.round(featured.productionNum / featured.kwcNum)
-  : null;
+// WB1 (2026-07-04) — ancienne note WJ73 retirée : elle invitait le visiteur à
+// diviser production/kWc du chantier phare, ce qui exposait que les 4
+// chiffres de production non nuls de realisations.ts partagent le même
+// facteur (voir la note d'intégrité dans realisations.ts). Le chantier phare
+// est désormais marqué `productionEstimated` et la note affichée sous la
+// galerie (plus bas) explique honnêtement la nuance sans inviter au calcul.
 const casablancaSouthOptimalYield = YIELD_TABLE.casablanca.grid['0']['29'];
 
 // W205 — Le chiffre protagoniste de l’en-tête est séparé pour le count-up.
@@ -73,7 +65,7 @@ const casablancaSouthOptimalYield = YIELD_TABLE.casablanca.grid['0']['29'];
 const heroFigure = (featured.productionNum ?? 0).toLocaleString('fr-FR');
 const heroTitleSuffix = ` kWh par an, produits sur un toit d’${featured.ville}.`;
 const heroSub =
-  `Installation réf. ${featured.ref} — ${featured.kwc}, dimensionnée, posée et mesurée par Taqinor. La vôtre commence par un diagnostic de 60 secondes.`;
+  `Installation réf. ${featured.ref} — ${featured.kwc}, dimensionnée et posée par Taqinor. La vôtre commence par un diagnostic de 60 secondes.`;
 
 // W267 — Sous-ligne monétaire du héros. AUCUN chiffre inventé : la
 // consommation réelle du foyer réf. 468 n'est publiée nulle part sur le site,
@@ -121,7 +113,7 @@ const galleryRaw = [
   { name: 'reflet-468', alt: 'Le soleil se reflète sur la rangée de panneaux pendant la pose, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: true, type: '24 × Canadian Solar 710 Wc · Deye 15 kW', slug: 'el-jadida-17-kwc' },
   { name: 'equipe-trois', alt: 'Équipe Taqinor devant la longue rangée de panneaux en fin de chantier, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: false, type: 'Fin de chantier · équipe Taqinor', slug: 'el-jadida-17-kwc' },
   { name: 'hero-skyline', alt: 'Rangée de panneaux solaires devant la skyline de Casablanca et un minaret, lumière dorée', widths: [2000, 1280, 768, 480], ratio: 16 / 9, showProd: true, type: '16 × Canadian Solar 710 Wc · Deye 10 kW', slug: 'casablanca-11-kwc' },
-  { name: 'portrait-400', alt: "L'ingénieur devant le champ de panneaux, skyline de Casablanca", widths: [1600, 1024, 640], ratio: 4 / 3, showProd: false, type: 'Production mesurée — Deye Cloud', slug: 'casablanca-11-kwc' },
+  { name: 'portrait-400', alt: "L'ingénieur devant le champ de panneaux, skyline de Casablanca", widths: [1600, 1024, 640], ratio: 4 / 3, showProd: false, type: 'Production estimée — rendement mesuré', slug: 'casablanca-11-kwc' },
   { name: 'champ-villa', alt: 'Champ de huit panneaux sur toit plat de villa, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: true, type: '8 × Canadian Solar 710 Wc · Deye 5 kW', slug: 'el-jadida-6-kwc' },
   { name: 'pose-134', alt: "L'équipe incline un panneau pendant la pose, Casablanca", widths: [1600, 1024, 640], ratio: 4 / 3, showProd: true, type: 'Pose en cours · 8 × Canadian Solar 710 Wc', slug: 'casablanca-6-kwc' },
   { name: 'equipe-gilet-taqinor', alt: "Installateur en gilet Taqinor posant les rails d'une structure, Nouaceur", widths: [1600, 1024, 640], ratio: 1, showProd: false, type: 'Pose des rails · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
@@ -378,7 +370,7 @@ const engineeringPillars = [
       <p class="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center text-sm font-semibold text-lune sm:text-base">
         <span class="text-brass-300">30 ans de performance garantie</span>
         <span class="text-lune-faint" aria-hidden="true">·</span>
-        <span>production mesurée, pas promise — monitoring Deye Cloud sur chaque installation</span>
+        <span>production suivie, pas promise — monitoring Deye Cloud sur chaque installation</span>
       </p>
     </section>
 
@@ -455,16 +447,18 @@ const engineeringPillars = [
             </div>
           ))}
         </div>
-        {/* WJ73 — écart estimation-vs-preuve, expliqué honnêtement. Un
-            visiteur qui divise les deux chiffres déjà affichés ci-dessus
-            (production mesurée / kWc) sur le chantier phare tombe sur un
-            rendement inférieur à celui du tableau modélisé des estimations —
-            plutôt que de laisser ce delta sans explication, on le nomme. */}
-        {featuredYieldPerKwc && (
+        {/* WB1 (2026-07-04) — reformulée : le chiffre de production du
+            chantier phare est ESTIMÉ (rendement mesuré de nos chantiers, pas
+            un relevé Deye Cloud distinct pour cette réf. précise — voir la
+            note d'intégrité dans realisations.ts), donc on n'invite plus à le
+            diviser comme s'il s'agissait d'une mesure brute par site
+            (ancienne note WJ73, qui exposait un facteur identique sur 4
+            chantiers). On explique la nuance directement. */}
+        {featured.productionEstimated && (
           <p class="v2-rise mt-6 max-w-2xl text-xs leading-relaxed text-lune-faint">
-            À noter : cette installation mesure ≈{featuredYieldPerKwc.toLocaleString('fr-FR')} kWh/kWc/an,
-            en dessous des ≈{casablancaSouthOptimalYield.toLocaleString('fr-FR')} kWh/kWc/an du tableau
-            modélisé utilisé pour les estimations — les installations réelles ne sont pas toutes plein
+            À noter : la production de ce chantier est estimée à partir du rendement mesuré sur nos
+            installations suivies, en dessous des ≈{casablancaSouthOptimalYield.toLocaleString('fr-FR')} kWh/kWc/an
+            du tableau modélisé utilisé pour les estimations — les toits réels ne sont pas tous plein
             sud à 29°, contrairement à l'hypothèse du modèle. L'étude affine ce chiffre sur votre toit réel.
           </p>
         )}
@@ -475,8 +469,12 @@ const engineeringPillars = [
       </div>
     </section>
 
-    {/* ── SIGNATURE ZELLIGE — UNE seule fois, entre preuve et solutions ── */}
-    <ZelligeSignature />
+    {/* ── SIGNATURE ZELLIGE — UNE seule fois, entre preuve et solutions.
+        WB1 (2026-07-04) : override du texte par défaut du composant
+        ("mesuré, pas promis") — trop absolu vu que certains chiffres de
+        production sont estimés (voir realisations.ts) ; "suivi" reste vrai
+        pour toute la ligne. ── */}
+    <ZelligeSignature line="Chaque chiffre de ce site est suivi, pas promis." />
 
     {/* ── NOS SOLUTIONS (6) — toute l'offre, au-delà des deux segments ── */}
     <div class="seam-soft" aria-hidden="true"></div>
@@ -750,7 +748,9 @@ const engineeringPillars = [
             {[featured.panneaux, featured.onduleur, featured.batterie].filter(Boolean).join(' · ')}
           </p>
           <p class="mt-4 border-t border-white/10 pt-3 text-xs text-lune-faint">
-            Production mesurée — Deye Cloud. Visites de site possibles sur demande.
+            {featured.productionEstimated
+              ? 'Production estimée à partir du rendement mesuré de nos chantiers. Visites de site possibles sur demande.'
+              : 'Production mesurée — Deye Cloud. Visites de site possibles sur demande.'}
           </p>
         </aside>
       </div>

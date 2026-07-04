@@ -59,13 +59,12 @@ const totalKwcLabel = totalKwc.toLocaleString('fr-FR', { minimumFractionDigits: 
 // never a hand-copied reference.
 const featured = [...REALISATIONS].sort((a, b) => b.kwcNum - a.kwcNum)[0];
 
-// WJ73 — The estimate-vs-proof gap, explained honestly. See the FR index.astro
-// comment for the full rationale: the flagship install measures a lower
-// kWh/kWc/yr than the south-optimal figure the modeled yield table assumes —
-// both values are derived (REALISATIONS + YIELD_TABLE), never hand-copied.
-const featuredYieldPerKwc = featured.productionNum && featured.kwcNum
-  ? Math.round(featured.productionNum / featured.kwcNum)
-  : null;
+// WB1 (2026-07-04) — old WJ73 note removed: it invited visitors to divide
+// production/kWc for the flagship install, which exposed that the 4 non-null
+// production figures in realisations.ts share the same yield factor (see the
+// integrity note in realisations.ts). The flagship install is now flagged
+// `productionEstimated` and the note shown below the gallery explains the
+// nuance honestly without inviting the calculation.
 const casablancaSouthOptimalYield = YIELD_TABLE.casablanca.grid['0']['29'];
 
 // W205 — The protagonist figure of the headline is separated for the count-up.
@@ -73,7 +72,7 @@ const casablancaSouthOptimalYield = YIELD_TABLE.casablanca.grid['0']['29'];
 const heroFigure = (featured.productionNum ?? 0).toLocaleString('fr-FR');
 const heroTitleSuffix = ` kWh a year, produced on a rooftop in ${featured.ville}.`;
 const heroSub =
-  `Installation ref. ${featured.ref} — ${featured.kwc}, sized, installed and measured by Taqinor. Yours starts with a 60-second diagnostic.`;
+  `Installation ref. ${featured.ref} — ${featured.kwc}, sized and installed by Taqinor. Yours starts with a 60-second diagnostic.`;
 
 // W267 — Hero money sub-line. NO invented figure: the real consumption of
 // the ref. 468 household is not published anywhere on the site, so we
@@ -113,7 +112,7 @@ const galleryRaw = [
   { name: 'reflet-468', alt: 'The sun reflects off the row of panels during the install, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: true, type: '24 × Canadian Solar 710 Wc · Deye 15 kW', slug: 'el-jadida-17-kwc' },
   { name: 'equipe-trois', alt: 'Taqinor team in front of the long row of panels at the end of the job, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: false, type: 'Job complete · Taqinor team', slug: 'el-jadida-17-kwc' },
   { name: 'hero-skyline', alt: 'Row of solar panels in front of the Casablanca skyline and a minaret, golden light', widths: [2000, 1280, 768, 480], ratio: 16 / 9, showProd: true, type: '16 × Canadian Solar 710 Wc · Deye 10 kW', slug: 'casablanca-11-kwc' },
-  { name: 'portrait-400', alt: 'The engineer in front of the panel array, Casablanca skyline', widths: [1600, 1024, 640], ratio: 4 / 3, showProd: false, type: 'Measured production — Deye Cloud', slug: 'casablanca-11-kwc' },
+  { name: 'portrait-400', alt: 'The engineer in front of the panel array, Casablanca skyline', widths: [1600, 1024, 640], ratio: 4 / 3, showProd: false, type: 'Estimated production — measured yield', slug: 'casablanca-11-kwc' },
   { name: 'champ-villa', alt: 'Array of eight panels on a flat villa roof, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: true, type: '8 × Canadian Solar 710 Wc · Deye 5 kW', slug: 'el-jadida-6-kwc' },
   { name: 'pose-134', alt: 'The team tilts a panel during the install, Casablanca', widths: [1600, 1024, 640], ratio: 4 / 3, showProd: true, type: 'Install in progress · 8 × Canadian Solar 710 Wc', slug: 'casablanca-6-kwc' },
   { name: 'equipe-gilet-taqinor', alt: 'Installer in a Taqinor vest fitting the rails of a structure, Nouaceur', widths: [1600, 1024, 640], ratio: 1, showProd: false, type: 'Fitting the rails · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
@@ -352,7 +351,7 @@ const engineeringPillars = [
       <p class="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center text-sm font-semibold text-lune sm:text-base">
         <span class="text-brass-300">30-year performance warranty</span>
         <span class="text-lune-faint" aria-hidden="true">·</span>
-        <span>production measured, not promised — Deye Cloud monitoring on every installation</span>
+        <span>production tracked, not promised — Deye Cloud monitoring on every installation</span>
       </p>
     </section>
 
@@ -422,14 +421,14 @@ const engineeringPillars = [
             </div>
           ))}
         </div>
-        {/* WJ73 — estimate-vs-proof gap, explained honestly. */}
-        {featuredYieldPerKwc && (
+        {/* WB1 (2026-07-04) — reworded: see FR index.astro for the full rationale. */}
+        {featured.productionEstimated && (
           <p class="v2-rise mt-6 max-w-2xl text-xs leading-relaxed text-lune-faint">
-            Worth noting: this installation measures ≈{featuredYieldPerKwc.toLocaleString('en-US')} kWh/kWc/yr,
-            below the ≈{casablancaSouthOptimalYield.toLocaleString('en-US')} kWh/kWc/yr the modeled yield
-            table used for estimates assumes — real installations aren't all south-facing at the
-            optimal 29° tilt, unlike the model's assumption. The on-site study refines this figure for
-            your actual roof.
+            Worth noting: this project's production is estimated from the measured yield of our
+            monitored installations, below the ≈{casablancaSouthOptimalYield.toLocaleString('en-US')} kWh/kWc/yr
+            the modeled yield table used for estimates assumes — real roofs aren't all south-facing at
+            the optimal 29° tilt, unlike the model's assumption. The on-site study refines this figure
+            for your actual roof.
           </p>
         )}
         {/* Quiet link to ALL installations — not a solid button */}
@@ -439,8 +438,13 @@ const engineeringPillars = [
       </div>
     </section>
 
-    {/* ── ZELLIGE SIGNATURE — ONCE only, between proof and solutions ── */}
-    <ZelligeSignature />
+    {/* ── ZELLIGE SIGNATURE — ONCE only, between proof and solutions.
+        WB1 (2026-07-04): explicit EN override — the component's default prop
+        is French-only regardless of locale, and its wording ("measured, not
+        promised") is too absolute now that some production figures are
+        estimated (see realisations.ts); "tracked" stays true for the whole
+        line. ── */}
+    <ZelligeSignature line="Every figure on this site is tracked, not promised." sub="The study first. Then the installation." />
 
     {/* ── OUR SOLUTIONS (6) — the whole offering, beyond the two segments ── */}
     <div class="seam-soft" aria-hidden="true"></div>
@@ -676,7 +680,9 @@ const engineeringPillars = [
             {[featured.panneaux, featured.onduleur, featured.batterie].filter(Boolean).join(' · ')}
           </p>
           <p class="mt-4 border-t border-white/10 pt-3 text-xs text-lune-faint">
-            Production measured — Deye Cloud. Site visits possible on request.
+            {featured.productionEstimated
+              ? 'Production estimated from the measured yield of our installations. Site visits possible on request.'
+              : 'Production measured — Deye Cloud. Site visits possible on request.'}
           </p>
         </aside>
       </div>

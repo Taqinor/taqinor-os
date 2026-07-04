@@ -40,22 +40,29 @@ const productionTotalLabel = productionTotal.toLocaleString('fr-FR');
 
 const notYetPublished = REALISATIONS.filter((r) => r.productionNum === null);
 
+// القاعدة ب1 (2026-07-04) — بعض أرقام الإنتاج المنشورة مُقدَّرة انطلاقاً من
+// العائد المقاس على تركيباتنا (وليست قراءة Deye Cloud مستقلة لكل موقع — انظر
+// ملاحظة النزاهة في realisations.ts). لا يمكن لهذه الصفحة أن تقول "لا شيء
+// مُقدَّر" ما دامت هذه القراءات المستقلة غير منشورة بعد؛ التنبيه أدناه يقولها
+// بصدق.
+const anyEstimated = withMeasuredProduction.some((r) => r.productionEstimated);
+
 const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 const generatedDateLabel = dateFmt.format(new Date(FACTS_GENERATED_AT));
 
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Dataset',
-  name: 'الإنتاج الشمسي المقيس — أسطول Taqinor',
-  description: `حصيلة الإنتاج المقيس تراكمياً (Deye Cloud) على ${withMeasuredProduction.length} تركيبات Taqinor متابَعة، حتى ${generatedDateLabel}: ${productionTotalLabel} kWh/سنة.`,
+  name: 'الإنتاج الشمسي المتابَع — أسطول Taqinor',
+  description: `حصيلة الإنتاج (مقاس أو، عند غياب قراءة مستقلة، مُقدَّر انطلاقاً من العائد المقاس) تراكمياً على ${withMeasuredProduction.length} تركيبات Taqinor متابَعة، حتى ${generatedDateLabel}: ${productionTotalLabel} kWh/سنة.`,
   temporalCoverage: FACTS_GENERATED_AT,
   creator: { '@type': 'Organization', name: 'Taqinor', url: 'https://taqinor.ma' },
 };
 ---
 
 <Layout
-  title="الإنتاج الشمسي المقيس — الحصيلة التراكمية الحقيقية لأسطولنا | Taqinor"
-  description={`${productionTotalLabel} kWh/سنة مقيسة على ${withMeasuredProduction.length} تركيبات Taqinor متابَعة (Deye Cloud)، حتى ${generatedDateLabel} — لا شيء مُقدَّر أو مُقرَّب نحو الأعلى.`}
+  title="الإنتاج الشمسي المتابَع — الحصيلة التراكمية الحقيقية لأسطولنا | Taqinor"
+  description={`${productionTotalLabel} kWh/سنة مجمَّعة على ${withMeasuredProduction.length} تركيبات Taqinor متابَعة، حتى ${generatedDateLabel} — لا شيء مُقرَّب نحو الأعلى أو مُضخَّم.`}
   ogSlug="equipement"
 >
   <div class="v2">
@@ -64,14 +71,14 @@ const jsonLd = {
 
     <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
 
-    <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: 'الإنتاج المقيس' }]} />
+    <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: 'الإنتاج المتابَع' }]} />
 
     <section class="section-lg px-4 pb-10 text-white">
       <div class="mx-auto max-w-3xl">
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">شفافية مستمرة</p>
-        <h1 class="display v2-page-title cine-in cine-in-1 mt-6">الإنتاج المقيس</h1>
+        <h1 class="display v2-page-title cine-in cine-in-1 mt-6">الإنتاج المتابَع</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
-          ليست كتيّباً دعائياً: عدّاد يستمر في الدوران. ما تنتجه تركيباتنا فعلاً، مقيساً بواسطة
+          ليست كتيّباً دعائياً: عدّاد يستمر في الدوران. ما تنتجه تركيباتنا، مُتابَعاً بواسطة
           نظام المتابعة الخاص بها، متراكماً مع كل مشروع موثَّق — حتى تاريخ{' '}
           <strong class="text-white">{generatedDateLabel}</strong>.
         </p>
@@ -81,14 +88,14 @@ const jsonLd = {
     <!-- أرقام رئيسية — مُشتقّة حياً من realisations.ts -->
     <section class="section px-4">
       <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass text-lune">الحصيلة المقيسة حتى {generatedDateLabel}</p>
+        <p class="tech-label v2-kicker rule-brass text-lune">الحصيلة المتابَعة حتى {generatedDateLabel}</p>
         <h2 class="display v2-section-title mt-5 text-white">{kwcTotalLabel} kWc، عدّاد واحد</h2>
         <div class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
           <KeyFigure value={kwcTotalLabel} unit="kWc" label="القدرة المركَّبة">
             مجموع التركيبات المنشورة.
           </KeyFigure>
-          <KeyFigure value={productionTotalLabel} unit="kWh/سنة" label="الإنتاج المقيس">
-            على التركيبات المتابَعة (Deye Cloud).
+          <KeyFigure value={productionTotalLabel} unit="kWh/سنة" label="الإنتاج المتابَع">
+            على التركيبات المتابَعة (مقاس أو مُقدَّر انطلاقاً من العائد المقاس).
           </KeyFigure>
           <KeyFigure value={String(withMeasuredProduction.length)} unit="مشاريع متابَعة" label="متابعة منشورة">
             المشاريع بلا إنتاج منشور لا تُحتسَب أبداً كصفر.
@@ -102,6 +109,13 @@ const jsonLd = {
               <>
                 {' '}اليوم، {notYetPublished.length} مشروع على الموقع ليس له إنتاج منشور بعد —
                 لا يُحتسَب ضمن الحصيلة أعلاه.
+              </>
+            )}
+            {anyEstimated && (
+              <>
+                {' '}بعض الأرقام أعلاه مُقدَّرة انطلاقاً من العائد المقاس على تركيباتنا المتابَعة
+                بدل قراءة Deye Cloud مستقلة لكل موقع — ليست أبداً رقم كتالوج ولا مُضخَّمة، لكنها
+                ليست بعد قراءة فردية. كل دراسة حالة تُوضّح ذلك.
               </>
             )}
           </p>
@@ -123,7 +137,9 @@ const jsonLd = {
             <div class="v2-rise flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-azur-900/15 px-5 py-4" style={`--v2-i:${i}`}>
               <span class="text-sm font-semibold" dir="ltr">{r.ville} · {r.kwc} · réf. {r.ref} · {r.date}</span>
               <span class="whitespace-normal text-end text-sm text-azur-600" dir="ltr">
-                {r.production ? `${r.production} مقيسة` : 'إنتاج غير منشور بعد'}
+                {r.production
+                  ? `${r.production} ${r.productionEstimated ? 'مقدَّرة' : 'مقيسة'}`
+                  : 'إنتاج غير منشور بعد'}
               </span>
             </div>
           ))}

@@ -136,7 +136,9 @@ const galleryPhotos = rest;
         {r.production && (
           <div class="v2-rise" style="--v2-i:1">
             <dd class="fig lum text-3xl sm:text-4xl" data-tally>{r.production}</dd>
-            <dt class="tech-label mt-2 text-lune-faint">إنتاج مقيس — Deye Cloud</dt>
+            <dt class="tech-label mt-2 text-lune-faint">
+              {r.productionEstimated ? 'إنتاج مُقدَّر — عائد مقاس على أوراشنا' : 'إنتاج مقيس — Deye Cloud'}
+            </dt>
           </div>
         )}
         <div class="v2-rise" style="--v2-i:2">
