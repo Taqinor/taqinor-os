@@ -15,6 +15,7 @@ from django.db.models import Exists, OuterRef, Q
 from .models import (
     KbArticle,
     KbArticleAcl,
+    KbArticleChunk,
     KbArticleLien,
     KbLecture,
     KbLectureObligatoire,
@@ -476,3 +477,46 @@ def liens_enrichis(article):
             'source': source,
         })
     return out
+
+
+# ── XKB20 — Récupération RAG des articles KB, respectueuse des ACL ─────────
+
+def retrieve_chunks(user, query, *, limit=5):
+    """XKB20 — Outil de récupération RAG : top-k fragments d'articles KB pour
+    une question, RESPECTUEUX DES ACL.
+
+    Calqué sur ``ged.selectors.retrieve_chunks`` (FG352) : renvoie les
+    ``limit`` fragments (``KbArticleChunk``) les plus proches de la question
+    par distance cosinus dans le MÊME magasin pgvector partagé. Les fragments
+    sont bornés DÈS LE PREMIER JOUR aux articles que ``user`` peut VOIR — via
+    ``visible_articles_qs`` (KB7 ACL par-rôle + XKB9 sections
+    workspace/privé/partagé) — jamais un fragment d'un article restreint pour
+    un utilisateur non autorisé.
+
+    KEY-GATED no-op : sans clé d'embedding ou si la question n'est pas
+    vectorisable, renvoie une liste vide (aucun appel réseau, aucun coût). Le
+    résultat est une liste de ``KbArticleChunk`` (plus proche d'abord),
+    chacun annoté de ``distance``. Import fonction-local de ``apps.ged`` :
+    lecture d'un SERVICE (jamais ses models/views) pour réutiliser le MÊME
+    provider d'embedding — pas de second pipeline RAG.
+    """
+    from apps.ged import services as ged_services
+
+    if not ged_services.embedding_enabled():
+        return []
+    if not query or not str(query).strip():
+        return []
+    vec = ged_services.compute_embedding(str(query))
+    if vec is None:
+        return []
+    from pgvector.django import CosineDistance
+
+    # ACL DÈS LE PREMIER JOUR : ne considère que les articles visibles pour
+    # cet utilisateur (KB7 + XKB9), jamais toute la table.
+    visible_ids = visible_articles_qs(
+        KbArticle.objects.all(), user).values_list('id', flat=True)
+    base = (KbArticleChunk.objects
+            .select_related('article')
+            .filter(article_id__in=visible_ids, embedding__isnull=False))
+    return list(base.annotate(distance=CosineDistance('embedding', vec))
+                .order_by('distance')[:max(1, int(limit))])
