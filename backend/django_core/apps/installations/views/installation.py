@@ -500,6 +500,16 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
                     inst, request.user,
                     f"{nb_interv} intervention(s) ouverte(s) annulée(s) "
                     "(chantier annulé).")
+            # YSERV9 — événement d'exception (best-effort, jamais de statut
+            # devis/facture changé) : ventes peut signaler le devis/acompte
+            # au responsable pour décider avoir vs retenue.
+            try:
+                from core.events import chantier_annule
+                chantier_annule.send(
+                    sender=inst.__class__, installation=inst,
+                    user=request.user, company=inst.company)
+            except Exception:  # pragma: no cover - défensif, best-effort
+                pass
         return Response(
             InstallationSerializer(inst, context={'request': request}).data)
 

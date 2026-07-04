@@ -344,3 +344,14 @@ facture_emise = django.dispatch.Signal()
 facture_payee = django.dispatch.Signal()
 facture_annulee = django.dispatch.Signal()
 bon_commande_cree = django.dispatch.Signal()
+
+# Émis à l'annulation d'un chantier (``apps.installations``) — YSERV9.
+# Arguments : installation (installations.Installation), user (peut être
+# None), company. NE change JAMAIS un statut devis/facture (règle #4,
+# STATUT PRESERVATION) : simple signal d'exception pour que ``ventes`` pose
+# une activité/alerte au responsable (décider avoir vs retenue sur un
+# acompte déjà encaissé). Abonné dans ce repo : ventes
+# (``apps/ventes/receivers.py``), qui pose une ``DevisActivity`` de type NOTE
+# sur le devis lié au chantier quand il existe. ``installations`` n'importe
+# jamais ``apps.ventes`` — même patron que ``devis_accepted`` → installations.
+chantier_annule = django.dispatch.Signal()
