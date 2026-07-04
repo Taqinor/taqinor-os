@@ -127,7 +127,6 @@ app.conf.beat_schedule = {
         'task': 'reporting.controle_integrite',
         'schedule': crontab(hour=3, minute=0, day_of_week=1),
     },
-<<<<<<< HEAD
     # YSUBS1 — facturation récurrente auto (échéanciers contrats +
     # maintenance SAV dus), quotidien (heure creuse).
     'contrats-generer-factures-recurrentes-dues': {
