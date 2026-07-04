@@ -2,6 +2,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    BlocReutilisableViewSet,
     KbArticleAclViewSet,
     KbArticleLienViewSet,
     KbArticleVersionViewSet,
@@ -26,6 +27,7 @@ router.register(r'partages', PartageArticleKbViewSet)
 router.register(r'parcours', KbParcoursViewSet)
 router.register(r'parcours-articles', KbParcoursArticleViewSet)
 router.register(r'parcours-assignations', KbParcoursAssignationViewSet)
+router.register(r'blocs', BlocReutilisableViewSet)
 
 urlpatterns = [
     # XKB19 — endpoint PUBLIC (sans login) AVANT le router : jeton opaque,

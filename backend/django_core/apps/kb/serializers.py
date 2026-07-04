@@ -6,6 +6,7 @@ le ``TenantMixin`` (``perform_create``). ``auteur`` est posé côté serveur.
 from rest_framework import serializers
 
 from .models import (
+    BlocReutilisable,
     KbArticle,
     KbArticleAcl,
     KbArticleLien,
@@ -411,6 +412,26 @@ class KbParcoursAssignationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Cet utilisateur n'appartient pas à votre société.")
         return utilisateur
+
+
+class BlocReutilisableSerializer(serializers.ModelSerializer):
+    """ZGED12 — Bloc de texte réutilisable (« presse-papiers Knowledge »).
+
+    ``company``/``created_by`` posés côté serveur (jamais du corps de
+    requête). La visibilité (personnel vs société) est appliquée côté vue
+    (``selectors.blocs_visibles``), pas ici."""
+    created_by_nom = serializers.CharField(
+        source='created_by.get_full_name', read_only=True)
+    portee_display = serializers.CharField(
+        source='get_portee_display', read_only=True)
+
+    class Meta:
+        model = BlocReutilisable
+        fields = [
+            'id', 'nom', 'corps', 'portee', 'portee_display', 'created_by',
+            'created_by_nom', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['created_by', 'date_creation', 'date_modification']
 
 
 class KbFavoriSerializer(serializers.ModelSerializer):

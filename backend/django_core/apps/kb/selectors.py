@@ -13,6 +13,7 @@ import re
 from django.db.models import Exists, OuterRef, Q
 
 from .models import (
+    BlocReutilisable,
     KbArticle,
     KbArticleAcl,
     KbArticleChunk,
@@ -658,3 +659,16 @@ def items_parcours_vue(queryset, *, vue, propriete=None):
         return groupes
 
     return items
+
+
+# ── ZGED12 — Presse-papiers Knowledge (blocs réutilisables) ─────────────────
+
+def blocs_visibles(company, user):
+    """ZGED12 — Blocs visibles pour ``user`` : ses blocs PERSONNELS + tous les
+    blocs SOCIÉTÉ (scopé société, jamais cross-tenant)."""
+    from django.db.models import Q
+    user_id = getattr(user, 'id', None)
+    qs = BlocReutilisable.objects.filter(company=company)
+    return qs.filter(
+        Q(portee=BlocReutilisable.Portee.SOCIETE)
+        | Q(portee=BlocReutilisable.Portee.PERSONNEL, created_by_id=user_id))

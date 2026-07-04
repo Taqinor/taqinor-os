@@ -870,3 +870,68 @@ class KbParcoursAssignation(models.Model):
 
     def __str__(self):
         return f'{self.utilisateur_id} → parcours {self.parcours_id}'
+
+
+class BlocReutilisable(models.Model):
+    """ZGED12 — Bloc de texte RÉUTILISABLE, insérable dans un article/une note.
+
+    Distinct des snippets de chat (XKB28, dans le composer chat) et des
+    gabarits d'article (XKB12, article ENTIER) : ici des FRAGMENTS courts
+    (« Signature standard », « Réponse type SAV »…) insérables dans un
+    article KB ou une note chatter partagée — pas un article complet.
+
+    ``portee`` distingue un bloc PERSONNEL (visible du seul créateur, comme
+    ``KbFavori``) d'un bloc SOCIÉTÉ (visible de tous, comme le reste de la
+    base). Suppression réservée au créateur ou à un admin (appliqué côté
+    vue/permission, pas ici). Société posée côté serveur (jamais du corps de
+    requête).
+    """
+    class Portee(models.TextChoices):
+        PERSONNEL = 'personnel', 'Personnel'
+        SOCIETE = 'societe', 'Société'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='kb_app_blocs',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=200, verbose_name='Nom du bloc')
+    corps = models.TextField(
+        blank=True, default='', verbose_name='Corps (texte/markdown léger)')
+    portee = models.CharField(
+        max_length=10, choices=Portee.choices,
+        default=Portee.PERSONNEL, verbose_name='Portée')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='kb_app_blocs_crees',
+        verbose_name='Créé par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Bloc réutilisable'
+        verbose_name_plural = 'Blocs réutilisables'
+        ordering = ['nom', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'portee'], name='kb_bloc_co_portee_idx'),
+        ]
+
+    def __str__(self):
+        return self.nom
+
+    def is_visible_par(self, user):
+        """ZGED12 — un bloc SOCIÉTÉ est visible de tous ; un bloc PERSONNEL
+        n'est visible que de son créateur (ou d'un admin — voir
+        ``selectors.blocs_visibles``, qui applique cette même règle en
+        filtrage de queryset)."""
+        if self.portee == self.Portee.SOCIETE:
+            return True
+        user_id = getattr(user, 'id', None)
+        return user_id is not None and user_id == self.created_by_id

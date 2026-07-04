@@ -20,6 +20,7 @@ from authentication.permissions import IsResponsableOrAdmin
 
 from . import selectors, services
 from .models import (
+    BlocReutilisable,
     KbArticle,
     KbArticleAcl,
     KbArticleLien,
@@ -32,6 +33,7 @@ from .models import (
     PartageArticleKb,
 )
 from .serializers import (
+    BlocReutilisableSerializer,
     KbArticleAclSerializer,
     KbArticleLienSerializer,
     KbArticleSerializer,
@@ -756,3 +758,33 @@ def public_article(request, token):
         'corps_format': article.corps_format,
         'categorie': article.categorie,
     }))
+
+
+class BlocReutilisableViewSet(_KbBaseViewSet):
+    """ZGED12 — Blocs de texte réutilisables (« presse-papiers Knowledge »).
+
+    Chaque utilisateur voit ses blocs PERSONNELS + tous les blocs SOCIÉTÉ
+    (``selectors.blocs_visibles``) ; ``company``/``created_by`` posés côté
+    serveur. Suppression réservée au CRÉATEUR ou à un admin — un autre
+    utilisateur responsable ne peut pas supprimer le bloc personnel d'un
+    tiers."""
+    queryset = BlocReutilisable.objects.all()
+    serializer_class = BlocReutilisableSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'nom', 'date_creation']
+
+    def get_queryset(self):
+        super().get_queryset()
+        return selectors.blocs_visibles(
+            self.request.user.company, self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, created_by=self.request.user)
+
+    def perform_destroy(self, instance):
+        tier = getattr(self.request.user, 'menu_tier', None)
+        if tier != 'admin' and instance.created_by_id != self.request.user.id:
+            raise PermissionDenied(
+                "Seul le créateur ou un administrateur peut supprimer ce bloc.")
+        instance.delete()

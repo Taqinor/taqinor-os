@@ -1,6 +1,7 @@
 from django.contrib import admin
 
 from .models import (
+    BlocReutilisable,
     KbArticle,
     KbArticleAcl,
     KbArticleLien,
@@ -98,3 +99,11 @@ class KbParcoursArticleAdmin(admin.ModelAdmin):
 class KbParcoursAssignationAdmin(admin.ModelAdmin):
     list_display = ('id', 'parcours', 'utilisateur', 'company', 'date_creation')
     list_filter = ('company',)
+
+
+@admin.register(BlocReutilisable)
+class BlocReutilisableAdmin(admin.ModelAdmin):
+    list_display = ('id', 'nom', 'portee', 'created_by', 'company',
+                    'date_creation')
+    list_filter = ('portee', 'company')
+    search_fields = ('nom', 'corps')
