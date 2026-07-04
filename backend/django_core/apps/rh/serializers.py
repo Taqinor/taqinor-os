@@ -1105,7 +1105,7 @@ class EpiCatalogueSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'type_epi', 'type_epi_display',
             'designation', 'duree_vie_mois', 'intervalle_controle_mois',
-            'actif',
+            'produit_id', 'actif',
             'date_creation', 'date_modification',
         ]
         read_only_fields = ['date_creation', 'date_modification']
@@ -1142,11 +1142,13 @@ class DotationEpiSerializer(serializers.ModelSerializer):
             'perime', 'a_controler',
             'quantite', 'note',
             'accuse_remise', 'date_accuse',
+            'restituee', 'date_restitution',
             'date_creation', 'date_modification',
         ]
         read_only_fields = [
             'date_peremption', 'date_prochain_controle',
             'accuse_remise', 'date_accuse',
+            'restituee', 'date_restitution',
             'date_creation', 'date_modification',
         ]
 

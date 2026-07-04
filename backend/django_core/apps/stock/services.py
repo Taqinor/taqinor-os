@@ -1216,6 +1216,78 @@ def rapport_rebuts(company, *, date_debut=None, date_fin=None):
         par_produit.values(), key=lambda e: -e['quantite_totale'])
 
 
+def decrementer_stock_dotation_epi(*, company, produit_id, quantite,
+                                   reference, user,
+                                   bloquer_si_insuffisant=False):
+    """YHIRE13 — décrémente le stock pour une dotation EPI liée à un produit.
+
+    Appelée par ``rh.services`` (cross-app, jamais l'inverse) quand une
+    ``DotationEpi`` porte un ``EpiCatalogue.produit_id`` renseigné. Mouvement
+    typé SORTIE, ``reference`` traçant la dotation d'origine. Par défaut
+    (``bloquer_si_insuffisant=False``) un stock insuffisant n'empêche PAS la
+    dotation (le stock peut aller négatif, motif = matériel déjà en atelier
+    hors flux stock) — comportement ``warn``. Si ``bloquer_si_insuffisant``
+    est vrai, lève ``ValueError`` sans créer de mouvement (comportement
+    ``block``, 400 explicite côté appelant). Renvoie le mouvement créé, ou
+    ``None`` si ``produit_id`` est vide.
+    """
+    from django.db import transaction
+    from .models import MouvementStock, Produit
+
+    if not produit_id or not quantite:
+        return None
+    with transaction.atomic():
+        try:
+            produit = Produit.objects.select_for_update().get(
+                id=produit_id, company=company)
+        except Produit.DoesNotExist:
+            return None
+        avant = produit.quantite_stock
+        apres = avant - quantite
+        if bloquer_si_insuffisant and apres < 0:
+            raise ValueError(
+                'Stock insuffisant pour cette dotation EPI '
+                f'({avant} disponible, {quantite} demandé).')
+        mouvement = MouvementStock.objects.create(
+            company=company, produit=produit,
+            type_mouvement=MouvementStock.TypeMouvement.SORTIE,
+            quantite=quantite, quantite_avant=avant, quantite_apres=apres,
+            reference=reference, note='Dotation EPI', created_by=user)
+        produit.quantite_stock = apres
+        produit.save(update_fields=['quantite_stock'])
+    return mouvement
+
+
+def reintegrer_stock_restitution_epi(*, company, produit_id, quantite,
+                                     reference, user):
+    """YHIRE13 — réintègre le stock à la restitution d'un EPI lié.
+
+    Mouvement typé ENTREE symétrique à ``decrementer_stock_dotation_epi``.
+    Renvoie ``None`` si ``produit_id`` est vide.
+    """
+    from django.db import transaction
+    from .models import MouvementStock, Produit
+
+    if not produit_id or not quantite:
+        return None
+    with transaction.atomic():
+        try:
+            produit = Produit.objects.select_for_update().get(
+                id=produit_id, company=company)
+        except Produit.DoesNotExist:
+            return None
+        avant = produit.quantite_stock
+        apres = avant + quantite
+        mouvement = MouvementStock.objects.create(
+            company=company, produit=produit,
+            type_mouvement=MouvementStock.TypeMouvement.ENTREE,
+            quantite=quantite, quantite_avant=avant, quantite_apres=apres,
+            reference=reference, note='Restitution EPI', created_by=user)
+        produit.quantite_stock = apres
+        produit.save(update_fields=['quantite_stock'])
+    return mouvement
+
+
 def sortie_exists_for_reference(company, reference):
     """True si un mouvement SORTIE référence déjà ``reference`` pour la société.
 

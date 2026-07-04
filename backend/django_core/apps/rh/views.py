@@ -9,7 +9,7 @@ from datetime import timedelta
 
 from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
-from rest_framework import filters, status, viewsets
+from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny
@@ -2326,8 +2326,36 @@ class DotationEpiViewSet(_RhBaseViewSet):
         return qs
 
     def perform_create(self, serializer):
-        """Company posée côté serveur ; employe/epi validés via le sérialiseur."""
-        serializer.save(company=self.request.user.company)
+        """Company posée côté serveur ; employe/epi validés via le sérialiseur.
+
+        YHIRE13 — passe par ``services.creer_dotation_epi`` : si l'EPI est lié
+        à un produit de stock, décrémente le stock (warn par défaut, jamais un
+        blocage silencieux) ; un EPI non lié = comportement inchangé.
+        """
+        data = serializer.validated_data
+        try:
+            dotation = services.creer_dotation_epi(
+                company=self.request.user.company,
+                epi=data['epi'], employe=data['employe'],
+                quantite=data.get('quantite', 1),
+                user=self.request.user,
+                **{k: v for k, v in data.items()
+                   if k not in ('epi', 'employe', 'quantite', 'company')})
+        except ValueError as exc:
+            raise serializers.ValidationError({'detail': str(exc)})
+        serializer.instance = dotation
+
+    @action(detail=True, methods=['post'], url_path='restituer')
+    def restituer(self, request, pk=None):
+        """YHIRE13 — restitue la dotation : réintègre le stock si l'EPI est
+        lié à un produit, marque ``restituee``. Déjà restituée → 400."""
+        dotation = self.get_object()
+        try:
+            services.restituer_dotation_epi(dotation, user=request.user)
+        except services.RestitutionEpiError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(dotation).data)
 
     @action(detail=False, methods=['get'], url_path='a-renouveler')
     def a_renouveler(self, request):

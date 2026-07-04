@@ -441,6 +441,60 @@ def emarger_dotation(dotation, *, signataire_nom, role_signataire=None,
     return {'emargement': emargement, 'deja_accusee': deja_accusee}
 
 
+def creer_dotation_epi(*, company, epi, employe, quantite, user=None,
+                       bloquer_si_insuffisant=False, **extra_fields):
+    """YHIRE13 — crée une ``DotationEpi`` et décrémente le stock si ``epi``
+    est lié à un produit (``EpiCatalogue.produit_id``).
+
+    Catalogue non lié (``produit_id`` vide) = comportement STRICTEMENT
+    inchangé (aucun effet stock). Le mouvement de stock (typé SORTIE, motif
+    dotation) est créé via ``apps.stock.services`` — jamais d'import direct
+    de ``apps.stock.models``. Lève ``ValueError`` si le stock est insuffisant
+    ET que ``bloquer_si_insuffisant`` est vrai (sinon la dotation se fait
+    quand même, warn par défaut).
+    """
+    from .models import DotationEpi
+
+    dotation = DotationEpi.objects.create(
+        company=company, epi=epi, employe=employe, quantite=quantite,
+        **extra_fields)
+
+    if epi.produit_id:
+        from apps.stock import services as stock_services
+        stock_services.decrementer_stock_dotation_epi(
+            company=company, produit_id=epi.produit_id, quantite=quantite,
+            reference=f'DotationEPI#{dotation.id}', user=user,
+            bloquer_si_insuffisant=bloquer_si_insuffisant)
+
+    return dotation
+
+
+class RestitutionEpiError(Exception):
+    """Erreur métier lors de la restitution d'une dotation EPI (YHIRE13)."""
+
+
+def restituer_dotation_epi(dotation, *, user=None):
+    """YHIRE13 — restitue une ``DotationEpi`` : réintègre le stock si l'EPI
+    est lié à un produit, marque ``restituee``. Une dotation déjà restituée
+    lève ``RestitutionEpiError`` (jamais restituée deux fois — pas de double
+    réintégration de stock)."""
+    if dotation.restituee:
+        raise RestitutionEpiError('Cette dotation a déjà été restituée.')
+
+    if dotation.epi.produit_id:
+        from apps.stock import services as stock_services
+        stock_services.reintegrer_stock_restitution_epi(
+            company=dotation.company, produit_id=dotation.epi.produit_id,
+            quantite=dotation.quantite,
+            reference=f'RestitutionEPI#{dotation.id}', user=user)
+
+    dotation.restituee = True
+    dotation.date_restitution = timezone.now()
+    dotation.save(update_fields=[
+        'restituee', 'date_restitution', 'date_modification'])
+    return dotation
+
+
 def creer_accident_travail(serializer, company):
     """Crée un AccidentTravail (FG181) avec une référence race-safe.
 

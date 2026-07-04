@@ -2028,6 +2028,14 @@ class EpiCatalogue(models.Model):
     # ``date_dotation + intervalle_controle_mois``.
     intervalle_controle_mois = models.PositiveIntegerField(
         null=True, blank=True, verbose_name='Intervalle de contrôle (mois)')
+    # YHIRE13 — lien OPTIONNEL vers un produit du stock (référence STRING vers
+    # ``stock.Produit``, jamais de FK cross-app : la frontière passe par
+    # ``apps.stock.services``). NULL = comportement historique inchangé (aucun
+    # effet stock). Quand renseigné, chaque ``DotationEpi`` décrémente ce
+    # produit du stock à hauteur de sa ``quantite``.
+    produit_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Produit stock lié (référence)')
     actif = models.BooleanField(default=True, verbose_name='Actif')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
@@ -2118,6 +2126,14 @@ class DotationEpi(models.Model):
     date_accuse = models.DateTimeField(
         null=True, blank=True,
         verbose_name="Date de l'accusé de remise")
+    # YHIRE13 — restitution (sortie EPI récupéré) : quand l'EPI est lié à un
+    # produit de stock, la restitution réintègre le stock. NULL/False par
+    # défaut = comportement historique inchangé. Une dotation ne peut être
+    # restituée qu'une fois (garde côté service).
+    restituee = models.BooleanField(
+        default=False, verbose_name='Restituée')
+    date_restitution = models.DateTimeField(
+        null=True, blank=True, verbose_name='Date de restitution')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
     date_modification = models.DateTimeField(
