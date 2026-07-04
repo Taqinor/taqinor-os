@@ -186,6 +186,20 @@ def ensure_emplacements(company):
     return qs.filter(is_principal=True).first()
 
 
+def get_or_create_emplacement_soustraitant(company, sous_traitant_nom):
+    """XMFG16 — emplacement dédié « chez {sous-traitant} » (créé à la volée,
+    même type d'emplacement que les autres — pas de type dédié). Idempotent :
+    ``get_or_create`` par (company, nom). Sert à ventiler les composants
+    confiés à un atelier de façon externe, hors dépôt principal."""
+    from .models import EmplacementStock
+    ensure_emplacements(company)
+    nom = f'Chez {sous_traitant_nom}'
+    emplacement, _ = EmplacementStock.objects.get_or_create(
+        company=company, nom=nom, defaults={
+            'is_principal': False, 'ordre': 900})
+    return emplacement
+
+
 def stock_breakdown(produit):
     """Ventilation du stock d'un produit par emplacement (non archivés).
 

@@ -2180,6 +2180,8 @@ class OrdreAssemblageSerializer(serializers.ModelSerializer):
             'date_prevue', 'responsable', 'responsable_nom',
             'motif_annulation', 'lignes', 'cout_prevu',
             'temps_prevu_min', 'temps_reel_min',
+            # XMFG16 — assemblage sous-traité (façon).
+            'sous_traitant', 'ordre_sous_traitance',
             'created_by', 'date_creation', 'date_modification',
         ]
         read_only_fields = [
