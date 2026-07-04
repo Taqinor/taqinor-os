@@ -1516,12 +1516,12 @@ class RFQSerializer(serializers.ModelSerializer):
         model = RFQ
         fields = [
             'id', 'reference', 'objet', 'demande', 'date_limite_reponse',
-            'statut', 'statut_display', 'note', 'offres', 'consultations',
-            'comparatif',
+            'statut', 'statut_display', 'bon_commande', 'note', 'offres',
+            'consultations', 'comparatif',
             'created_by', 'date_creation', 'date_modification',
         ]
         read_only_fields = [
-            'reference', 'statut', 'created_by',
+            'reference', 'statut', 'bon_commande', 'created_by',
             'date_creation', 'date_modification',
         ]
 
