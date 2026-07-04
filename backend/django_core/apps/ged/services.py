@@ -2795,6 +2795,141 @@ def notifier_prochains_signataires(demande):
     return notifies
 
 
+# ── ZGED2 — Authentification extra du signataire (SMS/OTP email, key-gated) ─
+
+OTP_EXPIRATION_MINUTES = 10
+OTP_MAX_ESSAIS = 3
+
+
+def _generer_code_otp():
+    """ZGED2 — Génère un code à 6 chiffres cryptographiquement fort."""
+    import secrets as _secrets
+    return f'{_secrets.randbelow(1_000_000):06d}'
+
+
+def _hash_otp(code):
+    return hashlib.sha256(code.encode('utf-8')).hexdigest()
+
+
+def envoyer_code_otp_signataire(signataire, *, telephone_override='',
+                                email_override=''):
+    """ZGED2 — Envoie (ou dégrade proprement) le code d'authentification
+    extra d'UN destinataire, selon son `auth_extra_effective`.
+
+    Sans authentification extra requise (`aucune`) : no-op, renvoie
+    `{'envoye': False, 'mode': 'aucune'}` — la signature se fait directement
+    (comportement XGED1 inchangé).
+
+    Mode `sms` : si la passerelle SMS marocaine (`core.sms`, FG371,
+    key-gated) est configurée pour la société, envoie un code à 6 chiffres au
+    téléphone du signataire ; SANS passerelle configurée, dégrade en « aucune »
+    avec un message clair (no-op, aucun appel réseau, aucune dépendance
+    nouvelle) — la signature reste possible sans OTP, et le journal le note.
+
+    Mode `email_otp` : réutilise le backend email existant (console en local,
+    même mécanisme que les relances XGED2) — toujours « envoyé » car aucune
+    passerelle externe requise.
+
+    Génération/validation horodatées ; le code n'est JAMAIS stocké en clair
+    (seul `otp_code_hash`, SHA-256). Renvoie un dict `{'envoye', 'mode',
+    'detail'}` — jamais d'exception (toujours un résultat exploitable par la
+    vue publique)."""
+    import datetime
+
+    from django.utils import timezone
+
+    mode = signataire.auth_extra_effective
+    if mode == 'aucune':
+        return {'envoye': False, 'mode': 'aucune',
+                'detail': "Aucune authentification extra requise."}
+
+    if mode == 'sms':
+        from core.sms import send_sms
+        company = signataire.demande.company
+        telephone = telephone_override or signataire.telephone
+        if not telephone:
+            return {'envoye': False, 'mode': 'aucune',
+                    'detail': "Aucun téléphone renseigné : authentification "
+                              "SMS dégradée (signature sans OTP)."}
+        code = _generer_code_otp()
+        resultat = send_sms(
+            company, telephone,
+            f'TAQINOR — votre code de signature : {code}')
+        if not resultat.sent:
+            # Passerelle absente/non configurée → dégrade proprement en
+            # « aucune » (jamais bloquant, jamais un faux OTP requis).
+            return {'envoye': False, 'mode': 'aucune',
+                    'detail': f'Passerelle SMS indisponible ({resultat.detail}) '
+                              ': authentification dégradée, signature sans OTP.'}
+        signataire.otp_code_hash = _hash_otp(code)
+        signataire.otp_expires_at = (
+            timezone.now() + datetime.timedelta(minutes=OTP_EXPIRATION_MINUTES))
+        signataire.otp_essais = 0
+        signataire.otp_valide = False
+        signataire.save(update_fields=[
+            'otp_code_hash', 'otp_expires_at', 'otp_essais', 'otp_valide',
+            'updated_at'])
+        return {'envoye': True, 'mode': 'sms', 'detail': 'Code SMS envoyé.'}
+
+    if mode == 'email_otp':
+        from django.conf import settings
+        from django.core.mail import send_mail
+        email = email_override or signataire.email
+        if not email:
+            return {'envoye': False, 'mode': 'aucune',
+                    'detail': "Aucun email renseigné : authentification "
+                              "dégradée, signature sans OTP."}
+        code = _generer_code_otp()
+        from_email = getattr(
+            settings, 'DEFAULT_FROM_EMAIL', 'no-reply@taqinor.ma')
+        try:
+            send_mail(
+                'TAQINOR — code de signature', f'Votre code : {code}',
+                from_email, [email], fail_silently=False)
+        except Exception as exc:  # noqa: BLE001 — dégrade, jamais bloquant.
+            return {'envoye': False, 'mode': 'aucune',
+                    'detail': f"Envoi email échoué ({exc}) : authentification "
+                              "dégradée, signature sans OTP."}
+        signataire.otp_code_hash = _hash_otp(code)
+        signataire.otp_expires_at = (
+            timezone.now() + datetime.timedelta(minutes=OTP_EXPIRATION_MINUTES))
+        signataire.otp_essais = 0
+        signataire.otp_valide = False
+        signataire.save(update_fields=[
+            'otp_code_hash', 'otp_expires_at', 'otp_essais', 'otp_valide',
+            'updated_at'])
+        return {'envoye': True, 'mode': 'email_otp', 'detail': 'Code email envoyé.'}
+
+    return {'envoye': False, 'mode': 'aucune',
+            'detail': f'Mode inconnu : {mode!r} — dégradé.'}
+
+
+def valider_code_otp_signataire(signataire, code):
+    """ZGED2 — Valide le code saisi par le signataire (3 essais max, expire
+    en `OTP_EXPIRATION_MINUTES`).
+
+    Lève `ValueError` (→ 400 explicite côté vue, jamais silencieux) si :
+    aucun code n'a été envoyé, le code a expiré, ou les essais sont épuisés.
+    Un mauvais code incrémente `otp_essais` et lève `ValueError` (tracé).
+    Renvoie `signataire` avec `otp_valide=True` en cas de succès."""
+    from django.utils import timezone
+
+    if not signataire.otp_code_hash or signataire.otp_expires_at is None:
+        raise ValueError("Aucun code d'authentification n'a été envoyé.")
+    if signataire.otp_expires_at <= timezone.now():
+        raise ValueError("Le code d'authentification a expiré.")
+    if signataire.otp_essais >= OTP_MAX_ESSAIS:
+        raise ValueError("Nombre maximal d'essais atteint.")
+    if _hash_otp((code or '').strip()) != signataire.otp_code_hash:
+        signataire.otp_essais += 1
+        signataire.save(update_fields=['otp_essais', 'updated_at'])
+        raise ValueError("Code d'authentification incorrect.")
+    signataire.otp_valide = True
+    signataire.otp_valide_le = timezone.now()
+    signataire.save(update_fields=['otp_valide', 'otp_valide_le', 'updated_at'])
+    return signataire
+
+
 def signer_signataire(signataire, *, consentement, signature_texte='',
                       signature_tracee='', adresse_ip=None, user_agent=''):
     """XGED2 — Signe le rang d'UN signataire et fait progresser le circuit
@@ -2805,10 +2940,18 @@ def signer_signataire(signataire, *, consentement, signature_texte='',
     au signataire individuel plutôt qu'à la demande globale). N'affecte QUE ce
     `SignataireDemande` ; le statut GLOBAL de la demande n'est marqué `signe`
     que lorsque TOUS les `signataire` requis ont signé (`_maj_statut_global`).
-    """
+
+    ZGED2 — si une authentification extra est requise pour ce destinataire
+    (`otp_requis_et_non_valide`), la signature est REFUSÉE (`ValueError`,
+    tracé) tant que le bon code n'a pas été validé au préalable
+    (`valider_code_otp_signataire`)."""
     from django.utils import timezone
     from .models import SIGNATAIRE_SIGNE
 
+    if signataire.otp_requis_et_non_valide:
+        raise ValueError(
+            "Authentification supplémentaire requise avant de signer : "
+            "saisissez le code reçu.")
     if not consentement:
         raise ValueError(
             "Le consentement explicite à contracter électroniquement est requis.")

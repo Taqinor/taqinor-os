@@ -1843,6 +1843,29 @@ class SignataireDemande(models.Model):
     date_action = models.DateTimeField(
         null=True, blank=True, verbose_name='signé/refusé le')
     motif_refus = models.TextField(blank=True, default='', verbose_name='motif de refus')
+    # ZGED2 — Authentification extra AVANT signature (SMS/OTP email, key-gated).
+    #
+    # `auth_extra` : mode effectif pour CE destinataire. Vide (défaut) = hérite
+    # du `role_signataire.auth_extra` (ZGED1) s'il y en a un, sinon « aucune ».
+    # Le code/hash/expiration/essais sont posés CÔTÉ SERVEUR uniquement — jamais
+    # lus d'un corps de requête. `otp_code_hash` : SHA-256 du code à 6 chiffres
+    # (jamais le code en clair en base). `otp_valide` : True une fois le bon
+    # code saisi (débloque la signature). Tout est journalisé dans les preuves
+    # (pattern QJ10) via `DocumentActivity`/preuves existantes.
+    auth_extra = models.CharField(
+        max_length=10, choices=ROLE_AUTH_EXTRA_CHOICES,
+        blank=True, default='', verbose_name='authentification extra (effective)')
+    otp_code_hash = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='hash du code OTP (SHA-256)')
+    otp_expires_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='code OTP expire le')
+    otp_essais = models.PositiveIntegerField(
+        default=0, verbose_name="essais de code OTP")
+    otp_valide = models.BooleanField(
+        default=False, verbose_name='authentification extra validée')
+    otp_valide_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='authentification extra validée le')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -1865,6 +1888,27 @@ class SignataireDemande(models.Model):
         notifié et n'a pas encore agi)."""
         return self.statut in (SIGNATAIRE_EN_ATTENTE, SIGNATAIRE_NOTIFIE) \
             and self.role == ROLE_SIGNATAIRE
+
+    @property
+    def auth_extra_effective(self):
+        """ZGED2 — Mode d'authentification extra EFFECTIF de ce destinataire.
+
+        `self.auth_extra` (posé explicitement sur ce destinataire) prime ;
+        sinon hérite du `role_signataire.auth_extra` (ZGED1) s'il y en a un ;
+        sinon « aucune » (comportement XGED1 inchangé — simple consentement +
+        signature)."""
+        if self.auth_extra:
+            return self.auth_extra
+        if self.role_signataire_id:
+            return self.role_signataire.auth_extra
+        return ROLE_AUTH_EXTRA_AUCUNE
+
+    @property
+    def otp_requis_et_non_valide(self):
+        """ZGED2 — True si une authentification extra est requise pour CE
+        destinataire et n'a pas encore été validée (bloque la signature)."""
+        return self.auth_extra_effective != ROLE_AUTH_EXTRA_AUCUNE \
+            and not self.otp_valide
 
     def __str__(self):
         return f'{self.nom} (#{self.ordre}) → {self.demande_id} ({self.statut})'

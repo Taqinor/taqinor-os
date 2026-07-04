@@ -3443,7 +3443,11 @@ class PublicSignataireRateThrottle(PublicSignatureRateThrottle):
 
 def _signataire_publique_payload(signataire):
     """XGED2 — Représentation JSON publique d'un destinataire (jamais de
-    données d'une autre société ; ne révèle jamais les AUTRES destinataires)."""
+    données d'une autre société ; ne révèle jamais les AUTRES destinataires).
+
+    ZGED2 — expose `auth_extra`/`otp_requis` (jamais le code ni son hash) pour
+    que l'écran public sache s'il doit demander un code avant de débloquer la
+    signature."""
     demande = signataire.demande
     return {
         'document_nom': demande.document.nom,
@@ -3453,6 +3457,8 @@ def _signataire_publique_payload(signataire):
         'ordre': signataire.ordre,
         'statut': signataire.statut,
         'demande_statut': demande.statut,
+        'auth_extra': signataire.auth_extra_effective,
+        'otp_requis': signataire.otp_requis_et_non_valide,
     }
 
 
@@ -3515,6 +3521,23 @@ def public_signataire(request, token):
             Response(_signataire_publique_payload(signataire),
                      status=status.HTTP_200_OK))
 
+    if action_demandee == 'envoyer-code':
+        # ZGED2 — envoie (ou dégrade proprement) le code d'authentification
+        # extra de CE destinataire avant qu'il ne débloque la signature.
+        resultat = services.envoyer_code_otp_signataire(signataire)
+        return _ged_noindex(Response(resultat, status=status.HTTP_200_OK))
+
+    if action_demandee == 'valider-code':
+        try:
+            signataire = services.valider_code_otp_signataire(
+                signataire, request.data.get('code'))
+        except ValueError as exc:
+            return _ged_noindex(Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST))
+        return _ged_noindex(
+            Response(_signataire_publique_payload(signataire),
+                     status=status.HTTP_200_OK))
+
     if action_demandee == 'signer':
         try:
             signataire = services.signer_signataire(
@@ -3532,5 +3555,6 @@ def public_signataire(request, token):
                      status=status.HTTP_200_OK))
 
     return _ged_noindex(Response(
-        {'detail': "Action inconnue : 'signer' ou 'refuser' attendu."},
+        {'detail': "Action inconnue : 'signer', 'refuser', 'envoyer-code' ou "
+                   "'valider-code' attendu."},
         status=status.HTTP_400_BAD_REQUEST))
