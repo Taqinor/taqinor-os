@@ -3087,3 +3087,65 @@ class LotEnvoi(models.Model):
 
     def __str__(self):
         return f'{self.libelle} ({self.nb_envoyes}/{self.total})'
+
+
+# ── ZGED6 — Centralisation des fichiers par module ───────────────────────────
+
+class RoutageDocumentaire(models.Model):
+    """ZGED6 — Réglage de centralisation des fichiers d'un autre module vers
+    un dossier GED cible, avec tags par défaut.
+
+    Odoo Documents « File centralization » auto-route les fichiers d'HR/Paie/
+    Compta/Sign/Projet vers un dossier configuré. Ici un `source` (code de
+    module libre, ex. ``paie_bulletin``/``rh_document``/``sav_piece_jointe``/
+    ``ventes_facture``) résout un `dossier_cible` — chemin en SEGMENTS séparés
+    par ``/``, chaque segment pouvant contenir des jetons ``{{ champ }}``
+    résolus depuis le contexte fourni par l'appelant (ex.
+    ``Paie/{{ annee }}`` → ``Paie/2026``) — créé/récupéré sous `cabinet_cible`
+    (get_or_create par segment, jamais de doublon).
+
+    Les apps émettrices (paie, rh, sav, ventes…) n'appellent JAMAIS ce module
+    directement : elles émettent un événement métier via `core/events.py`
+    (« document produit ») et `ged` s'y abonne dans son propre `apps.py
+    ready()` — jamais d'import inverse depuis `ged` vers l'app émettrice, et
+    jamais d'import de l'app émettrice PAR `ged` non plus (le contexte de
+    résolution des jetons est passé en argument par l'émetteur).
+
+    Sans réglage pour une `source` donnée : no-op strict (aucune
+    centralisation, comportement actuel inchangé) — `services.
+    router_document_module` renvoie `None` silencieusement.
+
+    Company posée côté serveur."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_routages_documentaires')
+    source = models.CharField(
+        max_length=50, verbose_name='source (code de module)')
+    cabinet_cible = models.ForeignKey(
+        Cabinet, on_delete=models.CASCADE, related_name='routages_documentaires')
+    dossier_cible = models.CharField(
+        max_length=500, verbose_name='dossier cible (segments {{ jeton }})')
+    tags_defaut = models.ManyToManyField(
+        DocumentTag, blank=True, related_name='routages_documentaires')
+    actif = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_routages_documentaires_crees')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['source', 'id']
+        verbose_name = 'Routage documentaire'
+        verbose_name_plural = 'Routages documentaires'
+        indexes = [
+            models.Index(fields=['company', 'source'],
+                         name='ged_routage_co_source_idx'),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'source'], name='ged_routage_co_source_unique'),
+        ]
+
+    def __str__(self):
+        return f'{self.source} → {self.dossier_cible}'

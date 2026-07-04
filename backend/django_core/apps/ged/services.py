@@ -12,7 +12,7 @@ from django.contrib.postgres.search import SearchVector
 from django.db import models, transaction
 from django.db.models import Value
 
-from .models import Cabinet, Document, DocumentVersion, Folder
+from .models import Cabinet, Document, DocumentVersion, Folder, RoutageDocumentaire
 
 
 def update_search_vector(document):
@@ -5243,3 +5243,93 @@ def sauvegarder_depuis_editeur_office(document, *, contenu_bytes, user,
         uploaded_by=user)
     update_search_vector(document)
     return version
+
+
+# ── ZGED6 — Centralisation des fichiers par module ───────────────────────────
+
+_JETON_RE = re.compile(r'\{\{\s*(\w+)\s*\}\}')
+
+
+def _resoudre_jetons(texte, contexte):
+    """ZGED6 — Remplace les jetons ``{{ champ }}`` d'un segment de chemin par
+    les valeurs du contexte fourni. Un jeton absent du contexte est rendu vide
+    (jamais une KeyError) — comportement standard, aligné sur ModeleDocument
+    (GED27) qui rend aussi les jetons inconnus vides."""
+    def _sub(match):
+        return str(contexte.get(match.group(1), ''))
+    return _JETON_RE.sub(_sub, texte)
+
+
+def _resoudre_dossier_cible(routage, contexte):
+    """ZGED6 — Résout/crée (idempotent, get_or_create par segment) le dossier
+    cible d'un `RoutageDocumentaire`, à partir de son `dossier_cible`
+    (segments séparés par '/', jetons résolus). Renvoie le `Folder` final."""
+    segments = [
+        _resoudre_jetons(seg.strip(), contexte)
+        for seg in routage.dossier_cible.split('/') if seg.strip()
+    ]
+    parent = None
+    folder = None
+    for segment in segments:
+        folder, _created = Folder.objects.get_or_create(
+            company=routage.company, cabinet=routage.cabinet_cible,
+            parent=parent, nom=segment)
+        parent = folder
+    return folder
+
+
+def router_document_module(source, *, company, file, filename='',
+                           reference='', contexte=None, uploaded_by=None):
+    """ZGED6 — Centralise un fichier produit par un AUTRE module (paie/rh/sav/
+    ventes…) vers le dossier GED configuré pour cette `source` (réglage
+    `RoutageDocumentaire`), avec ses tags par défaut.
+
+    Sans réglage ACTIF pour cette `source`+société : no-op strict, renvoie
+    `None` (comportement actuel inchangé — c'est la voie normale tant qu'un
+    admin n'a rien configuré). IDEMPOTENT par `source`+`reference` : si un
+    document du dossier résolu porte déjà cette référence (posée dans
+    `custom_data['routage_reference']`), le document existant est renvoyé sans
+    créer de doublon ni ajouter de version.
+
+    Appelé UNIQUEMENT depuis `apps/ged/receivers.py` (abonné à l'événement
+    `core.events.document_produit`) — jamais appelé directement par l'app
+    émettrice, qui ne doit jamais importer `apps.ged`.
+    """
+    routage = RoutageDocumentaire.objects.filter(
+        company=company, source=source, actif=True).first()
+    if routage is None:
+        return None
+
+    contexte = contexte or {}
+    folder = _resoudre_dossier_cible(routage, contexte)
+
+    if reference:
+        existant = Document.objects.filter(
+            company=company, folder=folder,
+            custom_data__routage_reference=reference,
+        ).first()
+        if existant is not None:
+            return existant
+
+    from apps.records.storage import store_attachment
+
+    meta, err = store_attachment(file)
+    if err:
+        raise ValueError(err)
+
+    document = Document.objects.create(
+        company=company, folder=folder,
+        nom=filename or meta.get('filename', ''),
+        custom_data={'routage_reference': reference} if reference else {},
+        created_by=uploaded_by,
+    )
+    add_version(
+        document, file_key=meta['file_key'], company=company,
+        filename=meta.get('filename', ''), size=meta.get('size', 0),
+        mime=meta.get('mime', ''), uploaded_by=uploaded_by)
+    update_search_vector(document)
+
+    for tag in routage.tags_defaut.all():
+        assign_tag(document, tag, created_by=uploaded_by)
+
+    return document

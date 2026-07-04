@@ -13,8 +13,8 @@ from .views import (
     PlanificationDocumentViewSet, PolitiqueRetentionViewSet,
     QuotaStockageViewSet, RegleAclMetadonneeViewSet,
     RegleApprobationGedViewSet, RegleDossierViewSet, RoleSignataireViewSet,
-    SignataireDemandeViewSet, TypeChampSignatureViewSet,
-    ValidationOcrDocumentViewSet,
+    RoutageDocumentaireViewSet, SignataireDemandeViewSet,
+    TypeChampSignatureViewSet, ValidationOcrDocumentViewSet,
     analytique_ged, public_depot, public_partage, public_signataire,
     public_signature,
 )
@@ -39,6 +39,7 @@ router.register(r'signataires-demande', SignataireDemandeViewSet)
 router.register(r'roles-signataire', RoleSignataireViewSet)
 router.register(r'champs-signature', ChampSignatureViewSet)
 router.register(r'types-champ-signature', TypeChampSignatureViewSet)
+router.register(r'routages-documentaires', RoutageDocumentaireViewSet)
 router.register(r'journal-acces', JournalAccesViewSet)
 router.register(r'quotas-stockage', QuotaStockageViewSet)
 router.register(r'depots-publics', DepotPublicViewSet)

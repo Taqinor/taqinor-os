@@ -38,8 +38,8 @@ from .models import (
     Folder, JournalAcces, LegalHold, LegalHoldError, LotEnvoi, ModeleDocument,
     PartageGed, PlanificationDocument, PolitiqueRetention,
     QuotaDepasseError, QuotaStockage, RegleAclMetadonnee,
-    RegleApprobationGed, RegleDossier, RoleSignataire, SignataireDemande,
-    TypeChampSignature, ValidationOcrDocument,
+    RegleApprobationGed, RegleDossier, RoleSignataire, RoutageDocumentaire,
+    SignataireDemande, TypeChampSignature, ValidationOcrDocument,
 )
 from .serializers import (
     AnnotationDocumentSerializer, ArchivageLegalSerializer, CabinetSerializer,
@@ -55,7 +55,7 @@ from .serializers import (
     PolitiqueRetentionSerializer, QuotaStockageSerializer,
     RegleAclMetadonneeSerializer, RegleApprobationGedSerializer,
     RegleDossierSerializer, RoleSignataireSerializer,
-    SignataireDemandeSerializer,
+    RoutageDocumentaireSerializer, SignataireDemandeSerializer,
     TypeChampSignatureSerializer, ValidationOcrDocumentSerializer,
 )
 
@@ -2591,6 +2591,29 @@ class TypeChampSignatureViewSet(TenantMixin, viewsets.ModelViewSet):
         if actif is not None:
             qs = qs.filter(actif=actif.lower() in ('1', 'true', 'yes'))
         return qs
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, created_by=self.request.user)
+
+
+class RoutageDocumentaireViewSet(TenantMixin, viewsets.ModelViewSet):
+    """ZGED6 — Réglages de centralisation des fichiers d'un autre module vers
+    un dossier GED. CRUD scopé société ; `company`/`created_by` posés côté
+    serveur. Lecture : tout rôle authentifié. Écriture : responsable/admin."""
+    queryset = RoutageDocumentaire.objects.select_related(
+        'cabinet_cible', 'created_by').prefetch_related('tags_defaut').all()
+    serializer_class = RoutageDocumentaireSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['source', 'created_at']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        return super().get_queryset().filter(company=self.request.user.company)
 
     def perform_create(self, serializer):
         serializer.save(

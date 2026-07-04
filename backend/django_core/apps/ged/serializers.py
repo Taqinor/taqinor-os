@@ -8,7 +8,8 @@ from .models import (
     ExigenceDossier, Folder, JournalAcces, LegalHold, LotEnvoi, ModeleDocument,
     PartageGed, PlanificationDocument, PolitiqueRetention,
     RegleAclMetadonnee, RegleApprobationGed, RegleDossier, RoleSignataire,
-    QuotaStockage, SignataireDemande, TypeChampSignature, ValidationOcrDocument,
+    RoutageDocumentaire, QuotaStockage, SignataireDemande, TypeChampSignature,
+    ValidationOcrDocument,
 )
 from . import services
 
@@ -732,6 +733,46 @@ class TypeChampSignatureSerializer(serializers.ModelSerializer):
             if qs.exists():
                 raise serializers.ValidationError(
                     "Un type de champ avec ce code existe déjà pour cette société.")
+        return value
+
+
+class RoutageDocumentaireSerializer(serializers.ModelSerializer):
+    """ZGED6 — Réglage de centralisation des fichiers d'un autre module.
+
+    `company`/`created_by` posés côté serveur. `source` unique par société
+    (garde base + message FR clair)."""
+    cabinet_cible_nom = serializers.CharField(
+        source='cabinet_cible.nom', read_only=True)
+
+    class Meta:
+        model = RoutageDocumentaire
+        fields = [
+            'id', 'source', 'cabinet_cible', 'cabinet_cible_nom',
+            'dossier_cible', 'tags_defaut', 'actif',
+            'created_by', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_by', 'created_at', 'updated_at']
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        cabinet = attrs.get(
+            'cabinet_cible', getattr(self.instance, 'cabinet_cible', None))
+        if request is not None and cabinet is not None:
+            if cabinet.company_id != request.user.company_id:
+                raise serializers.ValidationError(
+                    {'cabinet_cible': 'Cabinet inconnu.'})
+        return attrs
+
+    def validate_source(self, value):
+        request = self.context.get('request')
+        if request is not None:
+            company = request.user.company
+            qs = RoutageDocumentaire.objects.filter(company=company, source=value)
+            if self.instance is not None:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    "Un routage existe déjà pour cette source dans cette société.")
         return value
 
 

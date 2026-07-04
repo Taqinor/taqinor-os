@@ -135,6 +135,30 @@ importe ``apps.audit``.
     ``contrats.services.resilier_contrat`` passe lui-même les
     ``LigneEcheance`` futures non facturées à ``annulee`` (pas besoin d'un
     abonné pour ça — même module, pas de cross-app).
+
+``document_produit``
+    Émis par une app métier/satellite quand elle produit un fichier destiné à
+    être centralisé dans la GED (ZGED6 — pattern Odoo « File centralization »).
+    L'émetteur n'importe jamais ``apps.ged`` ; ``ged`` s'abonne dans
+    ``apps/ged/apps.py`` ``ready()`` (``apps/ged/receivers.py``) et route le
+    fichier via ``ged.services.router_document_module`` si un
+    ``RoutageDocumentaire`` existe pour la ``source`` — sinon no-op silencieux
+    (comportement actuel inchangé). Arguments du signal :
+
+    * ``source`` — code de module (ex. ``paie_bulletin``, ``rh_document``,
+      ``sav_piece_jointe``, ``ventes_facture``) — doit correspondre à la
+      ``source`` d'un ``RoutageDocumentaire.company`` ;
+    * ``company`` — la société (posée côté serveur) ;
+    * ``file`` — le fichier (objet file-like, passé à
+      ``records.storage.store_attachment``) ;
+    * ``filename`` — nom de fichier lisible ;
+    * ``reference`` — référence métier stable de l'objet source (ex. numéro de
+      bulletin) — sert de clé d'IDEMPOTENCE (ré-émettre le même
+      ``source``+``reference`` ne dépose pas deux fois le même document) ;
+    * ``contexte`` — dict de valeurs pour résoudre les jetons ``{{ champ }}``
+      du ``dossier_cible`` (ex. ``{"annee": 2026}``) ;
+    * ``uploaded_by`` — utilisateur à l'origine du fichier (peut être
+      ``None``).
 """
 import django.dispatch
 
@@ -192,3 +216,10 @@ contrat_actif = django.dispatch.Signal()
 # (désactive la facturation récurrente + arrête les visites préventives
 # futures du ContratMaintenance lié) — voir docstring du module ci-dessus.
 contrat_resilie = django.dispatch.Signal()
+
+# Émis par une app émettrice quand elle produit un fichier à centraliser dans
+# la GED (ZGED6). Arguments : source, company, file, filename, reference,
+# contexte, uploaded_by. Abonné dans ce repo : ged (apps/ged/receivers.py),
+# no-op silencieux si aucun RoutageDocumentaire pour la source — voir
+# docstring du module ci-dessus.
+document_produit = django.dispatch.Signal()
