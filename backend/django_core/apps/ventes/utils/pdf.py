@@ -387,3 +387,39 @@ def generate_recu_pdf(paiement):
 
     html = _render_html('recu.html', context)
     return _html_to_pdf(html)
+
+
+def generate_bordereau_remise_pdf(remise_id):
+    """XFSM19 — bordereau PDF d'une remise d'encaissement terrain.
+
+    Layout maison (PAS le moteur devis) : identité société, technicien,
+    lignes (paiement/mode/date/facture), montant déclaré vs somme des
+    lignes, écart. Généré à la clôture ; uploadé + persisté sur
+    ``RemiseEncaissement.fichier_pdf`` comme les autres PDF stockés
+    (devis/facture/avoir). Renvoie les octets PDF."""
+    from apps.ventes.models import RemiseEncaissement
+
+    remise = (
+        RemiseEncaissement.objects
+        .select_related('technicien', 'company')
+        .prefetch_related('lignes__paiement__facture')
+        .get(pk=remise_id)
+    )
+
+    context = _company_context(company=remise.company)
+    context['remise'] = remise
+    context['lignes'] = list(remise.lignes.all())
+    context['montant_lignes'] = remise.montant_lignes
+    context['ecart'] = remise.ecart
+
+    html = _render_html('bordereau_remise.html', context)
+    pdf_bytes = _html_to_pdf(html)
+
+    key = f'remises-encaissement/{remise.company_id}/{remise.reference or remise.id}.pdf'
+    _upload_pdf(pdf_bytes, key)
+
+    remise.fichier_pdf = key
+    remise.save(update_fields=['fichier_pdf'])
+
+    logger.info('PDF bordereau de remise généré : %s', key)
+    return pdf_bytes

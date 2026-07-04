@@ -2352,3 +2352,87 @@ from .models_commissioning import (  # noqa: E402,F401
     TestPerformanceReception,   # FG278
     AttestationRE,              # FG287
 )
+
+
+# ── XFSM19 — Rapprochement des encaissements terrain par technicien ─────────
+# FG124 (compta.Caisse/MouvementCaisse) couvre les DÉPENSES de caisse ; rien
+# ne réconcilie les espèces/chèques COLLECTÉS SUR LE TERRAIN par un
+# technicien contre les factures — critique dans le résidentiel marocain
+# cash. Les Paiement lus/rapprochés ici vivent DÉJÀ dans ventes (même app,
+# import direct) : aucune frontière cross-app n'est franchie par ce modèle.
+class RemiseEncaissement(models.Model):
+    """Déclaration + clôture d'une collecte d'encaissements terrain.
+
+    Le technicien déclare sa collecte du jour (des ``Paiement`` déjà
+    enregistrés, mode espèces/chèque) ; le responsable la clôture avec un
+    bordereau PDF. ``montant_declare`` vs la somme des lignes donne l'écart —
+    jamais silencieux (alerté si ≠ 0)."""
+    class Statut(models.TextChoices):
+        OUVERTE = 'ouverte', 'Ouverte'
+        CLOTUREE = 'cloturee', 'Clôturée'
+        VALIDEE = 'validee', 'Validée'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='remises_encaissement')
+    technicien = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+        related_name='remises_encaissement')
+    reference = models.CharField(max_length=50, blank=True, default='')
+    date_collecte = models.DateField()
+    montant_declare = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        help_text=(
+            'Montant total déclaré par le technicien pour cette '
+            'collecte (avant rapprochement des lignes).'))
+    statut = models.CharField(
+        max_length=15, choices=Statut.choices, default=Statut.OUVERTE)
+    note = models.TextField(blank=True, default='')
+    fichier_pdf = models.CharField(max_length=500, blank=True, null=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        related_name='remises_encaissement_creees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    cloture_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='remises_encaissement_cloturees')
+    date_cloture = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Remise d\'encaissement terrain'
+        verbose_name_plural = 'Remises d\'encaissement terrain'
+        ordering = ['-date_collecte', '-id']
+
+    def __str__(self):
+        return f'Remise {self.reference or self.id} — {self.technicien}'
+
+    @property
+    def montant_lignes(self):
+        from decimal import Decimal
+        return sum(
+            (ligne.paiement.montant for ligne in self.lignes.select_related(
+                'paiement').all()), Decimal('0'))
+
+    @property
+    def ecart(self):
+        return self.montant_declare - self.montant_lignes
+
+
+class LigneRemiseEncaissement(models.Model):
+    """Une ligne = un ``Paiement`` (espèces/chèque) rattaché à cette remise.
+
+    Une fois la remise clôturée, ses lignes sont VERROUILLÉES (aucune
+    modification/suppression — appliqué côté service)."""
+    remise = models.ForeignKey(
+        RemiseEncaissement, on_delete=models.CASCADE, related_name='lignes')
+    paiement = models.ForeignKey(
+        Paiement, on_delete=models.PROTECT,
+        related_name='lignes_remise_encaissement')
+
+    class Meta:
+        verbose_name = 'Ligne de remise d\'encaissement'
+        verbose_name_plural = 'Lignes de remise d\'encaissement'
+        unique_together = [('remise', 'paiement')]
+
+    def __str__(self):
+        return f'{self.remise_id} — paiement {self.paiement_id}'

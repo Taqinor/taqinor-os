@@ -2,7 +2,7 @@ from rest_framework import serializers
 from .models import (
     Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
     Avoir, LigneAvoir, DevisActivity, DevisPreset, RoofLayout,
-    FicheTechnique,
+    FicheTechnique, RemiseEncaissement, LigneRemiseEncaissement,
 )
 
 
@@ -694,4 +694,44 @@ class FicheTechniqueSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id', 'produit_nom', 'created_by_nom',
             'created_at', 'updated_at',
+        ]
+
+
+class LigneRemiseEncaissementSerializer(serializers.ModelSerializer):
+    """XFSM19 — une ligne = un Paiement rattaché à la remise. Lecture seule
+    des attributs utiles du paiement (montant/mode/date/facture) pour
+    l'écran du responsable, sans jamais dupliquer le modèle Paiement."""
+    montant = serializers.DecimalField(
+        source='paiement.montant', max_digits=12, decimal_places=2,
+        read_only=True)
+    mode = serializers.CharField(source='paiement.mode', read_only=True)
+    date_paiement = serializers.DateField(
+        source='paiement.date_paiement', read_only=True)
+    facture_reference = serializers.CharField(
+        source='paiement.facture.reference', read_only=True, default=None)
+
+    class Meta:
+        model = LigneRemiseEncaissement
+        fields = ['id', 'paiement', 'montant', 'mode', 'date_paiement',
+                  'facture_reference']
+        read_only_fields = ['id']
+
+
+class RemiseEncaissementSerializer(serializers.ModelSerializer):
+    lignes = LigneRemiseEncaissementSerializer(many=True, read_only=True)
+    technicien_nom = serializers.CharField(
+        source='technicien.username', read_only=True, default=None)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    montant_lignes = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+    ecart = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = RemiseEncaissement
+        fields = '__all__'
+        read_only_fields = [
+            'id', 'reference', 'fichier_pdf', 'created_by', 'date_creation',
+            'company', 'cloture_par', 'date_cloture',
         ]
