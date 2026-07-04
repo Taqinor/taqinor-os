@@ -1033,6 +1033,27 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
             ],
         })
 
+    @action(detail=True, methods=['get'], url_path='rapport-avancement-pdf')
+    def rapport_avancement_pdf(self, request, pk=None):
+        """PDF INTERNE « Point d'avancement projet » (ZPRJ9).
+
+        Rendu via le pipeline PDF legacy (WeasyPrint) — PAS le moteur premium
+        ``/proposal`` réservé aux devis client (règle #4) : ce document est
+        strictement interne (peut exposer budget/coûts) et n'est jamais
+        transmis au client par ce chemin. La société est garantie par
+        ``get_object`` : un projet d'une autre société → 404. Un projet sans
+        jalon/risque/temps produit un PDF dégradé propre (pas de crash).
+        """
+        from django.http import HttpResponse
+
+        from . import reports
+        projet = self.get_object()
+        pdf_bytes = reports.rapport_avancement_pdf(projet)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'inline; filename="avancement-projet-{projet.id}.pdf"')
+        return resp
+
     @action(detail=True, methods=['post'], url_path='cloturer')
     def cloturer(self, request, pk=None):
         """Clôture le projet + enregistre le RETOUR D'EXPÉRIENCE (PROJ38).
