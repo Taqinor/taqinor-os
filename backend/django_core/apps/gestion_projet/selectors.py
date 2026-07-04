@@ -2687,6 +2687,7 @@ def tableau_portefeuille(company, statut=None, seuil_jours=None):
             'derniere_sante': (
                 dernier_point.sante if dernier_point else None),
             'note_satisfaction': note_satisfaction,
+            'politique_facturation': projet.politique_facturation,
         })
 
     note_satisfaction_moyenne = (

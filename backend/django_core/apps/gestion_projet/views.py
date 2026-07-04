@@ -151,6 +151,9 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
         statut = self.request.query_params.get('statut')
         if statut:
             qs = qs.filter(statut=statut)
+        politique = self.request.query_params.get('politique')
+        if politique:
+            qs = qs.filter(politique_facturation=politique)
         return qs
 
     @action(detail=True, methods=['get'])
@@ -768,6 +771,7 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
                 }
                 for g in resultat['groupes']
             ],
+            'avertissement_politique': resultat['avertissement_politique'],
         }, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['get'], url_path='consommation-matiere')
@@ -2854,12 +2858,16 @@ class SituationTravauxViewSet(_GestionProjetBaseViewSet):
         ligne, ou si le client du projet ne peut être résolu.
         """
         situation = self.get_object()
+        avertissement = services._avertissement_politique_facturation(
+            situation.projet, Projet.PolitiqueFacturation.SITUATIONS)
         try:
             services.valider_situation(situation, user=request.user)
         except services.SituationTravauxError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        return Response(SituationTravauxSerializer(situation).data)
+        data = SituationTravauxSerializer(situation).data
+        data['avertissement_politique'] = avertissement
+        return Response(data)
 
 
 class LigneSituationViewSet(_GestionProjetBaseViewSet):

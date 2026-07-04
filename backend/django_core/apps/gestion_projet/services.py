@@ -110,6 +110,27 @@ class FacturationRegieError(Exception):
 
 
 @transaction.atomic
+def _avertissement_politique_facturation(projet, chemin_attendu):
+    """Avertissement NON BLOQUANT (ZPRJ10) sur une incohérence de politique.
+
+    ``chemin_attendu`` est la politique que l'action de facturation appelée
+    représente (``Projet.PolitiqueFacturation.REGIE`` pour le T&M,
+    ``...SITUATIONS`` pour les situations BTP). Si la politique DÉCLARÉE du
+    projet diverge, renvoie un message d'avertissement — jamais une exception
+    ni un blocage : la politique reste purement déclarative (règle #4, couche
+    séparée des statuts devis/BC/facture).
+    """
+    if projet.politique_facturation == chemin_attendu:
+        return None
+    return (
+        f"Politique de facturation déclarée du projet : "
+        f"« {projet.get_politique_facturation_display()} » — cette action "
+        f"facture pourtant en mode « "
+        f"{dict(Projet.PolitiqueFacturation.choices)[chemin_attendu]} ». "
+        f"Vérifiez que c'est intentionnel."
+    )
+
+
 def facturer_temps_projet(projet, *, debut, fin, user):
     """Facture en régie (T&M) les temps APPROUVÉS + facturables d'une période.
 
@@ -200,6 +221,8 @@ def facturer_temps_projet(projet, *, debut, fin, user):
         'montant_ht': montant_ht,
         'nb_lignes': len(lignes),
         'groupes': groupes_tries,
+        'avertissement_politique': _avertissement_politique_facturation(
+            projet, Projet.PolitiqueFacturation.REGIE),
     }
 
 

@@ -43,6 +43,21 @@ class Projet(models.Model):
         TERMINE = 'termine', 'Terminé'
         ANNULE = 'annule', 'Annulé'
 
+    class PolitiqueFacturation(models.TextChoices):
+        """Politique de facturation DÉCLARATIVE d'un projet (ZPRJ10).
+
+        Purement informative : elle n'altère AUCUN statut devis/BC/facture
+        (couche séparée, règle #4 CLAUDE.md). Elle sert seulement à faire
+        ressortir une incohérence (avertissement non bloquant, jamais un
+        blocage dur) quand une action de facturation d'un autre chemin
+        (régie XPRJ3, situations BTP XPRJ4) est appelée sur un projet déclaré
+        sous une autre politique.
+        """
+        FORFAIT = 'forfait', 'Forfait'
+        JALONS = 'jalons', 'Jalons (facturation à l\'avancement)'
+        REGIE = 'regie', 'Régie (temps & matériel)'
+        SITUATIONS = 'situations', 'Situations de travaux (BTP)'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -100,6 +115,15 @@ class Projet(models.Model):
     # Référence LÂCHE vers un ``contrats.Contrat`` (cautions) — jamais de FK dur.
     contrat_id = models.PositiveIntegerField(
         null=True, blank=True, verbose_name='ID du contrat (cautions)')
+    # Politique de facturation DÉCLARATIVE (ZPRJ10) — n'altère aucun statut
+    # devis/BC/facture (couche séparée, règle #4). Sert à détecter une
+    # incohérence (avertissement non bloquant) entre le chemin de
+    # facturation appelé (régie XPRJ3, situations XPRJ4) et la politique
+    # déclarée.
+    politique_facturation = models.CharField(
+        max_length=12, choices=PolitiqueFacturation.choices,
+        default=PolitiqueFacturation.FORFAIT,
+        verbose_name='Politique de facturation')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 

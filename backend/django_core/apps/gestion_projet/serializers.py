@@ -61,6 +61,8 @@ def _meme_societe(serializer, value, label):
 class ProjetSerializer(serializers.ModelSerializer):
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
+    politique_facturation_display = serializers.CharField(
+        source='get_politique_facturation_display', read_only=True)
 
     class Meta:
         model = Projet
@@ -73,6 +75,9 @@ class ProjetSerializer(serializers.ModelSerializer):
             'numero_marche', 'maitre_ouvrage', 'delai_execution_jours',
             'taux_penalite_retard', 'plafond_penalite_pct', 'montant_marche',
             'contrat_id',
+            # Politique de facturation DÉCLARATIVE (ZPRJ10) — purement
+            # informative, n'altère aucun statut devis/BC/facture.
+            'politique_facturation', 'politique_facturation_display',
             'date_creation',
         ]
         # ``statut`` est piloté UNIQUEMENT par les actions de transition
