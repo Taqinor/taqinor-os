@@ -861,6 +861,19 @@ def plan_de_charge(company, debut, fin, heures_par_jour=None,
         else:
             utilisation_pct = None
 
+        # ZPRJ2 — statut de publication des affectations DIRECTES de la
+        # ressource (les affectations d'équipe ne portent pas d'individu à
+        # publier ici — elles restent visibles sur la ligne de l'équipe).
+        affectations_ressource = [
+            {
+                'id': aff.id, 'tache_id': aff.tache_id,
+                'date_debut': aff.date_debut.isoformat(),
+                'date_fin': aff.date_fin.isoformat(),
+                'statut_publication': aff.statut_publication,
+            }
+            for aff in affectations if aff.ressource_id == ressource.id
+        ]
+
         lignes.append({
             'ressource': ressource.id,
             'nom': ressource.nom,
@@ -872,6 +885,7 @@ def plan_de_charge(company, debut, fin, heures_par_jour=None,
             'jours_indispo': jours_indispo,
             'utilisation_pct': utilisation_pct,
             'surcharge': surcharge,
+            'affectations': affectations_ressource,
         })
 
     return {

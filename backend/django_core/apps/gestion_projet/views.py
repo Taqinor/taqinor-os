@@ -1791,6 +1791,33 @@ class AffectationRessourceViewSet(_GestionProjetBaseViewSet):
             qs = qs.filter(equipe_id=equipe)
         return qs
 
+    @action(detail=False, methods=['post'], url_path='publier')
+    def publier(self, request):
+        """Publie un lot d'affectations BROUILLON (ZPRJ2) et notifie chaque
+        ressource concernée UNE FOIS.
+
+        Corps : soit ``ids`` (liste d'identifiants), soit ``ressource`` +
+        ``debut``/``fin`` (``YYYY-MM-DD``, période). IDEMPOTENT : une
+        affectation déjà publiée est ignorée sans erreur (comptée dans
+        ``nb_deja_publiees``). ``company`` est TOUJOURS celle de l'appelant.
+        """
+        ids = request.data.get('ids')
+        ressource_id = request.data.get('ressource')
+        debut = _parse_date_param(request.data.get('debut'))
+        fin = _parse_date_param(request.data.get('fin'))
+
+        if not ids and not (ressource_id and debut and fin):
+            return Response(
+                {'detail': (
+                    "Fournir soit 'ids' (liste), soit 'ressource' + 'debut' "
+                    "+ 'fin'.")},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        resultat = services.publier_affectations(
+            request.user.company, ids=ids, ressource_id=ressource_id,
+            debut=debut, fin=fin, auteur=request.user)
+        return Response(resultat)
+
 
 class IndisponibiliteViewSet(_GestionProjetBaseViewSet):
     """Indisponibilites des ressources de projet (PROJ17).

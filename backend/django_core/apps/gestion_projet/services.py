@@ -11,6 +11,7 @@ from decimal import Decimal
 from django.db import models, transaction
 
 from .models import (
+    AffectationRessource,
     BaselinePlanning,
     BaselineTache,
     DependanceTache,
@@ -1936,3 +1937,94 @@ def materialiser_plan_taches(projet, plan):
         raise PlanTachesIAError(
             "Aucune tâche exploitable dans le plan à matérialiser.")
     return creees
+
+
+# ── Plan de ressources : publication (ZPRJ2) ────────────────────────────────
+@transaction.atomic
+def publier_affectations(company, *, ids=None, ressource_id=None,
+                         debut=None, fin=None, auteur=None):
+    """Publie un lot d'``AffectationRessource`` BROUILLON (ZPRJ2).
+
+    Sélectionne soit par ``ids`` (liste d'identifiants) soit par
+    ``ressource_id`` + ``debut``/``fin`` (période — bornes INCLUSIVES,
+    convention PROJ16/17), scopé ``company``. IDEMPOTENT : une affectation
+    déjà ``publie`` est simplement IGNORÉE (jamais republiée, jamais
+    renotifiée) — un re-run ne fait rien de plus. Pose ``statut_publication``,
+    ``publie_le`` (horodatage serveur) et ``publie_par`` CÔTÉ SERVEUR sur
+    chaque affectation nouvellement publiée, puis notifie CHAQUE ressource
+    concernée UNE FOIS (regroupe par ressource — pas une notification par
+    affectation) via ``apps.notifications.services.notify`` (import
+    fonction-local, cross-app, BEST-EFFORT : un échec de notification
+    n'interrompt jamais la transaction ni les ressources suivantes). Une
+    ressource sans ``user`` lié est publiée normalement mais ignorée
+    proprement côté notification (personne à notifier). Renvoie
+    ``{'nb_publiees': int, 'nb_deja_publiees': int, 'nb_notifies': int}``.
+    """
+    from django.utils import timezone
+
+    qs = AffectationRessource.objects.filter(company=company)
+    if ids:
+        qs = qs.filter(id__in=list(ids))
+    elif ressource_id is not None and debut is not None and fin is not None:
+        qs = qs.filter(
+            ressource_id=ressource_id, date_debut__lte=fin,
+            date_fin__gte=debut)
+    else:
+        return {'nb_publiees': 0, 'nb_deja_publiees': 0, 'nb_notifies': 0}
+
+    affectations = list(qs.select_related('ressource'))
+    nb_deja_publiees = sum(
+        1 for a in affectations
+        if a.statut_publication == AffectationRessource.StatutPublication.PUBLIE)
+    a_publier = [
+        a for a in affectations
+        if a.statut_publication != AffectationRessource.StatutPublication.PUBLIE]
+
+    maintenant = timezone.now()
+    ids_a_publier = [a.id for a in a_publier]
+    if ids_a_publier:
+        AffectationRessource.objects.filter(id__in=ids_a_publier).update(
+            statut_publication=AffectationRessource.StatutPublication.PUBLIE,
+            publie_le=maintenant,
+            publie_par=auteur,
+        )
+
+    # Regroupe par ressource pour UNE notification par ressource (pas une par
+    # affectation), best-effort — un échec ne casse jamais la publication.
+    ressources_a_notifier = {}
+    for a in a_publier:
+        if a.ressource_id is not None:
+            ressources_a_notifier.setdefault(a.ressource_id, a.ressource)
+
+    nb_notifies = 0
+    if ressources_a_notifier:
+        try:
+            from apps.notifications.models import EventType
+            from apps.notifications.services import notify
+        except Exception:  # pragma: no cover - défensif
+            EventType = None
+            notify = None
+
+        for ressource in ressources_a_notifier.values():
+            if notify is None or ressource.user_id is None:
+                continue
+            try:
+                notify(
+                    ressource.user,
+                    EventType.DIGEST,
+                    title='Planning publié',
+                    body='Votre planning a été publié — consultez vos '
+                         'créneaux.',
+                    link=f'gestion_projet:planning_publie:{ressource.id}:'
+                         f'{maintenant.date()}',
+                    company=company,
+                )
+                nb_notifies += 1
+            except Exception:  # pragma: no cover - best-effort
+                continue
+
+    return {
+        'nb_publiees': len(a_publier),
+        'nb_deja_publiees': nb_deja_publiees,
+        'nb_notifies': nb_notifies,
+    }

@@ -534,6 +534,8 @@ class AffectationRessourceSerializer(serializers.ModelSerializer):
         source='ressource.nom', read_only=True, default=None)
     equipe_nom = serializers.CharField(
         source='equipe.nom', read_only=True, default=None)
+    statut_publication_display = serializers.CharField(
+        source='get_statut_publication_display', read_only=True)
 
     class Meta:
         model = AffectationRessource
@@ -544,9 +546,14 @@ class AffectationRessourceSerializer(serializers.ModelSerializer):
             'actif_type', 'actif_id',
             'date_debut', 'date_fin',
             'charge_jours', 'quantite', 'note',
+            # Cycle de publication (ZPRJ2) — jamais posé depuis le corps de
+            # requête : seule l'action ``publier`` le déplace.
+            'statut_publication', 'statut_publication_display',
+            'publie_le', 'publie_par',
             'date_creation',
         ]
-        read_only_fields = ['date_creation']
+        read_only_fields = [
+            'statut_publication', 'publie_le', 'publie_par', 'date_creation']
 
     def validate_tache(self, value):
         return _meme_societe(self, value, 'Tache')

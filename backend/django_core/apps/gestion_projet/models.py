@@ -944,6 +944,27 @@ class AffectationRessource(models.Model):
         verbose_name='Quantité',
     )
     note = models.TextField(blank=True, default='', verbose_name='Note')
+
+    # ── Cycle de publication (ZPRJ2) — enum PROPRE, JAMAIS STAGES.py ─────────
+    class StatutPublication(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        PUBLIE = 'publie', 'Publié'
+
+    statut_publication = models.CharField(
+        max_length=10, choices=StatutPublication.choices,
+        default=StatutPublication.BROUILLON,
+        verbose_name='Statut de publication')
+    # Posés CÔTÉ SERVEUR uniquement par l'action ``affectations/publier/``
+    # (jamais lus du corps de requête).
+    publie_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Publié le')
+    publie_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='+',
+        verbose_name='Publié par',
+    )
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
