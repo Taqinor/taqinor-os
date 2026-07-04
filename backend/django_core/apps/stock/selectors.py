@@ -34,6 +34,20 @@ def lock_produit(pk):
     return Produit.objects.select_for_update().get(pk=pk)
 
 
+def mouvements_par_reference(company, reference):
+    """XMFG15 — mouvements de stock (SORTIE/ENTREE/REBUT…) rattachés à un
+    document source par ``reference`` (ex. la référence d'un ordre
+    d'assemblage), scopés société. Lecture seule, jamais d'instance exposée
+    hors de cette app : les appelants lisent les champs plats via
+    ``.values()`` ou itèrent l'objet localement dans ce module."""
+    from .models import MouvementStock
+    if not reference:
+        return MouvementStock.objects.none()
+    return (MouvementStock.objects
+            .filter(company=company, reference=reference)
+            .select_related('produit'))
+
+
 def get_emplacement_scoped(company, pk):
     """EmplacementStock scopé société par id, ou None. Lecture seule."""
     from .models import EmplacementStock

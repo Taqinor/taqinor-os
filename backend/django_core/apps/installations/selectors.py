@@ -1741,3 +1741,138 @@ def livraisons_client_portail(company, client_id):
                 f'{preuve.id}/' if preuve is not None else None),
         })
     return out
+
+
+# ── XMFG15 — Analyse d'écarts par ordre + tableau de bord atelier ────────────
+# Coût composants PRÉVU (BOM/lignes × cout_achat_courant) vs CONSOMMÉ réel
+# (mouvements XMFG1 SORTIE + rebuts XMFG11 REBUT rattachés à la référence de
+# l'ordre), temps prévu vs réel (XMFG14 `totaux_temps_ordre`). RESPONSABLE/
+# ADMIN uniquement (coûts d'achat) — la permission est vérifiée côté vue.
+
+def analyse_ecarts_ordre(ordre):
+    """XMFG15 — analyse prévu-vs-réel d'un ordre d'assemblage : coût composants
+    (prévu = BOM/lignes valorisées au coût d'achat courant ; réel = mouvements
+    SORTIE + REBUT rattachés à ``ordre.reference``) et temps (XMFG14). Renvoie
+    un dict PLAT :
+      ``cout``: {prevu, reel, ecart, ecart_pct}
+      ``temps``: {prevu, reel, ecart, complet} (minutes — XMFG14, `None` si
+        aucune durée attendue n'est renseignée)
+      ``rebut``: {quantite, cout} (partie du coût réel imputable au rebut)
+    Lecture seule, ne mute rien."""
+    from decimal import Decimal
+    from apps.stock.selectors import mouvements_par_reference
+    from .services import cout_prevu_assemblage, totaux_temps_ordre
+
+    cout_prevu = cout_prevu_assemblage(ordre)
+
+    cout_reel = Decimal('0')
+    cout_rebut = Decimal('0')
+    qte_rebut = 0
+    for mvt in mouvements_par_reference(ordre.company, ordre.reference):
+        prix = getattr(mvt.produit, 'prix_achat', None) or Decimal('0')
+        montant = Decimal(str(mvt.quantite)) * Decimal(str(prix))
+        if mvt.type_mouvement == 'sortie':
+            cout_reel += montant
+        elif mvt.type_mouvement == 'rebut':
+            cout_reel += montant
+            cout_rebut += montant
+            qte_rebut += mvt.quantite
+
+    ecart_cout = cout_reel - cout_prevu
+    ecart_pct = (float(ecart_cout / cout_prevu * 100)
+                 if cout_prevu else (0.0 if cout_reel == 0 else None))
+
+    temps = totaux_temps_ordre(ordre)
+    temps_prevu = temps['prevu']
+    temps_ecart = (
+        temps['reel'] - temps_prevu if temps_prevu is not None else None)
+
+    return {
+        'ordre_id': ordre.id,
+        'reference': ordre.reference,
+        'cout': {
+            'prevu': float(cout_prevu),
+            'reel': float(cout_reel),
+            'ecart': float(ecart_cout),
+            'ecart_pct': ecart_pct,
+        },
+        'temps': {
+            'prevu': temps_prevu,
+            'reel': temps['reel'],
+            'ecart': temps_ecart,
+            'complet': temps['complet'],
+        },
+        'rebut': {
+            'quantite': qte_rebut,
+            'cout': float(cout_rebut),
+        },
+    }
+
+
+def panneau_atelier(company, *, date_debut=None, date_fin=None):
+    """XMFG15 — panneau « Atelier » : ordres en retard (date_prevue dépassée,
+    non terminés/annulés), en cours, terminés sur la période, taux de rebut
+    (quantité rebutée / quantité totale consommée+rebutée sur les ordres
+    terminés de la période), écart moyen (%) de coût sur les ordres terminés
+    de la période. Filtrable par période (``date_creation`` pour les ordres
+    en cours, ``date_terminaison`` pour les terminés). Lecture seule, scopée
+    société."""
+    from datetime import date as _date
+    from .models import OrdreAssemblage
+
+    today = _date.today()
+
+    en_retard = list(OrdreAssemblage.objects.filter(
+        company=company, statut=OrdreAssemblage.Statut.PLANIFIE,
+        date_prevue__lt=today).select_related('kit'))
+    en_cours = list(OrdreAssemblage.objects.filter(
+        company=company, statut=OrdreAssemblage.Statut.EN_COURS)
+        .select_related('kit'))
+
+    termines_qs = OrdreAssemblage.objects.filter(
+        company=company, statut=OrdreAssemblage.Statut.TERMINE)
+    if date_debut is not None:
+        termines_qs = termines_qs.filter(date_terminaison__date__gte=date_debut)
+    if date_fin is not None:
+        termines_qs = termines_qs.filter(date_terminaison__date__lte=date_fin)
+    termines = list(termines_qs.select_related('kit'))
+
+    qte_rebut_totale = 0
+    qte_consomme_totale = 0
+    ecarts_pct = []
+    for ordre in termines:
+        analyse = analyse_ecarts_ordre(ordre)
+        qte_rebut_totale += analyse['rebut']['quantite']
+        cout_prevu = analyse['cout']['prevu']
+        if cout_prevu:
+            qte_consomme_totale += 1  # comptage d'ordres, pas de quantité brute
+        if analyse['cout']['ecart_pct'] is not None:
+            ecarts_pct.append(analyse['cout']['ecart_pct'])
+
+    taux_rebut = (
+        qte_rebut_totale / max(len(termines), 1) if termines else 0.0)
+    ecart_moyen_pct = (
+        sum(ecarts_pct) / len(ecarts_pct) if ecarts_pct else 0.0)
+
+    def _card(ordre):
+        return {
+            'id': ordre.id, 'reference': ordre.reference,
+            'kit_id': ordre.kit_id,
+            'kit_nom': getattr(ordre.kit, 'nom', None),
+            'date_prevue': ordre.date_prevue,
+            'statut': ordre.statut,
+        }
+
+    return {
+        'debut': date_debut, 'fin': date_fin,
+        'en_retard': [_card(o) for o in en_retard],
+        'en_cours': [_card(o) for o in en_cours],
+        'termines': [_card(o) for o in termines],
+        'totaux': {
+            'nb_en_retard': len(en_retard),
+            'nb_en_cours': len(en_cours),
+            'nb_termines': len(termines),
+            'taux_rebut_moyen': round(taux_rebut, 2),
+            'ecart_cout_moyen_pct': round(ecart_moyen_pct, 2),
+        },
+    }

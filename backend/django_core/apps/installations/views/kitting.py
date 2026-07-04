@@ -708,6 +708,28 @@ class OrdreAssemblageViewSet(TenantMixin, viewsets.ModelViewSet):
         html = render_labels_html(items, symbology=symbology)
         return HR(html, content_type='text/html; charset=utf-8')
 
+    @action(detail=True, methods=['get'], url_path='analyse',
+            permission_classes=[IsResponsableOrAdmin])
+    def analyse(self, request, pk=None):
+        """XMFG15 — analyse prévu-vs-réel (coût composants + temps) de cet
+        ordre. Responsable/admin uniquement (coûts d'achat)."""
+        from ..selectors import analyse_ecarts_ordre
+        ordre = self.get_object()
+        return Response(analyse_ecarts_ordre(ordre))
+
+    @action(detail=False, methods=['get'], url_path='atelier',
+            permission_classes=[IsResponsableOrAdmin])
+    def atelier(self, request):
+        """XMFG15 — panneau « Atelier » : ordres en retard/en cours/terminés
+        sur la période, taux de rebut, écart moyen. Filtrable par
+        `date_debut`/`date_fin` (bornes de `date_terminaison`)."""
+        from ..selectors import panneau_atelier
+        company = self.request.user.company
+        params = request.query_params
+        return Response(panneau_atelier(
+            company, date_debut=params.get('date_debut'),
+            date_fin=params.get('date_fin')))
+
 
 class OrdreDemontageLigneViewSet(viewsets.ModelViewSet):
     """XMFG12 — lignes de démontage (quantité récupérée éditable). Pas de
