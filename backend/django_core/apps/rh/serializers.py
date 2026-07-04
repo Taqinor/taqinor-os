@@ -41,6 +41,7 @@ from .models import (
     EntretienSortie,
     GabaritEmailRecrutement,
     GrilleSalariale,
+    LigneParcours,
     NoteEntretien,
     PeriodeFermeture,
     PromesseEmbauche,
@@ -83,6 +84,7 @@ from .models import (
     SoldeConge,
     TentativeQuiz,
     TypeAbsence,
+    TypeLigneParcours,
     TypePrime,
     VisiteMedicale,
 )
@@ -203,6 +205,9 @@ class AnnuaireEmployeSerializer(serializers.ModelSerializer):
     poste_nom = serializers.SerializerMethodField()
     departement_nom = serializers.SerializerMethodField()
     photo_key = serializers.SerializerMethodField()
+    # ZRH15 — timeline de parcours, triée chronologiquement (plus récent
+    # d'abord, cf. ``LigneParcours.Meta.ordering``), champs non sensibles.
+    lignes_parcours = serializers.SerializerMethodField()
 
     class Meta:
         model = DossierEmploye
@@ -210,7 +215,7 @@ class AnnuaireEmployeSerializer(serializers.ModelSerializer):
             'id', 'nom', 'prenom', 'photo_key',
             'poste', 'poste_ref', 'poste_nom',
             'departement', 'departement_nom',
-            'telephone', 'email',
+            'telephone', 'email', 'lignes_parcours',
         ]
 
     def get_poste_nom(self, obj):
@@ -221,6 +226,10 @@ class AnnuaireEmployeSerializer(serializers.ModelSerializer):
 
     def get_photo_key(self, obj):
         return obj.user.avatar_key if obj.user_id else ''
+
+    def get_lignes_parcours(self, obj):
+        return LigneParcoursAnnuaireSerializer(
+            obj.lignes_parcours.all(), many=True).data
 
 
 class HoraireTravailSerializer(serializers.ModelSerializer):
@@ -2806,3 +2815,47 @@ class AttributionBadgeSerializer(serializers.ModelSerializer):
 
     def validate_beneficiaire(self, value):
         return _meme_societe(self, value, 'Bénéficiaire')
+
+
+class TypeLigneParcoursSerializer(serializers.ModelSerializer):
+    """ZRH15 — types de ligne de parcours configurables par société."""
+    class Meta:
+        model = TypeLigneParcours
+        fields = ['id', 'libelle', 'ordre']
+
+
+class LigneParcoursSerializer(serializers.ModelSerializer):
+    """ZRH15 — ligne de la timeline de parcours (fiche employé). ``employe``
+    et ``type`` doivent appartenir à la société."""
+    type_libelle = serializers.CharField(
+        source='type.libelle', read_only=True)
+
+    class Meta:
+        model = LigneParcours
+        fields = [
+            'id', 'employe', 'type', 'type_libelle', 'intitule',
+            'organisme', 'date_debut', 'date_fin', 'description',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def validate_type(self, value):
+        return _meme_societe(self, value, 'Type de ligne de parcours')
+
+
+class LigneParcoursAnnuaireSerializer(serializers.ModelSerializer):
+    """ZRH15 — ligne de parcours EXPOSÉE dans l'annuaire self-service
+    (XRH28) : champs non sensibles uniquement (aucun montant/donnée
+    interne)."""
+    type_libelle = serializers.CharField(
+        source='type.libelle', read_only=True)
+
+    class Meta:
+        model = LigneParcours
+        fields = [
+            'id', 'type', 'type_libelle', 'intitule', 'organisme',
+            'date_debut', 'date_fin', 'description',
+        ]

@@ -59,6 +59,7 @@ from .models import (
     EntretienSortie,
     GabaritEmailRecrutement,
     GrilleSalariale,
+    LigneParcours,
     NoteEntretien,
     PeriodeFermeture,
     PromesseEmbauche,
@@ -96,6 +97,7 @@ from .models import (
     SoldeConge,
     TentativeQuiz,
     TypeAbsence,
+    TypeLigneParcours,
     TypePrime,
     VisiteMedicale,
 )
@@ -135,6 +137,7 @@ from .serializers import (
     EntretienSortieSerializer,
     GabaritEmailRecrutementSerializer,
     GrilleSalarialeSerializer,
+    LigneParcoursSerializer,
     NoteEntretienSerializer,
     PeriodeFermetureSerializer,
     PromesseEmbaucheSerializer,
@@ -177,6 +180,7 @@ from .serializers import (
     SoldeCongeSerializer,
     TentativeQuizSerializer,
     TypeAbsenceSerializer,
+    TypeLigneParcoursSerializer,
     TypePrimeSerializer,
     VisiteMedicaleSerializer,
 )
@@ -1244,6 +1248,41 @@ class DemandeAllocationViewSet(_RhBaseViewSet):
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(demande).data)
+
+
+class TypeLigneParcoursViewSet(_RhBaseViewSet):
+    """Types de ligne de parcours configurables par société (ZRH15)."""
+    queryset = TypeLigneParcours.objects.all()
+    serializer_class = TypeLigneParcoursSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['ordre', 'libelle']
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+
+class LigneParcoursViewSet(_RhBaseViewSet):
+    """Timeline de parcours d'un employé (ZRH15, « Resume Line Types »
+    Odoo). CRUD company-scopé ; ``company`` posée côté serveur. Affichée
+    triée par date (voir ``Meta.ordering``) sur la fiche employé et dans
+    l'annuaire self-service (XRH28, via
+    ``LigneParcoursAnnuaireSerializer`` — champs non sensibles
+    uniquement). Filtre : ``?employe=``.
+    """
+    queryset = LigneParcours.objects.select_related('type', 'employe').all()
+    serializer_class = LigneParcoursSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_debut', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
 
 
 class JourBloqueCongeViewSet(_RhBaseViewSet):

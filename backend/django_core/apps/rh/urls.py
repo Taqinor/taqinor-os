@@ -42,6 +42,7 @@ from .views import (
     EpiCatalogueViewSet,
     GabaritEmailRecrutementViewSet,
     GrilleSalarialeViewSet,
+    LigneParcoursViewSet,
     EvaluationEmployeViewSet,
     FeuilleTempsViewSet,
     HabilitationViewSet,
@@ -74,6 +75,7 @@ from .views import (
     TableauBordHseViewSet,
     TentativeQuizViewSet,
     TypeAbsenceViewSet,
+    TypeLigneParcoursViewSet,
     TypePrimeViewSet,
     VisiteMedicaleViewSet,
 )
@@ -98,6 +100,8 @@ router.register(r'types-absence', TypeAbsenceViewSet)
 router.register(r'soldes-conge', SoldeCongeViewSet)
 router.register(r'demandes-conge', DemandeCongeViewSet)
 router.register(r'demandes-allocation', DemandeAllocationViewSet)
+router.register(r'types-ligne-parcours', TypeLigneParcoursViewSet)
+router.register(r'lignes-parcours', LigneParcoursViewSet)
 router.register(r'jours-bloques-conge', JourBloqueCongeViewSet)
 router.register(r'periodes-fermeture', PeriodeFermetureViewSet)
 # NOTE : le kiosque (``pointages/kiosque``) DOIT être enregistré AVANT

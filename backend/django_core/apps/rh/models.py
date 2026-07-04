@@ -5910,3 +5910,82 @@ class DemandeAllocation(models.Model):
 
     def __str__(self):
         return f'{self.employe.matricule} — {self.jours} j ({self.statut})'
+
+
+class TypeLigneParcours(models.Model):
+    """Type de ligne de parcours (ZRH15, « Resume Line Types » Odoo) —
+    catalogue configurable par société (ex. Expérience, Formation,
+    Certification interne). Distinct de ``Certification`` (FG174,
+    validité/organisme d'une certification EXTERNE) et de l'historique de
+    poste interne (XRH6, chatter) — simple timeline de parcours librement
+    saisie. Multi-société : ``company`` posée côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_types_ligne_parcours',
+        verbose_name='Société',
+    )
+    libelle = models.CharField(max_length=80, verbose_name='Libellé')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+
+    class Meta:
+        verbose_name = 'Type de ligne de parcours'
+        verbose_name_plural = 'Types de ligne de parcours'
+        ordering = ['ordre', 'libelle']
+
+    def __str__(self):
+        return self.libelle
+
+
+class LigneParcours(models.Model):
+    """Ligne de parcours (ZRH15) — timeline chronologique d'un employé
+    (expériences antérieures, diplômes, certifications internes…).
+    Affichée en lecture seule (champs non sensibles) dans l'annuaire
+    self-service (XRH28) et éditable sur la fiche employé. Multi-société :
+    ``company`` posée côté serveur ; ``employe`` et ``type`` doivent
+    appartenir à la même société.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_lignes_parcours',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='lignes_parcours',
+        verbose_name='Employé',
+    )
+    type = models.ForeignKey(
+        TypeLigneParcours,
+        on_delete=models.PROTECT,
+        related_name='lignes',
+        verbose_name='Type',
+    )
+    intitule = models.CharField(max_length=160, verbose_name='Intitulé')
+    organisme = models.CharField(
+        max_length=160, blank=True, default='',
+        verbose_name='Organisme/employeur')
+    date_debut = models.DateField(
+        null=True, blank=True, verbose_name='Date de début')
+    date_fin = models.DateField(
+        null=True, blank=True, verbose_name='Date de fin')
+    description = models.CharField(
+        max_length=500, blank=True, default='', verbose_name='Description')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Ligne de parcours'
+        verbose_name_plural = 'Lignes de parcours'
+        ordering = ['-date_debut', '-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'employe'],
+                name='rh_ligne_parcours_emp_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.employe.matricule} — {self.intitule}'
