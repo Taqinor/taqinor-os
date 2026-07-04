@@ -38,6 +38,7 @@ import StickyCta from '../components/StickyCta.astro';
 import { CITIES, REALISATIONS, realisationByRef } from '../lib/realisations';
 import { cityContentBySlug } from '../lib/cityContent';
 import { NAP } from '../lib/nap';
+import { YIELD_TABLE } from '../lib/yieldTable';
 
 export function getStaticPaths() {
   return CITIES.map((c) => ({ params: { city: c.slug }, props: { c } }));
@@ -52,6 +53,26 @@ const nearby = featured.filter((r) => r!.ville !== c.name);
 // proches (région Casablanca-Settat), clairement étiquetés comme tels.
 const closest = c.hasLocalInstall ? [] : REALISATIONS.slice(0, 3);
 
+// WJ73 — L'écart estimation-vs-preuve, expliqué honnêtement. Les chantiers
+// réellement affichés sur cette page (locaux si présents, sinon les plus
+// proches) mesurent en moyenne un rendement kWh/kWc/an souvent inférieur aux
+// ≈1 650 kWh/kWc/an qu'un plein sud à 29° donnerait dans la table de
+// rendement (yieldTable.ts, PVGIS) — l'hypothèse utilisée par le tableau
+// modélisé de toute estimation du site. Plutôt que de laisser cet écart sans
+// explication pour un visiteur qui ferait la division lui-même, on le nomme.
+// AUCUN chiffre inventé : dérivé de REALISATIONS + YIELD_TABLE, jamais
+// recopié à la main. `undefined` si aucun chantier affiché n'a de production
+// mesurée publiée (ex. réf. sans compteur) — la ligne ne s'affiche pas.
+const shownInstalls = inCity.length > 0 ? inCity : closest;
+const yieldSamples = shownInstalls
+  .filter((r) => r!.productionNum && r!.kwcNum)
+  .map((r) => r!.productionNum! / r!.kwcNum!);
+const avgYieldPerKwc = yieldSamples.length
+  ? Math.round(yieldSamples.reduce((sum, y) => sum + y, 0) / yieldSamples.length)
+  : null;
+const cityYieldTable = YIELD_TABLE[c.slug];
+const southOptimalYield = cityYieldTable ? cityYieldTable.grid['0']['29'] : undefined;
+
 // Prose propre à la ville (W37) — déportée dans lib/cityContent.ts pour que les
 // cinq pages ne partagent plus un seul paragraphe. Le repli résout {intro}.
 const cc = cityContentBySlug(c.slug);
@@ -62,6 +83,14 @@ const closer = fillIntro(cc.closer);
 const pillarStudy = { heading: fillIntro(cc.pillars.study.heading), body: fillIntro(cc.pillars.study.body) };
 const pillarMeasure = { heading: fillIntro(cc.pillars.measure.heading), body: fillIntro(cc.pillars.measure.body) };
 const pillarCompliance = { heading: fillIntro(cc.pillars.compliance.heading), body: fillIntro(cc.pillars.compliance.body) };
+// W328 — nuance ROI par ville (dérivée de l'ensoleillement déjà committé,
+// jamais un nouveau chiffre) + ligne de prudence tarifaire pour les 3 villes
+// à délégataire (Lydec/Redal/Amendis) ; `undefined` ailleurs (régie non nommée).
+const roiNuance = fillIntro(cc.roiNuance);
+const delegataireNote = cc.delegataireNote ? fillIntro(cc.delegataireNote) : undefined;
+// W296 — positionnement géographique honnête (région, jamais un km inventé)
+// pour les villes sans chantier local.
+const nearestInstallNote = cc.nearestInstallNote ? fillIntro(cc.nearestInstallNote) : undefined;
 
 const title = fillIntro(cc.title);
 const description = fillIntro(cc.description);
@@ -142,6 +171,15 @@ const heroPhoto = inCity[0]?.photos[0] ?? neutralHero;
           </div>
         </dl>
       </div>
+      {/* W328 — la bande 3–7 ans reste le chiffre site-wide (résidentiel.astro/
+          billRange.ts) ; on la nuance ici par ville via l'ensoleillement déjà
+          committé, sans jamais lui substituer un nouveau chiffre inventé. */}
+      <p class="mx-auto mt-8 max-w-3xl text-sm leading-relaxed text-lune-soft">{roiNuance}</p>
+      {delegataireNote && (
+        <p class="mx-auto mt-4 max-w-3xl border-l-2 border-brass-400/60 pl-4 text-sm leading-relaxed text-lune-soft">
+          {delegataireNote}
+        </p>
+      )}
     </section>
 
     <!-- Chantiers : réels en ville, sinon les plus proches -->
@@ -164,6 +202,19 @@ const heroPhoto = inCity[0]?.photos[0] ?? neutralHero;
               </a>
             ))}
           </div>
+          {/* WJ73 — écart estimation-vs-preuve, expliqué honnêtement : un
+              visiteur qui divise les deux chiffres affichés ci-dessus
+              (production mesurée / kWc) tombe sur un rendement souvent
+              inférieur au tableau modélisé des estimations — on le nomme
+              plutôt que de laisser le delta sans explication. */}
+          {avgYieldPerKwc && southOptimalYield && (
+            <p class="v2-rise mt-6 max-w-2xl text-xs leading-relaxed text-lune-faint">
+              À noter : ces installations mesurent en moyenne ≈{avgYieldPerKwc.toLocaleString('fr-FR')} kWh/kWc/an,
+              en dessous des ≈{southOptimalYield.toLocaleString('fr-FR')} kWh/kWc/an du tableau modélisé utilisé
+              pour les estimations — les installations réelles ne sont pas toutes plein sud à 29°,
+              contrairement à l'hypothèse du modèle. L'étude affine ce chiffre sur votre toit réel.
+            </p>
+          )}
         </div>
       </section>
     )}
@@ -190,9 +241,12 @@ const heroPhoto = inCity[0]?.photos[0] ?? neutralHero;
           <p class="tech-label v2-kicker rule-brass text-brass-300">Votre ville est couverte</p>
           <h2 class="display v2-section-title mt-5 text-white">Nous intervenons {c.intro} — et nos chantiers parlent pour nous</h2>
           <p class="v2-lead mt-5 text-lune-soft">
-            {c.name} fait partie de notre zone d'intervention. Nos installations déjà en service
-            les plus proches se trouvent en région de Casablanca — mêmes méthodes d'étude, même
-            matériel tier-1, même monitoring Deye Cloud. Voici nos chantiers les plus proches :
+            {/* W296 — positionnement géographique propre à la ville (région,
+                jamais un km inventé) au lieu d'une phrase générique « région de
+                Casablanca » identique sur les 4 pages sans chantier local. */}
+            {nearestInstallNote ?? `${c.name} fait partie de notre zone d'intervention. Nos installations déjà en service ` +
+              'les plus proches se trouvent en région de Casablanca — mêmes méthodes d\'étude, même ' +
+              'matériel tier-1, même monitoring Deye Cloud.'} Voici nos chantiers les plus proches :
           </p>
           <div class="mt-8 flex flex-wrap gap-3">
             {closest.map((r) => (

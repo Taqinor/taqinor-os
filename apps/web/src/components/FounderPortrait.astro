@@ -18,6 +18,12 @@
  * et la liste de marques « Huawei, Ericsson et STMicroelectronics » ne sont
  * jamais traduits. Rendu FR inchangé (branche `fr` = strings actuels mot pour
  * mot ; `localizeNavHref('/à-propos','fr') === '/à-propos'`).
+ *
+ * W266 — présence humaine : une courte note signée à la première personne
+ * (« Je signe chaque étude — Reda Kasri ») sous le portrait, quand la photo
+ * est montée. Fait déjà publié (validation personnelle du fondateur, /à-propos
+ * et la promesse « fondateur-signé » de l'accueil) — pas une nouvelle
+ * affirmation, juste sa première mise en voix directe.
  */
 const FOUNDER_PHOTO: string | null = 'fondateur-portrait';
 
@@ -39,6 +45,7 @@ const STR: Record<
     cta: string;
     photoAlt: string;
     caption: string;
+    signedNote: string;
     doctor: string;
     doctorLabel: string;
     yearsLabel: string;
@@ -53,6 +60,7 @@ const STR: Record<
     cta: 'Le fondateur et sa méthode →',
     photoAlt: 'Reda Kasri, fondateur et docteur-ingénieur de Taqinor',
     caption: 'Reda Kasri · fondateur, docteur-ingénieur',
+    signedNote: '« Je signe chaque étude — Reda Kasri »',
     doctor: 'Docteur-ingénieur',
     doctorLabel: 'Chaque étude validée par le fondateur',
     yearsLabel: 'De R&D chez Huawei, Ericsson, STMicroelectronics',
@@ -66,6 +74,7 @@ const STR: Record<
     cta: 'The founder and his method →',
     photoAlt: 'Reda Kasri, founder and doctor-engineer of Taqinor',
     caption: 'Reda Kasri · founder, doctor-engineer',
+    signedNote: '“I sign every study — Reda Kasri”',
     doctor: 'Doctor-engineer',
     doctorLabel: 'Every study validated by the founder',
     yearsLabel: 'Of R&D at Huawei, Ericsson, STMicroelectronics',
@@ -79,6 +88,7 @@ const STR: Record<
     cta: 'المؤسِّس ومنهجيته →',
     photoAlt: 'Reda Kasri، مؤسِّس ومهندس دكتور في Taqinor',
     caption: 'Reda Kasri · مؤسِّس، مهندس دكتور',
+    signedNote: '«أنا من يُصادق على كل دراسة — Reda Kasri»',
     doctor: 'مهندس دكتور',
     doctorLabel: 'كل دراسة يصادق عليها المؤسِّس',
     yearsLabel: 'من البحث والتطوير لدى Huawei وEricsson وSTMicroelectronics',
@@ -111,6 +121,7 @@ const s = STR[locale] ?? STR.fr;
           class="w-full object-cover"
         />
         <figcaption class="tech-label mt-3 text-lune-faint">{s.caption}</figcaption>
+        <p class="v2-rise mt-4 max-w-md font-display text-lg italic text-white">{s.signedNote}</p>
       </figure>
     ) : (
       <dl class="grid grid-cols-2 gap-x-6 gap-y-10 border-l-2 border-brass-400/60 pl-6 sm:pl-10" data-stagger>

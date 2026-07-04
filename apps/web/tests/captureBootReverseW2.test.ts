@@ -17,6 +17,10 @@ class FakeMap {
     (this.handlers[ev] ||= []).push(h);
     return this;
   }
+  once(ev: string, h: (e: unknown) => void) {
+    // MapLibre Map.once — utilisé par bootCaptureOnly (WJ62, hasRenderedOnce).
+    return this.on(ev, h);
+  }
   fire(ev: string, e: unknown) {
     (this.handlers[ev] || []).forEach((h) => h(e));
   }

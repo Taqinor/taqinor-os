@@ -1,0 +1,138 @@
+---
+/**
+ * EN — Guide (W294): Can my roof support solar panels? Faithful translation of
+ * /guides/mon-toit-peut-il-supporter-des-panneaux, every figure kept EXACT
+ * (~35 kg / 1.7–1.9 m² panel, 18–21 kg/m² module alone, 20–25 kg/m² with
+ * structure). Internal links use localizeNavHref (EN/AR if available, else
+ * the existing FR page — never a dead link). FR untouched.
+ */
+import Layout from '../../../layouts/Layout.astro';
+import V2Enhance from '../../../components/V2Enhance.astro';
+import Article33Ribbon from '../../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../../components/Breadcrumb.astro';
+import CtaBand from '../../../components/CtaBand.astro';
+import StickyCta from '../../../components/StickyCta.astro';
+import { NAP } from '../../../lib/nap';
+import RelatedLinks from '../../../components/RelatedLinks.astro';
+import { getLocaleFromPath } from '../../../i18n/utils';
+import { localizeNavHref } from '../../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const schemaImageUrl = new URL('/og/equipement.png', Astro.site).href;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: 'Can my roof support solar panels?',
+  description: 'Weight per m² of a solar installation, Moroccan roof types (concrete slab, tile, corrugated sheet, flat roof), and when a structural check is needed before installing panels.',
+  image: schemaImageUrl,
+  about: { '@type': 'Thing', name: 'Solar roof structural load' },
+  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: url,
+};
+
+const toitures = [
+  {
+    title: 'Solid concrete slab (typical Moroccan terrace)',
+    body: 'The vast majority of Moroccan residential roofs are solid concrete slabs, designed to bear far more than pedestrian foot traffic. This is the most favourable case: the weight of a solar installation (panels + weighted or bolted mounting structure) stays well below its original load-bearing capacity. A visual check of the slab\'s condition (cracks, water infiltration, exposed rebar) is still worthwhile before any install, but a full structural calculation is rarely necessary on a sound slab.',
+  },
+  {
+    title: 'Tile roof',
+    body: 'Tiles themselves don\'t bear the weight of the panels: mounting is done on the frame, via hooks that pass through the roofing and anchor onto the rafters or purlins. The question isn\'t therefore "will the tile hold?" but "will the frame under the tile hold?" An old or already-loaded wooden frame (solar water heater, previous overload) deserves an opinion from a carpenter or structural engineer before installation.',
+  },
+  {
+    title: 'Corrugated sheet or steel deck',
+    body: 'Common on agricultural sheds and light industrial buildings. The sheet alone doesn\'t support the weight of a panel: mounting goes through the underlying metal or wood purlin, originally sized for wind and occasional maintenance, not for a permanent distributed load. On this type of roof, a structural opinion is the rule rather than the exception, especially over large spans.',
+  },
+  {
+    title: 'Waterproofed flat roof (bitumen, membrane)',
+    body: 'Ballasted installations (no drilling, panels mounted on trays weighted down with concrete blocks) avoid piercing the waterproofing, but add concentrated weight on specific zones rather than distributed evenly. On a flat roof, you mainly check the load-bearing capacity of the slab under the waterproofing and the distribution of load points — not just the total weight.',
+  },
+];
+---
+
+<Layout
+  title="Can my roof support solar panels? Weight per m² | Taqinor"
+  description="The real weight of a solar installation per m², how Moroccan roofs behave (concrete slab, tile, corrugated sheet, flat roof), and when a structural check is needed before installing panels."
+  ogSlug="guides"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'Guides', href: L('/guides') }, { label: 'Can my roof support panels?' }]} />
+
+    <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
+      <p class="tech-label v2-kicker rule-brass text-lune">Guide · Structure</p>
+      <h1 class="display v2-page-title mt-5 text-white">Can my roof support panels?</h1>
+
+      <p class="v2-lead mt-6 text-lune-soft">
+        It's the objection that comes right after the price: "what if my roof can't take the
+        weight?" The good news is that a solar panel is much lighter than you'd think — the real
+        question isn't the weight itself, but the nature of your roof and the condition of its
+        load-bearing structure. Here's how to make sense of it, roof by roof.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">The real weight of a solar panel</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        A current high-power photovoltaic panel (the bifacial Canadian Solar 705–720 Wc modules we
+        install, for example) weighs, according to its manufacturer spec sheet, about
+        <strong class="text-white"> 35 kg</strong> for a surface of about
+        <strong class="text-white"> 1.7 to 1.9 m²</strong>, or an order of magnitude of about
+        <strong class="text-white"> 18 to 21 kg/m²</strong> for the module alone, before adding the
+        mounting structure (aluminium rails, hooks or concrete ballast depending on the roof). With
+        structure included, a surface-mounted installation on a frame or concrete slab generally
+        stays on the order of <strong class="text-white">20 to 25 kg/m²</strong> spread over the
+        whole covered surface — a weight comparable to a layer of gravel or a few centimetres of
+        standing water, far below the loads a roof is designed to withstand (wind, maintenance,
+        sometimes snow depending on the region).
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        This figure is a useful order of magnitude to reassure on the principle, not a structural
+        validation: the question that really matters is whether <em>your</em> specific roof, in its
+        current condition, is designed to carry a permanent distributed load — and that's strictly a
+        matter of roof type and load-bearing structure, not the number of panels.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Roof by roof: what changes</h2>
+      <div class="mt-8 grid gap-6" data-stagger>
+        {toitures.map((t, i) => (
+          <div class="v2-rise cine-card p-6 sm:p-7" style={`--v2-i:${i}`}>
+            <h3 class="display text-lg text-white">{t.title}</h3>
+            <p class="mt-2 text-sm leading-relaxed text-lune-soft">{t.body}</p>
+          </div>
+        ))}
+      </div>
+
+      <h2 class="display v2-section-title mt-12 text-white">When is a structural check needed?</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Certain signals call for a professional opinion (carpenter, structural engineering firm)
+        before any installation, whatever the roof type: visible cracks on the slab or
+        load-bearing walls, visible sagging or deflection of the frame, an already old roof (beyond
+        30–40 years with no known renovation), the presence of an existing overload not originally
+        planned for (solar water heater, tank, planting), or a sheet/steel-deck roof over a large
+        span. Outside these cases, on a standard residential concrete slab in good condition, the
+        weight of a solar installation doesn't constitute a risk factor in itself.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        That's why our study always starts with a visit or photos of the roof before any pricing: we
+        look at the real condition of your roof before talking about kWc.
+      </p>
+
+      <RelatedLinks links={[
+        { href: L('/guides/combien-de-panneaux-pour-ma-maison'), label: 'How many panels for my house?' },
+        { href: L('/guides/orientation-inclinaison-ombrage'), label: 'Orientation, tilt, shading' },
+        { href: L('/garanties'), label: 'Our warranties' },
+        { href: L('/guides'), label: 'All the guides' },
+      ]} />
+    </article>
+
+    <CtaBand title="Unsure about your roof? We check on site, in the free study." href={L('/devis/mon-toit')} />
+
+    <StickyCta />
+  </div>
+</Layout>

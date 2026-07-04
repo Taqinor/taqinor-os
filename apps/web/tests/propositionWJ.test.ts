@@ -13,6 +13,7 @@ import {
   financingComparison,
   loanMonthlyPayment,
   whatsappLink,
+  whatsappLinkForIntent,
   buildAcceptBodyRich,
   buildAcceptBody,
   CO2_KG_PER_KWH,
@@ -98,12 +99,20 @@ describe('WJ15 — fenêtre de validité (jamais inventée, jamais de compte-à-
 // ── WJ9 · Argent dans le temps ───────────────────────────────────────────────
 
 describe('WJ9 — économies cumulées + cadrage mensuel (depuis le backend)', () => {
-  it('cumul backend (eco_a_cumul) prioritaire', () => {
-    const p = makeProposal({ quote: { eco_a_cumul: 400000 } });
-    const h = savingsHeadline(p, 'avec_batterie');
-    expect(h.cumulative).toBe(400000);
+  it('WJ75 — eco_a_cumul backend est un TAUX PAR AN (comme le moteur PDF), multiplié par years — jamais affiché tel quel', () => {
+    // Le backend réel (apps/ventes/quote_engine/pricing.py) fixe
+    // eco_a_cumul = economie_opt2 (= eco_a_ann) — PAS un total déjà cumulé — et
+    // generate_devis_premium.py bâtit sa courbe par `eco_a_cumul * y`. Un fixture
+    // à 16000 (légèrement différent de eco_a_ann=15000, pour prouver qu'on lit
+    // BIEN eco_a_cumul et pas eco_a_ann) doit donc ressortir en `16000 × 25`, PAS
+    // en `16000` brut (l'ancien bug affichait le taux annuel comme s'il s'agissait
+    // déjà du cumul sur 25 ans — une sous-estimation ≈25× du chiffre le plus
+    // visible de la page).
+    const p = makeProposal({ quote: { eco_a_cumul: 16000 } });
+    const h = savingsHeadline(p, 'avec_batterie', 25);
+    expect(h.cumulative).toBe(16000 * 25);
     expect(h.cumulativeFromBackend).toBe(true);
-    expect(h.annual).toBe(15000);
+    expect(h.annual).toBe(15000); // eco_a_ann, inchangé — distinct de eco_a_cumul
     expect(h.monthly).toBe(1250); // 15000 / 12
     expect(h.payback).toBe('7,2 ans');
   });
@@ -205,6 +214,39 @@ describe('WJ12 — deep-link WhatsApp porte la référence du devis', () => {
   it('sans référence → message générique valide', () => {
     const url = whatsappLink('');
     expect(url).toContain('wa.me/');
+    expect(decodeURIComponent(url)).toContain('Taqinor');
+  });
+});
+
+// ── WJ85 · Prérempli DISTINCT par intention (discuss/question/voice) ────────
+
+describe('WJ85 — whatsappLinkForIntent : un message différent par intention, jamais le même lien', () => {
+  it('discuss / question / voice produisent trois messages distincts', () => {
+    const discuss = whatsappLinkForIntent('DEV-2026-042', 'discuss');
+    const question = whatsappLinkForIntent('DEV-2026-042', 'question');
+    const voice = whatsappLinkForIntent('DEV-2026-042', 'voice');
+    expect(discuss).not.toBe(question);
+    expect(discuss).not.toBe(voice);
+    expect(question).not.toBe(voice);
+    expect(decodeURIComponent(discuss)).toMatch(/discuter/i);
+    expect(decodeURIComponent(question)).toMatch(/question précise/i);
+    expect(decodeURIComponent(voice)).toMatch(/note vocale/i);
+  });
+
+  it('cite toujours la référence quand présente, pour les trois intentions', () => {
+    for (const intent of ['discuss', 'question', 'voice'] as const) {
+      const url = whatsappLinkForIntent('DEV-2026-042', intent);
+      expect(decodeURIComponent(url)).toContain('DEV-2026-042');
+    }
+  });
+
+  it('numéro par défaut = numéro réel TAQINOR (même garantie que whatsappLink)', () => {
+    expect(whatsappLinkForIntent('DEV-1', 'question')).toContain(`wa.me/${TAQINOR_WHATSAPP}`);
+  });
+
+  it('sans référence → message générique valide (pas de "(réf. )" vide)', () => {
+    const url = whatsappLinkForIntent('', 'discuss');
+    expect(decodeURIComponent(url)).not.toContain('(réf.');
     expect(decodeURIComponent(url)).toContain('Taqinor');
   });
 });

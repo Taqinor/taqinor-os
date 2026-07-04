@@ -18,6 +18,10 @@
  *
  * Ne touche AUCUNE donnée de lead. Route purement additive — /api/roof-yield et
  * /api/roof-estimate restent inchangées.
+ *
+ * W316 — rate-limit GÉNÉREUX et DÉDIÉ (même esprit que roof-yield/roof-estimate) :
+ * le cache par plan arrondi (ci-dessous) absorbe déjà l'essentiel du répétitif ;
+ * ce garde-fou écrête seulement un balayage automatisé pur.
  */
 export const prerender = false;
 
@@ -35,6 +39,7 @@ import {
   type SpecificDateProfile,
 } from '../../lib/productionEngine';
 import type { SeriesHourlyPoint } from '../../lib/roofEstimate';
+import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 
 // Fenêtre seriescalc multi-années (SARAH2 bien couvert) → vraies moyennes
 // inter-années pour le jour type et les dates précises. Surchargeable dans le
@@ -79,11 +84,30 @@ export function __clearProductionCache(): void {
   CACHE.clear();
 }
 
-function json(data: unknown, status = 200): Response {
+function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+    headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...headers },
   });
+}
+
+// W317 — Origin/Sec-Fetch-Site : garde-fou LOCAL (jamais importé de lib/lead —
+// cette route reste volontairement découplée de toute plomberie de lead/CRM).
+// Voir lib/lead.ts pour la version jumelle utilisée par les endpoints
+// lead/proposition.
+function isSameOriginRequest(request: Request): boolean {
+  const secFetchSite = request.headers.get('sec-fetch-site');
+  if (secFetchSite) return secFetchSite !== 'cross-site';
+  const origin = request.headers.get('origin');
+  if (!origin) return true;
+  try {
+    return new URL(origin).origin === new URL(request.url).origin;
+  } catch {
+    return false;
+  }
+}
+function crossSiteRejection(): Response {
+  return json({ ok: false, error: 'Requête refusée.' }, 403);
 }
 
 function num(v: unknown): number {
@@ -91,6 +115,17 @@ function num(v: unknown): number {
 }
 
 export const POST: APIRoute = async ({ request }) => {
+  // W317 — Origin/Sec-Fetch-Site : refuse un POST cross-site forgé avant tout
+  // traitement (même garde-fou que les autres proxies same-origin).
+  if (!isSameOriginRequest(request)) return crossSiteRejection();
+
+  const rl = rateLimit(`roof-production:${clientIpFromRequest(request)}`, { limit: 60, windowMs: 60_000 });
+  if (!rl.allowed) {
+    return json({ ok: false, error: 'Trop de tentatives, réessayez dans un instant.' }, 429, {
+      'retry-after': String(rl.retryAfterSec),
+    });
+  }
+
   let body: Record<string, unknown>;
   try {
     body = (await request.json()) as Record<string, unknown>;

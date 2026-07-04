@@ -1,0 +1,180 @@
+---
+/**
+ * EN — Estimation methodology (W359). Faithful translation of
+ * /methodologie-estimation: the same honest model actually applied by the
+ * instant estimator (/devis/mon-toit) and the quote engine, published without
+ * embellishment. Internal links use localizeNavHref (EN if it exists, else
+ * the FR page — never a dead link). FR untouched.
+ *
+ * NOTE: this EN route is NOT yet registered in src/i18n/pages.ts
+ * (STATIC_TRANSLATED) — out of scope for this task (src/i18n/pages.ts is not
+ * in this task's editable file list). The route itself renders correctly and
+ * is a real, indexable page, linked from mon-toit.astro and the proposal.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import KeyFigure from '../../components/KeyFigure.astro';
+import Callout from '../../components/Callout.astro';
+import RelatedLinks from '../../components/RelatedLinks.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import { getLocaleFromPath } from '../../i18n/utils';
+import { localizeNavHref } from '../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+const devisHref = L('/devis/mon-toit');
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: 'Methodology behind the instant solar estimate',
+  description:
+    "The honest model behind Taqinor's instant estimate: PVGIS source, system losses, climate confidence band, self-consumption-first savings (law 82-21), and why no surplus resale line is ever priced in.",
+  author: { '@type': 'Organization', name: 'Taqinor', url: 'https://taqinor.ma' },
+};
+---
+
+<Layout
+  title="Solar estimate methodology — how we calculate | Taqinor"
+  description="The honest model behind the instant estimate: PVGIS source, system losses (14%), climate confidence band, self-consumption-first savings (BT surplus tariff not yet published by ANRE) — preliminary, refined after a site visit."
+  ogSlug="equipement"
+>
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+
+    <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'Estimate methodology' }]} />
+
+    <section class="section-lg px-4 pb-10 text-white">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">Method transparency</p>
+        <h1 class="display v2-page-title cine-in cine-in-1 mt-6">How we calculate your estimate</h1>
+        <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
+          The instant estimate on <a href={devisHref} class="border-b border-brass-300 pb-0.5 font-semibold text-brass-300">"My roof"</a> and
+          the proposal that follows rely on a model published here without filter: the same data,
+          the same assumptions, the same caution — so you can verify every figure instead of having
+          to take our word for it.
+        </p>
+      </div>
+    </section>
+
+    <!-- 1. Production source: PVGIS -->
+    <section class="section px-4">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">1. Solar production</p>
+        <h2 class="display v2-section-title mt-5 text-white">Public data, not an in-house figure</h2>
+        <p class="v2-body mt-5 text-white/85">
+          The yield (how many kWh each installed kWc produces per year) comes from PVGIS (European
+          Commission, Joint Research Centre) — the most-cited public reference for solar irradiation
+          in North Africa. We don't estimate it ourselves: the full table, city by city and tilt by
+          tilt, is published as-is on our <a href={L('/ensoleillement-maroc')} class="border-b border-brass-300 pb-0.5 font-semibold text-brass-300">Solar yield in Morocco</a> page.
+          Without a GPS pin dropped on the map, the instant estimate starts from a default latitude
+          (Casablanca, the most central point in our service area) and a due-south orientation — the
+          theoretical optimum — then refines once a real pin is placed.
+        </p>
+        <div class="mt-8 grid gap-6 sm:grid-cols-3" data-stagger>
+          <KeyFigure value="PVGIS" label="Source">
+            European Commission, Joint Research Centre.
+          </KeyFigure>
+          <KeyFigure value="14" unit="%" label="System losses">
+            Wiring, inverter, heating, soiling — generic PVGIS figure.
+          </KeyFigure>
+          <KeyFigure value="South" label="Default orientation">
+            Refined as soon as a real GPS pin is dropped on your roof.
+          </KeyFigure>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. Climate confidence band -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="section bg-blanc-azur px-4 text-encre">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-azur-600">2. A range, not a single number</p>
+        <h2 class="display v2-section-title mt-5">Why a low bound and a high bound</h2>
+        <p class="v2-body mt-5 text-encre-soft">
+          The production PVGIS reports is already net of generic system losses (14%). We apply an
+          ADDITIONAL climate confidence band on top: the high bound is the raw PVGIS figure; the low
+          bound reduces it by a factor combining the thermal derate of a hot coastal summer (panels
+          lose efficiency as they heat up), soiling and haze — real, documented losses, never a
+          pessimistic figure invented just to hedge. This range (never a single confident number) is
+          the same logic as the confidence band shown live on the estimator.
+        </p>
+        <Callout type="info" title="What this range doesn't replace">
+          <p>
+            It's still calculated remotely, from a bill and an optional GPS pin — never an actual
+            shading survey, nor the equipment finally chosen. The free technical site visit then
+            refines this figure with your roof's real constraints.
+          </p>
+        </Callout>
+      </div>
+    </section>
+
+    <!-- 3. Self-consumption first — the central honesty point -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="section px-4 text-white">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">3. Savings: self-consumption first</p>
+        <h2 class="display v2-section-title mt-5 text-white">We only value what YOU consume yourself</h2>
+        <p class="v2-body mt-5 text-white/85">
+          Law 82-21 organizes low-voltage self-production in Morocco: your system produces
+          electricity, part of it is consumed directly at home (self-consumption), the rest flows
+          onto the grid. Our estimate only values the self-consumed share — at the utility rate for
+          your bill bracket, the same grid you already pay.
+        </p>
+        <p class="v2-body mt-4 text-white/85">
+          We add NO surplus resale line to the grid. This isn't an oversight: ANRE has published a
+          resale tariff decision for medium/high-voltage installations (MT/HT), but no equivalent
+          tariff for low-voltage residential (BT) has been published to date. As long as this BT
+          tariff doesn't exist in writing, pricing in a resale income would mean inventing a number —
+          exactly what we refuse to do.
+        </p>
+        <Callout type="warning" title="If the surplus isn't priced in, where does it go?">
+          <p>
+            In practice, the kWh you don't consume at the moment it's produced flows onto the
+            ONEE/utility grid — today without a priced compensation for a residential household.
+            That's why our estimator's recommended sizing targets your actual need, not an
+            oversized system that would produce an unpriced surplus.
+          </p>
+        </Callout>
+      </div>
+    </section>
+
+    <!-- 4. Preliminary, refined after a visit -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="section bg-blanc-azur px-4 text-encre">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-azur-600">4. Preliminary, refined after a visit</p>
+        <h2 class="display v2-section-title mt-5">A starting point, never a final quote</h2>
+        <p class="v2-body mt-5 text-encre-soft">
+          The instant estimate is calculated in seconds from your bill (and, if you drop one, a GPS
+          pin on your roof). It sees neither your neighbourhood's real shading, nor your roof's
+          condition, nor the equipment ultimately available. That's why every estimate carries the
+          "preliminary, refined after a visit" note: the final figure — the one on your signed
+          proposal — always comes after a free, no-obligation technical site visit.
+        </p>
+      </div>
+    </section>
+
+    <section class="section-tight px-4 pb-20 sm:pb-24">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">To go further</p>
+        <RelatedLinks links={[
+          { href: devisHref, label: 'Start the instant estimate' },
+          { href: L('/ensoleillement-maroc'), label: 'Solar yield by city (PVGIS)' },
+          { href: L('/production-mesuree'), label: 'Measured production (our real projects)' },
+          { href: L('/loi-82-21'), label: 'Law 82-21 explained' },
+        ]} />
+      </div>
+    </section>
+
+    <CtaBand title="See your own range, calculated using this same method." href={devisHref} />
+
+    <StickyCta />
+  </div>
+</Layout>

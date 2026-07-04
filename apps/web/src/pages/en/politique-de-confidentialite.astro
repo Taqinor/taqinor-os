@@ -3,6 +3,15 @@
  * EN — Privacy policy (W67). Faithful translation of
  * /politique-de-confidentialite ; the data-flow facts (what the form collects,
  * fbclid/UTM, law 09-08) are unchanged. FR untouched.
+ *
+ * W318 — the real field set collected by the journey (/devis/mon-toit
+ * assessment + proposal e-signature) is wider than the 5 fields this page
+ * used to describe: the map (GPS pin + optional roof outline), the full
+ * address, email, the full energy profile (summer/winter bills, kWh,
+ * bracket), financing intent, and — at proposal e-signature — the drawn
+ * signature image. Plus a new GDPR section for EU-resident clients (the MRE
+ * segment). Every line below matches a field the code actually sends
+ * (src/pages/devis/mon-toit.astro, src/pages/proposition/[token].astro).
  */
 import Layout from '../../layouts/Layout.astro';
 import { NAP } from '../../lib/nap';
@@ -14,11 +23,11 @@ const legalHref = localizeNavHref('/mentions-legales', getLocaleFromPath(Astro.u
 const sections = [
   {
     t: 'What we collect',
-    p: 'When you complete the solar assessment, we collect: your full name, your phone number, your city or town, your roof type and your electricity bill bracket. You also choose whether you prefer to be contacted by WhatsApp.',
+    p: 'When you complete the solar assessment (/devis/mon-toit), we collect: your full name, your phone number, your email (optional), your city or town and your full address, the GPS pin you place on your roof and, if you draw it, your roof outline (both optional — you can continue with the address alone), your roof type, your energy profile (bill bracket, summer/winter bill amounts where given, consumption in kWh), and — if you indicate it — your intended financing method (cash, credit, other). You also choose whether you prefer to be contacted by WhatsApp. If your assessment leads to a proposal you sign online, the image of your hand-drawn signature (drawn on screen) as well as the date and time of signature are also recorded with your consent.',
   },
   {
     t: 'Why we collect it',
-    p: 'To prepare your preliminary solar study and send it to you, then to get back to you — by WhatsApp and email — only if you ticked the consent box. No other use.',
+    p: 'To prepare your preliminary solar study and send it to you, then to get back to you — by WhatsApp and email — only if you ticked the consent box. The GPS pin and roof outline are used only for sizing (orientation, usable area, shading). Your intended financing method is used to tailor our advice, never shared with a third party without your consent. No other use.',
   },
   {
     t: 'Advertising measurement (fbclid and UTM)',
@@ -41,6 +50,14 @@ const sections = [
     p: 'The assessment checkbox constitutes your explicit consent to be contacted again. Its date and time are recorded with your request. Withdrawing your consent is as simple as granting it: a single message is enough.',
   },
 ];
+
+// W318 — GDPR addendum for EU-resident clients (including our MRE segment —
+// Moroccans living abroad, some of whom reside in the EU/EEA). Sits alongside
+// the law 09-08 section above, not instead of it.
+const gdprSection = {
+  t: 'EU residents (GDPR)',
+  p: `If you reside in the European Union or the European Economic Area — including our MRE clients (Moroccans living abroad) — the General Data Protection Regulation (GDPR) applies in addition to Moroccan Law 09-08 above. Legal basis: your explicit consent (checkbox ticked at assessment or at signature) and, once a contract is under way, performance of that contract. You have the same rights as a Morocco-resident client — access, rectification, deletion — plus the right to restrict processing and the right to lodge a complaint with the supervisory authority of your country of residence. To exercise any of these rights, write to ${NAP.email} stating your request; we reply within a reasonable timeframe and in any case within one month.`,
+};
 ---
 
 <Layout
@@ -71,8 +88,16 @@ const sections = [
         <p class="mt-3 ps-10 text-sm leading-relaxed text-encre-soft">{s.p}</p>
       </div>
     ))}
+    <!-- W318 — GDPR addendum (MRE / EU-resident segment) -->
+    <div class="border-b border-azur-900/15 py-7">
+      <h2 class="display flex items-baseline gap-4 text-xl">
+        <span class="fig text-lg text-azur-600">{String(sections.length + 1).padStart(2, '0')}</span>
+        {gdprSection.t}
+      </h2>
+      <p class="mt-3 ps-10 text-sm leading-relaxed text-encre-soft">{gdprSection.p}</p>
+    </div>
     <p class="mt-7 text-xs text-encre-faint">
-      Last updated: June 2026 — TAQINOR Solutions SARLAU, RC 691213 (Casablanca).
+      Last updated: July 2026 — TAQINOR Solutions SARLAU, RC 691213 (Casablanca).
       See also the <a href={legalHref} class="underline decoration-azur-600 underline-offset-2">legal notice</a>.
     </p>
     </div>

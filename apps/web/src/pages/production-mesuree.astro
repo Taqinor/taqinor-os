@@ -1,0 +1,162 @@
+---
+/**
+ * Production mesurée (W354) — page publique INDEXÉE de transparence continue.
+ *
+ * INTÉGRITÉ (règle du WEB_PLAN) : chaque chiffre est DÉRIVÉ, en direct dans ce
+ * fichier, de `realisations.ts` (lecture seule — jamais modifié ici). Aucune
+ * valeur n'est saisie à la main :
+ *  - kWc installés = somme de `kwcNum` sur toutes les réalisations publiées ;
+ *  - production cumulée = somme de `productionNum` sur les seules réalisations
+ *    où elle est publiée (`null` exclu — jamais compté comme zéro, jamais
+ *    estimé) ;
+ *  - la date affichée est `FACTS_GENERATED_AT` (facts.ts, W380) — le même
+ *    horodatage que l'agrégat de faits canoniques, pour que "mesuré au [date]"
+ *    reste cohérent d'une page à l'autre.
+ *
+ * Différence avec `/impact-taqinor` (W279, déjà en ligne) : cette page-ci est
+ * un compteur roulant à vocation de suivi (production + nombre de chantiers
+ * suivis, cadence de rafraîchissement WG7), pas un bilan CO2/arbres — les deux
+ * pages coexistent sans se dupliquer.
+ *
+ * NOTE (hors périmètre de cette tâche) : cette page n'est PAS encore liée
+ * depuis d'autres pages ni enregistrée dans `src/i18n/pages.ts` — l'orchestrateur
+ * fera ce câblage dans une passe séparée.
+ */
+import Layout from '../layouts/Layout.astro';
+import V2Enhance from '../components/V2Enhance.astro';
+import Article33Ribbon from '../components/Article33Ribbon.astro';
+import Breadcrumb from '../components/Breadcrumb.astro';
+import KeyFigure from '../components/KeyFigure.astro';
+import Callout from '../components/Callout.astro';
+import RelatedLinks from '../components/RelatedLinks.astro';
+import CtaBand from '../components/CtaBand.astro';
+import StickyCta from '../components/StickyCta.astro';
+import { REALISATIONS } from '../lib/realisations';
+import { FACTS_GENERATED_AT } from '../lib/facts';
+
+// ── Chiffres dérivés — AUCUNE valeur saisie à la main ────────────────────────
+const installCount = REALISATIONS.length;
+
+const kwcTotal = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
+const kwcTotalLabel = kwcTotal.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const withMeasuredProduction = REALISATIONS.filter((r) => r.productionNum !== null);
+const productionTotal = withMeasuredProduction.reduce((sum, r) => sum + (r.productionNum ?? 0), 0);
+const productionTotalLabel = productionTotal.toLocaleString('fr-FR');
+
+const notYetPublished = REALISATIONS.filter((r) => r.productionNum === null);
+
+const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+const generatedDateLabel = dateFmt.format(new Date(FACTS_GENERATED_AT));
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Dataset',
+  name: 'Production solaire mesurée — parc Taqinor',
+  description: `Cumul de production mesurée (Deye Cloud) sur ${withMeasuredProduction.length} installations Taqinor suivies, arrêté au ${generatedDateLabel} : ${productionTotalLabel} kWh/an.`,
+  temporalCoverage: FACTS_GENERATED_AT,
+  creator: { '@type': 'Organization', name: 'Taqinor', url: 'https://taqinor.ma' },
+};
+---
+
+<Layout
+  title="Production solaire mesurée — le cumul réel de notre parc | Taqinor"
+  description={`${productionTotalLabel} kWh/an mesurés sur ${withMeasuredProduction.length} installations Taqinor suivies (Deye Cloud), cumul arrêté au ${generatedDateLabel} — rien d'estimé, rien d'arrondi.`}
+  ogSlug="equipement"
+>
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+
+    <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Production mesurée' }]} />
+
+    <section class="section-lg px-4 pb-10 text-white">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">Transparence continue</p>
+        <h1 class="display v2-page-title cine-in cine-in-1 mt-6">Production mesurée</h1>
+        <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
+          Pas une brochure : un compteur qui roule. Ce que nos installations produisent
+          réellement, mesuré par leur propre monitoring, cumulé au fil des chantiers documentés
+          — arrêté aujourd'hui au <strong class="text-white">{generatedDateLabel}</strong>.
+        </p>
+      </div>
+    </section>
+
+    <!-- Chiffres clés — dérivés en direct de realisations.ts -->
+    <section class="section px-4">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">Cumul mesuré au {generatedDateLabel}</p>
+        <h2 class="display v2-section-title mt-5 text-white">{installCount} installations, un seul compteur</h2>
+        <div class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
+          <KeyFigure value={kwcTotalLabel} unit="kWc" label="Puissance installée">
+            Cumul de {installCount} installations publiées.
+          </KeyFigure>
+          <KeyFigure value={productionTotalLabel} unit="kWh/an" label="Production mesurée">
+            Sur {withMeasuredProduction.length} installations suivies (Deye Cloud).
+          </KeyFigure>
+          <KeyFigure value={String(withMeasuredProduction.length)} unit={`/ ${installCount}`} label="Chantiers avec monitoring publié">
+            Les chantiers sans production publiée ne sont jamais comptés comme zéro.
+          </KeyFigure>
+        </div>
+        <Callout type="info" title="Comment ce chiffre est mis à jour">
+          <p>
+            Ce cumul est recalculé à chaque export Deye Cloud republié dans nos réalisations
+            (cadence indicative : à chaque nouveau chantier documenté). La date ci-dessus est
+            celle du dernier arrêté — jamais une moyenne glissante, jamais une projection.
+            {notYetPublished.length > 0 && (
+              <>
+                {' '}Aujourd'hui, {notYetPublished.length} installation{notYetPublished.length > 1 ? 's' : ''} sur le
+                site {notYetPublished.length > 1 ? "n'ont" : "n'a"} pas encore de production publiée —{' '}
+                {notYetPublished.length > 1 ? 'elles ne sont' : "elle n'est"} pas comptée dans le cumul ci-dessus.
+              </>
+            )}
+          </p>
+        </Callout>
+      </div>
+    </section>
+
+    <!-- Le détail, chantier par chantier -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="section bg-blanc-azur px-4 text-encre">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-azur-600">Le détail</p>
+        <h2 class="display v2-section-title mt-5">Chantier par chantier</h2>
+        <p class="v2-lead mt-4 text-encre-soft">
+          Chaque ligne correspond à une installation réelle, documentée sur notre page
+          réalisations.
+        </p>
+        <div class="mt-10 border-t-2 border-azur-900 bg-blanc" data-stagger>
+          {REALISATIONS.map((r, i) => (
+            <div class="v2-rise flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-azur-900/15 px-5 py-4" style={`--v2-i:${i}`}>
+              <span class="text-sm font-semibold">{r.ville} · {r.kwc} · réf. {r.ref} · {r.date}</span>
+              <span class="whitespace-normal text-right text-sm text-azur-600">
+                {r.production ? `${r.production} mesurés` : 'production non encore publiée'}
+              </span>
+            </div>
+          ))}
+        </div>
+        <p class="mx-auto mt-6 max-w-xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
+          <a href="/realisations" class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Voir toutes nos réalisations en détail →</a>
+        </p>
+      </div>
+    </section>
+
+    <section class="section-tight px-4 pb-20 sm:pb-24">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">Pour aller plus loin</p>
+        <RelatedLinks links={[
+          { href: '/realisations', label: 'Nos réalisations' },
+          { href: '/impact-taqinor', label: 'Impact Taqinor (CO2 évité)' },
+          { href: '/ensoleillement-maroc', label: 'Productible solaire par ville' },
+          { href: '/maintenance-monitoring', label: 'Maintenance & monitoring' },
+        ]} />
+      </div>
+    </section>
+
+    <CtaBand title="Un projet qui pourrait s'ajouter à ce compteur ? Lancez le diagnostic gratuit." href="/devis/mon-toit" />
+
+    <StickyCta />
+  </div>
+</Layout>

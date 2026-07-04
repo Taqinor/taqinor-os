@@ -79,7 +79,11 @@ describe('RegimeSelector source — locale branches', () => {
   it('feeds locale-aware regime data and localizes the contact link', () => {
     expect(src).toContain('regimesFor');
     expect(src).toContain('getLocaleFromPath');
-    expect(src).toContain('localizeNavHref');
+    // W247 — le CTA « faites vérifier votre dossier » route désormais vers le
+    // parcours de devis via quoteJourneyHref(locale) (helper locale-aware),
+    // au lieu de localizeNavHref('/contact') : le lien reste localisé, mais
+    // pointe vers /devis/mon-toit et non plus /contact.
+    expect(src).toContain('quoteJourneyHref');
   });
 
   it('keeps the inline determineRegime thresholds identical', () => {

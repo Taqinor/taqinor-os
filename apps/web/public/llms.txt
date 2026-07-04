@@ -1,0 +1,39 @@
+# Taqinor
+
+> Installateur solaire au Maroc — installation solaire résidentielle et
+> industrielle, batteries de stockage, pompage solaire, étude et
+> dimensionnement, monitoring, et accompagnement Loi 82-21 (Article 33).
+> Zone de service : Casablanca, Rabat, Marrakech, Tanger, Agadir, et le reste
+> du Maroc. Contact : contact@taqinor.com, +212 6 61 85 04 10.
+
+## Pages clés
+
+- [Accueil](https://taqinor.ma/): présentation de Taqinor et de ses services.
+- [Nos solutions](https://taqinor.ma/nos-solutions): vue d'ensemble de l'offre solaire.
+- [Résidentiel](https://taqinor.ma/résidentiel): installation solaire pour particuliers.
+- [Professionnel](https://taqinor.ma/professionnel): installation solaire industrielle/commerciale.
+- [Pompage solaire](https://taqinor.ma/pompage-solaire): pompage agricole à énergie solaire.
+- [Batteries & stockage](https://taqinor.ma/batteries-stockage): solutions de stockage d'énergie.
+- [Équipement](https://taqinor.ma/équipement): panneaux, onduleurs, batteries proposés.
+- [Maintenance & monitoring](https://taqinor.ma/maintenance-monitoring): suivi après installation.
+- [Financement](https://taqinor.ma/financement): options de financement des projets.
+- [Garanties](https://taqinor.ma/garanties): garanties constructeur et installateur.
+- [Loi 82-21](https://taqinor.ma/loi-82-21): régime d'autoproduction électrique au Maroc.
+- [Régularisation Article 33](https://taqinor.ma/regularization-article-33): mise en conformité des installations existantes.
+- [Marocains du monde](https://taqinor.ma/marocains-du-monde): accompagnement à distance pour la diaspora.
+- [Pourquoi Taqinor](https://taqinor.ma/pourquoi-taqinor): positionnement et méthode.
+- [À propos](https://taqinor.ma/à-propos): présentation de l'entreprise.
+- [Guides](https://taqinor.ma/guides/): guides pratiques sur le solaire (batteries, onduleurs, orientation, entretien…).
+- [Blog](https://taqinor.ma/blog/): articles de fond sur le solaire au Maroc.
+- [FAQ](https://taqinor.ma/faq): questions fréquentes.
+- [Contact](https://taqinor.ma/contact): prise de contact.
+- [Sitemap](https://taqinor.ma/sitemap.xml): index complet des pages publiques.
+
+## Notes pour les agents IA
+
+- Le contenu ci-dessus décrit l'offre publique du site ; il ne remplace pas
+  un devis personnalisé (dimensionnement, prix, éligibilité) qui dépend du
+  site et de la consommation du client.
+- `/proposition/`, `/internal/` et `/preview/` sont des zones privées
+  (propositions client tokenisées, outils internes, prévisualisations) — non
+  destinées à l'indexation ni à la citation.

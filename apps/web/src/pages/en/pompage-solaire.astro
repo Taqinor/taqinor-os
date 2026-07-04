@@ -11,6 +11,19 @@
  *  - Equipment link: border-azur-200/60 text-azur-200 (not brass);
  *  - .section-lg hero rhythm + .section / .seam-soft spacing tokens;
  *  - No photo hero → no cinematic hero, no .v3-grade, no ZelligeSignature.
+ *
+ * W261 — Sibling parity, without crossing the "zero invented proof" line
+ * above: mirrors the FR additions (capability stats band, 4-variable sizing
+ * SVG diagram, diesel/butane-vs-solar narrative framing with NO invented
+ * MAD/litre figure, and a WG11-gated financing/subsidy card labeled
+ * "to verify with your DPA" — never a confirmed number or partnership claim).
+ *
+ * W349 — "The form-bypass door": a direct WhatsApp CTA that asks for NOTHING
+ * to read or fill — just a bill (or meter) photo, possibly followed by a
+ * voice note. Placed right under the hero, prominently, for the
+ * low-digital-literacy visitor (confirmed persona, notably agricultural) who
+ * can't complete any step-by-step wizard — not even the printable worksheet
+ * (W348) below, which assumes reading/writing measurements.
  */
 import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -18,12 +31,33 @@ import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
+import Faq from '../../components/Faq.astro';
+import ServiceWarrantyTable from '../../components/ServiceWarrantyTable.astro';
+import RelatedLinks from '../../components/RelatedLinks.astro';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
+import { serviceFaqItems } from '../../lib/serviceFaq';
+import { WHATSAPP_LEADS } from '../../lib/nap';
+import { whatsappLink, zeroFormWhatsappText } from '../../lib/whatsapp';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 const devisHref = L('/devis/mon-toit');
+
+// W349 — form-bypass door: no field, no worksheet to fill.
+const zeroFormWaHref = whatsappLink(WHATSAPP_LEADS, zeroFormWhatsappText());
+
+// W348 — printable sizing worksheet (HMT/flow rate/hours/crop), to fill on
+// site then send back as a photo on WhatsApp: reuses ONLY the 4 variables
+// already described above on this page (no new figure).
+const worksheetWaHref = whatsappLink(
+  WHATSAPP_LEADS,
+  'Hello, here is my filled-in solar pumping sizing worksheet (total head, flow rate, pumping hours, crop) — photo attached.'
+);
+
+// W263 — shared FAQ + per-component warranty, EN. Solar pumping fits neither
+// an inverter nor a battery (repo fact) — includeOnduleur/includeBatterie false.
+const faqItems = serviceFaqItems('pompage-solaire', 'en');
 
 const etapes = [
   {
@@ -82,7 +116,7 @@ const jsonLd = {
 <Layout
   title="Agricultural solar pumping in Morocco: flow rate, head, borehole | Taqinor"
   description="Solar pumping for irrigation: the pump runs with the sun, the water waits in the basin rather than in batteries, and the array is calculated on the flow rate, the head and the borehole level. Agricultural solar pumping is VAT-exempt in Morocco — an advantage specific to agriculture, not to residential PV."
-  ogSlug="accueil"
+  ogSlug="pompage-solaire"
 >
   <div class="v2">
     <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
@@ -105,14 +139,56 @@ const jsonLd = {
           are after, the head the pump must overcome, the depth of the borehole and the water the
           crop needs. We take those four measurements before we propose anything at all.
         </p>
+        {/* W349 — form-bypass door, prominent under the hero: no reading, no
+            filling in — a bill (or meter) photo is enough to start. */}
+        <div class="cine-in cine-in-3 mt-8 border-2 border-brass-400/60 bg-white/5 p-5 sm:p-6">
+          <p class="text-base font-bold text-white sm:text-lg">
+            No time to read this page? Send a photo of your bill on WhatsApp — we'll take care of
+            everything.
+          </p>
+          <a
+            href={zeroFormWaHref}
+            target="_blank"
+            rel="noopener"
+            class="glow mt-4 inline-flex items-center gap-2 bg-brass-400 px-6 py-3.5 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
+            Send my photo on WhatsApp →
+          </a>
+        </div>
+      </div>
+    </section>
+
+    {/* W261 — Honest capability stats band: only facts already verified
+        elsewhere on this page — no invented production or project figure. */}
+    <section class="px-4 pb-4">
+      <div class="mx-auto max-w-6xl">
+        <dl class="cine-in grid max-w-3xl grid-cols-3 gap-3 border-t border-white/20 pt-6 sm:gap-6">
+          <div>
+            <dd class="fig lum text-base sm:text-3xl">4</dd>
+            <dt class="tech-label mt-2 text-lune">Measurements taken on site</dt>
+          </div>
+          <div>
+            <dd class="fig lum text-base sm:text-3xl">0%</dd>
+            <dt class="tech-label mt-2 text-lune">VAT on agricultural pumping</dt>
+          </div>
+          <div>
+            <dd class="fig lum text-base sm:text-3xl">Tier-1</dd>
+            <dt class="tech-label mt-2 text-lune">Array and drive, same as our roofs</dt>
+          </div>
+        </dl>
       </div>
     </section>
 
     <!-- How it works -->
     <section class="section px-4">
       <div class="mx-auto max-w-6xl">
-        {/* Eyebrow demoted to lune (brass discipline #2) */}
-        <p class="tech-label v2-kicker rule-brass text-lune">How it works</p>
+        {/* Eyebrow demoted to lune (brass discipline #2) — W274: chapter-
+            numbering system (01/02…), same device as index.astro, extended
+            here for site-wide consistency. Light-background eyebrows
+            (text-azur-600, e.g. "Four measurements") stay unnumbered — same
+            exclusion as the homepage's tonal-break section. */}
+        <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">01</span>How it works</p>
         <h2 class="display v2-section-title mt-5 text-white">From sun to field, in four stages</h2>
         <div class="mt-12 grid gap-6 md:grid-cols-2" data-stagger>
           {etapes.map((e, i) => (
@@ -155,6 +231,120 @@ const jsonLd = {
           flow rate or the head is missing — we'd be left guessing, and we don't size a pump on
           guesswork. <a href={devisHref} class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Request an assessment →</a>
         </p>
+
+        {/* W261 — Diagram of the 4 sizing variables converging on the system:
+            same content as the four cards above, staged visually. */}
+        <div class="mx-auto mt-14 max-w-3xl">
+          <svg viewBox="0 0 600 260" role="img" aria-label="Flow rate, total head, borehole depth and crop water needs converge on the pump, drive and photovoltaic array sizing" class="w-full">
+            <g font-size="11" class="fill-azur-700">
+              <g transform="translate(70,40)">
+                <circle r="26" fill="none" stroke="#0f1c54" stroke-width="2.5" />
+                <text text-anchor="middle" dy="4" font-weight="700">Flow</text>
+              </g>
+              <g transform="translate(70,110)">
+                <circle r="26" fill="none" stroke="#0f1c54" stroke-width="2.5" />
+                <text text-anchor="middle" dy="4" font-weight="700">Head</text>
+              </g>
+              <g transform="translate(70,180)">
+                <circle r="26" fill="none" stroke="#0f1c54" stroke-width="2.5" />
+                <text text-anchor="middle" dy="-2" font-weight="700">Borehole</text>
+              </g>
+              <g transform="translate(70,240)">
+                <circle r="26" fill="none" stroke="#0f1c54" stroke-width="2.5" />
+                <text text-anchor="middle" dy="-2" font-weight="700">Needs</text>
+              </g>
+            </g>
+            <g stroke="#0f1c54" stroke-width="2" fill="none" opacity="0.6" aria-hidden="true">
+              <path d="M96 40 L300 130" marker-end="url(#arrowP)" />
+              <path d="M96 110 L300 130" marker-end="url(#arrowP)" />
+              <path d="M96 180 L300 130" marker-end="url(#arrowP)" />
+              <path d="M96 240 L300 130" marker-end="url(#arrowP)" />
+            </g>
+            <defs>
+              <marker id="arrowP" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                <path d="M0 0 L6 3 L0 6 Z" fill="#0f1c54" />
+              </marker>
+            </defs>
+            <g transform="translate(300,130)">
+              <rect x="-70" y="-40" width="140" height="80" rx="4" fill="#0f1c54" />
+              <text text-anchor="middle" dy="-8" font-size="11" fill="white" font-weight="700">Pump +</text>
+              <text text-anchor="middle" dy="8" font-size="11" fill="white" font-weight="700">drive</text>
+              <text text-anchor="middle" dy="24" font-size="11" fill="white" font-weight="700">+ PV array</text>
+            </g>
+            <path d="M370 130 L520 130" stroke="#0f1c54" stroke-width="2" opacity="0.6" marker-end="url(#arrowP)" />
+            <g transform="translate(560,130)" class="fill-azur-700">
+              <circle r="26" fill="none" stroke="#e8b54a" stroke-width="2.5" />
+              <text text-anchor="middle" dy="4" font-size="18">💧</text>
+            </g>
+          </svg>
+          <p class="mx-auto mt-4 max-w-xl text-center text-xs leading-relaxed text-encre-faint">
+            The four measurements taken on site together determine one coherent system — not four
+            separate calculations.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    {/* W348 — printable sizing worksheet: the same 4 variables as the section
+        above, in a "fill on site" form. Print button + WhatsApp photo
+        invitation, with no email gate at all. */}
+    <section class="section px-4" id="fiche-dimensionnement">
+      <div class="mx-auto max-w-4xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">Printable tool</p>
+        <h2 class="display v2-section-title mt-5 text-white">The sizing worksheet, filled in on site</h2>
+        <p class="v2-lead mt-5 max-w-2xl text-lune-soft">
+          Print this sheet, fill it in at the borehole or the tank with your own measurements, then
+          send us a photo of it on WhatsApp — that is often enough to prepare your study before we
+          even speak for the first time.
+        </p>
+
+        <div id="fiche-dimensionnement-print" class="v2-rise cine-card mt-8 p-7 sm:p-9">
+          <div class="grid gap-6 sm:grid-cols-2">
+            <label class="block">
+              <span class="tech-label text-lune">Target flow rate</span>
+              <span class="mt-2 block border-b-2 border-white/30 pb-2 text-sm text-lune-faint">______________ m³/h or m³/day</span>
+            </label>
+            <label class="block">
+              <span class="tech-label text-lune">Total head (HMT)</span>
+              <span class="mt-2 block border-b-2 border-white/30 pb-2 text-sm text-lune-faint">______________ metres</span>
+            </label>
+            <label class="block">
+              <span class="tech-label text-lune">Target pumping hours / day</span>
+              <span class="mt-2 block border-b-2 border-white/30 pb-2 text-sm text-lune-faint">______________ hours</span>
+            </label>
+            <label class="block">
+              <span class="tech-label text-lune">Crop / water use</span>
+              <span class="mt-2 block border-b-2 border-white/30 pb-2 text-sm text-lune-faint">______________________________</span>
+            </label>
+            <label class="block sm:col-span-2">
+              <span class="tech-label text-lune">Borehole depth / dynamic level (if known)</span>
+              <span class="mt-2 block border-b-2 border-white/30 pb-2 text-sm text-lune-faint">______________ metres</span>
+            </label>
+          </div>
+          <p class="mt-6 text-xs leading-relaxed text-lune-faint">
+            These four measurements are the same ones described above on this page — none is
+            required to start the conversation, but the more you fill in, the more precise our
+            first reply will be.
+          </p>
+        </div>
+
+        <div class="mt-8 flex flex-wrap items-center gap-4 print:hidden">
+          <button
+            type="button"
+            id="fiche-print-btn"
+            class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10"
+          >
+            Print the worksheet →
+          </button>
+          <a
+            href={worksheetWaHref}
+            target="_blank"
+            rel="noopener"
+            class="glow inline-flex items-center gap-2 bg-brass-400 px-5 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300"
+          >
+            Send the photo on WhatsApp →
+          </a>
+        </div>
       </div>
     </section>
 
@@ -163,8 +353,8 @@ const jsonLd = {
       <div class="mx-auto max-w-6xl">
         <div class="grid gap-10 lg:grid-cols-[1.1fr_1fr] lg:items-center">
           <div class="v2-rise">
-            {/* Eyebrow demoted to lune (brass discipline #2) */}
-            <p class="tech-label v2-kicker rule-brass text-lune">Verified tax advantage</p>
+            {/* Eyebrow demoted to lune (brass discipline #2) — W274 chapter 02 */}
+            <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">02</span>Verified tax advantage</p>
             <h2 class="display v2-section-title mt-5 text-white">Agricultural pumping, VAT-exempt</h2>
             <p class="v2-lead mt-5 text-lune-soft">
               In Morocco, solar water-pumping systems are exempt from VAT — and the exemption covers
@@ -186,23 +376,105 @@ const jsonLd = {
       </div>
     </section>
 
+    {/* W261 — Diesel/butane vs solar framing: the SAME story as the agricole
+        quote engine (decompensated butane costs more than the sticker price
+        suggests, diesel is volatile, solar fixes the cost), with NO invented
+        MAD/litre figure — those values are volatile and "to confirm" on the
+        ERP engine side, never published as a fixed fact on the marketing
+        site. The real calculation happens at the study, with the day's price
+        and the pump's measured consumption. */}
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="section bg-blanc-azur px-4 text-encre">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-azur-600">The calculation that matters to you</p>
+        <h2 class="display v2-section-title mt-5">Against diesel, against butane</h2>
+        <p class="v2-lead mt-5 max-w-2xl text-encre-soft">
+          A farmer doesn't compare kWc, they compare tanks. Every hour of diesel or butane pumping
+          has a cost that moves with the day's price — and decompensated butane costs, in reality,
+          considerably more than the subsidized cylinder's sticker price suggests. Solar fixes that
+          cost at zero once the system is paid off: the sun doesn't send an invoice.
+        </p>
+        <div class="mt-10 grid gap-6 md:grid-cols-2">
+          <div class="v2-rise border-t-2 border-azur-900 bg-blanc p-6">
+            <h3 class="display text-lg text-azur-700">Diesel & butane</h3>
+            <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+              A recurring cost, indexed to a price that moves, tank after tank, season after season.
+              Decompensated butane weighs even heavier on the real bill than the subsidized
+              cylinder's sticker price suggests.
+            </p>
+          </div>
+          <div class="v2-rise border-t-2 border-brass-400 bg-blanc p-6">
+            <h3 class="display text-lg text-azur-700">Solar pumping</h3>
+            <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+              A one-time investment, VAT-exempt, then a running cost close to zero: the crossover
+              point with diesel or butane depends on your actual consumption — which is exactly
+              what the study calculates, figure by figure, for your plot.
+            </p>
+          </div>
+        </div>
+        <p class="mx-auto mt-8 max-w-2xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
+          The day's fuel price and your pump's actual running hours change the calculation from one
+          farm to the next: that's why the exact figure — and the number of years to payback —
+          comes out of the study, never a national average. <a href={devisHref} class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Request my study →</a>
+        </p>
+      </div>
+    </section>
+
+    {/* W261 — Financing/subsidy card, gated WG11: FDA 30% + Saquii are NOT
+        republished as a confirmed fact until the terms have been verified
+        with the primary sources (DPA/ORMVA/CAM) — see docs/WEB_PLAN.md WG11.
+        Shown here as a lead to verify, never as a Taqinor offer or
+        partnership. */}
+    <section class="section px-4">
+      <div class="mx-auto max-w-6xl">
+        <div class="v2-rise cine-card border-2 border-dashed border-white/25 p-7">
+          {/* W274 chapter 03 */}
+          <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">03</span>Financing lead — to verify</p>
+          <h2 class="display mt-3 text-xl text-white">Agricultural subsidy (FDA) and financing (Saquii)</h2>
+          <p class="mt-4 max-w-2xl text-sm leading-relaxed text-lune-soft">
+            The Moroccan state has historically offered an Agricultural Development Fund subsidy for
+            solar pumping, and Crédit Agricole du Maroc offers financing mechanisms dedicated to
+            agricultural solar. Current rates, caps and conditions change and depend on your DPA/
+            ORMVA — we publish no percentage or amount until it has been verified with the relevant
+            body.
+          </p>
+          <p class="mt-4 text-sm font-semibold text-lune-faint">
+            To verify with your DPA before any commitment — Taqinor is neither a lender nor a
+            subsidizing body and guarantees no eligibility.
+          </p>
+        </div>
+      </div>
+    </section>
+
     <!-- Links block / business segment -->
     <section class="section border-t border-white/10 px-4">
       <div class="mx-auto max-w-6xl">
-        {/* Eyebrow demoted to lune (brass discipline #2) */}
-        <p class="tech-label v2-kicker rule-brass text-lune">To go further</p>
+        {/* Eyebrow demoted to lune (brass discipline #2) — W274 chapter 04 */}
+        <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">04</span>To go further</p>
         <h2 class="display v2-section-title mt-5 text-white">Agriculture, a business segment</h2>
         <p class="v2-lead mt-5 max-w-2xl text-lune-soft">
           Solar pumping belongs to the working farm, not to the plug-in kit you wire up yourself.
           After the borehole survey and the sizing calculation, we install tier-1 hardware and the
           system is handed over with its full technical file.
         </p>
-        <div class="mt-10 flex flex-wrap gap-3">
-          <a href={devisHref} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Request an assessment →</a>
-          <a href={L('/professionnel')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Business solar →</a>
-          <a href={L('/équipement')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">See the equipment →</a>
-        </div>
+        <RelatedLinks links={[
+          { href: devisHref, label: 'Request an assessment' },
+          { href: L('/professionnel'), label: 'Business solar' },
+          { href: L('/équipement'), label: 'See the equipment' },
+          { href: L('/financement'), label: 'Financing & returns' },
+          { href: L('/garanties'), label: 'Our warranties' },
+          { href: L('/nos-solutions'), label: 'All our solutions' },
+        ]} />
       </div>
+    </section>
+
+    <!-- W263 — shared FAQ (maintenance/price/included-excluded/timelines/
+         warranties) + per-component warranty, BEFORE the final CTA.
+         schema={false}: /faq stays the only FAQPage JSON-LD (W19).
+         Solar pumping fits neither an inverter nor a battery (repo fact). -->
+    <Faq schema={false} heading="Frequently asked questions — solar pumping" items={faqItems} />
+    <section class="section-tight bg-blanc-azur px-4 text-encre">
+      <ServiceWarrantyTable includeOnduleur={false} includeBatterie={false} />
     </section>
 
     <CtaBand title="A solar pumping project? Start with the free study." href={devisHref} />
@@ -210,3 +482,39 @@ const jsonLd = {
     <StickyCta />
   </div>
 </Layout>
+
+<script>
+  // W348 — print button for the sizing worksheet: window.print() triggers
+  // the @media print rules below (light background, chrome hidden).
+  document.getElementById('fiche-print-btn')?.addEventListener('click', () => {
+    window.print();
+  });
+</script>
+
+<style is:global>
+  /* W348 — print: show ONLY the sizing worksheet, light background and dark
+     text (the default night/brass theme would print dark-on-dark — same fix
+     as on /proposition/[token]). is:global: Header/Footer are rendered by
+     Layout.astro, a separate component, so a style scoped to THIS page would
+     never reach them. */
+  @media print {
+    header,
+    footer,
+    #sticky-cta,
+    .reading-bar,
+    .v2 > *:not(#fiche-dimensionnement) {
+      display: none !important;
+    }
+    #fiche-dimensionnement {
+      padding: 0 !important;
+    }
+    #fiche-dimensionnement,
+    #fiche-dimensionnement * {
+      background: #fff !important;
+      color: #111 !important;
+      box-shadow: none !important;
+      text-shadow: none !important;
+      border-color: #999 !important;
+    }
+  }
+</style>

@@ -23,7 +23,8 @@ import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { REALISATIONS, CITIES } from '../../lib/realisations';
 import { caseStudyBySlug } from '../../lib/caseStudies';
-import { NAP } from '../../lib/nap';
+import { NAP, WHATSAPP_LEADS } from '../../lib/nap';
+import { whatsappLink, caseStudyWhatsappText } from '../../lib/whatsapp';
 
 export function getStaticPaths() {
   return REALISATIONS.map((r) => ({ params: { slug: r.slug }, props: { r } }));
@@ -85,6 +86,21 @@ const hasDiptych = phasedPhotos.length >= 2;
 
 // W178 — lightbox : toutes les photos de la galerie (rest), index depuis 0
 const galleryPhotos = rest;
+
+// W327 — « kWc le plus proche du vôtre » : l'autre étude dont la puissance
+// installée (kwcNum) est la plus proche de celle-ci, en excluant la page
+// courante. Comparaison purement numérique sur un champ réel — aucune
+// proximité inventée.
+const nearestCase = REALISATIONS
+  .filter((other) => other.slug !== r.slug)
+  .sort((a, b) => Math.abs(a.kwcNum - r.kwcNum) - Math.abs(b.kwcNum - r.kwcNum))[0];
+
+// W350 — bouton WhatsApp PROPRE À CETTE étude (bio-link social → réalisation
+// → WhatsApp déjà contextualisé). Distinct du bouton générique de StickyCta.
+const waCaseStudy = whatsappLink(
+  WHATSAPP_LEADS,
+  caseStudyWhatsappText({ ville: r.ville, kwc: r.kwc, ref: r.ref }),
+);
 ---
 
 <Layout
@@ -113,7 +129,13 @@ const galleryPhotos = rest;
         {/* W155 — portraitPosition : recadrage doux vers le haut sur téléphones
             verticaux (les panneaux sont en haut de la photo de chantier). Si
             hero.objectPosition est déjà défini, il est gardé en paysage ; le
-            portrait override est center 25% (haut du champ) par défaut. */}
+            portrait override est center 25% (haut du champ) par défaut.
+            W364 — view-transition-name matching the gallery card that shares
+            this exact photo (index.astro / realisations/index.astro both key
+            off the same photo name) — morphs on arrival when the outgoing
+            page carried the matching name, silently degrades to a normal
+            navigation otherwise (LCP unaffected: this only shapes the
+            cross-document transition, never image loading/priority). */}
         <Picture
           name={hero.name}
           alt={hero.alt}
@@ -125,6 +147,7 @@ const galleryPhotos = rest;
           position={hero.objectPosition}
           portraitPosition="center 25%"
           class="h-full w-full object-cover"
+          style={`view-transition-name: vt-photo-${hero.name}`}
         />
         <div class="absolute inset-0 bg-gradient-to-t from-nuit via-nuit/55 to-nuit/20"></div>
       </div>
@@ -169,6 +192,15 @@ const galleryPhotos = rest;
       <p class="v2-lead mt-5 text-lune-soft">{cs.situation}</p>
       <p class="v2-lead mt-4 text-lune-soft">{cs.sizing}</p>
       <p class="v2-lead mt-4 text-lune-soft">{cs.result}</p>
+      {/* W327 — voix du client : NO-OP tant que WG6 n'a fourni aucune vraie
+          citation (cs.clientQuote reste `undefined` pour les cinq études
+          actuelles) ; rien n'est rendu dans ce cas, jamais de placeholder. */}
+      {cs.clientQuote && (
+        <blockquote class="mt-8 border-l-2 border-brass-400 pl-5">
+          <p class="v2-lead text-white">« {cs.clientQuote.text} »</p>
+          <cite class="tech-label mt-3 block not-italic text-lune-faint">— {cs.clientQuote.author}</cite>
+        </blockquote>
+      )}
     </section>
 
     <!-- W184 — Diptych avant/pendant/après (si données présentes) -->
@@ -272,6 +304,52 @@ const galleryPhotos = rest;
       </section>
     )}
 
+    <!-- W327 — « kWc le plus proche du vôtre » : le prochain pas naturel pour
+         un acheteur qui compare sa propre toiture à un cas précis. -->
+    {nearestCase && (
+      <section class="border-t border-white/10 px-4 py-16">
+        <div class="mx-auto max-w-6xl">
+          <a
+            href={`/realisations/${nearestCase.slug}`}
+            class="group flex flex-wrap items-center justify-between gap-4 border border-brass-400/40 bg-white/[0.03] px-6 py-5 transition-colors hover:border-brass-400 hover:bg-white/[0.06]"
+          >
+            <span>
+              <span class="tech-label block text-brass-300">Un kWc plus proche du vôtre</span>
+              <span class="mt-1 block font-display text-lg font-bold text-white">
+                {nearestCase.kwc} à {nearestCase.ville}{nearestCase.production ? ` · ${nearestCase.production}` : ''}
+              </span>
+            </span>
+            <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1 text-sm font-bold text-azur-200" aria-hidden="true">
+              Voir l'étude de cas →
+            </span>
+          </a>
+        </div>
+      </section>
+    )}
+
+    <!-- W344 — Référence soft vers /parrainage : la preuve la plus forte du
+         site (une étude de cas réelle) ne doit pas être une impasse. Ton
+         discret, non-transactionnel — pas de montant/récompense affiché ici
+         (voir /parrainage pour les conditions, WG14-gated). -->
+    <section class="border-t border-white/10 px-4 py-16">
+      <div class="mx-auto max-w-6xl">
+        <a
+          href="/parrainage"
+          class="group flex flex-wrap items-center justify-between gap-4 border border-white/20 px-6 py-5 transition-colors hover:border-brass-400/60 hover:bg-white/[0.03]"
+        >
+          <span>
+            <span class="tech-label block text-lune-faint">Le bouche-à-oreille compte</span>
+            <span class="mt-1 block font-display text-lg font-bold text-white">
+              Un proche a un profil similaire ? Recommandez Taqinor
+            </span>
+          </span>
+          <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1 text-sm font-bold text-azur-200" aria-hidden="true">
+            Découvrir le parrainage →
+          </span>
+        </a>
+      </div>
+    </section>
+
     <!-- Liens contextuels -->
     <section class="border-t border-white/10 px-4 py-16">
       <div class="mx-auto flex max-w-6xl flex-wrap gap-3">
@@ -290,6 +368,24 @@ const galleryPhotos = rest;
     </section>
 
     <CtaBand title={`Une étude comme celle de ${r.ville}, pour votre toiture.`} href="/devis/mon-toit" />
+
+    <!-- W350 — WhatsApp PROPRE À CETTE étude : le message cite déjà la ville,
+         la puissance et la référence exactes (bio-link réseaux sociaux →
+         réalisation → WhatsApp déjà contextualisé, sans rien à retaper). -->
+    <section class="border-t border-white/10 bg-blanc-azur px-4 py-10 text-center text-encre">
+      <p class="mx-auto max-w-xl text-sm text-encre-soft">
+        Une question sur cette installation de {r.kwc} à {r.ville} ?
+      </p>
+      <a
+        href={waCaseStudy}
+        rel="noopener noreferrer"
+        target="_blank"
+        class="mt-4 inline-flex items-center gap-2 border border-azur-600 px-5 py-2.5 text-sm font-bold text-azur-600 transition-colors hover:bg-azur-600 hover:text-white"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
+        Discuter de cette installation sur WhatsApp
+      </a>
+    </section>
 
     <StickyCta />
   </div>

@@ -15,16 +15,23 @@ import StickyCta from '../../../components/StickyCta.astro';
 import { NAP } from '../../../lib/nap';
 import { getLocaleFromPath } from '../../../i18n/utils';
 import { localizeNavHref } from '../../../i18n/pages';
+// W310 — restores the KeyFigure + Callout blocks the FR page carries
+// (6,000-cycle stat + "the right reflex" tip), silently missing from this mirror.
+import Callout from '../../../components/Callout.astro';
+import KeyFigure from '../../../components/KeyFigure.astro';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 
 const url = new URL(Astro.url.pathname, Astro.site).href;
+// W291 — OG image (same URL passed to ogSlug below), for Article rich-result eligibility.
+const schemaImageUrl = new URL('/og/equipement.png', Astro.site).href;
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Article',
   headline: 'Do you need batteries for your solar installation?',
   description: 'Daytime self-consumption or storage: when batteries are justified in a solar installation, explained simply.',
+  image: schemaImageUrl,
   about: { '@type': 'Thing', name: 'Solar storage batteries' },
   author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
   publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
@@ -35,7 +42,7 @@ const jsonLd = {
 <Layout
   title="Do you need batteries for your solar installation? | Taqinor"
   description="Often no. If you consume mostly during the day, direct self-consumption pays more than any battery; storage is justified for the night or for service continuity. It all comes down to the hour at which your meter turns."
-  ogSlug="equipement"
+  ogSlug="guides"
 >
   <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
   <div class="v2">
@@ -100,6 +107,16 @@ const jsonLd = {
         storage that is <em>correctly</em> sized, never to make a bank oversized "for peace of mind"
         worthwhile.
       </p>
+
+      <KeyFigure value="6,000" unit="cycles" label="LFP lifespan">
+        Warrantied 10 years at 70% capacity — enough to pay off correctly-sized storage.
+      </KeyFigure>
+
+      <Callout type="tip" title="The right reflex">
+        Before adding a battery, ask yourself: at what hour do you consume the most?
+        If it's during the day, direct self-consumption pays back faster — with no
+        storage at all.
+      </Callout>
 
       <h2 class="display v2-section-title mt-12 text-white">What your consumption curve says</h2>
       <p class="v2-lead mt-5 text-lune-soft">

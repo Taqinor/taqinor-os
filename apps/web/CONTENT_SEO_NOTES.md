@@ -47,7 +47,7 @@ surplus), **not** export revenue.
 | Regime — accord de raccordement | **11 kW – 5 MW** (SRM/distributor agreement) | PUBLISH-SAFE (high) | same |
 | Regime — autorisation | **> 5 MW** (ONEE technical opinion) | PUBLISH-SAFE (high) | same |
 | Surplus injection cap | **20 % of annual production** | PUBLISH-SAFE (high) | Médias24; LesEco; Fidal |
-| Buyback / rachat tariff | **0,21 DH/kWh peak · 0,18 DH/kWh off-peak** (ANRE 04/26) | PUBLISH-SAFE (high) | Médias24; LesEco; energypartnership |
+| Buyback / rachat tariff | **0,21 DH/kWh peak · 0,18 DH/kWh off-peak** (ANRE Décision 04/26) — **scope: MT/HT only. The BT (<11 kW residential déclaration) surplus/net-billing tariff is STILL UNPUBLISHED as of this writing.** Never state this number as settled fact for the residential/BT case — always pair it with the "tarif MT/HT uniquement — BT résidentiel non encore publié" caveat, or omit and describe the mechanism only. | LOCK-FIRST for BT (medium) / PUBLISH-SAFE for MT-HT (high) | Médias24; LesEco; energypartnership; ANRE Décision 04/26 scope confirmed MT/HT-only |
 | Net-metering? | **No** — net-billing only; buyback ≪ retail | PUBLISH-SAFE (high) | multiple |
 | Penalties — **fines only** (enacted law dropped the draft's prison terms) | **Art. 28** no déclaration **2 000–5 000 DH**; **Art. 29** no raccordement/autorisation **100 000–1 000 000 DH**; **Art. 31** obstructing control **10 000–100 000 DH**; (Art. 30, number unconfirmed) modif. contraire à l'autorisation **10 000–20 000 DH + saisie** | PUBLISH-SAFE (high — verbatim from indexed BO n°7400, except Art. 30 medium) | ANRE Loi 82-21 PDF (BO 7400) |
 | Article 33 regularization window | **18 months from the LAW's entry into force** (verbatim Art. 33); dead-letter until the decree, so the operative trigger is now the **9 Jun 2026** decree entry-into-force (Fidal). No clean restated calendar deadline confirmed. | PUBLISH-SAFE on the 18-month text (high); operative date medium | ANRE PDF Art. 33; Fidal |
@@ -328,11 +328,13 @@ Dyness Stack100 HV from ~12 500 DH; Pylontech 3,6–4,8 kWh from ~18 600 DH (≈
 small-capacity premium). The Huawei LUNA 62 050 DH/5 kWh ≈ 12 400 DH/kWh listing remains an outlier —
 do **not** benchmark on it. Refresh cadence: re-check a live listing at each storage post (~quarterly).
 
-**Battery economics — the Morocco angle (PUBLISH-SAFE logic):** with export capped at 20 % and bought
-back at 0,18–0,21 DH while you *buy* at 0,90–1,66 DH, a stored-and-self-used kWh is worth your retail
-avoided cost, an exported one only the low buyback. **Order of value: (1) consume in daylight (free) →
-(2) store for the evening peak → (3) export the 20 % (lowest).** Don't oversize batteries for loads
-that could simply run at midday.
+**Battery economics — the Morocco angle (PUBLISH-SAFE logic, buyback figure LOCK-FIRST for BT):** with
+export capped at 20 % and bought back at 0,18–0,21 DH (MT/HT tariff; **the BT/residential surplus
+tariff is not yet published** — caveat whenever this number is cited for a home/villa case) while you
+*buy* at 0,90–1,66 DH, a stored-and-self-used kWh is worth your retail avoided cost, an exported one
+only the low buyback (or an unknown one, pending BT publication). **Order of value: (1) consume in
+daylight (free) → (2) store for the evening peak → (3) export the 20 % (lowest, exact rate pending for
+BT).** Don't oversize batteries for loads that could simply run at midday.
 
 ---
 
@@ -366,5 +368,15 @@ that could simply run at midday.
   Volatile (fuel, tariffs, prices) = date-stamped 2026-06-21 + a refresh-cadence note per block above.
 - **Strongest, publish-now data:** per-city optimal tilt + national PVOUT band, sizing rules, EV
   kWh/100 km and panels-per-EV, the cost-per-100 km *ordering*, LFP-vs-lead-vs-NMC ranking, the 82-21
-  regimes + 20 % cap + 0,18–0,21 DH buyback + net-billing fact + the locked penalty bands, panel
-  degradation (~0,5 %/yr, ~80–85 % at 25 yr).
+  regimes + 20 % cap + net-billing fact + the locked penalty bands, panel degradation (industry
+  standard ~0,5 %/yr → ~80–85 % at 25 yr; **Taqinor's own product warranty goes further: ≥ 84,8 % at
+  25 yr** — see `GarantiesTeaser.astro` / the guarantees page; frame content as "our warranty exceeds
+  the standard (80–85 %): ≥ 84,8 %", never state the generic 80–85 % alone as if it were a downgrade
+  of our figure — W301 fix, 2026-07-03).
+- **W300 correction (2026-07-03):** the 0,18–0,21 DH/kWh buyback/rachat figure is ANRE Décision 04/26's
+  **MT/HT** rate. It was being stated across the guides/blog as if it applied to the **BT (<11 kW
+  residential déclaration)** case too — that case's surplus tariff is **not yet published**. Every
+  citation of 0,18–0,21 DH/kWh in residential/BT content must now carry the
+  « tarif MT/HT uniquement — BT résidentiel non encore publié » caveat (see the guides + blog posts +
+  regularization-article-33.astro, fixed 2026-07-03). This was the one place the site's "no invented
+  numbers" rule was broken.

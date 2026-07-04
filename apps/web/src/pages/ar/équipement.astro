@@ -13,9 +13,33 @@ import Picture from '../../components/Picture.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
+import { ficheBySlug } from '../../lib/fiches';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
+
+// W326 — جدول مقارنة واحد: علامتان للألواح × سلسلتا عاكسات، القيم كما هي من
+// fiches.ts (المصدر الوحيد للحقيقة) — لا رقم جديد هنا.
+const panneauCanadian = ficheBySlug('canadian-solar-710')!;
+const panneauJinko = ficheBySlug('jinko-710')!;
+const onduleurHuawei = ficheBySlug('onduleur-huawei-reseau')!;
+const onduleurDeye = ficheBySlug('onduleur-deye-hybride')!;
+
+const comparaisonPanneaux = [
+  { critere: 'الطراز', a: panneauCanadian.modele, b: panneauJinko.modele },
+  { critere: 'الخلية', a: 'خلية N-type TOPCon، تقنية ثنائية الوجه', b: 'خلية أحادية البلورة N-type عالية المردود' },
+  { critere: 'القدرة', a: 'مجال القدرة 705 – 720 Wc', b: 'مجال القدرة ≈ 700 – 720 Wc' },
+  { critere: 'المعايير', a: 'مطابق لـ IEC 61215 و IEC 61730', b: 'مطابق لـ IEC 61215 و IEC 61730' },
+  { critere: 'الضمان', a: panneauCanadian.garantie, b: panneauJinko.garantie },
+];
+
+const comparaisonOnduleurs = [
+  { critere: 'الاستعمال النموذجي', a: 'بدون بطارية (string صرف)', b: 'مع بطارية (تحكم في الزمن الحقيقي)' },
+  { critere: 'الطراز', a: onduleurHuawei.modele, b: onduleurDeye.modele },
+  { critere: 'نقطة القوة', a: 'تحسين لكل سلسلة (عدة MPPT)', b: 'تدبير البطارية CAN BMS مدمج' },
+  { critere: 'المجال / المطابقة', a: 'من السكني إلى أسطح القطاع الثالث', b: 'أحادي وثلاثي الطور، 5 – 30 kW' },
+  { critere: 'الضمان', a: onduleurHuawei.garantie, b: onduleurDeye.garantie },
+];
 
 const categories = [
   { ref: 'PV-1', title: 'الألواح — Canadian Solar TOPBiHiKu', body: "اللوح ثنائي الوجه يلتقط أيضاً الضوء المنعكس عن السطح: على سطيحة فاتحة اللون، هذا مردود مكتسب دون مساحة إضافية. هذه الوحدات من 705 إلى 720 Wc تأتي من مُصنّع سلّم أكثر من 100 GW في العالم، ملتزمة بمعايير IEC 61215 و IEC 61730. وهي التي رُكّبت في الدار البيضاء والجديدة.", points: ['ثنائي الوجه 705 – 720 Wc', 'ضمان المنتج 12 سنة', 'ضمان الأداء 25 سنة (≥ 84.8 %)'] },
@@ -117,6 +141,98 @@ const warranties = [
       </div>
     </section>
 
+    <!-- W326 — مقارنة: علامتان للألواح × سلسلتا عاكسات -->
+    <section class="mx-auto max-w-6xl px-4 pb-16">
+      <p class="tech-label v2-kicker rule-brass text-brass-300">قارِن قبل أن تختار</p>
+      <h2 class="display v2-section-title mt-5 text-white">ما الذي يميّز مراجعنا</h2>
+      <p class="v2-lead mt-4 max-w-2xl text-lune-soft">
+        علامتان لكل فئة، جنباً إلى جنب ليكون الاختيار واضحاً — بقية الفروق الدقيقة تعيش في
+        الفيشة الرسمية لكل منتج.
+      </p>
+
+      <div class="mt-8 grid gap-8 lg:grid-cols-2">
+        <div class="overflow-x-auto">
+          <h3 class="tech-label mb-3 text-brass-300">الألواح الكهروضوئية</h3>
+          <table class="w-full min-w-[420px] border-collapse text-sm">
+            <thead>
+              <tr class="border-b-2 border-brass-400/70 text-left text-white">
+                <th scope="col" class="py-3 pr-4 font-semibold">المعيار</th>
+                <th scope="col" class="py-3 pr-4 font-semibold">{panneauCanadian.marque}</th>
+                <th scope="col" class="py-3 font-semibold">{panneauJinko.marque}</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-white/10 text-lune">
+              {comparaisonPanneaux.map((row) => (
+                <tr>
+                  <th scope="row" class="py-3 pr-4 font-normal text-lune-faint">{row.critere}</th>
+                  <td class="py-3 pr-4">{row.a}</td>
+                  <td class="py-3">{row.b}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="overflow-x-auto">
+          <h3 class="tech-label mb-3 text-brass-300">العاكسات</h3>
+          <table class="w-full min-w-[420px] border-collapse text-sm">
+            <thead>
+              <tr class="border-b-2 border-brass-400/70 text-left text-white">
+                <th scope="col" class="py-3 pr-4 font-semibold">المعيار</th>
+                <th scope="col" class="py-3 pr-4 font-semibold">{onduleurHuawei.marque} (شبكة)</th>
+                <th scope="col" class="py-3 font-semibold">{onduleurDeye.marque} (هجين)</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-white/10 text-lune">
+              {comparaisonOnduleurs.map((row) => (
+                <tr>
+                  <th scope="row" class="py-3 pr-4 font-normal text-lune-faint">{row.critere}</th>
+                  <td class="py-3 pr-4">{row.a}</td>
+                  <td class="py-3">{row.b}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <p class="mt-6 max-w-2xl text-xs leading-relaxed text-lune-faint">
+        دراسة سطحك هي التي تختار المرجع، لا العكس أبداً: بدون بطارية ننطلق من string {onduleurHuawei.marque}،
+        ومع بطارية من الهجين {onduleurDeye.marque}.
+      </p>
+    </section>
+
+    <!-- W277 — لماذا تهم إمكانية التتبع -->
+    <section class="border-y border-white/10 px-4 py-16 sm:py-20">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-brass-300">لماذا تهم إمكانية التتبع</p>
+        <h2 class="display v2-section-title mt-5 text-white">الخوف ليس لا معقولاً — والجواب قابل للتحقق</h2>
+        <p class="v2-lead mt-5 text-lune-soft">
+          في 2025، تناولت الصحافة المغربية ملفاً كشف أن دفعات من الألواح الشمسية المستوردة كانت
+          سيّئة الأداء: إنتاج فعلي أقل بشكل ملحوظ مما أعلنته الفيشات التقنية والوثائق الرسمية، في
+          كميات موجّهة لصفقات عمومية. لا نستشهد بهذا الملف ضد مركّب بعينه — فهو لا يسمّي أحداً — بل
+          لأنه يطرح بالضبط السؤال الصحيح قبل التوقيع: من أين يأتي هذا اللوح، ومن يستطيع إثبات ذلك؟
+        </p>
+        <div class="mt-8 grid gap-4 sm:grid-cols-2" data-stagger>
+          <div class="v2-rise border border-white/15 p-6" style="--v2-i:0">
+            <p class="tech-label text-brass-300">ما أظهره السوق</p>
+            <p class="mt-3 text-sm leading-relaxed text-lune-soft">
+              مراجع دون علامة يمكن التحقق منها، تُشترى بالاعتماد على الفيشة التقنية وحدها، قد
+              تُسلَّم بمردود فعلي بعيد جداً عمّا أُعلن — دون أن يملك المشتري وسيلة لإثبات ذلك لاحقاً.
+            </p>
+          </div>
+          <div class="v2-rise border border-white/15 p-6" style="--v2-i:1">
+            <p class="tech-label text-brass-300">ما نوثّقه، سطراً بسطر</p>
+            <p class="mt-3 text-sm leading-relaxed text-lune-soft">
+              كل مرجع في هذه الصفحة علامة tier-1 مسمّاة، مع فيشتها الرسمية من الصانع على
+              <a href={L('/produits')} class="text-brass-300 underline underline-offset-2 hover:text-white">صفحة المنتج</a>،
+              وضمانها التعاقدي مع تاكينور، ثم — بعد التركيب — إنتاجها القابل للتحقق على Deye Cloud.
+              لا شيء مجهول، لا شيء لا يُتتبَّع.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- ACTE FINAL — les garanties, littéralement noir sur blanc -->
     <div class="v2-seam" aria-hidden="true"></div>
     <section class="bg-blanc-azur px-4 pb-20 pt-10 text-encre sm:pb-28">
@@ -149,7 +265,7 @@ const warranties = [
       </div>
     </section>
 
-    <CtaBand title="العتاد الصحيح هو الذي تبرّره الدراسة." seam={false} href={L('/devis/mon-toit')} />
+    <CtaBand title="خمس ماركات مُسمّاة لا تقول أيّها يناسب سطحكم — الدراسة المجانية تحسب ذلك." seam={false} href={L('/devis/mon-toit')} />
 
     <StickyCta />
   </div>

@@ -1,7 +1,8 @@
 ---
 title: "Recharger sa voiture électrique au solaire : combien ça coûte vraiment au Maroc ?"
-description: "Essence vs VE sur réseau vs VE sur solaire au Maroc : comparaison chiffrée du coût par 100 km avec hypothèses détaillées, juin 2026."
+description: "Essence vs VE sur réseau vs VE sur solaire au Maroc : comparaison chiffrée du coût par 100 km avec hypothèses détaillées, prix carburant au 21 juin 2026."
 pubDate: 2026-06-21
+updatedDate: 2026-07-03
 tags: ["voiture électrique", "recharge", "solaire", "coût"]
 author: "Reda Kasri"
 ogSlug: "accueil"
@@ -106,7 +107,7 @@ Pour un usage quotidien, de toute façon, c'est la recharge à domicile qui rest
 | Panneaux nécessaires | — | — | **2–4 × 550 W** pour 30–50 km/jour |
 | Borne recommandée (monophasé) | — | **7 kW wallbox** | **7 kW wallbox** (± mode solaire) |
 
-*Prix essence : 14,27 MAD/L, mi-juin 2026 — prix libéralisé, sujet à révision. Hypothèses détaillées dans l'article.*
+*Prix essence : 14,27 MAD/L au 21 juin 2026 — prix libéralisé, révisé environ deux fois par mois : si vous lisez cet article plus tard, vérifiez le prix du jour sur [le360](https://le360.ma) ou [Médias24](https://medias24.com) avant de comparer, le classement (solaire ≪ réseau ≪ essence) restant lui robuste. Hypothèses détaillées dans l'article.*
 
 ---
 

@@ -19,8 +19,10 @@ import type { APIRoute } from 'astro';
 import * as cf from 'cloudflare:workers';
 import {
   buildLeadRecord,
+  crossSiteRejection,
   fireCapi,
   forwardLead,
+  isSameOriginRequest,
   redactLeadForLog,
   runSimulation,
   validateLead,
@@ -39,6 +41,10 @@ function json(data: unknown, status = 200, headers: Record<string, string> = {})
 }
 
 export const POST: APIRoute = async ({ request }) => {
+  // W317 — Origin/Sec-Fetch-Site : refuse un POST cross-site forgé avant tout
+  // traitement (même garde-fou que les autres proxies same-origin).
+  if (!isSameOriginRequest(request)) return crossSiteRejection();
+
   // ERR112 — même garde-fou anti-spam que /api/simulate (miroir strict),
   // bucket distinct par endpoint. Best-effort, sans dépendance ni secret.
   const rl = rateLimit(`preview-lead:${clientIpFromRequest(request)}`);

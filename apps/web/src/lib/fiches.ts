@@ -21,6 +21,13 @@ export type FicheCategorie =
   | 'Batteries'
   | 'Supervision & comptage';
 
+/** Garantie structurée : durée + précision optionnelle (ex. seuil de performance). */
+export interface FicheWarranty {
+  years: number;
+  /** Précision affichée sous la durée (ex. "≥ 84,8 % de la puissance initiale"). */
+  note?: string;
+}
+
 export interface Fiche {
   slug: string;
   nom: string;
@@ -31,8 +38,13 @@ export interface Fiche {
   resume: string;
   /** Faits techniques vérifiés (page Équipement validée + fiche officielle). */
   faits: string[];
-  /** Garantie commerciale Taqinor pour cette famille. */
+  /** Garantie commerciale Taqinor pour cette famille (texte affiché, ex. "Garantie 10 ans"). */
   garantie: string;
+  /** Même garantie, structurée {years, note} — pour le JSON-LD et un futur usage tabulaire. */
+  warranty: FicheWarranty;
+  /** Catégories avec lesquelles ce produit se combine typiquement dans une installation
+   *  (« se combine avec »). Ne référence jamais sa propre catégorie. */
+  pairsWith: FicheCategorie[];
   /** Fiche constructeur officielle (source faisant foi pour le détail). */
   datasheet: string;
   /** Copie auto-hébergée `/fiches/<slug>.pdf` — null tant qu'elle n'est pas déposée. */
@@ -54,6 +66,8 @@ export const FICHES: Fiche[] = [
       'Conforme IEC 61215 et IEC 61730',
     ],
     garantie: 'Garantie produit 12 ans · performance 25 ans',
+    warranty: { years: 25, note: 'Garantie produit 12 ans · garantie performance 25 ans' },
+    pairsWith: ['Onduleurs réseau', 'Onduleurs hybrides', 'Supervision & comptage'],
     datasheet:
       'https://static.csisolar.com/wp-content/uploads/2022/12/12090125/CS-Datasheet-TOPBiHiKu7-TOPCon_CS7N-TB-AG_v1.62C3_EN.pdf',
     pdf: '/fiches/canadian-solar-710.pdf',
@@ -72,6 +86,8 @@ export const FICHES: Fiche[] = [
       'Conforme IEC 61215 et IEC 61730',
     ],
     garantie: 'Garantie produit 12 ans · performance 25 ans',
+    warranty: { years: 25, note: 'Garantie produit 12 ans · garantie performance 25 ans' },
+    pairsWith: ['Onduleurs réseau', 'Onduleurs hybrides', 'Supervision & comptage'],
     // Datasheet officielle Tiger Neo 66HL5-BDV 710-735 Wc (CDN Jinko global) —
     // self-hostée ci-dessous ; la page produit /en/site/tigerneo n'est pas un PDF.
     datasheet:
@@ -92,6 +108,8 @@ export const FICHES: Fiche[] = [
       'Du résidentiel à la toiture tertiaire',
     ],
     garantie: 'Garantie 10 ans',
+    warranty: { years: 10 },
+    pairsWith: ['Panneaux photovoltaïques', 'Supervision & comptage'],
     datasheet:
       'https://solar.huawei.com/-/media/Solar/attachment/pdf/apac/datasheet/SUN2000-5-10KTL-M0-M1.pdf',
     pdf: '/fiches/onduleur-huawei-reseau.pdf',
@@ -110,6 +128,8 @@ export const FICHES: Fiche[] = [
       'Conforme CEI 61727 et VDE-AR-N-4105',
     ],
     garantie: 'Garantie 10 ans',
+    warranty: { years: 10 },
+    pairsWith: ['Panneaux photovoltaïques', 'Batteries', 'Supervision & comptage'],
     datasheet:
       'https://www.deyeinverter.com/deyeinverter/2024/10/21/datasheet_sun-5-12k-sg04lp3_241021_en.pdf',
     pdf: '/fiches/onduleur-deye-hybride.pdf',
@@ -128,6 +148,8 @@ export const FICHES: Fiche[] = [
       'Conforme IEC 62619 et UN38.3',
     ],
     garantie: 'Garantie 10 ans',
+    warranty: { years: 10 },
+    pairsWith: ['Onduleurs hybrides', 'Supervision & comptage'],
     datasheet:
       'https://www.dyness.com/Public/Uploads/uploadfile/files/20241023/DynessDL5.0CdatasheetEN.pdf',
     pdf: '/fiches/batterie-dyness.pdf',
@@ -146,6 +168,8 @@ export const FICHES: Fiche[] = [
       'Communication avec l’onduleur',
     ],
     garantie: 'Garantie 2 ans',
+    warranty: { years: 2 },
+    pairsWith: ['Onduleurs réseau', 'Onduleurs hybrides'],
     datasheet:
       'https://solar.huawei.com/~/media/Solar/attachment/pdf/es/datasheet/SmartPowerSensor.pdf',
     pdf: '/fiches/smart-meter-huawei.pdf',
@@ -164,6 +188,8 @@ export const FICHES: Fiche[] = [
       'Accès client via application mobile',
     ],
     garantie: 'Garantie 2 ans',
+    warranty: { years: 2 },
+    pairsWith: ['Onduleurs réseau', 'Onduleurs hybrides'],
     datasheet:
       'https://solar.huawei.com/-/media/Solar/attachment/pdf/mea/datasheet/SmartDongle-WLAN-FE.pdf',
     pdf: '/fiches/wifi-dongle-huawei.pdf',
@@ -192,4 +218,18 @@ export function ficheBySlug(slug: string): Fiche | undefined {
  *  source officielle constructeur (toujours fonctionnel). */
 export function ficheDownloadHref(f: Fiche): string {
   return f.pdf ?? f.datasheet;
+}
+
+/**
+ * « Se combine avec » (W326) : les fiches des catégories que `f.pairsWith`
+ * référence, groupées par catégorie — pour un bloc de liens croisés en pied de
+ * fiche produit (via RelatedLinks). Exclut toujours `f` lui-même.
+ */
+export function relatedFiches(f: Fiche): { categorie: FicheCategorie; fiches: Fiche[] }[] {
+  return f.pairsWith
+    .map((categorie) => ({
+      categorie,
+      fiches: FICHES.filter((other) => other.categorie === categorie && other.slug !== f.slug),
+    }))
+    .filter((g) => g.fiches.length > 0);
 }

@@ -1,0 +1,199 @@
+---
+/**
+ * AR — الإشعاع الشمسي والمردودية في المغرب (W355, RTL). ترجمة أمينة لـ
+ * /ensoleillement-maroc؛ الجدول المعروض هو `YIELD_TABLE` نفسه (قراءة فقط) —
+ * لا قيمة تُعاد كتابتها أو حسابها. الروابط الداخلية عبر localizeNavHref (AR
+ * إن وُجدت، وإلا صفحة FR — أبداً رابط ميّت). FR دون تغيير.
+ *
+ * ملاحظة: هذا المسار العربي غير مسجَّل بعد في src/i18n/pages.ts
+ * (STATIC_TRANSLATED) — هذا الملف خارج نطاق هذه المهمة، لذا لا يظهر بعد في
+ * مبدّل اللغة / hreflang. المسار نفسه يعمل بشكل صحيح وهو صفحة حقيقية قابلة
+ * للفهرسة.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import Callout from '../../components/Callout.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import { getLocaleFromPath } from '../../i18n/utils';
+import { localizeNavHref } from '../../i18n/pages';
+import { YIELD_TABLE } from '../../lib/yieldTable';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+const devisHref = L('/devis/mon-toit');
+
+const AZIMUTHS = ['-90', '-45', '0', '45', '90'] as const;
+const AZIMUTH_LABELS: Record<string, string> = {
+  '-90': 'شرق',
+  '-45': 'جنوب شرق',
+  '0': 'جنوب',
+  '45': 'جنوب غرب',
+  '90': 'غرب',
+};
+
+const CITY_LABELS: Record<string, string> = {
+  agadir: 'أكادير',
+  marrakech: 'مراكش',
+  casablanca: 'الدار البيضاء',
+  rabat: 'الرباط',
+  tanger: 'طنجة',
+};
+
+// مرتَّبة حسب خط العرض تصاعدياً (جنوب ← شمال)، كما في estimatorBrain.ts.
+const cities = Object.entries(YIELD_TABLE)
+  .map(([slug, data]) => ({ slug, label: CITY_LABELS[slug] ?? slug, ...data }))
+  .sort((a, b) => a.lat - b.lat);
+
+const tilts = Object.keys(cities[0].grid['0']).map(Number).sort((a, b) => a - b);
+
+// أفضل زوج (ميل، اتجاه) لكل مدينة — لملخّص أعلى الصفحة.
+const bestByCity = cities.map((c) => {
+  let best = { tilt: 0, azimuth: '0', value: 0 };
+  for (const az of AZIMUTHS) {
+    for (const [tiltStr, value] of Object.entries(c.grid[az] ?? {})) {
+      if (value > best.value) best = { tilt: Number(tiltStr), azimuth: az, value };
+    }
+  }
+  return { ...c, best };
+});
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Dataset',
+  name: 'المردودية الشمسية حسب المدينة والميل والاتجاه — المغرب',
+  description:
+    'المردودية الكهروضوئية (kWh/kWc/سنة، خسائر نظام 14%) لـ5 مدن مغربية، في شبكة ميل × اتجاه، مُشتقّة من PVGIS.',
+  variableMeasured: 'المردودية الشمسية (kWh/kWc/سنة)',
+  creator: { '@type': 'Organization', name: 'Taqinor', url: 'https://taqinor.ma' },
+  spatialCoverage: 'المغرب',
+};
+---
+
+<Layout
+  title="المردودية الشمسية في المغرب حسب المدينة والميل والاتجاه | Taqinor"
+  description="المردودية الشمسية (kWh/kWc/سنة) للدار البيضاء والرباط ومراكش وطنجة وأكادير، في شبكة كاملة ميل × اتجاه، مُشتقّة من PVGIS — نفس البيانات التي يعتمدها مُقدِّرنا، منشورة كما هي."
+  ogSlug="equipement"
+>
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+
+    <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: 'الإشعاع الشمسي بالمغرب' }]} />
+
+    <section class="section-lg px-4 pb-10 text-white">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">بيانات مفتوحة</p>
+        <h1 class="display v2-page-title cine-in cine-in-1 mt-6">الإشعاع الشمسي والمردودية في المغرب</h1>
+        <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
+          كم كيلوواط/ساعة ينتج كل كيلوواط ذروة مركَّب، حسب المدينة وميل السطح واتجاهه؟ هذا هو
+          الجدول الكامل الذي يعتمد عليه مُقدِّرنا كحل احتياطي — منشور دون حجب، ليتمكّن أي شخص من
+          الاستشهاد به أو التحقّق منه.
+        </p>
+      </div>
+    </section>
+
+    <!-- ملخّص — أفضل زوج ميل/اتجاه لكل مدينة -->
+    <section class="section px-4">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">أفضل إعداد، مدينةً بمدينة</p>
+        <h2 class="display v2-section-title mt-5 text-white">الأمثل النظري لكل مدينة</h2>
+        <div class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
+          {bestByCity.map((c, i) => (
+            <div class="v2-rise cine-card p-6" style={`--v2-i:${i}`}>
+              <p class="tech-label text-lune-faint">{c.label} · خط العرض {c.lat.toLocaleString('fr-FR')}°</p>
+              <p class="fig lum mt-2 text-3xl">
+                {c.best.value.toLocaleString('fr-FR')}
+                <span class="ms-1 text-sm font-semibold text-brass-400">kWh/kWc/سنة</span>
+              </p>
+              <p class="mt-2 text-sm text-lune-soft">
+                بميل {c.best.tilt}°، اتجاه {AZIMUTH_LABELS[c.best.azimuth]}
+              </p>
+            </div>
+          ))}
+        </div>
+        <Callout type="info" title="كيف تُقرأ هذه الأرقام">
+          <p>
+            المردودية (kWh/kWc/سنة) هي الإنتاج السنوي النظري لنظام كهروضوئي، شاملاً خسائر النظام
+            (14%) — وليست إنتاجاً حقيقياً مقيساً (راجع صفحة{' '}
+            <a href={L('/production-mesuree')} class="border-b border-brass-300 pb-0.5 font-semibold text-brass-300">الإنتاج المقيس</a> لدينا
+            للأرقام الفعلية). تُستخدَم لمقارنة الإعدادات، لا لتعويض دراسة موقع تأخذ بعين الاعتبار
+            الظل الحقيقي والمعدّات المُختارة فعلاً.
+          </p>
+        </Callout>
+      </div>
+    </section>
+
+    <!-- الجدول الكامل حسب المدينة -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="section bg-blanc-azur px-4 text-encre">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-azur-600">الجدول الكامل</p>
+        <h2 class="display v2-section-title mt-5">المردودية (kWh/kWc/سنة) حسب المدينة</h2>
+        <p class="v2-lead mt-4 max-w-3xl text-encre-soft">
+          كل جدول يقاطع ميل السطح (الصفوف) باتجاه الألواح (الأعمدة) لمدينة واحدة. الاتجاه: جنوب =
+          الجنوب التام (الأمثل في المغرب)، جنوب شرق/جنوب غرب = ±45°، شرق/غرب = ±90°.
+        </p>
+
+        {cities.map((c) => (
+          <div class="mt-12">
+            <h3 class="display text-xl text-azur-900" dir="ltr">{c.label} <span class="text-base font-normal text-encre-faint">— خط العرض {c.lat.toLocaleString('fr-FR')}°</span></h3>
+            <div class="mt-4 overflow-x-auto">
+              <table class="w-full min-w-[560px] border-collapse text-sm" dir="rtl">
+                <caption class="sr-only">المردودية الشمسية (kWh/kWc/سنة) في {c.label}، حسب الميل والاتجاه</caption>
+                <thead>
+                  <tr class="border-b-2 border-azur-900">
+                    <th scope="col" class="px-3 py-2 text-start font-semibold text-encre">الميل</th>
+                    {AZIMUTHS.map((az) => (
+                      <th scope="col" class="px-3 py-2 text-end font-semibold text-encre">{AZIMUTH_LABELS[az]}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {tilts.map((tilt) => (
+                    <tr class="border-b border-azur-900/15">
+                      <th scope="row" class="px-3 py-2 text-start font-medium text-encre-soft">{tilt}°</th>
+                      {AZIMUTHS.map((az) => (
+                        <td class="fig px-3 py-2 text-end text-azur-600" dir="ltr">
+                          {c.grid[az]?.[String(tilt)] != null ? c.grid[az][String(tilt)].toLocaleString('fr-FR') : '—'}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ))}
+
+        <p class="mx-auto mt-10 max-w-3xl border-s-4 border-azur-600 ps-4 text-sm leading-relaxed text-encre-soft">
+          <strong>المصدر:</strong> قيم مُشتقّة من PVGIS (المفوضية الأوروبية، المركز المشترك
+          للأبحاث)، محسوبة لخمس مدن ضمن نطاق خدمتنا ومولَّدة عبر سكريبت{' '}
+          <code>generate-yield-table.mjs</code>. تشمل خسارة نظام بنسبة 14% (الأسلاك، العاكس،
+          الاحترار، الاتساخ) — نفس المعدَّل الذي يعتمده مُقدِّرنا الإلكتروني. خط عرض وسيط يُحسَب
+          بالاستيفاء بين المدينتين المحيطتين.
+        </p>
+      </div>
+    </section>
+
+    <section class="section-tight px-4 pb-20 sm:pb-24">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">للتعمّق أكثر</p>
+        <div class="mt-6 flex flex-wrap gap-3">
+          <a href={L('/guides/orientation-inclinaison-ombrage')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">دليل الاتجاه والميل والظل <span class="inline-block rtl:-scale-x-100">→</span></a>
+          <a href={L('/guides/combien-de-panneaux-pour-ma-maison')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">كم لوحاً يلزم منزلي <span class="inline-block rtl:-scale-x-100">→</span></a>
+          <a href={L('/production-mesuree')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">الإنتاج المقيس <span class="inline-block rtl:-scale-x-100">→</span></a>
+          <a href={L('/realisations')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">إنجازاتنا <span class="inline-block rtl:-scale-x-100">→</span></a>
+        </div>
+      </div>
+    </section>
+
+    <CtaBand title="لسطحك اتجاهه الخاص. ابدأ التشخيص المجاني لمعرفته." href={devisHref} />
+
+    <StickyCta />
+  </div>
+</Layout>

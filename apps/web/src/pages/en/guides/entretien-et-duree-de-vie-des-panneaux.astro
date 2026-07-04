@@ -1,0 +1,150 @@
+---
+/**
+ * EN — Guide (W294): Maintenance, cleaning and lifespan of solar panels in
+ * Morocco. Faithful translation of /guides/entretien-et-duree-de-vie-des-panneaux,
+ * every figure kept EXACT (0.3–0.5 %/°C above 25 °C, 25-year 84.8 % warranty,
+ * 10–15 year inverter life). Internal links use localizeNavHref (EN/AR if
+ * available, else the existing FR page — never a dead link). FR untouched.
+ */
+import Layout from '../../../layouts/Layout.astro';
+import V2Enhance from '../../../components/V2Enhance.astro';
+import Article33Ribbon from '../../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../../components/Breadcrumb.astro';
+import CtaBand from '../../../components/CtaBand.astro';
+import StickyCta from '../../../components/StickyCta.astro';
+import { NAP } from '../../../lib/nap';
+import RelatedLinks from '../../../components/RelatedLinks.astro';
+import { getLocaleFromPath } from '../../../i18n/utils';
+import { localizeNavHref } from '../../../i18n/pages';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const schemaImageUrl = new URL('/og/accueil.png', Astro.site).href;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: 'Maintenance, cleaning and lifespan of solar panels in Morocco',
+  description: 'Cleaning frequency adapted to the Moroccan context (dust, sand, rain), the effect of heat on production, real lifespan and the 25-year warranty: everything you need to know to preserve your panels.',
+  image: schemaImageUrl,
+  about: { '@type': 'Thing', name: 'Solar panel maintenance Morocco' },
+  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: url,
+};
+---
+
+<Layout
+  title="Maintenance and lifespan of solar panels in Morocco | Taqinor"
+  description="How often should you clean panels in Morocco? How does heat affect production? What's the real lifespan? Clear answers, adapted to the Moroccan context."
+  ogSlug="guides"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'Guides', href: L('/guides') }, { label: 'Maintenance and panel lifespan' }]} />
+
+    <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
+      <p class="tech-label v2-kicker rule-brass text-lune">Guide · Maintenance</p>
+      <h1 class="display v2-page-title mt-5 text-white">Maintenance and lifespan of panels in Morocco</h1>
+
+      <p class="v2-lead mt-6 text-lune-soft">
+        Elsewhere, a solar panel needs almost nothing. In Morocco, that "almost" has a name: dust.
+        It's dust, and the sand the wind deposits after a chergui gust, that erode production long
+        before any technical fault does. On the ground, most installations that "produce less than
+        before" have nothing broken about them: they just have a grey film on the glass. This guide
+        therefore starts from that reality — the Moroccan climate — and draws out what really needs
+        watching.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Dust and sand, your real production loss</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        A dirty panel produces less, period. The dust film that settles on the glass acts as a
+        permanent diffuse shadow: in an arid or semi-arid zone, a layer built up over a few weeks is
+        enough to cut production by several percentage points. The loss is slow, invisible day to
+        day, and sets in without any warning light — you only see it in the production curve, or by
+        climbing onto the roof.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        And not all of Morocco is in the same boat. Near an unpaved road, at the edge of a ploughed
+        field, or close to the Sahara, the layer builds up fast and cleaning every four to six weeks
+        in summer is nothing excessive. A villa in the Casablanca conurbation or on the Atlantic
+        coast, better rained on for a good part of the year, gets by with two or three passes per
+        dry season. The best rule remains the eye: a visibly dusty panel deserves a clean,
+        whatever the date of the last one.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">What rain washes off, and what it leaves behind</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        A modern panel's glass is slightly anti-reflective and doesn't hold onto dry dust much. A
+        few millimetres of proper rain are often worth a full manual clean, which is why production
+        regularly jumps after the first autumn rains. In Morocco, these showers do a good part of
+        the work for you for much of the year.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        What rain doesn't wash away is tougher, and again it's typically Moroccan: the whitish
+        traces left by the hard, calcareous water of many regions, bird droppings, mud dried onto
+        the frame edge. These deposits need targeted cleaning with clear water and a soft cloth.
+        Never an abrasive sponge or harsh product: the anti-reflective coating doesn't forgive, and
+        a scratch is there for good.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Why heat pulls the meter down</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Here's the paradox few people know: a panel lives off light, but heat penalises it.
+        Crystalline silicon cells lose efficiency as soon as their temperature exceeds 25 °C, on the
+        order of 0.3 to 0.5 % per extra degree. Now in Morocco, in full summer, a panel's surface
+        commonly climbs toward 60 °C: it then works on a base clearly lower than its laboratory test
+        conditions.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        You can't escape it entirely — it's physics — but you can avoid making it worse. A panel
+        installed with a free gap under the frame lets air circulate and heat dissipate by
+        convection. The same panel flush against black sheet metal, on the other hand, cooks and
+        loses more. It's an installation detail that either pays off or costs you over 25 years.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">How long they last, and what wears them out</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Solar panels last. The market's standard product warranty now runs 25 years and guarantees
+        that by then the panel still produces at least about 84.8 % of its initial power, i.e.
+        degradation on the order of 0.5 % a year, steady and predictable. Effective physical
+        lifespan can exceed 30 years if the installation was properly done and given basic upkeep.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        What really ages isn't the silicon cell but what surrounds it. The encapsulant film can
+        yellow under UV if it's of poor quality, the aluminium frame can corrode in coastal areas if
+        anodising is insufficient, and connectors exposed to humidity eventually oxidise. Serious
+        brands invest in the quality of these materials, which is a concrete reason not to choose a
+        panel on price alone.
+      </p>
+      <p class="v2-lead mt-5 text-lune-soft">
+        The inverter, for its part, lives less long: it contains active electronics and typically
+        lasts 10 to 15 years. Plan for its replacement or a major service at the installation's
+        midpoint. Aside from panel cleaning, it's the only real maintenance item.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Reading the curve before worrying</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Your best maintenance tool isn't a sponge, it's the production curve. A sudden drop signals
+        an issue to fix right away: new shading, a failing connector, an inverter in alarm. A slow,
+        steady decline year after year, with no sudden jump, is nothing but the normal degradation
+        covered by the warranty. Learning to tell these two signals apart saves you both from
+        panicking for nothing and from missing a real problem.
+      </p>
+
+      <RelatedLinks links={[
+        { href: L('/guides/orientation-inclinaison-ombrage'), label: 'Orientation, tilt, shading' },
+        { href: L('/garanties'), label: 'The warranties in detail' },
+        { href: L('/guides'), label: 'All the guides' },
+      ]} />
+    </article>
+
+    <CtaBand title="An installation producing less than before? We check whether it's dust or something else." href={L('/devis/mon-toit')} />
+
+    <StickyCta />
+  </div>
+</Layout>

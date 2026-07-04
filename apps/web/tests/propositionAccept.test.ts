@@ -9,6 +9,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('cloudflare:workers', () => ({ env: {} }));
 
 import { POST } from '../src/pages/api/proposition-accept';
+// W316 — le proxy est désormais rate-limité (bucket dédié, 10/min) : sans
+// remise à zéro entre tests, les nombreux appels de ce fichier (partageant
+// tous la même IP « unknown ») finiraient par se faire 429 entre eux.
+import { resetRateLimit } from '../src/lib/rateLimit';
 
 function makeRequest(body: unknown): Request {
   return new Request('http://localhost/api/proposition-accept', {
@@ -32,6 +36,7 @@ function upstream(status: number, payload: unknown) {
   } as unknown as Response;
 }
 
+beforeEach(() => resetRateLimit());
 afterEach(() => vi.unstubAllGlobals());
 
 describe('POST /api/proposition-accept — validation', () => {

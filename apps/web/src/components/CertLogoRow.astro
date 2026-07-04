@@ -26,9 +26,11 @@ const CERTS: CertItem[] = [
 ];
 ---
 
-<div class="cert-row" role="list" aria-label="Certifications et garanties">
-  {CERTS.map((c) => (
-    <div class="cert-row__item" role="listitem">
+<div class="cert-row" role="list" aria-label="Certifications et garanties" data-choreo>
+  {/* W377 — data-choreo cascades each cert in as the row scrolls into view
+      (see v2.css); --i orders the four items left→right. */}
+  {CERTS.map((c, i) => (
+    <div class="cert-row__item" role="listitem" style={`--i:${i}`}>
       <p class="cert-row__label">{c.label}</p>
       <p class="cert-row__detail" data-i18n data-fr={c.detail} data-ar={c.detailAr}>{c.detail}</p>
     </div>

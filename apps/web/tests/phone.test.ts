@@ -27,9 +27,38 @@ describe('normalizeMoroccanPhone', () => {
     ['06123456789'], // trop long
     ['0812345678'], // préfixe 8 invalide
     ['0112345678'], // préfixe 1 invalide
-    ['+33612345678'], // numéro français
     ['06 12 34 56 7x'],
   ])('rejette %s', (input) => {
+    expect(normalizeMoroccanPhone(input).ok).toBe(false);
+  });
+});
+
+// ——— WJ64 — la diaspora (E.164 étranger, +33/+34…) est désormais ACCEPTÉE ———
+describe('normalizeMoroccanPhone — WJ64 numéros étrangers (diaspora)', () => {
+  it.each([
+    ['+33612345678', '+33612345678'], // France
+    ['+34612345678', '+34612345678'], // Espagne
+    ['+1 415 555 0100', '+14155550100'], // international générique
+    ['0033612345678', '+33612345678'], // 00 international français
+  ])('accepte %s → %s, flaggé phoneIsForeign', (input, expected) => {
+    const r = normalizeMoroccanPhone(input);
+    expect(r.ok).toBe(true);
+    expect(r.e164).toBe(expected);
+    expect(r.phoneIsForeign).toBe(true);
+  });
+
+  it('un numéro marocain reste SANS phoneIsForeign (chemin historique inchangé)', () => {
+    const r = normalizeMoroccanPhone('0612345678');
+    expect(r.ok).toBe(true);
+    expect(r.e164).toBe('+212612345678');
+    expect(r.phoneIsForeign).toBeUndefined();
+  });
+
+  it.each([
+    ['+2125'], // trop court pour être un étranger plausible ET pas un marocain valide
+    ['+'],
+    ['+abc123'],
+  ])('rejette encore le garbage %s', (input) => {
     expect(normalizeMoroccanPhone(input).ok).toBe(false);
   });
 });

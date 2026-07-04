@@ -1,0 +1,152 @@
+---
+/**
+ * AR — الإنتاج المقيس (W354, RTL). ترجمة أمينة لـ /production-mesuree؛ كل رقم
+ * مُشتَق حياً من realisations.ts (قراءة فقط) تماماً كالصفحة الفرنسية — لا رقم
+ * يُكتب يدوياً. الروابط الداخلية عبر localizeNavHref (AR إن وُجدت، وإلا صفحة
+ * FR — أبداً رابط ميّت). FR دون تغيير.
+ *
+ * ملاحظة: هذا المسار العربي غير مسجَّل بعد في src/i18n/pages.ts
+ * (STATIC_TRANSLATED) — هذا الملف خارج نطاق هذه المهمة، لذا لا يظهر بعد في
+ * مبدّل اللغة / hreflang. المسار نفسه يعمل بشكل صحيح وهو صفحة حقيقية قابلة
+ * للفهرسة.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import KeyFigure from '../../components/KeyFigure.astro';
+import Callout from '../../components/Callout.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import { getLocaleFromPath } from '../../i18n/utils';
+import { localizeNavHref } from '../../i18n/pages';
+import { REALISATIONS } from '../../lib/realisations';
+import { FACTS_GENERATED_AT } from '../../lib/facts';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
+const devisHref = L('/devis/mon-toit');
+
+// ── أرقام مُشتَقّة — لا شيء مكتوب يدوياً ─────────────────────────────────────
+const installCount = REALISATIONS.length;
+
+const kwcTotal = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
+const kwcTotalLabel = kwcTotal.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const withMeasuredProduction = REALISATIONS.filter((r) => r.productionNum !== null);
+const productionTotal = withMeasuredProduction.reduce((sum, r) => sum + (r.productionNum ?? 0), 0);
+const productionTotalLabel = productionTotal.toLocaleString('fr-FR');
+
+const notYetPublished = REALISATIONS.filter((r) => r.productionNum === null);
+
+const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+const generatedDateLabel = dateFmt.format(new Date(FACTS_GENERATED_AT));
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Dataset',
+  name: 'الإنتاج الشمسي المقيس — أسطول Taqinor',
+  description: `حصيلة الإنتاج المقيس تراكمياً (Deye Cloud) على ${withMeasuredProduction.length} تركيبات Taqinor متابَعة، حتى ${generatedDateLabel}: ${productionTotalLabel} kWh/سنة.`,
+  temporalCoverage: FACTS_GENERATED_AT,
+  creator: { '@type': 'Organization', name: 'Taqinor', url: 'https://taqinor.ma' },
+};
+---
+
+<Layout
+  title="الإنتاج الشمسي المقيس — الحصيلة التراكمية الحقيقية لأسطولنا | Taqinor"
+  description={`${productionTotalLabel} kWh/سنة مقيسة على ${withMeasuredProduction.length} تركيبات Taqinor متابَعة (Deye Cloud)، حتى ${generatedDateLabel} — لا شيء مُقدَّر أو مُقرَّب نحو الأعلى.`}
+  ogSlug="equipement"
+>
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+
+    <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: 'الإنتاج المقيس' }]} />
+
+    <section class="section-lg px-4 pb-10 text-white">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">شفافية مستمرة</p>
+        <h1 class="display v2-page-title cine-in cine-in-1 mt-6">الإنتاج المقيس</h1>
+        <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
+          ليست كتيّباً دعائياً: عدّاد يستمر في الدوران. ما تنتجه تركيباتنا فعلاً، مقيساً بواسطة
+          نظام المتابعة الخاص بها، متراكماً مع كل مشروع موثَّق — حتى تاريخ{' '}
+          <strong class="text-white">{generatedDateLabel}</strong>.
+        </p>
+      </div>
+    </section>
+
+    <!-- أرقام رئيسية — مُشتقّة حياً من realisations.ts -->
+    <section class="section px-4">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">الحصيلة المقيسة حتى {generatedDateLabel}</p>
+        <h2 class="display v2-section-title mt-5 text-white">{installCount} تركيبات، عدّاد واحد</h2>
+        <div class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
+          <KeyFigure value={kwcTotalLabel} unit="kWc" label="القدرة المركَّبة">
+            مجموع {installCount} تركيبات منشورة.
+          </KeyFigure>
+          <KeyFigure value={productionTotalLabel} unit="kWh/سنة" label="الإنتاج المقيس">
+            على {withMeasuredProduction.length} تركيبات متابَعة (Deye Cloud).
+          </KeyFigure>
+          <KeyFigure value={String(withMeasuredProduction.length)} unit={`/ ${installCount}`} label="مشاريع بمتابعة منشورة">
+            المشاريع بلا إنتاج منشور لا تُحتسَب أبداً كصفر.
+          </KeyFigure>
+        </div>
+        <Callout type="info" title="كيف يُحدَّث هذا الرقم">
+          <p>
+            تُعاد حساب هذه الحصيلة كلما نُشر تصدير جديد من Deye Cloud ضمن إنجازاتنا (تقريباً: مع
+            كل مشروع جديد موثَّق). التاريخ أعلاه هو آخر لقطة — أبداً متوسط متحرك، أبداً توقّع.
+            {notYetPublished.length > 0 && (
+              <>
+                {' '}اليوم، {notYetPublished.length} مشروع على الموقع ليس له إنتاج منشور بعد —
+                لا يُحتسَب ضمن الحصيلة أعلاه.
+              </>
+            )}
+          </p>
+        </Callout>
+      </div>
+    </section>
+
+    <!-- التفصيل، مشروعاً بمشروع -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="section bg-blanc-azur px-4 text-encre">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-azur-600">التفصيل</p>
+        <h2 class="display v2-section-title mt-5">مشروعاً بمشروع</h2>
+        <p class="v2-lead mt-4 text-encre-soft">
+          كل سطر يقابل تركيبة حقيقية، موثَّقة على صفحة إنجازاتنا.
+        </p>
+        <div class="mt-10 border-t-2 border-azur-900 bg-blanc" data-stagger>
+          {REALISATIONS.map((r, i) => (
+            <div class="v2-rise flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-azur-900/15 px-5 py-4" style={`--v2-i:${i}`}>
+              <span class="text-sm font-semibold" dir="ltr">{r.ville} · {r.kwc} · réf. {r.ref} · {r.date}</span>
+              <span class="whitespace-normal text-end text-sm text-azur-600" dir="ltr">
+                {r.production ? `${r.production} مقيسة` : 'إنتاج غير منشور بعد'}
+              </span>
+            </div>
+          ))}
+        </div>
+        <p class="mx-auto mt-6 max-w-xl border-s-4 border-azur-600 ps-4 text-sm leading-relaxed text-encre-soft">
+          <a href={L('/realisations')} class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">شاهد كل إنجازاتنا بالتفصيل <span class="inline-block rtl:-scale-x-100">→</span></a>
+        </p>
+      </div>
+    </section>
+
+    <section class="section-tight px-4 pb-20 sm:pb-24">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">للتعمّق أكثر</p>
+        <div class="mt-6 flex flex-wrap gap-3">
+          <a href={L('/realisations')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">إنجازاتنا <span class="inline-block rtl:-scale-x-100">→</span></a>
+          <a href={L('/impact-taqinor')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">أثر Taqinor (CO2 المتجنَّب) <span class="inline-block rtl:-scale-x-100">→</span></a>
+          <a href={L('/ensoleillement-maroc')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">المردودية الشمسية حسب المدينة <span class="inline-block rtl:-scale-x-100">→</span></a>
+          <a href={L('/maintenance-monitoring')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">الصيانة والمتابعة <span class="inline-block rtl:-scale-x-100">→</span></a>
+        </div>
+      </div>
+    </section>
+
+    <CtaBand title="مشروع قد يُضاف لهذا العدّاد؟ ابدأ التشخيص المجاني." href={devisHref} />
+
+    <StickyCta />
+  </div>
+</Layout>

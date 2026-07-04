@@ -60,10 +60,45 @@ const STATIC_TRANSLATED: readonly string[] = [
   '/guides/faut-il-des-batteries',
   '/guides/loi-82-21-expliquee',
   '/guides/onduleur-hybride-ou-reseau',
+  // W294 — fermeture de l'écart EN/AR des guides (routes EN/AR livrées ci-dessous).
+  '/guides/quelle-taille-de-batterie',
+  '/guides/combien-de-panneaux-pour-ma-maison',
+  '/guides/on-grid-off-grid-ou-hybride',
+  '/guides/batterie-lithium-ou-gel',
+  '/guides/electricite-pendant-les-coupures',
+  '/guides/entretien-et-duree-de-vie-des-panneaux',
+  '/guides/mon-toit-peut-il-supporter-des-panneaux',
+  '/guides/monocristallin-ou-polycristallin',
+  '/guides/orientation-inclinaison-ombrage',
+  // W295 — blog EN/AR pour les deux articles "argent" (routes EN/AR livrées ci-dessous).
+  '/blog',
+  '/blog/prix-installation-solaire-maroc-2026',
+  '/blog/rentabilite-solaire-par-ville-maroc',
   // WJ38 — parcours devis « Mon toit » localisé (routes EN/AR livrées) : les CTA
   // devis/étude basculent d'eux-mêmes vers /en/... et /ar/... via quoteJourneyHref.
   '/devis/mon-toit',
+  // W293 — pilier évergreen « Prix panneaux solaires Maroc » (routes EN/AR livrées).
+  '/prix-panneaux-solaires-maroc',
+  // i18n-registration — 4 pages autonomes livrées avec leurs routes EN/AR
+  // (W279 impact, W354 production, W355 ensoleillement, W338 parrainage) mais
+  // jamais enregistrées ici : hreflang manquants jusqu'à ce correctif.
+  '/impact-taqinor',
+  '/production-mesuree',
+  '/ensoleillement-maroc',
+  '/parrainage',
+  // W254 — pilier « recharge VE au solaire » : routes EN/AR livrées ci-dessous.
+  '/recharge-voiture-electrique-solaire',
 ];
+
+/**
+ * W348 — lead magnet WhatsApp-first « 10 questions avant de signer » :
+ * FR + AR seulement (pas de mirroir EN livré par cette tâche). Déclaré à part
+ * de STATIC_TRANSLATED (qui force ALL_LOCALES) pour ne jamais annoncer un
+ * hreflang EN vers une route qui n'existe pas.
+ */
+const PARTIAL_TRANSLATED: Record<string, readonly Locale[]> = {
+  '/ressources/10-questions-avant-de-signer': ['fr', 'ar'],
+};
 
 /**
  * WJ36 — chemin RACINE du parcours devis « Mon toit » : la cible canonique de
@@ -80,6 +115,7 @@ const TRANSLATED: Record<string, readonly Locale[]> = Object.fromEntries([
   ...STATIC_TRANSLATED.map((p) => [p, ALL_LOCALES] as const),
   ...CITIES.map((c) => [`/installation-solaire-${c.slug}`, ALL_LOCALES] as const),
   ...REALISATIONS.map((r) => [`/realisations/${r.slug}`, ALL_LOCALES] as const),
+  ...Object.entries(PARTIAL_TRANSLATED),
 ]);
 
 /** Tous les chemins racine déclarés traduits (pour les gardes de tests). */

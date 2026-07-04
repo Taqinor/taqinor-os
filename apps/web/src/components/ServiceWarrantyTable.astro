@@ -1,0 +1,62 @@
+---
+/**
+ * W263 — Tableau de garantie par composant, réutilisable sur les pages de
+ * service (résidentiel, professionnel, pompage-solaire, batteries-stockage).
+ * Même mise en forme que le tableau de /garanties (bg-blanc, filet
+ * border-azur-900, ligne par composant) — pensé pour vivre dans une section
+ * claire (bg-blanc-azur/text-encre), comme sur /garanties.
+ *
+ * Données : `componentWarrantyRows()` de `../lib/serviceFaq` — dérivées de
+ * `fiches.ts` (panneaux/onduleur/batterie réels) + les deux lignes
+ * structure/main-d'œuvre déjà publiées sur /garanties. Aucune durée n'est
+ * saisie à la main ici.
+ */
+import { componentWarrantyRows } from '../lib/serviceFaq';
+import { getLocaleFromPath } from '../i18n/utils';
+import { localizeNavHref } from '../i18n/pages';
+import type { Locale } from '../i18n/config';
+
+interface Props {
+  /** Service concerné — pilote includeOnduleur/includeBatterie (pompage = ni l'un ni l'autre). */
+  includeOnduleur?: boolean;
+  includeBatterie?: boolean;
+  heading?: string;
+}
+
+const locale = getLocaleFromPath(Astro.url.pathname) as Locale;
+const L = (href: string) => localizeNavHref(href, locale);
+const { includeOnduleur = true, includeBatterie = true, heading } = Astro.props;
+
+const rows = componentWarrantyRows(locale, { includeOnduleur, includeBatterie });
+
+const HEADING_BY_LOCALE: Record<Locale, string> = {
+  fr: 'Garanties par composant',
+  en: 'Warranties by component',
+  ar: 'الضمانات حسب المكوّن',
+};
+const LINK_BY_LOCALE: Record<Locale, string> = {
+  fr: 'Voir toutes nos garanties →',
+  en: 'See all our warranties →',
+  ar: 'اطّلع على جميع ضماناتنا ←',
+};
+const title = heading ?? HEADING_BY_LOCALE[locale] ?? HEADING_BY_LOCALE.fr;
+const linkLabel = LINK_BY_LOCALE[locale] ?? LINK_BY_LOCALE.fr;
+---
+
+<div class="mx-auto max-w-3xl">
+  <h2 class="display v2-section-title text-lg">{title}</h2>
+  <div class="mt-6 border-t-2 border-azur-900 bg-blanc" data-stagger>
+    {rows.map((row, i) => (
+      <div class="v2-rise flex items-baseline justify-between gap-4 border-b border-azur-900/15 px-5 py-4" style={`--v2-i:${i}`}>
+        <span class="text-sm font-semibold">
+          {row.label}
+          {row.note && <span class="block text-xs font-normal text-encre-faint">{row.note}</span>}
+        </span>
+        <span class="fig whitespace-nowrap text-2xl text-azur-600" data-tally>{row.years}</span>
+      </div>
+    ))}
+  </div>
+  <p class="mt-4 text-right text-sm">
+    <a href={L('/garanties')} class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">{linkLabel}</a>
+  </p>
+</div>

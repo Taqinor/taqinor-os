@@ -1,0 +1,191 @@
+---
+/**
+ * W348 — Lead magnet WhatsApp-first : « 10 questions à poser avant de signer ».
+ * Checklist indexable, style guides-template (Breadcrumb + Article JSON-LD +
+ * date de vérification + temps de lecture), SANS AUCUNE porte email — le seul
+ * CTA de capture est WhatsApp (wa.me pré-rempli via lib/whatsapp.ts), le
+ * diagnostic gratuit restant le CTA secondaire (cohérent avec le reste du
+ * site). Chaque question reprend un fait DÉJÀ publié ailleurs (garanties,
+ * loi 82-21, TVA pompage agricole, SLA SAV WG9, dossier technique) — AUCUN
+ * chiffre nouveau n'est introduit ici.
+ *
+ * Sources internes des 10 questions (aucune invention) :
+ *  1. Dimensionnement sur facture réelle — /guides/combien-de-panneaux-pour-ma-maison
+ *  2. Matériel tier-1 nommé — /équipement
+ *  3. Garantie produit/performance panneaux (12 ans / 25 ans, ≥ 84,8 %) — /garanties (fiches.ts)
+ *  4. Déclaration loi 82-21 (seuil 11 kW) — /loi-82-21, /guides/loi-82-21-expliquee
+ *  5. Modalités de paiement/acompte — à faire confirmer par écrit (aucun % avancé ici)
+ *  6. Dossier technique remis à la livraison — /garanties
+ *  7. SAV : réponse sous 1 h, 7j/7 (WG9) — /garanties
+ *  8. Monitoring Deye Cloud avec accès client — /maintenance-monitoring
+ *  9. Batteries : seulement si le profil de consommation le justifie — /guides/faut-il-des-batteries
+ * 10. Zones desservies réelles (axe Casablanca–Rabat + villes nommées) — /nos-solutions
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import RelatedLinks from '../../components/RelatedLinks.astro';
+import { NAP, WHATSAPP_LEADS } from '../../lib/nap';
+import { whatsappLink } from '../../lib/whatsapp';
+import { estimateReadingTime } from '../../lib/readingTime';
+
+const verifiedDate = new Date('2026-07-03');
+const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+
+const waHref = whatsappLink(
+  WHATSAPP_LEADS,
+  'Bonjour, j’ai lu les « 10 questions à poser avant de signer » sur taqinor.ma et je voudrais en discuter pour mon projet.'
+);
+
+const questions = [
+  {
+    n: '01',
+    q: 'Sur quoi vous êtes-vous basé pour dimensionner mon installation ?',
+    a: 'La bonne réponse part de votre facture réelle (kWh consommés, pas un kit standard) et de votre toit — jamais d’une moyenne nationale. Si l’installateur avance un nombre de panneaux avant d’avoir vu votre facture, c’est un signal à relever.',
+  },
+  {
+    n: '02',
+    q: 'Quelles marques précises posez-vous — panneaux, onduleur, batterie ?',
+    a: 'Exigez les marques exactes, pas « du matériel de qualité ». Nos fiches équipement nomment nos marques tier-1 sans détour.',
+  },
+  {
+    n: '03',
+    q: 'Quelle est la garantie produit et la garantie de performance des panneaux ?',
+    a: 'Deux garanties distinctes existent sur des panneaux tier-1 : une garantie produit (le panneau ne tombe pas en panne) et une garantie de performance (il continue à produire au-delà d’un seuil donné après plusieurs années). Faites-les écrire noir sur blanc, avec leurs durées exactes.',
+  },
+  {
+    n: '04',
+    q: 'Qui s’occupe de la déclaration loi 82-21, et à partir de quel seuil ?',
+    a: 'Une installation en autoproduction relève de la loi 82-21 ; en dessous d’un certain seuil de puissance, une simple déclaration suffit (au-delà, le régime change). Demandez qui dépose le dossier et à quel moment du chantier.',
+  },
+  {
+    n: '05',
+    q: 'Quelles sont les modalités de paiement, étape par étape ?',
+    a: 'Un acompte au démarrage, un solde à la mise en service : faites préciser chaque montant et chaque déclencheur par écrit avant de signer, plutôt que de découvrir l’échéancier en cours de chantier.',
+  },
+  {
+    n: '06',
+    q: 'Est-ce que je reçois un dossier technique complet à la livraison ?',
+    a: 'Schémas, références exactes du matériel posé, dates : ce dossier est ce qui permet de faire jouer une garantie des années plus tard, ou de revendre le bien en toute transparence. Sans lui, vous êtes démuni le jour où quelque chose cloche.',
+  },
+  {
+    n: '07',
+    q: 'En cas de panne, sous quel délai me répondez-vous ?',
+    a: 'Un engagement chiffré vaut mieux qu’un « on s’en occupe ». À titre de repère, notre engagement de réponse est sous 1 h, 7j/7 — un accusé de réception humain qui enclenche le traitement du dossier.',
+  },
+  {
+    n: '08',
+    q: 'Puis-je suivre la production de mon installation moi-même ?',
+    a: 'Un accès personnel à une plateforme de monitoring (type Deye Cloud) vous permet de vérifier vous-même que votre installation produit ce qui était prévu, sans dépendre d’un rapport annuel de l’installateur.',
+  },
+  {
+    n: '09',
+    q: 'Ai-je réellement besoin d’une batterie, ou est-ce ajouté par défaut ?',
+    a: 'La batterie ne se justifie que si votre pic de consommation tombe après le coucher du soleil, ou pour la continuité de service pendant une coupure. Si vous consommez surtout en journée, une installation sans stockage est souvent plus rentable — méfiez-vous d’un devis qui l’ajoute sans vous poser la question.',
+  },
+  {
+    n: '10',
+    q: 'Intervenez-vous vraiment dans ma ville, ou est-ce un chantier isolé ?',
+    a: 'Demandez où se trouvent les chantiers déjà réalisés de l’installateur. Une zone de service honnête se limite à un axe réel (pour nous, Casablanca–Rabat, et au-delà sur devis) — jamais un vague « partout au Maroc ».',
+  },
+];
+
+const readingText = questions.map((it) => `${it.q} ${it.a}`).join(' ');
+const readingMinutes = estimateReadingTime(readingText);
+
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const schemaImageUrl = new URL('/og/equipement.png', Astro.site).href;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: '10 questions à poser avant de signer un devis solaire',
+  description:
+    'La checklist à poser à tout installateur solaire au Maroc avant de signer : dimensionnement, matériel, garanties, loi 82-21, paiement, SAV, monitoring et zone de service réelle.',
+  image: schemaImageUrl,
+  about: { '@type': 'Thing', name: 'Devis solaire' },
+  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: url,
+};
+---
+
+<Layout
+  title="10 questions à poser avant de signer un devis solaire | Taqinor"
+  description="La checklist gratuite à poser à tout installateur solaire au Maroc avant de signer : dimensionnement, matériel, garanties, loi 82-21, paiement, SAV et zone de service réelle. Envoyez vos réponses sur WhatsApp, sans formulaire ni email."
+  ogSlug="equipement"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="reading-bar" aria-hidden="true"></div>
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Ressources', href: '/guides' }, { label: '10 questions avant de signer' }]} />
+
+    <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
+      <p class="tech-label v2-kicker rule-brass text-lune">Ressource · Checklist</p>
+      <h1 class="display v2-page-title mt-5 text-white">10 questions à poser avant de signer un devis solaire</h1>
+
+      <p class="guide-byline mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-lune-faint">
+        <span>Vérifié le {dateFmt.format(verifiedDate)} · par Reda Kasri</span>
+        <span aria-hidden="true">·</span>
+        <span>{readingMinutes} min de lecture</span>
+      </p>
+
+      <p class="v2-lead mt-6 text-lune-soft">
+        Un devis solaire se lit rarement d’un coup d’œil : le prix affiché cache des écarts de
+        matériel, de garantie et de service après-vente que seules ces dix questions font
+        remonter. Posez-les à n’importe quel installateur — nous y compris — et comparez les
+        réponses avant de signer quoi que ce soit.
+      </p>
+
+      <div class="mt-10 space-y-8" data-stagger>
+        {questions.map((it, i) => (
+          <div class="v2-rise border-t-2 border-brass-400/60 pt-5" style={`--v2-i:${i}`}>
+            <p class="flex items-start gap-3">
+              <span class="fig lum shrink-0 text-2xl">{it.n}</span>
+              <span class="display mt-0.5 text-xl text-white">{it.q}</span>
+            </p>
+            <p class="mt-3 text-sm leading-relaxed text-lune-soft">{it.a}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Ungated WhatsApp CTA — the primary conversion path, no email/form gate. */}
+      <div class="v2-rise cine-card mt-14 p-7 text-center">
+        <p class="tech-label v2-kicker rule-brass text-lune">Sans formulaire, sans email</p>
+        <h2 class="display mt-3 text-2xl text-white">Envoyez-nous vos réponses sur WhatsApp</h2>
+        <p class="v2-lead mt-4 text-lune-soft">
+          Vous avez déjà un devis en main ? Partagez-le-nous sur WhatsApp avec vos réponses à ces
+          dix questions — nous vous disons honnêtement ce qui nous semble solide et ce qui manque.
+        </p>
+        <a
+          href={waHref}
+          target="_blank"
+          rel="noopener"
+          class="glow mt-7 inline-flex items-center gap-2 bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300"
+        >
+          Discuter sur WhatsApp →
+        </a>
+        <p class="mt-5 text-sm text-lune-faint">
+          Vous préférez démarrer par notre propre étude ? Elle est
+          <a href="/devis/mon-toit" class="text-white underline underline-offset-2 hover:text-lune">gratuite et sans engagement</a>.
+        </p>
+      </div>
+
+      <RelatedLinks links={[
+        { href: '/garanties', label: 'Voir nos garanties' },
+        { href: '/équipement', label: 'Voir l’équipement' },
+        { href: '/guides/loi-82-21-expliquee', label: 'Loi 82-21 expliquée simplement' },
+        { href: '/guides', label: 'Tous les guides' },
+      ]} />
+    </article>
+
+    <CtaBand title="Vous préférez qu’on réponde à ces 10 questions pour votre cas précis ?" href="/devis/mon-toit" />
+
+    <StickyCta />
+  </div>
+</Layout>

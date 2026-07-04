@@ -23,10 +23,18 @@
 
 /* ---- Paragraphe "lead" — chapeau d'introduction -------------------- */
 
+/* W367 — text-wrap: pretty évite les lignes orphelines/veuves dans les
+   paragraphes longs (lead + corps). .display garde text-wrap: balance
+   (titres courts, symétrie recherchée) ; ici on veut un meilleur dernier-mot
+   sur du texte de flux, pas un centrage. Support progressif : les moteurs
+   qui ignorent la propriété retombent silencieusement sur le wrap normal
+   (comportement identique à avant) — zéro CLS, aucun impact RTL/arabe (le
+   rythme de ligne vient de line-height/font, inchangés ici). */
 .prose-lead {
   font-size: 1.125rem; /* 18 px */
   line-height: 1.8;
   color: var(--color-lune-soft, #adb5cd);
+  text-wrap: pretty;
 }
 
 /* ---- Corps de l'article --------------------------------------------- */
@@ -35,6 +43,7 @@
   margin-top: 1.25rem;
   line-height: 1.75;
   color: var(--color-lune-soft, #adb5cd);
+  text-wrap: pretty;
 }
 
 .prose p:first-child {

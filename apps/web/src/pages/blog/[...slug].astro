@@ -12,7 +12,7 @@
  * JSON-LD BlogPosting + BreadcrumbList sont construits ICI à partir du
  * frontmatter, pour que les fichiers .md ne portent que frontmatter + corps.
  * Canonique auto-référencé : émis par le Layout via l'URL de la page. L'image
- * OG vient de `ogSlug` (repli 'accueil'). Liens précédent/suivant + articles
+ * OG vient de `ogSlug` (repli 'blog' — W292). Liens précédent/suivant + articles
  * liés (par tag partagé) en pied d'article.
  */
 import { getCollection, render } from 'astro:content';
@@ -25,7 +25,19 @@ import StickyCta from '../../components/StickyCta.astro';
 import RelatedLinks from '../../components/RelatedLinks.astro';
 import { NAP } from '../../lib/nap';
 import { estimateReadingTime, extractTocFromMarkdown } from '../../lib/readingTime';
+import { BLOG_THEMES } from '../../lib/blogThemes';
 import '../../styles/prose.css';
+
+// W299 — un lien cluster (hub argent-cible) par thème, même vocabulaire que
+// GUIDE_BY_THEME de blog/index.astro (W329) : le pied de chaque article
+// rejoint désormais son cluster (prix/résidentiel, batteries/coupures,
+// pompage/agricole…), pas seulement /blog et /guides pour tous les articles.
+const CLUSTER_LINK_BY_THEME: Partial<Record<(typeof BLOG_THEMES)[number], { href: string; label: string }>> = {
+  Solaire: { href: '/résidentiel', label: 'Solaire résidentiel' },
+  Batteries: { href: '/batteries-stockage', label: 'Batteries & stockage' },
+  'Voiture électrique': { href: '/recharge-voiture-electrique-solaire', label: 'Recharger sa voiture au solaire' },
+  Prix: { href: '/prix-panneaux-solaires-maroc', label: 'Prix des panneaux solaires au Maroc' },
+};
 
 export async function getStaticPaths() {
   const posts = (
@@ -53,16 +65,28 @@ const { Content } = await render(post);
 const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 const url = new URL(`/blog/${post.id}`, Astro.site).href;
 
+// W299 — lien cluster optionnel (voir CLUSTER_LINK_BY_THEME plus haut) ; absent
+// si l'article n'a pas de theme, jamais de lien inventé.
+const clusterLink = data.theme ? CLUSTER_LINK_BY_THEME[data.theme] : undefined;
+
 // W197 — temps de lecture + TOC
 const readingMinutes = estimateReadingTime(body ?? '');
 const toc = extractTocFromMarkdown(body ?? '');
 const showToc = toc.length >= 3;
+
+// W291 — image OG déjà calculée par le Layout (ogSlug ?? 'blog' → /og/<slug>.png) ;
+// on reproduit ici la même URL pour l'exposer au BlogPosting, Google recommandant
+// explicitement `image` pour l'éligibilité aux rich results Article.
+// W292 — repli générique 'blog' (au lieu de 'accueil') pour tout article sans
+// ogSlug propre : une vignette « Blog Taqinor » reste plus juste qu'accueil.
+const schemaImageUrl = new URL(`/og/${data.ogSlug ?? 'blog'}.png`, Astro.site).href;
 
 const blogPosting = {
   '@context': 'https://schema.org',
   '@type': 'BlogPosting',
   headline: data.title,
   description: data.description,
+  image: schemaImageUrl,
   datePublished: data.pubDate.toISOString(),
   ...(data.updatedDate ? { dateModified: data.updatedDate.toISOString() } : {}),
   ...(data.tags.length ? { keywords: data.tags.join(', ') } : {}),
@@ -85,10 +109,12 @@ const breadcrumbLd = {
 <Layout
   title={`${data.title} | Blog Taqinor`}
   description={data.description}
-  ogSlug={data.ogSlug ?? 'accueil'}
+  ogSlug={data.ogSlug ?? 'blog'}
 >
   <script type="application/ld+json" set:html={JSON.stringify(blogPosting)} />
   <script type="application/ld+json" set:html={JSON.stringify(breadcrumbLd)} />
+  {/* W376 — reading progress bar (see global.css .reading-bar) */}
+  <div class="reading-bar" aria-hidden="true"></div>
   <div class="v2">
     <V2Enhance />
     <Article33Ribbon />
@@ -185,6 +211,7 @@ const breadcrumbLd = {
 
       <RelatedLinks
         links={[
+          ...(clusterLink ? [clusterLink] : []),
           { href: '/blog', label: 'Tous les articles' },
           { href: '/guides', label: 'Les guides pérennes' },
         ]}

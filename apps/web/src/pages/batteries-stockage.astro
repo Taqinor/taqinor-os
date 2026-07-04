@@ -15,6 +15,9 @@ import Breadcrumb from '../components/Breadcrumb.astro';
 import CtaBand from '../components/CtaBand.astro';
 import StickyCta from '../components/StickyCta.astro';
 import Faq from '../components/Faq.astro';
+import ServiceWarrantyTable from '../components/ServiceWarrantyTable.astro';
+import RelatedLinks from '../components/RelatedLinks.astro';
+import { serviceFaqItems } from '../lib/serviceFaq';
 
 // Faits matériel — identiques à la page Équipement (réf. BAT), source publiée.
 const specs = [
@@ -47,29 +50,73 @@ const installs = [
   { kwh: '5 kWh', where: 'El Jadida', ref: '236' },
 ];
 
+// W334 — 4 panneaux jour/soir/coupure/nuit : reprend STRICTEMENT le
+// raisonnement déjà publié plus haut (cas « Sans stockage » / « Avec stockage »)
+// et dans le guide « Faut-il des batteries ? » — aucun flux ni chiffre nouveau,
+// seule la mise en image change. Chaque flux actif est listé en toutes lettres
+// pour l'accessibilité (la figure reste lisible sans le SVG).
+const flowPanels = [
+  {
+    k: 'Jour',
+    title: 'Le soleil alimente la maison',
+    flows: ['Solaire → Consommation', 'Solaire → Batterie (surplus)'],
+    note: 'Le meilleur kWh est celui qui part direct des panneaux vers vos appareils, sans détour.',
+  },
+  {
+    k: 'Soir',
+    title: 'La batterie prend le relais',
+    flows: ['Batterie → Consommation'],
+    note: 'Le surplus stocké à midi couvre le pic du soir, à l’heure où le réseau facture le plus cher.',
+  },
+  {
+    k: 'Coupure',
+    title: 'Le circuit de secours tient',
+    flows: ['Solaire → Batterie (si jour)', 'Batterie → Consommation (circuits EPS)'],
+    note: 'L’onduleur hybride isole un circuit de secours ; réseau coupé, la maison ne l’est pas.',
+  },
+  {
+    k: 'Nuit',
+    title: 'Ce qu’il reste distribue',
+    flows: ['Batterie → Consommation', 'Réseau → Consommation (si batterie vide)'],
+    note: 'Batterie épuisée, le réseau reprend le relais — rien d’exceptionnel, juste la suite logique.',
+  },
+];
+
 // FAQ W130 — questions tracées sur CONTENT_SEO_NOTES.md §7 + §1 (PUBLISH-SAFE).
 // schema={false} → /faq reste l'unique page portant le FAQPage JSON-LD.
+// W263 — les 5 questions d'usage ci-dessous portent désormais un cluster
+// dédié (« Bien choisir sa batterie ») ; la banque partagée
+// (entretien/prix/inclus-exclus/délais/garanties, cf. lib/serviceFaq.ts) est
+// concaténée à la suite, dans le même bloc <Faq> pour éviter une deuxième
+// section FAQ sur la page.
+const usageCluster = 'Bien choisir sa batterie';
 const faqItems = [
   {
+    cluster: usageCluster,
     q: "Ai-je vraiment besoin d'une batterie avec mes panneaux solaires ?",
     a: "Pas nécessairement. Si vous consommez l'essentiel de votre électricité en journée — appareils de froid, pompe, climatisation, machines — vos panneaux alimentent directement vos charges et une batterie n'ajouterait qu'un coût et des pertes de conversion. Elle devient utile si votre pic de consommation tombe le soir, ou si vous avez besoin de continuité de service lors des coupures. Nous analysons votre courbe de consommation heure par heure avant toute recommandation.",
   },
   {
+    cluster: usageCluster,
     q: "Quelle est la durée de vie d'une batterie LFP ?",
     a: "Sur le papier, une Dyness LFP tient 6 000 cycles à 90 % de profondeur de décharge, garantie 10 ans avec ≥ 70 % de capacité conservée. Comptez un cycle par jour : les 6 000 cycles couvrent à eux seuls plus de seize ans. Mais une batterie vieillit aussi à l'arrêt — environ 1 à 2 % de capacité perdue par an, même quand on ne s'en sert pas. C'est ce vieillissement calendaire qui finit le plus souvent par décider, et qui ramène la durée utile réelle à 12-15 ans sous le climat marocain. Le bon réflexe pour grappiller ces années : une batterie à l'ombre, ventilée, qui reste entre 15 et 35 °C.",
   },
   {
+    cluster: usageCluster,
     q: "Quelle taille de batterie choisir ? (5–10 kWh, 10–20 kWh ou 20 kWh+)",
     a: "Les paliers correspondent à des besoins distincts. 5 à 10 kWh : secours nocturne basique ou recharge de quelques appareils essentiels lors d'une coupure. 10 à 20 kWh : autoconsommation du soir complète pour un foyer moyen — le surplus solaire de la journée couvre la majorité de la consommation nocturne. 20 kWh et plus : quasi-autonomie, sites éloignés ou besoin de 2 à 3 jours d'autonomie sans soleil. Nos modules Dyness s'empilent par tranches de 5 kWh — on cale la capacité sur le creux du soir à couvrir, pas sur un palier commercial. Un guide dédié détaille la méthode de calcul.",
   },
   {
+    cluster: usageCluster,
     q: "La batterie me protège-t-elle des coupures de courant ?",
     a: "Oui, si l'onduleur hybride est configuré en mode EPS (Emergency Power Supply). Les onduleurs Deye SG-series assurent un basculement quasi instantané (environ 4 ms) sans boîtier supplémentaire — comparable à un onduleur UPS. La puissance disponible pendant une coupure dépend de la capacité installée et des charges raccordées sur le circuit de secours. À ne pas confondre avec un simple onduleur réseau (« on-grid ») qui coupe lui aussi lors d'une coupure, par sécurité.",
   },
   {
+    cluster: usageCluster,
     q: "Vaut-il mieux stocker son surplus ou le revendre au réseau au Maroc ?",
     a: "Au Maroc, la loi 82-21 (en vigueur depuis juin 2026) plafonne l'injection à 20 % de la production annuelle, et le tarif de rachat ANRE est de 0,18 à 0,21 DH/kWh selon l'heure. Or, un kWh acheté sur le réseau vous coûte entre 0,90 DH (première tranche) et 1,66 DH (forte consommation). Autrement dit, un kWh stocké et autoconsommé le soir vaut 4 à 9 fois plus qu'un kWh vendu au réseau. L'ordre de priorité est donc : (1) consommer directement en journée, (2) stocker pour le soir, (3) exporter le solde plafonné à 20 %. Ne surdimensionnez pas vos batteries pour exporter davantage — ce n'est pas rentable.",
   },
+  ...serviceFaqItems('batteries-stockage', 'fr'),
 ];
 
 const jsonLd = {
@@ -86,7 +133,7 @@ const jsonLd = {
 <Layout
   title="Batteries solaires Dyness LFP au Maroc : 6 000 cycles, 90 % DoD | Taqinor"
   description="Stockage solaire au Maroc : batteries Dyness lithium-fer-phosphate, plus de 6 000 cycles à 90 % de profondeur de décharge, modules de 5 kWh extensibles, dialogue CAN BMS natif avec les onduleurs hybrides Deye, garantie 10 ans. La vraie question reste votre profil de consommation : si vous consommez surtout en journée, la batterie attend souvent son tour."
-  ogSlug="equipement"
+  ogSlug="batteries-stockage"
 >
   <div class="v2">
     <V2Enhance />
@@ -138,6 +185,80 @@ const jsonLd = {
       </div>
     </section>
 
+    <!-- W334 — Diagramme de flux 24h : jour/soir/coupure/nuit (solaire→consommation→batterie→réseau) -->
+    <section class="section px-4">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">En image</p>
+        <h2 class="display v2-section-title mt-5 text-white">Une journée avec batterie, en quatre temps</h2>
+        <p class="v2-lead mt-4 max-w-2xl text-lune-soft">
+          Le même principe revient quatre fois par jour : produire, consommer, stocker le surplus,
+          restituer quand il le faut.
+        </p>
+        <div class="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
+          {flowPanels.map((p, i) => (
+            <figure class="v2-rise cine-card flex flex-col p-6" style={`--v2-i:${i}`}>
+              <figcaption>
+                <p class="tech-label text-lune">{p.k}</p>
+                <h3 class="display mt-2 text-lg text-white">{p.title}</h3>
+              </figcaption>
+              <svg
+                class="mt-5 w-full"
+                viewBox="0 0 220 200"
+                role="img"
+                aria-label={`${p.title} — flux : ${p.flows.join(', ')}`}
+              >
+                {/* Soleil */}
+                <g transform="translate(110,30)" opacity={p.k === 'Nuit' ? '0.28' : '1'}>
+                  <circle r="14" fill="none" stroke="#e8b54a" stroke-width="2.5" />
+                  {Array.from({ length: 8 }).map((_, r) => (
+                    <line
+                      x1="0" y1="-20" x2="0" y2="-26"
+                      stroke="#e8b54a" stroke-width="2.5" stroke-linecap="round"
+                      transform={`rotate(${r * 45})`}
+                    />
+                  ))}
+                </g>
+                {/* Maison (consommation) */}
+                <g transform="translate(30,100)">
+                  <path d="M-16 8 L-16 -6 L0 -18 L16 -6 L16 8 Z" fill="none" stroke="white" stroke-width="2.5" stroke-linejoin="round" />
+                </g>
+                {/* Batterie */}
+                <g transform="translate(110,100)">
+                  <rect x="-14" y="-14" width="28" height="28" rx="3" fill="none" stroke="white" stroke-width="2.5" />
+                  <rect x="-6" y="-19" width="12" height="5" rx="1" fill="white" />
+                  <rect x="-8" y="-6" width="16" height="12" fill={p.k === 'Nuit' ? 'rgb(255 255 255 / 0.25)' : '#e8b54a'} />
+                </g>
+                {/* Réseau (pylône) */}
+                <g transform="translate(190,100)" opacity={p.k === 'Coupure' ? '0.3' : '1'}>
+                  <path d="M0 -16 L0 14 M-10 -6 L10 -6 M-13 4 L13 4" stroke="white" stroke-width="2.5" stroke-linecap="round" />
+                  {p.k === 'Coupure' && <path d="M-10 -18 L10 18" stroke="#e8b54a" stroke-width="2.5" stroke-linecap="round" />}
+                </g>
+                {/* Flèches de flux — libellées dans aria-label ci-dessus, décoratives ici */}
+                <g stroke="#7fa8ff" stroke-width="2" fill="none" opacity="0.85" aria-hidden="true">
+                  {p.k !== 'Nuit' && <path d="M104 44 L40 88" marker-end="url(#arrow)" />}
+                  {(p.k === 'Jour' || p.k === 'Coupure') && <path d="M116 44 L110 84" marker-end="url(#arrow)" />}
+                  {(p.k === 'Soir' || p.k === 'Coupure' || p.k === 'Nuit') && <path d="M96 100 L46 100" marker-end="url(#arrow)" />}
+                  {p.k === 'Nuit' && <path d="M174 100 L124 100" marker-end="url(#arrow)" />}
+                </g>
+                <defs>
+                  <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                    <path d="M0 0 L6 3 L0 6 Z" fill="#7fa8ff" />
+                  </marker>
+                </defs>
+                <text x="30" y="130" text-anchor="middle" class="fill-lune-soft" font-size="9">Maison</text>
+                <text x="110" y="132" text-anchor="middle" class="fill-lune-soft" font-size="9">Batterie</text>
+                <text x="190" y="130" text-anchor="middle" class="fill-lune-soft" font-size="9">Réseau</text>
+              </svg>
+              <ul class="mt-2 space-y-1 text-xs leading-relaxed text-lune-soft">
+                {p.flows.map((f) => (<li>{f}</li>))}
+              </ul>
+              <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{p.note}</p>
+            </figure>
+          ))}
+        </div>
+      </div>
+    </section>
+
     <!-- Le matériel de stockage posé — Dyness LFP -->
     <div class="v2-seam" aria-hidden="true"></div>
     <section class="section bg-blanc-azur px-4 text-encre">
@@ -183,6 +304,51 @@ const jsonLd = {
       </div>
     </section>
 
+    <!-- W278 — Coupures & prépayé (Nour) : le segment résilience, indépendant du régime tarifaire -->
+    <section class="section px-4 text-white">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">Un besoin, pas un tarif</p>
+        <h2 class="display v2-section-title mt-5 text-white">Coupures, compteur prépayé : la batterie répond à l'angoisse, pas au calcul</h2>
+        <p class="v2-lead mt-5 text-lune-soft">
+          Toute la page qui précède parle d'arbitrage économique — consommer le jour, stocker le
+          soir. Il existe un autre foyer, différent : celui qui redoute la coupure elle-même, pas
+          son coût. Deux situations reviennent souvent.
+        </p>
+        <div class="mt-10 grid gap-6 md:grid-cols-2" data-stagger>
+          <div class="v2-rise cine-card flex flex-col p-7" style="--v2-i:0">
+            <p class="tech-label text-lune">Compteur à prépaiement</p>
+            <h3 class="display mt-2 text-xl text-white">Coupure automatique à solde épuisé</h3>
+            <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">
+              Un compteur électrique prépayé (souvent appelé « Nour » au Maroc) fonctionne comme un
+              forfait téléphonique : on recharge un crédit à l'avance, et l'alimentation s'arrête
+              automatiquement dès que ce solde tombe à zéro — jusqu'à la prochaine recharge. C'est le
+              principe générique de tout compteur à prépaiement, quel que soit le distributeur ;
+              nous ne citons ici aucun barème ni délai propre à un opérateur précis, faute de
+              source publique à référencer.
+            </p>
+          </div>
+          <div class="v2-rise cine-card flex flex-col p-7" style="--v2-i:1">
+            <p class="tech-label text-lune">L'angoisse de la coupure</p>
+            <h3 class="display mt-2 text-xl text-white">Le vrai déclencheur, ce n'est pas le kWh</h3>
+            <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">
+              Une recharge oubliée un week-end, un délestage du réseau, une panne locale : le
+              résultat est le même — le courant s'arrête sans préavis. Pour ce foyer-là, la question
+              n'est pas « combien vais-je économiser sur ma facture ? » mais « est-ce que je peux
+              compter sur l'électricité quand j'en ai besoin ? ».
+            </p>
+          </div>
+        </div>
+        <p class="mt-8 max-w-2xl border-l-4 border-azur-200/50 pl-4 text-sm leading-relaxed text-lune-soft">
+          Dans les deux cas, la réponse honnête est la même : une batterie couplée à un onduleur
+          hybride en mode secours (EPS) donne une autonomie propre à vous, indépendante du réseau et
+          de son mode de facturation. Ce n'est pas un raisonnement d'économie — c'est un raisonnement
+          de continuité. Il tient debout que votre installation soit raccordée en régime classique
+          ou en compteur prépayé, et il ne dépend d'aucun futur tarif de rachat 82-21.
+          <a href="/guides/electricite-pendant-les-coupures" class="border-b-2 border-azur-200/60 pb-0.5 font-bold text-azur-200 transition-colors hover:text-white">Comment fonctionne le secours EPS →</a>
+        </p>
+      </div>
+    </section>
+
     <!-- FAQ visuelle — schema={false} : /faq reste l'unique FAQPage (W130) -->
     <Faq
       schema={false}
@@ -224,14 +390,22 @@ const jsonLd = {
       <div class="mx-auto max-w-6xl">
         {/* Eyebrow rétrogradé en lune (discipline laiton #2) */}
         <p class="tech-label v2-kicker rule-brass text-lune">Le stockage dans votre projet</p>
-        <div class="mt-6 flex flex-wrap gap-3">
-          <a href="/équipement" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Tout l'équipement →</a>
-          <a href="/résidentiel" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Solaire résidentiel →</a>
-          <a href="/guides/faut-il-des-batteries" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Guide : faut-il des batteries ? →</a>
-          <a href="/garanties" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Garanties →</a>
-          <a href="/realisations" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Nos réalisations →</a>
-        </div>
+        <RelatedLinks mt="mt-6" links={[
+          { href: '/équipement', label: "Tout l'équipement" },
+          { href: '/résidentiel', label: 'Solaire résidentiel' },
+          { href: '/guides/faut-il-des-batteries', label: 'Guide : faut-il des batteries ?' },
+          { href: '/guides/quelle-taille-de-batterie', label: 'Quelle taille de batterie ?' },
+          { href: '/guides/electricite-pendant-les-coupures', label: 'Électricité pendant les coupures' },
+          { href: '/garanties', label: 'Garanties' },
+          { href: '/realisations', label: 'Nos réalisations' },
+        ]} />
       </div>
+    </section>
+
+    <!-- W263 — garantie par composant, AVANT le CTA final. -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="section-tight bg-blanc-azur px-4 text-encre">
+      <ServiceWarrantyTable />
     </section>
 
     <CtaBand title="Stockage ou pas ? Votre courbe de consommation le dira — diagnostic gratuit." href="/devis/mon-toit" />

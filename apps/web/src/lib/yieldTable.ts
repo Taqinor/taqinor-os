@@ -7,7 +7,17 @@
  * PVGIS live est lent ou injoignable. Azimut : 0=Sud, -90=Est, 90=Ouest,
  * ±45=SE/SO. Pour une latitude intermédiaire, l'estimateur interpole entre
  * les deux villes encadrantes (voir specificYieldFromTable dans estimatorBrain).
+ *
+ * WJ74 — STAMP & PIN : GENERATED_AT (horodatage de cette génération) et la
+ * fenêtre TMY PVGIS PINNÉE (PVGIS_TMY_STARTYEAR/ENDYEAR, mêmes valeurs que
+ * scripts/generate-yield-table.mjs) sont exportées ci-dessous comme marqueur
+ * de fraîcheur/reproductibilité. Rafraîchir une fois par an ; noter la date
+ * dans le DONE LOG du plan à chaque régénération.
  */
+export const GENERATED_AT = '2026-07-03T00:00:00.000Z';
+export const PVGIS_TMY_STARTYEAR = 2005;
+export const PVGIS_TMY_ENDYEAR = 2020;
+
 export interface CityYield {
   lat: number;
   /** grid[aspect][tilt] = kWh/kWc/an. */

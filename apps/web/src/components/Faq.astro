@@ -5,7 +5,7 @@
  * par les questions/réponses de Meryem.
  */
 interface Props {
-  items: { q: string; a: string }[];
+  items: { q: string; a: string; cluster?: string }[];
   heading?: string;
   /**
    * Émettre le JSON-LD FAQPage (défaut true). Une seule page du site doit
@@ -30,25 +30,59 @@ const faqJsonLd = {
     acceptedAnswer: { '@type': 'Answer', text: item.a },
   })),
 };
+
+// W330 — id stable et déeplinkable par question (indexé, pas slugifié : reste
+// stable en FR/EN/AR sans dépendre d'une regex \w latine sur du texte arabe).
+// Quand `cluster` est fourni sur au moins un item, les questions sont
+// regroupées sous des <h2> par cluster (ordre de première apparition) ; sinon
+// le rendu reste la liste plate inchangée (tous les autres appelants du site,
+// ex. accueil, garanties, guides — non concernés par W330).
+const hasClusters = items.some((item) => item.cluster);
+
+type Group = { cluster: string | null; items: { q: string; a: string; id: string }[] };
+const groups: Group[] = [];
+items.forEach((item, i) => {
+  const id = `faq-q-${i + 1}`;
+  const clusterKey = hasClusters ? item.cluster ?? null : null;
+  const last = groups[groups.length - 1];
+  if (last && last.cluster === clusterKey) {
+    last.items.push({ q: item.q, a: item.a, id });
+  } else {
+    groups.push({ cluster: clusterKey, items: [{ q: item.q, a: item.a, id }] });
+  }
+});
 ---
 
 {schema && <script type="application/ld+json" set:html={JSON.stringify(faqJsonLd)} />}
 
 <!-- W51 — FAQ dans le système navy+or : fond nuit, texte lune/blanc, marqueurs
-     laiton. Markup details/summary et logique JSON-LD INCHANGÉS. -->
+     laiton. Markup details/summary et logique JSON-LD INCHANGÉS.
+     W330 — quand des clusters sont fournis, chaque groupe de questions est
+     rendu sous un <h2> propre avec un id stable par question (deep-link
+     #faq-q-N), pour la lisibilité et pour que chaque réponse reste citable
+     indépendamment (objectif AEO W297/W330). -->
 <section class="border-t border-white/10 bg-nuit px-4 py-16 text-lune">
   <div class="mx-auto max-w-3xl">
   <p class="tech-label rule-brass text-brass-300">FAQ</p>
   <h2 class="display v2-section-title mt-3 text-3xl text-white">{heading}</h2>
-  <div class="mt-8 border-t border-white/10">
-    {items.map((item) => (
-      <details class="group border-b border-white/10 py-5">
-        <summary class="flex cursor-pointer list-none items-baseline gap-4 font-display text-base font-bold text-white marker:hidden [&::-webkit-details-marker]:hidden">
-          <span class="inline-block h-2 w-2 flex-none rotate-45 border-[1.5px] border-brass-400 transition-transform group-open:rotate-[135deg]" aria-hidden="true"></span>
-          {item.q}
-        </summary>
-        <p class="mt-3 ps-6 text-sm leading-relaxed text-lune-soft">{item.a}</p>
-      </details>
+  <div class="mt-8">
+    {groups.map((group) => (
+      <div class="faq-cluster">
+        {group.cluster && (
+          <h2 class="v2-section-title mt-10 text-lg font-bold text-brass-300 first:mt-0">{group.cluster}</h2>
+        )}
+        <div class="border-t border-white/10">
+          {group.items.map((item) => (
+            <details id={item.id} class="group scroll-mt-24 border-b border-white/10 py-5">
+              <summary class="flex cursor-pointer list-none items-baseline gap-4 font-display text-base font-bold text-white marker:hidden [&::-webkit-details-marker]:hidden">
+                <span class="inline-block h-2 w-2 flex-none rotate-45 border-[1.5px] border-brass-400 transition-transform group-open:rotate-[135deg]" aria-hidden="true"></span>
+                {item.q}
+              </summary>
+              <p class="mt-3 ps-6 text-sm leading-relaxed text-lune-soft">{item.a}</p>
+            </details>
+          ))}
+        </div>
+      </div>
     ))}
   </div>
   </div>

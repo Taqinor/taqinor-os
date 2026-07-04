@@ -1,13 +1,18 @@
 ---
 /**
  * EN — Residential solar (W67). Faithful translation of /résidentiel ; EVERY
- * figure kept EXACT in Latin digits (11,36 kWc, 14 271 kWh/an, 60–90 %, 3–7 ans,
- * 25 ans, < 11 kW, 1 000 / 2 000 / 10 000 MAD, ref. 400/236/468/NC-10/25,
+ * figure kept EXACT in Latin digits (11,36 kWc, 14 271 kWh/an, 60–90 %, 3–7 years,
+ * 25 years, < 11 kW, 1 000 / 2 000 / 10 000 MAD, ref. 400/236/468/NC-10/25,
  * Canadian Solar 710 Wc, Deye, Dyness LFP, Deye Cloud, ONEE, law 82-21). The
  * price-bracket data + solar math (BILL_RANGES / localEstimateBand / formatMAD)
  * are reused UNCHANGED — only visible labels are translated. Internal links via
- * localizeNavHref. Shared components (GarantiesTeaser, Testimonials,
- * DiagnosticForm) auto-detect locale. FR untouched.
+ * localizeNavHref. Shared components (GarantiesTeaser, Testimonials) auto-detect
+ * locale. FR untouched.
+ *
+ * W249 — Single funnel: the closing act is no longer DiagnosticForm but the
+ * instant-estimate widget shared with the homepage (InstantEstimator, W250 —
+ * same billEstimate.ts brain, same CTA into the quote journey). DiagnosticForm
+ * stays intact in the codebase as the documented fallback.
  *
  * ELEVATION (W237) — mirrors /résidentiel.astro elevation treatment:
  *  1. Cinematic hero (~92svh) full-frame photo, eyebrow text-lune, ONE brass CTA
@@ -22,24 +27,31 @@ import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
 import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
-import DiagnosticForm from '../../components/DiagnosticForm.astro';
+import InstantEstimator from '../../components/InstantEstimator.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import Picture from '../../components/Picture.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import ZelligeDivider from '../../components/ZelligeDivider.astro';
 import GarantiesTeaser from '../../components/GarantiesTeaser.astro';
 import Testimonials from '../../components/Testimonials.astro';
+import Faq from '../../components/Faq.astro';
+import ServiceWarrantyTable from '../../components/ServiceWarrantyTable.astro';
+import RelatedLinks from '../../components/RelatedLinks.astro';
 import { BILL_RANGES, localEstimateBand } from '../../lib/billRange';
 import { formatMAD } from '../../lib/format';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
 import { WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink } from '../../lib/whatsapp';
+import { serviceFaqItems } from '../../lib/serviceFaq';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 
 const waDirect = whatsappLink(WHATSAPP_LEADS, 'Hello, I would like a study for a solar installation.');
+
+// W263 — shared FAQ + per-component warranty, EN.
+const faqItems = serviceFaqItems('residentiel', 'en');
 
 const PRIX_PAR_KWC = { bas: 10000, haut: 12500 };
 const arrondi5k = (v: number) => Math.round(v / 5000) * 5000;
@@ -137,7 +149,9 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
     {/* Price transparency — the ledger, figures that tally up.
         Eyebrow demoted to lune (brass discipline). */}
     <section class="section mx-auto max-w-4xl px-4">
-      <p class="tech-label v2-kicker rule-brass text-lune">Price transparency</p>
+      {/* W274 — chapter-numbering system (01/02…), same device as index.astro:
+          extended here so the editorial device is consistent site-wide. */}
+      <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">01</span>Price transparency</p>
       <h2 class="display v2-section-title mt-5 text-white">Your bill already places you in a range</h2>
       <p class="v2-lead mt-4 max-w-2xl text-lune-soft">
         Here are the orders of magnitude recorded on our residential sites — <strong class="text-lune">never a
@@ -174,7 +188,8 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
     <section class="section px-4">
       <div class="mx-auto grid max-w-6xl gap-12 lg:grid-cols-[1.1fr_1fr] lg:items-center">
         <div class="v2-rise">
-          <p class="tech-label v2-kicker rule-brass text-lune">The investment horizon</p>
+          {/* W274 — chapter 02, same device. */}
+          <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">02</span>The investment horizon</p>
           <h2 class="display v2-section-title mt-5 text-white">What the 25 years deliver, year by year</h2>
           <p class="v2-lead mt-5 text-lune-soft">
             The manufacturer guarantees panel performance over 25 years. Take a villa with a
@@ -186,11 +201,11 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
           </p>
           <dl class="mt-10 grid grid-cols-3 gap-4 border-l-2 border-brass-400/60 pl-6" data-stagger>
             <div class="v2-rise" style="--v2-i:0">
-              <dd class="fig lum whitespace-nowrap text-2xl sm:text-4xl" data-tally>25 ans</dd>
+              <dd class="fig lum whitespace-nowrap text-2xl sm:text-4xl" data-tally>25 years</dd>
               <dt class="tech-label mt-1.5 text-lune-faint">Panel warranty</dt>
             </div>
             <div class="v2-rise" style="--v2-i:1">
-              <dd class="fig lum whitespace-nowrap text-2xl sm:text-4xl" data-tally>3–7 ans</dd>
+              <dd class="fig lum whitespace-nowrap text-2xl sm:text-4xl" data-tally>3–7 years</dd>
               <dt class="tech-label mt-1.5 text-lune-faint">Typical payback</dt>
             </div>
             <div class="v2-rise" style="--v2-i:2">
@@ -222,16 +237,20 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
       </div>
     </section>
 
-    {/* Contextual links */}
+    {/* Contextual links — price/residential cluster (W299) */}
     <div class="seam-soft" aria-hidden="true"></div>
     <section class="section-tight px-4">
-      <div class="mx-auto flex max-w-6xl flex-wrap gap-3">
-        <a href={L('/realisations')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Our residential projects →</a>
-        <a href={L('/équipement')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">The equipment we install →</a>
-        <a href={L('/garanties')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Our warranties →</a>
-        <a href={L('/batteries-stockage')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Batteries &amp; storage →</a>
-        <a href={L('/financement')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Financing &amp; returns →</a>
-        <a href={L('/pourquoi-taqinor')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Why Taqinor →</a>
+      <div class="mx-auto max-w-6xl">
+        <RelatedLinks mt="mt-0" links={[
+          { href: L('/realisations'), label: 'Our residential projects' },
+          { href: L('/prix-panneaux-solaires-maroc'), label: 'Solar panel prices in Morocco' },
+          { href: L('/guides/combien-de-panneaux-pour-ma-maison'), label: 'How many panels for my house?' },
+          { href: L('/équipement'), label: 'The equipment we install' },
+          { href: L('/garanties'), label: 'Our warranties' },
+          { href: L('/batteries-stockage'), label: 'Batteries & storage' },
+          { href: L('/financement'), label: 'Financing & returns' },
+          { href: L('/pourquoi-taqinor'), label: 'Why Taqinor' },
+        ]} />
       </div>
     </section>
 
@@ -241,10 +260,23 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
     <!-- Reassurance: the written warranties, in brief (links to /garanties) -->
     <GarantiesTeaser />
 
-    <!-- FINAL ACT — the clean room -->
-    <DiagnosticForm heading="Your assessment in 60 seconds" />
+    <!-- W263 — shared FAQ (maintenance/price/included-excluded/timelines/
+         warranties) + per-component warranty, BEFORE the final form.
+         schema={false}: /faq stays the only FAQPage JSON-LD (W19). -->
+    <Faq schema={false} heading="Frequently asked questions — residential solar" items={faqItems} />
+    <section class="section-tight bg-blanc-azur px-4 text-encre">
+      <ServiceWarrantyTable />
+    </section>
 
-    <CtaBand href="/devis/mon-toit" seam={false} />
+    <!-- FINAL ACT — the clean room (W249: single funnel, InstantEstimator) -->
+    <InstantEstimator variant="hero" />
+
+    <CtaBand
+      title="A question before you commit? Talk to a human."
+      buttonLabel="WhatsApp direct with an advisor"
+      href={waDirect}
+      seam={false}
+    />
 
     <StickyCta />
   </div>

@@ -8,13 +8,33 @@
  *
  * W152 : bloc marque renforcé (logo + tagline), boutons CTA téléphone/WhatsApp,
  * liseré doré en haut, hiérarchie de colonnes améliorée.
+ *
+ * W246 — bande de clôture chaude, AU-DESSUS de la grille de liens (grille
+ * intacte) : glyphe zellige + ligne de marque, lien de parcours devis
+ * (/devis/mon-toit, localisé) bien visible, et une reprise WhatsApp unique à
+ * faible friction — le footer ne finit plus froid sur une ligne légale.
+ * Reduced-motion-safe (glyphe SVG statique, aucune propriété de reflow
+ * animée) et CLS zéro (aucune dimension asynchrone).
+ *
+ * W286 — rangée de réseaux sociaux, DATA-GATED (WG8). `SOCIAL_LINKS`
+ * ci-dessous est la source unique de vérité pour cette rangée : elle est
+ * VIDE aujourd'hui (aucun compte actif confirmé par le fondateur), donc rien
+ * ne s'affiche — JAMAIS d'icône ou de handle fabriqué. Le jour où WG8 fournit
+ * de vraies URLs, il suffit de les ajouter ici (label + href + le glyphe SVG
+ * correspondant) pour que la rangée s'allume automatiquement, sans autre
+ * changement de structure.
+ *
+ * W340 — « Espace client » (colonne Contact) : lien vers le vrai portail
+ * Deye Cloud (DEYE_CLOUD_URL, source unique dans lib/nap.ts) — le même accès
+ * personnel déjà décrit sur /maintenance-monitoring. Pas de portail Taqinor
+ * séparé, jamais de lien mort.
  */
 import Logo from './Logo.astro';
-import { NAP, WHATSAPP_LEADS } from '../lib/nap';
-import { whatsappLink } from '../lib/whatsapp';
+import { DEYE_CLOUD_URL, NAP, WHATSAPP_LEADS } from '../lib/nap';
+import { pageContextWhatsappText, whatsappLink } from '../lib/whatsapp';
 import { CITIES } from '../lib/realisations';
 import { getLocaleFromPath, stripLocale, useTranslations } from '../i18n/utils';
-import { localizeNavHref } from '../i18n/pages';
+import { localizeNavHref, quoteJourneyHref } from '../i18n/pages';
 
 // Locale courante déduite de l'URL ; libellés via dictionnaire (repli FR).
 // Le rendu FR reste byte-identique : t() rend les libellés FR existants et
@@ -23,7 +43,13 @@ const locale = getLocaleFromPath(Astro.url.pathname);
 const t = useTranslations(locale);
 const L = (href: string) => localizeNavHref(href, locale);
 
-const wa = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite des informations sur une installation solaire.');
+// WJ50 — préremplissage contextualisé PAR PAGE (chemin racine, sans préfixe de
+// locale) : même helper que StickyCta, pour que la reprise WhatsApp du pied
+// de page ouvre elle aussi un chat déjà informé et distinguable dans le CRM.
+const wa = whatsappLink(WHATSAPP_LEADS, pageContextWhatsappText(stripLocale(Astro.url.pathname)));
+// W246 — lien de parcours devis localisé (même point de bascule unique que
+// l'en-tête / CtaBand / StickyCta : quoteJourneyHref, jamais un href codé en dur).
+const journeyHref = quoteJourneyHref(locale);
 
 // Colonne Solutions — VRAIS liens vers chaque service (W29).
 const solutions = [
@@ -32,11 +58,24 @@ const solutions = [
   { href: '/pompage-solaire', label: t('nav.pumping') },
   { href: '/batteries-stockage', label: t('nav.batteries') },
   { href: '/maintenance-monitoring', label: t('nav.maintenance') },
+  { href: '/recharge-voiture-electrique-solaire', label: t('nav.evCharging') },
   { href: '/regularization-article-33', label: t('nav.regularization') },
 ];
 
 // Colonne Ressources (W29) + équipement & garanties (pages existantes liées
 // ailleurs sur le site, conservées ici pour le maillage).
+//
+// W338 — /parrainage n'est PAS enregistrée dans i18n/pages.ts (hreflang
+// volontairement sauté pour cette nouvelle page) : L('/parrainage') retombe
+// donc sur la version FR pour toutes les locales, jamais de lien mort. Le
+// libellé reste néanmoins traduit dans les trois langues du chrome.
+const parrainageLabel = locale === 'en' ? 'Referral' : locale === 'ar' ? 'الإحالة' : 'Parrainage';
+
+// W339 — libellé du lien SAV/urgence « Déjà client ? » (colonne Contact).
+const dejaClientLabel = locale === 'en' ? 'Already a customer?' : locale === 'ar' ? 'هل أنت زبون بالفعل؟' : 'Déjà client ?';
+// W340 — libellé du lien « Espace client » (colonne Contact), même mécanisme
+// de repli local que dejaClientLabel ci-dessus.
+const espaceClientLabel = locale === 'en' ? 'Client area' : locale === 'ar' ? 'الفضاء الخاص' : 'Espace client';
 const ressources = [
   { href: '/realisations', label: t('nav.realisations') },
   { href: '/guides', label: t('nav.guides') },
@@ -45,6 +84,7 @@ const ressources = [
   { href: '/pourquoi-taqinor', label: t('nav.why') },
   { href: '/financement', label: t('nav.financing') },
   { href: '/marocains-du-monde', label: t('nav.mre') },
+  { href: '/parrainage', label: parrainageLabel },
   { href: '/à-propos', label: t('nav.about') },
   { href: '/équipement', label: t('nav.equipment') },
   { href: '/produits', label: 'Fiches techniques' },
@@ -52,11 +92,56 @@ const ressources = [
 ];
 
 const linkClass = 'transition-colors hover:text-white';
+
+/**
+ * W286 — comptes sociaux RÉELS uniquement (WG8). Type fermé aux réseaux dont
+ * on porte déjà un glyphe SVG ci-dessous, pour ne jamais rendre un lien sans
+ * icône. VIDE tant que le fondateur n'a pas confirmé un compte actif — la
+ * rangée entière ne se rend pas (voir plus bas) : jamais de placeholder.
+ */
+type SocialNetwork = 'instagram' | 'facebook' | 'linkedin' | 'youtube' | 'tiktok';
+interface SocialLink {
+  network: SocialNetwork;
+  href: string;
+  label: string;
+}
+const SOCIAL_LINKS: SocialLink[] = [];
 ---
 
 <footer class="footer-root bg-nuit text-lune">
   {/* Liseré brass gradient en haut — 2 px, pas d'animation, CLS zéro */}
   <div class="footer-seam" aria-hidden="true"></div>
+
+  {/* ── W246/W369 : bande de clôture chaude — wordmark surdimensionné (W369)
+      + glyphe zellige agrandi (W369) + ligne de marque + CTA parcours devis
+      + reprise WhatsApp. Air généreux au-dessus de la grille de liens
+      (inchangée) : c'est le dernier cadre art-directé du site, pas un
+      sitemap. Le footer ne finit plus froid sur une ligne légale. ── */}
+  <div class="footer-frame border-b border-white/10 px-4 pb-12 pt-14 text-center sm:pt-20">
+    <div class="mx-auto flex max-w-3xl flex-col items-center gap-6">
+      <div class="footer-frame-word" aria-hidden="true">
+        <Logo size={44} theme="dark" />
+      </div>
+
+      <span class="footer-frame-mark" aria-hidden="true">
+        <svg width="40" height="40" viewBox="0 0 34 34" fill="none" class="footer-frame-glyph" aria-hidden="true">
+          <rect x="7.5" y="7.5" width="19" height="19" stroke="currentColor" stroke-width="1.25" />
+          <rect x="7.5" y="7.5" width="19" height="19" stroke="currentColor" stroke-width="1.25" transform="rotate(45 17 17)" />
+          <circle cx="17" cy="17" r="2.1" fill="currentColor" />
+        </svg>
+      </span>
+
+      <p class="display text-balance text-lg text-white sm:text-xl">{t('footer.closingLine')}</p>
+
+      <a href={journeyHref} class="glow footer-journey-cta inline-flex items-center gap-2 bg-brass-400 px-6 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">
+        {t('footer.journeyCta')}
+      </a>
+
+      <a href={wa} rel="noopener noreferrer" class="footer-wa-recapture text-sm text-lune-soft transition-colors hover:text-white">
+        {t('footer.whatsappRecapture')}
+      </a>
+    </div>
+  </div>
 
   {/* ── Bloc principal ── */}
   <div class="mx-auto grid max-w-6xl gap-10 px-4 py-14 md:grid-cols-4">
@@ -96,6 +181,47 @@ const linkClass = 'transition-colors hover:text-white';
           {t('common.whatsapp')}
         </a>
       </div>
+
+      {/* W286 — rangée réseaux sociaux, data-gated : ne se rend QUE si
+          SOCIAL_LINKS contient au moins un compte réel confirmé (WG8).
+          Aujourd'hui vide → aucun DOM émis, jamais d'icône placeholder. */}
+      {SOCIAL_LINKS.length > 0 && (
+        <ul class="footer-social flex items-center gap-3" aria-label={t('footer.contact')}>
+          {SOCIAL_LINKS.map((s) => (
+            <li>
+              <a href={s.href} rel="noopener noreferrer" target="_blank" aria-label={s.label} class="footer-social-link inline-flex items-center justify-center transition-colors hover:text-white">
+                {s.network === 'instagram' && (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                    <rect x="3" y="3" width="18" height="18" rx="5" />
+                    <circle cx="12" cy="12" r="4" />
+                    <circle cx="17.5" cy="6.5" r="0.6" fill="currentColor" stroke="none" />
+                  </svg>
+                )}
+                {s.network === 'facebook' && (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M13.5 21v-7.6h2.6l.4-3h-3v-1.9c0-.87.24-1.46 1.5-1.46h1.6V4.35C15.9 4.24 15 4.16 13.98 4.16c-2.4 0-4.05 1.46-4.05 4.14v2.3H7.3v3h2.63V21h3.57z" />
+                  </svg>
+                )}
+                {s.network === 'linkedin' && (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M6.94 8.5H4V20h2.94V8.5zM5.47 3.5A1.7 1.7 0 1 0 5.5 6.9a1.7 1.7 0 0 0-.03-3.4zM20 20h-2.94v-5.8c0-1.38-.03-3.15-1.92-3.15-1.93 0-2.22 1.5-2.22 3.05V20H10V8.5h2.82v1.57h.04c.39-.74 1.35-1.53 2.78-1.53 2.98 0 3.53 1.96 3.53 4.5V20z" />
+                  </svg>
+                )}
+                {s.network === 'youtube' && (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M22 12s0-3.15-.4-4.67a2.5 2.5 0 0 0-1.77-1.77C18.31 5.17 12 5.17 12 5.17s-6.31 0-7.83.4A2.5 2.5 0 0 0 2.4 7.33C2 8.85 2 12 2 12s0 3.15.4 4.67a2.5 2.5 0 0 0 1.77 1.77c1.52.39 7.83.39 7.83.39s6.31 0 7.83-.4a2.5 2.5 0 0 0 1.77-1.77C22 15.15 22 12 22 12zm-11.9 3.3v-6.6l5.7 3.3-5.7 3.3z" />
+                  </svg>
+                )}
+                {s.network === 'tiktok' && (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M16.5 3h-3v12.2a2.6 2.6 0 1 1-1.85-2.5v-3.1a5.7 5.7 0 1 0 4.85 5.63V9.1a6.6 6.6 0 0 0 4 1.35V7.4a3.6 3.6 0 0 1-4-4.4z" />
+                  </svg>
+                )}
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
 
     {/* Colonne 2 — Solutions */}
@@ -123,6 +249,15 @@ const linkClass = 'transition-colors hover:text-white';
         <li><a href={`tel:${NAP.phone}`} class={linkClass} dir="ltr">{NAP.phoneDisplayIntl}</a></li>
         <li><a href={`mailto:${NAP.email}`} class={linkClass} dir="ltr">{NAP.email}</a></li>
         <li><a href={wa} rel="noopener" class={linkClass}>{t('common.whatsapp')}</a></li>
+        {/* W339 — porte SAV/urgence « Déjà client ? », séparée du CTA devis
+            ci-dessus ; ancre vers le bloc dédié de /contact (repli FR via L(),
+            jamais de lien mort). */}
+        <li><a href={`${L('/contact')}#deja-client`} class={linkClass}>{dejaClientLabel}</a></li>
+        {/* W340 — « Espace client » : le vrai portail Deye Cloud (accès
+            personnel remis à chaque client à la mise en service), pas un
+            portail Taqinor fabriqué. Nouvel onglet, pas de flux de données
+            touché. */}
+        <li><a href={DEYE_CLOUD_URL} rel="noopener noreferrer" target="_blank" class={linkClass}>{espaceClientLabel}</a></li>
         <li class="text-lune-soft">{t('footer.serviceArea')} : {NAP.serviceArea.slice(0, -1).join(', ')} — {t('footer.allMorocco')}</li>
       </ul>
     </div>
@@ -195,12 +330,48 @@ const linkClass = 'transition-colors hover:text-white';
     background: var(--color-brass-300);
   }
 
+  /* W286 — rangée réseaux sociaux (rendue uniquement quand SOCIAL_LINKS a du
+     contenu réel). Icônes discrètes, même palette lune/blanc que le reste du
+     footer — pas de fond de bouton, pour rester secondaire au CTA principal. */
+  .footer-social-link {
+    color: var(--color-lune-soft);
+  }
+
+  /* W246 — cadre de clôture : glyphe zellige statique (aucune propriété de
+     reflow animée, aucune dimension asynchrone → CLS zéro). */
+  .footer-frame-mark {
+    display: inline-flex;
+    color: var(--color-brass-400);
+  }
+  .footer-frame-glyph {
+    color: var(--color-brass-300);
+    filter: drop-shadow(0 0 12px rgb(232 181 74 / 0.3));
+  }
+
+  /* W369 — wordmark surdimensionné : le composant Logo porte déjà sa taille
+     en prop (44px ici, vs 22px dans la colonne marque) ; ce wrapper ne fait
+     qu'assurer une hauteur de ligne stable (aucun reflow, CLS zéro). */
+  .footer-frame-word {
+    line-height: 1;
+  }
+
+  .footer-journey-cta {
+    border-radius: 0;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  .footer-wa-recapture {
+    transition: color 0.2s ease;
+  }
+
   /* Réduire les animations si prefers-reduced-motion : les transitions CSS
      sont déjà déclarées inline sur les hover ci-dessus, mais on les désactive
      pour les utilisateurs qui préfèrent moins de mouvement. */
   @media (prefers-reduced-motion: reduce) {
     .footer-cta-btn,
-    .footer-seam {
+    .footer-seam,
+    .footer-journey-cta,
+    .footer-wa-recapture {
       transition: none;
     }
   }

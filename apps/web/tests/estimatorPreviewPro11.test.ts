@@ -6,7 +6,8 @@
 //     face IMPOSÉS (pas d'axe tilt/orientation) ; production PVGIS pose 'building' ;
 //   - la pose AFFLEURANTE coplanaire et la 3D pente restent INCHANGÉES (modèle V6) ;
 //   - le toit PLAT garde l'optimiseur vivant W34 (V7) intact.
-// Tout l'existant (pro-3..pro-10 + le formulaire live) reste strictement intact.
+// Tout l'existant (le formulaire live) reste strictement intact. (W322 : pro-2..
+// pro-10 ont été retirés du labo, founder-confirmed — pro-11 est la seule version.)
 import { describe, expect, it } from 'vitest';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -390,18 +391,15 @@ describe('pro-11 — W86 : libellé CTA honnête + aria-live sur les résultats'
 });
 
 describe('pro-11 — l\'existant est strictement préservé', () => {
-  it('les baselines pro-3..pro-10 gardent leur page et leur script dédiés', () => {
-    for (const n of [3, 4, 5, 6, 7, 8, 9, 10]) {
-      expect(read(`../src/pages/preview/toiture-3d-pro-${n}.astro`)).toContain(`import('../../scripts/roof-tool-pro${n}.ts')`);
-      expect(existsSync(fileURLToPath(new URL(`../src/scripts/roof-tool-pro${n}.ts`, import.meta.url)))).toBe(true);
-    }
-  });
-
-  it('pro-10 reste en V7 (toit plat) et N\'utilise PAS le cerveau V8', () => {
-    const pro10 = read('../src/scripts/roof-tool-pro10.ts');
-    expect(pro10).toContain("from '../lib/estimatorBrainV7'");
-    expect(pro10).not.toContain("from '../lib/estimatorBrainV8'");
-    expect(pro10).not.toContain('solveLivePitched(');
+  // W322 (deploy diet, founder-confirmed) — pro-2..pro-10 ont été retirés du labo :
+  // pro-11 est désormais la SEULE page/script du builder 3D « pro » ; il n'y a donc
+  // plus de baseline pro-N à préserver séparément. On garde en revanche l'invariant
+  // de LIBRAIRIE : V7 (toit plat, toujours utilisé par pro-11 pour ses résolutions
+  // plates) reste isolé du cerveau V8 (toit en pente) sans réimplémentation croisée.
+  it('le cerveau V7 (toit plat) N\'utilise PAS le cerveau V8 (isolation des cerveaux)', () => {
+    const v7 = read('../src/lib/estimatorBrainV7.ts');
+    expect(v7).not.toContain("from './estimatorBrainV8'");
+    expect(v7).not.toContain('solveLivePitched(');
   });
 
   it('le moteur V8 compose sur V2 + V3 sans les ré-implémenter (pas d\'édition)', () => {

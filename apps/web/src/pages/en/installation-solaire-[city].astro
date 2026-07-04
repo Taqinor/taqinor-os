@@ -20,6 +20,7 @@ import { caseStudyBySlug } from '../../lib/caseStudies';
 import { NAP } from '../../lib/nap';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
+import { YIELD_TABLE } from '../../lib/yieldTable';
 
 export function getStaticPaths() {
   return CITIES.map((c) => ({ params: { city: c.slug }, props: { c } }));
@@ -36,6 +37,18 @@ const featured = c.featuredRefs.map((ref) => realisationByRef(ref)).filter(Boole
 const inCity = featured.filter((r) => r!.ville === c.name);
 const nearby = featured.filter((r) => r!.ville !== c.name);
 const closest = c.hasLocalInstall ? [] : REALISATIONS.slice(0, 3);
+
+// WJ73 — estimate-vs-proof gap, explained honestly (see FR file for full
+// rationale). Derived from REALISATIONS + YIELD_TABLE, never hand-copied.
+const shownInstalls = inCity.length > 0 ? inCity : closest;
+const yieldSamples = shownInstalls
+  .filter((r) => r!.productionNum && r!.kwcNum)
+  .map((r) => r!.productionNum! / r!.kwcNum!);
+const avgYieldPerKwc = yieldSamples.length
+  ? Math.round(yieldSamples.reduce((sum, y) => sum + y, 0) / yieldSamples.length)
+  : null;
+const cityYieldTable = YIELD_TABLE[c.slug];
+const southOptimalYield = cityYieldTable ? cityYieldTable.grid['0']['29'] : undefined;
 
 // Prose propre à la ville (EN) — chiffres identiques, prose traduite.
 const cc = cityContentBySlug(c.slug, locale);
@@ -152,6 +165,16 @@ const heroPhotoAlt = inCity[0] ? cardAlt(inCity[0]) : '';
               </a>
             ))}
           </div>
+          {/* WJ73 — estimate-vs-proof gap, explained honestly. */}
+          {avgYieldPerKwc && southOptimalYield && (
+            <p class="v2-rise mt-6 max-w-2xl text-xs leading-relaxed text-lune-faint">
+              Worth noting: these installations average ≈{avgYieldPerKwc.toLocaleString('en-US')} kWh/kWc/yr,
+              below the ≈{southOptimalYield.toLocaleString('en-US')} kWh/kWc/yr the modeled yield table
+              used for estimates assumes — real installations aren't all south-facing at the optimal
+              29° tilt, unlike the model's assumption. The on-site study refines this figure for your
+              actual roof.
+            </p>
+          )}
         </div>
       </section>
     )}

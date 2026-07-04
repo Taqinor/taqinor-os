@@ -221,6 +221,21 @@ export function formatPercent(value: number | null | undefined, decimals = 0): s
 }
 
 /**
+ * WJ72 — UN SEUL style de nombre de bout en bout : l'estimation instantanée
+ * (/devis/mon-toit) affichait jusqu'ici le kWc BRUT (`String(est.kwc)` →
+ * point décimal, ex. « 7.5 kWc ») pendant que la proposition utilisait déjà
+ * `formatNumber(kwc, 2)` (virgule décimale, zéros de fin retirés, ex.
+ * « 7,5 kWc » ou « 11 kWc »). Un client qui compare son estimation à sa
+ * proposition voyait deux langages de nombres différents. `formatKwc` est
+ * l'UNIQUE point de formatage kWc du site — mon-toit.astro (FR/EN/AR) et la
+ * proposition l'utilisent tous les deux désormais, jamais un `String(...)`
+ * ou un `.toFixed(...)` local.
+ */
+export function formatKwc(value: number | null | undefined): string {
+  return formatNumber(value, 2);
+}
+
+/**
  * Affiche une durée de retour sur investissement. Le backend peut renvoyer un
  * nombre (années) ou une chaîne déjà formatée — on respecte les deux.
  */
@@ -266,9 +281,33 @@ export function optionTtc(p: ProposalResponse, opt: OptionKey): number {
   return opt === 'avec_batterie' ? p.option_totals?.avec_batterie ?? 0 : p.option_totals?.sans_batterie ?? 0;
 }
 
+/**
+ * WJ83 — Garde-fou « zéro chiffre inventé » appliqué au PRIX : `optionTtc`
+ * retombe sur `0` (via `?? 0`) quand aucun totaux n'est exploitable — un
+ * payload dégénéré (devis mal formé, option absente) affichait alors
+ * « 0 MAD TTC, clé en main » comme un VRAI prix. `hasRealPrice` distingue un
+ * prix réel (TTC backend strictement positif) d'un repli à 0 : la page doit
+ * alors masquer le prix + le CTA de signature et afficher un message
+ * honnête (« prix communiqué par votre conseiller ») plutôt qu'un chiffre.
+ */
+export function hasRealPrice(p: ProposalResponse, opt: OptionKey): boolean {
+  const ttc = optionTtc(p, opt);
+  return Number.isFinite(ttc) && ttc > 0;
+}
+
 /** Étiquette FR courte d'une option. */
 export function optionLabel(opt: OptionKey): string {
   return opt === 'avec_batterie' ? 'Avec batterie' : 'Sans batterie';
+}
+
+/** WJ43 — Étiquette arabe d'une option (paire de `optionLabel` pour le data-i18n). */
+export function optionLabelAr(opt: OptionKey): string {
+  return opt === 'avec_batterie' ? 'مع بطارية' : 'بدون بطارية';
+}
+
+/** WJ43 — Étiquette anglaise d'une option (paire de `optionLabel` pour le data-i18n). */
+export function optionLabelEn(opt: OptionKey): string {
+  return opt === 'avec_batterie' ? 'With battery' : 'Without battery';
 }
 
 /** Lignes d'équipement d'une option (toujours un tableau). */
@@ -293,8 +332,45 @@ export function defaultSelectedOption(p: ProposalResponse): OptionKey {
 }
 
 /** Vrai si la proposition est déjà acceptée (signée) — affiche l'état confirmé. */
-export function isAccepted(p: ProposalResponse): boolean {
+export function isAccepted(p: Pick<ProposalResponse, 'accepted' | 'statut'>): boolean {
   return p.accepted === true || p.statut === 'accepte';
+}
+
+// ── WJ82 · États explicites d'une offre morte (refusée / expirée / retirée) ──
+
+/**
+ * L'état de l'offre du point de vue de la signature. `statut` backend est l'un
+ * des 5 statuts canoniques du devis (brouillon/envoye/accepte/refuse/expire —
+ * voir `apps/ventes/models.py Devis.Statut`) ; « withdrawn » n'existe pas côté
+ * backend aujourd'hui mais est accepté défensivement comme alias de `refuse`
+ * si jamais rencontré (jamais une nouvelle valeur inventée, juste une synonymie
+ * de lecture). `expired` retombe sur `resolveValidity` (date_validite dépassée)
+ * quand le statut lui-même ne le dit pas déjà.
+ */
+export type OfferState = 'live' | 'accepted' | 'refused' | 'expired' | 'withdrawn';
+
+/**
+ * WJ82 — Résout l'état de signature d'une offre : une offre acceptée, refusée,
+ * expirée (statut backend `expire` OU date de validité dépassée) ou retirée ne
+ * doit plus pouvoir être signée. `live` = tout le reste (brouillon/envoyé,
+ * dans les temps) — seul état où le formulaire + le CTA collant restent actifs.
+ */
+export function resolveOfferState(
+  p: Pick<ProposalResponse, 'statut' | 'accepted' | 'date_validite' | 'quote'>,
+  now: Date = new Date(),
+): OfferState {
+  if (isAccepted(p)) return 'accepted';
+  const statut = (p.statut ?? '').trim().toLowerCase();
+  if (statut === 'refuse' || statut === 'refusee' || statut === 'refusé') return 'refused';
+  if (statut === 'withdrawn' || statut === 'retire' || statut === 'retiré') return 'withdrawn';
+  if (statut === 'expire' || statut === 'expiré' || statut === 'expired') return 'expired';
+  if (resolveValidity(p, now).expired) return 'expired';
+  return 'live';
+}
+
+/** Vrai quand l'offre ne peut plus être signée (tout sauf `live`). */
+export function isOfferDead(state: OfferState): boolean {
+  return state !== 'live';
 }
 
 // ── Formulaire de signature : validation + mise en forme de la requête ───────
@@ -382,30 +458,107 @@ export function contactEndpoint(apiBase: string, token: string): string {
   return `${base}/api/django/ventes/proposal/${encodeURIComponent(token)}/contact/`;
 }
 
-/** Canal choisi par le client pour la demande de contact. */
-export type ContactChannel = 'rappel' | 'whatsapp' | 'question';
+/** Canal choisi par le client pour la demande de contact. WJ85 — `voice`
+ *  couvre l'invitation à la note vocale WhatsApp (canal distinct de `whatsapp`
+ *  générique, pour que l'équipe voie que le client a été orienté vers un
+ *  message vocal plutôt qu'un texte). WJ54 — `revision` couvre la demande de
+ *  modification structurée (voir `RevisionKind` ci-dessous) : un canal
+ *  DISTINCT des précédents pour que le CRM/lead webhook puisse la trier
+ *  séparément d'un simple rappel/question. */
+export type ContactChannel = 'rappel' | 'whatsapp' | 'question' | 'voice' | 'revision';
 
 export interface ContactRequestState {
   channel: ContactChannel;
   /** Message libre optionnel (ex. depuis « Poser une question »). */
   message?: string;
+  /** WJ54 — précise le TYPE de modification demandée (uniquement quand `channel === 'revision'`). */
+  revisionKind?: RevisionKind;
 }
 
 export interface ContactRequestBody {
   channel: ContactChannel;
   message: string;
+  /** WJ54 — omis quand `channel !== 'revision'` (jamais un champ vide envoyé sans raison). */
+  revision_kind?: RevisionKind;
 }
 
 /**
- * WJ29 — Met en forme le corps envoyé au proxy /api/proposition-contact. Le
- * canal est normalisé (repli 'rappel' si invalide) ; le message est tronqué à
- * une longueur raisonnable pour ne jamais inonder l'upstream.
+ * WJ29/WJ85 — Met en forme le corps envoyé au proxy /api/proposition-contact.
+ * Le canal est normalisé (repli 'rappel' si invalide) ; le message est
+ * tronqué à une longueur raisonnable pour ne jamais inonder l'upstream.
  */
 export function buildContactBody(state: ContactRequestState): ContactRequestBody {
   const channel: ContactChannel =
-    state.channel === 'whatsapp' || state.channel === 'question' ? state.channel : 'rappel';
+    state.channel === 'whatsapp' || state.channel === 'question' || state.channel === 'voice' || state.channel === 'revision'
+      ? state.channel
+      : 'rappel';
   const message = (state.message ?? '').trim().slice(0, 2000);
-  return { channel, message };
+  const body: ContactRequestBody = { channel, message };
+  if (channel === 'revision') {
+    const kind = state.revisionKind;
+    body.revision_kind = kind === 'kwc' || kind === 'batterie' || kind === 'autre' ? kind : 'autre';
+  }
+  return body;
+}
+
+// ── WJ54 · « Demander une modification » — formulaire de révision structurée ─
+
+/**
+ * WJ54 — Type d'ajustement demandé par le client sur SA proposition : ajuster
+ * la puissance (kWc), changer l'option batterie, ou « autre » (texte libre
+ * obligatoire dans ce cas). Volontairement les 3 catégories les plus
+ * fréquentes observées en négociation avant signature — pas une nomenclature
+ * exhaustive.
+ */
+export type RevisionKind = 'kwc' | 'batterie' | 'autre';
+
+export interface RevisionRequestState {
+  kind: RevisionKind;
+  /** Texte libre — TOUJOURS envoyé (contexte utile même pour kwc/batterie), tronqué comme un message normal. */
+  detail: string;
+}
+
+export interface RevisionValidation {
+  valid: boolean;
+  /** Message FR à afficher quand invalide (null si valide). */
+  error: string | null;
+}
+
+/**
+ * WJ54 — Validation du formulaire de révision : le type doit être l'une des 3
+ * valeurs reconnues ; le texte libre est OBLIGATOIRE pour « autre » (sinon la
+ * demande n'a aucun contenu exploitable), optionnel pour kwc/batterie (le type
+ * suffit à orienter le conseiller, le texte est un complément).
+ */
+export function validateRevisionRequest(state: RevisionRequestState): RevisionValidation {
+  const kind = state.kind;
+  if (kind !== 'kwc' && kind !== 'batterie' && kind !== 'autre') {
+    return { valid: false, error: 'Veuillez choisir le type de modification souhaitée.' };
+  }
+  const detail = (state.detail ?? '').trim();
+  if (kind === 'autre' && !detail) {
+    return { valid: false, error: 'Merci de préciser votre demande en quelques mots.' };
+  }
+  return { valid: true, error: null };
+}
+
+/**
+ * WJ54 — Construit le corps de la demande de révision, prêt à poster vers le
+ * proxy /api/proposition-contact (même endpoint que WJ29 — canal `revision`
+ * distinct, AUCUN nouveau endpoint). Le message combine un préfixe FR lisible
+ * par le conseiller (« Ajuster la puissance (kWc) » etc.) et le texte libre du
+ * client, tronqué comme tout message de contact.
+ */
+export function buildRevisionContactState(state: RevisionRequestState): ContactRequestState {
+  const kind: RevisionKind = state.kind === 'kwc' || state.kind === 'batterie' ? state.kind : 'autre';
+  const labels: Record<RevisionKind, string> = {
+    kwc: 'Ajuster la puissance (kWc)',
+    batterie: 'Changer l’option batterie',
+    autre: 'Autre modification',
+  };
+  const detail = (state.detail ?? '').trim();
+  const message = detail ? `${labels[kind]} — ${detail}` : labels[kind];
+  return { channel: 'revision', message, revisionKind: kind };
 }
 
 export interface ContactResult {
@@ -530,6 +683,19 @@ export const SAVINGS_HORIZON_YEARS = 25;
  * Hypothèse PRUDENTE et libellée : 0 % par défaut (économies à tarif constant).
  * Le calcul de cumul reste honnête même sans inflation tarifaire. Toute hausse
  * réelle ne ferait qu'augmenter l'économie — on ne la promet donc pas.
+ *
+ * WJ75 — CONFIRMÉ ALIGNÉ avec le backend (lu dans le moteur de devis vendorisé,
+ * `apps/ventes/quote_engine/`) : `pricing.py calculate_savings_roi` fixe
+ * `eco_a_cumul = economie_opt2` (l'économie ANNUELLE, malgré son nom) SANS
+ * aucune dérive tarifaire, et `generate_devis_premium.py` l'utilise comme un
+ * TAUX PAR AN pour bâtir sa courbe cumulative sur 26 points (0 à 25 ans) :
+ * `CUMUL_A = [-TOTAL_AVEC + eco_a_cumul * y for y in YEARS]` — une simple
+ * multiplication linéaire, aucun terme `(1+i)^y`. Le PDF premium et cette page
+ * web utilisent donc EXACTEMENT la même hypothèse (0 % d'escalade tarifaire) ;
+ * aucun décalage à corriger entre les deux documents. Le nom du champ backend
+ * (« cumul ») est trompeur — c'est un TAUX ANNUEL, pas un total déjà cumulé
+ * (voir savingsHeadline ci-dessous, qui le multiplie désormais par `years`
+ * au lieu de l'afficher tel quel comme un cumul déjà calculé).
  */
 export const BILL_INFLATION_RATE = 0;
 
@@ -621,12 +787,53 @@ export function resolveValidity(
   return { label: formatFrenchDate(dt), fromBackend: true, expired };
 }
 
+// ── WJ42 · Horodatage de signature localisé (FR/AR/EN) ───────────────────────
+
+/** Langue active de la page proposition (bascule FR/EN/AR — WJ17/WJ43). */
+export type PropLang = 'fr' | 'en' | 'ar';
+
+const STAMP_LOCALE: Record<PropLang, string> = {
+  fr: 'fr-MA',
+  en: 'en-GB',
+  ar: 'ar-MA',
+};
+
+/**
+ * WJ42 — Formate un horodatage de signature dans la langue active. Auparavant
+ * la page injectait toujours `frenchStamp()` en texte brut dans `#sign-stamp`,
+ * ce qui (a) écrasait le markup dual-node d'i18n et (b) affichait une date
+ * française même en mode arabe/anglais. Cette fonction est PURE (testable sans
+ * DOM) : le composant appelant doit la ré-invoquer à chaque bascule de langue
+ * ET la ré-enregistrer via le registre `propI18nBusyLabels` (même discipline
+ * que `renderSubmitLabel`), jamais un remplacement ponctuel non ré-inscrit.
+ */
+export function localizedStamp(d: Date, lang: PropLang): string {
+  const locale = STAMP_LOCALE[lang] ?? STAMP_LOCALE.fr;
+  try {
+    return d.toLocaleString(locale, { dateStyle: 'long', timeStyle: 'short' });
+  } catch {
+    return d.toLocaleString('fr-FR');
+  }
+}
+
+/** WJ42 — Libellé « Réf. … · signature horodatée le … » dans les 3 langues. */
+export function signStampLabel(reference: string, d: Date, lang: PropLang): string {
+  const stamp = localizedStamp(d, lang);
+  if (lang === 'ar') {
+    return `المرجع ${reference} · تم توقيعه بتاريخ ${stamp} (بتوقيت جهازكم).`;
+  }
+  if (lang === 'en') {
+    return `Ref. ${reference} · signature timestamped on ${stamp} (your device's local time).`;
+  }
+  return `Réf. ${reference} · signature horodatée le ${stamp} (heure de votre appareil).`;
+}
+
 // ── WJ9 · Argent dans le temps (cumul 25 ans + cadrage mensuel) ──────────────
 
 export interface SavingsHeadline {
   /** Économie annuelle (MAD/an) — backend `eco_*_ann`. */
   annual: number | null;
-  /** Économie cumulée sur l'horizon (MAD) — backend `eco_a_cumul` sinon calcul. */
+  /** Économie cumulée sur l'horizon (MAD) — dérivée du TAUX annuel `eco_a_cumul` (× years) ou du calcul local. */
   cumulative: number | null;
   /** Horizon retenu (ans). */
   years: number;
@@ -634,16 +841,32 @@ export interface SavingsHeadline {
   monthly: number | null;
   /** Retour sur investissement (déjà formaté). */
   payback: string | null;
-  /** Vrai si le cumul vient directement du backend (sinon calculé). */
+  /** Vrai si le TAUX vient directement du backend (`eco_a_cumul`) plutôt que du fallback `annual`. */
   cumulativeFromBackend: boolean;
 }
 
 /**
- * WJ9 — Construit le bandeau « money over time » de l'option recommandée.
- *  - `annual` : économie annuelle backend.
- *  - `cumulative` : `eco_a_cumul` backend s'il existe ; sinon calculé à partir de
- *    l'annuel × horizon (avec dérive `BILL_INFLATION_RATE`, 0 % par défaut). On
- *    NE calcule jamais sans annuel présent.
+ * WJ9/WJ75 — Construit le bandeau « money over time » de l'option recommandée.
+ *
+ *  - `annual` : économie annuelle backend (`eco_*_ann`).
+ *  - `cumulative` : sur l'horizon (`years`, 25 ans par défaut).
+ *
+ * WJ75 — CORRECTIF : malgré son nom, le champ backend `eco_a_cumul`
+ * (`apps/ventes/quote_engine/pricing.py calculate_savings_roi`) n'est PAS déjà
+ * un total cumulé — c'est le même chiffre que l'économie ANNUELLE
+ * (`eco_a_cumul == eco_a_ann` côté backend), utilisé par le moteur PDF comme un
+ * TAUX PAR AN : `generate_devis_premium.py` construit sa courbe cumulative par
+ * `CUMUL_A = [-total + eco_a_cumul * y for y in YEARS]` (multiplication
+ * linéaire, AUCUNE dérive tarifaire — 0 % d'escalade, comme `BILL_INFLATION_RATE`
+ * ci-dessus). Avant ce correctif, cette fonction affichait `eco_a_cumul`
+ * DIRECTEMENT comme si le backend avait déjà fait `× 25` — ce qui montrait la
+ * valeur d'UNE SEULE ANNÉE sous le libellé « cumul sur 25 ans » (sous-estimation
+ * ≈25× du chiffre le plus visible de la page). Le calcul respecte maintenant la
+ * MÊME hypothèse que le PDF (taux annuel backend × horizon, 0 % d'escalade) —
+ * les deux documents sont désormais alignés, jamais un cumul sur 25 ans qui
+ * n'est en réalité qu'un an. Le repli local (sans backend) applique la même
+ * discipline (`BILL_INFLATION_RATE`, 0 % par défaut) à `annual`. On NE calcule
+ * jamais sans un taux/annuel positif présent.
  *  - `monthly` : annuel / 12 (simple cadrage de lecture, pas un nouveau chiffre).
  */
 export function savingsHeadline(
@@ -656,18 +879,21 @@ export function savingsHeadline(
     ? annualRaw : null;
   const paybackRaw = opt === 'avec_batterie' ? p.quote?.roi_a : p.quote?.roi_s;
 
-  const backendCumul = p.quote?.eco_a_cumul;
+  // WJ75 — `eco_a_cumul` est un TAUX ANNUEL (voir la note ci-dessus), jamais un
+  // total déjà cumulé : on le multiplie par `years`, exactement comme le fait
+  // le moteur PDF (`eco_a_cumul * y`), au lieu de l'afficher tel quel.
+  const backendRate = p.quote?.eco_a_cumul;
+  const hasBackendRate = typeof backendRate === 'number' && Number.isFinite(backendRate) && backendRate > 0;
+  const rate = hasBackendRate ? backendRate : annual;
   let cumulative: number | null = null;
-  let cumulativeFromBackend = false;
-  if (typeof backendCumul === 'number' && Number.isFinite(backendCumul) && backendCumul > 0) {
-    cumulative = backendCumul;
-    cumulativeFromBackend = true;
-  } else if (annual !== null && years > 0) {
-    // Série géométrique honnête : Σ annuel·(1+i)^k, k=0..years-1.
+  const cumulativeFromBackend = hasBackendRate;
+  if (rate !== null && years > 0) {
+    // Série honnête : taux constant (0 % d'escalade, comme le PDF) sauf si
+    // BILL_INFLATION_RATE est un jour changé — alors Σ taux·(1+i)^k, k=0..years-1.
     const i = BILL_INFLATION_RATE;
     cumulative = i === 0
-      ? annual * years
-      : Math.round((annual * (Math.pow(1 + i, years) - 1)) / i);
+      ? rate * years
+      : Math.round((rate * (Math.pow(1 + i, years) - 1)) / i);
   }
 
   return {
@@ -783,6 +1009,46 @@ export function financingComparison(
   };
 }
 
+// ── WJ53 · « Payer comptant / paiement échelonné » — toggle interactif ───────
+
+/**
+ * WJ53 — Choix de durées (mois) proposés par le toggle « paiement échelonné ».
+ * Volontairement COURT (pas de simulation de crédit bancaire, voir WJ10/WJ32
+ * pour l'éco-prêt) : c'est une simple division indicative du TTC, pour un
+ * client qui négocie un paiement en plusieurs fois DIRECTEMENT avec Taqinor —
+ * jamais présentée comme une offre bancaire.
+ */
+export const INSTALLMENT_MONTH_OPTIONS = [3, 6, 12, 24] as const;
+export type InstallmentMonths = (typeof INSTALLMENT_MONTH_OPTIONS)[number];
+
+export interface InstallmentSplit {
+  /** Prix comptant TTC (backend, inchangé). */
+  cashTtc: number;
+  /** Nombre de mois choisi. */
+  months: InstallmentMonths;
+  /** TTC ÷ mois, arrondi au MAD — AUCUN taux/intérêt ajouté (simple division). */
+  monthly: number;
+}
+
+/**
+ * WJ53 — Calcule la mensualité INDICATIVE d'un paiement échelonné sur `months`
+ * mois, par simple division du TTC (aucun taux inventé, aucun frais). Renvoie
+ * `null` quand le TTC n'est pas un prix réel positif (même garde-fou zéro-total
+ * que `hasRealPrice`) — jamais un chiffre calculé sur un montant fabriqué.
+ */
+export function installmentSplit(
+  cashTtc: number,
+  months: InstallmentMonths = 12,
+): InstallmentSplit | null {
+  if (!Number.isFinite(cashTtc) || cashTtc <= 0) return null;
+  const safeMonths = INSTALLMENT_MONTH_OPTIONS.includes(months) ? months : 12;
+  return {
+    cashTtc,
+    months: safeMonths,
+    monthly: Math.round(cashTtc / safeMonths),
+  };
+}
+
 // ── WJ12 · Contact intégré (WhatsApp prérempli avec la réf devis) ────────────
 
 /**
@@ -805,6 +1071,96 @@ export function whatsappLink(reference: string, phone: string = TAQINOR_WHATSAPP
   return `https://wa.me/${digits}?text=${encodeURIComponent(msg)}`;
 }
 
+/**
+ * WJ56 — Partage du lien TOKENISÉ de LA PROPOSITION ELLE-MÊME (pas une question
+ * pour Taqinor) : le client transmet sa proposition à un conjoint/co-décideur
+ * SANS rien ressaisir. Différent de `whatsappLink` (qui adresse un message AU
+ * numéro Taqinor) — ici `wa.me/` sans numéro ouvre le compositeur WhatsApp
+ * générique (le client choisit lui-même le destinataire). `pageUrl` est
+ * l'URL COMPLÈTE de la page courante (avec le token), jamais reconstruite.
+ */
+export function whatsappShareLink(pageUrl: string, reference: string): string {
+  const url = (pageUrl || '').trim();
+  const ref = (reference || '').trim();
+  const msg = ref
+    ? `Voici ma proposition solaire Taqinor (réf. ${ref}) : ${url}`
+    : `Voici ma proposition solaire Taqinor : ${url}`;
+  return `https://wa.me/?text=${encodeURIComponent(msg)}`;
+}
+
+// ── W343 · « Partager avec un proche » — composeur de parrainage post-signature ─
+//
+// DISTINCT de whatsappShareLink (WJ56) : WJ56 partage LA MÊME PROPOSITION avec
+// un co-décideur du MÊME foyer (avant signature, pour décider ensemble). W343
+// partage le programme de PARRAINAGE (/parrainage, W338) avec un PROCHE
+// DIFFÉRENT, une fois le devis SIGNÉ (le moment de satisfaction maximale) —
+// un lien vers un NOUVEAU projet solaire pour ce proche, pas vers ce devis-ci.
+//
+// ZÉRO CHANGEMENT BACKEND (même discipline que /parrainage, W338) : le
+// `<code>` du lien tagué est simplement la RÉFÉRENCE du devis déjà signé —
+// aucun code de parrainage n'existe côté backend aujourd'hui, donc on réutilise
+// un identifiant déjà réel plutôt que d'en inventer un nouveau. L'ERP peut
+// filtrer ses leads entrants sur `utm_source=parrainage` et retrouver le
+// parrain via `utm_campaign` (= la référence de SON devis), exactement comme
+// documenté sur /parrainage.astro.
+
+/**
+ * W343 — Construit l'URL de /parrainage TAGUÉE avec la référence du client qui
+ * vient de signer, dans le MÊME format que documenté sur /parrainage.astro
+ * (`utm_source=parrainage&utm_campaign=<code>`). `siteOrigin` est l'origine
+ * RÉELLE servie (ex. `Astro.url.origin`), jamais reconstruite en dur.
+ */
+export function referralTaggedLink(siteOrigin: string, reference: string): string {
+  const origin = (siteOrigin || 'https://taqinor.ma').replace(/\/+$/, '');
+  const code = (reference || '').trim();
+  const qs = code ? `?utm_source=parrainage&utm_campaign=${encodeURIComponent(code)}` : '?utm_source=parrainage';
+  return `${origin}/parrainage${qs}`;
+}
+
+/**
+ * W343 — Compositeur WhatsApp « Partager avec un proche » : `wa.me/` SANS
+ * numéro (même mécanique que whatsappShareLink) ouvre le compositeur générique
+ * — le client choisit lui-même à qui l'envoyer. Le message pointe vers le lien
+ * de parrainage TAGUÉ (referralTaggedLink), jamais vers la proposition elle-même.
+ */
+export function whatsappReferralLink(siteOrigin: string, reference: string): string {
+  const url = referralTaggedLink(siteOrigin, reference);
+  const msg = `J'ai fait installer mes panneaux solaires avec Taqinor — si ça vous intéresse, voici le lien : ${url}`;
+  return `https://wa.me/?text=${encodeURIComponent(msg)}`;
+}
+
+/**
+ * WJ85 — Intention du point de contact « au moindre doute » (avant signature).
+ * `discuss` (« Discuter sur WhatsApp ») et `question` (« Poser une question »)
+ * pointaient auparavant vers le MÊME `whatsappLink(reference)`, un seul message
+ * générique — deux boutons qui font la même chose lisent comme du remplissage.
+ * `voice` couvre l'invitation à une note vocale (canal WhatsApp natif, plus
+ * rapide à envoyer qu'un texte pour beaucoup de clients).
+ */
+export type WhatsappIntent = 'discuss' | 'question' | 'voice';
+
+/**
+ * WJ85 — Construit un deep-link wa.me avec un PRÉREMPLISSAGE distinct par
+ * intention (toujours citant la référence quand présente, même discipline que
+ * `whatsappLink`). `phone` peut surcharger le numéro par défaut.
+ */
+export function whatsappLinkForIntent(
+  reference: string,
+  intent: WhatsappIntent,
+  phone: string = TAQINOR_WHATSAPP,
+): string {
+  const digits = (phone || TAQINOR_WHATSAPP).replace(/[^\d]/g, '') || TAQINOR_WHATSAPP;
+  const ref = (reference || '').trim();
+  const refSuffix = ref ? ` (réf. ${ref})` : '';
+  const messages: Record<WhatsappIntent, string> = {
+    discuss: `Bonjour, je voudrais discuter de ma proposition Taqinor${refSuffix} avant de signer.`,
+    question: `Bonjour, j'ai une question précise sur ma proposition Taqinor${refSuffix}.`,
+    voice: `Bonjour, je vous envoie une note vocale au sujet de ma proposition Taqinor${refSuffix}.`,
+  };
+  const msg = messages[intent] ?? messages.question;
+  return `https://wa.me/${digits}?text=${encodeURIComponent(msg)}`;
+}
+
 // ── WJ11 · Payload d'acceptation enrichi (rétro-compatible) ──────────────────
 
 export interface SignSignatureMeta {
@@ -814,6 +1170,14 @@ export interface SignSignatureMeta {
   consent_esign?: boolean;
   /** Horodatage côté client (ISO 8601) du moment de la signature. */
   signed_at_client?: string;
+  /**
+   * WJ87 — Nom facultatif de la personne/du foyer au nom de qui le signataire
+   * agit (ex. « mes parents », « mon foyer »). Le signataire enregistré reste
+   * TOUJOURS `nom` (champ de base) ; ce champ est une précision ADDITIVE,
+   * jamais un remplacement — un backend qui l'ignore continue de fonctionner
+   * exactement comme avant.
+   */
+  on_behalf_of?: string;
 }
 
 /**
@@ -834,6 +1198,10 @@ export function buildAcceptBodyRich(
   if (meta.consent_esign === true) body.consent_esign = true;
   if (typeof meta.signed_at_client === 'string' && meta.signed_at_client) {
     body.signed_at_client = meta.signed_at_client;
+  }
+  // WJ87 — omis quand vide/absent (jamais une chaîne vide envoyée au backend).
+  if (typeof meta.on_behalf_of === 'string' && meta.on_behalf_of.trim()) {
+    body.on_behalf_of = meta.on_behalf_of.trim();
   }
   return body;
 }
@@ -1345,8 +1713,11 @@ export interface NextStep {
   id: string;
   title: string;
   titleAr: string;
+  /** WJ43 — variante anglaise (segment marocains-du-monde). */
+  titleEn: string;
   body: string;
   bodyAr: string;
+  bodyEn: string;
 }
 
 /**
@@ -1362,29 +1733,37 @@ export function nextSteps(): NextStep[] {
       id: 'signature',
       title: 'Signature',
       titleAr: 'التوقيع',
+      titleEn: 'Signature',
       body: 'Vous signez en ligne ci-dessous. Votre conseiller Taqinor confirme la réception dans la journée.',
       bodyAr: 'توقعون إلكترونياً أدناه، ويؤكد مستشاركم الاستلام خلال اليوم نفسه.',
+      bodyEn: 'You sign online below. Your Taqinor advisor confirms receipt the same day.',
     },
     {
       id: 'visite',
       title: 'Visite technique',
       titleAr: 'الزيارة التقنية',
+      titleEn: 'Technical visit',
       body: 'Un technicien confirme les mesures sur site sous 48–72 h (délai indicatif).',
       bodyAr: 'يتحقق فني من القياسات في الموقع خلال 48 إلى 72 ساعة (أجل تقريبي).',
+      bodyEn: 'A technician confirms the on-site measurements within 48–72 h (indicative timeframe).',
     },
     {
       id: 'installation',
       title: 'Installation',
       titleAr: 'التركيب',
+      titleEn: 'Installation',
       body: 'Pose de votre installation par notre équipe, généralement sous 7–14 jours (délai indicatif) selon la disponibilité matériel.',
       bodyAr: 'تركيب منظومتكم بواسطة فريقنا، عادة خلال 7 إلى 14 يوماً (أجل تقريبي) حسب توفر المعدات.',
+      bodyEn: 'Our team installs your system, typically within 7–14 days (indicative timeframe) depending on equipment availability.',
     },
     {
       id: 'mise-en-service',
       title: 'Mise en service',
       titleAr: 'التشغيل',
+      titleEn: 'Commissioning',
       body: 'Vérification finale, mise en service et remise des documents (garanties, attestations).',
       bodyAr: 'فحص نهائي، تشغيل المنظومة وتسليم الوثائق (الضمانات والشهادات).',
+      bodyEn: 'Final check, commissioning, and handover of documents (warranties, certificates).',
     },
   ];
 }
@@ -1394,7 +1773,16 @@ export function nextSteps(): NextStep[] {
 export interface AssumptionItem {
   label: string;
   labelAr: string;
+  /** WJ43 — variante anglaise. */
+  labelEn: string;
   value: string;
+  /**
+   * WJ43 — la valeur n'avait jusqu'ici AUCUNE traduction (ni AR ni EN) : elle
+   * s'affichait en français quelle que soit la langue active. `valueAr`/
+   * `valueEn` corrigent cette fuite au passage (même chiffres, texte traduit).
+   */
+  valueAr: string;
+  valueEn: string;
 }
 
 /**
@@ -1413,12 +1801,18 @@ export function proposalAssumptions(p: ProposalResponse): AssumptionItem[] {
     {
       label: 'Cadre tarifaire',
       labelAr: 'الإطار التعريفي',
+      labelEn: 'Tariff framework',
       value: 'Autoconsommation basse tension (loi 82-21), tarif ONEE supposé constant (0 % de dérive) — toute hausse réelle ne ferait qu\'augmenter l\'économie.',
+      valueAr: 'الاستهلاك الذاتي في التوتر المنخفض (القانون 82-21)، بافتراض تعريفة ONEE ثابتة (0 % تغير) — أي ارتفاع فعلي لن يزيد إلا من التوفير.',
+      valueEn: 'Low-voltage self-consumption (law 82-21), assuming a constant ONEE tariff (0 % drift) — any real increase would only raise your savings.',
     },
     {
       label: 'Horizon d\'analyse',
       labelAr: 'أفق التحليل',
+      labelEn: 'Analysis horizon',
       value: `${SAVINGS_HORIZON_YEARS} ans — durée de garantie de performance standard d'un panneau photovoltaïque.`,
+      valueAr: `${SAVINGS_HORIZON_YEARS} سنة — مدة ضمان الأداء المعيارية للوح الشمسي.`,
+      valueEn: `${SAVINGS_HORIZON_YEARS} years — standard performance warranty duration of a solar panel.`,
     },
   ];
   const instType = p.quote?.inst_type;
@@ -1429,14 +1823,31 @@ export function proposalAssumptions(p: ProposalResponse): AssumptionItem[] {
         : instType === 'industriel' || instType === 'commercial'
           ? 'Autoconsommation industrielle/commerciale (étude taux de couverture)'
           : 'Résidentiel (simulateur)';
-    items.push({ label: 'Type d\'installation', labelAr: 'نوع التركيب', value: label });
+    const labelAr =
+      instType === 'agricole'
+        ? 'ضخ شمسي (محسوب حسب HMT ومعدل الضخ المرغوب)'
+        : instType === 'industriel' || instType === 'commercial'
+          ? 'استهلاك ذاتي صناعي/تجاري (دراسة معدل التغطية)'
+          : 'سكني (المحاكي)';
+    const labelEn =
+      instType === 'agricole'
+        ? 'Solar pumping (sized on head + desired flow rate)'
+        : instType === 'industriel' || instType === 'commercial'
+          ? 'Industrial/commercial self-consumption (coverage-rate study)'
+          : 'Residential (simulator)';
+    items.push({ label: 'Type d\'installation', labelAr: 'نوع التركيب', labelEn: 'Installation type', value: label, valueAr: labelAr, valueEn: labelEn });
   }
   const fin = backendFinancing(p);
   if (fin?.credit?.programme_label) {
+    const rate = formatNumber(fin.credit.taux_annuel_pct, 2);
+    const years = Math.round(fin.credit.duree_mois / 12);
     items.push({
       label: 'Programme de financement indicatif',
       labelAr: 'برنامج التمويل الإرشادي',
-      value: `${fin.credit.programme_label} — taux ${formatNumber(fin.credit.taux_annuel_pct, 2)} %/an, ${Math.round(fin.credit.duree_mois / 12)} ans (à confirmer avec votre banque).`,
+      labelEn: 'Indicative financing programme',
+      value: `${fin.credit.programme_label} — taux ${rate} %/an, ${years} ans (à confirmer avec votre banque).`,
+      valueAr: `${fin.credit.programme_label} — معدل ${rate} %/سنة، ${years} سنة (يُؤكَّد مع بنككم).`,
+      valueEn: `${fin.credit.programme_label} — rate ${rate} %/year, ${years} years (to confirm with your bank).`,
     });
   }
   return items;
@@ -1447,6 +1858,8 @@ export function proposalAssumptions(p: ProposalResponse): AssumptionItem[] {
 export interface MonitoringPoint {
   label: string;
   labelAr: string;
+  /** WJ43 — variante anglaise. */
+  labelEn: string;
 }
 
 /**
@@ -1456,9 +1869,21 @@ export interface MonitoringPoint {
  */
 export function monitoringPoints(): MonitoringPoint[] {
   return [
-    { label: 'Suivi de production disponible via l\'application de votre onduleur', labelAr: 'تتبع الإنتاج متاح عبر تطبيق العاكس' },
-    { label: 'SAV Taqinor joignable sur WhatsApp pour toute question après installation', labelAr: 'خدمة ما بعد البيع لتاقينور متاحة عبر واتساب لأي سؤال بعد التركيب' },
-    { label: 'Garanties constructeur actives dès la mise en service (voir « Pourquoi nous faire confiance »)', labelAr: 'ضمانات الصانع سارية فور التشغيل' },
+    {
+      label: 'Suivi de production disponible via l\'application de votre onduleur',
+      labelAr: 'تتبع الإنتاج متاح عبر تطبيق العاكس',
+      labelEn: 'Production monitoring available via your inverter\'s app',
+    },
+    {
+      label: 'SAV Taqinor joignable sur WhatsApp pour toute question après installation',
+      labelAr: 'خدمة ما بعد البيع لتاقينور متاحة عبر واتساب لأي سؤال بعد التركيب',
+      labelEn: 'Taqinor after-sales support reachable on WhatsApp for any question after installation',
+    },
+    {
+      label: 'Garanties constructeur actives dès la mise en service (voir « Pourquoi nous faire confiance »)',
+      labelAr: 'ضمانات الصانع سارية فور التشغيل',
+      labelEn: 'Manufacturer warranties active from commissioning (see "Why trust us")',
+    },
   ];
 }
 
@@ -1468,8 +1893,11 @@ export interface FaqItem {
   id: string;
   question: string;
   questionAr: string;
+  /** WJ43 — variante anglaise. */
+  questionEn: string;
   answer: string;
   answerAr: string;
+  answerEn: string;
 }
 
 /** WJ32 — 5 objections fréquentes avant signature, réponses factuelles courtes. */
@@ -1479,36 +1907,105 @@ export function objectionFaq(): FaqItem[] {
       id: 'panne-reseau',
       question: 'Que se passe-t-il en cas de coupure du réseau électrique ?',
       questionAr: 'ماذا يحدث في حال انقطاع التيار الكهربائي؟',
+      questionEn: 'What happens during a power grid outage?',
       answer: 'Une installation sans batterie s\'arrête par sécurité (norme anti-îlotage) ; une installation avec batterie peut continuer à alimenter les circuits prioritaires.',
       answerAr: 'التركيب بدون بطارية يتوقف لأسباب أمنية؛ أما مع البطارية فيمكن أن يستمر تزويد الدارات ذات الأولوية.',
+      answerEn: 'A battery-less installation shuts down for safety (anti-islanding standard); a battery-equipped installation can keep powering priority circuits.',
     },
     {
       id: 'entretien',
       question: 'Quel entretien est nécessaire ?',
       questionAr: 'ما هي الصيانة المطلوبة؟',
+      questionEn: 'What maintenance is required?',
       answer: 'Un nettoyage occasionnel des panneaux (poussière) et une vérification visuelle annuelle suffisent dans la majorité des cas.',
       answerAr: 'تنظيف الألواح بين الحين والآخر وفحص بصري سنوي يكفيان في أغلب الحالات.',
+      answerEn: 'Occasional panel cleaning (dust) and an annual visual check are enough in most cases.',
     },
     {
       id: 'demenagement',
       question: 'Puis-je emporter mon installation si je déménage ?',
       questionAr: 'هل يمكنني نقل التركيب إذا انتقلت للسكن في مكان آخر؟',
+      questionEn: 'Can I take my installation with me if I move?',
       answer: 'L\'installation est fixée au bâtiment ; elle valorise généralement le bien lors d\'une revente plutôt que d\'être démontée.',
       answerAr: 'التركيب مثبت بالمبنى؛ وعادة ما يرفع من قيمة العقار عند البيع بدل تفكيكه.',
+      answerEn: 'The installation is fixed to the building; it typically raises the property\'s value on resale rather than being removed.',
     },
     {
       id: 'toit-abime',
       question: 'Est-ce que l\'installation abîme la toiture ?',
       questionAr: 'هل يضر التركيب بالسطح؟',
+      questionEn: 'Does the installation damage the roof?',
       answer: 'La fixation est étudiée pour respecter l\'étanchéité de votre toiture ; l\'étude technique en amont vérifie la structure porteuse.',
       answerAr: 'يُدرس التثبيت لاحترام عزل السطح؛ وتتحقق الدراسة التقنية المسبقة من متانة البنية الحاملة.',
+      answerEn: 'The mounting is engineered to preserve your roof\'s waterproofing; the upfront technical study verifies the load-bearing structure.',
     },
     {
       id: 'garanties',
       question: 'Que couvrent exactement les garanties ?',
       questionAr: 'ماذا تغطي الضمانات بالضبط؟',
+      questionEn: 'What exactly do the warranties cover?',
       answer: 'Les garanties constructeur (panneaux/onduleur) couvrent le matériel selon les durées indiquées dans « Pourquoi nous faire confiance » ci-dessous ; la main d\'œuvre Taqinor est couverte séparément selon votre contrat.',
       answerAr: 'تغطي ضمانات الصانع (الألواح والعاكس) المعدات حسب المدد المذكورة أدناه؛ أما اليد العاملة لتاقينور فمشمولة بضمان منفصل حسب عقدكم.',
+      answerEn: 'Manufacturer warranties (panels/inverter) cover the equipment for the durations shown in "Why trust us" below; Taqinor\'s labour is covered separately under your contract.',
     },
   ];
+}
+
+// ── WJ55 · Télémétrie de vue/engagement de la proposition ────────────────────
+//
+// « Le CRM sait QUE le client a lu, mais pas QUAND » : un follow-up envoyé au
+// moment où le client rouvre sa proposition (ou vient de faire défiler jusqu'au
+// bloc financement) convertit bien mieux qu'une relance calendaire aveugle. On
+// réutilise EXACTEMENT le fil lead existant (proxy same-origin →
+// LEAD_WEBHOOK_URL, même secret X-Webhook-Secret) — AUCUN nouvel endpoint,
+// AUCUN nouveau secret.
+//
+// GARDE-FOU ANTI-POLLUTION (CRM) : `apps/crm/webhooks.py` est un webhook de
+// LEAD, pas un bus d'événements générique — sans téléphone/email exploitable,
+// sa couche de déduplication (`find_duplicates_by_contact`) ne trouve jamais de
+// lead existant et CRÉERAIT un lead fantôme par ping. On n'émet donc UN
+// événement que lorsque la proposition porte un `client_phone` réel (le devis a
+// déjà un contact) : le backend le fera correspondre à un lead déjà connu via
+// son téléphone plutôt que d'en fabriquer un nouveau. Sans téléphone, on
+// n'émet rien — jamais un lead vide « Lead site web » créé pour un simple
+// événement de lecture.
+
+/** Les deux moments suivis (WJ55) : première vue, et défilement jusqu'au bloc financement. */
+export type ProposalEngagementEvent = 'proposal_first_view' | 'proposal_scrolled_financing';
+
+export interface ProposalTrackContext {
+  reference: string;
+  token: string;
+  clientPhone?: string | null;
+}
+
+export interface ProposalTrackPayload {
+  qualified: false;
+  event_type: ProposalEngagementEvent;
+  phoneE164: string;
+  utm: { utm_source: 'proposal_engagement'; utm_campaign: string; utm_content: ProposalEngagementEvent };
+  page: string;
+}
+
+/**
+ * WJ55 — Construit le payload envoyé au proxy `/api/proposition-track`, ou
+ * `null` quand aucun téléphone client n'est disponible (garde-fou ci-dessus :
+ * l'événement est alors silencieusement abandonné, jamais envoyé sans contact
+ * exploitable). `qualified: false` fige le comportement déjà tolérant du
+ * backend (`forwardLead`/webhook) : un lead « sous le seuil » est accepté et
+ * étiqueté, jamais un flux qui casse.
+ */
+export function buildProposalTrackPayload(
+  ctx: ProposalTrackContext,
+  event: ProposalEngagementEvent,
+): ProposalTrackPayload | null {
+  const phone = (ctx.clientPhone ?? '').trim();
+  if (!phone) return null;
+  return {
+    qualified: false,
+    event_type: event,
+    phoneE164: phone,
+    utm: { utm_source: 'proposal_engagement', utm_campaign: ctx.reference || ctx.token, utm_content: event },
+    page: `/proposition/${ctx.token}`,
+  };
 }

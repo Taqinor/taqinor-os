@@ -1,0 +1,227 @@
+---
+/**
+ * W338 — /parrainage : la face publique du programme de parrainage que l'ERP
+ * porte déjà (apps/crm.Parrainage : parrain Client → filleul lead/client,
+ * statut en_attente → converti → recompense_versee). Le site n'avait aucune
+ * surface pour ce mécanisme — la plomberie existe, le robinet n'était jamais
+ * monté.
+ *
+ * ZÉRO CHANGEMENT BACKEND (v1) : le lien personnel de parrainage n'est qu'une
+ * URL vers le parcours devis existant avec deux paramètres UTM déjà supportés
+ * par le passthrough UTM du site :
+ *   /devis/mon-toit?utm_source=parrainage&utm_campaign=<code>
+ * `<code>` est un identifiant que le parrain choisit lui-même (son prénom,
+ * son numéro de dossier...) — rien n'est généré ni stocké côté site ; l'ERP
+ * peut plus tard filtrer ses leads entrants sur utm_source=parrainage et
+ * regarder utm_campaign pour retrouver le parrain, exactement comme n'importe
+ * quelle autre source UTM déjà trackée.
+ *
+ * GATE WG14 (founder) — le MONTANT de la récompense et le JALON qui la
+ * déclenche (devis signé ? facture payée ?) ne sont PAS fixés par le
+ * fondateur : ce bloc reste volontairement non chiffré ci-dessous
+ * (`REWARD_AMOUNT_LABEL` / `REWARD_MILESTONE_LABEL` = null). Aucun montant
+ * n'est inventé — quand WG14 est tranché, renseigner ces deux constantes
+ * suffit à faire apparaître le chiffre réel partout où il est référencé.
+ *
+ * Cadrage opt-in numérique : le parrainage se fait par lien partagé
+ * (WhatsApp, SMS, réseaux) — jamais de démarchage physique porte-à-porte.
+ */
+import Layout from '../layouts/Layout.astro';
+import V2Enhance from '../components/V2Enhance.astro';
+import Article33Ribbon from '../components/Article33Ribbon.astro';
+import Breadcrumb from '../components/Breadcrumb.astro';
+import Callout from '../components/Callout.astro';
+import RelatedLinks from '../components/RelatedLinks.astro';
+import StickyCta from '../components/StickyCta.astro';
+import { NAP, WHATSAPP_LEADS } from '../lib/nap';
+import { whatsappLink } from '../lib/whatsapp';
+
+// GATE WG14 — non tranché par le fondateur : ne JAMAIS inventer de chiffre.
+// Dès que WG14 est décidé, ces deux constantes portent la valeur réelle et
+// tout le reste de la page l'affiche automatiquement.
+const REWARD_AMOUNT_LABEL: string | null = null;
+const REWARD_MILESTONE_LABEL: string | null = null;
+
+const waParrainage = whatsappLink(
+  WHATSAPP_LEADS,
+  'Bonjour, je souhaite parrainer un proche pour une installation solaire Taqinor.',
+);
+
+const steps = [
+  {
+    n: '01',
+    title: 'Partagez votre lien',
+    body: 'Un seul lien à envoyer par WhatsApp, SMS ou n’importe quel canal que vous utilisez déjà : votre proche clique, arrive directement sur notre parcours de diagnostic gratuit, et nous savons que c’est vous qui l’envoyez.',
+  },
+  {
+    n: '02',
+    title: 'Votre filleul fait son diagnostic',
+    body: 'Il répond aux mêmes questions que n’importe quel visiteur (facture, toiture, ville) et reçoit sa fourchette immédiate — le parcours ne change pas d’un pixel parce qu’il vient de vous.',
+  },
+  {
+    n: '03',
+    title: 'Nous étudions son dossier',
+    body: 'Le fondateur valide l’étude comme pour chaque client. Rien n’est accéléré ni dégradé parce que le dossier vient d’un parrainage.',
+  },
+  {
+    n: '04',
+    title: 'La récompense, au bon moment',
+    body: REWARD_MILESTONE_LABEL
+      ? `Votre récompense est versée ${REWARD_MILESTONE_LABEL}.`
+      : 'Le montant et le déclencheur exacts de la récompense sont en cours de finalisation — cette page sera mise à jour dès qu’ils seront fixés. Le principe, lui, ne changera pas : une récompense n’est due que sur un jalon réel, jamais sur un simple clic.',
+  },
+];
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'WebPage',
+  name: 'Programme de parrainage Taqinor',
+  description:
+    'Parrainez un proche pour une installation solaire Taqinor : partagez votre lien personnel, il fait son diagnostic gratuit, vous êtes récompensé quand son projet se concrétise.',
+  isPartOf: { '@type': 'WebSite', name: 'Taqinor', url: 'https://taqinor.ma' },
+};
+---
+
+<Layout
+  title="Parrainage Taqinor — parrainez un proche, soyez récompensé | Taqinor"
+  description="Partagez votre lien personnel, votre proche fait son diagnostic solaire gratuit, vous êtes récompensé quand son projet se concrétise. Aucun démarchage : tout se passe par lien partagé."
+  ogSlug="parrainage"
+>
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+
+    <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Parrainage' }]} />
+
+    <section class="section-lg px-4 pb-10 text-white">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">Parrainage</p>
+        <h1 class="display v2-page-title cine-in cine-in-1 mt-6">Le solaire se transmet de voisin à voisin</h1>
+        <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
+          Vous êtes déjà client, ou simplement convaincu par notre méthode ? Partagez votre lien
+          personnel avec un proche : s’il devient client, vous êtes récompensé — simplement, sans
+          rien à gérer de votre côté.
+        </p>
+      </div>
+    </section>
+
+    <!-- Le mécanisme, en clair -->
+    <section class="section px-4">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">Comment ça marche</p>
+        <h2 class="display v2-section-title mt-5 text-white">Quatre étapes, aucune vendue à découvert</h2>
+        <div class="mt-10 grid gap-6 md:grid-cols-2" data-stagger>
+          {steps.map((s, i) => (
+            <div class="v2-rise cine-card flex flex-col p-7" style={`--v2-i:${i}`}>
+              <p class="fig lum text-3xl">{s.n}</p>
+              <h3 class="display mt-2 text-2xl text-white">{s.title}</h3>
+              <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+            </div>
+          ))}
+        </div>
+
+        <Callout type="info" title="Votre lien personnel">
+          <p>
+            Pas de compte à créer, pas d’application à installer : votre lien personnel est
+            simplement notre parcours de diagnostic habituel, avec un code que vous choisissez
+            vous-même pour qu’on sache qu’il vient de vous — par exemple votre prénom ou votre
+            numéro de dossier client :
+          </p>
+          <p class="mt-3 break-all rounded-none border border-white/15 bg-black/20 px-4 py-3 font-mono text-xs text-lune" dir="ltr">
+            taqinor.ma/devis/mon-toit?utm_source=parrainage&utm_campaign=<strong class="text-brass-300">votre-code</strong>
+          </p>
+          <p class="mt-3">
+            Envoyez-le par WhatsApp, SMS ou tout autre canal — c’est tout ce qu’il y a à faire de
+            votre côté.
+          </p>
+        </Callout>
+      </div>
+    </section>
+
+    <!-- La récompense — data-gated (WG14) -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="section bg-blanc-azur px-4 text-encre">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-azur-600">La récompense</p>
+        {REWARD_AMOUNT_LABEL ? (
+          <>
+            <h2 class="display v2-section-title mt-5">{REWARD_AMOUNT_LABEL}</h2>
+            <p class="v2-lead mt-5 text-encre-soft">
+              Versée {REWARD_MILESTONE_LABEL}. Aucune limite au nombre de proches que vous pouvez
+              parrainer.
+            </p>
+          </>
+        ) : (
+          <>
+            <h2 class="display v2-section-title mt-5">Le montant est en cours de finalisation</h2>
+            <p class="v2-lead mt-5 text-encre-soft">
+              Nous préférons ne rien annoncer tant que le montant et le jalon exact ne sont pas
+              fixés — cette page sera mise à jour dès que ce sera le cas, sans que votre lien
+              personnel ne change. Le principe reste simple : votre récompense n’est due que sur
+              un jalon réel de votre filleul, jamais sur un simple clic.
+            </p>
+          </>
+        )}
+      </div>
+    </section>
+
+    <!-- Les règles, en clair -->
+    <section class="section px-4 text-white">
+      <div class="mx-auto max-w-3xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">Les règles du jeu</p>
+        <h2 class="display v2-section-title mt-5 text-white">Simple, honnête, sans zone grise</h2>
+        <ul class="mt-8 space-y-5 text-sm leading-relaxed text-lune-soft" data-stagger>
+          <li class="v2-rise flex gap-3" style="--v2-i:0">
+            <span class="fig lum shrink-0 text-lg">·</span>
+            <span><strong class="text-white">Pas d’auto-parrainage.</strong> Vous ne pouvez pas parrainer votre propre dossier, ni un dossier déjà connu de nous sous une autre forme.</span>
+          </li>
+          <li class="v2-rise flex gap-3" style="--v2-i:1">
+            <span class="fig lum shrink-0 text-lg">·</span>
+            <span><strong class="text-white">La récompense est versée sur un jalon réel</strong> de votre filleul (signature ou paiement — voir ci-dessus dès que le jalon exact est fixé), jamais sur le simple fait de partager le lien.</span>
+          </li>
+          <li class="v2-rise flex gap-3" style="--v2-i:2">
+            <span class="fig lum shrink-0 text-lg">·</span>
+            <span><strong class="text-white">Uniquement par lien partagé, jamais par démarchage.</strong> Taqinor ne fait pas de porte-à-porte, et le parrainage suit la même règle : vous partagez un lien à qui vous voulez, nous ne sollicitons personne en votre nom.</span>
+          </li>
+          <li class="v2-rise flex gap-3" style="--v2-i:3">
+            <span class="fig lum shrink-0 text-lg">·</span>
+            <span><strong class="text-white">Votre étude reste identique.</strong> Un dossier parrainé suit exactement le même circuit d’étude et de validation que tout autre dossier — rien n’est accéléré ni dégradé.</span>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- CTA de clôture — WhatsApp direct pour lancer un parrainage -->
+    <section class="section-tight px-4 pb-20 sm:pb-24">
+      <div class="mx-auto max-w-3xl border-2 border-azur-600 bg-blanc-azur px-6 py-10 text-center text-encre sm:px-10">
+        <p class="tech-label text-azur-600">Une question sur le parrainage ?</p>
+        <h2 class="display v2-section-title mx-auto mt-3 max-w-2xl text-3xl sm:text-4xl">Écrivez-nous directement sur WhatsApp</h2>
+        <a
+          href={waParrainage}
+          rel="noopener noreferrer"
+          class="glow mt-6 inline-flex items-center gap-2 bg-brass-400 px-6 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300"
+        >
+          WhatsApp — parrainage
+        </a>
+        <p class="mt-4 text-xs text-encre-faint">
+          Ou par téléphone : <a href={`tel:${NAP.phone}`} dir="ltr" class="underline decoration-azur-600 decoration-2 underline-offset-4">{NAP.phoneDisplayIntl}</a>
+        </p>
+      </div>
+    </section>
+
+    <section class="section-tight px-4 pb-20 sm:pb-24">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">Pour aller plus loin</p>
+        <RelatedLinks links={[
+          { href: '/devis/mon-toit', label: 'Lancer un diagnostic' },
+          { href: '/realisations', label: 'Nos réalisations' },
+          { href: '/à-propos', label: 'À propos de Taqinor' },
+        ]} />
+      </div>
+    </section>
+
+    <StickyCta />
+  </div>
+</Layout>

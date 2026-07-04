@@ -5,6 +5,10 @@
  *
  * Valeurs réelles confirmées par Reda (2026-06-12) — phoneDisplay reste
  * caractère pour caractère identique à l'affichage GBP : « 0661850410 ».
+ *
+ * W298 (2026-07-03) — réconciliation byte-for-byte avec la fiche Google
+ * Business Profile évaluée : EN ATTENTE de WG5 (confirmation GBP), non
+ * résolue ici. Aucune valeur ci-dessous n'a été modifiée par cette tâche.
  */
 export const NAP = {
   name: 'Taqinor', // pas de suffixe SARL — aligné GBP
@@ -27,9 +31,27 @@ export const NAP = {
 } as const;
 
 /**
+ * W288 — URLs d'entité (`sameAs`) pour le JSON-LD LocalBusiness : fiche Google
+ * Business Profile + profils sociaux actifs. LIVRÉ VIDE (même règle
+ * d'intégrité que testimonials.ts) — tant que WG5 (GBP) / WG8 (réseaux
+ * sociaux) ne fournissent pas de vraies URLs, `Layout.astro` n'émet aucun
+ * `sameAs`. Ne jamais fabriquer de placeholder ici.
+ */
+export const SAME_AS: readonly string[] = [];
+
+/**
  * Cible des deeplinks wa.me et de la remise d'étude du diagnostic —
  * DISTINCTE du téléphone NAP : aujourd'hui le même numéro, demain la
  * ligne de Meryem. Chiffres uniquement, avec indicatif pays.
  * (Surchargable au déploiement via l'env WHATSAPP_NUMBER du Worker.)
  */
 export const WHATSAPP_LEADS = '212661850410';
+
+/**
+ * W340 — Espace client réel : le portail public Deye Cloud (login), la même
+ * plateforme de monitoring déjà nommée sur /maintenance-monitoring et
+ * /équipement (« accès Deye Cloud personnel »). Aucun portail client Taqinor
+ * maison n'existe : ceci EST l'accès réel remis à chaque client à la mise en
+ * service — pas un placeholder, pas une page fabriquée.
+ */
+export const DEYE_CLOUD_URL = 'https://www.deyecloud.com/login';
