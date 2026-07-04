@@ -54,6 +54,7 @@ from .models import (
     TrajetTelematique,
     Vehicule,
     VisiteTechnique,
+    ZoneGeographique,
 )
 from .serializers import (
     AccuseCharteSerializer,
@@ -96,6 +97,7 @@ from .serializers import (
     TrajetTelematiqueSerializer,
     VehiculeSerializer,
     VisiteTechniqueSerializer,
+    ZoneGeographiqueSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve', 'consommation', 'anomalies', 'echeances',
@@ -1929,6 +1931,49 @@ class ReleveTelematiqueViewSet(_FlotteBaseViewSet):
             'active': telematique_active(),
             'importes': importes,
         })
+
+
+class ZoneGeographiqueViewSet(_FlotteBaseViewSet):
+    """Zones géographiques de géofencing (XFLT24).
+
+    CRUD scopé société (écriture responsable/admin) des cercles de
+    géofencing (dépôt/chantier/zone interdite + plage horaire autorisée
+    optionnelle). Filtrable par ``?type_zone=<depot|chantier|interdite>`` et
+    ``?actif=true|false``.
+
+    Action ``POST /zones-geographiques/evaluer/`` (écriture responsable/
+    admin) : évalue les relevés télématiques déjà ingérés contre les zones
+    actives de la société (purement local, ``services.evaluer_geofencing``)
+    et diffuse une alerte best-effort par détection. Renvoie la liste des
+    alertes détectées.
+    """
+    queryset = ZoneGeographique.objects.all()
+    serializer_class = ZoneGeographiqueSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['nom', 'type_zone', 'actif', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        type_zone = params.get('type_zone')
+        if type_zone:
+            qs = qs.filter(type_zone=type_zone)
+
+        actif = params.get('actif')
+        if actif is not None:
+            qs = qs.filter(actif=actif.lower() in ('1', 'true', 'yes'))
+
+        return qs
+
+    @action(detail=False, methods=['post'])
+    def evaluer(self, request):
+        """XFLT24 — Évalue le géofencing sur les relevés télématiques
+        existants (purement local, écriture responsable/admin — déclenche
+        des notifications best-effort)."""
+        from .services import evaluer_geofencing
+        alertes = evaluer_geofencing(request.user.company)
+        return Response({'nb_alertes': len(alertes), 'alertes': alertes})
 
 
 class InfractionViewSet(_FlotteBaseViewSet):

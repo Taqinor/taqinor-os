@@ -40,6 +40,7 @@ from .views import (
     TrajetTelematiqueViewSet,
     VehiculeViewSet,
     VisiteTechniqueViewSet,
+    ZoneGeographiqueViewSet,
     rapport_budget,
     rapport_couts,
     rapport_remplacement,
@@ -84,6 +85,7 @@ router.register(r'chartes-vehicule', CharteVehiculeViewSet)
 router.register(r'accuses-charte', AccuseCharteViewSet)
 router.register(r'budgets', BudgetFlotteViewSet)
 router.register(r'remises-accessoire', RemiseAccessoireViewSet)
+router.register(r'zones-geographiques', ZoneGeographiqueViewSet)
 
 urlpatterns = [
     path('rapports/couts/', rapport_couts, name='flotte-rapport-couts'),

@@ -535,6 +535,145 @@ def synchroniser_releves(company, *, actif_flotte=None, depuis=None):
     return len(releves or [])  # pragma: no cover
 
 
+# ── XFLT24 — Géofencing sur les données télématiques (purement local) ────────
+#
+# Évalue les ``ReleveTelematique`` (FLOTTE27) déjà en base — manuels ou issus
+# du fournisseur — contre les ``ZoneGeographique`` de la société : PUREMENT
+# LOCAL (distance haversine en Python), aucun appel réseau, aucune dépendance
+# nouvelle. Ne dépend PAS de ``telematique_active()`` pour ÉVALUER (un relevé
+# saisi à la main déclenche l'alerte comme un relevé télématique — la gate
+# FLOTTE27 ne bloque QUE la synchronisation fournisseur, jamais la lecture des
+# relevés déjà ingérés) — reste néanmoins un NO-OP total si la télématique
+# n'a produit aucun relevé (aucun relevé à évaluer, aucune alerte).
+
+def _releve_dans_zone(releve, zone):
+    """XFLT24 — True si ``releve`` (position GPS) tombe dans le cercle
+    ``zone`` (centre + rayon). Lecture seule ; ``None`` si coordonnées
+    absentes de l'un des deux côtés (jamais d'exception)."""
+    if releve.position_lat is None or releve.position_lng is None:
+        return False
+    distance_km = _distance_haversine_km(
+        releve.position_lat, releve.position_lng,
+        zone.centre_lat, zone.centre_lng)
+    if distance_km is None:
+        return False
+    return (distance_km * 1000.0) <= float(zone.rayon_metres)
+
+
+def _hors_plage_horaire(releve, zone):
+    """XFLT24 — True si l'horodatage de ``releve`` tombe HORS la plage
+    ``[heure_debut_autorisee, heure_fin_autorisee]`` de ``zone``. Renvoie
+    ``False`` si la zone ne définit aucune plage (aucune contrainte
+    horaire) — comportement permissif par défaut."""
+    if zone.heure_debut_autorisee is None or zone.heure_fin_autorisee is None:
+        return False
+    heure = releve.horodatage.time()
+    return not (zone.heure_debut_autorisee <= heure <= zone.heure_fin_autorisee)
+
+
+def _alerter_zone(releve, zone, motif):
+    """XFLT24 — Diffuse une alerte géofencing best-effort (jamais ne lève).
+
+    Notifie via ``apps.notifications.services.notify`` (import LOCAL — la
+    flotte ne dépend jamais des modèles d'une autre app) le conducteur
+    actuellement affecté au véhicule de l'actif concerné, s'il existe."""
+    try:
+        from apps.notifications.services import notify
+    except Exception:
+        return None
+
+    user = None
+    try:
+        actif = releve.actif_flotte
+        if actif is not None and actif.vehicule_id is not None:
+            from .selectors import conducteur_actuel_du_vehicule
+            conducteur = conducteur_actuel_du_vehicule(
+                releve.company, actif.vehicule_id)
+            user = conducteur.user if conducteur is not None else None
+    except Exception:
+        user = None
+    if user is None:
+        return None
+
+    try:
+        return notify(
+            user=user,
+            event_type='flotte_zone_alerte',
+            title=f'Géofencing : {zone.nom}',
+            body=(
+                f'{releve.actif_flotte.label} — {motif} '
+                f'(« {zone.nom} », {releve.horodatage:%Y-%m-%d %H:%M}).'
+            ),
+            link='/flotte/releves-telematiques',
+            company=releve.company,
+        )
+    except Exception:
+        return None
+
+
+def evaluer_geofencing(company, *, releves=None, alerter=True):
+    """XFLT24 — Évalue le géofencing sur les relevés télématiques d'une société.
+
+    Pour chaque ``ReleveTelematique`` de ``company`` (ou le sous-ensemble
+    fourni via ``releves``, un itérable de ``ReleveTelematique`` DÉJÀ scopé
+    société — jamais revalidé ici), teste sa position contre CHAQUE
+    ``ZoneGeographique`` active de la société :
+
+    * s'il tombe dans une zone ``interdite`` → alerte « entrée en zone
+      interdite » ;
+    * si la zone porte une plage horaire autorisée et que l'horodatage du
+      relevé tombe hors cette plage → alerte « mouvement hors plage
+      horaire autorisée ».
+
+    Un relevé hors de toute zone (ou dans une zone ``depot``/``chantier``
+    sans dépassement horaire) ne déclenche RIEN. Chaque alerte est diffusée
+    au mieux (``alerter=True``) via ``notifications.notify`` — un échec de
+    notification n'interrompt jamais l'évaluation.
+
+    PUREMENT LOCAL : aucun appel réseau, aucune dépendance nouvelle. Multi-
+    tenant : tout est scopé ``company`` côté serveur.
+
+    Retourne la liste des alertes détectées, chacune un dict ``{'releve_id',
+    'zone_id', 'zone_nom', 'motif'}``.
+    """
+    from .models import ReleveTelematique, ZoneGeographique
+
+    if releves is None:
+        releves = ReleveTelematique.objects.filter(
+            company=company).select_related('actif_flotte')
+
+    zones = list(ZoneGeographique.objects.filter(
+        company=company, actif=True))
+    if not zones:
+        return []
+
+    alertes = []
+    for releve in releves:
+        for zone in zones:
+            if not _releve_dans_zone(releve, zone):
+                continue
+
+            motif = None
+            if zone.type_zone == ZoneGeographique.TypeZone.INTERDITE:
+                motif = 'entrée détectée en zone interdite'
+            elif _hors_plage_horaire(releve, zone):
+                motif = 'mouvement hors plage horaire autorisée'
+
+            if motif is None:
+                continue
+
+            alertes.append({
+                'releve_id': releve.id,
+                'zone_id': zone.id,
+                'zone_nom': zone.nom,
+                'motif': motif,
+            })
+            if alerter:
+                _alerter_zone(releve, zone, motif)
+
+    return alertes
+
+
 # ── FLOTTE28 — Construction de trajets depuis les relevés télématiques ─────────
 
 def _distance_haversine_km(lat1, lng1, lat2, lng2):

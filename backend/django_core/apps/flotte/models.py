@@ -4156,3 +4156,83 @@ class ActiviteFlotte(models.Model):
     def __str__(self):
         return (f'{self.get_type_objet_display()} #{self.objet_id} — '
                 f'{self.champ} : {self.ancienne_valeur} → {self.nouvelle_valeur}')
+
+
+# ── XFLT24 — Géofencing sur les données télématiques ────────────────────────────
+
+class ZoneGeographique(models.Model):
+    """Zone géographique circulaire de géofencing (XFLT24).
+
+    Cercle simple (centre lat/lng + rayon en mètres — PAS de PostGIS) évalué
+    a posteriori contre les ``ReleveTelematique``/``TrajetTelematique`` déjà
+    ingérés (FLOTTE27/28) : détection d'entrée/sortie de zone et de mouvement
+    hors plage horaire autorisée. Purement LOCAL sur des données existantes —
+    aucune dépendance nouvelle, no-op si la télématique est inactive (gate
+    FLOTTE27 respectée par ``services.evaluer_geofencing``).
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête).
+    """
+
+    class TypeZone(models.TextChoices):
+        DEPOT = 'depot', 'Dépôt'
+        CHANTIER = 'chantier', 'Chantier'
+        INTERDITE = 'interdite', 'Zone interdite'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_zones_geographiques',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=120, verbose_name='Nom de la zone')
+    type_zone = models.CharField(
+        max_length=10, choices=TypeZone.choices, default=TypeZone.DEPOT,
+        verbose_name='Type de zone')
+    centre_lat = models.DecimalField(
+        max_digits=9, decimal_places=6, verbose_name='Latitude du centre')
+    centre_lng = models.DecimalField(
+        max_digits=9, decimal_places=6, verbose_name='Longitude du centre')
+    rayon_metres = models.PositiveIntegerField(
+        verbose_name='Rayon (mètres)')
+    # Plage horaire autorisée (optionnelle) : hors de cette plage, un
+    # mouvement détecté dans la zone déclenche une alerte. Vide = aucune
+    # contrainte horaire (seule l'appartenance interdite/zone compte).
+    heure_debut_autorisee = models.TimeField(
+        null=True, blank=True, verbose_name='Heure de début autorisée')
+    heure_fin_autorisee = models.TimeField(
+        null=True, blank=True, verbose_name='Heure de fin autorisée')
+    actif = models.BooleanField(default=True, verbose_name='Active')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Zone géographique'
+        verbose_name_plural = 'Zones géographiques'
+        ordering = ['nom']
+        indexes = [
+            models.Index(
+                fields=['company', 'type_zone'],
+                name='flotte_zone_co_type_idx',
+            ),
+            models.Index(
+                fields=['company', 'actif'],
+                name='flotte_zone_co_act_idx',
+            ),
+        ]
+
+    def clean(self):
+        """Valide le rayon (> 0) et la cohérence de la plage horaire (fin >
+        début si les deux sont renseignées)."""
+        if self.rayon_metres is not None and self.rayon_metres <= 0:
+            raise ValidationError(
+                'Le rayon doit être strictement positif.')
+        if self.heure_debut_autorisee is not None \
+                and self.heure_fin_autorisee is not None \
+                and self.heure_fin_autorisee <= self.heure_debut_autorisee:
+            raise ValidationError(
+                "L'heure de fin autorisée doit être postérieure à l'heure "
+                'de début.')
+
+    def __str__(self):
+        return f'{self.nom} ({self.get_type_zone_display()})'

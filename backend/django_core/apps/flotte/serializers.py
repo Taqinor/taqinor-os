@@ -2281,3 +2281,44 @@ class ActiviteFlotteSerializer(serializers.ModelSerializer):
 
     def get_user_nom(self, obj):
         return obj.user.get_username() if obj.user_id else None
+
+
+# ── XFLT24 — Géofencing sur les données télématiques ────────────────────────────
+
+class ZoneGeographiqueSerializer(serializers.ModelSerializer):
+    """XFLT24 — Zone géographique circulaire de géofencing.
+
+    ``company`` est posée côté serveur (jamais lue du corps de requête).
+    """
+
+    type_zone_display = serializers.CharField(
+        source='get_type_zone_display', read_only=True)
+
+    class Meta:
+        from .models import ZoneGeographique
+        model = ZoneGeographique
+        fields = [
+            'id', 'nom', 'type_zone', 'type_zone_display', 'centre_lat',
+            'centre_lng', 'rayon_metres', 'heure_debut_autorisee',
+            'heure_fin_autorisee', 'actif', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_rayon_metres(self, value):
+        if value is not None and value <= 0:
+            raise serializers.ValidationError(
+                'Le rayon doit être strictement positif.')
+        return value
+
+    def validate(self, attrs):
+        debut = attrs.get(
+            'heure_debut_autorisee',
+            getattr(self.instance, 'heure_debut_autorisee', None))
+        fin = attrs.get(
+            'heure_fin_autorisee',
+            getattr(self.instance, 'heure_fin_autorisee', None))
+        if debut is not None and fin is not None and fin <= debut:
+            raise serializers.ValidationError(
+                "L'heure de fin autorisée doit être postérieure à l'heure "
+                'de début.')
+        return attrs
