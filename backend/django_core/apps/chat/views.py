@@ -19,13 +19,14 @@ from apps.records.storage import (
 from . import services
 from .models import (
     Conversation, ConversationMember, Message, MessageAttachment,
-    MessageReaction, UserChatStatus, ScheduledMessage,
+    MessageReaction, UserChatStatus, ScheduledMessage, CannedResponse,
 )
 from .permissions import IsConversationMember, is_member
 from .selectors import member_conversation_ids, search_messages
 from .serializers import (
     ConversationSerializer, MessageSerializer, UserChatStatusSerializer,
     ScheduledMessageSerializer, MessageBookmarkSerializer,
+    CannedResponseSerializer,
 )
 
 
@@ -620,3 +621,43 @@ class UserChatStatusViewSet(viewsets.GenericViewSet):
         if company is None:
             return Response([])
         return Response(services.colleague_statuses(company))
+
+
+class CannedResponseViewSet(viewsets.ModelViewSet):
+    """XKB28 — réponses enregistrées (snippets `:raccourci`) pour le composer
+    chat. Un utilisateur voit ses personnels + ceux de la société ; jamais les
+    personnels d'un autre utilisateur."""
+    serializer_class = CannedResponseSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        company = _company(self.request)
+        if company is None:
+            return CannedResponse.objects.none()
+        prefix = self.request.query_params.get('prefix')
+        return CannedResponse.objects.filter(
+            pk__in=[c.pk for c in services.visible_canned_responses(
+                self.request.user, company, prefix=prefix)])
+
+    def create(self, request, *args, **kwargs):
+        company = _company(request)
+        try:
+            canned = services.create_canned_response(
+                request.user, company,
+                shortcut=request.data.get('shortcut', ''),
+                body=request.data.get('body', ''),
+                scope=request.data.get('scope', CannedResponse.Scope.PERSONAL))
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(canned).data,
+                        status=status.HTTP_201_CREATED)
+
+    def destroy(self, request, *args, **kwargs):
+        canned = self.get_object()
+        try:
+            services.delete_canned_response(canned, request.user)
+        except PermissionError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_403_FORBIDDEN)
+        return Response(status=status.HTTP_204_NO_CONTENT)

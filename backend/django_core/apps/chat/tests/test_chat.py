@@ -1031,3 +1031,80 @@ class XKB27ScheduledRemindersBookmarksTests(TestCase):
         self.assertEqual(r3.data['status'], 'removed')
         r4 = api.get('/api/django/chat/messages/bookmarks/')
         self.assertEqual(len(r4.data), 0)
+
+
+class XKB28CannedResponseTests(TestCase):
+    """XKB28 — réponses enregistrées (snippets) : personnelles privées,
+    société partagées."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.alice = make_user(self.company, 'alice')
+        self.bob = make_user(self.company, 'bob')
+        self.other_co = make_company(slug='xkb28-other', nom='Other')
+        self.evil = make_user(self.other_co, 'evil-xkb28')
+
+    def test_create_personal_snippet_private_to_owner(self):
+        api = auth(self.alice)
+        r = api.post('/api/django/chat/canned-responses/', {
+            'shortcut': 'salut', 'body': 'Bonjour, comment puis-je aider ?',
+            'scope': 'personal',
+        }, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+
+        bob_api = auth(self.bob)
+        listing = bob_api.get('/api/django/chat/canned-responses/')
+        shortcuts = [c['shortcut'] for c in listing.data]
+        self.assertNotIn('salut', shortcuts)
+
+    def test_company_snippet_shared_across_users(self):
+        api = auth(self.alice)
+        api.post('/api/django/chat/canned-responses/', {
+            'shortcut': 'devis', 'body': 'Voici votre devis en pièce jointe.',
+            'scope': 'company',
+        }, format='json')
+        bob_api = auth(self.bob)
+        listing = bob_api.get('/api/django/chat/canned-responses/')
+        shortcuts = [c['shortcut'] for c in listing.data]
+        self.assertIn('devis', shortcuts)
+
+    def test_prefix_autocomplete(self):
+        services.create_canned_response(
+            self.alice, self.company, shortcut='bonjour', body='Salut',
+            scope='personal')
+        services.create_canned_response(
+            self.alice, self.company, shortcut='byebye', body='Au revoir',
+            scope='personal')
+        rows = services.visible_canned_responses(
+            self.alice, self.company, prefix='bon')
+        self.assertEqual([r.shortcut for r in rows], ['bonjour'])
+
+    def test_duplicate_shortcut_same_scope_rejected(self):
+        services.create_canned_response(
+            self.alice, self.company, shortcut='dup', body='a',
+            scope='personal')
+        with self.assertRaises(ValueError):
+            services.create_canned_response(
+                self.alice, self.company, shortcut='dup', body='b',
+                scope='personal')
+
+    def test_cross_tenant_never_visible(self):
+        services.create_canned_response(
+            self.alice, self.company, shortcut='interne', body='x',
+            scope='company')
+        rows = services.visible_canned_responses(self.evil, self.other_co)
+        self.assertEqual(rows, [])
+
+    def test_personal_snippet_delete_owner_only(self):
+        canned = services.create_canned_response(
+            self.alice, self.company, shortcut='del', body='x',
+            scope='personal')
+        with self.assertRaises(PermissionError):
+            services.delete_canned_response(canned, self.bob)
+        services.delete_canned_response(canned, self.alice)  # ne lève pas
+
+    def test_company_snippet_deletable_by_any_member(self):
+        canned = services.create_canned_response(
+            self.alice, self.company, shortcut='partage', body='x',
+            scope='company')
+        services.delete_canned_response(canned, self.bob)  # ne lève pas

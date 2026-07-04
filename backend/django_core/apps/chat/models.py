@@ -433,3 +433,41 @@ class MessageBookmark(models.Model):
 
     def __str__(self):
         return f'Signet {self.user_id} → {self.message_id}'
+
+
+class CannedResponse(models.Model):
+    """XKB28 — réponse enregistrée (snippet) déclenchée par `:raccourci` dans
+    le composer chat. Portée société (partagée à tous) ou personnelle
+    (`owner`, privée). Complète les gabarits WhatsApp/email existants qui ne
+    couvrent pas le chat interne."""
+
+    class Scope(models.TextChoices):
+        PERSONAL = 'personal', 'Personnel'
+        COMPANY = 'company', 'Société'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='chat_canned_responses')
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        null=True, blank=True, related_name='chat_canned_responses')
+    shortcut = models.CharField(max_length=64)
+    body = models.TextField()
+    scope = models.CharField(
+        max_length=10, choices=Scope.choices, default=Scope.PERSONAL)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Réponse enregistrée'
+        verbose_name_plural = 'Réponses enregistrées'
+        ordering = ['shortcut']
+        # Un raccourci est unique par portée : `owner=None` (société) ou par
+        # propriétaire (personnel) — appliqué aussi côté service.
+        unique_together = [('company', 'owner', 'shortcut')]
+        indexes = [
+            models.Index(fields=['company', 'scope']),
+        ]
+
+    def __str__(self):
+        return f':{self.shortcut}'

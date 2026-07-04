@@ -700,3 +700,53 @@ def list_bookmarks(user, company):
         .filter(user=user, message__company=company)
         .select_related('message', 'message__conversation')
         .order_by('-created_at', '-id'))
+
+
+# ── XKB28 — réponses enregistrées (snippets) ──────────────────────────
+
+def visible_canned_responses(user, company, prefix=None):
+    """Snippets visibles par `user` : les siens (personnels) + ceux de la
+    société — jamais les personnels d'un autre utilisateur, jamais
+    cross-tenant. `prefix` filtre par début de raccourci (autocomplétion)."""
+    from django.db.models import Q
+
+    from .models import CannedResponse
+    qs = CannedResponse.objects.filter(company=company).filter(
+        Q(scope=CannedResponse.Scope.COMPANY)
+        | Q(scope=CannedResponse.Scope.PERSONAL, owner=user))
+    if prefix:
+        qs = qs.filter(shortcut__istartswith=prefix)
+    return list(qs.order_by('shortcut'))
+
+
+def create_canned_response(user, company, *, shortcut, body, scope):
+    """Crée un snippet. `scope=company` le partage à toute la société
+    (owner=None) ; `scope=personal` reste privé au créateur."""
+    from django.db import IntegrityError
+
+    from .models import CannedResponse
+    shortcut = (shortcut or '').strip().lstrip(':')
+    if not shortcut:
+        raise ValueError('Raccourci requis.')
+    if scope not in dict(CannedResponse.Scope.choices):
+        raise ValueError('Portée invalide.')
+    owner = None if scope == CannedResponse.Scope.COMPANY else user
+    try:
+        return CannedResponse.objects.create(
+            company=company, owner=owner, shortcut=shortcut,
+            body=body or '', scope=scope)
+    except IntegrityError:
+        raise ValueError('Ce raccourci existe déjà dans cette portée.')
+
+
+def delete_canned_response(canned, user):
+    """Supprime un snippet, scopé société. Un personnel n'est supprimable que
+    par son propriétaire ; un snippet société (portée collective, pas de
+    propriétaire unique) est supprimable par tout membre de la société."""
+    from .models import CannedResponse
+    if canned.company_id != getattr(user, 'company_id', None):
+        raise PermissionError("Hors de votre société.")
+    if (canned.scope == CannedResponse.Scope.PERSONAL
+            and canned.owner_id != getattr(user, 'pk', None)):
+        raise PermissionError('Seul le créateur peut supprimer ce snippet.')
+    canned.delete()

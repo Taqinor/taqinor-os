@@ -8,7 +8,7 @@ from rest_framework import serializers
 from .models import (
     Conversation, ConversationMember, Message, MessageAttachment,
     MessageReaction, MessageMention, UserChatStatus,
-    ScheduledMessage, MessageReminder, MessageBookmark,
+    ScheduledMessage, MessageReminder, MessageBookmark, CannedResponse,
 )
 
 
@@ -215,3 +215,13 @@ class MessageBookmarkSerializer(serializers.ModelSerializer):
 
     def get_message_detail(self, obj):
         return MessageSerializer(obj.message).data
+
+
+class CannedResponseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CannedResponse
+        fields = [
+            'id', 'shortcut', 'body', 'scope', 'owner',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'owner', 'created_at', 'updated_at']
