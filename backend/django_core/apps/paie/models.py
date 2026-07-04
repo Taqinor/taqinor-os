@@ -297,6 +297,15 @@ class Rubrique(models.Model):
         verbose_name='Montant fixe')
     ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
     actif = models.BooleanField(default=True, verbose_name='Actif')
+    # ZPAI3 — pilote l'inclusion de cette rubrique de COTISATION PATRONALE
+    # dans le rapport « coût employeur » consolidé (``services.cout_employeur``).
+    # Par défaut vrai pour une cotisation (comportement historique inchangé :
+    # toutes les cotisations patronales connues entrent dans le total) ; un
+    # gain/une retenue n'entre jamais dans ce total (le drapeau est ignoré
+    # pour ces types). Dé-flagger une rubrique la sort de l'agrégat SANS
+    # toucher au calcul du bulletin lui-même (jamais client-facing).
+    apparait_cout_employeur = models.BooleanField(
+        default=True, verbose_name='Apparaît au coût employeur')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 

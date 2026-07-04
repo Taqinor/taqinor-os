@@ -5229,6 +5229,96 @@ def cout_global_par_profil(periode):
     return resultat
 
 
+# ── ZPAI3 — Rapport « Coût employeur » consolidé de la période ─────────────
+
+# Codes des lignes patronales ITEMISÉES (informative, ``calculer_bulletin``)
+# que le flag ``Rubrique.apparait_cout_employeur`` peut exclure du total —
+# CNSS/AMO patronales n'ont pas de ligne dédiée (agrégées uniquement dans
+# ``charges_patronales``) et restent donc toujours incluses.
+_CODES_PATRONALES_ITEMISEES = ('MUTUELLE_PAT', 'ALLOC_FAM', 'FORMATION_PRO')
+
+
+def cout_employeur(periode):
+    """Rapport « coût employeur » CONSOLIDÉ de la période (ZPAI3), interne.
+
+    Distinct de ``cout_global_par_profil`` (XPAI17, coût + ventilation PAR
+    EMPLOYÉ) : ici un TOTAL société lisible en un écran — brut + toutes les
+    cotisations patronales + provisions de la période, le ratio coût/net, et
+    le coût moyen par tête. Une rubrique de cotisation patronale ITEMISÉE
+    (``_CODES_PATRONALES_ITEMISEES``) dont ``apparait_cout_employeur=False``
+    est RETRANCHÉE du total (jamais du bulletin lui-même — JAMAIS
+    client-facing, gaté ``paie_voir``).
+
+    Renvoie ``{'annee', 'mois', 'nombre_salaries', 'total_brut',
+    'total_charges_patronales', 'total_provisions', 'total_employeur',
+    'total_net', 'ratio_cout_net', 'cout_moyen_par_tete',
+    'rubriques_exclues': [code, ...]}``.
+    """
+    from django.db.models import Sum
+
+    from .models import BulletinPaie, LigneBulletin
+
+    bulletins = list(
+        BulletinPaie.objects.filter(
+            company=periode.company, periode=periode,
+            statut=BulletinPaie.STATUT_VALIDE))
+    nombre_salaries = len(bulletins)
+    if nombre_salaries == 0:
+        return {
+            'annee': periode.annee, 'mois': periode.mois,
+            'nombre_salaries': 0,
+            'total_brut': Decimal('0.00'),
+            'total_charges_patronales': Decimal('0.00'),
+            'total_provisions': Decimal('0.00'),
+            'total_employeur': Decimal('0.00'),
+            'total_net': Decimal('0.00'),
+            'ratio_cout_net': None,
+            'cout_moyen_par_tete': Decimal('0.00'),
+            'rubriques_exclues': [],
+        }
+
+    total_brut = sum(
+        (Decimal(b.brut or 0) for b in bulletins), Decimal('0'))
+    total_charges_patronales = sum(
+        (Decimal(b.charges_patronales or 0) for b in bulletins), Decimal('0'))
+    total_provisions = sum(
+        (Decimal(b.provision_conges or 0) for b in bulletins), Decimal('0'))
+    total_net = sum(
+        (Decimal(b.net_a_payer or 0) for b in bulletins), Decimal('0'))
+
+    # Rubriques patronales itemisées dé-flaggées : leur montant total (somme
+    # des LigneBulletin de ce code) sort de l'agrégat.
+    rubriques_exclues = list(
+        Rubrique.objects.filter(
+            company=periode.company, code__in=_CODES_PATRONALES_ITEMISEES,
+            apparait_cout_employeur=False,
+        ).values_list('code', flat=True))
+    montant_exclu = Decimal('0.00')
+    if rubriques_exclues:
+        montant_exclu = LigneBulletin.objects.filter(
+            company=periode.company, bulletin__in=bulletins,
+            code__in=rubriques_exclues,
+        ).aggregate(total=Sum('montant'))['total'] or Decimal('0.00')
+
+    total_employeur = _q(
+        total_brut + total_charges_patronales + total_provisions
+        - montant_exclu)
+
+    return {
+        'annee': periode.annee, 'mois': periode.mois,
+        'nombre_salaries': nombre_salaries,
+        'total_brut': _q(total_brut),
+        'total_charges_patronales': _q(total_charges_patronales),
+        'total_provisions': _q(total_provisions),
+        'total_employeur': total_employeur,
+        'total_net': _q(total_net),
+        'ratio_cout_net': (
+            _q(total_employeur / total_net) if total_net > 0 else None),
+        'cout_moyen_par_tete': _q(total_employeur / nombre_salaries),
+        'rubriques_exclues': rubriques_exclues,
+    }
+
+
 def journal_de_paie_ventile(periode, *, created_by=None):
     """Écriture du journal de paie AVEC ventilation analytique (XPAI17).
 

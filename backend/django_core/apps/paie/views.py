@@ -76,6 +76,7 @@ from .services import (
     commit_reprise_cumuls,
     controle_completude,
     controle_ecarts,
+    cout_employeur,
     cout_global_par_profil,
     creer_bulletin_rectificatif,
     declaration_cimr,
@@ -823,6 +824,45 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
         periode = self.get_object()
         return Response(
             cout_global_par_profil(periode), status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='cout-employeur')
+    def cout_employeur_action(self, request, pk=None):
+        """Rapport « coût employeur » CONSOLIDÉ de la période (ZPAI3).
+
+        Total brut + charges patronales + provisions de tous les bulletins
+        validés, ratio coût/net, coût moyen par tête. Distinct de
+        ``cout-global`` (XPAI17, détail PAR employé). ``?export=csv``.
+        Donnée INTERNE (jamais client-facing).
+        """
+        periode = self.get_object()
+        data = cout_employeur(periode)
+        if request.query_params.get('export') == 'csv':
+            return self._export_cout_employeur_csv(data)
+        return Response(data, status=status.HTTP_200_OK)
+
+    @staticmethod
+    def _export_cout_employeur_csv(data):
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, delimiter=';')
+        writer.writerow([
+            f"Coût employeur {data['mois']:02d}/{data['annee']}"])
+        writer.writerow([])
+        writer.writerow(['Salariés', data['nombre_salaries']])
+        writer.writerow(['Total brut', data['total_brut']])
+        writer.writerow(
+            ['Total charges patronales', data['total_charges_patronales']])
+        writer.writerow(['Total provisions', data['total_provisions']])
+        writer.writerow(['Total employeur', data['total_employeur']])
+        writer.writerow(['Total net', data['total_net']])
+        writer.writerow(['Ratio coût/net', data['ratio_cout_net']])
+        writer.writerow(
+            ['Coût moyen par tête', data['cout_moyen_par_tete']])
+        resp = HttpResponse(
+            buffer.getvalue(), content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = (
+            f"attachment; filename=\"cout_employeur_{data['annee']}_"
+            f"{data['mois']:02d}.csv\"")
+        return resp
 
     @action(detail=True, methods=['post'], url_path='journal-ventile')
     def journal_ventile(self, request, pk=None):
