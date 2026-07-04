@@ -127,6 +127,10 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # ODX4 — 404 sur les endpoints d'un module désactivé pour la société.
+    # Défaut = actif (aucun 404 nouveau sans toggle). Placé après l'auth Django ;
+    # résout lui-même le JWT DRF best-effort (aucun blocage sans jeton valide).
+    'core.permissions.DisabledModuleMiddleware',
     # Porte la requête courante pour la capture du Journal d'activité (Feature G).
     'apps.audit.middleware.AuditActorMiddleware',
 ]
