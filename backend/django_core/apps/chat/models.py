@@ -121,6 +121,7 @@ class Message(models.Model):
         VOICE = 'voice', 'Mémo vocal'
         SYSTEM = 'system', 'Système'
         RECORD = 'record', 'Enregistrement partagé'
+        POLL = 'poll', 'Sondage'
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
@@ -471,3 +472,67 @@ class CannedResponse(models.Model):
 
     def __str__(self):
         return f':{self.shortcut}'
+
+
+class Poll(models.Model):
+    """XKB30 — sondage porté par un `Message.kind='poll'`. Choix unique ou
+    multiple, option anonyme (masque les votants dans les résultats), clôture
+    par l'auteur uniquement."""
+
+    message = models.OneToOneField(
+        Message, on_delete=models.CASCADE, related_name='poll')
+    question = models.CharField(max_length=255)
+    allow_multiple = models.BooleanField(default=False)
+    is_anonymous = models.BooleanField(default=False)
+    closed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Sondage'
+        verbose_name_plural = 'Sondages'
+        ordering = ['-created_at', '-id']
+
+    def __str__(self):
+        return f'Sondage : {self.question}'
+
+
+class PollOption(models.Model):
+    """Option de vote d'un sondage."""
+
+    poll = models.ForeignKey(
+        Poll, on_delete=models.CASCADE, related_name='options')
+    label = models.CharField(max_length=255)
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        verbose_name = 'Option de sondage'
+        verbose_name_plural = 'Options de sondage'
+        ordering = ['order', 'id']
+
+    def __str__(self):
+        return self.label
+
+
+class PollVote(models.Model):
+    """Vote d'un utilisateur pour une option (unique par utilisateur+option ;
+    le choix unique est appliqué côté service en retirant les autres votes de
+    l'utilisateur sur ce sondage avant d'enregistrer le nouveau)."""
+
+    option = models.ForeignKey(
+        PollOption, on_delete=models.CASCADE, related_name='votes')
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='chat_poll_votes')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Vote de sondage'
+        verbose_name_plural = 'Votes de sondage'
+        ordering = ['id']
+        unique_together = [('option', 'user')]
+        indexes = [
+            models.Index(fields=['option', 'user']),
+        ]
+
+    def __str__(self):
+        return f'{self.user_id} -> option {self.option_id}'

@@ -493,6 +493,73 @@ class MessageViewSet(viewsets.ModelViewSet):
         toggled = services.toggle_bookmark(msg, request.user)
         return Response({'status': toggled})
 
+    # ── XKB30 — sondages ────────────────────────────────────────────────
+    @action(detail=False, methods=['post'], url_path='poll')
+    def create_poll(self, request):
+        """Crée un sondage (`kind=poll`) dans une conversation. Body :
+        {conversation, question, options: [...], allow_multiple, is_anonymous}."""
+        company = _company(request)
+        conv = self._conversation()
+        if conv is None:
+            return Response({'detail': 'Conversation introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        if not is_member(request.user, conv):
+            return Response(
+                {'detail': "Vous n'êtes pas membre de cette conversation."},
+                status=status.HTTP_403_FORBIDDEN)
+        try:
+            poll = services.create_poll(
+                conversation=conv, sender=request.user, company=company,
+                question=request.data.get('question', ''),
+                options=request.data.get('options', []),
+                allow_multiple=bool(request.data.get('allow_multiple')),
+                is_anonymous=bool(request.data.get('is_anonymous')))
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(poll.message).data,
+                        status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='poll-vote')
+    def poll_vote(self, request, pk=None):
+        """Vote sur le sondage porté par ce message. Body:
+        {option_ids: [...]}."""
+        msg = self.get_object()
+        poll = getattr(msg, 'poll', None)
+        if poll is None:
+            return Response({'detail': "Ce message n'est pas un sondage."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            services.vote_poll(
+                poll, request.user, request.data.get('option_ids', []))
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(services.poll_results(poll, request.user))
+
+    @action(detail=True, methods=['post'], url_path='poll-close')
+    def poll_close(self, request, pk=None):
+        msg = self.get_object()
+        poll = getattr(msg, 'poll', None)
+        if poll is None:
+            return Response({'detail': "Ce message n'est pas un sondage."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            services.close_poll(poll, request.user)
+        except PermissionError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_403_FORBIDDEN)
+        return Response(services.poll_results(poll, request.user))
+
+    @action(detail=True, methods=['get'], url_path='poll-results')
+    def poll_results(self, request, pk=None):
+        msg = self.get_object()
+        poll = getattr(msg, 'poll', None)
+        if poll is None:
+            return Response({'detail': "Ce message n'est pas un sondage."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(services.poll_results(poll, request.user))
+
     @action(detail=False, methods=['get'], url_path='bookmarks')
     def bookmarks(self, request):
         """Liste des messages enregistrés (signets) de l'utilisateur."""
@@ -506,7 +573,8 @@ class MessageViewSet(viewsets.ModelViewSet):
                            'pin', 'unpin', 'download_attachment', 'retrieve',
                            'reply', 'thread', 'thread_follow',
                            'thread_unfollow', 'thread_read', 'remind_me',
-                           'bookmark'):
+                           'bookmark', 'poll_vote', 'poll_close',
+                           'poll_results'):
             return [IsAuthenticated(), IsConversationMember()]
         return [IsAuthenticated()]
 

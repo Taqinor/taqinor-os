@@ -739,6 +739,102 @@ def create_canned_response(user, company, *, shortcut, body, scope):
         raise ValueError('Ce raccourci existe déjà dans cette portée.')
 
 
+# ── XKB30 — sondages dans les canaux ───────────────────────────────────
+
+@transaction.atomic
+def create_poll(*, conversation, sender, company, question, options,
+                allow_multiple=False, is_anonymous=False):
+    """Crée un message `kind=poll` + son `Poll`/`PollOption`s. Le message est
+    créé via `create_message` (scoping/permissions déjà vérifiés en amont par
+    la vue) — pas de notification de mentions ici (sujet différent : le fan-out
+    S9 générique s'applique quand même, best-effort)."""
+    from .models import Message, Poll, PollOption
+
+    cleaned = [o.strip() for o in (options or []) if (o or '').strip()]
+    if len(cleaned) < 2:
+        raise ValueError('Un sondage nécessite au moins 2 options.')
+    if not (question or '').strip():
+        raise ValueError('La question du sondage est requise.')
+
+    msg = create_message(
+        conversation=conversation, sender=sender, company=company,
+        body=question, kind=Message.Kind.POLL)
+    poll = Poll.objects.create(
+        message=msg, question=question.strip(),
+        allow_multiple=bool(allow_multiple), is_anonymous=bool(is_anonymous))
+    for i, label in enumerate(cleaned):
+        PollOption.objects.create(poll=poll, label=label, order=i)
+    return poll
+
+
+@transaction.atomic
+def vote_poll(poll, user, option_ids):
+    """Enregistre le(s) vote(s) de `user`. Choix unique : retire les votes
+    précédents de l'utilisateur sur ce sondage avant d'enregistrer le(s)
+    nouveau(x). Un sondage clôturé refuse tout nouveau vote."""
+    from .models import PollOption, PollVote
+
+    if poll.closed_at is not None:
+        raise ValueError('Ce sondage est clôturé.')
+    wanted = {int(i) for i in (option_ids or []) if str(i).isdigit()}
+    valid_options = list(
+        PollOption.objects.filter(poll=poll, pk__in=wanted))
+    if not valid_options:
+        raise ValueError('Option de vote invalide.')
+    if not poll.allow_multiple and len(valid_options) > 1:
+        raise ValueError('Ce sondage n\'autorise qu\'un seul choix.')
+
+    # Retire les votes précédents de l'utilisateur sur CE sondage (choix
+    # unique ou remplacement complet en choix multiple — comportement simple
+    # et prévisible : voter = redéfinir son/ses choix).
+    PollVote.objects.filter(
+        option__poll=poll, user=user).delete()
+    for opt in valid_options:
+        PollVote.objects.create(option=opt, user=user)
+    return valid_options
+
+
+def close_poll(poll, user):
+    """Clôture un sondage — l'auteur du message racine uniquement."""
+    if poll.message.sender_id != getattr(user, 'pk', None):
+        raise PermissionError('Seul l\'auteur peut clôturer ce sondage.')
+    if poll.closed_at is None:
+        poll.closed_at = timezone.now()
+        poll.save(update_fields=['closed_at'])
+    return poll
+
+
+def poll_results(poll, requesting_user=None):
+    """Résultats agrégés : compte par option + total votants. Si le sondage
+    est anonyme, la liste des votants EST MASQUÉE (jamais retournée), même
+    au créateur."""
+    options = list(poll.options.all().order_by('order', 'id'))
+    out = {
+        'poll_id': poll.pk,
+        'question': poll.question,
+        'allow_multiple': poll.allow_multiple,
+        'is_anonymous': poll.is_anonymous,
+        'closed_at': poll.closed_at,
+        'options': [],
+        'my_vote_option_ids': [],
+    }
+    for opt in options:
+        votes = list(opt.votes.select_related('user'))
+        entry = {
+            'id': opt.pk,
+            'label': opt.label,
+            'vote_count': len(votes),
+        }
+        if not poll.is_anonymous:
+            entry['voter_ids'] = [v.user_id for v in votes
+                                  if v.user_id is not None]
+        if requesting_user is not None and any(
+                v.user_id == requesting_user.pk for v in votes):
+            out['my_vote_option_ids'].append(opt.pk)
+        out['options'].append(entry)
+    return out
+
+
 def delete_canned_response(canned, user):
     """Supprime un snippet, scopé société. Un personnel n'est supprimable que
     par son propriétaire ; un snippet société (portée collective, pas de

@@ -1108,3 +1108,104 @@ class XKB28CannedResponseTests(TestCase):
             self.alice, self.company, shortcut='partage', body='x',
             scope='company')
         services.delete_canned_response(canned, self.bob)  # ne lève pas
+
+
+class XKB30PollTests(TestCase):
+    """XKB30 — sondages dans les canaux : créer/voter/clôturer, anonyme
+    masque les votants, non-membre 403."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.alice = make_user(self.company, 'alice')
+        self.bob = make_user(self.company, 'bob')
+        self.carol = make_user(self.company, 'carol')  # non-membre
+        self.conv = make_channel(self.company, self.alice, members=[self.bob])
+
+    def test_create_vote_close_flow(self):
+        api = auth(self.alice)
+        r = api.post('/api/django/chat/messages/poll/', {
+            'conversation': self.conv.id,
+            'question': 'Date de pose ?',
+            'options': ['Lundi', 'Mardi', 'Mercredi'],
+        }, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        msg_id = r.data['id']
+        poll = Message.objects.get(pk=msg_id).poll
+        opt_lundi = poll.options.get(label='Lundi')
+
+        bob_api = auth(self.bob)
+        r2 = bob_api.post(
+            f'/api/django/chat/messages/{msg_id}/poll-vote/',
+            {'option_ids': [opt_lundi.id]}, format='json')
+        self.assertEqual(r2.status_code, 200, r2.data)
+        self.assertEqual(r2.data['options'][0]['vote_count'], 1)
+
+        r3 = api.post(f'/api/django/chat/messages/{msg_id}/poll-close/')
+        self.assertEqual(r3.status_code, 200)
+        poll.refresh_from_db()
+        self.assertIsNotNone(poll.closed_at)
+
+        # Vote refusé après clôture.
+        r4 = bob_api.post(
+            f'/api/django/chat/messages/{msg_id}/poll-vote/',
+            {'option_ids': [opt_lundi.id]}, format='json')
+        self.assertEqual(r4.status_code, 400)
+
+    def test_anonymous_poll_hides_voters(self):
+        poll = services.create_poll(
+            conversation=self.conv, sender=self.alice, company=self.company,
+            question='Anonyme ?', options=['Oui', 'Non'], is_anonymous=True)
+        opt = poll.options.first()
+        services.vote_poll(poll, self.bob, [opt.id])
+        results = services.poll_results(poll, self.alice)
+        self.assertNotIn('voter_ids', results['options'][0])
+        self.assertEqual(results['options'][0]['vote_count'], 1)
+
+    def test_non_anonymous_poll_shows_voters(self):
+        poll = services.create_poll(
+            conversation=self.conv, sender=self.alice, company=self.company,
+            question='Public ?', options=['Oui', 'Non'], is_anonymous=False)
+        opt = poll.options.first()
+        services.vote_poll(poll, self.bob, [opt.id])
+        results = services.poll_results(poll, self.alice)
+        self.assertIn(self.bob.id, results['options'][0]['voter_ids'])
+
+    def test_non_member_403(self):
+        api = auth(self.carol)
+        r = api.post('/api/django/chat/messages/poll/', {
+            'conversation': self.conv.id,
+            'question': 'Q ?', 'options': ['a', 'b'],
+        }, format='json')
+        self.assertEqual(r.status_code, 403)
+
+    def test_single_choice_rejects_multiple_options(self):
+        poll = services.create_poll(
+            conversation=self.conv, sender=self.alice, company=self.company,
+            question='Un seul ?', options=['A', 'B'], allow_multiple=False)
+        opts = list(poll.options.all())
+        with self.assertRaises(ValueError):
+            services.vote_poll(poll, self.bob, [o.id for o in opts])
+
+    def test_multiple_choice_allows_several(self):
+        poll = services.create_poll(
+            conversation=self.conv, sender=self.alice, company=self.company,
+            question='Plusieurs ?', options=['A', 'B', 'C'],
+            allow_multiple=True)
+        opts = list(poll.options.all())
+        services.vote_poll(poll, self.bob, [opts[0].id, opts[1].id])
+        results = services.poll_results(poll)
+        counted = sum(o['vote_count'] for o in results['options'])
+        self.assertEqual(counted, 2)
+
+    def test_close_poll_non_author_forbidden(self):
+        poll = services.create_poll(
+            conversation=self.conv, sender=self.alice, company=self.company,
+            question='Q ?', options=['a', 'b'])
+        with self.assertRaises(PermissionError):
+            services.close_poll(poll, self.bob)
+
+    def test_requires_at_least_two_options(self):
+        with self.assertRaises(ValueError):
+            services.create_poll(
+                conversation=self.conv, sender=self.alice,
+                company=self.company, question='Q ?', options=['juste une'])
