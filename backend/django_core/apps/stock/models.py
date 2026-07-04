@@ -1905,6 +1905,56 @@ class InventaireAnnuel(models.Model):
         return f'Inventaire {self.exercice} ({self.company_id})'
 
 
+# ── XSTK14 — Revalorisation manuelle du stock (document tracé) ──────────────
+
+class RevalorisationStock(models.Model):
+    """XSTK14 — corrige le COÛT MOYEN d'un produit (baisse mondiale du prix
+    des panneaux, dépréciation) sans bidouiller les réceptions.
+
+    À la VALIDATION, `nouveau_cout` devient la couche de départ du coût
+    moyen (`services.average_cost_with_source` ne compte plus que les
+    réceptions POSTÉRIEURES à `date_validation`) et le document est VERROUILLÉ
+    (jamais modifié après validation). INTERNE, admin-only, jamais
+    client-facing."""
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        VALIDEE = 'validee', 'Validée'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='revalorisations_stock')
+    produit = models.ForeignKey(
+        Produit, on_delete=models.PROTECT,
+        related_name='revalorisations')
+    ancien_cout = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        help_text='Snapshot du coût moyen AVANT revalorisation.')
+    nouveau_cout = models.DecimalField(max_digits=10, decimal_places=2)
+    quantite_snapshot = models.IntegerField(
+        help_text='Quantité en stock au moment de la revalorisation.')
+    delta_valeur = models.DecimalField(
+        max_digits=14, decimal_places=2,
+        help_text='(nouveau_cout - ancien_cout) × quantite_snapshot.')
+    motif = models.TextField(help_text='Motif obligatoire.')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.BROUILLON)
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='revalorisations_stock')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_validation = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Revalorisation de stock'
+        verbose_name_plural = 'Revalorisations de stock'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return (f'Revalo {self.produit_id}: {self.ancien_cout} -> '
+                f'{self.nouveau_cout} ({self.statut})')
+
+
 # ── FG66 / DC36 — Kit / nomenclature (BOM) vendable ───────────────────────────
 
 class KitProduit(models.Model):

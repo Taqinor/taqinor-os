@@ -14,7 +14,7 @@ from .models import (
     EcheanceFactureFournisseur, AcompteFournisseur,
     AvoirFournisseur, ImputationAvoirFournisseur,
     PalierPrixFournisseur, PortailFournisseurToken,
-    LotEntrepot, InventaireAnnuel,
+    LotEntrepot, InventaireAnnuel, RevalorisationStock,
 )
 
 
@@ -1305,3 +1305,23 @@ class InventaireAnnuelSerializer(serializers.ModelSerializer):
             'donnees', 'date_creation',
         ]
         read_only_fields = fields
+
+
+class RevalorisationStockSerializer(serializers.ModelSerializer):
+    """XSTK14 — revalorisation manuelle du stock (document tracé). Créée en
+    BROUILLON via `produit`/`nouveau_cout`/`motif` ; verrouillée après
+    validation (`valider/`)."""
+    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+
+    class Meta:
+        model = RevalorisationStock
+        fields = [
+            'id', 'produit', 'produit_nom', 'ancien_cout', 'nouveau_cout',
+            'quantite_snapshot', 'delta_valeur', 'motif', 'statut', 'auteur',
+            'date_creation', 'date_validation',
+        ]
+        read_only_fields = [
+            'id', 'produit_nom', 'ancien_cout', 'quantite_snapshot',
+            'delta_valeur', 'statut', 'auteur', 'date_creation',
+            'date_validation',
+        ]

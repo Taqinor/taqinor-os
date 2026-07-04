@@ -431,18 +431,37 @@ def average_cost_with_source(produit):
     """Coût moyen d'achat pondéré + sa SOURCE.
 
     Renvoie (cout, source) où source vaut 'achats' (dérivé des réceptions de
-    bons de commande fournisseur) ou 'catalogue' (repli sur prix_achat quand
-    aucun achat reçu). INTERNE.
+    bons de commande fournisseur), 'revalorisation' (dernière revalorisation
+    manuelle validée servant de couche de départ, XSTK14) ou 'catalogue'
+    (repli sur prix_achat quand aucun achat reçu ni revalorisation). INTERNE.
 
     FG67/DC38 — le coût intègre les FRAIS ANNEXES (fret/douane/TVA import/
     transit) de chaque ligne via le coût débarqué unitaire : aucun champ de
     coût parallèle, les frais sont repliés dans CE même coût moyen. Une ligne
-    sans frais annexes (0) garde exactement le comportement historique."""
-    from .models import LigneBonCommandeFournisseur
-    lignes = LigneBonCommandeFournisseur.objects.filter(
-        produit=produit, quantite_recue__gt=0).values_list(
+    sans frais annexes (0) garde exactement le comportement historique.
+
+    XSTK14 — si une `RevalorisationStock` VALIDÉE existe pour ce produit, son
+    `nouveau_cout`/`quantite_snapshot` sert de couche de DÉPART (comme un
+    inventaire initial) et seules les réceptions POSTÉRIEURES à sa
+    validation entrent dans la moyenne pondérée — les réceptions
+    antérieures sont supplantées par la revalorisation (comportement
+    historique inchangé quand aucune revalorisation n'existe)."""
+    from .models import LigneBonCommandeFournisseur, RevalorisationStock
+    revalo = (RevalorisationStock.objects
+              .filter(produit=produit,
+                      statut=RevalorisationStock.Statut.VALIDEE)
+              .order_by('-date_validation', '-id').first())
+    lignes_qs = LigneBonCommandeFournisseur.objects.filter(
+        produit=produit, quantite_recue__gt=0)
+    if revalo is not None and revalo.date_validation is not None:
+        lignes_qs = lignes_qs.filter(
+            bon_commande__date_creation__gt=revalo.date_validation)
+    lignes = lignes_qs.values_list(
         'quantite_recue', 'prix_achat_unitaire', 'quantite', 'frais_annexes')
     total_q, total_v = 0, Decimal('0')
+    if revalo is not None:
+        total_q += revalo.quantite_snapshot
+        total_v += revalo.quantite_snapshot * revalo.nouveau_cout
     for q_recue, pu, q_ligne, frais in lignes:
         pu = pu or Decimal('0')
         frais = frais or Decimal('0')
@@ -453,7 +472,8 @@ def average_cost_with_source(produit):
         total_q += q_recue
         total_v += q_recue * pu
     if total_q:
-        return (total_v / total_q).quantize(Decimal('0.01')), 'achats'
+        source = 'achats' if revalo is None else 'revalorisation'
+        return (total_v / total_q).quantize(Decimal('0.01')), source
     return (produit.prix_achat or Decimal('0')), 'catalogue'
 
 
@@ -749,6 +769,42 @@ def export_inventaire_annuel_xlsx(inventaire):
         ['Produit', 'SKU', 'Quantité', 'Coût moyen (HT)', 'Valeur (HT)',
          'Source du coût'],
         rows, sheet_title=f'Inventaire {inventaire.exercice}')
+
+
+# ── XSTK14 — Revalorisation manuelle du stock (document tracé) ──────────────
+# INTERNE, admin-only, jamais client-facing.
+
+def creer_revalorisation(*, company, produit, nouveau_cout, motif, user):
+    """Crée une `RevalorisationStock` en BROUILLON : snapshot du coût moyen
+    actuel + de la quantité en stock, delta calculé. Motif obligatoire
+    (ValueError sinon)."""
+    from .models import RevalorisationStock
+    if not motif or not str(motif).strip():
+        raise ValueError('Le motif de la revalorisation est obligatoire.')
+    ancien_cout, _source = average_cost_with_source(produit)
+    nouveau_cout = Decimal(str(nouveau_cout))
+    quantite = produit.quantite_stock or 0
+    delta = (nouveau_cout - ancien_cout) * quantite
+    return RevalorisationStock.objects.create(
+        company=company, produit=produit, ancien_cout=ancien_cout,
+        nouveau_cout=nouveau_cout, quantite_snapshot=quantite,
+        delta_valeur=delta.quantize(Decimal('0.01')), motif=motif,
+        auteur=user)
+
+
+def valider_revalorisation(revalorisation):
+    """Valide une `RevalorisationStock` BROUILLON : verrouille le document
+    (statut VALIDEE + date_validation) — devient la nouvelle couche de
+    départ du coût moyen (`average_cost_with_source`). Une revalorisation
+    déjà validée lève ValueError (jamais re-validée, jamais modifiée)."""
+    from django.utils import timezone
+    from .models import RevalorisationStock
+    if revalorisation.statut == RevalorisationStock.Statut.VALIDEE:
+        raise ValueError('Cette revalorisation est déjà validée.')
+    revalorisation.statut = RevalorisationStock.Statut.VALIDEE
+    revalorisation.date_validation = timezone.now()
+    revalorisation.save(update_fields=['statut', 'date_validation'])
+    return revalorisation
 
 
 # ── XSTK8 — Contrôle du stock négatif (garde configurable) ──────────────────
