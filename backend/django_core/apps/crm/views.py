@@ -74,6 +74,22 @@ def equipes_statistiques(request):
     return Response({'equipes': stats_equipe(user.company)})
 
 
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def rapport_attribution(request):
+    """ZSAL6 — Rapport d'attribution des leads par commercial + par source,
+    croisé avec le résultat (conversion, CA signé). ?debut=&fin= (YYYY-MM-DD,
+    optionnels) filtrent la période. Lecture seule."""
+    user = request.user
+    if not user.company_id:
+        return Response({'par_commercial': [], 'par_source': []})
+    from django.utils.dateparse import parse_date
+    debut = parse_date(request.query_params.get('debut') or '') or None
+    fin = parse_date(request.query_params.get('fin') or '') or None
+    from .selectors import attribution_leads
+    return Response(attribution_leads(user.company, debut=debut, fin=fin))
+
+
 class ClientViewSet(TenantMixin, viewsets.ModelViewSet):
     queryset = Client.objects.all()
     serializer_class = ClientSerializer

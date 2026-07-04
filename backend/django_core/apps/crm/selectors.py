@@ -486,6 +486,121 @@ def stats_equipe(company):
     return result
 
 
+def attribution_leads(company, debut=None, fin=None):
+    """ZSAL6 — Rapport d'attribution des leads : par COMMERCIAL et par
+    CANAL/SOURCE, croisés avec le résultat (conversion en SIGNED, CA signé).
+
+    Croise ce que win/loss-par-source (QJ19) et le leaderboard commercial
+    (FG93) exposent séparément. Lecture seule, aucune migration, jamais de
+    ``prix_achat``. ``debut``/``fin`` (date, inclus) filtrent
+    ``Lead.date_creation`` ; ``None`` = pas de borne sur ce côté.
+
+    Renvoie ``{'par_commercial': [...], 'par_source': [...]}`` :
+      - par_commercial: {commercial, nb_leads, par_canal: {canal: count},
+        nb_signes, taux_conversion_pct, ca_signe}
+      - par_source: {canal, canal_label, nb_leads, nb_signes,
+        taux_conversion_pct, ca_signe}
+
+    Toujours des gardes division-par-zéro (0.0, jamais une exception). Scopé
+    société — jamais d'accès cross-tenant.
+    """
+    from decimal import Decimal
+    from . import stages as stage_mod
+    from .models import Lead
+
+    qs = Lead.objects.filter(company=company, is_archived=False)
+    if debut is not None:
+        qs = qs.filter(date_creation__date__gte=debut)
+    if fin is not None:
+        qs = qs.filter(date_creation__date__lte=fin)
+    leads = list(qs.prefetch_related('devis').select_related('owner'))
+
+    # Lead.Canal (TextChoices statique) : labels français prêts pour l'UI.
+    # Un canal libre non listé (ex. valeur legacy) retombe sur sa propre clé.
+    canal_labels = dict(Lead.Canal.choices)
+
+    def _ca_signe_lead(lead):
+        total = Decimal('0')
+        for devis in lead.devis.all():
+            if devis.statut == 'accepte':
+                try:
+                    total += Decimal(str(devis.total_ttc or 0))
+                except Exception:
+                    continue
+        return total
+
+    par_commercial = {}
+    par_source = {}
+
+    for lead in leads:
+        commercial_key = lead.owner_id or 0
+        commercial_nom = getattr(lead.owner, 'username', None) or 'Non assigné'
+        slot_com = par_commercial.setdefault(commercial_key, {
+            'commercial': commercial_nom,
+            'nb_leads': 0,
+            'par_canal': {},
+            'nb_signes': 0,
+            'ca_signe': Decimal('0'),
+        })
+        slot_com['nb_leads'] += 1
+        canal_key = lead.canal or 'inconnu'
+        slot_com['par_canal'][canal_key] = slot_com['par_canal'].get(canal_key, 0) + 1
+
+        slot_src = par_source.setdefault(canal_key, {
+            'canal': canal_key,
+            'canal_label': canal_labels.get(canal_key, canal_key),
+            'nb_leads': 0,
+            'nb_signes': 0,
+            'ca_signe': Decimal('0'),
+        })
+        slot_src['nb_leads'] += 1
+
+        est_signe = lead.stage == stage_mod.SIGNED and not lead.perdu
+        if est_signe:
+            ca = _ca_signe_lead(lead)
+            slot_com['nb_signes'] += 1
+            slot_com['ca_signe'] += ca
+            slot_src['nb_signes'] += 1
+            slot_src['ca_signe'] += ca
+
+    def _finalize_commercial(slot):
+        taux = (
+            round(slot['nb_signes'] / slot['nb_leads'] * 100, 1)
+            if slot['nb_leads'] else 0.0
+        )
+        return {
+            'commercial': slot['commercial'],
+            'nb_leads': slot['nb_leads'],
+            'par_canal': slot['par_canal'],
+            'nb_signes': slot['nb_signes'],
+            'taux_conversion_pct': taux,
+            'ca_signe': str(slot['ca_signe']),
+        }
+
+    def _finalize_source(slot):
+        taux = (
+            round(slot['nb_signes'] / slot['nb_leads'] * 100, 1)
+            if slot['nb_leads'] else 0.0
+        )
+        return {
+            'canal': slot['canal'],
+            'canal_label': slot['canal_label'],
+            'nb_leads': slot['nb_leads'],
+            'nb_signes': slot['nb_signes'],
+            'taux_conversion_pct': taux,
+            'ca_signe': str(slot['ca_signe']),
+        }
+
+    return {
+        'par_commercial': sorted(
+            (_finalize_commercial(s) for s in par_commercial.values()),
+            key=lambda r: r['commercial']),
+        'par_source': sorted(
+            (_finalize_source(s) for s in par_source.values()),
+            key=lambda r: r['canal']),
+    }
+
+
 def delai_paiement_client(client):
     """XFAC23 — conditions de paiement négociées d'un client, en dict.
 

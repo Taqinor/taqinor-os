@@ -2,7 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
     AppointmentViewSet, ClientViewSet, ConcurrentPerteViewSet, LeadViewSet,
-    assignable_users, equipes_statistiques,
+    assignable_users, equipes_statistiques, rapport_attribution,
     LeadTagViewSet, MotifPerteViewSet, CanalViewSet, ParrainageViewSet,
     MessageTemplateViewSet, ObjectifCommercialViewSet, PlanActiviteViewSet,
     PointContactViewSet, SiteProfileViewSet,
@@ -37,6 +37,8 @@ urlpatterns = [
     path('assignable-users/', assignable_users, name='assignable-users'),
     # ZSAL3 — Tableau de bord « Mes équipes ».
     path('equipes/statistiques/', equipes_statistiques, name='equipes-statistiques'),
+    # ZSAL6 — Rapport d'attribution des leads (par commercial + par source).
+    path('rapports/attribution/', rapport_attribution, name='rapport-attribution'),
     # QJ25 — Contour OSM du bâtiment épinglé (free, sans clé API)
     path('leads/<int:lead_id>/roof-footprint/', lead_roof_footprint, name='lead-roof-footprint'),
     # XMKT37 — Livechat public tokenisé (voir public_chat_views.py)
