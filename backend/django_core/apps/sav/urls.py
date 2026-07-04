@@ -2,7 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from rest_framework.decorators import api_view, permission_classes
 
-from authentication.permissions import IsAnyRole
+from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 
 from .views import (
     EquipementViewSet, TicketViewSet,
@@ -12,6 +12,7 @@ from .views import (
     CompatibilitePieceViewSet, CategorieTicketViewSet,
     EquipeMaintenanceViewSet, CategorieEquipementViewSet,
     sav_parts_forecast, sav_pareto_pannes, sav_fiabilite_insight,
+    sav_resume_par_equipe,
 )
 from .maintenance import ContratMaintenanceViewSet
 
@@ -54,6 +55,13 @@ def fiabilite_insight_view(request):
     return sav_fiabilite_insight(request)
 
 
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def resume_par_equipe_view(request):
+    """ZMFG4 — Tableau de bord SAV groupé par équipe. Responsable/admin."""
+    return sav_resume_par_equipe(request)
+
+
 urlpatterns = [
     path('', include(router.urls)),
     path('insights/sav-parts-forecast/', parts_forecast_view,
@@ -62,4 +70,6 @@ urlpatterns = [
          name='sav-pareto-pannes'),
     path('insights/sav-fiabilite/', fiabilite_insight_view,
          name='sav-fiabilite'),
+    path('insights/sav-resume-equipe/', resume_par_equipe_view,
+         name='sav-resume-equipe'),
 ]

@@ -2023,6 +2023,17 @@ def sav_fiabilite_insight(request):
     return Response({'results': data, 'couts_inclus': include_couts})
 
 
+# ── ZMFG4 — Tableau de bord maintenance par équipe/statut ────────────────────
+
+def sav_resume_par_equipe(request):
+    """ZMFG4 — Résumé du dashboard SAV groupé par équipe de maintenance
+    (ZMFG1). Réservé au tier responsable/admin (vérifié côté urls.py)."""
+    from .selectors import resume_par_equipe
+    company = request.user.company
+    data = resume_par_equipe(company)
+    return Response({'results': data})
+
+
 # ── FG89 — Prévision pièces SAV ───────────────────────────────────────────────
 
 def sav_parts_forecast(request):
