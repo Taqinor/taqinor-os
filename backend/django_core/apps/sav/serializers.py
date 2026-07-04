@@ -298,6 +298,12 @@ class TicketSerializer(serializers.ModelSerializer):
             'en_attente_client', 'attente_depuis', 'jours_pause',
             # XSAV11 — incrémenté côté serveur uniquement (perform_update).
             'reopen_count',
+            # YDOCF1 — machine d'états GARDÉE : le statut ne se change plus
+            # par un PATCH direct du corps de requête, seulement via les
+            # actions guardées `planifier/demarrer/resoudre/cloturer`
+            # (+ `annuler`/`reactiver` existants qui restent un DRAPEAU
+            # séparé, jamais une valeur de `statut`).
+            'statut',
         ]
         # client peut être déduit côté serveur d'un équipement lié (ticket
         # ouvert depuis le parc) ; sinon il reste exigé — voir

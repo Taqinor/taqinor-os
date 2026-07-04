@@ -644,17 +644,27 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         self._check_tenant(serializer)
-        old = Ticket.objects.get(pk=serializer.instance.pk)
-        # YSERV12 — à la transition vers RESOLU, propose canal_resolution si
-        # l'appelant n'en a pas fourni un explicitement (jamais écrasé sinon).
-        new_statut = serializer.validated_data.get('statut', old.statut)
-        if (new_statut == Ticket.Statut.RESOLU and old.statut != Ticket.Statut.RESOLU
-                and 'canal_resolution' not in serializer.validated_data):
-            serializer.validated_data['canal_resolution'] = (
-                old.canal_resolution_propose())
+        # YDOCF1 — `statut` est désormais read-only sur le sérialiseur : plus
+        # aucune transition n'arrive ici via PATCH direct. Les transitions
+        # passent exclusivement par les actions guardées ci-dessous
+        # (`planifier`/`demarrer`/`resoudre`/`cloturer`), qui appliquent la
+        # même chaîne d'effets (SLA/chatter/notification/downtime) via
+        # `_appliquer_transition_statut`.
+        super().perform_update(serializer)
+
+    def _appliquer_transition_statut(self, ticket, statut_cible):
+        """YDOCF1 — Applique une transition de statut GARDÉE (via
+        ``machine_etats.changer_statut``) et rejoue exactement la même chaîne
+        d'effets qu'avant YDOCF1 (SLA/réouverture/chatter/notification client/
+        clôture des downtimes). Lève ``ValidationError`` (400) nommant le
+        statut courant + les cibles permises sur une transition interdite."""
+        from . import machine_etats
+
+        old = Ticket.objects.get(pk=ticket.pk)
         # YSERV2 — garde de clôture : refuse CLOTURE tant qu'une intervention
         # liée (apps.installations) n'est pas TERMINEE/VALIDEE.
-        if new_statut == Ticket.Statut.CLOTURE and old.statut != Ticket.Statut.CLOTURE:
+        if (statut_cible == Ticket.Statut.CLOTURE
+                and old.statut != Ticket.Statut.CLOTURE):
             ouvertes = self._interventions_ouvertes(old)
             if ouvertes:
                 raise ValidationError({
@@ -663,34 +673,94 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
                         'ouverte(s) sur ce ticket.'),
                     'interventions_ouvertes': ouvertes,
                 })
-        super().perform_update(serializer)
+        try:
+            machine_etats.changer_statut(ticket, statut_cible, persister=False)
+        except machine_etats.TransitionInterdite as exc:
+            raise ValidationError({'statut': str(exc)})
+        # YSERV12 — à la transition vers RESOLU, propose canal_resolution si
+        # l'appelant n'en a pas déjà posé un explicitement (jamais écrasé).
+        update_fields = ['statut']
+        if (statut_cible == Ticket.Statut.RESOLU
+                and old.statut != Ticket.Statut.RESOLU
+                and not ticket.canal_resolution):
+            ticket.canal_resolution = old.canal_resolution_propose()
+            update_fields.append('canal_resolution')
+        ticket.save(update_fields=update_fields)
         # FG81 — recalcule sla_breach après toute mise à jour de statut.
-        inst = serializer.instance
-        inst.recompute_sla_breach()
-        update_fields = ['sla_breach']
+        ticket.recompute_sla_breach()
+        save_fields = ['sla_breach']
         # XSAV11 — réouverture : résolu/clôturé → statut OUVERT. Compté côté
         # serveur, jamais décrémenté. La transition est déjà tracée par
         # TicketActivity (activity.log_changes ci-dessous).
         if (old.statut in self._CLOTURE_STATUTS
-                and inst.statut in Ticket.OPEN_STATUTS):
-            inst.reopen_count += 1
-            update_fields.append('reopen_count')
-        inst.save(update_fields=update_fields)
-        activity.log_changes(old, inst, self.request.user)
+                and ticket.statut in Ticket.OPEN_STATUTS):
+            ticket.reopen_count += 1
+            save_fields.append('reopen_count')
+        ticket.save(update_fields=save_fields)
+        activity.log_changes(old, ticket, self.request.user)
         # XSAV4 — notification client best-effort sur transition de statut
         # (reçu/planifié/résolu). Toggle OFF par défaut = aucun effet.
-        if old.statut != inst.statut:
+        if old.statut != ticket.statut:
             from .notifications_client import notify_ticket_transition
-            notify_ticket_transition(inst, inst.statut, request=self.request)
+            notify_ticket_transition(
+                ticket, ticket.statut, request=self.request)
         # XSAV16 — la clôture du ticket propose (= referme automatiquement,
         # idempotent) toute immobilisation EN COURS liée à ce ticket. Ne
         # ferme jamais une fenêtre déjà close, et n'affecte que les
         # downtimes du même ticket (pas ceux d'autres tickets sur le même
         # équipement).
-        if (old.statut != inst.statut
-                and inst.statut in self._CLOTURE_STATUTS):
-            for dt in inst.downtimes.filter(fin__isnull=True):
+        if (old.statut != ticket.statut
+                and ticket.statut in self._CLOTURE_STATUTS):
+            for dt in ticket.downtimes.filter(fin__isnull=True):
                 dt.clore()
+        return ticket
+
+    @action(detail=True, methods=['post'], url_path='planifier',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def planifier(self, request, pk=None):
+        """YDOCF1 — Transition gardée NOUVEAU/... → PLANIFIE."""
+        ticket = self.get_object()
+        self._appliquer_transition_statut(ticket, Ticket.Statut.PLANIFIE)
+        return Response(
+            TicketSerializer(ticket, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='demarrer',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def demarrer(self, request, pk=None):
+        """YDOCF1 — Transition gardée → EN_COURS."""
+        ticket = self.get_object()
+        self._appliquer_transition_statut(ticket, Ticket.Statut.EN_COURS)
+        return Response(
+            TicketSerializer(ticket, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='resoudre',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def resoudre(self, request, pk=None):
+        """YDOCF1 — Transition gardée → RESOLU.
+
+        YSERV12 — ``canal_resolution`` optionnel dans le corps : posé
+        explicitement AVANT la transition pour ne jamais être écrasé par la
+        proposition automatique (même règle qu'avant YDOCF1)."""
+        ticket = self.get_object()
+        canal = request.data.get('canal_resolution')
+        if canal:
+            valid = {c for c, _ in Ticket.CanalResolution.choices}
+            if canal not in valid:
+                return Response(
+                    {'canal_resolution': 'Valeur invalide.'}, status=400)
+            ticket.canal_resolution = canal
+        self._appliquer_transition_statut(ticket, Ticket.Statut.RESOLU)
+        return Response(
+            TicketSerializer(ticket, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='cloturer',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def cloturer(self, request, pk=None):
+        """YDOCF1 — Transition gardée → CLOTURE (garde YSERV2 conservée)."""
+        ticket = self.get_object()
+        self._appliquer_transition_statut(ticket, Ticket.Statut.CLOTURE)
+        return Response(
+            TicketSerializer(ticket, context={'request': request}).data)
 
     @action(detail=True, methods=['get'], url_path='historique',
             permission_classes=[HasPermissionOrLegacy('sav_voir')])

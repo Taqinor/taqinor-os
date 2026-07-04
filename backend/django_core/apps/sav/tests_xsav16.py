@@ -124,6 +124,8 @@ class XSAV16DowntimeTest(TestCase):
     # ── Clôture ticket ferme le downtime lié ────────────────────────────────
 
     def test_cloture_ticket_ferme_downtime_lie(self):
+        # YDOCF1 — machine d'états gardée : NOUVEAU → RESOLU direct n'est
+        # plus permis, passer par `demarrer` (→ EN_COURS) d'abord.
         ticket = self._ticket()
         dt = ouvrir_downtime(
             company=self.company, equipement=self.equip,
@@ -131,9 +133,10 @@ class XSAV16DowntimeTest(TestCase):
         self.assertIsNone(dt.fin)
 
         api = auth(self.admin)
-        resp = api.patch(
-            f'/api/django/sav/tickets/{ticket.id}/',
-            {'statut': 'resolu'}, format='json')
+        api.post(f'/api/django/sav/tickets/{ticket.id}/demarrer/',
+                 {}, format='json')
+        resp = api.post(f'/api/django/sav/tickets/{ticket.id}/resoudre/',
+                        {}, format='json')
         self.assertEqual(resp.status_code, 200, resp.content)
         dt.refresh_from_db()
         self.assertIsNotNone(dt.fin)
@@ -144,15 +147,16 @@ class XSAV16DowntimeTest(TestCase):
             company=self.company, equipement=self.equip,
             debut=timezone.now() - timedelta(hours=5), ticket=ticket)
         api = auth(self.admin)
-        api.patch(
-            f'/api/django/sav/tickets/{ticket.id}/',
-            {'statut': 'resolu'}, format='json')
+        api.post(f'/api/django/sav/tickets/{ticket.id}/demarrer/',
+                 {}, format='json')
+        api.post(f'/api/django/sav/tickets/{ticket.id}/resoudre/',
+                 {}, format='json')
         dt.refresh_from_db()
         fin_apres_premiere_cloture = dt.fin
-        # Second PATCH statut identique -> ne doit pas planter ni changer fin.
-        resp = api.patch(
-            f'/api/django/sav/tickets/{ticket.id}/',
-            {'statut': 'cloture'}, format='json')
+        # Seconde transition (résolu → clôturé) -> ne doit pas planter ni
+        # changer fin (le downtime est déjà clos).
+        resp = api.post(f'/api/django/sav/tickets/{ticket.id}/cloturer/',
+                        {}, format='json')
         self.assertEqual(resp.status_code, 200, resp.content)
         dt.refresh_from_db()
         self.assertEqual(dt.fin, fin_apres_premiere_cloture)

@@ -97,13 +97,19 @@ class XSAV14TaxonomieTest(TestCase):
     # ── Codification à la résolution ────────────────────────────────────────
 
     def test_cause_remede_poses_sur_ticket_via_api(self):
+        # YDOCF1 — cause/remède restent PATCHables directement (hors machine
+        # d'états) ; la transition de statut passe par l'action guardée.
         ticket = self._ticket(self._equip(self.produit))
+        self.api.post(f'/api/django/sav/tickets/{ticket.id}/demarrer/',
+                      {}, format='json')
         resp = self.api.patch(
             f'/api/django/sav/tickets/{ticket.id}/',
-            {'cause': self.cause_defaut.id, 'remede': self.remede.id,
-             'statut': 'resolu'},
+            {'cause': self.cause_defaut.id, 'remede': self.remede.id},
             format='json')
         self.assertEqual(resp.status_code, 200, resp.content)
+        resp2 = self.api.post(
+            f'/api/django/sav/tickets/{ticket.id}/resoudre/', {}, format='json')
+        self.assertEqual(resp2.status_code, 200, resp2.content)
         ticket.refresh_from_db()
         self.assertEqual(ticket.cause_id, self.cause_defaut.id)
         self.assertEqual(ticket.remede_id, self.remede.id)

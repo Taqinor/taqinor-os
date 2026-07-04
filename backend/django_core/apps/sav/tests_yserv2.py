@@ -101,14 +101,14 @@ class YSERV2HandoffTest(TestCase):
         self.assertEqual(ticket.statut, Ticket.Statut.CLOTURE)
 
     def test_cloture_refusee_intervention_ouverte(self):
+        # YDOCF1 — la clôture passe par l'action guardée `cloturer`.
         ticket = self._ticket(installation=self.inst, statut=Ticket.Statut.EN_COURS)
         Intervention.objects.create(
             company=self.company, installation=self.inst, ticket=ticket,
             type_intervention=Intervention.Type.DEPANNAGE, created_by=self.admin)
         api = auth(self.admin)
-        resp = api.patch(f'/api/django/sav/tickets/{ticket.pk}/', {
-            'statut': 'cloture',
-        }, format='json')
+        resp = api.post(
+            f'/api/django/sav/tickets/{ticket.pk}/cloturer/', {}, format='json')
         self.assertEqual(resp.status_code, 400)
         self.assertIn('interventions_ouvertes', resp.data)
 
@@ -119,9 +119,8 @@ class YSERV2HandoffTest(TestCase):
             type_intervention=Intervention.Type.DEPANNAGE,
             statut=Intervention.Statut.VALIDEE, created_by=self.admin)
         api = auth(self.admin)
-        resp = api.patch(f'/api/django/sav/tickets/{ticket.pk}/', {
-            'statut': 'cloture',
-        }, format='json')
+        resp = api.post(
+            f'/api/django/sav/tickets/{ticket.pk}/cloturer/', {}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
 
     def test_reemission_signal_aucun_double_effet(self):

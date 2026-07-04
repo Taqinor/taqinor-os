@@ -74,11 +74,11 @@ class YSERV12CanalResolutionTest(TestCase):
             ticket.canal_resolution_propose(), Ticket.CanalResolution.SUR_SITE)
 
     def test_transition_resolu_applique_proposition(self):
+        # YDOCF1 — la transition passe par l'action guardée `resoudre`.
         ticket = self._ticket('SAV-YSERV12-3')
         api = auth(self.admin)
-        resp = api.patch(f'/api/django/sav/tickets/{ticket.pk}/', {
-            'statut': 'resolu',
-        }, format='json')
+        resp = api.post(
+            f'/api/django/sav/tickets/{ticket.pk}/resoudre/', {}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         ticket.refresh_from_db()
         self.assertEqual(
@@ -87,8 +87,8 @@ class YSERV12CanalResolutionTest(TestCase):
     def test_jamais_ecrase_si_pose_explicitement(self):
         ticket = self._ticket('SAV-YSERV12-4')
         api = auth(self.admin)
-        resp = api.patch(f'/api/django/sav/tickets/{ticket.pk}/', {
-            'statut': 'resolu', 'canal_resolution': 'sur_site',
+        resp = api.post(f'/api/django/sav/tickets/{ticket.pk}/resoudre/', {
+            'canal_resolution': 'sur_site',
         }, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         ticket.refresh_from_db()
