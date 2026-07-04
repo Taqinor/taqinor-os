@@ -82,6 +82,18 @@ class ConversationMember(models.Model):
     # Dernière lecture : les messages créés après cette date sont « non lus ».
     last_read_at = models.DateTimeField(null=True, blank=True)
     is_muted = models.BooleanField(default=False)
+
+    class NotificationLevel(models.TextChoices):
+        ALL = 'all', 'Tout'
+        MENTIONS = 'mentions', 'Mentions seulement'
+        MUTED = 'muted', 'Muet'
+
+    # XKB25 — remplace `is_muted` par un niveau à 3 valeurs (additif ;
+    # `is_muted` reste et reste synchronisé pour compat ascendante). Défaut
+    # `all` préserve le comportement existant (non muet = tout notifié).
+    notification_level = models.CharField(
+        max_length=10, choices=NotificationLevel.choices,
+        default=NotificationLevel.ALL)
     joined_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

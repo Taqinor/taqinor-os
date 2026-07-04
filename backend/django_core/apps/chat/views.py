@@ -97,7 +97,11 @@ class ConversationViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='mute')
     def mute(self, request, pk=None):
         """Active/désactive la sourdine de la conversation pour le membre
-        courant. Body : {muted: bool}. Scopé société + appartenance."""
+        courant. Body : {muted: bool}. Scopé société + appartenance.
+
+        Conservé pour compat ascendante ; synchronise aussi
+        `notification_level` (XKB25) : muted=True -> 'muted', muted=False ->
+        'all' (comportement existant préservé : non muet = tout notifié)."""
         conv = self.get_object()  # déjà scopé société (cross-tenant → 404)
         member = ConversationMember.objects.filter(
             conversation=conv, user=request.user).first()
@@ -106,8 +110,30 @@ class ConversationViewSet(viewsets.ModelViewSet):
                 {'detail': "Vous n'êtes pas membre de cette conversation."},
                 status=status.HTTP_403_FORBIDDEN)
         muted = request.data.get('muted')
-        member.is_muted = bool(muted) if muted is not None else True
-        member.save(update_fields=['is_muted'])
+        is_muted = bool(muted) if muted is not None else True
+        level = (ConversationMember.NotificationLevel.MUTED if is_muted
+                 else ConversationMember.NotificationLevel.ALL)
+        services.set_notification_level(member, level)
+        return Response(self.get_serializer(conv).data)
+
+    # ── XKB25 — niveau de notification à 3 valeurs ─────────────────────
+    @action(detail=True, methods=['post'], url_path='notification-level')
+    def notification_level(self, request, pk=None):
+        """Définit le niveau de notification (tout/mentions/muet) pour le
+        membre courant. Body : {level: 'all'|'mentions'|'muted'}."""
+        conv = self.get_object()
+        member = ConversationMember.objects.filter(
+            conversation=conv, user=request.user).first()
+        if member is None:
+            return Response(
+                {'detail': "Vous n'êtes pas membre de cette conversation."},
+                status=status.HTTP_403_FORBIDDEN)
+        level = request.data.get('level')
+        try:
+            services.set_notification_level(member, level)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(conv).data)
 
     # ── S20 — gestion des membres d'un canal ──────────────────────────

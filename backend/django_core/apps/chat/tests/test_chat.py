@@ -721,3 +721,100 @@ class XKB24ThreadTests(TestCase):
             f'/api/django/chat/messages/{self.root.id}/reply/',
             {'body': 'intrus'}, format='json')
         self.assertEqual(r.status_code, 404)
+
+
+class XKB25NotificationLevelTests(TestCase):
+    """XKB25 — niveau de notification à 3 valeurs par conversation."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.alice = make_user(self.company, 'alice')
+        self.bob = make_user(self.company, 'bob')
+        self.conv = make_channel(self.company, self.alice, members=[self.bob])
+
+    def test_default_level_is_all_preserves_existing_behavior(self):
+        member = ConversationMember.objects.get(
+            conversation=self.conv, user=self.bob)
+        self.assertEqual(member.notification_level, 'all')
+        self.assertFalse(member.is_muted)
+
+    def test_set_level_muted_syncs_is_muted(self):
+        member = ConversationMember.objects.get(
+            conversation=self.conv, user=self.bob)
+        services.set_notification_level(member, 'muted')
+        member.refresh_from_db()
+        self.assertEqual(member.notification_level, 'muted')
+        self.assertTrue(member.is_muted)
+
+    def test_set_level_all_unsyncs_is_muted(self):
+        member = ConversationMember.objects.get(
+            conversation=self.conv, user=self.bob)
+        services.set_notification_level(member, 'muted')
+        services.set_notification_level(member, 'all')
+        member.refresh_from_db()
+        self.assertFalse(member.is_muted)
+
+    def test_invalid_level_rejected(self):
+        member = ConversationMember.objects.get(
+            conversation=self.conv, user=self.bob)
+        with self.assertRaises(ValueError):
+            services.set_notification_level(member, 'bogus')
+
+    @patch('apps.notifications.services.notify')
+    def test_mentions_only_level_filters_plain_messages(self, mock_notify):
+        member = ConversationMember.objects.get(
+            conversation=self.conv, user=self.bob)
+        services.set_notification_level(member, 'mentions')
+        services.create_message(
+            conversation=self.conv, sender=self.alice, company=self.company,
+            body='message ordinaire, pas de mention')
+        notified = {call.args[0] for call in mock_notify.call_args_list}
+        self.assertNotIn(self.bob, notified)
+
+    @patch('apps.notifications.services.notify')
+    def test_mentions_only_level_lets_mention_through(self, mock_notify):
+        member = ConversationMember.objects.get(
+            conversation=self.conv, user=self.bob)
+        services.set_notification_level(member, 'mentions')
+        services.create_message(
+            conversation=self.conv, sender=self.alice, company=self.company,
+            body='@bob regarde ça')
+        notified = {call.args[0] for call in mock_notify.call_args_list}
+        self.assertIn(self.bob, notified)
+
+    @patch('apps.notifications.services.notify')
+    def test_muted_level_blocks_everything_including_mentions(self, mock_notify):
+        member = ConversationMember.objects.get(
+            conversation=self.conv, user=self.bob)
+        services.set_notification_level(member, 'muted')
+        services.create_message(
+            conversation=self.conv, sender=self.alice, company=self.company,
+            body='@bob urgent')
+        notified = {call.args[0] for call in mock_notify.call_args_list}
+        self.assertNotIn(self.bob, notified)
+
+    def test_api_notification_level_endpoint(self):
+        api = auth(self.bob)
+        r = api.post(
+            f'/api/django/chat/conversations/{self.conv.id}'
+            f'/notification-level/', {'level': 'mentions'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        member = ConversationMember.objects.get(
+            conversation=self.conv, user=self.bob)
+        self.assertEqual(member.notification_level, 'mentions')
+
+    def test_api_notification_level_invalid_rejected(self):
+        api = auth(self.bob)
+        r = api.post(
+            f'/api/django/chat/conversations/{self.conv.id}'
+            f'/notification-level/', {'level': 'bogus'}, format='json')
+        self.assertEqual(r.status_code, 400)
+
+    def test_mute_endpoint_still_syncs_level(self):
+        api = auth(self.bob)
+        r = api.post(f'/api/django/chat/conversations/{self.conv.id}/mute/',
+                     {'muted': True}, format='json')
+        self.assertEqual(r.status_code, 200)
+        member = ConversationMember.objects.get(
+            conversation=self.conv, user=self.bob)
+        self.assertEqual(member.notification_level, 'muted')

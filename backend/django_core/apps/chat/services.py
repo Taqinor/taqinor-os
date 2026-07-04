@@ -154,10 +154,13 @@ def create_message(*, conversation, sender, company, body='', kind=None,
 
 
 def _notify_new_message(message, mentioned_users):
-    """S9 — notifie les autres membres non en sourdine ; @mention = plus fort.
+    """S9 — notifie les autres membres selon leur niveau de notification ;
+    @mention = plus fort.
 
     Réutilise le point d'entrée `notify()` (in-app + Web Push). Respecte les
-    préférences utilisateur et la sourdine PAR CONVERSATION."""
+    préférences utilisateur ET le niveau PAR CONVERSATION (XKB25 : tout /
+    mentions seulement / muet — l'existant `is_muted` reste préservé, il est
+    mappé vers `muted`)."""
     try:
         from apps.notifications.models import EventType
         from apps.notifications.services import notify
@@ -178,12 +181,18 @@ def _notify_new_message(message, mentioned_users):
     members = (ConversationMember.objects
                .filter(conversation=conv)
                .exclude(is_muted=True)
+               .exclude(notification_level=ConversationMember.NotificationLevel.MUTED)
                .select_related('user'))
     for m in members:
         u = m.user
         if u is None or (sender is not None and u.pk == sender.pk):
             continue
-        if u.pk in mentioned_ids:
+        is_mention = u.pk in mentioned_ids
+        # « Mentions seulement » : seuls les CHAT_MENTION passent.
+        if (m.notification_level == ConversationMember.NotificationLevel.MENTIONS
+                and not is_mention):
+            continue
+        if is_mention:
             event = EventType.CHAT_MENTION
             ntitle = f'{title} vous a mentionné'
         else:
@@ -193,6 +202,22 @@ def _notify_new_message(message, mentioned_users):
             notify(u, event, ntitle, body=preview, link=link, company=company)
         except Exception:  # pragma: no cover - défensif
             continue
+
+
+# ── XKB25 — niveau de notification par conversation ───────────────────
+
+def set_notification_level(member, level):
+    """Applique un niveau de notification à un `ConversationMember`, en
+    synchronisant `is_muted` pour compat ascendante (tout code lisant encore
+    `is_muted` voit `True` uniquement quand le niveau est `muted`)."""
+    from .models import ConversationMember
+    valid = dict(ConversationMember.NotificationLevel.choices)
+    if level not in valid:
+        raise ValueError('Niveau de notification invalide.')
+    member.notification_level = level
+    member.is_muted = (level == ConversationMember.NotificationLevel.MUTED)
+    member.save(update_fields=['notification_level', 'is_muted'])
+    return member
 
 
 def _conversation_title(conversation, sender):
