@@ -1161,6 +1161,36 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
                 {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
         return Response({'leves': leves}, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['post'], url_path='caviarder')
+    def caviarder(self, request, pk=None):
+        """XGED24 — Caviarde des zones du document sur une COPIE publiée
+        (l'original reste intact).
+
+        Corps : `{"zones": [{"page": <int 0-based>, "x0", "y0", "x1", "y1"
+        (%)}], "version": <id?>}`. Le texte sous les zones est SUPPRIMÉ (pas
+        un simple rectangle) via PyMuPDF (import gardé — 400 explicite sans
+        la lib). La copie devient un nouveau document lié à l'original via
+        `custom_data.caviarde_depuis`. Écriture : responsable/admin."""
+        document = self.get_object()
+        version_id = request.data.get('version')
+        version = (selectors.latest_version(document) if not version_id else
+                   DocumentVersion.objects.filter(
+                       company=request.user.company, document=document,
+                       pk=version_id).first())
+        if version is None:
+            return Response(
+                {'detail': 'Aucune version disponible pour le caviardage.'},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            new_doc = services.caviarder_document(
+                version, request.data.get('zones') or [],
+                created_by=request.user)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        data = DocumentSerializer(new_doc, context={'request': request}).data
+        return Response(data, status=status.HTTP_201_CREATED)
+
     @action(detail=True, methods=['post'], url_path='scinder')
     def scinder(self, request, pk=None):
         """XGED10 — Scinde ce document en segments (chaque segment = un nouveau

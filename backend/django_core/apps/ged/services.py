@@ -4826,3 +4826,73 @@ def executer_demande_disposition(demande, *, user):
         demande.executee_le = timezone.now()
         demande.save(update_fields=['statut', 'executee_le', 'updated_at'])
     return certificats
+
+
+# ── XGED24 — Outil de caviardage (redaction) ────────────────────────────────
+
+def caviarder_document(version, zones, *, created_by=None):
+    """XGED24 — Caviarde DÉFINITIVEMENT des zones d'un PDF sur une COPIE
+    publiée (le texte SOUS-JACENT est supprimé, pas un simple rectangle
+    décoratif) — l'ORIGINAL n'est JAMAIS modifié.
+
+    `zones` : liste de `{"page": <int 0-based>, "x0", "y0", "x1", "y1"}` en
+    POURCENTAGE (0-100) de la page — même convention que `AnnotationDocument`
+    (XGED16). Utilise PyMuPDF `add_redact_annot`/`apply_redactions` (import
+    PARESSEUX et GARDÉ) : sans la lib, lève `ValueError` explicite (jamais un
+    caviardage silencieusement faux, ex. juste un rectangle par-dessus qui
+    laisserait le texte extractible).
+
+    La copie devient un NOUVEAU `Document` (dans le même dossier que
+    l'original), dont `custom_data` trace l'origine
+    (`{'caviarde_depuis': <id original>}`) — pattern `source_type`/`source_id`
+    déjà utilisé pour les traces cross-app, pas un nouveau schéma de FK.
+    Respecte les gardes GED23/24 sur l'ORIGINAL (lecture seule — jamais
+    bloquant : caviarder ne MODIFIE pas l'original, seule une garde
+    `assert_not_document_lien` s'applique, XGED18). Renvoie le nouveau
+    `Document` créé."""
+    document = version.document
+    assert_not_document_lien(document, action='caviarder')
+    try:
+        import fitz  # PyMuPDF
+    except Exception:
+        raise ValueError(_pdf_lib_indisponible_message())
+    data, err = _fetch_version_bytes(version)
+    if err:
+        raise ValueError(err)
+    if not zones:
+        raise ValueError("Au moins une zone à caviarder est requise.")
+    doc = fitz.open(stream=data, filetype='pdf')
+    try:
+        for zone in zones:
+            page_no = int(zone.get('page', 0))
+            if page_no < 0 or page_no >= doc.page_count:
+                continue
+            page = doc[page_no]
+            rect = page.rect
+            x0 = rect.x0 + (float(zone.get('x0', 0)) / 100.0) * rect.width
+            y0 = rect.y0 + (float(zone.get('y0', 0)) / 100.0) * rect.height
+            x1 = rect.x0 + (float(zone.get('x1', 0)) / 100.0) * rect.width
+            y1 = rect.y0 + (float(zone.get('y1', 0)) / 100.0) * rect.height
+            page.add_redact_annot(
+                fitz.Rect(x0, y0, x1, y1), fill=(0, 0, 0))
+        for page in doc:
+            # Applique et APLATIT les rédactions : supprime réellement le
+            # texte/l'image sous la zone (pas seulement un rectangle visuel).
+            page.apply_redactions()
+        out_bytes = doc.tobytes()
+    finally:
+        doc.close()
+
+    nom = f'{document.nom} (caviardé)'
+    new_doc = create_document(
+        company=document.company, folder=document.folder, nom=nom,
+        description=document.description,
+        custom_data={'caviarde_depuis': document.pk},
+        created_by=created_by)
+    key, _meta = _store_bytes(out_bytes, mime='application/pdf')
+    add_version(
+        new_doc, file_key=key, company=document.company,
+        filename=f'{nom}.pdf', size=len(out_bytes),
+        mime='application/pdf', uploaded_by=created_by)
+    update_search_vector(new_doc)
+    return new_doc
