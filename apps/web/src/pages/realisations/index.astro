@@ -37,7 +37,6 @@ const totalLabel = total.toLocaleString('fr-FR', { minimumFractionDigits: 2, max
 // On met en avant des dimensions substantielles (puissance, villes, chantiers
 // visitables) plutôt qu'un total fixe de projets (cadrage W14, « récence »).
 const villesCount = new Set(REALISATIONS.map((r) => r.ville)).size;
-const mesureesCount = REALISATIONS.filter((r) => r.production).length;
 
 // Préparer les données lightbox pour chaque carte
 const galleryItems = REALISATIONS.map((r) => ({
@@ -54,7 +53,7 @@ const itemListJsonLd = {
   '@type': 'ItemList',
   name: 'Installations solaires Taqinor — visitables, production mesurée',
   description:
-    'Installations solaires réellement posées par Taqinor, visitables sur demande, avec un chiffre de production (mesuré ou, à défaut de relevé distinct, estimé à partir du rendement mesuré sur nos chantiers).',
+    'Installations solaires réellement posées par Taqinor, visitables sur demande, suivies en production sur Deye Cloud.',
   itemListElement: REALISATIONS.map((r, i) => ({
     '@type': 'ListItem',
     position: i + 1,
@@ -67,7 +66,7 @@ const itemListJsonLd = {
 
 <Layout
   title="Nos réalisations solaires au Maroc — installations suivies | Taqinor"
-  description="Les installations solaires réellement posées par Taqinor : villas de Casablanca, El Jadida et Nouaceur, puissance, production suivie et matériel posé. Études de cas détaillées."
+  description="Les installations solaires réellement posées par Taqinor : villas de Casablanca, El Jadida et Nouaceur, puissance, matériel posé et production suivie en continu sur Deye Cloud. Études de cas détaillées."
   ogSlug="accueil"
 >
   <script type="application/ld+json" set:html={JSON.stringify(itemListJsonLd)} />
@@ -110,16 +109,12 @@ const itemListJsonLd = {
         <h2 class="display v2-section-title mt-5 text-white">Installations visitables, production suivie</h2>
         <p class="v2-lead mt-5 text-lune-soft">
           Avant un devis, une visite s'organise : voir une installation Taqinor en fonctionnement,
-          poser des questions à un client existant, comparer une toiture à la vôtre. {mesureesCount} des{' '}
-          {REALISATIONS.length} chantiers présentés ci-dessous publient un chiffre de production —
-          issu du rendement mesuré sur nos chantiers suivis, pas une estimation commerciale de
-          catalogue.
+          poser des questions à un client existant, comparer une toiture à la vôtre. Pour chaque
+          chantier ci-dessous, la puissance posée et le matériel installé sont publiés tels quels.
         </p>
         <p class="mt-4 text-lune-soft">
-          C'est la différence entre une promesse et une preuve : la puissance posée et le matériel
-          installé sont publiés chantier par chantier ; la production est indiquée « estimée » tant
-          qu'un relevé Deye Cloud distinct par chantier n'est pas encore publié — sans arrondi ni
-          chiffre absent transformé en estimation muette.
+          Chaque installation est suivie sur Deye Cloud, avec accès client — la production s'y lit
+          en continu, au compteur.
         </p>
       </div>
     </section>

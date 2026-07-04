@@ -39,10 +39,13 @@ describe('réalisations — intégrité des faits', () => {
     expect(r134!.batterie).toBeNull();
   });
 
-  it('les productions publiées correspondent au site', () => {
-    expect(realisationByRef('468')!.production).toBe('21 406 kWh/an');
-    expect(realisationByRef('400')!.production).toBe('14 271 kWh/an');
-    expect(realisationByRef('236')!.production).toBe('7 135 kWh/an');
+  it('aucune production annuelle inventée : null pour toutes les installations (WB1)', () => {
+    for (const ref of ['468', '400', '236']) {
+      const r = realisationByRef(ref);
+      expect(r, ref).toBeTruthy();
+      expect(r!.production, ref).toBeNull();
+      expect(r!.productionNum, ref).toBeNull();
+    }
   });
 });
 

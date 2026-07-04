@@ -32,8 +32,7 @@ import BrandStrip from '../components/BrandStrip.astro';
 import ZelligeSignature from '../components/ZelligeSignature.astro';
 import { WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink, zeroFormWhatsappText } from '../lib/whatsapp';
-import { REGIE_MARGINAL_RATE_SECOND, REGIE_MARGINAL_RATE_HIGH } from '../lib/regieTariff';
-import { REALISATIONS, realisationBySlug } from '../lib/realisations';
+import { REALISATIONS, realisationBySlug, MEASURED_FLEET_LIFETIME_MWH_FR } from '../lib/realisations';
 import { YIELD_TABLE } from '../lib/yieldTable';
 
 const waDirect = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour une installation solaire.');
@@ -60,12 +59,14 @@ const featured = [...REALISATIONS].sort((a, b) => b.kwcNum - a.kwcNum)[0];
 // galerie (plus bas) explique honnêtement la nuance sans inviter au calcul.
 const casablancaSouthOptimalYield = YIELD_TABLE.casablanca.grid['0']['29'];
 
-// W205 — Le chiffre protagoniste de l’en-tête est séparé pour le count-up.
-// La largeur est réservée (tabular-nums + min-width verrouillée par JS) → zéro CLS.
-const heroFigure = (featured.productionNum ?? 0).toLocaleString('fr-FR');
-const heroTitleSuffix = ` kWh par an, produits sur un toit d’${featured.ville}.`;
+// WB1 (2026-07-04) — CHIFFRE HÉRO HONNÊTE : le cumul MESURÉ RÉEL de la flotte
+// Deye (MEASURED_FLEET, realisations.ts), pas un annuel fabriqué par install.
+// Cumul « depuis la mise en service », jamais une projection. Rendu statique
+// (plus de count-up) → LCP peint immédiatement, aucun flash.
+const heroFigure = MEASURED_FLEET_LIFETIME_MWH_FR; // « 6,56 »
+const heroTitleSuffix = ' MWh déjà produits et mesurés sur nos installations.';
 const heroSub =
-  `Installation réf. ${featured.ref} — ${featured.kwc}, dimensionnée et posée par Taqinor. La vôtre commence par un diagnostic de 60 secondes.`;
+  'Un cumul réel, relevé en continu sur Deye Cloud — pas une projection commerciale. Votre étude commence par un diagnostic de 60 secondes.';
 
 // W267 — Sous-ligne monétaire du héros. AUCUN chiffre inventé : la
 // consommation réelle du foyer réf. 468 n'est publiée nulle part sur le site,
@@ -81,17 +82,14 @@ const heroSub =
 // Fourchette (jamais un chiffre unique) : reflète le fait que l'autoconsommation
 // réelle du foyer n'est pas connue — poser une seule valeur ponctuelle
 // inventerait une précision qu'on n'a pas.
-const heroProductionKwh = featured.productionNum ?? 0;
-const heroTariffLowRate = REGIE_MARGINAL_RATE_SECOND; // 1,3817 MAD/kWh
-const heroTariffHighRate = REGIE_MARGINAL_RATE_HIGH; // 1,5958 MAD/kWh
-const heroMoneyLow = Math.round((heroProductionKwh * heroTariffLowRate) / 100) * 100;
-const heroMoneyHigh = Math.round((heroProductionKwh * heroTariffHighRate) / 100) * 100;
+// WB1 (2026-07-04) — sous-ligne monétaire du héros RETIRÉE : elle valorisait
+// la production ANNUELLE fabriquée (21 406 kWh) au tarif RÉGIE. Aucune donnée
+// annuelle réelle n'existe → aucun chiffre monétaire dérivé ne peut être honnête.
 // WB2 (2026-07-04) — qualificatif d'autoconsommation ajouté : sans tarif de
 // rachat BT (résidentiel) publié, seule la part autoconsommée efface
 // réellement la facture ; le surplus injecté ne vaut 0 MAD tant qu'aucun
 // barème n'existe. Voir /loi-82-21 (ANRE 04/26 : MT/HT/THT publié, BT non
 // publié).
-const heroMoneyLine = `≈ ${heroMoneyLow.toLocaleString('fr-FR')} à ${heroMoneyHigh.toLocaleString('fr-FR')} MAD effacés de la facture chaque année, pour la part autoconsommée`;
 
 // W54 — L'ancien tableau de données (variable `cases`) a été retiré : les
 // mêmes installations vivaient en double (cartes photo + cartes données). La
@@ -118,7 +116,7 @@ const galleryRaw = [
   { name: 'reflet-468', alt: 'Le soleil se reflète sur la rangée de panneaux pendant la pose, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: true, type: '24 × Canadian Solar 710 Wc · Deye 15 kW', slug: 'el-jadida-17-kwc' },
   { name: 'equipe-trois', alt: 'Équipe Taqinor devant la longue rangée de panneaux en fin de chantier, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: false, type: 'Fin de chantier · équipe Taqinor', slug: 'el-jadida-17-kwc' },
   { name: 'hero-skyline', alt: 'Rangée de panneaux solaires devant la skyline de Casablanca et un minaret, lumière dorée', widths: [2000, 1280, 768, 480], ratio: 16 / 9, showProd: true, type: '16 × Canadian Solar 710 Wc · Deye 10 kW', slug: 'casablanca-11-kwc' },
-  { name: 'portrait-400', alt: "L'ingénieur devant le champ de panneaux, skyline de Casablanca", widths: [1600, 1024, 640], ratio: 4 / 3, showProd: false, type: 'Production estimée — rendement mesuré', slug: 'casablanca-11-kwc' },
+  { name: 'portrait-400', alt: "L'ingénieur devant le champ de panneaux, skyline de Casablanca", widths: [1600, 1024, 640], ratio: 4 / 3, showProd: false, type: 'Suivi en production sur Deye Cloud', slug: 'casablanca-11-kwc' },
   { name: 'champ-villa', alt: 'Champ de huit panneaux sur toit plat de villa, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: true, type: '8 × Canadian Solar 710 Wc · Deye 5 kW', slug: 'el-jadida-6-kwc' },
   { name: 'pose-134', alt: "L'équipe incline un panneau pendant la pose, Casablanca", widths: [1600, 1024, 640], ratio: 4 / 3, showProd: true, type: 'Pose en cours · 8 × Canadian Solar 710 Wc', slug: 'casablanca-6-kwc' },
   { name: 'equipe-gilet-taqinor', alt: "Installateur en gilet Taqinor posant les rails d'une structure, Nouaceur", widths: [1600, 1024, 640], ratio: 1, showProd: false, type: 'Pose des rails · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
@@ -253,7 +251,7 @@ const engineeringPillars = [
 
 <Layout
   title="Taqinor — Installations solaires au Maroc, conformes loi 82-21"
-  description="21 406 kWh produits en un an sur un toit d'El Jadida, relevés sur Deye Cloud : installations solaires pour villas, industries et hôtels au Maroc, dimensionnées sur votre facture et déclarées loi 82-21."
+  description="Installations solaires pour villas, industries et hôtels au Maroc : dimensionnées sur votre facture, déclarées loi 82-21, et suivies en production réelle sur Deye Cloud."
   ogSlug="accueil"
   preloadHeroPoster
 >
@@ -315,13 +313,13 @@ const engineeringPillars = [
           112→118 % (reveal + survol), pur CSS, voir global.css. */}
       <div class="mx-auto w-full max-w-6xl px-4 pb-24 pt-32 sm:pb-32">
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">L'étude d'abord, le chantier ensuite</p>
-        <h1 id="hero-title" class="display v2-hero-title hero-title-sweep cine-in cine-in-1 mt-6 max-w-[15ch]">
-          <span data-hero-tally class="font-variant-numeric tabular-nums">{heroFigure}</span>{heroTitleSuffix}
+        {/* WB1 (2026-07-04) — Titre héros STATIQUE : plus de count-up ni de
+            `.cine-in` sur l'élément LCP → il est peint immédiatement, aucun
+            flash « apparaît puis disparaît ». Le chiffre porte dir="ltr" pour
+            rester correct en arabe. */}
+        <h1 id="hero-title" class="display v2-hero-title hero-title-sweep mt-6 max-w-[15ch]">
+          <span class="font-variant-numeric tabular-nums" dir="ltr">{heroFigure}</span>{heroTitleSuffix}
         </h1>
-        {/* W267 — l'argent en tête, le kWh reste la crédibilité derrière.
-            Fourchette honnête (jamais un chiffre ponctuel) dérivée du tarif
-            marginal réel du barème RÉGIE — voir le commentaire de calcul plus haut. */}
-        <p class="cine-in cine-in-2 mt-4 max-w-xl text-lg font-bold text-brass-300 sm:text-xl">{heroMoneyLine}</p>
         <p class="v2-lead cine-in cine-in-2 mt-4 max-w-xl text-white/85">{heroSub}</p>
         <div class="cine-in cine-in-3 mt-10 flex flex-wrap items-center gap-3">
           {/* UN seul CTA brass (discipline laiton) — l'or est ici autorisé.
@@ -749,13 +747,10 @@ const engineeringPillars = [
           <p class="fig lum mt-3 text-4xl" data-tally>{featured.kwc}</p>
           <p class="tech-label mt-1 text-lune-faint">{featured.ville} · {featured.date}</p>
           <p class="mt-4 text-sm leading-relaxed text-lune-soft">
-            Production : <strong class="text-brass-300" data-tally>{featured.production}</strong><br />
             {[featured.panneaux, featured.onduleur, featured.batterie].filter(Boolean).join(' · ')}
           </p>
           <p class="mt-4 border-t border-white/10 pt-3 text-xs text-lune-faint">
-            {featured.productionEstimated
-              ? 'Production estimée à partir du rendement mesuré de nos chantiers. Visites de site possibles sur demande.'
-              : 'Production mesurée — Deye Cloud. Visites de site possibles sur demande.'}
+            Installation suivie sur Deye Cloud, accès client inclus. Visites de site possibles sur demande.
           </p>
         </aside>
       </div>
@@ -971,47 +966,9 @@ const engineeringPillars = [
   }
 </script>
 
-<script>
-  // W205 — Count-up sur le chiffre protagoniste héro (21 406).
-  // Reduced-motion safe : la valeur finale est affichée immédiatement.
-  // Anti-CLS : la largeur finale est verrouillée AVANT toute animation.
-  import { formatFrame, shouldDigitRoll } from '../lib/countup';
-
-  const el = document.querySelector<HTMLElement>('[data-hero-tally]');
-  if (el) {
-    const finalText = el.textContent ?? '';
-    // Réserve la largeur (anti-CLS) avant toute animation
-    if (getComputedStyle(el).display.startsWith('inline')) {
-      const w = el.getBoundingClientRect().width;
-      el.style.display = 'inline-block';
-      el.style.minWidth = w + 'px';
-    }
-
-    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (reduce || !shouldDigitRoll(finalText)) {
-      // Reduced-motion ou valeur composée → valeur finale immédiate
-      el.textContent = finalText;
-    } else {
-      // Count-up dès la première vue (l'élément est above-the-fold)
-      const dur = 1400; // légèrement plus lent que les stats pour son statut de protagoniste
-      let start: number | null = null;
-      function frame(t: number) {
-        if (start === null) start = t;
-        const p = Math.min(1, (t - start) / dur);
-        const e = 1 - Math.pow(1 - p, 3); // easeOutCubic
-        el!.textContent = formatFrame(finalText, e);
-        if (p < 1) requestAnimationFrame(frame);
-        else el!.textContent = finalText;
-      }
-      // Déclenché au chargement (above-the-fold) avec un délai minimal pour
-      // laisser le navigateur peindre l'affiche d'abord.
-      const kick = () => requestAnimationFrame(frame);
-      if (document.readyState === 'complete') kick();
-      else addEventListener('load', kick, { once: true });
-    }
-  }
-</script>
-
+{/* WB1/Perf (2026-07-04) — Script count-up du chiffre héros SUPPRIMÉ : le
+    chiffre est désormais rendu statique (LCP peint tout de suite, aucun flash),
+    et on évite un 2ᵉ requestAnimationFrame en double du count-up de V2Enhance. */}
 <script>
   // W365 — Balayage de lumière laiton, une seule fois, sur le titre héros.
   // Armé UNIQUEMENT après `load` (jamais avant : aucune peinture supplémentaire

@@ -1,9 +1,11 @@
 ---
 /**
  * EN — Residential solar (W67). Faithful translation of /résidentiel ; EVERY
- * figure kept EXACT in Latin digits (11,36 kWc, 14 271 kWh/an, 60–90 %, 3–7 years,
+ * figure kept EXACT in Latin digits (11,36 kWc, 60–90 %, 3–7 years,
  * 30 years, < 11 kW, 1 000 / 2 000 / 10 000 MAD, ref. 400/236/468/NC-10/25,
- * Canadian Solar 710 Wc, Deye, Dyness LFP, Deye Cloud, ONEE, law 82-21). The
+ * Canadian Solar 710 Wc, Deye, Dyness LFP, Deye Cloud, ONEE, law 82-21). WB —
+ * fabricated annual kWh production figures removed (no real Deye reading
+ * backed them); production is monitored on Deye Cloud, never promised. The
  * price-bracket data + solar math (BILL_RANGES / localEstimateBand / formatMAD)
  * are reused UNCHANGED — only visible labels are translated. Internal links via
  * localizeNavHref. Shared components (GarantiesTeaser, Testimonials) auto-detect
@@ -84,7 +86,7 @@ const investRangeHigh = formatMAD(Math.max(...brackets.map((b) => b.investHigh))
 
 <Layout
   title="Solar for villas and apartments in Morocco — costed on your bill | Taqinor"
-  description="11,36 kWc in Casablanca, 14 271 kWh measured: our residential installations sized on your real bill, with honest orders of magnitude, a 3- to 7-year payback and the law 82-21 declaration."
+  description="11,36 kWc in Casablanca, tracked on Deye Cloud: our residential installations sized on your real bill, with honest orders of magnitude, a 3- to 7-year payback and the law 82-21 declaration."
   ogSlug="residentiel"
 >
   <div class="v2">
@@ -145,11 +147,11 @@ const investRangeHigh = formatMAD(Math.max(...brackets.map((b) => b.investHigh))
         <p class="tech-label text-brass-600">Study excerpt — ref. 400 · Casablanca · April 2026</p>
         <div class="mt-5 grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-4">
           <div><p class="fig text-3xl text-azur-600 sm:text-4xl">11,36 <span class="text-base">kWc</span></p><p class="tech-label mt-1.5 text-encre-faint">Installed power</p></div>
-          <div><p class="fig text-3xl text-azur-600 sm:text-4xl">14 271 <span class="text-base">kWh/an</span></p><p class="tech-label mt-1.5 text-encre-faint">Measured production</p></div>
           <div><p class="fig text-3xl text-azur-600 sm:text-4xl">16 <span class="text-base">panels</span></p><p class="tech-label mt-1.5 text-encre-faint">Canadian Solar 710 Wc</p></div>
           <div><p class="fig text-3xl text-azur-600 sm:text-4xl">10 <span class="text-base">kWh</span></p><p class="tech-label mt-1.5 text-encre-faint">Dyness LFP storage</p></div>
+          <div><p class="fig text-3xl text-azur-600 sm:text-4xl">Deye <span class="text-base">Cloud</span></p><p class="tech-label mt-1.5 text-encre-faint">Monitoring, client access</p></div>
         </div>
-        <p class="mt-5 border-t border-azur-900/10 pt-3 text-xs text-encre-soft">Production tracked on Deye Cloud — client access included.</p>
+        <p class="mt-5 border-t border-azur-900/10 pt-3 text-xs text-encre-soft">Production tracked continuously on Deye Cloud, client access.</p>
       </aside>
     </section>
 
@@ -233,7 +235,7 @@ const investRangeHigh = formatMAD(Math.max(...brackets.map((b) => b.investHigh))
               widths={[1600, 1024, 640]} ratio={4 / 3} sizes="(min-width: 1024px) 40vw, 100vw"
               class="v3-grade w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
             <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
-              <span class="tech-label block text-brass-300">Casablanca · 5,68 kWc · 7 135 kWh/an</span>
+              <span class="tech-label block text-brass-300">Casablanca · 5,68 kWc</span>
               <span class="mt-0.5 block text-xs text-lune">Install in progress · 8 × Canadian Solar 710 Wc · March 2026</span>
             </figcaption>
           </figure>
@@ -242,8 +244,8 @@ const investRangeHigh = formatMAD(Math.max(...brackets.map((b) => b.investHigh))
               widths={[1600, 1024, 640]} ratio={3 / 2} sizes="(min-width: 1024px) 40vw, 100vw"
               class="v3-grade w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
             <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
-              <span class="tech-label block text-brass-300">El Jadida · 5,68 kWc · 7 135 kWh/an</span>
-              <span class="mt-0.5 block text-xs text-lune">8 × Canadian Solar 710 Wc · Deye 5 kW · measured production Deye Cloud</span>
+              <span class="tech-label block text-brass-300">El Jadida · 5,68 kWc</span>
+              <span class="mt-0.5 block text-xs text-lune">8 × Canadian Solar 710 Wc · Deye 5 kW · monitored on Deye Cloud</span>
             </figcaption>
           </figure>
         </div>

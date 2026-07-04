@@ -37,9 +37,16 @@ const rays = Array.from({ length: 8 }, (_, i) => {
 });
 ---
 
+{/* Bug-fix (2026-07-04) : le mot-marque LATIN « TAQINOR » ne doit JAMAIS être
+    miroité en arabe. Le conteneur est `inline-flex` : sous <html dir="rtl"> il
+    héritait `direction:rtl`, ce qui INVERSE l'ordre visuel des items flex →
+    « TAQIN · soleil · R » se lisait « R · soleil · TAQIN » (« ROTAQIN »). On
+    force `dir="ltr"` + `unicode-bidi:isolate` sur la racine pour l'extraire de
+    tout contexte bidi RTL — le logo reste identique dans les trois locales. */}
 <span
+  dir="ltr"
   class="inline-flex items-center font-display"
-  style={`font-weight:800;font-size:${size}px;color:${textColor};line-height:1;letter-spacing:0.02em;`}
+  style={`font-weight:800;font-size:${size}px;color:${textColor};line-height:1;letter-spacing:0.02em;unicode-bidi:isolate;`}
   aria-label="TAQINOR"
 >
   <span aria-hidden="true">TAQIN</span>

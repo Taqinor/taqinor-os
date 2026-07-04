@@ -74,8 +74,9 @@ describe('cityContentBySlug — locale-aware, additif', () => {
       expect(cc.sunshineContext).toMatch(new RegExp(`2${SEP}950`));
       // Le numéro de loi 82-21 reste exact dans le pilier conformité.
       expect(cc.pillars.compliance.body).toContain('82-21');
-      // Production réelle Casablanca = 14 271 / 14,271 kWh, jamais altérée.
-      expect(cc.heroLead).toMatch(new RegExp(`14${SEP}271`));
+      // WB1 (2026-07-04) : le chiffre de production annuel « 14 271 » était
+      // fabriqué — retiré du contenu Casablanca ; il ne doit jamais réapparaître.
+      expect(cc.heroLead).not.toMatch(new RegExp(`14${SEP}271`));
     }
   });
 });
@@ -102,10 +103,18 @@ describe('caseStudyBySlug — locale-aware, additif', () => {
     }
   });
 
-  it('le FR du resume vaut EXACTEMENT le resume de realisations.ts (rendu inchangé)', () => {
+  it('le FR du resume ne contient jamais de production annuelle fabriquée (WB1)', () => {
+    // WB1 (2026-07-04) : la production annuelle fabriquée (21 406 / 14 271 /
+    // 7 135) a été retirée partout, et les resumes de caseStudies.ts ont été
+    // reformulés honnêtement (suivi Deye Cloud, sans chiffre projeté). On ne
+    // vérifie donc plus une égalité octet-pour-octet avec realisations.ts —
+    // seulement l'invariant d'intégrité : aucun chiffre annuel fabriqué ne
+    // reparaît, et chaque resume reste non vide.
+    const BANNED = /(21[\s,]?406|14[\s,]?271|7[\s,]?135)/;
     for (const r of REALISATIONS) {
       const cs = caseStudyBySlug(r.slug, 'fr');
-      expect(cs.resume).toBe(r.resume);
+      expect(cs.resume, r.ref).toBeTruthy();
+      expect(cs.resume, r.ref).not.toMatch(BANNED);
     }
   });
 
@@ -116,12 +125,16 @@ describe('caseStudyBySlug — locale-aware, additif', () => {
     expect(ar.situation).toMatch(/[؀-ۿ]/);
   });
 
-  it('les chiffres/réfs/productions ne sont jamais altérés ni inventés', () => {
-    // El Jadida 17 kWc : 21 406 kWh + réf 468 présents dans toutes les locales.
+  it('les chiffres/réfs ne sont jamais altérés ni inventés ; aucune production annuelle fabriquée (WB1)', () => {
+    // El Jadida 17 kWc : réf 468 présente dans toutes les locales, mais plus
+    // aucun chiffre annuel « 21 406 » (WB1 : retiré, fabriqué) — le récit reste
+    // honnête (suivi Deye Cloud, sans chiffre projeté).
     for (const loc of ['fr', 'en', 'ar'] as const) {
       const cs = caseStudyBySlug('el-jadida-17-kwc', loc);
-      expect(cs.description).toMatch(/21[\s,]?406/);
+      expect(cs.description).not.toMatch(/21[\s,]?406/);
+      expect(cs.result).not.toMatch(/21[\s,]?406/);
       expect(cs.title).toContain('468');
+      expect(cs.description).toMatch(/17[,.]04/);
     }
     // Nouaceur (production null) : aucune locale n’invente un chiffre de production.
     for (const loc of ['fr', 'en', 'ar'] as const) {

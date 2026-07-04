@@ -2,9 +2,11 @@
 /**
  * AR — Residential solar (W67, RTL). Faithful Arabic translation of
  * /résidentiel ; EVERY figure kept EXACT in Latin digits (11,36 kWc,
- * 14 271 kWh/an, 60–90 %, 3–7 years, 30 years, < 11 kW, 1 000 / 2 000 / 10 000 MAD,
+ * 60–90 %, 3–7 years, 30 years, < 11 kW, 1 000 / 2 000 / 10 000 MAD,
  * ref. 400/236/468/NC-10/25, Canadian Solar 710 Wc, Deye, Dyness LFP,
- * Deye Cloud, ONEE, law 82-21). The price-bracket data + solar math
+ * Deye Cloud, ONEE, law 82-21). WB — fabricated annual kWh production
+ * figures removed (no real Deye reading backed them); production is
+ * monitored on Deye Cloud, never promised. The price-bracket data + solar math
  * (BILL_RANGES / localEstimateBand / formatMAD) are reused UNCHANGED — only
  * visible labels are translated. Internal links via localizeNavHref. Shared
  * components auto-detect locale. FR untouched.
@@ -104,7 +106,7 @@ const investRangeHigh = formatMAD(Math.max(...brackets.map((b) => b.investHigh))
 
 <Layout
   title="الطاقة الشمسية للفيلات والشقق بالمغرب — مُسعّرة على فاتورتك | Taqinor"
-  description="11,36 kWc بالدار البيضاء، 14 271 kWh مُقدَّرة: تركيباتنا السكنية مُحدّدة المقاس على فاتورتك الحقيقية، بأوامر مقدار صادقة، عائد في 3 إلى 7 سنوات وتصريح القانون 82-21."
+  description="11,36 kWc بالدار البيضاء، مُتابَعة على Deye Cloud: تركيباتنا السكنية مُحدّدة المقاس على فاتورتك الحقيقية، بأوامر مقدار صادقة، عائد في 3 إلى 7 سنوات وتصريح القانون 82-21."
   ogSlug="residentiel"
 >
   <div class="v2">
@@ -160,11 +162,11 @@ const investRangeHigh = formatMAD(Math.max(...brackets.map((b) => b.investHigh))
         <p class="tech-label text-brass-600">مقتطف دراسة — مرجع 400 · الدار البيضاء · أبريل 2026</p>
         <div class="mt-5 grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-4">
           <div><p class="fig text-3xl text-azur-600 sm:text-4xl">11,36 <span class="text-base">kWc</span></p><p class="tech-label mt-1.5 text-encre-faint">القدرة المركّبة</p></div>
-          <div><p class="fig text-3xl text-azur-600 sm:text-4xl">14 271 <span class="text-base">kWh/an</span></p><p class="tech-label mt-1.5 text-encre-faint">الإنتاج المُقدَّر</p></div>
           <div><p class="fig text-3xl text-azur-600 sm:text-4xl">16 <span class="text-base">ألواح</span></p><p class="tech-label mt-1.5 text-encre-faint">Canadian Solar 710 Wc</p></div>
           <div><p class="fig text-3xl text-azur-600 sm:text-4xl">10 <span class="text-base">kWh</span></p><p class="tech-label mt-1.5 text-encre-faint">تخزين Dyness LFP</p></div>
+          <div><p class="fig text-3xl text-azur-600 sm:text-4xl">Deye <span class="text-base">Cloud</span></p><p class="tech-label mt-1.5 text-encre-faint">مراقبة، بولوج الزبون</p></div>
         </div>
-        <p class="mt-5 border-t border-azur-900/10 pt-3 text-xs text-encre-soft">الإنتاج مُقدَّر انطلاقاً من العائد المقاس على تركيباتنا.</p>
+        <p class="mt-5 border-t border-azur-900/10 pt-3 text-xs text-encre-soft">الإنتاج يُتابَع باستمرار على Deye Cloud، بولوج الزبون.</p>
       </aside>
     </section>
 

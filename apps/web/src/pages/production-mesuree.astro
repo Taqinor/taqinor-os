@@ -31,7 +31,7 @@ import Callout from '../components/Callout.astro';
 import RelatedLinks from '../components/RelatedLinks.astro';
 import CtaBand from '../components/CtaBand.astro';
 import StickyCta from '../components/StickyCta.astro';
-import { REALISATIONS } from '../lib/realisations';
+import { REALISATIONS, MEASURED_FLEET, MEASURED_FLEET_LIFETIME_MWH } from '../lib/realisations';
 import { FACTS_GENERATED_AT } from '../lib/facts';
 
 // ── Chiffres dérivés — AUCUNE valeur saisie à la main ────────────────────────
@@ -41,18 +41,13 @@ import { FACTS_GENERATED_AT } from '../lib/facts';
 const kwcTotal = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
 const kwcTotalLabel = kwcTotal.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-const withMeasuredProduction = REALISATIONS.filter((r) => r.productionNum !== null);
-const productionTotal = withMeasuredProduction.reduce((sum, r) => sum + (r.productionNum ?? 0), 0);
+// WB1 (2026-07-04) : la production ANNUELLE par installation a été retirée
+// (fabriquée — même facteur impossible sur 4 sites). Le seul chiffre de
+// production réel est le CUMUL mesuré de la flotte suivie sur Deye Cloud
+// (MEASURED_FLEET, realisations.ts) — cumul « depuis la mise en service »,
+// JAMAIS annualisé.
+const productionTotal = Math.round(MEASURED_FLEET_LIFETIME_MWH * 1000); // 6,56 MWh → 6 560 kWh
 const productionTotalLabel = productionTotal.toLocaleString('fr-FR');
-
-const notYetPublished = REALISATIONS.filter((r) => r.productionNum === null);
-
-// WB1 (2026-07-04) — certains chiffres de production publiés sont ESTIMÉS à
-// partir du rendement mesuré de nos chantiers (pas un relevé Deye Cloud
-// distinct par site — voir la note d'intégrité dans realisations.ts). Cette
-// page ne peut donc plus dire "rien d'estimé" tant que ces relevés distincts
-// ne sont pas publiés ; le callout ci-dessous le dit honnêtement.
-const anyEstimated = withMeasuredProduction.some((r) => r.productionEstimated);
 
 const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 const generatedDateLabel = dateFmt.format(new Date(FACTS_GENERATED_AT));
@@ -61,7 +56,7 @@ const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Dataset',
   name: 'Production solaire suivie — parc Taqinor',
-  description: `Cumul de production (mesurée ou, à défaut de relevé distinct, estimée à partir du rendement mesuré) sur ${withMeasuredProduction.length} installations Taqinor suivies, arrêté au ${generatedDateLabel} : ${productionTotalLabel} kWh/an.`,
+  description: `Cumul de production mesuré sur la flotte suivie (Deye Cloud, ${MEASURED_FLEET.length} centrales), arrêté au ${generatedDateLabel} : ${productionTotalLabel} kWh cumulés.`,
   temporalCoverage: FACTS_GENERATED_AT,
   creator: { '@type': 'Organization', name: 'Taqinor', url: 'https://taqinor.ma' },
 };
@@ -69,7 +64,7 @@ const jsonLd = {
 
 <Layout
   title="Production solaire suivie — le cumul réel de notre parc | Taqinor"
-  description={`${productionTotalLabel} kWh/an cumulés sur ${withMeasuredProduction.length} installations Taqinor suivies, cumul arrêté au ${generatedDateLabel} — rien d'arrondi, rien de gonflé.`}
+  description={`${productionTotalLabel} kWh cumulés sur la flotte suivie (Deye Cloud), cumul arrêté au ${generatedDateLabel} — rien d'arrondi, rien de gonflé.`}
   ogSlug="equipement"
 >
   <div class="v2">
@@ -85,9 +80,9 @@ const jsonLd = {
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">Transparence continue</p>
         <h1 class="display v2-page-title cine-in cine-in-1 mt-6">Production suivie</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
-          Pas une brochure : un compteur qui roule. Ce que nos installations produisent,
-          suivi par leur propre monitoring, cumulé au fil des chantiers documentés
-          — arrêté aujourd'hui au <strong class="text-white">{generatedDateLabel}</strong>.
+          Pas une brochure : un compteur qui roule. Ce que la flotte suivie sur Deye Cloud a
+          réellement produit depuis sa mise en service, en cumul — arrêté aujourd'hui au{' '}
+          <strong class="text-white">{generatedDateLabel}</strong>.
         </p>
       </div>
     </section>
@@ -101,33 +96,20 @@ const jsonLd = {
           <KeyFigure value={kwcTotalLabel} unit="kWc" label="Puissance installée">
             Cumul des réalisations publiées.
           </KeyFigure>
-          <KeyFigure value={productionTotalLabel} unit="kWh/an" label="Production suivie">
-            Sur les chantiers suivis (mesurée ou estimée à partir du rendement mesuré).
+          <KeyFigure value={productionTotalLabel} unit="kWh cumulés" label="Production suivie">
+            Cumul relevé sur la flotte suivie (Deye Cloud) depuis la mise en service — jamais
+            annualisé.
           </KeyFigure>
-          <KeyFigure value={String(withMeasuredProduction.length)} unit="chantiers suivis" label="Monitoring publié">
-            Les chantiers sans production publiée ne sont jamais comptés comme zéro.
+          <KeyFigure value={String(MEASURED_FLEET.length)} unit="centrales suivies" label="Monitoring publié">
+            Flotte suivie en direct sur Deye Cloud.
           </KeyFigure>
         </div>
         <Callout type="info" title="Comment ce chiffre est mis à jour">
           <p>
-            Ce cumul est recalculé à chaque export Deye Cloud republié dans nos réalisations
-            (cadence indicative : à chaque nouveau chantier documenté). La date ci-dessus est
-            celle du dernier arrêté — jamais une moyenne glissante, jamais une projection.
-            {notYetPublished.length > 0 && (
-              <>
-                {' '}Aujourd'hui, {notYetPublished.length} installation{notYetPublished.length > 1 ? 's' : ''} sur le
-                site {notYetPublished.length > 1 ? "n'ont" : "n'a"} pas encore de production publiée —{' '}
-                {notYetPublished.length > 1 ? 'elles ne sont' : "elle n'est"} pas comptée dans le cumul ci-dessus.
-              </>
-            )}
-            {anyEstimated && (
-              <>
-                {' '}Certains chiffres ci-dessus sont estimés à partir du rendement mesuré de nos
-                chantiers suivis plutôt que d'un relevé Deye Cloud distinct pour chaque site — jamais
-                un chiffre de catalogue, jamais gonflé, mais pas encore un relevé individuel. Chaque
-                étude de cas le précise.
-              </>
-            )}
+            Ce cumul est recalculé à chaque export Deye Cloud republié (cadence indicative : à
+            chaque nouveau chantier suivi ajouté à la flotte). La date ci-dessus est celle du
+            dernier arrêté — jamais une moyenne glissante, jamais une projection. Le cumul mesuré
+            est relevé en continu sur Deye Cloud, recalculé à chaque nouveau chantier documenté.
           </p>
         </Callout>
       </div>
@@ -148,9 +130,7 @@ const jsonLd = {
             <div class="v2-rise flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-azur-900/15 px-5 py-4" style={`--v2-i:${i}`}>
               <span class="text-sm font-semibold">{r.ville} · {r.kwc} · réf. {r.ref} · {r.date}</span>
               <span class="whitespace-normal text-right text-sm text-azur-600">
-                {r.production
-                  ? `${r.production} ${r.productionEstimated ? 'estimés' : 'mesurés'}`
-                  : 'production non encore publiée'}
+                {[r.onduleur, r.batterie].filter(Boolean).join(' · ') || r.panneaux}
               </span>
             </div>
           ))}

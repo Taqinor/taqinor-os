@@ -37,8 +37,7 @@ import { WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink, zeroFormWhatsappText } from '../../lib/whatsapp';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
-import { REGIE_MARGINAL_RATE_SECOND, REGIE_MARGINAL_RATE_HIGH } from '../../lib/regieTariff';
-import { REALISATIONS, realisationBySlug } from '../../lib/realisations';
+import { REALISATIONS, realisationBySlug, MEASURED_FLEET_LIFETIME_MWH_FR } from '../../lib/realisations';
 import { YIELD_TABLE } from '../../lib/yieldTable';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
@@ -68,33 +67,14 @@ const casablancaSouthOptimalYield = YIELD_TABLE.casablanca.grid['0']['29'];
 const CITY_AR: Record<string, string> = { 'El Jadida': 'الجديدة', 'Casablanca': 'الدار البيضاء', 'Nouaceur': 'النواصر' };
 const featuredVilleAr = CITY_AR[featured.ville] ?? featured.ville;
 
-// W205 — The protagonist figure of the headline is separated for the count-up.
-// Its width is reserved (tabular-nums + JS-locked min-width) → zero CLS.
-const heroFigure = (featured.productionNum ?? 0).toLocaleString('fr-FR');
-const heroTitleSuffix = ` kWh في السنة، منتَجة على سطح في ${featuredVilleAr}.`;
+// القاعدة ب1 (2026-07-04) — رقم البطل الصادق: التراكم الحقيقي المقاس لأسطول
+// Deye (MEASURED_FLEET، realisations.ts)، لا رقمًا سنويًا مُختلَقًا لكل تركيب.
+// تراكم «منذ التشغيل»، أبداً لا توقّعاً. رندر ثابت (لا مزيد من count-up) →
+// LCP يُرسَم فورًا، بلا أي وميض.
+const heroFigure = MEASURED_FLEET_LIFETIME_MWH_FR; // « 6,56 »
+const heroTitleSuffix = ` MWh أُنتِجت ومُقيسة فعلاً على تركيباتنا.`;
 const heroSub =
-  `تركيب رقم ${featured.ref} — ${featured.kwc}، مُحجَّم ومُركَّب من طرف Taqinor. تركيبكم يبدأ بتشخيص في 60 ثانية.`;
-
-// W267 — السطر المالي تحت البطل. بلا أي رقم مخترَع: الاستهلاك الحقيقي لأسرة
-// المرجع 468 غير منشور في أي مكان بالموقع، لذا لا يمكن استدعاء
-// `annualSavingsMad(production, consumption)` بدون اختراع هذا المتغيّر الثاني.
-// الاشتقاق الوحيد الصادق من المعطى المنشور الوحيد (21 406 kWh مُنتَجة) هو
-// تثمين هذا الإنتاج بالتعريفة الحدّية الحقيقية لبارِم RÉGIE
-// (REGIE_TARIFF.selective، الشطرتان الأعلى — منسجم مع «أكبر تركيبة سكنية لنا
-// في 2026»، أي أسرة في أعلى الفئات بلا أي التباس): وهذا بالضبط نفس مجال
-// «≈ 1,38–1,60 MAD/kWh» المنشور والموثَّق سلفاً في billRange.ts /
-// recharge-voiture-electrique-solaire.astro. مجال (لا رقم واحد أبداً): لأن
-// الاستهلاك الذاتي الحقيقي للأسرة غير معروف، فرقم واحد سيخترع دقّة لا نملكها.
-const heroProductionKwh = featured.productionNum ?? 0;
-const heroTariffLowRate = REGIE_MARGINAL_RATE_SECOND; // 1,3817 MAD/kWh
-const heroTariffHighRate = REGIE_MARGINAL_RATE_HIGH; // 1,5958 MAD/kWh
-const heroMoneyLow = Math.round((heroProductionKwh * heroTariffLowRate) / 100) * 100;
-const heroMoneyHigh = Math.round((heroProductionKwh * heroTariffHighRate) / 100) * 100;
-// القاعدة ب2 (2026-07-04) — أُضيف شرط الاستهلاك الذاتي: في غياب تعريفة إعادة
-// شراء منزلية (BT) منشورة، الجزء المُستهلَك ذاتياً وحده يمحو الفاتورة فعلاً؛
-// الفائض المُصدَّر يساوي 0 درهم ما دامت التعريفة غير موجودة. انظر /loi-82-21
-// (قرار ANRE 04/26: المتوسط/العالي/العالي جداً منشور، BT غير منشور).
-const heroMoneyLine = `≈ ${heroMoneyLow.toLocaleString('fr-FR')} إلى ${heroMoneyHigh.toLocaleString('fr-FR')} MAD تُمحى من الفاتورة كل سنة، للجزء المُستهلَك ذاتياً`;
+  `رقم تراكمي حقيقي، يُقرأ باستمرار على Deye Cloud — لا توقّعاً تجارياً. تبدأ دراستكم بتشخيص من 60 ثانية.`;
 
 // PLACEHOLDER(MERYEM): FAQ مؤقتة.
 const faq = [
@@ -114,7 +94,7 @@ const galleryRaw = [
   { name: 'reflet-468', alt: 'انعكاس الشمس على صف الألواح أثناء التركيب، الجديدة', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: true, type: '24 × Canadian Solar 710 Wc · Deye 15 kW', slug: 'el-jadida-17-kwc' },
   { name: 'equipe-trois', alt: 'فريق Taqinor أمام الصف الطويل من الألواح في نهاية الورش، الجديدة', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: false, type: 'نهاية الورش · فريق Taqinor', slug: 'el-jadida-17-kwc' },
   { name: 'hero-skyline', alt: 'صف من الألواح الشمسية أمام أفق الدار البيضاء ومئذنة، ضوء ذهبي', widths: [2000, 1280, 768, 480], ratio: 16 / 9, showProd: true, type: '16 × Canadian Solar 710 Wc · Deye 10 kW', slug: 'casablanca-11-kwc' },
-  { name: 'portrait-400', alt: 'المهندس أمام حقل الألواح، أفق الدار البيضاء', widths: [1600, 1024, 640], ratio: 4 / 3, showProd: false, type: 'إنتاج مُقدَّر — عائد مقاس', slug: 'casablanca-11-kwc' },
+  { name: 'portrait-400', alt: 'المهندس أمام حقل الألواح، أفق الدار البيضاء', widths: [1600, 1024, 640], ratio: 4 / 3, showProd: false, type: 'مرصود على Deye Cloud', slug: 'casablanca-11-kwc' },
   { name: 'champ-villa', alt: 'حقل من ثمانية ألواح على سطح فيلا مسطّح، الجديدة', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: true, type: '8 × Canadian Solar 710 Wc · Deye 5 kW', slug: 'el-jadida-6-kwc' },
   { name: 'pose-134', alt: 'الفريق يميل لوحًا أثناء التركيب، الدار البيضاء', widths: [1600, 1024, 640], ratio: 4 / 3, showProd: true, type: 'تركيب جارٍ · 8 × Canadian Solar 710 Wc', slug: 'casablanca-6-kwc' },
   { name: 'equipe-gilet-taqinor', alt: 'مركّب بسترة Taqinor يضع قضبان هيكل، النواصر', widths: [1600, 1024, 640], ratio: 1, showProd: false, type: 'وضع القضبان · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
@@ -236,7 +216,7 @@ const engineeringPillars = [
 
 <Layout
   title="Taqinor — تركيبات الطاقة الشمسية في المغرب، مطابقة للقانون 82-21"
-  description="21 406 kWh أُنتِجت في سنة واحدة فوق سطح بالجديدة، مرصودة على Deye Cloud: تركيبات الطاقة الشمسية للفيلات والصناعة والفنادق بالمغرب، محسوبة على فاتورتكم ومصرَّح بها وفق القانون 82-21."
+  description="تركيبات شمسية للفيلات والصناعة والفنادق بالمغرب: محسوبة على فاتورتكم، ومصرَّح بها وفق القانون 82-21، ومرصودة في إنتاجها الحقيقي على Deye Cloud."
   ogSlug="accueil"
   preloadHeroPoster
 >
@@ -285,18 +265,15 @@ const engineeringPillars = [
         </svg>
       </div>
 
-      {/* المحتوى مرسى أسفلًا — eyebrow مُرتجَع إلى لون اللون (انضباط النحاس).
-          W205 — الرقم البطل مع count-up (العرض محجوز، صفر CLS).
-          data-hero-tally: خطّاف JS أدناه، متمايز عن data-tally. */}
+      {/* المحتوى مرسى أسفلًا — eyebrow مُرتجَع إلى لون اللون (انضباط النحاس). */}
       <div class="mx-auto w-full max-w-6xl px-4 pb-24 pt-32 sm:pb-32">
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">الدراسة أولًا، ثم الورش</p>
-        <h1 id="hero-title" class="display v2-hero-title hero-title-sweep cine-in cine-in-1 mt-6 max-w-[15ch]">
-          <span data-hero-tally class="font-variant-numeric tabular-nums" dir="ltr">{heroFigure}</span>{heroTitleSuffix}
+        {/* القاعدة ب1 (2026-07-04) — عنوان البطل ثابت: لا مزيد من count-up ولا
+            `.cine-in` على عنصر LCP → يُرسَم فورًا، بلا وميض «يظهر ثم يختفي».
+            الرقم يبقى dir="ltr" ليصحّ عرضه ضمن نص عربي. */}
+        <h1 id="hero-title" class="display v2-hero-title hero-title-sweep mt-6 max-w-[15ch]">
+          <span class="font-variant-numeric tabular-nums" dir="ltr">{heroFigure}</span>{heroTitleSuffix}
         </h1>
-        {/* W267 — المال في الصدارة، والـ kWh يبقى الإثبات خلفه. مجال صادق (لا
-            رقم واحد أبداً) مُشتقّ من التعريفة الحدّية الحقيقية لـ RÉGIE — انظر
-            تعليق الحساب أعلاه. */}
-        <p class="cine-in cine-in-2 mt-4 max-w-xl text-lg font-bold text-brass-300 sm:text-xl">{heroMoneyLine}</p>
         <p class="v2-lead cine-in cine-in-2 mt-4 max-w-xl text-white/85">{heroSub}</p>
         <div class="cine-in cine-in-3 mt-10 flex flex-wrap items-center gap-3">
           {/* CTA نحاسي وحيد (انضباط النحاس) — الذهب مأذون هنا */}
@@ -564,7 +541,7 @@ const engineeringPillars = [
         دراسات يُعدّها مهندسون — خبرة بحث وتطوير في الاتصالات، لدى Huawei وEricsson وSTMicroelectronics سابقًا.
       </p>
       <a href={L('/à-propos')} class="mt-6 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white transition-colors hover:text-brass-300">
-        المؤسِّس ومنهجيته ←
+        المؤسِّس ومنهجيته <span class="inline-block rtl:-scale-x-100">→</span>
       </a>
     </section>
 
@@ -651,7 +628,7 @@ const engineeringPillars = [
           </p>
           <div class="mt-6 flex flex-wrap gap-3">
             <a href={L('/devis/mon-toit')} class="glow inline-flex items-center gap-2 bg-brass-400 px-6 py-3.5 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">
-              احصل على دراستي المجانية ←
+              احصل على دراستي المجانية <span class="inline-block rtl:-scale-x-100">→</span>
             </a>
             <a href={waDirect} rel="noopener" class="inline-flex items-center gap-2 border border-white/40 px-6 py-3.5 text-sm font-semibold text-white transition-colors hover:border-white hover:bg-white/10">
               واتساب مباشر
@@ -663,13 +640,10 @@ const engineeringPillars = [
           <p class="fig lum mt-3 text-4xl" data-tally>{featured.kwc}</p>
           <p class="tech-label mt-1 text-lune-faint">{featuredVilleAr} · {featured.date}</p>
           <p class="mt-4 text-sm leading-relaxed text-lune-soft">
-            الإنتاج: <strong class="text-brass-300" data-tally>{featured.production?.replace('/an', '/سنة')}</strong><br />
             {[featured.panneaux, featured.onduleur, featured.batterie].filter(Boolean).join(' · ')}
           </p>
           <p class="mt-4 border-t border-white/10 pt-3 text-xs text-lune-faint">
-            {featured.productionEstimated
-              ? 'إنتاج مُقدَّر انطلاقاً من العائد المقاس على تركيباتنا. زيارات الموقع ممكنة عند الطلب.'
-              : 'إنتاج مُقاس — Deye Cloud. زيارات الموقع ممكنة عند الطلب.'}
+            تركيبة مرصودة على Deye Cloud، مع ولوج الزبون. زيارات ميدانية ممكنة عند الطلب.
           </p>
         </aside>
       </div>
@@ -877,45 +851,9 @@ const engineeringPillars = [
   }
 </script>
 
-<script>
-  // W205 — count-up على الرقم البطل للبطل (21 406).
-  // reduced-motion safe: القيمة النهائية تُعرَض فورًا.
-  // مضادّ CLS: العرض النهائي يُقفَل قبل أي حركة.
-  import { formatFrame, shouldDigitRoll } from '../../lib/countup';
-
-  const el = document.querySelector<HTMLElement>('[data-hero-tally]');
-  if (el) {
-    const finalText = el.textContent ?? '';
-    // احجز العرض (مضادّ CLS) قبل أي حركة
-    if (getComputedStyle(el).display.startsWith('inline')) {
-      const w = el.getBoundingClientRect().width;
-      el.style.display = 'inline-block';
-      el.style.minWidth = w + 'px';
-    }
-
-    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (reduce || !shouldDigitRoll(finalText)) {
-      // reduced-motion أو قيمة مركَّبة → القيمة النهائية فورًا
-      el.textContent = finalText;
-    } else {
-      // count-up منذ أول مشاهدة (العنصر فوق الطيّة)
-      const dur = 1400; // أبطأ قليلًا من الإحصاءات لمكانته البطلة
-      let start: number | null = null;
-      function frame(t: number) {
-        if (start === null) start = t;
-        const p = Math.min(1, (t - start) / dur);
-        const e = 1 - Math.pow(1 - p, 3); // easeOutCubic
-        el!.textContent = formatFrame(finalText, e);
-        if (p < 1) requestAnimationFrame(frame);
-        else el!.textContent = finalText;
-      }
-      const kick = () => requestAnimationFrame(frame);
-      if (document.readyState === 'complete') kick();
-      else addEventListener('load', kick, { once: true });
-    }
-  }
-</script>
-
+{/* القاعدة ب1/الأداء (2026-07-04) — أُزيل سكربت count-up لرقم البطل: الرقم
+    الآن يُرسَم ثابتًا (LCP يُرسَم فورًا، بلا وميض)، ما يتجنّب حلقة
+    requestAnimationFrame ثانية مكرَّرة مع count-up الخاص بـ V2Enhance. */}
 <script>
   // W365 — بريق نحاسي واحد فقط يعبر عنوان البطل. يُسلَّح فقط بعد `load`
   // (أبداً قبل ذلك: لا رسم إضافي ينافس ملصق البطل على LCP). الـ CSS

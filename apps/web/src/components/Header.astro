@@ -391,10 +391,14 @@ const itemClass =
       )}
       {/* W210 — .glow on primary CTA. WJ36 — the ONE brass action: the quote
           journey (/devis/mon-toit), primary label verbatim. The container
-          flexes with the string (no fixed width) — AR runs 25–35 % longer. */}
+          flexes with the string (no fixed width) — AR runs 25–35 % longer.
+          Bug-fix (2026-07-04) : MASQUÉ sous `lg` (régime hamburger). Ce CTA
+          débordait la barre à 375 px et repoussait le hamburger hors écran ;
+          il est REDONDANT sur mobile (déjà dans le menu déroulant + le CTA
+          collant). Desktop (lg+) STRICTEMENT inchangé. */}
       <a
         href={L(QUOTE_JOURNEY_PATH)}
-        class="glow whitespace-nowrap bg-brass-400 px-3 py-2 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300 sm:px-4"
+        class="glow hidden whitespace-nowrap bg-brass-400 px-3 py-2 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300 sm:px-4 lg:inline-block"
       >{t('cta.primary')}</a>
       {/* W164 — Mobile menu toggle (hamburger icon) */}
       <button
@@ -458,9 +462,10 @@ const itemClass =
           {/* WJ36 — mobile nav primary CTA → quote journey, label verbatim */}
           <li><a href={L(QUOTE_JOURNEY_PATH)} class="glow mt-1 inline-block bg-brass-400 px-4 py-2 text-sm font-bold text-azur-950">{t('cta.primary')}</a></li>
         </ul>
-        {/* W164 — LanguageSwitcher inside the mobile menu */}
+        {/* W164 — LanguageSwitcher inside the mobile menu : variant="menu" →
+            puces FR·EN·AR en ligne (la place ne manque pas ici). */}
         <div class="border-t border-white/10 pt-3">
-          <LanguageSwitcher path={rootPath} current={locale} locales={pageLocales} />
+          <LanguageSwitcher path={rootPath} current={locale} locales={pageLocales} variant="menu" />
         </div>
       </div>
     </div>

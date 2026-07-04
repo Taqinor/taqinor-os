@@ -3,26 +3,39 @@
  * la zone de service — pour les pages de réalisations (/realisations/*) et les
  * pages ville (/installation-solaire-*).
  *
- * INTÉGRITÉ (règle du WEB_PLAN) : chaque chiffre ici est DÉJÀ publié ailleurs
- * sur le site public (accueil, résidentiel, professionnel, équipement) — rien
- * n'est inventé. Toute valeur absente du site (ex. la production mesurée de
- * Nouaceur, ou l'onduleur/batterie d'une réf. non détaillée) reste `null` et
- * n'est jamais affichée comme un nombre.
+ * INTÉGRITÉ (règle du WEB_PLAN) : chaque chiffre ici est un fait réel — rien
+ * n'est inventé. Toute valeur non confirmée reste `null` et n'est jamais
+ * affichée comme un nombre.
  *
  * Total installé : 17,04 + 11,36 + 5,68 + 5,68 + 3,72 = 43,48 kWc (= le chiffre
- * « 43,48 kWc installés » de l'accueil).
+ * « 43,48 kWc installés » de l'accueil). Ce sont des CAPACITÉS posées (kWc),
+ * conservées telles quelles.
  *
- * WB1 (2026-07-04) — INTÉGRITÉ DES 4 CHIFFRES DE PRODUCTION NON NULS : les
- * quatre `productionNum` ci-dessous (21406, 14271, 7135, 7135) partagent
- * exactement le même facteur kWh/kWc (≈1256,2), ce qui n'est pas plausible pour
- * de vrais relevés Deye Cloud sur des sites différents (orientation/ombrage/
- * ville distincts). ATTENDU DU FONDATEUR : les relevés Deye Cloud RÉELS et
- * distincts par chantier — tant qu'ils ne sont pas fournis, chaque
- * `production`/`productionNum` ci-dessous est étiqueté « estimée à partir du
- * rendement mesuré » (jamais "mesurée"/"suivie sur Deye Cloud" tel quel) sur
- * cette page ET sur toutes les pages consommatrices (voir @files de WB1 dans
- * docs/WEB_PLAN.md). Ne PAS regénérer un autre facteur unique par erreur lors
- * d'une future édition — la bonne correction est le vrai relevé par site.
+ * WB1 — CORRECTION (2026-07-04, données Deye Cloud réelles du fondateur) :
+ * les quatre `productionNum` ANNUELS d'origine (21406, 14271, 7135, 7135)
+ * étaient FABRIQUÉS — ils partageaient exactement le même facteur kWh/kWc
+ * (≈1256,2), impossible pour de vrais relevés sur des sites différents, et ils
+ * ne correspondent à AUCUN relevé Deye. La flotte Deye RÉELLE (vue « TAQINOR
+ * Solutions », tirée le 2026-07-04) compte 4 centrales récemment mises en
+ * service (semaines→mois), soit 32,04 kWp, avec seulement des cumuls de
+ * production « depuis la mise en service » (aucun chiffre ANNUEL légitime
+ * n'existe encore) — voir MEASURED_FLEET ci-dessous. En conséquence : TOUTE
+ * production annuelle est retirée (`production`/`productionNum` = `null`
+ * partout → jamais affichée). Le seul chiffre de production publié sur le site
+ * est désormais le CUMUL MESURÉ de la flotte, dans le héros de l'accueil
+ * (source : MEASURED_FLEET). Ne JAMAIS réintroduire un chiffre annuel par
+ * installation sans un vrai relevé Deye distinct par site.
+ *
+ * TODO FONDATEUR (pour restaurer des chiffres mesurés PAR installation) :
+ *   1. Relevés Deye Cloud RÉELS et distincts par chantier + mois de mise en
+ *      service exact (aujourd'hui seuls des cumuls « depuis la m.e.s. »).
+ *   2. Ajouter la centrale d'Aïn Diab (Britel, 10 kWc, plus gros producteur —
+ *      2,62 MWh cumulés) au roster dès qu'une PHOTO de chantier est disponible.
+ *   3. Fournir les figures des 2 installations suivies sur Huawei FusionSolar
+ *      (non tirées ici) pour compléter la flotte.
+ *   4. Confirmer que l'installation d'El Jadida 17,04 kWc (réf. 468) est bien
+ *      réelle et posée (elle n'est pas sur Deye) — sinon la retirer du total
+ *      « 43,48 kWc installés ».
  */
 
 export interface RealisationPhoto {
@@ -92,9 +105,8 @@ export const REALISATIONS: Realisation[] = [
     kwc: '17,04 kWc',
     kwcNum: 17.04,
     date: 'avril 2026',
-    production: '21 406 kWh/an',
-    productionNum: 21406,
-    productionEstimated: true,
+    production: null, // WB1 (2026-07-04) : annuel fabriqué retiré — pas sur Deye.
+    productionNum: null,
     panneaux: '24 × Canadian Solar 710 Wc',
     onduleur: 'Deye 15 kW (triphasé)',
     batterie: '15 kWh Dyness',
@@ -117,15 +129,14 @@ export const REALISATIONS: Realisation[] = [
     kwc: '11,36 kWc',
     kwcNum: 11.36,
     date: 'avril 2026',
-    production: '14 271 kWh/an',
-    productionNum: 14271,
-    productionEstimated: true,
+    production: null, // WB1 (2026-07-04) : annuel fabriqué retiré (cumul Deye réel : 1,13 MWh).
+    productionNum: null,
     panneaux: '16 × Canadian Solar 710 Wc',
     onduleur: 'Deye 10 kW',
     batterie: '10 kWh Dyness (2 × DL5.0C)',
     segment: 'residentiel',
     resume:
-      'Une villa de Casablanca face à la skyline : 16 panneaux, onduleur hybride Deye et deux batteries Dyness, avec borne de recharge — production estimée à partir du rendement mesuré de nos chantiers.',
+      'Une villa de Casablanca face à la skyline : 16 panneaux, onduleur hybride Deye et deux batteries Dyness, avec borne de recharge — supervisée sur Deye Cloud.',
     photos: [
       { name: 'hero-skyline', alt: 'Rangée de panneaux solaires devant la skyline de Casablanca et un minaret, lumière dorée', ratio: 16 / 9, widths: [2000, 1280, 768, 480], phase: 'after' as const },
       { name: 'portrait-400', alt: "L'ingénieur devant le champ de panneaux, skyline de Casablanca", ratio: 4 / 3, widths: [1600, 1024, 640], phase: 'after' as const },
@@ -142,9 +153,8 @@ export const REALISATIONS: Realisation[] = [
     kwc: '5,68 kWc',
     kwcNum: 5.68,
     date: 'mars 2026',
-    production: '7 135 kWh/an',
-    productionNum: 7135,
-    productionEstimated: true,
+    production: null, // WB1 (2026-07-04) : annuel fabriqué retiré — pas de relevé Deye distinct.
+    productionNum: null,
     panneaux: '8 × Canadian Solar 710 Wc',
     onduleur: 'Deye 5 kW',
     batterie: '5 kWh Dyness',
@@ -165,9 +175,8 @@ export const REALISATIONS: Realisation[] = [
     kwc: '5,68 kWc',
     kwcNum: 5.68,
     date: 'mars 2026',
-    production: '7 135 kWh/an',
-    productionNum: 7135,
-    productionEstimated: true,
+    production: null, // WB1 (2026-07-04) : annuel fabriqué retiré — pas de relevé Deye distinct.
+    productionNum: null,
     panneaux: '8 × Canadian Solar 710 Wc',
     onduleur: null,
     batterie: null,
@@ -203,6 +212,35 @@ export const REALISATIONS: Realisation[] = [
     ],
   },
 ];
+
+/**
+ * WB1 (2026-07-04) — FLOTTE MESURÉE (Deye Cloud, vue « TAQINOR Solutions »,
+ * relevé du 2026-07-04). Ces CUMULS « depuis la mise en service » sont les
+ * SEULS chiffres de production réels : les centrales sont récentes
+ * (semaines→mois), donc AUCUN chiffre annuel légitime n'existe encore. Source
+ * unique du chiffre de production affiché sur l'accueil (héros). Ne jamais
+ * transformer un cumul en « production annuelle ».
+ *
+ * 2 installations supplémentaires sont suivies sur Huawei FusionSolar et ne
+ * sont PAS encore tirées → volontairement exclues (le cumul affiché est donc
+ * CONSERVATEUR, jamais surévalué). Voir TODO FONDATEUR en tête de fichier.
+ */
+export interface MeasuredPlant {
+  ville: string;
+  kwc: number;
+  /** Cumul mesuré depuis la mise en service, en MWh (Deye Cloud). */
+  lifetimeMWh: number;
+}
+export const MEASURED_FLEET: MeasuredPlant[] = [
+  { ville: 'Aïn Diab (Casablanca)', kwc: 10, lifetimeMWh: 2.62 },
+  { ville: 'Casablanca', kwc: 5.68, lifetimeMWh: 1.41 },
+  { ville: 'El Jadida', kwc: 5, lifetimeMWh: 1.4 },
+  { ville: 'Bd Fès (Casablanca)', kwc: 11.36, lifetimeMWh: 1.13 },
+];
+/** Cumul mesuré de la flotte Deye = 2,62 + 1,41 + 1,40 + 1,13 = 6,56 MWh. */
+export const MEASURED_FLEET_LIFETIME_MWH = MEASURED_FLEET.reduce((s, p) => s + p.lifetimeMWh, 0);
+/** Format FR (virgule décimale) pour l'affichage — « 6,56 ». */
+export const MEASURED_FLEET_LIFETIME_MWH_FR = MEASURED_FLEET_LIFETIME_MWH.toFixed(2).replace('.', ',');
 
 export const realisationBySlug = (slug: string): Realisation | undefined =>
   REALISATIONS.find((r) => r.slug === slug);
