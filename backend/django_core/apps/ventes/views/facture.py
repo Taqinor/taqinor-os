@@ -106,6 +106,7 @@ class FactureViewSet(viewsets.ModelViewSet):
             'relancer', 'exclure_relance', 'whatsapp', 'ubl',
             'dgi_export', 'dgi_conformite', 'bulk', 'lien_paiement',
             'facturer_penalites', 'consolider', 'abandonner_solde',
+            'remettre_brouillon',
         ]:
             return [IsResponsableOrAdmin()]
         # Annuler une facture = réservé à l'admin/propriétaire (geste comptable).
@@ -285,6 +286,60 @@ class FactureViewSet(viewsets.ModelViewSet):
         if anomalies:
             data['anomalies'] = anomalies
         return Response(data)
+
+    @action(detail=True, methods=['post'], url_path='remettre-brouillon',
+            permission_classes=[IsResponsableOrAdmin])
+    def remettre_brouillon(self, request, pk=None):
+        """ZFAC1 — Reset to Draft (opt-in période ouverte).
+
+        Repasse une facture ÉMISE en brouillon UNIQUEMENT si elle n'a AUCUN
+        paiement ni avoir actif et que la période comptable de sa date
+        d'émission n'est pas verrouillée (YLEDG3) ni que XFAC24
+        (immutabilité) est activée pour la société. Le numéro/référence est
+        CONSERVÉ (pas de renumérotation) — seul le statut change."""
+        facture = self.get_object()
+        if facture.statut != Facture.Statut.EMISE:
+            return Response(
+                {'detail': (
+                    'Seule une facture émise (sans paiement ni avoir) peut '
+                    'être remise en brouillon.'
+                )},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if facture.paiements.exists():
+            return Response(
+                {'detail': (
+                    'Impossible : cette facture a déjà au moins un '
+                    'paiement enregistré.'
+                )},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if facture.avoirs.exclude(statut=Avoir.Statut.ANNULEE).exists():
+            return Response(
+                {'detail': (
+                    'Impossible : cette facture a un avoir actif.'
+                )},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        from apps.parametres.models import CompanyProfile
+        profile = CompanyProfile.get(company=facture.company)
+        if getattr(profile, 'factures_immuables', False):
+            return Response(
+                {'detail': (
+                    "Facture immuable : l'immutabilité (XFAC24) est activée "
+                    "pour cette société — corrigez par un avoir puis une "
+                    "nouvelle facture."
+                )},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # YLEDG3 — refuse si la période comptable de la facture est verrouillée.
+        self._guard_periode_verrouillee(facture)
+        ancien = facture.statut
+        facture.statut = Facture.Statut.BROUILLON
+        facture.save(update_fields=['statut'])
+        from .. import activity
+        activity.log_facture_remise_brouillon(facture, request.user, ancien)
+        return Response(FactureSerializer(facture).data)
 
     @action(detail=True, methods=['post'], url_path='marquer-payee',
             permission_classes=[IsResponsableOrAdmin])
