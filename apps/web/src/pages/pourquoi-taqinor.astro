@@ -10,6 +10,17 @@ import Article33Ribbon from '../components/Article33Ribbon.astro';
 import Breadcrumb from '../components/Breadcrumb.astro';
 import CtaBand from '../components/CtaBand.astro';
 import StickyCta from '../components/StickyCta.astro';
+import RelatedLinks from '../components/RelatedLinks.astro';
+import { REALISATIONS } from '../lib/realisations';
+import { PANEL_PERFORMANCE_WARRANTY_YEARS } from '../lib/warranty';
+
+// WB4 (2026-07-04) — le total kWc et la durée de garantie sont DÉRIVÉS
+// (realisations.ts / warranty.ts) au lieu de littéraux recopiés à la main,
+// comme index.astro/impact-taqinor.astro le font déjà — un futur chantier ne
+// peut plus faire diverger silencieusement cette page de confiance.
+const totalKwc = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
+const totalKwcLabel = totalKwc.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const panelWarrantyLabel = `${PANEL_PERFORMANCE_WARRANTY_YEARS} ans`;
 
 const piliers = [
   {
@@ -23,7 +34,7 @@ const piliers = [
   {
     k: '02',
     title: 'Nos chiffres de production sortent du compteur',
-    body: 'Chaque installation est reliée à Deye Cloud : production en temps réel, alertes automatiques, accès client inclus. Quand nous citons une production, c’est un relevé, pas une projection de brochure.',
+    body: 'Chaque installation est reliée à Deye Cloud : production en temps réel, alertes automatiques, accès client inclus. Quand nous citons une production, c’est un chiffre suivi sur nos chantiers — jamais une projection de brochure ; tant qu’un relevé distinct par site n’est pas encore publié, nous le disons « estimé ».',
     contrast: 'Beaucoup d’installateurs chiffrent l’économie annoncée sur une simulation théorique jamais recroisée avec un compteur réel — la nôtre l’est, en continu.',
     href: '/realisations',
     link: 'Voir nos réalisations',
@@ -39,7 +50,7 @@ const piliers = [
   {
     k: '04',
     title: 'Cinq marques tier-1, et rien d’anonyme sur le toit',
-    body: 'Canadian Solar, JA Solar, Deye, Huawei, Dyness : sourcés chez des distributeurs officiels au Maroc, garanties activables sur place. Selon le composant, cette garantie court de 10 à 25 ans.',
+    body: 'Canadian Solar, JA Solar, Deye, Huawei, Dyness : sourcés chez des distributeurs officiels au Maroc, garanties activables sur place. Selon le composant, cette garantie court de 10 à 30 ans.',
     contrast: 'Un panneau importé sans fiche constructeur ni distributeur officiel ne peut pas prouver sa garantie le jour où elle doit jouer — les nôtres le peuvent, marque par marque.',
     href: '/équipement',
     link: 'Voir l’équipement',
@@ -49,7 +60,7 @@ const piliers = [
 
 <Layout
   title="Pourquoi Taqinor — ce qui nous distingue, point par point | Taqinor"
-  description="Quatre différences concrètes : un dimensionnement déduit de votre facture, une production relevée sur Deye Cloud, le dossier loi 82-21 monté et déposé, et une liste courte de marques tier-1 garanties de 10 à 25 ans. Chantiers réels visitables sur demande."
+  description="Quatre différences concrètes : un dimensionnement déduit de votre facture, une production relevée sur Deye Cloud, le dossier loi 82-21 monté et déposé, et une liste courte de marques tier-1 garanties de 10 à 30 ans. Chantiers réels visitables sur demande."
   ogSlug="accueil"
 >
   <div class="v2">
@@ -125,11 +136,11 @@ const piliers = [
         </div>
         <dl class="grid grid-cols-2 gap-x-6 gap-y-10 border-l-2 border-brass-400/60 pl-6 sm:pl-10" data-stagger>
           <div class="v2-rise" style="--v2-i:0">
-            <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl" data-tally>43,48 kWc</dd>
+            <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl" data-tally>{totalKwcLabel} kWc</dd>
             <dt class="tech-label mt-2 text-lune-faint">Installés — Casablanca, El Jadida, Nouaceur</dt>
           </div>
           <div class="v2-rise" style="--v2-i:1">
-            <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl" data-tally>25 ans</dd>
+            <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl" data-tally>{panelWarrantyLabel}</dd>
             <dt class="tech-label mt-2 text-lune-faint">Garantie de performance</dt>
           </div>
           <div class="v2-rise" style="--v2-i:2">
@@ -138,9 +149,21 @@ const piliers = [
           </div>
           <div class="v2-rise" style="--v2-i:3">
             <dd class="font-display text-xl font-bold text-white">Deye Cloud</dd>
-            <dt class="tech-label mt-2 text-lune-faint">Production mesurée, accès client inclus</dt>
+            <dt class="tech-label mt-2 text-lune-faint">Production suivie, accès client inclus</dt>
           </div>
         </dl>
+      </div>
+    </section>
+
+    {/* WB17 (2026-07-04) — liens contextuels vers les deux pages de preuve
+        chiffrée continue, faiblement découvrables (absentes du header/footer). */}
+    <section class="section-tight px-4 text-white">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">Pour vérifier ces chiffres</p>
+        <RelatedLinks links={[
+          { href: '/production-mesuree', label: 'Notre production suivie, en continu' },
+          { href: '/impact-taqinor', label: 'Impact Taqinor (kWc, kWh, CO2 évité)' },
+        ]} />
       </div>
     </section>
 

@@ -14,6 +14,12 @@
  * quand elle existe ; sinon la page renvoie vers `datasheet` (source officielle).
  */
 
+import {
+  PANEL_PRODUCT_WARRANTY_YEARS,
+  PANEL_PERFORMANCE_WARRANTY_YEARS,
+  PANEL_PERFORMANCE_FLOOR_FR,
+} from './warranty';
+
 export type FicheCategorie =
   | 'Panneaux photovoltaïques'
   | 'Onduleurs réseau'
@@ -24,7 +30,7 @@ export type FicheCategorie =
 /** Garantie structurée : durée + précision optionnelle (ex. seuil de performance). */
 export interface FicheWarranty {
   years: number;
-  /** Précision affichée sous la durée (ex. "≥ 84,8 % de la puissance initiale"). */
+  /** Précision affichée sous la durée (ex. "≥ 87,4 % de la puissance initiale"). */
   note?: string;
 }
 
@@ -65,8 +71,11 @@ export const FICHES: Fiche[] = [
       'Plage de puissance 705 – 720 Wc',
       'Conforme IEC 61215 et IEC 61730',
     ],
-    garantie: 'Garantie produit 12 ans · performance 25 ans',
-    warranty: { years: 25, note: 'Garantie produit 12 ans · garantie performance 25 ans' },
+    garantie: `Garantie produit ${PANEL_PRODUCT_WARRANTY_YEARS} ans · performance linéaire ${PANEL_PERFORMANCE_WARRANTY_YEARS} ans`,
+    warranty: {
+      years: PANEL_PERFORMANCE_WARRANTY_YEARS,
+      note: `Garantie produit ${PANEL_PRODUCT_WARRANTY_YEARS} ans · garantie performance linéaire ${PANEL_PERFORMANCE_WARRANTY_YEARS} ans (${PANEL_PERFORMANCE_FLOOR_FR} de la puissance initiale)`,
+    },
     pairsWith: ['Onduleurs réseau', 'Onduleurs hybrides', 'Supervision & comptage'],
     datasheet:
       'https://static.csisolar.com/wp-content/uploads/2022/12/12090125/CS-Datasheet-TOPBiHiKu7-TOPCon_CS7N-TB-AG_v1.62C3_EN.pdf',
@@ -85,8 +94,11 @@ export const FICHES: Fiche[] = [
       'Plage de puissance ≈ 700 – 720 Wc',
       'Conforme IEC 61215 et IEC 61730',
     ],
-    garantie: 'Garantie produit 12 ans · performance 25 ans',
-    warranty: { years: 25, note: 'Garantie produit 12 ans · garantie performance 25 ans' },
+    garantie: `Garantie produit ${PANEL_PRODUCT_WARRANTY_YEARS} ans · performance linéaire ${PANEL_PERFORMANCE_WARRANTY_YEARS} ans`,
+    warranty: {
+      years: PANEL_PERFORMANCE_WARRANTY_YEARS,
+      note: `Garantie produit ${PANEL_PRODUCT_WARRANTY_YEARS} ans · garantie performance linéaire ${PANEL_PERFORMANCE_WARRANTY_YEARS} ans (${PANEL_PERFORMANCE_FLOOR_FR} de la puissance initiale)`,
+    },
     pairsWith: ['Onduleurs réseau', 'Onduleurs hybrides', 'Supervision & comptage'],
     // Datasheet officielle Tiger Neo 66HL5-BDV 710-735 Wc (CDN Jinko global) —
     // self-hostée ci-dessous ; la page produit /en/site/tigerneo n'est pas un PDF.
@@ -148,7 +160,12 @@ export const FICHES: Fiche[] = [
       'Conforme IEC 62619 et UN38.3',
     ],
     garantie: 'Garantie 10 ans',
-    warranty: { years: 10 },
+    warranty: {
+      years: 10,
+      // WA13 : terme selon le document de garantie émis par le distributeur
+      // marocain ; certaines variantes régionales de la DL5.0C affichent 7 ans.
+      note: '≥ 70 % de capacité — selon le document de garantie du distributeur (certaines variantes régionales affichent 7 ans)',
+    },
     pairsWith: ['Onduleurs hybrides', 'Supervision & comptage'],
     datasheet:
       'https://www.dyness.com/Public/Uploads/uploadfile/files/20241023/DynessDL5.0CdatasheetEN.pdf',

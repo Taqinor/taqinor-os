@@ -231,7 +231,7 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
       result:
         '14 271 kWh par an, suivis sur Deye Cloud avec accès client. Le chiffre n’est pas un argumentaire : il se relève sur le monitoring, et la borne de recharge se lit dans la courbe de consommation autant que les panneaux dans celle de production.',
       resume:
-        'Une villa de Casablanca face à la skyline : 16 panneaux, onduleur hybride Deye et deux batteries Dyness, avec borne de recharge — production suivie sur Deye Cloud.',
+        'Une villa de Casablanca face à la skyline : 16 panneaux, onduleur hybride Deye et deux batteries Dyness, avec borne de recharge — production estimée à partir du rendement mesuré de nos chantiers.',
       cityLink: { href: '/installation-solaire-casablanca', label: 'Installation solaire à Casablanca' },
       alts: {},
     },
@@ -248,7 +248,7 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
       result:
         '14,271 kWh a year, followed on Deye Cloud with client access. The figure is not a pitch: it is read off the monitoring, and the charging station reads in the consumption curve as much as the panels read in the production curve.',
       resume:
-        'A Casablanca villa facing the skyline: 16 panels, a Deye hybrid inverter and two Dyness batteries, with a charging station — production followed on Deye Cloud.',
+        'A Casablanca villa facing the skyline: 16 panels, a Deye hybrid inverter and two Dyness batteries, with a charging station — production estimated from our measured field yield.',
       cityLink: { href: '/installation-solaire-casablanca', label: 'Solar installation in Casablanca' },
       alts: {
         'hero-skyline': 'Row of solar panels in front of the Casablanca skyline and a minaret, golden light',
@@ -269,7 +269,7 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
       result:
         '14 271 kWh في السنة، مُتابَعة على Deye Cloud مع ولوج الزبون. الرقم ليس حجّة بيع: يُقرأ على المراقبة، ومحطة الشحن تُقرأ في منحنى الاستهلاك بقدر ما تُقرأ الألواح في منحنى الإنتاج.',
       resume:
-        'فيلا بالدار البيضاء تواجه الأفق: 16 لوحاً، عاكس هجين Deye وبطاريتان Dyness، مع محطة شحن — إنتاج مُتابَع على Deye Cloud.',
+        'فيلا بالدار البيضاء تواجه الأفق: 16 لوحاً، عاكس هجين Deye وبطاريتان Dyness، مع محطة شحن — إنتاج مُقدَّر انطلاقاً من المردود المقيس لأوراشنا.',
       cityLink: { href: '/installation-solaire-casablanca', label: 'تركيب شمسي في الدار البيضاء' },
       alts: {
         'hero-skyline': 'صف من الألواح الشمسية أمام أفق الدار البيضاء ومئذنة، ضوء ذهبي',

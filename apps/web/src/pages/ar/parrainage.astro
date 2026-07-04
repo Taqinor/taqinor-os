@@ -1,10 +1,11 @@
 ---
 /**
  * AR — /parrainage (W338, RTL). Faithful Arabic translation; FR untouched.
- * Not registered in i18n/pages.ts STATIC_TRANSLATED per the task's explicit
- * instruction (hreflang skipped for this new page). Latin brand name, URL
- * and phone/email stay LTR via dir="ltr" spans inside the RTL page, same
- * convention as ar/contact.astro.
+ * Registered in i18n/pages.ts STATIC_TRANSLATED (hreflang + language switcher
+ * both surface this page). Internal links use L()/localizeNavHref (WB18) —
+ * never a hardcoded '/ar/...' literal. Latin brand name, URL and phone/email
+ * stay LTR via dir="ltr" spans inside the RTL page, same convention as
+ * ar/contact.astro.
  *
  * Same referral mechanic as FR/EN: personal link rides the EXISTING
  * utm_campaign passthrough (zero backend change). WG14 (reward amount +
@@ -19,6 +20,13 @@ import RelatedLinks from '../../components/RelatedLinks.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { NAP, WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink } from '../../lib/whatsapp';
+import { getLocaleFromPath } from '../../i18n/utils';
+import { localizeNavHref } from '../../i18n/pages';
+
+// WB18 — نفس أداة الربط المضادة للروابط الميتة المستعملة في بقية شجرة EN/AR
+// (هذه الصفحة وحدها كانت تكتب `/ar/...` مباشرة).
+const locale = getLocaleFromPath(Astro.url.pathname);
+const L = (href: string) => localizeNavHref(href, locale);
 
 // GATE WG14 — لم يُحسم بعد من طرف المؤسّس: لا نخترع أي رقم أبداً. عند حسم
 // WG14، يكفي ملء هذين الثابتين بالقيمة الحقيقية ليظهر الرقم تلقائياً في كل
@@ -79,7 +87,7 @@ const jsonLd = {
 
     <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
 
-    <Breadcrumb items={[{ label: 'الرئيسية', href: '/ar' }, { label: 'الإحالة' }]} />
+    <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: 'الإحالة' }]} />
 
     <section class="section-lg px-4 pb-10 text-white">
       <div class="mx-auto max-w-3xl">
@@ -195,9 +203,9 @@ const jsonLd = {
       <div class="mx-auto max-w-6xl">
         <p class="tech-label v2-kicker rule-brass text-lune">لمزيد من المعلومات</p>
         <RelatedLinks links={[
-          { href: '/ar/devis/mon-toit', label: 'ابدأ تشخيصاً' },
-          { href: '/ar/realisations', label: 'إنجازاتنا' },
-          { href: '/ar/à-propos', label: 'من نحن' },
+          { href: L('/devis/mon-toit'), label: 'ابدأ تشخيصاً' },
+          { href: L('/realisations'), label: 'إنجازاتنا' },
+          { href: L('/à-propos'), label: 'من نحن' },
         ]} />
       </div>
     </section>

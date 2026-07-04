@@ -3,7 +3,7 @@
  * AR — Guide (W294, RTL): Orientation, tilt and shading: maximising production
  * on a Moroccan roof. Faithful Arabic translation of
  * /guides/orientation-inclinaison-ombrage, every figure kept in Latin digits
- * (10–15 % east/west loss, 27–31° tilt by city). Internal links use
+ * (10–15 % east/west loss, ~30° tilt, stable across cities). Internal links use
  * localizeNavHref (EN/AR if available, else the existing FR page — never a
  * dead link). FR untouched.
  */
@@ -27,7 +27,7 @@ const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Article',
   headline: 'الاتجاه، الميلان والتظليل: تعظيم الإنتاج على سقف مغربي',
-  description: 'الجنوب التام، ميلان قريب من خط العرض، وصفر ظلّ: القواعد الثلاث التي تُحدِث الفارق حقاً على سقف مغربي، مشروحة دون مصطلحات معقّدة.',
+  description: 'الجنوب التام، ميلان أمثل حول 30°، وصفر ظلّ: القواعد الثلاث التي تُحدِث الفارق حقاً على سقف مغربي، مشروحة دون مصطلحات معقّدة.',
   image: schemaImageUrl,
   about: { '@type': 'Thing', name: 'التركيبة الشمسية الكهروضوئية' },
   author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
@@ -38,7 +38,7 @@ const jsonLd = {
 
 <Layout
   title="الاتجاه، الميلان والتظليل: تعظيم الإنتاج على سقف مغربي | Taqinor"
-  description="جنوب تام أمثل، شرق/غرب مقبول (−10 إلى 15 %)، ميلان ≈ خط العرض (27–31° حسب المدينة): القواعد الثلاث التي تُحدِث الفارق حقاً — ولماذا يمكن لمدخنة واحدة أن تُعاقب تركيبتكم بأكملها."
+  description="جنوب تام أمثل، شرق/غرب مقبول (−10 إلى 15 %)، ميلان أمثل حول 30°: القواعد الثلاث التي تُحدِث الفارق حقاً — ولماذا يمكن لمدخنة واحدة أن تُعاقب تركيبتكم بأكملها."
   ogSlug="guides"
 >
   <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
@@ -75,15 +75,10 @@ const jsonLd = {
       <h2 class="display v2-section-title mt-12 text-white">الميلان: لا مسطّحاً، ولا شديد الانحدار</h2>
       <p class="v2-lead mt-5 text-lune-soft">
         تُقارب الزاوية المثلى لميلان لوح خط عرض الموقع تقريباً، ثم تُخفَّض قليلاً لصالح الإنتاج السنوي.
-        يقع الجزء الأكبر من المغرب المأهول بين حوالي 28° و36° خط عرض شمالي (أكادير عند حوالي 30,4°
-        شمالاً)، ما يُعطي المراجع التالية للمدن الرئيسية:
+        تُعطي بياناتنا الخاصة بالإشعاع (PVGIS، مُحسَّنة على الإنتاج السنوي) أمثلاً مستقرّاً بشكل لافت من
+        مدينة لأخرى، رغم خطوط عرض تتراوح بين حوالي 28° و36° شمالاً: أكادير، مراكش، الدار البيضاء،
+        الرباط وطنجة تُشير كلّها إلى <strong class="text-white">حوالي 30°</strong>.
       </p>
-      <ul class="v2-lead mt-5 list-inside list-disc space-y-2 text-lune-soft">
-        <li><strong class="text-white">أكادير</strong> — حوالي <strong class="text-white">27°</strong></li>
-        <li><strong class="text-white">مراكش</strong> — حوالي <strong class="text-white">28°</strong></li>
-        <li><strong class="text-white">الدار البيضاء والرباط</strong> — حوالي <strong class="text-white">29°</strong></li>
-        <li><strong class="text-white">طنجة</strong> — حوالي <strong class="text-white">31°</strong></li>
-      </ul>
       <p class="v2-lead mt-5 text-lune-soft">
         تأتي هذه القيم من بيانات إشعاع بالأقمار الاصطناعية (PVGIS / Global Solar Atlas) ومُحسَّنة
         للإنتاج السنوي الإجمالي، لا لشهر واحد. عملياً، غالباً ما تُملي الهندسة القائمة ميلان سقفكم،
@@ -140,8 +135,8 @@ const jsonLd = {
       <h2 class="display v2-section-title mt-12 text-white">ما يجب التحقّق منه على سقفكم</h2>
       <p class="v2-lead mt-5 text-lune-soft">
         بالنسبة للاتجاه، استهدفوا الجنوب التام حين يكون ذلك ممكناً؛ يكلّف وجه شرقي أو غربي حوالي 10 إلى
-        15 % من الإنتاج ويبقى مربحاً، ويُستبعَد وجه شمالي. بالنسبة للميلان، تناسب زاوية من 27 إلى 31°
-        حسب مدينتكم، وتقع معظم الأسقف المغربية أصلاً في مجال مقبول، فلا داعي للإطالة فيه. الموضوع
+        15 % من الإنتاج ويبقى مربحاً، ويُستبعَد وجه شمالي. بالنسبة للميلان، تناسب زاوية حول 30° مهما
+        كانت مدينتكم، وتقع معظم الأسقف المغربية أصلاً في مجال مقبول، فلا داعي للإطالة فيه. الموضوع
         الحقيقي، الذي يستحقّ الصعود إلى السقف في عدّة ساعات من اليوم، هو الظلّ: مدخنة أو جدار أو شجرة
         سيّئة الموضع تُعاقب سلسلة كاملة من الألواح، أكثر بكثير من اتجاه مائل قليلاً. تنطلق دراسة ميدانية
         جادّة دائماً من هناك.

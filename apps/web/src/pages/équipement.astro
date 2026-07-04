@@ -41,7 +41,7 @@ const comparaisonOnduleurs = [
 ];
 
 const categories = [
-  { ref: 'PV-1', title: 'Panneaux — Canadian Solar TOPBiHiKu', body: "Le bifacial capte aussi la lumière réfléchie par le toit : sur une terrasse claire, c'est du rendement gagné sans surface en plus. Ces modules 705 à 720 Wc sortent d'un constructeur qui a livré plus de 100 GW dans le monde, tenus aux normes IEC 61215 et IEC 61730. Ce sont eux qui équipent Casablanca et El Jadida.", points: ['Bifacial 705 – 720 Wc', 'Garantie produit 12 ans', 'Garantie performance 25 ans (≥ 84,8 %)'] },
+  { ref: 'PV-1', title: 'Panneaux — Canadian Solar TOPBiHiKu', body: "Le bifacial capte aussi la lumière réfléchie par le toit : sur une terrasse claire, c'est du rendement gagné sans surface en plus. Ces modules 705 à 720 Wc sortent d'un constructeur qui a livré plus de 100 GW dans le monde, tenus aux normes IEC 61215 et IEC 61730. Ce sont eux qui équipent Casablanca et El Jadida.", points: ['Bifacial 705 – 720 Wc', 'Garantie produit 12 ans', 'Garantie performance linéaire 30 ans (≥ 87,4 %)'] },
   { ref: 'PV-2', title: 'Panneaux — JA Solar DeepBlue', body: "La cellule monocristalline DeepBlue va chercher le rendement plutôt que la surface — utile quand la toiture est comptée. Même rang de fabricant, même exigence de certification. Posés à Nouaceur.", points: ['Monocristallin haut rendement', 'Garantie produit 12 ans', 'Garantie performance 25 ans'] },
   { ref: 'OND-1', title: 'Onduleurs hybrides — Deye', body: "On retient le Deye hybride pour une raison concrète : quand le réseau saute, il bascule sur batterie en quelques millisecondes, assez vite pour qu'un PC reste allumé. Le reste du temps, il décide seconde par seconde s'il vaut mieux puiser dans les panneaux, recharger la batterie ou tirer sur le réseau. Les gammes SUN-SG04LP1, SG04LP3 et SG01HP3 couvrent 5 à 30 kW, mono comme triphasé, et parlent en CAN au BMS de la batterie. Conformes CEI 61727 et VDE-AR-N-4105.", points: ['Monophasé et triphasé, 5 – 30 kW', 'Gestion batterie CAN BMS intégrée', 'Garantie 10 ans'] },
   { ref: 'OND-2', title: 'Onduleurs réseau — Huawei SUN2000', body: "Quand l'étude ne retient pas de batterie, on passe sur du string pur. Le Huawei SUN2000 optimise chaîne par chaîne : un panneau à l'ombre ne tire plus toute la rangée vers le bas. Du résidentiel à la toiture tertiaire.", points: ['Rendement européen élevé', 'Optimisation par chaîne', 'Garantie 10 ans'] },
@@ -51,9 +51,9 @@ const categories = [
 
 const warranties = [
   { item: 'Panneaux photovoltaïques (produit)', years: '12 ans' },
-  { item: 'Panneaux photovoltaïques (performance)', years: '25 ans', note: '≥ 84,8 % de la puissance initiale' },
+  { item: 'Panneaux photovoltaïques (performance)', years: '30 ans', note: 'linéaire, ≥ 87,4 % de la puissance initiale à 30 ans' },
   { item: 'Onduleurs (Deye, Huawei)', years: '10 ans' },
-  { item: 'Batteries Dyness LFP', years: '10 ans' },
+  { item: 'Batteries Dyness LFP', years: '10 ans', note: '≥ 70 % de capacité' },
   { item: 'Structure acier galvanisé', years: '20 ans' },
   { item: 'Installation et main-d’œuvre Taqinor', years: '2 ans' },
 ];
@@ -61,7 +61,7 @@ const warranties = [
 
 <Layout
   title="Le matériel posé : Canadian Solar, Deye, Huawei, Dyness — et pourquoi | Taqinor"
-  description="Panneaux bifaciaux Canadian Solar (25 ans de performance), onduleurs hybrides Deye, batteries Dyness LFP 6 000 cycles, supervision Deye Cloud : le matériel réellement posé chez nous, et la raison technique de chaque choix."
+  description="Panneaux bifaciaux Canadian Solar (30 ans de performance linéaire), onduleurs hybrides Deye, batteries Dyness LFP 6 000 cycles, supervision Deye Cloud : le matériel réellement posé chez nous, et la raison technique de chaque choix."
   ogSlug="equipement"
 >
   <div class="v2">

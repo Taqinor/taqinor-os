@@ -36,8 +36,9 @@ import { REALISATIONS } from '../lib/realisations';
 import { CO2_KG_PER_KWH, CO2_KG_PER_TREE_YEAR } from '../lib/proposition';
 
 // ── Chiffres dérivés — AUCUNE valeur saisie à la main ────────────────────────
-const installCount = REALISATIONS.length;
-
+// RULE B (2026-07-04) : le nombre brut d'installations n'est plus mis en
+// avant en copie utilisateur (lead, h2, dénominateurs) — la page mène par le
+// kWc cumulé / kWh mesuré / CO₂ évité (partiellement supersède W279).
 const kwcTotal = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
 const kwcTotalLabel = kwcTotal.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -87,9 +88,10 @@ const jsonLd = {
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">Redevabilité</p>
         <h1 class="display v2-page-title cine-in cine-in-1 mt-6">Impact Taqinor</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
-          Pas une projection, pas un objectif : ce que nos {installCount} installations publiées
-          produisent réellement, cumulé. Cette page grandit chantier après chantier — aujourd'hui
-          elle est petite, volontairement, parce qu'elle ne dit que ce que nous pouvons prouver.
+          Pas une projection, pas un objectif : {kwcTotalLabel} kWc installés, {productionTotalLabel} kWh
+          mesurés, {co2TonnesLabel} t de CO₂ évitées chaque année — ce que nos installations publiées
+          produisent réellement, cumulé. Cette page grandit chantier après chantier ; elle ne dit que
+          ce que nous pouvons prouver.
         </p>
       </div>
     </section>
@@ -98,13 +100,13 @@ const jsonLd = {
     <section class="section px-4">
       <div class="mx-auto max-w-6xl">
         <p class="tech-label v2-kicker rule-brass text-lune">Le cumul aujourd'hui</p>
-        <h2 class="display v2-section-title mt-5 text-white">{installCount} installations, un seul bilan</h2>
+        <h2 class="display v2-section-title mt-5 text-white">{kwcTotalLabel} kWc, un seul bilan</h2>
         <div class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
           <KeyFigure value={kwcTotalLabel} unit="kWc" label="Puissance installée">
-            Cumul de {installCount} installations à {villesUniques.join(', ')}.
+            Cumul des installations publiées à {villesUniques.join(', ')}.
           </KeyFigure>
           <KeyFigure value={productionTotalLabel} unit="kWh/an" label="Production mesurée">
-            Sur {withMeasuredProduction.length} installations suivies (Deye Cloud) — les chantiers
+            Sur les installations suivies (Deye Cloud) — les chantiers
             sans production publiée ne sont pas comptés.
           </KeyFigure>
           <KeyFigure value={co2TonnesLabel} unit="t CO₂/an" label="CO₂ évité">
@@ -112,7 +114,7 @@ const jsonLd = {
             utilisé dans nos études.
           </KeyFigure>
           <KeyFigure value={String(batteryKwhTotal).replace('.', ',')} unit="kWh" label="Stockage cumulé">
-            Capacité batterie installée sur {battersInstalls.length} des {installCount} chantiers.
+            Capacité batterie installée sur {battersInstalls.length} des chantiers.
           </KeyFigure>
         </div>
         <Callout type="info" title="Comment ce chiffre est calculé">
@@ -155,17 +157,16 @@ const jsonLd = {
       </div>
     </section>
 
-    <!-- Pourquoi cette page reste petite -->
+    <!-- Pourquoi ce bilan reste honnête -->
     <section class="section px-4 text-white">
       <div class="mx-auto max-w-3xl">
-        <p class="tech-label v2-kicker rule-brass text-lune">Pourquoi si peu</p>
-        <h2 class="display v2-section-title mt-5 text-white">Petite maintenant, honnête toujours</h2>
+        <p class="tech-label v2-kicker rule-brass text-lune">Notre méthode</p>
+        <h2 class="display v2-section-title mt-5 text-white">Mesuré, jamais gonflé</h2>
         <p class="v2-lead mt-5 text-lune-soft">
           Nous pourrions gonfler ce bilan avec des estimations théoriques, des rendements
           catalogue ou des projections sur cinq ans. Nous préférons ne compter que ce qui est
-          déjà posé, suivi et publié — ce qui rend ce chiffre plus petit qu'il ne pourrait
-          paraître, mais vérifiable ligne par ligne sur notre page réalisations. Chaque nouveau
-          chantier documenté fait progresser ce total ; c'est la seule façon dont il grandira.
+          déjà posé, suivi et publié — vérifiable ligne par ligne sur notre page réalisations.
+          Chaque nouveau chantier documenté fait progresser ce total.
         </p>
       </div>
     </section>

@@ -21,6 +21,7 @@ import CtaBand from '../../../components/CtaBand.astro';
 import StickyCta from '../../../components/StickyCta.astro';
 import CertLogoRow from '../../../components/CertLogoRow.astro';
 import BrandStrip from '../../../components/BrandStrip.astro';
+import RelatedLinks from '../../../components/RelatedLinks.astro';
 import { REALISATIONS, standardCaption } from '../../../lib/realisations';
 import { caseStudyBySlug } from '../../../lib/caseStudies';
 import { getLocaleFromPath } from '../../../i18n/utils';
@@ -42,9 +43,9 @@ const altOf = (r: typeof REALISATIONS[number]) => caseStudyBySlug(r.slug, locale
 const itemListJsonLd = {
   '@context': 'https://schema.org',
   '@type': 'ItemList',
-  name: 'Taqinor solar installations — viewable, measured production',
+  name: 'Taqinor solar installations — viewable, tracked production',
   description:
-    'Solar installations actually fitted by Taqinor, viewable on request, with production followed on Deye Cloud when it is measured.',
+    'Solar installations actually fitted by Taqinor, viewable on request, with a production figure (measured or, absent a distinct reading, estimated from measured yield).',
   itemListElement: REALISATIONS.map((r, i) => ({
     '@type': 'ListItem',
     position: i + 1,
@@ -56,8 +57,8 @@ const itemListJsonLd = {
 ---
 
 <Layout
-  title="Our solar projects in Morocco — measured installations | Taqinor"
-  description="The solar installations actually fitted and measured by Taqinor: villas in Casablanca, El Jadida and Nouaceur, power, production followed on Deye Cloud and the equipment on the roof. Detailed case studies."
+  title="Our solar projects in Morocco — tracked installations | Taqinor"
+  description="The solar installations actually fitted by Taqinor: villas in Casablanca, El Jadida and Nouaceur, power, tracked production and the equipment on the roof. Detailed case studies."
   ogSlug="accueil"
 >
   <script type="application/ld+json" set:html={JSON.stringify(itemListJsonLd)} />
@@ -73,8 +74,8 @@ const itemListJsonLd = {
         <h1 class="display v2-page-title cine-in mt-5 max-w-3xl [animation-delay:120ms]">Our latest projects</h1>
         <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
           Real projects, viewable on request — Casablanca, El Jadida, Nouaceur. Each case study
-          carries the installed power, the equipment and, when it is measured, the production
-          followed on Deye Cloud. Nothing added, nothing erased.
+          carries the installed power, the equipment and, when published, a production figure.
+          Nothing added, nothing erased.
         </p>
         <dl class="cine-in mt-8 flex flex-wrap gap-x-10 gap-y-4 [animation-delay:360ms]">
           <div>
@@ -93,21 +94,22 @@ const itemListJsonLd = {
       </div>
     </section>
 
-    <!-- W289 — indexable pillar: viewable installations, measured production -->
+    <!-- W289 — indexable pillar: viewable installations, tracked production -->
     <section class="border-y border-white/10 px-4 py-14 sm:py-16">
       <div class="mx-auto max-w-3xl">
         <p class="tech-label v2-kicker rule-brass text-lune">What sets our projects apart</p>
-        <h2 class="display v2-section-title mt-5 text-white">Viewable installations, measured production</h2>
+        <h2 class="display v2-section-title mt-5 text-white">Viewable installations, tracked production</h2>
         <p class="v2-lead mt-5 text-lune-soft">
           Before a quote, a visit can be arranged: see a Taqinor installation running, ask an
           existing client questions, compare a roof to yours. {mesureesCount} of the {REALISATIONS.length} projects
-          shown below carry production measured continuously on Deye Cloud — not a sales estimate,
-          the meter itself.
+          shown below publish a production figure — drawn from the measured yield of our monitored
+          projects, not a catalogue sales estimate.
         </p>
         <p class="mt-4 text-lune-soft">
-          That is the difference between a promise and a proof: the installed power, the equipment
-          fitted and, when it is followed, the real production are published project by project,
-          with no rounding and no missing figure turned into an estimate.
+          That is the difference between a promise and a proof: the installed power and the
+          equipment fitted are published project by project; production is marked "estimated" until
+          a distinct Deye Cloud reading per project is published — with no rounding and no missing
+          figure turned into a silent estimate.
         </p>
       </div>
     </section>
@@ -162,6 +164,18 @@ const itemListJsonLd = {
       </div>
     </section>
     <BrandStrip />
+
+    {/* WB17 (2026-07-04) — contextual links into the two ongoing measured-proof
+        pages, weakly discoverable (absent from header/footer). */}
+    <section class="section-tight px-4">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">To go further</p>
+        <RelatedLinks links={[
+          { href: L('/production-mesuree'), label: 'Our tracked production, ongoing' },
+          { href: L('/impact-taqinor'), label: 'Taqinor Impact (kWc, kWh, CO2 avoided)' },
+        ]} />
+      </div>
+    </section>
 
     <CtaBand title="The next case study could be your roof." href={L('/devis/mon-toit')} />
 
