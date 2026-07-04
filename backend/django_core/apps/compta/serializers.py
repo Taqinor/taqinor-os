@@ -19,6 +19,7 @@ from .models import (
     DemandeApprobationConfig, DotationAmortissement,
     ECatalogue, EcritureComptable, Effet, EntiteConsolidation, EtapeSequence,
     ExecutionEtapeSequence, InscriptionSequence,
+    ListeDiffusion, AbonnementListe,
     ExerciceComptable, FormulaireIntake,
     Immobilisation, IndemniteChantier, Journal, LigneEcriture,
     LignePrevisionnelTresorerie, LigneReleve, MessageWhatsAppEntrant,
@@ -1430,13 +1431,22 @@ class CampagneSerializer(serializers.ModelSerializer):
         model = Campagne
         fields = [
             'id', 'nom', 'canal', 'canal_display', 'objet', 'corps', 'segment',
-            'statut', 'statut_display', 'nb_destinataires', 'nb_envois',
-            'nb_ouvertures', 'nb_clics', 'envoyee_le', 'date_creation',
+            'listes', 'statut', 'statut_display', 'nb_destinataires',
+            'nb_envois', 'nb_ouvertures', 'nb_clics', 'envoyee_le',
+            'date_creation',
         ]
         read_only_fields = [
             'statut', 'nb_destinataires', 'nb_envois', 'nb_ouvertures',
             'nb_clics', 'envoyee_le', 'date_creation',
         ]
+
+    def validate_listes(self, value):
+        request = self.context.get('request')
+        if request is not None:
+            for liste in value:
+                if liste.company_id != request.user.company_id:
+                    raise serializers.ValidationError('Liste inconnue.')
+        return value
 
 
 # ── XMKT2 — Journal d'envoi par destinataire ────────────────────────────────
@@ -1456,6 +1466,38 @@ class EnvoiCampagneSerializer(serializers.ModelSerializer):
             'statut', 'raison_smtp', 'envoye_le', 'ouvert_le', 'clique_le',
             'date_creation',
         ]
+
+
+# ── XMKT5 — Listes de diffusion nommées + abonnements ───────────────────────
+
+class AbonnementListeSerializer(serializers.ModelSerializer):
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = AbonnementListe
+        fields = [
+            'id', 'liste', 'destinataire', 'contact_ref', 'statut',
+            'statut_display', 'date_creation', 'date_maj',
+        ]
+        read_only_fields = ['date_creation', 'date_maj']
+
+    def validate_liste(self, value):
+        return _meme_societe(self, value, 'liste')
+
+
+class ListeDiffusionSerializer(serializers.ModelSerializer):
+    nb_abonnes = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ListeDiffusion
+        fields = [
+            'id', 'nom', 'description', 'nb_abonnes', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_nb_abonnes(self, obj):
+        return obj.abonnements.filter(statut='inscrit').count()
 
 
 # ── FG202 — Séquences de relance automatisées ──────────────────────────────

@@ -6,7 +6,7 @@ from .views import (
     AppelTelephoniqueViewSet,
     BaremeIndemniteViewSet, BordereauRemiseViewSet, BudgetViewSet,
     CaisseViewSet, CampagneViewSet, CautionBancaireViewSet, CentreCoutViewSet,
-    EnvoiCampagneViewSet,
+    EnvoiCampagneViewSet, ListeDiffusionViewSet, AbonnementListeViewSet,
     CessionImmobilisationViewSet, CodePromotionViewSet,
     CommissionPayoutRunViewSet, ComparateurDevisViewSet,
     CompteComptableViewSet, CompteTresorerieViewSet, ContratAvancementViewSet,
@@ -101,6 +101,8 @@ router.register(r'familles-tva-non-deductibles', FamilleTvaNonDeductibleViewSet)
 # ── Croissance commerciale / marketing / CPQ (FG201–FG214) ──────────────────
 router.register(r'campagnes', CampagneViewSet)
 router.register(r'envois-campagne', EnvoiCampagneViewSet)
+router.register(r'listes-diffusion', ListeDiffusionViewSet)
+router.register(r'abonnements-liste', AbonnementListeViewSet)
 router.register(r'sequences-relance', SequenceRelanceViewSet)
 router.register(r'etapes-sequence', EtapeSequenceViewSet)
 router.register(r'inscriptions-sequence', InscriptionSequenceViewSet)

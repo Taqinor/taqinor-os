@@ -4390,6 +4390,9 @@ class Campagne(models.Model):
     segment = models.JSONField(
         default=dict, blank=True,
         verbose_name='Critères de segment (JSON)')
+    listes = models.ManyToManyField(
+        'compta.ListeDiffusion', blank=True, related_name='campagnes',
+        verbose_name='Listes de diffusion ciblées (XMKT5)')
     statut = models.CharField(
         max_length=12, choices=Statut.choices, default=Statut.BROUILLON,
         verbose_name='Statut')
@@ -4514,6 +4517,85 @@ class SuppressionMarketing(models.Model):
 
     def __str__(self):
         return f'{self.destinataire} ({self.motif})'
+
+
+# ── XMKT5 — Listes de diffusion nommées + abonnements ───────────────────────
+
+class ListeDiffusion(models.Model):
+    """Liste de diffusion nommée et réutilisable (XMKT5), cible additionnelle
+    d'une ``Campagne`` en plus du segment JSON libre.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='listes_diffusion',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=200, verbose_name='Nom de la liste')
+    description = models.TextField(blank=True, default='',
+                                   verbose_name='Description')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Liste de diffusion'
+        verbose_name_plural = 'Listes de diffusion'
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
+class AbonnementListe(models.Model):
+    """Abonnement d'un contact à une ``ListeDiffusion`` (XMKT5).
+
+    ``contact_ref`` est une référence OPAQUE lead/client (jamais d'import des
+    modèles crm/ventes). Dédoublonnage par destinataire normalisé à
+    l'import ; l'historique d'adhésion horodaté vit sur ce même enregistrement
+    (``date_creation``/``date_maj``).
+    """
+    class Statut(models.TextChoices):
+        INSCRIT = 'inscrit', 'Inscrit'
+        DESINSCRIT = 'desinscrit', 'Désinscrit'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='abonnements_liste',
+        verbose_name='Société',
+    )
+    liste = models.ForeignKey(
+        ListeDiffusion,
+        on_delete=models.CASCADE,
+        related_name='abonnements',
+        verbose_name='Liste',
+    )
+    destinataire = models.CharField(
+        max_length=255, verbose_name='Destinataire (email/téléphone normalisé)')
+    contact_ref = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Référence contact (lead/client, opaque)')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.INSCRIT,
+        verbose_name='Statut')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+    date_maj = models.DateTimeField(
+        auto_now=True, verbose_name='Mis à jour le')
+
+    class Meta:
+        verbose_name = 'Abonnement à une liste'
+        verbose_name_plural = 'Abonnements à une liste'
+        ordering = ['-date_creation']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['liste', 'destinataire'],
+                name='uniq_abonnement_par_destinataire_liste',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.destinataire} → {self.liste_id} ({self.statut})'
 
 
 # ── FG202 — Séquences de relance automatisées (drip / nurture) ─────────────

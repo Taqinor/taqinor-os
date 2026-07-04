@@ -32,6 +32,7 @@ from .models import (
     DemandeApprobationConfig,
     DotationAmortissement, ECatalogue, EcritureComptable, Effet,
     EntiteConsolidation, EtapeSequence, InscriptionSequence,
+    ListeDiffusion, AbonnementListe,
     ExerciceComptable, FormulaireIntake, Immobilisation, IndemniteChantier,
     Journal,
     LignePrevisionnelTresorerie, LigneReleve, MessageWhatsAppEntrant,
@@ -70,6 +71,7 @@ from .serializers import (
     DotationAmortissementSerializer, ECatalogueSerializer,
     EcritureComptableSerializer, EffetSerializer, EntiteConsolidationSerializer,
     EtapeSequenceSerializer, InscriptionSequenceSerializer,
+    ListeDiffusionSerializer, AbonnementListeSerializer,
     ExerciceComptableSerializer, FormulaireIntakeSerializer,
     ImmobilisationSerializer,
     IndemniteChantierSerializer, JournalSerializer,
@@ -3659,6 +3661,48 @@ class EnvoiCampagneViewSet(_ComptaBaseViewSet):
         statut = self.request.query_params.get('statut')
         if statut:
             qs = qs.filter(statut=statut)
+        return qs
+
+
+# ── XMKT5 — Listes de diffusion nommées + abonnements ───────────────────────
+
+class ListeDiffusionViewSet(_ComptaBaseViewSet):
+    """CRUD des listes de diffusion nommées (XMKT5)."""
+    queryset = ListeDiffusion.objects.all()
+    serializer_class = ListeDiffusionSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom']
+    ordering_fields = ['nom', 'date_creation']
+
+    @action(detail=True, methods=['post'])
+    def importer(self, request, pk=None):
+        """Import CSV/XLSX déjà mappé côté client : ``lignes`` = liste de
+        ``{'destinataire': ..., 'contact_ref': ...}``."""
+        liste = self.get_object()
+        lignes = request.data.get('lignes') or []
+        rapport = services.importer_abonnements_liste(liste, lignes)
+        return Response(rapport)
+
+    @action(detail=True, methods=['get'])
+    def abonnes(self, request, pk=None):
+        liste = self.get_object()
+        qs = liste.abonnements.all()
+        statut = request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return Response(AbonnementListeSerializer(qs, many=True).data)
+
+
+class AbonnementListeViewSet(_ComptaBaseViewSet):
+    """Abonnements individuels à une liste (XMKT5)."""
+    queryset = AbonnementListe.objects.select_related('liste').all()
+    serializer_class = AbonnementListeSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        liste_id = self.request.query_params.get('liste')
+        if liste_id:
+            qs = qs.filter(liste_id=liste_id)
         return qs
 
 

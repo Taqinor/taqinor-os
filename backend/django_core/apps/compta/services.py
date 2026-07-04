@@ -23,6 +23,7 @@ Trois blocs :
 import csv
 import hashlib
 import io
+import re
 from decimal import ROUND_HALF_UP, Decimal
 from math import asin, cos, radians, sin, sqrt
 
@@ -66,6 +67,7 @@ from .models import (
     FamilleTvaNonDeductible,
     EtapeSequence, ExecutionEtapeSequence, InscriptionSequence,
     SequenceRelance, EnvoiCampagne, SuppressionMarketing,
+    ListeDiffusion, AbonnementListe,
 )
 
 
@@ -5687,6 +5689,121 @@ def importer_liste_opposition(company, destinataires, *, source='import_csv'):
         if cree:
             ajoutes += 1
     return ajoutes
+
+
+# ── XMKT5 — Listes de diffusion nommées + abonnements ───────────────────────
+
+def _normaliser_destinataire(brut):
+    """Normalise un destinataire (XMKT5) : email en minuscules, téléphone
+    marocain en ``212XXXXXXXXX`` (même convention que le lien wa.me
+    ``ventes.utils.phone.normalize_ma_phone`` — dupliqué ici pour garder
+    ``apps.compta`` autonome, sans import cross-app).
+    """
+    brut = (brut or '').strip()
+    if not brut:
+        return ''
+    if '@' in brut:
+        return brut.lower()
+    digits = re.sub(r'\D', '', brut)
+    if not digits:
+        return brut
+    if digits.startswith('00'):
+        digits = digits[2:]
+    if digits.startswith('212'):
+        local = digits[3:]
+    elif digits.startswith('0'):
+        local = digits[1:]
+    else:
+        local = digits
+    local = local.lstrip('0')
+    if not local:
+        return brut
+    return '212' + local
+
+
+def creer_liste_diffusion(company, *, nom, description=''):
+    """Crée une liste de diffusion nommée (XMKT5)."""
+    return ListeDiffusion.objects.create(
+        company=company, nom=nom, description=description or '')
+
+
+def inscrire_dans_liste(liste, destinataire, *, contact_ref=''):
+    """Inscrit (idempotent) un destinataire dans une liste (XMKT5).
+
+    Dédoublonne par destinataire NORMALISÉ. Un destinataire déjà désinscrit
+    de CETTE liste n'est jamais ré-inscrit silencieusement par un import — un
+    import qui referait `get_or_create` laisserait le statut existant intact
+    (voir ``importer_abonnements_liste``) ; cette fonction, elle, réinscrit
+    explicitement à la demande (action manuelle).
+    """
+    destinataire = _normaliser_destinataire(destinataire)
+    if not destinataire:
+        return None
+    obj, cree = AbonnementListe.objects.get_or_create(
+        liste=liste, destinataire=destinataire,
+        defaults={
+            'company': liste.company,
+            'contact_ref': contact_ref or '',
+            'statut': AbonnementListe.Statut.INSCRIT,
+        },
+    )
+    if not cree and obj.statut != AbonnementListe.Statut.INSCRIT:
+        obj.statut = AbonnementListe.Statut.INSCRIT
+        obj.save(update_fields=['statut'])
+    return obj
+
+
+def desinscrire_de_liste(liste, destinataire):
+    """Désinscrit un destinataire d'UNE liste (XMKT5), sans toucher la liste
+    globale de suppression (XMKT3, portée différente)."""
+    destinataire = _normaliser_destinataire(destinataire)
+    abonnement = AbonnementListe.objects.filter(
+        liste=liste, destinataire=destinataire).first()
+    if not abonnement:
+        return None
+    abonnement.statut = AbonnementListe.Statut.DESINSCRIT
+    abonnement.save(update_fields=['statut'])
+    return abonnement
+
+
+def importer_abonnements_liste(liste, lignes, *, colonne_destinataire='destinataire',
+                               colonne_contact_ref='contact_ref'):
+    """Importe des abonnements dans une liste depuis des lignes CSV/XLSX déjà
+    parsées (XMKT5) : ``lignes`` = liste de dicts (mapping de colonnes fait
+    par l'appelant). Renvoie un rapport ``{ajoutes, doublons, ignores_supprimes}``.
+
+    Ne réinscrit JAMAIS un destinataire déjà désinscrit de cette liste (les
+    doublons sont comptés, pas les lignes qui matchent un désinscrit — celles-
+    ci sont comptées séparément dans ``ignores_supprimes``).
+    """
+    rapport = {'ajoutes': 0, 'doublons': 0, 'ignores_supprimes': 0}
+    vus = set()
+    for ligne in lignes:
+        brut = ligne.get(colonne_destinataire) if isinstance(ligne, dict) else ligne
+        destinataire = _normaliser_destinataire(brut)
+        if not destinataire:
+            continue
+        if destinataire in vus:
+            rapport['doublons'] += 1
+            continue
+        vus.add(destinataire)
+        existant = AbonnementListe.objects.filter(
+            liste=liste, destinataire=destinataire).first()
+        if existant:
+            if existant.statut == AbonnementListe.Statut.DESINSCRIT:
+                rapport['ignores_supprimes'] += 1
+            else:
+                rapport['doublons'] += 1
+            continue
+        contact_ref = (
+            ligne.get(colonne_contact_ref, '') if isinstance(ligne, dict) else '')
+        AbonnementListe.objects.create(
+            company=liste.company, liste=liste, destinataire=destinataire,
+            contact_ref=contact_ref or '',
+            statut=AbonnementListe.Statut.INSCRIT,
+        )
+        rapport['ajoutes'] += 1
+    return rapport
 
 
 # ── FG202 — Déclenchement d'une séquence de relance (GATED, NO-OP) ──────────
