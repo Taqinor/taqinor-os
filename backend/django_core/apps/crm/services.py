@@ -794,6 +794,65 @@ def resolve_client_for_lead(lead: Lead) -> Client:
     return client
 
 
+def convertir_lead_en_client(*, lead, user, mode, client_id=None):
+    """ZSAL4 — assistant de conversion EXPLICITE lead → client (Odoo « Convert
+    to Opportunity » : nouveau contact / lier un contact existant / ne pas
+    lier), à la main du commercial.
+
+    ``mode``:
+      - ``'nouveau'`` : crée un client depuis les champs du lead. Réutilise
+        STRICTEMENT :func:`resolve_client_for_lead` (jamais un 2ᵉ chemin de
+        création) — si le lead est déjà lié, ce mode ne duplique jamais.
+      - ``'lier'`` : rattache un ``crm.Client`` EXISTANT, borné à la même
+        société que le lead (``client_id`` obligatoire ; ValueError sinon,
+        ou si le client n'existe pas / est d'une autre société).
+      - ``'aucun'`` : marque le lead qualifié sans client (ne crée rien).
+
+    Toute conversion est journalisée dans le chatter du lead (choix +
+    acteur). Retourne le :class:`Client` résolu (ou None pour ``'aucun'``).
+    """
+    if mode not in ('nouveau', 'lier', 'aucun'):
+        raise ValueError("Mode de conversion invalide (nouveau|lier|aucun).")
+
+    if mode == 'aucun':
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=user,
+            kind=LeadActivity.Kind.NOTE,
+            body="Conversion : lead qualifié SANS client rattaché "
+                 f"(choix de {getattr(user, 'username', '?')}).")
+        return None
+
+    if mode == 'lier':
+        if not client_id:
+            raise ValueError("client_id requis pour le mode « lier ».")
+        client = Client.objects.filter(
+            id=client_id, company=lead.company).first()
+        if client is None:
+            raise ValueError("Client introuvable dans votre société.")
+        lead.client = client
+        lead.save(update_fields=['client'])
+        nom_client = f"{client.nom} {client.prenom or ''}".strip()
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=user,
+            kind=LeadActivity.Kind.NOTE,
+            body=f"Conversion : client existant lié — {nom_client} "
+                 f"(choix de {getattr(user, 'username', '?')}).")
+        return client
+
+    # mode == 'nouveau' : jamais un 2ᵉ chemin de création — délègue
+    # entièrement à resolve_client_for_lead (réutilise le lien existant, sinon
+    # crée). Le chatter de resolve_client_for_lead trace déjà la résolution ;
+    # on ajoute une entrée dédiée précisant que c'est une conversion EXPLICITE.
+    client = resolve_client_for_lead(lead)
+    nom_client = f"{client.nom} {client.prenom or ''}".strip()
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=user,
+        kind=LeadActivity.Kind.NOTE,
+        body=f"Conversion : nouveau client — {nom_client} "
+             f"(choix de {getattr(user, 'username', '?')}).")
+    return client
+
+
 def appliquer_plan_activite(*, lead, plan, user):
     """ZSAL2 — applique un :class:`~apps.crm.models.PlanActivite` à un lead.
 

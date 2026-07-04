@@ -739,6 +739,26 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
             ActivitySerializer(activites, many=True).data,
             status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['post'], url_path='convertir-client',
+            permission_classes=[IsResponsableOrAdmin])
+    def convertir_client(self, request, pk=None):
+        """ZSAL4 — assistant de conversion EXPLICITE lead → client (body
+        {mode: nouveau|lier|aucun, client_id?}). Journalisé dans le chatter."""
+        lead = self.get_object()
+        mode = (request.data.get('mode') or '').strip()
+        client_id = request.data.get('client_id')
+        from .services import convertir_lead_en_client
+        try:
+            client = convertir_lead_en_client(
+                lead=lead, user=request.user, mode=mode, client_id=client_id)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'mode': mode,
+            'client': ClientSerializer(client).data if client else None,
+        })
+
     @action(detail=True, methods=['get'], url_path='points-contact',
             permission_classes=[IsAnyRole])
     def points_contact(self, request, pk=None):
