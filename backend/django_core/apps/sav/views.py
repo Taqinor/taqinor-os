@@ -1001,6 +1001,43 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             'sous_garantie': sous_garantie,
         }, status=201)
 
+    @action(detail=True, methods=['post'], url_path='facturer',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def facturer(self, request, pk=None):
+        """XCTR4 — Facture CE ticket selon le routage de couverture calculé
+        (garantie/contrat de maintenance/facturable).
+
+        POST /sav/tickets/{id}/facturer/
+
+        Réutilise EXACTEMENT ``generer_facture_ticket_sav`` (XFSM1) : garantie
+        et contrat (avec quota non épuisé) produisent une facture à 0 DH
+        (« couvert »), facturable produit la facture réelle au prix de vente
+        catalogue (jamais ``prix_achat`` — pièces au prix VENTE uniquement).
+        Idempotent (réutilise ``facture_id_ext`` si déjà posé). Renvoie aussi
+        la couverture retenue pour cette facturation."""
+        ticket = self.get_object()
+        from apps.ventes.services import generer_facture_ticket_sav
+
+        couverture = ticket.couverture
+        if couverture == Ticket.Couverture.A_DETERMINER:
+            couverture = ticket.couverture_calculee()
+
+        sous_garantie = couverture in (
+            Ticket.Couverture.GARANTIE, Ticket.Couverture.CONTRAT)
+        pieces = list(ticket.pieces.select_related('produit'))
+        facture = generer_facture_ticket_sav(
+            ticket=ticket, sous_garantie=sous_garantie, pieces=pieces,
+            user=request.user)
+        activity.log_note(
+            ticket, request.user,
+            f'Facture {facture.reference} générée depuis le ticket '
+            f'(couverture : {couverture}).')
+        return Response({
+            'facture_id': facture.id,
+            'facture_reference': facture.reference,
+            'couverture': couverture,
+        }, status=201)
+
     @action(detail=True, methods=['get', 'post'], url_path='prets-equipement',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def prets_equipement(self, request, pk=None):

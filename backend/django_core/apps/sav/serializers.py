@@ -275,6 +275,9 @@ class TicketSerializer(serializers.ModelSerializer):
     # XCTR2 — couverture de l'équipement lié par le contrat de maintenance
     # ACTIF du client (registre XCTR2). None si aucun contrat/équipement.
     equipement_couvert = serializers.SerializerMethodField()
+    # XCTR4 — routage de couverture PROPOSÉ (garantie/contrat/facturable),
+    # calculé en lecture — distinct de `couverture` (valeur stockée).
+    couverture_proposee = serializers.SerializerMethodField()
 
     class Meta:
         model = Ticket
@@ -343,6 +346,9 @@ class TicketSerializer(serializers.ModelSerializer):
         if contrat is None:
             return None
         return contrat.couvre_equipement(obj.equipement)
+
+    def get_couverture_proposee(self, obj):
+        return obj.couverture_calculee()
 
 
 # ── FG81 — Réglages SLA ────────────────────────────────────────────────────────

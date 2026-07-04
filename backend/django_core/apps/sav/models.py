@@ -593,6 +593,26 @@ class Ticket(models.Model):
         null=True, blank=True,
         help_text='ID du Lead crm créé/réutilisé depuis ce ticket (ZSAV8).')
 
+    # ── XCTR4 — Routage de couverture (garantie / contrat O&M / facturable) ─
+    # Décide qui paie l'intervention. Défaut `a_determiner` (comportement
+    # historique inchangé pour tous les tickets existants — aucune valeur
+    # n'est recalculée rétroactivement). `couverture_calculee` (propriété)
+    # propose une valeur, mais le champ stocké reste la source de vérité une
+    # fois posé explicitement (jamais réécrit en silence par la lecture).
+    class Couverture(models.TextChoices):
+        GARANTIE = 'garantie', 'Garantie'
+        CONTRAT = 'contrat', 'Contrat O&M'
+        FACTURABLE = 'facturable', 'Facturable'
+        A_DETERMINER = 'a_determiner', 'À déterminer'
+
+    couverture = models.CharField(
+        max_length=12, choices=Couverture.choices,
+        default=Couverture.A_DETERMINER,
+        verbose_name='Couverture',
+        help_text='Qui couvre cette intervention : garantie, contrat de '
+                  'maintenance, ou facturable au client.',
+    )
+
     class Meta:
         verbose_name = 'Ticket SAV'
         verbose_name_plural = 'Tickets SAV'
@@ -625,6 +645,31 @@ class Ticket(models.Model):
                     if today < eq.date_fin_garantie_effective
                     else self.SousGarantie.NON)
         return self.sous_garantie
+
+    def couverture_calculee(self):
+        """XCTR4 — Propose une couverture (garantie / contrat / facturable)
+        SANS écraser une valeur déjà posée manuellement.
+
+        Ordre : garantie (si `sous_garantie_calcule=OUI`) → contrat (si un
+        contrat de maintenance actif du client couvre l'équipement lié — ou
+        n'a pas de registre — ET que son quota XCTR3 n'est pas épuisé pour ce
+        type de ticket) → facturable sinon."""
+        if self.sous_garantie_calcule == self.SousGarantie.OUI:
+            return self.Couverture.GARANTIE
+        contrat = (ContratMaintenance.objects
+                   .filter(client_id=self.client_id, actif=True)
+                   .order_by('-date_creation').first())
+        if contrat is not None and contrat.couvre_equipement(self.equipement):
+            from .selectors import droits_restants
+            annee = (self.date_ouverture or timezone.localdate()).year
+            droits = droits_restants(contrat, annee)
+            if self.type == self.Type.PREVENTIF:
+                restant = droits['visites_restantes']
+            else:
+                restant = droits['deplacements_restants']
+            if restant is None or restant > 0:
+                return self.Couverture.CONTRAT
+        return self.Couverture.FACTURABLE
 
     def recompute_sla_breach(self):
         """Recalcule sla_breach : True si sla_due_at dépassé + ticket ouvert.
