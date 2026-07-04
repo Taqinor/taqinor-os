@@ -2282,12 +2282,79 @@ def appliquer_indexation(indexation, *, valeur_actuelle, auteur=None,
     indexation.date_derniere_revision = today
     indexation.save(update_fields=['date_derniere_revision'])
 
+    lignes_reappliquees = 0
+    if delta != Decimal('0'):
+        lignes_reappliquees = reappliquer_montant_echeancier(
+            indexation.contrat, delta=delta, date_effet=today,
+            auteur=auteur)
+
     return {
         'avenant': avenant,
         'prix_base': calcul['prix_base'],
         'prix_revise': calcul['prix_revise'],
         'delta': delta,
+        'lignes_reappliquees': lignes_reappliquees,
     }
+
+
+def reappliquer_montant_echeancier(contrat, *, delta, date_effet, auteur=None):
+    """Re-tarife l'échéancier de facturation après une indexation — YSUBS7.
+
+    ``appliquer_indexation`` (CONTRAT32) crée un AVENANT ajustant
+    ``Contrat.montant`` du ``delta`` mais NE touchait pas les ``LigneEcheance``
+    futures : la facture récurrente suivante billait l'ANCIEN montant. Ce
+    service ajoute ``delta`` (peut être négatif) au ``montant`` de chaque
+    ``LigneEcheance`` du contrat dont :
+
+    - ``date_echeance >= date_effet`` (périodes futures uniquement), ET
+    - ``facture_id`` est NULL (pas encore facturée), ET
+    - ``statut != annulee``.
+
+    Les échéances DÉJÀ facturées sont INTOUCHÉES (une correction sur une ligne
+    déjà émise passerait par un avoir — hors périmètre de cette révision).
+    ``montant_total`` de chaque échéancier touché est recalculé
+    (``recalculer_total_echeancier``) et la révision est journalisée dans le
+    chatter du contrat (``ContratActivity``). ``delta`` nul = aucun changement
+    (no-op explicite, appelant déjà gardé par ``appliquer_indexation`` mais
+    utilisable directement).
+
+    Renvoie le nombre de lignes re-tarifées.
+    """
+    from .models import EcheancierContrat, LigneEcheance
+
+    if delta == Decimal('0'):
+        return 0
+
+    lignes = list(
+        LigneEcheance.objects.select_for_update().filter(
+            company=contrat.company,
+            echeancier__contrat=contrat,
+            date_echeance__gte=date_effet,
+            facture_id__isnull=True,
+        ).exclude(statut=LigneEcheance.Statut.ANNULEE)
+    )
+
+    echeanciers_touches = set()
+    for ligne in lignes:
+        ligne.montant = (ligne.montant or Decimal('0')) + delta
+        ligne.save(update_fields=['montant'])
+        echeanciers_touches.add(ligne.echeancier_id)
+
+    for echeancier_id in echeanciers_touches:
+        echeancier = EcheancierContrat.objects.get(pk=echeancier_id)
+        recalculer_total_echeancier(echeancier)
+
+    if lignes:
+        journaliser_transition(
+            contrat, field='echeancier_indexation',
+            old_value='', new_value=str(delta),
+            message=(
+                f'Échéancier re-tarifé après indexation : {len(lignes)} '
+                f'échéance(s) future(s) ajustée(s) de {delta} '
+                f'à compter du {date_effet}.'),
+            auteur=auteur)
+
+    return len(lignes)
 
 
 # ---------------------------------------------------------------------------

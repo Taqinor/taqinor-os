@@ -1856,6 +1856,7 @@ class IndexationPrixViewSet(_ContratsBaseViewSet):
             'delta': str(resultat['delta']),
             'avenant_id': avenant.id if avenant is not None else None,
             'avenant_numero': avenant.numero if avenant is not None else None,
+            'lignes_reappliquees': resultat.get('lignes_reappliquees', 0),
         }, status=status.HTTP_200_OK)
 
 
