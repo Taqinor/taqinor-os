@@ -14,6 +14,8 @@ class ContratMaintenanceSerializer(serializers.ModelSerializer):
     facturation_due = serializers.SerializerMethodField()
     # XCTR2 — registre des équipements couverts (lecture enrichie).
     equipements_detail = serializers.SerializerMethodField()
+    # XCTR3 — droits inclus (entitlements), compteurs consommés/restants.
+    droits_restants = serializers.SerializerMethodField()
 
     class Meta:
         model = ContratMaintenance
@@ -28,8 +30,15 @@ class ContratMaintenanceSerializer(serializers.ModelSerializer):
                   'sla_response_days', 'sla_resolution_days',
                   # XCTR2 — registre des équipements couverts.
                   'equipements', 'equipements_detail',
+                  # XCTR3 — droits inclus (entitlements).
+                  'visites_incluses_an', 'deplacements_inclus_an',
+                  'pieces_couvertes_pct', 'droits_restants',
                   'date_creation']
         read_only_fields = ['derniere_visite', 'derniere_facturation', 'date_creation']
+
+    def get_droits_restants(self, obj):
+        from .selectors import droits_restants
+        return droits_restants(obj)
 
     def get_equipements_detail(self, obj):
         return [

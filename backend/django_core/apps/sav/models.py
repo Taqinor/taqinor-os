@@ -969,6 +969,27 @@ class ContratMaintenance(models.Model):
         verbose_name='Équipements couverts',
         help_text='Équipements du parc couverts par ce contrat (optionnel).',
     )
+    # ── XCTR3 — Droits inclus (entitlements) du contrat ─────────────────────
+    # Tous optionnels : NULL = illimité/indéfini (comportement actuel — aucun
+    # contrat existant ne voit apparaître un quota qu'il n'avait pas).
+    visites_incluses_an = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Visites incluses / an',
+        help_text='Nombre de visites (tickets PREVENTIF) incluses par année '
+                  'civile. Vide = illimité.',
+    )
+    deplacements_inclus_an = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Déplacements inclus / an',
+        help_text='Nombre de déplacements (tickets CORRECTIF) inclus par '
+                  'année civile. Vide = illimité.',
+    )
+    pieces_couvertes_pct = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        verbose_name='Pièces couvertes (%)',
+        help_text='Pourcentage (0–100) du coût des pièces couvert par le '
+                  'contrat. Vide = indéfini.',
+    )
     date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:

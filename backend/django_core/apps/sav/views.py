@@ -602,6 +602,31 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
                     "Avertissement : cet équipement n'est pas dans le "
                     'registre des équipements couverts par le contrat de '
                     f'maintenance #{contrat.pk}.')
+        # XCTR3 — avertissement NON BLOQUANT si ce ticket dépasse le quota de
+        # visites/déplacements inclus au contrat (droits_restants). NULL sur le
+        # contrat = illimité : aucun avertissement possible dans ce cas.
+        if inst.client_id and inst.type in (Ticket.Type.PREVENTIF, Ticket.Type.CORRECTIF):
+            from .models import ContratMaintenance
+            from .selectors import droits_restants
+            contrat = (ContratMaintenance.objects
+                       .filter(client_id=inst.client_id, actif=True)
+                       .order_by('-date_creation').first())
+            if contrat is not None:
+                droits = droits_restants(contrat, inst.date_ouverture.year)
+                if (inst.type == Ticket.Type.PREVENTIF
+                        and droits['visites_restantes'] == 0):
+                    activity.log_note(
+                        inst, self.request.user,
+                        'Avertissement : quota de visites incluses au '
+                        f'contrat #{contrat.pk} déjà atteint pour '
+                        f"{droits['annee']}.")
+                elif (inst.type == Ticket.Type.CORRECTIF
+                        and droits['deplacements_restants'] == 0):
+                    activity.log_note(
+                        inst, self.request.user,
+                        'Avertissement : quota de déplacements inclus au '
+                        f'contrat #{contrat.pk} déjà atteint pour '
+                        f"{droits['annee']}.")
 
     # XSAV11 — statuts « clos » depuis lesquels revenir à un statut ouvert
     # compte comme une réouverture.
