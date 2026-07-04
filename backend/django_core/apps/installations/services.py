@@ -2223,3 +2223,35 @@ def lettrer_gr_ir_facture(*, facture, company, user):
         lettres.append(prov)
         montant_restant -= (prov.montant_provision or 0)
     return lettres
+
+
+# ── YSERV1 — Gate « acompte encaissé » avant planification (opt-in) ────────
+
+def verifier_gate_acompte_planification(installation):
+    """YSERV1 — renvoie une raison FRANÇAISE qui bloque le passage du
+    chantier à PLANIFIE, ou ``None`` si la transition est autorisée.
+
+    Toggle société `exiger_acompte_avant_planification` (défaut OFF = jamais
+    de blocage, comportement historique byte-identique). ON : bloque tant
+    qu'aucune Facture de type 'acompte' du devis lié n'est 'payee' — lue via
+    `apps.ventes.selectors.acompte_paye_pour_devis` (jamais un import du
+    modèle ventes). Un chantier sans devis lié n'est jamais bloqué (rien à
+    vérifier)."""
+    company = installation.company
+    if company is None:
+        return None
+    try:
+        from apps.parametres.models import CompanyProfile
+        profil = CompanyProfile.get(company)
+    except Exception:  # pragma: no cover - défensif
+        return None
+    if not getattr(profil, 'exiger_acompte_avant_planification', False):
+        return None
+    if not installation.devis_id:
+        return None
+    from apps.ventes.selectors import acompte_paye_pour_devis
+    if acompte_paye_pour_devis(installation.devis_id, company):
+        return None
+    return ("Planification refusée : l'acompte de ce devis n'est pas "
+            'encore encaissé (réglage société « acompte avant '
+            'planification »).')

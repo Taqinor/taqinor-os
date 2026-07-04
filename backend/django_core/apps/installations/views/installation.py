@@ -289,16 +289,36 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
         # les raisons en français. Interrupteur : une société sans étapes
         # configurées garde exactement le comportement historique.
         nouveau_statut = serializer.validated_data.get('statut')
+        franchit_vers_planifie = (
+            nouveau_statut == Installation.Statut.PLANIFIE
+            and nouveau_statut != old.statut)
         if nouveau_statut and nouveau_statut != old.statut:
             from rest_framework.exceptions import ValidationError
             from ..services import verifier_transition_statut
             raisons = verifier_transition_statut(old, nouveau_statut)
             if raisons:
                 raise ValidationError({'statut': raisons})
+        # YSERV1 — Gate « acompte encaissé » avant planification. Toggle OFF
+        # (défaut) = comportement byte-identique. ON : un responsable/admin
+        # (seul rôle admis en écriture ici) peut forcer avec un `motif`
+        # obligatoire, journalisé au chatter.
+        motif_override = (self.request.data.get('motif_override_acompte')
+                          or '').strip()
+        if franchit_vers_planifie:
+            from rest_framework.exceptions import ValidationError
+            from ..services import verifier_gate_acompte_planification
+            raison = verifier_gate_acompte_planification(old)
+            if raison:
+                if not motif_override:
+                    raise ValidationError({'statut': [raison]})
         super().perform_update(serializer)
         inst = serializer.instance
         _stamp_statut_dates(inst, old.statut)
         activity.log_changes(old, inst, self.request.user)
+        if franchit_vers_planifie and motif_override:
+            activity.log_note(
+                inst, self.request.user,
+                f'Planifié sans acompte — motif : {motif_override}')
         # N7 — au passage à « Réceptionné », le chantier devient un système
         # installé actif (parc) : on trace l'événement dans le chatter.
         canon_old = Installation.canonical_statut(old.statut)

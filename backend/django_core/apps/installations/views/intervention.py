@@ -240,6 +240,28 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         self._check_tenant(serializer)
         company = self.request.user.company
         installation = serializer.validated_data.get('installation')
+        # YSERV1 — Gate « acompte encaissé » avant planification : une
+        # Intervention de type POSE DATÉE sur un chantier dont l'acompte
+        # n'est pas encaissé (toggle société ON) est refusée, sauf override
+        # responsable/admin (seul rôle admis en écriture ici) avec `motif`.
+        type_intervention = serializer.validated_data.get('type_intervention')
+        date_prevue = serializer.validated_data.get('date_prevue')
+        if (installation is not None
+                and type_intervention == Intervention.Type.POSE
+                and date_prevue):
+            from rest_framework.exceptions import ValidationError
+            from ..services import verifier_gate_acompte_planification
+            raison = verifier_gate_acompte_planification(installation)
+            if raison:
+                motif_override = (
+                    self.request.data.get('motif_override_acompte')
+                    or '').strip()
+                if not motif_override:
+                    raise ValidationError({'date_prevue': [raison]})
+                activity.log_note(
+                    installation, self.request.user,
+                    'Intervention de pose planifiée sans acompte — motif : '
+                    f'{motif_override}')
         interv = serializer.save(company=company, created_by=self.request.user)
         # XFSM4 — priorité héritée du ticket SAV lié quand fournie explicitement
         # aucune priorité (défaut NORMALE côté modèle = « non fournie » ici).

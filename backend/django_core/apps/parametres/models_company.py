@@ -366,6 +366,18 @@ class CompanyProfile(models.Model):
         help_text='Taux horaire main-d\'œuvre SAV (MAD/heure), utilisé pour '
                   'facturer un ticket hors garantie depuis son temps passé.')
 
+    # ── YSERV1 — Gate « acompte encaissé » avant planification (opt-in) ──────
+    # Défaut OFF = comportement actuel byte-identique (aucun contrôle de
+    # paiement à la planification). ON : passer un chantier à PLANIFIE est
+    # refusé tant qu'aucune Facture de type 'acompte' du devis lié n'est
+    # 'payee' — sauf override responsable/admin avec motif obligatoire
+    # (journalisé au chatter).
+    exiger_acompte_avant_planification = models.BooleanField(
+        default=False,
+        help_text="Bloque la planification d'un chantier (statut PLANIFIE) "
+                  "tant que l'acompte du devis lié n'est pas encaissé. "
+                  'Désactivé par défaut.')
+
     class Meta:
         verbose_name = 'Profil entreprise'
 
