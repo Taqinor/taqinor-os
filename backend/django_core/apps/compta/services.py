@@ -3681,6 +3681,37 @@ def rembourser_indemnite_chantier(indem, *, compte_tresorerie,
     return indem
 
 
+# ── XPAI25 — Remboursement d'une indemnité chantier VIA LA PAIE ────────────
+# Fonction fine dédiée : distincte de ``rembourser_indemnite_chantier``
+# (paiement par trésorerie, FG136) — ici le montant est versé AVEC le net du
+# bulletin de salaire (aucun compte de trésorerie ni écriture GL séparée côté
+# compta : la ligne « Remboursement frais » du bulletin ET l'écriture du
+# journal de paie portent déjà le montant, cf. ``apps.paie.services``).
+
+def marquer_indemnite_remboursee_par_paie(indem, *, user=None,
+                                          date_remboursement=None):
+    """Marque une indemnité chantier REMBOURSÉE via la paie (XPAI25).
+
+    Idempotent : une indemnité déjà ``REMBOURSEE`` est renvoyée telle quelle
+    (jamais retraitée — double comptage impossible). Refuse une indemnité pas
+    encore ``VALIDEE``. Aucune écriture de trésorerie n'est postée ici (le
+    montant est déjà porté par le bulletin de paie qui appelle cette
+    fonction) — ``compte_tresorerie``/``ecriture_remboursement`` restent
+    vides, ce qui distingue ce remboursement du remboursement par trésorerie
+    (``rembourser_indemnite_chantier``). Renvoie l'indemnité.
+    """
+    if indem.statut == IndemniteChantier.Statut.REMBOURSEE:
+        return indem
+    if indem.statut != IndemniteChantier.Statut.VALIDEE:
+        raise ValidationError(
+            "Seule une indemnité validée peut être remboursée.")
+    indem.statut = IndemniteChantier.Statut.REMBOURSEE
+    indem.date_remboursement = date_remboursement or indem.date_deplacement
+    indem.rembourse_par = user
+    indem.save(update_fields=['statut', 'date_remboursement', 'rembourse_par'])
+    return indem
+
+
 # ── FG137 — Préparation de la déclaration de TVA ────────────────────────────
 
 def preparer_declaration_tva(company, *, date_debut, date_fin,

@@ -1352,6 +1352,62 @@ def expirer_regimes_echus(company, *, today=None):
     return bascules
 
 
+# ── XPAI25 — Notes de frais (indemnités chantier) remboursées sur le bulletin
+
+def remboursements_frais_periode(profil, periode):
+    """Notes de frais (indemnités chantier) remboursables du profil (XPAI25).
+
+    Lecture PURE (aucun effet de bord — jamais appelée hors calcul/aperçu) :
+    résout l'utilisateur applicatif lié (``profil.employe.user``) puis lit,
+    via ``compta.selectors.indemnites_chantier_remboursables_par_paie``
+    (fonction fine, cross-app lecture seule), les ``IndemniteChantier``
+    VALIDÉES non remboursées de la période. Sans utilisateur lié, renvoie
+    ``(Decimal('0'), [])``. Renvoie ``(total, [(indemnite, montant), ...])``.
+    """
+    employe = profil.employe if profil.employe_id else None
+    user = getattr(employe, 'user', None) if employe else None
+    if user is None:
+        return Decimal('0.00'), []
+
+    from apps.compta import selectors as compta_selectors  # cross-app READ
+
+    date_debut, date_fin = _bornes_periode(periode)
+    indemnites = compta_selectors.indemnites_chantier_remboursables_par_paie(
+        profil.company, user.id, date_debut, date_fin)
+
+    total = Decimal('0')
+    lignes = []
+    for indem in indemnites:
+        montant = Decimal(indem.montant_total or 0)
+        if montant <= 0:
+            continue
+        total += montant
+        lignes.append((indem, _q(montant)))
+    return _q(total), lignes
+
+
+def appliquer_remboursement_frais(profil, periode):
+    """Marque REMBOURSÉES (côté compta) les notes de frais du bulletin (XPAI25).
+
+    Appelé UNE SEULE FOIS, à la validation du bulletin (jamais au recalcul
+    d'un brouillon — même patron que les avances/saisies) : pour chaque
+    ``IndemniteChantier`` retenue par ``remboursements_frais_periode``, appelle
+    ``compta.services.marquer_indemnite_remboursee_par_paie`` (idempotent —
+    une indemnité déjà remboursée, y compris par trésorerie entre-temps,
+    n'est jamais recomptée : DOUBLE COMPTAGE IMPOSSIBLE). Renvoie la liste des
+    indemnités marquées.
+    """
+    from apps.compta import services as compta_services  # cross-app WRITE
+
+    _, lignes = remboursements_frais_periode(profil, periode)
+    marquees = []
+    for indem, _montant in lignes:
+        indem_a_jour = compta_services.marquer_indemnite_remboursee_par_paie(
+            indem)
+        marquees.append(indem_a_jour)
+    return marquees
+
+
 def calculer_bulletin(profil, periode, personnes_a_charge=0):
     """Calcule le bulletin de paie d'un employé pour une période (PAIE12).
 
@@ -1591,6 +1647,23 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
                 'montant': _q(montant),
             })
         net_a_payer = _q(net_a_payer - saisies_total)
+
+    # XPAI25 — Remboursement de notes de frais (IndemniteChantier validées
+    # non payées de la période) : ligne HORS bases CNSS/IR, ajoutée au net à
+    # payer (jamais imposable/cotisable). Calcul PUR ici — l'imputation
+    # effective (marquage « remboursée par paie » côté compta) se fait à la
+    # validation (``appliquer_remboursement_frais``), jamais au brouillon.
+    remboursements_frais, lignes_remboursements = remboursements_frais_periode(
+        profil, periode)
+    if remboursements_frais > 0:
+        net_a_payer = _q(net_a_payer + remboursements_frais)
+        for indem, montant in lignes_remboursements:
+            lignes.append({
+                'code': 'REMB_FRAIS',
+                'libelle': f'Remboursement frais — {indem.libelle_chantier}'.strip(' —'),
+                'type': Rubrique.TYPE_GAIN,
+                'montant': _q(montant),
+            })
 
     # PAIE18/PAIE19/PAIE23/PAIE24/XPAI3 — Total des charges patronales (coût
     # employeur), informatif : CNSS + AMO + allocations familiales + taxe de
@@ -1982,6 +2055,13 @@ def valider_bulletin(bulletin):
     # AVANT saisie figé ci-dessus.
     appliquer_saisies(bulletin.profil, bulletin.periode,
                       resultat['net_avant_saisie'])
+    # XPAI25 — Marque REMBOURSÉES (côté compta) les notes de frais incluses
+    # dans ce bulletin, une seule fois, à la validation (best-effort — ne
+    # bloque jamais la validation du bulletin de paie).
+    try:
+        appliquer_remboursement_frais(bulletin.profil, bulletin.periode)
+    except Exception:  # pragma: no cover - défensif, best-effort
+        pass
     # XPAI20 — Un bulletin de run 13e mois/gratification VALIDÉ (le versement
     # est désormais figé) EXTOURNE les provisions mensuelles accumulées pour
     # ce profil (best-effort — ne bloque jamais la validation du bulletin).
