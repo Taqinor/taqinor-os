@@ -27,6 +27,34 @@ domaine.
 from __future__ import annotations
 
 from django.http import JsonResponse
+from rest_framework.permissions import SAFE_METHODS, BasePermission
+
+# ─────────────────────────────────────────────────────────────────────────────
+# YRBAC6/YRBAC7 — Registre central des champs sensibles
+# ─────────────────────────────────────────────────────────────────────────────
+# Noms de champs qui ne doivent JAMAIS apparaître dans un payload sérialisé /
+# export / PDF rendu pour un rôle non autorisé. Chaque champ est associé au
+# codename de permission qui SEUL autorise à le voir. Source unique de vérité
+# réutilisée par le sweep anti-fuite (YRBAC6) et le mixin de masquage (YRBAC7).
+SENSITIVE_FIELDS = {
+    # Prix d'achat / coût fournisseur — jamais client-facing (règle produit).
+    'prix_achat': 'prix_achat_voir',
+    'prix_achat_unitaire': 'prix_achat_voir',
+    'date_dernier_achat': 'prix_achat_voir',
+    # Indicateurs de marge dérivés du coût d'achat.
+    'marge': 'marge_voir',
+    'marge_pct': 'marge_voir',
+    'marge_brute': 'marge_voir',
+    # Conditions revendeur / achat.
+    'prix_revendeur': 'prix_achat_voir',
+    # Rémunérations / données RH sensibles.
+    'salaire': 'salaires_voir',
+    'salaire_base': 'salaires_voir',
+    'remuneration': 'salaires_voir',
+    'salaire_net': 'salaires_voir',
+    'salaire_brut': 'salaires_voir',
+}
+
 
 # Préfixes d'URL (2ᵉ segment de /api/django/<seg>/) TOUJOURS exemptés :
 # couches fondation/techniques + surfaces publiques tokenisées. Un module
@@ -137,3 +165,84 @@ class DisabledModuleMiddleware:
                     return JsonResponse(
                         {'detail': 'Introuvable.'}, status=404)
         return self.get_response(request)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# YRBAC5 — Permission scindée lecture/écriture par méthode HTTP
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _user_has_or_legacy(user, code) -> bool:
+    """Vrai si l'utilisateur porte la permission ERP ``code``.
+
+    Repli HISTORIQUE (comme ``authentication.permissions.HasPermissionOrLegacy``)
+    pour les comptes SANS rôle fin : un compte hérité (aucun ``role`` fin, ou
+    palier Responsable/Admin) conserve l'accès qu'il avait avant l'introduction
+    des permissions granulaires — on ne retire jamais un accès existant.
+    """
+    if not (user and user.is_authenticated):
+        return False
+    if getattr(user, 'is_superuser', False):
+        return True
+    role = getattr(user, 'role', None)
+    if role is None:
+        # Compte légacy sans rôle fin : repli sur le comportement historique
+        # (le palier Responsable/Admin conserve l'écriture ; les autres restent
+        # gardés par le code appelant côté lecture).
+        return bool(getattr(user, 'is_responsable', False))
+    return user.has_erp_permission(code)
+
+
+class ScopedPermission(BasePermission):
+    """Permission « lecture ≠ écriture » pilotée par un mixin de viewset.
+
+    Le viewset (via ``WriteScopedPermissionMixin``) expose ``read_permission``
+    et ``write_permission`` ; cette classe route la vérification selon la
+    méthode HTTP (méthode sûre → lecture, sinon → écriture). Un code de
+    permission ``None`` signifie « aucune permission spécifique requise » pour
+    ce côté (tout utilisateur authentifié passe), ce qui préserve le
+    comportement historique quand seul le côté écriture est gardé.
+    """
+
+    def has_permission(self, request, view):
+        user = getattr(request, 'user', None)
+        if not (user and user.is_authenticated):
+            return False
+        if request.method in SAFE_METHODS:
+            code = getattr(view, 'read_permission', None)
+        else:
+            code = getattr(view, 'write_permission', None)
+        if code is None:
+            # Aucun code requis de ce côté → authentifié suffit.
+            return True
+        return _user_has_or_legacy(user, code)
+
+
+class WriteScopedPermissionMixin:
+    """Mixin de viewset : gate lecture/écriture par méthode HTTP (YRBAC5).
+
+    Usage::
+
+        class ProduitViewSet(WriteScopedPermissionMixin, TenantMixin,
+                             viewsets.ModelViewSet):
+            read_permission = 'stock_voir'
+            write_permission = 'stock_gerer'
+
+    Les méthodes sûres (GET/HEAD/OPTIONS) exigent ``read_permission`` ; les
+    méthodes non-sûres (POST/PUT/PATCH/DELETE) exigent ``write_permission``.
+    Un côté à ``None`` = « authentifié suffit » (préserve l'historique). Le
+    repli légacy des comptes sans rôle fin est conservé (cf.
+    ``_user_has_or_legacy``).
+
+    NB : ce mixin pose ``ScopedPermission`` comme unique ``permission_classes``
+    par défaut ; un viewset qui a besoin d'un ``get_permissions`` par action
+    (ex. destroy admin-only) peut surcharger ``get_permissions`` en appelant
+    ``super().get_permissions()`` puis en ajustant l'action ciblée.
+    """
+
+    read_permission = None
+    write_permission = None
+    permission_classes = [ScopedPermission]
+
+    def get_permissions(self):
+        return [ScopedPermission()]
