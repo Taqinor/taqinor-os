@@ -42,6 +42,7 @@ from .models import (
     ECatalogue, EcritureComptable, Effet, EntiteConsolidation,
     ExerciceComptable, MessageWhatsAppEntrant,
     Emprunt, EcheanceEmprunt, ChargeConstateeAvance, DotationEtalement,
+    PlanAmortissementFiscal, DotationDerogatoire,
     Immobilisation, IndemniteChantier, Journal, LigneEcriture,
     LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, NoteFrais,
     OuverturePartage,
@@ -6348,6 +6349,153 @@ def poster_dotation_etalement(dotation, *, user=None):
              'credit': montant, 'libelle': libelle},
         ],
         reference=f'CCA-{charge.id}-{dotation.numero}',
+        created_by=user)
+    dotation.posted = True
+    dotation.ecriture = ecriture
+    dotation.save(update_fields=['posted', 'ecriture'])
+    return ecriture
+
+
+# ── XACC16 — Amortissements dérogatoires (double plan comptable / fiscal) ───
+
+_COMPTE_DOTATION_DEROGATOIRE = '65941'   # dotation aux provisions réglementées.
+_COMPTE_PROVISION_REGLEMENTEE = '1351'   # provisions pour amortissements dérog.
+_COMPTE_REPRISE_DEROGATOIRE = '7594'     # reprise sur provisions réglementées.
+
+
+def creer_plan_amortissement_fiscal(plan_comptable, *, mode=None,
+                                    duree_annees, coefficient_degressif=None):
+    """Crée (ou met à jour) le plan FISCAL parallèle d'un plan comptable (XACC16).
+
+    ``duree_annees`` requis explicitement (le fiscal peut différer du
+    comptable). Le coefficient dégressif est déduit du barème marocain si le
+    mode est dégressif et qu'aucun coefficient explicite n'est fourni. Idempotent
+    (get_or_create + mise à jour des champs fournis). Renvoie le plan fiscal.
+    """
+    company = plan_comptable.company
+    plan_fiscal, _ = PlanAmortissementFiscal.objects.get_or_create(
+        company=company, plan_comptable=plan_comptable,
+        defaults={
+            'mode': mode or PlanAmortissement.Mode.DEGRESSIF,
+            'duree_annees': duree_annees,
+        },
+    )
+    if mode is not None:
+        plan_fiscal.mode = mode
+    if duree_annees is not None:
+        plan_fiscal.duree_annees = duree_annees
+    if plan_fiscal.mode == PlanAmortissement.Mode.DEGRESSIF:
+        plan_fiscal.coefficient_degressif = (
+            Decimal(coefficient_degressif) if coefficient_degressif is not None
+            else coefficient_degressif_maroc(plan_fiscal.duree_annees))
+    else:
+        plan_fiscal.coefficient_degressif = None
+    plan_fiscal.full_clean()
+    plan_fiscal.save()
+    return plan_fiscal
+
+
+def generer_dotations_derogatoires(plan_fiscal):
+    """Calcule/matérialise les différences comptable-vs-fiscal par exercice
+    (XACC16).
+
+    Recalcule les deux annuités (comptable via ``plan_comptable.mode``/
+    ``duree_annees``, fiscal via ``plan_fiscal.mode``/``duree_annees``) sur la
+    même base amortissable, année par année, et fige la différence SIGNÉE
+    (fiscal − comptable) dans une ``DotationDerogatoire``. Une différence déjà
+    POSTÉE n'est jamais recalculée (immutabilité comptable — même garde-fou que
+    ``generer_plan_amortissement``). Renvoie la liste des dotations
+    dérogatoires (créées ou déjà existantes).
+    """
+    plan_comptable = plan_fiscal.plan_comptable
+    base = plan_comptable.base_amortissable
+    coeff_compt = plan_comptable.coefficient_degressif or Decimal('1')
+    coeff_fisc = plan_fiscal.coefficient_degressif or Decimal('1')
+
+    annuites_comptables = _calcul_annuites(
+        base, plan_comptable.duree_annees, plan_comptable.mode, coeff_compt)
+    annuites_fiscales = _calcul_annuites(
+        base, plan_fiscal.duree_annees, plan_fiscal.mode, coeff_fisc)
+
+    annee_debut = plan_comptable.date_debut.year
+    nb_annees = max(len(annuites_comptables), len(annuites_fiscales))
+    resultat = []
+    for idx in range(nb_annees):
+        annee = annee_debut + idx
+        dot_compt = (annuites_comptables[idx] if idx < len(annuites_comptables)
+                     else Decimal('0'))
+        dot_fisc = (annuites_fiscales[idx] if idx < len(annuites_fiscales)
+                    else Decimal('0'))
+        difference = _arrondi(dot_fisc - dot_compt)
+        existante = DotationDerogatoire.objects.filter(
+            plan_fiscal=plan_fiscal, annee=annee).first()
+        if existante and existante.posted:
+            resultat.append(existante)
+            continue
+        from datetime import date as _date
+        date_dotation = _date(annee, 12, 31)
+        if existante is None:
+            existante = DotationDerogatoire.objects.create(
+                company=plan_fiscal.company, plan_fiscal=plan_fiscal,
+                annee=annee, date_dotation=date_dotation,
+                dotation_comptable=dot_compt, dotation_fiscale=dot_fisc,
+                difference=difference)
+        else:
+            existante.dotation_comptable = dot_compt
+            existante.dotation_fiscale = dot_fisc
+            existante.difference = difference
+            existante.date_dotation = date_dotation
+            existante.save(update_fields=[
+                'dotation_comptable', 'dotation_fiscale', 'difference',
+                'date_dotation'])
+        resultat.append(existante)
+    return resultat
+
+
+@transaction.atomic
+def poster_dotation_derogatoire(dotation, *, user=None):
+    """Poste une différence dérogatoire au grand livre (XACC16).
+
+    ``difference`` > 0 (fiscal > comptable) → DOTATION : débit 65941 / crédit
+    1351. ``difference`` < 0 (comptable > fiscal, fin de vie) → REPRISE
+    inverse : débit 1351 / crédit 7594. ``difference`` == 0 → rien à poster
+    (marque quand même ``posted`` pour ne plus y revenir). Idempotente.
+    RESPECTE LE VERROU DE PÉRIODE (FG115).
+    """
+    company = dotation.company
+    if dotation.posted:
+        return dotation.ecriture
+    if PeriodeComptable.date_verrouillee(company.id, dotation.date_dotation):
+        raise ValidationError(
+            "Période comptable clôturée : impossible de poster la dotation "
+            f"dérogatoire du {dotation.date_dotation}.")
+    difference = Decimal(dotation.difference)
+    if difference == 0:
+        dotation.posted = True
+        dotation.save(update_fields=['posted'])
+        return None
+    compte_provision = _assurer_compte(company, _COMPTE_PROVISION_REGLEMENTEE)
+    libelle = f'Amortissement dérogatoire {dotation.annee} — plan #{dotation.plan_fiscal_id}'
+    if difference > 0:
+        compte_dotation = _assurer_compte(company, _COMPTE_DOTATION_DEROGATOIRE)
+        lignes = [
+            {'compte': compte_dotation, 'debit': difference,
+             'credit': Decimal('0'), 'libelle': libelle},
+            {'compte': compte_provision, 'debit': Decimal('0'),
+             'credit': difference, 'libelle': libelle},
+        ]
+    else:
+        montant = -difference
+        compte_reprise = _assurer_compte(company, _COMPTE_REPRISE_DEROGATOIRE)
+        lignes = [
+            {'compte': compte_provision, 'debit': montant,
+             'credit': Decimal('0'), 'libelle': libelle},
+            {'compte': compte_reprise, 'debit': Decimal('0'),
+             'credit': montant, 'libelle': libelle},
+        ]
+    ecriture = creer_ecriture_od(
+        company, dotation.date_dotation, libelle, lignes,
+        reference=f'DEROG-{dotation.plan_fiscal_id}-{dotation.annee}',
         created_by=user)
     dotation.posted = True
     dotation.ecriture = ecriture

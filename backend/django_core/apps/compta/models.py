@@ -6762,3 +6762,119 @@ class DotationEtalement(models.Model):
 
     def __str__(self):
         return f'Dotation {self.numero} — {self.montant}'
+
+
+# ── XACC16 — Amortissements dérogatoires (double plan comptable / fiscal) ───
+
+class PlanAmortissementFiscal(models.Model):
+    """Plan FISCAL parallèle optionnel d'une immobilisation (XACC16).
+
+    ``PlanAmortissement`` (FG119) reste le plan COMPTABLE (mono-livre). Ce
+    plan porte le mode/durée FISCAUX quand ils diffèrent du comptable (cas
+    classique marocain : dégressif fiscal / linéaire comptable, ou durées
+    différentes). La différence annuelle entre les deux dotations donne
+    l'amortissement DÉROGATOIRE, posté par
+    ``services.generer_dotations_derogatoires`` (dotation 65941 si le fiscal
+    excède le comptable en début de vie, reprise 7594 inverse en fin de vie —
+    Σ des dérogatoires = 0 sur la vie totale). Absence de plan fiscal = le
+    comportement actuel (FG119 seul) reste intact.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='plans_amortissement_fiscaux',
+        verbose_name='Société',
+    )
+    plan_comptable = models.OneToOneField(
+        PlanAmortissement,
+        on_delete=models.CASCADE,
+        related_name='plan_fiscal',
+        verbose_name='Plan comptable (FG119)',
+    )
+    mode = models.CharField(
+        max_length=10, choices=PlanAmortissement.Mode.choices,
+        default=PlanAmortissement.Mode.DEGRESSIF,
+        verbose_name='Mode fiscal')
+    duree_annees = models.PositiveIntegerField(
+        verbose_name='Durée fiscale (années)')
+    coefficient_degressif = models.DecimalField(
+        max_digits=4, decimal_places=2, null=True, blank=True,
+        verbose_name='Coefficient dégressif fiscal')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Plan d\'amortissement fiscal'
+        verbose_name_plural = 'Plans d\'amortissement fiscaux'
+        ordering = ['-date_creation', '-id']
+
+    def __str__(self):
+        return f"Plan fiscal {self.get_mode_display()} — {self.plan_comptable}"
+
+    def clean(self):
+        super().clean()
+        if self.duree_annees is not None and self.duree_annees < 1:
+            raise ValidationError(
+                "La durée fiscale doit être d'au moins 1 an.")
+
+
+class DotationDerogatoire(models.Model):
+    """Différence annuelle comptable-vs-fiscal (amortissement dérogatoire) —
+    XACC16.
+
+    Une ligne par exercice : ``dotation_comptable``/``dotation_fiscale`` (les
+    montants des deux plans pour cet exercice) et ``difference`` SIGNÉE
+    (fiscal − comptable). ``difference`` > 0 → DOTATION dérogatoire (charge
+    65941 / provision réglementée 1351) ; < 0 → REPRISE inverse (1351 /
+    produit 7594). Postable au grand livre, idempotent. Unicité
+    ``(plan_fiscal, annee)``.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='dotations_derogatoires',
+        verbose_name='Société',
+    )
+    plan_fiscal = models.ForeignKey(
+        PlanAmortissementFiscal,
+        on_delete=models.CASCADE,
+        related_name='dotations_derogatoires',
+        verbose_name='Plan fiscal',
+    )
+    annee = models.PositiveIntegerField(verbose_name='Exercice (année)')
+    date_dotation = models.DateField(verbose_name='Date de dotation')
+    dotation_comptable = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Dotation comptable')
+    dotation_fiscale = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Dotation fiscale')
+    # SIGNÉ : fiscal − comptable. > 0 dotation dérogatoire, < 0 reprise.
+    difference = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Différence (dérogatoire)')
+    posted = models.BooleanField(
+        default=False, verbose_name='Postée au grand livre')
+    ecriture = models.ForeignKey(
+        EcritureComptable,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='dotations_derogatoires',
+        verbose_name='Écriture comptable',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Dotation dérogatoire'
+        verbose_name_plural = 'Dotations dérogatoires'
+        ordering = ['plan_fiscal_id', 'annee']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['plan_fiscal', 'annee'],
+                name='uniq_dotation_derogatoire_plan_annee',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Dérogatoire {self.annee} — {self.difference}'
