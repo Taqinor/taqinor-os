@@ -30,7 +30,6 @@ import InstantEstimator from '../components/InstantEstimator.astro';
 import Testimonials from '../components/Testimonials.astro';
 import BrandStrip from '../components/BrandStrip.astro';
 import ZelligeSignature from '../components/ZelligeSignature.astro';
-import FounderPortrait from '../components/FounderPortrait.astro';
 import { WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink, zeroFormWhatsappText } from '../lib/whatsapp';
 import { REGIE_MARGINAL_RATE_SECOND, REGIE_MARGINAL_RATE_HIGH } from '../lib/regieTariff';
@@ -630,11 +629,19 @@ const engineeringPillars = [
     </section>
     <div class="seam-lumiere-out" aria-hidden="true"></div>
 
-    {/* ── LE FONDATEUR — présence humaine (W266). Une intimité affirmée dans le
-        texte (« signé par le fondateur ») mais jamais montrée : le portrait
-        réel + une note signée à la première personne la rendent tangible.
-        Composant partagé avec /à-propos (mêmes faits, jamais de doublon). ── */}
-    <FounderPortrait />
+    {/* ── EXPERTISE — RULE A (2026-07-04) : plus de portrait/signature du
+        fondateur sur l'accueil, dans aucune langue (supersède W266). Repli
+        textuel sobre, crédits déjà publiés, aucun visage — lien vers
+        /à-propos où le portrait complet reste seul monté. ── */}
+    <section class="border-t border-white/10 px-4 py-14 text-center sm:py-16">
+      <p class="tech-label v2-kicker rule-brass mx-auto text-brass-300">Expertise</p>
+      <p class="v2-lead mx-auto mt-4 max-w-2xl text-lune-soft">
+        Études conçues par des ingénieurs — expertise R&amp;D télécom, ex-Huawei, Ericsson et STMicroelectronics.
+      </p>
+      <a href="/à-propos" class="mt-6 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white transition-colors hover:text-brass-300">
+        Le fondateur et sa méthode →
+      </a>
+    </section>
 
     {/* ── LE PARCOURS (6 steps) + aperçu WhatsApp. W57 — la frise de bout en bout
         (diagnostic → monitoring) remplace le petit <ol> à 3 pas. Faits déjà

@@ -31,7 +31,6 @@ import InstantEstimator from '../../components/InstantEstimator.astro';
 import Testimonials from '../../components/Testimonials.astro';
 import BrandStrip from '../../components/BrandStrip.astro';
 import ZelligeSignature from '../../components/ZelligeSignature.astro';
-import FounderPortrait from '../../components/FounderPortrait.astro';
 import { WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink, zeroFormWhatsappText } from '../../lib/whatsapp';
 import { getLocaleFromPath } from '../../i18n/utils';
@@ -563,11 +562,18 @@ const engineeringPillars = [
       </div>
     </section>
 
-    {/* ── THE FOUNDER — human presence (W266). The copy asserts intimacy
-        ("founder-signed") but never shows it: the real portrait + a
-        first-person signed note make it tangible. Shared component with
-        /à-propos (same facts, never duplicated). ── */}
-    <FounderPortrait />
+    {/* ── EXPERTISE — RULE A (2026-07-04): no founder face/signature on any
+        homepage locale (supersedes W266). Subtle text-only credentials cue,
+        no photo — links to /à-propos where the full portrait stays alone. ── */}
+    <section class="border-t border-white/10 px-4 py-14 text-center sm:py-16">
+      <p class="tech-label v2-kicker rule-brass mx-auto text-brass-300">Expertise</p>
+      <p class="v2-lead mx-auto mt-4 max-w-2xl text-lune-soft">
+        Studies designed by engineers — telecom R&amp;D expertise, ex-Huawei, Ericsson and STMicroelectronics.
+      </p>
+      <a href={L('/à-propos')} class="mt-6 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white transition-colors hover:text-brass-300">
+        The founder and his method →
+      </a>
+    </section>
 
     {/* ── THE JOURNEY (6 steps) + WhatsApp preview. The end-to-end timeline
         (diagnostic → monitoring) replaces the small 3-step list. Facts already

@@ -33,7 +33,6 @@ import InstantEstimator from '../../components/InstantEstimator.astro';
 import Testimonials from '../../components/Testimonials.astro';
 import BrandStrip from '../../components/BrandStrip.astro';
 import ZelligeSignature from '../../components/ZelligeSignature.astro';
-import FounderPortrait from '../../components/FounderPortrait.astro';
 import { WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink, zeroFormWhatsappText } from '../../lib/whatsapp';
 import { getLocaleFromPath } from '../../i18n/utils';
@@ -553,11 +552,18 @@ const engineeringPillars = [
       </div>
     </section>
 
-    {/* ── المؤسِّس — حضور إنساني (W266). النص يدّعي حميمية («يصادق عليه
-        المؤسِّس») لكن لا يُظهرها أبداً: البورتريه الحقيقي + ملاحظة موقَّعة
-        بصيغة المتكلم يجعلانها ملموسة. مكوّن مشترك مع /à-propos (نفس الوقائع،
-        بلا أي تكرار). ── */}
-    <FounderPortrait />
+    {/* ── الخبرة — القاعدة أ (2026-07-04): لا صورة/توقيع للمؤسِّس على الصفحة
+        الرئيسية بأي لغة (يحلّ محلّ W266). إشارة نصية خفيفة للاعتمادات، بلا
+        صورة — تحيل إلى /à-propos حيث يبقى البورتريه الكامل وحده. ── */}
+    <section class="border-t border-white/10 px-4 py-14 text-center sm:py-16">
+      <p class="tech-label v2-kicker rule-brass mx-auto text-brass-300">الخبرة</p>
+      <p class="v2-lead mx-auto mt-4 max-w-2xl text-lune-soft">
+        دراسات يُعدّها مهندسون — خبرة بحث وتطوير في الاتصالات، لدى Huawei وEricsson وSTMicroelectronics سابقًا.
+      </p>
+      <a href={L('/à-propos')} class="mt-6 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white transition-colors hover:text-brass-300">
+        المؤسِّس ومنهجيته ←
+      </a>
+    </section>
 
     {/* ── المسار (6 مراحل) + معاينة WhatsApp. يحلّ الشريط من البداية إلى النهاية
         (تشخيص → مراقبة) محلّ القائمة الصغيرة بثلاث خطوات. وقائع منشورة سلفًا على
