@@ -13,6 +13,9 @@ from .models import (
     KbFavori,
     KbLecture,
     KbLectureObligatoire,
+    KbParcours,
+    KbParcoursArticle,
+    KbParcoursAssignation,
     KbRechercheVide,
     PartageArticleKb,
 )
@@ -305,6 +308,80 @@ class PartageArticleKbSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Cet article n'appartient pas à votre société.")
         return article
+
+
+class KbParcoursSerializer(serializers.ModelSerializer):
+    """XKB22 — Parcours de lecture (séquence ordonnée d'articles).
+
+    ``company``/``created_by`` posés côté serveur (jamais du corps de
+    requête)."""
+    role_cible_display = serializers.CharField(
+        source='get_role_cible_display', read_only=True)
+
+    class Meta:
+        model = KbParcours
+        fields = [
+            'id', 'nom', 'description', 'role_cible', 'role_cible_display',
+            'metier', 'actif', 'created_by', 'date_creation',
+        ]
+        read_only_fields = ['created_by', 'date_creation']
+
+
+class KbParcoursArticleSerializer(serializers.ModelSerializer):
+    """XKB22 — Article ordonné d'un parcours. ``company`` posée côté serveur ;
+    ``parcours``/``article`` validés même-société."""
+    article_titre = serializers.CharField(
+        source='article.titre', read_only=True)
+
+    class Meta:
+        model = KbParcoursArticle
+        fields = ['id', 'parcours', 'article', 'article_titre', 'ordre']
+
+    def validate_parcours(self, parcours):
+        request = self.context.get('request')
+        if request is not None and parcours.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Ce parcours n'appartient pas à votre société.")
+        return parcours
+
+    def validate_article(self, article):
+        request = self.context.get('request')
+        if request is not None and article.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Cet article n'appartient pas à votre société.")
+        return article
+
+
+class KbParcoursAssignationSerializer(serializers.ModelSerializer):
+    """XKB22 — Assignation d'un parcours à un utilisateur précis. ``company``
+    posée côté serveur ; ``parcours``/``utilisateur`` validés même-société."""
+    utilisateur_nom = serializers.CharField(
+        source='utilisateur.get_full_name', read_only=True)
+    parcours_nom = serializers.CharField(
+        source='parcours.nom', read_only=True)
+
+    class Meta:
+        model = KbParcoursAssignation
+        fields = [
+            'id', 'parcours', 'parcours_nom', 'utilisateur', 'utilisateur_nom',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_parcours(self, parcours):
+        request = self.context.get('request')
+        if request is not None and parcours.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Ce parcours n'appartient pas à votre société.")
+        return parcours
+
+    def validate_utilisateur(self, utilisateur):
+        request = self.context.get('request')
+        if (request is not None
+                and utilisateur.company_id != request.user.company_id):
+            raise serializers.ValidationError(
+                "Cet utilisateur n'appartient pas à votre société.")
+        return utilisateur
 
 
 class KbFavoriSerializer(serializers.ModelSerializer):

@@ -19,6 +19,8 @@ from .models import (
     KbArticleLien,
     KbLecture,
     KbLectureObligatoire,
+    KbParcoursArticle,
+    KbParcoursAssignation,
     KbRechercheVide,
 )
 
@@ -520,3 +522,66 @@ def retrieve_chunks(user, query, *, limit=5):
             .filter(article_id__in=visible_ids, embedding__isnull=False))
     return list(base.annotate(distance=CosineDistance('embedding', vec))
                 .order_by('distance')[:max(1, int(limit))])
+
+
+# ── XKB22 — Parcours de lecture d'intégration ───────────────────────────────
+
+def articles_ordonnes_parcours(parcours):
+    """XKB22 — Articles ORDONNÉS d'un parcours (QuerySet, scopé société)."""
+    return (KbParcoursArticle.objects
+            .filter(parcours=parcours, company=parcours.company)
+            .select_related('article')
+            .order_by('ordre', 'id'))
+
+
+def progression_parcours(assignation):
+    """XKB22 — Progression ARTICLE PAR ARTICLE d'une assignation de parcours.
+
+    Se déduit en LECTURE SEULE des ``KbLecture`` déjà existantes de
+    l'utilisateur assigné sur chaque article ordonné du parcours — aucun
+    second mécanisme de suivi. Renvoie un dict :
+    ``{parcours, utilisateur, articles: [{article, titre, ordre, lu, lu_le}],
+    nombre_lus, nombre_total, complet}``. Scopé société via
+    ``assignation.company``.
+    """
+    membres = articles_ordonnes_parcours(assignation.parcours)
+    lectures = {
+        lecture.article_id: lecture.lu_le
+        for lecture in KbLecture.objects.filter(
+            utilisateur=assignation.utilisateur,
+            article__in=[m.article_id for m in membres])
+    }
+    articles = []
+    nombre_lus = 0
+    for membre in membres:
+        lu_le = lectures.get(membre.article_id)
+        if lu_le is not None:
+            nombre_lus += 1
+        articles.append({
+            'article': membre.article_id,
+            'titre': membre.article.titre,
+            'ordre': membre.ordre,
+            'lu': lu_le is not None,
+            'lu_le': lu_le,
+        })
+    nombre_total = len(articles)
+    return {
+        'parcours': assignation.parcours_id,
+        'utilisateur': assignation.utilisateur_id,
+        'articles': articles,
+        'nombre_lus': nombre_lus,
+        'nombre_total': nombre_total,
+        'complet': nombre_total > 0 and nombre_lus == nombre_total,
+    }
+
+
+def assignations_pour_utilisateur(company, utilisateur):
+    """XKB22 — Assignations de parcours d'UN utilisateur (scopé société).
+
+    Sert à l'écran RH (« statut de complétion visible RH ») via ce sélecteur
+    UNIQUEMENT — ``rh`` ne lit jamais les models/views de ``kb`` directement.
+    """
+    return (KbParcoursAssignation.objects
+            .filter(company=company, utilisateur=utilisateur)
+            .select_related('parcours')
+            .order_by('-date_creation', '-id'))

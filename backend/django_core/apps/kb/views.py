@@ -26,6 +26,9 @@ from .models import (
     KbArticleVersion,
     KbFavori,
     KbLectureObligatoire,
+    KbParcours,
+    KbParcoursArticle,
+    KbParcoursAssignation,
     PartageArticleKb,
 )
 from .serializers import (
@@ -35,6 +38,9 @@ from .serializers import (
     KbArticleVersionSerializer,
     KbFavoriSerializer,
     KbLectureObligatoireSerializer,
+    KbParcoursArticleSerializer,
+    KbParcoursAssignationSerializer,
+    KbParcoursSerializer,
     PartageArticleKbSerializer,
 )
 
@@ -559,6 +565,81 @@ class PartageArticleKbViewSet(_KbBaseViewSet):
         partage.actif = False
         partage.save(update_fields=['actif'])
         return Response(self.get_serializer(partage).data)
+
+
+class KbParcoursViewSet(_KbBaseViewSet):
+    """XKB22 — Parcours de lecture d'intégration (séquences ordonnées
+    d'articles). ``company``/``created_by`` posés côté serveur."""
+    queryset = KbParcours.objects.all()
+    serializer_class = KbParcoursSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'nom', 'date_creation']
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, created_by=self.request.user)
+
+    @action(detail=True, methods=['get'], url_path='articles')
+    def articles(self, request, pk=None):
+        """XKB22 — Articles ordonnés de ce parcours."""
+        parcours = self.get_object()
+        membres = selectors.articles_ordonnes_parcours(parcours)
+        return Response(KbParcoursArticleSerializer(membres, many=True).data)
+
+
+class KbParcoursArticleViewSet(_KbBaseViewSet):
+    """XKB22 — Articles ordonnés d'un parcours (CRUD). ``company`` posée côté
+    serveur ; ``parcours``/``article`` validés même-société par le
+    sérialiseur. Filtre optionnel ``?parcours=<id>``."""
+    queryset = KbParcoursArticle.objects.select_related(
+        'parcours', 'article').all()
+    serializer_class = KbParcoursArticleSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['ordre', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        parcours = self.request.query_params.get('parcours')
+        if parcours:
+            qs = qs.filter(parcours_id=parcours)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+
+class KbParcoursAssignationViewSet(_KbBaseViewSet):
+    """XKB22 — Assignations de parcours (article par article, par personne).
+
+    ``company`` posée côté serveur ; ``parcours``/``utilisateur`` validés
+    même-société par le sérialiseur. Filtres optionnels ``?parcours=<id>``
+    et ``?utilisateur=<id>``."""
+    queryset = KbParcoursAssignation.objects.select_related(
+        'parcours', 'utilisateur').all()
+    serializer_class = KbParcoursAssignationSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        parcours = params.get('parcours')
+        if parcours:
+            qs = qs.filter(parcours_id=parcours)
+        utilisateur = params.get('utilisateur')
+        if utilisateur:
+            qs = qs.filter(utilisateur_id=utilisateur)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=True, methods=['get'], url_path='progression')
+    def progression(self, request, pk=None):
+        """XKB22 — Progression article par article + complétion de cette
+        assignation (déduite des ``KbLecture`` déjà existantes)."""
+        assignation = self.get_object()
+        return Response(selectors.progression_parcours(assignation))
 
 
 # ── XKB19 — Endpoint PUBLIC (sans login) servant un article par jeton ───────

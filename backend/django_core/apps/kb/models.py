@@ -700,3 +700,151 @@ class PartageArticleKb(models.Model):
         """True si le partage est actuellement servable publiquement (actif
         ET non expiré)."""
         return self.actif and not self.is_expired
+
+
+class KbParcours(models.Model):
+    """XKB22 — Séquence ORDONNÉE d'articles (« parcours » d'intégration).
+
+    Un parcours porte un ``nom`` (ex. « Onboarding poseur ») et une cible
+    optionnelle par palier de rôle (``role_cible`` — mêmes paliers canoniques
+    que :class:`KbArticleAcl` : admin/responsable/normal) OU par métier libre
+    (``metier`` — texte libre, ex. « poseur », « commercial », car aucun
+    référentiel métier canonique n'existe dans ce module). Les deux champs
+    sont de simples FILTRES d'affichage/suggestion (« parcours suggérés pour
+    ce rôle/métier ») — l'assignation RÉELLE à un individu se fait via
+    :class:`KbParcoursAssignation`, jamais automatiquement.
+
+    Les articles ordonnés du parcours vivent dans
+    :class:`KbParcoursArticle` (through table avec ``ordre``).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='kb_app_parcours',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=200, verbose_name='Nom du parcours')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    # Palier de rôle ciblé (mêmes choix que KbArticleAcl.ROLE_CHOICES) — vide
+    # = tous paliers. Simple filtre d'affichage, pas une ACL.
+    role_cible = models.CharField(
+        max_length=20, choices=KbArticleAcl.ROLE_CHOICES, blank=True,
+        default='', verbose_name='Palier de rôle ciblé')
+    # Métier libre (ex. "poseur", "commercial") — aucun référentiel métier
+    # canonique n'existe : texte libre, comme KbArticle.categorie.
+    metier = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Métier ciblé')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='kb_app_parcours_crees',
+        verbose_name='Créé par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Parcours de lecture'
+        verbose_name_plural = 'Parcours de lecture'
+        ordering = ['nom', '-id']
+        indexes = [
+            models.Index(fields=['company', 'actif'], name='kb_parcours_co_act_idx'),
+        ]
+
+    def __str__(self):
+        return self.nom
+
+
+class KbParcoursArticle(models.Model):
+    """XKB22 — Article ORDONNÉ appartenant à un :class:`KbParcours`.
+
+    ``ordre`` détermine la séquence de lecture (posé côté serveur, jamais
+    recalculé par ``count()`` — un simple entier libre, pas une contrainte
+    d'unicité forte). Un même article ne peut apparaître deux fois dans le
+    même parcours (``unique_together``).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='kb_app_parcours_articles',
+        verbose_name='Société',
+    )
+    parcours = models.ForeignKey(
+        KbParcours,
+        on_delete=models.CASCADE,
+        related_name='articles_ordonnes',
+        verbose_name='Parcours',
+    )
+    article = models.ForeignKey(
+        KbArticle,
+        on_delete=models.CASCADE,
+        related_name='parcours_membres',
+        verbose_name='Article',
+    )
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+
+    class Meta:
+        verbose_name = 'Article du parcours'
+        verbose_name_plural = 'Articles du parcours'
+        ordering = ['parcours', 'ordre', 'id']
+        unique_together = [('parcours', 'article')]
+        indexes = [
+            models.Index(
+                fields=['company', 'parcours'], name='kb_parcours_art_co_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.parcours_id} · #{self.ordre} → {self.article_id}'
+
+
+class KbParcoursAssignation(models.Model):
+    """XKB22 — Assignation d'un :class:`KbParcours` à UN utilisateur précis.
+
+    Une ligne par (parcours, utilisateur) — assignation nominative (contraire
+    à ``KbLectureObligatoire`` qui accepte aussi un palier de rôle : un
+    parcours d'intégration cible toujours une PERSONNE précise, ex. un
+    nouvel embauché). La progression et la complétion se DÉDUISENT en
+    lecture seule des ``KbLecture`` DÉJÀ existantes de l'utilisateur sur
+    chaque article du parcours (``selectors.progression_parcours``) — aucun
+    second mécanisme de suivi n'est réimplémenté ici.
+
+    Société posée côté serveur (jamais du corps de requête) et cohérente
+    avec celle du parcours.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='kb_app_parcours_assignations',
+        verbose_name='Société',
+    )
+    parcours = models.ForeignKey(
+        KbParcours,
+        on_delete=models.CASCADE,
+        related_name='assignations',
+        verbose_name='Parcours',
+    )
+    utilisateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='kb_app_parcours_assignations',
+        verbose_name='Utilisateur assigné',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Assigné le')
+
+    class Meta:
+        verbose_name = 'Assignation de parcours'
+        verbose_name_plural = 'Assignations de parcours'
+        ordering = ['-date_creation', '-id']
+        unique_together = [('parcours', 'utilisateur')]
+        indexes = [
+            models.Index(
+                fields=['company', 'utilisateur'],
+                name='kb_parcours_assign_user_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.utilisateur_id} → parcours {self.parcours_id}'

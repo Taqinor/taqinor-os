@@ -8,6 +8,9 @@ from .models import (
     KbFavori,
     KbLecture,
     KbLectureObligatoire,
+    KbParcours,
+    KbParcoursArticle,
+    KbParcoursAssignation,
     KbRechercheVide,
     PartageArticleKb,
 )
@@ -75,3 +78,23 @@ class PartageArticleKbAdmin(admin.ModelAdmin):
     list_display = ('id', 'article', 'actif', 'expires_at', 'consultations',
                     'company', 'date_creation')
     list_filter = ('actif', 'company')
+
+
+@admin.register(KbParcours)
+class KbParcoursAdmin(admin.ModelAdmin):
+    list_display = ('id', 'nom', 'role_cible', 'metier', 'actif', 'company',
+                    'date_creation')
+    list_filter = ('actif', 'role_cible', 'company')
+    search_fields = ('nom', 'metier')
+
+
+@admin.register(KbParcoursArticle)
+class KbParcoursArticleAdmin(admin.ModelAdmin):
+    list_display = ('id', 'parcours', 'article', 'ordre', 'company')
+    list_filter = ('company',)
+
+
+@admin.register(KbParcoursAssignation)
+class KbParcoursAssignationAdmin(admin.ModelAdmin):
+    list_display = ('id', 'parcours', 'utilisateur', 'company', 'date_creation')
+    list_filter = ('company',)

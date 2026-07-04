@@ -8,6 +8,9 @@ from .views import (
     KbArticleViewSet,
     KbFavoriViewSet,
     KbLectureObligatoireViewSet,
+    KbParcoursArticleViewSet,
+    KbParcoursAssignationViewSet,
+    KbParcoursViewSet,
     PartageArticleKbViewSet,
     public_article,
 )
@@ -20,6 +23,9 @@ router.register(r'article-acls', KbArticleAclViewSet)
 router.register(r'lectures-obligatoires', KbLectureObligatoireViewSet)
 router.register(r'favoris', KbFavoriViewSet)
 router.register(r'partages', PartageArticleKbViewSet)
+router.register(r'parcours', KbParcoursViewSet)
+router.register(r'parcours-articles', KbParcoursArticleViewSet)
+router.register(r'parcours-assignations', KbParcoursAssignationViewSet)
 
 urlpatterns = [
     # XKB19 — endpoint PUBLIC (sans login) AVANT le router : jeton opaque,
