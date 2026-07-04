@@ -37,6 +37,7 @@ from .models import (
     BesoinFormation,
     BulletinPaie,
     CampagneEvaluation,
+    CampagnePulse,
     Candidature,
     CandidatureActivity,
     CauserieParticipant,
@@ -104,6 +105,7 @@ from .serializers import (
     BesoinFormationSerializer,
     BulletinPaieSerializer,
     CampagneEvaluationSerializer,
+    CampagnePulseSerializer,
     CandidatureActivitySerializer,
     CandidatureSerializer,
     CauserieParticipantSerializer,
@@ -786,6 +788,64 @@ class AvantageSocialViewSet(_RhBaseViewSet):
         if employe:
             qs = qs.filter(employe_id=employe)
         return qs
+
+
+class CampagnePulseViewSet(_RhBaseViewSet):
+    """XRH32 — campagnes de baromètre interne eNPS anonyme (pulse).
+
+    Gestion (création/liste) réservée Administrateur/Responsable
+    (``IsResponsableOrAdmin`` — gate de classe par défaut) ; le VOTE lui-même
+    est ouvert à tout employé via une action dédiée en accès élargi.
+
+    Actions :
+    * ``POST .../{id}/repondre/`` — vote ANONYME (ouvert à tout employé
+      authentifié) ; un second vote du même utilisateur est refusé 409.
+    * ``GET .../{id}/resultats/`` — score eNPS agrégé (masqué sous 5
+      réponses), réservé Administrateur/Responsable.
+    """
+    queryset = CampagnePulse.objects.all()
+    serializer_class = CampagnePulseSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_debut', 'date_creation']
+
+    def get_permissions(self):
+        # XRH32 — voter est ouvert à TOUT employé authentifié de la société ;
+        # gérer les campagnes/consulter les résultats reste
+        # Administrateur/Responsable (gate de classe).
+        if self.action == 'repondre':
+            return [IsAnyRole()]
+        return super().get_permissions()
+
+    @action(detail=True, methods=['post'], url_path='repondre')
+    def repondre(self, request, pk=None):
+        campagne = self.get_object()
+        score = request.data.get('score')
+        try:
+            score = int(score)
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': 'Note (0–10) requise.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if not 0 <= score <= 10:
+            return Response(
+                {'detail': 'La note doit être comprise entre 0 et 10.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            services.repondre_pulse(
+                campagne, request.user, score=score,
+                commentaire=request.data.get('commentaire', ''))
+        except services.DejaVoteError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
+        return Response(
+            {'detail': 'Réponse enregistrée. Merci !'},
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], url_path='resultats')
+    def resultats(self, request, pk=None):
+        campagne = self.get_object()
+        return Response(
+            selectors.score_enps_campagne(request.user.company, campagne.id))
 
 
 class ModeleIntegrationViewSet(_RhBaseViewSet):

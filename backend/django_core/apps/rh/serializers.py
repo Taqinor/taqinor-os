@@ -18,6 +18,7 @@ from .models import (
     BesoinFormation,
     BulletinPaie,
     CampagneEvaluation,
+    CampagnePulse,
     Candidature,
     CandidatureActivity,
     CauserieParticipant,
@@ -70,6 +71,7 @@ from .models import (
     PresquAccident,
     PrimeAttribuee,
     Remuneration,
+    ReponsePulse,
     Sanction,
     SessionFormation,
     SoldeConge,
@@ -397,6 +399,30 @@ class AvantageSocialSerializer(serializers.ModelSerializer):
 
     def validate_employe(self, value):
         return _meme_societe(self, value, 'Employé')
+
+
+class CampagnePulseSerializer(serializers.ModelSerializer):
+    """Campagne de baromètre interne eNPS anonyme (XRH32)."""
+
+    class Meta:
+        model = CampagnePulse
+        fields = [
+            'id', 'question_enps', 'question_libre',
+            'date_debut', 'date_fin', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class ReponsePulseSerializer(serializers.ModelSerializer):
+    """Réponse anonyme à une campagne pulse (XRH32) — lecture (agrégats
+    /modération) uniquement ; la CRÉATION passe par l'action dédiée
+    ``repondre`` (jamais par ce sérialiseur générique, pour garantir la
+    transaction anti-double-vote)."""
+
+    class Meta:
+        model = ReponsePulse
+        fields = ['id', 'campagne', 'score', 'commentaire', 'date_creation']
+        read_only_fields = fields
 
 
 class ElementIntegrationSerializer(serializers.ModelSerializer):

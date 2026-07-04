@@ -2120,3 +2120,29 @@ def top_risque_attrition(company, *, limite=10, today=None):
         })
     resultats.sort(key=lambda r: r['score'], reverse=True)
     return resultats[:limite]
+
+
+# Seuil minimal de réponses avant d'afficher un score eNPS (anonymat XRH32).
+PULSE_SEUIL_ANONYMAT = 5
+
+
+def score_enps_campagne(company, campagne_id):
+    """XRH32 — score eNPS (%promoteurs − %détracteurs) d'une campagne pulse.
+
+    Renvoie ``{nb_reponses, score_enps, masque}`` où ``masque=True`` (et
+    ``score_enps=None``) SOUS ``PULSE_SEUIL_ANONYMAT`` réponses — protection
+    d'anonymat (une poignée de réponses redeviendrait identifiable). Lecture
+    seule, société scopée.
+    """
+    from .models import ReponsePulse
+
+    reponses = list(ReponsePulse.objects.filter(
+        company=company, campagne_id=campagne_id))
+    nb = len(reponses)
+    if nb < PULSE_SEUIL_ANONYMAT:
+        return {'nb_reponses': nb, 'score_enps': None, 'masque': True}
+
+    promoteurs = sum(1 for r in reponses if r.categorie == 'promoteur')
+    detracteurs = sum(1 for r in reponses if r.categorie == 'detracteur')
+    score = round(((promoteurs - detracteurs) / nb) * 100, 1)
+    return {'nb_reponses': nb, 'score_enps': score, 'masque': False}

@@ -5252,3 +5252,153 @@ class AvantageSocial(models.Model):
 
     def __str__(self):
         return f'{self.get_type_display()} — {self.employe}'
+
+
+def hash_participation_token(user_id, campagne_id):
+    """XRH32 — empreinte déterministe (HMAC-SHA256) « qui a déjà voté ».
+
+    Même construction que ``hash_device_token`` (kiosque XRH10) : dérivée de
+    ``SECRET_KEY`` + ``(user_id, campagne_id)``. Stockée à part
+    (``ParticipationPulse``), JAMAIS jointe à ``ReponsePulse`` — empêche le
+    double vote SANS relier la réponse au votant.
+    """
+    raw = f'{user_id}:{campagne_id}'
+    return hmac.new(
+        settings.SECRET_KEY.encode('utf-8'),
+        raw.encode('utf-8'),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+class CampagnePulse(models.Model):
+    """XRH32 — campagne de baromètre interne eNPS anonyme (pulse survey).
+
+    Une question eNPS (0–10, « recommanderiez-vous... ») + une question
+    libre, sur une fenêtre ``date_debut``/``date_fin``. Multi-société :
+    ``company`` posée CÔTÉ SERVEUR. Entièrement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_campagnes_pulse',
+        verbose_name='Société',
+    )
+    question_enps = models.CharField(
+        max_length=255,
+        default=(
+            'Sur une échelle de 0 à 10, recommanderiez-vous notre '
+            'entreprise comme employeur à un proche ?'),
+        verbose_name='Question eNPS')
+    question_libre = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Question libre')
+    date_debut = models.DateField(
+        null=True, blank=True, verbose_name='Date de début')
+    date_fin = models.DateField(
+        null=True, blank=True, verbose_name='Date de fin')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Campagne pulse'
+        verbose_name_plural = 'Campagnes pulse'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'Pulse — {self.date_debut or self.date_creation.date()}'
+
+
+class ReponsePulse(models.Model):
+    """XRH32 — réponse ANONYME à une campagne pulse.
+
+    STRUCTURELLEMENT non reliable au votant : AUCUNE FK vers un utilisateur
+    ou un employé sur ce modèle — c'est le garde-fou d'anonymat (testable par
+    inspection du schéma : ``[f.name for f in ReponsePulse._meta.fields]``
+    ne contient ni ``user`` ni ``employe``). Le double vote est empêché à
+    PART, par ``ParticipationPulse`` (jeton haché, jamais joint ici).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_reponses_pulse',
+        verbose_name='Société',
+    )
+    campagne = models.ForeignKey(
+        CampagnePulse,
+        on_delete=models.CASCADE,
+        related_name='reponses',
+        verbose_name='Campagne',
+    )
+    score = models.PositiveSmallIntegerField(verbose_name='Note (0–10)')
+    commentaire = models.TextField(
+        blank=True, default='', verbose_name='Commentaire libre')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Réponse pulse'
+        verbose_name_plural = 'Réponses pulse'
+        ordering = ['-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'campagne'],
+                name='rh_reppulse_comp_camp_idx'),
+        ]
+
+    def __str__(self):
+        return f'Réponse pulse — campagne {self.campagne_id}'
+
+    @property
+    def categorie(self):
+        """Catégorie eNPS de la réponse (promoteur/passif/détracteur) —
+        mêmes seuils que le NPS client (FG238)."""
+        if self.score >= 9:
+            return 'promoteur'
+        if self.score >= 7:
+            return 'passif'
+        return 'detracteur'
+
+
+class ParticipationPulse(models.Model):
+    """XRH32 — jeton de participation (empêche le double vote SANS lien
+    votant→réponse).
+
+    Une ligne par (``user``, ``campagne``) — la contrainte d'unicité EST le
+    mécanisme anti-double-vote. ``token_hash`` (HMAC déterministe, voir
+    :func:`hash_participation_token`) est stocké pour vérification, mais ce
+    modèle N'A AUCUN LIEN vers ``ReponsePulse`` : on sait QUI a voté, jamais
+    CE QU'IL A RÉPONDU.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_participations_pulse',
+        verbose_name='Société',
+    )
+    campagne = models.ForeignKey(
+        CampagnePulse,
+        on_delete=models.CASCADE,
+        related_name='participations',
+        verbose_name='Campagne',
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='participations_pulse',
+        verbose_name='Utilisateur',
+    )
+    token_hash = models.CharField(max_length=64, verbose_name='Jeton (empreinte)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Participation pulse'
+        verbose_name_plural = 'Participations pulse'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['campagne', 'user'],
+                name='rh_partpulse_camp_user_uniq'),
+        ]
+
+    def __str__(self):
+        return f'Participation — campagne {self.campagne_id}'

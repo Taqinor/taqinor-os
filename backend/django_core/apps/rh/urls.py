@@ -13,6 +13,7 @@ from .views import (
     BesoinFormationViewSet,
     BulletinPaieViewSet,
     CampagneEvaluationViewSet,
+    CampagnePulseViewSet,
     CandidatureViewSet,
     CauserieSecuriteViewSet,
     CockpitRhViewSet,
@@ -133,6 +134,7 @@ router.register(r'entretiens-recrutement', EntretienRecrutementViewSet)
 router.register(r'gabarits-email-recrutement', GabaritEmailRecrutementViewSet)
 router.register(r'promesses-embauche', PromesseEmbaucheViewSet)
 router.register(r'campagnes-evaluation', CampagneEvaluationViewSet)
+router.register(r'campagnes-pulse', CampagnePulseViewSet)
 router.register(r'evaluations-employe', EvaluationEmployeViewSet)
 router.register(r'sanctions', SanctionViewSet)
 router.register(r'elements-variables-paie', ElementsVariablesPaieViewSet)

@@ -1498,3 +1498,41 @@ def traiter_issue_evaluation(evaluation):
             )
         except Exception:  # noqa: BLE001 — best-effort, jamais bloquant.
             pass
+
+
+# ── XRH32 — baromètre interne eNPS anonyme (pulse) ──────────────────────────
+
+class DejaVoteError(Exception):
+    """Levée quand l'utilisateur a déjà participé à cette campagne pulse."""
+
+
+@transaction.atomic
+def repondre_pulse(campagne, user, *, score, commentaire=''):
+    """XRH32 — enregistre une réponse ANONYME à une campagne pulse.
+
+    Deux écritures dans LA MÊME transaction, JAMAIS reliées entre elles :
+      1. ``ParticipationPulse(campagne, user)`` — la contrainte d'unicité EST
+         le garde-fou anti-double-vote ; si elle existe déjà,
+         :class:`DejaVoteError` est levée AVANT toute écriture de réponse
+         (aucune deuxième ``ReponsePulse`` n'est créée pour ce vote refusé).
+      2. ``ReponsePulse(campagne, score, commentaire)`` — SANS AUCUNE
+         référence à ``user`` : structurellement impossible de relier cette
+         ligne au votant.
+
+    Renvoie la ``ReponsePulse`` créée.
+    """
+    from .models import (
+        ParticipationPulse, ReponsePulse, hash_participation_token,
+    )
+
+    if ParticipationPulse.objects.filter(
+            campagne=campagne, user=user).exists():
+        raise DejaVoteError('Vous avez déjà répondu à cette campagne.')
+
+    ParticipationPulse.objects.create(
+        company=campagne.company, campagne=campagne, user=user,
+        token_hash=hash_participation_token(user.id, campagne.id))
+
+    return ReponsePulse.objects.create(
+        company=campagne.company, campagne=campagne,
+        score=score, commentaire=commentaire or '')
