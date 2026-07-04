@@ -174,6 +174,15 @@ class Equipement(models.Model):
     equipement_token = models.CharField(
         max_length=30, blank=True, default='',
         help_text="Jeton QR pour le scan de l'équipement (EQUIP:<id>).")
+    # XSAV19 — jeton public opaque pour la page « Signaler un problème » sans
+    # login (`/e/<public_token>`). DISTINCT de `equipement_token` (EQUIP:<id>
+    # est devinable — jamais exposé sur une page publique). Généré LAZILY
+    # via `ensure_public_token()` — nullable/blank : NULL tant que l'étiquette
+    # publique n'a jamais été demandée (comportement actuel inchangé).
+    public_token = models.CharField(
+        max_length=64, unique=True, null=True, blank=True, editable=False,
+        help_text=('Jeton public (XSAV19) pour la page de signalement sans '
+                   'login. Généré via ensure_public_token().'))
     # Le chantier auquel l'appareil appartient (objet pivot de l'après-vente).
     installation = models.ForeignKey(
         'installations.Installation', on_delete=models.CASCADE,
@@ -305,6 +314,19 @@ class Equipement(models.Model):
         if self.equipement_token != token:
             self.equipement_token = token
             self.save(update_fields=['equipement_token'])
+
+    def ensure_public_token(self):
+        """XSAV19 — Génère (lazily) et renvoie le jeton public opaque.
+
+        Idempotent : si déjà présent, le renvoie tel quel sans écriture.
+        ``secrets.token_urlsafe(32)`` — espace de collision négligeable
+        (2^192), même patron que ``Ticket.ensure_share_token`` (FG86)."""
+        if self.public_token:
+            return self.public_token
+        token = secrets.token_urlsafe(32)
+        self.public_token = token
+        self.save(update_fields=['public_token'])
+        return self.public_token
 
 
 # ── XSAV17 — Relevés compteur (heures / kWh) ──────────────────────────────────

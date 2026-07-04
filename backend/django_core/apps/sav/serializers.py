@@ -47,7 +47,7 @@ class EquipementSerializer(serializers.ModelSerializer):
         # company / dates de garantie / created_by posés côté serveur — jamais
         # depuis le corps. Les dates de garantie sont CALCULÉES (read-only).
         read_only_fields = [
-            'company', 'created_by', 'equipement_token',
+            'company', 'created_by', 'equipement_token', 'public_token',
             'date_fin_garantie', 'date_fin_garantie_production',
             'date_creation', 'date_modification',
         ]

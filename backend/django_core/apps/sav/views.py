@@ -185,10 +185,19 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
             qs = qs.filter(pk__in=ids)
         qs = qs[:200]
 
+        # XSAV19 — ?public=1 encode l'URL publique « Signaler un problème »
+        # (/e/<public_token>) au lieu du jeton interne EQUIP:<id> (scan
+        # interne inchangé par défaut). Le jeton public est généré lazily.
+        public = request.query_params.get('public') in ('1', 'true')
+
         items = []
         for eq in qs:
-            # Assure le jeton présent (rétro-compat équipements sans token).
-            token = eq.equipement_token or f'EQUIP:{eq.pk}'
+            if public:
+                token = request.build_absolute_uri(
+                    f'/e/{eq.ensure_public_token()}')
+            else:
+                # Assure le jeton présent (rétro-compat équipements sans token).
+                token = eq.equipement_token or f'EQUIP:{eq.pk}'
             titre = eq.produit.nom if eq.produit_id else '—'
             sous_titre = eq.numero_serie or '(sans série)'
             items.append({'token': token, 'titre': titre, 'sous_titre': sous_titre})
