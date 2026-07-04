@@ -178,7 +178,6 @@ app.conf.beat_schedule = {
         'task': 'ventes.releve_mensuel_reminders',
         'schedule': crontab(hour=8, minute=0, day_of_month=1),
     },
-<<<<<<< HEAD
     # XFSM6 — rappel client J-1 (interventions non confirmées, demain).
     'installations-rappel-rdv-j1': {
         'task': 'installations.rappel_rdv_j1',
