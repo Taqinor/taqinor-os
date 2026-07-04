@@ -163,4 +163,11 @@ urlpatterns = [
     path('promesses-embauche/public/<str:token>/signer/',
          public_views.public_promesse_signer,
          name='rh-promesse-publique-signer'),
+    # XRH33 — page carrières publique (flag-gated OFF par défaut, 404 sinon).
+    path('carrieres/<slug:company_slug>/',
+         public_views.careers_list,
+         name='rh-carrieres-liste'),
+    path('carrieres/<slug:company_slug>/<int:ouverture_id>/candidater/',
+         public_views.careers_apply,
+         name='rh-carrieres-candidater'),
 ]

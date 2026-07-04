@@ -3142,6 +3142,15 @@ class OuverturePoste(models.Model):
     )
     description = models.TextField(
         blank=True, default='', verbose_name='Description')
+    # XRH33 — ville affichée sur la page carrières publique (flag-gated).
+    ville = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Ville')
+    # XRH33 — décision fondateur d'exposer (ou non) publiquement le
+    # recrutement : une ouverture n'apparaît sur la page carrières QUE si
+    # ``publiee=True`` ET ``CAREERS_ENABLED`` (défaut False, additif — les
+    # ouvertures existantes restent NON publiées).
+    publiee = models.BooleanField(
+        default=False, verbose_name='Publiée (carrières)')
     nombre_postes = models.PositiveIntegerField(
         default=1, verbose_name='Nombre de postes')
     statut = models.CharField(

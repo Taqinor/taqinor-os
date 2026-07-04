@@ -1699,10 +1699,13 @@ class OuverturePosteSerializer(serializers.ModelSerializer):
 
     Le client saisit ``intitule``, un ``poste_ref`` (référentiel ``rh.Poste``
     de sa société) et un ``departement`` optionnels, ``description``,
-    ``nombre_postes``, ``statut``, ``date_ouverture`` / ``date_cible``. La liste
-    imbriquée ``candidatures`` est en LECTURE SEULE (gérée via l'endpoint
-    dédié). ``company`` est posée CÔTÉ SERVEUR (jamais lue du corps) ;
-    ``poste_ref`` et ``departement`` doivent appartenir à la même société.
+    ``ville`` (XRH33 — affichée sur la page carrières publique),
+    ``nombre_postes``, ``statut``, ``publiee`` (XRH33 — expose l'ouverture sur
+    la page carrières publique flag-gated), ``date_ouverture`` /
+    ``date_cible``. La liste imbriquée ``candidatures`` est en LECTURE SEULE
+    (gérée via l'endpoint dédié). ``company`` est posée CÔTÉ SERVEUR (jamais
+    lue du corps) ; ``poste_ref`` et ``departement`` doivent appartenir à la
+    même société.
     """
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
@@ -1716,7 +1719,7 @@ class OuverturePosteSerializer(serializers.ModelSerializer):
             'id', 'intitule',
             'poste_ref', 'poste_ref_intitule',
             'departement', 'departement_nom',
-            'description', 'nombre_postes',
+            'description', 'ville', 'publiee', 'nombre_postes',
             'statut', 'statut_display',
             'date_ouverture', 'date_cible',
             'candidatures',
