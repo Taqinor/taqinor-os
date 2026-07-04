@@ -32,6 +32,10 @@ TYPES_LEGAUX = [
     ('DEC', "Congé pour décès (famille proche)", False, False, True, Decimal('3')),
     ('CIRC', 'Congé pour circoncision', False, False, True, Decimal('2')),
     ('AT', 'Accident du travail', False, False, True, None),
+    # YHIRE7 — mise à pied disciplinaire (Sanction.TypeSanction.MISE_A_PIED) :
+    # jours calendaires (pas ouvrés — c'est une sanction, pas un congé), NON
+    # rémunérée, NE déduit PAS le solde de congés (compteur distinct).
+    ('MAP', 'Mise à pied disciplinaire', False, False, False, None),
 ]
 
 

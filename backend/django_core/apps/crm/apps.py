@@ -5,6 +5,14 @@ class CrmConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'apps.crm'
     verbose_name = 'CRM'
+    module_manifest = {
+        'key': 'crm',
+        'label': 'CRM',
+        'icone': 'users',
+        'depends': [],
+        'description': 'Pistes, opportunités et clients.',
+        'categorie': 'Ventes',
+    }
 
     def ready(self):
         # M6 — abonne le CRM aux événements métier (core.events) : avance
@@ -13,3 +21,6 @@ class CrmConfig(AppConfig):
         # AG6 — enregistre les actions agentiques CRM dans le registre AG1.
         from .agent_actions import register_crm_actions
         register_crm_actions()
+        # XPLT23 — fournisseur DSR CRM (export/anonymisation loi 09-08).
+        from . import dsr_provider
+        dsr_provider.register()

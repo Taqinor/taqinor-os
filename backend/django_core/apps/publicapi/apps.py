@@ -6,6 +6,15 @@ class PublicApiConfig(AppConfig):
     name = 'apps.publicapi'
     label = 'publicapi'
     verbose_name = 'API publique'
+    module_manifest = {
+        'key': 'publicapi',
+        'label': 'API publique',
+        'icone': 'globe',
+        'depends': [],
+        'installable': False,
+        'description': 'Clés API et webhooks (géré par clés API).',
+        'categorie': 'Technique',
+    }
 
     def ready(self):
         # Branche les signaux qui déclenchent les webhooks sur les évènements

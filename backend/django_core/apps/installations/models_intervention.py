@@ -54,6 +54,18 @@ class Intervention(models.Model):
         MISE_EN_SERVICE = 'mise_en_service', 'Mise en service'
         CONTROLE = 'controle', 'Contrôle'
         DEPANNAGE = 'depannage', 'Dépannage'
+        # XFSM13 — re-vérification périodique IEC 62446-2 : reprend les points
+        # électriques de la recette (Riso, continuité, Voc/string) et compare
+        # à la baseline du chantier. Additif — n'affecte aucun type existant.
+        REVERIFICATION_62446 = 'reverification_62446', 'Re-vérification IEC 62446-2'
+
+    class Priorite(models.TextChoices):
+        # XFSM4 — priorité pilotant le tri dispatch (kanban F4, calendrier
+        # FG68, « Ma journée » F22). Sans lien avec STAGES.py ni le statut
+        # chantier/intervention. Défaut NORMALE = comportement actuel inchangé.
+        URGENTE = 'urgente', 'Urgente'
+        HAUTE = 'haute', 'Haute'
+        NORMALE = 'normale', 'Normale'
 
     class Statut(models.TextChoices):
         # F3 — machine à états PROPRE à l'intervention (sortie chantier).
@@ -93,6 +105,11 @@ class Intervention(models.Model):
     # intervention existante migrée prend ce statut (additif, non destructif).
     statut = models.CharField(
         max_length=20, choices=Statut.choices, default=Statut.A_PREPARER)
+    # XFSM4 — priorité (héritée du ticket SAV lié quand il existe, sinon
+    # NORMALE) : pilote le tri dans le kanban F4, le calendrier FG68 et « Ma
+    # journée » F22. Additif — ne touche ni le statut chantier ni STAGES.py.
+    priorite = models.CharField(
+        max_length=10, choices=Priorite.choices, default=Priorite.NORMALE)
     date_prevue = models.DateField(null=True, blank=True)
     date_realisee = models.DateField(null=True, blank=True)
     technicien = models.ForeignKey(
@@ -134,6 +151,16 @@ class Intervention(models.Model):
     arrivee_gps_lng = models.DecimalField(
         max_digits=9, decimal_places=6, null=True, blank=True)
     retour_depot_le = models.DateTimeField(null=True, blank=True)
+    # ── XFSM7 — position GPS optionnelle au départ (posée par l'action
+    #    ``depart-depot`` quand le navigateur la fournit). Sert UNIQUEMENT à
+    #    calculer l'ETA affichée sur le lien public « technicien en route » ;
+    #    n'affecte aucune logique F6 existante (distance-au-site reste basée
+    #    sur l'arrivée). Nullable — un départ sans GPS garde le comportement
+    #    actuel (ETA simplement absente du payload public). ──
+    depart_gps_lat = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True)
+    depart_gps_lng = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True)
 
     # ── FG69 — signature client sur le compte-rendu / PV ─────────────────────
     # Data-URL PNG (ou SVG strokes JSON) de la signature. Stocké en base car
@@ -148,6 +175,33 @@ class Intervention(models.Model):
     rdv_confirme_le = models.DateTimeField(null=True, blank=True)
     rdv_reschedule_count = models.PositiveIntegerField(default=0)
 
+    # ── XFSM5 — fenêtre de RDV promise (ex. 8h–10h) + ponctualité ────────────
+    # Affichées sur la confirmation client et « Ma journée » F22. Nullable :
+    # une intervention sans fenêtre garde le comportement actuel (heure exacte
+    # implicite, pas de mesure de ponctualité). `arrivee_dans_fenetre` est
+    # dérivé au check-in GPS (F6) : True/False une fois calculé, None tant que
+    # l'arrivée n'a pas eu lieu ou qu'aucune fenêtre n'est promise.
+    fenetre_debut = models.TimeField(null=True, blank=True)
+    fenetre_fin = models.TimeField(null=True, blank=True)
+    arrivee_dans_fenetre = models.BooleanField(null=True, blank=True)
+
+    # ── XFSM7 — lien public « technicien en route » (suivi de visite) ───────
+    # Jeton de partage public (même patron que ``sav.Ticket.share_token``
+    # FG86) : nullable/blank, généré lazily via ``ensure_lien_client_token``,
+    # unique par intervention. Expire à ``date_prevue`` + 1 jour (au-delà, la
+    # visite du jour est passée — pas de sens de suivre "en route" plus tard).
+    lien_client_token = models.CharField(
+        max_length=64, unique=True, null=True, blank=True, editable=False,
+        help_text="Jeton public du lien « technicien en route » (XFSM7).")
+
+    # ── XFSM21 — météo sur le planning (travaux toiture) ─────────────────────
+    # Prévision J+3 (Open-Meteo, gratuit, sans clé) récupérée par la tâche Beat
+    # quotidienne pour les interventions POSE planifiées. None = pas encore
+    # évalué (ou hors fenêtre J+3) ; True = pluie/vent au-delà des seuils
+    # paramétrables ; False = prévision OK. Additif, jamais bloquant.
+    meteo_risque = models.BooleanField(null=True, blank=True)
+    meteo_verifie_le = models.DateTimeField(null=True, blank=True)
+
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, related_name='interventions_creees',
@@ -161,6 +215,35 @@ class Intervention(models.Model):
 
     def __str__(self):
         return f"{self.get_type_intervention_display()} — {self.installation_id}"
+
+    def ensure_lien_client_token(self):
+        """XFSM7 — génère (lazily) et renvoie le jeton public du lien client.
+
+        Idempotent : si le jeton existe déjà, le retourne tel quel sans
+        écriture. Sinon génère un ``secrets.token_urlsafe(32)`` (même patron
+        que ``sav.Ticket.ensure_share_token``, FG86)."""
+        if self.lien_client_token:
+            return self.lien_client_token
+        import secrets
+        token = secrets.token_urlsafe(32)
+        self.lien_client_token = token
+        self.save(update_fields=['lien_client_token'])
+        return self.lien_client_token
+
+    @property
+    def lien_client_expire(self):
+        """XFSM7 — le lien expire le lendemain de la date prévue (une visite
+        d'un jour passé n'a plus de sens à suivre « en route »). Sans date
+        prévue, le lien n'expire jamais par cette règle (couvert par le
+        statut : une intervention VALIDEE/TERMINEE cesse d'avoir un ETA)."""
+        if not self.date_prevue:
+            return False
+        from datetime import timedelta
+
+        from django.utils import timezone
+        # Comparaison sur la DATE seule (évite tout souci de fuseau horaire) :
+        # expiré si aujourd'hui > date_prevue + 1 jour.
+        return timezone.localdate() > (self.date_prevue + timedelta(days=1))
 
 
 class InterventionActivity(models.Model):

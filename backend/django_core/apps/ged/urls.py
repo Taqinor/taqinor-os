@@ -4,15 +4,20 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     AnnotationDocumentViewSet, ArchivageLegalViewSet, CabinetViewSet,
     ChampSignatureViewSet, CoffreViewSet, DemandeApprobationViewSet,
-    DemandeDocumentViewSet, DemandeSignatureDocumentViewSet,
+    DemandeDispositionViewSet, DemandeDocumentViewSet,
+    DemandeSignatureDocumentViewSet,
     DepotPublicViewSet, DocumentLienViewSet, DocumentTagAssignmentViewSet,
     DocumentTagViewSet, DocumentVersionViewSet, DocumentViewSet,
     ExigenceDossierViewSet, FolderViewSet, JournalAccesViewSet,
-    LegalHoldViewSet, ModeleDocumentViewSet, PartageGedViewSet,
+    LegalHoldViewSet, LotEnvoiViewSet, ModeleDocumentViewSet, PartageGedViewSet,
     PlanificationDocumentViewSet, PolitiqueRetentionViewSet,
-    QuotaStockageViewSet, RegleApprobationGedViewSet, RegleDossierViewSet,
-    SignataireDemandeViewSet, ValidationOcrDocumentViewSet,
-    public_depot, public_partage, public_signataire, public_signature,
+    QuotaStockageViewSet, RegleAclMetadonneeViewSet,
+    RegleApprobationGedViewSet, RegleDossierViewSet, RoleSignataireViewSet,
+    RoutageDocumentaireViewSet, SignataireDemandeViewSet,
+    TypeChampSignatureViewSet, ValidationOcrDocumentViewSet,
+    VueGedEnregistreeViewSet,
+    analytique_ged, mes_favoris, mes_recents, public_depot, public_partage,
+    public_signataire, public_signature,
 )
 
 router = DefaultRouter()
@@ -32,7 +37,11 @@ router.register(r'legal-holds', LegalHoldViewSet)
 router.register(r'modeles-document', ModeleDocumentViewSet)
 router.register(r'demandes-signature', DemandeSignatureDocumentViewSet)
 router.register(r'signataires-demande', SignataireDemandeViewSet)
+router.register(r'roles-signataire', RoleSignataireViewSet)
 router.register(r'champs-signature', ChampSignatureViewSet)
+router.register(r'types-champ-signature', TypeChampSignatureViewSet)
+router.register(r'routages-documentaires', RoutageDocumentaireViewSet)
+router.register(r'vues', VueGedEnregistreeViewSet)
 router.register(r'journal-acces', JournalAccesViewSet)
 router.register(r'quotas-stockage', QuotaStockageViewSet)
 router.register(r'depots-publics', DepotPublicViewSet)
@@ -42,6 +51,9 @@ router.register(r'validations-ocr', ValidationOcrDocumentViewSet)
 router.register(r'annotations', AnnotationDocumentViewSet)
 router.register(r'regles-dossier', RegleDossierViewSet)
 router.register(r'regles-approbation', RegleApprobationGedViewSet)
+router.register(r'regles-acl-metadonnee', RegleAclMetadonneeViewSet)
+router.register(r'demandes-disposition', DemandeDispositionViewSet)
+router.register(r'lots-envoi', LotEnvoiViewSet)
 router.register(r'planifications', PlanificationDocumentViewSet)
 
 urlpatterns = [
@@ -60,5 +72,15 @@ urlpatterns = [
     # (jeton propre au signataire, distinct du jeton de la demande globale).
     path('signataire/<str:token>/', public_signataire,
          name='ged-public-signataire'),
+    # XGED26 — analytique workflow & signature (authentifié, gestion/admin).
+    # Déclaré avant le routeur pour ne pas être capté par une route de detail
+    # DRF (ex. un futur `<pk>/`) — même précaution que les routes publiques.
+    path('analytique/', analytique_ged, name='ged-analytique'),
+    # ZGED7 — favoris personnels de l'appelant, déclaré avant le routeur (même
+    # précaution que analytique/) pour ne jamais être capté par une route de
+    # détail DRF.
+    path('mes-favoris/', mes_favoris, name='ged-mes-favoris'),
+    # ZGED13 — mêmes précautions (déclaré avant le routeur).
+    path('mes-recents/', mes_recents, name='ged-mes-recents'),
     path('', include(router.urls)),
 ]

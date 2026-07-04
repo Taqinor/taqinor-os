@@ -307,6 +307,12 @@ class ReferentielFlotte(models.Model):
         TYPE_ENGIN = 'type_engin', "Type d'engin"
         ENERGIE = 'energie', 'Énergie'
         CATEGORIE_PERMIS = 'categorie_permis', 'Catégorie de permis'
+        # XFLT25 — criticité des préfixes de code défaut moteur (DTC), éditable
+        # par société (P0xxx moteur, etc.). ``code`` porte le préfixe (ex.
+        # ``P0``) et ``libelle`` la criticité littérale
+        # (``critique``/``moyenne``/``faible`` — voir
+        # ``services.criticite_dtc``, qui lit ce référentiel).
+        CODE_DTC = 'code_dtc', 'Criticité des codes défaut (DTC)'
 
     company = models.ForeignKey(
         'authentication.Company',
@@ -475,6 +481,19 @@ class AffectationConducteur(models.Model):
     date_fin = models.DateField(null=True, blank=True, verbose_name="Date de fin")
     notes = models.TextField(blank=True, verbose_name="Notes")
     actif = models.BooleanField(default=True, verbose_name="Actif")
+    # XFLT29 — avantage en nature véhicule -> paie. Un véhicule affecté avec
+    # USAGE PRIVÉ constitue un avantage en nature imposable (règles
+    # marocaines d'évaluation à valider par le fondateur/comptable —
+    # DECISION) : la VALORISATION reste saisie/éditable ici (jamais calculée
+    # automatiquement tant que la règle n'est pas validée). La flotte EXPOSE
+    # cette donnée en LECTURE via ``selectors.avantages_en_nature`` pour que
+    # la paie (FG192) l'intègre à ses éléments variables — la flotte N'ÉCRIT
+    # JAMAIS dans le module paie (cross-app, voir CLAUDE.md).
+    usage_prive = models.BooleanField(
+        default=False, verbose_name='Usage privé (avantage en nature)')
+    valeur_avantage_mensuelle = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+        verbose_name="Valeur de l'avantage en nature (MAD/mois)")
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name="Créé le")
 
@@ -847,6 +866,22 @@ class Conducteur(models.Model):
         null=True, blank=True, verbose_name="Date d'obtention du permis")
     date_expiration = models.DateField(
         null=True, blank=True, verbose_name="Date d'expiration du permis")
+    # XFLT27 — conformité transport lourd (> 3,5 t, DECISION fondateur) :
+    # carte de conducteur professionnel (n° + expiration) et formation
+    # continue NARSA (date + validité). Tous optionnels — un conducteur de
+    # véhicule léger n'en a simplement pas besoin (aucune régression).
+    carte_conducteur_pro_numero = models.CharField(
+        max_length=50, blank=True,
+        verbose_name='N° carte de conducteur professionnel')
+    carte_conducteur_pro_expiration = models.DateField(
+        null=True, blank=True,
+        verbose_name='Expiration carte de conducteur professionnel')
+    formation_continue_narsa_date = models.DateField(
+        null=True, blank=True,
+        verbose_name='Date de formation continue NARSA')
+    formation_continue_narsa_validite = models.DateField(
+        null=True, blank=True,
+        verbose_name='Validité de la formation continue NARSA')
     actif = models.BooleanField(default=True, verbose_name='Actif')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
@@ -1150,6 +1185,15 @@ class Garage(models.Model):
         max_length=255, blank=True, verbose_name='Adresse')
     telephone = models.CharField(
         max_length=30, blank=True, verbose_name='Téléphone')
+    # XFLT26 — préparation e-facturation DGI : identité légale du garage
+    # (fournisseur ponctuel non référencé dans ``stock.Fournisseur``, qui
+    # porte DÉJÀ ICE/IF/RC/RIB — DC15). Champs additifs, tous optionnels
+    # (compat ascendante). L'ICE marocain est un identifiant à 15 chiffres.
+    ice = models.CharField(
+        max_length=15, blank=True, verbose_name='ICE',
+        help_text="Identifiant Commun de l'Entreprise (15 chiffres).")
+    identifiant_fiscal = models.CharField(
+        max_length=20, blank=True, verbose_name='Identifiant fiscal (IF)')
     actif = models.BooleanField(default=True, verbose_name='Actif')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
@@ -1164,6 +1208,13 @@ class Garage(models.Model):
                 name='flotte_garage_co_act_idx',
             ),
         ]
+
+    def clean(self):
+        """XFLT26 — Valide le format de l'ICE (15 chiffres) s'il est
+        renseigné."""
+        if self.ice and (len(self.ice) != 15 or not self.ice.isdigit()):
+            raise ValidationError(
+                "L'ICE doit comporter exactement 15 chiffres.")
 
     def __str__(self):
         return self.nom
@@ -1561,6 +1612,12 @@ class EcheanceReglementaire(models.Model):
         VIGNETTE = 'vignette', 'Vignette / TSAV'
         CARTE_GRISE = 'carte_grise', 'Carte grise'
         TAXE_ESSIEU = 'taxe_essieu', "Taxe à l'essieu"
+        # XFLT27 — conformité transport lourd (> 3,5 t) : calibration du
+        # chronotachygraphe, périodicité 2 ans (arrêté 2399-20). Code CORT
+        # (17) tient dans max_length=20 (leçon FG136 — 'visite_technique',
+        # 16, restait jusqu'ici le plus long).
+        CHRONOTACHYGRAPHE = 'chronotachygraphe', \
+            'Calibration chronotachygraphe'
         AUTRE = 'autre', 'Autre'
 
     class Statut(models.TextChoices):
@@ -2571,6 +2628,14 @@ class ReleveTelematique(models.Model):
     # pour tracer ce que le boîtier a remonté sans inventer de schéma de colonnes.
     raw_payload = models.JSONField(
         default=dict, blank=True, verbose_name='Charge brute (fournisseur)')
+    # XFLT25 — Codes défaut moteur (DTC, Diagnostic Trouble Codes) remontés
+    # par le boîtier OU saisis manuellement (la saisie manuelle reste
+    # toujours possible, comme le reste de la télématique). Liste de codes
+    # bruts (ex. ``["P0301", "P0420"]``) ; la CRITICITÉ par préfixe est un
+    # référentiel ÉDITABLE (``ReferentielFlotte`` domaine ``code_dtc``),
+    # jamais figée dans ce modèle.
+    codes_defaut = models.JSONField(
+        default=list, blank=True, verbose_name='Codes défaut moteur (DTC)')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -3209,7 +3274,18 @@ class CoutVehicule(models.Model):
         max_digits=12, decimal_places=2, default=0,
         verbose_name='Montant (MAD)')
     fournisseur = models.CharField(
-        max_length=150, blank=True, verbose_name='Fournisseur')
+        max_length=150, blank=True, verbose_name='Fournisseur',
+        help_text='Repli en saisie libre pour un fournisseur ponctuel — '
+                  'préférer `fournisseur_id` (référentiel stock.Fournisseur, '
+                  'qui porte déjà ICE/IF/RC/RIB) quand il existe.')
+    # XFLT26 — préparation e-facturation DGI : référence VERS un
+    # `stock.Fournisseur` (qui porte DÉJÀ ICE/IF/RC/RIB, DC15) par id
+    # NUMÉRIQUE, jamais un FK cross-app dur (modularité, voir CLAUDE.md). null
+    # = coût sans fournisseur référencé (repli sur le champ `fournisseur` en
+    # saisie libre). La validation « même société » se fait côté serveur via
+    # le sélecteur de `apps.stock`.
+    fournisseur_id_ref = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Fournisseur (référentiel stock)')
     reference_piece = models.CharField(
         max_length=80, blank=True, verbose_name='Référence pièce')
     conducteur = models.ForeignKey(
@@ -3242,6 +3318,11 @@ class CoutVehicule(models.Model):
             ),
         ]
 
+    # XFLT26 — au-delà de ce montant (MAD), une référence de facture
+    # structurée (``reference_piece``) est exigée en WARNING (non bloquant —
+    # voir ``CoutVehiculeSerializer.get_reference_avertissement``).
+    SEUIL_REFERENCE_MAD = 5000
+
     def clean(self):
         """Valide l'appartenance société de l'actif et du conducteur, et un
         montant non négatif."""
@@ -3256,6 +3337,13 @@ class CoutVehicule(models.Model):
         if self.montant is not None and self.montant < 0:
             raise ValidationError(
                 "Le montant ne peut pas être négatif.")
+        if self.fournisseur_id_ref is not None:
+            from apps.stock.selectors import get_fournisseur_by_id
+            if get_fournisseur_by_id(
+                    self.company, self.fournisseur_id_ref) is None:
+                raise ValidationError(
+                    "Le fournisseur référencé n'appartient pas à la même "
+                    "société.")
 
     def __str__(self):
         return (f'{self.get_categorie_display()} — {self.actif_flotte} '
@@ -4156,3 +4244,133 @@ class ActiviteFlotte(models.Model):
     def __str__(self):
         return (f'{self.get_type_objet_display()} #{self.objet_id} — '
                 f'{self.champ} : {self.ancienne_valeur} → {self.nouvelle_valeur}')
+
+
+# ── XFLT24 — Géofencing sur les données télématiques ────────────────────────────
+
+class ZoneGeographique(models.Model):
+    """Zone géographique circulaire de géofencing (XFLT24).
+
+    Cercle simple (centre lat/lng + rayon en mètres — PAS de PostGIS) évalué
+    a posteriori contre les ``ReleveTelematique``/``TrajetTelematique`` déjà
+    ingérés (FLOTTE27/28) : détection d'entrée/sortie de zone et de mouvement
+    hors plage horaire autorisée. Purement LOCAL sur des données existantes —
+    aucune dépendance nouvelle, no-op si la télématique est inactive (gate
+    FLOTTE27 respectée par ``services.evaluer_geofencing``).
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête).
+    """
+
+    class TypeZone(models.TextChoices):
+        DEPOT = 'depot', 'Dépôt'
+        CHANTIER = 'chantier', 'Chantier'
+        INTERDITE = 'interdite', 'Zone interdite'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_zones_geographiques',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=120, verbose_name='Nom de la zone')
+    type_zone = models.CharField(
+        max_length=10, choices=TypeZone.choices, default=TypeZone.DEPOT,
+        verbose_name='Type de zone')
+    centre_lat = models.DecimalField(
+        max_digits=9, decimal_places=6, verbose_name='Latitude du centre')
+    centre_lng = models.DecimalField(
+        max_digits=9, decimal_places=6, verbose_name='Longitude du centre')
+    rayon_metres = models.PositiveIntegerField(
+        verbose_name='Rayon (mètres)')
+    # Plage horaire autorisée (optionnelle) : hors de cette plage, un
+    # mouvement détecté dans la zone déclenche une alerte. Vide = aucune
+    # contrainte horaire (seule l'appartenance interdite/zone compte).
+    heure_debut_autorisee = models.TimeField(
+        null=True, blank=True, verbose_name='Heure de début autorisée')
+    heure_fin_autorisee = models.TimeField(
+        null=True, blank=True, verbose_name='Heure de fin autorisée')
+    actif = models.BooleanField(default=True, verbose_name='Active')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Zone géographique'
+        verbose_name_plural = 'Zones géographiques'
+        ordering = ['nom']
+        indexes = [
+            models.Index(
+                fields=['company', 'type_zone'],
+                name='flotte_zone_co_type_idx',
+            ),
+            models.Index(
+                fields=['company', 'actif'],
+                name='flotte_zone_co_act_idx',
+            ),
+        ]
+
+    def clean(self):
+        """Valide le rayon (> 0) et la cohérence de la plage horaire (fin >
+        début si les deux sont renseignées)."""
+        if self.rayon_metres is not None and self.rayon_metres <= 0:
+            raise ValidationError(
+                'Le rayon doit être strictement positif.')
+        if self.heure_debut_autorisee is not None \
+                and self.heure_fin_autorisee is not None \
+                and self.heure_fin_autorisee <= self.heure_debut_autorisee:
+            raise ValidationError(
+                "L'heure de fin autorisée doit être postérieure à l'heure "
+                'de début.')
+
+    def __str__(self):
+        return f'{self.nom} ({self.get_type_zone_display()})'
+
+
+# ── XFLT28 — Rappels constructeur (recall) ──────────────────────────────────────
+
+class RappelConstructeur(models.Model):
+    """Rappel constructeur (recall) touchant un ou plusieurs VIN du parc
+    (XFLT28).
+
+    Saisi une fois (référence de campagne, constructeur, description, liste
+    des VIN concernés) puis RAPPROCHÉ automatiquement contre
+    ``Vehicule.vin`` (XFLT4) : le service ``services.rapprocher_rappel``
+    crée un ``SignalementVehicule`` (XFLT5) PAR véhicule du parc touché,
+    tous groupables en cette campagne pour un suivi de résolution unifié.
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête).
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_rappels_constructeur',
+        verbose_name='Société',
+    )
+    reference_campagne = models.CharField(
+        max_length=80, verbose_name='Référence de campagne')
+    constructeur = models.CharField(
+        max_length=120, blank=True, verbose_name='Constructeur')
+    description = models.TextField(blank=True, verbose_name='Description')
+    # Liste des VIN concernés par la campagne (saisie constructeur — peut
+    # dépasser largement le parc de la société ; le rapprochement ne crée un
+    # signalement QUE pour les VIN qui matchent un véhicule de la société).
+    vin_concernes = models.JSONField(
+        default=list, blank=True, verbose_name='VIN concernés')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Rappel constructeur'
+        verbose_name_plural = 'Rappels constructeur'
+        ordering = ['-date_creation', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'reference_campagne'],
+                name='flotte_rappel_co_ref_idx',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Rappel {self.reference_campagne} — {self.constructeur}'

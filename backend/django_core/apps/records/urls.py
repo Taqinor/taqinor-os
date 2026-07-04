@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     ActivityTypeViewSet, ActivityViewSet, AttachmentViewSet,
-    CommentViewSet, TaggedItemViewSet, TagViewSet,
+    CommentViewSet, FollowerViewSet, TaggedItemViewSet, TagViewSet,
     attachments_all, attachments_count,
 )
 
@@ -14,6 +14,7 @@ router.register(r'attachments', AttachmentViewSet, basename='attachment')
 router.register(r'comments', CommentViewSet, basename='comment')
 router.register(r'tags', TagViewSet, basename='tag')
 router.register(r'tagged-items', TaggedItemViewSet, basename='tagged-item')
+router.register(r'followers', FollowerViewSet, basename='follower')
 
 urlpatterns = [
     # FG10 — Centre de pièces jointes de la société (toutes, paginées).

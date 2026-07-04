@@ -259,6 +259,14 @@ def generate_facture_pdf(facture_id):
 
     context = _company_context(company=facture.company)
     context['facture'] = facture
+    # XFAC19 — QR paiement/vérification (PDF facture LEGACY uniquement, jamais
+    # le moteur devis premium). Ajout silencieux : None → footer inchangé.
+    try:
+        from apps.ventes.services import qr_svg_for_facture_pdf
+        context['facture_qr_svg'] = qr_svg_for_facture_pdf(facture)
+    except Exception as exc:  # noqa: BLE001 — best-effort, jamais de crash PDF
+        logger.warning('QR facture %s indisponible : %s', facture_id, exc)
+        context['facture_qr_svg'] = None
 
     html = _render_html('facture.html', context)
     pdf_bytes = _html_to_pdf(html)
@@ -329,6 +337,17 @@ def generate_proforma_pdf(devis, reference):
     context['devis'] = devis
     context['reference'] = reference
     html = _render_html('proforma.html', context)
+    return _html_to_pdf(html)
+
+
+def generate_dossier_contentieux_pdf(client, dossier_data):
+    """XFAC21 — pack PDF complet du dossier contentieux (recouvrement externe).
+
+    Rendu à la volée, non stocké (comme le relevé) — layout maison, jamais le
+    moteur devis premium (RULE #4 : ceci ne concerne AUCUN devis)."""
+    context = _company_context(company=client.company)
+    context['dossier'] = dossier_data
+    html = _render_html('dossier_contentieux.html', context)
     return _html_to_pdf(html)
 
 

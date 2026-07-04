@@ -285,6 +285,20 @@ class WhatsAppBspWebhookView(View):
         if log is None:
             return  # gated / whatsapp_actif() False (deja verifie en amont).
 
+        # XSAV26 — un expediteur reconnu comme Client SAV existant route vers
+        # un ticket (cree ou note sur le ticket ouvert le plus recent) au lieu
+        # du lead. Numero inconnu au SAV -> route lead existante INCHANGEE
+        # (le bloc lead ci-dessous s'execute normalement).
+        try:
+            from apps.sav.services import router_whatsapp_entrant_vers_ticket
+            kind, ticket = router_whatsapp_entrant_vers_ticket(
+                company=company, expediteur=expediteur, texte=texte)
+            if kind is not None:
+                return
+        except Exception as exc:  # pragma: no cover - defensif
+            logger.warning(
+                "Webhook BSP WhatsApp : routage SAV echoue : %s", exc)
+
         # Rattachement au chatter du lead correspondant (matching par numero).
         try:
             from apps.crm.services import (

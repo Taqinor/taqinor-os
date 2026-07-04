@@ -19,6 +19,7 @@ from .views import (
     RubriqueEmployeViewSet,
     RubriqueViewSet,
     SaisieArretViewSet,
+    StructurePaieViewSet,
 )
 
 router = DefaultRouter()
@@ -27,6 +28,7 @@ router.register(r'baremes', BaremeIRViewSet)
 router.register(r'rubriques', RubriqueViewSet)
 router.register(r'profils', ProfilPaieViewSet)
 router.register(r'rubriques-employe', RubriqueEmployeViewSet)
+router.register(r'structures', StructurePaieViewSet)
 router.register(r'regimes-mutuelle', RegimeMutuelleViewSet)
 router.register(r'adhesions-mutuelle', AdhesionMutuelleViewSet)
 router.register(r'periodes', PeriodePaieViewSet)

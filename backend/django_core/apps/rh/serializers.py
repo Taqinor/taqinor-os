@@ -4,6 +4,7 @@
 le ``TenantMixin`` (``perform_create``). Tous les FK reçus sont validés comme
 appartenant à la société de l'utilisateur.
 """
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
 from .models import (
@@ -12,9 +13,12 @@ from .models import (
     AffectationVehicule,
     AnalyseRisquesChantier,
     AvanceSalaire,
+    AvantageSocial,
+    AyantDroit,
     BesoinFormation,
     BulletinPaie,
     CampagneEvaluation,
+    CampagnePulse,
     Candidature,
     CandidatureActivity,
     CauserieParticipant,
@@ -31,6 +35,7 @@ from .models import (
     DocumentEmploye,
     EmployeDeviceMap,
     EntretienRecrutement,
+    EntretienSortie,
     GabaritEmailRecrutement,
     GrilleSalariale,
     NoteEntretien,
@@ -53,7 +58,9 @@ from .models import (
     HoraireTravail,
     IncidentPresence,
     InscriptionFormation,
+    JourBloqueConge,
     LigneRisqueChantier,
+    ModeleEvaluation,
     ModeleIntegration,
     NoteDeFrais,
     ObjectifIndividuel,
@@ -65,10 +72,13 @@ from .models import (
     PresenceChantier,
     PresquAccident,
     PrimeAttribuee,
+    QuizFormation,
     Remuneration,
+    ReponsePulse,
     Sanction,
     SessionFormation,
     SoldeConge,
+    TentativeQuiz,
     TypeAbsence,
     TypePrime,
     VisiteMedicale,
@@ -85,10 +95,35 @@ def _meme_societe(serializer, value, label):
 
 
 class DepartementSerializer(serializers.ModelSerializer):
+    """Département (XRH27 — ``parent`` optionnel pour la hiérarchie).
+
+    ``parent`` doit appartenir à la même société ; un cycle (A→B→A) est
+    rejeté (``Departement.clean()``, invoqué explicitement ici — DRF n'appelle
+    pas ``full_clean()`` par défaut)."""
+
     class Meta:
         model = Departement
-        fields = ['id', 'nom', 'code', 'actif', 'date_creation']
+        fields = ['id', 'nom', 'code', 'parent', 'actif', 'date_creation']
         read_only_fields = ['date_creation']
+
+    def validate_parent(self, value):
+        return _meme_societe(self, value, 'Département parent')
+
+    def validate(self, attrs):
+        instance = Departement(
+            pk=self.instance.pk if self.instance else None,
+            company=(self.instance.company if self.instance
+                     else self.context['request'].user.company),
+            nom=attrs.get('nom', self.instance.nom if self.instance else ''),
+            parent=attrs.get(
+                'parent', self.instance.parent if self.instance else None),
+        )
+        try:
+            instance.clean()
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(
+                {'parent': exc.messages})
+        return attrs
 
 
 class DossierEmployeSerializer(serializers.ModelSerializer):
@@ -100,6 +135,10 @@ class DossierEmployeSerializer(serializers.ModelSerializer):
         source='get_situation_familiale_display', read_only=True)
     motif_sortie_display = serializers.CharField(
         source='get_motif_sortie_display', read_only=True)
+    # XRH29 — compteurs ayants droit/avantages, cohérence informative avec
+    # ``nombre_enfants`` (pas une source de vérité — juste un affichage).
+    nombre_ayants_droit = serializers.SerializerMethodField()
+    nombre_avantages_sociaux = serializers.SerializerMethodField()
 
     class Meta:
         model = DossierEmploye
@@ -126,9 +165,17 @@ class DossierEmployeSerializer(serializers.ModelSerializer):
             'declaration_entree_statut', 'declaration_entree_date',
             # XRH8 — horaire de travail assigné.
             'horaire',
+            # XRH29 — compteurs ayants droit / avantages sociaux.
+            'nombre_ayants_droit', 'nombre_avantages_sociaux',
             'date_creation',
         ]
         read_only_fields = ['date_creation', 'declaration_entree_date']
+
+    def get_nombre_ayants_droit(self, obj):
+        return obj.ayants_droit.count()
+
+    def get_nombre_avantages_sociaux(self, obj):
+        return obj.avantages_sociaux.count()
 
     def validate_horaire(self, value):
         return _meme_societe(self, value, 'Horaire de travail')
@@ -138,6 +185,37 @@ class DossierEmployeSerializer(serializers.ModelSerializer):
 
     def validate_poste_ref(self, value):
         return _meme_societe(self, value, 'Poste')
+
+
+class AnnuaireEmployeSerializer(serializers.ModelSerializer):
+    """XRH28 — annuaire interne (trombinoscope), accessible à TOUT employé.
+
+    EXPOSE UNIQUEMENT des champs NON sensibles : nom/prénom, photo (avatar du
+    compte utilisateur lié, s'il existe), poste, département, téléphone/email
+    PRO. JAMAIS salaire/CIN/RIB/adresse perso/santé/situation familiale — ces
+    champs n'apparaissent PAS dans ``Meta.fields`` (garde-fou testable par
+    exhaustivité des clés)."""
+    poste_nom = serializers.SerializerMethodField()
+    departement_nom = serializers.SerializerMethodField()
+    photo_key = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DossierEmploye
+        fields = [
+            'id', 'nom', 'prenom', 'photo_key',
+            'poste', 'poste_ref', 'poste_nom',
+            'departement', 'departement_nom',
+            'telephone', 'email',
+        ]
+
+    def get_poste_nom(self, obj):
+        return obj.poste_ref.intitule if obj.poste_ref_id else obj.poste
+
+    def get_departement_nom(self, obj):
+        return obj.departement.nom if obj.departement_id else ''
+
+    def get_photo_key(self, obj):
+        return obj.user.avatar_key if obj.user_id else ''
 
 
 class HoraireTravailSerializer(serializers.ModelSerializer):
@@ -267,6 +345,90 @@ class ElementSortieSerializer(serializers.ModelSerializer):
         return _meme_societe(self, value, 'Employé')
 
 
+class EntretienSortieSerializer(serializers.ModelSerializer):
+    """Entretien de sortie / exit interview (XRH25). ``employe`` même
+    société ; un seul entretien par employé (contrainte ``OneToOne``)."""
+    motif_principal_display = serializers.CharField(
+        source='get_motif_principal_display', read_only=True)
+    employe_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EntretienSortie
+        fields = [
+            'id', 'employe', 'employe_nom', 'date', 'motif_principal',
+            'motif_principal_display', 'questionnaire', 'recommanderait',
+            'commentaire', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def get_employe_nom(self, obj):
+        return f'{obj.employe.nom} {obj.employe.prenom}' if obj.employe_id else ''
+
+
+class AyantDroitSerializer(serializers.ModelSerializer):
+    """Ayant droit / personne à charge (XRH29). ``employe`` même société."""
+    lien_display = serializers.CharField(
+        source='get_lien_display', read_only=True)
+
+    class Meta:
+        model = AyantDroit
+        fields = [
+            'id', 'employe', 'lien', 'lien_display', 'nom',
+            'date_naissance', 'couvert_amo', 'couvert_mutuelle',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+
+class AvantageSocialSerializer(serializers.ModelSerializer):
+    """Avantage social (XRH29 — mutuelle/assurance groupe/CIMR). ``employe``
+    même société."""
+    type_display = serializers.CharField(
+        source='get_type_display', read_only=True)
+
+    class Meta:
+        model = AvantageSocial
+        fields = [
+            'id', 'employe', 'type', 'type_display', 'organisme',
+            'date_adhesion', 'date_fin',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+
+class CampagnePulseSerializer(serializers.ModelSerializer):
+    """Campagne de baromètre interne eNPS anonyme (XRH32)."""
+
+    class Meta:
+        model = CampagnePulse
+        fields = [
+            'id', 'question_enps', 'question_libre',
+            'date_debut', 'date_fin', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class ReponsePulseSerializer(serializers.ModelSerializer):
+    """Réponse anonyme à une campagne pulse (XRH32) — lecture (agrégats
+    /modération) uniquement ; la CRÉATION passe par l'action dédiée
+    ``repondre`` (jamais par ce sérialiseur générique, pour garantir la
+    transaction anti-double-vote)."""
+
+    class Meta:
+        model = ReponsePulse
+        fields = ['id', 'campagne', 'score', 'commentaire', 'date_creation']
+        read_only_fields = fields
+
+
 class ElementIntegrationSerializer(serializers.ModelSerializer):
     """Ligne gabarit d'un modèle d'intégration (XRH4)."""
 
@@ -342,6 +504,38 @@ class SoldeCongeSerializer(serializers.ModelSerializer):
 
     def validate_employe(self, value):
         return _meme_societe(self, value, 'Employé')
+
+
+class JourBloqueCongeSerializer(serializers.ModelSerializer):
+    """Jour de blocage congés (ZRH4). ``departements`` vide = toute la
+    société ; ``company`` posée CÔTÉ SERVEUR (jamais lue du corps)."""
+
+    class Meta:
+        model = JourBloqueConge
+        fields = [
+            'id', 'libelle', 'date_debut', 'date_fin', 'departements',
+            'motif', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+    def validate(self, attrs):
+        debut = attrs.get('date_debut') \
+            or getattr(self.instance, 'date_debut', None)
+        fin = attrs.get('date_fin') or getattr(self.instance, 'date_fin', None)
+        if debut and fin and fin < debut:
+            raise serializers.ValidationError(
+                {'date_fin': 'La date de fin précède la date de début.'})
+        return attrs
+
+    def validate_departements(self, value):
+        request = self.context.get('request')
+        if request is not None:
+            company = request.user.company
+            for dep in value:
+                if dep.company_id != company.id:
+                    raise serializers.ValidationError(
+                        "Un département d'une autre société est refusé.")
+        return value
 
 
 class DemandeCongeSerializer(serializers.ModelSerializer):
@@ -945,7 +1139,7 @@ class EpiCatalogueSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'type_epi', 'type_epi_display',
             'designation', 'duree_vie_mois', 'intervalle_controle_mois',
-            'actif',
+            'produit_id', 'actif',
             'date_creation', 'date_modification',
         ]
         read_only_fields = ['date_creation', 'date_modification']
@@ -982,11 +1176,13 @@ class DotationEpiSerializer(serializers.ModelSerializer):
             'perime', 'a_controler',
             'quantite', 'note',
             'accuse_remise', 'date_accuse',
+            'restituee', 'date_restitution',
             'date_creation', 'date_modification',
         ]
         read_only_fields = [
             'date_peremption', 'date_prochain_controle',
             'accuse_remise', 'date_accuse',
+            'restituee', 'date_restitution',
             'date_creation', 'date_modification',
         ]
 
@@ -1533,7 +1729,17 @@ class CandidatureSerializer(serializers.ModelSerializer):
         return f'{obj.employe_cree.nom} {obj.employe_cree.prenom}'
 
     def validate_ouverture(self, value):
-        return _meme_societe(self, value, 'Ouverture')
+        value = _meme_societe(self, value, 'Ouverture')
+        # YHIRE14 — une candidature ne se crée QUE sur une ouverture au
+        # statut OUVERT (le cycle amont brouillon/en_approbation ne doit pas
+        # être court-circuité). Ne s'applique qu'à la CRÉATION : une
+        # candidature déjà rattachée reste modifiable même si l'ouverture a
+        # depuis basculé pourvu/clos/annulé (comportement historique).
+        if self.instance is None and value.statut != OuverturePoste.Statut.OUVERT:
+            raise serializers.ValidationError(
+                "Cette ouverture n'est pas ouverte au recrutement "
+                f'(statut : {value.get_statut_display()}).')
+        return value
 
 
 class OuverturePosteSerializer(serializers.ModelSerializer):
@@ -1541,10 +1747,13 @@ class OuverturePosteSerializer(serializers.ModelSerializer):
 
     Le client saisit ``intitule``, un ``poste_ref`` (référentiel ``rh.Poste``
     de sa société) et un ``departement`` optionnels, ``description``,
-    ``nombre_postes``, ``statut``, ``date_ouverture`` / ``date_cible``. La liste
-    imbriquée ``candidatures`` est en LECTURE SEULE (gérée via l'endpoint
-    dédié). ``company`` est posée CÔTÉ SERVEUR (jamais lue du corps) ;
-    ``poste_ref`` et ``departement`` doivent appartenir à la même société.
+    ``ville`` (XRH33 — affichée sur la page carrières publique),
+    ``nombre_postes``, ``statut``, ``publiee`` (XRH33 — expose l'ouverture sur
+    la page carrières publique flag-gated), ``date_ouverture`` /
+    ``date_cible``. La liste imbriquée ``candidatures`` est en LECTURE SEULE
+    (gérée via l'endpoint dédié). ``company`` est posée CÔTÉ SERVEUR (jamais
+    lue du corps) ; ``poste_ref`` et ``departement`` doivent appartenir à la
+    même société.
     """
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
@@ -1558,13 +1767,20 @@ class OuverturePosteSerializer(serializers.ModelSerializer):
             'id', 'intitule',
             'poste_ref', 'poste_ref_intitule',
             'departement', 'departement_nom',
-            'description', 'nombre_postes',
+            'description', 'ville', 'publiee', 'nombre_postes',
             'statut', 'statut_display',
+            # YHIRE14 — traçabilité SoD du cycle d'approbation, lecture seule
+            # (posés par les services soumettre/approuver/refuser).
+            'demandeur', 'approbateur', 'date_soumission', 'date_decision',
+            'motif_refus',
             'date_ouverture', 'date_cible',
             'candidatures',
             'date_creation', 'date_modification',
         ]
-        read_only_fields = ['date_creation', 'date_modification']
+        read_only_fields = [
+            'demandeur', 'approbateur', 'date_soumission', 'date_decision',
+            'motif_refus',
+            'date_creation', 'date_modification']
 
     def get_poste_ref_intitule(self, obj):
         if not obj.poste_ref_id:
@@ -1615,6 +1831,16 @@ class ObjectifIndividuelSerializer(serializers.ModelSerializer):
         read_only_fields = ['date_creation']
 
 
+class AutoEvaluationSerializer(serializers.ModelSerializer):
+    """XRH26 — auto-évaluation (portail self-service). SEULS
+    ``auto_evaluation``/``note_auto`` sont éditables ici ; tout le reste de
+    l'entretien (manager/RH) reste en lecture seule via ce sérialiseur."""
+
+    class Meta:
+        model = EvaluationEmploye
+        fields = ['id', 'auto_evaluation', 'note_auto']
+
+
 class EvaluationEmployeSerializer(serializers.ModelSerializer):
     """Entretien annuel d'évaluation d'un collaborateur (FG190).
 
@@ -1638,11 +1864,24 @@ class EvaluationEmployeSerializer(serializers.ModelSerializer):
             'id', 'campagne', 'employe', 'employe_nom',
             'evaluateur', 'evaluateur_nom',
             'date_entretien', 'note_globale', 'synthese',
+            'auto_evaluation', 'note_auto',
+            'issue', 'issue_details',
+            # ZRH7 — réponses structurées instanciées depuis le modèle de la
+            # campagne à la CRÉATION (lecture seule ici : la saisie se fait
+            # via l'action dédiée / le portail employé pour les questions
+            # ciblant l'employé).
+            'reponses',
             'statut', 'statut_display',
             'objectifs',
             'date_creation', 'date_modification',
         ]
-        read_only_fields = ['date_creation', 'date_modification']
+        read_only_fields = [
+            'date_creation', 'date_modification', 'reponses',
+            # XRH26 — l'auto-évaluation se saisit UNIQUEMENT via le portail
+            # self-service (action dédiée), jamais par ce sérialiseur
+            # manager/RH générique.
+            'auto_evaluation', 'note_auto',
+        ]
 
     def get_employe_nom(self, obj):
         if not obj.employe_id:
@@ -1668,6 +1907,15 @@ class EvaluationEmployeSerializer(serializers.ModelSerializer):
         # propage aux objectifs enfants (jamais lue du corps).
         objectifs = validated_data.pop('objectifs', [])
         company = validated_data['company']
+        # ZRH7 — instancie ``reponses`` depuis le modèle applicable de la
+        # campagne (fonction cross-module : évite un import circulaire au
+        # chargement en restant dans le même fichier services).
+        from . import services as rh_services
+        campagne = validated_data.get('campagne')
+        employe = validated_data.get('employe')
+        if campagne is not None and employe is not None:
+            validated_data['reponses'] = \
+                rh_services.instancier_reponses_evaluation(campagne, employe)
         evaluation = EvaluationEmploye.objects.create(**validated_data)
         for item in objectifs:
             ObjectifIndividuel.objects.create(
@@ -1709,10 +1957,37 @@ class CampagneEvaluationSerializer(serializers.ModelSerializer):
             'id', 'intitule', 'annee', 'periode',
             'date_debut', 'date_fin',
             'statut', 'statut_display', 'description',
+            'modele',  # ZRH7 — modèle de questions appliqué aux évaluations.
             'evaluations',
             'date_creation', 'date_modification',
         ]
         read_only_fields = ['date_creation', 'date_modification']
+
+    def validate_modele(self, value):
+        return _meme_societe(self, value, "Modèle d'évaluation")
+
+
+class ModeleEvaluationSerializer(serializers.ModelSerializer):
+    """Gabarit de questions d'évaluation réutilisable (ZRH7).
+
+    Le client saisit ``nom``, ``departement``/``poste_ref`` (ciblage
+    optionnel), ``questions`` (liste de dicts {libelle, type, cible}) et
+    ``actif``. ``company`` posée CÔTÉ SERVEUR (jamais lue du corps).
+    """
+
+    class Meta:
+        model = ModeleEvaluation
+        fields = [
+            'id', 'nom', 'departement', 'poste_ref', 'questions', 'actif',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+    def validate_departement(self, value):
+        return _meme_societe(self, value, 'Département')
+
+    def validate_poste_ref(self, value):
+        return _meme_societe(self, value, 'Poste')
 
 
 class SanctionSerializer(serializers.ModelSerializer):
@@ -1842,6 +2117,11 @@ class AvanceSalaireSerializer(serializers.ModelSerializer):
     employe_nom = serializers.SerializerMethodField()
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
+    # YHIRE5 — solde restant dû LU depuis le moteur de retenue paie (jamais
+    # ``paie.models`` importé ici : lecture via le sélecteur cross-app
+    # ``apps.paie.selectors.solde_avance``). ``None`` tant que l'avance n'a
+    # pas encore été approuvée/matérialisée côté paie.
+    solde_restant = serializers.SerializerMethodField()
 
     class Meta:
         model = AvanceSalaire
@@ -1849,16 +2129,24 @@ class AvanceSalaireSerializer(serializers.ModelSerializer):
             'id', 'employe', 'employe_nom', 'valideur',
             'montant', 'date_demande', 'motif',
             'annee_deduction', 'mois_deduction',
-            'statut', 'statut_display',
+            'statut', 'statut_display', 'paie_avance_id', 'solde_restant',
             'date_creation', 'date_modification',
         ]
         read_only_fields = [
-            'valideur', 'statut', 'date_creation', 'date_modification']
+            'valideur', 'statut', 'paie_avance_id',
+            'date_creation', 'date_modification']
 
     def get_employe_nom(self, obj):
         if not obj.employe_id:
             return ''
         return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def get_solde_restant(self, obj):
+        if not obj.paie_avance_id:
+            return None
+        from apps.paie import selectors as paie_selectors
+
+        return paie_selectors.solde_avance(obj.paie_avance_id)
 
     def validate_employe(self, value):
         return _meme_societe(self, value, 'Employé')
@@ -2246,11 +2534,14 @@ class EmployeDeviceMapSerializer(serializers.ModelSerializer):
 
 
 class ReglageRHSerializer(serializers.ModelSerializer):
-    """Réglages RH (XRH12) — géofence de pointage chantier. ``company``
-    posée côté serveur (jamais lue du corps)."""
+    """Réglages RH (XRH12/XRH24) — géofence de pointage chantier + rétention
+    des candidatures (loi 09-08). ``company`` posée côté serveur (jamais lue
+    du corps)."""
     class Meta:
         model = ReglageRH
-        fields = ['id', 'geofence_metres', 'date_modification']
+        fields = [
+            'id', 'geofence_metres', 'retention_candidatures_mois',
+            'date_modification']
         read_only_fields = ['date_modification']
 
 
@@ -2357,3 +2648,71 @@ class PrimeAttribueeSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'Le mois doit être compris entre 1 et 12.')
         return value
+
+
+class QuizFormationSerializer(serializers.ModelSerializer):
+    """XRH34 — quiz de formation (gestion RH). Inclut les bonnes réponses —
+    RÉSERVÉ à la gestion (Administrateur/Responsable) ; jamais utilisé côté
+    portail employé (voir ``QuizFormationPortailSerializer``)."""
+    competence_libelle = serializers.SerializerMethodField()
+    habilitation_type_display = serializers.CharField(
+        source='get_habilitation_type_display', read_only=True)
+
+    class Meta:
+        model = QuizFormation
+        fields = [
+            'id', 'intitule', 'questions', 'score_reussite', 'validite_mois',
+            'competence', 'competence_libelle',
+            'habilitation_type', 'habilitation_type_display', 'actif',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+    def get_competence_libelle(self, obj):
+        if not obj.competence_id:
+            return ''
+        return obj.competence.libelle
+
+    def validate_competence(self, value):
+        return _meme_societe(self, value, 'Compétence')
+
+
+class QuizFormationPortailSerializer(serializers.ModelSerializer):
+    """XRH34 — quiz vu par l'EMPLOYÉ qui le passe : les bonnes réponses
+    (``bonnes_reponses``) sont RETIRÉES de chaque question — un employé ne
+    doit JAMAIS voir les réponses correctes dans le payload."""
+    questions = serializers.SerializerMethodField()
+
+    class Meta:
+        model = QuizFormation
+        fields = ['id', 'intitule', 'questions', 'score_reussite']
+
+    def get_questions(self, obj):
+        return [
+            {
+                'question': q.get('question', ''),
+                'type': q.get('type', 'unique'),
+                'choix': q.get('choix', []),
+            }
+            for q in (obj.questions or [])
+        ]
+
+
+class TentativeQuizSerializer(serializers.ModelSerializer):
+    """XRH34 — tentative de quiz (lecture — la correction passe par
+    ``services.passer_tentative_quiz``, jamais par une écriture directe du
+    ``score``/``reussi``, TOUJOURS calculés côté serveur)."""
+    quiz_intitule = serializers.CharField(
+        source='quiz.intitule', read_only=True)
+    employe_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TentativeQuiz
+        fields = [
+            'id', 'quiz', 'quiz_intitule', 'employe', 'employe_nom',
+            'session', 'score', 'reussi', 'date_creation',
+        ]
+        read_only_fields = fields
+
+    def get_employe_nom(self, obj):
+        return f'{obj.employe.nom} {obj.employe.prenom}'

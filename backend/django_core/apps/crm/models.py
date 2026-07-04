@@ -87,6 +87,35 @@ class Client(models.Model):
         help_text='Langue des factures / devis générés pour ce client.',
     )
 
+    # XFAC25 — envoi programmé (mensuel) du relevé de compte. Défaut OFF :
+    # le relevé reste disponible uniquement à la demande (comportement actuel
+    # inchangé). ON + email renseigné + encours non nul → un relevé PDF est
+    # envoyé automatiquement le 1er du mois (job beat idempotent, voir
+    # apps.ventes.scheduled.releve_mensuel_reminders).
+    releve_mensuel_auto = models.BooleanField(
+        default=False,
+        verbose_name='Envoi mensuel automatique du relevé',
+        help_text="Envoie automatiquement le relevé de compte PDF le 1er du "
+                  "mois si l'encours n'est pas nul. Désactivé par défaut.",
+    )
+    # XFAC23 — conditions de paiement négociées par client (délai en jours,
+    # ex. 30/60/90 — omniprésent en B2B marocain) + report facultatif en fin
+    # de mois. NULL = pas de réglage → comportement actuel inchangé (fallback
+    # +30 j dans apps.ventes.scheduled._echeance_effective).
+    delai_paiement_jours = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        verbose_name='Délai de paiement (jours)',
+        help_text='Vide = comportement par défaut (+30 j depuis émission).',
+    )
+    fin_de_mois = models.BooleanField(
+        default=False,
+        verbose_name='Échéance reportée en fin de mois',
+        help_text=(
+            "Si coché, l'échéance calculée depuis le délai est reportée au "
+            "dernier jour de son mois (ex. « 60 jours fin de mois »)."
+        ),
+    )
+
     class Meta:
         verbose_name = "Client"
         verbose_name_plural = "Clients"
@@ -1274,3 +1303,93 @@ class ChatSessionPublique(models.Model):
 
     def __str__(self):
         return f'Session livechat #{self.pk} ({self.statut})'
+
+
+class PlanActivite(models.Model):
+    """ZSAL2 — Plan d'activité (Odoo « Activity Plans ») : séquence de tâches
+    pré-définies applicable à un lead d'un clic (ex. « Nouveau lead solaire »
+    = J0 appeler, J1 email étude, J3 visite technique, J7 relance devis).
+
+    Distinct des séquences marketing XMKT (email/SMS automatisés côté
+    marketing) : ceci est une CHECKLIST d'activités internes du commercial,
+    matérialisée en ``records.Activity`` sur le lead cible.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='plans_activite')
+    nom = models.CharField(max_length=120)
+    actif = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Plan d'activité"
+        verbose_name_plural = "Plans d'activité"
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
+class EtapePlanActivite(models.Model):
+    """ZSAL2 — Une étape d'un :class:`PlanActivite` : un type d'activité à
+    créer, ``delai_jours`` après la date d'application du plan (0 = le jour
+    même), avec un résumé par défaut et un assigné par défaut optionnel
+    (owner du lead si vide, sinon un utilisateur fixe)."""
+    plan = models.ForeignKey(
+        PlanActivite, on_delete=models.CASCADE, related_name='etapes')
+    ordre = models.PositiveIntegerField(default=0)
+    activity_type = models.ForeignKey(
+        'records.ActivityType', on_delete=models.PROTECT,
+        related_name='etapes_plan_activite')
+    delai_jours = models.PositiveIntegerField(
+        default=0,
+        help_text="Nombre de jours après l'application du plan (0 = le jour même).")
+    resume_defaut = models.CharField(max_length=255, blank=True, default='')
+    # NULL = assigné par défaut = owner du lead ciblé (résolu à l'application).
+    assigne_par_defaut = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='etapes_plan_activite_assignees')
+
+    class Meta:
+        verbose_name = "Étape de plan d'activité"
+        verbose_name_plural = "Étapes de plan d'activité"
+        ordering = ['plan', 'ordre', 'delai_jours']
+
+    def __str__(self):
+        return f'{self.plan.nom} — J{self.delai_jours} {self.resume_defaut}'.strip()
+
+
+class EquipeCommerciale(models.Model):
+    """ZSAL3 — Équipe commerciale (Odoo « Sales Teams / My Teams »).
+
+    PAS un pipeline/étapes propre à l'équipe (règle #2 — STAGES.py reste
+    l'unique source des étapes) : juste un regroupement de commerciaux pour
+    agréger un tableau de bord d'équipe (pipeline ouvert, valeur pondérée,
+    activités en retard, avancement vs objectif). ``responsable`` est le
+    manager d'équipe (peut ne pas être membre lui-même) ; ``membres`` est un
+    M2M additif — n'importe quel utilisateur peut appartenir à 0 ou 1+ équipe
+    (comportement historique inchangé : un commercial sans équipe reste visible
+    partout ailleurs, seul le dashboard « Mes équipes » l'ignore).
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='equipes_commerciales')
+    nom = models.CharField(max_length=120)
+    responsable = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='equipes_dirigees')
+    membres = models.ManyToManyField(
+        settings.AUTH_USER_MODEL, blank=True, related_name='equipes_commerciales')
+    actif = models.BooleanField(default=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Équipe commerciale'
+        verbose_name_plural = 'Équipes commerciales'
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom

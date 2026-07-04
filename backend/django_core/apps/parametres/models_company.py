@@ -302,6 +302,70 @@ class CompanyProfile(models.Model):
         null=True, blank=True,
         help_text="Délai (jours) proposé par défaut pour l'escompte.")
 
+    # ── XFAC13 — tolérance d'écart de règlement (abandon auto du résiduel) ──
+    # Défaut 0 = comportement actuel inchangé (aucun abandon automatique). Un
+    # résiduel (facture − paiement encaissé) strictement inférieur ou égal à ce
+    # seuil (MAD) est proposé/soldé automatiquement à l'enregistrement du
+    # paiement plutôt que de laisser la facture « en retard » indéfiniment.
+    tolerance_ecart_reglement = models.DecimalField(
+        max_digits=8, decimal_places=2, default=Decimal('0'),
+        help_text='Résiduel (MAD) toléré, abandonné automatiquement à '
+                  "l'encaissement. 0 = désactivé (défaut).")
+
+    # ── XFAC18 — workflow de revue facture (ségrégation des tâches) ──
+    # Défaut OFF = comportement actuel byte-identique (n'importe quel rôle qui
+    # crée une facture peut l'émettre). ON : une facture créée par un
+    # utilisateur du tier limité démarre « à valider » et l'émission exige un
+    # valideur du tier responsable/admin DIFFÉRENT du créateur.
+    revue_factures_active = models.BooleanField(
+        default=False,
+        help_text="Active le contrôle 4-yeux à l'émission des factures "
+                  "(désactivé par défaut).")
+
+    # ── XFAC24 — immutabilité de la facture émise (opt-in) ──
+    # Défaut OFF = comportement actuel byte-identique (une facture émise reste
+    # librement modifiable, hors verrou de PÉRIODE compta FG115). ON : les
+    # champs financiers d'une facture non-brouillon deviennent en lecture
+    # seule (correction par avoir + nouvelle facture uniquement) — prépare la
+    # facturation électronique DGI (mandat 2026).
+    factures_immuables = models.BooleanField(
+        default=False,
+        help_text="Interdit la modification des champs financiers d'une "
+                  "facture non-brouillon (correction par avoir uniquement).")
+
+    # ── XFAC28 — blocage crédit dur configurable (étend FG41) ──
+    # Défaut OFF = comportement FG41 intact (avertissement seul, jamais de
+    # blocage). ON : un client en dépassement de plafond (ou en retard au-delà
+    # du seuil configuré) voit ``devis/{id}/accepter`` et
+    # ``devis/{id}/generer-facture`` refusés (403), sauf override explicite
+    # d'un responsable/admin. DECISION founder (2026) : seuils par défaut
+    # prudents (0 jour = le critère retard est ignoré tant qu'il n'est pas
+    # explicitement configuré ; le critère plafond utilise TOUJOURS
+    # ``Client.plafond_credit`` déjà existant — FG41) ; le founder ajuste
+    # ``credit_hold_retard_jours`` selon sa politique de recouvrement.
+    credit_hold_actif = models.BooleanField(
+        default=False,
+        help_text="Bloque (403) les nouveaux devis acceptés/factures d'un "
+                  "client en dépassement de crédit, au lieu du seul "
+                  "avertissement FG41. Désactivé par défaut.")
+    credit_hold_retard_jours = models.PositiveIntegerField(
+        default=0,
+        help_text="Jours de retard sur facture(s) ouvertes au-delà desquels "
+                  "le hold s'applique aussi (indépendamment du plafond). "
+                  "0 = ce critère est ignoré (seul le dépassement de "
+                  "plafond FG41 déclenche le hold).")
+
+    # ── XFSM1 — Facturation SAV hors garantie depuis le ticket ──────────────
+    # Taux horaire main-d'œuvre (MAD/heure) utilisé par
+    # ``sav.views.TicketViewSet.generer_facture`` pour chiffrer la ligne MO
+    # d'un ticket SAV hors garantie. Vide = aucun taux configuré : la
+    # génération de facture refuse la ligne MO tant que le founder n'a pas
+    # renseigné ce taux (jamais de valeur inventée).
+    taux_horaire_sav = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text='Taux horaire main-d\'œuvre SAV (MAD/heure), utilisé pour '
+                  'facturer un ticket hors garantie depuis son temps passé.')
+
     class Meta:
         verbose_name = 'Profil entreprise'
 
