@@ -1174,6 +1174,29 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         logger.warning('QJ10: _send_acceptance_emails échoué pour devis %s : %s',
                        getattr(devis, 'reference', '?'), exc)
 
+    # YDOCF3 — variantes (QJ15 dupliquer-variante) : accepter l'une d'elles
+    # doit effondrer ses SŒURS (même groupe version_parent=root) plutôt que
+    # de les laisser is_active=True et elles-mêmes acceptables (double
+    # comptage du funnel). Ne touche jamais un devis d'un autre groupe ni les
+    # révisions déjà terminales. Un devis sans variante est inchangé.
+    from django.db.models import Q
+    root = devis.version_parent_id or devis.id
+    siblings = Devis.objects.filter(
+        company=devis.company, is_active=True,
+        statut__in=(Devis.Statut.BROUILLON, Devis.Statut.ENVOYE),
+    ).filter(
+        Q(version_parent_id=root) | Q(pk=root)
+    ).exclude(pk=devis.pk)
+    for sibling in siblings:
+        sibling.statut = Devis.Statut.REFUSE
+        sibling.date_refus = date_acc
+        sibling.motif_refus = 'variante non retenue'
+        sibling.is_active = False
+        sibling.save(update_fields=[
+            'statut', 'date_refus', 'motif_refus', 'is_active'])
+        activity.log_devis_refusal(
+            sibling, user, 'variante non retenue', date_acc)
+
     devis_accepted.send(
         sender=Devis, devis=devis, user=user, ancien_statut=ancien)
     # QJ9 — CAPI SignedQuote event (gated on META_CAPI_ACCESS_TOKEN).
