@@ -7,22 +7,28 @@ appartenant à la société de l'utilisateur.
 from rest_framework import serializers
 
 from .models import (
-    ActionCorrectivePreventive, AnalyseIncident, Audit, CauseIncident,
+    ActionCorrectivePreventive, AnalyseIncident, AspectEnvironnemental, Audit,
+    CauseIncident,
     CodeDefaut,
     ConsignationLoto, ContactUrgence, ControleReception,
     BilanCarbone, BordereauSuiviDechet, ConformiteEnvironnementale,
-    CritereAudit, Dechet, DeclarationCnss, Derogation, EtapeDeclarationAt,
+    CritereAudit, Dechet, DeclarationCnss, DemandeChangement, Derogation,
+    EtapeDeclarationAt,
     EvaluationRisque, GrilleAudit,
+    ExerciceUrgence,
     InductionSecurite, IndicateurESG,
+    LienSignalementPublic,
     LigneBilanCarbone,
     Incident, InspectionSecurite,
     ItemNotation, LigneEvaluationRisque, NonConformite, NotationFinChantier,
+    ObservationSecurite,
     PermisTravail, PlanControleReception, PlanInspectionChantier,
     PlanInspectionModele, PlanUrgence,
     PointControleModele, PointControleReception, ProcedureQualite,
     QhseChatterEntry,
-    RecyclageModule, ReleveControle,
+    RecyclageModule, ReleveConsommation, ReleveControle,
     ReleveCourbeIV, ReponseCritere, RetourClientQualite, Secouriste,
+    SignalementPublic,
 )
 
 
@@ -58,6 +64,20 @@ class NonConformiteSerializer(serializers.ModelSerializer):
     disposition_display = serializers.CharField(
         source='get_disposition_display', read_only=True)
 
+    def get_fields(self):
+        fields = super().get_fields()
+        # XQHS22 — les montants de coût de la non-qualité sont une donnée
+        # interne sensible (même règle que `prix_achat`/`marge_pct`) : retirés
+        # complètement pour les rôles sans `cout_non_qualite_voir`.
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if user is not None and not getattr(
+                user, 'can_view_cout_non_qualite', True):
+            fields.pop('cout_disposition', None)
+            fields.pop('cout_estime', None)
+            fields.pop('cout_reel', None)
+        return fields
+
     class Meta:
         model = NonConformite
         fields = [
@@ -70,11 +90,15 @@ class NonConformiteSerializer(serializers.ModelSerializer):
             'disposition_le', 'cout_disposition', 'fournisseur',
             # XQHS4 — code de défaut normalisé (Pareto).
             'code_defaut',
+            # XQHS22 — coût de la non-qualité (interne, gardé par permission).
+            'cout_estime', 'cout_reel',
+            # XQHS23 — pont SAV (ticket d'origine, FK-chaîne).
+            'ticket_sav',
             'date_creation',
         ]
         read_only_fields = [
             'reserve', 'signale_par', 'disposition_par', 'disposition_le',
-            'date_creation',
+            'ticket_sav', 'date_creation',
         ]
 
     def validate_fournisseur(self, value):
@@ -90,13 +114,25 @@ class ActionCorrectivePreventiveSerializer(serializers.ModelSerializer):
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
 
+    def get_fields(self):
+        fields = super().get_fields()
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if user is not None and not getattr(
+                user, 'can_view_cout_non_qualite', True):
+            fields.pop('cout', None)
+        return fields
+
     class Meta:
         model = ActionCorrectivePreventive
         fields = [
             'id', 'non_conformite', 'type_action', 'type_action_display',
             'description', 'cause_racine', 'responsable', 'echeance',
             'statut', 'statut_display', 'efficace', 'commentaire_verification',
-            'date_verification', 'verifiee_par', 'date_creation',
+            'date_verification', 'verifiee_par',
+            # XQHS22 — coût interne (gardé par permission).
+            'cout',
+            'date_creation',
         ]
         read_only_fields = [
             'efficace', 'commentaire_verification', 'date_verification',
@@ -690,7 +726,8 @@ class PlanUrgenceSerializer(serializers.ModelSerializer):
             'id', 'chantier_id', 'titre', 'point_rassemblement',
             'point_rassemblement_details', 'hopital_proche',
             'hopital_distance_km', 'hopital_telephone', 'date_revision',
-            'statut', 'statut_display', 'notes', 'contacts', 'secouristes',
+            'statut', 'statut_display', 'notes', 'frequence_mois',
+            'contacts', 'secouristes',
             'nb_contacts', 'nb_secouristes', 'date_creation',
         ]
         read_only_fields = ['date_creation']
@@ -702,6 +739,9 @@ class IncidentSerializer(serializers.ModelSerializer):
     ``company`` et ``declare_par`` sont posés côté serveur (jamais lus du corps) ;
     la ``reference`` est attribuée côté serveur (jamais lue du corps). Expose les
     libellés lisibles de ``type_incident``, ``gravite`` et ``statut``.
+
+    XQHS19 — champs environnement (substance/quantité/milieu/notification)
+    tous optionnels ; ``notification_en_retard`` est calculé (lecture seule).
     """
     type_incident_display = serializers.CharField(
         source='get_type_incident_display', read_only=True)
@@ -709,8 +749,20 @@ class IncidentSerializer(serializers.ModelSerializer):
         source='get_gravite_display', read_only=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
+    milieu_touche_display = serializers.CharField(
+        source='get_milieu_touche_display', read_only=True, default='')
     declare_par_nom = serializers.CharField(
         source='declare_par.username', read_only=True, default=None)
+    notification_en_retard = serializers.BooleanField(read_only=True)
+
+    def get_fields(self):
+        fields = super().get_fields()
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if user is not None and not getattr(
+                user, 'can_view_cout_non_qualite', True):
+            fields.pop('cout', None)
+        return fields
 
     class Meta:
         model = Incident
@@ -719,7 +771,13 @@ class IncidentSerializer(serializers.ModelSerializer):
             'type_incident_display', 'gravite', 'gravite_display', 'statut',
             'statut_display', 'chantier_id', 'date_incident', 'description',
             'action_immediate', 'declare_par', 'declare_par_nom',
-            'code_defaut', 'date_creation',
+            'code_defaut', 'substance', 'quantite_estimee', 'quantite_unite',
+            'milieu_touche', 'milieu_touche_display', 'notification_requise',
+            'autorite_notifiee', 'date_notification',
+            'date_limite_notification', 'notification_en_retard',
+            # XQHS22 — coût interne (gardé par permission).
+            'cout',
+            'date_creation',
         ]
         read_only_fields = ['reference', 'declare_par', 'date_creation']
 
@@ -1157,3 +1215,167 @@ class ControleReceptionSerializer(serializers.ModelSerializer):
 
     def validate_plan(self, value):
         return _meme_societe(self, value, 'Plan de contrôle réception')
+
+
+class LienSignalementPublicSerializer(serializers.ModelSerializer):
+    """Lien public tokenisé (QR) par chantier (XQHS16). ``token`` en lecture
+    seule (posé côté serveur, jamais choisi par le client)."""
+
+    class Meta:
+        model = LienSignalementPublic
+        fields = [
+            'id', 'chantier_id', 'token', 'libelle', 'actif',
+            'responsable_hse', 'created_by', 'date_creation',
+        ]
+        read_only_fields = ['token', 'created_by', 'date_creation']
+
+    def validate_responsable_hse(self, value):
+        return _meme_societe(self, value, 'Responsable HSE')
+
+
+class SignalementPublicSerializer(serializers.ModelSerializer):
+    """Signalement reçu via un lien public tokenisé (XQHS16). Lecture interne
+    (liste/détail côté ERP) — la CRÉATION publique passe par la vue dédiée
+    ``public_signalement`` (jamais par ce viewset authentifié)."""
+    anonyme = serializers.BooleanField(read_only=True)
+    type_signalement_display = serializers.CharField(
+        source='get_type_signalement_display', read_only=True)
+
+    class Meta:
+        model = SignalementPublic
+        fields = [
+            'id', 'lien', 'type_signalement', 'type_signalement_display',
+            'description', 'photo_url', 'nom', 'telephone', 'source',
+            'anonyme', 'incident', 'date_creation',
+        ]
+        read_only_fields = ['source', 'date_creation']
+
+
+class ObservationSecuriteSerializer(serializers.ModelSerializer):
+    """Observation sécurité comportementale (BBS, XQHS17). ``company`` et
+    ``observateur`` posés côté serveur (jamais lus du corps de requête)."""
+    categorie_display = serializers.CharField(
+        source='get_categorie_display', read_only=True)
+    type_observation_display = serializers.CharField(
+        source='get_type_observation_display', read_only=True)
+
+    class Meta:
+        model = ObservationSecurite
+        fields = [
+            'id', 'date_observation', 'chantier_id', 'categorie',
+            'categorie_display', 'type_observation',
+            'type_observation_display', 'description', 'feedback_donne',
+            'observateur', 'action_liee', 'non_conformite_liee',
+            'date_creation',
+        ]
+        read_only_fields = [
+            'observateur', 'action_liee', 'non_conformite_liee',
+            'date_creation',
+        ]
+
+
+class ExerciceUrgenceSerializer(serializers.ModelSerializer):
+    """Exercice d'urgence rattaché à un plan (XQHS18). ``company`` posée côté
+    serveur. La réalisation (chrono/observations) se pose via l'action
+    ``realiser`` du viewset (jamais un PATCH direct des champs de résultat)."""
+    type_exercice_display = serializers.CharField(
+        source='get_type_exercice_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    plan_titre = serializers.CharField(source='plan.titre', read_only=True)
+
+    class Meta:
+        model = ExerciceUrgence
+        fields = [
+            'id', 'plan', 'plan_titre', 'type_exercice',
+            'type_exercice_display', 'date_prevue', 'date_realisee',
+            'duree_evacuation_secondes', 'nb_participants',
+            'participants_libre', 'observations', 'statut', 'statut_display',
+            'capa_liee', 'date_creation',
+        ]
+        read_only_fields = [
+            'date_realisee', 'duree_evacuation_secondes', 'nb_participants',
+            'participants_libre', 'observations', 'statut', 'capa_liee',
+            'date_creation',
+        ]
+
+    def validate_plan(self, value):
+        return _meme_societe(self, value, "Plan d'urgence")
+
+
+class AspectEnvironnementalSerializer(serializers.ModelSerializer):
+    """Aspect & impact environnemental coté (XQHS20, ISO 14001 6.1.2).
+
+    ``criticite``/``significatif`` sont dérivés (lecture seule) : jamais
+    stockés, toujours recalculés depuis fréquence × gravité vs seuil."""
+    criticite = serializers.IntegerField(read_only=True)
+    significatif = serializers.BooleanField(read_only=True)
+    condition_display = serializers.CharField(
+        source='get_condition_display', read_only=True)
+
+    class Meta:
+        model = AspectEnvironnemental
+        fields = [
+            'id', 'activite', 'aspect', 'impact', 'condition',
+            'condition_display', 'frequence', 'gravite',
+            'seuil_significativite', 'criticite', 'significatif',
+            'controles_existants', 'procedure', 'objectif', 'date_revue',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_procedure(self, value):
+        return _meme_societe(self, value, 'Procédure qualité')
+
+    def validate_objectif(self, value):
+        return _meme_societe(self, value, 'Objectif QHSE')
+
+
+class ReleveConsommationSerializer(serializers.ModelSerializer):
+    """Relevé périodique de consommation par site (XQHS21). ``company`` posée
+    côté serveur."""
+    type_energie_display = serializers.CharField(
+        source='get_type_energie_display', read_only=True)
+    source_display = serializers.CharField(
+        source='get_source_display', read_only=True)
+
+    class Meta:
+        model = ReleveConsommation
+        fields = [
+            'id', 'site_libelle', 'type_energie', 'type_energie_display',
+            'periode', 'quantite', 'source', 'source_display',
+            'piece_jointe_url', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class DemandeChangementSerializer(serializers.ModelSerializer):
+    """Demande de gestion du changement (MOC, XQHS24). ``company`` posée côté
+    serveur. Le ``statut`` avance via l'action ``transitionner`` du viewset
+    (jamais un PATCH direct) pour garder le gate d'approbation centralisé."""
+    type_changement_display = serializers.CharField(
+        source='get_type_changement_display', read_only=True)
+    classification_impact_display = serializers.CharField(
+        source='get_classification_impact_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    nb_capa_liees = serializers.IntegerField(
+        source='capa_liees.count', read_only=True)
+
+    class Meta:
+        model = DemandeChangement
+        fields = [
+            'id', 'type_changement', 'type_changement_display', 'description',
+            'justification', 'classification_impact',
+            'classification_impact_display', 'revue_risques',
+            'evaluation_risque', 'documents_formations_impactes',
+            'approbateur', 'date_approbation', 'checklist_verification',
+            'statut', 'statut_display', 'est_temporaire', 'date_expiration',
+            'nb_capa_liees', 'date_creation',
+        ]
+        read_only_fields = [
+            'approbateur', 'date_approbation', 'statut', 'date_creation',
+        ]
+
+    def validate_evaluation_risque(self, value):
+        return _meme_societe(self, value, 'Évaluation des risques')

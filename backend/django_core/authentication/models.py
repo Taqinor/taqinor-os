@@ -293,6 +293,18 @@ class CustomUser(AbstractUser):
         return True  # compte légacy sans rôle fin → comportement historique
 
     @property
+    def can_view_cout_non_qualite(self):
+        """XQHS22 — voir les montants du coût de la non-qualité QHSE (NCR/
+        CAPA/incident). Permission ``cout_non_qualite_voir`` (même palier que
+        ``marge_voir``/``prix_achat_voir``), repli historique pour les comptes
+        légacy. Superuser toujours autorisé."""
+        if self.is_superuser:
+            return True
+        if self.role_id:
+            return 'cout_non_qualite_voir' in (self.role.permissions or [])
+        return True  # compte légacy sans rôle fin → comportement historique
+
+    @property
     def can_view_activity_log(self):
         """Voir le Journal d'activité (Feature G). Permission explicite
         (Directeur par défaut). Superuser toujours autorisé."""
