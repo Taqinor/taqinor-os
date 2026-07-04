@@ -1110,9 +1110,20 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   }
   const funnelToken = getFunnelToken();
   const funnelStepReached = new Set<string>(); // évite les doublons « reached » sur re-render.
+  // WB30 — le consentement (case à cocher) n'existe QUE dans le panneau 2
+  // (contact) : tant que le visiteur n'a pas atteint ce panneau, aucun signal
+  // comportemental ne doit partir, même anonyme/best-effort. `hasReachedConsentStep`
+  // lit la variable `step` (numéro d'étape de l'assistant, déclarée plus bas) —
+  // vérifiée à l'APPEL, jamais dans `sendFunnelBeacon` (dont le paramètre `step`
+  // masque volontairement cette variable).
+  function hasReachedConsentStep(): boolean {
+    return step >= 2;
+  }
   /** Best-effort, JAMAIS bloquant : sendBeacon survit à la fermeture d'onglet,
    *  avec repli fetch(keepalive) si sendBeacon est indisponible. Aucune PII
-   *  possible dans ce corps (4 champs seulement — cf. lib/funnelBeacon.ts). */
+   *  possible dans ce corps (4 champs seulement — cf. lib/funnelBeacon.ts).
+   *  WB30 : n'émet rien avant que l'étape de consentement (panneau 2) soit
+   *  atteinte — voir hasReachedConsentStep, vérifiée par chaque appelant. */
   function sendFunnelBeacon(step: 'toit' | 'facture' | 'estimation' | 'contact', action: 'reached' | 'abandoned') {
     if (action === 'reached') {
       const key = `${step}:${action}`;
@@ -1572,7 +1583,8 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     if (step === 0) ensureMapBooted();
     // WJ59 — « étape atteinte », dédupliquée par sendFunnelBeacon (une seule
     // fois par étape et par visite, y compris après un aller-retour Retour/Continuer).
-    sendFunnelBeacon(step === 0 ? 'toit' : step === 1 ? 'facture' : 'estimation', 'reached');
+    // WB30 — pas de beacon avant l'étape de consentement (panneau 2).
+    if (hasReachedConsentStep()) sendFunnelBeacon(step === 0 ? 'toit' : step === 1 ? 'facture' : 'estimation', 'reached');
     // WJ61 — au tout premier rendu (chargement/réhydratation), ne pas imposer de
     // défilement : le visiteur vient d'arriver/de revenir, la page n'a pas
     // encore bougé sous lui. Le défilement reste pour chaque étape SUIVANTE.
@@ -1820,7 +1832,8 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     updatePanels3dVisibility();
     // WJ59 — l'estimation réelle est le moment où le formulaire de contact
     // devient l'action pertinente : « étape contact atteinte ».
-    sendFunnelBeacon('contact', 'reached');
+    // WB30 — pas de beacon avant l'étape de consentement (panneau 2).
+    if (hasReachedConsentStep()) sendFunnelBeacon('contact', 'reached');
     // WJ88 — annonce UNIQUE et propre du résultat final (jamais pendant le
     // squelette — cf. announceEstimate ci-dessus).
     announceEstimate(currentLang === 'ar'
@@ -2361,7 +2374,8 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     // ne déranger que si l'utilisateur a au moins commencé (mode/facture ou step > 0)
     const started2 = step > 0 || resolveMonthlyBill() != null || (capturePin != null);
     if (!started2) return;
-    if (!submitted && !funnelAbandonSent) {
+    // WB30 — pas de beacon « abandonné » avant l'étape de consentement (panneau 2).
+    if (!submitted && !funnelAbandonSent && hasReachedConsentStep()) {
       funnelAbandonSent = true;
       const currentStep = step === 0 ? 'toit' : step === 1 ? 'facture' : (lastKwc != null ? 'contact' : 'estimation');
       sendFunnelBeacon(currentStep, 'abandoned');
