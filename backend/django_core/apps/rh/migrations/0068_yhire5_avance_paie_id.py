@@ -8,7 +8,7 @@ class Migration(migrations.Migration):
     """YHIRE5 — AvanceSalaire.paie_avance_id (additif)."""
 
     dependencies = [
-        ("rh", "0065_pulse_enps"),
+        ("rh", "0067_quiz_formation"),
     ]
 
     operations = [
