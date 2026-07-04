@@ -44,6 +44,8 @@ class EventType(models.TextChoices):
     STOCK_LOW = 'stock_low', 'Stock bas'
     SAV_TICKET_OPENED = 'sav_ticket_opened', 'Ticket SAV ouvert'
     SAV_TICKET_BREACHING = 'sav_ticket_breaching', 'Ticket SAV proche de son délai'
+    # ZSAV3 — activité planifiée à échéance sur un ticket SAV (échue, pas faite).
+    SAV_ACTIVITE_DUE = 'sav_activite_due', 'Activité SAV à échéance'
     # Group S — messagerie interne (« Discuss »).
     CHAT_MESSAGE = 'chat_message', 'Nouveau message'
     CHAT_MENTION = 'chat_mention', 'Vous avez été mentionné'

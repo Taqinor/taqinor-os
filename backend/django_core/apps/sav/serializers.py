@@ -10,7 +10,7 @@ from .models import (
     TicketSatisfaction, CauseDefaillance, RemedeDefaillance,
     EquipementDowntime, ReleveCompteurEquipement, ReponseType,
     CompatibilitePiece, PieceRetiree, PretEquipement, CategorieTicket,
-    EquipeMaintenance, CategorieEquipement,
+    EquipeMaintenance, CategorieEquipement, TicketActiviteAFaire,
 )
 
 # Fenêtre « garantie expirant bientôt » (jours).
@@ -134,6 +134,27 @@ class TicketActivitySerializer(serializers.ModelSerializer):
 
     def get_user_nom(self, obj):
         return getattr(obj.user, 'username', None)
+
+
+# ── ZSAV3 — Activités planifiées à échéance sur le ticket ────────────────────
+
+class TicketActiviteAFaireSerializer(serializers.ModelSerializer):
+    type_display = serializers.CharField(
+        source='get_type_display', read_only=True)
+    assigne_nom = serializers.CharField(
+        source='assigne.username', read_only=True, default=None)
+    en_retard = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = TicketActiviteAFaire
+        fields = [
+            'id', 'ticket', 'type', 'type_display', 'titre', 'echeance',
+            'assigne', 'assigne_nom', 'fait', 'fait_le', 'en_retard',
+            'date_creation',
+        ]
+        read_only_fields = [
+            'id', 'ticket', 'fait', 'fait_le', 'date_creation',
+        ]
 
 
 class PieceRetireeSerializer(serializers.ModelSerializer):

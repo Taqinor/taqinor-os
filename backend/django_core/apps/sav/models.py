@@ -948,6 +948,58 @@ class TicketActivity(models.Model):
         return f"{self.ticket_id} {self.kind} {self.field or ''}".strip()
 
 
+# ── ZSAV3 — Activités planifiées à échéance sur le ticket ─────────────────────
+
+class TicketActiviteAFaire(models.Model):
+    """ZSAV3 — Activité FUTURE datée sur un ticket (appel/email/visite/
+    rappel), distincte du chatter `TicketActivity` qui ne journalise que le
+    PASSÉ. Odoo « Schedule Activity »."""
+    class Type(models.TextChoices):
+        APPEL = 'appel', 'Appel'
+        EMAIL = 'email', 'Email'
+        VISITE = 'visite', 'Visite'
+        RAPPEL = 'rappel', 'Rappel'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ticket_activites_a_faire')
+    ticket = models.ForeignKey(
+        'sav.Ticket', on_delete=models.CASCADE, related_name='activites_a_faire')
+    type = models.CharField(max_length=10, choices=Type.choices)
+    titre = models.CharField(max_length=200)
+    echeance = models.DateField()
+    assigne = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ticket_activites_a_faire')
+    fait = models.BooleanField(default=False)
+    fait_le = models.DateTimeField(null=True, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ticket_activites_a_faire_creees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Activité à faire (ticket)'
+        verbose_name_plural = 'Activités à faire (ticket)'
+        ordering = ['echeance', '-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'echeance'],
+                name='sav_taf_company_echeance_idx'),
+            models.Index(
+                fields=['ticket', 'fait'],
+                name='sav_taf_ticket_fait_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.get_type_display()} — {self.titre} ({self.echeance})'
+
+    @property
+    def en_retard(self):
+        """True si l'échéance est dépassée et l'activité pas encore faite."""
+        return not self.fait and self.echeance < timezone.localdate()
+
+
 # ── FG83 — Réclamation garantie fournisseur (RMA) ─────────────────────────────
 
 class WarrantyClaim(models.Model):

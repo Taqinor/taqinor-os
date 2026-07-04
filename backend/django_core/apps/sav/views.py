@@ -24,6 +24,7 @@ from .models import (
     CauseDefaillance, RemedeDefaillance, EquipementDowntime,
     ReleveCompteurEquipement, ReponseType, CompatibilitePiece, PieceRetiree,
     CategorieTicket, EquipeMaintenance, CategorieEquipement,
+    TicketActiviteAFaire,
 )
 from .services import add_months
 from .pdf import rapport_intervention_pdf
@@ -44,6 +45,7 @@ from .serializers import (
     CategorieTicketSerializer,
     EquipeMaintenanceSerializer,
     CategorieEquipementSerializer,
+    TicketActiviteAFaireSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -537,7 +539,9 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
                 'attente_client', 'reprendre', 'fusionner',
                 'facturer', 'planifier_intervention',
                 # YDOCF1 — actions guardées de la machine d'états.
-                'planifier', 'demarrer', 'resoudre', 'cloturer']:
+                'planifier', 'demarrer', 'resoudre', 'cloturer',
+                # ZSAV3 — activités planifiées à échéance.
+                'activites', 'cocher_activite']:
             return [HasPermissionOrLegacy('sav_gerer')()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
@@ -883,6 +887,46 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         data = _pieces_compatibles(
             ticket.company, ticket.equipement.produit_id)
         return Response({'results': data})
+
+    @action(detail=True, methods=['get', 'post'], url_path='activites',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def activites(self, request, pk=None):
+        """ZSAV3 — Activités planifiées à échéance du ticket. GET liste
+        (triées par échéance), POST crée une nouvelle activité (société et
+        ticket posés côté serveur)."""
+        ticket = self.get_object()
+        if request.method == 'GET':
+            qs = ticket.activites_a_faire.select_related('assigne')
+            return Response(
+                TicketActiviteAFaireSerializer(qs, many=True).data)
+        serializer = TicketActiviteAFaireSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        assigne = serializer.validated_data.get('assigne')
+        if assigne is not None and assigne.company_id != ticket.company_id:
+            return Response(
+                {'assigne': 'Utilisateur inconnu.'}, status=400)
+        instance = serializer.save(
+            company=ticket.company, ticket=ticket,
+            created_by=request.user)
+        return Response(
+            TicketActiviteAFaireSerializer(instance).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'],
+            url_path=r'activites/(?P<activite_id>[^/.]+)/cocher',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def cocher_activite(self, request, pk=None, activite_id=None):
+        """ZSAV3 — Marque une activité à faire comme faite (idempotent)."""
+        ticket = self.get_object()
+        try:
+            act = ticket.activites_a_faire.get(pk=activite_id)
+        except (TicketActiviteAFaire.DoesNotExist, ValueError):
+            return Response({'detail': 'Activité introuvable.'}, status=404)
+        if not act.fait:
+            act.fait = True
+            act.fait_le = timezone.now()
+            act.save(update_fields=['fait', 'fait_le'])
+        return Response(TicketActiviteAFaireSerializer(act).data)
 
     @action(detail=True, methods=['post'], url_path='noter',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
