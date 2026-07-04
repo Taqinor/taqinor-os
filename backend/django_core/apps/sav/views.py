@@ -452,7 +452,8 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         return qs
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['historique', 'rapport_pdf', 'lien_client']:
+        if self.action in READ_ACTIONS + [
+                'historique', 'rapport_pdf', 'lien_client', 'similaires']:
             return [HasPermissionOrLegacy('sav_voir')()]
         elif self.action in WRITE_ACTIONS + [
                 'noter', 'annuler', 'reactiver', 'creer_devis',
@@ -601,6 +602,20 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         ticket = self.get_object()
         return Response(
             TicketActivitySerializer(ticket.activites.all(), many=True).data)
+
+    @action(detail=True, methods=['get'], url_path='similaires',
+            permission_classes=[HasPermissionOrLegacy('sav_voir')])
+    def similaires(self, request, pk=None):
+        """XSAV21 — Tickets RÉSOLUS similaires (même produit > même cause >
+        similarité texte), pour le panneau « Résolutions similaires »."""
+        from .selectors import tickets_similaires
+        ticket = self.get_object()
+        try:
+            limit = int(request.query_params.get('limit', 5))
+        except (TypeError, ValueError):
+            limit = 5
+        data = tickets_similaires(ticket, limit=max(1, limit))
+        return Response({'results': data})
 
     @action(detail=True, methods=['post'], url_path='noter',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])

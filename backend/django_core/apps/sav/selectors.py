@@ -632,3 +632,87 @@ def rentabilite_contrats(company, *, limit=None):
     if limit:
         rows = rows[:limit]
     return rows
+
+
+# ── XSAV21 — Suggestion de tickets similaires résolus ─────────────────────────
+
+_STOPWORDS_FR = {
+    'le', 'la', 'les', 'un', 'une', 'des', 'de', 'du', 'et', 'ou', 'a',
+    'au', 'aux', 'en', 'dans', 'sur', 'pour', 'par', 'avec', 'sans', 'ne',
+    'pas', 'est', 'sont', 'il', 'elle', 'ce', 'cette', 'ces', 'que', 'qui',
+    'plus', 'ne', "s", "l", "d", "n", "c", "qu",
+}
+
+
+def _mots_cles(texte):
+    """Ensemble de mots-clés normalisés (minuscule, ponctuation ignorée,
+    mots vides français filtrés, longueur ≥ 3) — stdlib pure, déterministe."""
+    import re
+
+    if not texte:
+        return set()
+    bruts = re.findall(r"[a-zà-ÿ0-9]+", texte.lower())
+    return {m for m in bruts if len(m) >= 3 and m not in _STOPWORDS_FR}
+
+
+def tickets_similaires(ticket, *, limit=5):
+    """XSAV21 — Tickets RÉSOLUS de la société les plus proches de ``ticket``,
+    classés par pertinence DÉTERMINISTE (aucune dépendance, stdlib pure) :
+
+      1. même produit d'équipement (+100)
+      2. même type de panne codifiée (``cause`` — XSAV14) (+50)
+      3. similarité texte de la description (recoupement de mots-clés,
+         Jaccard × 10, arrondi 2 décimales)
+
+    Exclut : les tickets OUVERTS (seuls RESOLU/CLOTURE comptent comme des
+    résolutions passées à suggérer), les tickets d'une autre société
+    (cross-tenant), le ticket lui-même, et les tickets annulés. À égalité de
+    score, l'ordre est stabilisé par ``-id`` (le plus récent d'abord) — pas
+    d'ordre aléatoire d'un run à l'autre."""
+    company = ticket.company_id
+    equipement = ticket.equipement
+    produit_id = getattr(equipement, 'produit_id', None)
+    cause_id = ticket.cause_id
+
+    mots_ref = _mots_cles(ticket.description)
+
+    statuts_resolus = (Ticket.Statut.RESOLU, Ticket.Statut.CLOTURE)
+    qs = (Ticket.objects
+          .filter(company=company, statut__in=statuts_resolus, annule=False)
+          .exclude(pk=ticket.pk)
+          .select_related('equipement', 'equipement__produit', 'cause'))
+
+    scored = []
+    for cand in qs:
+        score = 0.0
+        if produit_id is not None and cand.equipement_id and \
+                cand.equipement.produit_id == produit_id:
+            score += 100
+        if cause_id is not None and cand.cause_id == cause_id:
+            score += 50
+        mots_cand = _mots_cles(cand.description)
+        if mots_ref and mots_cand:
+            inter = len(mots_ref & mots_cand)
+            union = len(mots_ref | mots_cand)
+            jaccard = (inter / union) if union else 0.0
+            score += round(jaccard * 10, 2)
+        if score > 0:
+            scored.append((score, cand))
+
+    scored.sort(key=lambda pair: (-pair[0], -pair[1].pk))
+
+    out = []
+    for score, cand in scored[:limit]:
+        out.append({
+            'id': cand.id,
+            'reference': cand.reference,
+            'score': round(score, 2),
+            'produit_nom': getattr(cand.equipement, 'produit', None)
+            and cand.equipement.produit.nom,
+            'cause_nom': getattr(cand.cause, 'nom', None),
+            'resume_resolution': (cand.description or '')[:300],
+            'date_resolution': (
+                cand.date_resolution.isoformat()
+                if cand.date_resolution else None),
+        })
+    return out
