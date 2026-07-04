@@ -378,6 +378,24 @@ class CompanyProfile(models.Model):
                   "tant que l'acompte du devis lié n'est pas encaissé. "
                   'Désactivé par défaut.')
 
+    # ── YHIRE9 — garde d'habilitation à l'affectation d'intervention ─────────
+    # Consomme `rh.selectors.verifier_habilitation_requise` (FG176) à
+    # l'affectation/changement de technicien d'une intervention typée.
+    # 'warn' (défaut) = un avertissement `avertissements[]` est renvoyé sans
+    # bloquer (comportement quasi byte-identique — juste un champ en plus) ;
+    # 'block' = l'affectation est refusée (400) tant que l'habilitation
+    # requise n'est pas valide.
+    class ModeGardeHabilitation(models.TextChoices):
+        WARN = 'warn', 'Avertir seulement'
+        BLOCK = 'block', 'Bloquer'
+
+    mode_garde_habilitation = models.CharField(
+        max_length=10, choices=ModeGardeHabilitation.choices,
+        default=ModeGardeHabilitation.WARN,
+        help_text="Comportement quand un technicien affecté n'a pas "
+                  "l'habilitation requise pour le type d'intervention : "
+                  "avertir (défaut) ou bloquer l'affectation.")
+
     class Meta:
         verbose_name = 'Profil entreprise'
 

@@ -2332,3 +2332,63 @@ def reactiver_interventions_annulees(installation, user):
             'Intervention réactivée — chantier réactivé.')
         count += 1
     return count
+
+
+# ── YHIRE9 — garde d'habilitation à l'affectation d'intervention ───────────
+# Mapping type d'intervention → habilitation requise partagé avec XFSM2
+# (``selectors._TYPE_VERS_HABILITATION``) : garde le SEUL référentiel, importé
+# ici plutôt que dupliqué (les deux modules restent dans la même app).
+
+def verifier_habilitation_affectation(company, technicien, type_intervention):
+    """YHIRE9 — vérifie l'habilitation d'un technicien pour le type
+    d'intervention qu'on s'apprête à lui affecter (contrôle à l'ÉCRITURE,
+    complète XFSM2 qui ne fait QUE suggérer).
+
+    Renvoie ``(bloquant, avertissements)`` :
+      * ``bloquant`` — True seulement si le réglage société est 'block' ET
+        l'habilitation requise n'est pas valide ;
+      * ``avertissements`` — liste de messages FRANÇAIS (vide = rien à
+        signaler). Toujours peuplée quand l'habilitation manque/expire,
+        indépendamment du mode (le mode ne change que si ça bloque).
+
+    Un type d'intervention sans mapping connu, un technicien sans fiche RH
+    liée, ou aucun technicien : jamais bloquant (garde SOFT par défaut,
+    cohérent avec FG176/XFSM2 — on ne bloque jamais faute de donnée)."""
+    from .selectors import _TYPE_VERS_HABILITATION
+
+    if technicien is None or company is None:
+        return False, []
+    cle_habilitation = _TYPE_VERS_HABILITATION.get(type_intervention)
+    if not cle_habilitation:
+        return False, []
+
+    from apps.rh.selectors import (
+        dossier_employe_for_user, habilitations_requises_pour_intervention,
+        verifier_habilitation_requise,
+    )
+    # Traduit la clé intermédiaire (ex. 'pose_pv_bt') en codes RÉELS
+    # `Habilitation.TypeHabilitation` (ex. ['b1v', 'br']) via
+    # `INTERVENTION_HABILITATIONS` — jamais la clé intermédiaire directement
+    # (celle-ci ne correspond à aucun titre réel).
+    titres_requis = habilitations_requises_pour_intervention(cle_habilitation)
+    if not titres_requis:
+        return False, []
+    dossier = dossier_employe_for_user(company, technicien.id)
+    if dossier is None:
+        return False, []
+    rapport = verifier_habilitation_requise(
+        company, dossier, titres_requis)
+    if rapport['autorise']:
+        return False, []
+
+    avertissements = [rapport['message']] if rapport.get('message') else [
+        'Habilitation requise manquante ou expirée : '
+        f'{", ".join(titres_requis)}.'
+    ]
+    try:
+        from apps.parametres.models import CompanyProfile
+        profil = CompanyProfile.get(company)
+        mode = getattr(profil, 'mode_garde_habilitation', 'warn')
+    except Exception:  # pragma: no cover - défensif
+        mode = 'warn'
+    return (mode == 'block'), avertissements
