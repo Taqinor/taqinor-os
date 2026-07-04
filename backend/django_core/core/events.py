@@ -92,6 +92,31 @@ importe ``apps.audit``.
     * ``annule`` — ``True`` si l'événement correspond à une ANNULATION d'une
       demande précédemment validée (ferme l'indisponibilité), ``False`` pour
       une validation (crée/étend l'indisponibilité).
+
+``contrat_signe``
+    Émis EXACTEMENT une fois quand un ``contrats.Contrat`` bascule vers
+    ``signe`` (dernier signataire requis, CONTRAT16) — YDOCF5. Émis par
+    ``contrats.services.signer_contrat``, jamais un import direct par les
+    abonnés. Arguments du signal :
+
+    * ``contrat`` — l'instance ``contrats.Contrat`` concernée ;
+    * ``user`` — l'utilisateur agissant (peut être ``None`` pour une partie
+      externe) ;
+    * ``company`` — la société (posée côté serveur).
+
+    Aucun abonné obligatoire dans ce lot (pose du seam) — destiné à
+    découpler la facturation récurrente (CONTRAT31/FG40), une notification
+    client, un dépôt GED (CONTRAT-*), ou une vérification d'entitlement SAV.
+
+``contrat_actif``
+    Émis EXACTEMENT une fois quand un ``contrats.Contrat`` bascule vers
+    ``actif`` (activation automatique à la signature si la prise d'effet est
+    atteinte, CONTRAT17, ou toute future activation manuelle qui passe par
+    ``contrats.services.activer_si_eligible``) — YDOCF5. Mêmes arguments que
+    ``contrat_signe`` (``contrat``, ``user``, ``company``). ``Contrat.statut``
+    n'est jamais modifié par ce module lui-même (préservation des statuts,
+    CONTRAT12) : le bus ne fait qu'observer la bascule déjà actée par la
+    machine d'états gardée.
 """
 import django.dispatch
 
@@ -133,3 +158,13 @@ reception_fournisseur_confirmee = django.dispatch.Signal()
 # RessourceProfil liée au même utilisateur), pour que rh n'importe jamais
 # gestion_projet directement.
 conge_approuve = django.dispatch.Signal()
+
+# Émis à la bascule d'un contrat vers « signe » (CONTRAT16) — YDOCF5.
+# Arguments : contrat, user, company. Aucun abonné obligatoire dans ce lot
+# (pose du seam) — voir docstring du module ci-dessus.
+contrat_signe = django.dispatch.Signal()
+
+# Émis à la bascule d'un contrat vers « actif » (CONTRAT17) — YDOCF5.
+# Arguments : contrat, user, company. Aucun abonné obligatoire dans ce lot
+# (pose du seam) — voir docstring du module ci-dessus.
+contrat_actif = django.dispatch.Signal()

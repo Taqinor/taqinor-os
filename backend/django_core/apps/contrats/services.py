@@ -564,6 +564,20 @@ def activer_si_eligible(contrat, *, today=None, auteur=None):
         new_value=contrat.statut,
         message='Activation automatique à la signature.',
         auteur=auteur)
+
+    # YDOCF5 — émet l'événement métier EXACTEMENT une fois (une seule
+    # bascule → actif par appel, garantie par la garde de transition
+    # ci-dessus). Best-effort : un abonné qui échoue ne doit jamais faire
+    # échouer l'activation, déjà actée.
+    try:
+        from core.events import contrat_actif as contrat_actif_signal
+
+        contrat_actif_signal.send(
+            sender=None, contrat=contrat, user=auteur,
+            company=contrat.company)
+    except Exception:  # pragma: no cover - défensif (best-effort)
+        pass
+
     return True
 
 
@@ -657,9 +671,26 @@ def signer_contrat(contrat, *, signataire_nom, role_signataire,
                 new_value=contrat.statut,
                 message='Toutes les parties requises ont signé.',
                 auteur=auteur if auteur is not None else signataire)
+
+            # YDOCF5 — émet l'événement métier EXACTEMENT une fois (une seule
+            # bascule → signe par appel de ``signer_contrat``, garantie par la
+            # condition ``contrat.statut != Contrat.Statut.SIGNE`` ci-dessus).
+            # Best-effort : jamais bloquant pour la signature déjà actée.
+            try:
+                from core.events import contrat_signe as contrat_signe_signal
+
+                contrat_signe_signal.send(
+                    sender=None, contrat=contrat,
+                    user=auteur if auteur is not None else signataire,
+                    company=contrat.company)
+            except Exception:  # pragma: no cover - défensif (best-effort)
+                pass
+
             # CONTRAT17 — activation automatique « signé → actif » si la prise
             # d'effet est atteinte. Passe par la machine d'états gardée et
             # journalise la bascule ; une prise d'effet future laisse à « signe ».
+            # (émet son propre événement ``contrat_actif`` — voir
+            # ``activer_si_eligible``.)
             contrat_actif = activer_si_eligible(
                 contrat, today=today,
                 auteur=auteur if auteur is not None else signataire)
