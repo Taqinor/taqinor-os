@@ -383,6 +383,11 @@ const jsonLd = {
         <div class="v2-rise mt-10 flex flex-wrap gap-3">
           <a href={L('/garanties')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Our warranties →</a>
           <a href={L('/équipement')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">The equipment installed →</a>
+          {/* WB17 (2026-07-04) — monitoring is exactly what these two ongoing
+              measured-proof pages publish; a natural contextual link from
+              this page (weakly discoverable elsewhere). */}
+          <a href={L('/production-mesuree')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Our tracked production →</a>
+          <a href={L('/impact-taqinor')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Taqinor Impact →</a>
           <a href={devisHref} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">My free assessment →</a>
         </div>
       </div>

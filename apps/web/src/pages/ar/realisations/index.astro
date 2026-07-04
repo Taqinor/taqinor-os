@@ -22,6 +22,7 @@ import CtaBand from '../../../components/CtaBand.astro';
 import StickyCta from '../../../components/StickyCta.astro';
 import CertLogoRow from '../../../components/CertLogoRow.astro';
 import BrandStrip from '../../../components/BrandStrip.astro';
+import RelatedLinks from '../../../components/RelatedLinks.astro';
 import { REALISATIONS, standardCaption } from '../../../lib/realisations';
 import { caseStudyBySlug } from '../../../lib/caseStudies';
 import { getLocaleFromPath } from '../../../i18n/utils';
@@ -162,6 +163,18 @@ const itemListJsonLd = {
       </div>
     </section>
     <BrandStrip />
+
+    {/* القاعدة ب17 (2026-07-04) — روابط سياقية نحو صفحتَي الإثبات الرقمي
+        المستمر، ضعيفتَي الاكتشاف (غائبتان عن الترويسة/التذييل). */}
+    <section class="section-tight px-4">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">للتعمّق أكثر</p>
+        <RelatedLinks links={[
+          { href: L('/production-mesuree'), label: 'إنتاجنا المتابَع باستمرار' },
+          { href: L('/impact-taqinor'), label: 'أثر Taqinor (kWc وkWh وCO2 المتجنَّب)' },
+        ]} />
+      </div>
+    </section>
 
     <CtaBand title="دراسة الحالة المقبلة قد تكون سطحك." href={L('/devis/mon-toit')} />
 

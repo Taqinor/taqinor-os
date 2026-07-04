@@ -10,6 +10,7 @@ import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
+import RelatedLinks from '../../components/RelatedLinks.astro';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
 import { REALISATIONS } from '../../lib/realisations';
@@ -150,9 +151,21 @@ const piliers = [
           </div>
           <div class="v2-rise" style="--v2-i:3">
             <dd class="font-display text-xl font-bold text-white">Deye Cloud</dd>
-            <dt class="tech-label mt-2 text-lune-faint">Measured production, client access included</dt>
+            <dt class="tech-label mt-2 text-lune-faint">Tracked production, client access included</dt>
           </div>
         </dl>
+      </div>
+    </section>
+
+    {/* WB17 (2026-07-04) — contextual links into the two ongoing measured-proof
+        pages, weakly discoverable (absent from header/footer). */}
+    <section class="section-tight px-4 text-white">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">To verify these figures</p>
+        <RelatedLinks links={[
+          { href: L('/production-mesuree'), label: 'Our tracked production, ongoing' },
+          { href: L('/impact-taqinor'), label: 'Taqinor Impact (kWc, kWh, CO2 avoided)' },
+        ]} />
       </div>
     </section>
 

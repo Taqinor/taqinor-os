@@ -21,6 +21,7 @@ import CtaBand from '../../../components/CtaBand.astro';
 import StickyCta from '../../../components/StickyCta.astro';
 import CertLogoRow from '../../../components/CertLogoRow.astro';
 import BrandStrip from '../../../components/BrandStrip.astro';
+import RelatedLinks from '../../../components/RelatedLinks.astro';
 import { REALISATIONS, standardCaption } from '../../../lib/realisations';
 import { caseStudyBySlug } from '../../../lib/caseStudies';
 import { getLocaleFromPath } from '../../../i18n/utils';
@@ -163,6 +164,18 @@ const itemListJsonLd = {
       </div>
     </section>
     <BrandStrip />
+
+    {/* WB17 (2026-07-04) — contextual links into the two ongoing measured-proof
+        pages, weakly discoverable (absent from header/footer). */}
+    <section class="section-tight px-4">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">To go further</p>
+        <RelatedLinks links={[
+          { href: L('/production-mesuree'), label: 'Our tracked production, ongoing' },
+          { href: L('/impact-taqinor'), label: 'Taqinor Impact (kWc, kWh, CO2 avoided)' },
+        ]} />
+      </div>
+    </section>
 
     <CtaBand title="The next case study could be your roof." href={L('/devis/mon-toit')} />
 

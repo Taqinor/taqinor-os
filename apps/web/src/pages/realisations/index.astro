@@ -28,6 +28,7 @@ import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import CertLogoRow from '../../components/CertLogoRow.astro';
 import BrandStrip from '../../components/BrandStrip.astro';
+import RelatedLinks from '../../components/RelatedLinks.astro';
 import { REALISATIONS, standardCaption } from '../../lib/realisations';
 import { NAP } from '../../lib/nap';
 
@@ -187,6 +188,18 @@ const itemListJsonLd = {
       </div>
     </section>
     <BrandStrip />
+
+    {/* WB17 (2026-07-04) — liens contextuels vers les deux pages de preuve
+        chiffrée continue, faiblement découvrables (absentes du header/footer). */}
+    <section class="section-tight px-4">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">Pour aller plus loin</p>
+        <RelatedLinks links={[
+          { href: '/production-mesuree', label: 'Notre production suivie, en continu' },
+          { href: '/impact-taqinor', label: 'Impact Taqinor (kWc, kWh, CO2 évité)' },
+        ]} />
+      </div>
+    </section>
 
     <CtaBand title="La prochaine étude de cas, c'est peut-être votre toiture." href="/devis/mon-toit" />
 

@@ -10,6 +10,7 @@ import Article33Ribbon from '../components/Article33Ribbon.astro';
 import Breadcrumb from '../components/Breadcrumb.astro';
 import CtaBand from '../components/CtaBand.astro';
 import StickyCta from '../components/StickyCta.astro';
+import RelatedLinks from '../components/RelatedLinks.astro';
 import { REALISATIONS } from '../lib/realisations';
 import { PANEL_PERFORMANCE_WARRANTY_YEARS } from '../lib/warranty';
 
@@ -148,9 +149,21 @@ const piliers = [
           </div>
           <div class="v2-rise" style="--v2-i:3">
             <dd class="font-display text-xl font-bold text-white">Deye Cloud</dd>
-            <dt class="tech-label mt-2 text-lune-faint">Production mesurée, accès client inclus</dt>
+            <dt class="tech-label mt-2 text-lune-faint">Production suivie, accès client inclus</dt>
           </div>
         </dl>
+      </div>
+    </section>
+
+    {/* WB17 (2026-07-04) — liens contextuels vers les deux pages de preuve
+        chiffrée continue, faiblement découvrables (absentes du header/footer). */}
+    <section class="section-tight px-4 text-white">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">Pour vérifier ces chiffres</p>
+        <RelatedLinks links={[
+          { href: '/production-mesuree', label: 'Notre production suivie, en continu' },
+          { href: '/impact-taqinor', label: 'Impact Taqinor (kWc, kWh, CO2 évité)' },
+        ]} />
       </div>
     </section>
 
