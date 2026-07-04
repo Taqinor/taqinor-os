@@ -105,6 +105,15 @@ class SavSlaSettings(models.Model):
         help_text='Nombre de jours avant échéance où une visite due est '
                   'matérialisée par la tâche automatique.',
     )
+    # ── ZSAV9 — « Suivre tous les tickets » (abonnement global) ─────────────
+    # Vide par défaut (comportement actuel inchangé) : chaque user listé ici
+    # est automatiquement abonné (TicketFollower) à CHAQUE nouveau ticket de
+    # la société, en plus des abonnements individuels explicites.
+    suivre_tous_tickets_sav = models.ManyToManyField(
+        settings.AUTH_USER_MODEL, blank=True,
+        related_name='sav_suit_tous_tickets',
+        verbose_name='Suivre tous les tickets (utilisateurs)',
+    )
     date_modification = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -998,6 +1007,35 @@ class TicketActiviteAFaire(models.Model):
     def en_retard(self):
         """True si l'échéance est dépassée et l'activité pas encore faite."""
         return not self.fait and self.echeance < timezone.localdate()
+
+
+# ── ZSAV9 — Suiveurs de ticket (followers) ────────────────────────────────────
+
+class TicketFollower(models.Model):
+    """ZSAV9 — Abonnement d'un utilisateur aux notifications d'un ticket, EN
+    PLUS du technicien assigné. Toute note chatter/transition notifie les
+    suiveurs (via `notify()`, mute-aware)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ticket_followers')
+    ticket = models.ForeignKey(
+        'sav.Ticket', on_delete=models.CASCADE, related_name='followers')
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='tickets_suivis')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Suiveur de ticket'
+        verbose_name_plural = 'Suiveurs de ticket'
+        unique_together = [('ticket', 'user')]
+        indexes = [
+            models.Index(fields=['company', 'ticket'],
+                         name='sav_follower_company_tkt_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.user_id} suit {self.ticket_id}'
 
 
 # ── FG83 — Réclamation garantie fournisseur (RMA) ─────────────────────────────

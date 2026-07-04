@@ -24,7 +24,7 @@ from .models import (
     CauseDefaillance, RemedeDefaillance, EquipementDowntime,
     ReleveCompteurEquipement, ReponseType, CompatibilitePiece, PieceRetiree,
     CategorieTicket, EquipeMaintenance, CategorieEquipement,
-    TicketActiviteAFaire,
+    TicketActiviteAFaire, TicketFollower,
 )
 from .services import add_months
 from .pdf import rapport_intervention_pdf
@@ -532,7 +532,10 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS + [
                 'historique', 'rapport_pdf', 'lien_client', 'similaires',
-                'instructions_suggestions']:
+                'instructions_suggestions',
+                # ZSAV9 — suivre/ne plus suivre est ouvert à tout rôle voyant
+                # le ticket (pas seulement sav_gerer).
+                'suivre', 'ne_plus_suivre']:
             return [HasPermissionOrLegacy('sav_voir')()]
         elif self.action in WRITE_ACTIONS + [
                 'noter', 'annuler', 'reactiver', 'creer_devis',
@@ -669,6 +672,10 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
                     'est_recidive', 'intervention_origine_id',
                     'motif_recidive', 'non_facturable'])
         activity.log_creation(serializer.instance, self.request.user)
+        # ZSAV9 — abonne automatiquement les suiveurs globaux (réglage
+        # société, liste vide par défaut = no-op).
+        from .services import abonner_suiveurs_globaux
+        abonner_suiveurs_globaux(inst)
         # XCTR2 — avertissement NON BLOQUANT si l'équipement lié n'est pas
         # couvert par le contrat de maintenance actif du client (registre
         # XCTR2). Un client sans contrat, ou un ticket sans équipement, ne
@@ -776,6 +783,15 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             from .notifications_client import notify_ticket_transition
             notify_ticket_transition(
                 ticket, ticket.statut, request=self.request)
+            # ZSAV9 — notifie les suiveurs de la transition (best-effort).
+            from .services import notify_followers
+            from apps.notifications.models import EventType
+            notify_followers(
+                ticket, event_type=EventType.SAV_TICKET_FOLLOWED_UPDATE,
+                title=f'Statut changé — {ticket.reference}',
+                body=f'Nouveau statut : {ticket.get_statut_display()}.',
+                link=f'/sav/tickets/{ticket.pk}',
+                exclude_user=self.request.user)
         # XSAV16 — la clôture du ticket propose (= referme automatiquement,
         # idempotent) toute immobilisation EN COURS liée à ce ticket. Ne
         # ferme jamais une fenêtre déjà close, et n'affecte que les
@@ -969,6 +985,14 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response({'body': 'Note vide.'},
                             status=status.HTTP_400_BAD_REQUEST)
         act = activity.log_note(ticket, request.user, body)
+        # ZSAV9 — notifie les suiveurs du ticket (jamais l'auteur de la note).
+        from .services import notify_followers
+        from apps.notifications.models import EventType
+        notify_followers(
+            ticket, event_type=EventType.SAV_TICKET_FOLLOWED_UPDATE,
+            title=f'Nouvelle note — {ticket.reference}',
+            body=body, link=f'/sav/tickets/{ticket.pk}',
+            exclude_user=request.user)
         return Response(TicketActivitySerializer(act).data,
                         status=status.HTTP_201_CREATED)
 
@@ -999,6 +1023,23 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             activity.log_note(ticket, request.user, "Ticket réactivé")
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='suivre',
+            permission_classes=[HasPermissionOrLegacy('sav_voir')])
+    def suivre(self, request, pk=None):
+        """ZSAV9 — S'abonner aux notifications de ce ticket (idempotent)."""
+        ticket = self.get_object()
+        TicketFollower.objects.get_or_create(
+            company=ticket.company, ticket=ticket, user=request.user)
+        return Response({'suivi': True})
+
+    @suivre.mapping.delete
+    def ne_plus_suivre(self, request, pk=None):
+        """ZSAV9 — Se désabonner des notifications de ce ticket (idempotent)."""
+        ticket = self.get_object()
+        TicketFollower.objects.filter(
+            ticket=ticket, user=request.user).delete()
+        return Response({'suivi': False})
 
     @action(detail=True, methods=['post'], url_path='premier-reponse',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])

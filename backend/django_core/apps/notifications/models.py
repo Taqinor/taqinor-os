@@ -46,6 +46,9 @@ class EventType(models.TextChoices):
     SAV_TICKET_BREACHING = 'sav_ticket_breaching', 'Ticket SAV proche de son délai'
     # ZSAV3 — activité planifiée à échéance sur un ticket SAV (échue, pas faite).
     SAV_ACTIVITE_DUE = 'sav_activite_due', 'Activité SAV à échéance'
+    # ZSAV9 — notification d'un suiveur de ticket (note ou transition).
+    SAV_TICKET_FOLLOWED_UPDATE = (
+        'sav_ticket_followed_update', 'Mise à jour sur un ticket suivi')
     # Group S — messagerie interne (« Discuss »).
     CHAT_MESSAGE = 'chat_message', 'Nouveau message'
     CHAT_MENTION = 'chat_mention', 'Vous avez été mentionné'

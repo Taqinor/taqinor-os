@@ -847,3 +847,43 @@ def suggerer_triage_ticket(*, company, description):
 
     return {'disponible': True, 'suggestion': suggestion,
             'kb_articles': articles}
+
+
+# ── ZSAV9 — Suiveurs de ticket (followers) ───────────────────────────────────
+
+def notify_followers(ticket, *, event_type, title, body='', link=None,
+                     exclude_user=None):
+    """ZSAV9 — Notifie tous les suiveurs (``TicketFollower``) d'un ticket,
+    best-effort (``notify()`` est déjà mute-aware par utilisateur), en plus
+    du technicien assigné (notifié séparément par les sites d'appel
+    existants). ``exclude_user`` évite d'auto-notifier l'auteur de l'action
+    (ex. la personne qui vient de poster la note)."""
+    from apps.notifications.services import notify
+
+    followers = ticket.followers.select_related('user')
+    for follower in followers:
+        user = follower.user
+        if exclude_user is not None and user.id == getattr(
+                exclude_user, 'id', None):
+            continue
+        try:
+            notify(
+                user=user, event_type=event_type, title=title, body=body,
+                link=link, company=ticket.company)
+        except Exception:  # pragma: no cover - best-effort, jamais bloquant
+            pass
+
+
+def abonner_suiveurs_globaux(ticket):
+    """ZSAV9 — Abonne automatiquement (idempotent) chaque utilisateur listé
+    dans ``SavSlaSettings.suivre_tous_tickets_sav`` au ticket nouvellement
+    créé. Liste vide (défaut) = no-op, comportement actuel inchangé."""
+    from .models import SavSlaSettings, TicketFollower
+
+    sla = SavSlaSettings.get(ticket.company)
+    users = list(sla.suivre_tous_tickets_sav.all())
+    if not users:
+        return
+    for user in users:
+        TicketFollower.objects.get_or_create(
+            company=ticket.company, ticket=ticket, user=user)
