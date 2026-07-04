@@ -2,10 +2,10 @@
 /**
  * Guide (W306) — Mon toit peut-il supporter des panneaux ? Poids au m²,
  * types de toitures marocaines et quand une vérification structurelle est
- * nécessaire. Poids panneau/structure = fiches techniques constructeur
- * publiques (Canadian Solar TOPBiHiKu 705–720 Wc, ~35 kg/panneau,
- * ~1,7–1,9 m² par panneau → ≈ 18–21 kg/m² module seul ; structure de
- * fixation ajoutée ci-dessous, sourcée séparément). AUCUN prix inventé —
+ * nécessaire. Poids panneau/structure = fiche technique constructeur
+ * publique (Canadian Solar TOPBiHiKu7 710 Wc, 2 384 × 1 303 mm = 3,11 m²,
+ * 37,8 kg → ≈ 12,2 kg/m² module seul ; structure de fixation ajoutée
+ * ci-dessous, sourcée séparément). AUCUN prix inventé —
  * les surcharges structurelles déjà publiées dans CONTENT_SEO_NOTES.md §5
  * (tuile/ondulé +6 000–12 000 DH, pente >30° +4 000–8 000 DH) ne sont PAS
  * répétées ici (guide de méthode, pas de prix).
@@ -25,9 +25,9 @@ const verifiedDate = new Date('2026-07-03');
 const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 const guideBodyText = `
   C'est l'objection qui revient juste après le prix : et si mon toit ne tient pas le poids ? Un panneau
-  photovoltaïque haute puissance actuel pèse d'après sa fiche technique constructeur environ 35 kg pour
-  une surface d'environ 1,7 à 1,9 m², soit un ordre de grandeur d'environ 18 à 21 kg/m² pour le module
-  seul. Structure comprise, une installation en surimposition reste en général de l'ordre de 20 à 25
+  photovoltaïque haute puissance actuel pèse d'après sa fiche technique constructeur environ 37,8 kg
+  pour une surface d'environ 3,11 m², soit un ordre de grandeur d'environ 12,2 kg/m² pour le module
+  seul. Structure comprise, une installation en surimposition reste en général de l'ordre de 14 à 17
   kg/m² répartis sur l'ensemble de la surface couverte. La très grande majorité des toitures
   résidentielles marocaines sont des dalles béton pleines, conçues pour porter bien plus qu'un poids de
   circulation piétonne. Les tuiles ne portent pas elles-mêmes le poids des panneaux : la fixation se
@@ -107,14 +107,14 @@ const toitures = [
 
       <h2 class="display v2-section-title mt-12 text-white">Le poids réel d’un panneau solaire</h2>
       <p class="v2-lead mt-5 text-lune-soft">
-        Un panneau photovoltaïque haute puissance actuel (les modules Canadian Solar bifaciaux
-        705–720 Wc que nous posons, par exemple) pèse d’après sa fiche technique constructeur environ
-        <strong class="text-white"> 35 kg</strong> pour une surface d’environ
-        <strong class="text-white"> 1,7 à 1,9 m²</strong>, soit un ordre de grandeur d’environ
-        <strong class="text-white"> 18 à 21 kg/m²</strong> pour le module seul, avant d’ajouter la
-        structure de fixation (rails aluminium, crochets ou lest béton selon la toiture). Structure
+        Un panneau photovoltaïque haute puissance actuel (les modules Canadian Solar/Jinko 710 Wc que
+        nous posons, par exemple) pèse d’après sa fiche technique constructeur environ
+        <strong class="text-white"> 37,8 kg</strong> pour une surface d’environ
+        <strong class="text-white"> 3,11 m²</strong> (2 384 × 1 303 mm), soit un ordre de grandeur
+        d’environ <strong class="text-white"> 12,2 kg/m²</strong> pour le module seul, avant d’ajouter
+        la structure de fixation (rails aluminium, crochets ou lest béton selon la toiture). Structure
         comprise, une installation en surimposition sur charpente ou dalle béton reste en général de
-        l’ordre de <strong class="text-white">20 à 25 kg/m²</strong> répartis sur l’ensemble de la
+        l’ordre de <strong class="text-white">14 à 17 kg/m²</strong> répartis sur l’ensemble de la
         surface couverte — un poids comparable à une couche de gravier ou à quelques centimètres d’eau
         stagnante, très loin des charges qu’une toiture est conçue pour encaisser (vent, entretien,
         parfois neige selon la région).
