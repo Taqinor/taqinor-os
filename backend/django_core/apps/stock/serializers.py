@@ -13,7 +13,7 @@ from .models import (
     CategorieFournisseur, ContactFournisseur,
     EcheanceFactureFournisseur, AcompteFournisseur,
     AvoirFournisseur, ImputationAvoirFournisseur,
-    PalierPrixFournisseur,
+    PalierPrixFournisseur, PortailFournisseurToken,
 )
 
 
@@ -54,6 +54,23 @@ class CategorieFournisseurSerializer(serializers.ModelSerializer):
     class Meta:
         model = CategorieFournisseur
         fields = ['id', 'nom', 'archived']
+
+
+class PortailFournisseurTokenSerializer(serializers.ModelSerializer):
+    """XPUR22 — jeton portail fournisseur (INTERNE, admin/responsable
+    uniquement). Le token en clair n'apparaît que dans cette réponse — le
+    lien public complet est construit côté frontend."""
+    est_valide = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = PortailFournisseurToken
+        fields = [
+            'id', 'fournisseur', 'token', 'expires_at', 'revoked',
+            'est_valide', 'created_at', 'last_used_at',
+        ]
+        read_only_fields = [
+            'token', 'created_at', 'last_used_at', 'est_valide',
+        ]
 
 
 class FournisseurSerializer(serializers.ModelSerializer):

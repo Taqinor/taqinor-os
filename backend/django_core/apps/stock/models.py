@@ -154,6 +154,56 @@ class Fournisseur(models.Model):
         return self.nom
 
 
+def _default_portail_token():
+    import secrets
+    return secrets.token_urlsafe(32)
+
+
+def _default_portail_expiry():
+    from datetime import timedelta
+    from django.utils import timezone
+    return timezone.now() + timedelta(days=90)
+
+
+class PortailFournisseurToken(models.Model):
+    """XPUR22 — jeton public, révocable/expirant, du portail fournisseur en
+    lecture seule (auto-généré depuis la fiche fournisseur). Mêmes garanties
+    que ``ventes.ShareLink``/``sav.Ticket.share_token`` : imprévisible, jamais
+    exposé côté client, isolation stricte au SEUL fournisseur porteur du
+    jeton (jamais les documents d'un autre fournisseur, jamais de marge)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='portail_fournisseur_tokens')
+    fournisseur = models.ForeignKey(
+        Fournisseur, on_delete=models.CASCADE,
+        related_name='portail_tokens')
+    token = models.CharField(
+        max_length=64, unique=True, default=_default_portail_token,
+        editable=False)
+    expires_at = models.DateTimeField(default=_default_portail_expiry)
+    revoked = models.BooleanField(default=False)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='portail_fournisseur_tokens_crees')
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Jeton portail fournisseur'
+        verbose_name_plural = 'Jetons portail fournisseur'
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['token'])]
+
+    def __str__(self):
+        return f'Portail {self.fournisseur_id} · {self.token[:8]}…'
+
+    @property
+    def est_valide(self):
+        from django.utils import timezone
+        return not self.revoked and self.expires_at > timezone.now()
+
+
 class CategorieFournisseur(models.Model):
     """XPUR5 — référentiel léger de catégories fournisseur (type ``Marque``),
     filtrable dans la liste. Additif — aucune migration destructive."""

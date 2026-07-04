@@ -3296,3 +3296,193 @@ def reviser_bcf(
         company, bc, montant_avant, montant_apres)
 
     return bc, reapprobation_requise
+
+
+# ── XPUR22 — Portail fournisseur lecture seule + confirmation d'arrivée ─────
+# Page publique tokenisée PAR FOURNISSEUR (pas par document — un seul jeton
+# donne accès à TOUS les documents DE CE fournisseur, jamais ceux d'un
+# autre). Le fournisseur peut CONFIRMER un BCF et proposer une date
+# d'arrivée : remplit `date_confirmee_fournisseur` (XPUR7) en préservant la
+# date DEMANDÉE d'origine (`date_livraison_prevue`, jamais écrasée — OTD).
+
+def generer_token_portail_fournisseur(company, fournisseur, user=None):
+    """XPUR22 — génère (et renvoie) un nouveau jeton portail pour ce
+    fournisseur. Les jetons précédents ne sont PAS révoqués automatiquement
+    (l'admin peut vouloir plusieurs jetons actifs, ex. par contact) — la
+    révocation est une action explicite (`revoquer_token_portail_fournisseur`)."""
+    from .models import PortailFournisseurToken
+    return PortailFournisseurToken.objects.create(
+        company=company, fournisseur=fournisseur, created_by=user)
+
+
+def revoquer_token_portail_fournisseur(token_obj):
+    """XPUR22 — révoque un jeton (le lien cesse immédiatement de fonctionner,
+    aucune suppression — traçabilité conservée)."""
+    token_obj.revoked = True
+    token_obj.save(update_fields=['revoked'])
+    return token_obj
+
+
+def resoudre_token_portail_fournisseur(token):
+    """XPUR22 — résout un jeton portail valide (non révoqué, non expiré) et
+    renvoie son ``PortailFournisseurToken`` (avec `fournisseur` préchargé),
+    ou None. LECTURE SEULE — l'appelant public doit toujours passer par
+    cette fonction plutôt que directement par le modèle."""
+    from .models import PortailFournisseurToken
+    token_obj = (PortailFournisseurToken.objects
+                 .select_related('fournisseur', 'company')
+                 .filter(token=token).first())
+    if token_obj is None or not token_obj.est_valide:
+        return None
+    return token_obj
+
+
+def portail_fournisseur_documents(token_obj):
+    """XPUR22 — documents du fournisseur porteur de ce jeton : SES BCF en
+    cours (référence, lignes, statut, date prévue), SES réceptions et SES
+    factures avec statut de paiement. Isolation stricte : jamais les
+    documents d'un autre fournisseur, jamais de marge (prix d'achat exposé —
+    légitime, c'est ce que CE fournisseur nous vend). LECTURE SEULE."""
+    from .models import BonCommandeFournisseur, ReceptionFournisseur
+
+    fournisseur = token_obj.fournisseur
+    company = token_obj.company
+
+    bcf_qs = (BonCommandeFournisseur.objects
+              .filter(company=company, fournisseur=fournisseur)
+              .exclude(statut=BonCommandeFournisseur.Statut.ANNULE)
+              .prefetch_related('lignes__produit')
+              .order_by('-date_creation'))
+    bcf_data = []
+    for bc in bcf_qs:
+        bcf_data.append({
+            'id': bc.id,
+            'reference': bc.reference,
+            'statut': bc.statut,
+            'statut_display': bc.get_statut_display(),
+            'date_commande': bc.date_commande,
+            'date_livraison_prevue': bc.date_livraison_prevue,
+            'date_confirmee_fournisseur': bc.date_confirmee_fournisseur,
+            'lignes': [
+                {
+                    'produit_nom': (
+                        ligne.produit.nom if ligne.produit_id
+                        else ligne.designation),
+                    'quantite': ligne.quantite,
+                    'quantite_recue': ligne.quantite_recue,
+                }
+                for ligne in bc.lignes.all()
+            ],
+        })
+
+    receptions = (ReceptionFournisseur.objects
+                  .filter(company=company,
+                          bon_commande__fournisseur=fournisseur)
+                  .select_related('bon_commande')
+                  .order_by('-date_creation'))
+    receptions_data = [{
+        'id': r.id, 'reference': r.reference,
+        'bon_commande_reference': (
+            r.bon_commande.reference if r.bon_commande_id else None),
+        'statut': r.statut, 'date_reception': r.date_reception,
+    } for r in receptions]
+
+    factures = factures_sous_traitant_qs_generique(company, fournisseur)
+
+    return {
+        'fournisseur_nom': fournisseur.nom,
+        'bons_commande': bcf_data,
+        'receptions': receptions_data,
+        'factures': factures,
+    }
+
+
+def factures_sous_traitant_qs_generique(company, fournisseur):
+    """XPUR22 — factures fournisseur (montants d'achat DE CE fournisseur
+    uniquement) + statut de paiement, pour le portail public. LECTURE
+    SEULE."""
+    from .models import FactureFournisseur
+    qs = (FactureFournisseur.objects
+          .filter(company=company, fournisseur=fournisseur)
+          .order_by('-date_creation'))
+    return [{
+        'id': f.id, 'reference': f.reference,
+        'date_facture': f.date_facture, 'date_echeance': f.date_echeance,
+        'montant_ttc': f.montant_ttc, 'statut': f.statut,
+        'statut_display': f.get_statut_display(),
+        'solde_du': f.solde_du,
+    } for f in qs]
+
+
+def confirmer_bcf_portail_fournisseur(
+        token_obj, bcf_id, *, date_confirmee, numero_confirmation=''):
+    """XPUR22 — le fournisseur confirme un BCF et propose une date
+    d'arrivée depuis le portail public. Réutilise EXACTEMENT la même
+    sémantique que l'action interne `confirmer` (XPUR7) : la date DEMANDÉE
+    d'origine (`date_livraison_prevue`) n'est jamais écrasée (préserve
+    l'OTD). Isolation stricte : le BCF DOIT appartenir au fournisseur
+    porteur du jeton, sinon lève ValueError (jamais d'accès croisé)."""
+    from .models import BonCommandeFournisseur
+
+    bc = BonCommandeFournisseur.objects.filter(
+        pk=bcf_id, company=token_obj.company,
+        fournisseur=token_obj.fournisseur).first()
+    if bc is None:
+        raise ValueError(
+            "Ce bon de commande n'appartient pas à ce fournisseur.")
+    bc.date_confirmee_fournisseur = date_confirmee
+    bc.numero_confirmation_fournisseur = numero_confirmation or ''
+    bc.save(update_fields=[
+        'date_confirmee_fournisseur', 'numero_confirmation_fournisseur'])
+
+    from django.utils import timezone
+    token_obj.last_used_at = timezone.now()
+    token_obj.save(update_fields=['last_used_at'])
+
+    notify_bcf_confirmation_fournisseur(bc)
+    return bc
+
+
+def notify_bcf_confirmation_fournisseur(bc):
+    """XPUR22 — notifie (best-effort) le créateur du BCF que le fournisseur
+    vient de confirmer une date d'arrivée depuis le portail public.
+
+    Utilise le système de notifications in-app existant (`apps.notifications
+    .services.notify`, `EventType.APPROVAL_DECIDED` — l'événement générique
+    « décision actée » le plus proche, aucun nouveau type ajouté à une autre
+    app) ET journalise dans le chatter (`records.Comment`) du BCF pour une
+    trace consultable depuis sa fiche. Best-effort total : un échec des deux
+    canaux ne casse jamais la confirmation elle-même."""
+    if bc.created_by_id is not None:
+        try:
+            from apps.notifications.services import notify
+            from apps.notifications.models import EventType
+            notify(
+                bc.created_by, EventType.APPROVAL_DECIDED,
+                title='Confirmation fournisseur',
+                body=(
+                    f'{bc.fournisseur.nom} a confirmé le BCF {bc.reference} '
+                    f'pour le {bc.date_confirmee_fournisseur}.'),
+                company=bc.company,
+            )
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.info(
+                'XPUR22: notification confirmation BCF %s non envoyée',
+                bc.pk)
+    try:
+        from django.contrib.contenttypes.models import ContentType
+        from apps.records.models import Comment
+        from .models import BonCommandeFournisseur
+        Comment.objects.create(
+            company=bc.company,
+            content_type=ContentType.objects.get_for_model(
+                BonCommandeFournisseur),
+            object_id=bc.pk,
+            body=(
+                f'{bc.fournisseur.nom} a confirmé une date d\'arrivée '
+                f'({bc.date_confirmee_fournisseur}) via le portail '
+                'fournisseur.'),
+            author=None,
+        )
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        pass
