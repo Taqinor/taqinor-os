@@ -982,6 +982,64 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(
             DocumentSerializer(doc, context={'request': request}).data)
 
+    @action(detail=True, methods=['post'], url_path='office-ouvrir')
+    def office_ouvrir(self, request, pk=None):
+        """XGED30 — Ouvre ce document Office dans l'éditeur embarqué (slot
+        Collabora/OnlyOffice, key-gated).
+
+        `POST …/documents/<id>/office-ouvrir/` — sans `GED_OFFICE_URL`
+        configuré : 400 explicite (aucune UI, aucun appel). Avec l'URL posée :
+        pose le check-out (GED16) et renvoie `{"editor_url", "document_id"}`.
+        Gardes GED23/24 respectées (403). Écriture : responsable/admin (même
+        motif que check-out — ouvrir en édition verrouille le document)."""
+        document = self.get_object()
+        try:
+            data = services.ouvrir_dans_editeur_office(
+                document, user=request.user)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except (ArchivageLegalError, LegalHoldError) as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        except PermissionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
+        return Response(data)
+
+    @action(detail=True, methods=['post'], url_path='office-sauvegarder',
+            parser_classes=[MultiPartParser, FormParser, JSONParser])
+    def office_sauvegarder(self, request, pk=None):
+        """XGED30 — Callback de sauvegarde de l'éditeur Office : crée une
+        NOUVELLE version depuis le contenu édité.
+
+        `POST …/documents/<id>/office-sauvegarder/` — corps multipart
+        `{"file": <fichier>}`. Sans `GED_OFFICE_URL` : 400 explicite. Respecte
+        le check-out (un tiers ne peut pas écraser la session d'un autre —
+        409) et les gardes GED23/24 (403). Écriture : responsable/admin."""
+        document = self.get_object()
+        upload = request.FILES.get('file')
+        if upload is None:
+            return Response(
+                {'file': 'Un fichier est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            version = services.sauvegarder_depuis_editeur_office(
+                document, contenu_bytes=upload.read(), user=request.user,
+                filename=upload.name, mime=upload.content_type or '')
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except (ArchivageLegalError, LegalHoldError) as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        except PermissionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
+        data = DocumentVersionSerializer(
+            version, context={'request': request}).data
+        return Response(data, status=status.HTTP_201_CREATED)
+
     @action(detail=True, methods=['post'], url_path='cycle-vie')
     def cycle_vie(self, request, pk=None):
         """GED17 — Fait avancer le document dans son cycle de vie documentaire.

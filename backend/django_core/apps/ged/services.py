@@ -5004,3 +5004,85 @@ def rafraichir_compteurs_lot_envoi(lot):
     lot.nb_vus = demandes.exclude(statut='en_attente').count()
     lot.save(update_fields=['nb_signes', 'nb_refuses', 'nb_vus', 'updated_at'])
     return lot
+
+
+# ── XGED30 — Co-édition Office (Collabora/OnlyOffice self-host, gated) ──────
+
+# Extensions Office reconnues par le slot de co-édition (traitement de texte/
+# tableur/présentation) — purement indicatif pour l'UI (bouton conditionnel) ;
+# le backend n'inspecte jamais le contenu, seule l'extension du `filename`.
+OFFICE_EXTENSIONS = {
+    '.docx', '.doc', '.odt', '.xlsx', '.xls', '.ods', '.pptx', '.ppt', '.odp',
+}
+
+
+def office_edit_active():
+    """XGED30 — True si un éditeur Office self-hébergé est configuré.
+
+    KEY-GATED (même motif que `esign_active()` GED30/`embedding_enabled()`
+    GED12) : sans `settings.GED_OFFICE_URL` non vide, le slot de co-édition
+    est un NO-OP COMPLET — aucun appel réseau, aucune UI, aucune dépendance
+    nouvelle. Le founder posera l'URL d'une instance Collabora/OnlyOffice
+    auto-hébergée (nouvelle brique d'infra, à valider) pour l'activer."""
+    from django.conf import settings
+    return bool((getattr(settings, 'GED_OFFICE_URL', '') or '').strip())
+
+
+def office_edit_url():
+    """XGED30 — URL de l'éditeur Office configuré, ou chaîne vide si inactif."""
+    from django.conf import settings
+    if not office_edit_active():
+        return ''
+    return (getattr(settings, 'GED_OFFICE_URL', '') or '').strip()
+
+
+def ouvrir_dans_editeur_office(document, *, user):
+    """XGED30 — Prépare l'ouverture d'un document Office dans l'éditeur
+    embarqué (Collabora/OnlyOffice, slot WOPI-like).
+
+    Lève `ValueError` si le slot n'est pas activé (`office_edit_active()`
+    faux — 400 explicite côté vue, jamais une UI qui pointerait nulle part).
+    Respecte le check-out (GED16, via `checkout_document` — un document
+    verrouillé par un AUTRE utilisateur refuse l'ouverture, même motif que
+    l'édition classique) et les gardes GED23/24 (archivé/hold → refus, jamais
+    une 500). Renvoie `{"editor_url": <str>, "document_id": <int>}` — l'URL
+    de base de l'éditeur ; l'intégration WOPI complète (jeton d'accès par
+    document) est un point d'extension future, hors scope de ce slot minimal.
+    """
+    if not office_edit_active():
+        raise ValueError(
+            "Co-édition Office non configurée (GED_OFFICE_URL absent) : "
+            "cette fonctionnalité est désactivée.")
+    assert_not_archive_legalement(document)
+    assert_not_legal_hold(document)
+    checkout_document(document, user)
+    return {'editor_url': office_edit_url(), 'document_id': document.pk}
+
+
+def sauvegarder_depuis_editeur_office(document, *, contenu_bytes, user,
+                                      filename='', mime=''):
+    """XGED30 — Callback de sauvegarde de l'éditeur Office : crée une
+    NOUVELLE `DocumentVersion` à partir du contenu édité.
+
+    Respecte le check-out (GED16 — `assert_not_locked_by_other`, un
+    utilisateur tiers ne peut pas écraser la session d'édition d'un autre) et
+    les gardes GED23/24 (document archivé/hold → refus explicite, jamais une
+    500). Lève `ValueError` si le slot n'est pas activé. Renvoie la nouvelle
+    `DocumentVersion` créée (le check-out N'EST PAS libéré automatiquement —
+    l'utilisateur ferme l'éditeur puis check-in explicitement, même motif que
+    l'édition classique GED16)."""
+    if not office_edit_active():
+        raise ValueError(
+            "Co-édition Office non configurée (GED_OFFICE_URL absent) : "
+            "cette fonctionnalité est désactivée.")
+    assert_not_archive_legalement(document)
+    assert_not_legal_hold(document)
+    assert_not_locked_by_other(document, user)
+    key, meta = _store_bytes(contenu_bytes, mime=mime or 'application/octet-stream')
+    version = add_version(
+        document, file_key=key, company=document.company,
+        filename=filename or meta.get('filename', ''),
+        size=len(contenu_bytes), mime=mime or meta.get('mime', ''),
+        uploaded_by=user)
+    update_search_vector(document)
+    return version
