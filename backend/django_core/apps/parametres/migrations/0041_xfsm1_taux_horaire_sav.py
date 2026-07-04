@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("parametres", "0039_xfac28_credit_hold"),
+        ("parametres", "0040_xfsm6_messagetemplate_rappel_rdv"),
     ]
 
     operations = [

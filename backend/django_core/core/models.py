@@ -1304,7 +1304,7 @@ class DataSubjectRequest(TimestampedModel):
     subject_identifier = models.CharField(
         'Identifiant de la personne', max_length=255,
         help_text='Email ou téléphone de la personne concernée.')
-    kind = models.CharField('Type', max_length=12, choices=KIND_CHOICES)
+    kind = models.CharField('Type', max_length=20, choices=KIND_CHOICES)
     statut = models.CharField(
         'Statut', max_length=12, choices=STATUT_CHOICES, default=STATUT_RECUE)
     resultat = models.JSONField(
