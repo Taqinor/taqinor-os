@@ -18,7 +18,9 @@ CLAUDE.md — les lectures cross-app passent par les selectors de l'app cible).
 """
 from django.utils import timezone
 
-from .models import Equipement, KbArticle, Ticket, TicketSatisfaction
+from .models import (
+    Equipement, EquipeMaintenance, KbArticle, Ticket, TicketSatisfaction,
+)
 
 
 def reconcile_serials_to_equipements(company, produit_id, serials):
@@ -933,3 +935,125 @@ def kb_articles_pertinents(company, texte, *, limit=3):
          'extrait': (art.corps or '')[:300]}
         for _score, art in scored[:limit]
     ]
+
+
+# ── ZMFG4 — Tableau de bord maintenance par équipe/statut ────────────────────
+
+def resume_par_equipe(company):
+    """ZMFG4 — Résumé du dashboard SAV par équipe de maintenance (ZMFG1) :
+    pour chaque équipe active de la société, compte les tickets OUVERTS
+    (``Ticket.OPEN_STATUTS``, non annulés), les tickets en retard SLA
+    (``sla_breach=True``), les préventifs dus (``type=preventif`` et ouverts)
+    et les correctifs urgents (``type=correctif``, ``priorite=urgente``,
+    ouverts). Les tickets SANS équipe sont regroupés sous la clé ``None``
+    (« Sans équipe ») pour que le total reste cohérent avec la liste globale.
+
+    Renvoie une liste de dicts :
+      [{'equipe_id': int|None, 'equipe_nom': str,
+        'ouverts': int, 'en_retard_sla': int,
+        'preventifs_dus': int, 'correctifs_urgents': int}, …]
+    triée par nom d'équipe (« Sans équipe » toujours en dernier)."""
+    base = Ticket.objects.filter(
+        company=company, statut__in=Ticket.OPEN_STATUTS, annule=False)
+
+    equipes = list(EquipeMaintenance.objects.filter(
+        company=company, actif=True).order_by('nom'))
+
+    out = []
+    for equipe in equipes:
+        qs = base.filter(equipe_id=equipe.id)
+        out.append({
+            'equipe_id': equipe.id,
+            'equipe_nom': equipe.nom,
+            'ouverts': qs.count(),
+            'en_retard_sla': qs.filter(sla_breach=True).count(),
+            'preventifs_dus': qs.filter(type=Ticket.Type.PREVENTIF).count(),
+            'correctifs_urgents': qs.filter(
+                type=Ticket.Type.CORRECTIF,
+                priorite=Ticket.Priorite.URGENTE).count(),
+        })
+
+    sans_equipe = base.filter(equipe__isnull=True)
+    out.append({
+        'equipe_id': None,
+        'equipe_nom': 'Sans équipe',
+        'ouverts': sans_equipe.count(),
+        'en_retard_sla': sans_equipe.filter(sla_breach=True).count(),
+        'preventifs_dus': sans_equipe.filter(
+            type=Ticket.Type.PREVENTIF).count(),
+        'correctifs_urgents': sans_equipe.filter(
+            type=Ticket.Type.CORRECTIF,
+            priorite=Ticket.Priorite.URGENTE).count(),
+    })
+    return out
+
+
+# ── ZSAV6 — Vue « activité » : file d'action suivante par ticket ────────────
+
+def file_action(company, *, today=None):
+    """ZSAV6 — Regroupe les tickets OUVERTS de la société par « action
+    attendue » (parité Odoo « Activity view »), chaque ticket dans EXACTEMENT
+    un bucket (le premier qui matche, dans l'ordre ci-dessous) :
+
+      * ``a_repondre``  — ``date_premiere_reponse`` absente (FG81) ;
+      * ``a_planifier`` — ``statut=PLANIFIE`` sans ``date_tournee`` (FG88) ;
+      * ``a_relancer``  — ``statut=EN_COURS`` et plus de la moitié du délai
+        SLA écoulé (``date_ouverture`` → ``sla_due_at``), sans échéance SLA
+        calculable = jamais dans ce bucket ;
+      * ``a_cloturer``  — ``statut=RESOLU`` dormant (aucune activité chatter
+        depuis ≥ 7 jours, ou depuis la résolution si pas d'activité) ;
+      * ``sans_action``  — aucun des cas ci-dessus (ticket NOUVEAU sans
+        réponse... capturé par ``a_repondre`` en priorité — ce bucket ne
+        contient que les tickets ouverts qui ne matchent RIEN d'autre).
+
+    Renvoie ``{'buckets': {cle: {'count': int, 'ids': [int, …]}, …}}``.
+    Les tickets annulés sont exclus (jamais « à traiter »)."""
+    from datetime import timedelta
+
+    if today is None:
+        today = timezone.localdate()
+
+    buckets = {
+        'a_repondre': [], 'a_planifier': [], 'a_relancer': [],
+        'a_cloturer': [], 'sans_action': [],
+    }
+
+    qs = (Ticket.objects
+          .filter(company=company, statut__in=Ticket.OPEN_STATUTS + [
+              Ticket.Statut.RESOLU], annule=False)
+          .prefetch_related('activites'))
+
+    for t in qs:
+        if t.statut in Ticket.OPEN_STATUTS and t.date_premiere_reponse is None:
+            buckets['a_repondre'].append(t.id)
+            continue
+        if t.statut == Ticket.Statut.PLANIFIE and t.date_tournee is None:
+            buckets['a_planifier'].append(t.id)
+            continue
+        if (t.statut == Ticket.Statut.EN_COURS
+                and t.date_ouverture and t.sla_due_at):
+            total_jours = (t.sla_due_at - t.date_ouverture).days
+            if total_jours > 0:
+                ecoules = (today - t.date_ouverture).days
+                if ecoules >= total_jours / 2:
+                    buckets['a_relancer'].append(t.id)
+                    continue
+        if t.statut == Ticket.Statut.RESOLU:
+            derniere = (t.activites.order_by('-created_at')
+                        .values_list('created_at', flat=True).first())
+            reference_dt = (
+                timezone.localtime(derniere).date() if derniere
+                else t.date_resolution or t.date_ouverture)
+            if reference_dt is not None and (
+                    today - reference_dt) >= timedelta(days=7):
+                buckets['a_cloturer'].append(t.id)
+                continue
+        if t.statut in Ticket.OPEN_STATUTS:
+            buckets['sans_action'].append(t.id)
+
+    return {
+        'buckets': {
+            cle: {'count': len(ids), 'ids': ids}
+            for cle, ids in buckets.items()
+        }
+    }

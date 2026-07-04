@@ -105,6 +105,15 @@ class SavSlaSettings(models.Model):
         help_text='Nombre de jours avant échéance où une visite due est '
                   'matérialisée par la tâche automatique.',
     )
+    # ── ZSAV9 — « Suivre tous les tickets » (abonnement global) ─────────────
+    # Vide par défaut (comportement actuel inchangé) : chaque user listé ici
+    # est automatiquement abonné (TicketFollower) à CHAQUE nouveau ticket de
+    # la société, en plus des abonnements individuels explicites.
+    suivre_tous_tickets_sav = models.ManyToManyField(
+        settings.AUTH_USER_MODEL, blank=True,
+        related_name='sav_suit_tous_tickets',
+        verbose_name='Suivre tous les tickets (utilisateurs)',
+    )
     date_modification = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -178,6 +187,31 @@ class MaintenanceChecklistItem(models.Model):
 
 # ── Modèle Équipement ──────────────────────────────────────────────────────────
 
+# ── ZMFG2 — Catégories d'équipement ──────────────────────────────────────────
+
+class CategorieEquipement(models.Model):
+    """ZMFG2 — Catégorie de parc d'équipement (Onduleurs, Pompes,
+    Batteries…), parité Odoo « Equipment Categories ». Taxonomie de PARC,
+    transverse aux produits — à ne pas confondre avec `stock.Produit`."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='categories_equipement')
+    nom = models.CharField(max_length=120)
+    responsable = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='categories_equipement_dirigees')
+    commentaire = models.TextField(blank=True, default='')
+
+    class Meta:
+        verbose_name = 'Catégorie d\'équipement'
+        verbose_name_plural = 'Catégories d\'équipement'
+        ordering = ['nom']
+        unique_together = [('company', 'nom')]
+
+    def __str__(self):
+        return self.nom
+
+
 class Equipement(models.Model):
     class Statut(models.TextChoices):
         EN_SERVICE = 'en_service', 'En service'
@@ -186,6 +220,13 @@ class Equipement(models.Model):
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='equipements',
+    )
+    # ── ZMFG2 — Catégorie de parc (optionnelle, taxonomie transverse aux
+    # produits). SET_NULL : la suppression d'une catégorie ne casse pas le
+    # parc déjà catégorisé.
+    categorie = models.ForeignKey(
+        'sav.CategorieEquipement', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='equipements',
     )
     # Le modèle catalogue dont c'est une unité. PROTECT : on ne supprime pas un
@@ -262,6 +303,15 @@ class Equipement(models.Model):
     # ContratMaintenance.derniere_visite / UnderperformanceFlag.is_open).
     dernier_entretien_compteur_valeur = models.DecimalField(
         max_digits=12, decimal_places=2, null=True, blank=True)
+
+    # ── ZMFG12 — Mise au rebut (fin de vie) ──────────────────────────────────
+    # False par défaut = comportement actuel inchangé (tout le parc existant
+    # reste actif). Une fois au rebut : figé (voir `mettre-au-rebut`), exclu
+    # du parc actif par défaut ET des générations de visites préventives
+    # (XSAV17 — la contrat ne génère plus de ticket pour cet équipement).
+    mis_au_rebut = models.BooleanField(default=False)
+    date_rebut = models.DateField(null=True, blank=True)
+    motif_rebut = models.CharField(max_length=255, blank=True, default='')
 
     class Meta:
         verbose_name = 'Équipement'
@@ -407,6 +457,39 @@ class ReleveCompteurEquipement(models.Model):
         return f'{self.equipement_id} — {self.valeur} {self.type}'
 
 
+# ── ZMFG1 — Équipes de maintenance ────────────────────────────────────────────
+
+class EquipeMaintenance(models.Model):
+    """ZMFG1 — Équipe de maintenance (Configuration > Maintenance Teams,
+    parité Odoo). Odoo pilote les demandes par ÉQUIPE, pas seulement par
+    technicien ; ce référentiel permet d'affecter/filtrer les tickets par
+    équipe, en plus (jamais à la place) du `technicien_responsable` existant.
+
+    Membres validés MÊME SOCIÉTÉ à l'écriture (côté serializer) — un membre
+    d'une autre société est refusé."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='equipes_maintenance')
+    nom = models.CharField(max_length=120)
+    membres = models.ManyToManyField(
+        settings.AUTH_USER_MODEL, blank=True,
+        related_name='equipes_maintenance')
+    responsable = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='equipes_maintenance_dirigees')
+    actif = models.BooleanField(default=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Équipe de maintenance'
+        verbose_name_plural = 'Équipes de maintenance'
+        ordering = ['nom']
+        unique_together = [('company', 'nom')]
+
+    def __str__(self):
+        return self.nom
+
+
 # ── Modèle Ticket ─────────────────────────────────────────────────────────────
 
 class Ticket(models.Model):
@@ -471,6 +554,13 @@ class Ticket(models.Model):
     priorite = models.CharField(
         max_length=10, choices=Priorite.choices, default=Priorite.NORMALE)
     description = models.TextField(blank=True, null=True)
+    # ── ZMFG5 — Instructions structurées (mode opératoire de l'intervention) ─
+    # Distinct de `description` (le problème signalé) et des notes chatter
+    # `TicketActivity` : le MODE OPÉRATOIRE à suivre pour réaliser
+    # l'intervention, éditable et pré-remplissable depuis un article KB lié
+    # au type de panne (apps.kb.selectors, lecture seule). Blank/null par
+    # défaut = comportement actuel inchangé (aucune instruction requise).
+    instructions = models.TextField(blank=True, default='')
     technicien_responsable = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='tickets_techniques',
@@ -509,6 +599,15 @@ class Ticket(models.Model):
     # l'historique des tickets déjà catégorisés.
     categorie = models.ForeignKey(
         'sav.CategorieTicket', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='tickets')
+
+    # ── ZMFG1 — Équipe de maintenance assignée (optionnelle) ────────────────
+    # N'affecte JAMAIS `technicien_responsable` (lecture only, pas de
+    # couplage dur) : l'affectation auto XSAV9 peut tirer ses candidats des
+    # membres de l'équipe quand une équipe est posée. SET_NULL : la
+    # suppression d'une équipe ne casse pas l'historique des tickets.
+    equipe = models.ForeignKey(
+        'sav.EquipeMaintenance', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='tickets')
 
     # ── Annulation : un DRAPEAU avec motif, pas une étape (comme « Perdu »). ──
@@ -856,6 +955,87 @@ class TicketActivity(models.Model):
 
     def __str__(self):
         return f"{self.ticket_id} {self.kind} {self.field or ''}".strip()
+
+
+# ── ZSAV3 — Activités planifiées à échéance sur le ticket ─────────────────────
+
+class TicketActiviteAFaire(models.Model):
+    """ZSAV3 — Activité FUTURE datée sur un ticket (appel/email/visite/
+    rappel), distincte du chatter `TicketActivity` qui ne journalise que le
+    PASSÉ. Odoo « Schedule Activity »."""
+    class Type(models.TextChoices):
+        APPEL = 'appel', 'Appel'
+        EMAIL = 'email', 'Email'
+        VISITE = 'visite', 'Visite'
+        RAPPEL = 'rappel', 'Rappel'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ticket_activites_a_faire')
+    ticket = models.ForeignKey(
+        'sav.Ticket', on_delete=models.CASCADE, related_name='activites_a_faire')
+    type = models.CharField(max_length=10, choices=Type.choices)
+    titre = models.CharField(max_length=200)
+    echeance = models.DateField()
+    assigne = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ticket_activites_a_faire')
+    fait = models.BooleanField(default=False)
+    fait_le = models.DateTimeField(null=True, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ticket_activites_a_faire_creees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Activité à faire (ticket)'
+        verbose_name_plural = 'Activités à faire (ticket)'
+        ordering = ['echeance', '-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'echeance'],
+                name='sav_taf_company_echeance_idx'),
+            models.Index(
+                fields=['ticket', 'fait'],
+                name='sav_taf_ticket_fait_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.get_type_display()} — {self.titre} ({self.echeance})'
+
+    @property
+    def en_retard(self):
+        """True si l'échéance est dépassée et l'activité pas encore faite."""
+        return not self.fait and self.echeance < timezone.localdate()
+
+
+# ── ZSAV9 — Suiveurs de ticket (followers) ────────────────────────────────────
+
+class TicketFollower(models.Model):
+    """ZSAV9 — Abonnement d'un utilisateur aux notifications d'un ticket, EN
+    PLUS du technicien assigné. Toute note chatter/transition notifie les
+    suiveurs (via `notify()`, mute-aware)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ticket_followers')
+    ticket = models.ForeignKey(
+        'sav.Ticket', on_delete=models.CASCADE, related_name='followers')
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='tickets_suivis')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Suiveur de ticket'
+        verbose_name_plural = 'Suiveurs de ticket'
+        unique_together = [('ticket', 'user')]
+        indexes = [
+            models.Index(fields=['company', 'ticket'],
+                         name='sav_follower_company_tkt_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.user_id} suit {self.ticket_id}'
 
 
 # ── FG83 — Réclamation garantie fournisseur (RMA) ─────────────────────────────

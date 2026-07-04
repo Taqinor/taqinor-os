@@ -10,6 +10,7 @@ from .models import (
     TicketSatisfaction, CauseDefaillance, RemedeDefaillance,
     EquipementDowntime, ReleveCompteurEquipement, ReponseType,
     CompatibilitePiece, PieceRetiree, PretEquipement, CategorieTicket,
+    EquipeMaintenance, CategorieEquipement, TicketActiviteAFaire,
 )
 
 # Fenêtre « garantie expirant bientôt » (jours).
@@ -41,6 +42,9 @@ class EquipementSerializer(serializers.ModelSerializer):
     date_fin_garantie_legale = serializers.DateField(read_only=True)
     date_fin_garantie_effective = serializers.DateField(read_only=True)
     sous_garantie_legale_seule = serializers.BooleanField(read_only=True)
+    # ZMFG2 — catégorie de parc (libellé lecture).
+    categorie_nom = serializers.CharField(
+        source='categorie.nom', read_only=True, default=None)
 
     class Meta:
         model = Equipement
@@ -130,6 +134,27 @@ class TicketActivitySerializer(serializers.ModelSerializer):
 
     def get_user_nom(self, obj):
         return getattr(obj.user, 'username', None)
+
+
+# ── ZSAV3 — Activités planifiées à échéance sur le ticket ────────────────────
+
+class TicketActiviteAFaireSerializer(serializers.ModelSerializer):
+    type_display = serializers.CharField(
+        source='get_type_display', read_only=True)
+    assigne_nom = serializers.CharField(
+        source='assigne.username', read_only=True, default=None)
+    en_retard = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = TicketActiviteAFaire
+        fields = [
+            'id', 'ticket', 'type', 'type_display', 'titre', 'echeance',
+            'assigne', 'assigne_nom', 'fait', 'fait_le', 'en_retard',
+            'date_creation',
+        ]
+        read_only_fields = [
+            'id', 'ticket', 'fait', 'fait_le', 'date_creation',
+        ]
 
 
 class PieceRetireeSerializer(serializers.ModelSerializer):
@@ -272,6 +297,9 @@ class TicketSerializer(serializers.ModelSerializer):
     # ZSAV2 — catégorie de ticket configurable (libellé lecture).
     categorie_nom = serializers.CharField(
         source='categorie.libelle', read_only=True, default=None)
+    # ZMFG1 — équipe de maintenance assignée (libellé lecture).
+    equipe_nom = serializers.CharField(
+        source='equipe.nom', read_only=True, default=None)
     # XCTR2 — couverture de l'équipement lié par le contrat de maintenance
     # ACTIF du client (registre XCTR2). None si aucun contrat/équipement.
     equipement_couvert = serializers.SerializerMethodField()
@@ -298,6 +326,12 @@ class TicketSerializer(serializers.ModelSerializer):
             'en_attente_client', 'attente_depuis', 'jours_pause',
             # XSAV11 — incrémenté côté serveur uniquement (perform_update).
             'reopen_count',
+            # YDOCF1 — machine d'états GARDÉE : le statut ne se change plus
+            # par un PATCH direct du corps de requête, seulement via les
+            # actions guardées `planifier/demarrer/resoudre/cloturer`
+            # (+ `annuler`/`reactiver` existants qui restent un DRAPEAU
+            # séparé, jamais une valeur de `statut`).
+            'statut',
         ]
         # client peut être déduit côté serveur d'un équipement lié (ticket
         # ouvert depuis le parc) ; sinon il reste exigé — voir
@@ -487,6 +521,74 @@ class CategorieTicketSerializer(serializers.ModelSerializer):
         model = CategorieTicket
         fields = ['id', 'libelle', 'ordre', 'actif']
         read_only_fields = ['id']
+
+
+# ── ZMFG1 — Équipes de maintenance ────────────────────────────────────────────
+
+class EquipeMaintenanceSerializer(serializers.ModelSerializer):
+    responsable_nom = serializers.CharField(
+        source='responsable.username', read_only=True, default=None)
+    membres_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EquipeMaintenance
+        fields = [
+            'id', 'nom', 'membres', 'membres_count', 'responsable',
+            'responsable_nom', 'actif', 'date_creation',
+        ]
+        read_only_fields = ['id', 'date_creation']
+
+    def get_membres_count(self, obj):
+        return obj.membres.count()
+
+    def _same_company(self, obj):
+        req = self.context.get('request')
+        return not (obj and req and req.user.company_id
+                    and obj.company_id != req.user.company_id)
+
+    def validate_responsable(self, value):
+        if value and not self._same_company(value):
+            raise serializers.ValidationError('Utilisateur inconnu.')
+        return value
+
+    def validate_membres(self, value):
+        req = self.context.get('request')
+        company_id = req.user.company_id if req else None
+        for membre in value:
+            if company_id and membre.company_id != company_id:
+                raise serializers.ValidationError(
+                    "Un membre doit appartenir à la même société.")
+        return value
+
+
+# ── ZMFG2 — Catégories d'équipement ───────────────────────────────────────────
+
+class CategorieEquipementSerializer(serializers.ModelSerializer):
+    responsable_nom = serializers.CharField(
+        source='responsable.username', read_only=True, default=None)
+    # Compteur d'équipements par catégorie (smart-button façon Odoo).
+    nb_equipements = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CategorieEquipement
+        fields = [
+            'id', 'nom', 'responsable', 'responsable_nom', 'commentaire',
+            'nb_equipements',
+        ]
+        read_only_fields = ['id']
+
+    def get_nb_equipements(self, obj):
+        return obj.equipements.count()
+
+    def _same_company(self, obj):
+        req = self.context.get('request')
+        return not (obj and req and req.user.company_id
+                    and obj.company_id != req.user.company_id)
+
+    def validate_responsable(self, value):
+        if value and not self._same_company(value):
+            raise serializers.ValidationError('Utilisateur inconnu.')
+        return value
 
 
 # ── XSAV16 — Journal d'immobilisation (downtime) ──────────────────────────────

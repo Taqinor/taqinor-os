@@ -1,6 +1,7 @@
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
+from django.contrib.auth import get_user_model
 from django.db import transaction, IntegrityError
 from django.db.models import Q
 from django.http import HttpResponse
@@ -23,7 +24,8 @@ from .models import (
     WarrantyClaim, KbArticle, AlarmeOnduleur,
     CauseDefaillance, RemedeDefaillance, EquipementDowntime,
     ReleveCompteurEquipement, ReponseType, CompatibilitePiece, PieceRetiree,
-    CategorieTicket,
+    CategorieTicket, EquipeMaintenance, CategorieEquipement,
+    TicketActiviteAFaire, TicketFollower,
 )
 from .services import add_months
 from .pdf import rapport_intervention_pdf
@@ -42,6 +44,9 @@ from .serializers import (
     ReponseTypeSerializer,
     CompatibilitePieceSerializer,
     CategorieTicketSerializer,
+    EquipeMaintenanceSerializer,
+    CategorieEquipementSerializer,
+    TicketActiviteAFaireSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -74,12 +79,23 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
         client = params.get('client')
         statut = params.get('statut')
         garantie = params.get('garantie')
+        categorie = params.get('categorie')
         if produit:
             qs = qs.filter(produit_id=produit)
         if marque:
             qs = qs.filter(produit__marque__icontains=marque)
         if installation:
             qs = qs.filter(installation_id=installation)
+        if categorie:
+            qs = qs.filter(categorie_id=categorie)
+        # ZMFG12 — parc actif par défaut : exclut les équipements au rebut.
+        # ?rebut=tous pour tout voir ; ?rebut=only pour ne voir que le rebut.
+        rebut = params.get('rebut')
+        if self.action == 'list':
+            if rebut == 'only':
+                qs = qs.filter(mis_au_rebut=True)
+            elif rebut != 'tous':
+                qs = qs.filter(mis_au_rebut=False)
         if client:
             # XPOS9 — un équipement vendu au comptoir (sans chantier) est
             # rattaché via `client_vente` plutôt que `installation__client`.
@@ -115,9 +131,15 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
         return qs
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
+        if self.action in READ_ACTIONS + ['etiquettes']:
             return [HasPermissionOrLegacy('equipement_voir')()]
-        elif self.action in WRITE_ACTIONS:
+        elif self.action in WRITE_ACTIONS + [
+                # ZMFG12 — mise au rebut / réactivation, réservé responsable/
+                # admin (spec : action motivée, pas une simple écriture de
+                # champ).
+                'mettre_au_rebut', 'reactiver_rebut']:
+            if self.action in ('mettre_au_rebut', 'reactiver_rebut'):
+                return [IsResponsableOrAdmin()]
             return [HasPermissionOrLegacy('equipement_gerer')()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
@@ -128,12 +150,15 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
         installation = serializer.validated_data.get('installation')
         produit = serializer.validated_data.get('produit')
         ticket = serializer.validated_data.get('remplace_par_ticket')
+        categorie = serializer.validated_data.get('categorie')
         if installation is not None and installation.company_id != company.id:
             raise ValidationError({'installation': 'Chantier inconnu.'})
         if produit is not None and produit.company_id not in (company.id, None):
             raise ValidationError({'produit': 'Produit inconnu.'})
         if ticket is not None and ticket.company_id != company.id:
             raise ValidationError({'remplace_par_ticket': 'Ticket inconnu.'})
+        if categorie is not None and categorie.company_id != company.id:
+            raise ValidationError({'categorie': 'Catégorie inconnue.'})
 
     def perform_create(self, serializer):
         self._check_tenant(serializer)
@@ -172,6 +197,45 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
             inst.equipement_token = token
             update_fields.append('equipement_token')
         inst.save(update_fields=update_fields)
+
+    @action(detail=True, methods=['post'], url_path='mettre-au-rebut',
+            permission_classes=[IsResponsableOrAdmin])
+    def mettre_au_rebut(self, request, pk=None):
+        """ZMFG12 — Mise au rebut motivée (motif obligatoire, réservé
+        responsable/admin). Fige les horloges de garantie (aucun recalcul
+        futur) et exclut l'équipement du parc actif ET des générations de
+        visites préventives (XSAV17 — voir `enregistrer_releve_compteur`)."""
+        equipement = self.get_object()
+        motif = (request.data.get('motif') or '').strip()
+        if not motif:
+            return Response(
+                {'motif': 'Le motif de mise au rebut est obligatoire.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if not equipement.mis_au_rebut:
+            equipement.mis_au_rebut = True
+            equipement.date_rebut = timezone.localdate()
+            equipement.motif_rebut = motif
+            equipement.save(update_fields=[
+                'mis_au_rebut', 'date_rebut', 'motif_rebut'])
+        return Response(
+            EquipementSerializer(
+                equipement, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='reactiver-rebut',
+            permission_classes=[IsResponsableOrAdmin])
+    def reactiver_rebut(self, request, pk=None):
+        """ZMFG12 — Réactivation d'un équipement au rebut (retour au parc
+        actif et aux générations de visites préventives)."""
+        equipement = self.get_object()
+        if equipement.mis_au_rebut:
+            equipement.mis_au_rebut = False
+            equipement.date_rebut = None
+            equipement.motif_rebut = ''
+            equipement.save(update_fields=[
+                'mis_au_rebut', 'date_rebut', 'motif_rebut'])
+        return Response(
+            EquipementSerializer(
+                equipement, context={'request': request}).data)
 
     @action(detail=False, methods=['get'], url_path='etiquettes',
             permission_classes=[HasPermissionOrLegacy('equipement_voir')])
@@ -432,6 +496,7 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         installation = params.get('installation')
         equipement = params.get('equipement')
         categorie = params.get('categorie')
+        equipe = params.get('equipe')
         if statut:
             qs = qs.filter(statut=statut)
         if type_:
@@ -448,6 +513,8 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             qs = qs.filter(equipement_id=equipement)
         if categorie:
             qs = qs.filter(categorie_id=categorie)
+        if equipe:
+            qs = qs.filter(equipe_id=equipe)
         # File de service par défaut = tickets OUVERTS non annulés. ?ouvert=tous
         # pour tout voir ; un filtre ?statut explicite l'emporte.
         if self.action == 'list' and not statut:
@@ -471,7 +538,10 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         # tenu par apps/sav/tests_ticket_action_permissions.py.
         if self.action in READ_ACTIONS + [
                 'historique', 'rapport_pdf', 'lien_client', 'similaires',
-                'triage_ia']:
+                'triage_ia', 'instructions_suggestions',
+                # ZSAV9 — suivre/ne plus suivre est ouvert à tout rôle voyant
+                # le ticket (pas seulement sav_gerer).
+                'suivre', 'ne_plus_suivre']:
             return [HasPermissionOrLegacy('sav_voir')()]
         elif self.action in WRITE_ACTIONS + [
                 'noter', 'annuler', 'reactiver', 'creer_devis',
@@ -480,7 +550,13 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
                 'pieces_compatibles', 'premier_reponse', 'pieces',
                 'supprimer_piece', 'pieces_retirees', 'generer_facture',
                 'prets_equipement', 'retourner_pret', 'creer_lead',
-                'checklist']:
+                'checklist',
+                # YDOCF1 — actions guardées de la machine d'états.
+                'planifier', 'demarrer', 'resoudre', 'cloturer',
+                # ZSAV3 — activités planifiées à échéance.
+                'activites', 'cocher_activite',
+                # ZSAV10 — endpoint d'actions groupées.
+                'actions_groupees']:
             return [HasPermissionOrLegacy('sav_gerer')()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
@@ -488,7 +564,8 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def _check_tenant(self, serializer):
         company = self.request.user.company
-        for field in ('client', 'installation', 'equipement', 'cause', 'remede'):
+        for field in ('client', 'installation', 'equipement', 'cause',
+                      'remede', 'equipe'):
             obj = serializer.validated_data.get(field)
             if obj is not None and obj.company_id != company.id:
                 raise ValidationError({field: 'Référence inconnue.'})
@@ -607,6 +684,10 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
                     'est_recidive', 'intervention_origine_id',
                     'motif_recidive', 'non_facturable'])
         activity.log_creation(serializer.instance, self.request.user)
+        # ZSAV9 — abonne automatiquement les suiveurs globaux (réglage
+        # société, liste vide par défaut = no-op).
+        from .services import abonner_suiveurs_globaux
+        abonner_suiveurs_globaux(inst)
         # XCTR2 — avertissement NON BLOQUANT si l'équipement lié n'est pas
         # couvert par le contrat de maintenance actif du client (registre
         # XCTR2). Un client sans contrat, ou un ticket sans équipement, ne
@@ -654,17 +735,27 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         self._check_tenant(serializer)
-        old = Ticket.objects.get(pk=serializer.instance.pk)
-        # YSERV12 — à la transition vers RESOLU, propose canal_resolution si
-        # l'appelant n'en a pas fourni un explicitement (jamais écrasé sinon).
-        new_statut = serializer.validated_data.get('statut', old.statut)
-        if (new_statut == Ticket.Statut.RESOLU and old.statut != Ticket.Statut.RESOLU
-                and 'canal_resolution' not in serializer.validated_data):
-            serializer.validated_data['canal_resolution'] = (
-                old.canal_resolution_propose())
+        # YDOCF1 — `statut` est désormais read-only sur le sérialiseur : plus
+        # aucune transition n'arrive ici via PATCH direct. Les transitions
+        # passent exclusivement par les actions guardées ci-dessous
+        # (`planifier`/`demarrer`/`resoudre`/`cloturer`), qui appliquent la
+        # même chaîne d'effets (SLA/chatter/notification/downtime) via
+        # `_appliquer_transition_statut`.
+        super().perform_update(serializer)
+
+    def _appliquer_transition_statut(self, ticket, statut_cible):
+        """YDOCF1 — Applique une transition de statut GARDÉE (via
+        ``machine_etats.changer_statut``) et rejoue exactement la même chaîne
+        d'effets qu'avant YDOCF1 (SLA/réouverture/chatter/notification client/
+        clôture des downtimes). Lève ``ValidationError`` (400) nommant le
+        statut courant + les cibles permises sur une transition interdite."""
+        from . import machine_etats
+
+        old = Ticket.objects.get(pk=ticket.pk)
         # YSERV2 — garde de clôture : refuse CLOTURE tant qu'une intervention
         # liée (apps.installations) n'est pas TERMINEE/VALIDEE.
-        if new_statut == Ticket.Statut.CLOTURE and old.statut != Ticket.Statut.CLOTURE:
+        if (statut_cible == Ticket.Statut.CLOTURE
+                and old.statut != Ticket.Statut.CLOTURE):
             ouvertes = self._interventions_ouvertes(old)
             if ouvertes:
                 raise ValidationError({
@@ -673,34 +764,194 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
                         'ouverte(s) sur ce ticket.'),
                     'interventions_ouvertes': ouvertes,
                 })
-        super().perform_update(serializer)
+        try:
+            machine_etats.changer_statut(ticket, statut_cible, persister=False)
+        except machine_etats.TransitionInterdite as exc:
+            raise ValidationError({'statut': str(exc)})
+        # YSERV12 — à la transition vers RESOLU, propose canal_resolution si
+        # l'appelant n'en a pas déjà posé un explicitement (jamais écrasé).
+        update_fields = ['statut']
+        if (statut_cible == Ticket.Statut.RESOLU
+                and old.statut != Ticket.Statut.RESOLU
+                and not ticket.canal_resolution):
+            ticket.canal_resolution = old.canal_resolution_propose()
+            update_fields.append('canal_resolution')
+        ticket.save(update_fields=update_fields)
         # FG81 — recalcule sla_breach après toute mise à jour de statut.
-        inst = serializer.instance
-        inst.recompute_sla_breach()
-        update_fields = ['sla_breach']
+        ticket.recompute_sla_breach()
+        save_fields = ['sla_breach']
         # XSAV11 — réouverture : résolu/clôturé → statut OUVERT. Compté côté
         # serveur, jamais décrémenté. La transition est déjà tracée par
         # TicketActivity (activity.log_changes ci-dessous).
         if (old.statut in self._CLOTURE_STATUTS
-                and inst.statut in Ticket.OPEN_STATUTS):
-            inst.reopen_count += 1
-            update_fields.append('reopen_count')
-        inst.save(update_fields=update_fields)
-        activity.log_changes(old, inst, self.request.user)
+                and ticket.statut in Ticket.OPEN_STATUTS):
+            ticket.reopen_count += 1
+            save_fields.append('reopen_count')
+        ticket.save(update_fields=save_fields)
+        activity.log_changes(old, ticket, self.request.user)
         # XSAV4 — notification client best-effort sur transition de statut
         # (reçu/planifié/résolu). Toggle OFF par défaut = aucun effet.
-        if old.statut != inst.statut:
+        if old.statut != ticket.statut:
             from .notifications_client import notify_ticket_transition
-            notify_ticket_transition(inst, inst.statut, request=self.request)
+            notify_ticket_transition(
+                ticket, ticket.statut, request=self.request)
+            # ZSAV9 — notifie les suiveurs de la transition (best-effort).
+            from .services import notify_followers
+            from apps.notifications.models import EventType
+            notify_followers(
+                ticket, event_type=EventType.SAV_TICKET_FOLLOWED_UPDATE,
+                title=f'Statut changé — {ticket.reference}',
+                body=f'Nouveau statut : {ticket.get_statut_display()}.',
+                link=f'/sav/tickets/{ticket.pk}',
+                exclude_user=self.request.user)
         # XSAV16 — la clôture du ticket propose (= referme automatiquement,
         # idempotent) toute immobilisation EN COURS liée à ce ticket. Ne
         # ferme jamais une fenêtre déjà close, et n'affecte que les
         # downtimes du même ticket (pas ceux d'autres tickets sur le même
         # équipement).
-        if (old.statut != inst.statut
-                and inst.statut in self._CLOTURE_STATUTS):
-            for dt in inst.downtimes.filter(fin__isnull=True):
+        if (old.statut != ticket.statut
+                and ticket.statut in self._CLOTURE_STATUTS):
+            for dt in ticket.downtimes.filter(fin__isnull=True):
                 dt.clore()
+        return ticket
+
+    @action(detail=True, methods=['post'], url_path='planifier',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def planifier(self, request, pk=None):
+        """YDOCF1 — Transition gardée NOUVEAU/... → PLANIFIE."""
+        ticket = self.get_object()
+        self._appliquer_transition_statut(ticket, Ticket.Statut.PLANIFIE)
+        return Response(
+            TicketSerializer(ticket, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='demarrer',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def demarrer(self, request, pk=None):
+        """YDOCF1 — Transition gardée → EN_COURS."""
+        ticket = self.get_object()
+        self._appliquer_transition_statut(ticket, Ticket.Statut.EN_COURS)
+        return Response(
+            TicketSerializer(ticket, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='resoudre',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def resoudre(self, request, pk=None):
+        """YDOCF1 — Transition gardée → RESOLU.
+
+        YSERV12 — ``canal_resolution`` optionnel dans le corps : posé
+        explicitement AVANT la transition pour ne jamais être écrasé par la
+        proposition automatique (même règle qu'avant YDOCF1)."""
+        ticket = self.get_object()
+        canal = request.data.get('canal_resolution')
+        if canal:
+            valid = {c for c, _ in Ticket.CanalResolution.choices}
+            if canal not in valid:
+                return Response(
+                    {'canal_resolution': 'Valeur invalide.'}, status=400)
+            ticket.canal_resolution = canal
+        self._appliquer_transition_statut(ticket, Ticket.Statut.RESOLU)
+        return Response(
+            TicketSerializer(ticket, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='cloturer',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def cloturer(self, request, pk=None):
+        """YDOCF1 — Transition gardée → CLOTURE (garde YSERV2 conservée)."""
+        ticket = self.get_object()
+        self._appliquer_transition_statut(ticket, Ticket.Statut.CLOTURE)
+        return Response(
+            TicketSerializer(ticket, context={'request': request}).data)
+
+    # ZSAV10 — opérations groupées supportées + leur validation d'entrée.
+    _ACTIONS_GROUPEES_VALEURS = {
+        'technicien': None,  # validé/résolu séparément (FK utilisateur).
+        'priorite': {c for c, _ in Ticket.Priorite.choices},
+        'statut': {c for c, _ in Ticket.Statut.choices},
+        'annuler': None,  # pas de valeur — motif optionnel.
+    }
+
+    @action(detail=False, methods=['post'], url_path='actions-groupees',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def actions_groupees(self, request):
+        """ZSAV10 — Applique UNE opération (statut/technicien/priorite/
+        annuler) à un LOT de tickets en une seule requête, atomiquement PAR
+        TICKET (chaque ticket journalisé) mais tolérante : les ids d'une
+        autre société sont silencieusement ignorés (jamais un 404/500 qui
+        casserait tout le lot). ``statut`` respecte la machine d'états
+        gardée (YDOCF1) — un ticket dont la transition est illégale est
+        rapporté dans ``echecs`` plutôt que de faire échouer le lot entier.
+        """
+        ids = request.data.get('ids') or []
+        operation = request.data.get('operation')
+        if not isinstance(ids, list) or not ids:
+            return Response({'ids': 'Liste d\'identifiants requise.'},
+                            status=400)
+        if operation not in self._ACTIONS_GROUPEES_VALEURS:
+            return Response(
+                {'operation': 'Opération inconnue.'}, status=400)
+
+        company = request.user.company
+        tickets = list(
+            Ticket.objects.filter(company=company, id__in=ids))
+        traites = []
+        echecs = []
+
+        if operation == 'statut':
+            statut_cible = request.data.get('statut')
+            if statut_cible not in self._ACTIONS_GROUPEES_VALEURS['statut']:
+                return Response({'statut': 'Statut inconnu.'}, status=400)
+            from . import machine_etats
+            for ticket in tickets:
+                try:
+                    self._appliquer_transition_statut(ticket, statut_cible)
+                    traites.append(ticket.id)
+                except (ValidationError, machine_etats.TransitionInterdite) \
+                        as exc:
+                    echecs.append({'id': ticket.id, 'raison': str(exc)})
+
+        elif operation == 'technicien':
+            technicien_id = request.data.get('technicien')
+            technicien = None
+            if technicien_id:
+                technicien = get_user_model().objects.filter(
+                    id=technicien_id, company=company).first()
+                if technicien is None:
+                    return Response(
+                        {'technicien': 'Technicien inconnu.'}, status=400)
+            for ticket in tickets:
+                old = Ticket.objects.get(pk=ticket.pk)
+                ticket.technicien_responsable = technicien
+                ticket.save(update_fields=['technicien_responsable'])
+                activity.log_changes(old, ticket, request.user)
+                traites.append(ticket.id)
+
+        elif operation == 'priorite':
+            priorite = request.data.get('priorite')
+            if priorite not in self._ACTIONS_GROUPEES_VALEURS['priorite']:
+                return Response({'priorite': 'Priorité inconnue.'}, status=400)
+            for ticket in tickets:
+                old = Ticket.objects.get(pk=ticket.pk)
+                ticket.priorite = priorite
+                ticket.save(update_fields=['priorite'])
+                activity.log_changes(old, ticket, request.user)
+                traites.append(ticket.id)
+
+        elif operation == 'annuler':
+            motif = (request.data.get('motif') or '').strip()
+            for ticket in tickets:
+                if not ticket.annule:
+                    ticket.annule = True
+                    ticket.motif_annulation = motif or None
+                    ticket.save(update_fields=['annule', 'motif_annulation'])
+                    activity.log_note(
+                        ticket, request.user,
+                        f"Ticket annulé{(' : ' + motif) if motif else ''}")
+                traites.append(ticket.id)
+
+        return Response({
+            'traites': traites, 'echecs': echecs,
+            'nb_traites': len(traites), 'nb_echecs': len(echecs),
+        })
 
     @action(detail=True, methods=['get'], url_path='historique',
             permission_classes=[HasPermissionOrLegacy('sav_voir')])
@@ -708,6 +959,24 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         ticket = self.get_object()
         return Response(
             TicketActivitySerializer(ticket.activites.all(), many=True).data)
+
+    @action(detail=True, methods=['get'], url_path='instructions-suggestions',
+            permission_classes=[HasPermissionOrLegacy('sav_voir')])
+    def instructions_suggestions(self, request, pk=None):
+        """ZMFG5 — Suggestions d'articles KB pour pré-remplir l'onglet
+        « Instructions », à partir du type de panne (cause) du ticket, ou du
+        libellé de la catégorie/description si aucune cause n'est codifiée.
+        Lecture seule (aucune écriture) — l'utilisateur applique lui-même la
+        suggestion via un PATCH `instructions` explicite."""
+        from apps.kb.selectors import article_pour_mot_cle
+        ticket = self.get_object()
+        texte = (
+            getattr(ticket.cause, 'nom', None)
+            or getattr(ticket.categorie, 'libelle', None)
+            or ticket.description or '')
+        data = article_pour_mot_cle(
+            ticket.company, request.user, texte, limit=3)
+        return Response({'results': data})
 
     @action(detail=True, methods=['get'], url_path='similaires',
             permission_classes=[HasPermissionOrLegacy('sav_voir')])
@@ -737,6 +1006,46 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         data = _pieces_compatibles(
             ticket.company, ticket.equipement.produit_id)
         return Response({'results': data})
+
+    @action(detail=True, methods=['get', 'post'], url_path='activites',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def activites(self, request, pk=None):
+        """ZSAV3 — Activités planifiées à échéance du ticket. GET liste
+        (triées par échéance), POST crée une nouvelle activité (société et
+        ticket posés côté serveur)."""
+        ticket = self.get_object()
+        if request.method == 'GET':
+            qs = ticket.activites_a_faire.select_related('assigne')
+            return Response(
+                TicketActiviteAFaireSerializer(qs, many=True).data)
+        serializer = TicketActiviteAFaireSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        assigne = serializer.validated_data.get('assigne')
+        if assigne is not None and assigne.company_id != ticket.company_id:
+            return Response(
+                {'assigne': 'Utilisateur inconnu.'}, status=400)
+        instance = serializer.save(
+            company=ticket.company, ticket=ticket,
+            created_by=request.user)
+        return Response(
+            TicketActiviteAFaireSerializer(instance).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'],
+            url_path=r'activites/(?P<activite_id>[^/.]+)/cocher',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def cocher_activite(self, request, pk=None, activite_id=None):
+        """ZSAV3 — Marque une activité à faire comme faite (idempotent)."""
+        ticket = self.get_object()
+        try:
+            act = ticket.activites_a_faire.get(pk=activite_id)
+        except (TicketActiviteAFaire.DoesNotExist, ValueError):
+            return Response({'detail': 'Activité introuvable.'}, status=404)
+        if not act.fait:
+            act.fait = True
+            act.fait_le = timezone.now()
+            act.save(update_fields=['fait', 'fait_le'])
+        return Response(TicketActiviteAFaireSerializer(act).data)
 
     @action(detail=True, methods=['post'], url_path='noter',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
@@ -779,6 +1088,14 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response({'body': 'Note vide.'},
                             status=status.HTTP_400_BAD_REQUEST)
         act = activity.log_note(ticket, request.user, body)
+        # ZSAV9 — notifie les suiveurs du ticket (jamais l'auteur de la note).
+        from .services import notify_followers
+        from apps.notifications.models import EventType
+        notify_followers(
+            ticket, event_type=EventType.SAV_TICKET_FOLLOWED_UPDATE,
+            title=f'Nouvelle note — {ticket.reference}',
+            body=body, link=f'/sav/tickets/{ticket.pk}',
+            exclude_user=request.user)
         return Response(TicketActivitySerializer(act).data,
                         status=status.HTTP_201_CREATED)
 
@@ -809,6 +1126,23 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             activity.log_note(ticket, request.user, "Ticket réactivé")
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='suivre',
+            permission_classes=[HasPermissionOrLegacy('sav_voir')])
+    def suivre(self, request, pk=None):
+        """ZSAV9 — S'abonner aux notifications de ce ticket (idempotent)."""
+        ticket = self.get_object()
+        TicketFollower.objects.get_or_create(
+            company=ticket.company, ticket=ticket, user=request.user)
+        return Response({'suivi': True})
+
+    @suivre.mapping.delete
+    def ne_plus_suivre(self, request, pk=None):
+        """ZSAV9 — Se désabonner des notifications de ce ticket (idempotent)."""
+        ticket = self.get_object()
+        TicketFollower.objects.filter(
+            ticket=ticket, user=request.user).delete()
+        return Response({'suivi': False})
 
     @action(detail=True, methods=['post'], url_path='premier-reponse',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
@@ -1799,6 +2133,49 @@ class CategorieTicketViewSet(TenantMixin, viewsets.ModelViewSet):
         serializer.save(company=self.request.user.company)
 
 
+# ── ZMFG1 — Équipes de maintenance ────────────────────────────────────────────
+
+class EquipeMaintenanceViewSet(TenantMixin, viewsets.ModelViewSet):
+    """ZMFG1 — CRUD équipe de maintenance, company-scopé. Lecture tout rôle,
+    écriture responsable/admin (édité dans Paramètres SAV)."""
+    queryset = EquipeMaintenance.objects.prefetch_related('membres').all()
+    serializer_class = EquipeMaintenanceSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.action == 'list' and self.request.query_params.get(
+                'actif') == '0':
+            qs = qs.filter(actif=False)
+        elif self.action == 'list':
+            qs = qs.filter(actif=True)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+
+# ── ZMFG2 — Catégories d'équipement ───────────────────────────────────────────
+
+class CategorieEquipementViewSet(TenantMixin, viewsets.ModelViewSet):
+    """ZMFG2 — CRUD catégorie d'équipement, company-scopé. Lecture tout rôle,
+    écriture responsable/admin (édité dans Paramètres SAV)."""
+    queryset = CategorieEquipement.objects.all()
+    serializer_class = CategorieEquipementSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+
 # ── XSAV23 — Réponses types (macros) SAV ──────────────────────────────────────
 
 class ReponseTypeViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -1904,6 +2281,29 @@ def sav_fiabilite_insight(request):
     data = fiabilite_equipements(
         company, include_couts=include_couts, limit=max(1, limit))
     return Response({'results': data, 'couts_inclus': include_couts})
+
+
+# ── ZMFG4 — Tableau de bord maintenance par équipe/statut ────────────────────
+
+def sav_resume_par_equipe(request):
+    """ZMFG4 — Résumé du dashboard SAV groupé par équipe de maintenance
+    (ZMFG1). Réservé au tier responsable/admin (vérifié côté urls.py)."""
+    from .selectors import resume_par_equipe
+    company = request.user.company
+    data = resume_par_equipe(company)
+    return Response({'results': data})
+
+
+# ── ZSAV6 — Vue « activité » : file d'action suivante par ticket ────────────
+
+def sav_file_action(request):
+    """ZSAV6 — Regroupe les tickets ouverts par action attendue (à répondre/
+    à planifier/à relancer/à clôturer). Réservé au tier responsable/admin
+    (vérifié côté urls.py)."""
+    from .selectors import file_action
+    company = request.user.company
+    data = file_action(company)
+    return Response(data)
 
 
 # ── FG89 — Prévision pièces SAV ───────────────────────────────────────────────
