@@ -1279,9 +1279,13 @@ class DataSubjectRequest(TimestampedModel):
 
     KIND_ACCESS = 'acces'
     KIND_ERASURE = 'effacement'
+    # XPLT23 — rectification (loi 09-08) : workflow manuel de correction des
+    # données d'une personne concernée (champs demandés + trace de traitement).
+    KIND_RECTIFICATION = 'rectification'
     KIND_CHOICES = [
         (KIND_ACCESS, "Accès (export)"),
         (KIND_ERASURE, 'Effacement'),
+        (KIND_RECTIFICATION, 'Rectification'),
     ]
 
     STATUT_RECUE = 'recue'
@@ -1321,6 +1325,61 @@ class DataSubjectRequest(TimestampedModel):
 
     def __str__(self):
         return f'DSR {self.kind} — {self.subject_identifier} ({self.statut})'
+
+
+class RegistreTraitement(TimestampedModel):
+    """XPLT23 — registre des traitements CNDP (loi 09-08).
+
+    GÉNÉRIQUE (couche fondation, aucun import métier) : une ligne = une
+    déclaration de traitement de données personnelles auprès de la CNDP.
+    Multi-tenant : ``company`` obligatoire, imposée côté serveur. Pré-remplie
+    par une commande seed idempotente des traitements types du produit.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='registres_traitement', verbose_name='Société')
+
+    # Clé stable (seed idempotent) — ex. « leads_clients », « rh_paie ».
+    code = models.CharField(
+        'Code', max_length=80,
+        help_text='Clé stable du traitement (seed idempotent).')
+    finalite = models.CharField(
+        'Finalité', max_length=255,
+        help_text='Finalité du traitement (ex. « gestion des prospects »).')
+    base_legale = models.CharField(
+        'Base légale', max_length=255, blank=True, default='',
+        help_text='Consentement, contrat, obligation légale, intérêt légitime…')
+    categories_donnees = models.TextField(
+        'Catégories de données', blank=True, default='',
+        help_text='Identité, contact, données de facturation, données RH…')
+    categories_personnes = models.TextField(
+        'Catégories de personnes', blank=True, default='',
+        help_text='Prospects, clients, salariés, candidats…')
+    destinataires = models.TextField(
+        'Destinataires', blank=True, default='',
+        help_text='Services internes et sous-traitants destinataires.')
+    duree_conservation = models.CharField(
+        'Durée de conservation', max_length=255, blank=True, default='',
+        help_text='Durée légale/contractuelle de conservation.')
+    numero_recepisse = models.CharField(
+        'N° de récépissé CNDP', max_length=120, blank=True, default='')
+    date_recepisse = models.DateField(
+        'Date de récépissé CNDP', null=True, blank=True)
+    actif = models.BooleanField('Actif', default=True)
+
+    class Meta:
+        verbose_name = 'Traitement CNDP'
+        verbose_name_plural = 'Registre des traitements (CNDP)'
+        ordering = ['code', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code'],
+                name='core_registretraitement_co_code'),
+        ]
+
+    def __str__(self):
+        return f'{self.code} — {self.finalite} (société {self.company_id})'
 
 
 # ---------------------------------------------------------------------------

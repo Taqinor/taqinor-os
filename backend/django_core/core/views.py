@@ -49,6 +49,7 @@ from .models import (
     DeletionRecord,
     ModuleToggle,
     PaymentTransaction,
+    RegistreTraitement,
     SavedQuery,
     ScheduledExport,
     TenantTheme,
@@ -64,6 +65,7 @@ from .serializers import (
     DeletionRecordSerializer,
     ModuleToggleSerializer,
     PaymentTransactionSerializer,
+    RegistreTraitementSerializer,
     SavedQuerySerializer,
     ScheduledExportSerializer,
     ScheduledJobSerializer,
@@ -592,6 +594,46 @@ class DataSubjectRequestViewSet(TenantMixin, viewsets.ModelViewSet):
         dsr_request = self.get_object()
         dsr.traiter_demande(dsr_request)
         return Response(self.get_serializer(dsr_request).data)
+
+
+class RegistreTraitementViewSet(TenantMixin, viewsets.ModelViewSet):
+    """XPLT23 — registre des traitements CNDP (loi 09-08).
+
+    Multi-tenant : ``TenantMixin`` filtre par société et impose ``company``.
+    Réservé au palier admin/responsable (donnée de conformité). Aucune
+    importation d'app domaine.
+
+      * ``GET …/registre-traitements/export-csv/`` — export CSV du registre.
+    """
+    serializer_class = RegistreTraitementSerializer
+    permission_classes = [IsAdminOrResponsableTier]
+    queryset = RegistreTraitement.objects.all()
+    pagination_class = None
+
+    @action(detail=False, methods=['get'], url_path='export-csv')
+    def export_csv(self, request):
+        import csv
+        from django.http import HttpResponse
+
+        rows = self.filter_queryset(self.get_queryset())
+        response = HttpResponse(content_type='text/csv; charset=utf-8')
+        response['Content-Disposition'] = (
+            'attachment; filename="registre-traitements-cndp.csv"')
+        writer = csv.writer(response)
+        writer.writerow([
+            'code', 'finalite', 'base_legale', 'categories_donnees',
+            'categories_personnes', 'destinataires', 'duree_conservation',
+            'numero_recepisse', 'date_recepisse', 'actif',
+        ])
+        for r in rows:
+            writer.writerow([
+                r.code, r.finalite, r.base_legale, r.categories_donnees,
+                r.categories_personnes, r.destinataires, r.duree_conservation,
+                r.numero_recepisse,
+                r.date_recepisse.isoformat() if r.date_recepisse else '',
+                'oui' if r.actif else 'non',
+            ])
+        return response
 
 
 class BackupRunViewSet(TenantMixin, viewsets.ModelViewSet):

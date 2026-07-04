@@ -37,6 +37,7 @@ from .views import (
     ModuleCatalogViewSet,
     ModuleToggleViewSet,
     PaymentTransactionViewSet,
+    RegistreTraitementViewSet,
     SavedQueryViewSet,
     ScheduledExportViewSet,
     ScheduledJobViewSet,
@@ -80,6 +81,9 @@ router.register(r'consent-records', ConsentRecordViewSet,
                 basename='consent-record')
 router.register(r'dsr-requests', DataSubjectRequestViewSet,
                 basename='dsr-request')
+# XPLT23 — registre des traitements CNDP (loi 09-08).
+router.register(r'registre-traitements', RegistreTraitementViewSet,
+                basename='registre-traitement')
 # FG395 — sauvegarde/restauration en libre-service (par société).
 router.register(r'sauvegardes', BackupRunViewSet, basename='backup-run')
 # FG397 — page d'état / santé système (services + incidents récents).

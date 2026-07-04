@@ -21,3 +21,6 @@ class CrmConfig(AppConfig):
         # AG6 — enregistre les actions agentiques CRM dans le registre AG1.
         from .agent_actions import register_crm_actions
         register_crm_actions()
+        # XPLT23 — fournisseur DSR CRM (export/anonymisation loi 09-08).
+        from . import dsr_provider
+        dsr_provider.register()

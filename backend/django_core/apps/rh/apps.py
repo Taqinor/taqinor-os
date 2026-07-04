@@ -13,3 +13,9 @@ class RhConfig(AppConfig):
         'description': 'Dossier employé, congés et présences.',
         'categorie': 'RH',
     }
+
+    def ready(self):
+        # XPLT23 — fournisseur DSR RH (export dossier ; effacement refusé —
+        # obligations sociales/paie). Enregistré auprès du registre core.dsr.
+        from . import dsr_provider
+        dsr_provider.register()
