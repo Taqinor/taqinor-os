@@ -597,6 +597,67 @@ def auto_lettrer_facture_soldee(facture):
         return None
 
 
+@transaction.atomic
+def ecriture_pour_paiement_especes_via_caisse(paiement, *, user=None):
+    """YLEDG9 — route un encaissement ESPÈCES via le module caisse (COMPTA24)
+    au lieu de l'écriture banque directe de ``ecriture_pour_paiement`` :
+    crée + poste un ``MouvementCaisse`` ENTREE (compte de caisse en débit,
+    3421 Clients en contrepartie créditée — solde la créance comme un
+    encaissement normal) sur la PREMIÈRE caisse active de la société, et
+    enregistre le droit de timbre fiscal dû (FG144, exonéré si le montant
+    de base est nul). Idempotent via la garde ``source_type='paiement'``
+    déjà posée par ``creer_ecriture`` (jamais deux écritures pour le même
+    paiement — le receveur n'appelle JAMAIS ``ecriture_pour_paiement`` en
+    plus de celle-ci sur le même événement). Renvoie l'écriture du mouvement
+    de caisse, ou ``None`` si aucune caisse n'est configurée (fallback :
+    l'appelant retombe sur ``ecriture_pour_paiement``)."""
+    company = paiement.company
+    if company is None:
+        return None
+    existante = _ecriture_existante(company, 'paiement', paiement.id)
+    if existante:
+        return existante
+    caisse = Caisse.objects.filter(company=company).order_by('id').first()
+    if caisse is None:
+        return None
+    comptes = _comptes_requis(company)
+    montant = Decimal(paiement.montant)
+    facture = paiement.facture
+    client_id = getattr(facture, 'client_id', None)
+    ref = getattr(facture, 'reference', '')
+
+    mouvement = MouvementCaisse(
+        company=company, caisse=caisse,
+        sens=MouvementCaisse.Sens.ENTREE,
+        date_mouvement=paiement.date_paiement,
+        montant=montant, motif=f'Encaissement facture {ref}',
+        justificatif=ref, compte_contrepartie=comptes['clients'],
+        created_by=user,
+    )
+    mouvement.full_clean(exclude=['ecriture'])
+    mouvement.save()
+    ecriture = poster_mouvement_caisse(mouvement, user=user)
+    # L'écriture du mouvement de caisse est source_type='mouvement_caisse' —
+    # on l'enregistre AUSSI comme l'écriture DU PAIEMENT (source_type=
+    # 'paiement') pour que l'idempotence/le rapprochement YLEDG13 la
+    # retrouvent comme n'importe quel encaissement.
+    EcritureComptable.objects.filter(pk=ecriture.pk).update(
+        source_type='paiement', source_id=paiement.id)
+    ecriture.refresh_from_db()
+
+    if montant > 0:
+        enregistrer_timbre_fiscal(
+            company, date_encaissement=paiement.date_paiement,
+            base=montant, mode_reglement=MODE_ESPECES,
+            paiement_id=paiement.id, facture_ref=ref,
+            tiers_type='client', tiers_id=client_id,
+            tiers_nom=getattr(facture.client, 'nom', '') or '' if facture
+            else '',
+            libelle=f'Timbre fiscal encaissement {ref}', user=user,
+        )
+    return ecriture
+
+
 # ── XACC1 — TVA sur encaissement : transfert du compte d'attente ───────────
 # En régime « débit » (défaut), la TVA est constatée directement sur les
 # comptes définitifs (4455/3455) à la facturation — RIEN ne change ici, c'est

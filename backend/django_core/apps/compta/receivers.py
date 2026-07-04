@@ -37,6 +37,7 @@ from .services import (  # noqa: F401  (ré-export du point d'intégration)
     ecriture_pour_facture,
     ecriture_pour_facture_fournisseur,
     ecriture_pour_paiement,
+    ecriture_pour_paiement_especes_via_caisse,
     ecriture_pour_paiement_fournisseur,
     extourner_ecriture,
     # XACC1 — transfert TVA attente→définitif (régime encaissement). Même
@@ -62,7 +63,16 @@ def _ecriture_pour_facture_emise(sender, instance, company, **kwargs):
 
 @receiver(paiement_enregistre, dispatch_uid="compta_ecriture_pour_paiement")
 def _ecriture_pour_paiement_enregistre(sender, instance, company, **kwargs):
-    ecriture_pour_paiement(instance)
+    # YLEDG9 — un règlement ESPÈCES route par le module caisse (mouvement +
+    # timbre fiscal) au lieu de l'écriture banque directe ; jamais les deux
+    # (une seule écriture par paiement). Sans caisse configurée : fallback
+    # inchangé sur ``ecriture_pour_paiement``.
+    if getattr(instance, 'mode', '') == 'especes':
+        ecriture = ecriture_pour_paiement_especes_via_caisse(instance)
+        if ecriture is None:
+            ecriture_pour_paiement(instance)
+    else:
+        ecriture_pour_paiement(instance)
     # YLEDG6 — auto-lettrage à l'encaissement : uniquement quand la facture
     # est désormais intégralement réglée (résiduel→0, comme YDOCF4) ; un
     # règlement partiel laisse le lot ouvert (comportement inchangé).
