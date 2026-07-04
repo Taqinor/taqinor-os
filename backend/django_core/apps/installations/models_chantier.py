@@ -192,6 +192,12 @@ class CommissioningRecord(models.Model):
         related_name='commissioning_record')
     date_essai = models.DateField(null=True, blank=True)
     technicien = models.CharField(max_length=120, blank=True, null=True)
+    # ── XFSM12 — instrument de mesure utilisé (traçabilité d'étalonnage,
+    #    exigée par l'IEC 62446-1). String-FK vers ``outillage.Outillage`` (par
+    #    id, jamais un import du modèle pour la RELATION — l'app lit déjà
+    #    ``apps.outillage.models`` ailleurs, cf. field_services.py) : nullable,
+    #    additif, aucune fiche existante n'est affectée. ──
+    instrument_id = models.PositiveIntegerField(null=True, blank=True)
     # ── Documentation (IEC 62446-1 §4) ──
     doc_dossier_ok = models.BooleanField(null=True, blank=True)
     doc_schema_ok = models.BooleanField(null=True, blank=True)
@@ -245,6 +251,32 @@ class CommissioningRecord(models.Model):
         """La fiche est PASSÉE (débloque le gate) si conforme ou conforme
         avec réserves."""
         return self.resultat in (self.Resultat.CONFORME, self.Resultat.RESERVES)
+
+    @property
+    def instrument(self):
+        """XFSM12 — instrument de mesure référencé (résolu par id, jamais un
+        import au niveau module — ``apps.outillage.models`` reste une lecture
+        locale à la fonction, cf. le patron déjà en place dans
+        ``field_services.py``). None si ``instrument_id`` est vide ou pointe
+        vers un outil supprimé."""
+        if not self.instrument_id:
+            return None
+        from apps.outillage.models import Outillage
+        return Outillage.objects.filter(pk=self.instrument_id).first()
+
+    @property
+    def instrument_etalonnage_expire(self):
+        """XFSM12 — True si l'instrument référencé a un étalonnage FG80 EXPIRÉ
+        (intervalle défini ET date de prochaine calibration dépassée ou jamais
+        calibré). None si aucun instrument n'est référencé, ou si l'instrument
+        n'est pas soumis à calibration périodique (intervalle = 0)."""
+        instrument = self.instrument
+        if instrument is None or not instrument.intervalle_calibration_mois:
+            return None
+        if instrument.date_prochaine_calibration is None:
+            return True
+        import datetime
+        return instrument.date_prochaine_calibration <= datetime.date.today()
 
 
 class CommissioningIVReading(models.Model):

@@ -352,6 +352,15 @@ ENTREPRISE_COULEUR = os.environ.get('ENTREPRISE_COULEUR', '#2563EB')
 # the legacy ventes WeasyPrint quote PDF. Only affects QUOTES, never invoices.
 USE_PREMIUM_QUOTE_ENGINE = os.environ.get('USE_PREMIUM_QUOTE_ENGINE', '1') != '0'
 
+# XFSM12 — trace d'étalonnage de l'instrument sur la fiche de recette IEC
+# 62446-1 (CommissioningRecord.instrument_id). Paramétrable warn/block (défaut
+# warn) : quand True, enregistrer une fiche référençant un instrument dont
+# l'étalonnage FG80 est expiré est REFUSÉ (400) ; par défaut ce n'est qu'un
+# avertissement non-bloquant côté client (le payload API le signale quand
+# même via `instrument_etalonnage_expire`).
+INSTRUMENT_ETALONNAGE_BLOQUANT = (
+    os.environ.get('INSTRUMENT_ETALONNAGE_BLOQUANT', '0') == '1')
+
 # GED12 — recherche sémantique documentaire (pgvector). KEY-GATED : OFF par
 # défaut, donc l'indexation d'embeddings est un no-op (aucun appel/coût) et la
 # recherche sémantique retombe sur le plein-texte GED11. Le founder l'active en
