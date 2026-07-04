@@ -20,7 +20,7 @@ from .models import (
     MouvementCaisse, Rapprochement, RetenueGarantie, RetenueSource,
     TauxDevise, TimbreFiscal,
     ClotureCaisse, DotationAmortissement, EcritureComptable,
-    Provision, RapprochementBancaire,
+    NoteFrais, Provision, RapprochementBancaire,
 )
 
 
@@ -3061,3 +3061,21 @@ def etat_provisions(company, *, date_debut=None, date_fin=None, nature=None):
         bucket['total_repris'] += prov.montant_repris or Decimal('0')
         bucket['total_solde'] += prov.solde
     return result
+
+
+# ── XACC28 — Frais refacturables non facturés (billable expenses) ─────────
+
+def frais_refacturables_non_factures(company, *, client_id=None):
+    """Notes de frais refacturables VALIDÉES pas encore refacturées (XACC28).
+
+    ``client_id`` (optionnel) filtre sur le client déjà rattaché à la note ;
+    sans filtre, renvoie toutes les notes refacturables en attente, tous
+    clients confondus. Lecture seule ; company-scopé."""
+    qs = NoteFrais.objects.filter(
+        company=company, refacturable=True,
+        statut=NoteFrais.Statut.VALIDEE,
+        facture_refacturation_id__isnull=True,
+    )
+    if client_id:
+        qs = qs.filter(client_refacturation_id=client_id)
+    return qs.order_by('date_frais', 'id')

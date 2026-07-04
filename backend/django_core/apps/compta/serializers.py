@@ -795,12 +795,14 @@ class NoteFraisSerializer(serializers.ModelSerializer):
             'mode_remboursement', 'compte_tresorerie', 'date_remboursement',
             'rembourse_par', 'ecriture_remboursement', 'date_creation',
             'hors_politique',
+            'refacturable', 'taux_marge', 'client_refacturation_id',
+            'chantier_refacturation', 'facture_refacturation_id',
         ]
         read_only_fields = [
             'reference', 'statut', 'valide_par', 'date_validation',
             'ecriture_charge', 'motif_rejet', 'compte_tresorerie',
             'date_remboursement', 'rembourse_par', 'ecriture_remboursement',
-            'date_creation', 'hors_politique',
+            'date_creation', 'hors_politique', 'facture_refacturation_id',
         ]
 
     def validate_employe(self, value):

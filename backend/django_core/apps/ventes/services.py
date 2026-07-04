@@ -1907,6 +1907,76 @@ def creer_facture_classique(*, company, client, user, taux_tva, montant_ht,
     return create_with_reference(Facture, 'FAC', company, _create)
 
 
+# ── XACC28 — Refacturation des frais au client (billable expenses) ────────
+# Thin service exposé pour apps.compta (frontière cross-app, CLAUDE.md) :
+# compta connaît le montant/la marge déjà calculés côté frais, jamais les
+# détails de facturation — il pousse juste des lignes sur une facture
+# EXISTANTE du client. Un produit générique « Frais refacturés » (service,
+# sans stock) est créé une fois par société (idempotent) pour porter ces
+# lignes, à l'image du produit catalogue utilisé pour les lignes classiques.
+
+_PRODUIT_FRAIS_REFACTURES_NOM = 'Frais refacturés'
+
+
+def _produit_frais_refactures(company):
+    from apps.stock.models import Produit
+
+    produit, _ = Produit.objects.get_or_create(
+        company=company, nom=_PRODUIT_FRAIS_REFACTURES_NOM,
+        defaults={'prix_vente': Decimal('0'), 'quantite_stock': 0,
+                  'seuil_alerte': 0})
+    return produit
+
+
+def ajouter_lignes_frais_refactures(*, facture, lignes, user=None):
+    """Ajoute des lignes de frais refacturés sur une ``Facture`` EXISTANTE.
+
+    ``lignes`` est une liste de dicts ``{'designation', 'montant_ht',
+    'taux_tva'?}`` (montant déjà majoré de la marge, calculé côté appelant —
+    ``apps.compta``). Chaque ligne devient une ``LigneFacture`` (quantité=1,
+    prix_unitaire=montant_ht) rattachée au produit générique « Frais
+    refacturés » de la société de la facture ; les totaux de la facture sont
+    recalculés. Renvoie la liste des ``LigneFacture`` créées. Ne vérifie PAS
+    l'anti-doublon (fait côté appelant, sur les frais eux-mêmes)."""
+    from apps.ventes.models import LigneFacture
+
+    if not lignes:
+        return []
+    produit = _produit_frais_refactures(facture.company)
+    creees = []
+    for ligne in lignes:
+        creees.append(LigneFacture.objects.create(
+            facture=facture,
+            produit=produit,
+            designation=ligne.get('designation', '') or _PRODUIT_FRAIS_REFACTURES_NOM,
+            quantite=Decimal('1'),
+            prix_unitaire=Decimal(ligne.get('montant_ht') or 0),
+            taux_tva=ligne.get('taux_tva'),
+        ))
+    _recalculer_totaux_facture(facture)
+    return creees
+
+
+def _recalculer_totaux_facture(facture):
+    """Recalcule les totaux HT/TVA/TTC d'une facture depuis ses lignes.
+
+    Réutilisé par XACC28 après ajout de lignes de frais refacturés — même
+    logique de sommation que les autres chemins de création de ligne (taux
+    TVA par ligne si renseigné, sinon le taux global de la facture)."""
+    total_ht = Decimal('0')
+    total_tva = Decimal('0')
+    for ligne in facture.lignes.all():
+        ht_ligne = ligne.total_ht
+        taux = ligne.taux_tva if ligne.taux_tva is not None else facture.taux_tva
+        total_ht += ht_ligne
+        total_tva += (ht_ligne * Decimal(taux or 0) / Decimal('100'))
+    facture.montant_ht = total_ht.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    facture.montant_tva = total_tva.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    facture.montant_ttc = facture.montant_ht + facture.montant_tva
+    facture.save(update_fields=['montant_ht', 'montant_tva', 'montant_ttc'])
+    return facture
+
+
 def enregistrer_paiement(*, facture, montant, mode, date_paiement, user,
                          reference='', note=''):
     """Enregistre un ``Paiement`` MANUEL sur une facture EXISTANTE.

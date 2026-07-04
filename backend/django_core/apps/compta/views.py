@@ -1932,6 +1932,10 @@ class NoteFraisViewSet(_ComptaBaseViewSet):
                 categorie=vd.get('categorie'),
                 justificatif=vd.get('justificatif'),
                 compte_charge=vd.get('compte_charge'),
+                refacturable=vd.get('refacturable') or False,
+                taux_marge=vd.get('taux_marge'),
+                client_refacturation_id=vd.get('client_refacturation_id'),
+                chantier_refacturation=vd.get('chantier_refacturation', '') or '',
                 user=request.user)
         except DjangoValidationError as exc:
             return Response(
@@ -1940,6 +1944,43 @@ class NoteFraisViewSet(_ComptaBaseViewSet):
         data = self.get_serializer(note).data
         data['doublon_possible'] = doublon
         return Response(data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'], url_path='refacturables')
+    def refacturables(self, request):
+        """XACC28 — Notes refacturables VALIDÉES pas encore refacturées."""
+        client_id = request.query_params.get('client')
+        qs = selectors.frais_refacturables_non_factures(
+            request.user.company, client_id=client_id)
+        return Response(self.get_serializer(qs, many=True).data)
+
+    @action(detail=False, methods=['post'], url_path='refacturer')
+    def refacturer(self, request):
+        """XACC28 — Génère des lignes de refacturation sur une facture existante.
+
+        Corps : ``{facture_id, note_frais_ids: [...]}``. La facture doit
+        appartenir à la société courante (résolue via
+        ``apps.ventes.services.get_facture_or_none``, jamais un import de
+        ``ventes.models``).
+        """
+        from apps.ventes.services import get_facture_or_none
+
+        facture_id = request.data.get('facture_id')
+        note_frais_ids = request.data.get('note_frais_ids') or []
+        facture = get_facture_or_none(
+            company=request.user.company, facture_id=facture_id)
+        if facture is None:
+            return Response(
+                {'detail': 'Facture introuvable pour cette société.'},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            services.refacturer_frais_client(
+                request.user.company, facture=facture,
+                note_frais_ids=note_frais_ids, user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response({'facture_id': facture.id, 'refacture': True})
 
     @action(detail=False, methods=['post'])
     def ocr(self, request):

@@ -3320,9 +3320,64 @@ def mapper_justificatif_vers_note_frais(champs_bruts):
     return resultat
 
 
+# ── XACC28 — Refacturation des frais au client (billable expenses) ────────
+
+@transaction.atomic
+def refacturer_frais_client(company, *, facture, note_frais_ids, user=None):
+    """Génère des lignes de refacturation sur une ``Facture`` EXISTANTE (XACC28).
+
+    ``facture`` est l'objet ``ventes.Facture`` déjà résolu et vérifié
+    company-scopé par l'APPELANT (la vue) — ce service ne fait AUCUN import de
+    ``ventes.models`` : il délègue la création des lignes à
+    ``apps.ventes.services.ajouter_lignes_frais_refactures`` (frontière
+    cross-app). Chaque ``NoteFrais`` : (a) doit être ``refacturable`` et
+    ``VALIDEE``, (b) ne doit pas déjà avoir été refacturée
+    (``facture_refacturation_id`` vide) — sinon levée ``ValidationError``
+    listant les références en défaut (jamais de refacturation silencieuse
+    deux fois). Le montant de ligne = ``montant`` × (1 + ``taux_marge`` %).
+    Marque chaque note ``facture_refacturation_id`` = facture. Renvoie la
+    liste des ``LigneFacture`` créées (objets ``ventes``, opaques ici)."""
+    from apps.ventes.services import ajouter_lignes_frais_refactures
+
+    notes = list(NoteFrais.objects.filter(
+        company=company, id__in=note_frais_ids or []))
+    trouvees = {n.id for n in notes}
+    manquantes = set(note_frais_ids or []) - trouvees
+    if manquantes:
+        raise ValidationError(
+            f"Notes de frais introuvables pour cette société : {sorted(manquantes)}.")
+    invalides = [
+        n.reference or str(n.id) for n in notes
+        if not n.refacturable or n.statut != NoteFrais.Statut.VALIDEE
+        or n.facture_refacturation_id
+    ]
+    if invalides:
+        raise ValidationError(
+            "Notes non refacturables (non validées, non marquées "
+            f"refacturables, ou déjà refacturées) : {', '.join(invalides)}.")
+    lignes_payload = []
+    for note in notes:
+        taux_marge = Decimal(note.taux_marge or 0)
+        montant_avec_marge = (
+            Decimal(note.montant or 0) * (1 + taux_marge / Decimal('100'))
+        ).quantize(Decimal('0.01'))
+        lignes_payload.append({
+            'designation': f'Frais refacturé — {note.motif or note.reference}',
+            'montant_ht': montant_avec_marge,
+        })
+    lignes_creees = ajouter_lignes_frais_refactures(
+        facture=facture, lignes=lignes_payload, user=user)
+    for note in notes:
+        note.facture_refacturation_id = facture.id
+        note.save(update_fields=['facture_refacturation_id'])
+    return lignes_creees
+
+
 def creer_note_frais(company, *, employe, date_frais, montant, motif,
                      categorie=None, justificatif=None, compte_charge=None,
-                     user=None):
+                     refacturable=False, taux_marge=None,
+                     client_refacturation_id=None,
+                     chantier_refacturation='', user=None):
     """Crée une note de frais (FG135) en BROUILLON, référence posée côté serveur.
 
     ``montant`` doit être strictement positif (validé par ``clean``). La
@@ -3330,7 +3385,11 @@ def creer_note_frais(company, *, employe, date_frais, montant, motif,
     race-safe (``apps.ventes.utils.references`` — jamais count()+1). XACC27 :
     ``hors_politique`` est calculé côté serveur (jamais imposable) depuis le
     plafond de la catégorie — c'est un warning affiché au valideur, jamais un
-    blocage à la création. ``company`` posée côté serveur. Renvoie la note.
+    blocage à la création. XACC28 : ``refacturable``/``taux_marge``/
+    ``client_refacturation_id``/``chantier_refacturation`` rattachent la note à
+    un client/chantier (string-ref) pour une refacturation ultérieure —
+    ``facture_refacturation_id`` reste toujours vide à la création. ``company``
+    posée côté serveur. Renvoie la note.
     """
     categorie = categorie or NoteFrais.Categorie.AUTRE
     montant_dec = Decimal(montant or 0)
@@ -3345,6 +3404,10 @@ def creer_note_frais(company, *, employe, date_frais, montant, motif,
         created_by=user,
         hors_politique=note_frais_hors_politique(
             company, categorie=categorie, montant=montant_dec),
+        refacturable=bool(refacturable),
+        taux_marge=Decimal(taux_marge) if taux_marge is not None else Decimal('0'),
+        client_refacturation_id=client_refacturation_id,
+        chantier_refacturation=chantier_refacturation or '',
     )
     if justificatif is not None:
         note.justificatif = justificatif

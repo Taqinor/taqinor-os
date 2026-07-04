@@ -2418,6 +2418,21 @@ class NoteFrais(models.Model):
     hors_politique = models.BooleanField(
         default=False,
         verbose_name='Hors politique (dépasse le plafond)')
+    # ── XACC28 — Refacturation au client (billable expense) ──
+    refacturable = models.BooleanField(
+        default=False, verbose_name='Refacturable au client')
+    taux_marge = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('0'),
+        verbose_name='Taux de marge à la refacturation (%)')
+    client_refacturation_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Client à refacturer (id crm, string-ref)')
+    chantier_refacturation = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Chantier (référence libre)')
+    facture_refacturation_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Facture de refacturation (id ventes, string-ref)')
 
     class Meta:
         verbose_name = 'Note de frais'
