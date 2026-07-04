@@ -87,6 +87,24 @@ class Client(models.Model):
         help_text='Langue des factures / devis générés pour ce client.',
     )
 
+    # XFAC23 — conditions de paiement négociées par client (délai en jours,
+    # ex. 30/60/90 — omniprésent en B2B marocain) + report facultatif en fin
+    # de mois. NULL = pas de réglage → comportement actuel inchangé (fallback
+    # +30 j dans apps.ventes.scheduled._echeance_effective).
+    delai_paiement_jours = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        verbose_name='Délai de paiement (jours)',
+        help_text='Vide = comportement par défaut (+30 j depuis émission).',
+    )
+    fin_de_mois = models.BooleanField(
+        default=False,
+        verbose_name='Échéance reportée en fin de mois',
+        help_text=(
+            "Si coché, l'échéance calculée depuis le délai est reportée au "
+            "dernier jour de son mois (ex. « 60 jours fin de mois »)."
+        ),
+    )
+
     class Meta:
         verbose_name = "Client"
         verbose_name_plural = "Clients"

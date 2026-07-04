@@ -45,10 +45,18 @@ def casablanca_today():
 
 
 def _echeance_effective(facture, today):
-    """Échéance retenue : ``date_echeance`` si posée, sinon émission + 30 j."""
+    """Échéance retenue : ``date_echeance`` si posée (jamais écrasée — input
+    freedom), sinon dérivée des conditions de paiement du client (XFAC23 —
+    délai négocié 30/60/90 j, fin de mois), sinon repli émission + 30 j
+    (comportement historique inchangé pour un client sans réglage)."""
     if facture.date_echeance:
         return facture.date_echeance
     base = facture.date_emission or today
+    from .services import calculer_date_echeance
+    derivee = calculer_date_echeance(
+        client=getattr(facture, 'client', None), date_emission=base)
+    if derivee is not None:
+        return derivee
     return base + timedelta(days=DEFAULT_ECHEANCE_DAYS)
 
 

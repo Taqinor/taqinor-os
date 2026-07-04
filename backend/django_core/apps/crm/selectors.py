@@ -357,6 +357,23 @@ SITE_PROFILE_FIELDS = (
 )
 
 
+def delai_paiement_client(client):
+    """XFAC23 — conditions de paiement négociées d'un client, en dict.
+
+    Renvoie ``{'delai_jours': int | None, 'fin_de_mois': bool}``. ``client``
+    peut être ``None`` (devis/facture sans client résolu) — renvoie alors le
+    réglage par défaut (aucun délai négocié). Point d'entrée cross-app LECTURE
+    SEULE pour que ``ventes`` dérive la date d'échéance sans importer
+    ``apps.crm.models``.
+    """
+    if client is None:
+        return {'delai_jours': None, 'fin_de_mois': False}
+    return {
+        'delai_jours': getattr(client, 'delai_paiement_jours', None),
+        'fin_de_mois': bool(getattr(client, 'fin_de_mois', False)),
+    }
+
+
 def site_profile_for_client(client_id, company=None):
     """DC12 — profil site/énergie réutilisable d'un client, en dict.
 

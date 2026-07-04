@@ -1656,6 +1656,36 @@ def facture_montant_du(facture):
     return facture.montant_du
 
 
+def calculer_date_echeance(*, client, date_emission):
+    """XFAC23 — dérive la date d'échéance depuis les conditions de paiement du
+    client (délai en jours + report fin de mois).
+
+    Renvoie ``None`` quand le client n'a pas de délai négocié (``crm.Client.
+    delai_paiement_jours`` vide) — l'appelant retombe alors sur le comportement
+    historique (repli +30 j calculé ailleurs, ex. ``scheduled.
+    _echeance_effective``). Ne calcule JAMAIS à la place d'une échéance déjà
+    saisie manuellement — c'est à l'appelant de ne pas écraser une valeur
+    existante (input freedom).
+
+    Cross-app lecture seule via ``apps.crm.selectors`` (jamais d'import de
+    ``apps.crm.models``).
+    """
+    if client is None or date_emission is None:
+        return None
+    from apps.crm.selectors import delai_paiement_client
+    reglage = delai_paiement_client(client)
+    delai = reglage.get('delai_jours')
+    if not delai:
+        return None
+    from datetime import timedelta
+    echeance = date_emission + timedelta(days=int(delai))
+    if reglage.get('fin_de_mois'):
+        import calendar
+        last_day = calendar.monthrange(echeance.year, echeance.month)[1]
+        echeance = echeance.replace(day=last_day)
+    return echeance
+
+
 def get_facture_or_none(*, company, facture_id):
     """Facture scopée société, ou None (thin service pour apps.pos XPOS6)."""
     from apps.ventes.models import Facture
