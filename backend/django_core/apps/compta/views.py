@@ -3656,6 +3656,26 @@ class CampagneViewSet(_ComptaBaseViewSet):
             return Response({'detail': str(exc)}, status=400)
         return Response({'corps_fusionne': rendu})
 
+    @action(detail=True, methods=['post'], url_path='envoyer-test')
+    def envoyer_test(self, request, pk=None):
+        """XMKT13 — Envoi de test (jamais vers de vrais destinataires)."""
+        campagne = self.get_object()
+        adresses_seed = request.data.get('adresses_seed') or []
+        lead_id_exemple = request.data.get('lead_id_exemple')
+        resultat = services.envoyer_test_campagne(
+            campagne, adresses_seed=adresses_seed,
+            lead_id_exemple=lead_id_exemple)
+        return Response(resultat)
+
+    @action(detail=True, methods=['get'], url_path='precheck')
+    def precheck(self, request, pk=None):
+        """XMKT13 — Pré-check bloquant/avertissant avant l'envoi de masse."""
+        campagne = self.get_object()
+        verifier_liens = request.query_params.get('verifier_liens') == '1'
+        rapport = services.precheck_sante_campagne(
+            campagne, verifier_liens=verifier_liens)
+        return Response(rapport)
+
 
 # ── XMKT2 — Journal d'envoi par destinataire (drill-down) ───────────────────
 

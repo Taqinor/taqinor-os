@@ -24,6 +24,7 @@ import csv
 import hashlib
 import io
 import re
+import urllib.request
 from decimal import ROUND_HALF_UP, Decimal
 from math import asin, cos, radians, sin, sqrt
 
@@ -5926,6 +5927,80 @@ def rendre_variables_fusion(corps, company, lead_id, *, fallback=''):
         valeur = champs.get(variable) or fallback
         rendu = rendu.replace('{' + variable + '}', valeur)
     return rendu
+
+
+# ── XMKT13 — Envoi test + aperçu fusionné + pré-check santé ─────────────────
+
+_URL_RE = re.compile(r'https?://[^\s<>"\')]+')
+_IMG_URL_RE = re.compile(r'\.(?:jpg|jpeg|png|gif|webp)(?:\?\S*)?$', re.IGNORECASE)
+
+
+def envoyer_test_campagne(campagne, *, adresses_seed, lead_id_exemple=None):
+    """XMKT13 — Envoi de test d'une campagne (jamais vers de vrais
+    destinataires) : corps fusionné pour un contact d'exemple si fourni, sinon
+    le corps brut. NE modifie ni le statut ni les compteurs de la campagne
+    (contrairement à ``envoyer_campagne``) — c'est un test, pas un envoi réel.
+    Renvoie ``{'seeds': [...], 'corps_fusionne': ...}``.
+    """
+    corps = campagne.corps
+    if lead_id_exemple:
+        corps = rendre_variables_fusion(
+            campagne.corps, campagne.company, lead_id_exemple)
+    return {
+        'seeds': [a for a in (adresses_seed or []) if a],
+        'corps_fusionne': corps,
+    }
+
+
+def _lien_casse(url, timeout=3):
+    """HEAD best-effort (XMKT13) : renvoie True si le lien semble cassé.
+    Toute erreur réseau/timeout est traitée comme "on ne sait pas" (False) —
+    un pré-check ne doit jamais planter sur un problème réseau transitoire.
+    """
+    try:
+        req = urllib.request.Request(url, method='HEAD')
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status >= 400
+    except Exception:
+        return False
+
+
+def precheck_sante_campagne(campagne, *, verifier_liens=False):
+    """Pré-check bloquant/avertissant avant l'envoi de masse d'une campagne
+    (XMKT13). Renvoie ``{'bloque': bool, 'avertissements': [...]}``.
+
+    BLOQUE (email marketing) si le lien de désinscription (XMKT3) est absent
+    du corps. Le reste (liens cassés, poids d'images, segment vide) est un
+    AVERTISSEMENT non bloquant. ``verifier_liens`` est OFF par défaut (le HEAD
+    réseau n'est fait qu'à la demande explicite, jamais en arrière-plan).
+    """
+    avertissements = []
+    bloque = False
+    corps = campagne.corps or ''
+    urls = _URL_RE.findall(corps)
+
+    if campagne.canal == Campagne.Canal.EMAIL:
+        a_lien_desinscription = (
+            '/desinscription/' in corps or '{lien_desinscription}' in corps)
+        if not a_lien_desinscription:
+            bloque = True
+            avertissements.append(
+                'Lien de désinscription manquant — envoi email bloqué (loi 09-08).')
+
+    if verifier_liens:
+        for url in urls:
+            if _lien_casse(url):
+                avertissements.append(f'Lien possiblement cassé : {url}')
+
+    for url in urls:
+        if _IMG_URL_RE.search(url):
+            avertissements.append(f"Image dans le corps : {url} (vérifier le poids).")
+
+    segment_vide = not (campagne.segment or {}) and not campagne.listes.exists()
+    if segment_vide:
+        avertissements.append('Aucun segment ni liste ciblée — 0 destinataire prévu.')
+
+    return {'bloque': bloque, 'avertissements': avertissements}
 
 
 # ── FG202 — Déclenchement d'une séquence de relance (GATED, NO-OP) ──────────
