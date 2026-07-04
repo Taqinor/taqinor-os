@@ -476,7 +476,8 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + [
-                'historique', 'rapport_pdf', 'lien_client', 'similaires']:
+                'historique', 'rapport_pdf', 'lien_client', 'similaires',
+                'instructions_suggestions']:
             return [HasPermissionOrLegacy('sav_voir')()]
         elif self.action in WRITE_ACTIONS + [
                 'noter', 'annuler', 'reactiver', 'creer_devis',
@@ -782,6 +783,24 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         ticket = self.get_object()
         return Response(
             TicketActivitySerializer(ticket.activites.all(), many=True).data)
+
+    @action(detail=True, methods=['get'], url_path='instructions-suggestions',
+            permission_classes=[HasPermissionOrLegacy('sav_voir')])
+    def instructions_suggestions(self, request, pk=None):
+        """ZMFG5 — Suggestions d'articles KB pour pré-remplir l'onglet
+        « Instructions », à partir du type de panne (cause) du ticket, ou du
+        libellé de la catégorie/description si aucune cause n'est codifiée.
+        Lecture seule (aucune écriture) — l'utilisateur applique lui-même la
+        suggestion via un PATCH `instructions` explicite."""
+        from apps.kb.selectors import article_pour_mot_cle
+        ticket = self.get_object()
+        texte = (
+            getattr(ticket.cause, 'nom', None)
+            or getattr(ticket.categorie, 'libelle', None)
+            or ticket.description or '')
+        data = article_pour_mot_cle(
+            ticket.company, request.user, texte, limit=3)
+        return Response({'results': data})
 
     @action(detail=True, methods=['get'], url_path='similaires',
             permission_classes=[HasPermissionOrLegacy('sav_voir')])

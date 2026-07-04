@@ -672,3 +672,42 @@ def blocs_visibles(company, user):
     return qs.filter(
         Q(portee=BlocReutilisable.Portee.SOCIETE)
         | Q(portee=BlocReutilisable.Portee.PERSONNEL, created_by_id=user_id))
+
+
+# ── ZMFG5 — Pré-remplissage des instructions d'intervention SAV ────────────
+
+def article_pour_mot_cle(company, user, texte_recherche, *, limit=1):
+    """ZMFG5 — Article(s) KB pertinent(s) pour un texte de recherche (ex. le
+    type/nom d'une cause de panne SAV), pour pré-remplir l'onglet
+    « Instructions » d'un ticket. Recherche par correspondance de mots-clés
+    SIMPLE sur titre + corps (aucune dépendance à un provider d'embedding —
+    fonctionne sans clé, contrairement à ``retrieve_chunks``), restreinte aux
+    articles VISIBLES pour ``user`` (KB7/XKB9) et PUBLIÉS.
+
+    Renvoie une liste de dicts légers ``[{'id', 'titre', 'extrait'}, …]``
+    (jamais l'objet ORM, pour ne pas fuiter le modèle hors de l'app) — vide
+    si le texte est vide ou qu'aucun article ne correspond (dégradation
+    propre, no-op)."""
+    texte = (texte_recherche or '').strip()
+    if not texte:
+        return []
+    mots = {m for m in re.findall(r"[a-zà-ÿ0-9]{3,}", texte.lower())}
+    if not mots:
+        return []
+
+    qs = visible_articles_qs(
+        KbArticle.objects.filter(
+            company=company, statut=KbArticle.Statut.PUBLIE),
+        user,
+    )
+    scored = []
+    for art in qs:
+        hay = f'{art.titre} {art.corps}'.lower()
+        score = sum(1 for mot in mots if mot in hay)
+        if score > 0:
+            scored.append((score, art))
+    scored.sort(key=lambda pair: (-pair[0], -pair[1].pk))
+    return [
+        {'id': art.id, 'titre': art.titre, 'extrait': (art.corps or '')[:500]}
+        for _score, art in scored[:max(1, int(limit))]
+    ]

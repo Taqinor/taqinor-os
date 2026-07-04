@@ -536,6 +536,13 @@ class Ticket(models.Model):
     priorite = models.CharField(
         max_length=10, choices=Priorite.choices, default=Priorite.NORMALE)
     description = models.TextField(blank=True, null=True)
+    # ── ZMFG5 — Instructions structurées (mode opératoire de l'intervention) ─
+    # Distinct de `description` (le problème signalé) et des notes chatter
+    # `TicketActivity` : le MODE OPÉRATOIRE à suivre pour réaliser
+    # l'intervention, éditable et pré-remplissable depuis un article KB lié
+    # au type de panne (apps.kb.selectors, lecture seule). Blank/null par
+    # défaut = comportement actuel inchangé (aucune instruction requise).
+    instructions = models.TextField(blank=True, default='')
     technicien_responsable = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='tickets_techniques',
