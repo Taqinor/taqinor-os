@@ -2569,8 +2569,19 @@ class AccidentTravailViewSet(_RhBaseViewSet):
             return None
 
     def perform_create(self, serializer):
-        """Company + reference (race-safe) posées côté serveur (FG181)."""
+        """Company + reference (race-safe) posées côté serveur (FG181).
+
+        YHIRE10 — un arrêt de travail déclaré à la création synchronise
+        aussitôt l'absence de présence liée (roster + import paie)."""
         services.creer_accident_travail(serializer, self.request.user.company)
+        services.synchroniser_absence_accident_travail(serializer.instance)
+
+    def perform_update(self, serializer):
+        """YHIRE10 — toute mise à jour de l'AT (prolongation/retrait de
+        l'arrêt) resynchronise l'absence liée (idempotent : même ligne
+        étendue, jamais de doublon ; arrêt retiré → absence annulée)."""
+        accident = serializer.save()
+        services.synchroniser_absence_accident_travail(accident)
 
     def list(self, request, *args, **kwargs):
         """Liste paginée OU export CSV de la déclaration CNSS (``?export=csv``).

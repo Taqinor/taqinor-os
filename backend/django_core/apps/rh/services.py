@@ -1770,6 +1770,87 @@ def proposer_sortie_pour_licenciement(
         motif=DossierEmploye.MotifSortie.LICENCIEMENT)
 
 
+# ── YHIRE10 — accident du travail avec arrêt → absence (présence) ─────────
+
+# Code stable du TypeAbsence dédié (seedé par ``seed_types_absence``). La
+# rémunération de cette absence dépend du réglage société (l'indemnisation
+# IJ CNSS reste le périmètre XPAI14 ; on câble ici SEULEMENT la présence —
+# roster + import paie via le flag ``remunere`` du type).
+_CODE_TYPE_ABSENCE_ACCIDENT_TRAVAIL = 'AT'
+
+
+def _motif_absence_accident_travail(accident):
+    """Clé stable reliant la ``DemandeConge`` générée à SON accident
+    d'origine — garde d'idempotence (jamais deux absences pour un même AT ;
+    une prolongation ÉTEND la même ligne au lieu d'en créer une seconde)."""
+    return f'Accident du travail — {accident.reference}'
+
+
+@transaction.atomic
+def synchroniser_absence_accident_travail(accident):
+    """YHIRE10 — synchronise l'absence de présence liée à un
+    ``AccidentTravail`` avec arrêt, appelée à la création ET à chaque mise à
+    jour de l'accident (idempotent) :
+
+    * ``arret_travail=True`` et ``nb_jours_arret > 0`` — crée (1er appel) ou
+      ÉTEND (appel suivant : mêmes dates recalculées depuis
+      ``date_accident``/``nb_jours_arret``, jamais de doublon — clé stable
+      par ``reference``) une ``DemandeConge`` déjà VALIDÉE du type
+      ``TypeAbsence`` seedé « Accident du travail », couvrant
+      ``date_accident`` → ``date_accident + nb_jours_arret - 1`` ;
+    * ``arret_travail=False`` (ou ``nb_jours_arret=0``) — ANNULE l'absence
+      précédemment générée si elle existe (arrêt supprimé/retiré) ;
+    * type non seedé pour la société — no-op défensif (journalisé nulle
+      part, appel silencieux : ne bloque jamais la déclaration de l'AT).
+
+    Renvoie la ``DemandeConge`` active, ou ``None`` si aucun effet.
+    """
+    from datetime import timedelta
+
+    from .models import DemandeConge, TypeAbsence
+
+    motif = _motif_absence_accident_travail(accident)
+    existante = DemandeConge.objects.filter(
+        company=accident.company, employe=accident.employe,
+        motif=motif).exclude(statut=DemandeConge.Statut.ANNULEE).first()
+
+    if not accident.arret_travail or not accident.nb_jours_arret:
+        if existante is not None:
+            annuler_demande(existante)
+        return None
+
+    type_absence = TypeAbsence.objects.filter(
+        company=accident.company,
+        code=_CODE_TYPE_ABSENCE_ACCIDENT_TRAVAIL).first()
+    if type_absence is None:
+        return None  # type non seedé pour cette société — no-op défensif
+
+    date_debut = accident.date_accident
+    date_fin = date_debut + timedelta(days=accident.nb_jours_arret - 1)
+
+    if existante is not None:
+        # Prolongation/ajustement : ÉTEND la même ligne (jamais de doublon).
+        existante.date_debut = date_debut
+        existante.date_fin = date_fin
+        existante.jours = Decimal(accident.nb_jours_arret)
+        existante.type_absence = type_absence
+        existante.save(update_fields=[
+            'date_debut', 'date_fin', 'jours', 'type_absence'])
+        return existante
+
+    return DemandeConge.objects.create(
+        company=accident.company,
+        employe=accident.employe,
+        type_absence=type_absence,
+        date_debut=date_debut,
+        date_fin=date_fin,
+        jours=Decimal(accident.nb_jours_arret),
+        statut=DemandeConge.Statut.VALIDEE,
+        date_decision=timezone.now(),
+        motif=motif,
+    )
+
+
 def comptes_actifs_employes_sortis(company):
     """YHIRE2 — rapport de sécurité PERMANENT : comptes utilisateur restés
     ACTIFS alors que leur dossier employé est SORTI. Doit toujours être VIDE
