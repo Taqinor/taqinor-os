@@ -193,8 +193,8 @@ class PortailFournisseurToken(models.Model):
         verbose_name = 'Jeton portail fournisseur'
         verbose_name_plural = 'Jetons portail fournisseur'
         ordering = ['-created_at']
-        indexes = [models.Index(fields=['token'],
-                                 name='stock_pftoken_token_idx')]
+        indexes = [
+            models.Index(fields=['token'], name='stock_pftoken_token_idx')]
 
     def __str__(self):
         return f'Portail {self.fournisseur_id} · {self.token[:8]}…'
