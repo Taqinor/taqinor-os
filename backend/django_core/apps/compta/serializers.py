@@ -1448,6 +1448,14 @@ class CampagneSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError('Liste inconnue.')
         return value
 
+    def validate_corps(self, value):
+        from apps.compta.services import valider_variables_fusion
+        try:
+            valider_variables_fusion(value)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc))
+        return value
+
 
 # ── XMKT2 — Journal d'envoi par destinataire ────────────────────────────────
 

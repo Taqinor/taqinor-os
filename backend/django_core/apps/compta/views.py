@@ -3641,6 +3641,21 @@ class CampagneViewSet(_ComptaBaseViewSet):
         services.envoyer_campagne(campagne, destinataires=destinataires)
         return Response(CampagneSerializer(campagne).data)
 
+    @action(detail=True, methods=['get'])
+    def apercu_fusion(self, request, pk=None):
+        """XMKT8 — Aperçu du corps fusionné pour un lead d'exemple
+        (``?lead_id=``), fallback appliqué par variable si le champ est vide."""
+        campagne = self.get_object()
+        lead_id = request.query_params.get('lead_id')
+        if not lead_id:
+            return Response({'detail': 'lead_id requis.'}, status=400)
+        try:
+            rendu = services.rendre_variables_fusion(
+                campagne.corps, request.user.company, lead_id)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response({'corps_fusionne': rendu})
+
 
 # ── XMKT2 — Journal d'envoi par destinataire (drill-down) ───────────────────
 

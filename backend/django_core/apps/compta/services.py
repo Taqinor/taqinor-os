@@ -5882,6 +5882,52 @@ def previsualiser_segment(segment, *, taille_echantillon=10):
     }
 
 
+# ── XMKT8 — Variables de fusion dans les campagnes avec fallback ───────────
+
+# Variables disponibles au rendu — jamais ``prix_achat`` ni aucune donnée
+# interne (règle explicite de la tâche). Whitelist stricte : une variable
+# ``{inconnue}`` dans un corps de campagne est une ERREUR de validation.
+MERGE_VARIABLES = (
+    'prenom', 'nom', 'ville', 'societe', 'proprietaire_lead',
+)
+
+_MERGE_VAR_RE = re.compile(r'\{([a-zA-Z_]+)\}')
+
+
+def variables_du_corps(corps):
+    """Renvoie l'ensemble des noms de variables ``{xxx}`` présentes dans un
+    corps de campagne (XMKT8), pour la validation à l'édition."""
+    return set(_MERGE_VAR_RE.findall(corps or ''))
+
+
+def valider_variables_fusion(corps):
+    """Lève ``ValueError`` si ``corps`` référence une variable de fusion
+    inconnue (XMKT8) — erreur claire à la validation, comme demandé."""
+    inconnues = variables_du_corps(corps) - set(MERGE_VARIABLES)
+    if inconnues:
+        raise ValueError(
+            f"Variable(s) de fusion inconnue(s) : {sorted(inconnues)}")
+    return corps
+
+
+def rendre_variables_fusion(corps, company, lead_id, *, fallback=''):
+    """Substitue les variables de fusion d'un corps de campagne (XMKT8) avec
+    les champs du lead ciblé (lus via ``apps.crm.selectors.lead_merge_fields``
+    — jamais d'import direct de ``apps.crm.models``). Une variable vide sur
+    le contact retombe sur ``fallback`` (par variable, comme
+    ``crm.MessageTemplate.render``).
+    """
+    from apps.crm.selectors import lead_merge_fields
+
+    valider_variables_fusion(corps)
+    champs = lead_merge_fields(company, lead_id) or {}
+    rendu = corps or ''
+    for variable in MERGE_VARIABLES:
+        valeur = champs.get(variable) or fallback
+        rendu = rendu.replace('{' + variable + '}', valeur)
+    return rendu
+
+
 # ── FG202 — Déclenchement d'une séquence de relance (GATED, NO-OP) ──────────
 
 def whatsapp_actif():

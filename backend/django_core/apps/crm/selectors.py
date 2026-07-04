@@ -922,3 +922,29 @@ def leads_matching_regles(company, regles):
         if borne.get('lte') is not None:
             qs = qs.filter(facture_hiver__lte=borne['lte'])
     return qs
+
+
+def lead_merge_fields(company, lead_id):
+    """XMKT8 — Champs LECTURE SEULE d'un lead pour la substitution de
+    variables de fusion dans une campagne marketing (``apps.compta``, jamais
+    d'import direct de ``apps.crm.models``). Renvoie ``None`` si le lead
+    n'appartient pas à la société (jamais d'accès cross-tenant).
+
+    Ne renvoie JAMAIS ``prix_achat`` ni aucune donnée interne — uniquement
+    les champs de contact/adresse déjà publics dans la fiche lead.
+    """
+    from .models import Lead
+    lead = Lead.objects.select_related('owner').filter(
+        pk=lead_id, company=company).first()
+    if lead is None:
+        return None
+    proprietaire = ''
+    if lead.owner_id:
+        proprietaire = lead.owner.get_full_name() or lead.owner.username
+    return {
+        'prenom': lead.prenom or '',
+        'nom': lead.nom or '',
+        'ville': lead.ville or '',
+        'societe': lead.societe or '',
+        'proprietaire_lead': proprietaire,
+    }
