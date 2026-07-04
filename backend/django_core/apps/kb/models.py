@@ -156,6 +156,15 @@ class KbArticle(models.Model):
     # Vide = pas de couverture (comportement historique inchangé).
     couverture_file_key = models.CharField(
         max_length=500, blank=True, default='', verbose_name='Couverture')
+    # ZGED11 — propriétés typées (module ``kb_article`` de `customfields`,
+    # réutilise l'infrastructure existante — comme GED10 pour les documents).
+    # Les définitions posées sur un article PARENT sont héritées par ses
+    # sous-articles (résolution côté selector/serializer, jamais dupliquées
+    # en base). Validé contre les `CustomFieldDef` actives via
+    # `customfields.serializers.validate_custom_data`. Vide par défaut =
+    # comportement historique inchangé (aucun article existant affecté).
+    proprietes = models.JSONField(
+        null=True, blank=True, default=dict, verbose_name='Propriétés')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
     date_modification = models.DateTimeField(

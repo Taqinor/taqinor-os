@@ -31,6 +31,7 @@ class KbArticleSerializer(serializers.ModelSerializer):
         source='verifie_par.get_full_name', read_only=True)
 
     has_couverture = serializers.SerializerMethodField()
+    proprietes_effectives = serializers.SerializerMethodField()
 
     class Meta:
         model = KbArticle
@@ -40,19 +41,37 @@ class KbArticleSerializer(serializers.ModelSerializer):
             'ordre', 'visibilite', 'est_gabarit', 'verifie_par',
             'verifie_par_nom', 'verifie_jusqua', 'est_verrouille', 'vues',
             'langue', 'traduction_de', 'traduction_perimee',
-            'emoji', 'has_couverture',
+            'emoji', 'has_couverture', 'proprietes', 'proprietes_effectives',
             'date_creation', 'date_modification',
         ]
         read_only_fields = [
             'auteur', 'verifie_par', 'verifie_jusqua', 'est_verrouille',
             'vues', 'traduction_perimee', 'has_couverture',
-            'date_creation', 'date_modification']
+            'proprietes_effectives', 'date_creation', 'date_modification']
 
     def get_has_couverture(self, obj):
         """ZGED10 — expose seulement un booléen : la clé MinIO elle-même
         n'est jamais exposée telle quelle (même motif que ``authentication``
         avatars) ; l'image se récupère via l'action ``couverture``."""
         return bool(obj.couverture_file_key)
+
+    def get_proprietes_effectives(self, obj):
+        """ZGED11 — Propriétés RÉSOLUES (celles de l'article + héritées de
+        ses ANCÊTRES quand l'article lui-même ne les définit pas)."""
+        from . import selectors
+        return selectors.proprietes_effectives(obj)
+
+    def validate_proprietes(self, value):
+        """ZGED11 — Valide contre les définitions actives du module
+        ``kb_article`` de la société (réutilise `customfields`, même motif
+        que GED10 pour les documents). Hors requête (écritures de service),
+        laisse passer tel quel."""
+        request = self.context.get('request')
+        if request is None:
+            return value
+        from apps.customfields.serializers import validate_custom_data
+        return validate_custom_data(
+            'kb_article', request.user.company, value)
 
     def validate_parent(self, parent):
         """XKB8 — le parent doit être même-société et ne jamais créer de cycle.

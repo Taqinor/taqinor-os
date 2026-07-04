@@ -190,6 +190,20 @@ class KbArticleViewSet(_KbBaseViewSet):
         """XKB8 — Arbre des articles visibles (racines → enfants imbriqués)."""
         return Response(selectors.arbre_articles(self.get_queryset()))
 
+    @action(detail=True, methods=['get'], url_path='items')
+    def items(self, request, pk=None):
+        """ZGED11 — Sous-articles de cet article rendus comme une COLLECTION
+        structurée. ``?vue=kanban|cartes|liste|calendrier`` (défaut
+        ``liste``) ; ``?propriete=<code>`` sélectionne la propriété de
+        regroupement (kanban) ou de datation (calendrier)."""
+        article = self.get_object()
+        vue = request.query_params.get('vue', 'liste')
+        propriete = request.query_params.get('propriete')
+        enfants = self.get_queryset().filter(parent=article)
+        return Response(
+            selectors.items_parcours_vue(
+                enfants, vue=vue, propriete=propriete))
+
     @action(detail=True, methods=['get'], url_path='sommaire')
     def sommaire(self, request, pk=None):
         """XKB10 — Sommaire auto (titres Markdown) d'un article."""

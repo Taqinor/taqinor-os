@@ -585,3 +585,76 @@ def assignations_pour_utilisateur(company, utilisateur):
             .filter(company=company, utilisateur=utilisateur)
             .select_related('parcours')
             .order_by('-date_creation', '-id'))
+
+
+# ── ZGED11 — Propriétés d'article (héritage) + vues d'items ────────────────
+
+def proprietes_effectives(article):
+    """ZGED11 — Propriétés RÉSOLUES d'un article : les siennes propres,
+    complétées par celles de ses ANCÊTRES pour toute clé qu'il ne définit
+    pas lui-même (héritage — « partagées par tous les sous-articles »).
+
+    L'ancêtre le PLUS PROCHE gagne pour une clé donnée (un sous-article peut
+    surcharger localement une propriété héritée sans la redéfinir sur tous
+    les niveaux). Borné à 1000 remontées pour ne jamais boucler sur des
+    données corrompues (même garde que ``validate_parent``/anti-cycle).
+    """
+    effectives = {}
+    cursor = article.parent
+    for _ in range(1000):
+        if cursor is None:
+            break
+        for cle, val in (cursor.proprietes or {}).items():
+            effectives.setdefault(cle, val)
+        cursor = cursor.parent
+    # Les propriétés PROPRES de l'article gagnent toujours sur l'hérité.
+    effectives.update(article.proprietes or {})
+    return effectives
+
+
+def items_parcours_vue(queryset, *, vue, propriete=None):
+    """ZGED11 — Sous-articles d'un queryset (DÉJÀ scopé société+visibilité)
+    rendus comme une COLLECTION structurée pour une ``vue`` donnée.
+
+    * ``liste``/``cartes`` : chaque item porte ses ``proprietes_effectives``
+      (aucun regroupement) — le frontend rend les deux à partir des MÊMES
+      données, seule la disposition change.
+    * ``kanban`` : regroupé par la valeur de ``propriete`` (une propriété de
+      type ``choice`` typiquement, ex. « Statut ») — une clé ``'__aucune__'``
+      accueille les items sans cette propriété renseignée.
+    * ``calendrier`` : ne garde que les items dont ``propriete`` (typiquement
+      une propriété ``date``) est renseignée, groupés par cette valeur.
+
+    Renvoie une liste de dicts ``{id, titre, proprietes, groupe?}`` (vue
+    liste/cartes) ou un dict ``{groupe: [items...]}`` (kanban/calendrier).
+    """
+    items = []
+    for article in queryset.order_by('ordre', 'id'):
+        effectives = proprietes_effectives(article)
+        items.append({
+            'id': article.id,
+            'titre': article.titre,
+            'proprietes': effectives,
+        })
+
+    if vue in ('liste', 'cartes'):
+        return items
+
+    if vue == 'kanban':
+        groupes = {}
+        for item in items:
+            valeur = item['proprietes'].get(propriete) if propriete else None
+            cle = valeur if valeur not in (None, '') else '__aucune__'
+            groupes.setdefault(cle, []).append(item)
+        return groupes
+
+    if vue == 'calendrier':
+        groupes = {}
+        for item in items:
+            valeur = item['proprietes'].get(propriete) if propriete else None
+            if valeur in (None, ''):
+                continue
+            groupes.setdefault(valeur, []).append(item)
+        return groupes
+
+    return items
