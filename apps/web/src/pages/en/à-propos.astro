@@ -25,11 +25,18 @@ const devisHref = L('/devis/mon-toit');
 
 /**
  * W345 — Press & partnership factsheet, DERIVED (no hand-typed figures). See
- * the FR page (src/pages/à-propos.astro) for the full rationale: install
- * count + earliest documented project come from realisations.ts; no company
+ * the FR page (src/pages/à-propos.astro) for the full rationale: installed
+ * kWc + earliest documented project come from realisations.ts; no company
  * founding date is published anywhere on the site, so none is invented here.
+ *
+ * RULE B (2026-07-04): the raw install count is no longer a featured public
+ * stat — replaced with installed kWc, already the reference measure
+ * elsewhere on the site.
  */
-const installCount = REALISATIONS.length;
+const totalKwc = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
+const totalKwcLabel = totalKwc
+  .toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  .replace('.', ',');
 const earliestRealisation = REALISATIONS[REALISATIONS.length - 1];
 
 const etapes = [
@@ -222,8 +229,8 @@ const etapes = [
               <dt class="tech-label mt-2 text-encre-faint">Trade register (RC 691213)</dt>
             </div>
             <div>
-              <dd class="font-display text-2xl font-bold">{installCount} installations</dd>
-              <dt class="tech-label mt-2 text-encre-faint">Publicly documented projects</dt>
+              <dd class="font-display text-2xl font-bold">{totalKwcLabel} kWc</dd>
+              <dt class="tech-label mt-2 text-encre-faint">Installed, publicly documented projects</dt>
             </div>
             <div>
               <dd class="font-display text-2xl font-bold">{earliestRealisation.date}</dd>
