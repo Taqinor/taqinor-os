@@ -65,6 +65,128 @@ def droit_annuel(annees_service=0):
         .quantize(Decimal('0.01'))
 
 
+def feries_periode(company, date_debut, date_fin):
+    """ZRH1 — fériés (fixes ET mobiles société) d'une période, cross-app-safe.
+
+    Réutilise ``notifications.calendar_utils.feries_entre`` (jamais
+    ``notifications.models`` importé directement dans ``rh``) pour ajouter
+    les fêtes MOBILES hégiriennes (Aïd el-Fitr, Aïd el-Adha, 1er Moharram,
+    Mawlid…) et tout férié société saisi dans ``notifications.Holiday`` au
+    décompte, en plus de la table FIXE ``holidays.JOURS_FERIES_FIXES_MA``.
+    Renvoie une liste de ``date`` (vide si rien de configuré, ou dates
+    invalides).
+    """
+    if date_debut is None or date_fin is None:
+        return []
+    from apps.notifications.calendar_utils import feries_entre
+    return feries_entre(company, date_debut, date_fin)
+
+
+def annees_service(date_embauche, reference=None):
+    """Années de service pleines à ``reference`` (aujourd'hui par défaut).
+
+    ``None`` si ``date_embauche`` est absente (ancienneté non calculable).
+    """
+    if date_embauche is None:
+        return 0
+    ref = reference or timezone.localdate()
+    annees = ref.year - date_embauche.year
+    if (ref.month, ref.day) < (date_embauche.month, date_embauche.day):
+        annees -= 1
+    return max(annees, 0)
+
+
+@transaction.atomic
+def accruer_conges_mensuel(dossier, *, annee, mois, apply=False):
+    """ZRH2 — acquisition mensuelle automatique pour UN employé/mois.
+
+    Odoo « Accrual Time Off » : crédite ``SoldeConge.acquis`` du droit du mois
+    (``acquisition_mensuelle``, ancienneté dérivée de ``date_embauche``) pour
+    l'année ``annee``, SANS jamais dépasser 12 crédits/an (garde
+    ``mois_acquis``). Idempotent : un second appel pour le MÊME mois ne
+    crédite pas deux fois. ``apply=False`` (dry-run) ne modifie rien et
+    renvoie le montant qui SERAIT crédité. Renvoie un dict
+    ``{'credite': Decimal, 'deja_acquis': bool}``.
+    """
+    from .models import SoldeConge
+
+    solde, _ = SoldeConge.objects.select_for_update().get_or_create(
+        company=dossier.company, employe=dossier, annee=annee)
+    if solde.mois_acquis >= 12 or solde.mois_acquis >= mois:
+        # Déjà crédité pour ce mois (ou l'année est déjà pleinement créditée).
+        return {'credite': Decimal('0'), 'deja_acquis': True}
+
+    service = annees_service(dossier.date_embauche)
+    montant = acquisition_mensuelle(service)
+    if apply:
+        solde.acquis = (solde.acquis or Decimal('0')) + montant
+        solde.mois_acquis = mois
+        solde.save(update_fields=[
+            'acquis', 'mois_acquis', 'date_modification'])
+    return {'credite': montant, 'deja_acquis': False}
+
+
+@transaction.atomic
+def reporter_solde_janvier(dossier, *, annee_precedente, annee_cible,
+                           plafond=None, apply=False):
+    """ZRH2 — report janvier : transfère le ``disponible`` restant de
+    ``annee_precedente`` vers ``report`` de ``annee_cible`` (Odoo « Time Off
+    accrual carry-over »).
+
+    Idempotent (``report_applique`` sur le solde CIBLE) : un second appel ne
+    re-crédite pas. ``plafond`` borne le montant reporté (``None`` =
+    illimité, comportement par défaut). ``apply=False`` ne modifie rien.
+    Renvoie un dict ``{'reporte': Decimal, 'deja_applique': bool}``.
+    """
+    from .models import SoldeConge
+
+    cible, _ = SoldeConge.objects.select_for_update().get_or_create(
+        company=dossier.company, employe=dossier, annee=annee_cible)
+    if cible.report_applique:
+        return {'reporte': Decimal('0'), 'deja_applique': True}
+
+    precedent = SoldeConge.objects.filter(
+        company=dossier.company, employe=dossier,
+        annee=annee_precedente).first()
+    disponible = precedent.disponible if precedent else Decimal('0')
+    if disponible < 0:
+        disponible = Decimal('0')
+    montant = disponible
+    if plafond is not None and montant > plafond:
+        montant = Decimal(str(plafond))
+
+    if apply:
+        cible.report = (cible.report or Decimal('0')) + montant
+        cible.report_applique = True
+        cible.save(update_fields=[
+            'report', 'report_applique', 'date_modification'])
+    return {'reporte': montant, 'deja_applique': False}
+
+
+def jour_bloque_conflit(employe, date_debut, date_fin):
+    """ZRH4 — jour bloqué du DÉPARTEMENT de ``employe`` chevauchant la plage.
+
+    Renvoie le premier ``JourBloqueConge`` en conflit (ou ``None``) : un
+    blocage SANS département lié couvre TOUTE la société ; sinon il ne
+    s'applique qu'aux départements qu'il liste. Un employé sans département
+    n'est concerné QUE par les blocages société entière (sans département).
+    """
+    from django.db.models import Q
+
+    from .models import JourBloqueConge
+
+    qs = JourBloqueConge.objects.filter(
+        company=employe.company, date_debut__lte=date_fin,
+        date_fin__gte=date_debut)
+    if employe.departement_id:
+        qs = qs.filter(
+            Q(departements__isnull=True) |
+            Q(departements__id=employe.departement_id))
+    else:
+        qs = qs.filter(departements__isnull=True)
+    return qs.distinct().first()
+
+
 def calculer_jours_demande(type_absence, date_debut, date_fin,
                            extra_holidays=None,
                            demi_journee_debut=False, demi_journee_fin=False):
@@ -441,6 +563,60 @@ def emarger_dotation(dotation, *, signataire_nom, role_signataire=None,
     return {'emargement': emargement, 'deja_accusee': deja_accusee}
 
 
+def creer_dotation_epi(*, company, epi, employe, quantite, user=None,
+                       bloquer_si_insuffisant=False, **extra_fields):
+    """YHIRE13 — crée une ``DotationEpi`` et décrémente le stock si ``epi``
+    est lié à un produit (``EpiCatalogue.produit_id``).
+
+    Catalogue non lié (``produit_id`` vide) = comportement STRICTEMENT
+    inchangé (aucun effet stock). Le mouvement de stock (typé SORTIE, motif
+    dotation) est créé via ``apps.stock.services`` — jamais d'import direct
+    de ``apps.stock.models``. Lève ``ValueError`` si le stock est insuffisant
+    ET que ``bloquer_si_insuffisant`` est vrai (sinon la dotation se fait
+    quand même, warn par défaut).
+    """
+    from .models import DotationEpi
+
+    dotation = DotationEpi.objects.create(
+        company=company, epi=epi, employe=employe, quantite=quantite,
+        **extra_fields)
+
+    if epi.produit_id:
+        from apps.stock import services as stock_services
+        stock_services.decrementer_stock_dotation_epi(
+            company=company, produit_id=epi.produit_id, quantite=quantite,
+            reference=f'DotationEPI#{dotation.id}', user=user,
+            bloquer_si_insuffisant=bloquer_si_insuffisant)
+
+    return dotation
+
+
+class RestitutionEpiError(Exception):
+    """Erreur métier lors de la restitution d'une dotation EPI (YHIRE13)."""
+
+
+def restituer_dotation_epi(dotation, *, user=None):
+    """YHIRE13 — restitue une ``DotationEpi`` : réintègre le stock si l'EPI
+    est lié à un produit, marque ``restituee``. Une dotation déjà restituée
+    lève ``RestitutionEpiError`` (jamais restituée deux fois — pas de double
+    réintégration de stock)."""
+    if dotation.restituee:
+        raise RestitutionEpiError('Cette dotation a déjà été restituée.')
+
+    if dotation.epi.produit_id:
+        from apps.stock import services as stock_services
+        stock_services.reintegrer_stock_restitution_epi(
+            company=dotation.company, produit_id=dotation.epi.produit_id,
+            quantite=dotation.quantite,
+            reference=f'RestitutionEPI#{dotation.id}', user=user)
+
+    dotation.restituee = True
+    dotation.date_restitution = timezone.now()
+    dotation.save(update_fields=[
+        'restituee', 'date_restitution', 'date_modification'])
+    return dotation
+
+
 def creer_accident_travail(serializer, company):
     """Crée un AccidentTravail (FG181) avec une référence race-safe.
 
@@ -484,6 +660,86 @@ def creer_presqu_accident(serializer, company, declare_par=None):
 
 
 @transaction.atomic
+def soumettre_ouverture(ouverture, *, demandeur):
+    """YHIRE14 — soumet une ouverture BROUILLON à approbation.
+
+    Seule une ouverture en ``brouillon`` peut être soumise. Pose
+    ``demandeur`` (celui qui soumet — jamais lu du corps de requête) et
+    ``date_soumission``. Lève ``ValueError`` sinon.
+    """
+    from .models import OuverturePoste
+
+    if ouverture.statut != OuverturePoste.Statut.BROUILLON:
+        raise ValueError(
+            'Seule une ouverture en brouillon peut être soumise à '
+            'approbation.')
+    ouverture.statut = OuverturePoste.Statut.EN_APPROBATION
+    ouverture.demandeur = demandeur
+    ouverture.date_soumission = timezone.now()
+    ouverture.save(update_fields=[
+        'statut', 'demandeur', 'date_soumission', 'date_modification'])
+    return ouverture
+
+
+def approuver_ouverture(ouverture, *, approbateur):
+    """YHIRE14 — approuve une ouverture EN_APPROBATION -> OUVERT.
+
+    SoD (séparation des tâches) : l'approbateur ne peut JAMAIS être le
+    demandeur — auto-approbation refusée (``ValueError``). Lève aussi
+    ``ValueError`` si l'ouverture n'est pas dans l'état décidable.
+    """
+    from .models import OuverturePoste
+
+    if ouverture.statut != OuverturePoste.Statut.EN_APPROBATION:
+        raise ValueError(
+            "Seule une ouverture en attente d'approbation peut être "
+            'approuvée.')
+    if ouverture.demandeur_id and ouverture.demandeur_id == getattr(
+            approbateur, 'id', None):
+        raise ValueError(
+            'Le demandeur ne peut pas approuver sa propre réquisition '
+            '(séparation des tâches).')
+    ouverture.statut = OuverturePoste.Statut.OUVERT
+    ouverture.approbateur = approbateur
+    ouverture.date_decision = timezone.now()
+    ouverture.motif_refus = ''
+    if not ouverture.date_ouverture:
+        ouverture.date_ouverture = timezone.now().date()
+    ouverture.save(update_fields=[
+        'statut', 'approbateur', 'date_decision', 'motif_refus',
+        'date_ouverture', 'date_modification'])
+    return ouverture
+
+
+def refuser_ouverture(ouverture, *, approbateur, motif_refus=''):
+    """YHIRE14 — refuse une ouverture EN_APPROBATION (reste non ouverte).
+
+    Même garde SoD que ``approuver_ouverture``. Le statut refusé n'a pas de
+    valeur dédiée dans le cycle (spécification) : on ramène l'ouverture en
+    ``brouillon`` pour permettre une resoumission après correction, le motif
+    étant conservé pour traçabilité.
+    """
+    from .models import OuverturePoste
+
+    if ouverture.statut != OuverturePoste.Statut.EN_APPROBATION:
+        raise ValueError(
+            "Seule une ouverture en attente d'approbation peut être "
+            'refusée.')
+    if ouverture.demandeur_id and ouverture.demandeur_id == getattr(
+            approbateur, 'id', None):
+        raise ValueError(
+            'Le demandeur ne peut pas refuser sa propre réquisition '
+            '(séparation des tâches).')
+    ouverture.statut = OuverturePoste.Statut.BROUILLON
+    ouverture.approbateur = approbateur
+    ouverture.date_decision = timezone.now()
+    ouverture.motif_refus = motif_refus or ''
+    ouverture.save(update_fields=[
+        'statut', 'approbateur', 'date_decision', 'motif_refus',
+        'date_modification'])
+    return ouverture
+
+
 def embaucher(candidature, matricule=None, **dossier_kwargs):
     """Convertit une candidature EMBAUCHÉE en ``DossierEmploye`` (FG189 — ATS).
 
@@ -654,6 +910,62 @@ def instancier_integration(dossier, modele=None):
     if not lignes:
         return []
     return ElementIntegrationEmploye.objects.bulk_create(lignes)
+
+
+def _modele_evaluation_applicable(campagne, employe):
+    """ZRH7 — modèle d'évaluation le plus spécifique pour ``employe`` dans
+    ``campagne`` : priorité au modèle EXPLICITE de la campagne s'il est ciblé
+    (poste/département) ou par défaut, sinon un modèle du département de
+    l'employé, sinon le modèle par défaut de la société. ``None`` si aucun.
+    """
+    if campagne.modele_id:
+        return campagne.modele
+    from .models import ModeleEvaluation
+
+    base = ModeleEvaluation.objects.filter(
+        company=campagne.company, actif=True)
+    if employe.poste_ref_id and employe.departement_id:
+        exact = base.filter(
+            poste_ref_id=employe.poste_ref_id,
+            departement_id=employe.departement_id).first()
+        if exact:
+            return exact
+    if employe.poste_ref_id:
+        match = base.filter(
+            poste_ref_id=employe.poste_ref_id, departement__isnull=True
+        ).first()
+        if match:
+            return match
+    if employe.departement_id:
+        match = base.filter(
+            departement_id=employe.departement_id, poste_ref__isnull=True
+        ).first()
+        if match:
+            return match
+    return base.filter(poste_ref__isnull=True, departement__isnull=True).first()
+
+
+def instancier_reponses_evaluation(campagne, employe):
+    """ZRH7 — instancie ``EvaluationEmploye.reponses`` depuis le modèle
+    applicable (campagne > département/poste employé > défaut société).
+
+    Renvoie une liste de dicts ``{libelle, type, cible, reponse: ''}`` (une
+    par question du modèle), ou ``[]`` si aucun modèle applicable — la
+    campagne SANS modèle reste un entretien à synthèse libre, comportement
+    historique inchangé.
+    """
+    modele = _modele_evaluation_applicable(campagne, employe)
+    if modele is None:
+        return []
+    reponses = []
+    for question in modele.questions or []:
+        reponses.append({
+            'libelle': question.get('libelle', ''),
+            'type': question.get('type', 'texte'),
+            'cible': question.get('cible', 'manager'),
+            'reponse': '',
+        })
+    return reponses
 
 
 def controler_permis_affectation(company, employe_id, *, le=None):
@@ -901,6 +1213,55 @@ def controler_geofence_presence(presence, gps_lat, gps_lng):
                 f'≈{int(distance_m)} m du chantier).'),
         )
     return presence
+
+
+# ── ZRH5 — clôture automatique des pointages oubliés ───────────────────────
+
+def clore_pointages_ouverts(company, *, apply=False):
+    """ZRH5 — clôture les pointages OUVERTS (arrivée sans départ) au-delà du
+    seuil société (« Automatic check-out » Odoo).
+
+    Seuil désactivé (``ReglageRH.pointage_auto_depart_apres_h`` NULL) → no-op
+    (liste vide). Un pointage ouvert depuis > seuil est clôturé UNE fois :
+    ``heure_depart = heure_arrivee + seuil``, ``depart_auto = True`` (jamais
+    écrasé si déjà fermé — la requête ne cible que
+    ``heure_depart__isnull=True``), et un ``IncidentPresence`` « départ
+    automatique » est créé pour traçabilité. ``apply=False`` (dry-run) ne
+    modifie rien. Renvoie la liste des pointages (dry-run) ou clôturés
+    (apply), pour rapport.
+    """
+    from datetime import timedelta
+
+    from .models import IncidentPresence, Pointage, ReglageRH
+
+    reglage = ReglageRH.objects.filter(company=company).first()
+    seuil_h = reglage.pointage_auto_depart_apres_h if reglage else None
+    if not seuil_h:
+        return []
+
+    seuil = timedelta(hours=seuil_h)
+    limite = timezone.now() - seuil
+    ouverts = Pointage.objects.filter(
+        company=company, heure_depart__isnull=True,
+        heure_arrivee__isnull=False, heure_arrivee__lte=limite,
+    ).select_related('employe')
+
+    traites = []
+    for pointage in ouverts:
+        depart_calcule = pointage.heure_arrivee + seuil
+        traites.append(pointage)
+        if apply:
+            pointage.heure_depart = depart_calcule
+            pointage.depart_auto = True
+            pointage.save(update_fields=[
+                'heure_depart', 'depart_auto', 'date_modification'])
+            IncidentPresence.objects.create(
+                company=company, employe=pointage.employe,
+                type_incident=IncidentPresence.TypeIncident.DEPART_ANTICIPE,
+                date=pointage.heure_arrivee.date(),
+                motif='Départ automatique (pointage oublié)',
+                note=f'Clôturé après {seuil_h} h sans départ pointé.')
+    return traites
 
 
 # ── XRH13 — import de pointages externes (pointeuse biométrique, CSV) ──────

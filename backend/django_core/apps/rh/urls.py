@@ -45,7 +45,9 @@ from .views import (
     HeuresSuppViewSet,
     HoraireTravailViewSet,
     IncidentPresenceViewSet,
+    JourBloqueCongeViewSet,
     KiosquePointageViewSet,
+    ModeleEvaluationViewSet,
     ModeleIntegrationViewSet,
     NoteDeFraisViewSet,
     OrdreMissionViewSet,
@@ -92,6 +94,7 @@ router.register(
 router.register(r'types-absence', TypeAbsenceViewSet)
 router.register(r'soldes-conge', SoldeCongeViewSet)
 router.register(r'demandes-conge', DemandeCongeViewSet)
+router.register(r'jours-bloques-conge', JourBloqueCongeViewSet)
 router.register(r'periodes-fermeture', PeriodeFermetureViewSet)
 # NOTE : le kiosque (``pointages/kiosque``) DOIT être enregistré AVANT
 # ``pointages`` — DefaultRouter résout dans l'ordre d'enregistrement, et le
@@ -137,6 +140,7 @@ router.register(
 router.register(r'entretiens-recrutement', EntretienRecrutementViewSet)
 router.register(r'gabarits-email-recrutement', GabaritEmailRecrutementViewSet)
 router.register(r'promesses-embauche', PromesseEmbaucheViewSet)
+router.register(r'modeles-evaluation', ModeleEvaluationViewSet)
 router.register(r'campagnes-evaluation', CampagneEvaluationViewSet)
 router.register(r'campagnes-pulse', CampagnePulseViewSet)
 router.register(r'evaluations-employe', EvaluationEmployeViewSet)

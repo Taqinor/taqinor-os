@@ -853,6 +853,16 @@ class SoldeConge(models.Model):
     pris = models.DecimalField(
         max_digits=6, decimal_places=2, default=Decimal('0'),
         verbose_name='Jours pris')
+    # ZRH2 — garde d'idempotence de l'acquisition mensuelle automatique
+    # (``accruer_conges``) : nombre de mois DÉJÀ crédités pour cette année,
+    # jamais > 12. NULL/0 = comportement historique inchangé (acquisition
+    # manuelle uniquement, comme avant ZRH2).
+    mois_acquis = models.PositiveSmallIntegerField(
+        default=0, verbose_name='Mois déjà crédités (acquisition auto)')
+    # ZRH2 — le report janvier de N-1 vers N ne s'applique qu'une fois par
+    # année (garde séparée du décompte des mois).
+    report_applique = models.BooleanField(
+        default=False, verbose_name='Report N-1 déjà appliqué')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
     date_modification = models.DateTimeField(
@@ -939,6 +949,11 @@ class Pointage(models.Model):
         verbose_name='GPS départ — longitude')
     note = models.CharField(
         max_length=255, blank=True, default='', verbose_name='Note')
+    # ZRH5 — clôture automatique (« Automatic check-out » Odoo) : ``True`` si
+    # ``heure_depart`` a été posée par ``manage.py clore_pointages_ouverts``
+    # (jamais écrasé si le pointage était déjà fermé manuellement).
+    depart_auto = models.BooleanField(
+        default=False, verbose_name='Départ clôturé automatiquement')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
     date_modification = models.DateTimeField(
@@ -2028,6 +2043,14 @@ class EpiCatalogue(models.Model):
     # ``date_dotation + intervalle_controle_mois``.
     intervalle_controle_mois = models.PositiveIntegerField(
         null=True, blank=True, verbose_name='Intervalle de contrôle (mois)')
+    # YHIRE13 — lien OPTIONNEL vers un produit du stock (référence STRING vers
+    # ``stock.Produit``, jamais de FK cross-app : la frontière passe par
+    # ``apps.stock.services``). NULL = comportement historique inchangé (aucun
+    # effet stock). Quand renseigné, chaque ``DotationEpi`` décrémente ce
+    # produit du stock à hauteur de sa ``quantite``.
+    produit_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Produit stock lié (référence)')
     actif = models.BooleanField(default=True, verbose_name='Actif')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
@@ -2118,6 +2141,14 @@ class DotationEpi(models.Model):
     date_accuse = models.DateTimeField(
         null=True, blank=True,
         verbose_name="Date de l'accusé de remise")
+    # YHIRE13 — restitution (sortie EPI récupéré) : quand l'EPI est lié à un
+    # produit de stock, la restitution réintègre le stock. NULL/False par
+    # défaut = comportement historique inchangé. Une dotation ne peut être
+    # restituée qu'une fois (garde côté service).
+    restituee = models.BooleanField(
+        default=False, verbose_name='Restituée')
+    date_restitution = models.DateTimeField(
+        null=True, blank=True, verbose_name='Date de restitution')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
     date_modification = models.DateTimeField(
@@ -3114,6 +3145,13 @@ class OuverturePoste(models.Model):
     """
 
     class Statut(models.TextChoices):
+        # YHIRE14 — cycle amont d'approbation : une ouverture naît en
+        # BROUILLON (défaut), passe par EN_APPROBATION à la soumission, puis
+        # OUVERT une fois approuvée (SoD : approbateur ≠ demandeur). Les
+        # ouvertures EXISTANTES avant YHIRE14 restent ``ouvert`` — seul le
+        # DÉFAUT à la création change, aucune donnée existante n'est touchée.
+        BROUILLON = 'brouillon', 'Brouillon'
+        EN_APPROBATION = 'en_approbation', 'En approbation'
         OUVERT = 'ouvert', 'Ouvert'
         POURVU = 'pourvu', 'Pourvu'
         CLOS = 'clos', 'Clos'
@@ -3155,7 +3193,30 @@ class OuverturePoste(models.Model):
         default=1, verbose_name='Nombre de postes')
     statut = models.CharField(
         max_length=20, choices=Statut.choices,
-        default=Statut.OUVERT, verbose_name='Statut')
+        default=Statut.BROUILLON, verbose_name='Statut')
+    # YHIRE14 — traçabilité SoD de l'approbation de réquisition (approbateur
+    # ne peut jamais être le demandeur). NULL pour les ouvertures créées avant
+    # YHIRE14 (comportement historique, restées ``ouvert``).
+    demandeur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_ouvertures_demandees',
+        verbose_name='Demandeur',
+    )
+    approbateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_ouvertures_approuvees',
+        verbose_name='Approbateur',
+    )
+    date_soumission = models.DateTimeField(
+        null=True, blank=True, verbose_name='Soumise le')
+    date_decision = models.DateTimeField(
+        null=True, blank=True, verbose_name='Décidée le')
+    motif_refus = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Motif de refus')
     date_ouverture = models.DateField(
         null=True, blank=True, verbose_name="Date d'ouverture")
     date_cible = models.DateField(
@@ -3285,6 +3346,62 @@ class Candidature(models.Model):
         return f'{self.nom} — {self.ouverture}'
 
 
+class ModeleEvaluation(models.Model):
+    """Gabarit de questions d'évaluation réutilisable (ZRH7, « Appraisal
+    templates » Odoo).
+
+    ``questions`` (JSON) : liste typée ``[{libelle, type, cible}]`` où
+    ``type`` ∈ {texte, note1-5} et ``cible`` ∈ {employe, manager} (qui
+    répond à la question). Ciblable optionnellement par ``departement`` ou
+    ``poste_ref`` (le modèle le plus spécifique applicable est choisi à la
+    création d'une ``EvaluationEmploye`` — défaut le modèle SANS département
+    ni poste de la société, s'il existe). Multi-société : ``company`` posée
+    CÔTÉ SERVEUR. Additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_modeles_evaluation',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=160, verbose_name='Nom')
+    departement = models.ForeignKey(
+        'rh.Departement',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='modeles_evaluation',
+        verbose_name='Département (cible)',
+    )
+    poste_ref = models.ForeignKey(
+        'rh.Poste',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='modeles_evaluation',
+        verbose_name='Poste (cible)',
+    )
+    # Liste de dicts {libelle, type (texte|note1-5), cible (employe|manager)}.
+    questions = models.JSONField(
+        default=list, blank=True, verbose_name='Questions')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = "Modèle d'évaluation"
+        verbose_name_plural = "Modèles d'évaluation"
+        ordering = ['nom']
+        indexes = [
+            models.Index(
+                fields=['company', 'departement'],
+                name='rh_modeval_comp_dep_idx'),
+        ]
+
+    def __str__(self):
+        return self.nom
+
+
 class CampagneEvaluation(models.Model):
     """Campagne d'appréciation annuelle (FG190) — entretiens & évaluations RH.
 
@@ -3331,6 +3448,16 @@ class CampagneEvaluation(models.Model):
         default=Statut.OUVERTE, verbose_name='Statut')
     description = models.TextField(
         blank=True, default='', verbose_name='Description')
+    # ZRH7 — modèle de questions structuré appliqué aux évaluations créées
+    # dans cette campagne (NULL = comportement historique inchangé, aucune
+    # question structurée).
+    modele = models.ForeignKey(
+        'rh.ModeleEvaluation',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='campagnes',
+        verbose_name="Modèle d'évaluation",
+    )
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
     date_modification = models.DateTimeField(
@@ -3436,6 +3563,13 @@ class EvaluationEmploye(models.Model):
         blank=True, default='', verbose_name='Issue')
     issue_details = models.TextField(
         blank=True, default='', verbose_name="Détails de l'issue")
+    # ZRH7 — réponses structurées instanciées depuis le modèle de la campagne
+    # (``CampagneEvaluation.modele``) à la création : liste de dicts
+    # ``{libelle, type, cible, reponse}`` (``reponse`` vide au départ, saisie
+    # ensuite manager/employé). VIDE si la campagne n'a pas de modèle
+    # (comportement historique inchangé).
+    reponses = models.JSONField(
+        default=list, blank=True, verbose_name='Réponses (modèle)')
     statut = models.CharField(
         max_length=20, choices=Statut.choices,
         default=Statut.PLANIFIE, verbose_name='Statut')
@@ -4582,6 +4716,12 @@ class ReglageRH(models.Model):
     # anonymisation par ``manage.py purger_candidatures``. Défaut 24 mois.
     retention_candidatures_mois = models.PositiveIntegerField(
         default=24, verbose_name='Rétention candidatures (mois)')
+    # ZRH5 — seuil (heures) après lequel un pointage ARRIVÉE sans DÉPART est
+    # clôturé automatiquement par ``manage.py clore_pointages_ouverts``.
+    # ``None`` = désactivé (comportement par défaut, aucune clôture auto).
+    pointage_auto_depart_apres_h = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Clôture auto pointage après (heures)')
     date_modification = models.DateTimeField(
         auto_now=True, verbose_name='Modifié le')
 
@@ -5562,3 +5702,51 @@ class TentativeQuiz(models.Model):
 
     def __str__(self):
         return f'{self.employe.matricule} — {self.quiz.intitule} ({self.score}%)'
+
+
+class JourBloqueConge(models.Model):
+    """Jour de blocage congés (« Mandatory / Stress Days » Odoo) — ZRH4.
+
+    Interdit la SOUMISSION d'une ``DemandeConge`` chevauchant une période
+    bloquée (haute saison de pose, inventaire…). ``departements`` (M2M
+    optionnel) restreint le blocage à des départements précis ; VIDE = toute
+    la société. Distinct de XRH14 (fermetures IMPOSÉES qui CRÉENT des congés) :
+    ici on REFUSE la demande, on n'en crée aucune. Le RH
+    (``IsResponsableOrAdmin``) peut forcer via ``?forcer=1`` à la soumission
+    (journalisé — pas de champ dédié, le refus reste la garde par défaut).
+
+    Multi-société : ``company`` posée CÔTÉ SERVEUR (jamais lue du corps).
+    Additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_jours_bloques_conge',
+        verbose_name='Société',
+    )
+    libelle = models.CharField(max_length=160, verbose_name='Libellé')
+    date_debut = models.DateField(verbose_name='Du')
+    date_fin = models.DateField(verbose_name='Au')
+    # VIDE = bloque TOUTE la société ; sinon restreint aux départements liés.
+    departements = models.ManyToManyField(
+        Departement, blank=True, related_name='jours_bloques_conge',
+        verbose_name='Départements concernés (vide = toute la société)')
+    motif = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Motif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Jour bloqué (congés)'
+        verbose_name_plural = 'Jours bloqués (congés)'
+        ordering = ['-date_debut']
+        indexes = [
+            models.Index(
+                fields=['company', 'date_debut', 'date_fin'],
+                name='rh_jbc_comp_debut_fin_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.libelle} ({self.date_debut} → {self.date_fin})'

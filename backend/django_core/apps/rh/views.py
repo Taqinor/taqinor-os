@@ -9,7 +9,7 @@ from datetime import timedelta
 
 from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
-from rest_framework import filters, status, viewsets
+from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny
@@ -74,6 +74,8 @@ from .models import (
     HeuresSupp,
     HoraireTravail,
     IncidentPresence,
+    JourBloqueConge,
+    ModeleEvaluation,
     ModeleIntegration,
     NoteDeFrais,
     OrdreMission,
@@ -148,7 +150,9 @@ from .serializers import (
     HeuresSuppSerializer,
     HoraireTravailSerializer,
     IncidentPresenceSerializer,
+    JourBloqueCongeSerializer,
     MesInfosSerializer,
+    ModeleEvaluationSerializer,
     ModeleIntegrationSerializer,
     NoteDeFraisSerializer,
     OrdreMissionSerializer,
@@ -1012,11 +1016,28 @@ class DemandeCongeViewSet(_RhBaseViewSet):
     def perform_create(self, serializer):
         # ``jours`` calculé côté serveur selon la règle de décompte du type
         # (XRH3 : les drapeaux demi-journée retranchent chacun 0,5 j).
+        # ZRH1 — ``extra_holidays`` renseigné (Aïd/Mawlid/1er Moharram/férié
+        # société via notifications.Holiday) : sans cela le décompte n'utilise
+        # que la table FIXE des 9 fêtes grégoriennes.
         type_absence = serializer.validated_data['type_absence']
+        date_debut = serializer.validated_data['date_debut']
+        date_fin = serializer.validated_data['date_fin']
+        employe = serializer.validated_data['employe']
+
+        # ZRH4 — jour bloqué du département de l'employé : refus 400 sauf
+        # forçage explicite RH (``?forcer=1``, journalisé via le motif).
+        conflit = services.jour_bloque_conflit(employe, date_debut, date_fin)
+        forcer = self.request.query_params.get('forcer') in ('1', 'true', 'True')
+        if conflit and not forcer:
+            raise serializers.ValidationError(
+                {'detail': (
+                    f'Congés bloqués du {conflit.date_debut} au '
+                    f'{conflit.date_fin} : {conflit.libelle}.')})
+
         jours = services.calculer_jours_demande(
-            type_absence,
-            serializer.validated_data['date_debut'],
-            serializer.validated_data['date_fin'],
+            type_absence, date_debut, date_fin,
+            extra_holidays=services.feries_periode(
+                self.request.user.company, date_debut, date_fin),
             demi_journee_debut=serializer.validated_data.get(
                 'demi_journee_debut', False),
             demi_journee_fin=serializer.validated_data.get(
@@ -1083,6 +1104,41 @@ class DemandeCongeViewSet(_RhBaseViewSet):
         qs = selectors.absences_equipe(request.user.company, debut, fin)
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='rapport')
+    def rapport(self, request):
+        """ZRH3 — rapport congés par type et par employé (Odoo « Time Off
+        Reporting »). ``?annee=`` (défaut année courante), ``?employe=``,
+        ``?departement=`` optionnels. Lecture seule, gaté
+        ``IsResponsableOrAdmin`` (déjà la classe de la vue).
+        """
+        annee = request.query_params.get('annee') or timezone.localdate().year
+        try:
+            annee = int(annee)
+        except (TypeError, ValueError):
+            annee = timezone.localdate().year
+        employe = request.query_params.get('employe') or None
+        departement = request.query_params.get('departement') or None
+        data = selectors.rapport_conges(
+            request.user.company, annee, employe_id=employe,
+            departement_id=departement)
+        return Response(data)
+
+
+class JourBloqueCongeViewSet(_RhBaseViewSet):
+    """Jours de blocage congés (ZRH4) — Mandatory/Stress Days.
+
+    Société scopée + Administrateur/Responsable. ``departements`` vide =
+    blocage société entière ; sinon restreint aux départements liés (même
+    société, validé côté serializer).
+    """
+    queryset = JourBloqueConge.objects.prefetch_related('departements').all()
+    serializer_class = JourBloqueCongeSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_debut', 'date_fin', 'date_creation']
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
 
 
 class FeuilleTempsViewSet(_RhBaseViewSet):
@@ -1396,6 +1452,58 @@ class PointageViewSet(_RhBaseViewSet):
             pointage.note = note
         pointage.save()
         return Response(self.get_serializer(pointage).data)
+
+    @action(detail=False, methods=['get'], url_path='absents-non-justifies')
+    def absents_non_justifies(self, request):
+        """ZRH6 — employés attendus le jour sans pointage NI congé validé
+        (« Absence management » Odoo). ``?jour=YYYY-MM-DD`` (défaut
+        aujourd'hui). Chaque ligne peut générer un ``IncidentPresence`` via
+        ``POST .../generer-incident/``.
+        """
+        from datetime import datetime
+        jour_str = request.query_params.get('jour')
+        if jour_str:
+            try:
+                jour = datetime.strptime(jour_str, '%Y-%m-%d').date()
+            except (TypeError, ValueError):
+                jour = timezone.localdate()
+        else:
+            jour = timezone.localdate()
+        data = selectors.absents_non_justifies(request.user.company, jour)
+        return Response(data)
+
+    @action(detail=False, methods=['post'], url_path='generer-incident-absence')
+    def generer_incident_absence(self, request):
+        """ZRH6 — crée un ``IncidentPresence`` ABSENCE_INJUSTIFIEE pour un
+        employé/jour (depuis la liste des absents non justifiés). Corps :
+        ``employe`` (id), ``jour`` (YYYY-MM-DD, défaut aujourd'hui)."""
+        from datetime import datetime
+        employe_id = request.data.get('employe')
+        if not employe_id:
+            return Response(
+                {'detail': "Le champ 'employe' est requis."},
+                status=status.HTTP_400_BAD_REQUEST)
+        jour_str = request.data.get('jour')
+        if jour_str:
+            try:
+                jour = datetime.strptime(jour_str, '%Y-%m-%d').date()
+            except (TypeError, ValueError):
+                jour = timezone.localdate()
+        else:
+            jour = timezone.localdate()
+        employe = DossierEmploye.objects.filter(
+            company=request.user.company, pk=employe_id).first()
+        if employe is None:
+            return Response(
+                {'detail': 'Employé introuvable.'},
+                status=status.HTTP_404_NOT_FOUND)
+        incident = IncidentPresence.objects.create(
+            company=request.user.company, employe=employe,
+            type_incident=IncidentPresence.TypeIncident.ABSENCE_INJUSTIFIEE,
+            date=jour)
+        return Response(
+            IncidentPresenceSerializer(incident).data,
+            status=status.HTTP_201_CREATED)
 
 
 class PeriodeFermetureViewSet(_RhBaseViewSet):
@@ -2326,8 +2434,36 @@ class DotationEpiViewSet(_RhBaseViewSet):
         return qs
 
     def perform_create(self, serializer):
-        """Company posée côté serveur ; employe/epi validés via le sérialiseur."""
-        serializer.save(company=self.request.user.company)
+        """Company posée côté serveur ; employe/epi validés via le sérialiseur.
+
+        YHIRE13 — passe par ``services.creer_dotation_epi`` : si l'EPI est lié
+        à un produit de stock, décrémente le stock (warn par défaut, jamais un
+        blocage silencieux) ; un EPI non lié = comportement inchangé.
+        """
+        data = serializer.validated_data
+        try:
+            dotation = services.creer_dotation_epi(
+                company=self.request.user.company,
+                epi=data['epi'], employe=data['employe'],
+                quantite=data.get('quantite', 1),
+                user=self.request.user,
+                **{k: v for k, v in data.items()
+                   if k not in ('epi', 'employe', 'quantite', 'company')})
+        except ValueError as exc:
+            raise serializers.ValidationError({'detail': str(exc)})
+        serializer.instance = dotation
+
+    @action(detail=True, methods=['post'], url_path='restituer')
+    def restituer(self, request, pk=None):
+        """YHIRE13 — restitue la dotation : réintègre le stock si l'EPI est
+        lié à un produit, marque ``restituee``. Déjà restituée → 400."""
+        dotation = self.get_object()
+        try:
+            services.restituer_dotation_epi(dotation, user=request.user)
+        except services.RestitutionEpiError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(dotation).data)
 
     @action(detail=False, methods=['get'], url_path='a-renouveler')
     def a_renouveler(self, request):
@@ -3179,6 +3315,41 @@ class OuverturePosteViewSet(_RhBaseViewSet):
             qs = qs.filter(departement_id=departement)
         return qs.distinct()
 
+    @action(detail=True, methods=['post'])
+    def soumettre(self, request, pk=None):
+        """YHIRE14 — soumet l'ouverture BROUILLON à approbation."""
+        ouverture = self.get_object()
+        try:
+            services.soumettre_ouverture(ouverture, demandeur=request.user)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(ouverture).data)
+
+    @action(detail=True, methods=['post'])
+    def approuver(self, request, pk=None):
+        """YHIRE14 — approuve l'ouverture (SoD : approbateur != demandeur)."""
+        ouverture = self.get_object()
+        try:
+            services.approuver_ouverture(ouverture, approbateur=request.user)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(ouverture).data)
+
+    @action(detail=True, methods=['post'])
+    def refuser(self, request, pk=None):
+        """YHIRE14 — refuse l'ouverture (SoD : approbateur != demandeur)."""
+        ouverture = self.get_object()
+        motif = request.data.get('motif_refus', '')
+        try:
+            services.refuser_ouverture(
+                ouverture, approbateur=request.user, motif_refus=motif)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(ouverture).data)
+
 
 class CandidatureViewSet(_RhBaseViewSet):
     """Candidatures (FG189) — pipeline de recrutement ATS-lite.
@@ -3477,6 +3648,41 @@ class GabaritEmailRecrutementViewSet(_RhBaseViewSet):
         if etape:
             qs = qs.filter(etape=etape)
         return qs
+
+
+class ModeleEvaluationViewSet(_RhBaseViewSet):
+    """Gabarits de questions d'évaluation réutilisables (ZRH7).
+
+    Société scopée + Administrateur/Responsable. ``departement``/``poste_ref``
+    ciblent optionnellement le modèle (vide/vide = modèle par défaut société).
+    ``company`` posée CÔTÉ SERVEUR (jamais lue du corps).
+
+    Filtres : ``?departement=<id>``, ``?poste_ref=<id>``, ``?actif=0|1``.
+    """
+    queryset = ModeleEvaluation.objects.select_related(
+        'departement', 'poste_ref').all()
+    serializer_class = ModeleEvaluationSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom']
+    ordering_fields = ['nom', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        departement = self.request.query_params.get('departement')
+        if departement:
+            qs = qs.filter(departement_id=departement)
+        poste_ref = self.request.query_params.get('poste_ref')
+        if poste_ref:
+            qs = qs.filter(poste_ref_id=poste_ref)
+        actif = self.request.query_params.get('actif')
+        if actif in ('0', 'false', 'False'):
+            qs = qs.filter(actif=False)
+        elif actif in ('1', 'true', 'True'):
+            qs = qs.filter(actif=True)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
 
 
 class CampagneEvaluationViewSet(_RhBaseViewSet):
@@ -4588,10 +4794,27 @@ class PortailSelfServiceViewSet(viewsets.ViewSet):
         ser.is_valid(raise_exception=True)
         # ``jours`` calculé côté serveur selon la règle de décompte du type
         # (XRH3 : les drapeaux demi-journée retranchent chacun 0,5 j).
+        # ZRH1 — même fériés mobiles société que le viewset direct.
+        date_debut = ser.validated_data['date_debut']
+        date_fin = ser.validated_data['date_fin']
+
+        # ZRH4 — jour bloqué du département : refus 400 sauf forçage RH
+        # explicite (``?forcer=1``, réservé Responsable/Admin — un employé
+        # normal ne peut jamais forcer son propre blocage).
+        conflit = services.jour_bloque_conflit(dossier, date_debut, date_fin)
+        forcer = request.query_params.get('forcer') in ('1', 'true', 'True') \
+            and getattr(request.user, 'is_responsable', False)
+        if conflit and not forcer:
+            return Response(
+                {'detail': (
+                    f'Congés bloqués du {conflit.date_debut} au '
+                    f'{conflit.date_fin} : {conflit.libelle}.')},
+                status=status.HTTP_400_BAD_REQUEST)
+
         jours = services.calculer_jours_demande(
-            ser.validated_data['type_absence'],
-            ser.validated_data['date_debut'],
-            ser.validated_data['date_fin'],
+            ser.validated_data['type_absence'], date_debut, date_fin,
+            extra_holidays=services.feries_periode(
+                request.user.company, date_debut, date_fin),
             demi_journee_debut=ser.validated_data.get(
                 'demi_journee_debut', False),
             demi_journee_fin=ser.validated_data.get(
@@ -4644,13 +4867,53 @@ class PortailSelfServiceViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=['get'], url_path='mes-bulletins')
     def mes_bulletins(self, request):
+        """YHIRE12 — UNE surface bulletins : fusion dépôts externes (FG196,
+        ce module) + bulletins générés/validés (paie, coffre-fort PAIE35).
+
+        Dédupliquée par mois (le bulletin GÉNÉRÉ prime sur le dépôt externe du
+        même mois — c'est le document faisant foi une fois la paie calculée en
+        interne). La paie n'est JAMAIS importée directement : uniquement via
+        ``apps.paie.selectors.mes_bulletins_valides`` (lecture seule).
+        """
         dossier = self._dossier(request)
         if dossier is None:
             return Response([])
-        qs = BulletinPaie.objects.filter(
+        deposes = BulletinPaie.objects.filter(
             company=request.user.company, employe=dossier).select_related(
             'attachment')
-        return Response(BulletinPaieSerializer(qs, many=True).data)
+        deposes_data = BulletinPaieSerializer(deposes, many=True).data
+        for item in deposes_data:
+            item['source'] = 'depose'
+
+        from apps.paie.selectors import mes_bulletins_valides
+        generes = mes_bulletins_valides(request.user)
+        generes_data = [
+            {
+                'id': g['id'],
+                'source': 'genere',
+                'annee': g['annee'],
+                'mois': g['mois'],
+                'date_creation': g['date_creation'],
+                'employe': dossier.id,
+                'employe_nom': str(dossier),
+                'note': '',
+                'filename': f"bulletin_{g['annee']}_{g['mois']:02d}.pdf",
+                'size': None,
+                'mime': 'application/pdf',
+                'url': None,
+            }
+            for g in generes
+        ]
+
+        by_mois = {(item['annee'], item['mois']): item for item in deposes_data}
+        for item in generes_data:
+            # Le généré prime : il écrase un dépôt externe du même mois.
+            by_mois[(item['annee'], item['mois'])] = item
+
+        fusion = sorted(
+            by_mois.values(), key=lambda i: (i['annee'], i['mois']),
+            reverse=True)
+        return Response(fusion)
 
     @action(detail=False, methods=['get'], url_path='quiz-disponibles')
     def quiz_disponibles(self, request):
