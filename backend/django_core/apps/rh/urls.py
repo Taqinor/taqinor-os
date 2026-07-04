@@ -7,9 +7,11 @@ from .views import (
     AffectationRosterViewSet,
     AffectationVehiculeViewSet,
     AnalyseRisquesChantierViewSet,
+    AttributionBadgeViewSet,
     AvanceSalaireViewSet,
     AvantageSocialViewSet,
     AyantDroitViewSet,
+    BadgeReconnaissanceViewSet,
     BesoinFormationViewSet,
     BulletinPaieViewSet,
     CampagneEvaluationViewSet,
@@ -158,6 +160,8 @@ router.register(r'demandes-rh', DemandeRHViewSet)
 router.register(
     r'portail', PortailSelfServiceViewSet, basename='rh-portail')
 router.register(r'cockpit', CockpitRhViewSet, basename='rh-cockpit')
+router.register(r'badges-reconnaissance', BadgeReconnaissanceViewSet)
+router.register(r'attributions-badge', AttributionBadgeViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

@@ -31,9 +31,11 @@ from .models import (
     AffectationRoster,
     AffectationVehicule,
     AnalyseRisquesChantier,
+    AttributionBadge,
     AvanceSalaire,
     AvantageSocial,
     AyantDroit,
+    BadgeReconnaissance,
     BesoinFormation,
     BulletinPaie,
     CampagneEvaluation,
@@ -102,10 +104,12 @@ from .serializers import (
     AffectationVehiculeSerializer,
     AnalyseRisquesChantierSerializer,
     AnnuaireEmployeSerializer,
+    AttributionBadgeSerializer,
     AutoEvaluationSerializer,
     AvantageSocialSerializer,
     AyantDroitSerializer,
     AvanceSalaireSerializer,
+    BadgeReconnaissanceSerializer,
     BesoinFormationSerializer,
     BulletinPaieSerializer,
     CampagneEvaluationSerializer,
@@ -3403,6 +3407,63 @@ class TentativeQuizViewSet(_RhBaseViewSet):
         response['Content-Disposition'] = (
             f'attachment; filename="attestation-quiz-{tentative.pk}.pdf"')
         return response
+
+
+class BadgeReconnaissanceViewSet(_RhBaseViewSet):
+    """Catalogue des badges de reconnaissance interne (ZRH14).
+
+    Société scopée + Administrateur/Responsable (gate d'écriture du
+    catalogue). ``company`` posée côté serveur.
+    """
+    queryset = BadgeReconnaissance.objects.all()
+    serializer_class = BadgeReconnaissanceSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom', 'description']
+    ordering_fields = ['nom', 'date_creation']
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+
+class AttributionBadgeViewSet(_RhBaseViewSet):
+    """Attribution de badges de reconnaissance entre collègues (ZRH14).
+
+    Accessible en LECTURE+CRÉATION à TOUT employé authentifié de la société
+    (pas seulement Administrateur/Responsable) : la reconnaissance
+    pair-à-pair est le point de la fonctionnalité. ``company`` et
+    ``attribue_par`` sont posés côté serveur. Auto-attribution refusée
+    (400) : ``beneficiaire`` ne peut pas être le dossier employé de
+    l'auteur de la requête.
+    """
+    queryset = AttributionBadge.objects.select_related(
+        'badge', 'beneficiaire').all()
+    serializer_class = AttributionBadgeSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation']
+
+    def get_permissions(self):
+        return [IsAnyRole()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        beneficiaire = self.request.query_params.get('beneficiaire')
+        if beneficiaire:
+            qs = qs.filter(beneficiaire_id=beneficiaire)
+        return qs
+
+    def perform_create(self, serializer):
+        beneficiaire = serializer.validated_data.get('beneficiaire')
+        dossier_auteur = DossierEmploye.objects.filter(
+            company=self.request.user.company,
+            user=self.request.user).first()
+        if (dossier_auteur is not None and beneficiaire is not None
+                and beneficiaire.id == dossier_auteur.id):
+            raise serializers.ValidationError(
+                {'beneficiaire': "Impossible de s'attribuer un badge "
+                                 "à soi-même."})
+        serializer.save(
+            company=self.request.user.company,
+            attribue_par=self.request.user)
 
 
 class OuverturePosteViewSet(_RhBaseViewSet):

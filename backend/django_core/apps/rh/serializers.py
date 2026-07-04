@@ -12,9 +12,11 @@ from .models import (
     AffectationRoster,
     AffectationVehicule,
     AnalyseRisquesChantier,
+    AttributionBadge,
     AvanceSalaire,
     AvantageSocial,
     AyantDroit,
+    BadgeReconnaissance,
     BesoinFormation,
     BulletinPaie,
     CampagneEvaluation,
@@ -2718,3 +2720,50 @@ class TentativeQuizSerializer(serializers.ModelSerializer):
 
     def get_employe_nom(self, obj):
         return f'{obj.employe.nom} {obj.employe.prenom}'
+
+
+class BadgeReconnaissanceSerializer(serializers.ModelSerializer):
+    """Catalogue des badges de reconnaissance (ZRH14). CRUD company-scopé."""
+    nombre_attributions = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BadgeReconnaissance
+        fields = [
+            'id', 'nom', 'description', 'icone', 'actif',
+            'nombre_attributions', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_nombre_attributions(self, obj):
+        return obj.attributions.count()
+
+
+class AttributionBadgeSerializer(serializers.ModelSerializer):
+    """Attribution d'un badge à un collègue (ZRH14). ``attribue_par`` posé
+    côté serveur (jamais lu du corps) ; auto-attribution refusée (400,
+    contrôlé dans la vue)."""
+    badge_nom = serializers.CharField(source='badge.nom', read_only=True)
+    badge_icone = serializers.CharField(source='badge.icone', read_only=True)
+    beneficiaire_nom = serializers.SerializerMethodField()
+    attribue_par_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AttributionBadge
+        fields = [
+            'id', 'badge', 'badge_nom', 'badge_icone',
+            'beneficiaire', 'beneficiaire_nom',
+            'attribue_par', 'attribue_par_nom', 'message', 'date_creation',
+        ]
+        read_only_fields = ['attribue_par', 'date_creation']
+
+    def get_beneficiaire_nom(self, obj):
+        return f'{obj.beneficiaire.nom} {obj.beneficiaire.prenom}'
+
+    def get_attribue_par_nom(self, obj):
+        return obj.attribue_par.get_full_name() if obj.attribue_par_id else ''
+
+    def validate_badge(self, value):
+        return _meme_societe(self, value, 'Badge')
+
+    def validate_beneficiaire(self, value):
+        return _meme_societe(self, value, 'Bénéficiaire')

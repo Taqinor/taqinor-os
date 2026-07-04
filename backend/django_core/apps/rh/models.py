@@ -5756,3 +5756,89 @@ class JourBloqueConge(models.Model):
 
     def __str__(self):
         return f'{self.libelle} ({self.date_debut} → {self.date_fin})'
+
+
+class BadgeReconnaissance(models.Model):
+    """Badge de reconnaissance interne (ZRH14, « Employee badges » Odoo).
+
+    Catalogue par société des badges attribuables entre collègues
+    (gamification pair-à-pair/manager) — ex. « Esprit d'équipe », « Sécurité
+    exemplaire ». Purement additif, non lié à la paie. Multi-société :
+    ``company`` posée côté serveur (jamais lue du corps).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_badges_reconnaissance',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=80, verbose_name='Nom')
+    description = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Description')
+    icone = models.CharField(
+        max_length=8, blank=True, default='🏅', verbose_name='Icône/emoji')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Badge de reconnaissance'
+        verbose_name_plural = 'Badges de reconnaissance'
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
+class AttributionBadge(models.Model):
+    """Attribution d'un badge de reconnaissance à un collègue (ZRH14).
+
+    Tout utilisateur authentifié de la société peut attribuer un badge à un
+    collègue (jamais à lui-même — refusé côté service/vue, 400). Multi-
+    société : ``company`` posée côté serveur ; ``badge`` et ``beneficiaire``
+    doivent appartenir à la même société. ``attribue_par`` référence
+    ``AUTH_USER_MODEL`` (app foundation), posé CÔTÉ SERVEUR depuis la
+    requête (jamais lu du corps).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_attributions_badge',
+        verbose_name='Société',
+    )
+    badge = models.ForeignKey(
+        BadgeReconnaissance,
+        on_delete=models.CASCADE,
+        related_name='attributions',
+        verbose_name='Badge',
+    )
+    beneficiaire = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='badges_recus',
+        verbose_name='Bénéficiaire',
+    )
+    attribue_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_badges_attribues',
+        verbose_name='Attribué par',
+    )
+    message = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Message')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Attribution de badge'
+        verbose_name_plural = 'Attributions de badge'
+        ordering = ['-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'beneficiaire'],
+                name='rh_attrib_badge_benef_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.badge.nom} → {self.beneficiaire.matricule}'
