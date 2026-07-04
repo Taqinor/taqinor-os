@@ -15,6 +15,7 @@ from django.http import HttpResponse
 
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
 from . import builders
@@ -70,6 +71,7 @@ from .services import (
     calculer_bulletin,
     changer_statut,
     cloturer_periode_paie,
+    commit_reprise_cumuls,
     controle_ecarts,
     cout_global_par_profil,
     creer_bulletin_rectificatif,
@@ -77,6 +79,7 @@ from .services import (
     declaration_cnss,
     deposer_bds_complementaire,
     deposer_bds_principal,
+    dry_run_reprise_cumuls,
     emettre_ordre_virement,
     ensure_defaults,
     ensure_rubriques_defaut,
@@ -1247,6 +1250,49 @@ class CumulAnnuelViewSet(_PaieVoirOuGerer, TenantMixin,
         cumul = recalculer_cumul_annuel(profil, annee)
         return Response(
             self.get_serializer(cumul).data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='reprise-dry-run',
+            parser_classes=[MultiPartParser, FormParser])
+    def reprise_dry_run(self, request):
+        """Aperçu de l'import de reprise des cumuls (XPAI22, go-live).
+
+        Corps multipart : ``file`` (CSV/XLSX). Signale les matricules
+        inconnus AVANT tout commit. Ne modifie rien.
+        """
+        f = request.FILES.get('file')
+        if f is None:
+            return Response(
+                {'detail': 'Aucun fichier fourni.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            resultat = dry_run_reprise_cumuls(
+                f.read(), f.name, request.user.company)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(resultat, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='reprise-commit',
+            parser_classes=[MultiPartParser, FormParser])
+    def reprise_commit(self, request):
+        """Commit de l'import de reprise des cumuls (XPAI22, go-live).
+
+        Corps multipart : ``file`` (CSV/XLSX). Crée/complète les cumuls sans
+        JAMAIS écraser un cumul déjà calculé depuis de vrais bulletins
+        validés.
+        """
+        f = request.FILES.get('file')
+        if f is None:
+            return Response(
+                {'detail': 'Aucun fichier fourni.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            resultat = commit_reprise_cumuls(
+                f.read(), f.name, request.user.company)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(resultat, status=status.HTTP_200_OK)
 
 
 class EcheanceDeclarativeViewSet(_PaieVoirOuGerer, TenantMixin,

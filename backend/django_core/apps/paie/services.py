@@ -4896,3 +4896,187 @@ def extourner_provisions_gratification(profil, *, jusqua_periode=None,
             ligne.save(update_fields=['extournee', 'date_extourne'])
             extournees.append(ligne)
     return extournees
+
+
+# ── XPAI22 — Reprise des cumuls annuels (go-live en cours d'année) ─────────
+
+# Mapping en-tête (normalisé, sans accents/espaces) → champ ``CumulAnnuel``.
+# Réutilise le patron ``apps.dataimport`` (parse CSV/XLSX + normalisation
+# d'en-tête) sans dupliquer son code : la logique de résolution/écriture,
+# spécifique aux cumuls de paie, reste ici (dataimport ne connaît pas
+# ``CumulAnnuel``).
+_CUMUL_IMPORT_FIELD_MAP = {
+    'matricule': 'matricule',
+    'annee': 'annee',
+    'brut': 'brut',
+    'brut_imposable': 'brut_imposable',
+    'net_imposable': 'net_imposable',
+    'ir': 'ir',
+    'cnss_salariale': 'cnss_salariale',
+    'amo_salariale': 'amo_salariale',
+    'cimr_salariale': 'cimr_salariale',
+    'frais_professionnels': 'frais_professionnels',
+    'net_a_payer': 'net_a_payer',
+    'charges_patronales': 'charges_patronales',
+    'provision_conges': 'provision_conges',
+    'conges_acquis': 'conges_acquis',
+    'conges_pris': 'conges_pris',
+}
+
+_CUMUL_IMPORT_CHAMPS_DECIMAL = [
+    'brut', 'brut_imposable', 'net_imposable', 'ir', 'cnss_salariale',
+    'amo_salariale', 'cimr_salariale', 'frais_professionnels', 'net_a_payer',
+    'charges_patronales', 'provision_conges', 'conges_acquis', 'conges_pris',
+]
+
+
+def _norm_entete_cumul(s):
+    """Normalise un en-tête de colonne : minuscules, sans accents, `_` (XPAI22)."""
+    import unicodedata
+
+    s = (s or '').strip().lower()
+    s = ''.join(c for c in unicodedata.normalize('NFD', s)
+                if unicodedata.category(c) != 'Mn')
+    return s.replace(' ', '_').replace('-', '_')
+
+
+def _map_headers_cumuls(headers):
+    mapped, unmapped = {}, []
+    for h in headers:
+        champ = _CUMUL_IMPORT_FIELD_MAP.get(_norm_entete_cumul(h))
+        if champ:
+            mapped[h] = champ
+        else:
+            unmapped.append(h)
+    return mapped, unmapped
+
+
+def _ligne_cumul_depuis_row(row, mapped):
+    return {champ: row.get(col) for col, champ in mapped.items()
+            if row.get(col) not in (None, '')}
+
+
+def _resoudre_profil_matricule(company, matricule):
+    from django.apps import apps as django_apps
+
+    from .models import ProfilPaie
+
+    if not matricule:
+        return None
+    DossierEmploye = django_apps.get_model('rh', 'DossierEmploye')
+    dossier = DossierEmploye.objects.filter(
+        company=company, matricule=str(matricule).strip()).first()
+    if dossier is None:
+        return None
+    return ProfilPaie.objects.filter(company=company, employe=dossier).first()
+
+
+def dry_run_reprise_cumuls(file_bytes, filename, company):
+    """Aperçu de l'import de reprise des cumuls annuels (XPAI22).
+
+    Réutilise ``apps.dataimport.services.parse_rows`` pour le CSV/XLSX. Pour
+    chaque ligne, résout le matricule → ``ProfilPaie`` (via
+    ``rh.DossierEmploye``, string-FK/get_model — jamais ``rh.models`` direct)
+    et signale les matricules INCONNUS. Ne modifie rien. Renvoie ``{'colonnes',
+    'mapping', 'non_mappees', 'total_lignes', 'matricules_inconnus':
+    [...], 'apercu': [...] (10 premières lignes mappées)}``.
+    """
+    from apps.dataimport.services import ImportTooLarge, MAX_ROWS, parse_rows
+
+    headers, rows = parse_rows(file_bytes, filename)
+    if len(rows) > MAX_ROWS:
+        raise ImportTooLarge(f'Trop de lignes : {len(rows)} (max {MAX_ROWS}).')
+    mapped, unmapped = _map_headers_cumuls(headers)
+
+    inconnus = []
+    apercu = []
+    for i, row in enumerate(rows, 1):
+        f = _ligne_cumul_depuis_row(row, mapped)
+        if i <= 10:
+            apercu.append(f)
+        matricule = f.get('matricule')
+        if matricule and _resoudre_profil_matricule(company, matricule) is None:
+            inconnus.append({'ligne': i, 'matricule': matricule})
+
+    return {
+        'colonnes': headers,
+        'mapping': mapped,
+        'non_mappees': unmapped,
+        'total_lignes': len(rows),
+        'matricules_inconnus': inconnus,
+        'apercu': apercu,
+    }
+
+
+def commit_reprise_cumuls(file_bytes, filename, company):
+    """Commit de l'import de reprise des cumuls annuels (XPAI22).
+
+    Pour chaque ligne résolue (matricule connu, année valide) : crée le
+    ``CumulAnnuel`` s'il n'existe pas, ou le COMPLÈTE s'il existe déjà mais
+    n'a ENCORE aucun bulletin calculé (``nombre_bulletins == 0`` — cumul vide
+    ou lui-même issu d'un import antérieur). Un cumul déjà calculé depuis de
+    VRAIS bulletins validés (``nombre_bulletins > 0``) n'est JAMAIS écrasé —
+    la reprise ne rejoue jamais un mois déjà traité dans l'outil. Opération
+    atomique par ligne (une erreur n'interrompt pas les suivantes). Renvoie
+    ``{'crees': N, 'completes': N, 'ignores': [...]}``.
+    """
+    from apps.dataimport.services import ImportTooLarge, MAX_ROWS, parse_rows
+
+    from .models import CumulAnnuel
+
+    headers, rows = parse_rows(file_bytes, filename)
+    if len(rows) > MAX_ROWS:
+        raise ImportTooLarge(f'Trop de lignes : {len(rows)} (max {MAX_ROWS}).')
+    mapped, _ = _map_headers_cumuls(headers)
+
+    crees, completes = 0, 0
+    ignores = []
+    for i, row in enumerate(rows, 1):
+        f = _ligne_cumul_depuis_row(row, mapped)
+        matricule = f.get('matricule')
+        try:
+            annee = int(f.get('annee'))
+        except (TypeError, ValueError):
+            ignores.append({'ligne': i, 'raison': 'année manquante/invalide'})
+            continue
+        profil = _resoudre_profil_matricule(company, matricule)
+        if profil is None:
+            ignores.append(
+                {'ligne': i, 'raison': f'matricule inconnu : {matricule}'})
+            continue
+
+        valeurs = {}
+        for champ in _CUMUL_IMPORT_CHAMPS_DECIMAL:
+            if champ in f:
+                try:
+                    brut = str(f[champ]).replace('\xa0', '').replace(
+                        ' ', '').replace(',', '.')
+                    valeurs[champ] = Decimal(brut)
+                except Exception:
+                    pass
+
+        with transaction.atomic():
+            cumul = (
+                CumulAnnuel.objects
+                .select_for_update()
+                .filter(company=company, profil=profil, annee=annee)
+                .first()
+            )
+            if cumul is not None and cumul.nombre_bulletins > 0:
+                ignores.append({
+                    'ligne': i,
+                    'raison': ('cumul déjà calculé depuis des bulletins '
+                               'validés — reprise ignorée'),
+                })
+                continue
+            if cumul is None:
+                CumulAnnuel.objects.create(
+                    company=company, profil=profil, annee=annee, **valeurs)
+                crees += 1
+            else:
+                for champ, valeur in valeurs.items():
+                    setattr(cumul, champ, valeur)
+                cumul.save(update_fields=list(valeurs.keys()) or None)
+                completes += 1
+
+    return {'crees': crees, 'completes': completes, 'ignores': ignores}
