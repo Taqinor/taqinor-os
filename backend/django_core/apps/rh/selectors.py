@@ -32,6 +32,17 @@ from .models import (
 )
 
 
+def dossier_employe_for_user(company, user_id):
+    """XFSM2 — ``DossierEmploye`` scopé société relié à un compte utilisateur,
+    ou ``None`` si aucun dossier n'est relié (ex. compte sans fiche RH). Point
+    d'entrée de lecture pour les autres modules (ex. installations, pour
+    vérifier une habilitation avant affectation) sans importer ``rh.models``."""
+    if user_id is None:
+        return None
+    return DossierEmploye.objects.filter(
+        company=company, user_id=user_id).first()
+
+
 def dossier_appartient_societe(company, dossier_id):
     """Vrai si le dossier ``dossier_id`` appartient à ``company`` (cross-app).
 

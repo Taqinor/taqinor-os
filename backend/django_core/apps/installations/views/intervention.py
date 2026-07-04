@@ -187,6 +187,8 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             'nivellement_charge',
             # XFSM5 — KPI taux d'arrivée à l'heure.
             'taux_ponctualite',
+            # XFSM2 — assistant de planification (meilleur créneau).
+            'suggerer_creneau',
             # FG303 — planning des camionnettes (capacité véhicule).
             'planning_camionnettes',
             # FG69 — signature client.
@@ -1664,6 +1666,36 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             debut=_parse(params.get('debut')),
             fin=_parse(params.get('fin')),
             technicien_id=params.get('technicien'))
+        return Response(data)
+
+    # ── XFSM2 — Assistant de planification (meilleur créneau + technicien) ──
+    @action(detail=False, methods=['post'], url_path='suggerer-creneau',
+            permission_classes=[IsAnyRole])
+    def suggerer_creneau(self, request):
+        """XFSM2 — les 3 meilleures propositions (technicien, date) pour un
+        chantier/type/durée cible. Lecture seule, NE MUTE RIEN. Corps :
+        {chantier, type_intervention, [duree_jours], [date_cible]}."""
+        from datetime import datetime
+        from rest_framework.exceptions import ValidationError
+        from .. import selectors
+
+        chantier_id = request.data.get('chantier')
+        if not chantier_id:
+            raise ValidationError({'chantier': 'Chantier requis.'})
+        type_intervention = request.data.get('type_intervention') or ''
+        duree_jours = request.data.get('duree_jours') or 1
+        date_cible_raw = request.data.get('date_cible')
+        date_cible = None
+        if date_cible_raw:
+            try:
+                date_cible = datetime.strptime(
+                    date_cible_raw, '%Y-%m-%d').date()
+            except (TypeError, ValueError):
+                raise ValidationError({'date_cible': 'Date invalide.'})
+        data = selectors.suggerer_creneau(
+            request.user.company, chantier_id=chantier_id,
+            type_intervention=type_intervention, duree_jours=duree_jours,
+            date_cible=date_cible)
         return Response(data)
 
     # ── FG303 — planning des camionnettes (capacité véhicule) ────────────────

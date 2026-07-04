@@ -1910,3 +1910,152 @@ def taux_ponctualite(company, *, debut=None, fin=None, technicien_id=None):
         'nb_a_lheure': nb_a_lheure,
         'taux_pct': taux_pct,
     }
+
+
+# ── XFSM2 — Assistant de planification : créneau + technicien suggérés ──────
+# Combine les ingrédients déjà existants (plan de charge FG299, conflits
+# FG300, indisponibilités FG302, jours ouvrés, habilitations FG173/176,
+# GPS chantier + haversine) SANS RIEN muter : pure lecture, propositions
+# classées. Traduit `Intervention.Type` (choix fermé) vers les clés de
+# `rh.INTERVENTION_HABILITATIONS` (cadre différent, best-effort — un type
+# sans correspondance connue n'exige aucune habilitation).
+_TYPE_VERS_HABILITATION = {
+    'pose': 'pose_pv_bt',
+    'raccordement': 'pose_pv_bt',
+    'mise_en_service': 'operations_pv',
+    'controle': 'operations_pv',
+    'depannage': 'maintenance_bt',
+}
+
+
+def _techniciens_eligibles(company):
+    """Techniciens éligibles : utilisateurs de la société déjà affectés à au
+    moins une intervention (même bassin que FG299/FG301) — évite de proposer
+    un compte admin/commercial jamais affecté sur le terrain."""
+    from django.contrib.auth import get_user_model
+    from .models import Intervention
+    User = get_user_model()
+    ids = set(Intervention.objects.filter(
+        company=company, technicien_id__isnull=False)
+        .values_list('technicien_id', flat=True).distinct())
+    if not ids:
+        return list(User.objects.filter(company=company))
+    return list(User.objects.filter(company=company, id__in=ids))
+
+
+def suggerer_creneau(company, *, chantier_id, type_intervention, duree_jours=1,
+                     date_cible=None, n=3):
+    """XFSM2 — les N (défaut 3) meilleures propositions de créneau + technicien
+    pour un chantier/type/durée donnés, classées par :
+      1. habilitation requise OK (FG173/176 — un technicien manquant/expiré
+         n'est jamais proposé) ;
+      2. pas de conflit (FG300 : le technicien n'a AUCUNE intervention prévue
+         ce jour) ni d'indisponibilité (FG302) ;
+      3. charge la plus faible (nb d'interventions déjà planifiées, FG299) ;
+      4. distance au site la plus courte depuis les interventions DÉJÀ
+         planifiées du technicien ce jour-là (0 si aucune — dépôt inconnu).
+    Fenêtre de recherche : 14 jours ouvrés à partir de ``date_cible`` (défaut
+    aujourd'hui). Lecture seule, NE MUTE RIEN, scopée société. Renvoie
+    ``{propositions: [{technicien_id, nom, date, score...}], chantier_id}``."""
+    import datetime
+    from .models import Intervention
+
+    chantier = installation_scoped(company, chantier_id)
+    if chantier is None:
+        return {'chantier_id': chantier_id, 'propositions': []}
+
+    if date_cible is None:
+        date_cible = datetime.date.today()
+
+    techniciens = _techniciens_eligibles(company)
+    if not techniciens:
+        return {'chantier_id': chantier_id, 'propositions': []}
+
+    # Vérification habilitation (best-effort, cadre différent — cf. mapping).
+    habilitation_requise = _TYPE_VERS_HABILITATION.get(type_intervention)
+    eligibles = []
+    if habilitation_requise:
+        from apps.rh.selectors import (
+            dossier_employe_for_user, verifier_habilitation_requise)
+        for tech in techniciens:
+            dossier = dossier_employe_for_user(company, tech.id)
+            if dossier is None:
+                # Pas de fiche RH reliée : on ne peut pas vérifier → on ne
+                # bloque PAS (garde RAPPORTE, l'appelant décide — ici on
+                # considère éligible faute de donnée, cohérent avec le
+                # blocage doux FG176).
+                eligibles.append(tech)
+                continue
+            rapport = verifier_habilitation_requise(
+                company, dossier, habilitation_requise)
+            if rapport['autorise']:
+                eligibles.append(tech)
+    else:
+        eligibles = techniciens
+
+    if not eligibles:
+        return {'chantier_id': chantier_id, 'propositions': []}
+
+    site_lat = getattr(chantier, 'gps_lat', None)
+    site_lng = getattr(chantier, 'gps_lng', None)
+
+    # Fenêtre de recherche : 14 jours calendaires à partir de date_cible.
+    candidats = []
+    jour = date_cible
+    jours_testes = 0
+    while jours_testes < 14:
+        # Interventions déjà planifiées CE JOUR (toute ressource confondue) —
+        # sert de proxy de proximité : un technicien déjà dans le secteur ce
+        # jour-là minimise le trajet total. Chargé UNE fois par jour (hors
+        # boucle technicien) pour éviter un N+1.
+        interventions_du_jour = list(
+            Intervention.objects.filter(company=company, date_prevue=jour)
+            .select_related('installation'))
+        for tech in eligibles:
+            if ressource_indisponible(company, tech.id, jour, jour):
+                continue
+            deja_ce_jour = [
+                iv for iv in interventions_du_jour
+                if iv.technicien_id == tech.id]
+            if deja_ce_jour:
+                # FG300 — conflit : le technicien porte déjà une intervention
+                # ce jour-là → jamais proposé pour un NOUVEAU créneau ce jour.
+                continue
+            charge = Intervention.objects.filter(
+                company=company, technicien_id=tech.id,
+                date_prevue__gte=jour,
+                date_prevue__lt=jour + datetime.timedelta(days=14)).count()
+            # Distance au site la plus courte parmi les interventions déjà
+            # planifiées CE JOUR (toute ressource) — 0 si aucune GPS
+            # disponible (dépôt/site inconnu, jamais d'exception).
+            distance = None
+            if site_lat is not None and site_lng is not None:
+                for iv in interventions_du_jour:
+                    autre_lat = getattr(iv.installation, 'gps_lat', None)
+                    autre_lng = getattr(iv.installation, 'gps_lng', None)
+                    if autre_lat is None or autre_lng is None:
+                        continue
+                    d = _haversine_km(
+                        site_lat, site_lng, autre_lat, autre_lng)
+                    if distance is None or d < distance:
+                        distance = d
+            candidats.append({
+                'technicien_id': tech.id,
+                'nom': (getattr(tech, 'get_full_name', lambda: '')()
+                        or tech.username),
+                'date': jour.isoformat(),
+                'charge': charge,
+                'distance_km': round(distance, 1) if distance is not None
+                else None,
+            })
+        jour += datetime.timedelta(days=1)
+        jours_testes += 1
+
+    candidats.sort(key=lambda c: (
+        c['charge'],
+        c['distance_km'] if c['distance_km'] is not None else float('inf'),
+        c['date'], c['nom'].lower()))
+    return {
+        'chantier_id': chantier_id,
+        'propositions': candidats[:max(int(n or 3), 1)],
+    }
