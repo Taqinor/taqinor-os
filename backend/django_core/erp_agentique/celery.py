@@ -194,4 +194,10 @@ app.conf.beat_schedule = {
         'task': 'rh.alertes_cdd',
         'schedule': crontab(hour=7, minute=55),
     },
+    # XFSM21 — météo J+3 sur les poses planifiées (Open-Meteo, gratuit,
+    # sans clé), quotidien, heure creuse matinale.
+    'installations-meteo-planning-j3': {
+        'task': 'installations.meteo_planning_j3',
+        'schedule': crontab(hour=6, minute=30),
+    },
 }

@@ -194,6 +194,14 @@ class Intervention(models.Model):
         max_length=64, unique=True, null=True, blank=True, editable=False,
         help_text="Jeton public du lien « technicien en route » (XFSM7).")
 
+    # ── XFSM21 — météo sur le planning (travaux toiture) ─────────────────────
+    # Prévision J+3 (Open-Meteo, gratuit, sans clé) récupérée par la tâche Beat
+    # quotidienne pour les interventions POSE planifiées. None = pas encore
+    # évalué (ou hors fenêtre J+3) ; True = pluie/vent au-delà des seuils
+    # paramétrables ; False = prévision OK. Additif, jamais bloquant.
+    meteo_risque = models.BooleanField(null=True, blank=True)
+    meteo_verifie_le = models.DateTimeField(null=True, blank=True)
+
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, related_name='interventions_creees',

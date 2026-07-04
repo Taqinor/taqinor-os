@@ -217,6 +217,8 @@ class InterventionSerializer(serializers.ModelSerializer):
             'company', 'created_by', 'date_creation',
             'depart_depot_le', 'arrivee_site_le', 'retour_depot_le',
             'arrivee_gps_lat', 'arrivee_gps_lng',
+            # XFSM21 — posé uniquement par le sweep Beat météo, jamais du corps.
+            'meteo_risque', 'meteo_verifie_le',
         ]
 
     def get_statut_ordre(self, obj):
