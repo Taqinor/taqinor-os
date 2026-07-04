@@ -355,6 +355,11 @@ class Reserve(models.Model):
     ticket = models.ForeignKey(
         'sav.Ticket', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='reserves')
+    # XFSM18 — devis de réparation généré depuis cette réserve (string-FK par
+    # id, jamais un import du modèle `ventes.Devis` — règle de modularité). Le
+    # devis est créé via `apps.ventes.services.create_devis_from_reserve`.
+    # Nullable : la génération de devis est une action optionnelle.
+    devis_repare_id = models.PositiveIntegerField(null=True, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='+')

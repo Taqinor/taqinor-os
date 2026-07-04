@@ -60,6 +60,56 @@ def create_draft_devis_from_ocr(*, company, user, lead, fields):
     return devis
 
 
+def create_devis_from_reserve(*, reserve, user):
+    """XFSM18 — crée un DEVIS brouillon de réparation à partir d'une réserve
+    d'intervention (`installations.Reserve`), pour donner un chemin de devis
+    payant au pipeline de réparation.
+
+    Le client est celui du CHANTIER (`reserve.intervention.installation.client`,
+    déjà résolu — aucune re-résolution lead nécessaire ici, à la différence de
+    `create_draft_devis_from_ocr`). La description est pré-remplie depuis la
+    réserve ; aucune ligne n'est créée (une LigneDevis exige un Produit du
+    catalogue) — le devis brouillon est laissé à compléter dans l'éditeur.
+
+    Le devis reste ``brouillon`` : ce service CRÉE, il ne change aucun statut
+    aval (règle #4). Aucun impact sur `/proposal`.
+    """
+    from apps.ventes.models import Devis
+    from apps.ventes.utils.references import create_with_reference
+
+    installation = reserve.intervention.installation
+    if installation is None or installation.client_id is None:
+        raise ValueError(
+            "create_devis_from_reserve requires a reserve whose intervention "
+            "is attached to a chantier with a resolved client")
+    client = installation.client
+    company = reserve.company or installation.company
+
+    description = (reserve.description or '').strip()
+    note_lines = ["Devis de réparation généré depuis une réserve d'intervention."]
+    if description:
+        note_lines.append(f"Description : {description}")
+    if reserve.photo_id:
+        note_lines.append(f"Photo référencée : pièce jointe #{reserve.photo_id}")
+    note = "\n".join(note_lines)
+
+    def _create(ref):
+        return Devis.objects.create(
+            company=company,
+            reference=ref,
+            client=client,
+            statut=Devis.Statut.BROUILLON,
+            created_by=user,
+            note=note,
+        )
+
+    devis = create_with_reference(Devis, 'DEV', company, _create)
+    logger.info(
+        'XFSM18: devis de réparation %s créé depuis la réserve %s (company %s)',
+        devis.reference, reserve.id, getattr(company, 'id', '?'))
+    return devis
+
+
 def lead_from_source_devis(document):
     """U12 — résout le lead d'origine d'une Facture / d'un BonCommande.
 

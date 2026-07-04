@@ -1197,6 +1197,38 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(ReserveSerializer(
             reserve, context={'request': request}).data)
 
+    # ── XFSM18 — réserve → devis de réparation ──────────────────────────────
+    @action(detail=True, methods=['post'], url_path='generer-devis-reserve',
+            permission_classes=[IsResponsableOrAdmin])
+    def generer_devis_reserve(self, request, pk=None):
+        """XFSM18 — génère un devis brouillon de réparation à partir d'une
+        réserve (client du chantier résolu côté serveur, description
+        pré-remplie). Idempotent : si la réserve porte déjà un
+        `devis_repare_id`, le renvoie sans en créer un second. Corps :
+        {"reserve": <id>}."""
+        interv = self.get_object()
+        reserve = interv.reserves.filter(id=request.data.get('reserve')).first()
+        if reserve is None:
+            return Response({'detail': 'Réserve inconnue.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if reserve.devis_repare_id:
+            return Response({
+                'reserve': reserve.id, 'devis_id': reserve.devis_repare_id,
+                'deja_existant': True,
+            })
+        from apps.ventes.services import create_devis_from_reserve
+        try:
+            devis = create_devis_from_reserve(reserve=reserve, user=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        reserve.devis_repare_id = devis.id
+        reserve.save(update_fields=['devis_repare_id'])
+        return Response({
+            'reserve': reserve.id, 'devis_id': devis.id,
+            'devis_reference': devis.reference, 'deja_existant': False,
+        }, status=status.HTTP_201_CREATED)
+
     # ── F17 — réconciliation du retour d'outillage ──────────────────────────
     @action(detail=True, methods=['get', 'post'], url_path='tool-return',
             permission_classes=[IsAnyRole])

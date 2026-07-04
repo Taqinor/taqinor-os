@@ -576,9 +576,9 @@ class ReserveSerializer(serializers.ModelSerializer):
         fields = ['id', 'intervention', 'description', 'photo', 'photo_url',
                   'memo', 'assignee', 'assignee_nom', 'statut', 'statut_display',
                   'resolution', 'resolue_le', 'suivi_intervention', 'ticket',
-                  'date_creation']
+                  'devis_repare_id', 'date_creation']
         read_only_fields = ['intervention', 'suivi_intervention', 'ticket',
-                            'resolue_le', 'date_creation']
+                            'devis_repare_id', 'resolue_le', 'date_creation']
 
     def get_assignee_nom(self, obj):
         return getattr(obj.assignee, 'username', None)
