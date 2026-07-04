@@ -1,0 +1,102 @@
+---
+/**
+ * WB31 — Bandeau minimal de consentement analytics/tracking.
+ *
+ * Aucun bandeau n'existait sitewide alors que la capture fbclid/UTM
+ * (Layout.astro) et le beacon de funnel (funnelBeacon.ts) tournent déjà
+ * avant tout consentement (WB29/WB30). Ce composant fournit le SIGNAL de
+ * consentement lu par ces deux gates : un simple flag en localStorage,
+ * `tq_consent` ∈ {'granted','denied'} — absent tant que le visiteur n'a pas
+ * répondu. Additif uniquement : ne change ni le webhook de lead, ni les
+ * champs fbclid/UTM eux-mêmes, ni le seuil 1000 MAD.
+ *
+ * Léger, discutable (Accepter/Refuser), trilingue (même mécanisme de repli
+ * FR que le reste du site : petite table `STR` locale, `getLocaleFromPath`).
+ * Disparaît dès qu'un choix est fait (pas de ré-affichage tant que le flag
+ * existe) — pas de recueil de préférences granulaires, pas de dépendance à
+ * un CMP tiers.
+ */
+import { getLocaleFromPath } from '../i18n/utils';
+import type { Locale } from '../i18n/config';
+
+const locale = getLocaleFromPath(Astro.url.pathname);
+
+const STR: Record<Locale, { text: string; accept: string; decline: string }> = {
+  fr: {
+    text: "Nous utilisons des mesures anonymes (audience, campagnes) pour améliorer le site. Vous pouvez les refuser sans impact sur votre demande de devis.",
+    accept: 'Accepter',
+    decline: 'Refuser',
+  },
+  en: {
+    text: 'We use anonymous measurement (traffic, campaigns) to improve the site. You can decline with no impact on your quote request.',
+    accept: 'Accept',
+    decline: 'Decline',
+  },
+  ar: {
+    text: 'نستخدم قياسات مجهولة (الزيارات، الحملات) لتحسين الموقع. يمكنكم الرفض دون أي أثر على طلب عرض السعر.',
+    accept: 'قبول',
+    decline: 'رفض',
+  },
+};
+const s = STR[locale] ?? STR.fr;
+---
+
+<div
+  id="tq-consent-banner"
+  class="fixed inset-x-0 bottom-0 z-[60] hidden border-t border-white/10 bg-nuit/95 px-4 py-4 backdrop-blur sm:px-6"
+  style="padding-bottom: max(1rem, env(safe-area-inset-bottom));"
+  role="region"
+  aria-label={s.accept}
+  data-consent-banner
+>
+  <div class="mx-auto flex max-w-6xl flex-col items-center gap-3 sm:flex-row sm:justify-between">
+    <p class="text-sm text-lune-soft">{s.text}</p>
+    <div class="flex shrink-0 gap-2">
+      <button
+        type="button"
+        data-consent-decline
+        class="min-h-11 border border-white/20 px-4 text-sm font-semibold text-lune-soft transition-colors hover:text-white"
+      >{s.decline}</button>
+      <button
+        type="button"
+        data-consent-accept
+        class="glow min-h-11 bg-brass-400 px-4 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300"
+      >{s.accept}</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // WB31 — Signal de consentement : `tq_consent` en localStorage, lu par
+  // WB29 (capture fbclid/UTM) et WB30 (funnel beacon). Absent = pas encore
+  // répondu → le bandeau s'affiche ; une fois répondu, il ne réapparaît
+  // plus (peu importe la valeur), et un événement custom `tq:consent-change`
+  // est émis pour toute logique déjà montée sur la page.
+  (function () {
+    try {
+      var KEY = 'tq_consent';
+      var existing = localStorage.getItem(KEY);
+      var banner = document.getElementById('tq-consent-banner');
+      if (!banner) return;
+
+      if (!existing) {
+        banner.classList.remove('hidden');
+      }
+
+      function setConsent(value: string) {
+        try {
+          localStorage.setItem(KEY, value);
+        } catch (e) {}
+        banner?.classList.add('hidden');
+        window.dispatchEvent(new CustomEvent('tq:consent-change', { detail: { value: value } }));
+      }
+
+      banner.querySelector('[data-consent-accept]')?.addEventListener('click', function () {
+        setConsent('granted');
+      });
+      banner.querySelector('[data-consent-decline]')?.addEventListener('click', function () {
+        setConsent('denied');
+      });
+    } catch (e) {}
+  })();
+</script>
