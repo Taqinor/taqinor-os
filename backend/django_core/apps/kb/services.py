@@ -16,6 +16,7 @@ from .models import (
     KbFavori,
     KbLecture,
     KbRechercheVide,
+    PartageArticleKb,
 )
 
 logger = logging.getLogger(__name__)
@@ -200,6 +201,273 @@ def _companies_actives():
         return list(Company.objects.filter(actif=True))
     except Exception:  # pragma: no cover
         return []
+
+
+# ── XKB17 — Export/import & sauvegarde (PDF/Markdown/ZIP société) ──────────
+
+def article_to_markdown(article):
+    """XKB17 — Rend un article en Markdown fidèle (titre + métadonnées + corps).
+
+    Fonctionne pour un article ``texte`` (corps encapsulé tel quel) ou
+    ``markdown`` (corps déjà Markdown). Renvoie une chaîne str prête à écrire
+    dans un fichier ``.md``.
+    """
+    entete = f'# {article.titre}\n\n'
+    meta = []
+    if article.categorie:
+        meta.append(f'Catégorie: {article.categorie}')
+    if article.tags:
+        meta.append(f'Tags: {article.tags}')
+    meta.append(f'Statut: {article.statut}')
+    bloc_meta = ('\n'.join(f'*{m}*' for m in meta) + '\n\n') if meta else ''
+    return entete + bloc_meta + (article.corps or '')
+
+
+def article_to_pdf(article):
+    """XKB17 — Rend un article en PDF (mise en page d'impression propre).
+
+    Utilise EXCLUSIVEMENT le WeasyPrint existant (JAMAIS le moteur devis
+    premium — rule #4 : `/proposal` reste l'unique chemin des PDF de devis
+    client, sans rapport avec cet export documentaire interne). Aucun statut
+    n'est modifié par cet export (lecture seule). Renvoie les octets PDF.
+    """
+    try:
+        import weasyprint  # import local : lib lourde, chargée à la demande.
+    except Exception as exc:  # pragma: no cover - WeasyPrint est installé.
+        raise RuntimeError(
+            "WeasyPrint est requis pour exporter un article en PDF "
+            f"mais n'a pas pu être chargé : {exc}")
+    titre = (article.titre or 'Article').replace('<', '&lt;').replace('>', '&gt;')
+    corps_html = (article.corps or '').replace('\n', '<br>')
+    html_str = (
+        "<!DOCTYPE html><html lang='fr'><head><meta charset='utf-8'>"
+        "<style>"
+        "body{font-family:sans-serif;font-size:11pt;color:#1a1a1a;"
+        "margin:2cm;line-height:1.5;}"
+        "h1{font-size:16pt;border-bottom:2px solid #2b5cab;padding-bottom:6px;}"
+        ".meta{color:#666;font-size:9pt;margin-bottom:12px;}"
+        "</style></head><body>"
+        f"<h1>{titre}</h1>"
+        f"<div class='meta'>{article.categorie or ''} · {article.get_statut_display()}</div>"
+        f"<div class='corps'>{corps_html}</div>"
+        "</body></html>"
+    )
+    return weasyprint.HTML(string=html_str).write_pdf()
+
+
+def importer_markdown(contenu, *, company, auteur=None):
+    """XKB17 — Importe un fichier Markdown comme NOUVEL article brouillon.
+
+    Le premier titre ATX (``# Titre``) du contenu devient le titre de
+    l'article ; à défaut le titre est ``'Article importé'``. Le contenu entier
+    est stocké dans ``corps`` avec ``corps_format='markdown'``. Société et
+    auteur posés côté serveur (jamais du corps de requête).
+    """
+    contenu = contenu or ''
+    titre = 'Article importé'
+    for ligne in contenu.splitlines():
+        ligne = ligne.strip()
+        if ligne.startswith('# '):
+            titre = ligne[2:].strip() or titre
+            break
+    return KbArticle.objects.create(
+        company=company,
+        titre=titre[:255],
+        corps=contenu,
+        corps_format=KbArticle.CorpsFormat.MARKDOWN,
+        statut=KbArticle.Statut.BROUILLON,
+        auteur=auteur,
+    )
+
+
+# ── XKB21 — Dupliquer un article (avec ou sans sous-articles) ──────────────
+
+def dupliquer_article(article, *, auteur, company, avec_sous_articles=False):
+    """XKB21 — Duplique ``article`` en une copie BROUILLON indépendante.
+
+    Copie le contenu COURANT (titre, corps/format, catégorie/tags,
+    visibilité) ; la copie est TOUJOURS ``brouillon`` (jamais publiée
+    automatiquement) et n'est PAS elle-même un gabarit ni verrouillée, même
+    si la source l'était. ``parent`` de la copie reste celui de la source
+    (même emplacement dans l'arbre) — un ``deplacer`` explicite la
+    replace ensuite si besoin.
+
+    ``avec_sous_articles=True`` clone RÉCURSIVEMENT tout le sous-arbre : les
+    enfants de la source sont dupliqués et rattachés à la NOUVELLE copie
+    (jamais à l'original), préservant la hiérarchie relative. Société et
+    auteur posés côté serveur (jamais du corps de requête) ; la copie est
+    toujours de la MÊME société que la source (jamais celle d'un appelant
+    d'une autre société, même si le scoping amont l'empêche déjà).
+
+    Renvoie l'article copie (racine de la duplication).
+    """
+    with transaction.atomic():
+        copie = KbArticle.objects.create(
+            company=company,
+            titre=f'{article.titre} (copie)',
+            corps=article.corps,
+            corps_format=article.corps_format,
+            categorie=article.categorie,
+            tags=article.tags,
+            statut=KbArticle.Statut.BROUILLON,
+            visibilite=article.visibilite,
+            auteur=auteur,
+            parent=article.parent,
+            ordre=article.ordre,
+            est_gabarit=False,
+            est_verrouille=False,
+        )
+        if avec_sous_articles:
+            for enfant in article.enfants.all().order_by('ordre', 'id'):
+                _dupliquer_sous_arbre(
+                    enfant, nouveau_parent=copie, auteur=auteur,
+                    company=company)
+    return copie
+
+
+def _dupliquer_sous_arbre(article, *, nouveau_parent, auteur, company):
+    """XKB21 — Clone récursivement UN sous-article sous ``nouveau_parent``.
+
+    Fonction interne de ``dupliquer_article`` (avec_sous_articles=True) : ne
+    duplique JAMAIS vers l'original — toujours sous la copie."""
+    copie = KbArticle.objects.create(
+        company=company,
+        titre=article.titre,
+        corps=article.corps,
+        corps_format=article.corps_format,
+        categorie=article.categorie,
+        tags=article.tags,
+        statut=KbArticle.Statut.BROUILLON,
+        visibilite=article.visibilite,
+        auteur=auteur,
+        parent=nouveau_parent,
+        ordre=article.ordre,
+        est_gabarit=False,
+        est_verrouille=False,
+    )
+    for enfant in article.enfants.all().order_by('ordre', 'id'):
+        _dupliquer_sous_arbre(
+            enfant, nouveau_parent=copie, auteur=auteur, company=company)
+    return copie
+
+
+# ── XKB18 — Articles multilingues FR/AR/EN ──────────────────────────────────
+
+def creer_traduction(article_source, *, langue, auteur=None, company):
+    """XKB18 — Crée la traduction ``langue`` d'``article_source``.
+
+    Copie titre + corps + catégorie/tags de la source, marque le nouvel
+    article de la langue cible et le rattache à la source
+    (``traduction_de``). Statut ``brouillon`` (la traduction démarre à
+    relire, jamais publiée automatiquement). Société posée côté serveur
+    (jamais du corps de requête) et forcée à celle de la source.
+    """
+    return KbArticle.objects.create(
+        company=company,
+        titre=article_source.titre,
+        corps=article_source.corps,
+        corps_format=article_source.corps_format,
+        categorie=article_source.categorie,
+        tags=article_source.tags,
+        statut=KbArticle.Statut.BROUILLON,
+        auteur=auteur,
+        langue=langue,
+        traduction_de=article_source,
+    )
+
+
+def marquer_traductions_perimees(article):
+    """XKB18 — Marque PÉRIMÉES toutes les traductions d'``article`` quand
+    celui-ci (une source) vient d'être modifié.
+
+    Appelé depuis la mise à jour de l'article (``perform_update``) : si
+    ``article`` porte des traductions (``.traductions``), chacune passe
+    ``traduction_perimee=True`` — l'indicateur « traduction à mettre à jour »
+    de KB18. N'affecte jamais l'article source lui-même. Best-effort et
+    idempotent (un ``update()`` en masse, pas de N+1).
+    """
+    article.traductions.update(traduction_perimee=True)
+
+
+# ── XKB19 — Partage web public d'article (lien tokenisé) ────────────────────
+
+PARTAGE_OK = 'ok'
+PARTAGE_INTROUVABLE = 'introuvable'  # jeton inconnu ou révoqué → 404
+PARTAGE_EXPIRE = 'expire'            # expiré → 410
+
+
+def resolve_partage_public(token):
+    """XKB19 — Résout un partage public d'article DEPUIS le seul jeton.
+
+    Calqué sur ``ged.services.resolve_partage_public`` (GED20) : aucune
+    identité/société n'est jamais lue de la requête, tout est résolu à partir
+    du ``token`` (qui ne référence qu'un seul article d'une seule société).
+    Renvoie ``(statut, partage_ou_None)`` :
+
+      - PARTAGE_INTROUVABLE : jeton inconnu OU partage dépublié
+        (``actif=False``) → 404, indistinct (pas de fuite « ce jeton a
+        existé »).
+      - PARTAGE_EXPIRE : partage expiré (``expires_at`` dépassé) → 410.
+      - PARTAGE_OK : accès autorisé, ``partage.article`` est servable.
+    """
+    partage = (PartageArticleKb.objects
+               .select_related('article', 'company')
+               .filter(token=token)
+               .first())
+    if partage is None or not partage.actif:
+        return PARTAGE_INTROUVABLE, None
+    if partage.is_expired:
+        return PARTAGE_EXPIRE, partage
+    return PARTAGE_OK, partage
+
+
+def consume_partage_consultation(partage):
+    """XKB19 — Incrémente atomiquement le compteur de consultations publiques
+    (F-expression : pas de race condition en écriture concurrente)."""
+    from django.db.models import F
+    PartageArticleKb.objects.filter(id=partage.id).update(
+        consultations=F('consultations') + 1)
+
+
+def exporter_zip_company(company):
+    """XKB17 — Exporte TOUS les articles d'une société (+ pièces jointes) en ZIP.
+
+    Contrôle des données loi 09-08 : sauvegarde/migration scopée STRICTEMENT à
+    ``company`` — jamais un article ni une pièce jointe d'une autre société.
+    Chaque article devient ``articles/<id>-<titre>.md`` ; ses pièces jointes
+    (``records.Attachment`` génériques, content-type ``kb.kbarticle``) sont
+    récupérées depuis MinIO (``records.storage.fetch_attachment`` — import
+    fonction-local, ``records`` est une app fondation) et rangées sous
+    ``articles/<id>-pieces-jointes/<filename>``. Renvoie les octets du ZIP.
+    """
+    import io
+    import zipfile
+
+    from django.contrib.contenttypes.models import ContentType
+
+    from apps.records.models import Attachment
+    from apps.records.storage import fetch_attachment
+
+    buffer = io.BytesIO()
+    ct = ContentType.objects.get_for_model(KbArticle)
+    with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for article in KbArticle.objects.filter(company=company).order_by('id'):
+            slug = ''.join(
+                c if c.isalnum() else '-' for c in (article.titre or '')
+            ).strip('-') or 'article'
+            zf.writestr(
+                f'articles/{article.id}-{slug}.md',
+                article_to_markdown(article))
+            pjs = Attachment.objects.filter(
+                content_type=ct, object_id=article.id, company=company)
+            for pj in pjs:
+                data, err = fetch_attachment(pj.file_key)
+                if err or data is None:
+                    continue
+                zf.writestr(
+                    f'articles/{article.id}-pieces-jointes/{pj.filename}',
+                    data)
+    return buffer.getvalue()
 
 
 # ── XKB7 — Relance des non-lecteurs de lecture obligatoire ─────────────────

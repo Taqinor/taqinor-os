@@ -1191,6 +1191,88 @@ def compute_iv_ecart(reading):
     return reading
 
 
+# ── XFSM13 — re-vérification périodique IEC 62446-2 vs baseline de recette ──
+def _pct_ecart(mesure, baseline):
+    """Écart relatif (%) mesuré vs baseline, ou None si une valeur manque ou
+    que la baseline est nulle (division impossible)."""
+    from decimal import Decimal
+    if mesure is None or baseline in (None, 0):
+        return None
+    ecart = (Decimal(mesure) - Decimal(baseline)) / Decimal(baseline) * 100
+    return ecart.quantize(Decimal('0.01'))
+
+
+def enregistrer_reverification(
+        intervention, mesures, user=None, seuil_alerte_pct=20):
+    """XFSM13 — enregistre une re-vérification IEC 62446-2 pour
+    ``intervention`` (de type ``Intervention.Type.REVERIFICATION_62446``),
+    compare ses mesures ``{isolement_mohm, continuite_terre_ohm,
+    voc_par_string: {label: valeur}}`` à la baseline du chantier (la fiche de
+    recette ``CommissioningRecord`` du chantier + ses ``CommissioningIVReading``),
+    calcule la dérive, et crée une ``Reserve`` sur l'intervention si la dérive
+    dépasse ``seuil_alerte_pct`` (défaut 20 %) sur au moins un point.
+
+    Silencieux (dérive = None) sur tout point sans baseline correspondante —
+    ne bloque jamais l'enregistrement. Idempotent au niveau caller : chaque
+    appel crée une NOUVELLE re-vérification (l'historique de dérive dans le
+    temps est la valeur du contrôle)."""
+    from .models import CommissioningIVReading, Reserve, ReverificationMesure
+
+    company = intervention.company
+    installation = intervention.installation
+    baseline = getattr(installation, 'commissioning_record', None)
+
+    isolement_mesure = mesures.get('isolement_mohm')
+    continuite_mesure = mesures.get('continuite_terre_ohm')
+    isolement_ecart = _pct_ecart(
+        isolement_mesure, getattr(baseline, 'isolement_mohm', None))
+
+    voc_comparaison = []
+    depassement = False
+    if isolement_ecart is not None and abs(isolement_ecart) > seuil_alerte_pct:
+        depassement = True
+
+    if baseline is not None:
+        baseline_iv = {
+            r.string_label: r.voc_mesure_v
+            for r in CommissioningIVReading.objects.filter(record=baseline)}
+        for label, voc_mesure in (mesures.get('voc_par_string') or {}).items():
+            voc_baseline = baseline_iv.get(label)
+            ecart = _pct_ecart(voc_mesure, voc_baseline)
+            voc_comparaison.append({
+                'string_label': label,
+                'voc_baseline_v': str(voc_baseline) if voc_baseline is not None else None,
+                'voc_mesure_v': str(voc_mesure) if voc_mesure is not None else None,
+                'ecart_pct': str(ecart) if ecart is not None else None,
+            })
+            if ecart is not None and abs(ecart) > seuil_alerte_pct:
+                depassement = True
+
+    reverif = ReverificationMesure.objects.create(
+        company=company, intervention_id=intervention.id,
+        record_baseline=baseline,
+        isolement_mohm=isolement_mesure,
+        continuite_terre_ohm=continuite_mesure,
+        voc_comparaison=voc_comparaison,
+        isolement_ecart_pct=isolement_ecart,
+        seuil_alerte_pct=seuil_alerte_pct,
+        depassement_detecte=depassement,
+        observations=mesures.get('observations') or '',
+        created_by=user)
+
+    if depassement:
+        reserve = Reserve.objects.create(
+            company=company, intervention=intervention,
+            description=(
+                "Re-vérification IEC 62446-2 : dérive au-delà du seuil "
+                f"({seuil_alerte_pct} %) détectée vs la recette initiale."),
+            created_by=user)
+        reverif.reserve_id = reserve.id
+        reverif.save(update_fields=['reserve_id'])
+
+    return reverif
+
+
 # ── CH4 — Pack de remise client (handover) ───────────────────────────────────
 # Le pack assemble les pièces du dossier remis au client + au vendeur en
 # RÉFÉRENÇANT l'état réel du chantier (jamais de binaire stocké). Chaque pièce
@@ -1772,3 +1854,288 @@ def decider_demande_achat(demande_achat, *, approuver, user, motif_refus=''):
         'statut', 'approuvee_par', 'date_decision', 'motif_refus',
         'date_modification'])
     return demande_achat
+
+
+# ── XFSM3 — Replanification en masse d'une journée ───────────────────────────
+# Construit sur XFSM2 (meilleur créneau) / FG301 (nivellement) : entrée = un
+# jour + (optionnellement) un technicien absent ou une liste d'IDs. Sortie =
+# propositions de nouveaux créneaux/techniciens (réutilise la même logique
+# de scoring que XFSM2, respecte FG300/FG302), puis application en un appel.
+# `?simuler=1` (dry-run) ne mute rien — jamais de conflit créé (les créneaux
+# proposés excluent déjà les techniciens en conflit/indisponibles ce jour-là,
+# héritage direct de XFSM2).
+
+def previsualiser_replanification_masse(company, *, jour, technicien_id=None,
+                                        intervention_ids=None):
+    """XFSM3 — propositions de re-slot pour un jour donné (dry-run, NE MUTE
+    RIEN). Cible soit toutes les interventions du `technicien_id` donné ce
+    jour-là, soit une liste explicite `intervention_ids` (les deux
+    combinables : filtre supplémentaire). Chaque proposition réutilise
+    ``selectors.suggerer_creneau`` (habilitation/conflit/indispo/charge/
+    distance) — le créneau proposé ne recrée jamais de conflit FG300. Renvoie
+    ``{jour, propositions: [{intervention_id, installation_id,
+    type_intervention, technicien_actuel_id, proposition}]}``."""
+    from .models import Intervention
+    from . import selectors
+
+    qs = Intervention.objects.filter(company=company, date_prevue=jour)
+    if technicien_id is not None:
+        qs = qs.filter(technicien_id=technicien_id)
+    if intervention_ids:
+        qs = qs.filter(id__in=intervention_ids)
+
+    propositions = []
+    for interv in qs.select_related('installation'):
+        suggestions = selectors.suggerer_creneau(
+            company, chantier_id=interv.installation_id,
+            type_intervention=interv.type_intervention, n=1)
+        proposition = (
+            suggestions['propositions'][0]
+            if suggestions['propositions'] else None)
+        propositions.append({
+            'intervention_id': interv.id,
+            'installation_id': interv.installation_id,
+            'type_intervention': interv.type_intervention,
+            'technicien_actuel_id': interv.technicien_id,
+            'proposition': proposition,
+        })
+    return {'jour': str(jour), 'propositions': propositions}
+
+
+def appliquer_replanification_masse(company, *, jour, motif, user,
+                                    technicien_id=None, intervention_ids=None):
+    """XFSM3 — applique en UN appel les propositions de
+    ``previsualiser_replanification_masse`` : chaque intervention resolvable
+    (une proposition existe) est déplacée vers le technicien + date proposés,
+    le compteur `rdv_reschedule_count` (FG78) est incrémenté et un chatter
+    (motif) est posé, et le technicien réassigné est notifié (best-effort,
+    `apps.notifications`). Les interventions SANS proposition (aucun
+    créneau disponible dans la fenêtre XFSM2) sont laissées INTACTES et
+    listées à part. Renvoie
+    ``{jour, deplacees: [...], non_resolues: [intervention_id...]}``."""
+    from django.db import transaction
+    from . import intervention_activity
+    from .models import Intervention
+
+    motif = (motif or '').strip()
+    preview = previsualiser_replanification_masse(
+        company, jour=jour, technicien_id=technicien_id,
+        intervention_ids=intervention_ids)
+
+    deplacees = []
+    non_resolues = []
+    with transaction.atomic():
+        for entry in preview['propositions']:
+            proposition = entry['proposition']
+            if proposition is None:
+                non_resolues.append(entry['intervention_id'])
+                continue
+            interv = Intervention.objects.select_for_update().get(
+                id=entry['intervention_id'], company=company)
+            ancien_tech_id = interv.technicien_id
+            nouvelle_date = proposition['date']
+            nouveau_tech_id = proposition['technicien_id']
+            interv.technicien_id = nouveau_tech_id
+            if str(interv.date_prevue) != nouvelle_date:
+                interv.rdv_reschedule_count = (
+                    interv.rdv_reschedule_count or 0) + 1
+            interv.date_prevue = nouvelle_date
+            interv.save(update_fields=[
+                'technicien_id', 'date_prevue', 'rdv_reschedule_count'])
+            intervention_activity.log_note(
+                interv, user,
+                f"Replanification en masse ({motif or 'sans motif'}) : "
+                f"{ancien_tech_id or 'non assigné'} → {nouveau_tech_id}, "
+                f"nouvelle date {nouvelle_date}.")
+            _notifier_reassignation(interv, user)
+            deplacees.append({
+                'intervention_id': interv.id,
+                'ancien_technicien_id': ancien_tech_id,
+                'nouveau_technicien_id': nouveau_tech_id,
+                'nouvelle_date': nouvelle_date,
+            })
+    return {
+        'jour': str(jour), 'deplacees': deplacees,
+        'non_resolues': non_resolues,
+    }
+
+
+def _notifier_reassignation(interv, user):
+    """XFSM3 — notifie (best-effort, ne lève jamais) le technicien réassigné
+    d'un changement de créneau."""
+    try:
+        from apps.notifications.services import notify
+        from apps.notifications.models import EventType
+    except Exception:  # pragma: no cover - défensif
+        return
+    if not interv.technicien_id:
+        return
+    try:
+        titre = f"Intervention replanifiée — #{interv.id}"
+        notify(
+            interv.technicien, EventType.CHANTIER_DUE, titre,
+            body=f"Nouvelle date : {interv.date_prevue}.",
+            company=interv.company)
+    except Exception:  # pragma: no cover - défensif
+        pass
+
+
+# ── XMFG16 — Assemblage sous-traité (façon) avec suivi des composants confiés
+# Cycle : à la CONFIRMATION d'un ordre lié à un sous-traitant, les composants
+# de sa BOM/lignes sont transférés (TransfertStock, `apps.stock.services`)
+# vers un emplacement dédié « chez {sous-traitant} » (créé à la volée). À la
+# RÉCEPTION du composite, le backflush XMFG1 consomme les composants DEPUIS
+# cet emplacement (`emplacement_source` forcé) et le composite est valorisé
+# coût composants + montant façon de l'OST (INTERNE — jamais client-facing,
+# jamais dans un PDF).
+
+def confier_composants_soustraitance(ordre):
+    """XMFG16 — transfère les composants de l'ordre (lignes XMFG6, repli BOM
+    du kit) vers l'emplacement dédié du sous-traitant lié, et POSE cet
+    emplacement comme `emplacement_source` de l'ordre (le backflush XMFG1 à la
+    clôture consommera DEPUIS cet emplacement). No-op si l'ordre n'a pas de
+    `sous_traitant`. Idempotent : ne retransfère pas si `emplacement_source`
+    pointe déjà vers l'emplacement du sous-traitant."""
+    from apps.stock.services import (
+        get_or_create_emplacement_soustraitant, transfer_stock,
+        ensure_emplacements)
+
+    if ordre.sous_traitant_id is None:
+        return ordre
+
+    emplacement = get_or_create_emplacement_soustraitant(
+        ordre.company, ordre.sous_traitant.nom)
+    if ordre.emplacement_source_id == emplacement.id:
+        return ordre  # déjà confié — idempotent.
+
+    depot_principal = ensure_emplacements(ordre.company)
+    lignes = list(ordre.lignes.select_related('produit').all())
+    composants = (
+        [(ligne.produit, ligne.quantite) for ligne in lignes] if lignes
+        else [(c.produit, (c.quantite or 0) * ordre.quantite)
+              for c in ordre.kit.composants.select_related('produit').all()])
+    for produit, quantite in composants:
+        if produit is None or not quantite:
+            continue
+        try:
+            transfer_stock(
+                company=ordre.company, user=ordre.created_by,
+                produit_id=produit.id, source_id=depot_principal.id,
+                destination_id=emplacement.id, quantite=quantite,
+                note=f'Confié sous-traitant — ordre {ordre.reference}')
+        except ValueError:
+            # Stock insuffisant au dépôt principal : best-effort, le rapport
+            # de reliquat (ci-dessous) restera visible à l'appelant — on ne
+            # bloque jamais la confirmation d'ordre pour cette raison.
+            continue
+
+    ordre.emplacement_source = emplacement
+    ordre.save(update_fields=['emplacement_source'])
+    return ordre
+
+
+def cout_composite_soustraite(ordre):
+    """XMFG16 — coût du composite reçu d'un sous-traitant : coût composants
+    (``cout_prevu_assemblage``, INTERNE) + montant façon de l'OST lié
+    (``montant_realise`` si posé, sinon ``montant`` engagé). None si l'ordre
+    n'a pas d'``ordre_sous_traitance``. JAMAIS client-facing ni dans un PDF."""
+    from decimal import Decimal
+    if ordre.ordre_sous_traitance_id is None:
+        return None
+    ost = ordre.ordre_sous_traitance
+    montant_facon = (
+        ost.montant_realise if ost.montant_realise is not None
+        else ost.montant) or Decimal('0')
+    return cout_prevu_assemblage(ordre) + Decimal(str(montant_facon))
+
+
+def rapport_composants_chez_soustraitants(company):
+    """XMFG16 — reliquat des composants restant CHEZ CHAQUE sous-traitant
+    (emplacements « Chez {nom} » avec du stock ventilé non encore consommé —
+    un ordre déjà backflushé, ``stock_mouvemente=True``, n'a plus de reliquat).
+    Renvoie une liste [{sous_traitant_id, sous_traitant_nom, emplacement_id,
+    lignes: [{produit_id, produit_nom, quantite}]}]. Lecture seule."""
+    from .models import OrdreAssemblage
+
+    ordres = (OrdreAssemblage.objects
+              .filter(company=company, sous_traitant__isnull=False,
+                      emplacement_source__isnull=False,
+                      stock_mouvemente=False)
+              .exclude(statut=OrdreAssemblage.Statut.ANNULE)
+              .select_related('sous_traitant', 'emplacement_source'))
+    par_emplacement = {}
+    for ordre in ordres:
+        emp = ordre.emplacement_source
+        entry = par_emplacement.setdefault(emp.id, {
+            'sous_traitant_id': ordre.sous_traitant_id,
+            'sous_traitant_nom': ordre.sous_traitant.nom,
+            'emplacement_id': emp.id,
+            'lignes': [],
+        })
+        for se in emp.stocks.select_related('produit').all():
+            entry['lignes'].append({
+                'produit_id': se.produit_id,
+                'produit_nom': se.produit.nom,
+                'quantite': se.quantite,
+            })
+    return list(par_emplacement.values())
+
+
+def marquer_serie_entrepot_sortie(*, company, produit_id, numero_serie):
+    """XPOS9 — si `numero_serie` est déjà enregistré au registre entrepôt
+    (`SerieEntrepot`, FG323) pour ce produit/société, le marque SORTI (vente
+    comptoir). No-op silencieux si la série n'y est pas enregistrée — un
+    produit sérialisé peut très bien être vendu sans être jamais passé par
+    l'entrepôt tracé. Renvoie l'objet mis à jour, ou None si non trouvé."""
+    from .models_serie_entrepot import SerieEntrepot
+
+    entry = SerieEntrepot.objects.filter(
+        company=company, produit_id=produit_id,
+        numero_serie=numero_serie).first()
+    if entry is None:
+        return None
+    if entry.statut != SerieEntrepot.Statut.SORTI:
+        entry.statut = SerieEntrepot.Statut.SORTI
+        entry.save(update_fields=['statut', 'date_modification'])
+    return entry
+
+
+class TicketSansInstallationError(Exception):
+    """YSERV2 — levée quand un ticket SAV sans chantier lié demande la
+    création d'une intervention (rien à planifier sans Installation)."""
+
+
+def creer_intervention_depuis_ticket(*, ticket, user, company,
+                                     type_intervention=None):
+    """YSERV2 — Point d'entrée cross-app (services.py cible) pour créer une
+    ``Intervention`` pré-remplie depuis un ticket SAV, appelé EXCLUSIVEMENT
+    par ``apps.sav.views`` (jamais un import du modèle ``Intervention``
+    depuis ``sav`` — frontière cross-app, CLAUDE.md).
+
+    Le chantier (``installation``), le technicien (``technicien_responsable``
+    du ticket) sont repris tels quels ; le type par défaut est DEPANNAGE
+    (correctif) sauf ``type_intervention`` explicite. Refuse proprement
+    (``TicketSansInstallationError``) si le ticket n'a pas d'installation
+    liée — rien à planifier sans chantier. ``ticket`` est passé en instance
+    déjà résolue/scopée société par l'appelant ; ``company`` est TOUJOURS
+    posée côté serveur (jamais lue du corps de requête).
+
+    Renvoie l'``Intervention`` créée.
+    """
+    from .models_intervention import Intervention
+
+    if not ticket.installation_id:
+        raise TicketSansInstallationError(
+            "Ce ticket n'a pas de chantier lié — impossible de planifier "
+            'une intervention.')
+
+    interv = Intervention.objects.create(
+        company=company,
+        installation_id=ticket.installation_id,
+        ticket=ticket,
+        type_intervention=type_intervention or Intervention.Type.DEPANNAGE,
+        technicien=ticket.technicien_responsable,
+        date_prevue=ticket.date_tournee,
+        created_by=user,
+    )
+    return interv

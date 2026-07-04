@@ -74,10 +74,12 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
             # `get_permissions` prime sur le `permission_classes` de l'action,
             # donc la garde DOIT être posée ici (sinon repli IsAdminRole).
             return [PRODUIT_CREATE_PERMISSION()]
-        elif self.action in WRITE_ACTIONS + ['bulk']:
+        elif self.action in WRITE_ACTIONS + ['bulk', 'rebuter']:
             return [HasPermissionOrLegacy('stock_modifier')()]
         elif self.action in ('destroy', 'force_delete'):
             return [IsAdminRole()]
+        # XSTK10 — `rapport_pertes` reste admin-only (valeur d'achat
+        # interne, jamais client-facing) via le repli ci-dessous.
         return [IsAdminRole()]
 
     def get_queryset(self):
@@ -323,6 +325,40 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
             nb_mois = 6
         return Response(previsions_reappro(request.user.company, nb_mois=nb_mois))
 
+    @action(detail=False, methods=['get'], url_path='analyse-achats',
+            permission_classes=[IsResponsableOrAdmin])
+    def analyse_achats(self, request):
+        """XPUR24 — tableau de bord achats : dépenses par fournisseur/
+        catégorie/mois, dérive de prix moyen par SKU, engagements ouverts,
+        top produits achetés, temps de cycle DA→BCF→réception→facture.
+        Admin/Responsable uniquement — JAMAIS client-facing. INTERNE."""
+        from ..services import analyse_achats_dashboard
+        try:
+            nb_mois = int(request.query_params.get('nb_mois', 6))
+        except (TypeError, ValueError):
+            nb_mois = 6
+        return Response(analyse_achats_dashboard(
+            request.user.company,
+            date_debut=request.query_params.get('date_debut'),
+            date_fin=request.query_params.get('date_fin'),
+            nb_mois=nb_mois))
+
+    @action(detail=False, methods=['get'], url_path='analyse-achats/export-xlsx',
+            permission_classes=[IsResponsableOrAdmin])
+    def analyse_achats_export_xlsx(self, request):
+        """XPUR24 — export xlsx du tableau de bord achats. Admin/Responsable
+        uniquement — un non-autorisé reçoit 403."""
+        from ..services import export_analyse_achats_xlsx
+        try:
+            nb_mois = int(request.query_params.get('nb_mois', 6))
+        except (TypeError, ValueError):
+            nb_mois = 6
+        return export_analyse_achats_xlsx(
+            request.user.company,
+            date_debut=request.query_params.get('date_debut'),
+            date_fin=request.query_params.get('date_fin'),
+            nb_mois=nb_mois)
+
     @action(detail=False, methods=['get'], url_path='resolve',
             permission_classes=[IsAnyRole])
     def resolve(self, request):
@@ -336,10 +372,54 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
         from .. import labels
 
         code = (request.query_params.get('code') or '').strip()
-        if not code or ':' not in code:
+        if not code:
             return Response(
                 {'detail': 'Code illisible.'},
                 status=status.HTTP_400_BAD_REQUEST)
+
+        # XSTK3 — un EAN/UPC/GTIN imprimé par le FABRICANT n'a pas de ':'
+        # (contrairement aux jetons internes `PRODUIT:<id>`). On matche
+        # d'abord les jetons internes (ci-dessous) puis, si le code ne suit
+        # pas ce format, `Produit.code_barres` — scopé société.
+        if ':' not in code:
+            # XSTK4 — un composite GS1-128/DataMatrix commence par l'AI '01'
+            # (GTIN, 14 chiffres) suivi d'autres AI (lot/péremption/série) :
+            # plus long qu'un simple EAN/GTIN nu. On décompose d'abord et on
+            # résout par GTIN (= code_barres) ; sinon repli sur un match
+            # direct du code brut (EAN/UPC simple, comportement XSTK3).
+            gtin = None
+            gs1_extra = {}
+            if code[:2] == '01' and len(code) > 16 and code[2:16].isdigit():
+                from ..gs1 import parse_gs1
+                parsed = parse_gs1(code)
+                gtin = parsed.get('gtin')
+                if gtin:
+                    gs1_extra = {
+                        'numero_lot': parsed.get('lot'),
+                        'date_peremption': (
+                            parsed['date_peremption'].isoformat()
+                            if parsed.get('date_peremption') else None),
+                        'numero_serie': parsed.get('serie'),
+                    }
+            lookup_code = gtin or code
+            produit = (Produit.objects
+                       .filter(company=request.user.company,
+                               code_barres=lookup_code)
+                       .first())
+            if produit is None:
+                return Response(
+                    {'detail': 'Produit introuvable.'},
+                    status=status.HTTP_404_NOT_FOUND)
+            data = {
+                'type': 'produit',
+                'id': produit.id,
+                'label': produit.nom,
+                'sku': produit.sku or '',
+                'route': '/stock',
+            }
+            if gs1_extra:
+                data['gs1'] = gs1_extra
+            return Response(data)
         prefix, _, raw_id = code.partition(':')
         prefix = prefix.strip().upper()
         raw_id = raw_id.strip()
@@ -441,6 +521,77 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(
             {'detail': 'Type de code inconnu.'},
             status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'], url_path='rebuter')
+    def rebuter(self, request, *args, **kwargs):
+        """XSTK10 — met au rebut une quantité de ce produit (casse/obsolète/
+        périmé/vol…). Corps : ``{"quantite": int, "motif": "casse"|
+        "obsolete"|"perime"|"vol"|"defaut"|"erreur"|"autre",
+        "emplacement": id (optionnel), "reference_chantier": str
+        (optionnel)}``. Motif obligatoire ; respecte le garde de stock
+        négatif (XSTK8)."""
+        produit = self.get_object()
+        try:
+            quantite = int(request.data.get('quantite'))
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': 'Quantité invalide.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        motif = (request.data.get('motif') or '').strip()
+        if not motif:
+            return Response(
+                {'detail': 'Le motif est obligatoire.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        emplacement = None
+        emplacement_id = request.data.get('emplacement')
+        if emplacement_id:
+            emplacement = EmplacementStock.objects.filter(
+                company=request.user.company, id=emplacement_id).first()
+            if emplacement is None:
+                return Response(
+                    {'detail': 'Emplacement introuvable.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+
+        from ..services import rebuter_produit
+        try:
+            result = rebuter_produit(
+                company=request.user.company, produit=produit,
+                quantite=quantite, motif=motif, user=request.user,
+                emplacement=emplacement,
+                reference_chantier=request.data.get('reference_chantier'))
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({
+            'mouvement_id': result['mouvement'].id,
+            'valeur_perdue': str(result['valeur_perdue']),
+        }, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'], url_path='rapport-pertes')
+    def rapport_pertes_view(self, request):
+        """XSTK10 — rapport « pertes de la période » (quantités + valeur au
+        coût moyen, par motif). Admin-only, jamais client-facing."""
+        from ..services import rapport_pertes
+        rapport = rapport_pertes(
+            request.user.company,
+            date_debut=request.query_params.get('date_debut'),
+            date_fin=request.query_params.get('date_fin'))
+        return Response([
+            {
+                'produit_id': e['produit_id'],
+                'produit_nom': e['produit_nom'],
+                'quantite_totale': e['quantite_totale'],
+                'valeur_totale': str(e['valeur_totale']),
+                'par_motif': {
+                    motif: {'quantite': v['quantite'],
+                            'valeur': str(v['valeur'])}
+                    for motif, v in e['par_motif'].items()
+                },
+            }
+            for e in rapport
+        ])
 
     @action(detail=True, methods=['post'], url_path='dupliquer')
     def dupliquer(self, request, *args, **kwargs):

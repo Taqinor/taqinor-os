@@ -16,6 +16,7 @@ from .models import (
     DeletionRecord,
     ModuleToggle,
     PaymentTransaction,
+    RegistreTraitement,
     SavedQuery,
     ScheduledExport,
     TenantTheme,
@@ -220,6 +221,22 @@ class DataSubjectRequestSerializer(serializers.ModelSerializer):
             'id', 'statut', 'resultat', 'traitee_le',
             'created_at', 'updated_at',
         ]
+
+
+class RegistreTraitementSerializer(serializers.ModelSerializer):
+    """XPLT23 — registre des traitements CNDP (loi 09-08).
+
+    ``company`` n'est JAMAIS lu du corps (imposée côté serveur).
+    """
+    class Meta:
+        model = RegistreTraitement
+        fields = [
+            'id', 'code', 'finalite', 'base_legale', 'categories_donnees',
+            'categories_personnes', 'destinataires', 'duree_conservation',
+            'numero_recepisse', 'date_recepisse', 'actif',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
 
 
 class BackupRunSerializer(serializers.ModelSerializer):

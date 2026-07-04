@@ -8,9 +8,12 @@ from .views import (
     AffectationVehiculeViewSet,
     AnalyseRisquesChantierViewSet,
     AvanceSalaireViewSet,
+    AvantageSocialViewSet,
+    AyantDroitViewSet,
     BesoinFormationViewSet,
     BulletinPaieViewSet,
     CampagneEvaluationViewSet,
+    CampagnePulseViewSet,
     CandidatureViewSet,
     CauserieSecuriteViewSet,
     CockpitRhViewSet,
@@ -32,6 +35,7 @@ from .views import (
     ElementSortieViewSet,
     ElementsVariablesPaieViewSet,
     EntretienRecrutementViewSet,
+    EntretienSortieViewSet,
     EpiCatalogueViewSet,
     GabaritEmailRecrutementViewSet,
     GrilleSalarialeViewSet,
@@ -41,7 +45,9 @@ from .views import (
     HeuresSuppViewSet,
     HoraireTravailViewSet,
     IncidentPresenceViewSet,
+    JourBloqueCongeViewSet,
     KiosquePointageViewSet,
+    ModeleEvaluationViewSet,
     ModeleIntegrationViewSet,
     NoteDeFraisViewSet,
     OrdreMissionViewSet,
@@ -55,12 +61,15 @@ from .views import (
     PresquAccidentViewSet,
     PrimeAttribueeViewSet,
     PromesseEmbaucheViewSet,
+    QuizFormationViewSet,
+    RecrutementStatistiquesViewSet,
     ReglageRHViewSet,
     RemunerationViewSet,
     SanctionViewSet,
     SessionFormationViewSet,
     SoldeCongeViewSet,
     TableauBordHseViewSet,
+    TentativeQuizViewSet,
     TypeAbsenceViewSet,
     TypePrimeViewSet,
     VisiteMedicaleViewSet,
@@ -75,6 +84,9 @@ router.register(r'remunerations', RemunerationViewSet)
 router.register(r'grilles-salariales', GrilleSalarialeViewSet)
 router.register(r'documents', DocumentEmployeViewSet)
 router.register(r'elements-sortie', ElementSortieViewSet)
+router.register(r'entretiens-sortie', EntretienSortieViewSet)
+router.register(r'ayants-droit', AyantDroitViewSet)
+router.register(r'avantages-sociaux', AvantageSocialViewSet)
 router.register(r'modeles-integration', ModeleIntegrationViewSet)
 router.register(r'elements-integration', ElementIntegrationViewSet)
 router.register(
@@ -82,6 +94,7 @@ router.register(
 router.register(r'types-absence', TypeAbsenceViewSet)
 router.register(r'soldes-conge', SoldeCongeViewSet)
 router.register(r'demandes-conge', DemandeCongeViewSet)
+router.register(r'jours-bloques-conge', JourBloqueCongeViewSet)
 router.register(r'periodes-fermeture', PeriodeFermetureViewSet)
 # NOTE : le kiosque (``pointages/kiosque``) DOIT être enregistré AVANT
 # ``pointages`` — DefaultRouter résout dans l'ordre d'enregistrement, et le
@@ -117,12 +130,19 @@ router.register(r'causeries-securite', CauserieSecuriteViewSet)
 router.register(r'analyses-risques-chantier', AnalyseRisquesChantierViewSet)
 router.register(r'sessions-formation', SessionFormationViewSet)
 router.register(r'besoins-formation', BesoinFormationViewSet)
+router.register(r'quiz-formation', QuizFormationViewSet)
+router.register(r'tentatives-quiz', TentativeQuizViewSet)
 router.register(r'ouvertures-poste', OuverturePosteViewSet)
 router.register(r'candidatures', CandidatureViewSet)
+router.register(
+    r'recrutement/statistiques', RecrutementStatistiquesViewSet,
+    basename='rh-recrutement-statistiques')
 router.register(r'entretiens-recrutement', EntretienRecrutementViewSet)
 router.register(r'gabarits-email-recrutement', GabaritEmailRecrutementViewSet)
 router.register(r'promesses-embauche', PromesseEmbaucheViewSet)
+router.register(r'modeles-evaluation', ModeleEvaluationViewSet)
 router.register(r'campagnes-evaluation', CampagneEvaluationViewSet)
+router.register(r'campagnes-pulse', CampagnePulseViewSet)
 router.register(r'evaluations-employe', EvaluationEmployeViewSet)
 router.register(r'sanctions', SanctionViewSet)
 router.register(r'elements-variables-paie', ElementsVariablesPaieViewSet)
@@ -151,4 +171,11 @@ urlpatterns = [
     path('promesses-embauche/public/<str:token>/signer/',
          public_views.public_promesse_signer,
          name='rh-promesse-publique-signer'),
+    # XRH33 — page carrières publique (flag-gated OFF par défaut, 404 sinon).
+    path('carrieres/<slug:company_slug>/',
+         public_views.careers_list,
+         name='rh-carrieres-liste'),
+    path('carrieres/<slug:company_slug>/<int:ouverture_id>/candidater/',
+         public_views.careers_apply,
+         name='rh-carrieres-candidater'),
 ]

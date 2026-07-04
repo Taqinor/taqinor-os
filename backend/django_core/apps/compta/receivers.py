@@ -19,6 +19,10 @@ le point d'ancrage prévu, et reste importable sans dépendance manquante en
 attendant.
 """
 
+from django.dispatch import receiver
+
+from core.events import devis_accepted, devis_refused
+
 from .services import (  # noqa: F401  (ré-export du point d'intégration)
     auto_ecritures_actif,
     ecriture_pour_avoir,
@@ -36,4 +40,30 @@ from .services import (  # noqa: F401  (ré-export du point d'intégration)
     # sur ``core.events`` (l'ajouter modifierait ``apps.stock``, hors
     # périmètre additif ici).
     poster_mouvement_stock,
+    sortir_inscriptions_pour_lead,
 )
+
+
+# ── XMKT1 — sortie automatique des séquences de relance ────────────────────
+# À l'acceptation OU au refus d'un devis lié à un lead, sort ce lead de toute
+# séquence de relance active (les séquences sont pilotées sur l'intention
+# commerciale de conversion, plus pertinente une fois le devis tranché).
+
+@receiver(devis_accepted, dispatch_uid="compta_sortir_sequence_on_devis_accepted")
+def _sortir_sequence_on_devis_accepted(sender, devis, user, ancien_statut,
+                                       **kwargs):
+    lead_id = getattr(devis, 'lead_id', None)
+    if not lead_id:
+        return
+    sortir_inscriptions_pour_lead(
+        devis.company, lead_id, motif='devis_accepte')
+
+
+@receiver(devis_refused, dispatch_uid="compta_sortir_sequence_on_devis_refused")
+def _sortir_sequence_on_devis_refused(sender, devis, user, motif_refus,
+                                      **kwargs):
+    lead_id = getattr(devis, 'lead_id', None)
+    if not lead_id:
+        return
+    sortir_inscriptions_pour_lead(
+        devis.company, lead_id, motif='devis_refuse')

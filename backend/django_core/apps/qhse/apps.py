@@ -5,6 +5,14 @@ class QhseConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'apps.qhse'
     verbose_name = 'QHSE'
+    module_manifest = {
+        'key': 'qhse',
+        'label': 'QHSE',
+        'icone': 'shield',
+        'depends': [],
+        'description': 'Qualité, hygiène, sécurité, environnement.',
+        'categorie': 'Services',
+    }
 
     def ready(self):
         # QHSE32 — abonne QHSE à l'événement incident_declared (bus de signaux

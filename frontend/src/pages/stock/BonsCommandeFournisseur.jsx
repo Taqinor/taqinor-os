@@ -198,6 +198,14 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
     setLignes((ls) => ls.map((l, i) => (i === idx ? { ...l, ...patch } : l)))
   const addLigne = () =>
     setLignes((ls) => [...ls, { produit: '', quantite: 1, prix_achat_unitaire: '' }])
+  // XPUR16 — ligne libre/service (transport, prestation, frais) : pas de
+  // produit catalogue, désignation libre. Compte dans le total/l'approbation/
+  // la facturation mais ne génère jamais de mouvement de stock à la réception.
+  const addLigneLibre = () =>
+    setLignes((ls) => [
+      ...ls,
+      { produit: '', designation: '', quantite: 1, prix_achat_unitaire: '', sans_stock: true },
+    ])
   const removeLigne = (idx) =>
     setLignes((ls) => ls.filter((_, i) => i !== idx))
 
@@ -243,10 +251,13 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
     fournisseur: fournisseur || null,
     date_commande: dateCommande || null,
     note: note || null,
+    // XPUR16 — une ligne libre/service (pas de produit catalogue) est gardée
+    // tant qu'elle porte une désignation libre (« Transport Casablanca »…).
     lignes: lignes
-      .filter((l) => l.produit)
+      .filter((l) => l.produit || (l.designation ?? '').trim())
       .map((l) => ({
-        produit: l.produit,
+        produit: l.produit || null,
+        designation: l.produit ? '' : (l.designation ?? '').trim(),
         quantite: Number(l.quantite) || 0,
         prix_achat_unitaire: l.prix_achat_unitaire === '' || l.prix_achat_unitaire == null
           ? 0 : Number(l.prix_achat_unitaire),
@@ -457,6 +468,11 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
                   <Plus /> Ajouter une ligne
                 </Button>
               )}
+              {editableLignes && (
+                <Button type="button" variant="outline" size="sm" onClick={addLigneLibre}>
+                  <Plus /> Ligne libre (transport, frais…)
+                </Button>
+              )}
             </div>
           </div>
           <div className="overflow-x-auto rounded-lg border border-border">
@@ -483,21 +499,38 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
                     <tr key={l.id ?? `new-${idx}`} className="border-t border-border">
                       <td className="px-3 py-2">
                         {editableLignes ? (
-                          <div className="flex items-center gap-1">
+                          (l.sans_stock || (!l.produit && l.designation != null)) ? (
                             <div className="flex-1">
-                              <BcfProduitPicker produits={allProduits} value={l.produit}
-                                                onChange={(v) => pickProduit(idx, v)} />
+                              <Input className="h-9" placeholder="Désignation libre (ex. Transport Casablanca)"
+                                     value={l.designation ?? ''}
+                                     onChange={(e) => setLigne(idx, { designation: e.target.value })} />
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                Ligne libre — aucun mouvement de stock à la réception.
+                              </p>
                             </div>
-                            {canCreateProduit && (
-                              <IconButton type="button" label="Nouveau produit" size="sm"
-                                          className="size-8 text-primary hover:bg-accent"
-                                          onClick={() => setQuickCreateIdx(idx)}>
-                                <Plus />
-                              </IconButton>
-                            )}
-                          </div>
+                          ) : (
+                            <div className="flex items-center gap-1">
+                              <div className="flex-1">
+                                <BcfProduitPicker produits={allProduits} value={l.produit}
+                                                  onChange={(v) => pickProduit(idx, v)} />
+                              </div>
+                              {canCreateProduit && (
+                                <IconButton type="button" label="Nouveau produit" size="sm"
+                                            className="size-8 text-primary hover:bg-accent"
+                                            onClick={() => setQuickCreateIdx(idx)}>
+                                  <Plus />
+                                </IconButton>
+                              )}
+                            </div>
+                          )
                         ) : (
-                          <span>{l.produit_nom ?? '—'}{l.produit_sku ? ` (${l.produit_sku})` : ''}</span>
+                          <span>
+                            {l.produit_nom ?? l.designation ?? '—'}
+                            {l.produit_sku ? ` (${l.produit_sku})` : ''}
+                            {l.sans_stock && !l.produit_nom && (
+                              <span className="ml-1 text-xs text-muted-foreground">(ligne libre)</span>
+                            )}
+                          </span>
                         )}
                       </td>
                       <td className="px-3 py-2">
