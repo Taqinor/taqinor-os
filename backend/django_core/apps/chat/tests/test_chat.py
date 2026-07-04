@@ -1209,3 +1209,112 @@ class XKB30PollTests(TestCase):
             services.create_poll(
                 conversation=self.conv, sender=self.alice,
                 company=self.company, question='Q ?', options=['juste une'])
+
+
+class XKB32RetentionExportTests(TestCase):
+    """XKB32 — rétention & export des conversations (loi 09-08)."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.admin = make_user(
+            self.company, 'admin32', role_legacy='admin')
+        self.alice = make_user(self.company, 'alice32')
+        self.bob = make_user(self.company, 'bob32')
+        self.conv = make_channel(
+            self.company, self.alice, members=[self.bob])
+
+    def _old_message(self, days_ago):
+        from django.utils import timezone
+        from datetime import timedelta
+        msg = Message.objects.create(
+            company=self.company, conversation=self.conv, sender=self.alice,
+            body='ancien message')
+        Message.objects.filter(pk=msg.pk).update(
+            created_at=timezone.now() - timedelta(days=days_ago))
+        msg.refresh_from_db()
+        return msg
+
+    def test_no_policy_purges_nothing(self):
+        old = self._old_message(days_ago=400)
+        purged = services.sweep_retention(self.company)
+        self.assertEqual(purged, 0)
+        old.refresh_from_db()
+        self.assertIsNone(old.deleted_at)
+
+    def test_policy_purges_beyond_window(self):
+        old = self._old_message(days_ago=400)   # ~13 mois
+        recent = self._old_message(days_ago=10)
+        services.set_retention_policy(
+            self.company, 'channel', 6, self.admin)
+        purged = services.sweep_retention(self.company)
+        self.assertEqual(purged, 1)
+        old.refresh_from_db()
+        recent.refresh_from_db()
+        self.assertIsNotNone(old.deleted_at)
+        self.assertIsNone(recent.deleted_at)
+
+    def test_sweep_always_logs_even_at_zero(self):
+        from apps.chat.models import RetentionSweepRun
+        services.sweep_retention(self.company)
+        self.assertEqual(
+            RetentionSweepRun.objects.filter(company=self.company).count(), 1)
+        run = RetentionSweepRun.objects.get(company=self.company)
+        self.assertEqual(run.messages_purged, 0)
+
+    def test_dm_policy_does_not_affect_channels(self):
+        old = self._old_message(days_ago=400)
+        services.set_retention_policy(self.company, 'dm', 1, self.admin)
+        purged = services.sweep_retention(self.company)
+        self.assertEqual(purged, 0)
+        old.refresh_from_db()
+        self.assertIsNone(old.deleted_at)
+
+    def test_export_returns_scoped_messages(self):
+        Message.objects.create(
+            company=self.company, conversation=self.conv, sender=self.alice,
+            body='bonjour tout le monde')
+        data = services.export_conversation(self.conv)
+        self.assertEqual(data['conversation_id'], self.conv.id)
+        bodies = [m['body'] for m in data['messages']]
+        self.assertIn('bonjour tout le monde', bodies)
+
+    def test_api_export_admin_only(self):
+        Message.objects.create(
+            company=self.company, conversation=self.conv, sender=self.alice,
+            body='secret rh')
+        non_admin_api = auth(self.alice)
+        r = non_admin_api.get(
+            f'/api/django/chat/conversations/{self.conv.id}/export/')
+        self.assertEqual(r.status_code, 403)
+
+        admin_api = auth(self.admin)
+        # admin doit être membre pour que get_object() le trouve (scopé
+        # appartenance) — l'ajoute au canal pour ce test.
+        ConversationMember.objects.get_or_create(
+            conversation=self.conv, user=self.admin)
+        r2 = admin_api.get(
+            f'/api/django/chat/conversations/{self.conv.id}/export/')
+        self.assertEqual(r2.status_code, 200)
+
+    def test_api_export_csv_format(self):
+        ConversationMember.objects.get_or_create(
+            conversation=self.conv, user=self.admin)
+        admin_api = auth(self.admin)
+        r = admin_api.get(
+            f'/api/django/chat/conversations/{self.conv.id}'
+            f'/export/?format=csv')
+        self.assertEqual(r.status_code, 200)
+        self.assertIn('text/csv', r['Content-Type'])
+
+    def test_retention_policy_api_admin_only(self):
+        non_admin_api = auth(self.alice)
+        r = non_admin_api.post('/api/django/chat/retention-policies/', {
+            'conversation_kind': 'channel', 'retention_months': 12,
+        }, format='json')
+        self.assertEqual(r.status_code, 403)
+
+        admin_api = auth(self.admin)
+        r2 = admin_api.post('/api/django/chat/retention-policies/', {
+            'conversation_kind': 'channel', 'retention_months': 12,
+        }, format='json')
+        self.assertEqual(r2.status_code, 201, r2.data)

@@ -44,6 +44,9 @@ app.conf.enable_utc = False
 #     (best-effort, no-op société par société tant que lead_sla_hours=0).
 #   - XKB27 : messages chat programmés + rappels dus, toutes les 5 min —
 #     apps/chat/tasks.py (n'envoie jamais avant l'heure choisie).
+#   - XKB32 : sweep de rétention des conversations chat (02:45) —
+#     apps/chat/tasks.py (sans politique active = aucune purge, journalisé
+#     quand même pour traçabilité CNDP).
 app.conf.beat_schedule = {
     'ventes-check-overdue-factures': {
         'task': 'ventes.check_overdue_factures',
@@ -131,5 +134,12 @@ app.conf.beat_schedule = {
     'chat-send-due-reminders': {
         'task': 'chat.send_due_reminders',
         'schedule': crontab(minute='*/5'),
+    },
+    # XKB32 — sweep de rétention des conversations (loi 09-08 / CNDP), une
+    # fois par jour, heure creuse. Sans politique active, ne purge rien mais
+    # journalise quand même l'exécution.
+    'chat-retention-sweep': {
+        'task': 'chat.retention_sweep',
+        'schedule': crontab(hour=2, minute=45),
     },
 }

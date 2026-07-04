@@ -206,3 +206,25 @@ def task_send_due_reminders():
     sent = sweep_reminders()
     logger.info('chat.send_due_reminders: %s rappel(s) envoyé(s)', sent)
     return sent
+
+
+# ── XKB32 — rétention & export (loi 09-08) ─────────────────────────────
+
+@shared_task(name='chat.retention_sweep')
+def task_retention_sweep():
+    """Sweep de rétention JOURNALISÉ, société par société. Sans politique
+    active pour une société, le sweep ne purge rien pour elle (comportement
+    par défaut inchangé) — mais l'exécution est journalisée quand même."""
+    from authentication.models import Company
+
+    from .services import sweep_retention
+
+    total = 0
+    for company in Company.objects.all():
+        try:
+            total += sweep_retention(company)
+        except Exception:  # pragma: no cover - défensif, société par société
+            logger.exception(
+                'chat.retention_sweep: échec société=%s', company.pk)
+    logger.info('chat.retention_sweep: %s message(s) purgé(s) au total', total)
+    return total

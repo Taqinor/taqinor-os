@@ -536,3 +536,61 @@ class PollVote(models.Model):
 
     def __str__(self):
         return f'{self.user_id} -> option {self.option_id}'
+
+
+class RetentionPolicy(models.Model):
+    """XKB32 — politique de rétention admin par type de conversation (loi
+    09-08 / conformité CNDP sur les données employés).
+
+    Une ligne par (société, type de conversation). DÉFAUT : AUCUNE politique
+    -> `retention_months` reste `null` -> le sweep ne purge RIEN pour ce type
+    (comportement inchangé). Poser un nombre de mois active la purge pour ce
+    type UNIQUEMENT."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='chat_retention_policies')
+    conversation_kind = models.CharField(
+        max_length=10, choices=Conversation.Kind.choices)
+    # NULL = pas de politique active pour ce type (aucune purge). Un entier
+    # positif = purge des messages plus vieux que N mois.
+    retention_months = models.PositiveIntegerField(null=True, blank=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+')
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Politique de rétention (chat)'
+        verbose_name_plural = 'Politiques de rétention (chat)'
+        ordering = ['conversation_kind']
+        unique_together = [('company', 'conversation_kind')]
+
+    def __str__(self):
+        months = self.retention_months
+        return f'{self.conversation_kind}: {months or "aucune"} mois'
+
+
+class RetentionSweepRun(models.Model):
+    """XKB32 — journal d'exécution du sweep de rétention (traçabilité CNDP).
+
+    Une ligne par exécution du sweep pour UNE société — jamais silencieux :
+    même « rien à purger » est journalisé (compte à 0)."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='chat_retention_sweep_runs')
+    ran_at = models.DateTimeField(auto_now_add=True)
+    messages_purged = models.PositiveIntegerField(default=0)
+    detail = models.TextField(blank=True, default='')
+
+    class Meta:
+        verbose_name = 'Exécution de purge (chat)'
+        verbose_name_plural = 'Exécutions de purge (chat)'
+        ordering = ['-ran_at', '-id']
+        indexes = [
+            models.Index(fields=['company', 'ran_at']),
+        ]
+
+    def __str__(self):
+        return f'Sweep {self.company_id} @ {self.ran_at} ({self.messages_purged})'

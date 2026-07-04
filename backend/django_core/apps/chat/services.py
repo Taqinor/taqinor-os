@@ -835,6 +835,109 @@ def poll_results(poll, requesting_user=None):
     return out
 
 
+# ── XKB32 — rétention & export des conversations (loi 09-08) ──────────
+
+def get_retention_policy(company, conversation_kind):
+    """Politique active pour ce type de conversation, ou None (= aucune
+    purge, comportement inchangé) — DÉFAUT du modèle."""
+    from .models import RetentionPolicy
+    return RetentionPolicy.objects.filter(
+        company=company, conversation_kind=conversation_kind).first()
+
+
+def set_retention_policy(company, conversation_kind, retention_months, user):
+    """Pose (ou lève, si `retention_months=None`) la politique de rétention
+    pour un type de conversation. Admin-only côté vue."""
+    from .models import RetentionPolicy
+    policy, _ = RetentionPolicy.objects.get_or_create(
+        company=company, conversation_kind=conversation_kind)
+    policy.retention_months = retention_months
+    policy.updated_by = user
+    policy.save(update_fields=['retention_months', 'updated_by', 'updated_at'])
+    return policy
+
+
+def _months_ago(now, months):
+    """Soustrait `months` mois à `now`, SANS dépendance externe (pas de
+    `dateutil`, comme le reste du projet — voir `apps/contrats/models.py`).
+    Le jour est borné au dernier jour du mois cible (ex. 31 janvier - 1 mois
+    -> 31 décembre reste valide ; 31 mars - 1 mois -> 28/29 février)."""
+    import calendar
+    total_month_index = now.month - 1 - months
+    year = now.year + total_month_index // 12
+    month = total_month_index % 12 + 1
+    day = min(now.day, calendar.monthrange(year, month)[1])
+    return now.replace(year=year, month=month, day=day)
+
+
+def sweep_retention(company, now=None):
+    """Sweep de rétention pour UNE société : pour chaque type de conversation
+    ayant une politique active (`retention_months` non nul), soft-delete
+    (`deleted_at`) les messages plus vieux que la fenêtre. SANS politique,
+    RIEN n'est purgé (comportement par défaut inchangé). Journalise
+    TOUJOURS l'exécution, même à 0 purge (traçabilité CNDP)."""
+    from .models import Message, RetentionPolicy, RetentionSweepRun
+
+    now = now or timezone.now()
+    total = 0
+    details = []
+    policies = RetentionPolicy.objects.filter(
+        company=company, retention_months__isnull=False)
+    for policy in policies:
+        cutoff = _months_ago(now, policy.retention_months)
+        qs = Message.objects.filter(
+            company=company,
+            conversation__kind=policy.conversation_kind,
+            deleted_at__isnull=True,
+            created_at__lt=cutoff)
+        count = qs.count()
+        if count:
+            qs.update(deleted_at=now)
+        total += count
+        details.append(
+            f'{policy.conversation_kind}: {count} message(s) purgé(s) '
+            f'(> {policy.retention_months} mois)')
+
+    RetentionSweepRun.objects.create(
+        company=company, messages_purged=total,
+        detail='; '.join(details) or 'Aucune politique active.')
+    return total
+
+
+def export_conversation(conversation, fmt='json'):
+    """Export intégral (JSON/CSV + PJ) d'une conversation pour audit/conformité
+    CNDP — scopé société de l'appelant (vérifié en amont par la vue). Renvoie
+    un dict JSON-sérialisable (le format CSV est produit côté vue à partir de
+    la même structure, pour rester une seule source de vérité)."""
+    messages = list(
+        conversation.messages.all()
+        .select_related('sender')
+        .prefetch_related('attachments')
+        .order_by('created_at', 'id'))
+    rows = []
+    for m in messages:
+        rows.append({
+            'id': m.id,
+            'sender': (getattr(m.sender, 'username', '') if m.sender_id
+                       else 'système'),
+            'body': m.body,
+            'kind': m.kind,
+            'created_at': m.created_at.isoformat() if m.created_at else '',
+            'deleted': m.deleted_at is not None,
+            'attachments': [
+                {'filename': a.filename, 'file_key': a.file_key,
+                 'mime': a.mime}
+                for a in m.attachments.all()
+            ],
+        })
+    return {
+        'conversation_id': conversation.pk,
+        'conversation_name': conversation.name or f'Conversation {conversation.pk}',
+        'kind': conversation.kind,
+        'messages': rows,
+    }
+
+
 def delete_canned_response(canned, user):
     """Supprime un snippet, scopé société. Un personnel n'est supprimable que
     par son propriétaire ; un snippet société (portée collective, pas de

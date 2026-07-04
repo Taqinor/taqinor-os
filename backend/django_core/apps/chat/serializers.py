@@ -9,6 +9,7 @@ from .models import (
     Conversation, ConversationMember, Message, MessageAttachment,
     MessageReaction, MessageMention, UserChatStatus,
     ScheduledMessage, MessageReminder, MessageBookmark, CannedResponse,
+    RetentionPolicy,
 )
 
 
@@ -225,3 +226,13 @@ class CannedResponseSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'owner', 'created_at', 'updated_at']
+
+
+class RetentionPolicySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = RetentionPolicy
+        fields = [
+            'id', 'conversation_kind', 'retention_months',
+            'updated_by', 'updated_at',
+        ]
+        read_only_fields = ['id', 'updated_by', 'updated_at']

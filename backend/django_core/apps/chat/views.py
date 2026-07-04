@@ -4,13 +4,15 @@ MULTI-TENANT STRICT : tout queryset est filtré à `request.user.company` ET aux
 conversations dont l'utilisateur est membre. Cross-tenant → 404 (jamais révélé) ;
 non-membre d'une conversation de sa société → 403.
 """
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+
+from authentication.permissions import IsAdminRole
 
 from apps.records.storage import (
     fetch_attachment, store_attachment,
@@ -20,13 +22,14 @@ from . import services
 from .models import (
     Conversation, ConversationMember, Message, MessageAttachment,
     MessageReaction, UserChatStatus, ScheduledMessage, CannedResponse,
+    RetentionPolicy,
 )
 from .permissions import IsConversationMember, is_member
 from .selectors import member_conversation_ids, search_messages
 from .serializers import (
     ConversationSerializer, MessageSerializer, UserChatStatusSerializer,
     ScheduledMessageSerializer, MessageBookmarkSerializer,
-    CannedResponseSerializer,
+    CannedResponseSerializer, RetentionPolicySerializer,
 )
 
 
@@ -184,6 +187,37 @@ class ConversationViewSet(viewsets.ModelViewSet):
         ConversationMember.objects.filter(
             conversation=conv, user=request.user).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    # ── XKB32 — export d'une conversation (audit/conformité CNDP) ──────
+    @action(detail=True, methods=['get'], url_path='export')
+    def export(self, request, pk=None):
+        """Export intégral (JSON ou CSV) d'une conversation — admin
+        uniquement. Scopé société (déjà appliqué par le queryset : une
+        conversation d'une autre société est 404)."""
+        if not getattr(request.user, 'is_admin_role', False):
+            return Response(
+                {'detail': 'Réservé aux administrateurs.'},
+                status=status.HTTP_403_FORBIDDEN)
+        conv = self.get_object()
+        data = services.export_conversation(conv)
+        fmt = request.query_params.get('format', 'json')
+        if fmt == 'csv':
+            import csv
+            import io as _io
+            buf = _io.StringIO()
+            writer = csv.writer(buf)
+            writer.writerow(
+                ['id', 'sender', 'body', 'kind', 'created_at', 'deleted'])
+            for row in data['messages']:
+                writer.writerow([
+                    row['id'], row['sender'], row['body'], row['kind'],
+                    row['created_at'], row['deleted'],
+                ])
+            resp = HttpResponse(buf.getvalue(), content_type='text/csv')
+            resp['Content-Disposition'] = (
+                f'attachment; filename="conversation_{conv.pk}.csv"')
+            return resp
+        return JsonResponse(data)
 
     @action(detail=False, methods=['get'], url_path='search')
     def search(self, request):
@@ -729,3 +763,40 @@ class CannedResponseViewSet(viewsets.ModelViewSet):
             return Response({'detail': str(exc)},
                             status=status.HTTP_403_FORBIDDEN)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class RetentionPolicyViewSet(viewsets.ModelViewSet):
+    """XKB32 — politique de rétention admin par type de conversation.
+
+    Admin uniquement (`IsAdminRole`) ; DÉFAUT = aucune politique = aucune
+    purge (comportement inchangé tant que rien n'est posé ici)."""
+    serializer_class = RetentionPolicySerializer
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    def get_queryset(self):
+        company = _company(self.request)
+        if company is None:
+            return RetentionPolicy.objects.none()
+        return RetentionPolicy.objects.filter(company=company)
+
+    def create(self, request, *args, **kwargs):
+        company = _company(request)
+        kind = request.data.get('conversation_kind')
+        if kind not in dict(Conversation.Kind.choices):
+            return Response({'detail': 'Type de conversation invalide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        months = request.data.get('retention_months')
+        policy = services.set_retention_policy(
+            company, kind, (int(months) if months not in (None, '') else None),
+            request.user)
+        return Response(self.get_serializer(policy).data,
+                        status=status.HTTP_201_CREATED)
+
+    def partial_update(self, request, *args, **kwargs):
+        policy = self.get_object()
+        months = request.data.get('retention_months')
+        updated = services.set_retention_policy(
+            policy.company, policy.conversation_kind,
+            (int(months) if months not in (None, '') else None),
+            request.user)
+        return Response(self.get_serializer(updated).data)
