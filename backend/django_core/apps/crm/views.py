@@ -59,6 +59,21 @@ def assignable_users(request):
     ])
 
 
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def equipes_statistiques(request):
+    """ZSAL3 — Tableau de bord « Mes équipes » : pipeline ouvert/pondéré,
+    activités en retard, CA signé du mois vs cible, par équipe commerciale
+    active de la société courante."""
+    user = request.user
+    if not user.company_id:
+        if not user.is_superuser:
+            return Response({'equipes': []})
+        return Response({'equipes': []})
+    from .selectors import stats_equipe
+    return Response({'equipes': stats_equipe(user.company)})
+
+
 class ClientViewSet(TenantMixin, viewsets.ModelViewSet):
     queryset = Client.objects.all()
     serializer_class = ClientSerializer

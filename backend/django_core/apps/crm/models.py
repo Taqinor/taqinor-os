@@ -1349,3 +1349,36 @@ class EtapePlanActivite(models.Model):
 
     def __str__(self):
         return f'{self.plan.nom} — J{self.delai_jours} {self.resume_defaut}'.strip()
+
+
+class EquipeCommerciale(models.Model):
+    """ZSAL3 — Équipe commerciale (Odoo « Sales Teams / My Teams »).
+
+    PAS un pipeline/étapes propre à l'équipe (règle #2 — STAGES.py reste
+    l'unique source des étapes) : juste un regroupement de commerciaux pour
+    agréger un tableau de bord d'équipe (pipeline ouvert, valeur pondérée,
+    activités en retard, avancement vs objectif). ``responsable`` est le
+    manager d'équipe (peut ne pas être membre lui-même) ; ``membres`` est un
+    M2M additif — n'importe quel utilisateur peut appartenir à 0 ou 1+ équipe
+    (comportement historique inchangé : un commercial sans équipe reste visible
+    partout ailleurs, seul le dashboard « Mes équipes » l'ignore).
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='equipes_commerciales')
+    nom = models.CharField(max_length=120)
+    responsable = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='equipes_dirigees')
+    membres = models.ManyToManyField(
+        settings.AUTH_USER_MODEL, blank=True, related_name='equipes_commerciales')
+    actif = models.BooleanField(default=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Équipe commerciale'
+        verbose_name_plural = 'Équipes commerciales'
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom

@@ -357,6 +357,135 @@ SITE_PROFILE_FIELDS = (
 )
 
 
+def _lignes_pipeline_ouvertes(company, membre_ids=None):
+    """Leads ouverts (hors SIGNED/COLD/perdu) de la société, optionnellement
+    restreints à un sous-ensemble de owners. Toujours les étapes de
+    STAGES.py — jamais une liste inventée (règle #2)."""
+    from . import stages as stage_mod
+    from .models import Lead
+    ouvertes = [
+        k for k in stage_mod.STAGES if k not in (stage_mod.SIGNED, stage_mod.COLD)
+    ]
+    qs = Lead.objects.filter(
+        company=company, is_archived=False, perdu=False, stage__in=ouvertes,
+    ).prefetch_related('devis')
+    if membre_ids is not None:
+        qs = qs.filter(owner_id__in=membre_ids)
+    return qs
+
+
+def _valeur_ponderee_leads(leads):
+    """Valeur pipeline pondérée (FG362/XSAL15) : réutilise le même calcul que
+    `apps.reporting.pipeline` (valeur du devis le plus récent × probabilité de
+    gain du lead), sans dupliquer la logique."""
+    from decimal import Decimal
+    from apps.reporting.pipeline import _lead_value, _lead_win_weight
+    valeur = Decimal('0')
+    ponderee = Decimal('0')
+    for lead in leads:
+        v = _lead_value(lead)
+        valeur += v
+        ponderee += v * _lead_win_weight(lead)
+    return valeur, ponderee
+
+
+def _activites_en_retard(company, membre_ids, today=None):
+    """Nombre d'activités (records.Activity) en retard, assignées à l'un des
+    membres. Scopé société. Lecture seule."""
+    import datetime
+    from apps.records.models import Activity
+    today = today or datetime.date.today()
+    if not membre_ids:
+        return 0
+    return Activity.objects.filter(
+        company=company, assigned_to_id__in=membre_ids, done=False,
+        due_date__isnull=False, due_date__lt=today,
+    ).count()
+
+
+def _ca_signe_mois(company, membre_ids, today=None):
+    """CA TTC signé (Devis acceptés) ce mois-ci, par owner du lead source,
+    pour les membres donnés. Lecture seule — traverse Lead.devis (reverse FK
+    ventes → crm), jamais un import de apps.ventes.models."""
+    import datetime
+    from decimal import Decimal
+    today = today or datetime.date.today()
+    debut_mois = today.replace(day=1)
+    if not membre_ids:
+        return Decimal('0')
+    from .models import Lead
+    leads = (Lead.objects
+             .filter(company=company, owner_id__in=membre_ids)
+             .prefetch_related('devis'))
+    total = Decimal('0')
+    for lead in leads:
+        for devis in lead.devis.all():
+            if devis.statut != 'accepte':
+                continue
+            d = devis.date_acceptation
+            if d is None or d < debut_mois or d > today:
+                continue
+            try:
+                total += Decimal(str(devis.total_ttc or 0))
+            except Exception:
+                continue
+    return total
+
+
+def stats_equipe(company):
+    """ZSAL3 — Tableau de bord « Mes équipes » : pour chaque
+    ``crm.EquipeCommerciale`` actives de la société, agrège pipeline ouvert
+    (count + valeur), valeur pondérée (FG362/XSAL15), activités en retard
+    (assignées aux membres), et CA signé du mois vs cible ``ObjectifCommercial``
+    (métrique ``ca_signe``) rattachée aux membres.
+
+    Un commercial sans équipe n'apparaît dans AUCUNE carte (comportement
+    voulu — pas un dashboard global). Lecture seule, scopée société.
+    """
+    from decimal import Decimal
+    from django.db.models import Sum
+    from .models import EquipeCommerciale, ObjectifCommercial
+    import datetime
+
+    today = datetime.date.today()
+    equipes = (EquipeCommerciale.objects
+               .filter(company=company, actif=True)
+               .prefetch_related('membres'))
+
+    result = []
+    for equipe in equipes:
+        membre_ids = list(equipe.membres.values_list('id', flat=True))
+        leads = list(_lignes_pipeline_ouvertes(company, membre_ids))
+        valeur, ponderee = _valeur_ponderee_leads(leads)
+        activites_retard = _activites_en_retard(company, membre_ids, today)
+        ca_signe = _ca_signe_mois(company, membre_ids, today)
+
+        cible = (ObjectifCommercial.objects
+                 .filter(company=company, owner_id__in=membre_ids,
+                         metric=ObjectifCommercial.Metric.CA_SIGNE,
+                         period_type='month',
+                         period_year=today.year, period_month=today.month)
+                 .aggregate(total=Sum('cible'))['total'] or Decimal('0'))
+        avancement_pct = (
+            round(float(ca_signe) / float(cible) * 100, 1) if cible else None
+        )
+
+        result.append({
+            'id': equipe.id,
+            'nom': equipe.nom,
+            'responsable': getattr(equipe.responsable, 'username', None),
+            'nb_membres': len(membre_ids),
+            'pipeline_ouvert_count': len(leads),
+            'pipeline_ouvert_valeur': str(valeur),
+            'pipeline_pondere': str(ponderee),
+            'activites_en_retard': activites_retard,
+            'ca_signe_mois': str(ca_signe),
+            'cible_ca_signe_mois': str(cible),
+            'avancement_pct': avancement_pct,
+        })
+    return result
+
+
 def delai_paiement_client(client):
     """XFAC23 — conditions de paiement négociées d'un client, en dict.
 
