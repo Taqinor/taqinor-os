@@ -428,8 +428,10 @@ class PrixFournisseurSerializer(serializers.ModelSerializer):
 
 
 class LigneBonCommandeFournisseurSerializer(serializers.ModelSerializer):
-    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
-    produit_sku = serializers.CharField(source='produit.sku', read_only=True)
+    # XPUR16 — SerializerMethodField (pas ``source='produit.nom'``) : une
+    # ligne libre/service n'a pas de produit, `produit` peut être None.
+    produit_nom = serializers.SerializerMethodField()
+    produit_sku = serializers.SerializerMethodField()
     quantite_restante = serializers.IntegerField(read_only=True)
     total_achat = serializers.DecimalField(
         max_digits=14, decimal_places=2, read_only=True)
@@ -437,19 +439,42 @@ class LigneBonCommandeFournisseurSerializer(serializers.ModelSerializer):
     class Meta:
         model = LigneBonCommandeFournisseur
         fields = [
-            'id', 'produit', 'produit_nom', 'produit_sku', 'quantite',
-            'prix_achat_unitaire', 'prix_achat_unitaire_devise',
+            'id', 'produit', 'produit_nom', 'produit_sku',
+            # XPUR16 — ligne libre/service : désignation libre + flag.
+            'designation', 'sans_stock',
+            'quantite', 'prix_achat_unitaire', 'prix_achat_unitaire_devise',
             'frais_annexes', 'quantite_recue',
             'quantite_restante', 'total_achat',
         ]
+        # produit devient optionnel (XPUR16 — ligne libre/service) ;
+        # sans_stock reste dérivé côté modèle (auto quand produit est vide),
+        # jamais imposé arbitrairement en écriture.
+        extra_kwargs = {'produit': {'required': False, 'allow_null': True}}
         # quantite_recue n'est jamais posée librement : elle évolue uniquement
         # via l'action de réception (perform_create n'accepte que le reste).
-        read_only_fields = ['quantite_recue']
+        read_only_fields = ['quantite_recue', 'sans_stock']
+
+    def get_produit_nom(self, obj):
+        return obj.produit.nom if obj.produit_id else None
+
+    def get_produit_sku(self, obj):
+        return obj.produit.sku if obj.produit_id else None
 
     def validate_quantite(self, value):
         if value is None or value <= 0:
             raise serializers.ValidationError('La quantité doit être positive.')
         return value
+
+    def validate(self, attrs):
+        # XPUR16 — une ligne sans produit catalogue DOIT porter une
+        # désignation libre (sinon rien n'identifie ce qui est commandé).
+        produit = attrs.get('produit')
+        designation = (attrs.get('designation') or '').strip()
+        if produit is None and not designation:
+            raise serializers.ValidationError(
+                'Une ligne sans produit doit porter une désignation libre '
+                '(ex. « Transport Casablanca »).')
+        return attrs
 
 
 class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
@@ -510,8 +535,9 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
         if company is None:
             return
         for ligne in lignes_data:
-            produit = ligne['produit']
-            if produit.company_id != company.id:
+            # XPUR16 — une ligne libre/service n'a pas de produit à vérifier.
+            produit = ligne.get('produit')
+            if produit is not None and produit.company_id != company.id:
                 raise serializers.ValidationError(
                     {'lignes': 'Produit hors de votre entreprise.'})
 
@@ -564,14 +590,17 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
 # ── G5 — Réception fournisseur (goods-in) ────────────────────────────────────
 
 class LigneReceptionFournisseurSerializer(serializers.ModelSerializer):
-    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
-    produit_sku = serializers.CharField(source='produit.sku', read_only=True)
+    # XPUR16 — SerializerMethodField (pas ``source='produit.nom'``) : une
+    # ligne libre/service n'a pas de produit, `produit` peut être None.
+    produit_nom = serializers.SerializerMethodField()
+    produit_sku = serializers.SerializerMethodField()
+    designation = serializers.SerializerMethodField()
 
     class Meta:
         model = LigneReceptionFournisseur
         fields = [
             'id', 'ligne_commande', 'produit', 'produit_nom', 'produit_sku',
-            'quantite',
+            'designation', 'quantite',
             # FG61 — numéros de série à la réception
             'numeros_serie',
             # FG64 — traçabilité lot / péremption
@@ -579,6 +608,19 @@ class LigneReceptionFournisseurSerializer(serializers.ModelSerializer):
         ]
         # produit est dérivé de la ligne de commande côté serveur.
         read_only_fields = ['produit']
+
+    def get_produit_nom(self, obj):
+        return obj.produit.nom if obj.produit_id else None
+
+    def get_produit_sku(self, obj):
+        return obj.produit.sku if obj.produit_id else None
+
+    def get_designation(self, obj):
+        """XPUR16 — désignation libre de la ligne BCF d'origine quand cette
+        ligne de réception n'a pas de produit catalogue."""
+        if obj.produit_id:
+            return None
+        return obj.ligne_commande.designation if obj.ligne_commande_id else None
 
     def validate_quantite(self, value):
         if value is None or value <= 0:

@@ -447,6 +447,13 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
         today = timezone.now().date()
         with transaction.atomic():
             for ligne, qte in plan:
+                # XPUR16 — ligne libre/service (sans_stock ou produit=null) :
+                # aucun MouvementStock, la quantité reçue est simplement
+                # actée (compte pour le total/l'approbation/la facturation).
+                if ligne.sans_stock or ligne.produit_id is None:
+                    ligne.quantite_recue += qte
+                    ligne.save(update_fields=['quantite_recue'])
+                    continue
                 # ERR24 — verrou de ligne produit dans la transaction pour que
                 # des réceptions concurrentes du même produit ne perdent pas
                 # d'incrément (au lieu d'un simple refresh_from_db sans verrou).

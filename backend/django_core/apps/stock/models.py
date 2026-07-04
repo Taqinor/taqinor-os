@@ -915,11 +915,26 @@ class LigneBonCommandeFournisseur(models.Model):
         on_delete=models.CASCADE,
         related_name='lignes',
     )
+    # XPUR16 — nullable : une ligne LIBRE/SERVICE (transport, prestation,
+    # frais) n'a pas de produit catalogue. `sans_stock` (auto quand produit
+    # est null) marque ces lignes : elles comptent dans le total/
+    # l'approbation/la facturation mais ne génèrent JAMAIS de MouvementStock
+    # à la réception. Comportement historique inchangé pour une ligne
+    # catalogue normale (produit renseigné, sans_stock=False).
     produit = models.ForeignKey(
         Produit,
-        on_delete=models.PROTECT,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
         related_name='lignes_bon_commande_fournisseur',
     )
+    designation = models.CharField(
+        max_length=255, blank=True, default='',
+        help_text='Désignation libre (obligatoire quand produit est vide — '
+                  'ex. « Transport Casablanca »).')
+    sans_stock = models.BooleanField(
+        default=False,
+        help_text='Ligne libre/service : jamais de mouvement de stock à la '
+                  "réception. Toujours vrai quand produit est vide.")
     quantite = models.IntegerField()
     # Prix d'ACHAT unitaire — donnée INTERNE, TOUJOURS en contre-valeur MAD
     # (utilisée PARTOUT en interne : coût moyen pondéré/landed cost, balance
@@ -955,7 +970,14 @@ class LigneBonCommandeFournisseur(models.Model):
         verbose_name_plural = 'Lignes de bon de commande fournisseur'
 
     def __str__(self):
-        return f'{self.produit_id} × {self.quantite}'
+        return f'{self.designation or self.produit_id} × {self.quantite}'
+
+    def save(self, *args, **kwargs):
+        # XPUR16 — une ligne sans produit catalogue est TOUJOURS sans_stock
+        # (auto, jamais l'inverse — une ligne catalogue reste normale).
+        if self.produit_id is None:
+            self.sans_stock = True
+        super().save(*args, **kwargs)
 
     @property
     def quantite_restante(self):
@@ -1040,8 +1062,11 @@ class LigneReceptionFournisseur(models.Model):
     ligne_commande = models.ForeignKey(
         LigneBonCommandeFournisseur, on_delete=models.PROTECT,
         related_name='lignes_reception')
+    # XPUR16 — nullable pour une ligne libre/service (dérivé de
+    # `ligne_commande.produit`, peut donc être vide).
     produit = models.ForeignKey(
-        Produit, on_delete=models.PROTECT,
+        Produit, on_delete=models.SET_NULL,
+        null=True, blank=True,
         related_name='lignes_reception_fournisseur')
     quantite = models.IntegerField()
 

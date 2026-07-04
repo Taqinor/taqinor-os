@@ -1305,8 +1305,15 @@ def facturer_reception(company, user, reception):
         pu = ligne.ligne_commande.prix_achat_unitaire if ligne.ligne_commande else Decimal('0')
         total = Decimal(str(ligne.quantite)) * pu
         montant_ht += total
-        lignes_data.append((ligne.produit.nom if ligne.produit else 'Produit',
-                            ligne.quantite, pu))
+        # XPUR16 — une ligne libre/service reprend sa désignation d'origine
+        # (BCF) plutôt que le nom d'un produit catalogue absent.
+        if ligne.produit:
+            designation = ligne.produit.nom
+        elif ligne.ligne_commande and ligne.ligne_commande.designation:
+            designation = ligne.ligne_commande.designation
+        else:
+            designation = 'Produit'
+        lignes_data.append((designation, ligne.quantite, pu))
 
     montant_tva = (montant_ht * taux_tva / Decimal('100')).quantize(Decimal('0.01'))
     montant_ttc = montant_ht + montant_tva
