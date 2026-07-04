@@ -3557,3 +3557,301 @@ def notify_bcf_confirmation_fournisseur(bc):
         )
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
         pass
+
+
+# ── XPUR24 — Tableau de bord achats (analyse des dépenses) ──────────────────
+# FG59 note UN fournisseur (scorecard) et FG132 vieillit les dettes (balance
+# âgée), mais aucune vue TRANSVERSE des achats n'existait. Admin/responsable
+# UNIQUEMENT — jamais client-facing (prix d'achat/marge INTERNES). Agrège 5
+# blocs depuis des données RÉELLES multi-mois : dépenses par fournisseur/
+# catégorie/mois, dérive de prix moyen par SKU, engagements ouverts, top
+# produits achetés, temps de cycle du processus d'achat.
+
+def _mois_key(dt):
+    """Clé de regroupement mensuel stable (YYYY-MM) depuis une date/datetime."""
+    return dt.strftime('%Y-%m') if dt else 'inconnu'
+
+
+def depenses_achats_par_periode(company, *, date_debut=None, date_fin=None):
+    """XPUR24 — dépenses HT par (fournisseur, catégorie, mois) sur la
+    période, dérivées des lignes de BCF (montant réellement engagé — pas
+    seulement facturé). LECTURE SEULE, INTERNE."""
+    from .models import LigneBonCommandeFournisseur, BonCommandeFournisseur
+
+    qs = (LigneBonCommandeFournisseur.objects
+          .filter(bon_commande__company=company)
+          .exclude(bon_commande__statut=BonCommandeFournisseur.Statut.ANNULE)
+          .select_related(
+              'bon_commande', 'bon_commande__fournisseur',
+              'produit', 'produit__categorie'))
+    if date_debut:
+        qs = qs.filter(bon_commande__date_creation__gte=date_debut)
+    if date_fin:
+        qs = qs.filter(bon_commande__date_creation__lte=date_fin)
+
+    par_fournisseur = {}
+    par_categorie = {}
+    par_mois = {}
+    for ligne in qs:
+        bc = ligne.bon_commande
+        total = ligne.total_achat
+        mois = _mois_key(bc.date_creation)
+        fournisseur_nom = bc.fournisseur.nom if bc.fournisseur_id else '—'
+        categorie_nom = (
+            ligne.produit.categorie.nom
+            if ligne.produit_id and ligne.produit.categorie_id else '—')
+
+        par_fournisseur[fournisseur_nom] = (
+            par_fournisseur.get(fournisseur_nom, Decimal('0')) + total)
+        par_categorie[categorie_nom] = (
+            par_categorie.get(categorie_nom, Decimal('0')) + total)
+        par_mois[mois] = par_mois.get(mois, Decimal('0')) + total
+
+    return {
+        'par_fournisseur': [
+            {'fournisseur': k, 'total_ht': v}
+            for k, v in sorted(
+                par_fournisseur.items(), key=lambda kv: kv[1], reverse=True)
+        ],
+        'par_categorie': [
+            {'categorie': k, 'total_ht': v}
+            for k, v in sorted(
+                par_categorie.items(), key=lambda kv: kv[1], reverse=True)
+        ],
+        'par_mois': [
+            {'mois': k, 'total_ht': v}
+            for k, v in sorted(par_mois.items(), key=lambda kv: kv[0])
+        ],
+    }
+
+
+def derive_prix_moyen_par_sku(company, *, nb_mois=6):
+    """XPUR24 — prix d'achat moyen PAR MOIS pour chaque SKU sur les
+    `nb_mois` derniers mois (détection de dérive) : renvoie
+    ``[{produit_id, produit_nom, sku, series: [{mois, prix_moyen}]}]``
+    trié par plus grande dérive (dernier mois vs premier mois) décroissante.
+    LECTURE SEULE, INTERNE."""
+    from datetime import timedelta
+    from django.utils import timezone
+    from .models import LigneBonCommandeFournisseur, BonCommandeFournisseur
+
+    depuis = timezone.now() - timedelta(days=31 * nb_mois)
+    qs = (LigneBonCommandeFournisseur.objects
+          .filter(bon_commande__company=company,
+                  bon_commande__date_creation__gte=depuis)
+          .exclude(bon_commande__statut=BonCommandeFournisseur.Statut.ANNULE)
+          .exclude(produit__isnull=True)
+          .select_related('bon_commande', 'produit'))
+
+    par_produit = {}
+    for ligne in qs:
+        pid = ligne.produit_id
+        mois = _mois_key(ligne.bon_commande.date_creation)
+        entry = par_produit.setdefault(pid, {
+            'produit_id': pid, 'produit_nom': ligne.produit.nom,
+            'sku': ligne.produit.sku, 'par_mois': {},
+        })
+        bucket = entry['par_mois'].setdefault(mois, [])
+        bucket.append(ligne.prix_achat_unitaire)
+
+    out = []
+    for entry in par_produit.values():
+        series = [
+            {'mois': mois, 'prix_moyen': (
+                sum(prix, Decimal('0')) / len(prix)).quantize(Decimal('0.01'))}
+            for mois, prix in sorted(entry['par_mois'].items())
+        ]
+        derive = (
+            series[-1]['prix_moyen'] - series[0]['prix_moyen']
+            if len(series) >= 2 else Decimal('0'))
+        out.append({
+            'produit_id': entry['produit_id'],
+            'produit_nom': entry['produit_nom'],
+            'sku': entry['sku'],
+            'series': series,
+            'derive': derive,
+        })
+    out.sort(key=lambda e: abs(e['derive']), reverse=True)
+    return out
+
+
+def engagements_ouverts_achats(company):
+    """XPUR24 — engagements ouverts : BCF ENVOYÉS non entièrement reçus
+    (montant restant dû = commandé − reçu, jamais négatif). LECTURE SEULE,
+    INTERNE."""
+    from .models import BonCommandeFournisseur
+    from .selectors import montant_commande_bcf, montant_recu_bcf
+
+    qs = (BonCommandeFournisseur.objects
+          .filter(company=company,
+                  statut=BonCommandeFournisseur.Statut.ENVOYE)
+          .select_related('fournisseur')
+          .prefetch_related('lignes'))
+    out = []
+    total = Decimal('0')
+    for bc in qs:
+        commande = montant_commande_bcf(bc)
+        recu = montant_recu_bcf(bc)
+        reste = max(commande - recu, Decimal('0'))
+        if reste <= 0:
+            continue
+        total += reste
+        out.append({
+            'bon_commande_id': bc.id,
+            'reference': bc.reference,
+            'fournisseur_nom': (
+                bc.fournisseur.nom if bc.fournisseur_id else None),
+            'date_commande': bc.date_commande,
+            'montant_commande': commande,
+            'montant_recu': recu,
+            'montant_restant': reste,
+        })
+    out.sort(key=lambda e: e['montant_restant'], reverse=True)
+    return {'lignes': out, 'total_engage': total}
+
+
+def top_produits_achetes(
+        company, *, limit=20, date_debut=None, date_fin=None):
+    """XPUR24 — top produits achetés (quantité + montant HT), toutes
+    commandes (hors annulées), sur la période optionnelle. LECTURE SEULE,
+    INTERNE."""
+    from .models import LigneBonCommandeFournisseur, BonCommandeFournisseur
+
+    qs = (LigneBonCommandeFournisseur.objects
+          .filter(bon_commande__company=company)
+          .exclude(bon_commande__statut=BonCommandeFournisseur.Statut.ANNULE)
+          .exclude(produit__isnull=True)
+          .select_related('bon_commande', 'produit'))
+    if date_debut:
+        qs = qs.filter(bon_commande__date_creation__gte=date_debut)
+    if date_fin:
+        qs = qs.filter(bon_commande__date_creation__lte=date_fin)
+
+    par_produit = {}
+    for ligne in qs:
+        pid = ligne.produit_id
+        entry = par_produit.setdefault(pid, {
+            'produit_id': pid, 'produit_nom': ligne.produit.nom,
+            'sku': ligne.produit.sku, 'quantite_totale': 0,
+            'montant_total': Decimal('0'),
+        })
+        entry['quantite_totale'] += ligne.quantite
+        entry['montant_total'] += ligne.total_achat
+
+    out = sorted(
+        par_produit.values(), key=lambda e: e['montant_total'], reverse=True)
+    return out[:limit]
+
+
+def temps_cycle_achats(company, *, date_debut=None, date_fin=None):
+    """XPUR24 — temps de cycle du processus d'achat, par BCF : BCF créé →
+    première réception confirmée → première facture. Le segment DA→BCF
+    (demande d'achat) reste ``None`` tant que YPROC5 (conversion DA→BCF
+    tracée) n'est pas câblé — dégradation propre, jamais une erreur.
+    Renvoie les moyennes en JOURS (arrondies) + le détail par BCF. LECTURE
+    SEULE, INTERNE."""
+    from .models import (
+        BonCommandeFournisseur, ReceptionFournisseur, FactureFournisseur,
+    )
+
+    qs = (BonCommandeFournisseur.objects
+          .filter(company=company)
+          .exclude(statut=BonCommandeFournisseur.Statut.ANNULE)
+          .select_related('fournisseur'))
+    if date_debut:
+        qs = qs.filter(date_creation__gte=date_debut)
+    if date_fin:
+        qs = qs.filter(date_creation__lte=date_fin)
+
+    details = []
+    delais_bcf_reception = []
+    delais_reception_facture = []
+    for bc in qs:
+        premiere_reception = (
+            ReceptionFournisseur.objects
+            .filter(bon_commande=bc, statut='confirme')
+            .order_by('date_creation').first())
+        premiere_facture = (
+            FactureFournisseur.objects.filter(bon_commande=bc)
+            .order_by('date_creation').first())
+
+        jours_bcf_reception = None
+        if premiere_reception is not None:
+            jours_bcf_reception = (
+                premiere_reception.date_creation - bc.date_creation).days
+            delais_bcf_reception.append(jours_bcf_reception)
+
+        jours_reception_facture = None
+        if premiere_reception is not None and premiere_facture is not None:
+            jours_reception_facture = (
+                premiere_facture.date_creation
+                - premiere_reception.date_creation).days
+            delais_reception_facture.append(jours_reception_facture)
+
+        details.append({
+            'bon_commande_id': bc.id,
+            'reference': bc.reference,
+            'jours_da_vers_bcf': None,  # YPROC5 non câblé — dégradation propre.
+            'jours_bcf_vers_reception': jours_bcf_reception,
+            'jours_reception_vers_facture': jours_reception_facture,
+        })
+
+    def _moyenne(valeurs):
+        return round(sum(valeurs) / len(valeurs), 1) if valeurs else None
+
+    return {
+        'moyenne_jours_da_vers_bcf': None,
+        'moyenne_jours_bcf_vers_reception': _moyenne(delais_bcf_reception),
+        'moyenne_jours_reception_vers_facture': _moyenne(
+            delais_reception_facture),
+        'details': details,
+    }
+
+
+def analyse_achats_dashboard(
+        company, *, date_debut=None, date_fin=None, nb_mois=6):
+    """XPUR24 — agrège les 5 blocs du tableau de bord achats en un seul
+    appel (utilisé par l'endpoint ET par l'export xlsx — jamais recalculé
+    deux fois différemment). LECTURE SEULE, INTERNE."""
+    return {
+        'depenses': depenses_achats_par_periode(
+            company, date_debut=date_debut, date_fin=date_fin),
+        'derive_prix': derive_prix_moyen_par_sku(company, nb_mois=nb_mois),
+        'engagements_ouverts': engagements_ouverts_achats(company),
+        'top_produits': top_produits_achetes(
+            company, date_debut=date_debut, date_fin=date_fin),
+        'temps_cycle': temps_cycle_achats(
+            company, date_debut=date_debut, date_fin=date_fin),
+    }
+
+
+def export_analyse_achats_xlsx(
+        company, *, date_debut=None, date_fin=None, nb_mois=6):
+    """XPUR24 — export xlsx du tableau de bord achats (une feuille par bloc
+    seraient idéales, mais `build_xlsx_response` ne gère qu'une feuille —
+    on exporte donc la vue la plus actionnable : dépenses par fournisseur
+    + top produits + engagements ouverts, concaténés avec des séparateurs de
+    section). Réutilise le builder xlsx partagé (records.xlsx)."""
+    from apps.records.xlsx import build_xlsx_response
+    data = analyse_achats_dashboard(
+        company, date_debut=date_debut, date_fin=date_fin, nb_mois=nb_mois)
+
+    headers = ['section', 'libelle', 'valeur_1', 'valeur_2']
+    rows = []
+    for e in data['depenses']['par_fournisseur']:
+        rows.append(['Dépenses par fournisseur', e['fournisseur'],
+                     e['total_ht'], ''])
+    for e in data['depenses']['par_categorie']:
+        rows.append(['Dépenses par catégorie', e['categorie'],
+                     e['total_ht'], ''])
+    for e in data['depenses']['par_mois']:
+        rows.append(['Dépenses par mois', e['mois'], e['total_ht'], ''])
+    for e in data['top_produits']:
+        rows.append(['Top produits', e['produit_nom'],
+                     e['quantite_totale'], e['montant_total']])
+    for e in data['engagements_ouverts']['lignes']:
+        rows.append(['Engagements ouverts', e['reference'],
+                     e['fournisseur_nom'], e['montant_restant']])
+
+    return build_xlsx_response(
+        'analyse-achats.xlsx', headers, rows, sheet_title='Analyse achats')

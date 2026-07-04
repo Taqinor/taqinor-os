@@ -323,6 +323,40 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
             nb_mois = 6
         return Response(previsions_reappro(request.user.company, nb_mois=nb_mois))
 
+    @action(detail=False, methods=['get'], url_path='analyse-achats',
+            permission_classes=[IsResponsableOrAdmin])
+    def analyse_achats(self, request):
+        """XPUR24 — tableau de bord achats : dépenses par fournisseur/
+        catégorie/mois, dérive de prix moyen par SKU, engagements ouverts,
+        top produits achetés, temps de cycle DA→BCF→réception→facture.
+        Admin/Responsable uniquement — JAMAIS client-facing. INTERNE."""
+        from ..services import analyse_achats_dashboard
+        try:
+            nb_mois = int(request.query_params.get('nb_mois', 6))
+        except (TypeError, ValueError):
+            nb_mois = 6
+        return Response(analyse_achats_dashboard(
+            request.user.company,
+            date_debut=request.query_params.get('date_debut'),
+            date_fin=request.query_params.get('date_fin'),
+            nb_mois=nb_mois))
+
+    @action(detail=False, methods=['get'], url_path='analyse-achats/export-xlsx',
+            permission_classes=[IsResponsableOrAdmin])
+    def analyse_achats_export_xlsx(self, request):
+        """XPUR24 — export xlsx du tableau de bord achats. Admin/Responsable
+        uniquement — un non-autorisé reçoit 403."""
+        from ..services import export_analyse_achats_xlsx
+        try:
+            nb_mois = int(request.query_params.get('nb_mois', 6))
+        except (TypeError, ValueError):
+            nb_mois = 6
+        return export_analyse_achats_xlsx(
+            request.user.company,
+            date_debut=request.query_params.get('date_debut'),
+            date_fin=request.query_params.get('date_fin'),
+            nb_mois=nb_mois)
+
     @action(detail=False, methods=['get'], url_path='resolve',
             permission_classes=[IsAnyRole])
     def resolve(self, request):
