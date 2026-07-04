@@ -362,7 +362,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       description:
         'Installation solaire à Rabat : Taqinor dimensionne sur votre facture, pose et déclare au titre de la loi 82-21. Monitoring Deye Cloud, chantiers réels mesurés dans la région.',
       roiNuance:
-        'Avec ≈ 2 900 h par an, Rabat a le deuxième gisement le plus mesuré de nos cinq villes : de quoi tenir dans la ' +
+        'Avec ≈ 2 900 h par an, Rabat a le deuxième gisement le plus faible de nos cinq villes : de quoi tenir dans la ' +
         'bande 3–7 ans, plutôt vers sa partie haute pour un dimensionnement identique — l’étude sur votre facture reste ' +
         'ce qui la précise réellement.',
       delegataireNote:
@@ -604,7 +604,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       description:
         'Installation solaire à Tanger : ≈ 2 800 h de soleil et un détroit venté — d’où un dimensionnement calculé au degré près sur votre facture. Pose, Deye Cloud et loi 82-21.',
       roiNuance:
-        'Avec ≈ 2 800 h par an, Tanger a le gisement le plus mesuré de nos cinq villes : à dimensionnement égal, cela ' +
+        'Avec ≈ 2 800 h par an, Tanger a le gisement le plus faible de nos cinq villes : à dimensionnement égal, cela ' +
         'pousse plutôt vers la partie haute de la bande 3–7 ans — raison de plus pour caler l’orientation et l’inclinaison ' +
         'au lieu de compter sur la seule météo.',
       delegataireNote:
