@@ -2733,6 +2733,77 @@ class RetenueSourceViewSet(_ComptaBaseViewSet):
             f"{data['date_debut'] or 'periode'}_{data['date_fin'] or ''}.csv\"")
         return resp
 
+    @action(detail=True, methods=['get'])
+    def attestation(self, request, pk=None):
+        """XACC35 — Attestation PDF de RAS pour CE versement (par prestataire).
+
+        Rendu WeasyPrint sobre (moteur légal existant, PAS le quote engine) :
+        identité société (N27), tiers (IF/ICE), base, taux, montant retenu,
+        période — chiffres identiques au snapshot figé (ledger FG139)."""
+        from .pdf_ras import render_attestation_retenue_pdf
+
+        ras = self.get_object()  # scopée société par TenantMixin.
+        try:
+            from apps.parametres.models_company import CompanyProfile
+            profile = CompanyProfile.get(company=request.user.company)
+        except Exception:  # pragma: no cover - profil optionnel, jamais bloquant.
+            profile = None
+        try:
+            pdf_bytes = render_attestation_retenue_pdf(ras, profile)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'attachment; filename="attestation_ras_{ras.reference or ras.id}.pdf"')
+        return resp
+
+    @action(detail=False, methods=['get'], url_path='attestation-annuelle')
+    def attestation_annuelle(self, request):
+        """XACC35 — Cumul annuel de RAS d'un prestataire (PDF).
+
+        Paramètres : ``?tiers=<tiers_id>&annee=<YYYY>``. Le cumul reprend
+        TOUTES les ``RetenueSource`` du tiers pour l'année, tous types de
+        prestation confondus, company-scopées."""
+        from .pdf_ras import render_attestation_annuelle_pdf
+
+        tiers_id = request.query_params.get('tiers')
+        annee = request.query_params.get('annee')
+        if not tiers_id or not annee:
+            return Response(
+                {'detail': 'Les paramètres tiers et annee sont obligatoires.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            annee_int = int(annee)
+        except ValueError:
+            return Response(
+                {'detail': 'annee doit être une année valide.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        retenues = list(RetenueSource.objects.filter(
+            company=request.user.company, tiers_id=tiers_id,
+            date_piece__year=annee_int,
+        ).order_by('date_piece', 'id'))
+        if not retenues:
+            return Response(
+                {'detail': 'Aucune retenue trouvée pour ce prestataire/année.'},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            from apps.parametres.models_company import CompanyProfile
+            profile = CompanyProfile.get(company=request.user.company)
+        except Exception:  # pragma: no cover - profil optionnel, jamais bloquant.
+            profile = None
+        try:
+            pdf_bytes = render_attestation_annuelle_pdf(
+                retenues, retenues[0].tiers_nom, annee_int, profile)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'attachment; filename="attestation_ras_annuelle_{tiers_id}_'
+            f'{annee_int}.pdf"')
+        return resp
+
 
 class TimbreFiscalViewSet(_ComptaBaseViewSet):
     """Droit de timbre sur les encaissements en espèces (FG144).
