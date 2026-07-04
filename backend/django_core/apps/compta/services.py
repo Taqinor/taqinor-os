@@ -43,6 +43,7 @@ from .models import (
     ExerciceComptable, MessageWhatsAppEntrant,
     Emprunt, EcheanceEmprunt, ChargeConstateeAvance, DotationEtalement,
     PlanAmortissementFiscal, DotationDerogatoire, TauxDevise,
+    ItemOuvertDevise, EcartChange, ReevaluationCloture, LigneReevaluation,
     Immobilisation, IndemniteChantier, Journal, LigneEcriture,
     LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, NoteFrais,
     OuverturePartage,
@@ -6575,3 +6576,209 @@ def contre_valeur_mad(montant_devise, devise, company=None, *, une_date=None,
     else:
         taux = Decimal('1')
     return _arrondi(montant * taux)
+
+
+# ── XACC18 — Écarts de change réalisés & réévaluation de clôture ───────────
+
+_COMPTE_GAIN_CHANGE = '733'    # produit financier — gains de change réalisés.
+_COMPTE_PERTE_CHANGE = '633'   # charge financière — pertes de change réalisées.
+_COMPTE_ECART_ACTIF_CLOTURE = '2701'   # écart de conversion actif (perte latente).
+_COMPTE_ECART_PASSIF_CLOTURE = '1701'  # écart de conversion passif (gain latent).
+
+
+def enregistrer_item_ouvert_devise(company, *, type_document, document_id,
+                                   document_reference='', devise,
+                                   montant_devise, taux_origine, date_origine):
+    """Enregistre (idempotent) un poste ouvert en devise à suivre (XACC18).
+
+    Un document 100 % MAD (``devise == 'MAD'``) n'a jamais besoin de cette
+    table — lève ``ValidationError`` pour éviter une saisie inutile. Unicité
+    ``(company, type_document, document_id)`` : ré-appeler avec le même
+    document renvoie l'item existant SANS l'écraser (le taux d'origine reste
+    figé une fois créé). Renvoie l'``ItemOuvertDevise``.
+    """
+    devise = (devise or '').upper()
+    if not devise or devise == 'MAD':
+        raise ValidationError(
+            "Un document en MAD n'a pas besoin de suivi de change.")
+    existant = ItemOuvertDevise.objects.filter(
+        company=company, type_document=type_document,
+        document_id=document_id).first()
+    if existant is not None:
+        return existant
+    item = ItemOuvertDevise(
+        company=company, type_document=type_document,
+        document_id=document_id, document_reference=document_reference or '',
+        devise=devise, montant_devise=Decimal(montant_devise),
+        taux_origine=Decimal(taux_origine), date_origine=date_origine,
+    )
+    item.full_clean()
+    item.save()
+    return item
+
+
+@transaction.atomic
+def constater_ecart_change(item, *, date_reglement, taux_reglement=None,
+                           user=None):
+    """Constate l'écart de change RÉALISÉ au règlement d'un item ouvert (XACC18).
+
+    ``taux_reglement`` (devise → MAD) explicite ou déduit de la table
+    (``selectors.taux_du_jour`` à ``date_reglement``, repli = taux d'origine
+    si aucune table). ``difference`` = contre-valeur au taux de règlement −
+    contre-valeur au taux d'origine : > 0 GAIN (crédit 733) ; < 0 PERTE (débit
+    633). Marque l'item ``solde``. Idempotente (un item n'a qu'un seul écart,
+    OneToOne). Si ``difference == 0`` (tout est resté en MAD ou même taux),
+    AUCUNE écriture n'est postée. RESPECTE LE VERROU DE PÉRIODE (FG115).
+    """
+    company = item.company
+    existant = getattr(item, 'ecart_change', None)
+    if existant is not None and existant.posted:
+        return existant
+    if taux_reglement is None:
+        from apps.compta.selectors import taux_du_jour as _taux_du_jour
+        enregistrement = _taux_du_jour(company, item.devise, date_reglement)
+        taux_reglement = (
+            enregistrement.taux_vers_mad if enregistrement
+            else item.taux_origine)
+    taux_reglement = Decimal(taux_reglement)
+    cv_origine = item.contre_valeur_origine
+    cv_reglement = (Decimal(item.montant_devise) * taux_reglement).quantize(
+        Decimal('0.01'))
+    difference = cv_reglement - cv_origine
+
+    ecart = existant or EcartChange(company=company, item=item)
+    ecart.date_reglement = date_reglement
+    ecart.taux_reglement = taux_reglement
+    ecart.difference = difference
+
+    if difference != 0:
+        if PeriodeComptable.date_verrouillee(company.id, date_reglement):
+            raise ValidationError(
+                "Période comptable clôturée : impossible de constater "
+                f"l'écart de change du {date_reglement}.")
+        libelle = (
+            f'Écart de change {item.document_reference or item.document_id}')
+        if difference > 0:
+            compte_gain = _assurer_compte(company, _COMPTE_GAIN_CHANGE)
+            compte_client = _compte_fournisseurs(company) if (
+                item.type_document == ItemOuvertDevise.TypeDocument.FACTURE_FOURNISSEUR
+            ) else _assurer_compte(company, '3421')
+            lignes = [
+                {'compte': compte_client, 'debit': difference,
+                 'credit': Decimal('0'), 'libelle': libelle},
+                {'compte': compte_gain, 'debit': Decimal('0'),
+                 'credit': difference, 'libelle': libelle},
+            ]
+        else:
+            montant = -difference
+            compte_perte = _assurer_compte(company, _COMPTE_PERTE_CHANGE)
+            compte_client = _compte_fournisseurs(company) if (
+                item.type_document == ItemOuvertDevise.TypeDocument.FACTURE_FOURNISSEUR
+            ) else _assurer_compte(company, '3421')
+            lignes = [
+                {'compte': compte_perte, 'debit': montant,
+                 'credit': Decimal('0'), 'libelle': libelle},
+                {'compte': compte_client, 'debit': Decimal('0'),
+                 'credit': montant, 'libelle': libelle},
+            ]
+        ecriture = creer_ecriture_od(
+            company, date_reglement, libelle, lignes,
+            reference=f'FX-{item.id}', created_by=user)
+        ecart.ecriture = ecriture
+    ecart.posted = True
+    ecart.full_clean()
+    ecart.save()
+    item.solde = True
+    item.save(update_fields=['solde'])
+    return ecart
+
+
+@transaction.atomic
+def reevaluer_cloture(company, *, date_cloture, user=None):
+    """Run de réévaluation de clôture des items ouverts en devise (XACC18).
+
+    Réévalue chaque item NON soldé au taux de clôture (``taux_du_jour`` à
+    ``date_cloture`` ; item ignoré si aucune table n'existe pour sa devise —
+    aucun écart latent calculable). Poste l'écart de conversion LATENT en une
+    seule écriture : > 0 (contre-valeur au taux de clôture > origine, gain
+    latent) → crédit 1701 ; < 0 (perte latente) → débit 2701, contrepartie sur
+    le compte client/fournisseur de l'item. AUCUNE écriture si tout est en MAD
+    ou si aucun item n'a d'écart. Génère aussi l'écriture d'EXTOURNE (inverse)
+    datée du lendemain (ouverture suivante). Idempotent (unicité
+    ``(company, date_cloture)``). Renvoie le run.
+    """
+    from apps.compta.selectors import taux_du_jour as _taux_du_jour
+
+    existant = ReevaluationCloture.objects.filter(
+        company=company, date_cloture=date_cloture).first()
+    if existant is not None and existant.ecriture_id:
+        return existant
+
+    items = ItemOuvertDevise.objects.filter(company=company, solde=False)
+    lignes_gl = []
+    total_ecart = Decimal('0')
+    run = existant or ReevaluationCloture(
+        company=company, date_cloture=date_cloture)
+    run.save()
+
+    for item in items:
+        enregistrement = _taux_du_jour(company, item.devise, date_cloture)
+        if enregistrement is None:
+            continue
+        taux_cloture = enregistrement.taux_vers_mad
+        cv_cloture = (Decimal(item.montant_devise) * taux_cloture).quantize(
+            Decimal('0.01'))
+        ecart = cv_cloture - item.contre_valeur_origine
+        if ecart == 0:
+            continue
+        total_ecart += ecart
+        LigneReevaluation.objects.update_or_create(
+            reevaluation=run, item=item,
+            defaults={
+                'company': company, 'taux_cloture': taux_cloture,
+                'ecart': ecart,
+            },
+        )
+        compte_tiers = _compte_fournisseurs(company) if (
+            item.type_document == ItemOuvertDevise.TypeDocument.FACTURE_FOURNISSEUR
+        ) else _assurer_compte(company, '3421')
+        libelle = f'Réévaluation clôture {item.document_reference or item.document_id}'
+        if ecart > 0:
+            compte_ecart = _assurer_compte(company, _COMPTE_ECART_PASSIF_CLOTURE)
+            lignes_gl.append({'compte': compte_tiers, 'debit': ecart,
+                              'credit': Decimal('0'), 'libelle': libelle})
+            lignes_gl.append({'compte': compte_ecart, 'debit': Decimal('0'),
+                              'credit': ecart, 'libelle': libelle})
+        else:
+            montant = -ecart
+            compte_ecart = _assurer_compte(company, _COMPTE_ECART_ACTIF_CLOTURE)
+            lignes_gl.append({'compte': compte_ecart, 'debit': montant,
+                              'credit': Decimal('0'), 'libelle': libelle})
+            lignes_gl.append({'compte': compte_tiers, 'debit': Decimal('0'),
+                              'credit': montant, 'libelle': libelle})
+
+    run.total_ecart = total_ecart
+    if lignes_gl:
+        if PeriodeComptable.date_verrouillee(company.id, date_cloture):
+            raise ValidationError(
+                "Période comptable clôturée : impossible de poster la "
+                f"réévaluation de change du {date_cloture}.")
+        libelle_run = f'Réévaluation de clôture (change) {date_cloture}'
+        ecriture = creer_ecriture_od(
+            company, date_cloture, libelle_run, lignes_gl,
+            reference=f'FXCLOT-{run.id}', created_by=user)
+        run.ecriture = ecriture
+        from datetime import timedelta
+        date_extourne = date_cloture + timedelta(days=1)
+        lignes_inverse = [
+            {'compte': ligne['compte'], 'debit': ligne['credit'],
+             'credit': ligne['debit'], 'libelle': ligne['libelle']}
+            for ligne in lignes_gl
+        ]
+        ecriture_extourne = creer_ecriture_od(
+            company, date_extourne, f'Extourne {libelle_run}', lignes_inverse,
+            reference=f'FXCLOT-{run.id}-EXT', created_by=user)
+        run.ecriture_extourne = ecriture_extourne
+        run.date_extourne = date_extourne
+    run.save()
+    return run

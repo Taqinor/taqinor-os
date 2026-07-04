@@ -6938,3 +6938,208 @@ class TauxDevise(models.Model):
         if self.taux_vers_mad is not None and self.taux_vers_mad <= 0:
             raise ValidationError(
                 "Le taux vers MAD doit être strictement positif.")
+
+
+# ── XACC18 — Écarts de change réalisés & réévaluation de clôture ───────────
+
+class ItemOuvertDevise(models.Model):
+    """Poste ouvert (facture) en devise à suivre pour l'écart de change (XACC18).
+
+    Fige, à l'émission, la devise/le taux d'ORIGINE et le montant en devise
+    d'un document (facture client ou fournisseur) référencé par id opaque
+    (jamais un FK cross-app). Au règlement, ``services.constater_ecart_change``
+    compare le taux d'origine au taux du jour du règlement et poste l'écart
+    RÉALISÉ (733 gain / 633 perte). Un document 100 % MAD n'a jamais besoin de
+    cette table (comportement actuel intact). ``company`` posée côté serveur.
+    """
+    class TypeDocument(models.TextChoices):
+        FACTURE_CLIENT = 'facture_client', 'Facture client'
+        FACTURE_FOURNISSEUR = 'facture_fournisseur', 'Facture fournisseur'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='items_ouverts_devise',
+        verbose_name='Société',
+    )
+    type_document = models.CharField(
+        max_length=25, choices=TypeDocument.choices,
+        default=TypeDocument.FACTURE_CLIENT, verbose_name='Type de document')
+    document_id = models.PositiveIntegerField(verbose_name='ID du document')
+    document_reference = models.CharField(
+        max_length=60, blank=True, default='', verbose_name='Référence document')
+    devise = models.CharField(max_length=10, verbose_name='Devise (ISO 4217)')
+    montant_devise = models.DecimalField(
+        max_digits=14, decimal_places=2, verbose_name='Montant en devise')
+    taux_origine = models.DecimalField(
+        max_digits=14, decimal_places=6,
+        verbose_name="Taux d'origine (devise → MAD)")
+    date_origine = models.DateField(verbose_name="Date d'émission")
+    solde = models.BooleanField(
+        default=False, verbose_name='Soldé (réglé intégralement)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Poste ouvert en devise'
+        verbose_name_plural = 'Postes ouverts en devise'
+        ordering = ['-date_origine', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'type_document', 'document_id'],
+                name='uniq_item_ouvert_devise_document',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.document_reference or self.document_id} — {self.devise} {self.montant_devise}'
+
+    def clean(self):
+        super().clean()
+        if self.montant_devise is not None and self.montant_devise <= 0:
+            raise ValidationError('Le montant en devise doit être strictement positif.')
+        if self.taux_origine is not None and self.taux_origine <= 0:
+            raise ValidationError("Le taux d'origine doit être strictement positif.")
+
+    @property
+    def contre_valeur_origine(self):
+        return (Decimal(self.montant_devise) * Decimal(self.taux_origine)).quantize(
+            Decimal('0.01'))
+
+
+class EcartChange(models.Model):
+    """Écart de change RÉALISÉ constaté au règlement d'un item ouvert (XACC18).
+
+    ``difference`` SIGNÉE = contre-valeur au taux de règlement − contre-valeur
+    au taux d'origine. > 0 → GAIN de change (crédit 733) ; < 0 → PERTE de
+    change (débit 633). Postable au grand livre, idempotent (un item ne peut
+    avoir qu'un seul écart réalisé — unicité ``item``).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='ecarts_change',
+        verbose_name='Société',
+    )
+    item = models.OneToOneField(
+        ItemOuvertDevise,
+        on_delete=models.CASCADE,
+        related_name='ecart_change',
+        verbose_name='Poste ouvert en devise',
+    )
+    date_reglement = models.DateField(verbose_name='Date de règlement')
+    taux_reglement = models.DecimalField(
+        max_digits=14, decimal_places=6,
+        verbose_name='Taux de règlement (devise → MAD)')
+    difference = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Écart (signé, MAD)')
+    posted = models.BooleanField(
+        default=False, verbose_name='Posté au grand livre')
+    ecriture = models.ForeignKey(
+        EcritureComptable,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='ecarts_change',
+        verbose_name='Écriture comptable',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Écart de change réalisé'
+        verbose_name_plural = 'Écarts de change réalisés'
+        ordering = ['-date_reglement', '-id']
+
+    def __str__(self):
+        return f'Écart {self.item_id} — {self.difference}'
+
+
+class ReevaluationCloture(models.Model):
+    """Run de réévaluation de clôture des items ouverts en devise (XACC18).
+
+    À la clôture d'exercice, chaque item OUVERT (non soldé) est réévalué au
+    taux de clôture : l'écart de conversion (latent, non réalisé) est posté en
+    27 (écart actif, perte latente) ou 17 (écart passif, gain latent) — JAMAIS
+    en 733/633 (ceux-là sont RÉALISÉS uniquement). L'écriture est EXTOURNÉE
+    (inversée) à l'ouverture suivante, idempotent. ``company`` posée côté
+    serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='reevaluations_cloture',
+        verbose_name='Société',
+    )
+    date_cloture = models.DateField(verbose_name='Date de clôture')
+    date_extourne = models.DateField(
+        null=True, blank=True, verbose_name="Date d'extourne (ouverture N+1)")
+    ecriture = models.ForeignKey(
+        EcritureComptable,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='reevaluations_cloture',
+        verbose_name='Écriture de réévaluation',
+    )
+    ecriture_extourne = models.ForeignKey(
+        EcritureComptable,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='reevaluations_cloture_extourne',
+        verbose_name="Écriture d'extourne",
+    )
+    total_ecart = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Total des écarts latents (signé, MAD)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Réévaluation de clôture (change)'
+        verbose_name_plural = 'Réévaluations de clôture (change)'
+        ordering = ['-date_cloture', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'date_cloture'],
+                name='uniq_reevaluation_cloture_par_date',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Réévaluation {self.date_cloture} — {self.total_ecart}'
+
+
+class LigneReevaluation(models.Model):
+    """Détail par item d'un run ``ReevaluationCloture`` (XACC18)."""
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='lignes_reevaluation',
+        verbose_name='Société',
+    )
+    reevaluation = models.ForeignKey(
+        ReevaluationCloture,
+        on_delete=models.CASCADE,
+        related_name='lignes',
+        verbose_name='Réévaluation',
+    )
+    item = models.ForeignKey(
+        ItemOuvertDevise,
+        on_delete=models.CASCADE,
+        related_name='lignes_reevaluation',
+        verbose_name='Poste ouvert en devise',
+    )
+    taux_cloture = models.DecimalField(
+        max_digits=14, decimal_places=6,
+        verbose_name='Taux de clôture (devise → MAD)')
+    ecart = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Écart latent (signé, MAD)')
+
+    class Meta:
+        verbose_name = 'Ligne de réévaluation'
+        verbose_name_plural = 'Lignes de réévaluation'
+        ordering = ['reevaluation_id', 'id']
+
+    def __str__(self):
+        return f'{self.item_id} — {self.ecart}'
