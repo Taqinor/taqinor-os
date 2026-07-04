@@ -711,14 +711,14 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
   agadir: {
     fr: {
       heroLead:
-        'Agadir est la plus ensoleillée de nos cinq villes : ≈ 3 400 h par an sur le Souss. ' +
-        'Le gisement est exceptionnel pour le pays — mais une installation se juge à ce qu’elle produit chez vous, pas au soleil de la baie. On dimensionne sur votre facture.',
+        'Agadir affiche l’un des meilleurs gisements de nos cinq villes : ≈ 3 400 h par an sur le Souss. ' +
+        'Le gisement est solide pour le pays — mais une installation se juge à ce qu’elle produit chez vous, pas au soleil de la baie. On dimensionne sur votre facture.',
       sunshineContext:
-        'Climat semi-aride, ciel dégagé une grande partie de l’année : ces ≈ 3 400 h placent Agadir en tête sur le littoral. ' +
+        'Climat semi-aride, ciel dégagé une grande partie de l’année : ces ≈ 3 400 h placent Agadir parmi les mieux exposées du littoral. ' +
         'Reste que votre toiture, son orientation et son ombrage déterminent la production réelle — c’est ce que l’étude chiffre, le soleil ne suffit pas.',
       pillars: {
         study: {
-          heading: 'Le meilleur gisement ne dispense pas de calculer',
+          heading: 'Un fort gisement ne dispense pas de calculer',
           body:
             'Sous les ≈ 3 400 h du Souss, on pourrait être tenté de poser sans réfléchir. On dimensionne quand même sur votre consommation, ' +
             'pas sur le climat — étude validée par le fondateur, docteur-ingénieur.',
@@ -739,7 +739,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       closer: 'À Agadir, le soleil est acquis ; ce qui compte, c’est le dimensionnement. Faites étudier votre toiture.',
       title: 'Installation solaire à Agadir — étude, pose et loi 82-21 | Taqinor',
       description:
-        'Installation solaire à Agadir : ≈ 3 400 h de soleil par an, le meilleur gisement de nos villes — mais on dimensionne sur votre facture. Pose, monitoring Deye Cloud et loi 82-21.',
+        'Installation solaire à Agadir : ≈ 3 400 h de soleil par an, l’un des meilleurs gisements de nos villes — mais on dimensionne sur votre facture. Pose, monitoring Deye Cloud et loi 82-21.',
       roiNuance:
         'Avec ≈ 3 400 h par an, Agadir affiche l’un des meilleurs gisements de nos cinq villes : à dimensionnement égal, cela pousse ' +
         'la bande 3–7 ans vers sa partie basse — un avantage réel, que seule l’étude sur votre facture transforme en chiffre exact.',
@@ -752,14 +752,14 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
     },
     en: {
       heroLead:
-        'Agadir is the sunniest of our five cities: ≈ 3,400 h a year over the Souss. ' +
-        'The resource is exceptional for the country — but an installation is judged by what it produces at your place, not by the sun over the bay. We size on your bill.',
+        'Agadir has one of the best resources of our five cities: ≈ 3,400 h a year over the Souss. ' +
+        'The resource is strong for the country — but an installation is judged by what it produces at your place, not by the sun over the bay. We size on your bill.',
       sunshineContext:
-        'Semi-arid climate, clear sky for much of the year: those ≈ 3,400 h put Agadir at the top of the coast. ' +
+        'Semi-arid climate, clear sky for much of the year: those ≈ 3,400 h put Agadir among the best-exposed spots on the coast. ' +
         'Still, your roof, its orientation and its shading determine the real output — that is what the assessment quantifies; the sun is not enough.',
       pillars: {
         study: {
-          heading: 'The best resource does not excuse you from calculating',
+          heading: 'A strong resource does not excuse you from calculating',
           body:
             'Under the ≈ 3,400 h of the Souss, one could be tempted to install without thinking. We still size on your consumption, ' +
             'not on the climate — assessment validated by the founder, a doctor-engineer.',
@@ -780,7 +780,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       closer: 'In Agadir, the sun is a given; what counts is the sizing. Have your roof assessed.',
       title: 'Solar installation in Agadir — assessment, install and Law 82-21 | Taqinor',
       description:
-        'Solar installation in Agadir: ≈ 3,400 h of sun a year, the best resource of our cities — but we size on your bill. Install, Deye Cloud monitoring and Law 82-21.',
+        'Solar installation in Agadir: ≈ 3,400 h of sun a year, one of the best resources of our cities — but we size on your bill. Install, Deye Cloud monitoring and Law 82-21.',
       roiNuance:
         'At ≈ 3,400 h a year, Agadir has one of the best resources of our five cities: for an identical system size, that pulls ' +
         'the 3–7 year band toward its lower end — a real edge that only the assessment on your bill turns into an exact figure.',
@@ -793,14 +793,14 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
     },
     ar: {
       heroLead:
-        'أكادير هي الأكثر إشعاعاً بين مدننا الخمس: ≈ 3 400 ساعة في السنة فوق سوس. ' +
-        'المخزون استثنائي بالنسبة للبلاد — لكن التركيبة تُحكَم بما تنتجه عندك، لا بشمس الخليج. نحدّد المقاس على فاتورتك.',
+        'أكادير من بين المدن ذات أفضل مخزون شمسي في مدننا الخمس: ≈ 3 400 ساعة في السنة فوق سوس. ' +
+        'المخزون قوي بالنسبة للبلاد — لكن التركيبة تُحكَم بما تنتجه عندك، لا بشمس الخليج. نحدّد المقاس على فاتورتك.',
       sunshineContext:
-        'مناخ شبه قاحل، سماء صافية جزءاً كبيراً من السنة: هذه الـ ≈ 3 400 ساعة تضع أكادير في صدارة الساحل. ' +
+        'مناخ شبه قاحل، سماء صافية جزءاً كبيراً من السنة: هذه الـ ≈ 3 400 ساعة تضع أكادير من بين الأفضل تعرّضاً على الساحل. ' +
         'يبقى أنّ سطحك وتوجيهه وتظليله هي التي تحدّد الإنتاج الحقيقي — وهذا ما تقدّره الدراسة؛ الشمس وحدها لا تكفي.',
       pillars: {
         study: {
-          heading: 'أفضل مخزون لا يعفي من الحساب',
+          heading: 'مخزون قوي لا يعفي من الحساب',
           body:
             'تحت الـ ≈ 3 400 ساعة لسوس، قد يُغري المرءُ بالتركيب دون تفكير. ومع ذلك نحدّد المقاس على استهلاكك، ' +
             'لا على المناخ — دراسة يصادق عليها المؤسّس، دكتور-مهندس.',
@@ -821,7 +821,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       closer: 'في أكادير، الشمس مضمونة؛ المهمّ هو المقاس. ادرس سطحك.',
       title: 'تركيب شمسي في أكادير — دراسة وتركيب والقانون 82-21 | Taqinor',
       description:
-        'تركيب شمسي في أكادير: ≈ 3 400 ساعة شمس في السنة، أفضل مخزون بين مدننا — لكننا نحدّد المقاس على فاتورتك. تركيب، مراقبة Deye Cloud والقانون 82-21.',
+        'تركيب شمسي في أكادير: ≈ 3 400 ساعة شمس في السنة، من بين أفضل المخزونات لدينا — لكننا نحدّد المقاس على فاتورتك. تركيب، مراقبة Deye Cloud والقانون 82-21.',
       roiNuance:
         'بـ ≈ 3 400 ساعة في السنة، تملك أكادير واحداً من أفضل المخزونات بين مدننا الخمس: لمقاس مماثل، يشدّ ذلك بند 3–7 سنوات ' +
         'نحو طرفه الأدنى — ميزة حقيقية لا تتحوّل إلى رقم دقيق إلا بالدراسة على فاتورتك.',
