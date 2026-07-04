@@ -39,7 +39,7 @@ def make_company(slug, nom):
     return company
 
 
-def make_user(company, username, role="lecteur"):
+def make_user(company, username, role="normal"):
     return User.objects.create_user(
         username=username, password="x", company=company, role_legacy=role)
 
