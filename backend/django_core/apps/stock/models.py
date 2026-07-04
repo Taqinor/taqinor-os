@@ -341,6 +341,21 @@ class AchatsParametres(models.Model):
         max_digits=5, decimal_places=2, default=0,
         help_text='Écart %% (vs dernier prix/prix moyen) déclenchant un '
                   'warning sur une ligne de BCF. 0 = désactivé.')
+    # XPUR26 — préparation mandat e-facturation DGI 2026 (ENTRANT). Quand
+    # actif, l'import d'un fichier UBL 2.1 crée une FactureFournisseur
+    # BROUILLON pré-remplie. OFF par défaut = total no-op, aucun appel
+    # externe (la validation plateforme DGI réelle attendra le mandat).
+    einvoicing_entrant_actif = models.BooleanField(default=False)
+    # XSTK6 — bloque la sortie d'un LOT périmé (registre `LotEntrepot`). ON
+    # par défaut (garde de sécurité), contournable avec motif tracé via
+    # `sortir_lot_entrepot(..., forcer=True, motif=...)`.
+    bloquer_stock_perime = models.BooleanField(default=True)
+    # XSTK8 — refuse par défaut toute écriture qui ferait passer
+    # `Produit.quantite_stock`/`StockEmplacement.quantite` sous zéro (sorties
+    # chantier/assemblage, retours fournisseur…). False = comportement
+    # historique inchangé (aucun garde, comme avant XSTK8) si activé
+    # explicitement par la société.
+    stock_negatif_autorise = models.BooleanField(default=False)
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
 
@@ -562,13 +577,89 @@ class Produit(models.Model):
                   "la création automatique de l'équipement SAV garanti "
                   '(onduleur, batterie…).')
 
+    # ── XSTK3 — code-barres FABRICANT (EAN/UPC/GTIN) ────────────────────────
+    # Distinct du jeton interne `PRODUIT:<id>` (N20/labels.py, imprimé PAR
+    # nous) : celui-ci est imprimé PAR LE FABRICANT sur l'emballage. Nullable
+    # — un produit sans code-barres garde le comportement historique (scan
+    # uniquement via le jeton interne). Unicité PAR SOCIÉTÉ quand renseigné.
+    code_barres = models.CharField(
+        max_length=64, blank=True, null=True,
+        verbose_name='Code-barres fabricant (EAN/UPC/GTIN)',
+        help_text='Code-barres imprimé par le fabricant (EAN-13, UPC, '
+                  'GTIN…) — distinct du jeton interne de scan.')
+
     class Meta:
         verbose_name = "Produit"
         verbose_name_plural = "Produits"
         unique_together = [('company', 'sku')]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code_barres'],
+                condition=~models.Q(
+                    code_barres__isnull=True) & ~models.Q(code_barres=''),
+                name='stock_produit_company_code_barres_uniq'),
+        ]
 
     def __str__(self):
         return self.nom
+
+
+class LotEntrepot(models.Model):
+    """XSTK6 — registre de LOTS en entrepôt (miroir d'
+    ``installations.SerieEntrepot`` FG323, mais pour du stock non sérialisé
+    suivi PAR LOT : batteries, produits d'étanchéité, tout ce qui porte
+    ``numero_lot``/``date_peremption`` — FG64). Alimenté à la CONFIRMATION
+    d'une réception (une ligne dont ``numero_lot`` est renseigné) ;
+    décrémenté à la sortie (FEFO — péremption la plus proche d'abord).
+
+    ``quantite_restante`` == 0 signifie « lot épuisé » (conservé pour
+    l'historique/traçabilité, jamais supprimé). Multi-tenant : ``company``
+    posée côté serveur."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='lots_entrepot')
+    produit = models.ForeignKey(
+        Produit, on_delete=models.CASCADE, related_name='lots_entrepot')
+    numero_lot = models.CharField(max_length=100)
+    date_peremption = models.DateField(null=True, blank=True)
+    # Référence par nom de classe (chaîne) : `EmplacementStock` est défini
+    # PLUS BAS dans ce fichier (ordre historique des classes inchangé).
+    emplacement = models.ForeignKey(
+        'EmplacementStock', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='lots_entrepot')
+    quantite_recue = models.IntegerField(default=0)
+    quantite_restante = models.IntegerField(default=0)
+    reference_reception = models.CharField(
+        max_length=80, blank=True, null=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='lots_entrepot_crees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Lot en entrepôt'
+        verbose_name_plural = 'Lots en entrepôt'
+        ordering = ['date_peremption', '-date_creation']
+        indexes = [
+            models.Index(fields=['company', 'produit'],
+                         name='idx_lotent_co_produit'),
+            models.Index(fields=['company', 'date_peremption'],
+                         name='idx_lotent_co_peremption'),
+        ]
+
+    def __str__(self):
+        return f'{self.numero_lot} ({self.produit_id}) — {self.quantite_restante}'
+
+    @property
+    def est_perime(self):
+        """Vrai si la date de péremption est dépassée (jamais pour un lot
+        sans date — comportement historique inchangé)."""
+        if not self.date_peremption:
+            return False
+        from django.utils import timezone
+        return self.date_peremption < timezone.now().date()
 
 
 class MouvementStock(models.Model):
@@ -588,6 +679,11 @@ class MouvementStock(models.Model):
         CASSE = 'casse', 'Casse'
         DEFAUT = 'defaut', 'Défaut'
         ERREUR = 'erreur', 'Erreur'
+        # XSTK10 — motifs additionnels pour la mise au rebut manuelle
+        # (`produits/{id}/rebuter/`), en plus des motifs XMFG11 existants.
+        OBSOLETE = 'obsolete', 'Obsolète'
+        PERIME = 'perime', 'Périmé'
+        VOL = 'vol', 'Vol'
         AUTRE = 'autre', 'Autre'
 
     company = models.ForeignKey(
@@ -707,6 +803,77 @@ class StockEmplacement(models.Model):
 
     def __str__(self):
         return f'{self.produit_id} @ {self.emplacement_id} = {self.quantite}'
+
+
+class ProfilSaisonnier(models.Model):
+    """XSTK17 — profil saisonnier de seuils min/max/cible, PAR PRODUIT ou PAR
+    CATÉGORIE (l'un des deux, jamais les deux — validé en base). Pendant sa
+    fenêtre (``mois_debut``..``mois_fin``, mois calendaires 1-12, la fenêtre
+    peut « boucler » l'année ex. 11→2), les sélecteurs de réappro (FG54, FG65,
+    FG326) lisent CE seuil en PRIORITÉ sur le seuil statique
+    (``Produit.seuil_alerte``). Hors saison ou sans profil actif : repli
+    STRICTEMENT inchangé sur le seuil statique existant (comportement
+    historique). Deux profils de la MÊME cible (produit ou catégorie) ne
+    peuvent pas se chevaucher (validé côté service, pas en DB — le
+    chevauchement calendaire n'est pas exprimable en CheckConstraint
+    portable)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='profils_saisonniers')
+    produit = models.ForeignKey(
+        Produit, on_delete=models.CASCADE, null=True, blank=True,
+        related_name='profils_saisonniers')
+    categorie = models.ForeignKey(
+        Categorie, on_delete=models.CASCADE, null=True, blank=True,
+        related_name='profils_saisonniers')
+    nom = models.CharField(
+        max_length=100, blank=True, null=True,
+        help_text='Libellé libre (ex. « Saison pompage »).')
+    mois_debut = models.PositiveSmallIntegerField(
+        help_text='Mois de début de la saison (1-12).')
+    mois_fin = models.PositiveSmallIntegerField(
+        help_text='Mois de fin de la saison (1-12, inclus). Peut être < '
+                  'mois_debut (fenêtre à cheval sur le nouvel an).')
+    seuil_min = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='Seuil minimum de saison (remplace seuil_alerte pendant '
+                  'la fenêtre).')
+    seuil_max = models.PositiveIntegerField(null=True, blank=True)
+    quantite_cible = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='Quantité cible de remplacement pendant la saison '
+                  '(remplace quantite_reappro_cible).')
+    actif = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='profils_saisonniers_crees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Profil saisonnier'
+        verbose_name_plural = 'Profils saisonniers'
+        ordering = ['mois_debut']
+        constraints = [
+            models.CheckConstraint(
+                check=(
+                    models.Q(produit__isnull=False, categorie__isnull=True)
+                    | models.Q(produit__isnull=True, categorie__isnull=False)
+                ),
+                name='stock_profilsaisonnier_produit_xor_categorie'),
+        ]
+
+    def __str__(self):
+        cible = f'produit={self.produit_id}' if self.produit_id \
+            else f'categorie={self.categorie_id}'
+        return f'{self.nom or "Profil"} ({cible}, {self.mois_debut}→{self.mois_fin})'
+
+    def couvre_mois(self, mois):
+        """Vrai si ``mois`` (1-12) tombe dans la fenêtre, y compris quand
+        elle boucle l'année (ex. mois_debut=11, mois_fin=2)."""
+        if self.mois_debut <= self.mois_fin:
+            return self.mois_debut <= mois <= self.mois_fin
+        return mois >= self.mois_debut or mois <= self.mois_fin
 
 
 class TransfertStock(models.Model):
@@ -1284,6 +1451,23 @@ class FactureFournisseur(models.Model):
         max_length=12, choices=StatutControle.choices,
         default=StatutControle.NORMALE)
     motif_ecart = models.TextField(blank=True, null=True)
+
+    # ── XPUR26 — e-facturation DGI 2026 (ENTRANT, préparation mandat) ───────
+    # Un import UBL 2.1 pré-remplit ces champs ; une facture saisie
+    # manuellement reste `non_applicable` (comportement historique). AUCUN
+    # appel externe ici — la validation plateforme réelle attendra le mandat.
+    class StatutConformiteDgi(models.TextChoices):
+        NON_APPLICABLE = 'non_applicable', 'Non applicable'
+        CLEARED = 'cleared', 'Validée (clearance DGI)'
+        NON_CLEARED = 'non_cleared', 'Non validée'
+
+    numero_clearance_dgi = models.CharField(
+        max_length=100, blank=True, null=True,
+        help_text="Numéro de clearance DGI (e-invoicing entrant, si fourni "
+                  'par le document UBL).')
+    statut_conformite_dgi = models.CharField(
+        max_length=20, choices=StatutConformiteDgi.choices,
+        default=StatutConformiteDgi.NON_APPLICABLE)
     resolu_par = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
         blank=True, related_name='factures_fournisseur_resolues')

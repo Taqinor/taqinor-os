@@ -14,6 +14,7 @@ from .models import (
     EcheanceFactureFournisseur, AcompteFournisseur,
     AvoirFournisseur, ImputationAvoirFournisseur,
     PalierPrixFournisseur, PortailFournisseurToken,
+    LotEntrepot,
 )
 
 
@@ -198,6 +199,24 @@ class ProduitSerializer(serializers.ModelSerializer):
     # Transfert. Map calculée UNE fois par sérialisation (pas de N+1).
     stock_par_emplacement = serializers.SerializerMethodField()
 
+    def validate_code_barres(self, value):
+        # XSTK3 — doublon PROPRE (400) même société, plutôt qu'une
+        # IntegrityError 500 sur la contrainte DB. Vide/None reste toléré
+        # (comportement historique inchangé pour un produit sans code-barres).
+        value = (value or '').strip() or None
+        if value is None:
+            return value
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is not None:
+            qs = Produit.objects.filter(company=company, code_barres=value)
+            if self.instance is not None:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    'Ce code-barres est déjà utilisé par un autre produit.')
+        return value
+
     def validate(self, attrs):
         # Champs personnalisés (T11, L808) : valider/nettoyer le custom_data du
         # produit contre les définitions du module « produit », même chemin que
@@ -225,6 +244,8 @@ class ProduitSerializer(serializers.ModelSerializer):
         fields = [
             # Identité & catalogue
             'id', 'company', 'nom', 'description', 'sku', 'marque',
+            # XSTK3 — code-barres fabricant (EAN/UPC/GTIN)
+            'code_barres',
             # Prix (prix_achat gardé par permission, cf. get_fields)
             'prix_achat', 'prix_vente', 'tva',
             # Stock
@@ -846,6 +867,9 @@ class FactureFournisseurSerializer(serializers.ModelSerializer):
     # lignes. Vide si la facture n'a pas de lignes ventilées (comportement
     # historique inchangé : montant_tva global reste la source de vérité).
     sous_totaux_par_taux = serializers.SerializerMethodField()
+    # XPUR26 — e-facturation DGI 2026 (entrant, préparation mandat).
+    statut_conformite_dgi_display = serializers.CharField(
+        source='get_statut_conformite_dgi_display', read_only=True)
 
     class Meta:
         model = FactureFournisseur
@@ -861,16 +885,21 @@ class FactureFournisseurSerializer(serializers.ModelSerializer):
             'resolu_par', 'resolu_par_username', 'resolu_le',
             'lignes', 'paiements', 'echeances', 'total_paye', 'solde_du',
             'sous_totaux_par_taux',
+            'numero_clearance_dgi', 'statut_conformite_dgi',
+            'statut_conformite_dgi_display',
         ]
         # company + reference + statut + created_by sont posés côté serveur.
         # Le statut découle des paiements (recompute_facture_fournisseur_statut).
         # statut_controle/motif_ecart/resolu_par/resolu_le sont posés
         # UNIQUEMENT par evaluate_facture_exception / resoudre_exception_facture
         # (XPUR10) — jamais en écriture libre sur le document.
+        # numero_clearance_dgi/statut_conformite_dgi (XPUR26) sont posés
+        # UNIQUEMENT par l'import UBL — jamais en écriture libre.
         read_only_fields = [
             'reference', 'statut', 'created_by', 'date_creation',
             'date_mise_a_jour', 'statut_controle', 'motif_ecart',
             'resolu_par', 'resolu_le',
+            'numero_clearance_dgi', 'statut_conformite_dgi',
         ]
 
     def get_sous_totaux_par_taux(self, obj):
@@ -1240,3 +1269,24 @@ class AvoirFournisseurSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'Fournisseur hors de votre entreprise.')
         return value
+
+
+class LotEntrepotSerializer(serializers.ModelSerializer):
+    """XSTK6 — registre de lots en entrepôt (LECTURE — alimenté/décrémenté
+    uniquement par les services de réception/sortie, jamais en écriture
+    libre)."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True)
+    emplacement_nom = serializers.CharField(
+        source='emplacement.nom', read_only=True)
+    est_perime = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = LotEntrepot
+        fields = [
+            'id', 'produit', 'produit_nom', 'numero_lot', 'date_peremption',
+            'emplacement', 'emplacement_nom', 'quantite_recue',
+            'quantite_restante', 'reference_reception', 'est_perime',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = fields

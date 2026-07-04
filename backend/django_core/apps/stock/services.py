@@ -638,6 +638,30 @@ def export_valorisation_xlsx(company):
         sheet_title='Valorisation')
 
 
+# ── XSTK8 — Contrôle du stock négatif (garde configurable) ──────────────────
+# Seul `transfer_stock` refusait une quantité insuffisante ; les AUTRES
+# chemins d'écriture (sorties chantier assemblage, retours fournisseur) ne
+# vérifiaient rien. `AchatsParametres.stock_negatif_autorise` (défaut False)
+# fait respecter le même garde là où il manquait — le garde EXISTANT de
+# `transfer_stock` reste inchangé (ne l'appelle pas, a déjà le sien). Les
+# données historiques déjà négatives restent lisibles (le garde ne s'applique
+# qu'à une ÉCRITURE qui ferait PASSER sous zéro, jamais à la lecture).
+
+def check_negative_stock_guard(company, quantite_avant, quantite_apres):
+    """Lève ValueError si `quantite_apres` serait négatif et que la société
+    n'autorise pas le stock négatif (`AchatsParametres.stock_negatif_
+    autorise`, défaut False = refuse). Ne fait rien si le réglage l'autorise
+    ou si le résultat reste ≥ 0 (comportement historique inchangé)."""
+    if quantite_apres >= 0:
+        return
+    from .models import AchatsParametres
+    parametres = AchatsParametres.for_company(company)
+    if not parametres.stock_negatif_autorise:
+        raise ValueError(
+            f'Stock insuffisant ({quantite_avant} disponible) — cette '
+            'opération ferait passer le stock sous zéro.')
+
+
 # ── N19 — Retour fournisseur : validation = décrément de stock (SORTIE) ───────
 
 def apply_retour_fournisseur(retour, user):
@@ -659,6 +683,7 @@ def apply_retour_fournisseur(retour, user):
                        .get(pk=ligne.produit_id))
             qte_avant = produit.quantite_stock
             qte_apres = qte_avant - ligne.quantite
+            check_negative_stock_guard(retour.company, qte_avant, qte_apres)
             MouvementStock.objects.create(
                 company=retour.company, produit=produit,
                 type_mouvement=MouvementStock.TypeMouvement.SORTIE,
@@ -752,6 +777,21 @@ def confirm_reception_fournisseur(reception, user):
                 credit_emplacement_destination(
                     reception.company, produit, bc.emplacement_destination,
                     qte)
+            # XSTK6 — alimente le registre de lots quand la ligne porte un
+            # numero_lot (FG64). Sans lot renseigné : comportement historique
+            # inchangé (aucune écriture LotEntrepot).
+            if getattr(ligne, 'numero_lot', None):
+                alimenter_lot_entrepot(
+                    company=reception.company, produit=produit,
+                    numero_lot=ligne.numero_lot,
+                    date_peremption=ligne.date_peremption,
+                    emplacement=(bc.emplacement_destination
+                                 if bc is not None
+                                 and bc.emplacement_destination_id
+                                 else None),
+                    quantite=qte,
+                    reference_reception=reception.reference,
+                    user=user)
         reception.statut = ReceptionFournisseur.Statut.CONFIRME
         reception.recu_par = reception.recu_par or user
         reception.save(update_fields=['statut', 'recu_par'])
@@ -782,6 +822,94 @@ def confirm_reception_fournisseur(reception, user):
     except Exception:  # pragma: no cover - défensif, best-effort
         pass
     return reception
+
+
+# ── XSTK6 — Registre de lots en entrepôt + sortie FEFO + garde périmé ───────
+# Miroir d'`installations.SerieEntrepot` (FG323) mais pour du stock suivi PAR
+# LOT (non sérialisé). Alimenté à la confirmation d'une réception ; décrémenté
+# à la sortie. Le picking FEFO propose le lot à péremption la plus proche
+# d'abord ; sortir un lot périmé est bloqué par défaut (`AchatsParametres.
+# bloquer_stock_perime`, contournable avec motif tracé).
+
+def alimenter_lot_entrepot(
+        *, company, produit, numero_lot, date_peremption, quantite,
+        reference_reception, emplacement=None, user=None):
+    """XSTK6 — crée (ou incrémente si le MÊME lot existe déjà pour ce
+    produit) une entrée de `LotEntrepot`. Jamais appelée pour une ligne sans
+    ``numero_lot`` (comportement historique inchangé)."""
+    from .models import LotEntrepot
+    lot, created = LotEntrepot.objects.get_or_create(
+        company=company, produit=produit, numero_lot=numero_lot,
+        defaults={
+            'date_peremption': date_peremption,
+            'emplacement': emplacement,
+            'quantite_recue': 0,
+            'quantite_restante': 0,
+            'reference_reception': reference_reception,
+            'created_by': user,
+        })
+    if not created and date_peremption and not lot.date_peremption:
+        lot.date_peremption = date_peremption
+    lot.quantite_recue += quantite
+    lot.quantite_restante += quantite
+    lot.save(update_fields=[
+        'quantite_recue', 'quantite_restante', 'date_peremption'])
+    return lot
+
+
+def suggestion_fefo(company, produit, quantite_requise):
+    """XSTK6 — suggère le(s) lot(s) à sortir en premier (FEFO : péremption la
+    plus proche d'abord ; les lots sans date de péremption passent en
+    dernier). Renvoie une liste ``[{lot, quantite}]`` couvrant au mieux
+    ``quantite_requise`` (LECTURE SEULE, ne décrémente rien)."""
+    from .models import LotEntrepot
+    from django.db.models import F
+    lots = (LotEntrepot.objects
+            .filter(company=company, produit=produit,
+                    quantite_restante__gt=0)
+            .order_by(
+                F('date_peremption').asc(nulls_last=True), 'date_creation'))
+    restant = quantite_requise
+    plan = []
+    for lot in lots:
+        if restant <= 0:
+            break
+        prise = min(lot.quantite_restante, restant)
+        plan.append({'lot': lot, 'quantite': prise})
+        restant -= prise
+    return plan
+
+
+def sortir_lot_entrepot(
+        *, company, lot, quantite, user=None, forcer=False, motif=None):
+    """XSTK6 — décrémente un lot précis (sortie ciblée, ex. depuis le plan
+    FEFO). Bloque un lot PÉRIMÉ si
+    ``AchatsParametres.bloquer_stock_perime`` (défaut ON) — sauf ``forcer=
+    True`` avec un ``motif`` tracé (journalisé dans la note du mouvement).
+    Lève ValueError si la quantité dépasse le restant ou si le lot est
+    périmé et non contourné."""
+    from .models import AchatsParametres
+    if quantite <= 0:
+        raise ValueError('La quantité doit être positive.')
+    if quantite > lot.quantite_restante:
+        raise ValueError(
+            f'Quantité insuffisante dans le lot {lot.numero_lot} '
+            f'({lot.quantite_restante} restant).')
+    parametres = AchatsParametres.for_company(company)
+    if lot.est_perime and parametres.bloquer_stock_perime and not forcer:
+        raise ValueError(
+            f'Le lot {lot.numero_lot} est périmé '
+            f'({lot.date_peremption}) — sortie bloquée.')
+    if lot.est_perime and forcer and not motif:
+        raise ValueError(
+            'Un motif est requis pour contourner le blocage du lot périmé.')
+    lot.quantite_restante -= quantite
+    lot.save(update_fields=['quantite_restante'])
+    if lot.est_perime and forcer:
+        logger.info(
+            'XSTK6: sortie forcée du lot périmé %s (%s) par %s — motif: %s',
+            lot.numero_lot, lot.produit_id, getattr(user, 'id', None), motif)
+    return lot
 
 
 # ── G5 — Facture fournisseur / comptes à payer (AP) ──────────────────────────
@@ -1187,6 +1315,90 @@ def declarer_rebut(*, company, produit, quantite, motif, reference, note,
     return mouvement
 
 
+def rebuter_produit(
+        *, company, produit, quantite, motif, user, emplacement=None,
+        reference_chantier=None):
+    """XSTK10 — met au rebut une quantité d'un produit (motif obligatoire :
+    casse/obsolète/périmé/vol/défaut/erreur/autre), décrémente l'emplacement
+    source (si fourni, N15) en plus du total canonique, respecte le garde
+    XSTK8 (stock négatif) et journalise la VALEUR perdue au coût moyen
+    (`average_cost_with_source`). Renvoie {mouvement, valeur_perdue}."""
+    from django.db import transaction
+    from .models import MouvementStock, Produit, StockEmplacement
+
+    if quantite is None or quantite <= 0:
+        raise ValueError('La quantité de rebut doit être positive.')
+    valeurs_motif = {c for c, _ in MouvementStock.MotifRebut.choices}
+    if motif not in valeurs_motif:
+        raise ValueError('Motif de rebut invalide.')
+
+    cout_moyen, _source = average_cost_with_source(produit)
+    valeur_perdue = (cout_moyen or Decimal('0')) * Decimal(quantite)
+
+    note = f'Rebut ({dict(MouvementStock.MotifRebut.choices).get(motif, motif)})'
+    if reference_chantier:
+        note += f' — chantier {reference_chantier}'
+
+    with transaction.atomic():
+        p = Produit.objects.select_for_update().get(id=produit.id)
+        avant = p.quantite_stock
+        apres = avant - quantite
+        check_negative_stock_guard(company, avant, apres)
+        mouvement = MouvementStock.objects.create(
+            company=company, produit=p,
+            type_mouvement=MouvementStock.TypeMouvement.REBUT,
+            quantite=quantite, quantite_avant=avant, quantite_apres=apres,
+            reference=reference_chantier or 'REBUT', note=note,
+            motif_rebut=motif, created_by=user)
+        p.quantite_stock = apres
+        p.save(update_fields=['quantite_stock'])
+        if emplacement is not None and not emplacement.is_principal:
+            se, _ = StockEmplacement.objects.select_for_update().get_or_create(
+                produit=p, emplacement=emplacement,
+                defaults={'company': company, 'quantite': 0})
+            se.quantite = max(se.quantite - quantite, 0)
+            se.save(update_fields=['quantite'])
+    return {'mouvement': mouvement, 'valeur_perdue': valeur_perdue}
+
+
+def rapport_pertes(company, *, date_debut=None, date_fin=None):
+    """XSTK10 — rapport « pertes de la période » : quantités ET valeur (coût
+    moyen au moment du calcul) par motif de rebut. Admin-only, JAMAIS
+    client-facing (prix_achat interne). Renvoie une liste de dicts
+    {produit_id, produit_nom, quantite_totale, valeur_totale,
+    par_motif: {motif: {quantite, valeur}}}, triée par valeur décroissante.
+    """
+    from .models import MouvementStock
+
+    qs = MouvementStock.objects.filter(
+        company=company, type_mouvement=MouvementStock.TypeMouvement.REBUT)
+    if date_debut is not None:
+        qs = qs.filter(date__gte=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(date__lte=date_fin)
+
+    par_produit = {}
+    for mvt in qs.select_related('produit'):
+        entry = par_produit.setdefault(mvt.produit_id, {
+            'produit_id': mvt.produit_id,
+            'produit_nom': mvt.produit.nom,
+            'quantite_totale': 0,
+            'valeur_totale': Decimal('0'),
+            'par_motif': {},
+        })
+        cout_moyen, _source = average_cost_with_source(mvt.produit)
+        valeur = (cout_moyen or Decimal('0')) * Decimal(mvt.quantite)
+        motif = mvt.motif_rebut or 'autre'
+        entry['quantite_totale'] += mvt.quantite
+        entry['valeur_totale'] += valeur
+        motif_entry = entry['par_motif'].setdefault(
+            motif, {'quantite': 0, 'valeur': Decimal('0')})
+        motif_entry['quantite'] += mvt.quantite
+        motif_entry['valeur'] += valeur
+    return sorted(
+        par_produit.values(), key=lambda e: -e['valeur_totale'])
+
+
 def rapport_rebuts(company, *, date_debut=None, date_fin=None):
     """XMFG11 — mini-rapport rebuts agrégé par produit sur une période
     (bornes optionnelles). Renvoie une liste de dicts {produit_id, produit_nom,
@@ -1236,8 +1448,86 @@ def sortie_exists_for_reference(company, reference):
 
 # ── FG54 — Réapprovisionnement auto ──────────────────────────────────────────
 
+# ── XSTK17 — profils saisonniers de seuils (saison pompage) ─────────────────
+
+def profil_saisonnier_actif(company, produit, *, mois=None):
+    """XSTK17 — profil saisonnier ACTIF couvrant ``mois`` (défaut : mois
+    courant) pour ce produit (priorité) ou sa catégorie. Renvoie None hors
+    saison / sans profil — auquel cas l'appelant garde le seuil statique
+    (comportement historique inchangé)."""
+    from django.utils import timezone
+    from .models import ProfilSaisonnier
+    mois = mois or timezone.now().month
+
+    profil_produit = ProfilSaisonnier.objects.filter(
+        company=company, produit=produit, actif=True).first()
+    candidats = [profil_produit] if profil_produit else []
+    if not candidats and produit.categorie_id:
+        candidats = list(ProfilSaisonnier.objects.filter(
+            company=company, categorie_id=produit.categorie_id, actif=True))
+    for profil in candidats:
+        if profil and profil.couvre_mois(mois):
+            return profil
+    return None
+
+
+def seuil_effectif_produit(company, produit, *, mois=None):
+    """XSTK17 — (seuil_alerte, quantite_cible) EFFECTIFS pour ce produit : le
+    profil saisonnier ACTIF prime pendant sa fenêtre ; hors saison ou sans
+    profil, renvoie EXACTEMENT (produit.seuil_alerte,
+    produit.quantite_reappro_cible) — repli byte-identique au comportement
+    historique."""
+    profil = profil_saisonnier_actif(company, produit, mois=mois)
+    if profil is None:
+        return produit.seuil_alerte, produit.quantite_reappro_cible
+    seuil = profil.seuil_min if profil.seuil_min is not None \
+        else produit.seuil_alerte
+    cible = profil.quantite_cible if profil.quantite_cible is not None \
+        else produit.quantite_reappro_cible
+    return seuil, cible
+
+
+def creer_profil_saisonnier(
+        company, *, produit=None, categorie=None, mois_debut, mois_fin,
+        seuil_min=None, seuil_max=None, quantite_cible=None, nom=None,
+        user=None):
+    """XSTK17 — crée un profil saisonnier après avoir rejeté tout
+    CHEVAUCHEMENT calendaire avec un profil déjà ACTIF de la MÊME cible
+    (produit ou catégorie, jamais les deux). Lève ValueError si ni produit
+    ni catégorie n'est fourni (ou les deux), ou en cas de chevauchement."""
+    from .models import ProfilSaisonnier
+
+    if bool(produit) == bool(categorie):
+        raise ValueError(
+            'Un profil saisonnier cible soit un produit, soit une '
+            'catégorie (jamais les deux, jamais aucun).')
+    if not (1 <= mois_debut <= 12 and 1 <= mois_fin <= 12):
+        raise ValueError('Les mois doivent être compris entre 1 et 12.')
+
+    candidat = ProfilSaisonnier(
+        mois_debut=mois_debut, mois_fin=mois_fin)
+    existants = ProfilSaisonnier.objects.filter(company=company, actif=True)
+    existants = existants.filter(produit=produit) if produit \
+        else existants.filter(categorie=categorie)
+    for autre in existants:
+        for m in range(1, 13):
+            if candidat.couvre_mois(m) and autre.couvre_mois(m):
+                label = autre.nom or f'#{autre.id}'
+                raise ValueError(
+                    f'Ce profil chevauche le profil existant « {label} » '
+                    f'sur le mois {m}.')
+
+    return ProfilSaisonnier.objects.create(
+        company=company, produit=produit, categorie=categorie,
+        mois_debut=mois_debut, mois_fin=mois_fin, seuil_min=seuil_min,
+        seuil_max=seuil_max, quantite_cible=quantite_cible, nom=nom,
+        created_by=user)
+
+
 def produits_a_reapprovisionner(company):
-    """Retourne les produits dont le stock est <= seuil_alerte, groupés par
+    """Retourne les produits dont le stock est <= seuil EFFECTIF (XSTK17 :
+    le profil saisonnier ACTIF prime sur `seuil_alerte` pendant sa fenêtre ;
+    hors saison, repli byte-identique sur `seuil_alerte`), groupés par
     fournisseur le moins cher (PrixFournisseur). INTERNE.
 
     Chaque item : {produit_id, nom, quantite_stock, seuil_alerte,
@@ -1250,10 +1540,33 @@ def produits_a_reapprovisionner(company):
     from .models import Produit, PrixFournisseur
     from apps.installations.selectors import kit_map_for_produits_composes
 
+    # XSTK17 — exclut seulement les produits SANS seuil_alerte ET sans
+    # profil saisonnier actif (repli inchangé : seuil_alerte=0 = pas de
+    # suivi de seuil, comme avant). Les candidats avec un profil actif
+    # passent même si seuil_alerte=0 (le profil peut définir un seuil que
+    # le produit n'a pas statiquement).
+    candidats_ids = set(
+        Produit.objects.filter(
+            company=company, is_archived=False)
+        .exclude(seuil_alerte=0).values_list('id', flat=True))
+    from .models import ProfilSaisonnier
+    from django.utils import timezone
+    mois_actuel = timezone.now().month
+    for profil in ProfilSaisonnier.objects.filter(
+            company=company, actif=True).select_related('categorie'):
+        if not profil.couvre_mois(mois_actuel):
+            continue
+        if profil.produit_id:
+            candidats_ids.add(profil.produit_id)
+        elif profil.categorie_id:
+            candidats_ids.update(
+                Produit.objects.filter(
+                    company=company, is_archived=False,
+                    categorie_id=profil.categorie_id)
+                .values_list('id', flat=True))
+
     qs = (Produit.objects
-          .filter(company=company, is_archived=False)
-          .exclude(seuil_alerte=0)
-          .filter(quantite_stock__lte=models.F('seuil_alerte'))
+          .filter(company=company, id__in=candidats_ids)
           .prefetch_related('prix_fournisseurs__fournisseur'))
 
     produits = list(qs)
@@ -1262,20 +1575,25 @@ def produits_a_reapprovisionner(company):
 
     result = []
     for p in produits:
+        seuil_effectif, cible_effective = seuil_effectif_produit(
+            company, p, mois=mois_actuel)
+        if p.quantite_stock > (seuil_effectif or 0):
+            continue
         # Fournisseur le moins cher parmi les prix enregistrés.
         best = (PrixFournisseur.objects
                 .filter(company=company, produit=p)
                 .select_related('fournisseur')
                 .order_by('prix_achat')
                 .first())
-        qte_suggere = p.quantite_reappro_cible if p.quantite_reappro_cible else (p.seuil_alerte * 2)
+        qte_suggere = cible_effective if cible_effective else (
+            (seuil_effectif or 0) * 2)
         kit_id = kit_map.get(p.id)
         result.append({
             'produit_id': p.id,
             'nom': p.nom,
             'sku': p.sku,
             'quantite_stock': p.quantite_stock,
-            'seuil_alerte': p.seuil_alerte,
+            'seuil_alerte': seuil_effectif,
             'quantite_suggere': qte_suggere,
             'fournisseur_id': best.fournisseur_id if best else None,
             'fournisseur_nom': best.fournisseur.nom if best else None,
@@ -1902,6 +2220,7 @@ def consommer_et_produire_assemblage(*, company, kit, composants, produit_compos
             p = Produit.objects.select_for_update().get(id=comp_produit.id)
             avant = p.quantite_stock
             apres = avant - qte_conso
+            check_negative_stock_guard(company, avant, apres)
             mvt = record_stock_movement(
                 company=company, produit=p,
                 type_mouvement=mouvement_type_sortie(),
@@ -3879,3 +4198,186 @@ def export_analyse_achats_xlsx(
 
     return build_xlsx_response(
         'analyse-achats.xlsx', headers, rows, sheet_title='Analyse achats')
+
+
+# ── XPUR26 — e-facturation DGI 2026, réception ENTRANTE (préparation mandat)
+# Parseur stdlib (xml.etree) d'un fichier UBL 2.1 Invoice : AUCUN appel
+# externe, AUCUNE dépendance nouvelle. La validation plateforme DGI réelle
+# attendra le mandat — ici on ne fait que produire une FactureFournisseur
+# BROUILLON pré-remplie. Total no-op quand
+# `AchatsParametres.einvoicing_entrant_actif` est OFF (défaut).
+_UBL_NS = {
+    'inv': 'urn:oasis:names:specification:ubl:schema:xsd:Invoice-2',
+    'cac': 'urn:oasis:names:specification:ubl:schema:xsd:'
+           'CommonAggregateComponents-2',
+    'cbc': 'urn:oasis:names:specification:ubl:schema:xsd:'
+           'CommonBasicComponents-2',
+}
+
+
+def parse_ubl_invoice(xml_bytes):
+    """XPUR26 — parse un fichier UBL 2.1 Invoice (stdlib xml.etree, jamais
+    d'appel réseau). Renvoie un dict de champs :
+    ``numero``, ``date_facture``, ``date_echeance``, ``ice_fournisseur``,
+    ``nom_fournisseur``, ``montant_ht``, ``montant_tva``, ``montant_ttc``,
+    ``numero_clearance_dgi``, ``lignes`` (liste de
+    ``{designation, quantite, prix_unitaire_ht, taux_tva}``).
+    Lève ``ValueError`` si le XML est illisible ou n'est pas une facture UBL
+    reconnaissable (jamais de valeur inventée pour un champ absent)."""
+    import xml.etree.ElementTree as ET
+
+    try:
+        root = ET.fromstring(xml_bytes)
+    except ET.ParseError as exc:
+        raise ValueError(f'Fichier UBL illisible : {exc}') from exc
+
+    def _find(elem, path):
+        return elem.find(path, _UBL_NS)
+
+    def _text(elem, path):
+        node = _find(elem, path)
+        return node.text.strip() if node is not None and node.text else None
+
+    numero = _text(root, 'cbc:ID')
+    if not numero:
+        raise ValueError(
+            "Fichier UBL invalide : identifiant de facture (cbc:ID) absent.")
+    date_facture = _text(root, 'cbc:IssueDate')
+    date_echeance = _text(root, 'cbc:DueDate')
+    numero_clearance_dgi = (
+        _text(root, 'cbc:UUID') or _text(root, 'cbc:LineID'))
+
+    supplier_party = _find(
+        root, 'cac:AccountingSupplierParty/cac:Party')
+    ice_fournisseur = None
+    nom_fournisseur = None
+    if supplier_party is not None:
+        nom_fournisseur = _text(
+            supplier_party, 'cac:PartyName/cbc:Name') or _text(
+            supplier_party,
+            'cac:PartyLegalEntity/cbc:RegistrationName')
+        for scheme in supplier_party.findall(
+                'cac:PartyTaxScheme', _UBL_NS) or []:
+            company_id = _text(scheme, 'cbc:CompanyID')
+            if company_id:
+                ice_fournisseur = company_id
+                break
+        if not ice_fournisseur:
+            ice_fournisseur = _text(
+                supplier_party,
+                'cac:PartyLegalEntity/cbc:CompanyID')
+
+    def _dec_text(elem, path):
+        val = _text(elem, path)
+        if val is None:
+            return None
+        try:
+            return Decimal(val)
+        except (InvalidOperation, TypeError, ValueError):
+            return None
+
+    montant_ht = _dec_text(
+        root, 'cac:LegalMonetaryTotal/cbc:TaxExclusiveAmount')
+    montant_ttc = _dec_text(
+        root, 'cac:LegalMonetaryTotal/cbc:TaxInclusiveAmount')
+    montant_tva = _dec_text(root, 'cac:TaxTotal/cbc:TaxAmount')
+    if montant_tva is None and montant_ht is not None \
+            and montant_ttc is not None:
+        montant_tva = montant_ttc - montant_ht
+
+    lignes = []
+    for line in root.findall('cac:InvoiceLine', _UBL_NS) or []:
+        designation = _text(
+            line, 'cac:Item/cbc:Name') or _text(line, 'cbc:Note') or ''
+        quantite = _dec_text(line, 'cbc:InvoicedQuantity') or Decimal('1')
+        prix_unitaire_ht = _dec_text(line, 'cac:Price/cbc:PriceAmount')
+        if prix_unitaire_ht is None:
+            total_ligne = _dec_text(line, 'cbc:LineExtensionAmount')
+            prix_unitaire_ht = (
+                (total_ligne / quantite)
+                if total_ligne is not None and quantite else Decimal('0'))
+        taux_tva = _dec_text(
+            line, 'cac:Item/cac:ClassifiedTaxCategory/cbc:Percent')
+        lignes.append({
+            'designation': designation,
+            'quantite': quantite,
+            'prix_unitaire_ht': prix_unitaire_ht or Decimal('0'),
+            'taux_tva': taux_tva,
+        })
+
+    return {
+        'numero': numero,
+        'date_facture': date_facture,
+        'date_echeance': date_echeance,
+        'ice_fournisseur': ice_fournisseur,
+        'nom_fournisseur': nom_fournisseur,
+        'montant_ht': montant_ht,
+        'montant_tva': montant_tva,
+        'montant_ttc': montant_ttc,
+        'numero_clearance_dgi': numero_clearance_dgi,
+        'lignes': lignes,
+    }
+
+
+def creer_facture_fournisseur_depuis_ubl(*, company, user, xml_bytes):
+    """XPUR26 — crée une `FactureFournisseur` BROUILLON depuis un fichier UBL
+    2.1 (fournisseur matché par ICE — réutilise `match_fournisseur_from_ocr`
+    XACC36 —, lignes, taux TVA, référence). Statut de conformité DGI posé à
+    `cleared` si un numéro de clearance est présent dans le document, sinon
+    `non_cleared` (aucune validation plateforme réelle : préparation mandat
+    uniquement). Lève ValueError si aucun fournisseur ne matche ou le XML est
+    invalide. Renvoie la facture créée."""
+    from datetime import date as _date
+    from .models import FactureFournisseur, LigneFactureFournisseur
+
+    fields = parse_ubl_invoice(xml_bytes)
+
+    fournisseur = match_fournisseur_from_ocr(company, {
+        'ice': fields.get('ice_fournisseur'),
+        'fournisseur': fields.get('nom_fournisseur'),
+    })
+    if fournisseur is None:
+        raise ValueError(
+            'Aucun fournisseur trouvé pour ce document UBL (ICE ou nom) — '
+            'saisie manuelle requise.')
+
+    def _parsed_date(val):
+        if not val:
+            return None
+        try:
+            return _date.fromisoformat(str(val)[:10])
+        except ValueError:
+            return None
+
+    numero_clearance = fields.get('numero_clearance_dgi')
+    statut_dgi = (
+        FactureFournisseur.StatutConformiteDgi.CLEARED if numero_clearance
+        else FactureFournisseur.StatutConformiteDgi.NON_CLEARED)
+
+    def _save(ref):
+        facture = FactureFournisseur.objects.create(
+            company=company, reference=ref, fournisseur=fournisseur,
+            ref_fournisseur=fields.get('numero'),
+            date_facture=_parsed_date(fields.get('date_facture')),
+            date_echeance=_parsed_date(fields.get('date_echeance')),
+            montant_ht=fields.get('montant_ht') or Decimal('0'),
+            montant_tva=fields.get('montant_tva') or Decimal('0'),
+            montant_ttc=fields.get('montant_ttc') or Decimal('0'),
+            numero_clearance_dgi=numero_clearance,
+            statut_conformite_dgi=statut_dgi,
+            created_by=user,
+            note='Brouillon créé automatiquement depuis un import UBL '
+                 '2.1 (e-facturation entrante).',
+        )
+        for ligne in fields.get('lignes') or []:
+            LigneFactureFournisseur.objects.create(
+                facture=facture,
+                designation=ligne['designation'] or 'Ligne UBL',
+                quantite=ligne['quantite'],
+                prix_unitaire_ht=ligne['prix_unitaire_ht'],
+                taux_tva=ligne.get('taux_tva'),
+            )
+        return facture
+
+    from apps.ventes.utils.references import create_with_reference
+    return create_with_reference(FactureFournisseur, 'FF', company, _save)

@@ -62,7 +62,7 @@ class ReceptionFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
     ordering = ['-date_creation']
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
+        if self.action in READ_ACTIONS + ['scan_gs1']:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + ['confirmer', 'annuler']:
             return [IsResponsableOrAdmin()]
@@ -89,6 +89,47 @@ class ReceptionFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
                 created_by=self.request.user,
             )
         create_with_reference(ReceptionFournisseur, 'REC', company, _save)
+
+    @action(detail=False, methods=['get'], url_path='scan-gs1')
+    def scan_gs1(self, request):
+        """XSTK4 — décompose un code GS1-128/DataMatrix (query param
+        ``code``) et résout le produit via le GTIN (= `Produit.code_barres`,
+        XSTK3), scopé société. Renvoie ``{produit_id, numeros_serie,
+        numero_lot, date_peremption}`` prêt à préremplir la ligne de
+        réception (``LigneReceptionFournisseur``). GTIN inconnu → 404
+        propre ; code sans AI '01' reconnu → 400 (code illisible)."""
+        from ..gs1 import parse_gs1
+
+        code = (request.query_params.get('code') or '').strip()
+        if not code:
+            return Response(
+                {'detail': 'Code illisible.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        parsed = parse_gs1(code)
+        gtin = parsed.get('gtin')
+        if not gtin:
+            return Response(
+                {'detail': 'Code illisible.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        produit = Produit.objects.filter(
+            company=request.user.company, code_barres=gtin).first()
+        if produit is None:
+            return Response(
+                {'detail': 'Produit introuvable pour ce GTIN.'},
+                status=status.HTTP_404_NOT_FOUND)
+
+        serie = parsed.get('serie')
+        return Response({
+            'produit_id': produit.id,
+            'produit_nom': produit.nom,
+            'numeros_serie': [serie] if serie else None,
+            'numero_lot': parsed.get('lot'),
+            'date_peremption': (
+                parsed['date_peremption'].isoformat()
+                if parsed.get('date_peremption') else None),
+        })
 
     @action(detail=True, methods=['post'], url_path='confirmer')
     def confirmer(self, request, pk=None):
