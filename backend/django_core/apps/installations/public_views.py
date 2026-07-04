@@ -13,7 +13,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import RFQConsultation, RFQOffre
+from .models import Intervention, RFQConsultation, RFQOffre
 
 
 def _consultation_or_404(token):
@@ -106,3 +106,24 @@ class RFQConsultationPublicView(APIView):
                 'date_modification'])
         return Response(
             _public_payload(consultation), status=status.HTTP_200_OK)
+
+
+class InterventionLienClientPublicView(APIView):
+    """XFSM7 — page publique tokenisée « technicien en route » : statut
+    courant, technicien (nom + avatar), fenêtre promise (XFSM5) et ETA
+    indicative. Token inconnu, révoqué ou expiré → 404 (jamais 403 : on ne
+    confirme pas l'existence du token à un tiers). Read-only : aucune donnée
+    interne (coûts, autres chantiers, etc.) n'entre dans le payload."""
+    permission_classes = [AllowAny]
+
+    def get(self, request, token):
+        interv = (
+            Intervention.objects
+            .select_related('installation', 'technicien')
+            .filter(lien_client_token=token).first())
+        if interv is None or interv.lien_client_expire:
+            return Response(
+                {'detail': 'Lien invalide ou expiré.'},
+                status=status.HTTP_404_NOT_FOUND)
+        from .selectors import intervention_public_payload
+        return Response(intervention_public_payload(interv))

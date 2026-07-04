@@ -2088,3 +2088,58 @@ def suggerer_creneau(company, *, chantier_id, type_intervention, duree_jours=1,
         'chantier_id': chantier_id,
         'propositions': candidats[:max(int(n or 3), 1)],
     }
+
+
+# ── XFSM7 — lien public « technicien en route » ──────────────────────────────
+# Vitesse moyenne par défaut (km/h) pour l'ETA indicative — pas de service
+# externe, juste une estimation de trajet urbain/interurbain marocain.
+VITESSE_MOYENNE_KMH_DEFAUT = 40
+
+
+def intervention_public_payload(interv):
+    """XFSM7 — payload public (read-only, tokenisé) du suivi de visite : statut
+    courant, nom (+ avatar si disponible) du technicien, fenêtre promise
+    (XFSM5), et ETA estimée UNIQUEMENT si l'intervention est « En route » et
+    qu'une position de départ + le GPS du chantier sont connus (distance
+    haversine / vitesse moyenne paramétrable). Aucune donnée interne (jamais de
+    coûts, jamais de position GPS live — voir XFSM23)."""
+    from .field_services import haversine_km
+    from .models import Intervention
+
+    inst = interv.installation
+    technicien = interv.technicien
+    technicien_nom = None
+    technicien_avatar_url = None
+    if technicien is not None:
+        technicien_nom = (
+            getattr(technicien, 'get_full_name', lambda: '')()
+            or technicien.username)
+        avatar_key = getattr(technicien, 'avatar_key', '')
+        if avatar_key:
+            from authentication.avatars import presign_avatar
+            technicien_avatar_url = presign_avatar(avatar_key)
+
+    eta_minutes = None
+    distance_km = None
+    if (interv.statut == Intervention.Statut.EN_ROUTE
+            and interv.depart_gps_lat is not None
+            and interv.depart_gps_lng is not None):
+        distance_km = haversine_km(
+            interv.depart_gps_lat, interv.depart_gps_lng,
+            getattr(inst, 'gps_lat', None), getattr(inst, 'gps_lng', None))
+        if distance_km is not None:
+            vitesse = VITESSE_MOYENNE_KMH_DEFAUT
+            eta_minutes = round((distance_km / vitesse) * 60) if vitesse else None
+
+    return {
+        'statut': interv.statut,
+        'statut_display': interv.get_statut_display(),
+        'technicien_nom': technicien_nom,
+        'technicien_avatar_url': technicien_avatar_url,
+        'fenetre_debut': interv.fenetre_debut.isoformat() if interv.fenetre_debut else None,
+        'fenetre_fin': interv.fenetre_fin.isoformat() if interv.fenetre_fin else None,
+        'date_prevue': interv.date_prevue.isoformat() if interv.date_prevue else None,
+        'distance_km': distance_km,
+        'eta_minutes': eta_minutes,
+        'site_ville': getattr(inst, 'site_ville', None),
+    }

@@ -147,6 +147,16 @@ class Intervention(models.Model):
     arrivee_gps_lng = models.DecimalField(
         max_digits=9, decimal_places=6, null=True, blank=True)
     retour_depot_le = models.DateTimeField(null=True, blank=True)
+    # ── XFSM7 — position GPS optionnelle au départ (posée par l'action
+    #    ``depart-depot`` quand le navigateur la fournit). Sert UNIQUEMENT à
+    #    calculer l'ETA affichée sur le lien public « technicien en route » ;
+    #    n'affecte aucune logique F6 existante (distance-au-site reste basée
+    #    sur l'arrivée). Nullable — un départ sans GPS garde le comportement
+    #    actuel (ETA simplement absente du payload public). ──
+    depart_gps_lat = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True)
+    depart_gps_lng = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True)
 
     # ── FG69 — signature client sur le compte-rendu / PV ─────────────────────
     # Data-URL PNG (ou SVG strokes JSON) de la signature. Stocké en base car
@@ -171,6 +181,15 @@ class Intervention(models.Model):
     fenetre_fin = models.TimeField(null=True, blank=True)
     arrivee_dans_fenetre = models.BooleanField(null=True, blank=True)
 
+    # ── XFSM7 — lien public « technicien en route » (suivi de visite) ───────
+    # Jeton de partage public (même patron que ``sav.Ticket.share_token``
+    # FG86) : nullable/blank, généré lazily via ``ensure_lien_client_token``,
+    # unique par intervention. Expire à ``date_prevue`` + 1 jour (au-delà, la
+    # visite du jour est passée — pas de sens de suivre "en route" plus tard).
+    lien_client_token = models.CharField(
+        max_length=64, unique=True, null=True, blank=True, editable=False,
+        help_text="Jeton public du lien « technicien en route » (XFSM7).")
+
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, related_name='interventions_creees',
@@ -184,6 +203,35 @@ class Intervention(models.Model):
 
     def __str__(self):
         return f"{self.get_type_intervention_display()} — {self.installation_id}"
+
+    def ensure_lien_client_token(self):
+        """XFSM7 — génère (lazily) et renvoie le jeton public du lien client.
+
+        Idempotent : si le jeton existe déjà, le retourne tel quel sans
+        écriture. Sinon génère un ``secrets.token_urlsafe(32)`` (même patron
+        que ``sav.Ticket.ensure_share_token``, FG86)."""
+        if self.lien_client_token:
+            return self.lien_client_token
+        import secrets
+        token = secrets.token_urlsafe(32)
+        self.lien_client_token = token
+        self.save(update_fields=['lien_client_token'])
+        return self.lien_client_token
+
+    @property
+    def lien_client_expire(self):
+        """XFSM7 — le lien expire le lendemain de la date prévue (une visite
+        d'un jour passé n'a plus de sens à suivre « en route »). Sans date
+        prévue, le lien n'expire jamais par cette règle (couvert par le
+        statut : une intervention VALIDEE/TERMINEE cesse d'avoir un ETA)."""
+        if not self.date_prevue:
+            return False
+        from datetime import timedelta
+
+        from django.utils import timezone
+        # Comparaison sur la DATE seule (évite tout souci de fuseau horaire) :
+        # expiré si aujourd'hui > date_prevue + 1 jour.
+        return timezone.localdate() > (self.date_prevue + timedelta(days=1))
 
 
 class InterventionActivity(models.Model):

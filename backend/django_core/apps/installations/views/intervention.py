@@ -472,14 +472,36 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='depart-depot',
             permission_classes=[IsResponsableOrAdmin])
     def depart_depot(self, request, pk=None):
-        """F6 — horodate le départ du dépôt (début du trajet)."""
+        """F6 — horodate le départ du dépôt (début du trajet). XFSM7 : si le
+        navigateur fournit lat/lng, les pose aussi (sert uniquement à l'ETA du
+        lien public « technicien en route » — aucune autre logique n'en
+        dépend)."""
         interv = self.get_object()
         interv.depart_depot_le = timezone.now()
-        interv.save(update_fields=['depart_depot_le'])
+        fields = ['depart_depot_le']
+        lat, lng = request.data.get('lat'), request.data.get('lng')
+        if lat not in (None, '') and lng not in (None, ''):
+            try:
+                interv.depart_gps_lat = round(float(lat), 6)
+                interv.depart_gps_lng = round(float(lng), 6)
+                fields += ['depart_gps_lat', 'depart_gps_lng']
+            except (TypeError, ValueError):
+                pass
+        interv.save(update_fields=fields)
         intervention_activity.log_note(
             interv, request.user, "Départ dépôt enregistré.")
         return Response(InterventionSerializer(
             interv, context={'request': request}).data)
+
+    @action(detail=True, methods=['get'], url_path='lien-client',
+            permission_classes=[IsResponsableOrAdmin])
+    def lien_client(self, request, pk=None):
+        """XFSM7 — génère (lazily) et renvoie l'URL publique « technicien en
+        route » de cette intervention, à partager par WhatsApp/SMS (pattern
+        FG86/liens WhatsApp)."""
+        interv = self.get_object()
+        token = interv.ensure_lien_client_token()
+        return Response({'token': token, 'path': f'/public/installations/intervention/{token}/'})
 
     @action(detail=True, methods=['post'], url_path='checkin',
             permission_classes=[IsResponsableOrAdmin])
