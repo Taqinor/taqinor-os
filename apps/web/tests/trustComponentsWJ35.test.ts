@@ -51,7 +51,9 @@ describe('WJ35 — TestimonialCarousel : mêmes garde-fous d\'intégrité que <T
 describe('WJ35 — InstallCounter : chiffres dérivés de realisations.ts, jamais codés en dur', () => {
   it("n'importe que realisations.ts comme source (aucune valeur numérique inventée dans le composant)", () => {
     expect(INSTALL_COUNTER).toContain("from '../lib/realisations'");
-    expect(INSTALL_COUNTER).toContain('REALISATIONS.length');
+    // RULE B (WA2, 2026-07-04) : le décompte brut d'installations (REALISATIONS.length)
+    // a été retiré ; le composant dérive désormais uniquement le total kWc.
+    expect(INSTALL_COUNTER).toContain('REALISATIONS');
     expect(INSTALL_COUNTER).toContain('kwcNum');
   });
   it('le total kWc dérivé reste identique au chiffre déjà publié sur l’accueil (43,48 kWc)', () => {
