@@ -248,8 +248,8 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         'gisement, ce qui place la plupart des toitures casablancaises au centre de la bande 3–7 ans — le dimensionnement ' +
         'sur votre facture reste ce qui la resserre vraiment.',
       delegataireNote:
-        'Casablanca est distribuée par Lydec : votre facture porte son barème, pas un tarif générique — ' +
-        'nous le confirmons sur votre relevé avant de chiffrer quoi que ce soit.',
+        'Casablanca est distribuée par Lydec : nous vérifions votre tranche sur votre relevé ' +
+        'avant de chiffrer quoi que ce soit.',
     },
     en: {
       heroLead:
@@ -286,8 +286,8 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         'At ≈ 2,950 h a year, Casablanca sits mid-pack among our five cities: neither the best nor the weakest resource, ' +
         'which puts most Casablanca roofs near the centre of the 3–7 year band — sizing on your bill is what really narrows it.',
       delegataireNote:
-        'Casablanca is served by Lydec: your bill carries its own tariff schedule, not a generic rate — ' +
-        'we confirm it on your statement before pricing anything.',
+        'Casablanca is served by Lydec: we check your tariff bracket on your statement ' +
+        'before pricing anything.',
     },
     ar: {
       heroLead:
@@ -324,8 +324,8 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         'بـ ≈ 2 950 ساعة في السنة، تقع الدار البيضاء في الوسط بين مدننا الخمس: لا الأفضل ولا الأضعف مخزوناً، ' +
         'ما يضع معظم أسطح الدار البيضاء قرب مركز بند 3–7 سنوات — والمقاس المحسوب على فاتورتك هو ما يضيّقه فعلاً.',
       delegataireNote:
-        'الدار البيضاء توزّعها Lydec: فاتورتك تحمل بارِمها الخاص، لا تعريفة عامة — ' +
-        'نتأكّد منه على كشف حسابك قبل تقدير أي ثمن.',
+        'الدار البيضاء توزّعها Lydec: نتحقّق من شطرك التعريفي على كشف حسابك ' +
+        'قبل تقدير أي ثمن.',
     },
   },
 
@@ -366,7 +366,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         'bande 3–7 ans, plutôt vers sa partie haute pour un dimensionnement identique — l’étude sur votre facture reste ' +
         'ce qui la précise réellement.',
       delegataireNote:
-        'Rabat est distribuée par Redal : votre facture porte son barème propre — nous le vérifions sur votre relevé ' +
+        'Rabat est distribuée par Redal : nous vérifions votre tranche sur votre relevé ' +
         'avant de chiffrer votre installation.',
       nearestInstallNote:
         'Rabat partage le même littoral atlantique que la région Casablanca-Settat, juste au sud, où se trouvent tous ' +
@@ -407,7 +407,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         'At ≈ 2,900 h a year, Rabat has the second-lightest resource of our five cities: still well within the 3–7 year ' +
         'band, typically toward its upper half for an identical system size — the assessment on your bill is what really pins it down.',
       delegataireNote:
-        'Rabat is served by Redal: your bill carries its own tariff schedule — we check it on your statement before pricing your installation.',
+        'Rabat is served by Redal: we check your tariff bracket on your statement before pricing your installation.',
       nearestInstallNote:
         'Rabat shares the same Atlantic coastline as the Casablanca-Settat region, just to the south, where all our ' +
         'already-serviced installations are — same assessment methods, same tier-1 equipment, same Deye Cloud monitoring.',
@@ -447,7 +447,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         'بـ ≈ 2 900 ساعة في السنة، تملك الرباط ثاني أخفّ مخزون بين مدننا الخمس: يبقى ضمن بند 3–7 سنوات، ' +
         'غالباً في نصفه الأعلى لمقاس مماثل — والدراسة على فاتورتك هي ما يحدّده فعلاً.',
       delegataireNote:
-        'الرباط توزّعها Redal: فاتورتك تحمل بارِمها الخاص — نتحقّق منه على كشف حسابك قبل تقدير تركيبتك.',
+        'الرباط توزّعها Redal: نتحقّق من شطرك التعريفي على كشف حسابك قبل تقدير تركيبتك.',
       nearestInstallNote:
         'تشترك الرباط في الساحل الأطلسي نفسه مع جهة الدار البيضاء سطات، جنوباً مباشرة، حيث توجد كل تركيباتنا العاملة ' +
         'فعلاً — نفس مناهج الدراسة، نفس العتاد من الفئة الأولى، نفس مراقبة Deye Cloud.',
@@ -608,8 +608,8 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         'pousse plutôt vers la partie haute de la bande 3–7 ans — raison de plus pour caler l’orientation et l’inclinaison ' +
         'au lieu de compter sur la seule météo.',
       delegataireNote:
-        'Tanger est distribuée par Amendis : votre facture porte son barème propre — nous le confirmons sur votre relevé ' +
-        'avant de chiffrer votre installation.',
+        'Tanger est distribuée par Amendis (en cours de reprise progressive par la SRM régionale, 2025–2027) : ' +
+        'nous vérifions votre tranche sur votre relevé avant de chiffrer votre installation.',
       nearestInstallNote:
         'Tanger se trouve au nord de la région Casablanca-Settat, où sont concentrés tous nos chantiers déjà en service : ' +
         'mêmes méthodes d’étude, même matériel tier-1, même monitoring Deye Cloud, quelle que soit la distance.',
@@ -650,7 +650,8 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         'leans toward the upper end of the 3–7 year band — one more reason to get the tilt and orientation right instead ' +
         'of counting on the weather alone.',
       delegataireNote:
-        'Tangier is served by Amendis: your bill carries its own tariff schedule — we confirm it on your statement before pricing your installation.',
+        'Tangier is served by Amendis (progressively being taken over by the regional SRM, 2025–2027): ' +
+        'we check your tariff bracket on your statement before pricing your installation.',
       nearestInstallNote:
         'Tangier lies north of the Casablanca-Settat region, where all our already-serviced installations are ' +
         'concentrated — same assessment methods, same tier-1 equipment, same Deye Cloud monitoring, whatever the distance.',
@@ -690,7 +691,8 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         'بـ ≈ 2 800 ساعة في السنة، تملك طنجة أخفّ مخزون بين مدننا الخمس: لمقاس مماثل، يميل ذلك نحو الطرف الأعلى ' +
         'من بند 3–7 سنوات — سبب إضافي لضبط الميل والتوجيه بدل الاعتماد على الطقس وحده.',
       delegataireNote:
-        'طنجة توزّعها Amendis: فاتورتك تحمل بارِمها الخاص — نتأكّد منه على كشف حسابك قبل تقدير تركيبتك.',
+        'طنجة توزّعها Amendis (في طور التسليم التدريجي للشركة الجهوية متعددة الخدمات SRM، 2025–2027): ' +
+        'نتحقّق من شطرك التعريفي على كشف حسابك قبل تقدير تركيبتك.',
       nearestInstallNote:
         'تقع طنجة شمال جهة الدار البيضاء سطات، حيث تتركّز كل تركيباتنا العاملة فعلاً — نفس مناهج الدراسة، ' +
         'نفس العتاد من الفئة الأولى، نفس مراقبة Deye Cloud، مهما كانت المسافة.',
