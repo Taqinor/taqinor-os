@@ -143,6 +143,19 @@ class KbArticle(models.Model):
     # Une traduction elle-même modifiée redevient à jour (remis à False).
     traduction_perimee = models.BooleanField(
         default=False, verbose_name='Traduction à mettre à jour')
+    # ZGED10 — emoji/icône court affiché dans l'arbre + en tête de fiche (ex.
+    # « 📘 »). Simple CharField court : aucun rendu serveur, le frontend
+    # affiche la chaîne telle quelle. Vide par défaut = pas d'icône (comme
+    # aujourd'hui, comportement inchangé).
+    emoji = models.CharField(
+        max_length=8, blank=True, default='', verbose_name='Emoji')
+    # ZGED10 — clé MinIO (bucket erp-uploads) de l'image de couverture, posée
+    # via l'action ``couverture`` (upload validé type/taille — même pipeline
+    # que les pièces jointes, ``records.storage.store_attachment``). Le
+    # fichier ne vit JAMAIS en base — seule la clé objet est stockée ici.
+    # Vide = pas de couverture (comportement historique inchangé).
+    couverture_file_key = models.CharField(
+        max_length=500, blank=True, default='', verbose_name='Couverture')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
     date_modification = models.DateTimeField(

@@ -395,6 +395,44 @@ class KbArticleViewSet(_KbBaseViewSet):
             'attachment; filename="kb-export.zip"')
         return response
 
+    @action(detail=True, methods=['post', 'delete'], url_path='couverture')
+    def couverture(self, request, pk=None):
+        """ZGED10 — Téléverse (POST, multipart ``fichier``) ou retire
+        (DELETE) l'image de couverture de cet article. Validation
+        type/taille via ``records.storage.store_attachment`` — même
+        pipeline que les pièces jointes existantes ; le fichier vit
+        UNIQUEMENT dans MinIO, jamais en base (seule la clé l'est)."""
+        article = self.get_object()
+        if request.method == 'DELETE':
+            article.couverture_file_key = ''
+            article.save(update_fields=['couverture_file_key'])
+            return Response(self.get_serializer(article).data)
+
+        from apps.records.storage import store_attachment
+        upload = request.FILES.get('fichier')
+        if upload is None:
+            return Response({'detail': 'Fichier requis.'}, status=400)
+        meta, err = store_attachment(upload)
+        if err:
+            return Response({'detail': err}, status=400)
+        article.couverture_file_key = meta['file_key']
+        article.save(update_fields=['couverture_file_key'])
+        return Response(self.get_serializer(article).data)
+
+    @action(detail=True, methods=['get'], url_path='couverture-image')
+    def couverture_image(self, request, pk=None):
+        """ZGED10 — Relaie même-origine l'image de couverture (proxy, comme
+        les avatars) : le navigateur ne peut pas joindre l'hôte interne
+        MinIO."""
+        article = self.get_object()
+        if not article.couverture_file_key:
+            return Response({'detail': 'Aucune couverture.'}, status=404)
+        from apps.records.storage import fetch_attachment
+        data, err = fetch_attachment(article.couverture_file_key)
+        if err or data is None:
+            return Response({'detail': 'Couverture indisponible.'}, status=404)
+        return HttpResponse(data, content_type='image/*')
+
 
 class KbArticleVersionViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     """Historique des versions d'article (lecture seule). Filtrable par

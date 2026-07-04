@@ -30,6 +30,8 @@ class KbArticleSerializer(serializers.ModelSerializer):
     verifie_par_nom = serializers.CharField(
         source='verifie_par.get_full_name', read_only=True)
 
+    has_couverture = serializers.SerializerMethodField()
+
     class Meta:
         model = KbArticle
         fields = [
@@ -38,11 +40,19 @@ class KbArticleSerializer(serializers.ModelSerializer):
             'ordre', 'visibilite', 'est_gabarit', 'verifie_par',
             'verifie_par_nom', 'verifie_jusqua', 'est_verrouille', 'vues',
             'langue', 'traduction_de', 'traduction_perimee',
+            'emoji', 'has_couverture',
             'date_creation', 'date_modification',
         ]
         read_only_fields = [
             'auteur', 'verifie_par', 'verifie_jusqua', 'est_verrouille',
-            'vues', 'traduction_perimee', 'date_creation', 'date_modification']
+            'vues', 'traduction_perimee', 'has_couverture',
+            'date_creation', 'date_modification']
+
+    def get_has_couverture(self, obj):
+        """ZGED10 — expose seulement un booléen : la clé MinIO elle-même
+        n'est jamais exposée telle quelle (même motif que ``authentication``
+        avatars) ; l'image se récupère via l'action ``couverture``."""
+        return bool(obj.couverture_file_key)
 
     def validate_parent(self, parent):
         """XKB8 — le parent doit être même-société et ne jamais créer de cycle.
