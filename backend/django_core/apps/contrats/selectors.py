@@ -1222,3 +1222,48 @@ def contrats_portail_client(company, client_id):
             'factures_ids': factures_liees,
         })
     return rows
+
+
+# ---------------------------------------------------------------------------
+# XCTR17 — Location de matériel SORTANTE : disponibilité
+# ---------------------------------------------------------------------------
+
+
+def disponibilite_produit(company, produit_id, *, numero_serie=None,
+                          date_debut=None, date_fin=None):
+    """Disponibilité d'un produit louable (XCTR17) — lecture seule.
+
+    Sans fenêtre de dates (``date_debut``/``date_fin`` absents) : renvoie la
+    liste des ordres ACTIFS (réservée/enlevée) du produit (occupé quand), en
+    triant par date d'enlèvement prévue. Avec une fenêtre : renvoie en plus
+    ``disponible`` (``True`` si AUCUN ordre actif — filtré éventuellement par
+    ``numero_serie`` — ne chevauche la fenêtre demandée).
+    """
+    from .models import OrdreLocation
+
+    qs = OrdreLocation.objects.filter(
+        company=company, produit_id=produit_id,
+        statut__in=OrdreLocation.STATUTS_ACTIFS,
+    )
+    if numero_serie is not None:
+        qs = qs.filter(numero_serie=numero_serie)
+    qs = qs.order_by('date_enlevement_prevue', 'id')
+
+    occupations = [
+        {
+            'id': o.id,
+            'numero_serie': o.numero_serie,
+            'statut': o.statut,
+            'date_enlevement_prevue': o.date_enlevement_prevue,
+            'date_retour_prevue': o.date_retour_prevue,
+        }
+        for o in qs
+    ]
+
+    result = {'produit_id': produit_id, 'occupations': occupations}
+    if date_debut is not None and date_fin is not None:
+        result['disponible'] = not any(
+            o.chevauche(date_debut, date_fin) for o in qs)
+        result['date_debut'] = date_debut
+        result['date_fin'] = date_fin
+    return result

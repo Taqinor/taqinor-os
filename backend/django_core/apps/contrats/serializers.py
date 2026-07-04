@@ -25,6 +25,7 @@ from .models import (
     ModeleContrat,
     ModeleContratClause,
     Obligation,
+    OrdreLocation,
     PartieContrat,
     PieceConformite,
     RegleApprobation,
@@ -1236,3 +1237,37 @@ class CycleFacturationLogSerializer(serializers.ModelSerializer):
             'nb_tentatives', 'date_creation',
         ]
         read_only_fields = fields
+
+
+# ---------------------------------------------------------------------------
+# XCTR17 — Location de matériel SORTANTE (aux clients)
+# ---------------------------------------------------------------------------
+
+
+class OrdreLocationSerializer(serializers.ModelSerializer):
+    """``OrdreLocation`` (XCTR17). ``company`` posée côté serveur ; le produit
+    doit être ``louable`` (vérifié en vue, jamais ici, pour garder ce
+    sérialiseur réutilisable en lecture comme en écriture)."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True)
+
+    class Meta:
+        model = OrdreLocation
+        fields = [
+            'id', 'client_id', 'produit', 'produit_nom', 'numero_serie',
+            'date_reservation', 'date_enlevement_prevue',
+            'date_retour_prevue', 'date_enlevement_reelle',
+            'date_retour_reelle', 'statut', 'statut_display', 'tarif_jour',
+            'montant_estime', 'note', 'date_creation',
+        ]
+        read_only_fields = [
+            'id', 'statut', 'date_enlevement_reelle', 'date_retour_reelle',
+            'montant_estime', 'date_creation',
+        ]
+
+
+class ChangerStatutOrdreLocationSerializer(serializers.Serializer):
+    """Corps de POST /ordres-location/<id>/changer-statut/ (XCTR17)."""
+    statut = serializers.ChoiceField(choices=OrdreLocation.Statut.choices)

@@ -2888,3 +2888,121 @@ def _notifier_demande_portail(contrat, type_demande, titre):
                 link=link, company=contrat.company)
     except Exception:  # pragma: no cover - défensif (best-effort)
         pass
+
+
+# ---------------------------------------------------------------------------
+# XCTR17 — Location de matériel SORTANTE (aux clients) — fondation
+# ---------------------------------------------------------------------------
+
+
+class OrdreLocationError(Exception):
+    """Levée quand un ``OrdreLocation`` ne peut pas être créé/transitionné."""
+
+
+def _ordres_actifs_qs(produit, numero_serie, *, exclure_id=None):
+    """QuerySet des ordres ACTIFS (réservée/enlevée) du MÊME produit + même
+    numéro de série — base de la détection de chevauchement (XCTR17)."""
+    from .models import OrdreLocation
+
+    qs = OrdreLocation.objects.filter(
+        produit=produit,
+        numero_serie=numero_serie or '',
+        statut__in=OrdreLocation.STATUTS_ACTIFS,
+    )
+    if exclure_id is not None:
+        qs = qs.exclude(id=exclure_id)
+    return qs
+
+
+def _verifier_disponibilite(produit, numero_serie, date_debut, date_fin, *,
+                            exclure_id=None):
+    """Lève ``OrdreLocationError`` si un ordre ACTIF chevauche la fenêtre
+    ``[date_debut, date_fin]`` pour le même produit + numéro de série."""
+    for autre in _ordres_actifs_qs(
+            produit, numero_serie, exclure_id=exclure_id):
+        if autre.chevauche(date_debut, date_fin):
+            raise OrdreLocationError(
+                "Ce produit (n° de série "
+                f"« {numero_serie or '—'} ») est déjà réservé/loué sur une "
+                "période qui chevauche celle demandée."
+            )
+
+
+@transaction.atomic
+def creer_ordre_location(company, *, client_id, produit, numero_serie='',
+                         date_reservation, date_enlevement_prevue,
+                         date_retour_prevue, tarif_jour=None, note='',
+                         created_by=None):
+    """Crée un ``OrdreLocation`` avec détection de conflit — XCTR17.
+
+    GARDES (lèvent ``OrdreLocationError`` sans rien écrire) :
+    - ``produit`` doit être ``louable`` (vérifié par l'appelant via
+      ``stock.selectors.get_produit_louable`` — jamais réimporté ici) ;
+    - ``date_enlevement_prevue`` doit être ≤ ``date_retour_prevue`` ;
+    - aucun ordre ACTIF (réservée/enlevée) du même produit + numéro de série
+      ne doit chevaucher la fenêtre ``[date_enlevement_prevue,
+      date_retour_prevue]`` (double réservation refusée).
+
+    ``tarif_jour`` : si absent, retombe sur ``produit.tarif_location_jour``.
+    ``montant_estime`` = ``tarif_jour`` × nombre de jours (bornes incluses),
+    posé côté serveur (jamais lu du corps de requête). Renvoie l'``OrdreLocation``
+    créé.
+    """
+    from .models import OrdreLocation
+
+    if date_enlevement_prevue > date_retour_prevue:
+        raise OrdreLocationError(
+            "La date d'enlèvement prévue doit précéder ou égaler la date de "
+            "retour prévue.")
+
+    _verifier_disponibilite(
+        produit, numero_serie, date_enlevement_prevue, date_retour_prevue)
+
+    tarif = tarif_jour if tarif_jour is not None else produit.tarif_location_jour
+    nb_jours = (date_retour_prevue - date_enlevement_prevue).days + 1
+    montant_estime = (
+        Decimal(str(tarif)) * nb_jours if tarif is not None else Decimal('0'))
+
+    return OrdreLocation.objects.create(
+        company=company,
+        client_id=client_id,
+        produit=produit,
+        numero_serie=numero_serie or '',
+        date_reservation=date_reservation,
+        date_enlevement_prevue=date_enlevement_prevue,
+        date_retour_prevue=date_retour_prevue,
+        tarif_jour=tarif,
+        montant_estime=montant_estime,
+        note=note or '',
+        created_by=created_by,
+    )
+
+
+@transaction.atomic
+def changer_statut_ordre_location(ordre, statut_cible):
+    """Applique une transition GARDÉE sur un ``OrdreLocation`` (XCTR17).
+
+    Fine enveloppe sur ``machine_etats.changer_statut_ordre_location`` (reformule
+    ``TransitionInterdite`` en ``OrdreLocationError``, cohérent avec le reste
+    des services de ce module). Pose ``date_enlevement_reelle`` /
+    ``date_retour_reelle`` côté serveur quand la transition l'implique.
+    """
+    from . import machine_etats
+    from .models import OrdreLocation
+
+    if (ordre.statut == OrdreLocation.Statut.RESERVEE
+            and statut_cible == OrdreLocation.Statut.ENLEVEE
+            and ordre.date_enlevement_reelle is None):
+        ordre.date_enlevement_reelle = timezone.localdate()
+        ordre.save(update_fields=['date_enlevement_reelle'])
+    if (ordre.statut == OrdreLocation.Statut.ENLEVEE
+            and statut_cible == OrdreLocation.Statut.RETOURNEE
+            and ordre.date_retour_reelle is None):
+        ordre.date_retour_reelle = timezone.localdate()
+        ordre.save(update_fields=['date_retour_reelle'])
+
+    try:
+        machine_etats.changer_statut_ordre_location(ordre, statut_cible)
+    except machine_etats.TransitionInterdite as exc:
+        raise OrdreLocationError(str(exc))
+    return ordre

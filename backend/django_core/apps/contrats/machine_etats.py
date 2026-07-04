@@ -129,3 +129,82 @@ def changer_statut(contrat, statut_cible, *, persister=True):
     if persister:
         contrat.save(update_fields=["statut"])
     return contrat
+
+
+# ---------------------------------------------------------------------------
+# XCTR17 — Machine d'états de l'``OrdreLocation`` (location SORTANTE)
+# ---------------------------------------------------------------------------
+#
+#   reservee ──▶ enlevee ──▶ retournee ──▶ cloturee
+#      │            │
+#      └────────────┴──▶ annulee
+#
+# États terminaux : cloturee, annulee. Complètement INDÉPENDANTE de la
+# machine d'états de ``Contrat`` ci-dessus (statut LOCAL à l'ordre de
+# location, jamais confondue avec ``Contrat.statut`` ni STAGES.py — rule #2).
+
+
+def _statuts_ordre_location():
+    from .models import OrdreLocation
+
+    return OrdreLocation.Statut
+
+
+def _transitions_ordre_location():
+    S = _statuts_ordre_location()
+    return {
+        S.RESERVEE: {S.ENLEVEE, S.ANNULEE},
+        S.ENLEVEE: {S.RETOURNEE, S.ANNULEE},
+        S.RETOURNEE: {S.CLOTUREE},
+        S.CLOTUREE: set(),
+        S.ANNULEE: set(),
+    }
+
+
+class _TransitionsOrdreLocationProxy:
+    """Même patron paresseux que ``_TransitionsProxy`` ci-dessus."""
+
+    def __getitem__(self, key):
+        return _transitions_ordre_location()[key]
+
+    def get(self, key, default=None):
+        return _transitions_ordre_location().get(key, default)
+
+    def __contains__(self, key):
+        return key in _transitions_ordre_location()
+
+    def __iter__(self):
+        return iter(_transitions_ordre_location())
+
+    def items(self):
+        return _transitions_ordre_location().items()
+
+
+TRANSITIONS_ORDRE_LOCATION_AUTORISEES = _TransitionsOrdreLocationProxy()
+
+
+def transition_ordre_location_permise(statut_courant, statut_cible):
+    """``True`` si ``statut_courant → statut_cible`` est permis pour un
+    ``OrdreLocation`` (XCTR17)."""
+    return statut_cible in _transitions_ordre_location().get(
+        statut_courant, set())
+
+
+def changer_statut_ordre_location(ordre, statut_cible, *, persister=True):
+    """Applique une transition de statut GARDÉE sur un ``OrdreLocation``
+    (XCTR17). Une transition vers le même statut est un no-op. Lève
+    ``TransitionInterdite`` si la transition n'est pas dans le graphe."""
+    statut_courant = ordre.statut
+    if statut_cible == statut_courant:
+        return ordre
+
+    if not transition_ordre_location_permise(statut_courant, statut_cible):
+        raise TransitionInterdite(
+            f"Transition de statut interdite (ordre de location) : "
+            f"« {statut_courant} » → « {statut_cible} »."
+        )
+
+    ordre.statut = statut_cible
+    if persister:
+        ordre.save(update_fields=["statut"])
+    return ordre

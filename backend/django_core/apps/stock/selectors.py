@@ -358,3 +358,22 @@ def acomptes_fournisseur_ouverts(company):
                 'date_versement': a.date_versement,
             })
     return out
+
+
+# ── XCTR17 — Location de matériel SORTANTE : produits louables ─────────────
+
+def get_produit_louable(company, pk):
+    """Produit LOUABLE scopé société par id, ou ``None`` (XCTR17).
+
+    Renvoie ``None`` si le produit n'existe pas dans la société OU si
+    ``louable`` est faux — jamais un produit non louable (garde métier avant
+    la création d'un ``contrats.OrdreLocation``)."""
+    from .models import Produit
+    return Produit.objects.filter(
+        id=pk, company=company, louable=True).first()
+
+
+def produits_louables_qs(company):
+    """QuerySet des produits louables de la société (XCTR17). Lecture seule."""
+    from .models import Produit
+    return Produit.objects.filter(company=company, louable=True)

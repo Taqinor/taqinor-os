@@ -2505,3 +2505,121 @@ class CycleFacturationLog(models.Model):
             f'{self.get_source_type_display()} #{self.source_id} '
             f'— {self.periode} ({self.get_statut_display()})'
         )
+
+
+# ---------------------------------------------------------------------------
+# XCTR17 — Location de matériel SORTANTE (aux clients) — fondation
+# ---------------------------------------------------------------------------
+
+
+class OrdreLocation(models.Model):
+    """Ordre de location de matériel À UN CLIENT (XCTR17) — location SORTANTE.
+
+    Distinct de FG342 (location ENTRANTE / allocation interne d'engins) : ici
+    la société LOUE un ``stock.Produit`` marqué ``louable`` (groupe
+    électrogène, pompe, nacelle…) à un client. Le client est référencé en lien
+    LÂCHE par ``client_id`` (jamais un import de ``crm.Client``) et le produit
+    par FK DUR (``stock`` est une app cœur métier lue via son sélecteur
+    ``get_produit_louable`` à la création — jamais son modèle importé côté
+    vue — mais le FK lui-même reste nécessaire pour les jointures/rapports
+    internes à ``contrats``, comme le fait déjà tout le reste du module pour
+    ses propres références).
+
+    Machine d'états LOCALE (jamais confondue avec ``Contrat.statut`` ni le
+    funnel ``STAGES.py`` — rule #2) : ``reservee`` → ``enlevee`` → ``retournee``
+    → ``cloturee``, ou ``reservee``/``enlevee`` → ``annulee``. Les transitions
+    sont gardées par ``machine_etats.py`` (même patron que ``Contrat``).
+
+    DÉTECTION DE CONFLIT : deux ordres ACTIFS (non annulés/clôturés) sur le
+    MÊME produit + même ``numero_serie`` dont les fenêtres
+    ``[date_enlevement_prevue, date_retour_prevue]`` se chevauchent sont
+    refusés (400) — voir ``services.creer_ordre_location``.
+    """
+
+    class Statut(models.TextChoices):
+        RESERVEE = 'reservee', 'Réservée'
+        ENLEVEE = 'enlevee', 'Enlevée'
+        RETOURNEE = 'retournee', 'Retournée'
+        CLOTUREE = 'cloturee', 'Clôturée'
+        ANNULEE = 'annulee', 'Annulée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='ordres_location',
+        verbose_name='Société',
+    )
+    # Client locataire — lien LÂCHE (jamais un import de crm.Client).
+    client_id = models.PositiveIntegerField(verbose_name='ID du client')
+    produit = models.ForeignKey(
+        'stock.Produit',
+        on_delete=models.PROTECT,
+        related_name='ordres_location',
+        verbose_name='Produit loué',
+    )
+    numero_serie = models.CharField(
+        max_length=100, blank=True, default='',
+        verbose_name='N° de série / unité')
+    date_reservation = models.DateField(
+        verbose_name='Date de réservation')
+    date_enlevement_prevue = models.DateField(
+        verbose_name="Date d'enlèvement prévue")
+    date_retour_prevue = models.DateField(
+        verbose_name='Date de retour prévue')
+    date_enlevement_reelle = models.DateField(
+        null=True, blank=True, verbose_name="Date d'enlèvement réelle")
+    date_retour_reelle = models.DateField(
+        null=True, blank=True, verbose_name='Date de retour réelle')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.RESERVEE, verbose_name='Statut')
+    tarif_jour = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name='Tarif journalier appliqué')
+    montant_estime = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant estimé')
+    note = models.TextField(blank=True, default='', verbose_name='Note')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='ordres_location_crees',
+        verbose_name='Créé par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    # Statuts considérés ACTIFS pour la détection de chevauchement (une
+    # réservation/enlèvement en cours bloque une fenêtre qui la chevauche ;
+    # une location déjà clôturée/annulée ne bloque plus rien).
+    STATUTS_ACTIFS = (Statut.RESERVEE, Statut.ENLEVEE)
+
+    class Meta:
+        verbose_name = 'Ordre de location'
+        verbose_name_plural = 'Ordres de location'
+        ordering = ['-date_creation', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='contrats_ordloc_co_st',
+            ),
+            models.Index(
+                fields=['produit', 'numero_serie'],
+                name='contrats_ordloc_prod_serie',
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f'Location {self.produit_id} ({self.numero_serie or "—"}) '
+            f'— {self.get_statut_display()}'
+        )
+
+    def chevauche(self, autre_debut, autre_fin):
+        """``True`` si la fenêtre ``[autre_debut, autre_fin]`` chevauche la
+        fenêtre d'enlèvement/retour PRÉVUE de cet ordre (bornes incluses)."""
+        return (
+            self.date_enlevement_prevue <= autre_fin
+            and autre_debut <= self.date_retour_prevue
+        )

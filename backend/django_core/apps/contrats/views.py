@@ -48,6 +48,7 @@ from .models import (
     ModeleContrat,
     ModeleContratClause,
     Obligation,
+    OrdreLocation,
     PartieContrat,
     PieceConformite,
     RegleApprobation,
@@ -60,6 +61,7 @@ from .serializers import (
     AlerteContratSerializer,
     AvenantSerializer,
     CautionSerializer,
+    ChangerStatutOrdreLocationSerializer,
     ChangerStatutSerializer,
     ClauseContratSerializer,
     ClauseSerializer,
@@ -85,6 +87,7 @@ from .serializers import (
     ModeleContratSerializer,
     NoterContratSerializer,
     ObligationSerializer,
+    OrdreLocationSerializer,
     PartieContratSerializer,
     PenaliteSLASerializer,
     PieceConformiteSerializer,
@@ -1982,3 +1985,140 @@ class CycleFacturationLogViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
             },
             status=status.HTTP_201_CREATED,
         )
+
+
+# ---------------------------------------------------------------------------
+# XCTR17 — Location de matériel SORTANTE (aux clients)
+# ---------------------------------------------------------------------------
+
+
+class OrdreLocationViewSet(_ContratsBaseViewSet):
+    """Ordres de location de matériel aux clients (XCTR17).
+
+    Scopé société (``TenantMixin``). Le produit DOIT être ``louable``
+    (vérifié via ``stock.selectors.get_produit_louable`` — jamais un import
+    du modèle ``stock``) et la fenêtre demandée ne doit chevaucher AUCUN
+    ordre actif du même produit + numéro de série (400 sinon). ``company`` et
+    ``created_by`` sont posés CÔTÉ SERVEUR.
+
+    Filtres : ``?produit=<id>``, ``?statut=<valeur>``, ``?client=<id>``.
+    """
+    queryset = OrdreLocation.objects.select_related('produit').all()
+    serializer_class = OrdreLocationSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = [
+        'date_reservation', 'date_enlevement_prevue', 'date_retour_prevue',
+        'date_creation', 'id',
+    ]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        produit_id = self.request.query_params.get('produit')
+        if produit_id:
+            qs = qs.filter(produit_id=produit_id)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        client_id = self.request.query_params.get('client')
+        if client_id:
+            qs = qs.filter(client_id=client_id)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        from apps.stock.selectors import get_produit_louable
+
+        produit_id = request.data.get('produit')
+        produit = get_produit_louable(request.user.company, produit_id)
+        if produit is None:
+            return Response(
+                {'produit': "Produit introuvable ou non louable."},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        def _parse_date(key):
+            raw = (request.data.get(key) or '').strip()
+            if not raw:
+                return None
+            from datetime import date as _date
+            try:
+                return _date.fromisoformat(raw)
+            except ValueError:
+                return None
+
+        date_reservation = _parse_date('date_reservation')
+        date_enlevement = _parse_date('date_enlevement_prevue')
+        date_retour = _parse_date('date_retour_prevue')
+        if not (date_reservation and date_enlevement and date_retour):
+            return Response(
+                {'detail': 'date_reservation, date_enlevement_prevue et '
+                           'date_retour_prevue sont requises (AAAA-MM-JJ).'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        client_id = request.data.get('client_id')
+        if not client_id:
+            return Response(
+                {'client_id': 'Requis.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            ordre = services.creer_ordre_location(
+                request.user.company,
+                client_id=client_id,
+                produit=produit,
+                numero_serie=request.data.get('numero_serie', ''),
+                date_reservation=date_reservation,
+                date_enlevement_prevue=date_enlevement,
+                date_retour_prevue=date_retour,
+                tarif_jour=request.data.get('tarif_jour') or None,
+                note=request.data.get('note', ''),
+                created_by=request.user,
+            )
+        except services.OrdreLocationError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(
+            OrdreLocationSerializer(
+                ordre, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='changer-statut')
+    def changer_statut(self, request, pk=None):
+        """Transition GARDÉE du statut local de l'ordre de location."""
+        ordre = self.get_object()
+        serializer = ChangerStatutOrdreLocationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            services.changer_statut_ordre_location(
+                ordre, serializer.validated_data['statut'])
+        except services.OrdreLocationError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            OrdreLocationSerializer(
+                ordre, context={'request': request}).data)
+
+    @action(detail=False, methods=['get'])
+    def disponibilite(self, request):
+        """GET /ordres-location/disponibilite/?produit=<id>&numero_serie=&
+        date_debut=&date_fin= (XCTR17)."""
+        produit_id = request.query_params.get('produit')
+        if not produit_id:
+            return Response(
+                {'detail': 'produit requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        def _parse_date(key):
+            raw = (request.query_params.get(key) or '').strip()
+            if not raw:
+                return None
+            from datetime import date as _date
+            try:
+                return _date.fromisoformat(raw)
+            except ValueError:
+                return None
+
+        result = selectors.disponibilite_produit(
+            request.user.company, produit_id,
+            numero_serie=request.query_params.get('numero_serie'),
+            date_debut=_parse_date('date_debut'),
+            date_fin=_parse_date('date_fin'))
+        return Response(result)

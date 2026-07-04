@@ -472,6 +472,26 @@ class Produit(models.Model):
         help_text='Quantité cible à commander lors d\'un réapprovisionnement '
                   '(facultatif ; défaut = seuil_alerte × 2).')
 
+    # ── XCTR17 — Location de matériel SORTANTE (aux clients) — fondation ────
+    # `louable` = ce produit peut faire l'objet d'un `contrats.OrdreLocation`.
+    # Faux par défaut : AUCUN produit existant ne devient louable tant que
+    # cette case n'est pas cochée explicitement (comportement inchangé). Les
+    # tarifs sont OPTIONNELS et purement indicatifs (l'ordre de location peut
+    # les surcharger) ; aucun n'est requis pour cocher `louable`.
+    louable = models.BooleanField(
+        default=False, verbose_name='Louable aux clients',
+        help_text="Peut faire l'objet d'un ordre de location client "
+                  '(groupe électrogène, pompe, nacelle…).')
+    tarif_location_jour = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name='Tarif location / jour')
+    tarif_location_semaine = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name='Tarif location / semaine')
+    tarif_location_mois = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name='Tarif location / mois')
+
     class Meta:
         verbose_name = "Produit"
         verbose_name_plural = "Produits"
