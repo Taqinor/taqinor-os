@@ -53,6 +53,9 @@ app.conf.enable_utc = False
 #     quand même pour traçabilité CNDP).
 #   - XFAC25 : relevé de compte mensuel automatique (opt-in par client),
 #     1er du mois 08:00 — apps/ventes/scheduled.py.
+#   - YHIRE8 : alertes d'expiration RH (habilitations/certifs/docs/visites/EPI,
+#     07:50) et alerte fin de CDD (07:55) — apps/rh/tasks.py (idempotent par
+#     jour+échéance, jamais avant branché sur le beat).
 app.conf.beat_schedule = {
     'ventes-check-overdue-factures': {
         'task': 'ventes.check_overdue_factures',
@@ -165,5 +168,16 @@ app.conf.beat_schedule = {
     'ventes-releve-mensuel-reminders': {
         'task': 'ventes.releve_mensuel_reminders',
         'schedule': crontab(hour=8, minute=0, day_of_month=1),
+    },
+    # YHIRE8 — alertes d'expiration RH (habilitations/certifs/docs/visites/
+    # EPI), quotidien, heure creuse matinale.
+    'rh-alertes-expiration': {
+        'task': 'rh.alertes_expiration',
+        'schedule': crontab(hour=7, minute=50),
+    },
+    # YHIRE8 — alerte fin de CDD (J-30 par défaut), quotidien.
+    'rh-alertes-cdd': {
+        'task': 'rh.alertes_cdd',
+        'schedule': crontab(hour=7, minute=55),
     },
 }
