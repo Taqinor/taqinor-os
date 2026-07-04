@@ -29,7 +29,8 @@ from .views import (
     PointControleModeleViewSet, PointControleReceptionViewSet,
     ProcedureQualiteViewSet, public_signalement,
     QhseChatterEntryViewSet, RecyclageModuleViewSet,
-    ReleveControleViewSet, ReleveCourbeIVViewSet, ReponseCritereViewSet,
+    ReleveConsommationViewSet, ReleveControleViewSet, ReleveCourbeIVViewSet,
+    ReponseCritereViewSet,
     RetourClientQualiteViewSet, SecouristeViewSet, SignalementPublicViewSet,
 )
 
@@ -92,6 +93,7 @@ router.register(r'signalements-publics', SignalementPublicViewSet)
 router.register(r'observations-securite', ObservationSecuriteViewSet)
 router.register(r'exercices-urgence', ExerciceUrgenceViewSet)
 router.register(r'aspects-environnementaux', AspectEnvironnementalViewSet)
+router.register(r'releves-consommation', ReleveConsommationViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

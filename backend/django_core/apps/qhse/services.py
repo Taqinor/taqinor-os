@@ -2156,3 +2156,82 @@ def cloturer_incident(incident):
     incident.statut = Incident.Statut.CLOS
     incident.save(update_fields=['statut'])
     return incident
+
+
+# ── XQHS21 — Relevés de consommation par site → génération bilan carbone ──
+
+from .models import (  # noqa: E402  (évite un cycle d'import)
+    LigneBilanCarbone, ReleveConsommation,
+)
+
+# Facteurs d'émission par défaut (tCO2e / unité), GHG Protocol / ADEME
+# — mêmes ordres de grandeur que ceux déjà saisis manuellement en QHSE39.
+# Servent uniquement de PRÉ-REMPLISSAGE éditable (jamais imposés).
+_FACTEUR_ELECTRICITE_MAROC = Decimal('0.000700')   # tCO2e/kWh (mix ONEE)
+_FACTEUR_GASOIL = Decimal('0.002680')              # tCO2e/L
+_FACTEUR_ESSENCE = Decimal('0.002310')              # tCO2e/L
+_FACTEUR_EAU = Decimal('0.000344')                  # tCO2e/m3 (traitement/distrib)
+
+
+@transaction.atomic
+def generer_lignes_bilan(bilan, annee):
+    """Agrège les relevés QHSE (sites) + le carburant flotte (véhicules) de
+    l'``annee`` en ``LigneBilanCarbone`` pré-remplies (XQHS21).
+
+    Idempotent : une ligne déjà générée pour la même (bilan, libellé, scope)
+    n'est PAS dupliquée — la génération met à jour la quantité existante
+    plutôt que d'ajouter une ligne (l'utilisateur reste libre d'éditer
+    ensuite ; ré-appeler la génération recale sur les relevés à date)."""
+    from apps.flotte.selectors import consommation_annuelle_flotte
+
+    releves = ReleveConsommation.objects.filter(
+        company=bilan.company, periode__year=annee)
+
+    totaux = {
+        ReleveConsommation.TypeEnergie.ELECTRICITE: Decimal('0'),
+        ReleveConsommation.TypeEnergie.GASOIL: Decimal('0'),
+        ReleveConsommation.TypeEnergie.ESSENCE: Decimal('0'),
+        ReleveConsommation.TypeEnergie.EAU: Decimal('0'),
+    }
+    for releve in releves:
+        totaux[releve.type_energie] += releve.quantite or Decimal('0')
+
+    # Carburant FLOTTE (véhicules) — lu via le sélecteur cross-app, jamais
+    # re-saisi côté QHSE (note du plan XQHS21).
+    conso_flotte = consommation_annuelle_flotte(bilan.company, annee)
+    totaux[ReleveConsommation.TypeEnergie.GASOIL] += Decimal(
+        str(conso_flotte.get('gasoil_litres', 0)))
+    totaux[ReleveConsommation.TypeEnergie.ESSENCE] += Decimal(
+        str(conso_flotte.get('essence_litres', 0)))
+
+    plan = [
+        (ReleveConsommation.TypeEnergie.ELECTRICITE,
+         'Électricité (sites + flotte)', LigneBilanCarbone.Scope.SCOPE_2,
+         'kWh', _FACTEUR_ELECTRICITE_MAROC),
+        (ReleveConsommation.TypeEnergie.GASOIL,
+         'Gasoil (groupes électrogènes + véhicules)',
+         LigneBilanCarbone.Scope.SCOPE_1, 'L', _FACTEUR_GASOIL),
+        (ReleveConsommation.TypeEnergie.ESSENCE,
+         'Essence (groupes électrogènes + véhicules)',
+         LigneBilanCarbone.Scope.SCOPE_1, 'L', _FACTEUR_ESSENCE),
+        (ReleveConsommation.TypeEnergie.EAU, 'Eau', LigneBilanCarbone.Scope.SCOPE_3,
+         'm3', _FACTEUR_EAU),
+    ]
+
+    lignes = []
+    for type_energie, libelle, scope, unite, facteur in plan:
+        quantite = totaux[type_energie]
+        if quantite <= 0:
+            continue
+        ligne, _created = LigneBilanCarbone.objects.update_or_create(
+            company=bilan.company, bilan=bilan, libelle=libelle,
+            defaults={
+                'scope': scope,
+                'categorie': type_energie,
+                'quantite': quantite,
+                'unite': unite,
+                'facteur_emission': facteur,
+            },
+        )
+        lignes.append(ligne)
+    return lignes

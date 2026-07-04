@@ -5287,3 +5287,75 @@ class AspectEnvironnemental(models.Model):
 
     def __str__(self):
         return f'{self.activite} — {self.aspect}'
+
+
+# ── XQHS21 — Relevés de consommation par site (élec/eau/carburant) ─────────
+
+class ReleveConsommation(models.Model):
+    """Relevé périodique de consommation d'un site (XQHS21).
+
+    Capture la consommation MENSUELLE d'un site/groupe électrogène :
+    électricité (kWh), gasoil/essence (L, groupes électrogènes de site — le
+    carburant des VÉHICULES existe déjà dans ``flotte.PleinCarburant`` et est
+    agrégé via le sélecteur ``flotte.selectors.consommation_annuelle_flotte``,
+    jamais re-saisi ici), eau (m³).
+
+    ``services.generer_lignes_bilan`` agrège les relevés d'une année (+ le
+    carburant flotte) en ``LigneBilanCarbone`` pré-remplies, idempotent.
+
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    class TypeEnergie(models.TextChoices):
+        ELECTRICITE = 'electricite', 'Électricité (kWh)'
+        GASOIL = 'gasoil', 'Gasoil (L)'
+        ESSENCE = 'essence', 'Essence (L)'
+        EAU = 'eau', 'Eau (m³)'
+
+    class Source(models.TextChoices):
+        FACTURE = 'facture', 'Facture'
+        COMPTEUR = 'compteur', 'Compteur'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_releves_consommation',
+        verbose_name='Société',
+    )
+    site_libelle = models.CharField(
+        max_length=255, verbose_name='Site / libellé')
+    type_energie = models.CharField(
+        max_length=15, choices=TypeEnergie.choices,
+        default=TypeEnergie.ELECTRICITE, verbose_name="Type d'énergie")
+    # Mois-année de la période couverte (premier jour du mois par convention).
+    periode = models.DateField(verbose_name='Période (mois)')
+    quantite = models.DecimalField(
+        max_digits=14, decimal_places=3, default=0, verbose_name='Quantité')
+    source = models.CharField(
+        max_length=15, choices=Source.choices,
+        default=Source.FACTURE, verbose_name='Source')
+    piece_jointe_url = models.CharField(
+        max_length=500, blank=True, default='',
+        verbose_name='Pièce jointe (URL)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Relevé de consommation'
+        verbose_name_plural = 'Relevés de consommation'
+        ordering = ['-periode', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'site_libelle', 'type_energie', 'periode'],
+                name='qhse_relconso_co_site_type_periode_uniq',
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'periode'],
+                name='qhse_relconso_co_periode',
+            ),
+        ]
+
+    def __str__(self):
+        return (f'{self.site_libelle} — {self.get_type_energie_display()} '
+                f'({self.periode:%Y-%m})')

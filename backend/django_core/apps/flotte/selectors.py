@@ -2750,3 +2750,42 @@ def accessoires_non_rendus(company, conducteur_id):
             })
 
     return resultat
+
+
+# ── XQHS21 — Consommation carburant véhicules pour le bilan carbone QHSE ───
+
+def consommation_annuelle_flotte(company, annee):
+    """Carburant consommé par la flotte VÉHICULES sur une année (XQHS21).
+
+    Agrège ``PleinCarburant`` (déjà existant, FLOTTE12) par ``Vehicule.energie``
+    pour l'année donnée. QHSE lit CE sélecteur plutôt que de re-saisir le
+    carburant véhicules (le carnet de plein existe déjà côté flotte) — les
+    relevés QHSE (XQHS21) couvrent uniquement les sites/groupes électrogènes,
+    hors périmètre flotte.
+
+    Renvoie ``{'gasoil_litres': float, 'essence_litres': float,
+    'electrique_kwh': float}`` — toujours les 3 clés, à 0.0 si absent."""
+    qs = PleinCarburant.objects.filter(
+        company=company, date_plein__year=annee
+    ).select_related('vehicule')
+
+    gasoil = 0.0
+    essence = 0.0
+    kwh = 0.0
+    for plein in qs:
+        energie = getattr(plein.vehicule, 'energie', None)
+        quantite = float(plein.quantite or 0)
+        if plein.unite == PleinCarburant.Unite.KWH:
+            kwh += quantite
+        elif energie == Vehicule.Energie.ESSENCE:
+            essence += quantite
+        else:
+            # Diesel/hybride/inconnu en litres → comptés comme gasoil, le
+            # carburant liquide dominant du parc utilitaire marocain.
+            gasoil += quantite
+
+    return {
+        'gasoil_litres': gasoil,
+        'essence_litres': essence,
+        'electrique_kwh': kwh,
+    }

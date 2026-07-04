@@ -36,7 +36,7 @@ from .models import (
     PlanInspectionModele, PlanUrgence,
     PointControleModele, PointControleReception, ProcedureQualite,
     QhseChatterEntry,
-    RecyclageModule, ReleveControle,
+    RecyclageModule, ReleveConsommation, ReleveControle,
     ReleveCourbeIV, ReponseCritere, RetourClientQualite, Secouriste,
     SignalementPublic,
 )
@@ -67,7 +67,8 @@ from .serializers import (
     PointControleModeleSerializer, PointControleReceptionSerializer,
     ProcedureQualiteSerializer, QhseChatterEntrySerializer,
     RecyclageModuleSerializer,
-    ReleveControleSerializer, ReleveCourbeIVSerializer,
+    ReleveConsommationSerializer, ReleveControleSerializer,
+    ReleveCourbeIVSerializer,
     ReponseCritereSerializer, RetourClientQualiteSerializer,
     SecouristeSerializer, SignalementPublicSerializer,
 )
@@ -93,7 +94,7 @@ from .services import (
     creer_ncr_depuis_reserve,
     convertir_observation_en_capa, convertir_observation_en_ncr,
     creer_capa_depuis_ecart_exercice,
-    generer_capa_depuis_analyse,
+    generer_capa_depuis_analyse, generer_lignes_bilan,
     creer_signalement_public, generer_qr_signalement,
     incidents_notification_en_retard, instancier_plan_chantier,
     lever_ncr_audit, lever_ncr_inspection, nouvelle_version_procedure,
@@ -1977,6 +1978,14 @@ class BilanCarboneViewSet(_QhseBaseViewSet):
             qs = qs.filter(statut=statut)
         return qs
 
+    @action(detail=True, methods=['post'], url_path='generer-lignes-bilan')
+    def generer_lignes_bilan_action(self, request, pk=None):
+        """XQHS21 — pré-remplit les lignes du bilan depuis les relevés QHSE +
+        le carburant flotte de l'année du bilan (idempotent, éditable)."""
+        bilan = self.get_object()
+        lignes = generer_lignes_bilan(bilan, bilan.annee)
+        return Response(LigneBilanCarboneSerializer(lignes, many=True).data)
+
 
 class LigneBilanCarboneViewSet(_QhseBaseViewSet):
     """Lignes d'émission d'un bilan carbone (QHSE39).
@@ -2449,3 +2458,28 @@ class AspectEnvironnementalViewSet(_QhseBaseViewSet):
     def a_revoir(self, request):
         aspects = aspects_environnementaux_a_revoir(request.user.company)
         return Response(AspectEnvironnementalSerializer(aspects, many=True).data)
+
+
+# ── XQHS21 — Relevés de consommation par site (élec/eau/carburant) ────────
+
+class ReleveConsommationViewSet(_QhseBaseViewSet):
+    """CRUD des relevés mensuels de consommation par site. ``company`` posée
+    côté serveur. Filtres optionnels ``?type_energie=`` / ``?annee=``."""
+    queryset = ReleveConsommation.objects.all()
+    serializer_class = ReleveConsommationSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['site_libelle']
+    ordering_fields = ['id', 'periode']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        type_energie = self.request.query_params.get('type_energie')
+        if type_energie:
+            qs = qs.filter(type_energie=type_energie)
+        annee = self.request.query_params.get('annee')
+        if annee:
+            qs = qs.filter(periode__year=annee)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)

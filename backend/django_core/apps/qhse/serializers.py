@@ -25,7 +25,7 @@ from .models import (
     PlanInspectionModele, PlanUrgence,
     PointControleModele, PointControleReception, ProcedureQualite,
     QhseChatterEntry,
-    RecyclageModule, ReleveControle,
+    RecyclageModule, ReleveConsommation, ReleveControle,
     ReleveCourbeIV, ReponseCritere, RetourClientQualite, Secouriste,
     SignalementPublic,
 )
@@ -1287,3 +1287,21 @@ class AspectEnvironnementalSerializer(serializers.ModelSerializer):
 
     def validate_objectif(self, value):
         return _meme_societe(self, value, 'Objectif QHSE')
+
+
+class ReleveConsommationSerializer(serializers.ModelSerializer):
+    """Relevé périodique de consommation par site (XQHS21). ``company`` posée
+    côté serveur."""
+    type_energie_display = serializers.CharField(
+        source='get_type_energie_display', read_only=True)
+    source_display = serializers.CharField(
+        source='get_source_display', read_only=True)
+
+    class Meta:
+        model = ReleveConsommation
+        fields = [
+            'id', 'site_libelle', 'type_energie', 'type_energie_display',
+            'periode', 'quantite', 'source', 'source_display',
+            'piece_jointe_url', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
