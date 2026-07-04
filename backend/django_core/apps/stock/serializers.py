@@ -705,15 +705,22 @@ class ReceptionFournisseurSerializer(serializers.ModelSerializer):
 # ── G5 — Facture fournisseur / comptes à payer (AP) ──────────────────────────
 
 class LigneFactureFournisseurSerializer(serializers.ModelSerializer):
-    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+    # produit est optionnel (ligne libre/service, XPUR16) — default=None
+    # évite une AttributeError DRF quand produit est vide.
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
     total_ht = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+    # XPUR17 — TVA par ligne (taux marocains). total_tva = 0 si taux_tva vide
+    # (ligne historique, suit le taux global agrégé de la facture).
+    total_tva = serializers.DecimalField(
         max_digits=14, decimal_places=2, read_only=True)
 
     class Meta:
         model = LigneFactureFournisseur
         fields = [
             'id', 'produit', 'produit_nom', 'designation', 'quantite',
-            'prix_unitaire_ht', 'total_ht',
+            'prix_unitaire_ht', 'total_ht', 'taux_tva', 'total_tva',
         ]
 
 
@@ -790,6 +797,10 @@ class FactureFournisseurSerializer(serializers.ModelSerializer):
         source='get_statut_controle_display', read_only=True)
     resolu_par_username = serializers.CharField(
         source='resolu_par.username', read_only=True)
+    # XPUR17 — sous-totaux HT/TVA PAR TAUX (20/14/10/7 %/exonéré), dérivés des
+    # lignes. Vide si la facture n'a pas de lignes ventilées (comportement
+    # historique inchangé : montant_tva global reste la source de vérité).
+    sous_totaux_par_taux = serializers.SerializerMethodField()
 
     class Meta:
         model = FactureFournisseur
@@ -804,6 +815,7 @@ class FactureFournisseurSerializer(serializers.ModelSerializer):
             'statut_controle', 'statut_controle_display', 'motif_ecart',
             'resolu_par', 'resolu_par_username', 'resolu_le',
             'lignes', 'paiements', 'echeances', 'total_paye', 'solde_du',
+            'sous_totaux_par_taux',
         ]
         # company + reference + statut + created_by sont posés côté serveur.
         # Le statut découle des paiements (recompute_facture_fournisseur_statut).
@@ -815,6 +827,10 @@ class FactureFournisseurSerializer(serializers.ModelSerializer):
             'date_mise_a_jour', 'statut_controle', 'motif_ecart',
             'resolu_par', 'resolu_le',
         ]
+
+    def get_sous_totaux_par_taux(self, obj):
+        from .selectors import sous_totaux_tva_facture_fournisseur
+        return sous_totaux_tva_facture_fournisseur(obj)
 
     def validate_fournisseur(self, value):
         request = self.context.get('request')

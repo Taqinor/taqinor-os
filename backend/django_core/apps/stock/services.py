@@ -1298,8 +1298,9 @@ def facturer_reception(company, user, reception):
         raise ValueError(
             f"Cette réception ({reception.reference}) est déjà facturée.")
 
-    taux_tva = Decimal('20')
+    taux_tva_defaut = Decimal('20')
     montant_ht = Decimal('0')
+    montant_tva = Decimal('0')
     lignes_data = []
     for ligne in reception.lignes.select_related('produit', 'ligne_commande').all():
         pu = ligne.ligne_commande.prix_achat_unitaire if ligne.ligne_commande else Decimal('0')
@@ -1313,9 +1314,17 @@ def facturer_reception(company, user, reception):
             designation = ligne.ligne_commande.designation
         else:
             designation = 'Produit'
-        lignes_data.append((designation, ligne.quantite, pu))
+        # XPUR17 — TVA par ligne : reprend le taux du produit (`Produit.tva`)
+        # quand connu, sinon le défaut 20 % (comportement historique de
+        # cette fonction, qui appliquait déjà 20 % globalement).
+        taux_ligne = (ligne.produit.tva
+                      if ligne.produit and ligne.produit.tva is not None
+                      else taux_tva_defaut)
+        tva_ligne = (total * taux_ligne / Decimal('100')).quantize(
+            Decimal('0.01'))
+        montant_tva += tva_ligne
+        lignes_data.append((designation, ligne.quantite, pu, taux_ligne))
 
-    montant_tva = (montant_ht * taux_tva / Decimal('100')).quantize(Decimal('0.01'))
     montant_ttc = montant_ht + montant_tva
 
     created = {}
@@ -1330,10 +1339,10 @@ def facturer_reception(company, user, reception):
             statut=FactureFournisseur.Statut.A_PAYER,
             note=f'Facture réception {reception.reference}',
             created_by=user)
-        for designation, qte, pu in lignes_data:
+        for designation, qte, pu, taux_ligne in lignes_data:
             LigneFactureFournisseur.objects.create(
                 facture=ff, designation=designation,
-                quantite=qte, prix_unitaire_ht=pu)
+                quantite=qte, prix_unitaire_ht=pu, taux_tva=taux_ligne)
         created['ff'] = ff
         return ff
 

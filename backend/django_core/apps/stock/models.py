@@ -1238,6 +1238,15 @@ class LigneFactureFournisseur(models.Model):
         max_digits=12, decimal_places=2, default=1)
     prix_unitaire_ht = models.DecimalField(
         max_digits=12, decimal_places=2, default=0)
+    # XPUR17 — TVA PAR LIGNE (taux marocains 20/14/10/7 %/exonéré 0 — miroir
+    # de `ventes.LigneFacture.taux_tva`). NULL = ligne historique → le taux
+    # global de la facture (montant_tva/montant_ht agrégés) continue de
+    # s'appliquer, rendu strictement inchangé pour les factures déjà émises.
+    # Défaut 20 % pour une ligne NOUVELLE sans taux explicite.
+    taux_tva = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True, default=20,
+        help_text='Taux TVA de la ligne (%). Vide = taux global de la '
+                  'facture (comportement historique).')
 
     class Meta:
         verbose_name = 'Ligne de facture fournisseur'
@@ -1250,6 +1259,16 @@ class LigneFactureFournisseur(models.Model):
     def total_ht(self):
         return (self.quantite or Decimal('0')) * (
             self.prix_unitaire_ht or Decimal('0'))
+
+    @property
+    def total_tva(self):
+        """XPUR17 — TVA de la ligne (0 si `taux_tva` est vide — la ligne
+        suit alors le taux global agrégé de la facture, comportement
+        historique)."""
+        if self.taux_tva is None:
+            return Decimal('0')
+        return (self.total_ht * self.taux_tva / Decimal('100')).quantize(
+            Decimal('0.01'))
 
 
 class EcheanceFactureFournisseur(models.Model):

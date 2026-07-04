@@ -358,3 +358,57 @@ def acomptes_fournisseur_ouverts(company):
                 'date_versement': a.date_versement,
             })
     return out
+
+
+# ── XPUR17 — TVA par ligne sur la facture fournisseur ────────────────────────
+# Ventilation HT/TVA PAR TAUX (20/14/10/7 %/exonéré). Point d'entrée cross-app
+# LECTURE SEULE pour la comptabilité (apps.compta) : le relevé de déductions
+# TVA lit la ventilation à travers ce sélecteur plutôt qu'en important
+# apps.stock.models directement.
+
+def sous_totaux_tva_facture_fournisseur(facture):
+    """XPUR17 — sous-totaux HT/TVA groupés par taux pour UNE facture
+    fournisseur, dérivés de ses lignes. Une ligne sans taux (`taux_tva` NULL
+    — facture historique) n'est PAS incluse ici : la facture garde alors son
+    `montant_tva` global agrégé comme unique source de vérité (compat totale).
+    Renvoie une liste triée par taux décroissant : ``[{taux_tva, total_ht,
+    total_tva}, ...]`` (vide si aucune ligne ventilée). LECTURE SEULE."""
+    from decimal import Decimal
+    par_taux = {}
+    for ligne in facture.lignes.all():
+        if ligne.taux_tva is None:
+            continue
+        taux = ligne.taux_tva
+        entry = par_taux.setdefault(
+            taux, {'taux_tva': taux, 'total_ht': Decimal('0'),
+                   'total_tva': Decimal('0')})
+        entry['total_ht'] += ligne.total_ht
+        entry['total_tva'] += ligne.total_tva
+    return sorted(par_taux.values(), key=lambda e: e['taux_tva'], reverse=True)
+
+
+def releve_deductions_tva_par_taux(company, *, date_debut=None, date_fin=None):
+    """XPUR17 — relevé de déductions TVA (achats) groupé PAR TAUX sur la
+    période, toutes factures fournisseur confondues (statut de règlement
+    indifférent — la déduction s'apprécie à la facture, pas au paiement).
+    Point d'entrée cross-app pour la comptabilité. LECTURE SEULE."""
+    from decimal import Decimal
+    from .models import FactureFournisseur
+    qs = FactureFournisseur.objects.filter(company=company).prefetch_related(
+        'lignes')
+    if date_debut:
+        qs = qs.filter(date_facture__gte=date_debut)
+    if date_fin:
+        qs = qs.filter(date_facture__lte=date_fin)
+
+    par_taux = {}
+    for facture in qs:
+        for entry in sous_totaux_tva_facture_fournisseur(facture):
+            taux = entry['taux_tva']
+            agg = par_taux.setdefault(
+                taux, {'taux_tva': taux, 'total_ht': Decimal('0'),
+                       'total_tva': Decimal('0'), 'nombre_factures': 0})
+            agg['total_ht'] += entry['total_ht']
+            agg['total_tva'] += entry['total_tva']
+            agg['nombre_factures'] += 1
+    return sorted(par_taux.values(), key=lambda e: e['taux_tva'], reverse=True)

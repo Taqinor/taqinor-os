@@ -73,6 +73,8 @@ class FactureFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
             'depuis_ocr',
         ]:
             return [IsResponsableOrAdmin()]
+        elif self.action == 'releve_deductions_tva':
+            return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
         return [IsAdminRole()]
@@ -188,6 +190,18 @@ class FactureFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
         if doublons:
             data['doublon_warning'] = doublons
         return Response(data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'], url_path='releve-deductions-tva')
+    def releve_deductions_tva(self, request):
+        """XPUR17 — relevé de déductions TVA (achats) groupé PAR TAUX sur la
+        période (query params ``date_debut``/``date_fin`` optionnels).
+        Réservé Responsable/Admin (donnée comptable). LECTURE SEULE."""
+        from ..selectors import releve_deductions_tva_par_taux
+        releve = releve_deductions_tva_par_taux(
+            request.user.company,
+            date_debut=request.query_params.get('date_debut'),
+            date_fin=request.query_params.get('date_fin'))
+        return Response(releve)
 
     @action(detail=False, methods=['get'], url_path='comptes-a-payer')
     def comptes_a_payer(self, request):
