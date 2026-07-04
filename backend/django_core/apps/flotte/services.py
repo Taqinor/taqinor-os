@@ -1739,3 +1739,95 @@ def rollout_plan_entretien(company, plan_modele, actif_flotte_ids):
         crees.append(nouveau)
 
     return {'crees': crees, 'ignores': ignores}
+
+
+# ── XFLT23 — OCR reçu carburant → pré-remplissage du plein (KEY-GATED) ────────
+#
+# Réutilise le SERVICE OCR existant (``backend/fastapi_ia``, ``ZHIPU_API_KEY``)
+# comme point d'intégration : le squelette d'appel provider est isolé ici, à
+# l'image de ``apps.ged.services.ocr_extract_text`` (GED33). Tant qu'aucune
+# clé/flag n'est posé, l'extraction est un NO-OP DÉTERMINISTE : aucun appel
+# réseau, aucune dépendance, aucun coût. La création du ``PleinCarburant`` à
+# partir des champs extraits reste TOUJOURS du ressort de l'utilisateur (jamais
+# de création automatique) — cette fonction ne fait QUE lire/retourner les
+# champs, jamais écrire.
+
+def ocr_pleins_active():
+    """XFLT23 — True si l'OCR de reçu carburant est activé (clé configurée).
+
+    KEY-GATED : sans ``settings.FLOTTE_OCR_PLEINS_ENABLED`` à vrai (posé par le
+    founder aux côtés de ``ZHIPU_API_KEY``), toute extraction reste un no-op.
+    Ne lève jamais.
+    """
+    from django.conf import settings
+    return bool(getattr(settings, 'FLOTTE_OCR_PLEINS_ENABLED', False))
+
+
+def extraire_recu_carburant(file_bytes, *, mime=''):
+    """XFLT23 — Extrait les champs d'un reçu de station (photo) par OCR.
+
+    NO-OP tant que ``ocr_pleins_active()`` est faux : lève ``RuntimeError``
+    (l'appelant — la vue — traduit ceci en 503 avec un message FR clair,
+    « OCR indisponible (configuration manquante) »). Ceci est un
+    comportement DÉLIBÉRÉMENT différent de GED33 (qui renvoie une chaîne
+    vide) car ici l'appelant a besoin de distinguer "aucune donnée" de
+    "fonctionnalité indisponible" pour renvoyer le bon code HTTP.
+
+    Quand activé, délègue à un module fournisseur isolé
+    (``flotte_ocr_provider``, non câblé dans ce dépôt) qui appelle le service
+    OCR ``backend/fastapi_ia`` (Zhipu AI) et renvoie un dict de champs bruts.
+    Le mapping vers les champs ``PleinCarburant`` est fait par
+    ``mapper_recu_vers_plein``. Ne lève jamais au-delà du RuntimeError
+    "indisponible" ci-dessus — toute erreur provider est avalée et renvoie un
+    dict vide (aucun champ extrait, jamais de crash de l'écran de saisie).
+    """
+    if not ocr_pleins_active():
+        raise RuntimeError('OCR indisponible (configuration manquante).')
+    if not file_bytes:
+        return {}
+    try:  # pragma: no cover - dépend d'un provider externe non câblé ici.
+        from . import flotte_ocr_provider as provider  # noqa: F401
+    except ImportError:  # pragma: no cover
+        return {}
+    try:  # pragma: no cover
+        return provider.extraire_recu(file_bytes, mime=mime) or {}
+    except Exception:  # pragma: no cover - jamais casser l'écran de saisie.
+        return {}
+
+
+def mapper_recu_vers_plein(champs_bruts):
+    """XFLT23 — Normalise les champs bruts OCR vers les clés du formulaire
+    ``PleinCarburant`` (lecture seule, aucun effet de bord).
+
+    ``champs_bruts`` est le dict renvoyé par le provider OCR (ou un mock en
+    test) : accepte les clés ``date``/``litres``/``prix_unitaire``/
+    ``montant``/``station`` (FR, tel que documenté côté spec XFLT23) et
+    projette vers ``date_plein``/``quantite``/``prix_total``/``station`` —
+    les clés du formulaire ``PleinCarburant``. Une clé absente est simplement
+    omise du résultat (l'utilisateur complète le reste à la main). Ne lève
+    jamais : une valeur mal formée est ignorée plutôt que de faire échouer le
+    pré-remplissage.
+    """
+    if not champs_bruts:
+        return {}
+    resultat = {}
+    if champs_bruts.get('date'):
+        resultat['date_plein'] = champs_bruts['date']
+    if champs_bruts.get('litres') is not None:
+        resultat['quantite'] = champs_bruts['litres']
+    if champs_bruts.get('station'):
+        resultat['station'] = champs_bruts['station']
+    montant = champs_bruts.get('montant')
+    if montant is not None:
+        resultat['prix_total'] = montant
+    elif (champs_bruts.get('litres') is not None
+            and champs_bruts.get('prix_unitaire') is not None):
+        try:
+            resultat['prix_total'] = round(
+                float(champs_bruts['litres'])
+                * float(champs_bruts['prix_unitaire']), 2)
+        except (TypeError, ValueError):
+            pass
+    if champs_bruts.get('prix_unitaire') is not None:
+        resultat['prix_unitaire'] = champs_bruts['prix_unitaire']
+    return resultat

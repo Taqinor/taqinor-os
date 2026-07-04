@@ -103,7 +103,7 @@ READ_ACTIONS = ['list', 'retrieve', 'consommation', 'anomalies', 'echeances',
                 'tco', 'eco_conduite', 'documents', 'tableau_bord', 'journal',
                 'amortissement', 'expirants', 'ledger', 'historique',
                 'synthese_tva', 'detenteurs_courants', 'taux_completion',
-                'activites']
+                'activites', 'ocr']
 
 
 def _parse_date_param(value):
@@ -898,6 +898,36 @@ class PleinCarburantViewSet(_FlotteBaseViewSet):
 
         from .selectors import consommation_vehicule
         return Response(consommation_vehicule(company, vehicule_id))
+
+    @action(detail=False, methods=['post'])
+    def ocr(self, request):
+        """XFLT23 — OCR d'un reçu de station → champs pré-remplis (gated).
+
+        Accepte une photo (``request.FILES['photo']``, multipart) du reçu de
+        station et renvoie les champs extraits (``date_plein``, ``quantite``,
+        ``prix_total``, ``station``…) pour pré-remplir le formulaire côté
+        frontend — l'utilisateur valide TOUJOURS avant création (jamais de
+        création automatique de ``PleinCarburant`` ici).
+
+        KEY-GATED : sans configuration OCR (``settings.
+        FLOTTE_OCR_PLEINS_ENABLED`` / ``ZHIPU_API_KEY``), renvoie 503 avec un
+        message FR clair — aucun no-op cassant, l'écran de saisie manuelle
+        reste utilisable normalement.
+        """
+        from .services import extraire_recu_carburant, mapper_recu_vers_plein
+
+        photo = request.FILES.get('photo')
+        if photo is None:
+            return Response(
+                {'photo': "Le fichier 'photo' est obligatoire."}, status=400)
+
+        try:
+            champs_bruts = extraire_recu_carburant(
+                photo.read(), mime=getattr(photo, 'content_type', '') or '')
+        except RuntimeError as exc:
+            return Response({'detail': str(exc)}, status=503)
+
+        return Response({'champs': mapper_recu_vers_plein(champs_bruts)})
 
 
 class CarteCarburantViewSet(_FlotteBaseViewSet):
