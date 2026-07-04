@@ -466,3 +466,33 @@ def releve_deductions_tva_par_taux(company, *, date_debut=None, date_fin=None):
             agg['total_tva'] += entry['total_tva']
             agg['nombre_factures'] += 1
     return sorted(par_taux.values(), key=lambda e: e['taux_tva'], reverse=True)
+
+
+def encours_fournisseurs_par_tiers(company):
+    """YLEDG13 — encours documentaire (reste dû) par fournisseur, factures
+    fournisseur non soldées d'une société. Point d'entrée cross-app
+    sanctionné pour ``apps.compta`` (rapprochement auxiliaire/GL, jamais un
+    import direct de ``stock.models``). Renvoie une liste de dicts
+    ``{'tiers_id', 'nom', 'encours', 'references'}`` (encours > 0
+    seulement). Lecture seule."""
+    from decimal import Decimal
+    from .models import FactureFournisseur
+
+    par_fournisseur = {}
+    qs = (FactureFournisseur.objects
+          .filter(company=company)
+          .select_related('fournisseur'))
+    for facture in qs:
+        du = facture.solde_du
+        if not du:
+            continue
+        fournisseur = facture.fournisseur
+        entry = par_fournisseur.setdefault(fournisseur.id, {
+            'tiers_id': fournisseur.id,
+            'nom': fournisseur.nom,
+            'encours': Decimal('0'),
+            'references': [],
+        })
+        entry['encours'] += Decimal(du)
+        entry['references'].append(facture.reference)
+    return [v for v in par_fournisseur.values() if v['encours'] > 0]

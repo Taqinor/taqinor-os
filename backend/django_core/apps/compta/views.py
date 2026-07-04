@@ -889,6 +889,48 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             return resp
         return Response(rapport)
 
+    def _rapprochement_csv(self, rapport, filename):
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, delimiter=';', lineterminator='\r\n')
+        writer.writerow([
+            'tiers_id', 'nom', 'encours_documentaire', 'solde_gl', 'ecart',
+            'references'])
+        for ligne in rapport['lignes']:
+            writer.writerow([
+                ligne['tiers_id'], ligne['nom'],
+                ligne['encours_documentaire'], ligne['solde_gl'],
+                ligne['ecart'], ' '.join(ligne['references'])])
+        resp = HttpResponse(
+            buffer.getvalue(), content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return resp
+
+    @action(detail=False, methods=['get'], url_path='rapprochement-clients')
+    def rapprochement_clients(self, request):
+        """YLEDG13 — tie-out AR : encours documentaire (ventes) vs solde GL
+        3421 non lettré, par client. ``?date=YYYY-MM-DD`` borne le GL ;
+        ``?export=csv`` télécharge. Sur un jeu sain, écart global = 0."""
+        date = request.query_params.get('date') or None
+        rapport = selectors.rapprochement_auxiliaire_clients(
+            request.user.company, date=date)
+        if request.query_params.get('export') == 'csv':
+            return self._rapprochement_csv(
+                rapport, 'rapprochement_clients.csv')
+        return Response(rapport)
+
+    @action(detail=False, methods=['get'],
+            url_path='rapprochement-fournisseurs')
+    def rapprochement_fournisseurs(self, request):
+        """YLEDG13 — tie-out AP : encours documentaire (stock) vs solde GL
+        4411 non lettré, par fournisseur. Miroir de ``rapprochement_clients``."""
+        date = request.query_params.get('date') or None
+        rapport = selectors.rapprochement_auxiliaire_fournisseurs(
+            request.user.company, date=date)
+        if request.query_params.get('export') == 'csv':
+            return self._rapprochement_csv(
+                rapport, 'rapprochement_fournisseurs.csv')
+        return Response(rapport)
+
 
 # ── YLEDG6 — Lettrage / délettrage (FG112) ──────────────────────────────────
 
