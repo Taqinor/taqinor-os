@@ -1224,6 +1224,29 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         logger.warning('QJ10: _send_acceptance_emails échoué pour devis %s : %s',
                        getattr(devis, 'reference', '?'), exc)
 
+    # YDOCF3 — variantes (QJ15 dupliquer-variante) : accepter l'une d'elles
+    # doit effondrer ses SŒURS (même groupe version_parent=root) plutôt que
+    # de les laisser is_active=True et elles-mêmes acceptables (double
+    # comptage du funnel). Ne touche jamais un devis d'un autre groupe ni les
+    # révisions déjà terminales. Un devis sans variante est inchangé.
+    from django.db.models import Q
+    root = devis.version_parent_id or devis.id
+    siblings = Devis.objects.filter(
+        company=devis.company, is_active=True,
+        statut__in=(Devis.Statut.BROUILLON, Devis.Statut.ENVOYE),
+    ).filter(
+        Q(version_parent_id=root) | Q(pk=root)
+    ).exclude(pk=devis.pk)
+    for sibling in siblings:
+        sibling.statut = Devis.Statut.REFUSE
+        sibling.date_refus = date_acc
+        sibling.motif_refus = 'variante non retenue'
+        sibling.is_active = False
+        sibling.save(update_fields=[
+            'statut', 'date_refus', 'motif_refus', 'is_active'])
+        activity.log_devis_refusal(
+            sibling, user, 'variante non retenue', date_acc)
+
     devis_accepted.send(
         sender=Devis, devis=devis, user=user, ancien_statut=ancien)
     # QJ9 — CAPI SignedQuote event (gated on META_CAPI_ACCESS_TOKEN).
@@ -1387,6 +1410,71 @@ def reset_relance_escalation(facture):
         facture.save(update_fields=['exclu_relances_jusquau'])
         changed = True
     return changed
+
+
+class PaiementRejectError(Exception):
+    """YLEDG5 — erreur métier au rejet d'un paiement (message + conflict)."""
+
+    def __init__(self, message, conflict=False):
+        super().__init__(message)
+        self.message = message
+        self.conflict = conflict
+
+
+def rejeter_paiement(*, paiement, motif, frais=None, date_rejet=None, user=None):
+    """YLEDG5 — chemin d'exception « paiement rejeté » (chèque impayé /
+    virement rejeté).
+
+    Le paiement N'EST JAMAIS supprimé (piste d'audit) : il passe
+    ``statut=rejete`` et sort du calcul ``Facture.montant_paye``/``statut`` —
+    la facture redevient ouverte/en retard (recalculée : émise si l'échéance
+    n'est pas dépassée, sinon en retard) et les relances existantes sont
+    ré-armées (symétrique de ``reset_relance_escalation``). Émet
+    ``paiement_rejete`` sur le bus core pour que compta contre-passe
+    l'écriture d'encaissement (YLEDG4) et délettre (YLEDG6). Idempotent côté
+    garde : rejeter un paiement déjà rejeté est refusé (jamais un double
+    rejet)."""
+    from django.utils import timezone
+    from django.db import transaction
+    from .models import Facture, Paiement
+    from core.events import paiement_rejete
+
+    motif = (motif or '').strip()
+    if not motif:
+        raise PaiementRejectError('Le motif du rejet est obligatoire.')
+    if paiement.statut == Paiement.Statut.REJETE:
+        raise PaiementRejectError(
+            'Ce paiement est déjà marqué rejeté.', conflict=True)
+
+    with transaction.atomic():
+        paiement.statut = Paiement.Statut.REJETE
+        paiement.motif_rejet = motif[:255]
+        paiement.frais_rejet = frais
+        paiement.date_rejet = date_rejet or timezone.now().date()
+        paiement.save(update_fields=[
+            'statut', 'motif_rejet', 'frais_rejet', 'date_rejet'])
+
+        facture = paiement.facture
+        if facture is not None:
+            facture.refresh_from_db()
+            # Rouvre la facture : reste dû > 0 → repasse émise (ou en
+            # retard si l'échéance est déjà dépassée), jamais « payée » ni
+            # « annulée » (états terminaux préservés à part la réouverture).
+            if facture.statut not in (
+                    Facture.Statut.ANNULEE,) and facture.montant_du > 0:
+                today = timezone.now().date()
+                if facture.date_echeance and facture.date_echeance < today:
+                    facture.statut = Facture.Statut.EN_RETARD
+                else:
+                    facture.statut = Facture.Statut.EMISE
+                facture.save(update_fields=['statut'])
+            from . import activity
+            activity.log_facture_paiement_rejete(facture, user, paiement, motif)
+
+        paiement_rejete.send(
+            sender=Paiement, paiement=paiement, facture=facture,
+            montant=paiement.montant, company=paiement.company)
+    return paiement
 
 
 def abandonner_solde_facture(facture, *, motif, user=None, auto=False,
@@ -2245,6 +2333,15 @@ def record_payment_from_link(*, link, payload=None):
                 and facture.statut != Facture.Statut.ANNULEE:
             facture.statut = Facture.Statut.PAYEE
             facture.save(update_fields=['statut'])
+            # YDOCF4 — facture_paid, exactement une fois au passage
+            # résiduel→0 via le webhook de lien de paiement.
+            from core.events import facture_paid, facture_payee
+            facture_paid.send(
+                sender=Facture, facture=facture, montant=montant,
+                company=facture.company)
+            # YEVNT6 — événement documentaire générique (même transition).
+            facture_payee.send(
+                sender=Facture, instance=facture, company=facture.company)
     return paiement, None
 
 
@@ -2652,6 +2749,33 @@ def expire_stale_devis():
                 'Devis expiré automatiquement (date de validité dépassée).')
         except Exception as exc:  # noqa: BLE001
             logger.warning('QJ5: log chatter échec devis %s : %s',
+                           devis.reference, exc)
+
+        # YEVNT10 — une mutation AUTOMATIQUE (cron, hors requête HTTP) échappe
+        # à l'audit par signaux (celui-ci ne journalise que dans une requête,
+        # cf. apps/audit/recorder.py). `record()` accepte déjà un acteur
+        # système explicite (user=None) et n'exige pas d'être dans une
+        # requête : on l'appelle donc ici pour que l'expiration automatique
+        # laisse une trace attribuée « système ».
+        try:
+            from apps.audit import recorder as _audit_recorder
+            from apps.audit.models import AuditLog
+            _audit_recorder.record(
+                AuditLog.Action.STATUS, instance=devis, user=None,
+                detail='Expiration automatique (job : expire_stale_devis).')
+        except Exception as exc:  # noqa: BLE001
+            logger.warning('YEVNT10: audit échoué pour devis %s : %s',
+                           devis.reference, exc)
+
+        # YEVNT2 — événement métier (notifications/audit s'abonnent), jamais
+        # réémis pour un devis déjà expiré (garde amont via le queryset ENVOYE
+        # + is_expired). Best-effort : ne casse jamais le sweep.
+        try:
+            from core.events import devis_expired
+            devis_expired.send(
+                sender=Devis, devis=devis, ancien_statut='envoye')
+        except Exception as exc:  # noqa: BLE001
+            logger.warning('YEVNT2: devis_expired échoué pour devis %s : %s',
                            devis.reference, exc)
 
         expired += 1

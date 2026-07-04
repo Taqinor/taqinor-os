@@ -220,6 +220,13 @@ REST_FRAMEWORK = {
         # XPLT4 — webhook entrant automatisation, par jeton.
         'automation_webhook': '60/minute',
     },
+    # YDATA9 — DRF sérialise déjà les `Decimal` en string par défaut (c'est
+    # la valeur par défaut de DRF), mais rien ne le VERROUILLAIT explicitement
+    # dans ce repo : un changement accidentel de ce réglage romprait la
+    # précision des montants à la frontière API (un float JSON perd des
+    # décimales). Posé explicitement pour que ce comportement soit un choix
+    # documenté, testé, jamais un défaut implicite qui pourrait dériver.
+    'COERCE_DECIMAL_TO_STRING': True,
 }
 
 # Simple JWT Configuration

@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError as DjangoValidationError  # noqa: F401,E501
 from django.db import transaction  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
 from django.utils import timezone  # noqa: F401
@@ -58,6 +59,16 @@ def _company_qs(qs, user):
         return qs
     return qs.none()
 
+
+class _DatedDocument:
+    """YLEDG3 — adaptateur minimal (company, date_emission) pour réutiliser
+    ``apps.compta.services.verifier_facture_modifiable`` sur une date qui
+    n'est pas ``Facture.date_emission`` (ex. la date d'un paiement)."""
+
+    def __init__(self, company, une_date):
+        self.company = company
+        self.date_emission = une_date
+
 # NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
 # (un module par ressource). Comportement et symboles inchangés : le
 # package __init__ ré-exporte toutes les vues publiques.
@@ -95,6 +106,7 @@ class FactureViewSet(viewsets.ModelViewSet):
             'relancer', 'exclure_relance', 'whatsapp', 'ubl',
             'dgi_export', 'dgi_conformite', 'bulk', 'lien_paiement',
             'facturer_penalites', 'consolider', 'abandonner_solde',
+            'remettre_brouillon',
         ]:
             return [IsResponsableOrAdmin()]
         # Annuler une facture = réservé à l'admin/propriétaire (geste comptable).
@@ -102,6 +114,23 @@ class FactureViewSet(viewsets.ModelViewSet):
             return [IsAdminRole()]
         # creer_avoir tombe ici → IsAdminRole (création d'avoir = admin).
         return [IsAdminRole()]
+
+    @staticmethod
+    def _guard_periode_verrouillee(document):
+        """YLEDG3 — refuse (400) une mutation d'un document ventes daté dans
+        une période comptable CLÔTURÉE (FG115). Society/app compta absente ou
+        aucune période verrouillée = garde silencieuse (comportement actuel
+        inchangé). Import function-local de ``apps.compta.services`` — cross-
+        app services autorisé, jamais un import de ``apps.compta.models``."""
+        try:
+            from apps.compta.services import verifier_facture_modifiable
+        except Exception:  # noqa: BLE001 — compta absent = no-op
+            return
+        try:
+            verifier_facture_modifiable(document)
+        except DjangoValidationError as exc:
+            raise ValidationError({'detail': exc.messages[0]
+                                   if exc.messages else str(exc)})
 
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError
@@ -165,6 +194,11 @@ class FactureViewSet(viewsets.ModelViewSet):
         )
 
     def perform_update(self, serializer):
+        # YLEDG3 — un document daté dans une période comptable CLÔTURÉE ne
+        # doit plus pouvoir être modifié. Import function-local de
+        # apps.compta.services (cross-app services autorisé) ; société sans
+        # compta/périodes = garde silencieuse (comportement actuel inchangé).
+        self._guard_periode_verrouillee(self.get_object())
         # XFAC24 — immutabilité de la facture émise (opt-in). Flag OFF
         # (défaut) → comportement actuel byte-identique. Flag ON et facture
         # non-brouillon : tout champ FINANCIER dans le corps est refusé (la
@@ -243,10 +277,69 @@ class FactureViewSet(viewsets.ModelViewSet):
         # XFAC18 — save complet (persiste statut + revue_statut + échéance
         # dérivée), puis surface les anomalies de revue dans la réponse.
         facture.save()
+        # YEVNT6 — événement documentaire (best-effort, ne change rien au
+        # statut déjà posé ci-dessus).
+        from core.events import facture_emise
+        facture_emise.send(
+            sender=Facture, instance=facture, company=facture.company)
         data = FactureSerializer(facture).data
         if anomalies:
             data['anomalies'] = anomalies
         return Response(data)
+
+    @action(detail=True, methods=['post'], url_path='remettre-brouillon',
+            permission_classes=[IsResponsableOrAdmin])
+    def remettre_brouillon(self, request, pk=None):
+        """ZFAC1 — Reset to Draft (opt-in période ouverte).
+
+        Repasse une facture ÉMISE en brouillon UNIQUEMENT si elle n'a AUCUN
+        paiement ni avoir actif et que la période comptable de sa date
+        d'émission n'est pas verrouillée (YLEDG3) ni que XFAC24
+        (immutabilité) est activée pour la société. Le numéro/référence est
+        CONSERVÉ (pas de renumérotation) — seul le statut change."""
+        facture = self.get_object()
+        if facture.statut != Facture.Statut.EMISE:
+            return Response(
+                {'detail': (
+                    'Seule une facture émise (sans paiement ni avoir) peut '
+                    'être remise en brouillon.'
+                )},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if facture.paiements.exists():
+            return Response(
+                {'detail': (
+                    'Impossible : cette facture a déjà au moins un '
+                    'paiement enregistré.'
+                )},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if facture.avoirs.exclude(statut=Avoir.Statut.ANNULEE).exists():
+            return Response(
+                {'detail': (
+                    'Impossible : cette facture a un avoir actif.'
+                )},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        from apps.parametres.models import CompanyProfile
+        profile = CompanyProfile.get(company=facture.company)
+        if getattr(profile, 'factures_immuables', False):
+            return Response(
+                {'detail': (
+                    "Facture immuable : l'immutabilité (XFAC24) est activée "
+                    "pour cette société — corrigez par un avoir puis une "
+                    "nouvelle facture."
+                )},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # YLEDG3 — refuse si la période comptable de la facture est verrouillée.
+        self._guard_periode_verrouillee(facture)
+        ancien = facture.statut
+        facture.statut = Facture.Statut.BROUILLON
+        facture.save(update_fields=['statut'])
+        from .. import activity
+        activity.log_facture_remise_brouillon(facture, request.user, ancien)
+        return Response(FactureSerializer(facture).data)
 
     @action(detail=True, methods=['post'], url_path='marquer-payee',
             permission_classes=[IsResponsableOrAdmin])
@@ -264,6 +357,19 @@ class FactureViewSet(viewsets.ModelViewSet):
             )
         facture.statut = Facture.Statut.PAYEE
         facture.save()
+        # YDOCF4 — facture_paid, exactement une fois. Un passage manuel
+        # « marquer payée » ne porte pas de montant de paiement propre : on
+        # transmet le résiduel qui vient d'être annulé (montant_du AVANT ce
+        # passage, ici recalculé à 0 côté document — le montant informatif
+        # posé est donc le solde figé de la facture, cohérent avec les autres
+        # sites d'émission qui portent le montant réglé).
+        from core.events import facture_paid, facture_payee
+        facture_paid.send(
+            sender=Facture, facture=facture, montant=facture.total_ttc,
+            company=facture.company)
+        # YEVNT6 — événement documentaire générique (même transition).
+        facture_payee.send(
+            sender=Facture, instance=facture, company=facture.company)
         return Response(FactureSerializer(facture).data)
 
     @action(detail=True, methods=['post'], url_path='annuler',
@@ -291,6 +397,7 @@ class FactureViewSet(viewsets.ModelViewSet):
         """
         from decimal import Decimal
         facture = self.get_object()
+        self._guard_periode_verrouillee(facture)
         if facture.statut == Facture.Statut.PAYEE:
             return Response(
                 {'detail': 'Une facture payée ne peut pas être annulée.'},
@@ -439,6 +546,11 @@ class FactureViewSet(viewsets.ModelViewSet):
                 locked.save(update_fields=['statut'])
                 facture = locked
 
+        # YEVNT6 — événement documentaire (best-effort), une fois pour les
+        # trois branches ci-dessus (toutes convergent vers ANNULEE).
+        from core.events import facture_annulee
+        facture_annulee.send(
+            sender=Facture, instance=facture, company=facture.company)
         return Response(FactureSerializer(facture).data)
 
     @action(detail=True, methods=['get'], url_path='paiements',
@@ -476,6 +588,13 @@ class FactureViewSet(viewsets.ModelViewSet):
                 {'detail': 'Le montant du paiement doit être positif.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # YLEDG3 — un paiement DATÉ dans une période comptable clôturée est
+        # refusé (la date du paiement, pas celle de la facture, est ce qui
+        # tombe dans la période comptable concernée).
+        paiement_date = serializer.validated_data.get('date_paiement')
+        if paiement_date is not None:
+            self._guard_periode_verrouillee(
+                _DatedDocument(facture.company, paiement_date))
         # ERR72 — la garde sur-paiement et l'écriture du paiement doivent être
         # sérialisées : on verrouille la ligne facture (select_for_update) puis
         # on lit le reste à payer, on contrôle, et on enregistre — le tout dans
@@ -536,6 +655,15 @@ class FactureViewSet(viewsets.ModelViewSet):
                 # niveau) pour qu'une facture payée cesse d'afficher un retard.
                 from ..services import reset_relance_escalation
                 reset_relance_escalation(locked)
+                # YDOCF4 — facture_paid, exactement une fois au passage
+                # résiduel→0 (jamais à un règlement partiel).
+                from core.events import facture_paid, facture_payee
+                facture_paid.send(
+                    sender=Facture, facture=locked, montant=montant,
+                    company=locked.company)
+                # YEVNT6 — événement documentaire générique (même transition).
+                facture_payee.send(
+                    sender=Facture, instance=locked, company=locked.company)
             elif locked.statut != Facture.Statut.ANNULEE:
                 # XFAC13 — tolérance société : un résiduel sous le seuil
                 # (défaut 0 = désactivé, comportement inchangé) est abandonné
@@ -815,6 +943,7 @@ class FactureViewSet(viewsets.ModelViewSet):
         on crédite ces lignes ; sinon on crédite toute la facture. Lié à la
         facture d'origine ; le PDF reprend le style facture."""
         facture = self.get_object()
+        self._guard_periode_verrouillee(facture)
         if facture.statut not in ('emise', 'payee', 'en_retard'):
             return Response(
                 {'detail': 'Un avoir ne peut être créé que depuis une '

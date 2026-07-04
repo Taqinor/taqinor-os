@@ -127,6 +127,34 @@ def log_facture_paiement(facture, user, paiement):
     )
 
 
+def log_facture_paiement_rejete(facture, user, paiement, motif):
+    """YLEDG5 — consigne le rejet d'un paiement (chèque impayé / virement
+    rejeté) dans le chatter de la facture rouverte."""
+    from .models import FactureActivity
+    detail = (f"Paiement rejeté : {paiement.montant} MAD — motif : {motif}")
+    return FactureActivity.objects.create(
+        company=facture.company, facture=facture, user=user,
+        kind=FactureActivity.Kind.MODIFICATION,
+        field='paiement_rejete', field_label='Paiement rejeté',
+        new_value=str(paiement.montant), body=detail + '.',
+    )
+
+
+def log_facture_remise_brouillon(facture, user, ancien_statut):
+    """ZFAC1 — consigne la remise en brouillon (Reset to Draft) d'une facture
+    émise dans son chatter. Le numéro/référence reste inchangé."""
+    from .models import FactureActivity
+    qui = getattr(user, 'username', '?')
+    return FactureActivity.objects.create(
+        company=facture.company, facture=facture, user=user,
+        kind=FactureActivity.Kind.MODIFICATION,
+        field='statut', field_label='Remise en brouillon',
+        old_value=ancien_statut, new_value='brouillon',
+        body=(f"Facture {facture.reference} remise en brouillon par {qui} "
+              f"(référence conservée)."),
+    )
+
+
 def log_facture_acompte_transfere_sortie(facture, user, cible, montant, nb):
     """FG50 — chatter de la facture ANNULÉE : l'acompte part vers une autre.
 

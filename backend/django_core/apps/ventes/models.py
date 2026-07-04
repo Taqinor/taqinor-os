@@ -808,11 +808,18 @@ class Facture(models.Model):
         XFAC12 — inclut aussi les escomptes automatiquement appliqués
         (``Paiement.escompte_montant``) : le règlement net + l'escompte
         SOLDENT ensemble la facture, exactement comme montant + retenue
-        (XFAC4). Sans escompte (0/NULL) → comportement inchangé."""
+        (XFAC4). Sans escompte (0/NULL) → comportement inchangé.
+
+        YLEDG5 — un paiement ``rejete`` (chèque impayé/virement rejeté) sort
+        de ce total : la facture redevient ouverte/en retard exactement
+        comme si le règlement n'avait jamais eu lieu (jamais supprimé —
+        piste d'audit conservée)."""
         from decimal import Decimal
-        direct = sum((p.montant for p in self.paiements.all()), Decimal('0'))
+        actifs = [p for p in self.paiements.all()
+                  if p.statut != Paiement.Statut.REJETE]
+        direct = sum((p.montant for p in actifs), Decimal('0'))
         escomptes = sum(
-            (p.escompte_montant or Decimal('0') for p in self.paiements.all()),
+            (p.escompte_montant or Decimal('0') for p in actifs),
             Decimal('0'))
         via_affectation = sum(
             (a.montant for a in self.affectations_paiement.all()), Decimal('0'))
@@ -1056,6 +1063,23 @@ class Paiement(models.Model):
         AFFECTE = 'affecte', 'Affecté'
         PARTIELLEMENT_AFFECTE = 'partiellement_affecte', 'Partiellement affecté'
         NON_AFFECTE = 'non_affecte', 'Non affecté'
+
+    # ── YLEDG5 — chemin d'exception « paiement rejeté » (additif) ──
+    # Un paiement rejeté (chèque impayé / virement rejeté) N'EST JAMAIS
+    # supprimé (piste d'audit) : il sort du calcul montant_paye/Facture.statut
+    # via ce statut plutôt que par suppression.
+    class Statut(models.TextChoices):
+        ENCAISSE = 'encaisse', 'Encaissé'
+        REJETE = 'rejete', 'Rejeté'
+
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.ENCAISSE)
+    motif_rejet = models.CharField(max_length=255, blank=True, default='')
+    frais_rejet = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text='Frais bancaires optionnels liés au rejet (ex. frais de '
+                  'chèque impayé), informatif.')
+    date_rejet = models.DateField(null=True, blank=True)
 
     company = models.ForeignKey(
         'authentication.Company',

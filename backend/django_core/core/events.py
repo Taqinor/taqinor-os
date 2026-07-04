@@ -51,6 +51,17 @@ importe ``apps.audit``.
     * ``user`` — l'utilisateur qui partage (peut être ``None``) ;
     * ``ancien_statut`` — le statut du devis avant l'envoi.
 
+``devis_expired``
+    Émis quand un devis ``envoyé`` bascule automatiquement en ``expiré``
+    (QJ5, ``expire_stale_devis``) — YEVNT2. Jamais réémis pour un devis déjà
+    ``expiré`` (no-op). Abonné dans ce repo : ``notifications`` (notifie le
+    propriétaire du devis, ``EventType.DEVIS_EXPIRED``) ; ``crm`` continue
+    d'avancer le funnel séparément (avancement direct dans le même appel,
+    clés ``STAGES.py`` uniquement). Arguments du signal :
+
+    * ``devis`` — l'instance ``Devis`` désormais ``expire`` ;
+    * ``ancien_statut`` — toujours ``'envoye'``.
+
 ``document_pdf_generated``
     Émis quand un PDF de document de vente est généré (devis ou facture).
     Abonné par le satellite ``audit`` (journalise une entrée ``AuditLog.PDF``).
@@ -150,6 +161,54 @@ importe ``apps.audit``.
     ``LigneEcheance`` futures non facturées à ``annulee`` (pas besoin d'un
     abonné pour ça — même module, pas de cross-app).
 
+``facture_paid``
+    Émis EXACTEMENT une fois quand une ``ventes.Facture`` passe résiduel→0
+    (intégralement réglée) — YDOCF4. DISTINCT de ``payment_captured`` (FG370,
+    core/payment.py) : celui-ci ne se déclenche qu'à la capture d'une
+    transaction carte EN LIGNE (``core.PaymentTransaction``) ; ``facture_paid``
+    couvre TOUT encaissement qui solde la facture, y compris un encaissement
+    MANUEL (``enregistrer-paiement``), un webhook de lien de paiement
+    (``record_payment_from_link``) ou un passage manuel « marquer payée ».
+    Émis par ``apps/ventes/views/facture.py`` et ``apps/ventes/services.py``
+    UNIQUEMENT au moment où le résiduel atteint zéro (un paiement partiel
+    n'émet rien) ; jamais posé deux fois pour le même règlement. Contrat :
+    émetteur ``ventes``, abonnés futurs ``compta`` (XACC1 transfert TVA à
+    l'encaissement) / ``notifications``. Arguments du signal :
+
+    * ``facture`` — l'instance ``ventes.Facture`` désormais soldée ;
+    * ``montant`` — montant du DERNIER paiement qui a soldé la facture ;
+    * ``company`` — la société (posée côté serveur).
+
+``paiement_rejete``
+    Émis quand un ``ventes.Paiement`` encaissé est REJETÉ (chèque revenu
+    impayé / virement rejeté) — YLEDG5. La facture concernée est rouverte
+    (``montant_du`` remonte, statut recalculé) et les relances existantes sont
+    ré-armées AVANT l'émission. Destiné à un abonné compta (extourne
+    l'écriture d'encaissement d'origine, YLEDG4) et un délettrage (YLEDG6) ;
+    aucun abonné obligatoire dans ce lot (pose du seam). Arguments du signal :
+
+    * ``paiement`` — l'instance ``ventes.Paiement`` désormais ``rejete`` ;
+    * ``facture`` — la ``ventes.Facture`` concernée (peut être ``None`` pour
+      une avance non affectée) ;
+    * ``montant`` — montant du paiement rejeté ;
+    * ``company`` — la société (posée côté serveur).
+
+``facture_emise`` / ``facture_payee`` / ``facture_annulee`` / ``bon_commande_cree``
+    Événements documentaires ventes EN AVAL du devis — YEVNT6.
+    ``ventes.services``/``views.facture`` n'émettaient jusque-là que pour les
+    DEVIS (``devis_accepted``/``devis_sent``/``devis_refused``) ; rien pour la
+    chaîne BonCommande → Facture. Émission SYNCHRONE, best-effort, aux sites
+    de transition réels (``emettre``, ``creer_facture_contrat``,
+    ``creer_facture_tranche`` pour ``facture_emise`` ; ``annuler`` pour
+    ``facture_annulee`` ; ``convertir_en_bc`` pour ``bon_commande_cree`` ;
+    ``facture_payee`` accompagne ``facture_paid`` — YDOCF4 — au même
+    résiduel→0). Préserve STRICTEMENT les statuts document (règle #4) :
+    l'émission n'en change AUCUN. Aucun abonné obligatoire dans ce lot (pose
+    du seam pour ``compta``/``notifications``/audit/KPI). Arguments communs :
+
+    * ``instance`` — l'objet ``Facture`` ou ``BonCommande`` concerné ;
+    * ``company`` — la société (posée côté serveur).
+
 ``document_produit``
     Émis par une app métier/satellite quand elle produit un fichier destiné à
     être centralisé dans la GED (ZGED6 — pattern Odoo « File centralization »).
@@ -190,6 +249,11 @@ devis_sent = django.dispatch.Signal()
 # Arguments : devis, user, motif_refus.
 # Abonné optionnellement par crm pour marquer le lead perdu (→ COLD + perdu).
 devis_refused = django.dispatch.Signal()
+
+# Émis quand un devis envoyé bascule automatiquement en « expiré » (QJ5,
+# ``expire_stale_devis``) — YEVNT2. Arguments : devis, ancien_statut='envoye'.
+# Abonné dans ce repo : notifications (notifie le propriétaire).
+devis_expired = django.dispatch.Signal()
 
 # Émis à la génération d'un PDF de document de vente (devis/facture) — M4.
 # Arguments : instance (Devis|Facture), kind ('devis'|'facture').
@@ -251,3 +315,23 @@ document_produit = django.dispatch.Signal()
 # (idempotent, ne recule jamais un statut). installations n'importe jamais
 # apps.sav — même patron que devis_accepted → crm.
 intervention_completed = django.dispatch.Signal()
+
+# Émis EXACTEMENT une fois quand une Facture passe résiduel→0 (YDOCF4).
+# Arguments : facture, montant, company. DISTINCT de payment_captured (capture
+# carte en ligne uniquement) — voir docstring du module ci-dessus.
+facture_paid = django.dispatch.Signal()
+
+# Émis quand un ``ventes.Paiement`` encaissé est REJETÉ (chèque impayé /
+# virement rejeté) — YLEDG5. Arguments : paiement, facture, montant, company.
+# Destiné à un abonné compta (extourne l'écriture d'encaissement, YLEDG4) et
+# délettrage (YLEDG6) — aucun abonné obligatoire dans ce lot (pose du seam).
+paiement_rejete = django.dispatch.Signal()
+
+# YEVNT6 — événements documentaires ventes en aval du devis (émission
+# SYNCHRONE, best-effort ; ne change JAMAIS un statut/PDF — règle #4).
+# Arguments communs : instance (Facture|BonCommande), company. Aucun abonné
+# obligatoire dans ce lot (pose du seam pour compta/notifications/audit/KPI).
+facture_emise = django.dispatch.Signal()
+facture_payee = django.dispatch.Signal()
+facture_annulee = django.dispatch.Signal()
+bon_commande_cree = django.dispatch.Signal()
