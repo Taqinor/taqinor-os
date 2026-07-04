@@ -252,29 +252,48 @@ function TicketDetail({ ticket, onClose, onSaved }) {
   // L296 — saut de statut hors ordre détecté (pour avertir avant submit).
   const statutSautHorsOrdre = !isStatusTransitionAllowed(current.statut, fields.statut)
 
+  // YDOCF1 — `statut` par action guardée dédiée (POST) : plus de PATCH
+  // direct. On mappe le statut cible choisi dans le formulaire vers l'action
+  // serveur correspondante ; une transition hors machine d'états renvoie 400
+  // (message clair remonté par `frError`).
+  const STATUT_ACTION = {
+    planifie: savApi.planifierTicket,
+    en_cours: savApi.demarrerTicket,
+    resolu: savApi.resoudreTicket,
+    cloture: savApi.cloturerTicket,
+  }
+
   const save = async () => {
     setSaving(true)
     setSaveError(null)
     try {
       const nullable = (v) => (v === '' || v === undefined ? null : v)
-      // L297/L3 — auto-tamponner la date de résolution quand le statut passe à
-      // resolu/cloture et qu'elle est encore vide.
-      let dateResolution = fields.date_resolution
-      if (!dateResolution && ['resolu', 'cloture'].includes(fields.statut)) {
-        dateResolution = todayISO()
-      }
       const data = {
-        statut: fields.statut,
         type: fields.type,
         priorite: fields.priorite,
         description: nullable(fields.description),
         sous_garantie: fields.sous_garantie,
         equipement: fields.equipement === '' ? null : fields.equipement,
         technicien_responsable: fields.technicien_responsable === '' ? null : fields.technicien_responsable,
-        date_resolution: nullable(dateResolution),
         cout: nullable(fields.cout),
       }
-      const updated = await dispatch(updateTicket({ id, data })).unwrap()
+      // date_resolution reste PATCHable directement (pas de action dédiée) ;
+      // auto-tamponnée si le statut cible est resolu/cloture et qu'elle est
+      // encore vide (comportement inchangé).
+      let dateResolution = fields.date_resolution
+      if (!dateResolution && ['resolu', 'cloture'].includes(fields.statut)) {
+        dateResolution = todayISO()
+      }
+      data.date_resolution = nullable(dateResolution)
+
+      let updated = await dispatch(updateTicket({ id, data })).unwrap()
+      if (fields.statut && fields.statut !== current.statut) {
+        const action = STATUT_ACTION[fields.statut]
+        if (action) {
+          const r = await action(id)
+          updated = r.data
+        }
+      }
       setCurrent(updated)
       loadHistorique()
       toast.success('Ticket mis à jour')
@@ -900,21 +919,22 @@ export default function TicketsPage() {
     || filters.technicien || filters.sous_garantie || filters.ouvert !== 'ouverts'
     || filters.annule || filters.urgent_garantie
 
-  // L317/ERR64 — PATCH en lot (technicien ou statut) sur les tickets
-  // sélectionnés. Le lot n'est pas atomique : on attend TOUTES les requêtes
-  // (allSettled) et on recharge la liste dès qu'au moins une échoue, pour que la
-  // table ne reste pas sur un état périmé, avec un message FR d'échec partiel.
-  const bulkPatch = async (selectedKeys, data, clear) => {
-    const results = await Promise.allSettled(
-      selectedKeys.map((id) => dispatch(updateTicket({ id, data })).unwrap()))
-    const echecs = results.filter((r) => r.status === 'rejected').length
-    if (echecs === 0) {
-      toast.success('Tickets mis à jour')
-      clear?.()
-    } else if (echecs === selectedKeys.length) {
+  // ZSAV10 — action groupée atomique (une seule requête serveur), remplace le
+  // fan-out de PATCH par ligne (ERR64). `operation` ∈ statut/technicien/
+  // priorite/annuler ; `extra` porte la valeur (ex. {statut: 'planifie'}).
+  const bulkAction = async (selectedKeys, operation, extra, clear) => {
+    try {
+      const { data } = await savApi.actionsGroupeesTickets(selectedKeys, operation, extra)
+      if (data.nb_echecs === 0) {
+        toast.success('Tickets mis à jour')
+        clear?.()
+      } else if (data.nb_traites === 0) {
+        toast.error('Mise à jour groupée impossible.')
+      } else {
+        toast.error(`${data.nb_echecs} ticket(s) sur ${selectedKeys.length} n'ont pas pu être mis à jour.`)
+      }
+    } catch {
       toast.error('Mise à jour groupée impossible.')
-    } else {
-      toast.error(`${echecs} ticket(s) sur ${selectedKeys.length} n'ont pas pu être mis à jour.`)
     }
     // Toujours recharger : certains tickets ont pu changer côté serveur.
     reload()
@@ -1162,14 +1182,27 @@ export default function TicketsPage() {
                 id: `tech-${tid}`,
                 label: `Assigner à ${nom}`,
                 icon: Wrench,
-                onClick: () => bulkPatch(selKeys, { technicien_responsable: tid }, clear),
+                onClick: () => bulkAction(selKeys, 'technicien', { technicien: tid }, clear),
               })),
-              // L317 — changement de statut en lot.
+              // YDOCF1/ZSAV10 — changement de statut en lot, désormais via
+              // l'action groupée gardée (respecte la machine d'états).
               ...TICKET_STATUSES.map((k) => ({
                 id: `statut-${k}`,
                 label: `Statut → ${TICKET_STATUS_LABELS[k]}`,
-                onClick: () => bulkPatch(selKeys, { statut: k }, clear),
+                onClick: () => bulkAction(selKeys, 'statut', { statut: k }, clear),
               })),
+              // ZSAV10 — priorité en lot (nouveau, n'existait pas avant).
+              ...TICKET_PRIORITES.map((p) => ({
+                id: `priorite-${p}`,
+                label: `Priorité → ${TICKET_PRIORITE_LABELS[p]}`,
+                onClick: () => bulkAction(selKeys, 'priorite', { priorite: p }, clear),
+              })),
+              // ZSAV10 — annulation en lot (nouveau, n'existait pas avant).
+              {
+                id: 'annuler',
+                label: 'Annuler',
+                onClick: () => bulkAction(selKeys, 'annuler', {}, clear),
+              },
             ]}
           />
         )}

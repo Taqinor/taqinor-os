@@ -1,6 +1,7 @@
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
+from django.contrib.auth import get_user_model
 from django.db import transaction, IntegrityError
 from django.db.models import Q
 from django.http import HttpResponse
@@ -544,7 +545,9 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
                 # YDOCF1 — actions guardées de la machine d'états.
                 'planifier', 'demarrer', 'resoudre', 'cloturer',
                 # ZSAV3 — activités planifiées à échéance.
-                'activites', 'cocher_activite']:
+                'activites', 'cocher_activite',
+                # ZSAV10 — endpoint d'actions groupées.
+                'actions_groupees']:
             return [HasPermissionOrLegacy('sav_gerer')()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
@@ -849,6 +852,97 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         self._appliquer_transition_statut(ticket, Ticket.Statut.CLOTURE)
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
+
+    # ZSAV10 — opérations groupées supportées + leur validation d'entrée.
+    _ACTIONS_GROUPEES_VALEURS = {
+        'technicien': None,  # validé/résolu séparément (FK utilisateur).
+        'priorite': {c for c, _ in Ticket.Priorite.choices},
+        'statut': {c for c, _ in Ticket.Statut.choices},
+        'annuler': None,  # pas de valeur — motif optionnel.
+    }
+
+    @action(detail=False, methods=['post'], url_path='actions-groupees',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def actions_groupees(self, request):
+        """ZSAV10 — Applique UNE opération (statut/technicien/priorite/
+        annuler) à un LOT de tickets en une seule requête, atomiquement PAR
+        TICKET (chaque ticket journalisé) mais tolérante : les ids d'une
+        autre société sont silencieusement ignorés (jamais un 404/500 qui
+        casserait tout le lot). ``statut`` respecte la machine d'états
+        gardée (YDOCF1) — un ticket dont la transition est illégale est
+        rapporté dans ``echecs`` plutôt que de faire échouer le lot entier.
+        """
+        ids = request.data.get('ids') or []
+        operation = request.data.get('operation')
+        if not isinstance(ids, list) or not ids:
+            return Response({'ids': 'Liste d\'identifiants requise.'},
+                            status=400)
+        if operation not in self._ACTIONS_GROUPEES_VALEURS:
+            return Response(
+                {'operation': 'Opération inconnue.'}, status=400)
+
+        company = request.user.company
+        tickets = list(
+            Ticket.objects.filter(company=company, id__in=ids))
+        traites = []
+        echecs = []
+
+        if operation == 'statut':
+            statut_cible = request.data.get('statut')
+            if statut_cible not in self._ACTIONS_GROUPEES_VALEURS['statut']:
+                return Response({'statut': 'Statut inconnu.'}, status=400)
+            from . import machine_etats
+            for ticket in tickets:
+                try:
+                    self._appliquer_transition_statut(ticket, statut_cible)
+                    traites.append(ticket.id)
+                except (ValidationError, machine_etats.TransitionInterdite) \
+                        as exc:
+                    echecs.append({'id': ticket.id, 'raison': str(exc)})
+
+        elif operation == 'technicien':
+            technicien_id = request.data.get('technicien')
+            technicien = None
+            if technicien_id:
+                technicien = get_user_model().objects.filter(
+                    id=technicien_id, company=company).first()
+                if technicien is None:
+                    return Response(
+                        {'technicien': 'Technicien inconnu.'}, status=400)
+            for ticket in tickets:
+                old = Ticket.objects.get(pk=ticket.pk)
+                ticket.technicien_responsable = technicien
+                ticket.save(update_fields=['technicien_responsable'])
+                activity.log_changes(old, ticket, request.user)
+                traites.append(ticket.id)
+
+        elif operation == 'priorite':
+            priorite = request.data.get('priorite')
+            if priorite not in self._ACTIONS_GROUPEES_VALEURS['priorite']:
+                return Response({'priorite': 'Priorité inconnue.'}, status=400)
+            for ticket in tickets:
+                old = Ticket.objects.get(pk=ticket.pk)
+                ticket.priorite = priorite
+                ticket.save(update_fields=['priorite'])
+                activity.log_changes(old, ticket, request.user)
+                traites.append(ticket.id)
+
+        elif operation == 'annuler':
+            motif = (request.data.get('motif') or '').strip()
+            for ticket in tickets:
+                if not ticket.annule:
+                    ticket.annule = True
+                    ticket.motif_annulation = motif or None
+                    ticket.save(update_fields=['annule', 'motif_annulation'])
+                    activity.log_note(
+                        ticket, request.user,
+                        f"Ticket annulé{(' : ' + motif) if motif else ''}")
+                traites.append(ticket.id)
+
+        return Response({
+            'traites': traites, 'echecs': echecs,
+            'nb_traites': len(traites), 'nb_echecs': len(echecs),
+        })
 
     @action(detail=True, methods=['get'], url_path='historique',
             permission_classes=[HasPermissionOrLegacy('sav_voir')])
