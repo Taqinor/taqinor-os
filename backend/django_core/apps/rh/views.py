@@ -94,6 +94,7 @@ from .serializers import (
     AffectationRosterSerializer,
     AffectationVehiculeSerializer,
     AnalyseRisquesChantierSerializer,
+    AnnuaireEmployeSerializer,
     AutoEvaluationSerializer,
     AvanceSalaireSerializer,
     BesoinFormationSerializer,
@@ -220,6 +221,12 @@ class DossierEmployeViewSet(_RhBaseViewSet):
         # bloqué en 403 avant même d'atteindre le corps de l'action).
         if self.action == 'compa_ratio':
             return [HasPermission('salaires_voir')()]
+        # XRH28 — l'annuaire est accessible à TOUT employé authentifié de la
+        # société (pas seulement Administrateur/Responsable) : le serializer
+        # dédié ``AnnuaireEmployeSerializer`` garantit qu'AUCUN champ sensible
+        # ne fuit, donc élargir ici l'accès en lecture est sûr.
+        if self.action == 'annuaire':
+            return [IsAnyRole()]
         return super().get_permissions()
 
     def perform_update(self, serializer):
@@ -290,6 +297,38 @@ class DossierEmployeViewSet(_RhBaseViewSet):
             return Response(
                 {'detail': detail}, status=status.HTTP_404_NOT_FOUND)
         return Response(resultat)
+
+    @action(detail=False, methods=['get'], url_path='annuaire')
+    def annuaire(self, request):
+        """XRH28 — annuaire interne (trombinoscope), TOUT employé de la
+        société. ``?q=`` recherche nom/prénom/poste/département ; ``?
+        competence=<id>&niveau_min=`` filtre par compétence (matrice FG172).
+        Serializer dédié SANS champ sensible (voir
+        ``AnnuaireEmployeSerializer``)."""
+        from django.db.models import Q
+
+        qs = DossierEmploye.objects.filter(
+            company=request.user.company).exclude(
+            statut=DossierEmploye.Statut.SORTI).select_related(
+            'poste_ref', 'departement', 'user')
+
+        q = request.query_params.get('q')
+        if q:
+            qs = qs.filter(
+                Q(nom__icontains=q) | Q(prenom__icontains=q)
+                | Q(poste__icontains=q) | Q(poste_ref__intitule__icontains=q)
+                | Q(departement__nom__icontains=q))
+
+        competence_id = request.query_params.get('competence')
+        if competence_id:
+            niveau_min = request.query_params.get('niveau_min', 0)
+            qs = qs.filter(
+                competences__company=request.user.company,
+                competences__competence_id=competence_id,
+                competences__niveau__gte=niveau_min)
+
+        return Response(
+            AnnuaireEmployeSerializer(qs.distinct(), many=True).data)
 
     @action(detail=True, methods=['get'], url_path='ecart-competences')
     def ecart_competences(self, request, pk=None):

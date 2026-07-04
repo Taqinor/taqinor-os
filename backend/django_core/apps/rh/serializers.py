@@ -167,6 +167,37 @@ class DossierEmployeSerializer(serializers.ModelSerializer):
         return _meme_societe(self, value, 'Poste')
 
 
+class AnnuaireEmployeSerializer(serializers.ModelSerializer):
+    """XRH28 — annuaire interne (trombinoscope), accessible à TOUT employé.
+
+    EXPOSE UNIQUEMENT des champs NON sensibles : nom/prénom, photo (avatar du
+    compte utilisateur lié, s'il existe), poste, département, téléphone/email
+    PRO. JAMAIS salaire/CIN/RIB/adresse perso/santé/situation familiale — ces
+    champs n'apparaissent PAS dans ``Meta.fields`` (garde-fou testable par
+    exhaustivité des clés)."""
+    poste_nom = serializers.SerializerMethodField()
+    departement_nom = serializers.SerializerMethodField()
+    photo_key = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DossierEmploye
+        fields = [
+            'id', 'nom', 'prenom', 'photo_key',
+            'poste', 'poste_ref', 'poste_nom',
+            'departement', 'departement_nom',
+            'telephone', 'email',
+        ]
+
+    def get_poste_nom(self, obj):
+        return obj.poste_ref.intitule if obj.poste_ref_id else obj.poste
+
+    def get_departement_nom(self, obj):
+        return obj.departement.nom if obj.departement_id else ''
+
+    def get_photo_key(self, obj):
+        return obj.user.avatar_key if obj.user_id else ''
+
+
 class HoraireTravailSerializer(serializers.ModelSerializer):
     """Gabarit d'horaire de travail (XRH8) — 44 h standard, Ramadan,
     saisonnier. ``date_debut``/``date_fin`` vides = permanent."""
