@@ -186,6 +186,20 @@ def ensure_emplacements(company):
     return qs.filter(is_principal=True).first()
 
 
+def get_or_create_emplacement_soustraitant(company, sous_traitant_nom):
+    """XMFG16 — emplacement dédié « chez {sous-traitant} » (créé à la volée,
+    même type d'emplacement que les autres — pas de type dédié). Idempotent :
+    ``get_or_create`` par (company, nom). Sert à ventiler les composants
+    confiés à un atelier de façon externe, hors dépôt principal."""
+    from .models import EmplacementStock
+    ensure_emplacements(company)
+    nom = f'Chez {sous_traitant_nom}'
+    emplacement, _ = EmplacementStock.objects.get_or_create(
+        company=company, nom=nom, defaults={
+            'is_principal': False, 'ordre': 900})
+    return emplacement
+
+
 def stock_breakdown(produit):
     """Ventilation du stock d'un produit par emplacement (non archivés).
 
@@ -351,6 +365,61 @@ def record_purchase_price(*, company, produit, fournisseur, prix_achat, date):
             obj.company = company
         obj.save(update_fields=['prix_achat', 'date_dernier_achat', 'company'])
     return obj
+
+
+# ── XPUR23 — Destination de réception (dépôt cible ou chantier direct) ──────
+# Le put-away FG320 suggère un casier, mais l'entrée elle-même ne portait pas
+# de dépôt cible ni de chantier de livraison directe : la marchandise entrait
+# toujours au dépôt principal implicite. Ces fonctions sont appelées APRÈS le
+# MouvementStock ENTREE (jamais un mécanisme parallèle) pour ventiler/tracer
+# la destination. Comportement historique inchangé quand aucune destination
+# n'est renseignée sur le BCF (défaut = dépôt principal, comme aujourd'hui).
+
+def credit_emplacement_destination(company, produit, emplacement, quantite):
+    """XPUR23 — crédite `quantite` sur l'emplacement destination (non
+    principal). Le dépôt PRINCIPAL ne stocke jamais de ligne explicite (sa
+    quantité reste dérivée : total − somme des non-principaux) — appeler
+    cette fonction pour lui est un no-op volontaire (comportement historique
+    déjà correct sans rien faire)."""
+    from .models import StockEmplacement
+    if emplacement is None or emplacement.is_principal or quantite <= 0:
+        return
+    se, _created = StockEmplacement.objects.get_or_create(
+        company=company, produit=produit, emplacement=emplacement,
+        defaults={'quantite': 0})
+    se.quantite = (se.quantite or 0) + quantite
+    se.save(update_fields=['quantite'])
+
+
+def affecter_livraison_directe_chantier(
+        company, user, bc, produit, quantite, reference):
+    """XPUR23 — livraison DIRECTE chantier : la marchandise reçue N'ENTRE
+    JAMAIS en stock libre. On la sort aussitôt (SORTIE tracée, référence du
+    BCF + chantier) via l'accesseur unique `record_stock_movement` — jamais
+    un mécanisme parallèle. Best-effort : une erreur ne casse jamais la
+    réception elle-même (le stock reste alors en dépôt principal, visible et
+    corrigeable manuellement)."""
+    if quantite <= 0:
+        return
+    try:
+        chantier = bc.chantier_livraison
+        record_stock_movement(
+            company=company, produit=produit,
+            type_mouvement=mouvement_type_sortie(),
+            quantite=quantite,
+            quantite_avant=produit.quantite_stock,
+            quantite_apres=produit.quantite_stock - quantite,
+            reference=reference,
+            note=(f'Livraison directe chantier {chantier.reference} '
+                  f'(BCF {bc.reference})'
+                  if chantier is not None else
+                  f'Livraison directe chantier (BCF {bc.reference})'),
+            created_by=user,
+        )
+        produit.refresh_from_db()
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.info(
+            'XPUR23: affectation chantier non tracée pour BCF %s', bc.pk)
 
 
 # ── N18 — Valorisation du stock par emplacement (coût moyen d'achat) ──────────
@@ -569,6 +638,30 @@ def export_valorisation_xlsx(company):
         sheet_title='Valorisation')
 
 
+# ── XSTK8 — Contrôle du stock négatif (garde configurable) ──────────────────
+# Seul `transfer_stock` refusait une quantité insuffisante ; les AUTRES
+# chemins d'écriture (sorties chantier assemblage, retours fournisseur) ne
+# vérifiaient rien. `AchatsParametres.stock_negatif_autorise` (défaut False)
+# fait respecter le même garde là où il manquait — le garde EXISTANT de
+# `transfer_stock` reste inchangé (ne l'appelle pas, a déjà le sien). Les
+# données historiques déjà négatives restent lisibles (le garde ne s'applique
+# qu'à une ÉCRITURE qui ferait PASSER sous zéro, jamais à la lecture).
+
+def check_negative_stock_guard(company, quantite_avant, quantite_apres):
+    """Lève ValueError si `quantite_apres` serait négatif et que la société
+    n'autorise pas le stock négatif (`AchatsParametres.stock_negatif_
+    autorise`, défaut False = refuse). Ne fait rien si le réglage l'autorise
+    ou si le résultat reste ≥ 0 (comportement historique inchangé)."""
+    if quantite_apres >= 0:
+        return
+    from .models import AchatsParametres
+    parametres = AchatsParametres.for_company(company)
+    if not parametres.stock_negatif_autorise:
+        raise ValueError(
+            f'Stock insuffisant ({quantite_avant} disponible) — cette '
+            'opération ferait passer le stock sous zéro.')
+
+
 # ── N19 — Retour fournisseur : validation = décrément de stock (SORTIE) ───────
 
 def apply_retour_fournisseur(retour, user):
@@ -590,6 +683,7 @@ def apply_retour_fournisseur(retour, user):
                        .get(pk=ligne.produit_id))
             qte_avant = produit.quantite_stock
             qte_apres = qte_avant - ligne.quantite
+            check_negative_stock_guard(retour.company, qte_avant, qte_apres)
             MouvementStock.objects.create(
                 company=retour.company, produit=produit,
                 type_mouvement=MouvementStock.TypeMouvement.SORTIE,
@@ -645,6 +739,12 @@ def confirm_reception_fournisseur(reception, user):
             qte = min(qte, ligne_cmd.quantite_restante)
             if qte <= 0:
                 continue
+            # XPUR16 — ligne libre/service (sans_stock ou produit=null) :
+            # aucun MouvementStock, la quantité reçue est simplement actée.
+            if ligne_cmd.sans_stock or ligne.produit_id is None:
+                ligne_cmd.quantite_recue += qte
+                ligne_cmd.save(update_fields=['quantite_recue'])
+                continue
             produit = ligne.produit
             produit.refresh_from_db()
             qte_avant = produit.quantite_stock
@@ -667,6 +767,31 @@ def confirm_reception_fournisseur(reception, user):
                     company=reception.company, produit=produit,
                     fournisseur=bc.fournisseur,
                     prix_achat=ligne_cmd.prix_achat_unitaire, date=today)
+            # XPUR23 — destination de réception : dépôt cible OU chantier de
+            # livraison directe (défaut = dépôt principal, inchangé).
+            if bc is not None and bc.chantier_livraison_id:
+                affecter_livraison_directe_chantier(
+                    reception.company, user, bc, produit, qte,
+                    reception.reference)
+            elif bc is not None and bc.emplacement_destination_id:
+                credit_emplacement_destination(
+                    reception.company, produit, bc.emplacement_destination,
+                    qte)
+            # XSTK6 — alimente le registre de lots quand la ligne porte un
+            # numero_lot (FG64). Sans lot renseigné : comportement historique
+            # inchangé (aucune écriture LotEntrepot).
+            if getattr(ligne, 'numero_lot', None):
+                alimenter_lot_entrepot(
+                    company=reception.company, produit=produit,
+                    numero_lot=ligne.numero_lot,
+                    date_peremption=ligne.date_peremption,
+                    emplacement=(bc.emplacement_destination
+                                 if bc is not None
+                                 and bc.emplacement_destination_id
+                                 else None),
+                    quantite=qte,
+                    reference_reception=reception.reference,
+                    user=user)
         reception.statut = ReceptionFournisseur.Statut.CONFIRME
         reception.recu_par = reception.recu_par or user
         reception.save(update_fields=['statut', 'recu_par'])
@@ -697,6 +822,94 @@ def confirm_reception_fournisseur(reception, user):
     except Exception:  # pragma: no cover - défensif, best-effort
         pass
     return reception
+
+
+# ── XSTK6 — Registre de lots en entrepôt + sortie FEFO + garde périmé ───────
+# Miroir d'`installations.SerieEntrepot` (FG323) mais pour du stock suivi PAR
+# LOT (non sérialisé). Alimenté à la confirmation d'une réception ; décrémenté
+# à la sortie. Le picking FEFO propose le lot à péremption la plus proche
+# d'abord ; sortir un lot périmé est bloqué par défaut (`AchatsParametres.
+# bloquer_stock_perime`, contournable avec motif tracé).
+
+def alimenter_lot_entrepot(
+        *, company, produit, numero_lot, date_peremption, quantite,
+        reference_reception, emplacement=None, user=None):
+    """XSTK6 — crée (ou incrémente si le MÊME lot existe déjà pour ce
+    produit) une entrée de `LotEntrepot`. Jamais appelée pour une ligne sans
+    ``numero_lot`` (comportement historique inchangé)."""
+    from .models import LotEntrepot
+    lot, created = LotEntrepot.objects.get_or_create(
+        company=company, produit=produit, numero_lot=numero_lot,
+        defaults={
+            'date_peremption': date_peremption,
+            'emplacement': emplacement,
+            'quantite_recue': 0,
+            'quantite_restante': 0,
+            'reference_reception': reference_reception,
+            'created_by': user,
+        })
+    if not created and date_peremption and not lot.date_peremption:
+        lot.date_peremption = date_peremption
+    lot.quantite_recue += quantite
+    lot.quantite_restante += quantite
+    lot.save(update_fields=[
+        'quantite_recue', 'quantite_restante', 'date_peremption'])
+    return lot
+
+
+def suggestion_fefo(company, produit, quantite_requise):
+    """XSTK6 — suggère le(s) lot(s) à sortir en premier (FEFO : péremption la
+    plus proche d'abord ; les lots sans date de péremption passent en
+    dernier). Renvoie une liste ``[{lot, quantite}]`` couvrant au mieux
+    ``quantite_requise`` (LECTURE SEULE, ne décrémente rien)."""
+    from .models import LotEntrepot
+    from django.db.models import F
+    lots = (LotEntrepot.objects
+            .filter(company=company, produit=produit,
+                    quantite_restante__gt=0)
+            .order_by(
+                F('date_peremption').asc(nulls_last=True), 'date_creation'))
+    restant = quantite_requise
+    plan = []
+    for lot in lots:
+        if restant <= 0:
+            break
+        prise = min(lot.quantite_restante, restant)
+        plan.append({'lot': lot, 'quantite': prise})
+        restant -= prise
+    return plan
+
+
+def sortir_lot_entrepot(
+        *, company, lot, quantite, user=None, forcer=False, motif=None):
+    """XSTK6 — décrémente un lot précis (sortie ciblée, ex. depuis le plan
+    FEFO). Bloque un lot PÉRIMÉ si
+    ``AchatsParametres.bloquer_stock_perime`` (défaut ON) — sauf ``forcer=
+    True`` avec un ``motif`` tracé (journalisé dans la note du mouvement).
+    Lève ValueError si la quantité dépasse le restant ou si le lot est
+    périmé et non contourné."""
+    from .models import AchatsParametres
+    if quantite <= 0:
+        raise ValueError('La quantité doit être positive.')
+    if quantite > lot.quantite_restante:
+        raise ValueError(
+            f'Quantité insuffisante dans le lot {lot.numero_lot} '
+            f'({lot.quantite_restante} restant).')
+    parametres = AchatsParametres.for_company(company)
+    if lot.est_perime and parametres.bloquer_stock_perime and not forcer:
+        raise ValueError(
+            f'Le lot {lot.numero_lot} est périmé '
+            f'({lot.date_peremption}) — sortie bloquée.')
+    if lot.est_perime and forcer and not motif:
+        raise ValueError(
+            'Un motif est requis pour contourner le blocage du lot périmé.')
+    lot.quantite_restante -= quantite
+    lot.save(update_fields=['quantite_restante'])
+    if lot.est_perime and forcer:
+        logger.info(
+            'XSTK6: sortie forcée du lot périmé %s (%s) par %s — motif: %s',
+            lot.numero_lot, lot.produit_id, getattr(user, 'id', None), motif)
+    return lot
 
 
 # ── G5 — Facture fournisseur / comptes à payer (AP) ──────────────────────────
@@ -1102,6 +1315,90 @@ def declarer_rebut(*, company, produit, quantite, motif, reference, note,
     return mouvement
 
 
+def rebuter_produit(
+        *, company, produit, quantite, motif, user, emplacement=None,
+        reference_chantier=None):
+    """XSTK10 — met au rebut une quantité d'un produit (motif obligatoire :
+    casse/obsolète/périmé/vol/défaut/erreur/autre), décrémente l'emplacement
+    source (si fourni, N15) en plus du total canonique, respecte le garde
+    XSTK8 (stock négatif) et journalise la VALEUR perdue au coût moyen
+    (`average_cost_with_source`). Renvoie {mouvement, valeur_perdue}."""
+    from django.db import transaction
+    from .models import MouvementStock, Produit, StockEmplacement
+
+    if quantite is None or quantite <= 0:
+        raise ValueError('La quantité de rebut doit être positive.')
+    valeurs_motif = {c for c, _ in MouvementStock.MotifRebut.choices}
+    if motif not in valeurs_motif:
+        raise ValueError('Motif de rebut invalide.')
+
+    cout_moyen, _source = average_cost_with_source(produit)
+    valeur_perdue = (cout_moyen or Decimal('0')) * Decimal(quantite)
+
+    note = f'Rebut ({dict(MouvementStock.MotifRebut.choices).get(motif, motif)})'
+    if reference_chantier:
+        note += f' — chantier {reference_chantier}'
+
+    with transaction.atomic():
+        p = Produit.objects.select_for_update().get(id=produit.id)
+        avant = p.quantite_stock
+        apres = avant - quantite
+        check_negative_stock_guard(company, avant, apres)
+        mouvement = MouvementStock.objects.create(
+            company=company, produit=p,
+            type_mouvement=MouvementStock.TypeMouvement.REBUT,
+            quantite=quantite, quantite_avant=avant, quantite_apres=apres,
+            reference=reference_chantier or 'REBUT', note=note,
+            motif_rebut=motif, created_by=user)
+        p.quantite_stock = apres
+        p.save(update_fields=['quantite_stock'])
+        if emplacement is not None and not emplacement.is_principal:
+            se, _ = StockEmplacement.objects.select_for_update().get_or_create(
+                produit=p, emplacement=emplacement,
+                defaults={'company': company, 'quantite': 0})
+            se.quantite = max(se.quantite - quantite, 0)
+            se.save(update_fields=['quantite'])
+    return {'mouvement': mouvement, 'valeur_perdue': valeur_perdue}
+
+
+def rapport_pertes(company, *, date_debut=None, date_fin=None):
+    """XSTK10 — rapport « pertes de la période » : quantités ET valeur (coût
+    moyen au moment du calcul) par motif de rebut. Admin-only, JAMAIS
+    client-facing (prix_achat interne). Renvoie une liste de dicts
+    {produit_id, produit_nom, quantite_totale, valeur_totale,
+    par_motif: {motif: {quantite, valeur}}}, triée par valeur décroissante.
+    """
+    from .models import MouvementStock
+
+    qs = MouvementStock.objects.filter(
+        company=company, type_mouvement=MouvementStock.TypeMouvement.REBUT)
+    if date_debut is not None:
+        qs = qs.filter(date__gte=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(date__lte=date_fin)
+
+    par_produit = {}
+    for mvt in qs.select_related('produit'):
+        entry = par_produit.setdefault(mvt.produit_id, {
+            'produit_id': mvt.produit_id,
+            'produit_nom': mvt.produit.nom,
+            'quantite_totale': 0,
+            'valeur_totale': Decimal('0'),
+            'par_motif': {},
+        })
+        cout_moyen, _source = average_cost_with_source(mvt.produit)
+        valeur = (cout_moyen or Decimal('0')) * Decimal(mvt.quantite)
+        motif = mvt.motif_rebut or 'autre'
+        entry['quantite_totale'] += mvt.quantite
+        entry['valeur_totale'] += valeur
+        motif_entry = entry['par_motif'].setdefault(
+            motif, {'quantite': 0, 'valeur': Decimal('0')})
+        motif_entry['quantite'] += mvt.quantite
+        motif_entry['valeur'] += valeur
+    return sorted(
+        par_produit.values(), key=lambda e: -e['valeur_totale'])
+
+
 def rapport_rebuts(company, *, date_debut=None, date_fin=None):
     """XMFG11 — mini-rapport rebuts agrégé par produit sur une période
     (bornes optionnelles). Renvoie une liste de dicts {produit_id, produit_nom,
@@ -1131,6 +1428,78 @@ def rapport_rebuts(company, *, date_debut=None, date_fin=None):
         par_produit.values(), key=lambda e: -e['quantite_totale'])
 
 
+def decrementer_stock_dotation_epi(*, company, produit_id, quantite,
+                                   reference, user,
+                                   bloquer_si_insuffisant=False):
+    """YHIRE13 — décrémente le stock pour une dotation EPI liée à un produit.
+
+    Appelée par ``rh.services`` (cross-app, jamais l'inverse) quand une
+    ``DotationEpi`` porte un ``EpiCatalogue.produit_id`` renseigné. Mouvement
+    typé SORTIE, ``reference`` traçant la dotation d'origine. Par défaut
+    (``bloquer_si_insuffisant=False``) un stock insuffisant n'empêche PAS la
+    dotation (le stock peut aller négatif, motif = matériel déjà en atelier
+    hors flux stock) — comportement ``warn``. Si ``bloquer_si_insuffisant``
+    est vrai, lève ``ValueError`` sans créer de mouvement (comportement
+    ``block``, 400 explicite côté appelant). Renvoie le mouvement créé, ou
+    ``None`` si ``produit_id`` est vide.
+    """
+    from django.db import transaction
+    from .models import MouvementStock, Produit
+
+    if not produit_id or not quantite:
+        return None
+    with transaction.atomic():
+        try:
+            produit = Produit.objects.select_for_update().get(
+                id=produit_id, company=company)
+        except Produit.DoesNotExist:
+            return None
+        avant = produit.quantite_stock
+        apres = avant - quantite
+        if bloquer_si_insuffisant and apres < 0:
+            raise ValueError(
+                'Stock insuffisant pour cette dotation EPI '
+                f'({avant} disponible, {quantite} demandé).')
+        mouvement = MouvementStock.objects.create(
+            company=company, produit=produit,
+            type_mouvement=MouvementStock.TypeMouvement.SORTIE,
+            quantite=quantite, quantite_avant=avant, quantite_apres=apres,
+            reference=reference, note='Dotation EPI', created_by=user)
+        produit.quantite_stock = apres
+        produit.save(update_fields=['quantite_stock'])
+    return mouvement
+
+
+def reintegrer_stock_restitution_epi(*, company, produit_id, quantite,
+                                     reference, user):
+    """YHIRE13 — réintègre le stock à la restitution d'un EPI lié.
+
+    Mouvement typé ENTREE symétrique à ``decrementer_stock_dotation_epi``.
+    Renvoie ``None`` si ``produit_id`` est vide.
+    """
+    from django.db import transaction
+    from .models import MouvementStock, Produit
+
+    if not produit_id or not quantite:
+        return None
+    with transaction.atomic():
+        try:
+            produit = Produit.objects.select_for_update().get(
+                id=produit_id, company=company)
+        except Produit.DoesNotExist:
+            return None
+        avant = produit.quantite_stock
+        apres = avant + quantite
+        mouvement = MouvementStock.objects.create(
+            company=company, produit=produit,
+            type_mouvement=MouvementStock.TypeMouvement.ENTREE,
+            quantite=quantite, quantite_avant=avant, quantite_apres=apres,
+            reference=reference, note='Restitution EPI', created_by=user)
+        produit.quantite_stock = apres
+        produit.save(update_fields=['quantite_stock'])
+    return mouvement
+
+
 def sortie_exists_for_reference(company, reference):
     """True si un mouvement SORTIE référence déjà ``reference`` pour la société.
 
@@ -1151,8 +1520,86 @@ def sortie_exists_for_reference(company, reference):
 
 # ── FG54 — Réapprovisionnement auto ──────────────────────────────────────────
 
+# ── XSTK17 — profils saisonniers de seuils (saison pompage) ─────────────────
+
+def profil_saisonnier_actif(company, produit, *, mois=None):
+    """XSTK17 — profil saisonnier ACTIF couvrant ``mois`` (défaut : mois
+    courant) pour ce produit (priorité) ou sa catégorie. Renvoie None hors
+    saison / sans profil — auquel cas l'appelant garde le seuil statique
+    (comportement historique inchangé)."""
+    from django.utils import timezone
+    from .models import ProfilSaisonnier
+    mois = mois or timezone.now().month
+
+    profil_produit = ProfilSaisonnier.objects.filter(
+        company=company, produit=produit, actif=True).first()
+    candidats = [profil_produit] if profil_produit else []
+    if not candidats and produit.categorie_id:
+        candidats = list(ProfilSaisonnier.objects.filter(
+            company=company, categorie_id=produit.categorie_id, actif=True))
+    for profil in candidats:
+        if profil and profil.couvre_mois(mois):
+            return profil
+    return None
+
+
+def seuil_effectif_produit(company, produit, *, mois=None):
+    """XSTK17 — (seuil_alerte, quantite_cible) EFFECTIFS pour ce produit : le
+    profil saisonnier ACTIF prime pendant sa fenêtre ; hors saison ou sans
+    profil, renvoie EXACTEMENT (produit.seuil_alerte,
+    produit.quantite_reappro_cible) — repli byte-identique au comportement
+    historique."""
+    profil = profil_saisonnier_actif(company, produit, mois=mois)
+    if profil is None:
+        return produit.seuil_alerte, produit.quantite_reappro_cible
+    seuil = profil.seuil_min if profil.seuil_min is not None \
+        else produit.seuil_alerte
+    cible = profil.quantite_cible if profil.quantite_cible is not None \
+        else produit.quantite_reappro_cible
+    return seuil, cible
+
+
+def creer_profil_saisonnier(
+        company, *, produit=None, categorie=None, mois_debut, mois_fin,
+        seuil_min=None, seuil_max=None, quantite_cible=None, nom=None,
+        user=None):
+    """XSTK17 — crée un profil saisonnier après avoir rejeté tout
+    CHEVAUCHEMENT calendaire avec un profil déjà ACTIF de la MÊME cible
+    (produit ou catégorie, jamais les deux). Lève ValueError si ni produit
+    ni catégorie n'est fourni (ou les deux), ou en cas de chevauchement."""
+    from .models import ProfilSaisonnier
+
+    if bool(produit) == bool(categorie):
+        raise ValueError(
+            'Un profil saisonnier cible soit un produit, soit une '
+            'catégorie (jamais les deux, jamais aucun).')
+    if not (1 <= mois_debut <= 12 and 1 <= mois_fin <= 12):
+        raise ValueError('Les mois doivent être compris entre 1 et 12.')
+
+    candidat = ProfilSaisonnier(
+        mois_debut=mois_debut, mois_fin=mois_fin)
+    existants = ProfilSaisonnier.objects.filter(company=company, actif=True)
+    existants = existants.filter(produit=produit) if produit \
+        else existants.filter(categorie=categorie)
+    for autre in existants:
+        for m in range(1, 13):
+            if candidat.couvre_mois(m) and autre.couvre_mois(m):
+                label = autre.nom or f'#{autre.id}'
+                raise ValueError(
+                    f'Ce profil chevauche le profil existant « {label} » '
+                    f'sur le mois {m}.')
+
+    return ProfilSaisonnier.objects.create(
+        company=company, produit=produit, categorie=categorie,
+        mois_debut=mois_debut, mois_fin=mois_fin, seuil_min=seuil_min,
+        seuil_max=seuil_max, quantite_cible=quantite_cible, nom=nom,
+        created_by=user)
+
+
 def produits_a_reapprovisionner(company):
-    """Retourne les produits dont le stock est <= seuil_alerte, groupés par
+    """Retourne les produits dont le stock est <= seuil EFFECTIF (XSTK17 :
+    le profil saisonnier ACTIF prime sur `seuil_alerte` pendant sa fenêtre ;
+    hors saison, repli byte-identique sur `seuil_alerte`), groupés par
     fournisseur le moins cher (PrixFournisseur). INTERNE.
 
     Chaque item : {produit_id, nom, quantite_stock, seuil_alerte,
@@ -1165,10 +1612,33 @@ def produits_a_reapprovisionner(company):
     from .models import Produit, PrixFournisseur
     from apps.installations.selectors import kit_map_for_produits_composes
 
+    # XSTK17 — exclut seulement les produits SANS seuil_alerte ET sans
+    # profil saisonnier actif (repli inchangé : seuil_alerte=0 = pas de
+    # suivi de seuil, comme avant). Les candidats avec un profil actif
+    # passent même si seuil_alerte=0 (le profil peut définir un seuil que
+    # le produit n'a pas statiquement).
+    candidats_ids = set(
+        Produit.objects.filter(
+            company=company, is_archived=False)
+        .exclude(seuil_alerte=0).values_list('id', flat=True))
+    from .models import ProfilSaisonnier
+    from django.utils import timezone
+    mois_actuel = timezone.now().month
+    for profil in ProfilSaisonnier.objects.filter(
+            company=company, actif=True).select_related('categorie'):
+        if not profil.couvre_mois(mois_actuel):
+            continue
+        if profil.produit_id:
+            candidats_ids.add(profil.produit_id)
+        elif profil.categorie_id:
+            candidats_ids.update(
+                Produit.objects.filter(
+                    company=company, is_archived=False,
+                    categorie_id=profil.categorie_id)
+                .values_list('id', flat=True))
+
     qs = (Produit.objects
-          .filter(company=company, is_archived=False)
-          .exclude(seuil_alerte=0)
-          .filter(quantite_stock__lte=models.F('seuil_alerte'))
+          .filter(company=company, id__in=candidats_ids)
           .prefetch_related('prix_fournisseurs__fournisseur'))
 
     produits = list(qs)
@@ -1177,20 +1647,25 @@ def produits_a_reapprovisionner(company):
 
     result = []
     for p in produits:
+        seuil_effectif, cible_effective = seuil_effectif_produit(
+            company, p, mois=mois_actuel)
+        if p.quantite_stock > (seuil_effectif or 0):
+            continue
         # Fournisseur le moins cher parmi les prix enregistrés.
         best = (PrixFournisseur.objects
                 .filter(company=company, produit=p)
                 .select_related('fournisseur')
                 .order_by('prix_achat')
                 .first())
-        qte_suggere = p.quantite_reappro_cible if p.quantite_reappro_cible else (p.seuil_alerte * 2)
+        qte_suggere = cible_effective if cible_effective else (
+            (seuil_effectif or 0) * 2)
         kit_id = kit_map.get(p.id)
         result.append({
             'produit_id': p.id,
             'nom': p.nom,
             'sku': p.sku,
             'quantite_stock': p.quantite_stock,
-            'seuil_alerte': p.seuil_alerte,
+            'seuil_alerte': seuil_effectif,
             'quantite_suggere': qte_suggere,
             'fournisseur_id': best.fournisseur_id if best else None,
             'fournisseur_nom': best.fournisseur.nom if best else None,
@@ -1298,17 +1773,33 @@ def facturer_reception(company, user, reception):
         raise ValueError(
             f"Cette réception ({reception.reference}) est déjà facturée.")
 
-    taux_tva = Decimal('20')
+    taux_tva_defaut = Decimal('20')
     montant_ht = Decimal('0')
+    montant_tva = Decimal('0')
     lignes_data = []
     for ligne in reception.lignes.select_related('produit', 'ligne_commande').all():
         pu = ligne.ligne_commande.prix_achat_unitaire if ligne.ligne_commande else Decimal('0')
         total = Decimal(str(ligne.quantite)) * pu
         montant_ht += total
-        lignes_data.append((ligne.produit.nom if ligne.produit else 'Produit',
-                            ligne.quantite, pu))
+        # XPUR16 — une ligne libre/service reprend sa désignation d'origine
+        # (BCF) plutôt que le nom d'un produit catalogue absent.
+        if ligne.produit:
+            designation = ligne.produit.nom
+        elif ligne.ligne_commande and ligne.ligne_commande.designation:
+            designation = ligne.ligne_commande.designation
+        else:
+            designation = 'Produit'
+        # XPUR17 — TVA par ligne : reprend le taux du produit (`Produit.tva`)
+        # quand connu, sinon le défaut 20 % (comportement historique de
+        # cette fonction, qui appliquait déjà 20 % globalement).
+        taux_ligne = (ligne.produit.tva
+                      if ligne.produit and ligne.produit.tva is not None
+                      else taux_tva_defaut)
+        tva_ligne = (total * taux_ligne / Decimal('100')).quantize(
+            Decimal('0.01'))
+        montant_tva += tva_ligne
+        lignes_data.append((designation, ligne.quantite, pu, taux_ligne))
 
-    montant_tva = (montant_ht * taux_tva / Decimal('100')).quantize(Decimal('0.01'))
     montant_ttc = montant_ht + montant_tva
 
     created = {}
@@ -1323,10 +1814,10 @@ def facturer_reception(company, user, reception):
             statut=FactureFournisseur.Statut.A_PAYER,
             note=f'Facture réception {reception.reference}',
             created_by=user)
-        for designation, qte, pu in lignes_data:
+        for designation, qte, pu, taux_ligne in lignes_data:
             LigneFactureFournisseur.objects.create(
                 facture=ff, designation=designation,
-                quantite=qte, prix_unitaire_ht=pu)
+                quantite=qte, prix_unitaire_ht=pu, taux_tva=taux_ligne)
         created['ff'] = ff
         return ff
 
@@ -1801,6 +2292,7 @@ def consommer_et_produire_assemblage(*, company, kit, composants, produit_compos
             p = Produit.objects.select_for_update().get(id=comp_produit.id)
             avant = p.quantite_stock
             apres = avant - qte_conso
+            check_negative_stock_guard(company, avant, apres)
             mvt = record_stock_movement(
                 company=company, produit=p,
                 type_mouvement=mouvement_type_sortie(),
@@ -2570,3 +3062,1394 @@ def factures_en_exception(company):
         company=company,
         statut_controle=FactureFournisseur.StatutControle.EXCEPTION,
     ).select_related('fournisseur', 'bon_commande').order_by('-date_creation'))
+
+
+def qr_svg_for(text, *, box=4, quiet=4):
+    """XFAC19 — point d'entrée cross-app sanctionné pour le générateur QR maison
+    de N20 (``apps.stock.labels.qr_svg``, zéro dépendance externe). Les autres
+    apps (ex. ``ventes`` pour le QR paiement/vérification sur le PDF facture)
+    appellent cette fonction plutôt que d'importer ``apps.stock.labels``
+    directement — pur, déterministe, renvoie un SVG inline (str)."""
+    from . import labels
+    return labels.qr_svg(text, box=box, quiet=quiet)
+
+
+# ── XPUR11 — Détection de doublons facture fournisseur & BCF ────────────────
+# Rien ne détectait une facture saisie deux fois (même référence fournisseur),
+# ni deux BCF ouverts pour le même besoin. Ces fonctions sont des WARNINGS
+# (jamais bloquants) : elles n'empêchent aucune création, elles enrichissent
+# la réponse pour que l'utilisateur puisse voir et confirmer (override tracé
+# en note). Comportement historique inchangé quand rien ne matche.
+
+def detect_facture_fournisseur_doublon(
+        company, *, fournisseur_id, ref_fournisseur=None,
+        montant_ttc=None, date_facture=None, exclude_id=None):
+    """XPUR11 — détecte une facture fournisseur potentiellement déjà saisie.
+
+    Deux règles, en OR (whichever matches) :
+    1. Même (fournisseur, ref_fournisseur non vide) déjà en base.
+    2. Même fournisseur + même montant TTC + date_facture à ±7 jours.
+
+    Renvoie une liste de dicts (matches) — vide si rien ne matche (défaut,
+    comportement historique). LECTURE SEULE, jamais bloquant."""
+    from datetime import timedelta
+    from .models import FactureFournisseur
+
+    if not fournisseur_id:
+        return []
+    qs = FactureFournisseur.objects.filter(
+        company=company, fournisseur_id=fournisseur_id)
+    if exclude_id:
+        qs = qs.exclude(pk=exclude_id)
+
+    matches = {}
+
+    ref = (ref_fournisseur or '').strip()
+    if ref:
+        for f in qs.filter(ref_fournisseur__iexact=ref):
+            matches[f.id] = f
+
+    if montant_ttc is not None and date_facture is not None:
+        try:
+            montant = Decimal(str(montant_ttc))
+        except (InvalidOperation, TypeError, ValueError):
+            montant = None
+        if montant is not None:
+            date_min = date_facture - timedelta(days=7)
+            date_max = date_facture + timedelta(days=7)
+            for f in qs.filter(
+                montant_ttc=montant,
+                date_facture__gte=date_min, date_facture__lte=date_max,
+            ):
+                matches[f.id] = f
+
+    return [
+        {
+            'id': f.id,
+            'reference': f.reference,
+            'ref_fournisseur': f.ref_fournisseur,
+            'montant_ttc': f.montant_ttc,
+            'date_facture': f.date_facture,
+            'statut': f.statut,
+        }
+        for f in matches.values()
+    ]
+
+
+def bcf_similaires_ouverts(company, *, fournisseur_id, produit_ids=None):
+    """XPUR11 — panneau « BCF ouverts similaires » : bons de commande
+    fournisseur BROUILLON/ENVOYE du même fournisseur, éventuellement filtrés
+    aux BCF qui partagent au moins un produit avec ``produit_ids``. LECTURE
+    SEULE, jamais bloquant (aide à la décision avant de créer un nouveau BCF).
+    """
+    from .models import BonCommandeFournisseur
+
+    if not fournisseur_id:
+        return []
+    qs = (BonCommandeFournisseur.objects
+          .filter(company=company, fournisseur_id=fournisseur_id,
+                  statut__in=[BonCommandeFournisseur.Statut.BROUILLON,
+                              BonCommandeFournisseur.Statut.ENVOYE])
+          .prefetch_related('lignes__produit')
+          .order_by('-date_creation'))
+    produit_ids = set(produit_ids or [])
+    out = []
+    for bc in qs:
+        lignes = list(bc.lignes.all())
+        bc_produit_ids = {ligne.produit_id for ligne in lignes}
+        if produit_ids and not (bc_produit_ids & produit_ids):
+            continue
+        out.append({
+            'id': bc.id,
+            'reference': bc.reference,
+            'statut': bc.statut,
+            'date_creation': bc.date_creation,
+            'produits_communs': len(bc_produit_ids & produit_ids)
+            if produit_ids else 0,
+            'nombre_lignes': len(lignes),
+        })
+    return out
+
+
+def log_doublon_override(*, user, instance, detail):
+    """XPUR11 — trace (best-effort, jamais bloquant) qu'un utilisateur a
+    confirmé la création malgré un warning de doublon. Utilise l'audit
+    logger existant (apps.audit) ; un échec de journalisation ne casse
+    jamais la création elle-même."""
+    try:
+        from apps.audit.recorder import record
+        from apps.audit.models import AuditLog
+        record(AuditLog.Action.CREATE, instance=instance,
+               user=user, detail=detail)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.info('doublon override (audit indisponible): %s', detail)
+
+
+# ── XACC36 — OCR facture fournisseur → brouillon de facture d'achat ─────────
+# L'EXTRACTION vit dans fastapi_ia/ocr_service.py (prompt stock, classe
+# facture_fournisseur/facture_achat). Ce SINK convertit les champs déjà
+# extraits (``donnees_structurees``) en brouillon `FactureFournisseur`, sans
+# jamais inventer un montant absent (champ vide plutôt que faux). Matche le
+# fournisseur par ICE puis par nom (jamais de création silencieuse d'un
+# fournisseur inconnu — l'utilisateur garde la main pour la saisie manuelle).
+
+def match_fournisseur_from_ocr(company, fields):
+    """XACC36 — matche un Fournisseur existant depuis les champs OCR :
+    priorité à l'ICE (identifiant fiable), repli sur le nom exact (insensible
+    à la casse). Renvoie le Fournisseur ou None (jamais de création
+    silencieuse). LECTURE SEULE."""
+    from .models import Fournisseur
+    fields = fields or {}
+    ice = (fields.get('ice') or '').strip()
+    if ice:
+        match = Fournisseur.objects.filter(company=company, ice=ice).first()
+        if match is not None:
+            return match
+    nom = (fields.get('fournisseur') or '').strip()
+    if nom:
+        return Fournisseur.objects.filter(
+            company=company, nom__iexact=nom).first()
+    return None
+
+
+def creer_facture_fournisseur_depuis_ocr(
+        *, company, user, fields, attachment=None,
+        confirmer_malgre_doublon=False):
+    """XACC36 — crée une `FactureFournisseur` BROUILLON depuis les champs OCR.
+
+    ``fields`` = ``donnees_structurees`` OCR (numero/date/fournisseur/ice/
+    date_echeance/montant_ht/montant_tva/montant_ttc/…). Un champ absent reste
+    VIDE (jamais de montant inventé). Lève ValueError si aucun fournisseur ne
+    matche (l'appelant doit alors proposer la saisie manuelle — dégradation
+    propre). Le doublon XPUR11 est vérifié au passage (warning, jamais
+    bloquant sauf refus explicite non demandé ici) ; ``attachment`` (dict de
+    ``records.storage.store_attachment``) est rattaché en pièce jointe si
+    fourni. Renvoie ``(facture, doublons)``."""
+    from datetime import date as _date
+    from .models import FactureFournisseur
+
+    fields = fields or {}
+    fournisseur = match_fournisseur_from_ocr(company, fields)
+    if fournisseur is None:
+        raise ValueError(
+            'Aucun fournisseur trouvé pour ce document (ICE ou nom) — '
+            'saisie manuelle requise.')
+
+    def _num(key):
+        val = fields.get(key)
+        if val is None or val == '':
+            return None
+        try:
+            return Decimal(str(val))
+        except (InvalidOperation, TypeError, ValueError):
+            return None
+
+    def _parsed_date(key):
+        val = fields.get(key)
+        if not val:
+            return None
+        if isinstance(val, _date):
+            return val
+        try:
+            return _date.fromisoformat(str(val)[:10])
+        except ValueError:
+            return None
+
+    date_facture = _parsed_date('date')
+    date_echeance = _parsed_date('date_echeance')
+    montant_ht = _num('montant_ht')
+    montant_tva = _num('montant_tva')
+    montant_ttc = _num('montant_ttc')
+    ref_fournisseur = (fields.get('numero') or '').strip() or None
+
+    doublons = detect_facture_fournisseur_doublon(
+        company, fournisseur_id=fournisseur.id,
+        ref_fournisseur=ref_fournisseur, montant_ttc=montant_ttc,
+        date_facture=date_facture)
+
+    def _save(ref):
+        return FactureFournisseur.objects.create(
+            company=company, reference=ref, fournisseur=fournisseur,
+            ref_fournisseur=ref_fournisseur,
+            date_facture=date_facture, date_echeance=date_echeance,
+            montant_ht=montant_ht or Decimal('0'),
+            montant_tva=montant_tva or Decimal('0'),
+            montant_ttc=montant_ttc or Decimal('0'),
+            created_by=user,
+            note='Brouillon créé automatiquement depuis un scan OCR.',
+        )
+
+    from apps.ventes.utils.references import create_with_reference
+    facture = create_with_reference(FactureFournisseur, 'FF', company, _save)
+
+    if doublons and confirmer_malgre_doublon:
+        log_doublon_override(
+            user=user, instance=facture,
+            detail=(f'Facture fournisseur {facture.reference} créée depuis '
+                    f'OCR malgré {len(doublons)} doublon(s) potentiel(s).'))
+
+    if attachment:
+        try:
+            from django.contrib.contenttypes.models import ContentType
+            from apps.records.models import Attachment
+            Attachment.objects.create(
+                company=company,
+                content_type=ContentType.objects.get_for_model(
+                    FactureFournisseur),
+                object_id=facture.pk,
+                uploaded_by=user,
+                **attachment,
+            )
+        except Exception:  # noqa: BLE001 — la pièce jointe ne casse jamais
+            logger.info(
+                'XACC36: pièce jointe OCR non rattachée à %s',
+                facture.reference)
+
+    return facture, doublons
+
+
+# ── XPUR13 — Garde-fous prix sur la ligne BCF (accords + historique) ────────
+# `ContratPrixFournisseur`/`CommandeCadre` (installations, FG318/FG314)
+# existaient déjà mais rien ne CONTRÔLAIT les prix saisis sur une ligne de
+# BCF. Ces fonctions sont des WARNINGS (jamais bloquantes) : le prix convenu
+# du contrat en vigueur est réutilisé via le sélecteur fin existant
+# `installations.selectors.prix_convenu_fournisseur` (import paresseux —
+# jamais un import de modèles). Comportement historique inchangé quand aucun
+# contrat/historique ne s'applique (pas de warning).
+
+def historique_prix_produit(
+        company, produit_id, *, fournisseur_id=None, limit=20):
+    """XPUR13 — historique des prix d'achat d'un produit, TOUTES SOURCES
+    (lignes de BCF passées, triées de la plus récente à la plus ancienne).
+    Filtrable par fournisseur. INTERNE, LECTURE SEULE."""
+    from .models import LigneBonCommandeFournisseur, BonCommandeFournisseur
+    qs = (LigneBonCommandeFournisseur.objects
+          .filter(bon_commande__company=company, produit_id=produit_id)
+          .exclude(bon_commande__statut=BonCommandeFournisseur.Statut.ANNULE)
+          .select_related('bon_commande', 'bon_commande__fournisseur')
+          .order_by('-bon_commande__date_creation'))
+    if fournisseur_id:
+        qs = qs.filter(bon_commande__fournisseur_id=fournisseur_id)
+    out = []
+    for ligne in qs[:limit]:
+        bc = ligne.bon_commande
+        out.append({
+            'bon_commande_id': bc.id,
+            'reference': bc.reference,
+            'fournisseur_id': bc.fournisseur_id,
+            'fournisseur_nom': (
+                bc.fournisseur.nom if bc.fournisseur_id else None),
+            'date': bc.date_creation,
+            'prix_achat_unitaire': ligne.prix_achat_unitaire,
+            'quantite': ligne.quantite,
+        })
+    return out
+
+
+def prix_moyen_recent_produit(
+        company, produit_id, *, fournisseur_id=None, limit=20):
+    """XPUR13 — prix d'achat moyen sur l'historique récent (même portée que
+    `historique_prix_produit`). Renvoie None si aucun historique. INTERNE."""
+    historique = historique_prix_produit(
+        company, produit_id, fournisseur_id=fournisseur_id, limit=limit)
+    if not historique:
+        return None
+    total = sum((Decimal(str(h['prix_achat_unitaire'])) for h in historique),
+                Decimal('0'))
+    return (total / len(historique)).quantize(Decimal('0.01'))
+
+
+def check_prix_ligne_bcf(
+        company, *, produit_id, fournisseur_id, prix_saisi,
+        a_la_date=None):
+    """XPUR13 — vérifie le prix d'une ligne de BCF avant/à la saisie.
+
+    Renvoie un dict ``{ok, warnings}`` — JAMAIS bloquant (``ok`` est toujours
+    True, les warnings sont informatifs). Deux règles indépendantes :
+    1. Dépassement du prix CONTRACTUEL en vigueur (accord fournisseur×produit,
+       `installations.selectors.prix_convenu_fournisseur`).
+    2. Écart au-delà du seuil société (`AchatsParametres.
+       seuil_deviation_prix_pct`, 0 = désactivé) par rapport au dernier prix/
+       prix moyen (`PrixFournisseur` + historique BCF)."""
+    from .models import AchatsParametres
+
+    prix = _dec(prix_saisi)
+    warnings = []
+    if prix is None:
+        return {'ok': True, 'warnings': warnings}
+
+    # 1. Prix contractuel (accord fournisseur×produit en vigueur).
+    try:
+        from apps.installations.selectors import prix_convenu_fournisseur
+        accord = prix_convenu_fournisseur(
+            company, produit_id, fournisseur_id=fournisseur_id,
+            a_la_date=a_la_date)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        accord = None
+    if accord and accord.get('prix_convenu') is not None:
+        prix_convenu = Decimal(str(accord['prix_convenu']))
+        if prix > prix_convenu:
+            warnings.append({
+                'type': 'hors_contrat',
+                'prix_convenu': prix_convenu,
+                'prix_saisi': prix,
+                'contrat_id': accord.get('contrat_id'),
+                'message': (
+                    f'Le prix saisi ({prix}) dépasse le prix convenu du '
+                    f'contrat en vigueur ({prix_convenu}).'),
+            })
+
+    # 2. Écart vs dernier prix / prix moyen (seuil paramétrable, 0 = off).
+    parametres = AchatsParametres.for_company(company)
+    seuil = parametres.seuil_deviation_prix_pct or Decimal('0')
+    if seuil > 0:
+        moyen = prix_moyen_recent_produit(
+            company, produit_id, fournisseur_id=fournisseur_id)
+        if moyen and moyen > 0:
+            ecart_pct = abs(prix - moyen) / moyen * Decimal('100')
+            if ecart_pct > seuil:
+                warnings.append({
+                    'type': 'ecart_historique',
+                    'prix_moyen': moyen,
+                    'prix_saisi': prix,
+                    'ecart_pct': ecart_pct.quantize(Decimal('0.1')),
+                    'message': (
+                        f'Le prix saisi ({prix}) dévie de '
+                        f'{ecart_pct.quantize(Decimal("0.1"))} %% du prix '
+                        f'moyen récent ({moyen}), au-delà du seuil société '
+                        f'({seuil} %%).'),
+                })
+
+    return {'ok': True, 'warnings': warnings}
+
+
+def rapport_achats_hors_contrat(
+        company, *, fournisseur_id=None, date_debut=None, date_fin=None):
+    """XPUR13 — rapport « achats hors contrat » : lignes de BCF dont le prix
+    saisi dépasse le prix convenu du contrat en vigueur pour ce couple
+    produit×fournisseur, sur la période (optionnelle) et/ou pour un
+    fournisseur donné. INTERNE, LECTURE SEULE."""
+    from .models import LigneBonCommandeFournisseur, BonCommandeFournisseur
+    try:
+        from apps.installations.selectors import prix_convenu_fournisseur
+    except Exception:  # noqa: BLE001 — best-effort
+        return []
+
+    qs = (LigneBonCommandeFournisseur.objects
+          .filter(bon_commande__company=company)
+          .exclude(bon_commande__statut=BonCommandeFournisseur.Statut.ANNULE)
+          .select_related(
+              'bon_commande', 'bon_commande__fournisseur', 'produit'))
+    if fournisseur_id:
+        qs = qs.filter(bon_commande__fournisseur_id=fournisseur_id)
+    if date_debut:
+        qs = qs.filter(bon_commande__date_creation__gte=date_debut)
+    if date_fin:
+        qs = qs.filter(bon_commande__date_creation__lte=date_fin)
+
+    out = []
+    for ligne in qs:
+        bc = ligne.bon_commande
+        try:
+            accord = prix_convenu_fournisseur(
+                company, ligne.produit_id,
+                fournisseur_id=bc.fournisseur_id,
+                a_la_date=bc.date_creation.date() if bc.date_creation
+                else None)
+        except Exception:  # noqa: BLE001 — best-effort
+            accord = None
+        if not accord or accord.get('prix_convenu') is None:
+            continue
+        prix_convenu = Decimal(str(accord['prix_convenu']))
+        if ligne.prix_achat_unitaire > prix_convenu:
+            out.append({
+                'ligne_id': ligne.id,
+                'bon_commande_id': bc.id,
+                'reference': bc.reference,
+                'fournisseur_id': bc.fournisseur_id,
+                'fournisseur_nom': (
+                    bc.fournisseur.nom if bc.fournisseur_id else None),
+                'produit_id': ligne.produit_id,
+                'produit_nom': ligne.produit.nom if ligne.produit_id else None,
+                'date': bc.date_creation,
+                'prix_convenu': prix_convenu,
+                'prix_saisi': ligne.prix_achat_unitaire,
+                'ecart': ligne.prix_achat_unitaire - prix_convenu,
+            })
+    return out
+
+
+# ── XPUR14 — PrixFournisseur enrichi (code article, paliers, validité) ──────
+# Un tarif fournisseur ne portait que prix + date du dernier achat. Ces
+# fonctions résolvent le prix EFFECTIF (bon palier de quantité, tarif non
+# expiré) et fournissent l'import/export xlsx du tarif d'un fournisseur.
+# Comportement historique inchangé : sans palier/dates saisis, le prix de
+# base (`PrixFournisseur.prix_achat`) reste toujours proposé.
+
+def prix_effectif_fournisseur(
+        produit, fournisseur, *, quantite=1, a_la_date=None):
+    """XPUR14 — prix d'achat EFFECTIF pour (produit, fournisseur, quantité) à
+    une date donnée : le palier applicable (qte_min le plus élevé ≤
+    quantité) si des paliers existent, sinon le prix de base. Renvoie None
+    si le tarif est expiré ou introuvable. LECTURE SEULE."""
+    from .models import PrixFournisseur
+    pf = (PrixFournisseur.objects
+          .filter(produit=produit, fournisseur=fournisseur)
+          .prefetch_related('paliers').first())
+    if pf is None:
+        return None
+    if not pf.est_en_vigueur(a_la_date):
+        return None
+    paliers = [p for p in pf.paliers.all() if p.qte_min <= quantite]
+    if paliers:
+        meilleur = max(paliers, key=lambda p: p.qte_min)
+        return meilleur.prix
+    return pf.prix_achat
+
+
+def export_prix_fournisseur_xlsx(company, fournisseur):
+    """XPUR14 — export xlsx du tarif d'un fournisseur (une ligne par produit,
+    paliers concaténés dans une colonne). Réutilise le builder xlsx partagé
+    (records.xlsx). INTERNE."""
+    from apps.records.xlsx import build_xlsx_response
+    from .models import PrixFournisseur
+
+    headers = [
+        'sku', 'produit', 'ref_produit_fournisseur', 'prix_achat',
+        'date_debut', 'date_fin', 'paliers (qte_min:prix;...)',
+    ]
+    rows = []
+    qs = (PrixFournisseur.objects
+          .filter(company=company, fournisseur=fournisseur)
+          .select_related('produit').prefetch_related('paliers')
+          .order_by('produit__nom'))
+    for pf in qs:
+        paliers_str = ';'.join(
+            f'{p.qte_min}:{p.prix}' for p in pf.paliers.all())
+        rows.append([
+            pf.produit.sku or '', pf.produit.nom,
+            pf.ref_produit_fournisseur, pf.prix_achat,
+            pf.date_debut, pf.date_fin, paliers_str,
+        ])
+    filename = f'tarif-{fournisseur.nom}.xlsx'.replace(' ', '-')
+    return build_xlsx_response(
+        filename, headers, rows, sheet_title='Tarif fournisseur')
+
+
+def _parse_palier_cell(value):
+    """XPUR14 — parse la cellule ``paliers`` (« qte_min:prix;qte_min:prix »)
+    en liste de tuples ``(qte_min:int, prix:Decimal)``. Ignore silencieusement
+    les segments malformés (rapport d'erreurs géré par l'appelant)."""
+    out = []
+    for segment in str(value or '').split(';'):
+        segment = segment.strip()
+        if not segment or ':' not in segment:
+            continue
+        qte_raw, prix_raw = segment.split(':', 1)
+        try:
+            qte = int(qte_raw.strip())
+            prix = Decimal(str(prix_raw.strip()))
+        except (InvalidOperation, TypeError, ValueError):
+            continue
+        out.append((qte, prix))
+    return out
+
+
+def import_prix_fournisseur_xlsx(company, fournisseur, file_bytes):
+    """XPUR14 — import/mise à jour du tarif d'un fournisseur depuis un xlsx
+    (même format que l'export). CRÉATION + MISE À JOUR par SKU — jamais de
+    suppression silencieuse (un produit absent du fichier garde son tarif
+    existant). Renvoie ``{created, updated, errors: [{row, message}]}``.
+    INTERNE."""
+    import io
+    from openpyxl import load_workbook
+    from .models import PrixFournisseur, PalierPrixFournisseur, Produit
+
+    wb = load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+    ws = wb.active
+    rows_iter = ws.iter_rows(values_only=True)
+    header = [str(h or '').strip().lower() for h in next(rows_iter, [])]
+
+    def _col(name):
+        return header.index(name) if name in header else None
+
+    idx_sku = _col('sku')
+    idx_ref = _col('ref_produit_fournisseur')
+    idx_prix = _col('prix_achat')
+    idx_debut = _col('date_debut')
+    idx_fin = _col('date_fin')
+    idx_paliers = None
+    for i, h in enumerate(header):
+        if h.startswith('paliers'):
+            idx_paliers = i
+            break
+
+    created = 0
+    updated = 0
+    errors = []
+    if idx_sku is None or idx_prix is None:
+        errors.append({
+            'row': 1,
+            'message': "Colonnes requises manquantes ('sku', 'prix_achat').",
+        })
+        return {'created': 0, 'updated': 0, 'errors': errors}
+
+    for row_num, row in enumerate(rows_iter, start=2):
+        sku = str(row[idx_sku] or '').strip() if idx_sku < len(row) else ''
+        if not sku:
+            continue
+        produit = Produit.objects.filter(company=company, sku=sku).first()
+        if produit is None:
+            errors.append({
+                'row': row_num,
+                'message': f'SKU introuvable : {sku}.',
+            })
+            continue
+        prix_raw = row[idx_prix] if idx_prix < len(row) else None
+        prix = _dec(prix_raw)
+        if prix is None:
+            errors.append({
+                'row': row_num,
+                'message': f'Prix invalide pour {sku} : {prix_raw!r}.',
+            })
+            continue
+
+        defaults = {'company': company, 'prix_achat': prix}
+        if idx_ref is not None and idx_ref < len(row):
+            defaults['ref_produit_fournisseur'] = str(row[idx_ref] or '')
+        if idx_debut is not None and idx_debut < len(row):
+            defaults['date_debut'] = row[idx_debut] or None
+        if idx_fin is not None and idx_fin < len(row):
+            defaults['date_fin'] = row[idx_fin] or None
+
+        pf, was_created = PrixFournisseur.objects.get_or_create(
+            produit=produit, fournisseur=fournisseur, defaults=defaults)
+        if not was_created:
+            for key, val in defaults.items():
+                setattr(pf, key, val)
+            pf.save(update_fields=list(defaults.keys()))
+            updated += 1
+        else:
+            created += 1
+
+        if idx_paliers is not None and idx_paliers < len(row):
+            paliers = _parse_palier_cell(row[idx_paliers])
+            for qte_min, palier_prix in paliers:
+                PalierPrixFournisseur.objects.update_or_create(
+                    prix_fournisseur=pf, qte_min=qte_min,
+                    defaults={'prix': palier_prix})
+
+    return {'created': created, 'updated': updated, 'errors': errors}
+
+
+# ── XPUR18 — Révision de BCF tracée + ré-approbation ────────────────────────
+# Un BCF ENVOYE se modifiait silencieusement (aucun historique d'amendement).
+# `reviser_bcf` est le SEUL chemin pour modifier lignes/montants/dates après
+# l'envoi : chaque changement est journalisé (records.Comment, ancien→nouveau,
+# horodaté, utilisateur), le compteur `revision` avance, et une hausse du
+# montant au-delà du seuil FG312 invalide l'approbation existante (ré-exige
+# une nouvelle approbation — best-effort, cohérent avec YPROC4 même si le
+# gate d'envoi n'est pas encore câblé côté stock).
+
+_LIGNE_CHAMPS_SUIVIS = (
+    'quantite', 'prix_achat_unitaire', 'designation',
+)
+_BCF_CHAMPS_SUIVIS = (
+    'date_commande', 'date_livraison_prevue', 'note',
+)
+
+
+def _log_revision_change(company, bc, user, lines):
+    """XPUR18 — écrit UNE entrée `records.Comment` regroupant tous les
+    changements d'une révision (best-effort, jamais bloquant)."""
+    if not lines:
+        return
+    try:
+        from django.contrib.contenttypes.models import ContentType
+        from apps.records.models import Comment
+        from .models import BonCommandeFournisseur
+        body = f'Révision {bc.revision} :\n' + '\n'.join(lines)
+        Comment.objects.create(
+            company=company,
+            content_type=ContentType.objects.get_for_model(
+                BonCommandeFournisseur),
+            object_id=bc.pk,
+            body=body,
+            author=user,
+        )
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.info('XPUR18: révision non journalisée pour BCF %s', bc.pk)
+
+
+def _invalidate_approbation_si_hausse(company, bc, montant_avant, montant_apres):
+    """XPUR18 — si le montant du BCF a AUGMENTÉ au-delà du seuil d'approbation
+    en vigueur (FG312), supprime l'approbation existante pour qu'une nouvelle
+    approbation soit exigée avant un nouvel envoi. Best-effort (import
+    paresseux — jamais un import direct de modèles installations) ; no-op si
+    installations est absent ou si aucun seuil n'est configuré (comportement
+    historique préservé)."""
+    if montant_apres <= montant_avant:
+        return False
+    try:
+        from apps.installations.models_approbation_bcf import (
+            ApprobationBCF, SeuilApprobationBCF,
+        )
+        seuil = SeuilApprobationBCF.objects.filter(
+            company=company, actif=True).first()
+        if seuil is None:
+            return False
+        palier_avant = seuil.palier_requis(montant_avant)
+        palier_apres = seuil.palier_requis(montant_apres)
+        approbation = ApprobationBCF.objects.filter(
+            company=company, bcf=bc).first()
+        # La hausse invalide l'approbation si elle dépasse le montant déjà
+        # approuvé, OU si elle fait franchir un palier plus strict.
+        if approbation is not None and (
+                montant_apres > approbation.montant_approuve
+                or palier_apres != palier_avant):
+            approbation.delete()
+            return True
+        return False
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        return False
+
+
+def reviser_bcf(
+        company, user, bc, *, lignes=None, date_commande=None,
+        date_livraison_prevue=None, note=None):
+    """XPUR18 — révise un BCF déjà ENVOYE : SEUL chemin de modification des
+    lignes/montants/dates après envoi. Journalise chaque changement
+    (ancien→nouveau), incrémente `revision`, ré-exige une approbation FG312
+    si le montant augmente au-delà du seuil en vigueur. Lève ValueError si le
+    BCF est en brouillon/reçu/annulé (rien à réviser — utiliser l'édition
+    normale ou c'est déjà figé)."""
+    from .models import BonCommandeFournisseur
+
+    if bc.statut not in (
+        BonCommandeFournisseur.Statut.ENVOYE,
+        BonCommandeFournisseur.Statut.RECU,
+    ):
+        raise ValueError(
+            'Seul un BCF envoyé (ou partiellement reçu) peut être révisé.')
+
+    montant_avant = bc.total_achat
+    changements = []
+
+    # ── En-tête (date_commande / date_livraison_prevue / note) ─────────────
+    for champ, nouvelle_valeur in (
+        ('date_commande', date_commande),
+        ('date_livraison_prevue', date_livraison_prevue),
+        ('note', note),
+    ):
+        if nouvelle_valeur is None:
+            continue
+        ancienne = getattr(bc, champ)
+        if str(ancienne) != str(nouvelle_valeur):
+            changements.append(
+                f'{champ} : {ancienne!r} → {nouvelle_valeur!r}')
+            setattr(bc, champ, nouvelle_valeur)
+
+    # ── Lignes (quantité, prix, désignation) ────────────────────────────────
+    if lignes is not None:
+        existantes = {ligne.id: ligne for ligne in bc.lignes.all()}
+        for ligne_data in lignes:
+            ligne_id = ligne_data.get('id')
+            ligne = existantes.get(ligne_id)
+            if ligne is None:
+                continue
+            for champ in _LIGNE_CHAMPS_SUIVIS:
+                if champ not in ligne_data:
+                    continue
+                ancienne = getattr(ligne, champ)
+                nouvelle = ligne_data[champ]
+                if str(ancienne) != str(nouvelle):
+                    changements.append(
+                        f'Ligne {ligne_id} — {champ} : '
+                        f'{ancienne!r} → {nouvelle!r}')
+                    setattr(ligne, champ, nouvelle)
+            ligne.save()
+
+    if not changements:
+        return bc, False
+
+    bc.revision += 1
+    bc.save()
+    bc.refresh_from_db()
+    montant_apres = bc.total_achat
+
+    _log_revision_change(company, bc, user, changements)
+    reapprobation_requise = _invalidate_approbation_si_hausse(
+        company, bc, montant_avant, montant_apres)
+
+    return bc, reapprobation_requise
+
+
+# ── XPUR22 — Portail fournisseur lecture seule + confirmation d'arrivée ─────
+# Page publique tokenisée PAR FOURNISSEUR (pas par document — un seul jeton
+# donne accès à TOUS les documents DE CE fournisseur, jamais ceux d'un
+# autre). Le fournisseur peut CONFIRMER un BCF et proposer une date
+# d'arrivée : remplit `date_confirmee_fournisseur` (XPUR7) en préservant la
+# date DEMANDÉE d'origine (`date_livraison_prevue`, jamais écrasée — OTD).
+
+def generer_token_portail_fournisseur(company, fournisseur, user=None):
+    """XPUR22 — génère (et renvoie) un nouveau jeton portail pour ce
+    fournisseur. Les jetons précédents ne sont PAS révoqués automatiquement
+    (l'admin peut vouloir plusieurs jetons actifs, ex. par contact) — la
+    révocation est une action explicite (`revoquer_token_portail_fournisseur`)."""
+    from .models import PortailFournisseurToken
+    return PortailFournisseurToken.objects.create(
+        company=company, fournisseur=fournisseur, created_by=user)
+
+
+def revoquer_token_portail_fournisseur(token_obj):
+    """XPUR22 — révoque un jeton (le lien cesse immédiatement de fonctionner,
+    aucune suppression — traçabilité conservée)."""
+    token_obj.revoked = True
+    token_obj.save(update_fields=['revoked'])
+    return token_obj
+
+
+def resoudre_token_portail_fournisseur(token):
+    """XPUR22 — résout un jeton portail valide (non révoqué, non expiré) et
+    renvoie son ``PortailFournisseurToken`` (avec `fournisseur` préchargé),
+    ou None. LECTURE SEULE — l'appelant public doit toujours passer par
+    cette fonction plutôt que directement par le modèle."""
+    from .models import PortailFournisseurToken
+    token_obj = (PortailFournisseurToken.objects
+                 .select_related('fournisseur', 'company')
+                 .filter(token=token).first())
+    if token_obj is None or not token_obj.est_valide:
+        return None
+    return token_obj
+
+
+def portail_fournisseur_documents(token_obj):
+    """XPUR22 — documents du fournisseur porteur de ce jeton : SES BCF en
+    cours (référence, lignes, statut, date prévue), SES réceptions et SES
+    factures avec statut de paiement. Isolation stricte : jamais les
+    documents d'un autre fournisseur, jamais de marge (prix d'achat exposé —
+    légitime, c'est ce que CE fournisseur nous vend). LECTURE SEULE."""
+    from .models import BonCommandeFournisseur, ReceptionFournisseur
+
+    fournisseur = token_obj.fournisseur
+    company = token_obj.company
+
+    bcf_qs = (BonCommandeFournisseur.objects
+              .filter(company=company, fournisseur=fournisseur)
+              .exclude(statut=BonCommandeFournisseur.Statut.ANNULE)
+              .prefetch_related('lignes__produit')
+              .order_by('-date_creation'))
+    bcf_data = []
+    for bc in bcf_qs:
+        bcf_data.append({
+            'id': bc.id,
+            'reference': bc.reference,
+            'statut': bc.statut,
+            'statut_display': bc.get_statut_display(),
+            'date_commande': bc.date_commande,
+            'date_livraison_prevue': bc.date_livraison_prevue,
+            'date_confirmee_fournisseur': bc.date_confirmee_fournisseur,
+            'lignes': [
+                {
+                    'produit_nom': (
+                        ligne.produit.nom if ligne.produit_id
+                        else ligne.designation),
+                    'quantite': ligne.quantite,
+                    'quantite_recue': ligne.quantite_recue,
+                }
+                for ligne in bc.lignes.all()
+            ],
+        })
+
+    receptions = (ReceptionFournisseur.objects
+                  .filter(company=company,
+                          bon_commande__fournisseur=fournisseur)
+                  .select_related('bon_commande')
+                  .order_by('-date_creation'))
+    receptions_data = [{
+        'id': r.id, 'reference': r.reference,
+        'bon_commande_reference': (
+            r.bon_commande.reference if r.bon_commande_id else None),
+        'statut': r.statut, 'date_reception': r.date_reception,
+    } for r in receptions]
+
+    factures = factures_sous_traitant_qs_generique(company, fournisseur)
+
+    return {
+        'fournisseur_nom': fournisseur.nom,
+        'bons_commande': bcf_data,
+        'receptions': receptions_data,
+        'factures': factures,
+    }
+
+
+def factures_sous_traitant_qs_generique(company, fournisseur):
+    """XPUR22 — factures fournisseur (montants d'achat DE CE fournisseur
+    uniquement) + statut de paiement, pour le portail public. LECTURE
+    SEULE."""
+    from .models import FactureFournisseur
+    qs = (FactureFournisseur.objects
+          .filter(company=company, fournisseur=fournisseur)
+          .order_by('-date_creation'))
+    return [{
+        'id': f.id, 'reference': f.reference,
+        'date_facture': f.date_facture, 'date_echeance': f.date_echeance,
+        'montant_ttc': f.montant_ttc, 'statut': f.statut,
+        'statut_display': f.get_statut_display(),
+        'solde_du': f.solde_du,
+    } for f in qs]
+
+
+def confirmer_bcf_portail_fournisseur(
+        token_obj, bcf_id, *, date_confirmee, numero_confirmation=''):
+    """XPUR22 — le fournisseur confirme un BCF et propose une date
+    d'arrivée depuis le portail public. Réutilise EXACTEMENT la même
+    sémantique que l'action interne `confirmer` (XPUR7) : la date DEMANDÉE
+    d'origine (`date_livraison_prevue`) n'est jamais écrasée (préserve
+    l'OTD). Isolation stricte : le BCF DOIT appartenir au fournisseur
+    porteur du jeton, sinon lève ValueError (jamais d'accès croisé)."""
+    from .models import BonCommandeFournisseur
+
+    bc = BonCommandeFournisseur.objects.filter(
+        pk=bcf_id, company=token_obj.company,
+        fournisseur=token_obj.fournisseur).first()
+    if bc is None:
+        raise ValueError(
+            "Ce bon de commande n'appartient pas à ce fournisseur.")
+    bc.date_confirmee_fournisseur = date_confirmee
+    bc.numero_confirmation_fournisseur = numero_confirmation or ''
+    bc.save(update_fields=[
+        'date_confirmee_fournisseur', 'numero_confirmation_fournisseur'])
+
+    from django.utils import timezone
+    token_obj.last_used_at = timezone.now()
+    token_obj.save(update_fields=['last_used_at'])
+
+    notify_bcf_confirmation_fournisseur(bc)
+    return bc
+
+
+def notify_bcf_confirmation_fournisseur(bc):
+    """XPUR22 — notifie (best-effort) le créateur du BCF que le fournisseur
+    vient de confirmer une date d'arrivée depuis le portail public.
+
+    Utilise le système de notifications in-app existant (`apps.notifications
+    .services.notify`, `EventType.APPROVAL_DECIDED` — l'événement générique
+    « décision actée » le plus proche, aucun nouveau type ajouté à une autre
+    app) ET journalise dans le chatter (`records.Comment`) du BCF pour une
+    trace consultable depuis sa fiche. Best-effort total : un échec des deux
+    canaux ne casse jamais la confirmation elle-même."""
+    if bc.created_by_id is not None:
+        try:
+            from apps.notifications.services import notify
+            from apps.notifications.models import EventType
+            notify(
+                bc.created_by, EventType.APPROVAL_DECIDED,
+                title='Confirmation fournisseur',
+                body=(
+                    f'{bc.fournisseur.nom} a confirmé le BCF {bc.reference} '
+                    f'pour le {bc.date_confirmee_fournisseur}.'),
+                company=bc.company,
+            )
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.info(
+                'XPUR22: notification confirmation BCF %s non envoyée',
+                bc.pk)
+    try:
+        from django.contrib.contenttypes.models import ContentType
+        from apps.records.models import Comment
+        from .models import BonCommandeFournisseur
+        Comment.objects.create(
+            company=bc.company,
+            content_type=ContentType.objects.get_for_model(
+                BonCommandeFournisseur),
+            object_id=bc.pk,
+            body=(
+                f'{bc.fournisseur.nom} a confirmé une date d\'arrivée '
+                f'({bc.date_confirmee_fournisseur}) via le portail '
+                'fournisseur.'),
+            author=None,
+        )
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        pass
+
+
+# ── XPUR24 — Tableau de bord achats (analyse des dépenses) ──────────────────
+# FG59 note UN fournisseur (scorecard) et FG132 vieillit les dettes (balance
+# âgée), mais aucune vue TRANSVERSE des achats n'existait. Admin/responsable
+# UNIQUEMENT — jamais client-facing (prix d'achat/marge INTERNES). Agrège 5
+# blocs depuis des données RÉELLES multi-mois : dépenses par fournisseur/
+# catégorie/mois, dérive de prix moyen par SKU, engagements ouverts, top
+# produits achetés, temps de cycle du processus d'achat.
+
+def _mois_key(dt):
+    """Clé de regroupement mensuel stable (YYYY-MM) depuis une date/datetime."""
+    return dt.strftime('%Y-%m') if dt else 'inconnu'
+
+
+def depenses_achats_par_periode(company, *, date_debut=None, date_fin=None):
+    """XPUR24 — dépenses HT par (fournisseur, catégorie, mois) sur la
+    période, dérivées des lignes de BCF (montant réellement engagé — pas
+    seulement facturé). LECTURE SEULE, INTERNE."""
+    from .models import LigneBonCommandeFournisseur, BonCommandeFournisseur
+
+    qs = (LigneBonCommandeFournisseur.objects
+          .filter(bon_commande__company=company)
+          .exclude(bon_commande__statut=BonCommandeFournisseur.Statut.ANNULE)
+          .select_related(
+              'bon_commande', 'bon_commande__fournisseur',
+              'produit', 'produit__categorie'))
+    if date_debut:
+        qs = qs.filter(bon_commande__date_creation__gte=date_debut)
+    if date_fin:
+        qs = qs.filter(bon_commande__date_creation__lte=date_fin)
+
+    par_fournisseur = {}
+    par_categorie = {}
+    par_mois = {}
+    for ligne in qs:
+        bc = ligne.bon_commande
+        total = ligne.total_achat
+        mois = _mois_key(bc.date_creation)
+        fournisseur_nom = bc.fournisseur.nom if bc.fournisseur_id else '—'
+        categorie_nom = (
+            ligne.produit.categorie.nom
+            if ligne.produit_id and ligne.produit.categorie_id else '—')
+
+        par_fournisseur[fournisseur_nom] = (
+            par_fournisseur.get(fournisseur_nom, Decimal('0')) + total)
+        par_categorie[categorie_nom] = (
+            par_categorie.get(categorie_nom, Decimal('0')) + total)
+        par_mois[mois] = par_mois.get(mois, Decimal('0')) + total
+
+    return {
+        'par_fournisseur': [
+            {'fournisseur': k, 'total_ht': v}
+            for k, v in sorted(
+                par_fournisseur.items(), key=lambda kv: kv[1], reverse=True)
+        ],
+        'par_categorie': [
+            {'categorie': k, 'total_ht': v}
+            for k, v in sorted(
+                par_categorie.items(), key=lambda kv: kv[1], reverse=True)
+        ],
+        'par_mois': [
+            {'mois': k, 'total_ht': v}
+            for k, v in sorted(par_mois.items(), key=lambda kv: kv[0])
+        ],
+    }
+
+
+def derive_prix_moyen_par_sku(company, *, nb_mois=6):
+    """XPUR24 — prix d'achat moyen PAR MOIS pour chaque SKU sur les
+    `nb_mois` derniers mois (détection de dérive) : renvoie
+    ``[{produit_id, produit_nom, sku, series: [{mois, prix_moyen}]}]``
+    trié par plus grande dérive (dernier mois vs premier mois) décroissante.
+    LECTURE SEULE, INTERNE."""
+    from datetime import timedelta
+    from django.utils import timezone
+    from .models import LigneBonCommandeFournisseur, BonCommandeFournisseur
+
+    depuis = timezone.now() - timedelta(days=31 * nb_mois)
+    qs = (LigneBonCommandeFournisseur.objects
+          .filter(bon_commande__company=company,
+                  bon_commande__date_creation__gte=depuis)
+          .exclude(bon_commande__statut=BonCommandeFournisseur.Statut.ANNULE)
+          .exclude(produit__isnull=True)
+          .select_related('bon_commande', 'produit'))
+
+    par_produit = {}
+    for ligne in qs:
+        pid = ligne.produit_id
+        mois = _mois_key(ligne.bon_commande.date_creation)
+        entry = par_produit.setdefault(pid, {
+            'produit_id': pid, 'produit_nom': ligne.produit.nom,
+            'sku': ligne.produit.sku, 'par_mois': {},
+        })
+        bucket = entry['par_mois'].setdefault(mois, [])
+        bucket.append(ligne.prix_achat_unitaire)
+
+    out = []
+    for entry in par_produit.values():
+        series = [
+            {'mois': mois, 'prix_moyen': (
+                sum(prix, Decimal('0')) / len(prix)).quantize(Decimal('0.01'))}
+            for mois, prix in sorted(entry['par_mois'].items())
+        ]
+        derive = (
+            series[-1]['prix_moyen'] - series[0]['prix_moyen']
+            if len(series) >= 2 else Decimal('0'))
+        out.append({
+            'produit_id': entry['produit_id'],
+            'produit_nom': entry['produit_nom'],
+            'sku': entry['sku'],
+            'series': series,
+            'derive': derive,
+        })
+    out.sort(key=lambda e: abs(e['derive']), reverse=True)
+    return out
+
+
+def engagements_ouverts_achats(company):
+    """XPUR24 — engagements ouverts : BCF ENVOYÉS non entièrement reçus
+    (montant restant dû = commandé − reçu, jamais négatif). LECTURE SEULE,
+    INTERNE."""
+    from .models import BonCommandeFournisseur
+    from .selectors import montant_commande_bcf, montant_recu_bcf
+
+    qs = (BonCommandeFournisseur.objects
+          .filter(company=company,
+                  statut=BonCommandeFournisseur.Statut.ENVOYE)
+          .select_related('fournisseur')
+          .prefetch_related('lignes'))
+    out = []
+    total = Decimal('0')
+    for bc in qs:
+        commande = montant_commande_bcf(bc)
+        recu = montant_recu_bcf(bc)
+        reste = max(commande - recu, Decimal('0'))
+        if reste <= 0:
+            continue
+        total += reste
+        out.append({
+            'bon_commande_id': bc.id,
+            'reference': bc.reference,
+            'fournisseur_nom': (
+                bc.fournisseur.nom if bc.fournisseur_id else None),
+            'date_commande': bc.date_commande,
+            'montant_commande': commande,
+            'montant_recu': recu,
+            'montant_restant': reste,
+        })
+    out.sort(key=lambda e: e['montant_restant'], reverse=True)
+    return {'lignes': out, 'total_engage': total}
+
+
+def top_produits_achetes(
+        company, *, limit=20, date_debut=None, date_fin=None):
+    """XPUR24 — top produits achetés (quantité + montant HT), toutes
+    commandes (hors annulées), sur la période optionnelle. LECTURE SEULE,
+    INTERNE."""
+    from .models import LigneBonCommandeFournisseur, BonCommandeFournisseur
+
+    qs = (LigneBonCommandeFournisseur.objects
+          .filter(bon_commande__company=company)
+          .exclude(bon_commande__statut=BonCommandeFournisseur.Statut.ANNULE)
+          .exclude(produit__isnull=True)
+          .select_related('bon_commande', 'produit'))
+    if date_debut:
+        qs = qs.filter(bon_commande__date_creation__gte=date_debut)
+    if date_fin:
+        qs = qs.filter(bon_commande__date_creation__lte=date_fin)
+
+    par_produit = {}
+    for ligne in qs:
+        pid = ligne.produit_id
+        entry = par_produit.setdefault(pid, {
+            'produit_id': pid, 'produit_nom': ligne.produit.nom,
+            'sku': ligne.produit.sku, 'quantite_totale': 0,
+            'montant_total': Decimal('0'),
+        })
+        entry['quantite_totale'] += ligne.quantite
+        entry['montant_total'] += ligne.total_achat
+
+    out = sorted(
+        par_produit.values(), key=lambda e: e['montant_total'], reverse=True)
+    return out[:limit]
+
+
+def temps_cycle_achats(company, *, date_debut=None, date_fin=None):
+    """XPUR24 — temps de cycle du processus d'achat, par BCF : BCF créé →
+    première réception confirmée → première facture. Le segment DA→BCF
+    (demande d'achat) reste ``None`` tant que YPROC5 (conversion DA→BCF
+    tracée) n'est pas câblé — dégradation propre, jamais une erreur.
+    Renvoie les moyennes en JOURS (arrondies) + le détail par BCF. LECTURE
+    SEULE, INTERNE."""
+    from .models import (
+        BonCommandeFournisseur, ReceptionFournisseur, FactureFournisseur,
+    )
+
+    qs = (BonCommandeFournisseur.objects
+          .filter(company=company)
+          .exclude(statut=BonCommandeFournisseur.Statut.ANNULE)
+          .select_related('fournisseur'))
+    if date_debut:
+        qs = qs.filter(date_creation__gte=date_debut)
+    if date_fin:
+        qs = qs.filter(date_creation__lte=date_fin)
+
+    details = []
+    delais_bcf_reception = []
+    delais_reception_facture = []
+    for bc in qs:
+        premiere_reception = (
+            ReceptionFournisseur.objects
+            .filter(bon_commande=bc, statut='confirme')
+            .order_by('date_creation').first())
+        premiere_facture = (
+            FactureFournisseur.objects.filter(bon_commande=bc)
+            .order_by('date_creation').first())
+
+        jours_bcf_reception = None
+        if premiere_reception is not None:
+            jours_bcf_reception = (
+                premiere_reception.date_creation - bc.date_creation).days
+            delais_bcf_reception.append(jours_bcf_reception)
+
+        jours_reception_facture = None
+        if premiere_reception is not None and premiere_facture is not None:
+            jours_reception_facture = (
+                premiere_facture.date_creation
+                - premiere_reception.date_creation).days
+            delais_reception_facture.append(jours_reception_facture)
+
+        details.append({
+            'bon_commande_id': bc.id,
+            'reference': bc.reference,
+            'jours_da_vers_bcf': None,  # YPROC5 non câblé — dégradation propre.
+            'jours_bcf_vers_reception': jours_bcf_reception,
+            'jours_reception_vers_facture': jours_reception_facture,
+        })
+
+    def _moyenne(valeurs):
+        return round(sum(valeurs) / len(valeurs), 1) if valeurs else None
+
+    return {
+        'moyenne_jours_da_vers_bcf': None,
+        'moyenne_jours_bcf_vers_reception': _moyenne(delais_bcf_reception),
+        'moyenne_jours_reception_vers_facture': _moyenne(
+            delais_reception_facture),
+        'details': details,
+    }
+
+
+def analyse_achats_dashboard(
+        company, *, date_debut=None, date_fin=None, nb_mois=6):
+    """XPUR24 — agrège les 5 blocs du tableau de bord achats en un seul
+    appel (utilisé par l'endpoint ET par l'export xlsx — jamais recalculé
+    deux fois différemment). LECTURE SEULE, INTERNE."""
+    return {
+        'depenses': depenses_achats_par_periode(
+            company, date_debut=date_debut, date_fin=date_fin),
+        'derive_prix': derive_prix_moyen_par_sku(company, nb_mois=nb_mois),
+        'engagements_ouverts': engagements_ouverts_achats(company),
+        'top_produits': top_produits_achetes(
+            company, date_debut=date_debut, date_fin=date_fin),
+        'temps_cycle': temps_cycle_achats(
+            company, date_debut=date_debut, date_fin=date_fin),
+    }
+
+
+def export_analyse_achats_xlsx(
+        company, *, date_debut=None, date_fin=None, nb_mois=6):
+    """XPUR24 — export xlsx du tableau de bord achats (une feuille par bloc
+    seraient idéales, mais `build_xlsx_response` ne gère qu'une feuille —
+    on exporte donc la vue la plus actionnable : dépenses par fournisseur
+    + top produits + engagements ouverts, concaténés avec des séparateurs de
+    section). Réutilise le builder xlsx partagé (records.xlsx)."""
+    from apps.records.xlsx import build_xlsx_response
+    data = analyse_achats_dashboard(
+        company, date_debut=date_debut, date_fin=date_fin, nb_mois=nb_mois)
+
+    headers = ['section', 'libelle', 'valeur_1', 'valeur_2']
+    rows = []
+    for e in data['depenses']['par_fournisseur']:
+        rows.append(['Dépenses par fournisseur', e['fournisseur'],
+                     e['total_ht'], ''])
+    for e in data['depenses']['par_categorie']:
+        rows.append(['Dépenses par catégorie', e['categorie'],
+                     e['total_ht'], ''])
+    for e in data['depenses']['par_mois']:
+        rows.append(['Dépenses par mois', e['mois'], e['total_ht'], ''])
+    for e in data['top_produits']:
+        rows.append(['Top produits', e['produit_nom'],
+                     e['quantite_totale'], e['montant_total']])
+    for e in data['engagements_ouverts']['lignes']:
+        rows.append(['Engagements ouverts', e['reference'],
+                     e['fournisseur_nom'], e['montant_restant']])
+
+    return build_xlsx_response(
+        'analyse-achats.xlsx', headers, rows, sheet_title='Analyse achats')
+
+
+# ── XPUR26 — e-facturation DGI 2026, réception ENTRANTE (préparation mandat)
+# Parseur stdlib (xml.etree) d'un fichier UBL 2.1 Invoice : AUCUN appel
+# externe, AUCUNE dépendance nouvelle. La validation plateforme DGI réelle
+# attendra le mandat — ici on ne fait que produire une FactureFournisseur
+# BROUILLON pré-remplie. Total no-op quand
+# `AchatsParametres.einvoicing_entrant_actif` est OFF (défaut).
+_UBL_NS = {
+    'inv': 'urn:oasis:names:specification:ubl:schema:xsd:Invoice-2',
+    'cac': 'urn:oasis:names:specification:ubl:schema:xsd:'
+           'CommonAggregateComponents-2',
+    'cbc': 'urn:oasis:names:specification:ubl:schema:xsd:'
+           'CommonBasicComponents-2',
+}
+
+
+def parse_ubl_invoice(xml_bytes):
+    """XPUR26 — parse un fichier UBL 2.1 Invoice (stdlib xml.etree, jamais
+    d'appel réseau). Renvoie un dict de champs :
+    ``numero``, ``date_facture``, ``date_echeance``, ``ice_fournisseur``,
+    ``nom_fournisseur``, ``montant_ht``, ``montant_tva``, ``montant_ttc``,
+    ``numero_clearance_dgi``, ``lignes`` (liste de
+    ``{designation, quantite, prix_unitaire_ht, taux_tva}``).
+    Lève ``ValueError`` si le XML est illisible ou n'est pas une facture UBL
+    reconnaissable (jamais de valeur inventée pour un champ absent)."""
+    import xml.etree.ElementTree as ET
+
+    try:
+        root = ET.fromstring(xml_bytes)
+    except ET.ParseError as exc:
+        raise ValueError(f'Fichier UBL illisible : {exc}') from exc
+
+    def _find(elem, path):
+        return elem.find(path, _UBL_NS)
+
+    def _text(elem, path):
+        node = _find(elem, path)
+        return node.text.strip() if node is not None and node.text else None
+
+    numero = _text(root, 'cbc:ID')
+    if not numero:
+        raise ValueError(
+            "Fichier UBL invalide : identifiant de facture (cbc:ID) absent.")
+    date_facture = _text(root, 'cbc:IssueDate')
+    date_echeance = _text(root, 'cbc:DueDate')
+    numero_clearance_dgi = (
+        _text(root, 'cbc:UUID') or _text(root, 'cbc:LineID'))
+
+    supplier_party = _find(
+        root, 'cac:AccountingSupplierParty/cac:Party')
+    ice_fournisseur = None
+    nom_fournisseur = None
+    if supplier_party is not None:
+        nom_fournisseur = _text(
+            supplier_party, 'cac:PartyName/cbc:Name') or _text(
+            supplier_party,
+            'cac:PartyLegalEntity/cbc:RegistrationName')
+        for scheme in supplier_party.findall(
+                'cac:PartyTaxScheme', _UBL_NS) or []:
+            company_id = _text(scheme, 'cbc:CompanyID')
+            if company_id:
+                ice_fournisseur = company_id
+                break
+        if not ice_fournisseur:
+            ice_fournisseur = _text(
+                supplier_party,
+                'cac:PartyLegalEntity/cbc:CompanyID')
+
+    def _dec_text(elem, path):
+        val = _text(elem, path)
+        if val is None:
+            return None
+        try:
+            return Decimal(val)
+        except (InvalidOperation, TypeError, ValueError):
+            return None
+
+    montant_ht = _dec_text(
+        root, 'cac:LegalMonetaryTotal/cbc:TaxExclusiveAmount')
+    montant_ttc = _dec_text(
+        root, 'cac:LegalMonetaryTotal/cbc:TaxInclusiveAmount')
+    montant_tva = _dec_text(root, 'cac:TaxTotal/cbc:TaxAmount')
+    if montant_tva is None and montant_ht is not None \
+            and montant_ttc is not None:
+        montant_tva = montant_ttc - montant_ht
+
+    lignes = []
+    for line in root.findall('cac:InvoiceLine', _UBL_NS) or []:
+        designation = _text(
+            line, 'cac:Item/cbc:Name') or _text(line, 'cbc:Note') or ''
+        quantite = _dec_text(line, 'cbc:InvoicedQuantity') or Decimal('1')
+        prix_unitaire_ht = _dec_text(line, 'cac:Price/cbc:PriceAmount')
+        if prix_unitaire_ht is None:
+            total_ligne = _dec_text(line, 'cbc:LineExtensionAmount')
+            prix_unitaire_ht = (
+                (total_ligne / quantite)
+                if total_ligne is not None and quantite else Decimal('0'))
+        taux_tva = _dec_text(
+            line, 'cac:Item/cac:ClassifiedTaxCategory/cbc:Percent')
+        lignes.append({
+            'designation': designation,
+            'quantite': quantite,
+            'prix_unitaire_ht': prix_unitaire_ht or Decimal('0'),
+            'taux_tva': taux_tva,
+        })
+
+    return {
+        'numero': numero,
+        'date_facture': date_facture,
+        'date_echeance': date_echeance,
+        'ice_fournisseur': ice_fournisseur,
+        'nom_fournisseur': nom_fournisseur,
+        'montant_ht': montant_ht,
+        'montant_tva': montant_tva,
+        'montant_ttc': montant_ttc,
+        'numero_clearance_dgi': numero_clearance_dgi,
+        'lignes': lignes,
+    }
+
+
+def creer_facture_fournisseur_depuis_ubl(*, company, user, xml_bytes):
+    """XPUR26 — crée une `FactureFournisseur` BROUILLON depuis un fichier UBL
+    2.1 (fournisseur matché par ICE — réutilise `match_fournisseur_from_ocr`
+    XACC36 —, lignes, taux TVA, référence). Statut de conformité DGI posé à
+    `cleared` si un numéro de clearance est présent dans le document, sinon
+    `non_cleared` (aucune validation plateforme réelle : préparation mandat
+    uniquement). Lève ValueError si aucun fournisseur ne matche ou le XML est
+    invalide. Renvoie la facture créée."""
+    from datetime import date as _date
+    from .models import FactureFournisseur, LigneFactureFournisseur
+
+    fields = parse_ubl_invoice(xml_bytes)
+
+    fournisseur = match_fournisseur_from_ocr(company, {
+        'ice': fields.get('ice_fournisseur'),
+        'fournisseur': fields.get('nom_fournisseur'),
+    })
+    if fournisseur is None:
+        raise ValueError(
+            'Aucun fournisseur trouvé pour ce document UBL (ICE ou nom) — '
+            'saisie manuelle requise.')
+
+    def _parsed_date(val):
+        if not val:
+            return None
+        try:
+            return _date.fromisoformat(str(val)[:10])
+        except ValueError:
+            return None
+
+    numero_clearance = fields.get('numero_clearance_dgi')
+    statut_dgi = (
+        FactureFournisseur.StatutConformiteDgi.CLEARED if numero_clearance
+        else FactureFournisseur.StatutConformiteDgi.NON_CLEARED)
+
+    def _save(ref):
+        facture = FactureFournisseur.objects.create(
+            company=company, reference=ref, fournisseur=fournisseur,
+            ref_fournisseur=fields.get('numero'),
+            date_facture=_parsed_date(fields.get('date_facture')),
+            date_echeance=_parsed_date(fields.get('date_echeance')),
+            montant_ht=fields.get('montant_ht') or Decimal('0'),
+            montant_tva=fields.get('montant_tva') or Decimal('0'),
+            montant_ttc=fields.get('montant_ttc') or Decimal('0'),
+            numero_clearance_dgi=numero_clearance,
+            statut_conformite_dgi=statut_dgi,
+            created_by=user,
+            note='Brouillon créé automatiquement depuis un import UBL '
+                 '2.1 (e-facturation entrante).',
+        )
+        for ligne in fields.get('lignes') or []:
+            LigneFactureFournisseur.objects.create(
+                facture=facture,
+                designation=ligne['designation'] or 'Ligne UBL',
+                quantite=ligne['quantite'],
+                prix_unitaire_ht=ligne['prix_unitaire_ht'],
+                taux_tva=ligne.get('taux_tva'),
+            )
+        return facture
+
+    from apps.ventes.utils.references import create_with_reference
+    return create_with_reference(FactureFournisseur, 'FF', company, _save)

@@ -4,6 +4,7 @@ from django.http import HttpResponse  # noqa: F401
 from rest_framework import viewsets, filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
+from rest_framework.parsers import MultiPartParser, JSONParser  # noqa: F401
 from authentication.mixins import TenantMixin  # noqa: F401
 from apps.ventes.utils.references import create_with_reference  # noqa: F401
 from ..models import (  # noqa: F401
@@ -69,7 +70,10 @@ class FactureFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'paiements', 'echeancier', 'resoudre_exception',
+            'depuis_ocr', 'depuis_ubl',
         ]:
+            return [IsResponsableOrAdmin()]
+        elif self.action == 'releve_deductions_tva':
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
@@ -94,6 +98,147 @@ class FactureFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
                 created_by=self.request.user,
             )
         create_with_reference(FactureFournisseur, 'FF', company, _save)
+
+    def create(self, request, *args, **kwargs):
+        # XPUR11 — WARNING (non bloquant) de doublon : même fournisseur +
+        # même ref_fournisseur, ou même montant TTC ± 7 jours. La création
+        # n'est jamais empêchée ; un override est journalisé (best-effort)
+        # quand le corps porte `confirmer_malgre_doublon`.
+        from ..services import (
+            detect_facture_fournisseur_doublon, log_doublon_override,
+        )
+        doublons = []
+        fournisseur_id = request.data.get('fournisseur')
+        if fournisseur_id:
+            from datetime import date as _date
+            date_facture = request.data.get('date_facture')
+            if isinstance(date_facture, str):
+                try:
+                    date_facture = _date.fromisoformat(date_facture)
+                except ValueError:
+                    date_facture = None
+            doublons = detect_facture_fournisseur_doublon(
+                request.user.company,
+                fournisseur_id=fournisseur_id,
+                ref_fournisseur=request.data.get('ref_fournisseur'),
+                montant_ttc=request.data.get('montant_ttc'),
+                date_facture=date_facture,
+            )
+        response = super().create(request, *args, **kwargs)
+        if response.status_code == status.HTTP_201_CREATED and doublons:
+            response.data['doublon_warning'] = doublons
+            if request.data.get('confirmer_malgre_doublon'):
+                try:
+                    facture = FactureFournisseur.objects.get(
+                        pk=response.data['id'])
+                    log_doublon_override(
+                        user=request.user, instance=facture,
+                        detail=(
+                            f'Facture fournisseur {facture.reference} créée '
+                            f'malgré {len(doublons)} doublon(s) potentiel(s) '
+                            '(override confirmé).'))
+                except Exception:  # noqa: BLE001 — best-effort
+                    pass
+        return response
+
+    @action(detail=False, methods=['post'], url_path='depuis-ocr',
+            parser_classes=[MultiPartParser, JSONParser])
+    def depuis_ocr(self, request):
+        """XACC36 — SINK : convertit les champs extraits par l'OCR (prompt
+        stock de ``ocr_service.py``) en brouillon `FactureFournisseur`.
+
+        Corps (JSON ou multipart) : ``fields`` (JSON string ou objet —
+        ``donnees_structurees`` de l'OCR), ``file`` (le scan, optionnel —
+        rattaché en pièce jointe via records/MinIO), ``confirmer_malgre_
+        doublon`` (bool). Jamais de montant inventé : un champ manquant reste
+        vide. Sans fournisseur matché (ICE puis nom), refuse explicitement —
+        la saisie manuelle reste intacte (dégradation propre)."""
+        import json
+        from ..services import creer_facture_fournisseur_depuis_ocr
+
+        fields = request.data.get('fields') or {}
+        if isinstance(fields, str):
+            try:
+                fields = json.loads(fields)
+            except (TypeError, ValueError):
+                fields = {}
+        if not isinstance(fields, dict):
+            return Response(
+                {'detail': 'Le champ « fields » doit être un objet.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        attachment = None
+        upload = request.FILES.get('file')
+        if upload is not None:
+            from apps.records.storage import store_attachment
+            meta, err = store_attachment(upload)
+            if meta:
+                attachment = meta
+
+        try:
+            facture, doublons = creer_facture_fournisseur_depuis_ocr(
+                company=request.user.company, user=request.user,
+                fields=fields, attachment=attachment,
+                confirmer_malgre_doublon=bool(
+                    request.data.get('confirmer_malgre_doublon')),
+            )
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        data = self.get_serializer(facture).data
+        if doublons:
+            data['doublon_warning'] = doublons
+        return Response(data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'], url_path='depuis-ubl',
+            parser_classes=[MultiPartParser, JSONParser])
+    def depuis_ubl(self, request):
+        """XPUR26 — préparation mandat DGI 2026 (e-facturation ENTRANTE) :
+        parse un fichier UBL 2.1 (corps multipart, clé ``file``) et crée une
+        `FactureFournisseur` BROUILLON pré-remplie (fournisseur matché par
+        ICE, lignes, TVA, numéro de clearance DGI). Total no-op (400) tant
+        que ``AchatsParametres.einvoicing_entrant_actif`` est OFF (défaut) —
+        aucune régression pour les sociétés qui n'ont pas activé le flag."""
+        from ..models import AchatsParametres
+        from ..services import creer_facture_fournisseur_depuis_ubl
+
+        parametres = AchatsParametres.for_company(request.user.company)
+        if not parametres.einvoicing_entrant_actif:
+            return Response(
+                {'detail': "L'e-facturation entrante (UBL) n'est pas "
+                           'activée pour cette société.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        upload = request.FILES.get('file')
+        if upload is None:
+            return Response(
+                {'detail': 'Fichier UBL manquant (champ « file »).'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            facture = creer_facture_fournisseur_depuis_ubl(
+                company=request.user.company, user=request.user,
+                xml_bytes=upload.read())
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(
+            self.get_serializer(facture).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'], url_path='releve-deductions-tva')
+    def releve_deductions_tva(self, request):
+        """XPUR17 — relevé de déductions TVA (achats) groupé PAR TAUX sur la
+        période (query params ``date_debut``/``date_fin`` optionnels).
+        Réservé Responsable/Admin (donnée comptable). LECTURE SEULE."""
+        from ..selectors import releve_deductions_tva_par_taux
+        releve = releve_deductions_tva_par_taux(
+            request.user.company,
+            date_debut=request.query_params.get('date_debut'),
+            date_fin=request.query_params.get('date_fin'))
+        return Response(releve)
 
     @action(detail=False, methods=['get'], url_path='comptes-a-payer')
     def comptes_a_payer(self, request):

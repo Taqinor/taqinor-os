@@ -323,6 +323,13 @@ class OrdreAssemblageViewSet(TenantMixin, viewsets.ModelViewSet):
                 responsable, 'company_id', None) != cid:
             raise ValidationError(
                 {'responsable': 'Utilisateur inconnu pour cette société.'})
+        # XMFG16 — sous-traitant validé tenant (référentiel unifié DC34 :
+        # stock.Fournisseur de type « service »).
+        sous_traitant = serializer.validated_data.get('sous_traitant')
+        if sous_traitant is not None and getattr(
+                sous_traitant, 'company_id', None) != cid:
+            raise ValidationError(
+                {'sous_traitant': 'Sous-traitant inconnu pour cette société.'})
 
     def perform_create(self, serializer):
         company = self.request.user.company
@@ -413,13 +420,21 @@ class OrdreAssemblageViewSet(TenantMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def demarrer(self, request, pk=None):
         """FG328/XMFG2 — passe l'ordre en cours. Avertit (non bloquant) si des
-        composants manquent."""
+        composants manquent. XMFG16 — si l'ordre est lié à un sous-traitant,
+        confie les composants (transfert vers l'emplacement dédié « chez
+        {sous-traitant} », idempotent) : le backflush à la clôture consommera
+        depuis cet emplacement."""
+        from ..services import confier_composants_soustraitance
+
         ordre = self.get_object()
         old = copy.copy(ordre)
         ordre.statut = OrdreAssemblage.Statut.EN_COURS
         ordre.save(update_fields=['statut', 'date_modification'])
         activity.log_changes(old, ordre, request.user)
         alerter_penurie_assemblage(ordre)
+        if ordre.sous_traitant_id is not None:
+            confier_composants_soustraitance(ordre)
+            ordre.refresh_from_db()
         return Response(self.get_serializer(ordre).data)
 
     @action(detail=True, methods=['post'])
@@ -501,6 +516,29 @@ class OrdreAssemblageViewSet(TenantMixin, viewsets.ModelViewSet):
             'id': mouvement.id, 'produit': produit.id, 'quantite': mouvement.quantite,
             'motif_rebut': mouvement.motif_rebut, 'reference': mouvement.reference,
         }, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], url_path='cout-soustraitance',
+            permission_classes=[IsResponsableOrAdmin])
+    def cout_soustraitance(self, request, pk=None):
+        """XMFG16 — coût du composite sous-traité (composants + façon OST) :
+        responsable/admin uniquement (coûts d'achat), JAMAIS client-facing."""
+        from ..services import cout_composite_soustraite
+        ordre = self.get_object()
+        cout = cout_composite_soustraite(ordre)
+        if cout is None:
+            return Response(
+                {'detail': "Cet ordre n'est pas lié à une sous-traitance."},
+                status=status.HTTP_404_NOT_FOUND)
+        return Response({'ordre_id': ordre.id, 'cout_composite': float(cout)})
+
+    @action(detail=False, methods=['get'], url_path='rapport-soustraitants',
+            permission_classes=[IsResponsableOrAdmin])
+    def rapport_soustraitants(self, request):
+        """XMFG16 — reliquat des composants restant chez chaque sous-traitant
+        (responsable/admin uniquement)."""
+        from ..services import rapport_composants_chez_soustraitants
+        company = self.request.user.company
+        return Response(rapport_composants_chez_soustraitants(company))
 
     @action(detail=False, methods=['get'], url_path='rapport-rebuts')
     def rapport_rebuts(self, request):
@@ -707,6 +745,28 @@ class OrdreAssemblageViewSet(TenantMixin, viewsets.ModelViewSet):
         symbology = request.query_params.get('symbology', 'qr')
         html = render_labels_html(items, symbology=symbology)
         return HR(html, content_type='text/html; charset=utf-8')
+
+    @action(detail=True, methods=['get'], url_path='analyse',
+            permission_classes=[IsResponsableOrAdmin])
+    def analyse(self, request, pk=None):
+        """XMFG15 — analyse prévu-vs-réel (coût composants + temps) de cet
+        ordre. Responsable/admin uniquement (coûts d'achat)."""
+        from ..selectors import analyse_ecarts_ordre
+        ordre = self.get_object()
+        return Response(analyse_ecarts_ordre(ordre))
+
+    @action(detail=False, methods=['get'], url_path='atelier',
+            permission_classes=[IsResponsableOrAdmin])
+    def atelier(self, request):
+        """XMFG15 — panneau « Atelier » : ordres en retard/en cours/terminés
+        sur la période, taux de rebut, écart moyen. Filtrable par
+        `date_debut`/`date_fin` (bornes de `date_terminaison`)."""
+        from ..selectors import panneau_atelier
+        company = self.request.user.company
+        params = request.query_params
+        return Response(panneau_atelier(
+            company, date_debut=params.get('date_debut'),
+            date_fin=params.get('date_fin')))
 
 
 class OrdreDemontageLigneViewSet(viewsets.ModelViewSet):

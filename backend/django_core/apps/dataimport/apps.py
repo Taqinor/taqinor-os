@@ -6,3 +6,12 @@ class DataImportConfig(AppConfig):
     name = 'apps.dataimport'
     label = 'dataimport'
     verbose_name = 'Import / Export de données'
+    module_manifest = {
+        'key': 'dataimport',
+        'label': 'Import / Export',
+        'icone': 'upload',
+        'depends': [],
+        'installable': False,
+        'description': 'Import et export de données.',
+        'categorie': 'Technique',
+    }
