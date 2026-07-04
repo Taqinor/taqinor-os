@@ -3867,7 +3867,16 @@ class AvanceSalaireViewSet(_RhBaseViewSet):
     def approuver(self, request, pk=None):
         """Approuve l'avance (FG195) — ``statut=approuvee`` + valideur.
 
-        Garantie société par ``get_object`` (autre tenant → 404). Idempotent.
+        YHIRE5 — matérialise IMMÉDIATEMENT l'avance côté paie
+        (``apps.paie.services.creer_avance_depuis_rh``, cross-app WRITE par
+        la couche services, jamais un import de ``paie.models``) : sans ce
+        câblage, une avance approuvée n'était JAMAIS retenue sur le
+        bulletin. Idempotent (une seule ``AvanceSalarie`` par demande, même
+        si ``approuver`` est rejoué). Un employé sans profil de paie ne
+        bloque pas l'approbation RH — l'erreur est journalisée, l'avance
+        reste approuvée (à corriger côté paie).
+
+        Garantie société par ``get_object`` (autre tenant → 404).
         """
         avance = self.get_object()
         if avance.statut != AvanceSalaire.Statut.APPROUVEE:
@@ -3875,6 +3884,12 @@ class AvanceSalaireViewSet(_RhBaseViewSet):
             avance.valideur = self._valideur_pour(request)
             avance.save(update_fields=[
                 'statut', 'valideur', 'date_modification'])
+        if not avance.paie_avance_id:
+            from apps.paie import services as paie_services
+            try:
+                paie_services.creer_avance_depuis_rh(avance)
+            except ValueError:
+                pass  # pas de profil de paie — approbation RH inchangée
         return Response(
             self.get_serializer(avance).data, status=status.HTTP_200_OK)
 

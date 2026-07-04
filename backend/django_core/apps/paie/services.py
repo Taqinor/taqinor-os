@@ -1072,6 +1072,61 @@ def provision_conges_payes(profil, periode, jours_acquis=None):
 
 # ── PAIE28 — Avance / prêt salarié : échéance mensuelle déduite du bulletin ──
 
+# ── YHIRE5 — Réconciliation rh.AvanceSalaire (guichet) ↔ paie.AvanceSalarie
+# (moteur de retenue). ``rh.AvanceSalaire`` reste le GUICHET de demande
+# (portail, approbation superviseur/RH) ; ``paie.AvanceSalarie`` reste le
+# SEUL moteur câblé au bulletin (``echeances_avances_periode``/
+# ``appliquer_remboursements_avances``). Une avance approuvée côté RH est
+# désormais MATÉRIALISÉE ici, une seule fois, pour être réellement retenue.
+
+def creer_avance_depuis_rh(rh_avance):
+    """Matérialise une ``paie.AvanceSalarie`` depuis une ``rh.AvanceSalaire``
+    APPROUVÉE (YHIRE5). Appelée fonction-localement par ``apps.rh.services``
+    à l'approbation (écriture cross-app par la couche ``services``, conforme
+    CLAUDE.md — la paie ne lit jamais ``rh.models`` en retour, elle reçoit
+    l'instance ``rh_avance`` en argument).
+
+    Idempotent : si ``rh_avance.paie_avance_id`` est déjà posé, renvoie
+    l'``AvanceSalarie`` existante SANS EN RECRÉER UNE 2ᵉ. Sinon crée une
+    avance PONCTUELLE (``nombre_echeances=1``, échéance = montant total,
+    retenue au mois ``annee_deduction``/``mois_deduction`` de la demande RH)
+    liée au ``ProfilPaie`` de l'employé.
+
+    Lève ``ValueError`` si l'employé n'a aucun ``ProfilPaie`` (rien à retenir
+    sans profil de paie). Renvoie l'``AvanceSalarie`` créée ou existante.
+    """
+    from .models import AvanceSalarie, ProfilPaie
+
+    if rh_avance.paie_avance_id:
+        return AvanceSalarie.objects.filter(
+            pk=rh_avance.paie_avance_id).first()
+
+    profil = ProfilPaie.objects.filter(
+        company_id=rh_avance.company_id,
+        employe_id=rh_avance.employe_id).first()
+    if profil is None:
+        raise ValueError(
+            "Aucun profil de paie pour cet employé : impossible de "
+            "matérialiser l'avance.")
+
+    annee = rh_avance.annee_deduction or timezone.localdate().year
+    mois = rh_avance.mois_deduction or timezone.localdate().month
+    montant = Decimal(rh_avance.montant or 0)
+    avance = AvanceSalarie.objects.create(
+        company=profil.company,
+        profil=profil,
+        type=AvanceSalarie.TYPE_AVANCE,
+        libelle=(rh_avance.motif or 'Avance sur salaire (RH)')[:120],
+        montant_total=montant,
+        montant_echeance=montant,
+        nombre_echeances=1,
+        date_debut=date(annee, mois, 1),
+    )
+    rh_avance.paie_avance_id = avance.id
+    rh_avance.save(update_fields=['paie_avance_id'])
+    return avance
+
+
 def echeance_avance(avance, le_jour):
     """Échéance retenue sur le bulletin pour une avance, au mois ``le_jour``.
 

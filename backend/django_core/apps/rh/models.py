@@ -3994,6 +3994,14 @@ class AvanceSalaire(models.Model):
     statut = models.CharField(
         max_length=20, choices=Statut.choices,
         default=Statut.DEMANDEE, verbose_name='Statut')
+    # YHIRE5 — lien vers l'avance MATÉRIALISÉE côté paie
+    # (``paie.AvanceSalarie``, le seul moteur câblé au bulletin). Posé par
+    # ``apps.paie.services.creer_avance_depuis_rh`` à l'approbation ;
+    # string-ref (jamais d'import de ``paie.models`` depuis rh) — garantit
+    # qu'une même demande ne matérialise JAMAIS deux retenues.
+    paie_avance_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Avance paie liée (retenue)')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
     date_modification = models.DateTimeField(
