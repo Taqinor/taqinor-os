@@ -818,3 +818,92 @@ class XKB25NotificationLevelTests(TestCase):
         member = ConversationMember.objects.get(
             conversation=self.conv, user=self.bob)
         self.assertEqual(member.notification_level, 'muted')
+
+
+class XKB26StatusDndTests(TestCase):
+    """XKB26 — statut personnalisé + Ne pas déranger."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.alice = make_user(self.company, 'alice')
+        self.bob = make_user(self.company, 'bob')
+        self.conv = make_channel(self.company, self.alice, members=[self.bob])
+
+    def test_set_status_visible_to_colleagues(self):
+        api = auth(self.bob)
+        r = api.post('/api/django/chat/status/me/',
+                     {'status_text': 'En déplacement chantier',
+                      'status_emoji': '🚗'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+
+        colleague_api = auth(self.alice)
+        r2 = colleague_api.get('/api/django/chat/status/colleagues/')
+        self.assertEqual(r2.status_code, 200)
+        entry = next(e for e in r2.data if e['user_id'] == self.bob.id)
+        self.assertEqual(entry['status_text'], 'En déplacement chantier')
+        self.assertEqual(entry['status_emoji'], '🚗')
+
+    def test_dnd_suppresses_push_during_window(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        services.set_dnd(
+            self.bob, self.company,
+            start=timezone.now() - timedelta(minutes=5),
+            end=timezone.now() + timedelta(hours=1))
+        with patch('apps.notifications.services.notify') as mock_notify:
+            services.create_message(
+                conversation=self.conv, sender=self.alice,
+                company=self.company, body='Bonjour')
+            notified = {call.args[0] for call in mock_notify.call_args_list}
+            self.assertNotIn(self.bob, notified)
+
+    def test_dnd_lifted_after_window_restores_push(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        services.set_dnd(
+            self.bob, self.company,
+            start=timezone.now() - timedelta(hours=2),
+            end=timezone.now() - timedelta(hours=1))
+        with patch('apps.notifications.services.notify') as mock_notify:
+            services.create_message(
+                conversation=self.conv, sender=self.alice,
+                company=self.company, body='Bonjour')
+            notified = {call.args[0] for call in mock_notify.call_args_list}
+            self.assertIn(self.bob, notified)
+
+    def test_dnd_invalid_window_rejected(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        with self.assertRaises(ValueError):
+            services.set_dnd(
+                self.bob, self.company,
+                start=timezone.now(),
+                end=timezone.now() - timedelta(hours=1))
+
+    def test_api_dnd_roundtrip(self):
+        api = auth(self.bob)
+        r = api.post('/api/django/chat/status/dnd/', {
+            'start': '2026-01-01T22:00:00Z',
+            'end': '2026-01-02T06:00:00Z',
+        }, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertIsNotNone(r.data['dnd_start'])
+        # Clear DND.
+        r2 = api.post('/api/django/chat/status/dnd/',
+                      {'start': None, 'end': None}, format='json')
+        self.assertEqual(r2.status_code, 200)
+        self.assertIsNone(r2.data['dnd_start'])
+
+    def test_last_seen_updated_via_polling_endpoint(self):
+        api = auth(self.bob)
+        r = api.post('/api/django/chat/status/seen/')
+        self.assertEqual(r.status_code, 200)
+        self.assertIsNotNone(r.data['last_seen_at'])
+
+    def test_clear_status(self):
+        services.set_status(self.bob, self.company, status_text='Occupé',
+                            status_emoji='⛔')
+        services.clear_status(self.bob, self.company)
+        st = services.get_or_create_status(self.bob, self.company)
+        self.assertEqual(st.status_text, '')
+        self.assertEqual(st.status_emoji, '')

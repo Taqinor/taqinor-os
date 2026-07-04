@@ -192,6 +192,12 @@ def _notify_new_message(message, mentioned_users):
         if (m.notification_level == ConversationMember.NotificationLevel.MENTIONS
                 and not is_mention):
             continue
+        # XKB26 — Ne pas déranger : supprime le push/notification chat NON
+        # URGENTE pendant la fenêtre (une @mention reste chat, pas "urgente"
+        # au sens métier — seule une future alerte critique passerait le NPD ;
+        # ici on suit la spec : NPD supprime le push chat pendant la fenêtre).
+        if _is_user_dnd_active(u.pk):
+            continue
         if is_mention:
             event = EventType.CHAT_MENTION
             ntitle = f'{title} vous a mentionné'
@@ -218,6 +224,88 @@ def set_notification_level(member, level):
     member.is_muted = (level == ConversationMember.NotificationLevel.MUTED)
     member.save(update_fields=['notification_level', 'is_muted'])
     return member
+
+
+# ── XKB26 — statut personnalisé & Ne pas déranger ──────────────────────
+
+def _is_user_dnd_active(user_id):
+    """Best-effort : vrai si l'utilisateur `user_id` est actuellement en NPD."""
+    from .models import UserChatStatus
+    st = UserChatStatus.objects.filter(user_id=user_id).first()
+    if st is None:
+        return False
+    return st.is_dnd_active()
+
+
+def get_or_create_status(user, company):
+    from .models import UserChatStatus
+    st, _ = UserChatStatus.objects.get_or_create(
+        user=user, defaults={'company': company})
+    return st
+
+
+def set_status(user, company, *, status_text=None, status_emoji=None):
+    """Pose un statut (texte + emoji) visible par les collègues."""
+    st = get_or_create_status(user, company)
+    fields = []
+    if status_text is not None:
+        st.status_text = status_text[:120]
+        fields.append('status_text')
+    if status_emoji is not None:
+        st.status_emoji = status_emoji[:16]
+        fields.append('status_emoji')
+    if fields:
+        st.save(update_fields=fields)
+    return st
+
+
+def clear_status(user, company):
+    return set_status(user, company, status_text='', status_emoji='')
+
+
+def set_dnd(user, company, *, start, end):
+    """Pose la fenêtre NPD (début/fin) — supprime push/notifications chat non
+    urgentes pendant cette fenêtre (voir `_notify_new_message`)."""
+    if start is not None and end is not None and end <= start:
+        raise ValueError('La fin du NPD doit être après le début.')
+    st = get_or_create_status(user, company)
+    st.dnd_start = start
+    st.dnd_end = end
+    st.save(update_fields=['dnd_start', 'dnd_end'])
+    return st
+
+
+def clear_dnd(user, company):
+    return set_dnd(user, company, start=None, end=None)
+
+
+def touch_last_seen(user, company):
+    """« Vu récemment » best-effort — appelé depuis le polling existant (S4
+    unread/list), jamais via WebSocket."""
+    st = get_or_create_status(user, company)
+    st.last_seen_at = timezone.now()
+    st.save(update_fields=['last_seen_at'])
+    return st
+
+
+def colleague_statuses(company, user_ids=None):
+    """Statuts des collègues de la société (liste conversations / autocomplete
+    @mention) — scopé société, jamais cross-tenant."""
+    from .models import UserChatStatus
+    qs = UserChatStatus.objects.filter(company=company).select_related('user')
+    if user_ids:
+        qs = qs.filter(user_id__in=user_ids)
+    now = timezone.now()
+    out = []
+    for st in qs:
+        out.append({
+            'user_id': st.user_id,
+            'status_text': st.status_text,
+            'status_emoji': st.status_emoji,
+            'is_dnd': st.is_dnd_active(now),
+            'last_seen_at': st.last_seen_at,
+        })
+    return out
 
 
 def _conversation_title(conversation, sender):

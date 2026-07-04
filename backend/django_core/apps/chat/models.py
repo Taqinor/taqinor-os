@@ -291,3 +291,46 @@ class ThreadFollow(models.Model):
 
     def __str__(self):
         return f'{self.user_id} suit fil {self.root_message_id}'
+
+
+class UserChatStatus(models.Model):
+    """XKB26 — statut personnalisé + Ne pas déranger, un par utilisateur.
+
+    Le statut (texte + emoji) s'affiche aux collègues (liste de conversations,
+    autocomplete @mention). La plage NPD (début/fin, toujours en UTC comme le
+    reste du projet) supprime le push ET les notifications chat non urgentes
+    pendant la fenêtre — via `notifications.services.notify` (best-effort,
+    jamais bloquant). `last_seen_at` alimente un « vu récemment » best-effort
+    (mis à jour par polling existant, PAS de WebSocket — la présence temps réel
+    reste S21)."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='chat_user_statuses')
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='chat_status')
+    status_text = models.CharField(max_length=120, blank=True, default='')
+    status_emoji = models.CharField(max_length=16, blank=True, default='')
+    dnd_start = models.DateTimeField(null=True, blank=True)
+    dnd_end = models.DateTimeField(null=True, blank=True)
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Statut de discussion'
+        verbose_name_plural = 'Statuts de discussion'
+        ordering = ['id']
+        indexes = [
+            models.Index(fields=['company', 'user']),
+        ]
+
+    def is_dnd_active(self, now=None):
+        from django.utils import timezone
+        now = now or timezone.now()
+        if self.dnd_start is None or self.dnd_end is None:
+            return False
+        return self.dnd_start <= now <= self.dnd_end
+
+    def __str__(self):
+        return f'Statut de {self.user_id}'

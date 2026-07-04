@@ -19,12 +19,12 @@ from apps.records.storage import (
 from . import services
 from .models import (
     Conversation, ConversationMember, Message, MessageAttachment,
-    MessageReaction,
+    MessageReaction, UserChatStatus,
 )
 from .permissions import IsConversationMember, is_member
 from .selectors import member_conversation_ids, search_messages
 from .serializers import (
-    ConversationSerializer, MessageSerializer,
+    ConversationSerializer, MessageSerializer, UserChatStatusSerializer,
 )
 
 
@@ -475,3 +475,66 @@ class MessageViewSet(viewsets.ModelViewSet):
                            'thread_unfollow', 'thread_read'):
             return [IsAuthenticated(), IsConversationMember()]
         return [IsAuthenticated()]
+
+
+class UserChatStatusViewSet(viewsets.GenericViewSet):
+    """XKB26 — statut personnalisé + Ne pas déranger, et « vu récemment ».
+
+    Pas de CRUD REST classique : le statut est TOUJOURS celui de l'appelant
+    (jamais un autre user_id du corps de requête), sauf `colleagues` qui liste
+    les statuts des collègues de la société (lecture seule)."""
+    serializer_class = UserChatStatusSerializer
+    permission_classes = [IsAuthenticated]
+    queryset = UserChatStatus.objects.all()
+
+    @action(detail=False, methods=['get', 'post'], url_path='me')
+    def me(self, request):
+        company = _company(request)
+        if request.method == 'GET':
+            st = services.get_or_create_status(request.user, company)
+            return Response(self.get_serializer(st).data)
+        st = services.set_status(
+            request.user, company,
+            status_text=request.data.get('status_text'),
+            status_emoji=request.data.get('status_emoji'))
+        return Response(self.get_serializer(st).data)
+
+    @action(detail=False, methods=['post'], url_path='clear')
+    def clear(self, request):
+        company = _company(request)
+        st = services.clear_status(request.user, company)
+        return Response(self.get_serializer(st).data)
+
+    @action(detail=False, methods=['post'], url_path='dnd')
+    def dnd(self, request):
+        """Body: {start: iso|null, end: iso|null}. Poser start/end=null lève
+        le NPD (`clear_dnd`)."""
+        company = _company(request)
+        from django.utils.dateparse import parse_datetime
+        start_raw = request.data.get('start')
+        end_raw = request.data.get('end')
+        start = parse_datetime(start_raw) if start_raw else None
+        end = parse_datetime(end_raw) if end_raw else None
+        try:
+            st = services.set_dnd(request.user, company, start=start, end=end)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(st).data)
+
+    @action(detail=False, methods=['post'], url_path='seen')
+    def seen(self, request):
+        """Best-effort « vu récemment », appelé par le polling existant
+        (jamais de WebSocket)."""
+        company = _company(request)
+        st = services.touch_last_seen(request.user, company)
+        return Response(self.get_serializer(st).data)
+
+    @action(detail=False, methods=['get'], url_path='colleagues')
+    def colleagues(self, request):
+        """Statuts des collègues de la société (indicateur dans la liste de
+        conversations + autocomplete @mention)."""
+        company = _company(request)
+        if company is None:
+            return Response([])
+        return Response(services.colleague_statuses(company))

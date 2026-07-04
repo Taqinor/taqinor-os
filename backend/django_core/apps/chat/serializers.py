@@ -7,7 +7,7 @@ from rest_framework import serializers
 
 from .models import (
     Conversation, ConversationMember, Message, MessageAttachment,
-    MessageReaction, MessageMention,
+    MessageReaction, MessageMention, UserChatStatus,
 )
 
 
@@ -109,6 +109,21 @@ class MessageSerializer(serializers.ModelSerializer):
             data['attachments'] = []
             data['shared_label'] = ''
         return data
+
+
+class UserChatStatusSerializer(serializers.ModelSerializer):
+    is_dnd = serializers.SerializerMethodField()
+
+    class Meta:
+        model = UserChatStatus
+        fields = [
+            'id', 'user', 'status_text', 'status_emoji',
+            'dnd_start', 'dnd_end', 'is_dnd', 'last_seen_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'user', 'last_seen_at', 'updated_at']
+
+    def get_is_dnd(self, obj):
+        return obj.is_dnd_active()
 
 
 class ConversationMemberSerializer(serializers.ModelSerializer):
