@@ -94,6 +94,7 @@ from .serializers import (
     AffectationRosterSerializer,
     AffectationVehiculeSerializer,
     AnalyseRisquesChantierSerializer,
+    AutoEvaluationSerializer,
     AvanceSalaireSerializer,
     BesoinFormationSerializer,
     BulletinPaieSerializer,
@@ -3282,12 +3283,33 @@ class EvaluationEmployeViewSet(_RhBaseViewSet):
         """Valide l'entretien (FG190) — passe en ``statut=valide``.
 
         La société est garantie par ``get_object`` (un autre tenant reçoit
-        404). Idempotent : revalider renvoie le même entretien sans erreur.
+        404). Idempotent : revalider renvoie le même entretien sans erreur
+        (les effets de bord XRH26 ne sont déclenchés qu'à la PREMIÈRE
+        validation — jamais recréés/renotifiés en boucle).
+
+        XRH26 — si ``issue``/``issue_details`` sont fournis dans le corps, ils
+        sont posés AVANT la validation (mêmes garanties FK que le sérialiseur
+        générique n'imposent pas ici car ce sont de simples choix bornés).
+        À la première validation : ``issue='formation'`` crée un
+        ``BesoinFormation`` lié ; ``issue='augmentation_proposee'`` notifie
+        (best-effort) les porteurs de ``salaires_voir`` — jamais de montant.
         """
         evaluation = self.get_object()
-        if evaluation.statut != EvaluationEmploye.Statut.VALIDE:
+        issue = request.data.get('issue')
+        if issue in dict(EvaluationEmploye.Issue.choices):
+            evaluation.issue = issue
+        if 'issue_details' in request.data:
+            evaluation.issue_details = request.data.get('issue_details') or ''
+
+        deja_validee = evaluation.statut == EvaluationEmploye.Statut.VALIDE
+        if not deja_validee:
             evaluation.statut = EvaluationEmploye.Statut.VALIDE
-            evaluation.save(update_fields=['statut', 'date_modification'])
+        evaluation.save(update_fields=[
+            'statut', 'issue', 'issue_details', 'date_modification'])
+
+        if not deja_validee and evaluation.issue:
+            services.traiter_issue_evaluation(evaluation)
+
         return Response(
             self.get_serializer(evaluation).data, status=status.HTTP_200_OK)
 
@@ -4300,6 +4322,45 @@ class PortailSelfServiceViewSet(viewsets.ViewSet):
         resp['Content-Disposition'] = f'inline; filename="{safe_name}"'
         resp['X-Content-Type-Options'] = 'nosniff'
         return resp
+
+    @action(detail=False, methods=['get'], url_path='mes-evaluations')
+    def mes_evaluations(self, request):
+        """XRH26 — les entretiens d'évaluation DU collaborateur connecté."""
+        dossier = self._dossier(request)
+        if dossier is None:
+            return Response([])
+        qs = EvaluationEmploye.objects.filter(
+            company=request.user.company, employe=dossier).select_related(
+            'campagne', 'evaluateur')
+        return Response(EvaluationEmployeSerializer(qs, many=True).data)
+
+    @action(detail=True, methods=['patch'], url_path='mon-auto-evaluation')
+    def mon_auto_evaluation(self, request, pk=None):
+        """XRH26 — saisit SON auto-évaluation sur UN entretien.
+
+        Réservé à l'employé LIÉ à l'évaluation (l'``employe`` de
+        l'``EvaluationEmploye``, pas juste un membre de la société) : un
+        autre employé de la même société reçoit 403. Seuls
+        ``auto_evaluation``/``note_auto`` sont éditables via cette action.
+        """
+        dossier = self._dossier(request)
+        if dossier is None:
+            return Response(
+                {'detail': 'Aucun dossier employé lié à ce compte.'},
+                status=status.HTTP_404_NOT_FOUND)
+        evaluation = EvaluationEmploye.objects.filter(
+            company=request.user.company, pk=pk).first()
+        if evaluation is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        if evaluation.employe_id != dossier.id:
+            return Response(
+                {'detail': "Cette évaluation n'est pas la vôtre."},
+                status=status.HTTP_403_FORBIDDEN)
+        ser = AutoEvaluationSerializer(
+            evaluation, data=request.data, partial=True)
+        ser.is_valid(raise_exception=True)
+        ser.save()
+        return Response(ser.data)
 
 
 class CockpitRhViewSet(viewsets.ViewSet):

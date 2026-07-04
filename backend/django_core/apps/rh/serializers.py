@@ -1639,6 +1639,16 @@ class ObjectifIndividuelSerializer(serializers.ModelSerializer):
         read_only_fields = ['date_creation']
 
 
+class AutoEvaluationSerializer(serializers.ModelSerializer):
+    """XRH26 — auto-évaluation (portail self-service). SEULS
+    ``auto_evaluation``/``note_auto`` sont éditables ici ; tout le reste de
+    l'entretien (manager/RH) reste en lecture seule via ce sérialiseur."""
+
+    class Meta:
+        model = EvaluationEmploye
+        fields = ['id', 'auto_evaluation', 'note_auto']
+
+
 class EvaluationEmployeSerializer(serializers.ModelSerializer):
     """Entretien annuel d'évaluation d'un collaborateur (FG190).
 
@@ -1662,11 +1672,19 @@ class EvaluationEmployeSerializer(serializers.ModelSerializer):
             'id', 'campagne', 'employe', 'employe_nom',
             'evaluateur', 'evaluateur_nom',
             'date_entretien', 'note_globale', 'synthese',
+            'auto_evaluation', 'note_auto',
+            'issue', 'issue_details',
             'statut', 'statut_display',
             'objectifs',
             'date_creation', 'date_modification',
         ]
-        read_only_fields = ['date_creation', 'date_modification']
+        read_only_fields = [
+            'date_creation', 'date_modification',
+            # XRH26 — l'auto-évaluation se saisit UNIQUEMENT via le portail
+            # self-service (action dédiée), jamais par ce sérialiseur
+            # manager/RH générique.
+            'auto_evaluation', 'note_auto',
+        ]
 
     def get_employe_nom(self, obj):
         if not obj.employe_id:

@@ -3337,6 +3337,15 @@ class EvaluationEmploye(models.Model):
         REALISE = 'realise', 'Réalisé'
         VALIDE = 'valide', 'Validé'
 
+    class Issue(models.TextChoices):
+        # XRH26 — suite formalisée posée à la validation de l'entretien.
+        AUGMENTATION_PROPOSEE = (
+            'augmentation_proposee', "Augmentation proposée")
+        PROMOTION = 'promotion', 'Promotion'
+        FORMATION = 'formation', 'Formation'
+        PIP = 'pip', 'Plan de performance (PIP)'
+        AUCUNE = 'aucune', 'Aucune'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -3369,6 +3378,19 @@ class EvaluationEmploye(models.Model):
         null=True, blank=True, verbose_name='Note globale')
     synthese = models.TextField(
         blank=True, default='', verbose_name='Synthèse')
+    # XRH26 — auto-évaluation : saisissable UNIQUEMENT par l'employé concerné
+    # (via le portail self-service), à côté de l'évaluation manager.
+    auto_evaluation = models.TextField(
+        blank=True, default='', verbose_name='Auto-évaluation')
+    note_auto = models.DecimalField(
+        max_digits=3, decimal_places=1,
+        null=True, blank=True, verbose_name='Note (auto-évaluation)')
+    # XRH26 — issue posée À LA VALIDATION (manager/RH) : suite formalisée.
+    issue = models.CharField(
+        max_length=25, choices=Issue.choices,
+        blank=True, default='', verbose_name='Issue')
+    issue_details = models.TextField(
+        blank=True, default='', verbose_name="Détails de l'issue")
     statut = models.CharField(
         max_length=20, choices=Statut.choices,
         default=Statut.PLANIFIE, verbose_name='Statut')

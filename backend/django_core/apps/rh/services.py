@@ -1436,3 +1436,65 @@ def purger_candidatures(company, *, retention_mois=None, now=None,
         'anonymisees': anonymisees,
         'ids': ids,
     }
+
+
+# ── XRH26 — auto-évaluation + issues d'évaluation structurées ──────────────
+
+def _porteurs_salaires_voir(company):
+    """Utilisateurs actifs de la société portant la permission
+    ``salaires_voir`` (JSONField liste de codes sur ``roles.Role``)."""
+    from django.contrib.auth import get_user_model
+
+    User = get_user_model()
+    return User.objects.filter(
+        company=company, is_active=True,
+        role__permissions__contains=['salaires_voir'])
+
+
+@transaction.atomic
+def traiter_issue_evaluation(evaluation):
+    """XRH26 — effets de bord de l'``issue`` posée À LA VALIDATION d'un
+    entretien d'évaluation :
+
+    * ``issue == 'formation'`` — crée un ``BesoinFormation`` lié à
+      l'employé évalué (thème = ``issue_details`` si renseigné, sinon un
+      libellé générique), priorité moyenne, statut ``identifie``.
+    * ``issue == 'augmentation_proposee'`` — notifie (best-effort, via
+      ``apps.notifications.services.notify``) chaque porteur actif de
+      ``salaires_voir`` — SANS JAMAIS inclure de montant dans le corps de la
+      notification (juste le nom de l'employé concerné).
+
+    Idempotence pragmatique : appelée uniquement au moment de la validation
+    (vue), jamais automatiquement en boucle. Aucune exception ne remonte côté
+    notification (best-effort) ; la création du besoin de formation reste,
+    elle, dans la transaction (erreur = rollback propre).
+    """
+    from .models import BesoinFormation, EvaluationEmploye
+
+    if evaluation.issue == EvaluationEmploye.Issue.FORMATION:
+        theme = evaluation.issue_details.strip() or (
+            f"Formation suite à l'évaluation {evaluation.campagne.intitule}")
+        BesoinFormation.objects.create(
+            company=evaluation.company,
+            employe=evaluation.employe,
+            theme=theme[:200],
+            priorite=BesoinFormation.Priorite.MOYENNE,
+            statut=BesoinFormation.Statut.IDENTIFIE,
+        )
+
+    if evaluation.issue == EvaluationEmploye.Issue.AUGMENTATION_PROPOSEE:
+        try:
+            from apps.notifications.models import EventType
+            from apps.notifications.services import notify_many
+
+            employe_nom = f'{evaluation.employe.nom} {evaluation.employe.prenom}'
+            notify_many(
+                _porteurs_salaires_voir(evaluation.company),
+                EventType.APPROVAL_REQUESTED,
+                title='Augmentation proposée',
+                body=(
+                    f'Une augmentation a été proposée pour {employe_nom} '
+                    "suite à son entretien d'évaluation."),
+            )
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant.
+            pass
