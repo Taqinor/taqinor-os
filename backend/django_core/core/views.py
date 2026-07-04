@@ -438,6 +438,59 @@ class ModuleToggleViewSet(TenantMixin, viewsets.ModelViewSet):
         return [IsAdminOrResponsableTier()]
 
 
+class ModuleCatalogViewSet(viewsets.ViewSet):
+    """ODX3 — catalogue de modules (manifests fusionnés avec l'état société).
+
+    Sans modèle propre : fusionne les manifests ``core.modules`` avec l'état
+    ``ModuleToggle`` de la société de l'appelant. Aucune importation d'app
+    domaine (les manifests sont lus par attribut sur les ``AppConfig``).
+
+      * ``GET  …/modules/``                — catalogue installable + état actif ;
+      * ``POST …/modules/{key}/activer/``  — active + fermeture des dépendances ;
+      * ``POST …/modules/{key}/desactiver/`` — refuse en 400 si des modules
+        actifs en dépendent (sauf ``?cascade=1``).
+
+    Lecture ouverte à tout utilisateur authentifié (la SPA en a besoin) ;
+    écriture réservée au palier admin/responsable. ``company`` toujours côté
+    serveur, jamais du body.
+    """
+
+    def get_permissions(self):
+        if self.action in ('list',):
+            return [IsAuthenticated()]
+        return [IsAdminOrResponsableTier()]
+
+    def list(self, request):
+        from . import feature_flags
+        company = request.user.company
+        return Response(feature_flags.catalogue_modules(company))
+
+    @action(detail=True, methods=['post'], url_path='activer')
+    def activer(self, request, pk=None):
+        from . import feature_flags
+        company = request.user.company
+        try:
+            actives = feature_flags.activer_module(company, pk)
+        except feature_flags.DependencyError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response({'actives': actives})
+
+    @action(detail=True, methods=['post'], url_path='desactiver')
+    def desactiver(self, request, pk=None):
+        from . import feature_flags
+        company = request.user.company
+        cascade = str(request.query_params.get('cascade', '')) in ('1', 'true')
+        try:
+            desactives = feature_flags.desactiver_module(
+                company, pk, cascade=cascade)
+        except feature_flags.DependencyError as exc:
+            return Response(
+                {'detail': str(exc), 'dependants': exc.dependents},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response({'desactives': desactives})
+
+
 class TenantThemeViewSet(TenantMixin, viewsets.GenericViewSet):
     """FG392 — thème white-label par société (singleton, lecture/upsert).
 
