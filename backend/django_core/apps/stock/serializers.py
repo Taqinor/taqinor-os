@@ -14,6 +14,7 @@ from .models import (
     EcheanceFactureFournisseur, AcompteFournisseur,
     AvoirFournisseur, ImputationAvoirFournisseur,
     PalierPrixFournisseur, PortailFournisseurToken,
+    LotEntrepot,
 )
 
 
@@ -1268,3 +1269,24 @@ class AvoirFournisseurSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'Fournisseur hors de votre entreprise.')
         return value
+
+
+class LotEntrepotSerializer(serializers.ModelSerializer):
+    """XSTK6 — registre de lots en entrepôt (LECTURE — alimenté/décrémenté
+    uniquement par les services de réception/sortie, jamais en écriture
+    libre)."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True)
+    emplacement_nom = serializers.CharField(
+        source='emplacement.nom', read_only=True)
+    est_perime = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = LotEntrepot
+        fields = [
+            'id', 'produit', 'produit_nom', 'numero_lot', 'date_peremption',
+            'emplacement', 'emplacement_nom', 'quantite_recue',
+            'quantite_restante', 'reference_reception', 'est_perime',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = fields

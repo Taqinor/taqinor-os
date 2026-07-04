@@ -345,6 +345,10 @@ class AchatsParametres(models.Model):
     # BROUILLON pré-remplie. OFF par défaut = total no-op, aucun appel
     # externe (la validation plateforme DGI réelle attendra le mandat).
     einvoicing_entrant_actif = models.BooleanField(default=False)
+    # XSTK6 — bloque la sortie d'un LOT périmé (registre `LotEntrepot`). ON
+    # par défaut (garde de sécurité), contournable avec motif tracé via
+    # `sortir_lot_entrepot(..., forcer=True, motif=...)`.
+    bloquer_stock_perime = models.BooleanField(default=True)
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
 
@@ -591,6 +595,64 @@ class Produit(models.Model):
 
     def __str__(self):
         return self.nom
+
+
+class LotEntrepot(models.Model):
+    """XSTK6 — registre de LOTS en entrepôt (miroir d'
+    ``installations.SerieEntrepot`` FG323, mais pour du stock non sérialisé
+    suivi PAR LOT : batteries, produits d'étanchéité, tout ce qui porte
+    ``numero_lot``/``date_peremption`` — FG64). Alimenté à la CONFIRMATION
+    d'une réception (une ligne dont ``numero_lot`` est renseigné) ;
+    décrémenté à la sortie (FEFO — péremption la plus proche d'abord).
+
+    ``quantite_restante`` == 0 signifie « lot épuisé » (conservé pour
+    l'historique/traçabilité, jamais supprimé). Multi-tenant : ``company``
+    posée côté serveur."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='lots_entrepot')
+    produit = models.ForeignKey(
+        Produit, on_delete=models.CASCADE, related_name='lots_entrepot')
+    numero_lot = models.CharField(max_length=100)
+    date_peremption = models.DateField(null=True, blank=True)
+    # Référence par nom de classe (chaîne) : `EmplacementStock` est défini
+    # PLUS BAS dans ce fichier (ordre historique des classes inchangé).
+    emplacement = models.ForeignKey(
+        'EmplacementStock', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='lots_entrepot')
+    quantite_recue = models.IntegerField(default=0)
+    quantite_restante = models.IntegerField(default=0)
+    reference_reception = models.CharField(
+        max_length=80, blank=True, null=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='lots_entrepot_crees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Lot en entrepôt'
+        verbose_name_plural = 'Lots en entrepôt'
+        ordering = ['date_peremption', '-date_creation']
+        indexes = [
+            models.Index(fields=['company', 'produit'],
+                         name='idx_lotent_co_produit'),
+            models.Index(fields=['company', 'date_peremption'],
+                         name='idx_lotent_co_peremption'),
+        ]
+
+    def __str__(self):
+        return f'{self.numero_lot} ({self.produit_id}) — {self.quantite_restante}'
+
+    @property
+    def est_perime(self):
+        """Vrai si la date de péremption est dépassée (jamais pour un lot
+        sans date — comportement historique inchangé)."""
+        if not self.date_peremption:
+            return False
+        from django.utils import timezone
+        return self.date_peremption < timezone.now().date()
 
 
 class MouvementStock(models.Model):

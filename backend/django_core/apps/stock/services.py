@@ -752,6 +752,21 @@ def confirm_reception_fournisseur(reception, user):
                 credit_emplacement_destination(
                     reception.company, produit, bc.emplacement_destination,
                     qte)
+            # XSTK6 — alimente le registre de lots quand la ligne porte un
+            # numero_lot (FG64). Sans lot renseigné : comportement historique
+            # inchangé (aucune écriture LotEntrepot).
+            if getattr(ligne, 'numero_lot', None):
+                alimenter_lot_entrepot(
+                    company=reception.company, produit=produit,
+                    numero_lot=ligne.numero_lot,
+                    date_peremption=ligne.date_peremption,
+                    emplacement=(bc.emplacement_destination
+                                 if bc is not None
+                                 and bc.emplacement_destination_id
+                                 else None),
+                    quantite=qte,
+                    reference_reception=reception.reference,
+                    user=user)
         reception.statut = ReceptionFournisseur.Statut.CONFIRME
         reception.recu_par = reception.recu_par or user
         reception.save(update_fields=['statut', 'recu_par'])
@@ -782,6 +797,94 @@ def confirm_reception_fournisseur(reception, user):
     except Exception:  # pragma: no cover - défensif, best-effort
         pass
     return reception
+
+
+# ── XSTK6 — Registre de lots en entrepôt + sortie FEFO + garde périmé ───────
+# Miroir d'`installations.SerieEntrepot` (FG323) mais pour du stock suivi PAR
+# LOT (non sérialisé). Alimenté à la confirmation d'une réception ; décrémenté
+# à la sortie. Le picking FEFO propose le lot à péremption la plus proche
+# d'abord ; sortir un lot périmé est bloqué par défaut (`AchatsParametres.
+# bloquer_stock_perime`, contournable avec motif tracé).
+
+def alimenter_lot_entrepot(
+        *, company, produit, numero_lot, date_peremption, quantite,
+        reference_reception, emplacement=None, user=None):
+    """XSTK6 — crée (ou incrémente si le MÊME lot existe déjà pour ce
+    produit) une entrée de `LotEntrepot`. Jamais appelée pour une ligne sans
+    ``numero_lot`` (comportement historique inchangé)."""
+    from .models import LotEntrepot
+    lot, created = LotEntrepot.objects.get_or_create(
+        company=company, produit=produit, numero_lot=numero_lot,
+        defaults={
+            'date_peremption': date_peremption,
+            'emplacement': emplacement,
+            'quantite_recue': 0,
+            'quantite_restante': 0,
+            'reference_reception': reference_reception,
+            'created_by': user,
+        })
+    if not created and date_peremption and not lot.date_peremption:
+        lot.date_peremption = date_peremption
+    lot.quantite_recue += quantite
+    lot.quantite_restante += quantite
+    lot.save(update_fields=[
+        'quantite_recue', 'quantite_restante', 'date_peremption'])
+    return lot
+
+
+def suggestion_fefo(company, produit, quantite_requise):
+    """XSTK6 — suggère le(s) lot(s) à sortir en premier (FEFO : péremption la
+    plus proche d'abord ; les lots sans date de péremption passent en
+    dernier). Renvoie une liste ``[{lot, quantite}]`` couvrant au mieux
+    ``quantite_requise`` (LECTURE SEULE, ne décrémente rien)."""
+    from .models import LotEntrepot
+    from django.db.models import F
+    lots = (LotEntrepot.objects
+            .filter(company=company, produit=produit,
+                    quantite_restante__gt=0)
+            .order_by(
+                F('date_peremption').asc(nulls_last=True), 'date_creation'))
+    restant = quantite_requise
+    plan = []
+    for lot in lots:
+        if restant <= 0:
+            break
+        prise = min(lot.quantite_restante, restant)
+        plan.append({'lot': lot, 'quantite': prise})
+        restant -= prise
+    return plan
+
+
+def sortir_lot_entrepot(
+        *, company, lot, quantite, user=None, forcer=False, motif=None):
+    """XSTK6 — décrémente un lot précis (sortie ciblée, ex. depuis le plan
+    FEFO). Bloque un lot PÉRIMÉ si
+    ``AchatsParametres.bloquer_stock_perime`` (défaut ON) — sauf ``forcer=
+    True`` avec un ``motif`` tracé (journalisé dans la note du mouvement).
+    Lève ValueError si la quantité dépasse le restant ou si le lot est
+    périmé et non contourné."""
+    from .models import AchatsParametres
+    if quantite <= 0:
+        raise ValueError('La quantité doit être positive.')
+    if quantite > lot.quantite_restante:
+        raise ValueError(
+            f'Quantité insuffisante dans le lot {lot.numero_lot} '
+            f'({lot.quantite_restante} restant).')
+    parametres = AchatsParametres.for_company(company)
+    if lot.est_perime and parametres.bloquer_stock_perime and not forcer:
+        raise ValueError(
+            f'Le lot {lot.numero_lot} est périmé '
+            f'({lot.date_peremption}) — sortie bloquée.')
+    if lot.est_perime and forcer and not motif:
+        raise ValueError(
+            'Un motif est requis pour contourner le blocage du lot périmé.')
+    lot.quantite_restante -= quantite
+    lot.save(update_fields=['quantite_restante'])
+    if lot.est_perime and forcer:
+        logger.info(
+            'XSTK6: sortie forcée du lot périmé %s (%s) par %s — motif: %s',
+            lot.numero_lot, lot.produit_id, getattr(user, 'id', None), motif)
+    return lot
 
 
 # ── G5 — Facture fournisseur / comptes à payer (AP) ──────────────────────────
