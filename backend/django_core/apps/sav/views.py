@@ -2150,6 +2150,18 @@ def sav_resume_par_equipe(request):
     return Response({'results': data})
 
 
+# ── ZSAV6 — Vue « activité » : file d'action suivante par ticket ────────────
+
+def sav_file_action(request):
+    """ZSAV6 — Regroupe les tickets ouverts par action attendue (à répondre/
+    à planifier/à relancer/à clôturer). Réservé au tier responsable/admin
+    (vérifié côté urls.py)."""
+    from .selectors import file_action
+    company = request.user.company
+    data = file_action(company)
+    return Response(data)
+
+
 # ── FG89 — Prévision pièces SAV ───────────────────────────────────────────────
 
 def sav_parts_forecast(request):

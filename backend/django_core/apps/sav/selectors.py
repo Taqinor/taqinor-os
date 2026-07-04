@@ -986,3 +986,74 @@ def resume_par_equipe(company):
             priorite=Ticket.Priorite.URGENTE).count(),
     })
     return out
+
+
+# ── ZSAV6 — Vue « activité » : file d'action suivante par ticket ────────────
+
+def file_action(company, *, today=None):
+    """ZSAV6 — Regroupe les tickets OUVERTS de la société par « action
+    attendue » (parité Odoo « Activity view »), chaque ticket dans EXACTEMENT
+    un bucket (le premier qui matche, dans l'ordre ci-dessous) :
+
+      * ``a_repondre``  — ``date_premiere_reponse`` absente (FG81) ;
+      * ``a_planifier`` — ``statut=PLANIFIE`` sans ``date_tournee`` (FG88) ;
+      * ``a_relancer``  — ``statut=EN_COURS`` et plus de la moitié du délai
+        SLA écoulé (``date_ouverture`` → ``sla_due_at``), sans échéance SLA
+        calculable = jamais dans ce bucket ;
+      * ``a_cloturer``  — ``statut=RESOLU`` dormant (aucune activité chatter
+        depuis ≥ 7 jours, ou depuis la résolution si pas d'activité) ;
+      * ``sans_action``  — aucun des cas ci-dessus (ticket NOUVEAU sans
+        réponse... capturé par ``a_repondre`` en priorité — ce bucket ne
+        contient que les tickets ouverts qui ne matchent RIEN d'autre).
+
+    Renvoie ``{'buckets': {cle: {'count': int, 'ids': [int, …]}, …}}``.
+    Les tickets annulés sont exclus (jamais « à traiter »)."""
+    from datetime import timedelta
+
+    if today is None:
+        today = timezone.localdate()
+
+    buckets = {
+        'a_repondre': [], 'a_planifier': [], 'a_relancer': [],
+        'a_cloturer': [], 'sans_action': [],
+    }
+
+    qs = (Ticket.objects
+          .filter(company=company, statut__in=Ticket.OPEN_STATUTS + [
+              Ticket.Statut.RESOLU], annule=False)
+          .prefetch_related('activites'))
+
+    for t in qs:
+        if t.statut in Ticket.OPEN_STATUTS and t.date_premiere_reponse is None:
+            buckets['a_repondre'].append(t.id)
+            continue
+        if t.statut == Ticket.Statut.PLANIFIE and t.date_tournee is None:
+            buckets['a_planifier'].append(t.id)
+            continue
+        if (t.statut == Ticket.Statut.EN_COURS
+                and t.date_ouverture and t.sla_due_at):
+            total_jours = (t.sla_due_at - t.date_ouverture).days
+            if total_jours > 0:
+                ecoules = (today - t.date_ouverture).days
+                if ecoules >= total_jours / 2:
+                    buckets['a_relancer'].append(t.id)
+                    continue
+        if t.statut == Ticket.Statut.RESOLU:
+            derniere = (t.activites.order_by('-created_at')
+                        .values_list('created_at', flat=True).first())
+            reference_dt = (
+                timezone.localtime(derniere).date() if derniere
+                else t.date_resolution or t.date_ouverture)
+            if reference_dt is not None and (
+                    today - reference_dt) >= timedelta(days=7):
+                buckets['a_cloturer'].append(t.id)
+                continue
+        if t.statut in Ticket.OPEN_STATUTS:
+            buckets['sans_action'].append(t.id)
+
+    return {
+        'buckets': {
+            cle: {'count': len(ids), 'ids': ids}
+            for cle, ids in buckets.items()
+        }
+    }
