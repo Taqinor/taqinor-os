@@ -152,12 +152,19 @@ export function hasLocale(rootPath: string, locale: Locale): boolean {
  * lien mort : si la cible existe dans `locale`, on préfixe (`/en/...`,
  * `/ar/...`) ; sinon on retombe sur le FR (racine), qui existe toujours.
  * `rootPath` doit être un chemin racine (sans préfixe de locale).
+ *
+ * WB16 — la racine (/) préfixée garde sa barre finale (`/en/`, `/ar/`) : la
+ * forme sans barre (`/en`, `/ar`) est 301-redirigée vers elle-même AVEC barre
+ * par `trailingSlashRedirect` (worker/redirects.mjs), donc émettre la forme
+ * sans barre pour le sélecteur de langue ajoutait un aller-retour 301 inutile.
+ * Chemins non-racine inchangés.
  */
 export function localizeNavHref(rootPath: string, locale: Locale): string {
   const clean = rootPath.startsWith('/') ? rootPath : '/' + rootPath;
   if (locale === DEFAULT_LOCALE || !isLocale(locale)) return clean;
   if (!hasLocale(clean, locale)) return clean; // repli FR — jamais de lien mort
-  return `/${locale}${clean === '/' ? '' : clean}`;
+  if (clean === '/') return `/${locale}/`;
+  return `/${locale}${clean}`;
 }
 
 /**
