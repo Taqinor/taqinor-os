@@ -46,7 +46,7 @@ export interface ServiceFaqItem {
 export interface WarrantyRow {
   /** Libellé du composant (FR/EN/AR selon la locale appelante). */
   label: string;
-  /** Durée affichée, ex. "12 ans produit · 25 ans performance". */
+  /** Durée affichée, ex. "12 ans produit · 30 ans performance". */
   years: string;
   note?: string;
 }
@@ -61,9 +61,9 @@ const YEARS_UNIT: Record<Locale, (n: number) => string> = {
 };
 
 const PANNEAUX_NOTE: Record<Locale, string> = {
-  fr: '12 ans produit · 25 ans performance (≥ 84,8 % de la puissance initiale)',
-  en: '12 years product · 25 years performance (≥ 84.8 % of initial power)',
-  ar: '12 سنة على المنتج · 25 سنة على الأداء (≥ 84.8 % من القدرة الأولية)',
+  fr: '12 ans produit · 30 ans performance linéaire (≥ 87,4 % de la puissance initiale)',
+  en: '12 years product · 30 years linear performance (≥ 87.4 % of initial power)',
+  ar: '12 سنة على المنتج · 30 سنة على الأداء الخطي (≥ 87.4 % من القدرة الأولية)',
 };
 
 const LABELS: Record<Locale, { panneaux: string; onduleur: string; batterie: string; structure: string; poseMainOeuvre: string }> = {
@@ -112,7 +112,7 @@ export function componentWarrantyRows(
   const rows: WarrantyRow[] = [
     {
       label: L.panneaux,
-      years: yrs(panneau?.warranty.years ?? 25),
+      years: yrs(panneau?.warranty.years ?? 30),
       note: PANNEAUX_NOTE[locale] ?? PANNEAUX_NOTE.fr,
     },
   ];
@@ -194,7 +194,7 @@ const RESIDENTIEL: Record<Locale, ServiceCopy> = {
       'Trois temps, sans détour : d’abord un diagnostic de 60 secondes qui renvoie une première fourchette, puis un échange WhatsApp direct avec un technicien (photos de toiture à l’appui), enfin la visite technique, l’étude complète gratuite et le devis. Vous parlez à la personne qui dimensionne, pas à un standard qui rappellera.',
     garantiesQ: 'Quelles garanties couvrent une installation résidentielle ?',
     garantiesA:
-      'Panneaux : 12 ans produit et 25 ans de performance (≥ 84,8 % de la puissance initiale). Onduleur et batterie : 10 ans. Structure acier galvanisé : 20 ans. Installation et main-d’œuvre Taqinor : 2 ans. Le détail par composant est ci-dessous et sur la page Garanties.',
+      'Panneaux : 12 ans produit et 30 ans de performance linéaire (≥ 87,4 % de la puissance initiale à 30 ans). Onduleur et batterie : 10 ans. Structure acier galvanisé : 20 ans. Installation et main-d’œuvre Taqinor : 2 ans. Le détail par composant est ci-dessous et sur la page Garanties.',
   },
   en: {
     entretienQ: 'Does a residential installation need regular maintenance?',
@@ -214,7 +214,7 @@ const RESIDENTIEL: Record<Locale, ServiceCopy> = {
       'Three steps, straightforward: first a 60-second assessment that returns a first range, then a direct WhatsApp exchange with a technician (roof photos included), finally the technical visit, the full free assessment and the quote. You speak to the person who sizes the system, not a call centre that will call back.',
     garantiesQ: 'What warranties cover a residential installation?',
     garantiesA:
-      'Panels: 12 years product and 25 years performance (≥ 84.8 % of initial power). Inverter and battery: 10 years. Galvanised steel structure: 20 years. Taqinor installation and labour: 2 years. The breakdown by component is below and on the Warranties page.',
+      'Panels: 12 years product and 30 years linear performance (≥ 87.4 % of initial power at 30 years). Inverter and battery: 10 years. Galvanised steel structure: 20 years. Taqinor installation and labour: 2 years. The breakdown by component is below and on the Warranties page.',
   },
   ar: {
     entretienQ: 'هل تحتاج التركيبة السكنية إلى صيانة منتظمة؟',
@@ -234,7 +234,7 @@ const RESIDENTIEL: Record<Locale, ServiceCopy> = {
       'ثلاث مراحل، دون التفاف: أولاً تشخيص لمدة 60 ثانية يُعيد مجالاً أولياً، ثم تواصل مباشر عبر واتساب مع تقني (بصور السطح)، وأخيراً الزيارة التقنية والدراسة الكاملة المجانية والثمن. تتحدّثون مع الشخص الذي يحدّد المقاس، لا مع مركز نداء سيتصل لاحقاً.',
     garantiesQ: 'ما الضمانات التي تُغطّي تركيبة سكنية؟',
     garantiesA:
-      'الألواح: 12 سنة على المنتج و25 سنة على الأداء (≥ 84.8 % من القدرة الأولية). العاكس والبطارية: 10 سنوات. الهيكل الفولاذي المجلفن: 20 سنة. التركيب واليد العاملة لتاكينور: سنتان. التفصيل حسب المكوّن أسفله وعلى صفحة الضمانات.',
+      'الألواح: 12 سنة على المنتج و30 سنة على الأداء الخطي (≥ 87.4 % من القدرة الأولية عند 30 سنة). العاكس والبطارية: 10 سنوات. الهيكل الفولاذي المجلفن: 20 سنة. التركيب واليد العاملة لتاكينور: سنتان. التفصيل حسب المكوّن أسفله وعلى صفحة الضمانات.',
   },
 };
 
@@ -259,7 +259,7 @@ const PROFESSIONNEL: Record<Locale, ServiceCopy> = {
       'Le même process en trois temps que pour un site résidentiel : diagnostic initial, échange direct avec un technicien, puis visite technique et étude complète. Sur un site professionnel, l’étude intègre en plus vos courbes de charge et, selon la puissance, le montage du dossier loi 82-21 — ce qui peut allonger le délai selon le régime applicable (accord de raccordement ou autorisation).',
     garantiesQ: 'Quelles garanties couvrent une installation professionnelle ?',
     garantiesA:
-      'Mêmes garanties tier-1 que le résidentiel : panneaux 12 ans produit / 25 ans performance (≥ 84,8 %), onduleur 10 ans, structure acier galvanisé 20 ans, installation et main-d’œuvre Taqinor 2 ans. Le détail par composant est ci-dessous et sur la page Garanties.',
+      'Mêmes garanties tier-1 que le résidentiel : panneaux 12 ans produit / 30 ans performance linéaire (≥ 87,4 %), onduleur 10 ans, structure acier galvanisé 20 ans, installation et main-d’œuvre Taqinor 2 ans. Le détail par composant est ci-dessous et sur la page Garanties.',
   },
   en: {
     entretienQ: 'Does a business site need particular maintenance?',
@@ -279,7 +279,7 @@ const PROFESSIONNEL: Record<Locale, ServiceCopy> = {
       'The same three-step process as a residential site: initial assessment, direct exchange with a technician, then the technical visit and full assessment. On a business site, the assessment also factors in your load curves and, depending on power, building the law 82-21 file — which can extend the timeline depending on the applicable regime (grid-connection agreement or authorisation).',
     garantiesQ: 'What warranties cover a business installation?',
     garantiesA:
-      'The same tier-1 warranties as residential: panels 12 years product / 25 years performance (≥ 84.8 %), inverter 10 years, galvanised steel structure 20 years, Taqinor installation and labour 2 years. The breakdown by component is below and on the Warranties page.',
+      'The same tier-1 warranties as residential: panels 12 years product / 30 years linear performance (≥ 87.4 %), inverter 10 years, galvanised steel structure 20 years, Taqinor installation and labour 2 years. The breakdown by component is below and on the Warranties page.',
   },
   ar: {
     entretienQ: 'هل يحتاج الموقع المهني إلى صيانة خاصة؟',
@@ -299,7 +299,7 @@ const PROFESSIONNEL: Record<Locale, ServiceCopy> = {
       'نفس المسار من ثلاث مراحل كما في الموقع السكني: تشخيص أولي، تواصل مباشر مع تقني، ثم الزيارة التقنية والدراسة الكاملة. في الموقع المهني، تُدمج الدراسة كذلك منحنيات الحمل، وحسب القدرة، إعداد ملف القانون 82-21 — ما قد يُطيل الأجل حسب النظام المطبَّق (اتفاقية ربط أو ترخيص).',
     garantiesQ: 'ما الضمانات التي تُغطّي تركيبة مهنية؟',
     garantiesA:
-      'نفس ضمانات الفئة الأولى كما في السكني: الألواح 12 سنة على المنتج / 25 سنة على الأداء (≥ 84.8 %)، العاكس 10 سنوات، الهيكل الفولاذي المجلفن 20 سنة، التركيب واليد العاملة لتاكينور سنتان. التفصيل حسب المكوّن أسفله وعلى صفحة الضمانات.',
+      'نفس ضمانات الفئة الأولى كما في السكني: الألواح 12 سنة على المنتج / 30 سنة على الأداء الخطي (≥ 87.4 %)، العاكس 10 سنوات، الهيكل الفولاذي المجلفن 20 سنة، التركيب واليد العاملة لتاكينور سنتان. التفصيل حسب المكوّن أسفله وعلى صفحة الضمانات.',
   },
 };
 
@@ -325,7 +325,7 @@ const POMPAGE: Record<Locale, ServiceCopy> = {
       'Le relevé des quatre mesures (débit, HMT, profondeur du forage, besoins en eau) précède tout chiffrage : sans elles, nous ne dimensionnons rien. Une fois ces mesures en main, le système se calcule et le devis suit le même parcours que pour un site professionnel — diagnostic, échange direct, puis étude complète.',
     garantiesQ: 'Quelles garanties couvrent un système de pompage solaire ?',
     garantiesA:
-      'Panneaux : 12 ans produit et 25 ans de performance (≥ 84,8 % de la puissance initiale) — le même matériel tier-1 que nos toitures. Installation et main-d’œuvre Taqinor : 2 ans. Aucune garantie onduleur ou batterie n’est listée ici : ce service ne comprend ni l’un ni l’autre.',
+      'Panneaux : 12 ans produit et 30 ans de performance linéaire (≥ 87,4 % de la puissance initiale à 30 ans) — le même matériel tier-1 que nos toitures. Installation et main-d’œuvre Taqinor : 2 ans. Aucune garantie onduleur ou batterie n’est listée ici : ce service ne comprend ni l’un ni l’autre.',
   },
   en: {
     entretienQ: 'Does a solar pumping system need maintenance?',
@@ -345,7 +345,7 @@ const POMPAGE: Record<Locale, ServiceCopy> = {
       'Surveying the four measurements (flow rate, head, borehole depth, water needs) comes before any costing: without them, we size nothing. Once those measurements are in hand, the system is calculated and the quote follows the same path as a business site — assessment, direct exchange, then full study.',
     garantiesQ: 'What warranties cover a solar pumping system?',
     garantiesA:
-      'Panels: 12 years product and 25 years performance (≥ 84.8 % of initial power) — the same tier-1 equipment as our roofs. Taqinor installation and labour: 2 years. No inverter or battery warranty is listed here: this service includes neither.',
+      'Panels: 12 years product and 30 years linear performance (≥ 87.4 % of initial power at 30 years) — the same tier-1 equipment as our roofs. Taqinor installation and labour: 2 years. No inverter or battery warranty is listed here: this service includes neither.',
   },
   ar: {
     entretienQ: 'هل يحتاج نظام الضخ الشمسي إلى صيانة؟',
@@ -365,7 +365,7 @@ const POMPAGE: Record<Locale, ServiceCopy> = {
       'معاينة القياسات الأربعة (التدفق، الارتفاع المانومتري، عمق البئر، احتياجات الماء) تسبق أي تسعير: دونها، لا نُحدِّد مقاس أي شيء. بمجرد توفّر هذه القياسات، يُحسب النظام ويتّبع الثمن نفس مسار الموقع المهني — تشخيص، تواصل مباشر، ثم دراسة كاملة.',
     garantiesQ: 'ما الضمانات التي تُغطّي نظام ضخ شمسي؟',
     garantiesA:
-      'الألواح: 12 سنة على المنتج و25 سنة على الأداء (≥ 84.8 % من القدرة الأولية) — نفس عتاد الفئة الأولى كأسطحنا. التركيب واليد العاملة لتاكينور: سنتان. لا ضمان عاكس أو بطارية مُدرَج هنا: هذه الخدمة لا تشمل أياً منهما.',
+      'الألواح: 12 سنة على المنتج و30 سنة على الأداء الخطي (≥ 87.4 % من القدرة الأولية عند 30 سنة) — نفس عتاد الفئة الأولى كأسطحنا. التركيب واليد العاملة لتاكينور: سنتان. لا ضمان عاكس أو بطارية مُدرَج هنا: هذه الخدمة لا تشمل أياً منهما.',
   },
 };
 

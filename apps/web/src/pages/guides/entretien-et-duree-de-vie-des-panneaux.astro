@@ -1,8 +1,8 @@
 ---
 /**
  * Guide (W123) — Entretien, nettoyage et durée de vie des panneaux au Maroc.
- * Chiffres : faits généraux uniquement (dégradation ~0,5 %/an, ~84,8 % à 25 ans
- * tirés de la garantie publiée §8 CONTENT_SEO_NOTES.md ; coefficient thermique
+ * Chiffres : faits généraux uniquement (dégradation ~0,4 %/an, ≥ 87,4 % à 30 ans
+ * tirés de la garantie linéaire publiée ; coefficient thermique
  * ~0,3–0,5 %/°C au-dessus de 25 °C = fait de physique des semi-conducteurs).
  * Aucun prix inventé, aucun chiffre de marché.
  */
@@ -29,9 +29,9 @@ const guideBodyText = `
   nettoyage toutes les quatre à six semaines en été n'a rien d'excessif. Le verre d'un panneau moderne
   est légèrement anti-reflets et accroche peu la poussière sèche. Les cellules en silicium cristallin
   perdent du rendement dès que leur température dépasse 25 °C, de l'ordre de 0,3 à 0,5 % par degré
-  supplémentaire. Les panneaux solaires durent : la garantie produit standard du marché s'étend
-  aujourd'hui sur 25 ans et garantit qu'à cette échéance le panneau produit encore au moins environ
-  84,8 % de sa puissance initiale. L'onduleur, lui, vit moins longtemps : il tient typiquement 10 à 15
+  supplémentaire. Les panneaux solaires durent : la garantie de performance des panneaux que nous posons s'étend
+  aujourd'hui sur 30 ans (garantie linéaire) et garantit qu'à cette échéance le panneau produit encore au moins
+  87,4 % de sa puissance initiale. L'onduleur, lui, vit moins longtemps : il tient typiquement 10 à 15
   ans. Votre meilleur outil de maintenance n'est pas une éponge, c'est la courbe de production.
 `;
 const readingMinutes = estimateReadingTime(guideBodyText);
@@ -43,7 +43,7 @@ const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Article',
   headline: 'Entretien, nettoyage et durée de vie des panneaux solaires au Maroc',
-  description: 'Cadence de nettoyage adaptée au contexte marocain (poussière, sable, pluie), effet de la chaleur sur la production, durée de vie réelle et garantie à 25 ans : tout ce qu\'il faut savoir pour préserver ses panneaux.',
+  description: 'Cadence de nettoyage adaptée au contexte marocain (poussière, sable, pluie), effet de la chaleur sur la production, durée de vie réelle et garantie à 30 ans : tout ce qu\'il faut savoir pour préserver ses panneaux.',
   image: schemaImageUrl,
   about: { '@type': 'Thing', name: 'Entretien panneaux solaires Maroc' },
   author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
@@ -135,9 +135,9 @@ const jsonLd = {
 
       <h2 class="display v2-section-title mt-12 text-white">Combien de temps ils durent, et ce qui les use</h2>
       <p class="v2-lead mt-5 text-lune-soft">
-        Les panneaux solaires durent. La garantie produit standard du marché s'étend aujourd'hui sur
-        25 ans et garantit qu'à cette échéance le panneau produit encore au moins environ 84,8 % de
-        sa puissance initiale, soit une dégradation de l'ordre de 0,5 % par an, régulière et
+        Les panneaux solaires durent. La garantie de performance des panneaux que nous posons s'étend aujourd'hui sur
+        30 ans (garantie linéaire) et garantit qu'à cette échéance le panneau produit encore au moins 87,4 % de
+        sa puissance initiale, soit une dégradation de l'ordre de 0,4 % par an, régulière et
         prévisible. La durée de vie physique effective peut dépasser 30 ans si l'installation a été
         bien posée et sommairement entretenue.
       </p>

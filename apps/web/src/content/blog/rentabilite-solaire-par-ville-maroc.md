@@ -76,7 +76,7 @@ Le **payback résidentiel standard** est de **5 à 7 ans** — chiffre cohérent
 - **Votre taux d'autoconsommation** : la [loi 82-21](/blog/loi-82-21-autoproduction-2026) organise l'autoproduction basse tension, mais aucun tarif de rachat résidentiel (BT) n'est publié à ce jour — l'ANRE n'a publié un tarif de rachat que pour le moyen/haut/très haute tension (0,18–0,21 DH/kWh), pas pour les maisons < 11 kW. Tant que ce tarif BT n'existe pas noir sur blanc, nous ne chiffrons **aucun revenu d'export** : la valeur réelle du solaire est dans la consommation immédiate, pas dans la revente d'un surplus non valorisé (voir [notre méthodologie d'estimation](/methodologie-estimation)).
 - **La batterie** : ajouter un stockage prolonge le payback de **1 à 3 ans** mais augmente le taux d'autoconsommation du soir.
 
-**Sur 25 ans**, après remboursement de l'installation, chaque kWh produit est quasi-gratuit. Les panneaux modernes perdent environ 0,5 %/an de performance et le standard du marché les garantit à ~80–85 % de leur capacité initiale à 25 ans — notre garantie va au-delà du standard : ≥ 84,8 % à 25 ans sur les panneaux que nous installons.
+**Sur 30 ans**, après remboursement de l'installation, chaque kWh produit est quasi-gratuit. Les panneaux modernes perdent environ 0,4 %/an de performance et l'ancien standard du marché (cellules PERC) les garantissait à ~80–85 % de leur capacité initiale à 25 ans — les panneaux N-type que nous installons vont au-delà : garantie de performance **linéaire sur 30 ans**, avec **≥ 87,4 % de la puissance initiale à 30 ans** (soit ≥ 89,4 % à 25 ans).
 
 ---
 

@@ -43,7 +43,7 @@ const comparaisonOnduleurs = [
 ];
 
 const categories = [
-  { ref: 'PV-1', title: 'Panels — Canadian Solar TOPBiHiKu', body: "Bifacial modules also capture the light reflected by the roof: on a light-coloured terrace, that's yield gained without extra surface area. These 705 to 720 Wc modules come from a manufacturer that has shipped more than 100 GW worldwide, held to the IEC 61215 and IEC 61730 standards. These are the ones fitted in Casablanca and El Jadida.", points: ['Bifacial 705 – 720 Wc', '12-year product warranty', '25-year performance warranty (≥ 84.8 %)'] },
+  { ref: 'PV-1', title: 'Panels — Canadian Solar TOPBiHiKu', body: "Bifacial modules also capture the light reflected by the roof: on a light-coloured terrace, that's yield gained without extra surface area. These 705 to 720 Wc modules come from a manufacturer that has shipped more than 100 GW worldwide, held to the IEC 61215 and IEC 61730 standards. These are the ones fitted in Casablanca and El Jadida.", points: ['Bifacial 705 – 720 Wc', '12-year product warranty', '30-year linear performance warranty (≥ 87.4 %)'] },
   { ref: 'PV-2', title: 'Panels — JA Solar DeepBlue', body: "The monocrystalline DeepBlue cell goes after yield rather than surface area — useful when roof space is tight. Same tier of manufacturer, same certification requirement. Installed in Nouaceur.", points: ['High-efficiency monocrystalline', '12-year product warranty', '25-year performance warranty'] },
   { ref: 'OND-1', title: 'Hybrid inverters — Deye', body: "We choose the Deye hybrid for one concrete reason: when the grid drops, it switches to battery within milliseconds — fast enough to keep a computer running. The rest of the time it decides, second by second, whether to draw from the panels, charge the battery or pull from the grid. The SUN-SG04LP1, SG04LP3 and SG01HP3 ranges cover 5 to 30 kW, single-phase as well as three-phase, and talk to the battery BMS over CAN. Compliant with IEC 61727 and VDE-AR-N-4105.", points: ['Single-phase and three-phase, 5 – 30 kW', 'Built-in CAN BMS battery management', '10-year warranty'] },
   { ref: 'OND-2', title: 'Grid-tied inverters — Huawei SUN2000', body: "When the study calls for no battery, we go with pure string. The Huawei SUN2000 optimises string by string: a shaded panel no longer drags the whole row down. From residential to commercial rooftops.", points: ['High European efficiency', 'Per-string optimisation', '10-year warranty'] },
@@ -53,9 +53,9 @@ const categories = [
 
 const warranties = [
   { item: 'Photovoltaic panels (product)', years: '12 years' },
-  { item: 'Photovoltaic panels (performance)', years: '25 years', note: '≥ 84.8 % of initial output' },
+  { item: 'Photovoltaic panels (performance)', years: '30 years', note: 'linear, ≥ 87.4 % of initial output at 30 years' },
   { item: 'Inverters (Deye, Huawei)', years: '10 years' },
-  { item: 'Dyness LFP batteries', years: '10 years' },
+  { item: 'Dyness LFP batteries', years: '10 years', note: '≥ 70 % of capacity' },
   { item: 'Galvanised steel structure', years: '20 years' },
   { item: 'Taqinor installation and labour', years: '2 years' },
 ];
@@ -63,7 +63,7 @@ const warranties = [
 
 <Layout
   title="The hardware we fit: Canadian Solar, Deye, Huawei, Dyness — and why | Taqinor"
-  description="Canadian Solar bifacial panels (25-year performance), Deye hybrid inverters, Dyness LFP 6,000-cycle batteries, Deye Cloud supervision: the hardware we actually fit, and the technical reason behind every choice."
+  description="Canadian Solar bifacial panels (30-year linear performance), Deye hybrid inverters, Dyness LFP 6,000-cycle batteries, Deye Cloud supervision: the hardware we actually fit, and the technical reason behind every choice."
   ogSlug="equipement"
 >
   <div class="v2">

@@ -671,10 +671,11 @@ export function normalizeAcceptResponse(status: number, payload: unknown): Accep
 // ── Constantes physiques / financières documentées ──────────────────────────
 
 /**
- * WJ9 — Horizon d'analyse des économies cumulées : 25 ans. C'est la garantie de
- * performance standard d'un panneau photovoltaïque (≈ 25 ans à ~80–85 % de
- * puissance) — durée de vie économique conventionnelle de l'installation, pas un
- * chiffre marketing.
+ * WJ9 — Horizon d'analyse des économies cumulées : 25 ans. Durée de vie
+ * économique conventionnelle de l'installation retenue pour le calcul (choix
+ * prudent), et non un chiffre marketing. La garantie de performance des panneaux
+ * posés va en réalité au-delà : linéaire sur 30 ans, ≥ 87,4 % de la puissance
+ * initiale à 30 ans (donc ≥ 89,4 % à 25 ans), cf. `src/lib/warranty.ts`.
  */
 export const SAVINGS_HORIZON_YEARS = 25;
 
@@ -1790,7 +1791,8 @@ export interface AssumptionItem {
  * UNIQUEMENT depuis des champs backend/constantes déjà affichées ailleurs sur
  * la page (jamais une nouvelle valeur inventée ici) :
  *  - tarif : loi 82-21 autoconsommation, dérive 0 % (BILL_INFLATION_RATE) ;
- *  - horizon : SAVINGS_HORIZON_YEARS (25 ans, garantie panneau) ;
+ *  - horizon : SAVINGS_HORIZON_YEARS (25 ans, durée de vie économique retenue —
+ *    la garantie de performance panneau va au-delà : 30 ans, cf. warranty.ts) ;
  *  - type d'installation : `quote.inst_type` (résidentiel/industriel/agricole) ;
  *  - financement : programme backend s'il est présent (Tatwir/ISTIDAMA…).
  * Toujours au moins 2 lignes (tarif + horizon sont des constantes du module,

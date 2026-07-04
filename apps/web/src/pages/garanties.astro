@@ -14,7 +14,7 @@
  * (WG16 encore en cours : exclusions GÉNÉRIQUES d'une garantie PV standard,
  * marquées « à confirmer » — pas la liste définitive de Taqinor tant que Reda
  * ne l'a pas validée) ; (2) un scénario concret si la performance tombe sous
- * le seuil garanti (≥ 84,8 % déjà publié) ; (3) une marche à suivre pour faire
+ * le seuil garanti (≥ 87,4 % à 30 ans déjà publié) ; (3) une marche à suivre pour faire
  * jouer la garantie, avec le délai de réponse résolu par le fondateur
  * (WG9 : « sous 1 h, 7j/7 »).
  *
@@ -76,7 +76,7 @@ const insuranceFaq = [
 // Identique au tableau de la page Équipement (source de vérité publiée).
 const warranties = [
   { item: 'Panneaux photovoltaïques (produit)', years: '12 ans' },
-  { item: 'Panneaux photovoltaïques (performance)', years: '25 ans', note: '≥ 84,8 % de la puissance initiale' },
+  { item: 'Panneaux photovoltaïques (performance)', years: '30 ans', note: 'linéaire, ≥ 87,4 % de la puissance initiale à 30 ans' },
   { item: 'Onduleurs (Deye, Huawei)', years: '10 ans' },
   { item: 'Batteries Dyness LFP', years: '10 ans' },
   { item: 'Structure acier galvanisé', years: '20 ans' },
@@ -136,7 +136,7 @@ const productionGuarantee = {
 
 <Layout
   title="Nos garanties — ce qui est couvert, et pour combien d’années | Taqinor"
-  description="Une installation Taqinor s’engage sur la durée : 25 ans de performance et 12 ans produit sur les panneaux (≥ 84,8 % de puissance à 25 ans), 10 ans onduleurs et batteries, 20 ans structure, 2 ans pose. Et un suivi qui repère l’anomalie avant vous, sur Deye Cloud."
+  description="Une installation Taqinor s’engage sur la durée : 30 ans de performance linéaire et 12 ans produit sur les panneaux (≥ 87,4 % de puissance à 30 ans), 10 ans onduleurs et batteries, 20 ans structure, 2 ans pose. Et un suivi qui repère l’anomalie avant vous, sur Deye Cloud."
   ogSlug="garanties"
 >
   <div class="v2">
@@ -151,10 +151,10 @@ const productionGuarantee = {
         <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">Ce sur quoi nous nous engageons</h1>
         <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
           Une garantie n’a de valeur que si elle est écrite et activable. Les nôtres le sont,
-          composant par composant, de 2 à 25 ans — et celle qui compte vraiment sur un placement de
-          25 ans, c’est la performance : vos panneaux doivent encore restituer
-          <strong class="text-white">au moins 84,8 % de leur puissance à 25 ans</strong>. Le tableau
-          ci-dessous ne cache aucune ligne.
+          composant par composant, de 2 à 30 ans — et celle qui compte vraiment sur un placement de
+          long terme, c’est la performance : vos panneaux doivent encore restituer
+          <strong class="text-white">au moins 87,4 % de leur puissance à 30 ans</strong> (garantie
+          linéaire). Le tableau ci-dessous ne cache aucune ligne.
         </p>
       </div>
     </section>
@@ -216,11 +216,11 @@ const productionGuarantee = {
         <!-- W331 — scénario concret si la performance tombe sous le seuil garanti -->
         <div class="mx-auto mt-14 max-w-xl border-t-2 border-azur-900 bg-blanc p-6">
           <p class="tech-label text-azur-600">Un scénario concret</p>
-          <h3 class="display mt-2 text-lg">Si la performance tombe sous 84,8 %</h3>
+          <h3 class="display mt-2 text-lg">Si la performance tombe sous le seuil linéaire garanti</h3>
           <p class="mt-3 text-sm leading-relaxed text-encre-soft">
             Vos panneaux sont mesurés en continu sur Deye Cloud. Si un contrôle constate, à l’intérieur
-            de la période de 25 ans, que la puissance restituée est passée sous le seuil garanti de
-            84,8 % de la puissance initiale — hors les exclusions ci-dessus — la garantie constructeur
+            de la période de 30 ans, que la puissance restituée est passée sous le seuil linéaire garanti
+            (≥ 87,4 % de la puissance initiale à 30 ans) — hors les exclusions ci-dessus — la garantie constructeur
             s’applique : remplacement ou compensation du panneau concerné, selon les termes du
             fabricant. C’est précisément pour repérer ce genre d’écart tôt que le monitoring tourne en
             continu, avant même que vous n’ayez à le constater sur votre facture.
@@ -318,7 +318,7 @@ const productionGuarantee = {
       schema={false}
     />
 
-    <CtaBand title="Une garantie de 25 ans se mérite par une étude sérieuse. La nôtre est gratuite." href="/devis/mon-toit" />
+    <CtaBand title="Une garantie de 30 ans se mérite par une étude sérieuse. La nôtre est gratuite." href="/devis/mon-toit" />
 
     <StickyCta />
   </div>

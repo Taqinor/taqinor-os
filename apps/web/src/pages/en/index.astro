@@ -100,7 +100,7 @@ const faq = [
   { q: 'How much does a residential solar installation cost?', a: 'It depends on your consumption and your roof. A villa with a bill of 1 500 MAD per month typically gets a 4 to 6 kWc system. The diagnostic below gives you an immediate range; the precise quote is set after a technical visit.' },
   { q: 'What does Law 82-21 say for households?', a: 'At low voltage, an installation under 11 kW falls under the declaration regime: a prior formality, not an authorisation. Taqinor prepares and files the declaration for you.' },
   { q: 'My existing installation is not declared. What should I do?', a: 'Article 33 of Law 82-21 opens a regularisation window for existing installations. The window is open: file now. See the Regularisation page for the 5-step procedure.' },
-  { q: 'How long do the panels last?', a: 'Panels carry a 25-year performance warranty (generally ≥ 84,8 % of the initial output at 25 years). Inverters are typically replaced once over the lifetime of the installation.' },
+  { q: 'How long do the panels last?', a: 'Panels carry a 30-year linear performance warranty (≥ 87.4 % of the initial output at 30 years). Inverters are typically replaced once over the lifetime of the installation.' },
   { q: 'Do I need batteries?', a: 'Not necessarily. If your consumption is mostly during the day, direct self-consumption is the best investment. Batteries are justified for night-time consumption or service continuity — we calculate it in the study.' },
 ];
 
@@ -200,13 +200,13 @@ const trust = [
   { fig: 'Deye Cloud', tally: false, label: 'Measured production', body: 'Monitoring on every installation, client access included' },
 ];
 
-// W265 — The 25-year investment story: the page's ONE clear tonal break
+// W265 — The 30-year investment story: the page's ONE clear tonal break
 // (blanc-azur background, encre text), placed at position 3-4 to let the
 // dark→light→dark narrative breathe. Figures STRICTLY reused from
 // /financement (already published) — no new number.
 const investment = [
   { v: '3–7 years', label: 'Typical return on investment' },
-  { v: '25 years', label: 'Panel performance warranty' },
+  { v: '30 years', label: 'Panel performance warranty' },
   { v: '60–90 %', label: 'Of the bill covered' },
   { v: '0 MAD', label: 'The study and the assessment' },
 ];
@@ -347,11 +347,11 @@ const engineeringPillars = [
     <InstantEstimator variant="hero" />
 
     {/* Warranty promise up top — a true, strong commitment, taken from
-        /garanties (25-year performance) and the measured Deye Cloud monitoring. */}
+        /garanties (30-year performance) and the measured Deye Cloud monitoring. */}
     <div class="seam-soft" aria-hidden="true"></div>
     <section class="bg-brass-400/5 px-4 py-6">
       <p class="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center text-sm font-semibold text-lune sm:text-base">
-        <span class="text-brass-300">25-year performance warranty</span>
+        <span class="text-brass-300">30-year performance warranty</span>
         <span class="text-lune-faint" aria-hidden="true">·</span>
         <span>production measured, not promised — Deye Cloud monitoring on every installation</span>
       </p>
@@ -482,7 +482,7 @@ const engineeringPillars = [
           <h2 class="display v2-section-title mt-5 text-encre">An investment that pays you back, then pays for you</h2>
           <p class="v2-body mt-5 text-encre-soft">
             An installation pays for itself through the electricity you stop buying from the
-            grid — and there are still many years left on the 25-year performance warranty
+            grid — and there are still many years left on the 30-year performance warranty
             during which it keeps producing for you, at 0 MAD.
           </p>
         </div>
