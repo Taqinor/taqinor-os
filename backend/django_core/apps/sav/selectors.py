@@ -544,3 +544,91 @@ def fiabilite_equipements(company, *, include_couts=False, limit=None):
     if limit:
         rows = rows[:limit]
     return rows
+
+
+# ── XSAV18 — Rentabilité par contrat de maintenance ───────────────────────────
+
+def _revenu_contrat_maintenance(contrat):
+    """XSAV18 — Revenu facturé pour CE contrat (FG40).
+
+    Les factures récurrentes du contrat ne sont, à ce jour, liées QUE par leur
+    libellé texte (``creer_facture_contrat`` pose
+    ``f'Maintenance — contrat #{contrat.pk} (...)'``, cf. `apps.ventes.services`
+    — aucun FK dédié n'existe encore). Lecture SEULE, best-effort : une erreur
+    (app ventes absente/erreur) renvoie 0 plutôt que de bloquer la
+    rentabilité. Somme les montants TTC des factures non annulées dont le
+    libellé référence ce contrat."""
+    from decimal import Decimal
+    try:
+        from apps.ventes.models import Facture
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        return Decimal('0')
+
+    marqueur = f'contrat #{contrat.pk}'
+    qs = (Facture.objects
+          .filter(company=contrat.company, libelle__icontains=marqueur)
+          .exclude(statut=Facture.Statut.ANNULEE))
+    return sum((f.montant_ttc for f in qs), Decimal('0'))
+
+
+def rentabilite_contrat(contrat):
+    """XSAV18 — P&L d'UN contrat de maintenance.
+
+    Revenu = factures récurrentes FG40 référençant ce contrat (cf.
+    ``_revenu_contrat_maintenance``). Coût = tickets liés (même client +
+    même chantier que le contrat, quand un chantier est posé ; sinon même
+    client seul) : ``Ticket.cout`` + pièces consommées valorisées au prix
+    D'ACHAT interne (jamais le prix de vente). ``marge`` = revenu - coût ;
+    ``marge_par_visite`` = marge / nombre de tickets PRÉVENTIFS liés (visites
+    de maintenance), ``None`` si aucune visite (pas de division par zéro).
+
+    Admin-only côté appelant (gated `prix_achat_voir`) — jamais exposé au
+    client, jamais dans un PDF. Renvoie un dict plat."""
+    from decimal import Decimal
+    from .models import PieceConsommee
+
+    qs_tickets = Ticket.objects.filter(company=contrat.company, client=contrat.client)
+    if contrat.installation_id:
+        qs_tickets = qs_tickets.filter(installation=contrat.installation)
+    tickets = list(qs_tickets)
+
+    cout_tickets = sum(
+        (t.cout for t in tickets if t.cout is not None), Decimal('0'))
+    pieces = (PieceConsommee.objects
+              .filter(ticket__in=tickets)
+              .select_related('produit'))
+    cout_pieces = sum(
+        (p.quantite * p.produit.prix_achat for p in pieces), Decimal('0'))
+    cout = cout_tickets + cout_pieces
+
+    revenu = _revenu_contrat_maintenance(contrat)
+    marge = revenu - cout
+
+    nb_visites = sum(1 for t in tickets if t.type == Ticket.Type.PREVENTIF)
+    marge_par_visite = (
+        float(marge / nb_visites) if nb_visites else None)
+
+    return {
+        'contrat_id': contrat.pk,
+        'client_id': contrat.client_id,
+        'installation_id': contrat.installation_id,
+        'revenu': float(revenu),
+        'cout': float(cout),
+        'marge': float(marge),
+        'nb_visites': nb_visites,
+        'marge_par_visite': marge_par_visite,
+    }
+
+
+def rentabilite_contrats(company, *, limit=None):
+    """XSAV18 — Rentabilité de TOUS les contrats de maintenance actifs de la
+    société, classée par marge CROISSANTE (les contrats vendus à perte
+    apparaissent en premier — la vue d'action prioritaire avant renouvellement)."""
+    from .models import ContratMaintenance
+
+    contrats = ContratMaintenance.objects.filter(company=company)
+    rows = [rentabilite_contrat(c) for c in contrats]
+    rows.sort(key=lambda r: r['marge'])
+    if limit:
+        rows = rows[:limit]
+    return rows

@@ -380,3 +380,32 @@ class ContratMaintenanceViewSet(TenantMixin, viewsets.ModelViewSet):
         resp['Content-Disposition'] = (
             f'attachment; filename="maintenance-contrat-{contrat.pk}.pdf"')
         return resp
+
+    @action(detail=True, methods=['get'], url_path='rentabilite',
+            permission_classes=[IsResponsableOrAdmin])
+    def rentabilite(self, request, pk=None):
+        """XSAV18 — P&L de CE contrat (revenu FG40 vs coût tickets liés).
+
+        Admin-only (`prix_achat_voir`) — jamais client-facing, jamais dans un
+        PDF. 403 explicite sans la permission (pas de champ silencieusement
+        absent)."""
+        if not request.user.can_view_buy_prices:
+            return Response(
+                {'detail': 'Coût interne réservé (permission prix_achat_voir).'},
+                status=status.HTTP_403_FORBIDDEN)
+        from .selectors import rentabilite_contrat
+        contrat = self.get_object()
+        return Response(rentabilite_contrat(contrat))
+
+    @action(detail=False, methods=['get'], url_path='rentabilite',
+            permission_classes=[IsResponsableOrAdmin])
+    def rentabilite_liste(self, request):
+        """XSAV18 — Rentabilité de TOUS les contrats, classée par marge
+        croissante (les contrats vendus à perte en premier). Admin-only."""
+        if not request.user.can_view_buy_prices:
+            return Response(
+                {'detail': 'Coût interne réservé (permission prix_achat_voir).'},
+                status=status.HTTP_403_FORBIDDEN)
+        from .selectors import rentabilite_contrats
+        data = rentabilite_contrats(request.user.company)
+        return Response({'results': data})
