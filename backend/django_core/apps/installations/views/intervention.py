@@ -944,6 +944,36 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             f"Matériel consommé validé — {nb} référence(s) sortie(s) du stock.")
         return self._consommation_response(interv)
 
+    # ── XFSM22 — durée & pièces suggérées par l'historique ──────────────────
+    @action(detail=False, methods=['get'], url_path='suggestions-creation',
+            permission_classes=[IsAnyRole])
+    def suggestions_creation(self, request):
+        """XFSM22 — suggestions affichées à la CRÉATION d'une intervention
+        (jamais forcées) : durée médiane (F15) + pièces les plus consommées
+        (F11) sur l'historique similaire. Query params : `type_intervention`
+        (requis), `technicien` (id, optionnel), `type_installation` (optionnel).
+        Silencieux sous le seuil d'historique."""
+        from ..selectors import (
+            suggestion_duree_intervention, suggestion_pieces_intervention,
+        )
+        company = request.user.company
+        type_intervention = request.query_params.get('type_intervention')
+        if not type_intervention:
+            return Response(
+                {'detail': 'type_intervention est requis.'}, status=400)
+        technicien = None
+        technicien_id = request.query_params.get('technicien')
+        if technicien_id:
+            from authentication.models import CustomUser
+            technicien = CustomUser.objects.filter(
+                id=technicien_id, company=company).first()
+        duree = suggestion_duree_intervention(
+            company, type_intervention, technicien=technicien)
+        pieces = suggestion_pieces_intervention(
+            company, type_intervention,
+            type_installation=request.query_params.get('type_installation'))
+        return Response({'duree': duree, 'pieces': pieces})
+
     @action(detail=False, methods=['get'], url_path='overage-review',
             permission_classes=[IsAnyRole])
     def overage_review(self, request):

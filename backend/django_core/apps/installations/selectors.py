@@ -2175,3 +2175,98 @@ def astreintes_periode(company, date_debut, date_fin):
     if date_fin is not None:
         qs = qs.filter(date_debut__lt=date_fin)
     return qs.select_related('technicien').order_by('date_debut')
+
+
+# ── XFSM22 — durée & pièces suggérées par l'historique (heuristique) ────────
+_TOP_N_PIECES_DEFAUT = 5
+_MIN_HISTORIQUE = 3  # silencieux sous ce nombre d'interventions d'historique.
+
+
+def _mediane(valeurs):
+    vals = sorted(v for v in valeurs if v is not None)
+    n = len(vals)
+    if n == 0:
+        return None
+    milieu = n // 2
+    if n % 2 == 1:
+        return vals[milieu]
+    return (vals[milieu - 1] + vals[milieu]) / 2
+
+
+def suggestion_duree_intervention(company, type_intervention, technicien=None):
+    """XFSM22 — durée suggérée (minutes) = médiane des durées réelles F15 des
+    interventions TERMINÉES de même ``type_intervention``, sur le même
+    technicien s'il a assez d'historique (≥ ``_MIN_HISTORIQUE``), sinon replié
+    sur toute la société. Silencieux (None) sous le seuil d'historique — pur
+    sélecteur lecture seule, aucune dépendance ML."""
+    from .field_capture import crew_time
+    from .models import Intervention
+
+    def _durees(qs):
+        durees = []
+        for interv in qs:
+            minutes = crew_time(interv)['duree_sur_site_min']
+            if minutes is not None:
+                durees.append(minutes)
+        return durees
+
+    base = Intervention.objects.filter(
+        company=company, type_intervention=type_intervention,
+        statut__in=(Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE))
+
+    if technicien is not None:
+        qs_tech = base.filter(technicien=technicien)
+        durees_tech = _durees(qs_tech)
+        if len(durees_tech) >= _MIN_HISTORIQUE:
+            return {
+                'duree_suggeree_min': _mediane(durees_tech),
+                'echantillon': len(durees_tech),
+                'portee': 'technicien',
+            }
+
+    durees_societe = _durees(base)
+    if len(durees_societe) < _MIN_HISTORIQUE:
+        return {
+            'duree_suggeree_min': None,
+            'echantillon': len(durees_societe),
+            'portee': 'societe',
+        }
+    return {
+        'duree_suggeree_min': _mediane(durees_societe),
+        'echantillon': len(durees_societe),
+        'portee': 'societe',
+    }
+
+
+def suggestion_pieces_intervention(
+        company, type_intervention, type_installation=None, top_n=_TOP_N_PIECES_DEFAUT):
+    """XFSM22 — top-N produits les plus consommés (F11) sur les interventions
+    similaires (même ``type_intervention`` + ``type_installation`` du chantier
+    si fourni), triés par quantité totale consommée décroissante. Silencieux
+    ([]) sous le seuil d'historique — pur sélecteur lecture seule."""
+    from .models import ConsommationLigne, Intervention
+
+    interventions = Intervention.objects.filter(
+        company=company, type_intervention=type_intervention,
+        statut__in=(Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE))
+    if type_installation:
+        interventions = interventions.filter(
+            installation__type_installation=type_installation)
+
+    if interventions.count() < _MIN_HISTORIQUE:
+        return []
+
+    lignes = (ConsommationLigne.objects
+              .filter(consommation__intervention__in=interventions)
+              .exclude(produit__isnull=True)
+              .values('produit_id', 'designation')
+              .annotate(total=Sum('quantite_utilisee'))
+              .order_by('-total'))
+    return [
+        {
+            'produit_id': row['produit_id'],
+            'designation': row['designation'],
+            'quantite_totale': row['total'],
+        }
+        for row in lignes[:max(int(top_n or _TOP_N_PIECES_DEFAUT), 1)]
+    ]
