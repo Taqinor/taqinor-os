@@ -853,6 +853,22 @@ class Conducteur(models.Model):
         null=True, blank=True, verbose_name="Date d'obtention du permis")
     date_expiration = models.DateField(
         null=True, blank=True, verbose_name="Date d'expiration du permis")
+    # XFLT27 — conformité transport lourd (> 3,5 t, DECISION fondateur) :
+    # carte de conducteur professionnel (n° + expiration) et formation
+    # continue NARSA (date + validité). Tous optionnels — un conducteur de
+    # véhicule léger n'en a simplement pas besoin (aucune régression).
+    carte_conducteur_pro_numero = models.CharField(
+        max_length=50, blank=True,
+        verbose_name='N° carte de conducteur professionnel')
+    carte_conducteur_pro_expiration = models.DateField(
+        null=True, blank=True,
+        verbose_name='Expiration carte de conducteur professionnel')
+    formation_continue_narsa_date = models.DateField(
+        null=True, blank=True,
+        verbose_name='Date de formation continue NARSA')
+    formation_continue_narsa_validite = models.DateField(
+        null=True, blank=True,
+        verbose_name='Validité de la formation continue NARSA')
     actif = models.BooleanField(default=True, verbose_name='Actif')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
@@ -1583,6 +1599,12 @@ class EcheanceReglementaire(models.Model):
         VIGNETTE = 'vignette', 'Vignette / TSAV'
         CARTE_GRISE = 'carte_grise', 'Carte grise'
         TAXE_ESSIEU = 'taxe_essieu', "Taxe à l'essieu"
+        # XFLT27 — conformité transport lourd (> 3,5 t) : calibration du
+        # chronotachygraphe, périodicité 2 ans (arrêté 2399-20). Code CORT
+        # (17) tient dans max_length=20 (leçon FG136 — 'visite_technique',
+        # 16, restait jusqu'ici le plus long).
+        CHRONOTACHYGRAPHE = 'chronotachygraphe', \
+            'Calibration chronotachygraphe'
         AUTRE = 'autre', 'Autre'
 
     class Statut(models.TextChoices):

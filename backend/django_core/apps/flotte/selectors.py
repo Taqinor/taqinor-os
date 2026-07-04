@@ -1864,6 +1864,22 @@ def alertes_echeances_reglementaires(company, today=None):
             f'{ctr.fournisseur}'.strip(' —'),
             ctr.date_fin)
 
+    # 7) XFLT27 — Conformité transport lourd : carte de conducteur
+    # professionnel et formation continue NARSA (documents CONDUCTEUR, pas
+    # actif — ``actif_flotte_id`` reste ``None``, ``actif_label`` porte le nom
+    # du conducteur). La calibration chronotachygraphe (échéance actif) est
+    # déjà couverte par la source #1 (``EcheanceReglementaire``, type
+    # ``chronotachygraphe``) : aucun doublon de logique ici.
+    for conducteur in Conducteur.objects.filter(company=company, actif=True):
+        _ajoute(
+            'carte_conducteur_pro', conducteur.id, None, conducteur.nom,
+            'carte_conducteur_pro', f'Carte de conducteur pro — {conducteur.nom}',
+            conducteur.carte_conducteur_pro_expiration)
+        _ajoute(
+            'formation_narsa', conducteur.id, None, conducteur.nom,
+            'formation_narsa', f'Formation continue NARSA — {conducteur.nom}',
+            conducteur.formation_continue_narsa_validite)
+
     # XFLT16 — Exclut les alertes portant sur un véhicule vendu/réformé (sortie
     # de parc) : l'historique reste consultable ailleurs, mais ces véhicules ne
     # doivent plus générer d'échéance à traiter.
