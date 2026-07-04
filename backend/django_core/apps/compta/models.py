@@ -882,6 +882,16 @@ class Immobilisation(models.Model):
     actif = models.BooleanField(default=True, verbose_name='Actif')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
+    # ── XACC33 — Capitalisation depuis une ligne de facture fournisseur ──
+    # String-ref (id stock, jamais un FK cross-app) : pièce d'origine +
+    # anti-doublon (une ligne ne peut capitaliser qu'UNE seule immobilisation).
+    piece_origine_facture_fournisseur_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Facture fournisseur d\'origine (id stock, string-ref)')
+    piece_origine_ligne_facture_fournisseur_id = models.PositiveIntegerField(
+        null=True, blank=True, unique=True,
+        verbose_name='Ligne de facture fournisseur d\'origine (id stock, '
+                     'string-ref)')
 
     class Meta:
         verbose_name = 'Immobilisation'

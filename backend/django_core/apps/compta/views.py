@@ -1140,6 +1140,44 @@ class ImmobilisationViewSet(_ComptaBaseViewSet):
                 cession, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
+    @action(detail=False, methods=['post'],
+            url_path='depuis-facture-fournisseur')
+    def depuis_facture_fournisseur(self, request):
+        """XACC33 — Capitalise une ligne de facture fournisseur (bouton
+        « Immobiliser » sur l'écran facture fournisseur).
+
+        Corps : ``{facture_id, ligne_id, categorie?, duree?, mode?}``. La
+        ligne est résolue via ``apps.stock.selectors.
+        ligne_facture_fournisseur_scoped`` (company-scopée, jamais un import
+        de ``stock.models``) — introuvable ou cross-company → 404. Anti-
+        doublon : re-capitaliser la même ligne → 400. Crée l'Immobilisation
+        pré-remplie + son plan d'amortissement en un geste.
+        """
+        data = request.data
+        facture_id = data.get('facture_id')
+        ligne_id = data.get('ligne_id')
+        if not facture_id or not ligne_id:
+            return Response(
+                {'detail': 'facture_id et ligne_id sont obligatoires.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            immo = services.capitaliser_ligne_facture_fournisseur(
+                request.user.company,
+                facture_id=facture_id, ligne_id=ligne_id,
+                categorie=data.get('categorie') or None,
+                duree_annees=data.get('duree') or 5,
+                mode=data.get('mode') or None,
+                user=request.user,
+            )
+        except DjangoValidationError as exc:
+            message = exc.messages[0] if exc.messages else str(exc)
+            if 'introuvable' in message.lower():
+                return Response({'detail': message}, status=status.HTTP_404_NOT_FOUND)
+            return Response({'detail': message}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            ImmobilisationSerializer(immo, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)
+
 
 class CessionImmobilisationViewSet(_ComptaBaseViewSet):
     """Cessions / mises au rebut d'immobilisations (FG120) — lecture seule.

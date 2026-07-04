@@ -268,10 +268,15 @@ class ImmobilisationSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'reference', 'libelle', 'categorie', 'categorie_display',
             'cout', 'taux_tva', 'montant_tva', 'cout_ttc', 'date_acquisition',
-            'actif', 'date_creation',
+            'date_mise_en_service', 'actif', 'date_creation',
+            'piece_origine_facture_fournisseur_id',
+            'piece_origine_ligne_facture_fournisseur_id',
         ]
         read_only_fields = [
-            'montant_tva', 'cout_ttc', 'date_creation']
+            'montant_tva', 'cout_ttc', 'date_creation',
+            'piece_origine_facture_fournisseur_id',
+            'piece_origine_ligne_facture_fournisseur_id',
+        ]
 
     def validate_cout(self, value):
         if value is not None and value < 0:

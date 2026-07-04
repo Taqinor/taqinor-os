@@ -139,6 +139,27 @@ def facture_fournisseur_scoped(company, facture_id):
             .filter(id=facture_id, company=company).first())
 
 
+def ligne_facture_fournisseur_scoped(company, facture_id, ligne_id):
+    """XACC33 — Ligne d'une facture fournisseur, scopée société, ou None.
+
+    Point d'entrée cross-app pour ``apps.compta`` (capitalisation d'une ligne
+    en immobilisation, XACC33) : jamais un import de ``apps.stock.models`` en
+    dehors de ce module. Vérifie que la ligne appartient bien à la facture
+    ``facture_id`` ET que cette facture appartient à ``company`` — renvoie
+    ``None`` (jamais une autre société) si l'un des deux ne correspond pas.
+    Lecture seule."""
+    from .models import LigneFactureFournisseur
+
+    return (
+        LigneFactureFournisseur.objects
+        .select_related('facture', 'produit')
+        .filter(
+            id=ligne_id, facture_id=facture_id,
+            facture__company=company)
+        .first()
+    )
+
+
 def paiement_fournisseur_scoped(company, paiement_id):
     """DC34/G5 — PaiementFournisseur scopé société par id, ou None. Lecture
     seule (point d'entrée cross-app AP sous-traitant)."""

@@ -1614,6 +1614,57 @@ def generer_plan_amortissement(immobilisation, *, mode=None, duree_annees=None,
     return plan
 
 
+# ── XACC33 — "Immobiliser" une ligne de facture fournisseur ────────────────
+
+@transaction.atomic
+def capitaliser_ligne_facture_fournisseur(company, *, facture_id, ligne_id,
+                                          categorie=None, duree_annees=5,
+                                          mode=None, user=None):
+    """Capitalise une ligne de facture fournisseur en immobilisation (XACC33).
+
+    Lit la ligne via ``apps.stock.selectors.ligne_facture_fournisseur_scoped``
+    (company-scopée, JAMAIS un import de ``apps.stock.models``) et crée
+    l'``Immobilisation`` pré-remplie (libellé = désignation de la ligne, coût
+    = son total HT, TVA = son taux — ou celui de la facture si vide, date =
+    date de la facture, pièce d'origine en string-ref) + son
+    ``PlanAmortissement`` en un seul geste. Anti-doublon : une ligne ne peut
+    capitaliser qu'UNE seule immobilisation (contrainte d'unicité sur
+    ``piece_origine_ligne_facture_fournisseur_id`` — une 2e tentative lève
+    ``ValidationError``). Lève ``ValidationError`` si la ligne est introuvable
+    pour cette société (l'appelant traduit en 404). Renvoie l'``Immobilisation``
+    créée."""
+    from apps.stock.selectors import ligne_facture_fournisseur_scoped
+
+    ligne = ligne_facture_fournisseur_scoped(company, facture_id, ligne_id)
+    if ligne is None:
+        raise ValidationError(
+            "Ligne de facture fournisseur introuvable pour cette société.")
+    if Immobilisation.objects.filter(
+            company=company,
+            piece_origine_ligne_facture_fournisseur_id=ligne.id).exists():
+        raise ValidationError(
+            "Cette ligne a déjà été immobilisée (une ligne ne peut "
+            "capitaliser qu'une seule immobilisation).")
+    facture = ligne.facture
+    taux_tva = ligne.taux_tva if ligne.taux_tva is not None else Decimal('20')
+    immo = Immobilisation(
+        company=company,
+        libelle=ligne.designation or f'Immobilisation (facture {facture.reference})',
+        categorie=categorie or Immobilisation.Categorie.MATERIEL,
+        cout=Decimal(ligne.total_ht or 0),
+        taux_tva=taux_tva,
+        date_acquisition=facture.date_facture or timezone.now().date(),
+        piece_origine_facture_fournisseur_id=facture.id,
+        piece_origine_ligne_facture_fournisseur_id=ligne.id,
+    )
+    immo.full_clean(exclude=[
+        'piece_origine_facture_fournisseur_id',
+        'piece_origine_ligne_facture_fournisseur_id'])
+    immo.save()
+    generer_plan_amortissement(immo, mode=mode, duree_annees=duree_annees)
+    return immo
+
+
 def _intitule_compte(numero):
     """Intitulé du compte ``numero`` dans le barème CGNC semé (ou un défaut)."""
     for entry in _COMPTES_CGNC:
