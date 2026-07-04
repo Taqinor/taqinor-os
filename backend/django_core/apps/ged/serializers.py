@@ -5,7 +5,7 @@ from .models import (
     ChampSignature, Coffre, DemandeApprobation, DemandeDisposition,
     DemandeDocument, DemandeSignatureDocument, DepotPublic,
     Document, DocumentLien, DocumentTag, DocumentTagAssignment, DocumentVersion,
-    ExigenceDossier, Folder, JournalAcces, LegalHold, ModeleDocument,
+    ExigenceDossier, Folder, JournalAcces, LegalHold, LotEnvoi, ModeleDocument,
     PartageGed, PlanificationDocument, PolitiqueRetention,
     RegleAclMetadonnee, RegleApprobationGed, RegleDossier, QuotaStockage,
     SignataireDemande, ValidationOcrDocument,
@@ -914,6 +914,22 @@ class DemandeDispositionSerializer(serializers.ModelSerializer):
             'statut', 'demandeur', 'approbateur', 'decision_le',
             'executee_le', 'certificats', 'created_at', 'updated_at',
         ]
+
+
+class LotEnvoiSerializer(serializers.ModelSerializer):
+    """XGED27 — Lot d'envoi en masse de demandes de signature (suivi groupé,
+    lecture seule côté API — créé uniquement via l'action dédiée)."""
+    modele_nom = serializers.CharField(
+        source='modele.nom', read_only=True, default=None)
+
+    class Meta:
+        model = LotEnvoi
+        fields = [
+            'id', 'modele', 'modele_nom', 'libelle', 'resultats', 'total',
+            'nb_envoyes', 'nb_vus', 'nb_signes', 'nb_refuses', 'nb_erreurs',
+            'created_by', 'created_at', 'updated_at',
+        ]
+        read_only_fields = fields
 
 
 class PlanificationDocumentSerializer(serializers.ModelSerializer):

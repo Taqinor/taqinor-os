@@ -2786,3 +2786,54 @@ class CertificatDestruction(models.Model):
 
     def __str__(self):
         return f'Certificat destruction — {self.document_nom} ({self.detruit_le:%Y-%m-%d})'
+
+
+# ── XGED27 — Envoi en masse de demandes de signature ────────────────────────
+
+class LotEnvoi(models.Model):
+    """XGED27 — Suivi GROUPÉ d'un envoi en masse de demandes de signature.
+
+    Un `ModeleDocument` (GED27) fusionné avec N destinataires (CSV nom/email/
+    champs de fusion, ou une sélection de clients CRM via `crm.selectors` —
+    cross-app en LECTURE SEULE, jamais d'import de `crm.models`) produit UN
+    document personnalisé PAR destinataire + SA demande de signature
+    individuelle (XGED1/2) ; ce lot les regroupe pour un suivi consolidé
+    (compteurs envoyé/vu/signé/refusé). Cas d'usage : renouvellements annuels
+    de contrats de maintenance.
+
+    `resultats` porte le détail par ligne (succès avec l'id de la
+    `DemandeSignatureDocument` créée, ou erreur — jamais tout-ou-rien : une
+    ligne en échec ne bloque jamais les autres). Company/créateur posés côté
+    serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='ged_lots_envoi')
+    modele = models.ForeignKey(
+        ModeleDocument, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='lots_envoi')
+    libelle = models.CharField(max_length=200)
+    resultats = models.JSONField(default=list, blank=True)
+    total = models.PositiveIntegerField(default=0)
+    nb_envoyes = models.PositiveIntegerField(default=0)
+    nb_vus = models.PositiveIntegerField(default=0)
+    nb_signes = models.PositiveIntegerField(default=0)
+    nb_refuses = models.PositiveIntegerField(default=0)
+    nb_erreurs = models.PositiveIntegerField(default=0)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_lots_envoi_crees')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        verbose_name = "Lot d'envoi de signature"
+        verbose_name_plural = "Lots d'envoi de signature"
+        indexes = [
+            models.Index(fields=['company', 'created_at'],
+                         name='ged_lotenvoi_co_created_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.libelle} ({self.nb_envoyes}/{self.total})'

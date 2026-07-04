@@ -35,7 +35,7 @@ from .models import (
     DemandeDispositionError, DemandeDocument,
     DemandeSignatureDocument, DepotPublic, Document, DocumentLien,
     DocumentTag, DocumentTagAssignment, DocumentVersion, ExigenceDossier,
-    Folder, JournalAcces, LegalHold, LegalHoldError, ModeleDocument,
+    Folder, JournalAcces, LegalHold, LegalHoldError, LotEnvoi, ModeleDocument,
     PartageGed, PlanificationDocument, PolitiqueRetention,
     QuotaDepasseError, QuotaStockage, RegleAclMetadonnee,
     RegleApprobationGed, RegleDossier, SignataireDemande,
@@ -49,7 +49,8 @@ from .serializers import (
     DepotPublicSerializer, DocumentLienSerializer, DocumentSerializer,
     DocumentTagAssignmentSerializer, DocumentTagSerializer,
     DocumentVersionSerializer, ExigenceDossierSerializer, FolderSerializer,
-    JournalAccesSerializer, LegalHoldSerializer, ModeleDocumentSerializer,
+    JournalAccesSerializer, LegalHoldSerializer, LotEnvoiSerializer,
+    ModeleDocumentSerializer,
     PartageGedSerializer, PlanificationDocumentSerializer,
     PolitiqueRetentionSerializer, QuotaStockageSerializer,
     RegleAclMetadonneeSerializer, RegleApprobationGedSerializer,
@@ -2897,6 +2898,93 @@ class DemandeDispositionViewSet(TenantMixin,
         return Response(
             DemandeDispositionSerializer(
                 demande, context={'request': request}).data)
+
+
+class LotEnvoiViewSet(TenantMixin,
+                      mixins.ListModelMixin,
+                      mixins.RetrieveModelMixin,
+                      viewsets.GenericViewSet):
+    """XGED27 — Lots d'envoi en masse de demandes de signature (lecture +
+    action de création dédiée `envoi-masse`).
+
+    Lecture : tout rôle authentifié. Création du lot (envoi en masse) :
+    responsable/admin."""
+    queryset = LotEnvoi.objects.select_related('modele', 'created_by').all()
+    serializer_class = LotEnvoiSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['created_at']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        return super().get_queryset().filter(company=self.request.user.company)
+
+    @action(detail=False, methods=['post'], url_path='envoi-masse',
+            parser_classes=[MultiPartParser, FormParser, JSONParser])
+    def envoi_masse(self, request):
+        """XGED27 — Envoi en masse : un `ModeleDocument` + une liste de
+        destinataires → un document personnalisé + une demande de signature
+        PAR destinataire, suivis sous un `LotEnvoi`.
+
+        Corps (multipart ou JSON) : `{"modele": <id>, "libelle": "<str?>"}`
+        et SOIT un fichier `csv` (colonnes `nom`,`email`,+champs de fusion
+        libres), SOIT `clients: [<id>, ...]` (résolus en lecture seule via
+        `crm.selectors.client_base_qs` — jamais un import de `crm.models`).
+        Les erreurs par ligne sont rapportées dans `resultats` sans bloquer
+        le lot. Écriture : responsable/admin."""
+        modele_id = request.data.get('modele')
+        if not modele_id:
+            return Response(
+                {'modele': 'Le modèle de document est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        modele = ModeleDocument.objects.filter(
+            company=request.user.company, pk=modele_id).first()
+        if modele is None:
+            return Response(
+                {'modele': 'Modèle inconnu.'}, status=status.HTTP_404_NOT_FOUND)
+
+        destinataires = []
+        csv_file = request.FILES.get('csv')
+        if csv_file is not None:
+            try:
+                csv_text = csv_file.read().decode('utf-8-sig')
+            except Exception:
+                return Response(
+                    {'csv': 'CSV illisible (encodage attendu : UTF-8).'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            destinataires = services.parser_csv_metadonnees(csv_text)
+        else:
+            client_ids = (request.data.getlist('clients')
+                          if hasattr(request.data, 'getlist')
+                          else request.data.get('clients')) or []
+            if client_ids:
+                from apps.crm import selectors as crm_selectors
+                clients = crm_selectors.client_base_qs(
+                    request.user.company).filter(pk__in=client_ids)
+                for client in clients:
+                    nom_complet = ' '.join(
+                        p for p in [client.nom, getattr(client, 'prenom', '')]
+                        if p).strip() or client.nom
+                    destinataires.append({
+                        'nom': nom_complet, 'email': client.email or '',
+                    })
+        if not destinataires:
+            return Response(
+                {'detail': 'Aucun destinataire : fournir un CSV ou une '
+                           'sélection de clients.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        lot = services.creer_lot_envoi_signature(
+            company=request.user.company, modele=modele,
+            destinataires=destinataires,
+            libelle=(request.data.get('libelle') or '').strip(),
+            created_by=request.user)
+        return Response(
+            LotEnvoiSerializer(lot, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)
 
 
 class PlanificationDocumentViewSet(TenantMixin, viewsets.ModelViewSet):

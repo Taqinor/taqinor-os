@@ -4896,3 +4896,111 @@ def caviarder_document(version, zones, *, created_by=None):
         mime='application/pdf', uploaded_by=created_by)
     update_search_vector(new_doc)
     return new_doc
+
+
+# ── XGED27 — Envoi en masse de demandes de signature ────────────────────────
+
+def _valider_destinataire_envoi_masse(ligne, index):
+    """XGED27 — Valide UNE ligne de destinataire (dict) : `nom` et `email`
+    sont requis. Lève `ValueError` (rapporté par ligne, jamais tout-ou-rien)."""
+    nom = (ligne.get('nom') or '').strip()
+    email = (ligne.get('email') or '').strip()
+    if not nom or not email:
+        raise ValueError(
+            f"Ligne {index + 1} : nom et email sont requis.")
+    return nom, email
+
+
+def creer_lot_envoi_signature(*, company, modele, destinataires, libelle='',
+                              cabinet_nom='Modèles', folder_nom='Mailing',
+                              created_by=None):
+    """XGED27 — Envoi en masse de demandes de signature à partir d'UN
+    `ModeleDocument` (GED27) fusionné pour N `destinataires`.
+
+    `destinataires` : liste de dicts (issus d'un CSV `nom`/`email`/champs de
+    fusion, OU résolus depuis une sélection de clients CRM via
+    `crm.selectors` par l'appelant — cette fonction ne connaît QUE des dicts,
+    jamais `crm.models`). Pour CHAQUE destinataire : le modèle est fusionné
+    avec la ligne comme contexte (`rendre_modele`), un document PERSONNALISÉ
+    est créé + versionné (jamais dédupliqué — contrairement à
+    `generer_document`/GED28, chaque destinataire produit un document
+    DISTINCT), puis une demande de signature individuelle est créée
+    (`demander_signature`, XGED1/2, respecte le mode key-gated no-op).
+
+    Chaque ligne est traitée INDÉPENDAMMENT : une erreur (nom/email manquant,
+    rendu PDF impossible) est RAPPORTÉE dans `resultats` sans jamais bloquer
+    le reste du lot. `company`/`created_by` posés côté serveur.
+
+    Renvoie le `LotEnvoi` créé (avec ses compteurs et `resultats` détaillés).
+    """
+    from .models import LotEnvoi
+
+    resultats = []
+    nb_envoyes = 0
+    nb_erreurs = 0
+    for index, ligne in enumerate(destinataires or []):
+        try:
+            nom, email = _valider_destinataire_envoi_masse(ligne, index)
+            cabinet_resolu, folder_resolu = resoudre_classement(
+                modele, ligne,
+                cabinet_defaut=cabinet_nom, folder_defaut=folder_nom)
+            cabinet = ensure_cabinet(company, cabinet_resolu)
+            folder = ensure_root_folder(company, cabinet=cabinet, nom=folder_resolu)
+            pdf_bytes = rendre_modele(modele, ligne)
+            new_doc = create_document(
+                company=company, folder=folder,
+                nom=f'{modele.nom} — {nom}',
+                description=modele.description or '',
+                custom_data={'envoi_masse_destinataire': email},
+                created_by=created_by)
+            key, meta = _store_bytes(pdf_bytes, mime='application/pdf')
+            add_version(
+                new_doc, file_key=key, company=company,
+                filename=meta.get('filename', ''), size=len(pdf_bytes),
+                mime='application/pdf', uploaded_by=created_by)
+            update_search_vector(new_doc)
+            demande = demander_signature(
+                new_doc, signataire_nom=nom, signataire_email=email,
+                company=company, created_by=created_by)
+            nb_envoyes += 1
+            resultats.append({
+                'ligne': index, 'nom': nom, 'email': email, 'ok': True,
+                'document_id': new_doc.pk, 'demande_id': demande.pk,
+            })
+        except Exception as exc:  # noqa: BLE001 — rapporté par ligne, jamais bloquant.
+            nb_erreurs += 1
+            resultats.append({
+                'ligne': index, 'nom': ligne.get('nom'),
+                'email': ligne.get('email'), 'ok': False, 'erreur': str(exc),
+            })
+
+    return LotEnvoi.objects.create(
+        company=company, modele=modele,
+        libelle=libelle or (modele.nom if modele else 'Envoi en masse'),
+        resultats=resultats, total=len(destinataires or []),
+        nb_envoyes=nb_envoyes, nb_erreurs=nb_erreurs, created_by=created_by)
+
+
+def rafraichir_compteurs_lot_envoi(lot):
+    """XGED27 — Recalcule `nb_vus`/`nb_signes`/`nb_refuses` d'un `LotEnvoi`
+    depuis l'état RÉEL des `DemandeSignatureDocument` créées (via les ids
+    tracés dans `resultats`) — jamais une simple incrémentation optimiste,
+    toujours la vérité depuis les statuts actuels."""
+    from .models import DemandeSignatureDocument
+
+    demande_ids = [
+        r['demande_id'] for r in (lot.resultats or [])
+        if r.get('ok') and r.get('demande_id')
+    ]
+    if not demande_ids:
+        return lot
+    demandes = DemandeSignatureDocument.objects.filter(
+        company=lot.company, pk__in=demande_ids)
+    lot.nb_signes = demandes.filter(statut='signe').count()
+    lot.nb_refuses = demandes.filter(statut='refuse').count()
+    # « Vu » : approximé par toute demande sortie de `en_attente` (signée,
+    # refusée, ou annulée) — le stub GED30 ne trace pas d'ouverture de lien
+    # dédiée hors de ces statuts.
+    lot.nb_vus = demandes.exclude(statut='en_attente').count()
+    lot.save(update_fields=['nb_signes', 'nb_refuses', 'nb_vus', 'updated_at'])
+    return lot

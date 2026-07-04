@@ -9,7 +9,7 @@ from .views import (
     DepotPublicViewSet, DocumentLienViewSet, DocumentTagAssignmentViewSet,
     DocumentTagViewSet, DocumentVersionViewSet, DocumentViewSet,
     ExigenceDossierViewSet, FolderViewSet, JournalAccesViewSet,
-    LegalHoldViewSet, ModeleDocumentViewSet, PartageGedViewSet,
+    LegalHoldViewSet, LotEnvoiViewSet, ModeleDocumentViewSet, PartageGedViewSet,
     PlanificationDocumentViewSet, PolitiqueRetentionViewSet,
     QuotaStockageViewSet, RegleAclMetadonneeViewSet,
     RegleApprobationGedViewSet, RegleDossierViewSet,
@@ -47,6 +47,7 @@ router.register(r'regles-dossier', RegleDossierViewSet)
 router.register(r'regles-approbation', RegleApprobationGedViewSet)
 router.register(r'regles-acl-metadonnee', RegleAclMetadonneeViewSet)
 router.register(r'demandes-disposition', DemandeDispositionViewSet)
+router.register(r'lots-envoi', LotEnvoiViewSet)
 router.register(r'planifications', PlanificationDocumentViewSet)
 
 urlpatterns = [
