@@ -1730,6 +1730,70 @@ class EffetViewSet(_ComptaBaseViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(effet).data)
 
+    @action(detail=True, methods=['post'])
+    def escompter(self, request, pk=None):
+        """XACC34 — Remet un effet à recevoir à l'escompte (mobilisation).
+
+        Corps : ``{compte_tresorerie, agios?, interets?, date_escompte?}``.
+        Poste le net (débit trésorerie) + agios/intérêts (débit charge) /
+        crédit 5520 « crédits d'escompte » du montant brut. Refusé en période
+        close ; transitions illégales -> 400.
+        """
+        effet = self.get_object()  # scopé société par TenantMixin.
+        treso = CompteTresorerie.objects.filter(
+            company=request.user.company,
+            id=request.data.get('compte_tresorerie')).first()
+        if treso is None:
+            return Response(
+                {'detail': 'Compte de trésorerie inconnu.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            effet = services.escompter_effet(
+                effet, compte_tresorerie=treso,
+                agios=request.data.get('agios'),
+                interets=request.data.get('interets'),
+                date_escompte=request.data.get('date_escompte') or None,
+                user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(effet).data)
+
+    @action(detail=True, methods=['post'], url_path='apurer-escompte')
+    def apurer_escompte(self, request, pk=None):
+        """XACC34 — Apure le crédit d'escompte à l'échéance (5520 → 3425)."""
+        effet = self.get_object()  # scopé société par TenantMixin.
+        try:
+            effet = services.apurer_escompte_effet(
+                effet,
+                date_apurement=request.data.get('date_apurement') or None,
+                user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(effet).data)
+
+    @action(detail=True, methods=['post'])
+    def endosser(self, request, pk=None):
+        """XACC34 — Endosse un effet à recevoir à un tiers bénéficiaire.
+
+        Corps : ``{beneficiaire, date_endossement?}``. Transitions illégales
+        (effet déjà soldé/escompté/impayé) -> 400.
+        """
+        effet = self.get_object()  # scopé société par TenantMixin.
+        try:
+            effet = services.endosser_effet(
+                effet, beneficiaire=request.data.get('beneficiaire', '') or '',
+                date_endossement=request.data.get('date_endossement') or None,
+                user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(effet).data)
+
 
 # ── FG129 — Bordereau de remise en banque ──────────────────────────────────
 

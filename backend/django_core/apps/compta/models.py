@@ -1884,6 +1884,9 @@ class Effet(models.Model):
         ENCAISSE = 'encaisse', 'Encaissé'
         PAYE = 'paye', 'Payé'
         IMPAYE = 'impaye', 'Impayé / rejeté'
+        # ── XACC34 — Mobilisation avant échéance (omniprésente au Maroc) ──
+        ESCOMPTE = 'escompte', "Remis à l'escompte"
+        ENDOSSE = 'endosse', 'Endossé à un tiers'
 
     company = models.ForeignKey(
         'authentication.Company',
@@ -1941,6 +1944,26 @@ class Effet(models.Model):
     )
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
+    # ── XACC34 — Escompte (mobilisation avant échéance) ──
+    agios_escompte = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name="Agios de l'escompte")
+    interets_escompte = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name="Intérêts de l'escompte")
+    date_escompte = models.DateField(
+        null=True, blank=True, verbose_name="Date de l'escompte")
+    ecriture_escompte_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="ID de l'écriture d'escompte")
+    ecriture_apurement_escompte_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name="ID de l'écriture d'apurement de l'escompte")
+    # ── XACC34 — Endossement (transfert à un tiers) ──
+    beneficiaire_endossement = models.CharField(
+        max_length=160, blank=True, default='',
+        verbose_name="Bénéficiaire de l'endossement")
+    date_endossement = models.DateField(
+        null=True, blank=True, verbose_name="Date de l'endossement")
 
     class Meta:
         verbose_name = 'Effet (chèque / traite)'

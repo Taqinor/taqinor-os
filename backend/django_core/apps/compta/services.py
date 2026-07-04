@@ -130,6 +130,9 @@ _COMPTES_CGNC = [
     ('5113', 'Effets à encaisser ou à l\'encaissement', False, False, 'actif'),
     ('5141', 'Banque', False, False, 'actif'),
     ('5161', 'Caisse', False, False, 'actif'),
+    # XACC34 — Crédits d'escompte (mobilisation d'effets avant échéance) :
+    # crédité au tirage de l'escompte, débité à l'apurement l'échéance venue.
+    ('5520', "Crédits d'escompte", False, False, 'passif'),
     ('6147', 'Services bancaires (frais de rejet/effets)', False, False,
      'charge'),
     # Classe 6 — Charges
@@ -2800,6 +2803,152 @@ def encaisser_effet(effet, *, date_encaissement=None, user=None):
     return effet
 
 
+def _compte_credits_escompte(company):
+    return _assurer_compte(company, '5520')
+
+
+_TRANSITIONS_ESCOMPTABLES = (Effet.Statut.PORTEFEUILLE, Effet.Statut.REMIS)
+
+
+@transaction.atomic
+def escompter_effet(effet, *, compte_tresorerie, agios=None, interets=None,
+                    date_escompte=None, user=None):
+    """XACC34 — Remise à l'escompte d'un effet à recevoir avant échéance.
+
+    Mobilisation bancaire : la banque avance le NET (montant − agios −
+    intérêts) avant l'échéance. Poste UNE écriture équilibrée : débit
+    ``compte_tresorerie`` du net + débit 6147/6311 (agios/intérêts, ici
+    regroupés sur 6147 « services bancaires ») / crédit 5520 « crédits
+    d'escompte » du montant BRUT de l'effet. Seul un effet ``portefeuille``
+    ou ``remis`` peut être escompté (jamais un effet déjà soldé/impayé/
+    escompté). Refusé en période close. Renvoie l'effet (``statut`` =
+    ``escompte``).
+    """
+    if effet.sens != Effet.Sens.RECEVOIR:
+        raise ValidationError("Seul un effet à recevoir peut être escompté.")
+    if effet.statut not in _TRANSITIONS_ESCOMPTABLES:
+        raise ValidationError(
+            "Cet effet ne peut pas être escompté dans son état actuel.")
+    company = effet.company
+    if compte_tresorerie.company_id != company.id:
+        raise ValidationError('Compte de trésorerie inconnu.')
+    date_esc = date_escompte or timezone.now().date()
+    if PeriodeComptable.date_verrouillee(company.id, date_esc):
+        raise ValidationError(
+            "Période comptable clôturée : impossible d'escompter l'effet du "
+            f"{date_esc}.")
+    montant = Decimal(effet.montant or 0)
+    agios_dec = Decimal(agios or 0)
+    interets_dec = Decimal(interets or 0)
+    frais_total = agios_dec + interets_dec
+    if frais_total < 0 or frais_total >= montant:
+        raise ValidationError(
+            "Les agios + intérêts doivent être positifs et inférieurs au "
+            "montant de l'effet.")
+    net = montant - frais_total
+    compte_treso_comptable = compte_tresorerie.compte_comptable
+    compte_5520 = _compte_credits_escompte(company)
+    journal = _journal(company, Journal.Type.BANQUE)
+    if journal is None:
+        seed_journaux(company)
+        journal = _journal(company, Journal.Type.BANQUE)
+    libelle = f'Escompte effet {effet.numero or effet.id}'
+    lignes = [
+        {'compte': compte_treso_comptable, 'debit': net, 'credit': Decimal('0'),
+         'libelle': libelle},
+    ]
+    if frais_total > 0:
+        compte_frais = _compte_frais_bancaires(company)
+        lignes.append({
+            'compte': compte_frais, 'debit': frais_total, 'credit': Decimal('0'),
+            'libelle': f'Agios/intérêts escompte {effet.numero or effet.id}'})
+    lignes.append({
+        'compte': compte_5520, 'debit': Decimal('0'), 'credit': montant,
+        'libelle': libelle,
+        'tiers_type': effet.tiers_type, 'tiers_id': effet.tiers_id})
+    ecriture = creer_ecriture(
+        company, journal, date_esc, libelle, lignes,
+        reference=effet.numero or f'EFFET-{effet.id}',
+        source_type='effet_escompte', source_id=effet.id,
+        created_by=user, statut=EcritureComptable.Statut.VALIDEE)
+    effet.statut = Effet.Statut.ESCOMPTE
+    effet.agios_escompte = agios_dec
+    effet.interets_escompte = interets_dec
+    effet.date_escompte = date_esc
+    effet.ecriture_escompte_id = ecriture.id
+    effet.save(update_fields=[
+        'statut', 'agios_escompte', 'interets_escompte', 'date_escompte',
+        'ecriture_escompte_id'])
+    return effet
+
+
+@transaction.atomic
+def apurer_escompte_effet(effet, *, date_apurement=None, user=None):
+    """XACC34 — Apure le crédit d'escompte à l'échéance (5520 ↔ 3425).
+
+    À l'échéance, la banque encaisse effectivement l'effet pour son propre
+    compte : le crédit d'escompte (5520) est soldé contre la sortie de
+    l'effet à recevoir (3425). Idempotent (un effet non-escompté ou déjà
+    apuré/soldé ne bouge plus). Refusé en période close.
+    """
+    if effet.statut != Effet.Statut.ESCOMPTE:
+        return effet
+    company = effet.company
+    date_ap = date_apurement or effet.date_echeance
+    if PeriodeComptable.date_verrouillee(company.id, date_ap):
+        raise ValidationError(
+            "Période comptable clôturée : impossible d'apurer l'escompte du "
+            f"{date_ap}.")
+    montant = Decimal(effet.montant or 0)
+    compte_5520 = _compte_credits_escompte(company)
+    compte_eff = _compte_effets_recevoir(company)
+    journal = _journal(company, Journal.Type.BANQUE)
+    if journal is None:
+        seed_journaux(company)
+        journal = _journal(company, Journal.Type.BANQUE)
+    libelle = f'Apurement escompte effet {effet.numero or effet.id}'
+    lignes = [
+        {'compte': compte_5520, 'debit': montant, 'credit': Decimal('0'),
+         'libelle': libelle},
+        {'compte': compte_eff, 'debit': Decimal('0'), 'credit': montant,
+         'libelle': libelle,
+         'tiers_type': effet.tiers_type, 'tiers_id': effet.tiers_id},
+    ]
+    ecriture = creer_ecriture(
+        company, journal, date_ap, libelle, lignes,
+        reference=effet.numero or f'EFFET-{effet.id}',
+        source_type='effet_apurement_escompte', source_id=effet.id,
+        created_by=user, statut=EcritureComptable.Statut.VALIDEE)
+    effet.statut = Effet.Statut.ENCAISSE
+    effet.ecriture_apurement_escompte_id = ecriture.id
+    effet.save(update_fields=['statut', 'ecriture_apurement_escompte_id'])
+    return effet
+
+
+def endosser_effet(effet, *, beneficiaire, date_endossement=None, user=None):
+    """XACC34 — Endosse un effet à recevoir à un tiers bénéficiaire.
+
+    Transfert (sans mobilisation bancaire) : la créance de l'entreprise sur
+    le tiré est SOLDÉE côté entreprise, le bénéficiaire devenant seul
+    porteur. Aucune écriture comptable propre à ce module (le paiement au
+    tiers via l'effet endossé se règle hors de ce système) — seul le statut
+    et le bénéficiaire sont tracés pour l'audit. Refuse les transitions
+    illégales (effet déjà soldé/escompté/impayé)."""
+    if effet.sens != Effet.Sens.RECEVOIR:
+        raise ValidationError("Seul un effet à recevoir peut être endossé.")
+    if effet.statut not in _TRANSITIONS_ESCOMPTABLES:
+        raise ValidationError(
+            "Cet effet ne peut pas être endossé dans son état actuel.")
+    if not beneficiaire:
+        raise ValidationError("Le bénéficiaire de l'endossement est obligatoire.")
+    effet.statut = Effet.Statut.ENDOSSE
+    effet.beneficiaire_endossement = beneficiaire
+    effet.date_endossement = date_endossement or timezone.now().date()
+    effet.save(update_fields=[
+        'statut', 'beneficiaire_endossement', 'date_endossement'])
+    return effet
+
+
 @transaction.atomic
 def payer_effet(effet, *, date_paiement=None, user=None):
     """Paie un effet à payer fournisseur : portefeuille → payé (FG128).
@@ -2956,7 +3105,10 @@ def rejeter_effet(effet, *, date_rejet=None, frais_rejet=None, commentaire='',
     remis : débit 3425 effets à recevoir / crédit 5113 à l'encaissement) et,
     si des ``frais_rejet`` bancaires sont saisis, les comptabilise (débit 6147
     frais bancaires / crédit 5141 banque). L'effet passe ``impaye``, ses frais
-    sont figés. Refusé en période close. Renvoie l'effet.
+    sont figés. XACC34 — un effet ``escompte`` impayé (rejeté par le tiré après
+    mobilisation bancaire) RÉ-OUVRE la créance (débit 3425 / crédit 5520,
+    réutilisant cette même contre-passation FG130) au lieu de la contre-
+    passation « remis » classique. Refusé en période close. Renvoie l'effet.
     """
     if effet.statut == Effet.Statut.IMPAYE:
         return effet
@@ -2988,6 +3140,24 @@ def rejeter_effet(effet, *, date_rejet=None, frais_rejet=None, commentaire='',
              'libelle': libelle,
              'tiers_type': effet.tiers_type, 'tiers_id': effet.tiers_id},
             {'compte': compte_enc, 'debit': Decimal('0'), 'credit': montant,
+             'libelle': libelle},
+        ]
+        creer_ecriture(
+            company, journal, date_r, libelle, lignes,
+            reference=effet.numero or f'EFFET-{effet.id}',
+            source_type='effet_rejet', source_id=effet.id,
+            created_by=user, statut=EcritureComptable.Statut.VALIDEE)
+    elif effet.sens == Effet.Sens.RECEVOIR and effet.statut == Effet.Statut.ESCOMPTE:
+        # Impayé POST-escompte : le tiré n'a pas payé — la banque contre-passe
+        # le crédit d'escompte et notre créance sur le client rouvre.
+        montant = Decimal(effet.montant or 0)
+        compte_eff = _compte_effets_recevoir(company)
+        compte_5520 = _compte_credits_escompte(company)
+        lignes = [
+            {'compte': compte_eff, 'debit': montant, 'credit': Decimal('0'),
+             'libelle': libelle,
+             'tiers_type': effet.tiers_type, 'tiers_id': effet.tiers_id},
+            {'compte': compte_5520, 'debit': Decimal('0'), 'credit': montant,
              'libelle': libelle},
         ]
         creer_ecriture(

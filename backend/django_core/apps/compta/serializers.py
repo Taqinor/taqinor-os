@@ -618,9 +618,16 @@ class EffetSerializer(serializers.ModelSerializer):
             'numero', 'montant', 'date_emission', 'date_echeance', 'banque',
             'tireur', 'statut', 'statut_display', 'tiers_type', 'tiers_id',
             'bordereau', 'frais_rejet', 'commentaire', 'date_creation',
+            'agios_escompte', 'interets_escompte', 'date_escompte',
+            'ecriture_escompte_id', 'ecriture_apurement_escompte_id',
+            'beneficiaire_endossement', 'date_endossement',
         ]
         read_only_fields = [
-            'statut', 'bordereau', 'frais_rejet', 'date_creation']
+            'statut', 'bordereau', 'frais_rejet', 'date_creation',
+            'agios_escompte', 'interets_escompte', 'date_escompte',
+            'ecriture_escompte_id', 'ecriture_apurement_escompte_id',
+            'beneficiaire_endossement', 'date_endossement',
+        ]
 
     def validate_montant(self, value):
         if value is not None and value <= 0:
