@@ -7,6 +7,7 @@
  * reste dans roof-tool-pro11.ts tant que la scène n'est pas extraite.
  */
 import { aggregateAreas, areaLabel, type AreaResult } from '../../lib/roofAreas';
+import { annualSavingsMad } from '../../lib/estimatorBrainV2';
 import { fmt, fmtMad, esc } from './dom';
 import { type Ctx } from './context';
 
@@ -80,7 +81,13 @@ export function createZones(ctx: Ctx): Zones {
     const anyResult = results.some((r) => r != null);
     areasWindowEl.hidden = !anyResult;
     if (!anyResult) return;
-    const total = aggregateAreas(results);
+    // WB20 — toutes les zones résolvent contre la MÊME facture globale (pas une part
+    // par zone) : chaque `r.savings*` est déjà plafonné à TOUTE la facture, donc les
+    // sommer sur-compterait jusqu'à N× sur un toit à N zones. On repasse la cible
+    // annuelle globale (facture) à `aggregateAreas` pour qu'elle recalcule UNE seule
+    // économie plafonnée à partir du kWh produit total.
+    const targetAnnualKwh = ctx.roofType === 'pitched' ? ctx.pitchedRec?.targetAnnualKwh : ctx.rec?.targetAnnualKwh;
+    const total = aggregateAreas(results, targetAnnualKwh, annualSavingsMad);
     if (areasTotalPanelsEl) areasTotalPanelsEl.textContent = `${fmt(total.panels)} × 720 W`;
     if (areasTotalKwcEl) areasTotalKwcEl.textContent = `${total.kwc.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} kWc`;
     if (areasTotalProdEl) areasTotalProdEl.textContent = total.annualKwh > 0 ? `${fmt(Math.round(total.annualKwh))} kWh/an` : '—';
