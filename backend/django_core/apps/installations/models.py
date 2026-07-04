@@ -38,6 +38,7 @@ from .models_chantier import (
     StageModele,
     CommissioningRecord,
     CommissioningIVReading,
+    ReverificationMesure,
     HandoverPack,
     StockReservation,
     ChantierChecklistItem,
@@ -81,6 +82,9 @@ from .models_program import (
 )
 from .models_indispo import (
     IndisponibiliteRessource,
+)
+from .models_astreinte import (
+    Astreinte,
 )
 # DC34 — l'ancien référentiel parallèle (installations.SousTraitant, FG304) et
 # l'AP dédiée (installations.FactureSousTraitant/PaiementSousTraitant, FG306) sont
@@ -201,6 +205,7 @@ __all__ = [
     'StageModele',
     'CommissioningRecord',
     'CommissioningIVReading',
+    'ReverificationMesure',
     'HandoverPack',
     'StockReservation',
     'ChantierChecklistItem',
@@ -234,6 +239,7 @@ __all__ = [
     'BudgetProjet',
     'BudgetEngagement',
     'IndisponibiliteRessource',
+    'Astreinte',
     'OrdreSousTraitance',
     'AttestationSousTraitant',
     'EvaluationSousTraitant',

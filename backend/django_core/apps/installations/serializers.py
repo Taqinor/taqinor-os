@@ -8,6 +8,7 @@ from .models import (
     PreparationMaterielLigne, PreparationOutilLigne,
     ComponentSerial, PhotoAnnotation, MaterielConsommation, ConsommationLigne,
     VoiceMemo, Reserve, ToolReturn, SafetyChecklistSlot, SafetySignoff,
+    ReverificationMesure,
     SafetyCheckItem,
     TypeInterventionPlan,
     JalonProjet, ModeleProjet, ModeleProjetJalon, ModeleProjetBomLigne,
@@ -16,6 +17,7 @@ from .models import (
     Projet, ProjetTache, ProjetChantier, ProjetDevis, ProjetTicket,
     BudgetProjet, BudgetEngagement,
     IndisponibiliteRessource,
+    Astreinte,
     OrdreSousTraitance,
     AttestationSousTraitant,
     EvaluationSousTraitant,
@@ -182,6 +184,17 @@ class InterventionSerializer(serializers.ModelSerializer):
     gps_lng = serializers.DecimalField(
         source='installation.gps_lng', max_digits=9, decimal_places=6,
         read_only=True, default=None)
+    # XFSM8 — notes d'accès du chantier, reprises en lecture sur chaque
+    # intervention (jamais ressaisies) : affichées sur « Ma journée » F22 et
+    # le compte-rendu F19.
+    contact_site_nom = serializers.CharField(
+        source='installation.contact_site_nom', read_only=True, default=None)
+    contact_site_telephone = serializers.CharField(
+        source='installation.contact_site_telephone', read_only=True, default=None)
+    acces_instructions = serializers.CharField(
+        source='installation.acces_instructions', read_only=True, default=None)
+    horaires_acces = serializers.CharField(
+        source='installation.horaires_acces', read_only=True, default=None)
     # F6 — distance (km) entre la position d'arrivée et le GPS du chantier.
     distance_site_km = serializers.SerializerMethodField()
     # F5 — avancement de la préparation (0–100, ou null si pas de préparation).
@@ -204,6 +217,8 @@ class InterventionSerializer(serializers.ModelSerializer):
             'company', 'created_by', 'date_creation',
             'depart_depot_le', 'arrivee_site_le', 'retour_depot_le',
             'arrivee_gps_lat', 'arrivee_gps_lng',
+            # XFSM21 — posé uniquement par le sweep Beat météo, jamais du corps.
+            'meteo_risque', 'meteo_verifie_le',
         ]
 
     def get_statut_ordre(self, obj):
@@ -563,9 +578,9 @@ class ReserveSerializer(serializers.ModelSerializer):
         fields = ['id', 'intervention', 'description', 'photo', 'photo_url',
                   'memo', 'assignee', 'assignee_nom', 'statut', 'statut_display',
                   'resolution', 'resolue_le', 'suivi_intervention', 'ticket',
-                  'date_creation']
+                  'devis_repare_id', 'date_creation']
         read_only_fields = ['intervention', 'suivi_intervention', 'ticket',
-                            'resolue_le', 'date_creation']
+                            'devis_repare_id', 'resolue_le', 'date_creation']
 
     def get_assignee_nom(self, obj):
         return getattr(obj.assignee, 'username', None)
@@ -574,6 +589,23 @@ class ReserveSerializer(serializers.ModelSerializer):
         if not obj.photo_id:
             return None
         return f'/api/django/records/attachments/{obj.photo_id}/download/'
+
+
+# ── XFSM13 — re-vérification IEC 62446-2 vs baseline ────────────────────────
+class ReverificationMesureSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ReverificationMesure
+        fields = [
+            'id', 'intervention_id', 'record_baseline',
+            'isolement_mohm', 'continuite_terre_ohm', 'voc_comparaison',
+            'isolement_ecart_pct', 'seuil_alerte_pct', 'depassement_detecte',
+            'reserve_id', 'observations', 'date_creation',
+        ]
+        read_only_fields = [
+            'intervention_id', 'record_baseline', 'voc_comparaison',
+            'isolement_ecart_pct', 'depassement_detecte', 'reserve_id',
+            'date_creation',
+        ]
 
 
 # ── F17 — retour d'outil ─────────────────────────────────────────────────────
@@ -1060,6 +1092,42 @@ class IndisponibiliteRessourceSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'date_fin': 'La date de fin doit être postérieure ou égale à '
                              'la date de début.'})
+        return attrs
+
+
+class AstreinteSerializer(serializers.ModelSerializer):
+    """XFSM10 — période d'astreinte d'un technicien. Société + `created_by`
+    posés côté serveur ; le chevauchement de périodes est validé au niveau
+    modèle (`clean()`, remonté en 400 par la vue)."""
+    technicien_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Astreinte
+        fields = [
+            'id', 'technicien', 'technicien_nom', 'date_debut', 'date_fin',
+            'telephone_astreinte', 'created_by', 'date_creation',
+        ]
+        read_only_fields = ['created_by', 'date_creation']
+
+    def get_technicien_nom(self, obj):
+        user = getattr(obj, 'technicien', None)
+        if user is None:
+            return None
+        getter = getattr(user, 'get_full_name', None)
+        nom = (getter() or '').strip() if callable(getter) else ''
+        return nom or getattr(user, 'username', None)
+
+    def validate(self, attrs):
+        def _resolved(field):
+            if field in attrs:
+                return attrs[field]
+            return getattr(self.instance, field, None)
+
+        debut = _resolved('date_debut')
+        fin = _resolved('date_fin')
+        if debut is not None and fin is not None and fin <= debut:
+            raise serializers.ValidationError(
+                {'date_fin': "La date de fin doit être après la date de début."})
         return attrs
 
 

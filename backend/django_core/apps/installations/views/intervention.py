@@ -24,10 +24,12 @@ from ..serializers import (  # noqa: F401
     ComponentSerialSerializer, MaterielConsommationSerializer,
     ConsommationLigneSerializer, VoiceMemoSerializer, ReserveSerializer,
     ToolReturnSerializer, SafetyChecklistSlotSerializer, SafetySignoffSerializer,
+    ReverificationMesureSerializer,
 )
 from ..services import (  # noqa: F401
     create_installation_from_devis, seed_checklist_etapes,
     ensure_checklist_items, ensure_default_template,
+    enregistrer_reverification,
 )
 from .. import field_services  # noqa: F401
 from .. import field_capture  # noqa: F401
@@ -481,14 +483,36 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='depart-depot',
             permission_classes=[IsResponsableOrAdmin])
     def depart_depot(self, request, pk=None):
-        """F6 — horodate le départ du dépôt (début du trajet)."""
+        """F6 — horodate le départ du dépôt (début du trajet). XFSM7 : si le
+        navigateur fournit lat/lng, les pose aussi (sert uniquement à l'ETA du
+        lien public « technicien en route » — aucune autre logique n'en
+        dépend)."""
         interv = self.get_object()
         interv.depart_depot_le = timezone.now()
-        interv.save(update_fields=['depart_depot_le'])
+        fields = ['depart_depot_le']
+        lat, lng = request.data.get('lat'), request.data.get('lng')
+        if lat not in (None, '') and lng not in (None, ''):
+            try:
+                interv.depart_gps_lat = round(float(lat), 6)
+                interv.depart_gps_lng = round(float(lng), 6)
+                fields += ['depart_gps_lat', 'depart_gps_lng']
+            except (TypeError, ValueError):
+                pass
+        interv.save(update_fields=fields)
         intervention_activity.log_note(
             interv, request.user, "Départ dépôt enregistré.")
         return Response(InterventionSerializer(
             interv, context={'request': request}).data)
+
+    @action(detail=True, methods=['get'], url_path='lien-client',
+            permission_classes=[IsResponsableOrAdmin])
+    def lien_client(self, request, pk=None):
+        """XFSM7 — génère (lazily) et renvoie l'URL publique « technicien en
+        route » de cette intervention, à partager par WhatsApp/SMS (pattern
+        FG86/liens WhatsApp)."""
+        interv = self.get_object()
+        token = interv.ensure_lien_client_token()
+        return Response({'token': token, 'path': f'/public/installations/intervention/{token}/'})
 
     @action(detail=True, methods=['post'], url_path='checkin',
             permission_classes=[IsResponsableOrAdmin])
@@ -929,6 +953,36 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             f"Matériel consommé validé — {nb} référence(s) sortie(s) du stock.")
         return self._consommation_response(interv)
 
+    # ── XFSM22 — durée & pièces suggérées par l'historique ──────────────────
+    @action(detail=False, methods=['get'], url_path='suggestions-creation',
+            permission_classes=[IsAnyRole])
+    def suggestions_creation(self, request):
+        """XFSM22 — suggestions affichées à la CRÉATION d'une intervention
+        (jamais forcées) : durée médiane (F15) + pièces les plus consommées
+        (F11) sur l'historique similaire. Query params : `type_intervention`
+        (requis), `technicien` (id, optionnel), `type_installation` (optionnel).
+        Silencieux sous le seuil d'historique."""
+        from ..selectors import (
+            suggestion_duree_intervention, suggestion_pieces_intervention,
+        )
+        company = request.user.company
+        type_intervention = request.query_params.get('type_intervention')
+        if not type_intervention:
+            return Response(
+                {'detail': 'type_intervention est requis.'}, status=400)
+        technicien = None
+        technicien_id = request.query_params.get('technicien')
+        if technicien_id:
+            from authentication.models import CustomUser
+            technicien = CustomUser.objects.filter(
+                id=technicien_id, company=company).first()
+        duree = suggestion_duree_intervention(
+            company, type_intervention, technicien=technicien)
+        pieces = suggestion_pieces_intervention(
+            company, type_intervention,
+            type_installation=request.query_params.get('type_installation'))
+        return Response({'duree': duree, 'pieces': pieces})
+
     @action(detail=False, methods=['get'], url_path='overage-review',
             permission_classes=[IsAnyRole])
     def overage_review(self, request):
@@ -1109,6 +1163,37 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             description=reserve.description or 'Réserve d\'intervention',
             created_by=user)
 
+    # ── XFSM13 — re-vérification IEC 62446-2 vs baseline de recette ─────────
+    @action(detail=True, methods=['post'], url_path='enregistrer-reverification',
+            permission_classes=[IsResponsableOrAdmin])
+    def enregistrer_reverification_view(self, request, pk=None):
+        """XFSM13 — enregistre une re-vérification IEC 62446-2 (points
+        électriques comparés à la baseline de recette du chantier). Corps :
+        {"isolement_mohm": ..., "continuite_terre_ohm": ...,
+        "voc_par_string": {"A": 620.5, ...}, "observations": ...,
+        ["seuil_alerte_pct"]}. Un dépassement du seuil crée une Reserve."""
+        interv = self.get_object()
+        seuil = request.data.get('seuil_alerte_pct', 20)
+        try:
+            seuil = float(seuil)
+        except (TypeError, ValueError):
+            seuil = 20
+        reverif = enregistrer_reverification(
+            interv, request.data, user=request.user, seuil_alerte_pct=seuil)
+        return Response(
+            ReverificationMesureSerializer(reverif).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], url_path='reverifications',
+            permission_classes=[IsAnyRole])
+    def reverifications(self, request, pk=None):
+        """XFSM13 — historique des re-vérifications de l'intervention."""
+        interv = self.get_object()
+        from ..models import ReverificationMesure
+        qs = ReverificationMesure.objects.filter(
+            intervention_id=interv.id).order_by('-date_creation')
+        return Response(ReverificationMesureSerializer(qs, many=True).data)
+
     @action(detail=True, methods=['post'], url_path='modifier-reserve',
             permission_classes=[IsResponsableOrAdmin])
     def modifier_reserve(self, request, pk=None):
@@ -1150,6 +1235,38 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         reserve.save(update_fields=['statut', 'resolution', 'resolue_le'])
         return Response(ReserveSerializer(
             reserve, context={'request': request}).data)
+
+    # ── XFSM18 — réserve → devis de réparation ──────────────────────────────
+    @action(detail=True, methods=['post'], url_path='generer-devis-reserve',
+            permission_classes=[IsResponsableOrAdmin])
+    def generer_devis_reserve(self, request, pk=None):
+        """XFSM18 — génère un devis brouillon de réparation à partir d'une
+        réserve (client du chantier résolu côté serveur, description
+        pré-remplie). Idempotent : si la réserve porte déjà un
+        `devis_repare_id`, le renvoie sans en créer un second. Corps :
+        {"reserve": <id>}."""
+        interv = self.get_object()
+        reserve = interv.reserves.filter(id=request.data.get('reserve')).first()
+        if reserve is None:
+            return Response({'detail': 'Réserve inconnue.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if reserve.devis_repare_id:
+            return Response({
+                'reserve': reserve.id, 'devis_id': reserve.devis_repare_id,
+                'deja_existant': True,
+            })
+        from apps.ventes.services import create_devis_from_reserve
+        try:
+            devis = create_devis_from_reserve(reserve=reserve, user=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        reserve.devis_repare_id = devis.id
+        reserve.save(update_fields=['devis_repare_id'])
+        return Response({
+            'reserve': reserve.id, 'devis_id': devis.id,
+            'devis_reference': devis.reference, 'deja_existant': False,
+        }, status=status.HTTP_201_CREATED)
 
     # ── F17 — réconciliation du retour d'outillage ──────────────────────────
     @action(detail=True, methods=['get', 'post'], url_path='tool-return',

@@ -134,3 +134,77 @@ def rappel_rdv_j1():
         'jour_cible': str(demain), 'cibles': cibles,
         'wa_generes': wa_generes, 'emails_envoyes': emails_envoyes,
     }
+
+
+@shared_task(name='installations.meteo_planning_j3')
+def meteo_planning_j3():
+    """XFSM21 — sweep quotidien : récupère la prévision J+3 (Open-Meteo,
+    gratuit, sans clé) aux GPS des interventions de type POSE planifiées ce
+    jour-là, et positionne `meteo_risque` selon les seuils (pluie/vent).
+    Panne API → SILENCIEUSE (le champ reste inchangé pour cette intervention,
+    le sweep continue sur les suivantes). Notifie le responsable du chantier
+    quand un risque est détecté (best-effort, jamais bloquant). Renvoie un
+    compte {cibles, evaluees, a_risque} pour observabilité/tests."""
+    from datetime import timedelta
+
+    from . import weather
+    from .models import Intervention
+
+    jour_cible = casablanca_today() + timedelta(days=3)
+    qs = (Intervention.objects
+          .filter(date_prevue=jour_cible, type_intervention=Intervention.Type.POSE)
+          .select_related('installation', 'installation__technicien_responsable'))
+
+    cibles = 0
+    evaluees = 0
+    a_risque = 0
+    for interv in qs:
+        cibles += 1
+        inst = interv.installation
+        lat = getattr(inst, 'gps_lat', None)
+        lng = getattr(inst, 'gps_lng', None)
+        try:
+            forecast = weather.fetch_forecast(lat, lng, jour_cible)
+            risque = weather.evaluate_risk(forecast)
+        except Exception as exc:  # pragma: no cover - défensif
+            logger.warning(
+                'XFSM21 : évaluation météo échouée (intervention %s) : %s',
+                interv.id, exc)
+            continue
+        if risque is None:
+            continue
+        evaluees += 1
+        from django.utils import timezone
+        interv.meteo_risque = risque
+        interv.meteo_verifie_le = timezone.now()
+        interv.save(update_fields=['meteo_risque', 'meteo_verifie_le'])
+        if risque:
+            a_risque += 1
+            _notifier_meteo_risque(interv)
+
+    return {
+        'jour_cible': str(jour_cible), 'cibles': cibles,
+        'evaluees': evaluees, 'a_risque': a_risque,
+    }
+
+
+def _notifier_meteo_risque(interv):
+    """XFSM21 — notifie le responsable du chantier d'un risque météo détecté
+    sur une pose planifiée (best-effort, ne lève jamais)."""
+    try:
+        from apps.notifications.services import notify
+        from apps.notifications.models import EventType
+    except Exception:  # pragma: no cover - défensif
+        return
+    responsable = getattr(interv.installation, 'technicien_responsable', None)
+    if responsable is None:
+        return
+    try:
+        notify(
+            responsable, EventType.CHANTIER_DUE,
+            f"Risque météo — pose du {interv.date_prevue}",
+            body="Pluie/vent au-delà des seuils prévus J+3 — "
+                 "envisager une replanification.",
+            company=interv.company)
+    except Exception:  # pragma: no cover - défensif
+        pass

@@ -2107,3 +2107,185 @@ def suggerer_creneau(company, *, chantier_id, type_intervention, duree_jours=1,
         'chantier_id': chantier_id,
         'propositions': candidats[:max(int(n or 3), 1)],
     }
+
+
+# ── XFSM7 — lien public « technicien en route » ──────────────────────────────
+# Vitesse moyenne par défaut (km/h) pour l'ETA indicative — pas de service
+# externe, juste une estimation de trajet urbain/interurbain marocain.
+VITESSE_MOYENNE_KMH_DEFAUT = 40
+
+
+def intervention_public_payload(interv):
+    """XFSM7 — payload public (read-only, tokenisé) du suivi de visite : statut
+    courant, nom (+ avatar si disponible) du technicien, fenêtre promise
+    (XFSM5), et ETA estimée UNIQUEMENT si l'intervention est « En route » et
+    qu'une position de départ + le GPS du chantier sont connus (distance
+    haversine / vitesse moyenne paramétrable). Aucune donnée interne (jamais de
+    coûts, jamais de position GPS live — voir XFSM23)."""
+    from .field_services import haversine_km
+    from .models import Intervention
+
+    inst = interv.installation
+    technicien = interv.technicien
+    technicien_nom = None
+    technicien_avatar_url = None
+    if technicien is not None:
+        technicien_nom = (
+            getattr(technicien, 'get_full_name', lambda: '')()
+            or technicien.username)
+        avatar_key = getattr(technicien, 'avatar_key', '')
+        if avatar_key:
+            from authentication.avatars import presign_avatar
+            technicien_avatar_url = presign_avatar(avatar_key)
+
+    eta_minutes = None
+    distance_km = None
+    if (interv.statut == Intervention.Statut.EN_ROUTE
+            and interv.depart_gps_lat is not None
+            and interv.depart_gps_lng is not None):
+        distance_km = haversine_km(
+            interv.depart_gps_lat, interv.depart_gps_lng,
+            getattr(inst, 'gps_lat', None), getattr(inst, 'gps_lng', None))
+        if distance_km is not None:
+            vitesse = VITESSE_MOYENNE_KMH_DEFAUT
+            eta_minutes = round((distance_km / vitesse) * 60) if vitesse else None
+
+    return {
+        'statut': interv.statut,
+        'statut_display': interv.get_statut_display(),
+        'technicien_nom': technicien_nom,
+        'technicien_avatar_url': technicien_avatar_url,
+        'fenetre_debut': interv.fenetre_debut.isoformat() if interv.fenetre_debut else None,
+        'fenetre_fin': interv.fenetre_fin.isoformat() if interv.fenetre_fin else None,
+        'date_prevue': interv.date_prevue.isoformat() if interv.date_prevue else None,
+        'distance_km': distance_km,
+        'eta_minutes': eta_minutes,
+        'site_ville': getattr(inst, 'site_ville', None),
+    }
+
+
+# ── XFSM10 — astreinte / rotation après-heures ────────────────────────────────
+def technicien_astreinte(company, dt):
+    """XFSM10 — technicien d'astreinte couvrant l'instant ``dt`` (datetime
+    aware) pour ``company``, ou None si aucune astreinte ne couvre ce moment.
+    Lecture seule — consommable par d'autres apps (SAV pour le routage des
+    urgences hors heures, paie pour la prime d'astreinte)."""
+    from .models import Astreinte
+    if company is None or dt is None:
+        return None
+    a = (Astreinte.objects
+         .filter(company=company, date_debut__lte=dt, date_fin__gt=dt)
+         .select_related('technicien')
+         .order_by('-date_debut')
+         .first())
+    return a.technicien if a else None
+
+
+def astreintes_periode(company, date_debut, date_fin):
+    """XFSM10 — astreintes de ``company`` chevauchant [date_debut, date_fin)
+    (bornes datetime aware). Lecture seule — consommable par la paie pour la
+    prime d'astreinte (jamais d'import de ``apps.paie.models`` ici)."""
+    from .models import Astreinte
+    if company is None:
+        return Astreinte.objects.none()
+    qs = Astreinte.objects.filter(company=company)
+    if date_debut is not None:
+        qs = qs.filter(date_fin__gt=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(date_debut__lt=date_fin)
+    return qs.select_related('technicien').order_by('date_debut')
+
+
+# ── XFSM22 — durée & pièces suggérées par l'historique (heuristique) ────────
+_TOP_N_PIECES_DEFAUT = 5
+_MIN_HISTORIQUE = 3  # silencieux sous ce nombre d'interventions d'historique.
+
+
+def _mediane(valeurs):
+    vals = sorted(v for v in valeurs if v is not None)
+    n = len(vals)
+    if n == 0:
+        return None
+    milieu = n // 2
+    if n % 2 == 1:
+        return vals[milieu]
+    return (vals[milieu - 1] + vals[milieu]) / 2
+
+
+def suggestion_duree_intervention(company, type_intervention, technicien=None):
+    """XFSM22 — durée suggérée (minutes) = médiane des durées réelles F15 des
+    interventions TERMINÉES de même ``type_intervention``, sur le même
+    technicien s'il a assez d'historique (≥ ``_MIN_HISTORIQUE``), sinon replié
+    sur toute la société. Silencieux (None) sous le seuil d'historique — pur
+    sélecteur lecture seule, aucune dépendance ML."""
+    from .field_capture import crew_time
+    from .models import Intervention
+
+    def _durees(qs):
+        durees = []
+        for interv in qs:
+            minutes = crew_time(interv)['duree_sur_site_min']
+            if minutes is not None:
+                durees.append(minutes)
+        return durees
+
+    base = Intervention.objects.filter(
+        company=company, type_intervention=type_intervention,
+        statut__in=(Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE))
+
+    if technicien is not None:
+        qs_tech = base.filter(technicien=technicien)
+        durees_tech = _durees(qs_tech)
+        if len(durees_tech) >= _MIN_HISTORIQUE:
+            return {
+                'duree_suggeree_min': _mediane(durees_tech),
+                'echantillon': len(durees_tech),
+                'portee': 'technicien',
+            }
+
+    durees_societe = _durees(base)
+    if len(durees_societe) < _MIN_HISTORIQUE:
+        return {
+            'duree_suggeree_min': None,
+            'echantillon': len(durees_societe),
+            'portee': 'societe',
+        }
+    return {
+        'duree_suggeree_min': _mediane(durees_societe),
+        'echantillon': len(durees_societe),
+        'portee': 'societe',
+    }
+
+
+def suggestion_pieces_intervention(
+        company, type_intervention, type_installation=None, top_n=_TOP_N_PIECES_DEFAUT):
+    """XFSM22 — top-N produits les plus consommés (F11) sur les interventions
+    similaires (même ``type_intervention`` + ``type_installation`` du chantier
+    si fourni), triés par quantité totale consommée décroissante. Silencieux
+    ([]) sous le seuil d'historique — pur sélecteur lecture seule."""
+    from .models import ConsommationLigne, Intervention
+
+    interventions = Intervention.objects.filter(
+        company=company, type_intervention=type_intervention,
+        statut__in=(Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE))
+    if type_installation:
+        interventions = interventions.filter(
+            installation__type_installation=type_installation)
+
+    if interventions.count() < _MIN_HISTORIQUE:
+        return []
+
+    lignes = (ConsommationLigne.objects
+              .filter(consommation__intervention__in=interventions)
+              .exclude(produit__isnull=True)
+              .values('produit_id', 'designation')
+              .annotate(total=Sum('quantite_utilisee'))
+              .order_by('-total'))
+    return [
+        {
+            'produit_id': row['produit_id'],
+            'designation': row['designation'],
+            'quantite_totale': row['total'],
+        }
+        for row in lignes[:max(int(top_n or _TOP_N_PIECES_DEFAUT), 1)]
+    ]

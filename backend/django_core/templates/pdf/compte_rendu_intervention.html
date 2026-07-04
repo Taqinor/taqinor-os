@@ -87,6 +87,17 @@
     <div class="meta-item"><strong>Retour</strong><span>{{ retour_depot_le.strftime('%d/%m/%Y %H:%M') if retour_depot_le else '—' }}</span></div>
   </div>
 
+  {% if contact_site_nom or contact_site_telephone or acces_instructions or horaires_acces %}
+  <div class="section">
+    <div class="section-title">Accès au site</div>
+    <div class="section-body">
+      {% if contact_site_nom %}Contact : {{ contact_site_nom }}{% if contact_site_telephone %} ({{ contact_site_telephone }}){% endif %}<br />{% endif %}
+      {% if horaires_acces %}Horaires d'accès : {{ horaires_acces }}<br />{% endif %}
+      {% if acces_instructions %}{{ acces_instructions }}{% endif %}
+    </div>
+  </div>
+  {% endif %}
+
   <div class="section">
     <div class="section-title">Équipe</div>
     <div class="section-body">{% if equipe %}{{ equipe | join(', ') }}{% else %}<span class="muted">Non renseignée.</span>{% endif %}</div>
