@@ -1702,10 +1702,18 @@ def resilier_contrat(contrat, *, motif='', date_effet=None, preavis_jours=None,
       résiliation (``version_creee``).
     - AUDIT : la bascule de statut est journalisée dans le chatter (CONTRAT15),
       auteur et société posés côté serveur.
+    - DE-PROVISIONING (YSUBS5) : les ``LigneEcheance`` FUTURES non encore
+      facturées (``facture_id`` NULL, ``date_echeance > today``) de TOUS les
+      échéanciers du contrat passent ``annulee`` — la résiliation stoppe la
+      facturation récurrente à venir sans jamais toucher aux échéances déjà
+      facturées (historique immuable). Puis un signal ``contrat_resilie``
+      (``core/events.py``) est émis pour la propagation aval DÉCOUPLÉE (ex.
+      arrêt des visites préventives SAV, ``apps/sav/receivers.py``) — best-
+      effort, jamais bloquant pour la résiliation elle-même (déjà actée).
 
     Renvoie la ``Resiliation`` créée (``version_creee`` renseigné si snapshot).
     """
-    from .models import Contrat, Resiliation
+    from .models import Contrat, LigneEcheance, Resiliation
 
     if today is None:
         today = timezone.localdate()
@@ -1762,6 +1770,31 @@ def resilier_contrat(contrat, *, motif='', date_effet=None, preavis_jours=None,
         if version is not None:
             resiliation.version_creee = version
             resiliation.save(update_fields=['version_creee'])
+
+    # YSUBS5 — de-provisioning : annule les échéances FUTURES non facturées
+    # (aucun impact sur l'historique déjà facturé). Même app, pas de
+    # frontière cross-app ici.
+    (
+        LigneEcheance.objects
+        .filter(
+            echeancier__contrat=contrat, facture_id__isnull=True,
+            date_echeance__gt=today,
+        )
+        .exclude(statut=LigneEcheance.Statut.ANNULEE)
+        .update(statut=LigneEcheance.Statut.ANNULEE)
+    )
+
+    # YSUBS5 — propagation aval DÉCOUPLÉE (de-provisioning). Best-effort :
+    # un abonné qui échoue ne doit jamais faire échouer la résiliation,
+    # déjà actée ci-dessus.
+    try:
+        from core.events import contrat_resilie as contrat_resilie_signal
+
+        contrat_resilie_signal.send(
+            sender=None, contrat_id=contrat.id, company=contrat.company,
+            date_effet=date_effet)
+    except Exception:  # pragma: no cover - défensif (best-effort)
+        pass
 
     return resiliation
 

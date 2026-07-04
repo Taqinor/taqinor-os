@@ -117,6 +117,24 @@ importe ``apps.audit``.
     n'est jamais modifié par ce module lui-même (préservation des statuts,
     CONTRAT12) : le bus ne fait qu'observer la bascule déjà actée par la
     machine d'états gardée.
+
+``contrat_resilie``
+    Émis à la FIN de ``contrats.services.resilier_contrat`` (CONTRAT25) —
+    YSUBS5. Permet une propagation aval DÉCOUPLÉE (de-provisioning) sans que
+    ``contrats`` importe les apps abonnées. Arguments du signal :
+
+    * ``contrat_id`` — id du ``contrats.Contrat`` résilié (pas l'instance —
+      un abonné qui a besoin de plus lit via son propre sélecteur/la string-FK
+      ``sav_contrat_maintenance_id``) ;
+    * ``company`` — la société (posée côté serveur) ;
+    * ``date_effet`` — date d'effet de la résiliation (peut être ``None``).
+
+    Abonné dans ce repo : ``sav`` (``apps/sav/receivers.py``) — désactive la
+    facturation récurrente et arrête les visites préventives futures du
+    ``ContratMaintenance`` lié (résolu via ``Contrat.sav_contrat_maintenance_id``).
+    ``contrats.services.resilier_contrat`` passe lui-même les
+    ``LigneEcheance`` futures non facturées à ``annulee`` (pas besoin d'un
+    abonné pour ça — même module, pas de cross-app).
 """
 import django.dispatch
 
@@ -168,3 +186,9 @@ contrat_signe = django.dispatch.Signal()
 # Arguments : contrat, user, company. Aucun abonné obligatoire dans ce lot
 # (pose du seam) — voir docstring du module ci-dessus.
 contrat_actif = django.dispatch.Signal()
+
+# Émis à la résiliation d'un contrat (CONTRAT25) — YSUBS5.
+# Arguments : contrat_id, company, date_effet. Abonné dans ce repo : sav
+# (désactive la facturation récurrente + arrête les visites préventives
+# futures du ContratMaintenance lié) — voir docstring du module ci-dessus.
+contrat_resilie = django.dispatch.Signal()

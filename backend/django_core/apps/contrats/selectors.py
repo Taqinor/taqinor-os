@@ -1383,3 +1383,38 @@ def utilisation_parc_location(company, *, periode_debut, periode_fin,
 
     rows.sort(key=lambda r: r['produit_nom'])
     return rows
+
+
+# ---------------------------------------------------------------------------
+# YSUBS5 — Résiliation : résolution du ContratMaintenance SAV lié
+# ---------------------------------------------------------------------------
+
+
+def contrat_maintenance_lie_id(company, contrat_id):
+    """ID du ``sav.ContratMaintenance`` lié à un ``Contrat``, ou ``None`` —
+    YSUBS5. Point d'entrée LECTURE SEULE pour les apps consommatrices (ex.
+    ``apps.sav.receivers`` sur l'événement ``contrat_resilie``) : jamais un
+    import du modèle ``Contrat`` en dehors de ``contrats``.
+
+    Résolution dans l'ORDRE : (1) ``Contrat.sav_contrat_maintenance_id``
+    (lien direct, le plus courant) ; (2) à défaut, un ``ContratLien`` de
+    type ``maintenance`` pour ce contrat (premier trouvé). ``None`` si le
+    contrat n'existe pas dans la société ou n'a aucun lien maintenance."""
+    from .models import Contrat, ContratLien
+
+    contrat = Contrat.objects.filter(id=contrat_id, company=company).first()
+    if contrat is None:
+        return None
+    if contrat.sav_contrat_maintenance_id:
+        return contrat.sav_contrat_maintenance_id
+
+    lien = (
+        ContratLien.objects
+        .filter(
+            company=company, contrat=contrat,
+            type_cible=ContratLien.TypeCible.MAINTENANCE,
+        )
+        .order_by('id')
+        .first()
+    )
+    return lien.cible_id if lien is not None else None
