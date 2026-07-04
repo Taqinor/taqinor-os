@@ -12,6 +12,34 @@ from decimal import Decimal
 from .models import AvanceSalarie, BulletinPaie, LigneBulletin
 
 
+def mes_bulletins_valides(user):
+    """Bulletins de paie GÉNÉRÉS et VALIDÉS de ``user`` (YHIRE12, cross-app).
+
+    Sélecteur de lecture pour ``rh`` : le portail self-service fusionne cette
+    liste avec ses propres dépôts externes (``rh.BulletinPaie``, FG196) en une
+    UNE surface ``mes-bulletins`` — jamais deux listes. Rapproché par
+    ``profil.employe.user == user`` (jamais par company seule, pour ne jamais
+    exposer les bulletins d'un collègue). Renvoie des dicts normalisés
+    ``{source, annee, mois, id, date_creation}`` (source='genere').
+    """
+    qs = (
+        BulletinPaie.objects
+        .filter(profil__employe__user=user, statut=BulletinPaie.STATUT_VALIDE)
+        .select_related('periode')
+        .order_by('-periode__annee', '-periode__mois')
+    )
+    return [
+        {
+            'source': 'genere',
+            'id': b.id,
+            'annee': b.periode.annee,
+            'mois': b.periode.mois,
+            'date_creation': b.date_creation,
+        }
+        for b in qs
+    ]
+
+
 def solde_avance(avance_id):
     """Solde restant dû d'une ``AvanceSalarie`` par id (YHIRE5, cross-app).
 

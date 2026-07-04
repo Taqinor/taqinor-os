@@ -4644,13 +4644,53 @@ class PortailSelfServiceViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=['get'], url_path='mes-bulletins')
     def mes_bulletins(self, request):
+        """YHIRE12 — UNE surface bulletins : fusion dépôts externes (FG196,
+        ce module) + bulletins générés/validés (paie, coffre-fort PAIE35).
+
+        Dédupliquée par mois (le bulletin GÉNÉRÉ prime sur le dépôt externe du
+        même mois — c'est le document faisant foi une fois la paie calculée en
+        interne). La paie n'est JAMAIS importée directement : uniquement via
+        ``apps.paie.selectors.mes_bulletins_valides`` (lecture seule).
+        """
         dossier = self._dossier(request)
         if dossier is None:
             return Response([])
-        qs = BulletinPaie.objects.filter(
+        deposes = BulletinPaie.objects.filter(
             company=request.user.company, employe=dossier).select_related(
             'attachment')
-        return Response(BulletinPaieSerializer(qs, many=True).data)
+        deposes_data = BulletinPaieSerializer(deposes, many=True).data
+        for item in deposes_data:
+            item['source'] = 'depose'
+
+        from apps.paie.selectors import mes_bulletins_valides
+        generes = mes_bulletins_valides(request.user)
+        generes_data = [
+            {
+                'id': g['id'],
+                'source': 'genere',
+                'annee': g['annee'],
+                'mois': g['mois'],
+                'date_creation': g['date_creation'],
+                'employe': dossier.id,
+                'employe_nom': str(dossier),
+                'note': '',
+                'filename': f"bulletin_{g['annee']}_{g['mois']:02d}.pdf",
+                'size': None,
+                'mime': 'application/pdf',
+                'url': None,
+            }
+            for g in generes
+        ]
+
+        by_mois = {(item['annee'], item['mois']): item for item in deposes_data}
+        for item in generes_data:
+            # Le généré prime : il écrase un dépôt externe du même mois.
+            by_mois[(item['annee'], item['mois'])] = item
+
+        fusion = sorted(
+            by_mois.values(), key=lambda i: (i['annee'], i['mois']),
+            reverse=True)
+        return Response(fusion)
 
     @action(detail=False, methods=['get'], url_path='quiz-disponibles')
     def quiz_disponibles(self, request):
