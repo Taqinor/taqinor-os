@@ -304,6 +304,56 @@ def droits_restants(contrat, annee=None):
     }
 
 
+def taux_resolution_a_distance(company, *, date_debut=None, date_fin=None,
+                               group_by_technicien=False):
+    """YSERV12 — Taux de résolution À DISTANCE (KPI d'évitement de
+    déplacement) : tickets résolus à distance / tickets résolus (statut
+    RESOLU/CLOTURE, ``canal_resolution`` renseigné), sur la fenêtre
+    ``[date_debut, date_fin]`` (bornes optionnelles, sur ``date_resolution``).
+
+    ``group_by_technicien=True`` renvoie une ventilation par technicien
+    responsable (clé ``None`` = non assigné) en plus du total. Un ticket sans
+    ``canal_resolution`` (jamais renseigné — comportement historique) est
+    EXCLU du dénominateur : le taux ne porte que sur les tickets où le canal
+    est connu. Aucune division par zéro (0 résolu → taux ``None``)."""
+    qs = Ticket.objects.filter(
+        company=company,
+        statut__in=(Ticket.Statut.RESOLU, Ticket.Statut.CLOTURE),
+        canal_resolution__isnull=False,
+    )
+    if date_debut is not None:
+        qs = qs.filter(date_resolution__gte=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(date_resolution__lte=date_fin)
+
+    def _taux(queryset):
+        total = queryset.count()
+        if not total:
+            return {'resolus': 0, 'a_distance': 0, 'taux_pct': None}
+        a_distance = queryset.filter(
+            canal_resolution=Ticket.CanalResolution.A_DISTANCE).count()
+        return {
+            'resolus': total,
+            'a_distance': a_distance,
+            'taux_pct': round((a_distance / total) * 100, 1),
+        }
+
+    result = {'global': _taux(qs)}
+    if group_by_technicien:
+        techniciens = qs.values_list(
+            'technicien_responsable_id',
+            'technicien_responsable__username').distinct()
+        par_technicien = []
+        for tech_id, tech_nom in techniciens:
+            par_technicien.append({
+                'technicien_id': tech_id,
+                'technicien_nom': tech_nom,
+                **_taux(qs.filter(technicien_responsable_id=tech_id)),
+            })
+        result['par_technicien'] = par_technicien
+    return result
+
+
 def csat_par_technicien(company, *, date_debut=None, date_fin=None):
     """XSAV10 — Agrégat CSAT (note moyenne, n réponses) par technicien/mois.
 

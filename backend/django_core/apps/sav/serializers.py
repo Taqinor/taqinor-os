@@ -278,6 +278,9 @@ class TicketSerializer(serializers.ModelSerializer):
     # XCTR4 — routage de couverture PROPOSÉ (garantie/contrat/facturable),
     # calculé en lecture — distinct de `couverture` (valeur stockée).
     couverture_proposee = serializers.SerializerMethodField()
+    # YSERV12 — canal de résolution PROPOSÉ (sur_site si intervention liée
+    # terminée, sinon à_distance), distinct de `canal_resolution` (stocké).
+    canal_resolution_propose = serializers.SerializerMethodField()
 
     class Meta:
         model = Ticket
@@ -349,6 +352,9 @@ class TicketSerializer(serializers.ModelSerializer):
 
     def get_couverture_proposee(self, obj):
         return obj.couverture_calculee()
+
+    def get_canal_resolution_propose(self, obj):
+        return obj.canal_resolution_propose()
 
 
 # ── FG81 — Réglages SLA ────────────────────────────────────────────────────────

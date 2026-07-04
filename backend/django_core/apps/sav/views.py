@@ -645,9 +645,15 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
     def perform_update(self, serializer):
         self._check_tenant(serializer)
         old = Ticket.objects.get(pk=serializer.instance.pk)
+        # YSERV12 — à la transition vers RESOLU, propose canal_resolution si
+        # l'appelant n'en a pas fourni un explicitement (jamais écrasé sinon).
+        new_statut = serializer.validated_data.get('statut', old.statut)
+        if (new_statut == Ticket.Statut.RESOLU and old.statut != Ticket.Statut.RESOLU
+                and 'canal_resolution' not in serializer.validated_data):
+            serializer.validated_data['canal_resolution'] = (
+                old.canal_resolution_propose())
         # YSERV2 — garde de clôture : refuse CLOTURE tant qu'une intervention
         # liée (apps.installations) n'est pas TERMINEE/VALIDEE.
-        new_statut = serializer.validated_data.get('statut', old.statut)
         if new_statut == Ticket.Statut.CLOTURE and old.statut != Ticket.Statut.CLOTURE:
             ouvertes = self._interventions_ouvertes(old)
             if ouvertes:

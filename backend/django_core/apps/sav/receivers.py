@@ -70,6 +70,11 @@ def _avancer_ticket_on_intervention_completed(sender, intervention, company,
         if not ticket.date_resolution:
             ticket.date_resolution = timezone.localdate()
             update_fields.append('date_resolution')
+        # YSERV12 — une intervention terminée = résolution SUR SITE (jamais
+        # écrasé si déjà posé explicitement).
+        if not ticket.canal_resolution:
+            ticket.canal_resolution = ticket.CanalResolution.SUR_SITE
+            update_fields.append('canal_resolution')
         ancien_statut = ticket.statut
         ticket.statut = Ticket.Statut.RESOLU
         update_fields.append('statut')

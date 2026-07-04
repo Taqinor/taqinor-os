@@ -629,6 +629,22 @@ class Ticket(models.Model):
                   'maintenance, ou facturable au client.',
     )
 
+    # ── YSERV12 — Canal de résolution (à distance / sur site) ───────────────
+    # NULL par défaut : jamais requis rétroactivement (tickets existants
+    # tolérés NULL). Proposé automatiquement à la transition RESOLU (jamais
+    # écrasé s'il a déjà été posé explicitement).
+    class CanalResolution(models.TextChoices):
+        A_DISTANCE = 'a_distance', 'À distance'
+        SUR_SITE = 'sur_site', 'Sur site'
+
+    canal_resolution = models.CharField(
+        max_length=12, choices=CanalResolution.choices,
+        null=True, blank=True,
+        verbose_name='Canal de résolution',
+        help_text='Résolu à distance (téléphone/redémarrage) ou sur site '
+                  '(déplacement). Vide = non renseigné (tickets anciens).',
+    )
+
     class Meta:
         verbose_name = 'Ticket SAV'
         verbose_name_plural = 'Tickets SAV'
@@ -686,6 +702,16 @@ class Ticket(models.Model):
             if restant is None or restant > 0:
                 return self.Couverture.CONTRAT
         return self.Couverture.FACTURABLE
+
+    def canal_resolution_propose(self):
+        """YSERV2 — Propose ``sur_site`` si ≥1 intervention liée à ce ticket
+        est TERMINEE/VALIDEE, sinon ``a_distance`` (aucun déplacement tracé).
+        Purement une PROPOSITION : n'écrase jamais ``canal_resolution`` déjà
+        posé explicitement (l'appelant décide s'il applique la valeur)."""
+        return (self.CanalResolution.SUR_SITE
+                if self.interventions.filter(
+                    statut__in=('terminee', 'validee')).exists()
+                else self.CanalResolution.A_DISTANCE)
 
     def recompute_sla_breach(self):
         """Recalcule sla_breach : True si sla_due_at dépassé + ticket ouvert.
