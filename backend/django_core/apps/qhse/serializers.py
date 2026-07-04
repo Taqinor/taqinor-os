@@ -7,7 +7,8 @@ appartenant à la société de l'utilisateur.
 from rest_framework import serializers
 
 from .models import (
-    ActionCorrectivePreventive, AnalyseIncident, Audit, CauseIncident,
+    ActionCorrectivePreventive, AnalyseIncident, AspectEnvironnemental, Audit,
+    CauseIncident,
     CodeDefaut,
     ConsignationLoto, ContactUrgence, ControleReception,
     BilanCarbone, BordereauSuiviDechet, ConformiteEnvironnementale,
@@ -1258,3 +1259,31 @@ class ExerciceUrgenceSerializer(serializers.ModelSerializer):
 
     def validate_plan(self, value):
         return _meme_societe(self, value, "Plan d'urgence")
+
+
+class AspectEnvironnementalSerializer(serializers.ModelSerializer):
+    """Aspect & impact environnemental coté (XQHS20, ISO 14001 6.1.2).
+
+    ``criticite``/``significatif`` sont dérivés (lecture seule) : jamais
+    stockés, toujours recalculés depuis fréquence × gravité vs seuil."""
+    criticite = serializers.IntegerField(read_only=True)
+    significatif = serializers.BooleanField(read_only=True)
+    condition_display = serializers.CharField(
+        source='get_condition_display', read_only=True)
+
+    class Meta:
+        model = AspectEnvironnemental
+        fields = [
+            'id', 'activite', 'aspect', 'impact', 'condition',
+            'condition_display', 'frequence', 'gravite',
+            'seuil_significativite', 'criticite', 'significatif',
+            'controles_existants', 'procedure', 'objectif', 'date_revue',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_procedure(self, value):
+        return _meme_societe(self, value, 'Procédure qualité')
+
+    def validate_objectif(self, value):
+        return _meme_societe(self, value, 'Objectif QHSE')

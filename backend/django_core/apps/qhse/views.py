@@ -20,7 +20,7 @@ from authentication.permissions import IsResponsableOrAdmin
 from apps.ventes.utils.references import create_with_reference
 
 from .models import (
-    ActionCorrectivePreventive, AnalyseIncident, Audit,
+    ActionCorrectivePreventive, AnalyseIncident, AspectEnvironnemental, Audit,
     BilanCarbone, BordereauSuiviDechet, CauseIncident,
     CodeDefaut,
     ConformiteEnvironnementale, ConsignationLoto, ContactUrgence,
@@ -42,6 +42,7 @@ from .models import (
 )
 from .serializers import (
     ActionCorrectivePreventiveSerializer, AnalyseIncidentSerializer,
+    AspectEnvironnementalSerializer,
     AuditSerializer, BilanCarboneSerializer, BordereauSuiviDechetSerializer,
     CauseIncidentSerializer,
     CodeDefautSerializer,
@@ -72,6 +73,7 @@ from .serializers import (
 )
 from . import chatter
 from .selectors import (
+    aspects_environnementaux_a_revoir,
     calendrier_qhse,
     capa_en_retard, chantier_peut_cloturer, conformites_a_relancer,
     courbes_iv_for_chantier,
@@ -2415,3 +2417,35 @@ class ExerciceUrgenceViewSet(_QhseBaseViewSet):
     def relancer(self, request):
         plans = relancer_exercices_urgence(request.user.company)
         return Response({'relances': len(plans)})
+
+
+# ── XQHS20 — Registre des aspects & impacts environnementaux (ISO 14001) ──
+
+class AspectEnvironnementalViewSet(_QhseBaseViewSet):
+    """CRUD du registre des aspects environnementaux. ``company`` posée côté
+    serveur. ``GET …/a-revoir/`` liste les aspects en retard de revue."""
+    queryset = AspectEnvironnemental.objects.all()
+    serializer_class = AspectEnvironnementalSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['activite', 'aspect', 'impact']
+    ordering_fields = ['id', 'date_revue', 'date_creation']
+
+    def get_queryset(self):
+        from django.db.models import F
+
+        qs = super().get_queryset().annotate(
+            _criticite=F('frequence') * F('gravite'))
+        significatif = self.request.query_params.get('significatif')
+        if significatif in ('1', 'true', 'True'):
+            qs = qs.filter(_criticite__gte=F('seuil_significativite'))
+        elif significatif in ('0', 'false', 'False'):
+            qs = qs.filter(_criticite__lt=F('seuil_significativite'))
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=False, methods=['get'], url_path='a-revoir')
+    def a_revoir(self, request):
+        aspects = aspects_environnementaux_a_revoir(request.user.company)
+        return Response(AspectEnvironnementalSerializer(aspects, many=True).data)

@@ -5196,3 +5196,94 @@ class ExerciceUrgence(models.Model):
 
     def __str__(self):
         return f'{self.get_type_exercice_display()} — {self.plan.titre}'
+
+
+# ── XQHS20 — Registre des aspects & impacts environnementaux (ISO 14001) ──
+
+class AspectEnvironnemental(models.Model):
+    """Aspect environnemental d'une activité + cotation de significativité
+    (XQHS20, ISO 14001 6.1.2).
+
+    Chaque entrée décrit une ``activite`` (transport, pose, stockage
+    batteries, déchets chantier…), son ``aspect`` (ce qui interagit avec
+    l'environnement) et son ``impact`` (la conséquence). La cotation
+    ``frequence`` × ``gravite`` (1 à 5 chacune) donne ``criticite`` (dérivée,
+    jamais stockée) ; ``significatif`` est calculé côté serveur au-delà du
+    ``seuil_significativite`` configurable par société (défaut 12).
+
+    Lien optionnel vers une ``ProcedureQualite`` (contrôle opérationnel
+    documenté) et vers un ``ObjectifQhse`` (XQHS13, objectif de réduction).
+    ``date_revue`` + relance suivent le pattern QHSE38/QHSE12.
+
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    SEUIL_SIGNIFICATIVITE_DEFAUT = 12
+
+    class Condition(models.TextChoices):
+        NORMALE = 'normale', 'Normale'
+        ANORMALE = 'anormale', 'Anormale'
+        URGENCE = 'urgence', "Urgence"
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_aspects_environnementaux',
+        verbose_name='Société',
+    )
+    activite = models.CharField(max_length=255, verbose_name='Activité')
+    aspect = models.CharField(max_length=255, verbose_name='Aspect')
+    impact = models.CharField(max_length=255, verbose_name='Impact')
+    condition = models.CharField(
+        max_length=10, choices=Condition.choices,
+        default=Condition.NORMALE, verbose_name='Condition')
+    frequence = models.PositiveSmallIntegerField(
+        default=1, verbose_name='Fréquence (1-5)')
+    gravite = models.PositiveSmallIntegerField(
+        default=1, verbose_name='Gravité (1-5)')
+    seuil_significativite = models.PositiveIntegerField(
+        default=SEUIL_SIGNIFICATIVITE_DEFAUT,
+        verbose_name='Seuil de significativité')
+    controles_existants = models.TextField(
+        blank=True, default='',
+        verbose_name='Contrôles opérationnels existants')
+    procedure = models.ForeignKey(
+        'ProcedureQualite',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='aspects_environnementaux',
+        verbose_name='Procédure liée',
+    )
+    objectif = models.ForeignKey(
+        'ObjectifQhse',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='aspects_environnementaux',
+        verbose_name='Objectif QHSE lié',
+    )
+    date_revue = models.DateField(
+        null=True, blank=True, verbose_name='Date de revue')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Aspect environnemental'
+        verbose_name_plural = 'Aspects environnementaux'
+        ordering = ['-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'condition'],
+                name='qhse_aspenv_co_cond',
+            ),
+        ]
+
+    @property
+    def criticite(self):
+        return (self.frequence or 0) * (self.gravite or 0)
+
+    @property
+    def significatif(self):
+        return self.criticite >= (
+            self.seuil_significativite or self.SEUIL_SIGNIFICATIVITE_DEFAUT)
+
+    def __str__(self):
+        return f'{self.activite} — {self.aspect}'

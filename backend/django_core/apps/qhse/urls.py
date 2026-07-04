@@ -2,7 +2,8 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    ActionCorrectivePreventiveViewSet, AnalyseIncidentViewSet, AuditViewSet,
+    ActionCorrectivePreventiveViewSet, AnalyseIncidentViewSet,
+    AspectEnvironnementalViewSet, AuditViewSet,
     BilanCarboneViewSet, BordereauSuiviDechetViewSet,
     CalendrierQhseViewSet,
     CauseIncidentViewSet, ConformiteEnvironnementaleViewSet,
@@ -90,6 +91,7 @@ router.register(
 router.register(r'signalements-publics', SignalementPublicViewSet)
 router.register(r'observations-securite', ObservationSecuriteViewSet)
 router.register(r'exercices-urgence', ExerciceUrgenceViewSet)
+router.register(r'aspects-environnementaux', AspectEnvironnementalViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

@@ -1468,3 +1468,22 @@ def conformite_lecture_procedure(company, reference):
         lus += accuses.filter(lu_le__isnull=False).count()
     pct = round(lus / total * 100, 1) if total else None
     return {'total': total, 'lus': lus, 'pct': pct}
+
+
+# ── XQHS20 — Registre des aspects & impacts environnementaux (ISO 14001) ───
+
+def aspects_environnementaux_a_revoir(company, today=None):
+    """Aspects environnementaux dont la revue est due (XQHS20, pattern
+    ``conformites_a_relancer`` QHSE38) : ``date_revue`` absente OU dépassée.
+    Agrégation PURE — aucune mutation."""
+    from django.utils import timezone
+
+    from .models import AspectEnvironnemental
+
+    if today is None:
+        today = timezone.localdate()
+    qs = AspectEnvironnemental.objects.filter(company=company)
+    return [
+        aspect for aspect in qs
+        if aspect.date_revue is None or aspect.date_revue <= today
+    ]
