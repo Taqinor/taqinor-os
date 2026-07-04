@@ -4622,3 +4622,32 @@ def creer_facture_fournisseur_depuis_ubl(*, company, user, xml_bytes):
 
     from apps.ventes.utils.references import create_with_reference
     return create_with_reference(FactureFournisseur, 'FF', company, _save)
+
+
+# ── XSTK15 — Unités de mesure & conditionnements (touret/carton…) ───────────
+# Le stock reste stocké dans UNE SEULE unité (`Produit.unite_stock`) : un
+# conditionnement d'achat convertit VERS cette unité à l'écriture du
+# mouvement — jamais de double comptage.
+
+def convertir_en_unites_stock(quantite_conditionnement, conditionnement):
+    """Convertit une quantité de CONDITIONNEMENTS (ex. 2 tourets) en unités
+    de stock (ex. 200 m), via `conditionnement.facteur`. Renvoie un int
+    (le stock reste compté en entiers) — arrondi à l'entier le plus proche."""
+    total = Decimal(str(quantite_conditionnement)) * conditionnement.facteur
+    return int(total.to_integral_value())
+
+
+def resoudre_conditionnement(company, *, conditionnement_id=None,
+                             code_barres=None):
+    """Résout un `ConditionnementProduit` scopé société, par id OU par
+    code-barres scanné (XSTK3). Renvoie None si aucun des deux n'est fourni
+    ou ne matche rien — jamais d'exception, laissé au comportement
+    historique (réception sans conditionnement)."""
+    from .models import ConditionnementProduit
+    if conditionnement_id:
+        return ConditionnementProduit.objects.filter(
+            company=company, id=conditionnement_id).first()
+    if code_barres:
+        return ConditionnementProduit.objects.filter(
+            company=company, code_barres=code_barres).first()
+    return None

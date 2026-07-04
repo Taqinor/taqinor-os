@@ -588,6 +588,18 @@ class Produit(models.Model):
         help_text='Code-barres imprimé par le fabricant (EAN-13, UPC, '
                   'GTIN…) — distinct du jeton interne de scan.')
 
+    # ── XSTK15 — Unité de mesure du stock ───────────────────────────────────
+    # Défaut « unité » = comportement historique inchangé (tout produit
+    # existant reste compté en entiers sans unité). Le câble solaire
+    # s'achète en touret de 100 m et se vend au mètre : le STOCK reste
+    # stocké dans UNE SEULE unité (jamais de double comptage) — les
+    # conditionnements d'achat (`ConditionnementProduit`) convertissent VERS
+    # cette unité à l'écriture du mouvement.
+    unite_stock = models.CharField(
+        max_length=20, default='unité',
+        verbose_name='Unité de stock',
+        help_text="Unité dans laquelle le stock est compté (unité/m/kg…).")
+
     # ── XSTK19 — Code SH (HS) + pays d'origine → dossier d'import (ADII) ────
     # Nullables : un produit sans ces champs garde le comportement historique
     # (saisie manuelle du dossier d'import). Pré-remplit les lignes du
@@ -617,6 +629,50 @@ class Produit(models.Model):
 
     def __str__(self):
         return self.nom
+
+
+# ── XSTK15 — Conditionnements d'achat (touret/carton…) ───────────────────────
+
+class ConditionnementProduit(models.Model):
+    """XSTK15 — un conditionnement d'ACHAT d'un produit (« Touret 100 m »,
+    « Carton 50 ») avec son facteur de conversion VERS l'unité de stock du
+    produit (`Produit.unite_stock`). Le stock reste stocké dans UNE SEULE
+    unité (jamais de double comptage) : recevoir « 2 tourets de 100 m »
+    incrémente 200 m via ``facteur``. Code-barres optionnel (résolution par
+    scan, XSTK3)."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='conditionnements_produit')
+    produit = models.ForeignKey(
+        Produit, on_delete=models.CASCADE, related_name='conditionnements')
+    nom = models.CharField(
+        max_length=100,
+        help_text='Ex. « Touret 100 m », « Carton 50 ».')
+    facteur = models.DecimalField(
+        max_digits=10, decimal_places=3,
+        help_text="Combien d'unités de stock ce conditionnement représente "
+                  '(ex. 100 pour un touret de 100 m).')
+    code_barres = models.CharField(
+        max_length=64, blank=True, null=True,
+        help_text='Code-barres du conditionnement (optionnel, résolution '
+                  'par scan).')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Conditionnement produit'
+        verbose_name_plural = 'Conditionnements produit'
+        ordering = ['produit__nom', 'nom']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code_barres'],
+                condition=~models.Q(
+                    code_barres__isnull=True) & ~models.Q(code_barres=''),
+                name='stock_conditionnement_company_code_barres_uniq'),
+        ]
+
+    def __str__(self):
+        return f'{self.nom} ({self.produit.nom})'
 
 
 class LotEntrepot(models.Model):

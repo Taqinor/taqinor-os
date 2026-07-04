@@ -453,6 +453,9 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
         # Index par id de ligne (scopé à ce BC uniquement).
         lignes = {ligne.id: ligne for ligne in bc.lignes.select_related(
             'produit')}
+        from ..services import (
+            convertir_en_unites_stock, resoudre_conditionnement,
+        )
         plan = []
         for rec in receptions:
             try:
@@ -471,6 +474,16 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
                 )
             if qte <= 0:
                 continue
+            # XSTK15 — conditionnement optionnel (touret/carton…) : la
+            # quantité saisie compte des CONDITIONNEMENTS, convertie en
+            # unités de stock avant tout plafonnement (comportement
+            # historique inchangé quand aucun conditionnement n'est fourni).
+            conditionnement = resoudre_conditionnement(
+                bc.company,
+                conditionnement_id=rec.get('conditionnement'),
+                code_barres=rec.get('conditionnement_code_barres'))
+            if conditionnement is not None:
+                qte = convertir_en_unites_stock(qte, conditionnement)
             # Plafonnement au reste dû — jamais plus que commandé (idempotence).
             qte = min(qte, ligne.quantite_restante)
             if qte > 0:

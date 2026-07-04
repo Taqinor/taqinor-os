@@ -31,6 +31,7 @@ from .avoir_fournisseur import AvoirFournisseurViewSet
 from .lot_entrepot import LotEntrepotViewSet
 from .inventaire_annuel import InventaireAnnuelViewSet
 from .revalorisation_stock import RevalorisationStockViewSet
+from .conditionnement_produit import ConditionnementProduitViewSet
 
 __all__ = [
     'ProduitViewSet',
@@ -59,4 +60,5 @@ __all__ = [
     'LotEntrepotViewSet',
     'InventaireAnnuelViewSet',
     'RevalorisationStockViewSet',
+    'ConditionnementProduitViewSet',
 ]
