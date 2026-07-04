@@ -8,7 +8,7 @@ from .models import (
     ExigenceDossier, Folder, JournalAcces, LegalHold, LotEnvoi, ModeleDocument,
     PartageGed, PlanificationDocument, PolitiqueRetention,
     RegleAclMetadonnee, RegleApprobationGed, RegleDossier, RoleSignataire,
-    QuotaStockage, SignataireDemande, ValidationOcrDocument,
+    QuotaStockage, SignataireDemande, TypeChampSignature, ValidationOcrDocument,
 )
 from . import services
 
@@ -634,15 +634,37 @@ class ChampSignatureSerializer(serializers.ModelSerializer):
     exactement l'un des deux). `company` posée CÔTÉ SERVEUR (jamais lue du
     corps). `valeur` reste modifiable par cette API de GESTION (édition d'un
     placement) — le remplissage PUBLIC passe par `services.
-    enregistrer_valeurs_champs`, jamais par cette route authentifiée."""
+    enregistrer_valeurs_champs`, jamais par cette route authentifiée.
+
+    ZGED4 — `type_champ_ref` référence optionnellement un `TypeChampSignature`
+    du catalogue personnalisé ; `type_champ_ref_detail` expose mode/largeur/
+    hauteur/placeholder/astuce pour le rendu public sans requête supplémentaire.
+    """
+    type_champ_ref_detail = serializers.SerializerMethodField()
+
     class Meta:
         model = ChampSignature
         fields = [
-            'id', 'demande', 'modele', 'type_champ', 'page',
+            'id', 'demande', 'modele', 'type_champ', 'type_champ_ref',
+            'type_champ_ref_detail', 'page',
             'x', 'y', 'largeur', 'hauteur', 'role', 'requis', 'valeur',
             'created_at', 'updated_at',
         ]
         read_only_fields = ['created_at', 'updated_at']
+
+    def get_type_champ_ref_detail(self, obj):
+        t = obj.type_champ_ref
+        if t is None:
+            return None
+        return {
+            'id': t.pk, 'code': t.code, 'libelle': t.libelle,
+            'mode_saisie': t.mode_saisie,
+            'largeur_defaut': str(t.largeur_defaut),
+            'hauteur_defaut': str(t.hauteur_defaut),
+            'placeholder': t.placeholder, 'astuce': t.astuce,
+            'options': t.options, 'auto_remplir': t.auto_remplir,
+            'lecture_seule': t.lecture_seule,
+        }
 
     def validate(self, attrs):
         demande = attrs.get('demande', getattr(self.instance, 'demande', None))
@@ -659,7 +681,40 @@ class ChampSignatureSerializer(serializers.ModelSerializer):
             if modele is not None and modele.company_id != company.id:
                 raise serializers.ValidationError(
                     {'modele': 'Modèle inconnu.'})
+            type_champ_ref = attrs.get(
+                'type_champ_ref', getattr(self.instance, 'type_champ_ref', None))
+            if type_champ_ref is not None and type_champ_ref.company_id != company.id:
+                raise serializers.ValidationError(
+                    {'type_champ_ref': 'Type de champ inconnu.'})
         return attrs
+
+
+class TypeChampSignatureSerializer(serializers.ModelSerializer):
+    """ZGED4 — Type de champ de signature personnalisé (catalogue éditable).
+
+    `company`/`created_by` posés côté serveur. `code` unique par société
+    (garde base + validation applicative pour un message FR clair)."""
+    class Meta:
+        model = TypeChampSignature
+        fields = [
+            'id', 'code', 'libelle', 'mode_saisie', 'largeur_defaut',
+            'hauteur_defaut', 'placeholder', 'astuce', 'options',
+            'auto_remplir', 'lecture_seule', 'actif',
+            'created_by', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_by', 'created_at', 'updated_at']
+
+    def validate_code(self, value):
+        request = self.context.get('request')
+        if request is not None:
+            company = request.user.company
+            qs = TypeChampSignature.objects.filter(company=company, code=value)
+            if self.instance is not None:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    "Un type de champ avec ce code existe déjà pour cette société.")
+        return value
 
 
 class RoleSignataireSerializer(serializers.ModelSerializer):

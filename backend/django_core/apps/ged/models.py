@@ -1929,6 +1929,117 @@ CHAMP_TYPE_CHOICES = [
     (CHAMP_TYPE_CASE, 'Case à cocher'),
 ]
 
+# ZGED4 — modes de saisie des types de champ personnalisés. Sur-ensemble des
+# 5 types de base XGED3 (signature/initiales/date/texte/case) + une sélection
+# (liste d'options JSON) pour couvrir les cas Odoo (ex. « Fonction » texte,
+# « Civilité » sélection).
+CHAMP_MODE_TEXTE = 'texte'
+CHAMP_MODE_MULTILIGNE = 'multiligne'
+CHAMP_MODE_CASE = 'case'
+CHAMP_MODE_SELECTION = 'selection'
+CHAMP_MODE_SIGNATURE = 'signature'
+CHAMP_MODE_INITIALES = 'initiales'
+CHAMP_MODE_DATE = 'date'
+
+CHAMP_MODE_CHOICES = [
+    (CHAMP_MODE_TEXTE, 'Texte'),
+    (CHAMP_MODE_MULTILIGNE, 'Texte multiligne'),
+    (CHAMP_MODE_CASE, 'Case à cocher'),
+    (CHAMP_MODE_SELECTION, 'Sélection'),
+    (CHAMP_MODE_SIGNATURE, 'Signature'),
+    (CHAMP_MODE_INITIALES, 'Initiales'),
+    (CHAMP_MODE_DATE, 'Date'),
+]
+
+# ZGED4 — options d'auto-remplissage depuis les infos du partenaire/signataire.
+CHAMP_AUTO_REMPLIR_AUCUN = ''
+CHAMP_AUTO_REMPLIR_NOM = 'nom'
+CHAMP_AUTO_REMPLIR_EMAIL = 'email'
+CHAMP_AUTO_REMPLIR_TELEPHONE = 'telephone'
+CHAMP_AUTO_REMPLIR_SOCIETE = 'societe'
+
+CHAMP_AUTO_REMPLIR_CHOICES = [
+    (CHAMP_AUTO_REMPLIR_AUCUN, 'Aucun'),
+    (CHAMP_AUTO_REMPLIR_NOM, 'Nom du partenaire'),
+    (CHAMP_AUTO_REMPLIR_EMAIL, 'Email du partenaire'),
+    (CHAMP_AUTO_REMPLIR_TELEPHONE, 'Téléphone du partenaire'),
+    (CHAMP_AUTO_REMPLIR_SOCIETE, 'Société du partenaire'),
+]
+
+# ZGED4 — codes des 5 types de base seedés pour rétrocompatibilité (recopient
+# CHAMP_TYPE_CHOICES de XGED3 en catalogue réutilisable/éditable).
+TYPE_CHAMP_SIGNATURE_SEED_DE_BASE = [
+    {'code': 'signature', 'libelle': 'Signature', 'mode_saisie': CHAMP_MODE_SIGNATURE},
+    {'code': 'initiales', 'libelle': 'Initiales', 'mode_saisie': CHAMP_MODE_INITIALES},
+    {'code': 'date', 'libelle': 'Date', 'mode_saisie': CHAMP_MODE_DATE},
+    {'code': 'texte', 'libelle': 'Texte', 'mode_saisie': CHAMP_MODE_TEXTE},
+    {'code': 'case', 'libelle': 'Case à cocher', 'mode_saisie': CHAMP_MODE_CASE},
+]
+
+
+class TypeChampSignature(models.Model):
+    """ZGED4 — Type de champ de signature personnalisé, réutilisable.
+
+    Odoo Sign → Réglages → « Modifier les types de champs » permet à un admin
+    de créer des types de champs signables au-delà des 5 défauts (signature/
+    initiales/date/texte/case, XGED3 ``CHAMP_TYPE_CHOICES``, figés en énumération).
+    Ici un catalogue ÉDITABLE par société : `ChampSignature` référence
+    (optionnellement) un `TypeChampSignature` par FK, en plus de son
+    `type_champ` texte historique (rétrocompatible — les champs déjà posés
+    restent valides sans référence).
+
+    Les 5 types de base sont SEEDÉS idempotemment (`seed_types_champ_signature`)
+    pour rester toujours disponibles même si un admin en supprime la référence
+    ailleurs. Company posée côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_types_champ_signature')
+    code = models.CharField(max_length=50, verbose_name='code')
+    libelle = models.CharField(max_length=100, verbose_name='libellé')
+    mode_saisie = models.CharField(
+        max_length=12, choices=CHAMP_MODE_CHOICES, default=CHAMP_MODE_TEXTE,
+        verbose_name='mode de saisie')
+    largeur_defaut = models.DecimalField(
+        max_digits=5, decimal_places=2, default=20,
+        verbose_name='largeur par défaut (%)')
+    hauteur_defaut = models.DecimalField(
+        max_digits=5, decimal_places=2, default=5,
+        verbose_name='hauteur par défaut (%)')
+    placeholder = models.CharField(max_length=200, blank=True, default='')
+    astuce = models.CharField(
+        max_length=300, blank=True, default='', verbose_name='astuce')
+    # Options de la liste, utilisées uniquement en mode_saisie='selection'
+    # (liste de chaînes JSON, ex. ["M.", "Mme"]).
+    options = models.JSONField(null=True, blank=True, default=list)
+    auto_remplir = models.CharField(
+        max_length=10, choices=CHAMP_AUTO_REMPLIR_CHOICES,
+        blank=True, default=CHAMP_AUTO_REMPLIR_AUCUN,
+        verbose_name='auto-remplissage partenaire')
+    lecture_seule = models.BooleanField(default=False, verbose_name='lecture seule')
+    actif = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_types_champ_signature_crees')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['libelle', 'id']
+        verbose_name = 'Type de champ de signature'
+        verbose_name_plural = 'Types de champ de signature'
+        indexes = [
+            models.Index(fields=['company', 'code'],
+                         name='ged_typechamp_co_code_idx'),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code'], name='ged_typechamp_co_code_unique'),
+        ]
+
+    def __str__(self):
+        return self.libelle
+
 
 class ChampSignature(models.Model):
     """XGED3 — Zone de champ positionnée sur le PDF à signer.
@@ -1964,6 +2075,15 @@ class ChampSignature(models.Model):
     type_champ = models.CharField(
         max_length=12, choices=CHAMP_TYPE_CHOICES,
         default=CHAMP_TYPE_SIGNATURE, verbose_name='type de champ')
+    # ZGED4 — référence optionnelle vers le catalogue de types personnalisés.
+    # Rétrocompatible : NULL = comportement XGED3 inchangé (le champ texte
+    # `type_champ` reste l'unique source pour un champ non référencé). Quand
+    # renseigné, le rendu public honore mode_saisie/largeur/hauteur/placeholder/
+    # astuce du type référencé.
+    type_champ_ref = models.ForeignKey(
+        'TypeChampSignature', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='champs_signature',
+        verbose_name='type de champ personnalisé')
     page = models.PositiveIntegerField(default=0, verbose_name='page (0-based)')
     # Position/taille en POURCENTAGE de la page (0-100) — résolution-indépendant.
     x = models.DecimalField(max_digits=5, decimal_places=2, default=0)

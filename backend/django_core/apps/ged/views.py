@@ -39,7 +39,7 @@ from .models import (
     PartageGed, PlanificationDocument, PolitiqueRetention,
     QuotaDepasseError, QuotaStockage, RegleAclMetadonnee,
     RegleApprobationGed, RegleDossier, RoleSignataire, SignataireDemande,
-    ValidationOcrDocument,
+    TypeChampSignature, ValidationOcrDocument,
 )
 from .serializers import (
     AnnotationDocumentSerializer, ArchivageLegalSerializer, CabinetSerializer,
@@ -56,7 +56,7 @@ from .serializers import (
     RegleAclMetadonneeSerializer, RegleApprobationGedSerializer,
     RegleDossierSerializer, RoleSignataireSerializer,
     SignataireDemandeSerializer,
-    ValidationOcrDocumentSerializer,
+    TypeChampSignatureSerializer, ValidationOcrDocumentSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -2510,7 +2510,7 @@ class ChampSignatureViewSet(TenantMixin, viewsets.ModelViewSet):
     def get_queryset(self):
         qs = ChampSignature.objects.filter(
             company=self.request.user.company).select_related(
-                'demande', 'modele')
+                'demande', 'modele', 'type_champ_ref')
         demande = self.request.query_params.get('demande')
         if demande:
             qs = qs.filter(demande_id=demande)
@@ -2518,6 +2518,35 @@ class ChampSignatureViewSet(TenantMixin, viewsets.ModelViewSet):
         if modele:
             qs = qs.filter(modele_id=modele)
         return qs
+
+
+class TypeChampSignatureViewSet(TenantMixin, viewsets.ModelViewSet):
+    """ZGED4 — Catalogue de types de champs de signature personnalisés.
+
+    CRUD scopé société ; `company`/`created_by` posés côté serveur. Lecture :
+    tout rôle authentifié. Écriture : responsable/admin. Les 5 types de base
+    sont seedés par `manage.py seed_types_champ_signature` (idempotent) —
+    jamais recréés par cette API."""
+    queryset = TypeChampSignature.objects.select_related('created_by').all()
+    serializer_class = TypeChampSignatureSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['libelle', 'code', 'created_at']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset().filter(company=self.request.user.company)
+        actif = self.request.query_params.get('actif')
+        if actif is not None:
+            qs = qs.filter(actif=actif.lower() in ('1', 'true', 'yes'))
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, created_by=self.request.user)
 
 
 class JournalAccesViewSet(TenantMixin, mixins.ListModelMixin,
