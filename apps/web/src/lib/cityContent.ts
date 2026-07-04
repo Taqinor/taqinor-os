@@ -215,8 +215,8 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
   casablanca: {
     fr: {
       heroLead:
-        'À Casablanca, nous avons déjà posé : une villa de 11,36 kWc face à la skyline produit 14 271 kWh par an, ' +
-        'relevés sur Deye Cloud. C’est ce chantier-là, pas une brochure, qui dit ce qu’une toiture de la ville rend vraiment.',
+        'À Casablanca, nous avons déjà posé : une villa de 11,36 kWc face à la skyline, suivie en continu ' +
+        'sur Deye Cloud. C’est ce chantier-là, pas une brochure, qui dit ce qu’une toiture de la ville rend vraiment.',
       sunshineContext:
         'Sur la côte, l’air marin et la brume matinale tempèrent les pics : ces ≈ 2 950 h restent un ordre de grandeur, ' +
         'pas une garantie. La production réelle d’un toit casablancais se calcule sur son orientation et son ombrage, jamais sur la seule durée d’ensoleillement.',
@@ -228,7 +228,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
             'On dimensionne sur la vôtre ; le fondateur, docteur-ingénieur, signe l’étude avant la pose.',
         },
         measure: {
-          heading: 'Les 14 271 kWh, on les relève',
+          heading: 'Ce qui est produit, on le relève',
           body:
             'Notre installation de 11,36 kWc à Casablanca est suivie sur Deye Cloud, accès client inclus — ' +
             'la même transparence sur chaque chantier de la ville : vous lisez la production, vous ne la prenez pas sur parole.',
@@ -243,7 +243,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       closer: 'Votre toiture casablancaise mérite d’être chiffrée sur vos kWh, pas sur une moyenne.',
       title: 'Installation solaire à Casablanca — étude, pose et loi 82-21 | Taqinor',
       description:
-        'Installation solaire à Casablanca : une villa de 11,36 kWc y produit 14 271 kWh/an, mesurés sur Deye Cloud. Étude dimensionnée sur votre facture, pose et déclaration loi 82-21.',
+        'Installation solaire à Casablanca : une villa de 11,36 kWc y est suivie sur Deye Cloud. Étude dimensionnée sur votre facture, pose et déclaration loi 82-21.',
       roiNuance:
         'Avec ≈ 2 950 h par an, Casablanca se situe dans la moyenne de nos cinq villes : ni le meilleur ni le plus faible ' +
         'gisement, ce qui place la plupart des toitures casablancaises au centre de la bande 3–7 ans — le dimensionnement ' +
@@ -254,8 +254,8 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
     },
     en: {
       heroLead:
-        'In Casablanca, we have already installed: an 11.36 kWc villa facing the skyline produces 14,271 kWh a year, ' +
-        'read off Deye Cloud. It is that project, not a brochure, that tells what a roof in the city really yields.',
+        'In Casablanca, we have already installed: an 11.36 kWc villa facing the skyline, tracked continuously ' +
+        'on Deye Cloud. It is that project, not a brochure, that tells what a roof in the city really yields.',
       sunshineContext:
         'On the coast, sea air and morning mist temper the peaks: those ≈ 2,950 h remain an order of magnitude, ' +
         'not a guarantee. The real output of a Casablanca roof is computed from its orientation and shading, never from sunshine duration alone.',
@@ -267,7 +267,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
             'We size on yours; the founder, a doctor-engineer, signs the assessment before the install.',
         },
         measure: {
-          heading: 'The 14,271 kWh, we read them off',
+          heading: 'What is produced, we read it off',
           body:
             'Our 11.36 kWc installation in Casablanca is monitored on Deye Cloud, client access included — ' +
             'the same transparency on every project in the city: you read the production, you do not take it on trust.',
@@ -282,7 +282,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       closer: 'Your Casablanca roof deserves to be priced on your kWh, not on an average.',
       title: 'Solar installation in Casablanca — assessment, install and Law 82-21 | Taqinor',
       description:
-        'Solar installation in Casablanca: an 11.36 kWc villa produces 14,271 kWh/year, measured on Deye Cloud. Assessment sized on your bill, install and Law 82-21 declaration.',
+        'Solar installation in Casablanca: an 11.36 kWc villa tracked on Deye Cloud. Assessment sized on your bill, install and Law 82-21 declaration.',
       roiNuance:
         'At ≈ 2,950 h a year, Casablanca sits mid-pack among our five cities: neither the best nor the weakest resource, ' +
         'which puts most Casablanca roofs near the centre of the 3–7 year band — sizing on your bill is what really narrows it.',
@@ -292,8 +292,8 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
     },
     ar: {
       heroLead:
-        'في الدار البيضاء، ركّبنا بالفعل: فيلا بقدرة 11,36 kWc تواجه أفق المدينة تنتج 14 271 kWh في السنة، ' +
-        'مقيسة على Deye Cloud. هذا الورش، لا أي مطوية، هو الذي يقول ما يعطيه سطح في المدينة حقاً.',
+        'في الدار البيضاء، ركّبنا بالفعل: فيلا بقدرة 11,36 kWc تواجه أفق المدينة، مُتابَعة باستمرار ' +
+        'على Deye Cloud. هذا الورش، لا أي مطوية، هو الذي يقول ما يعطيه سطح في المدينة حقاً.',
       sunshineContext:
         'على الساحل، يخفّف الهواء البحري والضباب الصباحي من الذُّرى: تبقى هذه الـ ≈ 2 950 ساعة رتبة قدر، ' +
         'لا ضماناً. الإنتاج الحقيقي لسطح بيضاوي يُحسب من توجيهه وتظليله، لا من مدة الإشعاع وحدها.',
@@ -305,7 +305,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
             'نحدّد المقاس على فاتورتك أنت؛ والمؤسّس، دكتور-مهندس، يوقّع الدراسة قبل التركيب.',
         },
         measure: {
-          heading: 'الـ 14 271 kWh، نقيسها فعلاً',
+          heading: 'ما يُنتَج، نقرؤه فعلاً',
           body:
             'تركيبتنا بقدرة 11,36 kWc في الدار البيضاء تُراقَب على Deye Cloud، مع ولوج الزبون — ' +
             'الشفافية نفسها في كل ورش بالمدينة: تقرأ الإنتاج، ولا تأخذه على عهدة الكلام.',
@@ -320,7 +320,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       closer: 'سطحك البيضاوي يستحقّ أن يُسعَّر على كيلوواط-ساعاتك، لا على معدّل.',
       title: 'تركيب شمسي في الدار البيضاء — دراسة وتركيب والقانون 82-21 | Taqinor',
       description:
-        'تركيب شمسي في الدار البيضاء: فيلا بقدرة 11,36 kWc تنتج 14 271 kWh/سنة، مقيسة على Deye Cloud. دراسة محسوبة على فاتورتك، تركيب وتصريح القانون 82-21.',
+        'تركيب شمسي في الدار البيضاء: فيلا بقدرة 11,36 kWc مُتابَعة على Deye Cloud. دراسة محسوبة على فاتورتك، تركيب وتصريح القانون 82-21.',
       roiNuance:
         'بـ ≈ 2 950 ساعة في السنة، تقع الدار البيضاء في الوسط بين مدننا الخمس: لا الأفضل ولا الأضعف مخزوناً، ' +
         'ما يضع معظم أسطح الدار البيضاء قرب مركز بند 3–7 سنوات — والمقاس المحسوب على فاتورتك هو ما يضيّقه فعلاً.',

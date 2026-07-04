@@ -1,12 +1,16 @@
 ---
 title: "Retour de chantier : 17,04 kWc à El Jadida, notre plus grande résidentielle de 2026"
-description: "Réf. 468 : 24 panneaux Canadian Solar 710 Wc, onduleur Deye 15 kW triphasé et 15 kWh Dyness sur une villa d'El Jadida — 21 406 kWh/an mesurés sur Deye Cloud. Ce que ce chantier nous a appris."
+description: "Réf. 468 : 24 panneaux Canadian Solar 710 Wc, onduleur Deye 15 kW triphasé et 15 kWh Dyness sur une villa d'El Jadida. Ce que ce chantier nous a appris sur le dimensionnement."
 pubDate: 2026-07-03
 tags: ["retour de chantier", "El Jadida", "résidentiel"]
 author: "Reda Kasri"
 ogSlug: "residentiel"
 theme: "Solaire"
-draft: false
+# WB1 (2026-07-04) — DÉPUBLIÉ (draft) : l'article s'appuyait sur une production
+# ANNUELLE fabriquée (« 21 406 kWh/an mesurés », « un an après ») pour un chantier
+# qui n'est pas suivi sur Deye Cloud et n'a au plus que quelques mois. Ne republier
+# qu'avec un relevé Deye réel et daté — voir WG-DEYE dans docs/WEB_PLAN.md.
+draft: true
 ---
 
 Le premier billet de ce blog promettait de vrais retours de chantier, pas des cas d'école. En voici un : la référence 468, une villa d'El Jadida, en région Casablanca-Settat — la plus grande installation résidentielle que Taqinor ait livrée en 2026.
@@ -23,13 +27,13 @@ Vingt-quatre panneaux Canadian Solar 710 Wc composent le champ. Le choix du trip
 
 La pose se lit sur les photos du dossier : la longue rangée de modules alignés au cordeau, le coffret de protections et les bornes des batteries Dyness câblées avec soin. Le stockage — 15 kWh Dyness — n'a pas été ajouté par principe : il couvre la part de consommation du foyer qui tombe hors production solaire, le soir et la nuit, quand les panneaux ne produisent plus.
 
-## Ce que le compteur dit, un an après
+## Ce que le monitoring apporte
 
-C'est le point qui compte le plus, et celui qu'aucun argumentaire commercial ne peut remplacer : **21 406 kWh relevés sur l'année**, en continu, sur Deye Cloud — l'application de monitoring à laquelle le foyer garde un accès personnel. Ce n'est pas une projection faite avant la vente. C'est le compteur qui parle, mois après mois ; un écart de production se verrait au premier coup d'œil, aussi bien par le client que par notre équipe qui surveille l'ensemble du parc installé.
+L'installation est raccordée à Deye Cloud, l'application de supervision à laquelle le foyer garde un accès personnel : la production se lit en continu, au compteur, plutôt qu'elle ne se promet avant la vente. Un écart se verrait au premier coup d'œil, aussi bien par le client que par notre équipe qui surveille l'ensemble du parc installé. Ce chantier étant récent, nous ne publions pas ici de chiffre de production annuel : seul un relevé réel, mesuré sur la durée, mérite d'être écrit.
 
 ## Ce que ce chantier nous a rappelé
 
-Une installation de cette taille ne se résume pas à « plus de panneaux ». Chaque choix — le nombre de modules, le passage au triphasé, la capacité de stockage — a découlé d'un chiffre réel : la facture du foyer, la surface du toit, le profil de consommation nocturne. C'est la même méthode que sur nos installations plus modestes, appliquée à une plus grande échelle. Le résultat mesuré, un an plus tard, confirme que le dimensionnement initial tenait la route.
+Une installation de cette taille ne se résume pas à « plus de panneaux ». Chaque choix — le nombre de modules, le passage au triphasé, la capacité de stockage — a découlé d'un chiffre réel : la facture du foyer, la surface du toit, le profil de consommation nocturne. C'est la même méthode que sur nos installations plus modestes, appliquée à une plus grande échelle : c'est le dimensionnement, pas la taille, qui fait tenir une installation.
 
 ---
 

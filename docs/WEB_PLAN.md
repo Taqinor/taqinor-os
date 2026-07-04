@@ -1895,6 +1895,11 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 - [x] WB34 — **Add `X-Frame-Options: DENY` alongside `frame-ancestors`.** `applySecurityHeaders` (`worker/headers.mjs`) sets CSP `frame-ancestors 'none'` but no `X-Frame-Options` — add DENY for older UAs/scanners that don't honor CSP framing. **Why:** defense-in-depth clickjacking header missing. @files: apps/web/worker/headers.mjs
 - [x] WB35 — **Explicitly disable camera/microphone/payment in Permissions-Policy.** `worker/headers.mjs` sets only `geolocation=(self)`; the site uses none of camera/mic/payment. Extend to `camera=(), microphone=(), payment=()`. **Why:** low-cost hardening, no functional impact. @files: apps/web/worker/headers.mjs
 
+**WC — iPhone/mobile + i18n fix follow-ups (added 2026-07-04). The fixes themselves are ALREADY CODED on branch `claude/competent-solomon-1449e2` (header overflow, Arabic "TAQINOR" logo flip, hero flash + honest Deye numbers, RTL WhatsApp-glyph mirror, Ken-Burns-mobile-off perf); these are the REMAINING verify/measure items only:**
+- [ ] WC1 — **Verify the 2026-07-04 mobile/RTL fixes on real iPhone viewports (375×667 + 390×844) in FR, EN AND Arabic (RTL).** Confirm on the phone viewport, with screenshots: (a) the hamburger is always reachable with ZERO horizontal overflow at 375px and the top-bar « Obtenir mon étude gratuite » CTA is hidden on mobile; (b) the compact globe language dropdown opens and switches locale; (c) the Arabic « TAQINOR » wordmark reads correctly (never « ROTAQIN »); (d) the hero shows the static « 6,56 MWh » figure with NO flash/disappear and no count-up; (e) the WhatsApp glyph on the Arabic `/devis/mon-toit` submit button is NOT mirrored. Then a regression sweep at 375/390px of homepage, header/menu, `/devis/mon-toit`, a guide, a service page, and the `/ar` mirror for overflow/RTL/clipping/FOUC/sub-44px tap targets. **Why:** the fixes were coded but the live-render verification was deferred (dev server races concurrent edits; several pages do build-time network fetches). @files: apps/web/src/components/Header.astro, apps/web/src/components/Logo.astro, apps/web/src/components/LanguageSwitcher.astro, apps/web/src/pages/index.astro (+ en/ar)
+- [ ] WC2 — **Measure homepage load before/after the perf changes and record LCP / total bytes / JS+CSS weight / request count.** Use the W323 CI Lighthouse gate (or a local lighthouse run) to confirm the count-up removal + Ken-Burns-off-below-1024px reduced weight and that the LCP element (the static hero « 6,56 MWh » headline) paints immediately. **Why:** the founder asked for measured before/after numbers; measuring was deferred with the direct runs. @files: apps/web/scripts, apps/web CI config
+- [ ] WC3 — **RTL lightbox arrows (minor).** The realisations lightbox prev/next arrows use physical `left:`/`right:` with no `[dir="rtl"]` rule, so on `/ar` they don't mirror (prev sits on the left). Add `[dir="rtl"]` flips for `.lightbox-arrow--prev/--next` and `.slug-lightbox-arrow--prev/--next`. **Why:** small RTL correctness nit surfaced in the 2026-07-04 QA sweep. @files: apps/web/src/pages/en/realisations/index.astro, apps/web/src/pages/ar/realisations/[slug].astro (+ fr [slug] if the same classes exist)
+
 ---
 
 ## NEEDS YOUR INPUT — ungated; each waits on something only you can give (with my recommendation)
@@ -1977,6 +1982,19 @@ each for Lydec/Redal/Amendis).
 - **WG6 — Testimonials: 3–5 written quotes + 2–3 WhatsApp-shot client videos (20–30 s).** Name +
   city + kWc per quote (geo-tagged proof converts best). Phone-shot beats studio (research:
   UGC-style earns more trust). Fills `TESTIMONIALS` and the WJ57/W282 video slots.
+- **WG-DEYE (added 2026-07-04) — Real per-site Deye production + roster corrections.** This session
+  REMOVED the fabricated ANNUAL production figures (21 406 / 14 271 / 7 135 kWh/an — they shared one
+  impossible identical yield factor and matched no Deye reading). The ONLY production number the site
+  now shows is the real cumulative Deye fleet total « 6,56 MWh » on the homepage hero (2,62 + 1,41 +
+  1,40 + 1,13 MWh across the 4 monitored plants). To restore honest PER-INSTALLATION figures, supply:
+  (1) the real, DISTINCT Deye Cloud reading per chantier + its exact commissioning month (today only a
+  cumulative « depuis la mise en service » exists — no legitimate annual yet); (2) a chantier PHOTO of
+  the Aïn Diab plant (Britel, 10 kWc, 2,62 MWh — the biggest producer, not yet on the site) so it can
+  join the realisations roster; (3) the 2 Huawei FusionSolar installation figures (not yet pulled);
+  (4) confirmation that the El Jadida 17,04 kWc (réf. 468) install is real/posé — it is NOT on Deye —
+  else it should come out of the « 43,48 kWc installés » total. **Supersedes WG7's outdated « a year of
+  Deye Cloud data now exists » line.** Until supplied, the site stays honest (cumulative-only, no
+  invented annuals). Full context + TODO in `apps/web/src/lib/realisations.ts` (MEASURED_FLEET + header note).
 - **WG7 — Complete the thin case studies + widen the map.** casablanca-6-kwc + el-jadida-6-kwc have
   1 photo each and missing onduleur/production data — a year of Deye Cloud data now exists to fill
   them. And the moment ANY install lands outside Casablanca–Settat (Rabat/Marrakech/Tanger/Agadir),

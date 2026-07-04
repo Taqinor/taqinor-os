@@ -5,16 +5,21 @@
  * elle ne passe qu'une seule locale → le sélecteur ne s'affiche pas. Le FR
  * sans traduction reste donc strictement inchangé.
  *
- * W167 — tap target ≥44px + discoverabilité améliorée :
- *   - Icône globe SVG avant les codes de langue
- *   - Chaque lien a min-height + min-width de 44px (padding étendu)
- *   - aria-label sur le nav + aria-current sur la locale active
- *   - Séparateur visuel « · » entre locales (aria-hidden)
+ * W167 — tap target ≥44px + discoverabilité (globe SVG, aria-current, ·).
+ *
+ * Bug-fix (2026-07-04) — DÉBORDEMENT EN-TÊTE MOBILE : trois puces FR·EN·AR en
+ * ligne + globe + séparateurs élargissaient trop la barre à 375 px et poussaient
+ * le hamburger hors écran. La barre supérieure passe donc à un contrôle COMPACT
+ * sur mobile : `variant="bar"` (défaut) rend un menu déroulant globe (`<details>`,
+ * sans JS, cible ≥44 px) sous `lg`, et les puces en ligne d'origine dès `lg`
+ * (bureau STRICTEMENT inchangé). `variant="menu"` (dans le menu mobile ouvert, où
+ * la place ne manque pas) garde les puces en ligne à toutes les tailles.
  *
  * Props :
  *   path    — chemin racine sans préfixe de locale (ex. '/contact')
  *   current — locale courante
  *   locales — locales disponibles pour cette page (def. [current])
+ *   variant — 'bar' (barre supérieure, compact < lg) | 'menu' (puces toujours)
  */
 import { LOCALE_LABEL, LOCALE_SHORT, type Locale } from '../i18n/config';
 import { localizePath, useTranslations } from '../i18n/utils';
@@ -23,53 +28,97 @@ interface Props {
   path: string;
   current: Locale;
   locales?: Locale[];
+  variant?: 'bar' | 'menu';
 }
-const { path, current, locales = [current] } = Astro.props;
+const { path, current, locales = [current], variant = 'bar' } = Astro.props;
 const t = useTranslations(current);
 const ordered = locales;
+
+// Globe partagé (décoratif) — signale l'affordance de changement de langue.
+const globe = `<svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none" class="shrink-0 opacity-60" style="color:inherit;"><circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.25"/><ellipse cx="8" cy="8" rx="2.8" ry="6.5" stroke="currentColor" stroke-width="1.25"/><line x1="1.5" y1="8" x2="14.5" y2="8" stroke="currentColor" stroke-width="1.25"/><line x1="2.5" y1="5" x2="13.5" y2="5" stroke="currentColor" stroke-width="1.25"/><line x1="2.5" y1="11" x2="13.5" y2="11" stroke="currentColor" stroke-width="1.25"/></svg>`;
+
+// Classe d'un lien-puce (desktop + menu) : cible ≥44 px, état actif en laiton.
+const chipClass = (loc: Locale) =>
+  [
+    'inline-flex items-center justify-center min-h-[44px] min-w-[44px] px-2',
+    'text-xs font-bold uppercase leading-none transition-colors',
+    loc === current ? 'text-brass-300' : 'text-lune-soft hover:text-white',
+  ].join(' ');
 ---
 
 {ordered.length > 1 && (
-  <nav class="flex items-center" aria-label={t('lang.label')}>
-    {/* Globe icon — decorative, signals language selection affordance */}
-    <svg
-      aria-hidden="true"
-      focusable="false"
-      width="16"
-      height="16"
-      viewBox="0 0 16 16"
-      fill="none"
-      class="me-1 shrink-0 opacity-60"
-      style="color:inherit;"
-    >
-      <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.25" />
-      <ellipse cx="8" cy="8" rx="2.8" ry="6.5" stroke="currentColor" stroke-width="1.25" />
-      <line x1="1.5" y1="8" x2="14.5" y2="8" stroke="currentColor" stroke-width="1.25" />
-      <line x1="2.5" y1="5" x2="13.5" y2="5" stroke="currentColor" stroke-width="1.25" />
-      <line x1="2.5" y1="11" x2="13.5" y2="11" stroke="currentColor" stroke-width="1.25" />
-    </svg>
+  <>
+    {/* ── Contrôle COMPACT (mobile, barre supérieure uniquement) ──────────────
+        Menu déroulant globe sans JS : <details>/<summary>. La cible ≥44 px, le
+        panneau s'ouvre à l'extrémité logique (end-0 → RTL-safe). Une navigation
+        recharge la page → l'état ouvert se réinitialise tout seul. */}
+    {variant === 'bar' && (
+      <details class="lang-compact relative lg:hidden">
+        <summary
+          class="flex min-h-[44px] min-w-[44px] cursor-pointer select-none items-center gap-1 px-2 text-xs font-bold uppercase leading-none text-lune-soft transition-colors hover:text-white"
+          aria-label={t('lang.label')}
+          title={t('lang.label')}
+        >
+          <Fragment set:html={globe} />
+          <span aria-hidden="true">{LOCALE_SHORT[current]}</span>
+          <svg class="lang-caret opacity-70 transition-transform" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9" /></svg>
+        </summary>
+        <nav
+          class="absolute end-0 top-full z-50 mt-2 min-w-[8rem] overflow-hidden rounded-lg border border-white/10 bg-nuit/95 p-1 shadow-[0_12px_40px_-8px_rgb(0_0_0/0.6)] backdrop-blur"
+          aria-label={t('lang.label')}
+        >
+          {ordered.map((loc) => (
+            <a
+              href={localizePath(path, loc)}
+              hreflang={loc}
+              lang={loc}
+              aria-current={loc === current ? 'true' : undefined}
+              class:list={[
+                'flex min-h-[44px] items-center gap-2 rounded px-3 text-sm font-semibold transition-colors',
+                loc === current ? 'text-brass-300' : 'text-lune-soft hover:bg-white/5 hover:text-white',
+              ]}
+            >
+              <span class="text-xs font-bold uppercase opacity-70">{LOCALE_SHORT[loc]}</span>
+              <span>{LOCALE_LABEL[loc]}</span>
+            </a>
+          ))}
+        </nav>
+      </details>
+    )}
 
-    {ordered.map((loc, i) => (
-      <>
-        <a
-          href={localizePath(path, loc)}
-          hreflang={loc}
-          lang={loc}
-          aria-current={loc === current ? 'true' : undefined}
-          title={LOCALE_LABEL[loc]}
-          aria-label={LOCALE_LABEL[loc]}
-          class:list={[
-            /* ≥44px tap target: min 44px block size, horizontal padding gives comfortable width */
-            'inline-flex items-center justify-center',
-            'min-h-[44px] min-w-[44px] px-2',
-            'text-xs font-bold uppercase leading-none transition-colors',
-            loc === current ? 'text-brass-300' : 'text-lune-soft hover:text-white',
-          ]}
-        >{LOCALE_SHORT[loc]}</a>
-        {i < ordered.length - 1 && (
-          <span aria-hidden="true" class="text-lune-faint select-none" style="font-size:0.6rem;">·</span>
-        )}
-      </>
-    ))}
-  </nav>
+    {/* ── Puces en ligne — bureau (barre) OU toujours (menu mobile) ───────────
+        Rendu FR historique préservé à l'octet près sur desktop. */}
+    <nav
+      class:list={[
+        'items-center',
+        variant === 'bar' ? 'hidden lg:flex' : 'flex',
+      ]}
+      aria-label={t('lang.label')}
+    >
+      <Fragment set:html={globe.replace('class="shrink-0', 'class="me-1 shrink-0')} />
+      {ordered.map((loc, i) => (
+        <>
+          <a
+            href={localizePath(path, loc)}
+            hreflang={loc}
+            lang={loc}
+            aria-current={loc === current ? 'true' : undefined}
+            title={LOCALE_LABEL[loc]}
+            aria-label={LOCALE_LABEL[loc]}
+            class={chipClass(loc)}
+          >{LOCALE_SHORT[loc]}</a>
+          {i < ordered.length - 1 && (
+            <span aria-hidden="true" class="text-lune-faint select-none" style="font-size:0.6rem;">·</span>
+          )}
+        </>
+      ))}
+    </nav>
+  </>
 )}
+
+<style>
+  /* Masque le marqueur natif du <summary> (triangle) — chevron custom à la place. */
+  .lang-compact > summary { list-style: none; }
+  .lang-compact > summary::-webkit-details-marker { display: none; }
+  .lang-compact[open] .lang-caret { transform: rotate(180deg); }
+</style>

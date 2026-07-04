@@ -32,7 +32,7 @@ import Callout from '../components/Callout.astro';
 import RelatedLinks from '../components/RelatedLinks.astro';
 import CtaBand from '../components/CtaBand.astro';
 import StickyCta from '../components/StickyCta.astro';
-import { REALISATIONS } from '../lib/realisations';
+import { REALISATIONS, MEASURED_FLEET_LIFETIME_MWH } from '../lib/realisations';
 import { CO2_KG_PER_KWH, CO2_KG_PER_TREE_YEAR } from '../lib/proposition';
 
 // ── Chiffres dérivés — AUCUNE valeur saisie à la main ────────────────────────
@@ -42,8 +42,12 @@ import { CO2_KG_PER_KWH, CO2_KG_PER_TREE_YEAR } from '../lib/proposition';
 const kwcTotal = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
 const kwcTotalLabel = kwcTotal.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-const withMeasuredProduction = REALISATIONS.filter((r) => r.productionNum !== null);
-const productionTotal = withMeasuredProduction.reduce((sum, r) => sum + (r.productionNum ?? 0), 0);
+// WB1 (2026-07-04) : la production ANNUELLE par installation a été retirée
+// (fabriquée — même facteur impossible sur 4 sites). Le seul chiffre de
+// production réel est le CUMUL mesuré de la flotte suivie sur Deye Cloud
+// (MEASURED_FLEET, realisations.ts) — cumul « depuis la mise en service »,
+// JAMAIS annualisé. Le CO₂ évité et l'équivalent arbres en découlent.
+const productionTotal = Math.round(MEASURED_FLEET_LIFETIME_MWH * 1000); // 6,56 MWh → 6 560 kWh
 const productionTotalLabel = productionTotal.toLocaleString('fr-FR');
 
 const co2KgTotal = productionTotal * CO2_KG_PER_KWH;
@@ -65,14 +69,14 @@ const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'WebPage',
   name: 'Impact Taqinor',
-  description: `Impact cumulé, mesuré et honnête des installations Taqinor : ${kwcTotalLabel} kWc installés, ${productionTotalLabel} kWh/an de production mesurée, ${co2TonnesLabel} tonnes de CO₂ évitées par an.`,
+  description: `Impact cumulé, mesuré et honnête des installations Taqinor : ${kwcTotalLabel} kWc installés, ${productionTotalLabel} kWh mesurés au cumul sur la flotte suivie (Deye Cloud), ${co2TonnesLabel} tonnes de CO₂ évitées à ce jour.`,
   isPartOf: { '@type': 'WebSite', name: 'Taqinor', url: 'https://taqinor.ma' },
 };
 ---
 
 <Layout
   title="Impact Taqinor : nos chiffres réels, cumulés et vérifiables | Taqinor"
-  description={`${kwcTotalLabel} kWc installés, ${productionTotalLabel} kWh/an mesurés, ${co2TonnesLabel} t de CO₂ évitées : le bilan honnête de nos installations, dérivé de nos réalisations publiées — rien d'estimé, rien d'arrondi vers le haut.`}
+  description={`${kwcTotalLabel} kWc installés, ${productionTotalLabel} kWh mesurés au cumul (flotte suivie sur Deye Cloud), ${co2TonnesLabel} t de CO₂ évitées à ce jour : le bilan honnête de nos installations — rien d'estimé, rien d'arrondi vers le haut.`}
   ogSlug="equipement"
 >
   <div class="v2">
@@ -89,9 +93,9 @@ const jsonLd = {
         <h1 class="display v2-page-title cine-in cine-in-1 mt-6">Impact Taqinor</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
           Pas une projection, pas un objectif : {kwcTotalLabel} kWc installés, {productionTotalLabel} kWh
-          mesurés, {co2TonnesLabel} t de CO₂ évitées chaque année — ce que nos installations publiées
-          produisent réellement, cumulé. Cette page grandit chantier après chantier ; elle ne dit que
-          ce que nous pouvons prouver.
+          mesurés au cumul, {co2TonnesLabel} t de CO₂ évitées à ce jour — ce que la flotte suivie sur
+          Deye Cloud a réellement produit depuis sa mise en service. Cette page grandit chantier après
+          chantier ; elle ne dit que ce que nous pouvons prouver.
         </p>
       </div>
     </section>
@@ -105,11 +109,11 @@ const jsonLd = {
           <KeyFigure value={kwcTotalLabel} unit="kWc" label="Puissance installée">
             Cumul des installations publiées à {villesUniques.join(', ')}.
           </KeyFigure>
-          <KeyFigure value={productionTotalLabel} unit="kWh/an" label="Production mesurée">
-            Sur les installations suivies (Deye Cloud) — les chantiers
-            sans production publiée ne sont pas comptés.
+          <KeyFigure value={productionTotalLabel} unit="kWh cumulés" label="Production mesurée">
+            Cumul relevé sur la flotte suivie (Deye Cloud) depuis la mise en
+            service.
           </KeyFigure>
-          <KeyFigure value={co2TonnesLabel} unit="t CO₂/an" label="CO₂ évité">
+          <KeyFigure value={co2TonnesLabel} unit="t CO₂" label="CO₂ évité (cumul)">
             Calculé à {CO2_KG_PER_KWH} kg CO₂/kWh, le facteur d'émission du réseau marocain déjà
             utilisé dans nos études.
           </KeyFigure>
@@ -119,12 +123,12 @@ const jsonLd = {
         </div>
         <Callout type="info" title="Comment ce chiffre est calculé">
           <p>
-            Le CO₂ évité = production mesurée annuelle × {CO2_KG_PER_KWH} kg/kWh (facteur d'émission
+            Le CO₂ évité = production mesurée cumulée × {CO2_KG_PER_KWH} kg/kWh (facteur d'émission
             moyen du réseau électrique marocain, mix fortement carboné — la même constante que celle
             affichée dans chaque étude chiffrée Taqinor). Équivalent en arbres : un arbre mûr absorbe
             environ {CO2_KG_PER_TREE_YEAR} kg de CO₂ par an, soit ici l'équivalent d'environ{' '}
-            <strong>{treesLabel} arbres</strong> plantés chaque année. Aucun chiffre n'est arrondi
-            vers le haut, extrapolé ou estimé au-delà des installations réellement publiées.
+            <strong>{treesLabel} arbres</strong> sur une année. Aucun chiffre n'est arrondi
+            vers le haut, extrapolé ou estimé au-delà de la production réellement mesurée.
           </p>
         </Callout>
       </div>
@@ -137,16 +141,15 @@ const jsonLd = {
         <p class="tech-label v2-kicker rule-brass text-azur-600">Le détail</p>
         <h2 class="display v2-section-title mt-5">Chantier par chantier</h2>
         <p class="v2-lead mt-4 text-encre-soft">
-          Chaque ligne du cumul ci-dessus correspond à une installation réelle, documentée sur
-          notre page réalisations.
+          Chaque ligne est une installation réelle, documentée sur notre page réalisations. Le
+          cumul mesuré ci-dessus est relevé en continu sur Deye Cloud.
         </p>
         <div class="mt-10 border-t-2 border-azur-900 bg-blanc" data-stagger>
           {REALISATIONS.map((r, i) => (
             <div class="v2-rise flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-azur-900/15 px-5 py-4" style={`--v2-i:${i}`}>
               <span class="text-sm font-semibold">{r.ville} · {r.kwc} · réf. {r.ref}</span>
               <span class="whitespace-normal text-right text-sm text-azur-600">
-                {r.production ? `${r.production} mesurés` : 'production non publiée'}
-                {r.batterie ? ` · ${r.batterie}` : ''}
+                {[r.onduleur, r.batterie].filter(Boolean).join(' · ') || r.panneaux}
               </span>
             </div>
           ))}

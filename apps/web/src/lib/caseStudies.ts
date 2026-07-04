@@ -102,7 +102,7 @@ export const FALLBACK_CASE_STUDY: LocalizedCaseStudy = {
   fr: {
     title: 'Étude de cas — installation solaire mesurée | Taqinor',
     description:
-      'Une installation solaire réelle posée par Taqinor : la puissance retenue, le matériel sur le toit et la logique de dimensionnement, sans chiffre promis.',
+      'Une installation solaire réelle posée par Taqinor : la puissance retenue, le matériel sur le toit et la logique de dimensionnement.',
     situation:
       'Ce chantier a été dimensionné sur la consommation réelle du site, lue sur la dernière facture avant le moindre devis.',
     sizing:
@@ -110,7 +110,7 @@ export const FALLBACK_CASE_STUDY: LocalizedCaseStudy = {
     install:
       'Le matériel listé ci-dessus est ce qui est réellement sur le toit, sourcé via des distributeurs officiels au Maroc, garanties locales activables.',
     result:
-      'L’installation est raccordée à Deye Cloud, accès client compris : les kWh produits se lisent, ils ne se promettent pas.',
+      'L’installation est raccordée à Deye Cloud, accès client compris : la production se suit en continu, au compteur.',
     resume:
       'Une installation solaire réelle posée par Taqinor, dimensionnée sur la consommation du site.',
     cityLink: null,
@@ -119,7 +119,7 @@ export const FALLBACK_CASE_STUDY: LocalizedCaseStudy = {
   en: {
     title: 'Case study — measured solar installation | Taqinor',
     description:
-      'A real solar installation fitted by Taqinor: the power chosen, the equipment on the roof and the sizing logic, with no promised figure.',
+      'A real solar installation fitted by Taqinor: the power chosen, the equipment on the roof and the sizing logic.',
     situation:
       'This project was sized on the site’s real consumption, read off the latest bill before any quote.',
     sizing:
@@ -127,7 +127,7 @@ export const FALLBACK_CASE_STUDY: LocalizedCaseStudy = {
     install:
       'The equipment listed above is what is really on the roof, sourced through official distributors in Morocco, with local warranties activatable.',
     result:
-      'The installation is connected to Deye Cloud, client access included: the kWh produced are read off, they are not promised.',
+      'The installation is connected to Deye Cloud, client access included: production is tracked continuously, straight off the meter.',
     resume:
       'A real solar installation fitted by Taqinor, sized on the site’s consumption.',
     cityLink: null,
@@ -136,7 +136,7 @@ export const FALLBACK_CASE_STUDY: LocalizedCaseStudy = {
   ar: {
     title: 'دراسة حالة — تركيب شمسي مقيس | Taqinor',
     description:
-      'تركيب شمسي حقيقي أنجزته تاكينور: القدرة المختارة والعتاد فوق السطح ومنطق تحديد المقاس، دون أي رقم موعود.',
+      'تركيب شمسي حقيقي أنجزته تاكينور: القدرة المختارة والعتاد فوق السطح ومنطق تحديد المقاس.',
     situation:
       'حُدِّد مقاس هذا الورش على الاستهلاك الحقيقي للموقع، المقروء على آخر فاتورة قبل أي ثمن.',
     sizing:
@@ -144,7 +144,7 @@ export const FALLBACK_CASE_STUDY: LocalizedCaseStudy = {
     install:
       'العتاد المدرَج أعلاه هو ما يوجد فعلاً فوق السطح، مُورَّد عبر موزّعين رسميين بالمغرب، بضمانات محلية قابلة للتفعيل.',
     result:
-      'التركيبة موصولة بـ Deye Cloud، مع ولوج الزبون: الكيلوواط-ساعة المنتَجة تُقرأ، ولا تُوعَد.',
+      'التركيبة موصولة بـ Deye Cloud، مع ولوج الزبون: الإنتاج يُتابَع باستمرار، مباشرة من العدّاد.',
     resume:
       'تركيب شمسي حقيقي أنجزته تاكينور، مُحدَّد المقاس على استهلاك الموقع.',
     cityLink: null,
@@ -156,9 +156,9 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
   // Réf. 468 — la plus grande résidentielle de 2026. Production publiée.
   'el-jadida-17-kwc': {
     fr: {
-      title: 'Installation solaire 17,04 kWc à El Jadida — 21 406 kWh/an mesurés (réf. 468) | Taqinor',
+      title: 'Installation solaire 17,04 kWc à El Jadida (réf. 468) | Taqinor',
       description:
-        'Réf. 468 : 17,04 kWc sur une villa d’El Jadida, 24 panneaux Canadian Solar 710 Wc, onduleur Deye 15 kW triphasé, 15 kWh Dyness. 21 406 kWh/an relevés sur Deye Cloud — notre plus grande résidentielle de 2026.',
+        'Réf. 468 : 17,04 kWc sur une villa d’El Jadida, 24 panneaux Canadian Solar 710 Wc, onduleur Deye 15 kW triphasé, 15 kWh Dyness — notre plus grande résidentielle de 2026, suivie sur Deye Cloud.',
       situation:
         'C’est la plus grande installation résidentielle que Taqinor ait livrée en 2026 : 17,04 kWc sur la toiture d’une villa d’El Jadida, en région Casablanca-Settat. À cette taille, on ne pose plus pour appoint — on couvre un foyer dont la facture annuelle justifie 24 panneaux et un onduleur triphasé.',
       sizing:
@@ -166,16 +166,16 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
       install:
         'La pose se voit sur les photos du dossier : la longue rangée de modules alignés au cordeau, le coffret de protections et les bornes des batteries Dyness câblées au propre. Le stockage de 15 kWh a été ajouté pour la part de consommation qui tombe hors production solaire — le soir, la nuit — et non par principe.',
       result:
-        '21 406 kWh sur l’année, relevés en continu sur Deye Cloud dont le foyer garde l’accès. Ce n’est pas une projection de vente : c’est le compteur qui parle, mois après mois, et l’écart éventuel se verrait du premier coup d’œil.',
+        'L’installation est suivie en continu sur Deye Cloud, dont le foyer garde l’accès : le monitoring restitue mois après mois ce qui est produit et consommé.',
       resume:
         'La plus grande installation résidentielle livrée par Taqinor en 2026 : une toiture de villa d’El Jadida équipée en 24 panneaux, onduleur hybride triphasé et stockage lithium.',
       cityLink: { href: '/installation-solaire-casablanca', label: 'Installation solaire à Casablanca' },
       alts: {},
     },
     en: {
-      title: 'Solar installation 17.04 kWc in El Jadida — 21,406 kWh/year measured (ref. 468) | Taqinor',
+      title: 'Solar installation 17.04 kWc in El Jadida (ref. 468) | Taqinor',
       description:
-        'Ref. 468: 17.04 kWc on an El Jadida villa, 24 Canadian Solar 710 Wc panels, Deye 15 kW three-phase inverter, 15 kWh Dyness. 21,406 kWh/year read off Deye Cloud — our largest residential of 2026.',
+        'Ref. 468: 17.04 kWc on an El Jadida villa, 24 Canadian Solar 710 Wc panels, Deye 15 kW three-phase inverter, 15 kWh Dyness — our largest residential of 2026, tracked on Deye Cloud.',
       situation:
         'This is the largest residential installation Taqinor delivered in 2026: 17.04 kWc on the roof of an El Jadida villa, in the Casablanca-Settat region. At this size, you no longer install for top-up — you cover a household whose annual bill justifies 24 panels and a three-phase inverter.',
       sizing:
@@ -183,7 +183,7 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
       install:
         'The install shows on the file’s photos: the long row of modules aligned to the line, the protection box and the terminals of the Dyness batteries wired cleanly. The 15 kWh of storage was added for the share of consumption that falls outside solar production — evening, night — and not as a matter of principle.',
       result:
-        '21,406 kWh over the year, read continuously on Deye Cloud, to which the household keeps access. It is not a sales projection: it is the meter speaking, month after month, and any gap would show at first glance.',
+        'The installation is tracked continuously on Deye Cloud, to which the household keeps access: the monitoring reports what is produced and consumed, month after month.',
       resume:
         'The largest residential installation delivered by Taqinor in 2026: an El Jadida villa roof fitted with 24 panels, a three-phase hybrid inverter and lithium storage.',
       cityLink: { href: '/installation-solaire-casablanca', label: 'Solar installation in Casablanca' },
@@ -194,9 +194,9 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
       },
     },
     ar: {
-      title: 'تركيب شمسي 17,04 kWc في الجديدة — 21 406 kWh/سنة مقيسة (المرجع 468) | Taqinor',
+      title: 'تركيب شمسي 17,04 kWc في الجديدة (المرجع 468) | Taqinor',
       description:
-        'المرجع 468: 17,04 kWc على فيلا بالجديدة، 24 لوحاً Canadian Solar 710 Wc، عاكس Deye 15 kW ثلاثي الطور، 15 kWh Dyness. 21 406 kWh/سنة مقروءة على Deye Cloud — أكبر تركيبة سكنية لنا في 2026.',
+        'المرجع 468: 17,04 kWc على فيلا بالجديدة، 24 لوحاً Canadian Solar 710 Wc، عاكس Deye 15 kW ثلاثي الطور، 15 kWh Dyness — أكبر تركيبة سكنية لنا في 2026، مُتابَعة على Deye Cloud.',
       situation:
         'هذه أكبر تركيبة سكنية سلّمتها تاكينور في 2026: 17,04 kWc على سطح فيلا بالجديدة، في جهة الدار البيضاء-سطات. عند هذا الحجم، لا تُركَّب لأجل تكملة — بل لتغطية أسرة تبرّر فاتورتها السنوية 24 لوحاً وعاكساً ثلاثي الطور.',
       sizing:
@@ -204,7 +204,7 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
       install:
         'التركيب يظهر في صور الملف: الصف الطويل من الألواح المُحاذاة بالخيط، صندوق الحماية وأطراف بطاريات Dyness المُوصَّلة بنظافة. أُضيف تخزين 15 kWh لحصّة الاستهلاك الواقعة خارج الإنتاج الشمسي — مساءً وليلاً — لا مبدئياً.',
       result:
-        '21 406 kWh على مدار السنة، مقروءة باستمرار على Deye Cloud الذي تحتفظ الأسرة بالولوج إليه. ليست توقّعاً تجارياً: إنه العدّاد يتكلّم، شهراً بعد شهر، وأي فارق يظهر من أول نظرة.',
+        'التركيبة مُتابَعة باستمرار على Deye Cloud الذي تحتفظ الأسرة بالولوج إليه: المراقبة تُبيّن شهراً بعد شهر ما يُنتَج وما يُستهلَك.',
       resume:
         'أكبر تركيبة سكنية سلّمتها تاكينور في 2026: سطح فيلا بالجديدة مُجهَّز بـ 24 لوحاً وعاكس هجين ثلاثي الطور وتخزين ليثيوم.',
       cityLink: { href: '/installation-solaire-casablanca', label: 'تركيب شمسي في الدار البيضاء' },
@@ -219,9 +219,9 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
   // Réf. 400 — villa Casablanca face skyline + borne de recharge. Production publiée.
   'casablanca-11-kwc': {
     fr: {
-      title: 'Installation solaire 11,36 kWc à Casablanca — 14 271 kWh/an mesurés (réf. 400) | Taqinor',
+      title: 'Installation solaire 11,36 kWc à Casablanca (réf. 400) | Taqinor',
       description:
-        'Réf. 400 : 11,36 kWc sur une villa de Casablanca face à la skyline, 16 panneaux Canadian Solar 710 Wc, onduleur Deye 10 kW, 10 kWh Dyness et borne de recharge. 14 271 kWh/an suivis sur Deye Cloud.',
+        'Réf. 400 : 11,36 kWc sur une villa de Casablanca face à la skyline, 16 panneaux Canadian Solar 710 Wc, onduleur Deye 10 kW, 10 kWh Dyness et borne de recharge, suivis sur Deye Cloud.',
       situation:
         'Une villa de Casablanca, le champ de panneaux dressé face à la skyline et au minaret : 11,36 kWc pour un foyer qui recharge aussi son véhicule à la maison. La borne de recharge change l’équation — la consommation ne s’arrête pas aux appareils domestiques, et la puissance posée en tient compte.',
       sizing:
@@ -229,16 +229,16 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
       install:
         'Le mur technique est sur les photos : l’onduleur hybride Deye, les deux Dyness et la borne de recharge alignés sur un même mur, câblage rangé. Le champ devant la skyline n’est pas une carte postale — c’est l’implantation réelle, orientée pour la production, pas pour la vue.',
       result:
-        '14 271 kWh par an, suivis sur Deye Cloud avec accès client. Le chiffre n’est pas un argumentaire : il se relève sur le monitoring, et la borne de recharge se lit dans la courbe de consommation autant que les panneaux dans celle de production.',
+        'L’installation est suivie sur Deye Cloud avec accès client : le monitoring montre ce qui est produit et consommé, et la borne de recharge se lit dans la courbe de consommation autant que les panneaux dans celle de production.',
       resume:
-        'Une villa de Casablanca face à la skyline : 16 panneaux, onduleur hybride Deye et deux batteries Dyness, avec borne de recharge — production estimée à partir du rendement mesuré de nos chantiers.',
+        'Une villa de Casablanca face à la skyline : 16 panneaux, onduleur hybride Deye et deux batteries Dyness, avec borne de recharge, suivie sur Deye Cloud.',
       cityLink: { href: '/installation-solaire-casablanca', label: 'Installation solaire à Casablanca' },
       alts: {},
     },
     en: {
-      title: 'Solar installation 11.36 kWc in Casablanca — 14,271 kWh/year measured (ref. 400) | Taqinor',
+      title: 'Solar installation 11.36 kWc in Casablanca (ref. 400) | Taqinor',
       description:
-        'Ref. 400: 11.36 kWc on a Casablanca villa facing the skyline, 16 Canadian Solar 710 Wc panels, Deye 10 kW inverter, 10 kWh Dyness and a charging station. 14,271 kWh/year followed on Deye Cloud.',
+        'Ref. 400: 11.36 kWc on a Casablanca villa facing the skyline, 16 Canadian Solar 710 Wc panels, Deye 10 kW inverter, 10 kWh Dyness and a charging station, followed on Deye Cloud.',
       situation:
         'A Casablanca villa, the panel array raised facing the skyline and the minaret: 11.36 kWc for a household that also charges its vehicle at home. The charging station changes the equation — consumption does not stop at household appliances, and the installed power takes that into account.',
       sizing:
@@ -246,9 +246,9 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
       install:
         'The technical wall is on the photos: the Deye hybrid inverter, the two Dyness units and the charging station aligned on a single wall, tidy wiring. The array in front of the skyline is no postcard — it is the real layout, oriented for production, not for the view.',
       result:
-        '14,271 kWh a year, followed on Deye Cloud with client access. The figure is not a pitch: it is read off the monitoring, and the charging station reads in the consumption curve as much as the panels read in the production curve.',
+        'The installation is followed on Deye Cloud with client access: the monitoring shows what is produced and consumed, and the charging station reads in the consumption curve as much as the panels read in the production curve.',
       resume:
-        'A Casablanca villa facing the skyline: 16 panels, a Deye hybrid inverter and two Dyness batteries, with a charging station — production estimated from our measured field yield.',
+        'A Casablanca villa facing the skyline: 16 panels, a Deye hybrid inverter and two Dyness batteries, with a charging station, followed on Deye Cloud.',
       cityLink: { href: '/installation-solaire-casablanca', label: 'Solar installation in Casablanca' },
       alts: {
         'hero-skyline': 'Row of solar panels in front of the Casablanca skyline and a minaret, golden light',
@@ -257,9 +257,9 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
       },
     },
     ar: {
-      title: 'تركيب شمسي 11,36 kWc في الدار البيضاء — 14 271 kWh/سنة مقيسة (المرجع 400) | Taqinor',
+      title: 'تركيب شمسي 11,36 kWc في الدار البيضاء (المرجع 400) | Taqinor',
       description:
-        'المرجع 400: 11,36 kWc على فيلا بالدار البيضاء تواجه الأفق، 16 لوحاً Canadian Solar 710 Wc، عاكس Deye 10 kW، 10 kWh Dyness ومحطة شحن. 14 271 kWh/سنة مُتابَعة على Deye Cloud.',
+        'المرجع 400: 11,36 kWc على فيلا بالدار البيضاء تواجه الأفق، 16 لوحاً Canadian Solar 710 Wc، عاكس Deye 10 kW، 10 kWh Dyness ومحطة شحن، مُتابَعة على Deye Cloud.',
       situation:
         'فيلا بالدار البيضاء، حقل الألواح مرفوع في مواجهة الأفق والمئذنة: 11,36 kWc لأسرة تشحن أيضاً سيّارتها في البيت. محطة الشحن تغيّر المعادلة — الاستهلاك لا يتوقّف عند الأجهزة المنزلية، والقدرة المُركَّبة تأخذ ذلك بعين الاعتبار.',
       sizing:
@@ -267,7 +267,7 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
       install:
         'الجدار التقني في الصور: العاكس الهجين Deye، والبطاريتان Dyness ومحطة الشحن مُحاذاة على جدار واحد، توصيل مرتّب. الحقل أمام الأفق ليس بطاقة بريدية — إنه التنصيب الحقيقي، موجَّه للإنتاج، لا للمنظر.',
       result:
-        '14 271 kWh في السنة، مُتابَعة على Deye Cloud مع ولوج الزبون. الرقم ليس حجّة بيع: يُقرأ على المراقبة، ومحطة الشحن تُقرأ في منحنى الاستهلاك بقدر ما تُقرأ الألواح في منحنى الإنتاج.',
+        'التركيبة مُتابَعة على Deye Cloud مع ولوج الزبون: المراقبة تُظهر ما يُنتَج وما يُستهلَك، ومحطة الشحن تُقرأ في منحنى الاستهلاك بقدر ما تُقرأ الألواح في منحنى الإنتاج.',
       resume:
         'فيلا بالدار البيضاء تواجه الأفق: 16 لوحاً، عاكس هجين Deye وبطاريتان Dyness، مع محطة شحن — إنتاج مُقدَّر انطلاقاً من المردود المقيس لأوراشنا.',
       cityLink: { href: '/installation-solaire-casablanca', label: 'تركيب شمسي في الدار البيضاء' },
@@ -282,9 +282,9 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
   // Réf. 236 — résidentielle compacte toit plat El Jadida. Production publiée.
   'el-jadida-6-kwc': {
     fr: {
-      title: 'Installation solaire 5,68 kWc à El Jadida — 7 135 kWh/an mesurés (réf. 236) | Taqinor',
+      title: 'Installation solaire 5,68 kWc à El Jadida (réf. 236) | Taqinor',
       description:
-        'Réf. 236 : 5,68 kWc sur le toit plat d’une villa d’El Jadida, 8 panneaux Canadian Solar 710 Wc, onduleur Deye 5 kW, batterie 5 kWh Dyness. 7 135 kWh/an relevés sur Deye Cloud, dimensionnés sur la facture du foyer.',
+        'Réf. 236 : 5,68 kWc sur le toit plat d’une villa d’El Jadida, 8 panneaux Canadian Solar 710 Wc, onduleur Deye 5 kW, batterie 5 kWh Dyness, dimensionnés sur la facture du foyer et suivis sur Deye Cloud.',
       situation:
         'Un toit plat de villa à El Jadida, huit panneaux, 5,68 kWc : le format compact d’un foyer dont la facture ne demandait pas davantage. Surdimensionner aurait coûté sans rien rapporter — la consommation relevée tenait dans cette puissance.',
       sizing:
@@ -292,16 +292,16 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
       install:
         'La photo du dossier montre le champ des huit modules posés sur le toit-terrasse, structure réglée pour l’inclinaison retenue. La batterie unique de 5 kWh prend la part de consommation hors soleil ; pas de stockage surnuméraire, parce que la facture ne le réclamait pas.',
       result:
-        '7 135 kWh sur l’année, relevés sur Deye Cloud, accès client inclus. À cette échelle aussi, la production se lit au compteur plutôt qu’elle ne se promet — le foyer voit ses kWh, mois après mois.',
+        'L’installation est relevée sur Deye Cloud, accès client inclus : à cette échelle aussi, le foyer voit ses kWh mois après mois, au compteur.',
       resume:
-        'Une installation résidentielle compacte sur toit plat à El Jadida : huit panneaux, onduleur hybride et une batterie 5 kWh, dimensionnés sur la facture du foyer.',
+        'Une installation résidentielle compacte sur toit plat à El Jadida : huit panneaux, onduleur hybride et une batterie 5 kWh, dimensionnés sur la facture du foyer et suivis sur Deye Cloud.',
       cityLink: { href: '/installation-solaire-casablanca', label: 'Installation solaire à Casablanca' },
       alts: {},
     },
     en: {
-      title: 'Solar installation 5.68 kWc in El Jadida — 7,135 kWh/year measured (ref. 236) | Taqinor',
+      title: 'Solar installation 5.68 kWc in El Jadida (ref. 236) | Taqinor',
       description:
-        'Ref. 236: 5.68 kWc on the flat roof of an El Jadida villa, 8 Canadian Solar 710 Wc panels, Deye 5 kW inverter, 5 kWh Dyness battery. 7,135 kWh/year read off Deye Cloud, sized on the household’s bill.',
+        'Ref. 236: 5.68 kWc on the flat roof of an El Jadida villa, 8 Canadian Solar 710 Wc panels, Deye 5 kW inverter, 5 kWh Dyness battery, sized on the household’s bill and followed on Deye Cloud.',
       situation:
         'A villa’s flat roof in El Jadida, eight panels, 5.68 kWc: the compact format of a household whose bill asked for no more. Oversizing would have cost without returning anything — the metered consumption fitted within this power.',
       sizing:
@@ -309,18 +309,18 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
       install:
         'The file’s photo shows the array of eight modules fitted on the roof terrace, structure set for the chosen tilt. The single 5 kWh battery takes the share of consumption outside the sun; no surplus storage, because the bill did not call for it.',
       result:
-        '7,135 kWh over the year, read off Deye Cloud, client access included. At this scale too, production reads off the meter rather than being promised — the household sees its kWh, month after month.',
+        'The installation is read off Deye Cloud, client access included: at this scale too, the household sees its kWh month after month, straight off the meter.',
       resume:
-        'A compact residential installation on a flat roof in El Jadida: eight panels, a hybrid inverter and a 5 kWh battery, sized on the household’s bill.',
+        'A compact residential installation on a flat roof in El Jadida: eight panels, a hybrid inverter and a 5 kWh battery, sized on the household’s bill and followed on Deye Cloud.',
       cityLink: { href: '/installation-solaire-casablanca', label: 'Solar installation in Casablanca' },
       alts: {
         'champ-villa': 'Array of eight panels on a villa’s flat roof, El Jadida',
       },
     },
     ar: {
-      title: 'تركيب شمسي 5,68 kWc في الجديدة — 7 135 kWh/سنة مقيسة (المرجع 236) | Taqinor',
+      title: 'تركيب شمسي 5,68 kWc في الجديدة (المرجع 236) | Taqinor',
       description:
-        'المرجع 236: 5,68 kWc على السطح المستوي لفيلا بالجديدة، 8 ألواح Canadian Solar 710 Wc، عاكس Deye 5 kW، بطارية 5 kWh Dyness. 7 135 kWh/سنة مقروءة على Deye Cloud، مُحدَّدة المقاس على فاتورة الأسرة.',
+        'المرجع 236: 5,68 kWc على السطح المستوي لفيلا بالجديدة، 8 ألواح Canadian Solar 710 Wc، عاكس Deye 5 kW، بطارية 5 kWh Dyness، مُحدَّدة المقاس على فاتورة الأسرة ومُتابَعة على Deye Cloud.',
       situation:
         'سطح مستوٍ لفيلا بالجديدة، ثمانية ألواح، 5,68 kWc: الصيغة المُدمجة لأسرة لم تطلب فاتورتها أكثر. المبالغة في المقاس كانت ستُكلِّف دون أن تُعيد شيئاً — الاستهلاك المقيس كان يسع هذه القدرة.',
       sizing:
@@ -328,9 +328,9 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
       install:
         'صورة الملف تُظهر حقل الألواح الثمانية مُركَّبة على السطح، بنية مضبوطة على الميل المختار. البطارية الوحيدة بقدرة 5 kWh تأخذ حصّة الاستهلاك خارج الشمس؛ لا تخزين زائد، لأن الفاتورة لم تطلبه.',
       result:
-        '7 135 kWh على مدار السنة، مقروءة على Deye Cloud، مع ولوج الزبون. عند هذا المقياس أيضاً، الإنتاج يُقرأ على العدّاد بدل أن يُوعَد — الأسرة ترى كيلوواط-ساعاتها، شهراً بعد شهر.',
+        'التركيبة مقروءة على Deye Cloud، مع ولوج الزبون: عند هذا المقياس أيضاً، الأسرة ترى كيلوواط-ساعاتها شهراً بعد شهر، مباشرة من العدّاد.',
       resume:
-        'تركيبة سكنية مُدمجة على سطح مستوٍ بالجديدة: ثمانية ألواح، عاكس هجين وبطارية 5 kWh، مُحدَّدة المقاس على فاتورة الأسرة.',
+        'تركيبة سكنية مُدمجة على سطح مستوٍ بالجديدة: ثمانية ألواح، عاكس هجين وبطارية 5 kWh، مُحدَّدة المقاس على فاتورة الأسرة ومُتابَعة على Deye Cloud.',
       cityLink: { href: '/installation-solaire-casablanca', label: 'تركيب شمسي في الدار البيضاء' },
       alts: {
         'champ-villa': 'حقل من ثمانية ألواح على سطح مستوٍ لفيلا، الجديدة',
@@ -341,9 +341,9 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
   // Réf. 134 — villa Casablanca 8 panneaux. onduleur/batterie = null → JAMAIS cités.
   'casablanca-6-kwc': {
     fr: {
-      title: 'Installation solaire 5,68 kWc à Casablanca — 7 135 kWh/an mesurés (réf. 134) | Taqinor',
+      title: 'Installation solaire 5,68 kWc à Casablanca (réf. 134) | Taqinor',
       description:
-        'Réf. 134 : 5,68 kWc sur une villa de Casablanca, 8 panneaux Canadian Solar 710 Wc, même puissance que notre chantier d’El Jadida pour un profil de consommation comparable. 7 135 kWh/an suivis sur Deye Cloud.',
+        'Réf. 134 : 5,68 kWc sur une villa de Casablanca, 8 panneaux Canadian Solar 710 Wc, même puissance que notre chantier d’El Jadida pour un profil de consommation comparable, suivis sur Deye Cloud.',
       situation:
         'Une villa de Casablanca, huit panneaux Canadian Solar 710 Wc, 5,68 kWc — la même puissance que notre installation d’El Jadida, parce que le profil de consommation du foyer était comparable. À facture voisine, dimensionnement voisin : la taille suit le besoin, pas la ville.',
       sizing:
@@ -351,16 +351,16 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
       install:
         'La photo du dossier saisit la pose en cours : l’équipe incline un panneau pour le caler sur sa structure. Les modules Canadian Solar 710 Wc sont le matériel réellement installé sur ce toit casablancais.',
       result:
-        '7 135 kWh par an, suivis sur Deye Cloud avec accès client : la production se relève, elle ne se prend pas sur parole. C’est le même engagement de mesure que sur l’ensemble de nos chantiers.',
+        'L’installation est suivie sur Deye Cloud avec accès client : c’est le même engagement de mesure continue que sur l’ensemble de nos chantiers.',
       resume:
-        'Une villa de Casablanca équipée de huit panneaux Canadian Solar 710 Wc — même puissance que notre installation d’El Jadida, pour un profil de consommation comparable.',
+        'Une villa de Casablanca équipée de huit panneaux Canadian Solar 710 Wc — même puissance que notre installation d’El Jadida, pour un profil de consommation comparable, suivie sur Deye Cloud.',
       cityLink: { href: '/installation-solaire-casablanca', label: 'Installation solaire à Casablanca' },
       alts: {},
     },
     en: {
-      title: 'Solar installation 5.68 kWc in Casablanca — 7,135 kWh/year measured (ref. 134) | Taqinor',
+      title: 'Solar installation 5.68 kWc in Casablanca (ref. 134) | Taqinor',
       description:
-        'Ref. 134: 5.68 kWc on a Casablanca villa, 8 Canadian Solar 710 Wc panels, the same power as our El Jadida project for a comparable consumption profile. 7,135 kWh/year followed on Deye Cloud.',
+        'Ref. 134: 5.68 kWc on a Casablanca villa, 8 Canadian Solar 710 Wc panels, the same power as our El Jadida project for a comparable consumption profile, followed on Deye Cloud.',
       situation:
         'A Casablanca villa, eight Canadian Solar 710 Wc panels, 5.68 kWc — the same power as our El Jadida installation, because the household’s consumption profile was comparable. With a similar bill, similar sizing: the size follows the need, not the city.',
       sizing:
@@ -368,18 +368,18 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
       install:
         'The file’s photo captures the install in progress: the team tilts a panel to set it on its structure. The Canadian Solar 710 Wc modules are the equipment really installed on this Casablanca roof.',
       result:
-        '7,135 kWh a year, followed on Deye Cloud with client access: production is read off, it is not taken on trust. It is the same commitment to measurement as across all our projects.',
+        'The installation is followed on Deye Cloud with client access: it is the same commitment to continuous measurement as across all our projects.',
       resume:
-        'A Casablanca villa fitted with eight Canadian Solar 710 Wc panels — the same power as our El Jadida installation, for a comparable consumption profile.',
+        'A Casablanca villa fitted with eight Canadian Solar 710 Wc panels — the same power as our El Jadida installation, for a comparable consumption profile, followed on Deye Cloud.',
       cityLink: { href: '/installation-solaire-casablanca', label: 'Solar installation in Casablanca' },
       alts: {
         'pose-134': 'The team tilts a panel during the install, Casablanca',
       },
     },
     ar: {
-      title: 'تركيب شمسي 5,68 kWc في الدار البيضاء — 7 135 kWh/سنة مقيسة (المرجع 134) | Taqinor',
+      title: 'تركيب شمسي 5,68 kWc في الدار البيضاء (المرجع 134) | Taqinor',
       description:
-        'المرجع 134: 5,68 kWc على فيلا بالدار البيضاء، 8 ألواح Canadian Solar 710 Wc، القدرة نفسها كورشنا بالجديدة لمَلمح استهلاك مماثل. 7 135 kWh/سنة مُتابَعة على Deye Cloud.',
+        'المرجع 134: 5,68 kWc على فيلا بالدار البيضاء، 8 ألواح Canadian Solar 710 Wc، القدرة نفسها كورشنا بالجديدة لمَلمح استهلاك مماثل، مُتابَعة على Deye Cloud.',
       situation:
         'فيلا بالدار البيضاء، ثمانية ألواح Canadian Solar 710 Wc، 5,68 kWc — القدرة نفسها كتركيبتنا بالجديدة، لأن مَلمح استهلاك الأسرة كان مماثلاً. فاتورة قريبة، مقاس قريب: الحجم يتبع الحاجة، لا المدينة.',
       sizing:
@@ -387,9 +387,9 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
       install:
         'صورة الملف تلتقط التركيب جارياً: الفريق يميل لوحاً لضبطه على بنيته. ألواح Canadian Solar 710 Wc هي العتاد المُركَّب فعلاً على هذا السطح البيضاوي.',
       result:
-        '7 135 kWh في السنة، مُتابَعة على Deye Cloud مع ولوج الزبون: الإنتاج يُقرأ، ولا يُؤخَذ على عهدة الكلام. إنه الالتزام نفسه بالقياس كما في كل أوراشنا.',
+        'التركيبة مُتابَعة على Deye Cloud مع ولوج الزبون: إنه الالتزام نفسه بالمتابعة المستمرة كما في كل أوراشنا.',
       resume:
-        'فيلا بالدار البيضاء مُجهَّزة بثمانية ألواح Canadian Solar 710 Wc — القدرة نفسها كتركيبتنا بالجديدة، لمَلمح استهلاك مماثل.',
+        'فيلا بالدار البيضاء مُجهَّزة بثمانية ألواح Canadian Solar 710 Wc — القدرة نفسها كتركيبتنا بالجديدة، لمَلمح استهلاك مماثل، مُتابَعة على Deye Cloud.',
       cityLink: { href: '/installation-solaire-casablanca', label: 'تركيب شمسي في الدار البيضاء' },
       alts: {
         'pose-134': 'الفريق يميل لوحاً أثناء التركيب، الدار البيضاء',
@@ -410,7 +410,7 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
       install:
         'Les photos du dossier montrent le travail de fond : l’installateur en gilet Taqinor posant les rails de la structure, le traçage et la mesure au mètre des fixations, puis le nettoyage au jet du champ une fois les modules en place. C’est cette préparation invisible qui tient une installation sur la durée.',
       result:
-        'Posée en octobre 2025, l’installation suit notre standard d’implantation et d’entretien. Nous ne publions pas de production mesurée pour ce chantier — et nous ne lui en prêtons aucune : seul ce qui est relevé est écrit.',
+        'Posée en octobre 2025, l’installation suit notre standard d’implantation et d’entretien, avec la même possibilité de suivi sur Deye Cloud, accès client, que sur nos autres chantiers.',
       resume:
         'Une installation à Nouaceur, dans la périphérie de Casablanca : six panneaux JA Solar posés avec le même soin d’implantation que nos chantiers de plus grande taille.',
       cityLink: { href: '/installation-solaire-casablanca', label: 'Installation solaire à Casablanca' },
@@ -427,7 +427,7 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
       install:
         'The file’s photos show the groundwork: the installer in a Taqinor vest fitting the structure’s rails, the marking out and the tape measurement of the fixings, then the jet cleaning of the array once the modules are in place. It is this invisible preparation that holds an installation over time.',
       result:
-        'Fitted in October 2025, the installation follows our standard of layout and upkeep. We publish no measured production for this project — and we attribute none to it: only what is read off is written.',
+        'Fitted in October 2025, the installation follows our standard of layout and upkeep, with the same monitoring available on Deye Cloud, client access included, as on our other projects.',
       resume:
         'An installation in Nouaceur, on the outskirts of Casablanca: six JA Solar panels fitted with the same care of layout as our larger projects.',
       cityLink: { href: '/installation-solaire-casablanca', label: 'Solar installation in Casablanca' },
@@ -448,7 +448,7 @@ export const CASE_STUDIES: Record<string, LocalizedCaseStudy> = {
       install:
         'صور الملف تُظهر العمل الأساسي: المُركِّب بسترة تاكينور يضع سكك البنية، والتخطيط والقياس بالمتر للمثبّتات، ثم تنظيف الحقل بالماء بمجرّد وضع الألواح. هذا التحضير غير المرئي هو ما يُبقي التركيبة على المدى.',
       result:
-        'مُركَّبة في أكتوبر 2025، تتبع التركيبة معيارنا في التنصيب والصيانة. لا ننشر إنتاجاً مقيساً لهذا الورش — ولا نَنسب إليه أيّاً: لا يُكتب إلا ما يُقرأ فعلاً.',
+        'مُركَّبة في أكتوبر 2025، تتبع التركيبة معيارنا في التنصيب والصيانة، مع نفس إمكانية المتابعة على Deye Cloud، بولوج الزبون، المتوفرة في باقي أوراشنا.',
       resume:
         'تركيبة في النواصر، بضواحي الدار البيضاء: ستة ألواح JA Solar مُركَّبة بنفس عناية التنصيب التي في أوراشنا الأكبر حجماً.',
       cityLink: { href: '/installation-solaire-casablanca', label: 'تركيب شمسي في الدار البيضاء' },

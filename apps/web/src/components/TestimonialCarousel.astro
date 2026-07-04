@@ -69,6 +69,13 @@ const id = `tc-${Math.random().toString(36).slice(2, 8)}`;
     align-items: center;
     gap: 1rem;
   }
+  /* Bug-fix (2026-07-04) — RTL : mirror prev/next so « précédent » (‹) sits on
+     the visual right and « suivant » (›) on the left, matching Arabic reading
+     direction. DOM/keyboard order stays intact. (Latent today — TESTIMONIALS
+     is empty — but correct for when real reviews land.) */
+  :global([dir="rtl"]) .testimonial-carousel__nav {
+    flex-direction: row-reverse;
+  }
   .testimonial-carousel__btn {
     flex: none;
     width: 2.75rem;

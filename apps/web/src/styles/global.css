@@ -993,9 +993,14 @@ summary:focus-visible {
 /* — Chevron / arrow glyphs used as inline "next" affordances (← / →
    typed as literal characters in markup, e.g. mon-toit "Continuer →" and
    "← Retour") : flip horizontally in RTL so they still point toward the
-   logical next/previous direction instead of the physical one. */
-[dir="rtl"] .btn-pill svg[aria-hidden="true"],
-[dir="rtl"] button svg[aria-hidden="true"] {
+   logical next/previous direction instead of the physical one.
+   Bug-fix (2026-07-04) : `:not([fill="currentColor"])` EXCLUDES the FILLED
+   brand/action glyphs (WhatsApp, phone — drawn `fill="currentColor"`) so they
+   are NOT mirrored. The former rule flipped EVERY aria-hidden button SVG,
+   which reversed the WhatsApp logo on the Arabic quote-CTA submit button.
+   Directional chevrons are stroked (`fill="none"`) → still flip correctly. */
+[dir="rtl"] .btn-pill svg[aria-hidden="true"]:not([fill="currentColor"]),
+[dir="rtl"] button svg[aria-hidden="true"]:not([fill="currentColor"]) {
   transform: scaleX(-1);
 }
 

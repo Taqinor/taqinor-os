@@ -34,7 +34,6 @@ const L = (href: string) => localizeNavHref(href, locale);
 const total = REALISATIONS.reduce((s, r) => s + r.kwcNum, 0);
 const totalLabel = total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' kWc';
 const villesCount = new Set(REALISATIONS.map((r) => r.ville)).size;
-const mesureesCount = REALISATIONS.filter((r) => r.production).length;
 
 // alt localisé (repli FR si absent dans la map de l'étude).
 const altOf = (r: typeof REALISATIONS[number]) => caseStudyBySlug(r.slug, locale).alts[r.photos[0].name] ?? r.photos[0].alt;
@@ -45,7 +44,7 @@ const itemListJsonLd = {
   '@type': 'ItemList',
   name: 'Taqinor solar installations — viewable, tracked production',
   description:
-    'Solar installations actually fitted by Taqinor, viewable on request, with a production figure (measured or, absent a distinct reading, estimated from measured yield).',
+    'Solar installations actually fitted by Taqinor, viewable on request, tracked in production on Deye Cloud.',
   itemListElement: REALISATIONS.map((r, i) => ({
     '@type': 'ListItem',
     position: i + 1,
@@ -58,7 +57,7 @@ const itemListJsonLd = {
 
 <Layout
   title="Our solar projects in Morocco — tracked installations | Taqinor"
-  description="The solar installations actually fitted by Taqinor: villas in Casablanca, El Jadida and Nouaceur, power, tracked production and the equipment on the roof. Detailed case studies."
+  description="The solar installations actually fitted by Taqinor: villas in Casablanca, El Jadida and Nouaceur, power, the equipment on the roof and production tracked continuously on Deye Cloud. Detailed case studies."
   ogSlug="accueil"
 >
   <script type="application/ld+json" set:html={JSON.stringify(itemListJsonLd)} />
@@ -101,15 +100,12 @@ const itemListJsonLd = {
         <h2 class="display v2-section-title mt-5 text-white">Viewable installations, tracked production</h2>
         <p class="v2-lead mt-5 text-lune-soft">
           Before a quote, a visit can be arranged: see a Taqinor installation running, ask an
-          existing client questions, compare a roof to yours. {mesureesCount} of the {REALISATIONS.length} projects
-          shown below publish a production figure — drawn from the measured yield of our monitored
-          projects, not a catalogue sales estimate.
+          existing client questions, compare a roof to yours. For every project below, the
+          installed power and the equipment fitted are published as they are.
         </p>
         <p class="mt-4 text-lune-soft">
-          That is the difference between a promise and a proof: the installed power and the
-          equipment fitted are published project by project; production is marked "estimated" until
-          a distinct Deye Cloud reading per project is published — with no rounding and no missing
-          figure turned into a silent estimate.
+          Every installation is tracked on Deye Cloud, with client access — production reads there
+          continuously, straight from the meter.
         </p>
       </div>
     </section>

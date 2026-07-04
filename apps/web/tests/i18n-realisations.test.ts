@@ -102,10 +102,25 @@ describe('caseStudyBySlug — locale-aware, additif', () => {
     }
   });
 
-  it('le FR du resume vaut EXACTEMENT le resume de realisations.ts (rendu inchangé)', () => {
+  it('le FR du resume vaut EXACTEMENT le resume de realisations.ts (rendu inchangé), sauf réf. 400 reformulée honnêtement (WB1)', () => {
+    // WB1 (2026-07-04) : la production annuelle fabriquée a été retirée partout.
+    // Les resumes de casablanca-11-kwc (réf. 400) et el-jadida-6-kwc (réf. 236)
+    // ont en outre été reformulés côté caseStudies.ts pour ne plus impliquer un
+    // relevé chiffré fabriqué ; ce sont les seules divergences volontaires avec
+    // le resume source de realisations.ts.
+    const reformules: Record<string, RegExp> = {
+      '400': /14[\s,]?271/,
+      '236': /7[\s,]?135/,
+    };
     for (const r of REALISATIONS) {
       const cs = caseStudyBySlug(r.slug, 'fr');
-      expect(cs.resume).toBe(r.resume);
+      const bannedNum = reformules[r.ref];
+      if (bannedNum) {
+        expect(cs.resume, r.ref).not.toBe(r.resume);
+        expect(cs.resume, r.ref).not.toMatch(bannedNum);
+        continue;
+      }
+      expect(cs.resume, r.ref).toBe(r.resume);
     }
   });
 
@@ -116,12 +131,16 @@ describe('caseStudyBySlug — locale-aware, additif', () => {
     expect(ar.situation).toMatch(/[؀-ۿ]/);
   });
 
-  it('les chiffres/réfs/productions ne sont jamais altérés ni inventés', () => {
-    // El Jadida 17 kWc : 21 406 kWh + réf 468 présents dans toutes les locales.
+  it('les chiffres/réfs ne sont jamais altérés ni inventés ; aucune production annuelle fabriquée (WB1)', () => {
+    // El Jadida 17 kWc : réf 468 présente dans toutes les locales, mais plus
+    // aucun chiffre annuel « 21 406 » (WB1 : retiré, fabriqué) — le récit reste
+    // honnête (suivi Deye Cloud, sans chiffre projeté).
     for (const loc of ['fr', 'en', 'ar'] as const) {
       const cs = caseStudyBySlug('el-jadida-17-kwc', loc);
-      expect(cs.description).toMatch(/21[\s,]?406/);
+      expect(cs.description).not.toMatch(/21[\s,]?406/);
+      expect(cs.result).not.toMatch(/21[\s,]?406/);
       expect(cs.title).toContain('468');
+      expect(cs.description).toMatch(/17[,.]04/);
     }
     // Nouaceur (production null) : aucune locale n’invente un chiffre de production.
     for (const loc of ['fr', 'en', 'ar'] as const) {
