@@ -299,6 +299,35 @@ def labour_hours_for_installation(installation_id, company=None):
     }
 
 
+def fiche_identite_employe(company, employe_id):
+    """Identité + poste actuel d'un employé, pour la fiche carrière (XPAI26).
+
+    Sélecteur cross-app : la paie lit CE sélecteur (jamais ``rh.models``
+    direct) pour construire la fiche historique de carrière/salaire (registre
+    d'inspection du travail). Renvoie un dict ``{'matricule', 'nom', 'prenom',
+    'poste', 'date_embauche', 'type_contrat', 'date_sortie'}`` ou ``None`` si
+    le dossier est introuvable/hors société.
+    """
+    if company is None or employe_id is None:
+        return None
+    try:
+        dossier = DossierEmploye.objects.select_related(
+            'poste_ref').get(company=company, pk=employe_id)
+    except DossierEmploye.DoesNotExist:
+        return None
+    poste = (dossier.poste_ref.intitule if dossier.poste_ref_id
+             else dossier.poste)
+    return {
+        'matricule': dossier.matricule,
+        'nom': dossier.nom,
+        'prenom': dossier.prenom,
+        'poste': poste or '',
+        'date_embauche': dossier.date_embauche,
+        'type_contrat': dossier.get_type_contrat_display(),
+        'date_sortie': dossier.date_sortie,
+    }
+
+
 def labour_hours_par_installation_pour_employe(
         company, employe_id, date_debut, date_fin):
     """Heures ``FeuilleTemps`` d'un employé sur une période, par installation.

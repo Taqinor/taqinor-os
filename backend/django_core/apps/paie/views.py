@@ -100,6 +100,7 @@ from .services import (
     generer_echeances_periode,
     generer_ordre_virement,
     generer_run_gratification,
+    historique_carriere,
     importer_elements_rh,
     journal_de_paie,
     journal_de_paie_ventile,
@@ -114,6 +115,7 @@ from .services import (
     rapprocher_affebds,
     recalculer_cumul_annuel,
     reemettre_ligne_virement,
+    registre_conges,
     rejeter_ligne_virement,
     simuler_bulletin,
     valider_bulletin,
@@ -395,6 +397,65 @@ class ProfilPaieViewSet(_PaieBaseViewSet):
             profil, periode, salaire=salaire, prime=prime,
             personnes_a_charge=pac)
         return Response(resultat, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'], url_path='registre-conges')
+    def registre_conges_action(self, request):
+        """Registre des congés annuel, par employé (XPAI26).
+
+        Paramètre de requête ``annee`` requis. ``?export=pdf``/``?export=csv``
+        renvoient le fichier au lieu du JSON. Lecture seule.
+        """
+        try:
+            annee = int(request.query_params.get('annee'))
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': 'Paramètre "annee" requis (et valide).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        registre = registre_conges(request.user.company, annee)
+        export = request.query_params.get('export')
+        if export == 'pdf':
+            try:
+                pdf = builders.render_registre_conges_pdf(registre)
+            except RuntimeError as exc:
+                return Response(
+                    {'detail': str(exc)},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return _pdf_response(pdf, f'registre_conges_{annee}.pdf')
+        if export == 'csv':
+            buffer = io.StringIO()
+            writer = csv.writer(buffer, delimiter=';')
+            writer.writerow(['Matricule', 'Nom', 'Droits (j)', 'Pris (j)',
+                             'Solde (j)'])
+            for ligne in registre['lignes']:
+                writer.writerow([
+                    ligne['matricule'], ligne['nom'], ligne['droits'],
+                    ligne['pris'], ligne['solde']])
+            resp = HttpResponse(
+                buffer.getvalue(), content_type='text/csv; charset=utf-8')
+            resp['Content-Disposition'] = (
+                f'attachment; filename="registre_conges_{annee}.csv"')
+            return resp
+        return Response(registre, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='historique-carriere')
+    def historique_carriere_action(self, request, pk=None):
+        """Fiche historique de carrière/salaire d'un profil (XPAI26).
+
+        ``?export=pdf`` renvoie le PDF au lieu du JSON. Lecture seule,
+        AUCUNE écriture.
+        """
+        profil = self.get_object()
+        historique = historique_carriere(profil)
+        if request.query_params.get('export') == 'pdf':
+            try:
+                pdf = builders.render_historique_carriere_pdf(historique)
+            except RuntimeError as exc:
+                return Response(
+                    {'detail': str(exc)},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return _pdf_response(
+                pdf, f'historique_carriere_{profil.id}.pdf')
+        return Response(historique, status=status.HTTP_200_OK)
 
 
 class RubriqueEmployeViewSet(_PaieBaseViewSet):

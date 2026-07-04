@@ -5160,3 +5160,90 @@ def commit_reprise_cumuls(file_bytes, filename, company):
                 completes += 1
 
     return {'crees': crees, 'completes': completes, 'ignores': ignores}
+
+
+# ── XPAI26 — Registres d'inspection du travail ──────────────────────────────
+
+def registre_conges(company, annee):
+    """Registre des congés annuel, par employé (XPAI26).
+
+    Lecture seule : pour chaque ``ProfilPaie`` actif de la société, lit le
+    solde RH de l'année (``rh.SoldeConge``, via ``get_model`` — jamais
+    ``rh.models`` direct) : droits (report + acquis), pris, solde disponible.
+    Format conforme inspection du travail. Renvoie ``{'annee', 'lignes': [...]
+    ({'matricule', 'nom', 'droits', 'pris', 'solde'})}``.
+    """
+    from django.apps import apps as django_apps
+
+    from .models import ProfilPaie
+
+    SoldeConge = django_apps.get_model('rh', 'SoldeConge')
+    profils = (
+        ProfilPaie.objects
+        .filter(company=company, actif=True)
+        .select_related('employe')
+    )
+    soldes = {
+        s.employe_id: s for s in
+        SoldeConge.objects.filter(company=company, annee=annee)
+    }
+
+    lignes = []
+    for profil in profils:
+        employe = profil.employe
+        if employe is None:
+            continue
+        solde = soldes.get(employe.id)
+        droits = Decimal('0')
+        pris = Decimal('0')
+        if solde is not None:
+            droits = Decimal(solde.report or 0) + Decimal(solde.acquis or 0)
+            pris = Decimal(solde.pris or 0)
+        lignes.append({
+            'matricule': employe.matricule,
+            'nom': f'{employe.nom} {employe.prenom}'.strip(),
+            'droits': _q(droits),
+            'pris': _q(pris),
+            'solde': _q(droits - pris),
+        })
+    return {'annee': annee, 'lignes': lignes}
+
+
+def historique_carriere(profil):
+    """Fiche historique de carrière/salaire d'un profil (XPAI26).
+
+    Lecture seule, AUCUNE écriture : identité + poste actuel (lu via
+    ``rh.selectors.fiche_identite_employe`` — jamais ``rh.models`` direct) et
+    la progression salariale ANNUELLE (``CumulAnnuel.brut`` par année,
+    rémunérations réellement DATÉES — jamais une saisie manuelle). Format
+    conforme inspection du travail. Renvoie ``{'matricule', 'nom', 'prenom',
+    'poste', 'type_contrat', 'date_embauche', 'annees': [...]
+    ({'annee', 'brut'})}``.
+    """
+    from apps.rh import selectors as rh_selectors  # cross-app, lecture seule
+
+    from .models import CumulAnnuel
+
+    identite = rh_selectors.fiche_identite_employe(
+        profil.company, profil.employe_id) or {
+            'matricule': '', 'nom': '', 'prenom': '', 'poste': '',
+            'type_contrat': '', 'date_embauche': None,
+        }
+    cumuls = (
+        CumulAnnuel.objects
+        .filter(company=profil.company, profil=profil)
+        .order_by('annee')
+    )
+    annees = [
+        {'annee': cumul.annee, 'brut': _q(cumul.brut)}
+        for cumul in cumuls
+    ]
+    return {
+        'matricule': identite['matricule'],
+        'nom': identite['nom'],
+        'prenom': identite['prenom'],
+        'poste': identite['poste'],
+        'type_contrat': identite['type_contrat'],
+        'date_embauche': identite['date_embauche'],
+        'annees': annees,
+    }
