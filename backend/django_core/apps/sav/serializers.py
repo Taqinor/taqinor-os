@@ -10,6 +10,7 @@ from .models import (
     TicketSatisfaction, CauseDefaillance, RemedeDefaillance,
     EquipementDowntime, ReleveCompteurEquipement, ReponseType,
     CompatibilitePiece, PieceRetiree, PretEquipement, CategorieTicket,
+    EquipeMaintenance,
 )
 
 # Fenêtre « garantie expirant bientôt » (jours).
@@ -272,6 +273,9 @@ class TicketSerializer(serializers.ModelSerializer):
     # ZSAV2 — catégorie de ticket configurable (libellé lecture).
     categorie_nom = serializers.CharField(
         source='categorie.libelle', read_only=True, default=None)
+    # ZMFG1 — équipe de maintenance assignée (libellé lecture).
+    equipe_nom = serializers.CharField(
+        source='equipe.nom', read_only=True, default=None)
     # XCTR2 — couverture de l'équipement lié par le contrat de maintenance
     # ACTIF du client (registre XCTR2). None si aucun contrat/équipement.
     equipement_couvert = serializers.SerializerMethodField()
@@ -493,6 +497,44 @@ class CategorieTicketSerializer(serializers.ModelSerializer):
         model = CategorieTicket
         fields = ['id', 'libelle', 'ordre', 'actif']
         read_only_fields = ['id']
+
+
+# ── ZMFG1 — Équipes de maintenance ────────────────────────────────────────────
+
+class EquipeMaintenanceSerializer(serializers.ModelSerializer):
+    responsable_nom = serializers.CharField(
+        source='responsable.username', read_only=True, default=None)
+    membres_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EquipeMaintenance
+        fields = [
+            'id', 'nom', 'membres', 'membres_count', 'responsable',
+            'responsable_nom', 'actif', 'date_creation',
+        ]
+        read_only_fields = ['id', 'date_creation']
+
+    def get_membres_count(self, obj):
+        return obj.membres.count()
+
+    def _same_company(self, obj):
+        req = self.context.get('request')
+        return not (obj and req and req.user.company_id
+                    and obj.company_id != req.user.company_id)
+
+    def validate_responsable(self, value):
+        if value and not self._same_company(value):
+            raise serializers.ValidationError('Utilisateur inconnu.')
+        return value
+
+    def validate_membres(self, value):
+        req = self.context.get('request')
+        company_id = req.user.company_id if req else None
+        for membre in value:
+            if company_id and membre.company_id != company_id:
+                raise serializers.ValidationError(
+                    "Un membre doit appartenir à la même société.")
+        return value
 
 
 # ── XSAV16 — Journal d'immobilisation (downtime) ──────────────────────────────

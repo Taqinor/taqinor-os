@@ -23,7 +23,7 @@ from .models import (
     WarrantyClaim, KbArticle, AlarmeOnduleur,
     CauseDefaillance, RemedeDefaillance, EquipementDowntime,
     ReleveCompteurEquipement, ReponseType, CompatibilitePiece, PieceRetiree,
-    CategorieTicket,
+    CategorieTicket, EquipeMaintenance,
 )
 from .services import add_months
 from .pdf import rapport_intervention_pdf
@@ -42,6 +42,7 @@ from .serializers import (
     ReponseTypeSerializer,
     CompatibilitePieceSerializer,
     CategorieTicketSerializer,
+    EquipeMaintenanceSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -432,6 +433,7 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         installation = params.get('installation')
         equipement = params.get('equipement')
         categorie = params.get('categorie')
+        equipe = params.get('equipe')
         if statut:
             qs = qs.filter(statut=statut)
         if type_:
@@ -448,6 +450,8 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             qs = qs.filter(equipement_id=equipement)
         if categorie:
             qs = qs.filter(categorie_id=categorie)
+        if equipe:
+            qs = qs.filter(equipe_id=equipe)
         # File de service par défaut = tickets OUVERTS non annulés. ?ouvert=tous
         # pour tout voir ; un filtre ?statut explicite l'emporte.
         if self.action == 'list' and not statut:
@@ -470,7 +474,9 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         elif self.action in WRITE_ACTIONS + [
                 'noter', 'annuler', 'reactiver', 'creer_devis',
                 'attente_client', 'reprendre', 'fusionner',
-                'facturer', 'planifier_intervention']:
+                'facturer', 'planifier_intervention',
+                # YDOCF1 — actions guardées de la machine d'états.
+                'planifier', 'demarrer', 'resoudre', 'cloturer']:
             return [HasPermissionOrLegacy('sav_gerer')()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
@@ -478,7 +484,8 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def _check_tenant(self, serializer):
         company = self.request.user.company
-        for field in ('client', 'installation', 'equipement', 'cause', 'remede'):
+        for field in ('client', 'installation', 'equipement', 'cause',
+                      'remede', 'equipe'):
             obj = serializer.validated_data.get(field)
             if obj is not None and obj.company_id != company.id:
                 raise ValidationError({field: 'Référence inconnue.'})
@@ -1840,6 +1847,32 @@ class CategorieTicketViewSet(TenantMixin, viewsets.ModelViewSet):
     Paramètres). Même patron que CauseDefaillance/RemedeDefaillance."""
     queryset = CategorieTicket.objects.all()
     serializer_class = CategorieTicketSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.action == 'list' and self.request.query_params.get(
+                'actif') == '0':
+            qs = qs.filter(actif=False)
+        elif self.action == 'list':
+            qs = qs.filter(actif=True)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+
+# ── ZMFG1 — Équipes de maintenance ────────────────────────────────────────────
+
+class EquipeMaintenanceViewSet(TenantMixin, viewsets.ModelViewSet):
+    """ZMFG1 — CRUD équipe de maintenance, company-scopé. Lecture tout rôle,
+    écriture responsable/admin (édité dans Paramètres SAV)."""
+    queryset = EquipeMaintenance.objects.prefetch_related('membres').all()
+    serializer_class = EquipeMaintenanceSerializer
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:

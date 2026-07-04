@@ -407,6 +407,39 @@ class ReleveCompteurEquipement(models.Model):
         return f'{self.equipement_id} — {self.valeur} {self.type}'
 
 
+# ── ZMFG1 — Équipes de maintenance ────────────────────────────────────────────
+
+class EquipeMaintenance(models.Model):
+    """ZMFG1 — Équipe de maintenance (Configuration > Maintenance Teams,
+    parité Odoo). Odoo pilote les demandes par ÉQUIPE, pas seulement par
+    technicien ; ce référentiel permet d'affecter/filtrer les tickets par
+    équipe, en plus (jamais à la place) du `technicien_responsable` existant.
+
+    Membres validés MÊME SOCIÉTÉ à l'écriture (côté serializer) — un membre
+    d'une autre société est refusé."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='equipes_maintenance')
+    nom = models.CharField(max_length=120)
+    membres = models.ManyToManyField(
+        settings.AUTH_USER_MODEL, blank=True,
+        related_name='equipes_maintenance')
+    responsable = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='equipes_maintenance_dirigees')
+    actif = models.BooleanField(default=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Équipe de maintenance'
+        verbose_name_plural = 'Équipes de maintenance'
+        ordering = ['nom']
+        unique_together = [('company', 'nom')]
+
+    def __str__(self):
+        return self.nom
+
+
 # ── Modèle Ticket ─────────────────────────────────────────────────────────────
 
 class Ticket(models.Model):
@@ -509,6 +542,15 @@ class Ticket(models.Model):
     # l'historique des tickets déjà catégorisés.
     categorie = models.ForeignKey(
         'sav.CategorieTicket', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='tickets')
+
+    # ── ZMFG1 — Équipe de maintenance assignée (optionnelle) ────────────────
+    # N'affecte JAMAIS `technicien_responsable` (lecture only, pas de
+    # couplage dur) : l'affectation auto XSAV9 peut tirer ses candidats des
+    # membres de l'équipe quand une équipe est posée. SET_NULL : la
+    # suppression d'une équipe ne casse pas l'historique des tickets.
+    equipe = models.ForeignKey(
+        'sav.EquipeMaintenance', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='tickets')
 
     # ── Annulation : un DRAPEAU avec motif, pas une étape (comme « Perdu »). ──
