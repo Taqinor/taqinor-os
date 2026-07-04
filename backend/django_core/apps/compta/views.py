@@ -1350,6 +1350,53 @@ class RapprochementBancaireViewSet(_ComptaBaseViewSet):
         rapprochement.refresh_from_db()
         return Response(self.get_serializer(rapprochement).data)
 
+    @action(detail=True, methods=['post'], url_path='ocr-import',
+            parser_classes=[MultiPartParser, FormParser])
+    def ocr_import(self, request, pk=None):
+        """XACC30 — OCR d'un relevé (PDF/scan) → lignes proposées (gated).
+
+        Corps multipart : ``releve`` (fichier). Réponse : les lignes
+        extraites + le contrôle de solde (jamais d'intégration silencieuse).
+        Avec ``accepter=1`` dans le corps, injecte les lignes ``lignes``
+        fournies (JSON, normalement celles proposées par un appel précédent)
+        dans le rapprochement FG123 via ``ligne-releve``. Sans clé OCR
+        configurée : 503 explicite, rien d'autre ne change.
+        """
+        rapprochement = self.get_object()  # scopé société par TenantMixin.
+        accepter = str(request.data.get('accepter', '')).lower() in (
+            '1', 'true', 'yes')
+        if accepter:
+            import json
+            lignes_brutes = request.data.get('lignes') or '[]'
+            if isinstance(lignes_brutes, str):
+                try:
+                    lignes_brutes = json.loads(lignes_brutes)
+                except ValueError:
+                    lignes_brutes = []
+            try:
+                creees = services.accepter_lignes_releve_ocr(
+                    rapprochement, lignes_brutes)
+            except DjangoValidationError as exc:
+                return Response(
+                    {'detail': exc.messages[0] if exc.messages else str(exc)},
+                    status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'lignes_creees': LigneReleveSerializer(creees, many=True).data},
+                status=status.HTTP_201_CREATED)
+
+        releve = request.FILES.get('releve')
+        if releve is None:
+            return Response(
+                {'releve': "Le fichier 'releve' est obligatoire."},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            champs_bruts = services.extraire_releve_bancaire(
+                releve.read(), mime=getattr(releve, 'content_type', '') or '')
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        return Response(services.controler_solde_releve_ocr(champs_bruts))
+
 
 # ── FG124 — Caisse / petty cash (journal d'espèces) ────────────────────────
 

@@ -1966,6 +1966,98 @@ def ajouter_ligne_releve(rapprochement, *, date_operation, libelle, montant,
     )
 
 
+# ── XACC30 — OCR de relevé bancaire (KEY-GATED) ────────────────────────────
+#
+# Réutilise le SERVICE OCR existant (``backend/fastapi_ia``, Zhipu AI, no-op
+# tant que sans clé), à l'image de ``apps.flotte.services.extraire_recu_
+# carburant`` (XFLT23) et de l'OCR notes de frais (XACC27). AUCUNE
+# intégration silencieuse : les lignes extraites sont PROPOSÉES (jamais
+# injectées automatiquement) et un contrôle de solde (solde initial + Σ
+# mouvements = solde final déclaré) est calculé AVANT toute acceptation.
+
+def ocr_releve_bancaire_active():
+    """XACC30 — True si l'OCR de relevé bancaire est activé (clé configurée).
+
+    KEY-GATED : sans ``settings.COMPTA_OCR_RELEVE_ENABLED`` (posé par le
+    founder aux côtés de ``ZHIPU_API_KEY``), reste désactivé. Ne lève jamais.
+    """
+    from django.conf import settings
+    return bool(getattr(settings, 'COMPTA_OCR_RELEVE_ENABLED', False))
+
+
+def extraire_releve_bancaire(file_bytes, *, mime=''):
+    """XACC30 — Extrait les lignes d'un relevé bancaire (PDF/scan) par OCR.
+
+    NO-OP tant que ``ocr_releve_bancaire_active()`` est faux : lève
+    ``RuntimeError`` (la vue traduit en 503, message FR clair). Une fois
+    activé, délègue à un module fournisseur isolé (``releve_ocr_provider``,
+    non câblé dans ce dépôt) qui appelle le service OCR ``backend/fastapi_ia``
+    et renvoie ``{'solde_initial', 'solde_final', 'lignes': [{'date',
+    'libelle', 'montant'}, ...]}``. Toute erreur provider est avalée (dict
+    vide) — jamais de crash de l'écran d'import.
+    """
+    if not ocr_releve_bancaire_active():
+        raise RuntimeError('OCR indisponible (configuration manquante).')
+    if not file_bytes:
+        return {}
+    try:  # pragma: no cover - dépend d'un provider externe non câblé ici.
+        from . import releve_ocr_provider as provider  # noqa: F401
+    except ImportError:  # pragma: no cover
+        return {}
+    try:  # pragma: no cover
+        return provider.extraire_releve(file_bytes, mime=mime) or {}
+    except Exception:  # pragma: no cover - jamais casser l'écran d'import.
+        return {}
+
+
+def controler_solde_releve_ocr(champs_bruts):
+    """XACC30 — Contrôle solde initial + Σ mouvements == solde final déclaré.
+
+    ``champs_bruts`` est le dict renvoyé par ``extraire_releve_bancaire``
+    (ou un mock en test). Renvoie
+    ``{'lignes', 'solde_initial', 'solde_final_declare', 'solde_calcule',
+    'ecart', 'concordant'}`` — ``concordant`` est vrai si l'écart est nul (à 1
+    centime près). Ne lève jamais : des champs manquants donnent des zéros
+    et ``concordant=False`` plutôt qu'un crash."""
+    lignes = champs_bruts.get('lignes') or []
+    solde_initial = Decimal(str(champs_bruts.get('solde_initial') or 0))
+    solde_final_declare = Decimal(str(champs_bruts.get('solde_final') or 0))
+    somme_mouvements = sum(
+        (Decimal(str(ligne.get('montant') or 0)) for ligne in lignes),
+        Decimal('0'))
+    solde_calcule = solde_initial + somme_mouvements
+    ecart = (solde_final_declare - solde_calcule).quantize(Decimal('0.01'))
+    return {
+        'lignes': lignes,
+        'solde_initial': solde_initial,
+        'solde_final_declare': solde_final_declare,
+        'solde_calcule': solde_calcule.quantize(Decimal('0.01')),
+        'ecart': ecart,
+        'concordant': abs(ecart) < Decimal('0.01'),
+    }
+
+
+@transaction.atomic
+def accepter_lignes_releve_ocr(rapprochement, lignes):
+    """XACC30 — Injecte des lignes de relevé PROPOSÉES (post-acceptation).
+
+    Appelée UNIQUEMENT après acceptation explicite côté utilisateur (jamais
+    automatique) : chaque ``ligne`` de ``{'date'/'date_operation', 'libelle',
+    'montant', 'reference'?}`` devient une ``LigneReleve`` via
+    ``ajouter_ligne_releve`` (même garde-fous : rapprochement non clôturé,
+    date obligatoire). Renvoie la liste des ``LigneReleve`` créées."""
+    creees = []
+    for ligne in lignes or []:
+        creees.append(ajouter_ligne_releve(
+            rapprochement,
+            date_operation=ligne.get('date_operation') or ligne.get('date'),
+            libelle=ligne.get('libelle', '') or '',
+            montant=ligne.get('montant'),
+            reference=ligne.get('reference', '') or '',
+        ))
+    return creees
+
+
 @transaction.atomic
 def pointer_ligne_releve(ligne_releve, ligne_gl_ids):
     """Apparie une ligne de relevé à une ou plusieurs lignes GL (FG123).
