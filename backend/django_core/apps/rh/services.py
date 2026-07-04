@@ -1257,3 +1257,91 @@ def rattacher_depuis_vivier(candidature_vivier, ouverture):
             f'Rattaché depuis le vivier (candidature originale '
             f'#{candidature_vivier.id}).'))
     return nouvelle
+
+
+# ── XRH23 — parsing de CV par OCR (key-gated) ───────────────────────────────
+
+class CvParsingUnavailable(Exception):
+    """Levée quand aucun fournisseur OCR n'est configuré (503 douce)."""
+
+
+_CV_MIME_TYPES = {
+    'pdf': 'application/pdf',
+    'png': 'image/png',
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+}
+
+
+def parser_cv(candidature):
+    """XRH23 — OCR le ``cv_fichier`` de la candidature et PRÉ-REMPLIT
+    uniquement les champs VIDES (``nom``/``email``/``telephone``), sans
+    jamais écraser une valeur déjà saisie. Suggère aussi des ``tags_vivier``
+    (compétences détectées) — toujours en complément, jamais en remplacement
+    de tags déjà présents.
+
+    Lève :class:`CvParsingUnavailable` si aucun ``cv_fichier`` n'est attaché
+    ou si aucun fournisseur OCR n'est configuré (``ZHIPU_API_KEY`` absent) —
+    l'appelant (vue) traduit en 503 douce, sans exception non gérée.
+
+    Renvoie un dict ``{champs_remplis: [...], tags_suggeres: [...],
+    donnees_brutes: {...}}``. Entièrement additif, transaction atomique sur
+    la sauvegarde des champs remplis.
+    """
+    from core.ai.services import extract_document
+
+    if not candidature.cv_fichier:
+        raise CvParsingUnavailable('Aucun CV attaché à cette candidature.')
+
+    nom_fichier = candidature.cv_fichier.name or ''
+    ext = nom_fichier.rsplit('.', 1)[-1].lower() if '.' in nom_fichier else ''
+    mime_type = _CV_MIME_TYPES.get(ext, 'application/octet-stream')
+
+    try:
+        candidature.cv_fichier.open('rb')
+        content = candidature.cv_fichier.read()
+    finally:
+        candidature.cv_fichier.close()
+
+    result = extract_document(
+        content=content, mime_type=mime_type, schema='cv')
+    if not result.configured:
+        raise CvParsingUnavailable(
+            "Aucun fournisseur OCR n'est configuré (clé absente) — "
+            'saisie manuelle requise.')
+
+    data = result.data or {}
+    champs_remplis = []
+    update_fields = []
+
+    with transaction.atomic():
+        if not candidature.nom and data.get('nom'):
+            prenom = str(data.get('prenom') or '').strip()
+            nom = str(data.get('nom') or '').strip()
+            candidature.nom = f'{prenom} {nom}'.strip() if prenom else nom
+            champs_remplis.append('nom')
+            update_fields.append('nom')
+        if not candidature.email and data.get('email'):
+            candidature.email = str(data['email']).strip()
+            champs_remplis.append('email')
+            update_fields.append('email')
+        if not candidature.telephone and data.get('telephone'):
+            candidature.telephone = str(data['telephone']).strip()
+            champs_remplis.append('telephone')
+            update_fields.append('telephone')
+
+        competences = data.get('competences') or []
+        if isinstance(competences, str):
+            competences = [c.strip() for c in competences.split(',')
+                           if c.strip()]
+        tags_suggeres = [str(c).strip() for c in competences if str(c).strip()]
+
+        if update_fields:
+            update_fields.append('date_modification')
+            candidature.save(update_fields=update_fields)
+
+    return {
+        'champs_remplis': champs_remplis,
+        'tags_suggeres': tags_suggeres,
+        'donnees_brutes': data,
+    }

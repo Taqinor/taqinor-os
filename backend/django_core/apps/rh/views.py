@@ -3044,6 +3044,26 @@ class CandidatureViewSet(_RhBaseViewSet):
             self.get_serializer(nouvelle).data,
             status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=['post'], url_path='parser-cv')
+    def parser_cv(self, request, pk=None):
+        """XRH23 — OCR le CV attaché et pré-remplit les champs VIDES
+        (nom/email/téléphone) + suggère des tags vivier. Sans
+        ``ZHIPU_API_KEY`` configurée, répond 503 douce (message explicite,
+        aucune exception) — les champs déjà saisis ne sont jamais écrasés."""
+        candidature = self.get_object()
+        try:
+            resultat = services.parser_cv(candidature)
+        except services.CvParsingUnavailable as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        candidature.refresh_from_db()
+        return Response({
+            'candidature': self.get_serializer(candidature).data,
+            'champs_remplis': resultat['champs_remplis'],
+            'tags_suggeres': resultat['tags_suggeres'],
+        })
+
 
 class EntretienRecrutementViewSet(_RhBaseViewSet):
     """Entretiens de recrutement (XRH17) — planification + évaluation.
