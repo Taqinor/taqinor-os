@@ -6985,3 +6985,140 @@ def verifier_engagement_budgetaire(company, *, montant_engage, periode,
         'autorise': True, 'warning': message,
         'budget_restant': nouveau_restant,
     }
+
+
+# ── XACC22 — Révisions & scénarios budgétaires ─────────────────────────────
+
+@transaction.atomic
+def reviser_budget(budget, *, nouveau_libelle=None, user=None):
+    """Révise un budget : fige la version courante, crée la V+1 éditable
+    (XACC22).
+
+    La version N est marquée ``figee=True`` (lecture seule pour toujours) et
+    reste consultable pour la comparaison côte-à-côte. La nouvelle version
+    (N+1) est une COPIE éditable de toutes les ``BudgetLigne`` de N, avec
+    ``budget_parent`` pointant vers N. Refuse de réviser une version déjà
+    figée SANS créer de nouvelle version (une version figée ne se révise
+    qu'une fois — la révision suivante part de la dernière version éditable).
+    Renvoie la nouvelle version.
+    """
+    if budget.figee:
+        raise ValidationError(
+            "Ce budget est déjà figé : révisez plutôt sa dernière révision.")
+    budget.figee = True
+    Budget.objects.filter(pk=budget.pk).update(figee=True)
+
+    nouvelle = Budget.objects.create(
+        company=budget.company, annee=budget.annee,
+        libelle=nouveau_libelle or budget.libelle,
+        statut=Budget.Statut.BROUILLON, controle=budget.controle,
+        version=budget.version + 1, figee=False,
+        budget_parent=budget, scenario=budget.scenario, created_by=user,
+    )
+    for bl in budget.lignes.all():
+        BudgetLigne.objects.create(
+            company=nouvelle.company, budget=nouvelle, compte=bl.compte,
+            centre_cout=bl.centre_cout, libelle=bl.libelle,
+            m01=bl.m01, m02=bl.m02, m03=bl.m03, m04=bl.m04, m05=bl.m05,
+            m06=bl.m06, m07=bl.m07, m08=bl.m08, m09=bl.m09, m10=bl.m10,
+            m11=bl.m11, m12=bl.m12,
+        )
+    return nouvelle
+
+
+def creer_scenario_what_if(budget_engage, *, scenario, user=None):
+    """Crée un scénario what-if (optimiste/pessimiste) à partir du budget
+    ENGAGÉ (XACC22) — une COPIE indépendante, jamais consommée par le
+    contrôle d'engagement (XACC21) ni le suivi budget-vs-réel (FG149) qui
+    restent sur ``Scenario.ENGAGE`` uniquement. Renvoie le scénario créé.
+    """
+    if scenario == Budget.Scenario.ENGAGE:
+        raise ValidationError(
+            "Un scénario what-if doit être optimiste ou pessimiste "
+            "(le scénario 'engage' est LE budget officiel).")
+    nouveau = Budget.objects.create(
+        company=budget_engage.company, annee=budget_engage.annee,
+        libelle=budget_engage.libelle, statut=Budget.Statut.BROUILLON,
+        controle=budget_engage.controle, version=1, figee=False,
+        scenario=scenario, created_by=user,
+    )
+    for bl in budget_engage.lignes.all():
+        BudgetLigne.objects.create(
+            company=nouveau.company, budget=nouveau, compte=bl.compte,
+            centre_cout=bl.centre_cout, libelle=bl.libelle,
+            m01=bl.m01, m02=bl.m02, m03=bl.m03, m04=bl.m04, m05=bl.m05,
+            m06=bl.m06, m07=bl.m07, m08=bl.m08, m09=bl.m09, m10=bl.m10,
+            m11=bl.m11, m12=bl.m12,
+        )
+    return nouveau
+
+
+# Courbes de répartition usuelles (XACC22) : poids relatif par mois (1..12),
+# normalisés à 1.0 par ``repartir_montant_annuel``. « saisonniere » modélise
+# une activité solaire marocaine (pic printemps/été).
+_COURBE_EGALE = [Decimal('1')] * 12
+_COURBE_SAISONNIERE = [
+    Decimal('0.05'), Decimal('0.05'), Decimal('0.08'), Decimal('0.10'),
+    Decimal('0.12'), Decimal('0.12'), Decimal('0.11'), Decimal('0.10'),
+    Decimal('0.09'), Decimal('0.07'), Decimal('0.06'), Decimal('0.05'),
+]
+
+
+def repartir_montant_annuel(montant_annuel, *, courbe='egale', poids=None):
+    """Répartit ``montant_annuel`` sur 12 mois selon une courbe (XACC22).
+
+    ``courbe`` : ``egale`` (1/12 chacun), ``saisonniere`` (barème solaire
+    marocain figé ci-dessus) ou ``pourcentage`` (``poids`` = liste de 12 %
+    fournie explicitement, DOIT sommer à 100). La répartition somme
+    EXACTEMENT ``montant_annuel`` (le douzième/dernier mois absorbe l'écart
+    d'arrondi). Renvoie une liste de 12 ``Decimal``.
+    """
+    montant_annuel = Decimal(montant_annuel or 0)
+    if courbe == 'egale':
+        poids_mois = _COURBE_EGALE
+    elif courbe == 'saisonniere':
+        poids_mois = _COURBE_SAISONNIERE
+    elif courbe == 'pourcentage':
+        if not poids or len(poids) != 12:
+            raise ValidationError(
+                "La courbe 'pourcentage' requiert exactement 12 poids.")
+        total_poids = sum((Decimal(p) for p in poids), Decimal('0'))
+        if total_poids != Decimal('100'):
+            raise ValidationError(
+                f"Les poids doivent sommer à 100 % (reçu {total_poids} %).")
+        poids_mois = [Decimal(p) / Decimal('100') for p in poids]
+    else:
+        raise ValidationError(f"Courbe de répartition inconnue : {courbe}.")
+
+    total_poids_brut = sum(poids_mois, Decimal('0'))
+    montants = []
+    cumul = Decimal('0.00')
+    for idx, poids_m in enumerate(poids_mois):
+        if idx == 11:
+            montant = (montant_annuel - cumul).quantize(
+                Decimal('0.01'), rounding=ROUND_HALF_UP)
+        else:
+            montant = (
+                montant_annuel * poids_m / total_poids_brut
+            ).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        cumul += montant
+        montants.append(montant)
+    return montants
+
+
+def generer_ligne_budget_repartie(budget, *, compte, montant_annuel,
+                                  centre_cout=None, libelle='',
+                                  courbe='egale', poids=None):
+    """Crée une ``BudgetLigne`` avec ses 12 montants générés par une courbe de
+    répartition (XACC22), au lieu d'une saisie manuelle par période. Renvoie
+    la ligne créée.
+    """
+    montants = repartir_montant_annuel(montant_annuel, courbe=courbe, poids=poids)
+    ligne = BudgetLigne.objects.create(
+        company=budget.company, budget=budget, compte=compte,
+        centre_cout=centre_cout, libelle=libelle or '',
+        m01=montants[0], m02=montants[1], m03=montants[2], m04=montants[3],
+        m05=montants[4], m06=montants[5], m07=montants[6], m08=montants[7],
+        m09=montants[8], m10=montants[9], m11=montants[10], m12=montants[11],
+    )
+    return ligne

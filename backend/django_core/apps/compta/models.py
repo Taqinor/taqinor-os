@@ -3783,6 +3783,15 @@ class Budget(models.Model):
         WARNING = 'warning', 'Avertissement (non bloquant)'
         BLOQUANT = 'bloquant', 'Bloquant (override responsable)'
 
+    # XACC22 — scénario budgétaire. ``engage`` (défaut, comportement actuel
+    # INCHANGÉ) est LE budget consommé par le contrôle d'engagement (XACC21)
+    # et le suivi budget-vs-réel (FG149). ``optimiste``/``pessimiste`` sont des
+    # what-if PUREMENT informatifs, jamais utilisés pour le contrôle.
+    class Scenario(models.TextChoices):
+        ENGAGE = 'engage', 'Budget engagé (officiel)'
+        OPTIMISTE = 'optimiste', 'Scénario optimiste'
+        PESSIMISTE = 'pessimiste', 'Scénario pessimiste'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -3798,6 +3807,21 @@ class Budget(models.Model):
     controle = models.CharField(
         max_length=10, choices=Controle.choices, default=Controle.WARNING,
         verbose_name="Mode de contrôle à l'engagement")
+    # XACC22 — révisions conservées : version 1 = original, version N = la
+    # révision courante. Une version FIGÉE (``figee=True``) reste en LECTURE
+    # SEULE pour toujours (comparaison côte-à-côte). ``version=1`` par défaut
+    # = comportement actuel intact (mono-version).
+    version = models.PositiveIntegerField(default=1, verbose_name='Version')
+    figee = models.BooleanField(
+        default=False, verbose_name='Version figée (lecture seule)')
+    budget_parent = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='revisions',
+        verbose_name='Budget révisé (version précédente)')
+    scenario = models.CharField(
+        max_length=12, choices=Scenario.choices, default=Scenario.ENGAGE,
+        verbose_name='Scénario')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL, null=True, blank=True,
@@ -3809,16 +3833,28 @@ class Budget(models.Model):
     class Meta:
         verbose_name = 'Budget'
         verbose_name_plural = 'Budgets'
-        ordering = ['-annee', '-id']
+        ordering = ['-annee', '-version', '-id']
         constraints = [
             models.UniqueConstraint(
-                fields=['company', 'annee', 'libelle'],
-                name='uniq_budget_an_lib',
+                fields=['company', 'annee', 'libelle', 'version', 'scenario'],
+                name='uniq_budget_an_lib_version_scenario',
             ),
         ]
 
     def __str__(self):
-        return f'Budget {self.annee} — {self.libelle}'
+        return f'Budget {self.annee} — {self.libelle} (v{self.version}/{self.scenario})'
+
+    def save(self, *args, **kwargs):
+        # Une version figée est en lecture seule pour toujours : une fois
+        # persistée avec ``figee=True``, on refuse toute modification ultérieure
+        # (SAUF la création initiale). Comparaison côte-à-côte fiable.
+        if self.pk is not None and self.figee:
+            existant = Budget.objects.filter(pk=self.pk).first()
+            if existant is not None and existant.figee:
+                raise ValidationError(
+                    "Ce budget est une version figée : lecture seule, "
+                    "révisez-le plutôt (nouvelle version).")
+        super().save(*args, **kwargs)
 
 
 class BudgetLigne(models.Model):
