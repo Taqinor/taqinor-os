@@ -51,6 +51,17 @@ importe ``apps.audit``.
     * ``user`` — l'utilisateur qui partage (peut être ``None``) ;
     * ``ancien_statut`` — le statut du devis avant l'envoi.
 
+``devis_expired``
+    Émis quand un devis ``envoyé`` bascule automatiquement en ``expiré``
+    (QJ5, ``expire_stale_devis``) — YEVNT2. Jamais réémis pour un devis déjà
+    ``expiré`` (no-op). Abonné dans ce repo : ``notifications`` (notifie le
+    propriétaire du devis, ``EventType.DEVIS_EXPIRED``) ; ``crm`` continue
+    d'avancer le funnel séparément (avancement direct dans le même appel,
+    clés ``STAGES.py`` uniquement). Arguments du signal :
+
+    * ``devis`` — l'instance ``Devis`` désormais ``expire`` ;
+    * ``ancien_statut`` — toujours ``'envoye'``.
+
 ``document_pdf_generated``
     Émis quand un PDF de document de vente est généré (devis ou facture).
     Abonné par le satellite ``audit`` (journalise une entrée ``AuditLog.PDF``).
@@ -222,6 +233,11 @@ devis_sent = django.dispatch.Signal()
 # Arguments : devis, user, motif_refus.
 # Abonné optionnellement par crm pour marquer le lead perdu (→ COLD + perdu).
 devis_refused = django.dispatch.Signal()
+
+# Émis quand un devis envoyé bascule automatiquement en « expiré » (QJ5,
+# ``expire_stale_devis``) — YEVNT2. Arguments : devis, ancien_statut='envoye'.
+# Abonné dans ce repo : notifications (notifie le propriétaire).
+devis_expired = django.dispatch.Signal()
 
 # Émis à la génération d'un PDF de document de vente (devis/facture) — M4.
 # Arguments : instance (Devis|Facture), kind ('devis'|'facture').

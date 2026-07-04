@@ -2698,6 +2698,17 @@ def expire_stale_devis():
             logger.warning('QJ5: log chatter échec devis %s : %s',
                            devis.reference, exc)
 
+        # YEVNT2 — événement métier (notifications/audit s'abonnent), jamais
+        # réémis pour un devis déjà expiré (garde amont via le queryset ENVOYE
+        # + is_expired). Best-effort : ne casse jamais le sweep.
+        try:
+            from core.events import devis_expired
+            devis_expired.send(
+                sender=Devis, devis=devis, ancien_statut='envoye')
+        except Exception as exc:  # noqa: BLE001
+            logger.warning('YEVNT2: devis_expired échoué pour devis %s : %s',
+                           devis.reference, exc)
+
         expired += 1
 
         # Funnel hygiene: advance QUOTE_SENT → FOLLOW_UP via crm.services.

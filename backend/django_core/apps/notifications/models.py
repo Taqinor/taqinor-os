@@ -83,6 +83,9 @@ class EventType(models.TextChoices):
     GED_SIGNATURE_EXPIRATION_PROCHE = (
         'ged_signature_expiration_proche',
         'Demande de signature bientôt expirée')
+    # YEVNT2 — un devis envoyé a expiré automatiquement (QJ5, date de
+    # validité dépassée) sans action du propriétaire.
+    DEVIS_EXPIRED = 'devis_expired', 'Devis expiré'
 
 
 class Channel(models.TextChoices):
