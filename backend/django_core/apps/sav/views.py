@@ -23,7 +23,7 @@ from .models import (
     WarrantyClaim, KbArticle, AlarmeOnduleur,
     CauseDefaillance, RemedeDefaillance, EquipementDowntime,
     ReleveCompteurEquipement, ReponseType, CompatibilitePiece, PieceRetiree,
-    CategorieTicket, EquipeMaintenance,
+    CategorieTicket, EquipeMaintenance, CategorieEquipement,
 )
 from .services import add_months
 from .pdf import rapport_intervention_pdf
@@ -43,6 +43,7 @@ from .serializers import (
     CompatibilitePieceSerializer,
     CategorieTicketSerializer,
     EquipeMaintenanceSerializer,
+    CategorieEquipementSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -75,12 +76,15 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
         client = params.get('client')
         statut = params.get('statut')
         garantie = params.get('garantie')
+        categorie = params.get('categorie')
         if produit:
             qs = qs.filter(produit_id=produit)
         if marque:
             qs = qs.filter(produit__marque__icontains=marque)
         if installation:
             qs = qs.filter(installation_id=installation)
+        if categorie:
+            qs = qs.filter(categorie_id=categorie)
         if client:
             # XPOS9 — un équipement vendu au comptoir (sans chantier) est
             # rattaché via `client_vente` plutôt que `installation__client`.
@@ -129,12 +133,15 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
         installation = serializer.validated_data.get('installation')
         produit = serializer.validated_data.get('produit')
         ticket = serializer.validated_data.get('remplace_par_ticket')
+        categorie = serializer.validated_data.get('categorie')
         if installation is not None and installation.company_id != company.id:
             raise ValidationError({'installation': 'Chantier inconnu.'})
         if produit is not None and produit.company_id not in (company.id, None):
             raise ValidationError({'produit': 'Produit inconnu.'})
         if ticket is not None and ticket.company_id != company.id:
             raise ValidationError({'remplace_par_ticket': 'Ticket inconnu.'})
+        if categorie is not None and categorie.company_id != company.id:
+            raise ValidationError({'categorie': 'Catégorie inconnue.'})
 
     def perform_create(self, serializer):
         self._check_tenant(serializer)
@@ -1887,6 +1894,23 @@ class EquipeMaintenanceViewSet(TenantMixin, viewsets.ModelViewSet):
         elif self.action == 'list':
             qs = qs.filter(actif=True)
         return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+
+# ── ZMFG2 — Catégories d'équipement ───────────────────────────────────────────
+
+class CategorieEquipementViewSet(TenantMixin, viewsets.ModelViewSet):
+    """ZMFG2 — CRUD catégorie d'équipement, company-scopé. Lecture tout rôle,
+    écriture responsable/admin (édité dans Paramètres SAV)."""
+    queryset = CategorieEquipement.objects.all()
+    serializer_class = CategorieEquipementSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
 
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)

@@ -178,6 +178,31 @@ class MaintenanceChecklistItem(models.Model):
 
 # ── Modèle Équipement ──────────────────────────────────────────────────────────
 
+# ── ZMFG2 — Catégories d'équipement ──────────────────────────────────────────
+
+class CategorieEquipement(models.Model):
+    """ZMFG2 — Catégorie de parc d'équipement (Onduleurs, Pompes,
+    Batteries…), parité Odoo « Equipment Categories ». Taxonomie de PARC,
+    transverse aux produits — à ne pas confondre avec `stock.Produit`."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='categories_equipement')
+    nom = models.CharField(max_length=120)
+    responsable = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='categories_equipement_dirigees')
+    commentaire = models.TextField(blank=True, default='')
+
+    class Meta:
+        verbose_name = 'Catégorie d\'équipement'
+        verbose_name_plural = 'Catégories d\'équipement'
+        ordering = ['nom']
+        unique_together = [('company', 'nom')]
+
+    def __str__(self):
+        return self.nom
+
+
 class Equipement(models.Model):
     class Statut(models.TextChoices):
         EN_SERVICE = 'en_service', 'En service'
@@ -186,6 +211,13 @@ class Equipement(models.Model):
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='equipements',
+    )
+    # ── ZMFG2 — Catégorie de parc (optionnelle, taxonomie transverse aux
+    # produits). SET_NULL : la suppression d'une catégorie ne casse pas le
+    # parc déjà catégorisé.
+    categorie = models.ForeignKey(
+        'sav.CategorieEquipement', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='equipements',
     )
     # Le modèle catalogue dont c'est une unité. PROTECT : on ne supprime pas un

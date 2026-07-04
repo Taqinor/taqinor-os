@@ -10,7 +10,7 @@ from .models import (
     TicketSatisfaction, CauseDefaillance, RemedeDefaillance,
     EquipementDowntime, ReleveCompteurEquipement, ReponseType,
     CompatibilitePiece, PieceRetiree, PretEquipement, CategorieTicket,
-    EquipeMaintenance,
+    EquipeMaintenance, CategorieEquipement,
 )
 
 # Fenêtre « garantie expirant bientôt » (jours).
@@ -42,6 +42,9 @@ class EquipementSerializer(serializers.ModelSerializer):
     date_fin_garantie_legale = serializers.DateField(read_only=True)
     date_fin_garantie_effective = serializers.DateField(read_only=True)
     sous_garantie_legale_seule = serializers.BooleanField(read_only=True)
+    # ZMFG2 — catégorie de parc (libellé lecture).
+    categorie_nom = serializers.CharField(
+        source='categorie.nom', read_only=True, default=None)
 
     class Meta:
         model = Equipement
@@ -534,6 +537,36 @@ class EquipeMaintenanceSerializer(serializers.ModelSerializer):
             if company_id and membre.company_id != company_id:
                 raise serializers.ValidationError(
                     "Un membre doit appartenir à la même société.")
+        return value
+
+
+# ── ZMFG2 — Catégories d'équipement ───────────────────────────────────────────
+
+class CategorieEquipementSerializer(serializers.ModelSerializer):
+    responsable_nom = serializers.CharField(
+        source='responsable.username', read_only=True, default=None)
+    # Compteur d'équipements par catégorie (smart-button façon Odoo).
+    nb_equipements = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CategorieEquipement
+        fields = [
+            'id', 'nom', 'responsable', 'responsable_nom', 'commentaire',
+            'nb_equipements',
+        ]
+        read_only_fields = ['id']
+
+    def get_nb_equipements(self, obj):
+        return obj.equipements.count()
+
+    def _same_company(self, obj):
+        req = self.context.get('request')
+        return not (obj and req and req.user.company_id
+                    and obj.company_id != req.user.company_id)
+
+    def validate_responsable(self, value):
+        if value and not self._same_company(value):
+            raise serializers.ValidationError('Utilisateur inconnu.')
         return value
 
 
