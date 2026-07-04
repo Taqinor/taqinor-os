@@ -67,6 +67,27 @@ _INLINE_MIMES = {
 }
 
 
+def _permissions_effectives_csv(lignes, filename_suffix):
+    """XGED22 — Sérialise le rapport de permissions effectives en CSV
+    (utilisateur/rôle, niveau, source de justification) pour l'export
+    d'audit."""
+    import csv
+    import io
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(['type', 'principal', 'niveau', 'source'])
+    for ligne in lignes:
+        writer.writerow([
+            ligne['type'], ligne['label'],
+            ligne['niveau'] or '', ligne['source'],
+        ])
+    response = HttpResponse(buf.getvalue(), content_type='text/csv; charset=utf-8')
+    response['Content-Disposition'] = (
+        f'attachment; filename="permissions-{filename_suffix}.csv"')
+    return response
+
+
 class CabinetViewSet(TenantMixin, viewsets.ModelViewSet):
     """Cabinets (armoires racines) d'une société."""
     queryset = Cabinet.objects.all()
@@ -156,6 +177,21 @@ class FolderViewSet(TenantMixin, viewsets.ModelViewSet):
         folder.refresh_from_db()
         data = FolderSerializer(folder, context={'request': request}).data
         return Response(data)
+
+    @action(detail=True, methods=['get'], url_path='permissions-effectives')
+    def permissions_effectives(self, request, pk=None):
+        """XGED22 — Rapport de permissions effectives sur ce DOSSIER.
+
+        `GET dossiers/<id>/permissions-effectives/` — pour chaque
+        utilisateur de la société, le niveau résolu par `acl_effective` avec
+        sa justification (override / héritage / règle métadonnée / admin).
+        `?format=csv` exporte le même rapport en CSV. Gestion/admin
+        uniquement (403 sinon)."""
+        folder = self.get_object()
+        lignes = selectors.permissions_effectives(folder)
+        if request.query_params.get('format') == 'csv':
+            return _permissions_effectives_csv(lignes, f'dossier-{folder.pk}')
+        return Response({'lignes': lignes})
 
 
 class CoffreViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -1305,6 +1341,23 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         document = self.get_object()
         data = selectors.timeline_document(document)
         return Response(data)
+
+    @action(detail=True, methods=['get'], url_path='permissions-effectives')
+    def permissions_effectives(self, request, pk=None):
+        """XGED22 — Rapport de permissions effectives (« qui voit ce document
+        et pourquoi »).
+
+        `GET documents/<id>/permissions-effectives/` — pour chaque
+        utilisateur de la société, le niveau résolu par `acl_effective`
+        (GED19) avec sa JUSTIFICATION : override direct sur le document,
+        héritage d'un dossier ancêtre, règle par métadonnée (XGED21) ou
+        admin. `?format=csv` exporte le même rapport en CSV pour audit.
+        Gestion/admin uniquement (403 pour tout autre rôle)."""
+        document = self.get_object()
+        lignes = selectors.permissions_effectives(document)
+        if request.query_params.get('format') == 'csv':
+            return _permissions_effectives_csv(lignes, f'document-{document.pk}')
+        return Response({'lignes': lignes})
 
 
 class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):

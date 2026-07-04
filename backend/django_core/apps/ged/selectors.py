@@ -506,6 +506,86 @@ def acls_for_folder(folder):
     return AclGed.objects.filter(company=folder.company, folder=folder)
 
 
+# ── XGED22 — Rapport de permissions effectives ──────────────────────────────
+
+def permissions_effectives(document_or_folder):
+    """XGED22 — Niveau effectif de CHAQUE utilisateur/rôle de la société sur
+    une cible (document OU dossier), avec la JUSTIFICATION de la résolution.
+
+    Pour chaque `CustomUser` de la société (admin ET non-admin) renvoie un
+    dict ``{'type': 'utilisateur', 'id', 'label', 'niveau', 'source'}`` où
+    `source` est l'une de : ``admin`` (contournement inconditionnel GED19),
+    ``override_document``/``override_dossier`` (entrée ACL DIRECTE sur la
+    cible), ``heritage_dossier`` (entrée ACL héritée d'un ancêtre — le libellé
+    précise le dossier d'où elle vient), ``regle_metadonnee`` (XGED21),
+    ``aucune`` (non gouverné — comportement GED19 par défaut). Le rang le PLUS
+    PERMISSIF gagne quand plusieurs sources s'appliquent au même utilisateur
+    (même règle que `acl_effective`), mais on conserve ici la source qui a
+    PRODUIT ce rang pour l'audit. Ne modifie jamais rien (lecture seule).
+
+    Toujours bornée à la société de la cible (aucune fuite cross-société).
+    """
+    from django.contrib.auth import get_user_model
+
+    company = document_or_folder.company
+    User = get_user_model()
+
+    lignes = []
+    for user in (User.objects.filter(company=company)
+                 .select_related('role').order_by('username')):
+        niveau = acl_effective(document_or_folder, user)
+        source = _justifie_acl_effective(document_or_folder, user, niveau)
+        lignes.append({
+            'type': 'utilisateur',
+            'id': user.pk,
+            'label': user.username,
+            'niveau': niveau,
+            'source': source,
+        })
+    return lignes
+
+
+def _justifie_acl_effective(document_or_folder, user, niveau):
+    """XGED22 — Détermine la SOURCE du niveau résolu par `acl_effective` pour
+    `user` sur `document_or_folder` (audit — jamais de second calcul du
+    niveau lui-même, uniquement de sa provenance)."""
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return 'aucune'
+    target_company_id = getattr(document_or_folder, 'company_id', None)
+    if not user.is_superuser and user.company_id != target_company_id:
+        return 'aucune'
+    if getattr(user, 'is_admin_role', False) or user.is_superuser:
+        return 'admin'
+    if niveau is None:
+        return 'aucune'
+
+    is_document = isinstance(document_or_folder, Document)
+    direct_folder = (
+        document_or_folder.folder if is_document else document_or_folder)
+
+    # Override direct sur la cible elle-même (document ou dossier lui-même).
+    direct_entries = (
+        acls_for_document(document_or_folder) if is_document
+        else acls_for_folder(document_or_folder))
+    for entry in direct_entries:
+        if _principal_matches(entry, user) and entry.niveau == niveau:
+            return 'override_document' if is_document else 'override_dossier'
+
+    # Règle XGED21 par métadonnée (documents uniquement).
+    if is_document and _acl_metadonnee_rank(document_or_folder, user) == \
+            ACL_RANK.get(niveau, 0):
+        return 'regle_metadonnee'
+
+    # Héritage d'un dossier ancêtre.
+    chain = _folder_chain_ids(direct_folder)
+    for fid in chain:
+        for entry in AclGed.objects.filter(
+                company=target_company_id, folder_id=fid, herite=True):
+            if _principal_matches(entry, user) and entry.niveau == niveau:
+                return 'heritage_dossier'
+    return 'aucune'
+
+
 # ── GED22 — Politiques de rétention (durée de conservation + échéance) ─────
 
 def politiques_retention_for_company(company, *, actif_only=False):
