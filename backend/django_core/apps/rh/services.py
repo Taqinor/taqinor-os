@@ -163,6 +163,30 @@ def reporter_solde_janvier(dossier, *, annee_precedente, annee_cible,
     return {'reporte': montant, 'deja_applique': False}
 
 
+def jour_bloque_conflit(employe, date_debut, date_fin):
+    """ZRH4 — jour bloqué du DÉPARTEMENT de ``employe`` chevauchant la plage.
+
+    Renvoie le premier ``JourBloqueConge`` en conflit (ou ``None``) : un
+    blocage SANS département lié couvre TOUTE la société ; sinon il ne
+    s'applique qu'aux départements qu'il liste. Un employé sans département
+    n'est concerné QUE par les blocages société entière (sans département).
+    """
+    from django.db.models import Q
+
+    from .models import JourBloqueConge
+
+    qs = JourBloqueConge.objects.filter(
+        company=employe.company, date_debut__lte=date_fin,
+        date_fin__gte=date_debut)
+    if employe.departement_id:
+        qs = qs.filter(
+            Q(departements__isnull=True) |
+            Q(departements__id=employe.departement_id))
+    else:
+        qs = qs.filter(departements__isnull=True)
+    return qs.distinct().first()
+
+
 def calculer_jours_demande(type_absence, date_debut, date_fin,
                            extra_holidays=None,
                            demi_journee_debut=False, demi_journee_fin=False):

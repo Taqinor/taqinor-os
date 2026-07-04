@@ -74,6 +74,7 @@ from .models import (
     HeuresSupp,
     HoraireTravail,
     IncidentPresence,
+    JourBloqueConge,
     ModeleIntegration,
     NoteDeFrais,
     OrdreMission,
@@ -148,6 +149,7 @@ from .serializers import (
     HeuresSuppSerializer,
     HoraireTravailSerializer,
     IncidentPresenceSerializer,
+    JourBloqueCongeSerializer,
     MesInfosSerializer,
     ModeleIntegrationSerializer,
     NoteDeFraisSerializer,
@@ -1018,6 +1020,18 @@ class DemandeCongeViewSet(_RhBaseViewSet):
         type_absence = serializer.validated_data['type_absence']
         date_debut = serializer.validated_data['date_debut']
         date_fin = serializer.validated_data['date_fin']
+        employe = serializer.validated_data['employe']
+
+        # ZRH4 — jour bloqué du département de l'employé : refus 400 sauf
+        # forçage explicite RH (``?forcer=1``, journalisé via le motif).
+        conflit = services.jour_bloque_conflit(employe, date_debut, date_fin)
+        forcer = self.request.query_params.get('forcer') in ('1', 'true', 'True')
+        if conflit and not forcer:
+            raise serializers.ValidationError(
+                {'detail': (
+                    f'Congés bloqués du {conflit.date_debut} au '
+                    f'{conflit.date_fin} : {conflit.libelle}.')})
+
         jours = services.calculer_jours_demande(
             type_absence, date_debut, date_fin,
             extra_holidays=services.feries_periode(
@@ -1107,6 +1121,22 @@ class DemandeCongeViewSet(_RhBaseViewSet):
             request.user.company, annee, employe_id=employe,
             departement_id=departement)
         return Response(data)
+
+
+class JourBloqueCongeViewSet(_RhBaseViewSet):
+    """Jours de blocage congés (ZRH4) — Mandatory/Stress Days.
+
+    Société scopée + Administrateur/Responsable. ``departements`` vide =
+    blocage société entière ; sinon restreint aux départements liés (même
+    société, validé côté serializer).
+    """
+    queryset = JourBloqueConge.objects.prefetch_related('departements').all()
+    serializer_class = JourBloqueCongeSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_debut', 'date_fin', 'date_creation']
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
 
 
 class FeuilleTempsViewSet(_RhBaseViewSet):
@@ -4678,6 +4708,20 @@ class PortailSelfServiceViewSet(viewsets.ViewSet):
         # ZRH1 — même fériés mobiles société que le viewset direct.
         date_debut = ser.validated_data['date_debut']
         date_fin = ser.validated_data['date_fin']
+
+        # ZRH4 — jour bloqué du département : refus 400 sauf forçage RH
+        # explicite (``?forcer=1``, réservé Responsable/Admin — un employé
+        # normal ne peut jamais forcer son propre blocage).
+        conflit = services.jour_bloque_conflit(dossier, date_debut, date_fin)
+        forcer = request.query_params.get('forcer') in ('1', 'true', 'True') \
+            and getattr(request.user, 'is_responsable', False)
+        if conflit and not forcer:
+            return Response(
+                {'detail': (
+                    f'Congés bloqués du {conflit.date_debut} au '
+                    f'{conflit.date_fin} : {conflit.libelle}.')},
+                status=status.HTTP_400_BAD_REQUEST)
+
         jours = services.calculer_jours_demande(
             ser.validated_data['type_absence'], date_debut, date_fin,
             extra_holidays=services.feries_periode(

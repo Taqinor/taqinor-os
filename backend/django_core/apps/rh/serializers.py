@@ -58,6 +58,7 @@ from .models import (
     HoraireTravail,
     IncidentPresence,
     InscriptionFormation,
+    JourBloqueConge,
     LigneRisqueChantier,
     ModeleIntegration,
     NoteDeFrais,
@@ -502,6 +503,38 @@ class SoldeCongeSerializer(serializers.ModelSerializer):
 
     def validate_employe(self, value):
         return _meme_societe(self, value, 'Employé')
+
+
+class JourBloqueCongeSerializer(serializers.ModelSerializer):
+    """Jour de blocage congés (ZRH4). ``departements`` vide = toute la
+    société ; ``company`` posée CÔTÉ SERVEUR (jamais lue du corps)."""
+
+    class Meta:
+        model = JourBloqueConge
+        fields = [
+            'id', 'libelle', 'date_debut', 'date_fin', 'departements',
+            'motif', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+    def validate(self, attrs):
+        debut = attrs.get('date_debut') \
+            or getattr(self.instance, 'date_debut', None)
+        fin = attrs.get('date_fin') or getattr(self.instance, 'date_fin', None)
+        if debut and fin and fin < debut:
+            raise serializers.ValidationError(
+                {'date_fin': 'La date de fin précède la date de début.'})
+        return attrs
+
+    def validate_departements(self, value):
+        request = self.context.get('request')
+        if request is not None:
+            company = request.user.company
+            for dep in value:
+                if dep.company_id != company.id:
+                    raise serializers.ValidationError(
+                        "Un département d'une autre société est refusé.")
+        return value
 
 
 class DemandeCongeSerializer(serializers.ModelSerializer):

@@ -5618,3 +5618,51 @@ class TentativeQuiz(models.Model):
 
     def __str__(self):
         return f'{self.employe.matricule} — {self.quiz.intitule} ({self.score}%)'
+
+
+class JourBloqueConge(models.Model):
+    """Jour de blocage congés (« Mandatory / Stress Days » Odoo) — ZRH4.
+
+    Interdit la SOUMISSION d'une ``DemandeConge`` chevauchant une période
+    bloquée (haute saison de pose, inventaire…). ``departements`` (M2M
+    optionnel) restreint le blocage à des départements précis ; VIDE = toute
+    la société. Distinct de XRH14 (fermetures IMPOSÉES qui CRÉENT des congés) :
+    ici on REFUSE la demande, on n'en crée aucune. Le RH
+    (``IsResponsableOrAdmin``) peut forcer via ``?forcer=1`` à la soumission
+    (journalisé — pas de champ dédié, le refus reste la garde par défaut).
+
+    Multi-société : ``company`` posée CÔTÉ SERVEUR (jamais lue du corps).
+    Additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_jours_bloques_conge',
+        verbose_name='Société',
+    )
+    libelle = models.CharField(max_length=160, verbose_name='Libellé')
+    date_debut = models.DateField(verbose_name='Du')
+    date_fin = models.DateField(verbose_name='Au')
+    # VIDE = bloque TOUTE la société ; sinon restreint aux départements liés.
+    departements = models.ManyToManyField(
+        Departement, blank=True, related_name='jours_bloques_conge',
+        verbose_name='Départements concernés (vide = toute la société)')
+    motif = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Motif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Jour bloqué (congés)'
+        verbose_name_plural = 'Jours bloqués (congés)'
+        ordering = ['-date_debut']
+        indexes = [
+            models.Index(
+                fields=['company', 'date_debut', 'date_fin'],
+                name='rh_jbc_comp_debut_fin_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.libelle} ({self.date_debut} → {self.date_fin})'
