@@ -24,6 +24,7 @@ from .models import (
     DemandeAchatLigne,
     RFQ,
     RFQOffre,
+    RFQConsultation,
     SeuilApprobationBCF,
     ApprobationBCF,
     CommandeCadre,
@@ -1400,22 +1401,53 @@ class RFQOffreSerializer(serializers.ModelSerializer):
         return value
 
 
+class RFQConsultationSerializer(serializers.ModelSerializer):
+    """XPUR20/21 — fournisseur consulté sur une RFQ : traçabilité d'envoi
+    email/WhatsApp par destinataire + statut de réponse. Le `token` n'est
+    JAMAIS exposé ici (le lien public se construit côté vue `envoyer`) — seul
+    un flag `a_repondu` renseigne l'appelant."""
+    fournisseur_nom = serializers.CharField(
+        source='fournisseur.nom', read_only=True, default=None)
+    fournisseur_email = serializers.CharField(
+        source='fournisseur.email', read_only=True, default=None)
+    fournisseur_telephone = serializers.CharField(
+        source='fournisseur.telephone', read_only=True, default=None)
+    a_repondu = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = RFQConsultation
+        fields = [
+            'id', 'rfq', 'fournisseur', 'fournisseur_nom',
+            'fournisseur_email', 'fournisseur_telephone',
+            'email_envoye_le', 'whatsapp_envoye_le', 'derniere_relance_le',
+            'nb_relances', 'a_repondu', 'offre',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'email_envoye_le', 'whatsapp_envoye_le', 'derniere_relance_le',
+            'nb_relances', 'offre', 'date_creation', 'date_modification',
+        ]
+
+
 class RFQSerializer(serializers.ModelSerializer):
     """FG311 — demande de prix multi-fournisseurs. La référence et la société
     sont posées CÔTÉ SERVEUR ; `reference` est anti-collision
     (`RFQ-YYYYMM-NNNN`). Le `statut` avance via `envoyer`/`cloturer`. Les offres
     sont imbriquées en lecture ; `comparatif` résume moins-chère / plus-rapide /
-    retenue."""
+    retenue. XPUR20 — `consultations` liste les fournisseurs invités + leur
+    statut d'envoi/réponse."""
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True, default=None)
     offres = RFQOffreSerializer(many=True, read_only=True)
+    consultations = RFQConsultationSerializer(many=True, read_only=True)
     comparatif = serializers.SerializerMethodField()
 
     class Meta:
         model = RFQ
         fields = [
             'id', 'reference', 'objet', 'demande', 'date_limite_reponse',
-            'statut', 'statut_display', 'note', 'offres', 'comparatif',
+            'statut', 'statut_display', 'note', 'offres', 'consultations',
+            'comparatif',
             'created_by', 'date_creation', 'date_modification',
         ]
         read_only_fields = [
@@ -2383,8 +2415,8 @@ class LivraisonSerializer(serializers.ModelSerializer):
             'id', 'reference', 'installation', 'installation_reference',
             'depot', 'depot_nom', 'transporteur_nom', 'transporteur',
             'transporteur_obj_nom', 'cout_transport', 'mode_acheminement',
-            'mode_acheminement_display', 'date_prevue', 'statut',
-            'statut_display', 'adresse_site', 'note', 'lignes',
+            'mode_acheminement_display', 'date_prevue', 'numero_suivi',
+            'statut', 'statut_display', 'adresse_site', 'note', 'lignes',
             'created_by', 'date_creation', 'date_modification',
         ]
         read_only_fields = [

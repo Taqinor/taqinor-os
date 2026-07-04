@@ -1697,3 +1697,47 @@ def demandes_achat_en_attente(company):
             .filter(company=company, statut=DemandeAchat.Statut.SOUMISE)
             .select_related('chantier', 'programme')
             .order_by('date_besoin', 'id'))
+
+
+# ── XSTK22 — suivi de livraison côté client (portail FG228) ─────────────────
+
+def livraisons_client_portail(company, client_id):
+    """XSTK22 — livraisons SCOPÉES à un client (celles de SES chantiers),
+    au format PLAT attendu par le portail : date prévue, statut, numéro de
+    suivi, articles (désignation/quantité SEULEMENT), et un lien de
+    téléchargement de la preuve de livraison (FG330) une fois livrée.
+
+    N'expose JAMAIS ``cout_transport`` ni un prix d'achat — c'est le contrat
+    de ce sélecteur (testé). Lecture seule, scopée société ET client (jamais
+    les livraisons d'un autre client)."""
+    from .models import Livraison
+
+    qs = (Livraison.objects
+          .filter(company=company, installation__client_id=client_id)
+          .select_related('installation')
+          .prefetch_related('lignes', 'preuve')
+          .order_by('-date_prevue', '-date_creation'))
+
+    out = []
+    for liv in qs:
+        preuve = getattr(liv, 'preuve', None)
+        out.append({
+            'id': liv.id,
+            'reference': liv.reference,
+            'chantier_id': liv.installation_id,
+            'date_prevue': liv.date_prevue,
+            'statut': liv.statut,
+            'statut_display': liv.get_statut_display(),
+            'numero_suivi': liv.numero_suivi,
+            'articles': [
+                {'designation': ligne.designation
+                 or (ligne.produit.nom if ligne.produit_id else ''),
+                 'quantite': ligne.quantite}
+                for ligne in liv.lignes.all()
+            ],
+            'pod_disponible': preuve is not None,
+            'pod_url': (
+                f'/api/django/installations/preuves-livraison/'
+                f'{preuve.id}/' if preuve is not None else None),
+        })
+    return out

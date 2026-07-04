@@ -52,6 +52,11 @@ class Livraison(models.Model):
     cout_transport = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)
     date_prevue = models.DateField(null=True, blank=True)
+    # XSTK22 — numéro de suivi transporteur (texte libre, ex. tracking DHL/
+    # Amana/interne). Nullable/additif : les livraisons existantes ne sont
+    # pas affectées. Affiché au client (portail) — jamais un identifiant
+    # interne sensible.
+    numero_suivi = models.CharField(max_length=100, blank=True, null=True)
     # FG333 — mode d'acheminement : décide quel emplacement décrémenter (le
     # dépôt en mode `depot`, AUCUN en `direct_site` où le matériel n'entre
     # jamais au dépôt). La décrémentation réelle reste pilotée par le module
@@ -61,6 +66,9 @@ class Livraison(models.Model):
         default=ModeAcheminement.DEPOT)
     statut = models.CharField(
         max_length=20, choices=Statut.choices, default=Statut.PLANIFIEE)
+    # XSTK22 — horodatage de la notification client au passage en transit
+    # (garde l'envoi UNE SEULE FOIS même si le statut est ré-enregistré).
+    notifie_transit_le = models.DateTimeField(null=True, blank=True)
     adresse_site = models.TextField(blank=True, null=True)
     note = models.TextField(blank=True, null=True)
     created_by = models.ForeignKey(
