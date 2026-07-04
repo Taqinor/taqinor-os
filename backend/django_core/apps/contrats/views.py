@@ -51,6 +51,7 @@ from .models import (
     OrdreLocation,
     PartieContrat,
     PieceConformite,
+    PlanRecurrent,
     RegleApprobation,
     Resiliation,
     RetenueGarantie,
@@ -92,6 +93,7 @@ from .serializers import (
     PartieContratSerializer,
     PenaliteSLASerializer,
     PieceConformiteSerializer,
+    PlanRecurrentSerializer,
     ProlongerOrdreLocationSerializer,
     RegleApprobationSerializer,
     RendreContratSerializer,
@@ -2340,3 +2342,24 @@ class OrdreLocationViewSet(_ContratsBaseViewSet):
             'periode_fin': periode_fin.isoformat(),
             'results': [_fmt(r) for r in rows],
         })
+
+
+class PlanRecurrentViewSet(_ContratsBaseViewSet):
+    """Plans de facturation récurrente réutilisables (nommés) — ZCTR1.
+
+    Scopé société (``TenantMixin``) ; ``company`` posée CÔTÉ SERVEUR
+    (``perform_create`` du ``TenantMixin`` — jamais lue du corps de requête).
+    CRUD complet. Filtre ``?actif=1``.
+    """
+    queryset = PlanRecurrent.objects.all()
+    serializer_class = PlanRecurrentSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom']
+    ordering_fields = ['nom', 'date_creation', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        actif = self.request.query_params.get('actif')
+        if actif is not None:
+            qs = qs.filter(actif=actif.lower() in ('1', 'true', 'oui'))
+        return qs

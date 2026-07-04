@@ -28,6 +28,7 @@ from .models import (
     OrdreLocation,
     PartieContrat,
     PieceConformite,
+    PlanRecurrent,
     RegleApprobation,
     Resiliation,
     RetenueGarantie,
@@ -109,7 +110,7 @@ class ContratSerializer(serializers.ModelSerializer):
             'date_dernier_renouvellement', 'nb_renouvellements',
             'echeance_preavis', 'jours_avant_preavis',
             'jours_avant_echeance',
-            'montant', 'devise',
+            'montant', 'devise', 'plan_recurrent',
             'confidentialite', 'confidentialite_display',
             'responsable', 'responsable_nom',
             'created_by', 'date_creation',
@@ -143,6 +144,18 @@ class ContratSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Ce modèle n'appartient pas à votre société.")
         return modele
+
+    def validate_plan_recurrent(self, plan):
+        """Le plan de facturation récurrente (optionnel) doit appartenir à la
+        société — ZCTR1."""
+        if plan is None:
+            return plan
+        request = self.context.get('request')
+        if request is not None and plan.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Ce plan de facturation récurrente n'appartient pas à "
+                "votre société.")
+        return plan
 
     def validate_responsable(self, responsable):
         """Le responsable (optionnel) doit appartenir à la société — XCTR10."""
@@ -1299,3 +1312,28 @@ class ProlongerOrdreLocationSerializer(serializers.Serializer):
 class EcourterOrdreLocationSerializer(serializers.Serializer):
     """Corps de POST /ordres-location/<id>/ecourter/ (XCTR20)."""
     nouvelle_date_retour = serializers.DateField()
+
+
+class PlanRecurrentSerializer(serializers.ModelSerializer):
+    """Plan de facturation récurrente réutilisable (nommé) — ZCTR1.
+
+    ``company`` n'est jamais exposée en écriture (posée côté serveur par le
+    ``TenantMixin``). ``intervalle`` doit être ≥ 1.
+    """
+    unite_display = serializers.CharField(
+        source='get_unite_display', read_only=True)
+
+    class Meta:
+        model = PlanRecurrent
+        fields = [
+            'id', 'nom', 'unite', 'unite_display', 'intervalle',
+            'delai_cloture_auto_jours', 'aligner_debut_periode', 'actif',
+            'date_creation',
+        ]
+        read_only_fields = ['id', 'date_creation']
+
+    def validate_intervalle(self, value):
+        if value < 1:
+            raise serializers.ValidationError(
+                "L'intervalle doit être un entier positif (≥ 1).")
+        return value

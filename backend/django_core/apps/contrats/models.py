@@ -150,6 +150,18 @@ class Contrat(models.Model):
         verbose_name='Montant')
     devise = models.CharField(
         max_length=3, default='MAD', verbose_name='Devise')
+    # ZCTR1 — plan de facturation récurrente réutilisable rattaché (nullable).
+    # NULL = comportement actuel inchangé (périodicité lue sur l'échéancier
+    # local, ``EcheancierContrat.periodicite``). Référence interne à l'app
+    # `contrats` (foundation), FK dur autorisé ; SET_NULL pour ne jamais
+    # perdre le contrat si le plan est supprimé.
+    plan_recurrent = models.ForeignKey(
+        'PlanRecurrent',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='contrats',
+        verbose_name='Plan de facturation récurrente',
+    )
     # Niveau de confidentialité : contrôle la visibilité du contrat au sein de
     # la société. PUBLIC = tous les utilisateurs authentifiés de la société ;
     # INTERNE = uniquement Responsables et Administrateurs ; CONFIDENTIEL =
@@ -2793,3 +2805,96 @@ class CautionLocationLog(models.Model):
             f'Caution ordre #{self.ordre_location_id} : '
             f'{self.ancien_statut} → {self.nouveau_statut}'
         )
+
+
+class PlanRecurrent(models.Model):
+    """Plan de facturation récurrente réutilisable (nommé) — ZCTR1.
+
+    Odoo Subscriptions définit des « Recurring Plans » nommés (période, délai
+    de clôture auto, alignement début-de-période) réutilisables sur tout
+    contrat ; ici la périodicité était jusqu'ici un enum figé recopié cas par
+    cas (``ContratMaintenance.periodicite``, ``EcheancierContrat.periodicite``).
+    Un ``PlanRecurrent`` centralise ces réglages et peut être RATTACHÉ (FK
+    nullable) à un ``Contrat`` ou (via id + sélecteur, jamais un import
+    cross-app) à un ``sav.ContratMaintenance`` : la lecture reste RÉTROCOMPATIBLE
+    — un contrat SANS plan rattaché conserve exactement son comportement actuel
+    (enum de périodicité local).
+
+    Multi-tenant : ``company`` posée CÔTÉ SERVEUR, jamais lue du corps de
+    requête (perform_create du ``TenantMixin``).
+
+    RUNTIME-SAFETY (leçon FG136) : ``nom`` borné (≤120).
+    """
+
+    class Unite(models.TextChoices):
+        MENSUEL = 'mensuel', 'Mensuel'
+        TRIMESTRIEL = 'trimestriel', 'Trimestriel'
+        SEMESTRIEL = 'semestriel', 'Semestriel'
+        ANNUEL = 'annuel', 'Annuel'
+
+    # Nombre de mois PAR PAS de l'unité (avant application de ``intervalle``).
+    MOIS_PAR_UNITE = {
+        Unite.MENSUEL: 1,
+        Unite.TRIMESTRIEL: 3,
+        Unite.SEMESTRIEL: 6,
+        Unite.ANNUEL: 12,
+    }
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='plans_recurrents',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=120, verbose_name='Nom')
+    unite = models.CharField(
+        max_length=15, choices=Unite.choices, default=Unite.MENSUEL,
+        verbose_name='Unité')
+    # Multiplicateur de l'unité (ex. unite=mensuel + intervalle=2 → tous les
+    # 2 mois). Toujours ≥ 1.
+    intervalle = models.PositiveIntegerField(
+        default=1, verbose_name='Intervalle')
+    # Délai (jours) après lequel un cycle impayé déclenche la clôture
+    # automatique (ZCTR2). NULL = jamais de clôture auto.
+    delai_cloture_auto_jours = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Délai de clôture auto (jours)')
+    # Aligne le premier cycle sur le DÉBUT de la période calendaire (ex. le
+    # 1er du trimestre) plutôt que sur la date de signature/activation brute.
+    aligner_debut_periode = models.BooleanField(
+        default=False, verbose_name='Aligner sur le début de période')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Plan de facturation récurrente'
+        verbose_name_plural = 'Plans de facturation récurrente'
+        ordering = ['nom', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'actif'],
+                name='contrats_planrec_co_act',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.nom} ({self.get_unite_display()})'
+
+    def mois_par_cycle(self):
+        """Nombre de mois d'un cycle complet (``unite`` × ``intervalle``)."""
+        return self.MOIS_PAR_UNITE.get(self.unite, 1) * max(1, self.intervalle)
+
+    def debut_periode_alignee(self, date_reference):
+        """Renvoie ``date_reference`` alignée sur le début de sa période.
+
+        Sans alignement (``aligner_debut_periode=False``), renvoie
+        ``date_reference`` inchangée. Avec alignement : ramène au 1er du mois
+        pour une unité mensuelle, ou au 1er du bloc trimestriel/semestriel/
+        annuel civil couvrant ``date_reference``.
+        """
+        if not self.aligner_debut_periode:
+            return date_reference
+        mois_par_unite = self.MOIS_PAR_UNITE.get(self.unite, 1)
+        mois_index = date_reference.month - 1
+        mois_bloc_debut = (mois_index // mois_par_unite) * mois_par_unite
+        return date_reference.replace(month=mois_bloc_debut + 1, day=1)

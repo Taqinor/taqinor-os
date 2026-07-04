@@ -1418,3 +1418,36 @@ def contrat_maintenance_lie_id(company, contrat_id):
         .first()
     )
     return lien.cible_id if lien is not None else None
+
+
+# ---------------------------------------------------------------------------
+# ZCTR1 — Plan de facturation récurrente réutilisable (RecurringPlan config)
+# ---------------------------------------------------------------------------
+
+
+def plans_recurrents_actifs(company):
+    """Plans de facturation récurrente ACTIFS d'une société, scopés — ZCTR1."""
+    from .models import PlanRecurrent
+
+    return PlanRecurrent.objects.filter(company=company, actif=True)
+
+
+def mois_par_cycle_contrat(contrat):
+    """Nombre de mois d'un cycle de facturation pour un contrat — ZCTR1.
+
+    Lit ``Contrat.plan_recurrent.mois_par_cycle()`` quand un plan ACTIF est
+    rattaché ; sinon retombe sur le pas de périodicité de son
+    ``EcheancierContrat`` le plus récent (même table que YSUBS8) ; ``None`` si
+    ni l'un ni l'autre n'est déterminable (comportement actuel inchangé —
+    aucune décision prise à la place de l'appelant)."""
+    if contrat.plan_recurrent_id and contrat.plan_recurrent.actif:
+        return contrat.plan_recurrent.mois_par_cycle()
+
+    echeancier = contrat.echeanciers.order_by('-id').first()
+    if echeancier is None:
+        return None
+
+    mois_par_periodicite = {
+        'mensuelle': 1, 'trimestrielle': 3, 'semestrielle': 6, 'annuelle': 12,
+    }
+    return mois_par_periodicite.get(echeancier.periodicite)
