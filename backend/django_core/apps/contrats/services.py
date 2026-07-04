@@ -2811,3 +2811,80 @@ def marquer_renouvellement_accepte(contrat, devis, *, auteur=None,
         message='Devis de renouvellement accepté par le client.',
         auteur=auteur)
     return contrat
+
+
+# ---------------------------------------------------------------------------
+# XCTR14 — Portail client : demandes en un clic (renouvellement/résiliation)
+# ---------------------------------------------------------------------------
+
+
+class DemandePortailError(Exception):
+    """Levée quand une demande client (portail) ne peut pas être enregistrée."""
+
+
+def demander_action_portail(contrat, *, type_demande, message=''):
+    """Enregistre une demande client 1-clic depuis le portail — XCTR14.
+
+    ``type_demande`` vaut ``'renouvellement'`` ou ``'resiliation'``. AUCUN
+    changement de statut n'est appliqué ici (préservation des statuts —
+    CONTRAT12) : la demande est journalisée au chatter (``ContratActivity``,
+    type note) puis une notification best-effort est diffusée au responsable
+    du contrat (ou, à défaut, aux destinataires société de l'événement
+    générique ``digest``) via ``apps.notifications.services`` — jamais un
+    import de ses modèles/vues. Une erreur de notification n'empêche jamais
+    l'enregistrement de la demande. Renvoie l'entrée ``ContratActivity`` créée.
+    """
+    from .models import ContratActivity
+
+    libelles = {
+        'renouvellement': 'Demande de renouvellement',
+        'resiliation': 'Demande de résiliation',
+    }
+    if type_demande not in libelles:
+        raise DemandePortailError('Type de demande invalide.')
+
+    texte = libelles[type_demande]
+    if message:
+        texte = f'{texte} — {message.strip()[:2000]}'
+
+    activite = ContratActivity.objects.create(
+        company=contrat.company,
+        contrat=contrat,
+        type=ContratActivity.Kind.NOTE,
+        message=f'[Portail client] {texte}',
+    )
+
+    _notifier_demande_portail(contrat, type_demande, libelles[type_demande])
+
+    return activite
+
+
+def _notifier_demande_portail(contrat, type_demande, titre):
+    """Notifie le responsable (ou la société) d'une demande portail — XCTR14.
+
+    Frontière cross-app (CLAUDE.md) : appelle EXCLUSIVEMENT
+    ``apps.notifications.services`` (jamais ses ``models``/``views``), import
+    FONCTION-LOCAL. BEST-EFFORT : une erreur de notification ne fait jamais
+    échouer l'enregistrement de la demande (déjà journalisée au chatter)."""
+    try:
+        from apps.notifications.services import notify, notify_many, resolve_recipients
+    except Exception:  # pragma: no cover - app notifications absente
+        return
+
+    body = (
+        f'Le client a demandé « {titre.lower()} » '
+        f'sur le contrat « {contrat.objet} ».'
+    )
+    link = '/contrats'
+    try:
+        if contrat.responsable_id:
+            notify(
+                contrat.responsable, 'digest', titre, body=body,
+                link=link, company=contrat.company)
+        else:
+            recipients = resolve_recipients(contrat.company, 'digest')
+            notify_many(
+                recipients, 'digest', titre, body=body,
+                link=link, company=contrat.company)
+    except Exception:  # pragma: no cover - défensif (best-effort)
+        pass

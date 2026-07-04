@@ -2669,3 +2669,25 @@ def export_fiduciaire(company, exercice, *, validees_seulement=False):
             'resultat': etat_cpc['resultat'],
         },
     }
+
+
+# ── XCTR14 — Résolution du compte portail client par token (lecture seule) ──
+
+def compte_portail_par_token(token):
+    """Résout un ``ComptePortailClient`` ACTIF par son ``token_acces`` (FG228).
+
+    Point d'entrée LECTURE SEULE pour les apps consommatrices du portail
+    tokenisé existant (ex. ``apps.contrats`` — XCTR14) : jamais un import du
+    modèle ``ComptePortailClient`` en dehors de ``compta``. Renvoie ``None``
+    si le token est vide, inconnu, ou correspond à un compte inactif — sans
+    distinguer les deux cas (aucune fuite d'existence du token)."""
+    if not token:
+        return None
+    from .models import ComptePortailClient
+
+    return (
+        ComptePortailClient.objects
+        .filter(token_acces=token, actif=True)
+        .select_related('client')
+        .first()
+    )

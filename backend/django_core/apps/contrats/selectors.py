@@ -1173,3 +1173,52 @@ def clv_client(company, client_id, *, within_days=90):
     arpc = mrr_client(company, client_id)
     taux = taux_churn_mensuel_company(company, within_days=within_days)
     return _clv(arpc, taux)
+
+
+# ---------------------------------------------------------------------------
+# XCTR14 — Portail client : « Mes contrats & abonnements »
+# ---------------------------------------------------------------------------
+
+
+def contrats_portail_client(company, client_id):
+    """Contrats d'UN client, projetés pour le portail public (XCTR14).
+
+    Lecture minimisée (loi 09-08) : seuls les champs nécessaires au client
+    sont exposés (statut, dates, périodicité, montant, prochaine échéance) —
+    jamais ``confidentialite``, ``responsable``, ni aucun champ interne. Le
+    client ne voit QUE ses propres contrats (filtré par ``client_id`` ET
+    ``company`` — jamais un contrat d'un autre client ou d'une autre société).
+    Renvoie une liste de dicts triés par échéance la plus proche.
+    """
+    contrats = (
+        Contrat.objects
+        .filter(company=company, client_id=client_id)
+        .prefetch_related('echeanciers__lignes')
+        .order_by('-date_creation')
+    )
+    rows = []
+    for contrat in contrats:
+        prochaine = None
+        factures_liees = []
+        for echeancier in contrat.echeanciers.all():
+            for ligne in echeancier.lignes.all():
+                if ligne.statut in ('a_venir', 'en_retard') and (
+                        prochaine is None or ligne.date_echeance < prochaine):
+                    prochaine = ligne.date_echeance
+                if ligne.facture_id:
+                    factures_liees.append(ligne.facture_id)
+        rows.append({
+            'id': contrat.id,
+            'reference': contrat.reference,
+            'objet': contrat.objet,
+            'type_contrat': contrat.type_contrat,
+            'statut': contrat.statut,
+            'statut_display': contrat.get_statut_display(),
+            'date_debut': contrat.date_debut,
+            'date_fin': contrat.date_fin,
+            'montant': contrat.montant,
+            'devise': contrat.devise,
+            'prochaine_echeance': prochaine,
+            'factures_ids': factures_liees,
+        })
+    return rows
