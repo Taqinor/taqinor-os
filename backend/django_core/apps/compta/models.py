@@ -4598,6 +4598,38 @@ class AbonnementListe(models.Model):
         return f'{self.destinataire} → {self.liste_id} ({self.statut})'
 
 
+# ── XMKT6 — Segments dynamiques enregistrés et réutilisables ────────────────
+
+class SegmentMarketing(models.Model):
+    """Segment NOMMÉ et réutilisable, auto-actualisé à chaque usage (XMKT6).
+
+    ``regles`` est un JSON validé (champs lead whitelistés, lus via
+    ``apps.crm.selectors.leads_matching_regles`` — jamais d'import du modèle
+    CRM) + des règles d'activité marketing optionnelles évaluées sur
+    ``EnvoiCampagne`` (XMKT2) : ``activite: 'a_ouvert' | 'a_clique' |
+    'jamais_ouvert'``. Utilisable par les campagnes ET les séquences.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='segments_marketing',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=200, verbose_name='Nom du segment')
+    regles = models.JSONField(
+        default=dict, blank=True, verbose_name='Règles (JSON)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Segment marketing'
+        verbose_name_plural = 'Segments marketing'
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
 # ── FG202 — Séquences de relance automatisées (drip / nurture) ─────────────
 
 class SequenceRelance(models.Model):

@@ -5806,6 +5806,82 @@ def importer_abonnements_liste(liste, lignes, *, colonne_destinataire='destinata
     return rapport
 
 
+# ── XMKT6 — Segments dynamiques enregistrés et réutilisables ────────────────
+
+_SEGMENT_ACTIVITE_CHOICES = ('a_ouvert', 'a_clique', 'jamais_ouvert')
+
+
+def valider_regles_segment(regles):
+    """Valide les règles JSON d'un segment (XMKT6) : lève ``ValueError`` sur
+    une clé inconnue (champ lead OU clé d'activité marketing). Ne touche
+    jamais à la base — appelée avant la sauvegarde ET avant l'évaluation.
+    """
+    from apps.crm.selectors import LEAD_SEGMENT_FIELDS
+
+    regles = regles or {}
+    cles_activite = {'activite'}
+    cles_connues = set(LEAD_SEGMENT_FIELDS) | cles_activite
+    inconnues = set(regles) - cles_connues
+    if inconnues:
+        raise ValueError(f"Règle(s) de segment inconnue(s) : {sorted(inconnues)}")
+    activite = regles.get('activite')
+    if activite and activite not in _SEGMENT_ACTIVITE_CHOICES:
+        raise ValueError(f"Activité de segment inconnue : {activite}")
+    return regles
+
+
+def _filtrer_par_activite(company, lead_ids, activite):
+    """Filtre une liste d'IDs de lead par activité marketing (XMKT6),
+    évaluée sur les traces ``EnvoiCampagne`` (XMKT2) via ``contact_ref``.
+    """
+    if not activite or not lead_ids:
+        return lead_ids
+    refs = {f'lead:{lid}' for lid in lead_ids}
+    if activite == 'a_ouvert':
+        matches = EnvoiCampagne.objects.filter(
+            company=company, contact_ref__in=refs,
+            ouvert_le__isnull=False).values_list('contact_ref', flat=True)
+    elif activite == 'a_clique':
+        matches = EnvoiCampagne.objects.filter(
+            company=company, contact_ref__in=refs,
+            clique_le__isnull=False).values_list('contact_ref', flat=True)
+    elif activite == 'jamais_ouvert':
+        ont_ouvert = set(EnvoiCampagne.objects.filter(
+            company=company, contact_ref__in=refs,
+            ouvert_le__isnull=False).values_list('contact_ref', flat=True))
+        return [lid for lid in lead_ids if f'lead:{lid}' not in ont_ouvert]
+    else:
+        return lead_ids
+    matches = set(matches)
+    return [lid for lid in lead_ids if f'lead:{lid}' in matches]
+
+
+def evaluer_segment(segment):
+    """Ré-évalue un ``SegmentMarketing`` AU MOMENT DE L'APPEL (XMKT6) — jamais
+    mis en cache : une campagne/séquence ciblant le segment prend toujours
+    les contacts du moment. Renvoie la liste des IDs de lead correspondants.
+    """
+    from apps.crm.selectors import leads_matching_regles
+
+    regles = valider_regles_segment(segment.regles)
+    regles_lead = {k: v for k, v in regles.items() if k != 'activite'}
+    lead_ids = list(
+        leads_matching_regles(segment.company, regles_lead)
+        .values_list('id', flat=True))
+    return _filtrer_par_activite(segment.company, lead_ids, regles.get('activite'))
+
+
+def previsualiser_segment(segment, *, taille_echantillon=10):
+    """Prévisualisation d'un segment (XMKT6) : compte exact + échantillon
+    d'IDs de lead (pas de données PII fabriquées ici — l'appelant résout
+    l'affichage via les selectors crm existants)."""
+    lead_ids = evaluer_segment(segment)
+    return {
+        'count': len(lead_ids),
+        'echantillon': lead_ids[:taille_echantillon],
+    }
+
+
 # ── FG202 — Déclenchement d'une séquence de relance (GATED, NO-OP) ──────────
 
 def whatsapp_actif():

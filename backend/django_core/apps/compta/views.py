@@ -32,7 +32,7 @@ from .models import (
     DemandeApprobationConfig,
     DotationAmortissement, ECatalogue, EcritureComptable, Effet,
     EntiteConsolidation, EtapeSequence, InscriptionSequence,
-    ListeDiffusion, AbonnementListe,
+    ListeDiffusion, AbonnementListe, SegmentMarketing,
     ExerciceComptable, FormulaireIntake, Immobilisation, IndemniteChantier,
     Journal,
     LignePrevisionnelTresorerie, LigneReleve, MessageWhatsAppEntrant,
@@ -72,6 +72,7 @@ from .serializers import (
     EcritureComptableSerializer, EffetSerializer, EntiteConsolidationSerializer,
     EtapeSequenceSerializer, InscriptionSequenceSerializer,
     ListeDiffusionSerializer, AbonnementListeSerializer,
+    SegmentMarketingSerializer,
     ExerciceComptableSerializer, FormulaireIntakeSerializer,
     ImmobilisationSerializer,
     IndemniteChantierSerializer, JournalSerializer,
@@ -3704,6 +3705,27 @@ class AbonnementListeViewSet(_ComptaBaseViewSet):
         if liste_id:
             qs = qs.filter(liste_id=liste_id)
         return qs
+
+
+# ── XMKT6 — Segments dynamiques enregistrés et réutilisables ────────────────
+
+class SegmentMarketingViewSet(_ComptaBaseViewSet):
+    """Segments nommés réutilisables (XMKT6), auto-actualisés à chaque
+    usage — ``previsualiser`` renvoie le compte exact + un échantillon."""
+    queryset = SegmentMarketing.objects.all()
+    serializer_class = SegmentMarketingSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom']
+    ordering_fields = ['nom', 'date_creation']
+
+    @action(detail=True, methods=['get'])
+    def previsualiser(self, request, pk=None):
+        segment = self.get_object()
+        try:
+            data = services.previsualiser_segment(segment)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(data)
 
 
 # ── FG202 — Séquences de relance automatisées ──────────────────────────────

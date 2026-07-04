@@ -7,6 +7,7 @@ from .views import (
     BaremeIndemniteViewSet, BordereauRemiseViewSet, BudgetViewSet,
     CaisseViewSet, CampagneViewSet, CautionBancaireViewSet, CentreCoutViewSet,
     EnvoiCampagneViewSet, ListeDiffusionViewSet, AbonnementListeViewSet,
+    SegmentMarketingViewSet,
     CessionImmobilisationViewSet, CodePromotionViewSet,
     CommissionPayoutRunViewSet, ComparateurDevisViewSet,
     CompteComptableViewSet, CompteTresorerieViewSet, ContratAvancementViewSet,
@@ -103,6 +104,7 @@ router.register(r'campagnes', CampagneViewSet)
 router.register(r'envois-campagne', EnvoiCampagneViewSet)
 router.register(r'listes-diffusion', ListeDiffusionViewSet)
 router.register(r'abonnements-liste', AbonnementListeViewSet)
+router.register(r'segments-marketing', SegmentMarketingViewSet)
 router.register(r'sequences-relance', SequenceRelanceViewSet)
 router.register(r'etapes-sequence', EtapeSequenceViewSet)
 router.register(r'inscriptions-sequence', InscriptionSequenceViewSet)

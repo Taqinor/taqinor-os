@@ -19,7 +19,7 @@ from .models import (
     DemandeApprobationConfig, DotationAmortissement,
     ECatalogue, EcritureComptable, Effet, EntiteConsolidation, EtapeSequence,
     ExecutionEtapeSequence, InscriptionSequence,
-    ListeDiffusion, AbonnementListe,
+    ListeDiffusion, AbonnementListe, SegmentMarketing,
     ExerciceComptable, FormulaireIntake,
     Immobilisation, IndemniteChantier, Journal, LigneEcriture,
     LignePrevisionnelTresorerie, LigneReleve, MessageWhatsAppEntrant,
@@ -1498,6 +1498,23 @@ class ListeDiffusionSerializer(serializers.ModelSerializer):
 
     def get_nb_abonnes(self, obj):
         return obj.abonnements.filter(statut='inscrit').count()
+
+
+# ── XMKT6 — Segments dynamiques enregistrés et réutilisables ────────────────
+
+class SegmentMarketingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SegmentMarketing
+        fields = ['id', 'nom', 'regles', 'date_creation']
+        read_only_fields = ['date_creation']
+
+    def validate_regles(self, value):
+        from apps.compta.services import valider_regles_segment
+        try:
+            valider_regles_segment(value)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc))
+        return value
 
 
 # ── FG202 — Séquences de relance automatisées ──────────────────────────────
