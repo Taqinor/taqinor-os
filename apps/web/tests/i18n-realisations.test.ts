@@ -74,8 +74,9 @@ describe('cityContentBySlug — locale-aware, additif', () => {
       expect(cc.sunshineContext).toMatch(new RegExp(`2${SEP}950`));
       // Le numéro de loi 82-21 reste exact dans le pilier conformité.
       expect(cc.pillars.compliance.body).toContain('82-21');
-      // Production réelle Casablanca = 14 271 / 14,271 kWh, jamais altérée.
-      expect(cc.heroLead).toMatch(new RegExp(`14${SEP}271`));
+      // WB1 (2026-07-04) : le chiffre de production annuel « 14 271 » était
+      // fabriqué — retiré du contenu Casablanca ; il ne doit jamais réapparaître.
+      expect(cc.heroLead).not.toMatch(new RegExp(`14${SEP}271`));
     }
   });
 });
@@ -102,25 +103,18 @@ describe('caseStudyBySlug — locale-aware, additif', () => {
     }
   });
 
-  it('le FR du resume vaut EXACTEMENT le resume de realisations.ts (rendu inchangé), sauf réf. 400 reformulée honnêtement (WB1)', () => {
-    // WB1 (2026-07-04) : la production annuelle fabriquée a été retirée partout.
-    // Les resumes de casablanca-11-kwc (réf. 400) et el-jadida-6-kwc (réf. 236)
-    // ont en outre été reformulés côté caseStudies.ts pour ne plus impliquer un
-    // relevé chiffré fabriqué ; ce sont les seules divergences volontaires avec
-    // le resume source de realisations.ts.
-    const reformules: Record<string, RegExp> = {
-      '400': /14[\s,]?271/,
-      '236': /7[\s,]?135/,
-    };
+  it('le FR du resume ne contient jamais de production annuelle fabriquée (WB1)', () => {
+    // WB1 (2026-07-04) : la production annuelle fabriquée (21 406 / 14 271 /
+    // 7 135) a été retirée partout, et les resumes de caseStudies.ts ont été
+    // reformulés honnêtement (suivi Deye Cloud, sans chiffre projeté). On ne
+    // vérifie donc plus une égalité octet-pour-octet avec realisations.ts —
+    // seulement l'invariant d'intégrité : aucun chiffre annuel fabriqué ne
+    // reparaît, et chaque resume reste non vide.
+    const BANNED = /(21[\s,]?406|14[\s,]?271|7[\s,]?135)/;
     for (const r of REALISATIONS) {
       const cs = caseStudyBySlug(r.slug, 'fr');
-      const bannedNum = reformules[r.ref];
-      if (bannedNum) {
-        expect(cs.resume, r.ref).not.toBe(r.resume);
-        expect(cs.resume, r.ref).not.toMatch(bannedNum);
-        continue;
-      }
-      expect(cs.resume, r.ref).toBe(r.resume);
+      expect(cs.resume, r.ref).toBeTruthy();
+      expect(cs.resume, r.ref).not.toMatch(BANNED);
     }
   });
 
