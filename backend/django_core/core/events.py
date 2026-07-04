@@ -243,3 +243,11 @@ contrat_resilie = django.dispatch.Signal()
 # no-op silencieux si aucun RoutageDocumentaire pour la source — voir
 # docstring du module ci-dessus.
 document_produit = django.dispatch.Signal()
+
+# Émis quand une Intervention (apps.installations) passe à TERMINEE ou VALIDEE
+# (YSERV2). Arguments : intervention, company, user (peut être None). Abonné
+# dans ce repo : sav (apps/sav/receivers.py) — si l'intervention porte un
+# ticket lié, pose Ticket.date_resolution et avance le ticket vers RESOLU
+# (idempotent, ne recule jamais un statut). installations n'importe jamais
+# apps.sav — même patron que devis_accepted → crm.
+intervention_completed = django.dispatch.Signal()

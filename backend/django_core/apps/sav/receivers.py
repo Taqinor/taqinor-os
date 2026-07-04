@@ -1,4 +1,4 @@
-"""Récepteurs d'événements métier (M6) — YSUBS5.
+"""Récepteurs d'événements métier (M6) — YSUBS5, YSERV2.
 
 Abonne ``sav`` aux événements du cœur métier exposés par ``core.events``, pour
 réagir à la résiliation d'un contrat (``apps.contrats``) SANS que ``contrats``
@@ -7,8 +7,9 @@ importe ``sav`` ni l'inverse. Câblé au démarrage par ``SavConfig.ready``.
 import logging
 
 from django.dispatch import receiver
+from django.utils import timezone
 
-from core.events import contrat_resilie
+from core.events import contrat_resilie, intervention_completed
 
 logger = logging.getLogger(__name__)
 
@@ -41,3 +42,44 @@ def _deprovisionner_maintenance_on_contrat_resilie(
         logger.warning(
             'sav: échec de-provisioning maintenance sur résiliation du '
             'contrat #%s', contrat_id, exc_info=True)
+
+
+@receiver(intervention_completed, dispatch_uid="sav_advance_ticket_on_intervention_completed")
+def _avancer_ticket_on_intervention_completed(sender, intervention, company,
+                                              user, **kwargs):
+    """YSERV2 — quand une Intervention (``apps.installations``) passe à
+    TERMINEE/VALIDEE, si elle porte un ticket SAV lié : pose
+    ``Ticket.date_resolution`` (si vide) et avance le ticket vers RESOLU —
+    JAMAIS en arrière (un ticket déjà RESOLU/CLOTURE, ou annulé, ne bouge
+    pas). Idempotent : re-émettre le signal (double clic, retry) ne produit
+    aucun second effet — la note chatter n'est posée qu'au changement réel.
+
+    Best-effort : une erreur ici ne doit jamais remonter (l'intervention,
+    côté installations, est déjà actée)."""
+    try:
+        ticket = getattr(intervention, 'ticket', None)
+        if ticket is None:
+            return
+        from . import activity
+        from .models import Ticket
+
+        if ticket.statut not in Ticket.OPEN_STATUTS or ticket.annule:
+            return  # déjà résolu/clôturé/annulé — ne recule jamais.
+
+        update_fields = []
+        if not ticket.date_resolution:
+            ticket.date_resolution = timezone.localdate()
+            update_fields.append('date_resolution')
+        ancien_statut = ticket.statut
+        ticket.statut = Ticket.Statut.RESOLU
+        update_fields.append('statut')
+        ticket.save(update_fields=update_fields)
+        activity.log_note(
+            ticket, user,
+            f"Intervention {intervention.get_type_intervention_display()} "
+            'terminée — ticket avancé automatiquement vers Résolu '
+            f'(depuis {ancien_statut}).')
+    except Exception:  # pragma: no cover - défensif (best-effort)
+        logger.warning(
+            'sav: échec avancement ticket sur intervention terminée '
+            '#%s', getattr(intervention, 'pk', None), exc_info=True)

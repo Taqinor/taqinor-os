@@ -2016,3 +2016,44 @@ def marquer_serie_entrepot_sortie(*, company, produit_id, numero_serie):
         entry.statut = SerieEntrepot.Statut.SORTI
         entry.save(update_fields=['statut', 'date_modification'])
     return entry
+
+
+class TicketSansInstallationError(Exception):
+    """YSERV2 — levée quand un ticket SAV sans chantier lié demande la
+    création d'une intervention (rien à planifier sans Installation)."""
+
+
+def creer_intervention_depuis_ticket(*, ticket, user, company,
+                                     type_intervention=None):
+    """YSERV2 — Point d'entrée cross-app (services.py cible) pour créer une
+    ``Intervention`` pré-remplie depuis un ticket SAV, appelé EXCLUSIVEMENT
+    par ``apps.sav.views`` (jamais un import du modèle ``Intervention``
+    depuis ``sav`` — frontière cross-app, CLAUDE.md).
+
+    Le chantier (``installation``), le technicien (``technicien_responsable``
+    du ticket) sont repris tels quels ; le type par défaut est DEPANNAGE
+    (correctif) sauf ``type_intervention`` explicite. Refuse proprement
+    (``TicketSansInstallationError``) si le ticket n'a pas d'installation
+    liée — rien à planifier sans chantier. ``ticket`` est passé en instance
+    déjà résolue/scopée société par l'appelant ; ``company`` est TOUJOURS
+    posée côté serveur (jamais lue du corps de requête).
+
+    Renvoie l'``Intervention`` créée.
+    """
+    from .models_intervention import Intervention
+
+    if not ticket.installation_id:
+        raise TicketSansInstallationError(
+            "Ce ticket n'a pas de chantier lié — impossible de planifier "
+            'une intervention.')
+
+    interv = Intervention.objects.create(
+        company=company,
+        installation_id=ticket.installation_id,
+        ticket=ticket,
+        type_intervention=type_intervention or Intervention.Type.DEPANNAGE,
+        technicien=ticket.technicien_responsable,
+        date_prevue=ticket.date_tournee,
+        created_by=user,
+    )
+    return interv

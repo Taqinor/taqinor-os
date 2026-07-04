@@ -469,7 +469,8 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             return [HasPermissionOrLegacy('sav_voir')()]
         elif self.action in WRITE_ACTIONS + [
                 'noter', 'annuler', 'reactiver', 'creer_devis',
-                'attente_client', 'reprendre', 'fusionner']:
+                'attente_client', 'reprendre', 'fusionner',
+                'facturer', 'planifier_intervention']:
             return [HasPermissionOrLegacy('sav_gerer')()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
@@ -481,6 +482,15 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             obj = serializer.validated_data.get(field)
             if obj is not None and obj.company_id != company.id:
                 raise ValidationError({field: 'Référence inconnue.'})
+
+    @staticmethod
+    def _interventions_ouvertes(ticket):
+        """YSERV2 — liste (id, statut) des interventions liées à ce ticket
+        PAS ENCORE terminées/validées. Lecture cross-app via
+        ``installations.selectors`` (jamais un import du modèle) ; liste vide
+        = comportement historique (aucune intervention liée)."""
+        from apps.installations.selectors import interventions_ouvertes_pour_ticket
+        return interventions_ouvertes_pour_ticket(ticket.id)
 
     def _resolve_from_equipement(self, serializer):
         """Quand un ticket est ouvert depuis le parc (un équipement lié) sans
@@ -635,6 +645,18 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
     def perform_update(self, serializer):
         self._check_tenant(serializer)
         old = Ticket.objects.get(pk=serializer.instance.pk)
+        # YSERV2 — garde de clôture : refuse CLOTURE tant qu'une intervention
+        # liée (apps.installations) n'est pas TERMINEE/VALIDEE.
+        new_statut = serializer.validated_data.get('statut', old.statut)
+        if new_statut == Ticket.Statut.CLOTURE and old.statut != Ticket.Statut.CLOTURE:
+            ouvertes = self._interventions_ouvertes(old)
+            if ouvertes:
+                raise ValidationError({
+                    'statut': (
+                        'Impossible de clôturer : intervention(s) encore '
+                        'ouverte(s) sur ce ticket.'),
+                    'interventions_ouvertes': ouvertes,
+                })
         super().perform_update(serializer)
         # FG81 — recalcule sla_breach après toute mise à jour de statut.
         inst = serializer.instance
@@ -1036,6 +1058,40 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             'facture_id': facture.id,
             'facture_reference': facture.reference,
             'couverture': couverture,
+        }, status=201)
+
+    @action(detail=True, methods=['post'], url_path='planifier-intervention',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def planifier_intervention(self, request, pk=None):
+        """YSERV2 — crée une Intervention pré-remplie (apps.installations)
+        depuis ce ticket, EN UN CLIC, et passe le ticket en PLANIFIE.
+
+        POST /sav/tickets/{id}/planifier-intervention/
+        body optionnel : {type_intervention: 'depanning'|'controle'|...}
+
+        Refuse proprement (400) si le ticket n'a pas de chantier lié — rien
+        à planifier sans installation. Écrit via
+        ``apps.installations.services`` (frontière cross-app, jamais un
+        import du modèle ``Intervention``)."""
+        ticket = self.get_object()
+        from apps.installations.services import (
+            TicketSansInstallationError, creer_intervention_depuis_ticket,
+        )
+        try:
+            interv = creer_intervention_depuis_ticket(
+                ticket=ticket, user=request.user, company=ticket.company,
+                type_intervention=request.data.get('type_intervention'))
+        except TicketSansInstallationError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        if ticket.statut == Ticket.Statut.NOUVEAU:
+            ticket.statut = Ticket.Statut.PLANIFIE
+            ticket.save(update_fields=['statut'])
+        activity.log_note(
+            ticket, request.user,
+            f'Intervention #{interv.id} planifiée depuis le ticket.')
+        return Response({
+            'intervention_id': interv.id,
+            'ticket_statut': ticket.statut,
         }, status=201)
 
     @action(detail=True, methods=['get', 'post'], url_path='prets-equipement',
