@@ -93,6 +93,7 @@ from .models import (
     PrimeAttribuee,
     QuizFormation,
     Remuneration,
+    RetourFeedback360,
     Sanction,
     SessionFormation,
     SoldeConge,
@@ -175,7 +176,9 @@ from .serializers import (
     PrimeAttribueeSerializer,
     QuizFormationPortailSerializer,
     QuizFormationSerializer,
+    MonFeedback360Serializer,
     RemunerationSerializer,
+    RetourFeedback360Serializer,
     SanctionSerializer,
     SessionFormationSerializer,
     SoldeCongeSerializer,
@@ -4141,6 +4144,51 @@ class EvaluationEmployeViewSet(_RhBaseViewSet):
             self.get_serializer(evaluation).data, status=status.HTTP_200_OK)
 
 
+class RetourFeedback360ViewSet(_RhBaseViewSet):
+    """Feedback 360° — gestion des invitations (ZRH9).
+
+    Société scopée + Administrateur/Responsable (le RH/manager invite N
+    répondants sur une évaluation — ``POST`` crée une ligne NON SOUMISE,
+    ``company``/``evaluation``/``repondant`` validés). Le répondant
+    lui-même utilise l'endpoint self-service dédié (portail,
+    ``mes-feedback360``) pour remplir/soumettre — jamais cette vue de
+    gestion, qui ne modifie pas ``reponses``/``commentaire``/``soumis``.
+    Filtres : ``?evaluation=``.
+
+    Action :
+    * ``GET .../synthese/?evaluation=`` — synthèse agrégée (moyennes par
+      critère, retours anonymisés sous le seuil de répondants).
+    """
+    queryset = RetourFeedback360.objects.select_related(
+        'evaluation', 'repondant').all()
+    serializer_class = RetourFeedback360Serializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_invitation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        evaluation = self.request.query_params.get('evaluation')
+        if evaluation:
+            qs = qs.filter(evaluation_id=evaluation)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=False, methods=['get'], url_path='synthese')
+    def synthese(self, request):
+        """Synthèse agrégée des retours SOUMIS d'une évaluation.
+        ``?evaluation=`` requis."""
+        evaluation_id = request.query_params.get('evaluation')
+        evaluation = EvaluationEmploye.objects.filter(
+            company=request.user.company, pk=evaluation_id).first()
+        if evaluation is None:
+            return Response(
+                {'detail': "Paramètre 'evaluation' requis/introuvable."},
+                status=status.HTTP_404_NOT_FOUND)
+        return Response(selectors.synthese_feedback360(evaluation))
+
+
 class SanctionViewSet(_RhBaseViewSet):
     """Sanctions disciplinaires (FG191) — registre conforme au code du travail.
 
@@ -5405,6 +5453,43 @@ class PortailSelfServiceViewSet(viewsets.ViewSet):
             evaluation, data=request.data, partial=True)
         ser.is_valid(raise_exception=True)
         ser.save()
+        return Response(ser.data)
+
+    @action(detail=False, methods=['get'], url_path='mes-feedback360')
+    def mes_feedback360(self, request):
+        """ZRH9 — liste les invitations feedback 360° du collaborateur
+        connecté (celles où IL est le répondant)."""
+        dossier = self._dossier(request)
+        if dossier is None:
+            return Response([])
+        qs = RetourFeedback360.objects.filter(
+            company=request.user.company, repondant=dossier
+        ).select_related('evaluation')
+        return Response(MonFeedback360Serializer(qs, many=True).data)
+
+    @action(
+        detail=True, methods=['patch'], url_path='mon-feedback360')
+    def mon_feedback360(self, request, pk=None):
+        """ZRH9 — remplit/soumet SON PROPRE retour feedback 360°
+        (``pk`` = id du ``RetourFeedback360``). Un répondant ne voit ni ne
+        modifie JAMAIS le retour d'un autre — un id qui n'est pas le sien
+        (ou d'une autre société) renvoie 404."""
+        dossier = self._dossier(request)
+        if dossier is None:
+            return Response(
+                {'detail': 'Aucun dossier employé lié à ce compte.'},
+                status=status.HTTP_404_NOT_FOUND)
+        retour = RetourFeedback360.objects.filter(
+            company=request.user.company, pk=pk, repondant=dossier).first()
+        if retour is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        ser = MonFeedback360Serializer(
+            retour, data=request.data, partial=True)
+        ser.is_valid(raise_exception=True)
+        if request.data.get('soumis'):
+            ser.save(soumis=True, date_soumission=timezone.now())
+        else:
+            ser.save()
         return Response(ser.data)
 
 

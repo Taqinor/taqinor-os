@@ -6050,3 +6050,73 @@ class HistoriqueCompetence(models.Model):
     def __str__(self):
         return (f'{self.employe.matricule} — {self.competence.code} : '
                 f'{self.ancien_niveau} → {self.nouveau_niveau}')
+
+
+class RetourFeedback360(models.Model):
+    """Feedback 360° — avis multi-sources sur un entretien (ZRH9).
+
+    ``EvaluationEmploye`` (FG190) ne porte que la note manager (+ l'auto-
+    éval XRH26). Ici, le RH/manager INVITE N répondants (pairs,
+    subordonnés, managers transversaux) sur une évaluation ; chaque
+    répondant ne voit et ne remplit QUE SON PROPRE retour — un autre
+    répondant reçoit 403/404 (contrôlé dans la vue). Le couple
+    (evaluation, repondant) est unique : une invitation crée une ligne NON
+    SOUMISE (``soumis=False``), le répondant la complète puis la soumet. Une
+    synthèse agrégée (côté selector) masque les retours individuels sous un
+    seuil de répondants pour préserver l'anonymat. Multi-société :
+    ``company`` posée côté serveur ; ``evaluation`` et ``repondant``
+    doivent appartenir à la même société.
+    """
+    class Relation(models.TextChoices):
+        PAIR = 'pair', 'Pair'
+        SUBORDONNE = 'subordonne', 'Subordonné'
+        MANAGER_TRANSVERSAL = 'manager_transversal', 'Manager transversal'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_retours_feedback360',
+        verbose_name='Société',
+    )
+    evaluation = models.ForeignKey(
+        EvaluationEmploye,
+        on_delete=models.CASCADE,
+        related_name='retours_360',
+        verbose_name='Évaluation',
+    )
+    repondant = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='retours_feedback360',
+        verbose_name='Répondant',
+    )
+    relation = models.CharField(
+        max_length=20, choices=Relation.choices,
+        default=Relation.PAIR, verbose_name='Relation')
+    reponses = models.JSONField(
+        blank=True, default=dict, verbose_name='Réponses')
+    commentaire = models.TextField(
+        blank=True, default='', verbose_name='Commentaire')
+    soumis = models.BooleanField(default=False, verbose_name='Soumis')
+    date_invitation = models.DateTimeField(
+        auto_now_add=True, verbose_name="Date d'invitation")
+    date_soumission = models.DateTimeField(
+        null=True, blank=True, verbose_name='Date de soumission')
+
+    class Meta:
+        verbose_name = 'Retour feedback 360°'
+        verbose_name_plural = 'Retours feedback 360°'
+        ordering = ['-date_invitation']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['evaluation', 'repondant'],
+                name='rh_feedback360_eval_repondant_uniq'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'evaluation'],
+                name='rh_feedback360_comp_eval_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.evaluation_id} — {self.repondant.matricule}'

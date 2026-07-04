@@ -2817,3 +2817,57 @@ def evolution_competences(
         }
         for h in qs
     ]
+
+
+SEUIL_ANONYMAT_360 = 3
+
+
+def synthese_feedback360(evaluation):
+    """ZRH9 — synthèse agrégée des retours SOUMIS d'un feedback 360°.
+
+    Agrège les réponses ``RetourFeedback360.reponses`` (JSON
+    ``{question: note}``) des retours SOUMIS de l'évaluation : moyenne par
+    critère/question. Les retours INDIVIDUELS ne sont RENVOYÉS
+    qu'au-dessus du seuil d'anonymat (:data:`SEUIL_ANONYMAT_360` — au
+    moins 3 répondants soumis) ; en-dessous, seule la moyenne agrégée est
+    exposée (aucun retour individuel, aucun nom de répondant identifiable
+    dans cette synthèse). Lecture seule.
+    """
+    soumis = list(
+        evaluation.retours_360.filter(soumis=True))
+    nb_reponses = len(soumis)
+    anonymise = nb_reponses < SEUIL_ANONYMAT_360
+
+    moyennes = {}
+    compteurs = {}
+    for retour in soumis:
+        for question, note in (retour.reponses or {}).items():
+            try:
+                valeur = float(note)
+            except (TypeError, ValueError):
+                continue
+            moyennes[question] = moyennes.get(question, 0.0) + valeur
+            compteurs[question] = compteurs.get(question, 0) + 1
+
+    moyennes_par_critere = {
+        question: round(total / compteurs[question], 2)
+        for question, total in moyennes.items()
+    }
+
+    result = {
+        'nb_invites': evaluation.retours_360.count(),
+        'nb_soumis': nb_reponses,
+        'anonymise': anonymise,
+        'moyennes_par_critere': moyennes_par_critere,
+    }
+    if not anonymise:
+        result['retours'] = [
+            {
+                'repondant_id': r.repondant_id,
+                'relation': r.relation,
+                'reponses': r.reponses,
+                'commentaire': r.commentaire,
+            }
+            for r in soumis
+        ]
+    return result

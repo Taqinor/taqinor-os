@@ -79,6 +79,7 @@ from .models import (
     QuizFormation,
     Remuneration,
     ReponsePulse,
+    RetourFeedback360,
     Sanction,
     SessionFormation,
     SoldeConge,
@@ -2858,4 +2859,50 @@ class LigneParcoursAnnuaireSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'type', 'type_libelle', 'intitule', 'organisme',
             'date_debut', 'date_fin', 'description',
+        ]
+
+
+class RetourFeedback360Serializer(serializers.ModelSerializer):
+    """ZRH9 — feedback 360° (gestion RH/manager) : invitation + relecture
+    de synthèse. Un répondant utilise l'endpoint self-service dédié pour
+    remplir/soumettre SON PROPRE retour (jamais celui d'un autre — géré
+    côté vue, pas ici). ``company``/``evaluation``/``repondant`` doivent
+    former un triplet cohérent société."""
+    repondant_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = RetourFeedback360
+        fields = [
+            'id', 'evaluation', 'repondant', 'repondant_nom', 'relation',
+            'reponses', 'commentaire', 'soumis',
+            'date_invitation', 'date_soumission',
+        ]
+        read_only_fields = [
+            'reponses', 'commentaire', 'soumis', 'date_invitation',
+            'date_soumission',
+        ]
+
+    def get_repondant_nom(self, obj):
+        return f'{obj.repondant.nom} {obj.repondant.prenom}'
+
+    def validate_evaluation(self, value):
+        return _meme_societe(self, value, 'Évaluation')
+
+    def validate_repondant(self, value):
+        return _meme_societe(self, value, 'Répondant')
+
+
+class MonFeedback360Serializer(serializers.ModelSerializer):
+    """ZRH9 — le RÉPONDANT remplit/soumet SON PROPRE retour (self-service).
+    Seuls ``reponses``/``commentaire``/``soumis`` sont éditables — tout le
+    reste (évaluation, répondant, relation) est posé à l'invitation et
+    reste en lecture seule ici."""
+    class Meta:
+        model = RetourFeedback360
+        fields = [
+            'id', 'evaluation', 'relation', 'reponses', 'commentaire',
+            'soumis', 'date_invitation', 'date_soumission',
+        ]
+        read_only_fields = [
+            'evaluation', 'relation', 'date_invitation', 'date_soumission',
         ]
