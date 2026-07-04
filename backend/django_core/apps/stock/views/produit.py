@@ -380,21 +380,44 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
         # d'abord les jetons internes (ci-dessous) puis, si le code ne suit
         # pas ce format, `Produit.code_barres` — scopé société.
         if ':' not in code:
+            # XSTK4 — un composite GS1-128/DataMatrix commence par l'AI '01'
+            # (GTIN, 14 chiffres) suivi d'autres AI (lot/péremption/série) :
+            # plus long qu'un simple EAN/GTIN nu. On décompose d'abord et on
+            # résout par GTIN (= code_barres) ; sinon repli sur un match
+            # direct du code brut (EAN/UPC simple, comportement XSTK3).
+            gtin = None
+            gs1_extra = {}
+            if code[:2] == '01' and len(code) > 16 and code[2:16].isdigit():
+                from ..gs1 import parse_gs1
+                parsed = parse_gs1(code)
+                gtin = parsed.get('gtin')
+                if gtin:
+                    gs1_extra = {
+                        'numero_lot': parsed.get('lot'),
+                        'date_peremption': (
+                            parsed['date_peremption'].isoformat()
+                            if parsed.get('date_peremption') else None),
+                        'numero_serie': parsed.get('serie'),
+                    }
+            lookup_code = gtin or code
             produit = (Produit.objects
                        .filter(company=request.user.company,
-                               code_barres=code)
+                               code_barres=lookup_code)
                        .first())
             if produit is None:
                 return Response(
                     {'detail': 'Produit introuvable.'},
                     status=status.HTTP_404_NOT_FOUND)
-            return Response({
+            data = {
                 'type': 'produit',
                 'id': produit.id,
                 'label': produit.nom,
                 'sku': produit.sku or '',
                 'route': '/stock',
-            })
+            }
+            if gs1_extra:
+                data['gs1'] = gs1_extra
+            return Response(data)
         prefix, _, raw_id = code.partition(':')
         prefix = prefix.strip().upper()
         raw_id = raw_id.strip()
