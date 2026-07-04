@@ -2701,6 +2701,22 @@ def expire_stale_devis():
             logger.warning('QJ5: log chatter échec devis %s : %s',
                            devis.reference, exc)
 
+        # YEVNT10 — une mutation AUTOMATIQUE (cron, hors requête HTTP) échappe
+        # à l'audit par signaux (celui-ci ne journalise que dans une requête,
+        # cf. apps/audit/recorder.py). `record()` accepte déjà un acteur
+        # système explicite (user=None) et n'exige pas d'être dans une
+        # requête : on l'appelle donc ici pour que l'expiration automatique
+        # laisse une trace attribuée « système ».
+        try:
+            from apps.audit import recorder as _audit_recorder
+            from apps.audit.models import AuditLog
+            _audit_recorder.record(
+                AuditLog.Action.STATUS, instance=devis, user=None,
+                detail='Expiration automatique (job : expire_stale_devis).')
+        except Exception as exc:  # noqa: BLE001
+            logger.warning('YEVNT10: audit échoué pour devis %s : %s',
+                           devis.reference, exc)
+
         # YEVNT2 — événement métier (notifications/audit s'abonnent), jamais
         # réémis pour un devis déjà expiré (garde amont via le queryset ENVOYE
         # + is_expired). Best-effort : ne casse jamais le sweep.
