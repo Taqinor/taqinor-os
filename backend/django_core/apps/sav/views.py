@@ -464,13 +464,23 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         return qs
 
     def get_permissions(self):
+        # NOTE : cette surcharge NE lit PAS self.permission_classes ; le tier de
+        # chaque @action doit donc être listé EXPLICITEMENT ci-dessous pour
+        # correspondre au kwarg permission_classes de son décorateur. Toute
+        # @action absente retombe sur IsAdminRole (plus restrictif que voulu) —
+        # tenu par apps/sav/tests_ticket_action_permissions.py.
         if self.action in READ_ACTIONS + [
-                'historique', 'rapport_pdf', 'lien_client', 'similaires']:
+                'historique', 'rapport_pdf', 'lien_client', 'similaires',
+                'triage_ia']:
             return [HasPermissionOrLegacy('sav_voir')()]
         elif self.action in WRITE_ACTIONS + [
                 'noter', 'annuler', 'reactiver', 'creer_devis',
                 'attente_client', 'reprendre', 'fusionner',
-                'facturer', 'planifier_intervention']:
+                'facturer', 'planifier_intervention',
+                'pieces_compatibles', 'premier_reponse', 'pieces',
+                'supprimer_piece', 'pieces_retirees', 'generer_facture',
+                'prets_equipement', 'retourner_pret', 'creer_lead',
+                'checklist']:
             return [HasPermissionOrLegacy('sav_gerer')()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
