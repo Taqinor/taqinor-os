@@ -983,9 +983,11 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       <div class="flex items-start justify-between gap-3">
         <p id="mt-exit-title" class="display text-lg text-white" data-i18n data-fr="Recevez votre estimation sur WhatsApp" data-ar="استلم تقديرك على واتساب">Recevez votre estimation sur WhatsApp</p>
         <!-- WJ88 — cible tactile ≥24×24 px (WCAG 2.5.8) : le glyphe seul
-             (✕, ~16 px de police) était plus petit que la cible minimale. -->
+             (✕, ~16 px de police) était plus petit que la cible minimale.
+             WA29 — remontée à ~44px (confort iOS) pour une modale qu'un
+             visiteur mobile sur le départ doit pouvoir fermer vite. -->
         <button type="button" id="mt-exit-close" aria-label="Fermer"
-          class="flex-none min-h-6 min-w-6 inline-flex items-center justify-center text-lune-faint hover:text-white">✕</button>
+          class="flex-none min-h-11 min-w-11 inline-flex items-center justify-center text-lune-faint hover:text-white">✕</button>
       </div>
       <p class="mt-2 text-sm text-lune-soft" data-i18n
         data-fr="Laissez juste votre numéro — on vous envoie votre estimation et on répond à vos questions. Gratuit, sans engagement."
