@@ -1035,3 +1035,74 @@ def analytique_signatures(company, *, date_debut=None, date_fin=None):
         'par_emetteur': par_emetteur,
         'total': total,
     }
+
+
+# ── ZGED3 — Tableau de bord des demandes de signature (kanban + suivi) ─────
+
+def tableau_bord_signatures(company, *, emetteur=None, date_debut=None,
+                            date_fin=None):
+    """ZGED3 — Demandes de signature (GED30) GROUPÉES par statut, avec pour
+    chacune : document, signataires + leur statut individuel (XGED2), %
+    complétion, date d'envoi, échéance/expiration, dernier événement.
+
+    Contrairement à XGED26 (agrégats analytiques purs), ce tableau est une
+    liste OPÉRATIONNELLE par statut avec DRILL-DOWN par demande — pensé pour
+    un affichage kanban (colonnes = statuts). Filtrable par `emetteur` (id
+    utilisateur) et par période d'ENVOI (`date_debut`/`date_fin` sur
+    `date_demande`). Bornée à la société — jamais de fuite cross-société.
+
+    Renvoie `{"colonnes": {statut: [ligne, ...]}, "total": <int>}` où chaque
+    `ligne` = `{id, document_id, document_nom, statut, emetteur, date_demande,
+    expires_at, pourcentage_completion, signataires: [...], dernier_evenement}`.
+    """
+    qs = demandes_signature_for_company(company).prefetch_related(
+        'signataires')
+    if emetteur is not None:
+        qs = qs.filter(created_by_id=emetteur)
+    if date_debut is not None:
+        qs = qs.filter(date_demande__gte=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(date_demande__lte=date_fin)
+
+    colonnes = {}
+    total = 0
+    for demande in qs:
+        signataires = list(demande.signataires.all())
+        if signataires:
+            signes = sum(1 for s in signataires if s.statut == 'signe')
+            pourcentage = round((signes / len(signataires)) * 100, 2)
+            signataires_data = [
+                {'id': s.pk, 'nom': s.nom, 'ordre': s.ordre, 'role': s.role,
+                 'statut': s.statut}
+                for s in signataires
+            ]
+            dernier_evt = max(
+                (s.date_action for s in signataires if s.date_action),
+                default=demande.date_demande)
+        else:
+            # Rétrocompatible : demande mono-signataire (XGED1, aucun
+            # SignataireDemande) — 0/1 ou 1/1 selon le statut global.
+            signes = 1 if demande.statut == 'signe' else 0
+            pourcentage = 100.0 if demande.statut == 'signe' else 0.0
+            signataires_data = [{
+                'id': None, 'nom': demande.signataire_nom, 'ordre': 1,
+                'role': 'signataire', 'statut': demande.statut,
+            }]
+            dernier_evt = demande.date_signature or demande.date_demande
+
+        ligne = {
+            'id': demande.pk,
+            'document_id': demande.document_id,
+            'document_nom': demande.document.nom,
+            'statut': demande.statut,
+            'emetteur': getattr(demande.created_by, 'username', None),
+            'date_demande': demande.date_demande,
+            'expires_at': demande.expires_at,
+            'pourcentage_completion': pourcentage,
+            'signataires': signataires_data,
+            'dernier_evenement': dernier_evt,
+        }
+        colonnes.setdefault(demande.statut, []).append(ligne)
+        total += 1
+
+    return {'colonnes': colonnes, 'total': total}

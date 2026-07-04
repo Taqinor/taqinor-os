@@ -2393,6 +2393,28 @@ class DemandeSignatureDocumentViewSet(TenantMixin,
                 demande, context={'request': request}).data,
             status=status.HTTP_200_OK)
 
+    @action(detail=False, methods=['get'], url_path='tableau-bord')
+    def tableau_bord(self, request):
+        """ZGED3 — Tableau de bord des demandes de signature (kanban par
+        statut + suivi de progression).
+
+        `GET …/demandes-signature/tableau-bord/?emetteur=<id>&
+        date_debut=AAAA-MM-JJ&date_fin=AAAA-MM-JJ` — pour chaque statut, la
+        liste des demandes avec document, signataires + leur statut
+        individuel (XGED2), % de complétion, date d'envoi, échéance/
+        expiration, dernier événement ; drill-down = l'id de la demande
+        (`GET demandes-signature/<id>/`). Filtrable par émetteur/période.
+        Gestion/admin uniquement (403 sinon)."""
+        from django.utils.dateparse import parse_date
+
+        emetteur = request.query_params.get('emetteur')
+        data = selectors.tableau_bord_signatures(
+            request.user.company,
+            emetteur=int(emetteur) if emetteur else None,
+            date_debut=parse_date(request.query_params.get('date_debut') or ''),
+            date_fin=parse_date(request.query_params.get('date_fin') or ''))
+        return Response(data)
+
 
 class RoleSignataireViewSet(TenantMixin, viewsets.ModelViewSet):
     """ZGED1 — Catalogue de rôles signataires réutilisables (couleur + auth
