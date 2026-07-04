@@ -355,6 +355,17 @@ class CompanyProfile(models.Model):
                   "0 = ce critère est ignoré (seul le dépassement de "
                   "plafond FG41 déclenche le hold).")
 
+    # ── XFSM1 — Facturation SAV hors garantie depuis le ticket ──────────────
+    # Taux horaire main-d'œuvre (MAD/heure) utilisé par
+    # ``sav.views.TicketViewSet.generer_facture`` pour chiffrer la ligne MO
+    # d'un ticket SAV hors garantie. Vide = aucun taux configuré : la
+    # génération de facture refuse la ligne MO tant que le founder n'a pas
+    # renseigné ce taux (jamais de valeur inventée).
+    taux_horaire_sav = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text='Taux horaire main-d\'œuvre SAV (MAD/heure), utilisé pour '
+                  'facturer un ticket hors garantie depuis son temps passé.')
+
     class Meta:
         verbose_name = 'Profil entreprise'
 

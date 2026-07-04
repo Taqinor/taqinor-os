@@ -542,6 +542,20 @@ class Ticket(models.Model):
         null=True, blank=True,
         help_text='ID du Devis ventes créé depuis ce ticket (XSAV3).')
 
+    # ── XFSM1 — Facturation SAV hors garantie depuis le ticket ───────────────
+    # Temps passé saisi par le technicien (heures), sert de base à la ligne
+    # main-d'œuvre de la facture générée par `generer-facture`. NULL/0 = pas
+    # de ligne MO (comportement inchangé, aucune heure inventée).
+    heures_main_oeuvre = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        help_text="Temps passé (heures) — base de la ligne main-d'œuvre "
+                  'facturée (XFSM1).')
+    # ID externe de la Facture ventes générée depuis ce ticket (même pattern
+    # que devis_id_ext) — idempotence : un second appel réutilise la facture.
+    facture_id_ext = models.IntegerField(
+        null=True, blank=True,
+        help_text='ID de la Facture ventes générée depuis ce ticket (XFSM1).')
+
     class Meta:
         verbose_name = 'Ticket SAV'
         verbose_name_plural = 'Tickets SAV'

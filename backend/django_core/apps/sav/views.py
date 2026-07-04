@@ -895,6 +895,36 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
                 f'Pièce {produit.nom} ×{quantite} retirée{suffixe}')
         return Response(PieceRetireeSerializer(piece).data, status=201)
 
+    @action(detail=True, methods=['post'], url_path='generer-facture',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def generer_facture(self, request, pk=None):
+        """XFSM1 — génère une facture BROUILLON depuis un ticket SAV hors
+        garantie : lignes pièces (PieceConsommee, prix de vente catalogue) +
+        ligne main-d'œuvre (heures_main_oeuvre × taux_horaire_sav société).
+
+        Un ticket sous garantie (calculé ou couvert par un contrat actif)
+        génère les mêmes lignes mais à 0 DH, marquées « couvert ». Idempotent
+        (réutilise ``facture_id_ext`` si déjà posé) — jamais de double
+        facture. Facture = PDF legacy (jamais /proposal, réservé aux devis
+        client-facing — règle #4 CLAUDE.md)."""
+        ticket = self.get_object()
+        from apps.ventes.services import generer_facture_ticket_sav
+
+        sous_garantie = ticket.sous_garantie_calcule == Ticket.SousGarantie.OUI
+        pieces = list(ticket.pieces.select_related('produit'))
+        facture = generer_facture_ticket_sav(
+            ticket=ticket, sous_garantie=sous_garantie, pieces=pieces,
+            user=request.user)
+        activity.log_note(
+            ticket, request.user,
+            f'Facture {facture.reference} générée depuis le ticket '
+            f'(hors garantie : {not sous_garantie}).')
+        return Response({
+            'facture_id': facture.id,
+            'facture_reference': facture.reference,
+            'sous_garantie': sous_garantie,
+        }, status=201)
+
     @action(detail=True, methods=['get', 'post', 'patch'],
             url_path='checklist',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
