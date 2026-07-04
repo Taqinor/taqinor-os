@@ -17,7 +17,7 @@ from .models import (
     CheckinSecurite, ControleReception,
     DeclarationCnss, DemandeActionFournisseur, Derogation, DiffusionProcedure,
     ElementRappel,
-    EtapeDeclarationAt, LienSignalementPublic, NonConformite,
+    EtapeDeclarationAt, ExerciceUrgence, LienSignalementPublic, NonConformite,
     NotationFinChantier, ObservationSecurite, PlanControleReception,
     PlanInspectionChantier,
     PointControleModele,
@@ -1959,3 +1959,128 @@ def compteurs_observations_securite(company, chantier_id=None):
             for (sup, mois), count in sorted(par_superviseur_mois.items())
         ],
     }
+
+
+# ── XQHS18 — Exercices d'urgence (drills) rattachés aux plans d'urgence ────
+
+@transaction.atomic
+def realiser_exercice_urgence(
+        exercice, *, date_realisee=None, duree_evacuation_secondes=None,
+        nb_participants=None, participants_libre='', observations=''):
+    """Enregistre la réalisation d'un exercice d'urgence (XQHS18).
+
+    Pose le chrono + observations et passe le statut à ``REALISE``. Un
+    exercice déjà réalisé/annulé n'est pas re-réalisable (idempotence de
+    l'ACTION, pas du modèle — ré-appeler renvoie l'exercice inchangé)."""
+    from django.utils import timezone
+
+    if exercice.statut != ExerciceUrgence.Statut.PLANIFIE:
+        return exercice
+
+    exercice.date_realisee = date_realisee or timezone.localdate()
+    exercice.duree_evacuation_secondes = duree_evacuation_secondes
+    exercice.nb_participants = nb_participants
+    exercice.participants_libre = participants_libre
+    exercice.observations = observations
+    exercice.statut = ExerciceUrgence.Statut.REALISE
+    exercice.save()
+    return exercice
+
+
+@transaction.atomic
+def creer_capa_depuis_ecart_exercice(exercice, *, description=None):
+    """Crée une CAPA à partir d'un écart constaté lors d'un exercice
+    d'urgence (XQHS18). Idempotent : un exercice déjà lié renvoie sa CAPA
+    existante. Exige des ``observations`` non vides (l'écart à corriger)."""
+    if exercice.capa_liee_id:
+        return exercice.capa_liee, False
+    if not (exercice.observations or '').strip():
+        raise ValueError(
+            "Aucun écart renseigné : l'observation est requise pour créer "
+            "une CAPA.")
+
+    ncr = NonConformite.objects.create(
+        company=exercice.company,
+        titre=f'Écart exercice · {exercice.get_type_exercice_display()}',
+        description=exercice.observations,
+        origine="Exercice d'urgence",
+        gravite=NonConformite.Gravite.MINEURE,
+        chantier_id=exercice.plan.chantier_id,
+    )
+    capa = ActionCorrectivePreventive.objects.create(
+        company=exercice.company,
+        non_conformite=ncr,
+        type_action=ActionCorrectivePreventive.Type.CORRECTIVE,
+        description=description or (
+            f'Correction écart exercice : {exercice.observations}'),
+    )
+    exercice.capa_liee = capa
+    exercice.save(update_fields=['capa_liee'])
+    return capa, True
+
+
+def plans_exercices_dus(company, today=None):
+    """Plans d'urgence dont le prochain exercice est dû (XQHS18, pattern
+    QHSE12/QHSE38) : aucun exercice réalisé, OU le dernier exercice réalisé
+    remonte à plus de ``frequence_mois``. Agrégation PURE — aucune mutation."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from .models import PlanUrgence
+
+    if today is None:
+        today = timezone.localdate()
+
+    dus = []
+    for plan in PlanUrgence.objects.filter(company=company):
+        dernier = (plan.exercices
+                   .filter(statut=ExerciceUrgence.Statut.REALISE)
+                   .exclude(date_realisee__isnull=True)
+                   .order_by('-date_realisee')
+                   .first())
+        if dernier is None:
+            dus.append(plan)
+            continue
+        delai = timedelta(days=30 * (plan.frequence_mois or 12))
+        if today >= dernier.date_realisee + delai:
+            dus.append(plan)
+    return dus
+
+
+def _notifier_exercice_du(plan):
+    """Notifie (best-effort) que le prochain exercice d'urgence du plan est
+    dû."""
+    try:
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+
+        responsable = getattr(plan, 'responsable', None)
+        cible = responsable or None
+        if cible is None:
+            return
+        notify(cible, EventType.MAINTENANCE_DUE,
+               "Exercice d'urgence dû",
+               body=f'Le plan « {plan.titre} » doit programmer son prochain '
+                    f'exercice (cadence {plan.frequence_mois} mois).',
+               link='/qhse/plans-urgence', company=plan.company)
+    except Exception:  # pragma: no cover - défensif
+        pass
+
+
+def relancer_exercices_urgence(company=None):
+    """Relance TOUS les plans dont le prochain exercice est dû (XQHS18,
+    pattern ``relancer_capa_en_retard``). Ne mute rien — la relance est une
+    notification. Renvoie les plans relancés."""
+    from .models import PlanUrgence
+
+    if company is not None:
+        plans = plans_exercices_dus(company)
+    else:
+        plans = []
+        for co in {p.company for p in PlanUrgence.objects.all()}:
+            plans.extend(plans_exercices_dus(co))
+
+    for plan in plans:
+        _notifier_exercice_du(plan)
+    return plans

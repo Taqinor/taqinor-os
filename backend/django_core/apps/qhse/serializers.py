@@ -13,6 +13,7 @@ from .models import (
     BilanCarbone, BordereauSuiviDechet, ConformiteEnvironnementale,
     CritereAudit, Dechet, DeclarationCnss, Derogation, EtapeDeclarationAt,
     EvaluationRisque, GrilleAudit,
+    ExerciceUrgence,
     InductionSecurite, IndicateurESG,
     LienSignalementPublic,
     LigneBilanCarbone,
@@ -693,7 +694,8 @@ class PlanUrgenceSerializer(serializers.ModelSerializer):
             'id', 'chantier_id', 'titre', 'point_rassemblement',
             'point_rassemblement_details', 'hopital_proche',
             'hopital_distance_km', 'hopital_telephone', 'date_revision',
-            'statut', 'statut_display', 'notes', 'contacts', 'secouristes',
+            'statut', 'statut_display', 'notes', 'frequence_mois',
+            'contacts', 'secouristes',
             'nb_contacts', 'nb_secouristes', 'date_creation',
         ]
         read_only_fields = ['date_creation']
@@ -1217,3 +1219,32 @@ class ObservationSecuriteSerializer(serializers.ModelSerializer):
             'observateur', 'action_liee', 'non_conformite_liee',
             'date_creation',
         ]
+
+
+class ExerciceUrgenceSerializer(serializers.ModelSerializer):
+    """Exercice d'urgence rattaché à un plan (XQHS18). ``company`` posée côté
+    serveur. La réalisation (chrono/observations) se pose via l'action
+    ``realiser`` du viewset (jamais un PATCH direct des champs de résultat)."""
+    type_exercice_display = serializers.CharField(
+        source='get_type_exercice_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    plan_titre = serializers.CharField(source='plan.titre', read_only=True)
+
+    class Meta:
+        model = ExerciceUrgence
+        fields = [
+            'id', 'plan', 'plan_titre', 'type_exercice',
+            'type_exercice_display', 'date_prevue', 'date_realisee',
+            'duree_evacuation_secondes', 'nb_participants',
+            'participants_libre', 'observations', 'statut', 'statut_display',
+            'capa_liee', 'date_creation',
+        ]
+        read_only_fields = [
+            'date_realisee', 'duree_evacuation_secondes', 'nb_participants',
+            'participants_libre', 'observations', 'statut', 'capa_liee',
+            'date_creation',
+        ]
+
+    def validate_plan(self, value):
+        return _meme_societe(self, value, "Plan d'urgence")

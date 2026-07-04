@@ -1746,6 +1746,11 @@ class PlanUrgence(models.Model):
         default=Statut.BROUILLON, verbose_name='Statut')
     notes = models.TextField(
         blank=True, default='', verbose_name='Notes')
+    # XQHS18 — fréquence cible des exercices d'urgence (drills) pour ce plan.
+    # Additif/nullable, défaut 12 mois (annuel) : ne change rien aux plans
+    # existants au-delà d'ajouter la cadence de relance.
+    frequence_mois = models.PositiveIntegerField(
+        default=12, verbose_name="Fréquence cible des exercices (mois)")
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -5053,3 +5058,93 @@ class ObservationSecurite(models.Model):
 
     def __str__(self):
         return f'{self.get_type_observation_display()} — {self.get_categorie_display()}'
+
+
+# ── XQHS18 — Exercices d'urgence (drills) rattachés aux plans d'urgence ─────
+
+class ExerciceUrgence(models.Model):
+    """Exercice d'urgence (évacuation/incendie/déversement) rattaché à un
+    ``PlanUrgence`` (XQHS18, exigence ISO 45001 8.2).
+
+    Trace la planification (``date_prevue``) puis la réalisation
+    (``date_realisee``, ``duree_evacuation_secondes`` chronométrée,
+    participants, observations/écarts). Un écart constaté peut créer une CAPA
+    liée (voir ``services.creer_capa_depuis_ecart_exercice``).
+
+    ``frequence_mois`` sur le plan lui-même détermine la cadence cible ; le
+    sélecteur ``exercices_dus`` (pattern QHSE38/QHSE12) identifie les plans en
+    retard de leur prochain exercice.
+
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    class Type(models.TextChoices):
+        EVACUATION = 'evacuation', 'Évacuation'
+        INCENDIE = 'incendie', 'Incendie'
+        DEVERSEMENT = 'deversement', 'Déversement'
+        AUTRE = 'autre', 'Autre'
+
+    class Statut(models.TextChoices):
+        PLANIFIE = 'planifie', 'Planifié'
+        REALISE = 'realise', 'Réalisé'
+        ANNULE = 'annule', 'Annulé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_exercices_urgence',
+        verbose_name='Société',
+    )
+    plan = models.ForeignKey(
+        PlanUrgence,
+        on_delete=models.CASCADE,
+        related_name='exercices',
+        verbose_name="Plan d'urgence",
+    )
+    type_exercice = models.CharField(
+        max_length=15, choices=Type.choices,
+        default=Type.EVACUATION, verbose_name="Type d'exercice")
+    date_prevue = models.DateField(
+        null=True, blank=True, verbose_name='Date prévue')
+    date_realisee = models.DateField(
+        null=True, blank=True, verbose_name='Date réalisée')
+    duree_evacuation_secondes = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name="Durée d'évacuation chronométrée (secondes)")
+    nb_participants = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Nombre de participants')
+    participants_libre = models.TextField(
+        blank=True, default='', verbose_name='Participants (liste libre)')
+    observations = models.TextField(
+        blank=True, default='', verbose_name='Observations / écarts')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.PLANIFIE, verbose_name='Statut')
+    # Écart → CAPA liée (intra-app, FK directe). NULL tant qu'aucune CAPA
+    # n'a été créée à partir de cet exercice.
+    capa_liee = models.ForeignKey(
+        'ActionCorrectivePreventive',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='exercices_urgence_origine',
+        verbose_name='CAPA liée',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Exercice d'urgence"
+        verbose_name_plural = "Exercices d'urgence"
+        ordering = ['-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'plan'],
+                name='qhse_exeurg_co_plan',
+            ),
+            models.Index(
+                fields=['company', 'statut'],
+                name='qhse_exeurg_co_statut',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.get_type_exercice_display()} — {self.plan.titre}'

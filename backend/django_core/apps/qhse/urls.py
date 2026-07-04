@@ -11,7 +11,8 @@ from .views import (
     ContactUrgenceViewSet, ControleReceptionViewSet, DechetViewSet,
     CritereAuditViewSet, DeclarationCnssViewSet, DerogationViewSet,
     EtapeDeclarationAtViewSet,
-    EvaluationRisqueViewSet, GrilleAuditViewSet, IncidentViewSet,
+    EvaluationRisqueViewSet, ExerciceUrgenceViewSet, GrilleAuditViewSet,
+    IncidentViewSet,
     IndicateurESGViewSet,
     InductionSecuriteViewSet, InspectionSecuriteViewSet,
     Iso9001ReadinessViewSet,
@@ -88,6 +89,7 @@ router.register(
     r'liens-signalement', LienSignalementPublicViewSet)
 router.register(r'signalements-publics', SignalementPublicViewSet)
 router.register(r'observations-securite', ObservationSecuriteViewSet)
+router.register(r'exercices-urgence', ExerciceUrgenceViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

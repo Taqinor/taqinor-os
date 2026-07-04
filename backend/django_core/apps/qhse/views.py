@@ -26,7 +26,7 @@ from .models import (
     ConformiteEnvironnementale, ConsignationLoto, ContactUrgence,
     ControleReception,
     CritereAudit, Dechet, DeclarationCnss, Derogation, EtapeDeclarationAt,
-    EvaluationRisque, GrilleAudit,
+    EvaluationRisque, ExerciceUrgence, GrilleAudit,
     Incident, IndicateurESG,
     InductionSecurite, InspectionSecurite,
     ItemNotation, LienSignalementPublic, LigneBilanCarbone,
@@ -50,7 +50,7 @@ from .serializers import (
     ControleReceptionSerializer,
     CritereAuditSerializer, DechetSerializer, DeclarationCnssSerializer,
     DerogationSerializer, EtapeDeclarationAtSerializer,
-    EvaluationRisqueSerializer, GrilleAuditSerializer,
+    EvaluationRisqueSerializer, ExerciceUrgenceSerializer, GrilleAuditSerializer,
     IncidentSerializer,
     IndicateurESGSerializer,
     InductionSecuriteSerializer, InspectionSecuriteSerializer,
@@ -89,11 +89,13 @@ from .services import (
     activer_procedure, calculer_score_audit, calculer_score_notation,
     cloturer_ncr, compteurs_observations_securite, creer_ncr_depuis_reserve,
     convertir_observation_en_capa, convertir_observation_en_ncr,
+    creer_capa_depuis_ecart_exercice,
     generer_capa_depuis_analyse,
     creer_signalement_public, generer_qr_signalement, instancier_plan_chantier,
     lever_ncr_audit, lever_ncr_inspection, nouvelle_version_procedure,
-    poser_disposition,
-    relancer_capa_en_retard, relancer_conformites,
+    plans_exercices_dus, poser_disposition,
+    realiser_exercice_urgence,
+    relancer_capa_en_retard, relancer_conformites, relancer_exercices_urgence,
     resolve_lien_signalement_public,
     statuer_controle_reception,
     SIGNALEMENT_OK,
@@ -2329,3 +2331,63 @@ class ObservationSecuriteViewSet(_QhseBaseViewSet):
         chantier = request.query_params.get('chantier') or None
         return Response(compteurs_observations_securite(
             request.user.company, chantier_id=chantier))
+
+
+# ── XQHS18 — Exercices d'urgence (drills) rattachés aux plans d'urgence ────
+
+class ExerciceUrgenceViewSet(_QhseBaseViewSet):
+    """CRUD des exercices d'urgence + actions ``realiser``/``creer-capa``.
+
+    ``company`` posée côté serveur. ``GET …/dus/`` liste les plans en retard
+    de leur prochain exercice (pattern relance QHSE38/QHSE12).
+    """
+    queryset = ExerciceUrgence.objects.all()
+    serializer_class = ExerciceUrgenceSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'date_prevue', 'date_realisee']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        plan = self.request.query_params.get('plan')
+        if plan:
+            qs = qs.filter(plan_id=plan)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=True, methods=['post'])
+    def realiser(self, request, pk=None):
+        exercice = self.get_object()
+        exercice = realiser_exercice_urgence(
+            exercice,
+            date_realisee=request.data.get('date_realisee'),
+            duree_evacuation_secondes=request.data.get(
+                'duree_evacuation_secondes'),
+            nb_participants=request.data.get('nb_participants'),
+            participants_libre=request.data.get('participants_libre', ''),
+            observations=request.data.get('observations', ''))
+        return Response(ExerciceUrgenceSerializer(exercice).data)
+
+    @action(detail=True, methods=['post'], url_path='creer-capa')
+    def creer_capa(self, request, pk=None):
+        exercice = self.get_object()
+        try:
+            capa, created = creer_capa_depuis_ecart_exercice(
+                exercice, description=request.data.get('description'))
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            ActionCorrectivePreventiveSerializer(capa).data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'])
+    def dus(self, request):
+        plans = plans_exercices_dus(request.user.company)
+        return Response(PlanUrgenceSerializer(plans, many=True).data)
+
+    @action(detail=False, methods=['post'])
+    def relancer(self, request):
+        plans = relancer_exercices_urgence(request.user.company)
+        return Response({'relances': len(plans)})
