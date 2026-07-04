@@ -1378,6 +1378,10 @@ class DevisViewSet(viewsets.ModelViewSet):
                 company=company,
             ),
         )
+        # YEVNT6 — événement documentaire (best-effort).
+        from core.events import bon_commande_cree
+        bon_commande_cree.send(
+            sender=BonCommande, instance=bc, company=company)
         serializer = BonCommandeSerializer(bc)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 

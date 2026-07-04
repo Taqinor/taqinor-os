@@ -276,6 +276,11 @@ class FactureViewSet(viewsets.ModelViewSet):
         # XFAC18 — save complet (persiste statut + revue_statut + échéance
         # dérivée), puis surface les anomalies de revue dans la réponse.
         facture.save()
+        # YEVNT6 — événement documentaire (best-effort, ne change rien au
+        # statut déjà posé ci-dessus).
+        from core.events import facture_emise
+        facture_emise.send(
+            sender=Facture, instance=facture, company=facture.company)
         data = FactureSerializer(facture).data
         if anomalies:
             data['anomalies'] = anomalies
@@ -303,10 +308,13 @@ class FactureViewSet(viewsets.ModelViewSet):
         # passage, ici recalculé à 0 côté document — le montant informatif
         # posé est donc le solde figé de la facture, cohérent avec les autres
         # sites d'émission qui portent le montant réglé).
-        from core.events import facture_paid
+        from core.events import facture_paid, facture_payee
         facture_paid.send(
             sender=Facture, facture=facture, montant=facture.total_ttc,
             company=facture.company)
+        # YEVNT6 — événement documentaire générique (même transition).
+        facture_payee.send(
+            sender=Facture, instance=facture, company=facture.company)
         return Response(FactureSerializer(facture).data)
 
     @action(detail=True, methods=['post'], url_path='annuler',
@@ -483,6 +491,11 @@ class FactureViewSet(viewsets.ModelViewSet):
                 locked.save(update_fields=['statut'])
                 facture = locked
 
+        # YEVNT6 — événement documentaire (best-effort), une fois pour les
+        # trois branches ci-dessus (toutes convergent vers ANNULEE).
+        from core.events import facture_annulee
+        facture_annulee.send(
+            sender=Facture, instance=facture, company=facture.company)
         return Response(FactureSerializer(facture).data)
 
     @action(detail=True, methods=['get'], url_path='paiements',
@@ -589,10 +602,13 @@ class FactureViewSet(viewsets.ModelViewSet):
                 reset_relance_escalation(locked)
                 # YDOCF4 — facture_paid, exactement une fois au passage
                 # résiduel→0 (jamais à un règlement partiel).
-                from core.events import facture_paid
+                from core.events import facture_paid, facture_payee
                 facture_paid.send(
                     sender=Facture, facture=locked, montant=montant,
                     company=locked.company)
+                # YEVNT6 — événement documentaire générique (même transition).
+                facture_payee.send(
+                    sender=Facture, instance=locked, company=locked.company)
             elif locked.statut != Facture.Statut.ANNULEE:
                 # XFAC13 — tolérance société : un résiduel sous le seuil
                 # (défaut 0 = désactivé, comportement inchangé) est abandonné

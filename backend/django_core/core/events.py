@@ -193,6 +193,22 @@ importe ``apps.audit``.
     * ``montant`` — montant du paiement rejeté ;
     * ``company`` — la société (posée côté serveur).
 
+``facture_emise`` / ``facture_payee`` / ``facture_annulee`` / ``bon_commande_cree``
+    Événements documentaires ventes EN AVAL du devis — YEVNT6.
+    ``ventes.services``/``views.facture`` n'émettaient jusque-là que pour les
+    DEVIS (``devis_accepted``/``devis_sent``/``devis_refused``) ; rien pour la
+    chaîne BonCommande → Facture. Émission SYNCHRONE, best-effort, aux sites
+    de transition réels (``emettre``, ``creer_facture_contrat``,
+    ``creer_facture_tranche`` pour ``facture_emise`` ; ``annuler`` pour
+    ``facture_annulee`` ; ``convertir_en_bc`` pour ``bon_commande_cree`` ;
+    ``facture_payee`` accompagne ``facture_paid`` — YDOCF4 — au même
+    résiduel→0). Préserve STRICTEMENT les statuts document (règle #4) :
+    l'émission n'en change AUCUN. Aucun abonné obligatoire dans ce lot (pose
+    du seam pour ``compta``/``notifications``/audit/KPI). Arguments communs :
+
+    * ``instance`` — l'objet ``Facture`` ou ``BonCommande`` concerné ;
+    * ``company`` — la société (posée côté serveur).
+
 ``document_produit``
     Émis par une app métier/satellite quand elle produit un fichier destiné à
     être centralisé dans la GED (ZGED6 — pattern Odoo « File centralization »).
@@ -302,3 +318,12 @@ facture_paid = django.dispatch.Signal()
 # Destiné à un abonné compta (extourne l'écriture d'encaissement, YLEDG4) et
 # délettrage (YLEDG6) — aucun abonné obligatoire dans ce lot (pose du seam).
 paiement_rejete = django.dispatch.Signal()
+
+# YEVNT6 — événements documentaires ventes en aval du devis (émission
+# SYNCHRONE, best-effort ; ne change JAMAIS un statut/PDF — règle #4).
+# Arguments communs : instance (Facture|BonCommande), company. Aucun abonné
+# obligatoire dans ce lot (pose du seam pour compta/notifications/audit/KPI).
+facture_emise = django.dispatch.Signal()
+facture_payee = django.dispatch.Signal()
+facture_annulee = django.dispatch.Signal()
+bon_commande_cree = django.dispatch.Signal()

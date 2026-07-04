@@ -2285,10 +2285,13 @@ def record_payment_from_link(*, link, payload=None):
             facture.save(update_fields=['statut'])
             # YDOCF4 — facture_paid, exactement une fois au passage
             # résiduel→0 via le webhook de lien de paiement.
-            from core.events import facture_paid
+            from core.events import facture_paid, facture_payee
             facture_paid.send(
                 sender=Facture, facture=facture, montant=montant,
                 company=facture.company)
+            # YEVNT6 — événement documentaire générique (même transition).
+            facture_payee.send(
+                sender=Facture, instance=facture, company=facture.company)
     return paiement, None
 
 
