@@ -210,6 +210,8 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             'cocher_safety', 'signer_safety',
             # FG78 — confirmation RDV.
             'confirmer_rdv',
+            # XFSM3 — replanification en masse d'une journée.
+            'replanifier_en_masse',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -1696,6 +1698,46 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             request.user.company, chantier_id=chantier_id,
             type_intervention=type_intervention, duree_jours=duree_jours,
             date_cible=date_cible)
+        return Response(data)
+
+    # ── XFSM3 — Replanification en masse d'une journée ──────────────────────
+    @action(detail=False, methods=['post'], url_path='replanifier-en-masse',
+            permission_classes=[IsResponsableOrAdmin])
+    def replanifier_en_masse(self, request):
+        """XFSM3 — re-slotte en UN appel les interventions d'un jour (toutes
+        celles d'un `technicien` absent, et/ou une liste `intervention_ids`).
+        `?simuler=1` (ou body `simuler`) ne mute rien — dry-run des
+        propositions XFSM2. Sans dry-run, applique + trace FG78 + notifie.
+        Corps : {jour, [technicien], [intervention_ids], [motif]}."""
+        from datetime import datetime
+        from rest_framework.exceptions import ValidationError
+        from .. import services
+
+        jour_raw = request.data.get('jour')
+        if not jour_raw:
+            raise ValidationError({'jour': 'Jour requis.'})
+        try:
+            jour = datetime.strptime(jour_raw, '%Y-%m-%d').date()
+        except (TypeError, ValueError):
+            raise ValidationError({'jour': 'Date invalide.'})
+
+        technicien_id = request.data.get('technicien')
+        intervention_ids = request.data.get('intervention_ids')
+        simuler = str(
+            request.data.get('simuler')
+            or request.query_params.get('simuler') or '').lower() in (
+            '1', 'true', 'yes')
+
+        if simuler:
+            data = services.previsualiser_replanification_masse(
+                request.user.company, jour=jour, technicien_id=technicien_id,
+                intervention_ids=intervention_ids)
+            return Response(data)
+
+        motif = request.data.get('motif')
+        data = services.appliquer_replanification_masse(
+            request.user.company, jour=jour, motif=motif, user=request.user,
+            technicien_id=technicien_id, intervention_ids=intervention_ids)
         return Response(data)
 
     # ── FG303 — planning des camionnettes (capacité véhicule) ────────────────
