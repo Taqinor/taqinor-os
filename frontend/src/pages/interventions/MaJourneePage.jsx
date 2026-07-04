@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   CalendarDays, MapPin, ChevronRight, ClipboardList, Navigation, Camera,
-  Tag, ListChecks, Mic, ShieldCheck, Wrench, AlertOctagon,
+  Tag, ListChecks, Mic, ShieldCheck, Wrench, AlertOctagon, CloudRain,
 } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import {
@@ -96,6 +96,12 @@ export default function MaJourneePage() {
                         <span className="flex items-center gap-1 text-destructive">
                           <AlertOctagon className="size-3.5" aria-hidden="true" />
                           {interv.photos_obligatoires_manquantes} photo(s) requise(s)
+                        </span>)}
+                      {/* XFSM21 — risque météo J+3 (pluie/vent) sur une pose planifiée. */}
+                      {interv.meteo_risque && (
+                        <span className="flex items-center gap-1 text-amber-600">
+                          <CloudRain className="size-3.5" aria-hidden="true" />
+                          Météo à risque
                         </span>)}
                     </div>
                   </div>
