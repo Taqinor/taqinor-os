@@ -101,6 +101,7 @@ from .services import (
     journal_de_paie,
     journal_de_paie_ventile,
     livre_de_paie,
+    marquer_bulletin_lu,
     marquer_bulletin_paye,
     mouvements_cnss_periode,
     notifier_echeances_en_retard,
@@ -1058,10 +1059,22 @@ class CoffreFortBulletinViewSet(viewsets.ReadOnlyModelViewSet):
             .prefetch_related('lignes')
         )
 
+    def retrieve(self, request, *args, **kwargs):
+        """XPAI21 — la consultation du détail pose l'accusé de lecture."""
+        bulletin = self.get_object()
+        marquer_bulletin_lu(bulletin)
+        return Response(
+            self.get_serializer(bulletin).data, status=status.HTTP_200_OK)
+
     @action(detail=True, methods=['get'], url_path='pdf')
     def pdf(self, request, pk=None):
-        """PDF du bulletin de l'employé (self-service, PAIE35)."""
+        """PDF du bulletin de l'employé (self-service, PAIE35).
+
+        XPAI21 — le téléchargement pose aussi l'accusé de lecture (première
+        consultation, jamais réécrit).
+        """
         bulletin = self.get_object()  # déjà scopé à l'utilisateur
+        marquer_bulletin_lu(bulletin)
         try:
             pdf = builders.render_bulletin_pdf(bulletin)
         except RuntimeError as exc:

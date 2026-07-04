@@ -1990,6 +1990,49 @@ def valider_bulletin(bulletin):
             extourner_provisions_gratification(bulletin.profil)
         except Exception:  # pragma: no cover - défensif, best-effort
             pass
+    # XPAI21 — Notifie l'employé lié (rh.DossierEmploye.user) que son
+    # bulletin validé est disponible dans son coffre-fort (PAIE35).
+    # Best-effort : jamais bloquant pour la validation.
+    try:
+        notifier_bulletin_disponible(bulletin)
+    except Exception:  # pragma: no cover - défensif, best-effort
+        pass
+    return bulletin
+
+
+# ── XPAI21 — Distribution des bulletins : notification + accusé de lecture ─
+
+def notifier_bulletin_disponible(bulletin):
+    """Notifie l'employé lié qu'un bulletin VALIDÉ est disponible (XPAI21).
+
+    Résout l'utilisateur applicatif rattaché (``profil.employe.user``,
+    ``OneToOne`` RH) — sans utilisateur lié, ne fait rien (no-op silencieux,
+    tous les employés n'ont pas de compte). Best-effort, jamais bloquant.
+    """
+    from apps.notifications import services as notif_services
+
+    employe = bulletin.profil.employe if bulletin.profil.employe_id else None
+    user = getattr(employe, 'user', None) if employe else None
+    if user is None:
+        return
+    notif_services.notify(
+        user, 'paie_bulletin_disponible',
+        title='Votre bulletin de paie est disponible',
+        body=(f'Bulletin {bulletin.periode.mois:02d}/{bulletin.periode.annee} '
+              'disponible dans votre coffre-fort.'),
+        company=bulletin.company)
+
+
+def marquer_bulletin_lu(bulletin):
+    """Pose l'accusé de lecture ``lu_le`` à la PREMIÈRE consultation (XPAI21).
+
+    Idempotent : un ``lu_le`` déjà posé n'est JAMAIS réécrit (trace fidèle de
+    la première ouverture — remise dématérialisée). Renvoie le bulletin.
+    """
+    if bulletin.lu_le is not None:
+        return bulletin
+    bulletin.lu_le = timezone.now()
+    bulletin.save(update_fields=['lu_le'])
     return bulletin
 
 

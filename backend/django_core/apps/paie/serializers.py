@@ -401,11 +401,12 @@ class BulletinPaieSerializer(serializers.ModelSerializer):
             'brut', 'brut_imposable', 'cnss_salariale', 'cnss_patronale',
             'amo_salariale', 'amo_patronale', 'allocations_familiales',
             'formation_professionnelle', 'provision_conges', 'cimr_salariale',
-            'frais_professionnels', 'net_imposable', 'ir', 'retenues',
+            'frais_professionnels', 'net_imposable', 'ir',
+            'montant_exonere_regime', 'retenues',
             'prime_anciennete', 'charges_patronales', 'net_a_payer',
             'provision_conges',
             'date_validation', 'date_creation', 'lignes',
-            'paye', 'date_paiement',
+            'paye', 'date_paiement', 'lu_le',
         ]
         read_only_fields = fields
 

@@ -1057,6 +1057,12 @@ class BulletinPaie(models.Model):
     paye = models.BooleanField(default=False, verbose_name='Payé')
     date_paiement = models.DateTimeField(
         null=True, blank=True, verbose_name='Payé le')
+    # XPAI21 — Accusé de lecture (coffre-fort employé, PAIE35) : horodate la
+    # PREMIÈRE consultation du bulletin par le salarié. Posé une seule fois
+    # (jamais réécrit — cf. ``_CHAMPS_AUTORISES_APRES_VALIDATION`` ci-dessous
+    # et la garde côté service ``marquer_bulletin_lu``).
+    lu_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Lu le (accusé de lecture)')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -1078,10 +1084,11 @@ class BulletinPaie(models.Model):
     # (PAIE17) : la transition de validation elle-même (statut/
     # date_validation) et le suivi de paiement (XPAI9 — un bulletin est
     # toujours validé AVANT d'être payé, donc ``paye``/``date_paiement``
-    # se posent forcément APRÈS le gel). Les montants/lignes de paie
-    # restent, eux, strictement figés.
+    # se posent forcément APRÈS le gel). ``lu_le`` (XPAI21) se pose de la
+    # même façon, après coup, à la première consultation employé. Les
+    # montants/lignes de paie restent, eux, strictement figés.
     _CHAMPS_AUTORISES_APRES_VALIDATION = frozenset(
-        {'statut', 'date_validation', 'paye', 'date_paiement'})
+        {'statut', 'date_validation', 'paye', 'date_paiement', 'lu_le'})
 
     def save(self, *args, **kwargs):
         """Garde d'immuabilité (PAIE17).
