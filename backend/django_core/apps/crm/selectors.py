@@ -25,6 +25,25 @@ def find_client_by_email(from_email, company=None):
         email__iexact=from_email.strip()).first()
 
 
+def find_client_by_phone(company, telephone):
+    """XSAV26 — Client de `company` dont le téléphone correspond au numéro
+    donné, normalisé via `apps.ventes.utils.phone.normalize_ma_phone`.
+
+    Point d'entrée cross-app sanctionné pour `apps.notifications` (webhook
+    BSP WhatsApp) : matching par numéro SANS jamais exposer les modèles crm.
+    Renvoie le client le plus récemment créé en cas de doublon, ou None."""
+    from apps.ventes.utils.phone import normalize_ma_phone
+
+    key = normalize_ma_phone(telephone)
+    if not key:
+        return None
+    candidates = [
+        c for c in client_base_qs(company).order_by('-id')
+        if normalize_ma_phone(c.telephone) == key
+    ]
+    return candidates[0] if candidates else None
+
+
 def client_credit_warning(client, montant_ttc_nouveau=None):
     """FG41 — encours client + avertissement plafond.
 

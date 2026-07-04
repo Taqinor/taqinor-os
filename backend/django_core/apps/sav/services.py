@@ -603,3 +603,50 @@ def suggerer_recidive(*, company, installation_id, exclure_ticket_id=None,
         f'Intervention #{interv.id} ({type_label}) réalisée le '
         f'{interv.date_realisee} sur le même chantier (< {fenetre} j).')
     return interv.id, motif
+
+
+# ── XSAV26 — WhatsApp entrant → ticket SAV (gated BSP) ──────────────────────
+
+def router_whatsapp_entrant_vers_ticket(*, company, expediteur, texte):
+    """XSAV26 — route un message WhatsApp entrant vers le SAV quand
+    l'expéditeur matche un ``crm.Client`` existant (via
+    ``crm.selectors.find_client_by_phone``, normalisation
+    ``normalize_ma_phone``) :
+
+      * si le client n'a AUCUN ticket ouvert (statuts ``OPEN_STATUTS``), crée
+        un ticket correctif dont la description démarre par le message ;
+      * sinon, ajoute le texte en note chatter du ticket ouvert le plus
+        récent.
+
+    Renvoie ``('ticket_cree', ticket)`` / ``('note_ajoutee', ticket)`` quand
+    un client a matché, ou ``(None, None)`` si l'expéditeur ne correspond à
+    aucun client de la société (l'appelant route alors vers le lead comme
+    avant — comportement inchangé, XSAV26 ne touche jamais ce chemin)."""
+    from apps.crm.selectors import find_client_by_phone
+    from apps.ventes.utils.references import create_with_reference
+    from . import activity
+    from .models import Ticket
+
+    client = find_client_by_phone(company, expediteur)
+    if client is None:
+        return None, None
+
+    ticket = (
+        Ticket.objects
+        .filter(company=company, client=client, statut__in=Ticket.OPEN_STATUTS,
+                annule=False)
+        .order_by('-date_creation')
+        .first())
+    if ticket is not None:
+        activity.log_note(
+            ticket, None, f'WhatsApp de {expediteur} : {texte}'.strip())
+        return 'note_ajoutee', ticket
+
+    def _create(ref):
+        return Ticket.objects.create(
+            company=company, reference=ref, client=client,
+            type=Ticket.Type.CORRECTIF,
+            description=f'[WhatsApp] {texte}'.strip())
+    ticket = create_with_reference(Ticket, 'SAV', company, _create)
+    activity.log_creation(ticket, None)
+    return 'ticket_cree', ticket
