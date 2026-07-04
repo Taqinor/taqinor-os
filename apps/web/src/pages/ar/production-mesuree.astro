@@ -28,8 +28,9 @@ const L = (href: string) => localizeNavHref(href, locale);
 const devisHref = L('/devis/mon-toit');
 
 // ── أرقام مُشتَقّة — لا شيء مكتوب يدوياً ─────────────────────────────────────
-const installCount = REALISATIONS.length;
-
+// القاعدة ب (2026-07-04): العدد الخام للتركيبات لم يعد يُبرَز في نص المستخدم
+// (h2، المقامات) — تقود الصفحة بكيلوواط الذروة المركّبة والكيلوواط ساعة
+// المقيسة بدلاً منه (يحلّ جزئياً محلّ W354).
 const kwcTotal = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
 const kwcTotalLabel = kwcTotal.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -81,15 +82,15 @@ const jsonLd = {
     <section class="section px-4">
       <div class="mx-auto max-w-6xl">
         <p class="tech-label v2-kicker rule-brass text-lune">الحصيلة المقيسة حتى {generatedDateLabel}</p>
-        <h2 class="display v2-section-title mt-5 text-white">{installCount} تركيبات، عدّاد واحد</h2>
+        <h2 class="display v2-section-title mt-5 text-white">{kwcTotalLabel} kWc، عدّاد واحد</h2>
         <div class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
           <KeyFigure value={kwcTotalLabel} unit="kWc" label="القدرة المركَّبة">
-            مجموع {installCount} تركيبات منشورة.
+            مجموع التركيبات المنشورة.
           </KeyFigure>
           <KeyFigure value={productionTotalLabel} unit="kWh/سنة" label="الإنتاج المقيس">
-            على {withMeasuredProduction.length} تركيبات متابَعة (Deye Cloud).
+            على التركيبات المتابَعة (Deye Cloud).
           </KeyFigure>
-          <KeyFigure value={String(withMeasuredProduction.length)} unit={`/ ${installCount}`} label="مشاريع بمتابعة منشورة">
+          <KeyFigure value={String(withMeasuredProduction.length)} unit="مشاريع متابَعة" label="متابعة منشورة">
             المشاريع بلا إنتاج منشور لا تُحتسَب أبداً كصفر.
           </KeyFigure>
         </div>

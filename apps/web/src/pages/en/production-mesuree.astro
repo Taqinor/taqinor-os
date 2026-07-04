@@ -30,8 +30,9 @@ const L = (href: string) => localizeNavHref(href, locale);
 const devisHref = L('/devis/mon-toit');
 
 // ── Derived figures — nothing hand-typed ─────────────────────────────────────
-const installCount = REALISATIONS.length;
-
+// RULE B (2026-07-04): the raw install count is no longer featured in user
+// copy (h2, denominators) — the page leads with installed kWc and measured
+// kWh instead (partially supersedes W354).
 const kwcTotal = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
 const kwcTotalLabel = kwcTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -83,15 +84,15 @@ const jsonLd = {
     <section class="section px-4">
       <div class="mx-auto max-w-6xl">
         <p class="tech-label v2-kicker rule-brass text-lune">Measured tally as of {generatedDateLabel}</p>
-        <h2 class="display v2-section-title mt-5 text-white">{installCount} installations, one counter</h2>
+        <h2 class="display v2-section-title mt-5 text-white">{kwcTotalLabel} kWc, one counter</h2>
         <div class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
           <KeyFigure value={kwcTotalLabel} unit="kWc" label="Installed capacity">
-            Cumulative total across {installCount} published installations.
+            Cumulative total across published installations.
           </KeyFigure>
           <KeyFigure value={productionTotalLabel} unit="kWh/yr" label="Measured production">
-            Across {withMeasuredProduction.length} monitored installations (Deye Cloud).
+            Across the monitored installations (Deye Cloud).
           </KeyFigure>
-          <KeyFigure value={String(withMeasuredProduction.length)} unit={`/ ${installCount}`} label="Projects with published monitoring">
+          <KeyFigure value={String(withMeasuredProduction.length)} unit="monitored projects" label="Published monitoring">
             Projects with no published production figure are never counted as zero.
           </KeyFigure>
         </div>
