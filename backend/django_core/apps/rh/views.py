@@ -1089,6 +1089,25 @@ class DemandeCongeViewSet(_RhBaseViewSet):
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
 
+    @action(detail=False, methods=['get'], url_path='rapport')
+    def rapport(self, request):
+        """ZRH3 — rapport congés par type et par employé (Odoo « Time Off
+        Reporting »). ``?annee=`` (défaut année courante), ``?employe=``,
+        ``?departement=`` optionnels. Lecture seule, gaté
+        ``IsResponsableOrAdmin`` (déjà la classe de la vue).
+        """
+        annee = request.query_params.get('annee') or timezone.localdate().year
+        try:
+            annee = int(annee)
+        except (TypeError, ValueError):
+            annee = timezone.localdate().year
+        employe = request.query_params.get('employe') or None
+        departement = request.query_params.get('departement') or None
+        data = selectors.rapport_conges(
+            request.user.company, annee, employe_id=employe,
+            departement_id=departement)
+        return Response(data)
+
 
 class FeuilleTempsViewSet(_RhBaseViewSet):
     """Feuilles de temps par chantier (FG167) — heures imputées job-costing.

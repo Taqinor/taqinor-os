@@ -2369,3 +2369,60 @@ def score_enps_campagne(company, campagne_id):
     detracteurs = sum(1 for r in reponses if r.categorie == 'detracteur')
     score = round(((promoteurs - detracteurs) / nb) * 100, 1)
     return {'nb_reponses': nb, 'score_enps': score, 'masque': False}
+
+
+def rapport_conges(company, annee, employe_id=None, departement_id=None):
+    """ZRH3 — rapport congés par type ET par employé (Odoo « Time Off
+    Reporting by Type / by Employee »), sur les demandes VALIDÉES de l'année.
+
+    Renvoie un dict :
+    ``{'par_type': [{'type_absence_id', 'code', 'libelle', 'jours'}],
+       'par_employe': [{'employe_id', 'nom', 'jours', 'par_type': {...},
+                        'solde_disponible'}]}``
+    ``employe_id``/``departement_id`` filtrent optionnellement. Lecture seule,
+    société scopée, jamais lu du corps de requête.
+    """
+    from decimal import Decimal
+
+    from .models import DemandeConge, SoldeConge
+
+    qs = DemandeConge.objects.filter(
+        company=company, statut=DemandeConge.Statut.VALIDEE,
+        date_debut__year=annee,
+    ).select_related('type_absence', 'employe')
+    if employe_id:
+        qs = qs.filter(employe_id=employe_id)
+    if departement_id:
+        qs = qs.filter(employe__departement_id=departement_id)
+
+    par_type = {}
+    par_employe = {}
+    for demande in qs:
+        jours = demande.jours or Decimal('0')
+        ta = demande.type_absence
+        entry_type = par_type.setdefault(ta.id, {
+            'type_absence_id': ta.id, 'code': ta.code,
+            'libelle': ta.libelle, 'jours': Decimal('0'),
+        })
+        entry_type['jours'] += jours
+
+        emp = demande.employe
+        entry_emp = par_employe.setdefault(emp.id, {
+            'employe_id': emp.id, 'nom': f'{emp.nom} {emp.prenom}',
+            'jours': Decimal('0'), 'par_type': {},
+        })
+        entry_emp['jours'] += jours
+        entry_emp['par_type'][ta.code] = \
+            entry_emp['par_type'].get(ta.code, Decimal('0')) + jours
+
+    for emp_id, entry in par_employe.items():
+        solde = SoldeConge.objects.filter(
+            company=company, employe_id=emp_id, annee=annee).first()
+        entry['solde_disponible'] = solde.disponible if solde else Decimal('0')
+
+    return {
+        'par_type': sorted(
+            par_type.values(), key=lambda e: -e['jours']),
+        'par_employe': sorted(
+            par_employe.values(), key=lambda e: -e['jours']),
+    }
