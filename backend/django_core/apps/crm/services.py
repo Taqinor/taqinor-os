@@ -23,7 +23,7 @@ import re as _re
 from django.utils import timezone
 
 from . import activity, stages
-from .models import Canal, Client, Lead, LeadActivity
+from .models import Canal, Client, Lead, LeadActivity, PointContact
 
 # Mouvement automatique du funnel à partir des statuts DOCUMENT du devis
 # (couche séparée et permanente — CLAUDE.md règles #2/#4) :
@@ -1229,6 +1229,28 @@ def noter_devis_ouvert(devis_reference: str, lead) -> None:
         kind=LeadActivity.Kind.NOTE,
         body=f"Le client a ouvert le devis {devis_reference}")
     avancer_stage_sur_ouverture_devis(lead)
+
+
+def noter_touche_marketing(lead, message, *, ordre=0, cout=None):
+    """XMKT16 — Consigne un événement marketing significatif (envoi/ouverture/
+    clic de campagne, étape de séquence exécutée, réponse WhatsApp entrante)
+    dans le chatter du lead (``LeadActivity``) + le journal d'attribution
+    multi-touch FG204 (``PointContact``). Appelé par ``apps.compta`` — jamais
+    d'import du modèle CRM depuis compta, ce point d'entrée reste dans
+    ``apps.crm.services`` comme toutes les écritures cross-app.
+
+    Le canal réutilise ``Lead.Canal.AUTRE`` (aucun nouveau vocabulaire de
+    canal n'est inventé) ; ``message`` porte le libellé lisible de
+    l'événement (ex. « Campagne X envoyée »), stocké aussi dans
+    ``PointContact.detail`` pour l'attribution.
+    """
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE, body=message)
+    return PointContact.objects.create(
+        company=lead.company, lead=lead, canal=Lead.Canal.AUTRE,
+        source='marketing', date_contact=timezone.now(),
+        ordre=ordre, detail=message, cout=cout)
 
 
 # ── YLEAD10 — Fast-lane comportemental : FOLLOW_UP à l'ouverture du devis ────

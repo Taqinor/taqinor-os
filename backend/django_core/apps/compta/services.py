@@ -5552,6 +5552,10 @@ def envoyer_campagne(campagne, *, destinataires=None):
                     else EnvoiCampagne.Statut.QUEUED),
             envoye_le=maintenant,
         )
+        # XMKT16 — une ligne de chatter par lead ciblé, jamais par batch.
+        noter_touche_marketing_pour_lead(
+            campagne.company, contact_ref,
+            f'Campagne « {campagne.nom} » envoyée')
     return campagne
 
 
@@ -5596,9 +5600,16 @@ def webhook_brevo_evenement(company, *, campagne_id, destinataire, evenement,
     if evenement == 'opened' and not envoi.ouvert_le:
         envoi.ouvert_le = maintenant
         update_fields.append('ouvert_le')
+        # XMKT16 — chatter uniquement à la PREMIÈRE ouverture (pas par rejeu).
+        noter_touche_marketing_pour_lead(
+            company, envoi.contact_ref,
+            f'Campagne « {envoi.campagne.nom} » ouverte')
     if evenement == 'click' and not envoi.clique_le:
         envoi.clique_le = maintenant
         update_fields.append('clique_le')
+        noter_touche_marketing_pour_lead(
+            company, envoi.contact_ref,
+            f'Campagne « {envoi.campagne.nom} » cliquée')
     if evenement in ('bounce', 'complaint') and raison_smtp:
         envoi.raison_smtp = raison_smtp[:255]
         update_fields.append('raison_smtp')
@@ -6144,6 +6155,36 @@ def traiter_stop_entrant(company, numero, *, source='webhook_agregateur_sms'):
         source=source)
 
 
+# ── XMKT16 — Touches marketing sur le chatter du lead (vue 360°) ───────────
+
+def _lead_id_depuis_contact_ref(contact_ref):
+    """``contact_ref`` porte la convention ``lead:<id>`` utilisée par
+    l'attribution segment (XMKT6). Renvoie l'ID ou ``None`` si le format ne
+    correspond pas (contact_ref d'un client, ou vide)."""
+    if not contact_ref or not contact_ref.startswith('lead:'):
+        return None
+    suffixe = contact_ref[len('lead:'):]
+    return int(suffixe) if suffixe.isdigit() else None
+
+
+def noter_touche_marketing_pour_lead(company, contact_ref, message, *, ordre=0):
+    """XMKT16 — Écrit une touche marketing sur le chatter d'un lead (via
+    ``apps.crm.services.noter_touche_marketing`` — jamais d'import du modèle
+    CRM depuis compta). No-op silencieux si ``contact_ref`` ne pointe pas un
+    lead (ex. contact_ref vide ou format client) — une ligne par événement
+    clé, jamais par batch.
+    """
+    lead_id = _lead_id_depuis_contact_ref(contact_ref)
+    if not lead_id:
+        return None
+    from apps.crm.selectors import get_company_lead
+    from apps.crm.services import noter_touche_marketing
+    lead = get_company_lead(company, lead_id)
+    if not lead:
+        return None
+    return noter_touche_marketing(lead, message, ordre=ordre)
+
+
 # ── FG202 — Déclenchement d'une séquence de relance (GATED, NO-OP) ──────────
 
 def whatsapp_actif():
@@ -6237,7 +6278,7 @@ def _executer_une_etape(inscription, etape):
         resultat = 'planifie'
     else:
         resultat = 'planifie'  # gated par défaut, tant qu'aucune clé n'existe
-    return ExecutionEtapeSequence.objects.create(
+    execution = ExecutionEtapeSequence.objects.create(
         company=inscription.company,
         inscription=inscription,
         etape=etape,
@@ -6245,6 +6286,11 @@ def _executer_une_etape(inscription, etape):
         resultat=resultat,
         erreur=erreur,
     )
+    # XMKT16 — une ligne de chatter par étape exécutée (pas par batch).
+    noter_touche_marketing_pour_lead(
+        inscription.company, f'lead:{inscription.lead_id}',
+        f'Séquence « {inscription.sequence.nom} » — étape {etape.ordre} exécutée')
+    return execution
 
 
 def email_marketing_actif():
