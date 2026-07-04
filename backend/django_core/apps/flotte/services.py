@@ -802,6 +802,70 @@ def traiter_codes_defaut(releve):
     return crees
 
 
+# ── XFLT28 — Rappels constructeur (recall) ──────────────────────────────────
+
+def rapprocher_rappel(rappel):
+    """XFLT28 — Rapproche un ``RappelConstructeur`` contre le parc de VIN de
+    la société et crée un ``SignalementVehicule`` (XFLT5) PAR véhicule
+    touché.
+
+    Compare ``rappel.vin_concernes`` (liste de VIN, saisie constructeur —
+    peut couvrir bien plus que le parc de la société) aux ``Vehicule.vin``
+    (XFLT4) de la MÊME société : un VIN vide ne matche jamais (évite les
+    faux positifs entre véhicules sans VIN renseigné). Chaque véhicule
+    touché reçoit un signalement gravité MOYENNE portant la référence de la
+    campagne — tous groupables via cette référence commune (recherche par
+    description) pour un traitement en un seul ``OrdreReparation``.
+
+    IDEMPOTENT : un véhicule déjà signalé pour la MÊME campagne (signalement
+    ouvert ou en cours portant la référence) n'est pas re-signalé.
+
+    Retourne ``{'crees': [<SignalementVehicule>, …], 'nb_vin_matches': int}``.
+    """
+    from .models import ActifFlotte, SignalementVehicule, Vehicule
+
+    vins_campagne = {
+        (vin or '').strip().upper()
+        for vin in (rappel.vin_concernes or [])
+        if (vin or '').strip()
+    }
+    if not vins_campagne:
+        return {'crees': [], 'nb_vin_matches': 0}
+
+    vehicules_touches = Vehicule.objects.filter(
+        company=rappel.company, vin__in=vins_campagne)
+
+    crees = []
+    for vehicule in vehicules_touches:
+        actif = ActifFlotte.objects.filter(
+            company=rappel.company, vehicule=vehicule).first()
+        if actif is None:
+            continue
+
+        marqueur = f'Rappel constructeur {rappel.reference_campagne}'
+        deja_signale = SignalementVehicule.objects.filter(
+            company=rappel.company, actif_flotte=actif,
+            statut__in=[SignalementVehicule.Statut.OUVERT,
+                        SignalementVehicule.Statut.EN_COURS],
+            description__contains=marqueur,
+        ).exists()
+        if deja_signale:
+            continue
+
+        signalement = SignalementVehicule.objects.create(
+            company=rappel.company,
+            actif_flotte=actif,
+            description=(
+                f'{marqueur} ({rappel.constructeur}) — VIN {vehicule.vin} : '
+                f'{rappel.description}'.strip(' :')
+            ),
+            gravite=SignalementVehicule.Gravite.MOYENNE,
+        )
+        crees.append(signalement)
+
+    return {'crees': crees, 'nb_vin_matches': vehicules_touches.count()}
+
+
 # ── FLOTTE28 — Construction de trajets depuis les relevés télématiques ─────────
 
 def _distance_haversine_km(lat1, lng1, lat2, lng2):

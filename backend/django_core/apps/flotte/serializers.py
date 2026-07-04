@@ -2376,3 +2376,21 @@ class ZoneGeographiqueSerializer(serializers.ModelSerializer):
                 "L'heure de fin autorisée doit être postérieure à l'heure "
                 'de début.')
         return attrs
+
+
+# ── XFLT28 — Rappels constructeur (recall) ──────────────────────────────────────
+
+class RappelConstructeurSerializer(serializers.ModelSerializer):
+    """XFLT28 — Rappel constructeur (recall) rapproché contre les VIN du parc.
+
+    ``company`` est posée côté serveur (jamais lue du corps de requête).
+    """
+
+    class Meta:
+        from .models import RappelConstructeur
+        model = RappelConstructeur
+        fields = [
+            'id', 'reference_campagne', 'constructeur', 'description',
+            'vin_concernes', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']

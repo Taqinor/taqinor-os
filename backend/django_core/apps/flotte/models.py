@@ -4311,3 +4311,53 @@ class ZoneGeographique(models.Model):
 
     def __str__(self):
         return f'{self.nom} ({self.get_type_zone_display()})'
+
+
+# ── XFLT28 — Rappels constructeur (recall) ──────────────────────────────────────
+
+class RappelConstructeur(models.Model):
+    """Rappel constructeur (recall) touchant un ou plusieurs VIN du parc
+    (XFLT28).
+
+    Saisi une fois (référence de campagne, constructeur, description, liste
+    des VIN concernés) puis RAPPROCHÉ automatiquement contre
+    ``Vehicule.vin`` (XFLT4) : le service ``services.rapprocher_rappel``
+    crée un ``SignalementVehicule`` (XFLT5) PAR véhicule du parc touché,
+    tous groupables en cette campagne pour un suivi de résolution unifié.
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête).
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_rappels_constructeur',
+        verbose_name='Société',
+    )
+    reference_campagne = models.CharField(
+        max_length=80, verbose_name='Référence de campagne')
+    constructeur = models.CharField(
+        max_length=120, blank=True, verbose_name='Constructeur')
+    description = models.TextField(blank=True, verbose_name='Description')
+    # Liste des VIN concernés par la campagne (saisie constructeur — peut
+    # dépasser largement le parc de la société ; le rapprochement ne crée un
+    # signalement QUE pour les VIN qui matchent un véhicule de la société).
+    vin_concernes = models.JSONField(
+        default=list, blank=True, verbose_name='VIN concernés')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Rappel constructeur'
+        verbose_name_plural = 'Rappels constructeur'
+        ordering = ['-date_creation', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'reference_campagne'],
+                name='flotte_rappel_co_ref_idx',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Rappel {self.reference_campagne} — {self.constructeur}'

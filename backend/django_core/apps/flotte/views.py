@@ -44,6 +44,7 @@ from .models import (
     PlanEntretien,
     Pneumatique,
     PleinCarburant,
+    RappelConstructeur,
     ReferentielFlotte,
     ReleveTelematique,
     RemiseAccessoire,
@@ -87,6 +88,7 @@ from .serializers import (
     PneumatiqueSerializer,
     PleinCarburantSerializer,
     DemandeVehiculeSerializer,
+    RappelConstructeurSerializer,
     ReferentielFlotteSerializer,
     ReleveTelematiqueSerializer,
     RemiseAccessoireSerializer,
@@ -2495,6 +2497,38 @@ class SignalementVehiculeViewSet(_FlotteBaseViewSet):
         signalement.save(update_fields=['ordre_reparation'])
 
         return Response(self.get_serializer(signalement).data)
+
+
+class RappelConstructeurViewSet(_FlotteBaseViewSet):
+    """Rappels constructeur (recall) de la société (XFLT28).
+
+    CRUD scopé société (écriture responsable/admin) : référence de campagne,
+    constructeur, description, liste de VIN concernés.
+
+    Action ``POST /rappels-constructeur/<id>/rapprocher/`` (écriture
+    responsable/admin) : rapproche le rappel contre le parc de VIN de la
+    société (``services.rapprocher_rappel``) et crée un
+    ``SignalementVehicule`` (XFLT5) par véhicule touché — idempotent (pas de
+    doublon ouvert pour la même campagne). Renvoie le nombre de VIN matchés
+    et les signalements créés.
+    """
+    queryset = RappelConstructeur.objects.all()
+    serializer_class = RappelConstructeurSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference_campagne', 'constructeur']
+    ordering_fields = ['reference_campagne', 'date_creation']
+
+    @action(detail=True, methods=['post'])
+    def rapprocher(self, request, pk=None):
+        """XFLT28 — Rapproche le rappel contre le parc de VIN (écriture
+        responsable/admin, idempotent)."""
+        rappel = self.get_object()
+        from .services import rapprocher_rappel
+        resultat = rapprocher_rappel(rappel)
+        return Response({
+            'nb_vin_matches': resultat['nb_vin_matches'],
+            'signalements_crees': [s.id for s in resultat['crees']],
+        })
 
 
 # ── XFLT13 — Inspections périodiques paramétrables (check-lists DVIR) ──────────
