@@ -959,6 +959,16 @@ class ContratMaintenance(models.Model):
         verbose_name='SLA — délai de résolution (jours, override)',
         help_text='Vide = pas de override contrat (SLA société standard).',
     )
+    # ── XCTR2 — Registre des équipements couverts par le contrat ────────────
+    # M2M additif (jamais posé jusqu'ici malgré la mention FG40) : liste les
+    # équipements du parc couverts PAR ce contrat. Vide = comportement actuel
+    # (aucune notion de couverture matérielle — un contrat « couvre » alors
+    # tout le client, sans liste explicite).
+    equipements = models.ManyToManyField(
+        'sav.Equipement', blank=True, related_name='contrats_maintenance',
+        verbose_name='Équipements couverts',
+        help_text='Équipements du parc couverts par ce contrat (optionnel).',
+    )
     date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -1043,6 +1053,17 @@ class ContratMaintenance(models.Model):
         if not self.facturation_active or not self.actif:
             return False
         return (today or timezone.localdate()) >= self.prochaine_facturation()
+
+    def couvre_equipement(self, equipement):
+        """XCTR2 — True si `equipement` fait partie du registre couvert par ce
+        contrat. Un contrat SANS équipement enregistré (M2M vide) est
+        considéré comme couvrant tout le client (comportement historique,
+        aucune régression pour les contrats existants sans registre posé)."""
+        if equipement is None:
+            return True
+        if not self.equipements.exists():
+            return True
+        return self.equipements.filter(pk=equipement.pk).exists()
 
 
 # ── FG280 — Alarmes / défauts onduleur ────────────────────────────────────────

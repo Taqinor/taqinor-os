@@ -272,6 +272,9 @@ class TicketSerializer(serializers.ModelSerializer):
     # ZSAV2 — catégorie de ticket configurable (libellé lecture).
     categorie_nom = serializers.CharField(
         source='categorie.libelle', read_only=True, default=None)
+    # XCTR2 — couverture de l'équipement lié par le contrat de maintenance
+    # ACTIF du client (registre XCTR2). None si aucun contrat/équipement.
+    equipement_couvert = serializers.SerializerMethodField()
 
     class Meta:
         model = Ticket
@@ -324,6 +327,22 @@ class TicketSerializer(serializers.ModelSerializer):
     def get_sla_due_at_effectif(self, obj):
         due = obj.sla_due_at_effectif()
         return due.isoformat() if due else None
+
+    def get_equipement_couvert(self, obj):
+        """XCTR2 — indicateur « couvert / non couvert » calculé sur le ticket :
+        None si pas d'équipement lié ou pas de contrat actif du client, sinon
+        True/False selon le registre `ContratMaintenance.equipements`."""
+        if obj.equipement_id is None:
+            return None
+        from .models import ContratMaintenance
+        contrat = ContratMaintenance.actif_pour_client(obj.client)
+        if contrat is None:
+            contrat = (ContratMaintenance.objects
+                       .filter(client=obj.client, actif=True)
+                       .order_by('-date_creation').first())
+        if contrat is None:
+            return None
+        return contrat.couvre_equipement(obj.equipement)
 
 
 # ── FG81 — Réglages SLA ────────────────────────────────────────────────────────

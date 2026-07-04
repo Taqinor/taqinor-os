@@ -587,6 +587,21 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
                     'est_recidive', 'intervention_origine_id',
                     'motif_recidive', 'non_facturable'])
         activity.log_creation(serializer.instance, self.request.user)
+        # XCTR2 — avertissement NON BLOQUANT si l'équipement lié n'est pas
+        # couvert par le contrat de maintenance actif du client (registre
+        # XCTR2). Un client sans contrat, ou un ticket sans équipement, ne
+        # déclenche rien (comportement historique inchangé).
+        if inst.equipement_id and inst.client_id:
+            from .models import ContratMaintenance
+            contrat = (ContratMaintenance.objects
+                       .filter(client_id=inst.client_id, actif=True)
+                       .order_by('-date_creation').first())
+            if contrat is not None and not contrat.couvre_equipement(inst.equipement):
+                activity.log_note(
+                    inst, self.request.user,
+                    "Avertissement : cet équipement n'est pas dans le "
+                    'registre des équipements couverts par le contrat de '
+                    f'maintenance #{contrat.pk}.')
 
     # XSAV11 — statuts « clos » depuis lesquels revenir à un statut ouvert
     # compte comme une réouverture.
