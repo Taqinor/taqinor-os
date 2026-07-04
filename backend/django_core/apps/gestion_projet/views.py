@@ -220,6 +220,8 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
         ProjetActivity.objects.create(
             company=request.user.company,
             projet=projet,
+            cible_type=ProjetActivity.CibleType.PROJET,
+            cible_id=projet.id,
             old_value=old,
             new_value=target,
             auteur=request.user,
@@ -1072,13 +1074,20 @@ class TacheViewSet(_GestionProjetBaseViewSet):
         return qs
 
     def perform_update(self, serializer):
-        """Pose ``date_fin_reelle`` côté serveur au passage à TERMINE (XPRJ17).
+        """Pose ``date_fin_reelle`` côté serveur au passage à TERMINE (XPRJ17)
+        et journalise les champs sensibles modifiés (XPRJ26).
 
         Réinitialisée si le statut repasse à un état non-terminé (correction
         d'une clôture erronée). Base du burndown (charge restante reconstituée
-        à chaque date).
+        à chaque date). Capture les valeurs AVANT sauvegarde pour
+        ``services.journaliser_modification_tache`` (statut, dates prévues,
+        charge, assigné) — une entrée ``ProjetActivity`` par champ RÉELLEMENT
+        changé, auteur posé côté serveur.
         """
         instance = serializer.instance
+        anciennes_valeurs = {
+            champ: getattr(instance, champ)
+            for champ in services.TACHE_CHAMPS_SUIVIS}
         nouveau_statut = serializer.validated_data.get(
             'statut', instance.statut)
         if nouveau_statut == Tache.Statut.TERMINE \
@@ -1090,6 +1099,8 @@ class TacheViewSet(_GestionProjetBaseViewSet):
             serializer.save(date_fin_reelle=None)
         else:
             serializer.save()
+        services.journaliser_modification_tache(
+            serializer.instance, anciennes_valeurs, auteur=self.request.user)
 
     @action(detail=False, methods=['get'], url_path='mes-taches')
     def mes_taches(self, request):
@@ -1278,6 +1289,22 @@ class JalonViewSet(_GestionProjetBaseViewSet):
         if facturation in ('1', 'true', 'True'):
             qs = qs.filter(facturation_pct__gt=0)
         return qs
+
+    def perform_update(self, serializer):
+        """Journalise les champs sensibles modifiés d'un jalon (XPRJ26).
+
+        Capture les valeurs AVANT sauvegarde pour
+        ``services.journaliser_modification_jalon`` (date prévue, statut,
+        facturation_pct) — une entrée ``ProjetActivity`` par champ RÉELLEMENT
+        changé, auteur posé côté serveur. Comportement de sauvegarde inchangé.
+        """
+        instance = serializer.instance
+        anciennes_valeurs = {
+            champ: getattr(instance, champ)
+            for champ in services.JALON_CHAMPS_SUIVIS}
+        serializer.save()
+        services.journaliser_modification_jalon(
+            serializer.instance, anciennes_valeurs, auteur=self.request.user)
 
     @action(detail=True, methods=['post'], url_path='facturer')
     def facturer(self, request, pk=None):

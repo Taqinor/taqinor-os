@@ -1592,3 +1592,83 @@ def _split_deps(raw):
     if not raw:
         return []
     return [c.strip() for c in str(raw).split(';') if c.strip()]
+
+
+# ── Journal des modifications de tâches et jalons (XPRJ26) ──────────────────
+# Champs sensibles suivis pour chaque type de cible : au-delà (libellé,
+# description...) rien n'est journalisé — seules les valeurs qui pèsent sur le
+# PLANNING/l'audit sont tracées, pour ne pas noyer l'historique.
+TACHE_CHAMPS_SUIVIS = (
+    'statut', 'date_debut_prevue', 'date_fin_prevue', 'charge_estimee',
+    'assigne_id',
+)
+JALON_CHAMPS_SUIVIS = ('date_prevue', 'statut', 'facturation_pct')
+
+
+def _valeur_str(valeur):
+    """Représentation texte stable d'une valeur de champ pour le journal.
+
+    ``None`` → chaîne vide ; le reste est converti tel quel (les ``Decimal``,
+    dates et énumérations ont déjà un ``str()`` lisible).
+    """
+    if valeur is None:
+        return ''
+    return str(valeur)
+
+
+def journaliser_modification_tache(tache, anciennes_valeurs, *, auteur):
+    """Journalise les champs sensibles modifiés d'une ``Tache`` (XPRJ26).
+
+    ``anciennes_valeurs`` est un dict ``{champ: valeur_avant}`` capturé par
+    l'appelant AVANT la sauvegarde (voir ``views.TacheViewSet.perform_update``).
+    Une entrée ``ProjetActivity`` (``cible_type='tache'``, ``cible_id=tache.id``)
+    est créée PAR CHAMP réellement changé parmi ``TACHE_CHAMPS_SUIVIS`` — aucune
+    entrée si rien de suivi n'a changé. ``company``/``auteur`` posés côté
+    serveur. N'écrit RIEN d'autre (comportement de sauvegarde inchangé).
+    """
+    from .models import ProjetActivity
+
+    for champ in TACHE_CHAMPS_SUIVIS:
+        if champ not in anciennes_valeurs:
+            continue
+        avant = anciennes_valeurs[champ]
+        apres = getattr(tache, champ)
+        if avant == apres:
+            continue
+        ProjetActivity.objects.create(
+            company=tache.company,
+            projet=tache.projet,
+            cible_type=ProjetActivity.CibleType.TACHE,
+            cible_id=tache.id,
+            champ=champ,
+            old_value=_valeur_str(avant),
+            new_value=_valeur_str(apres),
+            auteur=auteur,
+        )
+
+
+def journaliser_modification_jalon(jalon, anciennes_valeurs, *, auteur):
+    """Journalise les champs sensibles modifiés d'un ``Jalon`` (XPRJ26).
+
+    Même contrat que ``journaliser_modification_tache`` (voir sa docstring),
+    pour ``JALON_CHAMPS_SUIVIS``. ``cible_type='jalon'``, ``cible_id=jalon.id``.
+    """
+    from .models import ProjetActivity
+
+    for champ in JALON_CHAMPS_SUIVIS:
+        if champ not in anciennes_valeurs:
+            continue
+        avant = anciennes_valeurs[champ]
+        apres = getattr(jalon, champ)
+        if avant == apres:
+            continue
+        ProjetActivity.objects.create(
+            company=jalon.company,
+            projet=jalon.projet,
+            cible_type=ProjetActivity.CibleType.JALON,
+            cible_id=jalon.id,
+            champ=champ,
+            old_value=_valeur_str(avant),
+            new_value=_valeur_str(apres),
+            auteur=auteur,
+        )

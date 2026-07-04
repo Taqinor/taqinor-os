@@ -1047,13 +1047,26 @@ class Indisponibilite(models.Model):
 
 
 class ProjetActivity(models.Model):
-    """Journal minimal des transitions de statut d'un ``Projet``.
+    """Journal des transitions/modifications de champs sensibles d'un ``Projet``.
 
-    Chaque changement de statut appliqué par une action de transition
-    (``views.py``) y est tracé côté serveur : ancien → nouveau statut, auteur,
-    horodatage. La société et l'auteur sont TOUJOURS posés côté serveur, jamais
-    lus du corps de requête. Modèle entièrement additif.
+    Historiquement, tracait UNIQUEMENT le changement de statut du ``Projet``
+    lui-même (``cible_type='projet'``, ``champ=''``). XPRJ26 étend ce journal,
+    SANS changer le comportement des entrées existantes, aux changements de
+    champs sensibles des ``Tache`` (statut, dates prévues, charge, assigné) et
+    ``Jalon`` (date, statut, facturation_pct) — conformité audit/loi 09-08 sur
+    qui a déplacé le planning. ``cible_type`` + ``cible_id`` identifient la
+    cible RÉELLE de l'entrée : ``'projet'`` (défaut rétro-compatible —
+    ``cible_id`` vaut alors ``projet_id``), ``'tache'`` ou ``'jalon'`` ;
+    ``champ`` porte le nom du champ modifié (vide pour les entrées historiques
+    de statut projet). Chaque changement est tracé côté serveur : ancien →
+    nouveau, auteur, horodatage. La société et l'auteur sont TOUJOURS posés
+    côté serveur, jamais lus du corps de requête. Modèle entièrement additif.
     """
+    class CibleType(models.TextChoices):
+        PROJET = 'projet', 'Projet'
+        TACHE = 'tache', 'Tâche'
+        JALON = 'jalon', 'Jalon'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -1066,10 +1079,22 @@ class ProjetActivity(models.Model):
         related_name='activites',
         verbose_name='Projet',
     )
+    # Cible RÉELLE de l'entrée (XPRJ26) — défaut 'projet' pour rester
+    # rétro-compatible avec les entrées historiques (transitions de statut du
+    # projet lui-même, où cible_id == projet_id).
+    cible_type = models.CharField(
+        max_length=10, choices=CibleType.choices,
+        default=CibleType.PROJET, verbose_name='Type de cible')
+    cible_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID de la cible')
+    # Nom du champ modifié (XPRJ26) — vide pour les entrées historiques de
+    # statut projet (comportement inchangé).
+    champ = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Champ modifié')
     old_value = models.CharField(
-        max_length=15, blank=True, default='', verbose_name='Ancien statut')
+        max_length=255, blank=True, default='', verbose_name='Ancien statut')
     new_value = models.CharField(
-        max_length=15, blank=True, default='', verbose_name='Nouveau statut')
+        max_length=255, blank=True, default='', verbose_name='Nouveau statut')
     auteur = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

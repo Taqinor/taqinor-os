@@ -78,18 +78,23 @@ class ProjetSerializer(serializers.ModelSerializer):
 
 
 class ProjetActivitySerializer(serializers.ModelSerializer):
-    """Entrée du journal des transitions de statut d'un projet (lecture seule).
+    """Entrée du journal des modifications d'un projet (lecture seule).
 
-    ``company`` et ``auteur`` sont posés côté serveur ; jamais exposés en
-    écriture.
+    Timeline FUSIONNÉE (XPRJ26) : transitions de statut du projet lui-même
+    (``cible_type='projet'``) ET changements de champs sensibles de ses tâches
+    (``cible_type='tache'``) et jalons (``cible_type='jalon'``). ``company`` et
+    ``auteur`` sont posés côté serveur ; jamais exposés en écriture.
     """
     auteur_nom = serializers.CharField(
         source='auteur.username', read_only=True, default='')
+    cible_type_display = serializers.CharField(
+        source='get_cible_type_display', read_only=True)
 
     class Meta:
         model = ProjetActivity
         fields = [
-            'id', 'projet', 'old_value', 'new_value', 'auteur', 'auteur_nom',
+            'id', 'projet', 'cible_type', 'cible_type_display', 'cible_id',
+            'champ', 'old_value', 'new_value', 'auteur', 'auteur_nom',
             'date_creation',
         ]
         read_only_fields = fields
