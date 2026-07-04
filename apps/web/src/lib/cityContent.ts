@@ -65,11 +65,12 @@ export interface CityContent {
    */
   roiNuance: string;
   /**
-   * W328 — ligne de prudence tarifaire, présente UNIQUEMENT pour les 3 villes
-   * à délégataire de distribution (Casablanca/Lydec, Rabat/Redal,
-   * Tanger/Amendis — mapping verrouillé dans `CONTENT_SEO_NOTES.md` §2).
-   * `undefined` pour Marrakech/Agadir (régie locale, pas de délégataire
-   * nommé/vérifié dans ce dépôt — on n'invente pas le nom).
+   * W328 — ligne de prudence tarifaire pour la ville : qui distribue, et un
+   * rappel qu'on vérifie la tranche sur le relevé plutôt que d'affirmer un
+   * barème. Couvre les 3 villes à délégataire historique (Casablanca/Lydec,
+   * Rabat/Redal, Tanger/Amendis — mapping verrouillé dans
+   * `CONTENT_SEO_NOTES.md` §2) ainsi que Marrakech (RADEEMA) et Agadir (SRM
+   * Souss-Massa, régies publiques sourcées, WB9).
    */
   delegataireNote?: string;
   /**
@@ -489,6 +490,9 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       roiNuance:
         'Avec ≈ 3 000 h par an, Marrakech se classe au-dessus de la moyenne de nos cinq villes : un gisement qui tend la ' +
         'bande 3–7 ans vers sa partie basse pour un dimensionnement comparable — sans jamais dispenser l’étude de vérifier votre toiture.',
+      delegataireNote:
+        'Marrakech est distribuée par la régie RADEEMA : nous vérifions votre tranche sur votre relevé ' +
+        'avant de chiffrer votre installation.',
       nearestInstallNote:
         'Marrakech se trouve au sud-est de la région Casablanca-Settat, où sont concentrés tous nos chantiers déjà en ' +
         'service : mêmes méthodes d’étude, même matériel tier-1, même monitoring Deye Cloud, quelle que soit la distance.',
@@ -527,6 +531,9 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       roiNuance:
         'At ≈ 3,000 h a year, Marrakech ranks above the average of our five cities: a resource that pulls the 3–7 year ' +
         'band toward its lower half for a comparable system size — never a substitute for checking your actual roof.',
+      delegataireNote:
+        'Marrakech is served by the public utility RADEEMA: we check your tariff bracket on your statement ' +
+        'before pricing your installation.',
       nearestInstallNote:
         'Marrakech lies south-east of the Casablanca-Settat region, where all our already-serviced installations are ' +
         'concentrated — same assessment methods, same tier-1 equipment, same Deye Cloud monitoring, whatever the distance.',
@@ -565,6 +572,8 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       roiNuance:
         'بـ ≈ 3 000 ساعة في السنة، تُصنَّف مراكش فوق متوسط مدننا الخمس: مخزون يشدّ بند 3–7 سنوات نحو نصفه الأدنى ' +
         'لمقاس مماثل — دون أن يعفي ذلك أبداً من فحص سطحك فعلياً.',
+      delegataireNote:
+        'مراكش توزّعها الوكالة الجهوية RADEEMA: نتحقّق من شطرك التعريفي على كشف حسابك قبل تقدير تركيبتك.',
       nearestInstallNote:
         'تقع مراكش جنوب شرق جهة الدار البيضاء سطات، حيث تتركّز كل تركيباتنا العاملة فعلاً — نفس مناهج الدراسة، ' +
         'نفس العتاد من الفئة الأولى، نفس مراقبة Deye Cloud، مهما كانت المسافة.',
@@ -732,8 +741,11 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       description:
         'Installation solaire à Agadir : ≈ 3 400 h de soleil par an, le meilleur gisement de nos villes — mais on dimensionne sur votre facture. Pose, monitoring Deye Cloud et loi 82-21.',
       roiNuance:
-        'Avec ≈ 3 400 h par an, Agadir a le meilleur gisement de nos cinq villes : à dimensionnement égal, cela pousse ' +
+        'Avec ≈ 3 400 h par an, Agadir affiche l’un des meilleurs gisements de nos cinq villes : à dimensionnement égal, cela pousse ' +
         'la bande 3–7 ans vers sa partie basse — un avantage réel, que seule l’étude sur votre facture transforme en chiffre exact.',
+      delegataireNote:
+        'Agadir est distribuée par la SRM Souss-Massa (régie régionale, succède à la RAMSA) : nous vérifions votre ' +
+        'tranche sur votre relevé avant de chiffrer votre installation.',
       nearestInstallNote:
         'Agadir se trouve au sud de la région Casablanca-Settat, où sont concentrés tous nos chantiers déjà en service : ' +
         'mêmes méthodes d’étude, même matériel tier-1, même monitoring Deye Cloud, quelle que soit la distance.',
@@ -770,8 +782,11 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       description:
         'Solar installation in Agadir: ≈ 3,400 h of sun a year, the best resource of our cities — but we size on your bill. Install, Deye Cloud monitoring and Law 82-21.',
       roiNuance:
-        'At ≈ 3,400 h a year, Agadir has the best resource of our five cities: for an identical system size, that pulls ' +
+        'At ≈ 3,400 h a year, Agadir has one of the best resources of our five cities: for an identical system size, that pulls ' +
         'the 3–7 year band toward its lower end — a real edge that only the assessment on your bill turns into an exact figure.',
+      delegataireNote:
+        'Agadir is served by the regional utility SRM Souss-Massa (successor to RAMSA): we check your tariff bracket ' +
+        'on your statement before pricing your installation.',
       nearestInstallNote:
         'Agadir lies south of the Casablanca-Settat region, where all our already-serviced installations are ' +
         'concentrated — same assessment methods, same tier-1 equipment, same Deye Cloud monitoring, whatever the distance.',
@@ -808,8 +823,10 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       description:
         'تركيب شمسي في أكادير: ≈ 3 400 ساعة شمس في السنة، أفضل مخزون بين مدننا — لكننا نحدّد المقاس على فاتورتك. تركيب، مراقبة Deye Cloud والقانون 82-21.',
       roiNuance:
-        'بـ ≈ 3 400 ساعة في السنة، تملك أكادير أفضل مخزون بين مدننا الخمس: لمقاس مماثل، يشدّ ذلك بند 3–7 سنوات ' +
+        'بـ ≈ 3 400 ساعة في السنة، تملك أكادير واحداً من أفضل المخزونات بين مدننا الخمس: لمقاس مماثل، يشدّ ذلك بند 3–7 سنوات ' +
         'نحو طرفه الأدنى — ميزة حقيقية لا تتحوّل إلى رقم دقيق إلا بالدراسة على فاتورتك.',
+      delegataireNote:
+        'أكادير توزّعها الوكالة الجهوية SRM سوس-ماسة (خلفاً لـRAMSA): نتحقّق من شطرك التعريفي على كشف حسابك قبل تقدير تركيبتك.',
       nearestInstallNote:
         'تقع أكادير جنوب جهة الدار البيضاء سطات، حيث تتركّز كل تركيباتنا العاملة فعلاً — نفس مناهج الدراسة، ' +
         'نفس العتاد من الفئة الأولى، نفس مراقبة Deye Cloud، مهما كانت المسافة.',
