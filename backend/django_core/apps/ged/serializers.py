@@ -7,8 +7,8 @@ from .models import (
     Document, DocumentLien, DocumentTag, DocumentTagAssignment, DocumentVersion,
     ExigenceDossier, Folder, JournalAcces, LegalHold, LotEnvoi, ModeleDocument,
     PartageGed, PlanificationDocument, PolitiqueRetention,
-    RegleAclMetadonnee, RegleApprobationGed, RegleDossier, QuotaStockage,
-    SignataireDemande, ValidationOcrDocument,
+    RegleAclMetadonnee, RegleApprobationGed, RegleDossier, RoleSignataire,
+    QuotaStockage, SignataireDemande, ValidationOcrDocument,
 )
 from . import services
 
@@ -662,17 +662,43 @@ class ChampSignatureSerializer(serializers.ModelSerializer):
         return attrs
 
 
+class RoleSignataireSerializer(serializers.ModelSerializer):
+    """ZGED1 — Rôle signataire réutilisable (couleur + auth extra + peut
+    changer de signataire). `company`/`created_by` posés côté serveur."""
+    class Meta:
+        model = RoleSignataire
+        fields = [
+            'id', 'nom', 'couleur', 'auth_extra', 'peut_changer_signataire',
+            'created_by', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_by', 'created_at', 'updated_at']
+
+
 class SignataireDemandeSerializer(serializers.ModelSerializer):
     """XGED2 — Destinataire (signataire/copie/approbateur) d'une demande de
     signature multi-parties. LECTURE SEULE via l'API — créé/muté uniquement
     par `services` (création groupée, signature/refus par jeton public,
-    notifications/relances)."""
+    notifications/relances).
+
+    ZGED1 — `role_signataire` (optionnel) référence le catalogue de rôles
+    réutilisables ; `role_couleur`/`role_auth_extra` exposent les valeurs
+    HÉRITÉES du rôle référencé pour préremplir l'UI (couleur du champ de
+    signature, authentification extra ZGED2)."""
+    role_signataire_nom = serializers.CharField(
+        source='role_signataire.nom', read_only=True, default=None)
+    role_couleur = serializers.CharField(
+        source='role_signataire.couleur', read_only=True, default=None)
+    role_auth_extra = serializers.CharField(
+        source='role_signataire.auth_extra', read_only=True, default=None)
+
     class Meta:
         model = SignataireDemande
         fields = [
             'id', 'demande', 'nom', 'email', 'telephone', 'ordre', 'role',
-            'statut', 'notifie_le', 'derniere_relance_le', 'nb_relances',
-            'date_action', 'motif_refus', 'created_at', 'updated_at',
+            'role_signataire', 'role_signataire_nom', 'role_couleur',
+            'role_auth_extra', 'statut', 'notifie_le', 'derniere_relance_le',
+            'nb_relances', 'date_action', 'motif_refus', 'created_at',
+            'updated_at',
         ]
         read_only_fields = fields
 

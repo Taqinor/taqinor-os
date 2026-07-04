@@ -38,7 +38,7 @@ from .models import (
     Folder, JournalAcces, LegalHold, LegalHoldError, LotEnvoi, ModeleDocument,
     PartageGed, PlanificationDocument, PolitiqueRetention,
     QuotaDepasseError, QuotaStockage, RegleAclMetadonnee,
-    RegleApprobationGed, RegleDossier, SignataireDemande,
+    RegleApprobationGed, RegleDossier, RoleSignataire, SignataireDemande,
     ValidationOcrDocument,
 )
 from .serializers import (
@@ -54,7 +54,8 @@ from .serializers import (
     PartageGedSerializer, PlanificationDocumentSerializer,
     PolitiqueRetentionSerializer, QuotaStockageSerializer,
     RegleAclMetadonneeSerializer, RegleApprobationGedSerializer,
-    RegleDossierSerializer, SignataireDemandeSerializer,
+    RegleDossierSerializer, RoleSignataireSerializer,
+    SignataireDemandeSerializer,
     ValidationOcrDocumentSerializer,
 )
 
@@ -2393,13 +2394,38 @@ class DemandeSignatureDocumentViewSet(TenantMixin,
             status=status.HTTP_200_OK)
 
 
+class RoleSignataireViewSet(TenantMixin, viewsets.ModelViewSet):
+    """ZGED1 — Catalogue de rôles signataires réutilisables (couleur + auth
+    extra + peut changer de signataire).
+
+    CRUD scopé société ; `company`/`created_by` posés côté serveur. Lecture :
+    tout rôle authentifié. Écriture : responsable/admin."""
+    queryset = RoleSignataire.objects.select_related('created_by').all()
+    serializer_class = RoleSignataireSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['nom', 'created_at']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        return super().get_queryset().filter(company=self.request.user.company)
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, created_by=self.request.user)
+
+
 class SignataireDemandeViewSet(TenantMixin, mixins.ListModelMixin,
                                mixins.RetrieveModelMixin,
                                viewsets.GenericViewSet):
     """XGED2 — Destinataires d'une demande de signature (LECTURE SEULE via
     l'API authentifiée). Créés/mutés uniquement via `services` (création
     groupée, cérémonie publique par jeton, notifications/relances)."""
-    queryset = SignataireDemande.objects.select_related('demande').all()
+    queryset = SignataireDemande.objects.select_related(
+        'demande', 'role_signataire').all()
     serializer_class = SignataireDemandeSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['ordre', 'id']
@@ -2407,7 +2433,8 @@ class SignataireDemandeViewSet(TenantMixin, mixins.ListModelMixin,
 
     def get_queryset(self):
         qs = SignataireDemande.objects.filter(
-            company=self.request.user.company).select_related('demande')
+            company=self.request.user.company).select_related(
+            'demande', 'role_signataire')
         demande = self.request.query_params.get('demande')
         if demande:
             qs = qs.filter(demande_id=demande)

@@ -1715,6 +1715,67 @@ ROLE_DESTINATAIRE_CHOICES = [
 ]
 
 
+# ZGED1 — Authentification extra optionnelle d'un rôle signataire réutilisable.
+ROLE_AUTH_EXTRA_AUCUNE = 'aucune'
+ROLE_AUTH_EXTRA_SMS = 'sms'
+ROLE_AUTH_EXTRA_EMAIL_OTP = 'email_otp'
+
+ROLE_AUTH_EXTRA_CHOICES = [
+    (ROLE_AUTH_EXTRA_AUCUNE, 'Aucune'),
+    (ROLE_AUTH_EXTRA_SMS, 'Code SMS'),
+    (ROLE_AUTH_EXTRA_EMAIL_OTP, 'Code par email (OTP)'),
+]
+
+
+class RoleSignataire(models.Model):
+    """ZGED1 — Catalogue de rôles signataires RÉUTILISABLES (pattern Odoo Sign
+    « Rôle »).
+
+    Une entité PARTAGÉE (« Client », « Employé »…) portant une `couleur`
+    (#hex, cohérence visuelle du champ de signature dans l'éditeur XGED3), une
+    étape d'authentification supplémentaire optionnelle (`auth_extra` —
+    aucune/sms/email_otp, exploitée par ZGED2) et un drapeau
+    `peut_changer_signataire` (le destinataire peut réassigner sa propre
+    signature à un tiers). Réutilisable à travers les `ModeleDocument` (GED27)
+    et les demandes (XGED1/XGED2) — un même rôle est référencé par N
+    `SignataireDemande` sans duplication.
+
+    RÉTROCOMPATIBLE : `SignataireDemande.role` (texte libre
+    signataire/copie/approbateur) reste la valeur DE FAIT quand aucun
+    `role_signataire` n'est référencé — ce catalogue est un ENRICHISSEMENT
+    optionnel, jamais un remplacement du champ existant. Company posée côté
+    serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='ged_roles_signataire')
+    nom = models.CharField(max_length=100)
+    couleur = models.CharField(
+        max_length=7, default='#2b5cab', verbose_name='couleur (#hex)')
+    auth_extra = models.CharField(
+        max_length=10, choices=ROLE_AUTH_EXTRA_CHOICES,
+        default=ROLE_AUTH_EXTRA_AUCUNE,
+        verbose_name='authentification supplémentaire')
+    peut_changer_signataire = models.BooleanField(
+        default=False, verbose_name='peut changer de signataire')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_roles_signataire_crees')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['nom', 'id']
+        verbose_name = 'Rôle signataire'
+        verbose_name_plural = 'Rôles signataires'
+        indexes = [
+            models.Index(fields=['company'], name='ged_rolesign_co_idx'),
+        ]
+
+    def __str__(self):
+        return self.nom
+
+
 class SignataireDemande(models.Model):
     """XGED2 — Un destinataire (signataire/copie/approbateur) d'une demande de
     signature multi-parties.
@@ -1757,6 +1818,13 @@ class SignataireDemande(models.Model):
     role = models.CharField(
         max_length=12, choices=ROLE_DESTINATAIRE_CHOICES,
         default=ROLE_SIGNATAIRE, verbose_name='rôle')
+    # ZGED1 — référence OPTIONNELLE au catalogue de rôles réutilisables : quand
+    # renseigné, préremplit couleur/auth_extra depuis `RoleSignataire`.
+    # RÉTROCOMPATIBLE : sans référence, le `role` texte ci-dessus reste la
+    # seule valeur (comportement XGED2 strictement inchangé).
+    role_signataire = models.ForeignKey(
+        RoleSignataire, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='signataires_demande', verbose_name='rôle réutilisable')
     statut = models.CharField(
         max_length=10, choices=SIGNATAIRE_STATUT_CHOICES,
         default=SIGNATAIRE_EN_ATTENTE, verbose_name='statut')

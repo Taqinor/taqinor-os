@@ -2693,12 +2693,20 @@ def creer_demande_multi_signataires(document, *, destinataires, company,
     """XGED2 — Crée une demande de signature à PLUSIEURS destinataires.
 
     `destinataires` : liste ordonnée de dicts
-    `{"nom", "email"?, "telephone"?, "role"?, "ordre"?}`. Le premier élément
-    devient le signataire « principal » de la `DemandeSignatureDocument`
-    (`signataire_nom`/`signataire_email`, rétrocompatibilité GED30/XGED1) ;
-    TOUS les éléments deviennent des `SignataireDemande` ordonnés. `company`
-    est TOUJOURS fournie par l'appelant (jamais lue du corps) et doit
-    correspondre à celle du document (sinon `PermissionError`).
+    `{"nom", "email"?, "telephone"?, "role"?, "ordre"?, "role_signataire"?}`.
+    Le premier élément devient le signataire « principal » de la
+    `DemandeSignatureDocument` (`signataire_nom`/`signataire_email`,
+    rétrocompatibilité GED30/XGED1) ; TOUS les éléments deviennent des
+    `SignataireDemande` ordonnés. `company` est TOUJOURS fournie par
+    l'appelant (jamais lue du corps) et doit correspondre à celle du document
+    (sinon `PermissionError`).
+
+    ZGED1 — `role_signataire` (id, optionnel) référence le catalogue de
+    rôles réutilisables (`RoleSignataire`, borné à la même société — un id
+    d'une autre société est silencieusement ignoré, jamais une fuite) : le
+    destinataire HÉRITE de sa couleur/authentification extra. RÉTROCOMPATIBLE
+    : sans référence, le `role` texte reste la seule valeur (comportement
+    XGED2 inchangé).
 
     Routage : `notifier_prochains_signataires` est appelé immédiatement après
     création — en parallèle, tous les `signataire` sont notifiés ; en
@@ -2707,7 +2715,7 @@ def creer_demande_multi_signataires(document, *, destinataires, company,
     Renvoie la `DemandeSignatureDocument` créée (avec ses `.signataires`).
     """
     from .models import (
-        ROLE_SIGNATAIRE, ROUTAGE_SEQUENTIEL, SignataireDemande,
+        ROLE_SIGNATAIRE, ROUTAGE_SEQUENTIEL, RoleSignataire, SignataireDemande,
     )
 
     if not destinataires:
@@ -2726,6 +2734,11 @@ def creer_demande_multi_signataires(document, *, destinataires, company,
         'routage', 'expires_at', 'relance_cadence_jours', 'updated_at'])
 
     for idx, dest in enumerate(destinataires, start=1):
+        role_signataire = None
+        role_signataire_id = dest.get('role_signataire')
+        if role_signataire_id:
+            role_signataire = RoleSignataire.objects.filter(
+                company=demande.company, pk=role_signataire_id).first()
         SignataireDemande.objects.create(
             company=demande.company,
             demande=demande,
@@ -2734,6 +2747,7 @@ def creer_demande_multi_signataires(document, *, destinataires, company,
             telephone=(dest.get('telephone') or '').strip(),
             ordre=dest.get('ordre', idx),
             role=dest.get('role', ROLE_SIGNATAIRE),
+            role_signataire=role_signataire,
         )
     notifier_prochains_signataires(demande)
     return demande
