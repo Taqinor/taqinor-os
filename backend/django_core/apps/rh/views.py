@@ -2001,9 +2001,38 @@ class CompetenceViewSet(_RhBaseViewSet):
             qs = qs.filter(actif=True)
         return qs
 
+    def get_permissions(self):
+        # ZRH17 — la recherche par compétence sert au staffing terrain
+        # (« qui maîtrise X ? ») : accessible à TOUT employé authentifié de
+        # la société, pas seulement Administrateur/Responsable. Le
+        # serializer annuaire dédié garantit qu'aucun champ sensible ne
+        # fuit, donc élargir ici l'accès en lecture est sûr (même pattern
+        # que XRH28 sur ``DossierEmployeViewSet.annuaire``).
+        if self.action == 'employes':
+            return [IsAnyRole()]
+        return super().get_permissions()
+
     def perform_create(self, serializer):
         """Company posée côté serveur, jamais lue du corps."""
         serializer.save(company=self.request.user.company)
+
+    @action(detail=True, methods=['get'], url_path='employes')
+    def employes(self, request, pk=None):
+        """ZRH17 — employés qualifiés sur CETTE compétence (« Skills
+        search/filter » Odoo). ``?niveau_min=`` (défaut 0). Multi-critères :
+        ``?competences=<id1>,<id2>`` ajoute une INTERSECTION (l'employé doit
+        satisfaire ``niveau_min`` sur toutes). Champs non sensibles
+        (serializer annuaire XRH28), lecture seule, société scopée."""
+        competence = self.get_object()
+        niveau_min = int(request.query_params.get('niveau_min', 0))
+        autres_raw = request.query_params.get('competences', '')
+        autres_ids = [
+            cid.strip() for cid in autres_raw.split(',') if cid.strip()]
+        employes = selectors.employes_par_competence(
+            request.user.company, competence.id,
+            niveau_min=niveau_min, competence_ids=autres_ids)
+        return Response(
+            AnnuaireEmployeSerializer(employes, many=True).data)
 
 
 class CompetenceEmployeViewSet(_RhBaseViewSet):

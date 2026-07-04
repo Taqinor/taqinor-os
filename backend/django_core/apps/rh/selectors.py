@@ -2572,3 +2572,53 @@ def rapport_turnover(company, annee):
         'anciennete_moyenne_ans': anciennete_moyenne_ans,
         'retention_12m_pct': retention_12m_pct,
     }
+
+
+def employes_par_competence(
+        company, competence_id, niveau_min=0, actif=True,
+        competence_ids=None):
+    """ZRH17 — recherche transverse « qui maîtrise X au niveau >= N ? ».
+
+    Renvoie les ``DossierEmploye`` de la société dont le niveau sur
+    ``competence_id`` est >= ``niveau_min``, triés par niveau décroissant.
+    ``actif=True`` (défaut) exclut les employés sortis. Si
+    ``competence_ids`` (itérable d'IDs) est fourni en plus de
+    ``competence_id``, l'INTERSECTION est requise : l'employé doit
+    satisfaire ``niveau_min`` sur CHACUNE des compétences (celle passée en
+    premier + celles de ``competence_ids``). Lecture seule, société scopée.
+    """
+    from .models import CompetenceEmploye
+
+    toutes_competences = [competence_id]
+    if competence_ids:
+        toutes_competences += [
+            cid for cid in competence_ids if cid != competence_id]
+
+    base = DossierEmploye.objects.filter(company=company)
+    if actif:
+        base = base.exclude(statut=DossierEmploye.Statut.SORTI)
+
+    # Niveau de l'employé sur la compétence "primaire" — sert au tri.
+    niveaux_primaire = dict(
+        CompetenceEmploye.objects
+        .filter(
+            company=company, competence_id=competence_id,
+            niveau__gte=niveau_min)
+        .values_list('employe_id', 'niveau'))
+    qualifies_ids = set(niveaux_primaire.keys())
+
+    # Intersection : chaque compétence supplémentaire doit aussi être
+    # satisfaite par le même employé.
+    for autre_id in toutes_competences[1:]:
+        satisfait = set(
+            CompetenceEmploye.objects
+            .filter(
+                company=company, competence_id=autre_id,
+                niveau__gte=niveau_min)
+            .values_list('employe_id', flat=True))
+        qualifies_ids &= satisfait
+
+    employes = list(base.filter(id__in=qualifies_ids))
+    employes.sort(
+        key=lambda e: niveaux_primaire.get(e.id, 0), reverse=True)
+    return employes
