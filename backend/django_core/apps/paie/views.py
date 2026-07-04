@@ -19,6 +19,7 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
 from . import builders
+from . import selectors as paie_selectors
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
@@ -1072,6 +1073,55 @@ class BulletinPaieViewSet(_PaieVoirOuGerer, TenantMixin,
         marquer_bulletin_paye(bulletin)
         return Response(
             self.get_serializer(bulletin).data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'], url_path='analyse')
+    def analyse(self, request):
+        """Rapport d'analyse de paie pivot rubrique/département × mois (ZPAI1).
+
+        Paramètres requis ``debut``/``fin`` au format ``YYYY-MM`` (fenêtre
+        inclusive). ``?group_by=rubrique`` (défaut) ou ``?group_by=
+        departement``. ``?export=csv`` renvoie le CSV (une colonne par mois)
+        au lieu du JSON.
+        """
+        debut = request.query_params.get('debut', '')
+        fin = request.query_params.get('fin', '')
+        group_by = request.query_params.get('group_by', 'rubrique')
+        try:
+            annee_debut, mois_debut = (int(x) for x in debut.split('-'))
+            annee_fin, mois_fin = (int(x) for x in fin.split('-'))
+        except (ValueError, AttributeError):
+            return Response(
+                {'detail': 'Paramètres "debut"/"fin" requis (format '
+                 'YYYY-MM).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            data = paie_selectors.analyse_paie(
+                request.user.company, annee_debut, mois_debut,
+                annee_fin, mois_fin, group_by=group_by)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        if request.query_params.get('export') == 'csv':
+            return self._export_analyse_csv(data)
+        return Response(data, status=status.HTTP_200_OK)
+
+    @staticmethod
+    def _export_analyse_csv(data):
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, delimiter=';')
+        writer.writerow([data['group_by'].capitalize()] + data['mois'] + ['Total'])
+        for ligne in data['lignes']:
+            row = [ligne['libelle']]
+            for mois_iso in data['mois']:
+                row.append(ligne['totaux_par_mois'].get(mois_iso, ''))
+            row.append(ligne['total'])
+            writer.writerow(row)
+        writer.writerow([])
+        writer.writerow(['Total général', '', data['total_general']])
+        resp = HttpResponse(
+            buffer.getvalue(), content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = 'attachment; filename="analyse_paie.csv"'
+        return resp
 
     @action(detail=True, methods=['post'], url_path='rectifier')
     def rectifier(self, request, pk=None):

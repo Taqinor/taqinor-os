@@ -528,6 +528,30 @@ def remuneration_en_vigueur(company, employe_id, le_jour=None):
     }
 
 
+def departements_par_employe(company, employe_ids):
+    """Mappe ``employe_id -> {'departement_id', 'departement_nom'}`` (ZPAI1).
+
+    Sélecteur cross-app : la paie lit le département d'un groupe d'employés
+    (rapport d'analyse par département) SANS jamais importer ``rh.models``
+    directement. Un employé sans département (ou hors ``employe_ids``) est
+    absent du dict renvoyé — l'appelant traite ça comme « non affecté ».
+    """
+    if company is None or not employe_ids:
+        return {}
+    qs = (
+        DossierEmploye.objects
+        .filter(company=company, id__in=list(employe_ids))
+        .select_related('departement')
+    )
+    return {
+        d.id: {
+            'departement_id': d.departement_id,
+            'departement_nom': d.departement.nom if d.departement_id else '',
+        }
+        for d in qs
+    }
+
+
 def employes_assignables(company, jour):
     """IDs des employés ACTIFS assignables au dispatch terrain le ``jour`` (FG165).
 
