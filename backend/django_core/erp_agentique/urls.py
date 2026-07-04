@@ -81,6 +81,8 @@ urlpatterns = [
     # XPUR21 — Réponse fournisseur en ligne à une RFQ — sans login.
     path('api/django/public/installations/',
          include('apps.installations.public_urls')),
+    # XPUR22 — Portail fournisseur en lecture seule (sans login).
+    path('api/django/public/stock/', include('apps.stock.public_urls')),
 ]
 
 # En production (DEBUG off + gunicorn), les statiques (admin Django) sont
