@@ -1,5 +1,6 @@
-"""YSUBS1 — Beat quotidien : facturation récurrente automatique (échéanciers
-contrats + maintenance SAV).
+"""YSUBS1/YSUBS2 — Beats quotidiens de l'app `contrats` : facturation
+récurrente automatique (échéanciers contrats + maintenance SAV) et
+reconduction tacite + diffusion des alertes contrat.
 
 Autodécouvert par ``erp_agentique.celery`` (``autodiscover_tasks()``), comme
 ``apps.ventes.scheduled``/``apps.ged.tasks``. Toute la logique métier vit dans
@@ -111,4 +112,64 @@ def generer_factures_recurrentes_dues():
         '(%s échec(s))',
         total['echeances_facturees'], total['echeances_echecs'],
         total['maintenances_facturees'], total['maintenances_echecs'])
+    return total
+
+
+@shared_task(name='contrats.reconductions_et_alertes_daily')
+def reconductions_et_alertes_daily():
+    """YSUBS2 — Reconduction tacite + diffusion des alertes contrat, par
+    société, quotidien.
+
+    ``contrats.services.traiter_reconductions_tacites`` (CONTRAT23, idempotent,
+    rattrapage borné) et ``declencher_alertes_contrat`` /
+    ``semer_alertes_echeances`` (alertes ÉCHÉANCE/préavis) existent et sont
+    TESTÉS depuis longtemps mais n'étaient appelés QUE par des actions
+    manuelles de ``contrats/views.py`` — SANS ce beat, un contrat tacite
+    échu ne se reconduit JAMAIS tout seul et les alertes de préavis/échéance
+    ne partent JAMAIS : le contrat expire silencieusement ou se reconduit
+    sans que personne ne soit prévenu.
+
+    Par société, appelle DANS L'ORDRE :
+
+    1. ``semer_alertes_echeances`` — sème les nouvelles alertes dues
+       (idempotent : pas de doublon pour un même contrat/type/date) ;
+    2. ``declencher_alertes_contrat`` — diffuse les alertes ``planifiee`` dues
+       (idempotent : une alerte n'est dispatchée qu'une fois) ;
+    3. ``traiter_reconductions_tacites`` — reconduit les contrats en tacite
+       reconduction échus (idempotent : avance ``date_fin`` au-delà
+       d'aujourd'hui, un second passage le même jour ne re-sélectionne plus
+       le contrat).
+
+    Chaque société est isolée (une exception n'empêche jamais les
+    suivantes). Renvoie un dict de synthèse agrégé ``{'alertes_semees',
+    'alertes_envoyees', 'contrats_reconduits'}``.
+    """
+    from authentication.models import Company
+
+    from . import services
+
+    total = {
+        'alertes_semees': 0, 'alertes_envoyees': 0, 'contrats_reconduits': 0,
+    }
+
+    for company in Company.objects.filter(actif=True):
+        try:
+            semis = services.semer_alertes_echeances(company)
+            total['alertes_semees'] += semis['nb_creees']
+
+            declenchement = services.declencher_alertes_contrat(company)
+            total['alertes_envoyees'] += declenchement['nb_envoyees']
+
+            reconduction = services.traiter_reconductions_tacites(company)
+            total['contrats_reconduits'] += reconduction['nb_traites']
+        except Exception:  # pragma: no cover - défensif, isolation société
+            logger.warning(
+                'contrats.reconductions_et_alertes_daily: échec société %s',
+                company.pk, exc_info=True)
+
+    logger.info(
+        'contrats.reconductions_et_alertes_daily: %s alerte(s) semée(s), '
+        '%s alerte(s) envoyée(s), %s contrat(s) reconduit(s)',
+        total['alertes_semees'], total['alertes_envoyees'],
+        total['contrats_reconduits'])
     return total

@@ -44,6 +44,8 @@ app.conf.enable_utc = False
 #     (best-effort, no-op société par société tant que lead_sla_hours=0).
 #   - YSUBS1 : facturation récurrente auto (échéanciers contrats +
 #     maintenance SAV dus), quotidien (02:00) — apps/contrats/scheduled.py.
+#   - YSUBS2 : reconductions tacites + diffusion des alertes contrat
+#     (préavis/échéance), quotidien (07:15) — apps/contrats/scheduled.py.
 app.conf.beat_schedule = {
     'ventes-check-overdue-factures': {
         'task': 'ventes.check_overdue_factures',
@@ -125,5 +127,11 @@ app.conf.beat_schedule = {
     'contrats-generer-factures-recurrentes-dues': {
         'task': 'contrats.generer_factures_recurrentes_dues',
         'schedule': crontab(hour=2, minute=0),
+    },
+    # YSUBS2 — reconductions tacites + diffusion des alertes contrat
+    # (préavis/échéance), quotidien.
+    'contrats-reconductions-et-alertes-daily': {
+        'task': 'contrats.reconductions_et_alertes_daily',
+        'schedule': crontab(hour=7, minute=15),
     },
 }
