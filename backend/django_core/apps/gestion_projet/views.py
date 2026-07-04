@@ -1350,6 +1350,28 @@ class TacheViewSet(_GestionProjetBaseViewSet):
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(TimesheetSerializer(timesheet).data)
 
+    @action(detail=True, methods=['post'], url_path='vers-ticket-sav')
+    def vers_ticket_sav(self, request, pk=None):
+        """Convertit la tâche en ticket SAV (ZPRJ11).
+
+        La société est garantie par ``get_object`` : une tâche d'une autre
+        société → 404. Une tâche déjà convertie (``ticket_sav_id`` non nul) ou
+        sans client résolvable sur le projet → 400. Délègue à
+        ``services.convertir_tache_en_ticket_sav`` (écriture cross-app
+        EXCLUSIVEMENT via ``apps.sav.services``, jamais ``sav.models``).
+        """
+        tache = self.get_object()
+        try:
+            ticket = services.convertir_tache_en_ticket_sav(
+                tache, user=request.user)
+        except services.ConversionTicketSavError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'ticket_sav_id': ticket.id,
+            'ticket_reference': ticket.reference,
+        }, status=status.HTTP_201_CREATED)
+
 
 class ChronoActifViewSet(viewsets.ViewSet):
     """Chrono actif GLOBAL de l'utilisateur courant (XPRJ5) — lecture seule.

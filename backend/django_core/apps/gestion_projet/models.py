@@ -395,6 +395,12 @@ class Tache(models.Model):
     # reconstituée à chaque date).
     date_fin_reelle = models.DateField(
         null=True, blank=True, verbose_name='Date de fin réelle')
+    # Référence LÂCHE (ZPRJ11) vers le ``sav.Ticket`` créé par conversion
+    # (aucun FK dur, frontière cross-app) — posée côté serveur uniquement par
+    # l'action ``vers-ticket-sav``. Une tâche déjà convertie (non nul) refuse
+    # une seconde conversion (400).
+    ticket_sav_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du ticket SAV (conversion)')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 

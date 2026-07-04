@@ -189,11 +189,15 @@ class TacheSerializer(serializers.ModelSerializer):
             'assigne', 'assigne_nom', 'priorite', 'priorite_display',
             'etiquettes', 'avancement_pct', 'pct_checklist_fait',
             'charge_estimee', 'date_debut_prevue', 'date_fin_prevue',
-            'date_fin_reelle', 'nb_sous_taches', 'date_creation',
+            'date_fin_reelle', 'nb_sous_taches', 'ticket_sav_id',
+            'date_creation',
         ]
         # ``date_fin_reelle`` est posée côté serveur (jamais lue du corps de
         # requête) : voir ``TacheViewSet.perform_update`` (XPRJ17).
-        read_only_fields = ['date_fin_reelle', 'date_creation']
+        # ``ticket_sav_id`` (ZPRJ11) est posé UNIQUEMENT par l'action
+        # ``vers-ticket-sav`` — jamais lu du corps de requête.
+        read_only_fields = [
+            'date_fin_reelle', 'date_creation', 'ticket_sav_id']
 
     def get_pct_checklist_fait(self, obj):
         items = list(obj.items_checklist.all())

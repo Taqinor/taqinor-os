@@ -187,6 +187,25 @@ def create_corrective_ticket(*, company, client, installation, description,
     return create_with_reference(Ticket, 'SAV', company, _create)
 
 
+def create_ticket_from_projet_tache(*, company, client, description):
+    """ZPRJ11 — crée un ticket SAV CORRECTIF depuis une tâche de projet.
+
+    Fonction FINE appelée depuis ``apps.gestion_projet.services`` (frontière
+    cross-app : gestion_projet ne connaît QUE cette fonction, jamais
+    ``sav.models``). ``client`` doit être un ``crm.Client`` déjà résolu par
+    l'appelant (ex. via ``crm.selectors.get_company_client`` depuis
+    ``Projet.client_id``). Référence via l'utilitaire commun (jamais
+    ``count()+1``). Renvoie le ``Ticket`` créé."""
+    from apps.ventes.utils.references import create_with_reference
+    from .models import Ticket
+
+    def _create(ref):
+        return Ticket.objects.create(
+            company=company, reference=ref, client=client,
+            type=Ticket.Type.CORRECTIF, description=description)
+    return create_with_reference(Ticket, 'SAV', company, _create)
+
+
 # ── XSAV16 — Journal d'immobilisation (downtime) + disponibilité % ──────────
 
 class DowntimeOverlapError(Exception):

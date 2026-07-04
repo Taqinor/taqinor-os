@@ -2317,3 +2317,47 @@ def auto_affecter(company, debut, fin, *, confirmer=False):
         'simule': False, 'deplacements': deplacements,
         'creations': creations, 'non_resolues': non_resolues,
     }
+
+
+# ── Conversion tâche → ticket SAV (ZPRJ11) ───────────────────────────────────
+class ConversionTicketSavError(Exception):
+    """Levée quand une tâche est déjà convertie ou sans client résolvable."""
+
+
+def convertir_tache_en_ticket_sav(tache, *, user=None):
+    """Convertit une ``Tache`` en ``sav.Ticket`` (ZPRJ11).
+
+    Le client est résolu depuis ``tache.projet.client_id`` via un sélecteur
+    ``crm.selectors`` (frontière cross-app, import fonction-local — jamais
+    ``crm.models``). L'écriture du ``Ticket`` passe EXCLUSIVEMENT par
+    ``apps.sav.services.create_ticket_from_projet_tache`` (jamais
+    ``sav.models`` depuis ``gestion_projet``). Une tâche déjà convertie
+    (``ticket_sav_id`` non nul) lève ``ConversionTicketSavError`` — pas de
+    double conversion. Trace le lien retour sur la tâche (référence LÂCHE
+    ``ticket_sav_id``). Renvoie le ``Ticket`` créé (objet de l'app ``sav``).
+    """
+    if tache.ticket_sav_id:
+        raise ConversionTicketSavError(
+            "Cette tâche a déjà été convertie en ticket SAV.")
+
+    projet = tache.projet
+    from apps.crm import selectors as crm_selectors
+    client = None
+    if projet.client_id:
+        client = crm_selectors.get_company_client(
+            projet.company, projet.client_id)
+    if client is None:
+        raise ConversionTicketSavError(
+            "Impossible de résoudre le client du projet — conversion en "
+            "ticket SAV impossible.")
+
+    from apps.sav import services as sav_services
+    description = (
+        f'{tache.libelle}\n\n{tache.description}'
+        if tache.description else tache.libelle)
+    ticket = sav_services.create_ticket_from_projet_tache(
+        company=tache.company, client=client, description=description)
+
+    tache.ticket_sav_id = ticket.id
+    tache.save(update_fields=['ticket_sav_id'])
+    return ticket
