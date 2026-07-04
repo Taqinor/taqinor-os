@@ -42,6 +42,8 @@ app.conf.enable_utc = False
 #   - YLEAD14 : recyclage des leads non travaillés (SLA dépassé → escalade,
 #     désassignation optionnelle au 2e seuil), toutes les heures — apps/crm/tasks.py
 #     (best-effort, no-op société par société tant que lead_sla_hours=0).
+#   - XFAC25 : relevé de compte mensuel automatique (opt-in par client),
+#     1er du mois 08:00 — apps/ventes/scheduled.py.
 app.conf.beat_schedule = {
     'ventes-check-overdue-factures': {
         'task': 'ventes.check_overdue_factures',
@@ -117,5 +119,11 @@ app.conf.beat_schedule = {
     'reporting-controle-integrite-hebdo': {
         'task': 'reporting.controle_integrite',
         'schedule': crontab(hour=3, minute=0, day_of_week=1),
+    },
+    # XFAC25 — relevé de compte mensuel automatique (opt-in par client),
+    # 1er du mois 08:00 Africa/Casablanca.
+    'ventes-releve-mensuel-reminders': {
+        'task': 'ventes.releve_mensuel_reminders',
+        'schedule': crontab(hour=8, minute=0, day_of_month=1),
     },
 }
